@@ -1,0 +1,1062 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="description" content="gbrain, lucasastorian/llmwiki, ddsyasas/llm-wiki, Inkeep OpenKnowledge 검증 결과를 반영한 shotgun 4-레퍼런스 통합 아키텍처 전략">
+<title>shotgun 4-레퍼런스 통합 아키텍처 전략</title>
+<style>
+:root{
+  --bg:#f5f7fb;
+  --paper:#ffffff;
+  --ink:#172033;
+  --muted:#657188;
+  --line:#dde4ee;
+  --brand:#3157d5;
+  --brain:#6f42c1;
+  --sense:#07866f;
+  --workflow:#d86719;
+  --cockpit:#1677a6;
+  --policy:#b12a58;
+  --danger:#b42318;
+  --success:#157347;
+  --warning:#9a6700;
+  --soft-brand:#eef2ff;
+  --soft-brain:#f4efff;
+  --soft-sense:#e9f8f4;
+  --soft-workflow:#fff3e8;
+  --soft-cockpit:#eaf7fd;
+  --soft-policy:#fceef3;
+  --soft-danger:#fff1f0;
+  --soft-success:#edf9f2;
+  --soft-warning:#fff8df;
+  --shadow:0 18px 55px rgba(31,45,72,.10);
+  --radius:18px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--ink);
+  font-family:"Pretendard","Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+  line-height:1.72;
+  word-break:keep-all;
+}
+a{color:var(--brand);text-decoration:none}
+a:hover{text-decoration:underline}
+.page{width:min(1200px,calc(100% - 32px));margin:28px auto 56px}
+.hero{
+  position:relative;
+  overflow:hidden;
+  color:#fff;
+  border-radius:28px;
+  padding:58px 60px 50px;
+  background:
+    radial-gradient(circle at 85% 12%,rgba(255,255,255,.18),transparent 31%),
+    radial-gradient(circle at 8% 100%,rgba(33,177,212,.22),transparent 32%),
+    linear-gradient(135deg,#172554 0%,#3145a5 48%,#5a3d9b 100%);
+  box-shadow:var(--shadow);
+}
+.hero:after{
+  content:"";
+  position:absolute;
+  width:360px;height:360px;
+  border-radius:50%;
+  right:-140px;bottom:-230px;
+  background:rgba(255,255,255,.07);
+}
+.eyebrow{
+  display:inline-flex;align-items:center;gap:8px;
+  margin-bottom:18px;padding:7px 12px;
+  border:1px solid rgba(255,255,255,.24);
+  border-radius:999px;background:rgba(255,255,255,.10);
+  font-size:13px;font-weight:800;letter-spacing:.06em;
+}
+h1{margin:0;font-size:clamp(34px,5vw,62px);line-height:1.12;letter-spacing:-.045em}
+.hero .subtitle{max-width:930px;margin:22px 0 0;color:rgba(255,255,255,.89);font-size:clamp(17px,2vw,22px);line-height:1.62}
+.hero-meta{display:flex;flex-wrap:wrap;gap:10px 18px;margin-top:30px;color:rgba(255,255,255,.73);font-size:14px}
+.layout{display:grid;grid-template-columns:270px minmax(0,1fr);gap:26px;margin-top:28px}
+.toc{position:sticky;top:20px;align-self:start;background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:22px;box-shadow:0 10px 30px rgba(31,45,72,.06)}
+.toc h2{margin:0 0 12px;font-size:15px;letter-spacing:.04em}
+.toc ol{margin:0;padding-left:20px;color:var(--muted);font-size:13.5px}
+.toc li{margin:7px 0}
+.toc a{color:inherit}
+.toc a:hover{color:var(--brand)}
+main{min-width:0}
+section{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:35px 38px;margin-bottom:22px;box-shadow:0 10px 30px rgba(31,45,72,.055)}
+section h2{margin:0 0 20px;font-size:29px;line-height:1.3;letter-spacing:-.025em}
+section h3{margin:30px 0 12px;font-size:20px;line-height:1.4;letter-spacing:-.015em}
+section h4{margin:22px 0 8px;font-size:16px}
+p{margin:12px 0}
+.lead{font-size:18px;color:#39465d}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+strong{font-weight:800}
+mark{background:#fff3a4;padding:1px 4px;border-radius:4px}
+hr{border:0;border-top:1px solid var(--line);margin:28px 0}
+.grid{display:grid;gap:16px}
+.grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.grid.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.grid.four{grid-template-columns:repeat(4,minmax(0,1fr))}
+.card{border:1px solid var(--line);border-radius:15px;padding:19px;background:#fff}
+.card h3,.card h4{margin-top:0}
+.card p:last-child{margin-bottom:0}
+.role-card{position:relative;overflow:hidden;border-top:5px solid var(--brand)}
+.role-card.brain{border-top-color:var(--brain);background:linear-gradient(180deg,var(--soft-brain),#fff 42%)}
+.role-card.sense{border-top-color:var(--sense);background:linear-gradient(180deg,var(--soft-sense),#fff 42%)}
+.role-card.workflow{border-top-color:var(--workflow);background:linear-gradient(180deg,var(--soft-workflow),#fff 42%)}
+.role-card.cockpit{border-top-color:var(--cockpit);background:linear-gradient(180deg,var(--soft-cockpit),#fff 42%)}
+.role-card.policy{border-top-color:var(--policy);background:linear-gradient(180deg,var(--soft-policy),#fff 42%)}
+.role-label{font-size:12px;font-weight:900;letter-spacing:.08em;color:var(--muted)}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:5px 9px;border-radius:999px;font-size:12px;font-weight:800;border:1px solid transparent}
+.badge.a{background:var(--soft-success);color:var(--success);border-color:#c9ebd6}
+.badge.b{background:var(--soft-brand);color:var(--brand);border-color:#d6defd}
+.badge.c{background:var(--soft-warning);color:var(--warning);border-color:#f1df9d}
+.badge.d{background:var(--soft-danger);color:var(--danger);border-color:#f2c9c5}
+.badge.replace{background:#eaf7fd;color:#0c709e;border-color:#bfe4f4}
+.badge.keep{background:#edf9f2;color:#11643d;border-color:#caebd7}
+.badge.augment{background:#fff3e8;color:#a64f0a;border-color:#f4d1af}
+.badge.defer{background:#f3f0ff;color:#6241a5;border-color:#dcd4f5}
+.kpi{display:flex;gap:12px;align-items:center;border:1px solid var(--line);border-radius:14px;padding:16px;background:#fafbfe}
+.kpi .num{font-size:24px;font-weight:900;letter-spacing:-.03em}
+.kpi .label{font-size:12px;color:var(--muted)}
+.callout{border-left:5px solid var(--brand);background:var(--soft-brand);border-radius:12px;padding:17px 19px;margin:18px 0}
+.callout.success{border-left-color:var(--success);background:var(--soft-success)}
+.callout.warning{border-left-color:#c18400;background:var(--soft-warning)}
+.callout.danger{border-left-color:var(--danger);background:var(--soft-danger)}
+.callout.cockpit{border-left-color:var(--cockpit);background:var(--soft-cockpit)}
+ul,ol{padding-left:22px}
+li{margin:5px 0}
+table{width:100%;border-collapse:separate;border-spacing:0;margin:18px 0;border:1px solid var(--line);border-radius:14px;overflow:hidden;font-size:14px}
+th,td{padding:12px 13px;text-align:left;vertical-align:top;border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+th:last-child,td:last-child{border-right:0}
+tr:last-child td{border-bottom:0}
+th{background:#f2f5fa;font-weight:800}
+tr:nth-child(even) td{background:#fbfcfe}
+code{font-family:"JetBrains Mono","Cascadia Code","D2Coding",monospace;font-size:.92em;background:#f2f4f8;padding:2px 5px;border-radius:5px}
+pre{margin:18px 0;padding:19px 21px;border-radius:14px;overflow:auto;background:#111827;color:#dbe7ff;border:1px solid #202c42;line-height:1.55;font-size:13px;white-space:pre}
+pre code{background:none;padding:0;color:inherit}
+.flow{display:flex;align-items:stretch;gap:10px;overflow:auto;padding-bottom:5px;margin:18px 0}
+.flow .node{min-width:142px;flex:1;border:1px solid var(--line);border-radius:13px;padding:13px;background:#fff;text-align:center;font-size:13px;font-weight:750}
+.flow .arrow{align-self:center;color:#8090a8;font-weight:900}
+.arch{display:grid;gap:10px;margin:22px 0}
+.arch-row{display:grid;grid-template-columns:170px minmax(0,1fr);gap:12px;align-items:stretch}
+.arch-label{border-radius:12px;padding:15px;font-weight:900;color:#fff;display:flex;align-items:center}
+.arch-body{border:1px solid var(--line);border-radius:12px;padding:15px;background:#fff}
+.arch-label.external{background:#596579}
+.arch-label.sense{background:var(--sense)}
+.arch-label.evidence{background:#176c8d}
+.arch-label.brain{background:var(--brain)}
+.arch-label.policy{background:var(--policy)}
+.arch-label.ui{background:var(--workflow)}
+.arch-label.cockpit{background:var(--cockpit)}
+.arch-label.audit{background:#4e6381}
+.delta{display:grid;grid-template-columns:1fr 52px 1fr;gap:12px;align-items:center;margin:18px 0}
+.delta .before,.delta .after{border:1px solid var(--line);border-radius:14px;padding:17px}
+.delta .before{background:#fff7f5}
+.delta .after{background:#f0faf5}
+.delta .mid{text-align:center;font-size:25px;color:var(--brand);font-weight:900}
+.tree{background:#0d172a;color:#dce8fb;border-radius:14px;padding:20px;font-family:"JetBrains Mono","Cascadia Code","D2Coding",monospace;white-space:pre;overflow:auto;font-size:13px;line-height:1.52}
+.route{display:grid;grid-template-columns:160px minmax(0,1fr);gap:12px;padding:13px 0;border-bottom:1px solid var(--line)}
+.route:last-child{border-bottom:0}
+.route .path{font-family:"JetBrains Mono","Cascadia Code","D2Coding",monospace;font-weight:850;color:var(--brand)}
+.checklist{list-style:none;padding:0}
+.checklist li{position:relative;padding-left:28px;margin:10px 0}
+.checklist li:before{content:"✓";position:absolute;left:0;top:0;color:var(--success);font-weight:900}
+.footer{color:var(--muted);font-size:13px;text-align:center;padding:12px}
+@media(max-width:1000px){
+  .layout{grid-template-columns:1fr}
+  .toc{position:relative;top:auto}
+  .grid.four{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:760px){
+  .page{width:min(100% - 18px,1200px);margin-top:10px}
+  .hero{padding:36px 25px 32px;border-radius:20px}
+  section{padding:27px 21px}
+  .grid.two,.grid.three,.grid.four{grid-template-columns:1fr}
+  .arch-row{grid-template-columns:1fr}
+  .delta{grid-template-columns:1fr}
+  .delta .mid{transform:rotate(90deg)}
+  .route{grid-template-columns:1fr}
+  table{font-size:12.5px}
+  th,td{padding:10px}
+}
+@media print{
+  body{background:#fff}
+  .page{width:100%;margin:0}
+  .toc{display:none}
+  .layout{display:block}
+  section,.hero{box-shadow:none;break-inside:avoid}
+  a{color:inherit}
+}
+</style>
+</head>
+<body>
+<div class="page">
+<header class="hero">
+  <div class="eyebrow">SHOTGUN · FOUR-REFERENCE ARCHITECTURE</div>
+  <h1>shotgun 4-레퍼런스<br>통합 아키텍처 전략</h1>
+  <p class="subtitle">
+    garrytan/gbrain, lucasastorian/llmwiki, ddsyasas/llm-wiki, Inkeep OpenKnowledge의 실제 검증 결과를 바탕으로,
+    가장 우수한 기술만 채택하고 중복 엔진은 제거한 shotgun 최종 제품 구조를 정의한다.
+  </p>
+  <div class="hero-meta">
+    <span>문서 버전 v1.0</span>
+    <span>기준일 2026-07-11</span>
+    <span>개인용·로컬 우선 단계</span>
+    <span>검증 근거 기반 아키텍처</span>
+  </div>
+</header>
+
+<div class="layout">
+<aside class="toc">
+  <h2>목차</h2>
+  <ol>
+    <li><a href="#summary">최종 전략 요약</a></li>
+    <li><a href="#validation">검증 결과와 결정 변화</a></li>
+    <li><a href="#roles">4개 레퍼런스의 최종 역할</a></li>
+    <li><a href="#architecture">최종 전체 아키텍처</a></li>
+    <li><a href="#truth">시스템 오브 레코드와 쓰기 권한</a></li>
+    <li><a href="#flows">핵심 데이터·사용자 흐름</a></li>
+    <li><a href="#ui">프런트엔드·편집기·그래프 전략</a></li>
+    <li><a href="#domain">shotgun 고유 도메인과 API</a></li>
+    <li><a href="#routes">최종 화면·라우트</a></li>
+    <li><a href="#adoption">기술 채택·교체 매트릭스</a></li>
+    <li><a href="#boundaries">책임 경계와 제외 원칙</a></li>
+    <li><a href="#repo">권장 저장소 구조</a></li>
+    <li><a href="#roadmap">구현 로드맵</a></li>
+    <li><a href="#success">성공 조건</a></li>
+    <li><a href="#definition">최종 정의</a></li>
+    <li><a href="#evidence">검증 근거 문서</a></li>
+  </ol>
+</aside>
+
+<main>
+
+<section id="summary">
+<h2>1. 최종 전략 요약</h2>
+<p class="lead">
+  shotgun은 네 프로젝트를 병렬 실행하거나 단순 조립하는 제품이 아니다.
+  <strong>검증된 우수 기술만 추출하고, canonical 지식·근거·승인·충돌·감사 권한을 shotgun이 통제하는 독립 시스템</strong>이다.
+</p>
+
+<div class="grid four">
+  <article class="card role-card brain">
+    <div class="role-label">CORE ENGINE</div>
+    <h3>garrytan/gbrain</h3>
+    <p>Page·Fact·Graph·Timeline·Search·MCP·Minion Job·Dream Cycle·migration·복구를 담당한다.</p>
+  </article>
+  <article class="card role-card sense">
+    <div class="role-label">SELECTED SOURCE &amp; VALIDATION PARTS</div>
+    <h3>lucasastorian/llmwiki</h3>
+    <p>HTML/XLSX 변환, Highlight/Annotation, Lint, Watcher event, Reconcile 패턴을 선별한다.</p>
+  </article>
+  <article class="card role-card workflow">
+    <div class="role-label">PRODUCT WORKFLOW REFERENCE</div>
+    <h3>ddsyasas/llm-wiki</h3>
+    <p>Source intake, Ask/Chat, 비용·모델·설정, 액션 중심 홈의 UX 패턴을 활용한다.</p>
+  </article>
+  <article class="card role-card cockpit">
+    <div class="role-label">EDITOR &amp; HUMAN COCKPIT TECHNOLOGY</div>
+    <h3>Inkeep OpenKnowledge</h3>
+    <p>Visual/Source 편집 UX, 2D Graph, Agent Activity, Burst Diff, Entity Vault 템플릿을 반영한다.</p>
+  </article>
+</div>
+
+<div class="callout success">
+  <strong>최종 제품 전략</strong><br>
+  새 <code>shotgun-web</code>과 typed shotgun API를 유지한다.
+  네 레퍼런스의 전체 런타임을 중첩하지 않고, 각 프로젝트에서 검증된 모듈·UX·운영 원칙만 shotgun 경계 안으로 가져온다.
+</div>
+
+<div class="delta">
+  <div class="before">
+    <strong>이전 3-레퍼런스 계획</strong>
+    <p>ddsyasas 기반 UI, 별도 2D 그래프 추후 설계, 단순 Markdown 편집기, 신규 Job/Audit UI 자체 설계</p>
+  </div>
+  <div class="mid">→</div>
+  <div class="after">
+    <strong>4-레퍼런스 최종 계획</strong>
+    <p>OpenKnowledge식 2D Graph 채택, Agent Activity·Burst Diff 반영, Visual/Source 편집 UX 단계적 도입</p>
+  </div>
+</div>
+</section>
+
+<section id="validation">
+<h2>2. 검증 결과와 결정 변화</h2>
+
+<div class="grid four">
+  <div class="kpi"><div><div class="num">77.9%</div><div class="label">gbrain Verified Score</div></div></div>
+  <div class="kpi"><div><div class="num">56.3%</div><div class="label">lucas Verified Score</div></div></div>
+  <div class="kpi"><div><div class="num">57.6%</div><div class="label">ddsyasas Verified Score</div></div></div>
+  <div class="kpi"><div><div class="num">10/10</div><div class="label">OpenKnowledge 핵심 결정 질문</div></div></div>
+</div>
+
+<p class="muted small">
+  OpenKnowledge 검증은 전체 저장소 인증이 아니라 의사결정 우선 표적 검증으로 축소되었으므로 별도 종합 점수를 부여하지 않았다.
+  편집기, 그래프, Activity, CRDT, starter pack, gbrain 연동과 adapter 가능성을 중심으로 실제 실행 근거를 확보했다.
+</p>
+
+<table>
+<thead>
+<tr><th>레퍼런스</th><th>최종 결정</th><th>직접 반영</th><th>새로 구현·보완</th><th>제외</th></tr>
+</thead>
+<tbody>
+<tr>
+  <td><strong>gbrain</strong></td>
+  <td><span class="badge b">핵심 엔진 확장</span></td>
+  <td>Page, Fact, Search, Graph, Timeline, MCP, Minion, Dream Cycle</td>
+  <td>shotgun policy·evidence·migration·adapter</td>
+  <td>대규모 core 재작성</td>
+</tr>
+<tr>
+  <td><strong>lucas</strong></td>
+  <td><span class="badge b">선별 모듈 채택</span></td>
+  <td>HTML/XLSX, Highlight, Lint, Watcher event, Reconcile</td>
+  <td>Stable Source ID, EvidenceSpan, Citation, Recursive Impact</td>
+  <td>영구 SQLite/FTS, VaultFS 전체, MCP CRUD, Routine</td>
+</tr>
+<tr>
+  <td><strong>ddsyasas</strong></td>
+  <td><span class="badge c">UX 부품·워크플로 참고</span></td>
+  <td>Source intake, Ask/Chat, Cost, Settings, Home action hierarchy</td>
+  <td>typed API 기반 화면</td>
+  <td>SQLite backend, ingest/query/lint core, LLM client, CLI</td>
+</tr>
+<tr>
+  <td><strong>OpenKnowledge</strong></td>
+  <td><span class="badge augment">선택 기술 반영</span></td>
+  <td>2D Graph UX, Activity/Diff, editor 보존 원칙, Entity Vault template</td>
+  <td>shotgun semantic adapter, approval boundary, accessible fallback</td>
+  <td>전체 runtime, canonical Markdown/Yjs 저장, Git sharing·MCP 중복</td>
+</tr>
+</tbody>
+</table>
+
+<h3>OpenKnowledge 검증으로 바뀐 네 가지 결정</h3>
+<table>
+<thead><tr><th>기존 계획</th><th>검증 결과</th><th>최종 결정</th></tr></thead>
+<tbody>
+<tr>
+  <td>ddsyasas 3D Graph 또는 신규 그래프 검토</td>
+  <td>OpenKnowledge 2D Graph가 문서 작업과 관계 탐색에서 더 실용적</td>
+  <td><span class="badge replace">REPLACE</span> 2D Graph + 목록 fallback</td>
+</tr>
+<tr>
+  <td>Job·Audit UI 완전 신규 설계</td>
+  <td>Agent Activity와 Burst Diff가 실제 테스트에서 안정적</td>
+  <td><span class="badge augment">AUGMENT</span> shotgun 상태 머신을 결합</td>
+</tr>
+<tr>
+  <td>기본 Markdown editor</td>
+  <td>Visual/Source 전환과 dirty serialization 보존성이 우수</td>
+  <td><span class="badge augment">AUGMENT</span> 2단계에 Visual mode 도입</td>
+</tr>
+<tr>
+  <td>동시 편집 미정</td>
+  <td>Yjs CRDT 표적 테스트에서 동시 peer edit 보존</td>
+  <td><span class="badge defer">DEFER</span> Draft ChangeSet 전용 고급 기능</td>
+</tr>
+</tbody>
+</table>
+</section>
+
+<section id="roles">
+<h2>3. 4개 레퍼런스의 최종 역할</h2>
+
+<h3>3.1 garrytan/gbrain — 두뇌와 중추 실행 엔진</h3>
+<div class="grid two">
+  <div class="card">
+    <h4>담당</h4>
+    <ul>
+      <li>영구 Page·Fact 저장과 Facts fence</li>
+      <li>Alias·Canonicalization·Timeline·Relation Graph</li>
+      <li>Search·Think·Citation·Gap</li>
+      <li>MCP operation contract</li>
+      <li>Minion Job Queue·retry·timeout·lock recovery</li>
+      <li>Dream Cycle·PGLite/PostgreSQL·migration</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>채택 원칙</h4>
+    <p>gbrain은 참고 구현이 아니라 실제 기반 엔진이다. shotgun은 외곽 package·migration·operation·adapter를 추가하고 upstream core patch를 최소화한다.</p>
+  </div>
+</div>
+
+<h3>3.2 lucasastorian/llmwiki — 선별된 수집·변환·검증 부품 공급원</h3>
+<table>
+<thead><tr><th>등급</th><th>부품</th><th>shotgun 적용</th></tr></thead>
+<tbody>
+<tr><td><span class="badge b">B</span></td><td>HTML cleaner, XLSX extractor</td><td>독립 converter package와 SourceRecord·EvidenceSpan 출력 계약으로 연결</td></tr>
+<tr><td><span class="badge b">B</span></td><td>Highlight·Annotation</td><td>원문·사용자 메모·LLM Fact의 provenance 분리</td></tr>
+<tr><td><span class="badge b">B</span></td><td>Deterministic Lint</td><td>VaultFS 의존을 제거하고 gbrain/shotgun adapter에 연결</td></tr>
+<tr><td><span class="badge b">B</span></td><td>Watcher·Reconcile</td><td>Source event producer와 converter staging recovery로 축소</td></tr>
+<tr><td><span class="badge c">C</span></td><td>Evidence·Citation·Stale</td><td>테스트만 참고하고 stable ID·gbrain Graph 기반으로 재구현</td></tr>
+<tr><td><span class="badge d">D</span></td><td>VaultFS 전체·SQLite·FTS·MCP·UI</td><td>제품 런타임에서 제외</td></tr>
+</tbody>
+</table>
+
+<h3>3.3 ddsyasas/llm-wiki — Source·Ask·비용 중심 제품 워크플로 참고</h3>
+<p>
+  ddsyasas의 전체 Next.js 앱을 유지하지 않는다. UI가 기존 SQLite·파일시스템·ingest/query/lint에 강하게 결합되어 있으므로,
+  <strong>상호작용 모델과 제한된 presentation component만</strong> 새 shotgun 화면에 반영한다.
+</p>
+<div class="grid two">
+  <div class="card">
+    <h4>반영할 강점</h4>
+    <ul>
+      <li>액션 중심 Home</li>
+      <li>Paste/File/URL Source intake</li>
+      <li>비용 사전 확인과 모델 선택 UX</li>
+      <li>Ask·Chat composer와 결과 레이아웃</li>
+      <li>설정·비용·Command palette 패턴</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>제외할 부분</h4>
+    <ul>
+      <li>SQLite·Markdown 폴더 영구 저장</li>
+      <li>기존 ingest/query/lint core와 LLM client</li>
+      <li>임의 절대경로 기반 multi-wiki 관리</li>
+      <li>단일 blocking request와 비복구형 progress</li>
+      <li>3D canvas-only Graph</li>
+    </ul>
+  </div>
+</div>
+
+<h3>3.4 Inkeep OpenKnowledge — 편집기·2D Graph·Human/Agent Activity 기술 공급원</h3>
+<div class="grid two">
+  <div class="card role-card cockpit">
+    <h4>채택·반영</h4>
+    <ul>
+      <li>Visual/Source mode UX와 Markdown 보존 원칙</li>
+      <li>2D Graph interaction·label·neighborhood UX</li>
+      <li>Agent Activity와 changed-file grouping</li>
+      <li>Burst Diff를 활용한 변경 검토</li>
+      <li>Entity Vault 폴더·템플릿·Compiled Truth/Timeline 표현</li>
+      <li>선택적 Draft CRDT 가능성</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>채택하지 않는 것</h4>
+    <ul>
+      <li>OpenKnowledge 전체 runtime과 local filesystem API</li>
+      <li>Markdown/Yjs를 shotgun canonical system of record로 승격</li>
+      <li>즉시 collaborative mutation을 canonical write로 사용</li>
+      <li>OpenKnowledge MCP·검색·Git sharing을 병렬 엔진으로 유지</li>
+      <li>TiptapEditor 전체를 무리하게 직접 추출</li>
+    </ul>
+  </div>
+</div>
+
+<div class="callout cockpit">
+  <strong>중요한 역할 구분</strong><br>
+  OpenKnowledge는 shotgun의 두뇌가 아니다. 검증으로 우수성이 확인된 <strong>사람의 검토·편집·관계 탐색 경험</strong>을 shotgun의 canonical·승인 경계 뒤에 제공한다.
+</div>
+</section>
+
+<section id="architecture">
+<h2>4. 최종 전체 아키텍처</h2>
+
+<div class="arch">
+  <div class="arch-row">
+    <div class="arch-label external">External Inputs</div>
+    <div class="arch-body">파일·폴더·URL·텍스트·HTML·PDF·Office·이미지·대화·회의 기록</div>
+  </div>
+  <div class="arch-row">
+    <div class="arch-label sense">Source &amp; Conversion</div>
+    <div class="arch-body"><strong>shotgun + selected lucas</strong> — Stable Source registration, Watcher event, HTML/XLSX converter, staging state, Highlight/Annotation, Reconcile</div>
+  </div>
+  <div class="arch-row">
+    <div class="arch-label evidence">Evidence Layer</div>
+    <div class="arch-body"><strong>shotgun-owned</strong> — SourceVersion, EvidenceSpan, parser provenance, content hash, Source-ID Citation</div>
+  </div>
+  <div class="arch-row">
+    <div class="arch-label brain">Brain &amp; Execution</div>
+    <div class="arch-body"><strong>gbrain</strong> — Page, Fact, Graph, Timeline, Search/Think, MCP, Minion Jobs, Dream Cycle</div>
+  </div>
+  <div class="arch-row">
+    <div class="arch-label policy">Policy &amp; Canonicalization</div>
+    <div class="arch-body"><strong>shotgun-owned</strong> — User Directive, Fact Priority, Conflict Projection, Recursive Impact, Changeset, Approval, Compiled Truth</div>
+  </div>
+  <div class="arch-row">
+    <div class="arch-label audit">Validation &amp; Audit</div>
+    <div class="arch-body"><strong>lucas patterns + shotgun</strong> — deterministic lint, provenance integrity, stale impact, JobEvent, HistoryEvent, Revision, rollback proposal</div>
+  </div>
+  <div class="arch-row">
+    <div class="arch-label ui">Product Workflows</div>
+    <div class="arch-body"><strong>ddsyasas-derived</strong> — Source intake, Ask/Chat, cost preview, settings, action-oriented Home</div>
+  </div>
+  <div class="arch-row">
+    <div class="arch-label cockpit">Human Cockpit</div>
+    <div class="arch-body"><strong>OpenKnowledge-derived</strong> — Visual/Source editing UX, 2D Graph, Agent Activity, Burst Diff, Entity Vault templates, optional Draft CRDT</div>
+  </div>
+</div>
+
+<pre><code>External Source
+  → Source Event / Converter / Staging
+  → Stable Source ID / SourceVersion / EvidenceSpan / Citation
+  → gbrain Page / Fact / Relation Graph / Search / Minion Jobs
+  → Directive / Priority / Conflict / Changeset / Recursive Impact
+  → Approval
+  → Canonical Fact / Compiled Truth
+  → Lint / Audit / Revision
+  → Typed Shotgun Gateway
+  → shotgun-web
+       ├─ ddsyasas-derived Source / Ask / Cost workflows
+       └─ OpenKnowledge-derived Editor / 2D Graph / Activity / Diff UX</code></pre>
+</section>
+
+<section id="truth">
+<h2>5. 시스템 오브 레코드와 쓰기 권한</h2>
+<p class="lead">
+  네 프로젝트를 결합할 때 가장 중요한 원칙은 <strong>어느 시스템이 최종 진실을 기록할 권한을 갖는가</strong>를 하나로 고정하는 것이다.
+</p>
+
+<table>
+<thead><tr><th>데이터</th><th>Canonical 주체</th><th>사람이 보는 표현</th><th>쓰기 조건</th></tr></thead>
+<tbody>
+<tr><td>Source 원본·버전</td><td>shotgun Source Store</td><td>Source detail, 파일·원문 viewer</td><td>수집·버전 등록, 원본 불변</td></tr>
+<tr><td>EvidenceSpan</td><td>shotgun Evidence Store</td><td>문서 하이라이트·citation panel</td><td>parser 결과와 source version 고정</td></tr>
+<tr><td>Fact·Claim</td><td>gbrain + shotgun policy layer</td><td>Page·Compiled Truth·Graph</td><td>승인된 Changeset만 canonical</td></tr>
+<tr><td>User Directive</td><td>shotgun Directive Store</td><td>Correction·policy panel</td><td>사용자 명시적 생성·수정·취소</td></tr>
+<tr><td>Conflict</td><td>shotgun Conflict Store</td><td>Review Center</td><td>경쟁 Fact 보존, 해결 이력 필수</td></tr>
+<tr><td>Draft 문서</td><td>Draft ChangeSet workspace</td><td>Visual/Source editor</td><td>CRDT 가능, canonical 아님</td></tr>
+<tr><td>Compiled Truth</td><td>shotgun projection service</td><td>Markdown/WYSIWYG page</td><td>활성 Fact·Directive·Conflict·시간 반영</td></tr>
+<tr><td>History·Diff</td><td>shotgun HistoryEvent·Revision</td><td>Activity·Diff·Timeline</td><td>Job·actor·reason·source 연결</td></tr>
+</tbody>
+</table>
+
+<div class="callout danger">
+  <strong>금지</strong><br>
+  OpenKnowledge Markdown/Yjs, ddsyasas Markdown, gbrain DB가 각각 독립적인 최종 진실로 쓰이는 구조를 만들지 않는다.
+  Markdown은 사람이 검토하는 projection 또는 staged 입력이며, canonical 전환은 shotgun Changeset과 Approval이 통제한다.
+</div>
+
+<h3>Canonical write 규칙</h3>
+<pre><code>Human or Agent edit
+  → Draft ChangeSet
+  → validation + evidence check + impact preview
+  → awaiting_approval
+  → approve
+  → canonical Fact / Claim update
+  → Compiled Truth projection
+  → Markdown / Graph / Search refresh
+  → HistoryEvent</code></pre>
+</section>
+
+<section id="flows">
+<h2>6. 핵심 데이터·사용자 흐름</h2>
+
+<h3>6.1 Source 투입과 승인</h3>
+<div class="flow">
+  <div class="node">Source 입력</div><div class="arrow">→</div>
+  <div class="node">Stable ID</div><div class="arrow">→</div>
+  <div class="node">Parsing</div><div class="arrow">→</div>
+  <div class="node">EvidenceSpan</div><div class="arrow">→</div>
+  <div class="node">Fact 후보</div><div class="arrow">→</div>
+  <div class="node">Changeset</div><div class="arrow">→</div>
+  <div class="node">승인</div><div class="arrow">→</div>
+  <div class="node">Canonical commit</div>
+</div>
+<p>Source staging과 parser 산출물은 승인 전에 존재할 수 있지만, Fact·Compiled Truth의 durable canonical 변경은 승인 이후에만 발생한다.</p>
+
+<h3>6.2 질문과 Chat</h3>
+<pre><code>User question
+→ gbrain Search / Relation Graph / Timeline
+→ active Directive + Fact Priority
+→ temporal validity + Conflict + gaps
+→ EvidenceSpan and SourceVersion citation
+→ answer + citations + conflicts + gaps + related pages
+→ Ask / Chat UI</code></pre>
+
+<h3>6.3 사용자 수정과 Visual Editor</h3>
+<pre><code>User edits Compiled Truth projection
+→ classify edit
+   ├─ wording/layout only → projection-only draft
+   ├─ factual correction → User Directive + proposed Fact change
+   └─ new claim → evidence-required Fact candidate
+→ impact preview
+→ Changeset
+→ approval
+→ recompile truth
+→ Activity + Diff + History</code></pre>
+
+<h3>6.4 Source 변경과 재귀 영향</h3>
+<pre><code>SOURCE_MODIFIED / MOVED / RENAMED
+→ stable identity reconciliation
+→ new SourceVersion + content_hash
+→ changed EvidenceSpans
+→ affected Facts
+→ related Entity / Timeline / Relation
+→ Conflict / Compiled Truth / answer cache
+→ minimal stale set
+→ regeneration Changeset</code></pre>
+
+<h3>6.5 Durable Job와 Agent Activity</h3>
+<pre><code>queued
+→ running
+   ├─ source_registered
+   ├─ parsing
+   ├─ evidence_created
+   ├─ fact_candidates_extracted
+   ├─ knowledge_compared
+   └─ changes_proposed
+→ awaiting_approval
+→ completed | failed | cancelled</code></pre>
+<p>OpenKnowledge식 Activity는 이 상태를 사람이 이해하기 쉽게 보여주는 관찰 UI다. 상태 전이와 승인 권한은 shotgun Job/Changeset 서비스가 소유한다.</p>
+
+<h3>6.6 Entity Vault → gbrain</h3>
+<pre><code>Entity Vault Markdown
+→ path/type/title/timeline validation
+→ stable staged record
+→ provenance + diff
+→ approval
+→ gbrain/shotgun Fact import
+→ Compiled Truth projection</code></pre>
+<p>직접 양방향 sync를 사용하지 않고 staged import와 idempotent projection을 사용해 update loop를 방지한다.</p>
+</section>
+
+<section id="ui">
+<h2>7. 프런트엔드·편집기·그래프 전략</h2>
+
+<h3>7.1 새 shotgun 프런트엔드의 구성</h3>
+<pre><code>Presentation components
+  ↑ props + callbacks
+Domain screens / view models
+  ↑ typed shotgun client
+Shotgun Gateway / SSE
+  ↑ domain adapters
+gbrain + shotgun services</code></pre>
+
+<h3>7.2 ddsyasas에서 가져오는 제품 흐름</h3>
+<div class="grid three">
+  <div class="card"><h4>Source Intake</h4><p>Paste·File·URL 입력, 형식 preview, 비용·모델·승인 선택</p></div>
+  <div class="card"><h4>Ask / Chat</h4><p>질문 composer, citation·conflict·gap이 분리된 결과, 대화의 Changeset 승격</p></div>
+  <div class="card"><h4>Home / Settings</h4><p>액션 중심 홈, 모델·비용·프로젝트·privacy 설정</p></div>
+</div>
+
+<h3>7.3 OpenKnowledge에서 가져오는 Human Cockpit</h3>
+<div class="grid four">
+  <div class="card"><h4>Visual / Source</h4><p>읽기·편집 모드 전환, Markdown round-trip 보존 gate</p></div>
+  <div class="card"><h4>2D Graph</h4><p>현재 문서 주변 관계, 전체 Graph, 선택·필터·클러스터</p></div>
+  <div class="card"><h4>Agent Activity</h4><p>작업·파일·actor·상태·진행을 한 화면에 표시</p></div>
+  <div class="card"><h4>Burst Diff</h4><p>Changeset 승인 전 핵심 변경을 압축된 diff로 검토</p></div>
+</div>
+
+<h3>7.4 편집기 단계</h3>
+<table>
+<thead><tr><th>단계</th><th>기능</th><th>원칙</th></tr></thead>
+<tbody>
+<tr><td><strong>MVP</strong></td><td>Markdown source editor, Preview, typed diff</td><td>canonical 직접 쓰기 금지, fixture 기반 보존 검사</td></tr>
+<tr><td><strong>2단계</strong></td><td>Visual/Source mode switch, rich block UX</td><td>no-op semantic·byte-preservation gate</td></tr>
+<tr><td><strong>3단계</strong></td><td>Yjs Draft CRDT, human/agent presence</td><td>Draft ChangeSet 전용, approval 전 canonical=false</td></tr>
+</tbody>
+</table>
+
+<h3>7.5 2D Semantic Graph</h3>
+<p>Graph UI는 OpenKnowledge의 2D interaction을 채택하지만 데이터는 shotgun typed graph contract에서 공급한다.</p>
+<pre><code>GraphNode
+- id
+- kind: source | evidence | fact | entity | conflict | directive | truth | page
+- label
+- entityType
+- status
+- tags
+
+GraphEdge
+- source
+- target
+- relation
+- confidence
+- temporalValidity
+- evidenceCount</code></pre>
+<div class="callout warning">
+  Canvas는 유일한 접근 방식이 될 수 없다. 같은 데이터를 검색 가능한 목록·표·incoming/outgoing relation panel로 제공한다.
+</div>
+</section>
+
+<section id="domain">
+<h2>8. shotgun 고유 도메인과 Typed API</h2>
+
+<div class="grid two">
+  <div class="card"><h4>Project</h4><p>사용자 workspace와 gbrain namespace를 연결한다. 로컬 경로 자체는 identity가 아니다.</p></div>
+  <div class="card"><h4>Source / SourceVersion</h4><p>path와 독립적인 stable ID, hash, parser, path history, 상태를 관리한다.</p></div>
+  <div class="card"><h4>EvidenceSpan</h4><p>page·section·offset·table cell·image bounding box까지 정확히 지정한다.</p></div>
+  <div class="card"><h4>Fact / Citation</h4><p>Claim과 EvidenceSpan을 stable ID와 source version으로 연결한다.</p></div>
+  <div class="card"><h4>Directive</h4><p>사용자의 수정·금지·우선순위를 증거와 분리된 권위 record로 관리한다.</p></div>
+  <div class="card"><h4>Conflict</h4><p>경쟁 Fact를 삭제하지 않고 unresolved/resolved/manual_review 상태로 보존한다.</p></div>
+  <div class="card"><h4>Changeset / Approval</h4><p>Fact·Page·Conflict·Gap·비용·impact를 하나의 승인 단위로 묶는다.</p></div>
+  <div class="card"><h4>Compiled Truth</h4><p>활성 Fact·Directive·Conflict·시간 유효성을 반영한 현재 읽기 모델이다.</p></div>
+  <div class="card"><h4>Job / JobEvent</h4><p>작업 상태·진행·재시도·resume·비용과 Activity 표시를 연결한다.</p></div>
+  <div class="card"><h4>HistoryEvent / Revision</h4><p>누가 무엇을 왜 변경했는지 추적하고 rollback proposal을 만든다.</p></div>
+</div>
+
+<h3>Typed shotgun API의 최소 resource</h3>
+<pre><code>Project
+Source
+SourceVersion
+EvidenceSpan
+Page
+Fact
+Citation
+Entity
+Directive
+Conflict
+Changeset
+Approval
+CompiledTruth
+Job
+JobEvent
+HistoryEvent
+Revision
+CostRecord
+ModelDescriptor
+GraphNode
+GraphEdge</code></pre>
+
+<h3>주요 endpoint 범주</h3>
+<pre><code>/projects
+/sources
+/jobs
+/pages
+/facts
+/evidence
+/query
+/chats
+/directives
+/conflicts
+/changesets
+/approvals
+/history
+/costs
+/graph
+/projections</code></pre>
+</section>
+
+<section id="routes">
+<h2>9. 최종 화면·라우트</h2>
+
+<div class="route"><div class="path">/</div><div><strong>Home / Action Center</strong><br>자료 추가, 질문, 변경 검토, 지식 탐색과 pending review·conflict·failed job을 표시한다.</div></div>
+<div class="route"><div class="path">/sources</div><div><strong>Sources</strong><br>목록, 추가, 상세, version, processing job, EvidenceSpan, highlight를 관리한다.</div></div>
+<div class="route"><div class="path">/knowledge</div><div><strong>Knowledge</strong><br>Page 목록·상세·검색·Timeline·Source lineage를 제공한다.</div></div>
+<div class="route"><div class="path">/knowledge/editor</div><div><strong>Visual / Source Editor</strong><br>Compiled Truth projection과 Draft ChangeSet을 편집하고 diff·보존 상태를 표시한다.</div></div>
+<div class="route"><div class="path">/knowledge/graph</div><div><strong>2D Semantic Graph</strong><br>문서·Entity·Evidence·Fact·Conflict·Directive 관계와 목록 fallback을 제공한다.</div></div>
+<div class="route"><div class="path">/ask</div><div><strong>One-shot Query</strong><br>답변, exact evidence, citation, conflict, gap, related page를 구분한다.</div></div>
+<div class="route"><div class="path">/chats</div><div><strong>Conversations</strong><br>다중 대화와 source-supported claim의 Changeset 승격을 지원한다.</div></div>
+<div class="route"><div class="path">/activity</div><div><strong>Agent &amp; Job Activity</strong><br>실행 중 작업, actor, 진행 단계, changed files, burst diff를 표시한다.</div></div>
+<div class="route"><div class="path">/review</div><div><strong>Review Center</strong><br>Changeset, Conflict, Directive, stale knowledge, failed job을 처리한다.</div></div>
+<div class="route"><div class="path">/history</div><div><strong>Audit &amp; Rollback</strong><br>HistoryEvent, revision diff, checkpoint, 승인형 rollback proposal을 제공한다.</div></div>
+<div class="route"><div class="path">/settings</div><div><strong>Settings</strong><br>General, Projects, Models, Costs, Privacy, Schema Packs, Advanced editor 옵션을 관리한다.</div></div>
+</section>
+
+<section id="adoption">
+<h2>10. 기술 채택·교체 매트릭스</h2>
+<table>
+<thead><tr><th>기능</th><th>현재/후보</th><th>최종 행동</th><th>적용 방식</th></tr></thead>
+<tbody>
+<tr><td>Brain·Fact·Search</td><td>gbrain</td><td><span class="badge keep">KEEP</span></td><td>핵심 엔진 유지, shotgun policy adapter 추가</td></tr>
+<tr><td>HTML/XLSX converter</td><td>lucas</td><td><span class="badge b">ADOPT</span></td><td>독립 package와 Evidence contract</td></tr>
+<tr><td>Highlight·Lint·Watcher</td><td>lucas</td><td><span class="badge augment">AUGMENT</span></td><td>shotgun resource에 맞게 축소·재작성</td></tr>
+<tr><td>Source intake</td><td>ddsyasas</td><td><span class="badge augment">AUGMENT</span></td><td>폼·비용 preview UX, backend는 shotgun Job</td></tr>
+<tr><td>Ask·Chat UI</td><td>ddsyasas</td><td><span class="badge augment">AUGMENT</span></td><td>citation/conflict/gap typed response로 교체</td></tr>
+<tr><td>Home·Settings·Cost</td><td>ddsyasas</td><td><span class="badge augment">AUGMENT</span></td><td>새 shotgun route와 project model에 맞춤</td></tr>
+<tr><td>3D Graph</td><td>ddsyasas</td><td><span class="badge d">REJECT</span></td><td>실용성과 접근성 부족</td></tr>
+<tr><td>2D Graph UX</td><td>OpenKnowledge</td><td><span class="badge replace">REPLACE</span></td><td>shotgun semantic graph adapter + 목록 fallback</td></tr>
+<tr><td>Visual/Source editor UX</td><td>OpenKnowledge</td><td><span class="badge augment">AUGMENT</span></td><td>2단계에 mode switch와 보존 알고리즘 재구현</td></tr>
+<tr><td>TiptapEditor 전체</td><td>OpenKnowledge</td><td><span class="badge d">REJECT DIRECT</span></td><td>결합도가 높아 직접 추출하지 않음</td></tr>
+<tr><td>Agent Activity</td><td>OpenKnowledge</td><td><span class="badge b">ADOPT PATTERN</span></td><td>shotgun JobEvent·SSE와 연결</td></tr>
+<tr><td>Burst Diff</td><td>OpenKnowledge</td><td><span class="badge b">ADOPT</span></td><td>Changeset·History 검토 화면에 사용</td></tr>
+<tr><td>Yjs CRDT</td><td>OpenKnowledge</td><td><span class="badge defer">DEFER</span></td><td>Draft ChangeSet 전용 고급 기능</td></tr>
+<tr><td>Entity Vault template</td><td>OpenKnowledge</td><td><span class="badge augment">AUGMENT</span></td><td>staged import/export, canonical 직접 sync 금지</td></tr>
+<tr><td>OpenKnowledge runtime</td><td>OpenKnowledge</td><td><span class="badge d">EXCLUDE</span></td><td>shotgun 독립 앱·API 경계 유지</td></tr>
+<tr><td>Canonical DB·Approval</td><td>shotgun-owned</td><td><span class="badge keep">KEEP</span></td><td>Fact/Claim, Changeset, Approval, Compiled Truth 유지</td></tr>
+</tbody>
+</table>
+</section>
+
+<section id="boundaries">
+<h2>11. 책임 경계와 제외 원칙</h2>
+
+<table>
+<thead><tr><th>기능</th><th>주 책임</th><th>재사용·참고</th><th>금지</th></tr></thead>
+<tbody>
+<tr><td>영구 Fact·migration</td><td>gbrain + shotgun migrations</td><td>없음</td><td>여러 DB를 동등한 canonical로 운영</td></tr>
+<tr><td>Source identity</td><td>shotgun</td><td>hash/version 아이디어</td><td>path·filename을 영속 ID로 사용</td></tr>
+<tr><td>Evidence·Citation</td><td>shotgun</td><td>lucas test cases, OpenKnowledge UI</td><td>동명 파일 임의 연결, 문서 수준 citation만으로 Fact 확정</td></tr>
+<tr><td>검색·Graph engine</td><td>gbrain</td><td>OpenKnowledge 2D UI</td><td>중복 FTS·link graph를 주 엔진으로 유지</td></tr>
+<tr><td>작업 상태·승인</td><td>shotgun Job/Changeset</td><td>OpenKnowledge Activity/Diff</td><td>Activity 또는 CRDT edit를 승인으로 간주</td></tr>
+<tr><td>제품 Source·Ask UX</td><td>shotgun-web</td><td>ddsyasas patterns</td><td>기존 ddsyasas backend 재도입</td></tr>
+<tr><td>편집기</td><td>shotgun-web Draft layer</td><td>OpenKnowledge 보존·mode UX</td><td>editor가 canonical Fact를 직접 덮어쓰기</td></tr>
+<tr><td>CRDT</td><td>Draft collaboration service</td><td>Yjs pattern</td><td>canonical truth와 approval을 우회</td></tr>
+<tr><td>URL 수집</td><td>egress-controlled shotgun service</td><td>입력 UI</td><td>localhost/private network/unsafe redirect 허용</td></tr>
+<tr><td>Project workspace</td><td>server-authorized project scope</td><td>project selector UI</td><td>임의 절대경로 초기화</td></tr>
+</tbody>
+</table>
+
+<h3>반드시 유지할 원칙</h3>
+<ul class="checklist">
+  <li>typed API가 UI와 engine 사이의 유일한 제품 경계다.</li>
+  <li>모든 mutation은 project scope, authorization, idempotency, audit를 가진다.</li>
+  <li>Source·Evidence·Fact·Directive·Conflict·Draft는 서로 다른 resource다.</li>
+  <li>승인·rollback은 Changeset을 통해 수행한다.</li>
+  <li>OpenKnowledge식 편집·Activity는 관찰·Draft UX이며 canonical 권한이 아니다.</li>
+  <li>Graph UI가 이해하지 못하는 relation·confidence도 adapter에서 버리지 않는다.</li>
+</ul>
+</section>
+
+<section id="repo">
+<h2>12. 권장 저장소 구조</h2>
+<div class="tree">shotgun/
+├─ upstream/
+│  └─ gbrain/                         # pinned core engine
+├─ references/
+│  ├─ lucas/                          # source/validation reference
+│  ├─ ddsyasas/                       # product workflow reference
+│  └─ openknowledge/                  # editor/graph/activity reference
+├─ packages/
+│  ├─ contracts/
+│  │  ├─ source.ts
+│  │  ├─ evidence.ts
+│  │  ├─ facts.ts
+│  │  ├─ directives.ts
+│  │  ├─ conflicts.ts
+│  │  ├─ changesets.ts
+│  │  ├─ jobs.ts
+│  │  ├─ history.ts
+│  │  └─ semantic-graph.ts
+│  ├─ shotgun-gbrain-adapter/
+│  ├─ source-events/
+│  ├─ converters/
+│  ├─ evidence/
+│  ├─ citations/
+│  ├─ highlights/
+│  ├─ lint/
+│  ├─ impact/
+│  ├─ directives/
+│  ├─ conflicts/
+│  ├─ changesets/
+│  ├─ compiled-truth/
+│  ├─ audit/
+│  ├─ projections/
+│  ├─ editor-core/                    # Visual/Source, preservation gates
+│  ├─ graph-ui/                       # 2D graph + accessible list
+│  ├─ activity-ui/                    # Job → Activity/Diff
+│  └─ shotgun-api-client/
+├─ adapters/
+│  ├─ openknowledge-graph.ts
+│  ├─ openknowledge-activity.ts
+│  ├─ entity-vault-gbrain.ts
+│  └─ ddsyasas-workflow-viewmodels.ts
+├─ apps/
+│  ├─ shotgun-gateway/                 # typed API, auth, project scope, SSE
+│  └─ shotgun-web/
+│     ├─ features/sources/
+│     ├─ features/ask/
+│     ├─ features/editor/
+│     ├─ features/graph/
+│     ├─ features/activity/
+│     ├─ features/review/
+│     ├─ features/history/
+│     └─ features/settings/
+├─ services/
+│  ├─ source-ingest/
+│  ├─ approval/
+│  ├─ projection/
+│  └─ draft-collaboration/            # optional Yjs
+├─ migrations/
+└─ tests/
+   ├─ contract/
+   ├─ converter-fixtures/
+   ├─ markdown-roundtrip/
+   ├─ graph/
+   ├─ activity/
+   ├─ integration/
+   ├─ browser/
+   ├─ accessibility/
+   └─ security/</div>
+</section>
+
+<section id="roadmap">
+<h2>13. 구현 로드맵</h2>
+
+<table>
+<thead><tr><th>단계</th><th>핵심 작업</th><th>완료 기준</th></tr></thead>
+<tbody>
+<tr>
+  <td><strong>0. Architecture Freeze</strong></td>
+  <td>gbrain commit, canonical model, domain resource, typed API, upstream policy 확정</td>
+  <td>contract와 책임 경계 승인</td>
+</tr>
+<tr>
+  <td><strong>1. Policy Foundation</strong></td>
+  <td>Directive, Priority, Conflict, Changeset, Approval, Compiled Truth</td>
+  <td>승인 전 canonical write가 발생하지 않는 contract test</td>
+</tr>
+<tr>
+  <td><strong>2. Source &amp; Evidence</strong></td>
+  <td>Stable Source ID, SourceVersion, EvidenceSpan, Citation, converter staging</td>
+  <td>Fact → exact Evidence 역추적</td>
+</tr>
+<tr>
+  <td><strong>3. Selected Lucas</strong></td>
+  <td>HTML/XLSX, Highlight, Lint, Watcher event, Reconcile package</td>
+  <td>독립 package·재생성 가능한 cache</td>
+</tr>
+<tr>
+  <td><strong>4. Gateway &amp; Jobs</strong></td>
+  <td>gbrain mapping, SSE JobEvent, idempotency, cancel/retry/resume</td>
+  <td>refresh 후 Job 상태 복구</td>
+</tr>
+<tr>
+  <td><strong>5. Frontend MVP</strong></td>
+  <td>Home, Sources, Ask, Knowledge, Settings — ddsyasas UX 반영</td>
+  <td>자료 추가·질문·탐색 가능</td>
+</tr>
+<tr>
+  <td><strong>6. Review &amp; Activity</strong></td>
+  <td>OpenKnowledge식 Activity, Burst Diff, Changeset, Conflict, Directive, History</td>
+  <td>승인·거절·rollback proposal 완료</td>
+</tr>
+<tr>
+  <td><strong>7. Semantic Graph</strong></td>
+  <td>2D Graph adapter, node/edge filters, neighborhood, 목록 fallback</td>
+  <td>문서·Fact·Evidence·Conflict 관계 탐색</td>
+</tr>
+<tr>
+  <td><strong>8. Visual Editor</strong></td>
+  <td>Visual/Source mode, Markdown fixture gate, typed semantic blocks</td>
+  <td>no-op 의미·byte 보존</td>
+</tr>
+<tr>
+  <td><strong>9. Advanced Draft Collaboration</strong></td>
+  <td>Yjs Draft CRDT, presence, human/agent concurrent edit</td>
+  <td>데이터 손실 없이 Changeset으로 승인</td>
+</tr>
+<tr>
+  <td><strong>10. Hardening</strong></td>
+  <td>URL egress, path confinement, auth, crash recovery, Postgres parity</td>
+  <td>보안·복구·성능 gate 통과</td>
+</tr>
+</tbody>
+</table>
+</section>
+
+<section id="success">
+<h2>14. 성공 조건</h2>
+<table>
+<thead><tr><th>영역</th><th>필수 성공 조건</th></tr></thead>
+<tbody>
+<tr><td>Source</td><td>rename·move 후 동일 source_id와 version history가 유지되고 원본 byte가 변하지 않는다.</td></tr>
+<tr><td>Evidence</td><td>모든 핵심 Fact에서 정확한 source version·page·offset·table/image 위치로 역추적한다.</td></tr>
+<tr><td>Citation</td><td>동명 파일을 임의 선택하지 않고 Source ID와 EvidenceSpan을 사용한다.</td></tr>
+<tr><td>Jobs</td><td>refresh·disconnect 후 진행 상태를 복원하고 retry/cancel/idempotency가 동작한다.</td></tr>
+<tr><td>Approval</td><td>승인 모드에서 durable canonical write가 Changeset 승인 전에 발생하지 않는다.</td></tr>
+<tr><td>Directive</td><td>사용자 수정이 이후 자동 처리에 의해 사라지지 않고 revocation과 audit가 가능하다.</td></tr>
+<tr><td>Conflict</td><td>경쟁 Fact를 삭제하지 않고 unresolved/resolved 상태와 근거를 보존한다.</td></tr>
+<tr><td>Impact</td><td>Source 변경이 관련 Fact·Truth·Cache에 재귀 전파되고 무관한 노드는 제외된다.</td></tr>
+<tr><td>Editor</td><td>Visual/Source no-op 전환에서 의미 손실이 없고 지원하지 않는 문법을 조용히 삭제하지 않는다.</td></tr>
+<tr><td>Activity</td><td>actor·Job·변경 파일·Diff·승인 상태가 실제 backend 상태와 일치한다.</td></tr>
+<tr><td>Graph</td><td>relation·confidence를 보존하고 2D canvas 외에 키보드 가능한 목록 대안을 제공한다.</td></tr>
+<tr><td>CRDT</td><td>동시 편집이 수렴하며 canonical 승인 경계를 우회하지 않는다.</td></tr>
+<tr><td>UI</td><td>사용자가 내부 DB를 몰라도 Add Source, Ask, Browse, Correct, Review, Rollback을 수행한다.</td></tr>
+<tr><td>Security</td><td>URL private-network 차단, redirect 재검사, workspace confinement, project authorization을 적용한다.</td></tr>
+<tr><td>비중복</td><td>영구 DB·검색·Graph engine·Job·LLM 실행 권한이 명확히 일원화된다.</td></tr>
+</tbody>
+</table>
+</section>
+
+<section id="definition">
+<h2>15. 최종 정의</h2>
+<p class="lead">
+  shotgun은 gbrain, lucas, ddsyasas, OpenKnowledge를 설치해 함께 실행하는 묶음이 아니다.
+  <strong>gbrain을 핵심 엔진으로 사용하고, 세 레퍼런스의 검증된 기술을 shotgun-owned canonical·policy·approval 경계 안에서 재구성한 독립 제품</strong>이다.
+</p>
+
+<pre><code>shotgun
+=
+gbrain Core Engine
++
+selected lucas modules
+  (HTML/XLSX + Highlight + Lint + Watcher + Reconcile)
++
+selected ddsyasas workflow patterns
+  (Source Intake + Ask/Chat + Cost + Settings + Action Home)
++
+selected OpenKnowledge technologies
+  (Visual/Source UX + 2D Graph + Agent Activity + Burst Diff
+   + Entity Vault Template + Optional Draft CRDT)
++
+shotgun-owned domain and product
+  (Canonical Fact/Claim + Stable Source Identity + EvidenceSpan
+   + Citation + Recursive Impact + Directive + Priority + Conflict
+   + Changeset + Approval + Compiled Truth + Job + Audit
+   + Typed API + New Web UI)</code></pre>
+
+<div class="grid four">
+  <div class="card role-card brain"><strong>gbrain</strong><p>두뇌와 중추 실행 엔진</p></div>
+  <div class="card role-card sense"><strong>lucas</strong><p>선별된 수집·변환·검증 부품</p></div>
+  <div class="card role-card workflow"><strong>ddsyasas</strong><p>Source·Ask·비용 중심 제품 워크플로 참고</p></div>
+  <div class="card role-card cockpit"><strong>OpenKnowledge</strong><p>편집기·2D Graph·Activity·Diff 기술 공급원</p></div>
+</div>
+<div class="card role-card policy" style="margin-top:16px">
+  <strong>shotgun</strong>
+  <p>canonical 지식, 근거, 사용자 권위, 승인, 충돌, 감사와 제품 경험을 하나로 통제하는 독립 시스템</p>
+</div>
+</section>
+
+<section id="evidence">
+<h2>16. 검증 근거 문서</h2>
+<div class="grid two">
+  <div class="card">
+    <h4>gbrain</h4>
+    <ul>
+      <li><code>GBRAIN_SHOTGUN_VALIDATION_REPORT.md</code></li>
+      <li><code>GBRAIN_SHOTGUN_REVALIDATION_REPORT.md</code></li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>lucasastorian/llmwiki</h4>
+    <ul>
+      <li><code>LLW_SHOTGUN_VALIDATION_REPORT.md</code></li>
+      <li><code>LLW_MODULE_ADOPTION_MATRIX.md</code></li>
+      <li><code>LLW_GBRAIN_INTEGRATION_POC.md</code></li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>ddsyasas/llm-wiki</h4>
+    <ul>
+      <li><code>DDS_SHOTGUN_VALIDATION_REPORT.md</code></li>
+      <li><code>DDS_MODULE_ADOPTION_MATRIX.md</code></li>
+      <li><code>DDS_FRONTEND_COUPLING_MAP.md</code></li>
+      <li><code>DDS_GBRAIN_UI_ADAPTER_POC.md</code></li>
+      <li><code>DDS_SCREEN_INVENTORY.md</code></li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>Inkeep OpenKnowledge</h4>
+    <ul>
+      <li><code>OK_SHOTGUN_VALIDATION_REPORT.md</code></li>
+      <li><code>OK_MODULE_ADOPTION_MATRIX.md</code></li>
+      <li><code>OK_COMPARATIVE_REPLACEMENT_MATRIX.md</code></li>
+      <li><code>OK_ARCHITECTURE_DELTA_PROPOSAL.md</code></li>
+      <li><code>OK_GBRAIN_INTEGRATION_POC.md</code></li>
+    </ul>
+  </div>
+</div>
+<p class="muted small">
+  현재 개인용·로컬 우선 단계에서는 라이선스를 기술 채택 점수에 반영하지 않았다.
+  향후 배포·공개·상용화 단계에서는 코드 복사·결합 방식에 맞춰 별도 검토한다.
+</p>
+</section>
+
+<div class="footer">
+  shotgun 4-레퍼런스 통합 아키텍처 전략 · v1.0 · 2026-07-11
+</div>
+</main>
+</div>
+</div>
+</body>
+</html>

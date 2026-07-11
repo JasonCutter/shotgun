@@ -6,7 +6,8 @@ Shotgun은 한 점에 모인 지식이 산탄총의 탄환처럼 여러 방향�
 ## 현재 단계
 
 - Minbot 아이디어를 실제 제품으로 전환하는 초기 개발 단계
-- 상세 설계는 `docs/shotgun_reference_architecture_strategy_ko.html` 참고
+- 최종 순서도 기준본: `docs/SHOTGUN_KNOWLEDGE_FLOW_BASELINE_v1.0.html`
+- 상세 아키텍처 참고: `docs/shotgun_reference_architecture_strategy_ko.html`
 - 우선순위는 복잡한 전체 구조보다 작동하는 MVP 완성
 
 ## MVP 목표

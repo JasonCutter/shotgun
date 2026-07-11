@@ -1,0 +1,1193 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Shotgun Knowledge Flow 기준본 v1.0</title>
+<style>:root{color-scheme:light dark;background:light-dark(rgb(255 255 255), rgb(24 24 24))}html,body{margin:0}body{box-sizing:border-box;padding:1rem;background:inherit}iframe{display:block;width:100%;max-width:1200px;height:calc(100vh - 2rem);margin:0 auto;border:0}</style>
+</head>
+<body>
+<iframe sandbox="allow-scripts" referrerpolicy="no-referrer" title="Shotgun Knowledge Flow 기준본 v1.0" srcdoc="&lt;!doctype html&gt;
+&lt;html lang=&quot;ko&quot;&gt;
+&lt;head&gt;
+&lt;meta charset=&quot;utf-8&quot;&gt;
+&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
+&lt;meta name=&quot;referrer&quot; content=&quot;no-referrer&quot;&gt;
+&lt;meta http-equiv=&quot;Content-Security-Policy&quot; content=&quot;default-src &#x27;none&#x27;; script-src &#x27;unsafe-inline&#x27; &#x27;unsafe-eval&#x27; &#x27;wasm-unsafe-eval&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src &#x27;unsafe-inline&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src &#x27;none&#x27;; object-src &#x27;none&#x27;; base-uri &#x27;none&#x27;; form-action &#x27;none&#x27;&quot;&gt;
+&lt;title&gt;Shotgun Knowledge Flow 기준본 v1.0&lt;/title&gt;
+&lt;style&gt;:root {
+  color-scheme: light dark;
+  background-color: var(--background) !important;
+
+  /* Agent-facing contract; keep in sync with SKILL.md. */
+  --background: light-dark(rgb(255 255 255), rgb(24 24 24));
+  --foreground: light-dark(rgb(26 28 31), rgb(255 255 255));
+  --card: color-mix(in oklab, var(--foreground) 5%, transparent);
+  --card-foreground: var(--foreground);
+  --popover: light-dark(rgb(255 255 255), rgb(45 45 45));
+  --popover-foreground: var(--foreground);
+  --primary: light-dark(rgb(51 156 255), rgb(131 195 255));
+  --primary-foreground: light-dark(rgb(255 255 255), rgb(13 13 13));
+  --secondary: light-dark(rgb(255 255 255 / 96%), rgb(54 54 54 / 96%));
+  --secondary-foreground: var(--foreground);
+  --muted: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --muted-foreground: light-dark(
+    rgb(26 28 31 / 49.4%),
+    rgb(255 255 255 / 49.8%)
+  );
+  --accent: light-dark(rgb(229 242 255), rgb(13 39 63));
+  --accent-foreground: var(--primary);
+  --destructive: light-dark(rgb(226 85 7), rgb(255 133 73));
+  --border: light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%));
+  --input: light-dark(
+    rgb(26 28 31 / 11.8%),
+    color-mix(in oklab, rgb(0 0 0) 10%, transparent)
+  );
+  --ring: light-dark(rgb(51 156 255), rgb(131 195 255 / 76%));
+  --font-size-base: 14px;
+  --viz-series-1: var(--primary);
+  --viz-series-2: light-dark(rgb(243 136 59), rgb(245 154 86));
+  --viz-series-3: light-dark(rgb(93 201 119), rgb(116 213 139));
+  --viz-series-4: light-dark(rgb(235 119 177), rgb(240 143 192));
+  --viz-series-5: light-dark(rgb(155 121 236), rgb(170 145 239));
+  --viz-series-6: light-dark(rgb(58 185 177), rgb(90 203 194));
+
+  /* Internal implementation variables; not part of the agent contract. */
+  --font-sans: -apple-system, system-ui, &quot;Segoe UI&quot;, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, &quot;SF Mono&quot;, Menlo, Consolas, &quot;Liberation Mono&quot;,
+    monospace;
+  --font-size-normal: max(11px, var(--font-size-base));
+  --font-size-tooltip: calc(var(--font-size-base) - 1px);
+  --font-size-small: max(11px, calc(var(--font-size-base) - 2px));
+  --font-size-h1: calc(var(--font-size-normal) * 1.7142857143);
+  --font-size-h2: calc(var(--font-size-normal) * 1.4285714286);
+  --font-size-h3: calc(var(--font-size-normal) * 1.2857142857);
+  --font-weight-normal: 430;
+  --font-weight-medium: 500;
+  --line-height-normal: calc(var(--font-size-normal) * 1.5);
+  --line-height-tooltip: calc(var(--font-size-tooltip) * 1.4285714286);
+  --line-height-small: calc(var(--font-size-small) + 4px);
+  --radius: 12.5px;
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-2xl: calc(var(--radius) * 1.6);
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 8%);
+  --checkmark-image: url(&quot;data:image/svg+xml,%3Csvg xmlns=&#x27;http://www.w3.org/2000/svg&#x27; viewBox=&#x27;0 0 17 17&#x27;%3E%3Cpath d=&#x27;M12.8961 3.64101C13.1297 3.41418 13.4984 3.37523 13.7779 3.56581C14.0571 3.75635 14.1554 4.11331 14.0299 4.41347L13.9615 4.53847L7.71151 13.7045C7.59411 13.8767 7.4063 13.9877 7.19881 14.0072C6.99136 14.0267 6.78564 13.9533 6.63826 13.806L2.88826 10.056L2.79842 9.9457C2.6192 9.67407 2.64927 9.30496 2.88826 9.06581C3.12738 8.82669 3.49647 8.79676 3.76815 8.97597L3.8785 9.06581L7.03084 12.2182L12.8053 3.74941L12.8961 3.64101Z&#x27;/%3E%3C/svg%3E&quot;);
+
+  /* Legacy aliases; not part of the current agent contract. */
+  --viz-bg: transparent;
+  --viz-panel: var(--card);
+  --viz-border: var(--border);
+  --viz-text: var(--foreground);
+  --viz-muted: var(--muted-foreground);
+  --viz-accent: var(--primary);
+  --viz-accent-text: var(--primary-foreground);
+  --viz-accent-bg: var(--accent);
+  --viz-font-size: var(--font-size-base);
+  --viz-warning: var(--destructive);
+  --color-background-primary: var(--background);
+  --color-text-primary: var(--foreground);
+  --color-border-secondary: var(--border);
+}
+
+:root[data-theme=&quot;light&quot;] {
+  color-scheme: light;
+}
+
+:root[data-theme=&quot;dark&quot;] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html &gt; body {
+  margin: 0;
+  padding: 5px;
+  color: var(--foreground);
+  background: transparent !important;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-normal);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+}
+
+a {
+  color: color-mix(in srgb, var(--viz-accent) 80%, var(--viz-text) 20%);
+  cursor: pointer;
+  font-weight: var(--viz-font-weight-medium);
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+
+a:is(:hover, :focus-visible) {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 0.5px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin-block: 0;
+}
+
+h1 {
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h3,
+h4,
+h5,
+h6 {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.3;
+}
+
+b,
+strong,
+th {
+  font-weight: var(--font-weight-medium);
+}
+
+code:not(pre code) {
+  display: inline;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  word-break: break-word;
+}
+
+#widget {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  background: transparent !important;
+}
+
+.card {
+  min-width: 0;
+  padding: 12px;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  border-radius: var(--radius-2xl);
+  corner-shape: superellipse(1.5);
+  color: var(--card-foreground);
+  background: var(--card);
+}
+
+#widget &gt; :not(.card) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  left: 0;
+  width: max-content;
+  max-width: min(
+    20rem,
+    var(--tooltip-available-width, calc(100vw - 10px)),
+    calc(100vw - 10px)
+  );
+  max-height: min(
+    var(--tooltip-available-height, calc(100vh - 10px)),
+    calc(100vh - 10px)
+  );
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--popover-foreground);
+  background: var(--popover);
+  box-shadow: none;
+  font-size: var(--font-size-tooltip);
+  line-height: var(--line-height-tooltip);
+  overflow-wrap: break-word;
+  white-space: normal;
+  pointer-events: none;
+  user-select: none;
+}
+
+.viz-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(max(180px, 24%), 1fr));
+  gap: 10px;
+}
+
+.viz-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.viz-stat-value {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+.viz-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.viz-badge {
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  color: var(--accent-foreground);
+  background: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+
+small,
+.text-small,
+.viz-badge {
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-small);
+}
+
+.text-muted {
+  color: var(--muted-foreground);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.viz-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.viz-controls &gt; .form-label {
+  display: grid;
+  min-width: min(100%, 260px);
+  flex: 1 1 280px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin-bottom: 0;
+}
+
+.viz-controls &gt; .form-label &gt; :is(.form-control, .form-range, .form-select) {
+  grid-column: 1 / -1;
+}
+
+.btn,
+.form-check-input,
+.form-control,
+.form-range,
+.form-select {
+  font: inherit;
+}
+
+.btn {
+  appearance: button;
+  display: inline-flex;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: var(--cursor-interaction, pointer);
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.btn:is(.btn-block, .viz-tile) {
+  inline-size: 100%;
+}
+
+.btn.viz-tile {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+a.btn {
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn-primary {
+  border-color: transparent;
+  color: var(--primary-foreground);
+  background: var(--foreground);
+  background-clip: padding-box;
+}
+
+.btn-primary .text-muted {
+  color: color-mix(in srgb, var(--primary-foreground) 50%, transparent);
+}
+
+.btn-primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 80%, transparent);
+  background-clip: padding-box;
+}
+
+.btn-ghost {
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.btn-ghost:not(:disabled):hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+[data-lucide] {
+  stroke-width: 1.6;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--foreground);
+}
+
+.form-control {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background: var(--secondary);
+}
+
+.form-control::placeholder {
+  color: var(--muted-foreground);
+}
+
+.form-control[type=&quot;file&quot;] {
+  padding: 0;
+  overflow: hidden;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control[type=&quot;file&quot;]::file-selector-button {
+  min-height: 26px;
+  margin-right: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid var(--input);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: inherit;
+  font: inherit;
+}
+
+.form-control[type=&quot;file&quot;]:not(:disabled):hover::file-selector-button {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-control-color[type=&quot;color&quot;] {
+  width: 40px;
+  height: 28px;
+  padding: 3px;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 4px);
+  corner-shape: superellipse(1.5);
+}
+
+textarea.form-control {
+  height: auto;
+  min-height: 72px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.form-control:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.form-select {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  margin: 0;
+  padding: 0 32px 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background-color: var(--secondary);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%),
+    linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 10px) 50%;
+  background-repeat: no-repeat;
+  background-size: 4px 4px;
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-select:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-select:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-check {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+  gap: 6px;
+}
+
+.form-check-input {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1px solid var(--input);
+  color: var(--primary-foreground);
+  background-color: transparent;
+  cursor: var(--cursor-interaction, default);
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;] {
+  border-color: var(--input);
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background-color: var(--secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input:not(:disabled):not(:checked):hover {
+  background-color: var(--card);
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;]:checked {
+  border-color: var(--primary);
+  background-color: var(--primary);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input[type=&quot;checkbox&quot;]:checked::before {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--primary-foreground);
+  content: &quot;&quot;;
+  mask: var(--checkmark-image) center / 12px 12px no-repeat;
+}
+
+.form-check-input[type=&quot;radio&quot;] {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+}
+
+.form-check-input[type=&quot;radio&quot;]:checked {
+  border: 2px solid var(--primary);
+  background:
+    radial-gradient(circle, var(--primary-foreground) 0 2.5px, transparent 3px),
+    var(--primary);
+}
+
+.form-check:not(.form-switch) .form-check-input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+}
+
+.form-switch .form-check-input:disabled,
+.form-switch .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.form-check-label {
+  color: var(--foreground);
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-switch .form-check-input {
+  position: relative;
+  width: 32px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  box-shadow: none;
+  transition: background-color 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1px solid light-dark(var(--primary-foreground), var(--foreground));
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+  box-shadow: var(--shadow-sm);
+  content: &quot;&quot;;
+  transform: translate(2px, -50%);
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input:checked {
+  background: var(--primary);
+}
+
+.form-switch .form-check-input:checked::before {
+  transform: translate(14px, -50%);
+}
+
+.form-switch .form-check-input:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.form-range {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 28px;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  outline: none;
+  border: 0;
+  accent-color: var(--primary);
+  background: linear-gradient(
+      color-mix(in srgb, var(--foreground) 7%, transparent),
+      color-mix(in srgb, var(--foreground) 7%, transparent)
+    )
+    center / 100% 2px no-repeat;
+}
+
+.form-range::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-webkit-slider-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range::-moz-range-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-moz-range-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.btn:not(.btn-primary, .viz-tile):is(
+    [aria-pressed=&quot;true&quot;],
+    [aria-selected=&quot;true&quot;],
+    .is-selected
+  ) {
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.btn.viz-tile:is([aria-pressed=&quot;true&quot;], [aria-selected=&quot;true&quot;], .is-selected) {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+#widget &gt; svg {
+  width: 100%;
+}
+
+.text-warning,
+.text-destructive {
+  color: var(--destructive);
+}
+
+html&gt;body{padding:0}&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;div id=&quot;shotgun-flow-v5&quot;&gt;
+  &lt;style&gt;
+    #shotgun-flow-v5 { color:var(--foreground); }
+    #shotgun-flow-v5 .meta { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
+    #shotgun-flow-v5 .legend { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+    #shotgun-flow-v5 .legend-item { display:inline-flex; align-items:center; gap:5px; color:var(--muted-foreground); }
+    #shotgun-flow-v5 .dot { width:10px; height:10px; border-radius:50%; display:inline-block; }
+    #shotgun-flow-v5 .dot-system { background:var(--viz-series-1); }
+    #shotgun-flow-v5 .dot-ai { background:var(--viz-series-2); }
+    #shotgun-flow-v5 .dot-human { background:var(--viz-series-3); }
+    #shotgun-flow-v5 .dot-policy { background:var(--viz-series-4); }
+    #shotgun-flow-v5 .principle { display:flex; align-items:center; gap:8px; flex-wrap:wrap; color:var(--muted-foreground); margin-bottom:16px; }
+    #shotgun-flow-v5 .phase-track { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:6px; align-items:stretch; }
+    #shotgun-flow-v5 .phase-btn { width:100%; min-height:76px; white-space:normal; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:4px; text-align:left; }
+    #shotgun-flow-v5 .phase-btn .phase-kicker { color:var(--muted-foreground); }
+    #shotgun-flow-v5 .phase-btn[aria-pressed=&quot;true&quot;] .phase-kicker { color:var(--primary-foreground); }
+    #shotgun-flow-v5 .phase-arrow-row { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:6px; height:24px; color:var(--muted-foreground); }
+    #shotgun-flow-v5 .phase-arrow { display:grid; place-items:center; }
+    #shotgun-flow-v5 .phase-arrow svg { width:16px; height:16px; }
+    #shotgun-flow-v5 .phase-focus { margin-top:10px; }
+    #shotgun-flow-v5 .focus-head { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:10px; }
+    #shotgun-flow-v5 .focus-title { font-weight:500; }
+    #shotgun-flow-v5 .focus-summary { color:var(--muted-foreground); }
+    #shotgun-flow-v5 .focus-route { margin:8px 0 10px; color:var(--muted-foreground); text-align:center; }
+    #shotgun-flow-v5 .steps { display:grid; grid-template-columns:repeat(var(--step-count),minmax(0,1fr)); gap:8px; align-items:stretch; }
+    #shotgun-flow-v5 .step-wrap { display:flex; align-items:stretch; min-width:0; gap:8px; }
+    #shotgun-flow-v5 .step-node { width:100%; min-height:94px; white-space:normal; text-align:left; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:5px; }
+    #shotgun-flow-v5 .step-node.system { background:color-mix(in srgb,var(--viz-series-1) 14%,transparent); }
+    #shotgun-flow-v5 .step-node.ai { background:color-mix(in srgb,var(--viz-series-2) 17%,transparent); }
+    #shotgun-flow-v5 .step-node.human { background:color-mix(in srgb,var(--viz-series-3) 17%,transparent); }
+    #shotgun-flow-v5 .step-node.policy { background:color-mix(in srgb,var(--viz-series-4) 17%,transparent); }
+    #shotgun-flow-v5 .step-top { display:flex; align-items:center; justify-content:space-between; width:100%; gap:6px; }
+    #shotgun-flow-v5 .step-no { display:inline-grid; place-items:center; width:25px; height:25px; border-radius:50%; background:var(--muted); color:var(--foreground); flex:none; }
+    #shotgun-flow-v5 .step-node[aria-pressed=&quot;true&quot;] .step-no { background:var(--primary-foreground); color:var(--primary); }
+    #shotgun-flow-v5 .step-title { color:var(--foreground); }
+    #shotgun-flow-v5 .loops { display:flex; align-items:center; justify-content:center; gap:8px; flex-wrap:wrap; margin:14px 0; color:var(--muted-foreground); }
+    #shotgun-flow-v5 .loop { display:inline-flex; align-items:center; gap:5px; }
+    #shotgun-flow-v5 .detail { margin-top:10px; }
+    #shotgun-flow-v5 .detail-head { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-bottom:6px; }
+    #shotgun-flow-v5 .detail-title { font-weight:500; }
+    #shotgun-flow-v5 .detail-copy { color:var(--card-foreground); }
+    #shotgun-flow-v5 .detail-owner { margin-top:6px; color:var(--muted-foreground); }
+    #shotgun-flow-v5 .shared-title { display:flex; align-items:center; gap:8px; margin:16px 0 8px; color:var(--muted-foreground); }
+    #shotgun-flow-v5 .shared { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:6px; }
+    #shotgun-flow-v5 .shared-item { display:flex; flex-direction:column; gap:3px; min-width:0; padding:8px; background:var(--muted); color:var(--foreground); }
+    #shotgun-flow-v5 .shared-name { font-weight:500; }
+    #shotgun-flow-v5 .shared-copy { color:var(--muted-foreground); }
+    @media (max-width:900px) {
+      #shotgun-flow-v5 .phase-track { grid-template-columns:repeat(3,minmax(0,1fr)); }
+      #shotgun-flow-v5 .phase-arrow-row { display:none; }
+      #shotgun-flow-v5 .steps { grid-template-columns:repeat(2,minmax(0,1fr)); }
+      #shotgun-flow-v5 .shared { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    }
+    @media (max-width:520px) {
+      #shotgun-flow-v5 .phase-track, #shotgun-flow-v5 .steps, #shotgun-flow-v5 .shared { grid-template-columns:1fr; }
+      #shotgun-flow-v5 .phase-btn { min-height:62px; }
+      #shotgun-flow-v5 .step-node { min-height:76px; }
+    }
+  &lt;/style&gt;
+
+  &lt;div class=&quot;meta&quot;&gt;
+    &lt;span class=&quot;viz-badge&quot;&gt;전략회의용 기준본 · v1.0&lt;/span&gt;
+    &lt;div class=&quot;legend text-small&quot; aria-label=&quot;역할 범례&quot;&gt;
+      &lt;span class=&quot;legend-item&quot;&gt;&lt;span class=&quot;dot dot-system&quot;&gt;&lt;/span&gt;시스템&lt;/span&gt;
+      &lt;span class=&quot;legend-item&quot;&gt;&lt;span class=&quot;dot dot-ai&quot;&gt;&lt;/span&gt;AI&lt;/span&gt;
+      &lt;span class=&quot;legend-item&quot;&gt;&lt;span class=&quot;dot dot-human&quot;&gt;&lt;/span&gt;사람&lt;/span&gt;
+      &lt;span class=&quot;legend-item&quot;&gt;&lt;span class=&quot;dot dot-policy&quot;&gt;&lt;/span&gt;정책&lt;/span&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;div class=&quot;principle text-small&quot;&gt;&lt;span class=&quot;viz-badge&quot;&gt;핵심 원칙&lt;/span&gt;&lt;span&gt;모든 후보는 Provenance 필수 · AI 결과는 후보 · Claim ≠ Fact · Compiled Truth는 파생 투영&lt;/span&gt;&lt;/div&gt;
+
+  &lt;nav id=&quot;shotgun-v5-phases&quot; class=&quot;phase-track&quot; aria-label=&quot;Shotgun 6개 처리 단계&quot;&gt;&lt;/nav&gt;
+  &lt;div class=&quot;phase-arrow-row&quot; aria-hidden=&quot;true&quot;&gt;
+    &lt;span class=&quot;phase-arrow&quot;&gt;&lt;i data-lucide=&quot;arrow-right&quot;&gt;&lt;/i&gt;&lt;/span&gt;&lt;span class=&quot;phase-arrow&quot;&gt;&lt;i data-lucide=&quot;arrow-right&quot;&gt;&lt;/i&gt;&lt;/span&gt;&lt;span class=&quot;phase-arrow&quot;&gt;&lt;i data-lucide=&quot;arrow-right&quot;&gt;&lt;/i&gt;&lt;/span&gt;&lt;span class=&quot;phase-arrow&quot;&gt;&lt;i data-lucide=&quot;arrow-right&quot;&gt;&lt;/i&gt;&lt;/span&gt;&lt;span class=&quot;phase-arrow&quot;&gt;&lt;i data-lucide=&quot;arrow-right&quot;&gt;&lt;/i&gt;&lt;/span&gt;&lt;span class=&quot;phase-arrow&quot;&gt;&lt;i data-lucide=&quot;rotate-ccw&quot;&gt;&lt;/i&gt;&lt;/span&gt;
+  &lt;/div&gt;
+
+  &lt;section class=&quot;phase-focus&quot; aria-live=&quot;polite&quot;&gt;
+    &lt;div class=&quot;focus-head&quot;&gt;
+      &lt;div&gt;&lt;span id=&quot;shotgun-v5-focus-title&quot; class=&quot;focus-title&quot;&gt;&lt;/span&gt;&lt;div id=&quot;shotgun-v5-focus-summary&quot; class=&quot;focus-summary text-small&quot;&gt;&lt;/div&gt;&lt;/div&gt;
+      &lt;span id=&quot;shotgun-v5-focus-count&quot; class=&quot;viz-badge&quot;&gt;&lt;/span&gt;
+    &lt;/div&gt;
+    &lt;div id=&quot;shotgun-v5-focus-route&quot; class=&quot;focus-route text-small&quot; hidden&gt;&lt;/div&gt;
+    &lt;div id=&quot;shotgun-v5-steps&quot; class=&quot;steps&quot;&gt;&lt;/div&gt;
+  &lt;/section&gt;
+
+  &lt;div class=&quot;loops text-small&quot; aria-label=&quot;순환 경로&quot;&gt;
+    &lt;span class=&quot;loop&quot;&gt;&lt;i data-lucide=&quot;corner-down-left&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;17번 AI 발견 → Phase 3 후보 검증 → Phase 4 비교·변경안&lt;/span&gt;
+    &lt;span class=&quot;loop&quot;&gt;&lt;i data-lucide=&quot;corner-down-left&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;22번 피드백 → 새 입력·지침·변경안&lt;/span&gt;
+  &lt;/div&gt;
+
+  &lt;div class=&quot;card detail&quot; aria-live=&quot;polite&quot;&gt;
+    &lt;div class=&quot;detail-head&quot;&gt;&lt;span id=&quot;shotgun-v5-detail-title&quot; class=&quot;detail-title&quot;&gt;&lt;/span&gt;&lt;span id=&quot;shotgun-v5-detail-count&quot; class=&quot;viz-badge&quot;&gt;&lt;/span&gt;&lt;/div&gt;
+    &lt;div id=&quot;shotgun-v5-detail-copy&quot; class=&quot;detail-copy&quot;&gt;&lt;/div&gt;
+    &lt;div id=&quot;shotgun-v5-detail-owner&quot; class=&quot;detail-owner text-small&quot;&gt;&lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;div class=&quot;shared-title text-small&quot;&gt;&lt;span class=&quot;viz-badge&quot;&gt;전체 단계 공통&lt;/span&gt;&lt;span&gt;처음부터 끝까지 함께 작동하는 안전장치&lt;/span&gt;&lt;/div&gt;
+  &lt;div class=&quot;shared&quot; aria-label=&quot;공통 기능&quot;&gt;
+    &lt;div class=&quot;shared-item&quot;&gt;&lt;span class=&quot;shared-name&quot;&gt;Job·Agent Activity&lt;/span&gt;&lt;span class=&quot;shared-copy text-small&quot;&gt;대기·실행 중·사용자 승인 대기·일시 정지·재시도·완료·실패·취소됨&lt;/span&gt;&lt;/div&gt;
+    &lt;div class=&quot;shared-item&quot;&gt;&lt;span class=&quot;shared-name&quot;&gt;Audit·History&lt;/span&gt;&lt;span class=&quot;shared-copy text-small&quot;&gt;누가·언제·무엇을·왜·어떤 도구·모델·프롬프트·정책 버전으로 처리했는지 기록&lt;/span&gt;&lt;/div&gt;
+    &lt;div class=&quot;shared-item&quot;&gt;&lt;span class=&quot;shared-name&quot;&gt;원문·인용 추적&lt;/span&gt;&lt;span class=&quot;shared-copy text-small&quot;&gt;SourceVersion·EvidenceSpan으로 복귀&lt;/span&gt;&lt;/div&gt;
+    &lt;div class=&quot;shared-item&quot;&gt;&lt;span class=&quot;shared-name&quot;&gt;다국어 표시&lt;/span&gt;&lt;span class=&quot;shared-copy text-small&quot;&gt;근거는 원문·기본 화면은 한국어&lt;/span&gt;&lt;/div&gt;
+    &lt;div class=&quot;shared-item&quot;&gt;&lt;span class=&quot;shared-name&quot;&gt;접근 범위·민감도&lt;/span&gt;&lt;span class=&quot;shared-copy text-small&quot;&gt;개인·프로젝트 내부·지정 사용자 공유·외부 공개 범위와 일반·개인정보·기밀·고위험 민감도를 별도로 관리&lt;/span&gt;&lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;script&gt;
+    (() =&gt; {
+      const root = document.getElementById(&#x27;shotgun-flow-v5&#x27;);
+      const phases = [
+        { id:1, name:&#x27;입력·원본 보존&#x27;, summary:&#x27;자료의 정체성과 원본을 먼저 안전하게 확보&#x27;, steps:[
+          {n:1,k:&#x27;human&#x27;,tag:&#x27;사람&#x27;,t:&#x27;파일·텍스트·URL·대화 입력&#x27;,d:&#x27;사용자가 자료를 입력합니다. 입력 직후부터 접근 범위와 민감도를 함께 지정하거나 자동 분류합니다.&#x27;,o:&#x27;사람 · AI 판단 없음&#x27;},
+          {n:2,k:&#x27;system&#x27;,tag:&#x27;검증&#x27;,t:&#x27;형식·인코딩·안전성·정확 중복 확인&#x27;,d:&#x27;처리 가능한 형식인지, 인코딩과 파일 안전성을 확인하고 해시가 완전히 같은 정확 중복을 찾습니다. 실제 언어와 의미 중복은 콘텐츠 추출 후 분석합니다.&#x27;,o:&#x27;시스템 자동 처리&#x27;},
+          {n:3,k:&#x27;system&#x27;,tag:&#x27;SOURCE 후보&#x27;,t:&#x27;원본 자산·IntakeItem 생성, 원본 보존&#x27;,d:&#x27;원본 파일 또는 URL 스냅샷을 변경 없이 보존하고 분석을 위한 IntakeItem을 생성합니다. SourceVersion은 문서 동일성 분석 후 Stable Source가 확정되면 생성하거나 기존 Source에 새 버전으로 연결합니다.&#x27;,o:&#x27;시스템 자동 처리 · Stable Source 미확정&#x27;}]},
+        { id:2, name:&#x27;변환·근거화&#x27;, summary:&#x27;형식별로 구조를 읽고 인용 가능한 원문 위치를 확정&#x27;, route:&#x27;6 EvidenceSpan 이후 → 7 한국어 표시용 번역 ∥ Phase 3 원문 기반 후보 추출&#x27;, steps:[
+          {n:4,k:&#x27;system&#x27;,tag:&#x27;형식별&#x27;,t:&#x27;콘텐츠 추출·정규화·Source Map 동시 생성&#x27;,d:&#x27;PDF, Markdown, TXT, XLSX, HTML, 이미지 등 형식에 맞게 내용을 꺼내 표준 형태로 정리합니다. 모든 변환은 정규화 내용과 원본 위치의 매핑을 동시에 만들며, 위치를 복원할 수 없는 변환은 허용하지 않습니다.&#x27;,o:&#x27;시스템 자동 처리 · AI 해석 전&#x27;},
+          {n:5,k:&#x27;system&#x27;,tag:&#x27;구조&#x27;,t:&#x27;문서·언어·화자·표·셀·페이지·시간 구간 분석&#x27;,d:&#x27;추출된 내용을 기준으로 문서 구조와 구간별 언어, 화자, 발언 시간, 표, 셀, 페이지를 분석합니다. 동일 문서의 새 버전 후보와 의미 중복을 분석해 기존 Stable Source인지 새 문서인지 판정합니다. 기존 Stable Source라면 새 SourceVersion을 생성해 연결하고, 새 문서라면 Stable Source와 첫 SourceVersion을 생성합니다.&#x27;,o:&#x27;시스템 오케스트레이션 · 필요 시 AI 분석&#x27;},
+          {n:6,k:&#x27;system&#x27;,tag:&#x27;EVIDENCE&#x27;,t:&#x27;Source Map·EvidenceSpan 생성&#x27;,d:&#x27;원문 안의 실제 위치를 Source Map과 EvidenceSpan으로 확정합니다. 이후 모든 인용의 기준점입니다.&#x27;,o:&#x27;시스템 자동 처리 · 근거가 먼저&#x27;},
+          {n:7,k:&#x27;ai&#x27;,tag:&#x27;병렬·AI&#x27;,t:&#x27;한국어 번역 생성, 원문과 연결&#x27;,d:&#x27;번역은 사용자 표시용 파생 결과이며 Evidence가 아닙니다. 지식 후보는 원문 또는 원문과 번역을 함께 사용해 생성하며, 번역 실패가 원문 분석을 막지 않습니다.&#x27;,o:&#x27;AI 보조 · 후보 추출과 병렬&#x27;}]},
+        { id:3, name:&#x27;지식 후보 생성&#x27;, summary:&#x27;EvidenceSpan을 근거로 검토 전 후보만 생성&#x27;, steps:[
+          {n:8,k:&#x27;ai&#x27;,tag:&#x27;AI 후보&#x27;,t:&#x27;Claim·Entity·Relation·Event·Decision·Action 후보 추출&#x27;,d:&#x27;AI가 EvidenceSpan을 근거로 주장, 개체, 관계, 사건, 결정, 행동의 후보를 만듭니다. Fact를 직접 확정하지 않습니다.&#x27;,o:&#x27;AI 생성 · 후보 상태&#x27;},
+          {n:9,k:&#x27;system&#x27;,tag:&#x27;PROVENANCE&#x27;,t:&#x27;각 후보의 근거·추론 계보 검증&#x27;,d:&#x27;직접 추출 후보는 EvidenceSpan, 사용자 아이디어·지침은 입력 기록을 가져야 합니다. AI 추론 후보는 내부 사고 과정이 아니라 사용한 Fact·Claim·EvidenceSpan·Directive·정책과 결과를 연결하는 검증 가능한 도출 근거 요약, 모델·프롬프트·정책 버전을 기록합니다. Knowledge Gap은 판단 이유를 남기며 출처를 전혀 추적할 수 없는 AI 후보만 폐기합니다.&#x27;,o:&#x27;시스템 오케스트레이션 · 필요 시 AI 분석 · 모든 후보는 Provenance 필수&#x27;}]},
+        { id:4, name:&#x27;비교·변경안·승인&#x27;, summary:&#x27;기존 지식과 정책을 적용하고 영향까지 본 뒤 항목별 승인&#x27;, route:&#x27;14번 사용자 수정 → 표현은 내부 검증 · 근거는 9번 · 사실은 10번 · 반복 판단은 Directive 후보&#x27;, steps:[
+          {n:10,k:&#x27;policy&#x27;,tag:&#x27;정책&#x27;,t:&#x27;기존 Canonical 지식·User Directive·Fact Priority와 비교&#x27;,d:&#x27;기존 Entity·Relation·Event·Fact·Claim 등 Canonical 지식과 사용자의 명시 지침, 출처별 우선순위를 적용해 새 후보를 비교하고 동일 개체, 기존 관계, 변경 가능성을 확인합니다.&#x27;,o:&#x27;정책 적용&#x27;},
+          {n:11,k:&#x27;ai&#x27;,tag:&#x27;AI 분석&#x27;,t:&#x27;중복·충돌·시간 유효성·근거 강도 분석&#x27;,d:&#x27;하나의 신뢰도 점수 대신 추출 정확도, 근거 강도, 출처 우선순위, 충돌 상태, 시간 유효성을 나누어 봅니다.&#x27;,o:&#x27;AI 분석 · 판단 근거 제공&#x27;},
+          {n:12,k:&#x27;system&#x27;,tag:&#x27;IMPACT&#x27;,t:&#x27;Conflict Projection·Recursive Impact 생성&#x27;,d:&#x27;충돌을 보존하고 변경이 일정, 콘텐츠, 답변, 체크리스트, Action 등 어디에 영향을 주는지 찾습니다.&#x27;,o:&#x27;시스템 계산&#x27;},
+          {n:13,k:&#x27;system&#x27;,tag:&#x27;DRAFT&#x27;,t:&#x27;Draft ChangeSet·Burst Diff·영향 미리보기&#x27;,d:&#x27;추가, 수정, 충돌, 오래된 지식, 영향받는 결과물을 한 변경안으로 묶어 검토합니다.&#x27;,o:&#x27;시스템 생성 · 아직 공식 지식 아님&#x27;},
+          {n:14,k:&#x27;human&#x27;,tag:&#x27;항목별&#x27;,t:&#x27;승인·수정·보류·거절·지침 추가&#x27;,d:&#x27;변경안 전체가 아니라 항목별로 판단합니다. 사용자가 사실 내용이나 근거를 수정하면 유형을 구분해 검증을 다시 거칩니다. 근거 변경은 9번, 사실 변경은 10번, 반복 판단은 User Directive 후보로 이동합니다.&#x27;,o:&#x27;사람 · 핵심 승인 관문&#x27;}]},
+        { id:5, name:&#x27;공식 지식·확장&#x27;, summary:&#x27;승인 결과를 한 번에 반영하고 새 후보를 다시 발견&#x27;, route:&#x27;17번 새 발견 → Phase 3 Provenance 검증 → Phase 4 정책 비교·변경안&#x27;, steps:[
+          {n:15,k:&#x27;system&#x27;,tag:&#x27;CANONICAL&#x27;,t:&#x27;Canonical Fact·Claim 반영·HistoryEvent 기록&#x27;,d:&#x27;승인된 Claim은 누가 무엇을 주장했는지를 보존하는 Canonical Claim이 되며 자동으로 Fact가 되지 않습니다. 승인된 Fact 변경은 현재 지식 상태에 반영하되 충돌 Claim과 이전 Fact도 이력에 보존합니다. 승인 결과, Canonical 변경, HistoryEvent, 후속 갱신 이벤트 생성은 하나의 원자적 작업으로 반영하며 중간 실패 시 전체를 취소합니다.&#x27;,o:&#x27;시스템 원자적 반영 · 일부 반영 금지&#x27;},
+          {n:16,k:&#x27;system&#x27;,tag:&#x27;TRUTH&#x27;,t:&#x27;Compiled Truth·검색·그래프·연결 지식 갱신&#x27;,d:&#x27;Canonical Fact·Claim·User Directive·Fact Priority를 기반으로 현재 유효한 Compiled Truth를 재생성합니다. Compiled Truth는 독립 원본이 아니라 Canonical 기록에서 다시 만들 수 있는 파생 투영입니다.&#x27;,o:&#x27;시스템 재생성 · 파생 결과&#x27;},
+          {n:17,k:&#x27;ai&#x27;,tag:&#x27;AI 후보&#x27;,t:&#x27;Knowledge Gap·새 관계·행동 후보 탐색&#x27;,d:&#x27;AI가 빠진 정보, 새 관계, 확인 질문과 행동 후보를 제안합니다. 발견 결과는 Phase 3의 후보 유형 분류와 Provenance 검증부터 다시 거칩니다.&#x27;,o:&#x27;AI 발견 · 후보 상태&#x27;}]},
+        { id:6, name:&#x27;활용·결과·피드백&#x27;, summary:&#x27;위험도 판단 후 정보 제공과 외부 변경을 분기&#x27;, route:&#x27;18 생성 → 19 정책 판단 → [20 정보 결과·읽기 API] 또는 [승인 → 21 외부 변경·쓰기 API] → 22 피드백&#x27;, steps:[
+          {n:18,k:&#x27;ai&#x27;,tag:&#x27;AI 생성&#x27;,t:&#x27;검색·답변·요약·콘텐츠·행동 후보 생성&#x27;,d:&#x27;기본 Canonical 모드는 승인 지식만 사용합니다. Source 탐색 모드는 선택한 원본과 미승인 후보를 표시해 사용하고, 외부 조사 모드는 웹·외부 자료를 조사 결과 또는 후보로 명확히 구분합니다.&#x27;,o:&#x27;AI 생성 · 사용 모드 명시&#x27;},
+          {n:19,k:&#x27;policy&#x27;,tag:&#x27;RISK&#x27;,t:&#x27;위험도에 따른 자동 제공 또는 사용자 검토&#x27;,d:&#x27;개인 검색과 초안은 바로 제공할 수 있습니다. 외부 공개, 일정, 파일 변경, 민감정보, 실제 실행은 검토가 필요합니다.&#x27;,o:&#x27;정책·위험도 관문&#x27;},
+          {n:20,k:&#x27;system&#x27;,tag:&#x27;정보 분기&#x27;,t:&#x27;화면·문서·내보내기·읽기 API 제공&#x27;,d:&#x27;정보를 읽거나 전달하는 결과를 화면, 문서, 내보내기, 읽기 API로 제공합니다. 외부 상태를 바꾸는 쓰기 API는 21번 정책을 따릅니다.&#x27;,o:&#x27;시스템 출력&#x27;},
+          {n:21,k:&#x27;system&#x27;,tag:&#x27;외부 변경&#x27;,t:&#x27;승인된 외부 Action 실행·결과 및 Audit 기록&#x27;,d:&#x27;사람은 외부 행동을 승인하고 Shotgun 시스템 또는 연결 서비스가 실제로 실행합니다. 성공·실패, 외부 ID, 사용한 정책을 기록하며 쓰기 API도 같은 승인 정책을 적용합니다.&#x27;,o:&#x27;시스템 실행 · 사람 승인 또는 사전 정책 필요&#x27;},
+          {n:22,k:&#x27;human&#x27;,tag:&#x27;피드백&#x27;,t:&#x27;수정·피드백을 입력·지침·변경안으로 반환&#x27;,d:&#x27;사용자 수정은 새 자료 입력, 반복 판단을 위한 User Directive, 또는 기존 지식 변경안으로 돌아갑니다.&#x27;,o:&#x27;사람 피드백&#x27;}]}
+      ];
+      const phaseHost = root.querySelector(&#x27;#shotgun-v5-phases&#x27;);
+      const stepsHost = root.querySelector(&#x27;#shotgun-v5-steps&#x27;);
+      const focusTitle = root.querySelector(&#x27;#shotgun-v5-focus-title&#x27;);
+      const focusSummary = root.querySelector(&#x27;#shotgun-v5-focus-summary&#x27;);
+      const focusRoute = root.querySelector(&#x27;#shotgun-v5-focus-route&#x27;);
+      const focusCount = root.querySelector(&#x27;#shotgun-v5-focus-count&#x27;);
+      const detailTitle = root.querySelector(&#x27;#shotgun-v5-detail-title&#x27;);
+      const detailCount = root.querySelector(&#x27;#shotgun-v5-detail-count&#x27;);
+      const detailCopy = root.querySelector(&#x27;#shotgun-v5-detail-copy&#x27;);
+      const detailOwner = root.querySelector(&#x27;#shotgun-v5-detail-owner&#x27;);
+
+      const showDetail = (step) =&gt; {
+        root.querySelectorAll(&#x27;.step-node&#x27;).forEach((node) =&gt; node.setAttribute(&#x27;aria-pressed&#x27;, String(Number(node.dataset.step) === step.n)));
+        detailTitle.textContent = `${step.n}. ${step.t}`;
+        detailCount.textContent = `${step.n} / 22`;
+        detailCopy.textContent = step.d;
+        detailOwner.textContent = `담당: ${step.o}`;
+      };
+
+      const showPhase = (phaseId) =&gt; {
+        const phase = phases.find((item) =&gt; item.id === phaseId);
+        root.querySelectorAll(&#x27;.phase-btn&#x27;).forEach((button) =&gt; button.setAttribute(&#x27;aria-pressed&#x27;, String(Number(button.dataset.phase) === phaseId)));
+        focusTitle.textContent = `Phase ${phase.id}. ${phase.name}`;
+        focusSummary.textContent = phase.summary;
+        focusRoute.textContent = phase.route || &#x27;&#x27;;
+        focusRoute.hidden = !phase.route;
+        focusCount.textContent = `${phase.steps.length}개 세부 단계`;
+        stepsHost.style.setProperty(&#x27;--step-count&#x27;, Math.min(phase.steps.length, 5));
+        stepsHost.replaceChildren();
+        phase.steps.forEach((step) =&gt; {
+          const wrap = document.createElement(&#x27;div&#x27;);
+          wrap.className = &#x27;step-wrap&#x27;;
+          const button = document.createElement(&#x27;button&#x27;);
+          button.type = &#x27;button&#x27;;
+          button.className = `btn viz-tile step-node ${step.k}`;
+          button.dataset.step = String(step.n);
+          button.setAttribute(&#x27;aria-pressed&#x27;, &#x27;false&#x27;);
+          button.innerHTML = `&lt;span class=&quot;step-top&quot;&gt;&lt;span class=&quot;step-no&quot;&gt;${step.n}&lt;/span&gt;&lt;span class=&quot;viz-badge&quot;&gt;${step.tag}&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;step-title&quot;&gt;${step.t}&lt;/span&gt;`;
+          button.addEventListener(&#x27;click&#x27;, () =&gt; showDetail(step));
+          wrap.appendChild(button);
+          stepsHost.appendChild(wrap);
+        });
+        showDetail(phase.steps[0]);
+      };
+
+      phases.forEach((phase) =&gt; {
+        const button = document.createElement(&#x27;button&#x27;);
+        button.type = &#x27;button&#x27;;
+        button.className = &#x27;btn phase-btn&#x27;;
+        button.dataset.phase = String(phase.id);
+        button.setAttribute(&#x27;aria-pressed&#x27;, &#x27;false&#x27;);
+        button.innerHTML = `&lt;span class=&quot;phase-kicker text-small&quot;&gt;PHASE ${phase.id} · ${phase.steps.length}단계&lt;/span&gt;&lt;span&gt;${phase.name}&lt;/span&gt;`;
+        button.addEventListener(&#x27;click&#x27;, () =&gt; showPhase(phase.id));
+        phaseHost.appendChild(button);
+      });
+      showPhase(1);
+    })();
+  &lt;/script&gt;
+&lt;/div&gt;
+
+&lt;script src=&quot;https://unpkg.com/@floating-ui/core@1.7.3/dist/floating-ui.core.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script src=&quot;https://unpkg.com/@floating-ui/dom@1.7.4/dist/floating-ui.dom.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  if (window.FloatingUIDOM == null) {
+    return;
+  }
+  const { autoUpdate, computePosition, flip, offset, shift, size } =
+    window.FloatingUIDOM;
+  const tooltipPlacements = new Set([&quot;top&quot;, &quot;right&quot;, &quot;bottom&quot;, &quot;left&quot;]);
+  const tooltipId = `codex-visualization-tooltip-${
+    window.crypto?.randomUUID?.() ?? Date.now().toString(36)
+  }`;
+  const tooltipGap = 5;
+  const hoverDelay = 700;
+  const skipDelay = 300;
+  let activeTrigger = null;
+  let pendingTrigger = null;
+  let tooltip = null;
+  let openTimeout = null;
+  let autoUpdateCleanup = null;
+  let positionRequest = 0;
+  let skipDelayUntil = 0;
+
+  const getTrigger = (target) =&gt;
+    target?.nodeType === Node.ELEMENT_NODE
+      ? target.closest(&quot;[data-tooltip]&quot;)
+      : null;
+  const containsTarget = (trigger, target) =&gt;
+    target?.nodeType != null &amp;&amp; trigger.contains(target);
+  const getContent = (trigger) =&gt;
+    trigger.getAttribute(&quot;data-tooltip&quot;)?.trim() ?? &quot;&quot;;
+  const getPlacement = (trigger) =&gt; {
+    const placement = trigger.getAttribute(&quot;data-tooltip-placement&quot;);
+    return tooltipPlacements.has(placement) ? placement : &quot;top&quot;;
+  };
+  const getTooltip = () =&gt; {
+    if (tooltip == null) {
+      tooltip = document.createElement(&quot;div&quot;);
+      tooltip.id = tooltipId;
+      tooltip.className = &quot;tooltip&quot;;
+      tooltip.setAttribute(&quot;role&quot;, &quot;tooltip&quot;);
+    }
+    return tooltip;
+  };
+  const setDescribedBy = (trigger, described) =&gt; {
+    const ids = new Set(
+      (trigger.getAttribute(&quot;aria-describedby&quot;) ?? &quot;&quot;)
+        .split(/\s+/)
+        .filter(Boolean),
+    );
+    if (described) {
+      ids.add(tooltipId);
+    } else {
+      ids.delete(tooltipId);
+    }
+    if (ids.size === 0) {
+      trigger.removeAttribute(&quot;aria-describedby&quot;);
+    } else {
+      trigger.setAttribute(&quot;aria-describedby&quot;, [...ids].join(&quot; &quot;));
+    }
+  };
+  const clearOpenTimeout = () =&gt; {
+    if (openTimeout != null) {
+      window.clearTimeout(openTimeout);
+      openTimeout = null;
+    }
+    pendingTrigger = null;
+  };
+  const closeTooltip = (activateSkipDelay = true) =&gt; {
+    clearOpenTimeout();
+    positionRequest += 1;
+    autoUpdateCleanup?.();
+    autoUpdateCleanup = null;
+    if (activeTrigger == null) {
+      return;
+    }
+    setDescribedBy(activeTrigger, false);
+    activeTrigger = null;
+    tooltip?.remove();
+    if (activateSkipDelay) {
+      skipDelayUntil = Date.now() + skipDelay;
+    }
+  };
+  const updatePosition = (trigger, floating) =&gt; {
+    const request = ++positionRequest;
+    void computePosition(trigger, floating, {
+      middleware: [
+        offset(tooltipGap),
+        flip({ padding: tooltipGap }),
+        shift({ padding: tooltipGap }),
+        size({
+          padding: tooltipGap,
+          apply({ availableHeight, availableWidth, elements }) {
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-width&quot;,
+              `${Math.max(0, availableWidth)}px`,
+            );
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-height&quot;,
+              `${Math.max(0, availableHeight)}px`,
+            );
+          },
+        }),
+      ],
+      placement: getPlacement(trigger),
+      strategy: &quot;fixed&quot;,
+    })
+      .then(({ x, y }) =&gt; {
+        if (activeTrigger !== trigger || request !== positionRequest) {
+          return;
+        }
+        const scale = window.devicePixelRatio || 1;
+        floating.style.transform = `translate(${Math.round(x * scale) / scale}px, ${Math.round(y * scale) / scale}px)`;
+        floating.style.visibility = &quot;visible&quot;;
+      })
+      .catch(() =&gt; {
+        if (activeTrigger === trigger &amp;&amp; request === positionRequest) {
+          closeTooltip(false);
+        }
+      });
+  };
+  const openTooltip = (trigger) =&gt; {
+    const content = getContent(trigger);
+    if (!trigger.isConnected || content.length === 0) {
+      return;
+    }
+    clearOpenTimeout();
+    if (activeTrigger === trigger) {
+      return;
+    }
+    closeTooltip();
+    const floating = getTooltip();
+    floating.textContent = content;
+    floating.style.visibility = &quot;hidden&quot;;
+    floating.style.transform = &quot;translate(0, 0)&quot;;
+    document.body.appendChild(floating);
+    activeTrigger = trigger;
+    setDescribedBy(trigger, true);
+    autoUpdateCleanup = autoUpdate(trigger, floating, () =&gt; {
+      updatePosition(trigger, floating);
+    });
+  };
+  const requestOpen = (trigger, immediate = false) =&gt; {
+    if (
+      getContent(trigger).length === 0 ||
+      activeTrigger === trigger ||
+      pendingTrigger === trigger
+    ) {
+      return;
+    }
+    clearOpenTimeout();
+    pendingTrigger = trigger;
+    const delay =
+      immediate || activeTrigger != null || Date.now() &lt; skipDelayUntil
+        ? 0
+        : hoverDelay;
+    if (delay === 0) {
+      openTooltip(trigger);
+      return;
+    }
+    openTimeout = window.setTimeout(() =&gt; {
+      openTimeout = null;
+      pendingTrigger = null;
+      openTooltip(trigger);
+    }, delay);
+  };
+  const handlePointerOpen = (event) =&gt; {
+    if (event.pointerType === &quot;touch&quot;) {
+      return;
+    }
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    requestOpen(trigger);
+  };
+  const handleLeave = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const handleFocusIn = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger?.matches(&quot;:focus-visible&quot;)) {
+      requestOpen(trigger, true);
+    }
+  };
+  const handleKeyDown = (event) =&gt; {
+    if (event.key === &quot;Escape&quot;) {
+      closeTooltip();
+    }
+  };
+  const handleContextMenu = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const destroy = () =&gt; {
+    closeTooltip(false);
+    document.removeEventListener(&quot;pointerover&quot;, handlePointerOpen);
+    document.removeEventListener(&quot;pointerout&quot;, handleLeave);
+    document.removeEventListener(&quot;focusin&quot;, handleFocusIn);
+    document.removeEventListener(&quot;focusout&quot;, handleLeave);
+    document.removeEventListener(&quot;keydown&quot;, handleKeyDown);
+    document.removeEventListener(&quot;contextmenu&quot;, handleContextMenu);
+    tooltip = null;
+  };
+
+  document.addEventListener(&quot;pointerover&quot;, handlePointerOpen);
+  document.addEventListener(&quot;pointerout&quot;, handleLeave);
+  document.addEventListener(&quot;focusin&quot;, handleFocusIn);
+  document.addEventListener(&quot;focusout&quot;, handleLeave);
+  document.addEventListener(&quot;keydown&quot;, handleKeyDown);
+  document.addEventListener(&quot;contextmenu&quot;, handleContextMenu);
+  window.addEventListener(&quot;pagehide&quot;, destroy, { once: true });
+})();
+&lt;/script&gt;
+&lt;script id=&quot;codex-visualization-lucide&quot; async src=&quot;https://unpkg.com/lucide@1.17.0/dist/umd/lucide.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  const initialize = () =&gt; {
+    globalThis.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
+  };
+  if (globalThis.lucide != null) {
+    initialize();
+    return;
+  }
+  document
+    .getElementById(&quot;codex-visualization-lucide&quot;)
+    ?.addEventListener(&quot;load&quot;, initialize, { once: true });
+})();
+&lt;/script&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;
+"></iframe>
+</body>
+</html>

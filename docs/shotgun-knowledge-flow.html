@@ -5,18 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
-<title>Shotgun 지식 생성 흐름도 v2</title>
+<title>Shotgun 지식 생성 흐름도 v3</title>
 <style>:root{color-scheme:light dark;background:light-dark(rgb(255 255 255), rgb(24 24 24))}html,body{margin:0}body{box-sizing:border-box;padding:1rem;background:inherit}iframe{display:block;width:100%;max-width:736px;height:calc(100vh - 2rem);margin:0 auto;border:0}</style>
 </head>
 <body>
-<iframe sandbox="allow-scripts" referrerpolicy="no-referrer" title="Shotgun 지식 생성 흐름도 v2" srcdoc="&lt;!doctype html&gt;
+<iframe sandbox="allow-scripts" referrerpolicy="no-referrer" title="Shotgun 지식 생성 흐름도 v3" srcdoc="&lt;!doctype html&gt;
 &lt;html lang=&quot;en&quot;&gt;
 &lt;head&gt;
 &lt;meta charset=&quot;utf-8&quot;&gt;
 &lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
 &lt;meta name=&quot;referrer&quot; content=&quot;no-referrer&quot;&gt;
 &lt;meta http-equiv=&quot;Content-Security-Policy&quot; content=&quot;default-src &#x27;none&#x27;; script-src &#x27;unsafe-inline&#x27; &#x27;unsafe-eval&#x27; &#x27;wasm-unsafe-eval&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src &#x27;unsafe-inline&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src &#x27;none&#x27;; object-src &#x27;none&#x27;; base-uri &#x27;none&#x27;; form-action &#x27;none&#x27;&quot;&gt;
-&lt;title&gt;Shotgun 지식 생성 흐름도 v2&lt;/title&gt;
+&lt;title&gt;Shotgun 지식 생성 흐름도 v3&lt;/title&gt;
 &lt;style&gt;:root {
   color-scheme: light dark;
   background-color: var(--background) !important;
@@ -748,203 +748,197 @@ svg {
 html&gt;body{padding:0}&lt;/style&gt;
 &lt;/head&gt;
 &lt;body&gt;
-&lt;div id=&quot;shotgun-flow-v2&quot;&gt;
+&lt;div id=&quot;shotgun-flow-v3&quot;&gt;
   &lt;style&gt;
-    #shotgun-flow-v2 { color:var(--foreground); }
-    #shotgun-flow-v2 .topline { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
-    #shotgun-flow-v2 .legend, #shotgun-flow-v2 .principle, #shotgun-flow-v2 .feedbacks { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-    #shotgun-flow-v2 .legend-item { display:inline-flex; align-items:center; gap:5px; color:var(--muted-foreground); }
-    #shotgun-flow-v2 .mark { width:11px; height:11px; border-radius:50%; display:inline-block; }
-    #shotgun-flow-v2 .system-mark { background:var(--viz-series-1); }
-    #shotgun-flow-v2 .ai-mark { background:var(--viz-series-2); }
-    #shotgun-flow-v2 .human-mark { background:var(--viz-series-3); }
-    #shotgun-flow-v2 .policy-mark { background:var(--viz-series-4); }
-    #shotgun-flow-v2 .pipeline { display:grid; grid-template-columns:repeat(6,minmax(150px,1fr)); gap:10px; align-items:start; }
-    #shotgun-flow-v2 .phase { min-width:0; }
-    #shotgun-flow-v2 .phase-head { display:flex; gap:8px; align-items:center; min-height:40px; margin-bottom:7px; color:var(--muted-foreground); }
-    #shotgun-flow-v2 .phase-no { display:grid; place-items:center; width:24px; height:24px; flex:none; border-radius:50%; background:var(--muted); color:var(--foreground); }
-    #shotgun-flow-v2 .stack { display:flex; flex-direction:column; gap:6px; }
-    #shotgun-flow-v2 .flow-node { width:100%; min-height:70px; text-align:left; display:flex; align-items:flex-start; justify-content:center; flex-direction:column; gap:4px; white-space:normal; }
-    #shotgun-flow-v2 .flow-node.system { background:color-mix(in srgb,var(--viz-series-1) 14%,transparent); }
-    #shotgun-flow-v2 .flow-node.ai { background:color-mix(in srgb,var(--viz-series-2) 17%,transparent); }
-    #shotgun-flow-v2 .flow-node.human { background:color-mix(in srgb,var(--viz-series-3) 17%,transparent); }
-    #shotgun-flow-v2 .flow-node.policy { background:color-mix(in srgb,var(--viz-series-4) 17%,transparent); }
-    #shotgun-flow-v2 .node-top { width:100%; display:flex; justify-content:space-between; align-items:center; gap:6px; }
-    #shotgun-flow-v2 .node-kind { color:var(--foreground); font-weight:500; }
-    #shotgun-flow-v2 .node-title { color:var(--foreground); }
-    #shotgun-flow-v2 .down { display:grid; place-items:center; height:18px; color:var(--muted-foreground); }
-    #shotgun-flow-v2 .down svg { width:15px; height:15px; }
-    #shotgun-flow-v2 .cross { display:grid; place-items:center; height:22px; color:var(--muted-foreground); }
-    #shotgun-flow-v2 .cross svg { width:16px; height:16px; transform:rotate(-90deg); }
-    #shotgun-flow-v2 .feedbacks { justify-content:center; margin:15px 0; }
-    #shotgun-flow-v2 .feedback { display:inline-flex; align-items:center; gap:5px; color:var(--muted-foreground); }
-    #shotgun-flow-v2 .rails { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:8px; margin-top:14px; }
-    #shotgun-flow-v2 .rail { min-width:0; padding:10px; background:var(--muted); color:var(--foreground); }
-    #shotgun-flow-v2 .rail-title { display:block; font-weight:500; margin-bottom:4px; }
-    #shotgun-flow-v2 .detail { margin-top:14px; }
-    #shotgun-flow-v2 .detail-head { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:6px; }
-    #shotgun-flow-v2 .detail-title { font-weight:500; }
-    #shotgun-flow-v2 .detail-copy { color:var(--card-foreground); }
-    #shotgun-flow-v2 .detail-owner { color:var(--muted-foreground); margin-top:6px; }
-    @media (max-width:1000px) {
-      #shotgun-flow-v2 .pipeline { grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px 14px; }
-      #shotgun-flow-v2 .rails { grid-template-columns:repeat(2,minmax(0,1fr)); }
-      #shotgun-flow-v2 .cross { display:none; }
+    #shotgun-flow-v3 { color:var(--foreground); }
+    #shotgun-flow-v3 .meta { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
+    #shotgun-flow-v3 .legend { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+    #shotgun-flow-v3 .legend-item { display:inline-flex; align-items:center; gap:5px; color:var(--muted-foreground); }
+    #shotgun-flow-v3 .dot { width:10px; height:10px; border-radius:50%; display:inline-block; }
+    #shotgun-flow-v3 .dot-system { background:var(--viz-series-1); }
+    #shotgun-flow-v3 .dot-ai { background:var(--viz-series-2); }
+    #shotgun-flow-v3 .dot-human { background:var(--viz-series-3); }
+    #shotgun-flow-v3 .dot-policy { background:var(--viz-series-4); }
+    #shotgun-flow-v3 .principle { display:flex; align-items:center; gap:8px; flex-wrap:wrap; color:var(--muted-foreground); margin-bottom:16px; }
+    #shotgun-flow-v3 .phase-track { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:6px; align-items:stretch; }
+    #shotgun-flow-v3 .phase-btn { width:100%; min-height:76px; white-space:normal; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:4px; text-align:left; }
+    #shotgun-flow-v3 .phase-btn .phase-kicker { color:var(--muted-foreground); }
+    #shotgun-flow-v3 .phase-btn[aria-pressed=&quot;true&quot;] .phase-kicker { color:var(--primary-foreground); }
+    #shotgun-flow-v3 .phase-arrow-row { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:6px; height:24px; color:var(--muted-foreground); }
+    #shotgun-flow-v3 .phase-arrow { display:grid; place-items:center; }
+    #shotgun-flow-v3 .phase-arrow svg { width:16px; height:16px; }
+    #shotgun-flow-v3 .phase-arrow:not(:last-child) svg { transform:rotate(-90deg); }
+    #shotgun-flow-v3 .phase-focus { margin-top:10px; }
+    #shotgun-flow-v3 .focus-head { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:10px; }
+    #shotgun-flow-v3 .focus-title { font-weight:500; }
+    #shotgun-flow-v3 .focus-summary { color:var(--muted-foreground); }
+    #shotgun-flow-v3 .steps { display:grid; grid-template-columns:repeat(var(--step-count),minmax(0,1fr)); gap:8px; align-items:stretch; }
+    #shotgun-flow-v3 .step-wrap { display:flex; align-items:stretch; min-width:0; gap:8px; }
+    #shotgun-flow-v3 .step-node { width:100%; min-height:94px; white-space:normal; text-align:left; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:5px; }
+    #shotgun-flow-v3 .step-node.system { background:color-mix(in srgb,var(--viz-series-1) 14%,transparent); }
+    #shotgun-flow-v3 .step-node.ai { background:color-mix(in srgb,var(--viz-series-2) 17%,transparent); }
+    #shotgun-flow-v3 .step-node.human { background:color-mix(in srgb,var(--viz-series-3) 17%,transparent); }
+    #shotgun-flow-v3 .step-node.policy { background:color-mix(in srgb,var(--viz-series-4) 17%,transparent); }
+    #shotgun-flow-v3 .step-top { display:flex; align-items:center; justify-content:space-between; width:100%; gap:6px; }
+    #shotgun-flow-v3 .step-no { display:inline-grid; place-items:center; width:25px; height:25px; border-radius:50%; background:var(--muted); color:var(--foreground); flex:none; }
+    #shotgun-flow-v3 .step-node[aria-pressed=&quot;true&quot;] .step-no { background:var(--primary-foreground); color:var(--primary); }
+    #shotgun-flow-v3 .step-title { color:var(--foreground); }
+    #shotgun-flow-v3 .loops { display:flex; align-items:center; justify-content:center; gap:8px; flex-wrap:wrap; margin:14px 0; color:var(--muted-foreground); }
+    #shotgun-flow-v3 .loop { display:inline-flex; align-items:center; gap:5px; }
+    #shotgun-flow-v3 .detail { margin-top:10px; }
+    #shotgun-flow-v3 .detail-head { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-bottom:6px; }
+    #shotgun-flow-v3 .detail-title { font-weight:500; }
+    #shotgun-flow-v3 .detail-copy { color:var(--card-foreground); }
+    #shotgun-flow-v3 .detail-owner { margin-top:6px; color:var(--muted-foreground); }
+    #shotgun-flow-v3 .shared-title { display:flex; align-items:center; gap:8px; margin:16px 0 8px; color:var(--muted-foreground); }
+    #shotgun-flow-v3 .shared { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:6px; }
+    #shotgun-flow-v3 .shared-item { display:flex; flex-direction:column; gap:3px; min-width:0; padding:8px; background:var(--muted); color:var(--foreground); }
+    #shotgun-flow-v3 .shared-name { font-weight:500; }
+    #shotgun-flow-v3 .shared-copy { color:var(--muted-foreground); }
+    @media (max-width:900px) {
+      #shotgun-flow-v3 .phase-track { grid-template-columns:repeat(3,minmax(0,1fr)); }
+      #shotgun-flow-v3 .phase-arrow-row { display:none; }
+      #shotgun-flow-v3 .steps { grid-template-columns:repeat(2,minmax(0,1fr)); }
+      #shotgun-flow-v3 .shared { grid-template-columns:repeat(2,minmax(0,1fr)); }
     }
     @media (max-width:520px) {
-      #shotgun-flow-v2 .pipeline, #shotgun-flow-v2 .rails { grid-template-columns:1fr; }
-      #shotgun-flow-v2 .flow-node { min-height:64px; }
+      #shotgun-flow-v3 .phase-track, #shotgun-flow-v3 .steps, #shotgun-flow-v3 .shared { grid-template-columns:1fr; }
+      #shotgun-flow-v3 .phase-btn { min-height:62px; }
+      #shotgun-flow-v3 .step-node { min-height:76px; }
     }
   &lt;/style&gt;
 
-  &lt;div class=&quot;topline&quot;&gt;
-    &lt;span class=&quot;viz-badge&quot;&gt;전략회의용 개념 초안 · v2&lt;/span&gt;
+  &lt;div class=&quot;meta&quot;&gt;
+    &lt;span class=&quot;viz-badge&quot;&gt;전략회의용 개념 초안 · v3&lt;/span&gt;
     &lt;div class=&quot;legend text-small&quot; aria-label=&quot;역할 범례&quot;&gt;
-      &lt;span class=&quot;legend-item&quot;&gt;&lt;span class=&quot;mark system-mark&quot;&gt;&lt;/span&gt;시스템&lt;/span&gt;
-      &lt;span class=&quot;legend-item&quot;&gt;&lt;span class=&quot;mark ai-mark&quot;&gt;&lt;/span&gt;AI 후보·분석·초안&lt;/span&gt;
-      &lt;span class=&quot;legend-item&quot;&gt;&lt;span class=&quot;mark human-mark&quot;&gt;&lt;/span&gt;사람 승인&lt;/span&gt;
-      &lt;span class=&quot;legend-item&quot;&gt;&lt;span class=&quot;mark policy-mark&quot;&gt;&lt;/span&gt;정책·위험도&lt;/span&gt;
+      &lt;span class=&quot;legend-item&quot;&gt;&lt;span class=&quot;dot dot-system&quot;&gt;&lt;/span&gt;시스템&lt;/span&gt;
+      &lt;span class=&quot;legend-item&quot;&gt;&lt;span class=&quot;dot dot-ai&quot;&gt;&lt;/span&gt;AI&lt;/span&gt;
+      &lt;span class=&quot;legend-item&quot;&gt;&lt;span class=&quot;dot dot-human&quot;&gt;&lt;/span&gt;사람&lt;/span&gt;
+      &lt;span class=&quot;legend-item&quot;&gt;&lt;span class=&quot;dot dot-policy&quot;&gt;&lt;/span&gt;정책&lt;/span&gt;
     &lt;/div&gt;
   &lt;/div&gt;
-  &lt;div class=&quot;principle text-small&quot;&gt;&lt;span class=&quot;viz-badge&quot;&gt;핵심 원칙&lt;/span&gt;&lt;span&gt;원문과 EvidenceSpan이 먼저 · AI 발견은 항상 후보 · 공식 지식과 외부 행동은 승인 경계를 통과&lt;/span&gt;&lt;/div&gt;
 
-  &lt;div class=&quot;pipeline&quot; role=&quot;group&quot; aria-label=&quot;Shotgun 지식 생성 흐름도&quot;&gt;
-    &lt;section class=&quot;phase&quot; aria-label=&quot;Phase 1 입력과 원본 보존&quot;&gt;
-      &lt;div class=&quot;phase-head&quot;&gt;&lt;span class=&quot;phase-no&quot;&gt;1&lt;/span&gt;&lt;span&gt;입력·원본 보존&lt;/span&gt;&lt;/div&gt;
-      &lt;div class=&quot;stack&quot;&gt;
-        &lt;button class=&quot;btn viz-tile flow-node human&quot; type=&quot;button&quot; data-step=&quot;1&quot; aria-pressed=&quot;true&quot;&gt;&lt;span class=&quot;node-top&quot;&gt;&lt;span class=&quot;node-kind&quot;&gt;사람&lt;/span&gt;&lt;span class=&quot;viz-badge&quot;&gt;INPUT&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;node-title&quot;&gt;파일·텍스트·URL·대화 입력&lt;/span&gt;&lt;/button&gt;
-        &lt;div class=&quot;down&quot; aria-hidden=&quot;true&quot;&gt;&lt;i data-lucide=&quot;arrow-down&quot;&gt;&lt;/i&gt;&lt;/div&gt;
-        &lt;button class=&quot;btn viz-tile flow-node system&quot; type=&quot;button&quot; data-step=&quot;2&quot; aria-pressed=&quot;false&quot;&gt;&lt;span class=&quot;node-top&quot;&gt;&lt;span class=&quot;node-kind&quot;&gt;시스템&lt;/span&gt;&lt;span class=&quot;viz-badge&quot;&gt;검증&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;node-title&quot;&gt;형식·인코딩·언어·안전성·중복 확인&lt;/span&gt;&lt;/button&gt;
-        &lt;div class=&quot;down&quot; aria-hidden=&quot;true&quot;&gt;&lt;i data-lucide=&quot;arrow-down&quot;&gt;&lt;/i&gt;&lt;/div&gt;
-        &lt;button class=&quot;btn viz-tile flow-node system&quot; type=&quot;button&quot; data-step=&quot;3&quot; aria-pressed=&quot;false&quot;&gt;&lt;span class=&quot;node-top&quot;&gt;&lt;span class=&quot;node-kind&quot;&gt;시스템&lt;/span&gt;&lt;span class=&quot;viz-badge&quot;&gt;SOURCE&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;node-title&quot;&gt;Stable Source·SourceVersion 생성, 원본 보존&lt;/span&gt;&lt;/button&gt;
-      &lt;/div&gt;
-    &lt;/section&gt;
+  &lt;div class=&quot;principle text-small&quot;&gt;&lt;span class=&quot;viz-badge&quot;&gt;핵심 원칙&lt;/span&gt;&lt;span&gt;원문 근거가 먼저 · AI 결과는 후보 · 공식 지식과 외부 행동은 승인 경계를 통과&lt;/span&gt;&lt;/div&gt;
 
-    &lt;section class=&quot;phase&quot; aria-label=&quot;Phase 2 변환과 근거화&quot;&gt;
-      &lt;div class=&quot;phase-head&quot;&gt;&lt;span class=&quot;phase-no&quot;&gt;2&lt;/span&gt;&lt;span&gt;변환·근거화&lt;/span&gt;&lt;/div&gt;
-      &lt;div class=&quot;stack&quot;&gt;
-        &lt;button class=&quot;btn viz-tile flow-node system&quot; type=&quot;button&quot; data-step=&quot;4&quot; aria-pressed=&quot;false&quot;&gt;&lt;span class=&quot;node-top&quot;&gt;&lt;span class=&quot;node-kind&quot;&gt;시스템&lt;/span&gt;&lt;span class=&quot;viz-badge&quot;&gt;형식별&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;node-title&quot;&gt;콘텐츠 추출·정규화&lt;/span&gt;&lt;/button&gt;
-        &lt;div class=&quot;down&quot; aria-hidden=&quot;true&quot;&gt;&lt;i data-lucide=&quot;arrow-down&quot;&gt;&lt;/i&gt;&lt;/div&gt;
-        &lt;button class=&quot;btn viz-tile flow-node system&quot; type=&quot;button&quot; data-step=&quot;5&quot; aria-pressed=&quot;false&quot;&gt;&lt;span class=&quot;node-top&quot;&gt;&lt;span class=&quot;node-kind&quot;&gt;시스템&lt;/span&gt;&lt;span class=&quot;viz-badge&quot;&gt;구조&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;node-title&quot;&gt;문서·화자·표·셀·페이지·시간 구간 분석&lt;/span&gt;&lt;/button&gt;
-        &lt;div class=&quot;down&quot; aria-hidden=&quot;true&quot;&gt;&lt;i data-lucide=&quot;arrow-down&quot;&gt;&lt;/i&gt;&lt;/div&gt;
-        &lt;button class=&quot;btn viz-tile flow-node system&quot; type=&quot;button&quot; data-step=&quot;6&quot; aria-pressed=&quot;false&quot;&gt;&lt;span class=&quot;node-top&quot;&gt;&lt;span class=&quot;node-kind&quot;&gt;시스템&lt;/span&gt;&lt;span class=&quot;viz-badge&quot;&gt;EVIDENCE&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;node-title&quot;&gt;Source Map·EvidenceSpan 생성&lt;/span&gt;&lt;/button&gt;
-        &lt;div class=&quot;down&quot; aria-hidden=&quot;true&quot;&gt;&lt;i data-lucide=&quot;arrow-down&quot;&gt;&lt;/i&gt;&lt;/div&gt;
-        &lt;button class=&quot;btn viz-tile flow-node ai&quot; type=&quot;button&quot; data-step=&quot;7&quot; aria-pressed=&quot;false&quot;&gt;&lt;span class=&quot;node-top&quot;&gt;&lt;span class=&quot;node-kind&quot;&gt;AI&lt;/span&gt;&lt;span class=&quot;viz-badge&quot;&gt;표시용&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;node-title&quot;&gt;한국어 번역 생성, 원문과 연결&lt;/span&gt;&lt;/button&gt;
-      &lt;/div&gt;
-    &lt;/section&gt;
-
-    &lt;section class=&quot;phase&quot; aria-label=&quot;Phase 3 지식 후보 생성&quot;&gt;
-      &lt;div class=&quot;phase-head&quot;&gt;&lt;span class=&quot;phase-no&quot;&gt;3&lt;/span&gt;&lt;span&gt;지식 후보 생성&lt;/span&gt;&lt;/div&gt;
-      &lt;div class=&quot;stack&quot;&gt;
-        &lt;button class=&quot;btn viz-tile flow-node ai&quot; type=&quot;button&quot; data-step=&quot;8&quot; aria-pressed=&quot;false&quot;&gt;&lt;span class=&quot;node-top&quot;&gt;&lt;span class=&quot;node-kind&quot;&gt;AI&lt;/span&gt;&lt;span class=&quot;viz-badge&quot;&gt;후보&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;node-title&quot;&gt;Claim·Entity·Relation·Event·Decision·Action 후보 추출&lt;/span&gt;&lt;/button&gt;
-        &lt;div class=&quot;down&quot; aria-hidden=&quot;true&quot;&gt;&lt;i data-lucide=&quot;arrow-down&quot;&gt;&lt;/i&gt;&lt;/div&gt;
-        &lt;button class=&quot;btn viz-tile flow-node system&quot; type=&quot;button&quot; data-step=&quot;9&quot; aria-pressed=&quot;false&quot;&gt;&lt;span class=&quot;node-top&quot;&gt;&lt;span class=&quot;node-kind&quot;&gt;시스템&lt;/span&gt;&lt;span class=&quot;viz-badge&quot;&gt;검증&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;node-title&quot;&gt;각 후보와 EvidenceSpan 연결 검증&lt;/span&gt;&lt;/button&gt;
-      &lt;/div&gt;
-    &lt;/section&gt;
-
-    &lt;section class=&quot;phase&quot; aria-label=&quot;Phase 4 비교 변경안 승인&quot;&gt;
-      &lt;div class=&quot;phase-head&quot;&gt;&lt;span class=&quot;phase-no&quot;&gt;4&lt;/span&gt;&lt;span&gt;비교·변경안·승인&lt;/span&gt;&lt;/div&gt;
-      &lt;div class=&quot;stack&quot;&gt;
-        &lt;button class=&quot;btn viz-tile flow-node policy&quot; type=&quot;button&quot; data-step=&quot;10&quot; aria-pressed=&quot;false&quot;&gt;&lt;span class=&quot;node-top&quot;&gt;&lt;span class=&quot;node-kind&quot;&gt;정책&lt;/span&gt;&lt;span class=&quot;viz-badge&quot;&gt;RULE&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;node-title&quot;&gt;기존 지식·User Directive·Fact Priority와 비교&lt;/span&gt;&lt;/button&gt;
-        &lt;div class=&quot;down&quot; aria-hidden=&quot;true&quot;&gt;&lt;i data-lucide=&quot;arrow-down&quot;&gt;&lt;/i&gt;&lt;/div&gt;
-        &lt;button class=&quot;btn viz-tile flow-node ai&quot; type=&quot;button&quot; data-step=&quot;11&quot; aria-pressed=&quot;false&quot;&gt;&lt;span class=&quot;node-top&quot;&gt;&lt;span class=&quot;node-kind&quot;&gt;AI&lt;/span&gt;&lt;span class=&quot;viz-badge&quot;&gt;분석&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;node-title&quot;&gt;중복·충돌·시간 유효성·근거 강도 분석&lt;/span&gt;&lt;/button&gt;
-        &lt;div class=&quot;down&quot; aria-hidden=&quot;true&quot;&gt;&lt;i data-lucide=&quot;arrow-down&quot;&gt;&lt;/i&gt;&lt;/div&gt;
-        &lt;button class=&quot;btn viz-tile flow-node system&quot; type=&quot;button&quot; data-step=&quot;12&quot; aria-pressed=&quot;false&quot;&gt;&lt;span class=&quot;node-top&quot;&gt;&lt;span class=&quot;node-kind&quot;&gt;시스템&lt;/span&gt;&lt;span class=&quot;viz-badge&quot;&gt;IMPACT&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;node-title&quot;&gt;Conflict Projection·Recursive Impact 생성&lt;/span&gt;&lt;/button&gt;
-        &lt;div class=&quot;down&quot; aria-hidden=&quot;true&quot;&gt;&lt;i data-lucide=&quot;arrow-down&quot;&gt;&lt;/i&gt;&lt;/div&gt;
-        &lt;button class=&quot;btn viz-tile flow-node system&quot; type=&quot;button&quot; data-step=&quot;13&quot; aria-pressed=&quot;false&quot;&gt;&lt;span class=&quot;node-top&quot;&gt;&lt;span class=&quot;node-kind&quot;&gt;시스템&lt;/span&gt;&lt;span class=&quot;viz-badge&quot;&gt;DRAFT&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;node-title&quot;&gt;Draft ChangeSet·Burst Diff·영향 미리보기&lt;/span&gt;&lt;/button&gt;
-        &lt;div class=&quot;down&quot; aria-hidden=&quot;true&quot;&gt;&lt;i data-lucide=&quot;arrow-down&quot;&gt;&lt;/i&gt;&lt;/div&gt;
-        &lt;button class=&quot;btn viz-tile flow-node human&quot; type=&quot;button&quot; data-step=&quot;14&quot; aria-pressed=&quot;false&quot;&gt;&lt;span class=&quot;node-top&quot;&gt;&lt;span class=&quot;node-kind&quot;&gt;사람&lt;/span&gt;&lt;span class=&quot;viz-badge&quot;&gt;항목별&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;node-title&quot;&gt;승인·수정·보류·거절·지침 추가&lt;/span&gt;&lt;/button&gt;
-      &lt;/div&gt;
-    &lt;/section&gt;
-
-    &lt;section class=&quot;phase&quot; aria-label=&quot;Phase 5 공식 지식과 확장&quot;&gt;
-      &lt;div class=&quot;phase-head&quot;&gt;&lt;span class=&quot;phase-no&quot;&gt;5&lt;/span&gt;&lt;span&gt;공식 지식·확장&lt;/span&gt;&lt;/div&gt;
-      &lt;div class=&quot;stack&quot;&gt;
-        &lt;button class=&quot;btn viz-tile flow-node system&quot; type=&quot;button&quot; data-step=&quot;15&quot; aria-pressed=&quot;false&quot;&gt;&lt;span class=&quot;node-top&quot;&gt;&lt;span class=&quot;node-kind&quot;&gt;시스템&lt;/span&gt;&lt;span class=&quot;viz-badge&quot;&gt;CANONICAL&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;node-title&quot;&gt;Canonical Fact/Claim 반영·HistoryEvent 기록&lt;/span&gt;&lt;/button&gt;
-        &lt;div class=&quot;down&quot; aria-hidden=&quot;true&quot;&gt;&lt;i data-lucide=&quot;arrow-down&quot;&gt;&lt;/i&gt;&lt;/div&gt;
-        &lt;button class=&quot;btn viz-tile flow-node system&quot; type=&quot;button&quot; data-step=&quot;16&quot; aria-pressed=&quot;false&quot;&gt;&lt;span class=&quot;node-top&quot;&gt;&lt;span class=&quot;node-kind&quot;&gt;시스템&lt;/span&gt;&lt;span class=&quot;viz-badge&quot;&gt;TRUTH&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;node-title&quot;&gt;Compiled Truth·검색·그래프·연결 지식 갱신&lt;/span&gt;&lt;/button&gt;
-        &lt;div class=&quot;down&quot; aria-hidden=&quot;true&quot;&gt;&lt;i data-lucide=&quot;arrow-down&quot;&gt;&lt;/i&gt;&lt;/div&gt;
-        &lt;button class=&quot;btn viz-tile flow-node ai&quot; type=&quot;button&quot; data-step=&quot;17&quot; aria-pressed=&quot;false&quot;&gt;&lt;span class=&quot;node-top&quot;&gt;&lt;span class=&quot;node-kind&quot;&gt;AI&lt;/span&gt;&lt;span class=&quot;viz-badge&quot;&gt;후보&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;node-title&quot;&gt;Knowledge Gap·새 관계·행동 후보 탐색&lt;/span&gt;&lt;/button&gt;
-      &lt;/div&gt;
-    &lt;/section&gt;
-
-    &lt;section class=&quot;phase&quot; aria-label=&quot;Phase 6 활용 결과 피드백&quot;&gt;
-      &lt;div class=&quot;phase-head&quot;&gt;&lt;span class=&quot;phase-no&quot;&gt;6&lt;/span&gt;&lt;span&gt;활용·결과·피드백&lt;/span&gt;&lt;/div&gt;
-      &lt;div class=&quot;stack&quot;&gt;
-        &lt;button class=&quot;btn viz-tile flow-node ai&quot; type=&quot;button&quot; data-step=&quot;18&quot; aria-pressed=&quot;false&quot;&gt;&lt;span class=&quot;node-top&quot;&gt;&lt;span class=&quot;node-kind&quot;&gt;AI&lt;/span&gt;&lt;span class=&quot;viz-badge&quot;&gt;생성&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;node-title&quot;&gt;검색·답변·요약·콘텐츠·행동 후보 생성&lt;/span&gt;&lt;/button&gt;
-        &lt;div class=&quot;down&quot; aria-hidden=&quot;true&quot;&gt;&lt;i data-lucide=&quot;arrow-down&quot;&gt;&lt;/i&gt;&lt;/div&gt;
-        &lt;button class=&quot;btn viz-tile flow-node policy&quot; type=&quot;button&quot; data-step=&quot;19&quot; aria-pressed=&quot;false&quot;&gt;&lt;span class=&quot;node-top&quot;&gt;&lt;span class=&quot;node-kind&quot;&gt;정책&lt;/span&gt;&lt;span class=&quot;viz-badge&quot;&gt;RISK&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;node-title&quot;&gt;위험도에 따른 자동 제공 또는 사용자 검토&lt;/span&gt;&lt;/button&gt;
-        &lt;div class=&quot;down&quot; aria-hidden=&quot;true&quot;&gt;&lt;i data-lucide=&quot;arrow-down&quot;&gt;&lt;/i&gt;&lt;/div&gt;
-        &lt;button class=&quot;btn viz-tile flow-node system&quot; type=&quot;button&quot; data-step=&quot;20&quot; aria-pressed=&quot;false&quot;&gt;&lt;span class=&quot;node-top&quot;&gt;&lt;span class=&quot;node-kind&quot;&gt;결과&lt;/span&gt;&lt;span class=&quot;viz-badge&quot;&gt;OUTPUT&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;node-title&quot;&gt;결과 출력·내보내기·API 제공&lt;/span&gt;&lt;/button&gt;
-        &lt;div class=&quot;down&quot; aria-hidden=&quot;true&quot;&gt;&lt;i data-lucide=&quot;arrow-down&quot;&gt;&lt;/i&gt;&lt;/div&gt;
-        &lt;button class=&quot;btn viz-tile flow-node human&quot; type=&quot;button&quot; data-step=&quot;21&quot; aria-pressed=&quot;false&quot;&gt;&lt;span class=&quot;node-top&quot;&gt;&lt;span class=&quot;node-kind&quot;&gt;사람·정책&lt;/span&gt;&lt;span class=&quot;viz-badge&quot;&gt;외부 행동&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;node-title&quot;&gt;승인된 외부 Action 실행·Audit 기록&lt;/span&gt;&lt;/button&gt;
-        &lt;div class=&quot;down&quot; aria-hidden=&quot;true&quot;&gt;&lt;i data-lucide=&quot;arrow-down&quot;&gt;&lt;/i&gt;&lt;/div&gt;
-        &lt;button class=&quot;btn viz-tile flow-node human&quot; type=&quot;button&quot; data-step=&quot;22&quot; aria-pressed=&quot;false&quot;&gt;&lt;span class=&quot;node-top&quot;&gt;&lt;span class=&quot;node-kind&quot;&gt;사람&lt;/span&gt;&lt;span class=&quot;viz-badge&quot;&gt;피드백&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;node-title&quot;&gt;수정·피드백을 입력·지침·변경안으로 반환&lt;/span&gt;&lt;/button&gt;
-      &lt;/div&gt;
-    &lt;/section&gt;
+  &lt;nav id=&quot;shotgun-v3-phases&quot; class=&quot;phase-track&quot; aria-label=&quot;Shotgun 6개 처리 단계&quot;&gt;&lt;/nav&gt;
+  &lt;div class=&quot;phase-arrow-row&quot; aria-hidden=&quot;true&quot;&gt;
+    &lt;span class=&quot;phase-arrow&quot;&gt;&lt;i data-lucide=&quot;arrow-right&quot;&gt;&lt;/i&gt;&lt;/span&gt;&lt;span class=&quot;phase-arrow&quot;&gt;&lt;i data-lucide=&quot;arrow-right&quot;&gt;&lt;/i&gt;&lt;/span&gt;&lt;span class=&quot;phase-arrow&quot;&gt;&lt;i data-lucide=&quot;arrow-right&quot;&gt;&lt;/i&gt;&lt;/span&gt;&lt;span class=&quot;phase-arrow&quot;&gt;&lt;i data-lucide=&quot;arrow-right&quot;&gt;&lt;/i&gt;&lt;/span&gt;&lt;span class=&quot;phase-arrow&quot;&gt;&lt;i data-lucide=&quot;arrow-right&quot;&gt;&lt;/i&gt;&lt;/span&gt;&lt;span class=&quot;phase-arrow&quot;&gt;&lt;i data-lucide=&quot;rotate-ccw&quot;&gt;&lt;/i&gt;&lt;/span&gt;
   &lt;/div&gt;
 
-  &lt;div class=&quot;feedbacks text-small&quot; aria-label=&quot;주요 순환 경로&quot;&gt;
-    &lt;span class=&quot;feedback&quot;&gt;&lt;i data-lucide=&quot;corner-down-left&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;17번 새 발견 → 13번 Draft ChangeSet&lt;/span&gt;
-    &lt;span class=&quot;feedback&quot;&gt;&lt;i data-lucide=&quot;corner-down-left&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;22번 피드백 → 새 입력·User Directive·Draft ChangeSet&lt;/span&gt;
-  &lt;/div&gt;
+  &lt;section class=&quot;phase-focus&quot; aria-live=&quot;polite&quot;&gt;
+    &lt;div class=&quot;focus-head&quot;&gt;
+      &lt;div&gt;&lt;span id=&quot;shotgun-v3-focus-title&quot; class=&quot;focus-title&quot;&gt;&lt;/span&gt;&lt;div id=&quot;shotgun-v3-focus-summary&quot; class=&quot;focus-summary text-small&quot;&gt;&lt;/div&gt;&lt;/div&gt;
+      &lt;span id=&quot;shotgun-v3-focus-count&quot; class=&quot;viz-badge&quot;&gt;&lt;/span&gt;
+    &lt;/div&gt;
+    &lt;div id=&quot;shotgun-v3-steps&quot; class=&quot;steps&quot;&gt;&lt;/div&gt;
+  &lt;/section&gt;
 
-  &lt;div class=&quot;rails&quot; aria-label=&quot;모든 단계에 적용되는 공통 레일&quot;&gt;
-    &lt;div class=&quot;rail&quot;&gt;&lt;span class=&quot;rail-title&quot;&gt;Job·Agent Activity&lt;/span&gt;&lt;span class=&quot;text-small&quot;&gt;대기 · 실행 · 재시도 · 일시정지 · 확인 필요 · 완료 · 실패 · 취소&lt;/span&gt;&lt;/div&gt;
-    &lt;div class=&quot;rail&quot;&gt;&lt;span class=&quot;rail-title&quot;&gt;Audit·History&lt;/span&gt;&lt;span class=&quot;text-small&quot;&gt;누가 · 언제 · 무엇을 · 왜 변경했는지 기록&lt;/span&gt;&lt;/div&gt;
-    &lt;div class=&quot;rail&quot;&gt;&lt;span class=&quot;rail-title&quot;&gt;원문·인용 추적&lt;/span&gt;&lt;span class=&quot;text-small&quot;&gt;모든 Claim과 결과물은 SourceVersion·EvidenceSpan으로 복귀&lt;/span&gt;&lt;/div&gt;
-    &lt;div class=&quot;rail&quot;&gt;&lt;span class=&quot;rail-title&quot;&gt;다국어 표시&lt;/span&gt;&lt;span class=&quot;text-small&quot;&gt;근거는 원문 위치 · 기본 화면은 한국어 · 원문은 언제든 확인&lt;/span&gt;&lt;/div&gt;
-    &lt;div class=&quot;rail&quot;&gt;&lt;span class=&quot;rail-title&quot;&gt;개인정보·접근 범위&lt;/span&gt;&lt;span class=&quot;text-small&quot;&gt;개인용 · 내부용 · 외부 공개 · 민감정보 · 비공개를 처음부터 관리&lt;/span&gt;&lt;/div&gt;
+  &lt;div class=&quot;loops text-small&quot; aria-label=&quot;순환 경로&quot;&gt;
+    &lt;span class=&quot;loop&quot;&gt;&lt;i data-lucide=&quot;corner-down-left&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;17번 AI 발견 → Phase 4 변경안&lt;/span&gt;
+    &lt;span class=&quot;loop&quot;&gt;&lt;i data-lucide=&quot;corner-down-left&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;22번 피드백 → 새 입력·지침·변경안&lt;/span&gt;
   &lt;/div&gt;
 
   &lt;div class=&quot;card detail&quot; aria-live=&quot;polite&quot;&gt;
-    &lt;div class=&quot;detail-head&quot;&gt;&lt;span id=&quot;shotgun-v2-detail-title&quot; class=&quot;detail-title&quot;&gt;1. 파일·텍스트·URL·대화 입력&lt;/span&gt;&lt;span id=&quot;shotgun-v2-detail-count&quot; class=&quot;viz-badge&quot;&gt;1 / 22&lt;/span&gt;&lt;/div&gt;
-    &lt;div id=&quot;shotgun-v2-detail-copy&quot; class=&quot;detail-copy&quot;&gt;사용자가 자료를 입력합니다. 입력 직후부터 접근 범위와 개인정보 분류를 함께 관리합니다.&lt;/div&gt;
-    &lt;div id=&quot;shotgun-v2-detail-owner&quot; class=&quot;detail-owner text-small&quot;&gt;담당: 사람 · AI 판단 없음&lt;/div&gt;
+    &lt;div class=&quot;detail-head&quot;&gt;&lt;span id=&quot;shotgun-v3-detail-title&quot; class=&quot;detail-title&quot;&gt;&lt;/span&gt;&lt;span id=&quot;shotgun-v3-detail-count&quot; class=&quot;viz-badge&quot;&gt;&lt;/span&gt;&lt;/div&gt;
+    &lt;div id=&quot;shotgun-v3-detail-copy&quot; class=&quot;detail-copy&quot;&gt;&lt;/div&gt;
+    &lt;div id=&quot;shotgun-v3-detail-owner&quot; class=&quot;detail-owner text-small&quot;&gt;&lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;div class=&quot;shared-title text-small&quot;&gt;&lt;span class=&quot;viz-badge&quot;&gt;전체 단계 공통&lt;/span&gt;&lt;span&gt;처음부터 끝까지 함께 작동하는 안전장치&lt;/span&gt;&lt;/div&gt;
+  &lt;div class=&quot;shared&quot; aria-label=&quot;공통 기능&quot;&gt;
+    &lt;div class=&quot;shared-item&quot;&gt;&lt;span class=&quot;shared-name&quot;&gt;Job·Agent Activity&lt;/span&gt;&lt;span class=&quot;shared-copy text-small&quot;&gt;대기·실행·재시도·중단·완료·실패 상태&lt;/span&gt;&lt;/div&gt;
+    &lt;div class=&quot;shared-item&quot;&gt;&lt;span class=&quot;shared-name&quot;&gt;Audit·History&lt;/span&gt;&lt;span class=&quot;shared-copy text-small&quot;&gt;누가·언제·무엇을·왜 변경했는지 기록&lt;/span&gt;&lt;/div&gt;
+    &lt;div class=&quot;shared-item&quot;&gt;&lt;span class=&quot;shared-name&quot;&gt;원문·인용 추적&lt;/span&gt;&lt;span class=&quot;shared-copy text-small&quot;&gt;SourceVersion·EvidenceSpan으로 복귀&lt;/span&gt;&lt;/div&gt;
+    &lt;div class=&quot;shared-item&quot;&gt;&lt;span class=&quot;shared-name&quot;&gt;다국어 표시&lt;/span&gt;&lt;span class=&quot;shared-copy text-small&quot;&gt;근거는 원문·기본 화면은 한국어&lt;/span&gt;&lt;/div&gt;
+    &lt;div class=&quot;shared-item&quot;&gt;&lt;span class=&quot;shared-name&quot;&gt;개인정보·접근 범위&lt;/span&gt;&lt;span class=&quot;shared-copy text-small&quot;&gt;개인·내부·외부·민감·비공개 관리&lt;/span&gt;&lt;/div&gt;
   &lt;/div&gt;
 
   &lt;script&gt;
     (() =&gt; {
-      const root = document.getElementById(&#x27;shotgun-flow-v2&#x27;);
-      const details = {
-        1:[&#x27;파일·텍스트·URL·대화 입력&#x27;,&#x27;사용자가 자료를 입력합니다. 입력 직후부터 접근 범위와 개인정보 분류를 함께 관리합니다.&#x27;,&#x27;사람 · AI 판단 없음&#x27;],
-        2:[&#x27;형식·인코딩·언어·안전성·중복 확인&#x27;,&#x27;처리 가능한 형식인지, 인코딩과 언어가 무엇인지, 위험 파일인지, 이미 같은 자료가 있는지 확인합니다.&#x27;,&#x27;시스템 자동 처리&#x27;],
-        3:[&#x27;Stable Source·SourceVersion 생성, 원본 보존&#x27;,&#x27;자료의 정체성을 나타내는 Stable Source와 현재 버전 SourceVersion을 만든 뒤 원본 파일 또는 URL 스냅샷을 변경 없이 보존합니다.&#x27;,&#x27;시스템 자동 처리&#x27;],
-        4:[&#x27;콘텐츠 추출·정규화&#x27;,&#x27;PDF, Markdown, TXT, XLSX, HTML, 이미지 등 형식에 맞게 내용을 꺼내 읽기 가능한 표준 형태로 정리합니다.&#x27;,&#x27;시스템 자동 처리 · AI 해석 전&#x27;],
-        5:[&#x27;문서·화자·표·셀·페이지·시간 구간 분석&#x27;,&#x27;제목, 문단, 표, 셀, 페이지, 화자와 발언 시간처럼 정확히 가리킬 수 있는 구조를 만듭니다.&#x27;,&#x27;시스템 자동 처리&#x27;],
-        6:[&#x27;Source Map·EvidenceSpan 생성&#x27;,&#x27;원문 안의 실제 위치를 Source Map과 EvidenceSpan으로 확정합니다. 이후 모든 인용의 기준점입니다.&#x27;,&#x27;시스템 자동 처리 · 근거가 먼저&#x27;],
-        7:[&#x27;한국어 번역 생성, 원문과 연결&#x27;,&#x27;원문의 의미를 기준으로 한국어 표시용 번역을 만들고 원문 구간과 연결합니다. 번역문은 Evidence가 아닙니다.&#x27;,&#x27;AI 보조 · 사용자 표시용&#x27;],
-        8:[&#x27;Claim·Entity·Relation·Event·Decision·Action 후보 추출&#x27;,&#x27;AI가 EvidenceSpan을 근거로 주장, 사람·회사·제품, 관계, 사건, 결정, 행동의 후보를 만듭니다. Fact를 직접 확정하지 않습니다.&#x27;,&#x27;AI 생성 · 후보 상태&#x27;],
-        9:[&#x27;각 후보와 EvidenceSpan 연결 검증&#x27;,&#x27;각 후보가 실제 EvidenceSpan을 가리키는지 확인합니다. 근거 없는 후보는 검토 대상으로 올리지 않습니다.&#x27;,&#x27;시스템 검증&#x27;],
-        10:[&#x27;기존 지식·User Directive·Fact Priority와 비교&#x27;,&#x27;기존 Fact·Claim, 사용자의 명시 지침, 출처별 우선순위를 적용해 새 후보를 비교합니다.&#x27;,&#x27;정책 적용&#x27;],
-        11:[&#x27;중복·충돌·시간 유효성·근거 강도 분석&#x27;,&#x27;하나의 신뢰도 점수 대신 추출 정확도, 근거 강도, 출처 우선순위, 충돌 상태, 시간 유효성을 나누어 봅니다.&#x27;,&#x27;AI 분석 · 판단 근거 제공&#x27;],
-        12:[&#x27;Conflict Projection·Recursive Impact 생성&#x27;,&#x27;충돌을 보존하고, 변경이 일정·콘텐츠·답변·체크리스트·Action 등 어디에 영향을 주는지 재귀적으로 찾습니다.&#x27;,&#x27;시스템 계산&#x27;],
-        13:[&#x27;Draft ChangeSet·Burst Diff·영향 미리보기&#x27;,&#x27;추가·수정·충돌·오래된 지식·영향받는 결과물을 한 변경안으로 묶어 검토합니다.&#x27;,&#x27;시스템 생성 · 아직 공식 지식 아님&#x27;],
-        14:[&#x27;승인·수정·보류·거절·지침 추가&#x27;,&#x27;변경안 전체가 아니라 항목별로 판단합니다. 근거·관계 수정, 거절 이유 기록, 새로운 User Directive 추가가 가능합니다.&#x27;,&#x27;사람 · 핵심 승인 관문&#x27;],
-        15:[&#x27;Canonical Fact/Claim 반영·HistoryEvent 기록&#x27;,&#x27;승인된 항목만 공식 지식으로 반영하고, 누가 왜 변경했는지 이력을 남깁니다. 이 반영은 일부만 성공하지 않도록 하나의 작업으로 처리합니다.&#x27;,&#x27;시스템 반영&#x27;],
-        16:[&#x27;Compiled Truth·검색·그래프·연결 지식 갱신&#x27;,&#x27;현재 유효한 공식 지식을 다시 조합해 Compiled Truth, 검색 인덱스, 그래프, 연관 지식 상태를 갱신합니다.&#x27;,&#x27;시스템 갱신&#x27;],
-        17:[&#x27;Knowledge Gap·새 관계·행동 후보 탐색&#x27;,&#x27;AI가 빠진 정보, 새 관계, 확인 질문과 행동 후보를 제안합니다. 발견 결과는 곧바로 공식 지식이 되지 않고 13번 변경안으로 돌아갑니다.&#x27;,&#x27;AI 발견 · 후보 상태&#x27;],
-        18:[&#x27;검색·답변·요약·콘텐츠·행동 후보 생성&#x27;,&#x27;승인된 지식과 근거만 사용해 내부 검색, 답변, 요약, 콘텐츠 초안과 행동 제안을 만듭니다.&#x27;,&#x27;AI 생성&#x27;],
-        19:[&#x27;위험도에 따른 자동 제공 또는 사용자 검토&#x27;,&#x27;개인 검색·출처 포함 답변·초안은 바로 제공할 수 있습니다. 외부 공개, 이메일, 일정, 파일 변경, 민감정보, 실제 실행은 검토가 필요합니다.&#x27;,&#x27;정책·위험도 관문&#x27;],
-        20:[&#x27;결과 출력·내보내기·API 제공&#x27;,&#x27;승인 또는 허용된 결과를 화면, 문서, 내보내기, 다른 서비스용 API로 제공합니다.&#x27;,&#x27;시스템 출력&#x27;],
-        21:[&#x27;승인된 외부 Action 실행·Audit 기록&#x27;,&#x27;행동 제안과 실제 실행을 분리합니다. 외부 서비스에 변경을 만들 때는 사용자 승인 또는 사전 정책을 확인하고 실행 결과를 남깁니다.&#x27;,&#x27;사람 승인 또는 사전 정책&#x27;],
-        22:[&#x27;수정·피드백을 입력·지침·변경안으로 반환&#x27;,&#x27;사용자 수정은 새 자료 입력, 반복 판단을 위한 User Directive, 또는 기존 지식 변경안으로 되돌아가며 흐름을 계속 개선합니다.&#x27;,&#x27;사람 피드백&#x27;]
+      const root = document.getElementById(&#x27;shotgun-flow-v3&#x27;);
+      const phases = [
+        { id:1, name:&#x27;입력·원본 보존&#x27;, summary:&#x27;자료의 정체성과 원본을 먼저 안전하게 확보&#x27;, steps:[
+          {n:1,k:&#x27;human&#x27;,tag:&#x27;사람&#x27;,t:&#x27;파일·텍스트·URL·대화 입력&#x27;,d:&#x27;사용자가 자료를 입력합니다. 입력 직후부터 접근 범위와 개인정보 분류를 함께 관리합니다.&#x27;,o:&#x27;사람 · AI 판단 없음&#x27;},
+          {n:2,k:&#x27;system&#x27;,tag:&#x27;검증&#x27;,t:&#x27;형식·인코딩·언어·안전성·중복 확인&#x27;,d:&#x27;처리 가능한 형식인지, 인코딩과 언어가 무엇인지, 위험 파일인지, 이미 같은 자료가 있는지 확인합니다.&#x27;,o:&#x27;시스템 자동 처리&#x27;},
+          {n:3,k:&#x27;system&#x27;,tag:&#x27;SOURCE&#x27;,t:&#x27;Stable Source·SourceVersion 생성, 원본 보존&#x27;,d:&#x27;자료의 정체성을 나타내는 Stable Source와 현재 버전 SourceVersion을 만든 뒤 원본 파일 또는 URL 스냅샷을 변경 없이 보존합니다.&#x27;,o:&#x27;시스템 자동 처리&#x27;}]},
+        { id:2, name:&#x27;변환·근거화&#x27;, summary:&#x27;형식별로 구조를 읽고 인용 가능한 원문 위치를 확정&#x27;, steps:[
+          {n:4,k:&#x27;system&#x27;,tag:&#x27;형식별&#x27;,t:&#x27;콘텐츠 추출·정규화&#x27;,d:&#x27;PDF, Markdown, TXT, XLSX, HTML, 이미지 등 형식에 맞게 내용을 꺼내 표준 형태로 정리합니다.&#x27;,o:&#x27;시스템 자동 처리 · AI 해석 전&#x27;},
+          {n:5,k:&#x27;system&#x27;,tag:&#x27;구조&#x27;,t:&#x27;문서·화자·표·셀·페이지·시간 구간 분석&#x27;,d:&#x27;제목, 문단, 표, 셀, 페이지, 화자와 발언 시간처럼 정확히 가리킬 수 있는 구조를 만듭니다.&#x27;,o:&#x27;시스템 자동 처리&#x27;},
+          {n:6,k:&#x27;system&#x27;,tag:&#x27;EVIDENCE&#x27;,t:&#x27;Source Map·EvidenceSpan 생성&#x27;,d:&#x27;원문 안의 실제 위치를 Source Map과 EvidenceSpan으로 확정합니다. 이후 모든 인용의 기준점입니다.&#x27;,o:&#x27;시스템 자동 처리 · 근거가 먼저&#x27;},
+          {n:7,k:&#x27;ai&#x27;,tag:&#x27;AI&#x27;,t:&#x27;한국어 번역 생성, 원문과 연결&#x27;,d:&#x27;원문의 의미를 기준으로 한국어 표시용 번역을 만들고 원문 구간과 연결합니다. 번역문은 Evidence가 아닙니다.&#x27;,o:&#x27;AI 보조 · 사용자 표시용&#x27;}]},
+        { id:3, name:&#x27;지식 후보 생성&#x27;, summary:&#x27;EvidenceSpan을 근거로 검토 전 후보만 생성&#x27;, steps:[
+          {n:8,k:&#x27;ai&#x27;,tag:&#x27;AI 후보&#x27;,t:&#x27;Claim·Entity·Relation·Event·Decision·Action 후보 추출&#x27;,d:&#x27;AI가 EvidenceSpan을 근거로 주장, 개체, 관계, 사건, 결정, 행동의 후보를 만듭니다. Fact를 직접 확정하지 않습니다.&#x27;,o:&#x27;AI 생성 · 후보 상태&#x27;},
+          {n:9,k:&#x27;system&#x27;,tag:&#x27;검증&#x27;,t:&#x27;각 후보와 EvidenceSpan 연결 검증&#x27;,d:&#x27;각 후보가 실제 EvidenceSpan을 가리키는지 확인합니다. 근거 없는 후보는 검토 대상으로 올리지 않습니다.&#x27;,o:&#x27;시스템 검증&#x27;}]},
+        { id:4, name:&#x27;비교·변경안·승인&#x27;, summary:&#x27;기존 지식과 정책을 적용하고 영향까지 본 뒤 항목별 승인&#x27;, steps:[
+          {n:10,k:&#x27;policy&#x27;,tag:&#x27;정책&#x27;,t:&#x27;기존 지식·User Directive·Fact Priority와 비교&#x27;,d:&#x27;기존 Fact·Claim, 사용자의 명시 지침, 출처별 우선순위를 적용해 새 후보를 비교합니다.&#x27;,o:&#x27;정책 적용&#x27;},
+          {n:11,k:&#x27;ai&#x27;,tag:&#x27;AI 분석&#x27;,t:&#x27;중복·충돌·시간 유효성·근거 강도 분석&#x27;,d:&#x27;하나의 신뢰도 점수 대신 추출 정확도, 근거 강도, 출처 우선순위, 충돌 상태, 시간 유효성을 나누어 봅니다.&#x27;,o:&#x27;AI 분석 · 판단 근거 제공&#x27;},
+          {n:12,k:&#x27;system&#x27;,tag:&#x27;IMPACT&#x27;,t:&#x27;Conflict Projection·Recursive Impact 생성&#x27;,d:&#x27;충돌을 보존하고 변경이 일정, 콘텐츠, 답변, 체크리스트, Action 등 어디에 영향을 주는지 찾습니다.&#x27;,o:&#x27;시스템 계산&#x27;},
+          {n:13,k:&#x27;system&#x27;,tag:&#x27;DRAFT&#x27;,t:&#x27;Draft ChangeSet·Burst Diff·영향 미리보기&#x27;,d:&#x27;추가, 수정, 충돌, 오래된 지식, 영향받는 결과물을 한 변경안으로 묶어 검토합니다.&#x27;,o:&#x27;시스템 생성 · 아직 공식 지식 아님&#x27;},
+          {n:14,k:&#x27;human&#x27;,tag:&#x27;항목별&#x27;,t:&#x27;승인·수정·보류·거절·지침 추가&#x27;,d:&#x27;변경안 전체가 아니라 항목별로 판단합니다. 근거·관계 수정, 거절 이유 기록, User Directive 추가가 가능합니다.&#x27;,o:&#x27;사람 · 핵심 승인 관문&#x27;}]},
+        { id:5, name:&#x27;공식 지식·확장&#x27;, summary:&#x27;승인 결과를 한 번에 반영하고 새 후보를 다시 발견&#x27;, steps:[
+          {n:15,k:&#x27;system&#x27;,tag:&#x27;CANONICAL&#x27;,t:&#x27;Canonical Fact/Claim 반영·HistoryEvent 기록&#x27;,d:&#x27;승인된 항목만 공식 지식으로 반영하고 누가 왜 변경했는지 이력을 남깁니다. 일부만 성공하지 않도록 하나의 작업으로 처리합니다.&#x27;,o:&#x27;시스템 반영&#x27;},
+          {n:16,k:&#x27;system&#x27;,tag:&#x27;TRUTH&#x27;,t:&#x27;Compiled Truth·검색·그래프·연결 지식 갱신&#x27;,d:&#x27;현재 유효한 공식 지식을 다시 조합해 Compiled Truth, 검색 인덱스, 그래프, 연관 지식 상태를 갱신합니다.&#x27;,o:&#x27;시스템 갱신&#x27;},
+          {n:17,k:&#x27;ai&#x27;,tag:&#x27;AI 후보&#x27;,t:&#x27;Knowledge Gap·새 관계·행동 후보 탐색&#x27;,d:&#x27;AI가 빠진 정보, 새 관계, 확인 질문과 행동 후보를 제안합니다. 발견 결과는 13번 변경안으로 돌아갑니다.&#x27;,o:&#x27;AI 발견 · 후보 상태&#x27;}]},
+        { id:6, name:&#x27;활용·결과·피드백&#x27;, summary:&#x27;위험도에 맞게 제공하고 외부 행동과 피드백을 기록&#x27;, steps:[
+          {n:18,k:&#x27;ai&#x27;,tag:&#x27;AI 생성&#x27;,t:&#x27;검색·답변·요약·콘텐츠·행동 후보 생성&#x27;,d:&#x27;승인된 지식과 근거만 사용해 내부 검색, 답변, 요약, 콘텐츠 초안과 행동 제안을 만듭니다.&#x27;,o:&#x27;AI 생성&#x27;},
+          {n:19,k:&#x27;policy&#x27;,tag:&#x27;RISK&#x27;,t:&#x27;위험도에 따른 자동 제공 또는 사용자 검토&#x27;,d:&#x27;개인 검색과 초안은 바로 제공할 수 있습니다. 외부 공개, 일정, 파일 변경, 민감정보, 실제 실행은 검토가 필요합니다.&#x27;,o:&#x27;정책·위험도 관문&#x27;},
+          {n:20,k:&#x27;system&#x27;,tag:&#x27;OUTPUT&#x27;,t:&#x27;결과 출력·내보내기·API 제공&#x27;,d:&#x27;승인 또는 허용된 결과를 화면, 문서, 내보내기, 다른 서비스용 API로 제공합니다.&#x27;,o:&#x27;시스템 출력&#x27;},
+          {n:21,k:&#x27;human&#x27;,tag:&#x27;외부 행동&#x27;,t:&#x27;승인된 외부 Action 실행·Audit 기록&#x27;,d:&#x27;행동 제안과 실제 실행을 분리합니다. 외부 변경 전 사용자 승인 또는 사전 정책을 확인하고 실행 결과를 남깁니다.&#x27;,o:&#x27;사람 승인 또는 사전 정책&#x27;},
+          {n:22,k:&#x27;human&#x27;,tag:&#x27;피드백&#x27;,t:&#x27;수정·피드백을 입력·지침·변경안으로 반환&#x27;,d:&#x27;사용자 수정은 새 자료 입력, 반복 판단을 위한 User Directive, 또는 기존 지식 변경안으로 돌아갑니다.&#x27;,o:&#x27;사람 피드백&#x27;}]}
+      ];
+      const phaseHost = root.querySelector(&#x27;#shotgun-v3-phases&#x27;);
+      const stepsHost = root.querySelector(&#x27;#shotgun-v3-steps&#x27;);
+      const focusTitle = root.querySelector(&#x27;#shotgun-v3-focus-title&#x27;);
+      const focusSummary = root.querySelector(&#x27;#shotgun-v3-focus-summary&#x27;);
+      const focusCount = root.querySelector(&#x27;#shotgun-v3-focus-count&#x27;);
+      const detailTitle = root.querySelector(&#x27;#shotgun-v3-detail-title&#x27;);
+      const detailCount = root.querySelector(&#x27;#shotgun-v3-detail-count&#x27;);
+      const detailCopy = root.querySelector(&#x27;#shotgun-v3-detail-copy&#x27;);
+      const detailOwner = root.querySelector(&#x27;#shotgun-v3-detail-owner&#x27;);
+
+      const showDetail = (step) =&gt; {
+        root.querySelectorAll(&#x27;.step-node&#x27;).forEach((node) =&gt; node.setAttribute(&#x27;aria-pressed&#x27;, String(Number(node.dataset.step) === step.n)));
+        detailTitle.textContent = `${step.n}. ${step.t}`;
+        detailCount.textContent = `${step.n} / 22`;
+        detailCopy.textContent = step.d;
+        detailOwner.textContent = `담당: ${step.o}`;
       };
-      const title = root.querySelector(&#x27;#shotgun-v2-detail-title&#x27;);
-      const copy = root.querySelector(&#x27;#shotgun-v2-detail-copy&#x27;);
-      const owner = root.querySelector(&#x27;#shotgun-v2-detail-owner&#x27;);
-      const count = root.querySelector(&#x27;#shotgun-v2-detail-count&#x27;);
-      root.querySelectorAll(&#x27;[data-step]&#x27;).forEach((node) =&gt; {
-        node.addEventListener(&#x27;click&#x27;, () =&gt; {
-          const step = Number(node.dataset.step);
-          const item = details[step];
-          root.querySelectorAll(&#x27;[data-step]&#x27;).forEach((peer) =&gt; peer.setAttribute(&#x27;aria-pressed&#x27;, String(peer === node)));
-          title.textContent = `${step}. ${item[0]}`;
-          copy.textContent = item[1];
-          owner.textContent = `담당: ${item[2]}`;
-          count.textContent = `${step} / 22`;
+
+      const showPhase = (phaseId) =&gt; {
+        const phase = phases.find((item) =&gt; item.id === phaseId);
+        root.querySelectorAll(&#x27;.phase-btn&#x27;).forEach((button) =&gt; button.setAttribute(&#x27;aria-pressed&#x27;, String(Number(button.dataset.phase) === phaseId)));
+        focusTitle.textContent = `Phase ${phase.id}. ${phase.name}`;
+        focusSummary.textContent = phase.summary;
+        focusCount.textContent = `${phase.steps.length}개 세부 단계`;
+        stepsHost.style.setProperty(&#x27;--step-count&#x27;, Math.min(phase.steps.length, 5));
+        stepsHost.replaceChildren();
+        phase.steps.forEach((step) =&gt; {
+          const wrap = document.createElement(&#x27;div&#x27;);
+          wrap.className = &#x27;step-wrap&#x27;;
+          const button = document.createElement(&#x27;button&#x27;);
+          button.type = &#x27;button&#x27;;
+          button.className = `btn viz-tile step-node ${step.k}`;
+          button.dataset.step = String(step.n);
+          button.setAttribute(&#x27;aria-pressed&#x27;, &#x27;false&#x27;);
+          button.innerHTML = `&lt;span class=&quot;step-top&quot;&gt;&lt;span class=&quot;step-no&quot;&gt;${step.n}&lt;/span&gt;&lt;span class=&quot;viz-badge&quot;&gt;${step.tag}&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;step-title&quot;&gt;${step.t}&lt;/span&gt;`;
+          button.addEventListener(&#x27;click&#x27;, () =&gt; showDetail(step));
+          wrap.appendChild(button);
+          stepsHost.appendChild(wrap);
         });
+        showDetail(phase.steps[0]);
+      };
+
+      phases.forEach((phase) =&gt; {
+        const button = document.createElement(&#x27;button&#x27;);
+        button.type = &#x27;button&#x27;;
+        button.className = &#x27;btn phase-btn&#x27;;
+        button.dataset.phase = String(phase.id);
+        button.setAttribute(&#x27;aria-pressed&#x27;, &#x27;false&#x27;);
+        button.innerHTML = `&lt;span class=&quot;phase-kicker text-small&quot;&gt;PHASE ${phase.id} · ${phase.steps.length}단계&lt;/span&gt;&lt;span&gt;${phase.name}&lt;/span&gt;`;
+        button.addEventListener(&#x27;click&#x27;, () =&gt; showPhase(phase.id));
+        phaseHost.appendChild(button);
       });
+      showPhase(1);
     })();
   &lt;/script&gt;
 &lt;/div&gt;

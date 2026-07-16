@@ -9,6 +9,7 @@ Shotgun은 한 점에 모인 지식이 산탄총의 탄환처럼 여러 방향�
 - 최종 순서도 기준본: `docs/SHOTGUN_KNOWLEDGE_FLOW_BASELINE_v1.0.html`
 - 상세 아키텍처 참고: `docs/shotgun_reference_architecture_strategy_ko.html`
 - 모듈 아키텍처 기준선: `docs/architecture/module-architecture/README.md`
+- 구현계획 기준선: `docs/implementation/README.md`
 - 우선순위는 복잡한 전체 구조보다 작동하는 MVP 완성
 
 ## MVP 목표

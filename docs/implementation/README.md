@@ -10,8 +10,10 @@
 
 - [Knowledge Flow 기준본](../SHOTGUN_KNOWLEDGE_FLOW_BASELINE_v1.0.html)
 - [참조 아키텍처 전략](../shotgun_reference_architecture_strategy_ko.html)
-- [Phase 1~6 ADD](../architecture/add/README.md)
+- [Phase 1~6 ADD Canonical 허브](https://app.notion.com/p/39f5181d71ad81a6a51ff7f2a3a88ee6)
 - [Module Architecture ADD](../architecture/module-architecture/README.md)
+
+현재 `main`에는 Phase 1~6 ADD의 GitHub Markdown 사본이 없으므로 Phase 정책의 기준은 위 Notion Canonical 허브다. 향후 사본이 `main`에 병합되면 이 링크를 저장소 내부 경로로 바꾼다.
 
 충돌이 발생하면 다음 우선순위를 따른다.
 

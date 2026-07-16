@@ -1,0 +1,13 @@
+import type { ShotgunModule } from '../../../packages/module-sdk/src/index.js';
+
+export const exampleModule: ShotgunModule = {
+  manifest: {
+    // Copy an existing Stage 1 module Manifest and replace its contracts and capabilities.
+  },
+  contracts: [],
+  handlers: {
+    commands: [],
+    events: [],
+    queries: [],
+  },
+};

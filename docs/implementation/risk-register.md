@@ -356,6 +356,15 @@ Related ADR / PR / incident:
 
 ## 8. 성공 지표
 
+### Stage 1 구현 검토 — 2026-07-16
+
+- R-003 중복 전달: Consumer별 In-memory Dedup과 Contract Test로 완화
+- R-004 순서 오인: `orderingKey`별 연속 Sequence 검사로 완화
+- R-005 재시도 폭주: Retryable 오류와 최대 3 Attempt로 제한
+- R-006 보안 Context 누락: Handler 실행 전 기본 거부 Test 통과
+- 잔여 위험: Dedup·Dead-letter가 메모리 기반이므로 프로세스 재시작 내구성은 Stage 6의
+  Transactional Outbox·영속 Inbox 적용 전까지 제한으로 유지
+
 - Canonical Data Loss 0
 - Unauthorized Canonical Write 0
 - Duplicate External Action 0

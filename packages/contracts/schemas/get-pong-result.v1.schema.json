@@ -1,0 +1,8 @@
+{
+  "type": "object",
+  "required": ["requestId"],
+  "properties": {
+    "requestId": { "type": "string", "minLength": 1 }
+  },
+  "additionalProperties": false
+}

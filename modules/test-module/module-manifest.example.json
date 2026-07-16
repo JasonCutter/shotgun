@@ -1,0 +1,14 @@
+{
+  "id": "example.module",
+  "version": "0.1.0",
+  "owner": "module-owner",
+  "compatibility": {
+    "kernel": "^0.1.0"
+  },
+  "dataOwnership": ["example.*"],
+  "capabilities": [],
+  "security": {
+    "requiredContexts": []
+  },
+  "approvalPolicy": "NOT_APPLICABLE"
+}

@@ -1,0 +1,19 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: shotgun
+      POSTGRES_USER: shotgun
+      POSTGRES_PASSWORD: shotgun
+    ports:
+      - '5432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U shotgun -d shotgun']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - shotgun-postgres:/var/lib/postgresql/data
+
+volumes:
+  shotgun-postgres:

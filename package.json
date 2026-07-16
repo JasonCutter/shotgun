@@ -1,0 +1,49 @@
+{
+  "name": "shotgun",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0",
+    "npm": ">=11.0.0"
+  },
+  "workspaces": [
+    "packages/*",
+    "modules/*",
+    "adapters/*",
+    "assemblies/*"
+  ],
+  "scripts": {
+    "bootstrap": "npm ci && docker compose up -d db && npm run db:reset",
+    "dev": "tsx watch assemblies/shotgun-app/src/main.ts",
+    "start": "tsx assemblies/shotgun-app/src/main.ts",
+    "lint": "eslint packages modules adapters assemblies tests scripts",
+    "format:check": "prettier --check package.json tsconfig.json eslint.config.js .prettierrc.json .github/workflows/ci.yml packages modules adapters assemblies tests scripts docs/engineering docs/architecture/adr",
+    "format:write": "prettier --write package.json tsconfig.json eslint.config.js .prettierrc.json .github/workflows/ci.yml packages modules adapters assemblies tests scripts docs/engineering docs/architecture/adr",
+    "typecheck": "tsc --noEmit",
+    "test:unit": "vitest run",
+    "test:architecture": "tsx scripts/architecture-test.ts",
+    "test": "npm run test:unit && npm run test:architecture",
+    "db:migrate": "tsx scripts/database.ts migrate",
+    "db:reset": "tsx scripts/database.ts reset",
+    "db:verify": "tsx scripts/database.ts verify",
+    "secret:scan": "tsx scripts/secret-scan.ts",
+    "check": "npm run lint && npm run format:check && npm run typecheck && npm test && npm run secret:scan"
+  },
+  "dependencies": {
+    "dotenv": "^16.5.0",
+    "fastify": "^5.3.2",
+    "pg": "^8.15.6"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.27.0",
+    "@types/node": "^24.0.3",
+    "@types/pg": "^8.15.4",
+    "eslint": "^9.27.0",
+    "prettier": "^3.5.3",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.32.0",
+    "vitest": "^3.2.2"
+  }
+}

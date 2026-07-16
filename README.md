@@ -12,6 +12,10 @@ Shotgun은 한 점에 모인 지식이 산탄총의 탄환처럼 여러 방향�
 - 구현계획 기준선: `docs/implementation/README.md`
 - 우선순위는 복잡한 전체 구조보다 작동하는 MVP 완성
 
+## 개발 시작
+
+Stage 0 개발 환경과 명령은 [개발 환경 문서](docs/engineering/stage-0-development.md)를 따른다.
+
 ## MVP 목표
 
 1. 지식 원본을 등록한다.

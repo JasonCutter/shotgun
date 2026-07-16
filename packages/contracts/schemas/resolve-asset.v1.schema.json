@@ -1,0 +1,42 @@
+{
+  "$id": "https://shotgun.local/contracts/resolve-asset.v1.schema.json",
+  "title": "Resolve Asset v1",
+  "type": "object",
+  "required": ["assetReference"],
+  "properties": {
+    "assetReference": {
+      "type": "object",
+      "required": [
+        "assetId",
+        "versionId",
+        "mediaType",
+        "contentHash",
+        "sizeBytes",
+        "storageUri",
+        "accessScope"
+      ],
+      "properties": {
+        "assetId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+        },
+        "versionId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+        },
+        "mediaType": { "type": "string", "minLength": 1 },
+        "contentHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "sizeBytes": { "type": "integer", "minimum": 0 },
+        "storageUri": { "type": "string", "pattern": "^asset://[^/]+/versions/[^/]+$" },
+        "accessScope": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -67,6 +67,8 @@ const migrate = async (): Promise<void> => {
 
 const reset = async (): Promise<void> => {
   await withClient(async (client) => {
+    await client.query('DROP SCHEMA IF EXISTS intake CASCADE');
+    await client.query('DROP SCHEMA IF EXISTS asset CASCADE');
     await client.query('DROP SCHEMA IF EXISTS runtime CASCADE');
   });
   await migrate();
@@ -74,6 +76,7 @@ const reset = async (): Promise<void> => {
 };
 
 const verify = async (): Promise<void> => {
+  const expectedMigrationCount = String((await migrationFiles()).length);
   await withClient(async (client) => {
     const table = await client.query<{ table: string | null }>(
       "SELECT to_regclass('runtime.schema_migrations') AS table",
@@ -81,7 +84,18 @@ const verify = async (): Promise<void> => {
     const count = await client.query<{ count: string }>(
       'SELECT count(*) AS count FROM runtime.schema_migrations',
     );
-    if (table.rows[0]?.table !== 'runtime.schema_migrations' || count.rows[0]?.count !== '1') {
+    const intakeTable = await client.query<{ table: string | null }>(
+      "SELECT to_regclass('intake.submissions') AS table",
+    );
+    const assetTable = await client.query<{ table: string | null }>(
+      "SELECT to_regclass('asset.source_versions') AS table",
+    );
+    if (
+      table.rows[0]?.table !== 'runtime.schema_migrations' ||
+      count.rows[0]?.count !== expectedMigrationCount ||
+      intakeTable.rows[0]?.table !== 'intake.submissions' ||
+      assetTable.rows[0]?.table !== 'asset.source_versions'
+    ) {
       throw new Error('Database bootstrap verification failed.');
     }
   });

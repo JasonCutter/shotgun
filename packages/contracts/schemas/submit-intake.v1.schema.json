@@ -1,0 +1,43 @@
+{
+  "$id": "https://shotgun.local/contracts/submit-intake.v1.schema.json",
+  "title": "Submit Intake v1",
+  "type": "object",
+  "required": ["submissionId", "input"],
+  "properties": {
+    "submissionId": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "sourceId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "input": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind", "text"],
+          "properties": {
+            "kind": { "const": "direct_text" },
+            "text": { "type": "string", "minLength": 1, "maxLength": 1048576 }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["kind", "fileName", "mediaType", "contentBase64"],
+          "properties": {
+            "kind": { "const": "text_file" },
+            "fileName": { "type": "string", "minLength": 1, "maxLength": 255 },
+            "mediaType": { "enum": ["text/plain", "text/markdown"] },
+            "contentBase64": {
+              "type": "string",
+              "minLength": 4,
+              "maxLength": 1398104,
+              "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "additionalProperties": false
+}

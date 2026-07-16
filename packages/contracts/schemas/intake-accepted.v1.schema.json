@@ -1,0 +1,31 @@
+{
+  "$id": "https://shotgun.local/contracts/intake-accepted.v1.schema.json",
+  "title": "Intake Accepted v1",
+  "type": "object",
+  "required": [
+    "submissionId",
+    "channel",
+    "materialKind",
+    "mediaType",
+    "contentBase64",
+    "contentHash",
+    "sizeBytes",
+    "createdAt"
+  ],
+  "properties": {
+    "submissionId": { "type": "string", "minLength": 1 },
+    "sourceId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "channel": { "enum": ["direct_text", "file_upload"] },
+    "materialKind": { "const": "plain_text" },
+    "mediaType": { "enum": ["text/plain", "text/markdown"] },
+    "originalFileName": { "type": "string", "minLength": 1 },
+    "contentBase64": { "type": "string", "minLength": 4 },
+    "contentHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "sizeBytes": { "type": "integer", "minimum": 1, "maximum": 1048576 },
+    "createdAt": { "type": "string", "minLength": 1 }
+  },
+  "additionalProperties": false
+}

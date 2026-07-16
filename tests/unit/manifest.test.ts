@@ -4,6 +4,13 @@ import { describe, expect, it } from 'vitest';
 
 import { createPingModule } from '../../modules/ping/src/index.js';
 import { createPongModule } from '../../modules/pong/src/index.js';
+import {
+  InMemoryAssetStorage,
+  InMemoryIntakeRepository,
+  InMemoryOriginalAssetRepository,
+} from '../../adapters/stage2-in-memory/src/index.js';
+import { createIntakeModule } from '../../modules/intake/src/index.js';
+import { createOriginalAssetModule } from '../../modules/original-asset/src/index.js';
 import { loadManifest, RUNTIME_VERSION } from '../../packages/module-sdk/src/index.js';
 
 describe('Module Manifest loader', () => {
@@ -16,9 +23,22 @@ describe('Module Manifest loader', () => {
       path.resolve('modules/pong/module-manifest.json'),
       RUNTIME_VERSION,
     );
+    const intakeManifest = await loadManifest(
+      path.resolve('modules/intake/module-manifest.json'),
+      RUNTIME_VERSION,
+    );
+    const originalAssetManifest = await loadManifest(
+      path.resolve('modules/original-asset/module-manifest.json'),
+      RUNTIME_VERSION,
+    );
 
     expect(pingManifest).toEqual(createPingModule().module.manifest);
     expect(pongManifest).toEqual(createPongModule().module.manifest);
+    expect(intakeManifest).toEqual(createIntakeModule(new InMemoryIntakeRepository()).manifest);
+    expect(originalAssetManifest).toEqual(
+      createOriginalAssetModule(new InMemoryOriginalAssetRepository(), new InMemoryAssetStorage())
+        .manifest,
+    );
     expect(pingManifest.security.defaultOnMissingContext).toBe('deny');
     expect(pingManifest.compatibility.contracts).toContainEqual({
       name: 'PingCommand',

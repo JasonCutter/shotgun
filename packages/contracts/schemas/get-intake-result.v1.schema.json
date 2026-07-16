@@ -1,0 +1,10 @@
+{
+  "$id": "https://shotgun.local/contracts/get-intake-result.v1.schema.json",
+  "title": "Get Intake Result v1",
+  "type": "object",
+  "required": ["submissionId"],
+  "properties": {
+    "submissionId": { "type": "string", "minLength": 1 }
+  },
+  "additionalProperties": false
+}

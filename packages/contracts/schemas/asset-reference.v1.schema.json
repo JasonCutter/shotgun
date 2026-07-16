@@ -15,7 +15,10 @@
     "assetId": { "type": "string", "minLength": 1 },
     "versionId": { "type": "string", "minLength": 1 },
     "mediaType": { "type": "string", "minLength": 1 },
-    "contentHash": { "type": "string", "minLength": 1 },
+    "contentHash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
     "sizeBytes": { "type": "integer", "minimum": 0 },
     "storageUri": {
       "type": "string",

@@ -8,37 +8,62 @@ export type OnceResult<TResult> = {
   readonly result: TResult;
 };
 
+type DedupEntry<TResult> = {
+  readonly fingerprint: string;
+  readonly result: TResult;
+};
+
+type RunningDedupEntry<TResult> = {
+  readonly fingerprint: string;
+  readonly promise: Promise<TResult>;
+};
+
 export class InMemoryDedupStore {
-  private readonly completed = new Map<string, unknown>();
-  private readonly running = new Map<string, Promise<unknown>>();
+  private readonly completed = new Map<string, DedupEntry<unknown>>();
+  private readonly running = new Map<string, RunningDedupEntry<unknown>>();
 
   async runOnce<TResult>(
     key: string,
+    fingerprint: string,
     operation: () => Promise<TResult>,
   ): Promise<OnceResult<TResult>> {
-    if (this.completed.has(key)) {
+    const completed = this.completed.get(key);
+    if (completed) {
+      this.assertSameFingerprint(key, completed.fingerprint, fingerprint);
       return {
         duplicate: true,
-        result: this.completed.get(key) as TResult,
+        result: completed.result as TResult,
       };
     }
 
     const inProgress = this.running.get(key);
     if (inProgress) {
+      this.assertSameFingerprint(key, inProgress.fingerprint, fingerprint);
       return {
         duplicate: true,
-        result: (await inProgress) as TResult,
+        result: (await inProgress.promise) as TResult,
       };
     }
 
     const promise = operation();
-    this.running.set(key, promise);
+    this.running.set(key, { fingerprint, promise });
     try {
       const result = await promise;
-      this.completed.set(key, result);
+      this.completed.set(key, { fingerprint, result });
       return { duplicate: false, result };
     } finally {
       this.running.delete(key);
+    }
+  }
+
+  private assertSameFingerprint(key: string, expected: string, actual: string): void {
+    if (expected !== actual) {
+      throw new ShotgunError({
+        code: 'CONFLICT',
+        safeMessage: `Idempotency key '${key}' was reused for a different message.`,
+        module: 'connector-runtime',
+        operation: 'deduplicate-message',
+      });
     }
   }
 }

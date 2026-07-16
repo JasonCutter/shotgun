@@ -14,7 +14,7 @@
 | `EXTRACT` | 일부 코드를 독립 package로 추출·개작 검토 |
 | `ADAPTER_CANDIDATE` | 공통 Port 뒤에 연결할 교체 가능한 구현 |
 | `FOUNDATION_CANDIDATE` | 검증 후 기본 구현으로 채택 가능 |
-| `ADOPTED` | license·security·maintenance·benchmark Gate 통과 |
+| `ADOPTED` | license·security·benchmark Gate 통과 |
 | `DEFERRED` | 필요성이 확인될 때까지 도입 연기 |
 | `REJECTED` | 현재 구조와 중복·충돌이 커서 사용하지 않음 |
 
@@ -144,9 +144,11 @@
 | python-docx | DOCX 구조 추출 | `ADAPTER_CANDIDATE` |
 | python-pptx | PPTX shape·text 추출 | `ADAPTER_CANDIDATE` |
 | openpyxl | XLSX cell·formula·sheet 추출 | `ADAPTER_CANDIDATE` |
-| ffmpeg | 오디오·영상 정규화 | `FOUNDATION_CANDIDATE` |
+| ffmpeg | 오디오·영상 정규화 | `DEFERRED` |
 
 하나의 범용 변환기를 강제하지 않는다. Format Adapter가 공통 `DocumentIR`과 `SourceMap`을 출력한다.
+
+Phase 1 Canonical 정책에 따라 Shotgun Assembly는 오디오·영상 파일 직접 분석, 자동 음성 전사와 영상 프레임·음성·장면 분석을 장기 범위에서도 제외한다. `ffmpeg`는 Shotgun 기본 구현 후보가 아니라 다른 Assembly 또는 향후 별도 정책 결정에 대비한 `DEFERRED` 후보로만 유지한다. 영상 URL은 접근 가능한 제목·설명·자막·스크립트를 텍스트로 확보하는 범위에서만 처리한다.
 
 ### 4.5 Evidence·Citation
 
@@ -157,7 +159,7 @@
 | lucas Highlight·Annotation | 원문 복귀와 provenance 분리 패턴 | `EXTRACT` |
 | JSON Pointer | 구조화 DocumentIR field 위치 | `REFERENCE` |
 
-Shotgun은 텍스트 offset뿐 아니라 page, bbox, table cell, slide shape, audio time range를 포함하는 자체 Evidence Selector 확장을 가진다.
+Shotgun은 텍스트 offset뿐 아니라 page, bbox, table cell, slide shape를 포함하는 자체 Evidence Selector 확장을 가진다. `audio time range`는 공통 Contract의 향후 확장 후보일 뿐 Shotgun Assembly에서는 활성화하지 않는다.
 
 ### 4.6 AI Provider·Evaluation
 
@@ -337,7 +339,55 @@ Audit 원장은 일반 로그와 분리하고 사용자 승인·Canonical commit
 
 UI framework는 Domain Module 계약에 영향을 주지 않는다.
 
-## 5. 채택 우선순위
+## 5. OSS Source Registry와 추적성
+
+후보의 실제 채택은 저장소 URL, pin 기준, 라이선스·보안 검토 상태를 기록한 뒤 진행한다. 아래 값은 문서 작성 시점의 탐색 기준이며, `version/commit`은 채택 PR에서 재검증하고 lockfile·SBOM에 고정한다.
+
+| 후보 | 공식 저장소·규격 | Version / Commit baseline | 라이선스 검토 | 현재 상태 |
+|---|---|---|---|---|
+| garrytan/gbrain | https://github.com/garrytan/gbrain | 미고정 — Extract prototype 시 pin | 대기 | `EXTRACT` |
+| lucasastorian/llmwiki | https://github.com/lucasastorian/llmwiki | 미고정 — Extract prototype 시 pin | 대기 | `EXTRACT` |
+| ddsyasas/llm-wiki | https://github.com/ddsyasas/llm-wiki | 런타임 채택 없음 | UX 참고만 | `REFERENCE` |
+| Inkeep OpenKnowledge | 공개 저장소·라이선스 범위 재확인 필요 | 미고정 | 확인 전 코드 재사용 금지 | `REFERENCE` |
+| JSON Schema | https://github.com/json-schema-org/json-schema-spec | 구현 선택 시 draft와 validator pin | 대기 | `FOUNDATION_CANDIDATE` |
+| OpenAPI | https://github.com/OAI/OpenAPI-Specification | 구현 선택 시 spec version pin | 대기 | `FOUNDATION_CANDIDATE` |
+| AsyncAPI | https://github.com/asyncapi/spec | 구현 선택 시 spec version pin | 대기 | `ADAPTER_CANDIDATE` |
+| CloudEvents | https://github.com/cloudevents/spec | mapping 검증 시 spec version pin | 대기 | `REFERENCE` |
+| Temporal | https://github.com/temporalio/temporal | benchmark 시 release pin | 대기 | `ADAPTER_CANDIDATE` |
+| NATS JetStream | https://github.com/nats-io/nats-server | benchmark 시 release pin | 대기 | `ADAPTER_CANDIDATE` |
+| Redis Streams | https://github.com/redis/redis | benchmark 시 release pin | 대기 | `ADAPTER_CANDIDATE` |
+| Docling | https://github.com/docling-project/docling | golden corpus 평가 시 commit pin | 대기 | `ADAPTER_CANDIDATE` |
+| Apache Tika | https://github.com/apache/tika | golden corpus 평가 시 release pin | 대기 | `ADAPTER_CANDIDATE` |
+| MarkItDown | https://github.com/microsoft/markitdown | golden corpus 평가 시 commit pin | 대기 | `ADAPTER_CANDIDATE` |
+| ffmpeg | https://github.com/FFmpeg/FFmpeg | Shotgun Assembly에서는 pin하지 않음 | 범위 재결정 전 대기 | `DEFERRED` |
+| LiteLLM | https://github.com/BerriAI/litellm | provider benchmark 시 release pin | 대기 | `ADAPTER_CANDIDATE` |
+| Langfuse | https://github.com/langfuse/langfuse | observability 평가 시 release pin | 대기 | `ADAPTER_CANDIDATE` |
+| OpenTelemetry | https://github.com/open-telemetry/opentelemetry-specification | SDK 언어 결정 후 pin | 대기 | `FOUNDATION_CANDIDATE` |
+| pgvector | https://github.com/pgvector/pgvector | PostgreSQL version과 함께 pin | 대기 | `ADAPTER_CANDIDATE` |
+| Apache AGE | https://github.com/apache/age | graph benchmark 시 release pin | 대기 | `ADAPTER_CANDIDATE` |
+| Open Policy Agent | https://github.com/open-policy-agent/opa | policy benchmark 시 release pin | 대기 | `ADAPTER_CANDIDATE` |
+| Casbin | https://github.com/casbin/casbin | 언어 구현 선택 후 pin | 대기 | `ADAPTER_CANDIDATE` |
+| OpenFGA | https://github.com/openfga/openfga | 관계 권한 요구 확인 후 pin | 대기 | `DEFERRED` |
+| MCP SDK·Specification | https://github.com/modelcontextprotocol | Adapter 구현 시 SDK·spec commit pin | 대기 | `ADAPTER_CANDIDATE` |
+| Tiptap | https://github.com/ueberdosis/tiptap | Review UI prototype 시 release pin | 대기 | `ADAPTER_CANDIDATE` |
+| Yjs | https://github.com/yjs/yjs | 협업 기능 승인 후 pin | 대기 | `DEFERRED` |
+| Cytoscape.js | https://github.com/cytoscape/cytoscape.js | Graph UI prototype 시 release pin | 대기 | `ADAPTER_CANDIDATE` |
+
+### 5.1 채택 시 필수 기록
+
+각 후보를 `ADOPTED` 또는 `FOUNDATION` 구현으로 승격하는 PR에는 다음을 포함한다.
+
+- 공식 repository URL과 upstream owner
+- 정확한 package version·tag·commit SHA
+- license identifier, LICENSE file과 배포 방식 검토 결과
+- 알려진 보안 이슈와 dependency scan 결과
+- 마지막 release·commit·maintainer activity
+- Shotgun Port와 Adapter 경계
+- golden corpus·성능·비용 benchmark
+- fork·patch 목록과 upstream 동기화 전략
+- 교체·rollback·data migration 계획
+
+## 6. 채택 우선순위
 
 ### Tier 1 — 먼저 구현하거나 검증
 
@@ -370,7 +420,7 @@ UI framework는 Domain Module 계약에 영향을 주지 않는다.
 - Yjs
 - 독립 서비스 배포
 
-## 6. 교체 규칙
+## 7. 교체 규칙
 
 오픈소스 교체는 다음을 유지해야 한다.
 
@@ -385,7 +435,7 @@ UI framework는 Domain Module 계약에 영향을 주지 않는다.
 
 교체 결과가 기존 결과 의미를 바꾸면 단순 dependency update가 아니라 ADR과 Analysis Revision을 만든다.
 
-## 7. 개발 중 변경 절차
+## 8. 개발 중 변경 절차
 
 1. 새 후보 또는 교체 필요성 기록
 2. License·Security·Maintenance Gate
@@ -398,7 +448,7 @@ UI framework는 Domain Module 계약에 영향을 주지 않는다.
 9. Assembly에서 점진 활성화
 10. 운영 결과를 구현 검증 문서에 기록
 
-## 8. 확정하지 않은 사항
+## 9. 확정하지 않은 사항
 
 - 주 언어·Framework
 - Monorepo 도구

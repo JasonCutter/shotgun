@@ -1,0 +1,44 @@
+{
+  "id": "stage5.comparison",
+  "version": "1.0.0",
+  "owner": "Shotgun Comparison",
+  "compatibility": {
+    "runtime": ">=1.0.0 <2.0.0",
+    "contracts": [
+      { "name": "CandidateValidated", "range": ">=1.0.0 <2.0.0" },
+      { "name": "GetClaimCandidate", "range": ">=1.0.0 <2.0.0" },
+      { "name": "ComparisonCompleted", "range": ">=1.0.0 <2.0.0" },
+      { "name": "GetComparisonResult", "range": ">=1.0.0 <2.0.0" },
+      { "name": "CheckComparisonFreshness", "range": ">=1.0.0 <2.0.0" }
+    ]
+  },
+  "deployment": { "modes": ["in_process", "worker"] },
+  "dataOwnership": {
+    "owns": ["comparison.results"],
+    "readsViaPorts": ["CanonicalSnapshotPort", "TextDiffPort", "GetClaimCandidate query"],
+    "directSchemaAccess": false
+  },
+  "consumes": {
+    "commands": [],
+    "events": [{ "name": "CandidateValidated", "range": ">=1.0.0 <2.0.0" }]
+  },
+  "produces": {
+    "events": [{ "name": "ComparisonCompleted", "range": ">=1.0.0 <2.0.0" }]
+  },
+  "provides": {
+    "queries": [
+      { "name": "GetComparisonResult", "range": ">=1.0.0 <2.0.0" },
+      { "name": "CheckComparisonFreshness", "range": ">=1.0.0 <2.0.0" }
+    ],
+    "capabilities": [{ "name": "claim-comparison-provider", "priority": 100 }]
+  },
+  "requires": { "capabilities": ["claim-candidate-provider"] },
+  "security": {
+    "requiredContext": ["actor", "project", "access_scope", "sensitivity"],
+    "defaultOnMissingContext": "deny"
+  },
+  "approvalPolicy": {
+    "canWriteCanonical": false,
+    "canExecuteExternalAction": false
+  }
+}

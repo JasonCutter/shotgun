@@ -209,6 +209,14 @@ Stage별 OSS 후보와 세부 적용 방식은 [OSS Integration Roadmap](./oss-i
 
 ## 8. Stage 4 — AI Provider, Direct Claim Candidate and Validation
 
+**상태: COMPLETE (2026-07-17)**
+
+구현·검증 근거:
+
+- [Stage 4 Engineering Guide](../engineering/stage-4-ai-candidate-validation.md)
+- [Stage 4 OSS Integration Review](stage-validations/stage-4-oss-integration-review.md)
+- [ADR-084](../architecture/adr/ADR-084-stage-4-ai-candidate-validation.md)
+
 ### 목표
 
 원문에 직접 적힌 Claim만 후보로 생성하고 Evidence 정합성을 검증한다.
@@ -249,6 +257,14 @@ Stage별 OSS 후보와 세부 적용 방식은 [OSS Integration Roadmap](./oss-i
 - 선택한 Provider·telemetry 구성의 version·license·data policy 고정
 
 ## 9. Stage 5 — Comparison, ChangeSet and Human Review
+
+**상태: COMPLETE (2026-07-17)**
+
+구현·검증 근거:
+
+- [Stage 5 Engineering Guide](../engineering/stage-5-comparison-change-set-review.md)
+- [Stage 5 OSS Integration Review](stage-validations/stage-5-oss-integration-review.md)
+- [ADR-085](../architecture/adr/ADR-085-stage-5-comparison-change-set-review.md)
 
 ### 목표
 

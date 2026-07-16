@@ -19,6 +19,12 @@ import {
   PostgresCandidateRepository,
   PostgresValidationRepository,
 } from '../../../adapters/postgres-stage4/src/index.js';
+import {
+  PostgresChangeSetReviewRepository,
+  PostgresComparisonRepository,
+} from '../../../adapters/postgres-stage5/src/index.js';
+import { EmptyCanonicalSnapshotAdapter } from '../../../adapters/canonical-snapshot-empty/src/index.js';
+import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
 import { createApplication } from './server.js';
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -43,6 +49,10 @@ const { server } = await createApplication({
   aiProviderRepository: new PostgresAIProviderCallRepository(pool),
   candidateRepository: new PostgresCandidateRepository(pool),
   validationRepository: new PostgresValidationRepository(pool),
+  comparisonRepository: new PostgresComparisonRepository(pool),
+  changeSetReviewRepository: new PostgresChangeSetReviewRepository(pool),
+  canonicalSnapshot: new EmptyCanonicalSnapshotAdapter(),
+  textDiff: new JsDiffAdapter(),
   transformer: plainTextAdapter,
   evidenceLocator: plainTextAdapter,
   aiProvider: new GeminiAIProviderAdapter({

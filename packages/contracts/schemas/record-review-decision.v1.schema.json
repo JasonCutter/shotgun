@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "decisionId",
+    "changeSetId",
+    "expectedRevisionNumber",
+    "expectedContentDigest",
+    "decision",
+    "reason"
+  ],
+  "properties": {
+    "decisionId": { "type": "string", "minLength": 1 },
+    "changeSetId": { "type": "string", "minLength": 1 },
+    "expectedRevisionNumber": { "const": 1 },
+    "expectedContentDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "decision": { "enum": ["APPROVE", "HOLD", "REJECT"] },
+    "reason": { "type": "string", "minLength": 1, "maxLength": 2000 }
+  }
+}

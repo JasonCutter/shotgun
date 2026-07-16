@@ -74,6 +74,8 @@ const reset = async (): Promise<void> => {
     await client.query('DROP SCHEMA IF EXISTS validation CASCADE');
     await client.query('DROP SCHEMA IF EXISTS candidate CASCADE');
     await client.query('DROP SCHEMA IF EXISTS ai CASCADE');
+    await client.query('DROP SCHEMA IF EXISTS review CASCADE');
+    await client.query('DROP SCHEMA IF EXISTS comparison CASCADE');
     await client.query('DROP SCHEMA IF EXISTS runtime CASCADE');
   });
   await migrate();
@@ -110,6 +112,15 @@ const verify = async (): Promise<void> => {
     const validationTable = await client.query<{ table: string | null }>(
       "SELECT to_regclass('validation.results') AS table",
     );
+    const comparisonTable = await client.query<{ table: string | null }>(
+      "SELECT to_regclass('comparison.results') AS table",
+    );
+    const reviewTable = await client.query<{ table: string | null }>(
+      "SELECT to_regclass('review.change_sets') AS table",
+    );
+    const decisionTable = await client.query<{ table: string | null }>(
+      "SELECT to_regclass('review.decisions') AS table",
+    );
     if (
       table.rows[0]?.table !== 'runtime.schema_migrations' ||
       count.rows[0]?.count !== expectedMigrationCount ||
@@ -119,7 +130,10 @@ const verify = async (): Promise<void> => {
       evidenceTable.rows[0]?.table !== 'evidence.spans' ||
       aiTable.rows[0]?.table !== 'ai.provider_calls' ||
       candidateTable.rows[0]?.table !== 'candidate.claim_candidates' ||
-      validationTable.rows[0]?.table !== 'validation.results'
+      validationTable.rows[0]?.table !== 'validation.results' ||
+      comparisonTable.rows[0]?.table !== 'comparison.results' ||
+      reviewTable.rows[0]?.table !== 'review.change_sets' ||
+      decisionTable.rows[0]?.table !== 'review.decisions'
     ) {
       throw new Error('Database bootstrap verification failed.');
     }

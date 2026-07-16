@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "manifestId",
+    "changeSetId",
+    "changeSetRevisionNumber",
+    "projectId",
+    "candidateId",
+    "operation",
+    "classification",
+    "candidateDigest",
+    "evidenceIds",
+    "expectedCanonicalVersion",
+    "snapshotDigest",
+    "diffDigest",
+    "contentDigest",
+    "approvalToken",
+    "reason",
+    "createdAt"
+  ],
+  "properties": {
+    "manifestId": { "type": "string", "minLength": 1 },
+    "changeSetId": { "type": "string", "minLength": 1 },
+    "changeSetRevisionNumber": { "const": 1 },
+    "projectId": { "type": "string", "minLength": 1 },
+    "candidateId": { "type": "string", "minLength": 1 },
+    "operation": { "enum": ["ADD_CLAIM", "NO_OP"] },
+    "classification": { "enum": ["NEW_CLAIM", "EXACT_DUPLICATE", "POSSIBLE_CONFLICT"] },
+    "candidateDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "evidenceIds": { "type": "array", "minItems": 1 },
+    "expectedCanonicalVersion": { "type": "integer", "minimum": 0 },
+    "snapshotDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "diffDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "contentDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "approvalToken": { "type": "object" },
+    "reason": { "type": "string", "minLength": 1 },
+    "createdAt": { "type": "string", "minLength": 1 }
+  }
+}

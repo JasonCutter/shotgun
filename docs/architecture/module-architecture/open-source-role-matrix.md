@@ -348,6 +348,17 @@ UI framework는 Domain Module 계약에 영향을 주지 않는다.
 
 ## 5. OSS Source Registry와 추적성
 
+### Stage 5 확정 결정
+
+- `diff@9.0.0`을 `TextDiffPort` 뒤의 `ADOPTED` Adapter로 사용한다.
+- OpenKnowledge는 GPL-3.0-or-later이므로 Activity·changed-item grouping·Burst Diff의 UX
+  패턴만 `REFERENCE`로 독립 구현한다.
+- ddsyasas는 Action 중심 Review 진입 계층만 `REFERENCE`로 사용한다.
+- `diff-match-patch@1.0.5`는 jsdiff와 중복되고 release가 오래되어 `REJECTED`다.
+- `Tiptap@3.28.0`과 `Yjs@13.6.31`은 rich·collaborative editing 요구가 없는 MVP에서
+  `DEFERRED`다.
+- Review UI 상태는 Approval을 대체하지 않으며 Canonical commit은 Stage 6만 수행한다.
+
 후보의 실제 채택은 저장소 URL, pin 기준, 라이선스·보안 검토 상태를 기록한 뒤 진행한다. 아래 값은 문서 작성 시점의 탐색 기준이며, `version/commit`은 채택 PR에서 재검증하고 lockfile·SBOM에 고정한다.
 
 Stage 0~3의 재검증된 exact pin과 결정은

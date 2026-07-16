@@ -35,6 +35,21 @@ const moduleName = (relativePath: string): string | undefined => {
   return match?.[1];
 };
 
+const packageName = (relativePath: string): string | undefined => {
+  const match = /^packages\/([^/]+)\//.exec(relativePath);
+  return match?.[1];
+};
+
+const allowedPackageDependencies: Readonly<Record<string, readonly string[]>> = {
+  contracts: [],
+  'module-sdk': ['contracts'],
+  'job-runtime': ['contracts'],
+  observability: ['contracts'],
+  policy: ['contracts', 'module-sdk'],
+  'connector-runtime': ['contracts', 'job-runtime', 'module-sdk', 'observability', 'policy'],
+  kernel: ['connector-runtime', 'contracts', 'module-sdk'],
+};
+
 export const findArchitectureViolations = async (): Promise<string[]> => {
   const files = (
     await Promise.all(
@@ -46,6 +61,7 @@ export const findArchitectureViolations = async (): Promise<string[]> => {
   for (const file of files) {
     const relativeFile = toPosix(path.relative(rootDirectory, file));
     const sourceModule = moduleName(relativeFile);
+    const sourcePackage = packageName(relativeFile);
     const source = await readFile(file, 'utf8');
 
     for (const match of source.matchAll(importExpression)) {
@@ -64,6 +80,7 @@ export const findArchitectureViolations = async (): Promise<string[]> => {
       }
 
       const importedModule = moduleName(resolved);
+      const importedPackage = packageName(resolved);
       if (sourceModule && resolved.startsWith('adapters/')) {
         violations.push(`${relativeFile} imports adapter code '${resolved}'.`);
       }
@@ -75,6 +92,14 @@ export const findArchitectureViolations = async (): Promise<string[]> => {
         /^(modules|adapters|assemblies)\//.test(resolved)
       ) {
         violations.push(`${relativeFile} imports implementation code '${resolved}'.`);
+      }
+      if (
+        sourcePackage &&
+        importedPackage &&
+        sourcePackage !== importedPackage &&
+        !(allowedPackageDependencies[sourcePackage] ?? []).includes(importedPackage)
+      ) {
+        violations.push(`${relativeFile} imports disallowed package '${importedPackage}'.`);
       }
     }
   }

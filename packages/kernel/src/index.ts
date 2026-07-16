@@ -1,32 +1,43 @@
-export type ModuleManifest = {
-  readonly id: string;
-  readonly version: string;
-  readonly owner: string;
-  readonly compatibility: {
-    readonly kernel: string;
-  };
-  readonly dataOwnership: readonly string[];
-  readonly capabilities: readonly string[];
-};
+import { ConnectorRuntime, type MessageTransport } from '../../connector-runtime/src/index.js';
+import { ModuleRegistry, type ShotgunModule } from '../../module-sdk/src/index.js';
 
-export type ShotgunModule = {
-  readonly manifest: ModuleManifest;
-  initialize?: () => void | Promise<void>;
-};
+export class ShotgunKernel {
+  readonly registry = new ModuleRegistry();
+  readonly connector: ConnectorRuntime;
 
-export class ModuleRegistry {
-  private readonly modules = new Map<string, ShotgunModule>();
+  private ready = false;
 
-  async register(module: ShotgunModule): Promise<void> {
-    if (this.modules.has(module.manifest.id)) {
-      throw new Error(`Module '${module.manifest.id}' is already registered.`);
-    }
-
-    await module.initialize?.();
-    this.modules.set(module.manifest.id, module);
+  constructor(transport: MessageTransport) {
+    this.connector = new ConnectorRuntime(this.registry, transport);
   }
 
-  list(): readonly ModuleManifest[] {
-    return [...this.modules.values()].map((module) => module.manifest);
+  register(...modules: readonly ShotgunModule[]): void {
+    for (const module of modules) {
+      this.registry.register(module);
+    }
+  }
+
+  async start(): Promise<void> {
+    await this.registry.start();
+    this.ready = true;
+  }
+
+  async shutdown(): Promise<void> {
+    await this.registry.shutdown();
+    this.ready = false;
+  }
+
+  health() {
+    return {
+      status: this.ready ? ('ok' as const) : ('starting' as const),
+      modules: this.registry.list().map((manifest) => manifest.id),
+      capabilities: this.registry
+        .list()
+        .flatMap((manifest) => manifest.provides.capabilities.map((item) => item.name)),
+    };
   }
 }
+
+export * from '../../connector-runtime/src/index.js';
+export * from '../../contracts/src/index.js';
+export * from '../../module-sdk/src/index.js';

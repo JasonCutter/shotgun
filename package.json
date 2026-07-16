@@ -21,9 +21,11 @@
     "format:check": "prettier --check package.json tsconfig.json eslint.config.js .prettierrc.json .github/workflows/ci.yml packages modules adapters assemblies tests scripts docs/engineering docs/architecture/adr",
     "format:write": "prettier --write package.json tsconfig.json eslint.config.js .prettierrc.json .github/workflows/ci.yml packages modules adapters assemblies tests scripts docs/engineering docs/architecture/adr",
     "typecheck": "tsc --noEmit",
-    "test:unit": "vitest run",
+    "test:unit": "vitest run tests/unit",
+    "test:contract": "vitest run tests/contract",
+    "test:integration": "vitest run tests/integration",
     "test:architecture": "tsx scripts/architecture-test.ts",
-    "test": "npm run test:unit && npm run test:architecture",
+    "test": "npm run test:unit && npm run test:contract && npm run test:integration && npm run test:architecture",
     "db:migrate": "tsx scripts/database.ts migrate",
     "db:reset": "tsx scripts/database.ts reset",
     "db:verify": "tsx scripts/database.ts verify",
@@ -31,14 +33,17 @@
     "check": "npm run lint && npm run format:check && npm run typecheck && npm test && npm run secret:scan"
   },
   "dependencies": {
+    "ajv": "^8.17.1",
     "dotenv": "^16.5.0",
     "fastify": "^5.3.2",
-    "pg": "^8.15.6"
+    "pg": "^8.15.6",
+    "semver": "^7.7.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.27.0",
     "@types/node": "^24.0.3",
     "@types/pg": "^8.15.4",
+    "@types/semver": "^7.7.0",
     "eslint": "^9.27.0",
     "prettier": "^3.5.3",
     "tsx": "^4.19.4",

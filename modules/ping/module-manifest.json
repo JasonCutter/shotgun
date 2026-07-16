@@ -1,0 +1,38 @@
+{
+  "id": "stage1.ping",
+  "version": "1.0.0",
+  "owner": "Shotgun Kernel",
+  "compatibility": {
+    "runtime": ">=1.0.0 <2.0.0",
+    "contracts": [
+      { "name": "PingCommand", "range": ">=1.0.0 <2.0.0" },
+      { "name": "PongEvent", "range": ">=1.0.0 <2.0.0" }
+    ]
+  },
+  "deployment": { "modes": ["in_process"] },
+  "dataOwnership": {
+    "owns": ["ping-side-effect-counter"],
+    "readsViaPorts": [],
+    "directSchemaAccess": false
+  },
+  "consumes": {
+    "commands": [{ "name": "PingCommand", "range": ">=1.0.0 <2.0.0" }],
+    "events": []
+  },
+  "produces": {
+    "events": [{ "name": "PongEvent", "range": ">=1.0.0 <2.0.0" }]
+  },
+  "provides": {
+    "queries": [],
+    "capabilities": [{ "name": "ping-command", "priority": 100 }]
+  },
+  "requires": { "capabilities": [] },
+  "security": {
+    "requiredContext": ["actor", "project", "access_scope", "sensitivity"],
+    "defaultOnMissingContext": "deny"
+  },
+  "approvalPolicy": {
+    "canWriteCanonical": false,
+    "canExecuteExternalAction": false
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "id": "stage1.pong",
+  "version": "1.0.0",
+  "owner": "Shotgun Kernel",
+  "compatibility": {
+    "runtime": ">=1.0.0 <2.0.0",
+    "contracts": [
+      { "name": "PongEvent", "range": ">=1.0.0 <2.0.0" },
+      { "name": "GetPongResult", "range": ">=1.0.0 <2.0.0" }
+    ]
+  },
+  "deployment": { "modes": ["in_process"] },
+  "dataOwnership": {
+    "owns": ["pong-read-model"],
+    "readsViaPorts": [],
+    "directSchemaAccess": false
+  },
+  "consumes": {
+    "commands": [],
+    "events": [{ "name": "PongEvent", "range": ">=1.0.0 <2.0.0" }]
+  },
+  "produces": { "events": [] },
+  "provides": {
+    "queries": [{ "name": "GetPongResult", "range": ">=1.0.0 <2.0.0" }],
+    "capabilities": [{ "name": "pong-query", "priority": 100 }]
+  },
+  "requires": { "capabilities": ["ping-command"] },
+  "security": {
+    "requiredContext": ["actor", "project", "access_scope", "sensitivity"],
+    "defaultOnMissingContext": "deny"
+  },
+  "approvalPolicy": {
+    "canWriteCanonical": false,
+    "canExecuteExternalAction": false
+  }
+}

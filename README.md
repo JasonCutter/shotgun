@@ -14,7 +14,8 @@ Shotgun은 한 점에 모인 지식이 산탄총의 탄환처럼 여러 방향�
 
 ## 개발 시작
 
-Stage 0 개발 환경과 명령은 [개발 환경 문서](docs/engineering/stage-0-development.md)를 따른다.
+개발 환경은 [Stage 0 문서](docs/engineering/stage-0-development.md)를 따르고,
+Kernel 사용법과 완료 증거는 [Stage 1 문서](docs/engineering/stage-1-kernel-runtime.md)에서 확인한다.
 
 ## MVP 목표
 

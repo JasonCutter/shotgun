@@ -1,0 +1,51 @@
+{
+  "$id": "https://shotgun.local/contracts/message-envelope.v1.schema.json",
+  "title": "Shotgun Message Envelope v1",
+  "type": "object",
+  "required": [
+    "messageId",
+    "messageType",
+    "messageKind",
+    "schemaVersion",
+    "producerModule",
+    "producerVersion",
+    "correlationId",
+    "payload",
+    "createdAt",
+    "traceId"
+  ],
+  "properties": {
+    "messageId": { "type": "string", "minLength": 1 },
+    "messageType": { "type": "string", "minLength": 1 },
+    "messageKind": {
+      "enum": ["command", "event", "query", "query-result"]
+    },
+    "schemaVersion": { "type": "string", "minLength": 1 },
+    "producerModule": { "type": "string", "minLength": 1 },
+    "producerVersion": { "type": "string", "minLength": 1 },
+    "correlationId": { "type": "string", "minLength": 1 },
+    "causationId": { "type": "string" },
+    "idempotencyKey": { "type": "string" },
+    "projectId": { "type": "string" },
+    "payload": {},
+    "createdAt": { "type": "string" },
+    "traceId": { "type": "string", "minLength": 1 }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "messageKind": { "enum": ["command", "event"] }
+        },
+        "required": ["messageKind"]
+      },
+      "then": {
+        "properties": {
+          "idempotencyKey": { "type": "string", "minLength": 1 }
+        },
+        "required": ["idempotencyKey"]
+      }
+    }
+  ],
+  "additionalProperties": true
+}

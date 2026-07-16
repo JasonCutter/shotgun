@@ -1,0 +1,32 @@
+{
+  "$id": "https://shotgun.local/contracts/asset-reference.v1.schema.json",
+  "title": "Shotgun Asset Reference v1",
+  "type": "object",
+  "required": [
+    "assetId",
+    "versionId",
+    "mediaType",
+    "contentHash",
+    "sizeBytes",
+    "storageUri",
+    "accessScope"
+  ],
+  "properties": {
+    "assetId": { "type": "string", "minLength": 1 },
+    "versionId": { "type": "string", "minLength": 1 },
+    "mediaType": { "type": "string", "minLength": 1 },
+    "contentHash": { "type": "string", "minLength": 1 },
+    "sizeBytes": { "type": "integer", "minimum": 0 },
+    "storageUri": {
+      "type": "string",
+      "pattern": "^asset://[^/]+/versions/[^/]+$"
+    },
+    "accessScope": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "uniqueItems": true
+    }
+  },
+  "additionalProperties": false
+}

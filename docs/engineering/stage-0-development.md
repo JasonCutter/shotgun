@@ -18,19 +18,25 @@ npm run dev
 `http://localhost:3000/health`를 열어 아래처럼 확인한다.
 
 ```json
-{ "status": "ok", "modules": ["test.module"] }
+{
+  "status": "ok",
+  "modules": ["stage1.ping", "stage1.pong"],
+  "capabilities": ["ping-command", "pong-query"]
+}
 ```
 
 ## 자주 쓰는 명령
 
-| 목적                          | 명령                 |
-| ----------------------------- | -------------------- |
-| 전체 품질 검사                | `npm run check`      |
-| 단위·Architecture Test        | `npm test`           |
-| DB migration 적용             | `npm run db:migrate` |
-| 개발 DB Schema 삭제 후 재생성 | `npm run db:reset`   |
-| DB Bootstrap 확인             | `npm run db:verify`  |
-| 서버 실행                     | `npm run dev`        |
+| 목적                          | 명령                       |
+| ----------------------------- | -------------------------- |
+| 전체 품질 검사                | `npm run check`            |
+| 단위·Architecture Test        | `npm test`                 |
+| Contract Test                 | `npm run test:contract`    |
+| Integration Test              | `npm run test:integration` |
+| DB migration 적용             | `npm run db:migrate`       |
+| 개발 DB Schema 삭제 후 재생성 | `npm run db:reset`         |
+| DB Bootstrap 확인             | `npm run db:verify`        |
+| 서버 실행                     | `npm run dev`              |
 
 `npm run db:reset`은 로컬 개발용 `runtime` Schema를 삭제한다. 실제 운영 DB에는 사용하지 않는다.
 

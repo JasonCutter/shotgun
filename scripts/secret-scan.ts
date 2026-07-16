@@ -4,7 +4,14 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const rootDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const trackedFiles = execFileSync('git', ['ls-files'], { cwd: rootDirectory, encoding: 'utf8' })
+const candidateFiles = execFileSync(
+  'git',
+  ['ls-files', '--cached', '--others', '--exclude-standard'],
+  {
+    cwd: rootDirectory,
+    encoding: 'utf8',
+  },
+)
   .split(/\r?\n/)
   .filter(Boolean);
 
@@ -16,8 +23,16 @@ const patterns: readonly [string, RegExp][] = [
 ];
 
 const findings: string[] = [];
-for (const file of trackedFiles) {
-  const content = await readFile(path.join(rootDirectory, file), 'utf8');
+for (const file of candidateFiles) {
+  let content: string;
+  try {
+    content = await readFile(path.join(rootDirectory, file), 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      continue;
+    }
+    throw error;
+  }
   for (const [name, pattern] of patterns) {
     if (pattern.test(content)) {
       findings.push(`${file}: ${name}`);

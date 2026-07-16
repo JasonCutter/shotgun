@@ -2,7 +2,11 @@
 
 ## 완료 상태
 
-**COMPLETE**
+**COMPLETE — OSS Gate 재검증 완료**
+
+상세 결정과 근거는
+[Stage 2 OSS Integration Review](../implementation/stage-validations/stage-2-oss-integration-review.md)에
+기록한다.
 
 Stage 2는 직접 텍스트와 간단한 UTF-8 텍스트 파일을 정규화하고, 원본 Byte를 변경 없이
 저장한 뒤 Asset Reference를 통해서만 다시 읽는다.
@@ -141,3 +145,15 @@ Version이 된다.
 - Audit·Job·Dead-letter는 In-memory다.
 - DB 저장이 영구 실패한 뒤 남은 미참조 Content-addressed 파일을 자동 정리하지 않는다.
 - Object Storage, Multipart Upload, 대용량 Streaming은 후속 Stage 범위다.
+
+## OSS-first 재검증
+
+- ddsyasas의 Source Intake Form과 Action 중심 정보 구조는 `REFERENCE_ONLY`로 기록하고,
+  SQLite·파일 경로·ingest/query/LLM backend는 제외한다.
+- lucas watcher/reconcile은 directory intake 요구가 생길 때까지 `DEFER`하며, file path를
+  Source identity로 사용하지 않는다.
+- fsspec은 TypeScript MVP에 Python bridge를 추가하므로 `REJECT`한다.
+- MinIO/S3-compatible storage와 Apache Tika는 각각 remote storage와 복합 형식 Stage까지
+  `DEFER`한다.
+- In-memory와 Local filesystem Storage는 동일 `AssetStoragePort` Contract Test를
+  통과해야 한다.

@@ -67,3 +67,17 @@ Version Number가 중복되지 않도록 한다.
 `intake`·`asset` Schema와 `.data/assets` 개발 저장소를 제거할 수 있다. 실제 데이터가 생성된
 환경에서는 먼저 Asset 파일과 PostgreSQL Metadata를 함께 백업하고, SourceVersion 참조가
 없는지 확인하기 전에는 Schema나 원본 파일을 삭제하지 않는다.
+
+## OSS-first Addendum
+
+- ddsyasas Source Intake UX는 `REFERENCE_ONLY`, 결합된 backend는 보안과 구조 이유로
+  `REJECT`한다.
+- lucas watcher/reconcile은 directory intake가 생길 때까지 `DEFER`하며, file path와
+  Shotgun Source identity를 분리한다.
+- fsspec은 TypeScript MVP의 작은 Storage Port에 Python runtime을 추가하므로 `REJECT`한다.
+- MinIO/S3-compatible storage와 Apache Tika는 remote storage와 format expansion 시점까지
+  `DEFER`한다.
+- In-memory와 Local filesystem Storage는 동일 `AssetStoragePort` Contract Test를
+  통과해야 한다.
+
+세부 결정은 [ADR-082](./ADR-082-stage-0-to-2-oss-first-retrospective.md)를 따른다.

@@ -1,5 +1,13 @@
 # Stage 0 개발 환경
 
+## 완료 상태
+
+**COMPLETE — OSS Gate 재검증 완료**
+
+상세 결정과 근거는
+[Stage 0 OSS Integration Review](../implementation/stage-validations/stage-0-oss-integration-review.md)와
+[OSS Source Registry](../implementation/oss-source-registry.json)에 기록한다.
+
 ## 준비물
 
 - Node.js 24 이상과 npm 11 이상
@@ -30,6 +38,9 @@ npm run dev
 | 목적                          | 명령                       |
 | ----------------------------- | -------------------------- |
 | 전체 품질 검사                | `npm run check`            |
+| OSS 등록부·고정 버전 검사     | `npm run oss:verify`       |
+| 의존성 취약점 검사            | `npm run oss:audit`        |
+| CycloneDX SBOM 출력           | `npm run oss:sbom`         |
 | 단위·Architecture Test        | `npm test`                 |
 | Contract Test                 | `npm run test:contract`    |
 | Integration Test              | `npm run test:integration` |
@@ -62,3 +73,12 @@ scripts/        # DB·비밀값·Architecture 검사
 ## Stage 0 범위 밖
 
 Knowledge Flow, 실제 Command/Event 계약, Queue, AI Provider, ORM은 다음 Stage에서 도입한다.
+
+## OSS-first 재검증
+
+- PostgreSQL은 `16.14-alpine` image digest로 고정한다.
+- JSON Schema 검증은 `package-lock.json`에 고정된 Ajv `8.20.0`을 사용한다.
+- gbrain, lucasastorian/llmwiki, ddsyasas/llm-wiki, OpenKnowledge의 baseline commit과
+  license를 Source Registry에 등록한다.
+- OpenTelemetry는 외부 exporter가 필요한 시점까지 `DEFER`한다.
+- CI는 취약점 검사, SBOM 생성, Source Registry 자동 Gate를 실행한다.

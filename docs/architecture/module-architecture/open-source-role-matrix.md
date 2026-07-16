@@ -8,17 +8,19 @@
 
 ## 2. 상태 분류
 
-| 상태 | 의미 |
-|---|---|
-| `REFERENCE` | 설계·UX·테스트 패턴만 참고하며 런타임 의존 없음 |
-| `EXTRACT` | 일부 코드를 독립 package로 추출·개작 검토 |
-| `ADAPTER_CANDIDATE` | 공통 Port 뒤에 연결할 교체 가능한 구현 |
-| `FOUNDATION_CANDIDATE` | 검증 후 기본 구현으로 채택 가능 |
-| `ADOPTED` | license·security·benchmark Gate 통과 |
-| `DEFERRED` | 필요성이 확인될 때까지 도입 연기 |
-| `REJECTED` | 현재 구조와 중복·충돌이 커서 사용하지 않음 |
+| 상태                   | 의미                                            |
+| ---------------------- | ----------------------------------------------- |
+| `REFERENCE`            | 설계·UX·테스트 패턴만 참고하며 런타임 의존 없음 |
+| `EXTRACT`              | 일부 코드를 독립 package로 추출·개작 검토       |
+| `ADAPTER_CANDIDATE`    | 공통 Port 뒤에 연결할 교체 가능한 구현          |
+| `FOUNDATION_CANDIDATE` | 검증 후 기본 구현으로 채택 가능                 |
+| `ADOPTED`              | license·security·benchmark Gate 통과            |
+| `DEFERRED`             | 필요성이 확인될 때까지 도입 연기                |
+| `REJECTED`             | 현재 구조와 중복·충돌이 커서 사용하지 않음      |
 
-현재 이 문서에서 `ADOPTED`로 간주하는 외부 제품은 없다. 표준 규격은 구현 후보보다 우선 적용할 수 있지만, 실제 라이브러리는 별도 검증을 거친다.
+Stage 0~2 재검증 결과 PostgreSQL, Ajv, content-addressed storage pattern은 해당 범위에서
+`ADOPTED`다. 다른 후보는 Stage별 Source Registry 결정과 Contract 검증을 통과하기 전까지
+후보 또는 참고 상태를 유지한다.
 
 ## 3. 기존 4개 레퍼런스의 재배치
 
@@ -27,14 +29,14 @@
 **기존 역할:** Shotgun 전체의 핵심 엔진  
 **새 역할:** 여러 모듈의 최우선 Reference·Extract Candidate
 
-| 관련 모듈 | 역할 | 상태 |
-|---|---|---|
-| Orchestration | Minion Job, retry, timeout, lock recovery 패턴 | `EXTRACT` |
-| Canonical Knowledge | Page·Fact·Relation·Timeline 저장 계약 참고 | `EXTRACT` |
-| Projection | Search·Graph·Timeline·Gap 읽기 패턴 | `EXTRACT` |
-| Knowledge Discovery | Dream Cycle과 주기적 탐색 패턴 | `REFERENCE` |
-| Action / Integration | MCP operation contract 참고 | `REFERENCE` |
-| Migration / Recovery | PGLite·PostgreSQL migration과 recovery 패턴 | `REFERENCE` |
+| 관련 모듈            | 역할                                           | 상태        |
+| -------------------- | ---------------------------------------------- | ----------- |
+| Orchestration        | Minion Job, retry, timeout, lock recovery 패턴 | `REFERENCE` |
+| Canonical Knowledge  | Page·Fact·Relation·Timeline 저장 계약 참고     | `EXTRACT`   |
+| Projection           | Search·Graph·Timeline·Gap 읽기 패턴            | `EXTRACT`   |
+| Knowledge Discovery  | Dream Cycle과 주기적 탐색 패턴                 | `REFERENCE` |
+| Action / Integration | MCP operation contract 참고                    | `REFERENCE` |
+| Migration / Recovery | PGLite·PostgreSQL migration과 recovery 패턴    | `REFERENCE` |
 
 **경계**
 
@@ -47,13 +49,13 @@
 
 **역할:** 수집·변환·Evidence·검증 부품 공급원
 
-| 관련 모듈 | 역할 | 상태 |
-|---|---|---|
-| Transformation | HTML cleaner, XLSX extractor | `EXTRACT` |
-| Evidence | Highlight·Annotation과 원문 위치 복귀 패턴 | `EXTRACT` |
-| Validation | deterministic lint 패턴 | `EXTRACT` |
-| Intake / Runtime | watcher event와 reconcile 패턴 | `REFERENCE` |
-| UI | 원문·사용자 메모·AI 결과 구분 | `REFERENCE` |
+| 관련 모듈        | 역할                                       | 상태        |
+| ---------------- | ------------------------------------------ | ----------- |
+| Transformation   | HTML cleaner, XLSX extractor               | `EXTRACT`   |
+| Evidence         | Highlight·Annotation과 원문 위치 복귀 패턴 | `EXTRACT`   |
+| Validation       | deterministic lint 패턴                    | `EXTRACT`   |
+| Intake / Runtime | watcher event와 reconcile 패턴             | `REFERENCE` |
+| UI               | 원문·사용자 메모·AI 결과 구분              | `REFERENCE` |
 
 **경계**
 
@@ -65,11 +67,11 @@
 
 **역할:** Product Workflow와 운영 UX 참고
 
-| 관련 모듈 | 역할 | 상태 |
-|---|---|---|
-| Intake UI | Source 등록 흐름 | `REFERENCE` |
-| Output UI | Ask·Chat 흐름 | `REFERENCE` |
-| AI Provider UI | 모델·비용·설정 표시 | `REFERENCE` |
+| 관련 모듈       | 역할                  | 상태        |
+| --------------- | --------------------- | ----------- |
+| Intake UI       | Source 등록 흐름      | `REFERENCE` |
+| Output UI       | Ask·Chat 흐름         | `REFERENCE` |
+| AI Provider UI  | 모델·비용·설정 표시   | `REFERENCE` |
 | Home / Activity | Action 중심 정보 계층 | `REFERENCE` |
 
 **경계**
@@ -81,13 +83,13 @@
 
 **역할:** Human Cockpit, Graph, Diff, Editor UX 참고
 
-| 관련 모듈 | 역할 | 상태 |
-|---|---|---|
-| Review UI | Agent Activity, changed-item grouping, Burst Diff | `REFERENCE` |
-| Graph UI | 2D Graph와 목록 fallback | `REFERENCE` |
-| Editor | Visual·Source 전환과 serialization 보존 | `REFERENCE` |
-| Canonical UI | Entity Vault template 개념 | `REFERENCE` |
-| Collaboration | Yjs CRDT 적용 가능성 | `DEFERRED` |
+| 관련 모듈     | 역할                                              | 상태        |
+| ------------- | ------------------------------------------------- | ----------- |
+| Review UI     | Agent Activity, changed-item grouping, Burst Diff | `REFERENCE` |
+| Graph UI      | 2D Graph와 목록 fallback                          | `REFERENCE` |
+| Editor        | Visual·Source 전환과 serialization 보존           | `REFERENCE` |
+| Canonical UI  | Entity Vault template 개념                        | `REFERENCE` |
+| Collaboration | Yjs CRDT 적용 가능성                              | `DEFERRED`  |
 
 **경계**
 
@@ -99,52 +101,52 @@
 
 ### 4.1 Contracts·Connector Runtime
 
-| 후보 | 역할 | 상태 | 교체 경계 |
-|---|---|---|---|
-| JSON Schema | Payload와 Module Manifest 검증 | `FOUNDATION_CANDIDATE` | Schema validator Adapter |
-| OpenAPI | 동기 Query·Command HTTP 계약 | `FOUNDATION_CANDIDATE` | Transport Adapter |
-| AsyncAPI | Event·Queue 계약 문서화 | `ADAPTER_CANDIDATE` | Event Transport |
-| CloudEvents | Event Envelope 의미와 상호운용 참고 | `REFERENCE` | Message Envelope mapping |
-| Protocol Buffers | gRPC·binary contract 후보 | `DEFERRED` | Serializer Adapter |
-| pluggy 또는 언어별 plugin framework | In-process module registration | `ADAPTER_CANDIDATE` | Module Registry |
+| 후보                                | 역할                                | 상태                   | 교체 경계                |
+| ----------------------------------- | ----------------------------------- | ---------------------- | ------------------------ |
+| JSON Schema / Ajv 8.20.0            | Payload와 Module Manifest 검증      | `ADOPTED`              | `SchemaRegistry` Adapter |
+| OpenAPI                             | 동기 Query·Command HTTP 계약        | `FOUNDATION_CANDIDATE` | Transport Adapter        |
+| AsyncAPI                            | Event·Queue 계약 문서화             | `ADAPTER_CANDIDATE`    | Event Transport          |
+| CloudEvents                         | Event Envelope 의미와 상호운용 참고 | `REFERENCE`            | Message Envelope mapping |
+| Protocol Buffers                    | gRPC·binary contract 후보           | `DEFERRED`             | Serializer Adapter       |
+| pluggy 또는 언어별 plugin framework | In-process module registration      | `ADAPTER_CANDIDATE`    | Module Registry          |
 
 ### 4.2 Orchestration·Message Bus
 
-| 후보 | 역할 | 상태 | 비고 |
-|---|---|---|---|
-| gbrain Minion | Job·retry·timeout·lock recovery 패턴 | `EXTRACT` | Shotgun Job 계약에 맞춰 격리 |
-| Temporal | durable workflow·retry·timer·saga | `ADAPTER_CANDIDATE` | 장기 실행이 실제로 필요할 때 |
-| NATS JetStream | Event Bus·stream·consumer | `ADAPTER_CANDIDATE` | 독립 Worker 단계 |
-| Redis Streams | 경량 Queue·stream | `ADAPTER_CANDIDATE` | MVP 운영 단순성 비교 |
-| PostgreSQL job table | 초기 durable queue | `FOUNDATION_CANDIDATE` | 단일 DB MVP 후보 |
+| 후보                 | 역할                                 | 상태                   | 비고                                  |
+| -------------------- | ------------------------------------ | ---------------------- | ------------------------------------- |
+| gbrain Minion        | Job·retry·timeout·lock recovery 패턴 | `REFERENCE`            | Stage 6 전 Extract·Adapter PoC 재평가 |
+| Temporal             | durable workflow·retry·timer·saga    | `ADAPTER_CANDIDATE`    | 장기 실행이 실제로 필요할 때          |
+| NATS JetStream       | Event Bus·stream·consumer            | `ADAPTER_CANDIDATE`    | 독립 Worker 단계                      |
+| Redis Streams        | 경량 Queue·stream                    | `ADAPTER_CANDIDATE`    | MVP 운영 단순성 비교                  |
+| PostgreSQL job table | 초기 durable queue                   | `FOUNDATION_CANDIDATE` | 단일 DB MVP 후보                      |
 
 초기 구현은 In-process Bus와 PostgreSQL Job Table을 우선 검토하고, 처리량·복구 요구가 확인되면 Temporal 또는 NATS 계열로 전환한다.
 
 ### 4.3 Intake·Original Asset
 
-| 후보 | 역할 | 상태 |
-|---|---|---|
-| fsspec | 파일·Object Store 추상화 | `ADAPTER_CANDIDATE` |
-| MinIO 또는 S3-compatible API | 원본 Asset 저장 | `ADAPTER_CANDIDATE` |
-| content-addressed storage pattern | Hash 기반 중복·무결성 | `FOUNDATION_CANDIDATE` |
-| Apache Tika | MIME·metadata·범용 텍스트 추출 | `ADAPTER_CANDIDATE` |
-| Microsoft MarkItDown | Office·웹 자료의 Markdown 변환 보조 | `ADAPTER_CANDIDATE` |
+| 후보                              | 역할                                | 상태                |
+| --------------------------------- | ----------------------------------- | ------------------- |
+| fsspec                            | 파일·Object Store 추상화            | `REJECTED`          |
+| MinIO 또는 S3-compatible API      | 원본 Asset 저장                     | `ADAPTER_CANDIDATE` |
+| content-addressed storage pattern | Hash 기반 중복·무결성               | `ADOPTED`           |
+| Apache Tika                       | MIME·metadata·범용 텍스트 추출      | `DEFERRED`          |
+| Microsoft MarkItDown              | Office·웹 자료의 Markdown 변환 보조 | `ADAPTER_CANDIDATE` |
 
 원본 보존은 변환 도구의 내부 저장 방식에 맡기지 않고 Shotgun Asset 계약이 소유한다.
 
 ### 4.4 Transformation
 
-| 후보 | 담당 형식·역할 | 상태 |
-|---|---|---|
-| lucasastorian/llmwiki | HTML cleaner·XLSX extractor | `EXTRACT` |
-| Docling | PDF·Office 구조와 layout 변환 | `ADAPTER_CANDIDATE` |
-| Apache Tika | 범용 형식 감지·metadata·텍스트 fallback | `ADAPTER_CANDIDATE` |
-| MarkItDown | 경량 Markdown 변환 | `ADAPTER_CANDIDATE` |
-| PyMuPDF | PDF text·page·bbox 처리 | `ADAPTER_CANDIDATE` |
-| python-docx | DOCX 구조 추출 | `ADAPTER_CANDIDATE` |
-| python-pptx | PPTX shape·text 추출 | `ADAPTER_CANDIDATE` |
-| openpyxl | XLSX cell·formula·sheet 추출 | `ADAPTER_CANDIDATE` |
-| ffmpeg | 오디오·영상 정규화 | `DEFERRED` |
+| 후보                  | 담당 형식·역할                          | 상태                |
+| --------------------- | --------------------------------------- | ------------------- |
+| lucasastorian/llmwiki | HTML cleaner·XLSX extractor             | `EXTRACT`           |
+| Docling               | PDF·Office 구조와 layout 변환           | `ADAPTER_CANDIDATE` |
+| Apache Tika           | 범용 형식 감지·metadata·텍스트 fallback | `ADAPTER_CANDIDATE` |
+| MarkItDown            | 경량 Markdown 변환                      | `ADAPTER_CANDIDATE` |
+| PyMuPDF               | PDF text·page·bbox 처리                 | `ADAPTER_CANDIDATE` |
+| python-docx           | DOCX 구조 추출                          | `ADAPTER_CANDIDATE` |
+| python-pptx           | PPTX shape·text 추출                    | `ADAPTER_CANDIDATE` |
+| openpyxl              | XLSX cell·formula·sheet 추출            | `ADAPTER_CANDIDATE` |
+| ffmpeg                | 오디오·영상 정규화                      | `DEFERRED`          |
 
 하나의 범용 변환기를 강제하지 않는다. Format Adapter가 공통 `DocumentIR`과 `SourceMap`을 출력한다.
 
@@ -152,190 +154,190 @@ Phase 1 Canonical 정책에 따라 Shotgun Assembly는 오디오·영상 파일 
 
 ### 4.5 Evidence·Citation
 
-| 후보 | 역할 | 상태 |
-|---|---|---|
-| W3C Web Annotation Data Model | Annotation·Target·Selector 의미 모델 | `REFERENCE` |
-| Text Position·Text Quote Selector | 텍스트 Evidence 위치 표현 | `FOUNDATION_CANDIDATE` |
-| lucas Highlight·Annotation | 원문 복귀와 provenance 분리 패턴 | `EXTRACT` |
-| JSON Pointer | 구조화 DocumentIR field 위치 | `REFERENCE` |
+| 후보                              | 역할                                 | 상태                   |
+| --------------------------------- | ------------------------------------ | ---------------------- |
+| W3C Web Annotation Data Model     | Annotation·Target·Selector 의미 모델 | `REFERENCE`            |
+| Text Position·Text Quote Selector | 텍스트 Evidence 위치 표현            | `FOUNDATION_CANDIDATE` |
+| lucas Highlight·Annotation        | 원문 복귀와 provenance 분리 패턴     | `EXTRACT`              |
+| JSON Pointer                      | 구조화 DocumentIR field 위치         | `REFERENCE`            |
 
 Shotgun은 텍스트 offset뿐 아니라 page, bbox, table cell, slide shape를 포함하는 자체 Evidence Selector 확장을 가진다. `audio time range`는 공통 Contract의 향후 확장 후보일 뿐 Shotgun Assembly에서는 활성화하지 않는다.
 
 ### 4.6 AI Provider·Evaluation
 
-| 후보 | 역할 | 상태 |
-|---|---|---|
-| LiteLLM | GPT·Gemini·Claude 공통 Gateway 후보 | `ADAPTER_CANDIDATE` |
-| 공급자 공식 SDK | Provider Adapter의 직접 구현 | `ADAPTER_CANDIDATE` |
-| Instructor | structured output 보조 | `ADAPTER_CANDIDATE` |
-| Pydantic 또는 Zod | AI 결과 Schema 검증 | `FOUNDATION_CANDIDATE` |
-| Langfuse | prompt·trace·cost·evaluation 관찰 | `ADAPTER_CANDIDATE` |
-| OpenTelemetry | 공급자 중립 Trace·Metric | `FOUNDATION_CANDIDATE` |
+| 후보              | 역할                                | 상태                   |
+| ----------------- | ----------------------------------- | ---------------------- |
+| LiteLLM           | GPT·Gemini·Claude 공통 Gateway 후보 | `ADAPTER_CANDIDATE`    |
+| 공급자 공식 SDK   | Provider Adapter의 직접 구현        | `ADAPTER_CANDIDATE`    |
+| Instructor        | structured output 보조              | `ADAPTER_CANDIDATE`    |
+| Pydantic 또는 Zod | AI 결과 Schema 검증                 | `FOUNDATION_CANDIDATE` |
+| Langfuse          | prompt·trace·cost·evaluation 관찰   | `ADAPTER_CANDIDATE`    |
+| OpenTelemetry     | 공급자 중립 Trace·Metric            | `FOUNDATION_CANDIDATE` |
 
 LiteLLM 사용 여부와 관계없이 Shotgun `AIProviderPort`가 상위 계약이며, 공급자 고유 응답은 Domain에 노출하지 않는다.
 
 ### 4.7 Candidate Generation
 
-| 후보 | 역할 | 상태 |
-|---|---|---|
-| spaCy | 문장 분할·tokenization·기본 NER | `ADAPTER_CANDIDATE` |
-| GLiNER | zero-shot entity extraction 보조 | `ADAPTER_CANDIDATE` |
-| dateparser 또는 Duckling | 시간 표현 파싱 | `ADAPTER_CANDIDATE` |
-| DeepKE | 관계·속성 추출 연구·benchmark | `REFERENCE` |
-| GPT·Gemini·Claude | structured candidate extraction | `FOUNDATION_CANDIDATE` |
+| 후보                     | 역할                             | 상태                   |
+| ------------------------ | -------------------------------- | ---------------------- |
+| spaCy                    | 문장 분할·tokenization·기본 NER  | `ADAPTER_CANDIDATE`    |
+| GLiNER                   | zero-shot entity extraction 보조 | `ADAPTER_CANDIDATE`    |
+| dateparser 또는 Duckling | 시간 표현 파싱                   | `ADAPTER_CANDIDATE`    |
+| DeepKE                   | 관계·속성 추출 연구·benchmark    | `REFERENCE`            |
+| GPT·Gemini·Claude        | structured candidate extraction  | `FOUNDATION_CANDIDATE` |
 
 보조 NLP 결과는 후보를 자동 확정하지 않고 LLM 결과와 별도 Provenance를 가진다.
 
 ### 4.8 Validation
 
-| 후보 | 역할 | 상태 |
-|---|---|---|
-| JSON Schema validator | payload·contract validation | `FOUNDATION_CANDIDATE` |
-| Pydantic 또는 Zod | runtime type validation | `FOUNDATION_CANDIDATE` |
-| lucas deterministic lint | 구조·원문 정합성 검사 패턴 | `EXTRACT` |
-| Great Expectations 또는 Pandera | 표 데이터 검증 후보 | `ADAPTER_CANDIDATE` |
-| GPT·Gemini·Claude challenger | 의미 정합성 교차 검토 | `ADAPTER_CANDIDATE` |
+| 후보                            | 역할                        | 상태                   |
+| ------------------------------- | --------------------------- | ---------------------- |
+| JSON Schema validator           | payload·contract validation | `FOUNDATION_CANDIDATE` |
+| Pydantic 또는 Zod               | runtime type validation     | `FOUNDATION_CANDIDATE` |
+| lucas deterministic lint        | 구조·원문 정합성 검사 패턴  | `EXTRACT`              |
+| Great Expectations 또는 Pandera | 표 데이터 검증 후보         | `ADAPTER_CANDIDATE`    |
+| GPT·Gemini·Claude challenger    | 의미 정합성 교차 검토       | `ADAPTER_CANDIDATE`    |
 
 결정적 검사와 AI 의미 검사를 분리하고, 단일 종합 신뢰도 점수로 승인하지 않는다.
 
 ### 4.9 Comparison·Conflict
 
-| 후보 | 역할 | 상태 |
-|---|---|---|
-| RapidFuzz | 문자열·alias 후보 비교 | `FOUNDATION_CANDIDATE` |
-| sentence-transformers | 의미 후보 검색·cluster | `ADAPTER_CANDIDATE` |
-| cross-encoder reranker | 정밀 비교 후보 | `ADAPTER_CANDIDATE` |
-| GPT·Gemini·Claude | 범위·양태·시간·충돌 설명 | `FOUNDATION_CANDIDATE` |
+| 후보                   | 역할                     | 상태                   |
+| ---------------------- | ------------------------ | ---------------------- |
+| RapidFuzz              | 문자열·alias 후보 비교   | `FOUNDATION_CANDIDATE` |
+| sentence-transformers  | 의미 후보 검색·cluster   | `ADAPTER_CANDIDATE`    |
+| cross-encoder reranker | 정밀 비교 후보           | `ADAPTER_CANDIDATE`    |
+| GPT·Gemini·Claude      | 범위·양태·시간·충돌 설명 | `FOUNDATION_CANDIDATE` |
 
 임베딩 유사도나 모델 다수결은 identity·Fact 판단을 자동 확정하지 않는다.
 
 ### 4.10 Impact Analysis·Semantic Graph
 
-| 후보 | 역할 | 상태 |
-|---|---|---|
-| gbrain Graph·Timeline | Domain pattern과 Query 참고 | `EXTRACT` |
-| NetworkX | 초기 graph algorithm·test oracle | `FOUNDATION_CANDIDATE` |
-| PostgreSQL adjacency tables | MVP typed graph storage | `FOUNDATION_CANDIDATE` |
-| Apache AGE | PostgreSQL graph extension 후보 | `ADAPTER_CANDIDATE` |
-| Neo4j Community 또는 Memgraph | 전용 Graph DB benchmark | `DEFERRED` |
+| 후보                          | 역할                             | 상태                   |
+| ----------------------------- | -------------------------------- | ---------------------- |
+| gbrain Graph·Timeline         | Domain pattern과 Query 참고      | `EXTRACT`              |
+| NetworkX                      | 초기 graph algorithm·test oracle | `FOUNDATION_CANDIDATE` |
+| PostgreSQL adjacency tables   | MVP typed graph storage          | `FOUNDATION_CANDIDATE` |
+| Apache AGE                    | PostgreSQL graph extension 후보  | `ADAPTER_CANDIDATE`    |
+| Neo4j Community 또는 Memgraph | 전용 Graph DB benchmark          | `DEFERRED`             |
 
 실제 영향 edge는 Canonical·Projection이 소유하며 AI가 자유 생성한 edge를 섞지 않는다.
 
 ### 4.11 ChangeSet·Review·Editor
 
-| 후보 | 역할 | 상태 |
-|---|---|---|
-| OpenKnowledge UX | Activity·Burst Diff·Graph·editor 참고 | `REFERENCE` |
-| Tiptap / ProseMirror | 구조화 editor | `ADAPTER_CANDIDATE` |
-| Yjs | Draft ChangeSet 동시 편집 | `DEFERRED` |
-| diff-match-patch 계열 | text diff 보조 | `ADAPTER_CANDIDATE` |
-| Cytoscape.js | 2D graph review UI | `ADAPTER_CANDIDATE` |
+| 후보                  | 역할                                  | 상태                |
+| --------------------- | ------------------------------------- | ------------------- |
+| OpenKnowledge UX      | Activity·Burst Diff·Graph·editor 참고 | `REFERENCE`         |
+| Tiptap / ProseMirror  | 구조화 editor                         | `ADAPTER_CANDIDATE` |
+| Yjs                   | Draft ChangeSet 동시 편집             | `DEFERRED`          |
+| diff-match-patch 계열 | text diff 보조                        | `ADAPTER_CANDIDATE` |
+| Cytoscape.js          | 2D graph review UI                    | `ADAPTER_CANDIDATE` |
 
 Review 결과와 Canonical commit은 editor 내부 document state에 종속되지 않는다.
 
 ### 4.12 Canonical Knowledge
 
-| 후보 | 역할 | 상태 |
-|---|---|---|
-| PostgreSQL | Fact·Claim·Entity·Relation·History 원장 | `FOUNDATION_CANDIDATE` |
-| gbrain Fact·Relation·Timeline | Schema·operation 참고와 코드 추출 후보 | `EXTRACT` |
-| SQLAlchemy 또는 언어별 ORM | persistence Adapter | `ADAPTER_CANDIDATE` |
-| Alembic 또는 동등 migration tool | schema migration | `ADAPTER_CANDIDATE` |
-| Transactional Outbox pattern | commit·event 원자성 | `FOUNDATION_CANDIDATE` |
+| 후보                             | 역할                                    | 상태                   |
+| -------------------------------- | --------------------------------------- | ---------------------- |
+| PostgreSQL                       | Fact·Claim·Entity·Relation·History 원장 | `ADOPTED`              |
+| gbrain Fact·Relation·Timeline    | Schema·operation 참고와 코드 추출 후보  | `EXTRACT`              |
+| SQLAlchemy 또는 언어별 ORM       | persistence Adapter                     | `ADAPTER_CANDIDATE`    |
+| Alembic 또는 동등 migration tool | schema migration                        | `ADAPTER_CANDIDATE`    |
+| Transactional Outbox pattern     | commit·event 원자성                     | `FOUNDATION_CANDIDATE` |
 
 Canonical write는 이 모듈만 수행하며 다른 OSS의 내부 DB를 공식 원장으로 사용하지 않는다.
 
 ### 4.13 Projection·Search
 
-| 후보 | 역할 | 상태 |
-|---|---|---|
-| PostgreSQL FTS·pg_trgm | 정확·부분 문자열 검색 MVP | `FOUNDATION_CANDIDATE` |
-| pgvector | 단일 DB semantic search MVP | `ADAPTER_CANDIDATE` |
-| OpenSearch | 대규모 hybrid search | `DEFERRED` |
-| Qdrant | 독립 vector store benchmark | `DEFERRED` |
-| Apache AGE | graph projection 후보 | `ADAPTER_CANDIDATE` |
-| gbrain Search·Graph·Timeline | Query·projection 참고 | `EXTRACT` |
+| 후보                         | 역할                        | 상태                   |
+| ---------------------------- | --------------------------- | ---------------------- |
+| PostgreSQL FTS·pg_trgm       | 정확·부분 문자열 검색 MVP   | `FOUNDATION_CANDIDATE` |
+| pgvector                     | 단일 DB semantic search MVP | `ADAPTER_CANDIDATE`    |
+| OpenSearch                   | 대규모 hybrid search        | `DEFERRED`             |
+| Qdrant                       | 독립 vector store benchmark | `DEFERRED`             |
+| Apache AGE                   | graph projection 후보       | `ADAPTER_CANDIDATE`    |
+| gbrain Search·Graph·Timeline | Query·projection 참고       | `EXTRACT`              |
 
 처음에는 PostgreSQL 중심 Projection을 우선하고 규모와 품질 요구가 확인될 때 별도 제품을 도입한다.
 
 ### 4.14 Knowledge Discovery
 
-| 후보 | 역할 | 상태 |
-|---|---|---|
-| gbrain Dream Cycle | 주기적 Gap·연결 탐색 패턴 | `REFERENCE` |
-| NetworkX | pattern·neighborhood 탐색 | `FOUNDATION_CANDIDATE` |
-| GPT·Gemini·Claude | Gap·새 관계·추세 후보 | `FOUNDATION_CANDIDATE` |
-| Langfuse·OpenTelemetry | 비용·품질·재귀 추적 | `ADAPTER_CANDIDATE` |
+| 후보                   | 역할                      | 상태                   |
+| ---------------------- | ------------------------- | ---------------------- |
+| gbrain Dream Cycle     | 주기적 Gap·연결 탐색 패턴 | `REFERENCE`            |
+| NetworkX               | pattern·neighborhood 탐색 | `FOUNDATION_CANDIDATE` |
+| GPT·Gemini·Claude      | Gap·새 관계·추세 후보     | `FOUNDATION_CANDIDATE` |
+| Langfuse·OpenTelemetry | 비용·품질·재귀 추적       | `ADAPTER_CANDIDATE`    |
 
 Discovery 결과는 항상 `DERIVED_INFERENCE` 후보로 Phase 3에 재진입한다.
 
 ### 4.15 Output Generation
 
-| 후보 | 역할 | 상태 |
-|---|---|---|
-| Jinja2 또는 동등 template engine | 구조화 문서 template | `ADAPTER_CANDIDATE` |
-| Pandoc | Markdown·HTML·DOCX 변환 | `ADAPTER_CANDIDATE` |
-| WeasyPrint | HTML 기반 PDF 생성 | `ADAPTER_CANDIDATE` |
-| python-pptx | 프레젠테이션 출력 | `ADAPTER_CANDIDATE` |
-| openpyxl | 스프레드시트 출력 | `ADAPTER_CANDIDATE` |
-| Mermaid | 아키텍처·흐름 다이어그램 | `ADAPTER_CANDIDATE` |
+| 후보                             | 역할                     | 상태                |
+| -------------------------------- | ------------------------ | ------------------- |
+| Jinja2 또는 동등 template engine | 구조화 문서 template     | `ADAPTER_CANDIDATE` |
+| Pandoc                           | Markdown·HTML·DOCX 변환  | `ADAPTER_CANDIDATE` |
+| WeasyPrint                       | HTML 기반 PDF 생성       | `ADAPTER_CANDIDATE` |
+| python-pptx                      | 프레젠테이션 출력        | `ADAPTER_CANDIDATE` |
+| openpyxl                         | 스프레드시트 출력        | `ADAPTER_CANDIDATE` |
+| Mermaid                          | 아키텍처·흐름 다이어그램 | `ADAPTER_CANDIDATE` |
 
 생성 도구는 표현 계층을 담당하며 Canonical Fact를 수정하지 않는다.
 
 ### 4.16 Risk·Policy
 
-| 후보 | 역할 | 상태 |
-|---|---|---|
-| Open Policy Agent | 정책 규칙 평가 | `ADAPTER_CANDIDATE` |
-| Casbin | RBAC·ABAC 정책 후보 | `ADAPTER_CANDIDATE` |
-| OpenFGA | 관계 기반 접근 제어 후보 | `DEFERRED` |
-| JSON Schema | Action parameter validation | `FOUNDATION_CANDIDATE` |
+| 후보              | 역할                        | 상태                   |
+| ----------------- | --------------------------- | ---------------------- |
+| Open Policy Agent | 정책 규칙 평가              | `ADAPTER_CANDIDATE`    |
+| Casbin            | RBAC·ABAC 정책 후보         | `ADAPTER_CANDIDATE`    |
+| OpenFGA           | 관계 기반 접근 제어 후보    | `DEFERRED`             |
+| JSON Schema       | Action parameter validation | `FOUNDATION_CANDIDATE` |
 
 MVP는 코드 기반 결정적 Policy Engine으로 시작할 수 있으며, 정책 규모가 커질 때 OPA·Casbin·OpenFGA를 비교한다.
 
 ### 4.17 Action Execution·Connector
 
-| 후보 | 역할 | 상태 |
-|---|---|---|
-| MCP SDK | Tool·Resource 상호운용 | `ADAPTER_CANDIDATE` |
-| Temporal | 장기 Action·retry·compensation | `DEFERRED` |
-| 공급자 공식 SDK | Gmail·Calendar·Notion·GitHub 등 Adapter | `ADAPTER_CANDIDATE` |
-| Transactional Outbox | 실행 요청·Audit event 일관성 | `FOUNDATION_CANDIDATE` |
+| 후보                 | 역할                                    | 상태                   |
+| -------------------- | --------------------------------------- | ---------------------- |
+| MCP SDK              | Tool·Resource 상호운용                  | `ADAPTER_CANDIDATE`    |
+| Temporal             | 장기 Action·retry·compensation          | `DEFERRED`             |
+| 공급자 공식 SDK      | Gmail·Calendar·Notion·GitHub 등 Adapter | `ADAPTER_CANDIDATE`    |
+| Transactional Outbox | 실행 요청·Audit event 일관성            | `FOUNDATION_CANDIDATE` |
 
 각 Connector는 `validate → preview → preflight → execute → verify → compensate` 계약을 구현한다.
 
 ### 4.18 Feedback·Reentry
 
-| 후보 | 역할 | 상태 |
-|---|---|---|
-| Event Sourcing pattern | 수정·피드백 이력 | `REFERENCE` |
-| Transactional Outbox | 재진입 Event 전달 | `FOUNDATION_CANDIDATE` |
-| JSON Schema | Feedback type validation | `FOUNDATION_CANDIDATE` |
+| 후보                   | 역할                     | 상태                   |
+| ---------------------- | ------------------------ | ---------------------- |
+| Event Sourcing pattern | 수정·피드백 이력         | `REFERENCE`            |
+| Transactional Outbox   | 재진입 Event 전달        | `FOUNDATION_CANDIDATE` |
+| JSON Schema            | Feedback type validation | `FOUNDATION_CANDIDATE` |
 
 표현 수정, 사실 수정, Directive 의도, 새 자료, Action 결과를 서로 다른 Event로 분리한다.
 
 ### 4.19 Observability·Audit
 
-| 후보 | 역할 | 상태 |
-|---|---|---|
-| OpenTelemetry | Trace·Metric·Log 공통 Context | `FOUNDATION_CANDIDATE` |
-| Prometheus | Metric 수집 | `ADAPTER_CANDIDATE` |
-| Grafana | Dashboard | `ADAPTER_CANDIDATE` |
-| Loki | Log backend | `DEFERRED` |
-| Langfuse | LLM trace·prompt·cost·evaluation | `ADAPTER_CANDIDATE` |
+| 후보          | 역할                             | 상태                   |
+| ------------- | -------------------------------- | ---------------------- |
+| OpenTelemetry | Trace·Metric·Log 공통 Context    | `FOUNDATION_CANDIDATE` |
+| Prometheus    | Metric 수집                      | `ADAPTER_CANDIDATE`    |
+| Grafana       | Dashboard                        | `ADAPTER_CANDIDATE`    |
+| Loki          | Log backend                      | `DEFERRED`             |
+| Langfuse      | LLM trace·prompt·cost·evaluation | `ADAPTER_CANDIDATE`    |
 
 Audit 원장은 일반 로그와 분리하고 사용자 승인·Canonical commit·Action 실행을 불변 기록한다.
 
 ### 4.20 Web UI
 
-| 후보 | 역할 | 상태 |
-|---|---|---|
-| ddsyasas UX | Intake·Ask·비용·설정·Home hierarchy | `REFERENCE` |
-| OpenKnowledge UX | Cockpit·Graph·Activity·Diff | `REFERENCE` |
-| React / Next.js | Web application 후보 | `ADAPTER_CANDIDATE` |
-| TanStack Query | API state·cache | `ADAPTER_CANDIDATE` |
-| Cytoscape.js | Graph UI | `ADAPTER_CANDIDATE` |
-| Tiptap | Review editor | `ADAPTER_CANDIDATE` |
+| 후보             | 역할                                | 상태                |
+| ---------------- | ----------------------------------- | ------------------- |
+| ddsyasas UX      | Intake·Ask·비용·설정·Home hierarchy | `REFERENCE`         |
+| OpenKnowledge UX | Cockpit·Graph·Activity·Diff         | `REFERENCE`         |
+| React / Next.js  | Web application 후보                | `ADAPTER_CANDIDATE` |
+| TanStack Query   | API state·cache                     | `ADAPTER_CANDIDATE` |
+| Cytoscape.js     | Graph UI                            | `ADAPTER_CANDIDATE` |
+| Tiptap           | Review editor                       | `ADAPTER_CANDIDATE` |
 
 UI framework는 Domain Module 계약에 영향을 주지 않는다.
 
@@ -343,35 +345,38 @@ UI framework는 Domain Module 계약에 영향을 주지 않는다.
 
 후보의 실제 채택은 저장소 URL, pin 기준, 라이선스·보안 검토 상태를 기록한 뒤 진행한다. 아래 값은 문서 작성 시점의 탐색 기준이며, `version/commit`은 채택 PR에서 재검증하고 lockfile·SBOM에 고정한다.
 
-| 후보 | 공식 저장소·규격 | Version / Commit baseline | 라이선스 검토 | 현재 상태 |
-|---|---|---|---|---|
-| garrytan/gbrain | https://github.com/garrytan/gbrain | 미고정 — Extract prototype 시 pin | 대기 | `EXTRACT` |
-| lucasastorian/llmwiki | https://github.com/lucasastorian/llmwiki | 미고정 — Extract prototype 시 pin | 대기 | `EXTRACT` |
-| ddsyasas/llm-wiki | https://github.com/ddsyasas/llm-wiki | 런타임 채택 없음 | UX 참고만 | `REFERENCE` |
-| Inkeep OpenKnowledge | 공개 저장소·라이선스 범위 재확인 필요 | 미고정 | 확인 전 코드 재사용 금지 | `REFERENCE` |
-| JSON Schema | https://github.com/json-schema-org/json-schema-spec | 구현 선택 시 draft와 validator pin | 대기 | `FOUNDATION_CANDIDATE` |
-| OpenAPI | https://github.com/OAI/OpenAPI-Specification | 구현 선택 시 spec version pin | 대기 | `FOUNDATION_CANDIDATE` |
-| AsyncAPI | https://github.com/asyncapi/spec | 구현 선택 시 spec version pin | 대기 | `ADAPTER_CANDIDATE` |
-| CloudEvents | https://github.com/cloudevents/spec | mapping 검증 시 spec version pin | 대기 | `REFERENCE` |
-| Temporal | https://github.com/temporalio/temporal | benchmark 시 release pin | 대기 | `ADAPTER_CANDIDATE` |
-| NATS JetStream | https://github.com/nats-io/nats-server | benchmark 시 release pin | 대기 | `ADAPTER_CANDIDATE` |
-| Redis Streams | https://github.com/redis/redis | benchmark 시 release pin | 대기 | `ADAPTER_CANDIDATE` |
-| Docling | https://github.com/docling-project/docling | golden corpus 평가 시 commit pin | 대기 | `ADAPTER_CANDIDATE` |
-| Apache Tika | https://github.com/apache/tika | golden corpus 평가 시 release pin | 대기 | `ADAPTER_CANDIDATE` |
-| MarkItDown | https://github.com/microsoft/markitdown | golden corpus 평가 시 commit pin | 대기 | `ADAPTER_CANDIDATE` |
-| ffmpeg | https://github.com/FFmpeg/FFmpeg | Shotgun Assembly에서는 pin하지 않음 | 범위 재결정 전 대기 | `DEFERRED` |
-| LiteLLM | https://github.com/BerriAI/litellm | provider benchmark 시 release pin | 대기 | `ADAPTER_CANDIDATE` |
-| Langfuse | https://github.com/langfuse/langfuse | observability 평가 시 release pin | 대기 | `ADAPTER_CANDIDATE` |
-| OpenTelemetry | https://github.com/open-telemetry/opentelemetry-specification | SDK 언어 결정 후 pin | 대기 | `FOUNDATION_CANDIDATE` |
-| pgvector | https://github.com/pgvector/pgvector | PostgreSQL version과 함께 pin | 대기 | `ADAPTER_CANDIDATE` |
-| Apache AGE | https://github.com/apache/age | graph benchmark 시 release pin | 대기 | `ADAPTER_CANDIDATE` |
-| Open Policy Agent | https://github.com/open-policy-agent/opa | policy benchmark 시 release pin | 대기 | `ADAPTER_CANDIDATE` |
-| Casbin | https://github.com/casbin/casbin | 언어 구현 선택 후 pin | 대기 | `ADAPTER_CANDIDATE` |
-| OpenFGA | https://github.com/openfga/openfga | 관계 권한 요구 확인 후 pin | 대기 | `DEFERRED` |
-| MCP SDK·Specification | https://github.com/modelcontextprotocol | Adapter 구현 시 SDK·spec commit pin | 대기 | `ADAPTER_CANDIDATE` |
-| Tiptap | https://github.com/ueberdosis/tiptap | Review UI prototype 시 release pin | 대기 | `ADAPTER_CANDIDATE` |
-| Yjs | https://github.com/yjs/yjs | 협업 기능 승인 후 pin | 대기 | `DEFERRED` |
-| Cytoscape.js | https://github.com/cytoscape/cytoscape.js | Graph UI prototype 시 release pin | 대기 | `ADAPTER_CANDIDATE` |
+Stage 0~2의 재검증된 exact pin과 결정은
+[`oss-source-registry.json`](../../implementation/oss-source-registry.json)을 기준으로 한다.
+
+| 후보                  | 공식 저장소·규격                                              | Version / Commit baseline                  | 라이선스 검토                      | 현재 상태              |
+| --------------------- | ------------------------------------------------------------- | ------------------------------------------ | ---------------------------------- | ---------------------- |
+| garrytan/gbrain       | https://github.com/garrytan/gbrain                            | `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a` | MIT 확인                           | `REFERENCE`            |
+| lucasastorian/llmwiki | https://github.com/lucasastorian/llmwiki                      | `ad626a3d81be1480e35ef4e94234de8dbb27a61e` | Apache-2.0 확인                    | `DEFERRED`             |
+| ddsyasas/llm-wiki     | https://github.com/ddsyasas/llm-wiki                          | `e8dd69ebba0dc7c395c1b8217bb1c30c14e8c84c` | MIT 확인                           | `REFERENCE`            |
+| Inkeep OpenKnowledge  | https://github.com/inkeep/open-knowledge                      | `f2834c237639e2cff603817ed88182b33f83cf91` | GPL-3.0-or-later 확인, 패턴 참고만 | `REFERENCE`            |
+| JSON Schema           | https://github.com/json-schema-org/json-schema-spec           | 구현 선택 시 draft와 validator pin         | 대기                               | `FOUNDATION_CANDIDATE` |
+| OpenAPI               | https://github.com/OAI/OpenAPI-Specification                  | 구현 선택 시 spec version pin              | 대기                               | `FOUNDATION_CANDIDATE` |
+| AsyncAPI              | https://github.com/asyncapi/spec                              | 구현 선택 시 spec version pin              | 대기                               | `ADAPTER_CANDIDATE`    |
+| CloudEvents           | https://github.com/cloudevents/spec                           | mapping 검증 시 spec version pin           | 대기                               | `REFERENCE`            |
+| Temporal              | https://github.com/temporalio/temporal                        | benchmark 시 release pin                   | 대기                               | `ADAPTER_CANDIDATE`    |
+| NATS JetStream        | https://github.com/nats-io/nats-server                        | benchmark 시 release pin                   | 대기                               | `ADAPTER_CANDIDATE`    |
+| Redis Streams         | https://github.com/redis/redis                                | benchmark 시 release pin                   | 대기                               | `ADAPTER_CANDIDATE`    |
+| Docling               | https://github.com/docling-project/docling                    | golden corpus 평가 시 commit pin           | 대기                               | `ADAPTER_CANDIDATE`    |
+| Apache Tika           | https://github.com/apache/tika                                | golden corpus 평가 시 release pin          | 대기                               | `ADAPTER_CANDIDATE`    |
+| MarkItDown            | https://github.com/microsoft/markitdown                       | golden corpus 평가 시 commit pin           | 대기                               | `ADAPTER_CANDIDATE`    |
+| ffmpeg                | https://github.com/FFmpeg/FFmpeg                              | Shotgun Assembly에서는 pin하지 않음        | 범위 재결정 전 대기                | `DEFERRED`             |
+| LiteLLM               | https://github.com/BerriAI/litellm                            | provider benchmark 시 release pin          | 대기                               | `ADAPTER_CANDIDATE`    |
+| Langfuse              | https://github.com/langfuse/langfuse                          | observability 평가 시 release pin          | 대기                               | `ADAPTER_CANDIDATE`    |
+| OpenTelemetry         | https://github.com/open-telemetry/opentelemetry-specification | SDK 언어 결정 후 pin                       | 대기                               | `FOUNDATION_CANDIDATE` |
+| pgvector              | https://github.com/pgvector/pgvector                          | PostgreSQL version과 함께 pin              | 대기                               | `ADAPTER_CANDIDATE`    |
+| Apache AGE            | https://github.com/apache/age                                 | graph benchmark 시 release pin             | 대기                               | `ADAPTER_CANDIDATE`    |
+| Open Policy Agent     | https://github.com/open-policy-agent/opa                      | policy benchmark 시 release pin            | 대기                               | `ADAPTER_CANDIDATE`    |
+| Casbin                | https://github.com/casbin/casbin                              | 언어 구현 선택 후 pin                      | 대기                               | `ADAPTER_CANDIDATE`    |
+| OpenFGA               | https://github.com/openfga/openfga                            | 관계 권한 요구 확인 후 pin                 | 대기                               | `DEFERRED`             |
+| MCP SDK·Specification | https://github.com/modelcontextprotocol                       | Adapter 구현 시 SDK·spec commit pin        | 대기                               | `ADAPTER_CANDIDATE`    |
+| Tiptap                | https://github.com/ueberdosis/tiptap                          | Review UI prototype 시 release pin         | 대기                               | `ADAPTER_CANDIDATE`    |
+| Yjs                   | https://github.com/yjs/yjs                                    | 협업 기능 승인 후 pin                      | 대기                               | `DEFERRED`             |
+| Cytoscape.js          | https://github.com/cytoscape/cytoscape.js                     | Graph UI prototype 시 release pin          | 대기                               | `ADAPTER_CANDIDATE`    |
 
 ### 5.1 채택 시 필수 기록
 

@@ -2,7 +2,11 @@
 
 ## 완료 상태
 
-**COMPLETE**
+**COMPLETE — OSS Gate 재검증 완료**
+
+상세 결정과 근거는
+[Stage 1 OSS Integration Review](../implementation/stage-validations/stage-1-oss-integration-review.md)에
+기록한다.
 
 두 개의 독립 모듈을 Manifest로 등록하고, 아래 수직 흐름을 두 Transport에서 같은
 Contract Test로 검증했다.
@@ -104,6 +108,18 @@ Breaking Change는 기존 `1.x`를 수정하지 않고 새 Major Version으로 �
 
 이 제한은 Stage 1의 경계를 명확히 하며, 다음 Stage의 제품 기능과 Kernel 기반 기능이
 섞이는 것을 방지한다.
+
+## OSS-first 재검증
+
+- Ajv `8.20.0`을 Contract payload validator로 `ADOPT`한다.
+- gbrain Minion은 retry, timeout, idempotency, lock recovery의 검증된 참조지만
+  `BrainEngine`, migration, PostgreSQL worker와 결합되어 있어 현재는 `REFERENCE_ONLY`다.
+- 현재 Job Runtime은 제품용 영속 Queue가 아니라 Connector Contract 검증용 메모리
+  참조 구현이다.
+- persistent Inbox, Transactional Outbox, durable Job 시작 전에 Minion
+  `EXTRACT/AUGMENT` PoC를 다시 평가한다.
+- OpenAPI, AsyncAPI, OpenTelemetry, Temporal, NATS, Redis는 각각의 실제 요구가 생길 때까지
+  `DEFER`한다.
 
 ## Migration과 Rollback
 

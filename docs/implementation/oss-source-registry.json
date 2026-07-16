@@ -1,0 +1,418 @@
+{
+  "schemaVersion": "1.0.0",
+  "reviewedAt": "2026-07-16",
+  "decisionValues": [
+    "ADOPT",
+    "EXTRACT",
+    "AUGMENT",
+    "REFERENCE_ONLY",
+    "DEFER",
+    "REJECT",
+    "NO_RELEVANT_OSS"
+  ],
+  "entries": [
+    {
+      "id": "postgresql",
+      "name": "PostgreSQL",
+      "stages": [0, 1, 2],
+      "officialSource": "https://github.com/postgres/postgres",
+      "pin": {
+        "type": "docker-digest",
+        "value": "postgres:16.14-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777"
+      },
+      "license": {
+        "spdx": "PostgreSQL",
+        "status": "VERIFIED",
+        "evidence": "Official PostgreSQL distribution and Docker Official Image"
+      },
+      "decision": "ADOPT",
+      "scope": "Development database, Stage 2 metadata persistence, and later durable runtime candidate",
+      "security": "Local credentials only; production secrets remain outside source control",
+      "maintenance": "Major version 16 is fixed; patch and image digest updates require a registry change",
+      "evidence": ["docker image digest verified", "PostgreSQL 16.14 runtime verified"],
+      "boundary": "Domain modules access PostgreSQL only through repository ports",
+      "replacement": "Replace the PostgreSQL adapter without changing module contracts",
+      "recheckTrigger": "PostgreSQL major upgrade or managed database migration"
+    },
+    {
+      "id": "ajv",
+      "name": "Ajv JSON Schema validator",
+      "stages": [0, 1],
+      "officialSource": "https://github.com/ajv-validator/ajv",
+      "pin": {
+        "type": "npm-lock",
+        "package": "ajv",
+        "value": "8.20.0"
+      },
+      "license": {
+        "spdx": "MIT",
+        "status": "VERIFIED",
+        "evidence": "npm package metadata and lockfile"
+      },
+      "decision": "ADOPT",
+      "scope": "Strict runtime validation for versioned command, event, and query payloads",
+      "security": "Schemas are trusted repository artifacts; untrusted remote schemas are not loaded",
+      "maintenance": "Exact resolved version is checked against package-lock.json",
+      "evidence": ["SchemaRegistry unit tests", "contract validation tests"],
+      "boundary": "Ajv is encapsulated by packages/contracts SchemaRegistry",
+      "replacement": "A replacement validator must pass the same SchemaRegistry and connector tests",
+      "recheckTrigger": "JSON Schema draft change or validator replacement"
+    },
+    {
+      "id": "gbrain",
+      "name": "garrytan/gbrain",
+      "stages": [0, 1, 2],
+      "officialSource": "https://github.com/garrytan/gbrain",
+      "pin": {
+        "type": "git-commit",
+        "value": "a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a"
+      },
+      "license": {
+        "spdx": "MIT",
+        "status": "VERIFIED",
+        "evidence": "LICENSE at the pinned commit"
+      },
+      "decision": "REFERENCE_ONLY",
+      "scope": "Minion retry, timeout, idempotency, PostgreSQL locking, Page input, and namespace patterns",
+      "security": "No gbrain runtime, database, or provider configuration is embedded in Shotgun",
+      "maintenance": "Pinned v0.42.58.0 validation baseline; upstream changes are not consumed automatically",
+      "evidence": [
+        "77.9% verified score",
+        "86% validation coverage",
+        "Minion lock and timeout recovery evidence"
+      ],
+      "boundary": "Any future reuse must sit behind Shotgun Job, Repository, or Module ports",
+      "replacement": "Current in-memory runtime remains removable; durable queue evaluation occurs before persistent jobs",
+      "recheckTrigger": "Before Stage 6 persistent Inbox, Outbox, or durable Job implementation"
+    },
+    {
+      "id": "lucas-llmwiki",
+      "name": "lucasastorian/llmwiki",
+      "stages": [0, 2, 3],
+      "officialSource": "https://github.com/lucasastorian/llmwiki",
+      "pin": {
+        "type": "git-commit",
+        "value": "ad626a3d81be1480e35ef4e94234de8dbb27a61e"
+      },
+      "license": {
+        "spdx": "Apache-2.0",
+        "status": "VERIFIED",
+        "evidence": "LICENSE at the pinned commit"
+      },
+      "decision": "DEFER",
+      "scope": "Watcher and reconcile patterns for future directory intake; transformation helpers for Stage 3+",
+      "security": "Path-based source identity must not cross the Shotgun Source boundary",
+      "maintenance": "Pinned commit only; no runtime dependency added",
+      "evidence": ["watcher and reconcile review", "path identity changes on rename"],
+      "boundary": "Watcher events may call Intake ports but cannot own Source identity",
+      "replacement": "Native/manual intake remains available",
+      "recheckTrigger": "When directory watching or Stage 3 transformation begins"
+    },
+    {
+      "id": "ddsyasas-llm-wiki",
+      "name": "ddsyasas/llm-wiki",
+      "stages": [0, 2],
+      "officialSource": "https://github.com/ddsyasas/llm-wiki",
+      "pin": {
+        "type": "git-commit",
+        "value": "e8dd69ebba0dc7c395c1b8217bb1c30c14e8c84c"
+      },
+      "license": {
+        "spdx": "MIT",
+        "status": "VERIFIED",
+        "evidence": "LICENSE SHA-256 22ADFCBA2FED373520C8CDA4DFC2204EDD1AFA1805EBD6FB16B110EEDE9A1710"
+      },
+      "decision": "REFERENCE_ONLY",
+      "scope": "Source intake form, action-centered home, and presentation hierarchy",
+      "security": "Backend is excluded because of SSRF and arbitrary absolute-path workspace risks",
+      "maintenance": "195 tests passed and 1 external smoke test skipped at the pinned baseline",
+      "evidence": [
+        "responsive UI review",
+        "independent adapter PoC",
+        "frontend/backend coupling map"
+      ],
+      "boundary": "Only UI patterns may consume Shotgun typed APIs; backend and storage remain excluded",
+      "replacement": "UI can be rebuilt from the recorded workflow without carrying upstream runtime code",
+      "recheckTrigger": "When the Shotgun Web UI and Source Intake screen are implemented"
+    },
+    {
+      "id": "inkeep-open-knowledge",
+      "name": "Inkeep OpenKnowledge",
+      "stages": [0],
+      "officialSource": "https://github.com/inkeep/open-knowledge",
+      "pin": {
+        "type": "git-commit",
+        "value": "f2834c237639e2cff603817ed88182b33f83cf91"
+      },
+      "license": {
+        "spdx": "GPL-3.0-or-later",
+        "status": "VERIFIED",
+        "evidence": "GPL v3 LICENSE at the pinned commit"
+      },
+      "decision": "REFERENCE_ONLY",
+      "scope": "Editor mode switching, 2D graph, activity, and diff UX patterns",
+      "security": "No runtime embedding or code copying into the current MIT-compatible product boundary",
+      "maintenance": "Pinned validation baseline; license impact must be re-reviewed before any code reuse",
+      "evidence": ["targeted typecheck", "2D graph and editor UX validation"],
+      "boundary": "Canonical data, approval, and Job state remain owned by Shotgun",
+      "replacement": "Patterns are independently reimplemented behind Shotgun APIs",
+      "recheckTrigger": "Before editor or graph UI implementation"
+    },
+    {
+      "id": "opentelemetry",
+      "name": "OpenTelemetry JavaScript",
+      "stages": [0, 1],
+      "officialSource": "https://github.com/open-telemetry/opentelemetry-js",
+      "pin": {
+        "type": "reviewed-version",
+        "value": "1.9.1"
+      },
+      "license": {
+        "spdx": "Apache-2.0",
+        "status": "VERIFIED",
+        "evidence": "npm package metadata for @opentelemetry/api"
+      },
+      "decision": "DEFER",
+      "scope": "External trace and metric export",
+      "security": "Payloads and secrets must remain excluded from exported telemetry",
+      "maintenance": "Not installed; review precedes adoption",
+      "evidence": ["current in-memory trace context meets Stage 1 contract tests"],
+      "boundary": "Observability exporter adapter only",
+      "replacement": "Shotgun trace IDs remain provider-neutral",
+      "recheckTrigger": "First multi-process deployment or external telemetry backend"
+    },
+    {
+      "id": "openapi",
+      "name": "OpenAPI Specification",
+      "stages": [1],
+      "officialSource": "https://github.com/OAI/OpenAPI-Specification",
+      "pin": {
+        "type": "reviewed-version",
+        "value": "3.1"
+      },
+      "license": {
+        "spdx": "Apache-2.0",
+        "status": "VERIFIED",
+        "evidence": "Official specification repository"
+      },
+      "decision": "DEFER",
+      "scope": "Public HTTP contract publication",
+      "security": "No public API compatibility promise is made in Stage 1",
+      "maintenance": "Specification only; no generator dependency",
+      "evidence": ["Stage 1 currently exposes an internal demo assembly"],
+      "boundary": "HTTP transport documentation only",
+      "replacement": "JSON Schema contracts remain canonical",
+      "recheckTrigger": "Before a public or separately deployed HTTP API"
+    },
+    {
+      "id": "asyncapi",
+      "name": "AsyncAPI Specification",
+      "stages": [1],
+      "officialSource": "https://github.com/asyncapi/spec",
+      "pin": {
+        "type": "reviewed-version",
+        "value": "3.0"
+      },
+      "license": {
+        "spdx": "Apache-2.0",
+        "status": "VERIFIED",
+        "evidence": "Official specification repository"
+      },
+      "decision": "DEFER",
+      "scope": "External event and queue documentation",
+      "security": "No external broker is active in Stage 1",
+      "maintenance": "Specification only",
+      "evidence": ["in-memory and in-process transports are the current scope"],
+      "boundary": "Event transport documentation only",
+      "replacement": "Connector contracts remain independent of the documentation format",
+      "recheckTrigger": "Before an external event transport"
+    },
+    {
+      "id": "cloudevents",
+      "name": "CloudEvents",
+      "stages": [1],
+      "officialSource": "https://github.com/cloudevents/spec",
+      "pin": {
+        "type": "reviewed-version",
+        "value": "1.0.2"
+      },
+      "license": {
+        "spdx": "Apache-2.0",
+        "status": "VERIFIED",
+        "evidence": "Official specification repository"
+      },
+      "decision": "REFERENCE_ONLY",
+      "scope": "Envelope naming and interoperability comparison",
+      "security": "Shotgun security and provenance fields are not removed to match CloudEvents",
+      "maintenance": "Specification reference only",
+      "evidence": ["Message Envelope field comparison"],
+      "boundary": "Optional mapping adapter",
+      "replacement": "No dependency exists",
+      "recheckTrigger": "When a third-party CloudEvents consumer is added"
+    },
+    {
+      "id": "temporal",
+      "name": "Temporal",
+      "stages": [1],
+      "officialSource": "https://github.com/temporalio/temporal",
+      "pin": {
+        "type": "reviewed-family",
+        "value": "server"
+      },
+      "license": {
+        "spdx": "MIT",
+        "status": "VERIFIED",
+        "evidence": "Official repository"
+      },
+      "decision": "DEFER",
+      "scope": "Long-running durable workflows",
+      "security": "Operational service and worker footprint is outside the MVP",
+      "maintenance": "No dependency installed",
+      "evidence": ["Stage 1 has no long-running workflow requirement"],
+      "boundary": "Future workflow adapter",
+      "replacement": "Connector and Job contracts remain transport-neutral",
+      "recheckTrigger": "When timers, sagas, or multi-day workflows are required"
+    },
+    {
+      "id": "nats-jetstream",
+      "name": "NATS JetStream",
+      "stages": [1],
+      "officialSource": "https://github.com/nats-io/nats-server",
+      "pin": {
+        "type": "reviewed-family",
+        "value": "JetStream"
+      },
+      "license": {
+        "spdx": "Apache-2.0",
+        "status": "VERIFIED",
+        "evidence": "Official repository"
+      },
+      "decision": "DEFER",
+      "scope": "External event bus and durable consumers",
+      "security": "Broker operation is outside the single-process MVP",
+      "maintenance": "No dependency installed",
+      "evidence": ["current transports pass the shared Connector contract"],
+      "boundary": "MessageTransport adapter",
+      "replacement": "Add without changing Module contracts",
+      "recheckTrigger": "When independent workers or event retention are required"
+    },
+    {
+      "id": "redis-streams",
+      "name": "Redis Streams",
+      "stages": [1],
+      "officialSource": "https://github.com/redis/redis",
+      "pin": {
+        "type": "reviewed-family",
+        "value": "Streams"
+      },
+      "license": {
+        "spdx": "UNRESOLVED",
+        "status": "REVIEW_REQUIRED",
+        "evidence": "License changed across Redis versions; exact version review is required before adoption"
+      },
+      "decision": "DEFER",
+      "scope": "Lightweight queue comparison",
+      "security": "No Redis service or credentials are introduced",
+      "maintenance": "No dependency installed",
+      "evidence": ["not needed by the Stage 1 in-process MVP"],
+      "boundary": "MessageTransport or Job adapter",
+      "replacement": "No current dependency",
+      "recheckTrigger": "Only with an exact version, license review, and queue benchmark"
+    },
+    {
+      "id": "fsspec",
+      "name": "fsspec",
+      "stages": [2],
+      "officialSource": "https://github.com/fsspec/filesystem_spec",
+      "pin": {
+        "type": "reviewed-family",
+        "value": "Python library"
+      },
+      "license": {
+        "spdx": "BSD-3-Clause",
+        "status": "VERIFIED",
+        "evidence": "Official repository"
+      },
+      "decision": "REJECT",
+      "scope": "Filesystem and object-store abstraction",
+      "security": "Adding a Python runtime bridge would enlarge the Stage 2 attack and operations surface",
+      "maintenance": "No dependency installed",
+      "evidence": [
+        "Shotgun runtime is TypeScript",
+        "AssetStoragePort has only put and read operations"
+      ],
+      "boundary": "Not applicable",
+      "replacement": "Use small TypeScript adapters behind AssetStoragePort",
+      "recheckTrigger": "Only if a Python transformation service already becomes mandatory"
+    },
+    {
+      "id": "minio",
+      "name": "MinIO",
+      "stages": [2],
+      "officialSource": "https://github.com/minio/minio",
+      "pin": {
+        "type": "reviewed-family",
+        "value": "S3-compatible server"
+      },
+      "license": {
+        "spdx": "AGPL-3.0-only",
+        "status": "REVIEW_REQUIRED",
+        "evidence": "Official repository; deployment and distribution model must be reviewed"
+      },
+      "decision": "DEFER",
+      "scope": "Object storage for large or remote deployments",
+      "security": "Stage 2 uses local development storage only",
+      "maintenance": "No service or SDK installed",
+      "evidence": ["current maximum asset size is 1 MiB"],
+      "boundary": "Future AssetStoragePort adapter",
+      "replacement": "LocalAssetStorage remains the MVP default",
+      "recheckTrigger": "Before remote deployment, multipart upload, or large asset support"
+    },
+    {
+      "id": "apache-tika",
+      "name": "Apache Tika",
+      "stages": [2, 8],
+      "officialSource": "https://github.com/apache/tika",
+      "pin": {
+        "type": "reviewed-family",
+        "value": "server or library"
+      },
+      "license": {
+        "spdx": "Apache-2.0",
+        "status": "VERIFIED",
+        "evidence": "Official repository"
+      },
+      "decision": "DEFER",
+      "scope": "MIME detection, metadata, and broad text extraction",
+      "security": "Complex document parsing requires isolation and a golden corpus",
+      "maintenance": "No JVM service added in Stage 2",
+      "evidence": ["Stage 2 accepts only direct text, UTF-8 txt, and plain-text md"],
+      "boundary": "Future format adapter",
+      "replacement": "Current intake validates the explicitly declared narrow media types",
+      "recheckTrigger": "Stage 8 format expansion"
+    },
+    {
+      "id": "content-addressed-storage",
+      "name": "Content-addressed storage pattern",
+      "stages": [2],
+      "officialSource": "https://www.rfc-editor.org/rfc/rfc6920",
+      "pin": {
+        "type": "standard",
+        "value": "SHA-256 design reference"
+      },
+      "license": {
+        "spdx": "N/A",
+        "status": "NOT_APPLICABLE",
+        "evidence": "Architecture pattern, not a copied software package"
+      },
+      "decision": "NO_RELEVANT_OSS",
+      "scope": "Immutable original bytes keyed by SHA-256",
+      "security": "Every write and read is verified against the expected hash",
+      "maintenance": "Small Shotgun-owned adapter with shared contract tests",
+      "evidence": ["local storage unit tests", "asset resolver tamper tests"],
+      "boundary": "AssetStoragePort",
+      "replacement": "Any local or object-store adapter must pass the same contract suite",
+      "recheckTrigger": "Hash algorithm change or new storage adapter"
+    }
+  ]
+}

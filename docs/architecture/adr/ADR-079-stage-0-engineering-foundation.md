@@ -29,3 +29,16 @@ Stage 0의 기본 구현은 다음으로 고정한다.
 ## 되돌리기
 
 이 결정은 아직 제품 데이터나 외부 연동을 만들지 않는다. PostgreSQL 개발 데이터는 `npm run db:reset`으로 재생성할 수 있으며, Framework·ORM 같은 추가 선택은 실제 Stage 요구가 생길 때 별도 ADR로 결정한다.
+
+## OSS-first Addendum
+
+Stage 0 완료를 다음 조건으로 보완한다.
+
+- PostgreSQL은 `16.14-alpine` exact image digest로 고정한다.
+- JSON Schema validator는 Ajv `8.20.0`을 `SchemaRegistry` 뒤에서 사용한다.
+- gbrain, lucasastorian/llmwiki, ddsyasas/llm-wiki, OpenKnowledge는 exact commit과
+  license를 Source Registry에 기록한다.
+- OpenTelemetry는 외부 exporter가 필요한 시점까지 `DEFER`한다.
+- `npm run oss:verify`, vulnerability audit, CycloneDX SBOM 생성을 CI Gate에 포함한다.
+
+세부 결정은 [ADR-082](./ADR-082-stage-0-to-2-oss-first-retrospective.md)를 따른다.

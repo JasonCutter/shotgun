@@ -64,3 +64,16 @@ Stage 1은 다음 경계를 채택한다.
 Stage 1은 제품 데이터 Schema를 추가하지 않으므로 PostgreSQL Migration Rollback이 필요하지
 않다. 코드와 Contract Version `1.0.0`을 되돌릴 수 있지만, `1.x`가 배포된 뒤 Breaking
 Change가 필요하면 기존 계약을 수정하지 않고 `2.0.0`을 추가해 병행한다.
+
+## OSS-first Addendum
+
+- Ajv를 Contract validation의 채택 구현으로 고정한다.
+- gbrain Minion은 PostgreSQL-native retry, timeout, idempotency, lock recovery 참조로
+  유지하되 현재 Stage 1 Runtime에 직접 포함하지 않는다.
+- 현재 Job Runtime은 단일 프로세스 Contract Test용이며 영속 Queue로 간주하지 않는다.
+- persistent Inbox, Transactional Outbox, durable Job 구현 전에 Minion 추출 또는 Adapter
+  PoC를 다시 평가한다.
+- OpenAPI, AsyncAPI, OpenTelemetry, Temporal, NATS JetStream, Redis Streams는 실제 외부
+  Transport와 운영 요구가 생길 때까지 `DEFER`한다.
+
+세부 결정은 [ADR-082](./ADR-082-stage-0-to-2-oss-first-retrospective.md)를 따른다.

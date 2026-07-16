@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16.14-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
         env:
           POSTGRES_DB: shotgun
           POSTGRES_USER: shotgun
@@ -34,6 +34,9 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - run: npm run oss:audit
+      - run: npm sbom --sbom-format cyclonedx > sbom.cdx.json
+      - run: node -e "JSON.parse(require('node:fs').readFileSync('sbom.cdx.json', 'utf8'))"
       - run: npm run db:reset
       - run: npm run check
       - run: npm run test:database

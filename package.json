@@ -18,8 +18,8 @@
     "dev": "tsx watch assemblies/shotgun-app/src/main.ts",
     "start": "tsx assemblies/shotgun-app/src/main.ts",
     "lint": "eslint packages modules adapters assemblies tests scripts",
-    "format:check": "prettier --check package.json tsconfig.json eslint.config.js .prettierrc.json .github/workflows/ci.yml packages modules adapters assemblies tests scripts docs/engineering docs/architecture/adr",
-    "format:write": "prettier --write package.json tsconfig.json eslint.config.js .prettierrc.json .github/workflows/ci.yml packages modules adapters assemblies tests scripts docs/engineering docs/architecture/adr",
+    "format:check": "prettier --check package.json tsconfig.json eslint.config.js .prettierrc.json .github/workflows/ci.yml packages modules adapters assemblies tests scripts docs/engineering docs/architecture/adr docs/implementation/oss-source-registry.json docs/implementation/stage-validations",
+    "format:write": "prettier --write package.json tsconfig.json eslint.config.js .prettierrc.json .github/workflows/ci.yml packages modules adapters assemblies tests scripts docs/engineering docs/architecture/adr docs/implementation/oss-source-registry.json docs/implementation/stage-validations",
     "typecheck": "tsc --noEmit",
     "test:unit": "vitest run tests/unit",
     "test:contract": "vitest run tests/contract",
@@ -27,11 +27,14 @@
     "test:database": "vitest run tests/database --maxWorkers=1",
     "test:architecture": "tsx scripts/architecture-test.ts",
     "test": "npm run test:unit && npm run test:contract && npm run test:integration && npm run test:architecture",
+    "oss:verify": "tsx scripts/oss-gate.ts",
+    "oss:audit": "npm audit --audit-level=high",
+    "oss:sbom": "npm sbom --sbom-format cyclonedx",
     "db:migrate": "tsx scripts/database.ts migrate",
     "db:reset": "tsx scripts/database.ts reset",
     "db:verify": "tsx scripts/database.ts verify",
     "secret:scan": "tsx scripts/secret-scan.ts",
-    "check": "npm run lint && npm run format:check && npm run typecheck && npm test && npm run secret:scan"
+    "check": "npm run lint && npm run format:check && npm run typecheck && npm test && npm run secret:scan && npm run oss:verify"
   },
   "dependencies": {
     "ajv": "^8.17.1",

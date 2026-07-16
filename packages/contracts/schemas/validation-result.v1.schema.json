@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "validationId",
+    "candidateId",
+    "revisionNumber",
+    "projectId",
+    "sourceVersionId",
+    "status",
+    "dimensions",
+    "createdAt"
+  ],
+  "properties": {
+    "validationId": { "type": "string", "minLength": 1 },
+    "candidateId": { "type": "string", "minLength": 1 },
+    "revisionNumber": { "const": 1 },
+    "projectId": { "type": "string", "minLength": 1 },
+    "sourceVersionId": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["READY", "REJECTED"] },
+    "dimensions": {
+      "type": "array",
+      "minItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "status"],
+        "properties": {
+          "name": {
+            "enum": ["schema", "evidence-reference", "direct-text", "policy", "semantic"]
+          },
+          "status": { "enum": ["PASS", "FAIL", "NOT_RUN"] },
+          "reason": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "createdAt": { "type": "string", "minLength": 1 }
+  }
+}

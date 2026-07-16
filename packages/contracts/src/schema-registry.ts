@@ -137,3 +137,20 @@ export class SchemaRegistry {
     return contract;
   }
 }
+
+export const assertJsonSchema = (
+  schema: AnySchemaObject,
+  payload: unknown,
+  label: string,
+): void => {
+  const ajv = new Ajv({ allErrors: true, strict: true });
+  const validate = ajv.compile(schema);
+  if (!validate(payload)) {
+    throw new ShotgunError({
+      code: 'VALIDATION_ERROR',
+      safeMessage: `${label} does not match its JSON Schema: ${ajv.errorsText(validate.errors)}`,
+      module: 'contracts',
+      operation: 'validate-json-schema',
+    });
+  }
+};

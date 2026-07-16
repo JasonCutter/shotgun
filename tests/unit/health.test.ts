@@ -18,6 +18,9 @@ describe('Stage 1 application', () => {
         'stage2.original-asset',
         'stage3.transformation',
         'stage3.evidence',
+        'stage4.ai-provider',
+        'stage4.candidate-generation',
+        'stage4.validation',
       ],
       capabilities: [
         'ping-command',
@@ -29,6 +32,9 @@ describe('Stage 1 application', () => {
         'document-revision-provider',
         'evidence-index',
         'evidence-resolver',
+        'structured-ai-provider',
+        'claim-candidate-provider',
+        'candidate-validation-provider',
       ],
     });
 

@@ -71,6 +71,9 @@ const reset = async (): Promise<void> => {
     await client.query('DROP SCHEMA IF EXISTS asset CASCADE');
     await client.query('DROP SCHEMA IF EXISTS evidence CASCADE');
     await client.query('DROP SCHEMA IF EXISTS transformation CASCADE');
+    await client.query('DROP SCHEMA IF EXISTS validation CASCADE');
+    await client.query('DROP SCHEMA IF EXISTS candidate CASCADE');
+    await client.query('DROP SCHEMA IF EXISTS ai CASCADE');
     await client.query('DROP SCHEMA IF EXISTS runtime CASCADE');
   });
   await migrate();
@@ -98,13 +101,25 @@ const verify = async (): Promise<void> => {
     const evidenceTable = await client.query<{ table: string | null }>(
       "SELECT to_regclass('evidence.spans') AS table",
     );
+    const aiTable = await client.query<{ table: string | null }>(
+      "SELECT to_regclass('ai.provider_calls') AS table",
+    );
+    const candidateTable = await client.query<{ table: string | null }>(
+      "SELECT to_regclass('candidate.claim_candidates') AS table",
+    );
+    const validationTable = await client.query<{ table: string | null }>(
+      "SELECT to_regclass('validation.results') AS table",
+    );
     if (
       table.rows[0]?.table !== 'runtime.schema_migrations' ||
       count.rows[0]?.count !== expectedMigrationCount ||
       intakeTable.rows[0]?.table !== 'intake.submissions' ||
       assetTable.rows[0]?.table !== 'asset.source_versions' ||
       transformationTable.rows[0]?.table !== 'transformation.revisions' ||
-      evidenceTable.rows[0]?.table !== 'evidence.spans'
+      evidenceTable.rows[0]?.table !== 'evidence.spans' ||
+      aiTable.rows[0]?.table !== 'ai.provider_calls' ||
+      candidateTable.rows[0]?.table !== 'candidate.claim_candidates' ||
+      validationTable.rows[0]?.table !== 'validation.results'
     ) {
       throw new Error('Database bootstrap verification failed.');
     }

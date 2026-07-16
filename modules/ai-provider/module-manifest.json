@@ -1,0 +1,30 @@
+{
+  "id": "stage4.ai-provider",
+  "version": "1.0.0",
+  "owner": "Shotgun AI Provider",
+  "compatibility": {
+    "runtime": ">=1.0.0 <2.0.0",
+    "contracts": [{ "name": "GenerateStructured", "range": ">=1.0.0 <2.0.0" }]
+  },
+  "deployment": { "modes": ["in_process", "worker"] },
+  "dataOwnership": {
+    "owns": ["ai.provider_calls", "ai.provider_attempts"],
+    "readsViaPorts": ["AIProviderAdapterPort"],
+    "directSchemaAccess": false
+  },
+  "consumes": { "commands": [], "events": [] },
+  "produces": { "events": [] },
+  "provides": {
+    "queries": [{ "name": "GenerateStructured", "range": ">=1.0.0 <2.0.0" }],
+    "capabilities": [{ "name": "structured-ai-provider", "priority": 100 }]
+  },
+  "requires": { "capabilities": [] },
+  "security": {
+    "requiredContext": ["actor", "project", "access_scope", "sensitivity"],
+    "defaultOnMissingContext": "deny"
+  },
+  "approvalPolicy": {
+    "canWriteCanonical": false,
+    "canExecuteExternalAction": false
+  }
+}

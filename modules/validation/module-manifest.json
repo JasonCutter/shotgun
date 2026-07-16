@@ -1,0 +1,45 @@
+{
+  "id": "stage4.validation",
+  "version": "1.0.0",
+  "owner": "Shotgun Validation",
+  "compatibility": {
+    "runtime": ">=1.0.0 <2.0.0",
+    "contracts": [
+      { "name": "CandidateGenerated", "range": ">=1.0.0 <2.0.0" },
+      { "name": "GetClaimCandidate", "range": ">=1.0.0 <2.0.0" },
+      { "name": "GetEvidenceSpan", "range": ">=1.0.0 <2.0.0" },
+      { "name": "GetValidationResult", "range": ">=1.0.0 <2.0.0" }
+    ]
+  },
+  "deployment": { "modes": ["in_process", "worker"] },
+  "dataOwnership": {
+    "owns": ["validation.results"],
+    "readsViaPorts": ["GetClaimCandidate query", "GetEvidenceSpan query"],
+    "directSchemaAccess": false
+  },
+  "consumes": {
+    "commands": [],
+    "events": [{ "name": "CandidateGenerated", "range": ">=1.0.0 <2.0.0" }]
+  },
+  "produces": {
+    "events": [
+      { "name": "CandidateValidated", "range": ">=1.0.0 <2.0.0" },
+      { "name": "CandidateRejected", "range": ">=1.0.0 <2.0.0" }
+    ]
+  },
+  "provides": {
+    "queries": [{ "name": "GetValidationResult", "range": ">=1.0.0 <2.0.0" }],
+    "capabilities": [{ "name": "candidate-validation-provider", "priority": 100 }]
+  },
+  "requires": {
+    "capabilities": ["claim-candidate-provider", "evidence-resolver"]
+  },
+  "security": {
+    "requiredContext": ["actor", "project", "access_scope", "sensitivity"],
+    "defaultOnMissingContext": "deny"
+  },
+  "approvalPolicy": {
+    "canWriteCanonical": false,
+    "canExecuteExternalAction": false
+  }
+}

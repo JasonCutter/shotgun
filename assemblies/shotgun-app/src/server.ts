@@ -11,6 +11,12 @@ import {
   InMemoryEvidenceRepository,
   InMemoryTransformationRepository,
 } from '../../../adapters/stage3-in-memory/src/index.js';
+import { FakeAIProviderAdapter } from '../../../adapters/ai-provider-fake/src/index.js';
+import {
+  InMemoryAIProviderCallRepository,
+  InMemoryCandidateRepository,
+  InMemoryValidationRepository,
+} from '../../../adapters/stage4-in-memory/src/index.js';
 import { LucasAugmentedPlainTextAdapter } from '../../../adapters/plain-text-lucas-augmented/src/index.js';
 import { InProcessTransport } from '../../../adapters/transport-in-process/src/index.js';
 import {
@@ -39,6 +45,20 @@ import {
   type EvidenceRepositoryPort,
 } from '../../../modules/evidence/src/index.js';
 import {
+  createAIProviderModule,
+  type AIProviderAdapterPort,
+  type AIProviderCallRepositoryPort,
+  type AIProviderPolicy,
+} from '../../../modules/ai-provider/src/index.js';
+import {
+  createCandidateGenerationModule,
+  type CandidateRepositoryPort,
+} from '../../../modules/candidate-generation/src/index.js';
+import {
+  createValidationModule,
+  type ValidationRepositoryPort,
+} from '../../../modules/validation/src/index.js';
+import {
   createTransformationModule,
   type PlainTextTransformerPort,
   type TransformationRepositoryPort,
@@ -63,6 +83,10 @@ type EvidenceRequest = {
   readonly evidenceId: string;
 };
 
+type CandidateRequest = {
+  readonly candidateId: string;
+};
+
 type SecurityHeaders = {
   readonly 'x-project-id'?: string;
   readonly 'x-actor-id'?: string;
@@ -79,6 +103,11 @@ type ApplicationOptions = {
   readonly evidenceRepository?: EvidenceRepositoryPort;
   readonly transformer?: PlainTextTransformerPort;
   readonly evidenceLocator?: EvidenceLocatorPort;
+  readonly aiProviderRepository?: AIProviderCallRepositoryPort;
+  readonly candidateRepository?: CandidateRepositoryPort;
+  readonly validationRepository?: ValidationRepositoryPort;
+  readonly aiProvider?: AIProviderAdapterPort;
+  readonly aiProviderPolicy?: AIProviderPolicy;
   readonly closeResources?: () => Promise<void>;
 };
 
@@ -134,6 +163,11 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   const transformationRepository =
     options.transformationRepository ?? new InMemoryTransformationRepository();
   const evidenceRepository = options.evidenceRepository ?? new InMemoryEvidenceRepository();
+  const aiProviderRepository =
+    options.aiProviderRepository ?? new InMemoryAIProviderCallRepository();
+  const candidateRepository = options.candidateRepository ?? new InMemoryCandidateRepository();
+  const validationRepository = options.validationRepository ?? new InMemoryValidationRepository();
+  const aiProvider = options.aiProvider ?? new FakeAIProviderAdapter();
   const plainTextAdapter = new LucasAugmentedPlainTextAdapter();
   const transformer = options.transformer ?? plainTextAdapter;
   const evidenceLocator = options.evidenceLocator ?? plainTextAdapter;
@@ -143,8 +177,29 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   const originalAsset = createOriginalAssetModule(originalAssetRepository, assetStorage);
   const transformation = createTransformationModule(transformationRepository, transformer);
   const evidence = createEvidenceModule(evidenceRepository, evidenceLocator);
+  const ai = createAIProviderModule(
+    aiProviderRepository,
+    aiProvider,
+    options.aiProviderPolicy ?? {
+      allowPrivate: aiProvider.identity.provider === 'fake',
+      allowRestricted: false,
+      maxAttempts: 2,
+    },
+  );
+  const candidateGeneration = createCandidateGenerationModule(candidateRepository);
+  const validation = createValidationModule(validationRepository);
   const kernel = new ShotgunKernel(options.transport ?? new InProcessTransport());
-  kernel.register(ping.module, pong.module, intake, originalAsset, transformation, evidence);
+  kernel.register(
+    ping.module,
+    pong.module,
+    intake,
+    originalAsset,
+    transformation,
+    evidence,
+    ai,
+    candidateGeneration,
+    validation,
+  );
   await kernel.start();
 
   const server = Fastify({ logger: false });
@@ -247,14 +302,64 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
           payload: { sourceVersionId: storedPayload.sourceVersionId },
         }),
       );
+      const candidates = await kernel.connector.query(
+        createChildQuery(command, {
+          messageType: 'ListClaimCandidates',
+          schemaVersion: '1.0.0',
+          producerModule: 'shotgun-app',
+          producerVersion: '1.0.0',
+          payload: { sourceVersionId: storedPayload.sourceVersionId },
+        }),
+      );
       return {
         commandStatus: commandDelivery.status,
         intake: commandDelivery.result,
         stored: stored.result.payload,
         document: document.result.payload,
         evidence: evidence.result.payload,
+        candidates: candidates.result.payload,
         trace: traceView(kernel, command.traceId),
         audit: auditView(kernel, command.traceId),
+      };
+    },
+  );
+
+  server.post<{ Body: SourceVersionRequest; Headers: SecurityHeaders }>(
+    '/candidates/list',
+    async (request) => {
+      const query = createQuery({
+        messageType: 'ListClaimCandidates',
+        schemaVersion: '1.0.0',
+        producerModule: 'shotgun-app',
+        producerVersion: '1.0.0',
+        ...requestContext(request.headers),
+        payload: request.body,
+      });
+      const delivery = await kernel.connector.query(query);
+      return {
+        candidates: delivery.result.payload,
+        trace: traceView(kernel, query.traceId),
+        audit: auditView(kernel, query.traceId),
+      };
+    },
+  );
+
+  server.post<{ Body: CandidateRequest; Headers: SecurityHeaders }>(
+    '/validation/resolve',
+    async (request) => {
+      const query = createQuery({
+        messageType: 'GetValidationResult',
+        schemaVersion: '1.0.0',
+        producerModule: 'shotgun-app',
+        producerVersion: '1.0.0',
+        ...requestContext(request.headers),
+        payload: request.body,
+      });
+      const delivery = await kernel.connector.query(query);
+      return {
+        validation: delivery.result.payload,
+        trace: traceView(kernel, query.traceId),
+        audit: auditView(kernel, query.traceId),
       };
     },
   );
@@ -352,6 +457,9 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       originalAsset: originalAssetRepository,
       transformation: transformationRepository,
       evidence: evidenceRepository,
+      aiProvider: aiProviderRepository,
+      candidates: candidateRepository,
+      validation: validationRepository,
     },
     storage: assetStorage,
     state: {

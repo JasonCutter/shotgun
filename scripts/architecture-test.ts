@@ -73,6 +73,9 @@ export const findArchitectureViolations = async (): Promise<string[]> => {
       if (sourceModule && ['pg', '@prisma/client', 'drizzle-orm'].includes(imported)) {
         violations.push(`${relativeFile} imports database infrastructure package '${imported}'.`);
       }
+      if (sourceModule && ['@google/genai', 'openai', '@anthropic-ai/sdk'].includes(imported)) {
+        violations.push(`${relativeFile} imports provider SDK '${imported}'.`);
+      }
 
       const resolved = resolveRelativeImport(file, imported);
       if (!resolved) {

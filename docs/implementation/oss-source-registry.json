@@ -37,7 +37,7 @@
     {
       "id": "ajv",
       "name": "Ajv JSON Schema validator",
-      "stages": [0, 1],
+      "stages": [0, 1, 4],
       "officialSource": "https://github.com/ajv-validator/ajv",
       "pin": {
         "type": "npm-lock",
@@ -170,7 +170,7 @@
     {
       "id": "ddsyasas-llm-wiki",
       "name": "ddsyasas/llm-wiki",
-      "stages": [0, 2],
+      "stages": [0, 2, 4],
       "officialSource": "https://github.com/ddsyasas/llm-wiki",
       "pin": {
         "type": "git-commit",
@@ -220,7 +220,7 @@
     {
       "id": "opentelemetry",
       "name": "OpenTelemetry JavaScript",
-      "stages": [0, 1],
+      "stages": [0, 1, 4],
       "officialSource": "https://github.com/open-telemetry/opentelemetry-js",
       "pin": {
         "type": "reviewed-version",
@@ -239,6 +239,112 @@
       "boundary": "Observability exporter adapter only",
       "replacement": "Shotgun trace IDs remain provider-neutral",
       "recheckTrigger": "First multi-process deployment or external telemetry backend"
+    },
+    {
+      "id": "google-genai-sdk",
+      "name": "Google Gen AI JavaScript SDK",
+      "stages": [4],
+      "officialSource": "https://github.com/googleapis/js-genai",
+      "pin": {
+        "type": "npm-lock",
+        "package": "@google/genai",
+        "value": "2.12.0"
+      },
+      "license": {
+        "spdx": "Apache-2.0",
+        "status": "VERIFIED",
+        "evidence": "npm package metadata, installed LICENSE, and package-lock.json"
+      },
+      "decision": "ADOPT",
+      "scope": "Gemini Interactions API adapter, JSON Schema structured output, token usage and provider response identity",
+      "security": "Requests use store:false with no tools; private and restricted evidence are denied unless paid-service data terms and project logging settings are explicitly verified",
+      "maintenance": "SDK 2.12.0 and stable model id gemini-3.5-flash are fixed; upgrades require live contract and data-policy review",
+      "evidence": [
+        "official structured-output documentation reviewed",
+        "official data logging and sharing policy reviewed",
+        "synthetic live adapter contract"
+      ],
+      "boundary": "Only adapters/ai-provider-gemini imports the SDK; domain modules use GenerateStructured and AIProviderAdapterPort",
+      "replacement": "A replacement provider must pass fake and live provider contracts without changing Candidate contracts",
+      "recheckTrigger": "SDK or model upgrade, paid-service tier change, or enabling private evidence"
+    },
+    {
+      "id": "litellm",
+      "name": "LiteLLM",
+      "stages": [4],
+      "officialSource": "https://github.com/BerriAI/litellm",
+      "pin": {
+        "type": "reviewed-version",
+        "value": "1.83.7"
+      },
+      "license": {
+        "spdx": "MIT",
+        "status": "VERIFIED",
+        "evidence": "Official repository and Python package metadata"
+      },
+      "decision": "DEFER",
+      "scope": "Multi-provider gateway, routing, spend tracking and provider normalization",
+      "security": "A separate Python gateway and credential surface are not added for the single-provider MVP",
+      "maintenance": "No runtime dependency installed; official provider SDK remains behind the Shotgun port",
+      "evidence": [
+        "official proxy and unified SDK capabilities compared",
+        "current TypeScript single-provider deployment has no gateway requirement"
+      ],
+      "boundary": "Future AIProviderAdapterPort or remote gateway adapter only",
+      "replacement": "Can be introduced without changing Candidate Generation contracts",
+      "recheckTrigger": "Second real provider, centralized budgets, failover, or independent AI gateway deployment"
+    },
+    {
+      "id": "zod",
+      "name": "Zod",
+      "stages": [4],
+      "officialSource": "https://github.com/colinhacks/zod",
+      "pin": {
+        "type": "reviewed-version",
+        "value": "4.4.3"
+      },
+      "license": {
+        "spdx": "MIT",
+        "status": "VERIFIED",
+        "evidence": "Official repository and npm package metadata"
+      },
+      "decision": "REJECT",
+      "scope": "Additional structured-output runtime validation",
+      "security": "No additional validation DSL or schema conversion path is introduced",
+      "maintenance": "Not installed because Ajv already validates the canonical JSON Schema contracts",
+      "evidence": [
+        "Ajv is already adopted and locked",
+        "Gemini response schema and application validation use the same JSON Schema artifact"
+      ],
+      "boundary": "Not applicable in Stage 4",
+      "replacement": "Re-evaluate only if TypeScript-first schema authoring becomes the canonical contract source",
+      "recheckTrigger": "Contract authoring moves away from JSON Schema"
+    },
+    {
+      "id": "langfuse",
+      "name": "Langfuse",
+      "stages": [4],
+      "officialSource": "https://github.com/langfuse/langfuse",
+      "pin": {
+        "type": "reviewed-version",
+        "value": "4.14.0"
+      },
+      "license": {
+        "spdx": "MIT",
+        "status": "VERIFIED",
+        "evidence": "Official repository and package metadata"
+      },
+      "decision": "DEFER",
+      "scope": "External LLM tracing, evaluation and cost dashboards",
+      "security": "Personal evidence and prompts are not exported to an external telemetry backend in the MVP",
+      "maintenance": "No service or SDK installed; provider provenance is persisted locally",
+      "evidence": [
+        "local call, attempt, token and cost-status records satisfy the Stage 4 completion contract",
+        "external telemetry adds an operational service and data export policy"
+      ],
+      "boundary": "Future observability exporter adapter only",
+      "replacement": "Local provider records remain canonical and exporter-neutral",
+      "recheckTrigger": "Multi-user operation, production evaluation dashboards, or approved redacted telemetry"
     },
     {
       "id": "openapi",

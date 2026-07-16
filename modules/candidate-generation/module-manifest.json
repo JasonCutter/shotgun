@@ -1,0 +1,50 @@
+{
+  "id": "stage4.candidate-generation",
+  "version": "1.0.0",
+  "owner": "Shotgun Candidate Generation",
+  "compatibility": {
+    "runtime": ">=1.0.0 <2.0.0",
+    "contracts": [
+      { "name": "EvidenceIndexed", "range": ">=1.0.0 <2.0.0" },
+      { "name": "GenerateStructured", "range": ">=1.0.0 <2.0.0" },
+      { "name": "CandidateGenerated", "range": ">=1.0.0 <2.0.0" },
+      { "name": "GetClaimCandidate", "range": ">=1.0.0 <2.0.0" },
+      { "name": "ListClaimCandidates", "range": ">=1.0.0 <2.0.0" }
+    ]
+  },
+  "deployment": { "modes": ["in_process", "worker"] },
+  "dataOwnership": {
+    "owns": ["candidate.batches", "candidate.claim_candidates"],
+    "readsViaPorts": ["Evidence queries", "GenerateStructured query"],
+    "directSchemaAccess": false
+  },
+  "consumes": {
+    "commands": [],
+    "events": [
+      { "name": "EvidenceIndexed", "range": ">=1.0.0 <2.0.0" },
+      { "name": "CandidateValidated", "range": ">=1.0.0 <2.0.0" },
+      { "name": "CandidateRejected", "range": ">=1.0.0 <2.0.0" }
+    ]
+  },
+  "produces": {
+    "events": [{ "name": "CandidateGenerated", "range": ">=1.0.0 <2.0.0" }]
+  },
+  "provides": {
+    "queries": [
+      { "name": "GetClaimCandidate", "range": ">=1.0.0 <2.0.0" },
+      { "name": "ListClaimCandidates", "range": ">=1.0.0 <2.0.0" }
+    ],
+    "capabilities": [{ "name": "claim-candidate-provider", "priority": 100 }]
+  },
+  "requires": {
+    "capabilities": ["evidence-resolver", "structured-ai-provider"]
+  },
+  "security": {
+    "requiredContext": ["actor", "project", "access_scope", "sensitivity"],
+    "defaultOnMissingContext": "deny"
+  },
+  "approvalPolicy": {
+    "canWriteCanonical": false,
+    "canExecuteExternalAction": false
+  }
+}

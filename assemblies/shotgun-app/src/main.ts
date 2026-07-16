@@ -3,6 +3,7 @@ import path from 'node:path';
 import 'dotenv/config';
 
 import { LocalAssetStorage } from '../../../adapters/asset-storage-local/src/index.js';
+import { GeminiAIProviderAdapter } from '../../../adapters/ai-provider-gemini/src/index.js';
 import { LucasAugmentedPlainTextAdapter } from '../../../adapters/plain-text-lucas-augmented/src/index.js';
 import {
   createPostgresPool,
@@ -13,6 +14,11 @@ import {
   PostgresEvidenceRepository,
   PostgresTransformationRepository,
 } from '../../../adapters/postgres-stage3/src/index.js';
+import {
+  PostgresAIProviderCallRepository,
+  PostgresCandidateRepository,
+  PostgresValidationRepository,
+} from '../../../adapters/postgres-stage4/src/index.js';
 import { createApplication } from './server.js';
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -21,6 +27,10 @@ if (!databaseUrl) {
 }
 
 const pool = createPostgresPool(databaseUrl);
+const geminiApiKey = process.env.GEMINI_API_KEY;
+if (!geminiApiKey) {
+  throw new Error('GEMINI_API_KEY is required for the persistent Stage 4 runtime.');
+}
 const port = Number.parseInt(process.env.PORT ?? '3000', 10);
 const storageRoot = path.resolve(process.env.ASSET_STORAGE_ROOT ?? '.data/assets');
 const plainTextAdapter = new LucasAugmentedPlainTextAdapter();
@@ -30,8 +40,20 @@ const { server } = await createApplication({
   assetStorage: new LocalAssetStorage(storageRoot),
   transformationRepository: new PostgresTransformationRepository(pool),
   evidenceRepository: new PostgresEvidenceRepository(pool),
+  aiProviderRepository: new PostgresAIProviderCallRepository(pool),
+  candidateRepository: new PostgresCandidateRepository(pool),
+  validationRepository: new PostgresValidationRepository(pool),
   transformer: plainTextAdapter,
   evidenceLocator: plainTextAdapter,
+  aiProvider: new GeminiAIProviderAdapter({
+    apiKey: geminiApiKey,
+    model: process.env.GEMINI_MODEL ?? 'gemini-3.5-flash',
+  }),
+  aiProviderPolicy: {
+    allowPrivate: process.env.GEMINI_ALLOW_PRIVATE === 'true',
+    allowRestricted: false,
+    maxAttempts: 2,
+  },
   closeResources: async () => pool.end(),
 });
 

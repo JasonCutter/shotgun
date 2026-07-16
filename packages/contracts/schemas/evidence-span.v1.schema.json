@@ -1,0 +1,63 @@
+{
+  "$id": "https://shotgun.local/contracts/evidence-span.v1.schema.json",
+  "title": "Evidence Span v1",
+  "type": "object",
+  "required": [
+    "evidenceId",
+    "revisionId",
+    "projectId",
+    "sourceId",
+    "sourceVersionId",
+    "pointer",
+    "nodeKind",
+    "origin",
+    "position",
+    "quote",
+    "exactHash",
+    "accessScope",
+    "sensitivity",
+    "createdAt"
+  ],
+  "properties": {
+    "evidenceId": { "type": "string", "pattern": "^[0-9a-f-]{36}$" },
+    "revisionId": { "type": "string", "pattern": "^[0-9a-f-]{36}$" },
+    "projectId": { "type": "string", "minLength": 1 },
+    "sourceId": { "type": "string", "pattern": "^[0-9a-f-]{36}$" },
+    "sourceVersionId": { "type": "string", "pattern": "^[0-9a-f-]{36}$" },
+    "pointer": { "type": "string", "pattern": "^(|/.*)$" },
+    "nodeKind": { "enum": ["document", "paragraph", "sentence"] },
+    "origin": { "const": "source" },
+    "position": {
+      "type": "object",
+      "required": ["type", "start", "end", "unit"],
+      "properties": {
+        "type": { "const": "TextPositionSelector" },
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": "integer", "minimum": 0 },
+        "unit": { "const": "unicode-code-point" }
+      },
+      "additionalProperties": false
+    },
+    "quote": {
+      "type": "object",
+      "required": ["type", "exact"],
+      "properties": {
+        "type": { "const": "TextQuoteSelector" },
+        "exact": { "type": "string" },
+        "prefix": { "type": "string" },
+        "suffix": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "exactHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "accessScope": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "sensitivity": { "enum": ["public", "internal", "private", "restricted"] },
+    "createdAt": { "type": "string", "minLength": 1 }
+  },
+  "additionalProperties": false
+}

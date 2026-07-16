@@ -1,0 +1,43 @@
+{
+  "id": "stage3.transformation",
+  "version": "1.0.0",
+  "owner": "Shotgun Transformation",
+  "compatibility": {
+    "runtime": ">=1.0.0 <2.0.0",
+    "contracts": [
+      { "name": "OriginalAssetStored", "range": ">=1.0.0 <2.0.0" },
+      { "name": "ResolveAsset", "range": ">=1.0.0 <2.0.0" },
+      { "name": "DocumentTransformed", "range": ">=1.0.0 <2.0.0" },
+      { "name": "GetDocumentRevision", "range": ">=1.0.0 <2.0.0" }
+    ]
+  },
+  "deployment": { "modes": ["in_process", "worker"] },
+  "dataOwnership": {
+    "owns": ["transformation.attempts", "transformation.revisions"],
+    "readsViaPorts": ["PlainTextTransformerPort", "ResolveAsset query"],
+    "directSchemaAccess": false
+  },
+  "consumes": {
+    "commands": [],
+    "events": [{ "name": "OriginalAssetStored", "range": ">=1.0.0 <2.0.0" }]
+  },
+  "produces": {
+    "events": [{ "name": "DocumentTransformed", "range": ">=1.0.0 <2.0.0" }]
+  },
+  "provides": {
+    "queries": [{ "name": "GetDocumentRevision", "range": ">=1.0.0 <2.0.0" }],
+    "capabilities": [
+      { "name": "plain-text-transformation", "priority": 100 },
+      { "name": "document-revision-provider", "priority": 100 }
+    ]
+  },
+  "requires": { "capabilities": ["asset-resolver"] },
+  "security": {
+    "requiredContext": ["actor", "project", "access_scope", "sensitivity"],
+    "defaultOnMissingContext": "deny"
+  },
+  "approvalPolicy": {
+    "canWriteCanonical": false,
+    "canExecuteExternalAction": false
+  }
+}

@@ -1,0 +1,141 @@
+{
+  "$id": "https://shotgun.local/contracts/get-document-revision-output.v1.schema.json",
+  "title": "Get Document Revision Output v1",
+  "type": "object",
+  "required": [
+    "revisionId",
+    "projectId",
+    "sourceId",
+    "sourceVersionId",
+    "sourceContentHash",
+    "transformer",
+    "documentIR",
+    "sourceMap",
+    "documentHash",
+    "sourceMapHash",
+    "accessScope",
+    "sensitivity",
+    "createdAt"
+  ],
+  "properties": {
+    "revisionId": { "type": "string", "pattern": "^[0-9a-f-]{36}$" },
+    "projectId": { "type": "string", "minLength": 1 },
+    "sourceId": { "type": "string", "pattern": "^[0-9a-f-]{36}$" },
+    "sourceVersionId": { "type": "string", "pattern": "^[0-9a-f-]{36}$" },
+    "sourceContentHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "transformer": {
+      "type": "object",
+      "required": ["id", "version"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "documentIR": {
+      "type": "object",
+      "required": ["schemaVersion", "mediaType", "blocks"],
+      "properties": {
+        "schemaVersion": { "const": "1.0.0" },
+        "mediaType": { "enum": ["text/plain", "text/markdown"] },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "kind", "text", "sentences"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "kind": { "const": "paragraph" },
+              "text": { "type": "string" },
+              "sentences": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["id", "kind", "text"],
+                  "properties": {
+                    "id": { "type": "string", "minLength": 1 },
+                    "kind": { "const": "sentence" },
+                    "text": { "type": "string" }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "sourceMap": {
+      "type": "object",
+      "required": ["schemaVersion", "entries"],
+      "properties": {
+        "schemaVersion": { "const": "1.0.0" },
+        "entries": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/sourceMapEntry" },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "documentHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "sourceMapHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "accessScope": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "sensitivity": { "enum": ["public", "internal", "private", "restricted"] },
+    "createdAt": { "type": "string", "minLength": 1 }
+  },
+  "$defs": {
+    "sourceMapEntry": {
+      "type": "object",
+      "required": [
+        "pointer",
+        "nodeKind",
+        "sourceVersionId",
+        "sourceContentHash",
+        "origin",
+        "position",
+        "quote",
+        "exactHash"
+      ],
+      "properties": {
+        "pointer": { "type": "string", "pattern": "^(|/.*)$" },
+        "nodeKind": { "enum": ["document", "paragraph", "sentence"] },
+        "sourceVersionId": { "type": "string", "pattern": "^[0-9a-f-]{36}$" },
+        "sourceContentHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "origin": { "enum": ["source", "translation", "summary", "annotation"] },
+        "position": {
+          "type": "object",
+          "required": ["type", "start", "end", "unit"],
+          "properties": {
+            "type": { "const": "TextPositionSelector" },
+            "start": { "type": "integer", "minimum": 0 },
+            "end": { "type": "integer", "minimum": 0 },
+            "unit": { "const": "unicode-code-point" }
+          },
+          "additionalProperties": false
+        },
+        "quote": {
+          "type": "object",
+          "required": ["type", "exact"],
+          "properties": {
+            "type": { "const": "TextQuoteSelector" },
+            "exact": { "type": "string" },
+            "prefix": { "type": "string" },
+            "suffix": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "exactHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

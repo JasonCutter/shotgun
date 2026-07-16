@@ -154,14 +154,19 @@ Phase 1 Canonical 정책에 따라 Shotgun Assembly는 오디오·영상 파일 
 
 ### 4.5 Evidence·Citation
 
-| 후보                              | 역할                                 | 상태                   |
-| --------------------------------- | ------------------------------------ | ---------------------- |
-| W3C Web Annotation Data Model     | Annotation·Target·Selector 의미 모델 | `REFERENCE`            |
-| Text Position·Text Quote Selector | 텍스트 Evidence 위치 표현            | `FOUNDATION_CANDIDATE` |
-| lucas Highlight·Annotation        | 원문 복귀와 provenance 분리 패턴     | `EXTRACT`              |
-| JSON Pointer                      | 구조화 DocumentIR field 위치         | `REFERENCE`            |
+| 후보                              | 역할                                 | 상태      |
+| --------------------------------- | ------------------------------------ | --------- |
+| W3C Web Annotation Data Model     | Annotation·Target·Selector 의미 모델 | `AUGMENT` |
+| Text Position·Text Quote Selector | 텍스트 Evidence 위치 표현            | `ADOPTED` |
+| lucas Highlight·Annotation        | 원문 복귀와 provenance 분리 패턴     | `AUGMENT` |
+| JSON Pointer                      | 구조화 DocumentIR field 위치         | `ADOPTED` |
 
 Shotgun은 텍스트 offset뿐 아니라 page, bbox, table cell, slide shape를 포함하는 자체 Evidence Selector 확장을 가진다. `audio time range`는 공통 Contract의 향후 확장 후보일 뿐 Shotgun Assembly에서는 활성화하지 않는다.
+
+Stage 3에서는 W3C Selector의 start-inclusive/end-exclusive와 quote·prefix·suffix 의미를
+적용하고, immutable SourceVersion·content hash·exact hash·origin·Unicode code-point unit을
+Shotgun 계약으로 추가했다. lucas 전체 Runtime은 포함하지 않고 위치 탐색과 모호한 인용
+비추측 동작만 Port 뒤에서 재구현했다.
 
 ### 4.6 AI Provider·Evaluation
 
@@ -345,15 +350,17 @@ UI framework는 Domain Module 계약에 영향을 주지 않는다.
 
 후보의 실제 채택은 저장소 URL, pin 기준, 라이선스·보안 검토 상태를 기록한 뒤 진행한다. 아래 값은 문서 작성 시점의 탐색 기준이며, `version/commit`은 채택 PR에서 재검증하고 lockfile·SBOM에 고정한다.
 
-Stage 0~2의 재검증된 exact pin과 결정은
+Stage 0~3의 재검증된 exact pin과 결정은
 [`oss-source-registry.json`](../../implementation/oss-source-registry.json)을 기준으로 한다.
 
 | 후보                  | 공식 저장소·규격                                              | Version / Commit baseline                  | 라이선스 검토                      | 현재 상태              |
 | --------------------- | ------------------------------------------------------------- | ------------------------------------------ | ---------------------------------- | ---------------------- |
 | garrytan/gbrain       | https://github.com/garrytan/gbrain                            | `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a` | MIT 확인                           | `REFERENCE`            |
-| lucasastorian/llmwiki | https://github.com/lucasastorian/llmwiki                      | `ad626a3d81be1480e35ef4e94234de8dbb27a61e` | Apache-2.0 확인                    | `DEFERRED`             |
+| lucasastorian/llmwiki | https://github.com/lucasastorian/llmwiki                      | `ad626a3d81be1480e35ef4e94234de8dbb27a61e` | Apache-2.0 확인                    | `AUGMENT`              |
 | ddsyasas/llm-wiki     | https://github.com/ddsyasas/llm-wiki                          | `e8dd69ebba0dc7c395c1b8217bb1c30c14e8c84c` | MIT 확인                           | `REFERENCE`            |
 | Inkeep OpenKnowledge  | https://github.com/inkeep/open-knowledge                      | `f2834c237639e2cff603817ed88182b33f83cf91` | GPL-3.0-or-later 확인, 패턴 참고만 | `REFERENCE`            |
+| W3C Web Annotation    | https://www.w3.org/TR/2017/REC-annotation-model-20170223/     | Recommendation `2017-02-23`                | W3C-20150513 확인                  | `AUGMENT`              |
+| JSON Pointer          | https://www.rfc-editor.org/rfc/rfc6901                        | RFC 6901                                   | IETF Trust 확인                    | `ADOPTED`              |
 | JSON Schema           | https://github.com/json-schema-org/json-schema-spec           | 구현 선택 시 draft와 validator pin         | 대기                               | `FOUNDATION_CANDIDATE` |
 | OpenAPI               | https://github.com/OAI/OpenAPI-Specification                  | 구현 선택 시 spec version pin              | 대기                               | `FOUNDATION_CANDIDATE` |
 | AsyncAPI              | https://github.com/asyncapi/spec                              | 구현 선택 시 spec version pin              | 대기                               | `ADAPTER_CANDIDATE`    |

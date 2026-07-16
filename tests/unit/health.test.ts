@@ -11,13 +11,24 @@ describe('Stage 1 application', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
       status: 'ok',
-      modules: ['stage1.ping', 'stage1.pong', 'stage2.intake', 'stage2.original-asset'],
+      modules: [
+        'stage1.ping',
+        'stage1.pong',
+        'stage2.intake',
+        'stage2.original-asset',
+        'stage3.transformation',
+        'stage3.evidence',
+      ],
       capabilities: [
         'ping-command',
         'pong-query',
         'intake-submit',
         'original-asset-store',
         'asset-resolver',
+        'plain-text-transformation',
+        'document-revision-provider',
+        'evidence-index',
+        'evidence-resolver',
       ],
     });
 
@@ -41,6 +52,8 @@ describe('Stage 1 application', () => {
     expect(intake.statusCode).toBe(200);
     const body = intake.json();
     expect(body.stored.assetReference.storageUri).toMatch(/^asset:\/\//);
+    expect(body.document.documentIR.blocks).toHaveLength(1);
+    expect(body.evidence.items.length).toBeGreaterThan(1);
     expect(body.trace.map((record: { messageType: string }) => record.messageType)).toContain(
       'OriginalAssetStored',
     );
@@ -54,6 +67,16 @@ describe('Stage 1 application', () => {
     });
     expect(resolved.statusCode).toBe(200);
     expect(resolved.json().resolved.text).toBe('HTTP original\r\nunchanged');
+
+    const evidence = await server.inject({
+      method: 'POST',
+      url: '/evidence/resolve',
+      payload: {
+        evidenceId: body.evidence.items[0].evidenceId,
+      },
+    });
+    expect(evidence.statusCode).toBe(200);
+    expect(evidence.json().evidence.quote.exact).toBe('HTTP original\r\nunchanged');
 
     await server.close();
   });

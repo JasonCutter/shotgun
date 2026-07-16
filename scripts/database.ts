@@ -69,6 +69,8 @@ const reset = async (): Promise<void> => {
   await withClient(async (client) => {
     await client.query('DROP SCHEMA IF EXISTS intake CASCADE');
     await client.query('DROP SCHEMA IF EXISTS asset CASCADE');
+    await client.query('DROP SCHEMA IF EXISTS evidence CASCADE');
+    await client.query('DROP SCHEMA IF EXISTS transformation CASCADE');
     await client.query('DROP SCHEMA IF EXISTS runtime CASCADE');
   });
   await migrate();
@@ -90,11 +92,19 @@ const verify = async (): Promise<void> => {
     const assetTable = await client.query<{ table: string | null }>(
       "SELECT to_regclass('asset.source_versions') AS table",
     );
+    const transformationTable = await client.query<{ table: string | null }>(
+      "SELECT to_regclass('transformation.revisions') AS table",
+    );
+    const evidenceTable = await client.query<{ table: string | null }>(
+      "SELECT to_regclass('evidence.spans') AS table",
+    );
     if (
       table.rows[0]?.table !== 'runtime.schema_migrations' ||
       count.rows[0]?.count !== expectedMigrationCount ||
       intakeTable.rows[0]?.table !== 'intake.submissions' ||
-      assetTable.rows[0]?.table !== 'asset.source_versions'
+      assetTable.rows[0]?.table !== 'asset.source_versions' ||
+      transformationTable.rows[0]?.table !== 'transformation.revisions' ||
+      evidenceTable.rows[0]?.table !== 'evidence.spans'
     ) {
       throw new Error('Database bootstrap verification failed.');
     }

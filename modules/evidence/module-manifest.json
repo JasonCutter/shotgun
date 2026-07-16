@@ -1,0 +1,47 @@
+{
+  "id": "stage3.evidence",
+  "version": "1.0.0",
+  "owner": "Shotgun Evidence",
+  "compatibility": {
+    "runtime": ">=1.0.0 <2.0.0",
+    "contracts": [
+      { "name": "DocumentTransformed", "range": ">=1.0.0 <2.0.0" },
+      { "name": "GetDocumentRevision", "range": ">=1.0.0 <2.0.0" },
+      { "name": "EvidenceIndexed", "range": ">=1.0.0 <2.0.0" },
+      { "name": "ListEvidenceSpans", "range": ">=1.0.0 <2.0.0" },
+      { "name": "GetEvidenceSpan", "range": ">=1.0.0 <2.0.0" }
+    ]
+  },
+  "deployment": { "modes": ["in_process", "worker"] },
+  "dataOwnership": {
+    "owns": ["evidence.spans"],
+    "readsViaPorts": ["EvidenceLocatorPort", "GetDocumentRevision query"],
+    "directSchemaAccess": false
+  },
+  "consumes": {
+    "commands": [],
+    "events": [{ "name": "DocumentTransformed", "range": ">=1.0.0 <2.0.0" }]
+  },
+  "produces": {
+    "events": [{ "name": "EvidenceIndexed", "range": ">=1.0.0 <2.0.0" }]
+  },
+  "provides": {
+    "queries": [
+      { "name": "ListEvidenceSpans", "range": ">=1.0.0 <2.0.0" },
+      { "name": "GetEvidenceSpan", "range": ">=1.0.0 <2.0.0" }
+    ],
+    "capabilities": [
+      { "name": "evidence-index", "priority": 100 },
+      { "name": "evidence-resolver", "priority": 100 }
+    ]
+  },
+  "requires": { "capabilities": ["document-revision-provider"] },
+  "security": {
+    "requiredContext": ["actor", "project", "access_scope", "sensitivity"],
+    "defaultOnMissingContext": "deny"
+  },
+  "approvalPolicy": {
+    "canWriteCanonical": false,
+    "canExecuteExternalAction": false
+  }
+}

@@ -47,6 +47,8 @@ const requiredIds = [
   'lucas-llmwiki',
   'ddsyasas-llm-wiki',
   'inkeep-open-knowledge',
+  'w3c-web-annotation',
+  'json-pointer',
 ] as const;
 const decisions = new Set<Decision>([
   'ADOPT',
@@ -61,6 +63,7 @@ const stageReviewFiles = [
   'docs/implementation/stage-validations/stage-0-oss-integration-review.md',
   'docs/implementation/stage-validations/stage-1-oss-integration-review.md',
   'docs/implementation/stage-validations/stage-2-oss-integration-review.md',
+  'docs/implementation/stage-validations/stage-3-oss-integration-review.md',
 ] as const;
 
 const readJson = async <T>(relativePath: string): Promise<T> =>
@@ -156,7 +159,7 @@ const main = async (): Promise<void> => {
   }
 
   console.log(
-    `OSS Gate passed: ${registry.entries.length} decisions, ${requiredIds.length} baseline references, Stage 0-2 reviews complete.`,
+    `OSS Gate passed: ${registry.entries.length} decisions, ${requiredIds.length} baseline references, Stage 0-3 reviews complete.`,
   );
 };
 

@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1.0.0",
-  "reviewedAt": "2026-07-16",
+  "reviewedAt": "2026-07-17",
   "decisionValues": [
     "ADOPT",
     "EXTRACT",
@@ -14,7 +14,7 @@
     {
       "id": "postgresql",
       "name": "PostgreSQL",
-      "stages": [0, 1, 2],
+      "stages": [0, 1, 2, 3],
       "officialSource": "https://github.com/postgres/postgres",
       "pin": {
         "type": "docker-digest",
@@ -26,7 +26,7 @@
         "evidence": "Official PostgreSQL distribution and Docker Official Image"
       },
       "decision": "ADOPT",
-      "scope": "Development database, Stage 2 metadata persistence, and later durable runtime candidate",
+      "scope": "Development database plus Stage 2 asset metadata and Stage 3 transformation/evidence persistence",
       "security": "Local credentials only; production secrets remain outside source control",
       "maintenance": "Major version 16 is fixed; patch and image digest updates require a registry change",
       "evidence": ["docker image digest verified", "PostgreSQL 16.14 runtime verified"],
@@ -99,14 +99,73 @@
         "status": "VERIFIED",
         "evidence": "LICENSE at the pinned commit"
       },
-      "decision": "DEFER",
-      "scope": "Watcher and reconcile patterns for future directory intake; transformation helpers for Stage 3+",
-      "security": "Path-based source identity must not cross the Shotgun Source boundary",
-      "maintenance": "Pinned commit only; no runtime dependency added",
-      "evidence": ["watcher and reconcile review", "path identity changes on rename"],
-      "boundary": "Watcher events may call Intake ports but cannot own Source identity",
-      "replacement": "Native/manual intake remains available",
-      "recheckTrigger": "When directory watching or Stage 3 transformation begins"
+      "decision": "AUGMENT",
+      "scope": "Text quote location, prefix/suffix disambiguation, offset regression tests, and deterministic validation patterns; watcher/reconcile remains deferred",
+      "security": "Ambiguous short quotes are not guessed; path-based identity, SQLite, VaultFS, MCP CRUD, and filename citation remain excluded",
+      "maintenance": "Pinned commit only; behavior was reimplemented behind Shotgun ports without adding the upstream runtime",
+      "evidence": [
+        "highlight single/multiple match tests reviewed",
+        "chunk start_char regression tests reviewed",
+        "watcher path identity rejected",
+        "Shotgun locator and adapter replacement tests"
+      ],
+      "boundary": "Lucas-derived behavior is isolated behind PlainTextTransformerPort and EvidenceLocatorPort; SourceVersion and EvidenceSpan remain Shotgun-owned",
+      "replacement": "A replacement transformer or locator must pass the same Golden, SourceMap, ambiguity, and replacement tests",
+      "recheckTrigger": "Before HTML/XLSX extraction or directory watching"
+    },
+    {
+      "id": "w3c-web-annotation",
+      "name": "W3C Web Annotation Data Model",
+      "stages": [3],
+      "officialSource": "https://www.w3.org/TR/2017/REC-annotation-model-20170223/",
+      "pin": {
+        "type": "standard",
+        "value": "W3C Recommendation 2017-02-23"
+      },
+      "license": {
+        "spdx": "W3C-20150513",
+        "status": "VERIFIED",
+        "evidence": "W3C Recommendation document notice"
+      },
+      "decision": "AUGMENT",
+      "scope": "TextPositionSelector and TextQuoteSelector semantics for exact source restoration",
+      "security": "Selectors are always bound to immutable SourceVersion and SHA-256; quote-only ambiguous matches are not accepted as authoritative",
+      "maintenance": "Recommendation date is pinned; later specifications require an explicit contract version",
+      "evidence": [
+        "Text Quote prefix/suffix semantics reviewed",
+        "Text Position start-inclusive/end-exclusive semantics reviewed",
+        "Unicode code-point Golden tests"
+      ],
+      "boundary": "Shotgun adds sourceVersionId, content hash, exact hash, origin, and unicode-code-point unit fields",
+      "replacement": "Selector serialization can change only through a versioned SourceMap and EvidenceSpan contract",
+      "recheckTrigger": "External annotation interoperability or selector contract v2"
+    },
+    {
+      "id": "json-pointer",
+      "name": "JSON Pointer RFC 6901",
+      "stages": [3],
+      "officialSource": "https://www.rfc-editor.org/rfc/rfc6901",
+      "pin": {
+        "type": "standard",
+        "value": "RFC 6901"
+      },
+      "license": {
+        "spdx": "IETF-Trust",
+        "status": "VERIFIED",
+        "evidence": "RFC Editor publication and IETF Trust provisions"
+      },
+      "decision": "ADOPT",
+      "scope": "Stable addressing of DocumentIR paragraphs and sentences inside SourceMap",
+      "security": "Unresolvable or malformed pointers are rejected before Evidence persistence",
+      "maintenance": "Standards-track RFC is fixed; pointer behavior is covered by Golden tests",
+      "evidence": [
+        "empty pointer root semantics",
+        "slash token traversal",
+        "invalid pointer rejection"
+      ],
+      "boundary": "Pointers address only a stored DocumentIR revision and never a database table or file path",
+      "replacement": "A replacement path syntax requires SourceMap contract v2 and migration",
+      "recheckTrigger": "DocumentIR structural contract v2"
     },
     {
       "id": "ddsyasas-llm-wiki",

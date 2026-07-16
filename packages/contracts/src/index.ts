@@ -1,4 +1,5 @@
 export * from './asset-reference-codec.js';
+export * from './document-evidence.js';
 export * from './errors.js';
 export * from './envelope-codec.js';
 export * from './factories.js';

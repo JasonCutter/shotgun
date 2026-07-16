@@ -1,0 +1,13 @@
+{
+  "$id": "https://shotgun.local/contracts/evidence-indexed.v1.schema.json",
+  "title": "Evidence Indexed v1",
+  "type": "object",
+  "required": ["revisionId", "sourceVersionId", "evidenceCount", "reusedCount"],
+  "properties": {
+    "revisionId": { "type": "string", "pattern": "^[0-9a-f-]{36}$" },
+    "sourceVersionId": { "type": "string", "pattern": "^[0-9a-f-]{36}$" },
+    "evidenceCount": { "type": "integer", "minimum": 1 },
+    "reusedCount": { "type": "integer", "minimum": 0 }
+  },
+  "additionalProperties": false
+}

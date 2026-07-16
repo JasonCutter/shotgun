@@ -7,6 +7,11 @@ import {
   InMemoryIntakeRepository,
   InMemoryOriginalAssetRepository,
 } from '../../../adapters/stage2-in-memory/src/index.js';
+import {
+  InMemoryEvidenceRepository,
+  InMemoryTransformationRepository,
+} from '../../../adapters/stage3-in-memory/src/index.js';
+import { LucasAugmentedPlainTextAdapter } from '../../../adapters/plain-text-lucas-augmented/src/index.js';
 import { InProcessTransport } from '../../../adapters/transport-in-process/src/index.js';
 import {
   createChildQuery,
@@ -28,6 +33,16 @@ import {
   createOriginalAssetModule,
   type OriginalAssetRepositoryPort,
 } from '../../../modules/original-asset/src/index.js';
+import {
+  createEvidenceModule,
+  type EvidenceLocatorPort,
+  type EvidenceRepositoryPort,
+} from '../../../modules/evidence/src/index.js';
+import {
+  createTransformationModule,
+  type PlainTextTransformerPort,
+  type TransformationRepositoryPort,
+} from '../../../modules/transformation/src/index.js';
 import { createPingModule } from '../../../modules/ping/src/index.js';
 import { createPongModule } from '../../../modules/pong/src/index.js';
 
@@ -38,6 +53,14 @@ type PingRequest = {
 
 type ResolveAssetRequest = {
   readonly assetReference: AssetReference;
+};
+
+type SourceVersionRequest = {
+  readonly sourceVersionId: string;
+};
+
+type EvidenceRequest = {
+  readonly evidenceId: string;
 };
 
 type SecurityHeaders = {
@@ -52,6 +75,10 @@ type ApplicationOptions = {
   readonly intakeRepository?: IntakeRepositoryPort;
   readonly originalAssetRepository?: OriginalAssetRepositoryPort;
   readonly assetStorage?: AssetStoragePort;
+  readonly transformationRepository?: TransformationRepositoryPort;
+  readonly evidenceRepository?: EvidenceRepositoryPort;
+  readonly transformer?: PlainTextTransformerPort;
+  readonly evidenceLocator?: EvidenceLocatorPort;
   readonly closeResources?: () => Promise<void>;
 };
 
@@ -104,12 +131,20 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   const originalAssetRepository =
     options.originalAssetRepository ?? new InMemoryOriginalAssetRepository();
   const assetStorage = options.assetStorage ?? new InMemoryAssetStorage();
+  const transformationRepository =
+    options.transformationRepository ?? new InMemoryTransformationRepository();
+  const evidenceRepository = options.evidenceRepository ?? new InMemoryEvidenceRepository();
+  const plainTextAdapter = new LucasAugmentedPlainTextAdapter();
+  const transformer = options.transformer ?? plainTextAdapter;
+  const evidenceLocator = options.evidenceLocator ?? plainTextAdapter;
   const ping = createPingModule();
   const pong = createPongModule();
   const intake = createIntakeModule(intakeRepository);
   const originalAsset = createOriginalAssetModule(originalAssetRepository, assetStorage);
+  const transformation = createTransformationModule(transformationRepository, transformer);
+  const evidence = createEvidenceModule(evidenceRepository, evidenceLocator);
   const kernel = new ShotgunKernel(options.transport ?? new InProcessTransport());
-  kernel.register(ping.module, pong.module, intake, originalAsset);
+  kernel.register(ping.module, pong.module, intake, originalAsset, transformation, evidence);
   await kernel.start();
 
   const server = Fastify({ logger: false });
@@ -193,12 +228,93 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
         payload: { submissionId: request.body.submissionId },
       });
       const stored = await kernel.connector.query(resultQuery);
+      const storedPayload = stored.result.payload as { readonly sourceVersionId: string };
+      const document = await kernel.connector.query(
+        createChildQuery(command, {
+          messageType: 'GetDocumentRevision',
+          schemaVersion: '1.0.0',
+          producerModule: 'shotgun-app',
+          producerVersion: '1.0.0',
+          payload: { sourceVersionId: storedPayload.sourceVersionId },
+        }),
+      );
+      const evidence = await kernel.connector.query(
+        createChildQuery(command, {
+          messageType: 'ListEvidenceSpans',
+          schemaVersion: '1.0.0',
+          producerModule: 'shotgun-app',
+          producerVersion: '1.0.0',
+          payload: { sourceVersionId: storedPayload.sourceVersionId },
+        }),
+      );
       return {
         commandStatus: commandDelivery.status,
         intake: commandDelivery.result,
         stored: stored.result.payload,
+        document: document.result.payload,
+        evidence: evidence.result.payload,
         trace: traceView(kernel, command.traceId),
         audit: auditView(kernel, command.traceId),
+      };
+    },
+  );
+
+  server.post<{ Body: SourceVersionRequest; Headers: SecurityHeaders }>(
+    '/documents/resolve',
+    async (request) => {
+      const query = createQuery({
+        messageType: 'GetDocumentRevision',
+        schemaVersion: '1.0.0',
+        producerModule: 'shotgun-app',
+        producerVersion: '1.0.0',
+        ...requestContext(request.headers),
+        payload: request.body,
+      });
+      const delivery = await kernel.connector.query(query);
+      return {
+        document: delivery.result.payload,
+        trace: traceView(kernel, query.traceId),
+        audit: auditView(kernel, query.traceId),
+      };
+    },
+  );
+
+  server.post<{ Body: SourceVersionRequest; Headers: SecurityHeaders }>(
+    '/evidence/list',
+    async (request) => {
+      const query = createQuery({
+        messageType: 'ListEvidenceSpans',
+        schemaVersion: '1.0.0',
+        producerModule: 'shotgun-app',
+        producerVersion: '1.0.0',
+        ...requestContext(request.headers),
+        payload: request.body,
+      });
+      const delivery = await kernel.connector.query(query);
+      return {
+        evidence: delivery.result.payload,
+        trace: traceView(kernel, query.traceId),
+        audit: auditView(kernel, query.traceId),
+      };
+    },
+  );
+
+  server.post<{ Body: EvidenceRequest; Headers: SecurityHeaders }>(
+    '/evidence/resolve',
+    async (request) => {
+      const query = createQuery({
+        messageType: 'GetEvidenceSpan',
+        schemaVersion: '1.0.0',
+        producerModule: 'shotgun-app',
+        producerVersion: '1.0.0',
+        ...requestContext(request.headers),
+        payload: request.body,
+      });
+      const delivery = await kernel.connector.query(query);
+      return {
+        evidence: delivery.result.payload,
+        trace: traceView(kernel, query.traceId),
+        audit: auditView(kernel, query.traceId),
       };
     },
   );
@@ -234,6 +350,8 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     repositories: {
       intake: intakeRepository,
       originalAsset: originalAssetRepository,
+      transformation: transformationRepository,
+      evidence: evidenceRepository,
     },
     storage: assetStorage,
     state: {

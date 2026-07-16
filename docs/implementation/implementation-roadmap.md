@@ -160,6 +160,14 @@ Stage별 OSS 후보와 세부 적용 방식은 [OSS Integration Roadmap](./oss-i
 
 ## 7. Stage 3 — Plain Text Transformation and Evidence
 
+**상태: COMPLETE (2026-07-17)**
+
+구현 및 검증 근거:
+
+- [Stage 3 Engineering Guide](../engineering/stage-3-plain-text-transformation-evidence.md)
+- [Stage 3 OSS Integration Review](stage-validations/stage-3-oss-integration-review.md)
+- [ADR-083](../architecture/adr/ADR-083-stage-3-plain-text-transformation-and-evidence.md)
+
 ### 목표
 
 보존된 텍스트를 `DocumentIR`로 변환하고 의미 구간을 원문 위치와 연결한다.

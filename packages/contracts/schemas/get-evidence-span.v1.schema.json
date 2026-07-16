@@ -1,0 +1,10 @@
+{
+  "$id": "https://shotgun.local/contracts/get-evidence-span.v1.schema.json",
+  "title": "Get Evidence Span v1",
+  "type": "object",
+  "required": ["evidenceId"],
+  "properties": {
+    "evidenceId": { "type": "string", "pattern": "^[0-9a-f-]{36}$" }
+  },
+  "additionalProperties": false
+}

@@ -16,12 +16,12 @@ Shotgun은 여러 OSS 전체 Runtime을 병렬로 실행하는 제품이 아니�
 
 ### 2.1 네 레퍼런스의 역할
 
-| 레퍼런스 | 기준 역할 | 우선 적용 영역 | 기본 태도 |
-|---|---|---|---|
-| `garrytan/gbrain` | Brain·Execution 기반 후보 | Page·Fact·Search·Graph·Timeline·MCP·Job·Discovery·Migration | Port 뒤에서 우선 추출·Adapter 검증 |
-| `lucasastorian/llmwiki` | 수집·변환·검증 부품 공급원 | HTML/XLSX 변환, Highlight·Annotation, Lint, Watcher·Reconcile | 필요한 부품만 독립 Package로 추출 |
-| `ddsyasas/llm-wiki` | Product Workflow UX 참고 | Source Intake, Ask·Chat, Cost·Model·Settings, Action-oriented Home | Backend 제외, Interaction·Presentation만 참고 |
-| Inkeep OpenKnowledge | Human Cockpit 기술 참고 | Visual/Source UX, 2D Graph, Agent Activity, Burst Diff, Entity Vault | 전체 Runtime 제외, UI·보존 패턴·Adapter만 활용 |
+| 레퍼런스                | 기준 역할                  | 우선 적용 영역                                                       | 기본 태도                                      |
+| ----------------------- | -------------------------- | -------------------------------------------------------------------- | ---------------------------------------------- |
+| `garrytan/gbrain`       | Brain·Execution 기반 후보  | Page·Fact·Search·Graph·Timeline·MCP·Job·Discovery·Migration          | Port 뒤에서 우선 추출·Adapter 검증             |
+| `lucasastorian/llmwiki` | 수집·변환·검증 부품 공급원 | HTML/XLSX 변환, Highlight·Annotation, Lint, Watcher·Reconcile        | 필요한 부품만 독립 Package로 추출              |
+| `ddsyasas/llm-wiki`     | Product Workflow UX 참고   | Source Intake, Ask·Chat, Cost·Model·Settings, Action-oriented Home   | Backend 제외, Interaction·Presentation만 참고  |
+| Inkeep OpenKnowledge    | Human Cockpit 기술 참고    | Visual/Source UX, 2D Graph, Agent Activity, Burst Diff, Entity Vault | 전체 Runtime 제외, UI·보존 패턴·Adapter만 활용 |
 
 ### 2.2 Shotgun 소유 영역
 
@@ -135,6 +135,11 @@ OSS 내부 데이터 모델은 Shotgun 공통 Contract가 될 수 없다.
 - 원본 identity가 path나 OSS 내부 ID에 결합되지 않음
 
 ## Stage 3 — Plain Text Transformation and Evidence
+
+**종료 상태: COMPLETE**
+
+세부 결정과 검증 결과는
+[Stage 3 OSS Integration Review](stage-validations/stage-3-oss-integration-review.md)에 고정한다.
 
 **우선 후보**
 
@@ -260,15 +265,15 @@ OSS 내부 데이터 모델은 Shotgun 공통 Contract가 될 수 없다.
 
 **형식별 우선순위**
 
-| 형식 | 첫 평가 후보 | 보조·대안 |
-|---|---|---|
-| HTML | lucas HTML cleaner | MarkItDown, Tika |
-| PDF | Docling | PyMuPDF, Tika |
-| DOCX | Docling | python-docx, MarkItDown |
-| XLSX | lucas XLSX extractor | openpyxl, Docling |
-| PPTX | python-pptx | Docling |
-| 이미지 | Multimodal Provider Adapter | OCR은 별도 조건부 후보 |
-| URL | 안전한 Fetch Adapter | HTML 후보 재사용 |
+| 형식   | 첫 평가 후보                | 보조·대안               |
+| ------ | --------------------------- | ----------------------- |
+| HTML   | lucas HTML cleaner          | MarkItDown, Tika        |
+| PDF    | Docling                     | PyMuPDF, Tika           |
+| DOCX   | Docling                     | python-docx, MarkItDown |
+| XLSX   | lucas XLSX extractor        | openpyxl, Docling       |
+| PPTX   | python-pptx                 | Docling                 |
+| 이미지 | Multimodal Provider Adapter | OCR은 별도 조건부 후보  |
+| URL    | 안전한 Fetch Adapter        | HTML 후보 재사용        |
 
 **필수 작업**
 

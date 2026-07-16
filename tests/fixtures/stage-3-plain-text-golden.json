@@ -1,0 +1,26 @@
+{
+  "input": "첫 문장입니다. 두 번째입니다.\r\n같은 문단입니다.\r\n\r\nEmoji 🐶 works! 끝.",
+  "sourceContentHash": "sha256:018f38524f5cc524ffcddd9cddb3b33d1614e8452c5f5e483fe56edcdd2788fc",
+  "documentHash": "sha256:c5e1c35b636fa05c9557dc43b9482ef4c65690dfe58e10965baeb811e61a1451",
+  "sourceMapHash": "sha256:41187c77e3130309cce96b0ce22558171a9978c792028a6e5a608821abc9b48b",
+  "blocks": [
+    {
+      "text": "첫 문장입니다. 두 번째입니다.\r\n같은 문단입니다.",
+      "sentences": ["첫 문장입니다.", "두 번째입니다.", "같은 문단입니다."]
+    },
+    {
+      "text": "Emoji 🐶 works! 끝.",
+      "sentences": ["Emoji 🐶 works!", "끝."]
+    }
+  ],
+  "positions": [
+    { "pointer": "", "start": 0, "end": 49 },
+    { "pointer": "/blocks/0/sentences/0", "start": 0, "end": 8 },
+    { "pointer": "/blocks/0/sentences/1", "start": 9, "end": 17 },
+    { "pointer": "/blocks/0/sentences/2", "start": 19, "end": 28 },
+    { "pointer": "/blocks/0", "start": 0, "end": 28 },
+    { "pointer": "/blocks/1/sentences/0", "start": 32, "end": 46 },
+    { "pointer": "/blocks/1/sentences/1", "start": 47, "end": 49 },
+    { "pointer": "/blocks/1", "start": 32, "end": 49 }
+  ]
+}

@@ -2,14 +2,15 @@
 
 > 목적: 기능이 구현됐다는 주장과 실제로 다음 단계에 전달 가능한 상태를 구분한다.
 
-## 1. 완료의 네 가지 Gate
+## 1. 완료의 다섯 가지 Gate
 
-모든 기능, 모듈과 Stage는 다음 네 Gate를 통과해야 한다.
+모든 기능, 모듈과 Stage는 다음 다섯 Gate를 통과해야 한다.
 
 1. Module Gate
 2. Flow Gate
 3. Product Gate
 4. Architecture Gate
+5. OSS Integration Gate
 
 하나라도 통과하지 못하면 `COMPLETE`가 아니다.
 
@@ -157,7 +158,61 @@
 - 영상 URL은 접근 가능한 Text Metadata·Subtitle·Script 범위만 처리
 - 제외 기능을 암묵적으로 우회하지 않음
 
-## 6. Test Gate
+## 6. OSS Integration Gate
+
+모든 Stage와 외부 의존 변경 PR은 [OSS Integration Roadmap](./oss-integration-roadmap.md)과 [OSS Evaluation Plan](./oss-evaluation-plan.md)을 적용한다.
+
+### 후보 검토
+
+- 해당 Stage의 우선 OSS·레퍼런스 후보가 식별됨
+- 후보의 실제 repository·문서·테스트를 검토함
+- 후보가 없으면 `NO_RELEVANT_OSS`와 검색 범위를 기록함
+- 익숙하지 않거나 자체 구현이 편하다는 이유만으로 검토를 생략하지 않음
+
+### Integration Decision
+
+각 후보가 다음 중 하나로 판정됨.
+
+- `ADOPT`
+- `EXTRACT`
+- `AUGMENT`
+- `REFERENCE_ONLY`
+- `DEFER`
+- `REJECT`
+
+판정에는 대상 모듈·Port, 포함·제외 범위와 이유가 있음.
+
+### 채택·추출 조건
+
+- 공식 repository URL이 기록됨
+- 정확한 version·tag·commit이 고정됨
+- license·security·maintenance 검토 상태가 있음
+- OSS 내부 타입과 DB Schema가 Shotgun 공통 Contract로 노출되지 않음
+- Adapter 또는 Extract Package가 Contract Test를 통과함
+- Migration·Rollback·Replacement 경로가 있음
+
+### 신규 구현 조건
+
+신규 구현한 기능은 다음 중 하나 이상의 재사용 불가 근거가 있어야 한다.
+
+- 관련 후보 없음
+- Canonical·Evidence·Approval·Action 경계 위반
+- 라이선스 또는 보안 Gate 실패
+- Adapter 격리 불가능
+- Golden Corpus·Benchmark 필수 기준 미달
+- 유지보수·Migration·Rollback 위험이 더 큼
+
+직접 구현과 OSS 후보의 비교 증거 없이 “새로 구현”을 기본 결정으로 삼을 수 없다.
+
+### 네 레퍼런스 경계
+
+- gbrain은 Brain·Execution 기능을 우선 검토하되 전체 강결합 Runtime으로 고정하지 않음
+- lucas는 변환·Highlight·Lint·Watcher 부품만 선별함
+- ddsyasas는 Backend를 제외하고 Product Workflow UX만 참고함
+- OpenKnowledge는 전체 Runtime을 제외하고 Editor·2D Graph·Activity·Burst Diff 패턴을 사용함
+- gbrain DB, ddsyasas Markdown, OpenKnowledge Markdown·Yjs를 각각 독립 Canonical로 운영하지 않음
+
+## 7. Test Gate
 
 모든 PR은 변경 범위에 따라 다음을 통과한다.
 
@@ -170,10 +225,11 @@
 - 관련 E2E Test
 - Golden Corpus Test, 형식 변환 변경인 경우
 - Replay·Idempotency Test, Event 또는 Side Effect 변경인 경우
+- OSS Adapter Replacement Test, 채택·추출·교체 변경인 경우
 
-Test를 생략하면 PR 설명에 이유, 위험과 후속 Issue를 기록한다. 안전 경계 Test는 생략할 수 없다.
+Test를 생략하면 PR 설명에 이유, 위험과 후속 Issue를 기록한다. 안전 경계 Test와 채택 OSS의 Contract Test는 생략할 수 없다.
 
-## 7. Documentation Gate
+## 8. Documentation Gate
 
 - Public Contract 문서 갱신
 - Module Manifest 갱신
@@ -183,8 +239,10 @@ Test를 생략하면 PR 설명에 이유, 위험과 후속 Issue를 기록한다
 - 알려진 제한
 - 보안·비용 영향
 - OSS Version·License·Security 기록, 외부 Dependency 변경 시
+- Integration Decision과 직접 구현 근거, 관련 OSS가 있는 기능인 경우
+- Open-source Role Matrix 상태 갱신 여부 기록
 
-## 8. Pull Request 완료 체크리스트
+## 9. Pull Request 완료 체크리스트
 
 ```markdown
 ## Scope
@@ -195,6 +253,13 @@ Test를 생략하면 PR 설명에 이유, 위험과 후속 Issue를 기록한다
 - [ ] 입력·출력 Contract가 Versioned다.
 - [ ] Breaking Change 여부를 확인했다.
 - [ ] Module Manifest를 갱신했다.
+
+## OSS Integration
+- [ ] 관련 OSS 후보를 검토했다.
+- [ ] 후보별 Integration Decision을 기록했다.
+- [ ] 채택 후보의 version·commit·license·security 상태를 기록했다.
+- [ ] 직접 구현한 부분은 OSS 재사용 불가 근거를 기록했다.
+- [ ] Adapter·Extract Package Contract Test를 통과했다.
 
 ## Safety
 - [ ] Security Context와 접근 범위를 검증했다.
@@ -212,26 +277,31 @@ Test를 생략하면 PR 설명에 이유, 위험과 후속 Issue를 기록한다
 - [ ] Integration Test
 - [ ] Architecture Test
 - [ ] E2E 또는 Golden Corpus Test
+- [ ] OSS Adapter Replacement Test, 해당하는 경우
 
 ## Documentation
 - [ ] 관련 문서를 갱신했다.
 - [ ] 알려진 제한과 후속 작업을 기록했다.
 ```
 
-## 9. Stage 완료 체크리스트
+## 10. Stage 완료 체크리스트
 
 - Stage의 모든 필수 Deliverable 존재
 - Critical Path Module Gate 통과
 - 해당 Vertical Slice E2E 통과
 - Product Demo 성공
 - Security·Approval Negative Test 통과
+- OSS Integration Roadmap의 해당 Stage 종료 판정 통과
+- 후보별 Integration Decision 기록
+- 직접 구현 범위의 OSS 재사용 불가 근거 기록
+- 채택 OSS의 version·license·security·replacement 정보 고정
 - Migration·Rollback 연습 완료
 - Risk Register 갱신
 - Known Limitation 공개
 - 다음 Stage에 전달할 Contract Version 고정
 - Stage Completion PR 또는 Release Note 승인
 
-## 10. Complete with Limits 조건
+## 11. Complete with Limits 조건
 
 다음 조건을 모두 만족할 때만 `COMPLETE_WITH_LIMITS`를 사용할 수 있다.
 
@@ -241,6 +311,7 @@ Test를 생략하면 PR 설명에 이유, 위험과 후속 Issue를 기록한다
 - 제한이 문서와 UI에 표시됨
 - 제거 계획과 Issue가 있음
 - 다음 Stage가 제한 때문에 잘못된 가정을 하지 않음
+- OSS 평가가 끝나지 않은 항목은 Production 채택 상태가 아니라 제한·대체 구현으로 명시됨
 
 다음은 `COMPLETE_WITH_LIMITS`로 허용되지 않는다.
 
@@ -250,9 +321,11 @@ Test를 생략하면 PR 설명에 이유, 위험과 후속 Issue를 기록한다
 - 중복 Action 위험
 - History 손실
 - 직접 DB 결합
+- 관련 OSS 검토를 생략한 신규 구현
+- version·license가 불명확한 OSS 채택
 - 테스트 없이 동작한다고 추정한 상태
 
-## 11. 완료 선언 문구
+## 12. 완료 선언 문구
 
 완료 보고는 다음 형식을 사용한다.
 
@@ -261,6 +334,10 @@ Completed scope:
 Excluded scope:
 Vertical slice demonstrated:
 Contracts frozen:
+OSS candidates reviewed:
+Integration decisions:
+Adopted versions and licenses:
+Native implementation justification:
 Tests passed:
 Security and approval checks:
 Migration and rollback:

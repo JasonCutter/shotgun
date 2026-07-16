@@ -19,6 +19,12 @@ import {
   PostgresCandidateRepository,
   PostgresValidationRepository,
 } from '../../../adapters/postgres-stage4/src/index.js';
+import {
+  PostgresChangeSetReviewRepository,
+  PostgresComparisonRepository,
+} from '../../../adapters/postgres-stage5/src/index.js';
+import { PostgresCanonicalKnowledgeRepository } from '../../../adapters/postgres-stage6/src/index.js';
+import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
 import { createApplication } from './server.js';
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -34,6 +40,7 @@ if (!geminiApiKey) {
 const port = Number.parseInt(process.env.PORT ?? '3000', 10);
 const storageRoot = path.resolve(process.env.ASSET_STORAGE_ROOT ?? '.data/assets');
 const plainTextAdapter = new LucasAugmentedPlainTextAdapter();
+const canonicalKnowledgeRepository = new PostgresCanonicalKnowledgeRepository(pool);
 const { server } = await createApplication({
   intakeRepository: new PostgresIntakeRepository(pool),
   originalAssetRepository: new PostgresOriginalAssetRepository(pool),
@@ -43,6 +50,11 @@ const { server } = await createApplication({
   aiProviderRepository: new PostgresAIProviderCallRepository(pool),
   candidateRepository: new PostgresCandidateRepository(pool),
   validationRepository: new PostgresValidationRepository(pool),
+  comparisonRepository: new PostgresComparisonRepository(pool),
+  changeSetReviewRepository: new PostgresChangeSetReviewRepository(pool),
+  canonicalSnapshot: canonicalKnowledgeRepository,
+  canonicalKnowledgeRepository,
+  textDiff: new JsDiffAdapter(),
   transformer: plainTextAdapter,
   evidenceLocator: plainTextAdapter,
   aiProvider: new GeminiAIProviderAdapter({

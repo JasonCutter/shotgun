@@ -209,6 +209,14 @@ Stage별 OSS 후보와 세부 적용 방식은 [OSS Integration Roadmap](./oss-i
 
 ## 8. Stage 4 — AI Provider, Direct Claim Candidate and Validation
 
+**상태: COMPLETE (2026-07-17)**
+
+구현·검증 근거:
+
+- [Stage 4 Engineering Guide](../engineering/stage-4-ai-candidate-validation.md)
+- [Stage 4 OSS Integration Review](stage-validations/stage-4-oss-integration-review.md)
+- [ADR-084](../architecture/adr/ADR-084-stage-4-ai-candidate-validation.md)
+
 ### 목표
 
 원문에 직접 적힌 Claim만 후보로 생성하고 Evidence 정합성을 검증한다.
@@ -250,6 +258,14 @@ Stage별 OSS 후보와 세부 적용 방식은 [OSS Integration Roadmap](./oss-i
 
 ## 9. Stage 5 — Comparison, ChangeSet and Human Review
 
+**상태: COMPLETE (2026-07-17)**
+
+구현·검증 근거:
+
+- [Stage 5 Engineering Guide](../engineering/stage-5-comparison-change-set-review.md)
+- [Stage 5 OSS Integration Review](stage-validations/stage-5-oss-integration-review.md)
+- [ADR-085](../architecture/adr/ADR-085-stage-5-comparison-change-set-review.md)
+
 ### 목표
 
 후보를 기존 지식과 비교하고 사용자가 승인·거절·보류할 수 있게 한다.
@@ -280,6 +296,14 @@ Stage별 OSS 후보와 세부 적용 방식은 [OSS Integration Roadmap](./oss-i
 - UI state가 Approval을 대체하지 않는 Negative Test 통과
 
 ## 10. Stage 6 — Canonical Claim Commit and History
+
+**상태: COMPLETE (2026-07-17)**
+
+구현·검증 근거:
+
+- [Stage 6 Engineering Guide](../engineering/stage-6-canonical-commit-history-outbox.md)
+- [Stage 6 OSS Integration Review](stage-validations/stage-6-oss-integration-review.md)
+- [ADR-086](../architecture/adr/ADR-086-stage-6-canonical-commit-history-outbox.md)
 
 ### 목표
 

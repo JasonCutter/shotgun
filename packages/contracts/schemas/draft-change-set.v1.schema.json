@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "changeSetId",
+    "revisionNumber",
+    "projectId",
+    "sourceVersionId",
+    "candidateId",
+    "comparisonId",
+    "operation",
+    "classification",
+    "status",
+    "expectedCanonicalVersion",
+    "snapshotDigest",
+    "candidateDigest",
+    "diffDigest",
+    "contentDigest",
+    "evidenceIds",
+    "accessScope",
+    "sensitivity",
+    "decisions",
+    "createdAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "changeSetId": { "type": "string", "minLength": 1 },
+    "revisionNumber": { "const": 1 },
+    "projectId": { "type": "string", "minLength": 1 },
+    "sourceVersionId": { "type": "string", "minLength": 1 },
+    "candidateId": { "type": "string", "minLength": 1 },
+    "comparisonId": { "type": "string", "minLength": 1 },
+    "operation": { "enum": ["ADD_CLAIM", "NO_OP"] },
+    "classification": { "enum": ["NEW_CLAIM", "EXACT_DUPLICATE", "POSSIBLE_CONFLICT"] },
+    "status": { "enum": ["PENDING_REVIEW", "ON_HOLD", "APPROVED", "REJECTED", "STALE"] },
+    "expectedCanonicalVersion": { "type": "integer", "minimum": 0 },
+    "snapshotDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "candidateDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "diffDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "contentDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "evidenceIds": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "accessScope": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "sensitivity": { "enum": ["public", "internal", "private", "restricted"] },
+    "decisions": { "type": "array", "items": { "type": "object" } },
+    "createdAt": { "type": "string", "minLength": 1 },
+    "updatedAt": { "type": "string", "minLength": 1 }
+  }
+}

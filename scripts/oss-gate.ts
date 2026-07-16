@@ -53,6 +53,16 @@ const requiredIds = [
   'litellm',
   'zod',
   'langfuse',
+  'jsdiff',
+  'diff-match-patch',
+  'tiptap',
+  'yjs',
+  'transactional-outbox-pattern',
+  'pg-boss',
+  'graphile-worker',
+  'node-pg-migrate',
+  'drizzle-orm',
+  'kysely',
 ] as const;
 const decisions = new Set<Decision>([
   'ADOPT',
@@ -69,6 +79,8 @@ const stageReviewFiles = [
   'docs/implementation/stage-validations/stage-2-oss-integration-review.md',
   'docs/implementation/stage-validations/stage-3-oss-integration-review.md',
   'docs/implementation/stage-validations/stage-4-oss-integration-review.md',
+  'docs/implementation/stage-validations/stage-5-oss-integration-review.md',
+  'docs/implementation/stage-validations/stage-6-oss-integration-review.md',
 ] as const;
 
 const readJson = async <T>(relativePath: string): Promise<T> =>
@@ -164,7 +176,7 @@ const main = async (): Promise<void> => {
   }
 
   console.log(
-    `OSS Gate passed: ${registry.entries.length} decisions, ${requiredIds.length} baseline references, Stage 0-4 reviews complete.`,
+    `OSS Gate passed: ${registry.entries.length} decisions, ${requiredIds.length} baseline references, Stage 0-6 reviews complete.`,
   );
 };
 

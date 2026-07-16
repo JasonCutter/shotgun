@@ -1,0 +1,62 @@
+{
+  "id": "stage5.change-set-review",
+  "version": "1.0.0",
+  "owner": "Shotgun Change Set Review",
+  "compatibility": {
+    "runtime": ">=1.0.0 <2.0.0",
+    "contracts": [
+      { "name": "ComparisonCompleted", "range": ">=1.0.0 <2.0.0" },
+      { "name": "GetComparisonResult", "range": ">=1.0.0 <2.0.0" },
+      { "name": "GetClaimCandidate", "range": ">=1.0.0 <2.0.0" },
+      { "name": "GetEvidenceSpan", "range": ">=1.0.0 <2.0.0" },
+      { "name": "CheckComparisonFreshness", "range": ">=1.0.0 <2.0.0" },
+      { "name": "RecordReviewDecision", "range": ">=1.0.0 <2.0.0" },
+      { "name": "GetDraftChangeSet", "range": ">=1.0.0 <2.0.0" },
+      { "name": "ListDraftChangeSets", "range": ">=1.0.0 <2.0.0" },
+      { "name": "GetReviewBundle", "range": ">=1.0.0 <2.0.0" },
+      { "name": "GetApprovedChangeSetManifest", "range": ">=1.0.0 <2.0.0" }
+    ]
+  },
+  "deployment": { "modes": ["in_process", "worker"] },
+  "dataOwnership": {
+    "owns": ["review.change_sets", "review.decisions", "review.approved_manifests"],
+    "readsViaPorts": [
+      "GetComparisonResult query",
+      "GetClaimCandidate query",
+      "GetEvidenceSpan query",
+      "CheckComparisonFreshness query"
+    ],
+    "directSchemaAccess": false
+  },
+  "consumes": {
+    "commands": [{ "name": "RecordReviewDecision", "range": ">=1.0.0 <2.0.0" }],
+    "events": [{ "name": "ComparisonCompleted", "range": ">=1.0.0 <2.0.0" }]
+  },
+  "produces": {
+    "events": [
+      { "name": "DraftChangeSetReady", "range": ">=1.0.0 <2.0.0" },
+      { "name": "ReviewDecisionRecorded", "range": ">=1.0.0 <2.0.0" },
+      { "name": "ChangeSetApproved", "range": ">=1.0.0 <2.0.0" }
+    ]
+  },
+  "provides": {
+    "queries": [
+      { "name": "GetDraftChangeSet", "range": ">=1.0.0 <2.0.0" },
+      { "name": "ListDraftChangeSets", "range": ">=1.0.0 <2.0.0" },
+      { "name": "GetReviewBundle", "range": ">=1.0.0 <2.0.0" },
+      { "name": "GetApprovedChangeSetManifest", "range": ">=1.0.0 <2.0.0" }
+    ],
+    "capabilities": [{ "name": "change-set-review-provider", "priority": 100 }]
+  },
+  "requires": {
+    "capabilities": ["claim-comparison-provider", "claim-candidate-provider", "evidence-resolver"]
+  },
+  "security": {
+    "requiredContext": ["actor", "project", "access_scope", "sensitivity"],
+    "defaultOnMissingContext": "deny"
+  },
+  "approvalPolicy": {
+    "canWriteCanonical": false,
+    "canExecuteExternalAction": false
+  }
+}

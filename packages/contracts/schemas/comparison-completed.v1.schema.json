@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "comparisonId",
+    "candidateId",
+    "sourceVersionId",
+    "classification",
+    "snapshotVersion",
+    "snapshotDigest"
+  ],
+  "properties": {
+    "comparisonId": { "type": "string", "minLength": 1 },
+    "candidateId": { "type": "string", "minLength": 1 },
+    "sourceVersionId": { "type": "string", "minLength": 1 },
+    "classification": { "enum": ["NEW_CLAIM", "EXACT_DUPLICATE", "POSSIBLE_CONFLICT"] },
+    "snapshotVersion": { "type": "integer", "minimum": 0 },
+    "snapshotDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+  }
+}

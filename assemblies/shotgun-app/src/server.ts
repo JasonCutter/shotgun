@@ -18,6 +18,12 @@ import {
   InMemoryValidationRepository,
 } from '../../../adapters/stage4-in-memory/src/index.js';
 import { LucasAugmentedPlainTextAdapter } from '../../../adapters/plain-text-lucas-augmented/src/index.js';
+import {
+  InMemoryChangeSetReviewRepository,
+  InMemoryComparisonRepository,
+} from '../../../adapters/stage5-in-memory/src/index.js';
+import { InMemoryCanonicalKnowledgeRepository } from '../../../adapters/stage6-in-memory/src/index.js';
+import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
 import { InProcessTransport } from '../../../adapters/transport-in-process/src/index.js';
 import {
   createChildQuery,
@@ -28,6 +34,15 @@ import {
   type AssetReference,
   type MessageTransport,
   type SecurityContext,
+  type ApprovedChangeSetManifest,
+  type CanonicalCommitResult,
+  type CanonicalHistoryEvent,
+  type CanonicalSnapshot,
+  type ClaimCandidate,
+  type ComparisonResult,
+  type DraftChangeSet,
+  type EvidenceSpan,
+  type TextDiffSegment,
 } from '../../../packages/kernel/src/index.js';
 import {
   createIntakeModule,
@@ -59,6 +74,20 @@ import {
   type ValidationRepositoryPort,
 } from '../../../modules/validation/src/index.js';
 import {
+  createComparisonModule,
+  type CanonicalSnapshotPort,
+  type ComparisonRepositoryPort,
+  type TextDiffPort,
+} from '../../../modules/comparison/src/index.js';
+import {
+  createChangeSetReviewModule,
+  type ChangeSetReviewRepositoryPort,
+} from '../../../modules/change-set-review/src/index.js';
+import {
+  createCanonicalKnowledgeModule,
+  type CanonicalKnowledgeRepositoryPort,
+} from '../../../modules/canonical-knowledge/src/index.js';
+import {
   createTransformationModule,
   type PlainTextTransformerPort,
   type TransformationRepositoryPort,
@@ -87,6 +116,30 @@ type CandidateRequest = {
   readonly candidateId: string;
 };
 
+type ComparisonRequest = {
+  readonly comparisonId: string;
+};
+
+type ChangeSetRequest = {
+  readonly changeSetId: string;
+};
+
+type CanonicalClaimRequest = {
+  readonly claimId: string;
+};
+
+type CanonicalCommitRequest = {
+  readonly commitId: string;
+};
+
+type ReviewDecisionRequest = ChangeSetRequest & {
+  readonly decisionId?: string;
+  readonly expectedRevisionNumber: 1;
+  readonly expectedContentDigest: string;
+  readonly decision: 'APPROVE' | 'HOLD' | 'REJECT';
+  readonly reason: string;
+};
+
 type SecurityHeaders = {
   readonly 'x-project-id'?: string;
   readonly 'x-actor-id'?: string;
@@ -108,6 +161,11 @@ type ApplicationOptions = {
   readonly validationRepository?: ValidationRepositoryPort;
   readonly aiProvider?: AIProviderAdapterPort;
   readonly aiProviderPolicy?: AIProviderPolicy;
+  readonly canonicalSnapshot?: CanonicalSnapshotPort;
+  readonly textDiff?: TextDiffPort;
+  readonly comparisonRepository?: ComparisonRepositoryPort;
+  readonly changeSetReviewRepository?: ChangeSetReviewRepositoryPort;
+  readonly canonicalKnowledgeRepository?: CanonicalKnowledgeRepositoryPort;
   readonly closeResources?: () => Promise<void>;
 };
 
@@ -155,6 +213,120 @@ const auditView = (kernel: ShotgunKernel, traceId: string) =>
     status: record.status,
   }));
 
+const escapeHtml = (value: string): string =>
+  value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+
+const diffHtml = (segments: readonly TextDiffSegment[]): string =>
+  segments
+    .map((segment) => {
+      const tag = segment.type === 'insert' ? 'ins' : segment.type === 'delete' ? 'del' : 'span';
+      return `<${tag}>${escapeHtml(segment.value)}</${tag}>`;
+    })
+    .join('');
+
+const reviewPage = (bundle: {
+  readonly changeSet: DraftChangeSet;
+  readonly comparison: ComparisonResult;
+  readonly candidate: ClaimCandidate;
+  readonly evidence: readonly EvidenceSpan[];
+}): string => {
+  const { changeSet, comparison, candidate, evidence } = bundle;
+  const evidenceHtml = evidence
+    .map(
+      (item) =>
+        `<li><code>${escapeHtml(item.evidenceId)}</code><blockquote>${escapeHtml(item.quote.exact)}</blockquote></li>`,
+    )
+    .join('');
+  const activity = changeSet.decisions
+    .map(
+      (item) =>
+        `<li>${escapeHtml(item.decision)} — ${escapeHtml(item.actor.id)} — ${escapeHtml(item.reason)}</li>`,
+    )
+    .join('');
+  return `<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Shotgun Change Set Review</title>
+  <style>
+    body{font-family:system-ui,sans-serif;max-width:960px;margin:40px auto;padding:0 20px;color:#1f2937}
+    section{border:1px solid #d1d5db;border-radius:12px;padding:18px;margin:16px 0}
+    code{overflow-wrap:anywhere} ins{background:#dcfce7;text-decoration:none} del{background:#fee2e2}
+    textarea{width:100%;min-height:90px;box-sizing:border-box} button{margin:8px 8px 0 0;padding:10px 16px}
+    blockquote{border-left:4px solid #cbd5e1;margin-left:0;padding-left:12px}
+  </style>
+</head>
+<body>
+  <h1>Change Set Review</h1>
+  <p>상태: <strong id="status">${escapeHtml(changeSet.status)}</strong></p>
+  <section>
+    <h2>후보 Claim</h2>
+    <p>${escapeHtml(candidate.claimText)}</p>
+    <p>분류: ${escapeHtml(comparison.classification)} / 작업: ${escapeHtml(changeSet.operation)}</p>
+  </section>
+  <section>
+    <h2>고정 Canonical Snapshot</h2>
+    <p>버전 ${changeSet.expectedCanonicalVersion}</p>
+    <code>${escapeHtml(changeSet.snapshotDigest)}</code>
+    <p>${comparison.matchedClaim ? escapeHtml(comparison.matchedClaim.text) : '일치 후보 없음'}</p>
+  </section>
+  <section>
+    <h2>Machine Diff</h2>
+    <p>${diffHtml(comparison.diff)}</p>
+    <code>${escapeHtml(changeSet.diffDigest)}</code>
+  </section>
+  <section>
+    <h2>Evidence</h2>
+    <ul>${evidenceHtml}</ul>
+  </section>
+  <section>
+    <h2>Activity</h2>
+    <ul id="activity">${activity || '<li>아직 결정 없음</li>'}</ul>
+  </section>
+  <section>
+    <h2>결정</h2>
+    <textarea id="reason" placeholder="승인·보류·거절 이유를 입력하세요"></textarea>
+    <div>
+      <button data-decision="APPROVE">승인</button>
+      <button data-decision="HOLD">보류</button>
+      <button data-decision="REJECT">거절</button>
+    </div>
+    <p id="message"></p>
+  </section>
+  <script>
+    const changeSetId = ${JSON.stringify(changeSet.changeSetId)};
+    const expectedContentDigest = ${JSON.stringify(changeSet.contentDigest)};
+    document.querySelectorAll('button[data-decision]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const response = await fetch('/reviews/decision', {
+          method: 'POST',
+          headers: {'content-type': 'application/json'},
+          body: JSON.stringify({
+            changeSetId,
+            expectedRevisionNumber: 1,
+            expectedContentDigest,
+            decision: button.dataset.decision,
+            reason: document.querySelector('#reason').value
+          })
+        });
+        const result = await response.json();
+        document.querySelector('#message').textContent = response.ok
+          ? '결정이 서버에 기록되었습니다.'
+          : result.message;
+        if (response.ok) document.querySelector('#status').textContent = result.changeSet.status;
+      });
+    });
+  </script>
+</body>
+</html>`;
+};
+
 export const createApplication = async (options: ApplicationOptions = {}) => {
   const intakeRepository = options.intakeRepository ?? new InMemoryIntakeRepository();
   const originalAssetRepository =
@@ -167,6 +339,13 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     options.aiProviderRepository ?? new InMemoryAIProviderCallRepository();
   const candidateRepository = options.candidateRepository ?? new InMemoryCandidateRepository();
   const validationRepository = options.validationRepository ?? new InMemoryValidationRepository();
+  const comparisonRepository = options.comparisonRepository ?? new InMemoryComparisonRepository();
+  const changeSetReviewRepository =
+    options.changeSetReviewRepository ?? new InMemoryChangeSetReviewRepository();
+  const canonicalKnowledgeRepository =
+    options.canonicalKnowledgeRepository ?? new InMemoryCanonicalKnowledgeRepository();
+  const canonicalSnapshot = options.canonicalSnapshot ?? canonicalKnowledgeRepository;
+  const textDiff = options.textDiff ?? new JsDiffAdapter();
   const aiProvider = options.aiProvider ?? new FakeAIProviderAdapter();
   const plainTextAdapter = new LucasAugmentedPlainTextAdapter();
   const transformer = options.transformer ?? plainTextAdapter;
@@ -188,6 +367,9 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   );
   const candidateGeneration = createCandidateGenerationModule(candidateRepository);
   const validation = createValidationModule(validationRepository);
+  const comparison = createComparisonModule(comparisonRepository, canonicalSnapshot, textDiff);
+  const changeSetReview = createChangeSetReviewModule(changeSetReviewRepository);
+  const canonicalKnowledge = createCanonicalKnowledgeModule(canonicalKnowledgeRepository);
   const kernel = new ShotgunKernel(options.transport ?? new InProcessTransport());
   kernel.register(
     ping.module,
@@ -199,6 +381,9 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     ai,
     candidateGeneration,
     validation,
+    comparison,
+    changeSetReview,
+    canonicalKnowledge,
   );
   await kernel.start();
 
@@ -213,7 +398,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
         ? 403
         : error.code === 'NOT_FOUND'
           ? 404
-          : ['CONFLICT', 'STALE_VERSION'].includes(error.code)
+          : ['CONFLICT', 'STALE_VERSION', 'STALE_APPROVAL'].includes(error.code)
             ? 409
             : error.code === 'VALIDATION_ERROR'
               ? 400
@@ -311,6 +496,15 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
           payload: { sourceVersionId: storedPayload.sourceVersionId },
         }),
       );
+      const reviews = await kernel.connector.query(
+        createChildQuery(command, {
+          messageType: 'ListDraftChangeSets',
+          schemaVersion: '1.0.0',
+          producerModule: 'shotgun-app',
+          producerVersion: '1.0.0',
+          payload: { sourceVersionId: storedPayload.sourceVersionId },
+        }),
+      );
       return {
         commandStatus: commandDelivery.status,
         intake: commandDelivery.result,
@@ -318,8 +512,155 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
         document: document.result.payload,
         evidence: evidence.result.payload,
         candidates: candidates.result.payload,
+        reviews: reviews.result.payload,
         trace: traceView(kernel, command.traceId),
         audit: auditView(kernel, command.traceId),
+      };
+    },
+  );
+
+  server.post<{ Body: ComparisonRequest; Headers: SecurityHeaders }>(
+    '/comparisons/resolve',
+    async (request) => {
+      const query = createQuery({
+        messageType: 'GetComparisonResult',
+        schemaVersion: '1.0.0',
+        producerModule: 'shotgun-app',
+        producerVersion: '1.0.0',
+        ...requestContext(request.headers),
+        payload: request.body,
+      });
+      const delivery = await kernel.connector.query<ComparisonResult>(query);
+      return { comparison: delivery.result.payload };
+    },
+  );
+
+  server.post<{ Body: ChangeSetRequest; Headers: SecurityHeaders }>(
+    '/reviews/resolve',
+    async (request) => {
+      const query = createQuery({
+        messageType: 'GetReviewBundle',
+        schemaVersion: '1.0.0',
+        producerModule: 'shotgun-app',
+        producerVersion: '1.0.0',
+        ...requestContext(request.headers),
+        payload: request.body,
+      });
+      const delivery = await kernel.connector.query(query);
+      return { review: delivery.result.payload };
+    },
+  );
+
+  server.post<{ Body: Record<string, never>; Headers: SecurityHeaders }>(
+    '/canonical/snapshot',
+    async (request) => {
+      const delivery = await kernel.connector.query<CanonicalSnapshot>(
+        createQuery({
+          messageType: 'GetCanonicalSnapshot',
+          schemaVersion: '1.0.0',
+          producerModule: 'shotgun-app',
+          producerVersion: '1.0.0',
+          ...requestContext(request.headers),
+          payload: request.body ?? {},
+        }),
+      );
+      return { snapshot: delivery.result.payload };
+    },
+  );
+
+  server.post<{ Body: CanonicalClaimRequest; Headers: SecurityHeaders }>(
+    '/canonical/claims/resolve',
+    async (request) => {
+      const delivery = await kernel.connector.query(
+        createQuery({
+          messageType: 'GetCanonicalClaim',
+          schemaVersion: '1.0.0',
+          producerModule: 'shotgun-app',
+          producerVersion: '1.0.0',
+          ...requestContext(request.headers),
+          payload: request.body,
+        }),
+      );
+      return { claim: delivery.result.payload };
+    },
+  );
+
+  server.post<{ Body: CanonicalCommitRequest; Headers: SecurityHeaders }>(
+    '/canonical/commits/resolve',
+    async (request) => {
+      const delivery = await kernel.connector.query<CanonicalCommitResult>(
+        createQuery({
+          messageType: 'GetCanonicalCommit',
+          schemaVersion: '1.0.0',
+          producerModule: 'shotgun-app',
+          producerVersion: '1.0.0',
+          ...requestContext(request.headers),
+          payload: request.body,
+        }),
+      );
+      return { commit: delivery.result.payload };
+    },
+  );
+
+  server.post<{ Body: Record<string, never>; Headers: SecurityHeaders }>(
+    '/canonical/history',
+    async (request) => {
+      const delivery = await kernel.connector.query<{ items: readonly CanonicalHistoryEvent[] }>(
+        createQuery({
+          messageType: 'ListCanonicalHistory',
+          schemaVersion: '1.0.0',
+          producerModule: 'shotgun-app',
+          producerVersion: '1.0.0',
+          ...requestContext(request.headers),
+          payload: request.body ?? {},
+        }),
+      );
+      return { history: delivery.result.payload };
+    },
+  );
+
+  server.get<{ Params: ChangeSetRequest; Headers: SecurityHeaders }>(
+    '/reviews/:changeSetId',
+    async (request, reply) => {
+      const query = createQuery({
+        messageType: 'GetReviewBundle',
+        schemaVersion: '1.0.0',
+        producerModule: 'shotgun-app',
+        producerVersion: '1.0.0',
+        ...requestContext(request.headers),
+        payload: request.params,
+      });
+      const delivery = await kernel.connector.query<{
+        changeSet: DraftChangeSet;
+        comparison: ComparisonResult;
+        candidate: ClaimCandidate;
+        evidence: readonly EvidenceSpan[];
+      }>(query);
+      return reply.type('text/html; charset=utf-8').send(reviewPage(delivery.result.payload));
+    },
+  );
+
+  server.post<{ Body: ReviewDecisionRequest; Headers: SecurityHeaders }>(
+    '/reviews/decision',
+    async (request) => {
+      const decisionId = request.body.decisionId ?? randomUUID();
+      const command = createCommand({
+        messageType: 'RecordReviewDecision',
+        schemaVersion: '1.0.0',
+        producerModule: 'shotgun-app',
+        producerVersion: '1.0.0',
+        idempotencyKey: `review-decision:${requestContext(request.headers).projectId}:${decisionId}`,
+        ...requestContext(request.headers),
+        payload: { ...request.body, decisionId },
+      });
+      const delivery = await kernel.connector.sendCommand<{
+        changeSet: DraftChangeSet;
+        manifest?: ApprovedChangeSetManifest;
+      }>(command);
+      return {
+        commandStatus: delivery.status,
+        changeSet: delivery.result.changeSet,
+        manifest: delivery.result.manifest,
       };
     },
   );
@@ -460,6 +801,9 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       aiProvider: aiProviderRepository,
       candidates: candidateRepository,
       validation: validationRepository,
+      comparisons: comparisonRepository,
+      reviews: changeSetReviewRepository,
+      canonical: canonicalKnowledgeRepository,
     },
     storage: assetStorage,
     state: {

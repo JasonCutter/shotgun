@@ -365,6 +365,16 @@ Related ADR / PR / incident:
 - 잔여 위험: Dedup·Dead-letter가 메모리 기반이므로 프로세스 재시작 내구성은 Stage 6의
   Transactional Outbox·영속 Inbox 적용 전까지 제한으로 유지
 
+### Stage 2 구현 검토 — 2026-07-16
+
+- R-001 원본 손실: SHA-256 Content Address, Byte Round-trip, 변조 탐지 Test로 완화
+- R-002 접근 범위 오류: Project 격리, 저장 Scope 재검사, Asset Reference 전체 일치 검증
+- R-003 중복 전달: Intake Submission·StorageReceipt Unique Key와 재시작 Test로 완화
+- R-004 순서 오인: Source Row Lock과 Version Unique Constraint로 동시 Version 충돌 방지
+- R-006 보안 Context 누락: Resolver 실행 전 기본 거부와 HTTP 403 확인
+- 잔여 위험: Auth Adapter, 영속 Audit·Inbox·Outbox, 미참조 Asset 정리는 후속 Stage 전까지
+  `OPEN` 상태로 유지
+
 - Canonical Data Loss 0
 - Unauthorized Canonical Write 0
 - Duplicate External Action 0

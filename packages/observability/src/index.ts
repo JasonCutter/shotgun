@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 
 import type { AnyEnvelope, ErrorCode, MessageKind } from '../../contracts/src/index.js';
 
-export type TraceStatus = 'started' | 'succeeded' | 'failed' | 'duplicate' | 'dead-letter';
+export type TraceStatus =
+  'published' | 'started' | 'succeeded' | 'failed' | 'duplicate' | 'dead-letter';
 
 export type TraceRecord = {
   readonly recordId: string;
@@ -65,6 +66,14 @@ export type AuditRecord = {
   readonly category: string;
   readonly actorId: string;
   readonly projectId: string;
+  readonly traceId: string;
+  readonly correlationId: string;
+  readonly messageId: string;
+  readonly messageType: string;
+  readonly messageKind: MessageKind;
+  readonly moduleId: string;
+  readonly status: 'published' | 'started' | 'succeeded' | 'failed' | 'duplicate' | 'dead-letter';
+  readonly errorCode?: ErrorCode;
   readonly occurredAt: string;
 };
 
@@ -83,5 +92,9 @@ export class InMemoryAuditStore {
 
   list(): readonly AuditRecord[] {
     return [...this.records];
+  }
+
+  findByTraceId(traceId: string): readonly AuditRecord[] {
+    return this.records.filter((record) => record.traceId === traceId);
   }
 }

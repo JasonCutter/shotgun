@@ -1,0 +1,38 @@
+{
+  "id": "stage2.intake",
+  "version": "1.0.0",
+  "owner": "Shotgun Intake",
+  "compatibility": {
+    "runtime": ">=1.0.0 <2.0.0",
+    "contracts": [
+      { "name": "SubmitIntake", "range": ">=1.0.0 <2.0.0" },
+      { "name": "IntakeAccepted", "range": ">=1.0.0 <2.0.0" }
+    ]
+  },
+  "deployment": { "modes": ["in_process"] },
+  "dataOwnership": {
+    "owns": ["intake.submissions"],
+    "readsViaPorts": [],
+    "directSchemaAccess": false
+  },
+  "consumes": {
+    "commands": [{ "name": "SubmitIntake", "range": ">=1.0.0 <2.0.0" }],
+    "events": []
+  },
+  "produces": {
+    "events": [{ "name": "IntakeAccepted", "range": ">=1.0.0 <2.0.0" }]
+  },
+  "provides": {
+    "queries": [],
+    "capabilities": [{ "name": "intake-submit", "priority": 100 }]
+  },
+  "requires": { "capabilities": ["original-asset-store"] },
+  "security": {
+    "requiredContext": ["actor", "project", "access_scope", "sensitivity"],
+    "defaultOnMissingContext": "deny"
+  },
+  "approvalPolicy": {
+    "canWriteCanonical": false,
+    "canExecuteExternalAction": false
+  }
+}

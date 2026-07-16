@@ -12,6 +12,7 @@ node_modules/
 dist/
 build/
 coverage/
+.data/
 
 # Editor and OS files
 .vscode/

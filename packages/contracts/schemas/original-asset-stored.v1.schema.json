@@ -1,0 +1,62 @@
+{
+  "$id": "https://shotgun.local/contracts/original-asset-stored.v1.schema.json",
+  "title": "Original Asset Stored v1",
+  "type": "object",
+  "required": [
+    "submissionId",
+    "sourceId",
+    "sourceVersionId",
+    "versionNumber",
+    "assetReference",
+    "assetReused",
+    "versionCreated"
+  ],
+  "properties": {
+    "submissionId": { "type": "string", "minLength": 1 },
+    "sourceId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "sourceVersionId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "versionNumber": { "type": "integer", "minimum": 1 },
+    "assetReference": {
+      "type": "object",
+      "required": [
+        "assetId",
+        "versionId",
+        "mediaType",
+        "contentHash",
+        "sizeBytes",
+        "storageUri",
+        "accessScope"
+      ],
+      "properties": {
+        "assetId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+        },
+        "versionId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+        },
+        "mediaType": { "type": "string", "minLength": 1 },
+        "contentHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "sizeBytes": { "type": "integer", "minimum": 0 },
+        "storageUri": { "type": "string", "pattern": "^asset://[^/]+/versions/[^/]+$" },
+        "accessScope": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "assetReused": { "type": "boolean" },
+    "versionCreated": { "type": "boolean" }
+  },
+  "additionalProperties": false
+}

@@ -21,7 +21,7 @@ import type {
   RegisteredQueryHandler,
 } from '../../module-sdk/src/index.js';
 import type { ModuleRegistry } from '../../module-sdk/src/index.js';
-import { InMemoryTraceStore } from '../../observability/src/index.js';
+import { InMemoryAuditStore, InMemoryTraceStore } from '../../observability/src/index.js';
 import { assertSecurityContext } from '../../policy/src/index.js';
 import {
   InMemoryDeadLetterStore,
@@ -41,6 +41,7 @@ import type {
 type RuntimeOptions = {
   readonly jobs?: InMemoryJobRuntime;
   readonly traces?: InMemoryTraceStore;
+  readonly audit?: InMemoryAuditStore;
   readonly dedup?: InMemoryDedupStore;
   readonly ordering?: InMemoryOrderingStore;
   readonly deadLetters?: InMemoryDeadLetterStore;
@@ -53,6 +54,36 @@ type ExecutedHandler<TResult> = {
 
 const consumerId = (moduleId: string, kind: 'command' | 'event' | 'query', messageType: string) =>
   `${moduleId}:${kind}:${messageType}`;
+
+const stableValue = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map(stableValue);
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, entry]) => entry !== undefined)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entry]) => [key, stableValue(entry)]),
+    );
+  }
+  return value;
+};
+
+const messageFingerprint = (envelope: CommandEnvelope | EventEnvelope): string =>
+  JSON.stringify(
+    stableValue({
+      messageType: envelope.messageType,
+      messageKind: envelope.messageKind,
+      schemaVersion: envelope.schemaVersion,
+      projectId: envelope.projectId,
+      actor: envelope.actor,
+      security: envelope.security,
+      payload: envelope.payload,
+      orderingKey: envelope.orderingKey,
+      sequence: envelope.sequence,
+    }),
+  );
 
 const withTimeout = async <TResult>(
   operation: () => Promise<TResult>,
@@ -94,6 +125,7 @@ const withTimeout = async <TResult>(
 export class ConnectorRuntime {
   readonly jobs: InMemoryJobRuntime;
   readonly traces: InMemoryTraceStore;
+  readonly audit: InMemoryAuditStore;
   readonly deadLetters: InMemoryDeadLetterStore;
 
   private readonly dedup: InMemoryDedupStore;
@@ -106,6 +138,7 @@ export class ConnectorRuntime {
   ) {
     this.jobs = options.jobs ?? new InMemoryJobRuntime();
     this.traces = options.traces ?? new InMemoryTraceStore();
+    this.audit = options.audit ?? new InMemoryAuditStore();
     this.dedup = options.dedup ?? new InMemoryDedupStore();
     this.ordering = options.ordering ?? new InMemoryOrderingStore();
     this.deadLetters = options.deadLetters ?? new InMemoryDeadLetterStore();
@@ -145,6 +178,12 @@ export class ConnectorRuntime {
     );
     const routes = this.registry.getEventHandlers(envelope.messageType, envelope.schemaVersion);
     const consumers: EventConsumerDelivery[] = [];
+    this.traces.record(envelope, {
+      consumerModule: envelope.producerModule,
+      attemptNumber: envelope.job?.attemptNumber ?? 0,
+      status: 'published',
+    });
+    this.auditEnvelope(envelope, envelope.producerModule, 'published');
 
     for (const route of routes) {
       try {
@@ -272,7 +311,7 @@ export class ConnectorRuntime {
     const id = consumerId(route.module.manifest.id, kind, envelope.messageType);
     const key = `${id}:${envelope.idempotencyKey}`;
 
-    const delivery = await this.dedup.runOnce(key, async () => {
+    const delivery = await this.dedup.runOnce(key, messageFingerprint(envelope), async () => {
       const execution = await this.jobs.run(
         envelope.idempotencyKey,
         id,
@@ -318,6 +357,7 @@ export class ConnectorRuntime {
         attemptNumber: 0,
         status: 'duplicate',
       });
+      this.auditEnvelope(envelope, route.module.manifest.id, 'duplicate');
     }
     return delivery;
   }
@@ -333,6 +373,7 @@ export class ConnectorRuntime {
       attemptNumber: attempt.attemptNumber,
       status: 'started',
     });
+    this.auditEnvelope(envelope, route.module.manifest.id, 'started');
     try {
       const result = await this.transport.execute(() =>
         withTimeout(
@@ -347,6 +388,7 @@ export class ConnectorRuntime {
         attemptNumber: attempt.attemptNumber,
         status: 'succeeded',
       });
+      this.auditEnvelope(envelope, route.module.manifest.id, 'succeeded');
       return result;
     } catch (error) {
       const shotgunError = toShotgunError(error, {
@@ -362,6 +404,7 @@ export class ConnectorRuntime {
         status: 'failed',
         errorCode: shotgunError.code,
       });
+      this.auditEnvelope(envelope, route.module.manifest.id, 'failed', shotgunError.code);
       throw shotgunError;
     }
   }
@@ -432,6 +475,7 @@ export class ConnectorRuntime {
       status: 'dead-letter',
       errorCode: shotgunError.code,
     });
+    this.auditEnvelope(envelope, moduleId, 'dead-letter', shotgunError.code);
     return this.deadLetters.add({
       kind,
       consumerId: moduleId,
@@ -448,6 +492,27 @@ export class ConnectorRuntime {
       module: 'connector-runtime',
       operation: 'replay',
       correlationId: entry.envelope.correlationId,
+    });
+  }
+
+  private auditEnvelope(
+    envelope: AnyEnvelope,
+    moduleId: string,
+    status: 'published' | 'started' | 'succeeded' | 'failed' | 'duplicate' | 'dead-letter',
+    errorCode?: ShotgunError['code'],
+  ): void {
+    this.audit.append({
+      category: `message.${status}`,
+      actorId: envelope.actor?.id ?? 'system',
+      projectId: envelope.projectId ?? 'global',
+      traceId: envelope.traceId,
+      correlationId: envelope.correlationId,
+      messageId: envelope.messageId,
+      messageType: envelope.messageType,
+      messageKind: envelope.messageKind,
+      moduleId,
+      status,
+      errorCode,
     });
   }
 }

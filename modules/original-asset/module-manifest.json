@@ -1,0 +1,51 @@
+{
+  "id": "stage2.original-asset",
+  "version": "1.0.0",
+  "owner": "Shotgun Original Asset",
+  "compatibility": {
+    "runtime": ">=1.0.0 <2.0.0",
+    "contracts": [
+      { "name": "IntakeAccepted", "range": ">=1.0.0 <2.0.0" },
+      { "name": "OriginalAssetStored", "range": ">=1.0.0 <2.0.0" },
+      { "name": "GetIntakeResult", "range": ">=1.0.0 <2.0.0" },
+      { "name": "ResolveAsset", "range": ">=1.0.0 <2.0.0" }
+    ]
+  },
+  "deployment": { "modes": ["in_process"] },
+  "dataOwnership": {
+    "owns": [
+      "asset.sources",
+      "asset.source_versions",
+      "asset.original_assets",
+      "asset.storage_receipts"
+    ],
+    "readsViaPorts": ["AssetStoragePort"],
+    "directSchemaAccess": false
+  },
+  "consumes": {
+    "commands": [],
+    "events": [{ "name": "IntakeAccepted", "range": ">=1.0.0 <2.0.0" }]
+  },
+  "produces": {
+    "events": [{ "name": "OriginalAssetStored", "range": ">=1.0.0 <2.0.0" }]
+  },
+  "provides": {
+    "queries": [
+      { "name": "GetIntakeResult", "range": ">=1.0.0 <2.0.0" },
+      { "name": "ResolveAsset", "range": ">=1.0.0 <2.0.0" }
+    ],
+    "capabilities": [
+      { "name": "original-asset-store", "priority": 100 },
+      { "name": "asset-resolver", "priority": 100 }
+    ]
+  },
+  "requires": { "capabilities": [] },
+  "security": {
+    "requiredContext": ["actor", "project", "access_scope", "sensitivity"],
+    "defaultOnMissingContext": "deny"
+  },
+  "approvalPolicy": {
+    "canWriteCanonical": false,
+    "canExecuteExternalAction": false
+  }
+}

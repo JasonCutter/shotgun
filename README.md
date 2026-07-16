@@ -11,11 +11,13 @@ Shotgun은 한 점에 모인 지식이 산탄총의 탄환처럼 여러 방향�
 - 모듈 아키텍처 기준선: `docs/architecture/module-architecture/README.md`
 - 구현계획 기준선: `docs/implementation/README.md`
 - 우선순위는 복잡한 전체 구조보다 작동하는 MVP 완성
+- Stage 2에서 직접 텍스트·`.txt`·Plain Text `.md` 원본 접수와 불변 저장을 지원
 
 ## 개발 시작
 
 개발 환경은 [Stage 0 문서](docs/engineering/stage-0-development.md)를 따르고,
-Kernel 사용법과 완료 증거는 [Stage 1 문서](docs/engineering/stage-1-kernel-runtime.md)에서 확인한다.
+Kernel 사용법은 [Stage 1 문서](docs/engineering/stage-1-kernel-runtime.md), 원본 접수와
+Asset Resolver는 [Stage 2 문서](docs/engineering/stage-2-intake-original-asset.md)에서 확인한다.
 
 ## MVP 목표
 

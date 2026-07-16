@@ -57,6 +57,30 @@ export const createCommand = <TPayload>(
   sequence: input.sequence,
 });
 
+export const createQuery = <TPayload>(
+  input: RootContext &
+    MessageIdentity & {
+      readonly messageType: string;
+      readonly schemaVersion: string;
+      readonly payload: TPayload;
+    },
+): QueryEnvelope<TPayload> => ({
+  messageId: input.messageId ?? randomUUID(),
+  messageType: input.messageType,
+  messageKind: 'query',
+  schemaVersion: input.schemaVersion,
+  producerModule: input.producerModule,
+  producerVersion: input.producerVersion,
+  correlationId: input.correlationId ?? randomUUID(),
+  projectId: input.projectId,
+  actor: input.actor,
+  security: input.security,
+  provenance: input.provenance,
+  payload: input.payload,
+  createdAt: input.createdAt ?? new Date().toISOString(),
+  traceId: input.traceId ?? randomUUID(),
+});
+
 type ChildInput<TPayload> = MessageIdentity & {
   readonly messageType: string;
   readonly schemaVersion: string;

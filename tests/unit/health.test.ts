@@ -11,9 +11,73 @@ describe('Stage 1 application', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
       status: 'ok',
-      modules: ['stage1.ping', 'stage1.pong'],
-      capabilities: ['ping-command', 'pong-query'],
+      modules: ['stage1.ping', 'stage1.pong', 'stage2.intake', 'stage2.original-asset'],
+      capabilities: [
+        'ping-command',
+        'pong-query',
+        'intake-submit',
+        'original-asset-store',
+        'asset-resolver',
+      ],
     });
+
+    await server.close();
+  });
+
+  it('stores and resolves direct text only through an Asset Reference', async () => {
+    const { server } = await createApplication();
+
+    const intake = await server.inject({
+      method: 'POST',
+      url: '/intake',
+      payload: {
+        submissionId: 'http-intake-1',
+        input: {
+          kind: 'direct_text',
+          text: 'HTTP original\r\nunchanged',
+        },
+      },
+    });
+    expect(intake.statusCode).toBe(200);
+    const body = intake.json();
+    expect(body.stored.assetReference.storageUri).toMatch(/^asset:\/\//);
+    expect(body.trace.map((record: { messageType: string }) => record.messageType)).toContain(
+      'OriginalAssetStored',
+    );
+
+    const resolved = await server.inject({
+      method: 'POST',
+      url: '/assets/resolve',
+      payload: {
+        assetReference: body.stored.assetReference,
+      },
+    });
+    expect(resolved.statusCode).toBe(200);
+    expect(resolved.json().resolved.text).toBe('HTTP original\r\nunchanged');
+
+    await server.close();
+  });
+
+  it('rejects an invalid sensitivity header before Intake', async () => {
+    const { server } = await createApplication();
+
+    const response = await server.inject({
+      method: 'POST',
+      url: '/intake',
+      headers: {
+        'x-sensitivity': 'unknown',
+      },
+      payload: {
+        submissionId: 'invalid-sensitivity',
+        input: {
+          kind: 'direct_text',
+          text: 'must be rejected',
+        },
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
 
     await server.close();
   });

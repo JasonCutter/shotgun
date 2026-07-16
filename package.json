@@ -24,6 +24,7 @@
     "test:unit": "vitest run tests/unit",
     "test:contract": "vitest run tests/contract",
     "test:integration": "vitest run tests/integration",
+    "test:database": "vitest run tests/database --maxWorkers=1",
     "test:architecture": "tsx scripts/architecture-test.ts",
     "test": "npm run test:unit && npm run test:contract && npm run test:integration && npm run test:architecture",
     "db:migrate": "tsx scripts/database.ts migrate",

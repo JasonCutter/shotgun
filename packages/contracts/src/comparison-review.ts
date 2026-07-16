@@ -1,4 +1,5 @@
 import type { Actor, SecurityContext } from './types.js';
+import type { ClaimCandidate } from './ai-candidate-validation.js';
 import { sha256Text, stableJson } from './document-evidence.js';
 
 export type CanonicalSnapshotClaim = {
@@ -100,11 +101,16 @@ export type ApprovedChangeSetManifest = {
   readonly changeSetId: string;
   readonly changeSetRevisionNumber: 1;
   readonly projectId: string;
+  readonly sourceVersionId: string;
   readonly candidateId: string;
+  readonly candidateRevisionNumber: 1;
+  readonly claimText: string;
   readonly operation: DraftChangeSet['operation'];
   readonly classification: ComparisonClassification;
   readonly candidateDigest: string;
   readonly evidenceIds: readonly string[];
+  readonly accessScope: readonly string[];
+  readonly sensitivity: SecurityContext['sensitivity'];
   readonly expectedCanonicalVersion: number;
   readonly snapshotDigest: string;
   readonly diffDigest: string;
@@ -112,7 +118,52 @@ export type ApprovedChangeSetManifest = {
   readonly approvalToken: ApprovalToken;
   readonly reason: string;
   readonly createdAt: string;
+  readonly manifestDigest: string;
 };
+
+export type ChangeSetContentDigestInput = {
+  readonly operation: DraftChangeSet['operation'];
+  readonly classification: ComparisonClassification;
+  readonly candidateId: string;
+  readonly candidateRevisionNumber: 1;
+  readonly candidateDigest: string;
+  readonly sourceVersionId: string;
+  readonly evidenceIds: readonly string[];
+  readonly accessScope: readonly string[];
+  readonly sensitivity: SecurityContext['sensitivity'];
+  readonly expectedCanonicalVersion: number;
+  readonly snapshotDigest: string;
+  readonly diffDigest: string;
+};
+
+export const claimCandidateDigest = (candidate: {
+  readonly candidateId: ClaimCandidate['candidateId'];
+  readonly revisionNumber: ClaimCandidate['revisionNumber'];
+  readonly sourceVersionId: ClaimCandidate['sourceVersionId'];
+  readonly claimText: ClaimCandidate['claimText'];
+  readonly evidenceIds: readonly string[];
+  readonly status: ClaimCandidate['status'];
+}): string =>
+  sha256Text(
+    stableJson({
+      candidateId: candidate.candidateId,
+      revisionNumber: candidate.revisionNumber,
+      sourceVersionId: candidate.sourceVersionId,
+      claimText: candidate.claimText,
+      evidenceIds: candidate.evidenceIds,
+      status: candidate.status,
+    }),
+  );
+
+export const changeSetContentDigest = (input: ChangeSetContentDigestInput): string =>
+  sha256Text(stableJson(input));
+
+export const approvalTokenDigest = (token: Omit<ApprovalToken, 'tokenDigest'>): string =>
+  sha256Text(stableJson(token));
+
+export const approvedChangeSetManifestDigest = (
+  manifest: Omit<ApprovedChangeSetManifest, 'manifestDigest'>,
+): string => sha256Text(stableJson(manifest));
 
 export const canonicalSnapshotDigest = (
   projectId: string,

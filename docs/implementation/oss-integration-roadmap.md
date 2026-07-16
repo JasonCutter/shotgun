@@ -211,6 +211,15 @@ OSS 내부 데이터 모델은 Shotgun 공통 Contract가 될 수 없다.
 
 ## Stage 6 — Canonical Claim Commit and History
 
+**완료 판정: COMPLETE (2026-07-17)**
+
+- PostgreSQL `ADOPT`
+- gbrain append·lock·migration·recovery 패턴 `REFERENCE_ONLY`
+- Transactional Outbox 최소 구현은 `CanonicalKnowledgeRepositoryPort` 뒤에 격리
+- pg-boss·Graphile Worker·ORM·migration 도구는 exact version 검토 후 `DEFER`
+- 상세 근거:
+  [Stage 6 OSS Integration Review](stage-validations/stage-6-oss-integration-review.md)
+
 **우선 후보**
 
 - gbrain Page·Fact·Timeline·Migration·Recovery

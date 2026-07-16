@@ -14,7 +14,7 @@
     {
       "id": "postgresql",
       "name": "PostgreSQL",
-      "stages": [0, 1, 2, 3],
+      "stages": [0, 1, 2, 3, 6],
       "officialSource": "https://github.com/postgres/postgres",
       "pin": {
         "type": "docker-digest",
@@ -26,10 +26,14 @@
         "evidence": "Official PostgreSQL distribution and Docker Official Image"
       },
       "decision": "ADOPT",
-      "scope": "Development database plus Stage 2 asset metadata and Stage 3 transformation/evidence persistence",
+      "scope": "Development database, Stage 2 asset metadata, Stage 3 transformation/evidence persistence, and Stage 6 Canonical transaction, row locking, append-only history, and Outbox",
       "security": "Local credentials only; production secrets remain outside source control",
       "maintenance": "Major version 16 is fixed; patch and image digest updates require a registry change",
-      "evidence": ["docker image digest verified", "PostgreSQL 16.14 runtime verified"],
+      "evidence": [
+        "docker image digest verified",
+        "PostgreSQL 16.14 runtime verified",
+        "Stage 6 atomic rollback, restart, row-lock concurrency, append-only, and SKIP LOCKED Outbox tests"
+      ],
       "boundary": "Domain modules access PostgreSQL only through repository ports",
       "replacement": "Replace the PostgreSQL adapter without changing module contracts",
       "recheckTrigger": "PostgreSQL major upgrade or managed database migration"
@@ -61,7 +65,7 @@
     {
       "id": "gbrain",
       "name": "garrytan/gbrain",
-      "stages": [0, 1, 2],
+      "stages": [0, 1, 2, 6],
       "officialSource": "https://github.com/garrytan/gbrain",
       "pin": {
         "type": "git-commit",
@@ -73,17 +77,174 @@
         "evidence": "LICENSE at the pinned commit"
       },
       "decision": "REFERENCE_ONLY",
-      "scope": "Minion retry, timeout, idempotency, PostgreSQL locking, Page input, and namespace patterns",
+      "scope": "Minion retry, timeout, idempotency, PostgreSQL locking, Page input, namespace, append-only timeline, migration completion, and recovery patterns",
       "security": "No gbrain runtime, database, or provider configuration is embedded in Shotgun",
       "maintenance": "Pinned v0.42.58.0 validation baseline; upstream changes are not consumed automatically",
       "evidence": [
         "77.9% verified score",
         "86% validation coverage",
-        "Minion lock and timeout recovery evidence"
+        "Minion lock and timeout recovery evidence",
+        "Stage 6 Page, Fact, Timeline, lock, migration, and idempotency mapping review"
       ],
       "boundary": "Any future reuse must sit behind Shotgun Job, Repository, or Module ports",
-      "replacement": "Current in-memory runtime remains removable; durable queue evaluation occurs before persistent jobs",
-      "recheckTrigger": "Before Stage 6 persistent Inbox, Outbox, or durable Job implementation"
+      "replacement": "Shotgun-owned Canonical contracts and repositories can evolve without the gbrain runtime or database",
+      "recheckTrigger": "Before Stage 7 search, graph, timeline projection, or a general durable Job runtime"
+    },
+    {
+      "id": "transactional-outbox-pattern",
+      "name": "Transactional Outbox pattern",
+      "stages": [6],
+      "officialSource": "https://microservices.io/patterns/data/transactional-outbox.html",
+      "pin": {
+        "type": "design-pattern",
+        "value": "reviewed 2026-07-17"
+      },
+      "license": {
+        "spdx": "N/A",
+        "status": "NOT_APPLICABLE",
+        "evidence": "Architecture pattern, not a copied software package"
+      },
+      "decision": "NO_RELEVANT_OSS",
+      "scope": "Store CanonicalCommitted in the same PostgreSQL transaction and publish it through a claim, lease, retry, and recovery loop",
+      "security": "Outbox payload contains only the approved Canonical event contract and preserves project and access metadata",
+      "maintenance": "Small Shotgun-owned repository behavior with Contract and PostgreSQL tests",
+      "evidence": [
+        "Canonical Claim, Commit, Revision, History, and Outbox rollback together",
+        "published records survive restart and repeated dispatch"
+      ],
+      "boundary": "CanonicalKnowledgeRepositoryPort",
+      "replacement": "A queue package may replace delivery internals if it preserves the CanonicalCommitted and repository contracts",
+      "recheckTrigger": "Multiple worker processes, scheduled jobs, delayed jobs, or high-volume Outbox delivery"
+    },
+    {
+      "id": "pg-boss",
+      "name": "pg-boss",
+      "stages": [6],
+      "officialSource": "https://github.com/timgit/pg-boss",
+      "pin": {
+        "type": "reviewed-version",
+        "value": "12.26.0"
+      },
+      "license": {
+        "spdx": "MIT",
+        "status": "VERIFIED",
+        "evidence": "Official repository and npm package metadata"
+      },
+      "decision": "DEFER",
+      "scope": "PostgreSQL-backed durable jobs, retries, scheduling, and SKIP LOCKED delivery",
+      "security": "No package-owned schema, worker lifecycle, or job administration surface is added for the Stage 6 domain Outbox",
+      "maintenance": "No runtime dependency installed",
+      "evidence": [
+        "transaction insertion and SKIP LOCKED behavior reviewed",
+        "Stage 6 needs one Canonical Outbox flow rather than a general job system"
+      ],
+      "boundary": "Future JobRuntime or Outbox delivery adapter",
+      "replacement": "Can replace the delivery loop without changing Canonical contracts",
+      "recheckTrigger": "General persistent jobs, delayed work, cron, or multiple Outbox workers"
+    },
+    {
+      "id": "graphile-worker",
+      "name": "Graphile Worker",
+      "stages": [6],
+      "officialSource": "https://github.com/graphile/worker",
+      "pin": {
+        "type": "reviewed-version",
+        "value": "0.17.3"
+      },
+      "license": {
+        "spdx": "MIT",
+        "status": "VERIFIED",
+        "evidence": "Official repository and npm package metadata"
+      },
+      "decision": "DEFER",
+      "scope": "PostgreSQL job queues, task execution, retries, and cron",
+      "security": "No task loader or separately operated worker is required for the single-process MVP",
+      "maintenance": "No runtime dependency installed",
+      "evidence": [
+        "official worker capabilities reviewed",
+        "current Outbox recovery contract is smaller than a general task runner"
+      ],
+      "boundary": "Future JobRuntime adapter",
+      "replacement": "Can be adopted behind the existing Connector and Canonical Outbox contracts",
+      "recheckTrigger": "Independent workers, scheduled tasks, or operational queue dashboards"
+    },
+    {
+      "id": "node-pg-migrate",
+      "name": "node-pg-migrate",
+      "stages": [6],
+      "officialSource": "https://github.com/salsita/node-pg-migrate",
+      "pin": {
+        "type": "reviewed-version",
+        "value": "8.0.4"
+      },
+      "license": {
+        "spdx": "MIT",
+        "status": "VERIFIED",
+        "evidence": "Official repository and npm package metadata"
+      },
+      "decision": "DEFER",
+      "scope": "Programmatic PostgreSQL migration authoring and rollback",
+      "security": "No dynamic migration code or additional CLI execution surface is added",
+      "maintenance": "The existing ordered SQL migration runner remains sufficient and tested",
+      "evidence": [
+        "006 migration applies and verifies through the existing runner",
+        "database reset and migration transaction tests pass"
+      ],
+      "boundary": "scripts/database.ts migration runner",
+      "replacement": "Can replace migration execution while preserving ordered SQL and schema verification",
+      "recheckTrigger": "Bidirectional migrations, multiple deployment environments, or migration branching"
+    },
+    {
+      "id": "drizzle-orm",
+      "name": "Drizzle ORM",
+      "stages": [6],
+      "officialSource": "https://github.com/drizzle-team/drizzle-orm",
+      "pin": {
+        "type": "reviewed-version",
+        "value": "0.45.2"
+      },
+      "license": {
+        "spdx": "Apache-2.0",
+        "status": "VERIFIED",
+        "evidence": "Official repository and npm package metadata"
+      },
+      "decision": "DEFER",
+      "scope": "Typed SQL schema and query construction",
+      "security": "No generated schema or second data model is introduced beside versioned Shotgun contracts",
+      "maintenance": "The Stage 6 adapter uses a small number of explicit parameterized SQL statements",
+      "evidence": [
+        "raw pg adapter remains isolated behind CanonicalKnowledgeRepositoryPort",
+        "atomic and concurrency behavior is clearer in direct SQL tests"
+      ],
+      "boundary": "PostgreSQL repository adapter only",
+      "replacement": "May be introduced without changing domain modules or Canonical contracts",
+      "recheckTrigger": "Query surface growth makes explicit SQL materially harder to maintain"
+    },
+    {
+      "id": "kysely",
+      "name": "Kysely",
+      "stages": [6],
+      "officialSource": "https://github.com/kysely-org/kysely",
+      "pin": {
+        "type": "reviewed-version",
+        "value": "0.29.3"
+      },
+      "license": {
+        "spdx": "MIT",
+        "status": "VERIFIED",
+        "evidence": "Official repository and npm package metadata"
+      },
+      "decision": "DEFER",
+      "scope": "Type-safe SQL query building",
+      "security": "No additional query abstraction or generated database type surface is added in Stage 6",
+      "maintenance": "Direct pg statements remain small, parameterized, and covered by database tests",
+      "evidence": [
+        "repository port already isolates persistence",
+        "no complex dynamic query composition exists in the Stage 6 MVP"
+      ],
+      "boundary": "PostgreSQL repository adapter only",
+      "replacement": "Can replace direct query construction without changing module contracts",
+      "recheckTrigger": "Complex projection queries or broad typed query reuse"
     },
     {
       "id": "lucas-llmwiki",

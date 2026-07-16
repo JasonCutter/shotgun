@@ -9,7 +9,8 @@
     "operation",
     "contentDigest",
     "expectedCanonicalVersion",
-    "approvalTokenDigest"
+    "approvalTokenDigest",
+    "manifestDigest"
   ],
   "properties": {
     "manifestId": { "type": "string", "minLength": 1 },
@@ -18,6 +19,7 @@
     "operation": { "enum": ["ADD_CLAIM", "NO_OP"] },
     "contentDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
     "expectedCanonicalVersion": { "type": "integer", "minimum": 0 },
-    "approvalTokenDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+    "approvalTokenDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "manifestDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
   }
 }

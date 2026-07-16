@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["snapshotId", "projectId", "version", "digest", "claims", "createdAt"],
+  "properties": {
+    "snapshotId": { "type": "string", "minLength": 1 },
+    "projectId": { "type": "string", "minLength": 1 },
+    "version": { "type": "integer", "minimum": 0 },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["claimId", "text", "revisionNumber", "evidenceIds"],
+        "properties": {
+          "claimId": { "type": "string", "minLength": 1 },
+          "text": { "type": "string", "minLength": 1 },
+          "revisionNumber": { "type": "integer", "minimum": 1 },
+          "evidenceIds": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "createdAt": { "type": "string", "minLength": 1 }
+  }
+}

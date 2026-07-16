@@ -23,6 +23,7 @@ describe('Stage 1 application', () => {
         'stage4.validation',
         'stage5.comparison',
         'stage5.change-set-review',
+        'stage6.canonical-knowledge',
       ],
       capabilities: [
         'ping-command',
@@ -39,6 +40,8 @@ describe('Stage 1 application', () => {
         'candidate-validation-provider',
         'claim-comparison-provider',
         'change-set-review-provider',
+        'canonical-knowledge-provider',
+        'canonical-snapshot-provider',
       ],
     });
 

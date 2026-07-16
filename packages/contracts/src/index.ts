@@ -1,5 +1,6 @@
 export * from './asset-reference-codec.js';
 export * from './ai-candidate-validation.js';
+export * from './canonical-knowledge.js';
 export * from './comparison-review.js';
 export * from './document-evidence.js';
 export * from './errors.js';

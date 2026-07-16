@@ -22,8 +22,9 @@ import listDraftChangeSetsSchema from '../../../packages/contracts/schemas/list-
 import recordReviewDecisionSchema from '../../../packages/contracts/schemas/record-review-decision.v1.schema.json';
 import reviewDecisionRecordedSchema from '../../../packages/contracts/schemas/review-decision-recorded.v1.schema.json';
 import {
-  type ApprovalToken,
   type ApprovedChangeSetManifest,
+  approvedChangeSetManifestDigest,
+  approvalTokenDigest,
   type ClaimCandidate,
   type CommandEnvelope,
   type ComparisonResult,
@@ -33,8 +34,7 @@ import {
   type QueryEnvelope,
   type ReviewDecisionRecord,
   type ReviewDecisionType,
-  sha256Text,
-  stableJson,
+  changeSetContentDigest,
   ShotgunError,
 } from '../../../packages/contracts/src/index.js';
 import type { ShotgunModule } from '../../../packages/module-sdk/src/index.js';
@@ -137,23 +137,6 @@ const assertScope = (
     });
   }
 };
-
-const contentDigest = (comparison: ComparisonResult, candidate: ClaimCandidate): string =>
-  sha256Text(
-    stableJson({
-      operation: comparison.recommendation,
-      classification: comparison.classification,
-      candidateId: candidate.candidateId,
-      candidateRevisionNumber: candidate.revisionNumber,
-      candidateDigest: comparison.candidateDigest,
-      evidenceIds: candidate.evidenceIds,
-      expectedCanonicalVersion: comparison.snapshotVersion,
-      snapshotDigest: comparison.snapshotDigest,
-      diffDigest: comparison.diffDigest,
-    }),
-  );
-
-const tokenDigest = (token: Omit<ApprovalToken, 'tokenDigest'>) => sha256Text(stableJson(token));
 
 const terminal = new Set<DraftChangeSet['status']>(['APPROVED', 'REJECTED', 'STALE']);
 
@@ -432,7 +415,7 @@ export const createChangeSetReviewModule = (
                     issuedAt,
                     expiresAt,
                   } as const;
-                  return { ...unsigned, tokenDigest: tokenDigest(unsigned) };
+                  return { ...unsigned, tokenDigest: approvalTokenDigest(unsigned) };
                 })()
               : undefined;
           const decision: ReviewDecisionRecord = {
@@ -455,25 +438,45 @@ export const createChangeSetReviewModule = (
             decisions: [...current.decisions, decision],
             updatedAt: envelope.createdAt,
           };
+          const approvedCandidate = approvalToken
+            ? (
+                await context.query<{ candidateId: string }, ClaimCandidate>({
+                  messageType: 'GetClaimCandidate',
+                  schemaVersion: '1.0.0',
+                  payload: { candidateId: current.candidateId },
+                })
+              ).payload
+            : undefined;
           const manifest: ApprovedChangeSetManifest | undefined = approvalToken
-            ? {
-                manifestId: randomUUID(),
-                changeSetId: current.changeSetId,
-                changeSetRevisionNumber: current.revisionNumber,
-                projectId,
-                candidateId: current.candidateId,
-                operation: current.operation,
-                classification: current.classification,
-                candidateDigest: current.candidateDigest,
-                evidenceIds: current.evidenceIds,
-                expectedCanonicalVersion: current.expectedCanonicalVersion,
-                snapshotDigest: current.snapshotDigest,
-                diffDigest: current.diffDigest,
-                contentDigest: current.contentDigest,
-                approvalToken,
-                reason,
-                createdAt: envelope.createdAt,
-              }
+            ? (() => {
+                const unsigned = {
+                  manifestId: randomUUID(),
+                  changeSetId: current.changeSetId,
+                  changeSetRevisionNumber: current.revisionNumber,
+                  projectId,
+                  sourceVersionId: current.sourceVersionId,
+                  candidateId: current.candidateId,
+                  candidateRevisionNumber: 1 as const,
+                  claimText: approvedCandidate!.claimText,
+                  operation: current.operation,
+                  classification: current.classification,
+                  candidateDigest: current.candidateDigest,
+                  evidenceIds: current.evidenceIds,
+                  accessScope: current.accessScope,
+                  sensitivity: current.sensitivity,
+                  expectedCanonicalVersion: current.expectedCanonicalVersion,
+                  snapshotDigest: current.snapshotDigest,
+                  diffDigest: current.diffDigest,
+                  contentDigest: current.contentDigest,
+                  approvalToken,
+                  reason,
+                  createdAt: envelope.createdAt,
+                } as const;
+                return {
+                  ...unsigned,
+                  manifestDigest: approvedChangeSetManifestDigest(unsigned),
+                };
+              })()
             : undefined;
           const saved = await repository.recordDecision({
             projectId,
@@ -509,6 +512,7 @@ export const createChangeSetReviewModule = (
                 contentDigest: saved.manifest.contentDigest,
                 expectedCanonicalVersion: saved.manifest.expectedCanonicalVersion,
                 approvalTokenDigest: saved.manifest.approvalToken.tokenDigest,
+                manifestDigest: saved.manifest.manifestDigest,
               },
             });
           }
@@ -555,7 +559,20 @@ export const createChangeSetReviewModule = (
               snapshotDigest: comparison.snapshotDigest,
               candidateDigest: comparison.candidateDigest,
               diffDigest: comparison.diffDigest,
-              contentDigest: contentDigest(comparison, candidate),
+              contentDigest: changeSetContentDigest({
+                operation: comparison.recommendation,
+                classification: comparison.classification,
+                candidateId: candidate.candidateId,
+                candidateRevisionNumber: candidate.revisionNumber,
+                candidateDigest: comparison.candidateDigest,
+                sourceVersionId: candidate.sourceVersionId,
+                evidenceIds: candidate.evidenceIds,
+                accessScope: security.accessScope,
+                sensitivity: security.sensitivity,
+                expectedCanonicalVersion: comparison.snapshotVersion,
+                snapshotDigest: comparison.snapshotDigest,
+                diffDigest: comparison.diffDigest,
+              }),
               evidenceIds: candidate.evidenceIds,
               accessScope: [...security.accessScope],
               sensitivity: security.sensitivity,

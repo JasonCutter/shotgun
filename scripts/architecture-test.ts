@@ -107,6 +107,37 @@ export const findArchitectureViolations = async (): Promise<string[]> => {
     }
   }
 
+  const moduleDirectories = await readdir(path.join(rootDirectory, 'modules'), {
+    withFileTypes: true,
+  });
+  const canonicalWriters: string[] = [];
+  for (const directory of moduleDirectories.filter((entry) => entry.isDirectory())) {
+    const manifestPath = path.join(
+      rootDirectory,
+      'modules',
+      directory.name,
+      'module-manifest.json',
+    );
+    try {
+      const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as {
+        readonly id?: string;
+        readonly approvalPolicy?: { readonly canWriteCanonical?: boolean };
+      };
+      if (manifest.approvalPolicy?.canWriteCanonical) {
+        canonicalWriters.push(manifest.id ?? directory.name);
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        throw error;
+      }
+    }
+  }
+  if (canonicalWriters.length !== 1 || canonicalWriters[0] !== 'stage6.canonical-knowledge') {
+    violations.push(
+      `Canonical write authority must belong only to 'stage6.canonical-knowledge'; found ${canonicalWriters.join(', ') || 'none'}.`,
+    );
+  }
+
   return violations;
 };
 

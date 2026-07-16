@@ -18,11 +18,11 @@ import {
   InMemoryValidationRepository,
 } from '../../../adapters/stage4-in-memory/src/index.js';
 import { LucasAugmentedPlainTextAdapter } from '../../../adapters/plain-text-lucas-augmented/src/index.js';
-import { EmptyCanonicalSnapshotAdapter } from '../../../adapters/canonical-snapshot-empty/src/index.js';
 import {
   InMemoryChangeSetReviewRepository,
   InMemoryComparisonRepository,
 } from '../../../adapters/stage5-in-memory/src/index.js';
+import { InMemoryCanonicalKnowledgeRepository } from '../../../adapters/stage6-in-memory/src/index.js';
 import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
 import { InProcessTransport } from '../../../adapters/transport-in-process/src/index.js';
 import {
@@ -35,6 +35,9 @@ import {
   type MessageTransport,
   type SecurityContext,
   type ApprovedChangeSetManifest,
+  type CanonicalCommitResult,
+  type CanonicalHistoryEvent,
+  type CanonicalSnapshot,
   type ClaimCandidate,
   type ComparisonResult,
   type DraftChangeSet,
@@ -81,6 +84,10 @@ import {
   type ChangeSetReviewRepositoryPort,
 } from '../../../modules/change-set-review/src/index.js';
 import {
+  createCanonicalKnowledgeModule,
+  type CanonicalKnowledgeRepositoryPort,
+} from '../../../modules/canonical-knowledge/src/index.js';
+import {
   createTransformationModule,
   type PlainTextTransformerPort,
   type TransformationRepositoryPort,
@@ -117,6 +124,14 @@ type ChangeSetRequest = {
   readonly changeSetId: string;
 };
 
+type CanonicalClaimRequest = {
+  readonly claimId: string;
+};
+
+type CanonicalCommitRequest = {
+  readonly commitId: string;
+};
+
 type ReviewDecisionRequest = ChangeSetRequest & {
   readonly decisionId?: string;
   readonly expectedRevisionNumber: 1;
@@ -150,6 +165,7 @@ type ApplicationOptions = {
   readonly textDiff?: TextDiffPort;
   readonly comparisonRepository?: ComparisonRepositoryPort;
   readonly changeSetReviewRepository?: ChangeSetReviewRepositoryPort;
+  readonly canonicalKnowledgeRepository?: CanonicalKnowledgeRepositoryPort;
   readonly closeResources?: () => Promise<void>;
 };
 
@@ -326,7 +342,9 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   const comparisonRepository = options.comparisonRepository ?? new InMemoryComparisonRepository();
   const changeSetReviewRepository =
     options.changeSetReviewRepository ?? new InMemoryChangeSetReviewRepository();
-  const canonicalSnapshot = options.canonicalSnapshot ?? new EmptyCanonicalSnapshotAdapter();
+  const canonicalKnowledgeRepository =
+    options.canonicalKnowledgeRepository ?? new InMemoryCanonicalKnowledgeRepository();
+  const canonicalSnapshot = options.canonicalSnapshot ?? canonicalKnowledgeRepository;
   const textDiff = options.textDiff ?? new JsDiffAdapter();
   const aiProvider = options.aiProvider ?? new FakeAIProviderAdapter();
   const plainTextAdapter = new LucasAugmentedPlainTextAdapter();
@@ -351,6 +369,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   const validation = createValidationModule(validationRepository);
   const comparison = createComparisonModule(comparisonRepository, canonicalSnapshot, textDiff);
   const changeSetReview = createChangeSetReviewModule(changeSetReviewRepository);
+  const canonicalKnowledge = createCanonicalKnowledgeModule(canonicalKnowledgeRepository);
   const kernel = new ShotgunKernel(options.transport ?? new InProcessTransport());
   kernel.register(
     ping.module,
@@ -364,6 +383,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     validation,
     comparison,
     changeSetReview,
+    canonicalKnowledge,
   );
   await kernel.start();
 
@@ -378,7 +398,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
         ? 403
         : error.code === 'NOT_FOUND'
           ? 404
-          : ['CONFLICT', 'STALE_VERSION'].includes(error.code)
+          : ['CONFLICT', 'STALE_VERSION', 'STALE_APPROVAL'].includes(error.code)
             ? 409
             : error.code === 'VALIDATION_ERROR'
               ? 400
@@ -528,6 +548,74 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       });
       const delivery = await kernel.connector.query(query);
       return { review: delivery.result.payload };
+    },
+  );
+
+  server.post<{ Body: Record<string, never>; Headers: SecurityHeaders }>(
+    '/canonical/snapshot',
+    async (request) => {
+      const delivery = await kernel.connector.query<CanonicalSnapshot>(
+        createQuery({
+          messageType: 'GetCanonicalSnapshot',
+          schemaVersion: '1.0.0',
+          producerModule: 'shotgun-app',
+          producerVersion: '1.0.0',
+          ...requestContext(request.headers),
+          payload: request.body ?? {},
+        }),
+      );
+      return { snapshot: delivery.result.payload };
+    },
+  );
+
+  server.post<{ Body: CanonicalClaimRequest; Headers: SecurityHeaders }>(
+    '/canonical/claims/resolve',
+    async (request) => {
+      const delivery = await kernel.connector.query(
+        createQuery({
+          messageType: 'GetCanonicalClaim',
+          schemaVersion: '1.0.0',
+          producerModule: 'shotgun-app',
+          producerVersion: '1.0.0',
+          ...requestContext(request.headers),
+          payload: request.body,
+        }),
+      );
+      return { claim: delivery.result.payload };
+    },
+  );
+
+  server.post<{ Body: CanonicalCommitRequest; Headers: SecurityHeaders }>(
+    '/canonical/commits/resolve',
+    async (request) => {
+      const delivery = await kernel.connector.query<CanonicalCommitResult>(
+        createQuery({
+          messageType: 'GetCanonicalCommit',
+          schemaVersion: '1.0.0',
+          producerModule: 'shotgun-app',
+          producerVersion: '1.0.0',
+          ...requestContext(request.headers),
+          payload: request.body,
+        }),
+      );
+      return { commit: delivery.result.payload };
+    },
+  );
+
+  server.post<{ Body: Record<string, never>; Headers: SecurityHeaders }>(
+    '/canonical/history',
+    async (request) => {
+      const delivery = await kernel.connector.query<{ items: readonly CanonicalHistoryEvent[] }>(
+        createQuery({
+          messageType: 'ListCanonicalHistory',
+          schemaVersion: '1.0.0',
+          producerModule: 'shotgun-app',
+          producerVersion: '1.0.0',
+          ...requestContext(request.headers),
+          payload: request.body ?? {},
+        }),
+      );
+      return { history: delivery.result.payload };
     },
   );
 
@@ -715,6 +803,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       validation: validationRepository,
       comparisons: comparisonRepository,
       reviews: changeSetReviewRepository,
+      canonical: canonicalKnowledgeRepository,
     },
     storage: assetStorage,
     state: {

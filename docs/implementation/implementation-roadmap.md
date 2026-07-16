@@ -297,6 +297,14 @@ Stage별 OSS 후보와 세부 적용 방식은 [OSS Integration Roadmap](./oss-i
 
 ## 10. Stage 6 — Canonical Claim Commit and History
 
+**상태: COMPLETE (2026-07-17)**
+
+구현·검증 근거:
+
+- [Stage 6 Engineering Guide](../engineering/stage-6-canonical-commit-history-outbox.md)
+- [Stage 6 OSS Integration Review](stage-validations/stage-6-oss-integration-review.md)
+- [ADR-086](../architecture/adr/ADR-086-stage-6-canonical-commit-history-outbox.md)
+
 ### 목표
 
 승인된 ChangeSet만 Canonical 원장에 원자적으로 반영한다.

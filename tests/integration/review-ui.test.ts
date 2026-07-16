@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { createApplication } from '../../assemblies/shotgun-app/src/server.js';
 import type { DraftChangeSet } from '../../packages/contracts/src/index.js';
 
-describe('Stage 5 review UI', () => {
-  it('shows Candidate, Evidence, and Diff without treating page state as approval', async () => {
+describe('Stage 5 review UI and Stage 6 Canonical commit', () => {
+  it('requires approval before committing the reviewed Claim to Canonical history', async () => {
     const { server } = await createApplication();
     const intake = await server.inject({
       method: 'POST',
@@ -52,6 +52,37 @@ describe('Stage 5 review UI', () => {
       manifest: {
         contentDigest: draft.contentDigest,
         reason: 'Reviewed in the Stage 5 UI.',
+      },
+    });
+
+    const canonical = await server.inject({
+      method: 'POST',
+      url: '/canonical/snapshot',
+      payload: {},
+    });
+    expect(canonical.statusCode).toBe(200);
+    expect(canonical.json()).toMatchObject({
+      snapshot: {
+        version: 1,
+        claims: [{ text: 'Milo weighs 5 kg.', revisionNumber: 1 }],
+      },
+    });
+
+    const history = await server.inject({
+      method: 'POST',
+      url: '/canonical/history',
+      payload: {},
+    });
+    expect(history.statusCode).toBe(200);
+    expect(history.json()).toMatchObject({
+      history: {
+        items: [
+          {
+            eventType: 'CANONICAL_CLAIM_ADDED',
+            reason: 'Reviewed in the Stage 5 UI.',
+            actor: { type: 'user', id: 'owner' },
+          },
+        ],
       },
     });
 

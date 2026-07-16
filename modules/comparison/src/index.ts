@@ -10,6 +10,7 @@ import getClaimCandidateSchema from '../../../packages/contracts/schemas/get-cla
 import getComparisonResultSchema from '../../../packages/contracts/schemas/get-comparison-result.v1.schema.json';
 import {
   canonicalSnapshotDigest,
+  claimCandidateDigest,
   type CanonicalSnapshot,
   type CanonicalSnapshotClaim,
   type ClaimCandidate,
@@ -47,17 +48,6 @@ export type ComparisonRepositoryPort = {
 
 const normalizeClaim = (value: string): string =>
   value.normalize('NFKC').trim().replace(/\s+/gu, ' ').toLocaleLowerCase('en-US');
-
-const candidateDigest = (candidate: ClaimCandidate): string =>
-  sha256Text(
-    stableJson({
-      candidateId: candidate.candidateId,
-      revisionNumber: candidate.revisionNumber,
-      claimText: candidate.claimText,
-      evidenceIds: candidate.evidenceIds,
-      status: candidate.status,
-    }),
-  );
 
 const similarity = (diff: readonly TextDiffSegment[], previous: string, next: string): number => {
   const denominator = Math.max(previous.length, next.length, 1);
@@ -281,7 +271,7 @@ export const createComparisonModule = (
                 sourceVersionId: candidate.sourceVersionId,
                 candidateId: candidate.candidateId,
                 candidateRevisionNumber: candidate.revisionNumber,
-                candidateDigest: candidateDigest(candidate),
+                candidateDigest: claimCandidateDigest(candidate),
                 snapshotId: snapshot.snapshotId,
                 snapshotVersion: snapshot.version,
                 snapshotDigest: snapshot.digest,
@@ -361,7 +351,7 @@ export const createComparisonModule = (
           ).payload;
           const snapshot = await snapshotProvider.getSnapshot(projectId);
           assertSnapshot(snapshot, projectId);
-          const candidateChanged = candidateDigest(candidate) !== result.candidateDigest;
+          const candidateChanged = claimCandidateDigest(candidate) !== result.candidateDigest;
           const snapshotChanged =
             snapshot.version !== result.snapshotVersion ||
             snapshot.digest !== result.snapshotDigest;

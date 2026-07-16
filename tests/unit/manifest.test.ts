@@ -27,6 +27,8 @@ import { EmptyCanonicalSnapshotAdapter } from '../../adapters/canonical-snapshot
 import { JsDiffAdapter } from '../../adapters/text-diff-jsdiff/src/index.js';
 import { createComparisonModule } from '../../modules/comparison/src/index.js';
 import { createChangeSetReviewModule } from '../../modules/change-set-review/src/index.js';
+import { InMemoryCanonicalKnowledgeRepository } from '../../adapters/stage6-in-memory/src/index.js';
+import { createCanonicalKnowledgeModule } from '../../modules/canonical-knowledge/src/index.js';
 
 describe('Module Manifest loader', () => {
   it('loads JSON Manifest artifacts that match the executable modules', async () => {
@@ -62,6 +64,10 @@ describe('Module Manifest loader', () => {
       path.resolve('modules/change-set-review/module-manifest.json'),
       RUNTIME_VERSION,
     );
+    const canonicalManifest = await loadManifest(
+      path.resolve('modules/canonical-knowledge/module-manifest.json'),
+      RUNTIME_VERSION,
+    );
     const stage3Adapter = new LucasAugmentedPlainTextAdapter();
 
     expect(pingManifest).toEqual(createPingModule().module.manifest);
@@ -87,6 +93,10 @@ describe('Module Manifest loader', () => {
     expect(reviewManifest).toEqual(
       createChangeSetReviewModule(new InMemoryChangeSetReviewRepository()).manifest,
     );
+    expect(canonicalManifest).toEqual(
+      createCanonicalKnowledgeModule(new InMemoryCanonicalKnowledgeRepository()).manifest,
+    );
+    expect(canonicalManifest.approvalPolicy.canWriteCanonical).toBe(true);
     expect(pingManifest.security.defaultOnMissingContext).toBe('deny');
     expect(pingManifest.compatibility.contracts).toContainEqual({
       name: 'PingCommand',

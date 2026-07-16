@@ -4,6 +4,7 @@ export type ErrorCode =
   | 'NOT_FOUND'
   | 'CONFLICT'
   | 'STALE_VERSION'
+  | 'STALE_APPROVAL'
   | 'RETRYABLE_DEPENDENCY'
   | 'RATE_LIMITED'
   | 'TIMEOUT'

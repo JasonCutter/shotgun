@@ -67,6 +67,7 @@ const migrate = async (): Promise<void> => {
 
 const reset = async (): Promise<void> => {
   await withClient(async (client) => {
+    await client.query('DROP SCHEMA IF EXISTS canonical CASCADE');
     await client.query('DROP SCHEMA IF EXISTS intake CASCADE');
     await client.query('DROP SCHEMA IF EXISTS asset CASCADE');
     await client.query('DROP SCHEMA IF EXISTS evidence CASCADE');
@@ -121,6 +122,15 @@ const verify = async (): Promise<void> => {
     const decisionTable = await client.query<{ table: string | null }>(
       "SELECT to_regclass('review.decisions') AS table",
     );
+    const canonicalStateTable = await client.query<{ table: string | null }>(
+      "SELECT to_regclass('canonical.project_state') AS table",
+    );
+    const canonicalHistoryTable = await client.query<{ table: string | null }>(
+      "SELECT to_regclass('canonical.history_events') AS table",
+    );
+    const canonicalOutboxTable = await client.query<{ table: string | null }>(
+      "SELECT to_regclass('canonical.outbox') AS table",
+    );
     if (
       table.rows[0]?.table !== 'runtime.schema_migrations' ||
       count.rows[0]?.count !== expectedMigrationCount ||
@@ -133,7 +143,10 @@ const verify = async (): Promise<void> => {
       validationTable.rows[0]?.table !== 'validation.results' ||
       comparisonTable.rows[0]?.table !== 'comparison.results' ||
       reviewTable.rows[0]?.table !== 'review.change_sets' ||
-      decisionTable.rows[0]?.table !== 'review.decisions'
+      decisionTable.rows[0]?.table !== 'review.decisions' ||
+      canonicalStateTable.rows[0]?.table !== 'canonical.project_state' ||
+      canonicalHistoryTable.rows[0]?.table !== 'canonical.history_events' ||
+      canonicalOutboxTable.rows[0]?.table !== 'canonical.outbox'
     ) {
       throw new Error('Database bootstrap verification failed.');
     }

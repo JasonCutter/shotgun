@@ -72,10 +72,15 @@ const contextScore = (
   start: number,
   length: number,
   quote: TextQuote,
+  normalizeContext = true,
 ): number => {
   let score = 0;
-  const prefix = quote.prefix ? Array.from(normalizeAnchorText(quote.prefix)) : [];
-  const suffix = quote.suffix ? Array.from(normalizeAnchorText(quote.suffix)) : [];
+  const prefix = quote.prefix
+    ? Array.from(normalizeContext ? normalizeAnchorText(quote.prefix) : quote.prefix)
+    : [];
+  const suffix = quote.suffix
+    ? Array.from(normalizeContext ? normalizeAnchorText(quote.suffix) : quote.suffix)
+    : [];
   if (prefix.length > 0) {
     const before = source.slice(Math.max(0, start - Math.max(prefix.length, 32)), start).join('');
     const normalizedPrefix = prefix.join('');
@@ -91,41 +96,83 @@ const contextScore = (
   return score;
 };
 
-export const locateTextQuote = (
-  source: string,
+const selectOccurrence = (
+  source: readonly string[],
+  needle: readonly string[],
+  occurrences: readonly number[],
   quote: TextQuote,
-  options: LocateTextQuoteOptions = {},
-): TextRange | undefined => {
-  const needle = Array.from(normalizeAnchorText(quote.exact));
-  if (needle.length === 0) {
-    return undefined;
-  }
-  const normalized = normalizeWithIndexMap(source);
-  const normalizedCharacters = Array.from(normalized.text);
-  const occurrences = occurrencesOf(normalizedCharacters, needle, options.maxOccurrences ?? 500);
-  if (occurrences.length === 0) {
-    return undefined;
-  }
-
+  rejectAmbiguous: boolean,
+  normalizeContext: boolean,
+): number | undefined => {
   const ranked = occurrences
     .map((start) => ({
       start,
-      score: contextScore(normalizedCharacters, start, needle.length, quote),
+      score: contextScore(source, start, needle.length, quote, normalizeContext),
     }))
     .sort((left, right) => right.score - left.score || left.start - right.start);
   const best = ranked[0];
   if (!best) {
     return undefined;
   }
-  if (occurrences.length > 1 && (options.rejectAmbiguous ?? true)) {
+  if (occurrences.length > 1 && rejectAmbiguous) {
     const second = ranked[1];
     if (best.score === 0 || best.score === second?.score) {
       return undefined;
     }
   }
+  return best.start;
+};
 
-  const normalizedEnd = best.start + needle.length;
-  const start = normalized.sourceIndexes[best.start];
+export const locateTextQuote = (
+  source: string,
+  quote: TextQuote,
+  options: LocateTextQuoteOptions = {},
+): TextRange | undefined => {
+  const cap = options.maxOccurrences ?? 500;
+  const rejectAmbiguous = options.rejectAmbiguous ?? true;
+  const sourceCharacters = Array.from(source);
+  const exactCharacters = Array.from(quote.exact);
+  if (exactCharacters.length === 0) {
+    return undefined;
+  }
+  const exactOccurrences = occurrencesOf(sourceCharacters, exactCharacters, cap);
+  if (exactOccurrences.length > 0) {
+    const exactStart = selectOccurrence(
+      sourceCharacters,
+      exactCharacters,
+      exactOccurrences,
+      quote,
+      rejectAmbiguous,
+      false,
+    );
+    return exactStart === undefined
+      ? undefined
+      : { start: exactStart, end: exactStart + exactCharacters.length };
+  }
+
+  const needle = Array.from(normalizeAnchorText(quote.exact));
+  if (needle.length === 0) {
+    return undefined;
+  }
+  const normalized = normalizeWithIndexMap(source);
+  const normalizedCharacters = Array.from(normalized.text);
+  const occurrences = occurrencesOf(normalizedCharacters, needle, cap);
+  if (occurrences.length === 0) {
+    return undefined;
+  }
+  const normalizedStart = selectOccurrence(
+    normalizedCharacters,
+    needle,
+    occurrences,
+    quote,
+    rejectAmbiguous,
+    true,
+  );
+  if (normalizedStart === undefined) {
+    return undefined;
+  }
+  const normalizedEnd = normalizedStart + needle.length;
+  const start = normalized.sourceIndexes[normalizedStart];
   const last = normalized.sourceIndexes[normalizedEnd - 1];
   if (start === undefined || last === undefined) {
     return undefined;

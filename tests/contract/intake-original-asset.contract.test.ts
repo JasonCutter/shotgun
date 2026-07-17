@@ -54,6 +54,34 @@ describe.each(transports)('%s Stage 2 contract', (_name, createTransport) => {
     );
   });
 
+  it('resolves a semantically identical Asset Reference regardless of property order', async () => {
+    const { kernel } = await createStage2Harness({ transport: createTransport() });
+    const original = 'property order must not change identity';
+    const command = directTextCommand('asset-reference-property-order', original);
+
+    await kernel.connector.sendCommand(command);
+    const result = (await kernel.connector.query<PublicIntakeResult>(intakeResultQuery(command)))
+      .result.payload;
+    const reorderedReference: AssetReference = {
+      accessScope: result.assetReference.accessScope,
+      storageUri: result.assetReference.storageUri,
+      sizeBytes: result.assetReference.sizeBytes,
+      contentHash: result.assetReference.contentHash,
+      mediaType: result.assetReference.mediaType,
+      versionId: result.assetReference.versionId,
+      assetId: result.assetReference.assetId,
+    };
+
+    const resolved = await kernel.connector.query<{ contentBase64: string; text: string }>(
+      resolveAssetQuery(command, reorderedReference),
+    );
+
+    expect(resolved.result.payload.text).toBe(original);
+    expect(Buffer.from(resolved.result.payload.contentBase64, 'base64')).toEqual(
+      Buffer.from(original, 'utf8'),
+    );
+  });
+
   it('preserves .txt and plain-text .md file bytes without rewriting line endings', async () => {
     const { kernel } = await createStage2Harness({ transport: createTransport() });
     const cases = [

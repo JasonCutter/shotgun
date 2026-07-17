@@ -1,0 +1,45 @@
+{
+  "id": "stage10.compiled-truth",
+  "version": "1.0.0",
+  "owner": "Shotgun Projection and Discovery",
+  "compatibility": {
+    "runtime": ">=1.0.0 <2.0.0",
+    "contracts": [
+      { "name": "BuildCompiledTruth", "range": ">=1.0.0 <2.0.0" },
+      { "name": "RunKnowledgeDiscovery", "range": ">=1.0.0 <2.0.0" },
+      { "name": "GetCompiledTruth", "range": ">=1.0.0 <2.0.0" },
+      { "name": "GetCompiledTruthStatus", "range": ">=1.0.0 <2.0.0" },
+      { "name": "ListDerivedInferences", "range": ">=1.0.0 <2.0.0" }
+    ]
+  },
+  "deployment": { "modes": ["in_process", "worker"] },
+  "dataOwnership": {
+    "owns": ["projection.compiled_truth", "projection.discovery_suppressions"],
+    "readsViaPorts": ["GetCanonicalSnapshot", "GetCanonicalClaim", "ListKnowledgeGroups"],
+    "directSchemaAccess": false
+  },
+  "consumes": {
+    "commands": [
+      { "name": "BuildCompiledTruth", "range": ">=1.0.0 <2.0.0" },
+      { "name": "RunKnowledgeDiscovery", "range": ">=1.0.0 <2.0.0" }
+    ],
+    "events": []
+  },
+  "produces": { "events": [{ "name": "DerivedInferenceReady", "range": ">=1.0.0 <2.0.0" }] },
+  "provides": {
+    "queries": [
+      { "name": "GetCompiledTruth", "range": ">=1.0.0 <2.0.0" },
+      { "name": "GetCompiledTruthStatus", "range": ">=1.0.0 <2.0.0" },
+      { "name": "ListDerivedInferences", "range": ">=1.0.0 <2.0.0" }
+    ],
+    "capabilities": [{ "name": "compiled-truth-projector", "priority": 100 }]
+  },
+  "requires": {
+    "capabilities": ["canonical-knowledge-provider", "rich-knowledge-review-provider"]
+  },
+  "security": {
+    "requiredContext": ["actor", "project", "access_scope", "sensitivity"],
+    "defaultOnMissingContext": "deny"
+  },
+  "approvalPolicy": { "canWriteCanonical": false, "canExecuteExternalAction": false }
+}

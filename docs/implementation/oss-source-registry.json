@@ -14,7 +14,7 @@
     {
       "id": "postgresql",
       "name": "PostgreSQL",
-      "stages": [0, 1, 2, 3, 6, 7],
+      "stages": [0, 1, 2, 3, 6, 7, 10],
       "officialSource": "https://github.com/postgres/postgres",
       "pin": {
         "type": "docker-digest",
@@ -42,7 +42,7 @@
     {
       "id": "postgresql-pg-trgm",
       "name": "PostgreSQL pg_trgm",
-      "stages": [7],
+      "stages": [7, 10],
       "officialSource": "https://github.com/postgres/postgres/tree/REL_16_14/contrib/pg_trgm",
       "pin": {
         "type": "git-commit",
@@ -80,7 +80,7 @@
         "evidence": "LICENSE at official v0.8.5 tag"
       },
       "decision": "DEFER",
-      "scope": "Future semantic retrieval using exact or approximate nearest-neighbor indexes",
+      "scope": "Future semantic retrieval using exact or approximate nearest-neighbor indexes; Stage 10 keeps deterministic PostgreSQL projection without embeddings",
       "security": "No embedding provider, vector data path, or extension is enabled in the Stage 7 MVP",
       "maintenance": "v0.8.5 is the reviewed comparison baseline; no runtime dependency installed",
       "evidence": [
@@ -118,7 +118,7 @@
     {
       "id": "gbrain",
       "name": "garrytan/gbrain",
-      "stages": [0, 1, 2, 6, 7, 9],
+      "stages": [0, 1, 2, 6, 7, 9, 10],
       "officialSource": "https://github.com/garrytan/gbrain",
       "pin": {
         "type": "git-commit",
@@ -130,7 +130,7 @@
         "evidence": "LICENSE at the pinned commit"
       },
       "decision": "REFERENCE_ONLY",
-      "scope": "Minion retry/idempotency, PostgreSQL locking, append-only timeline, migration/recovery, search quality patterns, and Stage 9 typed graph direction, depth, cycle, alias, and timeline review patterns",
+      "scope": "Minion retry/idempotency, PostgreSQL locking, append-only timeline, migration/recovery, search quality patterns, Stage 9 typed graph traversal, and Stage 10 Dream Cycle phase ordering, bounded drain, projection, and discovery patterns",
       "security": "No gbrain runtime, database, or provider configuration is embedded in Shotgun",
       "maintenance": "Pinned v0.42.58.0 validation baseline; upstream changes are not consumed automatically",
       "evidence": [
@@ -140,7 +140,9 @@
         "Stage 6 Page, Fact, Timeline, lock, migration, and idempotency mapping review",
         "Stage 7 pinned keyword, evidence classification, citation validator, and search quality fixture review",
         "Stage 9 graph-query direction/type/depth and cycle-safe traversal reviewed",
-        "Stage 9 alias and inferred meeting timeline remain excluded from Shotgun Canonical writes"
+        "Stage 9 alias and inferred meeting timeline remain excluded from Shotgun Canonical writes",
+        "Stage 10 Dream Cycle ordered phases, dry-run, bounded window, and graph direction filters reviewed",
+        "gbrain storage and generated inference remain outside Shotgun Canonical and Projection contracts"
       ],
       "boundary": "Any future reuse must sit behind Shotgun Job, Repository, or Module ports",
       "replacement": "Shotgun-owned Canonical contracts and repositories can evolve without the gbrain runtime or database",
@@ -417,7 +419,7 @@
     {
       "id": "inkeep-open-knowledge",
       "name": "Inkeep OpenKnowledge",
-      "stages": [0, 5, 9],
+      "stages": [0, 5, 9, 10],
       "officialSource": "https://github.com/inkeep/open-knowledge",
       "pin": {
         "type": "git-commit",
@@ -441,7 +443,7 @@
       ],
       "boundary": "Canonical data, approval, and Job state remain owned by Shotgun",
       "replacement": "Patterns are independently reimplemented behind Shotgun APIs",
-      "recheckTrigger": "Before editor or graph UI implementation or any GPL code reuse"
+      "recheckTrigger": "Before any GPL code reuse; Stage 10 independently implements the reviewed 2D interaction pattern"
     },
     {
       "id": "jsdiff",
@@ -584,17 +586,18 @@
         "status": "VERIFIED",
         "evidence": "v3.34.0 package metadata and LICENSE at the official tag"
       },
-      "decision": "DEFER",
-      "scope": "Future interactive 2D graph rendering over the Shotgun KnowledgeGraphView contract",
-      "security": "No browser graph dependency or remote CDN is enabled in Stage 9",
-      "maintenance": "v3.34.0 is the reviewed baseline; no runtime dependency installed",
+      "decision": "ADOPT",
+      "scope": "Interactive 2D graph rendering over the Shotgun CompiledTruthGraph contract",
+      "security": "The exact package is served locally with no remote CDN; it receives only approved projection IDs, labels, states, and typed edges",
+      "maintenance": "cytoscape@3.34.0 is exact-pinned in package-lock.json",
       "evidence": [
         "Graph analysis and visualization package exports reviewed",
-        "Stage 9 ships an accessible list and table fallback from the same typed graph response"
+        "Stage 9 ships an accessible list and table fallback from the same typed graph response",
+        "Stage 10 integration test verifies local vendor delivery, graph canvas, and mandatory list/table fallback"
       ],
-      "boundary": "Future UI adapter only; graph semantics, approval state, and Typed Edges remain Shotgun-owned",
-      "replacement": "Any 2D renderer can consume KnowledgeGraphView while the list/table fallback remains mandatory",
-      "recheckTrigger": "Stage 10 interactive graph navigation implementation begins"
+      "boundary": "UI adapter only; projection semantics, approval state, and Typed Edges remain Shotgun-owned",
+      "replacement": "Any 2D renderer can consume CompiledTruthGraph while the list/table fallback remains mandatory",
+      "recheckTrigger": "Renderer security advisory, major-version upgrade, or measured large-graph latency regression"
     },
     {
       "id": "opentelemetry",
@@ -1126,6 +1129,80 @@
       "boundary": "PythonDocumentFormatAdapter image handler",
       "replacement": "Replacement must preserve image verification, BBox, and multimodal-required policy",
       "recheckTrigger": "OCR is approved as a separate conditional capability"
+    },
+    {
+      "id": "apache-age",
+      "name": "Apache AGE",
+      "stages": [10],
+      "officialSource": "https://github.com/apache/age",
+      "pin": {
+        "type": "git-commit",
+        "value": "6876abcab0a3281eb65a7e2a91238e0b5abfdea7"
+      },
+      "license": {
+        "spdx": "Apache-2.0",
+        "status": "VERIFIED",
+        "evidence": "Official repository LICENSE at the reviewed commit"
+      },
+      "decision": "DEFER",
+      "scope": "Future PostgreSQL graph extension after measured typed-graph scale limits",
+      "security": "No extension is installed and no Cypher endpoint is exposed in Stage 10",
+      "maintenance": "Reviewed commit only; no runtime dependency",
+      "evidence": [
+        "Current Stage 10 contract and PostgreSQL JSON projection satisfy the deterministic fixtures",
+        "No graph latency or traversal limit has been measured"
+      ],
+      "boundary": "A future adapter must remain behind CompiledTruthRepositoryPort",
+      "replacement": "PostgreSQL projection row and Shotgun typed graph remain the fallback",
+      "recheckTrigger": "Representative graph benchmark exceeds the recorded latency or traversal budget"
+    },
+    {
+      "id": "opensearch",
+      "name": "OpenSearch",
+      "stages": [10],
+      "officialSource": "https://github.com/opensearch-project/OpenSearch",
+      "pin": {
+        "type": "git-commit",
+        "value": "1d71f7b405359d277e9d365bb0d206acce8e559b"
+      },
+      "license": {
+        "spdx": "Apache-2.0",
+        "status": "VERIFIED",
+        "evidence": "Official repository LICENSE at the reviewed commit"
+      },
+      "decision": "DEFER",
+      "scope": "Future large-scale hybrid search only",
+      "security": "No cluster, credentials, network endpoint, or duplicated index is introduced",
+      "maintenance": "Reviewed commit only; no runtime dependency",
+      "evidence": ["PostgreSQL FTS and current projection fixtures have no measured scale failure"],
+      "boundary": "Future implementation must stay behind a search projection adapter",
+      "replacement": "PostgreSQL FTS remains the deterministic fallback",
+      "recheckTrigger": "Measured PostgreSQL indexing, latency, or relevance limit on representative data"
+    },
+    {
+      "id": "qdrant",
+      "name": "Qdrant",
+      "stages": [10],
+      "officialSource": "https://github.com/qdrant/qdrant",
+      "pin": {
+        "type": "git-commit",
+        "value": "44ad62f8cd69642be5afa6441612525e24a0d063"
+      },
+      "license": {
+        "spdx": "Apache-2.0",
+        "status": "VERIFIED",
+        "evidence": "Official repository LICENSE at the reviewed commit"
+      },
+      "decision": "DEFER",
+      "scope": "Future independent vector-store benchmark after a measured semantic recall gap",
+      "security": "No embeddings, vector payloads, credentials, or external service are introduced",
+      "maintenance": "Reviewed commit only; no runtime dependency",
+      "evidence": [
+        "Stage 10 discovery is deterministic and does not require semantic nearest-neighbor search"
+      ],
+      "boundary": "Future implementation must remain behind the projection and search ports",
+      "replacement": "PostgreSQL projection and keyword search remain the fallback",
+      "recheckTrigger": "pgvector is insufficient on an approved semantic retrieval benchmark"
     },
     {
       "id": "content-addressed-storage",

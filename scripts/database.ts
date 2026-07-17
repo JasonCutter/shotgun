@@ -145,6 +145,12 @@ const verify = async (): Promise<void> => {
     const entityVaultImportTable = await client.query<{ table: string | null }>(
       "SELECT to_regclass('knowledge.entity_vault_imports') AS table",
     );
+    const compiledTruthTable = await client.query<{ table: string | null }>(
+      "SELECT to_regclass('projection.compiled_truth') AS table",
+    );
+    const discoveryInferenceTable = await client.query<{ table: string | null }>(
+      "SELECT to_regclass('projection.discovery_inferences') AS table",
+    );
     if (
       table.rows[0]?.table !== 'runtime.schema_migrations' ||
       count.rows[0]?.count !== expectedMigrationCount ||
@@ -164,7 +170,9 @@ const verify = async (): Promise<void> => {
       projectionDocumentsTable.rows[0]?.table !== 'projection.search_documents' ||
       projectionWatermarkTable.rows[0]?.table !== 'projection.watermarks' ||
       knowledgeGroupTable.rows[0]?.table !== 'knowledge.review_groups' ||
-      entityVaultImportTable.rows[0]?.table !== 'knowledge.entity_vault_imports'
+      entityVaultImportTable.rows[0]?.table !== 'knowledge.entity_vault_imports' ||
+      compiledTruthTable.rows[0]?.table !== 'projection.compiled_truth' ||
+      discoveryInferenceTable.rows[0]?.table !== 'projection.discovery_inferences'
     ) {
       throw new Error('Database bootstrap verification failed.');
     }

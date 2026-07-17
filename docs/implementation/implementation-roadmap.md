@@ -603,3 +603,9 @@ Page·BBox·Cell·Shape·CSS Selector, binary SourceVersion hash, 번역 provena
 Golden·E2E·PostgreSQL 시험으로 검증했다. 상세 근거는
 [Stage 8 OSS Integration Review](stage-validations/stage-8-oss-integration-review.md)와
 [ADR-088](../architecture/adr/ADR-088-stage-8-format-adapter-and-structural-selectors.md)을 따른다.
+
+## Stage 10 완료 기록 — 2026-07-17
+
+[Stage 10 Engineering Record](../engineering/stage-10-compiled-truth-discovery.md),
+[Stage 10 OSS Integration Review](stage-validations/stage-10-oss-integration-review.md),
+[ADR-090](../architecture/adr/ADR-090-stage-10-compiled-truth-and-discovery.md)을 따른다.

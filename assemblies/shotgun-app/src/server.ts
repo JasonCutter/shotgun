@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 
 import Fastify from 'fastify';
 
@@ -26,6 +28,7 @@ import {
 import { InMemoryCanonicalKnowledgeRepository } from '../../../adapters/stage6-in-memory/src/index.js';
 import { InMemorySearchProjectionRepository } from '../../../adapters/stage7-in-memory/src/index.js';
 import { InMemoryKnowledgeModelRepository } from '../../../adapters/stage9-in-memory/src/index.js';
+import { InMemoryCompiledTruthRepository } from '../../../adapters/stage10-in-memory/src/index.js';
 import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
 import { InProcessTransport } from '../../../adapters/transport-in-process/src/index.js';
 import {
@@ -54,6 +57,10 @@ import {
   type KnowledgeGraphView,
   type KnowledgeImpactResult,
   type KnowledgeReviewGroup,
+  type CompiledTruthProjection,
+  type CompiledTruthProjectionStatus,
+  type DerivedInferenceCandidate,
+  type DiscoveryRunResult,
 } from '../../../packages/kernel/src/index.js';
 import {
   createIntakeModule,
@@ -114,6 +121,10 @@ import {
   createKnowledgeModelModule,
   type KnowledgeModelRepositoryPort,
 } from '../../../modules/knowledge-model/src/index.js';
+import {
+  createCompiledTruthModule,
+  type CompiledTruthRepositoryPort,
+} from '../../../modules/compiled-truth/src/index.js';
 
 type PingRequest = {
   readonly requestId?: string;
@@ -227,6 +238,7 @@ type ApplicationOptions = {
   readonly canonicalKnowledgeRepository?: CanonicalKnowledgeRepositoryPort;
   readonly searchProjectionRepository?: SearchProjectionRepositoryPort;
   readonly knowledgeModelRepository?: KnowledgeModelRepositoryPort;
+  readonly compiledTruthRepository?: CompiledTruthRepositoryPort;
   readonly closeResources?: () => Promise<void>;
 };
 
@@ -280,23 +292,27 @@ const knowledgePage = (): string => `<!doctype html>
   <title>Shotgun Knowledge Graph</title>
   <style>
     body{font-family:system-ui,sans-serif;max-width:1000px;margin:40px auto;padding:0 20px;color:#172033}
+    #graph{height:420px;border:1px solid #d9e0ea;border-radius:10px;margin:20px 0;background:#fbfcfe}
     table{width:100%;border-collapse:collapse;margin-top:20px}th,td{border:1px solid #d9e0ea;padding:9px;text-align:left}
     th{background:#f3f6fa}.warning{color:#9a5b00;font-weight:700}.muted{color:#526173}
   </style>
 </head>
 <body>
-  <h1>지식 목록·표 보기</h1>
-  <p>그래프 화면 없이도 승인된 지식 유형, 근거 수, 모델 불일치를 확인할 수 있습니다.</p>
+  <h1>Compiled Truth 그래프</h1>
+  <p>승인된 지식을 2D 그래프로 보고, 화면을 사용할 수 없을 때도 같은 데이터의 목록·표를 확인합니다.</p>
   <p id="state" class="muted">불러오는 중…</p>
+  <div id="graph" role="img" aria-label="승인된 지식의 2D 관계 그래프"></div>
+  <h2>지식 목록·표 보기</h2>
   <table aria-label="승인된 지식 항목">
-    <thead><tr><th>ID</th><th>유형</th><th>내용</th><th>근거</th><th>모델 불일치</th></tr></thead>
+    <thead><tr><th>ID</th><th>유형</th><th>내용</th><th>시간 상태</th><th>근거</th></tr></thead>
     <tbody id="rows"></tbody>
   </table>
+  <script src="/vendor/cytoscape.min.js"></script>
   <script>
     const state=document.querySelector('#state');const rows=document.querySelector('#rows');
-    fetch('/knowledge/graph/query',{method:'POST',headers:{'content-type':'application/json'},body:'{}'})
-      .then(async response=>{const body=await response.json();if(!response.ok)throw new Error(body.message||'요청 실패');return body.graph;})
-      .then(graph=>{state.textContent='항목 '+graph.tableRows.length+'개 / 관계 '+graph.edges.length+'개';graph.tableRows.forEach(item=>{const row=document.createElement('tr');[item.id,item.type,item.label,String(item.evidenceCount)].forEach(value=>{const cell=document.createElement('td');cell.textContent=value;row.append(cell);});const warning=document.createElement('td');warning.textContent=item.modelDisagreement?'검토 필요':'없음';if(item.modelDisagreement)warning.className='warning';row.append(warning);rows.append(row);});})
+    fetch('/compiled-truth/query',{method:'POST',headers:{'content-type':'application/json'},body:'{}'})
+      .then(async response=>{const body=await response.json();if(!response.ok)throw new Error(body.message||'요청 실패');return body;})
+      .then(({projection,status})=>{const graph=projection.graph;state.textContent='상태 '+status.status+' / 지연 '+status.lag+' / 항목 '+projection.items.length+'개 / 관계 '+graph.edges.length+'개';projection.items.forEach(item=>{const row=document.createElement('tr');[item.id,item.type,item.label,item.state,String(item.evidenceIds.length)].forEach(value=>{const cell=document.createElement('td');cell.textContent=value;row.append(cell);});rows.append(row);});window.cytoscape({container:document.querySelector('#graph'),elements:[...graph.nodes.map(node=>({data:{id:node.id,label:node.label,state:node.state}})),...graph.edges.map(edge=>({data:{id:edge.id,source:edge.from,target:edge.to,label:edge.relationType}}))],style:[{selector:'node',style:{label:'data(label)','background-color':'#4776e6','font-size':'11px','text-wrap':'wrap','text-max-width':'100px'}},{selector:'edge',style:{label:'data(label)','curve-style':'bezier','target-arrow-shape':'triangle','line-color':'#91a0b5','target-arrow-color':'#91a0b5','font-size':'9px'}}],layout:{name:'cose',animate:false}});})
       .catch(error=>{state.textContent=error.message;state.className='warning';});
   </script>
 </body>
@@ -481,6 +497,8 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     options.searchProjectionRepository ?? new InMemorySearchProjectionRepository();
   const knowledgeModelRepository =
     options.knowledgeModelRepository ?? new InMemoryKnowledgeModelRepository();
+  const compiledTruthRepository =
+    options.compiledTruthRepository ?? new InMemoryCompiledTruthRepository();
   const canonicalSnapshot = options.canonicalSnapshot ?? canonicalKnowledgeRepository;
   const textDiff = options.textDiff ?? new JsDiffAdapter();
   const aiProvider = options.aiProvider ?? new FakeAIProviderAdapter();
@@ -510,6 +528,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   const projectionSearch = createProjectionSearchModule(searchProjectionRepository);
   const citedAnswer = createCitedAnswerModule();
   const knowledgeModel = createKnowledgeModelModule(knowledgeModelRepository);
+  const compiledTruth = createCompiledTruthModule(compiledTruthRepository);
   const kernel = new ShotgunKernel(options.transport ?? new InProcessTransport());
   kernel.register(
     ping.module,
@@ -527,6 +546,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     projectionSearch,
     citedAnswer,
     knowledgeModel,
+    compiledTruth,
   );
   await kernel.start();
 
@@ -1111,6 +1131,101 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     reply.type('text/html; charset=utf-8').send(knowledgePage()),
   );
 
+  server.get('/vendor/cytoscape.min.js', async (_request, reply) =>
+    reply
+      .type('application/javascript; charset=utf-8')
+      .send(await readFile(path.resolve('node_modules/cytoscape/dist/cytoscape.min.js'), 'utf8')),
+  );
+
+  server.post<{
+    Body: { readonly mode: 'FULL_REBUILD' | 'INCREMENTAL' };
+    Headers: SecurityHeaders;
+  }>('/compiled-truth/build', async (request) => {
+    const context = requestContext(request.headers);
+    const delivery = await kernel.connector.sendCommand<CompiledTruthProjection>(
+      createCommand({
+        messageType: 'BuildCompiledTruth',
+        schemaVersion: '1.0.0',
+        producerModule: 'shotgun-app',
+        producerVersion: '1.0.0',
+        idempotencyKey: `compiled-truth:${context.projectId}:${request.body.mode}:${randomUUID()}`,
+        ...context,
+        payload: request.body,
+      }),
+    );
+    return { projection: delivery.result };
+  });
+
+  server.post<{ Body: Record<string, never>; Headers: SecurityHeaders }>(
+    '/compiled-truth/query',
+    async (request) => {
+      const context = requestContext(request.headers);
+      const projection = await kernel.connector.query<CompiledTruthProjection>(
+        createQuery({
+          messageType: 'GetCompiledTruth',
+          schemaVersion: '1.0.0',
+          producerModule: 'shotgun-app',
+          producerVersion: '1.0.0',
+          ...context,
+          payload: request.body ?? {},
+        }),
+      );
+      const status = await kernel.connector.query<CompiledTruthProjectionStatus>(
+        createQuery({
+          messageType: 'GetCompiledTruthStatus',
+          schemaVersion: '1.0.0',
+          producerModule: 'shotgun-app',
+          producerVersion: '1.0.0',
+          ...context,
+          payload: {},
+        }),
+      );
+      return { projection: projection.result.payload, status: status.result.payload };
+    },
+  );
+
+  server.post<{
+    Body: {
+      readonly mode: 'INCREMENTAL' | 'WEEKLY';
+      readonly maxNodes: number;
+      readonly maxSuggestions: number;
+    };
+    Headers: SecurityHeaders;
+  }>('/knowledge/discovery/run', async (request) => {
+    const context = requestContext(request.headers);
+    const delivery = await kernel.connector.sendCommand<DiscoveryRunResult>(
+      createCommand({
+        messageType: 'RunKnowledgeDiscovery',
+        schemaVersion: '1.0.0',
+        producerModule: 'shotgun-app',
+        producerVersion: '1.0.0',
+        idempotencyKey: `knowledge-discovery:${context.projectId}:${request.body.mode}:${randomUUID()}`,
+        ...context,
+        payload: request.body,
+      }),
+    );
+    return { discovery: delivery.result };
+  });
+
+  server.post<{ Body: Record<string, never>; Headers: SecurityHeaders }>(
+    '/knowledge/discovery/list',
+    async (request) => {
+      const delivery = await kernel.connector.query<{
+        items: readonly DerivedInferenceCandidate[];
+      }>(
+        createQuery({
+          messageType: 'ListDerivedInferences',
+          schemaVersion: '1.0.0',
+          producerModule: 'shotgun-app',
+          producerVersion: '1.0.0',
+          ...requestContext(request.headers),
+          payload: request.body ?? {},
+        }),
+      );
+      return { inferences: delivery.result.payload.items };
+    },
+  );
+
   server.post<{ Body: EntityVaultStageRequest; Headers: SecurityHeaders }>(
     '/knowledge/entity-vault/stage',
     async (request) => {
@@ -1187,6 +1302,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       canonical: canonicalKnowledgeRepository,
       projection: searchProjectionRepository,
       knowledge: knowledgeModelRepository,
+      compiledTruth: compiledTruthRepository,
     },
     storage: assetStorage,
     state: {

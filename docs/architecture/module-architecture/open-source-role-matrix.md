@@ -258,14 +258,14 @@ Canonical write는 이 모듈만 수행하며 다른 OSS의 내부 DB를 공식 
 
 ### 4.13 Projection·Search
 
-| 후보                         | 역할                        | 상태                   |
-| ---------------------------- | --------------------------- | ---------------------- |
-| PostgreSQL FTS·pg_trgm       | 정확·부분 문자열 검색 MVP   | `FOUNDATION_CANDIDATE` |
-| pgvector                     | 단일 DB semantic search MVP | `ADAPTER_CANDIDATE`    |
-| OpenSearch                   | 대규모 hybrid search        | `DEFERRED`             |
-| Qdrant                       | 독립 vector store benchmark | `DEFERRED`             |
-| Apache AGE                   | graph projection 후보       | `ADAPTER_CANDIDATE`    |
-| gbrain Search·Graph·Timeline | Query·projection 참고       | `EXTRACT`              |
+| 후보                         | 역할                        | 상태        |
+| ---------------------------- | --------------------------- | ----------- |
+| PostgreSQL FTS·pg_trgm       | 정확·부분 문자열 검색 MVP   | `ADOPTED`   |
+| pgvector                     | 단일 DB semantic search MVP | `DEFERRED`  |
+| OpenSearch                   | 대규모 hybrid search        | `DEFERRED`  |
+| Qdrant                       | 독립 vector store benchmark | `DEFERRED`  |
+| Apache AGE                   | graph projection 후보       | `DEFERRED`  |
+| gbrain Search·Graph·Timeline | Query·projection 참고       | `REFERENCE` |
 
 처음에는 PostgreSQL 중심 Projection을 우선하고 규모와 품질 요구가 확인될 때 별도 제품을 도입한다.
 
@@ -345,7 +345,7 @@ Audit 원장은 일반 로그와 분리하고 사용자 승인·Canonical commit
 | OpenKnowledge UX | Cockpit·Graph·Activity·Diff         | `REFERENCE`         |
 | React / Next.js  | Web application 후보                | `ADAPTER_CANDIDATE` |
 | TanStack Query   | API state·cache                     | `ADAPTER_CANDIDATE` |
-| Cytoscape.js     | Graph UI                            | `ADAPTER_CANDIDATE` |
+| Cytoscape.js     | Graph UI                            | `ADOPTED`           |
 | Tiptap           | Review editor                       | `ADAPTER_CANDIDATE` |
 
 UI framework는 Domain Module 계약에 영향을 주지 않는다.
@@ -414,7 +414,21 @@ Stage 0~3의 재검증된 exact pin과 결정은
 | MCP SDK·Specification | https://github.com/modelcontextprotocol                       | Adapter 구현 시 SDK·spec commit pin                   | 대기                               | `ADAPTER_CANDIDATE`    |
 | Tiptap                | https://github.com/ueberdosis/tiptap                          | Review UI prototype 시 release pin                    | 대기                               | `ADAPTER_CANDIDATE`    |
 | Yjs                   | https://github.com/yjs/yjs                                    | 협업 기능 승인 후 pin                                 | 대기                               | `DEFERRED`             |
-| Cytoscape.js          | https://github.com/cytoscape/cytoscape.js                     | `3.34.0` / `22716bfb75834b56fa6679648b0abb06f4ae691c` | MIT 확인                           | `DEFERRED`             |
+| Cytoscape.js          | https://github.com/cytoscape/cytoscape.js                     | `3.34.0` / `22716bfb75834b56fa6679648b0abb06f4ae691c` | MIT 확인                           | `ADOPTED`              |
+| Apache AGE            | https://github.com/apache/age                                 | `6876abcab0a3281eb65a7e2a91238e0b5abfdea7`            | Apache-2.0 확인                    | `DEFERRED`             |
+| OpenSearch            | https://github.com/opensearch-project/OpenSearch              | `1d71f7b405359d277e9d365bb0d206acce8e559b`            | Apache-2.0 확인                    | `DEFERRED`             |
+| Qdrant                | https://github.com/qdrant/qdrant                              | `44ad62f8cd69642be5afa6441612525e24a0d063`            | Apache-2.0 확인                    | `DEFERRED`             |
+
+### Stage 10 확정 결정
+
+- `cytoscape@3.34.0`을 Compiled Truth 2D 화면 Adapter로 `ADOPTED`한다. 브라우저에는
+  승인된 Projection의 ID·label·시간 상태·Typed Edge만 전달하고 원문이나 비밀값은 전달하지 않는다.
+- gbrain Dream Cycle의 순서가 있는 phase, dry-run, bounded drain과 Graph direction filter는
+  `REFERENCE`로 사용한다. gbrain runtime·DB·생성 결과를 Shotgun Canonical에 직접 연결하지 않는다.
+- PostgreSQL 16의 Shotgun 소유 Projection 표를 MVP 저장소로 유지한다.
+- pgvector·Apache AGE·OpenSearch·Qdrant는 대표 데이터의 검색 품질·지연·규모 한계가 측정되기
+  전까지 `DEFERRED`다.
+- OpenKnowledge의 2D Graph UX는 `REFERENCE`지만 GPL 코드는 포함하지 않는다.
 
 ### 5.1 채택 시 필수 기록
 

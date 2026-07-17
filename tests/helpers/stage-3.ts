@@ -18,6 +18,7 @@ import { createEvidenceModule } from '../../modules/evidence/src/index.js';
 import { createIntakeModule } from '../../modules/intake/src/index.js';
 import { createOriginalAssetModule } from '../../modules/original-asset/src/index.js';
 import { createTransformationModule } from '../../modules/transformation/src/index.js';
+import type { PlainTextTransformerPort } from '../../modules/transformation/src/index.js';
 import { directTextCommand, intakeResultQuery, type intakeCommand } from './stage-2.js';
 
 export { directTextCommand, intakeResultQuery };
@@ -29,6 +30,7 @@ type HarnessOptions = {
   readonly storage?: InMemoryAssetStorage;
   readonly transformationRepository?: InMemoryTransformationRepository;
   readonly evidenceRepository?: InMemoryEvidenceRepository;
+  readonly transformer?: PlainTextTransformerPort;
 };
 
 export const createStage3Harness = async (options: HarnessOptions = {}) => {
@@ -40,11 +42,12 @@ export const createStage3Harness = async (options: HarnessOptions = {}) => {
     options.transformationRepository ?? new InMemoryTransformationRepository();
   const evidenceRepository = options.evidenceRepository ?? new InMemoryEvidenceRepository();
   const adapter = new LucasAugmentedPlainTextAdapter();
+  const transformer = options.transformer ?? adapter;
   const kernel = new ShotgunKernel(options.transport ?? new InMemoryTransport());
   kernel.register(
     createIntakeModule(intakeRepository),
     createOriginalAssetModule(originalAssetRepository, storage),
-    createTransformationModule(transformationRepository, adapter),
+    createTransformationModule(transformationRepository, transformer),
     createEvidenceModule(evidenceRepository, adapter),
   );
   await kernel.start();
@@ -56,6 +59,7 @@ export const createStage3Harness = async (options: HarnessOptions = {}) => {
     transformationRepository,
     evidenceRepository,
     adapter,
+    transformer,
   };
 };
 

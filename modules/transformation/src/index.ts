@@ -18,10 +18,16 @@ import {
 } from '../../../packages/contracts/src/index.js';
 import type { ShotgunModule } from '../../../packages/module-sdk/src/index.js';
 
-export type PlainTextTransformationInput = {
+export type DocumentTransformationInput = {
   readonly sourceId: string;
   readonly sourceVersionId: string;
   readonly sourceContentHash: string;
+  readonly mediaType: DocumentIR['mediaType'];
+  readonly contentBase64?: string;
+  readonly text?: string;
+};
+
+export type PlainTextTransformationInput = DocumentTransformationInput & {
   readonly mediaType: 'text/plain' | 'text/markdown';
   readonly text: string;
 };
@@ -33,13 +39,18 @@ export type PlainTextTransformationOutput = {
   readonly sourceMapHash: string;
 };
 
-export type PlainTextTransformerPort = {
+export type DocumentTransformerPort = {
   readonly identity: {
     readonly id: string;
     readonly version: string;
   };
-  transform(input: PlainTextTransformationInput): PlainTextTransformationOutput;
+  transform(
+    input: DocumentTransformationInput,
+  ): PlainTextTransformationOutput | Promise<PlainTextTransformationOutput>;
 };
+
+/** @deprecated Use DocumentTransformerPort. Kept for Stage 3 adapter compatibility. */
+export type PlainTextTransformerPort = DocumentTransformerPort;
 
 export type EvidenceLocatorPort = {
   locate(source: string, quote: TextQuoteSelector): TextPositionSelector | undefined;
@@ -50,7 +61,7 @@ export type SaveTransformationInput = {
   readonly sourceId: string;
   readonly sourceVersionId: string;
   readonly sourceContentHash: string;
-  readonly transformer: PlainTextTransformerPort['identity'];
+  readonly transformer: DocumentTransformerPort['identity'];
   readonly output: PlainTextTransformationOutput;
   readonly accessScope: readonly string[];
   readonly sensitivity: SecurityContext['sensitivity'];
@@ -120,7 +131,7 @@ const assertScope = (
 
 export const createTransformationModule = (
   repository: TransformationRepositoryPort,
-  transformer: PlainTextTransformerPort,
+  transformer: DocumentTransformerPort,
 ): ShotgunModule => ({
   manifest: {
     id: 'stage3.transformation',
@@ -138,7 +149,7 @@ export const createTransformationModule = (
     deployment: { modes: ['in_process', 'worker'] },
     dataOwnership: {
       owns: ['transformation.attempts', 'transformation.revisions'],
-      readsViaPorts: ['PlainTextTransformerPort', 'ResolveAsset query'],
+      readsViaPorts: ['DocumentTransformerPort', 'ResolveAsset query'],
       directSchemaAccess: false,
     },
     consumes: {
@@ -152,6 +163,7 @@ export const createTransformationModule = (
       queries: [{ name: 'GetDocumentRevision', range: '>=1.0.0 <2.0.0' }],
       capabilities: [
         { name: 'plain-text-transformation', priority: 100 },
+        { name: 'document-format-transformation', priority: 100 },
         { name: 'document-revision-provider', priority: 100 },
       ],
     },
@@ -204,12 +216,24 @@ export const createTransformationModule = (
           const payload = envelope.payload as OriginalAssetStoredPayload;
           const { projectId, security } = assertContext(envelope);
           if (
-            !['text/plain', 'text/markdown'].includes(payload.assetReference.mediaType) ||
+            ![
+              'text/plain',
+              'text/markdown',
+              'text/html',
+              'application/pdf',
+              'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+              'text/csv',
+              'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+              'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+              'image/png',
+              'image/jpeg',
+            ].includes(payload.assetReference.mediaType) ||
             payload.assetReference.versionId !== payload.sourceVersionId
           ) {
             throw new ShotgunError({
               code: 'VALIDATION_ERROR',
-              safeMessage: 'Stage 3 requires a matching plain-text SourceVersion Asset Reference.',
+              safeMessage:
+                'Transformation requires a matching supported SourceVersion Asset Reference.',
               module: 'stage3.transformation',
               operation: 'transform-original-asset',
               correlationId: envelope.correlationId,
@@ -224,7 +248,7 @@ export const createTransformationModule = (
           ).payload;
           if (
             resolved.assetReference.contentHash !== payload.assetReference.contentHash ||
-            resolved.text === undefined
+            !resolved.contentBase64
           ) {
             throw new ShotgunError({
               code: 'STALE_VERSION',
@@ -234,12 +258,13 @@ export const createTransformationModule = (
               correlationId: envelope.correlationId,
             });
           }
-          const output = transformer.transform({
+          const output = await transformer.transform({
             sourceId: payload.sourceId,
             sourceVersionId: payload.sourceVersionId,
             sourceContentHash: payload.assetReference.contentHash,
-            mediaType: payload.assetReference.mediaType as 'text/plain' | 'text/markdown',
-            text: resolved.text,
+            mediaType: payload.assetReference.mediaType as DocumentIR['mediaType'],
+            contentBase64: resolved.contentBase64,
+            ...(resolved.text === undefined ? {} : { text: resolved.text }),
           });
           const saved = await repository.save({
             projectId,

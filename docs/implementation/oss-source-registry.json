@@ -303,7 +303,7 @@
     {
       "id": "lucas-llmwiki",
       "name": "lucasastorian/llmwiki",
-      "stages": [0, 2, 3],
+      "stages": [0, 2, 3, 8],
       "officialSource": "https://github.com/lucasastorian/llmwiki",
       "pin": {
         "type": "git-commit",
@@ -315,18 +315,19 @@
         "evidence": "LICENSE at the pinned commit"
       },
       "decision": "AUGMENT",
-      "scope": "Text quote location, prefix/suffix disambiguation, offset regression tests, and deterministic validation patterns; watcher/reconcile remains deferred",
+      "scope": "Text quote location, prefix/suffix disambiguation, deterministic validation, and Stage 8 HTML noise-removal and semantic-block extraction patterns; watcher/reconcile remains deferred",
       "security": "Ambiguous short quotes are not guessed; path-based identity, SQLite, VaultFS, MCP CRUD, and filename citation remain excluded",
       "maintenance": "Pinned commit only; behavior was reimplemented behind Shotgun ports without adding the upstream runtime",
       "evidence": [
         "highlight single/multiple match tests reviewed",
         "chunk start_char regression tests reviewed",
         "watcher path identity rejected",
-        "Shotgun locator and adapter replacement tests"
+        "Shotgun locator and adapter replacement tests",
+        "Stage 8 HTML Golden retained 6 semantic blocks and removed script, video, and navigation noise"
       ],
       "boundary": "Lucas-derived behavior is isolated behind PlainTextTransformerPort and EvidenceLocatorPort; SourceVersion and EvidenceSpan remain Shotgun-owned",
       "replacement": "A replacement transformer or locator must pass the same Golden, SourceMap, ambiguity, and replacement tests",
-      "recheckTrigger": "Before HTML/XLSX extraction or directory watching"
+      "recheckTrigger": "Before XLSX directory watching or upstream HTML extraction changes"
     },
     {
       "id": "w3c-web-annotation",
@@ -859,8 +860,8 @@
       "stages": [2, 8],
       "officialSource": "https://github.com/apache/tika",
       "pin": {
-        "type": "reviewed-family",
-        "value": "server or library"
+        "type": "git-tag",
+        "value": "3.3.1"
       },
       "license": {
         "spdx": "Apache-2.0",
@@ -869,12 +870,204 @@
       },
       "decision": "DEFER",
       "scope": "MIME detection, metadata, and broad text extraction",
-      "security": "Complex document parsing requires isolation and a golden corpus",
-      "maintenance": "No JVM service added in Stage 2",
-      "evidence": ["Stage 2 accepts only direct text, UTF-8 txt, and plain-text md"],
-      "boundary": "Future format adapter",
-      "replacement": "Current intake validates the explicitly declared narrow media types",
-      "recheckTrigger": "Stage 8 format expansion"
+      "security": "JVM service and broad parser surface require an isolated worker, timeouts, and OCR and media parser disablement",
+      "maintenance": "Deferred in Stage 8 because a JVM service is disproportionate for the MVP formats and solo operation",
+      "evidence": [
+        "3.3.1 stable tag reviewed",
+        "Golden direct baseline produced no Page, Cell, Shape, or BBox selectors"
+      ],
+      "boundary": "Document format adapter",
+      "replacement": "May replace a format-specific adapter only after selector-aware Golden and security tests",
+      "recheckTrigger": "When legacy binary Office or broad MIME detection becomes required"
+    },
+    {
+      "id": "docling",
+      "name": "Docling",
+      "stages": [8],
+      "officialSource": "https://github.com/docling-project/docling",
+      "pin": { "type": "git-tag", "value": "v2.113.0" },
+      "license": {
+        "spdx": "MIT",
+        "status": "VERIFIED",
+        "evidence": "Official repository license at v2.113.0"
+      },
+      "decision": "DEFER",
+      "scope": "Advanced PDF and Office layout, table, formula, and image understanding",
+      "security": "Model downloads and a large parser dependency graph require an isolated worker and resource limits",
+      "maintenance": "Deferred because the MVP Golden corpus does not justify its runtime and model footprint",
+      "evidence": [
+        "v2.113.0 reviewed",
+        "Current format-specific adapters passed selector and structure Golden tests without model downloads"
+      ],
+      "boundary": "Document format adapter",
+      "replacement": "Can replace PDF or Office adapters only through DocumentIR and SourceMap contract tests",
+      "recheckTrigger": "Scanned PDF, complex table, formula, or chart loss exceeds the Stage 8 tolerance"
+    },
+    {
+      "id": "markitdown",
+      "name": "Microsoft MarkItDown",
+      "stages": [8],
+      "officialSource": "https://github.com/microsoft/markitdown",
+      "pin": { "type": "pypi-release", "value": "0.1.6" },
+      "license": {
+        "spdx": "MIT",
+        "status": "VERIFIED",
+        "evidence": "Official repository and PyPI release"
+      },
+      "decision": "DEFER",
+      "scope": "Readable Markdown conversion fallback for HTML and Office documents",
+      "security": "Runs with process I/O privileges and therefore must stay behind the worker boundary",
+      "maintenance": "Deferred because Markdown alone does not preserve Shotgun Page, Cell, Shape, and BBox selectors",
+      "evidence": ["0.1.6 reviewed", "Selector-aware Golden is the required replacement gate"],
+      "boundary": "Document format adapter",
+      "replacement": "May provide normalized text but must be augmented with structural selectors",
+      "recheckTrigger": "When Markdown fidelity becomes more important than exact structural recovery"
+    },
+    {
+      "id": "pymupdf",
+      "name": "PyMuPDF",
+      "stages": [8],
+      "officialSource": "https://github.com/pymupdf/PyMuPDF",
+      "pin": { "type": "pypi-release", "value": "1.28.0" },
+      "license": {
+        "spdx": "AGPL-3.0-only OR LicenseRef-Artifex-Commercial",
+        "status": "VERIFIED",
+        "evidence": "Official repository and PyPI licensing metadata"
+      },
+      "decision": "REJECT",
+      "scope": "PDF page text and bounding boxes",
+      "security": "Native parser must run in an isolated worker for untrusted PDFs",
+      "maintenance": "Not included because the default AGPL obligations do not fit the Shotgun distribution policy",
+      "evidence": ["1.28.0 license reviewed", "MIT pdfplumber alternative passed the PDF Golden"],
+      "boundary": "PDF format adapter",
+      "replacement": "Commercial licensing would require a separate product and legal decision",
+      "recheckTrigger": "Only after an explicit commercial-license decision"
+    },
+    {
+      "id": "pdfplumber",
+      "name": "pdfplumber",
+      "stages": [8],
+      "officialSource": "https://github.com/jsvine/pdfplumber",
+      "pin": { "type": "pypi-lock", "package": "pdfplumber", "value": "0.11.10" },
+      "license": { "spdx": "MIT", "status": "VERIFIED", "evidence": "Official repository LICENSE" },
+      "decision": "ADOPT",
+      "scope": "PDF word text, PageSelector, and BoundingBoxSelector extraction",
+      "security": "Runs in a child process; corrupt and encrypted inputs return explicit terminal statuses",
+      "maintenance": "Exact PyPI version is locked in the Stage 8 worker requirements",
+      "evidence": [
+        "PDF Golden retained 6 words with page and BBox selectors",
+        "Median cold worker time 452 ms over 3 local runs"
+      ],
+      "boundary": "PythonDocumentFormatAdapter",
+      "replacement": "Any PDF replacement must pass the same Page, BBox, corrupt, encrypted, and upper-contract tests",
+      "recheckTrigger": "PDF table or reading-order loss exceeds the documented tolerance"
+    },
+    {
+      "id": "python-docx",
+      "name": "python-docx",
+      "stages": [8],
+      "officialSource": "https://github.com/python-openxml/python-docx",
+      "pin": { "type": "pypi-lock", "package": "python-docx", "value": "1.2.0" },
+      "license": { "spdx": "MIT", "status": "VERIFIED", "evidence": "Official repository LICENSE" },
+      "decision": "ADOPT",
+      "scope": "DOCX paragraphs and table-cell extraction",
+      "security": "OOXML parsing is isolated in the Stage 8 worker and capped by Intake size",
+      "maintenance": "Exact PyPI version locked",
+      "evidence": [
+        "DOCX Golden retained 2 paragraphs and 4 table cells",
+        "Median cold worker time 383 ms over 3 local runs"
+      ],
+      "boundary": "PythonDocumentFormatAdapter",
+      "replacement": "Replacement must preserve paragraph order, cell addressing, and upper contracts",
+      "recheckTrigger": "Tracked changes, headers, footnotes, or pagination become MVP requirements"
+    },
+    {
+      "id": "openpyxl",
+      "name": "openpyxl",
+      "stages": [8],
+      "officialSource": "https://foss.heptapod.net/openpyxl/openpyxl",
+      "pin": { "type": "pypi-lock", "package": "openpyxl", "value": "3.1.5" },
+      "license": {
+        "spdx": "MIT",
+        "status": "VERIFIED",
+        "evidence": "Official project license and PyPI metadata"
+      },
+      "decision": "ADOPT",
+      "scope": "XLSX sheet, cell, value, and formula extraction",
+      "security": "Read-only workbook mode, immutable bytes, and Intake size cap",
+      "maintenance": "Exact PyPI version locked",
+      "evidence": [
+        "XLSX Golden retained all 6 non-empty cells including formula =1+1",
+        "Median cold worker time 893 ms over 3 local runs"
+      ],
+      "boundary": "PythonDocumentFormatAdapter",
+      "replacement": "Replacement must preserve Sheet and Cell selectors and formulas",
+      "recheckTrigger": "Charts, macros, or formula calculation become required"
+    },
+    {
+      "id": "python-pptx",
+      "name": "python-pptx",
+      "stages": [8],
+      "officialSource": "https://github.com/scanny/python-pptx",
+      "pin": { "type": "pypi-lock", "package": "python-pptx", "value": "1.0.2" },
+      "license": { "spdx": "MIT", "status": "VERIFIED", "evidence": "Official repository LICENSE" },
+      "decision": "ADOPT",
+      "scope": "PPTX slide shape text, ShapeSelector, and shape bounding boxes",
+      "security": "OOXML parsing is isolated in the Stage 8 worker and capped by Intake size",
+      "maintenance": "Exact PyPI version locked",
+      "evidence": [
+        "PPTX Golden retained both text shapes with Shape and BBox selectors",
+        "Median cold worker time 491 ms over 3 local runs"
+      ],
+      "boundary": "PythonDocumentFormatAdapter",
+      "replacement": "Replacement must preserve slide, shape identity, BBox, and upper contracts",
+      "recheckTrigger": "Charts, notes, grouped shapes, or animations become required"
+    },
+    {
+      "id": "beautifulsoup4",
+      "name": "Beautiful Soup",
+      "stages": [8],
+      "officialSource": "https://www.crummy.com/software/BeautifulSoup/",
+      "pin": { "type": "pypi-lock", "package": "beautifulsoup4", "value": "4.15.0" },
+      "license": {
+        "spdx": "MIT",
+        "status": "VERIFIED",
+        "evidence": "Official project and PyPI metadata"
+      },
+      "decision": "AUGMENT",
+      "scope": "DOM parsing behind lucas-derived HTML noise removal and semantic-block rules",
+      "security": "Scripts, styles, embeds, audio, video, canvas, and iframes are removed before extraction",
+      "maintenance": "Exact PyPI version locked; lucas behavior remains separately pinned",
+      "evidence": [
+        "HTML Golden retained 6 semantic blocks and removed executable and media nodes",
+        "Median cold worker time 360 ms over 3 local runs"
+      ],
+      "boundary": "PythonDocumentFormatAdapter HTML handler",
+      "replacement": "Replacement must pass semantic-block, noise-removal, URL transcript, and selector tests",
+      "recheckTrigger": "DOM selector stability or malformed HTML recovery regresses"
+    },
+    {
+      "id": "pillow",
+      "name": "Pillow",
+      "stages": [8],
+      "officialSource": "https://github.com/python-pillow/Pillow",
+      "pin": { "type": "pypi-lock", "package": "Pillow", "value": "12.3.0" },
+      "license": {
+        "spdx": "MIT-CMU",
+        "status": "VERIFIED",
+        "evidence": "Official repository LICENSE"
+      },
+      "decision": "ADOPT",
+      "scope": "Image integrity and pixel-dimension validation before multimodal meaning extraction",
+      "security": "Image bytes are verified in the isolated worker; meaning requires an explicit MultimodalValidationPort",
+      "maintenance": "Exact PyPI version locked",
+      "evidence": [
+        "PNG Golden verified as 320 by 180 pixels",
+        "Missing multimodal validation returns an explicit required status"
+      ],
+      "boundary": "PythonDocumentFormatAdapter image handler",
+      "replacement": "Replacement must preserve image verification, BBox, and multimodal-required policy",
+      "recheckTrigger": "OCR is approved as a separate conditional capability"
     },
     {
       "id": "content-addressed-storage",

@@ -37,7 +37,20 @@
       "required": ["schemaVersion", "mediaType", "blocks"],
       "properties": {
         "schemaVersion": { "const": "1.0.0" },
-        "mediaType": { "enum": ["text/plain", "text/markdown"] },
+        "mediaType": {
+          "enum": [
+            "text/plain",
+            "text/markdown",
+            "text/html",
+            "application/pdf",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "text/csv",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "image/png",
+            "image/jpeg"
+          ]
+        },
         "blocks": {
           "type": "array",
           "items": {
@@ -131,6 +144,38 @@
             "suffix": { "type": "string" }
           },
           "additionalProperties": false
+        },
+        "selectors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["type"],
+            "properties": {
+              "type": {
+                "enum": [
+                  "PageSelector",
+                  "BoundingBoxSelector",
+                  "CellSelector",
+                  "ShapeSelector",
+                  "CssSelector"
+                ]
+              },
+              "page": { "type": "integer", "minimum": 1 },
+              "x": { "type": "number" },
+              "y": { "type": "number" },
+              "width": { "type": "number", "minimum": 0 },
+              "height": { "type": "number", "minimum": 0 },
+              "unit": { "enum": ["pt", "px"] },
+              "sheet": { "type": "string" },
+              "cell": { "type": "string" },
+              "row": { "type": "integer", "minimum": 1 },
+              "column": { "type": "integer", "minimum": 1 },
+              "slide": { "type": "integer", "minimum": 1 },
+              "shapeId": { "type": "string" },
+              "value": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
         },
         "exactHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
       },

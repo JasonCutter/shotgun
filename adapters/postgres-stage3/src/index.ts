@@ -46,6 +46,7 @@ type EvidenceRow = QueryResultRow & {
   readonly origin: 'source';
   readonly position: EvidenceSpan['position'];
   readonly quote: EvidenceSpan['quote'];
+  readonly selectors: EvidenceSpan['selectors'];
   readonly exact_hash: string;
   readonly access_scope: string[];
   readonly sensitivity: EvidenceSpan['sensitivity'];
@@ -82,6 +83,7 @@ const mapEvidence = (row: EvidenceRow): EvidenceSpan => ({
   origin: row.origin,
   position: row.position,
   quote: row.quote,
+  selectors: row.selectors,
   exactHash: row.exact_hash,
   accessScope: row.access_scope,
   sensitivity: row.sensitivity,
@@ -119,6 +121,7 @@ const evidenceSelect = `
     origin,
     position,
     quote,
+    selectors,
     exact_hash,
     access_scope,
     sensitivity,
@@ -264,13 +267,13 @@ export class PostgresEvidenceRepository implements EvidenceRepositoryPort {
           `
             INSERT INTO evidence.spans (
               evidence_id, revision_id, project_id, source_id, source_version_id, pointer,
-              node_kind, origin, position, quote, exact_hash, access_scope, sensitivity, created_at
+              node_kind, origin, position, quote, selectors, exact_hash, access_scope, sensitivity, created_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
             ON CONFLICT (project_id, revision_id, pointer) DO NOTHING
             RETURNING
               evidence_id::text, revision_id::text, project_id, source_id::text,
-              source_version_id::text, pointer, node_kind, origin, position, quote,
+              source_version_id::text, pointer, node_kind, origin, position, quote, selectors,
               exact_hash, access_scope, sensitivity, created_at
           `,
           [
@@ -284,6 +287,7 @@ export class PostgresEvidenceRepository implements EvidenceRepositoryPort {
             candidate.origin,
             candidate.position,
             candidate.quote,
+            JSON.stringify(candidate.selectors ?? []),
             candidate.exactHash,
             candidate.accessScope,
             candidate.sensitivity,

@@ -100,7 +100,7 @@ export const directTextCommand = (
 export const fileCommand = (
   submissionId: string,
   fileName: string,
-  mediaType: 'text/plain' | 'text/markdown',
+  mediaType: Exclude<SubmitIntakePayload['input'], { readonly kind: 'direct_text' }>['mediaType'],
   bytes: Uint8Array,
   options: CommandOptions = {},
 ) =>

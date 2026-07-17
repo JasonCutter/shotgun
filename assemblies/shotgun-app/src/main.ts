@@ -5,6 +5,7 @@ import 'dotenv/config';
 import { LocalAssetStorage } from '../../../adapters/asset-storage-local/src/index.js';
 import { GeminiAIProviderAdapter } from '../../../adapters/ai-provider-gemini/src/index.js';
 import { LucasAugmentedPlainTextAdapter } from '../../../adapters/plain-text-lucas-augmented/src/index.js';
+import { PythonDocumentFormatAdapter } from '../../../adapters/document-format-python/src/index.js';
 import {
   createPostgresPool,
   PostgresIntakeRepository,
@@ -57,7 +58,7 @@ const { server } = await createApplication({
   canonicalKnowledgeRepository,
   searchProjectionRepository: new PostgresSearchProjectionRepository(pool),
   textDiff: new JsDiffAdapter(),
-  transformer: plainTextAdapter,
+  transformer: new PythonDocumentFormatAdapter(),
   evidenceLocator: plainTextAdapter,
   aiProvider: new GeminiAIProviderAdapter({
     apiKey: geminiApiKey,

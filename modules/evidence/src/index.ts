@@ -161,7 +161,9 @@ export const buildEvidenceCandidates = (
     root.nodeKind !== 'document' ||
     root.position.start !== 0 ||
     root.position.end !== unicodeLength(root.quote.exact) ||
-    sha256Text(root.quote.exact) !== revision.sourceContentHash
+    root.exactHash !== sha256Text(root.quote.exact) ||
+    (['text/plain', 'text/markdown'].includes(revision.documentIR.mediaType) &&
+      sha256Text(root.quote.exact) !== revision.sourceContentHash)
   ) {
     invalidRevision('Document root does not match the immutable SourceVersion content hash.');
   }
@@ -182,6 +184,7 @@ export const buildEvidenceCandidates = (
       origin: 'source',
       position: entry.position,
       quote: entry.quote,
+      selectors: entry.selectors ?? [],
       exactHash: entry.exactHash,
       accessScope: revision.accessScope,
       sensitivity: revision.sensitivity,
@@ -340,6 +343,7 @@ export const createEvidenceModule = (
               pointer: item.pointer,
               nodeKind: item.nodeKind,
               position: item.position,
+              selectors: item.selectors ?? [],
               exactHash: item.exactHash,
             })),
           };

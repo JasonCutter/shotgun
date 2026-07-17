@@ -8,6 +8,7 @@ import resolveAssetOutputSchema from '../../../packages/contracts/schemas/resolv
 import resolveAssetSchema from '../../../packages/contracts/schemas/resolve-asset.v1.schema.json';
 import {
   type AssetReference,
+  type DocumentIR,
   type EventEnvelope,
   type QueryEnvelope,
   type SecurityContext,
@@ -16,14 +17,17 @@ import {
 } from '../../../packages/contracts/src/index.js';
 import type { ShotgunModule } from '../../../packages/module-sdk/src/index.js';
 
+type MaterialKind = 'plain_text' | 'document' | 'image';
+type SupportedMediaType = DocumentIR['mediaType'];
+
 export type StoreOriginalAssetInput = {
   readonly submissionId: string;
   readonly projectId: string;
   readonly actorId: string;
   readonly requestedSourceId?: string;
   readonly channel: 'direct_text' | 'file_upload';
-  readonly materialKind: 'plain_text';
-  readonly mediaType: 'text/plain' | 'text/markdown';
+  readonly materialKind: MaterialKind;
+  readonly mediaType: SupportedMediaType;
   readonly originalFileName?: string;
   readonly contentHash: string;
   readonly sizeBytes: number;
@@ -40,7 +44,7 @@ export type StoredIntakeResult = {
   readonly sourceVersionId: string;
   readonly versionNumber: number;
   readonly channel: 'direct_text' | 'file_upload';
-  readonly materialKind: 'plain_text';
+  readonly materialKind: MaterialKind;
   readonly originalFileName?: string;
   readonly assetReference: AssetReference;
   readonly storageKey: string;
@@ -71,8 +75,8 @@ type IntakeAcceptedPayload = {
   readonly submissionId: string;
   readonly sourceId?: string;
   readonly channel: 'direct_text' | 'file_upload';
-  readonly materialKind: 'plain_text';
-  readonly mediaType: 'text/plain' | 'text/markdown';
+  readonly materialKind: MaterialKind;
+  readonly mediaType: SupportedMediaType;
   readonly originalFileName?: string;
   readonly contentBase64: string;
   readonly contentHash: string;
@@ -353,10 +357,11 @@ export const createOriginalAssetModule = (
               correlationId: envelope.correlationId,
             });
           }
+          const isText = result.assetReference.mediaType.startsWith('text/');
           return {
             assetReference: result.assetReference,
             contentBase64: Buffer.from(bytes).toString('base64'),
-            text: new TextDecoder('utf-8', { fatal: true }).decode(bytes),
+            ...(isText ? { text: new TextDecoder('utf-8', { fatal: true }).decode(bytes) } : {}),
           };
         },
       },

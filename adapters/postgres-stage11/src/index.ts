@@ -8,8 +8,11 @@ import type {
   ActionExecutionRecord,
   ServerActionCandidate,
 } from '../../../packages/contracts/src/index.js';
+import {
+  ShotgunError,
+  actionPreviewDigest,
+  type ActionPreview,
 } from '../../../packages/contracts/src/index.js';
-import { ShotgunError, actionPreviewDigest, type ActionPreview } from '../../../packages/contracts/src/index.js';
 import type {
   ActionCandidateRepositoryPort,
   ActionExecutionRepositoryPort,
@@ -173,7 +176,10 @@ export class PostgresActionExecutionRepository implements ActionExecutionReposit
     actorId: string,
   ): Promise<{ readonly claimed: boolean; readonly record: ActionExecutionRecord }> {
     return this.transaction(async (client) => {
-      const result = await client.query<{ record_json: ActionExecutionRecord; snapshot_json: ActionPreview }>(
+      const result = await client.query<{
+        record_json: ActionExecutionRecord;
+        snapshot_json: ActionPreview;
+      }>(
         `SELECT executions.record_json, snapshots.snapshot_json
          FROM action.approval_records approvals
          JOIN action.executions executions ON executions.action_id = approvals.action_id
@@ -183,27 +189,34 @@ export class PostgresActionExecutionRepository implements ActionExecutionReposit
       );
       const row = result.rows[0];
       if (!row) throw stale('Approval Record is invalid.');
-      
+
       const current = row.record_json;
       const snapshot = row.snapshot_json;
-      
-      if (actionPreviewDigest(snapshot) !== snapshot.previewDigest) {
+
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { previewDigest, ...snapshotBase } = snapshot;
+      if (actionPreviewDigest(snapshotBase) !== snapshot.previewDigest) {
         throw stale('Preview Snapshot integrity compromised.');
       }
-      
-      current.preview = snapshot;
-      const approval = current.approval;
+
+      const recordWithSnapshot: ActionExecutionRecord = { ...current, preview: snapshot };
+      const approval = recordWithSnapshot.approval;
       if (
         !approval ||
         approval.approvalId !== approvalId ||
-        approval.snapshotId !== current.preview.snapshotId ||
-        approval.snapshotDigest !== current.preview.previewDigest
+        approval.snapshotId !== recordWithSnapshot.preview.snapshotId ||
+        approval.snapshotDigest !== recordWithSnapshot.preview.previewDigest
       )
         throw stale('Approval Record does not match the immutable Preview Snapshot.');
-      if (current.status !== 'APPROVED') return { claimed: false, record: current };
+      if (recordWithSnapshot.status !== 'APPROVED')
+        return { claimed: false, record: recordWithSnapshot };
       if (new Date(approval.expiresAt).getTime() <= new Date(now).getTime())
         throw stale('Approval Record has expired.');
-      const next: ActionExecutionRecord = { ...current, status: 'EXECUTING', updatedAt: now };
+      const next: ActionExecutionRecord = {
+        ...recordWithSnapshot,
+        status: 'EXECUTING',
+        updatedAt: now,
+      };
       await this.update(client, next);
       await this.appendAudit(client, {
         actionId: current.actionId,

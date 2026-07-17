@@ -62,7 +62,10 @@ export type ActionCandidateRepositoryPort = {
 export type IndependentVerificationPort = {
   getValidationDigest(projectId: string, candidateId: string): Promise<string | undefined>;
   getEvidenceSetDigest(projectId: string, candidateId: string): Promise<string | undefined>;
-  getSourceSensitivity(projectId: string, candidateId: string): Promise<ServerActionCandidate['sourceSensitivity'] | undefined>;
+  getSourceSensitivity(
+    projectId: string,
+    candidateId: string,
+  ): Promise<ServerActionCandidate['sourceSensitivity'] | undefined>;
 };
 
 export type ActionTransition = {
@@ -370,14 +373,28 @@ export const createActionExecutionModule = (
             compensation: Boolean(staged.candidate.compensationForActionId),
           });
           const independent = {
-            validationDigest: await independentVerification.getValidationDigest(projectId, staged.candidate.candidateId),
-            evidenceSetDigest: await independentVerification.getEvidenceSetDigest(projectId, staged.candidate.candidateId),
-            sourceSensitivity: await independentVerification.getSourceSensitivity(projectId, staged.candidate.candidateId),
+            validationDigest: await independentVerification.getValidationDigest(
+              projectId,
+              staged.candidate.candidateId,
+            ),
+            evidenceSetDigest: await independentVerification.getEvidenceSetDigest(
+              projectId,
+              staged.candidate.candidateId,
+            ),
+            sourceSensitivity: await independentVerification.getSourceSensitivity(
+              projectId,
+              staged.candidate.candidateId,
+            ),
           };
-          if (!independent.validationDigest || !independent.evidenceSetDigest || !independent.sourceSensitivity) {
+          if (
+            !independent.validationDigest ||
+            !independent.evidenceSetDigest ||
+            !independent.sourceSensitivity
+          ) {
             throw new ShotgunError({
               code: 'STALE_ACTION_SNAPSHOT',
-              safeMessage: 'Underlying Candidate, Evidence, or Source could not be independently verified.',
+              safeMessage:
+                'Underlying Candidate, Evidence, or Source could not be independently verified.',
               module: 'stage11.action-execution',
               operation: envelope.messageType,
               correlationId: envelope.correlationId,
@@ -525,12 +542,28 @@ export const createActionExecutionModule = (
               envelope.correlationId,
             );
             const independent = {
-              validationDigest: await independentVerification.getValidationDigest(projectId, candidate.candidate.candidateId),
-              evidenceSetDigest: await independentVerification.getEvidenceSetDigest(projectId, candidate.candidate.candidateId),
-              sourceSensitivity: await independentVerification.getSourceSensitivity(projectId, candidate.candidate.candidateId),
+              validationDigest: await independentVerification.getValidationDigest(
+                projectId,
+                candidate.candidate.candidateId,
+              ),
+              evidenceSetDigest: await independentVerification.getEvidenceSetDigest(
+                projectId,
+                candidate.candidate.candidateId,
+              ),
+              sourceSensitivity: await independentVerification.getSourceSensitivity(
+                projectId,
+                candidate.candidate.candidateId,
+              ),
             };
-            if (!independent.validationDigest || !independent.evidenceSetDigest || !independent.sourceSensitivity) {
-              throw stale('Underlying Candidate components could not be independently verified.', envelope.correlationId);
+            if (
+              !independent.validationDigest ||
+              !independent.evidenceSetDigest ||
+              !independent.sourceSensitivity
+            ) {
+              throw stale(
+                'Underlying Candidate components could not be independently verified.',
+                envelope.correlationId,
+              );
             }
             assertCandidateMatchesSnapshot(
               candidate,

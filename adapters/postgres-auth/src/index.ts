@@ -168,12 +168,37 @@ export class PostgresAuthRepository implements AuthRepositoryPort {
     return row?.status === 'active' ? principal(row, method, credentialId) : undefined;
   }
 
+  async updateSessionCsrf(sessionToken: string, newCsrfToken: string): Promise<void> {
+    await this.pool.query('UPDATE auth.sessions SET csrf_hash = $2 WHERE token_hash = $1', [
+      hashSecuritySecret(sessionToken),
+      hashSecuritySecret(newCsrfToken),
+    ]);
+  }
+
+  async updateSessionProject(sessionToken: string, activeProjectId: string): Promise<void> {
+    await this.pool.query('UPDATE auth.sessions SET active_project_id = $2 WHERE token_hash = $1', [
+      hashSecuritySecret(sessionToken),
+      activeProjectId,
+    ]);
+  }
+
   async revokeSessions(principalId: string): Promise<void> {
     await this.pool.query(
       'UPDATE auth.sessions SET revoked_at = now() WHERE principal_id = $1 AND revoked_at IS NULL',
       [principalId],
     );
   }
+
+  async verifyCurrentPassword(principalId: string, currentPassword: string): Promise<boolean> {
+    const result = await this.pool.query<{ password_hash: string }>(
+      'SELECT c.password_hash FROM auth.credentials c JOIN auth.principals p ON p.principal_id = c.principal_id WHERE c.principal_id = $1 AND c.disabled_at IS NULL AND p.status = $2',
+      [principalId, 'active'],
+    );
+    const row = result.rows[0];
+    if (!row) return false;
+    return verifyPassword(currentPassword, row.password_hash);
+  }
+
   async changePassword(principalId: string, passwordHash: string): Promise<void> {
     await this.pool.query(
       'UPDATE auth.credentials SET password_hash = $2, password_changed_at = now() WHERE principal_id = $1 AND disabled_at IS NULL',
@@ -230,6 +255,14 @@ export class PostgresAuthRepository implements AuthRepositoryPort {
       [principalId],
     );
   }
+  async listApiTokens(principalId: string): Promise<readonly Omit<IssuedApiToken, 'token'>[]> {
+    const result = await this.pool.query<{ token_id: string; expires_at: Date }>(
+      'SELECT token_id::text, expires_at FROM auth.api_tokens WHERE principal_id = $1 AND revoked_at IS NULL AND expires_at > now()',
+      [principalId],
+    );
+    return result.rows.map((r) => ({ tokenId: r.token_id, expiresAt: r.expires_at.toISOString() }));
+  }
+
   async findMembership(
     principalId: string,
     projectId: string,

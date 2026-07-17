@@ -365,7 +365,7 @@ const requestContext = (headers: SecurityHeaders) => {
       operation: 'trusted-request-context',
     });
   }
-  return { projectId: context.projectId, actor: context.actor, security: context.security };
+  return context;
 };
 
 const requireActionPreviewRequest = (
@@ -666,16 +666,35 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     actionCandidateRepository,
     {
       getValidationDigest: async (projectId, candidateId) => {
+        const v = await validationRepository.findByCandidateId(projectId, candidateId);
+        if (!v || v.status !== 'READY' || v.dimensions.some((d) => d.status === 'FAIL')) {
+          return undefined;
+        }
         const c = await actionCandidateRepository.find(projectId, candidateId);
         return c?.validationDigest;
       },
       getEvidenceSetDigest: async (projectId, candidateId) => {
         const c = await actionCandidateRepository.find(projectId, candidateId);
-        return c ? actionEvidenceSetDigest(c.evidence) : undefined;
+        if (!c) return undefined;
+        const freshEvidence = await Promise.all(
+          c.evidence.map(async (e) => await evidenceRepository.findById(projectId, e.evidenceId)),
+        );
+        const resolved = freshEvidence.filter((e) => e !== undefined);
+        if (resolved.length !== c.evidence.length) return undefined;
+        return actionEvidenceSetDigest(c.evidence);
       },
       getSourceSensitivity: async (projectId, candidateId) => {
         const c = await actionCandidateRepository.find(projectId, candidateId);
-        return c?.sourceSensitivity;
+        if (!c) return undefined;
+
+        const freshEvidence = await Promise.all(
+          c.evidence.map(async (e) => await evidenceRepository.findById(projectId, e.evidenceId)),
+        );
+
+        if (freshEvidence.some((e) => e?.sensitivity === 'restricted')) return 'restricted';
+        if (freshEvidence.some((e) => e?.sensitivity === 'private')) return 'private';
+
+        return c.sourceSensitivity;
       },
     },
     actionConnector,
@@ -930,10 +949,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     if (context.authenticationMethod === 'session') {
       await authRepository.revokeSessions(context.principalId);
     }
-    reply.header(
-      'Set-Cookie',
-      `${sessionCookieName}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`,
-    );
+    reply.header('Set-Cookie', `${sessionCookieName}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`);
     return { message: 'Logged out' };
   });
 
@@ -952,8 +968,17 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     '/auth/projects/active',
     async (request) => {
       const context = requestContext(request.headers);
-      const membership = await authRepository.findMembership(context.principalId, request.body.projectId);
-      if (!membership) throw new ShotgunError({ code: 'PROJECT_ACCESS_DENIED', safeMessage: 'Access denied.', module: 'shotgun-app', operation: 'set-active-project' });
+      const membership = await authRepository.findMembership(
+        context.principalId,
+        request.body.projectId,
+      );
+      if (!membership)
+        throw new ShotgunError({
+          code: 'PROJECT_ACCESS_DENIED',
+          safeMessage: 'Access denied.',
+          module: 'shotgun-app',
+          operation: 'set-active-project',
+        });
       const sessionToken = parseCookie(request.headers.cookie, sessionCookieName);
       if (sessionToken) {
         await authRepository.updateSessionProject(sessionToken, request.body.projectId);
@@ -962,11 +987,26 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     },
   );
 
-  server.post<{ Body: { passwordHash: string }; Headers: SecurityHeaders }>('/auth/password', async (request) => {
-    const context = requestContext(request.headers);
-    await authRepository.changePassword(context.principalId, request.body.passwordHash);
-    return { message: 'Password updated' };
-  });
+  server.post<{ Body: { currentPassword: string; newPassword: string }; Headers: SecurityHeaders }>(
+    '/auth/password',
+    async (request) => {
+      const context = requestContext(request.headers);
+      const valid = await authRepository.verifyCurrentPassword(
+        context.principalId,
+        request.body.currentPassword,
+      );
+      if (!valid)
+        throw new ShotgunError({
+          code: 'AUTHENTICATION_INVALID',
+          safeMessage: 'Invalid current password.',
+          module: 'shotgun-app',
+          operation: 'change-password',
+        });
+      const passwordHash = await hashPassword(request.body.newPassword);
+      await authRepository.changePassword(context.principalId, passwordHash);
+      return { message: 'Password updated' };
+    },
+  );
 
   server.post<{ Headers: SecurityHeaders }>('/auth/account/disable', async (request) => {
     const context = requestContext(request.headers);
@@ -980,15 +1020,64 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     return { message: 'Sessions revoked' };
   });
 
-  server.post<{ Body: { scopes: string[]; expiresAt: string }; Headers: SecurityHeaders }>('/auth/tokens', async (request) => {
-    const context = requestContext(request.headers);
-    const token = await authRepository.issueApiToken({
-      principalId: context.principalId,
-      scopes: request.body.scopes,
-      expiresAt: request.body.expiresAt,
-    });
-    return token;
-  });
+  server.post<{ Body: { scopes: string[]; expiresAt: string }; Headers: SecurityHeaders }>(
+    '/auth/tokens',
+    async (request) => {
+      const context = requestContext(request.headers);
+      if (!context.projectId)
+        throw new ShotgunError({
+          code: 'PROJECT_CONTEXT_REQUIRED',
+          safeMessage: 'A project context is required.',
+          module: 'shotgun-app',
+          operation: 'issue-api-token',
+        });
+      const membership = await authRepository.findMembership(
+        context.principalId,
+        context.projectId,
+      );
+      if (!membership)
+        throw new ShotgunError({
+          code: 'PROJECT_ACCESS_DENIED',
+          safeMessage: 'Access denied.',
+          module: 'shotgun-app',
+          operation: 'issue-api-token',
+        });
+
+      const allowedScopes = new Set(membership.scopes);
+      for (const scope of request.body.scopes) {
+        if (!allowedScopes.has(scope)) {
+          throw new ShotgunError({
+            code: 'AUTHORIZATION_DENIED',
+            safeMessage: `Scope ${scope} is not allowed.`,
+            module: 'shotgun-app',
+            operation: 'issue-api-token',
+          });
+        }
+      }
+
+      const maxExpiry = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
+      const requestedExpiry = new Date(request.body.expiresAt);
+      if (
+        isNaN(requestedExpiry.getTime()) ||
+        requestedExpiry > maxExpiry ||
+        requestedExpiry <= new Date()
+      ) {
+        throw new ShotgunError({
+          code: 'VALIDATION_ERROR',
+          safeMessage: 'Invalid or excessive expiry date.',
+          module: 'shotgun-app',
+          operation: 'issue-api-token',
+        });
+      }
+
+      const token = await authRepository.issueApiToken({
+        principalId: context.principalId,
+        scopes: request.body.scopes,
+        expiresAt: requestedExpiry.toISOString(),
+      });
+      return token;
+    },
+  );
 
   server.post<{ Headers: SecurityHeaders }>('/auth/tokens/revoke', async (request) => {
     const context = requestContext(request.headers);

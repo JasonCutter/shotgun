@@ -15,6 +15,7 @@ import {
   approveActionCommand,
   prepareActionCommand,
 } from '../helpers/stage-11.js';
+import { actionEvidenceSetDigest } from '../../packages/contracts/src/index.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
@@ -34,7 +35,19 @@ describe.runIf(pool)('Stage 12.1 P0-2 PostgreSQL Action persistence', () => {
     const executions = new PostgresActionExecutionRepository(pool!);
     const connector = new FakeDraftActionConnector();
     const kernel = new ShotgunKernel(new InProcessTransport());
-    kernel.register(createActionExecutionModule(executions, candidates, connector));
+    const independentVerification = {
+      getValidationDigest: async (p: string, c: string) =>
+        (await candidates.find(p, c))?.validationDigest,
+      getEvidenceSetDigest: async (p: string, c: string) => {
+        const cand = await candidates.find(p, c);
+        return cand ? actionEvidenceSetDigest(cand.evidence) : undefined;
+      },
+      getSourceSensitivity: async (p: string, c: string) =>
+        (await candidates.find(p, c))?.sourceSensitivity,
+    };
+    kernel.register(
+      createActionExecutionModule(executions, candidates, independentVerification, connector),
+    );
     await kernel.start();
     const candidate = actionServerCandidate('postgres');
     await candidates.stage(candidate);

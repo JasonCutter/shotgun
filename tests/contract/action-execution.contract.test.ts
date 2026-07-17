@@ -10,6 +10,7 @@ import type {
   ActionAuditEvent,
   ActionExecutionRecord,
 } from '../../packages/contracts/src/index.js';
+import { actionEvidenceSetDigest } from '../../packages/contracts/src/index.js';
 import { ShotgunKernel } from '../../packages/kernel/src/index.js';
 import { createActionExecutionModule } from '../../modules/action-execution/src/index.js';
 import {
@@ -27,8 +28,20 @@ const harness = async (
 ) => {
   const candidates = new InMemoryActionCandidateRepository();
   const repository = new InMemoryActionExecutionRepository();
+  const independentVerification = {
+    getValidationDigest: async (p: string, c: string) =>
+      (await candidates.find(p, c))?.validationDigest,
+    getEvidenceSetDigest: async (p: string, c: string) => {
+      const cand = await candidates.find(p, c);
+      return cand ? actionEvidenceSetDigest(cand.evidence) : undefined;
+    },
+    getSourceSensitivity: async (p: string, c: string) =>
+      (await candidates.find(p, c))?.sourceSensitivity,
+  };
   const kernel = new ShotgunKernel(new InProcessTransport());
-  kernel.register(createActionExecutionModule(repository, candidates, connector, clock));
+  kernel.register(
+    createActionExecutionModule(repository, candidates, independentVerification, connector, clock),
+  );
   await kernel.start();
   return { kernel, candidates, repository, connector };
 };

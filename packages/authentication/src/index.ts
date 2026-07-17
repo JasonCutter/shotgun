@@ -74,6 +74,7 @@ export type AuthRepositoryPort = {
   revokeSessions(principalId: string): Promise<void>;
   updateSessionCsrf(sessionToken: string, newCsrfToken: string): Promise<void>;
   updateSessionProject(sessionToken: string, activeProjectId: string): Promise<void>;
+  verifyCurrentPassword(principalId: string, currentPassword: string): Promise<boolean>;
   changePassword(principalId: string, passwordHash: string): Promise<void>;
   disablePrincipal(principalId: string): Promise<void>;
   issueApiToken(input: {
@@ -269,6 +270,12 @@ export class InMemoryAuthRepository implements AuthRepositoryPort {
       : undefined;
   }
 
+  async verifyCurrentPassword(principalId: string, currentPassword: string): Promise<boolean> {
+    const stored = this.#principals.get(principalId);
+    if (!stored || stored.principal.status !== 'active') return false;
+    return verifyPassword(currentPassword, stored.passwordHash);
+  }
+
   async changePassword(principalId: string, passwordHash: string): Promise<void> {
     const stored = this.#principals.get(principalId);
     if (!stored) throw new Error('Principal not found.');
@@ -328,7 +335,10 @@ export class InMemoryAuthRepository implements AuthRepositoryPort {
 
   async listApiTokens(principalId: string): Promise<readonly Omit<IssuedApiToken, 'token'>[]> {
     return [...this.#tokens.values()]
-      .filter((t) => t.principalId === principalId && !t.revokedAt && Date.parse(t.expiresAt) > Date.now())
+      .filter(
+        (t) =>
+          t.principalId === principalId && !t.revokedAt && Date.parse(t.expiresAt) > Date.now(),
+      )
       .map((t) => ({ tokenId: t.tokenId, expiresAt: t.expiresAt }));
   }
 

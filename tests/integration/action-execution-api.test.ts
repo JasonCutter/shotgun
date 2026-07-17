@@ -12,9 +12,25 @@ describe('Stage 12.1 P0-2 external Action API vertical slice', () => {
     const candidates = new InMemoryActionCandidateRepository();
     const candidate = actionServerCandidate('api', { projectId: 'shotgun' });
     await candidates.stage(candidate);
+
+    const evidenceRepository = {
+      findById: async (p: string, id: string) =>
+        ({ evidenceId: id, sensitivity: 'private' }) as unknown,
+    } as unknown;
+    const validationRepository = {
+      findByCandidateId: async () => ({ status: 'READY', dimensions: [] }) as unknown,
+    } as unknown;
     const app = await createApplication({
       actionConnector: connector,
       actionCandidateRepository: candidates,
+      // @ts-expect-error Mock repositories for test
+      evidenceRepository,
+      // @ts-expect-error Mock repositories for test
+      validationRepository,
+    });
+    app.server.setErrorHandler((error, request, reply) => {
+      console.error('FASTIFY ERROR:', error);
+      reply.status(500).send(error);
     });
 
     const forbidden = await app.server.inject({
@@ -39,6 +55,9 @@ describe('Stage 12.1 P0-2 external Action API vertical slice', () => {
         operationKey: 'CREATE_DRAFT',
       },
     });
+    if (previewResponse.statusCode !== 200) {
+      console.log('PREVIEW ERROR:', previewResponse.json());
+    }
     expect(previewResponse.statusCode).toBe(200);
     const preview = previewResponse.json().action;
     expect(preview).toMatchObject({

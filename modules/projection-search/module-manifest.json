@@ -1,0 +1,46 @@
+{
+  "id": "stage7.projection-search",
+  "version": "1.0.0",
+  "owner": "Shotgun Cited Search",
+  "compatibility": {
+    "runtime": ">=1.0.0 <2.0.0",
+    "contracts": [
+      { "name": "CanonicalCommitted", "range": ">=1.0.0 <2.0.0" },
+      { "name": "SearchCanonicalKnowledge", "range": ">=1.0.0 <2.0.0" },
+      { "name": "GetProjectionReadiness", "range": ">=1.0.0 <2.0.0" },
+      { "name": "RebuildSearchProjection", "range": ">=1.0.0 <2.0.0" },
+      { "name": "ProjectionReady", "range": ">=1.0.0 <2.0.0" }
+    ]
+  },
+  "deployment": { "modes": ["in_process", "worker"] },
+  "dataOwnership": {
+    "owns": ["projection.search_documents", "projection.watermarks"],
+    "readsViaPorts": [
+      "GetCanonicalSnapshot query",
+      "GetCanonicalClaim query",
+      "GetCanonicalCommit query",
+      "ListCanonicalHistory query"
+    ],
+    "directSchemaAccess": false
+  },
+  "consumes": {
+    "commands": [{ "name": "RebuildSearchProjection", "range": ">=1.0.0 <2.0.0" }],
+    "events": [{ "name": "CanonicalCommitted", "range": ">=1.0.0 <2.0.0" }]
+  },
+  "produces": {
+    "events": [{ "name": "ProjectionReady", "range": ">=1.0.0 <2.0.0" }]
+  },
+  "provides": {
+    "queries": [
+      { "name": "SearchCanonicalKnowledge", "range": ">=1.0.0 <2.0.0" },
+      { "name": "GetProjectionReadiness", "range": ">=1.0.0 <2.0.0" }
+    ],
+    "capabilities": [{ "name": "canonical-search-provider", "priority": 100 }]
+  },
+  "requires": { "capabilities": ["canonical-knowledge-provider"] },
+  "security": {
+    "requiredContext": ["actor", "project", "access_scope", "sensitivity"],
+    "defaultOnMissingContext": "deny"
+  },
+  "approvalPolicy": { "canWriteCanonical": false, "canExecuteExternalAction": false }
+}

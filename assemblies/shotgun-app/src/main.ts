@@ -24,6 +24,7 @@ import {
   PostgresComparisonRepository,
 } from '../../../adapters/postgres-stage5/src/index.js';
 import { PostgresCanonicalKnowledgeRepository } from '../../../adapters/postgres-stage6/src/index.js';
+import { PostgresSearchProjectionRepository } from '../../../adapters/postgres-stage7/src/index.js';
 import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
 import { createApplication } from './server.js';
 
@@ -54,6 +55,7 @@ const { server } = await createApplication({
   changeSetReviewRepository: new PostgresChangeSetReviewRepository(pool),
   canonicalSnapshot: canonicalKnowledgeRepository,
   canonicalKnowledgeRepository,
+  searchProjectionRepository: new PostgresSearchProjectionRepository(pool),
   textDiff: new JsDiffAdapter(),
   transformer: plainTextAdapter,
   evidenceLocator: plainTextAdapter,

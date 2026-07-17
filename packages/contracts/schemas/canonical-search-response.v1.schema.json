@@ -1,0 +1,71 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$defs": {
+    "readiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "projectedCanonicalVersion",
+        "canonicalVersion",
+        "lag",
+        "canonicalSnapshotDigest"
+      ],
+      "properties": {
+        "status": { "enum": ["READY", "STALE", "DEGRADED"] },
+        "projectedCanonicalVersion": { "type": "integer", "minimum": 0 },
+        "canonicalVersion": { "type": "integer", "minimum": 0 },
+        "lag": { "type": "integer", "minimum": 0 },
+        "projectedSnapshotDigest": { "type": "string" },
+        "canonicalSnapshotDigest": { "type": "string" },
+        "lastCommitId": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "reason": { "type": "string" }
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["query", "items", "readiness"],
+  "properties": {
+    "query": { "type": "string" },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "projectId",
+          "claimId",
+          "commitId",
+          "revisionId",
+          "canonicalVersion",
+          "claimText",
+          "sourceVersionId",
+          "evidenceIds",
+          "accessScope",
+          "sensitivity",
+          "projectedAt",
+          "score",
+          "matchType"
+        ],
+        "properties": {
+          "projectId": { "type": "string" },
+          "claimId": { "type": "string" },
+          "commitId": { "type": "string" },
+          "revisionId": { "type": "string" },
+          "canonicalVersion": { "type": "integer", "minimum": 0 },
+          "claimText": { "type": "string" },
+          "sourceVersionId": { "type": "string" },
+          "evidenceIds": { "type": "array", "items": { "type": "string" } },
+          "accessScope": { "type": "array", "items": { "type": "string" } },
+          "sensitivity": { "enum": ["public", "internal", "private", "restricted"] },
+          "projectedAt": { "type": "string" },
+          "score": { "type": "number", "minimum": 0 },
+          "matchType": { "enum": ["FULL_TEXT", "TRIGRAM", "SUBSTRING"] }
+        }
+      }
+    },
+    "readiness": { "$ref": "#/$defs/readiness" }
+  }
+}

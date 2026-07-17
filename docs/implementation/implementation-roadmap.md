@@ -589,3 +589,7 @@ Stage 완료 PR에는 다음을 포함한다.
 ### v0.1 — 2026-07-16
 
 - Stage 0~12 최초 구현 순서와 완료 조건 정의
+
+## Stage 7 완료 기록 — 2026-07-17
+
+Stage 7 Search, Citation and Cited Answer는 `COMPLETE`다. PostgreSQL FTS·`pg_trgm`, Projection Watermark, Canonical-only 검색, 문장별 Evidence Citation, Stale 차단, rebuild, Ask UI가 구현되었다. Stage 2→7 Walking Skeleton MVP E2E가 연결되었다. 상세 근거는 [Stage 7 OSS Integration Review](stage-validations/stage-7-oss-integration-review.md)와 [ADR-087](../architecture/adr/ADR-087-stage-7-cited-search-projection.md)을 따른다.

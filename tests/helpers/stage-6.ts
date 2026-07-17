@@ -41,6 +41,7 @@ import {
   type CanonicalSnapshot,
   type DraftChangeSet,
   type MessageTransport,
+  type ShotgunModule,
 } from '../../packages/kernel/src/index.js';
 import {
   changesQuery,
@@ -70,6 +71,7 @@ type HarnessOptions = {
   readonly canonicalRepository?: InMemoryCanonicalKnowledgeRepository;
   readonly reviewRepository?: InMemoryChangeSetReviewRepository;
   readonly clock?: MutableClock;
+  readonly additionalModules?: readonly ShotgunModule[];
 };
 
 export const createStage6Harness = async (options: HarnessOptions = {}) => {
@@ -107,6 +109,7 @@ export const createStage6Harness = async (options: HarnessOptions = {}) => {
     createComparisonModule(comparisonRepository, canonicalRepository, new JsDiffAdapter()),
     createChangeSetReviewModule(reviewRepository),
     createCanonicalKnowledgeModule(canonicalRepository, clock),
+    ...(options.additionalModules ?? []),
   );
   await kernel.start();
   return {

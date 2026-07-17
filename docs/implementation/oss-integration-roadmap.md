@@ -461,3 +461,11 @@ rollback: replace with native evidence adapter
 - 이미 채택된 OSS를 교체할 때 과거 결정을 삭제하지 않는다.
 - 특정 OSS의 내부 타입이나 DB Schema를 Shotgun Canonical 계약으로 승격하지 않는다.
 - `ADOPTED`는 영구 고정이 아니라 현재 Release에서 검증된 선택을 의미한다.
+
+## Stage 7 확정 기록 — 2026-07-17
+
+- PostgreSQL FTS와 `pg_trgm`: `ADOPT`
+- gbrain Search evidence·citation validator·quality fixture: `REFERENCE_ONLY`
+- ddsyasas Ask/Chat UI 흐름: `REFERENCE_ONLY`
+- pgvector 0.8.5: `DEFER`
+- 결과: OSS Gate `COMPLETE`, Walking Skeleton MVP 선언 가능

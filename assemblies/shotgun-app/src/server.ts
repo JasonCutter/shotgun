@@ -23,6 +23,7 @@ import {
   InMemoryComparisonRepository,
 } from '../../../adapters/stage5-in-memory/src/index.js';
 import { InMemoryCanonicalKnowledgeRepository } from '../../../adapters/stage6-in-memory/src/index.js';
+import { InMemorySearchProjectionRepository } from '../../../adapters/stage7-in-memory/src/index.js';
 import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
 import { InProcessTransport } from '../../../adapters/transport-in-process/src/index.js';
 import {
@@ -38,6 +39,8 @@ import {
   type CanonicalCommitResult,
   type CanonicalHistoryEvent,
   type CanonicalSnapshot,
+  type CanonicalSearchResponse,
+  type CitedAnswer,
   type ClaimCandidate,
   type ComparisonResult,
   type DraftChangeSet,
@@ -87,6 +90,11 @@ import {
   createCanonicalKnowledgeModule,
   type CanonicalKnowledgeRepositoryPort,
 } from '../../../modules/canonical-knowledge/src/index.js';
+import { createCitedAnswerModule } from '../../../modules/cited-answer/src/index.js';
+import {
+  createProjectionSearchModule,
+  type SearchProjectionRepositoryPort,
+} from '../../../modules/projection-search/src/index.js';
 import {
   createTransformationModule,
   type PlainTextTransformerPort,
@@ -132,6 +140,9 @@ type CanonicalCommitRequest = {
   readonly commitId: string;
 };
 
+type SearchRequest = { readonly query: string; readonly limit?: number };
+type AskRequest = { readonly question: string; readonly limit?: number };
+
 type ReviewDecisionRequest = ChangeSetRequest & {
   readonly decisionId?: string;
   readonly expectedRevisionNumber: 1;
@@ -166,8 +177,51 @@ type ApplicationOptions = {
   readonly comparisonRepository?: ComparisonRepositoryPort;
   readonly changeSetReviewRepository?: ChangeSetReviewRepositoryPort;
   readonly canonicalKnowledgeRepository?: CanonicalKnowledgeRepositoryPort;
+  readonly searchProjectionRepository?: SearchProjectionRepositoryPort;
   readonly closeResources?: () => Promise<void>;
 };
+
+const askPage = (): string => `<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Shotgun Ask</title>
+  <style>
+    body{font-family:system-ui,sans-serif;max-width:760px;margin:40px auto;padding:0 20px;color:#172033}
+    form{display:flex;gap:8px} input{flex:1;padding:12px} button{padding:12px 18px}
+    article{margin-top:24px;padding:16px;border:1px solid #d9e0ea;border-radius:10px}
+    small{color:#526173} .error{color:#a11} ul{padding-left:22px}
+  </style>
+</head>
+<body>
+  <h1>Shotgun Ask</h1>
+  <p>승인된 Canonical Claim만 검색하며, 모든 답변에 원문 근거를 표시합니다.</p>
+  <form id="ask-form">
+    <input id="question" required placeholder="예: Milo의 몸무게는?">
+    <button>질문</button>
+  </form>
+  <p id="state"></p><section id="answer"></section>
+  <script>
+    const form=document.querySelector('#ask-form');
+    const state=document.querySelector('#state');
+    const answer=document.querySelector('#answer');
+    form.addEventListener('submit',async(event)=>{
+      event.preventDefault(); answer.replaceChildren(); state.textContent='검색 중…';
+      try {
+        const response=await fetch('/ask/query',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({question:document.querySelector('#question').value})});
+        const body=await response.json(); if(!response.ok) throw new Error(body.message||'요청 실패');
+        const result=body.answer; state.textContent='Projection: '+result.readiness.status+' / 지연: '+result.readiness.lag;
+        if(result.uncertainty){const p=document.createElement('p');p.className='error';p.textContent=result.uncertainty;answer.append(p);}
+        result.statements.forEach(statement=>{
+          const article=document.createElement('article');const p=document.createElement('p');p.textContent=statement.text;article.append(p);
+          const list=document.createElement('ul');statement.citations.forEach(citation=>{const li=document.createElement('li');const link=document.createElement('a');link.href='/evidence/'+encodeURIComponent(citation.evidenceId);link.textContent='원문: '+citation.exactQuote;li.append(link);list.append(li);});article.append(list);answer.append(article);
+        });
+      } catch(error) { state.textContent=''; const p=document.createElement('p');p.className='error';p.textContent=error.message;answer.append(p); }
+    });
+  </script>
+</body>
+</html>`;
 
 const requestContext = (headers: SecurityHeaders) => {
   const sensitivity = headers['x-sensitivity'] ?? 'private';
@@ -344,6 +398,8 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     options.changeSetReviewRepository ?? new InMemoryChangeSetReviewRepository();
   const canonicalKnowledgeRepository =
     options.canonicalKnowledgeRepository ?? new InMemoryCanonicalKnowledgeRepository();
+  const searchProjectionRepository =
+    options.searchProjectionRepository ?? new InMemorySearchProjectionRepository();
   const canonicalSnapshot = options.canonicalSnapshot ?? canonicalKnowledgeRepository;
   const textDiff = options.textDiff ?? new JsDiffAdapter();
   const aiProvider = options.aiProvider ?? new FakeAIProviderAdapter();
@@ -370,6 +426,8 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   const comparison = createComparisonModule(comparisonRepository, canonicalSnapshot, textDiff);
   const changeSetReview = createChangeSetReviewModule(changeSetReviewRepository);
   const canonicalKnowledge = createCanonicalKnowledgeModule(canonicalKnowledgeRepository);
+  const projectionSearch = createProjectionSearchModule(searchProjectionRepository);
+  const citedAnswer = createCitedAnswerModule();
   const kernel = new ShotgunKernel(options.transport ?? new InProcessTransport());
   kernel.register(
     ping.module,
@@ -384,6 +442,8 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     comparison,
     changeSetReview,
     canonicalKnowledge,
+    projectionSearch,
+    citedAnswer,
   );
   await kernel.start();
 
@@ -565,6 +625,95 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
         }),
       );
       return { snapshot: delivery.result.payload };
+    },
+  );
+
+  server.post<{ Body: SearchRequest; Headers: SecurityHeaders }>('/search', async (request) => {
+    const delivery = await kernel.connector.query<CanonicalSearchResponse>(
+      createQuery({
+        messageType: 'SearchCanonicalKnowledge',
+        schemaVersion: '1.0.0',
+        producerModule: 'shotgun-app',
+        producerVersion: '1.0.0',
+        ...requestContext(request.headers),
+        payload: request.body,
+      }),
+    );
+    return { search: delivery.result.payload };
+  });
+
+  server.post<{ Body: AskRequest; Headers: SecurityHeaders }>('/ask/query', async (request) => {
+    const delivery = await kernel.connector.query<CitedAnswer>(
+      createQuery({
+        messageType: 'AskCanonicalKnowledge',
+        schemaVersion: '1.0.0',
+        producerModule: 'shotgun-app',
+        producerVersion: '1.0.0',
+        ...requestContext(request.headers),
+        payload: request.body,
+      }),
+    );
+    return { answer: delivery.result.payload };
+  });
+
+  server.post<{ Body: Record<string, never>; Headers: SecurityHeaders }>(
+    '/projection/readiness',
+    async (request) => {
+      const delivery = await kernel.connector.query(
+        createQuery({
+          messageType: 'GetProjectionReadiness',
+          schemaVersion: '1.0.0',
+          producerModule: 'shotgun-app',
+          producerVersion: '1.0.0',
+          ...requestContext(request.headers),
+          payload: request.body ?? {},
+        }),
+      );
+      return { readiness: delivery.result.payload };
+    },
+  );
+
+  server.post<{ Body: Record<string, never>; Headers: SecurityHeaders }>(
+    '/projection/rebuild',
+    async (request) => {
+      const context = requestContext(request.headers);
+      const command = createCommand({
+        messageType: 'RebuildSearchProjection',
+        schemaVersion: '1.0.0',
+        producerModule: 'shotgun-app',
+        producerVersion: '1.0.0',
+        idempotencyKey: `projection-rebuild:${context.projectId}:${randomUUID()}`,
+        ...context,
+        payload: request.body ?? {},
+      });
+      const delivery = await kernel.connector.sendCommand(command);
+      return { commandStatus: delivery.status, result: delivery.result };
+    },
+  );
+
+  server.get('/ask', async (_request, reply) =>
+    reply.type('text/html; charset=utf-8').send(askPage()),
+  );
+
+  server.get<{ Params: EvidenceRequest; Headers: SecurityHeaders }>(
+    '/evidence/:evidenceId',
+    async (request, reply) => {
+      const delivery = await kernel.connector.query<EvidenceSpan>(
+        createQuery({
+          messageType: 'GetEvidenceSpan',
+          schemaVersion: '1.0.0',
+          producerModule: 'shotgun-app',
+          producerVersion: '1.0.0',
+          ...requestContext(request.headers),
+          payload: request.params,
+        }),
+      );
+      const span = delivery.result.payload;
+      return reply
+        .type('text/html; charset=utf-8')
+        .send(
+          `<!doctype html><html lang="ko"><meta charset="utf-8"><title>Evidence</title><body><h1>원문 근거</h1><blockquote>${escapeHtml(span.quote.exact)}</blockquote><dl><dt>Evidence ID</dt><dd>${escapeHtml(span.evidenceId)}</dd><dt>Source Version</dt><dd>${escapeHtml(span.sourceVersionId)}</dd><dt>Pointer</dt><dd>${escapeHtml(span.pointer)}</dd></dl></body></html>`,
+        );
     },
   );
 
@@ -804,6 +953,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       comparisons: comparisonRepository,
       reviews: changeSetReviewRepository,
       canonical: canonicalKnowledgeRepository,
+      projection: searchProjectionRepository,
     },
     storage: assetStorage,
     state: {

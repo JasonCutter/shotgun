@@ -14,7 +14,7 @@
     {
       "id": "postgresql",
       "name": "PostgreSQL",
-      "stages": [0, 1, 2, 3, 6],
+      "stages": [0, 1, 2, 3, 6, 7],
       "officialSource": "https://github.com/postgres/postgres",
       "pin": {
         "type": "docker-digest",
@@ -26,17 +26,70 @@
         "evidence": "Official PostgreSQL distribution and Docker Official Image"
       },
       "decision": "ADOPT",
-      "scope": "Development database, Stage 2 asset metadata, Stage 3 transformation/evidence persistence, and Stage 6 Canonical transaction, row locking, append-only history, and Outbox",
+      "scope": "Development database, Stage 2 asset metadata, Stage 3 transformation/evidence persistence, Stage 6 Canonical transaction and Outbox, and Stage 7 FTS/pg_trgm search projection",
       "security": "Local credentials only; production secrets remain outside source control",
       "maintenance": "Major version 16 is fixed; patch and image digest updates require a registry change",
       "evidence": [
         "docker image digest verified",
         "PostgreSQL 16.14 runtime verified",
-        "Stage 6 atomic rollback, restart, row-lock concurrency, append-only, and SKIP LOCKED Outbox tests"
+        "Stage 6 atomic rollback, restart, row-lock concurrency, append-only, and SKIP LOCKED Outbox tests",
+        "Stage 7 FTS, trigram, GIN index, Watermark restart, and atomic rebuild tests"
       ],
       "boundary": "Domain modules access PostgreSQL only through repository ports",
       "replacement": "Replace the PostgreSQL adapter without changing module contracts",
       "recheckTrigger": "PostgreSQL major upgrade or managed database migration"
+    },
+    {
+      "id": "postgresql-pg-trgm",
+      "name": "PostgreSQL pg_trgm",
+      "stages": [7],
+      "officialSource": "https://github.com/postgres/postgres/tree/REL_16_14/contrib/pg_trgm",
+      "pin": {
+        "type": "git-commit",
+        "value": "0d1c00c624fa7367d4a895f44381887757289682"
+      },
+      "license": {
+        "spdx": "PostgreSQL",
+        "status": "VERIFIED",
+        "evidence": "PostgreSQL REL_16_14 source tree and COPYRIGHT"
+      },
+      "decision": "ADOPT",
+      "scope": "Typo-tolerant Canonical Claim search behind SearchProjectionRepositoryPort",
+      "security": "Extension runs inside the pinned PostgreSQL image and receives only access-filtered Projection text",
+      "maintenance": "Version follows the pinned PostgreSQL 16.14 image and source commit",
+      "evidence": [
+        "pg_trgm extension availability and migration verified",
+        "GIN trigram index and typo retrieval database tests"
+      ],
+      "boundary": "Only the PostgreSQL Stage 7 adapter imports pg_trgm SQL operators",
+      "replacement": "A replacement search adapter must pass the same Canonical-only and citation contracts",
+      "recheckTrigger": "PostgreSQL major upgrade or search relevance regression"
+    },
+    {
+      "id": "pgvector",
+      "name": "pgvector",
+      "stages": [7],
+      "officialSource": "https://github.com/pgvector/pgvector",
+      "pin": {
+        "type": "git-commit",
+        "value": "159b79aaad5983fb7459c1e3df2897fbb2d11788"
+      },
+      "license": {
+        "spdx": "PostgreSQL",
+        "status": "VERIFIED",
+        "evidence": "LICENSE at official v0.8.5 tag"
+      },
+      "decision": "DEFER",
+      "scope": "Future semantic retrieval using exact or approximate nearest-neighbor indexes",
+      "security": "No embedding provider, vector data path, or extension is enabled in the Stage 7 MVP",
+      "maintenance": "v0.8.5 is the reviewed comparison baseline; no runtime dependency installed",
+      "evidence": [
+        "official exact and approximate nearest-neighbor capabilities reviewed",
+        "current approved Claim fixtures are satisfied by deterministic FTS and trigram retrieval"
+      ],
+      "boundary": "Future implementation must remain behind SearchProjectionRepositoryPort",
+      "replacement": "PostgreSQL FTS and pg_trgm remain the deterministic fallback",
+      "recheckTrigger": "Measured semantic recall gap on a representative Canonical Claim benchmark"
     },
     {
       "id": "ajv",
@@ -65,7 +118,7 @@
     {
       "id": "gbrain",
       "name": "garrytan/gbrain",
-      "stages": [0, 1, 2, 6],
+      "stages": [0, 1, 2, 6, 7],
       "officialSource": "https://github.com/garrytan/gbrain",
       "pin": {
         "type": "git-commit",
@@ -77,18 +130,19 @@
         "evidence": "LICENSE at the pinned commit"
       },
       "decision": "REFERENCE_ONLY",
-      "scope": "Minion retry, timeout, idempotency, PostgreSQL locking, Page input, namespace, append-only timeline, migration completion, and recovery patterns",
+      "scope": "Minion retry/idempotency, PostgreSQL locking, append-only timeline, migration/recovery, and Stage 7 search evidence, citation validation, dedup, and quality-fixture patterns",
       "security": "No gbrain runtime, database, or provider configuration is embedded in Shotgun",
       "maintenance": "Pinned v0.42.58.0 validation baseline; upstream changes are not consumed automatically",
       "evidence": [
         "77.9% verified score",
         "86% validation coverage",
         "Minion lock and timeout recovery evidence",
-        "Stage 6 Page, Fact, Timeline, lock, migration, and idempotency mapping review"
+        "Stage 6 Page, Fact, Timeline, lock, migration, and idempotency mapping review",
+        "Stage 7 pinned keyword, evidence classification, citation validator, and search quality fixture review"
       ],
       "boundary": "Any future reuse must sit behind Shotgun Job, Repository, or Module ports",
       "replacement": "Shotgun-owned Canonical contracts and repositories can evolve without the gbrain runtime or database",
-      "recheckTrigger": "Before Stage 7 search, graph, timeline projection, or a general durable Job runtime"
+      "recheckTrigger": "Before Stage 9 graph/timeline expansion or a general durable Job runtime"
     },
     {
       "id": "transactional-outbox-pattern",
@@ -331,7 +385,7 @@
     {
       "id": "ddsyasas-llm-wiki",
       "name": "ddsyasas/llm-wiki",
-      "stages": [0, 2, 4, 5],
+      "stages": [0, 2, 4, 5, 7],
       "officialSource": "https://github.com/ddsyasas/llm-wiki",
       "pin": {
         "type": "git-commit",
@@ -343,17 +397,18 @@
         "evidence": "LICENSE SHA-256 22ADFCBA2FED373520C8CDA4DFC2204EDD1AFA1805EBD6FB16B110EEDE9A1710"
       },
       "decision": "REFERENCE_ONLY",
-      "scope": "Source intake form, action-centered home, presentation hierarchy, and Stage 5 review-entry hierarchy",
+      "scope": "Source intake, action-centered presentation, Stage 5 review entry, and Stage 7 Ask/Chat input, busy/error state, and source-navigation hierarchy",
       "security": "Backend is excluded because of SSRF and arbitrary absolute-path workspace risks",
       "maintenance": "195 tests passed and 1 external smoke test skipped at the pinned baseline",
       "evidence": [
         "responsive UI review",
         "independent adapter PoC",
-        "frontend/backend coupling map"
+        "frontend/backend coupling map",
+        "Stage 7 pinned ChatView optimistic input, busy state, error recovery, and server refresh review"
       ],
       "boundary": "Only UI patterns may consume Shotgun typed APIs; backend and storage remain excluded",
       "replacement": "UI can be rebuilt from the recorded workflow without carrying upstream runtime code",
-      "recheckTrigger": "When the Shotgun Web UI and Source Intake screen are implemented"
+      "recheckTrigger": "Before adopting richer conversation history or chat persistence"
     },
     {
       "id": "inkeep-open-knowledge",

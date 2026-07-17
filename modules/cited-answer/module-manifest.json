@@ -1,0 +1,31 @@
+{
+  "id": "stage7.cited-answer",
+  "version": "1.0.0",
+  "owner": "Shotgun Cited Answer",
+  "compatibility": {
+    "runtime": ">=1.0.0 <2.0.0",
+    "contracts": [
+      { "name": "AskCanonicalKnowledge", "range": ">=1.0.0 <2.0.0" },
+      { "name": "SearchCanonicalKnowledge", "range": ">=1.0.0 <2.0.0" },
+      { "name": "GetEvidenceSpan", "range": ">=1.0.0 <2.0.0" }
+    ]
+  },
+  "deployment": { "modes": ["in_process", "worker"] },
+  "dataOwnership": {
+    "owns": [],
+    "readsViaPorts": ["SearchCanonicalKnowledge query", "GetEvidenceSpan query"],
+    "directSchemaAccess": false
+  },
+  "consumes": { "commands": [], "events": [] },
+  "produces": { "events": [] },
+  "provides": {
+    "queries": [{ "name": "AskCanonicalKnowledge", "range": ">=1.0.0 <2.0.0" }],
+    "capabilities": [{ "name": "cited-answer-provider", "priority": 100 }]
+  },
+  "requires": { "capabilities": ["canonical-search-provider", "evidence-resolver"] },
+  "security": {
+    "requiredContext": ["actor", "project", "access_scope", "sensitivity"],
+    "defaultOnMissingContext": "deny"
+  },
+  "approvalPolicy": { "canWriteCanonical": false, "canExecuteExternalAction": false }
+}

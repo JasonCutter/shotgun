@@ -42,6 +42,8 @@ type Lockfile = {
 const root = process.cwd();
 const requiredIds = [
   'postgresql',
+  'postgresql-pg-trgm',
+  'pgvector',
   'ajv',
   'gbrain',
   'lucas-llmwiki',
@@ -81,6 +83,7 @@ const stageReviewFiles = [
   'docs/implementation/stage-validations/stage-4-oss-integration-review.md',
   'docs/implementation/stage-validations/stage-5-oss-integration-review.md',
   'docs/implementation/stage-validations/stage-6-oss-integration-review.md',
+  'docs/implementation/stage-validations/stage-7-oss-integration-review.md',
 ] as const;
 
 const readJson = async <T>(relativePath: string): Promise<T> =>
@@ -176,7 +179,7 @@ const main = async (): Promise<void> => {
   }
 
   console.log(
-    `OSS Gate passed: ${registry.entries.length} decisions, ${requiredIds.length} baseline references, Stage 0-6 reviews complete.`,
+    `OSS Gate passed: ${registry.entries.length} decisions, ${requiredIds.length} baseline references, Stage 0-7 reviews complete.`,
   );
 };
 

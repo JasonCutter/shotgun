@@ -24,6 +24,8 @@ describe('Stage 1 application', () => {
         'stage5.comparison',
         'stage5.change-set-review',
         'stage6.canonical-knowledge',
+        'stage7.projection-search',
+        'stage7.cited-answer',
       ],
       capabilities: [
         'ping-command',
@@ -42,6 +44,8 @@ describe('Stage 1 application', () => {
         'change-set-review-provider',
         'canonical-knowledge-provider',
         'canonical-snapshot-provider',
+        'canonical-search-provider',
+        'cited-answer-provider',
       ],
     });
 

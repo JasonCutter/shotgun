@@ -1,8 +1,8 @@
 # Stage 12.1 P0-1 - Authenticated Security Context Implementation Plan
 
-- 상태: **ADR-XXX 승인 대기 / 구현 시작 금지**
+- 상태: **ADR-093 Accepted / 구현 시작 금지 (별도 구현 승인 대기)**
 - 범위: HTTP Identity and Authorization Boundary
-- ADR 초안: [ADR-XXX](../architecture/adr/ADR-XXX-http-identity-and-authorization-boundary.md)
+- ADR: [ADR-093](../architecture/adr/ADR-093-http-identity-and-authorization-boundary.md)
 - 상위 전략: [Stage 12.1 Hardening Strategy](stage-12-1-hardening-strategy.md)
 - 제외: P0-2, durable AI/Outbox, search quality, packaging, CI, backup/restore의 구현
 
@@ -21,7 +21,7 @@ HTTP 요청의 신원·project·scope·sensitivity를 서버가 결정하고, tr
 
 ### Step 0. 승인과 시작 조건
 
-1. ADR-XXX를 Accepted로 승인하고, `ADR-092`와 충돌하지 않는 번호를 배정한다.
+1. ADR-093이 Accepted임을 기록한다. 제품 구현은 별도 구현 승인 전까지 시작하지 않는다.
 2. local account/password, opaque API token, immediate header cutover, development mode hard block을 승인한다.
 3. 기존 P0 reproduction을 보존하고, 이후에는 같은 공격이 explicit denial인지 확인한다.
 4. P0-2 request body, handler, repository는 변경하지 않는다.
@@ -179,7 +179,7 @@ P0-1 implementation merge와 동시에 아래를 환경 구분 없이 400 `LEGAC
 
 ### P0-1 Done
 
-- ADR-XXX Accepted 및 번호 확정
+- ADR-093 Accepted
 - local account/password, Browser session, opaque API token, local-only adapter contract 통과
 - explicit Owner bootstrap과 credential lifecycle 구현·검증
 - membership/scope/sensitivity의 server-side decision 동작
@@ -190,4 +190,4 @@ P0-1 implementation merge와 동시에 아래를 환경 구분 없이 400 `LEGAC
 
 ## 7. Stop condition
 
-이 문서는 구현 승인 자료다. ADR과 별도 구현 승인이 있기 전에는 제품 코드, DB migration, 설정, 테스트 코드를 수정하지 않는다. P0-2로 넘어가지 않는다.
+이 문서는 구현 승인 자료다. ADR-093과 별도 구현 승인이 있기 전에는 제품 코드, DB migration, 설정, 테스트 코드를 수정하지 않는다. P0-2는 ADR-094와 별도 구현 승인으로만 진행한다.

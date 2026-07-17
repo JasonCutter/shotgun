@@ -1,8 +1,8 @@
-# ADR-XXX - HTTP Identity and Authorization Boundary
+# ADR-093 - HTTP Identity and Authorization Boundary
 
-- 상태: **Proposed — Stage 12.1 P0-1 사용자 승인 대기**
+- 상태: **Accepted**
 - 날짜: 2026-07-17
-- ADR 번호: `ADR-092`는 이미 Stage 12 Module and OSS Reuse Validation에 사용 중이므로 사용하지 않는다. 승인 시 다음 빈 번호를 배정한다.
+- ADR 번호: `ADR-093`
 - 상위 전략: [Stage 12.1 Hardening Strategy](../../engineering/stage-12-1-hardening-strategy.md)
 - 관련 결정: [ADD](../module-architecture/shotgun-module-architecture-add.md), [ADR-077](../module-architecture/adr/ADR-077-common-contracts-and-connector-runtime.md), [ADR-080](ADR-080-stage-1-kernel-contracts-and-runtime.md), [ADR-086](ADR-086-stage-6-canonical-commit-history-outbox.md), [ADR-091](ADR-091-stage-11-risk-controlled-external-action.md)
 
@@ -10,7 +10,7 @@
 
 현재 HTTP `requestContext()`는 `x-project-id`, `x-actor-id`, `x-access-scope`, `x-sensitivity`를 Message Envelope의 신원·권한 값으로 사용하며, 값이 없으면 `shotgun`/`owner`/`owner` 기본값을 만든다. Module manifest와 Connector Runtime은 context 누락과 scope 부족을 거부하지만, context의 출처가 클라이언트이므로 이 검사는 trust boundary가 아니다.
 
-이 ADR은 HTTP 인증·인가 경계만 결정한다. Canonical 단일 write, Evidence, Approval, Action 흐름은 유지한다. P0-2 Action Candidate server-side binding은 별도 후속 작업이며 여기서 구현하거나 변경하지 않는다.
+이 ADR은 HTTP 인증·인가 경계만 결정한다. Canonical 단일 write, Evidence, Approval, Action 흐름은 유지한다. P0-2 Action Candidate server-side binding은 [ADR-094](ADR-094-action-candidate-server-side-binding-and-approval-snapshot.md)에서 별도로 결정하며 여기서 구현하거나 변경하지 않는다.
 
 ## Decision
 

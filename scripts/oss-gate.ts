@@ -75,6 +75,8 @@ const requiredIds = [
   'openpyxl',
   'beautifulsoup4',
   'pillow',
+  'networkx',
+  'cytoscape-js',
 ] as const;
 const decisions = new Set<Decision>([
   'ADOPT',
@@ -95,6 +97,7 @@ const stageReviewFiles = [
   'docs/implementation/stage-validations/stage-6-oss-integration-review.md',
   'docs/implementation/stage-validations/stage-7-oss-integration-review.md',
   'docs/implementation/stage-validations/stage-8-oss-integration-review.md',
+  'docs/implementation/stage-validations/stage-9-oss-integration-review.md',
 ] as const;
 
 const readJson = async <T>(relativePath: string): Promise<T> =>
@@ -110,12 +113,15 @@ const main = async (): Promise<void> => {
   const registry = await readJson<Registry>('docs/implementation/oss-source-registry.json');
   const lockfile = await readJson<Lockfile>('package-lock.json');
   const compose = await readFile(path.join(root, 'compose.yaml'), 'utf8');
-  const pythonLock = await readFile(
-    path.join(root, 'adapters/document-format-python/requirements.lock'),
-    'utf8',
+  const pythonLocks = await Promise.all(
+    [
+      'adapters/document-format-python/requirements.lock',
+      'adapters/networkx-impact-oracle/requirements.lock',
+    ].map((relativePath) => readFile(path.join(root, relativePath), 'utf8')),
   );
   const pythonPins = new Map(
-    pythonLock
+    pythonLocks
+      .join('\n')
       .split(/\r?\n/u)
       .filter((line) => line.trim() && !line.trim().startsWith('#'))
       .map((line) => line.split('==', 2))
@@ -215,7 +221,7 @@ const main = async (): Promise<void> => {
   }
 
   console.log(
-    `OSS Gate passed: ${registry.entries.length} decisions, ${requiredIds.length} baseline references, Stage 0-8 reviews complete.`,
+    `OSS Gate passed: ${registry.entries.length} decisions, ${requiredIds.length} baseline references, Stage 0-9 reviews complete.`,
   );
 };
 

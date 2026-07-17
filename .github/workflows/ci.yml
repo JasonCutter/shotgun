@@ -37,8 +37,13 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
-          cache-dependency-path: adapters/document-format-python/requirements.lock
-      - run: python -m pip install -r adapters/document-format-python/requirements.lock
+          cache-dependency-path: |
+            adapters/document-format-python/requirements.lock
+            adapters/networkx-impact-oracle/requirements.lock
+      - run: >-
+          python -m pip install
+          -r adapters/document-format-python/requirements.lock
+          -r adapters/networkx-impact-oracle/requirements.lock
       - run: npm ci
       - run: npm run oss:audit
       - run: npm sbom --sbom-format cyclonedx > sbom.cdx.json

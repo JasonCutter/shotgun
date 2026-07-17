@@ -68,6 +68,7 @@ const migrate = async (): Promise<void> => {
 const reset = async (): Promise<void> => {
   await withClient(async (client) => {
     await client.query('DROP SCHEMA IF EXISTS projection CASCADE');
+    await client.query('DROP SCHEMA IF EXISTS knowledge CASCADE');
     await client.query('DROP SCHEMA IF EXISTS canonical CASCADE');
     await client.query('DROP SCHEMA IF EXISTS intake CASCADE');
     await client.query('DROP SCHEMA IF EXISTS asset CASCADE');
@@ -138,6 +139,12 @@ const verify = async (): Promise<void> => {
     const projectionWatermarkTable = await client.query<{ table: string | null }>(
       "SELECT to_regclass('projection.watermarks') AS table",
     );
+    const knowledgeGroupTable = await client.query<{ table: string | null }>(
+      "SELECT to_regclass('knowledge.review_groups') AS table",
+    );
+    const entityVaultImportTable = await client.query<{ table: string | null }>(
+      "SELECT to_regclass('knowledge.entity_vault_imports') AS table",
+    );
     if (
       table.rows[0]?.table !== 'runtime.schema_migrations' ||
       count.rows[0]?.count !== expectedMigrationCount ||
@@ -155,7 +162,9 @@ const verify = async (): Promise<void> => {
       canonicalHistoryTable.rows[0]?.table !== 'canonical.history_events' ||
       canonicalOutboxTable.rows[0]?.table !== 'canonical.outbox' ||
       projectionDocumentsTable.rows[0]?.table !== 'projection.search_documents' ||
-      projectionWatermarkTable.rows[0]?.table !== 'projection.watermarks'
+      projectionWatermarkTable.rows[0]?.table !== 'projection.watermarks' ||
+      knowledgeGroupTable.rows[0]?.table !== 'knowledge.review_groups' ||
+      entityVaultImportTable.rows[0]?.table !== 'knowledge.entity_vault_imports'
     ) {
       throw new Error('Database bootstrap verification failed.');
     }

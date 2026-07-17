@@ -25,6 +25,7 @@ import {
 } from '../../../adapters/stage5-in-memory/src/index.js';
 import { InMemoryCanonicalKnowledgeRepository } from '../../../adapters/stage6-in-memory/src/index.js';
 import { InMemorySearchProjectionRepository } from '../../../adapters/stage7-in-memory/src/index.js';
+import { InMemoryKnowledgeModelRepository } from '../../../adapters/stage9-in-memory/src/index.js';
 import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
 import { InProcessTransport } from '../../../adapters/transport-in-process/src/index.js';
 import {
@@ -47,6 +48,12 @@ import {
   type DraftChangeSet,
   type EvidenceSpan,
   type TextDiffSegment,
+  type EntityCandidate,
+  type EntityVaultImport,
+  type KnowledgeCandidate,
+  type KnowledgeGraphView,
+  type KnowledgeImpactResult,
+  type KnowledgeReviewGroup,
 } from '../../../packages/kernel/src/index.js';
 import {
   createIntakeModule,
@@ -103,6 +110,10 @@ import {
 } from '../../../modules/transformation/src/index.js';
 import { createPingModule } from '../../../modules/ping/src/index.js';
 import { createPongModule } from '../../../modules/pong/src/index.js';
+import {
+  createKnowledgeModelModule,
+  type KnowledgeModelRepositoryPort,
+} from '../../../modules/knowledge-model/src/index.js';
 
 type PingRequest = {
   readonly requestId?: string;
@@ -144,6 +155,42 @@ type CanonicalCommitRequest = {
 type SearchRequest = { readonly query: string; readonly limit?: number };
 type AskRequest = { readonly question: string; readonly limit?: number };
 
+type KnowledgeStageRequest = {
+  readonly groupId: string;
+  readonly sourceVersionId: string;
+  readonly items: readonly KnowledgeCandidate[];
+};
+
+type KnowledgeReviewRequest = {
+  readonly decisionId?: string;
+  readonly groupId: string;
+  readonly expectedRevisionNumber: number;
+  readonly expectedContentDigest: string;
+  readonly decision: 'APPROVE' | 'HOLD' | 'REJECT' | 'EDIT';
+  readonly reason: string;
+  readonly itemIds: readonly string[];
+  readonly editKind?:
+    'WORDING_LAYOUT' | 'FACTUAL_CORRECTION' | 'NEW_KNOWLEDGE' | 'REFERENCE_CHANGE';
+};
+
+type KnowledgeImpactRequest = {
+  readonly rootCandidateId: string;
+  readonly maxDepth?: number;
+  readonly maxNodes?: number;
+};
+
+type EntityVaultStageRequest = {
+  readonly importId: string;
+  readonly sourceVersionId: string;
+  readonly entities: readonly EntityCandidate[];
+};
+
+type EntityVaultReviewRequest = {
+  readonly importId: string;
+  readonly expectedContentDigest: string;
+  readonly decision: 'APPROVE' | 'REJECT';
+};
+
 type ReviewDecisionRequest = ChangeSetRequest & {
   readonly decisionId?: string;
   readonly expectedRevisionNumber: 1;
@@ -179,6 +226,7 @@ type ApplicationOptions = {
   readonly changeSetReviewRepository?: ChangeSetReviewRepositoryPort;
   readonly canonicalKnowledgeRepository?: CanonicalKnowledgeRepositoryPort;
   readonly searchProjectionRepository?: SearchProjectionRepositoryPort;
+  readonly knowledgeModelRepository?: KnowledgeModelRepositoryPort;
   readonly closeResources?: () => Promise<void>;
 };
 
@@ -220,6 +268,36 @@ const askPage = (): string => `<!doctype html>
         });
       } catch(error) { state.textContent=''; const p=document.createElement('p');p.className='error';p.textContent=error.message;answer.append(p); }
     });
+  </script>
+</body>
+</html>`;
+
+const knowledgePage = (): string => `<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Shotgun Knowledge Graph</title>
+  <style>
+    body{font-family:system-ui,sans-serif;max-width:1000px;margin:40px auto;padding:0 20px;color:#172033}
+    table{width:100%;border-collapse:collapse;margin-top:20px}th,td{border:1px solid #d9e0ea;padding:9px;text-align:left}
+    th{background:#f3f6fa}.warning{color:#9a5b00;font-weight:700}.muted{color:#526173}
+  </style>
+</head>
+<body>
+  <h1>지식 목록·표 보기</h1>
+  <p>그래프 화면 없이도 승인된 지식 유형, 근거 수, 모델 불일치를 확인할 수 있습니다.</p>
+  <p id="state" class="muted">불러오는 중…</p>
+  <table aria-label="승인된 지식 항목">
+    <thead><tr><th>ID</th><th>유형</th><th>내용</th><th>근거</th><th>모델 불일치</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <script>
+    const state=document.querySelector('#state');const rows=document.querySelector('#rows');
+    fetch('/knowledge/graph/query',{method:'POST',headers:{'content-type':'application/json'},body:'{}'})
+      .then(async response=>{const body=await response.json();if(!response.ok)throw new Error(body.message||'요청 실패');return body.graph;})
+      .then(graph=>{state.textContent='항목 '+graph.tableRows.length+'개 / 관계 '+graph.edges.length+'개';graph.tableRows.forEach(item=>{const row=document.createElement('tr');[item.id,item.type,item.label,String(item.evidenceCount)].forEach(value=>{const cell=document.createElement('td');cell.textContent=value;row.append(cell);});const warning=document.createElement('td');warning.textContent=item.modelDisagreement?'검토 필요':'없음';if(item.modelDisagreement)warning.className='warning';row.append(warning);rows.append(row);});})
+      .catch(error=>{state.textContent=error.message;state.className='warning';});
   </script>
 </body>
 </html>`;
@@ -401,6 +479,8 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     options.canonicalKnowledgeRepository ?? new InMemoryCanonicalKnowledgeRepository();
   const searchProjectionRepository =
     options.searchProjectionRepository ?? new InMemorySearchProjectionRepository();
+  const knowledgeModelRepository =
+    options.knowledgeModelRepository ?? new InMemoryKnowledgeModelRepository();
   const canonicalSnapshot = options.canonicalSnapshot ?? canonicalKnowledgeRepository;
   const textDiff = options.textDiff ?? new JsDiffAdapter();
   const aiProvider = options.aiProvider ?? new FakeAIProviderAdapter();
@@ -429,6 +509,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   const canonicalKnowledge = createCanonicalKnowledgeModule(canonicalKnowledgeRepository);
   const projectionSearch = createProjectionSearchModule(searchProjectionRepository);
   const citedAnswer = createCitedAnswerModule();
+  const knowledgeModel = createKnowledgeModelModule(knowledgeModelRepository);
   const kernel = new ShotgunKernel(options.transport ?? new InProcessTransport());
   kernel.register(
     ping.module,
@@ -445,6 +526,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     canonicalKnowledge,
     projectionSearch,
     citedAnswer,
+    knowledgeModel,
   );
   await kernel.start();
 
@@ -935,6 +1017,155 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     },
   );
 
+  server.post<{ Body: KnowledgeStageRequest; Headers: SecurityHeaders }>(
+    '/knowledge/groups/stage',
+    async (request) => {
+      const context = requestContext(request.headers);
+      const delivery = await kernel.connector.sendCommand<KnowledgeReviewGroup>(
+        createCommand({
+          messageType: 'StageKnowledgeGroup',
+          schemaVersion: '1.0.0',
+          producerModule: 'shotgun-app',
+          producerVersion: '1.0.0',
+          idempotencyKey: `knowledge-stage:${context.projectId}:${request.body.groupId}`,
+          ...context,
+          payload: request.body,
+        }),
+      );
+      return { group: delivery.result };
+    },
+  );
+
+  server.post<{ Body: KnowledgeReviewRequest; Headers: SecurityHeaders }>(
+    '/knowledge/groups/review',
+    async (request) => {
+      const context = requestContext(request.headers);
+      const decisionId = request.body.decisionId ?? randomUUID();
+      const delivery = await kernel.connector.sendCommand<KnowledgeReviewGroup>(
+        createCommand({
+          messageType: 'ReviewKnowledgeGroup',
+          schemaVersion: '1.0.0',
+          producerModule: 'shotgun-app',
+          producerVersion: '1.0.0',
+          idempotencyKey: `knowledge-review:${context.projectId}:${decisionId}`,
+          ...context,
+          payload: { ...request.body, decisionId },
+        }),
+      );
+      return { group: delivery.result };
+    },
+  );
+
+  server.post<{ Body: { readonly groupId: string }; Headers: SecurityHeaders }>(
+    '/knowledge/groups/resolve',
+    async (request) => {
+      const delivery = await kernel.connector.query(
+        createQuery({
+          messageType: 'GetKnowledgeGroup',
+          schemaVersion: '1.0.0',
+          producerModule: 'shotgun-app',
+          producerVersion: '1.0.0',
+          ...requestContext(request.headers),
+          payload: request.body,
+        }),
+      );
+      return { review: delivery.result.payload };
+    },
+  );
+
+  server.post<{ Body: KnowledgeImpactRequest; Headers: SecurityHeaders }>(
+    '/knowledge/impact',
+    async (request) => {
+      const delivery = await kernel.connector.query<KnowledgeImpactResult>(
+        createQuery({
+          messageType: 'GetKnowledgeImpact',
+          schemaVersion: '1.0.0',
+          producerModule: 'shotgun-app',
+          producerVersion: '1.0.0',
+          ...requestContext(request.headers),
+          payload: request.body,
+        }),
+      );
+      return { impact: delivery.result.payload };
+    },
+  );
+
+  server.post<{ Body: Record<string, never>; Headers: SecurityHeaders }>(
+    '/knowledge/graph/query',
+    async (request) => {
+      const delivery = await kernel.connector.query<KnowledgeGraphView>(
+        createQuery({
+          messageType: 'GetKnowledgeGraph',
+          schemaVersion: '1.0.0',
+          producerModule: 'shotgun-app',
+          producerVersion: '1.0.0',
+          ...requestContext(request.headers),
+          payload: request.body ?? {},
+        }),
+      );
+      return { graph: delivery.result.payload };
+    },
+  );
+
+  server.get('/knowledge', async (_request, reply) =>
+    reply.type('text/html; charset=utf-8').send(knowledgePage()),
+  );
+
+  server.post<{ Body: EntityVaultStageRequest; Headers: SecurityHeaders }>(
+    '/knowledge/entity-vault/stage',
+    async (request) => {
+      const context = requestContext(request.headers);
+      const delivery = await kernel.connector.sendCommand<EntityVaultImport>(
+        createCommand({
+          messageType: 'StageEntityVaultImport',
+          schemaVersion: '1.0.0',
+          producerModule: 'shotgun-app',
+          producerVersion: '1.0.0',
+          idempotencyKey: `entity-vault-stage:${context.projectId}:${request.body.importId}`,
+          ...context,
+          payload: request.body,
+        }),
+      );
+      return { stagedImport: delivery.result };
+    },
+  );
+
+  server.post<{ Body: EntityVaultReviewRequest; Headers: SecurityHeaders }>(
+    '/knowledge/entity-vault/review',
+    async (request) => {
+      const context = requestContext(request.headers);
+      const delivery = await kernel.connector.sendCommand<EntityVaultImport>(
+        createCommand({
+          messageType: 'ReviewEntityVaultImport',
+          schemaVersion: '1.0.0',
+          producerModule: 'shotgun-app',
+          producerVersion: '1.0.0',
+          idempotencyKey: `entity-vault-review:${context.projectId}:${request.body.importId}:${request.body.decision}`,
+          ...context,
+          payload: request.body,
+        }),
+      );
+      return { stagedImport: delivery.result };
+    },
+  );
+
+  server.post<{ Body: { readonly importId: string }; Headers: SecurityHeaders }>(
+    '/knowledge/entity-vault/resolve',
+    async (request) => {
+      const delivery = await kernel.connector.query<EntityVaultImport>(
+        createQuery({
+          messageType: 'GetEntityVaultImport',
+          schemaVersion: '1.0.0',
+          producerModule: 'shotgun-app',
+          producerVersion: '1.0.0',
+          ...requestContext(request.headers),
+          payload: request.body,
+        }),
+      );
+      return { stagedImport: delivery.result.payload };
+    },
+  );
+
   server.addHook('onClose', async () => {
     await kernel.shutdown();
     await options.closeResources?.();
@@ -955,6 +1186,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       reviews: changeSetReviewRepository,
       canonical: canonicalKnowledgeRepository,
       projection: searchProjectionRepository,
+      knowledge: knowledgeModelRepository,
     },
     storage: assetStorage,
     state: {

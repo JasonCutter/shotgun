@@ -118,7 +118,7 @@
     {
       "id": "gbrain",
       "name": "garrytan/gbrain",
-      "stages": [0, 1, 2, 6, 7],
+      "stages": [0, 1, 2, 6, 7, 9],
       "officialSource": "https://github.com/garrytan/gbrain",
       "pin": {
         "type": "git-commit",
@@ -130,7 +130,7 @@
         "evidence": "LICENSE at the pinned commit"
       },
       "decision": "REFERENCE_ONLY",
-      "scope": "Minion retry/idempotency, PostgreSQL locking, append-only timeline, migration/recovery, and Stage 7 search evidence, citation validation, dedup, and quality-fixture patterns",
+      "scope": "Minion retry/idempotency, PostgreSQL locking, append-only timeline, migration/recovery, search quality patterns, and Stage 9 typed graph direction, depth, cycle, alias, and timeline review patterns",
       "security": "No gbrain runtime, database, or provider configuration is embedded in Shotgun",
       "maintenance": "Pinned v0.42.58.0 validation baseline; upstream changes are not consumed automatically",
       "evidence": [
@@ -138,11 +138,13 @@
         "86% validation coverage",
         "Minion lock and timeout recovery evidence",
         "Stage 6 Page, Fact, Timeline, lock, migration, and idempotency mapping review",
-        "Stage 7 pinned keyword, evidence classification, citation validator, and search quality fixture review"
+        "Stage 7 pinned keyword, evidence classification, citation validator, and search quality fixture review",
+        "Stage 9 graph-query direction/type/depth and cycle-safe traversal reviewed",
+        "Stage 9 alias and inferred meeting timeline remain excluded from Shotgun Canonical writes"
       ],
       "boundary": "Any future reuse must sit behind Shotgun Job, Repository, or Module ports",
       "replacement": "Shotgun-owned Canonical contracts and repositories can evolve without the gbrain runtime or database",
-      "recheckTrigger": "Before Stage 9 graph/timeline expansion or a general durable Job runtime"
+      "recheckTrigger": "Measured need for gbrain interoperability beyond the Stage 9 Adapter contract or a general durable Job runtime"
     },
     {
       "id": "transactional-outbox-pattern",
@@ -303,7 +305,7 @@
     {
       "id": "lucas-llmwiki",
       "name": "lucasastorian/llmwiki",
-      "stages": [0, 2, 3, 8],
+      "stages": [0, 2, 3, 8, 9],
       "officialSource": "https://github.com/lucasastorian/llmwiki",
       "pin": {
         "type": "git-commit",
@@ -315,7 +317,7 @@
         "evidence": "LICENSE at the pinned commit"
       },
       "decision": "AUGMENT",
-      "scope": "Text quote location, prefix/suffix disambiguation, deterministic validation, and Stage 8 HTML noise-removal and semantic-block extraction patterns; watcher/reconcile remains deferred",
+      "scope": "Text quote location, prefix/suffix disambiguation, deterministic validation, Stage 8 HTML extraction, and Stage 9 idempotent reconcile patterns",
       "security": "Ambiguous short quotes are not guessed; path-based identity, SQLite, VaultFS, MCP CRUD, and filename citation remain excluded",
       "maintenance": "Pinned commit only; behavior was reimplemented behind Shotgun ports without adding the upstream runtime",
       "evidence": [
@@ -323,7 +325,8 @@
         "chunk start_char regression tests reviewed",
         "watcher path identity rejected",
         "Shotgun locator and adapter replacement tests",
-        "Stage 8 HTML Golden retained 6 semantic blocks and removed script, video, and navigation noise"
+        "Stage 8 HTML Golden retained 6 semantic blocks and removed script, video, and navigation noise",
+        "Stage 9 local reconcile backfill and no-op replay tests reviewed without importing SQLite or VaultFS"
       ],
       "boundary": "Lucas-derived behavior is isolated behind PlainTextTransformerPort and EvidenceLocatorPort; SourceVersion and EvidenceSpan remain Shotgun-owned",
       "replacement": "A replacement transformer or locator must pass the same Golden, SourceMap, ambiguity, and replacement tests",
@@ -414,7 +417,7 @@
     {
       "id": "inkeep-open-knowledge",
       "name": "Inkeep OpenKnowledge",
-      "stages": [0, 5],
+      "stages": [0, 5, 9],
       "officialSource": "https://github.com/inkeep/open-knowledge",
       "pin": {
         "type": "git-commit",
@@ -426,13 +429,15 @@
         "evidence": "GPL v3 LICENSE at the pinned commit"
       },
       "decision": "REFERENCE_ONLY",
-      "scope": "Editor mode switching, 2D graph, activity, changed-item grouping, and Burst Diff UX patterns",
+      "scope": "Editor mode switching, 2D graph, activity, changed-item grouping, Burst Diff, and Entity Vault staged-review UX patterns",
       "security": "No runtime embedding or code copying into the current MIT-compatible product boundary",
       "maintenance": "Pinned validation baseline; license impact must be re-reviewed before any code reuse",
       "evidence": [
         "targeted typecheck",
         "2D graph and editor UX validation",
-        "Stage 5 activity and diff pattern mapping"
+        "Stage 5 activity and diff pattern mapping",
+        "Stage 9 GraphView and Entity Vault pack reviewed",
+        "Entity Vault direct Canonical synchronization explicitly prohibited"
       ],
       "boundary": "Canonical data, approval, and Job state remain owned by Shotgun",
       "replacement": "Patterns are independently reimplemented behind Shotgun APIs",
@@ -537,6 +542,59 @@
       "boundary": "Future collaborative editor adapter only",
       "replacement": "Approval digest and expected version remain independent from editor technology",
       "recheckTrigger": "Concurrent human editing is required by a multi-user product"
+    },
+    {
+      "id": "networkx",
+      "name": "NetworkX",
+      "stages": [9],
+      "officialSource": "https://github.com/networkx/networkx",
+      "pin": {
+        "type": "pypi-lock",
+        "package": "networkx",
+        "value": "3.6.1"
+      },
+      "license": {
+        "spdx": "BSD-3-Clause",
+        "status": "VERIFIED",
+        "evidence": "LICENSE.txt and networkx-3.6.1 tag commit 7530809bfa1ea7ed6fdf918a4d1431488953cb1f"
+      },
+      "decision": "ADOPT",
+      "scope": "Independent deterministic BFS oracle for recursive Impact over approved Typed Edges",
+      "security": "The local test oracle receives only Candidate IDs and edge direction; no source text, secrets, or Canonical write access",
+      "maintenance": "Exact Python version locked in adapters/networkx-impact-oracle/requirements.lock",
+      "evidence": [
+        "Cycle-safe directed traversal compared against both Connector transports",
+        "Visited nodes and traversed edge IDs match Shotgun Impact results"
+      ],
+      "boundary": "Validation-only NetworkX oracle process; production KnowledgeModelRepositoryPort and Impact contract remain provider-neutral",
+      "replacement": "A replacement graph oracle must pass the same deterministic order, depth, node budget, and cycle fixtures",
+      "recheckTrigger": "Graph scale requires production graph algorithms or NetworkX becomes an operational runtime"
+    },
+    {
+      "id": "cytoscape-js",
+      "name": "Cytoscape.js",
+      "stages": [9, 10],
+      "officialSource": "https://github.com/cytoscape/cytoscape.js",
+      "pin": {
+        "type": "git-commit",
+        "value": "22716bfb75834b56fa6679648b0abb06f4ae691c"
+      },
+      "license": {
+        "spdx": "MIT",
+        "status": "VERIFIED",
+        "evidence": "v3.34.0 package metadata and LICENSE at the official tag"
+      },
+      "decision": "DEFER",
+      "scope": "Future interactive 2D graph rendering over the Shotgun KnowledgeGraphView contract",
+      "security": "No browser graph dependency or remote CDN is enabled in Stage 9",
+      "maintenance": "v3.34.0 is the reviewed baseline; no runtime dependency installed",
+      "evidence": [
+        "Graph analysis and visualization package exports reviewed",
+        "Stage 9 ships an accessible list and table fallback from the same typed graph response"
+      ],
+      "boundary": "Future UI adapter only; graph semantics, approval state, and Typed Edges remain Shotgun-owned",
+      "replacement": "Any 2D renderer can consume KnowledgeGraphView while the list/table fallback remains mandatory",
+      "recheckTrigger": "Stage 10 interactive graph navigation implementation begins"
     },
     {
       "id": "opentelemetry",

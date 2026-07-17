@@ -33,6 +33,8 @@ Stage별 OSS 후보와 세부 적용 방식은 [OSS Integration Roadmap](./oss-i
 
 ## 4. Stage 0 — Repository, Engineering and OSS Foundation
 
+**상태: COMPLETE (2026-07-17)**
+
 ### 목표
 
 개발 환경, 프로젝트 구조, 품질 검사와 OSS 평가 기반을 재현 가능하게 만든다.
@@ -69,6 +71,8 @@ Stage별 OSS 후보와 세부 적용 방식은 [OSS Integration Roadmap](./oss-i
 - 미확인 License 코드는 `REFERENCE_ONLY`로 제한됨
 
 ## 5. Stage 1 — Kernel, Contracts and Connector Runtime
+
+**상태: COMPLETE (2026-07-17)**
 
 ### 목표
 
@@ -120,6 +124,8 @@ Stage별 OSS 후보와 세부 적용 방식은 [OSS Integration Roadmap](./oss-i
 - 직접 구현한 Job 기능에 후보 대비 재사용 불가 근거가 존재
 
 ## 6. Stage 2 — Intake and Original Asset
+
+**상태: COMPLETE (2026-07-17)**
 
 ### 목표
 
@@ -338,6 +344,8 @@ Stage별 OSS 후보와 세부 적용 방식은 [OSS Integration Roadmap](./oss-i
 
 ## 11. Stage 7 — Search, Citation and Cited Answer
 
+**상태: COMPLETE (2026-07-17)**
+
 ### 목표
 
 Canonical Claim을 검색하고 원문 Citation이 포함된 답변을 제공한다.
@@ -369,6 +377,8 @@ Canonical Claim을 검색하고 원문 Citation이 포함된 답변을 제공한
 - Stage 2~7 E2E가 연결되어 Walking Skeleton MVP 선언 가능
 
 ## 12. Stage 8 — Format Expansion
+
+**상태: COMPLETE (2026-07-17)**
 
 ### 목표
 
@@ -414,6 +424,8 @@ Transformation Adapter를 확장하되 공통 DocumentIR·Evidence 계약을 유
 
 ## 13. Stage 9 — Knowledge Model, Impact and Advanced Review
 
+**상태: COMPLETE (2026-07-17)**
+
 ### 목표
 
 Claim 외 지식 유형과 복잡한 비교·영향·검토를 구현한다.
@@ -450,6 +462,8 @@ Claim 외 지식 유형과 복잡한 비교·영향·검토를 구현한다.
 
 ## 14. Stage 10 — Compiled Truth, Graph and Discovery
 
+**상태: COMPLETE (2026-07-17)**
+
 ### 목표
 
 Canonical에서 읽기 Projection을 재생성하고 Gap·관계 후보를 탐색한다.
@@ -482,6 +496,8 @@ Canonical에서 읽기 Projection을 재생성하고 Gap·관계 후보를 탐�
 - Dream Cycle·Graph/Search 후보의 적용 결정과 재사용 경계 기록
 
 ## 15. Stage 11 — Risk-controlled External Action
+
+**상태: COMPLETE (2026-07-17)**
 
 ### 목표
 

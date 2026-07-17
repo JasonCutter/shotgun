@@ -59,12 +59,14 @@ HTTP Request
 고정 원칙:
 
 - `x-project-id`, `x-actor-id`, `x-access-scope`, `x-sensitivity`는 production trust source가 아니다.
-- 브라우저는 서버 관리 세션과 HttpOnly cookie를 사용한다.
-- API와 자동화는 서명된 short-lived API token을 사용한다.
+- 브라우저 최초 인증은 local account ID와 password credential으로 시작하며, password는 Argon2id hash로만 저장한다. 인증 후에는 서버 관리 세션과 HttpOnly cookie를 사용한다.
+- API와 자동화는 256-bit 이상의 opaque random API token을 사용한다. token 원문은 발급 시 한 번만 보이고 DB에는 hash만 저장한다.
+- 최초 Owner는 migration이 아니라 `npm run auth:bootstrap-owner` 운영 명령으로 명시적으로 만든다. 활성 Owner가 이미 있으면 이 명령은 실패한다.
 - Local Development Auth Adapter는 기본 OFF, loopback 전용, 명시적 테스트 principal만 허용한다.
 - production에서 Development Auth Adapter가 설정되면 서버가 시작하지 않아야 한다.
 - 사용자가 project를 선택할 수는 있어도 membership 확인 전에는 SecurityContext에 반영하지 않는다.
 - Module은 HTTP header를 직접 읽지 않고, 인증·인가 계층이 만든 context만 받는다.
+- legacy authority header는 P0-1 merge와 동시에 차단한다. 기존 E2E, script, test helper도 같은 작업에서 새 인증 fixture로 전환한다.
 
 ## 5. 후속 Section의 경계
 

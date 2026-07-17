@@ -12,7 +12,7 @@ import {
 } from '../../../packages/contracts/src/index.js';
 import type {
   PlainTextTransformerPort,
-  PlainTextTransformationInput,
+  DocumentTransformationInput,
   PlainTextTransformationOutput,
 } from '../../../modules/transformation/src/index.js';
 import type { EvidenceLocatorPort } from '../../../modules/evidence/src/index.js';
@@ -123,7 +123,7 @@ const quoteFor = (text: string, range: Range): TextQuoteSelector => ({
 
 const mapEntry = (
   text: string,
-  input: PlainTextTransformationInput,
+  input: Pick<DocumentTransformationInput, 'sourceVersionId' | 'sourceContentHash'>,
   pointer: string,
   nodeKind: SourceMapEntry['nodeKind'],
   range: Range,
@@ -228,23 +228,28 @@ export class LucasAugmentedPlainTextAdapter
     version: '1.0.0',
   } as const;
 
-  transform(input: PlainTextTransformationInput): PlainTextTransformationOutput {
+  transform(input: DocumentTransformationInput): PlainTextTransformationOutput {
+    if (input.text === undefined) {
+      throw new Error('Text normalization requires extracted text.');
+    }
+    const text = input.text;
+    const mediaType = input.mediaType;
     const blocks: DocumentIR['blocks'][number][] = [];
     const entries: SourceMapEntry[] = [
-      mapEntry(input.text, input, '', 'document', {
+      mapEntry(text, input, '', 'document', {
         start: 0,
-        end: unicodeLength(input.text),
+        end: unicodeLength(text),
       }),
     ];
 
-    paragraphRanges(input.text).forEach((paragraph, blockIndex) => {
-      const paragraphText = unicodeSlice(input.text, paragraph.start, paragraph.end);
+    paragraphRanges(text).forEach((paragraph, blockIndex) => {
+      const paragraphText = unicodeSlice(text, paragraph.start, paragraph.end);
       const sentences = sentenceRanges(paragraphText, paragraph.start).map(
         (sentence, sentenceIndex) => {
           const id = `sentence-${sentence.start}-${sentence.end}`;
           entries.push(
             mapEntry(
-              input.text,
+              text,
               input,
               `/blocks/${blockIndex}/sentences/${sentenceIndex}`,
               'sentence',
@@ -254,7 +259,7 @@ export class LucasAugmentedPlainTextAdapter
           return {
             id,
             kind: 'sentence' as const,
-            text: unicodeSlice(input.text, sentence.start, sentence.end),
+            text: unicodeSlice(text, sentence.start, sentence.end),
           };
         },
       );
@@ -267,7 +272,7 @@ export class LucasAugmentedPlainTextAdapter
       });
       entries.push(
         mapEntry(
-          input.text,
+          text,
           input,
           `/blocks/${jsonPointerEscape(String(blockIndex))}`,
           'paragraph',
@@ -278,7 +283,7 @@ export class LucasAugmentedPlainTextAdapter
 
     const documentIR: DocumentIR = {
       schemaVersion: '1.0.0',
-      mediaType: input.mediaType,
+      mediaType,
       blocks,
     };
     const sourceMap: SourceMap = {

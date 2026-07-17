@@ -65,6 +65,16 @@ const requiredIds = [
   'node-pg-migrate',
   'drizzle-orm',
   'kysely',
+  'docling',
+  'apache-tika',
+  'markitdown',
+  'pymupdf',
+  'pdfplumber',
+  'python-docx',
+  'python-pptx',
+  'openpyxl',
+  'beautifulsoup4',
+  'pillow',
 ] as const;
 const decisions = new Set<Decision>([
   'ADOPT',
@@ -84,6 +94,7 @@ const stageReviewFiles = [
   'docs/implementation/stage-validations/stage-5-oss-integration-review.md',
   'docs/implementation/stage-validations/stage-6-oss-integration-review.md',
   'docs/implementation/stage-validations/stage-7-oss-integration-review.md',
+  'docs/implementation/stage-validations/stage-8-oss-integration-review.md',
 ] as const;
 
 const readJson = async <T>(relativePath: string): Promise<T> =>
@@ -99,6 +110,18 @@ const main = async (): Promise<void> => {
   const registry = await readJson<Registry>('docs/implementation/oss-source-registry.json');
   const lockfile = await readJson<Lockfile>('package-lock.json');
   const compose = await readFile(path.join(root, 'compose.yaml'), 'utf8');
+  const pythonLock = await readFile(
+    path.join(root, 'adapters/document-format-python/requirements.lock'),
+    'utf8',
+  );
+  const pythonPins = new Map(
+    pythonLock
+      .split(/\r?\n/u)
+      .filter((line) => line.trim() && !line.trim().startsWith('#'))
+      .map((line) => line.split('==', 2))
+      .filter((parts): parts is [string, string] => parts.length === 2)
+      .map(([name, version]) => [name.toLowerCase(), version]),
+  );
   const errors: string[] = [];
   const byId = new Map(registry.entries.map((entry) => [entry.id, entry]));
 
@@ -156,6 +179,19 @@ const main = async (): Promise<void> => {
         );
       }
     }
+    if (entry.pin.type === 'pypi-lock') {
+      const packageName = entry.pin.package;
+      if (!packageName) {
+        errors.push(`${entry.id}.pin.package is required for pypi-lock`);
+        continue;
+      }
+      const resolved = pythonPins.get(packageName.toLowerCase());
+      if (resolved !== entry.pin.value) {
+        errors.push(
+          `${entry.id} registry pin '${entry.pin.value}' does not match Python lock '${resolved ?? 'missing'}'`,
+        );
+      }
+    }
   }
 
   const postgres = byId.get('postgresql');
@@ -179,7 +215,7 @@ const main = async (): Promise<void> => {
   }
 
   console.log(
-    `OSS Gate passed: ${registry.entries.length} decisions, ${requiredIds.length} baseline references, Stage 0-7 reviews complete.`,
+    `OSS Gate passed: ${registry.entries.length} decisions, ${requiredIds.length} baseline references, Stage 0-8 reviews complete.`,
   );
 };
 

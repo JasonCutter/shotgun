@@ -25,7 +25,7 @@
     },
     "versionNumber": { "type": "integer", "minimum": 1 },
     "channel": { "enum": ["direct_text", "file_upload"] },
-    "materialKind": { "const": "plain_text" },
+    "materialKind": { "enum": ["plain_text", "document", "image"] },
     "originalFileName": { "type": "string", "minLength": 1 },
     "assetReference": {
       "type": "object",

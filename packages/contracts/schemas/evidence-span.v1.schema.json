@@ -49,6 +49,38 @@
       },
       "additionalProperties": false
     },
+    "selectors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type"],
+        "properties": {
+          "type": {
+            "enum": [
+              "PageSelector",
+              "BoundingBoxSelector",
+              "CellSelector",
+              "ShapeSelector",
+              "CssSelector"
+            ]
+          },
+          "page": { "type": "integer", "minimum": 1 },
+          "x": { "type": "number" },
+          "y": { "type": "number" },
+          "width": { "type": "number", "minimum": 0 },
+          "height": { "type": "number", "minimum": 0 },
+          "unit": { "enum": ["pt", "px"] },
+          "sheet": { "type": "string" },
+          "cell": { "type": "string" },
+          "row": { "type": "integer", "minimum": 1 },
+          "column": { "type": "integer", "minimum": 1 },
+          "slide": { "type": "integer", "minimum": 1 },
+          "shapeId": { "type": "string" },
+          "value": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
     "exactHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
     "accessScope": {
       "type": "array",

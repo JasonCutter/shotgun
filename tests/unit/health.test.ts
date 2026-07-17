@@ -34,6 +34,7 @@ describe('Stage 1 application', () => {
         'original-asset-store',
         'asset-resolver',
         'plain-text-transformation',
+        'document-format-transformation',
         'document-revision-provider',
         'evidence-index',
         'evidence-resolver',

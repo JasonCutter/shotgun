@@ -18,6 +18,7 @@ import {
   InMemoryValidationRepository,
 } from '../../../adapters/stage4-in-memory/src/index.js';
 import { LucasAugmentedPlainTextAdapter } from '../../../adapters/plain-text-lucas-augmented/src/index.js';
+import { PythonDocumentFormatAdapter } from '../../../adapters/document-format-python/src/index.js';
 import {
   InMemoryChangeSetReviewRepository,
   InMemoryComparisonRepository,
@@ -404,7 +405,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   const textDiff = options.textDiff ?? new JsDiffAdapter();
   const aiProvider = options.aiProvider ?? new FakeAIProviderAdapter();
   const plainTextAdapter = new LucasAugmentedPlainTextAdapter();
-  const transformer = options.transformer ?? plainTextAdapter;
+  const transformer = options.transformer ?? new PythonDocumentFormatAdapter();
   const evidenceLocator = options.evidenceLocator ?? plainTextAdapter;
   const ping = createPingModule();
   const pong = createPongModule();

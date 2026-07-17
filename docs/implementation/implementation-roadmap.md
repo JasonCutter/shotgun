@@ -593,3 +593,13 @@ Stage 완료 PR에는 다음을 포함한다.
 ## Stage 7 완료 기록 — 2026-07-17
 
 Stage 7 Search, Citation and Cited Answer는 `COMPLETE`다. PostgreSQL FTS·`pg_trgm`, Projection Watermark, Canonical-only 검색, 문장별 Evidence Citation, Stale 차단, rebuild, Ask UI가 구현되었다. Stage 2→7 Walking Skeleton MVP E2E가 연결되었다. 상세 근거는 [Stage 7 OSS Integration Review](stage-validations/stage-7-oss-integration-review.md)와 [ADR-087](../architecture/adr/ADR-087-stage-7-cited-search-projection.md)을 따른다.
+
+## Stage 8 완료 기록 — 2026-07-17
+
+Stage 8 Format Expansion은 `COMPLETE`다. HTML·PDF·DOCX·CSV·XLSX·PPTX·이미지와
+공개 HTTPS 페이지의 접근 가능한 텍스트를 형식별 Adapter로 처리한다.
+Page·BBox·Cell·Shape·CSS Selector, binary SourceVersion hash, 번역 provenance 분리,
+손상·암호화·미지원 상태, Multimodal Validation 요구, Adapter 교체 Contract를
+Golden·E2E·PostgreSQL 시험으로 검증했다. 상세 근거는
+[Stage 8 OSS Integration Review](stage-validations/stage-8-oss-integration-review.md)와
+[ADR-088](../architecture/adr/ADR-088-stage-8-format-adapter-and-structural-selectors.md)을 따른다.

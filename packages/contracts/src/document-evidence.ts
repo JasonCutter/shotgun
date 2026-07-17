@@ -19,6 +19,43 @@ export type TextQuoteSelector = {
   readonly suffix?: string;
 };
 
+export type PageSelector = {
+  readonly type: 'PageSelector';
+  readonly page: number;
+};
+
+export type BoundingBoxSelector = {
+  readonly type: 'BoundingBoxSelector';
+  readonly page?: number;
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+  readonly unit: 'pt' | 'px';
+};
+
+export type CellSelector = {
+  readonly type: 'CellSelector';
+  readonly sheet: string;
+  readonly cell: string;
+  readonly row: number;
+  readonly column: number;
+};
+
+export type ShapeSelector = {
+  readonly type: 'ShapeSelector';
+  readonly slide: number;
+  readonly shapeId: string;
+};
+
+export type CssSelector = {
+  readonly type: 'CssSelector';
+  readonly value: string;
+};
+
+export type SourceSelector =
+  PageSelector | BoundingBoxSelector | CellSelector | ShapeSelector | CssSelector;
+
 export type DocumentIRSentence = {
   readonly id: string;
   readonly kind: 'sentence';
@@ -34,7 +71,17 @@ export type DocumentIRBlock = {
 
 export type DocumentIR = {
   readonly schemaVersion: '1.0.0';
-  readonly mediaType: 'text/plain' | 'text/markdown';
+  readonly mediaType:
+    | 'text/plain'
+    | 'text/markdown'
+    | 'text/html'
+    | 'application/pdf'
+    | 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    | 'text/csv'
+    | 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    | 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+    | 'image/png'
+    | 'image/jpeg';
   readonly blocks: readonly DocumentIRBlock[];
 };
 
@@ -46,6 +93,7 @@ export type SourceMapEntry = {
   readonly origin: SourceOrigin;
   readonly position: TextPositionSelector;
   readonly quote: TextQuoteSelector;
+  readonly selectors?: readonly SourceSelector[];
   readonly exactHash: string;
 };
 
@@ -86,6 +134,7 @@ export type EvidenceSpan = {
   readonly origin: 'source';
   readonly position: TextPositionSelector;
   readonly quote: TextQuoteSelector;
+  readonly selectors?: readonly SourceSelector[];
   readonly exactHash: string;
   readonly accessScope: readonly string[];
   readonly sensitivity: SecurityContext['sensitivity'];

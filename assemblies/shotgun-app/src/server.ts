@@ -49,6 +49,7 @@ import {
   createChildQuery,
   createCommand,
   createQuery,
+  actionEvidenceSetDigest,
   ShotgunError,
   ShotgunKernel,
   type AssetReference,
@@ -303,7 +304,8 @@ const askPage = (): string => `<!doctype html>
     form.addEventListener('submit',async(event)=>{
       event.preventDefault(); answer.replaceChildren(); state.textContent='검색 중…';
       try {
-        const response=await fetch('/ask/query',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({question:document.querySelector('#question').value})});
+        const csrfRes=await fetch('/auth/csrf');if(!csrfRes.ok)throw new Error('CSRF 갱신 실패');const csrf=(await csrfRes.json()).csrfToken;
+        const response=await fetch('/ask/query',{method:'POST',headers:{'content-type':'application/json','x-csrf-token':csrf},body:JSON.stringify({question:document.querySelector('#question').value})});
         const body=await response.json(); if(!response.ok) throw new Error(body.message||'요청 실패');
         const result=body.answer; state.textContent='Projection: '+result.readiness.status+' / 지연: '+result.readiness.lag;
         if(result.uncertainty){const p=document.createElement('p');p.className='error';p.textContent=result.uncertainty;answer.append(p);}
@@ -343,10 +345,12 @@ const knowledgePage = (): string => `<!doctype html>
   <script src="/vendor/cytoscape.min.js"></script>
   <script>
     const state=document.querySelector('#state');const rows=document.querySelector('#rows');
-    fetch('/compiled-truth/query',{method:'POST',headers:{'content-type':'application/json'},body:'{}'})
-      .then(async response=>{const body=await response.json();if(!response.ok)throw new Error(body.message||'요청 실패');return body;})
-      .then(({projection,status})=>{const graph=projection.graph;state.textContent='상태 '+status.status+' / 지연 '+status.lag+' / 항목 '+projection.items.length+'개 / 관계 '+graph.edges.length+'개';projection.items.forEach(item=>{const row=document.createElement('tr');[item.id,item.type,item.label,item.state,String(item.evidenceIds.length)].forEach(value=>{const cell=document.createElement('td');cell.textContent=value;row.append(cell);});rows.append(row);});window.cytoscape({container:document.querySelector('#graph'),elements:[...graph.nodes.map(node=>({data:{id:node.id,label:node.label,state:node.state}})),...graph.edges.map(edge=>({data:{id:edge.id,source:edge.from,target:edge.to,label:edge.relationType}}))],style:[{selector:'node',style:{label:'data(label)','background-color':'#4776e6','font-size':'11px','text-wrap':'wrap','text-max-width':'100px'}},{selector:'edge',style:{label:'data(label)','curve-style':'bezier','target-arrow-shape':'triangle','line-color':'#91a0b5','target-arrow-color':'#91a0b5','font-size':'9px'}}],layout:{name:'cose',animate:false}});})
-      .catch(error=>{state.textContent=error.message;state.className='warning';});
+    (async()=>{try{
+      const csrfRes=await fetch('/auth/csrf');if(!csrfRes.ok)throw new Error('CSRF 갱신 실패');const csrf=(await csrfRes.json()).csrfToken;
+      const response=await fetch('/compiled-truth/query',{method:'POST',headers:{'content-type':'application/json','x-csrf-token':csrf},body:'{}'});
+      const body=await response.json();if(!response.ok)throw new Error(body.message||'요청 실패');
+      const {projection,status}=body;const graph=projection.graph;state.textContent='상태 '+status.status+' / 지연 '+status.lag+' / 항목 '+projection.items.length+'개 / 관계 '+graph.edges.length+'개';projection.items.forEach(item=>{const row=document.createElement('tr');[item.id,item.type,item.label,item.state,String(item.evidenceIds.length)].forEach(value=>{const cell=document.createElement('td');cell.textContent=value;row.append(cell);});rows.append(row);});window.cytoscape({container:document.querySelector('#graph'),elements:[...graph.nodes.map(node=>({data:{id:node.id,label:node.label,state:node.state}})),...graph.edges.map(edge=>({data:{id:edge.id,source:edge.from,target:edge.to,label:edge.relationType}}))],style:[{selector:'node',style:{label:'data(label)','background-color':'#4776e6','font-size':'11px','text-wrap':'wrap','text-max-width':'100px'}},{selector:'edge',style:{label:'data(label)','curve-style':'bezier','target-arrow-shape':'triangle','line-color':'#91a0b5','target-arrow-color':'#91a0b5','font-size':'9px'}}],layout:{name:'cose',animate:false}});
+    }catch(error){state.textContent=error.message;state.className='warning';}})();
   </script>
 </body>
 </html>`;
@@ -546,22 +550,27 @@ const reviewPage = (bundle: {
     const expectedContentDigest = ${JSON.stringify(changeSet.contentDigest)};
     document.querySelectorAll('button[data-decision]').forEach((button) => {
       button.addEventListener('click', async () => {
-        const response = await fetch('/reviews/decision', {
-          method: 'POST',
-          headers: {'content-type': 'application/json'},
-          body: JSON.stringify({
-            changeSetId,
-            expectedRevisionNumber: 1,
-            expectedContentDigest,
-            decision: button.dataset.decision,
-            reason: document.querySelector('#reason').value
-          })
-        });
-        const result = await response.json();
-        document.querySelector('#message').textContent = response.ok
-          ? '결정이 서버에 기록되었습니다.'
-          : result.message;
-        if (response.ok) document.querySelector('#status').textContent = result.changeSet.status;
+        try {
+          const csrfRes=await fetch('/auth/csrf');if(!csrfRes.ok)throw new Error('CSRF 갱신 실패');const csrf=(await csrfRes.json()).csrfToken;
+          const response = await fetch('/reviews/decision', {
+            method: 'POST',
+            headers: {'content-type': 'application/json', 'x-csrf-token': csrf},
+            body: JSON.stringify({
+              changeSetId,
+              expectedRevisionNumber: 1,
+              expectedContentDigest,
+              decision: button.dataset.decision,
+              reason: document.querySelector('#reason').value
+            })
+          });
+          const result = await response.json();
+          document.querySelector('#message').textContent = response.ok
+            ? '결정이 서버에 기록되었습니다.'
+            : result.message;
+          if (response.ok) document.querySelector('#status').textContent = result.changeSet.status;
+        } catch (e) {
+          document.querySelector('#message').textContent = e.message;
+        }
       });
     });
   </script>
@@ -655,6 +664,20 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   const actionExecution = createActionExecutionModule(
     actionExecutionRepository,
     actionCandidateRepository,
+    {
+      getValidationDigest: async (projectId, candidateId) => {
+        const c = await actionCandidateRepository.find(projectId, candidateId);
+        return c?.validationDigest;
+      },
+      getEvidenceSetDigest: async (projectId, candidateId) => {
+        const c = await actionCandidateRepository.find(projectId, candidateId);
+        return c ? actionEvidenceSetDigest(c.evidence) : undefined;
+      },
+      getSourceSensitivity: async (projectId, candidateId) => {
+        const c = await actionCandidateRepository.find(projectId, candidateId);
+        return c?.sourceSensitivity;
+      },
+    },
     actionConnector,
   );
   const kernel = new ShotgunKernel(options.transport ?? new InProcessTransport());
@@ -891,6 +914,93 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       };
     },
   );
+
+  server.get('/auth/csrf', async (request, reply) => {
+    const sessionToken = parseCookie(request.headers.cookie, sessionCookieName);
+    if (!sessionToken) return reply.status(401).send({ message: 'Authentication required' });
+    const session = await authRepository.findSession(sessionToken);
+    if (!session) return reply.status(401).send({ message: 'Session invalid' });
+    const newCsrf = randomUUID();
+    await authRepository.updateSessionCsrf(sessionToken, newCsrf);
+    return { csrfToken: newCsrf };
+  });
+
+  server.post<{ Headers: SecurityHeaders }>('/auth/logout', async (request, reply) => {
+    const context = requestContext(request.headers);
+    if (context.authenticationMethod === 'session') {
+      await authRepository.revokeSessions(context.principalId);
+    }
+    reply.header(
+      'Set-Cookie',
+      `${sessionCookieName}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`,
+    );
+    return { message: 'Logged out' };
+  });
+
+  server.get<{ Headers: SecurityHeaders }>('/auth/principal', async (request) => {
+    const context = requestContext(request.headers);
+    return { principalId: context.principalId, actor: context.actor };
+  });
+
+  server.get<{ Headers: SecurityHeaders }>('/auth/projects', async (request) => {
+    const context = requestContext(request.headers);
+    const memberships = await authRepository.listMemberships(context.principalId);
+    return { projects: memberships.map((m) => m.projectId) };
+  });
+
+  server.post<{ Body: { projectId: string }; Headers: SecurityHeaders }>(
+    '/auth/projects/active',
+    async (request) => {
+      const context = requestContext(request.headers);
+      const membership = await authRepository.findMembership(context.principalId, request.body.projectId);
+      if (!membership) throw new ShotgunError({ code: 'PROJECT_ACCESS_DENIED', safeMessage: 'Access denied.', module: 'shotgun-app', operation: 'set-active-project' });
+      const sessionToken = parseCookie(request.headers.cookie, sessionCookieName);
+      if (sessionToken) {
+        await authRepository.updateSessionProject(sessionToken, request.body.projectId);
+      }
+      return { projectId: request.body.projectId };
+    },
+  );
+
+  server.post<{ Body: { passwordHash: string }; Headers: SecurityHeaders }>('/auth/password', async (request) => {
+    const context = requestContext(request.headers);
+    await authRepository.changePassword(context.principalId, request.body.passwordHash);
+    return { message: 'Password updated' };
+  });
+
+  server.post<{ Headers: SecurityHeaders }>('/auth/account/disable', async (request) => {
+    const context = requestContext(request.headers);
+    await authRepository.disablePrincipal(context.principalId);
+    return { message: 'Account disabled' };
+  });
+
+  server.post<{ Headers: SecurityHeaders }>('/auth/sessions/revoke', async (request) => {
+    const context = requestContext(request.headers);
+    await authRepository.revokeSessions(context.principalId);
+    return { message: 'Sessions revoked' };
+  });
+
+  server.post<{ Body: { scopes: string[]; expiresAt: string }; Headers: SecurityHeaders }>('/auth/tokens', async (request) => {
+    const context = requestContext(request.headers);
+    const token = await authRepository.issueApiToken({
+      principalId: context.principalId,
+      scopes: request.body.scopes,
+      expiresAt: request.body.expiresAt,
+    });
+    return token;
+  });
+
+  server.post<{ Headers: SecurityHeaders }>('/auth/tokens/revoke', async (request) => {
+    const context = requestContext(request.headers);
+    await authRepository.revokeApiTokens(context.principalId);
+    return { message: 'Tokens revoked' };
+  });
+
+  server.get<{ Headers: SecurityHeaders }>('/auth/tokens', async (request) => {
+    const context = requestContext(request.headers);
+    const tokens = await authRepository.listApiTokens(context.principalId);
+    return { tokens };
+  });
 
   server.get('/health', async () => kernel.health());
 

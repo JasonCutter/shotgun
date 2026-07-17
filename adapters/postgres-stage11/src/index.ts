@@ -8,7 +8,8 @@ import type {
   ActionExecutionRecord,
   ServerActionCandidate,
 } from '../../../packages/contracts/src/index.js';
-import { ShotgunError } from '../../../packages/contracts/src/index.js';
+} from '../../../packages/contracts/src/index.js';
+import { ShotgunError, actionPreviewDigest, type ActionPreview } from '../../../packages/contracts/src/index.js';
 import type {
   ActionCandidateRepositoryPort,
   ActionExecutionRepositoryPort,
@@ -172,15 +173,25 @@ export class PostgresActionExecutionRepository implements ActionExecutionReposit
     actorId: string,
   ): Promise<{ readonly claimed: boolean; readonly record: ActionExecutionRecord }> {
     return this.transaction(async (client) => {
-      const result = await client.query<ExecutionRow>(
-        `SELECT executions.record_json
+      const result = await client.query<{ record_json: ActionExecutionRecord; snapshot_json: ActionPreview }>(
+        `SELECT executions.record_json, snapshots.snapshot_json
          FROM action.approval_records approvals
          JOIN action.executions executions ON executions.action_id = approvals.action_id
+         JOIN action.preview_snapshots snapshots ON snapshots.snapshot_id = approvals.snapshot_id
          WHERE approvals.approval_id = $1 AND executions.project_id = $2 FOR UPDATE OF executions`,
         [approvalId, projectId],
       );
-      const current = result.rows[0]?.record_json;
-      if (!current) throw stale('Approval Record is invalid.');
+      const row = result.rows[0];
+      if (!row) throw stale('Approval Record is invalid.');
+      
+      const current = row.record_json;
+      const snapshot = row.snapshot_json;
+      
+      if (actionPreviewDigest(snapshot) !== snapshot.previewDigest) {
+        throw stale('Preview Snapshot integrity compromised.');
+      }
+      
+      current.preview = snapshot;
       const approval = current.approval;
       if (
         !approval ||

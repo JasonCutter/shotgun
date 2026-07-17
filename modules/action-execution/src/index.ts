@@ -55,9 +55,14 @@ export type ActionConnectorPort = {
   ): Promise<Omit<ActionVerification, 'verifiedAt'>>;
 };
 
-/** Trusted staging port. It is intentionally not exposed as an HTTP endpoint. */
 export type ActionCandidateRepositoryPort = {
   find(projectId: string, candidateId: string): Promise<ServerActionCandidate | undefined>;
+};
+
+export type IndependentVerificationPort = {
+  getValidationDigest(projectId: string, candidateId: string): Promise<string | undefined>;
+  getEvidenceSetDigest(projectId: string, candidateId: string): Promise<string | undefined>;
+  getSourceSensitivity(projectId: string, candidateId: string): Promise<ServerActionCandidate['sourceSensitivity'] | undefined>;
 };
 
 export type ActionTransition = {
@@ -188,25 +193,23 @@ const requireCandidate = async (
 
 const assertCandidateMatchesSnapshot = (
   candidate: ServerActionCandidate,
+  independent: {
+    readonly validationDigest: string;
+    readonly evidenceSetDigest: string;
+    readonly sourceSensitivity: ServerActionCandidate['sourceSensitivity'];
+  },
   preview: ActionPreview,
   clearance: keyof typeof sensitivityRank,
   correlationId?: string,
 ): void => {
-  const evidence = [...candidate.evidence].sort((left, right) =>
-    left.evidenceId.localeCompare(right.evidenceId),
-  );
-  const expectedEvidence = [...preview.evidence].sort((left, right) =>
-    left.evidenceId.localeCompare(right.evidenceId),
-  );
   const currentDigest = actionCandidateDigest(candidate.candidate);
   if (
     candidate.candidate.revisionNumber !== preview.candidate.revisionNumber ||
     currentDigest !== preview.candidateDigest ||
-    candidate.validationDigest !== preview.validationDigest ||
-    actionEvidenceSetDigest(evidence) !== preview.evidenceSetDigest ||
-    JSON.stringify(evidence) !== JSON.stringify(expectedEvidence) ||
-    candidate.sourceSensitivity !== preview.sourceSensitivity ||
-    sensitivityRank[clearance] < sensitivityRank[candidate.sourceSensitivity]
+    independent.validationDigest !== preview.validationDigest ||
+    independent.evidenceSetDigest !== preview.evidenceSetDigest ||
+    independent.sourceSensitivity !== preview.sourceSensitivity ||
+    sensitivityRank[clearance] < sensitivityRank[independent.sourceSensitivity]
   ) {
     throw new ShotgunError({
       code: 'STALE_ACTION_SNAPSHOT',
@@ -221,6 +224,7 @@ const assertCandidateMatchesSnapshot = (
 export const createActionExecutionModule = (
   repository: ActionExecutionRepositoryPort,
   candidateRepository: ActionCandidateRepositoryPort,
+  independentVerification: IndependentVerificationPort,
   connector: ActionConnectorPort,
   clock: ActionClockPort = systemClock,
 ): ShotgunModule => ({
@@ -365,6 +369,33 @@ export const createActionExecutionModule = (
             sensitivity: staged.sourceSensitivity,
             compensation: Boolean(staged.candidate.compensationForActionId),
           });
+          const independent = {
+            validationDigest: await independentVerification.getValidationDigest(projectId, staged.candidate.candidateId),
+            evidenceSetDigest: await independentVerification.getEvidenceSetDigest(projectId, staged.candidate.candidateId),
+            sourceSensitivity: await independentVerification.getSourceSensitivity(projectId, staged.candidate.candidateId),
+          };
+          if (!independent.validationDigest || !independent.evidenceSetDigest || !independent.sourceSensitivity) {
+            throw new ShotgunError({
+              code: 'STALE_ACTION_SNAPSHOT',
+              safeMessage: 'Underlying Candidate, Evidence, or Source could not be independently verified.',
+              module: 'stage11.action-execution',
+              operation: envelope.messageType,
+              correlationId: envelope.correlationId,
+            });
+          }
+          if (
+            staged.validationDigest !== independent.validationDigest ||
+            actionEvidenceSetDigest(evidence) !== independent.evidenceSetDigest ||
+            staged.sourceSensitivity !== independent.sourceSensitivity
+          ) {
+            throw new ShotgunError({
+              code: 'STALE_ACTION_SNAPSHOT',
+              safeMessage: 'Candidate data is out of sync with independent verification ports.',
+              module: 'stage11.action-execution',
+              operation: envelope.messageType,
+              correlationId: envelope.correlationId,
+            });
+          }
           const snapshotBase = {
             actionId: randomUUID(),
             snapshotId: randomUUID(),
@@ -374,10 +405,10 @@ export const createActionExecutionModule = (
             projectId,
             candidate: staged.candidate,
             candidateDigest,
-            validationDigest: staged.validationDigest,
+            validationDigest: independent.validationDigest,
             evidence,
-            evidenceSetDigest: actionEvidenceSetDigest(evidence),
-            sourceSensitivity: staged.sourceSensitivity,
+            evidenceSetDigest: independent.evidenceSetDigest,
+            sourceSensitivity: independent.sourceSensitivity,
             targetDigest: actionTargetDigest(staged.candidate),
             parameterDigest: actionParameterDigest(staged.candidate),
             renderedPayload: { ...staged.candidate.parameters },
@@ -493,8 +524,21 @@ export const createActionExecutionModule = (
               current.preview.candidate.candidateId,
               envelope.correlationId,
             );
+            const independent = {
+              validationDigest: await independentVerification.getValidationDigest(projectId, candidate.candidate.candidateId),
+              evidenceSetDigest: await independentVerification.getEvidenceSetDigest(projectId, candidate.candidate.candidateId),
+              sourceSensitivity: await independentVerification.getSourceSensitivity(projectId, candidate.candidate.candidateId),
+            };
+            if (!independent.validationDigest || !independent.evidenceSetDigest || !independent.sourceSensitivity) {
+              throw stale('Underlying Candidate components could not be independently verified.', envelope.correlationId);
+            }
             assertCandidateMatchesSnapshot(
               candidate,
+              independent as {
+                validationDigest: string;
+                evidenceSetDigest: string;
+                sourceSensitivity: ServerActionCandidate['sourceSensitivity'];
+              },
               current.preview,
               security.sensitivity,
               envelope.correlationId,
@@ -574,7 +618,7 @@ export const createActionExecutionModule = (
             await publishFeedback(context, failed, failed.updatedAt);
             return failed;
           }
-          return verifyRecord(repository, connector, current, actor.id, clock, context);
+          return verifyRecord(repository, connector, current, 'system:worker', clock, context);
         },
       },
       {

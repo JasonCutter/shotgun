@@ -72,6 +72,8 @@ export type AuthRepositoryPort = {
   ): Promise<AuthSession>;
   findSession(sessionToken: string): Promise<AuthSession | undefined>;
   revokeSessions(principalId: string): Promise<void>;
+  updateSessionCsrf(sessionToken: string, newCsrfToken: string): Promise<void>;
+  updateSessionProject(sessionToken: string, activeProjectId: string): Promise<void>;
   changePassword(principalId: string, passwordHash: string): Promise<void>;
   disablePrincipal(principalId: string): Promise<void>;
   issueApiToken(input: {
@@ -83,6 +85,7 @@ export type AuthRepositoryPort = {
     token: string,
   ): Promise<(AuthenticatedPrincipal & { readonly scopeCeiling: readonly string[] }) | undefined>;
   revokeApiTokens(principalId: string): Promise<void>;
+  listApiTokens(principalId: string): Promise<readonly Omit<IssuedApiToken, 'token'>[]>;
   findMembership(principalId: string, projectId: string): Promise<ProjectMembership | undefined>;
   listMemberships(principalId: string): Promise<readonly ProjectMembership[]>;
   appendAudit(event: {
@@ -235,6 +238,26 @@ export class InMemoryAuthRepository implements AuthRepositoryPort {
       if (session.principalId === principalId) session.revokedAt = now();
   }
 
+  async updateSessionCsrf(sessionToken: string, newCsrfToken: string): Promise<void> {
+    const session = this.#sessions.get(hashSecuritySecret(sessionToken));
+    if (!session || session.revokedAt || Date.parse(session.expiresAt) <= Date.now())
+      throw new Error('Invalid or expired session.');
+    this.#sessions.set(session.tokenHash, {
+      ...session,
+      csrfToken: newCsrfToken,
+    });
+  }
+
+  async updateSessionProject(sessionToken: string, activeProjectId: string): Promise<void> {
+    const session = this.#sessions.get(hashSecuritySecret(sessionToken));
+    if (!session || session.revokedAt || Date.parse(session.expiresAt) <= Date.now())
+      throw new Error('Invalid or expired session.');
+    this.#sessions.set(session.tokenHash, {
+      ...session,
+      activeProjectId,
+    });
+  }
+
   async findPrincipal(
     principalId: string,
     method: AuthMethod,
@@ -301,6 +324,12 @@ export class InMemoryAuthRepository implements AuthRepositoryPort {
   async revokeApiTokens(principalId: string): Promise<void> {
     for (const token of this.#tokens.values())
       if (token.principalId === principalId) token.revokedAt = now();
+  }
+
+  async listApiTokens(principalId: string): Promise<readonly Omit<IssuedApiToken, 'token'>[]> {
+    return [...this.#tokens.values()]
+      .filter((t) => t.principalId === principalId && !t.revokedAt && Date.parse(t.expiresAt) > Date.now())
+      .map((t) => ({ tokenId: t.tokenId, expiresAt: t.expiresAt }));
   }
 
   async findMembership(

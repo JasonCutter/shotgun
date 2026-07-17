@@ -106,6 +106,7 @@ const stageReviewFiles = [
   'docs/implementation/stage-validations/stage-9-oss-integration-review.md',
   'docs/implementation/stage-validations/stage-10-oss-integration-review.md',
   'docs/implementation/stage-validations/stage-11-oss-integration-review.md',
+  'docs/implementation/stage-validations/stage-12-oss-integration-review.md',
 ] as const;
 
 const readJson = async <T>(relativePath: string): Promise<T> =>
@@ -213,6 +214,15 @@ const main = async (): Promise<void> => {
     errors.push('compose.yaml PostgreSQL image does not match the OSS registry digest');
   }
 
+  const lucas = byId.get('lucas-llmwiki');
+  if (lucas?.decision !== 'EXTRACT' || !lucas.stages.includes(12)) {
+    errors.push('Stage 12 requires the pinned lucas Extract decision');
+  }
+  const jsdiff = byId.get('jsdiff');
+  if (!jsdiff?.stages.includes(12)) {
+    errors.push('Stage 12 jsdiff replacement evidence is missing');
+  }
+
   for (const reviewFile of stageReviewFiles) {
     const review = await readFile(path.join(root, reviewFile), 'utf8');
     if (!review.includes('OSS Gate: **COMPLETE**')) {
@@ -229,7 +239,7 @@ const main = async (): Promise<void> => {
   }
 
   console.log(
-    `OSS Gate passed: ${registry.entries.length} decisions, ${requiredIds.length} baseline references, Stage 0-11 reviews complete.`,
+    `OSS Gate passed: ${registry.entries.length} decisions, ${requiredIds.length} baseline references, Stage 0-12 reviews complete.`,
   );
 };
 

@@ -16,6 +16,7 @@ import type {
   PlainTextTransformationOutput,
 } from '../../../modules/transformation/src/index.js';
 import type { EvidenceLocatorPort } from '../../../modules/evidence/src/index.js';
+import { locateTextQuote } from '../../../packages/lucas-text-locator/src/index.js';
 
 type Range = {
   readonly start: number;
@@ -141,85 +142,6 @@ const mapEntry = (
   };
 };
 
-const exactOccurrences = (source: string, exact: string): readonly Range[] => {
-  if (!exact) {
-    return [];
-  }
-  const occurrences: Range[] = [];
-  let codeUnitStart = 0;
-  while (codeUnitStart <= source.length) {
-    const found = source.indexOf(exact, codeUnitStart);
-    if (found < 0) {
-      break;
-    }
-    const start = unicodeLength(source.slice(0, found));
-    occurrences.push({ start, end: start + unicodeLength(exact) });
-    codeUnitStart = found + Math.max(exact.length, 1);
-  }
-  return occurrences;
-};
-
-const normalized = (value: string) => {
-  const characters = Array.from(value);
-  const output: string[] = [];
-  const sourceIndexes: number[] = [];
-  let inWhitespace = false;
-  for (let index = 0; index < characters.length; index += 1) {
-    const character = characters[index] ?? '';
-    if (/\s/u.test(character)) {
-      if (!inWhitespace && output.length > 0) {
-        output.push(' ');
-        sourceIndexes.push(index);
-      }
-      inWhitespace = true;
-      continue;
-    }
-    output.push(character);
-    sourceIndexes.push(index);
-    inWhitespace = false;
-  }
-  if (output.at(-1) === ' ') {
-    output.pop();
-    sourceIndexes.pop();
-  }
-  return { text: output.join(''), sourceIndexes };
-};
-
-const normalizedOccurrences = (source: string, exact: string): readonly Range[] => {
-  const normalizedSource = normalized(source);
-  const normalizedExact = normalized(exact).text;
-  if (!normalizedExact) {
-    return [];
-  }
-  const matches = exactOccurrences(normalizedSource.text, normalizedExact);
-  return matches.flatMap((match) => {
-    const start = normalizedSource.sourceIndexes[match.start];
-    const last = normalizedSource.sourceIndexes[match.end - 1];
-    return start === undefined || last === undefined ? [] : [{ start, end: last + 1 }];
-  });
-};
-
-const contextScore = (source: string, range: Range, quote: TextQuoteSelector): number => {
-  let score = 0;
-  if (quote.prefix) {
-    const prefix = unicodeSlice(
-      source,
-      Math.max(0, range.start - unicodeLength(quote.prefix)),
-      range.start,
-    );
-    if (prefix === quote.prefix) {
-      score += unicodeLength(quote.prefix);
-    }
-  }
-  if (quote.suffix) {
-    const suffix = unicodeSlice(source, range.end, range.end + unicodeLength(quote.suffix));
-    if (suffix === quote.suffix) {
-      score += unicodeLength(quote.suffix);
-    }
-  }
-  return score;
-};
-
 export class LucasAugmentedPlainTextAdapter
   implements PlainTextTransformerPort, EvidenceLocatorPort
 {
@@ -299,24 +221,7 @@ export class LucasAugmentedPlainTextAdapter
   }
 
   locate(source: string, quote: TextQuoteSelector): TextPositionSelector | undefined {
-    const candidates = exactOccurrences(source, quote.exact);
-    const matches = candidates.length > 0 ? candidates : normalizedOccurrences(source, quote.exact);
-    if (matches.length === 0) {
-      return undefined;
-    }
-    if (matches.length === 1) {
-      return selectorFor(source, matches[0]!);
-    }
-    if (!quote.prefix && !quote.suffix) {
-      return undefined;
-    }
-    const ranked = matches
-      .map((range) => ({ range, score: contextScore(source, range, quote) }))
-      .sort((left, right) => right.score - left.score);
-    const best = ranked[0];
-    if (!best || best.score === 0 || best.score === ranked[1]?.score) {
-      return undefined;
-    }
-    return selectorFor(source, best.range);
+    const located = locateTextQuote(source, quote);
+    return located ? selectorFor(source, located) : undefined;
   }
 }

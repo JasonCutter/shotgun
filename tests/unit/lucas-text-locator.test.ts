@@ -13,6 +13,14 @@ describe('@shotgun/lucas-text-locator', () => {
     });
   });
 
+  it('preserves the full exact range including trailing line breaks', () => {
+    const source = 'CodeFlow description\r\n\r\n';
+    expect(locateTextQuote(source, { exact: source })).toEqual({
+      start: 0,
+      end: Array.from(source).length,
+    });
+  });
+
   it('uses prefix and suffix to disambiguate repeated text', () => {
     const source = 'alpha common omega. beta common delta.';
     expect(locateTextQuote(source, { exact: 'common' })).toBeUndefined();

@@ -13,6 +13,7 @@ import {
   type QueryEnvelope,
   type SecurityContext,
   ShotgunError,
+  stableJson,
   validateAssetReference,
 } from '../../../packages/contracts/src/index.js';
 import type { ShotgunModule } from '../../../packages/module-sdk/src/index.js';
@@ -333,7 +334,7 @@ export const createOriginalAssetModule = (
             });
           }
           assertStoredScope(result, security.accessScope, envelope.correlationId);
-          if (JSON.stringify(result.assetReference) !== JSON.stringify(payload.assetReference)) {
+          if (stableJson(result.assetReference) !== stableJson(payload.assetReference)) {
             throw new ShotgunError({
               code: 'CONFLICT',
               safeMessage:

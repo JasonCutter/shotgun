@@ -1,0 +1,62 @@
+{
+  "id": "shotgun.document-review",
+  "version": "1.0.0",
+  "compatibility": {
+    "runtime": ">=1.0.0 <2.0.0"
+  },
+  "modules": [
+    { "name": "stage2.intake", "range": ">=1.0.0 <2.0.0" },
+    { "name": "stage2.original-asset", "range": ">=1.0.0 <2.0.0" },
+    { "name": "stage3.transformation", "range": ">=1.0.0 <2.0.0" },
+    { "name": "stage3.evidence", "range": ">=1.0.0 <2.0.0" },
+    { "name": "stage4.ai-provider", "range": ">=1.0.0 <2.0.0" },
+    { "name": "stage4.candidate-generation", "range": ">=1.0.0 <2.0.0" },
+    { "name": "stage4.validation", "range": ">=1.0.0 <2.0.0" },
+    { "name": "stage5.comparison", "range": ">=1.0.0 <2.0.0" },
+    { "name": "stage5.change-set-review", "range": ">=1.0.0 <2.0.0" }
+  ],
+  "requiredCapabilities": [
+    "intake-submit",
+    "original-asset-store",
+    "plain-text-transformation",
+    "evidence-resolver",
+    "structured-ai-provider",
+    "claim-candidate-provider",
+    "candidate-validation-provider",
+    "claim-comparison-provider",
+    "change-set-review-provider"
+  ],
+  "adapters": {
+    "transport": {
+      "port": "MessageTransport",
+      "selected": "in-memory",
+      "alternatives": ["in-process"]
+    },
+    "storage": {
+      "port": "AssetStoragePort",
+      "selected": "in-memory",
+      "alternatives": ["local-filesystem"]
+    },
+    "transformation": {
+      "port": "DocumentTransformerPort",
+      "selected": "lucas-text-locator-augmented",
+      "alternatives": ["document-format-python"]
+    },
+    "ai": {
+      "port": "AIProviderAdapterPort",
+      "selected": "fake-local",
+      "alternatives": ["gemini"]
+    },
+    "diff": {
+      "port": "TextDiffPort",
+      "selected": "jsdiff-9.0.0",
+      "alternatives": ["shotgun-simple-prefix-suffix"]
+    }
+  },
+  "policies": {
+    "canonicalWrite": "disabled",
+    "externalAction": "disabled",
+    "missingSecurityContext": "deny",
+    "audioVideoAnalysis": "disabled"
+  }
+}

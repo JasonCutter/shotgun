@@ -1,0 +1,134 @@
+// Adapted from lucasastorian/llmwiki at commit
+// ad626a3d81be1480e35ef4e94234de8dbb27a61e (Apache-2.0).
+
+export type TextQuote = {
+  readonly exact: string;
+  readonly prefix?: string;
+  readonly suffix?: string;
+};
+
+export type TextRange = {
+  readonly start: number;
+  readonly end: number;
+};
+
+export type LocateTextQuoteOptions = {
+  readonly maxOccurrences?: number;
+  readonly rejectAmbiguous?: boolean;
+};
+
+type NormalizedText = {
+  readonly text: string;
+  readonly sourceIndexes: readonly number[];
+};
+
+const normalizeWithIndexMap = (value: string): NormalizedText => {
+  const output: string[] = [];
+  const sourceIndexes: number[] = [];
+  let inWhitespace = true;
+
+  Array.from(value).forEach((character, index) => {
+    if (character === '\u200b' || character === '\ufeff') {
+      return;
+    }
+    if (/\s/u.test(character) || character === '\u00a0') {
+      if (!inWhitespace && output.length > 0) {
+        output.push(' ');
+        sourceIndexes.push(index);
+      }
+      inWhitespace = true;
+      return;
+    }
+    output.push(character);
+    sourceIndexes.push(index);
+    inWhitespace = false;
+  });
+
+  if (output.at(-1) === ' ') {
+    output.pop();
+    sourceIndexes.pop();
+  }
+  return { text: output.join(''), sourceIndexes };
+};
+
+export const normalizeAnchorText = (value: string): string => normalizeWithIndexMap(value).text;
+
+const occurrencesOf = (
+  source: readonly string[],
+  exact: readonly string[],
+  cap: number,
+): readonly number[] => {
+  const found: number[] = [];
+  for (let start = 0; start <= source.length - exact.length && found.length < cap; start += 1) {
+    if (exact.every((character, index) => source[start + index] === character)) {
+      found.push(start);
+    }
+  }
+  return found;
+};
+
+const contextScore = (
+  source: readonly string[],
+  start: number,
+  length: number,
+  quote: TextQuote,
+): number => {
+  let score = 0;
+  const prefix = quote.prefix ? Array.from(normalizeAnchorText(quote.prefix)) : [];
+  const suffix = quote.suffix ? Array.from(normalizeAnchorText(quote.suffix)) : [];
+  if (prefix.length > 0) {
+    const before = source.slice(Math.max(0, start - Math.max(prefix.length, 32)), start).join('');
+    const normalizedPrefix = prefix.join('');
+    score += before.endsWith(normalizedPrefix) ? 4 : before.includes(normalizedPrefix) ? 1 : 0;
+  }
+  if (suffix.length > 0) {
+    const after = source
+      .slice(start + length, start + length + Math.max(suffix.length, 32))
+      .join('');
+    const normalizedSuffix = suffix.join('');
+    score += after.startsWith(normalizedSuffix) ? 4 : after.includes(normalizedSuffix) ? 1 : 0;
+  }
+  return score;
+};
+
+export const locateTextQuote = (
+  source: string,
+  quote: TextQuote,
+  options: LocateTextQuoteOptions = {},
+): TextRange | undefined => {
+  const needle = Array.from(normalizeAnchorText(quote.exact));
+  if (needle.length === 0) {
+    return undefined;
+  }
+  const normalized = normalizeWithIndexMap(source);
+  const normalizedCharacters = Array.from(normalized.text);
+  const occurrences = occurrencesOf(normalizedCharacters, needle, options.maxOccurrences ?? 500);
+  if (occurrences.length === 0) {
+    return undefined;
+  }
+
+  const ranked = occurrences
+    .map((start) => ({
+      start,
+      score: contextScore(normalizedCharacters, start, needle.length, quote),
+    }))
+    .sort((left, right) => right.score - left.score || left.start - right.start);
+  const best = ranked[0];
+  if (!best) {
+    return undefined;
+  }
+  if (occurrences.length > 1 && (options.rejectAmbiguous ?? true)) {
+    const second = ranked[1];
+    if (best.score === 0 || best.score === second?.score) {
+      return undefined;
+    }
+  }
+
+  const normalizedEnd = best.start + needle.length;
+  const start = normalized.sourceIndexes[best.start];
+  const last = normalized.sourceIndexes[normalizedEnd - 1];
+  if (start === undefined || last === undefined) {
+    return undefined;
+  }
+  return { start, end: last + 1 };
+};

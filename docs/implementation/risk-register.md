@@ -289,6 +289,13 @@ Evidence Round-trip 오류율이 형식별 허용 기준을 넘으면 해당 Ada
 - Shotgun 전용 Global Context 금지
 - Stage 12 실제 예제 Project
 
+**Stage 12 검증 결과**
+
+- Document Review Assembly가 Canonical Module 없이 In-memory E2E를 통과
+- lucas Extract Package를 별도 Project에 단독 설치·실행
+- Storage·AI·Transport·Diff Adapter 교체 시 Domain Module 변경 0
+- Assembly Manifest가 undeclared Module, version·Capability·정책 충돌을 시작 전에 거부
+
 ### R-025 — 기술 결정 지연
 
 **완화**

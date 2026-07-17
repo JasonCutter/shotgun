@@ -386,7 +386,7 @@ Stage 0~3의 재검증된 exact pin과 결정은
 | 후보                  | 공식 저장소·규격                                              | Version / Commit baseline                              | 라이선스 검토                      | 현재 상태              |
 | --------------------- | ------------------------------------------------------------- | ------------------------------------------------------ | ---------------------------------- | ---------------------- |
 | garrytan/gbrain       | https://github.com/garrytan/gbrain                            | `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a`             | MIT 확인                           | `REFERENCE`            |
-| lucasastorian/llmwiki | https://github.com/lucasastorian/llmwiki                      | `ad626a3d81be1480e35ef4e94234de8dbb27a61e`             | Apache-2.0 확인                    | `AUGMENT`              |
+| lucasastorian/llmwiki | https://github.com/lucasastorian/llmwiki                      | `ad626a3d81be1480e35ef4e94234de8dbb27a61e`             | Apache-2.0 확인                    | `EXTRACT`              |
 | ddsyasas/llm-wiki     | https://github.com/ddsyasas/llm-wiki                          | `e8dd69ebba0dc7c395c1b8217bb1c30c14e8c84c`             | MIT 확인                           | `REFERENCE`            |
 | Inkeep OpenKnowledge  | https://github.com/inkeep/open-knowledge                      | `f2834c237639e2cff603817ed88182b33f83cf91`             | GPL-3.0-or-later 확인, 패턴 참고만 | `REFERENCE`            |
 | NetworkX              | https://github.com/networkx/networkx                          | `3.6.1` / `7530809bfa1ea7ed6fdf918a4d1431488953cb1f`   | BSD-3-Clause 확인                  | `ADOPTED`              |
@@ -449,6 +449,21 @@ Stage 0~3의 재검증된 exact pin과 결정은
 - Stage 11 실행 Adapter는 비밀값을 내부 private field로 격리한 Fake Draft Connector다.
   실제 Provider Adapter는 같은 Preflight·idempotency·Verify·`OUTCOME_UNKNOWN` Contract Test를
   통과하기 전 활성화할 수 없다.
+
+### Stage 12 확정 결정
+
+- lucas `ad626a3d`의 Highlight locator 경계를 Apache-2.0 고지와 함께
+  `@shotgun/lucas-text-locator@1.0.0`으로 `EXTRACT`한다. SQLite·VaultFS·MCP·Watcher는 제외한다.
+- `diff@9.0.0`은 기본 `ADOPTED` Adapter로 유지하되 `SimpleTextDiffAdapter` 교체 시험을
+  통과했다. Comparison·Review Domain Module 변경은 없다.
+- gbrain은 Document Review의 필수 Capability가 아니므로 Runtime·DB를 설치하지 않는다.
+  Research Assistant의 read-only Brain 상호운용 요구가 확인되면 Query/Projection Port 뒤에서
+  재평가한다.
+- ddsyasas의 action 중심 진입·busy 상태와 OpenKnowledge의 activity·diff·evidence grouping은
+  `documentReviewUxMockContract@1.0.0`으로만 사용한다. Backend와 GPL 코드는 포함하지 않는다.
+- Package version, 호환 범위, migration, 기능 축소와 rollback은
+  [Stage 12 Compatibility Guide](../../implementation/stage-12-module-compatibility-and-migration.md)에
+  고정한다.
 
 ### 5.1 채택 시 필수 기록
 

@@ -119,7 +119,7 @@
     {
       "id": "gbrain",
       "name": "garrytan/gbrain",
-      "stages": [0, 1, 2, 6, 7, 9, 10, 11],
+      "stages": [0, 1, 2, 6, 7, 9, 10, 11, 12],
       "officialSource": "https://github.com/garrytan/gbrain",
       "pin": {
         "type": "git-commit",
@@ -131,7 +131,7 @@
         "evidence": "LICENSE at the pinned commit"
       },
       "decision": "REFERENCE_ONLY",
-      "scope": "Minion retry/idempotency, PostgreSQL locking, append-only timeline, migration/recovery, search quality patterns, Stage 9 typed graph traversal, Stage 10 Dream Cycle patterns, and Stage 11 operation allowlist, mutating scope, remote trust-boundary, and adversarial side-effect tests",
+      "scope": "Minion retry/idempotency, PostgreSQL locking, append-only timeline, migration/recovery, search quality patterns, Stage 9 typed graph traversal, Stage 10 Dream Cycle patterns, Stage 11 operation safety patterns, and Stage 12 optional Brain Assembly comparison",
       "security": "No gbrain runtime, database, or provider configuration is embedded in Shotgun",
       "maintenance": "Pinned v0.42.58.0 validation baseline; upstream changes are not consumed automatically",
       "evidence": [
@@ -144,11 +144,12 @@
         "Stage 9 alias and inferred meeting timeline remain excluded from Shotgun Canonical writes",
         "Stage 10 Dream Cycle ordered phases, dry-run, bounded window, and graph direction filters reviewed",
         "gbrain storage and generated inference remain outside Shotgun Canonical and Projection contracts",
-        "Stage 11 contract-first operation definitions, mutating/write scope, remote default-deny, and read-only side-effect allowlist tests reviewed"
+        "Stage 11 contract-first operation definitions, mutating/write scope, remote default-deny, and read-only side-effect allowlist tests reviewed",
+        "Stage 12 kept the gbrain runtime and database out of the minimal Document Review Assembly because they add no required capability"
       ],
       "boundary": "Any future reuse must sit behind Shotgun Job, Repository, or Module ports",
       "replacement": "Shotgun-owned Canonical contracts and repositories can evolve without the gbrain runtime or database",
-      "recheckTrigger": "Measured need for gbrain interoperability beyond the Stage 9 Adapter contract or a general durable Job runtime"
+      "recheckTrigger": "Research Assistant requires gbrain interoperability, or a measured need appears for a general durable Job runtime"
     },
     {
       "id": "transactional-outbox-pattern",
@@ -309,7 +310,7 @@
     {
       "id": "lucas-llmwiki",
       "name": "lucasastorian/llmwiki",
-      "stages": [0, 2, 3, 8, 9],
+      "stages": [0, 2, 3, 8, 9, 12],
       "officialSource": "https://github.com/lucasastorian/llmwiki",
       "pin": {
         "type": "git-commit",
@@ -320,21 +321,22 @@
         "status": "VERIFIED",
         "evidence": "LICENSE at the pinned commit"
       },
-      "decision": "AUGMENT",
-      "scope": "Text quote location, prefix/suffix disambiguation, deterministic validation, Stage 8 HTML extraction, and Stage 9 idempotent reconcile patterns",
+      "decision": "EXTRACT",
+      "scope": "Portable text quote normalization, prefix/suffix disambiguation and Unicode position mapping in @shotgun/lucas-text-locator; Stage 8 HTML extraction and Stage 9 reconcile remain augmented patterns",
       "security": "Ambiguous short quotes are not guessed; path-based identity, SQLite, VaultFS, MCP CRUD, and filename citation remain excluded",
-      "maintenance": "Pinned commit only; behavior was reimplemented behind Shotgun ports without adding the upstream runtime",
+      "maintenance": "Pinned commit only; the adapted TypeScript package is independently versioned, packed with Apache-2.0 attribution, and tested without the upstream runtime",
       "evidence": [
         "highlight single/multiple match tests reviewed",
         "chunk start_char regression tests reviewed",
         "watcher path identity rejected",
         "Shotgun locator and adapter replacement tests",
         "Stage 8 HTML Golden retained 6 semantic blocks and removed script, video, and navigation noise",
-        "Stage 9 local reconcile backfill and no-op replay tests reviewed without importing SQLite or VaultFS"
+        "Stage 9 local reconcile backfill and no-op replay tests reviewed without importing SQLite or VaultFS",
+        "Stage 12 package build, tarball install, standalone consumer, Unicode Golden and adapter replacement tests passed"
       ],
-      "boundary": "Lucas-derived behavior is isolated behind PlainTextTransformerPort and EvidenceLocatorPort; SourceVersion and EvidenceSpan remain Shotgun-owned",
-      "replacement": "A replacement transformer or locator must pass the same Golden, SourceMap, ambiguity, and replacement tests",
-      "recheckTrigger": "Before XLSX directory watching or upstream HTML extraction changes"
+      "boundary": "@shotgun/lucas-text-locator has no Shotgun, database or AI dependency; the product adapter keeps it behind EvidenceLocatorPort while SourceVersion and EvidenceSpan remain Shotgun-owned",
+      "replacement": "Pin package 1.0.0 or replace EvidenceLocatorPort; preserve the Unicode, whitespace, ambiguity, Golden and SourceMap contract tests",
+      "recheckTrigger": "Before a locator behavior change, XLSX directory watching, or upstream HTML extraction sync"
     },
     {
       "id": "w3c-web-annotation",
@@ -393,7 +395,7 @@
     {
       "id": "ddsyasas-llm-wiki",
       "name": "ddsyasas/llm-wiki",
-      "stages": [0, 2, 4, 5, 7],
+      "stages": [0, 2, 4, 5, 7, 12],
       "officialSource": "https://github.com/ddsyasas/llm-wiki",
       "pin": {
         "type": "git-commit",
@@ -412,7 +414,8 @@
         "responsive UI review",
         "independent adapter PoC",
         "frontend/backend coupling map",
-        "Stage 7 pinned ChatView optimistic input, busy state, error recovery, and server refresh review"
+        "Stage 7 pinned ChatView optimistic input, busy state, error recovery, and server refresh review",
+        "Stage 12 action-centered review entry and busy-state fields captured as a versioned UX Mock Contract"
       ],
       "boundary": "Only UI patterns may consume Shotgun typed APIs; backend and storage remain excluded",
       "replacement": "UI can be rebuilt from the recorded workflow without carrying upstream runtime code",
@@ -421,7 +424,7 @@
     {
       "id": "inkeep-open-knowledge",
       "name": "Inkeep OpenKnowledge",
-      "stages": [0, 5, 9, 10],
+      "stages": [0, 5, 9, 10, 12],
       "officialSource": "https://github.com/inkeep/open-knowledge",
       "pin": {
         "type": "git-commit",
@@ -441,7 +444,8 @@
         "2D graph and editor UX validation",
         "Stage 5 activity and diff pattern mapping",
         "Stage 9 GraphView and Entity Vault pack reviewed",
-        "Entity Vault direct Canonical synchronization explicitly prohibited"
+        "Entity Vault direct Canonical synchronization explicitly prohibited",
+        "Stage 12 activity, diff and evidence grouping captured as a UX Mock Contract without GPL code"
       ],
       "boundary": "Canonical data, approval, and Job state remain owned by Shotgun",
       "replacement": "Patterns are independently reimplemented behind Shotgun APIs",
@@ -450,7 +454,7 @@
     {
       "id": "jsdiff",
       "name": "jsdiff",
-      "stages": [5],
+      "stages": [5, 12],
       "officialSource": "https://github.com/kpdecker/jsdiff",
       "pin": {
         "type": "npm-lock",
@@ -469,10 +473,11 @@
       "evidence": [
         "in-memory and in-process comparison contracts",
         "read-only review UI integration test",
-        "adapter replacement boundary"
+        "adapter replacement boundary",
+        "Stage 12 SimpleTextDiffAdapter replacement passed the same Document Review Assembly contract"
       ],
       "boundary": "Only adapters/text-diff-jsdiff imports the package; Comparison uses TextDiffPort",
-      "replacement": "Any replacement must return the same neutral TextDiffSegment contract and pass Stage 5 tests",
+      "replacement": "Select SimpleTextDiffAdapter or another TextDiffPort implementation; no Comparison, Review, Evidence or Candidate module change is required",
       "recheckTrigger": "Diff algorithm change, rich editor introduction, or package major upgrade"
     },
     {

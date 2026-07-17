@@ -58,6 +58,29 @@ export type ModuleManifest = {
   };
 };
 
+export type AssemblyAdapterSelection = {
+  readonly port: string;
+  readonly selected: string;
+  readonly alternatives: readonly string[];
+};
+
+export type AssemblyManifest = {
+  readonly id: string;
+  readonly version: string;
+  readonly compatibility: {
+    readonly runtime: string;
+  };
+  readonly modules: readonly ContractRequirement[];
+  readonly requiredCapabilities: readonly string[];
+  readonly adapters: Readonly<Record<string, AssemblyAdapterSelection>>;
+  readonly policies: {
+    readonly canonicalWrite: 'disabled' | 'explicit-user-approval';
+    readonly externalAction: 'disabled' | 'risk-based-approval';
+    readonly missingSecurityContext: 'deny';
+    readonly audioVideoAnalysis: 'disabled';
+  };
+};
+
 export type PublishEventInput<TPayload> = {
   readonly messageType: string;
   readonly schemaVersion: string;

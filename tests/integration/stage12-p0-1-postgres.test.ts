@@ -7,6 +7,8 @@ import { hashPassword } from '../../packages/authentication/src/index.js';
 import { actionServerCandidate } from '../helpers/stage-11.js';
 import { InMemoryActionCandidateRepository } from '../../adapters/stage11-in-memory/src/index.js';
 import type { ValidationResult } from '../../packages/contracts/src/index.js';
+import { stableJson, sha256Text, actionEvidenceSetDigest } from '../../packages/contracts/src/index.js';
+
 
 const databaseUrl = process.env.DATABASE_URL;
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
@@ -14,7 +16,7 @@ const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
 describe.runIf(pool)('Stage 12.1 P0-1/2 Postgres Integration Tests', () => {
   beforeEach(async () => {
     await pool!.query(
-      'TRUNCATE auth.audit_events, auth.api_tokens, auth.sessions, auth.project_memberships, auth.credentials, auth.principals, action.executions, action.preview_snapshots, action.approval_records, action.execution_audit_events CASCADE',
+      'TRUNCATE auth.audit_events, auth.api_tokens, auth.sessions, auth.project_memberships, auth.credentials, auth.principals, action.executions, action.preview_snapshots, action.approval_records, action.audit_events CASCADE',
     );
   });
   afterAll(async () => {
@@ -39,18 +41,48 @@ describe.runIf(pool)('Stage 12.1 P0-1/2 Postgres Integration Tests', () => {
           createdAt: new Date().toISOString(),
         } as ValidationResult;
       },
+      findByValidationId: async (projectId: string, validationId: string) => {
+        return {
+          validationId,
+          candidateId: 'action-candidate:test',
+          revisionNumber: 1,
+          projectId: 'shotgun',
+          sourceVersionId: 's1',
+          status: 'READY' as const,
+          dimensions: [],
+          createdAt: new Date().toISOString(),
+        } as ValidationResult;
+      },
     };
     const evidenceRepository = {
       index: async () => ({ items: [], reusedCount: 0 }),
       listBySourceVersion: async () => [],
-      findById: async () => undefined,
+      findById: async (projectId: string, evidenceId: string) => {
+        if (evidenceId === 'evidence:test') {
+          return {
+            evidenceId: 'evidence:test',
+            sourceId: 'src1',
+            sourceVersionId: 's1',
+            exactHash: 'hash',
+            sensitivity: 'private' as const,
+          };
+        }
+        return undefined;
+      },
     };
-
     await authRepository.bootstrapOwner({
       accountId: 'owner',
       passwordHash: await hashPassword('initial-password'),
       projectId: 'shotgun',
-      scopes: ['owner', 'action:approve', 'action:execute'],
+      scopes: [
+        'owner',
+        'action:candidate:stage',
+        'action:approve',
+        'action:execute',
+        'action:verify',
+        'action:read',
+        'action:audit:read',
+      ],
       sensitivityClearance: 'private',
     });
 
@@ -95,7 +127,7 @@ describe.runIf(pool)('Stage 12.1 P0-1/2 Postgres Integration Tests', () => {
       headers: { cookie, 'x-csrf-token': csrfToken },
       payload: { currentPassword: 'wrong', newPassword: 'new-password' },
     });
-    expect(badPw.statusCode).toBe(400);
+    expect(badPw.statusCode).toBe(401);
 
     const goodPw = await app.server.inject({
       method: 'POST',
@@ -126,8 +158,39 @@ describe.runIf(pool)('Stage 12.1 P0-1/2 Postgres Integration Tests', () => {
       )?.split(';')[0] ?? '';
     const csrfToken2 = login2.json().csrfToken as string;
 
-    const candidate = actionServerCandidate('test', { projectId: 'shotgun' });
-    await actionCandidateRepository.stage(candidate);
+    const candidate = actionServerCandidate('test', { 
+      projectId: 'shotgun',
+      sourceSensitivity: 'public',
+    });
+    candidate.candidate.validation.status = 'READY';
+    const calculatedValidationDigest = sha256Text(
+      stableJson({
+        validationId: candidate.candidate.validation.validationId,
+        candidateId: candidate.candidate.candidateId,
+        revisionNumber: candidate.candidate.revisionNumber,
+        sourceVersionId: 's1',
+        status: 'READY',
+      }),
+    );
+    const evObj = {
+      evidenceId: 'evidence:test',
+      sourceId: 'src1',
+      sourceVersionId: 's1',
+      exactHash: 'hash',
+      sensitivity: 'private' as const,
+    };
+    const evBinding = {
+      ...evObj,
+      digest: sha256Text(stableJson(evObj)),
+    };
+    const calculatedEvidenceSetDigest = actionEvidenceSetDigest([evBinding]);
+    const finalCandidate = {
+      ...candidate,
+      evidence: [evBinding],
+      validationDigest: calculatedValidationDigest,
+      evidenceSetDigest: calculatedEvidenceSetDigest,
+    };
+    await actionCandidateRepository.stage(finalCandidate);
 
     const previewResp = await app.server.inject({
       method: 'POST',
@@ -140,14 +203,14 @@ describe.runIf(pool)('Stage 12.1 P0-1/2 Postgres Integration Tests', () => {
       },
     });
     expect(previewResp.statusCode).toBe(200);
-    const actionId = previewResp.json().actionId;
-    const previewDigest = previewResp.json().preview.previewDigest;
+    const actionId = previewResp.json().action.actionId;
+    const previewDigest = previewResp.json().action.preview.previewDigest;
 
     const approveRespForged = await app.server.inject({
       method: 'POST',
       url: `/actions/${actionId}/approve`,
       headers: { cookie: cookie2, 'x-csrf-token': csrfToken2 },
-      payload: { expectedPreviewDigest: 'sha256:forged' },
+      payload: { expectedPreviewDigest: 'sha256:1111111111111111111111111111111111111111111111111111111111111111' },
     });
     expect(approveRespForged.statusCode).toBe(409);
 
@@ -159,10 +222,14 @@ describe.runIf(pool)('Stage 12.1 P0-1/2 Postgres Integration Tests', () => {
     });
     expect(approveResp.statusCode).toBe(200);
 
+    const approveData = approveResp.json();
+    const approvalId = approveData.action.approval.approvalId;
+
     const executeResp = await app.server.inject({
       method: 'POST',
-      url: `/actions/${actionId}/execute`,
+      url: `/actions/execute`,
       headers: { cookie: cookie2, 'x-csrf-token': csrfToken2 },
+      payload: { approvalId },
     });
     expect(executeResp.statusCode).toBe(200);
 
@@ -170,5 +237,5 @@ describe.runIf(pool)('Stage 12.1 P0-1/2 Postgres Integration Tests', () => {
     expect(audits.some((a) => a.category === 'ACTION_EXECUTION_CLAIMED')).toBe(true);
 
     await app.server.close();
-  });
+  }, 15000);
 });

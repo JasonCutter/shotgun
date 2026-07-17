@@ -65,6 +65,15 @@ export class InMemoryValidationRepository implements ValidationRepositoryPort {
     return this.results.get(`${projectId}:${candidateId}`);
   }
 
+  async findByValidationId(
+    projectId: string,
+    validationId: string,
+  ): Promise<ValidationResult | undefined> {
+    return [...this.results.values()].find(
+      (v) => v.projectId === projectId && v.validationId === validationId,
+    );
+  }
+
   count(): number {
     return this.results.size;
   }

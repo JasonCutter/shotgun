@@ -50,6 +50,8 @@ import {
   createCommand,
   createQuery,
   actionEvidenceSetDigest,
+  sha256Text,
+  stableJson,
   ShotgunError,
   ShotgunKernel,
   type AssetReference,
@@ -665,36 +667,73 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     actionExecutionRepository,
     actionCandidateRepository,
     {
-      getValidationDigest: async (projectId, candidateId) => {
-        const v = await validationRepository.findByCandidateId(projectId, candidateId);
+      resolveCurrentBinding: async (reference) => {
+        const v =
+          (await validationRepository.findByValidationId?.(
+            reference.projectId,
+            reference.validationId,
+          )) ??
+          (await validationRepository.findByCandidateId(
+            reference.projectId,
+            reference.validationId,
+          ));
         if (!v || v.status !== 'READY' || v.dimensions.some((d) => d.status === 'FAIL')) {
           return undefined;
         }
-        const c = await actionCandidateRepository.find(projectId, candidateId);
-        return c?.validationDigest;
-      },
-      getEvidenceSetDigest: async (projectId, candidateId) => {
-        const c = await actionCandidateRepository.find(projectId, candidateId);
-        if (!c) return undefined;
+
         const freshEvidence = await Promise.all(
-          c.evidence.map(async (e) => await evidenceRepository.findById(projectId, e.evidenceId)),
+          reference.evidenceIds.map(
+            async (e) => await evidenceRepository.findById(reference.projectId, e),
+          ),
         );
         const resolved = freshEvidence.filter((e) => e !== undefined);
-        if (resolved.length !== c.evidence.length) return undefined;
-        return actionEvidenceSetDigest(c.evidence);
-      },
-      getSourceSensitivity: async (projectId, candidateId) => {
-        const c = await actionCandidateRepository.find(projectId, candidateId);
-        if (!c) return undefined;
+        if (resolved.length !== reference.evidenceIds.length) return undefined;
 
-        const freshEvidence = await Promise.all(
-          c.evidence.map(async (e) => await evidenceRepository.findById(projectId, e.evidenceId)),
+        const evBinding = resolved.map((e) => ({
+          evidenceId: e.evidenceId,
+          sourceId: e.sourceId,
+          sourceVersionId: e.sourceVersionId,
+          exactHash: e.exactHash,
+          sensitivity: e.sensitivity,
+          digest: sha256Text(
+            stableJson({
+              evidenceId: e.evidenceId,
+              sourceId: e.sourceId,
+              sourceVersionId: e.sourceVersionId,
+              exactHash: e.exactHash,
+              sensitivity: e.sensitivity,
+            }),
+          ),
+        }));
+
+        const original = await originalAssetRepository.findByVersion(
+          reference.projectId,
+          v.sourceVersionId,
         );
+        const sourceSensitivity = original?.sensitivity ?? 'public';
 
-        if (freshEvidence.some((e) => e?.sensitivity === 'restricted')) return 'restricted';
-        if (freshEvidence.some((e) => e?.sensitivity === 'private')) return 'private';
-
-        return c.sourceSensitivity;
+        return {
+          validation: {
+            validationId: v.validationId,
+            candidateId: v.candidateId,
+            revisionNumber: v.revisionNumber,
+            sourceVersionId: v.sourceVersionId,
+            status: v.status,
+            digest: sha256Text(
+              stableJson({
+                validationId: v.validationId,
+                candidateId: v.candidateId,
+                revisionNumber: v.revisionNumber,
+                sourceVersionId: v.sourceVersionId,
+                status: v.status,
+              }),
+            ),
+          },
+          evidence: evBinding,
+          evidenceSetDigest: actionEvidenceSetDigest(evBinding),
+          sourceVersionId: v.sourceVersionId,
+          sourceSensitivity,
+        };
       },
     },
     actionConnector,
@@ -1031,6 +1070,13 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
           module: 'shotgun-app',
           operation: 'issue-api-token',
         });
+      if (!context.security.accessScope.includes('auth:token:issue'))
+        throw new ShotgunError({
+          code: 'AUTHORIZATION_DENIED',
+          safeMessage: 'Missing auth:token:issue scope.',
+          module: 'shotgun-app',
+          operation: 'issue-api-token',
+        });
       const membership = await authRepository.findMembership(
         context.principalId,
         context.projectId,
@@ -1043,12 +1089,23 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
           operation: 'issue-api-token',
         });
 
+      const requestedScopes = [...new Set(request.body.scopes)];
+      if (requestedScopes.length === 0) {
+        throw new ShotgunError({
+          code: 'VALIDATION_ERROR',
+          safeMessage: 'At least one scope is required.',
+          module: 'shotgun-app',
+          operation: 'issue-api-token',
+        });
+      }
+
       const allowedScopes = new Set(membership.scopes);
-      for (const scope of request.body.scopes) {
-        if (!allowedScopes.has(scope)) {
+      const currentScopes = new Set(context.security.accessScope);
+      for (const scope of requestedScopes) {
+        if (!allowedScopes.has(scope) || !currentScopes.has(scope)) {
           throw new ShotgunError({
             code: 'AUTHORIZATION_DENIED',
-            safeMessage: `Scope ${scope} is not allowed.`,
+            safeMessage: `Scope ${scope} exceeds permitted ceiling.`,
             module: 'shotgun-app',
             operation: 'issue-api-token',
           });
@@ -1072,7 +1129,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
 
       const token = await authRepository.issueApiToken({
         principalId: context.principalId,
-        scopes: request.body.scopes,
+        scopes: requestedScopes,
         expiresAt: requestedExpiry.toISOString(),
       });
       return token;

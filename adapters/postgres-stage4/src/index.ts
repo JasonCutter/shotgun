@@ -487,4 +487,21 @@ export class PostgresValidationRepository implements ValidationRepositoryPort {
     );
     return result.rows[0] ? mapValidation(result.rows[0]) : undefined;
   }
+
+  async findByValidationId(
+    projectId: string,
+    validationId: string,
+  ): Promise<ValidationResult | undefined> {
+    const result = await this.pool.query<ValidationRow>(
+      `
+        SELECT
+          validation_id::text, candidate_id::text, revision_number, project_id,
+          source_version_id::text, status, dimensions, created_at
+        FROM validation.results
+        WHERE project_id = $1 AND validation_id = $2
+      `,
+      [projectId, validationId],
+    );
+    return result.rows[0] ? mapValidation(result.rows[0]) : undefined;
+  }
 }

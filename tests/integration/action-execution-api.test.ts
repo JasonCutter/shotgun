@@ -5,21 +5,58 @@ import { InMemoryActionCandidateRepository } from '../../adapters/stage11-in-mem
 import { createApplication } from '../../assemblies/shotgun-app/src/server.js';
 import { actionServerCandidate } from '../helpers/stage-11.js';
 
+import { sha256Text, stableJson } from '../../packages/contracts/src/index.js';
+
 describe('Stage 12.1 P0-2 external Action API vertical slice', () => {
   it('accepts reference-only Preview and approvalId-only Execute without exposing a Verify endpoint', async () => {
     const secret = 'api-connector-secret';
     const connector = new FakeDraftActionConnector(secret);
     const candidates = new InMemoryActionCandidateRepository();
-    const candidate = actionServerCandidate('api', { projectId: 'shotgun' });
+
+    const validationMock = {
+      validationId: 'validation:api',
+      candidateId: 'action-candidate:api',
+      revisionNumber: 1,
+      sourceVersionId: 's1',
+      status: 'READY' as const,
+      dimensions: [],
+    };
+    const evidenceMock = {
+      evidenceId: 'evidence:api',
+      sourceId: 'src1',
+      sourceVersionId: 's1',
+      exactHash: 'hash',
+      sensitivity: 'private' as const,
+    };
+    const originalMock = { sensitivity: 'private' as const };
+
+    const candidate = actionServerCandidate('api', {
+      projectId: 'shotgun',
+      validationDigest: sha256Text(stableJson({
+        validationId: validationMock.validationId,
+        candidateId: validationMock.candidateId,
+        revisionNumber: validationMock.revisionNumber,
+        sourceVersionId: validationMock.sourceVersionId,
+        status: validationMock.status,
+      })),
+      evidence: [{
+        ...evidenceMock,
+        digest: sha256Text(stableJson(evidenceMock))
+      }],
+      sourceSensitivity: originalMock.sensitivity,
+    });
     await candidates.stage(candidate);
 
     const evidenceRepository = {
-      findById: async (p: string, id: string) =>
-        ({ evidenceId: id, sensitivity: 'private' }) as unknown,
+      findById: async (p: string, id: string) => evidenceMock as unknown,
     } as unknown;
     const validationRepository = {
-      findByCandidateId: async () => ({ status: 'READY', dimensions: [] }) as unknown,
+      findByCandidateId: async () => validationMock as unknown,
     } as unknown;
+    const originalAssetRepository = {
+      findByVersion: async () => originalMock as unknown,
+    } as unknown;
+
     const app = await createApplication({
       actionConnector: connector,
       actionCandidateRepository: candidates,
@@ -27,6 +64,8 @@ describe('Stage 12.1 P0-2 external Action API vertical slice', () => {
       evidenceRepository,
       // @ts-expect-error Mock repositories for test
       validationRepository,
+      // @ts-expect-error Mock repositories for test
+      originalAssetRepository,
     });
     app.server.setErrorHandler((error, request, reply) => {
       console.error('FASTIFY ERROR:', error);

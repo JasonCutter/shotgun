@@ -187,8 +187,10 @@ export const actionEvidenceSetDigest = (evidence: readonly ActionEvidenceReferen
 export const actionPayloadDigest = (payload: ActionPreview['renderedPayload']): string =>
   sha256Text(stableJson(payload));
 
-export const actionPreviewDigest = (preview: Omit<ActionPreview, 'previewDigest'>): string =>
-  sha256Text(stableJson(preview));
+export const actionPreviewDigest = (preview: Omit<ActionPreview, 'previewDigest'> | ActionPreview): string => {
+  const { previewDigest, ...rest } = preview as any;
+  return sha256Text(stableJson(rest));
+};
 
 export type ActionRiskInput = {
   readonly operation: ActionOperation;

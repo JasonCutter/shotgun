@@ -42,6 +42,7 @@ const packageName = (relativePath: string): string | undefined => {
 
 const allowedPackageDependencies: Readonly<Record<string, readonly string[]>> = {
   contracts: [],
+  authentication: ['contracts'],
   'module-sdk': ['contracts'],
   'job-runtime': ['contracts'],
   observability: ['contracts'],

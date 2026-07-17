@@ -1,52 +1,71 @@
 import { describe, expect, it } from 'vitest';
 
 import { FakeDraftActionConnector } from '../../adapters/action-connector-fake/src/index.js';
+import { InMemoryActionCandidateRepository } from '../../adapters/stage11-in-memory/src/index.js';
 import { createApplication } from '../../assemblies/shotgun-app/src/server.js';
-import { actionCandidate } from '../helpers/stage-11.js';
+import { actionServerCandidate } from '../helpers/stage-11.js';
 
-const headers = (scope: string) => ({ 'x-access-scope': scope });
-
-describe('Stage 11 external Action API vertical slice', () => {
-  it('requires stage-specific permissions and completes a verified draft Action', async () => {
+describe('Stage 12.1 P0-2 external Action API vertical slice', () => {
+  it('accepts reference-only Preview and approvalId-only Execute without exposing a Verify endpoint', async () => {
     const secret = 'api-connector-secret';
     const connector = new FakeDraftActionConnector(secret);
-    const app = await createApplication({ actionConnector: connector });
-    const candidate = actionCandidate('api');
+    const candidates = new InMemoryActionCandidateRepository();
+    const candidate = actionServerCandidate('api', { projectId: 'shotgun' });
+    await candidates.stage(candidate);
+    const app = await createApplication({
+      actionConnector: connector,
+      actionCandidateRepository: candidates,
+    });
 
-    const denied = await app.server.inject({
+    const forbidden = await app.server.inject({
       method: 'POST',
       url: '/actions/preview',
-      payload: candidate,
+      payload: {
+        candidateId: candidate.candidate.candidateId,
+        expectedRevision: 1,
+        operationKey: 'CREATE_DRAFT',
+        target: { connectorId: 'forged' },
+      },
     });
-    expect(denied.statusCode).toBe(403);
+    expect(forbidden.statusCode).toBe(400);
+    expect(forbidden.json()).toMatchObject({ code: 'ACTION_SERVER_BINDING_REQUIRED' });
 
     const previewResponse = await app.server.inject({
       method: 'POST',
       url: '/actions/preview',
-      headers: headers('action:candidate:stage'),
-      payload: candidate,
+      payload: {
+        candidateId: candidate.candidate.candidateId,
+        expectedRevision: 1,
+        operationKey: 'CREATE_DRAFT',
+      },
     });
     expect(previewResponse.statusCode).toBe(200);
     const preview = previewResponse.json().action;
     expect(preview).toMatchObject({
       status: 'PREVIEW_READY',
-      preview: { riskDecision: { level: 'R1' } },
+      preview: { canonicalSerializer: 'action-preview-canonical-v1', sourceSensitivity: 'private' },
     });
 
     const approvalResponse = await app.server.inject({
       method: 'POST',
       url: `/actions/${preview.actionId}/approve`,
-      headers: headers('action:approve'),
-      payload: { expectedPreviewDigest: preview.preview.previewDigest, expiresInMs: 60000 },
+      payload: { expectedPreviewDigest: preview.preview.previewDigest },
     });
     expect(approvalResponse.statusCode).toBe(200);
     const approved = approvalResponse.json().action;
 
+    const invalidExecute = await app.server.inject({
+      method: 'POST',
+      url: '/actions/execute',
+      payload: { approvalId: approved.approval.approvalId, projectId: 'forged' },
+    });
+    expect(invalidExecute.statusCode).toBe(400);
+    expect(invalidExecute.json()).toMatchObject({ code: 'ACTION_SERVER_BINDING_REQUIRED' });
+
     const executionResponse = await app.server.inject({
       method: 'POST',
-      url: `/actions/${preview.actionId}/execute`,
-      headers: headers('action:execute'),
-      payload: { approvalTokenId: approved.approval.tokenId },
+      url: '/actions/execute',
+      payload: { approvalId: approved.approval.approvalId },
     });
     expect(executionResponse.statusCode).toBe(200);
     expect(executionResponse.json().action).toMatchObject({
@@ -57,16 +76,12 @@ describe('Stage 11 external Action API vertical slice', () => {
     const queryResponse = await app.server.inject({
       method: 'POST',
       url: `/actions/${preview.actionId}/query`,
-      headers: headers('action:read'),
       payload: {},
     });
     expect(queryResponse.statusCode).toBe(200);
-    expect(queryResponse.json().action.status).toBe('VERIFIED');
-
     const auditResponse = await app.server.inject({
       method: 'POST',
       url: `/actions/${preview.actionId}/audit`,
-      headers: headers('action:audit:read'),
       payload: {},
     });
     expect(auditResponse.statusCode).toBe(200);
@@ -75,6 +90,67 @@ describe('Stage 11 external Action API vertical slice', () => {
       `${previewResponse.body}${approvalResponse.body}${executionResponse.body}${auditResponse.body}`,
     ).not.toContain(secret);
     expect(connector.calls).toEqual({ preflight: 1, execute: 1, verify: 1 });
+
+    const verifyResponse = await app.server.inject({
+      method: 'POST',
+      url: `/actions/${preview.actionId}/verify`,
+      payload: {},
+    });
+    expect(verifyResponse.statusCode).toBe(404);
+    await app.server.close();
+  });
+
+  it('rejects missing, cross-project, stale, and over-sensitive Candidate references', async () => {
+    const candidates = new InMemoryActionCandidateRepository();
+    const current = actionServerCandidate('current', { projectId: 'shotgun' });
+    const restricted = actionServerCandidate('restricted', {
+      projectId: 'shotgun',
+      sourceSensitivity: 'restricted',
+    });
+    const otherProject = actionServerCandidate('other', { projectId: 'other-project' });
+    await Promise.all([
+      candidates.stage(current),
+      candidates.stage(restricted),
+      candidates.stage(otherProject),
+    ]);
+    const app = await createApplication({ actionCandidateRepository: candidates });
+
+    const missing = await app.server.inject({
+      method: 'POST',
+      url: '/actions/preview',
+      payload: { candidateId: 'missing', expectedRevision: 1, operationKey: 'CREATE_DRAFT' },
+    });
+    expect(missing.statusCode).toBe(404);
+    const crossProject = await app.server.inject({
+      method: 'POST',
+      url: '/actions/preview',
+      payload: {
+        candidateId: otherProject.candidate.candidateId,
+        expectedRevision: 1,
+        operationKey: 'CREATE_DRAFT',
+      },
+    });
+    expect(crossProject.statusCode).toBe(404);
+    const stale = await app.server.inject({
+      method: 'POST',
+      url: '/actions/preview',
+      payload: {
+        candidateId: current.candidate.candidateId,
+        expectedRevision: 2,
+        operationKey: 'CREATE_DRAFT',
+      },
+    });
+    expect(stale.statusCode).toBe(409);
+    const sensitive = await app.server.inject({
+      method: 'POST',
+      url: '/actions/preview',
+      payload: {
+        candidateId: restricted.candidate.candidateId,
+        expectedRevision: 1,
+        operationKey: 'CREATE_DRAFT',
+      },
+    });
+    expect(sensitive.statusCode).toBe(403);
     await app.server.close();
   });
 });

@@ -5,6 +5,15 @@ import path from 'node:path';
 import Fastify from 'fastify';
 
 import {
+  InMemoryAuthRepository,
+  authorize,
+  hashPassword,
+  hashSecuritySecret,
+  type AuthRepositoryPort,
+  type TrustedSecurityContext,
+} from '../../../packages/authentication/src/index.js';
+
+import {
   InMemoryAssetStorage,
   InMemoryIntakeRepository,
   InMemoryOriginalAssetRepository,
@@ -29,7 +38,10 @@ import { InMemoryCanonicalKnowledgeRepository } from '../../../adapters/stage6-i
 import { InMemorySearchProjectionRepository } from '../../../adapters/stage7-in-memory/src/index.js';
 import { InMemoryKnowledgeModelRepository } from '../../../adapters/stage9-in-memory/src/index.js';
 import { InMemoryCompiledTruthRepository } from '../../../adapters/stage10-in-memory/src/index.js';
-import { InMemoryActionExecutionRepository } from '../../../adapters/stage11-in-memory/src/index.js';
+import {
+  InMemoryActionCandidateRepository,
+  InMemoryActionExecutionRepository,
+} from '../../../adapters/stage11-in-memory/src/index.js';
 import { FakeDraftActionConnector } from '../../../adapters/action-connector-fake/src/index.js';
 import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
 import { InProcessTransport } from '../../../adapters/transport-in-process/src/index.js';
@@ -65,8 +77,6 @@ import {
   type DiscoveryRunResult,
   type ActionAuditEvent,
   type ActionExecutionRecord,
-  type ValidatedActionCandidate,
-  actionCandidateDigest,
 } from '../../../packages/kernel/src/index.js';
 import {
   createIntakeModule,
@@ -133,6 +143,7 @@ import {
 } from '../../../modules/compiled-truth/src/index.js';
 import {
   type ActionConnectorPort,
+  type ActionCandidateRepositoryPort,
   type ActionExecutionRepositoryPort,
   createActionExecutionModule,
 } from '../../../modules/action-execution/src/index.js';
@@ -226,6 +237,10 @@ type SecurityHeaders = {
   readonly 'x-actor-id'?: string;
   readonly 'x-access-scope'?: string;
   readonly 'x-sensitivity'?: SecurityContext['sensitivity'];
+  readonly 'x-shotgun-project'?: string;
+  readonly authorization?: string;
+  readonly cookie?: string;
+  readonly 'x-csrf-token'?: string;
 };
 
 type ApplicationOptions = {
@@ -250,10 +265,15 @@ type ApplicationOptions = {
   readonly searchProjectionRepository?: SearchProjectionRepositoryPort;
   readonly knowledgeModelRepository?: KnowledgeModelRepositoryPort;
   readonly compiledTruthRepository?: CompiledTruthRepositoryPort;
+  readonly actionCandidateRepository?: ActionCandidateRepositoryPort;
   readonly actionExecutionRepository?: ActionExecutionRepositoryPort;
   readonly actionConnector?: ActionConnectorPort;
+  readonly authRepository?: AuthRepositoryPort;
+  readonly production?: boolean;
   readonly closeResources?: () => Promise<void>;
 };
+
+const trustedRequestContexts = new WeakMap<object, TrustedSecurityContext>();
 
 const askPage = (): string => `<!doctype html>
 <html lang="ko">
@@ -332,31 +352,91 @@ const knowledgePage = (): string => `<!doctype html>
 </html>`;
 
 const requestContext = (headers: SecurityHeaders) => {
-  const sensitivity = headers['x-sensitivity'] ?? 'private';
-  if (!['public', 'internal', 'private', 'restricted'].includes(sensitivity)) {
+  const context = trustedRequestContexts.get(headers as object);
+  if (!context) {
     throw new ShotgunError({
-      code: 'VALIDATION_ERROR',
-      safeMessage: 'x-sensitivity must be public, internal, private or restricted.',
+      code: 'AUTHENTICATION_REQUIRED',
+      safeMessage: 'Authentication is required.',
       module: 'shotgun-app',
-      operation: 'parse-security-context',
+      operation: 'trusted-request-context',
     });
   }
-  return {
-    projectId: (headers['x-project-id'] ?? 'shotgun').trim(),
-    actor: {
-      type: 'user' as const,
-      id: (headers['x-actor-id'] ?? 'owner').trim(),
-    },
-    security: {
-      accessScope: (headers['x-access-scope'] ?? 'owner')
-        .split(',')
-        .map((scope) => scope.trim())
-        .filter(Boolean),
-      sensitivity: sensitivity as SecurityContext['sensitivity'],
-      dataClassification: 'personal',
-    },
+  return { projectId: context.projectId, actor: context.actor, security: context.security };
+};
+
+const requireActionPreviewRequest = (
+  body: unknown,
+): {
+  readonly candidateId: string;
+  readonly expectedRevision: number;
+  readonly operationKey: string;
+} => {
+  if (
+    !body ||
+    typeof body !== 'object' ||
+    Array.isArray(body) ||
+    Object.keys(body).length !== 3 ||
+    !Object.keys(body).every((key) =>
+      ['candidateId', 'expectedRevision', 'operationKey'].includes(key),
+    )
+  ) {
+    throw new ShotgunError({
+      code: 'ACTION_SERVER_BINDING_REQUIRED',
+      safeMessage: 'Preview accepts only candidateId, expectedRevision, and operationKey.',
+      module: 'shotgun-app',
+      operation: 'validate-action-preview-request',
+    });
+  }
+  const request = body as Record<string, unknown>;
+  if (
+    typeof request.candidateId !== 'string' ||
+    !request.candidateId ||
+    !Number.isInteger(request.expectedRevision) ||
+    (request.expectedRevision as number) < 1 ||
+    typeof request.operationKey !== 'string'
+  ) {
+    throw new ShotgunError({
+      code: 'ACTION_SERVER_BINDING_REQUIRED',
+      safeMessage: 'Preview request values are invalid.',
+      module: 'shotgun-app',
+      operation: 'validate-action-preview-request',
+    });
+  }
+  return request as {
+    readonly candidateId: string;
+    readonly expectedRevision: number;
+    readonly operationKey: string;
   };
 };
+
+const requireActionExecuteRequest = (body: unknown): { readonly approvalId: string } => {
+  if (
+    !body ||
+    typeof body !== 'object' ||
+    Array.isArray(body) ||
+    Object.keys(body).length !== 1 ||
+    !Object.hasOwn(body, 'approvalId') ||
+    typeof (body as { approvalId?: unknown }).approvalId !== 'string'
+  ) {
+    throw new ShotgunError({
+      code: 'ACTION_SERVER_BINDING_REQUIRED',
+      safeMessage: 'Execute accepts only approvalId.',
+      module: 'shotgun-app',
+      operation: 'validate-action-execute-request',
+    });
+  }
+  return body as { readonly approvalId: string };
+};
+
+const parseCookie = (header: string | undefined, name: string): string | undefined =>
+  header
+    ?.split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${name}=`))
+    ?.slice(name.length + 1);
+
+const isStateChanging = (method: string): boolean =>
+  ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
 
 const traceView = (kernel: ShotgunKernel, traceId: string) =>
   kernel.connector.traces.findByTraceId(traceId).map((record) => ({
@@ -514,7 +594,34 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     options.compiledTruthRepository ?? new InMemoryCompiledTruthRepository();
   const actionExecutionRepository =
     options.actionExecutionRepository ?? new InMemoryActionExecutionRepository();
+  const actionCandidateRepository =
+    options.actionCandidateRepository ?? new InMemoryActionCandidateRepository();
   const actionConnector = options.actionConnector ?? new FakeDraftActionConnector();
+  const authRepository = options.authRepository ?? new InMemoryAuthRepository();
+  const production = options.production ?? process.env.NODE_ENV === 'production';
+  const testDevelopmentAuth =
+    process.env.VITEST === 'true' && !options.authRepository && !production;
+  let testPrincipal: Awaited<ReturnType<AuthRepositoryPort['authenticatePassword']>>;
+  if (testDevelopmentAuth) {
+    await authRepository.bootstrapOwner({
+      accountId: 'test-owner',
+      passwordHash: await hashPassword('test-owner-password'),
+      projectId: 'shotgun',
+      scopes: [
+        'owner',
+        'action:candidate:stage',
+        'action:approve',
+        'action:execute',
+        'action:verify',
+        'action:read',
+        'action:audit:read',
+      ],
+      // Keep the test adapter aligned with the former no-header default.
+      // Production never enables this adapter.
+      sensitivityClearance: 'private',
+    });
+    testPrincipal = await authRepository.authenticatePassword('test-owner', 'test-owner-password');
+  }
   const canonicalSnapshot = options.canonicalSnapshot ?? canonicalKnowledgeRepository;
   const textDiff = options.textDiff ?? new JsDiffAdapter();
   const aiProvider = options.aiProvider ?? new FakeAIProviderAdapter();
@@ -545,7 +652,11 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   const citedAnswer = createCitedAnswerModule();
   const knowledgeModel = createKnowledgeModelModule(knowledgeModelRepository);
   const compiledTruth = createCompiledTruthModule(compiledTruthRepository);
-  const actionExecution = createActionExecutionModule(actionExecutionRepository, actionConnector);
+  const actionExecution = createActionExecutionModule(
+    actionExecutionRepository,
+    actionCandidateRepository,
+    actionConnector,
+  );
   const kernel = new ShotgunKernel(options.transport ?? new InProcessTransport());
   kernel.register(
     ping.module,
@@ -570,18 +681,43 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
 
   const server = Fastify({ logger: false });
 
-  server.setErrorHandler((error, _request, reply) => {
+  server.setErrorHandler(async (error, request, reply) => {
     if (!(error instanceof ShotgunError)) {
       return reply.status(500).send({ code: 'TERMINAL_FAILURE', message: 'Request failed.' });
     }
-    const status =
-      error.code === 'POLICY_DENIED'
+    const context = trustedRequestContexts.get(request.headers as object);
+    try {
+      await authRepository.appendAudit({
+        principalId: context?.principalId,
+        projectId: context?.projectId,
+        event: `REQUEST_DENIED:${error.code}`,
+      });
+    } catch {
+      // Do not replace a safe denial response with an audit-storage implementation error.
+    }
+    const status = ['AUTHENTICATION_REQUIRED', 'AUTHENTICATION_INVALID'].includes(error.code)
+      ? 401
+      : [
+            'AUTHORIZATION_DENIED',
+            'PROJECT_ACCESS_DENIED',
+            'REQUEST_ORIGIN_DENIED',
+            'POLICY_DENIED',
+            'ACTION_AUTHORIZATION_DENIED',
+            'ACTION_CONNECTOR_NOT_ALLOWED',
+          ].includes(error.code)
         ? 403
-        : error.code === 'NOT_FOUND'
+        : ['NOT_FOUND', 'ACTION_REFERENCE_NOT_FOUND'].includes(error.code)
           ? 404
-          : ['CONFLICT', 'STALE_VERSION', 'STALE_APPROVAL'].includes(error.code)
+          : ['CONFLICT', 'STALE_VERSION', 'STALE_APPROVAL', 'STALE_ACTION_SNAPSHOT'].includes(
+                error.code,
+              )
             ? 409
-            : error.code === 'VALIDATION_ERROR'
+            : [
+                  'VALIDATION_ERROR',
+                  'LEGACY_SECURITY_HEADER_FORBIDDEN',
+                  'PROJECT_CONTEXT_REQUIRED',
+                  'ACTION_SERVER_BINDING_REQUIRED',
+                ].includes(error.code)
               ? 400
               : 500;
     return reply.status(status).send({
@@ -591,11 +727,176 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     });
   });
 
+  const sessionCookieName = production ? '__Host-shotgun_session' : 'shotgun_development_session';
+  const publicPaths = new Set(['/health', '/auth/login']);
+  server.addHook('onRequest', async (request) => {
+    if (publicPaths.has(request.url.split('?')[0] ?? request.url)) return;
+    const headers = request.headers as SecurityHeaders;
+    for (const name of ['x-project-id', 'x-actor-id', 'x-access-scope', 'x-sensitivity'] as const) {
+      if (headers[name] !== undefined) {
+        throw new ShotgunError({
+          code: 'LEGACY_SECURITY_HEADER_FORBIDDEN',
+          safeMessage: 'Legacy security headers are forbidden.',
+          module: 'shotgun-app',
+          operation: 'authenticate-request',
+        });
+      }
+    }
+
+    const authorization = headers.authorization;
+    const bearer = authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
+    let context: TrustedSecurityContext | undefined;
+    if (bearer) {
+      const principal = await authRepository.findApiToken(bearer);
+      const projectId = headers['x-shotgun-project']?.trim();
+      if (!principal)
+        throw new ShotgunError({
+          code: 'AUTHENTICATION_INVALID',
+          safeMessage: 'Credential is invalid, expired, or revoked.',
+          module: 'shotgun-app',
+          operation: 'authenticate-api-token',
+        });
+      if (!projectId)
+        throw new ShotgunError({
+          code: 'PROJECT_CONTEXT_REQUIRED',
+          safeMessage: 'X-Shotgun-Project is required for API token requests.',
+          module: 'shotgun-app',
+          operation: 'select-project',
+        });
+      context = await authorize({
+        repository: authRepository,
+        principal,
+        projectId,
+        requiredScopes: [],
+        tokenScopeCeiling: principal.scopeCeiling,
+      });
+    } else {
+      const sessionToken = parseCookie(headers.cookie, sessionCookieName);
+      if (!sessionToken && testPrincipal) {
+        context = await authorize({
+          repository: authRepository,
+          principal: testPrincipal,
+          projectId: 'shotgun',
+          requiredScopes: [],
+        });
+      }
+      if (!sessionToken && !context)
+        throw new ShotgunError({
+          code: 'AUTHENTICATION_REQUIRED',
+          safeMessage: 'Authentication is required.',
+          module: 'shotgun-app',
+          operation: 'authenticate-session',
+        });
+      if (context) {
+        trustedRequestContexts.set(request.headers as object, context);
+        return;
+      }
+      if (!sessionToken)
+        throw new ShotgunError({
+          code: 'AUTHENTICATION_REQUIRED',
+          safeMessage: 'Authentication is required.',
+          module: 'shotgun-app',
+          operation: 'authenticate-session',
+        });
+      const session = await authRepository.findSession(sessionToken);
+      const principal = session
+        ? await authRepository.findPrincipal(session.principalId, 'session', session.sessionId)
+        : undefined;
+      if (!session || !principal)
+        throw new ShotgunError({
+          code: 'AUTHENTICATION_INVALID',
+          safeMessage: 'Session is invalid, expired, or revoked.',
+          module: 'shotgun-app',
+          operation: 'authenticate-session',
+        });
+      if (isStateChanging(request.method)) {
+        const csrf = headers['x-csrf-token'];
+        if (!csrf || !session.csrfHash || hashSecuritySecret(csrf) !== session.csrfHash)
+          throw new ShotgunError({
+            code: 'REQUEST_ORIGIN_DENIED',
+            safeMessage: 'A valid CSRF token is required.',
+            module: 'shotgun-app',
+            operation: 'verify-csrf',
+          });
+      }
+      context = await authorize({
+        repository: authRepository,
+        principal,
+        projectId: session.activeProjectId,
+        requiredScopes: [],
+      });
+    }
+    if (!context)
+      throw new ShotgunError({
+        code: 'PROJECT_ACCESS_DENIED',
+        safeMessage: 'Project membership or authorization is missing.',
+        module: 'shotgun-app',
+        operation: 'authorize-request',
+      });
+    trustedRequestContexts.set(request.headers as object, context);
+    await authRepository.appendAudit({
+      principalId: context.principalId,
+      projectId: context.projectId,
+      event: 'REQUEST_AUTHORIZED',
+    });
+  });
+
+  server.post<{ Body: { accountId: string; password: string; projectId: string } }>(
+    '/auth/login',
+    async (request, reply) => {
+      const principal = await authRepository.authenticatePassword(
+        request.body.accountId,
+        request.body.password,
+      );
+      if (!principal) {
+        await authRepository.appendAudit({ event: 'LOGIN_DENIED' });
+        throw new ShotgunError({
+          code: 'AUTHENTICATION_INVALID',
+          safeMessage: 'Credential is invalid.',
+          module: 'shotgun-app',
+          operation: 'login',
+        });
+      }
+      const context = await authorize({
+        repository: authRepository,
+        principal,
+        projectId: request.body.projectId,
+        requiredScopes: [],
+      });
+      if (!context)
+        throw new ShotgunError({
+          code: 'PROJECT_ACCESS_DENIED',
+          safeMessage: 'Project membership is missing.',
+          module: 'shotgun-app',
+          operation: 'login',
+        });
+      const session = await authRepository.createSession(
+        principal.principalId,
+        context.projectId,
+        new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
+      );
+      await authRepository.appendAudit({
+        principalId: principal.principalId,
+        projectId: context.projectId,
+        event: 'LOGIN_SUCCEEDED',
+      });
+      reply.header(
+        'Set-Cookie',
+        `${sessionCookieName}=${session.sessionToken}; HttpOnly; SameSite=Lax; Path=/${production ? '; Secure' : ''}`,
+      );
+      return {
+        csrfToken: session.csrfToken,
+        projectId: context.projectId,
+        principalId: principal.principalId,
+      };
+    },
+  );
+
   server.get('/health', async () => kernel.health());
 
   server.post<{ Body: PingRequest }>('/demo/ping', async (request) => {
     const requestId = request.body?.requestId ?? randomUUID();
-    const context = requestContext({});
+    const context = requestContext(request.headers as SecurityHeaders);
     const command = createCommand({
       messageType: 'PingCommand',
       schemaVersion: '1.0.0',
@@ -1244,35 +1545,33 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     },
   );
 
-  server.post<{ Body: ValidatedActionCandidate; Headers: SecurityHeaders }>(
-    '/actions/preview',
-    async (request) => {
-      const context = requestContext(request.headers);
-      const delivery = await kernel.connector.sendCommand<ActionExecutionRecord>(
-        createCommand({
-          messageType: 'PrepareActionPreview',
-          schemaVersion: '1.0.0',
-          producerModule: 'shotgun-app',
-          producerVersion: '1.0.0',
-          idempotencyKey: `action-preview:${actionCandidateDigest(request.body)}`,
-          ...context,
-          payload: request.body,
-        }),
-      );
-      return { action: delivery.result };
-    },
-  );
+  server.post<{ Body: unknown; Headers: SecurityHeaders }>('/actions/preview', async (request) => {
+    const context = requestContext(request.headers);
+    const payload = requireActionPreviewRequest(request.body);
+    const delivery = await kernel.connector.sendCommand<ActionExecutionRecord>(
+      createCommand({
+        messageType: 'PrepareActionPreview',
+        schemaVersion: '1.1.0',
+        producerModule: 'shotgun-app',
+        producerVersion: '1.0.0',
+        idempotencyKey: `action-preview:${context.projectId}:${payload.candidateId}:${payload.expectedRevision}:${payload.operationKey}`,
+        ...context,
+        payload,
+      }),
+    );
+    return { action: delivery.result };
+  });
 
   server.post<{
     Params: { readonly actionId: string };
-    Body: { readonly expectedPreviewDigest: string; readonly expiresInMs: number };
+    Body: { readonly expectedPreviewDigest: string };
     Headers: SecurityHeaders;
   }>('/actions/:actionId/approve', async (request) => {
     const context = requestContext(request.headers);
     const delivery = await kernel.connector.sendCommand<ActionExecutionRecord>(
       createCommand({
         messageType: 'ApproveActionPreview',
-        schemaVersion: '1.0.0',
+        schemaVersion: '1.1.0',
         producerModule: 'shotgun-app',
         producerVersion: '1.0.0',
         idempotencyKey: `action-approve:${request.params.actionId}:${request.body.expectedPreviewDigest}:${context.actor.id}`,
@@ -1284,40 +1583,20 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   });
 
   server.post<{
-    Params: { readonly actionId: string };
-    Body: { readonly approvalTokenId: string };
+    Body: unknown;
     Headers: SecurityHeaders;
-  }>('/actions/:actionId/execute', async (request) => {
+  }>('/actions/execute', async (request) => {
     const context = requestContext(request.headers);
+    const payload = requireActionExecuteRequest(request.body);
     const delivery = await kernel.connector.sendCommand<ActionExecutionRecord>(
       createCommand({
         messageType: 'ExecuteApprovedAction',
-        schemaVersion: '1.0.0',
+        schemaVersion: '1.1.0',
         producerModule: 'shotgun-app',
         producerVersion: '1.0.0',
-        idempotencyKey: `action-execute:${request.params.actionId}:${request.body.approvalTokenId}`,
+        idempotencyKey: `action-execute:${payload.approvalId}`,
         ...context,
-        payload: { actionId: request.params.actionId, ...request.body },
-      }),
-    );
-    return { action: delivery.result };
-  });
-
-  server.post<{
-    Params: { readonly actionId: string };
-    Body: Record<string, never>;
-    Headers: SecurityHeaders;
-  }>('/actions/:actionId/verify', async (request) => {
-    const context = requestContext(request.headers);
-    const delivery = await kernel.connector.sendCommand<ActionExecutionRecord>(
-      createCommand({
-        messageType: 'VerifyActionOutcome',
-        schemaVersion: '1.0.0',
-        producerModule: 'shotgun-app',
-        producerVersion: '1.0.0',
-        idempotencyKey: `action-verify:${request.params.actionId}:${randomUUID()}`,
-        ...context,
-        payload: { actionId: request.params.actionId },
+        payload,
       }),
     );
     return { action: delivery.result };
@@ -1331,7 +1610,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     const delivery = await kernel.connector.query<ActionExecutionRecord>(
       createQuery({
         messageType: 'GetActionExecution',
-        schemaVersion: '1.0.0',
+        schemaVersion: '1.1.0',
         producerModule: 'shotgun-app',
         producerVersion: '1.0.0',
         ...requestContext(request.headers),
@@ -1349,7 +1628,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     const delivery = await kernel.connector.query<{ items: readonly ActionAuditEvent[] }>(
       createQuery({
         messageType: 'ListActionAudit',
-        schemaVersion: '1.0.0',
+        schemaVersion: '1.1.0',
         producerModule: 'shotgun-app',
         producerVersion: '1.0.0',
         ...requestContext(request.headers),
@@ -1436,6 +1715,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       projection: searchProjectionRepository,
       knowledge: knowledgeModelRepository,
       compiledTruth: compiledTruthRepository,
+      actionCandidates: actionCandidateRepository,
       actions: actionExecutionRepository,
     },
     storage: assetStorage,

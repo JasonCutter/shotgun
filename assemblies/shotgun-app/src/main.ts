@@ -28,10 +28,15 @@ import { PostgresCanonicalKnowledgeRepository } from '../../../adapters/postgres
 import { PostgresSearchProjectionRepository } from '../../../adapters/postgres-stage7/src/index.js';
 import { PostgresKnowledgeModelRepository } from '../../../adapters/postgres-stage9/src/index.js';
 import { PostgresCompiledTruthRepository } from '../../../adapters/postgres-stage10/src/index.js';
-import { PostgresActionExecutionRepository } from '../../../adapters/postgres-stage11/src/index.js';
+import {
+  PostgresActionCandidateRepository,
+  PostgresActionExecutionRepository,
+} from '../../../adapters/postgres-stage11/src/index.js';
+import { PostgresAuthRepository } from '../../../adapters/postgres-auth/src/index.js';
 import { FakeDraftActionConnector } from '../../../adapters/action-connector-fake/src/index.js';
 import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
 import { createApplication } from './server.js';
+import { assertRuntimeSecurityConfiguration } from './runtime-security.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -44,6 +49,14 @@ if (!geminiApiKey) {
   throw new Error('GEMINI_API_KEY is required for the persistent Stage 4 runtime.');
 }
 const port = Number.parseInt(process.env.PORT ?? '3000', 10);
+const host = process.env.HOST ?? '127.0.0.1';
+const production = process.env.NODE_ENV === 'production';
+assertRuntimeSecurityConfiguration({
+  host,
+  production,
+  allowExternalBind: process.env.ALLOW_EXTERNAL_BIND === 'true',
+  developmentAuthEnabled: process.env.SHOTGUN_DEVELOPMENT_AUTH === 'true',
+});
 const storageRoot = path.resolve(process.env.ASSET_STORAGE_ROOT ?? '.data/assets');
 const plainTextAdapter = new LucasAugmentedPlainTextAdapter();
 const canonicalKnowledgeRepository = new PostgresCanonicalKnowledgeRepository(pool);
@@ -63,7 +76,10 @@ const { server } = await createApplication({
   searchProjectionRepository: new PostgresSearchProjectionRepository(pool),
   knowledgeModelRepository: new PostgresKnowledgeModelRepository(pool),
   compiledTruthRepository: new PostgresCompiledTruthRepository(pool),
+  actionCandidateRepository: new PostgresActionCandidateRepository(pool),
   actionExecutionRepository: new PostgresActionExecutionRepository(pool),
+  authRepository: new PostgresAuthRepository(pool),
+  production,
   actionConnector: new FakeDraftActionConnector(),
   textDiff: new JsDiffAdapter(),
   transformer: new PythonDocumentFormatAdapter(),
@@ -80,4 +96,4 @@ const { server } = await createApplication({
   closeResources: async () => pool.end(),
 });
 
-await server.listen({ host: '0.0.0.0', port });
+await server.listen({ host, port });

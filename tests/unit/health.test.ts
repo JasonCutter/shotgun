@@ -124,7 +124,7 @@ describe('Shotgun application', () => {
     });
 
     expect(response.statusCode).toBe(400);
-    expect(response.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(response.json()).toMatchObject({ code: 'LEGACY_SECURITY_HEADER_FORBIDDEN' });
 
     await server.close();
   });

@@ -1,50 +1,65 @@
-import type { Actor, ValidatedActionCandidate } from '../../packages/contracts/src/index.js';
+import { sha256Text } from '../../packages/contracts/src/index.js';
+import type { Actor, ServerActionCandidate } from '../../packages/contracts/src/index.js';
 import { createCommand, createQuery } from '../../packages/kernel/src/index.js';
 
-const security = (accessScope: readonly string[]) => ({
+const security = (accessScope: readonly string[], sensitivity = 'private' as const) => ({
   accessScope,
-  sensitivity: 'private' as const,
-  dataClassification: 'personal',
+  sensitivity,
+  dataClassification: 'personal' as const,
 });
-
 const context = (accessScope: readonly string[], actor: Actor = { type: 'user', id: 'owner' }) => ({
   projectId: 'project-stage11',
   actor,
   security: security(accessScope),
 });
 
-export const actionCandidate = (
+export const actionServerCandidate = (
   suffix: string,
-  overrides: Partial<ValidatedActionCandidate> = {},
-): ValidatedActionCandidate => ({
-  candidateId: `action-candidate:${suffix}`,
-  revisionNumber: 1,
-  operation: 'CREATE_DRAFT',
-  target: {
-    connectorId: 'fake-draft',
-    accountRef: 'account:personal',
-    destination: `drafts/${suffix}`,
-  },
-  parameters: { title: `Draft ${suffix}`, body: `Reviewed body for ${suffix}.` },
-  validation: {
-    status: 'VALIDATED',
-    validationId: `validation:${suffix}`,
-    validatedAt: '2026-07-17T10:00:00.000Z',
-    evidenceIds: [`evidence:${suffix}`],
-  },
-  requestedAt: '2026-07-17T10:00:00.000Z',
-  ...overrides,
-});
+  overrides: Partial<ServerActionCandidate> = {},
+): ServerActionCandidate => {
+  const evidenceId = `evidence:${suffix}`;
+  const candidate = {
+    candidateId: `action-candidate:${suffix}`,
+    revisionNumber: 1,
+    operation: 'CREATE_DRAFT' as const,
+    target: {
+      connectorId: 'fake-draft',
+      accountRef: 'account:personal',
+      destination: `drafts/${suffix}`,
+    },
+    parameters: { title: `Draft ${suffix}`, body: `Reviewed body for ${suffix}.` },
+    validation: {
+      status: 'VALIDATED' as const,
+      validationId: `validation:${suffix}`,
+      validatedAt: '2026-07-17T10:00:00.000Z',
+      evidenceIds: [evidenceId],
+    },
+    requestedAt: '2026-07-17T10:00:00.000Z',
+  };
+  return {
+    projectId: 'project-stage11',
+    candidate,
+    allowedOperationKeys: ['CREATE_DRAFT'],
+    validationDigest: sha256Text(`validation:${suffix}`),
+    evidence: [{ evidenceId, digest: sha256Text(`evidence:${suffix}`) }],
+    sourceSensitivity: 'private',
+    ...overrides,
+  };
+};
 
-export const prepareActionCommand = (candidate: ValidatedActionCandidate, suffix = 'prepare') =>
+export const prepareActionCommand = (candidate: ServerActionCandidate, suffix = 'prepare') =>
   createCommand({
     messageType: 'PrepareActionPreview',
-    schemaVersion: '1.0.0',
+    schemaVersion: '1.1.0',
     producerModule: 'stage11-test',
     producerVersion: '1.0.0',
-    idempotencyKey: `stage11:${candidate.candidateId}:${suffix}`,
+    idempotencyKey: `stage11:${candidate.candidate.candidateId}:${suffix}`,
     ...context(['action:candidate:stage']),
-    payload: candidate,
+    payload: {
+      candidateId: candidate.candidate.candidateId,
+      expectedRevision: candidate.candidate.revisionNumber,
+      operationKey: 'CREATE_DRAFT',
+    },
   });
 
 export const approveActionCommand = (
@@ -52,48 +67,43 @@ export const approveActionCommand = (
   expectedPreviewDigest: string,
   suffix = 'approve',
   actor: Actor = { type: 'user', id: 'owner' },
-  expiresInMs = 60000,
 ) =>
   createCommand({
     messageType: 'ApproveActionPreview',
-    schemaVersion: '1.0.0',
+    schemaVersion: '1.1.0',
     producerModule: 'stage11-test',
     producerVersion: '1.0.0',
     idempotencyKey: `stage11:${actionId}:${suffix}`,
     ...context(['action:approve'], actor),
-    payload: { actionId, expectedPreviewDigest, expiresInMs },
+    payload: { actionId, expectedPreviewDigest },
   });
 
-export const executeActionCommand = (
-  actionId: string,
-  approvalTokenId: string,
-  suffix = 'execute',
-) =>
+export const executeActionCommand = (approvalId: string, suffix = 'execute') =>
   createCommand({
     messageType: 'ExecuteApprovedAction',
-    schemaVersion: '1.0.0',
+    schemaVersion: '1.1.0',
     producerModule: 'stage11-test',
     producerVersion: '1.0.0',
-    idempotencyKey: `stage11:${actionId}:${suffix}`,
+    idempotencyKey: `stage11:${approvalId}:${suffix}`,
     ...context(['action:execute']),
-    payload: { actionId, approvalTokenId },
+    payload: { approvalId },
   });
 
 export const verifyActionCommand = (actionId: string, suffix = 'verify') =>
   createCommand({
     messageType: 'VerifyActionOutcome',
-    schemaVersion: '1.0.0',
+    schemaVersion: '1.1.0',
     producerModule: 'stage11-test',
     producerVersion: '1.0.0',
     idempotencyKey: `stage11:${actionId}:${suffix}`,
-    ...context(['action:verify']),
+    ...context(['action:verify'], { type: 'service', id: 'verification-worker' }),
     payload: { actionId },
   });
 
 export const actionAuditQuery = (actionId: string) =>
   createQuery({
     messageType: 'ListActionAudit',
-    schemaVersion: '1.0.0',
+    schemaVersion: '1.1.0',
     producerModule: 'stage11-test',
     producerVersion: '1.0.0',
     ...context(['action:audit:read']),

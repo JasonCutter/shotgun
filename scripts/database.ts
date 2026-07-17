@@ -67,6 +67,7 @@ const migrate = async (): Promise<void> => {
 
 const reset = async (): Promise<void> => {
   await withClient(async (client) => {
+    await client.query('DROP SCHEMA IF EXISTS auth CASCADE');
     await client.query('DROP SCHEMA IF EXISTS action CASCADE');
     await client.query('DROP SCHEMA IF EXISTS projection CASCADE');
     await client.query('DROP SCHEMA IF EXISTS knowledge CASCADE');
@@ -161,6 +162,33 @@ const verify = async (): Promise<void> => {
     const actionAuditTable = await client.query<{ table: string | null }>(
       "SELECT to_regclass('action.audit_events') AS table",
     );
+    const actionCandidateTable = await client.query<{ table: string | null }>(
+      "SELECT to_regclass('action.candidates') AS table",
+    );
+    const actionSnapshotTable = await client.query<{ table: string | null }>(
+      "SELECT to_regclass('action.preview_snapshots') AS table",
+    );
+    const actionApprovalRecordTable = await client.query<{ table: string | null }>(
+      "SELECT to_regclass('action.approval_records') AS table",
+    );
+    const authPrincipalTable = await client.query<{ table: string | null }>(
+      "SELECT to_regclass('auth.principals') AS table",
+    );
+    const authCredentialTable = await client.query<{ table: string | null }>(
+      "SELECT to_regclass('auth.credentials') AS table",
+    );
+    const authMembershipTable = await client.query<{ table: string | null }>(
+      "SELECT to_regclass('auth.project_memberships') AS table",
+    );
+    const authSessionTable = await client.query<{ table: string | null }>(
+      "SELECT to_regclass('auth.sessions') AS table",
+    );
+    const authApiTokenTable = await client.query<{ table: string | null }>(
+      "SELECT to_regclass('auth.api_tokens') AS table",
+    );
+    const authAuditTable = await client.query<{ table: string | null }>(
+      "SELECT to_regclass('auth.audit_events') AS table",
+    );
     if (
       table.rows[0]?.table !== 'runtime.schema_migrations' ||
       count.rows[0]?.count !== expectedMigrationCount ||
@@ -185,7 +213,16 @@ const verify = async (): Promise<void> => {
       discoveryInferenceTable.rows[0]?.table !== 'projection.discovery_inferences' ||
       actionExecutionTable.rows[0]?.table !== 'action.executions' ||
       actionApprovalTable.rows[0]?.table !== 'action.approvals' ||
-      actionAuditTable.rows[0]?.table !== 'action.audit_events'
+      actionAuditTable.rows[0]?.table !== 'action.audit_events' ||
+      actionCandidateTable.rows[0]?.table !== 'action.candidates' ||
+      actionSnapshotTable.rows[0]?.table !== 'action.preview_snapshots' ||
+      actionApprovalRecordTable.rows[0]?.table !== 'action.approval_records' ||
+      authPrincipalTable.rows[0]?.table !== 'auth.principals' ||
+      authCredentialTable.rows[0]?.table !== 'auth.credentials' ||
+      authMembershipTable.rows[0]?.table !== 'auth.project_memberships' ||
+      authSessionTable.rows[0]?.table !== 'auth.sessions' ||
+      authApiTokenTable.rows[0]?.table !== 'auth.api_tokens' ||
+      authAuditTable.rows[0]?.table !== 'auth.audit_events'
     ) {
       throw new Error('Database bootstrap verification failed.');
     }

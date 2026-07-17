@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import type {
-  ActionApprovalToken,
+  ActionApprovalRecord,
   ActionAuditCategory,
   ActionAuditEvent,
   ActionExecutionRecord,
@@ -11,11 +11,13 @@ import type {
   CommandEnvelope,
   ProviderActionResult,
   QueryEnvelope,
-  ValidatedActionCandidate,
+  ServerActionCandidate,
 } from '../../../packages/contracts/src/index.js';
 import {
   actionCandidateDigest,
+  actionEvidenceSetDigest,
   actionParameterDigest,
+  actionPayloadDigest,
   actionPreviewDigest,
   actionTargetDigest,
   ShotgunError,
@@ -28,6 +30,7 @@ import {
 
 export type ActionClockPort = { now(): string };
 const systemClock: ActionClockPort = { now: () => new Date().toISOString() };
+const previewLifetimeMs = 15 * 60 * 1000;
 
 export type ActionConnectorIdentity = {
   readonly id: string;
@@ -52,6 +55,11 @@ export type ActionConnectorPort = {
   ): Promise<Omit<ActionVerification, 'verifiedAt'>>;
 };
 
+/** Trusted staging port. It is intentionally not exposed as an HTTP endpoint. */
+export type ActionCandidateRepositoryPort = {
+  find(projectId: string, candidateId: string): Promise<ServerActionCandidate | undefined>;
+};
+
 export type ActionTransition = {
   readonly expectedStatus: ActionExecutionRecord['status'];
   readonly next: ActionExecutionRecord;
@@ -69,12 +77,11 @@ export type ActionExecutionRepositoryPort = {
     projectId: string,
     actionId: string,
     expectedPreviewDigest: string,
-    approval: ActionApprovalToken,
+    approval: ActionApprovalRecord,
   ): Promise<ActionExecutionRecord>;
   claimForExecution(
     projectId: string,
-    actionId: string,
-    tokenId: string,
+    approvalId: string,
     now: string,
     actorId: string,
   ): Promise<{ readonly claimed: boolean; readonly record: ActionExecutionRecord }>;
@@ -87,22 +94,14 @@ export type ActionExecutionRepositoryPort = {
   listAudit(projectId: string, actionId: string): Promise<readonly ActionAuditEvent[]>;
 };
 
-const candidateSchema = {
+const previewRequestSchema = {
   type: 'object',
   additionalProperties: false,
-  required: [
-    'candidateId',
-    'revisionNumber',
-    'operation',
-    'target',
-    'parameters',
-    'validation',
-    'requestedAt',
-  ],
+  required: ['candidateId', 'expectedRevision', 'operationKey'],
   properties: {
     candidateId: { type: 'string', minLength: 1 },
-    revisionNumber: { type: 'integer', minimum: 1 },
-    operation: {
+    expectedRevision: { type: 'integer', minimum: 1 },
+    operationKey: {
       enum: [
         'PREVIEW_ONLY',
         'CREATE_DRAFT',
@@ -111,46 +110,23 @@ const candidateSchema = {
         'FINANCIAL_OR_LEGAL',
       ],
     },
-    target: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['connectorId', 'accountRef', 'destination'],
-      properties: {
-        connectorId: { type: 'string', minLength: 1 },
-        accountRef: { type: 'string', minLength: 1 },
-        destination: { type: 'string', minLength: 1 },
-      },
-    },
-    parameters: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['title', 'body'],
-      properties: {
-        title: { type: 'string', minLength: 1, maxLength: 500 },
-        body: { type: 'string', minLength: 1, maxLength: 100000 },
-      },
-    },
-    validation: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['status', 'validationId', 'validatedAt', 'evidenceIds'],
-      properties: {
-        status: { const: 'VALIDATED' },
-        validationId: { type: 'string', minLength: 1 },
-        validatedAt: { type: 'string', minLength: 1 },
-        evidenceIds: {
-          type: 'array',
-          minItems: 1,
-          uniqueItems: true,
-          items: { type: 'string', minLength: 1 },
-        },
-      },
-    },
-    requestedAt: { type: 'string', minLength: 1 },
-    compensationForActionId: { type: 'string', minLength: 1 },
   },
 };
-
+const approvalSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['actionId', 'expectedPreviewDigest'],
+  properties: {
+    actionId: { type: 'string', minLength: 1 },
+    expectedPreviewDigest: { type: 'string', pattern: '^sha256:[a-f0-9]{64}$' },
+  },
+};
+const executeSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['approvalId'],
+  properties: { approvalId: { type: 'string', minLength: 1 } },
+};
 const actionIdSchema = {
   type: 'object',
   additionalProperties: false,
@@ -161,8 +137,8 @@ const actionIdSchema = {
 const assertContext = (envelope: CommandEnvelope | QueryEnvelope) => {
   if (!envelope.projectId || !envelope.actor || !envelope.security) {
     throw new ShotgunError({
-      code: 'POLICY_DENIED',
-      safeMessage: 'External Action requires complete security context.',
+      code: 'ACTION_AUTHORIZATION_DENIED',
+      safeMessage: 'External Action requires authenticated security context.',
       module: 'stage11.action-execution',
       operation: envelope.messageType,
       correlationId: envelope.correlationId,
@@ -186,53 +162,108 @@ const audit = (
   details,
   occurredAt,
 });
-
 const addMilliseconds = (iso: string, milliseconds: number): string =>
   new Date(new Date(iso).getTime() + milliseconds).toISOString();
-
 const executeIdempotencyKey = (record: ActionExecutionRecord): string =>
   `action:${record.actionId}:${record.preview.previewDigest}`;
+const sensitivityRank = { public: 0, internal: 1, private: 2, restricted: 3 } as const;
+
+const requireCandidate = async (
+  repository: ActionCandidateRepositoryPort,
+  projectId: string,
+  candidateId: string,
+  correlationId?: string,
+): Promise<ServerActionCandidate> => {
+  const candidate = await repository.find(projectId, candidateId);
+  if (!candidate)
+    throw new ShotgunError({
+      code: 'ACTION_REFERENCE_NOT_FOUND',
+      safeMessage: 'Action Candidate was not found in this project.',
+      module: 'stage11.action-execution',
+      operation: 'find-action-candidate',
+      correlationId,
+    });
+  return candidate;
+};
+
+const assertCandidateMatchesSnapshot = (
+  candidate: ServerActionCandidate,
+  preview: ActionPreview,
+  clearance: keyof typeof sensitivityRank,
+  correlationId?: string,
+): void => {
+  const evidence = [...candidate.evidence].sort((left, right) =>
+    left.evidenceId.localeCompare(right.evidenceId),
+  );
+  const expectedEvidence = [...preview.evidence].sort((left, right) =>
+    left.evidenceId.localeCompare(right.evidenceId),
+  );
+  const currentDigest = actionCandidateDigest(candidate.candidate);
+  if (
+    candidate.candidate.revisionNumber !== preview.candidate.revisionNumber ||
+    currentDigest !== preview.candidateDigest ||
+    candidate.validationDigest !== preview.validationDigest ||
+    actionEvidenceSetDigest(evidence) !== preview.evidenceSetDigest ||
+    JSON.stringify(evidence) !== JSON.stringify(expectedEvidence) ||
+    candidate.sourceSensitivity !== preview.sourceSensitivity ||
+    sensitivityRank[clearance] < sensitivityRank[candidate.sourceSensitivity]
+  ) {
+    throw new ShotgunError({
+      code: 'STALE_ACTION_SNAPSHOT',
+      safeMessage: 'Action Candidate, evidence, validation, or sensitivity changed after Preview.',
+      module: 'stage11.action-execution',
+      operation: 'validate-action-snapshot',
+      correlationId,
+    });
+  }
+};
 
 export const createActionExecutionModule = (
   repository: ActionExecutionRepositoryPort,
+  candidateRepository: ActionCandidateRepositoryPort,
   connector: ActionConnectorPort,
   clock: ActionClockPort = systemClock,
 ): ShotgunModule => ({
   manifest: {
     id: 'stage11.action-execution',
-    version: '1.0.0',
+    version: '1.1.0',
     owner: 'Shotgun Risk-controlled External Action',
     compatibility: {
       runtime: '>=1.0.0 <2.0.0',
       contracts: [
-        { name: 'PrepareActionPreview', range: '>=1.0.0 <2.0.0' },
-        { name: 'ApproveActionPreview', range: '>=1.0.0 <2.0.0' },
-        { name: 'ExecuteApprovedAction', range: '>=1.0.0 <2.0.0' },
-        { name: 'VerifyActionOutcome', range: '>=1.0.0 <2.0.0' },
-        { name: 'GetActionExecution', range: '>=1.0.0 <2.0.0' },
-        { name: 'ListActionAudit', range: '>=1.0.0 <2.0.0' },
+        { name: 'PrepareActionPreview', range: '>=1.1.0 <2.0.0' },
+        { name: 'ApproveActionPreview', range: '>=1.1.0 <2.0.0' },
+        { name: 'ExecuteApprovedAction', range: '>=1.1.0 <2.0.0' },
+        { name: 'VerifyActionOutcome', range: '>=1.1.0 <2.0.0' },
+        { name: 'GetActionExecution', range: '>=1.1.0 <2.0.0' },
+        { name: 'ListActionAudit', range: '>=1.1.0 <2.0.0' },
       ],
     },
     deployment: { modes: ['in_process', 'worker'] },
     dataOwnership: {
-      owns: ['action.executions', 'action.approvals', 'action.audit_events'],
-      readsViaPorts: [connector.identity.id],
+      owns: [
+        'action.executions',
+        'action.preview_snapshots',
+        'action.approval_records',
+        'action.audit_events',
+      ],
+      readsViaPorts: [connector.identity.id, 'action-candidate-repository'],
       directSchemaAccess: false,
     },
     consumes: {
       commands: [
-        { name: 'PrepareActionPreview', range: '>=1.0.0 <2.0.0' },
-        { name: 'ApproveActionPreview', range: '>=1.0.0 <2.0.0' },
-        { name: 'ExecuteApprovedAction', range: '>=1.0.0 <2.0.0' },
-        { name: 'VerifyActionOutcome', range: '>=1.0.0 <2.0.0' },
+        { name: 'PrepareActionPreview', range: '>=1.1.0 <2.0.0' },
+        { name: 'ApproveActionPreview', range: '>=1.1.0 <2.0.0' },
+        { name: 'ExecuteApprovedAction', range: '>=1.1.0 <2.0.0' },
+        { name: 'VerifyActionOutcome', range: '>=1.1.0 <2.0.0' },
       ],
       events: [],
     },
     produces: { events: [{ name: 'ActionFeedbackRecorded', range: '>=1.0.0 <2.0.0' }] },
     provides: {
       queries: [
-        { name: 'GetActionExecution', range: '>=1.0.0 <2.0.0' },
-        { name: 'ListActionAudit', range: '>=1.0.0 <2.0.0' },
+        { name: 'GetActionExecution', range: '>=1.1.0 <2.0.0' },
+        { name: 'ListActionAudit', range: '>=1.1.0 <2.0.0' },
       ],
       capabilities: [{ name: 'risk-controlled-external-action', priority: 100 }],
     },
@@ -246,47 +277,25 @@ export const createActionExecutionModule = (
   contracts: [
     {
       name: 'PrepareActionPreview',
-      version: '1.0.0',
+      version: '1.1.0',
       kind: 'command',
-      inputSchema: candidateSchema,
+      inputSchema: previewRequestSchema,
     },
     {
       name: 'ApproveActionPreview',
-      version: '1.0.0',
+      version: '1.1.0',
       kind: 'command',
-      inputSchema: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['actionId', 'expectedPreviewDigest', 'expiresInMs'],
-        properties: {
-          actionId: { type: 'string', minLength: 1 },
-          expectedPreviewDigest: { type: 'string', pattern: '^sha256:[a-f0-9]{64}$' },
-          expiresInMs: { type: 'integer', minimum: 1000, maximum: 86400000 },
-        },
-      },
+      inputSchema: approvalSchema,
     },
     {
       name: 'ExecuteApprovedAction',
-      version: '1.0.0',
+      version: '1.1.0',
       kind: 'command',
-      inputSchema: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['actionId', 'approvalTokenId'],
-        properties: {
-          actionId: { type: 'string', minLength: 1 },
-          approvalTokenId: { type: 'string', minLength: 1 },
-        },
-      },
+      inputSchema: executeSchema,
     },
-    {
-      name: 'VerifyActionOutcome',
-      version: '1.0.0',
-      kind: 'command',
-      inputSchema: actionIdSchema,
-    },
-    { name: 'GetActionExecution', version: '1.0.0', kind: 'query', inputSchema: actionIdSchema },
-    { name: 'ListActionAudit', version: '1.0.0', kind: 'query', inputSchema: actionIdSchema },
+    { name: 'VerifyActionOutcome', version: '1.1.0', kind: 'command', inputSchema: actionIdSchema },
+    { name: 'GetActionExecution', version: '1.1.0', kind: 'query', inputSchema: actionIdSchema },
+    { name: 'ListActionAudit', version: '1.1.0', kind: 'query', inputSchema: actionIdSchema },
     {
       name: 'ActionFeedbackRecorded',
       version: '1.0.0',
@@ -308,27 +317,89 @@ export const createActionExecutionModule = (
     commands: [
       {
         messageType: 'PrepareActionPreview',
-        version: '1.0.0',
+        version: '1.1.0',
         requiredAccessScopes: ['action:candidate:stage'],
         async handle(envelope) {
           const { projectId, actor, security } = assertContext(envelope);
-          const candidate = envelope.payload as ValidatedActionCandidate;
-          const createdAt = clock.now();
-          const riskDecision = decideActionRisk({
-            operation: candidate.operation,
-            sensitivity: security.sensitivity,
-            compensation: Boolean(candidate.compensationForActionId),
-          });
-          const preview: ActionPreview = {
-            actionId: randomUUID(),
+          const request = envelope.payload as {
+            candidateId: string;
+            expectedRevision: number;
+            operationKey: ActionPreview['operationKey'];
+          };
+          const staged = await requireCandidate(
+            candidateRepository,
             projectId,
-            candidate,
-            candidateDigest: actionCandidateDigest(candidate),
-            targetDigest: actionTargetDigest(candidate),
-            parameterDigest: actionParameterDigest(candidate),
-            previewDigest: actionPreviewDigest(candidate, riskDecision),
+            request.candidateId,
+            envelope.correlationId,
+          );
+          if (
+            staged.candidate.revisionNumber !== request.expectedRevision ||
+            !staged.allowedOperationKeys.includes(request.operationKey) ||
+            staged.candidate.operation !== request.operationKey ||
+            staged.candidate.target.connectorId !== connector.identity.id
+          ) {
+            throw new ShotgunError({
+              code: 'STALE_ACTION_SNAPSHOT',
+              safeMessage: 'Action Candidate revision or allowed operation is no longer current.',
+              module: 'stage11.action-execution',
+              operation: envelope.messageType,
+              correlationId: envelope.correlationId,
+            });
+          }
+          if (sensitivityRank[security.sensitivity] < sensitivityRank[staged.sourceSensitivity]) {
+            throw new ShotgunError({
+              code: 'ACTION_AUTHORIZATION_DENIED',
+              safeMessage: 'Source sensitivity exceeds the authenticated clearance.',
+              module: 'stage11.action-execution',
+              operation: envelope.messageType,
+              correlationId: envelope.correlationId,
+            });
+          }
+          const createdAt = clock.now();
+          const candidateDigest = actionCandidateDigest(staged.candidate);
+          const evidence = [...staged.evidence].sort((left, right) =>
+            left.evidenceId.localeCompare(right.evidenceId),
+          );
+          const riskDecision = decideActionRisk({
+            operation: request.operationKey,
+            sensitivity: staged.sourceSensitivity,
+            compensation: Boolean(staged.candidate.compensationForActionId),
+          });
+          const snapshotBase = {
+            actionId: randomUUID(),
+            snapshotId: randomUUID(),
+            snapshotSchemaVersion: 'action-preview-snapshot-v1' as const,
+            canonicalSerializer: 'action-preview-canonical-v1' as const,
+            hashAlgorithm: 'SHA-256' as const,
+            projectId,
+            candidate: staged.candidate,
+            candidateDigest,
+            validationDigest: staged.validationDigest,
+            evidence,
+            evidenceSetDigest: actionEvidenceSetDigest(evidence),
+            sourceSensitivity: staged.sourceSensitivity,
+            targetDigest: actionTargetDigest(staged.candidate),
+            parameterDigest: actionParameterDigest(staged.candidate),
+            renderedPayload: { ...staged.candidate.parameters },
+            payloadDigest: actionPayloadDigest(staged.candidate.parameters),
+            connectorId: connector.identity.id,
+            operationKey: request.operationKey,
             riskDecision,
+            approvalPolicy: {
+              approvalPolicyVersion: 'stage11.action-approval.v1',
+              requiredApproverRule: 'authenticated-user-with-action:approve',
+              selfApprovalAllowed: true,
+              requiredApprovalCount: 1 as const,
+              requiredScope: 'action:approve' as const,
+            },
+            requesterPrincipalId: actor.id,
+            expiryPolicyVersion: 'action-preview-expiry-v1' as const,
             createdAt,
+            expiresAt: addMilliseconds(createdAt, previewLifetimeMs),
+          };
+          const preview: ActionPreview = {
+            ...snapshotBase,
+            previewDigest: actionPreviewDigest(snapshotBase),
           };
           const record: ActionExecutionRecord = {
             actionId: preview.actionId,
@@ -341,60 +412,60 @@ export const createActionExecutionModule = (
           };
           return repository.createPreview(record, [
             audit(record, 'ACTION_CANDIDATE_VALIDATED', actor.id, createdAt, {
-              candidateId: candidate.candidateId,
-              candidateRevision: candidate.revisionNumber,
-              validationId: candidate.validation.validationId,
-              compensation: Boolean(candidate.compensationForActionId),
+              candidateId: staged.candidate.candidateId,
+              candidateRevision: staged.candidate.revisionNumber,
+              validationDigest: staged.validationDigest,
             }),
             audit(record, 'ACTION_RISK_DECIDED', actor.id, createdAt, {
               riskLevel: riskDecision.level,
-              requiresUserApproval: riskDecision.requiresUserApproval,
+              policyVersion: riskDecision.policyVersion,
             }),
             audit(record, 'ACTION_PREVIEW_READY', actor.id, createdAt, {
-              previewDigest: preview.previewDigest,
-              targetDigest: preview.targetDigest,
-              parameterDigest: preview.parameterDigest,
+              snapshotId: preview.snapshotId,
+              snapshotDigest: preview.previewDigest,
+              expiresAt: preview.expiresAt,
             }),
           ]);
         },
       },
       {
         messageType: 'ApproveActionPreview',
-        version: '1.0.0',
+        version: '1.1.0',
         requiredAccessScopes: ['action:approve'],
         async handle(envelope) {
           const { projectId, actor } = assertContext(envelope);
-          if (actor.type !== 'user') {
+          if (actor.type !== 'user')
             throw new ShotgunError({
-              code: 'POLICY_DENIED',
-              safeMessage: 'Only a user can approve an external Action.',
+              code: 'ACTION_AUTHORIZATION_DENIED',
+              safeMessage: 'Only a user principal can approve an Action.',
               module: 'stage11.action-execution',
               operation: envelope.messageType,
               correlationId: envelope.correlationId,
             });
-          }
-          const payload = envelope.payload as {
-            actionId: string;
-            expectedPreviewDigest: string;
-            expiresInMs: number;
-          };
-          const approvedAt = clock.now();
+          const payload = envelope.payload as { actionId: string; expectedPreviewDigest: string };
           const current = await repository.find(projectId, payload.actionId);
           if (!current) throw notFound(payload.actionId, envelope.correlationId);
-          const approval: ActionApprovalToken = {
-            tokenId: randomUUID(),
+          const approvedAt = clock.now();
+          if (
+            current.preview.previewDigest !== payload.expectedPreviewDigest ||
+            new Date(current.preview.expiresAt).getTime() <= new Date(approvedAt).getTime()
+          )
+            throw stale('Preview Snapshot is stale or expired.', envelope.correlationId);
+          if (current.status === 'APPROVED' && current.approval) return current;
+          const approval: ActionApprovalRecord = {
+            approvalId: randomUUID(),
             actionId: current.actionId,
+            snapshotId: current.preview.snapshotId,
+            snapshotDigest: current.preview.previewDigest,
             candidateRevision: current.preview.candidate.revisionNumber,
-            targetDigest: current.preview.targetDigest,
-            parameterDigest: current.preview.parameterDigest,
-            previewDigest: payload.expectedPreviewDigest,
             approvedBy: actor,
+            approvalPolicy: current.preview.approvalPolicy,
             approvedAt,
-            expiresAt: addMilliseconds(approvedAt, payload.expiresInMs),
+            expiresAt: current.preview.expiresAt,
           };
           return repository.approve(
             projectId,
-            payload.actionId,
+            current.actionId,
             payload.expectedPreviewDigest,
             approval,
           );
@@ -402,27 +473,54 @@ export const createActionExecutionModule = (
       },
       {
         messageType: 'ExecuteApprovedAction',
-        version: '1.0.0',
+        version: '1.1.0',
         requiredAccessScopes: ['action:execute'],
         async handle(envelope, context) {
-          const { projectId, actor } = assertContext(envelope);
-          const payload = envelope.payload as { actionId: string; approvalTokenId: string };
+          const { projectId, actor, security } = assertContext(envelope);
+          const { approvalId } = envelope.payload as { approvalId: string };
           const claimed = await repository.claimForExecution(
             projectId,
-            payload.actionId,
-            payload.approvalTokenId,
+            approvalId,
             clock.now(),
             actor.id,
           );
           if (!claimed.claimed) return claimed.record;
-
-          const key = executeIdempotencyKey(claimed.record);
-          const preflight = await connector.preflight(claimed.record.preview, key);
-          if (preflight.status === 'DENIED') {
-            return repository.transition(projectId, payload.actionId, {
+          let current = claimed.record;
+          try {
+            const candidate = await requireCandidate(
+              candidateRepository,
+              projectId,
+              current.preview.candidate.candidateId,
+              envelope.correlationId,
+            );
+            assertCandidateMatchesSnapshot(
+              candidate,
+              current.preview,
+              security.sensitivity,
+              envelope.correlationId,
+            );
+          } catch (error) {
+            await repository.transition(projectId, current.actionId, {
               expectedStatus: 'EXECUTING',
               next: {
-                ...claimed.record,
+                ...current,
+                status: 'PREFLIGHT_FAILED',
+                failureReason: 'Preview Snapshot became stale before execution.',
+                updatedAt: clock.now(),
+              },
+              category: 'ACTION_PREFLIGHT_FAILED',
+              actorId: actor.id,
+              details: { reason: 'stale-action-snapshot' },
+            });
+            throw error;
+          }
+          const key = executeIdempotencyKey(current);
+          const preflight = await connector.preflight(current.preview, key);
+          if (preflight.status === 'DENIED')
+            return repository.transition(projectId, current.actionId, {
+              expectedStatus: 'EXECUTING',
+              next: {
+                ...current,
                 status: 'PREFLIGHT_FAILED',
                 failureReason: preflight.reason,
                 updatedAt: clock.now(),
@@ -431,12 +529,9 @@ export const createActionExecutionModule = (
               actorId: actor.id,
               details: { reason: preflight.reason },
             });
-          }
-
-          const preflightAt = clock.now();
-          let current = await repository.transition(projectId, payload.actionId, {
+          current = await repository.transition(projectId, current.actionId, {
             expectedStatus: 'EXECUTING',
-            next: { ...claimed.record, updatedAt: preflightAt },
+            next: { ...current, updatedAt: clock.now() },
             category: 'ACTION_PREFLIGHT_PASSED',
             actorId: actor.id,
             details: {
@@ -444,21 +539,14 @@ export const createActionExecutionModule = (
               duplicate: preflight.status === 'ALREADY_APPLIED',
             },
           });
-
           try {
             const providerResult =
               preflight.status === 'ALREADY_APPLIED'
                 ? preflight.providerResult
                 : await connector.execute(current.preview, key);
-            const executedAt = clock.now();
-            current = await repository.transition(projectId, payload.actionId, {
+            current = await repository.transition(projectId, current.actionId, {
               expectedStatus: 'EXECUTING',
-              next: {
-                ...current,
-                status: 'EXECUTED',
-                providerResult,
-                updatedAt: executedAt,
-              },
+              next: { ...current, status: 'EXECUTED', providerResult, updatedAt: clock.now() },
               category: 'ACTION_EXECUTED',
               actorId: actor.id,
               details: {
@@ -469,8 +557,7 @@ export const createActionExecutionModule = (
             });
           } catch (error) {
             const unknown = error instanceof ShotgunError && error.code === 'OUTCOME_UNKNOWN';
-            const failedAt = clock.now();
-            const failed = await repository.transition(projectId, payload.actionId, {
+            const failed = await repository.transition(projectId, current.actionId, {
               expectedStatus: 'EXECUTING',
               next: {
                 ...current,
@@ -478,25 +565,32 @@ export const createActionExecutionModule = (
                 failureReason: unknown
                   ? 'Provider response was lost; automatic execution retry is forbidden.'
                   : 'Provider rejected the Action before a confirmed result.',
-                updatedAt: failedAt,
+                updatedAt: clock.now(),
               },
               category: unknown ? 'ACTION_OUTCOME_UNKNOWN' : 'ACTION_FAILED',
               actorId: actor.id,
               details: { automaticRetry: false },
             });
-            await publishFeedback(context, failed, failedAt);
+            await publishFeedback(context, failed, failed.updatedAt);
             return failed;
           }
-
           return verifyRecord(repository, connector, current, actor.id, clock, context);
         },
       },
       {
         messageType: 'VerifyActionOutcome',
-        version: '1.0.0',
+        version: '1.1.0',
         requiredAccessScopes: ['action:verify'],
         async handle(envelope, context) {
           const { projectId, actor } = assertContext(envelope);
+          if (actor.type !== 'service')
+            throw new ShotgunError({
+              code: 'ACTION_AUTHORIZATION_DENIED',
+              safeMessage: 'Only an internal Worker or Service Principal can verify an Action.',
+              module: 'stage11.action-execution',
+              operation: envelope.messageType,
+              correlationId: envelope.correlationId,
+            });
           const { actionId } = envelope.payload as { actionId: string };
           const current = await repository.find(projectId, actionId);
           if (!current) throw notFound(actionId, envelope.correlationId);
@@ -504,7 +598,7 @@ export const createActionExecutionModule = (
             !['EXECUTED', 'OUTCOME_UNKNOWN', 'VERIFICATION_FAILED', 'VERIFIED'].includes(
               current.status,
             )
-          ) {
+          )
             throw new ShotgunError({
               code: 'CONFLICT',
               safeMessage: `Action '${actionId}' is not ready for provider verification.`,
@@ -512,7 +606,6 @@ export const createActionExecutionModule = (
               operation: envelope.messageType,
               correlationId: envelope.correlationId,
             });
-          }
           if (current.status === 'VERIFIED') return current;
           return verifyRecord(repository, connector, current, actor.id, clock, context);
         },
@@ -522,7 +615,7 @@ export const createActionExecutionModule = (
     queries: [
       {
         messageType: 'GetActionExecution',
-        version: '1.0.0',
+        version: '1.1.0',
         requiredAccessScopes: ['action:read'],
         async handle(envelope) {
           const { projectId } = assertContext(envelope);
@@ -534,7 +627,7 @@ export const createActionExecutionModule = (
       },
       {
         messageType: 'ListActionAudit',
-        version: '1.0.0',
+        version: '1.1.0',
         requiredAccessScopes: ['action:audit:read'],
         async handle(envelope) {
           const { projectId } = assertContext(envelope);
@@ -548,10 +641,18 @@ export const createActionExecutionModule = (
 
 const notFound = (actionId: string, correlationId?: string): ShotgunError =>
   new ShotgunError({
-    code: 'NOT_FOUND',
+    code: 'ACTION_REFERENCE_NOT_FOUND',
     safeMessage: `Action '${actionId}' was not found in this project.`,
     module: 'stage11.action-execution',
     operation: 'find-action',
+    correlationId,
+  });
+const stale = (message: string, correlationId?: string): ShotgunError =>
+  new ShotgunError({
+    code: 'STALE_ACTION_SNAPSHOT',
+    safeMessage: message,
+    module: 'stage11.action-execution',
+    operation: 'validate-action-snapshot',
     correlationId,
   });
 

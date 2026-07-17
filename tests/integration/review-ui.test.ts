@@ -80,7 +80,7 @@ describe('Stage 5 review UI and Stage 6 Canonical commit', () => {
           {
             eventType: 'CANONICAL_CLAIM_ADDED',
             reason: 'Reviewed in the Stage 5 UI.',
-            actor: { type: 'user', id: 'owner' },
+            actor: { type: 'user' },
           },
         ],
       },

@@ -19,10 +19,7 @@ export type ValidatedActionCandidate = {
     readonly accountRef: string;
     readonly destination: string;
   };
-  readonly parameters: {
-    readonly title: string;
-    readonly body: string;
-  };
+  readonly parameters: { readonly title: string; readonly body: string };
   readonly validation: {
     readonly status: 'VALIDATED';
     readonly validationId: string;
@@ -33,6 +30,18 @@ export type ValidatedActionCandidate = {
   readonly compensationForActionId?: string;
 };
 
+export type ActionEvidenceReference = { readonly evidenceId: string; readonly digest: string };
+
+/** An Action input that is staged by a trusted module, never by the HTTP client. */
+export type ServerActionCandidate = {
+  readonly projectId: string;
+  readonly candidate: ValidatedActionCandidate;
+  readonly allowedOperationKeys: readonly ActionOperation[];
+  readonly validationDigest: string;
+  readonly evidence: readonly ActionEvidenceReference[];
+  readonly sourceSensitivity: SecurityContext['sensitivity'];
+};
+
 export type ActionRiskDecision = {
   readonly level: ActionRiskLevel;
   readonly policyVersion: string;
@@ -40,26 +49,52 @@ export type ActionRiskDecision = {
   readonly reasons: readonly string[];
 };
 
+export type ActionApprovalPolicy = {
+  readonly approvalPolicyVersion: string;
+  readonly requiredApproverRule: string;
+  readonly selfApprovalAllowed: boolean;
+  readonly requiredApprovalCount: 1;
+  readonly requiredScope: 'action:approve';
+};
+
+/** Immutable server-generated Preview Snapshot. */
 export type ActionPreview = {
   readonly actionId: string;
+  readonly snapshotId: string;
+  readonly snapshotSchemaVersion: 'action-preview-snapshot-v1';
+  readonly canonicalSerializer: 'action-preview-canonical-v1';
+  readonly hashAlgorithm: 'SHA-256';
   readonly projectId: string;
   readonly candidate: ValidatedActionCandidate;
   readonly candidateDigest: string;
+  readonly validationDigest: string;
+  readonly evidence: readonly ActionEvidenceReference[];
+  readonly evidenceSetDigest: string;
+  readonly sourceSensitivity: SecurityContext['sensitivity'];
   readonly targetDigest: string;
   readonly parameterDigest: string;
-  readonly previewDigest: string;
+  readonly renderedPayload: { readonly title: string; readonly body: string };
+  readonly payloadDigest: string;
+  readonly connectorId: string;
+  readonly operationKey: ActionOperation;
   readonly riskDecision: ActionRiskDecision;
+  readonly approvalPolicy: ActionApprovalPolicy;
+  readonly requesterPrincipalId: string;
+  readonly expiryPolicyVersion: 'action-preview-expiry-v1';
   readonly createdAt: string;
+  readonly expiresAt: string;
+  readonly previewDigest: string;
 };
 
-export type ActionApprovalToken = {
-  readonly tokenId: string;
+/** Server-stored approval. Its ID is the only value accepted by Execute. */
+export type ActionApprovalRecord = {
+  readonly approvalId: string;
   readonly actionId: string;
+  readonly snapshotId: string;
+  readonly snapshotDigest: string;
   readonly candidateRevision: number;
-  readonly targetDigest: string;
-  readonly parameterDigest: string;
-  readonly previewDigest: string;
   readonly approvedBy: Actor;
+  readonly approvalPolicy: ActionApprovalPolicy;
   readonly approvedAt: string;
   readonly expiresAt: string;
 };
@@ -95,7 +130,7 @@ export type ActionExecutionRecord = {
   readonly projectId: string;
   readonly status: ActionExecutionStatus;
   readonly preview: ActionPreview;
-  readonly approval?: ActionApprovalToken;
+  readonly approval?: ActionApprovalRecord;
   readonly providerResult?: ProviderActionResult;
   readonly verification?: ActionVerification;
   readonly failureReason?: string;
@@ -139,25 +174,21 @@ export type ActionFeedback = {
 
 export const actionCandidateDigest = (candidate: ValidatedActionCandidate): string =>
   sha256Text(stableJson(candidate));
-
 export const actionTargetDigest = (candidate: ValidatedActionCandidate): string =>
   sha256Text(stableJson(candidate.target));
-
 export const actionParameterDigest = (candidate: ValidatedActionCandidate): string =>
   sha256Text(stableJson(candidate.parameters));
-
-export const actionPreviewDigest = (
-  candidate: ValidatedActionCandidate,
-  riskDecision: ActionRiskDecision,
-): string =>
+export const actionEvidenceSetDigest = (evidence: readonly ActionEvidenceReference[]): string =>
   sha256Text(
-    stableJson({
-      candidateDigest: actionCandidateDigest(candidate),
-      targetDigest: actionTargetDigest(candidate),
-      parameterDigest: actionParameterDigest(candidate),
-      riskDecision,
-    }),
+    stableJson(
+      [...evidence].sort((left, right) => left.evidenceId.localeCompare(right.evidenceId)),
+    ),
   );
+export const actionPayloadDigest = (payload: ActionPreview['renderedPayload']): string =>
+  sha256Text(stableJson(payload));
+
+export const actionPreviewDigest = (preview: Omit<ActionPreview, 'previewDigest'>): string =>
+  sha256Text(stableJson(preview));
 
 export type ActionRiskInput = {
   readonly operation: ActionOperation;

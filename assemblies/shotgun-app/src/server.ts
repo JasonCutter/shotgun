@@ -29,6 +29,8 @@ import { InMemoryCanonicalKnowledgeRepository } from '../../../adapters/stage6-i
 import { InMemorySearchProjectionRepository } from '../../../adapters/stage7-in-memory/src/index.js';
 import { InMemoryKnowledgeModelRepository } from '../../../adapters/stage9-in-memory/src/index.js';
 import { InMemoryCompiledTruthRepository } from '../../../adapters/stage10-in-memory/src/index.js';
+import { InMemoryActionExecutionRepository } from '../../../adapters/stage11-in-memory/src/index.js';
+import { FakeDraftActionConnector } from '../../../adapters/action-connector-fake/src/index.js';
 import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
 import { InProcessTransport } from '../../../adapters/transport-in-process/src/index.js';
 import {
@@ -61,6 +63,10 @@ import {
   type CompiledTruthProjectionStatus,
   type DerivedInferenceCandidate,
   type DiscoveryRunResult,
+  type ActionAuditEvent,
+  type ActionExecutionRecord,
+  type ValidatedActionCandidate,
+  actionCandidateDigest,
 } from '../../../packages/kernel/src/index.js';
 import {
   createIntakeModule,
@@ -125,6 +131,11 @@ import {
   createCompiledTruthModule,
   type CompiledTruthRepositoryPort,
 } from '../../../modules/compiled-truth/src/index.js';
+import {
+  type ActionConnectorPort,
+  type ActionExecutionRepositoryPort,
+  createActionExecutionModule,
+} from '../../../modules/action-execution/src/index.js';
 
 type PingRequest = {
   readonly requestId?: string;
@@ -239,6 +250,8 @@ type ApplicationOptions = {
   readonly searchProjectionRepository?: SearchProjectionRepositoryPort;
   readonly knowledgeModelRepository?: KnowledgeModelRepositoryPort;
   readonly compiledTruthRepository?: CompiledTruthRepositoryPort;
+  readonly actionExecutionRepository?: ActionExecutionRepositoryPort;
+  readonly actionConnector?: ActionConnectorPort;
   readonly closeResources?: () => Promise<void>;
 };
 
@@ -499,6 +512,9 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     options.knowledgeModelRepository ?? new InMemoryKnowledgeModelRepository();
   const compiledTruthRepository =
     options.compiledTruthRepository ?? new InMemoryCompiledTruthRepository();
+  const actionExecutionRepository =
+    options.actionExecutionRepository ?? new InMemoryActionExecutionRepository();
+  const actionConnector = options.actionConnector ?? new FakeDraftActionConnector();
   const canonicalSnapshot = options.canonicalSnapshot ?? canonicalKnowledgeRepository;
   const textDiff = options.textDiff ?? new JsDiffAdapter();
   const aiProvider = options.aiProvider ?? new FakeAIProviderAdapter();
@@ -529,6 +545,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   const citedAnswer = createCitedAnswerModule();
   const knowledgeModel = createKnowledgeModelModule(knowledgeModelRepository);
   const compiledTruth = createCompiledTruthModule(compiledTruthRepository);
+  const actionExecution = createActionExecutionModule(actionExecutionRepository, actionConnector);
   const kernel = new ShotgunKernel(options.transport ?? new InProcessTransport());
   kernel.register(
     ping.module,
@@ -547,6 +564,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     citedAnswer,
     knowledgeModel,
     compiledTruth,
+    actionExecution,
   );
   await kernel.start();
 
@@ -1226,6 +1244,121 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     },
   );
 
+  server.post<{ Body: ValidatedActionCandidate; Headers: SecurityHeaders }>(
+    '/actions/preview',
+    async (request) => {
+      const context = requestContext(request.headers);
+      const delivery = await kernel.connector.sendCommand<ActionExecutionRecord>(
+        createCommand({
+          messageType: 'PrepareActionPreview',
+          schemaVersion: '1.0.0',
+          producerModule: 'shotgun-app',
+          producerVersion: '1.0.0',
+          idempotencyKey: `action-preview:${actionCandidateDigest(request.body)}`,
+          ...context,
+          payload: request.body,
+        }),
+      );
+      return { action: delivery.result };
+    },
+  );
+
+  server.post<{
+    Params: { readonly actionId: string };
+    Body: { readonly expectedPreviewDigest: string; readonly expiresInMs: number };
+    Headers: SecurityHeaders;
+  }>('/actions/:actionId/approve', async (request) => {
+    const context = requestContext(request.headers);
+    const delivery = await kernel.connector.sendCommand<ActionExecutionRecord>(
+      createCommand({
+        messageType: 'ApproveActionPreview',
+        schemaVersion: '1.0.0',
+        producerModule: 'shotgun-app',
+        producerVersion: '1.0.0',
+        idempotencyKey: `action-approve:${request.params.actionId}:${request.body.expectedPreviewDigest}:${context.actor.id}`,
+        ...context,
+        payload: { actionId: request.params.actionId, ...request.body },
+      }),
+    );
+    return { action: delivery.result };
+  });
+
+  server.post<{
+    Params: { readonly actionId: string };
+    Body: { readonly approvalTokenId: string };
+    Headers: SecurityHeaders;
+  }>('/actions/:actionId/execute', async (request) => {
+    const context = requestContext(request.headers);
+    const delivery = await kernel.connector.sendCommand<ActionExecutionRecord>(
+      createCommand({
+        messageType: 'ExecuteApprovedAction',
+        schemaVersion: '1.0.0',
+        producerModule: 'shotgun-app',
+        producerVersion: '1.0.0',
+        idempotencyKey: `action-execute:${request.params.actionId}:${request.body.approvalTokenId}`,
+        ...context,
+        payload: { actionId: request.params.actionId, ...request.body },
+      }),
+    );
+    return { action: delivery.result };
+  });
+
+  server.post<{
+    Params: { readonly actionId: string };
+    Body: Record<string, never>;
+    Headers: SecurityHeaders;
+  }>('/actions/:actionId/verify', async (request) => {
+    const context = requestContext(request.headers);
+    const delivery = await kernel.connector.sendCommand<ActionExecutionRecord>(
+      createCommand({
+        messageType: 'VerifyActionOutcome',
+        schemaVersion: '1.0.0',
+        producerModule: 'shotgun-app',
+        producerVersion: '1.0.0',
+        idempotencyKey: `action-verify:${request.params.actionId}:${randomUUID()}`,
+        ...context,
+        payload: { actionId: request.params.actionId },
+      }),
+    );
+    return { action: delivery.result };
+  });
+
+  server.post<{
+    Params: { readonly actionId: string };
+    Body: Record<string, never>;
+    Headers: SecurityHeaders;
+  }>('/actions/:actionId/query', async (request) => {
+    const delivery = await kernel.connector.query<ActionExecutionRecord>(
+      createQuery({
+        messageType: 'GetActionExecution',
+        schemaVersion: '1.0.0',
+        producerModule: 'shotgun-app',
+        producerVersion: '1.0.0',
+        ...requestContext(request.headers),
+        payload: { actionId: request.params.actionId },
+      }),
+    );
+    return { action: delivery.result.payload };
+  });
+
+  server.post<{
+    Params: { readonly actionId: string };
+    Body: Record<string, never>;
+    Headers: SecurityHeaders;
+  }>('/actions/:actionId/audit', async (request) => {
+    const delivery = await kernel.connector.query<{ items: readonly ActionAuditEvent[] }>(
+      createQuery({
+        messageType: 'ListActionAudit',
+        schemaVersion: '1.0.0',
+        producerModule: 'shotgun-app',
+        producerVersion: '1.0.0',
+        ...requestContext(request.headers),
+        payload: { actionId: request.params.actionId },
+      }),
+    );
+    return { audit: delivery.result.payload.items };
+  });
+
   server.post<{ Body: EntityVaultStageRequest; Headers: SecurityHeaders }>(
     '/knowledge/entity-vault/stage',
     async (request) => {
@@ -1303,6 +1436,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       projection: searchProjectionRepository,
       knowledge: knowledgeModelRepository,
       compiledTruth: compiledTruthRepository,
+      actions: actionExecutionRepository,
     },
     storage: assetStorage,
     state: {

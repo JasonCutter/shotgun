@@ -28,6 +28,8 @@ import { PostgresCanonicalKnowledgeRepository } from '../../../adapters/postgres
 import { PostgresSearchProjectionRepository } from '../../../adapters/postgres-stage7/src/index.js';
 import { PostgresKnowledgeModelRepository } from '../../../adapters/postgres-stage9/src/index.js';
 import { PostgresCompiledTruthRepository } from '../../../adapters/postgres-stage10/src/index.js';
+import { PostgresActionExecutionRepository } from '../../../adapters/postgres-stage11/src/index.js';
+import { FakeDraftActionConnector } from '../../../adapters/action-connector-fake/src/index.js';
 import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
 import { createApplication } from './server.js';
 
@@ -61,6 +63,8 @@ const { server } = await createApplication({
   searchProjectionRepository: new PostgresSearchProjectionRepository(pool),
   knowledgeModelRepository: new PostgresKnowledgeModelRepository(pool),
   compiledTruthRepository: new PostgresCompiledTruthRepository(pool),
+  actionExecutionRepository: new PostgresActionExecutionRepository(pool),
+  actionConnector: new FakeDraftActionConnector(),
   textDiff: new JsDiffAdapter(),
   transformer: new PythonDocumentFormatAdapter(),
   evidenceLocator: plainTextAdapter,

@@ -297,8 +297,8 @@ Discovery 결과는 항상 `DERIVED_INFERENCE` 후보로 Phase 3에 재진입한
 
 | 후보              | 역할                        | 상태                   |
 | ----------------- | --------------------------- | ---------------------- |
-| Open Policy Agent | 정책 규칙 평가              | `ADAPTER_CANDIDATE`    |
-| Casbin            | RBAC·ABAC 정책 후보         | `ADAPTER_CANDIDATE`    |
+| Open Policy Agent | 정책 규칙 평가              | `DEFERRED`             |
+| Casbin            | RBAC·ABAC 정책 후보         | `DEFERRED`             |
 | OpenFGA           | 관계 기반 접근 제어 후보    | `DEFERRED`             |
 | JSON Schema       | Action parameter validation | `FOUNDATION_CANDIDATE` |
 
@@ -308,9 +308,9 @@ MVP는 코드 기반 결정적 Policy Engine으로 시작할 수 있으며, 정�
 
 | 후보                 | 역할                                    | 상태                   |
 | -------------------- | --------------------------------------- | ---------------------- |
-| MCP SDK              | Tool·Resource 상호운용                  | `ADAPTER_CANDIDATE`    |
+| MCP SDK              | Tool·Resource 상호운용                  | `DEFERRED`             |
 | Temporal             | 장기 Action·retry·compensation          | `DEFERRED`             |
-| 공급자 공식 SDK      | Gmail·Calendar·Notion·GitHub 등 Adapter | `ADAPTER_CANDIDATE`    |
+| 공급자 공식 SDK      | Gmail·Calendar·Notion·GitHub 등 Adapter | `DEFERRED`             |
 | Transactional Outbox | 실행 요청·Audit event 일관성            | `FOUNDATION_CANDIDATE` |
 
 각 Connector는 `validate → preview → preflight → execute → verify → compensate` 계약을 구현한다.
@@ -383,41 +383,43 @@ UI framework는 Domain Module 계약에 영향을 주지 않는다.
 Stage 0~3의 재검증된 exact pin과 결정은
 [`oss-source-registry.json`](../../implementation/oss-source-registry.json)을 기준으로 한다.
 
-| 후보                  | 공식 저장소·규격                                              | Version / Commit baseline                             | 라이선스 검토                      | 현재 상태              |
-| --------------------- | ------------------------------------------------------------- | ----------------------------------------------------- | ---------------------------------- | ---------------------- |
-| garrytan/gbrain       | https://github.com/garrytan/gbrain                            | `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a`            | MIT 확인                           | `REFERENCE`            |
-| lucasastorian/llmwiki | https://github.com/lucasastorian/llmwiki                      | `ad626a3d81be1480e35ef4e94234de8dbb27a61e`            | Apache-2.0 확인                    | `AUGMENT`              |
-| ddsyasas/llm-wiki     | https://github.com/ddsyasas/llm-wiki                          | `e8dd69ebba0dc7c395c1b8217bb1c30c14e8c84c`            | MIT 확인                           | `REFERENCE`            |
-| Inkeep OpenKnowledge  | https://github.com/inkeep/open-knowledge                      | `f2834c237639e2cff603817ed88182b33f83cf91`            | GPL-3.0-or-later 확인, 패턴 참고만 | `REFERENCE`            |
-| NetworkX              | https://github.com/networkx/networkx                          | `3.6.1` / `7530809bfa1ea7ed6fdf918a4d1431488953cb1f`  | BSD-3-Clause 확인                  | `ADOPTED`              |
-| W3C Web Annotation    | https://www.w3.org/TR/2017/REC-annotation-model-20170223/     | Recommendation `2017-02-23`                           | W3C-20150513 확인                  | `AUGMENT`              |
-| JSON Pointer          | https://www.rfc-editor.org/rfc/rfc6901                        | RFC 6901                                              | IETF Trust 확인                    | `ADOPTED`              |
-| JSON Schema           | https://github.com/json-schema-org/json-schema-spec           | 구현 선택 시 draft와 validator pin                    | 대기                               | `FOUNDATION_CANDIDATE` |
-| OpenAPI               | https://github.com/OAI/OpenAPI-Specification                  | 구현 선택 시 spec version pin                         | 대기                               | `FOUNDATION_CANDIDATE` |
-| AsyncAPI              | https://github.com/asyncapi/spec                              | 구현 선택 시 spec version pin                         | 대기                               | `ADAPTER_CANDIDATE`    |
-| CloudEvents           | https://github.com/cloudevents/spec                           | mapping 검증 시 spec version pin                      | 대기                               | `REFERENCE`            |
-| Temporal              | https://github.com/temporalio/temporal                        | benchmark 시 release pin                              | 대기                               | `ADAPTER_CANDIDATE`    |
-| NATS JetStream        | https://github.com/nats-io/nats-server                        | benchmark 시 release pin                              | 대기                               | `ADAPTER_CANDIDATE`    |
-| Redis Streams         | https://github.com/redis/redis                                | benchmark 시 release pin                              | 대기                               | `ADAPTER_CANDIDATE`    |
-| Docling               | https://github.com/docling-project/docling                    | golden corpus 평가 시 commit pin                      | 대기                               | `ADAPTER_CANDIDATE`    |
-| Apache Tika           | https://github.com/apache/tika                                | golden corpus 평가 시 release pin                     | 대기                               | `ADAPTER_CANDIDATE`    |
-| MarkItDown            | https://github.com/microsoft/markitdown                       | golden corpus 평가 시 commit pin                      | 대기                               | `ADAPTER_CANDIDATE`    |
-| ffmpeg                | https://github.com/FFmpeg/FFmpeg                              | Shotgun Assembly에서는 pin하지 않음                   | 범위 재결정 전 대기                | `DEFERRED`             |
-| LiteLLM               | https://github.com/BerriAI/litellm                            | provider benchmark 시 release pin                     | 대기                               | `ADAPTER_CANDIDATE`    |
-| Langfuse              | https://github.com/langfuse/langfuse                          | observability 평가 시 release pin                     | 대기                               | `ADAPTER_CANDIDATE`    |
-| OpenTelemetry         | https://github.com/open-telemetry/opentelemetry-specification | SDK 언어 결정 후 pin                                  | 대기                               | `FOUNDATION_CANDIDATE` |
-| pgvector              | https://github.com/pgvector/pgvector                          | PostgreSQL version과 함께 pin                         | 대기                               | `ADAPTER_CANDIDATE`    |
-| Apache AGE            | https://github.com/apache/age                                 | graph benchmark 시 release pin                        | 대기                               | `ADAPTER_CANDIDATE`    |
-| Open Policy Agent     | https://github.com/open-policy-agent/opa                      | policy benchmark 시 release pin                       | 대기                               | `ADAPTER_CANDIDATE`    |
-| Casbin                | https://github.com/casbin/casbin                              | 언어 구현 선택 후 pin                                 | 대기                               | `ADAPTER_CANDIDATE`    |
-| OpenFGA               | https://github.com/openfga/openfga                            | 관계 권한 요구 확인 후 pin                            | 대기                               | `DEFERRED`             |
-| MCP SDK·Specification | https://github.com/modelcontextprotocol                       | Adapter 구현 시 SDK·spec commit pin                   | 대기                               | `ADAPTER_CANDIDATE`    |
-| Tiptap                | https://github.com/ueberdosis/tiptap                          | Review UI prototype 시 release pin                    | 대기                               | `ADAPTER_CANDIDATE`    |
-| Yjs                   | https://github.com/yjs/yjs                                    | 협업 기능 승인 후 pin                                 | 대기                               | `DEFERRED`             |
-| Cytoscape.js          | https://github.com/cytoscape/cytoscape.js                     | `3.34.0` / `22716bfb75834b56fa6679648b0abb06f4ae691c` | MIT 확인                           | `ADOPTED`              |
-| Apache AGE            | https://github.com/apache/age                                 | `6876abcab0a3281eb65a7e2a91238e0b5abfdea7`            | Apache-2.0 확인                    | `DEFERRED`             |
-| OpenSearch            | https://github.com/opensearch-project/OpenSearch              | `1d71f7b405359d277e9d365bb0d206acce8e559b`            | Apache-2.0 확인                    | `DEFERRED`             |
-| Qdrant                | https://github.com/qdrant/qdrant                              | `44ad62f8cd69642be5afa6441612525e24a0d063`            | Apache-2.0 확인                    | `DEFERRED`             |
+| 후보                  | 공식 저장소·규격                                              | Version / Commit baseline                              | 라이선스 검토                      | 현재 상태              |
+| --------------------- | ------------------------------------------------------------- | ------------------------------------------------------ | ---------------------------------- | ---------------------- |
+| garrytan/gbrain       | https://github.com/garrytan/gbrain                            | `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a`             | MIT 확인                           | `REFERENCE`            |
+| lucasastorian/llmwiki | https://github.com/lucasastorian/llmwiki                      | `ad626a3d81be1480e35ef4e94234de8dbb27a61e`             | Apache-2.0 확인                    | `AUGMENT`              |
+| ddsyasas/llm-wiki     | https://github.com/ddsyasas/llm-wiki                          | `e8dd69ebba0dc7c395c1b8217bb1c30c14e8c84c`             | MIT 확인                           | `REFERENCE`            |
+| Inkeep OpenKnowledge  | https://github.com/inkeep/open-knowledge                      | `f2834c237639e2cff603817ed88182b33f83cf91`             | GPL-3.0-or-later 확인, 패턴 참고만 | `REFERENCE`            |
+| NetworkX              | https://github.com/networkx/networkx                          | `3.6.1` / `7530809bfa1ea7ed6fdf918a4d1431488953cb1f`   | BSD-3-Clause 확인                  | `ADOPTED`              |
+| W3C Web Annotation    | https://www.w3.org/TR/2017/REC-annotation-model-20170223/     | Recommendation `2017-02-23`                            | W3C-20150513 확인                  | `AUGMENT`              |
+| JSON Pointer          | https://www.rfc-editor.org/rfc/rfc6901                        | RFC 6901                                               | IETF Trust 확인                    | `ADOPTED`              |
+| JSON Schema           | https://github.com/json-schema-org/json-schema-spec           | 구현 선택 시 draft와 validator pin                     | 대기                               | `FOUNDATION_CANDIDATE` |
+| OpenAPI               | https://github.com/OAI/OpenAPI-Specification                  | 구현 선택 시 spec version pin                          | 대기                               | `FOUNDATION_CANDIDATE` |
+| AsyncAPI              | https://github.com/asyncapi/spec                              | 구현 선택 시 spec version pin                          | 대기                               | `ADAPTER_CANDIDATE`    |
+| CloudEvents           | https://github.com/cloudevents/spec                           | mapping 검증 시 spec version pin                       | 대기                               | `REFERENCE`            |
+| Temporal              | https://github.com/temporalio/temporal                        | benchmark 시 release pin                               | 대기                               | `ADAPTER_CANDIDATE`    |
+| NATS JetStream        | https://github.com/nats-io/nats-server                        | benchmark 시 release pin                               | 대기                               | `ADAPTER_CANDIDATE`    |
+| Redis Streams         | https://github.com/redis/redis                                | benchmark 시 release pin                               | 대기                               | `ADAPTER_CANDIDATE`    |
+| Docling               | https://github.com/docling-project/docling                    | golden corpus 평가 시 commit pin                       | 대기                               | `ADAPTER_CANDIDATE`    |
+| Apache Tika           | https://github.com/apache/tika                                | golden corpus 평가 시 release pin                      | 대기                               | `ADAPTER_CANDIDATE`    |
+| MarkItDown            | https://github.com/microsoft/markitdown                       | golden corpus 평가 시 commit pin                       | 대기                               | `ADAPTER_CANDIDATE`    |
+| ffmpeg                | https://github.com/FFmpeg/FFmpeg                              | Shotgun Assembly에서는 pin하지 않음                    | 범위 재결정 전 대기                | `DEFERRED`             |
+| LiteLLM               | https://github.com/BerriAI/litellm                            | provider benchmark 시 release pin                      | 대기                               | `ADAPTER_CANDIDATE`    |
+| Langfuse              | https://github.com/langfuse/langfuse                          | observability 평가 시 release pin                      | 대기                               | `ADAPTER_CANDIDATE`    |
+| OpenTelemetry         | https://github.com/open-telemetry/opentelemetry-specification | SDK 언어 결정 후 pin                                   | 대기                               | `FOUNDATION_CANDIDATE` |
+| pgvector              | https://github.com/pgvector/pgvector                          | PostgreSQL version과 함께 pin                          | 대기                               | `ADAPTER_CANDIDATE`    |
+| Apache AGE            | https://github.com/apache/age                                 | graph benchmark 시 release pin                         | 대기                               | `ADAPTER_CANDIDATE`    |
+| Open Policy Agent     | https://github.com/open-policy-agent/opa                      | `v1.18.2` / `e695c9ef8edb0f8b9f13d014d7bc8a7fbcc57297` | Apache-2.0 확인                    | `DEFERRED`             |
+| Casbin                | https://github.com/apache/casbin-node-casbin                  | `v5.51.1` / `2d90c7d8c3b522415605cf3d25481e763e73381e` | Apache-2.0 확인                    | `DEFERRED`             |
+| OpenFGA               | https://github.com/openfga/openfga                            | `v1.18.1` / `69efbd95b3d44afb2e2567d485dcc792c7d79e3f` | Apache-2.0 확인                    | `DEFERRED`             |
+| MCP SDK·Specification | https://github.com/modelcontextprotocol/typescript-sdk        | `v1.29.0` / `e12cbd7078db388152f6e839abdbe09ba01f3f32` | Apache-2.0·MIT 확인                | `DEFERRED`             |
+| Temporal TypeScript   | https://github.com/temporalio/sdk-typescript                  | `v1.20.3` / `ae823d7f9dd513f3b90aeba8c66854c59c39a359` | MIT 확인                           | `DEFERRED`             |
+| Octokit.js            | https://github.com/octokit/octokit.js                         | `v5.0.5` / `45c56ffaa6d1799dd4ebaf83f06a8fc64fc39c49`  | MIT 확인                           | `DEFERRED`             |
+| Tiptap                | https://github.com/ueberdosis/tiptap                          | Review UI prototype 시 release pin                     | 대기                               | `ADAPTER_CANDIDATE`    |
+| Yjs                   | https://github.com/yjs/yjs                                    | 협업 기능 승인 후 pin                                  | 대기                               | `DEFERRED`             |
+| Cytoscape.js          | https://github.com/cytoscape/cytoscape.js                     | `3.34.0` / `22716bfb75834b56fa6679648b0abb06f4ae691c`  | MIT 확인                           | `ADOPTED`              |
+| Apache AGE            | https://github.com/apache/age                                 | `6876abcab0a3281eb65a7e2a91238e0b5abfdea7`             | Apache-2.0 확인                    | `DEFERRED`             |
+| OpenSearch            | https://github.com/opensearch-project/OpenSearch              | `1d71f7b405359d277e9d365bb0d206acce8e559b`             | Apache-2.0 확인                    | `DEFERRED`             |
+| Qdrant                | https://github.com/qdrant/qdrant                              | `44ad62f8cd69642be5afa6441612525e24a0d063`             | Apache-2.0 확인                    | `DEFERRED`             |
 
 ### Stage 10 확정 결정
 
@@ -429,6 +431,24 @@ Stage 0~3의 재검증된 exact pin과 결정은
 - pgvector·Apache AGE·OpenSearch·Qdrant는 대표 데이터의 검색 품질·지연·규모 한계가 측정되기
   전까지 `DEFERRED`다.
 - OpenKnowledge의 2D Graph UX는 `REFERENCE`지만 GPL 코드는 포함하지 않는다.
+
+### Stage 11 확정 결정
+
+- gbrain의 contract-first operation 정의, mutating/write scope, remote default-deny와
+  side-effect adversarial test를 `REFERENCE_ONLY`로 재사용한다. gbrain MCP runtime·DB·operation을
+  Shotgun 실행 권한으로 사용하지 않는다.
+- PostgreSQL 16.14를 Action 상태, 원자적 실행 claim, 불변 Approval과 append-only Audit 저장소로
+  `ADOPTED`한다.
+- R0~R4는 다섯 operation mapping과 restricted·compensation 하한만 필요한 MVP이므로
+  `stage11.action-risk.v1` 결정적 코드 정책을 사용한다. OPA v1.18.2와 Casbin v5.51.1은
+  정책 규모 또는 다중 서비스 요구가 확인될 때까지 `DEFERRED`다.
+- OpenFGA v1.18.1은 단일 소유자 MVP에 관계 기반 권한 요구가 없어 `DEFERRED`다.
+- MCP TypeScript SDK v1.29.0과 Octokit.js v5.0.5는 실제 Provider·권한 Scope가 승인될 때
+  `ActionConnectorPort` Adapter로 재평가한다. 현재는 token·network·외부 write를 활성화하지 않는다.
+- Temporal TypeScript SDK v1.20.3은 timer·multi-day wait·saga 요구가 없어 `DEFERRED`다.
+- Stage 11 실행 Adapter는 비밀값을 내부 private field로 격리한 Fake Draft Connector다.
+  실제 Provider Adapter는 같은 Preflight·idempotency·Verify·`OUTCOME_UNKNOWN` Contract Test를
+  통과하기 전 활성화할 수 없다.
 
 ### 5.1 채택 시 필수 기록
 

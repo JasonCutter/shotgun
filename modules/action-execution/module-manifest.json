@@ -1,0 +1,11 @@
+{
+  "id": "stage11.action-execution",
+  "version": "1.0.0",
+  "owner": "Shotgun Risk-controlled External Action",
+  "deployment": ["in_process", "worker"],
+  "dataOwnership": ["action.executions", "action.approvals", "action.audit_events"],
+  "approvalPolicy": {
+    "canWriteCanonical": false,
+    "canExecuteExternalAction": true
+  }
+}

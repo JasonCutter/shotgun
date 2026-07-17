@@ -67,6 +67,7 @@ const migrate = async (): Promise<void> => {
 
 const reset = async (): Promise<void> => {
   await withClient(async (client) => {
+    await client.query('DROP SCHEMA IF EXISTS action CASCADE');
     await client.query('DROP SCHEMA IF EXISTS projection CASCADE');
     await client.query('DROP SCHEMA IF EXISTS knowledge CASCADE');
     await client.query('DROP SCHEMA IF EXISTS canonical CASCADE');
@@ -151,6 +152,15 @@ const verify = async (): Promise<void> => {
     const discoveryInferenceTable = await client.query<{ table: string | null }>(
       "SELECT to_regclass('projection.discovery_inferences') AS table",
     );
+    const actionExecutionTable = await client.query<{ table: string | null }>(
+      "SELECT to_regclass('action.executions') AS table",
+    );
+    const actionApprovalTable = await client.query<{ table: string | null }>(
+      "SELECT to_regclass('action.approvals') AS table",
+    );
+    const actionAuditTable = await client.query<{ table: string | null }>(
+      "SELECT to_regclass('action.audit_events') AS table",
+    );
     if (
       table.rows[0]?.table !== 'runtime.schema_migrations' ||
       count.rows[0]?.count !== expectedMigrationCount ||
@@ -172,7 +182,10 @@ const verify = async (): Promise<void> => {
       knowledgeGroupTable.rows[0]?.table !== 'knowledge.review_groups' ||
       entityVaultImportTable.rows[0]?.table !== 'knowledge.entity_vault_imports' ||
       compiledTruthTable.rows[0]?.table !== 'projection.compiled_truth' ||
-      discoveryInferenceTable.rows[0]?.table !== 'projection.discovery_inferences'
+      discoveryInferenceTable.rows[0]?.table !== 'projection.discovery_inferences' ||
+      actionExecutionTable.rows[0]?.table !== 'action.executions' ||
+      actionApprovalTable.rows[0]?.table !== 'action.approvals' ||
+      actionAuditTable.rows[0]?.table !== 'action.audit_events'
     ) {
       throw new Error('Database bootstrap verification failed.');
     }

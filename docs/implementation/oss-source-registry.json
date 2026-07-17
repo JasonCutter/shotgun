@@ -14,7 +14,7 @@
     {
       "id": "postgresql",
       "name": "PostgreSQL",
-      "stages": [0, 1, 2, 3, 6, 7, 10],
+      "stages": [0, 1, 2, 3, 6, 7, 10, 11],
       "officialSource": "https://github.com/postgres/postgres",
       "pin": {
         "type": "docker-digest",
@@ -26,14 +26,15 @@
         "evidence": "Official PostgreSQL distribution and Docker Official Image"
       },
       "decision": "ADOPT",
-      "scope": "Development database, Stage 2 asset metadata, Stage 3 transformation/evidence persistence, Stage 6 Canonical transaction and Outbox, and Stage 7 FTS/pg_trgm search projection",
+      "scope": "Development database, Stage 2 asset metadata, Stage 3 transformation/evidence persistence, Stage 6 Canonical transaction and Outbox, Stage 7 FTS/pg_trgm projection, Stage 10 Compiled Truth, and Stage 11 Action approval and append-only Audit",
       "security": "Local credentials only; production secrets remain outside source control",
       "maintenance": "Major version 16 is fixed; patch and image digest updates require a registry change",
       "evidence": [
         "docker image digest verified",
         "PostgreSQL 16.14 runtime verified",
         "Stage 6 atomic rollback, restart, row-lock concurrency, append-only, and SKIP LOCKED Outbox tests",
-        "Stage 7 FTS, trigram, GIN index, Watermark restart, and atomic rebuild tests"
+        "Stage 7 FTS, trigram, GIN index, Watermark restart, and atomic rebuild tests",
+        "Stage 11 restart, concurrent execution claim, immutable approval, and append-only Audit tests"
       ],
       "boundary": "Domain modules access PostgreSQL only through repository ports",
       "replacement": "Replace the PostgreSQL adapter without changing module contracts",
@@ -118,7 +119,7 @@
     {
       "id": "gbrain",
       "name": "garrytan/gbrain",
-      "stages": [0, 1, 2, 6, 7, 9, 10],
+      "stages": [0, 1, 2, 6, 7, 9, 10, 11],
       "officialSource": "https://github.com/garrytan/gbrain",
       "pin": {
         "type": "git-commit",
@@ -130,7 +131,7 @@
         "evidence": "LICENSE at the pinned commit"
       },
       "decision": "REFERENCE_ONLY",
-      "scope": "Minion retry/idempotency, PostgreSQL locking, append-only timeline, migration/recovery, search quality patterns, Stage 9 typed graph traversal, and Stage 10 Dream Cycle phase ordering, bounded drain, projection, and discovery patterns",
+      "scope": "Minion retry/idempotency, PostgreSQL locking, append-only timeline, migration/recovery, search quality patterns, Stage 9 typed graph traversal, Stage 10 Dream Cycle patterns, and Stage 11 operation allowlist, mutating scope, remote trust-boundary, and adversarial side-effect tests",
       "security": "No gbrain runtime, database, or provider configuration is embedded in Shotgun",
       "maintenance": "Pinned v0.42.58.0 validation baseline; upstream changes are not consumed automatically",
       "evidence": [
@@ -142,7 +143,8 @@
         "Stage 9 graph-query direction/type/depth and cycle-safe traversal reviewed",
         "Stage 9 alias and inferred meeting timeline remain excluded from Shotgun Canonical writes",
         "Stage 10 Dream Cycle ordered phases, dry-run, bounded window, and graph direction filters reviewed",
-        "gbrain storage and generated inference remain outside Shotgun Canonical and Projection contracts"
+        "gbrain storage and generated inference remain outside Shotgun Canonical and Projection contracts",
+        "Stage 11 contract-first operation definitions, mutating/write scope, remote default-deny, and read-only side-effect allowlist tests reviewed"
       ],
       "boundary": "Any future reuse must sit behind Shotgun Job, Repository, or Module ports",
       "replacement": "Shotgun-owned Canonical contracts and repositories can evolve without the gbrain runtime or database",
@@ -1203,6 +1205,153 @@
       "boundary": "Future implementation must remain behind the projection and search ports",
       "replacement": "PostgreSQL projection and keyword search remain the fallback",
       "recheckTrigger": "pgvector is insufficient on an approved semantic retrieval benchmark"
+    },
+    {
+      "id": "mcp-typescript-sdk-stage11",
+      "name": "Model Context Protocol TypeScript SDK",
+      "stages": [11],
+      "officialSource": "https://github.com/modelcontextprotocol/typescript-sdk",
+      "pin": {
+        "type": "git-commit",
+        "value": "e12cbd7078db388152f6e839abdbe09ba01f3f32"
+      },
+      "license": {
+        "spdx": "Apache-2.0 AND MIT",
+        "status": "VERIFIED",
+        "evidence": "Official v1.29.0 release and repository LICENSE; new contributions Apache-2.0 and existing code MIT"
+      },
+      "decision": "DEFER",
+      "scope": "Future MCP client or server adapter for a selected external provider",
+      "security": "No MCP tool, token, transport, or network endpoint is enabled in Stage 11",
+      "maintenance": "v1.29.0 is the reviewed stable v1 baseline; no package installed",
+      "evidence": [
+        "Official repository recommends v1.x for production while v2 is pre-release",
+        "Shotgun ActionConnectorPort already isolates provider and MCP transport details"
+      ],
+      "boundary": "A future MCP adapter must stay behind ActionConnectorPort and cannot bypass Preview, Approval, Preflight, or Verify",
+      "replacement": "The Fake Draft connector and shared Action contract remain the deterministic fallback",
+      "recheckTrigger": "An approved provider exposes a useful MCP operation that passes the Stage 11 contract suite"
+    },
+    {
+      "id": "opa-stage11",
+      "name": "Open Policy Agent",
+      "stages": [11],
+      "officialSource": "https://github.com/open-policy-agent/opa",
+      "pin": {
+        "type": "git-commit",
+        "value": "e695c9ef8edb0f8b9f13d014d7bc8a7fbcc57297"
+      },
+      "license": {
+        "spdx": "Apache-2.0",
+        "status": "VERIFIED",
+        "evidence": "Official v1.18.2 release and repository LICENSE"
+      },
+      "decision": "DEFER",
+      "scope": "Future externalized policy evaluation after the R0-R4 rule set outgrows deterministic code",
+      "security": "No Rego bundle, policy server, decision-log endpoint, or new secret is introduced",
+      "maintenance": "Reviewed v1.18.2 only; no binary, service, or package installed",
+      "evidence": [
+        "The Stage 11 policy is five fixed operation mappings plus two conservative floors"
+      ],
+      "boundary": "Future OPA evaluation must implement the Shotgun ActionRiskDecision contract",
+      "replacement": "The code-based stage11.action-risk.v1 policy remains the rollback path",
+      "recheckTrigger": "Policy changes require non-developer editing, multiple services, or measured rule-complexity growth"
+    },
+    {
+      "id": "node-casbin-stage11",
+      "name": "node-casbin",
+      "stages": [11],
+      "officialSource": "https://github.com/apache/casbin-node-casbin",
+      "pin": {
+        "type": "git-commit",
+        "value": "2d90c7d8c3b522415605cf3d25481e763e73381e"
+      },
+      "license": {
+        "spdx": "Apache-2.0",
+        "status": "VERIFIED",
+        "evidence": "Official v5.51.1 release and repository LICENSE"
+      },
+      "decision": "DEFER",
+      "scope": "Future RBAC or ABAC adapter when Action scope relationships become configurable",
+      "security": "No policy model file, watcher, adapter database, or management endpoint is introduced",
+      "maintenance": "Reviewed v5.51.1 only; no package installed",
+      "evidence": [
+        "Current Stage 11 scopes are explicit and enforced by the existing Connector Runtime"
+      ],
+      "boundary": "Future Casbin use must remain behind the policy package and preserve fail-closed scope checks",
+      "replacement": "Current requiredAccessScopes checks remain the rollback path",
+      "recheckTrigger": "Roles and attributes become user-configurable or span multiple organizations"
+    },
+    {
+      "id": "openfga-stage11",
+      "name": "OpenFGA",
+      "stages": [11],
+      "officialSource": "https://github.com/openfga/openfga",
+      "pin": {
+        "type": "git-commit",
+        "value": "69efbd95b3d44afb2e2567d485dcc792c7d79e3f"
+      },
+      "license": {
+        "spdx": "Apache-2.0",
+        "status": "VERIFIED",
+        "evidence": "Official v1.18.1 release and repository LICENSE"
+      },
+      "decision": "DEFER",
+      "scope": "Future relationship-based authorization for shared projects and organizations",
+      "security": "No authorization service, tuple store, network endpoint, or duplicated identity model is introduced",
+      "maintenance": "Reviewed v1.18.1 only; no service installed",
+      "evidence": ["Single-owner MVP has no confirmed relationship-authorization requirement"],
+      "boundary": "Future adapter must return Shotgun policy decisions and cannot issue approval tokens",
+      "replacement": "Project and access-scope checks remain the fallback",
+      "recheckTrigger": "Cross-project delegation or organization sharing becomes an approved requirement"
+    },
+    {
+      "id": "temporal-typescript-stage11",
+      "name": "Temporal TypeScript SDK",
+      "stages": [11],
+      "officialSource": "https://github.com/temporalio/sdk-typescript",
+      "pin": {
+        "type": "git-commit",
+        "value": "ae823d7f9dd513f3b90aeba8c66854c59c39a359"
+      },
+      "license": {
+        "spdx": "MIT",
+        "status": "VERIFIED",
+        "evidence": "Official v1.20.3 release and repository LICENSE"
+      },
+      "decision": "DEFER",
+      "scope": "Future multi-day Action, timer, retry, and compensation orchestration",
+      "security": "No Temporal server, worker, namespace, credential, or native runtime dependency is introduced",
+      "maintenance": "Reviewed v1.20.3 only; no SDK installed",
+      "evidence": [
+        "The Stage 11 draft Action is one short synchronous provider operation with explicit no-retry unknown handling"
+      ],
+      "boundary": "Future workflow adapter must preserve the Action state machine and approval token contract",
+      "replacement": "PostgreSQL execution claim and ActionConnectorPort remain the rollback path",
+      "recheckTrigger": "Approved Actions require timers, human waits across restarts, or multi-day compensation"
+    },
+    {
+      "id": "octokit-stage11",
+      "name": "Octokit.js",
+      "stages": [11],
+      "officialSource": "https://github.com/octokit/octokit.js",
+      "pin": {
+        "type": "git-commit",
+        "value": "45c56ffaa6d1799dd4ebaf83f06a8fc64fc39c49"
+      },
+      "license": {
+        "spdx": "MIT",
+        "status": "VERIFIED",
+        "evidence": "Official v5.0.5 release and repository LICENSE"
+      },
+      "decision": "DEFER",
+      "scope": "Candidate official provider SDK for a future GitHub Draft Issue or Draft PR connector",
+      "security": "No GitHub token, repository write permission, webhook, or API call is enabled",
+      "maintenance": "Reviewed v5.0.5 only; no package installed",
+      "evidence": ["No real provider target or credential scope was approved for Stage 11"],
+      "boundary": "A future Octokit adapter must keep credentials internal and pass preflight, idempotency, verification, and unknown-outcome tests",
+      "replacement": "Fake Draft connector remains the safe development adapter",
+      "recheckTrigger": "A specific GitHub repository and minimum write scope are explicitly approved"
     },
     {
       "id": "content-addressed-storage",

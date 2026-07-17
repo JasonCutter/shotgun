@@ -28,6 +28,7 @@ describe('Shotgun application', () => {
         'stage7.cited-answer',
         'stage9.knowledge-model',
         'stage10.compiled-truth',
+        'stage11.action-execution',
       ],
       capabilities: [
         'ping-command',
@@ -51,6 +52,7 @@ describe('Shotgun application', () => {
         'cited-answer-provider',
         'rich-knowledge-review-provider',
         'compiled-truth-projector',
+        'risk-controlled-external-action',
       ],
     });
 

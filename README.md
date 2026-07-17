@@ -5,13 +5,13 @@ Shotgun은 한 점에 모인 지식이 산탄총의 탄환처럼 여러 방향�
 
 ## 현재 단계
 
-- Stage 9까지 완료되어 Walking Skeleton MVP에 문서 형식과 Rich Knowledge 검토가 확장된 상태
+- Stage 11까지 완료되어 Compiled Truth와 승인·검증 기반의 안전한 외부 Action 계약까지 확장된 상태
 - 최종 순서도 기준본: `docs/SHOTGUN_KNOWLEDGE_FLOW_BASELINE_v1.0.html`
 - 상세 아키텍처 참고: `docs/shotgun_reference_architecture_strategy_ko.html`
 - 모듈 아키텍처 기준선: `docs/architecture/module-architecture/README.md`
 - 구현계획 기준선: `docs/implementation/README.md`
 - 우선순위는 복잡한 전체 구조보다 작동하는 MVP 완성
-- 원본 접수부터 Claim Canonical·인용 답변, 7개 Rich Knowledge 유형의 Atomic 검토와 Typed Edge 영향 분석까지 지원
+- 원본 접수부터 Claim Canonical·인용 답변, Rich Knowledge·Compiled Truth와 Risk·Preview·Approval·Preflight·Verify Action 흐름까지 지원
 
 ## 개발 시작
 
@@ -19,7 +19,8 @@ Shotgun은 한 점에 모인 지식이 산탄총의 탄환처럼 여러 방향�
 Kernel 사용법은 [Stage 1 문서](docs/engineering/stage-1-kernel-runtime.md), 원본 접수와
 Asset Resolver는 [Stage 2 문서](docs/engineering/stage-2-intake-original-asset.md), 검색과 인용 답변은
 [Stage 7 문서](docs/engineering/stage-7-cited-search.md), Rich Knowledge와 Impact는
-[Stage 9 문서](docs/engineering/stage-9-knowledge-model.md)에서 확인한다.
+[Stage 9 문서](docs/engineering/stage-9-knowledge-model.md), 안전한 외부 Action은
+[Stage 11 문서](docs/engineering/stage-11-risk-controlled-external-action.md)에서 확인한다.
 
 ## MVP 목표
 

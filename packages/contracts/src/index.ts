@@ -1,4 +1,5 @@
 export * from './asset-reference-codec.js';
+export * from './action-execution.js';
 export * from './ai-candidate-validation.js';
 export * from './canonical-knowledge.js';
 export * from './cited-search.js';

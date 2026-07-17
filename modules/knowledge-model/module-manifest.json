@@ -1,0 +1,15 @@
+{
+  "id": "stage9.knowledge-model",
+  "version": "1.0.0",
+  "owner": "Shotgun Rich Knowledge Review",
+  "deployment": ["in_process", "worker"],
+  "dataOwnership": [
+    "knowledge.review_groups",
+    "knowledge.review_items",
+    "knowledge.entity_vault_imports"
+  ],
+  "approvalPolicy": {
+    "canWriteCanonical": false,
+    "canExecuteExternalAction": false
+  }
+}

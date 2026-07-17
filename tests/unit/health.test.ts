@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import { createApplication } from '../../assemblies/shotgun-app/src/server.js';
 
-describe('Stage 1 application', () => {
-  it('loads two independent modules and exposes their capabilities', async () => {
+describe('Shotgun application', () => {
+  it('loads the completed Stage modules and exposes their capabilities', async () => {
     const { server } = await createApplication();
 
     const response = await server.inject({ method: 'GET', url: '/health' });
@@ -26,6 +26,7 @@ describe('Stage 1 application', () => {
         'stage6.canonical-knowledge',
         'stage7.projection-search',
         'stage7.cited-answer',
+        'stage9.knowledge-model',
       ],
       capabilities: [
         'ping-command',
@@ -47,6 +48,7 @@ describe('Stage 1 application', () => {
         'canonical-snapshot-provider',
         'canonical-search-provider',
         'cited-answer-provider',
+        'rich-knowledge-review-provider',
       ],
     });
 

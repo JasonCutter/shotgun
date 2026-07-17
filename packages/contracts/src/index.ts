@@ -4,6 +4,7 @@ export * from './canonical-knowledge.js';
 export * from './cited-search.js';
 export * from './comparison-review.js';
 export * from './document-evidence.js';
+export * from './knowledge-model.js';
 export * from './errors.js';
 export * from './envelope-codec.js';
 export * from './factories.js';

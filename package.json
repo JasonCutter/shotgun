@@ -24,7 +24,7 @@
     "test:unit": "vitest run tests/unit",
     "test:contract": "vitest run tests/contract",
     "test:integration": "vitest run tests/integration",
-    "test:database": "vitest run tests/database --maxWorkers=1",
+    "test:database": "node --env-file-if-exists=.env node_modules/vitest/vitest.mjs run tests/database --maxWorkers=1",
     "test:live-ai": "vitest run tests/live/gemini-provider.live.test.ts --maxWorkers=1",
     "test:architecture": "tsx scripts/architecture-test.ts",
     "test": "npm run test:unit && npm run test:contract && npm run test:integration && npm run test:architecture",

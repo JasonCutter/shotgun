@@ -218,15 +218,19 @@ LiteLLM 사용 여부와 관계없이 Shotgun `AIProviderPort`가 상위 계약�
 
 ### 4.10 Impact Analysis·Semantic Graph
 
-| 후보                          | 역할                             | 상태                   |
-| ----------------------------- | -------------------------------- | ---------------------- |
-| gbrain Graph·Timeline         | Domain pattern과 Query 참고      | `EXTRACT`              |
-| NetworkX                      | 초기 graph algorithm·test oracle | `FOUNDATION_CANDIDATE` |
-| PostgreSQL adjacency tables   | MVP typed graph storage          | `FOUNDATION_CANDIDATE` |
-| Apache AGE                    | PostgreSQL graph extension 후보  | `ADAPTER_CANDIDATE`    |
-| Neo4j Community 또는 Memgraph | 전용 Graph DB benchmark          | `DEFERRED`             |
+| 후보                          | 역할                            | 상태                |
+| ----------------------------- | ------------------------------- | ------------------- |
+| gbrain Graph·Timeline         | Domain pattern과 Query 참고     | `REFERENCE`         |
+| NetworkX                      | 결정적 graph test oracle        | `ADOPTED`           |
+| PostgreSQL typed review group | MVP typed graph 승인 원장       | `ADOPTED`           |
+| Apache AGE                    | PostgreSQL graph extension 후보 | `ADAPTER_CANDIDATE` |
+| Neo4j Community 또는 Memgraph | 전용 Graph DB benchmark         | `DEFERRED`          |
 
 실제 영향 edge는 Canonical·Projection이 소유하며 AI가 자유 생성한 edge를 섞지 않는다.
+
+Stage 9의 exact pin, validation-only NetworkX 경계와 gbrain·Cytoscape.js 결정은
+[Stage 9 OSS Integration Review](../../implementation/stage-validations/stage-9-oss-integration-review.md)에
+고정한다.
 
 ### 4.11 ChangeSet·Review·Editor
 
@@ -236,7 +240,7 @@ LiteLLM 사용 여부와 관계없이 Shotgun `AIProviderPort`가 상위 계약�
 | Tiptap / ProseMirror  | 구조화 editor                         | `ADAPTER_CANDIDATE` |
 | Yjs                   | Draft ChangeSet 동시 편집             | `DEFERRED`          |
 | diff-match-patch 계열 | text diff 보조                        | `ADAPTER_CANDIDATE` |
-| Cytoscape.js          | 2D graph review UI                    | `ADAPTER_CANDIDATE` |
+| Cytoscape.js          | 2D graph review UI                    | `DEFERRED`          |
 
 Review 결과와 Canonical commit은 editor 내부 document state에 종속되지 않는다.
 
@@ -379,37 +383,38 @@ UI framework는 Domain Module 계약에 영향을 주지 않는다.
 Stage 0~3의 재검증된 exact pin과 결정은
 [`oss-source-registry.json`](../../implementation/oss-source-registry.json)을 기준으로 한다.
 
-| 후보                  | 공식 저장소·규격                                              | Version / Commit baseline                  | 라이선스 검토                      | 현재 상태              |
-| --------------------- | ------------------------------------------------------------- | ------------------------------------------ | ---------------------------------- | ---------------------- |
-| garrytan/gbrain       | https://github.com/garrytan/gbrain                            | `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a` | MIT 확인                           | `REFERENCE`            |
-| lucasastorian/llmwiki | https://github.com/lucasastorian/llmwiki                      | `ad626a3d81be1480e35ef4e94234de8dbb27a61e` | Apache-2.0 확인                    | `AUGMENT`              |
-| ddsyasas/llm-wiki     | https://github.com/ddsyasas/llm-wiki                          | `e8dd69ebba0dc7c395c1b8217bb1c30c14e8c84c` | MIT 확인                           | `REFERENCE`            |
-| Inkeep OpenKnowledge  | https://github.com/inkeep/open-knowledge                      | `f2834c237639e2cff603817ed88182b33f83cf91` | GPL-3.0-or-later 확인, 패턴 참고만 | `REFERENCE`            |
-| W3C Web Annotation    | https://www.w3.org/TR/2017/REC-annotation-model-20170223/     | Recommendation `2017-02-23`                | W3C-20150513 확인                  | `AUGMENT`              |
-| JSON Pointer          | https://www.rfc-editor.org/rfc/rfc6901                        | RFC 6901                                   | IETF Trust 확인                    | `ADOPTED`              |
-| JSON Schema           | https://github.com/json-schema-org/json-schema-spec           | 구현 선택 시 draft와 validator pin         | 대기                               | `FOUNDATION_CANDIDATE` |
-| OpenAPI               | https://github.com/OAI/OpenAPI-Specification                  | 구현 선택 시 spec version pin              | 대기                               | `FOUNDATION_CANDIDATE` |
-| AsyncAPI              | https://github.com/asyncapi/spec                              | 구현 선택 시 spec version pin              | 대기                               | `ADAPTER_CANDIDATE`    |
-| CloudEvents           | https://github.com/cloudevents/spec                           | mapping 검증 시 spec version pin           | 대기                               | `REFERENCE`            |
-| Temporal              | https://github.com/temporalio/temporal                        | benchmark 시 release pin                   | 대기                               | `ADAPTER_CANDIDATE`    |
-| NATS JetStream        | https://github.com/nats-io/nats-server                        | benchmark 시 release pin                   | 대기                               | `ADAPTER_CANDIDATE`    |
-| Redis Streams         | https://github.com/redis/redis                                | benchmark 시 release pin                   | 대기                               | `ADAPTER_CANDIDATE`    |
-| Docling               | https://github.com/docling-project/docling                    | golden corpus 평가 시 commit pin           | 대기                               | `ADAPTER_CANDIDATE`    |
-| Apache Tika           | https://github.com/apache/tika                                | golden corpus 평가 시 release pin          | 대기                               | `ADAPTER_CANDIDATE`    |
-| MarkItDown            | https://github.com/microsoft/markitdown                       | golden corpus 평가 시 commit pin           | 대기                               | `ADAPTER_CANDIDATE`    |
-| ffmpeg                | https://github.com/FFmpeg/FFmpeg                              | Shotgun Assembly에서는 pin하지 않음        | 범위 재결정 전 대기                | `DEFERRED`             |
-| LiteLLM               | https://github.com/BerriAI/litellm                            | provider benchmark 시 release pin          | 대기                               | `ADAPTER_CANDIDATE`    |
-| Langfuse              | https://github.com/langfuse/langfuse                          | observability 평가 시 release pin          | 대기                               | `ADAPTER_CANDIDATE`    |
-| OpenTelemetry         | https://github.com/open-telemetry/opentelemetry-specification | SDK 언어 결정 후 pin                       | 대기                               | `FOUNDATION_CANDIDATE` |
-| pgvector              | https://github.com/pgvector/pgvector                          | PostgreSQL version과 함께 pin              | 대기                               | `ADAPTER_CANDIDATE`    |
-| Apache AGE            | https://github.com/apache/age                                 | graph benchmark 시 release pin             | 대기                               | `ADAPTER_CANDIDATE`    |
-| Open Policy Agent     | https://github.com/open-policy-agent/opa                      | policy benchmark 시 release pin            | 대기                               | `ADAPTER_CANDIDATE`    |
-| Casbin                | https://github.com/casbin/casbin                              | 언어 구현 선택 후 pin                      | 대기                               | `ADAPTER_CANDIDATE`    |
-| OpenFGA               | https://github.com/openfga/openfga                            | 관계 권한 요구 확인 후 pin                 | 대기                               | `DEFERRED`             |
-| MCP SDK·Specification | https://github.com/modelcontextprotocol                       | Adapter 구현 시 SDK·spec commit pin        | 대기                               | `ADAPTER_CANDIDATE`    |
-| Tiptap                | https://github.com/ueberdosis/tiptap                          | Review UI prototype 시 release pin         | 대기                               | `ADAPTER_CANDIDATE`    |
-| Yjs                   | https://github.com/yjs/yjs                                    | 협업 기능 승인 후 pin                      | 대기                               | `DEFERRED`             |
-| Cytoscape.js          | https://github.com/cytoscape/cytoscape.js                     | Graph UI prototype 시 release pin          | 대기                               | `ADAPTER_CANDIDATE`    |
+| 후보                  | 공식 저장소·규격                                              | Version / Commit baseline                             | 라이선스 검토                      | 현재 상태              |
+| --------------------- | ------------------------------------------------------------- | ----------------------------------------------------- | ---------------------------------- | ---------------------- |
+| garrytan/gbrain       | https://github.com/garrytan/gbrain                            | `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a`            | MIT 확인                           | `REFERENCE`            |
+| lucasastorian/llmwiki | https://github.com/lucasastorian/llmwiki                      | `ad626a3d81be1480e35ef4e94234de8dbb27a61e`            | Apache-2.0 확인                    | `AUGMENT`              |
+| ddsyasas/llm-wiki     | https://github.com/ddsyasas/llm-wiki                          | `e8dd69ebba0dc7c395c1b8217bb1c30c14e8c84c`            | MIT 확인                           | `REFERENCE`            |
+| Inkeep OpenKnowledge  | https://github.com/inkeep/open-knowledge                      | `f2834c237639e2cff603817ed88182b33f83cf91`            | GPL-3.0-or-later 확인, 패턴 참고만 | `REFERENCE`            |
+| NetworkX              | https://github.com/networkx/networkx                          | `3.6.1` / `7530809bfa1ea7ed6fdf918a4d1431488953cb1f`  | BSD-3-Clause 확인                  | `ADOPTED`              |
+| W3C Web Annotation    | https://www.w3.org/TR/2017/REC-annotation-model-20170223/     | Recommendation `2017-02-23`                           | W3C-20150513 확인                  | `AUGMENT`              |
+| JSON Pointer          | https://www.rfc-editor.org/rfc/rfc6901                        | RFC 6901                                              | IETF Trust 확인                    | `ADOPTED`              |
+| JSON Schema           | https://github.com/json-schema-org/json-schema-spec           | 구현 선택 시 draft와 validator pin                    | 대기                               | `FOUNDATION_CANDIDATE` |
+| OpenAPI               | https://github.com/OAI/OpenAPI-Specification                  | 구현 선택 시 spec version pin                         | 대기                               | `FOUNDATION_CANDIDATE` |
+| AsyncAPI              | https://github.com/asyncapi/spec                              | 구현 선택 시 spec version pin                         | 대기                               | `ADAPTER_CANDIDATE`    |
+| CloudEvents           | https://github.com/cloudevents/spec                           | mapping 검증 시 spec version pin                      | 대기                               | `REFERENCE`            |
+| Temporal              | https://github.com/temporalio/temporal                        | benchmark 시 release pin                              | 대기                               | `ADAPTER_CANDIDATE`    |
+| NATS JetStream        | https://github.com/nats-io/nats-server                        | benchmark 시 release pin                              | 대기                               | `ADAPTER_CANDIDATE`    |
+| Redis Streams         | https://github.com/redis/redis                                | benchmark 시 release pin                              | 대기                               | `ADAPTER_CANDIDATE`    |
+| Docling               | https://github.com/docling-project/docling                    | golden corpus 평가 시 commit pin                      | 대기                               | `ADAPTER_CANDIDATE`    |
+| Apache Tika           | https://github.com/apache/tika                                | golden corpus 평가 시 release pin                     | 대기                               | `ADAPTER_CANDIDATE`    |
+| MarkItDown            | https://github.com/microsoft/markitdown                       | golden corpus 평가 시 commit pin                      | 대기                               | `ADAPTER_CANDIDATE`    |
+| ffmpeg                | https://github.com/FFmpeg/FFmpeg                              | Shotgun Assembly에서는 pin하지 않음                   | 범위 재결정 전 대기                | `DEFERRED`             |
+| LiteLLM               | https://github.com/BerriAI/litellm                            | provider benchmark 시 release pin                     | 대기                               | `ADAPTER_CANDIDATE`    |
+| Langfuse              | https://github.com/langfuse/langfuse                          | observability 평가 시 release pin                     | 대기                               | `ADAPTER_CANDIDATE`    |
+| OpenTelemetry         | https://github.com/open-telemetry/opentelemetry-specification | SDK 언어 결정 후 pin                                  | 대기                               | `FOUNDATION_CANDIDATE` |
+| pgvector              | https://github.com/pgvector/pgvector                          | PostgreSQL version과 함께 pin                         | 대기                               | `ADAPTER_CANDIDATE`    |
+| Apache AGE            | https://github.com/apache/age                                 | graph benchmark 시 release pin                        | 대기                               | `ADAPTER_CANDIDATE`    |
+| Open Policy Agent     | https://github.com/open-policy-agent/opa                      | policy benchmark 시 release pin                       | 대기                               | `ADAPTER_CANDIDATE`    |
+| Casbin                | https://github.com/casbin/casbin                              | 언어 구현 선택 후 pin                                 | 대기                               | `ADAPTER_CANDIDATE`    |
+| OpenFGA               | https://github.com/openfga/openfga                            | 관계 권한 요구 확인 후 pin                            | 대기                               | `DEFERRED`             |
+| MCP SDK·Specification | https://github.com/modelcontextprotocol                       | Adapter 구현 시 SDK·spec commit pin                   | 대기                               | `ADAPTER_CANDIDATE`    |
+| Tiptap                | https://github.com/ueberdosis/tiptap                          | Review UI prototype 시 release pin                    | 대기                               | `ADAPTER_CANDIDATE`    |
+| Yjs                   | https://github.com/yjs/yjs                                    | 협업 기능 승인 후 pin                                 | 대기                               | `DEFERRED`             |
+| Cytoscape.js          | https://github.com/cytoscape/cytoscape.js                     | `3.34.0` / `22716bfb75834b56fa6679648b0abb06f4ae691c` | MIT 확인                           | `DEFERRED`             |
 
 ### 5.1 채택 시 필수 기록
 

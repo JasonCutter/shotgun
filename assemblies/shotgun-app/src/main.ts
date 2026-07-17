@@ -26,6 +26,7 @@ import {
 } from '../../../adapters/postgres-stage5/src/index.js';
 import { PostgresCanonicalKnowledgeRepository } from '../../../adapters/postgres-stage6/src/index.js';
 import { PostgresSearchProjectionRepository } from '../../../adapters/postgres-stage7/src/index.js';
+import { PostgresKnowledgeModelRepository } from '../../../adapters/postgres-stage9/src/index.js';
 import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
 import { createApplication } from './server.js';
 
@@ -57,6 +58,7 @@ const { server } = await createApplication({
   canonicalSnapshot: canonicalKnowledgeRepository,
   canonicalKnowledgeRepository,
   searchProjectionRepository: new PostgresSearchProjectionRepository(pool),
+  knowledgeModelRepository: new PostgresKnowledgeModelRepository(pool),
   textDiff: new JsDiffAdapter(),
   transformer: new PythonDocumentFormatAdapter(),
   evidenceLocator: plainTextAdapter,

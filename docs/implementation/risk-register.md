@@ -375,6 +375,17 @@ Related ADR / PR / incident:
 - 잔여 위험: Auth Adapter, 영속 Audit·Inbox·Outbox, 미참조 Asset 정리는 후속 Stage 전까지
   `OPEN` 상태로 유지
 
+### Stage 9 구현 검토 — 2026-07-17
+
+- Entity 오병합: `POSSIBLY_SAME` schema에서 Canonical Entity ID를 금지해 완화
+- 시간 추측: Relation·Event·Action 시간 값에 temporal Evidence를 강제해 완화
+- Impact 폭주: 승인 Typed Edge만 탐색하고 depth 10, node 500의 계약 상한과 cycle-safe
+  방문 집합으로 완화
+- 부분 승인 무결성: Atomic Group의 전체 ID 일치와 PostgreSQL 단일 행 갱신으로 완화
+- 모델 합의 오인: 모델별 원본 출력과 불일치 표시를 보존해 완화
+- 잔여 위험: 대규모 graph 성능과 interactive canvas 사용성은 Stage 10에서 측정하며,
+  Cytoscape.js는 그때까지 `DEFER` 상태로 유지
+
 - Canonical Data Loss 0
 - Unauthorized Canonical Write 0
 - Duplicate External Action 0

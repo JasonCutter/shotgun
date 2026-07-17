@@ -1,6 +1,6 @@
 # Stage 12.1 P0-2 - Action Candidate Server-side Binding Implementation Plan
 
-- 상태: **ADR-094 승인 대기 / 구현 시작 금지**
+- 상태: **승인됨 / 구현 대기**
 - 범위: Action Candidate Server-side Binding and Approval Snapshot
 - ADR: [ADR-094](../architecture/adr/ADR-094-action-candidate-server-side-binding-and-approval-snapshot.md)
 - 선행 ADR: [ADR-093](../architecture/adr/ADR-093-http-identity-and-authorization-boundary.md), [ADR-091](../architecture/adr/ADR-091-stage-11-risk-controlled-external-action.md)
@@ -21,7 +21,7 @@ P0-2는 클라이언트가 완성된 Action Candidate나 실행 payload를 보�
 
 P0-2는 P0-1의 Trusted SecurityContext 없이 구현하지 않는다. Action의 project, principal, scope, sensitivity는 ADR-093의 인증·인가 계층이 만든 값만 사용한다.
 
-1. ADR-093과 ADR-094를 Accepted로 확정하고, 두 구현 작업을 별도로 승인한다.
+1. ADR-093과 ADR-094가 Accepted임을 확인하고, 제품 구현은 별도 구현 승인 뒤에만 시작한다.
 2. P0-1을 먼저 구현한다. legacy security header와 owner fallback 제거, Browser/API auth, project membership, server-side scope와 sensitivity 검사를 완료한다.
 3. P0-1 공격 회귀 테스트를 통과시킨 뒤 P0-2의 Repository Port와 server-side Preview binding을 구현한다.
 4. Snapshot, Approval, Execution transaction과 Verify Worker를 구현한다.
@@ -96,9 +96,11 @@ serializer 또는 snapshot schema version이 바뀌면 기존 Snapshot digest를
 1. Snapshot ID와 expected digest를 lock 또는 compare-and-set으로 읽는다.
 2. Snapshot expiry와 현재 Candidate/Validation/Evidence/sensitivity invalidation을 확인한다.
 3. 서버의 Risk Policy가 approval policy version, required approver rule, self-approval 허용 여부, required approval count, role/scope를 계산한다.
-4. High/Critical Risk에서는 요청자와 다른 사용자 principal만 grant할 수 있다. Service Principal은 사람 승인자를 대체할 수 없다.
-5. grant가 필요한 count를 충족할 때만 서버가 final `approvalId`를 만든다.
-6. approval ID는 snapshot ID와 digest에 결속하며 Snapshot 만료 이후에는 유효하지 않다.
+4. v1에서는 `action:approve` 권한을 가진 `user` principal만 grant할 수 있다. Service Principal은 사람 승인자를 대체할 수 없다.
+5. 현재 단일 소유자 MVP에서는 policy가 허용한 self-approval을 허용한다. v1 `requiredApprovalCount`는 1이며, count를 충족할 때만 서버가 final `approvalId`를 만든다.
+6. `selfApprovalAllowed`, `requiredApproverRule`, `requiredApprovalCount`는 Snapshot에 저장하지만 Risk Policy가 서버에서 결정한다. 다중 사용자 분리 승인과 Four-eyes Approval은 향후 별도 ADR/policy version의 범위다.
+7. Connector별 활성화 정책은 위험한 operation을 별도로 차단할 수 있으며, 이를 두 번째 승인자 요구로 해석하지 않는다.
+8. approval ID는 snapshot ID와 digest에 결속하며 Snapshot 만료 이후에는 유효하지 않다.
 
 ### Execution
 
@@ -126,22 +128,25 @@ Worker는 `executionId`만 받아 저장된 Snapshot과 Connector Receipt를 조
 
 ## 9. Acceptance Test
 
-| 시나리오                                                              | 기대 결과                                                                                                         |
-| --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Preview body에 target, payload, Connector ID 또는 full Candidate 포함 | 400 `ACTION_SERVER_BINDING_REQUIRED`                                                                              |
-| 존재하지 않는 Candidate/Validation/Evidence                           | Preview 거부, 외부 정보 미노출                                                                                    |
-| 다른 project Candidate/Evidence                                       | generic 404, cross-project 실행 불가                                                                              |
-| stale revision 또는 변경된 Validation/Evidence                        | Preview 또는 Execute가 `STALE_ACTION_SNAPSHOT`으로 거부                                                           |
-| restricted sensitivity 하향 시도                                      | Preview와 Execute 모두 거부                                                                                       |
-| Snapshot canonicalization                                             | 같은 입력은 같은 digest, key/evidence 순서 변경은 같은 digest, 값 변경은 다른 digest                              |
-| serializer/schema version 변경                                        | 기존 Snapshot은 수정되지 않고 새 Snapshot만 생성                                                                  |
-| High/Critical self approval 또는 Service Principal 승인               | 거부                                                                                                              |
-| Snapshot 만료 뒤 승인/실행                                            | 거부, 새 Preview와 새 승인 필요                                                                                   |
-| 동시/재전송 Execute                                                   | 하나의 external call, 나머지는 기존 Execution Record 반환                                                         |
-| claim 뒤 timeout                                                      | `OUTCOME_UNKNOWN`, 자동 재실행 없음                                                                               |
-| 브라우저 또는 일반 사용자 Verify 제출                                 | 거부                                                                                                              |
-| 허가된 Worker Verify                                                  | receipt와 provider result로만 상태 확정                                                                           |
-| 정상 흐름                                                             | server-bound Preview -> required human approval -> atomic claim -> Preflight -> Execute -> Worker Verify -> audit |
+| 시나리오                                                              | 기대 결과                                                                                                              |
+| --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Preview body에 target, payload, Connector ID 또는 full Candidate 포함 | 400 `ACTION_SERVER_BINDING_REQUIRED`                                                                                   |
+| 존재하지 않는 Candidate/Validation/Evidence                           | Preview 거부, 외부 정보 미노출                                                                                         |
+| 다른 project Candidate/Evidence                                       | generic 404, cross-project 실행 불가                                                                                   |
+| stale revision 또는 변경된 Validation/Evidence                        | Preview 또는 Execute가 `STALE_ACTION_SNAPSHOT`으로 거부                                                                |
+| restricted sensitivity 하향 시도                                      | Preview와 Execute 모두 거부                                                                                            |
+| Snapshot canonicalization                                             | 같은 입력은 같은 digest, key/evidence 순서 변경은 같은 digest, 값 변경은 다른 digest                                   |
+| serializer/schema version 변경                                        | 기존 Snapshot은 수정되지 않고 새 Snapshot만 생성                                                                       |
+| 권한 없는 user principal 승인                                         | 거부                                                                                                                   |
+| Service Principal 승인                                                | 거부                                                                                                                   |
+| single-owner user principal의 정책상 허용된 self-approval             | 성공                                                                                                                   |
+| v1 `requiredApprovalCount=1`                                          | 충족될 때만 final approval 생성; count 증가는 향후 policy version 범위                                                 |
+| Snapshot 만료 뒤 승인/실행                                            | 거부, 새 Preview와 새 승인 필요                                                                                        |
+| 동시/재전송 Execute                                                   | 하나의 external call, 나머지는 기존 Execution Record 반환                                                              |
+| claim 뒤 timeout                                                      | `OUTCOME_UNKNOWN`, 자동 재실행 없음                                                                                    |
+| 브라우저 또는 일반 사용자 Verify 제출                                 | 거부                                                                                                                   |
+| 허가된 Worker Verify                                                  | receipt와 provider result로만 상태 확정                                                                                |
+| 정상 흐름                                                             | server-bound Preview -> policy-allowed user approval -> atomic claim -> Preflight -> Execute -> Worker Verify -> audit |
 
 ## 10. 완료 조건과 중단 조건
 

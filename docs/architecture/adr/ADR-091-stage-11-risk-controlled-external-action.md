@@ -17,6 +17,7 @@
 5. Approval Token은 `actionId`, Candidate Revision, Target Digest, Parameter Digest와
    Preview Digest에 결속한다. 승인 뒤 하나라도 달라지거나 Token이 만료되면
    `STALE_APPROVAL`로 거부한다. 사용자 Actor만 승인할 수 있다.
+   Approval의 저장·전달 및 Snapshot binding 방식은 ADR-094에서 서버 저장 Approval Record로 보완되었다.
 6. PostgreSQL row lock으로 승인된 Action의 실행권을 한 Worker만 claim한다. Provider 호출 전
    Connector credential·대상·지원 operation·중복·현재 상태를 Preflight한다.
 7. 응답 유실 또는 Timeout은 `OUTCOME_UNKNOWN`으로 기록하고 실행을 자동 재호출하지 않는다.

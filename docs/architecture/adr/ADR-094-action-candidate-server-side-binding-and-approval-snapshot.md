@@ -1,6 +1,6 @@
 # ADR-094 - Action Candidate Server-side Binding and Approval Snapshot
 
-- 상태: **Proposed — Stage 12.1 P0-2 사용자 승인 대기**
+- 상태: **Accepted**
 - 날짜: 2026-07-17
 - 상위 전략: [Stage 12.1 Hardening Strategy](../../engineering/stage-12-1-hardening-strategy.md)
 - 관련 결정: [ADR-091 - Risk-controlled External Action](ADR-091-stage-11-risk-controlled-external-action.md), [ADR-093 - HTTP Identity and Authorization Boundary](ADR-093-http-identity-and-authorization-boundary.md)
@@ -12,6 +12,14 @@
 ADR-091은 Action의 위험도, Preview, 승인, Preflight, 실행, 검증의 순서와 실행 중복 방지 원칙을 이미 결정했다. 이 ADR은 그 결정을 대체하지 않는다. 대신 Action의 **입력 신뢰 경계**를 서버 저장소로 옮겨, 승인한 Preview와 실제 실행이 같은 근거를 사용하도록 보강한다.
 
 P0-1이 만든 Trusted SecurityContext는 이 ADR의 선행 조건이다. Project selector, actor, scope, sensitivity는 HTTP 요청 본문이나 헤더가 아니라 인증과 서버 측 인가 결과에서만 얻는다.
+
+## ADR-091 Amendment
+
+ADR-091 결정 5의 보안 원칙은 유지한다. 승인 결과는 Candidate revision, target/payload digest, Preview digest와 결속되어야 한다.
+
+다만 클라이언트가 보관·전달하는 Approval Token 표현은 폐기한다. 이 ADR부터 서버 저장 `ActionApprovalRecord`와 `approvalId`가 그 역할을 맡는다. Execute는 `approvalId`만 받고 서버가 `Approval -> Snapshot -> payload`를 조회한다.
+
+이 보완은 ADR-091의 Preflight, atomic claim, `OUTCOME_UNKNOWN`, Verify, compensation 정책을 변경하지 않는다.
 
 ## 결정
 
@@ -115,7 +123,9 @@ Snapshot과 digest는 하나의 DB transaction에서 저장한다. Snapshot reco
 - 승인 시각, 만료 시각
 - approval reason 또는 note
 
-구체적인 승인 규칙은 ADR-091의 서버 측 Risk Policy가 결정하며 클라이언트는 선택할 수 없다. High 또는 Critical Risk에서는 요청자와 다른 사용자 승인자를 요구한다. Service Principal은 사람의 승인을 대체할 수 없다.
+구체적인 승인 규칙은 ADR-091의 서버 측 Risk Policy가 결정하며 클라이언트는 선택할 수 없다. v1에서 승인자는 반드시 `action:approve` 권한을 가진 `user` principal이어야 하며 Service Principal은 사람의 승인을 대체할 수 없다.
+
+현재 단일 소유자 MVP에서는 정책상 허용된 요청자 본인의 승인을 허용한다. v1 `requiredApprovalCount`는 1이다. `selfApprovalAllowed`, `requiredApproverRule`, `requiredApprovalCount` 필드는 Snapshot에 유지하지만 서버의 Risk Policy만 결정한다. 다중 사용자 분리 승인과 Four-eyes Approval은 향후 별도 ADR과 Risk Policy version에서 도입한다. Connector별 활성화 정책은 위험한 operation을 별도로 차단할 수 있으며, 이는 두 번째 승인자를 요구하는 정책과 다르다.
 
 Approval은 snapshot ID와 snapshot digest에 결속한다. 승인 요청은 현재 Snapshot digest와 서버가 저장한 Snapshot digest가 정확히 일치할 때만 성공한다. Snapshot이 무효화되거나 만료되면 승인도 자동으로 무효다.
 
@@ -188,7 +198,11 @@ Audit에는 candidate ID/revision, validation/evidence/snapshot digest, policy v
 7. 같은 승인/Snapshot을 동시에 또는 재전송해도 외부 실행은 한 번만 claim된다.
 8. timeout 또는 응답 유실은 `OUTCOME_UNKNOWN`으로 남으며 자동 재실행되지 않는다.
 9. 권한 없는 principal은 Preview, Approval, Execute, Verify와 Audit 조회를 할 수 없다.
-10. 정상 흐름에서는 서버가 조회한 Candidate와 Evidence로 만든 Preview를 사용자가 승인하고, 동일 Snapshot만 Preflight, Execute, Verify까지 통과한다.
+10. 권한 없는 user principal의 승인은 거부된다.
+11. Service Principal의 승인은 거부된다.
+12. single-owner user principal의 정책상 허용된 self-approval은 성공한다.
+13. v1 `requiredApprovalCount=1`이 충족될 때만 final approval이 생성된다. 향후 policy version에서 count를 늘릴 수 있으나 이번 구현 범위에는 포함하지 않는다.
+14. 정상 흐름에서는 서버가 조회한 Candidate와 Evidence로 만든 Preview를 정책상 허용된 user principal이 승인하고, 동일 Snapshot만 Preflight, Execute, Verify까지 통과한다.
 
 ## 결과
 

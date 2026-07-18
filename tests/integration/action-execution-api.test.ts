@@ -9,11 +9,13 @@ import type {
   StoredIntakeResult,
 } from '../../modules/original-asset/src/index.js';
 import type { ValidationRepositoryPort } from '../../modules/validation/src/index.js';
+import type { TransformationRevisionSecurityRepositoryPort } from '../../modules/transformation/src/index.js';
 import { actionServerCandidate } from '../helpers/stage-11.js';
 
 import {
   validationResultDigest,
   actionEvidenceRecordDigest,
+  sha256Text,
   type ValidationResult,
   type EvidenceSpan,
 } from '../../packages/contracts/src/index.js';
@@ -23,6 +25,8 @@ describe('Stage 12.1 P0-2 external Action API vertical slice', () => {
     const secret = 'api-connector-secret';
     const connector = new FakeDraftActionConnector(secret);
     const candidates = new InMemoryActionCandidateRepository();
+    const sourceText = 'The first sentence. api is the cited sentence. The final sentence.';
+    const sourceContentHash = sha256Text(sourceText);
 
     const validationMock: ValidationResult = {
       projectId: 'shotgun',
@@ -51,7 +55,7 @@ describe('Stage 12.1 P0-2 external Action API vertical slice', () => {
       },
       quote: { type: 'TextQuoteSelector', exact: 'api' },
       selectors: [],
-      exactHash: 'sha256:1111111111111111111111111111111111111111111111111111111111111111',
+      exactHash: sha256Text('api'),
       accessScope: ['action:read'],
       sensitivity: 'private' as const,
       createdAt: '2026-07-17T10:00:00.000Z',
@@ -68,8 +72,8 @@ describe('Stage 12.1 P0-2 external Action API vertical slice', () => {
         assetId: 'asset:api',
         versionId: 's1',
         mediaType: 'text/plain',
-        contentHash: evidenceMock.exactHash,
-        sizeBytes: 3,
+        contentHash: sourceContentHash,
+        sizeBytes: Buffer.byteLength(sourceText, 'utf8'),
         storageUri: 'asset://asset:api/versions/s1',
         accessScope: ['action:read'],
       },
@@ -123,6 +127,20 @@ describe('Stage 12.1 P0-2 external Action API vertical slice', () => {
         sensitivity: originalMock.sensitivity,
       }),
     };
+    const transformationRevisionSecurityRepository: TransformationRevisionSecurityRepositoryPort = {
+      findTransformationRevisionSecurity: async (_projectId, revisionId) =>
+        revisionId === evidenceMock.revisionId
+          ? {
+              revisionId: evidenceMock.revisionId,
+              projectId: evidenceMock.projectId,
+              sourceId: evidenceMock.sourceId,
+              sourceVersionId: evidenceMock.sourceVersionId,
+              sourceContentHash,
+              accessScope: evidenceMock.accessScope,
+              sensitivity: evidenceMock.sensitivity,
+            }
+          : undefined,
+    };
 
     const app = await createApplication({
       actionConnector: connector,
@@ -130,6 +148,7 @@ describe('Stage 12.1 P0-2 external Action API vertical slice', () => {
       evidenceRepository,
       validationRepository,
       originalAssetRepository,
+      transformationRevisionSecurityRepository,
     });
     const forbidden = await app.server.inject({
       method: 'POST',

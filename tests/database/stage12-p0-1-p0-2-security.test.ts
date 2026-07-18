@@ -9,7 +9,10 @@ import {
   PostgresActionCandidateRepository,
   PostgresActionExecutionRepository,
 } from '../../adapters/postgres-stage11/src/index.js';
-import { PostgresEvidenceRepository } from '../../adapters/postgres-stage3/src/index.js';
+import {
+  PostgresEvidenceRepository,
+  PostgresTransformationRepository,
+} from '../../adapters/postgres-stage3/src/index.js';
 import { PostgresValidationRepository } from '../../adapters/postgres-stage4/src/index.js';
 import {
   createPostgresPool,
@@ -19,6 +22,7 @@ import { createApplication } from '../../assemblies/shotgun-app/src/server.js';
 import { hashPassword } from '../../packages/authentication/src/index.js';
 import {
   actionEvidenceRecordDigest,
+  sha256Text,
   validationResultDigest,
   type ServerActionCandidate,
 } from '../../packages/contracts/src/index.js';
@@ -32,7 +36,10 @@ if (!databaseUrl) {
 const pool = createPostgresPool(databaseUrl);
 const projectId = 'shotgun';
 const password = 'stage12-security-password';
-const contentHash = 'sha256:1111111111111111111111111111111111111111111111111111111111111111';
+const sourceText = 'The first sentence. abc is the cited sentence. The final sentence.';
+const sourceContentHash = sha256Text(sourceText);
+const evidenceExactText = 'abc';
+const evidenceExactHash = sha256Text(evidenceExactText);
 const changedHash = 'sha256:2222222222222222222222222222222222222222222222222222222222222222';
 const mismatchHash = 'sha256:3333333333333333333333333333333333333333333333333333333333333333';
 
@@ -71,6 +78,7 @@ type ActionFixture = AuthHarness & {
   readonly sourceId: string;
   readonly sourceVersionId: string;
   readonly originalAssetId: string;
+  readonly revisionId: string;
   readonly actionId: string;
   readonly approvalId: string;
 };
@@ -148,6 +156,7 @@ const createActionApplication = async (): Promise<
   const validationRepository = new PostgresValidationRepository(pool);
   const evidenceRepository = new PostgresEvidenceRepository(pool);
   const originalAssetRepository = new PostgresOriginalAssetRepository(pool);
+  const transformationRevisionSecurityRepository = new PostgresTransformationRepository(pool);
   const app = await createApplication({
     authRepository,
     actionExecutionRepository: actionRepository,
@@ -155,6 +164,7 @@ const createActionApplication = async (): Promise<
     validationRepository,
     evidenceRepository,
     originalAssetRepository,
+    transformationRevisionSecurityRepository,
     actionConnector: connector,
     production: true,
   });
@@ -182,7 +192,7 @@ const createActionApplication = async (): Promise<
 };
 
 const seedSourceVersion = async (
-  hash = contentHash,
+  hash = sourceContentHash,
 ): Promise<{
   readonly sourceId: string;
   readonly sourceVersionId: string;
@@ -194,8 +204,8 @@ const seedSourceVersion = async (
   await pool.query(
     `INSERT INTO asset.original_assets
        (asset_id, content_hash, size_bytes, storage_key, created_at)
-     VALUES ($1, $2, 3, $3, now())`,
-    [originalAssetId, hash, `security/${originalAssetId}`],
+     VALUES ($1, $2, $3, $4, now())`,
+    [originalAssetId, hash, Buffer.byteLength(sourceText, 'utf8'), `security/${originalAssetId}`],
   );
   await pool.query(
     `INSERT INTO asset.sources
@@ -229,6 +239,7 @@ const seedCandidate = async (
   readonly sourceId: string;
   readonly sourceVersionId: string;
   readonly originalAssetId: string;
+  readonly revisionId: string;
 }> => {
   const { sourceId, sourceVersionId, originalAssetId } = await seedSourceVersion();
   const revisionId = randomUUID();
@@ -244,7 +255,7 @@ const seedCandidate = async (
         source_map_hash, access_scope, sensitivity, created_at)
      VALUES ($1, $2, $3, $4, $5, 'security-test', '1.0.0', '{}'::jsonb, '{}'::jsonb,
              $5, $5, ARRAY['action:read'], 'public', now())`,
-    [revisionId, projectId, sourceId, sourceVersionId, contentHash],
+    [revisionId, projectId, sourceId, sourceVersionId, sourceContentHash],
   );
   await pool.query(
     `INSERT INTO evidence.spans
@@ -266,9 +277,14 @@ const seedCandidate = async (
         end: 3,
         unit: 'unicode-code-point',
       }),
-      JSON.stringify({ type: 'TextQuoteSelector', exact: 'abc', prefix: '', suffix: '' }),
+      JSON.stringify({
+        type: 'TextQuoteSelector',
+        exact: evidenceExactText,
+        prefix: '',
+        suffix: '',
+      }),
       JSON.stringify([]),
-      contentHash,
+      evidenceExactHash,
     ],
   );
   await pool.query(
@@ -326,7 +342,15 @@ const seedCandidate = async (
     sourceSensitivity: 'public',
   };
   await harness.candidateRepository.stage(candidate);
-  return { candidateId, validationId, evidenceId, sourceId, sourceVersionId, originalAssetId };
+  return {
+    candidateId,
+    validationId,
+    evidenceId,
+    sourceId,
+    sourceVersionId,
+    originalAssetId,
+    revisionId,
+  };
 };
 
 const previewAndApprove = async (
@@ -617,8 +641,32 @@ describe('P0-1 authentication security', () => {
 });
 
 describe('P0-2 authoritative action execution', () => {
-  it('executes a valid immutable snapshot and approval', async () => {
+  it('executes with a valid sentence Evidence hash distinct from SourceVersion content hash', async () => {
     const fixture = await createActionFixture();
+    const persisted = await pool.query<{
+      source_content_hash: string;
+      original_content_hash: string;
+      evidence_exact_text: string;
+      evidence_exact_hash: string;
+    }>(
+      `SELECT r.source_content_hash,
+              a.content_hash AS original_content_hash,
+              e.quote->>'exact' AS evidence_exact_text,
+              e.exact_hash AS evidence_exact_hash
+         FROM evidence.spans e
+         JOIN transformation.revisions r ON r.revision_id = e.revision_id
+         JOIN asset.source_versions sv ON sv.source_version_id = e.source_version_id
+         JOIN asset.original_assets a ON a.asset_id = sv.original_asset_id
+        WHERE e.evidence_id = $1`,
+      [fixture.evidenceId],
+    );
+    expect(evidenceExactHash).not.toBe(sourceContentHash);
+    expect(persisted.rows[0]).toEqual({
+      source_content_hash: sourceContentHash,
+      original_content_hash: sourceContentHash,
+      evidence_exact_text: evidenceExactText,
+      evidence_exact_hash: evidenceExactHash,
+    });
     const response = await execute(fixture);
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({ action: { status: 'VERIFIED' } });
@@ -629,7 +677,7 @@ describe('P0-2 authoritative action execution', () => {
 
   const evidenceMutations = [
     {
-      name: 'rejects Evidence exactHash mutation',
+      name: 'rejects Evidence exactHash changed without changing quote',
       mutate: (fixture: ActionFixture) =>
         pool.query('UPDATE evidence.spans SET exact_hash = $2 WHERE evidence_id = $1', [
           fixture.evidenceId,
@@ -637,7 +685,7 @@ describe('P0-2 authoritative action execution', () => {
         ]),
     },
     {
-      name: 'rejects Evidence quote mutation',
+      name: 'rejects Evidence quote changed without updating exactHash',
       mutate: (fixture: ActionFixture) =>
         pool.query(`UPDATE evidence.spans SET quote = $2::jsonb WHERE evidence_id = $1`, [
           fixture.evidenceId,
@@ -795,7 +843,40 @@ describe('P0-2 authoritative action execution', () => {
     await fixture.app.server.close();
   });
 
-  it('rejects Original Asset content hash mutation', async () => {
+  it('rejects Transformation source content hash changed after approval', async () => {
+    const fixture = await createActionFixture();
+    await pool.query(
+      'UPDATE transformation.revisions SET source_content_hash = $2 WHERE revision_id = $1',
+      [fixture.revisionId, changedHash],
+    );
+    await expectRejectedAfterClaim(fixture, await execute(fixture));
+    await fixture.app.server.close();
+  });
+
+  it('rejects Transformation Revision sourceVersionId binding changed after approval', async () => {
+    const fixture = await createActionFixture();
+    await withConstraintBypass(async (client) => {
+      await client.query(
+        'UPDATE transformation.revisions SET source_version_id = $2 WHERE revision_id = $1',
+        [fixture.revisionId, randomUUID()],
+      );
+    });
+    await expectRejectedAfterClaim(fixture, await execute(fixture));
+    await fixture.app.server.close();
+  });
+
+  it('rejects missing Transformation Revision authority record', async () => {
+    const fixture = await createActionFixture();
+    await withConstraintBypass(async (client) => {
+      await client.query('DELETE FROM transformation.revisions WHERE revision_id = $1', [
+        fixture.revisionId,
+      ]);
+    });
+    await expectRejectedAfterClaim(fixture, await execute(fixture));
+    await fixture.app.server.close();
+  });
+
+  it('rejects SourceVersion content hash changed independently of Transformation Revision', async () => {
     const fixture = await createActionFixture();
     await pool.query('UPDATE asset.original_assets SET content_hash = $2 WHERE asset_id = $1', [
       fixture.originalAssetId,
@@ -934,12 +1015,12 @@ describe('P0-2 authoritative action execution', () => {
       expect(response.json()).toMatchObject({
         code: 'STALE_ACTION_SNAPSHOT',
         message:
-          'Candidate data no longer matches the authoritative Validation, Evidence, or Source records.',
+          'Candidate data no longer matches the authoritative Validation, Evidence, Source, or Transformation records.',
       });
       expect(response.body).not.toContain(mismatchHash);
-      expect(response.body).not.toContain(contentHash);
+      expect(response.body).not.toContain(sourceContentHash);
       expect(logged.join('\n')).not.toContain(mismatchHash);
-      expect(logged.join('\n')).not.toContain(contentHash);
+      expect(logged.join('\n')).not.toContain(sourceContentHash);
     } finally {
       logSpy.mockRestore();
       errorSpy.mockRestore();

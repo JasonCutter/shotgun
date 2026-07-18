@@ -51,6 +51,7 @@ import {
   createQuery,
   actionEvidenceSetDigest,
   actionEvidenceRecordDigest,
+  sha256Text,
   validationResultDigest,
   ShotgunError,
   ShotgunKernel,
@@ -132,6 +133,7 @@ import {
 import {
   createTransformationModule,
   type PlainTextTransformerPort,
+  type TransformationRevisionSecurityRepositoryPort,
   type TransformationRepositoryPort,
 } from '../../../modules/transformation/src/index.js';
 import { createPingModule } from '../../../modules/ping/src/index.js';
@@ -252,6 +254,7 @@ type ApplicationOptions = {
   readonly originalAssetRepository?: OriginalAssetRepositoryPort;
   readonly assetStorage?: AssetStoragePort;
   readonly transformationRepository?: TransformationRepositoryPort;
+  readonly transformationRevisionSecurityRepository?: TransformationRevisionSecurityRepositoryPort;
   readonly evidenceRepository?: EvidenceRepositoryPort;
   readonly transformer?: PlainTextTransformerPort;
   readonly evidenceLocator?: EvidenceLocatorPort;
@@ -587,6 +590,8 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   const assetStorage = options.assetStorage ?? new InMemoryAssetStorage();
   const transformationRepository =
     options.transformationRepository ?? new InMemoryTransformationRepository();
+  const transformationRevisionSecurityRepository =
+    options.transformationRevisionSecurityRepository ?? transformationRepository;
   const evidenceRepository = options.evidenceRepository ?? new InMemoryEvidenceRepository();
   const aiProviderRepository =
     options.aiProviderRepository ?? new InMemoryAIProviderCallRepository();
@@ -720,14 +725,35 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
           return undefined;
         }
 
-        for (const e of resolved) {
+        const revisions = await Promise.all(
+          resolved.map((e) =>
+            transformationRevisionSecurityRepository.findTransformationRevisionSecurity(
+              reference.projectId,
+              e.revisionId,
+            ),
+          ),
+        );
+
+        for (const [index, e] of resolved.entries()) {
+          const revision = revisions[index];
           if (
+            !revision ||
+            e.exactHash !== sha256Text(e.quote.exact) ||
+            e.projectId !== reference.projectId ||
             e.sourceId !== sourceVersion.sourceId ||
             e.sourceVersionId !== sourceVersion.sourceVersionId ||
-            e.exactHash !== sourceVersion.contentHash ||
             e.sensitivity !== sourceVersion.sensitivity ||
             e.accessScope.length !== sourceVersion.accessScope.length ||
-            !e.accessScope.every((scope) => sourceVersion.accessScope.includes(scope))
+            !e.accessScope.every((scope) => sourceVersion.accessScope.includes(scope)) ||
+            revision.revisionId !== e.revisionId ||
+            revision.projectId !== reference.projectId ||
+            revision.sourceId !== e.sourceId ||
+            revision.sourceVersionId !== e.sourceVersionId ||
+            revision.sourceVersionId !== v.sourceVersionId ||
+            revision.sourceContentHash !== sourceVersion.contentHash ||
+            revision.accessScope.length !== sourceVersion.accessScope.length ||
+            !revision.accessScope.every((scope) => sourceVersion.accessScope.includes(scope)) ||
+            revision.sensitivity !== sourceVersion.sensitivity
           ) {
             return undefined;
           }

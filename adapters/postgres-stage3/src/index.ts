@@ -15,6 +15,7 @@ import type {
 import type {
   SavedTransformation,
   SaveTransformationInput,
+  TransformationRevisionSecurityRecord,
   TransformationRepositoryPort,
 } from '../../../modules/transformation/src/index.js';
 
@@ -70,6 +71,16 @@ const mapRevision = (row: RevisionRow): TransformationRevision => ({
   accessScope: row.access_scope,
   sensitivity: row.sensitivity,
   createdAt: row.created_at.toISOString(),
+});
+
+const mapRevisionSecurity = (row: RevisionRow): TransformationRevisionSecurityRecord => ({
+  revisionId: row.revision_id,
+  projectId: row.project_id,
+  sourceId: row.source_id,
+  sourceVersionId: row.source_version_id,
+  sourceContentHash: row.source_content_hash,
+  accessScope: row.access_scope,
+  sensitivity: row.sensitivity,
 });
 
 const mapEvidence = (row: EvidenceRow): EvidenceSpan => ({
@@ -250,6 +261,18 @@ export class PostgresTransformationRepository implements TransformationRepositor
       [projectId, sourceVersionId, transformerId, transformerVersion],
     );
     return result.rows[0] ? mapRevision(result.rows[0]) : undefined;
+  }
+
+  async findTransformationRevisionSecurity(
+    projectId: string,
+    revisionId: string,
+  ): Promise<TransformationRevisionSecurityRecord | undefined> {
+    const result = await this.pool.query<RevisionRow>(
+      `${revisionSelect}
+       WHERE project_id = $1 AND revision_id = $2`,
+      [projectId, revisionId],
+    );
+    return result.rows[0] ? mapRevisionSecurity(result.rows[0]) : undefined;
   }
 }
 

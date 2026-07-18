@@ -411,7 +411,7 @@ export const createActionExecutionModule = (
             throw new ShotgunError({
               code: 'STALE_ACTION_SNAPSHOT',
               safeMessage:
-                'Underlying Candidate, Evidence, or Source could not be independently verified.',
+                'Candidate data no longer matches the authoritative Validation, Evidence, Source, or Transformation records.',
               module: 'stage11.action-execution',
               operation: envelope.messageType,
               correlationId: envelope.correlationId,
@@ -425,7 +425,7 @@ export const createActionExecutionModule = (
             throw new ShotgunError({
               code: 'STALE_ACTION_SNAPSHOT',
               safeMessage:
-                'Candidate data no longer matches the authoritative Validation, Evidence, or Source records.',
+                'Candidate data no longer matches the authoritative Validation, Evidence, Source, or Transformation records.',
               module: 'stage11.action-execution',
               operation: envelope.messageType,
               correlationId: envelope.correlationId,
@@ -568,7 +568,7 @@ export const createActionExecutionModule = (
             });
             if (!independentBinding) {
               throw stale(
-                'Underlying Candidate components could not be independently verified.',
+                'Candidate data no longer matches the authoritative Validation, Evidence, Source, or Transformation records.',
                 envelope.correlationId,
               );
             }

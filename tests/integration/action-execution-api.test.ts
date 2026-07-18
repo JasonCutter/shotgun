@@ -3,7 +3,10 @@ import { describe, expect, it } from 'vitest';
 import { FakeDraftActionConnector } from '../../adapters/action-connector-fake/src/index.js';
 import { InMemoryActionCandidateRepository } from '../../adapters/stage11-in-memory/src/index.js';
 import { createApplication } from '../../assemblies/shotgun-app/src/server.js';
-import type { EvidenceRepositoryPort } from '../../modules/evidence/src/index.js';
+import {
+  buildEvidenceCandidates,
+  type EvidenceRepositoryPort,
+} from '../../modules/evidence/src/index.js';
 import type {
   OriginalAssetRepositoryPort,
   StoredIntakeResult,
@@ -15,10 +18,13 @@ import { actionServerCandidate } from '../helpers/stage-11.js';
 import {
   validationResultDigest,
   actionEvidenceRecordDigest,
-  sha256Text,
   type ValidationResult,
   type EvidenceSpan,
 } from '../../packages/contracts/src/index.js';
+import {
+  createSentenceEvidenceFixture,
+  deterministicEvidenceLocator,
+} from '../helpers/stage-12-evidence.js';
 
 describe('Stage 12.1 P0-2 external Action API vertical slice', () => {
   it('accepts reference-only Preview and approvalId-only Execute without exposing a Verify endpoint', async () => {
@@ -26,7 +32,26 @@ describe('Stage 12.1 P0-2 external Action API vertical slice', () => {
     const connector = new FakeDraftActionConnector(secret);
     const candidates = new InMemoryActionCandidateRepository();
     const sourceText = 'The first sentence. api is the cited sentence. The final sentence.';
-    const sourceContentHash = sha256Text(sourceText);
+    const canonicalFixture = createSentenceEvidenceFixture({
+      revisionId: 'revision:api',
+      projectId: 'shotgun',
+      sourceId: 'src1',
+      sourceVersionId: 's1',
+      sourceText,
+      evidenceExactText: 'api',
+      accessScope: ['action:read'],
+      sensitivity: 'private',
+      createdAt: '2026-07-17T10:00:00.000Z',
+    });
+    const builtEvidence = buildEvidenceCandidates(
+      canonicalFixture.revision,
+      deterministicEvidenceLocator,
+    );
+    const sentenceEvidence = builtEvidence.find(
+      (candidate) => candidate.pointer === '/blocks/0/sentences/0',
+    );
+    if (!sentenceEvidence) throw new Error('Expected the Integration fixture Sentence Evidence.');
+    const sourceContentHash = canonicalFixture.sourceContentHash;
 
     const validationMock: ValidationResult = {
       projectId: 'shotgun',
@@ -40,25 +65,7 @@ describe('Stage 12.1 P0-2 external Action API vertical slice', () => {
     };
     const evidenceMock: EvidenceSpan = {
       evidenceId: 'evidence:api',
-      revisionId: 'revision:api',
-      projectId: 'shotgun',
-      sourceId: 'src1',
-      sourceVersionId: 's1',
-      pointer: '/blocks/0/sentences/0',
-      nodeKind: 'sentence',
-      origin: 'source',
-      position: {
-        type: 'TextPositionSelector',
-        start: 0,
-        end: 3,
-        unit: 'unicode-code-point',
-      },
-      quote: { type: 'TextQuoteSelector', exact: 'api' },
-      selectors: [],
-      exactHash: sha256Text('api'),
-      accessScope: ['action:read'],
-      sensitivity: 'private' as const,
-      createdAt: '2026-07-17T10:00:00.000Z',
+      ...sentenceEvidence,
     };
     const originalMock: StoredIntakeResult = {
       submissionId: 'submission:api',
@@ -131,13 +138,13 @@ describe('Stage 12.1 P0-2 external Action API vertical slice', () => {
       findTransformationRevisionSecurity: async (_projectId, revisionId) =>
         revisionId === evidenceMock.revisionId
           ? {
-              revisionId: evidenceMock.revisionId,
-              projectId: evidenceMock.projectId,
-              sourceId: evidenceMock.sourceId,
-              sourceVersionId: evidenceMock.sourceVersionId,
-              sourceContentHash,
-              accessScope: evidenceMock.accessScope,
-              sensitivity: evidenceMock.sensitivity,
+              revisionId: canonicalFixture.revision.revisionId,
+              projectId: canonicalFixture.revision.projectId,
+              sourceId: canonicalFixture.revision.sourceId,
+              sourceVersionId: canonicalFixture.revision.sourceVersionId,
+              sourceContentHash: canonicalFixture.revision.sourceContentHash,
+              accessScope: canonicalFixture.revision.accessScope,
+              sensitivity: canonicalFixture.revision.sensitivity,
             }
           : undefined,
     };

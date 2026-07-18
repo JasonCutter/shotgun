@@ -19,14 +19,29 @@ import {
   PostgresOriginalAssetRepository,
 } from '../../adapters/postgres/src/index.js';
 import { createApplication } from '../../assemblies/shotgun-app/src/server.js';
+import {
+  buildEvidenceCandidates,
+  type EvidenceCandidate,
+} from '../../modules/evidence/src/index.js';
 import { hashPassword } from '../../packages/authentication/src/index.js';
 import {
   actionEvidenceRecordDigest,
   sha256Text,
+  stableJson,
+  type DocumentIR,
   validationResultDigest,
   type ServerActionCandidate,
+  type SourceMap,
+  type TextPositionSelector,
+  type TextQuoteSelector,
+  unicodeSlice,
 } from '../../packages/contracts/src/index.js';
 import { actionServerCandidate } from '../helpers/stage-11.js';
+import {
+  createSentenceEvidenceFixture,
+  deterministicEvidenceLocator,
+  type SentenceEvidenceFixture,
+} from '../helpers/stage-12-evidence.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -39,7 +54,6 @@ const password = 'stage12-security-password';
 const sourceText = 'The first sentence. abc is the cited sentence. The final sentence.';
 const sourceContentHash = sha256Text(sourceText);
 const evidenceExactText = 'abc';
-const evidenceExactHash = sha256Text(evidenceExactText);
 const changedHash = 'sha256:2222222222222222222222222222222222222222222222222222222222222222';
 const mismatchHash = 'sha256:3333333333333333333333333333333333333333333333333333333333333333';
 
@@ -79,8 +93,12 @@ type ActionFixture = AuthHarness & {
   readonly sourceVersionId: string;
   readonly originalAssetId: string;
   readonly revisionId: string;
+  readonly canonicalFixture: SentenceEvidenceFixture;
+  readonly sentenceEvidence: EvidenceCandidate;
   readonly actionId: string;
   readonly approvalId: string;
+  readonly previewStatusCode: number;
+  readonly approvalStatusCode: number;
 };
 
 let passwordHash = '';
@@ -240,6 +258,8 @@ const seedCandidate = async (
   readonly sourceVersionId: string;
   readonly originalAssetId: string;
   readonly revisionId: string;
+  readonly canonicalFixture: SentenceEvidenceFixture;
+  readonly sentenceEvidence: EvidenceCandidate;
 }> => {
   const { sourceId, sourceVersionId, originalAssetId } = await seedSourceVersion();
   const revisionId = randomUUID();
@@ -247,44 +267,75 @@ const seedCandidate = async (
   const candidateId = randomUUID();
   const validationId = randomUUID();
   const batchId = randomUUID();
+  const canonicalFixture = createSentenceEvidenceFixture({
+    revisionId,
+    projectId,
+    sourceId,
+    sourceVersionId,
+    sourceText,
+    evidenceExactText,
+    accessScope: ['action:read'],
+    sensitivity: 'public',
+    createdAt: new Date().toISOString(),
+  });
+  const builtEvidence = buildEvidenceCandidates(
+    canonicalFixture.revision,
+    deterministicEvidenceLocator,
+  );
+  const sentenceEvidence = builtEvidence.find(
+    (candidate) =>
+      candidate.nodeKind === 'sentence' && candidate.pointer === '/blocks/0/sentences/0',
+  );
+  if (!sentenceEvidence) {
+    throw new Error('The canonical Security fixture did not produce Sentence Evidence.');
+  }
 
   await pool.query(
     `INSERT INTO transformation.revisions
        (revision_id, project_id, source_id, source_version_id, source_content_hash,
         transformer_id, transformer_version, document_ir, source_map, document_hash,
         source_map_hash, access_scope, sensitivity, created_at)
-     VALUES ($1, $2, $3, $4, $5, 'security-test', '1.0.0', '{}'::jsonb, '{}'::jsonb,
-             $5, $5, ARRAY['action:read'], 'public', now())`,
-    [revisionId, projectId, sourceId, sourceVersionId, sourceContentHash],
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10, $11, $12, $13, $14)`,
+    [
+      canonicalFixture.revision.revisionId,
+      canonicalFixture.revision.projectId,
+      canonicalFixture.revision.sourceId,
+      canonicalFixture.revision.sourceVersionId,
+      canonicalFixture.revision.sourceContentHash,
+      canonicalFixture.revision.transformer.id,
+      canonicalFixture.revision.transformer.version,
+      JSON.stringify(canonicalFixture.revision.documentIR),
+      JSON.stringify(canonicalFixture.revision.sourceMap),
+      canonicalFixture.revision.documentHash,
+      canonicalFixture.revision.sourceMapHash,
+      canonicalFixture.revision.accessScope,
+      canonicalFixture.revision.sensitivity,
+      canonicalFixture.revision.createdAt,
+    ],
   );
   await pool.query(
     `INSERT INTO evidence.spans
        (evidence_id, revision_id, project_id, source_id, source_version_id, pointer,
         node_kind, origin, position, quote, selectors, exact_hash, access_scope,
         sensitivity, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, 'sentence', 'source', $7::jsonb, $8::jsonb,
-             $9::jsonb, $10, ARRAY['action:read'], 'public', now())`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb,
+             $11::jsonb, $12, $13, $14, $15)`,
     [
       evidenceId,
-      revisionId,
-      projectId,
-      sourceId,
-      sourceVersionId,
-      `/blocks/0/sentences/${evidenceId}`,
-      JSON.stringify({
-        type: 'TextPositionSelector',
-        start: 0,
-        end: 3,
-        unit: 'unicode-code-point',
-      }),
-      JSON.stringify({
-        type: 'TextQuoteSelector',
-        exact: evidenceExactText,
-        prefix: '',
-        suffix: '',
-      }),
-      JSON.stringify([]),
-      evidenceExactHash,
+      sentenceEvidence.revisionId,
+      sentenceEvidence.projectId,
+      sentenceEvidence.sourceId,
+      sentenceEvidence.sourceVersionId,
+      sentenceEvidence.pointer,
+      sentenceEvidence.nodeKind,
+      sentenceEvidence.origin,
+      JSON.stringify(sentenceEvidence.position),
+      JSON.stringify(sentenceEvidence.quote),
+      JSON.stringify(sentenceEvidence.selectors ?? []),
+      sentenceEvidence.exactHash,
+      sentenceEvidence.accessScope,
+      sentenceEvidence.sensitivity,
+      sentenceEvidence.createdAt,
     ],
   );
   await pool.query(
@@ -350,13 +401,20 @@ const seedCandidate = async (
     sourceVersionId,
     originalAssetId,
     revisionId,
+    canonicalFixture,
+    sentenceEvidence,
   };
 };
 
 const previewAndApprove = async (
   harness: Awaited<ReturnType<typeof createActionApplication>>,
   candidateId: string,
-): Promise<{ readonly actionId: string; readonly approvalId: string }> => {
+): Promise<{
+  readonly actionId: string;
+  readonly approvalId: string;
+  readonly previewStatusCode: number;
+  readonly approvalStatusCode: number;
+}> => {
   const preview = await harness.app.server.inject({
     method: 'POST',
     url: '/actions/preview',
@@ -378,6 +436,8 @@ const previewAndApprove = async (
   return {
     actionId: previewBody.action.actionId,
     approvalId: approvalBody.action.approval.approvalId,
+    previewStatusCode: preview.statusCode,
+    approvalStatusCode: approval.statusCode,
   };
 };
 
@@ -646,11 +706,25 @@ describe('P0-2 authoritative action execution', () => {
     const persisted = await pool.query<{
       source_content_hash: string;
       original_content_hash: string;
+      document_ir: DocumentIR;
+      source_map: SourceMap;
+      document_hash: string;
+      source_map_hash: string;
+      evidence_pointer: string;
+      evidence_position: TextPositionSelector;
+      evidence_quote: TextQuoteSelector;
       evidence_exact_text: string;
       evidence_exact_hash: string;
     }>(
       `SELECT r.source_content_hash,
               a.content_hash AS original_content_hash,
+              r.document_ir,
+              r.source_map,
+              r.document_hash,
+              r.source_map_hash,
+              e.pointer AS evidence_pointer,
+              e.position AS evidence_position,
+              e.quote AS evidence_quote,
               e.quote->>'exact' AS evidence_exact_text,
               e.exact_hash AS evidence_exact_hash
          FROM evidence.spans e
@@ -660,13 +734,41 @@ describe('P0-2 authoritative action execution', () => {
         WHERE e.evidence_id = $1`,
       [fixture.evidenceId],
     );
-    expect(evidenceExactHash).not.toBe(sourceContentHash);
-    expect(persisted.rows[0]).toEqual({
-      source_content_hash: sourceContentHash,
-      original_content_hash: sourceContentHash,
-      evidence_exact_text: evidenceExactText,
-      evidence_exact_hash: evidenceExactHash,
-    });
+    const row = persisted.rows[0];
+    if (!row) throw new Error('Expected the canonical Security fixture to be persisted.');
+    const builtEvidence = buildEvidenceCandidates(
+      fixture.canonicalFixture.revision,
+      deterministicEvidenceLocator,
+    );
+    const rootEntry = row.source_map.entries.find((entry) => entry.pointer === '');
+    const sentenceEntry = row.source_map.entries.find(
+      (entry) => entry.pointer === '/blocks/0/sentences/0',
+    );
+    if (!rootEntry || !sentenceEntry) {
+      throw new Error('Expected canonical document-root and Sentence SourceMap entries.');
+    }
+    expect(builtEvidence).toContainEqual(fixture.sentenceEvidence);
+    expect(fixture.previewStatusCode).toBe(200);
+    expect(fixture.approvalStatusCode).toBe(200);
+    expect(row.evidence_exact_hash).not.toBe(row.source_content_hash);
+    expect(row.evidence_exact_hash).toBe(sha256Text(row.evidence_quote.exact));
+    expect(row.evidence_exact_hash).toBe(fixture.canonicalFixture.evidenceExactHash);
+    expect(row.evidence_exact_text).toBe(evidenceExactText);
+    expect(row.evidence_position.start).toBe(fixture.canonicalFixture.evidenceStart);
+    expect(row.evidence_position.end).toBe(fixture.canonicalFixture.evidenceEnd);
+    expect(unicodeSlice(sourceText, row.evidence_position.start, row.evidence_position.end)).toBe(
+      row.evidence_quote.exact,
+    );
+    expect(row.source_content_hash).toBe(row.original_content_hash);
+    expect(row.document_hash).toBe(sha256Text(stableJson(row.document_ir)));
+    expect(row.source_map_hash).toBe(sha256Text(stableJson(row.source_map)));
+    expect(rootEntry.quote.exact).toBe(sourceText);
+    expect(rootEntry.exactHash).toBe(row.source_content_hash);
+    expect(sentenceEntry.position).toEqual(row.evidence_position);
+    expect(sentenceEntry.quote).toEqual(row.evidence_quote);
+    expect(sentenceEntry.exactHash).toBe(row.evidence_exact_hash);
+    expect(row.evidence_pointer).toBe('/blocks/0/sentences/0');
+    expect(row.document_ir.blocks[0]?.sentences[0]?.text).toBe(row.evidence_quote.exact);
     const response = await execute(fixture);
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({ action: { status: 'VERIFIED' } });
@@ -693,17 +795,18 @@ describe('P0-2 authoritative action execution', () => {
         ]),
     },
     {
-      name: 'rejects Evidence position mutation',
-      mutate: (fixture: ActionFixture) =>
-        pool.query(`UPDATE evidence.spans SET position = $2::jsonb WHERE evidence_id = $1`, [
+      name: 'rejects Evidence whose position does not match its exact quote',
+      mutate: (fixture: ActionFixture) => {
+        const position = fixture.sentenceEvidence.position;
+        return pool.query(`UPDATE evidence.spans SET position = $2::jsonb WHERE evidence_id = $1`, [
           fixture.evidenceId,
           JSON.stringify({
-            type: 'TextPositionSelector',
-            start: 1,
-            end: 3,
-            unit: 'unicode-code-point',
+            ...position,
+            start: position.start - 1,
+            end: position.end - 1,
           }),
-        ]),
+        ]);
+      },
     },
     {
       name: 'rejects Evidence pointer mutation',

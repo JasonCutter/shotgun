@@ -1,19 +1,22 @@
 # ADR-095: Frontend Product Surface and Reference Strategy
 
-- Status: Proposed
-- Date: 2026-07-18
+- Status: Accepted
+- Decision date: 2026-07-18
 - Decision owners: Project Shotgun architecture review
+- Canonical ADD: Notion `Frontend and Human Interaction Architecture (확정)`
 - Related documents:
   - `docs/shotgun_reference_architecture_strategy_ko.html`
   - `docs/implementation/implementation-roadmap.md`
   - `docs/implementation/oss-integration-roadmap.md`
+  - `docs/implementation/frontend-delivery-roadmap.md`
   - `docs/engineering/frontend-strategy-reconciliation.md`
+  - `docs/architecture/module-architecture/frontend-product-surface-amendment.md`
   - ADR-093 HTTP Identity and Authorization Boundary
   - ADR-094 Server-bound Action Preview, Approval and Execution
 
 ## Context
 
-Shotgun's reference architecture already defined a dedicated frontend product surface, but the implementation progressed primarily through backend modules and minimal HTML vertical slices embedded in `assemblies/shotgun-app/src/server.ts`.
+Shotgun's reference architecture already defined a dedicated frontend product surface, but implementation progressed primarily through backend modules and minimal HTML vertical slices embedded in `assemblies/shotgun-app/src/server.ts`.
 
 The existing strategy selected:
 
@@ -21,7 +24,7 @@ The existing strategy selected:
 - Inkeep OpenKnowledge as a reference for the Human Cockpit, including Visual/Source editing, 2D Graph, Agent Activity and Burst Diff.
 - A new Shotgun-owned `shotgun-web` application rather than either reference project's complete runtime.
 
-The strategy was present in reference and implementation documents but was not promoted into a single explicit frontend architecture decision. This created a traceability gap: Stage completion records mention minimal UI slices, while the planned frontend packages and application boundary were not implemented.
+The strategy was present in reference and implementation documents but was not promoted into a single explicit frontend architecture decision. This created a traceability gap: Stage completion records mentioned minimal UI slices, while the planned frontend packages and application boundary were not implemented.
 
 ## Decision
 
@@ -30,10 +33,11 @@ The strategy was present in reference and implementation documents but was not p
 Shotgun will use a dedicated product frontend named `shotgun-web`.
 
 ```text
-shotgun-web
-  -> typed shotgun API client
-    -> Shotgun Gateway / HTTP API / event stream
-      -> Shotgun application modules
+Browser / future approved desktop wrapper
+  -> apps/shotgun-web
+    -> packages/shotgun-api-client
+      -> Shotgun Gateway / HTTP API / SSE event stream
+        -> Shotgun application modules
 ```
 
 The frontend is a Shotgun-owned product surface. It is not a maintained fork or embedded runtime of either reference project.
@@ -97,18 +101,35 @@ They are retained temporarily for contract and integration verification, but the
 
 ### 6. Intended package boundary
 
-The target structure includes:
+The minimum target structure is:
 
 - `apps/shotgun-web`
 - `packages/shotgun-api-client`
-- optional focused packages such as:
-  - `packages/editor-core`
-  - `packages/graph-ui`
-  - `packages/activity-ui`
 
-Exact framework, library and deployment choices are not decided by this ADR.
+Optional focused packages may include:
 
-### 7. Delivery sequence
+- `packages/editor-core`
+- `packages/graph-ui`
+- `packages/activity-ui`
+
+Optional packages are created only when reuse and coupling evidence justify separation. Exact framework, library and deployment choices are not decided by this ADR.
+
+### 7. Workspace model
+
+The initial product workspaces are:
+
+- Home
+- Sources
+- Ask
+- Knowledge
+- Review
+- Activity
+- History
+- Settings
+
+Each workspace consumes versioned Product View Models rather than module tables, ORM objects or raw internal message records.
+
+### 8. Delivery sequence
 
 Preserve the previously documented sequence:
 
@@ -118,6 +139,8 @@ Preserve the previously documented sequence:
 4. Semantic Graph
 5. Visual Editor
 6. Advanced Draft Collaboration through a separate ADR
+
+Historical Stage 5, 7, 9 and 12 UI completion records describe minimum vertical slices or mock-contract verification. Final Product Frontend completion is tracked by the Frontend Delivery Roadmap.
 
 ## Consequences
 
@@ -134,7 +157,7 @@ Preserve the previously documented sequence:
 - Requires a new application and typed client package.
 - Requires browser, accessibility and frontend security testing in addition to existing module tests.
 - Temporarily maintains two presentation surfaces during migration.
-- Requires Stage 5, 7, 9 and 12 completion language to distinguish minimal UI verification from the final product frontend.
+- Requires Stage 5, 7, 9 and 12 completion language to distinguish minimal UI verification from final product frontend delivery.
 
 ## Rejected alternatives
 
@@ -145,6 +168,7 @@ Preserve the previously documented sequence:
 5. Allow the browser to set trusted Actor, Project, Scope or Sensitivity headers.
 6. Use a 3D canvas-only graph without an accessible list fallback.
 7. Enable Yjs collaboration in the initial frontend foundation.
+8. Treat previous minimum UI vertical slices as final product frontend completion.
 
 ## Open decisions
 
@@ -162,12 +186,16 @@ The following require later Section review and must not be silently inferred fro
 - mobile support level
 - frontend packaging, deployment and update process
 
-## Verification
+## Acceptance record
 
-This ADR is ready to become `Accepted` only when:
+ADR-095 became Accepted after the user confirmed the `Frontend and Human Interaction Architecture` Section on 2026-07-18.
 
-1. The frontend reconciliation document is approved.
-2. The ADD contains a `Frontend and Human Interaction Architecture` Section.
-3. The Detailed Map references the frontend cross-cutting concern.
-4. The Implementation Roadmap distinguishes minimal vertical-slice UI from final frontend delivery.
-5. No P0-1 or P0-2 security boundary is weakened.
+The decision was synchronized to:
+
+- the Notion Canonical ADD hub
+- the Canonical `Frontend and Human Interaction Architecture (확정)` page
+- the Module Architecture frontend amendment
+- the Frontend Delivery Roadmap
+- the repository ADD completion snapshot
+
+This acceptance does not declare frontend implementation complete and does not modify the P0-1 or P0-2 implementation branch.

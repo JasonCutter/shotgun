@@ -188,13 +188,20 @@ export const actionEvidenceSetDigest = (evidence: readonly ActionEvidenceReferen
 export const actionPayloadDigest = (payload: ActionPreview['renderedPayload']): string =>
   sha256Text(stableJson(payload));
 
+const canonicalActionPreview = (
+  preview: Omit<ActionPreview, 'previewDigest'> | ActionPreview,
+): Omit<ActionPreview, 'previewDigest'> => {
+  if ('previewDigest' in preview) {
+    const { previewDigest: _excluded, ...canonical } = preview;
+    void _excluded;
+    return canonical;
+  }
+  return preview;
+};
+
 export const actionPreviewDigest = (
   preview: Omit<ActionPreview, 'previewDigest'> | ActionPreview,
-): string => {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { previewDigest, ...canonical } = preview as ActionPreview;
-  return sha256Text(stableJson(canonical));
-};
+): string => sha256Text(stableJson(canonicalActionPreview(preview)));
 
 export const validationResultDigest = (
   validation: ValidationResult & { invalidatedAt?: string; expiresAt?: string },

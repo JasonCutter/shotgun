@@ -3,6 +3,12 @@ import { describe, expect, it } from 'vitest';
 import { FakeDraftActionConnector } from '../../adapters/action-connector-fake/src/index.js';
 import { InMemoryActionCandidateRepository } from '../../adapters/stage11-in-memory/src/index.js';
 import { createApplication } from '../../assemblies/shotgun-app/src/server.js';
+import type { EvidenceRepositoryPort } from '../../modules/evidence/src/index.js';
+import type {
+  OriginalAssetRepositoryPort,
+  StoredIntakeResult,
+} from '../../modules/original-asset/src/index.js';
+import type { ValidationRepositoryPort } from '../../modules/validation/src/index.js';
 import { actionServerCandidate } from '../helpers/stage-11.js';
 
 import {
@@ -18,7 +24,7 @@ describe('Stage 12.1 P0-2 external Action API vertical slice', () => {
     const connector = new FakeDraftActionConnector(secret);
     const candidates = new InMemoryActionCandidateRepository();
 
-    const validationMock = {
+    const validationMock: ValidationResult = {
       projectId: 'shotgun',
       validationId: 'validation:api',
       candidateId: 'action-candidate:api',
@@ -26,55 +32,105 @@ describe('Stage 12.1 P0-2 external Action API vertical slice', () => {
       sourceVersionId: 's1',
       status: 'READY' as const,
       dimensions: [],
+      createdAt: '2026-07-17T10:00:00.000Z',
     };
-    const evidenceMock = {
+    const evidenceMock: EvidenceSpan = {
       evidenceId: 'evidence:api',
+      revisionId: 'revision:api',
+      projectId: 'shotgun',
       sourceId: 'src1',
       sourceVersionId: 's1',
-      exactHash: 'hash',
+      pointer: '/blocks/0/sentences/0',
+      nodeKind: 'sentence',
+      origin: 'source',
+      position: {
+        type: 'TextPositionSelector',
+        start: 0,
+        end: 3,
+        unit: 'unicode-code-point',
+      },
+      quote: { type: 'TextQuoteSelector', exact: 'api' },
+      selectors: [],
+      exactHash: 'sha256:1111111111111111111111111111111111111111111111111111111111111111',
+      accessScope: ['action:read'],
       sensitivity: 'private' as const,
+      createdAt: '2026-07-17T10:00:00.000Z',
     };
-    const originalMock = { sensitivity: 'private' as const };
+    const originalMock: StoredIntakeResult = {
+      submissionId: 'submission:api',
+      projectId: 'shotgun',
+      sourceId: 'src1',
+      sourceVersionId: 's1',
+      versionNumber: 1,
+      channel: 'direct_text',
+      materialKind: 'plain_text',
+      assetReference: {
+        assetId: 'asset:api',
+        versionId: 's1',
+        mediaType: 'text/plain',
+        contentHash: evidenceMock.exactHash,
+        sizeBytes: 3,
+        storageUri: 'asset://asset:api/versions/s1',
+        accessScope: ['action:read'],
+      },
+      storageKey: 'security/api',
+      sensitivity: 'private' as const,
+      assetReused: false,
+      versionCreated: true,
+    };
 
     const candidate = actionServerCandidate('api', {
       projectId: 'shotgun',
-      validationDigest: validationResultDigest(validationMock as unknown as ValidationResult),
+      validationDigest: validationResultDigest(validationMock),
       evidence: [
         {
-          ...evidenceMock,
-          digest: actionEvidenceRecordDigest(evidenceMock as unknown as EvidenceSpan),
+          evidenceId: evidenceMock.evidenceId,
+          digest: actionEvidenceRecordDigest(evidenceMock),
         },
       ],
       sourceSensitivity: originalMock.sensitivity,
     });
     await candidates.stage(candidate);
 
-    const evidenceRepository = {
-      findById: async () => evidenceMock as unknown,
-    } as unknown;
-    const validationRepository = {
-      findByCandidateId: async () => validationMock as unknown,
-      findByValidationId: async () => validationMock as unknown,
-    } as unknown;
-    const originalAssetRepository = {
-      findByVersion: async () => originalMock as unknown,
-    } as unknown;
+    const evidenceRepository: EvidenceRepositoryPort = {
+      index: async () => ({ items: [evidenceMock], reusedCount: 0 }),
+      listBySourceVersion: async () => [evidenceMock],
+      findById: async (_projectId, evidenceId) =>
+        evidenceId === evidenceMock.evidenceId ? evidenceMock : undefined,
+    };
+    const validationRepository: ValidationRepositoryPort = {
+      save: async (validation) => validation,
+      findByCandidateId: async (_projectId, candidateId) =>
+        candidateId === validationMock.candidateId ? validationMock : undefined,
+      findByValidationId: async (_projectId, validationId) =>
+        validationId === validationMock.validationId ? validationMock : undefined,
+    };
+    const originalAssetRepository: OriginalAssetRepositoryPort = {
+      assertSource: async () => undefined,
+      store: async () => {
+        throw new Error('The integration fixture does not store Original Assets.');
+      },
+      findBySubmission: async () => undefined,
+      findByVersion: async (_projectId, sourceVersionId) =>
+        sourceVersionId === originalMock.sourceVersionId ? originalMock : undefined,
+      findSourceVersionSecurity: async () => ({
+        projectId: originalMock.projectId,
+        sourceId: originalMock.sourceId,
+        sourceVersionId: originalMock.sourceVersionId,
+        originalAssetId: originalMock.assetReference.assetId,
+        contentHash: originalMock.assetReference.contentHash,
+        accessScope: originalMock.assetReference.accessScope,
+        sensitivity: originalMock.sensitivity,
+      }),
+    };
 
     const app = await createApplication({
       actionConnector: connector,
       actionCandidateRepository: candidates,
-      // @ts-expect-error Mock repositories for test
       evidenceRepository,
-      // @ts-expect-error Mock repositories for test
       validationRepository,
-      // @ts-expect-error Mock repositories for test
       originalAssetRepository,
     });
-    app.server.setErrorHandler((error, request, reply) => {
-      console.error('FASTIFY ERROR:', error);
-      reply.status(500).send(error);
-    });
-
     const forbidden = await app.server.inject({
       method: 'POST',
       url: '/actions/preview',
@@ -97,9 +153,6 @@ describe('Stage 12.1 P0-2 external Action API vertical slice', () => {
         operationKey: 'CREATE_DRAFT',
       },
     });
-    if (previewResponse.statusCode !== 200) {
-      console.log('PREVIEW ERROR:', previewResponse.json());
-    }
     expect(previewResponse.statusCode).toBe(200);
     const preview = previewResponse.json().action;
     expect(preview).toMatchObject({

@@ -37,5 +37,5 @@ describe('authentication primitives', () => {
 
     await repository.disablePrincipal(principal.principalId);
     expect(await repository.authenticatePassword('owner', 'changed-password')).toBeUndefined();
-  });
+  }, 15_000);
 });

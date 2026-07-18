@@ -13,7 +13,6 @@ import {
   actionPreviewDigest,
   type ActionPreview,
   stableJson,
-  sha256Text,
 } from '../../../packages/contracts/src/index.js';
 import type {
   ActionCandidateRepositoryPort,
@@ -24,6 +23,11 @@ import type {
 type ExecutionRow = { readonly record_json: ActionExecutionRecord };
 type AuditRow = { readonly event_json: ActionAuditEvent };
 type CandidateRow = { readonly candidate_json: ServerActionCandidate };
+
+const normalizedTimestamp = (value: string | Date): string | undefined => {
+  const timestamp = new Date(value);
+  return Number.isNaN(timestamp.getTime()) ? undefined : timestamp.toISOString();
+};
 
 /** Trusted Candidate persistence. No HTTP adapter writes to this port. */
 export class PostgresActionCandidateRepository implements ActionCandidateRepositoryPort {
@@ -182,15 +186,19 @@ export class PostgresActionExecutionRepository implements ActionExecutionReposit
         record_json: ActionExecutionRecord;
         snapshot_json: ActionPreview;
         approval_json: ActionApprovalRecord;
-        snapshot_id: string;
-        snapshot_digest: string;
+        approval_snapshot_id: string;
         approval_snapshot_digest: string;
-        expires_at: string;
+        approval_expires_at: string | Date;
+        snapshot_digest: string;
+        snapshot_expires_at: string | Date;
       }>(
         `SELECT executions.record_json, snapshots.snapshot_json,
-                approvals.approval_json, approvals.snapshot_id, 
-                approvals.snapshot_digest as approval_snapshot_digest, 
-                approvals.expires_at, snapshots.snapshot_digest
+                approvals.approval_json,
+                approvals.snapshot_id AS approval_snapshot_id,
+                approvals.snapshot_digest AS approval_snapshot_digest,
+                approvals.expires_at AS approval_expires_at,
+                snapshots.snapshot_digest,
+                snapshots.expires_at AS snapshot_expires_at
          FROM action.approval_records approvals
          JOIN action.executions executions ON executions.action_id = approvals.action_id
          JOIN action.preview_snapshots snapshots ON snapshots.snapshot_id = approvals.snapshot_id
@@ -203,23 +211,43 @@ export class PostgresActionExecutionRepository implements ActionExecutionReposit
       const current = row.record_json;
       const snapshot = row.snapshot_json;
       const approval = row.approval_json;
+      const snapshotExpiry = normalizedTimestamp(snapshot.expiresAt);
+      const storedSnapshotExpiry = normalizedTimestamp(row.snapshot_expires_at);
+      const approvalExpiry = normalizedTimestamp(approval.expiresAt);
+      const storedApprovalExpiry = normalizedTimestamp(row.approval_expires_at);
 
-      if (actionPreviewDigest(snapshot) !== row.snapshot_digest) {
+      if (
+        snapshot.actionId !== current.actionId ||
+        snapshot.projectId !== projectId ||
+        snapshot.snapshotId !== row.approval_snapshot_id ||
+        snapshot.previewDigest !== row.snapshot_digest ||
+        actionPreviewDigest(snapshot) !== row.snapshot_digest ||
+        !snapshotExpiry ||
+        !storedSnapshotExpiry ||
+        snapshotExpiry !== storedSnapshotExpiry
+      ) {
         throw stale('Preview Snapshot integrity compromised.');
       }
 
       if (
         approval.approvalId !== approvalId ||
-        approval.snapshotId !== row.snapshot_id ||
-        approval.snapshotDigest !== row.approval_snapshot_digest
+        approval.actionId !== current.actionId ||
+        approval.snapshotId !== row.approval_snapshot_id ||
+        approval.snapshotDigest !== row.approval_snapshot_digest ||
+        approval.snapshotDigest !== row.snapshot_digest ||
+        !approvalExpiry ||
+        !storedApprovalExpiry ||
+        approvalExpiry !== storedApprovalExpiry ||
+        approvalExpiry !== snapshotExpiry
       ) {
         throw stale('Approval Record does not match the immutable Preview Snapshot.');
       }
 
       if (
-        sha256Text(stableJson(current.preview)) !== sha256Text(stableJson(snapshot)) ||
-        (current.approval &&
-          sha256Text(stableJson(current.approval)) !== sha256Text(stableJson(approval)))
+        !current.preview ||
+        !current.approval ||
+        stableJson(current.preview) !== stableJson(snapshot) ||
+        stableJson(current.approval) !== stableJson(approval)
       ) {
         throw stale('Execution projection differs from authoritative immutable records.');
       }

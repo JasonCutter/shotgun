@@ -9,6 +9,7 @@ import type {
 import type {
   AssetStoragePort,
   OriginalAssetRepositoryPort,
+  SourceVersionSecurityRecord,
   StoredIntakeResult,
   StoreOriginalAssetInput,
 } from '../../../modules/original-asset/src/index.js';
@@ -195,6 +196,30 @@ export class InMemoryOriginalAssetRepository implements OriginalAssetRepositoryP
     return [...this.receipts.values()].find(
       (receipt) => receipt.projectId === projectId && receipt.sourceVersionId === sourceVersionId,
     );
+  }
+
+  async findSourceVersionSecurity(
+    projectId: string,
+    sourceVersionId: string,
+  ): Promise<SourceVersionSecurityRecord | undefined> {
+    for (const source of this.sources.values()) {
+      if (source.projectId !== projectId) continue;
+      const version = (this.versionsBySource.get(source.sourceId) ?? []).find(
+        (item) => item.sourceVersionId === sourceVersionId,
+      );
+      if (version) {
+        return {
+          projectId,
+          sourceId: version.sourceId,
+          sourceVersionId: version.sourceVersionId,
+          originalAssetId: version.asset.assetId,
+          contentHash: version.asset.contentHash,
+          accessScope: version.accessScope,
+          sensitivity: version.sensitivity,
+        };
+      }
+    }
+    return undefined;
   }
 
   counts() {

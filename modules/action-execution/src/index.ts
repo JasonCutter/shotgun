@@ -424,7 +424,8 @@ export const createActionExecutionModule = (
           ) {
             throw new ShotgunError({
               code: 'STALE_ACTION_SNAPSHOT',
-              safeMessage: `Candidate data is out of sync with independent verification ports. val: ${staged.validationDigest} vs ${independent.validation.digest}, ev: ${actionEvidenceSetDigest(evidence)} vs ${independent.evidenceSetDigest}, sens: ${staged.sourceSensitivity} vs ${independent.sourceSensitivity}`,
+              safeMessage:
+                'Candidate data no longer matches the authoritative Validation, Evidence, or Source records.',
               module: 'stage11.action-execution',
               operation: envelope.messageType,
               correlationId: envelope.correlationId,

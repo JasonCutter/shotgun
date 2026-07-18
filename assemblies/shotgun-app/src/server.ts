@@ -673,7 +673,6 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
           reference.validationId,
         );
         if (!v || v.status !== 'READY' || v.dimensions.some((d) => d.status === 'FAIL')) {
-          console.log('resolveCurrentBinding fail 1', { v });
           return undefined;
         }
 
@@ -683,7 +682,6 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
           v.candidateId !== reference.actionCandidateId ||
           v.revisionNumber !== reference.expectedCandidateRevision
         ) {
-          console.log('resolveCurrentBinding fail 2', { v, reference });
           return undefined;
         }
 
@@ -694,13 +692,43 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
         );
         const resolved = freshEvidence.filter((e) => e !== undefined);
         if (resolved.length !== reference.evidenceIds.length) {
-          console.log('resolveCurrentBinding fail 3', { resolved, ref: reference.evidenceIds });
+          return undefined;
+        }
+
+        const sourceVersion = await originalAssetRepository.findSourceVersionSecurity(
+          reference.projectId,
+          v.sourceVersionId,
+        );
+        const original = await originalAssetRepository.findByVersion(
+          reference.projectId,
+          v.sourceVersionId,
+        );
+        if (
+          !sourceVersion ||
+          !original ||
+          !sourceVersion.contentHash ||
+          sourceVersion.projectId !== reference.projectId ||
+          sourceVersion.sourceVersionId !== v.sourceVersionId ||
+          sourceVersion.originalAssetId !== original.assetReference.assetId ||
+          sourceVersion.contentHash !== original.assetReference.contentHash ||
+          sourceVersion.accessScope.length !== original.assetReference.accessScope.length ||
+          !sourceVersion.accessScope.every((scope) =>
+            original.assetReference.accessScope.includes(scope),
+          ) ||
+          sourceVersion.sensitivity !== original.sensitivity
+        ) {
           return undefined;
         }
 
         for (const e of resolved) {
-          if (e.sourceVersionId !== v.sourceVersionId) {
-            console.log('resolveCurrentBinding fail 4', { e, v });
+          if (
+            e.sourceId !== sourceVersion.sourceId ||
+            e.sourceVersionId !== sourceVersion.sourceVersionId ||
+            e.exactHash !== sourceVersion.contentHash ||
+            e.sensitivity !== sourceVersion.sensitivity ||
+            e.accessScope.length !== sourceVersion.accessScope.length ||
+            !e.accessScope.every((scope) => sourceVersion.accessScope.includes(scope))
+          ) {
             return undefined;
           }
         }
@@ -713,22 +741,10 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
           sensitivity: e.sensitivity,
           digest: actionEvidenceRecordDigest(e),
         }));
-
-        const original = await originalAssetRepository.findByVersion(
-          reference.projectId,
-          v.sourceVersionId,
-        );
-        if (!original) {
-          console.log('resolveCurrentBinding fail 5');
-          return undefined;
-        }
-        const sourceSensitivity = original.sensitivity;
-        
-        console.log('resolveCurrentBinding success', {
-            valDigest: validationResultDigest(v),
-            evSetDigest: actionEvidenceSetDigest(evBinding),
-            sourceSensitivity
-        });
+        const evidenceReferences = evBinding.map((e) => ({
+          evidenceId: e.evidenceId,
+          digest: e.digest,
+        }));
 
         return {
           validation: {
@@ -740,9 +756,9 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
             digest: validationResultDigest(v),
           },
           evidence: evBinding,
-          evidenceSetDigest: actionEvidenceSetDigest(evBinding),
+          evidenceSetDigest: actionEvidenceSetDigest(evidenceReferences),
           sourceVersionId: v.sourceVersionId,
-          sourceSensitivity,
+          sourceSensitivity: sourceVersion.sensitivity,
         };
       },
     },

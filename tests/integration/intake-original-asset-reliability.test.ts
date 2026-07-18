@@ -89,6 +89,10 @@ class FailOnceRepository implements OriginalAssetRepositoryPort {
   findByVersion(projectId: string, sourceVersionId: string) {
     return this.delegate.findByVersion(projectId, sourceVersionId);
   }
+
+  findSourceVersionSecurity(projectId: string, sourceVersionId: string) {
+    return this.delegate.findSourceVersionSecurity(projectId, sourceVersionId);
+  }
 }
 
 describe('Stage 2 reliability', () => {

@@ -50,8 +50,8 @@ import {
   createCommand,
   createQuery,
   actionEvidenceSetDigest,
-  sha256Text,
-  stableJson,
+  actionEvidenceRecordDigest,
+  validationResultDigest,
   ShotgunError,
   ShotgunKernel,
   type AssetReference,
@@ -668,16 +668,22 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     actionCandidateRepository,
     {
       resolveCurrentBinding: async (reference) => {
-        const v =
-          (await validationRepository.findByValidationId?.(
-            reference.projectId,
-            reference.validationId,
-          )) ??
-          (await validationRepository.findByCandidateId(
-            reference.projectId,
-            reference.validationId,
-          ));
+        const v = await validationRepository.findByValidationId(
+          reference.projectId,
+          reference.validationId,
+        );
         if (!v || v.status !== 'READY' || v.dimensions.some((d) => d.status === 'FAIL')) {
+          console.log('resolveCurrentBinding fail 1', { v });
+          return undefined;
+        }
+
+        if (
+          v.projectId !== reference.projectId ||
+          v.validationId !== reference.validationId ||
+          v.candidateId !== reference.actionCandidateId ||
+          v.revisionNumber !== reference.expectedCandidateRevision
+        ) {
+          console.log('resolveCurrentBinding fail 2', { v, reference });
           return undefined;
         }
 
@@ -687,7 +693,17 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
           ),
         );
         const resolved = freshEvidence.filter((e) => e !== undefined);
-        if (resolved.length !== reference.evidenceIds.length) return undefined;
+        if (resolved.length !== reference.evidenceIds.length) {
+          console.log('resolveCurrentBinding fail 3', { resolved, ref: reference.evidenceIds });
+          return undefined;
+        }
+
+        for (const e of resolved) {
+          if (e.sourceVersionId !== v.sourceVersionId) {
+            console.log('resolveCurrentBinding fail 4', { e, v });
+            return undefined;
+          }
+        }
 
         const evBinding = resolved.map((e) => ({
           evidenceId: e.evidenceId,
@@ -695,22 +711,24 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
           sourceVersionId: e.sourceVersionId,
           exactHash: e.exactHash,
           sensitivity: e.sensitivity,
-          digest: sha256Text(
-            stableJson({
-              evidenceId: e.evidenceId,
-              sourceId: e.sourceId,
-              sourceVersionId: e.sourceVersionId,
-              exactHash: e.exactHash,
-              sensitivity: e.sensitivity,
-            }),
-          ),
+          digest: actionEvidenceRecordDigest(e),
         }));
 
         const original = await originalAssetRepository.findByVersion(
           reference.projectId,
           v.sourceVersionId,
         );
-        const sourceSensitivity = original?.sensitivity ?? 'public';
+        if (!original) {
+          console.log('resolveCurrentBinding fail 5');
+          return undefined;
+        }
+        const sourceSensitivity = original.sensitivity;
+        
+        console.log('resolveCurrentBinding success', {
+            valDigest: validationResultDigest(v),
+            evSetDigest: actionEvidenceSetDigest(evBinding),
+            sourceSensitivity
+        });
 
         return {
           validation: {
@@ -719,15 +737,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
             revisionNumber: v.revisionNumber,
             sourceVersionId: v.sourceVersionId,
             status: v.status,
-            digest: sha256Text(
-              stableJson({
-                validationId: v.validationId,
-                candidateId: v.candidateId,
-                revisionNumber: v.revisionNumber,
-                sourceVersionId: v.sourceVersionId,
-                status: v.status,
-              }),
-            ),
+            digest: validationResultDigest(v),
           },
           evidence: evBinding,
           evidenceSetDigest: actionEvidenceSetDigest(evBinding),

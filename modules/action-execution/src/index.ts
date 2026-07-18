@@ -62,6 +62,7 @@ export type ActionCandidateRepositoryPort = {
 
 export type ActionBindingReference = {
   readonly projectId: string;
+  readonly actionCandidateId: string;
   readonly validationId: string;
   readonly expectedCandidateRevision: number;
   readonly evidenceIds: readonly string[];
@@ -401,6 +402,7 @@ export const createActionExecutionModule = (
           });
           const independent = await independentVerification.resolveCurrentBinding({
             projectId,
+            actionCandidateId: request.candidateId,
             validationId: staged.candidate.validation.validationId,
             expectedCandidateRevision: request.expectedRevision,
             evidenceIds: evidence.map((e) => e.evidenceId),
@@ -420,17 +422,9 @@ export const createActionExecutionModule = (
             actionEvidenceSetDigest(evidence) !== independent.evidenceSetDigest ||
             staged.sourceSensitivity !== independent.sourceSensitivity
           ) {
-            console.log('DEBUG SYNC:', {
-              stagedValidationDigest: staged.validationDigest,
-              independentValidationDigest: independent.validation.digest,
-              stagedEvidenceSetDigest: actionEvidenceSetDigest(evidence),
-              independentEvidenceSetDigest: independent.evidenceSetDigest,
-              stagedSensitivity: staged.sourceSensitivity,
-              independentSensitivity: independent.sourceSensitivity
-            });
             throw new ShotgunError({
               code: 'STALE_ACTION_SNAPSHOT',
-              safeMessage: 'Candidate data is out of sync with independent verification ports.',
+              safeMessage: `Candidate data is out of sync with independent verification ports. val: ${staged.validationDigest} vs ${independent.validation.digest}, ev: ${actionEvidenceSetDigest(evidence)} vs ${independent.evidenceSetDigest}, sens: ${staged.sourceSensitivity} vs ${independent.sourceSensitivity}`,
               module: 'stage11.action-execution',
               operation: envelope.messageType,
               correlationId: envelope.correlationId,
@@ -566,6 +560,7 @@ export const createActionExecutionModule = (
             );
             const independentBinding = await independentVerification.resolveCurrentBinding({
               projectId,
+              actionCandidateId: candidate.candidate.candidateId,
               validationId: candidate.candidate.validation.validationId,
               expectedCandidateRevision: candidate.candidate.revisionNumber,
               evidenceIds: candidate.evidence.map((e) => e.evidenceId),

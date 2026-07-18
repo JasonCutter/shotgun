@@ -1,5 +1,6 @@
 import type { Actor, SecurityContext } from './types.js';
-import { sha256Text, stableJson } from './document-evidence.js';
+import { sha256Text, stableJson, type EvidenceSpan } from './document-evidence.js';
+import type { ValidationResult } from './ai-candidate-validation.js';
 
 export type ActionRiskLevel = 'R0' | 'R1' | 'R2' | 'R3' | 'R4';
 
@@ -187,10 +188,53 @@ export const actionEvidenceSetDigest = (evidence: readonly ActionEvidenceReferen
 export const actionPayloadDigest = (payload: ActionPreview['renderedPayload']): string =>
   sha256Text(stableJson(payload));
 
-export const actionPreviewDigest = (preview: Omit<ActionPreview, 'previewDigest'> | ActionPreview): string => {
-  const { previewDigest, ...rest } = preview as any;
-  return sha256Text(stableJson(rest));
+export const actionPreviewDigest = (
+  preview: Omit<ActionPreview, 'previewDigest'> | ActionPreview,
+): string => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { previewDigest, ...canonical } = preview as ActionPreview;
+  return sha256Text(stableJson(canonical));
 };
+
+export const validationResultDigest = (
+  validation: ValidationResult & { invalidatedAt?: string; expiresAt?: string },
+): string =>
+  sha256Text(
+    stableJson({
+      schemaVersion: '1.0',
+      validationId: validation.validationId,
+      candidateId: validation.candidateId,
+      revisionNumber: validation.revisionNumber,
+      projectId: validation.projectId,
+      sourceVersionId: validation.sourceVersionId,
+      status: validation.status,
+      dimensions: validation.dimensions,
+      createdAt: validation.createdAt,
+      invalidatedAt: validation.invalidatedAt,
+      expiresAt: validation.expiresAt,
+    }),
+  );
+
+export const actionEvidenceRecordDigest = (span: EvidenceSpan): string =>
+  sha256Text(
+    stableJson({
+      schemaVersion: '1.0',
+      evidenceId: span.evidenceId,
+      revisionId: span.revisionId,
+      projectId: span.projectId,
+      sourceId: span.sourceId,
+      sourceVersionId: span.sourceVersionId,
+      pointer: span.pointer,
+      nodeKind: span.nodeKind,
+      position: span.position,
+      quote: span.quote,
+      selectors: span.selectors,
+      exactHash: span.exactHash,
+      accessScope: span.accessScope,
+      sensitivity: span.sensitivity,
+      createdAt: span.createdAt,
+    }),
+  );
 
 export type ActionRiskInput = {
   readonly operation: ActionOperation;

@@ -5,7 +5,12 @@ import { InMemoryActionCandidateRepository } from '../../adapters/stage11-in-mem
 import { createApplication } from '../../assemblies/shotgun-app/src/server.js';
 import { actionServerCandidate } from '../helpers/stage-11.js';
 
-import { sha256Text, stableJson } from '../../packages/contracts/src/index.js';
+import {
+  validationResultDigest,
+  actionEvidenceRecordDigest,
+  type ValidationResult,
+  type EvidenceSpan,
+} from '../../packages/contracts/src/index.js';
 
 describe('Stage 12.1 P0-2 external Action API vertical slice', () => {
   it('accepts reference-only Preview and approvalId-only Execute without exposing a Verify endpoint', async () => {
@@ -14,6 +19,7 @@ describe('Stage 12.1 P0-2 external Action API vertical slice', () => {
     const candidates = new InMemoryActionCandidateRepository();
 
     const validationMock = {
+      projectId: 'shotgun',
       validationId: 'validation:api',
       candidateId: 'action-candidate:api',
       revisionNumber: 1,
@@ -32,26 +38,23 @@ describe('Stage 12.1 P0-2 external Action API vertical slice', () => {
 
     const candidate = actionServerCandidate('api', {
       projectId: 'shotgun',
-      validationDigest: sha256Text(stableJson({
-        validationId: validationMock.validationId,
-        candidateId: validationMock.candidateId,
-        revisionNumber: validationMock.revisionNumber,
-        sourceVersionId: validationMock.sourceVersionId,
-        status: validationMock.status,
-      })),
-      evidence: [{
-        ...evidenceMock,
-        digest: sha256Text(stableJson(evidenceMock))
-      }],
+      validationDigest: validationResultDigest(validationMock as unknown as ValidationResult),
+      evidence: [
+        {
+          ...evidenceMock,
+          digest: actionEvidenceRecordDigest(evidenceMock as unknown as EvidenceSpan),
+        },
+      ],
       sourceSensitivity: originalMock.sensitivity,
     });
     await candidates.stage(candidate);
 
     const evidenceRepository = {
-      findById: async (p: string, id: string) => evidenceMock as unknown,
+      findById: async () => evidenceMock as unknown,
     } as unknown;
     const validationRepository = {
       findByCandidateId: async () => validationMock as unknown,
+      findByValidationId: async () => validationMock as unknown,
     } as unknown;
     const originalAssetRepository = {
       findByVersion: async () => originalMock as unknown,

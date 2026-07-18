@@ -12,7 +12,10 @@ import type {
 } from '../../packages/contracts/src/index.js';
 import { actionEvidenceSetDigest } from '../../packages/contracts/src/index.js';
 import { ShotgunKernel } from '../../packages/kernel/src/index.js';
-import { createActionExecutionModule } from '../../modules/action-execution/src/index.js';
+import {
+  createActionExecutionModule,
+  type ActionBindingReference,
+} from '../../modules/action-execution/src/index.js';
 import {
   actionAuditQuery,
   actionServerCandidate,
@@ -37,6 +40,31 @@ const harness = async (
     },
     getSourceSensitivity: async (p: string, c: string) =>
       (await candidates.find(p, c))?.sourceSensitivity,
+    resolveCurrentBinding: async (req: ActionBindingReference) => {
+      const cand = await candidates.find(req.projectId, req.actionCandidateId);
+      if (!cand) return undefined;
+      return {
+        validation: {
+          validationId: cand.candidate.validation.validationId,
+          candidateId: cand.candidate.candidateId,
+          revisionNumber: cand.candidate.revisionNumber,
+          sourceVersionId: 's1',
+          status: 'READY',
+          digest: cand.validationDigest,
+        },
+        evidence: cand.evidence.map((e) => ({
+          evidenceId: e.evidenceId,
+          sourceId: 'src1',
+          sourceVersionId: 's1',
+          exactHash: '0000',
+          sensitivity: cand.sourceSensitivity,
+          digest: e.digest,
+        })),
+        evidenceSetDigest: actionEvidenceSetDigest(cand.evidence),
+        sourceVersionId: 's1',
+        sourceSensitivity: cand.sourceSensitivity,
+      };
+    },
   };
   const kernel = new ShotgunKernel(new InProcessTransport());
   kernel.register(

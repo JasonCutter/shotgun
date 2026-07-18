@@ -59,4 +59,6 @@ describe.runIf(pool)('Stage 12.1 P0-1 PostgreSQL authentication persistence', ()
       /append-only/,
     );
   });
+
+
 });

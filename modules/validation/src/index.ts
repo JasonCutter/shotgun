@@ -22,7 +22,10 @@ import type { ShotgunModule } from '../../../packages/module-sdk/src/index.js';
 export type ValidationRepositoryPort = {
   save(result: ValidationResult): Promise<ValidationResult>;
   findByCandidateId(projectId: string, candidateId: string): Promise<ValidationResult | undefined>;
-  findByValidationId(projectId: string, validationId: string): Promise<ValidationResult | undefined>;
+  findByValidationId(
+    projectId: string,
+    validationId: string,
+  ): Promise<ValidationResult | undefined>;
 };
 
 type CandidateGeneratedPayload = {

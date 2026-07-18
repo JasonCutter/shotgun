@@ -12,6 +12,8 @@ import {
   ShotgunError,
   actionPreviewDigest,
   type ActionPreview,
+  stableJson,
+  sha256Text,
 } from '../../../packages/contracts/src/index.js';
 import type {
   ActionCandidateRepositoryPort,
@@ -179,8 +181,16 @@ export class PostgresActionExecutionRepository implements ActionExecutionReposit
       const result = await client.query<{
         record_json: ActionExecutionRecord;
         snapshot_json: ActionPreview;
+        approval_json: ActionApprovalRecord;
+        snapshot_id: string;
+        snapshot_digest: string;
+        approval_snapshot_digest: string;
+        expires_at: string;
       }>(
-        `SELECT executions.record_json, snapshots.snapshot_json
+        `SELECT executions.record_json, snapshots.snapshot_json,
+                approvals.approval_json, approvals.snapshot_id, 
+                approvals.snapshot_digest as approval_snapshot_digest, 
+                approvals.expires_at, snapshots.snapshot_digest
          FROM action.approval_records approvals
          JOIN action.executions executions ON executions.action_id = approvals.action_id
          JOIN action.preview_snapshots snapshots ON snapshots.snapshot_id = approvals.snapshot_id
@@ -192,22 +202,29 @@ export class PostgresActionExecutionRepository implements ActionExecutionReposit
 
       const current = row.record_json;
       const snapshot = row.snapshot_json;
+      const approval = row.approval_json;
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { previewDigest, ...snapshotBase } = snapshot;
-      if (actionPreviewDigest(snapshotBase) !== snapshot.previewDigest) {
+      if (actionPreviewDigest(snapshot) !== row.snapshot_digest) {
         throw stale('Preview Snapshot integrity compromised.');
       }
 
-      const recordWithSnapshot: ActionExecutionRecord = { ...current, preview: snapshot };
-      const approval = recordWithSnapshot.approval;
       if (
-        !approval ||
         approval.approvalId !== approvalId ||
-        approval.snapshotId !== recordWithSnapshot.preview.snapshotId ||
-        approval.snapshotDigest !== recordWithSnapshot.preview.previewDigest
-      )
+        approval.snapshotId !== row.snapshot_id ||
+        approval.snapshotDigest !== row.approval_snapshot_digest
+      ) {
         throw stale('Approval Record does not match the immutable Preview Snapshot.');
+      }
+
+      if (
+        sha256Text(stableJson(current.preview)) !== sha256Text(stableJson(snapshot)) ||
+        (current.approval &&
+          sha256Text(stableJson(current.approval)) !== sha256Text(stableJson(approval)))
+      ) {
+        throw stale('Execution projection differs from authoritative immutable records.');
+      }
+
+      const recordWithSnapshot: ActionExecutionRecord = { ...current, preview: snapshot, approval };
       if (recordWithSnapshot.status !== 'APPROVED')
         return { claimed: false, record: recordWithSnapshot };
       if (new Date(approval.expiresAt).getTime() <= new Date(now).getTime())

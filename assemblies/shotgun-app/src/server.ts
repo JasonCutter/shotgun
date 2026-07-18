@@ -50,6 +50,9 @@ import {
   createCommand,
   createQuery,
   actionEvidenceSetDigest,
+  actionEvidenceRecordDigest,
+  sha256Text,
+  validationResultDigest,
   ShotgunError,
   ShotgunKernel,
   type AssetReference,
@@ -130,6 +133,7 @@ import {
 import {
   createTransformationModule,
   type PlainTextTransformerPort,
+  type TransformationRevisionSecurityRepositoryPort,
   type TransformationRepositoryPort,
 } from '../../../modules/transformation/src/index.js';
 import { createPingModule } from '../../../modules/ping/src/index.js';
@@ -250,6 +254,7 @@ type ApplicationOptions = {
   readonly originalAssetRepository?: OriginalAssetRepositoryPort;
   readonly assetStorage?: AssetStoragePort;
   readonly transformationRepository?: TransformationRepositoryPort;
+  readonly transformationRevisionSecurityRepository?: TransformationRevisionSecurityRepositoryPort;
   readonly evidenceRepository?: EvidenceRepositoryPort;
   readonly transformer?: PlainTextTransformerPort;
   readonly evidenceLocator?: EvidenceLocatorPort;
@@ -585,6 +590,8 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   const assetStorage = options.assetStorage ?? new InMemoryAssetStorage();
   const transformationRepository =
     options.transformationRepository ?? new InMemoryTransformationRepository();
+  const transformationRevisionSecurityRepository =
+    options.transformationRevisionSecurityRepository ?? transformationRepository;
   const evidenceRepository = options.evidenceRepository ?? new InMemoryEvidenceRepository();
   const aiProviderRepository =
     options.aiProviderRepository ?? new InMemoryAIProviderCallRepository();
@@ -665,36 +672,120 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     actionExecutionRepository,
     actionCandidateRepository,
     {
-      getValidationDigest: async (projectId, candidateId) => {
-        const v = await validationRepository.findByCandidateId(projectId, candidateId);
+      resolveCurrentBinding: async (reference) => {
+        const v = await validationRepository.findByValidationId(
+          reference.projectId,
+          reference.validationId,
+        );
         if (!v || v.status !== 'READY' || v.dimensions.some((d) => d.status === 'FAIL')) {
           return undefined;
         }
-        const c = await actionCandidateRepository.find(projectId, candidateId);
-        return c?.validationDigest;
-      },
-      getEvidenceSetDigest: async (projectId, candidateId) => {
-        const c = await actionCandidateRepository.find(projectId, candidateId);
-        if (!c) return undefined;
+
+        if (
+          v.projectId !== reference.projectId ||
+          v.validationId !== reference.validationId ||
+          v.candidateId !== reference.actionCandidateId ||
+          v.revisionNumber !== reference.expectedCandidateRevision
+        ) {
+          return undefined;
+        }
+
         const freshEvidence = await Promise.all(
-          c.evidence.map(async (e) => await evidenceRepository.findById(projectId, e.evidenceId)),
+          reference.evidenceIds.map(
+            async (e) => await evidenceRepository.findById(reference.projectId, e),
+          ),
         );
         const resolved = freshEvidence.filter((e) => e !== undefined);
-        if (resolved.length !== c.evidence.length) return undefined;
-        return actionEvidenceSetDigest(c.evidence);
-      },
-      getSourceSensitivity: async (projectId, candidateId) => {
-        const c = await actionCandidateRepository.find(projectId, candidateId);
-        if (!c) return undefined;
+        if (resolved.length !== reference.evidenceIds.length) {
+          return undefined;
+        }
 
-        const freshEvidence = await Promise.all(
-          c.evidence.map(async (e) => await evidenceRepository.findById(projectId, e.evidenceId)),
+        const sourceVersion = await originalAssetRepository.findSourceVersionSecurity(
+          reference.projectId,
+          v.sourceVersionId,
+        );
+        const original = await originalAssetRepository.findByVersion(
+          reference.projectId,
+          v.sourceVersionId,
+        );
+        if (
+          !sourceVersion ||
+          !original ||
+          !sourceVersion.contentHash ||
+          sourceVersion.projectId !== reference.projectId ||
+          sourceVersion.sourceVersionId !== v.sourceVersionId ||
+          sourceVersion.originalAssetId !== original.assetReference.assetId ||
+          sourceVersion.contentHash !== original.assetReference.contentHash ||
+          sourceVersion.accessScope.length !== original.assetReference.accessScope.length ||
+          !sourceVersion.accessScope.every((scope) =>
+            original.assetReference.accessScope.includes(scope),
+          ) ||
+          sourceVersion.sensitivity !== original.sensitivity
+        ) {
+          return undefined;
+        }
+
+        const revisions = await Promise.all(
+          resolved.map((e) =>
+            transformationRevisionSecurityRepository.findTransformationRevisionSecurity(
+              reference.projectId,
+              e.revisionId,
+            ),
+          ),
         );
 
-        if (freshEvidence.some((e) => e?.sensitivity === 'restricted')) return 'restricted';
-        if (freshEvidence.some((e) => e?.sensitivity === 'private')) return 'private';
+        for (const [index, e] of resolved.entries()) {
+          const revision = revisions[index];
+          if (
+            !revision ||
+            e.exactHash !== sha256Text(e.quote.exact) ||
+            e.projectId !== reference.projectId ||
+            e.sourceId !== sourceVersion.sourceId ||
+            e.sourceVersionId !== sourceVersion.sourceVersionId ||
+            e.sensitivity !== sourceVersion.sensitivity ||
+            e.accessScope.length !== sourceVersion.accessScope.length ||
+            !e.accessScope.every((scope) => sourceVersion.accessScope.includes(scope)) ||
+            revision.revisionId !== e.revisionId ||
+            revision.projectId !== reference.projectId ||
+            revision.sourceId !== e.sourceId ||
+            revision.sourceVersionId !== e.sourceVersionId ||
+            revision.sourceVersionId !== v.sourceVersionId ||
+            revision.sourceContentHash !== sourceVersion.contentHash ||
+            revision.accessScope.length !== sourceVersion.accessScope.length ||
+            !revision.accessScope.every((scope) => sourceVersion.accessScope.includes(scope)) ||
+            revision.sensitivity !== sourceVersion.sensitivity
+          ) {
+            return undefined;
+          }
+        }
 
-        return c.sourceSensitivity;
+        const evBinding = resolved.map((e) => ({
+          evidenceId: e.evidenceId,
+          sourceId: e.sourceId,
+          sourceVersionId: e.sourceVersionId,
+          exactHash: e.exactHash,
+          sensitivity: e.sensitivity,
+          digest: actionEvidenceRecordDigest(e),
+        }));
+        const evidenceReferences = evBinding.map((e) => ({
+          evidenceId: e.evidenceId,
+          digest: e.digest,
+        }));
+
+        return {
+          validation: {
+            validationId: v.validationId,
+            candidateId: v.candidateId,
+            revisionNumber: v.revisionNumber,
+            sourceVersionId: v.sourceVersionId,
+            status: v.status,
+            digest: validationResultDigest(v),
+          },
+          evidence: evBinding,
+          evidenceSetDigest: actionEvidenceSetDigest(evidenceReferences),
+          sourceVersionId: v.sourceVersionId,
+          sourceSensitivity: sourceVersion.sensitivity,
+        };
       },
     },
     actionConnector,
@@ -1031,6 +1122,13 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
           module: 'shotgun-app',
           operation: 'issue-api-token',
         });
+      if (!context.security.accessScope.includes('auth:token:issue'))
+        throw new ShotgunError({
+          code: 'AUTHORIZATION_DENIED',
+          safeMessage: 'Missing auth:token:issue scope.',
+          module: 'shotgun-app',
+          operation: 'issue-api-token',
+        });
       const membership = await authRepository.findMembership(
         context.principalId,
         context.projectId,
@@ -1043,12 +1141,23 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
           operation: 'issue-api-token',
         });
 
+      const requestedScopes = [...new Set(request.body.scopes)];
+      if (requestedScopes.length === 0) {
+        throw new ShotgunError({
+          code: 'VALIDATION_ERROR',
+          safeMessage: 'At least one scope is required.',
+          module: 'shotgun-app',
+          operation: 'issue-api-token',
+        });
+      }
+
       const allowedScopes = new Set(membership.scopes);
-      for (const scope of request.body.scopes) {
-        if (!allowedScopes.has(scope)) {
+      const currentScopes = new Set(context.security.accessScope);
+      for (const scope of requestedScopes) {
+        if (!allowedScopes.has(scope) || !currentScopes.has(scope)) {
           throw new ShotgunError({
             code: 'AUTHORIZATION_DENIED',
-            safeMessage: `Scope ${scope} is not allowed.`,
+            safeMessage: `Scope ${scope} exceeds permitted ceiling.`,
             module: 'shotgun-app',
             operation: 'issue-api-token',
           });
@@ -1072,7 +1181,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
 
       const token = await authRepository.issueApiToken({
         principalId: context.principalId,
-        scopes: request.body.scopes,
+        scopes: requestedScopes,
         expiresAt: requestedExpiry.toISOString(),
       });
       return token;

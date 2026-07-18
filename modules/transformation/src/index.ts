@@ -74,7 +74,24 @@ export type SavedTransformation = {
   readonly reusedRevision: boolean;
 };
 
-export type TransformationRepositoryPort = {
+export type TransformationRevisionSecurityRecord = {
+  readonly revisionId: string;
+  readonly projectId: string;
+  readonly sourceId: string;
+  readonly sourceVersionId: string;
+  readonly sourceContentHash: string;
+  readonly accessScope: readonly string[];
+  readonly sensitivity: SecurityContext['sensitivity'];
+};
+
+export type TransformationRevisionSecurityRepositoryPort = {
+  findTransformationRevisionSecurity(
+    projectId: string,
+    revisionId: string,
+  ): Promise<TransformationRevisionSecurityRecord | undefined>;
+};
+
+export type TransformationRepositoryPort = TransformationRevisionSecurityRepositoryPort & {
   save(input: SaveTransformationInput): Promise<SavedTransformation>;
   findBySourceVersion(
     projectId: string,

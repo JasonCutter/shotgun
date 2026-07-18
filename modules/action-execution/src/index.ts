@@ -12,6 +12,7 @@ import type {
   ProviderActionResult,
   QueryEnvelope,
   ServerActionCandidate,
+  SecurityContext,
 } from '../../../packages/contracts/src/index.js';
 import {
   actionCandidateDigest,
@@ -59,13 +60,40 @@ export type ActionCandidateRepositoryPort = {
   find(projectId: string, candidateId: string): Promise<ServerActionCandidate | undefined>;
 };
 
+export type ActionBindingReference = {
+  readonly projectId: string;
+  readonly actionCandidateId: string;
+  readonly validationId: string;
+  readonly expectedCandidateRevision: number;
+  readonly evidenceIds: readonly string[];
+};
+
+export type CurrentActionBinding = {
+  readonly validation: {
+    readonly validationId: string;
+    readonly candidateId: string;
+    readonly revisionNumber: number;
+    readonly sourceVersionId: string;
+    readonly status: string;
+    readonly digest: string;
+  };
+  readonly evidence: readonly {
+    readonly evidenceId: string;
+    readonly sourceId: string;
+    readonly sourceVersionId: string;
+    readonly exactHash: string;
+    readonly sensitivity: SecurityContext['sensitivity'];
+    readonly digest: string;
+  }[];
+  readonly evidenceSetDigest: string;
+  readonly sourceVersionId: string;
+  readonly sourceSensitivity: SecurityContext['sensitivity'];
+};
+
 export type IndependentVerificationPort = {
-  getValidationDigest(projectId: string, candidateId: string): Promise<string | undefined>;
-  getEvidenceSetDigest(projectId: string, candidateId: string): Promise<string | undefined>;
-  getSourceSensitivity(
-    projectId: string,
-    candidateId: string,
-  ): Promise<ServerActionCandidate['sourceSensitivity'] | undefined>;
+  resolveCurrentBinding(
+    reference: ActionBindingReference,
+  ): Promise<CurrentActionBinding | undefined>;
 };
 
 export type ActionTransition = {
@@ -372,42 +400,32 @@ export const createActionExecutionModule = (
             sensitivity: staged.sourceSensitivity,
             compensation: Boolean(staged.candidate.compensationForActionId),
           });
-          const independent = {
-            validationDigest: await independentVerification.getValidationDigest(
-              projectId,
-              staged.candidate.candidateId,
-            ),
-            evidenceSetDigest: await independentVerification.getEvidenceSetDigest(
-              projectId,
-              staged.candidate.candidateId,
-            ),
-            sourceSensitivity: await independentVerification.getSourceSensitivity(
-              projectId,
-              staged.candidate.candidateId,
-            ),
-          };
-          if (
-            !independent.validationDigest ||
-            !independent.evidenceSetDigest ||
-            !independent.sourceSensitivity
-          ) {
+          const independent = await independentVerification.resolveCurrentBinding({
+            projectId,
+            actionCandidateId: request.candidateId,
+            validationId: staged.candidate.validation.validationId,
+            expectedCandidateRevision: request.expectedRevision,
+            evidenceIds: evidence.map((e) => e.evidenceId),
+          });
+          if (!independent) {
             throw new ShotgunError({
               code: 'STALE_ACTION_SNAPSHOT',
               safeMessage:
-                'Underlying Candidate, Evidence, or Source could not be independently verified.',
+                'Candidate data no longer matches the authoritative Validation, Evidence, Source, or Transformation records.',
               module: 'stage11.action-execution',
               operation: envelope.messageType,
               correlationId: envelope.correlationId,
             });
           }
           if (
-            staged.validationDigest !== independent.validationDigest ||
+            staged.validationDigest !== independent.validation.digest ||
             actionEvidenceSetDigest(evidence) !== independent.evidenceSetDigest ||
             staged.sourceSensitivity !== independent.sourceSensitivity
           ) {
             throw new ShotgunError({
               code: 'STALE_ACTION_SNAPSHOT',
-              safeMessage: 'Candidate data is out of sync with independent verification ports.',
+              safeMessage:
+                'Candidate data no longer matches the authoritative Validation, Evidence, Source, or Transformation records.',
               module: 'stage11.action-execution',
               operation: envelope.messageType,
               correlationId: envelope.correlationId,
@@ -422,7 +440,7 @@ export const createActionExecutionModule = (
             projectId,
             candidate: staged.candidate,
             candidateDigest,
-            validationDigest: independent.validationDigest,
+            validationDigest: independent.validation.digest,
             evidence,
             evidenceSetDigest: independent.evidenceSetDigest,
             sourceSensitivity: independent.sourceSensitivity,
@@ -541,36 +559,25 @@ export const createActionExecutionModule = (
               current.preview.candidate.candidateId,
               envelope.correlationId,
             );
-            const independent = {
-              validationDigest: await independentVerification.getValidationDigest(
-                projectId,
-                candidate.candidate.candidateId,
-              ),
-              evidenceSetDigest: await independentVerification.getEvidenceSetDigest(
-                projectId,
-                candidate.candidate.candidateId,
-              ),
-              sourceSensitivity: await independentVerification.getSourceSensitivity(
-                projectId,
-                candidate.candidate.candidateId,
-              ),
-            };
-            if (
-              !independent.validationDigest ||
-              !independent.evidenceSetDigest ||
-              !independent.sourceSensitivity
-            ) {
+            const independentBinding = await independentVerification.resolveCurrentBinding({
+              projectId,
+              actionCandidateId: candidate.candidate.candidateId,
+              validationId: candidate.candidate.validation.validationId,
+              expectedCandidateRevision: candidate.candidate.revisionNumber,
+              evidenceIds: candidate.evidence.map((e) => e.evidenceId),
+            });
+            if (!independentBinding) {
               throw stale(
-                'Underlying Candidate components could not be independently verified.',
+                'Candidate data no longer matches the authoritative Validation, Evidence, Source, or Transformation records.',
                 envelope.correlationId,
               );
             }
             assertCandidateMatchesSnapshot(
               candidate,
-              independent as {
-                validationDigest: string;
-                evidenceSetDigest: string;
-                sourceSensitivity: ServerActionCandidate['sourceSensitivity'];
+              {
+                validationDigest: independentBinding.validation.digest,
+                evidenceSetDigest: independentBinding.evidenceSetDigest,
+                sourceSensitivity: independentBinding.sourceSensitivity,
               },
               current.preview,
               security.sensitivity,

@@ -13,6 +13,7 @@ import type {
 import type {
   SavedTransformation,
   SaveTransformationInput,
+  TransformationRevisionSecurityRecord,
   TransformationRepositoryPort,
 } from '../../../modules/transformation/src/index.js';
 
@@ -87,6 +88,25 @@ export class InMemoryTransformationRepository implements TransformationRepositor
     return this.revisions.get(
       transformationKey(projectId, sourceVersionId, transformerId, transformerVersion),
     );
+  }
+
+  async findTransformationRevisionSecurity(
+    projectId: string,
+    revisionId: string,
+  ): Promise<TransformationRevisionSecurityRecord | undefined> {
+    const revision = [...this.revisions.values()].find(
+      (candidate) => candidate.projectId === projectId && candidate.revisionId === revisionId,
+    );
+    if (!revision) return undefined;
+    return {
+      revisionId: revision.revisionId,
+      projectId: revision.projectId,
+      sourceId: revision.sourceId,
+      sourceVersionId: revision.sourceVersionId,
+      sourceContentHash: revision.sourceContentHash,
+      accessScope: revision.accessScope,
+      sensitivity: revision.sensitivity,
+    };
   }
 
   counts() {

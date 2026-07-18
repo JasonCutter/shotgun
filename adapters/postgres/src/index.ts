@@ -10,6 +10,7 @@ import type {
 } from '../../../modules/intake/src/index.js';
 import type {
   OriginalAssetRepositoryPort,
+  SourceVersionSecurityRecord,
   StoredIntakeResult,
   StoreOriginalAssetInput,
 } from '../../../modules/original-asset/src/index.js';
@@ -370,6 +371,46 @@ export class PostgresOriginalAssetRepository implements OriginalAssetRepositoryP
       [projectId, sourceVersionId],
     );
     return result.rows[0] ? mapStoredResult(result.rows[0]) : undefined;
+  }
+
+  async findSourceVersionSecurity(
+    projectId: string,
+    sourceVersionId: string,
+  ): Promise<SourceVersionSecurityRecord | undefined> {
+    const result = await this.pool.query<{
+      project_id: string;
+      source_id: string;
+      source_version_id: string;
+      original_asset_id: string;
+      content_hash: string;
+      access_scope: string[];
+      sensitivity: SourceVersionSecurityRecord['sensitivity'];
+    }>(
+      `SELECT source.project_id,
+              source.source_id::text,
+              version.source_version_id::text,
+              version.original_asset_id::text,
+              original.content_hash,
+              version.access_scope,
+              version.sensitivity
+       FROM asset.source_versions AS version
+       JOIN asset.sources AS source ON source.source_id = version.source_id
+       JOIN asset.original_assets AS original ON original.asset_id = version.original_asset_id
+       WHERE source.project_id = $1 AND version.source_version_id = $2`,
+      [projectId, sourceVersionId],
+    );
+    const row = result.rows[0];
+    return row
+      ? {
+          projectId: row.project_id,
+          sourceId: row.source_id,
+          sourceVersionId: row.source_version_id,
+          originalAssetId: row.original_asset_id,
+          contentHash: row.content_hash,
+          accessScope: row.access_scope,
+          sensitivity: row.sensitivity,
+        }
+      : undefined;
   }
 
   private async resolveSource(client: PoolClient, input: StoreOriginalAssetInput): Promise<string> {

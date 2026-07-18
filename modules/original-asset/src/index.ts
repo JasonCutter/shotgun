@@ -54,7 +54,24 @@ export type StoredIntakeResult = {
   readonly versionCreated: boolean;
 };
 
-export type OriginalAssetRepositoryPort = {
+export type SourceVersionSecurityRecord = {
+  readonly projectId: string;
+  readonly sourceId: string;
+  readonly sourceVersionId: string;
+  readonly originalAssetId: string;
+  readonly contentHash: string;
+  readonly accessScope: readonly string[];
+  readonly sensitivity: SecurityContext['sensitivity'];
+};
+
+export type SourceVersionSecurityRepositoryPort = {
+  findSourceVersionSecurity(
+    projectId: string,
+    sourceVersionId: string,
+  ): Promise<SourceVersionSecurityRecord | undefined>;
+};
+
+export type OriginalAssetRepositoryPort = SourceVersionSecurityRepositoryPort & {
   assertSource(projectId: string, sourceId: string): Promise<void>;
   store(input: StoreOriginalAssetInput): Promise<StoredIntakeResult>;
   findBySubmission(

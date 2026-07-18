@@ -644,3 +644,30 @@ jsdiff 교체 Adapter, ddsyasas·OpenKnowledge UX Mock Contract와 별도 Projec
 upstream sync·rollback 절차를 검증했다. 상세 근거는
 [Stage 12 OSS Integration Review](stage-validations/stage-12-oss-integration-review.md)와
 [ADR-092](../architecture/adr/ADR-092-stage-12-module-and-oss-reuse-validation.md)을 따른다.
+
+## Stage 12.1 Security Gate 완료 기록 — 2026-07-18
+
+Stage 12.1 전체 상태는 `IN_PROGRESS`이며, 네 Gate 중 **Security Gate의 P0-1·P0-2만 `COMPLETE`**다.
+
+- P0-1 `Authenticated Security Context`: Header 기반 actor·project·scope·sensitivity 신뢰와 no-header owner fallback을 제거하고, 서버 인증·Project Membership·Scope Ceiling에서 `TrustedSecurityContext`를 생성한다.
+- P0-2 `Action Candidate server-side binding`: 서버 저장 Candidate·Validation·Evidence·SourceVersion·Transformation Revision을 독립 재검증하고, 불변 Preview Snapshot·Approval Record·Execution Projection을 상호 결속한다. Execute는 `approvalId`만 받고 승인된 Snapshot payload만 사용한다.
+- 승인 소스 SHA: `62d2ef114f172aa0b8bd1903c84b15a215a01db3`
+- `main` Merge SHA: `d9e29bc588ff8c2badfd20c87cd3d4c2e695ba28`
+- 검증: 전체 `227 passed, 0 failed, 0 skipped`; PostgreSQL Security Gate `38 passed, 0 failed, 0 skipped`; 집중 Action API `2 passed, 0 failed, 0 skipped`.
+- Evidence `exactHash`는 `quote.exact`의 Hash로 검증하고, SourceVersion 전체 Content Hash와 직접 비교하지 않는다. 두 권위 레코드는 Transformation Revision으로 결속한다.
+- 동일 Approval의 동시 Execute는 Connector 호출과 `ACTION_EXECUTION_CLAIMED` Audit을 각각 1회로 제한한다.
+- Token·Session 원문과 내부 Binding Digest는 DB 목록·Audit·일반 로그·HTTP 안전 오류에 노출하지 않는다.
+
+구현·결정 근거:
+
+- [Stage 12.1 Hardening Strategy](../engineering/stage-12-1-hardening-strategy.md)
+- [ADR-093 — HTTP Identity and Authorization Boundary](../architecture/adr/ADR-093-http-identity-and-authorization-boundary.md)
+- [ADR-094 — Action Candidate Server-side Binding and Approval Snapshot](../architecture/adr/ADR-094-action-candidate-server-side-binding-and-approval-snapshot.md)
+- [Stage 12.1 Security Gate Implementation Record](../architecture/adr/implementation-records/stage-12-1-p0-1-p0-2-security-gate.md)
+
+남은 Gate와 제한:
+
+- Durability, Quality, Reuse and Operations Gate는 계속 `IN_PROGRESS`다.
+- 실제 Gmail·Calendar·Drive·GitHub 등 외부 Connector는 Connector별 Capability·권한·Preflight·Verify·복구 Gate와 별도 활성화 승인을 통과하기 전까지 OFF 상태를 유지한다.
+- Stage 12.1 전체를 `COMPLETE`, `production-ready`, `release-ready`로 표시하지 않는다.
+- Merge SHA에 연결된 GitHub Actions 실행 기록은 없으므로 테스트 증거는 Codex 로컬 PostgreSQL 실행 결과와 원격 코드 독립 검토 기록으로 보존한다.

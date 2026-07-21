@@ -474,20 +474,22 @@ describe.runIf(pool)('Stage 12.1 Canonical Outbox and Projection recovery', () =
         payload: { mode: 'INCREMENTAL', maxNodes: 10, maxSuggestions: 10 },
       });
 
-      await expect(app.kernel.connector.sendCommand(command)).rejects.toMatchObject({
-        code: 'CONFLICT',
-        safeMessage: 'Compiled Truth is not ready for Knowledge Discovery.',
-      });
+      try {
+        await expect(app.kernel.connector.sendCommand(command)).rejects.toMatchObject({
+          code: 'CONFLICT',
+          safeMessage: 'Compiled Truth is not ready for Knowledge Discovery.',
+        });
 
-      const count = await pool!.query(
-        `SELECT count(*) FROM knowledge.candidates WHERE project_id = $1`,
-        [fixture.projectId],
-      );
-      expect(count.rows[0].count).toBe('0');
-
-      degradedSpy.mockRestore();
-      projectionSpy.mockRestore();
-      await app.server.close();
+        const count = await pool!.query(
+          `SELECT count(*) FROM projection.discovery_inferences WHERE project_id = $1`,
+          [fixture.projectId]
+        );
+        expect(count.rows[0].count).toBe('0');
+      } finally {
+        degradedSpy.mockRestore();
+        projectionSpy.mockRestore();
+        await app.server.close();
+      }
     },
   );
 

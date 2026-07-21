@@ -98,6 +98,16 @@ export class PostgresCanonicalKnowledgeRepository
     private readonly options: PostgresStage6Options = {},
   ) {}
 
+  async listProjectIds(): Promise<readonly string[]> {
+    const result = await this.pool.query<{ project_id: string }>(
+      `SELECT project_id FROM canonical.project_state
+       UNION
+       SELECT project_id FROM canonical.outbox WHERE status <> 'published'
+       ORDER BY project_id`,
+    );
+    return result.rows.map((row) => row.project_id);
+  }
+
   async getSnapshot(projectId: string): Promise<CanonicalSnapshot> {
     const state = await this.pool.query<StateRow>(
       `SELECT version, snapshot_digest, updated_at

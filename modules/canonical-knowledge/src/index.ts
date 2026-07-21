@@ -56,6 +56,7 @@ export type CanonicalCommitWrite = {
 };
 
 export type CanonicalKnowledgeRepositoryPort = {
+  listProjectIds(): Promise<readonly string[]>;
   getSnapshot(projectId: string): Promise<CanonicalSnapshot>;
   commit(write: CanonicalCommitWrite): Promise<CanonicalCommitResult>;
   findClaim(projectId: string, claimId: string): Promise<CanonicalClaim | undefined>;

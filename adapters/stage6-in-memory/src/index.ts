@@ -33,6 +33,17 @@ export class InMemoryCanonicalKnowledgeRepository
   private readonly history = new Map<string, CanonicalHistoryEvent>();
   private readonly outbox = new Map<string, CanonicalOutboxRecord>();
 
+  async listProjectIds(): Promise<readonly string[]> {
+    return [
+      ...new Set([
+        ...this.states.keys(),
+        ...[...this.outbox.values()]
+          .filter((record) => record.status !== 'published')
+          .map((record) => record.projectId),
+      ]),
+    ].sort();
+  }
+
   async getSnapshot(projectId: string): Promise<CanonicalSnapshot> {
     const claims = [...this.claims.values()]
       .filter((claim) => claim.projectId === projectId)

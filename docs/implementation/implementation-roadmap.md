@@ -699,3 +699,31 @@ Stage 12.1 전체와 Durability Gate 전체 상태는 `IN_PROGRESS`이며, **AI 
 - 실제 외부 Action Connector와 외부 네트워크 공개는 계속 금지한다.
 - Stage 12.1 전체를 `COMPLETE`, `production-ready`, `release-ready`로 표시하지 않는다.
 - Stage 13은 이 Section 완료로 자동 개시되지 않는다.
+
+## Stage 12.1 Durability Section 2 완료 기록 — 2026-07-21
+
+Stage 12.1 전체 상태는 `IN_PROGRESS`지만, AI Durable Materialization에 이어 Canonical Outbox·Projection Recovery와 Backup·Restore가 완료되어 **Durability Gate는 `COMPLETE`**다. `main` 반영은 대기 중이다.
+
+- Canonical Project를 탐색해 startup과 비중첩 periodic Worker에서 pending·stale processing Outbox를 bounded batch로 drain한다.
+- Search와 Compiled Truth readiness를 Outbox publish 상태와 독립 확인하고 누락·stale·degraded Projection을 Canonical에서 Full Rebuild한다.
+- Project별 실패를 격리하고 replay를 멱등하게 유지하며 Application shutdown에서 Worker를 정리한다.
+- Backup Bundle v1은 PostgreSQL custom dump, 참조 Original Asset, versioned Contract·Module Manifest, Migration 목록과 모든 비-Projection 영속 Table digest를 포함한다.
+- Restore는 Source와 다른 새 빈 Database와 빈 Asset Root만 허용하며 dump·Asset·Contract·Table digest 불일치를 fail closed한다.
+- 격리 clean restore drill에서 14개 Migration, Original Asset 1개, Contract·Module Manifest 90개와 Canonical Project 1개를 복원했다. Projection 삭제 뒤 Outbox `published`, Search `READY`, Compiled Truth version 1과 예상 Claim 검색을 확인했다.
+- PostgreSQL 16.14 `pg_dump`·`pg_restore`는 `ADOPT`, gbrain은 `REFERENCE_ONLY`, pgBackRest 2.58.0·WAL-G 3.0.8·Barman 3.19.1은 `DEFER`한다. 새 Runtime dependency는 없다.
+- 전체 검증: Unit `54 passed`, Contract `105 passed`, Integration `19 passed`, PostgreSQL `62 passed`; Architecture, Stage 12 package, DB verify, lint, format, typecheck, Secret Scan과 OSS Gate PASS.
+
+구현·운영 근거:
+
+- [ADR-097 — Stage 12.1 Canonical Outbox, Projection Recovery and Clean Restore](../architecture/adr/ADR-097-stage-12-1-outbox-projection-clean-restore.md)
+- [Implementation Record](../architecture/adr/implementation-records/stage-12-1-outbox-projection-clean-restore.md)
+- [Backup and Clean Restore Runbook](../engineering/stage-12-1-backup-restore-runbook.md)
+- [Stage 12.1 Durability Recovery OSS Review](stage-validations/stage-12-1-durability-recovery-oss-review.md)
+
+남은 Gate와 제한:
+
+- Quality와 Reuse and Operations Gate는 `IN_PROGRESS`다.
+- PITR, continuous WAL archive, 외부 암호화 저장소, Retention과 Production RPO·RTO 승인은 Operations Gate에서 결정한다.
+- 실제 외부 Action Connector와 외부 네트워크 공개는 계속 금지한다.
+- Stage 12.1 전체를 `COMPLETE`, `production-ready`, `release-ready`로 표시하지 않는다.
+- Stage 13은 Durability Gate 완료로 자동 개시되지 않는다.

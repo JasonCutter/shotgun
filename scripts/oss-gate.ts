@@ -42,6 +42,9 @@ type Lockfile = {
 const root = process.cwd();
 const requiredIds = [
   'postgresql',
+  'pgbackrest',
+  'wal-g',
+  'barman',
   'postgresql-pg-trgm',
   'pgvector',
   'ajv',

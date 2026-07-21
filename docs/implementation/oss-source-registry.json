@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1.0.0",
-  "reviewedAt": "2026-07-17",
+  "reviewedAt": "2026-07-21",
   "decisionValues": [
     "ADOPT",
     "EXTRACT",
@@ -14,7 +14,7 @@
     {
       "id": "postgresql",
       "name": "PostgreSQL",
-      "stages": [0, 1, 2, 3, 6, 7, 10, 11],
+      "stages": [0, 1, 2, 3, 6, 7, 10, 11, 12],
       "officialSource": "https://github.com/postgres/postgres",
       "pin": {
         "type": "docker-digest",
@@ -26,7 +26,7 @@
         "evidence": "Official PostgreSQL distribution and Docker Official Image"
       },
       "decision": "ADOPT",
-      "scope": "Development database, Stage 2 asset metadata, Stage 3 transformation/evidence persistence, Stage 6 Canonical transaction and Outbox, Stage 7 FTS/pg_trgm projection, Stage 10 Compiled Truth, and Stage 11 Action approval and append-only Audit",
+      "scope": "Development database, Stage 2 asset metadata, Stage 3 transformation/evidence persistence, Stage 6 Canonical transaction and Outbox, Stage 7 FTS/pg_trgm projection, Stage 10 Compiled Truth, Stage 11 Action approval and append-only Audit, and Stage 12.1 pg_dump/pg_restore clean restore",
       "security": "Local credentials only; production secrets remain outside source control",
       "maintenance": "Major version 16 is fixed; patch and image digest updates require a registry change",
       "evidence": [
@@ -34,11 +34,90 @@
         "PostgreSQL 16.14 runtime verified",
         "Stage 6 atomic rollback, restart, row-lock concurrency, append-only, and SKIP LOCKED Outbox tests",
         "Stage 7 FTS, trigram, GIN index, Watermark restart, and atomic rebuild tests",
-        "Stage 11 restart, concurrent execution claim, immutable approval, and append-only Audit tests"
+        "Stage 11 restart, concurrent execution claim, immutable approval, and append-only Audit tests",
+        "Stage 12.1 PostgreSQL custom dump, empty-database restore, authoritative digest, Original Asset, and Projection rebuild drill"
       ],
       "boundary": "Domain modules access PostgreSQL only through repository ports",
       "replacement": "Replace the PostgreSQL adapter without changing module contracts",
       "recheckTrigger": "PostgreSQL major upgrade or managed database migration"
+    },
+    {
+      "id": "pgbackrest",
+      "name": "pgBackRest",
+      "stages": [12],
+      "officialSource": "https://github.com/pgbackrest/pgbackrest",
+      "pin": {
+        "type": "release-baseline",
+        "value": "2.58.0"
+      },
+      "license": {
+        "spdx": "MIT",
+        "status": "VERIFIED",
+        "evidence": "LICENSE and official 2.58.0 release at the upstream repository"
+      },
+      "decision": "DEFER",
+      "scope": "Future PostgreSQL physical backup, differential backup, WAL archive, retention, and remote repository operations",
+      "security": "Not installed; future adoption requires encrypted repository credentials, key rotation, least privilege, and restore isolation",
+      "maintenance": "2.58.0 is the reviewed comparison baseline; no runtime or lockfile dependency is consumed",
+      "evidence": [
+        "Official feature and release documentation reviewed",
+        "Current Stage 12.1 clean logical restore requirements are satisfied by PostgreSQL client utilities"
+      ],
+      "boundary": "Future deployment-only backup adapter; it must not own Canonical, Asset, or Contract semantics",
+      "replacement": "PostgreSQL pg_dump/pg_restore and the Shotgun Backup Manifest remain the current clean-restore baseline",
+      "recheckTrigger": "PITR, continuous WAL archive, differential backup, or managed retention becomes an approved requirement"
+    },
+    {
+      "id": "wal-g",
+      "name": "WAL-G",
+      "stages": [12],
+      "officialSource": "https://github.com/wal-g/wal-g",
+      "pin": {
+        "type": "release-baseline",
+        "value": "3.0.8"
+      },
+      "license": {
+        "spdx": "Apache-2.0",
+        "status": "VERIFIED_WITH_OPTIONAL_COMPONENT",
+        "evidence": "LICENSE at upstream 3.0.8; optional LZO support is GPL-3.0-or-later and is excluded"
+      },
+      "decision": "DEFER",
+      "scope": "Future PostgreSQL WAL shipping, PITR, and cloud object-storage backup operations",
+      "security": "Not installed; future adoption requires object-store credential isolation, encryption, retention, and restore-role review",
+      "maintenance": "3.0.8 is the reviewed comparison baseline; optional LZO code is outside the approved boundary",
+      "evidence": [
+        "Official release, storage, WAL, and license boundaries reviewed",
+        "No current requirement for cloud object storage or continuous WAL shipping"
+      ],
+      "boundary": "Future deployment-only backup adapter behind Shotgun-owned integrity and restore verification",
+      "replacement": "The current logical Backup Bundle remains available for clean restore and portability",
+      "recheckTrigger": "Approved RPO requires PITR or encrypted remote object-storage replication"
+    },
+    {
+      "id": "barman",
+      "name": "Barman",
+      "stages": [12],
+      "officialSource": "https://github.com/EnterpriseDB/barman",
+      "pin": {
+        "type": "release-baseline",
+        "value": "3.19.1"
+      },
+      "license": {
+        "spdx": "GPL-3.0",
+        "status": "VERIFIED",
+        "evidence": "GPL-3.0 LICENSE and official 3.19.1 release at the upstream repository"
+      },
+      "decision": "DEFER",
+      "scope": "Future centralized backup and disaster-recovery management for multiple PostgreSQL servers",
+      "security": "Not installed; future service deployment requires network, SSH, backup-user privilege, credential, and repository review",
+      "maintenance": "3.19.1 is the reviewed comparison baseline; no Barman service is deployed",
+      "evidence": [
+        "Official architecture, release, and license documentation reviewed",
+        "Current single-server clean restore does not justify a separate backup-management service"
+      ],
+      "boundary": "Future external operations service; Shotgun retains Canonical and Backup Manifest ownership",
+      "replacement": "PostgreSQL client utilities remain the minimal single-server restore path",
+      "recheckTrigger": "Multiple PostgreSQL servers, replicas, or centralized disaster-recovery operations are approved"
     },
     {
       "id": "postgresql-pg-trgm",

@@ -78,7 +78,6 @@ type OutputRow = QueryResultRow & {
   readonly finish_reason: string | null;
   readonly usage_json: AIProviderOutput['usage'];
   readonly cost_json: AIProviderOutput['cost'];
-  readonly structured_output_valid: boolean;
   readonly received_at: Date;
 };
 
@@ -151,7 +150,6 @@ const mapOutput = (row: OutputRow): AIProviderOutput => ({
   finishReason: row.finish_reason ?? undefined,
   usage: row.usage_json,
   cost: row.cost_json,
-  structuredOutputValid: row.structured_output_valid,
   receivedAt: row.received_at.toISOString(),
 });
 
@@ -265,7 +263,7 @@ const loadProviderRecord = async (
     `SELECT output_id::text, project_id, call_id::text, attempt_id::text, envelope_version, provider, adapter_version,
       model, schema_name, schema_version, prompt_version, policy_version, data_policy_version, output_text, content_digest,
       request_digest, input_snapshot_digest, provider_response_id, model_version, finish_reason, usage_json, cost_json,
-      structured_output_valid, received_at
+      received_at
      FROM ai.provider_outputs WHERE output_id = (SELECT accepted_output_id FROM ai.provider_calls WHERE call_id = $1)`,
     [row.call_id],
   );
@@ -457,7 +455,7 @@ export class PostgresAIProviderCallRepository implements AIProviderCallRepositor
           output.finishReason ?? null,
           output.usage,
           output.cost,
-          output.structuredOutputValid,
+          false,
           output.receivedAt,
         ],
       );
@@ -489,14 +487,24 @@ export class PostgresAIProviderCallRepository implements AIProviderCallRepositor
           operation: 'accept-provider-output',
         });
       const output = await client.query<OutputRow>(
-        `SELECT output_id::text, project_id, call_id::text, attempt_id::text, envelope_version, provider, adapter_version, model, schema_name, schema_version, prompt_version, policy_version, data_policy_version, output_text, content_digest, request_digest, input_snapshot_digest, provider_response_id, model_version, finish_reason, usage_json, cost_json, structured_output_valid, received_at FROM ai.provider_outputs WHERE output_id = $1 AND call_id = $2`,
+        `SELECT output_id::text, project_id, call_id::text, attempt_id::text, envelope_version, provider, adapter_version, model, schema_name, schema_version, prompt_version, policy_version, data_policy_version, output_text, content_digest, request_digest, input_snapshot_digest, provider_response_id, model_version, finish_reason, usage_json, cost_json, received_at FROM ai.provider_outputs WHERE output_id = $1 AND call_id = $2`,
         [outputId, record.callId],
       );
       const outputRow = output.rows[0];
       if (
         !outputRow ||
+        outputRow.project_id !== projectId ||
         record.requestDigest !== outputRow.request_digest ||
-        record.inputSnapshotDigest !== outputRow.input_snapshot_digest
+        record.inputSnapshotDigest !== outputRow.input_snapshot_digest ||
+        call.callId !== record.callId ||
+        call.provider !== outputRow.provider ||
+        call.adapterVersion !== outputRow.adapter_version ||
+        call.model !== outputRow.model ||
+        call.schemaName !== outputRow.schema_name ||
+        call.promptVersion !== outputRow.prompt_version ||
+        call.policyVersion !== outputRow.policy_version ||
+        call.dataPolicyVersion !== outputRow.data_policy_version ||
+        !call.structuredOutputValid
       )
         throw new ShotgunError({
           code: 'FORMAT_CORRUPT',
@@ -507,18 +515,50 @@ export class PostgresAIProviderCallRepository implements AIProviderCallRepositor
       const completedAttempt = call.attempts.find(
         (attempt) => attempt.attemptId === outputRow.attempt_id,
       );
+      if (!completedAttempt || completedAttempt.status !== 'succeeded') {
+        throw new ShotgunError({
+          code: 'FORMAT_CORRUPT',
+          safeMessage: 'The Provider output Attempt identity is invalid.',
+          module: 'postgres-stage4',
+          operation: 'accept-provider-output',
+        });
+      }
+      if (record.output?.outputId === outputId) {
+        await client.query('COMMIT');
+        return record;
+      }
+      if (record.output) {
+        throw new ShotgunError({
+          code: 'CONFLICT',
+          safeMessage: 'A different Provider output is already accepted.',
+          module: 'postgres-stage4',
+          operation: 'accept-provider-output',
+        });
+      }
       await client.query(
-        `UPDATE ai.provider_attempts SET status = 'succeeded', provider_response_id = $1, latency_ms = $2, finished_at = now() WHERE attempt_id = $3`,
+        `UPDATE ai.provider_attempts SET status = 'succeeded', provider_response_id = $1, latency_ms = $2, finished_at = now() WHERE attempt_id = $3 AND call_id = $4 AND status IN ('running', 'outcome_unknown')`,
         [
           completedAttempt?.providerResponseId ?? null,
           completedAttempt?.latencyMs ?? 0,
           outputRow.attempt_id,
+          record.callId,
         ],
       );
-      await client.query(
-        `UPDATE ai.provider_calls SET accepted_output_id = $1, durable_state = 'OUTPUT_MATERIALIZED', status = 'succeeded', call_json = $2, updated_at = now() WHERE call_id = $3`,
-        [outputId, call, record.callId],
+      const acceptedWrite = await client.query(
+        `UPDATE ai.provider_calls
+         SET accepted_output_id = $1, durable_state = 'OUTPUT_MATERIALIZED', status = 'succeeded', call_json = $2, updated_at = now()
+         WHERE call_id = $3 AND project_id = $4
+           AND (accepted_output_id IS NULL OR accepted_output_id = $1)`,
+        [outputId, call, record.callId, projectId],
       );
+      if (acceptedWrite.rowCount !== 1) {
+        throw new ShotgunError({
+          code: 'CONFLICT',
+          safeMessage: 'A different Provider output is already accepted.',
+          module: 'postgres-stage4',
+          operation: 'accept-provider-output',
+        });
+      }
       const accepted = await loadProviderRecord(client, projectId, requestId);
       await client.query('COMMIT');
       if (!accepted) throw new Error('AI Provider Call disappeared after output acceptance.');
@@ -560,6 +600,48 @@ export class PostgresAIProviderCallRepository implements AIProviderCallRepositor
       await client.query('COMMIT');
       if (!failed) throw new Error('AI Provider Call disappeared after failure.');
       return failed;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async markAttemptOutcomeUnknown(
+    projectId: string,
+    requestId: string,
+    attemptId: string,
+  ): Promise<AIProviderExecutionRecord> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const record = await loadProviderRecord(client, projectId, requestId, true);
+      if (!record)
+        throw new ShotgunError({
+          code: 'NOT_FOUND',
+          safeMessage: 'The AI generation request was not found.',
+          module: 'postgres-stage4',
+          operation: 'mark-provider-outcome-unknown',
+        });
+      if (!record.output && record.state === 'PROVIDER_RUNNING') {
+        await client.query(
+          `UPDATE ai.provider_attempts
+           SET status = 'outcome_unknown', finished_at = now()
+           WHERE attempt_id = $1 AND call_id = $2 AND status = 'running'`,
+          [attemptId, record.callId],
+        );
+        await client.query(
+          `UPDATE ai.provider_calls
+           SET durable_state = 'OUTCOME_UNKNOWN', status = 'failed', updated_at = now()
+           WHERE call_id = $1 AND durable_state = 'PROVIDER_RUNNING' AND accepted_output_id IS NULL`,
+          [record.callId],
+        );
+      }
+      const unknown = await loadProviderRecord(client, projectId, requestId);
+      await client.query('COMMIT');
+      if (!unknown) throw new Error('AI Provider Call disappeared after outcome update.');
+      return unknown;
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;

@@ -54,7 +54,6 @@ export type AIProviderOutput = {
   readonly finishReason?: string;
   readonly usage: AIUsage;
   readonly cost: AICost;
-  readonly structuredOutputValid: boolean;
   readonly receivedAt: string;
 };
 

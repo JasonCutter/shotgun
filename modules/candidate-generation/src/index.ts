@@ -334,7 +334,7 @@ export const createCandidateGenerationModule = (
       },
       deployment: { modes: ['in_process', 'worker'] },
       dataOwnership: {
-        owns: ['candidate.batches', 'candidate.claim_candidates'],
+        owns: ['candidate.batches', 'candidate.claim_candidates', 'candidate.materializations'],
         readsViaPorts: ['Evidence queries', 'GenerateStructured query'],
         directSchemaAccess: false,
       },

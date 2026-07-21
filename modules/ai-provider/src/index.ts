@@ -103,6 +103,11 @@ export type AIProviderCallRepositoryPort = {
     attemptId: string,
     errorCode: ErrorCode,
   ): Promise<AIProviderExecutionRecord>;
+  markAttemptOutcomeUnknown(
+    projectId: string,
+    requestId: string,
+    attemptId: string,
+  ): Promise<AIProviderExecutionRecord>;
   completeMaterialization(projectId: string, requestId: string, outputId: string): Promise<void>;
   failMaterialization(
     projectId: string,
@@ -489,98 +494,21 @@ export const createAIProviderModule = (
             if (!claimed) break;
             record = claimed.record;
             const startedAt = Date.now();
+            let response: StructuredGenerationResponse;
             try {
-              const response = await adapter.generateStructured({
+              response = await adapter.generateStructured({
                 systemInstruction,
                 prompt: promptFor(payload),
                 responseSchema: candidateBatchSchema,
               });
-              const inputTokens = response.inputTokens ?? 0;
-              const outputTokens = response.outputTokens ?? 0;
-              const draft = {
-                outputId: randomUUID(),
-                projectId,
-                callId: record.callId,
-                attemptId: claimed.attempt.attemptId,
-                envelopeVersion: 'ai-provider-output-v1' as const,
-                provider: adapter.identity.provider,
-                adapterVersion: adapter.identity.adapterVersion,
-                model: adapter.identity.model,
-                schemaName: payload.schemaName,
-                schemaVersion: '1.0.0' as const,
-                promptVersion: 'direct-claim-v1' as const,
-                policyVersion: payload.policyVersion,
-                dataPolicyVersion: adapter.identity.dataPolicyVersion,
-                rawText: response.rawText,
-                requestDigest: durableRequestDigest,
-                inputSnapshotDigest,
-                providerResponseId: response.providerResponseId,
-                modelVersion: response.modelVersion ?? adapter.identity.model,
-                usage: {
-                  inputTokens,
-                  outputTokens,
-                  totalTokens: response.totalTokens ?? inputTokens + outputTokens,
-                },
-                cost: { currency: 'USD' as const, status: 'unavailable' as const },
-                structuredOutputValid: false,
-                receivedAt: new Date().toISOString(),
-              };
-              const stored = await repository.storeOutput(projectId, payload.requestId, {
-                ...draft,
-                contentDigest: outputDigest(draft),
-              });
-              const parsed = JSON.parse(stored.output!.rawText) as CandidateBatch;
-              assertJsonSchema(candidateBatchSchema, parsed, 'AI structured output');
-              const succeeded = record.attempts.map((attempt) =>
-                attempt.attemptId === claimed.attempt.attemptId
-                  ? {
-                      ...attempt,
-                      status: 'succeeded' as const,
-                      providerResponseId: response.providerResponseId,
-                      latencyMs: Date.now() - startedAt,
-                    }
-                  : attempt,
-              );
-              const call: AIProviderCall = {
-                callId: record.callId,
-                requestId: payload.requestId,
-                taskProfile: payload.taskProfile,
-                schemaName: payload.schemaName,
-                provider: adapter.identity.provider,
-                adapterVersion: adapter.identity.adapterVersion,
-                model: adapter.identity.model,
-                modelVersion: draft.modelVersion,
-                promptVersion: 'direct-claim-v1',
-                policyVersion: payload.policyVersion,
-                dataPolicyVersion: adapter.identity.dataPolicyVersion,
-                dataClassification: payload.dataClassification,
-                inputEvidenceIds: record.inputEvidenceIds,
-                usage: draft.usage,
-                cost: draft.cost,
-                attempts: succeeded,
-                structuredOutputValid: true,
-                createdAt: record.createdAt,
-              };
-              const accepted = await repository.acceptOutput(
-                projectId,
-                payload.requestId,
-                stored.output!.outputId,
-                call,
-              );
-              const acceptedParsed = parseStoredOutput(accepted);
-              return {
-                call: accepted.call!,
-                candidates: acceptedParsed.candidates,
-                output: outputReference(accepted.output!),
-              };
             } catch (error) {
               lastError = toShotgunError(error, {
-                code: 'VALIDATION_ERROR',
-                safeMessage: 'AI structured output could not be validated.',
+                code: 'TERMINAL_FAILURE',
+                safeMessage: 'The AI provider call failed.',
                 module: 'stage4.ai-provider',
-                operation: 'generate-structured',
+                operation: 'invoke-provider',
                 correlationId: envelope.correlationId,
-                retryable: true,
+                retryable: false,
               });
               record = await repository.failAttempt(
                 projectId,
@@ -589,7 +517,154 @@ export const createAIProviderModule = (
                 errorCode(lastError),
               );
               if (!isRetryable(lastError)) break;
+              continue;
             }
+
+            const inputTokens = response.inputTokens ?? 0;
+            const outputTokens = response.outputTokens ?? 0;
+            const draft = {
+              outputId: randomUUID(),
+              projectId,
+              callId: record.callId,
+              attemptId: claimed.attempt.attemptId,
+              envelopeVersion: 'ai-provider-output-v1' as const,
+              provider: adapter.identity.provider,
+              adapterVersion: adapter.identity.adapterVersion,
+              model: adapter.identity.model,
+              schemaName: payload.schemaName,
+              schemaVersion: '1.0.0' as const,
+              promptVersion: 'direct-claim-v1' as const,
+              policyVersion: payload.policyVersion,
+              dataPolicyVersion: adapter.identity.dataPolicyVersion,
+              rawText: response.rawText,
+              requestDigest: durableRequestDigest,
+              inputSnapshotDigest,
+              providerResponseId: response.providerResponseId,
+              modelVersion: response.modelVersion ?? adapter.identity.model,
+              usage: {
+                inputTokens,
+                outputTokens,
+                totalTokens: response.totalTokens ?? inputTokens + outputTokens,
+              },
+              cost: { currency: 'USD' as const, status: 'unavailable' as const },
+              receivedAt: new Date().toISOString(),
+            };
+
+            let stored: AIProviderExecutionRecord;
+            try {
+              stored = await repository.storeOutput(projectId, payload.requestId, {
+                ...draft,
+                contentDigest: outputDigest(draft),
+              });
+            } catch (error) {
+              try {
+                await repository.markAttemptOutcomeUnknown(
+                  projectId,
+                  payload.requestId,
+                  claimed.attempt.attemptId,
+                );
+              } catch {
+                // The durable running claim still blocks an automatic Provider recall.
+              }
+              throw new ShotgunError({
+                code: 'OUTCOME_UNKNOWN',
+                safeMessage:
+                  'The Provider response was received but could not be durably persisted.',
+                module: 'stage4.ai-provider',
+                operation: 'persist-provider-output',
+                correlationId: envelope.correlationId,
+                retryable: false,
+                cause: error,
+              });
+            }
+
+            let parsed: CandidateBatch;
+            try {
+              parsed = JSON.parse(stored.output!.rawText) as CandidateBatch;
+              assertJsonSchema(candidateBatchSchema, parsed, 'AI structured output');
+            } catch (error) {
+              lastError = new ShotgunError({
+                code: 'VALIDATION_ERROR',
+                safeMessage: 'AI structured output could not be validated.',
+                module: 'stage4.ai-provider',
+                operation: 'validate-structured-output',
+                correlationId: envelope.correlationId,
+                retryable: true,
+                cause: error,
+              });
+              record = await repository.failAttempt(
+                projectId,
+                payload.requestId,
+                claimed.attempt.attemptId,
+                lastError.code,
+              );
+              continue;
+            }
+
+            const succeeded = record.attempts.map((attempt) =>
+              attempt.attemptId === claimed.attempt.attemptId
+                ? {
+                    ...attempt,
+                    status: 'succeeded' as const,
+                    providerResponseId: response.providerResponseId,
+                    latencyMs: Date.now() - startedAt,
+                  }
+                : attempt,
+            );
+            const call: AIProviderCall = {
+              callId: record.callId,
+              requestId: payload.requestId,
+              taskProfile: payload.taskProfile,
+              schemaName: payload.schemaName,
+              provider: adapter.identity.provider,
+              adapterVersion: adapter.identity.adapterVersion,
+              model: adapter.identity.model,
+              modelVersion: draft.modelVersion,
+              promptVersion: 'direct-claim-v1',
+              policyVersion: payload.policyVersion,
+              dataPolicyVersion: adapter.identity.dataPolicyVersion,
+              dataClassification: payload.dataClassification,
+              inputEvidenceIds: record.inputEvidenceIds,
+              usage: draft.usage,
+              cost: draft.cost,
+              attempts: succeeded,
+              structuredOutputValid: true,
+              createdAt: record.createdAt,
+            };
+
+            let accepted: AIProviderExecutionRecord;
+            try {
+              accepted = await repository.acceptOutput(
+                projectId,
+                payload.requestId,
+                stored.output!.outputId,
+                call,
+              );
+            } catch (error) {
+              try {
+                await repository.markAttemptOutcomeUnknown(
+                  projectId,
+                  payload.requestId,
+                  claimed.attempt.attemptId,
+                );
+              } catch {
+                // A stored Output or existing accepted pointer remains the recovery authority.
+              }
+              throw toShotgunError(error, {
+                code: 'OUTCOME_UNKNOWN',
+                safeMessage: 'The stored Provider output could not be accepted.',
+                module: 'stage4.ai-provider',
+                operation: 'accept-provider-output',
+                correlationId: envelope.correlationId,
+                retryable: false,
+              });
+            }
+            const acceptedParsed = parseStoredOutput(accepted);
+            return {
+              call: accepted.call!,
+              candidates: acceptedParsed.candidates,
+              output: outputReference(accepted.output!),
+            };
           }
           throw (
             lastError ??

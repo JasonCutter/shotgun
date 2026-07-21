@@ -127,7 +127,6 @@
         "modelVersion",
         "usage",
         "cost",
-        "structuredOutputValid",
         "receivedAt"
       ],
       "properties": {
@@ -154,7 +153,6 @@
         "finishReason": { "type": "string", "minLength": 1 },
         "usage": { "$ref": "#/definitions/call/properties/usage" },
         "cost": { "$ref": "#/definitions/call/properties/cost" },
-        "structuredOutputValid": { "type": "boolean" },
         "receivedAt": { "type": "string", "minLength": 1 }
       }
     }

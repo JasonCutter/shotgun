@@ -109,10 +109,31 @@ export class InMemoryAIProviderCallRepository implements AIProviderCallRepositor
     const key = `${projectId}:${requestId}`;
     const record = this.records.get(key);
     const output = [...this.outputs.values()].find((item) => item.outputId === outputId);
-    if (!record || !output || output.callId !== record.callId) {
+    if (
+      !record ||
+      !output ||
+      output.projectId !== projectId ||
+      output.callId !== record.callId ||
+      output.requestDigest !== record.requestDigest ||
+      output.inputSnapshotDigest !== record.inputSnapshotDigest ||
+      call.callId !== record.callId ||
+      !call.structuredOutputValid ||
+      !call.attempts.some(
+        (attempt) => attempt.attemptId === output.attemptId && attempt.status === 'succeeded',
+      )
+    ) {
       throw new ShotgunError({
         code: 'FORMAT_CORRUPT',
         safeMessage: 'The accepted provider output is not available.',
+        module: 'stage4-in-memory',
+        operation: 'accept-provider-output',
+      });
+    }
+    if (record.output?.outputId === outputId) return record;
+    if (record.output) {
+      throw new ShotgunError({
+        code: 'CONFLICT',
+        safeMessage: 'A different Provider output is already accepted.',
         module: 'stage4-in-memory',
         operation: 'accept-provider-output',
       });
@@ -156,6 +177,35 @@ export class InMemoryAIProviderCallRepository implements AIProviderCallRepositor
     };
     this.records.set(key, failed);
     return failed;
+  }
+
+  async markAttemptOutcomeUnknown(
+    projectId: string,
+    requestId: string,
+    attemptId: string,
+  ): Promise<AIProviderExecutionRecord> {
+    const key = `${projectId}:${requestId}`;
+    const record = this.records.get(key);
+    if (!record)
+      throw new ShotgunError({
+        code: 'NOT_FOUND',
+        safeMessage: 'The AI generation request was not found.',
+        module: 'stage4-in-memory',
+        operation: 'mark-provider-outcome-unknown',
+      });
+    if (record.output || record.state !== 'PROVIDER_RUNNING') return record;
+    const unknown = {
+      ...record,
+      state: 'OUTCOME_UNKNOWN' as const,
+      status: 'failed' as const,
+      attempts: record.attempts.map((attempt) =>
+        attempt.attemptId === attemptId && attempt.status === 'running'
+          ? { ...attempt, status: 'outcome_unknown' as const }
+          : attempt,
+      ),
+    };
+    this.records.set(key, unknown);
+    return unknown;
   }
 
   async completeMaterialization(

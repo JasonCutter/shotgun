@@ -279,6 +279,44 @@ type ApplicationOptions = {
   readonly closeResources?: () => Promise<void>;
 };
 
+type AIDurableRecoveryConnector = {
+  sendCommand(command: ReturnType<typeof createCommand>): Promise<unknown>;
+};
+
+export const runAIDurableMaterializationRecovery = async (
+  aiProviderRepository: AIProviderCallRepositoryPort,
+  connector: AIDurableRecoveryConnector,
+): Promise<{ readonly attempted: number; readonly resumed: number; readonly failed: number }> => {
+  await aiProviderRepository.markExpiredRunningAttemptsOutcomeUnknown();
+  const records = await aiProviderRepository.listRecoverableMaterializations();
+  let resumed = 0;
+  for (const record of records) {
+    try {
+      await connector.sendCommand(
+        createCommand({
+          messageType: 'ResumeCandidateMaterialization',
+          schemaVersion: '1.0.0',
+          producerModule: 'shotgun-app',
+          producerVersion: '1.0.0',
+          idempotencyKey: `resume-candidate-materialization:${record.projectId}:${record.requestId}:${record.output?.outputId}`,
+          projectId: record.projectId,
+          actor: { type: 'service', id: 'stage12-1-durable-materialization-recovery' },
+          security: {
+            accessScope: record.accessScope,
+            sensitivity: record.sensitivity,
+            dataClassification: record.dataClassification,
+          },
+          payload: { sourceVersionId: record.sourceVersionId, requestId: record.requestId },
+        }),
+      );
+      resumed += 1;
+    } catch {
+      // Recovery is fail-closed per item; no Provider call is made by Resume.
+    }
+  }
+  return { attempted: records.length, resumed, failed: records.length - resumed };
+};
+
 const trustedRequestContexts = new WeakMap<object, TrustedSecurityContext>();
 
 const askPage = (): string => `<!doctype html>
@@ -811,30 +849,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     actionExecution,
   );
   await kernel.start();
-  await aiProviderRepository.markExpiredRunningAttemptsOutcomeUnknown();
-  for (const record of await aiProviderRepository.listRecoverableMaterializations()) {
-    try {
-      await kernel.connector.sendCommand(
-        createCommand({
-          messageType: 'ResumeCandidateMaterialization',
-          schemaVersion: '1.0.0',
-          producerModule: 'shotgun-app',
-          producerVersion: '1.0.0',
-          idempotencyKey: `resume-candidate-materialization:${record.projectId}:${record.requestId}:${record.output?.outputId}`,
-          projectId: record.projectId,
-          actor: { type: 'service', id: 'stage12-1-durable-materialization-recovery' },
-          security: {
-            accessScope: record.accessScope,
-            sensitivity: record.sensitivity,
-            dataClassification: record.dataClassification,
-          },
-          payload: { sourceVersionId: record.sourceVersionId, requestId: record.requestId },
-        }),
-      );
-    } catch {
-      // Recovery is fail-closed: the durable request stays materializable and no provider call is retried.
-    }
-  }
+  await runAIDurableMaterializationRecovery(aiProviderRepository, kernel.connector);
 
   const server = Fastify({ logger: false });
 

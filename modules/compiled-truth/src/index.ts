@@ -487,18 +487,20 @@ export const createCompiledTruthModule = (
         messageType: 'GetCompiledTruth',
         version: '1.0.0',
         requiredAccessScopes: ['owner'],
-        async handle(envelope) {
+        async handle(envelope, context) {
           const { projectId, accessScope } = assertContext(envelope);
-          const projection = await repository.findProjection(projectId);
-          if (!projection) {
+          const source = await sourceSnapshot(context);
+          const status = await statusFor(repository, projectId, source.canonical, source.digest);
+          if (status.status !== 'READY') {
             throw new ShotgunError({
               code: 'NOT_FOUND',
-              safeMessage: 'Compiled Truth has not been built.',
+              safeMessage: 'Compiled Truth is not ready.',
               module: 'stage10.compiled-truth',
               operation: 'get-compiled-truth',
             });
           }
-          return visibleProjection(projection, accessScope);
+          const projection = await repository.findProjection(projectId);
+          return visibleProjection(projection!, accessScope);
         },
       },
       {

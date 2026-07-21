@@ -16,10 +16,55 @@ export type AICost = {
 export type AIProviderAttempt = {
   readonly attemptId: string;
   readonly attemptNumber: number;
-  readonly status: 'succeeded' | 'failed';
+  readonly status: 'running' | 'succeeded' | 'failed' | 'outcome_unknown';
   readonly errorCode?: ErrorCode;
   readonly providerResponseId?: string;
   readonly latencyMs: number;
+};
+
+export type AIDurableState =
+  | 'REQUESTED'
+  | 'PROVIDER_RUNNING'
+  | 'OUTPUT_MATERIALIZED'
+  | 'PROVIDER_FAILED'
+  | 'OUTCOME_UNKNOWN'
+  | 'MATERIALIZATION_FAILED'
+  | 'COMPLETED';
+
+export type AIProviderOutput = {
+  readonly outputId: string;
+  readonly projectId: string;
+  readonly callId: string;
+  readonly attemptId: string;
+  readonly envelopeVersion: 'ai-provider-output-v1';
+  readonly provider: string;
+  readonly adapterVersion: string;
+  readonly model: string;
+  readonly schemaName: 'ClaimCandidateBatch.v1';
+  readonly schemaVersion: '1.0.0';
+  readonly promptVersion: 'direct-claim-v1';
+  readonly policyVersion: 'direct-only-v1';
+  readonly dataPolicyVersion: 'gemini-stateless-no-sharing-v1' | 'fake-local-v1';
+  readonly rawText: string;
+  readonly contentDigest: string;
+  readonly requestDigest: string;
+  readonly inputSnapshotDigest: string;
+  readonly providerResponseId?: string;
+  readonly modelVersion: string;
+  readonly finishReason?: string;
+  readonly usage: AIUsage;
+  readonly cost: AICost;
+  readonly structuredOutputValid: boolean;
+  readonly receivedAt: string;
+};
+
+export type AIProviderOutputReference = Omit<AIProviderOutput, 'rawText'>;
+
+export type CandidateMaterializationRef = {
+  readonly outputId: string;
+  readonly outputDigest: string;
+  readonly inputSnapshotDigest: string;
+  readonly materializerVersion: 'stage12-1-v1';
 };
 
 export type AIProviderCall = {

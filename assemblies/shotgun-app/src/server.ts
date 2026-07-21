@@ -811,6 +811,30 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     actionExecution,
   );
   await kernel.start();
+  await aiProviderRepository.markExpiredRunningAttemptsOutcomeUnknown();
+  for (const record of await aiProviderRepository.listRecoverableMaterializations()) {
+    try {
+      await kernel.connector.sendCommand(
+        createCommand({
+          messageType: 'ResumeCandidateMaterialization',
+          schemaVersion: '1.0.0',
+          producerModule: 'shotgun-app',
+          producerVersion: '1.0.0',
+          idempotencyKey: `resume-candidate-materialization:${record.projectId}:${record.requestId}:${record.output?.outputId}`,
+          projectId: record.projectId,
+          actor: { type: 'service', id: 'stage12-1-durable-materialization-recovery' },
+          security: {
+            accessScope: record.accessScope,
+            sensitivity: record.sensitivity,
+            dataClassification: record.dataClassification,
+          },
+          payload: { sourceVersionId: record.sourceVersionId, requestId: record.requestId },
+        }),
+      );
+    } catch {
+      // Recovery is fail-closed: the durable request stays materializable and no provider call is retried.
+    }
+  }
 
   const server = Fastify({ logger: false });
 

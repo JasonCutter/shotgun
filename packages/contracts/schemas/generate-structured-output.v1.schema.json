@@ -2,9 +2,10 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "additionalProperties": false,
-  "required": ["call", "candidates"],
+  "required": ["call", "candidates", "output"],
   "properties": {
     "call": { "$ref": "#/definitions/call" },
+    "output": { "$ref": "#/definitions/output" },
     "candidates": {
       "type": "array",
       "items": {
@@ -92,7 +93,7 @@
             "properties": {
               "attemptId": { "type": "string", "minLength": 1 },
               "attemptNumber": { "type": "integer", "minimum": 1 },
-              "status": { "enum": ["succeeded", "failed"] },
+              "status": { "enum": ["running", "succeeded", "failed", "outcome_unknown"] },
               "errorCode": { "type": "string", "minLength": 1 },
               "providerResponseId": { "type": "string", "minLength": 1 },
               "latencyMs": { "type": "integer", "minimum": 0 }
@@ -101,6 +102,60 @@
         },
         "structuredOutputValid": { "const": true },
         "createdAt": { "type": "string", "minLength": 1 }
+      }
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "outputId",
+        "projectId",
+        "callId",
+        "attemptId",
+        "envelopeVersion",
+        "provider",
+        "adapterVersion",
+        "model",
+        "schemaName",
+        "schemaVersion",
+        "promptVersion",
+        "policyVersion",
+        "dataPolicyVersion",
+        "contentDigest",
+        "requestDigest",
+        "inputSnapshotDigest",
+        "modelVersion",
+        "usage",
+        "cost",
+        "structuredOutputValid",
+        "receivedAt"
+      ],
+      "properties": {
+        "outputId": { "type": "string", "minLength": 1 },
+        "projectId": { "type": "string", "minLength": 1 },
+        "callId": { "type": "string", "minLength": 1 },
+        "attemptId": { "type": "string", "minLength": 1 },
+        "envelopeVersion": { "const": "ai-provider-output-v1" },
+        "provider": { "type": "string", "minLength": 1 },
+        "adapterVersion": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 },
+        "schemaName": { "const": "ClaimCandidateBatch.v1" },
+        "schemaVersion": { "const": "1.0.0" },
+        "promptVersion": { "const": "direct-claim-v1" },
+        "policyVersion": { "const": "direct-only-v1" },
+        "dataPolicyVersion": {
+          "enum": ["gemini-stateless-no-sharing-v1", "fake-local-v1"]
+        },
+        "contentDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "requestDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "inputSnapshotDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "providerResponseId": { "type": "string", "minLength": 1 },
+        "modelVersion": { "type": "string", "minLength": 1 },
+        "finishReason": { "type": "string", "minLength": 1 },
+        "usage": { "$ref": "#/definitions/call/properties/usage" },
+        "cost": { "$ref": "#/definitions/call/properties/cost" },
+        "structuredOutputValid": { "type": "boolean" },
+        "receivedAt": { "type": "string", "minLength": 1 }
       }
     }
   }

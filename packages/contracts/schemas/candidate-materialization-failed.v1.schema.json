@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["requestId", "outputId", "errorCode"],
+  "properties": {
+    "requestId": { "type": "string", "minLength": 1 },
+    "outputId": { "type": "string", "minLength": 1 },
+    "errorCode": { "type": "string", "minLength": 1 }
+  }
+}

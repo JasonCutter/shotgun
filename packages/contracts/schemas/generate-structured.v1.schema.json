@@ -8,6 +8,9 @@
     "schemaName",
     "policyVersion",
     "dataClassification",
+    "sourceVersionId",
+    "accessScope",
+    "sensitivity",
     "evidence"
   ],
   "properties": {
@@ -16,16 +19,25 @@
     "schemaName": { "const": "ClaimCandidateBatch.v1" },
     "policyVersion": { "const": "direct-only-v1" },
     "dataClassification": { "type": "string", "minLength": 1 },
+    "sourceVersionId": { "type": "string", "minLength": 1 },
+    "accessScope": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "sensitivity": { "enum": ["public", "internal", "private", "restricted"] },
     "evidence": {
       "type": "array",
       "minItems": 1,
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["evidenceId", "text"],
+        "required": ["evidenceId", "text", "exactHash", "revisionId"],
         "properties": {
           "evidenceId": { "type": "string", "minLength": 1 },
-          "text": { "type": "string", "minLength": 1 }
+          "text": { "type": "string", "minLength": 1 },
+          "exactHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+          "revisionId": { "type": "string", "minLength": 1 }
         }
       }
     }

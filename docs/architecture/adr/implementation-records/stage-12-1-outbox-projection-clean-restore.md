@@ -3,7 +3,7 @@
 - Date: 2026-07-21
 - Decision: [ADR-097](../ADR-097-stage-12-1-outbox-projection-clean-restore.md)
 - Feature branch: `codex/stage12-1-outbox-projection-restore`
-- Section status: **COMPLETE — MAIN MERGE PENDING**
+- Section status: **IMPLEMENTED — CORRECTION IN PROGRESS / MAIN MERGE PENDING**
 - Stage 12.1 status: **IN_PROGRESS**
 
 ## Implemented Scope
@@ -43,6 +43,16 @@
 - PostgreSQL Database `62 passed` in 14 files, DB bootstrap verification PASS
 - Architecture boundary와 Stage 12 standalone package build·pack·install PASS
 - Clean restore drill PASS, 5.7초 측정값은 로컬 격리 fixture 기준이며 Production RTO로 사용하지 않는다.
+
+## Review and Approval Status
+
+- Remote CI quality: PASS
+- Local isolated clean restore drill: PASS (local evidence only; it is not a CI workflow step)
+- Independent architecture review: HOLD
+- Main merge: NOT PERFORMED
+- Section approval: NOT GRANTED
+
+The implementation and earlier drill evidence remain recorded below. They do not constitute completion approval for any Durability section or Gate.
 
 ## Migration and Rollback
 

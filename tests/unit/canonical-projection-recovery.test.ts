@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import { InMemoryCanonicalKnowledgeRepository } from '../../adapters/stage6-in-memory/src/index.js';
 import {
+  createApplication,
+  InMemoryCanonicalProjectionRecoveryReporter,
   type CanonicalProjectionRecoveryConnector,
   runCanonicalProjectionRecovery,
+  runCanonicalProjectionRecoveryWithReport,
   startCanonicalProjectionRecoveryWorker,
 } from '../../assemblies/shotgun-app/src/server.js';
 import type {
@@ -132,7 +135,16 @@ describe('Canonical Projection recovery coordinator', () => {
         return { result: { payload: {} as TResult } };
       },
     };
-    const worker = startCanonicalProjectionRecoveryWorker(repository, connector, 60_000);
+    let releaseReport!: () => void;
+    const reportBlocked = new Promise<void>((resolve) => {
+      releaseReport = resolve;
+    });
+    const reporter = {
+      async report() {
+        await reportBlocked;
+      },
+    };
+    const worker = startCanonicalProjectionRecoveryWorker(repository, connector, 60_000, reporter);
 
     const first = worker.tick();
     const overlapping = worker.tick();
@@ -144,10 +156,139 @@ describe('Canonical Projection recovery coordinator', () => {
     await Promise.resolve();
     expect(stopped).toBe(false);
     release();
+    await Promise.resolve();
+    expect(stopped).toBe(false);
+    releaseReport();
     await Promise.all([first, overlapping, stop]);
     expect(stopped).toBe(true);
     await worker.tick();
     expect(calls).toBe(1);
+  });
+
+  it('reports a safe startup result while preserving per-project failure isolation', async () => {
+    const repository = new InMemoryCanonicalKnowledgeRepository();
+    repository.listProjectIds = async () => ['project-a', 'project-b'];
+    const reporter = new InMemoryCanonicalProjectionRecoveryReporter();
+    const connector: CanonicalProjectionRecoveryConnector = {
+      async sendCommand<TResult>(command: ReturnType<typeof createCommand>) {
+        if (command.projectId === 'project-b') {
+          throw new Error('postgres://private-host/canonical payload must not be reported');
+        }
+        return { result: { published: 0 } as TResult };
+      },
+      async query<TResult>(query: ReturnType<typeof createQuery>) {
+        const payload =
+          query.messageType === 'GetProjectionReadiness' ? readySearch() : readyCompiled();
+        return { result: { payload: payload as TResult } };
+      },
+    };
+
+    const report = await runCanonicalProjectionRecoveryWithReport(
+      repository,
+      connector,
+      'STARTUP',
+      reporter,
+    );
+
+    expect(report).toMatchObject({
+      trigger: 'STARTUP',
+      runStatus: 'COMPLETED',
+      result: {
+        ready: 1,
+        failed: 1,
+        projects: [
+          { projectId: 'project-a', status: 'READY' },
+          { projectId: 'project-b', status: 'FAILED', failureCode: 'RECOVERY_FAILED' },
+        ],
+      },
+    });
+    expect(JSON.stringify(report)).not.toContain('postgres://');
+    expect(reporter.latest()).toEqual(report);
+  });
+
+  it('keeps application startup available while recording the latest safe startup report', async () => {
+    const repository = new InMemoryCanonicalKnowledgeRepository();
+    repository.listProjectIds = async () => ['project-a', 'project-b'];
+    const claimOutbox = repository.claimOutbox.bind(repository);
+    repository.claimOutbox = async (...args) => {
+      if (args[0] === 'project-b') {
+        throw new Error('DATABASE_URL=postgres://private-host/canonical payload');
+      }
+      return claimOutbox(...args);
+    };
+    const reporter = new InMemoryCanonicalProjectionRecoveryReporter();
+
+    const app = await createApplication({
+      canonicalKnowledgeRepository: repository,
+      canonicalProjectionRecoveryReporter: reporter,
+      canonicalProjectionRecoveryIntervalMs: false,
+    });
+
+    expect(app.state.canonicalProjectionRecovery.latest()).toMatchObject({
+      trigger: 'STARTUP',
+      runStatus: 'COMPLETED',
+      result: {
+        ready: 1,
+        failed: 1,
+        projects: [
+          { projectId: 'project-a', status: 'READY' },
+          { projectId: 'project-b', status: 'FAILED', failureCode: 'RECOVERY_FAILED' },
+        ],
+      },
+    });
+    expect(JSON.stringify(reporter.latest())).not.toContain('postgres://');
+    await app.server.close();
+  });
+
+  it('reports periodic retry success and top-level failure without stopping the worker', async () => {
+    const repository = new InMemoryCanonicalKnowledgeRepository();
+    let listFails = true;
+    let projectBFails = true;
+    repository.listProjectIds = async () => {
+      if (listFails) throw new Error('DATABASE_URL=postgres://secret');
+      return ['project-a', 'project-b'];
+    };
+    const reporter = new InMemoryCanonicalProjectionRecoveryReporter();
+    const connector: CanonicalProjectionRecoveryConnector = {
+      async sendCommand<TResult>(command: ReturnType<typeof createCommand>) {
+        if (command.projectId === 'project-b' && projectBFails) {
+          throw new Error('project b unavailable');
+        }
+        return { result: { published: 0 } as TResult };
+      },
+      async query<TResult>(query: ReturnType<typeof createQuery>) {
+        const payload =
+          query.messageType === 'GetProjectionReadiness' ? readySearch() : readyCompiled();
+        return { result: { payload: payload as TResult } };
+      },
+    };
+    const worker = startCanonicalProjectionRecoveryWorker(repository, connector, 60_000, reporter);
+
+    await worker.tick();
+    expect(reporter.latest()).toEqual(
+      expect.objectContaining({
+        trigger: 'PERIODIC',
+        runStatus: 'FAILED',
+        safeError: 'CANONICAL_PROJECTION_RECOVERY_FAILED',
+      }),
+    );
+    expect(JSON.stringify(reporter.latest())).not.toContain('postgres://');
+
+    listFails = false;
+    await worker.tick();
+    expect(reporter.latest()).toMatchObject({
+      runStatus: 'COMPLETED',
+      result: { ready: 1, failed: 1 },
+    });
+
+    projectBFails = false;
+    await worker.tick();
+    expect(reporter.latest()).toMatchObject({
+      runStatus: 'COMPLETED',
+      result: { ready: 2, failed: 0 },
+    });
+    expect(reporter.reports()).toHaveLength(3);
+    await worker.stop();
   });
 
   it('rejects invalid recovery bounds before starting work', async () => {

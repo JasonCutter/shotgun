@@ -212,17 +212,21 @@ const validateManifest = (
   }
 };
 
-const dispatchOutbox = async (
+export const dispatchCanonicalOutbox = async (
   repository: CanonicalKnowledgeRepositoryPort,
-  context: HandlerContext,
+  context: Pick<HandlerContext, 'publish'>,
   projectId: string,
   limit: number,
   now: string,
 ): Promise<number> => {
   const staleBefore = new Date(Date.parse(now) - 5 * 60 * 1000).toISOString();
-  const records = await repository.claimOutbox(projectId, limit, now, staleBefore);
+  const records = [...(await repository.claimOutbox(projectId, limit, now, staleBefore))].sort(
+    (left, right) =>
+      left.availableAt.localeCompare(right.availableAt) ||
+      left.outboxId.localeCompare(right.outboxId),
+  );
   let published = 0;
-  for (const record of records) {
+  for (const [index, record] of records.entries()) {
     try {
       await context.publish({
         messageType: 'CanonicalCommitted',
@@ -233,11 +237,21 @@ const dispatchOutbox = async (
       await repository.markOutboxPublished(projectId, record.outboxId, record.attempts, now);
       published += 1;
     } catch (error) {
-      await repository.releaseOutbox(
-        projectId,
-        record.outboxId,
-        record.attempts,
-        error instanceof Error ? error.message : 'Outbox publication failed.',
+      await Promise.all(
+        records
+          .slice(index)
+          .map((claimed) =>
+            repository.releaseOutbox(
+              projectId,
+              claimed.outboxId,
+              claimed.attempts,
+              claimed.outboxId === record.outboxId
+                ? error instanceof Error
+                  ? error.message
+                  : 'Outbox publication failed.'
+                : 'Outbox batch interrupted after an earlier publication failure.',
+            ),
+          ),
       );
       throw error;
     }
@@ -382,7 +396,7 @@ export const createCanonicalKnowledgeModule = (
           const { projectId } = assertContext(envelope);
           const payload = envelope.payload as { readonly limit: number };
           return {
-            published: await dispatchOutbox(
+            published: await dispatchCanonicalOutbox(
               repository,
               context,
               projectId,
@@ -421,7 +435,7 @@ export const createCanonicalKnowledgeModule = (
             actor,
             committedAt: now,
           });
-          await dispatchOutbox(repository, context, projectId, 100, now);
+          await dispatchCanonicalOutbox(repository, context, projectId, 100, now);
         },
       },
     ],

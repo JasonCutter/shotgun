@@ -700,9 +700,9 @@ Stage 12.1 전체와 Durability Gate 전체 상태는 `IN_PROGRESS`이며, **AI 
 - Stage 12.1 전체를 `COMPLETE`, `production-ready`, `release-ready`로 표시하지 않는다.
 - Stage 13은 이 Section 완료로 자동 개시되지 않는다.
 
-## Stage 12.1 Durability Section 2 완료 기록 — 2026-07-21
+## Stage 12.1 Durability Recovery Review Status — 2026-07-21
 
-Stage 12.1 전체 상태는 `IN_PROGRESS`지만, AI Durable Materialization에 이어 Canonical Outbox·Projection Recovery와 Backup·Restore가 완료되어 **Durability Gate는 `COMPLETE`**다. `main` 반영은 대기 중이다.
+구현 후보와 검증 증거는 Draft PR #14에 존재하며 독립 검토에서 교정 항목이 확인되었다. 현재 Canonical Outbox Recovery는 `IMPLEMENTED / REVIEW HOLD`이고, Projection Recovery와 Backup·Restore는 `IMPLEMENTED CANDIDATE / NOT YET APPROVED`다. Durability Gate와 Stage 12.1은 `IN_PROGRESS`이며 `main` 반영은 수행하지 않았다.
 
 - Canonical Project를 탐색해 startup과 비중첩 periodic Worker에서 pending·stale processing Outbox를 bounded batch로 drain한다.
 - Search와 Compiled Truth readiness를 Outbox publish 상태와 독립 확인하고 누락·stale·degraded Projection을 Canonical에서 Full Rebuild한다.

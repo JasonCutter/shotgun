@@ -7,6 +7,7 @@ import { PostgresCanonicalKnowledgeRepository } from '../../adapters/postgres-st
 import { PostgresSearchProjectionRepository } from '../../adapters/postgres-stage7/src/index.js';
 import { PostgresKnowledgeModelRepository } from '../../adapters/postgres-stage9/src/index.js';
 import { PostgresCompiledTruthRepository } from '../../adapters/postgres-stage10/src/index.js';
+import { dispatchCanonicalOutbox } from '../../modules/canonical-knowledge/src/index.js';
 import {
   createApplication,
   runCanonicalProjectionRecovery,
@@ -161,7 +162,28 @@ const seedCanonicalProject = async (
     await pool!.query('ROLLBACK');
     throw error;
   }
-  return { projectId, snapshotDigest, claimId, outboxId };
+  return { projectId, snapshotDigest, claimId, outboxId, commitId };
+};
+
+const seedOutboxBatch = async (projectId: string, aggregateId: string) => {
+  const outboxIds = ['outbox:batch:01', 'outbox:batch:02', 'outbox:batch:03'];
+  for (const [index, outboxId] of outboxIds.entries()) {
+    const availableAt = `2026-07-21T00:00:0${index}.000Z`;
+    await pool!.query(
+      `INSERT INTO canonical.outbox (
+         outbox_id, project_id, aggregate_id, event_type, payload_json, status,
+         attempts, available_at, claimed_at, published_at
+       ) VALUES ($1, $2, $3, 'CanonicalCommitted', $4::jsonb, 'pending', 0, $5, NULL, NULL)`,
+      [
+        outboxId,
+        projectId,
+        aggregateId,
+        JSON.stringify({ commitId: `commit:batch:${index + 1}` }),
+        availableAt,
+      ],
+    );
+  }
+  return outboxIds;
 };
 
 describe.runIf(pool)('Stage 12.1 Canonical Outbox and Projection recovery', () => {
@@ -186,6 +208,85 @@ describe.runIf(pool)('Stage 12.1 Canonical Outbox and Projection recovery', () =
 
   afterAll(async () => {
     await pool!.end();
+  });
+
+  it('orders a PostgreSQL Outbox batch and immediately releases failed and unprocessed claims', async () => {
+    const fixture = await seedCanonicalProject('project-batch-failure', 'published');
+    const outboxIds = await seedOutboxBatch(fixture.projectId, fixture.commitId);
+    const first = outboxIds[0]!;
+    const second = outboxIds[1]!;
+    const third = outboxIds[2]!;
+    const canonical = new PostgresCanonicalKnowledgeRepository(pool!);
+    const attempted: string[] = [];
+    const delivered: string[] = [];
+
+    await expect(
+      dispatchCanonicalOutbox(
+        canonical,
+        {
+          async publish(event) {
+            const outboxId = event.idempotencyKey.replace('canonical-outbox:', '');
+            attempted.push(outboxId);
+            if (outboxId === second) throw new Error('simulated second publish failure');
+            delivered.push(outboxId);
+          },
+        },
+        fixture.projectId,
+        3,
+        '2026-07-21T12:00:00.000Z',
+      ),
+    ).rejects.toThrow('simulated second publish failure');
+
+    expect(attempted).toEqual([first, second]);
+    expect(delivered).toEqual([first]);
+    await expect(canonical.findOutbox(fixture.projectId, first)).resolves.toMatchObject({
+      status: 'published',
+      attempts: 1,
+    });
+    await expect(canonical.findOutbox(fixture.projectId, second)).resolves.toMatchObject({
+      status: 'pending',
+      attempts: 1,
+      claimedAt: undefined,
+      lastError: 'simulated second publish failure',
+    });
+    await expect(canonical.findOutbox(fixture.projectId, third)).resolves.toMatchObject({
+      status: 'pending',
+      attempts: 1,
+      claimedAt: undefined,
+      lastError: 'Outbox batch interrupted after an earlier publication failure.',
+    });
+    const processing = await pool!.query<{ count: string }>(
+      `SELECT count(*)::text AS count
+       FROM canonical.outbox
+       WHERE project_id = $1 AND status = 'processing'`,
+      [fixture.projectId],
+    );
+    expect(processing.rows[0]).toEqual({ count: '0' });
+
+    const replayDelivered: string[] = [];
+    await expect(
+      dispatchCanonicalOutbox(
+        canonical,
+        {
+          async publish(event) {
+            replayDelivered.push(event.idempotencyKey.replace('canonical-outbox:', ''));
+          },
+        },
+        fixture.projectId,
+        3,
+        '2026-07-21T12:00:01.000Z',
+      ),
+    ).resolves.toBe(2);
+    expect(replayDelivered).toEqual([second, third]);
+    expect(delivered).toEqual([first]);
+    await expect(canonical.findOutbox(fixture.projectId, second)).resolves.toMatchObject({
+      status: 'published',
+      attempts: 2,
+    });
+    await expect(canonical.findOutbox(fixture.projectId, third)).resolves.toMatchObject({
+      status: 'published',
+      attempts: 2,
+    });
   });
 
   it('recovers stale Outbox and missing projections on startup without duplicate replay', async () => {

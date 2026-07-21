@@ -274,7 +274,11 @@ export class InMemoryCanonicalKnowledgeRepository
               record.claimedAt !== undefined &&
               record.claimedAt < staleBefore)),
       )
-      .sort((left, right) => left.availableAt.localeCompare(right.availableAt))
+      .sort(
+        (left, right) =>
+          left.availableAt.localeCompare(right.availableAt) ||
+          left.outboxId.localeCompare(right.outboxId),
+      )
       .slice(0, limit)
       .map((record) => ({
         ...record,

@@ -1,6 +1,6 @@
 # ADR-097: Stage 12.1 Canonical Outbox, Projection Recovery and Clean Restore
 
-- 상태: **Accepted**
+- 상태: **Proposed — Independent Review HOLD**
 - 날짜: 2026-07-21
 - 상위 전략: [Stage 12.1 Hardening Strategy](../../engineering/stage-12-1-hardening-strategy.md)
 - 관련 결정: [ADR-086 — Stage 6 Canonical Commit, History and Outbox](ADR-086-stage-6-canonical-commit-history-outbox.md), [ADR-087 — Stage 7 Cited Search Projection](ADR-087-stage-7-cited-search-projection.md), [ADR-090 — Stage 10 Compiled Truth and Discovery](ADR-090-stage-10-compiled-truth-and-discovery.md), [ADR-096 — Stage 12.1 AI Durable Materialization](ADR-096-stage-12-1-ai-durable-materialization.md)
@@ -101,6 +101,10 @@ Production Database를 삭제하거나 제자리 덮어쓰는 Command는 제공�
 - Backup 성공과 Restore 가능성을 분리하지 않고 실제 새 Database round-trip으로 검증한다.
 - Logical dump만으로 point-in-time recovery를 제공하지 않는다. RPO/RTO와 WAL archive는 운영 배포 전 별도 결정이 필요하다.
 - Asset bytes와 Database dump의 저장 위치 암호화·외부 보관·Retention은 이번 로컬 MVP 범위 밖이다.
+
+## Change History
+
+- 2026-07-21: Independent review placed this decision on hold. The design remains proposed while batch-failure handling, recovery-result observability, and section approval boundaries are corrected. This ADR does not authorize a `main` merge or a Durability Gate completion claim.
 
 ## Implementation Gate
 

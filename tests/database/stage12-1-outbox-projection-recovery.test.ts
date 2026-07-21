@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
 import { PostgresCanonicalKnowledgeRepository } from '../../adapters/postgres-stage6/src/index.js';
@@ -12,7 +12,7 @@ import {
   createApplication,
   runCanonicalProjectionRecovery,
 } from '../../assemblies/shotgun-app/src/server.js';
-import { createCommand, createEvent } from '../../packages/kernel/src/index.js';
+import { createCommand } from '../../packages/kernel/src/index.js';
 import {
   canonicalSnapshotDigest,
   type CanonicalClaim,
@@ -410,6 +410,86 @@ describe.runIf(pool)('Stage 12.1 Canonical Outbox and Projection recovery', () =
     expect(counts.rows[0]).toEqual({ outbox: '2', search: '2', compiled: '2' });
     await app.server.close();
   });
+  it.each(['STALE', 'DEGRADED'] as const)(
+    'rejects Knowledge Discovery when Compiled Truth is %s',
+    async (status) => {
+      const fixture = await seedCanonicalProject(
+        `project-discovery-${status.toLowerCase()}`,
+        'published',
+      );
+      const canonical = new PostgresCanonicalKnowledgeRepository(pool!);
+      const search = new PostgresSearchProjectionRepository(pool!);
+      const knowledge = new PostgresKnowledgeModelRepository(pool!);
+      const compiled = new PostgresCompiledTruthRepository(pool!);
+
+      const degradedSpy = vi
+        .spyOn(compiled, 'degradedState')
+        .mockResolvedValue(
+          status === 'DEGRADED'
+            ? { error: 'DEGRADED', updatedAt: '2026-07-21T00:00:00.000Z' }
+            : undefined,
+        );
+
+      const projectionSpy = vi.spyOn(compiled, 'findProjection').mockResolvedValue(
+        status === 'STALE'
+          ? {
+              projectId: fixture.projectId,
+              projectorVersion: '1.0.0',
+              sourceSnapshotDigest: 'old',
+              logicalDigest: 'old',
+              canonicalVersion: -1, // forces STALE
+              buildMode: 'FULL_REBUILD',
+              items: [],
+              graph: {
+                nodes: [],
+                edges: [],
+                fallback: { available: true, modes: ['LIST', 'TABLE'] },
+              },
+              projectedAt: '2026-07-21T00:00:00.000Z',
+            }
+          : undefined,
+      );
+
+      const app = await createApplication({
+        canonicalKnowledgeRepository: canonical,
+        searchProjectionRepository: search,
+        knowledgeModelRepository: knowledge,
+        compiledTruthRepository: compiled,
+        canonicalProjectionRecoveryIntervalMs: false,
+      });
+
+      const command = createCommand({
+        messageType: 'RunKnowledgeDiscovery',
+        schemaVersion: '1.0.0',
+        producerModule: 'test',
+        producerVersion: '1.0.0',
+        idempotencyKey: `test-discovery-${status.toLowerCase()}`,
+        projectId: fixture.projectId,
+        actor: { type: 'user', id: 'owner' },
+        security: {
+          accessScope: ['owner'],
+          sensitivity: 'private',
+          dataClassification: 'canonical-recovery',
+        },
+        payload: { mode: 'INCREMENTAL', maxNodes: 10, maxSuggestions: 10 },
+      });
+
+      await expect(app.kernel.connector.sendCommand(command)).rejects.toMatchObject({
+        code: 'CONFLICT',
+        safeMessage: 'Compiled Truth is not ready for Knowledge Discovery.',
+      });
+
+      const count = await pool!.query(
+        `SELECT count(*) FROM knowledge.candidates WHERE project_id = $1`,
+        [fixture.projectId],
+      );
+      expect(count.rows[0].count).toBe('0');
+
+      degradedSpy.mockRestore();
+      projectionSpy.mockRestore();
+      await app.server.close();
+    },
+  );
 
   it('never persists sensitive error details when Search Projection update fails', async () => {
     const fixture = await seedCanonicalProject('project-search-sensitive', 'published');
@@ -418,15 +498,16 @@ describe.runIf(pool)('Stage 12.1 Canonical Outbox and Projection recovery', () =
     const knowledge = new PostgresKnowledgeModelRepository(pool!);
     const compiled = new PostgresCompiledTruthRepository(pool!);
 
-    const originalRebuild = search.rebuild.bind(search);
-    search.rebuild = async () => {
-      throw new Error(
-        'DATABASE_URL=postgres://admin:password@private-host/shotgun ' +
-        'Authorization: Bearer private-token ' +
-        'payload={"claim":"private canonical content"} ' +
-        'SELECT * FROM canonical.claims'
+    const spy = vi
+      .spyOn(search, 'rebuild')
+      .mockRejectedValue(
+        new Error(
+          'DATABASE_URL=postgres://admin:password@private-host/shotgun ' +
+            'Authorization: Bearer private-token ' +
+            'payload={"claim":"private canonical content"} ' +
+            'SELECT * FROM canonical.claims',
+        ),
       );
-    };
 
     const app = await createApplication({
       canonicalKnowledgeRepository: canonical,
@@ -436,21 +517,25 @@ describe.runIf(pool)('Stage 12.1 Canonical Outbox and Projection recovery', () =
       canonicalProjectionRecoveryIntervalMs: false,
     });
 
-    try {
-      await app.kernel.connector.sendCommand(createCommand({
-        messageType: 'RebuildSearchProjection',
-        schemaVersion: '1.0.0',
-        producerModule: 'test',
-        producerVersion: '1.0.0',
-        idempotencyKey: 'test-search-sensitive',
-        projectId: fixture.projectId,
-        actor: { type: 'user', id: 'owner' },
-        security: { accessScope: ['owner'], sensitivity: 'private', dataClassification: 'canonical-recovery' },
-        payload: {},
-      }));
-    } catch (e) {
-      console.log('RebuildSearchProjection threw:', e);
-    }
+    await expect(
+      app.kernel.connector.sendCommand(
+        createCommand({
+          messageType: 'RebuildSearchProjection',
+          schemaVersion: '1.0.0',
+          producerModule: 'test',
+          producerVersion: '1.0.0',
+          idempotencyKey: 'test-search-sensitive',
+          projectId: fixture.projectId,
+          actor: { type: 'user', id: 'owner' },
+          security: {
+            accessScope: ['owner'],
+            sensitivity: 'private',
+            dataClassification: 'canonical-recovery',
+          },
+          payload: {},
+        }),
+      ),
+    ).rejects.toBeDefined();
 
     const watermark = await search.findWatermark(fixture.projectId);
     expect(watermark).toBeDefined();
@@ -473,8 +558,8 @@ describe.runIf(pool)('Stage 12.1 Canonical Outbox and Projection recovery', () =
     for (const forbidden of forbiddenStrings) {
       expect(watermark!.lastError).not.toContain(forbidden);
     }
-    
-    search.rebuild = originalRebuild;
+
+    spy.mockRestore();
     await app.server.close();
   });
 
@@ -485,15 +570,16 @@ describe.runIf(pool)('Stage 12.1 Canonical Outbox and Projection recovery', () =
     const knowledge = new PostgresKnowledgeModelRepository(pool!);
     const compiled = new PostgresCompiledTruthRepository(pool!);
 
-    const originalSynchronize = compiled.synchronize.bind(compiled);
-    compiled.synchronize = async () => {
-      throw new Error(
-        'DATABASE_URL=postgres://admin:password@private-host/shotgun ' +
-        'Authorization: Bearer private-token ' +
-        'payload={"claim":"private canonical content"} ' +
-        'SELECT * FROM canonical.claims'
+    const spy = vi
+      .spyOn(compiled, 'synchronize')
+      .mockRejectedValue(
+        new Error(
+          'DATABASE_URL=postgres://admin:password@private-host/shotgun ' +
+            'Authorization: Bearer private-token ' +
+            'payload={"claim":"private canonical content"} ' +
+            'SELECT * FROM canonical.claims',
+        ),
       );
-    };
 
     const app = await createApplication({
       canonicalKnowledgeRepository: canonical,
@@ -503,29 +589,30 @@ describe.runIf(pool)('Stage 12.1 Canonical Outbox and Projection recovery', () =
       canonicalProjectionRecoveryIntervalMs: false,
     });
 
-    try {
-      const envelope = createCommand({
-        messageType: 'BuildCompiledTruth',
-        schemaVersion: '1.0.0',
-        producerModule: 'test',
-        producerVersion: '1.0.0',
-        idempotencyKey: 'test-compiled-sensitive',
-        projectId: fixture.projectId,
-        actor: { type: 'user', id: 'owner' },
-        security: { accessScope: ['owner'], sensitivity: 'private', dataClassification: 'canonical-recovery' },
-        payload: { mode: 'FULL_REBUILD' },
-      });
-      console.log('ENVELOPE:', envelope);
-      await app.kernel.connector.sendCommand(envelope);
-    } catch (error) {
-      // Ignored
-    }
+    await expect(
+      app.kernel.connector.sendCommand(
+        createCommand({
+          messageType: 'BuildCompiledTruth',
+          schemaVersion: '1.0.0',
+          producerModule: 'test',
+          producerVersion: '1.0.0',
+          idempotencyKey: 'test-compiled-sensitive',
+          projectId: fixture.projectId,
+          actor: { type: 'user', id: 'owner' },
+          security: {
+            accessScope: ['owner'],
+            sensitivity: 'private',
+            dataClassification: 'canonical-recovery',
+          },
+          payload: { mode: 'FULL_REBUILD' },
+        }),
+      ),
+    ).rejects.toBeDefined();
 
     const projection = await pool!.query(
       `SELECT last_error, status FROM projection.compiled_truth WHERE project_id = $1`,
-      [fixture.projectId]
+      [fixture.projectId],
     );
-    console.log('PROJECTION ROWS:', projection.rows);
     expect(projection.rows[0]?.last_error).toBe('COMPILED_TRUTH_BUILD_FAILED');
 
     const forbiddenStrings = [
@@ -545,7 +632,7 @@ describe.runIf(pool)('Stage 12.1 Canonical Outbox and Projection recovery', () =
       expect(projection.rows[0]?.last_error).not.toContain(forbidden);
     }
 
-    compiled.synchronize = originalSynchronize;
+    spy.mockRestore();
     await app.server.close();
   });
 });

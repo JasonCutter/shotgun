@@ -266,3 +266,12 @@ MVP에서는 연결된 Candidate Batch 또는 Candidate가 존재하는 동안 P
 - `OUTCOME_UNKNOWN`과 Digest 불일치에서 자동 Provider 재호출이 없음
 - 필수 PostgreSQL 검증 5건 통과
 - 기존 Stage 4 Candidate·Validation 핵심 회귀 검증 통과
+
+### Implementation Status — COMPLETE (2026-07-21)
+
+- `main` Merge SHA: `06ce9b48328296856fc2eb70e6ef1a4a329243b6`
+- Merge 방식: fast-forward
+- 완료 승인: 구현 병합 뒤 별도 사용자 승인 완료
+- 상세 근거: [Stage 12.1 AI Durable Materialization Implementation Record](implementation-records/stage-12-1-ai-durable-materialization.md)
+
+위 완료 표기는 이 ADR이 정의한 Durability Gate Section 1에만 적용한다. Canonical Outbox·Compiled Truth Projection 자동 복구, Backup·Restore, Quality, Reuse and Operations와 Stage 12.1 전체 상태는 계속 `IN_PROGRESS`다.

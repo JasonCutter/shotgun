@@ -671,3 +671,31 @@ Stage 12.1 전체 상태는 `IN_PROGRESS`이며, 네 Gate 중 **Security Gate의
 - 실제 Gmail·Calendar·Drive·GitHub 등 외부 Connector는 Connector별 Capability·권한·Preflight·Verify·복구 Gate와 별도 활성화 승인을 통과하기 전까지 OFF 상태를 유지한다.
 - Stage 12.1 전체를 `COMPLETE`, `production-ready`, `release-ready`로 표시하지 않는다.
 - Merge SHA에 연결된 GitHub Actions 실행 기록은 없으므로 테스트 증거는 Codex 로컬 PostgreSQL 실행 결과와 원격 코드 독립 검토 기록으로 보존한다.
+
+## Stage 12.1 Durability Section 1 완료 기록 — 2026-07-21
+
+Stage 12.1 전체와 Durability Gate 전체 상태는 `IN_PROGRESS`이며, **AI Durable Materialization Section만 `COMPLETE`**다.
+
+- Generation Request·Provider Attempt·버전화된 불변 Provider Output과 Candidate Materialization 상태를 PostgreSQL에 영속화한다.
+- 저장 Output 기반 Resume·Replay는 Provider 재호출 없이 기존 Batch와 Candidate Revision 1을 재사용한다.
+- `MATERIALIZATION_FAILED`와 기존 Batch의 불완전 완료 상태를 중복 Candidate 없이 복구한다.
+- `OUTCOME_UNKNOWN`, Output 누락·형식 오류와 Digest 불일치는 자동 Provider 재호출 없이 fail closed한다.
+- `main` Merge SHA: `06ce9b48328296856fc2eb70e6ef1a4a329243b6`
+- Merge 방식: fast-forward
+- 검증: Contract `12 passed`, Stage 4 PostgreSQL 회귀 `1 passed`, AI Durable Materialization PostgreSQL `6 passed`; lint, format, typecheck, architecture, migration과 DB verify 모두 PASS.
+- PostgreSQL 16.14, Google Gen AI SDK 2.12.0과 Ajv 8.20.0의 기존 `ADOPT` 결정을 유지하고, gbrain은 `REFERENCE_ONLY`, pg-boss·Graphile Worker·Temporal은 `DEFER`한다. 새 Runtime 의존성은 없다.
+- Migration 014는 추가형 Schema이며 Application Rollback 시 영속 Output을 보존한다. 파괴적 Down Migration은 제공하지 않는다.
+
+구현·결정 근거:
+
+- [Stage 12.1 Hardening Strategy](../engineering/stage-12-1-hardening-strategy.md)
+- [ADR-096 — Stage 12.1 AI Durable Materialization](../architecture/adr/ADR-096-stage-12-1-ai-durable-materialization.md)
+- [Stage 12.1 AI Durable Materialization Implementation Record](../architecture/adr/implementation-records/stage-12-1-ai-durable-materialization.md)
+
+남은 Gate와 제한:
+
+- Canonical Outbox·Compiled Truth Projection 자동 복구와 Backup·Restore는 Durability Gate 후속 Section이다.
+- Quality와 Reuse and Operations Gate는 계속 `IN_PROGRESS`다.
+- 실제 외부 Action Connector와 외부 네트워크 공개는 계속 금지한다.
+- Stage 12.1 전체를 `COMPLETE`, `production-ready`, `release-ready`로 표시하지 않는다.
+- Stage 13은 이 Section 완료로 자동 개시되지 않는다.

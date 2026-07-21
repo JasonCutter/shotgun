@@ -24,24 +24,24 @@ Stage 12.1 완료 전에는 다음을 금지한다.
 
 Stage 12.1은 다음 네 Gate가 모두 통과할 때만 완료다.
 
-| Gate | 목표 | 현재 상태 |
-| --- | --- | --- |
-| Security | 인증되지 않은 actor, scope, project, sensitivity 위조 불가. 실제 Action은 서버 저장 근거만 사용. | **P0-1·P0-2 COMPLETE** |
-| Durability | AI 중간 장애 뒤 후보 완전 복구, Canonical Outbox·Projection 자동 복구, clean restore 성공. | `IN_PROGRESS` 전 단계 |
-| Quality | Claim 추출과 자연어 검색을 corpus와 수치로 평가하고 regression suite로 고정. | `IN_PROGRESS` 전 단계 |
-| Reuse and Operations | 외부 consumer package 설치, Ubuntu·Windows CI, secret history scan, backup·restore 증거 보존. | `IN_PROGRESS` 전 단계 |
+| Gate                 | 목표                                                                                             | 현재 상태              |
+| -------------------- | ------------------------------------------------------------------------------------------------ | ---------------------- |
+| Security             | 인증되지 않은 actor, scope, project, sensitivity 위조 불가. 실제 Action은 서버 저장 근거만 사용. | **P0-1·P0-2 COMPLETE** |
+| Durability           | AI 중간 장애 뒤 후보 완전 복구, Canonical Outbox·Projection 자동 복구, clean restore 성공.       | `IN_PROGRESS` 전 단계  |
+| Quality              | Claim 추출과 자연어 검색을 corpus와 수치로 평가하고 regression suite로 고정.                     | `IN_PROGRESS` 전 단계  |
+| Reuse and Operations | 외부 consumer package 설치, Ubuntu·Windows CI, secret history scan, backup·restore 증거 보존.    | `IN_PROGRESS` 전 단계  |
 
 Security Gate 완료만으로 Stage 12.1 전체를 `COMPLETE`로 표시하지 않는다.
 
 ## 3. 고정된 전체 순서
 
-| Wave | 범위 | Gate 전 제한 |
-| --- | --- | --- |
-| Wave 0 | localhost 기본 bind, 실제 Action Connector OFF, legacy owner 기본값 제거 준비, Gemini secret pattern, 상태 문구 정정 | 임시 봉쇄일 뿐 최종 해결책이 아님 |
-| Wave 1 | P0-1 인증된 Security Context, P0-2 Action server-side binding, UI trusted session/project context, 위조 테스트 | 외부 공개와 실제 Action Connector 금지 |
-| Wave 2 | durable AI state machine, candidate replay, Outbox worker, Compiled Truth 자동 projection, restore drill | production data 내구성을 보장한다고 표현 금지 |
-| Wave 3 | Golden corpus, Claim·검색 benchmark, lexical 개선, 필요 시 semantic retrieval 검토 | 지표 없는 검색 기술 채택 금지 |
-| Wave 4 | Assembly package boundary, 외부 consumer 설치, Windows CI, compatibility test, 실제 consumer Assembly | workspace 내부 테스트를 독립 재사용으로 표현 금지 |
+| Wave   | 범위                                                                                                                 | Gate 전 제한                                      |
+| ------ | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| Wave 0 | localhost 기본 bind, 실제 Action Connector OFF, legacy owner 기본값 제거 준비, Gemini secret pattern, 상태 문구 정정 | 임시 봉쇄일 뿐 최종 해결책이 아님                 |
+| Wave 1 | P0-1 인증된 Security Context, P0-2 Action server-side binding, UI trusted session/project context, 위조 테스트       | 외부 공개와 실제 Action Connector 금지            |
+| Wave 2 | durable AI state machine, candidate replay, Outbox worker, Compiled Truth 자동 projection, restore drill             | production data 내구성을 보장한다고 표현 금지     |
+| Wave 3 | Golden corpus, Claim·검색 benchmark, lexical 개선, 필요 시 semantic retrieval 검토                                   | 지표 없는 검색 기술 채택 금지                     |
+| Wave 4 | Assembly package boundary, 외부 consumer 설치, Windows CI, compatibility test, 실제 consumer Assembly                | workspace 내부 테스트를 독립 재사용으로 표현 금지 |
 
 Wave 1의 서버·API Security Gate는 완료됐지만 Dedicated Product Frontend의 최종 Session·Project UX는 별도 Frontend Delivery Roadmap에서 관리한다.
 
@@ -154,16 +154,16 @@ Merge SHA에 연결된 GitHub Actions 실행 기록은 없다. Test 수치는 Co
 
 ## 7. 후속 Section 경계
 
-| Section | 상태 | 후속 범위 |
-| --- | --- | --- |
-| P0-1 Authenticated Security Context | **COMPLETE** | 운영 Auth Adapter·IdP 확장은 별도 결정 |
-| P0-2 Action Candidate server-side binding | **COMPLETE** | Connector별 활성화 Gate는 별도 |
-| Dedicated Product Frontend Session·Project UX | 설계 확정, 구현 대기 | Frontend Delivery Roadmap에서 관리 |
-| AI durable materialization | 미착수 | Wave 2 |
-| Outbox·Projection recovery | 미착수 | Wave 2 |
-| Claim·검색 Quality Benchmark | 미착수 | Wave 3 |
-| External Consumer·Windows CI·Restore | 미착수 | Wave 4 |
-| Stage 9·10 architecture tension | 별도 Architecture Section | 기존 ADR-089·090을 조용히 변경하지 않음 |
+| Section                                       | 상태                      | 후속 범위                               |
+| --------------------------------------------- | ------------------------- | --------------------------------------- |
+| P0-1 Authenticated Security Context           | **COMPLETE**              | 운영 Auth Adapter·IdP 확장은 별도 결정  |
+| P0-2 Action Candidate server-side binding     | **COMPLETE**              | Connector별 활성화 Gate는 별도          |
+| Dedicated Product Frontend Session·Project UX | 설계 확정, 구현 대기      | Frontend Delivery Roadmap에서 관리      |
+| AI durable materialization                    | 미착수                    | Wave 2                                  |
+| Outbox·Projection recovery                    | 미착수                    | Wave 2                                  |
+| Claim·검색 Quality Benchmark                  | 미착수                    | Wave 3                                  |
+| External Consumer·Windows CI·Restore          | 미착수                    | Wave 4                                  |
+| Stage 9·10 architecture tension               | 별도 Architecture Section | 기존 ADR-089·090을 조용히 변경하지 않음 |
 
 ## 8. 현재 상태 표기
 

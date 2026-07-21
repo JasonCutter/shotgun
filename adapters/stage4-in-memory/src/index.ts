@@ -216,7 +216,7 @@ export class InMemoryAIProviderCallRepository implements AIProviderCallRepositor
     const key = `${projectId}:${requestId}`;
     const record = this.records.get(key);
     if (record?.output?.outputId === outputId)
-      this.records.set(key, { ...record, state: 'COMPLETED' });
+      this.records.set(key, { ...record, state: 'COMPLETED', status: 'succeeded' });
   }
 
   async failMaterialization(

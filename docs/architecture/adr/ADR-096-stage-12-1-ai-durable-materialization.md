@@ -1,4 +1,4 @@
-# ADR-095 - Stage 12.1 AI Durable Materialization
+# ADR-096: Stage 12.1 AI Durable Materialization
 
 - 상태: **Accepted**
 - 날짜: 2026-07-18
@@ -49,15 +49,15 @@ REQUESTED
    └→ OUTCOME_UNKNOWN
 ```
 
-| 상태 | 의미 | 자동 복구·호출 정책 |
-| --- | --- | --- |
-| `REQUESTED` | Request Digest와 Input Snapshot Digest가 저장됐고 Provider 호출 전이다. | CAS claim을 얻은 Worker만 Provider를 호출할 수 있다. |
-| `PROVIDER_RUNNING` | 하나의 영속 Provider Attempt가 외부 호출을 수행 중이다. | 정상 실행 중에는 다른 Worker가 재호출하지 않는다. stale 결과가 불명확하면 `OUTCOME_UNKNOWN`으로 보낸다. |
-| `OUTPUT_MATERIALIZED` | 정확한 Provider Output Envelope와 Digest가 불변 저장됐다. | Provider 재호출 금지. 저장 Output으로 Candidate를 생성한다. |
-| `PROVIDER_FAILED` | 유효한 Output 없이 명확한 Provider 실패가 영속 기록됐다. | 명시적으로 retryable이고 영속 Attempt Budget이 남은 경우만 재호출할 수 있다. |
-| `OUTCOME_UNKNOWN` | Timeout 또는 프로세스 종료로 Provider의 실제 외부 결과를 알 수 없다. | 자동 Provider 재호출 금지. 사용자가 명시적으로 재시도하기 전까지 중지한다. |
-| `MATERIALIZATION_FAILED` | 유효한 Output은 보존됐지만 Candidate 생성 또는 저장에 실패했다. | Provider 재호출 금지. 같은 Output으로 resume한다. |
-| `COMPLETED` | Materialization과 Candidate Batch가 완료됐다. | Terminal. 반복 요청은 기존 Batch를 반환한다. |
+| 상태                     | 의미                                                                    | 자동 복구·호출 정책                                                                                     |
+| ------------------------ | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `REQUESTED`              | Request Digest와 Input Snapshot Digest가 저장됐고 Provider 호출 전이다. | CAS claim을 얻은 Worker만 Provider를 호출할 수 있다.                                                    |
+| `PROVIDER_RUNNING`       | 하나의 영속 Provider Attempt가 외부 호출을 수행 중이다.                 | 정상 실행 중에는 다른 Worker가 재호출하지 않는다. stale 결과가 불명확하면 `OUTCOME_UNKNOWN`으로 보낸다. |
+| `OUTPUT_MATERIALIZED`    | 정확한 Provider Output Envelope와 Digest가 불변 저장됐다.               | Provider 재호출 금지. 저장 Output으로 Candidate를 생성한다.                                             |
+| `PROVIDER_FAILED`        | 유효한 Output 없이 명확한 Provider 실패가 영속 기록됐다.                | 명시적으로 retryable이고 영속 Attempt Budget이 남은 경우만 재호출할 수 있다.                            |
+| `OUTCOME_UNKNOWN`        | Timeout 또는 프로세스 종료로 Provider의 실제 외부 결과를 알 수 없다.    | 자동 Provider 재호출 금지. 사용자가 명시적으로 재시도하기 전까지 중지한다.                              |
+| `MATERIALIZATION_FAILED` | 유효한 Output은 보존됐지만 Candidate 생성 또는 저장에 실패했다.         | Provider 재호출 금지. 같은 Output으로 resume한다.                                                       |
+| `COMPLETED`              | Materialization과 Candidate Batch가 완료됐다.                           | Terminal. 반복 요청은 기존 Batch를 반환한다.                                                            |
 
 `CANDIDATE_MATERIALIZING` 상태는 추가하지 않는다. Candidate 저장은 짧은 PostgreSQL 트랜잭션과 unique constraint로 보호하며, 별도 상태가 복구 행동을 바꾸지 않기 때문이다.
 
@@ -237,14 +237,14 @@ MVP에서는 연결된 Candidate Batch 또는 Candidate가 존재하는 동안 P
 
 ## Alternatives Considered
 
-| 대안 | 장점 | 배제 이유 |
-| --- | --- | --- |
-| Provider SDK의 전체 Raw Response 저장 | 부가 메타데이터가 많다. | SDK 결합, 개인정보·숨은 필드·Secret 저장 위험이 크고 Replay에 불필요하다. |
-| 파싱된 Candidate 목록만 저장 | 저장 크기가 작다. | 정확한 Provider Output과 Parser·Schema 검증 근거를 잃는다. |
-| Timeout 뒤 자동 Provider 재호출 | 자동 복구가 빠르다. | 외부 결과가 이미 성공했을 수 있어 중복 비용과 결과를 만들 수 있다. |
-| Replay마다 새 Candidate Revision 생성 | 실행 이력이 눈에 보인다. | 동일 Output으로 불필요한 후보와 검토 혼란을 만든다. |
-| Generic Job Runtime 전체 영속화 | 모든 Module의 복구를 통합한다. | 이번 결함보다 범위가 크고 ADR-080의 경계를 별도로 재검토해야 한다. |
-| 외부 Workflow Engine·Distributed Lock 도입 | 복잡한 Workflow를 지원한다. | 현재 PostgreSQL CAS와 Unique Constraint로 필요한 안전성을 달성할 수 있다. |
+| 대안                                       | 장점                           | 배제 이유                                                                 |
+| ------------------------------------------ | ------------------------------ | ------------------------------------------------------------------------- |
+| Provider SDK의 전체 Raw Response 저장      | 부가 메타데이터가 많다.        | SDK 결합, 개인정보·숨은 필드·Secret 저장 위험이 크고 Replay에 불필요하다. |
+| 파싱된 Candidate 목록만 저장               | 저장 크기가 작다.              | 정확한 Provider Output과 Parser·Schema 검증 근거를 잃는다.                |
+| Timeout 뒤 자동 Provider 재호출            | 자동 복구가 빠르다.            | 외부 결과가 이미 성공했을 수 있어 중복 비용과 결과를 만들 수 있다.        |
+| Replay마다 새 Candidate Revision 생성      | 실행 이력이 눈에 보인다.       | 동일 Output으로 불필요한 후보와 검토 혼란을 만든다.                       |
+| Generic Job Runtime 전체 영속화            | 모든 Module의 복구를 통합한다. | 이번 결함보다 범위가 크고 ADR-080의 경계를 별도로 재검토해야 한다.        |
+| 외부 Workflow Engine·Distributed Lock 도입 | 복잡한 Workflow를 지원한다.    | 현재 PostgreSQL CAS와 Unique Constraint로 필요한 안전성을 달성할 수 있다. |
 
 ## Consequences
 

@@ -656,7 +656,7 @@ export class PostgresAIProviderCallRepository implements AIProviderCallRepositor
     outputId: string,
   ): Promise<void> {
     await this.pool.query(
-      `UPDATE ai.provider_calls SET durable_state = 'COMPLETED', updated_at = now() WHERE project_id = $1 AND request_id = $2 AND accepted_output_id = $3`,
+      `UPDATE ai.provider_calls SET durable_state = 'COMPLETED', status = 'succeeded', updated_at = now() WHERE project_id = $1 AND request_id = $2 AND accepted_output_id = $3`,
       [projectId, requestId, outputId],
     );
   }

@@ -316,22 +316,69 @@ describe.runIf(pool)('Stage 12.1 durable AI materialization', () => {
     await recovery.kernel.shutdown();
   });
 
-  it('binds an existing Batch when only the Materialization completion marker is absent', async () => {
+  it('recovers a failed Materialization by binding the existing Batch without Provider recall', async () => {
     const first = await createHarness(new InMemoryAssetStorage(), new FakeAIProviderAdapter());
     const command = directTextCommand('stage12-bind-existing', 'Milo weighs 5 kg.');
     await first.kernel.connector.sendCommand(command);
     const existing = await pool!.query<{
+      call_id: string;
       batch_id: string;
       candidate_id: string;
       output_id: string;
-    }>(`SELECT batch.batch_id::text, candidate.candidate_id::text, call.accepted_output_id::text AS output_id
+    }>(`SELECT call.call_id::text, batch.batch_id::text, candidate.candidate_id::text,
+      call.accepted_output_id::text AS output_id
       FROM candidate.batches batch
       JOIN candidate.claim_candidates candidate ON candidate.batch_id = batch.batch_id
       CROSS JOIN ai.provider_calls call`);
-    await pool!.query(`DELETE FROM candidate.materializations`);
     await pool!.query(
-      `UPDATE ai.provider_calls SET durable_state = 'OUTPUT_MATERIALIZED' WHERE accepted_output_id IS NOT NULL`,
+      `UPDATE candidate.materializations
+       SET state = 'MATERIALIZATION_FAILED', failure_code = 'RETRYABLE_DEPENDENCY', completed_at = NULL
+       WHERE output_id = $1`,
+      [existing.rows[0]?.output_id],
     );
+    const record = (await first.aiRepository.list())[0]!;
+    await first.aiRepository.failMaterialization(
+      record.projectId,
+      record.requestId,
+      existing.rows[0]!.output_id,
+      'RETRYABLE_DEPENDENCY',
+    );
+    const before = await pool!.query<{
+      call_id: string;
+      batch_id: string;
+      candidate_id: string;
+      output_id: string;
+      materialization_state: string;
+      durable_state: string;
+      provider_status: string;
+      provider_calls: string;
+      materializations: string;
+      batches: string;
+      candidates: string;
+    }>(`SELECT call.call_id::text, batch.batch_id::text, candidate.candidate_id::text,
+      materialization.output_id::text, materialization.state AS materialization_state,
+      call.durable_state, call.status AS provider_status,
+      (SELECT count(*)::text FROM ai.provider_calls) AS provider_calls,
+      (SELECT count(*)::text FROM candidate.materializations) AS materializations,
+      (SELECT count(*)::text FROM candidate.batches) AS batches,
+      (SELECT count(*)::text FROM candidate.claim_candidates) AS candidates
+      FROM candidate.batches batch
+      JOIN candidate.claim_candidates candidate ON candidate.batch_id = batch.batch_id
+      JOIN candidate.materializations materialization ON materialization.batch_id = batch.batch_id
+      CROSS JOIN ai.provider_calls call`);
+    expect(before.rows[0]).toMatchObject({
+      call_id: existing.rows[0]?.call_id,
+      batch_id: existing.rows[0]?.batch_id,
+      candidate_id: existing.rows[0]?.candidate_id,
+      output_id: existing.rows[0]?.output_id,
+      materialization_state: 'MATERIALIZATION_FAILED',
+      durable_state: 'MATERIALIZATION_FAILED',
+      provider_status: 'failed',
+      provider_calls: '1',
+      materializations: '1',
+      batches: '1',
+      candidates: '1',
+    });
     await first.kernel.shutdown();
 
     const recoveryProvider = new FakeAIProviderAdapter();
@@ -341,15 +388,24 @@ describe.runIf(pool)('Stage 12.1 durable AI materialization', () => {
       recovery.kernel.connector,
     );
     const after = await pool!.query<{
+      call_id: string;
       batch_id: string;
       candidate_id: string;
       output_id: string;
       materialization_state: string;
       durable_state: string;
-      candidate_count: string;
-    }>(`SELECT batch.batch_id::text, candidate.candidate_id::text,
+      provider_status: string;
+      provider_calls: string;
+      materializations: string;
+      batches: string;
+      candidates: string;
+    }>(`SELECT call.call_id::text, batch.batch_id::text, candidate.candidate_id::text,
       materialization.output_id::text, materialization.state AS materialization_state,
-      call.durable_state, (SELECT count(*)::text FROM candidate.claim_candidates) AS candidate_count
+      call.durable_state, call.status AS provider_status,
+      (SELECT count(*)::text FROM ai.provider_calls) AS provider_calls,
+      (SELECT count(*)::text FROM candidate.materializations) AS materializations,
+      (SELECT count(*)::text FROM candidate.batches) AS batches,
+      (SELECT count(*)::text FROM candidate.claim_candidates) AS candidates
       FROM candidate.batches batch
       JOIN candidate.claim_candidates candidate ON candidate.batch_id = batch.batch_id
       JOIN candidate.materializations materialization ON materialization.batch_id = batch.batch_id
@@ -357,12 +413,17 @@ describe.runIf(pool)('Stage 12.1 durable AI materialization', () => {
     expect(recoveryResult).toEqual({ attempted: 1, resumed: 1, failed: 0 });
     expect(recoveryProvider.calls()).toBe(0);
     expect(after.rows[0]).toMatchObject({
+      call_id: existing.rows[0]?.call_id,
       batch_id: existing.rows[0]?.batch_id,
       candidate_id: existing.rows[0]?.candidate_id,
       output_id: existing.rows[0]?.output_id,
       materialization_state: 'COMPLETED',
       durable_state: 'COMPLETED',
-      candidate_count: '1',
+      provider_status: 'succeeded',
+      provider_calls: '1',
+      materializations: '1',
+      batches: '1',
+      candidates: '1',
     });
     await recovery.kernel.shutdown();
   });

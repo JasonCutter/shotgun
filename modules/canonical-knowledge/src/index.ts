@@ -246,10 +246,8 @@ export const dispatchCanonicalOutbox = async (
               claimed.outboxId,
               claimed.attempts,
               claimed.outboxId === record.outboxId
-                ? error instanceof Error
-                  ? error.message
-                  : 'Outbox publication failed.'
-                : 'Outbox batch interrupted after an earlier publication failure.',
+                ? 'OUTBOX_PUBLICATION_FAILED'
+                : 'OUTBOX_BATCH_INTERRUPTED',
             ),
           ),
       );

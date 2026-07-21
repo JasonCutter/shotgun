@@ -247,13 +247,13 @@ describe.runIf(pool)('Stage 12.1 Canonical Outbox and Projection recovery', () =
       status: 'pending',
       attempts: 1,
       claimedAt: undefined,
-      lastError: 'simulated second publish failure',
+      lastError: 'OUTBOX_PUBLICATION_FAILED',
     });
     await expect(canonical.findOutbox(fixture.projectId, third)).resolves.toMatchObject({
       status: 'pending',
       attempts: 1,
       claimedAt: undefined,
-      lastError: 'Outbox batch interrupted after an earlier publication failure.',
+      lastError: 'OUTBOX_BATCH_INTERRUPTED',
     });
     const processing = await pool!.query<{ count: string }>(
       `SELECT count(*)::text AS count
@@ -287,6 +287,57 @@ describe.runIf(pool)('Stage 12.1 Canonical Outbox and Projection recovery', () =
       status: 'published',
       attempts: 2,
     });
+  });
+
+  it('never persists sensitive error details in the Outbox last_error column', async () => {
+    const fixture = await seedCanonicalProject('project-sensitive-error', 'published');
+    const outboxIds = await seedOutboxBatch(fixture.projectId, fixture.commitId);
+    const second = outboxIds[1]!;
+    const third = outboxIds[2]!;
+    const canonical = new PostgresCanonicalKnowledgeRepository(pool!);
+
+    await expect(
+      dispatchCanonicalOutbox(
+        canonical,
+        {
+          async publish(event) {
+            const outboxId = event.idempotencyKey.replace('canonical-outbox:', '');
+            if (outboxId === second) {
+              throw new Error(
+                'DATABASE_URL=postgres://admin:password@private-host/shotgun ' +
+                  'Authorization: Bearer private-token ' +
+                  'payload={"claim":"private canonical content"}',
+              );
+            }
+          },
+        },
+        fixture.projectId,
+        3,
+        '2026-07-21T12:00:00.000Z',
+      ),
+    ).rejects.toThrow();
+
+    const failedRecord = await canonical.findOutbox(fixture.projectId, second);
+    expect(failedRecord!.lastError).toBe('OUTBOX_PUBLICATION_FAILED');
+
+    const interruptedRecord = await canonical.findOutbox(fixture.projectId, third);
+    expect(interruptedRecord!.lastError).toBe('OUTBOX_BATCH_INTERRUPTED');
+
+    const forbiddenStrings = [
+      'postgres://',
+      'admin',
+      'password',
+      'private-host',
+      'Authorization',
+      'Bearer',
+      'private-token',
+      'payload',
+      'private canonical content',
+    ];
+    for (const forbidden of forbiddenStrings) {
+      expect(failedRecord!.lastError).not.toContain(forbidden);
+      expect(interruptedRecord!.lastError).not.toContain(forbidden);
+    }
   });
 
   it('recovers stale Outbox and missing projections on startup without duplicate replay', async () => {

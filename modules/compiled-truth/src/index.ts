@@ -24,6 +24,7 @@ import {
 import type { HandlerContext, ShotgunModule } from '../../../packages/module-sdk/src/index.js';
 
 export const COMPILED_TRUTH_PROJECTOR_VERSION = '1.0.0';
+const COMPILED_TRUTH_BUILD_FAILED = 'COMPILED_TRUTH_BUILD_FAILED';
 
 type ClockPort = { now(): string };
 const systemClock: ClockPort = { now: () => new Date().toISOString() };
@@ -409,11 +410,12 @@ export const createCompiledTruthModule = (
               projectedAt,
               buildMode: mode,
             };
-            return repository.synchronize(projection);
+            await repository.synchronize(projection);
+            return projection;
           } catch (error) {
             await repository.markDegraded(
               projectId,
-              error instanceof Error ? error.message : 'Compiled Truth build failed.',
+              COMPILED_TRUTH_BUILD_FAILED,
               projectedAt,
             );
             throw error;
@@ -431,16 +433,18 @@ export const createCompiledTruthModule = (
             maxNodes: number;
             maxSuggestions: number;
           };
-          const stored = await repository.findProjection(projectId);
-          if (!stored) {
+          const source = await sourceSnapshot(context);
+          const status = await statusFor(repository, projectId, source.canonical, source.digest);
+          if (status.status !== 'READY') {
             throw new ShotgunError({
               code: 'CONFLICT',
-              safeMessage: 'Build Compiled Truth before running Knowledge Discovery.',
+              safeMessage: 'Compiled Truth is not ready for Knowledge Discovery.',
               module: 'stage10.compiled-truth',
               operation: 'run-discovery',
             });
           }
-          const projection = visibleProjection(stored, accessScope);
+          const stored = await repository.findProjection(projectId);
+          const projection = visibleProjection(stored!, accessScope);
           const connected = new Set(projection.graph.edges.flatMap((edge) => [edge.from, edge.to]));
           const eligible = projection.graph.nodes
             .filter((node) => node.type === 'ENTITY' && !connected.has(node.id))

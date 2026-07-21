@@ -12,6 +12,7 @@ import {
   createApplication,
   runCanonicalProjectionRecovery,
 } from '../../assemblies/shotgun-app/src/server.js';
+import { createCommand, createEvent } from '../../packages/kernel/src/index.js';
 import {
   canonicalSnapshotDigest,
   type CanonicalClaim,
@@ -407,6 +408,144 @@ describe.runIf(pool)('Stage 12.1 Canonical Outbox and Projection recovery', () =
         (SELECT count(*) FROM projection.compiled_truth)::text AS compiled
     `);
     expect(counts.rows[0]).toEqual({ outbox: '2', search: '2', compiled: '2' });
+    await app.server.close();
+  });
+
+  it('never persists sensitive error details when Search Projection update fails', async () => {
+    const fixture = await seedCanonicalProject('project-search-sensitive', 'published');
+    const canonical = new PostgresCanonicalKnowledgeRepository(pool!);
+    const search = new PostgresSearchProjectionRepository(pool!);
+    const knowledge = new PostgresKnowledgeModelRepository(pool!);
+    const compiled = new PostgresCompiledTruthRepository(pool!);
+
+    const originalRebuild = search.rebuild.bind(search);
+    search.rebuild = async () => {
+      throw new Error(
+        'DATABASE_URL=postgres://admin:password@private-host/shotgun ' +
+        'Authorization: Bearer private-token ' +
+        'payload={"claim":"private canonical content"} ' +
+        'SELECT * FROM canonical.claims'
+      );
+    };
+
+    const app = await createApplication({
+      canonicalKnowledgeRepository: canonical,
+      searchProjectionRepository: search,
+      knowledgeModelRepository: knowledge,
+      compiledTruthRepository: compiled,
+      canonicalProjectionRecoveryIntervalMs: false,
+    });
+
+    try {
+      await app.kernel.connector.sendCommand(createCommand({
+        messageType: 'RebuildSearchProjection',
+        schemaVersion: '1.0.0',
+        producerModule: 'test',
+        producerVersion: '1.0.0',
+        idempotencyKey: 'test-search-sensitive',
+        projectId: fixture.projectId,
+        actor: { type: 'user', id: 'owner' },
+        security: { accessScope: ['owner'], sensitivity: 'private', dataClassification: 'canonical-recovery' },
+        payload: {},
+      }));
+    } catch (e) {
+      console.log('RebuildSearchProjection threw:', e);
+    }
+
+    const watermark = await search.findWatermark(fixture.projectId);
+    expect(watermark).toBeDefined();
+    expect(watermark!.status).toBe('DEGRADED');
+    expect(watermark!.lastError).toBe('SEARCH_PROJECTION_UPDATE_FAILED');
+
+    const forbiddenStrings = [
+      'postgres://',
+      'admin',
+      'password',
+      'private-host',
+      'Authorization',
+      'Bearer',
+      'private-token',
+      'payload',
+      'private canonical content',
+      'SELECT',
+      'canonical.claims',
+    ];
+    for (const forbidden of forbiddenStrings) {
+      expect(watermark!.lastError).not.toContain(forbidden);
+    }
+    
+    search.rebuild = originalRebuild;
+    await app.server.close();
+  });
+
+  it('never persists sensitive error details when Compiled Truth build fails', async () => {
+    const fixture = await seedCanonicalProject('project-compiled-sensitive', 'published');
+    const canonical = new PostgresCanonicalKnowledgeRepository(pool!);
+    const search = new PostgresSearchProjectionRepository(pool!);
+    const knowledge = new PostgresKnowledgeModelRepository(pool!);
+    const compiled = new PostgresCompiledTruthRepository(pool!);
+
+    const originalSynchronize = compiled.synchronize.bind(compiled);
+    compiled.synchronize = async () => {
+      throw new Error(
+        'DATABASE_URL=postgres://admin:password@private-host/shotgun ' +
+        'Authorization: Bearer private-token ' +
+        'payload={"claim":"private canonical content"} ' +
+        'SELECT * FROM canonical.claims'
+      );
+    };
+
+    const app = await createApplication({
+      canonicalKnowledgeRepository: canonical,
+      searchProjectionRepository: search,
+      knowledgeModelRepository: knowledge,
+      compiledTruthRepository: compiled,
+      canonicalProjectionRecoveryIntervalMs: false,
+    });
+
+    try {
+      const envelope = createCommand({
+        messageType: 'BuildCompiledTruth',
+        schemaVersion: '1.0.0',
+        producerModule: 'test',
+        producerVersion: '1.0.0',
+        idempotencyKey: 'test-compiled-sensitive',
+        projectId: fixture.projectId,
+        actor: { type: 'user', id: 'owner' },
+        security: { accessScope: ['owner'], sensitivity: 'private', dataClassification: 'canonical-recovery' },
+        payload: { mode: 'FULL_REBUILD' },
+      });
+      console.log('ENVELOPE:', envelope);
+      await app.kernel.connector.sendCommand(envelope);
+    } catch (error) {
+      // Ignored
+    }
+
+    const projection = await pool!.query(
+      `SELECT last_error, status FROM projection.compiled_truth WHERE project_id = $1`,
+      [fixture.projectId]
+    );
+    console.log('PROJECTION ROWS:', projection.rows);
+    expect(projection.rows[0]?.last_error).toBe('COMPILED_TRUTH_BUILD_FAILED');
+
+    const forbiddenStrings = [
+      'postgres://',
+      'admin',
+      'password',
+      'private-host',
+      'Authorization',
+      'Bearer',
+      'private-token',
+      'payload',
+      'private canonical content',
+      'SELECT',
+      'canonical.claims',
+    ];
+    for (const forbidden of forbiddenStrings) {
+      expect(projection.rows[0]?.last_error).not.toContain(forbidden);
+    }
+
+    compiled.synchronize = originalSynchronize;
     await app.server.close();
   });
 });

@@ -733,3 +733,24 @@ Sections 1–4의 구현·검증·독립 재검토와 사용자 승인이 완료
 - 실제 외부 Action Connector와 외부 네트워크 공개는 계속 금지한다.
 - Stage 12.1 전체를 `COMPLETE`, `production-ready`, `release-ready`로 표시하지 않는다.
 - Stage 13은 Durability Gate 완료로 자동 개시되지 않는다.
+
+## Stage 12.1 Quality Sections 1–3 진행 기록 — 2026-07-22
+
+Quality Section 1의 Golden Corpus·Label·Metric·Run 계약은 사용자 승인을 완료했고
+ADR-098은 `ACCEPTED`다. Section 2 Claim Extraction과 Section 3 Natural-language
+Search는 synthetic reviewed corpus로 구현·측정한 candidate이며 사용자 승인 전이다.
+
+- Corpus: 9 cases, 8 Golden Claims, 6 exhaustive queries, Korean·English·mixed와
+  Plain Text·Markdown·HTML-derived slice
+- Claim: Precision `0.666667`, Recall `0.75`, F1 `0.705882`, Exact Case `0.555556`
+- Search: `k=1` Precision·Recall·Hit Rate·MRR·nDCG `0.8`, No-result·Citation·Stale rejection `1.0`
+- 알려진 취약점: synonym query 미검색, 불확실성 누락, Evidence 위치 오류, 중복,
+  unsupported 수치 Claim
+- Production Claim·Prompt·Provider·Search ranking과 Database Migration은 변경하지 않음
+- Section 4 Threshold·CI 차단은 `NOT STARTED`, Section 5A는 `NOT STARTED`,
+  Section 5B Semantic Retrieval은 `DEFERRED`
+
+상세 근거는 [Quality Evaluation Foundation](../engineering/stage-12-1-quality-evaluation-foundation.md),
+[Quality Baseline Implementation Record](../engineering/stage-12-1-quality-baselines.md)와
+[ADR-098](../architecture/adr/ADR-098-stage-12-1-quality-evaluation-contract.md)을 따른다.
+Quality Gate와 Stage 12.1은 `IN_PROGRESS`, Stage 13은 `NOT STARTED`다.

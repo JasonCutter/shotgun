@@ -503,19 +503,24 @@ semantic Architecture를 같은 승인 단위로 묶지 않고 5A·5B로 분리�
 12. 새 runtime dependency는 OSS Gate·pin·license·replacement 검증 없이 도입하지
     않는다.
 
-## 13. 미결사항
+## 13. 미결사항과 Baseline 결정
 
-다음은 Section 2·3 착수 승인 전에 결정해야 한다.
+Section 2·3 candidate baseline에서 다음을 결정했다.
 
-- 초기 corpus의 case 수와 slice별 최소 개수
+- 초기 corpus: 9 cases, 8 Golden Claims, 6 exhaustive queries
+- 초기 `k`: `{1, 3}`
+- format family: Plain Text·Markdown·HTML-derived를 v1에 포함하고 rich format은 후속 확장
+- result artifact: repository의 `docs/engineering/baselines`에 Run JSON v1 보존
+- aggregate: Claim은 corpus micro, Search는 relevant query macro; 모든 case/query·slice 병행 보고
+
+다음은 여전히 미결이며 Section 4 또는 후속 승인 범위다.
+
 - 독립 label reviewer 수, self-review 허용 여부, disagreement 해결 절차
 - reviewed semantic alias를 diagnostic에만 쓸지 보조 metric으로 보고할지
-- 초기 `k` 집합(예: 1, 3, 5, 10)과 limit 20 계약의 관계
 - macro metric의 slice weight와 class imbalance 보고 방식
 - live Provider 반복 횟수, confidence interval, 비용 ceiling과 stop rule
-- 전체 Source 형식을 한 corpus에 넣을지 format family별 sub-corpus로 버전할지
 - `claimType`·temporal status가 Production contract에 추가될 때 label migration 방법
-- benchmark result artifact의 repository 보존 범위와 CI artifact retention
+- CI artifact retention
 - external public corpus를 사용할 필요가 있는지와 dataset별 license 승인
 - Threshold 산정 규칙과 regression budget; Section 4 전까지 미정
 
@@ -534,16 +539,16 @@ semantic Architecture를 같은 승인 단위로 묶지 않고 5A·5B로 분리�
 
 ## 15. 영향 범위
 
-현재 제안의 영향:
+현재 승인·구현의 영향:
 
-- 문서: 본 설계 후보와 Proposed ADR-098, hardening strategy의 stale merge 표현
+- 문서: Accepted ADR-098, 본 계약, hardening strategy, Baseline Implementation Record와 result artifact
 - Production code: 변경 없음
-- Test: 변경 없음
+- Test·evaluation: Schema·digest·metric·Provider boundary·PostgreSQL baseline 추가
 - Dependency·lockfile: 변경 없음
 - Database·migration·index·FTS·`pg_trgm`: 변경 없음
 - Prompt·Provider·model: 변경 없음
 - CI threshold: 변경 없음
-- Notion Canonical ADD: 사용자 승인 전 반영하지 않음
+- Notion Canonical ADD: 기존 Section 1 승인 기록을 유지하며 이번 작업에서는 수정하지 않음
 
 Section 1 승인 반영 상태:
 
@@ -552,8 +557,8 @@ Security Gate: COMPLETE
 Durability Gate: COMPLETE
 Quality Gate: IN_PROGRESS
 Quality Section 1: COMPLETE / USER APPROVED
-Quality Section 2: NOT STARTED
-Quality Section 3: NOT STARTED
+Quality Section 2: IMPLEMENTED CANDIDATE / NOT APPROVED
+Quality Section 3: IMPLEMENTED CANDIDATE / NOT APPROVED
 Quality Section 4: NOT STARTED
 Quality Section 5A: NOT STARTED
 Quality Section 5B: DEFERRED
@@ -562,23 +567,24 @@ Stage 12.1: IN_PROGRESS
 Stage 13: NOT STARTED
 ```
 
-## 16. 승인 후 구현 계획
+## 16. 승인 후 구현 계획과 진행
 
-Section 1 사용자 승인 후에만 다음을 순서대로 진행한다.
+Section 1 사용자 승인 후 다음을 순서대로 진행한다. 1–5와 결정적 재실행은 이번
+Section 2·3 candidate 구현에서 완료했다.
 
-1. ADR-098의 확정 사항·미결사항을 승인 결과에 맞게 교정하고 별도
-   승인 전에는 `Accepted`로 바꾸지 않는다.
+1. ADR-098의 확정 사항·미결사항을 승인 결과에 맞게 교정하고 `Accepted`로
+   동기화했다.
 2. Quality corpus·case·run JSON Schema v1과 TypeScript type을 추가하고 기존 Ajv
    contract test로 invalid label·digest·authority state를 거부한다.
-3. synthetic 소규모 corpus를 작성하고 독립 label review·license·digest를 완료한다.
+3. synthetic 소규모 corpus를 작성하고 label review 상태·license·digest를 기록했다.
 4. Section 2에서 recorded/Fake Provider를 사용한 결정적 Claim metric runner와
    선택적 live Provider 레인을 분리 구현한다.
-5. Section 3에서 격리 PostgreSQL에 approved corpus Claim을 seed하고 완전한
+5. Section 3에서 격리 PostgreSQL에 baseline-eligible `REVIEWED` corpus Claim을 seed하고 완전한
    relevance judgment으로 Search metric을 계산한다.
-6. TypeScript metric을 small hand-calculated fixture와 NIST/`ir_measures` reference result에
-   교차 검증한다. 외부 tool 도입은 별도 OSS Gate를 적용한다.
-7. baseline을 두 번 이상 재생해 결정적 레인의 digest parity와 live 레인의
-   분포를 보고한다.
+6. TypeScript metric을 small hand-calculated fixture로 검증했다. NIST/`ir_measures`
+   외부 tool 교차 실행은 dependency를 도입하지 않고 후속 필요성 검토로 남겼다.
+7. 결정적 Claim·Search baseline을 반복 실행해 metric parity를 확인했다. live 레인은
+   이번 범위에서 실행하지 않았다.
 8. Section 4에서 baseline·risk slice·false-pass 검토 후 threshold와 CI 실행
    계층을 별도 승인받는다.
 9. Section 5A에서만 실패 근거에 따라 lexical Production 개선을 검토하고,
@@ -586,3 +592,6 @@ Section 1 사용자 승인 후에만 다음을 순서대로 진행한다.
 
 Section 1 승인과 ADR-098 수락은 Claim/Search Baseline 승인, Quality Gate 완료 또는
 Stage 12.1 완료를 의미하지 않는다.
+
+Section 2·3 구현과 측정 결과는
+[Baseline Implementation Record](stage-12-1-quality-baselines.md)를 따른다.

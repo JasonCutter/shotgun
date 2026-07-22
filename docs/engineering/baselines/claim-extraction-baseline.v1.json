@@ -1,0 +1,3091 @@
+{
+  "runId": "claim:sha256:c8e7a51614df6262947a2de40834b80472988096897518a1e1a5921285e92381",
+  "runMode": "deterministic-recorded",
+  "evaluationKind": "CLAIM_EXTRACTION",
+  "corpusId": "shotgun-quality-baseline",
+  "corpusVersion": "1.0.0",
+  "corpusDigest": "sha256:c8e7a51614df6262947a2de40834b80472988096897518a1e1a5921285e92381",
+  "labelSetRevision": 1,
+  "evaluationContractVersion": "1.0.0",
+  "applicationCommitSha": "fe65f67b7d4dd3515399e9dd7385224613180f5f",
+  "moduleVersions": {
+    "candidate-generation": "1.0.0"
+  },
+  "adapterVersions": {
+    "recorded-fixture": "1.0.0"
+  },
+  "projectorVersions": {},
+  "databaseVersion": "",
+  "databaseExtensionVersions": {},
+  "databaseSearchConfiguration": {},
+  "providerName": "recorded-fixture",
+  "providerAdapterVersion": "1.0.0",
+  "providerModel": "synthetic-recording",
+  "providerModelVersion": "1.0.0",
+  "promptVersion": "stage4-direct-claim-v1",
+  "policyVersion": "stage4-direct-only-v1",
+  "randomSeedOrDeterministicSettings": "recorded-output:sha256:2f46884c0870e9cdefb4e85429acd8b8a5ceb10a447f8a7805cc8cbf2403dcbc;stable-id-order",
+  "startedAt": "2026-07-22T08:00:00.000Z",
+  "completedAt": "2026-07-22T08:00:00.000Z",
+  "metricImplementationVersion": "1.0.0",
+  "caseResults": [
+    {
+      "evaluationUnitId": "duplicate-claim",
+      "passed": false,
+      "counts": {
+        "expected": 1,
+        "predicted": 2,
+        "tp": 1,
+        "fp": 1,
+        "fn": 0,
+        "unsupported": 0,
+        "duplicates": 1,
+        "textMatched": 1,
+        "evidenceExact": 1,
+        "noClaimCases": 0,
+        "correctNoClaimCases": 0,
+        "exactCases": 0,
+        "cases": 1
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 1,
+          "denominator": 2,
+          "value": 0.5
+        },
+        "recall": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "f1": {
+          "numerator": 2,
+          "denominator": 3,
+          "value": 0.666666666667
+        },
+        "exactClaimMatch": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "unsupportedClaimRate": {
+          "numerator": 0,
+          "denominator": 2,
+          "value": 0
+        },
+        "duplicateClaimRate": {
+          "numerator": 1,
+          "denominator": 2,
+          "value": 0.5
+        },
+        "evidenceExactMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "evidenceCoverage": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        }
+      },
+      "failureCodes": ["DUPLICATE_CLAIM", "EXTRACTION_FALSE_POSITIVE"]
+    },
+    {
+      "evaluationUnitId": "en-multiple",
+      "passed": false,
+      "counts": {
+        "expected": 2,
+        "predicted": 2,
+        "tp": 1,
+        "fp": 1,
+        "fn": 1,
+        "unsupported": 1,
+        "duplicates": 0,
+        "textMatched": 2,
+        "evidenceExact": 1,
+        "noClaimCases": 0,
+        "correctNoClaimCases": 0,
+        "exactCases": 0,
+        "cases": 1
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 1,
+          "denominator": 2,
+          "value": 0.5
+        },
+        "recall": {
+          "numerator": 1,
+          "denominator": 2,
+          "value": 0.5
+        },
+        "f1": {
+          "numerator": 2,
+          "denominator": 4,
+          "value": 0.5
+        },
+        "exactClaimMatch": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "unsupportedClaimRate": {
+          "numerator": 1,
+          "denominator": 2,
+          "value": 0.5
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 2,
+          "value": 0
+        },
+        "evidenceExactMatch": {
+          "numerator": 1,
+          "denominator": 2,
+          "value": 0.5
+        },
+        "evidenceCoverage": {
+          "numerator": 1,
+          "denominator": 2,
+          "value": 0.5
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        }
+      },
+      "failureCodes": [
+        "CLAIM_MISSED",
+        "EVIDENCE_MISMATCH",
+        "EXTRACTION_FALSE_POSITIVE",
+        "UNSUPPORTED_CLAIM"
+      ]
+    },
+    {
+      "evaluationUnitId": "en-uncertainty",
+      "passed": false,
+      "counts": {
+        "expected": 1,
+        "predicted": 0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 1,
+        "unsupported": 0,
+        "duplicates": 0,
+        "textMatched": 0,
+        "evidenceExact": 0,
+        "noClaimCases": 0,
+        "correctNoClaimCases": 0,
+        "exactCases": 0,
+        "cases": 1
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "recall": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "f1": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "exactClaimMatch": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "unsupportedClaimRate": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "evidenceExactMatch": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "evidenceCoverage": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        }
+      },
+      "failureCodes": ["CLAIM_MISSED"]
+    },
+    {
+      "evaluationUnitId": "evidence-gap",
+      "passed": false,
+      "counts": {
+        "expected": 0,
+        "predicted": 1,
+        "tp": 0,
+        "fp": 1,
+        "fn": 0,
+        "unsupported": 1,
+        "duplicates": 0,
+        "textMatched": 0,
+        "evidenceExact": 0,
+        "noClaimCases": 1,
+        "correctNoClaimCases": 0,
+        "exactCases": 0,
+        "cases": 1
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "recall": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "f1": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "exactClaimMatch": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "unsupportedClaimRate": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "evidenceExactMatch": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "evidenceCoverage": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        }
+      },
+      "failureCodes": ["EXTRACTION_FALSE_POSITIVE", "UNSUPPORTED_CLAIM"]
+    },
+    {
+      "evaluationUnitId": "html-derived-status",
+      "passed": true,
+      "counts": {
+        "expected": 1,
+        "predicted": 1,
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "unsupported": 0,
+        "duplicates": 0,
+        "textMatched": 1,
+        "evidenceExact": 1,
+        "noClaimCases": 0,
+        "correctNoClaimCases": 0,
+        "exactCases": 1,
+        "cases": 1
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "recall": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "f1": {
+          "numerator": 2,
+          "denominator": 2,
+          "value": 1
+        },
+        "exactClaimMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "unsupportedClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "evidenceExactMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "evidenceCoverage": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        }
+      },
+      "failureCodes": []
+    },
+    {
+      "evaluationUnitId": "ko-negative",
+      "passed": true,
+      "counts": {
+        "expected": 1,
+        "predicted": 1,
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "unsupported": 0,
+        "duplicates": 0,
+        "textMatched": 1,
+        "evidenceExact": 1,
+        "noClaimCases": 0,
+        "correctNoClaimCases": 0,
+        "exactCases": 1,
+        "cases": 1
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "recall": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "f1": {
+          "numerator": 2,
+          "denominator": 2,
+          "value": 1
+        },
+        "exactClaimMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "unsupportedClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "evidenceExactMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "evidenceCoverage": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        }
+      },
+      "failureCodes": []
+    },
+    {
+      "evaluationUnitId": "ko-no-claim",
+      "passed": true,
+      "counts": {
+        "expected": 0,
+        "predicted": 0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 0,
+        "unsupported": 0,
+        "duplicates": 0,
+        "textMatched": 0,
+        "evidenceExact": 0,
+        "noClaimCases": 1,
+        "correctNoClaimCases": 1,
+        "exactCases": 1,
+        "cases": 1
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "recall": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "f1": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "exactClaimMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "unsupportedClaimRate": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "evidenceExactMatch": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "evidenceCoverage": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "noClaimAccuracy": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        }
+      },
+      "failureCodes": []
+    },
+    {
+      "evaluationUnitId": "ko-single-numeric",
+      "passed": true,
+      "counts": {
+        "expected": 1,
+        "predicted": 1,
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "unsupported": 0,
+        "duplicates": 0,
+        "textMatched": 1,
+        "evidenceExact": 1,
+        "noClaimCases": 0,
+        "correctNoClaimCases": 0,
+        "exactCases": 1,
+        "cases": 1
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "recall": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "f1": {
+          "numerator": 2,
+          "denominator": 2,
+          "value": 1
+        },
+        "exactClaimMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "unsupportedClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "evidenceExactMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "evidenceCoverage": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        }
+      },
+      "failureCodes": []
+    },
+    {
+      "evaluationUnitId": "mixed-markdown-release",
+      "passed": true,
+      "counts": {
+        "expected": 1,
+        "predicted": 1,
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "unsupported": 0,
+        "duplicates": 0,
+        "textMatched": 1,
+        "evidenceExact": 1,
+        "noClaimCases": 0,
+        "correctNoClaimCases": 0,
+        "exactCases": 1,
+        "cases": 1
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "recall": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "f1": {
+          "numerator": 2,
+          "denominator": 2,
+          "value": 1
+        },
+        "exactClaimMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "unsupportedClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "evidenceExactMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "evidenceCoverage": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        }
+      },
+      "failureCodes": []
+    }
+  ],
+  "aggregateResults": {
+    "counts": {
+      "expected": 8,
+      "predicted": 9,
+      "tp": 6,
+      "fp": 3,
+      "fn": 2,
+      "unsupported": 2,
+      "duplicates": 1,
+      "textMatched": 7,
+      "evidenceExact": 6,
+      "noClaimCases": 2,
+      "correctNoClaimCases": 1,
+      "exactCases": 5,
+      "cases": 9
+    },
+    "metrics": {
+      "precision": {
+        "numerator": 6,
+        "denominator": 9,
+        "value": 0.666666666667
+      },
+      "recall": {
+        "numerator": 6,
+        "denominator": 8,
+        "value": 0.75
+      },
+      "f1": {
+        "numerator": 12,
+        "denominator": 17,
+        "value": 0.705882352941
+      },
+      "exactClaimMatch": {
+        "numerator": 5,
+        "denominator": 9,
+        "value": 0.555555555556
+      },
+      "unsupportedClaimRate": {
+        "numerator": 2,
+        "denominator": 9,
+        "value": 0.222222222222
+      },
+      "duplicateClaimRate": {
+        "numerator": 1,
+        "denominator": 9,
+        "value": 0.111111111111
+      },
+      "evidenceExactMatch": {
+        "numerator": 6,
+        "denominator": 7,
+        "value": 0.857142857143
+      },
+      "evidenceCoverage": {
+        "numerator": 6,
+        "denominator": 8,
+        "value": 0.75
+      },
+      "noClaimAccuracy": {
+        "numerator": 1,
+        "denominator": 2,
+        "value": 0.5
+      }
+    }
+  },
+  "sliceResults": [
+    {
+      "slice": "difficulty:adversarial",
+      "evaluationUnitIds": ["duplicate-claim", "en-uncertainty", "evidence-gap", "ko-negative"],
+      "counts": {
+        "expected": 3,
+        "predicted": 4,
+        "tp": 2,
+        "fp": 2,
+        "fn": 1,
+        "unsupported": 1,
+        "duplicates": 1,
+        "textMatched": 2,
+        "evidenceExact": 2,
+        "noClaimCases": 1,
+        "correctNoClaimCases": 0,
+        "exactCases": 1,
+        "cases": 4
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 2,
+          "denominator": 4,
+          "value": 0.5
+        },
+        "recall": {
+          "numerator": 2,
+          "denominator": 3,
+          "value": 0.666666666667
+        },
+        "f1": {
+          "numerator": 4,
+          "denominator": 7,
+          "value": 0.571428571429
+        },
+        "exactClaimMatch": {
+          "numerator": 1,
+          "denominator": 4,
+          "value": 0.25
+        },
+        "unsupportedClaimRate": {
+          "numerator": 1,
+          "denominator": 4,
+          "value": 0.25
+        },
+        "duplicateClaimRate": {
+          "numerator": 1,
+          "denominator": 4,
+          "value": 0.25
+        },
+        "evidenceExactMatch": {
+          "numerator": 2,
+          "denominator": 2,
+          "value": 1
+        },
+        "evidenceCoverage": {
+          "numerator": 2,
+          "denominator": 3,
+          "value": 0.666666666667
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        }
+      }
+    },
+    {
+      "slice": "difficulty:basic",
+      "evaluationUnitIds": ["ko-no-claim", "ko-single-numeric"],
+      "counts": {
+        "expected": 1,
+        "predicted": 1,
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "unsupported": 0,
+        "duplicates": 0,
+        "textMatched": 1,
+        "evidenceExact": 1,
+        "noClaimCases": 1,
+        "correctNoClaimCases": 1,
+        "exactCases": 2,
+        "cases": 2
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "recall": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "f1": {
+          "numerator": 2,
+          "denominator": 2,
+          "value": 1
+        },
+        "exactClaimMatch": {
+          "numerator": 2,
+          "denominator": 2,
+          "value": 1
+        },
+        "unsupportedClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "evidenceExactMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "evidenceCoverage": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "noClaimAccuracy": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        }
+      }
+    },
+    {
+      "slice": "difficulty:intermediate",
+      "evaluationUnitIds": ["en-multiple", "html-derived-status", "mixed-markdown-release"],
+      "counts": {
+        "expected": 4,
+        "predicted": 4,
+        "tp": 3,
+        "fp": 1,
+        "fn": 1,
+        "unsupported": 1,
+        "duplicates": 0,
+        "textMatched": 4,
+        "evidenceExact": 3,
+        "noClaimCases": 0,
+        "correctNoClaimCases": 0,
+        "exactCases": 2,
+        "cases": 3
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 3,
+          "denominator": 4,
+          "value": 0.75
+        },
+        "recall": {
+          "numerator": 3,
+          "denominator": 4,
+          "value": 0.75
+        },
+        "f1": {
+          "numerator": 6,
+          "denominator": 8,
+          "value": 0.75
+        },
+        "exactClaimMatch": {
+          "numerator": 2,
+          "denominator": 3,
+          "value": 0.666666666667
+        },
+        "unsupportedClaimRate": {
+          "numerator": 1,
+          "denominator": 4,
+          "value": 0.25
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 4,
+          "value": 0
+        },
+        "evidenceExactMatch": {
+          "numerator": 3,
+          "denominator": 4,
+          "value": 0.75
+        },
+        "evidenceCoverage": {
+          "numerator": 3,
+          "denominator": 4,
+          "value": 0.75
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        }
+      }
+    },
+    {
+      "slice": "format:html-derived-text",
+      "evaluationUnitIds": ["evidence-gap", "html-derived-status"],
+      "counts": {
+        "expected": 1,
+        "predicted": 2,
+        "tp": 1,
+        "fp": 1,
+        "fn": 0,
+        "unsupported": 1,
+        "duplicates": 0,
+        "textMatched": 1,
+        "evidenceExact": 1,
+        "noClaimCases": 1,
+        "correctNoClaimCases": 0,
+        "exactCases": 1,
+        "cases": 2
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 1,
+          "denominator": 2,
+          "value": 0.5
+        },
+        "recall": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "f1": {
+          "numerator": 2,
+          "denominator": 3,
+          "value": 0.666666666667
+        },
+        "exactClaimMatch": {
+          "numerator": 1,
+          "denominator": 2,
+          "value": 0.5
+        },
+        "unsupportedClaimRate": {
+          "numerator": 1,
+          "denominator": 2,
+          "value": 0.5
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 2,
+          "value": 0
+        },
+        "evidenceExactMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "evidenceCoverage": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        }
+      }
+    },
+    {
+      "slice": "format:markdown",
+      "evaluationUnitIds": ["mixed-markdown-release"],
+      "counts": {
+        "expected": 1,
+        "predicted": 1,
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "unsupported": 0,
+        "duplicates": 0,
+        "textMatched": 1,
+        "evidenceExact": 1,
+        "noClaimCases": 0,
+        "correctNoClaimCases": 0,
+        "exactCases": 1,
+        "cases": 1
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "recall": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "f1": {
+          "numerator": 2,
+          "denominator": 2,
+          "value": 1
+        },
+        "exactClaimMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "unsupportedClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "evidenceExactMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "evidenceCoverage": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        }
+      }
+    },
+    {
+      "slice": "format:plain-text",
+      "evaluationUnitIds": [
+        "duplicate-claim",
+        "en-multiple",
+        "en-uncertainty",
+        "ko-negative",
+        "ko-no-claim",
+        "ko-single-numeric"
+      ],
+      "counts": {
+        "expected": 6,
+        "predicted": 6,
+        "tp": 4,
+        "fp": 2,
+        "fn": 2,
+        "unsupported": 1,
+        "duplicates": 1,
+        "textMatched": 5,
+        "evidenceExact": 4,
+        "noClaimCases": 1,
+        "correctNoClaimCases": 1,
+        "exactCases": 3,
+        "cases": 6
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 4,
+          "denominator": 6,
+          "value": 0.666666666667
+        },
+        "recall": {
+          "numerator": 4,
+          "denominator": 6,
+          "value": 0.666666666667
+        },
+        "f1": {
+          "numerator": 8,
+          "denominator": 12,
+          "value": 0.666666666667
+        },
+        "exactClaimMatch": {
+          "numerator": 3,
+          "denominator": 6,
+          "value": 0.5
+        },
+        "unsupportedClaimRate": {
+          "numerator": 1,
+          "denominator": 6,
+          "value": 0.166666666667
+        },
+        "duplicateClaimRate": {
+          "numerator": 1,
+          "denominator": 6,
+          "value": 0.166666666667
+        },
+        "evidenceExactMatch": {
+          "numerator": 4,
+          "denominator": 5,
+          "value": 0.8
+        },
+        "evidenceCoverage": {
+          "numerator": 4,
+          "denominator": 6,
+          "value": 0.666666666667
+        },
+        "noClaimAccuracy": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        }
+      }
+    },
+    {
+      "slice": "language:en",
+      "evaluationUnitIds": [
+        "duplicate-claim",
+        "en-multiple",
+        "en-uncertainty",
+        "evidence-gap",
+        "html-derived-status"
+      ],
+      "counts": {
+        "expected": 5,
+        "predicted": 6,
+        "tp": 3,
+        "fp": 3,
+        "fn": 2,
+        "unsupported": 2,
+        "duplicates": 1,
+        "textMatched": 4,
+        "evidenceExact": 3,
+        "noClaimCases": 1,
+        "correctNoClaimCases": 0,
+        "exactCases": 1,
+        "cases": 5
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 3,
+          "denominator": 6,
+          "value": 0.5
+        },
+        "recall": {
+          "numerator": 3,
+          "denominator": 5,
+          "value": 0.6
+        },
+        "f1": {
+          "numerator": 6,
+          "denominator": 11,
+          "value": 0.545454545455
+        },
+        "exactClaimMatch": {
+          "numerator": 1,
+          "denominator": 5,
+          "value": 0.2
+        },
+        "unsupportedClaimRate": {
+          "numerator": 2,
+          "denominator": 6,
+          "value": 0.333333333333
+        },
+        "duplicateClaimRate": {
+          "numerator": 1,
+          "denominator": 6,
+          "value": 0.166666666667
+        },
+        "evidenceExactMatch": {
+          "numerator": 3,
+          "denominator": 4,
+          "value": 0.75
+        },
+        "evidenceCoverage": {
+          "numerator": 3,
+          "denominator": 5,
+          "value": 0.6
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        }
+      }
+    },
+    {
+      "slice": "language:ko",
+      "evaluationUnitIds": ["ko-negative", "ko-no-claim", "ko-single-numeric"],
+      "counts": {
+        "expected": 2,
+        "predicted": 2,
+        "tp": 2,
+        "fp": 0,
+        "fn": 0,
+        "unsupported": 0,
+        "duplicates": 0,
+        "textMatched": 2,
+        "evidenceExact": 2,
+        "noClaimCases": 1,
+        "correctNoClaimCases": 1,
+        "exactCases": 3,
+        "cases": 3
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 2,
+          "denominator": 2,
+          "value": 1
+        },
+        "recall": {
+          "numerator": 2,
+          "denominator": 2,
+          "value": 1
+        },
+        "f1": {
+          "numerator": 4,
+          "denominator": 4,
+          "value": 1
+        },
+        "exactClaimMatch": {
+          "numerator": 3,
+          "denominator": 3,
+          "value": 1
+        },
+        "unsupportedClaimRate": {
+          "numerator": 0,
+          "denominator": 2,
+          "value": 0
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 2,
+          "value": 0
+        },
+        "evidenceExactMatch": {
+          "numerator": 2,
+          "denominator": 2,
+          "value": 1
+        },
+        "evidenceCoverage": {
+          "numerator": 2,
+          "denominator": 2,
+          "value": 1
+        },
+        "noClaimAccuracy": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        }
+      }
+    },
+    {
+      "slice": "language:ko-en-mixed",
+      "evaluationUnitIds": ["mixed-markdown-release"],
+      "counts": {
+        "expected": 1,
+        "predicted": 1,
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "unsupported": 0,
+        "duplicates": 0,
+        "textMatched": 1,
+        "evidenceExact": 1,
+        "noClaimCases": 0,
+        "correctNoClaimCases": 0,
+        "exactCases": 1,
+        "cases": 1
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "recall": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "f1": {
+          "numerator": 2,
+          "denominator": 2,
+          "value": 1
+        },
+        "exactClaimMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "unsupportedClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "evidenceExactMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "evidenceCoverage": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        }
+      }
+    },
+    {
+      "slice": "risk:duplicate",
+      "evaluationUnitIds": ["duplicate-claim"],
+      "counts": {
+        "expected": 1,
+        "predicted": 2,
+        "tp": 1,
+        "fp": 1,
+        "fn": 0,
+        "unsupported": 0,
+        "duplicates": 1,
+        "textMatched": 1,
+        "evidenceExact": 1,
+        "noClaimCases": 0,
+        "correctNoClaimCases": 0,
+        "exactCases": 0,
+        "cases": 1
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 1,
+          "denominator": 2,
+          "value": 0.5
+        },
+        "recall": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "f1": {
+          "numerator": 2,
+          "denominator": 3,
+          "value": 0.666666666667
+        },
+        "exactClaimMatch": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "unsupportedClaimRate": {
+          "numerator": 0,
+          "denominator": 2,
+          "value": 0
+        },
+        "duplicateClaimRate": {
+          "numerator": 1,
+          "denominator": 2,
+          "value": 0.5
+        },
+        "evidenceExactMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "evidenceCoverage": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        }
+      }
+    },
+    {
+      "slice": "risk:evidence-gap",
+      "evaluationUnitIds": ["evidence-gap"],
+      "counts": {
+        "expected": 0,
+        "predicted": 1,
+        "tp": 0,
+        "fp": 1,
+        "fn": 0,
+        "unsupported": 1,
+        "duplicates": 0,
+        "textMatched": 0,
+        "evidenceExact": 0,
+        "noClaimCases": 1,
+        "correctNoClaimCases": 0,
+        "exactCases": 0,
+        "cases": 1
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "recall": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "f1": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "exactClaimMatch": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "unsupportedClaimRate": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "evidenceExactMatch": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "evidenceCoverage": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        }
+      }
+    },
+    {
+      "slice": "risk:negation",
+      "evaluationUnitIds": ["ko-negative"],
+      "counts": {
+        "expected": 1,
+        "predicted": 1,
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "unsupported": 0,
+        "duplicates": 0,
+        "textMatched": 1,
+        "evidenceExact": 1,
+        "noClaimCases": 0,
+        "correctNoClaimCases": 0,
+        "exactCases": 1,
+        "cases": 1
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "recall": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "f1": {
+          "numerator": 2,
+          "denominator": 2,
+          "value": 1
+        },
+        "exactClaimMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "unsupportedClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "evidenceExactMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "evidenceCoverage": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        }
+      }
+    },
+    {
+      "slice": "risk:no-claim",
+      "evaluationUnitIds": ["ko-no-claim"],
+      "counts": {
+        "expected": 0,
+        "predicted": 0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 0,
+        "unsupported": 0,
+        "duplicates": 0,
+        "textMatched": 0,
+        "evidenceExact": 0,
+        "noClaimCases": 1,
+        "correctNoClaimCases": 1,
+        "exactCases": 1,
+        "cases": 1
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "recall": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "f1": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "exactClaimMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "unsupportedClaimRate": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "evidenceExactMatch": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "evidenceCoverage": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "noClaimAccuracy": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        }
+      }
+    },
+    {
+      "slice": "risk:normal",
+      "evaluationUnitIds": ["html-derived-status"],
+      "counts": {
+        "expected": 1,
+        "predicted": 1,
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "unsupported": 0,
+        "duplicates": 0,
+        "textMatched": 1,
+        "evidenceExact": 1,
+        "noClaimCases": 0,
+        "correctNoClaimCases": 0,
+        "exactCases": 1,
+        "cases": 1
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "recall": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "f1": {
+          "numerator": 2,
+          "denominator": 2,
+          "value": 1
+        },
+        "exactClaimMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "unsupportedClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "evidenceExactMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "evidenceCoverage": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        }
+      }
+    },
+    {
+      "slice": "risk:numeric",
+      "evaluationUnitIds": ["ko-single-numeric"],
+      "counts": {
+        "expected": 1,
+        "predicted": 1,
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "unsupported": 0,
+        "duplicates": 0,
+        "textMatched": 1,
+        "evidenceExact": 1,
+        "noClaimCases": 0,
+        "correctNoClaimCases": 0,
+        "exactCases": 1,
+        "cases": 1
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "recall": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "f1": {
+          "numerator": 2,
+          "denominator": 2,
+          "value": 1
+        },
+        "exactClaimMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "unsupportedClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "evidenceExactMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "evidenceCoverage": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        }
+      }
+    },
+    {
+      "slice": "risk:temporal",
+      "evaluationUnitIds": ["en-multiple", "mixed-markdown-release"],
+      "counts": {
+        "expected": 3,
+        "predicted": 3,
+        "tp": 2,
+        "fp": 1,
+        "fn": 1,
+        "unsupported": 1,
+        "duplicates": 0,
+        "textMatched": 3,
+        "evidenceExact": 2,
+        "noClaimCases": 0,
+        "correctNoClaimCases": 0,
+        "exactCases": 1,
+        "cases": 2
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 2,
+          "denominator": 3,
+          "value": 0.666666666667
+        },
+        "recall": {
+          "numerator": 2,
+          "denominator": 3,
+          "value": 0.666666666667
+        },
+        "f1": {
+          "numerator": 4,
+          "denominator": 6,
+          "value": 0.666666666667
+        },
+        "exactClaimMatch": {
+          "numerator": 1,
+          "denominator": 2,
+          "value": 0.5
+        },
+        "unsupportedClaimRate": {
+          "numerator": 1,
+          "denominator": 3,
+          "value": 0.333333333333
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 3,
+          "value": 0
+        },
+        "evidenceExactMatch": {
+          "numerator": 2,
+          "denominator": 3,
+          "value": 0.666666666667
+        },
+        "evidenceCoverage": {
+          "numerator": 2,
+          "denominator": 3,
+          "value": 0.666666666667
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        }
+      }
+    },
+    {
+      "slice": "risk:uncertainty",
+      "evaluationUnitIds": ["en-uncertainty"],
+      "counts": {
+        "expected": 1,
+        "predicted": 0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 1,
+        "unsupported": 0,
+        "duplicates": 0,
+        "textMatched": 0,
+        "evidenceExact": 0,
+        "noClaimCases": 0,
+        "correctNoClaimCases": 0,
+        "exactCases": 0,
+        "cases": 1
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "recall": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "f1": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "exactClaimMatch": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "unsupportedClaimRate": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "evidenceExactMatch": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "evidenceCoverage": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        }
+      }
+    },
+    {
+      "slice": "tag:courtesy",
+      "evaluationUnitIds": ["ko-no-claim"],
+      "counts": {
+        "expected": 0,
+        "predicted": 0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 0,
+        "unsupported": 0,
+        "duplicates": 0,
+        "textMatched": 0,
+        "evidenceExact": 0,
+        "noClaimCases": 1,
+        "correctNoClaimCases": 1,
+        "exactCases": 1,
+        "cases": 1
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "recall": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "f1": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "exactClaimMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "unsupportedClaimRate": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "evidenceExactMatch": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "evidenceCoverage": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "noClaimAccuracy": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        }
+      }
+    },
+    {
+      "slice": "tag:date",
+      "evaluationUnitIds": ["mixed-markdown-release"],
+      "counts": {
+        "expected": 1,
+        "predicted": 1,
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "unsupported": 0,
+        "duplicates": 0,
+        "textMatched": 1,
+        "evidenceExact": 1,
+        "noClaimCases": 0,
+        "correctNoClaimCases": 0,
+        "exactCases": 1,
+        "cases": 1
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "recall": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "f1": {
+          "numerator": 2,
+          "denominator": 2,
+          "value": 1
+        },
+        "exactClaimMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "unsupportedClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "evidenceExactMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "evidenceCoverage": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        }
+      }
+    },
+    {
+      "slice": "tag:duplicate",
+      "evaluationUnitIds": ["duplicate-claim"],
+      "counts": {
+        "expected": 1,
+        "predicted": 2,
+        "tp": 1,
+        "fp": 1,
+        "fn": 0,
+        "unsupported": 0,
+        "duplicates": 1,
+        "textMatched": 1,
+        "evidenceExact": 1,
+        "noClaimCases": 0,
+        "correctNoClaimCases": 0,
+        "exactCases": 0,
+        "cases": 1
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 1,
+          "denominator": 2,
+          "value": 0.5
+        },
+        "recall": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "f1": {
+          "numerator": 2,
+          "denominator": 3,
+          "value": 0.666666666667
+        },
+        "exactClaimMatch": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "unsupportedClaimRate": {
+          "numerator": 0,
+          "denominator": 2,
+          "value": 0
+        },
+        "duplicateClaimRate": {
+          "numerator": 1,
+          "denominator": 2,
+          "value": 0.5
+        },
+        "evidenceExactMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "evidenceCoverage": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        }
+      }
+    },
+    {
+      "slice": "tag:evidence-gap",
+      "evaluationUnitIds": ["evidence-gap"],
+      "counts": {
+        "expected": 0,
+        "predicted": 1,
+        "tp": 0,
+        "fp": 1,
+        "fn": 0,
+        "unsupported": 1,
+        "duplicates": 0,
+        "textMatched": 0,
+        "evidenceExact": 0,
+        "noClaimCases": 1,
+        "correctNoClaimCases": 0,
+        "exactCases": 0,
+        "cases": 1
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "recall": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "f1": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "exactClaimMatch": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "unsupportedClaimRate": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "evidenceExactMatch": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "evidenceCoverage": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        }
+      }
+    },
+    {
+      "slice": "tag:html-derived",
+      "evaluationUnitIds": ["evidence-gap", "html-derived-status"],
+      "counts": {
+        "expected": 1,
+        "predicted": 2,
+        "tp": 1,
+        "fp": 1,
+        "fn": 0,
+        "unsupported": 1,
+        "duplicates": 0,
+        "textMatched": 1,
+        "evidenceExact": 1,
+        "noClaimCases": 1,
+        "correctNoClaimCases": 0,
+        "exactCases": 1,
+        "cases": 2
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 1,
+          "denominator": 2,
+          "value": 0.5
+        },
+        "recall": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "f1": {
+          "numerator": 2,
+          "denominator": 3,
+          "value": 0.666666666667
+        },
+        "exactClaimMatch": {
+          "numerator": 1,
+          "denominator": 2,
+          "value": 0.5
+        },
+        "unsupportedClaimRate": {
+          "numerator": 1,
+          "denominator": 2,
+          "value": 0.5
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 2,
+          "value": 0
+        },
+        "evidenceExactMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "evidenceCoverage": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        }
+      }
+    },
+    {
+      "slice": "tag:ko-inflection",
+      "evaluationUnitIds": ["ko-negative"],
+      "counts": {
+        "expected": 1,
+        "predicted": 1,
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "unsupported": 0,
+        "duplicates": 0,
+        "textMatched": 1,
+        "evidenceExact": 1,
+        "noClaimCases": 0,
+        "correctNoClaimCases": 0,
+        "exactCases": 1,
+        "cases": 1
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "recall": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "f1": {
+          "numerator": 2,
+          "denominator": 2,
+          "value": 1
+        },
+        "exactClaimMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "unsupportedClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "evidenceExactMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "evidenceCoverage": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        }
+      }
+    },
+    {
+      "slice": "tag:markdown",
+      "evaluationUnitIds": ["mixed-markdown-release"],
+      "counts": {
+        "expected": 1,
+        "predicted": 1,
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "unsupported": 0,
+        "duplicates": 0,
+        "textMatched": 1,
+        "evidenceExact": 1,
+        "noClaimCases": 0,
+        "correctNoClaimCases": 0,
+        "exactCases": 1,
+        "cases": 1
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "recall": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "f1": {
+          "numerator": 2,
+          "denominator": 2,
+          "value": 1
+        },
+        "exactClaimMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "unsupportedClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "evidenceExactMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "evidenceCoverage": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        }
+      }
+    },
+    {
+      "slice": "tag:mixed-language",
+      "evaluationUnitIds": ["mixed-markdown-release"],
+      "counts": {
+        "expected": 1,
+        "predicted": 1,
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "unsupported": 0,
+        "duplicates": 0,
+        "textMatched": 1,
+        "evidenceExact": 1,
+        "noClaimCases": 0,
+        "correctNoClaimCases": 0,
+        "exactCases": 1,
+        "cases": 1
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "recall": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "f1": {
+          "numerator": 2,
+          "denominator": 2,
+          "value": 1
+        },
+        "exactClaimMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "unsupportedClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "evidenceExactMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "evidenceCoverage": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        }
+      }
+    },
+    {
+      "slice": "tag:multiple-claim",
+      "evaluationUnitIds": ["en-multiple"],
+      "counts": {
+        "expected": 2,
+        "predicted": 2,
+        "tp": 1,
+        "fp": 1,
+        "fn": 1,
+        "unsupported": 1,
+        "duplicates": 0,
+        "textMatched": 2,
+        "evidenceExact": 1,
+        "noClaimCases": 0,
+        "correctNoClaimCases": 0,
+        "exactCases": 0,
+        "cases": 1
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 1,
+          "denominator": 2,
+          "value": 0.5
+        },
+        "recall": {
+          "numerator": 1,
+          "denominator": 2,
+          "value": 0.5
+        },
+        "f1": {
+          "numerator": 2,
+          "denominator": 4,
+          "value": 0.5
+        },
+        "exactClaimMatch": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "unsupportedClaimRate": {
+          "numerator": 1,
+          "denominator": 2,
+          "value": 0.5
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 2,
+          "value": 0
+        },
+        "evidenceExactMatch": {
+          "numerator": 1,
+          "denominator": 2,
+          "value": 0.5
+        },
+        "evidenceCoverage": {
+          "numerator": 1,
+          "denominator": 2,
+          "value": 0.5
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        }
+      }
+    },
+    {
+      "slice": "tag:negation",
+      "evaluationUnitIds": ["ko-negative"],
+      "counts": {
+        "expected": 1,
+        "predicted": 1,
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "unsupported": 0,
+        "duplicates": 0,
+        "textMatched": 1,
+        "evidenceExact": 1,
+        "noClaimCases": 0,
+        "correctNoClaimCases": 0,
+        "exactCases": 1,
+        "cases": 1
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "recall": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "f1": {
+          "numerator": 2,
+          "denominator": 2,
+          "value": 1
+        },
+        "exactClaimMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "unsupportedClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "evidenceExactMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "evidenceCoverage": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        }
+      }
+    },
+    {
+      "slice": "tag:no-claim",
+      "evaluationUnitIds": ["evidence-gap", "ko-no-claim"],
+      "counts": {
+        "expected": 0,
+        "predicted": 1,
+        "tp": 0,
+        "fp": 1,
+        "fn": 0,
+        "unsupported": 1,
+        "duplicates": 0,
+        "textMatched": 0,
+        "evidenceExact": 0,
+        "noClaimCases": 2,
+        "correctNoClaimCases": 1,
+        "exactCases": 1,
+        "cases": 2
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "recall": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "f1": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "exactClaimMatch": {
+          "numerator": 1,
+          "denominator": 2,
+          "value": 0.5
+        },
+        "unsupportedClaimRate": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "evidenceExactMatch": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "evidenceCoverage": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "noClaimAccuracy": {
+          "numerator": 1,
+          "denominator": 2,
+          "value": 0.5
+        }
+      }
+    },
+    {
+      "slice": "tag:numeric",
+      "evaluationUnitIds": ["en-multiple", "ko-single-numeric"],
+      "counts": {
+        "expected": 3,
+        "predicted": 3,
+        "tp": 2,
+        "fp": 1,
+        "fn": 1,
+        "unsupported": 1,
+        "duplicates": 0,
+        "textMatched": 3,
+        "evidenceExact": 2,
+        "noClaimCases": 0,
+        "correctNoClaimCases": 0,
+        "exactCases": 1,
+        "cases": 2
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 2,
+          "denominator": 3,
+          "value": 0.666666666667
+        },
+        "recall": {
+          "numerator": 2,
+          "denominator": 3,
+          "value": 0.666666666667
+        },
+        "f1": {
+          "numerator": 4,
+          "denominator": 6,
+          "value": 0.666666666667
+        },
+        "exactClaimMatch": {
+          "numerator": 1,
+          "denominator": 2,
+          "value": 0.5
+        },
+        "unsupportedClaimRate": {
+          "numerator": 1,
+          "denominator": 3,
+          "value": 0.333333333333
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 3,
+          "value": 0
+        },
+        "evidenceExactMatch": {
+          "numerator": 2,
+          "denominator": 3,
+          "value": 0.666666666667
+        },
+        "evidenceCoverage": {
+          "numerator": 2,
+          "denominator": 3,
+          "value": 0.666666666667
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        }
+      }
+    },
+    {
+      "slice": "tag:selector",
+      "evaluationUnitIds": ["html-derived-status"],
+      "counts": {
+        "expected": 1,
+        "predicted": 1,
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "unsupported": 0,
+        "duplicates": 0,
+        "textMatched": 1,
+        "evidenceExact": 1,
+        "noClaimCases": 0,
+        "correctNoClaimCases": 0,
+        "exactCases": 1,
+        "cases": 1
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "recall": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "f1": {
+          "numerator": 2,
+          "denominator": 2,
+          "value": 1
+        },
+        "exactClaimMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "unsupportedClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "evidenceExactMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "evidenceCoverage": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        }
+      }
+    },
+    {
+      "slice": "tag:single-claim",
+      "evaluationUnitIds": [
+        "duplicate-claim",
+        "en-uncertainty",
+        "html-derived-status",
+        "ko-negative",
+        "ko-single-numeric",
+        "mixed-markdown-release"
+      ],
+      "counts": {
+        "expected": 6,
+        "predicted": 6,
+        "tp": 5,
+        "fp": 1,
+        "fn": 1,
+        "unsupported": 0,
+        "duplicates": 1,
+        "textMatched": 5,
+        "evidenceExact": 5,
+        "noClaimCases": 0,
+        "correctNoClaimCases": 0,
+        "exactCases": 4,
+        "cases": 6
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 5,
+          "denominator": 6,
+          "value": 0.833333333333
+        },
+        "recall": {
+          "numerator": 5,
+          "denominator": 6,
+          "value": 0.833333333333
+        },
+        "f1": {
+          "numerator": 10,
+          "denominator": 12,
+          "value": 0.833333333333
+        },
+        "exactClaimMatch": {
+          "numerator": 4,
+          "denominator": 6,
+          "value": 0.666666666667
+        },
+        "unsupportedClaimRate": {
+          "numerator": 0,
+          "denominator": 6,
+          "value": 0
+        },
+        "duplicateClaimRate": {
+          "numerator": 1,
+          "denominator": 6,
+          "value": 0.166666666667
+        },
+        "evidenceExactMatch": {
+          "numerator": 5,
+          "denominator": 5,
+          "value": 1
+        },
+        "evidenceCoverage": {
+          "numerator": 5,
+          "denominator": 6,
+          "value": 0.833333333333
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        }
+      }
+    },
+    {
+      "slice": "tag:synonym",
+      "evaluationUnitIds": ["en-uncertainty"],
+      "counts": {
+        "expected": 1,
+        "predicted": 0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 1,
+        "unsupported": 0,
+        "duplicates": 0,
+        "textMatched": 0,
+        "evidenceExact": 0,
+        "noClaimCases": 0,
+        "correctNoClaimCases": 0,
+        "exactCases": 0,
+        "cases": 1
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "recall": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "f1": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "exactClaimMatch": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "unsupportedClaimRate": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "evidenceExactMatch": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "evidenceCoverage": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        }
+      }
+    },
+    {
+      "slice": "tag:temporal",
+      "evaluationUnitIds": ["en-multiple", "en-uncertainty"],
+      "counts": {
+        "expected": 3,
+        "predicted": 2,
+        "tp": 1,
+        "fp": 1,
+        "fn": 2,
+        "unsupported": 1,
+        "duplicates": 0,
+        "textMatched": 2,
+        "evidenceExact": 1,
+        "noClaimCases": 0,
+        "correctNoClaimCases": 0,
+        "exactCases": 0,
+        "cases": 2
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 1,
+          "denominator": 2,
+          "value": 0.5
+        },
+        "recall": {
+          "numerator": 1,
+          "denominator": 3,
+          "value": 0.333333333333
+        },
+        "f1": {
+          "numerator": 2,
+          "denominator": 5,
+          "value": 0.4
+        },
+        "exactClaimMatch": {
+          "numerator": 0,
+          "denominator": 2,
+          "value": 0
+        },
+        "unsupportedClaimRate": {
+          "numerator": 1,
+          "denominator": 2,
+          "value": 0.5
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 2,
+          "value": 0
+        },
+        "evidenceExactMatch": {
+          "numerator": 1,
+          "denominator": 2,
+          "value": 0.5
+        },
+        "evidenceCoverage": {
+          "numerator": 1,
+          "denominator": 3,
+          "value": 0.333333333333
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        }
+      }
+    },
+    {
+      "slice": "tag:uncertainty",
+      "evaluationUnitIds": ["en-uncertainty"],
+      "counts": {
+        "expected": 1,
+        "predicted": 0,
+        "tp": 0,
+        "fp": 0,
+        "fn": 1,
+        "unsupported": 0,
+        "duplicates": 0,
+        "textMatched": 0,
+        "evidenceExact": 0,
+        "noClaimCases": 0,
+        "correctNoClaimCases": 0,
+        "exactCases": 0,
+        "cases": 1
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "recall": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "f1": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "exactClaimMatch": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "unsupportedClaimRate": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "evidenceExactMatch": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "evidenceCoverage": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        }
+      }
+    },
+    {
+      "slice": "tag:unit",
+      "evaluationUnitIds": ["ko-single-numeric"],
+      "counts": {
+        "expected": 1,
+        "predicted": 1,
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "unsupported": 0,
+        "duplicates": 0,
+        "textMatched": 1,
+        "evidenceExact": 1,
+        "noClaimCases": 0,
+        "correctNoClaimCases": 0,
+        "exactCases": 1,
+        "cases": 1
+      },
+      "metrics": {
+        "precision": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "recall": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "f1": {
+          "numerator": 2,
+          "denominator": 2,
+          "value": 1
+        },
+        "exactClaimMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "unsupportedClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "duplicateClaimRate": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "evidenceExactMatch": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "evidenceCoverage": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "noClaimAccuracy": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        }
+      }
+    }
+  ],
+  "failureDetails": [
+    {
+      "evaluationUnitId": "duplicate-claim",
+      "code": "DUPLICATE_CLAIM",
+      "detailDigest": "sha256:1c76836bafa4b6ed46ade582cf38ff065174e7b64371c339b43547e55e10fae6"
+    },
+    {
+      "evaluationUnitId": "duplicate-claim",
+      "code": "EXTRACTION_FALSE_POSITIVE",
+      "detailDigest": "sha256:941df0a938e9b0e54fd54568a8271ab8de6d186e48b0653735272fccdb8aeed8"
+    },
+    {
+      "evaluationUnitId": "en-multiple",
+      "code": "CLAIM_MISSED",
+      "detailDigest": "sha256:e18b85f6f9ad745731b1b43eef5f6ad1b78a864edc1f54f8a7fe831f28e97722"
+    },
+    {
+      "evaluationUnitId": "en-multiple",
+      "code": "EVIDENCE_MISMATCH",
+      "detailDigest": "sha256:fd8efd1439a3b27e9fbec2f4b97e6520f2c89545bbf05b95c9996ae9c620b85f"
+    },
+    {
+      "evaluationUnitId": "en-multiple",
+      "code": "EXTRACTION_FALSE_POSITIVE",
+      "detailDigest": "sha256:a93918b27bff959c6d45d1b04d1042f01e7c1a7ccb070ab9f8d6cbe5a2c2fe0d"
+    },
+    {
+      "evaluationUnitId": "en-multiple",
+      "code": "UNSUPPORTED_CLAIM",
+      "detailDigest": "sha256:23270c279490fde699426d4d2e6908233334c083bcc29fe228bf2a3e935f3961"
+    },
+    {
+      "evaluationUnitId": "en-uncertainty",
+      "code": "CLAIM_MISSED",
+      "detailDigest": "sha256:b1adf1b14532dcdb954d55d73500a6261748815a782a27103abd9561327922e7"
+    },
+    {
+      "evaluationUnitId": "evidence-gap",
+      "code": "EXTRACTION_FALSE_POSITIVE",
+      "detailDigest": "sha256:00423f724efc2a90355f38f95fa77129f11794323421475198d0438a4b4f9845"
+    },
+    {
+      "evaluationUnitId": "evidence-gap",
+      "code": "UNSUPPORTED_CLAIM",
+      "detailDigest": "sha256:f55c954e13b72f27d1710d025da271414506d18472a983ac9628c55cfa90d72c"
+    }
+  ],
+  "environmentSummary": {
+    "node": "v24.15.0",
+    "platform": "win32",
+    "source": "synthetic-reviewed-labels",
+    "thresholdPolicy": "none-baseline-only"
+  },
+  "runDigest": "sha256:429a844223f085b58d99648093136be1a42bed9a2c436c3c60adb28eacf91413"
+}

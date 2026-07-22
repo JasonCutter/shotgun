@@ -1,0 +1,728 @@
+{
+  "runId": "search:sha256:b0bfdbbdf9e47aebd5d0508c95be8fdc4483d15ed185c02eaf15999eabc15f67",
+  "runMode": "deterministic-recorded",
+  "evaluationKind": "SEARCH",
+  "corpusId": "shotgun-quality-baseline",
+  "corpusVersion": "1.0.0",
+  "corpusDigest": "sha256:b0bfdbbdf9e47aebd5d0508c95be8fdc4483d15ed185c02eaf15999eabc15f67",
+  "labelSetRevision": 2,
+  "evaluationContractVersion": "1.0.0",
+  "applicationCommitSha": "848b9b6762339a9f58dc80a62459f420849ff613",
+  "moduleVersions": {
+    "projection-search": "1.0.0"
+  },
+  "adapterVersions": {
+    "postgres-stage7": "1.0.0"
+  },
+  "projectorVersions": {
+    "search-projection": "1.0.0"
+  },
+  "databaseVersion": "16.14",
+  "databaseExtensionVersions": {
+    "pg_trgm": "1.6"
+  },
+  "databaseSearchConfiguration": {
+    "fts": "simple",
+    "ranking": "greatest(ts_rank_cd,similarity,substring)",
+    "tieBreak": "claim_id-ascending",
+    "defaultTextSearchConfig": "pg_catalog.english",
+    "collation": "en_US.utf8",
+    "kValues": "1,3"
+  },
+  "providerName": "postgresql-search-adapter",
+  "providerAdapterVersion": "1.0.0",
+  "providerModel": "not-applicable",
+  "providerModelVersion": "not-applicable",
+  "promptVersion": "not-applicable",
+  "policyVersion": "canonical-only-readiness-v1",
+  "randomSeedOrDeterministicSettings": "isolated-database;approved-labels;stable-seed-ids",
+  "startedAt": "2026-07-22T08:00:00.000Z",
+  "completedAt": "2026-07-22T08:00:00.000Z",
+  "metricImplementationVersion": "1.0.0",
+  "caseResults": [
+    {
+      "evaluationUnitId": "q-api-inflection",
+      "passed": true,
+      "counts": {
+        "relevant": 1,
+        "retrieved": 1,
+        "firstRelevantRank": 1,
+        "citations": 1,
+        "correctCitations": 1
+      },
+      "metrics": {
+        "precisionAt1": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "recallAt1": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "hitRateAt1": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "ndcgAt1": {
+          "numerator": 3,
+          "denominator": 3,
+          "value": 1
+        },
+        "precisionAt3": {
+          "numerator": 1,
+          "denominator": 3,
+          "value": 0.333333333333
+        },
+        "recallAt3": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "hitRateAt3": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "ndcgAt3": {
+          "numerator": 3,
+          "denominator": 3,
+          "value": 1
+        },
+        "reciprocalRank": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "noResultAccuracy": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "citationCorrectness": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        }
+      },
+      "failureCodes": []
+    },
+    {
+      "evaluationUnitId": "q-battery-exact",
+      "passed": true,
+      "counts": {
+        "relevant": 1,
+        "retrieved": 1,
+        "firstRelevantRank": 1,
+        "citations": 1,
+        "correctCitations": 1
+      },
+      "metrics": {
+        "precisionAt1": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "recallAt1": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "hitRateAt1": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "ndcgAt1": {
+          "numerator": 3,
+          "denominator": 3,
+          "value": 1
+        },
+        "precisionAt3": {
+          "numerator": 1,
+          "denominator": 3,
+          "value": 0.333333333333
+        },
+        "recallAt3": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "hitRateAt3": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "ndcgAt3": {
+          "numerator": 3,
+          "denominator": 3,
+          "value": 1
+        },
+        "reciprocalRank": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "noResultAccuracy": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "citationCorrectness": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        }
+      },
+      "failureCodes": []
+    },
+    {
+      "evaluationUnitId": "q-migration-synonym",
+      "passed": false,
+      "counts": {
+        "relevant": 1,
+        "retrieved": 0,
+        "firstRelevantRank": 0,
+        "citations": 0,
+        "correctCitations": 0
+      },
+      "metrics": {
+        "precisionAt1": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "recallAt1": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "hitRateAt1": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "ndcgAt1": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "precisionAt3": {
+          "numerator": 0,
+          "denominator": 3,
+          "value": 0
+        },
+        "recallAt3": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "hitRateAt3": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "ndcgAt3": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "reciprocalRank": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "noResultAccuracy": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "citationCorrectness": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        }
+      },
+      "failureCodes": ["RELEVANT_CLAIM_NOT_RETRIEVED"]
+    },
+    {
+      "evaluationUnitId": "q-milo-question",
+      "passed": true,
+      "counts": {
+        "relevant": 1,
+        "retrieved": 1,
+        "firstRelevantRank": 1,
+        "citations": 1,
+        "correctCitations": 1
+      },
+      "metrics": {
+        "precisionAt1": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "recallAt1": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "hitRateAt1": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "ndcgAt1": {
+          "numerator": 3,
+          "denominator": 3,
+          "value": 1
+        },
+        "precisionAt3": {
+          "numerator": 1,
+          "denominator": 3,
+          "value": 0.333333333333
+        },
+        "recallAt3": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "hitRateAt3": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "ndcgAt3": {
+          "numerator": 3,
+          "denominator": 3,
+          "value": 1
+        },
+        "reciprocalRank": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "noResultAccuracy": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "citationCorrectness": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        }
+      },
+      "failureCodes": []
+    },
+    {
+      "evaluationUnitId": "q-no-result",
+      "passed": true,
+      "counts": {
+        "relevant": 0,
+        "retrieved": 0,
+        "firstRelevantRank": 0,
+        "citations": 0,
+        "correctCitations": 0
+      },
+      "metrics": {
+        "precisionAt1": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "recallAt1": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "hitRateAt1": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "ndcgAt1": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "precisionAt3": {
+          "numerator": 0,
+          "denominator": 3,
+          "value": 0
+        },
+        "recallAt3": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "hitRateAt3": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "ndcgAt3": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "reciprocalRank": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "noResultAccuracy": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "citationCorrectness": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        }
+      },
+      "failureCodes": []
+    },
+    {
+      "evaluationUnitId": "q-release-notation",
+      "passed": true,
+      "counts": {
+        "relevant": 1,
+        "retrieved": 1,
+        "firstRelevantRank": 1,
+        "citations": 1,
+        "correctCitations": 1
+      },
+      "metrics": {
+        "precisionAt1": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "recallAt1": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "hitRateAt1": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "ndcgAt1": {
+          "numerator": 3,
+          "denominator": 3,
+          "value": 1
+        },
+        "precisionAt3": {
+          "numerator": 1,
+          "denominator": 3,
+          "value": 0.333333333333
+        },
+        "recallAt3": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "hitRateAt3": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "ndcgAt3": {
+          "numerator": 3,
+          "denominator": 3,
+          "value": 1
+        },
+        "reciprocalRank": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "noResultAccuracy": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "citationCorrectness": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        }
+      },
+      "failureCodes": []
+    }
+  ],
+  "aggregateResults": {
+    "counts": {
+      "queries": 6,
+      "relevantQueries": 5,
+      "noResultQueries": 1,
+      "retrieved": 4,
+      "citations": 4,
+      "correctCitations": 4,
+      "staleTrials": 2,
+      "rejectedStaleTrials": 2
+    },
+    "metrics": {
+      "precisionAt1": {
+        "numerator": 4,
+        "denominator": 5,
+        "value": 0.8
+      },
+      "recallAt1": {
+        "numerator": 4,
+        "denominator": 5,
+        "value": 0.8
+      },
+      "hitRateAt1": {
+        "numerator": 4,
+        "denominator": 5,
+        "value": 0.8
+      },
+      "ndcgAt1": {
+        "numerator": 4,
+        "denominator": 5,
+        "value": 0.8
+      },
+      "precisionAt3": {
+        "numerator": 1.333333333332,
+        "denominator": 5,
+        "value": 0.266666666666
+      },
+      "recallAt3": {
+        "numerator": 4,
+        "denominator": 5,
+        "value": 0.8
+      },
+      "hitRateAt3": {
+        "numerator": 4,
+        "denominator": 5,
+        "value": 0.8
+      },
+      "ndcgAt3": {
+        "numerator": 4,
+        "denominator": 5,
+        "value": 0.8
+      },
+      "mrr": {
+        "numerator": 4,
+        "denominator": 5,
+        "value": 0.8
+      },
+      "noResultAccuracy": {
+        "numerator": 1,
+        "denominator": 1,
+        "value": 1
+      },
+      "citationCorrectness": {
+        "numerator": 4,
+        "denominator": 4,
+        "value": 1
+      },
+      "staleResultRejectionRate": {
+        "numerator": 2,
+        "denominator": 2,
+        "value": 1
+      }
+    }
+  },
+  "sliceResults": [
+    {
+      "slice": "language:en",
+      "evaluationUnitIds": ["q-migration-synonym", "q-milo-question"],
+      "counts": {
+        "queries": 2,
+        "retrieved": 1
+      },
+      "metrics": {
+        "mrr": {
+          "numerator": 1,
+          "denominator": 2,
+          "value": 0.5
+        },
+        "citationCorrectness": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        }
+      }
+    },
+    {
+      "slice": "language:ko",
+      "evaluationUnitIds": ["q-api-inflection", "q-battery-exact", "q-no-result"],
+      "counts": {
+        "queries": 3,
+        "retrieved": 2
+      },
+      "metrics": {
+        "mrr": {
+          "numerator": 2,
+          "denominator": 2,
+          "value": 1
+        },
+        "citationCorrectness": {
+          "numerator": 2,
+          "denominator": 2,
+          "value": 1
+        }
+      }
+    },
+    {
+      "slice": "language:ko-en-mixed",
+      "evaluationUnitIds": ["q-release-notation"],
+      "counts": {
+        "queries": 1,
+        "retrieved": 1
+      },
+      "metrics": {
+        "mrr": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "citationCorrectness": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        }
+      }
+    },
+    {
+      "slice": "query-type:exact-keyword",
+      "evaluationUnitIds": ["q-battery-exact"],
+      "counts": {
+        "queries": 1,
+        "retrieved": 1
+      },
+      "metrics": {
+        "mrr": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "citationCorrectness": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        }
+      }
+    },
+    {
+      "slice": "query-type:ko-inflection",
+      "evaluationUnitIds": ["q-api-inflection"],
+      "counts": {
+        "queries": 1,
+        "retrieved": 1
+      },
+      "metrics": {
+        "mrr": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "citationCorrectness": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        }
+      }
+    },
+    {
+      "slice": "query-type:natural-language",
+      "evaluationUnitIds": ["q-milo-question"],
+      "counts": {
+        "queries": 1,
+        "retrieved": 1
+      },
+      "metrics": {
+        "mrr": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "citationCorrectness": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        }
+      }
+    },
+    {
+      "slice": "query-type:no-result",
+      "evaluationUnitIds": ["q-no-result"],
+      "counts": {
+        "queries": 1,
+        "retrieved": 0
+      },
+      "metrics": {
+        "mrr": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "citationCorrectness": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        }
+      }
+    },
+    {
+      "slice": "query-type:notation-variation",
+      "evaluationUnitIds": ["q-release-notation"],
+      "counts": {
+        "queries": 1,
+        "retrieved": 1
+      },
+      "metrics": {
+        "mrr": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        },
+        "citationCorrectness": {
+          "numerator": 1,
+          "denominator": 1,
+          "value": 1
+        }
+      }
+    },
+    {
+      "slice": "query-type:synonym",
+      "evaluationUnitIds": ["q-migration-synonym"],
+      "counts": {
+        "queries": 1,
+        "retrieved": 0
+      },
+      "metrics": {
+        "mrr": {
+          "numerator": 0,
+          "denominator": 1,
+          "value": 0
+        },
+        "citationCorrectness": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        }
+      }
+    }
+  ],
+  "failureDetails": [
+    {
+      "evaluationUnitId": "q-migration-synonym",
+      "code": "RELEVANT_CLAIM_NOT_RETRIEVED",
+      "detailDigest": "sha256:6f1443d82194f301a0e48f601cc109ab13dcfd7f8078b0c0bff4baf5d223ee74"
+    }
+  ],
+  "environmentSummary": {
+    "node": "v24.15.0",
+    "platform": "win32",
+    "databaseIsolation": "ephemeral-database-created-and-dropped",
+    "thresholdPolicy": "quality-gate-v1-regression-floor"
+  },
+  "runDigest": "sha256:9a39d3b12d2d53ecac9fe6459c04d607ca46e6c91270f0970e82ef89fc092c89"
+}

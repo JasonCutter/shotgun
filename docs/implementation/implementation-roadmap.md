@@ -733,3 +733,45 @@ Sections 1–4의 구현·검증·독립 재검토와 사용자 승인이 완료
 - 실제 외부 Action Connector와 외부 네트워크 공개는 계속 금지한다.
 - Stage 12.1 전체를 `COMPLETE`, `production-ready`, `release-ready`로 표시하지 않는다.
 - Stage 13은 Durability Gate 완료로 자동 개시되지 않는다.
+
+## Stage 12.1 Quality Sections 1–4 진행 기록 — 2026-07-22
+
+Quality Section 1의 Golden Corpus·Label·Metric·Run 계약은 사용자 승인을 완료했고
+ADR-098은 `ACCEPTED`다. Section 2 Claim Extraction과 Section 3 Natural-language
+Search도 사용자 승인을 완료했다. Golden Label은 내용 변경 없이 `APPROVED`, revision
+`2`로 전환했다. Section 4의 versioned regression floor, `quality:gate`, CI 차단도
+사용자 승인을 완료했으며 Quality Gate는 `COMPLETE`다.
+
+- Corpus: 9 cases, 8 Golden Claims, 6 exhaustive queries, Korean·English·mixed와
+  Plain Text·Markdown·HTML-derived slice
+- Claim: 실제 Stage 4 Command·Handler와 Validation 경로, Fake Provider 9회, READY Candidate 11개;
+  Precision `0.545455`, Recall `0.75`, F1 `0.631579`, Exact Case `0.444444`, No-Claim Accuracy `0.0`
+- Search: `k=1` Precision·Recall·Hit Rate·MRR·nDCG `0.8`, No-result·Citation·Stale rejection `1.0`
+- 알려진 취약점: synonym query 미검색, no-claim 문장 복사, Markdown heading 과추출,
+  HTML-derived selector 불일치, 서로 다른 Evidence 위치의 동일 Claim 중복
+- Production Claim·Prompt·Provider·Search ranking과 Database Migration은 변경하지 않음
+- Section 4는 `COMPLETE / USER APPROVED`; Sections 5A·5B는 Known Limit과 실제 제품
+  사용 결과를 보존한 채 `DEFERRED`
+
+상세 근거는 [Quality Evaluation Foundation](../engineering/stage-12-1-quality-evaluation-foundation.md),
+[Quality Baseline Implementation Record](../engineering/stage-12-1-quality-baselines.md)와
+[ADR-098](../architecture/adr/ADR-098-stage-12-1-quality-evaluation-contract.md)을 따른다.
+Quality Gate는 `COMPLETE`, Stage 12.1은 `IN_PROGRESS`, Stage 13은 `NOT STARTED`다.
+
+## Stage 12.1 Reuse and Operations Gate 후보 기록 — 2026-07-22
+
+기존 standalone package, Assembly·Adapter replacement, Application readiness, Runtime
+Security, Quality, Database, Secret·OSS와 Durability 증거를 새 기능 없이 하나의
+`stage12:reuse-operations-gate`로 조합했다.
+
+- `@shotgun/lucas-text-locator`와 `@shotgun/quality-evaluation`을 각각 tarball consumer에서
+  전체 Shotgun Application 없이 설치·실행
+- 기존 Document Review Assembly와 Storage·AI·Transport·Diff Adapter 교체 Contract 재사용
+- `/health`, loopback-only bind, development auth 제한과 Fake Action Connector 경계 검증
+- 승인된 Quality Gate, Migration 상태, Secret Scan과 OSS Gate를 fail-fast 실행
+- Backup·Restore는 완료된 ADR-097, restore drill과 기존 Runbook 증거 재사용
+- CI는 통합 Gate 뒤 `check:core`와 database test를 실행해 Quality·DB verify 중복 제거
+
+상태는 `IMPLEMENTED CANDIDATE / INDEPENDENT REVIEW READY / USER APPROVAL PENDING`이다.
+Stage 12.1은 `IN_PROGRESS`, PR #15는 `OPEN / DRAFT`, Stage 13과 Frontend는
+`NOT STARTED`를 유지한다.

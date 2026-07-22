@@ -49,6 +49,6 @@ jobs:
       - run: npm sbom --sbom-format cyclonedx > sbom.cdx.json
       - run: node -e "JSON.parse(require('node:fs').readFileSync('sbom.cdx.json', 'utf8'))"
       - run: npm run db:reset
-      - run: npm run check
+      - run: npm run stage12:reuse-operations-gate
+      - run: npm run check:core
       - run: npm run test:database
-      - run: npm run db:verify

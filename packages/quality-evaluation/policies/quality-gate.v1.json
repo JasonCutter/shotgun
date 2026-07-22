@@ -1,0 +1,49 @@
+{
+  "policyVersion": "1.0.0",
+  "policyKind": "REGRESSION_FLOOR",
+  "status": "APPROVED",
+  "corpusId": "shotgun-quality-baseline",
+  "corpusVersion": "1.0.0",
+  "corpusDigest": "sha256:b0bfdbbdf9e47aebd5d0508c95be8fdc4483d15ed185c02eaf15999eabc15f67",
+  "labelSetRevision": 2,
+  "metricImplementationVersion": "1.0.0",
+  "comparisonPrecision": 6,
+  "claim": {
+    "metrics": {
+      "precision": { "operator": "gte", "threshold": 0.545455 },
+      "recall": { "operator": "gte", "threshold": 0.75 },
+      "f1": { "operator": "gte", "threshold": 0.631579 },
+      "exactClaimMatch": { "operator": "gte", "threshold": 0.444444 },
+      "unsupportedClaimRate": { "operator": "lte", "threshold": 0 },
+      "duplicateClaimRate": { "operator": "lte", "threshold": 0 },
+      "evidenceExactMatch": { "operator": "gte", "threshold": 0.857143 },
+      "evidenceCoverage": { "operator": "gte", "threshold": 0.75 }
+    },
+    "diagnostics": {
+      "noClaimAccuracy": {
+        "baseline": 0,
+        "blocking": false,
+        "rationale": "Section 5A improvement target; recorded but not blocking in policy v1."
+      }
+    }
+  },
+  "search": {
+    "metrics": {
+      "precisionAt1": { "operator": "gte", "threshold": 0.8 },
+      "recallAt1": { "operator": "gte", "threshold": 0.8 },
+      "hitRateAt1": { "operator": "gte", "threshold": 0.8 },
+      "mrr": { "operator": "gte", "threshold": 0.8 },
+      "ndcgAt1": { "operator": "gte", "threshold": 0.8 },
+      "precisionAt3": { "operator": "gte", "threshold": 0.266667 },
+      "recallAt3": { "operator": "gte", "threshold": 0.8 },
+      "hitRateAt3": { "operator": "gte", "threshold": 0.8 },
+      "ndcgAt3": { "operator": "gte", "threshold": 0.8 },
+      "noResultAccuracy": { "operator": "eq", "threshold": 1 },
+      "citationCorrectness": { "operator": "eq", "threshold": 1 },
+      "staleResultRejectionRate": { "operator": "eq", "threshold": 1 }
+    },
+    "diagnostics": {}
+  },
+  "rationale": "Initial regression floor protecting the user-approved Section 2 and 3 baselines without claiming a quality target.",
+  "policyDigest": "sha256:fb5e4389fed4e111fc3e94e3ee23366b454fb82de1806b865717b12129d644b4"
+}

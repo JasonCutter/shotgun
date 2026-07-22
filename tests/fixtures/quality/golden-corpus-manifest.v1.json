@@ -1,0 +1,29 @@
+{
+  "contractVersion": "1.0.0",
+  "corpusId": "shotgun-quality-baseline",
+  "corpusVersion": "1.0.0",
+  "labelSetRevision": 2,
+  "title": "Shotgun Stage 12.1 Claim and Search Baseline",
+  "description": "Synthetic multilingual direct-claim and lexical-search evaluation corpus.",
+  "createdAt": "2026-07-22T08:00:00.000Z",
+  "updatedAt": "2026-07-22T08:00:00.000Z",
+  "digestAlgorithm": "sha256",
+  "corpusDigest": "sha256:b0bfdbbdf9e47aebd5d0508c95be8fdc4483d15ed185c02eaf15999eabc15f67",
+  "caseIds": [
+    "duplicate-claim",
+    "en-multiple",
+    "en-uncertainty",
+    "evidence-gap",
+    "html-derived-status",
+    "ko-negative",
+    "ko-no-claim",
+    "ko-single-numeric",
+    "mixed-markdown-release"
+  ],
+  "licenseSummary": "Shotgun-authored synthetic data; repository license applies.",
+  "dataPolicy": {
+    "classification": "SYNTHETIC",
+    "containsProductionData": false,
+    "liveProviderEligible": true
+  }
+}

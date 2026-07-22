@@ -1,0 +1,77 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://shotgun.local/quality/quality-gate-policy.v1.schema.json",
+  "title": "Shotgun Quality Gate Policy v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "policyVersion",
+    "policyKind",
+    "status",
+    "corpusId",
+    "corpusVersion",
+    "corpusDigest",
+    "labelSetRevision",
+    "metricImplementationVersion",
+    "comparisonPrecision",
+    "claim",
+    "search",
+    "rationale",
+    "policyDigest"
+  ],
+  "properties": {
+    "policyVersion": { "const": "1.0.0" },
+    "policyKind": { "const": "REGRESSION_FLOOR" },
+    "status": { "const": "APPROVED" },
+    "corpusId": { "type": "string", "minLength": 1 },
+    "corpusVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "corpusDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "labelSetRevision": { "type": "integer", "minimum": 1 },
+    "metricImplementationVersion": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "comparisonPrecision": { "const": 6 },
+    "claim": { "$ref": "#/definitions/policySection" },
+    "search": { "$ref": "#/definitions/policySection" },
+    "rationale": { "type": "string", "minLength": 1 },
+    "policyDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+  },
+  "definitions": {
+    "metricRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operator", "threshold"],
+      "properties": {
+        "operator": { "enum": ["gte", "lte", "eq"] },
+        "threshold": { "type": "number" }
+      }
+    },
+    "diagnosticRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baseline", "blocking", "rationale"],
+      "properties": {
+        "baseline": { "type": "number" },
+        "blocking": { "const": false },
+        "rationale": { "type": "string", "minLength": 1 }
+      }
+    },
+    "policySection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["metrics", "diagnostics"],
+      "properties": {
+        "metrics": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "$ref": "#/definitions/metricRule" }
+        },
+        "diagnostics": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/definitions/diagnosticRule" }
+        }
+      }
+    }
+  }
+}

@@ -26,6 +26,10 @@
     "test:integration": "vitest run tests/integration",
     "test:database": "node --env-file-if-exists=.env node_modules/vitest/vitest.mjs run tests/database --maxWorkers=1",
     "test:live-ai": "vitest run tests/live/gemini-provider.live.test.ts --maxWorkers=1",
+    "quality:claim-baseline": "tsx scripts/quality-claim-baseline.ts --write",
+    "quality:search-baseline": "node --env-file-if-exists=.env node_modules/tsx/dist/cli.mjs scripts/quality-search-baseline.ts --write",
+    "quality:gate": "node --env-file-if-exists=.env node_modules/tsx/dist/cli.mjs scripts/quality-gate.ts",
+    "stage12:reuse-operations-gate": "node --env-file-if-exists=.env node_modules/tsx/dist/cli.mjs scripts/stage12-reuse-operations-gate.ts",
     "test:architecture": "tsx scripts/architecture-test.ts",
     "test:stage12-package": "tsx scripts/stage12-package-test.ts",
     "test": "npm run test:unit && npm run test:contract && npm run test:integration && npm run test:architecture && npm run test:stage12-package",
@@ -41,7 +45,8 @@
     "backup:drill": "tsx scripts/stage12-1-restore-drill.ts",
     "auth:bootstrap-owner": "tsx scripts/auth-bootstrap-owner.ts",
     "secret:scan": "tsx scripts/secret-scan.ts",
-    "check": "npm run lint && npm run format:check && npm run typecheck && npm test && npm run secret:scan && npm run oss:verify"
+    "check:core": "npm run lint && npm run format:check && npm run typecheck && npm run test:unit && npm run test:contract && npm run test:integration && npm run test:architecture",
+    "check": "npm run check:core && npm run test:stage12-package && npm run secret:scan && npm run oss:verify"
   },
   "dependencies": {
     "@google/genai": "2.12.0",

@@ -15,7 +15,8 @@ export const computeCorpusDigest = (
   manifest: GoldenCorpusManifest,
   cases: readonly GoldenCorpusCase[],
 ): string => {
-  const { corpusDigest: _excluded, ...digestibleManifest } = manifest;
+  const { corpusDigest: excludedCorpusDigest, ...digestibleManifest } = manifest;
+  void excludedCorpusDigest;
   return sha256Text(
     stableJson({
       serializationVersion: manifest.contractVersion,
@@ -26,12 +27,14 @@ export const computeCorpusDigest = (
 };
 
 export const computeRecordedOutputDigest = (predictionSet: RecordedClaimPredictionSet): string => {
-  const { outputDigest: _excluded, ...digestible } = predictionSet;
+  const { outputDigest: excludedOutputDigest, ...digestible } = predictionSet;
+  void excludedOutputDigest;
   return sha256Text(stableJson(digestible));
 };
 
 export const computeRunDigest = (run: QualityEvaluationRun): string => {
-  const { runDigest: _excluded, ...digestible } = run;
+  const { runDigest: excludedRunDigest, ...digestible } = run;
+  void excludedRunDigest;
   return sha256Text(stableJson(digestible));
 };
 

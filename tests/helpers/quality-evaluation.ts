@@ -6,6 +6,8 @@ import type {
   GoldenCorpusCase,
   GoldenCorpusManifest,
   RecordedClaimPredictionSet,
+  QualityEvaluationRun,
+  QualityGatePolicy,
 } from '../../packages/quality-evaluation/src/index.js';
 
 const fixtureRoot = path.resolve('tests', 'fixtures', 'quality');
@@ -20,3 +22,18 @@ export const loadQualityCorpus = async (): Promise<GoldenCorpus> => ({
 
 export const loadMetricCalculatorFixture = (): Promise<RecordedClaimPredictionSet> =>
   readJson<RecordedClaimPredictionSet>('metric-calculator-claim-fixture.v1.json');
+
+export const loadQualityGatePolicy = async (): Promise<QualityGatePolicy> =>
+  JSON.parse(
+    await readFile(
+      path.resolve('packages', 'quality-evaluation', 'policies', 'quality-gate.v1.json'),
+      'utf8',
+    ),
+  ) as QualityGatePolicy;
+
+export const loadQualityRunArtifact = async (
+  file: 'claim-extraction-baseline.v1.json' | 'search-baseline.v1.json',
+): Promise<QualityEvaluationRun> =>
+  JSON.parse(
+    await readFile(path.resolve('docs', 'engineering', 'baselines', file), 'utf8'),
+  ) as QualityEvaluationRun;

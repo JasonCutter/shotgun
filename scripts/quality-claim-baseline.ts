@@ -56,8 +56,8 @@ const run = createEvaluationRun(corpus.manifest, results, {
   environmentSummary: {
     node: process.version,
     platform: process.platform,
-    source: 'synthetic-reviewed-labels',
-    thresholdPolicy: 'none-baseline-only',
+    source: 'synthetic-approved-labels',
+    thresholdPolicy: 'quality-gate-v1-regression-floor',
     executionPath:
       'SubmitIntake->EvidenceIndexed->GenerateStructured->ClaimCandidate->Validation->Metric',
     providerOutput: 'generated-from-production-stage4-prompt-by-deterministic-fake-adapter',
@@ -79,7 +79,12 @@ if (process.argv.includes('--write')) {
 console.log(
   stableJson({
     runId: run.runId,
+    evaluationKind: run.evaluationKind,
+    corpusId: run.corpusId,
+    corpusVersion: run.corpusVersion,
     corpusDigest: run.corpusDigest,
+    labelSetRevision: run.labelSetRevision,
+    metricImplementationVersion: run.metricImplementationVersion,
     aggregateResults: run.aggregateResults,
     failedCases: run.caseResults
       .filter((entry) => !entry.passed)

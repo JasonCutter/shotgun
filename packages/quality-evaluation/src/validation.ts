@@ -3,7 +3,9 @@ import Ajv, { type ValidateFunction } from 'ajv';
 import { sha256Text, stableJson, unicodeSlice } from '../../contracts/src/index.js';
 import caseSchema from '../schemas/golden-corpus-case.v1.schema.json';
 import manifestSchema from '../schemas/golden-corpus-manifest.v1.schema.json';
+import gatePolicySchema from '../schemas/quality-gate-policy.v1.schema.json';
 import runSchema from '../schemas/quality-evaluation-run.v1.schema.json';
+import { computeQualityGatePolicyDigest, type QualityGatePolicy } from './gate.js';
 import { computeCorpusDigest, computeRecordedOutputDigest, computeRunDigest } from './digest.js';
 import type {
   EvaluationLane,
@@ -22,6 +24,7 @@ ajv.addFormat('date-time', (value: string) => !Number.isNaN(Date.parse(value)));
 const manifestValidator = ajv.compile(manifestSchema);
 const caseValidator = ajv.compile(caseSchema);
 const runValidator = ajv.compile(runSchema);
+const gatePolicyValidator = ajv.compile(gatePolicySchema);
 
 const assertSchema = (validator: ValidateFunction, payload: unknown, label: string): void => {
   if (!validator(payload)) {
@@ -128,6 +131,48 @@ export const validateEvaluationRun = (run: QualityEvaluationRun): void => {
   const observedDigest = computeRunDigest(run);
   if (run.runDigest !== observedDigest) {
     throw new Error(`Run digest mismatch: expected '${observedDigest}'.`);
+  }
+};
+
+const requiredClaimGateMetrics = [
+  'duplicateClaimRate',
+  'evidenceCoverage',
+  'evidenceExactMatch',
+  'exactClaimMatch',
+  'f1',
+  'precision',
+  'recall',
+  'unsupportedClaimRate',
+];
+
+const requiredSearchGateMetrics = [
+  'citationCorrectness',
+  'hitRateAt1',
+  'hitRateAt3',
+  'mrr',
+  'ndcgAt1',
+  'ndcgAt3',
+  'noResultAccuracy',
+  'precisionAt1',
+  'precisionAt3',
+  'recallAt1',
+  'recallAt3',
+  'staleResultRejectionRate',
+];
+
+export const validateQualityGatePolicy = (policy: QualityGatePolicy): void => {
+  assertSchema(gatePolicyValidator, policy, 'Quality Gate Policy');
+  assertSameSet(Object.keys(policy.claim.metrics), requiredClaimGateMetrics, 'Claim Gate metrics');
+  assertSameSet(
+    Object.keys(policy.search.metrics),
+    requiredSearchGateMetrics,
+    'Search Gate metrics',
+  );
+  assertSameSet(Object.keys(policy.claim.diagnostics), ['noClaimAccuracy'], 'Claim diagnostics');
+  if (computeQualityGatePolicyDigest(policy) !== policy.policyDigest) {
+    throw new Error(
+      `Quality Gate Policy digest mismatch: expected '${computeQualityGatePolicyDigest(policy)}'.`,
+    );
   }
 };
 

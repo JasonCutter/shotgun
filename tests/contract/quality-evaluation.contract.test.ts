@@ -28,15 +28,16 @@ describe('Quality Evaluation contract', () => {
     expect(() => validateCorpus(tampered, 'baseline')).toThrow('sourceContentHash');
   });
 
-  it('allows REVIEWED labels only in candidate baseline runs and requires APPROVED for Gate runs', async () => {
+  it('allows only APPROVED labels in Gate runs', async () => {
     const corpus = await loadQualityCorpus();
-    expect(() => validateCorpus(corpus, 'gate')).toThrow("label status 'REVIEWED'");
+    expect(() => validateCorpus(corpus, 'gate')).not.toThrow();
 
-    const approved = withCorpusDigest({
+    const reviewed = withCorpusDigest({
       ...corpus,
-      cases: corpus.cases.map((entry) => ({ ...entry, labelReviewStatus: 'APPROVED' as const })),
+      cases: corpus.cases.map((entry) => ({ ...entry, labelReviewStatus: 'REVIEWED' as const })),
     });
-    expect(() => validateCorpus(approved, 'gate')).not.toThrow();
+    expect(() => validateCorpus(reviewed, 'baseline')).not.toThrow();
+    expect(() => validateCorpus(reviewed, 'gate')).toThrow("label status 'REVIEWED'");
 
     const candidate = withCorpusDigest({
       ...corpus,

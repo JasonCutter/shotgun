@@ -232,12 +232,12 @@ try {
         promptVersion: 'not-applicable',
         policyVersion: 'canonical-only-readiness-v1',
       },
-      deterministicSettings: 'isolated-database;reviewed-labels;stable-seed-ids',
+      deterministicSettings: 'isolated-database;approved-labels;stable-seed-ids',
       environmentSummary: {
         node: process.version,
         platform: process.platform,
         databaseIsolation: 'ephemeral-database-created-and-dropped',
-        thresholdPolicy: 'none-baseline-only',
+        thresholdPolicy: 'quality-gate-v1-regression-floor',
       },
     });
     validateEvaluationRun(run);
@@ -248,7 +248,12 @@ try {
     console.log(
       stableJson({
         runId: run.runId,
+        evaluationKind: run.evaluationKind,
+        corpusId: run.corpusId,
+        corpusVersion: run.corpusVersion,
         corpusDigest: run.corpusDigest,
+        labelSetRevision: run.labelSetRevision,
+        metricImplementationVersion: run.metricImplementationVersion,
         aggregateResults: run.aggregateResults,
         failedQueries: run.caseResults
           .filter((entry) => !entry.passed)

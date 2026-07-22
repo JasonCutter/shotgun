@@ -49,7 +49,10 @@ Security와 Durability Gate 완료만으로 Stage 12.1 전체를 `COMPLETE`로 �
 | Reuse and Operations Gate              | **NOT STARTED**              |
 | Stage 13                               | **NOT STARTED**              |
 
-Sections 1–4의 independent review와 explicit user approval이 완료됐다. ADR-097은 `ACCEPTED`, Durability Gate는 `COMPLETE`이며 PR #14 merge는 조건부 승인 상태다.
+Sections 1–4의 independent review와 explicit user approval이 완료됐다. ADR-097은
+`ACCEPTED`이고 Durability Gate는 `COMPLETE`다. PR #14는 2026-07-22 일반 Merge
+Commit 방식으로 `main`에 병합됐으며, Merge Commit SHA는
+`50a25dfab1458fffc6fecc80bc8c91852b2d7ff6`이다.
 
 ## 3. 고정된 전체 순서
 

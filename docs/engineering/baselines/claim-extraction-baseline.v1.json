@@ -1,13 +1,13 @@
 {
-  "runId": "claim:sha256:c8e7a51614df6262947a2de40834b80472988096897518a1e1a5921285e92381",
+  "runId": "claim:sha256:b0bfdbbdf9e47aebd5d0508c95be8fdc4483d15ed185c02eaf15999eabc15f67",
   "runMode": "deterministic-recorded",
   "evaluationKind": "CLAIM_EXTRACTION",
   "corpusId": "shotgun-quality-baseline",
   "corpusVersion": "1.0.0",
-  "corpusDigest": "sha256:c8e7a51614df6262947a2de40834b80472988096897518a1e1a5921285e92381",
-  "labelSetRevision": 1,
+  "corpusDigest": "sha256:b0bfdbbdf9e47aebd5d0508c95be8fdc4483d15ed185c02eaf15999eabc15f67",
+  "labelSetRevision": 2,
   "evaluationContractVersion": "1.0.0",
-  "applicationCommitSha": "06aedf16a11372081cc9907088b525e302ee676b",
+  "applicationCommitSha": "848b9b6762339a9f58dc80a62459f420849ff613",
   "moduleVersions": {
     "intake": "1.0.0",
     "original-asset": "1.0.0",
@@ -3084,8 +3084,8 @@
   "environmentSummary": {
     "node": "v24.15.0",
     "platform": "win32",
-    "source": "synthetic-reviewed-labels",
-    "thresholdPolicy": "none-baseline-only",
+    "source": "synthetic-approved-labels",
+    "thresholdPolicy": "quality-gate-v1-regression-floor",
     "executionPath": "SubmitIntake->EvidenceIndexed->GenerateStructured->ClaimCandidate->Validation->Metric",
     "providerOutput": "generated-from-production-stage4-prompt-by-deterministic-fake-adapter",
     "commandCount": "9",
@@ -3095,5 +3095,5 @@
     "rejectedCandidateCount": "0",
     "validationCount": "11"
   },
-  "runDigest": "sha256:7c68b5c5dd9ed6f3f9c216530dd0ee1746c94b6548c16033452625010ab02cd4"
+  "runDigest": "sha256:6f9524ed9c9de7e0c929e980f71ad20173fe289469f599215c0a27bc77577539"
 }

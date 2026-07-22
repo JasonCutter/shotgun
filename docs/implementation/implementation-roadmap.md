@@ -734,13 +734,13 @@ Sections 1–4의 구현·검증·독립 재검토와 사용자 승인이 완료
 - Stage 12.1 전체를 `COMPLETE`, `production-ready`, `release-ready`로 표시하지 않는다.
 - Stage 13은 Durability Gate 완료로 자동 개시되지 않는다.
 
-## Stage 12.1 Quality Sections 1–3 진행 기록 — 2026-07-22
+## Stage 12.1 Quality Sections 1–4 진행 기록 — 2026-07-22
 
 Quality Section 1의 Golden Corpus·Label·Metric·Run 계약은 사용자 승인을 완료했고
 ADR-098은 `ACCEPTED`다. Section 2 Claim Extraction과 Section 3 Natural-language
-Search는 synthetic reviewed corpus로 구현·측정한 candidate다. Section 2는 실제 Stage 4
-경로 보완 후 independent review ready이며, Section 3은 independent review pass이고
-사용자 승인 대기 상태다.
+Search도 사용자 승인을 완료했다. Golden Label은 내용 변경 없이 `APPROVED`, revision
+`2`로 전환했다. Section 4는 versioned regression floor, `quality:gate`, CI 차단을
+구현한 candidate이며 independent review와 사용자 승인 대기 상태다.
 
 - Corpus: 9 cases, 8 Golden Claims, 6 exhaustive queries, Korean·English·mixed와
   Plain Text·Markdown·HTML-derived slice
@@ -750,7 +750,7 @@ Search는 synthetic reviewed corpus로 구현·측정한 candidate다. Section 2
 - 알려진 취약점: synonym query 미검색, no-claim 문장 복사, Markdown heading 과추출,
   HTML-derived selector 불일치, 서로 다른 Evidence 위치의 동일 Claim 중복
 - Production Claim·Prompt·Provider·Search ranking과 Database Migration은 변경하지 않음
-- Section 4 Threshold·CI 차단은 `NOT STARTED`, Section 5A는 `NOT STARTED`,
+- Section 4 Threshold·CI 차단은 `IMPLEMENTED CANDIDATE / INDEPENDENT REVIEW READY / USER APPROVAL PENDING`, Section 5A는 `NOT STARTED`,
   Section 5B Semantic Retrieval은 `DEFERRED`
 
 상세 근거는 [Quality Evaluation Foundation](../engineering/stage-12-1-quality-evaluation-foundation.md),

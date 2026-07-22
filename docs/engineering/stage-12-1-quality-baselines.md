@@ -1,12 +1,14 @@
-# Stage 12.1 Quality Sections 2·3 — Baseline Implementation Record
+# Stage 12.1 Quality Sections 2–4 — Baseline and Regression Gate Record
 
-- Section 2 상태: **IMPLEMENTED CANDIDATE / INDEPENDENT REVIEW READY**
-- Section 3 상태: **IMPLEMENTED CANDIDATE / INDEPENDENT REVIEW PASS / USER APPROVAL PENDING**
+- Section 2 상태: **COMPLETE / USER APPROVED**
+- Section 3 상태: **COMPLETE / USER APPROVED**
+- Section 4 상태: **IMPLEMENTED CANDIDATE / INDEPENDENT REVIEW READY / USER APPROVAL PENDING**
 - 일자: 2026-07-22
 - 평가 계약: [ADR-098](../architecture/adr/ADR-098-stage-12-1-quality-evaluation-contract.md) (`Accepted`)
-- Claim Baseline 실행 기준 SHA: `06aedf16a11372081cc9907088b525e302ee676b`
+- Baseline 실행 기준 SHA: `848b9b6762339a9f58dc80a62459f420849ff613`
 - Corpus: `shotgun-quality-baseline@1.0.0`
-- Corpus digest: `sha256:c8e7a51614df6262947a2de40834b80472988096897518a1e1a5921285e92381`
+- Label set revision: `2`
+- Corpus digest: `sha256:b0bfdbbdf9e47aebd5d0508c95be8fdc4483d15ed185c02eaf15999eabc15f67`
 - Metric implementation: `1.0.0`
 
 ## 1. 범위와 권위 경계
@@ -15,10 +17,10 @@ Quality Section 1에서 승인된 계약을 실행 가능한 Schema, TypeScript 
 digest, deterministic metric과 result artifact로 구현했다. Production Claim 생성
 로직·Prompt·Provider·Search ranking·FTS·`pg_trgm` 설정은 변경하지 않았다.
 
-Corpus Label은 Production Claim·Fact·Canonical Knowledge가 아니다. 이번 synthetic
-Label은 `REVIEWED`이고 candidate baseline lane에서만 허용된다. `APPROVED` Label만
-허용하는 Gate lane에서는 거부된다. 따라서 아래 수치는 Section 2·3 승인이나
-Quality Gate 통과 Threshold가 아니다.
+Corpus Label은 Production Claim·Fact·Canonical Knowledge가 아니다. 사용자는 같은
+Golden Label의 내용을 변경하지 않고 review status를 `APPROVED`로 승인했으며
+`labelSetRevision`과 case별 `labelRevision`을 `2`로 올렸다. 아래 수치는 승인된 현재
+Baseline이자 초기 regression floor의 근거지만 품질 목표나 일반 성능 보장은 아니다.
 
 ## 2. 구현 산출물
 
@@ -29,7 +31,7 @@ Quality Gate 통과 Threshold가 아니다.
 - 실제 Stage 4 `SubmitIntake` Command부터 Candidate Validation까지 통과하는 Claim runner
 - order-independent exact Claim text+Evidence 최대 1:1 matching
 - Claim·Search per-case/query, aggregate, slice metric
-- reviewed Claim을 deterministic ID로 seed하는 PostgreSQL baseline
+- approved Claim을 deterministic ID로 seed하는 PostgreSQL baseline
 - 실제 `stage7.projection-search` readiness와 PostgreSQL Search Adapter 실행
 - 격리 Database 생성→Migration→seed→측정→삭제 실행기
 
@@ -102,7 +104,7 @@ Validation이 이를 READY로 인정했기 때문이다. 이는 factual Claim �
 
 ## 5. Section 3 — Natural-language Search Baseline
 
-PostgreSQL 16.14와 `pg_trgm` 1.6의 격리 Database에서 reviewed Golden Claim 8개를
+PostgreSQL 16.14와 `pg_trgm` 1.6의 격리 Database에서 approved Golden Claim 8개를
 seed했다. Production `GREATEST(ts_rank_cd, similarity, substring)` ranking과
 `claim_id` tie-break를 그대로 사용했다.
 
@@ -130,7 +132,27 @@ Recall·Hit Rate·MRR·nDCG와 함께 해석해야 한다.
 변경하지 않으며 Section 5A lexical 개선 근거로만 보존한다. Semantic retrieval은
 Section 5B 별도 승인 전까지 `DEFERRED`다.
 
-## 6. OSS Integration Decision
+## 6. Section 4 — Regression Threshold and CI Gate
+
+Versioned policy는
+[`quality-gate.v1.json`](../../packages/quality-evaluation/policies/quality-gate.v1.json)에
+고정했다. Claim threshold는 Precision `0.545455`, Recall `0.750000`, F1 `0.631579`,
+Exact Claim Match `0.444444`, Evidence Exact Match `0.857143`, Evidence Coverage
+`0.750000` 이상과 Unsupported·Duplicate Claim Rate `0` 이하를 요구한다.
+No-Claim Accuracy `0`은 Section 5A 개선 대상이므로 진단만 기록하고 차단하지 않는다.
+
+Search threshold는 P/R/Hit/MRR/nDCG@1 `0.8` 이상, P@3 `0.266667` 이상,
+R/Hit/nDCG@3 `0.8` 이상을 요구한다. No-result Accuracy, Citation Correctness,
+Stale-result Rejection Rate는 정확히 `1.0`이어야 한다. 정책의 6자리 십진 표현과
+결정적으로 비교하도록 관측값도 소수 여섯째 자리로 반올림한다. 원시 metric은
+artifact에 그대로 보존하며 결과를 threshold에 맞춰 수정하지 않는다.
+
+`npm run quality:gate`는 `APPROVED` Corpus·policy·digest를 검증한 뒤 실제 Stage 4
+Claim runner와 격리 PostgreSQL Search runner를 실행한다. metric 또는 identity가
+회귀하면 exit code 1로 실패하며 CI는 PostgreSQL reset 다음 단계에서 이를 blocking
+step으로 실행한다. 현재 승인 Baseline은 Gate를 통과했다.
+
+## 7. OSS Integration Decision
 
 | 후보                               | 결정                  | 이번 범위                             |
 | ---------------------------------- | --------------------- | ------------------------------------- |
@@ -145,13 +167,14 @@ Section 5B 별도 승인 전까지 `DEFERRED`다.
 새 Runtime Dependency와 lockfile 변경은 없다. 기존 Integration Decision이 바뀌지
 않아 Open-source Role Matrix는 갱신하지 않았다.
 
-## 7. 재현·Rollback·제한
+## 8. 재현·Rollback·제한
 
 실행 명령:
 
 ```powershell
 npm run quality:claim-baseline
 npm run quality:search-baseline
+npm run quality:gate
 ```
 
 Search runner는 `shotgun_quality_*` 격리 Database를 만들고 14개 Migration을 적용한
@@ -162,20 +185,20 @@ artifact를 제거하는 것으로 충분하며 Production data migration은 없
 현재 제한:
 
 - corpus가 9 cases로 작아 대표성과 통계적 신뢰 구간을 주장하지 않는다.
-- Label은 `REVIEWED`이며 Quality Gate에 필요한 `APPROVED` 상태가 아니다.
+- Label 승인은 현재 9-case synthetic corpus에 한정되며 Production Knowledge 승인이 아니다.
 - Stage 4 Fake Provider baseline만 실행했고 live Provider 분포·비용·반복성은 측정하지 않았다.
 - Fake Provider는 Evidence 문장을 직접 복사하므로 Claim-worthiness를 판별하는 실제 모델 품질을 대표하지 않는다.
 - PDF·DOCX·Spreadsheet·Image/OCR-derived slice는 후속 corpus 확장 범위다.
-- Threshold·regression budget·CI 차단은 Section 4에서 별도 승인한다.
+- Section 4 regression floor는 품질 목표가 아니라 현재 승인 Baseline의 저하만 차단한다.
 
-## 8. 상태
+## 9. 상태
 
 ```text
 ADR-098: ACCEPTED
 Quality Section 1: COMPLETE / USER APPROVED
-Quality Section 2: IMPLEMENTED CANDIDATE / INDEPENDENT REVIEW READY
-Quality Section 3: IMPLEMENTED CANDIDATE / INDEPENDENT REVIEW PASS / USER APPROVAL PENDING
-Quality Section 4: NOT STARTED
+Quality Section 2: COMPLETE / USER APPROVED
+Quality Section 3: COMPLETE / USER APPROVED
+Quality Section 4: IMPLEMENTED CANDIDATE / INDEPENDENT REVIEW READY / USER APPROVAL PENDING
 Quality Section 5A: NOT STARTED
 Quality Section 5B: DEFERRED
 Quality Gate: IN_PROGRESS

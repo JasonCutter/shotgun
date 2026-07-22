@@ -503,17 +503,19 @@ semantic Architecture를 같은 승인 단위로 묶지 않고 5A·5B로 분리�
 12. 새 runtime dependency는 OSS Gate·pin·license·replacement 검증 없이 도입하지
     않는다.
 
-## 13. 미결사항과 Baseline 결정
+## 13. Baseline·Regression 결정과 미결사항
 
-Section 2·3 candidate baseline에서 다음을 결정했다.
+승인된 Sections 2·3 Baseline과 Section 4 candidate에서 다음을 결정했다.
 
 - 초기 corpus: 9 cases, 8 Golden Claims, 6 exhaustive queries
 - 초기 `k`: `{1, 3}`
 - format family: Plain Text·Markdown·HTML-derived를 v1에 포함하고 rich format은 후속 확장
 - result artifact: repository의 `docs/engineering/baselines`에 Run JSON v1 보존
 - aggregate: Claim은 corpus micro, Search는 relevant query macro; 모든 case/query·slice 병행 보고
+- regression floor: 승인 Baseline을 소수점 6자리 비교로 보호하고 No-Claim Accuracy는 비차단 진단
+- CI: PostgreSQL 준비 후 `npm run quality:gate`를 blocking step으로 실행
 
-다음은 여전히 미결이며 Section 4 또는 후속 승인 범위다.
+다음은 여전히 후속 승인 범위다.
 
 - 독립 label reviewer 수, self-review 허용 여부, disagreement 해결 절차
 - reviewed semantic alias를 diagnostic에만 쓸지 보조 metric으로 보고할지
@@ -522,7 +524,7 @@ Section 2·3 candidate baseline에서 다음을 결정했다.
 - `claimType`·temporal status가 Production contract에 추가될 때 label migration 방법
 - CI artifact retention
 - external public corpus를 사용할 필요가 있는지와 dataset별 license 승인
-- Threshold 산정 규칙과 regression budget; Section 4 전까지 미정
+- 품질 목표 threshold, 허용 regression budget과 corpus 확대 시 policy version migration
 
 ## 14. 제외 대안
 
@@ -547,19 +549,19 @@ Section 2·3 candidate baseline에서 다음을 결정했다.
 - Dependency·lockfile: 변경 없음
 - Database·migration·index·FTS·`pg_trgm`: 변경 없음
 - Prompt·Provider·model: 변경 없음
-- CI threshold: 변경 없음
+- CI threshold: Section 4 versioned regression floor와 blocking `quality:gate` 추가
 - Notion Canonical ADD: 기존 Section 1 승인 기록을 유지하며 이번 작업에서는 수정하지 않음
 
-Section 1 승인 반영 상태:
+Sections 1–3 승인과 Section 4 구현 반영 상태:
 
 ```text
 Security Gate: COMPLETE
 Durability Gate: COMPLETE
 Quality Gate: IN_PROGRESS
 Quality Section 1: COMPLETE / USER APPROVED
-Quality Section 2: IMPLEMENTED CANDIDATE / INDEPENDENT REVIEW READY
-Quality Section 3: IMPLEMENTED CANDIDATE / INDEPENDENT REVIEW PASS / USER APPROVAL PENDING
-Quality Section 4: NOT STARTED
+Quality Section 2: COMPLETE / USER APPROVED
+Quality Section 3: COMPLETE / USER APPROVED
+Quality Section 4: IMPLEMENTED CANDIDATE / INDEPENDENT REVIEW READY / USER APPROVAL PENDING
 Quality Section 5A: NOT STARTED
 Quality Section 5B: DEFERRED
 Reuse and Operations Gate: NOT STARTED
@@ -580,18 +582,18 @@ Section 2·3 candidate 구현에서 완료했다.
 4. Section 2에서 Golden Corpus를 Production Stage 4 `SubmitIntake`→`GenerateStructured`→
    `ClaimCandidate`→Validation 경로로 실행하는 결정적 Fake Provider runner와 선택적
    live Provider 레인을 분리 구현했다. 수기 오류 Fixture는 Metric 계산기 단위 테스트로만 격리했다.
-5. Section 3에서 격리 PostgreSQL에 baseline-eligible `REVIEWED` corpus Claim을 seed하고 완전한
+5. Section 3에서 격리 PostgreSQL에 승인된 `APPROVED` corpus Claim을 seed하고 완전한
    relevance judgment으로 Search metric을 계산한다.
 6. TypeScript metric을 small hand-calculated fixture로 검증했다. NIST/`ir_measures`
    외부 tool 교차 실행은 dependency를 도입하지 않고 후속 필요성 검토로 남겼다.
 7. 결정적 Claim·Search baseline을 반복 실행해 metric parity를 확인했다. live 레인은
    이번 범위에서 실행하지 않았다.
-8. Section 4에서 baseline·risk slice·false-pass 검토 후 threshold와 CI 실행
-   계층을 별도 승인받는다.
+8. Section 4에서 승인 Baseline을 보호하는 versioned regression threshold와 blocking
+   `quality:gate` CI 실행을 구현했다. Section 4 자체는 독립 검토와 사용자 승인 대기다.
 9. Section 5A에서만 실패 근거에 따라 lexical Production 개선을 검토하고,
    semantic retrieval은 Section 5B 독립 결정 전까지 `DEFER`를 유지한다.
 
-Section 1 승인과 ADR-098 수락은 Claim/Search Baseline 승인, Quality Gate 완료 또는
+Sections 1–3과 ADR-098은 사용자 승인됐지만 Section 4, Quality Gate 전체 또는
 Stage 12.1 완료를 의미하지 않는다.
 
 Section 2·3 구현과 측정 결과는

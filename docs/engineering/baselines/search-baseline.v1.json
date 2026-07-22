@@ -1,13 +1,13 @@
 {
-  "runId": "search:sha256:c8e7a51614df6262947a2de40834b80472988096897518a1e1a5921285e92381",
+  "runId": "search:sha256:b0bfdbbdf9e47aebd5d0508c95be8fdc4483d15ed185c02eaf15999eabc15f67",
   "runMode": "deterministic-recorded",
   "evaluationKind": "SEARCH",
   "corpusId": "shotgun-quality-baseline",
   "corpusVersion": "1.0.0",
-  "corpusDigest": "sha256:c8e7a51614df6262947a2de40834b80472988096897518a1e1a5921285e92381",
-  "labelSetRevision": 1,
+  "corpusDigest": "sha256:b0bfdbbdf9e47aebd5d0508c95be8fdc4483d15ed185c02eaf15999eabc15f67",
+  "labelSetRevision": 2,
   "evaluationContractVersion": "1.0.0",
-  "applicationCommitSha": "fe65f67b7d4dd3515399e9dd7385224613180f5f",
+  "applicationCommitSha": "848b9b6762339a9f58dc80a62459f420849ff613",
   "moduleVersions": {
     "projection-search": "1.0.0"
   },
@@ -35,7 +35,7 @@
   "providerModelVersion": "not-applicable",
   "promptVersion": "not-applicable",
   "policyVersion": "canonical-only-readiness-v1",
-  "randomSeedOrDeterministicSettings": "isolated-database;reviewed-labels;stable-seed-ids",
+  "randomSeedOrDeterministicSettings": "isolated-database;approved-labels;stable-seed-ids",
   "startedAt": "2026-07-22T08:00:00.000Z",
   "completedAt": "2026-07-22T08:00:00.000Z",
   "metricImplementationVersion": "1.0.0",
@@ -722,7 +722,7 @@
     "node": "v24.15.0",
     "platform": "win32",
     "databaseIsolation": "ephemeral-database-created-and-dropped",
-    "thresholdPolicy": "none-baseline-only"
+    "thresholdPolicy": "quality-gate-v1-regression-floor"
   },
-  "runDigest": "sha256:5def6727609b278f910004f2c745e9ea201172cb9686bc3468a247641795db58"
+  "runDigest": "sha256:9a39d3b12d2d53ecac9fe6459c04d607ca46e6c91270f0970e82ef89fc092c89"
 }

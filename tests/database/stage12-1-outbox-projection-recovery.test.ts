@@ -482,7 +482,7 @@ describe.runIf(pool)('Stage 12.1 Canonical Outbox and Projection recovery', () =
 
         const count = await pool!.query(
           `SELECT count(*) FROM projection.discovery_inferences WHERE project_id = $1`,
-          [fixture.projectId]
+          [fixture.projectId],
         );
         expect(count.rows[0].count).toBe('0');
       } finally {

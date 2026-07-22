@@ -1,11 +1,11 @@
 # Stage 12.1 - Security, Durability and Release Readiness Hardening
 
-- 상태: **IN_PROGRESS — Security Gate COMPLETE / Durability Gate COMPLETE / Quality Gate NOT STARTED / Reuse and Operations Gate NOT STARTED**
+- 상태: **IN_PROGRESS — Security Gate COMPLETE / Durability Gate COMPLETE / Quality Gate IN_PROGRESS / Reuse and Operations Gate NOT STARTED**
 - 기준 문서: `Shotgun Stage 12.1 보안·내구성 보정 전략.pdf` (2026-07-17)
 - 적용 범위: Stage 12 이후의 보정 작업
 - Security Gate 기준 `main` SHA: `d9e29bc588ff8c2badfd20c87cd3d4c2e695ba28`
 - Durability Section 1 기준 `main` SHA: `06ce9b48328296856fc2eb70e6ef1a4a329243b6`
-- 현재 작업 Section: **Durability Gate COMPLETE / Next Gate: Quality Gate — NOT STARTED**
+- 현재 작업 Section: **Quality Gate Section 1 — DESIGN CANDIDATE / NOT APPROVED**
 
 ## 1. 전략적 결정
 
@@ -29,25 +29,26 @@ Stage 12.1은 다음 네 Gate가 모두 통과할 때만 완료다.
 | -------------------- | ------------------------------------------------------------------------------------------------ | ---------------------- |
 | Security             | 인증되지 않은 actor, scope, project, sensitivity 위조 불가. 실제 Action은 서버 저장 근거만 사용. | **P0-1·P0-2 COMPLETE** |
 | Durability           | AI 중간 장애 뒤 후보 완전 복구, Canonical Outbox·Projection 자동 복구, clean restore 성공.       | **COMPLETE**           |
-| Quality              | Claim 추출과 자연어 검색을 corpus와 수치로 평가하고 regression suite로 고정.                     | **NOT STARTED**        |
+| Quality              | Claim 추출과 자연어 검색을 corpus와 수치로 평가하고 regression suite로 고정.                     | **IN_PROGRESS**        |
 | Reuse and Operations | 외부 consumer package 설치, Ubuntu·Windows CI, secret history scan, backup·restore 증거 보존.    | **NOT STARTED**        |
 
 Security와 Durability Gate 완료만으로 Stage 12.1 전체를 `COMPLETE`로 표시하지 않는다.
 
 ## 2.1 Current Durability Approval Status
 
-| Scope                                  | Status                       |
-| -------------------------------------- | ---------------------------- |
-| Stage 12.1                             | **IN_PROGRESS**              |
-| Security Gate                          | **COMPLETE**                 |
-| Durability Gate                        | **COMPLETE**                 |
-| Section 1 — AI Durable Materialization | **COMPLETE**                 |
-| Section 2 — Canonical Outbox Recovery  | **COMPLETE / USER APPROVED** |
-| Section 3 — Projection Recovery        | **COMPLETE / USER APPROVED** |
-| Section 4 — Backup·Restore Drill       | **COMPLETE / USER APPROVED** |
-| Quality Gate                           | **NOT STARTED**              |
-| Reuse and Operations Gate              | **NOT STARTED**              |
-| Stage 13                               | **NOT STARTED**              |
+| Scope                                   | Status                              |
+| --------------------------------------- | ----------------------------------- |
+| Stage 12.1                              | **IN_PROGRESS**                     |
+| Security Gate                           | **COMPLETE**                        |
+| Durability Gate                         | **COMPLETE**                        |
+| Section 1 — AI Durable Materialization  | **COMPLETE**                        |
+| Section 2 — Canonical Outbox Recovery   | **COMPLETE / USER APPROVED**        |
+| Section 3 — Projection Recovery         | **COMPLETE / USER APPROVED**        |
+| Section 4 — Backup·Restore Drill        | **COMPLETE / USER APPROVED**        |
+| Quality Gate                            | **IN_PROGRESS**                     |
+| Quality Section 1 — Evaluation Contract | **DESIGN CANDIDATE / NOT APPROVED** |
+| Reuse and Operations Gate               | **NOT STARTED**                     |
+| Stage 13                                | **NOT STARTED**                     |
 
 Sections 1–4의 independent review와 explicit user approval이 완료됐다. ADR-097은
 `ACCEPTED`이고 Durability Gate는 `COMPLETE`다. PR #14는 2026-07-22 일반 Merge
@@ -219,7 +220,7 @@ ADR-097은 `ACCEPTED`이고 Durability Gate는 `COMPLETE`다. Quality Gate와 Re
 | Canonical Outbox recovery                     | **COMPLETE / USER APPROVED** | ADR-097·Implementation Record           |
 | Projection recovery                           | **COMPLETE / USER APPROVED** | ADR-097·Implementation Record           |
 | Backup·clean restore                          | **COMPLETE / USER APPROVED** | local isolated drill·운영 Runbook       |
-| Claim·검색 Quality Benchmark                  | 미착수                       | Wave 3                                  |
+| Claim·검색 Quality Benchmark                  | Section 1 설계 후보 / 미승인 | Wave 3                                  |
 | External Consumer·Windows CI                  | 미착수                       | Wave 4                                  |
 | Stage 9·10 architecture tension               | 별도 Architecture Section    | 기존 ADR-089·090을 조용히 변경하지 않음 |
 

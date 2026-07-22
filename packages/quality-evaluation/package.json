@@ -1,0 +1,28 @@
+{
+  "name": "@shotgun/quality-evaluation",
+  "version": "1.0.0",
+  "description": "Deterministic Shotgun Golden Corpus, metric, and regression-gate contracts.",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/packages/quality-evaluation/src/index.d.ts",
+      "import": "./dist/packages/quality-evaluation/src/index.js"
+    },
+    "./policies/quality-gate.v1.json": "./policies/quality-gate.v1.json"
+  },
+  "files": [
+    "dist",
+    "policies"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1"
+  }
+}

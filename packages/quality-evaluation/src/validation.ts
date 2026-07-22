@@ -1,10 +1,10 @@
 import Ajv, { type ValidateFunction } from 'ajv';
 
-import { sha256Text, stableJson, unicodeSlice } from '../../contracts/src/index.js';
-import caseSchema from '../schemas/golden-corpus-case.v1.schema.json';
-import manifestSchema from '../schemas/golden-corpus-manifest.v1.schema.json';
-import gatePolicySchema from '../schemas/quality-gate-policy.v1.schema.json';
-import runSchema from '../schemas/quality-evaluation-run.v1.schema.json';
+import { sha256Text, stableJson, unicodeSlice } from '../../contracts/src/document-evidence.js';
+import caseSchema from '../schemas/golden-corpus-case.v1.schema.json' with { type: 'json' };
+import manifestSchema from '../schemas/golden-corpus-manifest.v1.schema.json' with { type: 'json' };
+import gatePolicySchema from '../schemas/quality-gate-policy.v1.schema.json' with { type: 'json' };
+import runSchema from '../schemas/quality-evaluation-run.v1.schema.json' with { type: 'json' };
 import { computeQualityGatePolicyDigest, type QualityGatePolicy } from './gate.js';
 import { computeCorpusDigest, computeRecordedOutputDigest, computeRunDigest } from './digest.js';
 import type {

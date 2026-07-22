@@ -1,7 +1,7 @@
 {
   "policyVersion": "1.0.0",
   "policyKind": "REGRESSION_FLOOR",
-  "status": "IMPLEMENTED_CANDIDATE",
+  "status": "APPROVED",
   "corpusId": "shotgun-quality-baseline",
   "corpusVersion": "1.0.0",
   "corpusDigest": "sha256:b0bfdbbdf9e47aebd5d0508c95be8fdc4483d15ed185c02eaf15999eabc15f67",
@@ -45,5 +45,5 @@
     "diagnostics": {}
   },
   "rationale": "Initial regression floor protecting the user-approved Section 2 and 3 baselines without claiming a quality target.",
-  "policyDigest": "sha256:b4747e644764504975bb7f48df0e15ed422d39975f1e434cd17d334d544f2048"
+  "policyDigest": "sha256:fb5e4389fed4e111fc3e94e3ee23366b454fb82de1806b865717b12129d644b4"
 }

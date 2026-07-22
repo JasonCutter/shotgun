@@ -1,4 +1,4 @@
-import { sha256Text, stableJson } from '../../contracts/src/index.js';
+import { sha256Text, stableJson } from '../../contracts/src/document-evidence.js';
 
 import type { ResultGroup } from './types.js';
 
@@ -23,7 +23,7 @@ export type QualityGatePolicySection = {
 export type QualityGatePolicy = {
   readonly policyVersion: '1.0.0';
   readonly policyKind: 'REGRESSION_FLOOR';
-  readonly status: 'IMPLEMENTED_CANDIDATE';
+  readonly status: 'APPROVED';
   readonly corpusId: string;
   readonly corpusVersion: string;
   readonly corpusDigest: string;

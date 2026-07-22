@@ -1,5 +1,5 @@
-import type { SearchProjectionDocument } from '../../contracts/src/index.js';
-import { sha256Text, stableJson } from '../../contracts/src/index.js';
+import type { SearchProjectionDocument } from '../../contracts/src/cited-search.js';
+import { sha256Text, stableJson } from '../../contracts/src/document-evidence.js';
 
 import type { GoldenCorpus } from './types.js';
 

@@ -1,4 +1,4 @@
-import { sha256Text, stableJson, unicodeSlice } from '../../contracts/src/index.js';
+import { sha256Text, stableJson, unicodeSlice } from '../../contracts/src/document-evidence.js';
 
 import type {
   EvaluationUnitResult,

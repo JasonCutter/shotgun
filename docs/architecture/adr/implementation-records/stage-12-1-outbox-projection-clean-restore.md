@@ -3,7 +3,10 @@
 - Date: 2026-07-21
 - Decision: [ADR-097](../ADR-097-stage-12-1-outbox-projection-clean-restore.md)
 - Feature branch: `codex/stage12-1-outbox-projection-restore`
-- Section status: **COMPLETE / USER APPROVED — MAIN MERGE PENDING**
+- Section status: **COMPLETE / USER APPROVED**
+- ADR-097 status: **ACCEPTED**
+- Durability Gate: **COMPLETE**
+- Merge authorization: **GRANTED / PENDING EXECUTION**
 - Stage 12.1 status: **IN_PROGRESS**
 
 ## Implemented Scope
@@ -61,12 +64,17 @@
 - Section 4: COMPLETE / USER APPROVED
 - Independent technical review: PASS
 - Section approval: GRANTED FOR SECTIONS 1–4
-- ADR-097 final acceptance: PENDING
-- Durability Gate: IN_PROGRESS
+- ADR-097: ACCEPTED
+- Durability Gate: COMPLETE
+- Quality Gate: NOT STARTED
+- Reuse and Operations Gate: NOT STARTED
 - Stage 12.1: IN_PROGRESS
-- Main merge: NOT PERFORMED
+- Stage 13: NOT STARTED
+- Main merge: AUTHORIZED / PENDING EXECUTION
 
-Historical note: the earlier Independent architecture review `HOLD` and Section approval `NOT GRANTED` recorded the previous checkpoint. The current approvals do not authorize ADR-097 final acceptance, Durability Gate completion, Stage 12.1 completion, PR Ready conversion, `main` merge, or Stage 13.
+Historical note: the earlier Independent architecture review `HOLD` and Section approval `NOT GRANTED` recorded the previous checkpoint. On 2026-07-22, the user granted final ADR acceptance, Durability Gate completion, and a conditional PR #14 merge authorization. This does not complete Stage 12.1, Quality Gate, Reuse and Operations Gate, or start Stage 13.
+
+Actual main merge evidence is recorded in GitHub PR #14 and the Notion Canonical closure record after merge.
 
 ## Migration and Rollback
 

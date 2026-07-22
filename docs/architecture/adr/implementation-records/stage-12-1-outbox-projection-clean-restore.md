@@ -3,7 +3,7 @@
 - Date: 2026-07-21
 - Decision: [ADR-097](../ADR-097-stage-12-1-outbox-projection-clean-restore.md)
 - Feature branch: `codex/stage12-1-outbox-projection-restore`
-- Section status: **IMPLEMENTED — CORRECTION IN PROGRESS / MAIN MERGE PENDING**
+- Section status: **COMPLETE / USER APPROVED — MAIN MERGE PENDING**
 - Stage 12.1 status: **IN_PROGRESS**
 
 ## Implemented Scope
@@ -39,20 +39,34 @@
 - Clean restore drill: 14 Migration, Original Asset 1개, Contract·Module Manifest 90개, Canonical Project 1개
 - Drill outcome: Outbox `published`, Search `READY`, Compiled Truth version 1, expected Claim 검색 성공
 - Static: TypeScript typecheck, ESLint, Prettier, Secret Scan과 OSS Gate
-- Unit `54 passed`, Contract `105 passed`, Integration `19 passed`
-- PostgreSQL Database `62 passed` in 14 files, DB bootstrap verification PASS
+- Technical approval basis SHA: `27f3c5c2c6f3e3bdb17dfc84369d2f9f20514b94`
+- Remote CI: CI #53 PASS
+- `npm audit --audit-level=high`: PASS — 0 vulnerabilities
+- `npm run format:check`: PASS
+- `npm run check`: PASS
+- Backup Restore unit tests: 3 passed
+- PostgreSQL Database tests: 68 passed in 14 files
+- `db:verify`: PASS
+- `git diff --check`: PASS
 - Architecture boundary와 Stage 12 standalone package build·pack·install PASS
-- Clean restore drill PASS, 5.7초 측정값은 로컬 격리 fixture 기준이며 Production RTO로 사용하지 않는다.
+- Clean restore drill PASS: `shotgun-backup-v1`, 14 migrations, Original Asset 1, Contract and Module Manifest snapshots 90, Canonical Project 1; Outbox `published`, Search `READY`, Canonical digest matched, Compiled Truth version 1, expected Claim searchable, and Original Asset bytes matched. Projection rows were cleared before rebuild; temporary Databases and Directories were cleaned; remaining `shotgun_restore_*` Databases: 0. The 5,347ms measurement is a local isolated fixture result, not a Production RTO.
 
 ## Review and Approval Status
 
-- Remote CI quality: PASS
-- Local isolated clean restore drill: PASS (local evidence only; it is not a CI workflow step)
-- Independent architecture review: HOLD
+- Remote CI quality: PASS (CI #53 at the technical approval basis SHA)
+- Local isolated clean restore drill: PASS (local evidence only; CI #53 does not run `backup:drill`)
+- Section 1: COMPLETE
+- Section 2: COMPLETE / USER APPROVED
+- Section 3: COMPLETE / USER APPROVED
+- Section 4: COMPLETE / USER APPROVED
+- Independent technical review: PASS
+- Section approval: GRANTED FOR SECTIONS 1–4
+- ADR-097 final acceptance: PENDING
+- Durability Gate: IN_PROGRESS
+- Stage 12.1: IN_PROGRESS
 - Main merge: NOT PERFORMED
-- Section approval: NOT GRANTED
 
-The implementation and earlier drill evidence remain recorded below. They do not constitute completion approval for any Durability section or Gate.
+Historical note: the earlier Independent architecture review `HOLD` and Section approval `NOT GRANTED` recorded the previous checkpoint. The current approvals do not authorize ADR-097 final acceptance, Durability Gate completion, Stage 12.1 completion, PR Ready conversion, `main` merge, or Stage 13.
 
 ## Migration and Rollback
 
@@ -62,6 +76,7 @@ Application rollback은 기존 Canonical·History·Outbox·Asset 데이터를 �
 
 ## Known Limits and Handoff
 
+- Direct automated negative tests do not yet cover Contract tamper, Contract missing, Backup path traversal, Target Database non-empty rejection, Target Asset Root non-empty rejection, PostgreSQL major mismatch, cleanup failure, or backup-time source mutation. The corresponding defense logic and normal isolated drill are implemented and verified; this limited direct test coverage was not a Section 4 approval blocker.
 - Logical dump 기반이므로 대표 환경의 RPO·RTO 측정과 WAL/PITR 결정이 남아 있다.
 - Production scheduling, off-site encryption, retention과 restore operator approval은 Operations Gate 범위다.
 - `main` 반영과 원격 CI 검증은 별도 승인·실행 후 기록한다.

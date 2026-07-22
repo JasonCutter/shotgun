@@ -1,6 +1,6 @@
 # ADR-097: Stage 12.1 Canonical Outbox, Projection Recovery and Clean Restore
 
-- 상태: **Proposed — Independent Review HOLD**
+- 상태: **Proposed — Sections 1–4 Approved / Final Acceptance Pending**
 - 날짜: 2026-07-21
 - 상위 전략: [Stage 12.1 Hardening Strategy](../../engineering/stage-12-1-hardening-strategy.md)
 - 관련 결정: [ADR-086 — Stage 6 Canonical Commit, History and Outbox](ADR-086-stage-6-canonical-commit-history-outbox.md), [ADR-087 — Stage 7 Cited Search Projection](ADR-087-stage-7-cited-search-projection.md), [ADR-090 — Stage 10 Compiled Truth and Discovery](ADR-090-stage-10-compiled-truth-and-discovery.md), [ADR-096 — Stage 12.1 AI Durable Materialization](ADR-096-stage-12-1-ai-durable-materialization.md)
@@ -105,8 +105,17 @@ Production Database를 삭제하거나 제자리 덮어쓰는 Command는 제공�
 ## Change History
 
 - 2026-07-21: Independent review placed this decision on hold. The design remains proposed while batch-failure handling, recovery-result observability, and section approval boundaries are corrected. This ADR does not authorize a `main` merge or a Durability Gate completion claim.
+- 2026-07-22: Section 2 user approval completed; Section 3 independent technical review and user approval completed; Section 4 isolated Backup→Restore drill and independent technical review passed, and user approval completed. Sections 1–4 are approved. ADR final acceptance remains pending; the Durability Gate and Stage 12.1 remain `IN_PROGRESS`; no `main` merge authorization was granted.
 
 ## Implementation Gate
+
+Current verification status is recorded below; the conditions that follow are not removed or weakened.
+
+- Canonical Outbox Recovery: **PASS / USER APPROVED**
+- Projection Recovery: **PASS / USER APPROVED**
+- Clean Backup→Restore Drill: **PASS / USER APPROVED**
+
+The ADR remains `Proposed` until final acceptance, Gate, and public-approval boundaries are decided separately.
 
 다음 조건이 모두 통과하기 전에는 Durability Gate의 Outbox·Projection Recovery와 clean restore Section을 완료로 표시하지 않는다.
 

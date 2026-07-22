@@ -1,0 +1,124 @@
+{
+  "contractVersion": "1.0.0",
+  "runMode": "deterministic-recorded",
+  "providerName": "recorded-fixture",
+  "providerAdapterVersion": "1.0.0",
+  "providerModel": "synthetic-recording",
+  "providerModelVersion": "1.0.0",
+  "promptVersion": "stage4-direct-claim-v1",
+  "policyVersion": "stage4-direct-only-v1",
+  "outputDigest": "sha256:2f46884c0870e9cdefb4e85429acd8b8a5ceb10a447f8a7805cc8cbf2403dcbc",
+  "cases": [
+    {
+      "caseId": "duplicate-claim",
+      "predictions": [
+        {
+          "predictionId": "p-aurora-1",
+          "claimText": "Project Aurora is archived.",
+          "evidence": {
+            "exact": "Project Aurora is archived.",
+            "position": { "start": 0, "end": 27, "unit": "unicode-code-point" }
+          }
+        },
+        {
+          "predictionId": "p-aurora-duplicate",
+          "claimText": "Project Aurora is archived.",
+          "evidence": {
+            "exact": "Project Aurora is archived.",
+            "position": { "start": 0, "end": 27, "unit": "unicode-code-point" }
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "en-multiple",
+      "predictions": [
+        {
+          "predictionId": "p-milo-weight",
+          "claimText": "Milo weighs 5 kg.",
+          "evidence": {
+            "exact": "Milo weighs 5 kg.",
+            "position": { "start": 0, "end": 17, "unit": "unicode-code-point" }
+          }
+        },
+        {
+          "predictionId": "p-inspection-wrong-evidence",
+          "claimText": "The inspection starts at 09:30 UTC.",
+          "evidence": {
+            "exact": "The inspection starts at 09:30 UTC.",
+            "position": { "start": 17, "end": 52, "unit": "unicode-code-point" }
+          }
+        }
+      ]
+    },
+    { "caseId": "en-uncertainty", "predictions": [] },
+    {
+      "caseId": "evidence-gap",
+      "predictions": [
+        {
+          "predictionId": "p-unsupported-duration",
+          "claimText": "The delay is 3 days.",
+          "evidence": {
+            "exact": "The delay is 3 days.",
+            "position": { "start": 0, "end": 20, "unit": "unicode-code-point" }
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "html-derived-status",
+      "predictions": [
+        {
+          "predictionId": "p-system-status",
+          "claimText": "System status: green.",
+          "evidence": {
+            "exact": "System status: green.",
+            "position": { "start": 0, "end": 21, "unit": "unicode-code-point" },
+            "selectors": [{ "type": "CssSelector", "value": "#status" }]
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "ko-negative",
+      "predictions": [
+        {
+          "predictionId": "p-offline-api",
+          "claimText": "오프라인 모드에서는 외부 API를 호출하지 않는다.",
+          "evidence": {
+            "exact": "오프라인 모드에서는 외부 API를 호출하지 않는다.",
+            "position": { "start": 0, "end": 28, "unit": "unicode-code-point" }
+          }
+        }
+      ]
+    },
+    { "caseId": "ko-no-claim", "predictions": [] },
+    {
+      "caseId": "ko-single-numeric",
+      "predictions": [
+        {
+          "predictionId": "p-battery-duration",
+          "claimText": "배터리 사용 시간은 12시간입니다.",
+          "evidence": {
+            "exact": "배터리 사용 시간은 12시간입니다.",
+            "position": { "start": 0, "end": 19, "unit": "unicode-code-point" }
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "mixed-markdown-release",
+      "predictions": [
+        {
+          "predictionId": "p-release-date",
+          "claimText": "Shotgun v1.2 출시일은 2026-08-01이다.",
+          "evidence": {
+            "exact": "Shotgun v1.2 출시일은 2026-08-01이다.",
+            "position": { "start": 10, "end": 41, "unit": "unicode-code-point" },
+            "selectors": [{ "type": "MarkdownHeadingContext", "value": "Release" }]
+          }
+        }
+      ]
+    }
+  ]
+}

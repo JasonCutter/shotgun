@@ -1,0 +1,160 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://shotgun.local/quality/quality-evaluation-run.v1.schema.json",
+  "title": "Shotgun Quality Evaluation Run v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "runId",
+    "runMode",
+    "evaluationKind",
+    "corpusId",
+    "corpusVersion",
+    "corpusDigest",
+    "labelSetRevision",
+    "evaluationContractVersion",
+    "applicationCommitSha",
+    "moduleVersions",
+    "adapterVersions",
+    "projectorVersions",
+    "databaseVersion",
+    "databaseExtensionVersions",
+    "databaseSearchConfiguration",
+    "providerName",
+    "providerAdapterVersion",
+    "providerModel",
+    "providerModelVersion",
+    "promptVersion",
+    "policyVersion",
+    "randomSeedOrDeterministicSettings",
+    "startedAt",
+    "completedAt",
+    "metricImplementationVersion",
+    "caseResults",
+    "aggregateResults",
+    "sliceResults",
+    "failureDetails",
+    "environmentSummary",
+    "runDigest"
+  ],
+  "properties": {
+    "runId": { "type": "string", "minLength": 1 },
+    "runMode": { "enum": ["deterministic-recorded", "live-provider"] },
+    "evaluationKind": { "enum": ["CLAIM_EXTRACTION", "SEARCH"] },
+    "corpusId": { "type": "string", "minLength": 1 },
+    "corpusVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "corpusDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "labelSetRevision": { "type": "integer", "minimum": 1 },
+    "evaluationContractVersion": { "const": "1.0.0" },
+    "applicationCommitSha": { "type": "string", "pattern": "^([a-f0-9]{40}|WORKTREE)$" },
+    "moduleVersions": { "$ref": "#/definitions/stringMap" },
+    "adapterVersions": { "$ref": "#/definitions/stringMap" },
+    "projectorVersions": { "$ref": "#/definitions/stringMap" },
+    "databaseVersion": { "type": "string" },
+    "databaseExtensionVersions": { "$ref": "#/definitions/stringMap" },
+    "databaseSearchConfiguration": { "$ref": "#/definitions/stringMap" },
+    "providerName": { "type": "string", "minLength": 1 },
+    "providerAdapterVersion": { "type": "string", "minLength": 1 },
+    "providerModel": { "type": "string", "minLength": 1 },
+    "providerModelVersion": { "type": "string", "minLength": 1 },
+    "promptVersion": { "type": "string", "minLength": 1 },
+    "policyVersion": { "type": "string", "minLength": 1 },
+    "randomSeedOrDeterministicSettings": { "type": "string", "minLength": 1 },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "completedAt": { "type": "string", "format": "date-time" },
+    "metricImplementationVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "caseResults": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/evaluationUnitResult" }
+    },
+    "aggregateResults": { "$ref": "#/definitions/resultGroup" },
+    "sliceResults": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          { "$ref": "#/definitions/resultGroup" },
+          {
+            "type": "object",
+            "required": ["slice", "evaluationUnitIds"],
+            "properties": {
+              "slice": { "type": "string", "minLength": 1 },
+              "evaluationUnitIds": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": { "type": "string", "minLength": 1 }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "failureDetails": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["evaluationUnitId", "code", "detailDigest"],
+        "properties": {
+          "evaluationUnitId": { "type": "string", "minLength": 1 },
+          "code": { "type": "string", "minLength": 1 },
+          "detailDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+        }
+      }
+    },
+    "environmentSummary": { "$ref": "#/definitions/stringMap" },
+    "runDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+  },
+  "definitions": {
+    "stringMap": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "metricValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["numerator", "denominator", "value"],
+      "properties": {
+        "numerator": { "type": "number" },
+        "denominator": { "type": "number", "minimum": 0 },
+        "value": { "type": ["number", "null"] }
+      }
+    },
+    "resultGroup": {
+      "type": "object",
+      "required": ["counts", "metrics"],
+      "properties": {
+        "counts": {
+          "type": "object",
+          "additionalProperties": { "type": "number" }
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/definitions/metricValue" }
+        }
+      }
+    },
+    "evaluationUnitResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evaluationUnitId", "passed", "counts", "metrics", "failureCodes"],
+      "properties": {
+        "evaluationUnitId": { "type": "string", "minLength": 1 },
+        "passed": { "type": "boolean" },
+        "counts": {
+          "type": "object",
+          "additionalProperties": { "type": "number" }
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/definitions/metricValue" }
+        },
+        "failureCodes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

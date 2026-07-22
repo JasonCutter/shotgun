@@ -335,11 +335,7 @@ export const createProjectionSearchModule = (
             });
             return { rebuilt: documents.length, canonicalVersion: snapshot.version };
           } catch (error) {
-            await repository.markDegraded(
-              projectId,
-              SEARCH_PROJECTION_UPDATE_FAILED,
-              projectedAt,
-            );
+            await repository.markDegraded(projectId, SEARCH_PROJECTION_UPDATE_FAILED, projectedAt);
             throw error;
           }
         },
@@ -373,11 +369,7 @@ export const createProjectionSearchModule = (
               projectedAt,
             });
           } catch (error) {
-            await repository.markDegraded(
-              projectId,
-              SEARCH_PROJECTION_UPDATE_FAILED,
-              projectedAt,
-            );
+            await repository.markDegraded(projectId, SEARCH_PROJECTION_UPDATE_FAILED, projectedAt);
             throw error;
           }
           await context.publish({

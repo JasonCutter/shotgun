@@ -413,11 +413,7 @@ export const createCompiledTruthModule = (
             await repository.synchronize(projection);
             return projection;
           } catch (error) {
-            await repository.markDegraded(
-              projectId,
-              COMPILED_TRUTH_BUILD_FAILED,
-              projectedAt,
-            );
+            await repository.markDegraded(projectId, COMPILED_TRUTH_BUILD_FAILED, projectedAt);
             throw error;
           }
         },

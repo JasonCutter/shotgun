@@ -9,11 +9,11 @@
 
 ## Final Gate Status
 
-| Gate | Final status |
-| --- | --- |
-| Security Gate | **COMPLETE / USER APPROVED** |
-| Durability Gate | **COMPLETE / USER APPROVED** |
-| Quality Gate | **COMPLETE / USER APPROVED** |
+| Gate                      | Final status                 |
+| ------------------------- | ---------------------------- |
+| Security Gate             | **COMPLETE / USER APPROVED** |
+| Durability Gate           | **COMPLETE / USER APPROVED** |
+| Quality Gate              | **COMPLETE / USER APPROVED** |
 | Reuse and Operations Gate | **COMPLETE / USER APPROVED** |
 
 Quality Sections 1–4 are `COMPLETE / USER APPROVED`. Quality Sections 5A and 5B are `DEFERRED` as explicit follow-up work and do not block Stage 12.1 completion.

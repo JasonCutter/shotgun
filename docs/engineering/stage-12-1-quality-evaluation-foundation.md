@@ -1,9 +1,10 @@
 # Stage 12.1 Quality Gate Section 1 — Golden Corpus and Evaluation Contract
 
-- 상태: **DESIGN CANDIDATE / NOT APPROVED**
+- 상태: **COMPLETE / USER APPROVED**
 - 작성일: 2026-07-22
+- 사용자 승인일: 2026-07-22
 - Base SHA: `50a25dfab1458fffc6fecc80bc8c91852b2d7ff6`
-- 관련 ADR 후보: [ADR-098 — Stage 12.1 Quality Evaluation Contract](../architecture/adr/ADR-098-stage-12-1-quality-evaluation-contract.md)
+- 관련 ADR: [ADR-098 — Stage 12.1 Quality Evaluation Contract](../architecture/adr/ADR-098-stage-12-1-quality-evaluation-contract.md) (`Accepted`)
 - 안전 경계: [ADR-084](../architecture/adr/ADR-084-stage-4-ai-candidate-validation.md), [ADR-087](../architecture/adr/ADR-087-stage-7-cited-search-projection.md)
 
 ## 1. 현재 구현과 평가 자산 Inventory
@@ -481,9 +482,9 @@ Code license가 dataset license를 대체하지 않는다.
 semantic Architecture를 같은 승인 단위로 묶지 않고 5A·5B로 분리하는 것을
 제안한다.
 
-## 12. 확정 후보
+## 12. 승인된 확정 계약
 
-다음은 사용자 승인 시 Section 1의 normative contract로 고정할 후보다.
+다음은 사용자 승인으로 Section 1의 normative contract로 고정됐다.
 
 1. Golden Label은 test oracle이며 Claim·Fact·Canonical Knowledge가 아니다.
 2. Corpus run은 Production Canonical table을 변경하지 않는다.
@@ -544,17 +545,18 @@ semantic Architecture를 같은 승인 단위로 묶지 않고 5A·5B로 분리�
 - CI threshold: 변경 없음
 - Notion Canonical ADD: 사용자 승인 전 반영하지 않음
 
-사용자 승인 전 상태:
+Section 1 승인 반영 상태:
 
 ```text
 Security Gate: COMPLETE
 Durability Gate: COMPLETE
 Quality Gate: IN_PROGRESS
-Quality Section 1: DESIGN CANDIDATE / NOT APPROVED
+Quality Section 1: COMPLETE / USER APPROVED
 Quality Section 2: NOT STARTED
 Quality Section 3: NOT STARTED
 Quality Section 4: NOT STARTED
-Quality Section 5: NOT STARTED / CONDITIONAL
+Quality Section 5A: NOT STARTED
+Quality Section 5B: DEFERRED
 Reuse and Operations Gate: NOT STARTED
 Stage 12.1: IN_PROGRESS
 Stage 13: NOT STARTED
@@ -582,5 +584,5 @@ Section 1 사용자 승인 후에만 다음을 순서대로 진행한다.
 9. Section 5A에서만 실패 근거에 따라 lexical Production 개선을 검토하고,
    semantic retrieval은 Section 5B 독립 결정 전까지 `DEFER`를 유지한다.
 
-이 문서가 Draft PR에 있다는 사실은 Section 1 승인, Claim/Search 품질 검증,
-Quality Gate 완료, Stage 12.1 완료를 의미하지 않는다.
+Section 1 승인과 ADR-098 수락은 Claim/Search Baseline 승인, Quality Gate 완료 또는
+Stage 12.1 완료를 의미하지 않는다.

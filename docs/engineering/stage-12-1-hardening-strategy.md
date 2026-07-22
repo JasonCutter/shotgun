@@ -5,7 +5,7 @@
 - 적용 범위: Stage 12 이후의 보정 작업
 - Security Gate 기준 `main` SHA: `d9e29bc588ff8c2badfd20c87cd3d4c2e695ba28`
 - Durability Section 1 기준 `main` SHA: `06ce9b48328296856fc2eb70e6ef1a4a329243b6`
-- 현재 작업 Section: **Quality Gate Section 1 — DESIGN CANDIDATE / NOT APPROVED**
+- 현재 작업 Section: **Quality Sections 2·3 — IMPLEMENTATION IN PROGRESS / NOT APPROVED**
 
 ## 1. 전략적 결정
 
@@ -46,7 +46,7 @@ Security와 Durability Gate 완료만으로 Stage 12.1 전체를 `COMPLETE`로 �
 | Section 3 — Projection Recovery         | **COMPLETE / USER APPROVED**        |
 | Section 4 — Backup·Restore Drill        | **COMPLETE / USER APPROVED**        |
 | Quality Gate                            | **IN_PROGRESS**                     |
-| Quality Section 1 — Evaluation Contract | **DESIGN CANDIDATE / NOT APPROVED** |
+| Quality Section 1 — Evaluation Contract | **COMPLETE / USER APPROVED**        |
 | Reuse and Operations Gate               | **NOT STARTED**                     |
 | Stage 13                                | **NOT STARTED**                     |
 
@@ -207,7 +207,9 @@ Historical note: ADR-097의 후보 구현은 독립 검토에서 한때 `HOLD`�
 - [Implementation Record](../architecture/adr/implementation-records/stage-12-1-outbox-projection-clean-restore.md)
 - [Backup and Clean Restore Runbook](stage-12-1-backup-restore-runbook.md)
 
-ADR-097은 `ACCEPTED`이고 Durability Gate는 `COMPLETE`다. Quality Gate와 Reuse and Operations Gate는 `NOT STARTED`, Stage 12.1은 `IN_PROGRESS`, Stage 13은 `NOT STARTED`다.
+ADR-097은 `ACCEPTED`이고 Durability Gate는 `COMPLETE`다. ADR-098과 Quality Section 1은
+사용자 승인을 완료했으며 Quality Gate는 `IN_PROGRESS`다. Reuse and Operations Gate는
+`NOT STARTED`, Stage 12.1은 `IN_PROGRESS`, Stage 13은 `NOT STARTED`다.
 
 ## 9. 후속 Section 경계
 
@@ -220,7 +222,9 @@ ADR-097은 `ACCEPTED`이고 Durability Gate는 `COMPLETE`다. Quality Gate와 Re
 | Canonical Outbox recovery                     | **COMPLETE / USER APPROVED** | ADR-097·Implementation Record           |
 | Projection recovery                           | **COMPLETE / USER APPROVED** | ADR-097·Implementation Record           |
 | Backup·clean restore                          | **COMPLETE / USER APPROVED** | local isolated drill·운영 Runbook       |
-| Claim·검색 Quality Benchmark                  | Section 1 설계 후보 / 미승인 | Wave 3                                  |
+| Quality Evaluation Contract                   | **COMPLETE / USER APPROVED** | ADR-098                                 |
+| Claim Extraction Baseline                     | 구현 진행 / 미승인           | Quality Section 2                       |
+| Natural-language Search Baseline              | 구현 진행 / 미승인           | Quality Section 3                       |
 | External Consumer·Windows CI                  | 미착수                       | Wave 4                                  |
 | Stage 9·10 architecture tension               | 별도 Architecture Section    | 기존 ADR-089·090을 조용히 변경하지 않음 |
 

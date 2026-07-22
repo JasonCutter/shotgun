@@ -1,9 +1,9 @@
 # ADR-098: Stage 12.1 Quality Evaluation Contract
 
-- 상태: **Proposed**
+- 상태: **Accepted**
 - 일자: 2026-07-22
 - 상위 전략: [Stage 12.1 Hardening Strategy](../../engineering/stage-12-1-hardening-strategy.md)
-- 세부 제안: [Stage 12.1 Quality Evaluation Foundation](../../engineering/stage-12-1-quality-evaluation-foundation.md)
+- 세부 계약: [Stage 12.1 Quality Evaluation Foundation](../../engineering/stage-12-1-quality-evaluation-foundation.md)
 - 관련 결정: [ADR-084 — Stage 4 AI Candidate Validation](ADR-084-stage-4-ai-candidate-validation.md), [ADR-087 — Stage 7 Cited Search Projection](ADR-087-stage-7-cited-search-projection.md)
 
 ## Context
@@ -17,7 +17,7 @@ Golden Label을 Canonical Claim이나 Fact로 취급하면 평가 권위가 사�
 권위를 침범한다. 반대로 검색 결과를 라벨 없이 평가하거나 LLM Judge 단일
 점수로 Gate를 통과시키면 회귀와 근거 실패를 숨길 수 있다.
 
-## Proposed Decision
+## Decision
 
 1. Golden Corpus는 Production Canonical 저장소와 분리된 versioned test artifact로
    관리하며 Production table에 write하지 않는다.
@@ -36,7 +36,7 @@ Golden Label을 Canonical Claim이나 Fact로 취급하면 평가 권위가 사�
 8. 통과 Threshold, corpus 크기, `k` 집합과 live 반복 횟수는 baseline 결과와
    사용자 승인 전에 고정하지 않는다.
 
-## Proposed Consequences
+## Consequences
 
 - Section 2와 3은 같은 Corpus·Label·Run identity를 사용해 Claim과 Search baseline을
   재현할 수 있다.
@@ -49,5 +49,7 @@ Golden Label을 Canonical Claim이나 Fact로 취급하면 평가 권위가 사�
 
 ## Approval Boundary
 
-이 ADR은 `Proposed`이다. 사용자 승인 전에 `Accepted`로 바꾸지 않으며, Quality
-Section 1이나 Quality Gate를 `COMPLETE`로 표시하지 않는다.
+사용자는 2026-07-22에 이 평가 계약과 Quality Section 1 완료를 승인했다. 따라서
+ADR-098은 `Accepted`, Quality Section 1은 `COMPLETE / USER APPROVED`다. 이 승인은
+Section 2·3 Baseline, Section 4 Threshold, Quality Gate 전체 또는 Stage 12.1 전체의
+승인이 아니다.

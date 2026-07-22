@@ -138,8 +138,22 @@ export const assertProviderBoundary = (
   if (runMode !== provider.runMode) {
     throw new Error(`Provider mode '${provider.runMode}' cannot execute in '${runMode}' lane.`);
   }
-  if (runMode === 'deterministic-recorded' && provider.providerName !== 'recorded-fixture') {
-    throw new Error('The deterministic-recorded lane accepts only immutable recorded fixtures.');
+  if (
+    runMode === 'deterministic-recorded' &&
+    provider.providerName !== 'recorded-fixture' &&
+    provider.providerName !== 'fake'
+  ) {
+    throw new Error(
+      'The deterministic-recorded lane accepts only immutable fixtures or the deterministic Fake Provider.',
+    );
+  }
+  if (
+    runMode === 'deterministic-recorded' &&
+    'recordingSource' in provider &&
+    provider.recordingSource === 'stage4-runtime' &&
+    provider.providerName !== 'fake'
+  ) {
+    throw new Error('Stage 4 runtime recordings require the deterministic Fake Provider.');
   }
 };
 

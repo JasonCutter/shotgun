@@ -18,5 +18,5 @@ export const loadQualityCorpus = async (): Promise<GoldenCorpus> => ({
   cases: await readJson<readonly GoldenCorpusCase[]>('golden-corpus-cases.v1.json'),
 });
 
-export const loadRecordedClaimPredictions = (): Promise<RecordedClaimPredictionSet> =>
-  readJson<RecordedClaimPredictionSet>('recorded-claim-predictions.v1.json');
+export const loadMetricCalculatorFixture = (): Promise<RecordedClaimPredictionSet> =>
+  readJson<RecordedClaimPredictionSet>('metric-calculator-claim-fixture.v1.json');

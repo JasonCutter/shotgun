@@ -10,10 +10,8 @@ import {
   validateRecordedPredictionSet,
 } from '../packages/quality-evaluation/src/index.js';
 import { stableJson } from '../packages/contracts/src/index.js';
-import {
-  loadQualityCorpus,
-  loadRecordedClaimPredictions,
-} from '../tests/helpers/quality-evaluation.js';
+import { loadQualityCorpus } from '../tests/helpers/quality-evaluation.js';
+import { executeStage4ClaimBaseline } from '../tests/helpers/quality-stage4.js';
 
 const outputFile = path.resolve(
   'docs',
@@ -26,8 +24,8 @@ const applicationCommitSha = (): string =>
   execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 
 const corpus = await loadQualityCorpus();
-const predictions = await loadRecordedClaimPredictions();
 validateCorpus(corpus, 'baseline');
+const { predictions, trace } = await executeStage4ClaimBaseline(corpus);
 validateRecordedPredictionSet(corpus, predictions);
 const results = evaluateClaimPredictions(corpus, predictions);
 const run = createEvaluationRun(corpus.manifest, results, {
@@ -37,15 +35,38 @@ const run = createEvaluationRun(corpus.manifest, results, {
   applicationCommitSha: applicationCommitSha(),
   startedAt: corpus.manifest.updatedAt,
   completedAt: corpus.manifest.updatedAt,
-  moduleVersions: { 'candidate-generation': '1.0.0' },
-  adapterVersions: { 'recorded-fixture': predictions.providerAdapterVersion },
+  moduleVersions: {
+    intake: '1.0.0',
+    'original-asset': '1.0.0',
+    transformation: '1.0.0',
+    evidence: '1.0.0',
+    'ai-provider': '1.0.0',
+    'candidate-generation': '1.0.0',
+    validation: '1.0.0',
+  },
+  adapterVersions: {
+    'fake-ai-provider': predictions.providerAdapterVersion,
+    'lucas-augmented-plain-text': '1.0.0',
+    'stage2-in-memory': '1.0.0',
+    'stage3-in-memory': '1.0.0',
+    'stage4-in-memory': '1.0.0',
+  },
   provider: predictions,
-  deterministicSettings: `recorded-output:${predictions.outputDigest};stable-id-order`,
+  deterministicSettings: `stage4-command-handler;fake-direct-copy;normalized-runtime-identifiers;output:${predictions.outputDigest}`,
   environmentSummary: {
     node: process.version,
     platform: process.platform,
     source: 'synthetic-reviewed-labels',
     thresholdPolicy: 'none-baseline-only',
+    executionPath:
+      'SubmitIntake->EvidenceIndexed->GenerateStructured->ClaimCandidate->Validation->Metric',
+    providerOutput: 'generated-from-production-stage4-prompt-by-deterministic-fake-adapter',
+    commandCount: String(trace.commandCount),
+    providerCallCount: String(trace.providerCallCount),
+    candidateCount: String(trace.candidateCount),
+    readyCandidateCount: String(trace.readyCandidateCount),
+    rejectedCandidateCount: String(trace.rejectedCandidateCount),
+    validationCount: String(trace.validationCount),
   },
 });
 validateEvaluationRun(run);

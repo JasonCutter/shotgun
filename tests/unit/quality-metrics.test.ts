@@ -7,12 +7,12 @@ import {
   validateCorpus,
   validateRecordedPredictionSet,
 } from '../../packages/quality-evaluation/src/index.js';
-import { loadQualityCorpus, loadRecordedClaimPredictions } from '../helpers/quality-evaluation.js';
+import { loadMetricCalculatorFixture, loadQualityCorpus } from '../helpers/quality-evaluation.js';
 
 describe('Quality metric calculators', () => {
   it('matches the hand-calculated Claim fixture', async () => {
     const corpus = await loadQualityCorpus();
-    const predictions = await loadRecordedClaimPredictions();
+    const predictions = await loadMetricCalculatorFixture();
     validateCorpus(corpus, 'baseline');
     validateRecordedPredictionSet(corpus, predictions);
     const result = evaluateClaimPredictions(corpus, predictions);

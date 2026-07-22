@@ -126,7 +126,8 @@ export type PredictedClaim = {
 export type RecordedClaimPredictionSet = {
   readonly contractVersion: '1.0.0';
   readonly runMode: 'deterministic-recorded';
-  readonly providerName: 'recorded-fixture';
+  readonly recordingSource: 'metric-fixture' | 'stage4-runtime';
+  readonly providerName: 'recorded-fixture' | 'fake';
   readonly providerAdapterVersion: string;
   readonly providerModel: string;
   readonly providerModelVersion: string;

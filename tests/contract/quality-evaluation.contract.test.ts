@@ -10,12 +10,12 @@ import {
   validateRecordedPredictionSet,
   withCorpusDigest,
 } from '../../packages/quality-evaluation/src/index.js';
-import { loadQualityCorpus, loadRecordedClaimPredictions } from '../helpers/quality-evaluation.js';
+import { loadMetricCalculatorFixture, loadQualityCorpus } from '../helpers/quality-evaluation.js';
 
 describe('Quality Evaluation contract', () => {
   it('validates schema, source hashes, closed qrels, and immutable digests', async () => {
     const corpus = await loadQualityCorpus();
-    const predictions = await loadRecordedClaimPredictions();
+    const predictions = await loadMetricCalculatorFixture();
     expect(() => validateCorpus(corpus, 'baseline')).not.toThrow();
     expect(() => validateRecordedPredictionSet(corpus, predictions)).not.toThrow();
 
@@ -48,7 +48,7 @@ describe('Quality Evaluation contract', () => {
   });
 
   it('keeps recorded and live Provider lanes separate', async () => {
-    const predictions = await loadRecordedClaimPredictions();
+    const predictions = await loadMetricCalculatorFixture();
     expect(() => assertProviderBoundary('deterministic-recorded', predictions)).not.toThrow();
     expect(() => assertProviderBoundary('live-provider', predictions)).toThrow('cannot execute');
     expect(() =>
@@ -66,7 +66,7 @@ describe('Quality Evaluation contract', () => {
 
   it('validates versioned result artifacts and rejects run digest drift', async () => {
     const corpus = await loadQualityCorpus();
-    const predictions = await loadRecordedClaimPredictions();
+    const predictions = await loadMetricCalculatorFixture();
     validateCorpus(corpus, 'baseline');
     validateRecordedPredictionSet(corpus, predictions);
     const results = evaluateClaimPredictions(corpus, predictions);

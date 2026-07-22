@@ -1,13 +1,14 @@
 {
   "contractVersion": "1.0.0",
   "runMode": "deterministic-recorded",
+  "recordingSource": "metric-fixture",
   "providerName": "recorded-fixture",
   "providerAdapterVersion": "1.0.0",
-  "providerModel": "synthetic-recording",
+  "providerModel": "hand-calculated-metric-fixture",
   "providerModelVersion": "1.0.0",
-  "promptVersion": "stage4-direct-claim-v1",
-  "policyVersion": "stage4-direct-only-v1",
-  "outputDigest": "sha256:2f46884c0870e9cdefb4e85429acd8b8a5ceb10a447f8a7805cc8cbf2403dcbc",
+  "promptVersion": "metric-fixture-v1",
+  "policyVersion": "metric-fixture-v1",
+  "outputDigest": "sha256:88c03e2a2a888c9a22c49c633be1a964585a7d8b90853cff7f1414608edbdb50",
   "cases": [
     {
       "caseId": "duplicate-claim",

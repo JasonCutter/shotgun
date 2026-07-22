@@ -49,10 +49,10 @@ Golden Label을 Canonical Claim이나 Fact로 취급하면 평가 권위가 사�
 
 ## Approval Boundary
 
-사용자는 2026-07-22에 이 평가 계약과 Quality Section 1 완료를 승인했고, 이후 같은
-날 Sections 2·3 Baseline도 승인했다. 따라서 ADR-098은 `Accepted`, Quality Sections
-1–3은 `COMPLETE / USER APPROVED`다. Section 4 Threshold·CI는 구현 후보이며 독립 검토와
-사용자 승인 대기다. Quality Gate 전체 또는 Stage 12.1 전체의 승인은 아니다.
+사용자는 2026-07-22에 이 평가 계약과 Quality Sections 1–4를 승인했다. 따라서
+ADR-098은 `Accepted`, Quality Sections 1–4와 Quality Gate는 `COMPLETE`다. Section
+5A·5B는 Known Limit과 실제 제품 사용 결과를 보존한 채 `DEFERRED`다. 이 승인은 Reuse
+and Operations Gate 또는 Stage 12.1 전체의 승인이 아니다.
 
 ## Change History
 
@@ -60,3 +60,6 @@ Golden Label을 Canonical Claim이나 Fact로 취급하면 평가 권위가 사�
 - 2026-07-22: Sections 2·3 사용자 승인, Golden Label `APPROVED` revision 2와 Section 4
   versioned regression floor·blocking CI 구현 후보를 기록. ADR의 평가 권위 경계와
   Production Claim·Search 계약은 변경하지 않음.
+- 2026-07-22: Section 4 사용자 승인과 Quality Gate 완료를 기록. Policy status를
+  `APPROVED`로 전환하고 digest를 갱신했으며 Baseline·Threshold는 변경하지 않음.
+  Sections 5A·5B는 Frontend 선행 원칙과 실제 사용 증거 대기를 이유로 `DEFERRED`.

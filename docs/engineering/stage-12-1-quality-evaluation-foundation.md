@@ -557,14 +557,14 @@ Sections 1–3 승인과 Section 4 구현 반영 상태:
 ```text
 Security Gate: COMPLETE
 Durability Gate: COMPLETE
-Quality Gate: IN_PROGRESS
+Quality Gate: COMPLETE
 Quality Section 1: COMPLETE / USER APPROVED
 Quality Section 2: COMPLETE / USER APPROVED
 Quality Section 3: COMPLETE / USER APPROVED
-Quality Section 4: IMPLEMENTED CANDIDATE / INDEPENDENT REVIEW READY / USER APPROVAL PENDING
-Quality Section 5A: NOT STARTED
+Quality Section 4: COMPLETE / USER APPROVED
+Quality Section 5A: DEFERRED
 Quality Section 5B: DEFERRED
-Reuse and Operations Gate: NOT STARTED
+Reuse and Operations Gate: IMPLEMENTED CANDIDATE / INDEPENDENT REVIEW READY / USER APPROVAL PENDING
 Stage 12.1: IN_PROGRESS
 Stage 13: NOT STARTED
 ```
@@ -589,11 +589,11 @@ Section 2·3 candidate 구현에서 완료했다.
 7. 결정적 Claim·Search baseline을 반복 실행해 metric parity를 확인했다. live 레인은
    이번 범위에서 실행하지 않았다.
 8. Section 4에서 승인 Baseline을 보호하는 versioned regression threshold와 blocking
-   `quality:gate` CI 실행을 구현했다. Section 4 자체는 독립 검토와 사용자 승인 대기다.
-9. Section 5A에서만 실패 근거에 따라 lexical Production 개선을 검토하고,
-   semantic retrieval은 Section 5B 독립 결정 전까지 `DEFER`를 유지한다.
+   `quality:gate` CI 실행을 구현하고 사용자 승인을 완료했다.
+9. Section 5A의 lexical·extraction 개선은 Frontend보다 선행하지 않고 Known Limit로
+   유지하며, semantic retrieval도 실제 사용 결과가 쌓일 때까지 Section 5B `DEFER`를 유지한다.
 
-Sections 1–3과 ADR-098은 사용자 승인됐지만 Section 4, Quality Gate 전체 또는
+Sections 1–4와 ADR-098, Quality Gate는 완료됐지만 Reuse and Operations Gate 또는
 Stage 12.1 완료를 의미하지 않는다.
 
 Section 2·3 구현과 측정 결과는

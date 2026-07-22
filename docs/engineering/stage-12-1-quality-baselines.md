@@ -2,7 +2,7 @@
 
 - Section 2 상태: **COMPLETE / USER APPROVED**
 - Section 3 상태: **COMPLETE / USER APPROVED**
-- Section 4 상태: **IMPLEMENTED CANDIDATE / INDEPENDENT REVIEW READY / USER APPROVAL PENDING**
+- Section 4 상태: **COMPLETE / USER APPROVED**
 - 일자: 2026-07-22
 - 평가 계약: [ADR-098](../architecture/adr/ADR-098-stage-12-1-quality-evaluation-contract.md) (`Accepted`)
 - Baseline 실행 기준 SHA: `848b9b6762339a9f58dc80a62459f420849ff613`
@@ -134,7 +134,7 @@ Section 5B 별도 승인 전까지 `DEFERRED`다.
 
 ## 6. Section 4 — Regression Threshold and CI Gate
 
-Versioned policy는
+사용자 승인된 Versioned policy는
 [`quality-gate.v1.json`](../../packages/quality-evaluation/policies/quality-gate.v1.json)에
 고정했다. Claim threshold는 Precision `0.545455`, Recall `0.750000`, F1 `0.631579`,
 Exact Claim Match `0.444444`, Evidence Exact Match `0.857143`, Evidence Coverage
@@ -150,7 +150,9 @@ artifact에 그대로 보존하며 결과를 threshold에 맞춰 수정하지 �
 `npm run quality:gate`는 `APPROVED` Corpus·policy·digest를 검증한 뒤 실제 Stage 4
 Claim runner와 격리 PostgreSQL Search runner를 실행한다. metric 또는 identity가
 회귀하면 exit code 1로 실패하며 CI는 PostgreSQL reset 다음 단계에서 이를 blocking
-step으로 실행한다. 현재 승인 Baseline은 Gate를 통과했다.
+step으로 실행한다. Policy status는 `APPROVED`, digest는
+`sha256:fb5e4389fed4e111fc3e94e3ee23366b454fb82de1806b865717b12129d644b4`이며
+현재 승인 Baseline은 Gate를 통과했다.
 
 ## 7. OSS Integration Decision
 
@@ -190,6 +192,10 @@ artifact를 제거하는 것으로 충분하며 Production data migration은 없
 - Fake Provider는 Evidence 문장을 직접 복사하므로 Claim-worthiness를 판별하는 실제 모델 품질을 대표하지 않는다.
 - PDF·DOCX·Spreadsheet·Image/OCR-derived slice는 후속 corpus 확장 범위다.
 - Section 4 regression floor는 품질 목표가 아니라 현재 승인 Baseline의 저하만 차단한다.
+- No-Claim·Evidence·구조 추출 약점은 Known Limit로 유지하고 Section 5A는 Frontend보다
+  선행하지 않도록 `DEFERRED`다.
+- lexical-only 동의어 실패는 Known Limit로 유지하며 Semantic Retrieval은 실제 제품
+  사용 결과가 쌓인 뒤 결정하도록 Section 5B를 `DEFERRED`한다.
 
 ## 9. 상태
 
@@ -198,10 +204,10 @@ ADR-098: ACCEPTED
 Quality Section 1: COMPLETE / USER APPROVED
 Quality Section 2: COMPLETE / USER APPROVED
 Quality Section 3: COMPLETE / USER APPROVED
-Quality Section 4: IMPLEMENTED CANDIDATE / INDEPENDENT REVIEW READY / USER APPROVAL PENDING
-Quality Section 5A: NOT STARTED
+Quality Section 4: COMPLETE / USER APPROVED
+Quality Section 5A: DEFERRED
 Quality Section 5B: DEFERRED
-Quality Gate: IN_PROGRESS
+Quality Gate: COMPLETE
 Stage 12.1: IN_PROGRESS
 Stage 13: NOT STARTED
 ```

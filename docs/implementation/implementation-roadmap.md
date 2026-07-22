@@ -738,14 +738,17 @@ Sections 1–4의 구현·검증·독립 재검토와 사용자 승인이 완료
 
 Quality Section 1의 Golden Corpus·Label·Metric·Run 계약은 사용자 승인을 완료했고
 ADR-098은 `ACCEPTED`다. Section 2 Claim Extraction과 Section 3 Natural-language
-Search는 synthetic reviewed corpus로 구현·측정한 candidate이며 사용자 승인 전이다.
+Search는 synthetic reviewed corpus로 구현·측정한 candidate다. Section 2는 실제 Stage 4
+경로 보완 후 independent review ready이며, Section 3은 independent review pass이고
+사용자 승인 대기 상태다.
 
 - Corpus: 9 cases, 8 Golden Claims, 6 exhaustive queries, Korean·English·mixed와
   Plain Text·Markdown·HTML-derived slice
-- Claim: Precision `0.666667`, Recall `0.75`, F1 `0.705882`, Exact Case `0.555556`
+- Claim: 실제 Stage 4 Command·Handler와 Validation 경로, Fake Provider 9회, READY Candidate 11개;
+  Precision `0.545455`, Recall `0.75`, F1 `0.631579`, Exact Case `0.444444`, No-Claim Accuracy `0.0`
 - Search: `k=1` Precision·Recall·Hit Rate·MRR·nDCG `0.8`, No-result·Citation·Stale rejection `1.0`
-- 알려진 취약점: synonym query 미검색, 불확실성 누락, Evidence 위치 오류, 중복,
-  unsupported 수치 Claim
+- 알려진 취약점: synonym query 미검색, no-claim 문장 복사, Markdown heading 과추출,
+  HTML-derived selector 불일치, 서로 다른 Evidence 위치의 동일 Claim 중복
 - Production Claim·Prompt·Provider·Search ranking과 Database Migration은 변경하지 않음
 - Section 4 Threshold·CI 차단은 `NOT STARTED`, Section 5A는 `NOT STARTED`,
   Section 5B Semantic Retrieval은 `DEFERRED`

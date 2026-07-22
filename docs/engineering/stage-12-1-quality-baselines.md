@@ -1,9 +1,10 @@
 # Stage 12.1 Quality Sections 2·3 — Baseline Implementation Record
 
-- 상태: **IMPLEMENTED CANDIDATE / NOT APPROVED**
+- Section 2 상태: **IMPLEMENTED CANDIDATE / INDEPENDENT REVIEW READY**
+- Section 3 상태: **IMPLEMENTED CANDIDATE / INDEPENDENT REVIEW PASS / USER APPROVAL PENDING**
 - 일자: 2026-07-22
 - 평가 계약: [ADR-098](../architecture/adr/ADR-098-stage-12-1-quality-evaluation-contract.md) (`Accepted`)
-- 구현 기준 SHA: `fe65f67b7d4dd3515399e9dd7385224613180f5f`
+- Claim Baseline 실행 기준 SHA: `06aedf16a11372081cc9907088b525e302ee676b`
 - Corpus: `shotgun-quality-baseline@1.0.0`
 - Corpus digest: `sha256:c8e7a51614df6262947a2de40834b80472988096897518a1e1a5921285e92381`
 - Metric implementation: `1.0.0`
@@ -25,6 +26,7 @@ Quality Gate 통과 Threshold가 아니다.
 - TypeScript type, Ajv validation, Source·Corpus·Recorded Output·Run digest 검증
 - `CANDIDATE | REVIEWED | APPROVED | RETIRED` Label 상태와 baseline/Gate lane 분리
 - Recorded/Fake와 live Provider 실행 경계
+- 실제 Stage 4 `SubmitIntake` Command부터 Candidate Validation까지 통과하는 Claim runner
 - order-independent exact Claim text+Evidence 최대 1:1 matching
 - Claim·Search per-case/query, aggregate, slice metric
 - reviewed Claim을 deterministic ID로 seed하는 PostgreSQL baseline
@@ -55,26 +57,48 @@ Synthetic data만 사용하며 Production identifier·개인정보·비밀은 �
 
 ## 4. Section 2 — Claim Extraction Baseline
 
-Recorded fixture의 9 predictions를 현재 direct-only 계약으로 측정했다.
+Golden Corpus 9 cases를 실제 Production Stage 4 흐름에 입력했다.
+
+```text
+SubmitIntake
+→ EvidenceIndexed
+→ GenerateStructured (FakeAIProviderAdapter)
+→ ClaimCandidate
+→ Candidate Validation
+→ READY Candidate의 Metric 변환
+```
+
+Fake Provider는 Production `direct-claim-v1` Prompt가 전달한 Evidence를 파싱해 각
+Evidence의 exact text와 runtime `evidenceId`를 구조화 Output으로 반환한다. 수기 오류를
+주입하지 않는다. 실행마다 달라지는 Candidate·Evidence UUID는 Case ID와 Evidence
+position 순으로 정규화하며, 정규화된 Output digest는
+`sha256:5a3e44be3d2c2373a7d68221de181a9337ad4cace8ac55c1562a138b49f734c5`다.
+9 Commands, 9 Provider calls, 11 ClaimCandidates와 11 Validation Results가 생성됐고
+모든 Candidate가 현재 direct-only Validation에서 `READY`였다.
 
 | Metric                 | 결과                 |
 | ---------------------- | -------------------- |
-| Precision              | `6 / 9 = 0.666667`   |
+| Precision              | `6 / 11 = 0.545455`  |
 | Recall                 | `6 / 8 = 0.750000`   |
-| F1                     | `12 / 17 = 0.705882` |
-| Exact Claim Match      | `5 / 9 = 0.555556`   |
-| Unsupported Claim Rate | `2 / 9 = 0.222222`   |
-| Duplicate Claim Rate   | `1 / 9 = 0.111111`   |
+| F1                     | `12 / 19 = 0.631579` |
+| Exact Claim Match      | `4 / 9 = 0.444444`   |
+| Unsupported Claim Rate | `0 / 11 = 0.000000`  |
+| Duplicate Claim Rate   | `0 / 11 = 0.000000`  |
 | Evidence Exact Match   | `6 / 7 = 0.857143`   |
 | Evidence Coverage      | `6 / 8 = 0.750000`   |
-| No-Claim Accuracy      | `1 / 2 = 0.500000`   |
+| No-Claim Accuracy      | `0 / 2 = 0.000000`   |
 
 실패 cases:
 
-- `en-uncertainty`: 불확실성 Claim 누락
-- `en-multiple`: 시간 Claim의 Evidence position 오류
-- `duplicate-claim`: 같은 text+Evidence prediction 중복
-- `evidence-gap`: Source가 지지하지 않는 3일 지연 Claim 생성
+- `duplicate-claim`: 서로 다른 Evidence 위치에서 같은 Claim text를 두 번 READY 처리
+- `evidence-gap`: 직접 근거 문장 자체를 Claim으로 복사해 No-Claim label과 불일치
+- `html-derived-status`: pre-derived text Intake에서 Golden CSS selector가 보존되지 않아 Evidence 불일치
+- `ko-no-claim`: 감사 문장을 Claim으로 복사해 No-Claim 판정 실패
+- `mixed-markdown-release`: Markdown heading을 별도 Claim으로 만들고 Golden Claim과 정확히 일치하지 않음
+
+`Unsupported Claim Rate=0`은 Fake Provider가 Evidence의 exact substring만 복사하고 현재
+Validation이 이를 READY로 인정했기 때문이다. 이는 factual Claim 선별 품질이 확보됐다는
+뜻이 아니며, 낮은 Precision과 No-Claim Accuracy가 그 취약점을 직접 보여준다.
 
 ## 5. Section 3 — Natural-language Search Baseline
 
@@ -139,7 +163,8 @@ artifact를 제거하는 것으로 충분하며 Production data migration은 없
 
 - corpus가 9 cases로 작아 대표성과 통계적 신뢰 구간을 주장하지 않는다.
 - Label은 `REVIEWED`이며 Quality Gate에 필요한 `APPROVED` 상태가 아니다.
-- Recorded/Fake baseline만 실행했고 live Provider 분포·비용·반복성은 측정하지 않았다.
+- Stage 4 Fake Provider baseline만 실행했고 live Provider 분포·비용·반복성은 측정하지 않았다.
+- Fake Provider는 Evidence 문장을 직접 복사하므로 Claim-worthiness를 판별하는 실제 모델 품질을 대표하지 않는다.
 - PDF·DOCX·Spreadsheet·Image/OCR-derived slice는 후속 corpus 확장 범위다.
 - Threshold·regression budget·CI 차단은 Section 4에서 별도 승인한다.
 
@@ -148,8 +173,8 @@ artifact를 제거하는 것으로 충분하며 Production data migration은 없
 ```text
 ADR-098: ACCEPTED
 Quality Section 1: COMPLETE / USER APPROVED
-Quality Section 2: IMPLEMENTED CANDIDATE / NOT APPROVED
-Quality Section 3: IMPLEMENTED CANDIDATE / NOT APPROVED
+Quality Section 2: IMPLEMENTED CANDIDATE / INDEPENDENT REVIEW READY
+Quality Section 3: IMPLEMENTED CANDIDATE / INDEPENDENT REVIEW PASS / USER APPROVAL PENDING
 Quality Section 4: NOT STARTED
 Quality Section 5A: NOT STARTED
 Quality Section 5B: DEFERRED

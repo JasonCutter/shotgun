@@ -557,8 +557,8 @@ Security Gate: COMPLETE
 Durability Gate: COMPLETE
 Quality Gate: IN_PROGRESS
 Quality Section 1: COMPLETE / USER APPROVED
-Quality Section 2: IMPLEMENTED CANDIDATE / NOT APPROVED
-Quality Section 3: IMPLEMENTED CANDIDATE / NOT APPROVED
+Quality Section 2: IMPLEMENTED CANDIDATE / INDEPENDENT REVIEW READY
+Quality Section 3: IMPLEMENTED CANDIDATE / INDEPENDENT REVIEW PASS / USER APPROVAL PENDING
 Quality Section 4: NOT STARTED
 Quality Section 5A: NOT STARTED
 Quality Section 5B: DEFERRED
@@ -577,8 +577,9 @@ Section 2·3 candidate 구현에서 완료했다.
 2. Quality corpus·case·run JSON Schema v1과 TypeScript type을 추가하고 기존 Ajv
    contract test로 invalid label·digest·authority state를 거부한다.
 3. synthetic 소규모 corpus를 작성하고 label review 상태·license·digest를 기록했다.
-4. Section 2에서 recorded/Fake Provider를 사용한 결정적 Claim metric runner와
-   선택적 live Provider 레인을 분리 구현한다.
+4. Section 2에서 Golden Corpus를 Production Stage 4 `SubmitIntake`→`GenerateStructured`→
+   `ClaimCandidate`→Validation 경로로 실행하는 결정적 Fake Provider runner와 선택적
+   live Provider 레인을 분리 구현했다. 수기 오류 Fixture는 Metric 계산기 단위 테스트로만 격리했다.
 5. Section 3에서 격리 PostgreSQL에 baseline-eligible `REVIEWED` corpus Claim을 seed하고 완전한
    relevance judgment으로 Search metric을 계산한다.
 6. TypeScript metric을 small hand-calculated fixture로 검증했다. NIST/`ir_measures`

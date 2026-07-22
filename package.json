@@ -35,6 +35,10 @@
     "db:migrate": "tsx scripts/database.ts migrate",
     "db:reset": "tsx scripts/database.ts reset",
     "db:verify": "tsx scripts/database.ts verify",
+    "backup:create": "tsx scripts/backup-restore.ts backup",
+    "backup:verify": "tsx scripts/backup-restore.ts verify",
+    "backup:restore": "tsx scripts/backup-restore.ts restore",
+    "backup:drill": "tsx scripts/stage12-1-restore-drill.ts",
     "auth:bootstrap-owner": "tsx scripts/auth-bootstrap-owner.ts",
     "secret:scan": "tsx scripts/secret-scan.ts",
     "check": "npm run lint && npm run format:check && npm run typecheck && npm test && npm run secret:scan && npm run oss:verify"

@@ -98,6 +98,16 @@ export class PostgresCanonicalKnowledgeRepository
     private readonly options: PostgresStage6Options = {},
   ) {}
 
+  async listProjectIds(): Promise<readonly string[]> {
+    const result = await this.pool.query<{ project_id: string }>(
+      `SELECT project_id FROM canonical.project_state
+       UNION
+       SELECT project_id FROM canonical.outbox WHERE status <> 'published'
+       ORDER BY project_id`,
+    );
+    return result.rows.map((row) => row.project_id);
+  }
+
   async getSnapshot(projectId: string): Promise<CanonicalSnapshot> {
     const state = await this.pool.query<StateRow>(
       `SELECT version, snapshot_digest, updated_at
@@ -418,17 +428,20 @@ export class PostgresCanonicalKnowledgeRepository
          ORDER BY available_at, outbox_id
          FOR UPDATE SKIP LOCKED
          LIMIT $4
+       ), updated AS (
+         UPDATE canonical.outbox AS outbox
+         SET status = 'processing',
+             attempts = outbox.attempts + 1,
+             claimed_at = $2,
+             last_error = NULL
+         FROM claimable
+         WHERE outbox.outbox_id = claimable.outbox_id
+         RETURNING outbox.outbox_id, outbox.project_id, outbox.aggregate_id,
+                   outbox.event_type, outbox.payload_json, outbox.status, outbox.attempts,
+                   outbox.available_at, outbox.claimed_at, outbox.published_at, outbox.last_error
        )
-       UPDATE canonical.outbox AS outbox
-       SET status = 'processing',
-           attempts = outbox.attempts + 1,
-           claimed_at = $2,
-           last_error = NULL
-       FROM claimable
-       WHERE outbox.outbox_id = claimable.outbox_id
-       RETURNING outbox.outbox_id, outbox.project_id, outbox.aggregate_id,
-                 outbox.event_type, outbox.payload_json, outbox.status, outbox.attempts,
-                 outbox.available_at, outbox.claimed_at, outbox.published_at, outbox.last_error`,
+       SELECT * FROM updated
+       ORDER BY available_at, outbox_id`,
       [projectId, claimedAt, staleBefore, limit],
     );
     return result.rows.map(mapOutbox);

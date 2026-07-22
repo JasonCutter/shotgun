@@ -77,6 +77,7 @@ import {
   type KnowledgeReviewGroup,
   type CompiledTruthProjection,
   type CompiledTruthProjectionStatus,
+  type ProjectionReadiness,
   type DerivedInferenceCandidate,
   type DiscoveryRunResult,
   type ActionAuditEvent,
@@ -248,7 +249,7 @@ type SecurityHeaders = {
   readonly 'x-csrf-token'?: string;
 };
 
-type ApplicationOptions = {
+export type ApplicationOptions = {
   readonly transport?: MessageTransport;
   readonly intakeRepository?: IntakeRepositoryPort;
   readonly originalAssetRepository?: OriginalAssetRepositoryPort;
@@ -276,6 +277,8 @@ type ApplicationOptions = {
   readonly actionConnector?: ActionConnectorPort;
   readonly authRepository?: AuthRepositoryPort;
   readonly production?: boolean;
+  readonly canonicalProjectionRecoveryIntervalMs?: number | false;
+  readonly canonicalProjectionRecoveryReporter?: CanonicalProjectionRecoveryReporterPort;
   readonly closeResources?: () => Promise<void>;
 };
 
@@ -315,6 +318,308 @@ export const runAIDurableMaterializationRecovery = async (
     }
   }
   return { attempted: records.length, resumed, failed: records.length - resumed };
+};
+
+export type CanonicalProjectionRecoveryConnector = {
+  sendCommand<TResult = unknown>(
+    command: ReturnType<typeof createCommand>,
+  ): Promise<{ readonly result: TResult }>;
+  query<TResult = unknown>(
+    query: ReturnType<typeof createQuery>,
+  ): Promise<{ readonly result: { readonly payload: TResult } }>;
+};
+
+export type CanonicalProjectionRecoveryProjectResult = {
+  readonly projectId: string;
+  readonly status: 'READY' | 'FAILED';
+  readonly outboxPublished: number;
+  readonly searchRebuilt: boolean;
+  readonly compiledTruthRebuilt: boolean;
+  readonly error?: string;
+};
+
+export type CanonicalProjectionRecoveryResult = {
+  readonly projects: readonly CanonicalProjectionRecoveryProjectResult[];
+  readonly ready: number;
+  readonly failed: number;
+};
+
+export type CanonicalProjectionRecoveryTrigger = 'STARTUP' | 'PERIODIC' | 'MANUAL';
+
+export type CanonicalProjectionRecoverySafeProjectResult = Omit<
+  CanonicalProjectionRecoveryProjectResult,
+  'error'
+> & {
+  readonly failureCode?: 'RECOVERY_FAILED';
+};
+
+export type CanonicalProjectionRecoverySafeResult = {
+  readonly projects: readonly CanonicalProjectionRecoverySafeProjectResult[];
+  readonly ready: number;
+  readonly failed: number;
+};
+
+export type CanonicalProjectionRecoveryReport = {
+  readonly trigger: CanonicalProjectionRecoveryTrigger;
+  readonly startedAt: string;
+  readonly completedAt: string;
+  readonly result?: CanonicalProjectionRecoverySafeResult;
+  readonly runStatus: 'COMPLETED' | 'FAILED';
+  readonly safeError?: 'CANONICAL_PROJECTION_RECOVERY_FAILED';
+};
+
+export type CanonicalProjectionRecoveryReporterPort = {
+  report(value: CanonicalProjectionRecoveryReport): Promise<void>;
+};
+
+export class InMemoryCanonicalProjectionRecoveryReporter implements CanonicalProjectionRecoveryReporterPort {
+  private readonly values: CanonicalProjectionRecoveryReport[] = [];
+
+  async report(value: CanonicalProjectionRecoveryReport): Promise<void> {
+    this.values.push(value);
+  }
+
+  latest(): CanonicalProjectionRecoveryReport | undefined {
+    return this.values.at(-1);
+  }
+
+  reports(): readonly CanonicalProjectionRecoveryReport[] {
+    return [...this.values];
+  }
+}
+
+const safeRecoveryResult = (
+  result: CanonicalProjectionRecoveryResult,
+): CanonicalProjectionRecoverySafeResult => ({
+  projects: result.projects.map(({ error: _error, ...project }) =>
+    _error === undefined ? project : { ...project, failureCode: 'RECOVERY_FAILED' as const },
+  ),
+  ready: result.ready,
+  failed: result.failed,
+});
+
+const recordRecoveryReport = async (
+  reporter: CanonicalProjectionRecoveryReporterPort,
+  report: CanonicalProjectionRecoveryReport,
+): Promise<void> => {
+  try {
+    await reporter.report(report);
+  } catch {
+    // Recovery remains retryable if an optional observability adapter is unavailable.
+  }
+};
+
+const recoveryEnvelopeContext = (projectId: string) => ({
+  producerModule: 'shotgun-app',
+  producerVersion: '1.0.0',
+  projectId,
+  actor: { type: 'service' as const, id: 'stage12-1-canonical-projection-recovery' },
+  security: {
+    accessScope: ['owner'],
+    sensitivity: 'restricted' as const,
+    dataClassification: 'canonical-recovery',
+  },
+});
+
+export const runCanonicalProjectionRecovery = async (
+  canonicalRepository: CanonicalKnowledgeRepositoryPort,
+  connector: CanonicalProjectionRecoveryConnector,
+  options: { readonly batchSize?: number; readonly maxBatchesPerProject?: number } = {},
+): Promise<CanonicalProjectionRecoveryResult> => {
+  const batchSize = options.batchSize ?? 100;
+  const maxBatchesPerProject = options.maxBatchesPerProject ?? 10;
+  if (!Number.isInteger(batchSize) || batchSize < 1) {
+    throw new RangeError('Canonical recovery batchSize must be a positive integer.');
+  }
+  if (!Number.isInteger(maxBatchesPerProject) || maxBatchesPerProject < 1) {
+    throw new RangeError('Canonical recovery maxBatchesPerProject must be a positive integer.');
+  }
+  const projects: CanonicalProjectionRecoveryProjectResult[] = [];
+
+  for (const projectId of await canonicalRepository.listProjectIds()) {
+    let outboxPublished = 0;
+    let searchRebuilt = false;
+    let compiledTruthRebuilt = false;
+    try {
+      for (let batch = 0; batch < maxBatchesPerProject; batch += 1) {
+        const dispatched = await connector.sendCommand<{ published: number }>(
+          createCommand({
+            messageType: 'DispatchCanonicalOutbox',
+            schemaVersion: '1.0.0',
+            ...recoveryEnvelopeContext(projectId),
+            idempotencyKey: `canonical-recovery:dispatch:${projectId}:${randomUUID()}`,
+            payload: { limit: batchSize },
+          }),
+        );
+        const published = dispatched.result.published;
+        outboxPublished += published;
+        if (published < batchSize) break;
+      }
+
+      let searchStatus = (
+        await connector.query<ProjectionReadiness>(
+          createQuery({
+            messageType: 'GetProjectionReadiness',
+            schemaVersion: '1.0.0',
+            ...recoveryEnvelopeContext(projectId),
+            payload: {},
+          }),
+        )
+      ).result.payload;
+      if (searchStatus.status !== 'READY') {
+        await connector.sendCommand(
+          createCommand({
+            messageType: 'RebuildSearchProjection',
+            schemaVersion: '1.0.0',
+            ...recoveryEnvelopeContext(projectId),
+            idempotencyKey: `canonical-recovery:search:${projectId}:${randomUUID()}`,
+            payload: {},
+          }),
+        );
+        searchRebuilt = true;
+        searchStatus = (
+          await connector.query<ProjectionReadiness>(
+            createQuery({
+              messageType: 'GetProjectionReadiness',
+              schemaVersion: '1.0.0',
+              ...recoveryEnvelopeContext(projectId),
+              payload: {},
+            }),
+          )
+        ).result.payload;
+      }
+
+      let compiledStatus = (
+        await connector.query<CompiledTruthProjectionStatus>(
+          createQuery({
+            messageType: 'GetCompiledTruthStatus',
+            schemaVersion: '1.0.0',
+            ...recoveryEnvelopeContext(projectId),
+            payload: {},
+          }),
+        )
+      ).result.payload;
+      if (compiledStatus.status !== 'READY') {
+        await connector.sendCommand(
+          createCommand({
+            messageType: 'BuildCompiledTruth',
+            schemaVersion: '1.0.0',
+            ...recoveryEnvelopeContext(projectId),
+            idempotencyKey: `canonical-recovery:compiled-truth:${projectId}:${randomUUID()}`,
+            payload: { mode: 'FULL_REBUILD' },
+          }),
+        );
+        compiledTruthRebuilt = true;
+        compiledStatus = (
+          await connector.query<CompiledTruthProjectionStatus>(
+            createQuery({
+              messageType: 'GetCompiledTruthStatus',
+              schemaVersion: '1.0.0',
+              ...recoveryEnvelopeContext(projectId),
+              payload: {},
+            }),
+          )
+        ).result.payload;
+      }
+
+      if (searchStatus.status !== 'READY' || compiledStatus.status !== 'READY') {
+        throw new Error('Projection recovery did not reach READY state.');
+      }
+      projects.push({
+        projectId,
+        status: 'READY',
+        outboxPublished,
+        searchRebuilt,
+        compiledTruthRebuilt,
+      });
+    } catch (error) {
+      projects.push({
+        projectId,
+        status: 'FAILED',
+        outboxPublished,
+        searchRebuilt,
+        compiledTruthRebuilt,
+        error: error instanceof Error ? error.message : 'Canonical Projection recovery failed.',
+      });
+    }
+  }
+
+  return {
+    projects,
+    ready: projects.filter((project) => project.status === 'READY').length,
+    failed: projects.filter((project) => project.status === 'FAILED').length,
+  };
+};
+
+export const runCanonicalProjectionRecoveryWithReport = async (
+  canonicalRepository: CanonicalKnowledgeRepositoryPort,
+  connector: CanonicalProjectionRecoveryConnector,
+  trigger: CanonicalProjectionRecoveryTrigger,
+  reporter: CanonicalProjectionRecoveryReporterPort,
+  options: { readonly batchSize?: number; readonly maxBatchesPerProject?: number } = {},
+): Promise<CanonicalProjectionRecoveryReport> => {
+  const startedAt = new Date().toISOString();
+  try {
+    const result = await runCanonicalProjectionRecovery(canonicalRepository, connector, options);
+    const report: CanonicalProjectionRecoveryReport = {
+      trigger,
+      startedAt,
+      completedAt: new Date().toISOString(),
+      result: safeRecoveryResult(result),
+      runStatus: 'COMPLETED',
+    };
+    await recordRecoveryReport(reporter, report);
+    return report;
+  } catch {
+    const report: CanonicalProjectionRecoveryReport = {
+      trigger,
+      startedAt,
+      completedAt: new Date().toISOString(),
+      runStatus: 'FAILED',
+      safeError: 'CANONICAL_PROJECTION_RECOVERY_FAILED',
+    };
+    await recordRecoveryReport(reporter, report);
+    return report;
+  }
+};
+
+export const startCanonicalProjectionRecoveryWorker = (
+  canonicalRepository: CanonicalKnowledgeRepositoryPort,
+  connector: CanonicalProjectionRecoveryConnector,
+  intervalMs: number,
+  reporter: CanonicalProjectionRecoveryReporterPort = new InMemoryCanonicalProjectionRecoveryReporter(),
+) => {
+  if (!Number.isFinite(intervalMs) || intervalMs < 1) {
+    throw new RangeError('Canonical recovery interval must be at least one millisecond.');
+  }
+  let active: Promise<void> | undefined;
+  let stopped = false;
+  const tick = (): Promise<void> => {
+    if (stopped) return Promise.resolve();
+    if (active) return active;
+    const execution = runCanonicalProjectionRecoveryWithReport(
+      canonicalRepository,
+      connector,
+      'PERIODIC',
+      reporter,
+    )
+      .then(() => undefined)
+      .finally(() => {
+        if (active === execution) active = undefined;
+      });
+    active = execution;
+    return execution;
+  };
+  const timer = setInterval(() => void tick(), intervalMs);
+  timer.unref();
+  return {
+    tick,
+    async stop() {
+      stopped = true;
+      clearInterval(timer);
+      await active;
+    },
+  };
 };
 
 const trustedRequestContexts = new WeakMap<object, TrustedSecurityContext>();
@@ -648,6 +953,16 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     options.compiledTruthRepository ?? new InMemoryCompiledTruthRepository();
   const actionExecutionRepository =
     options.actionExecutionRepository ?? new InMemoryActionExecutionRepository();
+  const canonicalProjectionRecoveryReporter =
+    options.canonicalProjectionRecoveryReporter ??
+    new InMemoryCanonicalProjectionRecoveryReporter();
+  let latestCanonicalProjectionRecoveryReport: CanonicalProjectionRecoveryReport | undefined;
+  const applicationCanonicalProjectionRecoveryReporter: CanonicalProjectionRecoveryReporterPort = {
+    async report(value) {
+      latestCanonicalProjectionRecoveryReport = value;
+      await canonicalProjectionRecoveryReporter.report(value);
+    },
+  };
   const actionCandidateRepository =
     options.actionCandidateRepository ?? new InMemoryActionCandidateRepository();
   const actionConnector = options.actionConnector ?? new FakeDraftActionConnector();
@@ -850,6 +1165,21 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   );
   await kernel.start();
   await runAIDurableMaterializationRecovery(aiProviderRepository, kernel.connector);
+  await runCanonicalProjectionRecoveryWithReport(
+    canonicalKnowledgeRepository,
+    kernel.connector,
+    'STARTUP',
+    applicationCanonicalProjectionRecoveryReporter,
+  );
+  const canonicalProjectionRecoveryWorker =
+    options.canonicalProjectionRecoveryIntervalMs === false
+      ? undefined
+      : startCanonicalProjectionRecoveryWorker(
+          canonicalKnowledgeRepository,
+          kernel.connector,
+          options.canonicalProjectionRecoveryIntervalMs ?? 30_000,
+          applicationCanonicalProjectionRecoveryReporter,
+        );
 
   const server = Fastify({ logger: false });
 
@@ -2041,6 +2371,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   );
 
   server.addHook('onClose', async () => {
+    await canonicalProjectionRecoveryWorker?.stop();
     await kernel.shutdown();
     await options.closeResources?.();
   });
@@ -2069,6 +2400,10 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     state: {
       ping: ping.state,
       pong: pong.state,
+      canonicalProjectionRecovery: {
+        latest: () => latestCanonicalProjectionRecoveryReport,
+      },
+      canonicalProjectionRecoveryReporter,
     },
   };
 };

@@ -465,6 +465,15 @@ Stage 0~3의 재검증된 exact pin과 결정은
   [Stage 12 Compatibility Guide](../../implementation/stage-12-module-compatibility-and-migration.md)에
   고정한다.
 
+### Stage 12.1 Durability Recovery 확정 결정
+
+- 고정된 PostgreSQL 16.14 image의 `pg_dump`·`pg_restore`를 Backup Database Adapter로 `ADOPT`한다. Shotgun이 Asset·Contract·Integrity Manifest와 clean-restore 정책을 계속 소유한다.
+- gbrain의 migration·recovery·idempotency 패턴은 `REFERENCE_ONLY`로 유지하고 gbrain Runtime·DB를 Outbox나 Projection 권위 저장소로 도입하지 않는다.
+- pgBackRest 2.58.0, WAL-G 3.0.8, Barman 3.19.1은 PITR·WAL archive·외부 저장소·다중 Server DR 요구가 승인될 때까지 `DEFER`한다.
+- Canonical Outbox 복구는 Stage 6 Repository Port를, Search와 Compiled Truth 재생성은 Stage 7·10 Module Contract를 재사용한다. 외부 도구의 ID·Schema·Metadata를 Canonical Contract로 노출하지 않는다.
+- Backup Restore는 기존 Database를 덮어쓰지 않고 새 빈 Database와 빈 Asset Root에서만 수행한다. Projection은 권위 Backup이 아니라 Canonical에서 재생성 가능한 파생 상태다.
+- 상세 결정과 검증은 [ADR-097](../adr/ADR-097-stage-12-1-outbox-projection-clean-restore.md)과 [Stage 12.1 Durability Recovery OSS Review](../../implementation/stage-validations/stage-12-1-durability-recovery-oss-review.md)에 고정한다.
+
 ### 5.1 채택 시 필수 기록
 
 각 후보를 `ADOPTED` 또는 `FOUNDATION` 구현으로 승격하는 PR에는 다음을 포함한다.

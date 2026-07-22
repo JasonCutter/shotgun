@@ -61,6 +61,7 @@ export type SearchProjectionRepositoryPort = {
 export type ProjectionClockPort = { now(): string };
 
 const systemClock: ProjectionClockPort = { now: () => new Date().toISOString() };
+const SEARCH_PROJECTION_UPDATE_FAILED = 'SEARCH_PROJECTION_UPDATE_FAILED';
 
 const assertContext = (envelope: CommandEnvelope | EventEnvelope | QueryEnvelope) => {
   if (!envelope.projectId || !envelope.actor || !envelope.security) {
@@ -309,29 +310,34 @@ export const createProjectionSearchModule = (
             )
           ).payload.items;
           const lastCommitId = history.at(-1)?.commitId;
-          await repository.rebuild(projectId, {
-            documents,
-            watermark: {
-              projectId,
-              ...(lastCommitId ? { lastCommitId } : {}),
-              canonicalVersion: snapshot.version,
-              snapshotDigest: snapshot.digest,
-              status: 'READY',
-              updatedAt: projectedAt,
-            },
-          });
-          await context.publish({
-            messageType: 'ProjectionReady',
-            schemaVersion: '1.0.0',
-            idempotencyKey: `projection-rebuild:${projectId}:${snapshot.digest}`,
-            payload: {
-              ...(lastCommitId ? { commitId: lastCommitId } : {}),
-              canonicalVersion: snapshot.version,
-              snapshotDigest: snapshot.digest,
-              status: 'READY',
-            },
-          });
-          return { rebuilt: documents.length, canonicalVersion: snapshot.version };
+          try {
+            await repository.rebuild(projectId, {
+              documents,
+              watermark: {
+                projectId,
+                ...(lastCommitId ? { lastCommitId } : {}),
+                canonicalVersion: snapshot.version,
+                snapshotDigest: snapshot.digest,
+                status: 'READY',
+                updatedAt: projectedAt,
+              },
+            });
+            await context.publish({
+              messageType: 'ProjectionReady',
+              schemaVersion: '1.0.0',
+              idempotencyKey: `projection-rebuild:${projectId}:${snapshot.digest}`,
+              payload: {
+                ...(lastCommitId ? { commitId: lastCommitId } : {}),
+                canonicalVersion: snapshot.version,
+                snapshotDigest: snapshot.digest,
+                status: 'READY',
+              },
+            });
+            return { rebuilt: documents.length, canonicalVersion: snapshot.version };
+          } catch (error) {
+            await repository.markDegraded(projectId, SEARCH_PROJECTION_UPDATE_FAILED, projectedAt);
+            throw error;
+          }
         },
       },
     ],
@@ -363,11 +369,7 @@ export const createProjectionSearchModule = (
               projectedAt,
             });
           } catch (error) {
-            await repository.markDegraded(
-              projectId,
-              error instanceof Error ? error.message : 'Projection update failed.',
-              projectedAt,
-            );
+            await repository.markDegraded(projectId, SEARCH_PROJECTION_UPDATE_FAILED, projectedAt);
             throw error;
           }
           await context.publish({

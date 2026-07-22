@@ -1,11 +1,11 @@
 # Stage 12.1 - Security, Durability and Release Readiness Hardening
 
-- 상태: **IN_PROGRESS — Security Gate P0-1·P0-2, Durability Section 1 COMPLETE**
+- 상태: **IN_PROGRESS — Security Gate COMPLETE / Durability Gate COMPLETE / Quality Gate NOT STARTED / Reuse and Operations Gate NOT STARTED**
 - 기준 문서: `Shotgun Stage 12.1 보안·내구성 보정 전략.pdf` (2026-07-17)
 - 적용 범위: Stage 12 이후의 보정 작업
 - Security Gate 기준 `main` SHA: `d9e29bc588ff8c2badfd20c87cd3d4c2e695ba28`
 - Durability Section 1 기준 `main` SHA: `06ce9b48328296856fc2eb70e6ef1a4a329243b6`
-- 현재 작업 Section: **AI Durable Materialization 완료, 다음 Outbox·Projection Recovery 미착수**
+- 현재 작업 Section: **Durability Gate COMPLETE / Next Gate: Quality Gate — NOT STARTED**
 
 ## 1. 전략적 결정
 
@@ -25,14 +25,31 @@ Stage 12.1 완료 전에는 다음을 금지한다.
 
 Stage 12.1은 다음 네 Gate가 모두 통과할 때만 완료다.
 
-| Gate                 | 목표                                                                                             | 현재 상태                                          |
-| -------------------- | ------------------------------------------------------------------------------------------------ | -------------------------------------------------- |
-| Security             | 인증되지 않은 actor, scope, project, sensitivity 위조 불가. 실제 Action은 서버 저장 근거만 사용. | **P0-1·P0-2 COMPLETE**                             |
-| Durability           | AI 중간 장애 뒤 후보 완전 복구, Canonical Outbox·Projection 자동 복구, clean restore 성공.       | **Section 1 COMPLETE**, 후속 Section `IN_PROGRESS` |
-| Quality              | Claim 추출과 자연어 검색을 corpus와 수치로 평가하고 regression suite로 고정.                     | `IN_PROGRESS` 전 단계                              |
-| Reuse and Operations | 외부 consumer package 설치, Ubuntu·Windows CI, secret history scan, backup·restore 증거 보존.    | `IN_PROGRESS` 전 단계                              |
+| Gate                 | 목표                                                                                             | 현재 상태              |
+| -------------------- | ------------------------------------------------------------------------------------------------ | ---------------------- |
+| Security             | 인증되지 않은 actor, scope, project, sensitivity 위조 불가. 실제 Action은 서버 저장 근거만 사용. | **P0-1·P0-2 COMPLETE** |
+| Durability           | AI 중간 장애 뒤 후보 완전 복구, Canonical Outbox·Projection 자동 복구, clean restore 성공.       | **COMPLETE**           |
+| Quality              | Claim 추출과 자연어 검색을 corpus와 수치로 평가하고 regression suite로 고정.                     | **NOT STARTED**        |
+| Reuse and Operations | 외부 consumer package 설치, Ubuntu·Windows CI, secret history scan, backup·restore 증거 보존.    | **NOT STARTED**        |
 
-Security Gate 완료만으로 Stage 12.1 전체를 `COMPLETE`로 표시하지 않는다.
+Security와 Durability Gate 완료만으로 Stage 12.1 전체를 `COMPLETE`로 표시하지 않는다.
+
+## 2.1 Current Durability Approval Status
+
+| Scope                                  | Status                       |
+| -------------------------------------- | ---------------------------- |
+| Stage 12.1                             | **IN_PROGRESS**              |
+| Security Gate                          | **COMPLETE**                 |
+| Durability Gate                        | **COMPLETE**                 |
+| Section 1 — AI Durable Materialization | **COMPLETE**                 |
+| Section 2 — Canonical Outbox Recovery  | **COMPLETE / USER APPROVED** |
+| Section 3 — Projection Recovery        | **COMPLETE / USER APPROVED** |
+| Section 4 — Backup·Restore Drill       | **COMPLETE / USER APPROVED** |
+| Quality Gate                           | **NOT STARTED**              |
+| Reuse and Operations Gate              | **NOT STARTED**              |
+| Stage 13                               | **NOT STARTED**              |
+
+Sections 1–4의 independent review와 explicit user approval이 완료됐다. ADR-097은 `ACCEPTED`, Durability Gate는 `COMPLETE`이며 PR #14 merge는 조건부 승인 상태다.
 
 ## 3. 고정된 전체 순서
 
@@ -168,29 +185,49 @@ ADR-096의 AI Durable Materialization 구현과 독립 검증을 완료하고 �
 - [ADR-096 — Stage 12.1 AI Durable Materialization](../architecture/adr/ADR-096-stage-12-1-ai-durable-materialization.md)
 - [Stage 12.1 AI Durable Materialization Implementation Record](../architecture/adr/implementation-records/stage-12-1-ai-durable-materialization.md)
 
-이 완료는 Durability Gate 전체 완료가 아니다. Canonical Outbox·Compiled Truth Projection 자동 복구와 Backup·Restore는 후속 Section으로 유지한다.
+이 기록은 2026-07-21 당시 Section 1 완료 근거다. 이후 Canonical Outbox Recovery, Projection Recovery, Backup·Restore도 independent review와 user approval을 완료했다.
 
-## 8. 후속 Section 경계
+## 8. Durability Gate Completion
 
-| Section                                       | 상태                      | 후속 범위                               |
-| --------------------------------------------- | ------------------------- | --------------------------------------- |
-| P0-1 Authenticated Security Context           | **COMPLETE**              | 운영 Auth Adapter·IdP 확장은 별도 결정  |
-| P0-2 Action Candidate server-side binding     | **COMPLETE**              | Connector별 활성화 Gate는 별도          |
-| Dedicated Product Frontend Session·Project UX | 설계 확정, 구현 대기      | Frontend Delivery Roadmap에서 관리      |
-| AI durable materialization                    | **COMPLETE**              | ADR-096·Implementation Record           |
-| Outbox·Projection recovery                    | 미착수                    | Wave 2                                  |
-| Claim·검색 Quality Benchmark                  | 미착수                    | Wave 3                                  |
-| External Consumer·Windows CI·Restore          | 미착수                    | Wave 4                                  |
-| Stage 9·10 architecture tension               | 별도 Architecture Section | 기존 ADR-089·090을 조용히 변경하지 않음 |
+Historical note: ADR-097의 후보 구현은 독립 검토에서 한때 `HOLD`였고 사용자 Section 승인 전에는 완료로 표시하지 않았다. 이후 교정·검증·독립 재검토와 Sections 1–4 사용자 승인이 완료됐다.
 
-## 9. 현재 상태 표기
+- startup과 비중첩 periodic Worker가 pending·stale Outbox를 bounded batch로 drain한다.
+- Outbox가 이미 published여도 Search·Compiled Truth readiness를 독립 검사하고 Canonical에서 Full Rebuild한다.
+- PostgreSQL custom dump, 참조 Original Asset, Contract·Module Manifest와 모든 비-Projection 영속 Table digest를 Backup Bundle v1로 검증한다.
+- Source와 다른 두 임시 DB를 사용한 실제 clean restore drill에서 복원 후 Projection을 삭제하고 Search `READY`와 Compiled Truth version 1을 재생성했다.
+- pgBackRest·WAL-G·Barman은 PITR·WAL·원격 DR 요구가 승인될 때까지 `DEFER`한다.
 
-현재 Shotgun은 **Security Gate와 AI Durable Materialization Section이 완료된 개발·로컬 검증용 MVP**다.
+상세 근거:
+
+- [ADR-097 — Stage 12.1 Canonical Outbox, Projection Recovery and Clean Restore](../architecture/adr/ADR-097-stage-12-1-outbox-projection-clean-restore.md)
+- [Implementation Record](../architecture/adr/implementation-records/stage-12-1-outbox-projection-clean-restore.md)
+- [Backup and Clean Restore Runbook](stage-12-1-backup-restore-runbook.md)
+
+ADR-097은 `ACCEPTED`이고 Durability Gate는 `COMPLETE`다. Quality Gate와 Reuse and Operations Gate는 `NOT STARTED`, Stage 12.1은 `IN_PROGRESS`, Stage 13은 `NOT STARTED`다.
+
+## 9. 후속 Section 경계
+
+| Section                                       | 상태                         | 후속 범위                               |
+| --------------------------------------------- | ---------------------------- | --------------------------------------- |
+| P0-1 Authenticated Security Context           | **COMPLETE**                 | 운영 Auth Adapter·IdP 확장은 별도 결정  |
+| P0-2 Action Candidate server-side binding     | **COMPLETE**                 | Connector별 활성화 Gate는 별도          |
+| Dedicated Product Frontend Session·Project UX | 설계 확정, 구현 대기         | Frontend Delivery Roadmap에서 관리      |
+| AI durable materialization                    | **COMPLETE**                 | ADR-096·Implementation Record           |
+| Canonical Outbox recovery                     | **COMPLETE / USER APPROVED** | ADR-097·Implementation Record           |
+| Projection recovery                           | **COMPLETE / USER APPROVED** | ADR-097·Implementation Record           |
+| Backup·clean restore                          | **COMPLETE / USER APPROVED** | local isolated drill·운영 Runbook       |
+| Claim·검색 Quality Benchmark                  | 미착수                       | Wave 3                                  |
+| External Consumer·Windows CI                  | 미착수                       | Wave 4                                  |
+| Stage 9·10 architecture tension               | 별도 Architecture Section    | 기존 ADR-089·090을 조용히 변경하지 않음 |
+
+## 10. 현재 상태 표기
+
+현재 Shotgun은 **Security와 Durability Gate가 완료된 개발·로컬 검증용 MVP**다. Quality와 Reuse and Operations Gate는 미완료이므로 production-ready 또는 release-ready가 아니다.
 
 다음 제한은 유지한다.
 
 - Stage 12.1 전체 상태는 `IN_PROGRESS`다.
 - 실제 외부 Action Connector는 Connector별 Capability·권한·Preflight·Verify·복구와 활성화 승인을 통과하기 전까지 OFF다.
 - 외부 네트워크 공개와 production-ready·release-ready 표기는 금지한다.
-- Durability Gate의 남은 Outbox·Projection Recovery와 Backup·Restore, Quality, Reuse and Operations Gate를 순서대로 별도 검토한다.
+- Quality와 Reuse and Operations Gate를 순서대로 별도 검토한다.
 - Stage 13은 시작하지 않는다.

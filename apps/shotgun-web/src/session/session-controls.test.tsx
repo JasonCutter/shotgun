@@ -45,7 +45,6 @@ const renderRoute = (element: React.ReactNode, apiClient: ShotgunApiClient) => {
 };
 
 const api = (overrides: Partial<ShotgunApiClient> = {}): ShotgunApiClient => ({
-  login: vi.fn(async () => session),
   bootstrapLocalOwner: vi.fn(async () => session),
   getSession: vi.fn(async () => session),
   switchActiveProject: vi.fn(async () => session),

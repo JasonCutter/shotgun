@@ -22,18 +22,11 @@ export type ProductApiErrorBody = {
   readonly correlationId?: string;
 };
 
-export type LoginRequest = {
-  readonly accountId: string;
-  readonly password: string;
-  readonly projectId: string;
-};
-
 export type RequestOptions = {
   readonly signal?: AbortSignal;
 };
 
 export type ShotgunApiClient = {
-  login(input: LoginRequest, options?: RequestOptions): Promise<ProductSessionView>;
   bootstrapLocalOwner(options?: RequestOptions): Promise<ProductSessionView>;
   getSession(options?: RequestOptions): Promise<ProductSessionView>;
   switchActiveProject(projectId: string, options?: RequestOptions): Promise<ProductSessionView>;

@@ -69,7 +69,7 @@ describe('shotgun-api-client', () => {
       return json({ session: session() });
     });
     const client = createShotgunApiClient({ fetch });
-    await client.login({ accountId: 'owner', password: 'secret', projectId: 'project-a' });
+    await client.bootstrapLocalOwner();
     await client.getSession();
     await client.switchActiveProject('project-b');
     await client.logout();

@@ -179,6 +179,11 @@ export class InMemoryAuthRepository implements AuthRepositoryPort {
       }
       throw new Error('Account ID is already in use.');
     }
+    for (const membership of this.#memberships.values()) {
+      if (membership.projectId === input.projectId && membership.isOwner) {
+        throw new Error('An active Owner already exists.');
+      }
+    }
     const principalId = randomUUID();
     this.#principals.set(principalId, {
       principal: {
@@ -424,7 +429,6 @@ export type AuthenticationContext = {
   readonly isRemoteLoopback?: boolean;
   readonly isSameOrigin?: boolean;
   readonly localOwnerEnabled?: boolean;
-  readonly requestedProjectId?: string;
   readonly methodHint?: string;
   readonly sessionToken?: string;
   readonly credentials?: Record<string, unknown>;
@@ -576,9 +580,8 @@ export class LocalOwnerAuthenticationAdapter implements AuthenticationPort {
     }
 
     try {
-      const targetProjectId = authContext.requestedProjectId || DEFAULT_PROJECT_ID;
       const { principal, membership } = await this.provisioningService.ensureLocalOwnerIdentity({
-        defaultProjectId: targetProjectId,
+        defaultProjectId: DEFAULT_PROJECT_ID,
       });
 
       const session = await this.repository.createSession(

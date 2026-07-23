@@ -7,12 +7,6 @@ import {
   type ProjectMembership,
 } from '../../packages/authentication/src/index.js';
 
-const cookieFrom = (header: string | string[] | undefined): string => {
-  const value = Array.isArray(header) ? header[0] : header;
-  if (!value) throw new Error('Expected Set-Cookie header.');
-  return value.split(';')[0]!;
-};
-
 const withSecondProject = async (): Promise<InMemoryAuthRepository> => {
   const repository = new InMemoryAuthRepository();
   await repository.bootstrapOwner({
@@ -53,16 +47,15 @@ describe('Frontend Product Session API', () => {
 
   const login = async () => {
     const app = await createApplication({ authRepository });
-    const response = await app.server.inject({
-      method: 'POST',
-      url: '/api/v1/session/login',
-      payload: {
-        accountId: 'frontend-owner',
-        password: 'frontend-password',
-        projectId: 'project-a',
-      },
-    });
-    return { app, response, cookie: cookieFrom(response.headers['set-cookie']) };
+    const membership = await authRepository.findOwnerMembership('frontend-owner', 'project-a');
+    if (!membership) throw new Error('Fixture owner membership was not found.');
+    const session = await authRepository.createSession(
+      membership.principalId,
+      'project-a',
+      new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
+    );
+    const cookie = `shotgun_session=${session.sessionToken}`;
+    return { app, cookie };
   };
 
   it('rejects an unauthenticated session query', async () => {
@@ -73,47 +66,43 @@ describe('Frontend Product Session API', () => {
     await app.server.close();
   });
 
-  it('logs in with a safe ProductSessionView and sets the session cookie', async () => {
-    const { app, response } = await login();
-    expect(response.statusCode).toBe(200);
-    expect(response.headers['set-cookie']).toContain('HttpOnly');
-    expect(response.json()).toMatchObject({
-      session: {
-        apiVersion: '1.0.0',
-        activeProject: { id: 'project-a' },
-        accessibleProjects: [
-          { id: 'project-a', isOwner: true },
-          { id: 'project-b', isOwner: false },
-        ],
-      },
+  it('has disabled public product password login route (401 AUTHENTICATION_REQUIRED)', async () => {
+    const app = await createApplication({ authRepository });
+    const response = await app.server.inject({
+      method: 'POST',
+      url: '/api/v1/session/login',
+      payload: { accountId: 'frontend-owner', password: 'password', projectId: 'project-a' },
     });
-    const serialized = response.body;
-    for (const forbidden of [
-      'scopes',
-      'sensitivityClearance',
-      'credentialId',
-      'sessionToken',
-      'csrfHash',
-      'passwordHash',
-    ]) {
-      expect(serialized).not.toContain(forbidden);
-    }
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toMatchObject({ code: 'AUTHENTICATION_REQUIRED' });
     await app.server.close();
   });
 
-  it('uses the same safe login denial for bad credentials and inaccessible projects', async () => {
-    const app = await createApplication({ authRepository });
-    const request = (password: string, projectId: string) =>
-      app.server.inject({
-        method: 'POST',
-        url: '/api/v1/session/login',
-        payload: { accountId: 'frontend-owner', password, projectId },
-      });
-    const badPassword = await request('wrong-password', 'project-a');
-    const badProject = await request('frontend-password', 'project-c');
-    expect(badPassword.statusCode).toBe(401);
-    expect(badProject.statusCode).toBe(401);
-    expect(badPassword.json().message).toBe(badProject.json().message);
+  it('ignores requested projectId in local-bootstrap body and always uses shotgun project', async () => {
+    const app = await createApplication({ authRepository, production: false });
+
+    // Send body with { projectId: 'other-project' }
+    const response = await app.server.inject({
+      method: 'POST',
+      url: '/api/v1/session/local-bootstrap',
+      payload: { projectId: 'other-project' },
+      headers: { host: '127.0.0.1' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      session: {
+        activeProject: { id: 'shotgun' },
+      },
+    });
+
+    // Verify other-project owner was NOT created
+    const otherProjectOwner = await authRepository.findOwnerMembership(
+      'local-owner',
+      'other-project',
+    );
+    expect(otherProjectOwner).toBeUndefined();
+
     await app.server.close();
   });
 

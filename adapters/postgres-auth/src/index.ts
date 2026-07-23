@@ -58,13 +58,32 @@ export class PostgresAuthRepository implements AuthRepositoryPort {
 
   async bootstrapOwner(input: Parameters<AuthRepositoryPort['bootstrapOwner']>[0]): Promise<void> {
     const client = await this.pool.connect();
+    const accountId = input.accountId.trim().toLowerCase();
+    if (!accountId) throw new Error('Account ID is required.');
     try {
       await client.query('BEGIN');
-      const owner = await client.query(
-        'SELECT 1 FROM auth.project_memberships WHERE is_owner AND project_id = $1 AND expires_at IS NULL FOR UPDATE',
+      const existingAccount = await client.query<{ principal_id: string }>(
+        'SELECT principal_id::text FROM auth.principals WHERE account_id = $1 FOR UPDATE',
+        [accountId],
+      );
+      const existingAccountRow = existingAccount.rows[0];
+      if (existingAccountRow) {
+        const existingMembership = await client.query<{ is_owner: boolean }>(
+          'SELECT is_owner FROM auth.project_memberships WHERE principal_id = $1 AND project_id = $2',
+          [existingAccountRow.principal_id, input.projectId],
+        );
+        if (existingMembership.rows[0]?.is_owner) {
+          throw new Error('An active Owner already exists.');
+        }
+        throw new Error('Account ID is already in use.');
+      }
+      const existingOwner = await client.query(
+        'SELECT 1 FROM auth.project_memberships WHERE is_owner AND project_id = $1 AND (expires_at IS NULL OR expires_at > now()) FOR UPDATE',
         [input.projectId],
       );
-      if (owner.rowCount) throw new Error('An active Owner already exists.');
+      if (existingOwner.rowCount && existingOwner.rowCount > 0) {
+        throw new Error('An active Owner already exists.');
+      }
       const principalId = randomUUID();
       await client.query(
         'INSERT INTO auth.principals (principal_id, actor_type, status, account_id, created_at) VALUES ($1, $2, $3, $4, $5)',

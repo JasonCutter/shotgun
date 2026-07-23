@@ -131,14 +131,12 @@ const createAuthHarness = async (scopes: readonly string[]): Promise<AuthHarness
 
   process.env.SHOTGUN_ENABLE_LEGACY_AUTH = 'true';
   const app = await createApplication({ authRepository, production: false });
-  const login = await app.server.inject({
-    method: 'POST',
-    url: '/api/v1/session/login',
-    payload: { accountId: 'owner', password, projectId },
-  });
-  expect(login.statusCode).toBe(200);
-  const setCookie = login.headers['set-cookie'];
-  const cookie = (Array.isArray(setCookie) ? setCookie[0] : setCookie)?.split(';')[0] ?? '';
+  const session = await authRepository.createSession(
+    principal.principalId,
+    projectId,
+    new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
+  );
+  const cookie = `shotgun_session=${session.sessionToken}`;
 
   const csrfRes = await app.server.inject({
     method: 'GET',
@@ -195,14 +193,12 @@ const createActionApplication = async (): Promise<
     production: false,
   });
   process.env.SHOTGUN_ENABLE_LEGACY_AUTH = 'true';
-  const login = await app.server.inject({
-    method: 'POST',
-    url: '/api/v1/session/login',
-    payload: { accountId: 'owner', password, projectId },
-  });
-  expect(login.statusCode).toBe(200);
-  const setCookie = login.headers['set-cookie'];
-  const cookie = (Array.isArray(setCookie) ? setCookie[0] : setCookie)?.split(';')[0] ?? '';
+  const session = await authRepository.createSession(
+    principal.principalId,
+    projectId,
+    new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
+  );
+  const cookie = `shotgun_session=${session.sessionToken}`;
 
   const csrfRes = await app.server.inject({
     method: 'GET',

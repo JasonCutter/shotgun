@@ -29,7 +29,6 @@ const runtime = (): AppRuntime => {
   const queryClient = createFrontendQueryClient();
   queryClient.setQueryData(productSessionQueryKey, session);
   const apiClient: ShotgunApiClient = {
-    login: vi.fn(async () => session),
     bootstrapLocalOwner: vi.fn(async () => session),
     getSession: vi.fn(async () => session),
     switchActiveProject: vi.fn(async () => session),

@@ -1,9 +1,4 @@
-import type {
-  LoginRequest,
-  ProductSessionView,
-  RequestOptions,
-  ShotgunApiClient,
-} from './contracts.js';
+import type { ProductSessionView, RequestOptions, ShotgunApiClient } from './contracts.js';
 import { createCsrfMutationManager } from './csrf-manager.js';
 import {
   decodeCsrfEnvelope,
@@ -60,16 +55,6 @@ export const createShotgunApiClient = (
     }, mutation);
 
   return {
-    async login(input: LoginRequest, requestOptions?: RequestOptions): Promise<ProductSessionView> {
-      const response = await request('/session/login', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(input),
-        signal: requestOptions?.signal,
-      });
-      return decodeSessionEnvelope(await assertOk(response));
-    },
-
     async bootstrapLocalOwner(requestOptions?: RequestOptions): Promise<ProductSessionView> {
       const response = await request('/session/local-bootstrap', {
         method: 'POST',

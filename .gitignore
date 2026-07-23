@@ -26,3 +26,12 @@ Thumbs.db
 # Local Codex/agent state
 .codex/
 .agents/
+
+# Temporary test/execution outputs and logs
+git_out.txt
+git_err.txt
+npm_out.txt
+npm_err.txt
+verify.log
+test-results/
+shotgun_project_analysis_report.html

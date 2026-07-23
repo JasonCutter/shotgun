@@ -197,6 +197,102 @@ type CanonicalCommitRequest = {
 type SearchRequest = { readonly query: string; readonly limit?: number };
 type AskRequest = { readonly question: string; readonly limit?: number };
 
+export const isLoopbackIp = (ipAddress: string | undefined): boolean => {
+  if (!ipAddress) return false;
+  let raw = ipAddress.trim().toLowerCase();
+
+  // Strip IPv4-mapped IPv6 prefix
+  if (raw.startsWith('::ffff:')) {
+    raw = raw.slice(7);
+  }
+
+  // Strip IPv6 brackets if present
+  if (raw.startsWith('[')) {
+    const endBracket = raw.indexOf(']');
+    if (endBracket !== -1) {
+      raw = raw.slice(1, endBracket);
+    }
+  } else if (raw.includes(':') && !raw.includes('::')) {
+    // Strip port if IPv4 with port, e.g. 127.0.0.1:5173
+    const firstColon = raw.indexOf(':');
+    raw = raw.slice(0, firstColon);
+  }
+
+  if (raw === '127.0.0.1' || raw === 'localhost' || raw === '::1' || raw === '0:0:0:0:0:0:0:1') {
+    return true;
+  }
+
+  // 127.0.0.0/8 IPv4 loopback range
+  if (/^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(raw)) {
+    const parts = raw.split('.').map(Number);
+    return parts.length === 4 && parts.every((p) => p >= 0 && p <= 255);
+  }
+
+  return false;
+};
+
+export const isSameOriginRequest = (
+  originHeader?: string,
+  refererHeader?: string,
+  hostHeader?: string,
+): boolean => {
+  const origin = originHeader?.trim();
+  const referer = refererHeader?.trim();
+
+  // Explicit policy: Origin: null is an opaque origin (sandboxed iframe / cross-domain file:), reject.
+  if (origin === 'null') {
+    return false;
+  }
+
+  const targetUrlStr = origin || referer;
+  // Explicit policy: If both Origin and Referer are missing, allow direct loopback call.
+  if (!targetUrlStr) {
+    return true;
+  }
+
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(targetUrlStr);
+  } catch {
+    return false;
+  }
+
+  if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+    return false;
+  }
+
+  const originHost = parsedUrl.hostname.toLowerCase();
+  const originPort = parsedUrl.port || (parsedUrl.protocol === 'https:' ? '443' : '80');
+
+  const isLoopbackHost =
+    originHost === '127.0.0.1' || originHost === '::1' || originHost === 'localhost';
+
+  if (!hostHeader) {
+    return isLoopbackHost;
+  }
+
+  let expectedHost = hostHeader.trim().toLowerCase();
+  let expectedPort = '80';
+  if (expectedHost.includes(':')) {
+    const lastColon = expectedHost.lastIndexOf(':');
+    const bracketIndex = expectedHost.lastIndexOf(']');
+    if (bracketIndex === -1 || lastColon > bracketIndex) {
+      expectedPort = expectedHost.slice(lastColon + 1);
+      expectedHost = expectedHost.slice(0, lastColon);
+    }
+  }
+  expectedHost = expectedHost.replace(/^\[|\]$/g, '');
+
+  const hostMatches =
+    originHost === expectedHost ||
+    (isLoopbackHost &&
+      (expectedHost === '127.0.0.1' || expectedHost === '::1' || expectedHost === 'localhost'));
+
+  const portMatches = originPort === expectedPort;
+
+  return hostMatches && portMatches;
+};
+
 type KnowledgeStageRequest = {
   readonly groupId: string;
   readonly sourceVersionId: string;
@@ -1235,7 +1331,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   });
 
   const serverHost = options.host ?? process.env.HOST ?? '127.0.0.1';
-  const isLoopbackBind = ['127.0.0.1', 'localhost', '::1'].includes(serverHost);
+  const isLoopbackBind = isLoopbackIp(serverHost);
   const legacyAuthEnabled =
     process.env.SHOTGUN_ENABLE_LEGACY_AUTH === 'true' &&
     process.env.NODE_ENV !== 'production' &&
@@ -1451,17 +1547,12 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     '/api/v1/session/local-bootstrap',
     async (request, reply) => {
       const remoteIp = request.ip || request.socket.remoteAddress || '';
-      const isRemoteLoopback =
-        ['127.0.0.1', '::1', 'localhost'].some((ip) => remoteIp.includes(ip)) ||
-        remoteIp === '127.0.0.1' ||
-        remoteIp === '::1';
-      const origin = (request.headers.origin || request.headers.referer || '').toLowerCase();
-      const hostHeader = (request.headers.host || '').toLowerCase();
-      const isSameOrigin =
-        !origin ||
-        origin.includes(hostHeader) ||
-        origin.includes('127.0.0.1') ||
-        origin.includes('localhost');
+      const isRemoteLoopback = isLoopbackIp(remoteIp);
+      const isSameOrigin = isSameOriginRequest(
+        request.headers.origin,
+        request.headers.referer,
+        request.headers.host,
+      );
       const localOwnerEnabled = process.env.SHOTGUN_DISABLE_LOCAL_OWNER !== 'true';
 
       const result = await authenticationAdapter.establishSession({
@@ -1569,8 +1660,13 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   );
 
   server.post<{ Headers: SecurityHeaders }>('/api/v1/session/logout', async (request, reply) => {
-    const { context } = await requireBrowserSession(request.headers);
-    await authRepository.revokeSessions(context.principalId);
+    const sessionToken = parseCookie(request.headers.cookie, sessionCookieName);
+    const context = trustedRequestContexts.get(request.headers as object);
+    if (sessionToken) {
+      await authenticationAdapter.revokeSession(sessionToken);
+    } else if (context?.principalId) {
+      await authenticationAdapter.revokeSession(context.principalId);
+    }
     reply.header(
       'Set-Cookie',
       `${sessionCookieName}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${production ? '; Secure' : ''}`,

@@ -1,4 +1,0 @@
-warning: in the working copy of 'adapters/postgres-auth/src/index.ts', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'packages/authentication/src/index.ts', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'shotgun_project_analysis_report.html', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'tests/integration/stage12-p0-1-security.test.ts', LF will be replaced by CRLF the next time Git touches it

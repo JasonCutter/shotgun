@@ -61,7 +61,8 @@ export class PostgresAuthRepository implements AuthRepositoryPort {
     try {
       await client.query('BEGIN');
       const owner = await client.query(
-        'SELECT 1 FROM auth.project_memberships WHERE is_owner AND expires_at IS NULL FOR UPDATE',
+        'SELECT 1 FROM auth.project_memberships WHERE is_owner AND project_id = $1 AND expires_at IS NULL FOR UPDATE',
+        [input.projectId],
       );
       if (owner.rowCount) throw new Error('An active Owner already exists.');
       const principalId = randomUUID();
@@ -69,17 +70,19 @@ export class PostgresAuthRepository implements AuthRepositoryPort {
         'INSERT INTO auth.principals (principal_id, actor_type, status, created_at) VALUES ($1, $2, $3, $4)',
         [principalId, 'user', 'active', now()],
       );
-      await client.query(
-        'INSERT INTO auth.credentials (credential_id, principal_id, credential_type, account_id, password_hash, password_changed_at) VALUES ($1, $2, $3, $4, $5, $6)',
-        [
-          randomUUID(),
-          principalId,
-          'local_password',
-          input.accountId.trim().toLowerCase(),
-          input.passwordHash,
-          now(),
-        ],
-      );
+      if (input.passwordHash && input.passwordHash.trim() !== '') {
+        await client.query(
+          'INSERT INTO auth.credentials (credential_id, principal_id, credential_type, account_id, password_hash, password_changed_at) VALUES ($1, $2, $3, $4, $5, $6)',
+          [
+            randomUUID(),
+            principalId,
+            'local_password',
+            input.accountId.trim().toLowerCase(),
+            input.passwordHash,
+            now(),
+          ],
+        );
+      }
       await client.query(
         'INSERT INTO auth.project_memberships (principal_id, project_id, scopes, sensitivity_clearance, is_owner) VALUES ($1, $2, $3, $4, true)',
         [principalId, input.projectId, input.scopes, input.sensitivityClearance],
@@ -107,12 +110,19 @@ export class PostgresAuthRepository implements AuthRepositoryPort {
     return principal(row, 'session');
   }
 
-  async findOwnerMembership(): Promise<ProjectMembership | undefined> {
-    const result = await this.pool.query<MembershipRow>(
+  async findOwnerMembership(projectId?: string): Promise<ProjectMembership | undefined> {
+    const targetProject = projectId?.trim();
+    if (targetProject) {
+      const result = await this.pool.query<MembershipRow>(
+        'SELECT principal_id::text, project_id, scopes, sensitivity_clearance, is_owner, expires_at FROM auth.project_memberships WHERE is_owner AND project_id = $1 AND (expires_at IS NULL OR expires_at > now()) LIMIT 1',
+        [targetProject],
+      );
+      if (result.rows[0]) return membership(result.rows[0]);
+    }
+    const fallback = await this.pool.query<MembershipRow>(
       'SELECT principal_id::text, project_id, scopes, sensitivity_clearance, is_owner, expires_at FROM auth.project_memberships WHERE is_owner AND (expires_at IS NULL OR expires_at > now()) LIMIT 1',
     );
-    const row = result.rows[0];
-    return row ? membership(row) : undefined;
+    return fallback.rows[0] ? membership(fallback.rows[0]) : undefined;
   }
 
   async createSession(

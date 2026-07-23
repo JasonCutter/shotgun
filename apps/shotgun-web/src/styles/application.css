@@ -98,7 +98,6 @@ main {
 }
 
 .route-page h1,
-.login-form h1,
 .state-card h1 {
   margin: 0.2rem 0 1.5rem;
   font-size: clamp(2rem, 4vw, 3.25rem);
@@ -157,8 +156,7 @@ main {
   font-weight: 700;
 }
 
-.project-control select,
-.login-form input {
+.project-control select {
   width: min(100%, 26rem);
   border: 1px solid #8e9c93;
   border-radius: 0.5rem;
@@ -175,31 +173,6 @@ main {
 [role='alert'] {
   color: var(--danger);
   font-weight: 650;
-}
-
-.login-page {
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
-  background:
-    radial-gradient(circle at 15% 15%, rgb(23 98 75 / 15%), transparent 30rem), var(--surface-soft);
-}
-
-.login-form {
-  width: min(100%, 32rem);
-  display: grid;
-  gap: 1rem;
-  border: 1px solid var(--line);
-  border-radius: 1rem;
-  background: var(--surface);
-  box-shadow: var(--shadow);
-  padding: clamp(1.5rem, 5vw, 3rem);
-}
-
-.login-form label {
-  display: grid;
-  gap: 0.4rem;
-  font-weight: 700;
 }
 
 @media (max-width: 760px) {

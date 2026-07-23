@@ -1,5 +1,0 @@
-
-> shotgun@0.1.0 oss:audit
-> npm audit --audit-level=high
-
-found 0 vulnerabilities

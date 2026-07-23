@@ -3,28 +3,30 @@ import { fileURLToPath } from 'node:url';
 
 import { createApplication } from '../../../assemblies/shotgun-app/src/server.js';
 import {
-  hashPassword,
+  DEFAULT_PROJECT_ID,
   InMemoryAuthRepository,
+  LOCAL_OWNER_ACCOUNT_ID,
   type ProjectMembership,
 } from '../../../packages/authentication/src/index.js';
 
 export async function startFrontendTestBackend() {
   const authRepository = new InMemoryAuthRepository();
+  // Bootstrap a credential-less Local Owner in the default project (shotgun)
   await authRepository.bootstrapOwner({
-    accountId: 'frontend-owner',
-    passwordHash: await hashPassword('frontend-password'),
-    projectId: 'project-a',
+    accountId: LOCAL_OWNER_ACCOUNT_ID,
+    projectId: DEFAULT_PROJECT_ID,
     scopes: ['owner'],
     sensitivityClearance: 'private',
   });
-  const principal = await authRepository.authenticatePassword(
-    'frontend-owner',
-    'frontend-password',
+  const ownerMembership = await authRepository.findOwnerMembership(
+    LOCAL_OWNER_ACCOUNT_ID,
+    DEFAULT_PROJECT_ID,
   );
-  if (!principal) throw new Error('Frontend browser fixture principal was not created.');
+  if (!ownerMembership) throw new Error('Frontend browser fixture local owner was not created.');
+  const principalId = ownerMembership.principalId;
 
   const projectB: ProjectMembership = {
-    principalId: principal.principalId,
+    principalId,
     projectId: 'project-b',
     scopes: ['owner'],
     sensitivityClearance: 'private',
@@ -32,13 +34,13 @@ export async function startFrontendTestBackend() {
   };
   const findMembership = authRepository.findMembership.bind(authRepository);
   const listMemberships = authRepository.listMemberships.bind(authRepository);
-  authRepository.findMembership = async (principalId, projectId) =>
-    principalId === projectB.principalId && projectId === projectB.projectId
+  authRepository.findMembership = async (pid, projectId) =>
+    pid === projectB.principalId && projectId === projectB.projectId
       ? projectB
-      : findMembership(principalId, projectId);
-  authRepository.listMemberships = async (principalId) => [
-    ...(await listMemberships(principalId)),
-    ...(principalId === projectB.principalId ? [projectB] : []),
+      : findMembership(pid, projectId);
+  authRepository.listMemberships = async (pid) => [
+    ...(await listMemberships(pid)),
+    ...(pid === projectB.principalId ? [projectB] : []),
   ];
 
   const application = await createApplication({

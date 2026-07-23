@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  DEFAULT_PROJECT_ID,
   hashPassword,
   InMemoryAuthRepository,
+  LOCAL_OWNER_ACCOUNT_ID,
   LocalOwnerAuthenticationAdapter,
   verifyPassword,
 } from '../../packages/authentication/src/index.js';
@@ -44,19 +46,22 @@ describe('authentication primitives and local bootstrap security', () => {
   it('supports Local Owner identity without password credentials (no passwordHash: "")', async () => {
     const repository = new InMemoryAuthRepository();
     await repository.bootstrapOwner({
-      accountId: 'local-owner',
-      projectId: 'shotgun',
+      accountId: LOCAL_OWNER_ACCOUNT_ID,
+      projectId: DEFAULT_PROJECT_ID,
       scopes: ['owner'],
       sensitivityClearance: 'private',
     });
 
-    const membership = await repository.findOwnerMembership('shotgun');
+    const membership = await repository.findOwnerMembership(
+      LOCAL_OWNER_ACCOUNT_ID,
+      DEFAULT_PROJECT_ID,
+    );
     expect(membership).toBeDefined();
     expect(membership?.isOwner).toBe(true);
-    expect(membership?.projectId).toBe('shotgun');
+    expect(membership?.projectId).toBe(DEFAULT_PROJECT_ID);
 
     // Password authentication must fail for identity without password credential
-    const authenticated = await repository.authenticatePassword('local-owner', '');
+    const authenticated = await repository.authenticatePassword(LOCAL_OWNER_ACCOUNT_ID, '');
     expect(authenticated).toBeUndefined();
   });
 
@@ -79,6 +84,166 @@ describe('authentication primitives and local bootstrap security', () => {
 
     await adapter.revokeSession(token);
     expect(await repository.findSession(token)).toBeUndefined();
+  });
+
+  describe('Local Owner isolation — findOwnerMembership regression tests', () => {
+    it('does not use an owner from a different project for local bootstrap', async () => {
+      const repository = new InMemoryAuthRepository();
+
+      // Create a regular owner in a different project
+      await repository.bootstrapOwner({
+        accountId: 'other-project-owner',
+        passwordHash: await hashPassword('password123'),
+        projectId: 'other-project',
+        scopes: ['owner'],
+        sensitivityClearance: 'private',
+      });
+
+      // Verify that owner exists in 'other-project'
+      const otherMembership = await repository.findOwnerMembership(
+        'other-project-owner',
+        'other-project',
+      );
+      expect(otherMembership).toBeDefined();
+      expect(otherMembership?.isOwner).toBe(true);
+
+      // Local Owner lookup for DEFAULT_PROJECT_ID must NOT find the other-project owner
+      const localMembership = await repository.findOwnerMembership(
+        LOCAL_OWNER_ACCOUNT_ID,
+        DEFAULT_PROJECT_ID,
+      );
+      expect(localMembership).toBeUndefined();
+    }, 15_000);
+
+    it('does not confuse a regular password owner in shotgun project with the Local Owner', async () => {
+      const repository = new InMemoryAuthRepository();
+
+      // Create a regular password-based owner in the shotgun project
+      await repository.bootstrapOwner({
+        accountId: 'regular-admin',
+        passwordHash: await hashPassword('admin-password'),
+        projectId: DEFAULT_PROJECT_ID,
+        scopes: ['owner'],
+        sensitivityClearance: 'private',
+      });
+
+      // Verify the regular owner exists
+      const regularMembership = await repository.findOwnerMembership(
+        'regular-admin',
+        DEFAULT_PROJECT_ID,
+      );
+      expect(regularMembership).toBeDefined();
+      expect(regularMembership?.isOwner).toBe(true);
+
+      // Local Owner lookup must NOT return the regular admin
+      const localMembership = await repository.findOwnerMembership(
+        LOCAL_OWNER_ACCOUNT_ID,
+        DEFAULT_PROJECT_ID,
+      );
+      expect(localMembership).toBeUndefined();
+    }, 15_000);
+
+    it('creates an explicit Local Owner identity when none exists', async () => {
+      const repository = new InMemoryAuthRepository();
+      const adapter = new LocalOwnerAuthenticationAdapter(repository);
+
+      // Before bootstrap, no Local Owner exists
+      const before = await repository.findOwnerMembership(
+        LOCAL_OWNER_ACCOUNT_ID,
+        DEFAULT_PROJECT_ID,
+      );
+      expect(before).toBeUndefined();
+
+      // Trigger local bootstrap
+      const result = await adapter.establishSession({
+        isLoopbackBind: true,
+        isRemoteLoopback: true,
+        isSameOrigin: true,
+        localOwnerEnabled: true,
+      });
+
+      expect(result.status).toBe('authenticated');
+
+      // After bootstrap, Local Owner must exist with correct identifiers
+      const after = await repository.findOwnerMembership(
+        LOCAL_OWNER_ACCOUNT_ID,
+        DEFAULT_PROJECT_ID,
+      );
+      expect(after).toBeDefined();
+      expect(after?.isOwner).toBe(true);
+      expect(after?.projectId).toBe(DEFAULT_PROJECT_ID);
+    });
+
+    it('reuses the same Local Owner principal and membership on repeated bootstrap', async () => {
+      const repository = new InMemoryAuthRepository();
+      const adapter = new LocalOwnerAuthenticationAdapter(repository);
+
+      const first = await adapter.establishSession({
+        isLoopbackBind: true,
+        isRemoteLoopback: true,
+        isSameOrigin: true,
+        localOwnerEnabled: true,
+      });
+
+      const second = await adapter.establishSession({
+        isLoopbackBind: true,
+        isRemoteLoopback: true,
+        isSameOrigin: true,
+        localOwnerEnabled: true,
+      });
+
+      expect(first.status).toBe('authenticated');
+      expect(second.status).toBe('authenticated');
+      if (first.status !== 'authenticated' || second.status !== 'authenticated') return;
+
+      // Same principal ID must be reused
+      expect(first.context.principalId).toBe(second.context.principalId);
+      // Same project
+      expect(first.context.projectId).toBe(second.context.projectId);
+      expect(first.context.projectId).toBe(DEFAULT_PROJECT_ID);
+    });
+
+    it('does not alter other principals, projects, or memberships during local bootstrap', async () => {
+      const repository = new InMemoryAuthRepository();
+
+      // Set up existing principals in different projects
+      await repository.bootstrapOwner({
+        accountId: 'team-lead',
+        passwordHash: await hashPassword('team-pwd'),
+        projectId: 'project-alpha',
+        scopes: ['owner'],
+        sensitivityClearance: 'private',
+      });
+
+      // Capture the team-lead membership before local bootstrap
+      const teamLeadBefore = await repository.findOwnerMembership('team-lead', 'project-alpha');
+      expect(teamLeadBefore).toBeDefined();
+
+      // Trigger local bootstrap
+      const adapter = new LocalOwnerAuthenticationAdapter(repository);
+      const result = await adapter.establishSession({
+        isLoopbackBind: true,
+        isRemoteLoopback: true,
+        isSameOrigin: true,
+        localOwnerEnabled: true,
+      });
+      expect(result.status).toBe('authenticated');
+
+      // The team-lead's membership must be unchanged
+      const teamLeadAfter = await repository.findOwnerMembership('team-lead', 'project-alpha');
+      expect(teamLeadAfter).toBeDefined();
+      expect(teamLeadAfter?.principalId).toBe(teamLeadBefore?.principalId);
+      expect(teamLeadAfter?.projectId).toBe('project-alpha');
+      expect(teamLeadAfter?.isOwner).toBe(true);
+
+      // team-lead must not appear as Local Owner
+      const localOwner = await repository.findOwnerMembership(
+        LOCAL_OWNER_ACCOUNT_ID,
+        DEFAULT_PROJECT_ID,
+      );
+      expect(localOwner).toBeDefined();
+      expect(localOwner?.principalId).not.toBe(teamLeadBefore?.principalId);
+    }, 15_000);
   });
 
   describe('isLoopbackIp helper', () => {

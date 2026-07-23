@@ -59,7 +59,7 @@ export type AuthRepositoryPort = {
     readonly scopes: readonly string[];
     readonly sensitivityClearance: SecurityContext['sensitivity'];
   }): Promise<void>;
-  findOwnerMembership(projectId?: string): Promise<ProjectMembership | undefined>;
+  findOwnerMembership(accountId: string, projectId: string): Promise<ProjectMembership | undefined>;
   authenticatePassword(
     accountId: string,
     password: string,
@@ -168,16 +168,17 @@ export class InMemoryAuthRepository implements AuthRepositoryPort {
     [];
 
   async bootstrapOwner(input: Parameters<AuthRepositoryPort['bootstrapOwner']>[0]): Promise<void> {
-    if (
-      [...this.#memberships.values()].some(
-        (membership) => membership.isOwner && membership.projectId === input.projectId,
-      )
-    ) {
-      throw new Error('An active Owner already exists.');
-    }
     const accountId = input.accountId.trim().toLowerCase();
-    if (!accountId || this.#accountIds.has(accountId))
+    if (!accountId) throw new Error('Account ID is required.');
+    // Check if this exact account already has an owner membership in this project
+    if (this.#accountIds.has(accountId)) {
+      const existingPrincipalId = this.#accountIds.get(accountId)!;
+      const existingMembership = this.#memberships.get(`${existingPrincipalId}:${input.projectId}`);
+      if (existingMembership?.isOwner) {
+        throw new Error('An active Owner already exists.');
+      }
       throw new Error('Account ID is already in use.');
+    }
     const principalId = randomUUID();
     this.#principals.set(principalId, {
       principal: {
@@ -217,13 +218,15 @@ export class InMemoryAuthRepository implements AuthRepositoryPort {
     return { ...stored.principal, authenticationMethod: 'session' };
   }
 
-  async findOwnerMembership(projectId?: string): Promise<ProjectMembership | undefined> {
-    const targetProject = projectId?.trim() || DEFAULT_PROJECT_ID;
-    return (
-      [...this.#memberships.values()].find(
-        (membership) => membership.isOwner && membership.projectId === targetProject,
-      ) ?? [...this.#memberships.values()].find((membership) => membership.isOwner)
-    );
+  async findOwnerMembership(
+    accountId: string,
+    projectId: string,
+  ): Promise<ProjectMembership | undefined> {
+    const normalizedAccountId = accountId.trim().toLowerCase();
+    const principalId = this.#accountIds.get(normalizedAccountId);
+    if (!principalId) return undefined;
+    const membership = this.#memberships.get(`${principalId}:${projectId}`);
+    return membership?.isOwner ? membership : undefined;
   }
 
   async createSession(
@@ -464,7 +467,10 @@ export class DefaultLocalOwnerProvisioningService implements LocalOwnerProvision
     readonly membership: ProjectMembership;
   }> {
     const defaultProjectId = input?.defaultProjectId?.trim() || DEFAULT_PROJECT_ID;
-    let ownerMembership = await this.repository.findOwnerMembership(defaultProjectId);
+    let ownerMembership = await this.repository.findOwnerMembership(
+      LOCAL_OWNER_ACCOUNT_ID,
+      defaultProjectId,
+    );
     if (!ownerMembership) {
       try {
         await this.repository.bootstrapOwner({
@@ -476,7 +482,10 @@ export class DefaultLocalOwnerProvisioningService implements LocalOwnerProvision
       } catch {
         // Idempotent catch if bootstrapOwner fails due to race/pre-existence
       }
-      ownerMembership = await this.repository.findOwnerMembership(defaultProjectId);
+      ownerMembership = await this.repository.findOwnerMembership(
+        LOCAL_OWNER_ACCOUNT_ID,
+        defaultProjectId,
+      );
     }
 
     if (!ownerMembership) {

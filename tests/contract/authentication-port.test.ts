@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  DEFAULT_PROJECT_ID,
   FakeInteractiveAuthenticationAdapter,
   InMemoryAuthRepository,
+  LOCAL_OWNER_ACCOUNT_ID,
   LocalOwnerAuthenticationAdapter,
 } from '../../packages/authentication/src/index.js';
 
@@ -105,7 +107,10 @@ describe('AuthenticationPort and LocalOwnerAuthenticationAdapter Contract', () =
     });
 
     expect(result.status).toBe('authentication_unavailable');
-    const ownerMembership = await repository.findOwnerMembership();
+    const ownerMembership = await repository.findOwnerMembership(
+      LOCAL_OWNER_ACCOUNT_ID,
+      DEFAULT_PROJECT_ID,
+    );
     expect(ownerMembership).toBeUndefined();
   });
 

@@ -21,7 +21,7 @@ test('Frontend Section 1 restores server project context and protects routes', a
 
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
-  await expect(page.locator('.project-summary')).toContainText('project-a');
+  await expect(page.locator('.project-summary')).toContainText('shotgun');
   await page.getByRole('link', { name: 'Settings' }).click();
   await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
 
@@ -38,7 +38,7 @@ test('Frontend Section 1 restores server project context and protects routes', a
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
   await expect(projectSelector).toHaveValue('project-b');
-  await expect(page.locator('.project-summary')).not.toContainText('project-a');
+  await expect(page.locator('.project-summary')).not.toContainText('shotgun');
 
   const routes = [
     ['Home', 'Home'],

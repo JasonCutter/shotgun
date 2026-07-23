@@ -58,6 +58,7 @@ flowchart TB
 | 공통 Connector 계약 | Accepted |
 | 직접 DB 접근 금지 | Accepted |
 | 모듈별 데이터 소유권 | Accepted |
+| Local Owner Session 및 Method-Neutral Authentication Boundary (ADR-099) | Accepted |
 | 오픈소스 역할 배치 | Baseline Candidate |
 | 개별 제품·라이브러리 최종 채택 | Implementation Validation |
 | 독립 서비스 분리 시점 | Deferred until measured |

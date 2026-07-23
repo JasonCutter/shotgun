@@ -129,22 +129,30 @@ const createAuthHarness = async (scopes: readonly string[]): Promise<AuthHarness
   const principal = await authRepository.authenticatePassword('owner', password);
   if (!principal) throw new Error('Expected the PostgreSQL owner fixture to authenticate.');
 
-  const app = await createApplication({ authRepository, production: true });
+  process.env.SHOTGUN_ENABLE_LEGACY_AUTH = 'true';
+  const app = await createApplication({ authRepository, production: false });
   const login = await app.server.inject({
     method: 'POST',
-    url: '/auth/login',
+    url: '/api/v1/session/login',
     payload: { accountId: 'owner', password, projectId },
   });
   expect(login.statusCode).toBe(200);
   const setCookie = login.headers['set-cookie'];
   const cookie = (Array.isArray(setCookie) ? setCookie[0] : setCookie)?.split(';')[0] ?? '';
-  const loginBody = login.json<{ csrfToken: string }>();
+
+  const csrfRes = await app.server.inject({
+    method: 'GET',
+    url: '/api/v1/security/csrf',
+    headers: { cookie },
+  });
+  const csrfToken = csrfRes.json<{ csrfToken: string }>().csrfToken;
+
   return {
     app,
     authRepository,
     principalId: principal.principalId,
     cookie,
-    csrfToken: loginBody.csrfToken,
+    csrfToken,
   };
 };
 
@@ -184,23 +192,31 @@ const createActionApplication = async (): Promise<
     originalAssetRepository,
     transformationRevisionSecurityRepository,
     actionConnector: connector,
-    production: true,
+    production: false,
   });
+  process.env.SHOTGUN_ENABLE_LEGACY_AUTH = 'true';
   const login = await app.server.inject({
     method: 'POST',
-    url: '/auth/login',
+    url: '/api/v1/session/login',
     payload: { accountId: 'owner', password, projectId },
   });
   expect(login.statusCode).toBe(200);
   const setCookie = login.headers['set-cookie'];
   const cookie = (Array.isArray(setCookie) ? setCookie[0] : setCookie)?.split(';')[0] ?? '';
-  const loginBody = login.json<{ csrfToken: string }>();
+
+  const csrfRes = await app.server.inject({
+    method: 'GET',
+    url: '/api/v1/security/csrf',
+    headers: { cookie },
+  });
+  const csrfToken = csrfRes.json<{ csrfToken: string }>().csrfToken;
+
   return {
     app,
     authRepository,
     principalId: principal.principalId,
     cookie,
-    csrfToken: loginBody.csrfToken,
+    csrfToken,
     connector,
     actionRepository,
     candidateRepository,

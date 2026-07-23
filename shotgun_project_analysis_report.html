@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shotgun 프로젝트 구조 및 파일간 연결 처리 프로세스 보고서</title>
+  <style>
+    :root {
+      --bg-primary: #0f172a;
+      --bg-secondary: #1e293b;
+      --bg-card: #1e293b;
+      --bg-card-hover: #334155;
+      --accent-blue: #38bdf8;
+      --accent-purple: #c084fc;
+      --accent-emerald: #34d399;
+      --accent-amber: #fbbf24;
+      --accent-rose: #f43f5e;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --border-color: #334155;
+      --glass-bg: rgba(30, 41, 59, 0.7);
+      --glass-border: rgba(255, 255, 255, 0.1);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background-color: var(--bg-primary);
+      color: var(--text-main);
+      line-height: 1.6;
+      padding: 2rem;
+    }
+
+    .container {
+      max-width: 1300px;
+      margin: 0 auto;
+    }
+
+    header {
+      background: linear-gradient(135deg, rgba(56, 189, 248, 0.15), rgba(192, 132, 252, 0.15));
+      border: 1px solid var(--glass-border);
+      backdrop-filter: blur(12px);
+      border-radius: 16px;
+      padding: 2.5rem;
+      margin-bottom: 2rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    header h1 {
+      font-size: 2.4rem;
+      background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 0.5rem;
+    }
+
+    header p {
+      color: var(--text-muted);
+      font-size: 1.1rem;
+    }
+
+    .header-actions {
+      margin-top: 1.5rem;
+      display: flex;
+      gap: 1rem;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: linear-gradient(135deg, #0284c7, #2563eb);
+      color: white;
+      padding: 0.75rem 1.5rem;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn:hover {
+      opacity: 0.9;
+      transform: translateY(-2px);
+    }
+
+    .btn-secondary {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+    }
+
+    .section-title {
+      font-size: 1.8rem;
+      margin: 2rem 0 1rem;
+      color: var(--accent-blue);
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      border-bottom: 2px solid var(--border-color);
+      padding-bottom: 0.5rem;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2.5rem;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 1.5rem;
+      transition: all 0.2s ease;
+    }
+
+    .card:hover {
+      border-color: var(--accent-blue);
+      background: var(--bg-card-hover);
+    }
+
+    .card h3 {
+      color: var(--accent-purple);
+      font-size: 1.2rem;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .card-badge {
+      font-size: 0.75rem;
+      padding: 0.2rem 0.6rem;
+      border-radius: 9999px;
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--accent-blue);
+      font-weight: 600;
+    }
+
+    .diagram-container {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 2rem;
+      margin: 2rem 0;
+      overflow-x: auto;
+    }
+
+    .flow-pipeline {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .flow-step {
+      display: grid;
+      grid-template-columns: 200px 1fr;
+      gap: 1.5rem;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 1.25rem;
+      position: relative;
+    }
+
+    .flow-step-header {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      border-right: 2px solid var(--border-color);
+      padding-right: 1rem;
+    }
+
+    .flow-step-number {
+      font-size: 0.85rem;
+      color: var(--accent-blue);
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .flow-step-title {
+      font-size: 1.1rem;
+      font-weight: bold;
+      color: var(--text-main);
+    }
+
+    .flow-step-body {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .file-tag {
+      font-family: monospace;
+      background: rgba(56, 189, 248, 0.1);
+      color: var(--accent-blue);
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      border: 1px solid rgba(56, 189, 248, 0.2);
+      font-size: 0.9rem;
+      display: inline-block;
+    }
+
+    .file-tag.module {
+      background: rgba(192, 132, 252, 0.1);
+      color: var(--accent-purple);
+      border-color: rgba(192, 132, 252, 0.2);
+    }
+
+    .file-tag.adapter {
+      background: rgba(52, 211, 153, 0.1);
+      color: var(--accent-emerald);
+      border-color: rgba(52, 211, 153, 0.2);
+    }
+
+    .file-tag.package {
+      background: rgba(251, 191, 36, 0.1);
+      color: var(--accent-amber);
+      border-color: rgba(251, 191, 36, 0.2);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.5rem 0;
+      background: var(--bg-card);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    th,
+    td {
+      padding: 1rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    th {
+      background: rgba(15, 23, 42, 0.8);
+      color: var(--accent-blue);
+      font-weight: 600;
+    }
+
+    tr:hover {
+      background: var(--bg-card-hover);
+    }
+
+    .search-bar {
+      margin-bottom: 1.5rem;
+      width: 100%;
+      padding: 0.8rem 1.2rem;
+      border-radius: 8px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      font-size: 1rem;
+    }
+
+    .search-bar:focus {
+      outline: none;
+      border-color: var(--accent-blue);
+    }
+
+    footer {
+      margin-top: 4rem;
+      padding-top: 2rem;
+      border-top: 1px solid var(--border-color);
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <header>
+      <h1>Shotgun 프로젝트 구조 및 연결 프로세스 분석 보고서</h1>
+      <p>Hexagonal Modular Monorepo Architecture 및 지식 처리 파이프라인 명세</p>
+      <div class="header-actions">
+        <button class="btn" onclick="window.print()">🖨️ 보고서 인쇄 / PDF 저장</button>
+        <button class="btn btn-secondary" onclick="downloadHTML()">💾 HTML 파일 다운로드</button>
+      </div>
+    </header>
+
+    <!-- 1. 프로젝트 개요 -->
+    <h2 class="section-title">1. 프로젝트 개요 & 아키텍처 원칙</h2>
+    <div class="summary-grid">
+      <div class="card">
+        <h3><span>🎯</span> Shotgun 핵심 개념 <span class="card-badge">PKS</span></h3>
+        <p>Shotgun은 단일 지식 원본에서 시작하여 탄환처럼 여러 방향으로 확산되는 <strong>개인 지식 시스템(Personal Knowledge System)</strong>입니다. 원본 접수부터
+          Fact/Claim 추출, 정사 지식(Canonical Knowledge) 저장, 지식 그래프 형성, 안전한 외부 실행까지 처리합니다.</p>
+      </div>
+      <div class="card">
+        <h3><span>🏗️</span> Monorepo 구조 <span class="card-badge">npm workspaces</span></h3>
+        <p>독립적인 레이어로 분리된 npm workspace 구조를 가집니다. 최상위 <code>package.json</code>을 중심으로 <code>apps</code>,
+          <code>assemblies</code>, <code>modules</code>, <code>packages</code>, <code>adapters</code>로 명확히 역할이 구분됩니다.
+        </p>
+      </div>
+      <div class="card">
+        <h3><span>🔌</span> Port & Adapter 패턴 <span class="card-badge">Clean Architecture</span></h3>
+        <p>비즈니스 도메인(<code>modules</code>)은 순수 TS 인터페이스(Port)만 정의하며, 외부 기술(Postgres DB, Gemini AI, Lucas Text Locator 등)은
+          <code>adapters</code>에 격리되어 손쉬운 교체 및 Contract 테스팅을 지원합니다.</p>
+      </div>
+    </div>
+
+    <!-- 2. 전체 디렉토리 및 주요 파일 역할 -->
+    <h2 class="section-title">2. 디렉토리 구조 및 핵심 파일 역할 명세</h2>
+    <input type="text" id="searchInput" class="search-bar" placeholder="🔍 파일명, 모듈명 또는 역할 검색..."
+      onkeyup="filterTable()">
+
+    <table id="fileTable">
+      <thead>
+        <tr>
+          <th style="width: 25%;">디렉토리 / 파일 경로</th>
+          <th style="width: 15%;">분류</th>
+          <th style="width: 60%;">핵심 역할 및 상세 기능</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>package.json</code></td>
+          <td><span class="file-tag">Root Config</span></td>
+          <td>Monorepo npm workspaces 설정, 통합 빌드/테스트/검증 스크립트 실행 명령 모음</td>
+        </tr>
+        <tr>
+          <td><code>AGENTS.md</code></td>
+          <td><span class="file-tag">Rule Policy</span></td>
+          <td>AI Agent 작업 수칙, 도메인 소유권 경계, OSS 평가 및 통합 규정, Definition of Done 지정</td>
+        </tr>
+        <tr>
+          <td><code>compose.yaml</code></td>
+          <td><span class="file-tag">Infra</span></td>
+          <td>로컬 개발 인프라(PostgreSQL 데이터베이스) 구동을 위한 Docker Compose 설정</td>
+        </tr>
+        <tr>
+          <td><code>apps/shotgun-web/</code></td>
+          <td><span class="file-tag">App (Frontend)</span></td>
+          <td>React + Vite 기반 독립 SPA UI. 지식 수집, Diff 검토, Graph 탐색, Cited QA 및 Action 승인 대시보드</td>
+        </tr>
+        <tr>
+          <td><code>assemblies/shotgun-app/src/main.ts</code></td>
+          <td><span class="file-tag">Assembly</span></td>
+          <td>백엔드 실 구동 엔트리포인트. Env 로드, DB Pool/AI Client 인스턴스화, 어댑터 의존성 주입(DI) 및 서버 시작</td>
+        </tr>
+        <tr>
+          <td><code>assemblies/shotgun-app/src/server.ts</code></td>
+          <td><span class="file-tag">Assembly</span></td>
+          <td>Fastify API 웹서버 Composition Root. REST 엔드포인트 정의 및 Kernel / Module 간 통신 라우팅 연동</td>
+        </tr>
+        <tr>
+          <td><code>packages/kernel/</code></td>
+          <td><span class="file-tag package">Package</span></td>
+          <td>Shotgun 핵심 커널. <code>ShotgunKernel</code>, Command/Query 디스패처, 이벤트 버스, 도메인 기초 공통 타입 정의</td>
+        </tr>
+        <tr>
+          <td><code>packages/contracts/</code></td>
+          <td><span class="file-tag package">Package</span></td>
+          <td>모듈 간 격리된 통신을 위한 DTO, 데이터 스키마 및 이벤트 계약(Contract) 명세</td>
+        </tr>
+        <tr>
+          <td><code>packages/authentication/</code></td>
+          <td><span class="file-tag package">Package</span></td>
+          <td>사용자 인증, 비밀번호 해싱, 보안 컨텍스트 검증 및 세션 권한 관리</td>
+        </tr>
+        <tr>
+          <td><code>packages/policy/</code></td>
+          <td><span class="file-tag package">Package</span></td>
+          <td>외부 시스템 Action 실행 시 위험도 평가 및 보안 정책 엔진</td>
+        </tr>
+        <tr>
+          <td><code>packages/connector-runtime/</code></td>
+          <td><span class="file-tag package">Package</span></td>
+          <td>외부 연동 액션 커넥터 실행 및 결과 감사(Audit Log) 수집 런타임</td>
+        </tr>
+        <tr>
+          <td><code>packages/lucas-text-locator/</code></td>
+          <td><span class="file-tag package">Package</span></td>
+          <td>원본 문서 내 텍스트 오프셋/라인/문자 단위 오프셋 탐색 보조 라이브러리</td>
+        </tr>
+        <tr>
+          <td><code>modules/intake/</code></td>
+          <td><span class="file-tag module">Module</span></td>
+          <td>외부 지식 원본 소스(웹페이지, 파일, 텍스트) 수집 접수 및 메타데이터 관리</td>
+        </tr>
+        <tr>
+          <td><code>modules/original-asset/</code></td>
+          <td><span class="file-tag module">Module</span></td>
+          <td>수집된 원본 파일의 바이너리/스트림 저장 및 물리적 Asset 참조 관리</td>
+        </tr>
+        <tr>
+          <td><code>modules/transformation/</code></td>
+          <td><span class="file-tag module">Module</span></td>
+          <td>PDF, HTML, XLSX 등 다변화된 원본 문서를 정규 텍스트 및 세그먼트로 표준 변환</td>
+        </tr>
+        <tr>
+          <td><code>modules/evidence/</code></td>
+          <td><span class="file-tag module">Module</span></td>
+          <td>변환된 텍스트와 원본 Asset 간의 정밀 위치 근거(Evidence Span: Line/Char Range) 추적 매핑</td>
+        </tr>
+        <tr>
+          <td><code>modules/candidate-generation/</code></td>
+          <td><span class="file-tag module">Module</span></td>
+          <td>LLM 및 규칙 엔진을 활용하여 변환 텍스트에서 Fact/Claim 지식 후보 파싱 생성</td>
+        </tr>
+        <tr>
+          <td><code>modules/validation/</code></td>
+          <td><span class="file-tag module">Module</span></td>
+          <td>추출된 지식 후보의 구조적 타당성, 무결성 및 근거 Span 연결성 검증</td>
+        </tr>
+        <tr>
+          <td><code>modules/comparison/</code></td>
+          <td><span class="file-tag module">Module</span></td>
+          <td>신규 검증 후보와 기존 정사 지식(Canonical Knowledge) 간의 차이(Diff) 분석 및 충돌 감지</td>
+        </tr>
+        <tr>
+          <td><code>modules/change-set-review/</code></td>
+          <td><span class="file-tag module">Module</span></td>
+          <td>사용자의 검토 및 승인을 기다리는 변경집합(Draft ChangeSet) 상태 관리</td>
+        </tr>
+        <tr>
+          <td><code>modules/canonical-knowledge/</code></td>
+          <td><span class="file-tag module">Module</span></td>
+          <td>승인된 ChangeSet을 불변의 정사 지식(Commit History & Snapshot)으로 스토어 저장</td>
+        </tr>
+        <tr>
+          <td><code>modules/knowledge-model/</code></td>
+          <td><span class="file-tag module">Module</span></td>
+          <td>정사 지식 간 상호 연결 관계(Knowledge Graph) 구성 및 변경 영향도(Impact) 계산</td>
+        </tr>
+        <tr>
+          <td><code>modules/compiled-truth/</code></td>
+          <td><span class="file-tag module">Module</span></td>
+          <td>지식 그래프와 정사 지식을 통합하여 최종 신뢰할 수 있는 Compiled Truth View 뷰 프로젝션</td>
+        </tr>
+        <tr>
+          <td><code>modules/projection-search/</code></td>
+          <td><span class="file-tag module">Module</span></td>
+          <td>Compiled Truth 및 베인 지식 대상 전문 검색(FTS), 필터링, 벡터 탐색 서비스 제공</td>
+        </tr>
+        <tr>
+          <td><code>modules/cited-answer/</code></td>
+          <td><span class="file-tag module">Module</span></td>
+          <td>검색 결과와 Evidence Span을 결합하여 명확한 출처 인용이 명시된 QA 답안 생성</td>
+        </tr>
+        <tr>
+          <td><code>modules/action-execution/</code></td>
+          <td><span class="file-tag module">Module</span></td>
+          <td>검증된 지식을 기반으로 외부 서비스(Slack, GitHub 등) Action 제어 및 실행 기록 관리</td>
+        </tr>
+        <tr>
+          <td><code>adapters/postgres/</code></td>
+          <td><span class="file-tag adapter">Adapter</span></td>
+          <td>Stage 2 수집/원본 자산 저장을 위한 PostgreSQL 데이터베이스 연동 구현체</td>
+        </tr>
+        <tr>
+          <td><code>adapters/ai-provider-gemini/</code></td>
+          <td><span class="file-tag adapter">Adapter</span></td>
+          <td>Google Gemini API 연결 및 LLM 프롬프트/응답 파싱 어댑터 (<code>@google/genai</code>)</td>
+        </tr>
+        <tr>
+          <td><code>adapters/plain-text-lucas-augmented/</code></td>
+          <td><span class="file-tag adapter">Adapter</span></td>
+          <td>lucas 레퍼런스 기반 강화 텍스트 탐색 및 Evidence 위치 지정 어댑터</td>
+        </tr>
+        <tr>
+          <td><code>adapters/document-format-python/</code></td>
+          <td><span class="file-tag adapter">Adapter</span></td>
+          <td>Python 파이프라인 연동 기반 문단/문서 포맷 변환 어댑터</td>
+        </tr>
+        <tr>
+          <td><code>adapters/text-diff-jsdiff/</code></td>
+          <td><span class="file-tag adapter">Adapter</span></td>
+          <td>JSDiff 라이브러리를 활용한 텍스트 및 지식 변경점 차이 분석 어댑터</td>
+        </tr>
+        <tr>
+          <td><code>adapters/networkx-impact-oracle/</code></td>
+          <td><span class="file-tag adapter">Adapter</span></td>
+          <td>지식 변경 시 연관된 다른 지식에 미치는 영향(Impact Analysis) 추적 어댑터</td>
+        </tr>
+        <tr>
+          <td><code>scripts/</code></td>
+          <td><span class="file-tag">Scripts</span></td>
+          <td>품질 게이트(<code>quality-gate.ts</code>), OSS 검증(<code>oss-gate.ts</code>), DB
+            마이그레이션(<code>database.ts</code>) 등 관리 도구</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- 3. 엔드투엔드 지식 처리 프로세스 -->
+    <h2 class="section-title">3. 파일간 연결 고리 및 엔드투엔드 처리 프로세스</h2>
+    <p>Shotgun의 지식 처리는 원본 데이터 입력부터 시작되어 8단계의 파이프라인을 거치며 검증 및 축적됩니다.</p>
+
+    <div class="diagram-container">
+      <div class="flow-pipeline">
+        <!-- Step 1 -->
+        <div class="flow-step">
+          <div class="flow-step-header">
+            <span class="flow-step-number">Step 01</span>
+            <span class="flow-step-title">원본 접수 및 자산 저장</span>
+          </div>
+          <div class="flow-step-body">
+            <p><strong>연결 흐름:</strong> <code>apps/shotgun-web</code> ➔ <code>assemblies/shotgun-app/src/server.ts</code>
+              ➔ <code>modules/intake</code> & <code>modules/original-asset</code> ➔
+              <code>adapters/asset-storage-local</code> / <code>adapters/postgres</code></p>
+            <p><strong>설명:</strong> 사용자가 웹 UI 또는 API를 통해 문서/링크를 제출하면, <code>intake</code> 모듈이 메타데이터를 수집하고
+              <code>original-asset</code> 모듈이 물리적 파일(바이너리)을 스토리지 어댑터에 안전하게 저장합니다.</p>
+          </div>
+        </div>
+
+        <!-- Step 2 -->
+        <div class="flow-step">
+          <div class="flow-step-header">
+            <span class="flow-step-number">Step 02</span>
+            <span class="flow-step-title">텍스트 변환 및 근거 추적</span>
+          </div>
+          <div class="flow-step-body">
+            <p><strong>연결 흐름:</strong> <code>modules/transformation</code> ➔
+              <code>adapters/document-format-python</code> ➔ <code>modules/evidence</code> ➔
+              <code>adapters/plain-text-lucas-augmented</code> & <code>packages/lucas-text-locator</code></p>
+            <p><strong>설명:</strong> 저장된 원본 파일을 일반 텍스트로 표준화 변환한 뒤, 변환된 텍스트의 각 문장/단락이 원본 파일의 몇 번째 줄/문자에 해당하는지
+              <code>EvidenceSpan</code>을 형성하여 근거 위치를 고정합니다.</p>
+          </div>
+        </div>
+
+        <!-- Step 3 -->
+        <div class="flow-step">
+          <div class="flow-step-header">
+            <span class="flow-step-number">Step 03</span>
+            <span class="flow-step-title">AI 지식 후보 추출</span>
+          </div>
+          <div class="flow-step-body">
+            <p><strong>연결 흐름:</strong> <code>modules/candidate-generation</code> ➔ <code>modules/ai-provider</code> ➔
+              <code>adapters/ai-provider-gemini</code></p>
+            <p><strong>설명:</strong> 텍스트 및 근거 정보를 <code>ai-provider</code> 모듈을 통해 Gemini API로 전달하여, 텍스트 내에서 의미 있는
+              Fact(사실) 및 Claim(주장) 지식 후보(<code>Candidate</code>)를 자동 추출합니다.</p>
+          </div>
+        </div>
+
+        <!-- Step 4 -->
+        <div class="flow-step">
+          <div class="flow-step-header">
+            <span class="flow-step-number">Step 04</span>
+            <span class="flow-step-title">후보 검증 및 차이(Diff) 분석</span>
+          </div>
+          <div class="flow-step-body">
+            <p><strong>연결 흐름:</strong> <code>modules/validation</code> ➔ <code>modules/comparison</code> ➔
+              <code>adapters/text-diff-jsdiff</code> ➔ <code>packages/kernel</code></p>
+            <p><strong>설명:</strong> <code>validation</code> 모듈이 후보 지식의 스키마와 근거 매핑 정합성을 검증하고, <code>comparison</code> 모듈이
+              <code>text-diff-jsdiff</code> 어댑터를 사용해 기존 저장된 정사 지식과 새로 들어온 후보 지식 간 차이점(Diff)을 분석합니다.</p>
+          </div>
+        </div>
+
+        <!-- Step 5 -->
+        <div class="flow-step">
+          <div class="flow-step-header">
+            <span class="flow-step-number">Step 05</span>
+            <span class="flow-step-title">사용자 검토 & 정사 지식 커밋</span>
+          </div>
+          <div class="flow-step-body">
+            <p><strong>연결 흐름:</strong> <code>modules/change-set-review</code> ➔ <code>apps/shotgun-web</code> (승인) ➔
+              <code>modules/canonical-knowledge</code> ➔ <code>adapters/postgres-stage6</code></p>
+            <p><strong>설명:</strong> 생성된 변경집합(Draft ChangeSet)이 사용자 UI 대시보드에 노출됩니다. 사용자가 승인하면
+              <code>canonical-knowledge</code> 모듈이 이를 불변의 정사 지식(Canonical Knowledge)으로 커밋 및 이력(Commit Log)에 기록합니다.</p>
+          </div>
+        </div>
+
+        <!-- Step 6 -->
+        <div class="flow-step">
+          <div class="flow-step-header">
+            <span class="flow-step-number">Step 06</span>
+            <span class="flow-step-title">지식 그래프 & 컴파일 뷰 생성</span>
+          </div>
+          <div class="flow-step-body">
+            <p><strong>연결 흐름:</strong> <code>modules/knowledge-model</code> ➔
+              <code>adapters/networkx-impact-oracle</code> ➔ <code>modules/compiled-truth</code> ➔
+              <code>adapters/postgres-stage10</code></p>
+            <p><strong>설명:</strong> 정사 지식 간 연관 관계를 그래프(Knowledge Graph)로 구성하고, 지식 수정 시 미치는 영향을 계산한 후 최종적으로 빠르게 조회 가능한
+              <code>CompiledTruthProjection</code> 뷰로 컴파일합니다.</p>
+          </div>
+        </div>
+
+        <!-- Step 7 -->
+        <div class="flow-step">
+          <div class="flow-step-header">
+            <span class="flow-step-number">Step 07</span>
+            <span class="flow-step-title">검색 및 근거 인용 답변 (QA)</span>
+          </div>
+          <div class="flow-step-body">
+            <p><strong>연결 흐름:</strong> <code>modules/projection-search</code> ➔ <code>adapters/postgres-stage7</code> ➔
+              <code>modules/cited-answer</code> ➔ <code>apps/shotgun-web</code></p>
+            <p><strong>설명:</strong> 사용자의 질의에 대해 전문 검색(FTS) 및 벡터 탐색을 수행하고, 찾아낸 지식과 이에 연결된 원본 근거(Evidence Span)를 바탕으로 신뢰성
+              높은 출처 인용 답변을 생성합니다.</p>
+          </div>
+        </div>
+
+        <!-- Step 8 -->
+        <div class="flow-step">
+          <div class="flow-step-header">
+            <span class="flow-step-number">Step 08</span>
+            <span class="flow-step-title">위험 제어 외부 실행 (External Action)</span>
+          </div>
+          <div class="flow-step-body">
+            <p><strong>연결 흐름:</strong> <code>modules/action-execution</code> ➔ <code>packages/policy</code> ➔
+              <code>packages/connector-runtime</code> ➔ <code>adapters/action-connector-fake</code></p>
+            <p><strong>설명:</strong> 축적된 지식을 기반으로 외부 시스템 작업(예: 이슈 등록, 메시지 발송 등)을 수행할 때, 보안 정책 엔진이 위험도를 판정하고 사용자의
+              Preflight 승인을 받아 안전하게 실행 후 Audit Log를 남깁니다.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. 결론 -->
+    <h2 class="section-title">4. 종합 평가 & 준수 상태</h2>
+    <div class="summary-grid">
+      <div class="card">
+        <h3>결합도 및 격리성</h3>
+        <p>각 모듈은 자신의 Domain Boundary 내에서 독립적인 계약(Contract)으로 보호되며, DB 스티마와 어댑터 구현체가
+          <code>adapters/postgres-stageX</code> 형태로 격리되어 높은 확장성과 안전성을 보장합니다.</p>
+      </div>
+      <div class="card">
+        <h3>데이터 소유권 엄수</h3>
+        <p>외부 레퍼런스 및 AI의 임의 데이터 생성을 배제하고, 원본 접수부터 Canonical Knowledge까지 모든 지식 데이터에 <code>EvidenceSpan</code>을 명시하여
+          환각(Hallucination) 없는 검증 구조를 완성했습니다.</p>
+      </div>
+    </div>
+
+    <footer>
+      <p>본 보고서는 Shotgun 저장소 분석을 바탕으로 자동 생성된 아키텍처 명세서입니다.</p>
+      <p>Shotgun Knowledge System &copy; 2026</p>
+    </footer>
+  </div>
+
+  <script>
+    function filterTable() {
+      const input = document.getElementById('searchInput');
+      const filter = input.value.toLowerCase();
+      const table = document.getElementById('fileTable');
+      const trs = table.getElementsByTagName('tr');
+
+      for (let i = 1; i < trs.length; i++) {
+        const rowText = trs[i].textContent.toLowerCase();
+        if (rowText.includes(filter)) {
+          trs[i].style.display = '';
+        } else {
+          trs[i].style.display = 'none';
+        }
+      }
+    }
+
+    function downloadHTML() {
+      const element = document.createElement('a');
+      const file = new Blob([document.documentElement.outerHTML], { type: 'text/html' });
+      element.href = URL.createObjectURL(file);
+      element.download = 'shotgun_project_analysis_report.html';
+      document.body.appendChild(element);
+      element.click();
+      document.body.removeChild(element);
+    }
+  </script>
+</body>
+
+</html>

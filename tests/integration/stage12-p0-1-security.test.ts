@@ -60,7 +60,7 @@ describe('Stage 12.1 P0-1 HTTP identity and authorization boundary', () => {
     const { app } = await createAuthenticatedApplication();
     const login = await app.server.inject({
       method: 'POST',
-      url: '/auth/login',
+      url: '/api/v1/session/login',
       payload: {
         accountId: 'owner',
         password: 'correct horse battery staple',
@@ -73,7 +73,13 @@ describe('Stage 12.1 P0-1 HTTP identity and authorization boundary', () => {
     expect(login.headers['set-cookie']).toContain('Secure');
     const setCookie = login.headers['set-cookie'];
     const cookie = (Array.isArray(setCookie) ? setCookie[0] : setCookie)?.split(';')[0] ?? '';
-    const csrfToken = login.json().csrfToken as string;
+
+    const csrfRes = await app.server.inject({
+      method: 'GET',
+      url: '/api/v1/security/csrf',
+      headers: { cookie },
+    });
+    const csrfToken = csrfRes.json<{ csrfToken: string }>().csrfToken;
 
     const rejectedCsrf = await app.server.inject({
       method: 'POST',

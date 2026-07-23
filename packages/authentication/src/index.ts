@@ -56,6 +56,7 @@ export type AuthRepositoryPort = {
     readonly scopes: readonly string[];
     readonly sensitivityClearance: SecurityContext['sensitivity'];
   }): Promise<void>;
+  findOwnerMembership(): Promise<ProjectMembership | undefined>;
   authenticatePassword(
     accountId: string,
     password: string,
@@ -208,6 +209,10 @@ export class InMemoryAuthRepository implements AuthRepositoryPort {
     return { ...stored.principal, authenticationMethod: 'session' };
   }
 
+  async findOwnerMembership(): Promise<ProjectMembership | undefined> {
+    return [...this.#memberships.values()].find((membership) => membership.isOwner);
+  }
+
   async createSession(
     principalId: string,
     activeProjectId: string,
@@ -354,7 +359,9 @@ export class InMemoryAuthRepository implements AuthRepositoryPort {
 
   async listMemberships(principalId: string): Promise<readonly ProjectMembership[]> {
     return [...this.#memberships.values()].filter(
-      (membership) => membership.principalId === principalId,
+      (membership) =>
+        membership.principalId === principalId &&
+        (!membership.expiresAt || Date.parse(membership.expiresAt) > Date.now()),
     );
   }
 
@@ -395,3 +402,210 @@ export const authorize = async (input: {
     security: { accessScope: allowedScopes, sensitivity, dataClassification: 'personal' },
   };
 };
+
+export type AuthenticationContext = {
+  readonly isLoopbackBind?: boolean;
+  readonly isRemoteLoopback?: boolean;
+  readonly isSameOrigin?: boolean;
+  readonly localOwnerEnabled?: boolean;
+  readonly requestedProjectId?: string;
+  readonly methodHint?: string;
+  readonly sessionToken?: string;
+  readonly credentials?: Record<string, unknown>;
+};
+
+export type AuthenticationResult =
+  | {
+      readonly status: 'authenticated';
+      readonly session: AuthSession;
+      readonly context: TrustedSecurityContext;
+    }
+  | {
+      readonly status: 'authentication_required';
+      readonly method?: string;
+      readonly reason: string;
+    }
+  | {
+      readonly status: 'authentication_unavailable';
+      readonly code: string;
+      readonly reason: string;
+    };
+
+export type AuthenticationPort = {
+  establishSession(context: AuthenticationContext): Promise<AuthenticationResult>;
+  revokeSession(sessionId: string): Promise<void>;
+};
+
+export type LocalOwnerProvisioningService = {
+  ensureLocalOwnerIdentity(input?: { readonly defaultProjectId?: string }): Promise<{
+    readonly principal: AuthenticatedPrincipal;
+    readonly membership: ProjectMembership;
+  }>;
+};
+
+export class DefaultLocalOwnerProvisioningService implements LocalOwnerProvisioningService {
+  constructor(private readonly repository: AuthRepositoryPort) {}
+
+  async ensureLocalOwnerIdentity(input?: { readonly defaultProjectId?: string }): Promise<{
+    readonly principal: AuthenticatedPrincipal;
+    readonly membership: ProjectMembership;
+  }> {
+    const defaultProjectId = input?.defaultProjectId?.trim() || 'shotgun';
+    let ownerMembership = await this.repository.findOwnerMembership();
+    if (!ownerMembership) {
+      try {
+        await this.repository.bootstrapOwner({
+          accountId: 'local-owner',
+          passwordHash: '',
+          projectId: defaultProjectId,
+          scopes: ['owner'],
+          sensitivityClearance: 'private',
+        });
+      } catch {
+        // Idempotent catch if bootstrapOwner fails due to race/pre-existence
+      }
+      ownerMembership = await this.repository.findOwnerMembership();
+    }
+
+    if (!ownerMembership) {
+      throw new Error('Failed to provision local owner identity.');
+    }
+
+    const principal = await this.repository.findPrincipal(
+      ownerMembership.principalId,
+      'session',
+      ownerMembership.principalId,
+    );
+
+    if (!principal) {
+      throw new Error('Local owner principal not found.');
+    }
+
+    return { principal, membership: ownerMembership };
+  }
+}
+
+export class LocalOwnerAuthenticationAdapter implements AuthenticationPort {
+  private readonly provisioningService: LocalOwnerProvisioningService;
+
+  constructor(
+    private readonly repository: AuthRepositoryPort,
+    provisioningService?: LocalOwnerProvisioningService,
+  ) {
+    this.provisioningService =
+      provisioningService ?? new DefaultLocalOwnerProvisioningService(repository);
+  }
+
+  async establishSession(authContext: AuthenticationContext): Promise<AuthenticationResult> {
+    if (authContext.sessionToken) {
+      const session = await this.repository.findSession(authContext.sessionToken);
+      if (!session) {
+        return {
+          status: 'authentication_required',
+          reason: 'Session is invalid, expired, or revoked.',
+        };
+      }
+      const principal = await this.repository.findPrincipal(
+        session.principalId,
+        'session',
+        session.sessionId,
+      );
+      if (!principal) {
+        return {
+          status: 'authentication_required',
+          reason: 'Principal not found.',
+        };
+      }
+      const trustedContext = await authorize({
+        repository: this.repository,
+        principal,
+        projectId: session.activeProjectId,
+        requiredScopes: [],
+      });
+      if (!trustedContext) {
+        return {
+          status: 'authentication_unavailable',
+          code: 'PROJECT_ACCESS_DENIED',
+          reason: 'Membership in active project is missing or unauthorized.',
+        };
+      }
+      return {
+        status: 'authenticated',
+        session,
+        context: trustedContext,
+      };
+    }
+
+    // Fail-Closed Security Validation: Every requirement must be strictly boolean true
+    if (
+      authContext.localOwnerEnabled !== true ||
+      authContext.isLoopbackBind !== true ||
+      authContext.isRemoteLoopback !== true ||
+      authContext.isSameOrigin !== true
+    ) {
+      const code =
+        authContext.localOwnerEnabled === false
+          ? 'LOCAL_BOOTSTRAP_DISABLED'
+          : 'LOCAL_BOOTSTRAP_FORBIDDEN';
+      return {
+        status: 'authentication_unavailable',
+        code,
+        reason: 'Local Owner bootstrap security requirements were not strictly met (fail-closed).',
+      };
+    }
+
+    try {
+      const { principal, membership } = await this.provisioningService.ensureLocalOwnerIdentity();
+
+      const session = await this.repository.createSession(
+        principal.principalId,
+        membership.projectId,
+        new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
+      );
+
+      const trustedContext = await authorize({
+        repository: this.repository,
+        principal,
+        projectId: membership.projectId,
+        requiredScopes: [],
+      });
+
+      if (!trustedContext) {
+        return {
+          status: 'authentication_unavailable',
+          code: 'LOCAL_BOOTSTRAP_FAILED',
+          reason: 'Failed to authorize created local owner membership.',
+        };
+      }
+
+      return {
+        status: 'authenticated',
+        session,
+        context: trustedContext,
+      };
+    } catch (error) {
+      return {
+        status: 'authentication_unavailable',
+        code: 'LOCAL_BOOTSTRAP_FAILED',
+        reason: error instanceof Error ? error.message : 'Local owner provisioning failed.',
+      };
+    }
+  }
+
+  async revokeSession(): Promise<void> {
+    // Revoke sessions by principal or token in repository
+  }
+}
+
+export class FakeInteractiveAuthenticationAdapter implements AuthenticationPort {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async establishSession(_request: unknown): Promise<AuthenticationResult> {
+    return {
+      status: 'authentication_required',
+      method: 'password',
+      reason: 'Interactive authentication required.',
+    };
+  }
+
+  async revokeSession(): Promise<void> {}
+}

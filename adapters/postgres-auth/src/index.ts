@@ -107,6 +107,14 @@ export class PostgresAuthRepository implements AuthRepositoryPort {
     return principal(row, 'session');
   }
 
+  async findOwnerMembership(): Promise<ProjectMembership | undefined> {
+    const result = await this.pool.query<MembershipRow>(
+      'SELECT principal_id::text, project_id, scopes, sensitivity_clearance, is_owner, expires_at FROM auth.project_memberships WHERE is_owner AND (expires_at IS NULL OR expires_at > now()) LIMIT 1',
+    );
+    const row = result.rows[0];
+    return row ? membership(row) : undefined;
+  }
+
   async createSession(
     principalId: string,
     activeProjectId: string,

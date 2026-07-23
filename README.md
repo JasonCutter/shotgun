@@ -23,6 +23,23 @@ Asset Resolver는 [Stage 2 문서](docs/engineering/stage-2-intake-original-asse
 [Stage 11 문서](docs/engineering/stage-11-risk-controlled-external-action.md), 모듈 재사용은
 [Stage 12 문서](docs/engineering/stage-12-module-reuse-validation.md)에서 확인한다.
 
+### Frontend Section 1 로컬 개발
+
+두 터미널에서 Backend와 독립 Frontend를 각각 실행한다.
+
+```bash
+# Terminal 1
+npm run dev
+
+# Terminal 2
+npm run dev:web
+```
+
+- Frontend: `http://127.0.0.1:5173`
+- Backend: `http://127.0.0.1:3000`
+
+Section 1은 Local Loopback Development 전용이다. Production SPA Serving은 아직 구현되지 않았다.
+
 ## MVP 목표
 
 1. 지식 원본을 등록한다.

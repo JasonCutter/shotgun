@@ -6,10 +6,12 @@ import Fastify from 'fastify';
 
 import {
   InMemoryAuthRepository,
+  LocalOwnerAuthenticationAdapter,
   authorize,
   hashPassword,
   hashSecuritySecret,
   type AuthRepositoryPort,
+  type AuthenticationPort,
   type TrustedSecurityContext,
 } from '../../../packages/authentication/src/index.js';
 
@@ -153,6 +155,7 @@ import {
   type ActionExecutionRepositoryPort,
   createActionExecutionModule,
 } from '../../../modules/action-execution/src/index.js';
+import { createProductSessionView, type ProductSessionView } from './product-api/session-view.js';
 
 type PingRequest = {
   readonly requestId?: string;
@@ -276,6 +279,8 @@ export type ApplicationOptions = {
   readonly actionExecutionRepository?: ActionExecutionRepositoryPort;
   readonly actionConnector?: ActionConnectorPort;
   readonly authRepository?: AuthRepositoryPort;
+  readonly authenticationAdapter?: AuthenticationPort;
+  readonly host?: string;
   readonly production?: boolean;
   readonly canonicalProjectionRecoveryIntervalMs?: number | false;
   readonly canonicalProjectionRecoveryReporter?: CanonicalProjectionRecoveryReporterPort;
@@ -1229,10 +1234,33 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     });
   });
 
-  const sessionCookieName = production ? '__Host-shotgun_session' : 'shotgun_development_session';
-  const publicPaths = new Set(['/health', '/auth/login']);
+  const serverHost = options.host ?? process.env.HOST ?? '127.0.0.1';
+  const isLoopbackBind = ['127.0.0.1', 'localhost', '::1'].includes(serverHost);
+  const legacyAuthEnabled =
+    process.env.SHOTGUN_ENABLE_LEGACY_AUTH === 'true' &&
+    process.env.NODE_ENV !== 'production' &&
+    !production &&
+    isLoopbackBind;
+
+  const sessionCookieName = production ? '__Host-shotgun_session' : 'shotgun_session';
+
+  const publicPaths = new Set([
+    '/health',
+    '/api/v1/session/login',
+    '/api/v1/session/local-bootstrap',
+    ...(legacyAuthEnabled ? ['/auth/login'] : []),
+  ]);
   server.addHook('onRequest', async (request) => {
-    if (publicPaths.has(request.url.split('?')[0] ?? request.url)) return;
+    const urlPath = request.url.split('?')[0] ?? request.url;
+    if (urlPath.startsWith('/auth/') && !legacyAuthEnabled) {
+      throw new ShotgunError({
+        code: 'NOT_FOUND',
+        safeMessage: 'Not Found',
+        module: 'shotgun-app',
+        operation: 'legacy-auth',
+      });
+    }
+    if (publicPaths.has(urlPath)) return;
     const headers = request.headers as SecurityHeaders;
     for (const name of ['x-project-id', 'x-actor-id', 'x-access-scope', 'x-sensitivity'] as const) {
       if (headers[name] !== undefined) {
@@ -1343,6 +1371,213 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     });
   });
 
+  const requireBrowserSession = async (
+    headers: SecurityHeaders,
+  ): Promise<{
+    readonly context: TrustedSecurityContext;
+    readonly sessionToken: string;
+    readonly session: Awaited<ReturnType<AuthRepositoryPort['findSession']>> & {};
+  }> => {
+    const context = requestContext(headers);
+    const sessionToken = parseCookie(headers.cookie, sessionCookieName);
+    const session = sessionToken ? await authRepository.findSession(sessionToken) : undefined;
+    if (context.authenticationMethod === 'api_token' || !sessionToken || !session) {
+      throw new ShotgunError({
+        code: 'AUTHENTICATION_INVALID',
+        safeMessage: 'Session is invalid, expired, or revoked.',
+        module: 'shotgun-app',
+        operation: 'require-product-session',
+      });
+    }
+    return { context, sessionToken, session };
+  };
+
+  const productSessionView = async (
+    context: TrustedSecurityContext,
+    sessionExpiresAt: string | null,
+  ): Promise<ProductSessionView> =>
+    createProductSessionView({
+      context,
+      sessionExpiresAt,
+      memberships: await authRepository.listMemberships(context.principalId),
+    });
+
+  server.post<{ Body: { accountId: string; password: string; projectId: string } }>(
+    '/api/v1/session/login',
+    async (request, reply) => {
+      const principal = await authRepository.authenticatePassword(
+        request.body.accountId,
+        request.body.password,
+      );
+      const context = principal
+        ? await authorize({
+            repository: authRepository,
+            principal,
+            projectId: request.body.projectId,
+            requiredScopes: [],
+          })
+        : undefined;
+      if (!principal || !context) {
+        await authRepository.appendAudit({ event: 'PRODUCT_LOGIN_DENIED' });
+        throw new ShotgunError({
+          code: 'AUTHENTICATION_INVALID',
+          safeMessage: 'Credential or project access is invalid.',
+          module: 'shotgun-app',
+          operation: 'product-login',
+        });
+      }
+      const session = await authRepository.createSession(
+        principal.principalId,
+        context.projectId,
+        new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
+      );
+      await authRepository.appendAudit({
+        principalId: principal.principalId,
+        projectId: context.projectId,
+        event: 'PRODUCT_LOGIN_SUCCEEDED',
+      });
+      reply.header(
+        'Set-Cookie',
+        `${sessionCookieName}=${session.sessionToken}; HttpOnly; SameSite=Lax; Path=/${production ? '; Secure' : ''}`,
+      );
+      return { session: await productSessionView(context, session.expiresAt) };
+    },
+  );
+
+  const authenticationAdapter =
+    options.authenticationAdapter ?? new LocalOwnerAuthenticationAdapter(authRepository);
+
+  server.post<{ Body?: { projectId?: string } }>(
+    '/api/v1/session/local-bootstrap',
+    async (request, reply) => {
+      const remoteIp = request.ip || request.socket.remoteAddress || '';
+      const isRemoteLoopback =
+        ['127.0.0.1', '::1', 'localhost'].some((ip) => remoteIp.includes(ip)) ||
+        remoteIp === '127.0.0.1' ||
+        remoteIp === '::1';
+      const origin = (request.headers.origin || request.headers.referer || '').toLowerCase();
+      const hostHeader = (request.headers.host || '').toLowerCase();
+      const isSameOrigin =
+        !origin ||
+        origin.includes(hostHeader) ||
+        origin.includes('127.0.0.1') ||
+        origin.includes('localhost');
+      const localOwnerEnabled = process.env.SHOTGUN_DISABLE_LOCAL_OWNER !== 'true';
+
+      const result = await authenticationAdapter.establishSession({
+        isLoopbackBind,
+        isRemoteLoopback,
+        isSameOrigin,
+        localOwnerEnabled,
+        requestedProjectId: request.body?.projectId,
+      });
+
+      if (result.status === 'authentication_unavailable') {
+        await authRepository.appendAudit({ event: `LOCAL_BOOTSTRAP_FORBIDDEN:${result.code}` });
+        throw new ShotgunError({
+          code: 'PROJECT_ACCESS_DENIED',
+          safeMessage: result.reason,
+          module: 'shotgun-app',
+          operation: 'bootstrap-local-owner',
+        });
+      }
+
+      if (result.status === 'authentication_required') {
+        throw new ShotgunError({
+          code: 'AUTHENTICATION_REQUIRED',
+          safeMessage: result.reason,
+          module: 'shotgun-app',
+          operation: 'bootstrap-local-owner',
+        });
+      }
+
+      const { session, context } = result;
+      await authRepository.appendAudit({
+        principalId: context.principalId,
+        projectId: context.projectId,
+        event: 'LOCAL_OWNER_SESSION_CREATED',
+      });
+      reply.header(
+        'Set-Cookie',
+        `${sessionCookieName}=${session.sessionToken}; HttpOnly; SameSite=Lax; Path=/${production ? '; Secure' : ''}`,
+      );
+      return { session: await productSessionView(context, session.expiresAt) };
+    },
+  );
+
+  server.get<{ Headers: SecurityHeaders }>('/api/v1/session', async (request) => {
+    const { context, session } = await requireBrowserSession(request.headers);
+    return { session: await productSessionView(context, session.expiresAt) };
+  });
+
+  server.get<{ Headers: SecurityHeaders }>('/api/v1/security/csrf', async (request) => {
+    const { sessionToken } = await requireBrowserSession(request.headers);
+    const newCsrf = randomUUID();
+    await authRepository.updateSessionCsrf(sessionToken, newCsrf);
+    return { csrfToken: newCsrf };
+  });
+
+  server.post<{ Body: { projectId: string }; Headers: SecurityHeaders }>(
+    '/api/v1/session/active-project',
+    async (request) => {
+      const current = await requireBrowserSession(request.headers);
+      const membership = await authRepository.findMembership(
+        current.context.principalId,
+        request.body.projectId,
+      );
+      if (!membership) {
+        throw new ShotgunError({
+          code: 'PROJECT_ACCESS_DENIED',
+          safeMessage: 'Project access is denied.',
+          module: 'shotgun-app',
+          operation: 'product-set-active-project',
+        });
+      }
+      const principal = await authRepository.findPrincipal(
+        current.session.principalId,
+        'session',
+        current.session.sessionId,
+      );
+      const nextContext = principal
+        ? await authorize({
+            repository: authRepository,
+            principal,
+            projectId: request.body.projectId,
+            requiredScopes: [],
+          })
+        : undefined;
+      if (!nextContext) {
+        throw new ShotgunError({
+          code: 'PROJECT_ACCESS_DENIED',
+          safeMessage: 'Project access is denied.',
+          module: 'shotgun-app',
+          operation: 'product-set-active-project',
+        });
+      }
+      await authRepository.updateSessionProject(current.sessionToken, request.body.projectId);
+      const refreshed = await authRepository.findSession(current.sessionToken);
+      if (!refreshed) {
+        throw new ShotgunError({
+          code: 'AUTHENTICATION_INVALID',
+          safeMessage: 'Session is invalid, expired, or revoked.',
+          module: 'shotgun-app',
+          operation: 'product-set-active-project',
+        });
+      }
+      return { session: await productSessionView(nextContext, refreshed.expiresAt) };
+    },
+  );
+
+  server.post<{ Headers: SecurityHeaders }>('/api/v1/session/logout', async (request, reply) => {
+    const { context } = await requireBrowserSession(request.headers);
+    await authRepository.revokeSessions(context.principalId);
+    reply.header(
+      'Set-Cookie',
+      `${sessionCookieName}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${production ? '; Secure' : ''}`,
+    );
+    return { message: 'Logged out' };
+  });
+
   server.post<{ Body: { accountId: string; password: string; projectId: string } }>(
     '/auth/login',
     async (request, reply) => {
@@ -1409,7 +1644,10 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     if (context.authenticationMethod === 'session') {
       await authRepository.revokeSessions(context.principalId);
     }
-    reply.header('Set-Cookie', `${sessionCookieName}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`);
+    reply.header(
+      'Set-Cookie',
+      `${sessionCookieName}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${production ? '; Secure' : ''}`,
+    );
     return { message: 'Logged out' };
   });
 

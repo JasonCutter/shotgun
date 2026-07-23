@@ -60,9 +60,59 @@ describe('authentication primitives and local bootstrap security', () => {
     expect(membership?.isOwner).toBe(true);
     expect(membership?.projectId).toBe(DEFAULT_PROJECT_ID);
 
+    // Verify stored principal passwordHash is undefined (NOT empty string '')
+    expect(repository.getStoredPasswordHash(membership!.principalId)).toBeUndefined();
+
     // Password authentication must fail for identity without password credential
     const authenticated = await repository.authenticatePassword(LOCAL_OWNER_ACCOUNT_ID, '');
     expect(authenticated).toBeUndefined();
+  });
+
+  it('handles active vs expired owner membership in InMemoryAuthRepository', async () => {
+    const repository = new InMemoryAuthRepository();
+
+    // 1. Unexpired owner -> rejects new owner creation
+    await repository.bootstrapOwner({
+      accountId: 'active-owner',
+      passwordHash: await hashPassword('password123'),
+      projectId: DEFAULT_PROJECT_ID,
+      scopes: ['owner'],
+      sensitivityClearance: 'private',
+    });
+
+    await expect(
+      repository.bootstrapOwner({
+        accountId: LOCAL_OWNER_ACCOUNT_ID,
+        projectId: DEFAULT_PROJECT_ID,
+        scopes: ['owner'],
+        sensitivityClearance: 'private',
+      }),
+    ).rejects.toThrow('An active Owner already exists.');
+
+    // 2. Expired owner only -> allows new owner creation
+    const expiredRepo = new InMemoryAuthRepository();
+    expiredRepo.seedExpiredOwner('expired-owner', DEFAULT_PROJECT_ID);
+
+    // Expired owner membership should NOT be returned by findOwnerMembership
+    const expiredMembership = await expiredRepo.findOwnerMembership(
+      'expired-owner',
+      DEFAULT_PROJECT_ID,
+    );
+    expect(expiredMembership).toBeUndefined();
+
+    // Expired owner allows bootstrapping new active owner
+    await expiredRepo.bootstrapOwner({
+      accountId: LOCAL_OWNER_ACCOUNT_ID,
+      projectId: DEFAULT_PROJECT_ID,
+      scopes: ['owner'],
+      sensitivityClearance: 'private',
+    });
+    const newOwner = await expiredRepo.findOwnerMembership(
+      LOCAL_OWNER_ACCOUNT_ID,
+      DEFAULT_PROJECT_ID,
+    );
+    expect(newOwner).toBeDefined();
+    expect(newOwner?.isOwner).toBe(true);
   });
 
   it('implements AuthenticationPort.revokeSession via LocalOwnerAuthenticationAdapter', async () => {

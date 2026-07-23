@@ -1,14 +1,19 @@
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { PostgresAuthRepository } from '../../adapters/postgres-auth/src/index.js';
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
 import {
   DEFAULT_PROJECT_ID,
   hashPassword,
+  hashSecuritySecret,
+  InMemoryAuthRepository,
   LOCAL_OWNER_ACCOUNT_ID,
   LocalOwnerAuthenticationAdapter,
 } from '../../packages/authentication/src/index.js';
+import { dropSchemas, migrateUpTo } from '../../scripts/database.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
@@ -198,124 +203,208 @@ describe.runIf(pool)('Stage 12.1 P0-1 PostgreSQL authentication persistence', ()
       expect(after).toBeDefined();
       expect(after?.principalId).toBe(before?.principalId);
     });
-  });
 
-  describe('Migration 015 Upgrade & Verification Tests', () => {
-    it('backfills account_id from existing credentials into auth.principals', async () => {
-      const principalId = randomUUID();
-      const credentialId = randomUUID();
-      // Insert principal without account_id (as existed before Migration 015)
+    it('Scenario 7: handles active vs expired owner membership in Postgres and behaves identically to InMemoryAuthRepository', async () => {
+      const dbRepository = new PostgresAuthRepository(pool!);
+      const memRepository = new InMemoryAuthRepository();
+
+      // 1. Insert an expired owner membership into Postgres & InMemory
+      const expiredPrincipalId = randomUUID();
       await pool!.query(
-        "INSERT INTO auth.principals (principal_id, actor_type, status, created_at) VALUES ($1, 'user', 'active', now())",
-        [principalId],
+        "INSERT INTO auth.principals (principal_id, actor_type, status, account_id, created_at) VALUES ($1, 'user', 'active', 'expired-owner', now())",
+        [expiredPrincipalId],
       );
       await pool!.query(
-        "INSERT INTO auth.credentials (credential_id, principal_id, credential_type, account_id, password_hash, password_changed_at) VALUES ($1, $2, 'local_password', 'migrated-user', $3, now())",
-        [credentialId, principalId, await hashPassword('password123')],
+        "INSERT INTO auth.project_memberships (principal_id, project_id, scopes, sensitivity_clearance, is_owner, expires_at) VALUES ($1, $2, '{owner}', 'private', true, now() - interval '1 hour')",
+        [expiredPrincipalId, DEFAULT_PROJECT_ID],
       );
+      memRepository.seedExpiredOwner('expired-owner', DEFAULT_PROJECT_ID);
 
-      // Run backfill query from Migration 015
-      await pool!.query(`
-        UPDATE auth.principals p
-        SET account_id = c.account_id
-        FROM auth.credentials c
-        WHERE c.principal_id = p.principal_id
-          AND c.disabled_at IS NULL;
-      `);
+      // Expired owner should NOT be returned by findOwnerMembership
+      expect(
+        await dbRepository.findOwnerMembership('expired-owner', DEFAULT_PROJECT_ID),
+      ).toBeUndefined();
+      expect(
+        await memRepository.findOwnerMembership('expired-owner', DEFAULT_PROJECT_ID),
+      ).toBeUndefined();
 
-      const res = await pool!.query(
-        'SELECT account_id FROM auth.principals WHERE principal_id = $1',
-        [principalId],
-      );
-      expect(res.rows[0].account_id).toBe('migrated-user');
-    });
-
-    it('allows credential-less Local Owner lookup by account_id without credentials row', async () => {
-      const repository = new PostgresAuthRepository(pool!);
-      await repository.bootstrapOwner({
+      // Expired owner allows bootstrapping new active owner in both Postgres & InMemory
+      await dbRepository.bootstrapOwner({
+        accountId: LOCAL_OWNER_ACCOUNT_ID,
+        projectId: DEFAULT_PROJECT_ID,
+        scopes: ['owner'],
+        sensitivityClearance: 'private',
+      });
+      await memRepository.bootstrapOwner({
         accountId: LOCAL_OWNER_ACCOUNT_ID,
         projectId: DEFAULT_PROJECT_ID,
         scopes: ['owner'],
         sensitivityClearance: 'private',
       });
 
-      // Verify no row in auth.credentials for this principal
-      const ownerMembership = await repository.findOwnerMembership(
+      const dbNewOwner = await dbRepository.findOwnerMembership(
         LOCAL_OWNER_ACCOUNT_ID,
         DEFAULT_PROJECT_ID,
       );
-      expect(ownerMembership).toBeDefined();
+      expect(dbNewOwner).toBeDefined();
+      expect(dbNewOwner?.isOwner).toBe(true);
 
-      const credentials = await pool!.query(
-        'SELECT * FROM auth.credentials WHERE principal_id = $1',
-        [ownerMembership!.principalId],
-      );
-      expect(credentials.rowCount).toBe(0);
-
-      // findOwnerMembership succeeds without credentials
-      const found = await repository.findOwnerMembership(
+      const memNewOwner = await memRepository.findOwnerMembership(
         LOCAL_OWNER_ACCOUNT_ID,
         DEFAULT_PROJECT_ID,
       );
-      expect(found).toBeDefined();
-      expect(found?.principalId).toBe(ownerMembership!.principalId);
-    });
+      expect(memNewOwner).toBeDefined();
+      expect(memNewOwner?.isOwner).toBe(true);
 
-    it('preserves existing password authentication post-migration', async () => {
-      const repository = new PostgresAuthRepository(pool!);
-      const password = 'secure-password-123';
-      await repository.bootstrapOwner({
-        accountId: 'password-user',
-        passwordHash: await hashPassword(password),
-        projectId: DEFAULT_PROJECT_ID,
-        scopes: ['owner'],
-        sensitivityClearance: 'private',
-      });
-
-      const authenticated = await repository.authenticatePassword('password-user', password);
-      expect(authenticated).toBeDefined();
-      expect(authenticated?.status).toBe('active');
-    });
-
-    it('fails safely when inserting a duplicate non-null account_id into auth.principals', async () => {
-      const p1 = randomUUID();
-      const p2 = randomUUID();
-      await pool!.query(
-        "INSERT INTO auth.principals (principal_id, actor_type, status, account_id, created_at) VALUES ($1, 'user', 'active', 'unique-account', now())",
-        [p1],
-      );
+      // 2. Active owner exists -> rejects new owner creation in both Postgres & InMemory
+      await expect(
+        dbRepository.bootstrapOwner({
+          accountId: 'another-owner',
+          projectId: DEFAULT_PROJECT_ID,
+          scopes: ['owner'],
+          sensitivityClearance: 'private',
+        }),
+      ).rejects.toThrow('An active Owner already exists.');
 
       await expect(
-        pool!.query(
-          "INSERT INTO auth.principals (principal_id, actor_type, status, account_id, created_at) VALUES ($1, 'user', 'active', 'unique-account', now())",
-          [p2],
-        ),
-      ).rejects.toThrow(/auth_principals_account_id_unique_idx|unique constraint/i);
+        memRepository.bootstrapOwner({
+          accountId: 'another-owner',
+          projectId: DEFAULT_PROJECT_ID,
+          scopes: ['owner'],
+          sensitivityClearance: 'private',
+        }),
+      ).rejects.toThrow('An active Owner already exists.');
+    });
+  });
+
+  describe('Real Migration 014 -> 015 Upgrade Test', () => {
+    afterEach(async () => {
+      await dropSchemas();
+      await migrateUpTo();
     });
 
-    it('maintains session and project membership invariants post-migration', async () => {
-      const repository = new PostgresAuthRepository(pool!);
-      await repository.bootstrapOwner({
-        accountId: 'invariant-user',
-        passwordHash: await hashPassword('password123'),
-        projectId: 'project-inv',
-        scopes: ['owner'],
-        sensitivityClearance: 'private',
-      });
-      const principal = await repository.authenticatePassword('invariant-user', 'password123');
-      const session = await repository.createSession(
-        principal!.principalId,
-        'project-inv',
-        new Date(Date.now() + 60_000).toISOString(),
-      );
+    it('upgrades clean schema from migration 014 to 015 with existing data backfill and safety checks', async () => {
+      try {
+        // 1. Prepare schema up to Migration 014
+        await dropSchemas();
+        await migrateUpTo('014_stage12_1_ai_durable_materialization.sql');
 
-      const foundSession = await repository.findSession(session.sessionToken);
-      expect(foundSession).toBeDefined();
-      expect(foundSession?.activeProjectId).toBe('project-inv');
+        // 2. Insert existing Password Principal, Credential, Membership, Session into 014 schema
+        const principalId = randomUUID();
+        const accountId = 'user-014';
+        const passwordHash = await hashPassword('pass-014');
 
-      const membership = await repository.findMembership(principal!.principalId, 'project-inv');
-      expect(membership).toBeDefined();
-      expect(membership?.isOwner).toBe(true);
+        // Note: In Migration 014 schema, auth.principals has NO account_id column!
+        await pool!.query(
+          "INSERT INTO auth.principals (principal_id, actor_type, status, created_at) VALUES ($1, 'user', 'active', now())",
+          [principalId],
+        );
+        await pool!.query(
+          "INSERT INTO auth.credentials (credential_id, principal_id, credential_type, account_id, password_hash, password_changed_at) VALUES ($1, $2, 'local_password', $3, $4, now())",
+          [randomUUID(), principalId, accountId, passwordHash],
+        );
+        await pool!.query(
+          "INSERT INTO auth.project_memberships (principal_id, project_id, scopes, sensitivity_clearance, is_owner) VALUES ($1, 'shotgun', '{owner}', 'private', true)",
+          [principalId],
+        );
+
+        const sessionToken = randomUUID();
+        const sessionHash = hashSecuritySecret(sessionToken);
+        await pool!.query(
+          "INSERT INTO auth.sessions (session_id, token_hash, csrf_hash, principal_id, active_project_id, expires_at, created_at) VALUES ($1, $2, $3, $4, 'shotgun', now() + interval '1 day', now())",
+          [randomUUID(), sessionHash, hashSecuritySecret('csrf'), principalId],
+        );
+
+        // 3. Apply Migration 015 file directly
+        const migration015Path = path.resolve(
+          process.cwd(),
+          'db/migrations/015_local_owner_principal_account_id.sql',
+        );
+        const migration015Sql = await readFile(migration015Path, 'utf8');
+        await pool!.query(migration015Sql);
+
+        // 4. Verification:
+        // a. principals.account_id backfilled
+        const backfilled = await pool!.query<{ account_id: string }>(
+          'SELECT account_id FROM auth.principals WHERE principal_id = $1',
+          [principalId],
+        );
+        expect(backfilled.rows[0]?.account_id).toBe('user-014');
+
+        // b. Existing Password Auth intact post-migration
+        const repository = new PostgresAuthRepository(pool!);
+        const authenticated = await repository.authenticatePassword('user-014', 'pass-014');
+        expect(authenticated).toBeDefined();
+        expect(authenticated?.principalId).toBe(principalId);
+
+        // c. Existing Membership intact post-migration
+        const membership = await repository.findOwnerMembership('user-014', 'shotgun');
+        expect(membership).toBeDefined();
+        expect(membership?.principalId).toBe(principalId);
+
+        // d. Existing Session intact post-migration
+        const session = await repository.findSession(sessionToken);
+        expect(session).toBeDefined();
+        expect(session?.principalId).toBe(principalId);
+
+        // e. Credential-less Local Owner lookup works after migration
+        await pool!.query('UPDATE auth.project_memberships SET is_owner = false WHERE is_owner');
+        const localOwnerPrincipalId = randomUUID();
+        await pool!.query(
+          "INSERT INTO auth.principals (principal_id, actor_type, status, account_id, created_at) VALUES ($1, 'user', 'active', $2, now())",
+          [localOwnerPrincipalId, LOCAL_OWNER_ACCOUNT_ID],
+        );
+        await pool!.query(
+          "INSERT INTO auth.project_memberships (principal_id, project_id, scopes, sensitivity_clearance, is_owner) VALUES ($1, 'project-b', '{owner}', 'private', true)",
+          [localOwnerPrincipalId],
+        );
+        const localOwnerMembership = await repository.findOwnerMembership(
+          LOCAL_OWNER_ACCOUNT_ID,
+          'project-b',
+        );
+        expect(localOwnerMembership).toBeDefined();
+        expect(localOwnerMembership?.principalId).toBe(localOwnerPrincipalId);
+      } finally {
+        await dropSchemas();
+        await migrateUpTo();
+      }
+    });
+
+    it('fails Migration 015 explicitly when duplicate account_ids exist in auth.credentials before migration', async () => {
+      try {
+        // 1. Prepare schema up to Migration 014
+        await dropSchemas();
+        await migrateUpTo('014_stage12_1_ai_durable_materialization.sql');
+
+        // 2. Insert two principals with credentials having the SAME account_id (duplicate)
+        await pool!.query(
+          'ALTER TABLE auth.credentials DROP CONSTRAINT credentials_account_id_key',
+        );
+        const p1 = randomUUID();
+        const p2 = randomUUID();
+        const hash1 = await hashPassword('pass1');
+        const hash2 = await hashPassword('pass2');
+        await pool!.query(
+          "INSERT INTO auth.principals (principal_id, actor_type, status, created_at) VALUES ($1, 'user', 'active', now()), ($2, 'user', 'active', now())",
+          [p1, p2],
+        );
+        await pool!.query(
+          "INSERT INTO auth.credentials (credential_id, principal_id, credential_type, account_id, password_hash, password_changed_at) VALUES ($1, $2, 'local_password', 'dup-account', $5, now()), ($3, $4, 'local_password', 'dup-account', $6, now())",
+          [randomUUID(), p1, randomUUID(), p2, hash1, hash2],
+        );
+
+        // 3. Applying Migration 015 must fail explicitly due to unique index / constraint violation
+        const migration015Path = path.resolve(
+          process.cwd(),
+          'db/migrations/015_local_owner_principal_account_id.sql',
+        );
+        const migration015Sql = await readFile(migration015Path, 'utf8');
+
+        await expect(pool!.query(migration015Sql)).rejects.toThrow();
+      } finally {
+        await dropSchemas();
+        await migrateUpTo();
+      }
     });
   });
 });

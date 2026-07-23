@@ -31,7 +31,27 @@ const withClient = async <T>(action: (client: Client) => Promise<T>): Promise<T>
 const migrationFiles = async (): Promise<string[]> =>
   (await readdir(migrationDirectory)).filter((file) => file.endsWith('.sql')).sort();
 
-const migrate = async (): Promise<void> => {
+export const dropSchemas = async (): Promise<void> => {
+  await withClient(async (client) => {
+    await client.query('DROP SCHEMA IF EXISTS auth CASCADE');
+    await client.query('DROP SCHEMA IF EXISTS action CASCADE');
+    await client.query('DROP SCHEMA IF EXISTS projection CASCADE');
+    await client.query('DROP SCHEMA IF EXISTS knowledge CASCADE');
+    await client.query('DROP SCHEMA IF EXISTS canonical CASCADE');
+    await client.query('DROP SCHEMA IF EXISTS intake CASCADE');
+    await client.query('DROP SCHEMA IF EXISTS asset CASCADE');
+    await client.query('DROP SCHEMA IF EXISTS evidence CASCADE');
+    await client.query('DROP SCHEMA IF EXISTS transformation CASCADE');
+    await client.query('DROP SCHEMA IF EXISTS validation CASCADE');
+    await client.query('DROP SCHEMA IF EXISTS candidate CASCADE');
+    await client.query('DROP SCHEMA IF EXISTS ai CASCADE');
+    await client.query('DROP SCHEMA IF EXISTS review CASCADE');
+    await client.query('DROP SCHEMA IF EXISTS comparison CASCADE');
+    await client.query('DROP SCHEMA IF EXISTS runtime CASCADE');
+  });
+};
+
+export const migrateUpTo = async (targetFile?: string): Promise<void> => {
   await withClient(async (client) => {
     await client.query('CREATE SCHEMA IF NOT EXISTS runtime');
     await client.query(`
@@ -42,6 +62,7 @@ const migrate = async (): Promise<void> => {
     `);
 
     for (const file of await migrationFiles()) {
+      if (targetFile && file > targetFile) break;
       const applied = await client.query<{ name: string }>(
         'SELECT name FROM runtime.schema_migrations WHERE name = $1',
         [file],
@@ -62,6 +83,10 @@ const migrate = async (): Promise<void> => {
       }
     }
   });
+};
+
+const migrate = async (): Promise<void> => {
+  await migrateUpTo();
   console.log('Database migrations applied.');
 };
 
@@ -230,13 +255,15 @@ const verify = async (): Promise<void> => {
   console.log('Database bootstrap verified.');
 };
 
-const command = process.argv[2];
-if (command === 'migrate') {
-  await migrate();
-} else if (command === 'reset') {
-  await reset();
-} else if (command === 'verify') {
-  await verify();
-} else {
-  throw new Error('Use one of: migrate, reset, verify.');
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+  const command = process.argv[2];
+  if (command === 'migrate') {
+    await migrate();
+  } else if (command === 'reset') {
+    await reset();
+  } else if (command === 'verify') {
+    await verify();
+  } else {
+    throw new Error('Use one of: migrate, reset, verify.');
+  }
 }

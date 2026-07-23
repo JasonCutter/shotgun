@@ -148,7 +148,7 @@ const now = (): string => new Date().toISOString();
 type StoredPrincipal = {
   principal: AuthenticatedPrincipal;
   accountId: string;
-  passwordHash: string;
+  passwordHash?: string;
 };
 type StoredSession = AuthSession & { readonly tokenHash: string; revokedAt?: string };
 type StoredToken = IssuedApiToken & {
@@ -156,6 +156,12 @@ type StoredToken = IssuedApiToken & {
   readonly principalId: string;
   readonly scopeCeiling: readonly string[];
   revokedAt?: string;
+};
+
+const isActiveOwner = (membership: ProjectMembership): boolean => {
+  if (!membership.isOwner) return false;
+  if (!membership.expiresAt) return true;
+  return new Date(membership.expiresAt) > new Date();
 };
 
 export class InMemoryAuthRepository implements AuthRepositoryPort {
@@ -174,18 +180,18 @@ export class InMemoryAuthRepository implements AuthRepositoryPort {
     if (this.#accountIds.has(accountId)) {
       const existingPrincipalId = this.#accountIds.get(accountId)!;
       const existingMembership = this.#memberships.get(`${existingPrincipalId}:${input.projectId}`);
-      if (existingMembership?.isOwner) {
+      if (existingMembership && isActiveOwner(existingMembership)) {
         throw new Error('An active Owner already exists.');
       }
       throw new Error('Account ID is already in use.');
     }
     for (const membership of this.#memberships.values()) {
-      if (membership.projectId === input.projectId && membership.isOwner) {
+      if (membership.projectId === input.projectId && isActiveOwner(membership)) {
         throw new Error('An active Owner already exists.');
       }
     }
     const principalId = randomUUID();
-    this.#principals.set(principalId, {
+    const stored: StoredPrincipal = {
       principal: {
         principalId,
         actor: { type: 'user', id: principalId },
@@ -195,8 +201,9 @@ export class InMemoryAuthRepository implements AuthRepositoryPort {
         credentialId: principalId,
       },
       accountId,
-      passwordHash: input.passwordHash ?? '',
-    });
+      ...(input.passwordHash ? { passwordHash: input.passwordHash } : {}),
+    };
+    this.#principals.set(principalId, stored);
     this.#accountIds.set(accountId, principalId);
     this.#memberships.set(`${principalId}:${input.projectId}`, {
       principalId,
@@ -223,6 +230,23 @@ export class InMemoryAuthRepository implements AuthRepositoryPort {
     return { ...stored.principal, authenticationMethod: 'session' };
   }
 
+  getStoredPasswordHash(principalId: string): string | undefined {
+    return this.#principals.get(principalId)?.passwordHash;
+  }
+
+  seedExpiredOwner(accountId: string, projectId: string): void {
+    const principalId = randomUUID();
+    this.#accountIds.set(accountId, principalId);
+    this.#memberships.set(`${principalId}:${projectId}`, {
+      principalId,
+      projectId,
+      scopes: ['owner'],
+      sensitivityClearance: 'private',
+      isOwner: true,
+      expiresAt: new Date(Date.now() - 1000).toISOString(),
+    });
+  }
+
   async findOwnerMembership(
     accountId: string,
     projectId: string,
@@ -231,7 +255,7 @@ export class InMemoryAuthRepository implements AuthRepositoryPort {
     const principalId = this.#accountIds.get(normalizedAccountId);
     if (!principalId) return undefined;
     const membership = this.#memberships.get(`${principalId}:${projectId}`);
-    return membership?.isOwner ? membership : undefined;
+    return membership && isActiveOwner(membership) ? membership : undefined;
   }
 
   async createSession(
@@ -298,7 +322,7 @@ export class InMemoryAuthRepository implements AuthRepositoryPort {
 
   async verifyCurrentPassword(principalId: string, currentPassword: string): Promise<boolean> {
     const stored = this.#principals.get(principalId);
-    if (!stored || stored.principal.status !== 'active') return false;
+    if (!stored || stored.principal.status !== 'active' || !stored.passwordHash) return false;
     return verifyPassword(currentPassword, stored.passwordHash);
   }
 

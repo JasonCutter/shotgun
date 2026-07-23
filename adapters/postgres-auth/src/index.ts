@@ -103,6 +103,10 @@ export class PostgresAuthRepository implements AuthRepositoryPort {
         );
       }
       await client.query(
+        'UPDATE auth.project_memberships SET is_owner = false WHERE is_owner AND project_id = $1 AND expires_at IS NOT NULL AND expires_at <= now()',
+        [input.projectId],
+      );
+      await client.query(
         'INSERT INTO auth.project_memberships (principal_id, project_id, scopes, sensitivity_clearance, is_owner) VALUES ($1, $2, $3, $4, true)',
         [principalId, input.projectId, input.scopes, input.sensitivityClearance],
       );

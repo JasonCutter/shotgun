@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const rootDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const sourceRoots = ['packages', 'modules', 'adapters', 'assemblies'];
+const sourceRoots = ['apps', 'packages', 'modules', 'adapters', 'assemblies'];
 const importExpression = /from\s+['"]([^'"]+)['"]|import\s+['"]([^'"]+)['"]/g;
 
 const toPosix = (value: string) => value.split(path.sep).join('/');
@@ -16,7 +16,9 @@ const collectTypeScriptFiles = async (directory: string): Promise<string[]> => {
       if (entry.isDirectory()) {
         return collectTypeScriptFiles(entryPath);
       }
-      return entry.isFile() && entry.name.endsWith('.ts') ? [entryPath] : [];
+      return entry.isFile() && (entry.name.endsWith('.ts') || entry.name.endsWith('.tsx'))
+        ? [entryPath]
+        : [];
     }),
   );
 
@@ -64,6 +66,8 @@ export const findArchitectureViolations = async (): Promise<string[]> => {
     const relativeFile = toPosix(path.relative(rootDirectory, file));
     const sourceModule = moduleName(relativeFile);
     const sourcePackage = packageName(relativeFile);
+    const isFrontendApp = relativeFile.startsWith('apps/shotgun-web/');
+    const isFrontendClient = relativeFile.startsWith('packages/shotgun-api-client/');
     const source = await readFile(file, 'utf8');
 
     for (const match of source.matchAll(importExpression)) {
@@ -78,6 +82,15 @@ export const findArchitectureViolations = async (): Promise<string[]> => {
       if (sourceModule && ['@google/genai', 'openai', '@anthropic-ai/sdk'].includes(imported)) {
         violations.push(`${relativeFile} imports provider SDK '${imported}'.`);
       }
+      if (
+        (isFrontendApp || isFrontendClient) &&
+        ['pg', 'fastify', '@google/genai', 'openai', '@anthropic-ai/sdk'].includes(imported)
+      ) {
+        violations.push(`${relativeFile} imports forbidden frontend dependency '${imported}'.`);
+      }
+      if (isFrontendApp && imported.startsWith('@shotgun/') && imported !== '@shotgun/api-client') {
+        violations.push(`${relativeFile} imports forbidden Shotgun package '${imported}'.`);
+      }
 
       const resolved = resolveRelativeImport(file, imported);
       if (!resolved) {
@@ -86,6 +99,12 @@ export const findArchitectureViolations = async (): Promise<string[]> => {
 
       const importedModule = moduleName(resolved);
       const importedPackage = packageName(resolved);
+      if (
+        (isFrontendApp || isFrontendClient) &&
+        /^(modules|adapters|assemblies|packages\/(kernel|authentication))\//.test(resolved)
+      ) {
+        violations.push(`${relativeFile} crosses the frontend boundary through '${resolved}'.`);
+      }
       if (sourceModule && resolved.startsWith('adapters/')) {
         violations.push(`${relativeFile} imports adapter code '${resolved}'.`);
       }

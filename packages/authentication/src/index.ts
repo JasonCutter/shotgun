@@ -48,14 +48,18 @@ export type IssuedApiToken = {
   readonly expiresAt: string;
 };
 
+export const LOCAL_OWNER_ACCOUNT_ID = 'local-owner';
+export const DEFAULT_PROJECT_ID = 'shotgun';
+
 export type AuthRepositoryPort = {
   bootstrapOwner(input: {
     readonly accountId: string;
-    readonly passwordHash: string;
+    readonly passwordHash?: string;
     readonly projectId: string;
     readonly scopes: readonly string[];
     readonly sensitivityClearance: SecurityContext['sensitivity'];
   }): Promise<void>;
+  findOwnerMembership(accountId: string, projectId: string): Promise<ProjectMembership | undefined>;
   authenticatePassword(
     accountId: string,
     password: string,
@@ -144,7 +148,7 @@ const now = (): string => new Date().toISOString();
 type StoredPrincipal = {
   principal: AuthenticatedPrincipal;
   accountId: string;
-  passwordHash: string;
+  passwordHash?: string;
 };
 type StoredSession = AuthSession & { readonly tokenHash: string; revokedAt?: string };
 type StoredToken = IssuedApiToken & {
@@ -152,6 +156,12 @@ type StoredToken = IssuedApiToken & {
   readonly principalId: string;
   readonly scopeCeiling: readonly string[];
   revokedAt?: string;
+};
+
+const isActiveOwner = (membership: ProjectMembership): boolean => {
+  if (!membership.isOwner) return false;
+  if (!membership.expiresAt) return true;
+  return new Date(membership.expiresAt) > new Date();
 };
 
 export class InMemoryAuthRepository implements AuthRepositoryPort {
@@ -164,14 +174,24 @@ export class InMemoryAuthRepository implements AuthRepositoryPort {
     [];
 
   async bootstrapOwner(input: Parameters<AuthRepositoryPort['bootstrapOwner']>[0]): Promise<void> {
-    if ([...this.#memberships.values()].some((membership) => membership.isOwner)) {
-      throw new Error('An active Owner already exists.');
-    }
     const accountId = input.accountId.trim().toLowerCase();
-    if (!accountId || this.#accountIds.has(accountId))
+    if (!accountId) throw new Error('Account ID is required.');
+    // Check if this exact account already has an owner membership in this project
+    if (this.#accountIds.has(accountId)) {
+      const existingPrincipalId = this.#accountIds.get(accountId)!;
+      const existingMembership = this.#memberships.get(`${existingPrincipalId}:${input.projectId}`);
+      if (existingMembership && isActiveOwner(existingMembership)) {
+        throw new Error('An active Owner already exists.');
+      }
       throw new Error('Account ID is already in use.');
+    }
+    for (const membership of this.#memberships.values()) {
+      if (membership.projectId === input.projectId && isActiveOwner(membership)) {
+        throw new Error('An active Owner already exists.');
+      }
+    }
     const principalId = randomUUID();
-    this.#principals.set(principalId, {
+    const stored: StoredPrincipal = {
       principal: {
         principalId,
         actor: { type: 'user', id: principalId },
@@ -181,8 +201,9 @@ export class InMemoryAuthRepository implements AuthRepositoryPort {
         credentialId: principalId,
       },
       accountId,
-      passwordHash: input.passwordHash,
-    });
+      ...(input.passwordHash ? { passwordHash: input.passwordHash } : {}),
+    };
+    this.#principals.set(principalId, stored);
     this.#accountIds.set(accountId, principalId);
     this.#memberships.set(`${principalId}:${input.projectId}`, {
       principalId,
@@ -202,10 +223,39 @@ export class InMemoryAuthRepository implements AuthRepositoryPort {
     if (
       !stored ||
       stored.principal.status !== 'active' ||
+      !stored.passwordHash ||
       !(await verifyPassword(password, stored.passwordHash))
     )
       return undefined;
     return { ...stored.principal, authenticationMethod: 'session' };
+  }
+
+  getStoredPasswordHash(principalId: string): string | undefined {
+    return this.#principals.get(principalId)?.passwordHash;
+  }
+
+  seedExpiredOwner(accountId: string, projectId: string): void {
+    const principalId = randomUUID();
+    this.#accountIds.set(accountId, principalId);
+    this.#memberships.set(`${principalId}:${projectId}`, {
+      principalId,
+      projectId,
+      scopes: ['owner'],
+      sensitivityClearance: 'private',
+      isOwner: true,
+      expiresAt: new Date(Date.now() - 1000).toISOString(),
+    });
+  }
+
+  async findOwnerMembership(
+    accountId: string,
+    projectId: string,
+  ): Promise<ProjectMembership | undefined> {
+    const normalizedAccountId = accountId.trim().toLowerCase();
+    const principalId = this.#accountIds.get(normalizedAccountId);
+    if (!principalId) return undefined;
+    const membership = this.#memberships.get(`${principalId}:${projectId}`);
+    return membership && isActiveOwner(membership) ? membership : undefined;
   }
 
   async createSession(
@@ -272,7 +322,7 @@ export class InMemoryAuthRepository implements AuthRepositoryPort {
 
   async verifyCurrentPassword(principalId: string, currentPassword: string): Promise<boolean> {
     const stored = this.#principals.get(principalId);
-    if (!stored || stored.principal.status !== 'active') return false;
+    if (!stored || stored.principal.status !== 'active' || !stored.passwordHash) return false;
     return verifyPassword(currentPassword, stored.passwordHash);
   }
 
@@ -354,7 +404,9 @@ export class InMemoryAuthRepository implements AuthRepositoryPort {
 
   async listMemberships(principalId: string): Promise<readonly ProjectMembership[]> {
     return [...this.#memberships.values()].filter(
-      (membership) => membership.principalId === principalId,
+      (membership) =>
+        membership.principalId === principalId &&
+        (!membership.expiresAt || Date.parse(membership.expiresAt) > Date.now()),
     );
   }
 
@@ -395,3 +447,223 @@ export const authorize = async (input: {
     security: { accessScope: allowedScopes, sensitivity, dataClassification: 'personal' },
   };
 };
+
+export type AuthenticationContext = {
+  readonly isLoopbackBind?: boolean;
+  readonly isRemoteLoopback?: boolean;
+  readonly isSameOrigin?: boolean;
+  readonly localOwnerEnabled?: boolean;
+  readonly methodHint?: string;
+  readonly sessionToken?: string;
+  readonly credentials?: Record<string, unknown>;
+};
+
+export type AuthenticationResult =
+  | {
+      readonly status: 'authenticated';
+      readonly session: AuthSession;
+      readonly context: TrustedSecurityContext;
+    }
+  | {
+      readonly status: 'authentication_required';
+      readonly method?: string;
+      readonly reason: string;
+    }
+  | {
+      readonly status: 'authentication_unavailable';
+      readonly code: string;
+      readonly reason: string;
+    };
+
+export type AuthenticationPort = {
+  establishSession(context: AuthenticationContext): Promise<AuthenticationResult>;
+  revokeSession(sessionId: string): Promise<void>;
+};
+
+export type LocalOwnerProvisioningService = {
+  ensureLocalOwnerIdentity(input?: { readonly defaultProjectId?: string }): Promise<{
+    readonly principal: AuthenticatedPrincipal;
+    readonly membership: ProjectMembership;
+  }>;
+};
+
+export class DefaultLocalOwnerProvisioningService implements LocalOwnerProvisioningService {
+  constructor(private readonly repository: AuthRepositoryPort) {}
+
+  async ensureLocalOwnerIdentity(input?: { readonly defaultProjectId?: string }): Promise<{
+    readonly principal: AuthenticatedPrincipal;
+    readonly membership: ProjectMembership;
+  }> {
+    const defaultProjectId = input?.defaultProjectId?.trim() || DEFAULT_PROJECT_ID;
+    let ownerMembership = await this.repository.findOwnerMembership(
+      LOCAL_OWNER_ACCOUNT_ID,
+      defaultProjectId,
+    );
+    if (!ownerMembership) {
+      try {
+        await this.repository.bootstrapOwner({
+          accountId: LOCAL_OWNER_ACCOUNT_ID,
+          projectId: defaultProjectId,
+          scopes: ['owner'],
+          sensitivityClearance: 'private',
+        });
+      } catch {
+        // Idempotent catch if bootstrapOwner fails due to race/pre-existence
+      }
+      ownerMembership = await this.repository.findOwnerMembership(
+        LOCAL_OWNER_ACCOUNT_ID,
+        defaultProjectId,
+      );
+    }
+
+    if (!ownerMembership) {
+      throw new Error('Failed to provision local owner identity.');
+    }
+
+    const principal = await this.repository.findPrincipal(
+      ownerMembership.principalId,
+      'session',
+      ownerMembership.principalId,
+    );
+
+    if (!principal) {
+      throw new Error('Local owner principal not found.');
+    }
+
+    return { principal, membership: ownerMembership };
+  }
+}
+
+export class LocalOwnerAuthenticationAdapter implements AuthenticationPort {
+  private readonly provisioningService: LocalOwnerProvisioningService;
+
+  constructor(
+    private readonly repository: AuthRepositoryPort,
+    provisioningService?: LocalOwnerProvisioningService,
+  ) {
+    this.provisioningService =
+      provisioningService ?? new DefaultLocalOwnerProvisioningService(repository);
+  }
+
+  async establishSession(authContext: AuthenticationContext): Promise<AuthenticationResult> {
+    if (authContext.sessionToken) {
+      const session = await this.repository.findSession(authContext.sessionToken);
+      if (!session) {
+        return {
+          status: 'authentication_required',
+          reason: 'Session is invalid, expired, or revoked.',
+        };
+      }
+      const principal = await this.repository.findPrincipal(
+        session.principalId,
+        'session',
+        session.sessionId,
+      );
+      if (!principal) {
+        return {
+          status: 'authentication_required',
+          reason: 'Principal not found.',
+        };
+      }
+      const trustedContext = await authorize({
+        repository: this.repository,
+        principal,
+        projectId: session.activeProjectId,
+        requiredScopes: [],
+      });
+      if (!trustedContext) {
+        return {
+          status: 'authentication_unavailable',
+          code: 'PROJECT_ACCESS_DENIED',
+          reason: 'Membership in active project is missing or unauthorized.',
+        };
+      }
+      return {
+        status: 'authenticated',
+        session,
+        context: trustedContext,
+      };
+    }
+
+    // Fail-Closed Security Validation: Every requirement must be strictly boolean true
+    if (
+      authContext.localOwnerEnabled !== true ||
+      authContext.isLoopbackBind !== true ||
+      authContext.isRemoteLoopback !== true ||
+      authContext.isSameOrigin !== true
+    ) {
+      const code =
+        authContext.localOwnerEnabled === false
+          ? 'LOCAL_BOOTSTRAP_DISABLED'
+          : 'LOCAL_BOOTSTRAP_FORBIDDEN';
+      return {
+        status: 'authentication_unavailable',
+        code,
+        reason: 'Local Owner bootstrap security requirements were not strictly met (fail-closed).',
+      };
+    }
+
+    try {
+      const { principal, membership } = await this.provisioningService.ensureLocalOwnerIdentity({
+        defaultProjectId: DEFAULT_PROJECT_ID,
+      });
+
+      const session = await this.repository.createSession(
+        principal.principalId,
+        membership.projectId,
+        new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
+      );
+
+      const trustedContext = await authorize({
+        repository: this.repository,
+        principal,
+        projectId: membership.projectId,
+        requiredScopes: [],
+      });
+
+      if (!trustedContext) {
+        return {
+          status: 'authentication_unavailable',
+          code: 'LOCAL_BOOTSTRAP_FAILED',
+          reason: 'Failed to authorize created local owner membership.',
+        };
+      }
+
+      return {
+        status: 'authenticated',
+        session,
+        context: trustedContext,
+      };
+    } catch (error) {
+      return {
+        status: 'authentication_unavailable',
+        code: 'LOCAL_BOOTSTRAP_FAILED',
+        reason: error instanceof Error ? error.message : 'Local owner provisioning failed.',
+      };
+    }
+  }
+
+  async revokeSession(identifier: string): Promise<void> {
+    if (!identifier) return;
+    const session = await this.repository.findSession(identifier);
+    if (session) {
+      await this.repository.revokeSessions(session.principalId);
+    } else {
+      await this.repository.revokeSessions(identifier);
+    }
+  }
+}
+
+export class FakeInteractiveAuthenticationAdapter implements AuthenticationPort {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async establishSession(_request: unknown): Promise<AuthenticationResult> {
+    return {
+      status: 'authentication_required',
+      method: 'password',
+      reason: 'Interactive authentication required.',
+    };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async revokeSession(_identifier: string): Promise<void> {}
+}

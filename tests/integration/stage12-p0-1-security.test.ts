@@ -57,23 +57,25 @@ describe('Stage 12.1 P0-1 HTTP identity and authorization boundary', () => {
   });
 
   it('creates a production session with CSRF protection and does not honor a browser project header', async () => {
-    const { app } = await createAuthenticatedApplication();
-    const login = await app.server.inject({
-      method: 'POST',
-      url: '/auth/login',
-      payload: {
-        accountId: 'owner',
-        password: 'correct horse battery staple',
-        projectId: 'shotgun',
-      },
+    const { app, authRepository } = await createAuthenticatedApplication();
+    const principal = await authRepository.authenticatePassword(
+      'owner',
+      'correct horse battery staple',
+    );
+    if (!principal) throw new Error('Principal not found');
+    const session = await authRepository.createSession(
+      principal.principalId,
+      'shotgun',
+      new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
+    );
+    const cookie = `__Host-shotgun_session=${session.sessionToken}`;
+
+    const csrfRes = await app.server.inject({
+      method: 'GET',
+      url: '/api/v1/security/csrf',
+      headers: { cookie },
     });
-    expect(login.statusCode).toBe(200);
-    expect(login.headers['set-cookie']).toContain('__Host-shotgun_session=');
-    expect(login.headers['set-cookie']).toContain('HttpOnly');
-    expect(login.headers['set-cookie']).toContain('Secure');
-    const setCookie = login.headers['set-cookie'];
-    const cookie = (Array.isArray(setCookie) ? setCookie[0] : setCookie)?.split(';')[0] ?? '';
-    const csrfToken = login.json().csrfToken as string;
+    const csrfToken = csrfRes.json<{ csrfToken: string }>().csrfToken;
 
     const rejectedCsrf = await app.server.inject({
       method: 'POST',

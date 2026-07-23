@@ -58,27 +58,53 @@ export class PostgresAuthRepository implements AuthRepositoryPort {
 
   async bootstrapOwner(input: Parameters<AuthRepositoryPort['bootstrapOwner']>[0]): Promise<void> {
     const client = await this.pool.connect();
+    const accountId = input.accountId.trim().toLowerCase();
+    if (!accountId) throw new Error('Account ID is required.');
     try {
       await client.query('BEGIN');
-      const owner = await client.query(
-        'SELECT 1 FROM auth.project_memberships WHERE is_owner AND expires_at IS NULL FOR UPDATE',
+      const existingAccount = await client.query<{ principal_id: string }>(
+        'SELECT principal_id::text FROM auth.principals WHERE account_id = $1 FOR UPDATE',
+        [accountId],
       );
-      if (owner.rowCount) throw new Error('An active Owner already exists.');
+      const existingAccountRow = existingAccount.rows[0];
+      if (existingAccountRow) {
+        const existingMembership = await client.query<{ is_owner: boolean }>(
+          'SELECT is_owner FROM auth.project_memberships WHERE principal_id = $1 AND project_id = $2',
+          [existingAccountRow.principal_id, input.projectId],
+        );
+        if (existingMembership.rows[0]?.is_owner) {
+          throw new Error('An active Owner already exists.');
+        }
+        throw new Error('Account ID is already in use.');
+      }
+      const existingOwner = await client.query(
+        'SELECT 1 FROM auth.project_memberships WHERE is_owner AND project_id = $1 AND (expires_at IS NULL OR expires_at > now()) FOR UPDATE',
+        [input.projectId],
+      );
+      if (existingOwner.rowCount && existingOwner.rowCount > 0) {
+        throw new Error('An active Owner already exists.');
+      }
       const principalId = randomUUID();
       await client.query(
-        'INSERT INTO auth.principals (principal_id, actor_type, status, created_at) VALUES ($1, $2, $3, $4)',
-        [principalId, 'user', 'active', now()],
+        'INSERT INTO auth.principals (principal_id, actor_type, status, account_id, created_at) VALUES ($1, $2, $3, $4, $5)',
+        [principalId, 'user', 'active', input.accountId.trim().toLowerCase(), now()],
       );
+      if (input.passwordHash && input.passwordHash.trim() !== '') {
+        await client.query(
+          'INSERT INTO auth.credentials (credential_id, principal_id, credential_type, account_id, password_hash, password_changed_at) VALUES ($1, $2, $3, $4, $5, $6)',
+          [
+            randomUUID(),
+            principalId,
+            'local_password',
+            input.accountId.trim().toLowerCase(),
+            input.passwordHash,
+            now(),
+          ],
+        );
+      }
       await client.query(
-        'INSERT INTO auth.credentials (credential_id, principal_id, credential_type, account_id, password_hash, password_changed_at) VALUES ($1, $2, $3, $4, $5, $6)',
-        [
-          randomUUID(),
-          principalId,
-          'local_password',
-          input.accountId.trim().toLowerCase(),
-          input.passwordHash,
-          now(),
-        ],
+        'UPDATE auth.project_memberships SET is_owner = false WHERE is_owner AND project_id = $1 AND expires_at IS NOT NULL AND expires_at <= now()',
+        [input.projectId],
       );
       await client.query(
         'INSERT INTO auth.project_memberships (principal_id, project_id, scopes, sensitivity_clearance, is_owner) VALUES ($1, $2, $3, $4, true)',
@@ -105,6 +131,24 @@ export class PostgresAuthRepository implements AuthRepositoryPort {
     if (!row || row.status !== 'active' || !(await verifyPassword(password, row.password_hash)))
       return undefined;
     return principal(row, 'session');
+  }
+
+  async findOwnerMembership(
+    accountId: string,
+    projectId: string,
+  ): Promise<ProjectMembership | undefined> {
+    const result = await this.pool.query<MembershipRow>(
+      `SELECT m.principal_id::text, m.project_id, m.scopes, m.sensitivity_clearance, m.is_owner, m.expires_at
+       FROM auth.project_memberships m
+       JOIN auth.principals p ON p.principal_id = m.principal_id
+       WHERE p.account_id = $1
+         AND m.project_id = $2
+         AND m.is_owner
+         AND (m.expires_at IS NULL OR m.expires_at > now())
+       LIMIT 1`,
+      [accountId.trim().toLowerCase(), projectId],
+    );
+    return result.rows[0] ? membership(result.rows[0]) : undefined;
   }
 
   async createSession(

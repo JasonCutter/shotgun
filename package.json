@@ -8,6 +8,7 @@
     "npm": ">=11.0.0"
   },
   "workspaces": [
+    "apps/*",
     "packages/*",
     "modules/*",
     "adapters/*",
@@ -16,16 +17,23 @@
   "scripts": {
     "bootstrap": "npm ci && docker compose up -d db && npm run db:reset",
     "dev": "tsx watch assemblies/shotgun-app/src/main.ts",
+    "dev:web": "npm --workspace @shotgun/web run dev",
     "start": "tsx assemblies/shotgun-app/src/main.ts",
-    "lint": "eslint packages modules adapters assemblies tests scripts",
-    "format:check": "prettier --check package.json tsconfig.json eslint.config.js .prettierrc.json .github/workflows/ci.yml packages modules adapters assemblies examples tests scripts docs/engineering docs/architecture/adr docs/implementation/oss-source-registry.json docs/implementation/stage-validations",
-    "format:write": "prettier --write package.json tsconfig.json eslint.config.js .prettierrc.json .github/workflows/ci.yml packages modules adapters assemblies examples tests scripts docs/engineering docs/architecture/adr docs/implementation/oss-source-registry.json docs/implementation/stage-validations",
+    "lint": "eslint packages modules adapters assemblies apps tests scripts",
+    "format:check": "prettier --check package.json tsconfig.json eslint.config.js .prettierrc.json .github/workflows/ci.yml playwright.config.ts packages modules adapters assemblies apps examples tests scripts docs/engineering docs/architecture/adr docs/implementation/oss-source-registry.json docs/implementation/stage-validations",
+    "format:write": "prettier --write package.json tsconfig.json eslint.config.js .prettierrc.json .github/workflows/ci.yml playwright.config.ts packages modules adapters assemblies apps examples tests scripts docs/engineering docs/architecture/adr docs/implementation/oss-source-registry.json docs/implementation/stage-validations",
     "typecheck": "tsc --noEmit",
     "test:unit": "vitest run tests/unit",
     "test:contract": "vitest run tests/contract",
     "test:integration": "vitest run tests/integration",
     "test:database": "node --env-file-if-exists=.env node_modules/vitest/vitest.mjs run tests/database --maxWorkers=1",
     "test:live-ai": "vitest run tests/live/gemini-provider.live.test.ts --maxWorkers=1",
+    "frontend:typecheck": "npm --workspace @shotgun/web run typecheck",
+    "frontend:test": "npm --workspace @shotgun/web run test",
+    "frontend:build": "npm --workspace @shotgun/web run build",
+    "frontend:test:backend": "tsx tests/browser/fixtures/frontend-test-backend.ts",
+    "frontend:test:e2e": "playwright test",
+    "frontend:check": "npm run frontend:typecheck && npm run frontend:test && npm run frontend:build && npm run frontend:test:e2e",
     "quality:claim-baseline": "tsx scripts/quality-claim-baseline.ts --write",
     "quality:search-baseline": "node --env-file-if-exists=.env node_modules/tsx/dist/cli.mjs scripts/quality-search-baseline.ts --write",
     "quality:gate": "node --env-file-if-exists=.env node_modules/tsx/dist/cli.mjs scripts/quality-gate.ts",
@@ -59,6 +67,7 @@
     "semver": "^7.7.2"
   },
   "devDependencies": {
+    "@playwright/test": "1.61.1",
     "@eslint/js": "^9.27.0",
     "@types/node": "^24.0.3",
     "@types/pg": "^8.15.4",

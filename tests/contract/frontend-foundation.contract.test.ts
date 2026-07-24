@@ -382,37 +382,50 @@ describe('Frontend Foundation Contracts & Runtime Adapters', () => {
   // ==========================================================================
   // 5. Registry Runtime Validation & Immutability
   // ==========================================================================
-  describe('Registry Runtime Validation', () => {
+  describe('Registry Runtime Validation & Immutability', () => {
+    const createValidSnapshot = (): OperationalResourceKindRegistrySnapshot => ({
+      registryRevision: 'rev-2.0.0',
+      concreteKinds: [
+        {
+          kind: 'ANSWER_RUN',
+          family: 'KNOWLEDGE',
+          isConcrete: true,
+          projectScope: 'PROJECT_SCOPED',
+          snapshotSchemaVersion: '1.0.0',
+          deepLinkDescriptor: '/answers',
+          outcomeCapability: true,
+          sensitivityClass: 'internal',
+          supportedActions: ['execute'],
+          supportState: 'SUPPORTED',
+        },
+      ],
+      aggregateKinds: [
+        {
+          kind: 'KNOWLEDGE_SUMMARY',
+          family: 'KNOWLEDGE',
+          isConcrete: false,
+          projectScope: 'PROJECT_SCOPED',
+          snapshotSchemaVersion: '1.0.0',
+          deepLinkDescriptor: '/summary',
+          outcomeCapability: false,
+          sensitivityClass: 'internal',
+          supportedActions: ['view'],
+        },
+      ],
+      stateOrStageSchema: { ANSWER_RUN: 'v1' },
+      routeDescriptor: { ANSWER_RUN: '/answers/:id' },
+      eligibility: { ANSWER_RUN: true },
+      sensitivityClass: { ANSWER_RUN: 'internal' },
+      retentionClass: { ANSWER_RUN: 'standard' },
+      requiredCapabilities: { ANSWER_RUN: ['read:answers'] },
+      requiredFeatures: { ANSWER_RUN: ['feat:answers'] },
+    });
+
     it('should initialize at NOT_LOADED and transition to READY after valid snapshot', () => {
       const regUnloaded = createOperationalResourceKindRegistry();
       expect(regUnloaded.registryState).toBe('NOT_LOADED');
 
-      const validSnapshot: OperationalResourceKindRegistrySnapshot = {
-        registryRevision: 'rev-2.0.0',
-        concreteKinds: [
-          {
-            kind: 'ANSWER_RUN',
-            family: 'KNOWLEDGE',
-            isConcrete: true,
-            projectScope: 'PROJECT_SCOPED',
-            snapshotSchemaVersion: '1.0.0',
-            deepLinkDescriptor: '/answers',
-            outcomeCapability: true,
-            sensitivityClass: 'internal',
-            supportedActions: ['execute'],
-            supportState: 'SUPPORTED',
-          },
-        ],
-        aggregateKinds: [],
-        stateOrStageSchema: {},
-        routeDescriptor: {},
-        eligibility: {},
-        sensitivityClass: {},
-        retentionClass: {},
-        requiredCapabilities: {},
-        requiredFeatures: {},
-      };
-
+      const validSnapshot = createValidSnapshot();
       const regReady = createOperationalResourceKindRegistry(validSnapshot);
       expect(regReady.registryState).toBe('READY');
       expect(regReady.registryRevision).toBe('rev-2.0.0');
@@ -422,38 +435,146 @@ describe('Frontend Foundation Contracts & Runtime Adapters', () => {
       expect(desc.originalKind).toBe('UNKNOWN_KIND_X');
     });
 
-    it('should throw FrontendContractError on invalid snapshot or duplicate kinds', () => {
-      const invalidSnapshot = {
-        registryRevision: '', // empty revision
-        concreteKinds: [],
+    it('should throw FrontendContractError on invalid snapshot descriptors, records, or duplicate kinds', () => {
+      const valid = createValidSnapshot();
+
+      const invalidCases: Array<{ name: string; snapshot: unknown }> = [
+        {
+          name: 'empty registryRevision',
+          snapshot: { ...valid, registryRevision: '' },
+        },
+        {
+          name: 'concreteKinds is not an array',
+          snapshot: { ...valid, concreteKinds: 'not-an-array' },
+        },
+        {
+          name: 'descriptor missing family',
+          snapshot: {
+            ...valid,
+            concreteKinds: [{ ...valid.concreteKinds[0], family: '' }],
+          },
+        },
+        {
+          name: 'isConcrete flag mismatch',
+          snapshot: {
+            ...valid,
+            concreteKinds: [{ ...valid.concreteKinds[0], isConcrete: false }],
+          },
+        },
+        {
+          name: 'invalid projectScope',
+          snapshot: {
+            ...valid,
+            concreteKinds: [{ ...valid.concreteKinds[0], projectScope: 'INVALID_SCOPE' }],
+          },
+        },
+        {
+          name: 'supportedActions not string array',
+          snapshot: {
+            ...valid,
+            concreteKinds: [{ ...valid.concreteKinds[0], supportedActions: [123] }],
+          },
+        },
+        {
+          name: 'missing mandatory record field stateOrStageSchema',
+          snapshot: { ...valid, stateOrStageSchema: null },
+        },
+        {
+          name: 'requiredCapabilities has non-string array element',
+          snapshot: { ...valid, requiredCapabilities: { ANSWER_RUN: [123] } },
+        },
+        {
+          name: 'duplicate kind between concrete and aggregate',
+          snapshot: {
+            ...valid,
+            aggregateKinds: [{ ...valid.concreteKinds[0], isConcrete: false }],
+          },
+        },
+      ];
+
+      for (const tc of invalidCases) {
+        expect(
+          () => decodeOperationalResourceKindRegistrySnapshot(tc.snapshot),
+          `Failed on case: ${tc.name}`,
+        ).toThrowError(FrontendContractError);
+
+        expect(
+          () => createOperationalResourceKindRegistry(tc.snapshot),
+          `Failed instance creation on case: ${tc.name}`,
+        ).toThrowError(FrontendContractError);
+      }
+    });
+
+    it('should enforce deep freeze and prevent external input mutation from affecting registry instance', () => {
+      const inputActions = ['execute', 'cancel'];
+      const inputReqCaps = ['read:answers'];
+      const inputConcreteKinds = [
+        {
+          kind: 'ANSWER_RUN',
+          family: 'KNOWLEDGE',
+          isConcrete: true,
+          projectScope: 'PROJECT_SCOPED' as const,
+          snapshotSchemaVersion: '1.0.0',
+          deepLinkDescriptor: '/answers',
+          outcomeCapability: true,
+          sensitivityClass: 'internal' as const,
+          supportedActions: inputActions,
+          supportState: 'SUPPORTED' as const,
+        },
+      ];
+
+      const snapshot: OperationalResourceKindRegistrySnapshot = {
+        registryRevision: 'rev-2.0.0',
+        concreteKinds: inputConcreteKinds,
         aggregateKinds: [],
+        stateOrStageSchema: { ANSWER_RUN: 'v1' },
+        routeDescriptor: {},
+        eligibility: {},
+        sensitivityClass: {},
+        retentionClass: {},
+        requiredCapabilities: { ANSWER_RUN: inputReqCaps },
+        requiredFeatures: {},
       };
 
-      expect(() => decodeOperationalResourceKindRegistrySnapshot(invalidSnapshot)).toThrowError(
-        FrontendContractError,
-      );
+      const registry = createOperationalResourceKindRegistry(snapshot);
 
-      const duplicateSnapshot = {
-        registryRevision: 'rev-1',
-        concreteKinds: [
-          { kind: 'KIND_A', isConcrete: true },
-          { kind: 'KIND_A', isConcrete: true }, // duplicate
-        ],
-        aggregateKinds: [],
-      };
+      // Mutate original input arrays
+      inputActions.push('HACKED_ACTION');
+      inputReqCaps.push('HACKED_CAP');
+      inputConcreteKinds.push({
+        kind: 'HACKED_KIND',
+        family: 'HACK',
+        isConcrete: true,
+        projectScope: 'PROJECT_SCOPED',
+        snapshotSchemaVersion: '1.0.0',
+        deepLinkDescriptor: '',
+        outcomeCapability: false,
+        sensitivityClass: 'internal',
+        supportedActions: [],
+      });
 
-      expect(() => decodeOperationalResourceKindRegistrySnapshot(duplicateSnapshot)).toThrowError(
-        FrontendContractError,
-      );
+      // Registry instance must remain unaffected
+      const desc = registry.get('ANSWER_RUN');
+      expect(desc.supportedActions).toEqual(['execute', 'cancel']);
+      expect(registry.listConcrete().length).toBe(1);
+
+      // Attempt to mutate descriptor supportedActions returned from registry
+      expect(() => (desc.supportedActions as string[]).push('MUTATION_TRY')).toThrow();
+
+      // Attempt to mutate validated snapshot requiredCapabilities array
+      const validatedSnapshot = decodeOperationalResourceKindRegistrySnapshot(snapshot);
+      expect(() =>
+        (validatedSnapshot.requiredCapabilities['ANSWER_RUN'] as string[]).push('MUTATION_TRY'),
+      ).toThrow();
     });
   });
 
   // ==========================================================================
   // 6. Sensitive Resource Masking Guard & Cache Helpers
   // ==========================================================================
-  describe('Sensitive Resource Masking & Cache Helpers', () => {
-    it('should mask sensitive resource presence when project access is revoked', () => {
-      const boundaryCtx: SystemBoundaryContext = {
+  describe('Sensitive Resource Masking Guard & Cache Helpers', () => {
+    it('should evaluate table-driven capability guard for sensitive and non-sensitive resource masking', () => {
+      const baseBoundaryCtx: SystemBoundaryContext = {
         authState: 'AUTHENTICATED',
         sessionState: 'VALID',
         connectivityState: 'ONLINE',
@@ -461,25 +582,64 @@ describe('Frontend Foundation Contracts & Runtime Adapters', () => {
         principalId: 'usr-100',
         activeProjectId: 'proj-A',
         accessibleProjectIds: ['proj-A'], // proj-B not accessible
-        grantedCapabilities: ['read:all'],
+        projectAccessContexts: [{ projectId: 'proj-A', capabilities: ['cap:proj-A-read'] }],
+        grantedCapabilities: ['cap:global-read'],
       };
 
-      // Sensitive resource + revoked project access -> treatAsNotFound: true
-      const resSensitive = evaluateCapabilityGuard(boundaryCtx, {
-        resourceProjectId: 'proj-B',
-        isSensitiveResource: true,
-      });
-      expect(resSensitive.allowed).toBe(false);
-      expect(resSensitive.treatAsNotFound).toBe(true);
+      const tableCases = [
+        {
+          name: 'Sensitive Resource + Project Access Missing',
+          requirement: { resourceProjectId: 'proj-B', isSensitiveResource: true },
+          expectedAllowed: false,
+          expectedTreatAsNotFound: true,
+          expectedErrorCode: 'RESOURCE_ACCESS_REVOKED',
+          expectedErrorMessage: 'Resource not found',
+        },
+        {
+          name: 'Non-sensitive Resource + Project Access Missing',
+          requirement: { resourceProjectId: 'proj-B', isSensitiveResource: false },
+          expectedAllowed: false,
+          expectedTreatAsNotFound: undefined,
+          expectedErrorCode: 'RESOURCE_ACCESS_REVOKED',
+          expectedErrorMessage: "Access revoked to project 'proj-B'",
+        },
+        {
+          name: 'Sensitive Resource + Project Access Present + Capability Missing',
+          requirement: {
+            resourceProjectId: 'proj-A',
+            requiredCapability: 'cap:missing',
+            isSensitiveResource: true,
+          },
+          expectedAllowed: false,
+          expectedTreatAsNotFound: true,
+          expectedErrorCode: 'CAPABILITY_DENIED',
+          expectedErrorMessage: 'Resource not found',
+        },
+        {
+          name: 'Non-sensitive Resource + Project Access Present + Capability Missing',
+          requirement: {
+            resourceProjectId: 'proj-A',
+            requiredCapability: 'cap:missing',
+            isSensitiveResource: false,
+          },
+          expectedAllowed: false,
+          expectedTreatAsNotFound: undefined,
+          expectedErrorCode: 'CAPABILITY_DENIED',
+          expectedErrorMessage: "Capability 'cap:missing' denied",
+        },
+      ];
 
-      // Non-sensitive resource + revoked project access -> RESOURCE_ACCESS_REVOKED
-      const resNonSensitive = evaluateCapabilityGuard(boundaryCtx, {
-        resourceProjectId: 'proj-B',
-        isSensitiveResource: false,
-      });
-      expect(resNonSensitive.allowed).toBe(false);
-      expect(resNonSensitive.treatAsNotFound).toBeUndefined();
-      expect(resNonSensitive.error?.code).toBe('RESOURCE_ACCESS_REVOKED');
+      for (const tc of tableCases) {
+        const result = evaluateCapabilityGuard(baseBoundaryCtx, tc.requirement);
+        expect(result.allowed, `Allowed mismatch for ${tc.name}`).toBe(tc.expectedAllowed);
+        expect(result.treatAsNotFound, `treatAsNotFound mismatch for ${tc.name}`).toBe(
+          tc.expectedTreatAsNotFound,
+        );
+        expect(result.error?.code, `Error code mismatch for ${tc.name}`).toBe(tc.expectedErrorCode);
+        expect(result.error?.message, `Error message mismatch for ${tc.name}`).toBe(
+          tc.expectedErrorMessage,
+        );
+      }
     });
 
     it('should test filterCacheKeysForProjectSwitch, purgeInaccessibleCachesOnAccessChange, and calculateCacheInvalidationOnPolicyChange', () => {

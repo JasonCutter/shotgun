@@ -2,7 +2,20 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { RouterProvider } from 'react-router';
 
-import { createShotgunApiClient } from '@shotgun/api-client';
+import {
+  computeCommandSemanticDigestAsync,
+  createShotgunApiClient,
+  webCryptoDigestProvider,
+} from '@shotgun/api-client';
+
+if (typeof window !== 'undefined') {
+  (
+    window as unknown as { __SHOTGUN_TEST_DIGEST_ADAPTER__?: unknown }
+  ).__SHOTGUN_TEST_DIGEST_ADAPTER__ = {
+    webCryptoDigestProvider,
+    computeCommandSemanticDigestAsync,
+  };
+}
 
 import { AppProviders, type AppRuntime } from './providers.js';
 import { createFrontendQueryClient } from './query-client.js';

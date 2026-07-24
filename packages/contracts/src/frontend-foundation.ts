@@ -940,7 +940,7 @@ export function evaluateCapabilityGuard(
         return {
           allowed: false,
           treatAsNotFound: true,
-          error: new FrontendContractError('CAPABILITY_DENIED', 'Resource not found'),
+          error: new FrontendContractError('RESOURCE_ACCESS_REVOKED', 'Resource not found'),
         };
       }
       return {
@@ -1023,10 +1023,10 @@ export type OperationalResourceKindRegistrySnapshot = {
 export function decodeOperationalResourceKindRegistrySnapshot(
   input: unknown,
 ): OperationalResourceKindRegistrySnapshot {
-  if (!input || typeof input !== 'object') {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
     throw new FrontendContractError(
       'INVALID_REQUEST',
-      'Registry snapshot must be a non-null object',
+      'Registry snapshot must be a non-null plain object',
     );
   }
 
@@ -1046,23 +1046,28 @@ export function decodeOperationalResourceKindRegistrySnapshot(
     );
   }
 
-  const concreteKinds = s['concreteKinds'] as OperationalResourceKindDescriptor[];
-  const aggregateKinds = s['aggregateKinds'] as OperationalResourceKindDescriptor[];
+  const concreteKinds = s['concreteKinds'] as unknown[];
+  const aggregateKinds = s['aggregateKinds'] as unknown[];
 
   const seenKinds = new Set<string>();
 
-  const validateDescriptor = (d: unknown, expectedIsConcrete: boolean, indexName: string) => {
-    if (!d || typeof d !== 'object') {
+  const validateDescriptor = (
+    d: unknown,
+    expectedIsConcrete: boolean,
+    indexName: string,
+  ): OperationalResourceKindDescriptor => {
+    if (!d || typeof d !== 'object' || Array.isArray(d)) {
       throw new FrontendContractError(
         'INVALID_REQUEST',
         `${indexName} descriptor must be an object`,
       );
     }
     const desc = d as Record<string, unknown>;
+
     if (typeof desc['kind'] !== 'string' || !desc['kind'].trim()) {
       throw new FrontendContractError(
         'INVALID_REQUEST',
-        `${indexName} kind must be non-empty string`,
+        `${indexName}.kind must be a non-empty string`,
       );
     }
     if (seenKinds.has(desc['kind'])) {
@@ -1073,38 +1078,219 @@ export function decodeOperationalResourceKindRegistrySnapshot(
     }
     seenKinds.add(desc['kind']);
 
-    if (desc['isConcrete'] !== expectedIsConcrete) {
+    if (typeof desc['family'] !== 'string' || !desc['family'].trim()) {
       throw new FrontendContractError(
         'INVALID_REQUEST',
-        `${indexName} isConcrete flag mismatch: expected ${expectedIsConcrete}`,
+        `${indexName}.family must be a non-empty string`,
       );
     }
+
+    if (typeof desc['isConcrete'] !== 'boolean' || desc['isConcrete'] !== expectedIsConcrete) {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        `${indexName}.isConcrete flag mismatch: expected ${expectedIsConcrete}`,
+      );
+    }
+
+    if (desc['projectScope'] !== 'PROJECT_SCOPED' && desc['projectScope'] !== 'GLOBAL_SCOPED') {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        `${indexName}.projectScope must be 'PROJECT_SCOPED' or 'GLOBAL_SCOPED'`,
+      );
+    }
+
+    if (
+      typeof desc['snapshotSchemaVersion'] !== 'string' ||
+      !desc['snapshotSchemaVersion'].trim()
+    ) {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        `${indexName}.snapshotSchemaVersion must be a non-empty string`,
+      );
+    }
+
+    if (typeof desc['deepLinkDescriptor'] !== 'string') {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        `${indexName}.deepLinkDescriptor must be a string`,
+      );
+    }
+
+    if (typeof desc['outcomeCapability'] !== 'boolean') {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        `${indexName}.outcomeCapability must be a boolean`,
+      );
+    }
+
+    const validSensitivities = new Set(['public', 'internal', 'private', 'restricted']);
+    if (
+      typeof desc['sensitivityClass'] !== 'string' ||
+      !validSensitivities.has(desc['sensitivityClass'])
+    ) {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        `${indexName}.sensitivityClass must be 'public', 'internal', 'private', or 'restricted'`,
+      );
+    }
+
+    if (
+      !Array.isArray(desc['supportedActions']) ||
+      !desc['supportedActions'].every((a) => typeof a === 'string')
+    ) {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        `${indexName}.supportedActions must be an array of strings`,
+      );
+    }
+
+    if (desc['supportState'] !== undefined) {
+      const validSupportStates = new Set(['SUPPORTED', 'EXPERIMENTAL', 'UNKNOWN', 'UNSUPPORTED']);
+      if (
+        typeof desc['supportState'] !== 'string' ||
+        !validSupportStates.has(desc['supportState'])
+      ) {
+        throw new FrontendContractError(
+          'INVALID_REQUEST',
+          `${indexName}.supportState must be 'SUPPORTED', 'EXPERIMENTAL', 'UNKNOWN', or 'UNSUPPORTED'`,
+        );
+      }
+    }
+
+    if (desc['originalKind'] !== undefined) {
+      if (typeof desc['originalKind'] !== 'string' || !desc['originalKind'].trim()) {
+        throw new FrontendContractError(
+          'INVALID_REQUEST',
+          `${indexName}.originalKind must be a non-empty string`,
+        );
+      }
+    }
+
+    const frozenSupportedActions = Object.freeze([...(desc['supportedActions'] as string[])]);
+    return Object.freeze({
+      kind: desc['kind'] as string,
+      family: desc['family'] as string,
+      isConcrete: desc['isConcrete'] as boolean,
+      projectScope: desc['projectScope'] as 'PROJECT_SCOPED' | 'GLOBAL_SCOPED',
+      snapshotSchemaVersion: desc['snapshotSchemaVersion'] as string,
+      deepLinkDescriptor: desc['deepLinkDescriptor'] as string,
+      outcomeCapability: desc['outcomeCapability'] as boolean,
+      sensitivityClass: desc['sensitivityClass'] as
+        'public' | 'internal' | 'private' | 'restricted',
+      supportedActions: frozenSupportedActions,
+      ...(desc['supportState'] !== undefined
+        ? { supportState: desc['supportState'] as SupportState }
+        : {}),
+      ...(desc['originalKind'] !== undefined
+        ? { originalKind: desc['originalKind'] as string }
+        : {}),
+    });
   };
 
-  concreteKinds.forEach((d, i) => validateDescriptor(d, true, `concreteKinds[${i}]`));
-  aggregateKinds.forEach((d, i) => validateDescriptor(d, false, `aggregateKinds[${i}]`));
+  const validateRecordField = <T>(
+    val: unknown,
+    fieldName: string,
+    valValidator: (v: unknown) => boolean,
+  ): Record<string, T> => {
+    if (!val || typeof val !== 'object' || Array.isArray(val)) {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        `Snapshot record field '${fieldName}' must be a plain object`,
+      );
+    }
+    const rec = val as Record<string, unknown>;
+    const res: Record<string, T> = {};
+    for (const key of Object.keys(rec)) {
+      if (!key.trim()) {
+        throw new FrontendContractError(
+          'INVALID_REQUEST',
+          `Snapshot record field '${fieldName}' contains an empty key`,
+        );
+      }
+      if (!valValidator(rec[key])) {
+        throw new FrontendContractError(
+          'INVALID_REQUEST',
+          `Snapshot record field '${fieldName}[${key}]' has invalid runtime type`,
+        );
+      }
+      res[key] = rec[key] as T;
+    }
+    return res;
+  };
 
-  // Deep freeze snapshot arrays to prevent external mutation
+  const stateOrStageSchema = Object.freeze(
+    validateRecordField<string>(
+      s['stateOrStageSchema'],
+      'stateOrStageSchema',
+      (v) => typeof v === 'string',
+    ),
+  );
+  const routeDescriptor = Object.freeze(
+    validateRecordField<string>(
+      s['routeDescriptor'],
+      'routeDescriptor',
+      (v) => typeof v === 'string',
+    ),
+  );
+  const eligibility = Object.freeze(
+    validateRecordField<boolean>(s['eligibility'], 'eligibility', (v) => typeof v === 'boolean'),
+  );
+  const sensitivityClass = Object.freeze(
+    validateRecordField<string>(
+      s['sensitivityClass'],
+      'sensitivityClass',
+      (v) => typeof v === 'string',
+    ),
+  );
+  const retentionClass = Object.freeze(
+    validateRecordField<string>(
+      s['retentionClass'],
+      'retentionClass',
+      (v) => typeof v === 'string',
+    ),
+  );
+
+  const rawReqCaps = validateRecordField<unknown>(
+    s['requiredCapabilities'],
+    'requiredCapabilities',
+    (v) => Array.isArray(v) && v.every((item) => typeof item === 'string'),
+  );
+  const requiredCapabilities: Record<string, readonly string[]> = {};
+  for (const [k, v] of Object.entries(rawReqCaps)) {
+    requiredCapabilities[k] = Object.freeze([...(v as string[])]);
+  }
+  const frozenRequiredCapabilities = Object.freeze(requiredCapabilities);
+
+  const rawReqFeats = validateRecordField<unknown>(
+    s['requiredFeatures'],
+    'requiredFeatures',
+    (v) => Array.isArray(v) && v.every((item) => typeof item === 'string'),
+  );
+  const requiredFeatures: Record<string, readonly string[]> = {};
+  for (const [k, v] of Object.entries(rawReqFeats)) {
+    requiredFeatures[k] = Object.freeze([...(v as string[])]);
+  }
+  const frozenRequiredFeatures = Object.freeze(requiredFeatures);
+
+  const validatedConcreteKinds = Object.freeze(
+    concreteKinds.map((d, i) => validateDescriptor(d, true, `concreteKinds[${i}]`)),
+  );
+  const validatedAggregateKinds = Object.freeze(
+    aggregateKinds.map((d, i) => validateDescriptor(d, false, `aggregateKinds[${i}]`)),
+  );
+
   return Object.freeze({
-    registryRevision: s['registryRevision'],
-    concreteKinds: Object.freeze(concreteKinds.map((k) => Object.freeze({ ...k }))),
-    aggregateKinds: Object.freeze(aggregateKinds.map((k) => Object.freeze({ ...k }))),
-    stateOrStageSchema: Object.freeze({
-      ...((s['stateOrStageSchema'] as Record<string, string>) ?? {}),
-    }),
-    routeDescriptor: Object.freeze({ ...((s['routeDescriptor'] as Record<string, string>) ?? {}) }),
-    eligibility: Object.freeze({ ...((s['eligibility'] as Record<string, boolean>) ?? {}) }),
-    sensitivityClass: Object.freeze({
-      ...((s['sensitivityClass'] as Record<string, string>) ?? {}),
-    }),
-    retentionClass: Object.freeze({ ...((s['retentionClass'] as Record<string, string>) ?? {}) }),
-    requiredCapabilities: Object.freeze({
-      ...((s['requiredCapabilities'] as Record<string, readonly string[]>) ?? {}),
-    }),
-    requiredFeatures: Object.freeze({
-      ...((s['requiredFeatures'] as Record<string, readonly string[]>) ?? {}),
-    }),
-  }) as OperationalResourceKindRegistrySnapshot;
+    registryRevision: s['registryRevision'] as string,
+    concreteKinds: validatedConcreteKinds,
+    aggregateKinds: validatedAggregateKinds,
+    stateOrStageSchema,
+    routeDescriptor,
+    eligibility,
+    sensitivityClass,
+    retentionClass,
+    requiredCapabilities: frozenRequiredCapabilities,
+    requiredFeatures: frozenRequiredFeatures,
+  });
 }
 
 export class OperationalResourceKindRegistryInstance {
@@ -1120,19 +1306,11 @@ export class OperationalResourceKindRegistryInstance {
       this.concreteKinds = Object.freeze([]);
       this.aggregateKinds = Object.freeze([]);
     } else {
-      try {
-        const validated = decodeOperationalResourceKindRegistrySnapshot(snapshotInput);
-        this.registryState = 'READY';
-        this.registryRevision = validated.registryRevision;
-        this.concreteKinds = validated.concreteKinds;
-        this.aggregateKinds = validated.aggregateKinds;
-      } catch (err) {
-        this.registryState = 'UNAVAILABLE';
-        this.registryRevision = 'none';
-        this.concreteKinds = Object.freeze([]);
-        this.aggregateKinds = Object.freeze([]);
-        throw err;
-      }
+      const validated = decodeOperationalResourceKindRegistrySnapshot(snapshotInput);
+      this.registryState = 'READY';
+      this.registryRevision = validated.registryRevision;
+      this.concreteKinds = validated.concreteKinds;
+      this.aggregateKinds = validated.aggregateKinds;
     }
   }
 

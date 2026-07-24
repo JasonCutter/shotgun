@@ -517,96 +517,10 @@ export function validateFrontendCommandRequest(
 }
 
 // ============================================================================
-// 7. Command Semantic Digest & Canonicalization Adapter Architecture
+// 7. Command Semantic Digest & Canonicalization Contract
 // ============================================================================
 
-function sha256Sync(str: string): string {
-  const utf8 = new TextEncoder().encode(str);
-  const K: readonly number[] = [
-    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
-    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
-    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
-    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
-    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
-  ];
-  let H0 = 0x6a09e667,
-    H1 = 0xbb67ae85,
-    H2 = 0x3c6ef372,
-    H3 = 0xa54ff53a,
-    H4 = 0x510e527f,
-    H5 = 0x9b05688c,
-    H6 = 0x1f83d9ab,
-    H7 = 0x5be0cd19;
-
-  const l = utf8.length;
-  const bitLen = l * 8;
-  const k = (448 - ((l * 8 + 8) % 512) + 512) % 512;
-  const padding = new Uint8Array(l + 1 + k / 8 + 8);
-  padding.set(utf8);
-  padding[l] = 0x80;
-
-  const view = new DataView(padding.buffer);
-  view.setBigUint64(padding.length - 8, BigInt(bitLen), false);
-
-  const w = new Int32Array(64);
-  for (let i = 0; i < padding.length; i += 64) {
-    for (let t = 0; t < 16; t++) {
-      w[t] = view.getInt32(i + t * 4, false);
-    }
-    for (let t = 16; t < 64; t++) {
-      const wt15 = w[t - 15]!;
-      const wt2 = w[t - 2]!;
-      const wt16 = w[t - 16]!;
-      const wt7 = w[t - 7]!;
-      const s0 = ((wt15 >>> 7) | (wt15 << 25)) ^ ((wt15 >>> 18) | (wt15 << 14)) ^ (wt15 >>> 3);
-      const s1 = ((wt2 >>> 17) | (wt2 << 15)) ^ ((wt2 >>> 19) | (wt2 << 13)) ^ (wt2 >>> 10);
-      w[t] = (wt16 + s0 + wt7 + s1) | 0;
-    }
-    let a = H0,
-      b = H1,
-      c = H2,
-      d = H3,
-      e = H4,
-      f = H5,
-      g = H6,
-      h = H7;
-    for (let t = 0; t < 64; t++) {
-      const S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));
-      const ch = (e & f) ^ (~e & g);
-      const kt = K[t]!;
-      const wt = w[t]!;
-      const temp1 = (h + S1 + ch + kt + wt) | 0;
-      const S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));
-      const maj = (a & b) ^ (a & c) ^ (b & c);
-      const temp2 = (S0 + maj) | 0;
-
-      h = g;
-      g = f;
-      f = e;
-      e = (d + temp1) | 0;
-      d = c;
-      c = b;
-      b = a;
-      a = (temp1 + temp2) | 0;
-    }
-    H0 = (H0 + a) | 0;
-    H1 = (H1 + b) | 0;
-    H2 = (H2 + c) | 0;
-    H3 = (H3 + d) | 0;
-    H4 = (H4 + e) | 0;
-    H5 = (H5 + f) | 0;
-    H6 = (H6 + g) | 0;
-    H7 = (H7 + h) | 0;
-  }
-  return [H0, H1, H2, H3, H4, H5, H6, H7]
-    .map((x) => (x >>> 0).toString(16).padStart(8, '0'))
-    .join('');
-}
-
-export type SemanticDigestProvider = (canonicalJson: string) => string;
+export type SemanticDigestProvider = (canonicalJson: string) => Promise<string> | string;
 
 export function deterministicCanonicalizePayload(obj: unknown): string {
   if (obj === null || typeof obj !== 'object') {
@@ -653,14 +567,6 @@ export function buildCommandSemanticDigestInput<TPayload>(
   };
 
   return deterministicCanonicalizePayload(digestPayload);
-}
-
-export function computeCommandSemanticDigest<TPayload>(
-  request: FrontendCommandRequest<TPayload>,
-  provider: SemanticDigestProvider = sha256Sync,
-): string {
-  const input = buildCommandSemanticDigestInput(request);
-  return provider(input);
 }
 
 // ============================================================================
@@ -734,13 +640,12 @@ export function resolveOutcomeState<TPayload>(
   request: FrontendCommandRequest<TPayload>,
   principalId: string,
   ledgerEntries: readonly CommandLedgerEntry[],
+  digest: string,
   serverAcceptanceChecker?: {
     checkServerDurableAcceptance: () =>
       'ACCEPTANCE_CONFIRMED' | 'NO_ACCEPTANCE_CONFIRMED' | 'UNKNOWN';
   },
 ): CommandOutcomeResolution<TPayload> {
-  const digest = computeCommandSemanticDigest(request);
-
   // Step 1: Scope & ID lookup by clientRequestId
   const byRequestId = ledgerEntries.find((e) => e.clientRequestId === request.clientRequestId);
   if (byRequestId) {
@@ -794,13 +699,11 @@ export function resolveOutcomeState<TPayload>(
     if (status === 'NO_ACCEPTANCE_CONFIRMED') {
       return { resolution: 'NOT_ACCEPTED_CONFIRMED' };
     }
-    // Acceptance confirmed without outcome view is NOT_FOUND outcome -> return INDETERMINATE to block duplicate submission safely
     if (status === 'ACCEPTANCE_CONFIRMED') {
       return { resolution: 'INDETERMINATE' };
     }
   }
 
-  // Default when lookup returns nothing: INDETERMINATE
   return { resolution: 'INDETERMINATE' };
 }
 
@@ -813,11 +716,12 @@ export type RetryClassification = 'TRANSPORT_RETRY' | 'DOMAIN_RETRY' | 'RETRY_FO
 export function classifyRetry<TPayload>(
   previousRequest: FrontendCommandRequest<TPayload>,
   newRequest: FrontendCommandRequest<TPayload>,
+  prevDigest: string,
+  newDigest: string,
 ): RetryClassification {
   const isSameClientReq = previousRequest.clientRequestId === newRequest.clientRequestId;
   const isSameIdempotency = previousRequest.idempotencyKey === newRequest.idempotencyKey;
-  const sameDigest =
-    computeCommandSemanticDigest(previousRequest) === computeCommandSemanticDigest(newRequest);
+  const sameDigest = prevDigest === newDigest;
   const hasCausation = Boolean(newRequest.correlationContext?.causationRef?.id);
 
   if (isSameClientReq && isSameIdempotency && sameDigest) {
@@ -924,7 +828,7 @@ export type ResourceSnapshot<TState = unknown> = {
 };
 
 // ============================================================================
-// 12. Session & Auth Boundary State & Capability Guard
+// 12. Session & Auth Boundary State & Sensitive Resource Masking Guard
 // ============================================================================
 
 export type AuthenticationState = 'UNAUTHENTICATED' | 'AUTHENTICATING' | 'AUTHENTICATED';
@@ -980,7 +884,7 @@ export function evaluateCapabilityGuard(
   boundaryCtx: SystemBoundaryContext,
   requirement: OperationRequirement,
 ): AccessGuardResult {
-  // Step 1: Authentication check & principal requirement
+  // Step 1: Auth & principal check
   if (boundaryCtx.authState !== 'AUTHENTICATED' || !boundaryCtx.principalId) {
     return {
       allowed: false,
@@ -1008,7 +912,7 @@ export function evaluateCapabilityGuard(
     };
   }
 
-  // Step 3: Backend readiness check if required
+  // Step 3: Backend readiness check
   if (requirement.requiresBackend && boundaryCtx.backendReadiness !== 'READY') {
     return {
       allowed: false,
@@ -1016,7 +920,7 @@ export function evaluateCapabilityGuard(
     };
   }
 
-  // Step 4: Connectivity check if required
+  // Step 4: Connectivity check
   if (requirement.requiresConnectivity && boundaryCtx.connectivityState === 'OFFLINE') {
     return {
       allowed: false,
@@ -1032,6 +936,13 @@ export function evaluateCapabilityGuard(
       boundaryCtx.projectAccessContexts?.some((p) => p.projectId === requirement.resourceProjectId);
 
     if (!isAccessible) {
+      if (requirement.isSensitiveResource) {
+        return {
+          allowed: false,
+          treatAsNotFound: true,
+          error: new FrontendContractError('CAPABILITY_DENIED', 'Resource not found'),
+        };
+      }
       return {
         allowed: false,
         error: new FrontendContractError(
@@ -1076,7 +987,7 @@ export function evaluateCapabilityGuard(
 }
 
 // ============================================================================
-// 13. Operational Resource Kind Registry & Server Snapshot Authority
+// 13. Operational Resource Kind Registry & Server Snapshot Runtime Validation
 // ============================================================================
 
 export type SupportState = 'SUPPORTED' | 'EXPERIMENTAL' | 'UNKNOWN' | 'UNSUPPORTED';
@@ -1109,23 +1020,119 @@ export type OperationalResourceKindRegistrySnapshot = {
   readonly requiredFeatures: Record<string, readonly string[]>;
 };
 
+export function decodeOperationalResourceKindRegistrySnapshot(
+  input: unknown,
+): OperationalResourceKindRegistrySnapshot {
+  if (!input || typeof input !== 'object') {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'Registry snapshot must be a non-null object',
+    );
+  }
+
+  const s = input as Record<string, unknown>;
+
+  if (typeof s['registryRevision'] !== 'string' || !s['registryRevision'].trim()) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'registryRevision must be a non-empty string',
+    );
+  }
+
+  if (!Array.isArray(s['concreteKinds']) || !Array.isArray(s['aggregateKinds'])) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'concreteKinds and aggregateKinds must be arrays',
+    );
+  }
+
+  const concreteKinds = s['concreteKinds'] as OperationalResourceKindDescriptor[];
+  const aggregateKinds = s['aggregateKinds'] as OperationalResourceKindDescriptor[];
+
+  const seenKinds = new Set<string>();
+
+  const validateDescriptor = (d: unknown, expectedIsConcrete: boolean, indexName: string) => {
+    if (!d || typeof d !== 'object') {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        `${indexName} descriptor must be an object`,
+      );
+    }
+    const desc = d as Record<string, unknown>;
+    if (typeof desc['kind'] !== 'string' || !desc['kind'].trim()) {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        `${indexName} kind must be non-empty string`,
+      );
+    }
+    if (seenKinds.has(desc['kind'])) {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        `Duplicate kind '${desc['kind']}' in registry snapshot`,
+      );
+    }
+    seenKinds.add(desc['kind']);
+
+    if (desc['isConcrete'] !== expectedIsConcrete) {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        `${indexName} isConcrete flag mismatch: expected ${expectedIsConcrete}`,
+      );
+    }
+  };
+
+  concreteKinds.forEach((d, i) => validateDescriptor(d, true, `concreteKinds[${i}]`));
+  aggregateKinds.forEach((d, i) => validateDescriptor(d, false, `aggregateKinds[${i}]`));
+
+  // Deep freeze snapshot arrays to prevent external mutation
+  return Object.freeze({
+    registryRevision: s['registryRevision'],
+    concreteKinds: Object.freeze(concreteKinds.map((k) => Object.freeze({ ...k }))),
+    aggregateKinds: Object.freeze(aggregateKinds.map((k) => Object.freeze({ ...k }))),
+    stateOrStageSchema: Object.freeze({
+      ...((s['stateOrStageSchema'] as Record<string, string>) ?? {}),
+    }),
+    routeDescriptor: Object.freeze({ ...((s['routeDescriptor'] as Record<string, string>) ?? {}) }),
+    eligibility: Object.freeze({ ...((s['eligibility'] as Record<string, boolean>) ?? {}) }),
+    sensitivityClass: Object.freeze({
+      ...((s['sensitivityClass'] as Record<string, string>) ?? {}),
+    }),
+    retentionClass: Object.freeze({ ...((s['retentionClass'] as Record<string, string>) ?? {}) }),
+    requiredCapabilities: Object.freeze({
+      ...((s['requiredCapabilities'] as Record<string, readonly string[]>) ?? {}),
+    }),
+    requiredFeatures: Object.freeze({
+      ...((s['requiredFeatures'] as Record<string, readonly string[]>) ?? {}),
+    }),
+  }) as OperationalResourceKindRegistrySnapshot;
+}
+
 export class OperationalResourceKindRegistryInstance {
   readonly registryState: RegistryState;
   readonly registryRevision: string;
   private readonly concreteKinds: readonly OperationalResourceKindDescriptor[];
   private readonly aggregateKinds: readonly OperationalResourceKindDescriptor[];
 
-  constructor(snapshot?: OperationalResourceKindRegistrySnapshot) {
-    if (!snapshot) {
+  constructor(snapshotInput?: unknown) {
+    if (!snapshotInput) {
       this.registryState = 'NOT_LOADED';
       this.registryRevision = 'none';
-      this.concreteKinds = [];
-      this.aggregateKinds = [];
+      this.concreteKinds = Object.freeze([]);
+      this.aggregateKinds = Object.freeze([]);
     } else {
-      this.registryState = 'READY';
-      this.registryRevision = snapshot.registryRevision;
-      this.concreteKinds = snapshot.concreteKinds;
-      this.aggregateKinds = snapshot.aggregateKinds;
+      try {
+        const validated = decodeOperationalResourceKindRegistrySnapshot(snapshotInput);
+        this.registryState = 'READY';
+        this.registryRevision = validated.registryRevision;
+        this.concreteKinds = validated.concreteKinds;
+        this.aggregateKinds = validated.aggregateKinds;
+      } catch (err) {
+        this.registryState = 'UNAVAILABLE';
+        this.registryRevision = 'none';
+        this.concreteKinds = Object.freeze([]);
+        this.aggregateKinds = Object.freeze([]);
+        throw err;
+      }
     }
   }
 
@@ -1165,9 +1172,9 @@ export class OperationalResourceKindRegistryInstance {
 }
 
 export function createOperationalResourceKindRegistry(
-  snapshot?: OperationalResourceKindRegistrySnapshot,
+  snapshotInput?: unknown,
 ): OperationalResourceKindRegistryInstance {
-  return new OperationalResourceKindRegistryInstance(snapshot);
+  return new OperationalResourceKindRegistryInstance(snapshotInput);
 }
 
 // ============================================================================
@@ -1213,7 +1220,7 @@ export class ProjectionKindRegistry {
 }
 
 // ============================================================================
-// 15. Cache Key Factory & Policy Revision Invalidation Policy
+// 15. Cache Key Factory & Project Cache Missing-ID Boundary
 // ============================================================================
 
 export type CacheKeyScope = 'project' | 'principal-global';
@@ -1238,10 +1245,20 @@ export type CacheKeyQueryTuple = readonly (string | Record<string, string | unde
 
 export function buildCacheKey(params: CacheKeyFactoryParams): CacheKeyQueryTuple {
   const scopePrefix = params.scope === 'project' ? 'project-cache' : 'global-cache';
-  const targetProject =
-    params.scope === 'project'
-      ? (params.resourceProjectId ?? params.activeProjectId ?? 'no-project')
-      : 'global';
+  let targetProject: string;
+
+  if (params.scope === 'project') {
+    const projId = params.resourceProjectId ?? params.activeProjectId;
+    if (!projId || !projId.trim()) {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        'Project-scoped cache key requires resourceProjectId or activeProjectId',
+      );
+    }
+    targetProject = projId;
+  } else {
+    targetProject = 'global';
+  }
 
   const revisions = {
     access: params.accessScopeRevision,

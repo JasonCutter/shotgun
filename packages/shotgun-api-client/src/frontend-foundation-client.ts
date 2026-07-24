@@ -6,15 +6,25 @@ import type {
   SystemBoundaryContext,
 } from '../../contracts/src/frontend-entry.js';
 import {
-  computeCommandSemanticDigest,
+  buildCommandSemanticDigestInput,
   evaluateCapabilityGuard,
   FrontendContractError,
 } from '../../contracts/src/frontend-entry.js';
+import {
+  webCryptoDigestProvider,
+  computeCommandSemanticDigestAsync,
+} from './frontend-digest-adapter.js';
+
+export {
+  computeCommandSemanticDigestAsync,
+  webCryptoDigestProvider,
+} from './frontend-digest-adapter.js';
 
 export {
   buildCacheKey,
   calculateCacheInvalidationOnPolicyChange,
   createOperationalResourceKindRegistry,
+  decodeOperationalResourceKindRegistrySnapshot,
   filterCacheKeysForProjectSwitch,
   purgeInaccessibleCachesOnAccessChange,
   type CacheKeyFactoryParams,
@@ -44,7 +54,7 @@ export async function resolveCommandOutcomeClient<TPayload>(
   principalId: string,
   provider: ServerResolutionProvider<TPayload>,
 ): Promise<CommandOutcomeResolution<TPayload>> {
-  const digest = computeCommandSemanticDigest(request);
+  const digest = await computeCommandSemanticDigestAsync(request);
 
   // Step 1: Scope & ID lookup by clientRequestId
   const byReqId = await provider.getOutcomeByClientRequestId(request.clientRequestId);

@@ -551,6 +551,7 @@ describe('Frontend Foundation Contracts & Runtime Adapters', () => {
         outcomeCapability: false,
         sensitivityClass: 'internal',
         supportedActions: [],
+        supportState: 'SUPPORTED',
       });
 
       // Registry instance must remain unaffected

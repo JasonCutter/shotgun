@@ -1,3 +1,5 @@
+import type { SessionBoundaryView } from '../../contracts/src/frontend-entry.js';
+
 export type ProductSessionView = {
   readonly apiVersion: '1.0.0';
   readonly principal: {
@@ -29,6 +31,7 @@ export type RequestOptions = {
 export type ShotgunApiClient = {
   bootstrapLocalOwner(options?: RequestOptions): Promise<ProductSessionView>;
   getSession(options?: RequestOptions): Promise<ProductSessionView>;
+  getSessionBoundary(options?: RequestOptions): Promise<SessionBoundaryView>;
   switchActiveProject(projectId: string, options?: RequestOptions): Promise<ProductSessionView>;
   logout(options?: RequestOptions): Promise<void>;
 };

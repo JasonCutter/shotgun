@@ -8,7 +8,11 @@ import {
   webCryptoDigestProvider,
 } from '@shotgun/api-client';
 
-if (typeof window !== 'undefined') {
+const isE2EBridgeEnabled =
+  (import.meta as unknown as { env?: { VITE_E2E_TEST_BRIDGE?: string } }).env
+    ?.VITE_E2E_TEST_BRIDGE === 'true';
+
+if (typeof window !== 'undefined' && isE2EBridgeEnabled) {
   (
     window as unknown as { __SHOTGUN_TEST_DIGEST_ADAPTER__?: unknown }
   ).__SHOTGUN_TEST_DIGEST_ADAPTER__ = {

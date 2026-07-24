@@ -1020,10 +1020,18 @@ export type OperationalResourceKindRegistrySnapshot = {
   readonly requiredFeatures: Record<string, readonly string[]>;
 };
 
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
 export function decodeOperationalResourceKindRegistrySnapshot(
   input: unknown,
 ): OperationalResourceKindRegistrySnapshot {
-  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+  if (!isPlainObject(input)) {
     throw new FrontendContractError(
       'INVALID_REQUEST',
       'Registry snapshot must be a non-null plain object',
@@ -1056,10 +1064,10 @@ export function decodeOperationalResourceKindRegistrySnapshot(
     expectedIsConcrete: boolean,
     indexName: string,
   ): OperationalResourceKindDescriptor => {
-    if (!d || typeof d !== 'object' || Array.isArray(d)) {
+    if (!isPlainObject(d)) {
       throw new FrontendContractError(
         'INVALID_REQUEST',
-        `${indexName} descriptor must be an object`,
+        `${indexName} descriptor must be a plain object`,
       );
     }
     const desc = d as Record<string, unknown>;
@@ -1192,7 +1200,7 @@ export function decodeOperationalResourceKindRegistrySnapshot(
     fieldName: string,
     valValidator: (v: unknown) => boolean,
   ): Record<string, T> => {
-    if (!val || typeof val !== 'object' || Array.isArray(val)) {
+    if (!isPlainObject(val)) {
       throw new FrontendContractError(
         'INVALID_REQUEST',
         `Snapshot record field '${fieldName}' must be a plain object`,
@@ -1321,7 +1329,7 @@ export class OperationalResourceKindRegistryInstance {
     const foundAggregate = this.aggregateKinds.find((k) => k.kind === kind);
     if (foundAggregate) return foundAggregate;
 
-    return {
+    return Object.freeze({
       kind: `UNKNOWN_${kind}`,
       originalKind: kind,
       family: 'UNKNOWN',
@@ -1331,9 +1339,9 @@ export class OperationalResourceKindRegistryInstance {
       deepLinkDescriptor: '',
       outcomeCapability: false,
       sensitivityClass: 'internal',
-      supportedActions: [],
+      supportedActions: Object.freeze([]) as readonly string[],
       supportState: 'UNKNOWN',
-    };
+    });
   }
 
   isConcrete(kind: string): boolean {

@@ -12,6 +12,7 @@ import {
   deterministicCanonicalizePayload,
   evaluateCapabilityGuard,
   filterCacheKeysForProjectSwitch,
+  isPlainObject,
   mapFrontendRequestToInternalCommandEnvelope,
   purgeInaccessibleCachesOnAccessChange,
   resolveOutcomeState,
@@ -505,68 +506,89 @@ describe('Frontend Foundation Contracts & Runtime Adapters', () => {
       }
     });
 
-    it('should enforce deep freeze and prevent external input mutation from affecting registry instance', () => {
-      const inputActions = ['execute', 'cancel'];
-      const inputReqCaps = ['read:answers'];
-      const inputConcreteKinds = [
+    it('should correctly identify plain objects and reject non-plain objects with isPlainObject helper', () => {
+      expect(isPlainObject({})).toBe(true);
+      expect(isPlainObject({ key: 'val' })).toBe(true);
+      expect(isPlainObject(Object.create(null))).toBe(true);
+
+      expect(isPlainObject([])).toBe(false);
+      expect(isPlainObject(null)).toBe(false);
+      expect(isPlainObject(undefined)).toBe(false);
+      expect(isPlainObject(123)).toBe(false);
+      expect(isPlainObject('string')).toBe(false);
+      expect(isPlainObject(new Date())).toBe(false);
+      expect(isPlainObject(new Map())).toBe(false);
+      expect(isPlainObject(new Set())).toBe(false);
+      expect(isPlainObject(new (class CustomClass {})())).toBe(false);
+      expect(isPlainObject(Object.create({ prototypeProp: true }))).toBe(false);
+    });
+
+    it('should reject non-plain objects (Date, Map, Set, Class Instances, Custom Prototypes) in snapshot root, descriptors, and record fields', () => {
+      const valid = createValidSnapshot();
+
+      class CustomClass {}
+
+      const nonPlainCases: Array<{ name: string; snapshot: unknown }> = [
         {
-          kind: 'ANSWER_RUN',
-          family: 'KNOWLEDGE',
-          isConcrete: true,
-          projectScope: 'PROJECT_SCOPED' as const,
-          snapshotSchemaVersion: '1.0.0',
-          deepLinkDescriptor: '/answers',
-          outcomeCapability: true,
-          sensitivityClass: 'internal' as const,
-          supportedActions: inputActions,
-          supportState: 'SUPPORTED' as const,
+          name: 'snapshot root is Date',
+          snapshot: new Date(),
+        },
+        {
+          name: 'snapshot root is Custom Class Instance',
+          snapshot: new CustomClass(),
+        },
+        {
+          name: 'concrete descriptor is Custom Prototype Object',
+          snapshot: {
+            ...valid,
+            concreteKinds: [Object.create({ custom: 1 })],
+          },
+        },
+        {
+          name: 'record field stateOrStageSchema is Date',
+          snapshot: {
+            ...valid,
+            stateOrStageSchema: new Date(),
+          },
+        },
+        {
+          name: 'record field requiredCapabilities is Map',
+          snapshot: {
+            ...valid,
+            requiredCapabilities: new Map(),
+          },
         },
       ];
 
-      const snapshot: OperationalResourceKindRegistrySnapshot = {
-        registryRevision: 'rev-2.0.0',
-        concreteKinds: inputConcreteKinds,
-        aggregateKinds: [],
-        stateOrStageSchema: { ANSWER_RUN: 'v1' },
-        routeDescriptor: {},
-        eligibility: {},
-        sensitivityClass: {},
-        retentionClass: {},
-        requiredCapabilities: { ANSWER_RUN: inputReqCaps },
-        requiredFeatures: {},
-      };
+      for (const tc of nonPlainCases) {
+        expect(
+          () => decodeOperationalResourceKindRegistrySnapshot(tc.snapshot),
+          `Failed on case: ${tc.name}`,
+        ).toThrowError(FrontendContractError);
+      }
+    });
 
-      const registry = createOperationalResourceKindRegistry(snapshot);
+    it('should return frozen unknown fallback descriptors with frozen supportedActions for unknown kinds', () => {
+      const valid = createValidSnapshot();
+      const registry = createOperationalResourceKindRegistry(valid);
 
-      // Mutate original input arrays
-      inputActions.push('HACKED_ACTION');
-      inputReqCaps.push('HACKED_CAP');
-      inputConcreteKinds.push({
-        kind: 'HACKED_KIND',
-        family: 'HACK',
-        isConcrete: true,
-        projectScope: 'PROJECT_SCOPED',
-        snapshotSchemaVersion: '1.0.0',
-        deepLinkDescriptor: '',
-        outcomeCapability: false,
-        sensitivityClass: 'internal',
-        supportedActions: [],
-        supportState: 'SUPPORTED',
-      });
+      const unknownDesc = registry.get('NON_EXISTENT_KIND_999');
 
-      // Registry instance must remain unaffected
-      const desc = registry.get('ANSWER_RUN');
-      expect(desc.supportedActions).toEqual(['execute', 'cancel']);
-      expect(registry.listConcrete().length).toBe(1);
+      expect(unknownDesc.kind).toBe('UNKNOWN_NON_EXISTENT_KIND_999');
+      expect(unknownDesc.originalKind).toBe('NON_EXISTENT_KIND_999');
+      expect(unknownDesc.family).toBe('UNKNOWN');
+      expect(unknownDesc.supportState).toBe('UNKNOWN');
+      expect(Object.isFrozen(unknownDesc)).toBe(true);
+      expect(Object.isFrozen(unknownDesc.supportedActions)).toBe(true);
 
-      // Attempt to mutate descriptor supportedActions returned from registry
-      expect(() => (desc.supportedActions as string[]).push('MUTATION_TRY')).toThrow();
+      // Mutating properties or supportedActions array must throw in strict mode
+      expect(() => (unknownDesc.supportedActions as string[]).push('MUTATE')).toThrow();
+      expect(() => ((unknownDesc as unknown as Record<string, unknown>).kind = 'HACK')).toThrow();
 
-      // Attempt to mutate validated snapshot requiredCapabilities array
-      const validatedSnapshot = decodeOperationalResourceKindRegistrySnapshot(snapshot);
-      expect(() =>
-        (validatedSnapshot.requiredCapabilities['ANSWER_RUN'] as string[]).push('MUTATION_TRY'),
-      ).toThrow();
+      // Querying again returns semantic equivalent descriptor
+      const reQueried = registry.get('NON_EXISTENT_KIND_999');
+      expect(reQueried).toEqual(unknownDesc);
+      expect(Object.isFrozen(reQueried)).toBe(true);
     });
   });
 

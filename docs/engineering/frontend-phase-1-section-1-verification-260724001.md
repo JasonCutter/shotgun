@@ -182,4 +182,3 @@ All work conducted complies strictly with Shotgun Working Rules (`AGENTS.md`) an
 - **PR Base**: `main` (`e98b7381536f2ae2bce04d8c6e9442990ea9f06e`)
 - **PR Head**: `codex/frontend-phase-1-section-1`
 - **GitHub Actions Verification**: Executed on GitHub Actions CI.
-

@@ -6,14 +6,10 @@ import type {
   SystemBoundaryContext,
 } from '../../contracts/src/frontend-entry.js';
 import {
-  buildCommandSemanticDigestInput,
   evaluateCapabilityGuard,
   FrontendContractError,
 } from '../../contracts/src/frontend-entry.js';
-import {
-  webCryptoDigestProvider,
-  computeCommandSemanticDigestAsync,
-} from './frontend-digest-adapter.js';
+import { computeCommandSemanticDigestAsync } from './frontend-digest-adapter.js';
 
 export {
   computeCommandSemanticDigestAsync,
@@ -46,14 +42,14 @@ export type ServerResolutionProvider<TPayload = unknown> = {
   ): Promise<FrontendCommandOutcomeView | null>;
   getServerOutcomeResolution?: (
     request: FrontendCommandRequest<TPayload>,
-  ) => Promise<CommandOutcomeResolution<TPayload>>;
+  ) => Promise<CommandOutcomeResolution>;
 };
 
 export async function resolveCommandOutcomeClient<TPayload>(
   request: FrontendCommandRequest<TPayload>,
   principalId: string,
   provider: ServerResolutionProvider<TPayload>,
-): Promise<CommandOutcomeResolution<TPayload>> {
+): Promise<CommandOutcomeResolution> {
   const digest = await computeCommandSemanticDigestAsync(request);
 
   // Step 1: Scope & ID lookup by clientRequestId

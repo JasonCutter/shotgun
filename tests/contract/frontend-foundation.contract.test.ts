@@ -17,16 +17,15 @@ import {
   resolveOutcomeState,
   validateFrontendCommandRequest,
   validateTypedPreconditions,
-  buildCommandSemanticDigestInput,
   type AcceptedPolicyContext,
   type AcceptedPrincipalContext,
   type AcceptedProjectContext,
   type CommandLedgerEntry,
-  type CommandOutcomeResolution,
   type FrontendCommandOutcomeView,
   type FrontendCommandRequest,
   type OperationalResourceKindRegistrySnapshot,
   type SystemBoundaryContext,
+  type TypedPrecondition,
 } from '../../packages/contracts/src/frontend-entry.js';
 import {
   computeCommandSemanticDigestAsync,
@@ -103,7 +102,7 @@ describe('Frontend Foundation Contracts & Runtime Adapters', () => {
     it('should reject invalid requests in negative table-driven format', () => {
       const tableCases: Array<{
         name: string;
-        input: any;
+        input: unknown;
         options?: { isNewResource?: boolean };
         expectedCode: string;
       }> = [
@@ -114,7 +113,7 @@ describe('Frontend Foundation Contracts & Runtime Adapters', () => {
         },
         {
           name: 'invalid envelope version',
-          input: createValidRequest({ envelopeVersion: '2.0.0' as any }),
+          input: createValidRequest({ envelopeVersion: '2.0.0' as unknown as '1.0.0' }),
           expectedCode: 'INVALID_REQUEST',
         },
         {
@@ -150,7 +149,7 @@ describe('Frontend Foundation Contracts & Runtime Adapters', () => {
         {
           name: 'null precondition item',
           input: createValidRequest({
-            preconditions: [null as any],
+            preconditions: [null as unknown as TypedPrecondition],
           }),
           expectedCode: 'PRECONDITION_ACCESS_DENIED',
         },
@@ -173,16 +172,16 @@ describe('Frontend Foundation Contracts & Runtime Adapters', () => {
         {
           name: 'JSON non-serializable payload (NaN / BigInt)',
           input: createValidRequest({
-            payload: { value: NaN } as any,
+            payload: { value: NaN } as unknown as { text: string },
           }),
           expectedCode: 'INVALID_REQUEST',
         },
         {
           name: 'circular payload structure',
           input: (() => {
-            const circularPayload: any = {};
-            circularPayload.self = circularPayload;
-            return createValidRequest({ payload: circularPayload });
+            const circularPayload: Record<string, unknown> = {};
+            circularPayload['self'] = circularPayload;
+            return createValidRequest({ payload: circularPayload as unknown as { text: string } });
           })(),
           expectedCode: 'INVALID_REQUEST',
         },
@@ -194,10 +193,37 @@ describe('Frontend Foundation Contracts & Runtime Adapters', () => {
         );
         try {
           validateFrontendCommandRequest(tc.input, tc.options);
-        } catch (err: any) {
-          expect(err.code).toBe(tc.expectedCode);
+        } catch (err: unknown) {
+          if (err instanceof FrontendContractError) {
+            expect(err.code).toBe(tc.expectedCode);
+          } else {
+            throw err;
+          }
         }
       }
+    });
+
+    it('should validate typed preconditions and classify error codes', () => {
+      const valid = validateTypedPreconditions([
+        {
+          purpose: 'TARGET',
+          subject: { resourceKind: 'INTAKE_SUBMISSION', resourceId: '1' },
+          expectedRevision: '1',
+        },
+      ]);
+      expect(valid.isValid).toBe(true);
+
+      const invalid = validateTypedPreconditions([
+        { purpose: 'TARGET', subject: { resourceKind: '', resourceId: '' } },
+      ]);
+      expect(invalid.isValid).toBe(false);
+
+      const flags = classifyFrontendErrorCode('SESSION_EXPIRED');
+      expect(flags.authRecoveryNeeded).toBe(true);
+
+      expect(() =>
+        ProjectionKindRegistry.assertNotWriteableProjectionKind('COMPILED_TRUTH'),
+      ).toThrowError(FrontendContractError);
     });
   });
 
@@ -210,7 +236,6 @@ describe('Frontend Foundation Contracts & Runtime Adapters', () => {
       expect(canonical).toBe('{"a":1,"b":2}');
 
       const digest = await webCryptoDigestProvider(canonical);
-      // SHA-256 of '{"a":1,"b":2}'
       expect(digest).toBe('43258cff783fe7036d8a43033f830adfc60ec037382473548ac742b888292777');
     });
 
@@ -261,7 +286,7 @@ describe('Frontend Foundation Contracts & Runtime Adapters', () => {
   });
 
   // ==========================================================================
-  // 3. Outcome Resolution
+  // 3. Outcome Resolution & Client Outcome Resolver
   // ==========================================================================
   describe('Outcome Resolution', () => {
     it('should resolve discriminated union outcome states strictly', async () => {
@@ -307,11 +332,55 @@ describe('Frontend Foundation Contracts & Runtime Adapters', () => {
       if (res.resolution === 'FOUND') {
         expect(res.outcome).toEqual(outcomeView);
       }
+
+      // Test resolveCommandOutcomeClient helper
+      const clientRes = await resolveCommandOutcomeClient(req, 'usr-100', {
+        async getOutcomeByClientRequestId() {
+          return outcomeView;
+        },
+        async getOutcomeByIdempotencyKey() {
+          return null;
+        },
+      });
+      expect(clientRes.resolution).toBe('FOUND');
     });
   });
 
   // ==========================================================================
-  // 4. Registry Runtime Validation & Immutability
+  // 4. Retry & Command Mapping & Project Context
+  // ==========================================================================
+  describe('Retry & Command Mapping & Project Context', () => {
+    it('should classify retry and map frontend request to internal envelope', async () => {
+      const req1 = createValidRequest();
+      const digest1 = await computeCommandSemanticDigestAsync(req1);
+
+      const retryRes = classifyRetry(req1, req1, digest1, digest1);
+      expect(retryRes).toBe('TRANSPORT_RETRY');
+
+      const { acceptedPrincipalContext, acceptedProjectContext, acceptedPolicyContext } =
+        createValidAcceptedContexts();
+      const mapped = mapFrontendRequestToInternalCommandEnvelope(req1, {
+        frontendCommandId: 'fcmd-1',
+        internalMessageId: 'msg-1',
+        acceptedPrincipalContext,
+        acceptedProjectContext,
+        acceptedPolicyContext,
+        accessScope: ['read'],
+        sensitivity: 'internal',
+        traceId: 'trace-1',
+      });
+      expect(mapped.messageId).toBe('msg-1');
+
+      const pctxState = createFrontendProjectContext({
+        activeProjectId: 'proj-A',
+        targetProjectId: 'proj-A',
+      });
+      expect(pctxState.activeProject.id).toBe('proj-A');
+    });
+  });
+
+  // ==========================================================================
+  // 5. Registry Runtime Validation & Immutability
   // ==========================================================================
   describe('Registry Runtime Validation', () => {
     it('should initialize at NOT_LOADED and transition to READY after valid snapshot', () => {
@@ -380,9 +449,9 @@ describe('Frontend Foundation Contracts & Runtime Adapters', () => {
   });
 
   // ==========================================================================
-  // 5. Sensitive Resource Masking Guard
+  // 6. Sensitive Resource Masking Guard & Cache Helpers
   // ==========================================================================
-  describe('Sensitive Resource Masking', () => {
+  describe('Sensitive Resource Masking & Cache Helpers', () => {
     it('should mask sensitive resource presence when project access is revoked', () => {
       const boundaryCtx: SystemBoundaryContext = {
         authState: 'AUTHENTICATED',
@@ -412,10 +481,53 @@ describe('Frontend Foundation Contracts & Runtime Adapters', () => {
       expect(resNonSensitive.treatAsNotFound).toBeUndefined();
       expect(resNonSensitive.error?.code).toBe('RESOURCE_ACCESS_REVOKED');
     });
+
+    it('should test filterCacheKeysForProjectSwitch, purgeInaccessibleCachesOnAccessChange, and calculateCacheInvalidationOnPolicyChange', () => {
+      const keyParams = {
+        scope: 'project' as const,
+        principalId: 'u1',
+        sessionIdOrRevision: 's1',
+        accessScopeRevision: 'v1',
+        sensitivityPolicyRevision: 'v1',
+        policyContextRevision: 'v1',
+        featurePolicyRevision: 'v1',
+        retentionPolicyRevision: 'v1',
+        resourceKind: 'ANSWER_RUN',
+        activeProjectId: 'proj-A',
+      };
+      const keyA = buildCacheKey(keyParams);
+      const keyB = buildCacheKey({ ...keyParams, activeProjectId: 'proj-B' });
+
+      const filtered = filterCacheKeysForProjectSwitch([keyA, keyB], 'proj-A');
+      expect(filtered.validKeys).toContainEqual(keyA);
+      expect(filtered.retainedOtherProjectKeys).toContainEqual(keyB);
+
+      const purged = purgeInaccessibleCachesOnAccessChange([keyA, keyB], ['proj-B']);
+      expect(purged.purgedKeys).toContainEqual(keyB);
+
+      const invalidation = calculateCacheInvalidationOnPolicyChange(
+        [keyA],
+        {
+          accessScopeRevision: 'v1',
+          sensitivityPolicyRevision: 'v1',
+          policyContextRevision: 'v1',
+          featurePolicyRevision: 'v1',
+          retentionPolicyRevision: 'v1',
+        },
+        {
+          accessScopeRevision: 'v2',
+          sensitivityPolicyRevision: 'v1',
+          policyContextRevision: 'v1',
+          featurePolicyRevision: 'v1',
+          retentionPolicyRevision: 'v1',
+        },
+      );
+      expect(invalidation.invalidatedKeys).toContainEqual(keyA);
+    });
   });
 
   // ==========================================================================
-  // 6. Project Cache Missing-ID Boundary
+  // 7. Project Cache Missing-ID Boundary
   // ==========================================================================
   describe('Project Cache Missing-ID Boundary', () => {
     it('should reject project-scoped cache key when both resourceProjectId and activeProjectId are missing', () => {

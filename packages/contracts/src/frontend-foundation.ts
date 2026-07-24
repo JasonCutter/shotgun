@@ -615,7 +615,7 @@ export type FrontendCommandOutcomeView = {
   readonly eventCursor?: string;
 };
 
-export type CommandOutcomeResolution<TPayload = unknown> =
+export type CommandOutcomeResolution =
   | { readonly resolution: 'FOUND'; readonly outcome: FrontendCommandOutcomeView }
   | { readonly resolution: 'NOT_ACCEPTED_CONFIRMED' }
   | { readonly resolution: 'INDETERMINATE' }
@@ -636,8 +636,8 @@ export type CommandLedgerEntry = {
   readonly isRetentionExpired: boolean;
 };
 
-export function resolveOutcomeState<TPayload>(
-  request: FrontendCommandRequest<TPayload>,
+export function resolveOutcomeState(
+  request: FrontendCommandRequest,
   principalId: string,
   ledgerEntries: readonly CommandLedgerEntry[],
   digest: string,
@@ -645,7 +645,7 @@ export function resolveOutcomeState<TPayload>(
     checkServerDurableAcceptance: () =>
       'ACCEPTANCE_CONFIRMED' | 'NO_ACCEPTANCE_CONFIRMED' | 'UNKNOWN';
   },
-): CommandOutcomeResolution<TPayload> {
+): CommandOutcomeResolution {
   // Step 1: Scope & ID lookup by clientRequestId
   const byRequestId = ledgerEntries.find((e) => e.clientRequestId === request.clientRequestId);
   if (byRequestId) {
@@ -713,9 +713,9 @@ export function resolveOutcomeState<TPayload>(
 
 export type RetryClassification = 'TRANSPORT_RETRY' | 'DOMAIN_RETRY' | 'RETRY_FORBIDDEN';
 
-export function classifyRetry<TPayload>(
-  previousRequest: FrontendCommandRequest<TPayload>,
-  newRequest: FrontendCommandRequest<TPayload>,
+export function classifyRetry(
+  previousRequest: FrontendCommandRequest,
+  newRequest: FrontendCommandRequest,
   prevDigest: string,
   newDigest: string,
 ): RetryClassification {

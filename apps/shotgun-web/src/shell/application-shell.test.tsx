@@ -31,6 +31,17 @@ const runtime = (): AppRuntime => {
   const apiClient: ShotgunApiClient = {
     bootstrapLocalOwner: vi.fn(async () => session),
     getSession: vi.fn(async () => session),
+    getSessionBoundary: vi.fn(async () => ({
+      schemaVersion: '1.0.0' as const,
+      authenticationAdapter: 'local_owner' as const,
+      connectivityState: 'ONLINE' as const,
+      authenticationState: 'authenticated' as const,
+      sessionState: 'READY' as const,
+      backendReadiness: 'READY' as const,
+      reasonCode: 'LOCAL_SESSION_READY' as const,
+      recoveryActions: [],
+      session,
+    })),
     switchActiveProject: vi.fn(async () => session),
     logout: vi.fn(async () => undefined),
   };

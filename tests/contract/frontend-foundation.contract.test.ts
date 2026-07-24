@@ -9,6 +9,7 @@ import {
   createFrontendProjectContext,
   createOperationalResourceKindRegistry,
   decodeOperationalResourceKindRegistrySnapshot,
+  decodeSessionBoundaryView,
   deterministicCanonicalizePayload,
   evaluateCapabilityGuard,
   filterCacheKeysForProjectSwitch,
@@ -25,6 +26,7 @@ import {
   type FrontendCommandOutcomeView,
   type FrontendCommandRequest,
   type OperationalResourceKindRegistrySnapshot,
+  type ProductSessionView,
   type SystemBoundaryContext,
   type TypedPrecondition,
 } from '../../packages/contracts/src/frontend-entry.js';
@@ -843,6 +845,97 @@ describe('Frontend Foundation Contracts & Runtime Adapters', () => {
       });
       expect(key[0]).toBe('project-cache');
       expect(key[1]).toBe('proj-A');
+    });
+  });
+
+  // ==========================================================================
+  // 8. Session Boundary View Contract & Decoder
+  // ==========================================================================
+  describe('Session Boundary View Contract & Decoder', () => {
+    const validProductSession: ProductSessionView = {
+      apiVersion: '1.0.0',
+      principal: {
+        id: 'usr-local-owner',
+        actor: { type: 'user', id: 'usr-local-owner' },
+        authenticationMethod: 'session',
+      },
+      activeProject: { id: 'project-default' },
+      accessibleProjects: [{ id: 'project-default', isOwner: true }],
+      session: { expiresAt: null },
+    };
+
+    it('should decode a valid READY SessionBoundaryView', () => {
+      const boundaryInput = {
+        schemaVersion: '1.0.0',
+        authenticationAdapter: 'local_owner',
+        connectivityState: 'ONLINE',
+        authenticationState: 'authenticated',
+        sessionState: 'READY',
+        backendReadiness: 'READY',
+        reasonCode: 'LOCAL_SESSION_READY',
+        recoveryActions: [],
+        session: validProductSession,
+      };
+
+      const decoded = decodeSessionBoundaryView(boundaryInput);
+      expect(decoded.schemaVersion).toBe('1.0.0');
+      expect(decoded.sessionState).toBe('READY');
+      expect(decoded.session?.principal.id).toBe('usr-local-owner');
+      expect(Object.isFrozen(decoded)).toBe(true);
+    });
+
+    it('should throw FrontendContractError on malformed SessionBoundaryView inputs', () => {
+      const invalidCases: Array<{ name: string; input: unknown }> = [
+        { name: 'null input', input: null },
+        { name: 'invalid schema version', input: { schemaVersion: '2.0.0' } },
+        {
+          name: 'invalid sessionState',
+          input: {
+            schemaVersion: '1.0.0',
+            authenticationAdapter: 'local_owner',
+            connectivityState: 'ONLINE',
+            authenticationState: 'authenticated',
+            sessionState: 'INVALID_STATE',
+            backendReadiness: 'READY',
+            recoveryActions: [],
+          },
+        },
+        {
+          name: 'READY state with null session',
+          input: {
+            schemaVersion: '1.0.0',
+            authenticationAdapter: 'local_owner',
+            connectivityState: 'ONLINE',
+            authenticationState: 'authenticated',
+            sessionState: 'READY',
+            backendReadiness: 'READY',
+            recoveryActions: [],
+            session: null,
+          },
+        },
+        {
+          name: 'duplicate recovery action id',
+          input: {
+            schemaVersion: '1.0.0',
+            authenticationAdapter: 'local_owner',
+            connectivityState: 'OFFLINE',
+            authenticationState: 'authentication_unavailable',
+            sessionState: 'UNAVAILABLE',
+            backendReadiness: 'UNAVAILABLE',
+            recoveryActions: [
+              { id: 'RECONNECT', label: 'Retry 1', enabled: true },
+              { id: 'RECONNECT', label: 'Retry 2', enabled: true },
+            ],
+            session: null,
+          },
+        },
+      ];
+
+      for (const tc of invalidCases) {
+        expect(() => decodeSessionBoundaryView(tc.input), tc.name).toThrowError(
+          FrontendContractError,
+        );
+      }
     });
   });
 });

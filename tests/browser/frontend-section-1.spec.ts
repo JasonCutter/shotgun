@@ -146,4 +146,24 @@ test('Frontend Section 1 restores server project context and protects routes', a
   expect(digestResults.knownVectorDigest).toBe(EXPECTED_KNOWN_SHA256);
   expect(digestResults.req1Digest).toBe(digestResults.req1ReorderedDigest);
   expect(digestResults.req1Digest).not.toBe(digestResults.req2Digest);
+
+  // Local Owner Mode UI policy: No logout button or password phrases rendered
+  await page.getByRole('link', { name: 'Settings' }).click();
+  await expect(page.getByRole('button', { name: '로그아웃' })).not.toBeVisible();
+
+  // Session Boundary Error Screen test
+  await page.route(
+    (url) => url.pathname === '/api/v1/session',
+    async (route) => {
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'LOCAL_SERVER_UNAVAILABLE', message: 'Local server error' }),
+      });
+    },
+  );
+  await page.reload();
+  await expect(page.getByRole('heading', { name: '로컬 서버에 연결할 수 없음' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '다시 연결' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '로컬 서버 상태 확인' })).toBeVisible();
 });

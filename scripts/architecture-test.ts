@@ -89,8 +89,27 @@ export const findArchitectureViolations = async (): Promise<string[]> => {
       ) {
         violations.push(`${relativeFile} imports forbidden frontend dependency '${imported}'.`);
       }
-      if (isFrontendApp && imported.startsWith('@shotgun/') && imported !== '@shotgun/api-client') {
+      if (
+        isFrontendApp &&
+        imported.startsWith('@shotgun/') &&
+        !['@shotgun/api-client', '@shotgun/contracts'].includes(imported)
+      ) {
         violations.push(`${relativeFile} imports forbidden Shotgun package '${imported}'.`);
+      }
+
+      if (
+        isFrontendApp &&
+        source.includes('LogoutButton') &&
+        relativeFile.includes('settings-page')
+      ) {
+        violations.push(`${relativeFile} imports LogoutButton component in Local Owner mode.`);
+      }
+
+      if (
+        (isFrontendApp || isFrontendClient) &&
+        /x-(project-id|actor-id|principal-id)/i.test(source)
+      ) {
+        violations.push(`${relativeFile} contains prohibited legacy authority header.`);
       }
 
       const resolved = resolveRelativeImport(file, imported);

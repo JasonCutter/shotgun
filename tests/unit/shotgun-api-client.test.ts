@@ -154,4 +154,27 @@ describe('shotgun-api-client', () => {
     await expect(client.switchActiveProject('project-b')).rejects.toBeInstanceOf(ShotgunApiError);
     expect(mutationCalls).toBe(1);
   });
+
+  it('maps successful getSession to a READY SessionBoundaryView', async () => {
+    const fetch = vi.fn(async () => json({ session: session() }));
+    const boundary = await createShotgunApiClient({ fetch }).getSessionBoundary();
+    expect(boundary.sessionState).toBe('READY');
+    expect(boundary.reasonCode).toBe('LOCAL_SESSION_READY');
+    expect(boundary.session?.principal.id).toBe('principal-a');
+  });
+
+  it('maps network errors to LOCAL_SERVER_UNAVAILABLE boundary view with recovery actions', async () => {
+    const fetch = vi.fn(async () => {
+      throw new TypeError('Failed to fetch');
+    });
+    const boundary = await createShotgunApiClient({ fetch }).getSessionBoundary();
+    expect(boundary.sessionState).toBe('UNAVAILABLE');
+    expect(boundary.connectivityState).toBe('OFFLINE');
+    expect(boundary.reasonCode).toBe('LOCAL_SERVER_UNAVAILABLE');
+    expect(boundary.recoveryActions).toHaveLength(2);
+    expect(boundary.recoveryActions.map((a: { readonly id: string }) => a.id)).toEqual([
+      'RECONNECT',
+      'CHECK_LOCAL_SERVER',
+    ]);
+  });
 });

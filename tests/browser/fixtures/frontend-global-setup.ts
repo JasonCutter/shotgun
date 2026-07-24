@@ -25,6 +25,7 @@ export default async function globalSetup() {
 
   try {
     process.env.VITE_BACKEND_TARGET = 'http://127.0.0.1:3001';
+    process.env.VITE_E2E_TEST_BRIDGE = 'true';
     const frontendRequire = createRequire(path.join(frontendRoot, 'package.json'));
     const viteEntry = frontendRequire.resolve('vite');
     const vite = (await import(pathToFileURL(viteEntry).href)) as ViteRuntime;

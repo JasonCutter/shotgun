@@ -12,3 +12,4 @@ export * from './envelope-codec.js';
 export * from './factories.js';
 export * from './schema-registry.js';
 export * from './types.js';
+export * from './frontend-foundation.js';

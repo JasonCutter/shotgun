@@ -1195,6 +1195,8 @@ export function decodeOperationalResourceKindRegistrySnapshot(
     });
   };
 
+  const FORBIDDEN_RECORD_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
   const validateRecordField = <T>(
     val: unknown,
     fieldName: string,
@@ -1207,12 +1209,18 @@ export function decodeOperationalResourceKindRegistrySnapshot(
       );
     }
     const rec = val as Record<string, unknown>;
-    const res: Record<string, T> = {};
+    const res = Object.create(null) as Record<string, T>;
     for (const key of Object.keys(rec)) {
       if (!key.trim()) {
         throw new FrontendContractError(
           'INVALID_REQUEST',
           `Snapshot record field '${fieldName}' contains an empty key`,
+        );
+      }
+      if (FORBIDDEN_RECORD_KEYS.has(key)) {
+        throw new FrontendContractError(
+          'INVALID_REQUEST',
+          `Snapshot record field '${fieldName}' contains forbidden key '${key}'`,
         );
       }
       if (!valValidator(rec[key])) {
@@ -1263,7 +1271,7 @@ export function decodeOperationalResourceKindRegistrySnapshot(
     'requiredCapabilities',
     (v) => Array.isArray(v) && v.every((item) => typeof item === 'string'),
   );
-  const requiredCapabilities: Record<string, readonly string[]> = {};
+  const requiredCapabilities = Object.create(null) as Record<string, readonly string[]>;
   for (const [k, v] of Object.entries(rawReqCaps)) {
     requiredCapabilities[k] = Object.freeze([...(v as string[])]);
   }
@@ -1274,7 +1282,7 @@ export function decodeOperationalResourceKindRegistrySnapshot(
     'requiredFeatures',
     (v) => Array.isArray(v) && v.every((item) => typeof item === 'string'),
   );
-  const requiredFeatures: Record<string, readonly string[]> = {};
+  const requiredFeatures = Object.create(null) as Record<string, readonly string[]>;
   for (const [k, v] of Object.entries(rawReqFeats)) {
     requiredFeatures[k] = Object.freeze([...(v as string[])]);
   }

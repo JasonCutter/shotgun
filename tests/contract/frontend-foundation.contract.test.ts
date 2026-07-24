@@ -568,6 +568,105 @@ describe('Frontend Foundation Contracts & Runtime Adapters', () => {
       }
     });
 
+    it('should reject snapshot records containing forbidden keys (__proto__, constructor, prototype) across all 7 record fields', () => {
+      const valid = createValidSnapshot();
+
+      const recordFields = [
+        'stateOrStageSchema',
+        'routeDescriptor',
+        'eligibility',
+        'sensitivityClass',
+        'retentionClass',
+        'requiredCapabilities',
+        'requiredFeatures',
+      ] as const;
+
+      const forbiddenKeys = ['__proto__', 'constructor', 'prototype'] as const;
+
+      for (const field of recordFields) {
+        for (const key of forbiddenKeys) {
+          let maliciousValue: unknown;
+          if (key === '__proto__') {
+            maliciousValue = JSON.parse(
+              field === 'eligibility'
+                ? '{"__proto__": true}'
+                : field === 'requiredCapabilities' || field === 'requiredFeatures'
+                  ? '{"__proto__": ["cap:x"]}'
+                  : '{"__proto__": "val:x"}',
+            );
+          } else {
+            const obj: Record<string, unknown> = {};
+            obj[key] =
+              field === 'eligibility'
+                ? true
+                : field === 'requiredCapabilities' || field === 'requiredFeatures'
+                  ? ['feat:x']
+                  : 'val:x';
+            maliciousValue = obj;
+          }
+
+          const maliciousSnapshot = {
+            ...valid,
+            [field]: maliciousValue,
+          };
+
+          expect(
+            () => decodeOperationalResourceKindRegistrySnapshot(maliciousSnapshot),
+            `Failed to reject forbidden key '${key}' in record field '${field}'`,
+          ).toThrowError(FrontendContractError);
+        }
+      }
+    });
+
+    it('should construct null-prototype objects for all 7 record fields and preserve own properties and freeze state', () => {
+      const valid = createValidSnapshot();
+      const decoded = decodeOperationalResourceKindRegistrySnapshot(valid);
+
+      const recordFields = [
+        'stateOrStageSchema',
+        'routeDescriptor',
+        'eligibility',
+        'sensitivityClass',
+        'retentionClass',
+        'requiredCapabilities',
+        'requiredFeatures',
+      ] as const;
+
+      for (const field of recordFields) {
+        expect(Object.getPrototypeOf(decoded[field])).toBeNull();
+        expect(Object.isFrozen(decoded[field])).toBe(true);
+      }
+
+      // Verify own property preservation
+      expect(Object.hasOwn(decoded.stateOrStageSchema, 'ANSWER_RUN')).toBe(true);
+      expect(Object.hasOwn(decoded.requiredCapabilities, 'ANSWER_RUN')).toBe(true);
+      expect(Object.hasOwn(decoded.requiredFeatures, 'ANSWER_RUN')).toBe(true);
+
+      // Verify nested array freezing
+      expect(Object.isFrozen(decoded.requiredCapabilities['ANSWER_RUN'])).toBe(true);
+      expect(Object.isFrozen(decoded.requiredFeatures['ANSWER_RUN'])).toBe(true);
+    });
+
+    it('should prevent prototype pollution when processing malicious snapshots', () => {
+      const valid = createValidSnapshot();
+
+      const maliciousCapSnapshot = {
+        ...valid,
+        requiredCapabilities: JSON.parse('{"__proto__": ["polluted:cap"]}'),
+      };
+
+      try {
+        decodeOperationalResourceKindRegistrySnapshot(maliciousCapSnapshot);
+      } catch {
+        // Expected FrontendContractError
+      }
+
+      // Verify global Object.prototype was NOT polluted
+      expect(({} as Record<string, unknown>)['polluted:cap']).toBeUndefined();
+      expect(({} as Record<string, unknown>)['polluted']).toBeUndefined();
+      expect(Object.hasOwn(Object.prototype, 'polluted:cap')).toBe(false);
+    });
+
     it('should return frozen unknown fallback descriptors with frozen supportedActions for unknown kinds', () => {
       const valid = createValidSnapshot();
       const registry = createOperationalResourceKindRegistry(valid);

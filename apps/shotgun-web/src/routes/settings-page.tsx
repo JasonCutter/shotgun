@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { useAppRuntime } from '../app/providers.js';
-import { LogoutButton } from '../session/logout-button.js';
 import { ProjectSelector } from '../session/project-selector.js';
 import { sessionQueryOptions } from '../session/session-query.js';
 
@@ -26,10 +25,6 @@ export const SettingsPage = () => {
       <section aria-labelledby="project-settings-heading">
         <h2 id="project-settings-heading">Project</h2>
         <ProjectSelector session={session} />
-      </section>
-      <section aria-labelledby="session-settings-heading">
-        <h2 id="session-settings-heading">Session</h2>
-        <LogoutButton />
       </section>
     </section>
   );

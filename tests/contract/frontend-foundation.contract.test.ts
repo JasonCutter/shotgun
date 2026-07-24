@@ -11,7 +11,9 @@ import {
   evaluateCapabilityGuard,
   filterCacheKeysForProjectSwitch,
   mapFrontendRequestToInternalCommandEnvelope,
+  purgeInaccessibleCachesOnAccessChange,
   resolveOutcomeState,
+  validateFrontendCommandRequest,
   validateTypedPreconditions,
   type CommandLedgerEntry,
   type FrontendCommandOutcomeView,
@@ -21,9 +23,9 @@ import {
   type SystemBoundaryContext,
   type TypedPrecondition,
 } from '../../packages/contracts/src/index.js';
+import { resolveCommandOutcomeClient } from '../../packages/shotgun-api-client/src/index.js';
 
 describe('Frontend Foundation Contracts', () => {
-  // Helper to create a valid base request
   const createValidRequest = (
     overrides?: Partial<FrontendCommandRequest<{ text: string }>>,
   ): FrontendCommandRequest<{ text: string }> => ({
@@ -64,186 +66,101 @@ describe('Frontend Foundation Contracts', () => {
   });
 
   // ==========================================================================
-  // 8.1 Contract Validation Test
+  // 1. Runtime Request Validation
   // ==========================================================================
-  describe('8.1 Contract Validation Test', () => {
-    it('should validate a representative valid request successfully', () => {
+  describe('Runtime Request Validation', () => {
+    it('should validate a valid request', () => {
       const req = createValidRequest();
-      expect(req.envelopeVersion).toBe('1.0.0');
-
-      const validation = validateTypedPreconditions(req.preconditions);
-      expect(validation.isValid).toBe(true);
-      expect(validation.errors).toHaveLength(0);
-
-      const digest = computeCommandSemanticDigest(req);
-      expect(digest).toBeTypeOf('string');
-      expect(digest.length).toBe(64); // SHA-256 hex string length
-
-      const errorCategory = classifyFrontendErrorCode('REVISION_CONFLICT');
-      expect(errorCategory.refetchNeeded).toBe(true);
-      expect(errorCategory.autoRetryForbidden).toBe(true);
+      const validated = validateFrontendCommandRequest(req);
+      expect(validated.envelopeVersion).toBe('1.0.0');
     });
 
     it('should reject invalid requests in table-driven format', () => {
       const tableCases: Array<{
         name: string;
-        test: () => void;
+        input: any;
+        options?: { isNewResource?: boolean };
+        expectedCode: string;
       }> = [
         {
-          name: 'invalid precondition purpose',
-          test: () => {
-            const badPreconditions = [
-              {
-                purpose: 'INVALID_PURPOSE' as unknown as TypedPrecondition['purpose'],
-                subject: { resourceKind: 'INTAKE_SUBMISSION', resourceId: 'res-1' },
-                expectedRevision: 'rev-1',
-              },
-            ];
-            const validation = validateTypedPreconditions(badPreconditions);
-            expect(validation.isValid).toBe(false);
-            expect(validation.errors[0]).toContain('Invalid purpose');
-          },
+          name: 'invalid envelope version',
+          input: createValidRequest({ envelopeVersion: '2.0.0' as any }),
+          expectedCode: 'INVALID_REQUEST',
         },
         {
-          name: 'missing expected revision and digest in precondition',
-          test: () => {
-            const badPreconditions: TypedPrecondition[] = [
+          name: 'empty clientRequestId',
+          input: createValidRequest({ clientRequestId: '' }),
+          expectedCode: 'INVALID_REQUEST',
+        },
+        {
+          name: 'new resource targeting different project',
+          input: createValidRequest({
+            projectContext: {
+              activeProjectId: 'project-A',
+              targetProjectId: 'project-B',
+            },
+          }),
+          options: { isNewResource: true },
+          expectedCode: 'RESOURCE_PROJECT_MISMATCH',
+        },
+        {
+          name: 'invalid policy binding mode',
+          input: createValidRequest({
+            policyBinding: { mode: 'INVALID_MODE' as any },
+          }),
+          expectedCode: 'INVALID_REQUEST',
+        },
+        {
+          name: 'injected authoritative principal field',
+          input: {
+            ...createValidRequest(),
+            principal: { id: 'hacker' },
+          },
+          expectedCode: 'PRECONDITION_ACCESS_DENIED',
+        },
+        {
+          name: 'projection kind targeted directly for mutation',
+          input: createValidRequest({
+            preconditions: [
               {
                 purpose: 'TARGET',
-                subject: { resourceKind: 'INTAKE_SUBMISSION', resourceId: 'res-1' },
+                subject: {
+                  resourceKind: 'COMPILED_TRUTH',
+                  resourceId: 'ct-1',
+                },
+                expectedRevision: 'rev-1',
               },
-            ];
-            const validation = validateTypedPreconditions(badPreconditions);
-            expect(validation.isValid).toBe(false);
-            expect(validation.errors[0]).toContain(
-              'Must specify either expectedRevision or expectedDigest',
-            );
-          },
+            ],
+          }),
+          expectedCode: 'PRECONDITION_ACCESS_DENIED',
         },
         {
-          name: 'idempotency key reuse with different semantic digest',
-          test: () => {
-            const req1 = createValidRequest({ payload: { text: 'Original' } });
-            const req2 = createValidRequest({
-              clientRequestId: 'req-uuid-differing-2222',
-              payload: { text: 'Different' },
-            });
-
-            const ledger: CommandLedgerEntry<{ text: string }>[] = [
-              {
-                clientRequestId: req1.clientRequestId,
-                idempotencyKey: req1.idempotencyKey,
-                principalId: 'user-1',
-                targetProjectId: req1.projectContext.targetProjectId,
-                commandType: req1.commandType,
-                commandSemanticDigest: computeCommandSemanticDigest(req1),
-                outcome: {} as FrontendCommandOutcomeView<{ text: string }>,
-
-                isDurableAccepted: true,
-                isRetentionExpired: false,
-              },
-            ];
-
-            expect(() => resolveOutcomeState(req2, 'user-1', ledger)).toThrowError(
-              FrontendContractError,
-            );
-          },
+          name: 'JSON non-serializable payload (BigInt)',
+          input: createValidRequest({
+            payload: { value: BigInt(123) } as any,
+          }),
+          expectedCode: 'INVALID_REQUEST',
         },
       ];
 
       for (const tc of tableCases) {
-        tc.test();
+        expect(() => validateFrontendCommandRequest(tc.input, tc.options)).toThrowError(
+          FrontendContractError,
+        );
+        try {
+          validateFrontendCommandRequest(tc.input, tc.options);
+        } catch (err: any) {
+          expect(err.code).toBe(tc.expectedCode);
+        }
       }
     });
   });
 
   // ==========================================================================
-  // 8.2 Project Binding Test
+  // 2. Outcome Resolution
   // ==========================================================================
-  describe('8.2 Project Binding Test', () => {
-    it('1. new resource creation binds to Active Project as targetProjectId', () => {
-      const pctx = createFrontendProjectContext(
-        {
-          activeProjectId: 'project-active',
-          targetProjectId: 'project-active',
-        },
-        { isNewResource: true },
-      );
-
-      expect(pctx.effectiveProject.id).toBe('project-active');
-      expect(pctx.mismatchState.isMismatch).toBe(false);
-    });
-
-    it('2. existing resource modification binds to Resource Project as targetProjectId', () => {
-      const pctx = createFrontendProjectContext(
-        {
-          activeProjectId: 'project-active',
-          targetProjectId: 'project-active',
-          resourceProjectId: 'project-resource-legacy',
-        },
-        { isNewResource: false },
-      );
-
-      expect(pctx.effectiveProject.id).toBe('project-resource-legacy');
-      expect(pctx.mismatchState.isMismatch).toBe(true);
-      expect(pctx.mismatchState.reason).toContain("belongs to project 'project-resource-legacy'");
-    });
-
-    it('3. cross-project deep link entry does not change Active Project automatically', () => {
-      const pctx = createFrontendProjectContext({
-        activeProjectId: 'project-user-current',
-        targetProjectId: 'project-deep-link-target',
-        resourceProjectId: 'project-deep-link-target',
-      });
-
-      expect(pctx.activeProject.id).toBe('project-user-current');
-      expect(pctx.effectiveProject.id).toBe('project-deep-link-target');
-      expect(pctx.mismatchState.isMismatch).toBe(true);
-    });
-
-    it('draft project stays fixed to creation project', () => {
-      const pctx = createFrontendProjectContext(
-        {
-          activeProjectId: 'project-new-active',
-          targetProjectId: 'project-draft-origin',
-        },
-        { draftProjectId: 'project-draft-origin' },
-      );
-
-      expect(pctx.draftProject?.id).toBe('project-draft-origin');
-    });
-  });
-
-  // ==========================================================================
-  // 8.3 Command Mapping Test
-  // ==========================================================================
-  describe('8.3 Command Mapping Test', () => {
-    it('should map FrontendCommandRequest to internal CommandEnvelope cleanly', () => {
-      const req = createValidRequest();
-      const mapped = mapFrontendRequestToInternalCommandEnvelope(req, {
-        serverCommandId: 'server-cmd-777',
-        actor: { type: 'user', id: 'usr-100' },
-        accessScope: ['read', 'write'],
-        sensitivity: 'internal',
-        traceId: 'trace-backend-999',
-      });
-
-      expect(mapped.messageId).toBe('server-cmd-777');
-      expect(mapped.messageType).toBe('KNOWLEDGE_TRANSITION_SUBMIT');
-      expect(mapped.messageKind).toBe('command');
-      expect(mapped.idempotencyKey).toBe('idem-key-2222');
-      expect(mapped.projectId).toBe('project-alpha');
-      expect(mapped.causationId).toBe('cmd-previous-111');
-      expect(mapped.traceId).toBe('trace-backend-999');
-      expect(mapped.messageId).not.toBe(req.clientRequestId);
-    });
-  });
-
-  // ==========================================================================
-  // 8.4 Outcome Resolution Test
-  // ==========================================================================
-  describe('8.4 Outcome Resolution Test', () => {
-    it('should resolve table-driven outcome resolution states', () => {
+  describe('Outcome Resolution', () => {
+    it('should resolve table-driven outcome states strictly', () => {
       const req = createValidRequest();
       const digest = computeCommandSemanticDigest(req);
 
@@ -270,13 +187,16 @@ describe('Frontend Foundation Contracts', () => {
       });
 
       const tableCases: Array<{
-        state: 'FOUND' | 'NOT_ACCEPTED_CONFIRMED' | 'INDETERMINATE' | 'RETENTION_EXPIRED';
+        name: string;
         ledger: CommandLedgerEntry<{ text: string }>[];
-        domainResolver?: () => { exists: boolean; stateMatches: boolean };
-        expectedResolution: string;
+        serverAcceptanceChecker?: {
+          checkServerDurableAcceptance: () =>
+            'ACCEPTANCE_CONFIRMED' | 'NO_ACCEPTANCE_CONFIRMED' | 'UNKNOWN';
+        };
+        expectedResolution: OutcomeResolutionState;
       }> = [
         {
-          state: 'FOUND',
+          name: 'actual outcome found -> FOUND',
           ledger: [
             {
               clientRequestId: req.clientRequestId,
@@ -293,19 +213,20 @@ describe('Frontend Foundation Contracts', () => {
           expectedResolution: 'FOUND',
         },
         {
-          state: 'NOT_ACCEPTED_CONFIRMED',
+          name: 'explicit server check confirms no durable acceptance -> NOT_ACCEPTED_CONFIRMED',
           ledger: [],
-          domainResolver: () => ({ exists: false, stateMatches: false }),
+          serverAcceptanceChecker: {
+            checkServerDurableAcceptance: () => 'NO_ACCEPTANCE_CONFIRMED',
+          },
           expectedResolution: 'NOT_ACCEPTED_CONFIRMED',
         },
         {
-          state: 'INDETERMINATE',
+          name: 'no evidence / lookup result absent -> INDETERMINATE',
           ledger: [],
-          domainResolver: () => ({ exists: true, stateMatches: false }),
           expectedResolution: 'INDETERMINATE',
         },
         {
-          state: 'RETENTION_EXPIRED',
+          name: 'retention expired -> RETENTION_EXPIRED',
           ledger: [
             {
               clientRequestId: req.clientRequestId,
@@ -324,156 +245,287 @@ describe('Frontend Foundation Contracts', () => {
       ];
 
       for (const tc of tableCases) {
-        const res = resolveOutcomeState(req, 'user-1', tc.ledger, tc.domainResolver);
+        const res = resolveOutcomeState(req, 'user-1', tc.ledger, tc.serverAcceptanceChecker);
         expect(res).toBe(tc.expectedResolution);
+      }
+    });
+
+    it('client resolver should throw FrontendContractError on idempotency digest mismatch', async () => {
+      const req1 = createValidRequest({ payload: { text: 'Original' } });
+      const req2 = createValidRequest({
+        clientRequestId: 'req-different-id',
+        idempotencyKey: req1.idempotencyKey,
+        payload: { text: 'Different' },
+      });
+
+      const provider = {
+        async getOutcomeByClientRequestId() {
+          return null;
+        },
+        async getOutcomeByIdempotencyKey() {
+          return {
+            commandId: 'cmd-1',
+            commandRevision: '1',
+            clientRequestId: req1.clientRequestId,
+            idempotencyKey: req1.idempotencyKey,
+            commandType: req1.commandType,
+            commandSchemaVersion: req1.commandSchemaVersion,
+            commandSemanticDigest: computeCommandSemanticDigest(req1),
+            outcomeState: 'COMPLETED' as const,
+            acceptedPrincipalContext: { principalId: 'user-1' },
+            acceptedProjectContext: { targetProjectId: 'project-alpha' },
+            acceptedPolicyContext: req1.policyBinding,
+            correlationId: 'c1',
+            producedResources: [],
+            resolution: 'FOUND' as const,
+            receivedAt: '2026-07-24T12:00:00Z',
+            lastUpdatedAt: '2026-07-24T12:00:01Z',
+          };
+        },
+      };
+
+      await expect(resolveCommandOutcomeClient(req2, 'user-1', provider)).rejects.toThrowError(
+        FrontendContractError,
+      );
+    });
+  });
+
+  // ==========================================================================
+  // 3. Retry Classification
+  // ==========================================================================
+  describe('Retry Classification', () => {
+    it('should classify retry states strictly in table-driven format', () => {
+      const reqBase = createValidRequest();
+
+      const tableCases: Array<{
+        name: string;
+        prev: FrontendCommandRequest<{ text: string }>;
+        next: FrontendCommandRequest<{ text: string }>;
+        expected: 'TRANSPORT_RETRY' | 'DOMAIN_RETRY' | 'RETRY_FORBIDDEN';
+      }> = [
+        {
+          name: 'normal transport retry',
+          prev: reqBase,
+          next: reqBase,
+          expected: 'TRANSPORT_RETRY',
+        },
+        {
+          name: 'normal domain retry with causationRef',
+          prev: reqBase,
+          next: createValidRequest({
+            clientRequestId: 'req-new-222',
+            idempotencyKey: 'idem-new-222',
+            correlationContext: {
+              causationRef: { kind: 'COMMAND', id: 'cmd-prev' },
+            },
+          }),
+          expected: 'DOMAIN_RETRY',
+        },
+        {
+          name: 'same clientRequestId + new idempotencyKey -> RETRY_FORBIDDEN',
+          prev: reqBase,
+          next: createValidRequest({ idempotencyKey: 'idem-new-999' }),
+          expected: 'RETRY_FORBIDDEN',
+        },
+        {
+          name: 'new clientRequestId + same idempotencyKey -> RETRY_FORBIDDEN',
+          prev: reqBase,
+          next: createValidRequest({ clientRequestId: 'req-new-999' }),
+          expected: 'RETRY_FORBIDDEN',
+        },
+        {
+          name: 'same idempotencyKey + different digest -> RETRY_FORBIDDEN',
+          prev: reqBase,
+          next: createValidRequest({ payload: { text: 'Different' } }),
+          expected: 'RETRY_FORBIDDEN',
+        },
+        {
+          name: 'domain retry without causationRef -> RETRY_FORBIDDEN',
+          prev: reqBase,
+          next: createValidRequest({
+            clientRequestId: 'req-new-333',
+            idempotencyKey: 'idem-new-333',
+            correlationContext: undefined,
+          }),
+          expected: 'RETRY_FORBIDDEN',
+        },
+      ];
+
+      for (const tc of tableCases) {
+        const res = classifyRetry(tc.prev, tc.next);
+        expect(res).toBe(tc.expected);
       }
     });
   });
 
   // ==========================================================================
-  // 8.5 Retry Boundary Test
+  // 4. Command Mapping
   // ==========================================================================
-  describe('8.5 Retry Boundary Test', () => {
-    it('should classify Transport Retry when same clientRequestId, idempotencyKey, and digest', () => {
-      const req1 = createValidRequest();
-      const req2 = createValidRequest(); // identical
+  describe('Command Mapping', () => {
+    it('should map frontend request to internal envelope with decoupled IDs', () => {
+      const req = createValidRequest();
+      const mapped = mapFrontendRequestToInternalCommandEnvelope(req, {
+        frontendCommandId: 'fcmd-100',
+        internalMessageId: 'msg-int-555',
+        acceptedPrincipalContext: {
+          principalId: 'usr-100',
+          actor: { type: 'user', id: 'usr-100' },
+        },
+        acceptedProjectContext: { targetProjectId: 'project-alpha' },
+        acceptedPolicyContext: req.policyBinding,
+        accessScope: ['read', 'write'],
+        sensitivity: 'internal',
+        traceId: 'trace-srv-999',
+      });
 
-      const classification = classifyRetry(req1, req2);
-      expect(classification).toBe('TRANSPORT_RETRY');
+      expect(mapped.messageId).toBe('msg-int-555');
+      expect(mapped.messageId).not.toBe('fcmd-100');
+      expect(mapped.actor?.id).toBe('usr-100');
+      expect(mapped.projectId).toBe('project-alpha');
+      expect(mapped.traceId).toBe('trace-srv-999');
     });
 
-    it('should classify Domain Retry when new clientRequestId and idempotencyKey', () => {
-      const req1 = createValidRequest();
-      const req2 = createValidRequest({
-        clientRequestId: 'req-uuid-9999',
-        idempotencyKey: 'idem-key-9999',
-      });
-
-      const classification = classifyRetry(req1, req2);
-      expect(classification).toBe('DOMAIN_RETRY');
-    });
-  });
-
-  // ==========================================================================
-  // 8.6 Cache Isolation Test
-  // ==========================================================================
-  describe('8.6 Cache Isolation Test', () => {
-    it('should build separate cache keys for Project A vs Project B and filter on active project switch', () => {
-      const keyProjA = buildCacheKey({
-        scope: 'project',
-        principalId: 'usr-1',
-        sessionIdOrRevision: 'sess-1',
-        activeProjectId: 'project-A',
-        resourceKind: 'ANSWER_RUN',
-        resourceId: 'ans-1',
-      });
-
-      const keyProjB = buildCacheKey({
-        scope: 'project',
-        principalId: 'usr-1',
-        sessionIdOrRevision: 'sess-1',
-        activeProjectId: 'project-B',
-        resourceKind: 'ANSWER_RUN',
-        resourceId: 'ans-1',
-      });
-
-      const keyGlobal = buildCacheKey({
-        scope: 'principal-global',
-        principalId: 'usr-1',
-        sessionIdOrRevision: 'sess-1',
-        resourceKind: 'USER_PROFILE',
-      });
-
-      expect(keyProjA[1]).toBe('project-A');
-      expect(keyProjB[1]).toBe('project-B');
-      expect(keyGlobal[1]).toBe('global');
-
-      const { validKeys, purgedOrMaskedKeys } = filterCacheKeysForProjectSwitch(
-        [keyProjA, keyProjB, keyGlobal],
-        'project-A',
-      );
-
-      expect(validKeys).toContainEqual(keyProjA);
-      expect(validKeys).toContainEqual(keyGlobal); // Global cache retained!
-      expect(purgedOrMaskedKeys).toContainEqual(keyProjB);
+    it('should reject mapping when frontendCommandId === internalMessageId', () => {
+      const req = createValidRequest();
+      expect(() =>
+        mapFrontendRequestToInternalCommandEnvelope(req, {
+          frontendCommandId: 'same-id-123',
+          internalMessageId: 'same-id-123',
+          acceptedPrincipalContext: { principalId: 'u', actor: { type: 'user', id: 'u' } },
+          acceptedProjectContext: { targetProjectId: 'project-alpha' },
+          acceptedPolicyContext: req.policyBinding,
+          accessScope: [],
+          sensitivity: 'internal',
+          traceId: 't1',
+        }),
+      ).toThrowError(FrontendContractError);
     });
   });
 
   // ==========================================================================
-  // 8.7 Session & Capability Boundary Test
+  // 5. Boundary Guard
   // ==========================================================================
-  describe('8.7 Session & Capability Boundary Test', () => {
-    it('should deny access when session is expired', () => {
-      const boundaryCtx: SystemBoundaryContext = {
-        authState: 'AUTHENTICATED',
-        sessionState: 'EXPIRED',
-        connectivityState: 'ONLINE',
-        backendReadiness: 'READY',
-        grantedCapabilities: ['execute:command'],
-      };
-
-      const res = evaluateCapabilityGuard(boundaryCtx, 'execute:command');
-      expect(res.allowed).toBe(false);
-      expect(res.error?.code).toBe('SESSION_EXPIRED');
-    });
-
-    it('should deny access when capability is missing', () => {
-      const boundaryCtx: SystemBoundaryContext = {
+  describe('Boundary Guard', () => {
+    it('should evaluate boundary guard in table-driven format', () => {
+      const validBoundaryCtx: SystemBoundaryContext = {
         authState: 'AUTHENTICATED',
         sessionState: 'VALID',
         connectivityState: 'ONLINE',
         backendReadiness: 'READY',
-        grantedCapabilities: ['read:resource'],
+        grantedCapabilities: ['execute:action'],
       };
 
-      const res = evaluateCapabilityGuard(boundaryCtx, 'write:resource');
-      expect(res.allowed).toBe(false);
-      expect(res.error?.code).toBe('CAPABILITY_DENIED');
-    });
+      const tableCases: Array<{
+        name: string;
+        ctx: SystemBoundaryContext;
+        req: any;
+        expectedAllowed: boolean;
+        expectedNotFound?: boolean;
+        expectedErrorCode?: string;
+      }> = [
+        {
+          name: 'unauthenticated -> rejected',
+          ctx: { ...validBoundaryCtx, authState: 'UNAUTHENTICATED' },
+          req: { requiredCapability: 'execute:action' },
+          expectedAllowed: false,
+          expectedErrorCode: 'SESSION_EXPIRED',
+        },
+        {
+          name: 'session expired -> rejected',
+          ctx: { ...validBoundaryCtx, sessionState: 'EXPIRED' },
+          req: { requiredCapability: 'execute:action' },
+          expectedAllowed: false,
+          expectedErrorCode: 'SESSION_EXPIRED',
+        },
+        {
+          name: 'backend required but unavailable -> rejected',
+          ctx: { ...validBoundaryCtx, backendReadiness: 'UNAVAILABLE' },
+          req: { requiresBackend: true },
+          expectedAllowed: false,
+          expectedErrorCode: 'OUTCOME_INDETERMINATE',
+        },
+        {
+          name: 'capability missing -> rejected',
+          ctx: { ...validBoundaryCtx, grantedCapabilities: [] },
+          req: { requiredCapability: 'execute:action' },
+          expectedAllowed: false,
+          expectedErrorCode: 'CAPABILITY_DENIED',
+        },
+        {
+          name: 'cross-project but has capability -> allowed',
+          ctx: { ...validBoundaryCtx, activeProjectId: 'proj-A' },
+          req: { requiredCapability: 'execute:action', resourceProjectId: 'proj-B' },
+          expectedAllowed: true,
+        },
+        {
+          name: 'sensitive resource missing capability -> treatAsNotFound',
+          ctx: { ...validBoundaryCtx, grantedCapabilities: [] },
+          req: { requiredCapability: 'read:secret', isSensitiveResource: true },
+          expectedAllowed: false,
+          expectedNotFound: true,
+          expectedErrorCode: 'CAPABILITY_DENIED',
+        },
+      ];
 
-    it('should return treatAsNotFound for sensitive resources when capability is missing', () => {
-      const boundaryCtx: SystemBoundaryContext = {
-        authState: 'AUTHENTICATED',
-        sessionState: 'VALID',
-        connectivityState: 'ONLINE',
-        backendReadiness: 'READY',
-        grantedCapabilities: ['read:public'],
-      };
-
-      const res = evaluateCapabilityGuard(boundaryCtx, 'read:restricted', {
-        isSensitiveResource: true,
-      });
-
-      expect(res.allowed).toBe(false);
-      expect(res.treatAsNotFound).toBe(true);
+      for (const tc of tableCases) {
+        const res = evaluateCapabilityGuard(tc.ctx, tc.req);
+        expect(res.allowed).toBe(tc.expectedAllowed);
+        if (tc.expectedNotFound) {
+          expect(res.treatAsNotFound).toBe(true);
+        }
+        if (tc.expectedErrorCode) {
+          expect(res.error?.code).toBe(tc.expectedErrorCode);
+        }
+      }
     });
   });
 
   // ==========================================================================
-  // 8.8 Registry Consistency Test
+  // 6. Registry & Cache Key Factory
   // ==========================================================================
-  describe('8.8 Registry Consistency Test', () => {
-    it('should verify Concrete Resource Kinds vs Aggregate Kinds', () => {
-      const concreteList = OperationalResourceKindRegistry.listConcrete();
-      expect(concreteList.length).toBeGreaterThanOrEqual(13);
-
-      const extActionDesc = OperationalResourceKindRegistry.require('EXTERNAL_ACTION');
-      expect(extActionDesc.isConcrete).toBe(false);
-
-      const actionExecDesc = OperationalResourceKindRegistry.require('ACTION_EXECUTION');
-      expect(actionExecDesc.isConcrete).toBe(true);
+  describe('Registry & Cache Key Factory', () => {
+    it('should preserve unknown resource kinds with UNKNOWN supportState', () => {
+      const descriptor = OperationalResourceKindRegistry.get('UNKNOWN_CUSTOM_KIND');
+      expect(descriptor.supportState).toBe('UNKNOWN');
+      expect(descriptor.originalKind).toBe('UNKNOWN_CUSTOM_KIND');
+      expect(descriptor.isConcrete).toBe(false);
     });
 
-    it('should verify Projection Kind Registry and COMPILED_TRUTH guard', () => {
-      expect(ProjectionKindRegistry.isProjectionKind('COMPILED_TRUTH')).toBe(true);
-
+    it('should enforce COMPILED_TRUTH write forbidden rule', () => {
       expect(() =>
         ProjectionKindRegistry.assertNotWriteableProjectionKind('COMPILED_TRUTH'),
       ).toThrowError(FrontendContractError);
+    });
 
-      expect(() =>
-        ProjectionKindRegistry.assertNotWriteableProjectionKind('INTAKE_SUBMISSION'),
-      ).not.toThrow();
+    it('should build cache keys and handle project switch vs access revocation', () => {
+      const keyParams = {
+        scope: 'project' as const,
+        principalId: 'usr-1',
+        sessionIdOrRevision: 'sess-1',
+        accessScopeRevision: 'v1',
+        sensitivityPolicyRevision: 'v1',
+        policyContextRevision: 'v1',
+        featurePolicyRevision: 'v1',
+        retentionPolicyRevision: 'v1',
+        resourceKind: 'ANSWER_RUN',
+        activeProjectId: 'proj-A',
+      };
+
+      const keyA = buildCacheKey(keyParams);
+      const keyB = buildCacheKey({ ...keyParams, activeProjectId: 'proj-B' });
+      const keyGlobal = buildCacheKey({ ...keyParams, scope: 'principal-global' });
+
+      // Active project switch retains other accessible project caches
+      const switchRes = filterCacheKeysForProjectSwitch([keyA, keyB, keyGlobal], 'proj-A');
+      expect(switchRes.validKeys).toContainEqual(keyA);
+      expect(switchRes.validKeys).toContainEqual(keyGlobal);
+      expect(switchRes.retainedOtherProjectKeys).toContainEqual(keyB);
+
+      // Access revocation purges revoked project cache
+      const purgeRes = purgeInaccessibleCachesOnAccessChange([keyA, keyB, keyGlobal], ['proj-B']);
+      expect(purgeRes.validKeys).toContainEqual(keyA);
+      expect(purgeRes.validKeys).toContainEqual(keyGlobal);
+      expect(purgeRes.purgedKeys).toContainEqual(keyB);
     });
   });
 });

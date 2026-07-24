@@ -66,14 +66,6 @@ export function classifyFrontendErrorCode(code: FrontendErrorCode): FrontendErro
       };
     case 'SESSION_EXPIRED':
     case 'RESOURCE_ACCESS_REVOKED':
-      return {
-        userFixRequired: false,
-        refetchNeeded: false,
-        authRecoveryNeeded: true,
-        explicitRetryAllowed: false,
-        autoRetryForbidden: true,
-        supportNeeded: false,
-      };
     case 'CAPABILITY_DENIED':
       return {
         userFixRequired: false,
@@ -84,23 +76,7 @@ export function classifyFrontendErrorCode(code: FrontendErrorCode): FrontendErro
         supportNeeded: false,
       };
     case 'OUTCOME_INDETERMINATE':
-      return {
-        userFixRequired: false,
-        refetchNeeded: true,
-        authRecoveryNeeded: false,
-        explicitRetryAllowed: false,
-        autoRetryForbidden: true,
-        supportNeeded: true,
-      };
     case 'RESOURCE_RETIRED':
-      return {
-        userFixRequired: true,
-        refetchNeeded: true,
-        authRecoveryNeeded: false,
-        explicitRetryAllowed: false,
-        autoRetryForbidden: true,
-        supportNeeded: false,
-      };
     default:
       return {
         userFixRequired: false,
@@ -164,15 +140,21 @@ export function validateTypedPreconditions(preconditions: readonly TypedPrecondi
 
   for (let i = 0; i < preconditions.length; i++) {
     const pc = preconditions[i];
-    if (!pc) continue;
+    if (!pc || typeof pc !== 'object') {
+      errors.push(`Precondition[${i}]: Must be a non-null object`);
+      continue;
+    }
     if (!pc.purpose || !validPurposes.has(pc.purpose)) {
       errors.push(`Precondition[${i}]: Invalid purpose '${pc.purpose}'`);
     }
     if (!pc.subject || !pc.subject.resourceKind || !pc.subject.resourceId) {
       errors.push(`Precondition[${i}]: Subject must contain non-empty resourceKind and resourceId`);
     }
-    if (!pc.expectedRevision && !pc.expectedDigest) {
-      errors.push(`Precondition[${i}]: Must specify either expectedRevision or expectedDigest`);
+    const hasRevision =
+      typeof pc.expectedRevision === 'string' && pc.expectedRevision.trim().length > 0;
+    const hasDigest = typeof pc.expectedDigest === 'string' && pc.expectedDigest.trim().length > 0;
+    if (!hasRevision && !hasDigest) {
+      errors.push(`Precondition[${i}]: Must specify non-empty expectedRevision or expectedDigest`);
     }
   }
 
@@ -219,7 +201,6 @@ export type FrontendProjectContextState = {
     readonly isMismatch: boolean;
     readonly reason?: string;
   };
-  readonly capabilities: readonly string[];
 };
 
 export function createFrontendProjectContext(
@@ -227,7 +208,6 @@ export function createFrontendProjectContext(
   options?: {
     readonly draftProjectId?: string;
     readonly isNewResource?: boolean;
-    readonly capabilities?: readonly string[];
   },
 ): FrontendProjectContextState {
   const isNew = options?.isNewResource ?? false;
@@ -251,12 +231,11 @@ export function createFrontendProjectContext(
       isMismatch,
       reason: mismatchReason,
     },
-    capabilities: options?.capabilities ?? [],
   };
 }
 
 // ============================================================================
-// 5. Policy Binding
+// 5. Policy Binding & Server-accepted Context Types
 // ============================================================================
 
 export type PolicyBindingMode = 'CURRENT' | 'PINNED_ACCEPTED_CONTEXT';
@@ -265,6 +244,21 @@ export type FrontendPolicyBinding = {
   readonly mode: PolicyBindingMode;
   readonly observedPolicyContextRevision?: string;
   readonly acceptedPolicyContextId?: string;
+};
+
+export type AcceptedPrincipalContext = {
+  readonly principalId: string;
+  readonly actor: { readonly type: 'user' | 'service'; readonly id: string };
+};
+
+export type AcceptedProjectContext = {
+  readonly targetProjectId: string;
+};
+
+export type AcceptedPolicyContext = {
+  readonly policyContextId: string;
+  readonly policyContextRevision: string;
+  readonly acceptedAt: string;
 };
 
 // ============================================================================
@@ -290,13 +284,21 @@ export type FrontendCommandRequest<TPayload = unknown> = {
   readonly payload: TPayload;
 };
 
-export function validateJSONValue(val: unknown, path = 'payload'): void {
-  if (
-    val === null ||
-    typeof val === 'boolean' ||
-    typeof val === 'number' ||
-    typeof val === 'string'
-  ) {
+export function validateJSONValue(
+  val: unknown,
+  path = 'payload',
+  seen = new WeakSet<object>(),
+): void {
+  if (val === null || typeof val === 'boolean' || typeof val === 'string') {
+    return;
+  }
+  if (typeof val === 'number') {
+    if (Number.isNaN(val) || !Number.isFinite(val)) {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        `JSON-unsafe number (NaN/Infinity) at path '${path}'`,
+      );
+    }
     return;
   }
   if (
@@ -319,15 +321,32 @@ export function validateJSONValue(val: unknown, path = 'payload'): void {
   if (val instanceof Map || val instanceof Set) {
     throw new FrontendContractError('INVALID_REQUEST', `Map/Set at path '${path}' is not allowed`);
   }
-  if (Array.isArray(val)) {
-    for (let i = 0; i < val.length; i++) {
-      validateJSONValue(val[i], `${path}[${i}]`);
-    }
-    return;
-  }
   if (typeof val === 'object') {
-    for (const key of Object.keys(val as Record<string, unknown>)) {
-      validateJSONValue((val as Record<string, unknown>)[key], `${path}.${key}`);
+    const obj = val as object;
+    if (seen.has(obj)) {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        `Circular reference detected at path '${path}'`,
+      );
+    }
+    seen.add(obj);
+
+    const proto = Object.getPrototypeOf(obj);
+    if (proto !== null && proto !== Object.prototype && !Array.isArray(obj)) {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        `Only plain JSON objects and arrays allowed at path '${path}'`,
+      );
+    }
+
+    if (Array.isArray(obj)) {
+      for (let i = 0; i < obj.length; i++) {
+        validateJSONValue(obj[i], `${path}[${i}]`, seen);
+      }
+    } else {
+      for (const key of Object.keys(obj as Record<string, unknown>)) {
+        validateJSONValue((obj as Record<string, unknown>)[key], `${path}.${key}`, seen);
+      }
     }
     return;
   }
@@ -343,6 +362,24 @@ export function validateFrontendCommandRequest(
   }
 
   const req = input as Record<string, unknown>;
+
+  // Reject top-level traceId injection
+  if ('traceId' in req) {
+    throw new FrontendContractError('INVALID_REQUEST', 'Client cannot inject top-level traceId');
+  }
+
+  // Client cannot inject server-authoritative fields
+  if (
+    'principal' in req ||
+    'security' in req ||
+    'capabilities' in req ||
+    'internalTraceId' in req
+  ) {
+    throw new FrontendContractError(
+      'PRECONDITION_ACCESS_DENIED',
+      'Client cannot inject server-authoritative fields (principal, security, capabilities, internalTraceId)',
+    );
+  }
 
   if (req['envelopeVersion'] !== '1.0.0') {
     throw new FrontendContractError(
@@ -373,19 +410,6 @@ export function validateFrontendCommandRequest(
     throw new FrontendContractError('INVALID_REQUEST', 'idempotencyKey must be a non-empty string');
   }
 
-  // Client cannot inject server-authoritative fields in payload or top-level
-  if (
-    'principal' in req ||
-    'security' in req ||
-    'capabilities' in req ||
-    'internalTraceId' in req
-  ) {
-    throw new FrontendContractError(
-      'PRECONDITION_ACCESS_DENIED',
-      'Client cannot inject server-authoritative fields (principal, security, capabilities, internalTraceId)',
-    );
-  }
-
   // Validate Project Context
   if (!req['projectContext'] || typeof req['projectContext'] !== 'object') {
     throw new FrontendContractError('INVALID_REQUEST', 'projectContext must be a non-null object');
@@ -405,6 +429,15 @@ export function validateFrontendCommandRequest(
   }
 
   const isNew = options?.isNewResource ?? false;
+  if (
+    !isNew &&
+    (typeof pctx['resourceProjectId'] !== 'string' || !pctx['resourceProjectId'].trim())
+  ) {
+    throw new FrontendContractError(
+      'RESOURCE_PROJECT_MISMATCH',
+      'Existing resource modification must specify resourceProjectId in projectContext',
+    );
+  }
   if (isNew && pctx['targetProjectId'] !== pctx['activeProjectId']) {
     throw new FrontendContractError(
       'RESOURCE_PROJECT_MISMATCH',
@@ -433,6 +466,21 @@ export function validateFrontendCommandRequest(
       `Invalid policyBinding mode '${pb['mode']}'`,
     );
   }
+  if (
+    pb['mode'] === 'PINNED_ACCEPTED_CONTEXT' &&
+    (!pb['acceptedPolicyContextId'] || typeof pb['acceptedPolicyContextId'] !== 'string')
+  ) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'acceptedPolicyContextId must be provided when policyBinding mode is PINNED_ACCEPTED_CONTEXT',
+    );
+  }
+  if (pb['mode'] === 'CURRENT' && pb['acceptedPolicyContextId']) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'acceptedPolicyContextId must not be provided when policyBinding mode is CURRENT',
+    );
+  }
 
   // Validate Preconditions
   if (!Array.isArray(req['preconditions'])) {
@@ -454,7 +502,7 @@ export function validateFrontendCommandRequest(
     }
   }
 
-  // Validate clientIssuedAt ISO 8601 string
+  // Validate clientIssuedAt ISO 8601 date string
   if (typeof req['clientIssuedAt'] !== 'string' || isNaN(Date.parse(req['clientIssuedAt']))) {
     throw new FrontendContractError(
       'INVALID_REQUEST',
@@ -469,7 +517,7 @@ export function validateFrontendCommandRequest(
 }
 
 // ============================================================================
-// 7. Command Semantic Digest & Pure TS SHA-256 Canonicalization
+// 7. Command Semantic Digest & Canonicalization Adapter Architecture
 // ============================================================================
 
 function sha256Sync(str: string): string {
@@ -558,12 +606,14 @@ function sha256Sync(str: string): string {
     .join('');
 }
 
+export type SemanticDigestProvider = (canonicalJson: string) => string;
+
 export function deterministicCanonicalizePayload(obj: unknown): string {
   if (obj === null || typeof obj !== 'object') {
     return JSON.stringify(obj);
   }
   if (Array.isArray(obj)) {
-    return '[' + obj.map(deterministicCanonicalizePayload).join(',') + ']';
+    return '[' + obj.map((item) => deterministicCanonicalizePayload(item)).join(',') + ']';
   }
   const keys = Object.keys(obj as Record<string, unknown>).sort();
   const entries = keys.map(
@@ -573,10 +623,9 @@ export function deterministicCanonicalizePayload(obj: unknown): string {
   return '{' + entries.join(',') + '}';
 }
 
-export function computeCommandSemanticDigest<TPayload>(
+export function buildCommandSemanticDigestInput<TPayload>(
   request: FrontendCommandRequest<TPayload>,
 ): string {
-  // Sort preconditions deterministically before canonicalization
   const sortedPreconditions = [...request.preconditions].sort((a, b) => {
     const keyA = `${a.purpose}:${a.subject.resourceKind}:${a.subject.resourceId}`;
     const keyB = `${b.purpose}:${b.subject.resourceKind}:${b.subject.resourceId}`;
@@ -603,20 +652,24 @@ export function computeCommandSemanticDigest<TPayload>(
     },
   };
 
-  const jsonString = deterministicCanonicalizePayload(digestPayload);
-  return sha256Sync(jsonString);
+  return deterministicCanonicalizePayload(digestPayload);
+}
+
+export function computeCommandSemanticDigest<TPayload>(
+  request: FrontendCommandRequest<TPayload>,
+  provider: SemanticDigestProvider = sha256Sync,
+): string {
+  const input = buildCommandSemanticDigestInput(request);
+  return provider(input);
 }
 
 // ============================================================================
-// 8. Outcome Views & Outcome Resolution
+// 8. Outcome Views & Outcome Resolution (Discriminated Union)
 // ============================================================================
 
 export type OutcomeState = 'ACCEPTED' | 'COMPLETED' | 'REJECTED' | 'OUTCOME_UNKNOWN';
 
 export type CompletionDisposition = 'SUCCEEDED' | 'FAILED' | 'PARTIAL' | 'NO_OP';
-
-export type OutcomeResolutionState =
-  'FOUND' | 'NOT_ACCEPTED_CONFIRMED' | 'INDETERMINATE' | 'RETENTION_EXPIRED';
 
 export type ProducedResourceRef = {
   readonly resourceKind: string;
@@ -631,7 +684,7 @@ export type CommandRejectionDetail = {
   readonly retryable?: boolean;
 };
 
-export type FrontendCommandOutcomeView<TPayload = unknown> = {
+export type FrontendCommandOutcomeView = {
   readonly commandId: string;
   readonly commandRevision: string;
   readonly clientRequestId: string;
@@ -641,31 +694,38 @@ export type FrontendCommandOutcomeView<TPayload = unknown> = {
   readonly commandSemanticDigest: string;
   readonly outcomeState: OutcomeState;
   readonly completionDisposition?: CompletionDisposition;
-  readonly acceptedPrincipalContext: { readonly principalId: string };
-  readonly acceptedProjectContext: { readonly targetProjectId: string };
-  readonly acceptedPolicyContext: FrontendPolicyBinding;
+  readonly acceptedPrincipalContext: AcceptedPrincipalContext;
+  readonly acceptedProjectContext: AcceptedProjectContext;
+  readonly acceptedPolicyContext: AcceptedPolicyContext;
   readonly correlationId: string;
   readonly causationId?: string;
   readonly traceId?: string;
   readonly producedResources: readonly ProducedResourceRef[];
   readonly rejection?: CommandRejectionDetail;
-  readonly resolution: OutcomeResolutionState;
   readonly receivedAt: string;
   readonly acceptedAt?: string;
   readonly completedAt?: string;
   readonly lastUpdatedAt: string;
   readonly eventCursor?: string;
-  readonly payload?: TPayload;
 };
 
-export type CommandLedgerEntry<TPayload = unknown> = {
+export type CommandOutcomeResolution<TPayload = unknown> =
+  | { readonly resolution: 'FOUND'; readonly outcome: FrontendCommandOutcomeView }
+  | { readonly resolution: 'NOT_ACCEPTED_CONFIRMED' }
+  | { readonly resolution: 'INDETERMINATE' }
+  | {
+      readonly resolution: 'RETENTION_EXPIRED';
+      readonly lastKnownOutcome?: FrontendCommandOutcomeView;
+    };
+
+export type CommandLedgerEntry = {
   readonly clientRequestId: string;
   readonly idempotencyKey: string;
   readonly principalId: string;
   readonly targetProjectId: string;
   readonly commandType: string;
   readonly commandSemanticDigest: string;
-  readonly outcome: FrontendCommandOutcomeView<TPayload>;
+  readonly outcome: FrontendCommandOutcomeView;
   readonly isDurableAccepted: boolean;
   readonly isRetentionExpired: boolean;
 };
@@ -673,22 +733,40 @@ export type CommandLedgerEntry<TPayload = unknown> = {
 export function resolveOutcomeState<TPayload>(
   request: FrontendCommandRequest<TPayload>,
   principalId: string,
-  ledgerEntries: readonly CommandLedgerEntry<TPayload>[],
+  ledgerEntries: readonly CommandLedgerEntry[],
   serverAcceptanceChecker?: {
     checkServerDurableAcceptance: () =>
       'ACCEPTANCE_CONFIRMED' | 'NO_ACCEPTANCE_CONFIRMED' | 'UNKNOWN';
   },
-): OutcomeResolutionState {
+): CommandOutcomeResolution<TPayload> {
   const digest = computeCommandSemanticDigest(request);
 
-  // Step 1: Match by clientRequestId
+  // Step 1: Scope & ID lookup by clientRequestId
   const byRequestId = ledgerEntries.find((e) => e.clientRequestId === request.clientRequestId);
   if (byRequestId) {
-    if (byRequestId.isRetentionExpired) return 'RETENTION_EXPIRED';
-    return 'FOUND';
+    if (
+      byRequestId.principalId !== principalId ||
+      byRequestId.targetProjectId !== request.projectContext.targetProjectId ||
+      byRequestId.commandType !== request.commandType
+    ) {
+      throw new FrontendContractError(
+        'PRECONDITION_ACCESS_DENIED',
+        `clientRequestId '${request.clientRequestId}' found but scope mismatch (principal/project/commandType)`,
+      );
+    }
+    if (byRequestId.commandSemanticDigest !== digest) {
+      throw new FrontendContractError(
+        'DIGEST_MISMATCH',
+        `clientRequestId '${request.clientRequestId}' found but semantic digest mismatch`,
+      );
+    }
+    if (byRequestId.isRetentionExpired) {
+      return { resolution: 'RETENTION_EXPIRED', lastKnownOutcome: byRequestId.outcome };
+    }
+    return { resolution: 'FOUND', outcome: byRequestId.outcome };
   }
 
-  // Step 2: Match by idempotencyKey + scope
+  // Step 2: Scope & ID lookup by idempotencyKey
   const byIdempotency = ledgerEntries.find(
     (e) =>
       e.idempotencyKey === request.idempotencyKey &&
@@ -704,23 +782,26 @@ export function resolveOutcomeState<TPayload>(
         `Idempotency key '${request.idempotencyKey}' reused with different semantic digest`,
       );
     }
-    if (byIdempotency.isRetentionExpired) return 'RETENTION_EXPIRED';
-    return 'FOUND';
+    if (byIdempotency.isRetentionExpired) {
+      return { resolution: 'RETENTION_EXPIRED', lastKnownOutcome: byIdempotency.outcome };
+    }
+    return { resolution: 'FOUND', outcome: byIdempotency.outcome };
   }
 
   // Step 3: Explicit server durable acceptance check
   if (serverAcceptanceChecker) {
     const status = serverAcceptanceChecker.checkServerDurableAcceptance();
     if (status === 'NO_ACCEPTANCE_CONFIRMED') {
-      return 'NOT_ACCEPTED_CONFIRMED';
+      return { resolution: 'NOT_ACCEPTED_CONFIRMED' };
     }
+    // Acceptance confirmed without outcome view is NOT_FOUND outcome -> return INDETERMINATE to block duplicate submission safely
     if (status === 'ACCEPTANCE_CONFIRMED') {
-      return 'FOUND';
+      return { resolution: 'INDETERMINATE' };
     }
   }
 
-  // Default fallback when no resolution is found or confirmed: INDETERMINATE
-  return 'INDETERMINATE';
+  // Default when lookup returns nothing: INDETERMINATE
+  return { resolution: 'INDETERMINATE' };
 }
 
 // ============================================================================
@@ -739,17 +820,14 @@ export function classifyRetry<TPayload>(
     computeCommandSemanticDigest(previousRequest) === computeCommandSemanticDigest(newRequest);
   const hasCausation = Boolean(newRequest.correlationContext?.causationRef?.id);
 
-  // Transport Retry: same clientRequestId, same idempotencyKey, same digest
   if (isSameClientReq && isSameIdempotency && sameDigest) {
     return 'TRANSPORT_RETRY';
   }
 
-  // Domain Retry: different clientRequestId, different idempotencyKey, same digest, AND valid causationRef
   if (!isSameClientReq && !isSameIdempotency && sameDigest && hasCausation) {
     return 'DOMAIN_RETRY';
   }
 
-  // Any other mixed or invalid combination is RETRY_FORBIDDEN
   return 'RETRY_FORBIDDEN';
 }
 
@@ -760,12 +838,9 @@ export function classifyRetry<TPayload>(
 export type InternalCommandMappingOptions = {
   readonly frontendCommandId: string;
   readonly internalMessageId: string;
-  readonly acceptedPrincipalContext: {
-    readonly principalId: string;
-    readonly actor: { readonly type: 'user' | 'service'; readonly id: string };
-  };
-  readonly acceptedProjectContext: { readonly targetProjectId: string };
-  readonly acceptedPolicyContext: FrontendPolicyBinding;
+  readonly acceptedPrincipalContext: AcceptedPrincipalContext;
+  readonly acceptedProjectContext: AcceptedProjectContext;
+  readonly acceptedPolicyContext: AcceptedPolicyContext;
   readonly accessScope: readonly string[];
   readonly sensitivity: 'public' | 'internal' | 'private' | 'restricted';
   readonly producerModule?: string;
@@ -777,7 +852,6 @@ export function mapFrontendRequestToInternalCommandEnvelope<TPayload>(
   request: FrontendCommandRequest<TPayload>,
   options: InternalCommandMappingOptions,
 ): CommandEnvelope<TPayload> {
-  // Disallow frontendCommandId === internalMessageId
   if (options.frontendCommandId === options.internalMessageId) {
     throw new FrontendContractError(
       'INVALID_REQUEST',
@@ -785,7 +859,13 @@ export function mapFrontendRequestToInternalCommandEnvelope<TPayload>(
     );
   }
 
-  // Validate preconditions atomically before mapping
+  if (options.acceptedPrincipalContext.principalId !== options.acceptedPrincipalContext.actor.id) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'acceptedPrincipalContext.principalId must match actor.id',
+    );
+  }
+
   const validation = validateTypedPreconditions(request.preconditions);
   if (!validation.isValid) {
     throw new FrontendContractError(
@@ -816,7 +896,7 @@ export function mapFrontendRequestToInternalCommandEnvelope<TPayload>(
     provenance: {
       sourceVersionIds: [],
       evidenceIds: [],
-      policyVersion: options.acceptedPolicyContext.observedPolicyContextRevision,
+      policyVersion: options.acceptedPolicyContext.policyContextRevision,
     },
     payload: request.payload,
     createdAt: new Date().toISOString(),
@@ -865,6 +945,11 @@ export type ConnectivityState = 'ONLINE' | 'OFFLINE' | 'DEGRADED';
 
 export type BackendReadiness = 'READY' | 'INITIALIZING' | 'UNAVAILABLE';
 
+export type ProjectAccessContext = {
+  readonly projectId: string;
+  readonly capabilities: readonly string[];
+};
+
 export type SystemBoundaryContext = {
   readonly authState: AuthenticationState;
   readonly sessionState: SessionState;
@@ -872,6 +957,8 @@ export type SystemBoundaryContext = {
   readonly backendReadiness: BackendReadiness;
   readonly principalId?: string;
   readonly activeProjectId?: string;
+  readonly accessibleProjectIds?: readonly string[];
+  readonly projectAccessContexts?: readonly ProjectAccessContext[];
   readonly grantedCapabilities: readonly string[];
 };
 
@@ -893,11 +980,14 @@ export function evaluateCapabilityGuard(
   boundaryCtx: SystemBoundaryContext,
   requirement: OperationRequirement,
 ): AccessGuardResult {
-  // Step 1: Authentication check
-  if (boundaryCtx.authState !== 'AUTHENTICATED') {
+  // Step 1: Authentication check & principal requirement
+  if (boundaryCtx.authState !== 'AUTHENTICATED' || !boundaryCtx.principalId) {
     return {
       allowed: false,
-      error: new FrontendContractError('SESSION_EXPIRED', 'Authentication required'),
+      error: new FrontendContractError(
+        'SESSION_EXPIRED',
+        'Authentication required with valid principalId',
+      ),
     };
   }
 
@@ -934,10 +1024,37 @@ export function evaluateCapabilityGuard(
     };
   }
 
-  // Step 5: Capability check
+  // Step 5: Resource Project Access Check
+  let projectCapList: readonly string[] = [];
+  if (requirement.resourceProjectId) {
+    const isAccessible =
+      boundaryCtx.accessibleProjectIds?.includes(requirement.resourceProjectId) ||
+      boundaryCtx.projectAccessContexts?.some((p) => p.projectId === requirement.resourceProjectId);
+
+    if (!isAccessible) {
+      return {
+        allowed: false,
+        error: new FrontendContractError(
+          'RESOURCE_ACCESS_REVOKED',
+          `Access revoked to project '${requirement.resourceProjectId}'`,
+        ),
+      };
+    }
+
+    const matchingProjectAccess = boundaryCtx.projectAccessContexts?.find(
+      (p) => p.projectId === requirement.resourceProjectId,
+    );
+    if (matchingProjectAccess) {
+      projectCapList = matchingProjectAccess.capabilities;
+    }
+  }
+
+  // Step 6: Capability check
   if (requirement.requiredCapability) {
-    const hasCap = boundaryCtx.grantedCapabilities.includes(requirement.requiredCapability);
-    if (!hasCap) {
+    const hasGlobalCap = boundaryCtx.grantedCapabilities.includes(requirement.requiredCapability);
+    const hasProjectCap = projectCapList.includes(requirement.requiredCapability);
+
+    if (!hasGlobalCap && !hasProjectCap) {
       if (requirement.isSensitiveResource) {
         return {
           allowed: false,
@@ -959,10 +1076,11 @@ export function evaluateCapabilityGuard(
 }
 
 // ============================================================================
-// 13. Operational Resource Kind Registry & Server Snapshot
+// 13. Operational Resource Kind Registry & Server Snapshot Authority
 // ============================================================================
 
 export type SupportState = 'SUPPORTED' | 'EXPERIMENTAL' | 'UNKNOWN' | 'UNSUPPORTED';
+export type RegistryState = 'UNAVAILABLE' | 'NOT_LOADED' | 'READY';
 
 export type OperationalResourceKindDescriptor = {
   readonly kind: string;
@@ -991,218 +1109,33 @@ export type OperationalResourceKindRegistrySnapshot = {
   readonly requiredFeatures: Record<string, readonly string[]>;
 };
 
-const DEFAULT_CONCRETE_KINDS: readonly OperationalResourceKindDescriptor[] = [
-  {
-    kind: 'INTAKE_SUBMISSION',
-    family: 'INTAKE',
-    isConcrete: true,
-    projectScope: 'PROJECT_SCOPED',
-    snapshotSchemaVersion: '1.0.0',
-    deepLinkDescriptor: '/projects/:projectId/intake/:resourceId',
-    outcomeCapability: true,
-    sensitivityClass: 'internal',
-    supportedActions: ['submit', 'revalidate', 'cancel'],
-    supportState: 'SUPPORTED',
-  },
-  {
-    kind: 'ANSWER_RUN',
-    family: 'KNOWLEDGE',
-    isConcrete: true,
-    projectScope: 'PROJECT_SCOPED',
-    snapshotSchemaVersion: '1.0.0',
-    deepLinkDescriptor: '/projects/:projectId/answers/:resourceId',
-    outcomeCapability: true,
-    sensitivityClass: 'internal',
-    supportedActions: ['execute', 'cancel', 'feedback'],
-    supportState: 'SUPPORTED',
-  },
-  {
-    kind: 'DELIVERY_PACKAGE',
-    family: 'DELIVERY',
-    isConcrete: true,
-    projectScope: 'PROJECT_SCOPED',
-    snapshotSchemaVersion: '1.0.0',
-    deepLinkDescriptor: '/projects/:projectId/deliveries/:resourceId',
-    outcomeCapability: true,
-    sensitivityClass: 'restricted',
-    supportedActions: ['build', 'deploy', 'rollback'],
-    supportState: 'SUPPORTED',
-  },
-  {
-    kind: 'FEEDBACK_EVENT',
-    family: 'GOVERNANCE',
-    isConcrete: true,
-    projectScope: 'PROJECT_SCOPED',
-    snapshotSchemaVersion: '1.0.0',
-    deepLinkDescriptor: '/projects/:projectId/feedback/:resourceId',
-    outcomeCapability: true,
-    sensitivityClass: 'internal',
-    supportedActions: ['record', 'triage'],
-    supportState: 'SUPPORTED',
-  },
-  {
-    kind: 'EVIDENCE_REVALIDATION',
-    family: 'EVIDENCE',
-    isConcrete: true,
-    projectScope: 'PROJECT_SCOPED',
-    snapshotSchemaVersion: '1.0.0',
-    deepLinkDescriptor: '/projects/:projectId/evidence/:resourceId/revalidate',
-    outcomeCapability: true,
-    sensitivityClass: 'internal',
-    supportedActions: ['verify', 'flag'],
-    supportState: 'SUPPORTED',
-  },
-  {
-    kind: 'KNOWLEDGE_TRANSITION',
-    family: 'KNOWLEDGE',
-    isConcrete: true,
-    projectScope: 'PROJECT_SCOPED',
-    snapshotSchemaVersion: '1.0.0',
-    deepLinkDescriptor: '/projects/:projectId/transitions/:resourceId',
-    outcomeCapability: true,
-    sensitivityClass: 'internal',
-    supportedActions: ['apply', 'create_reversal_change_set'],
-    supportState: 'SUPPORTED',
-  },
-  {
-    kind: 'IMPACT_ANALYSIS',
-    family: 'KNOWLEDGE',
-    isConcrete: true,
-    projectScope: 'PROJECT_SCOPED',
-    snapshotSchemaVersion: '1.0.0',
-    deepLinkDescriptor: '/projects/:projectId/impact/:resourceId',
-    outcomeCapability: true,
-    sensitivityClass: 'internal',
-    supportedActions: ['run', 'dismiss'],
-    supportState: 'SUPPORTED',
-  },
-  {
-    kind: 'REVIEW_PROCESS',
-    family: 'REVIEW',
-    isConcrete: true,
-    projectScope: 'PROJECT_SCOPED',
-    snapshotSchemaVersion: '1.0.0',
-    deepLinkDescriptor: '/projects/:projectId/reviews/:resourceId',
-    outcomeCapability: true,
-    sensitivityClass: 'internal',
-    supportedActions: ['approve', 'reject', 'request_changes'],
-    supportState: 'SUPPORTED',
-  },
-  {
-    kind: 'CANONICAL_COMMIT',
-    family: 'GOVERNANCE',
-    isConcrete: true,
-    projectScope: 'PROJECT_SCOPED',
-    snapshotSchemaVersion: '1.0.0',
-    deepLinkDescriptor: '/projects/:projectId/commits/:resourceId',
-    outcomeCapability: true,
-    sensitivityClass: 'restricted',
-    supportedActions: ['commit', 'create_reversal_change_set'],
-    supportState: 'SUPPORTED',
-  },
-  {
-    kind: 'ACTION_PREFLIGHT',
-    family: 'ACTION',
-    isConcrete: true,
-    projectScope: 'PROJECT_SCOPED',
-    snapshotSchemaVersion: '1.0.0',
-    deepLinkDescriptor: '/projects/:projectId/actions/preflight/:resourceId',
-    outcomeCapability: true,
-    sensitivityClass: 'internal',
-    supportedActions: ['simulate', 'validate'],
-    supportState: 'SUPPORTED',
-  },
-  {
-    kind: 'ACTION_EXECUTION',
-    family: 'ACTION',
-    isConcrete: true,
-    projectScope: 'PROJECT_SCOPED',
-    snapshotSchemaVersion: '1.0.0',
-    deepLinkDescriptor: '/projects/:projectId/actions/executions/:resourceId',
-    outcomeCapability: true,
-    sensitivityClass: 'restricted',
-    supportedActions: ['execute', 'cancel'],
-    supportState: 'SUPPORTED',
-  },
-  {
-    kind: 'ACTION_VERIFICATION',
-    family: 'ACTION',
-    isConcrete: true,
-    projectScope: 'PROJECT_SCOPED',
-    snapshotSchemaVersion: '1.0.0',
-    deepLinkDescriptor: '/projects/:projectId/actions/verifications/:resourceId',
-    outcomeCapability: true,
-    sensitivityClass: 'internal',
-    supportedActions: ['verify'],
-    supportState: 'SUPPORTED',
-  },
-  {
-    kind: 'ACTION_COMPENSATION',
-    family: 'ACTION',
-    isConcrete: true,
-    projectScope: 'PROJECT_SCOPED',
-    snapshotSchemaVersion: '1.0.0',
-    deepLinkDescriptor: '/projects/:projectId/actions/compensations/:resourceId',
-    outcomeCapability: true,
-    sensitivityClass: 'restricted',
-    supportedActions: ['compensate'],
-    supportState: 'SUPPORTED',
-  },
-];
+export class OperationalResourceKindRegistryInstance {
+  readonly registryState: RegistryState;
+  readonly registryRevision: string;
+  private readonly concreteKinds: readonly OperationalResourceKindDescriptor[];
+  private readonly aggregateKinds: readonly OperationalResourceKindDescriptor[];
 
-const DEFAULT_AGGREGATE_KINDS: readonly OperationalResourceKindDescriptor[] = [
-  {
-    kind: 'EXTERNAL_ACTION',
-    family: 'ACTION',
-    isConcrete: false,
-    projectScope: 'PROJECT_SCOPED',
-    snapshotSchemaVersion: '1.0.0',
-    deepLinkDescriptor: '/projects/:projectId/actions/external',
-    outcomeCapability: false,
-    sensitivityClass: 'internal',
-    supportedActions: ['filter', 'summarize'],
-    supportState: 'SUPPORTED',
-  },
-  {
-    kind: 'KNOWLEDGE_GOVERNANCE',
-    family: 'GOVERNANCE',
-    isConcrete: false,
-    projectScope: 'PROJECT_SCOPED',
-    snapshotSchemaVersion: '1.0.0',
-    deepLinkDescriptor: '/projects/:projectId/governance',
-    outcomeCapability: false,
-    sensitivityClass: 'internal',
-    supportedActions: ['filter', 'overview'],
-    supportState: 'SUPPORTED',
-  },
-];
-
-export class OperationalResourceKindRegistry {
-  private static snapshot: OperationalResourceKindRegistrySnapshot = {
-    registryRevision: 'rev-1.0.0',
-    concreteKinds: DEFAULT_CONCRETE_KINDS,
-    aggregateKinds: DEFAULT_AGGREGATE_KINDS,
-    stateOrStageSchema: {},
-    routeDescriptor: {},
-    eligibility: {},
-    sensitivityClass: {},
-    retentionClass: {},
-    requiredCapabilities: {},
-    requiredFeatures: {},
-  };
-
-  static updateServerSnapshot(newSnapshot: OperationalResourceKindRegistrySnapshot): void {
-    this.snapshot = newSnapshot;
+  constructor(snapshot?: OperationalResourceKindRegistrySnapshot) {
+    if (!snapshot) {
+      this.registryState = 'NOT_LOADED';
+      this.registryRevision = 'none';
+      this.concreteKinds = [];
+      this.aggregateKinds = [];
+    } else {
+      this.registryState = 'READY';
+      this.registryRevision = snapshot.registryRevision;
+      this.concreteKinds = snapshot.concreteKinds;
+      this.aggregateKinds = snapshot.aggregateKinds;
+    }
   }
 
-  static get(kind: string): OperationalResourceKindDescriptor {
-    const foundConcrete = this.snapshot.concreteKinds.find((k) => k.kind === kind);
+  get(kind: string): OperationalResourceKindDescriptor {
+    const foundConcrete = this.concreteKinds.find((k) => k.kind === kind);
     if (foundConcrete) return foundConcrete;
 
-    const foundAggregate = this.snapshot.aggregateKinds.find((k) => k.kind === kind);
+    const foundAggregate = this.aggregateKinds.find((k) => k.kind === kind);
     if (foundAggregate) return foundAggregate;
 
-    // Unknown Kind preservation rule: keep originalKind, set supportState UNKNOWN
     return {
       kind: `UNKNOWN_${kind}`,
       originalKind: kind,
@@ -1218,17 +1151,23 @@ export class OperationalResourceKindRegistry {
     };
   }
 
-  static isConcrete(kind: string): boolean {
-    return this.snapshot.concreteKinds.some((k) => k.kind === kind);
+  isConcrete(kind: string): boolean {
+    return this.concreteKinds.some((k) => k.kind === kind);
   }
 
-  static listConcrete(): readonly OperationalResourceKindDescriptor[] {
-    return this.snapshot.concreteKinds;
+  listConcrete(): readonly OperationalResourceKindDescriptor[] {
+    return this.concreteKinds;
   }
 
-  static listAggregate(): readonly OperationalResourceKindDescriptor[] {
-    return this.snapshot.aggregateKinds;
+  listAggregate(): readonly OperationalResourceKindDescriptor[] {
+    return this.aggregateKinds;
   }
+}
+
+export function createOperationalResourceKindRegistry(
+  snapshot?: OperationalResourceKindRegistrySnapshot,
+): OperationalResourceKindRegistryInstance {
+  return new OperationalResourceKindRegistryInstance(snapshot);
 }
 
 // ============================================================================
@@ -1245,15 +1184,6 @@ export type ProjectionKind =
   | 'HOME_VIEW'
   | 'ACTIVITY_VIEW'
   | 'HISTORY_VIEW';
-
-export type ProjectionState =
-  | 'READY'
-  | 'UPDATING'
-  | 'PARTIALLY_READY'
-  | 'STALE'
-  | 'FAILED'
-  | 'UNAVAILABLE'
-  | 'ACCESS_RESTRICTED';
 
 const PROJECTION_KINDS: Set<string> = new Set([
   'COMPILED_TRUTH',
@@ -1283,7 +1213,7 @@ export class ProjectionKindRegistry {
 }
 
 // ============================================================================
-// 15. Cache Key Factory & Access Invalidation
+// 15. Cache Key Factory & Policy Revision Invalidation Policy
 // ============================================================================
 
 export type CacheKeyScope = 'project' | 'principal-global';
@@ -1354,7 +1284,6 @@ export function filterCacheKeysForProjectSwitch(
     } else if (project === newActiveProjectId) {
       validKeys.push(key);
     } else {
-      // Active Project switch does NOT auto-delete other accessible project caches
       retainedOtherProjectKeys.push(key);
     }
   }
@@ -1383,4 +1312,58 @@ export function purgeInaccessibleCachesOnAccessChange(
   }
 
   return { validKeys, purgedKeys };
+}
+
+export function calculateCacheInvalidationOnPolicyChange(
+  keys: readonly CacheKeyQueryTuple[],
+  previousPolicyRevisions: {
+    readonly accessScopeRevision: string;
+    readonly sensitivityPolicyRevision: string;
+    readonly policyContextRevision: string;
+    readonly featurePolicyRevision: string;
+    readonly retentionPolicyRevision: string;
+  },
+  currentPolicyRevisions: {
+    readonly accessScopeRevision: string;
+    readonly sensitivityPolicyRevision: string;
+    readonly policyContextRevision: string;
+    readonly featurePolicyRevision: string;
+    readonly retentionPolicyRevision: string;
+  },
+): {
+  readonly validKeys: readonly CacheKeyQueryTuple[];
+  readonly invalidatedKeys: readonly CacheKeyQueryTuple[];
+} {
+  const validKeys: CacheKeyQueryTuple[] = [];
+  const invalidatedKeys: CacheKeyQueryTuple[] = [];
+
+  const isAccessChanged =
+    previousPolicyRevisions.accessScopeRevision !== currentPolicyRevisions.accessScopeRevision;
+  const isSensitivityChanged =
+    previousPolicyRevisions.sensitivityPolicyRevision !==
+    currentPolicyRevisions.sensitivityPolicyRevision;
+  const isPolicyChanged =
+    previousPolicyRevisions.policyContextRevision !== currentPolicyRevisions.policyContextRevision;
+  const isFeatureChanged =
+    previousPolicyRevisions.featurePolicyRevision !== currentPolicyRevisions.featurePolicyRevision;
+  const isRetentionChanged =
+    previousPolicyRevisions.retentionPolicyRevision !==
+    currentPolicyRevisions.retentionPolicyRevision;
+
+  const hasAnyPolicyChange =
+    isAccessChanged ||
+    isSensitivityChanged ||
+    isPolicyChanged ||
+    isFeatureChanged ||
+    isRetentionChanged;
+
+  for (const key of keys) {
+    if (hasAnyPolicyChange) {
+      invalidatedKeys.push(key);
+    } else {
+      validKeys.push(key);
+    }
+  }
+
+  return { validKeys, invalidatedKeys };
 }

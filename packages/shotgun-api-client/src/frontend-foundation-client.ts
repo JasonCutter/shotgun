@@ -1,64 +1,77 @@
 import type {
+  CommandOutcomeResolution,
   FrontendCommandOutcomeView,
   FrontendCommandRequest,
-  OutcomeResolutionState,
-  SystemBoundaryContext,
   OperationRequirement,
-} from '../../contracts/src/index.js';
+  SystemBoundaryContext,
+} from '../../contracts/src/frontend-entry.js';
 import {
   computeCommandSemanticDigest,
   evaluateCapabilityGuard,
   FrontendContractError,
-} from '../../contracts/src/index.js';
+} from '../../contracts/src/frontend-entry.js';
 
 export {
   buildCacheKey,
+  calculateCacheInvalidationOnPolicyChange,
+  createOperationalResourceKindRegistry,
   filterCacheKeysForProjectSwitch,
   purgeInaccessibleCachesOnAccessChange,
-  type CacheKeyScope,
   type CacheKeyFactoryParams,
   type CacheKeyQueryTuple,
-} from '../../contracts/src/index.js';
+  type CacheKeyScope,
+} from '../../contracts/src/frontend-entry.js';
 
 // ============================================================================
 // 1. Client Outcome Resolution Service
 // ============================================================================
 
 export type ServerResolutionProvider<TPayload = unknown> = {
-  getOutcomeByClientRequestId(
-    clientRequestId: string,
-  ): Promise<FrontendCommandOutcomeView<TPayload> | null>;
+  getOutcomeByClientRequestId(clientRequestId: string): Promise<FrontendCommandOutcomeView | null>;
   getOutcomeByIdempotencyKey(
     idempotencyKey: string,
     principalId: string,
     targetProjectId: string,
     commandType: string,
-  ): Promise<FrontendCommandOutcomeView<TPayload> | null>;
+  ): Promise<FrontendCommandOutcomeView | null>;
   getServerOutcomeResolution?: (
     request: FrontendCommandRequest<TPayload>,
-  ) => Promise<OutcomeResolutionState>;
+  ) => Promise<CommandOutcomeResolution<TPayload>>;
 };
 
 export async function resolveCommandOutcomeClient<TPayload>(
   request: FrontendCommandRequest<TPayload>,
   principalId: string,
   provider: ServerResolutionProvider<TPayload>,
-): Promise<{
-  readonly resolution: OutcomeResolutionState;
-  readonly outcome?: FrontendCommandOutcomeView<TPayload>;
-}> {
+): Promise<CommandOutcomeResolution<TPayload>> {
   const digest = computeCommandSemanticDigest(request);
 
-  // Step 1: Lookup by clientRequestId
+  // Step 1: Scope & ID lookup by clientRequestId
   const byReqId = await provider.getOutcomeByClientRequestId(request.clientRequestId);
   if (byReqId) {
-    if (byReqId.resolution === 'RETENTION_EXPIRED') {
-      return { resolution: 'RETENTION_EXPIRED', outcome: byReqId };
+    if (
+      byReqId.acceptedPrincipalContext.principalId !== principalId ||
+      byReqId.acceptedProjectContext.targetProjectId !== request.projectContext.targetProjectId ||
+      byReqId.commandType !== request.commandType
+    ) {
+      throw new FrontendContractError(
+        'PRECONDITION_ACCESS_DENIED',
+        `clientRequestId '${request.clientRequestId}' found but scope mismatch (principal/project/commandType)`,
+      );
+    }
+    if (byReqId.commandSemanticDigest !== digest) {
+      throw new FrontendContractError(
+        'DIGEST_MISMATCH',
+        `clientRequestId '${request.clientRequestId}' found but semantic digest mismatch`,
+      );
+    }
+    if (byReqId.outcomeState === 'REJECTED' && byReqId.rejection?.code === 'RETENTION_EXPIRED') {
+      return { resolution: 'RETENTION_EXPIRED', lastKnownOutcome: byReqId };
     }
     return { resolution: 'FOUND', outcome: byReqId };
   }
 
-  // Step 2: Lookup by idempotencyKey
+  // Step 2: Scope & ID lookup by idempotencyKey
   const byIdempotency = await provider.getOutcomeByIdempotencyKey(
     request.idempotencyKey,
     principalId,
@@ -73,16 +86,18 @@ export async function resolveCommandOutcomeClient<TPayload>(
         `Idempotency key '${request.idempotencyKey}' reused with different semantic digest`,
       );
     }
-    if (byIdempotency.resolution === 'RETENTION_EXPIRED') {
-      return { resolution: 'RETENTION_EXPIRED', outcome: byIdempotency };
+    if (
+      byIdempotency.outcomeState === 'REJECTED' &&
+      byIdempotency.rejection?.code === 'RETENTION_EXPIRED'
+    ) {
+      return { resolution: 'RETENTION_EXPIRED', lastKnownOutcome: byIdempotency };
     }
     return { resolution: 'FOUND', outcome: byIdempotency };
   }
 
   // Step 3: Server explicit resolution check
   if (provider.getServerOutcomeResolution) {
-    const res = await provider.getServerOutcomeResolution(request);
-    return { resolution: res };
+    return provider.getServerOutcomeResolution(request);
   }
 
   // Default when lookup returns nothing: INDETERMINATE

@@ -608,6 +608,37 @@ export class PostgresProjectAdministrationRepository implements ProjectAdministr
         [input.id, input.ownerId, now],
       );
 
+      // 1. Owner Membership
+      await client.query(
+        `INSERT INTO auth.memberships (principal_id, project_id, scopes, sensitivity_clearance, is_owner, created_at)
+         VALUES ($1, $2, $3, $4, true, $5)
+         ON CONFLICT (principal_id, project_id) DO NOTHING`,
+        [input.ownerId, input.id, JSON.stringify(['owner']), 'private', now],
+      );
+
+      // 2. Initial Policy Context
+      await client.query(
+        `INSERT INTO settings.policy_context_revisions (project_id, revision, updated_at)
+         VALUES ($1, 1, $2)
+         ON CONFLICT (project_id) DO NOTHING`,
+        [input.id, now],
+      );
+
+      // 3. Initial Settings Snapshot (Empty jsonb for now)
+      await client.query(
+        `INSERT INTO settings.settings_revisions (project_id, revision, settings_snapshot, updated_at)
+         VALUES ($1, 1, '{}'::jsonb, $2)
+         ON CONFLICT (project_id) DO NOTHING`,
+        [input.id, now],
+      );
+
+      // 4. Audit Event
+      await client.query(
+        `INSERT INTO settings.settings_audit_events (project_id, actor_id, event, target_revision, created_at)
+         VALUES ($1, $2, 'PROJECT_CREATED', 1, $3)`,
+        [input.id, input.ownerId, now],
+      );
+
       await client.query('COMMIT');
 
       const row = insertRes.rows[0]!;
@@ -833,6 +864,15 @@ export class PostgresSettingsRepository implements SettingsRepositoryPort {
     );
     const rev = revRes.rows[0]?.revision ?? 1;
 
+    const snapRes = await this.pool.query<{ settings_snapshot: Record<string, unknown> }>(
+      `SELECT settings_snapshot FROM settings.settings_revisions WHERE project_id = $1`,
+      [projectId],
+    );
+    const snapshotJson = snapRes.rows[0]?.settings_snapshot ?? {};
+
+    const localeVal =
+      typeof snapshotJson['general.locale'] === 'string' ? snapshotJson['general.locale'] : 'ko-KR';
+
     return decodeSettingsSnapshot({
       schemaVersion: '1.0.0',
       targetProjectId: projectId,
@@ -872,7 +912,7 @@ export class PostgresSettingsRepository implements SettingsRepositoryPort {
           scope: 'PRINCIPAL',
           category: 'preferences',
           valueType: 'string',
-          currentValue: 'ko-KR',
+          currentValue: localeVal,
           defaultValue: 'ko-KR',
           applicationMode: 'IMMEDIATE',
           riskLevel: 'LOW',
@@ -989,6 +1029,20 @@ export class PostgresSettingsRepository implements SettingsRepositoryPort {
         [nextRev, input.projectId],
       );
 
+      const existingSnap = await client.query<{ settings_snapshot: Record<string, unknown> }>(
+        `SELECT settings_snapshot FROM settings.settings_revisions WHERE project_id = $1`,
+        [input.projectId],
+      );
+      const updatedSnapshot = {
+        ...(existingSnap.rows[0]?.settings_snapshot ?? {}),
+        ...input.settings,
+      };
+
+      await client.query(
+        `UPDATE settings.settings_revisions SET settings_snapshot = $1, revision = $2, updated_at = now() WHERE project_id = $3`,
+        [JSON.stringify(updatedSnapshot), nextRev, input.projectId],
+      );
+
       await client.query(
         `INSERT INTO settings.settings_commands (command_id, client_request_id, idempotency_key, project_id, expected_revision, status, command_payload, created_at)
          VALUES ($1, $2, $3, $4, $5, 'APPLIED', $6, now())`,
@@ -1057,74 +1111,58 @@ export class PostgresSettingsRepository implements SettingsRepositoryPort {
   }
 
   async getModelDescriptors(projectId: string): Promise<readonly ModelDescriptorView[]> {
-    if (!projectId) throw new FrontendContractError('INVALID_REQUEST', 'projectId required');
-    return Object.freeze([
-      {
-        modelId: 'gemini-2.5-flash',
-        displayName: 'Gemini 2.5 Flash',
-        provider: 'google',
-        available: true,
-        isDefault: true,
-        capabilities: Object.freeze(['fast_answer', 'transformation']),
-        inputTypes: Object.freeze(['text', 'image']),
-        costClass: 'LOW',
-        privacyCharacteristics: 'No logging',
-      },
-    ]);
+    void projectId;
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'Model configurations are not available in this tier.',
+    );
   }
 
   async getCostBudget(projectId: string): Promise<CostBudgetView> {
-    return Object.freeze({
-      targetProjectId: projectId,
-      currentUsageTokens: 145000,
-      estimatedCostUsd: 12.5,
-      confirmedCostUsd: 10.0,
-      warningThresholdUsd: 80.0,
-      softLimitUsd: 90.0,
-      hardLimitUsd: 100.0,
-      aggregationTimestamp: new Date().toISOString(),
-      status: 'NORMAL',
-    });
+    void projectId;
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'Cost & Billing features are not available in this tier.',
+    );
   }
 
   async getPrivacyRetention(projectId: string): Promise<PrivacyRetentionView> {
-    return Object.freeze({
-      targetProjectId: projectId,
-      profileName: 'LOCAL_ONLY',
-      sensitivityLevel: 'NORMAL',
-      externalTransferAllowed: false,
-      connectorAllowed: false,
-      telemetryAllowed: false,
-      exportAllowed: true,
-      retentionSummary: 'Assets retained indefinitely in local storage',
-    });
+    void projectId;
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'Privacy controls are not available in this tier.',
+    );
   }
 
   async getConnectorSettings(projectId: string): Promise<readonly ConnectorSettingsView[]> {
-    if (!projectId) throw new FrontendContractError('INVALID_REQUEST', 'projectId required');
-    return Object.freeze([]);
+    void projectId;
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'Connectors are not available in this tier.',
+    );
   }
 
   async getDirectiveProposals(projectId: string): Promise<readonly DirectiveProposalView[]> {
-    if (!projectId) throw new FrontendContractError('INVALID_REQUEST', 'projectId required');
-    return Object.freeze([]);
+    void projectId;
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'Directives are not available in this tier.',
+    );
   }
 
   async getSchemaPacks(projectId: string): Promise<readonly SchemaPackView[]> {
-    if (!projectId) throw new FrontendContractError('INVALID_REQUEST', 'projectId required');
-    return Object.freeze([]);
+    void projectId;
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'Schema Packs are not available in this tier.',
+    );
   }
 
   async getDiagnostics(projectId: string): Promise<DiagnosticsView> {
-    return Object.freeze({
-      appVersion: '0.1.0',
-      serverVersion: '0.1.0',
-      activeProjectId: 'shotgun',
-      targetProjectId: projectId,
-      databaseReadiness: 'READY',
-      projectionReadiness: 'READY',
-      recentFailures: Object.freeze([]),
-      backupStatus: 'HEALTHY',
-    });
+    void projectId;
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'Diagnostics are not available in this tier.',
+    );
   }
 }

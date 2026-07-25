@@ -21,7 +21,19 @@ export function registerProjectRoutes(
   server.get<{ Params: { projectId: string }; Headers: SecurityHeaders }>(
     '/api/v1/projects/:projectId',
     async (request) => {
-      await requireBrowserSession(request.headers);
+      const { context } = await requireBrowserSession(request.headers);
+      const membership = await authRepo.findMembership(
+        context.principalId,
+        request.params.projectId,
+      );
+      if (!membership) {
+        throw new ShotgunError({
+          code: 'PROJECT_ACCESS_DENIED',
+          safeMessage: `You do not have access to project '${request.params.projectId}'.`,
+          module: 'shotgun-app',
+          operation: 'get-project-details',
+        });
+      }
       const project = await projectAdminRepo.getProjectDetails(request.params.projectId);
       if (!project) {
         throw new ShotgunError({
@@ -63,13 +75,7 @@ export function registerProjectRoutes(
       ownerId: context.principalId,
     });
 
-    // Ensure owner membership in authRepo
-    await authRepo.bootstrapOwner({
-      accountId: context.principalId,
-      projectId: request.body.id,
-      scopes: ['owner'],
-      sensitivityClearance: 'private',
-    });
+    // Ensure owner membership in authRepo (handled atomically by projectAdminRepo)
 
     return { project };
   });
@@ -83,11 +89,29 @@ export function registerProjectRoutes(
     };
     Headers: SecurityHeaders;
   }>('/api/v1/projects/:projectId', async (request) => {
-    await requireBrowserSession(request.headers);
+    const { context } = await requireBrowserSession(request.headers);
     if (typeof request.body.expectedRevision !== 'number') {
       throw new ShotgunError({
         code: 'VALIDATION_ERROR',
         safeMessage: 'expectedRevision is required for project updates.',
+        module: 'shotgun-app',
+        operation: 'update-project',
+      });
+    }
+    const membership = await authRepo.findMembership(context.principalId, request.params.projectId);
+    if (!membership) {
+      throw new ShotgunError({
+        code: 'PROJECT_ACCESS_DENIED',
+        safeMessage: `You do not have access to project '${request.params.projectId}'.`,
+        module: 'shotgun-app',
+        operation: 'update-project',
+      });
+    }
+    const projectDetail = await projectAdminRepo.getProjectDetails(request.params.projectId);
+    if (!projectDetail || !projectDetail.capability.canRename) {
+      throw new ShotgunError({
+        code: 'VALIDATION_ERROR',
+        safeMessage: `Project cannot be renamed or updated at this time.`,
         module: 'shotgun-app',
         operation: 'update-project',
       });
@@ -106,7 +130,25 @@ export function registerProjectRoutes(
     Body: { expectedRevision: number };
     Headers: SecurityHeaders;
   }>('/api/v1/projects/:projectId/archive', async (request) => {
-    await requireBrowserSession(request.headers);
+    const { context } = await requireBrowserSession(request.headers);
+    const membership = await authRepo.findMembership(context.principalId, request.params.projectId);
+    if (!membership) {
+      throw new ShotgunError({
+        code: 'PROJECT_ACCESS_DENIED',
+        safeMessage: `You do not have access to project '${request.params.projectId}'.`,
+        module: 'shotgun-app',
+        operation: 'archive-project',
+      });
+    }
+    const projectDetail = await projectAdminRepo.getProjectDetails(request.params.projectId);
+    if (!projectDetail || !projectDetail.capability.canArchive) {
+      throw new ShotgunError({
+        code: 'VALIDATION_ERROR',
+        safeMessage: `Project cannot be archived at this time.`,
+        module: 'shotgun-app',
+        operation: 'archive-project',
+      });
+    }
     const project = await projectAdminRepo.archiveProject(
       request.params.projectId,
       request.body.expectedRevision,
@@ -119,7 +161,25 @@ export function registerProjectRoutes(
     Body: { expectedRevision: number };
     Headers: SecurityHeaders;
   }>('/api/v1/projects/:projectId/restore', async (request) => {
-    await requireBrowserSession(request.headers);
+    const { context } = await requireBrowserSession(request.headers);
+    const membership = await authRepo.findMembership(context.principalId, request.params.projectId);
+    if (!membership) {
+      throw new ShotgunError({
+        code: 'PROJECT_ACCESS_DENIED',
+        safeMessage: `You do not have access to project '${request.params.projectId}'.`,
+        module: 'shotgun-app',
+        operation: 'restore-project',
+      });
+    }
+    const projectDetail = await projectAdminRepo.getProjectDetails(request.params.projectId);
+    if (!projectDetail || !projectDetail.capability.canRestore) {
+      throw new ShotgunError({
+        code: 'VALIDATION_ERROR',
+        safeMessage: `Project cannot be restored at this time.`,
+        module: 'shotgun-app',
+        operation: 'restore-project',
+      });
+    }
     const project = await projectAdminRepo.restoreProject(
       request.params.projectId,
       request.body.expectedRevision,
@@ -132,7 +192,25 @@ export function registerProjectRoutes(
     Body: { expectedRevision: number };
     Headers: SecurityHeaders;
   }>('/api/v1/projects/:projectId/delete-request', async (request) => {
-    await requireBrowserSession(request.headers);
+    const { context } = await requireBrowserSession(request.headers);
+    const membership = await authRepo.findMembership(context.principalId, request.params.projectId);
+    if (!membership) {
+      throw new ShotgunError({
+        code: 'PROJECT_ACCESS_DENIED',
+        safeMessage: `You do not have access to project '${request.params.projectId}'.`,
+        module: 'shotgun-app',
+        operation: 'delete-project',
+      });
+    }
+    const projectDetail = await projectAdminRepo.getProjectDetails(request.params.projectId);
+    if (!projectDetail || !projectDetail.capability.canDelete) {
+      throw new ShotgunError({
+        code: 'VALIDATION_ERROR',
+        safeMessage: `Project cannot be deleted at this time.`,
+        module: 'shotgun-app',
+        operation: 'delete-project',
+      });
+    }
     const project = await projectAdminRepo.requestDeleteProject(
       request.params.projectId,
       request.body.expectedRevision,

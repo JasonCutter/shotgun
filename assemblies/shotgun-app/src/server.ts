@@ -384,6 +384,8 @@ export type ApplicationOptions = {
   readonly actionConnector?: ActionConnectorPort;
   readonly authRepository?: AuthRepositoryPort;
   readonly authenticationAdapter?: AuthenticationPort;
+  readonly projectAdminRepository?: ProjectAdministrationRepositoryPort;
+  readonly settingsRepository?: SettingsRepositoryPort;
   readonly host?: string;
   readonly production?: boolean;
   readonly canonicalProjectionRecoveryIntervalMs?: number | false;
@@ -1073,12 +1075,8 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     },
   };
   const projectAdminRepository =
-    ((options as Record<string, unknown>)[
-      'projectAdminRepository'
-    ] as ProjectAdministrationRepositoryPort) ?? new InMemoryProjectAdministrationRepository();
-  const settingsRepository =
-    ((options as Record<string, unknown>)['settingsRepository'] as SettingsRepositoryPort) ??
-    new InMemorySettingsRepository();
+    options.projectAdminRepository ?? new InMemoryProjectAdministrationRepository();
+  const settingsRepository = options.settingsRepository ?? new InMemorySettingsRepository();
   const actionCandidateRepository =
     options.actionCandidateRepository ?? new InMemoryActionCandidateRepository();
   const actionConnector = options.actionConnector ?? new FakeDraftActionConnector();
@@ -1643,7 +1641,13 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   });
 
   registerProjectRoutes(server, projectAdminRepository, authRepository, requireBrowserSession);
-  registerSettingsRoutes(server, settingsRepository, requireBrowserSession);
+  registerSettingsRoutes(
+    server,
+    settingsRepository,
+    authRepository,
+    projectAdminRepository,
+    requireBrowserSession,
+  );
 
   server.post<{ Body: { accountId: string; password: string; projectId: string } }>(
     '/auth/login',

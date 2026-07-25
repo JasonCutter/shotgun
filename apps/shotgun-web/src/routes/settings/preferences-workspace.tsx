@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAppRuntime } from '../../app/providers.js';
 import { sessionQueryOptions } from '../../session/session-query.js';

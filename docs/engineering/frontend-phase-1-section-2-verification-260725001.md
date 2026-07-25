@@ -31,6 +31,7 @@ Phase 1 Section 2 establishes full **Settings & Project Administration** capabil
    - Implemented in-memory and PostgreSQL database schemas (`db/migrations/016_stage1_section2_settings_project_admin.sql`).
 4. **`assemblies/shotgun-app`**:
    - Registered Fastify Product API endpoints under `/api/v1/projects/*` and `/api/v1/settings/*`.
+   - Wired `AuthRepositoryPort` and `ProjectAdministrationRepositoryPort` for unified authorization context and membership capability checks.
    - Idempotency key handling (`clientRequestId`, `idempotencyKey`), CSRF token enforcement, expected revision conflict checks (`409 CONFLICT`).
 5. **`packages/shotgun-api-client` & `apps/shotgun-web`**:
    - Client methods for settings and project administration.
@@ -47,7 +48,7 @@ Phase 1 Section 2 establishes full **Settings & Project Administration** capabil
 
 | AC #      | Acceptance Criterion                                                           | Result | Verification Evidence                                                                                   |
 | --------- | ------------------------------------------------------------------------------ | ------ | ------------------------------------------------------------------------------------------------------- |
-| **AC-01** | Ownership separation (Auth vs ProjectAdmin vs Settings)                        | PASS   | ADR-114 & separate repository ports and DB schemas (`project_admin`, `settings`).                       |
+| **AC-01** | Ownership separation (Auth vs ProjectAdmin vs Settings)                        | PASS   | ADR-114 implemented with strict repository port boundaries. Atomic cross-schema Project Creation Coordinator implemented in PostgreSQL adapter. |
 | **AC-02** | 5D Settings Scope support (PRINCIPAL, PROJECT, SYSTEM, RESOURCE)               | PASS   | `SettingsScope` enum and decoders validated in contract test suite.                                     |
 | **AC-03** | Application mode classification (IMMEDIATE, CONFIRM_REQUIRED, REVIEW_REQUIRED) | PASS   | Server descriptor returns `applicationMode`; draft controller validates confirm/review steps.           |
 | **AC-04** | Risk level calculation by Server Product API                                   | PASS   | Server API calculates `riskLevel` (LOW, MEDIUM, HIGH, CRITICAL); frontend does zero risk derivation.    |
@@ -58,7 +59,7 @@ Phase 1 Section 2 establishes full **Settings & Project Administration** capabil
 | **AC-09** | CSRF protection on state-changing API calls                                    | PASS   | `ShotgunApiClient` fetches `/api/v1/security/csrf` before executing state-changing calls.               |
 | **AC-10** | Option B Leave Guard with uncommitted draft state                              | PASS   | `useSettingsDraft` registers guard; blocked navigation on dirty state.                                  |
 | **AC-11** | 5D Project Context Badges in Settings Header                                   | PASS   | Badges displayed in `SettingsLayout` (`activeProjectId`, `targetProjectId`, `resourceProjectId`).       |
-| **AC-12** | Monotonic Settings Revision incrementing                                       | PASS   | Snapshot revision increments monotonically upon command application.                                    |
+| **AC-12** | Monotonic Settings Revision incrementing                                       | PASS   | Snapshot revision increments monotonically upon command application via explicit `SELECT FOR UPDATE` row-level locks in PostgreSQL. |
 | **AC-13** | Category Index View rendering & action counts                                  | PASS   | `CategoryIndexView` lists 5 categories with real-fact summaries and counts.                             |
 | **AC-14** | User Preferences Workspace (Principal Scope)                                   | PASS   | `PreferencesWorkspace` reads/updates locale and theme preferences.                                      |
 | **AC-15** | Project Administration Workspace (List, Create)                                | PASS   | `ProjectsWorkspace` lists projects and creates new projects via modal.                                  |

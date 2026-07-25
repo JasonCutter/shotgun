@@ -10,6 +10,8 @@ import {
   createPostgresPool,
   PostgresIntakeRepository,
   PostgresOriginalAssetRepository,
+  PostgresProjectAdministrationRepository,
+  PostgresSettingsRepository,
 } from '../../../adapters/postgres/src/index.js';
 import {
   PostgresEvidenceRepository,
@@ -61,6 +63,8 @@ const storageRoot = path.resolve(process.env.ASSET_STORAGE_ROOT ?? '.data/assets
 const plainTextAdapter = new LucasAugmentedPlainTextAdapter();
 const canonicalKnowledgeRepository = new PostgresCanonicalKnowledgeRepository(pool);
 const { server } = await createApplication({
+  projectAdminRepository: new PostgresProjectAdministrationRepository(pool),
+  settingsRepository: new PostgresSettingsRepository(pool),
   intakeRepository: new PostgresIntakeRepository(pool),
   originalAssetRepository: new PostgresOriginalAssetRepository(pool),
   assetStorage: new LocalAssetStorage(storageRoot),

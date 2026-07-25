@@ -23,9 +23,20 @@ const RouteError = () => {
 const sessionLoader =
   (runtime: AppRuntime) =>
   async ({ request }: LoaderFunctionArgs) => {
+    const opts = sessionBoundaryQueryOptions(
+      runtime.apiClient,
+      runtime.queryClient,
+      runtime.sessionCycleState,
+    );
     return await runtime.queryClient.fetchQuery({
-      ...sessionBoundaryQueryOptions(runtime.apiClient),
-      queryFn: () => ensureSessionBoundary(runtime.apiClient, request.signal),
+      ...opts,
+      queryFn: ({ signal }) =>
+        ensureSessionBoundary(
+          runtime.apiClient,
+          request.signal ?? signal,
+          runtime.queryClient,
+          runtime.sessionCycleState,
+        ),
     });
   };
 

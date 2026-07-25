@@ -3,9 +3,12 @@ import { createContext, useContext, type ReactNode } from 'react';
 
 import type { ShotgunApiClient } from '@shotgun/api-client';
 
+import type { SessionCycleState } from '../session/session-query.js';
+
 export type AppRuntime = {
   readonly apiClient: ShotgunApiClient;
   readonly queryClient: QueryClient;
+  readonly sessionCycleState: SessionCycleState;
 };
 
 const RuntimeContext = createContext<AppRuntime | undefined>(undefined);

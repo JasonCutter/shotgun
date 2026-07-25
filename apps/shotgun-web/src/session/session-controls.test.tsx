@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   ShotgunApiError,
@@ -12,7 +12,7 @@ import {
 import { productSessionQueryKey } from '../app/query-keys.js';
 import { AppProviders, type AppRuntime } from '../app/providers.js';
 import { createFrontendQueryClient } from '../app/query-client.js';
-import { ensureSession, resetSessionBoundaryCycleState } from './session-query.js';
+import { createSessionCycleState, ensureSession } from './session-query.js';
 import { LogoutButton } from './logout-button.js';
 import { ProjectSelector } from './project-selector.js';
 
@@ -33,40 +33,27 @@ const session: ProductSessionView = {
 
 const renderRoute = (element: React.ReactNode, apiClient: ShotgunApiClient) => {
   const queryClient = createFrontendQueryClient();
+  const sessionCycleState = createSessionCycleState();
   queryClient.setQueryData(productSessionQueryKey, session);
-  const runtime: AppRuntime = { apiClient, queryClient };
+  const runtime: AppRuntime = { apiClient, queryClient, sessionCycleState };
   const router = createMemoryRouter([{ path: '/', element }], { initialEntries: ['/'] });
   render(
     <AppProviders runtime={runtime}>
       <RouterProvider router={router} />
     </AppProviders>,
   );
-  return { queryClient, router };
+  return { queryClient, router, sessionCycleState };
 };
 
 const api = (overrides: Partial<ShotgunApiClient> = {}): ShotgunApiClient => ({
   bootstrapLocalOwner: vi.fn(async () => session),
   getSession: vi.fn(async () => session),
-  getSessionBoundary: vi.fn(async () => ({
-    schemaVersion: '1.0.0' as const,
-    authenticationAdapter: 'local_owner' as const,
-    connectivityState: 'ONLINE' as const,
-    authenticationState: 'authenticated' as const,
-    sessionState: 'READY' as const,
-    backendReadiness: 'READY' as const,
-    reasonCode: 'LOCAL_SESSION_READY' as const,
-    recoveryActions: [],
-    session,
-  })),
   switchActiveProject: vi.fn(async () => session),
   logout: vi.fn(async () => undefined),
   ...overrides,
 });
 
 describe('Session controls', () => {
-  beforeEach(() => {
-    resetSessionBoundaryCycleState();
-  });
   it('authenticates local owner when session is missing without showing login screen', async () => {
     const getSession = vi.fn().mockRejectedValueOnce(
       new ShotgunApiError({
@@ -77,7 +64,8 @@ describe('Session controls', () => {
     );
     const bootstrapLocalOwner = vi.fn().mockResolvedValueOnce(session);
     const client = api({ getSession, bootstrapLocalOwner });
-    const result = await ensureSession(client);
+    const cycleState = createSessionCycleState();
+    const result = await ensureSession(client, undefined, cycleState);
     expect(getSession).toHaveBeenCalledTimes(1);
     expect(bootstrapLocalOwner).toHaveBeenCalledTimes(1);
     expect(result).toEqual(session);
@@ -96,11 +84,12 @@ describe('Session controls', () => {
       return session;
     });
     const client = api({ getSession, bootstrapLocalOwner });
+    const cycleState = createSessionCycleState();
 
     const [res1, res2, res3] = await Promise.all([
-      ensureSession(client),
-      ensureSession(client),
-      ensureSession(client),
+      ensureSession(client, undefined, cycleState),
+      ensureSession(client, undefined, cycleState),
+      ensureSession(client, undefined, cycleState),
     ]);
 
     expect(bootstrapLocalOwner).toHaveBeenCalledTimes(1);
@@ -125,10 +114,40 @@ describe('Session controls', () => {
       }),
     );
     const client = api({ getSession, bootstrapLocalOwner });
+    const cycleState = createSessionCycleState();
 
-    await expect(ensureSession(client)).rejects.toThrow();
-    await expect(ensureSession(client)).rejects.toThrow();
+    await expect(ensureSession(client, undefined, cycleState)).rejects.toThrow();
+    await expect(ensureSession(client, undefined, cycleState)).rejects.toThrow();
     expect(bootstrapLocalOwner).toHaveBeenCalledTimes(1);
+  });
+
+  it('isolates cycleState between distinct runtime instances', async () => {
+    const getSession = vi.fn().mockRejectedValue(
+      new ShotgunApiError({
+        status: 401,
+        code: 'AUTHENTICATION_REQUIRED',
+        message: 'Authentication required',
+      }),
+    );
+    const bootstrapLocalOwner = vi.fn().mockRejectedValue(
+      new ShotgunApiError({
+        status: 401,
+        code: 'LOCAL_BOOTSTRAP_FAILED',
+        message: 'Bootstrap failed',
+      }),
+    );
+    const client = api({ getSession, bootstrapLocalOwner });
+
+    const runtimeAState = createSessionCycleState();
+    const runtimeBState = createSessionCycleState();
+
+    await expect(ensureSession(client, undefined, runtimeAState)).rejects.toThrow();
+    expect(runtimeAState.autoRetryBudget).toBe(0);
+    expect(runtimeBState.autoRetryBudget).toBe(1);
+
+    await expect(ensureSession(client, undefined, runtimeBState)).rejects.toThrow();
+    expect(runtimeBState.autoRetryBudget).toBe(0);
+    expect(bootstrapLocalOwner).toHaveBeenCalledTimes(2);
   });
 
   it('maintains non-optimistic server-confirmed project in selector during pending mutation', async () => {

@@ -12,9 +12,11 @@ import { TopBar } from './top-bar.js';
 import { useConnectivityState } from './use-connectivity-state.js';
 
 export const ApplicationShell = () => {
-  const { apiClient, queryClient } = useAppRuntime();
+  const { apiClient, queryClient, sessionCycleState } = useAppRuntime();
   const connectivity = useConnectivityState();
-  const boundaryQuery = useQuery(sessionBoundaryQueryOptions(apiClient, queryClient));
+  const boundaryQuery = useQuery(
+    sessionBoundaryQueryOptions(apiClient, queryClient, sessionCycleState),
+  );
 
   if (boundaryQuery.isPending) {
     return (
@@ -60,7 +62,7 @@ export const ApplicationShell = () => {
       <SessionBoundaryScreen
         boundary={activeBoundary}
         onReconnect={() => {
-          void reconnectSessionBoundary(apiClient, queryClient);
+          void reconnectSessionBoundary(apiClient, queryClient, sessionCycleState);
         }}
       />
     );

@@ -17,6 +17,8 @@ export type {
   ConnectivityState,
   ProductSessionView,
   SessionBoundaryAuthenticationState,
+  SessionBoundaryBackendReadiness,
+  SessionBoundaryConnectivityState,
   SessionBoundaryReasonCode,
   SessionBoundarySessionState,
   SessionBoundaryView,
@@ -31,6 +33,8 @@ export {
   computeCommandSemanticDigestAsync,
   webCryptoDigestProvider,
 } from './frontend-digest-adapter.js';
+
+export { FrontendContractError };
 
 export {
   buildCacheKey,

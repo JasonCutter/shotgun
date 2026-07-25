@@ -27,9 +27,12 @@ import { createAppRouter } from './router.js';
 import '../styles/tokens.css';
 import '../styles/application.css';
 
+import { createSessionCycleState } from '../session/session-query.js';
+
 const runtime: AppRuntime = {
   apiClient: createShotgunApiClient(),
   queryClient: createFrontendQueryClient(),
+  sessionCycleState: createSessionCycleState(),
 };
 const router = createAppRouter(runtime);
 const root = document.getElementById('root');

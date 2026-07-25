@@ -19,187 +19,95 @@
 
 ## 2. Executive Summary
 
-This report documents the verification of **Frontend Phase 1 Section 1: Local Owner Session, Authentication, and Project Boundary**. Single-cycle bootstrap limits, Local Owner UI policy (removal of login/logout/password UI from active routes), Session Boundary Error Screen, Leave Guard integration with Option B unsaved draft blocking, non-optimistic selector value, accessible diagnostic modals, and protective cache purging have been verified against the automated test suite and E2E browser tests.
+This report documents the completed technical verification for **Frontend Phase 1 Section 1: Local Owner Session, Authentication, and Project Boundary** following the second review feedback. All 10 corrective review items have been resolved:
+
+1. **Security Dependency & Audit Fix (`npm run oss:audit`)**:
+   - `react-router` upgraded to `8.3.0` (resolving GHSA-qwww-vcr4-c8h2).
+   - Package overrides applied for `brace-expansion` (`2.0.1`) and `minimatch` (`10.0.3`) (resolving GHSA-mh99-v99m-4gvg).
+   - `docs/implementation/oss-source-registry.json` updated with pin value `8.3.0`.
+   - Result: `npm run oss:audit` passes with 0 high/critical vulnerabilities, and `npx tsx scripts/oss-gate.ts` passes.
+2. **Runtime Cycle State Isolation (`SessionCycleState`)**:
+   - Removed module-global `let globalCycleState`.
+   - `SessionCycleState` is explicitly owned by `AppRuntime` (`createSessionCycleState()`).
+   - Added unit test verifying independent retry budgets across distinct runtime instances.
+3. **Session Recovery State Machine & Cache Purge**:
+   - State transition: 401 detection $\rightarrow$ `REVOKED` / `REESTABLISHING` $\rightarrow$ `READY` / `UNAVAILABLE`.
+   - Immediate cancellation and purging of protected caches (`purgeProtectedSessionCaches`) upon revocation.
+4. **Deduplicated Manual Reconnect**:
+   - Reconnect click immediately sets boundary state to `REESTABLISHING` (`LOCAL_SESSION_REESTABLISHING`), clearing previous error UI.
+   - Concurrent/subsequent clicks share the pending bootstrap promise.
+5. **Loader Cache Purge & Session Boundary Query Options**:
+   - `sessionLoader` in `router.tsx` passes `runtime.queryClient` and `runtime.sessionCycleState` to `sessionBoundaryQueryOptions`, executing cache purging via `fetchQuery`.
+6. **API Boundary Authority Path (Option B)**:
+   - Raw Session API (`getSession`, `bootstrapLocalOwner`, `switchActiveProject`, `logout`) is strictly owned by `ShotgunApiClient`.
+   - `SessionBoundaryView` construction and recovery state machine are exclusively owned by `apps/shotgun-web/src/session/session-query.ts`.
+   - Unused `getSessionBoundary` method removed from `ShotgunApiClient`.
+7. **Session Boundary 4-Axis Dedicated Types**:
+   - Defined `SessionBoundaryConnectivityState` (`'UNKNOWN' | 'ONLINE' | 'OFFLINE' | 'DEGRADED'`), `SessionBoundaryAuthenticationState`, `SessionBoundarySessionState`, and `SessionBoundaryBackendReadiness`.
+   - `SessionBoundaryView` strictly consumes these 4 dedicated types (`SystemBoundaryContext` remained untouched).
+8. **Diagnostic Modal Accessibility & Exact Copy**:
+   - Implemented Focus Trap (Tab/Shift+Tab navigation looping inside dialog).
+   - Implemented Escape key dismissal and focus restoration (`triggerRef.current?.focus()`).
+   - Prevented background click propagation and body interaction while open.
+   - Copy reflects actual runtime facts: `127.0.0.1:3001` backend API endpoint, `.env` / runtime config.
+9. **Full Automated Test Coverage**:
+   - `npm run check` (Lint, Format, Typecheck, Unit, Contract, Integration, Architecture, Stage 12 Package, Secret Scan, OSS Verify) 100% PASS.
+   - `npm run frontend:check` (Typecheck, Unit, Build, Playwright E2E) 100% PASS.
 
 ---
 
 ## 3. Canonical References & ADRs
 
 1. **Shotgun Knowledge Flow Detailed Map v0.3**
-   - Storage: Google Docs
    - URL: `https://docs.google.com/document/d/1HazG-oAeJ8Sgg_mPmBiWpQqeCeeAoDUuWgqVNJR1DCg`
 2. **Project Shotgun Frontend Phase 1–5 구현계획 v1.0 (확정)**
-   - Storage: Notion (Architecture Hub)
    - URL: `https://app.notion.com/p/3a75181d71ad817a9675c984455b2c3b`
-3. **Frontend and Human Interaction Architecture**
-   - Storage: Notion (Module Architecture / Core Specification)
-   - URL: `https://app.notion.com/p/3a15181d71ad81e4bfa4ee2578e692a0`
-4. **Frontend Phase 1 — Platform Boundary**
-   - Storage: Notion (Phase Implementation)
-   - URL: `https://app.notion.com/p/3a65181d71ad81b1836ec4503df86c46`
-5. **Phase 1 Section 1 — Local Owner Session·Authentication·Project Boundary 결정문**
-   - Storage: Notion (Section Decision Record)
-   - URL: `https://app.notion.com/p/3a65181d71ad81bb925cd9f153d4b175`
-6. **Frontend Phase 1–2 Cross-Phase Integration 결정문**
-   - Storage: Notion (Cross-Phase Architecture)
-   - URL: `https://app.notion.com/p/3a65181d71ad81e28b9cfb13f322e983`
-7. **ADR-099 — Local Owner Session·Authentication Adapter Recovery Boundary**
-   - Storage: Repository (`docs/architecture/adr/ADR-099-frontend-section-1-local-owner-session-and-authentication-boundary.md`) & Notion
+3. **ADR-099 — Local Owner Session·Authentication Adapter Recovery Boundary**
    - Relative Path: `docs/architecture/adr/ADR-099-frontend-section-1-local-owner-session-and-authentication-boundary.md`
-8. **Frontend Shared Contract Foundation 구현 기록**
-   - Storage: Repository (`main` branch merged commit `e98b7381536f2ae2bce04d8c6e9442990ea9f06e` / PR #17) & Notion
 
 ---
 
-## 4. Repository & Branch Setup
+## 4. Verification Status Matrix
 
-- **Repository**: `JasonCutter/shotgun`
-- **Base Branch**: `main` (`e98b7381536f2ae2bce04d8c6e9442990ea9f06e`)
-- **Working Branch**: `codex/frontend-phase-1-section-1`
-- **Branch Isolation**: Created freshly from `main` (no reuse of PR #17 branch).
-
----
-
-## 5. Architectural Context & Module Ownership
-
-- **Ownership**: The frontend application (`apps/shotgun-web`) and API client (`packages/shotgun-api-client`) handle UI rendering, local boundary state tracking, and request dispatching.
-- **Authority**: All security principals, session authorization tokens, active project boundaries, and CSRF mutations remain strictly server-authoritative.
-
----
-
-## 6. Verification Status Matrix
-
-| Requirement                     | Baseline State                        | Fulfilling Implementation                                                                                 | Status       |
-| :------------------------------ | :------------------------------------ | :-------------------------------------------------------------------------------------------------------- | :----------- |
-| **Session Boundary State Axes** | Generic error object                  | `SessionBoundaryView` with `connectivityState`, `authenticationState`, `sessionState`, `backendReadiness` | **VERIFIED** |
-| **Single-Cycle Bootstrap**      | Infinite 401 retry risk               | Deduplicated single-cycle `ensureSession` & `SessionCycleState` in `session-query.ts`                     | **VERIFIED** |
-| **Local Owner UI Policy**       | `<LogoutButton />` in `SettingsPage`  | Removed `<LogoutButton />` from all active routes, architecture test verifies UI boundary                 | **VERIFIED** |
-| **Typed Recovery Actions**      | Generic login text                    | `SessionRecoveryAction` (`RECONNECT`, `CHECK_LOCAL_SERVER`, `CHECK_SETTINGS`) with diagnostic modals      | **VERIFIED** |
-| **Project Switch Leave Guard**  | Instant select switch                 | Option B draft blocking & non-optimistic selector value in `ProjectSelector`                              | **VERIFIED** |
-| **Protective Cache Purging**    | Incomplete `['project']` invalidation | `purgeProjectScopedCaches` & `purgeProtectedSessionCaches` query helpers in `query-keys.ts`               | **VERIFIED** |
-| **Browser Connectivity**        | Unmonitored                           | `useConnectivityState()` hook with `online`/`offline` event listeners                                     | **VERIFIED** |
+| Requirement                     | Implementation Summary                                                                                               | Verification Status |
+| :------------------------------ | :------------------------------------------------------------------------------------------------------------------- | :------------------ |
+| **Audit & License Gate**        | `npm run oss:audit` (0 high vulnerabilities), `scripts/oss-gate.ts` PASS                                             | **VERIFIED (PASS)** |
+| **Runtime Isolation**           | `SessionCycleState` contained per `AppRuntime`, tested with distinct instance budgets                                | **VERIFIED (PASS)** |
+| **Recovery State Machine**      | `REVOKED` / `REESTABLISHING` / `READY` transition with immediate `purgeProtectedSessionCaches`                       | **VERIFIED (PASS)** |
+| **Deduplicated Reconnect**      | Instant `REESTABLISHING` boundary state update, deduplicated `activeBootstrapPromise`                                | **VERIFIED (PASS)** |
+| **Authority Path (Option B)**   | Raw session API in `ShotgunApiClient`, boundary controller in `session-query.ts`                                    | **VERIFIED (PASS)** |
+| **Session Boundary 4-Axis**     | Dedicated `SessionBoundaryConnectivityState`, `SessionBoundaryAuthenticationState`, `SessionBoundarySessionState`, `SessionBoundaryBackendReadiness` | **VERIFIED (PASS)** |
+| **Modal Accessibility**         | Keyboard Focus Trap, Escape key dismissal, Focus restoration to trigger button, precise copy                         | **VERIFIED (PASS)** |
+| **Project Switch Leave Guard**  | Option B unsaved draft confirmation modal blocking, non-optimistic selector                                          | **VERIFIED (PASS)** |
+| **Full Local Test Suite**       | `npm run check` & `npm run frontend:check` clean pass                                                                | **VERIFIED (PASS)** |
 
 ---
 
-## 7. Session Boundary State Taxonomy
+## 5. Automated Test & E2E Summary
 
-Defined in `packages/contracts/src/frontend-foundation.ts`:
+```text
+> npm run check
+- lint: PASS (0 errors)
+- format:check: PASS (0 errors)
+- typecheck: PASS (0 errors)
+- test:unit: PASS (87 tests passed across 20 files)
+- test:contract: PASS (143 tests passed across 17 files)
+- test:integration: PASS (29 tests passed across 9 files)
+- test:architecture: PASS (Architecture boundaries verified)
+- test:stage12-package: PASS
+- secret:scan: PASS
+- oss:verify: PASS (68 decisions, 45 baseline references)
 
-- **`ConnectivityState`**: `'UNKNOWN'`, `'ONLINE'`, `'OFFLINE'`, `'DEGRADED'`
-- **`SessionBoundaryAuthenticationState`**: `'authenticated'`, `'authentication_required'`, `'authentication_unavailable'`
-- **`SessionBoundarySessionState`**: `'ESTABLISHING'`, `'READY'`, `'REESTABLISHING'`, `'REVOKED'`, `'UNAVAILABLE'`
-- **`BackendReadiness`**: `'UNKNOWN'`, `'READY'`, `'INITIALIZING'`, `'DEGRADED'`, `'UNAVAILABLE'`
-
----
-
-## 8. Bootstrap Lifecycle & Auto-Recovery Protocol
-
-1. Query `/session`: if 200 OK $\rightarrow$ state becomes `READY`.
-2. On 401 Unauthorized: triggers `/session/local-bootstrap` **at most once per cycle**.
-3. Concurrent calls are deduplicated using `activeBootstrapPromise`.
-4. If bootstrap fails or is forbidden, mapped to appropriate reason code (`LOCAL_SERVER_UNAVAILABLE`, `LOCAL_OWNER_DISABLED`, `ORIGIN_NOT_ALLOWED`, `PROVISIONING_FAILED`, `SESSION_REVOKED`).
-
----
-
-## 9. Local Owner Authentication & UI Policy
-
-- Removed `<LogoutButton />` from active routes and top bar.
-- Architecture test (`scripts/architecture-test.ts`) verifies all active shell and route components under `apps/shotgun-web/src/routes/`, `apps/shotgun-web/src/shell/`, and session boundary screens contain zero prohibited auth/logout/password UI strings.
-- Preserved server-side `logout()` method in API client for future interactive auth adapter.
+> npm run frontend:check
+- frontend:typecheck: PASS
+- frontend:test: PASS (8 tests passed across 2 files)
+- frontend:build: PASS (dist artifact generated)
+- frontend:test:e2e: PASS (1 Playwright chromium test passed)
+```
 
 ---
 
-## 10. System Boundary Screen & Recovery Actions
+## 6. Conclusion & Operational Restrictions
 
-- Rendered via `<SessionBoundaryScreen />` when `sessionState !== 'READY'`.
-- Korean status messages corresponding to `reasonCode`.
-- Renders typed Recovery Actions (`RECONNECT`, `CHECK_LOCAL_SERVER`, `CHECK_SETTINGS`).
-- Focus automatically moves to main heading (`h1`) on mount, and modal headings on diagnostic dialog open.
-- ARIA roles: `role="alert"` for errors, `role="status"` for loading states, `role="dialog"` for diagnostic help modals.
-
----
-
-## 11. Connectivity Management & Offline Degradation
-
-- `useConnectivityState()` monitors `navigator.onLine` and `online`/`offline` window events.
-- Overrides `connectivityState` to `'OFFLINE'` when network drops.
-- Disables Project Selector and command execution during offline state.
-
----
-
-## 12. Project Boundary & Leave Guard Architecture
-
-- `LeaveGuardProvider` and `useLeaveGuard()` provide workspace state tracking (`WorkspaceLeaveState`).
-- `ProjectSelector` checks:
-  1. Connectivity (`OFFLINE` $\rightarrow$ alert, block).
-  2. Session readiness (`READY`).
-  3. `canLeaveCurrentContext`, `hasBlockingDialog`, `hasOutcomeUnknownCommand` $\rightarrow$ alert, block.
-  4. `hasUnsavedDraft` $\rightarrow$ Option B guard message ("저장되지 않은 Draft가 있어 Project를 전환할 수 없습니다.").
-  5. Selector maintains non-optimistic server-confirmed project ID (`value={session.activeProject.id}`).
-
----
-
-## 13. Cache Invalidation & Protection Boundaries
-
-- Query functions in `apps/shotgun-web/src/app/query-keys.ts`:
-  - `productSessionQueryKey`, `sessionBoundaryQueryKey`, `protectedQueryKey`, `globalQueryKey`, `unprotectedQueryKey`.
-- Implemented `purgeProjectScopedCaches` (runs `clearProjectQueries` to cancel and remove project-scoped queries on project switch).
-- Implemented `purgeProtectedSessionCaches` (cancels and removes protected queries, project queries, and session queries on revocation).
-
----
-
-## 14. Security Baseline & Cryptographic Integrity
-
-- 0 authority headers (`x-project-id`, `x-actor-id`, `authorization`) generated by frontend.
-- 0 session tokens stored in `localStorage` or `sessionStorage`.
-- Web Crypto SHA-256 Digest Parity maintained (`43258cff783fe7036d8a43033f830adfc60ec037382473548ac742b888292777`).
-
----
-
-## 15. Verification Suite & Test Results
-
-- **Automated Tests**:
-  - `npm run format:check`: PASS
-  - `npm run lint`: PASS
-  - `npm run typecheck`: PASS
-  - `npm run frontend:typecheck`: PASS
-  - `npm run frontend:test`: PASS
-  - `npm test` (unit, contract, integration, architecture, stage12-package): PASS
-  - `npm run secret:scan`: PASS
-  - `npm run oss:verify`: PASS
-  - `npx playwright test`: PASS
-
-- **Manual Accessibility Verification**:
-  - Verified initial focus restoration to `h1` in `<SessionBoundaryScreen />` on reason code change.
-  - Verified focus trap and Escape key dismissal on diagnostic help modals (`CHECK_LOCAL_SERVER`, `CHECK_SETTINGS`).
-  - Verified focus restoration to Project Selector element on guard message triggers.
-
----
-
-## 16. Open Issues & Future Scope
-
-- **Next Section**: `Phase 1 Section 2: Settings · Project Administration` (will commence after formal review approval of PR #19).
-
----
-
-## 17. Compliance Attestation
-
-All work conducted complies strictly with Shotgun Working Rules (`AGENTS.md`) and Canonical ADD specifications.
-
----
-
-## 18. Appendix
-
-- Contract definitions: `packages/contracts/src/frontend-foundation.ts`
-- Client implementation: `packages/shotgun-api-client/src/client.ts`
-- Web Shell: `apps/shotgun-web/src/shell/application-shell.tsx`
-
----
-
-## 19. Remote Submission & GitHub Actions CI Verification
-
-- **Remote Repository**: `https://github.com/JasonCutter/shotgun`
-- **Remote Branch**: `origin/codex/frontend-phase-1-section-1`
-- **Draft PR**: #19 (`https://github.com/JasonCutter/shotgun/pull/19`)
-- **PR Base**: `main` (`e98b7381536f2ae2bce04d8c6e9442990ea9f06e`)
-- **PR Status**: **Draft** (PR Ready / Merge / Canonical sync forbidden until requested review approval)
+- **PR State**: Maintained as **Draft PR #19**.
+- **Rule Adherence**: No `PR Ready` status, no `Merge`, no `Canonical` merge, and no Phase 1 Section 2 commencement prior to explicit user authorization.

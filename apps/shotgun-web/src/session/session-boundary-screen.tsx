@@ -53,6 +53,8 @@ export const SessionBoundaryScreen = ({
     'SERVER_HELP' | 'SETTINGS_HELP' | null
   >(null);
   const modalHeadingRef = useRef<HTMLHeadingElement>(null);
+  const dialogCardRef = useRef<HTMLDivElement>(null);
+  const lastActiveElementRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     headingRef.current?.focus();
@@ -61,6 +63,9 @@ export const SessionBoundaryScreen = ({
   useEffect(() => {
     if (activeDiagnosticModal) {
       modalHeadingRef.current?.focus();
+    } else if (lastActiveElementRef.current) {
+      lastActiveElementRef.current.focus();
+      lastActiveElementRef.current = null;
     }
   }, [activeDiagnosticModal]);
 
@@ -74,14 +79,44 @@ export const SessionBoundaryScreen = ({
   const isEstablishing =
     boundary.sessionState === 'ESTABLISHING' || boundary.sessionState === 'REESTABLISHING';
 
-  const handleAction = (action: SessionRecoveryAction) => {
+  const handleAction = (
+    action: SessionRecoveryAction,
+    event: React.MouseEvent<HTMLButtonElement>,
+  ) => {
     if (!action.enabled) return;
+    lastActiveElementRef.current = event.currentTarget;
     if (action.id === 'RECONNECT') {
       onReconnect?.();
     } else if (action.id === 'CHECK_LOCAL_SERVER') {
       setActiveDiagnosticModal('SERVER_HELP');
     } else if (action.id === 'CHECK_SETTINGS') {
       setActiveDiagnosticModal('SETTINGS_HELP');
+    }
+  };
+
+  const handleDialogKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      setActiveDiagnosticModal(null);
+      return;
+    }
+
+    if (e.key === 'Tab' && dialogCardRef.current) {
+      const focusables = dialogCardRef.current.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (!first || !last) return;
+
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     }
   };
 
@@ -106,7 +141,7 @@ export const SessionBoundaryScreen = ({
                 type="button"
                 className={`button ${act.id === 'RECONNECT' ? 'button-primary' : 'button-secondary'}`}
                 disabled={!act.enabled || isEstablishing}
-                onClick={() => handleAction(act)}
+                onClick={(e) => handleAction(act, e)}
               >
                 {act.label}
               </button>
@@ -121,11 +156,15 @@ export const SessionBoundaryScreen = ({
           role="dialog"
           aria-modal="true"
           aria-labelledby="diagnostic-dialog-title"
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') setActiveDiagnosticModal(null);
-          }}
+          onClick={() => setActiveDiagnosticModal(null)}
+          onKeyDown={handleDialogKeyDown}
         >
-          <div className="modal-card" tabIndex={-1}>
+          <div
+            ref={dialogCardRef}
+            className="modal-card"
+            tabIndex={-1}
+            onClick={(e) => e.stopPropagation()}
+          >
             <h2 id="diagnostic-dialog-title" ref={modalHeadingRef} tabIndex={-1}>
               {activeDiagnosticModal === 'SERVER_HELP'
                 ? '로컬 서버 상태 진단'
@@ -135,18 +174,18 @@ export const SessionBoundaryScreen = ({
               <div className="help-content">
                 <p>Shotgun 백엔드 서버 프로세스가 정상 실행 중인지 확인해 주세요.</p>
                 <ul>
-                  <li>서버 프로세스 실행 상태 (`npm run dev` 또는 백엔드 서비스)</li>
-                  <li>엔드포인트 통신 가능 여부 (기본 API 엔드포인트 `/api/v1/health`)</li>
-                  <li>방화벽 및 로컬 포트 바인딩 상태</li>
+                  <li>서버 프로세스 실행 상태 (`npm start` 또는 assemblies/shotgun-app)</li>
+                  <li>API Health 엔드포인트 응답 상태 (`/api/v1/health`)</li>
+                  <li>로컬 루프백 호스트 및 포트 연결 상태 (`127.0.0.1:3001`)</li>
                 </ul>
               </div>
             ) : (
               <div className="help-content">
                 <p>Local Owner Mode 설정 및 세션 환경변수를 확인해 주세요.</p>
                 <ul>
-                  <li>설정 파일 위치: `config/shotgun.config.json` 또는 환경변수 설정</li>
-                  <li>`SHOTGUN_LOCAL_OWNER_ENABLED=true` 설정 여부</li>
-                  <li>허용된 Origin (`http://127.0.0.1:*`, `http://localhost:*`) 접근 여부</li>
+                  <li>환경변수 및 설정 파일 (`.env` 또는 Runtime Config)</li>
+                  <li>Local Owner 계정 준비 상태</li>
+                  <li>허용된 브라우저 Origin (`http://127.0.0.1:5173` 등)</li>
                 </ul>
               </div>
             )}

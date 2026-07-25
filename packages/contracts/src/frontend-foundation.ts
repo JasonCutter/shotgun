@@ -1601,11 +1601,15 @@ export type SessionBoundaryReasonCode =
   | 'PROVISIONING_FAILED'
   | 'SESSION_REVOKED';
 
+export type SessionBoundaryConnectivityState = 'UNKNOWN' | 'ONLINE' | 'OFFLINE' | 'DEGRADED';
+
 export type SessionBoundaryAuthenticationState =
   'authenticated' | 'authentication_required' | 'authentication_unavailable';
 
 export type SessionBoundarySessionState =
   'ESTABLISHING' | 'READY' | 'REESTABLISHING' | 'REVOKED' | 'UNAVAILABLE';
+
+export type SessionBoundaryBackendReadiness = 'UNKNOWN' | 'READY' | 'DEGRADED' | 'UNAVAILABLE';
 
 export type SessionRecoveryActionId = 'RECONNECT' | 'CHECK_LOCAL_SERVER' | 'CHECK_SETTINGS';
 
@@ -1618,10 +1622,10 @@ export type SessionRecoveryAction = {
 export type SessionBoundaryView = {
   readonly schemaVersion: '1.0.0';
   readonly authenticationAdapter: 'local_owner' | 'interactive';
-  readonly connectivityState: ConnectivityState;
+  readonly connectivityState: SessionBoundaryConnectivityState;
   readonly authenticationState: SessionBoundaryAuthenticationState;
   readonly sessionState: SessionBoundarySessionState;
-  readonly backendReadiness: BackendReadiness;
+  readonly backendReadiness: SessionBoundaryBackendReadiness;
   readonly reasonCode?: SessionBoundaryReasonCode;
   readonly recoveryActions: readonly SessionRecoveryAction[];
   readonly session: ProductSessionView | null;
@@ -1940,14 +1944,12 @@ export function decodeSessionBoundaryView(input: unknown): SessionBoundaryView {
   return Object.freeze({
     schemaVersion: '1.0.0',
     authenticationAdapter: b['authenticationAdapter'] as 'local_owner' | 'interactive',
-    connectivityState: b['connectivityState'] as ConnectivityState,
+    connectivityState: b['connectivityState'] as SessionBoundaryConnectivityState,
     authenticationState: authStateStr as SessionBoundaryAuthenticationState,
     sessionState: sessionStateStr as SessionBoundarySessionState,
-    backendReadiness: b['backendReadiness'] as BackendReadiness,
-    ...(reasonCodeStr !== undefined
-      ? { reasonCode: reasonCodeStr as SessionBoundaryReasonCode }
-      : {}),
-    recoveryActions: Object.freeze(actions),
+    backendReadiness: b['backendReadiness'] as SessionBoundaryBackendReadiness,
+    reasonCode: reasonCodeStr as SessionBoundaryReasonCode | undefined,
+    recoveryActions: actions as readonly SessionRecoveryAction[],
     session: sessionObj,
   });
 }

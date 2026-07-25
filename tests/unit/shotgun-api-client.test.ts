@@ -155,34 +155,19 @@ describe('shotgun-api-client', () => {
     expect(mutationCalls).toBe(1);
   });
 
-  it('maps successful getSession to a READY SessionBoundaryView', async () => {
+  it('executes getSession correctly returning session envelope', async () => {
     const fetch = vi.fn(async () => json({ session: session() }));
-    const boundary = await createShotgunApiClient({ fetch }).getSessionBoundary();
-    expect(boundary.sessionState).toBe('READY');
-    expect(boundary.reasonCode).toBe('LOCAL_SESSION_READY');
-    expect(boundary.session?.principal.id).toBe('principal-a');
+    const result = await createShotgunApiClient({ fetch }).getSession();
+    expect(result.principal.id).toBe('principal-a');
+    expect(result.activeProject.id).toBe('project-a');
   });
 
-  it('maps network errors when online to ONLINE connectivity and UNAVAILABLE backend', async () => {
-    const fetch = vi.fn(async () => {
-      throw new TypeError('Failed to fetch');
-    });
-    const boundary = await createShotgunApiClient({ fetch }).getSessionBoundary();
-    expect(boundary.sessionState).toBe('UNAVAILABLE');
-    expect(boundary.connectivityState).toBe('ONLINE');
-    expect(boundary.backendReadiness).toBe('UNAVAILABLE');
-    expect(boundary.reasonCode).toBe('LOCAL_SERVER_UNAVAILABLE');
-    expect(boundary.recoveryActions.map((a) => a.id)).toEqual(['RECONNECT', 'CHECK_LOCAL_SERVER']);
-  });
-
-  it('maps 401 Unauthorized to REVOKED session boundary view', async () => {
+  it('throws ShotgunApiError on 401 Unauthorized during getSession', async () => {
     const fetch = vi.fn(async () =>
       json({ code: 'SESSION_EXPIRED', message: 'Session expired' }, 401),
     );
-    const boundary = await createShotgunApiClient({ fetch }).getSessionBoundary();
-    expect(boundary.sessionState).toBe('REVOKED');
-    expect(boundary.authenticationState).toBe('authentication_required');
-    expect(boundary.reasonCode).toBe('SESSION_REVOKED');
-    expect(boundary.recoveryActions.map((a) => a.id)).toEqual(['RECONNECT']);
+    await expect(createShotgunApiClient({ fetch }).getSession()).rejects.toBeInstanceOf(
+      ShotgunApiError,
+    );
   });
 });

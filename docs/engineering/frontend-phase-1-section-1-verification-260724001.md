@@ -69,17 +69,17 @@ This report documents the completed technical verification for **Frontend Phase 
 
 ## 4. Verification Status Matrix
 
-| Requirement                     | Implementation Summary                                                                                               | Verification Status |
-| :------------------------------ | :------------------------------------------------------------------------------------------------------------------- | :------------------ |
-| **Audit & License Gate**        | `npm run oss:audit` (0 high vulnerabilities), `scripts/oss-gate.ts` PASS                                             | **VERIFIED (PASS)** |
-| **Runtime Isolation**           | `SessionCycleState` contained per `AppRuntime`, tested with distinct instance budgets                                | **VERIFIED (PASS)** |
-| **Recovery State Machine**      | `REVOKED` / `REESTABLISHING` / `READY` transition with immediate `purgeProtectedSessionCaches`                       | **VERIFIED (PASS)** |
-| **Deduplicated Reconnect**      | Instant `REESTABLISHING` boundary state update, deduplicated `activeBootstrapPromise`                                | **VERIFIED (PASS)** |
-| **Authority Path (Option B)**   | Raw session API in `ShotgunApiClient`, boundary controller in `session-query.ts`                                    | **VERIFIED (PASS)** |
-| **Session Boundary 4-Axis**     | Dedicated `SessionBoundaryConnectivityState`, `SessionBoundaryAuthenticationState`, `SessionBoundarySessionState`, `SessionBoundaryBackendReadiness` | **VERIFIED (PASS)** |
-| **Modal Accessibility**         | Keyboard Focus Trap, Escape key dismissal, Focus restoration to trigger button, precise copy                         | **VERIFIED (PASS)** |
-| **Project Switch Leave Guard**  | Option B unsaved draft confirmation modal blocking, non-optimistic selector                                          | **VERIFIED (PASS)** |
-| **Full Local Test Suite**       | `npm run check` & `npm run frontend:check` clean pass                                                                | **VERIFIED (PASS)** |
+| Requirement                    | Implementation Summary                                                                                                                               | Verification Status |
+| :----------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------ |
+| **Audit & License Gate**       | `npm run oss:audit` (0 high vulnerabilities), `scripts/oss-gate.ts` PASS                                                                             | **VERIFIED (PASS)** |
+| **Runtime Isolation**          | `SessionCycleState` contained per `AppRuntime`, tested with distinct instance budgets                                                                | **VERIFIED (PASS)** |
+| **Recovery State Machine**     | `REVOKED` / `REESTABLISHING` / `READY` transition with immediate `purgeProtectedSessionCaches`                                                       | **VERIFIED (PASS)** |
+| **Deduplicated Reconnect**     | Instant `REESTABLISHING` boundary state update, deduplicated `activeBootstrapPromise`                                                                | **VERIFIED (PASS)** |
+| **Authority Path (Option B)**  | Raw session API in `ShotgunApiClient`, boundary controller in `session-query.ts`                                                                     | **VERIFIED (PASS)** |
+| **Session Boundary 4-Axis**    | Dedicated `SessionBoundaryConnectivityState`, `SessionBoundaryAuthenticationState`, `SessionBoundarySessionState`, `SessionBoundaryBackendReadiness` | **VERIFIED (PASS)** |
+| **Modal Accessibility**        | Keyboard Focus Trap, Escape key dismissal, Focus restoration to trigger button, precise copy                                                         | **VERIFIED (PASS)** |
+| **Project Switch Leave Guard** | Option B unsaved draft confirmation modal blocking, non-optimistic selector                                                                          | **VERIFIED (PASS)** |
+| **Full Local Test Suite**      | `npm run check` & `npm run frontend:check` clean pass                                                                                                | **VERIFIED (PASS)** |
 
 ---
 

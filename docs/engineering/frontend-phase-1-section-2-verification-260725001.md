@@ -40,12 +40,14 @@ Phase 1 Section 2 establishes full **Settings & Project Administration** capabil
    - Option B Leave Guard integration (`useLeaveGuard` hook).
    - Responsive, WAI-ARIA accessible Settings layout and 10 dedicated Workspaces (`CategoryIndexView`, `PreferencesWorkspace`, `ProjectsWorkspace`, `ProjectDetailsWorkspace`, `ModelsWorkspace`, `CostsWorkspace`, `PrivacyWorkspace`, `ConnectorsWorkspace`, `DirectivesWorkspace`, `SchemaWorkspace`, `DiagnosticsWorkspace`).
 
-### 1.3 PostgreSQL Persistent Integration Remediation (Update)
+### 1.3 Persistent PostgreSQL & API Client Remediation
 
-- **PostgreSQL Settings & Project Administration**: Replaced temporary in-memory mock endpoints with persistent PostgreSQL repository interactions.
-- **ProductFeatureView Implementation**: Implemented robust `ProductFeatureView<T>` wrapper and runtime decoders to correctly propagate and enforce `AVAILABLE`/`UNAVAILABLE` states across all feature-gated settings views.
-- **Database Migrations**: Refined Migration 017 to use project-scoped owner indices safely without IMMUTABLE function violations.
-- **Client API & TS Strictness**: Enforced TS type checking across the React UI controllers, API clients, and contracts.
+- **PostgreSQL Settings & Project Administration**: Connected `PostgresProjectAdministrationRepository` and `PostgresSettingsRepository` for atomic project creation, initial revision generation, owner membership registration, and settings command execution.
+- **Locking & Schema Invariants**: Fixed `SELECT MAX(revision) ... FOR UPDATE` PostgreSQL aggregate syntax by locking parent entity rows (`SELECT id FROM project_admin.projects WHERE id = $1 FOR UPDATE`) before querying maximum revisions. Standardized `policy_context_revisions.policy_binding` schema column usage.
+- **Contract Decoders & API Client**: Exported `decodeSettingsValidationResult`, `decodeSettingsImpactPreview`, and `decodeSettingsCommandResult` from `@shotgun/contracts` and wired runtime validation in `@shotgun/api-client` for `validateSettings`, `previewImpact`, and `applySettingsCommand`.
+- **Draft Controller Pinning**: Updated `SettingsDraftController` to pin `activeCommandId` before network requests for deterministic timeout recovery.
+- **Advanced Workspace**: Added `/settings/advanced` route and `AdvancedWorkspace` component rendering system revision and policy context.
+- **Database Test Suite**: Added `tests/database/section2-postgres.test.ts` verifying persistent project creation, settings command execution, restart persistence, rollback safety, and idempotency key reuse mismatch detection across PostgreSQL (81 database tests total across 16 files).
 
 ---
 

@@ -666,7 +666,7 @@ export class PostgresProjectAdministrationRepository implements ProjectAdministr
 
       // Step 5: Initial Policy Context Revision (append-only; PK=(project_id, revision))
       await client.query(
-        `INSERT INTO settings.policy_context_revisions (project_id, revision, compiled_context, created_at)
+        `INSERT INTO settings.policy_context_revisions (project_id, revision, policy_binding, created_at)
          VALUES ($1, 1, '{}'::jsonb, $2)`,
         [input.projectId, now],
       );
@@ -1033,9 +1033,19 @@ export class PostgresSettingsRepository implements SettingsRepositoryPort {
         return this.getPrincipalPreferences(input.principalId); // Return current state
       }
 
-      // Lock
+      // Lock principal row first
+      await client.query(
+        `INSERT INTO settings.principal_preferences (principal_id, preferences, updated_at)
+         VALUES ($1, '{}'::jsonb, now())
+         ON CONFLICT (principal_id) DO NOTHING`,
+        [input.principalId],
+      );
+      await client.query(
+        `SELECT principal_id FROM settings.principal_preferences WHERE principal_id = $1 FOR UPDATE`,
+        [input.principalId],
+      );
       const revRes = await client.query<{ revision: number }>(
-        `SELECT MAX(revision) AS revision FROM settings.preference_revisions WHERE principal_id = $1 FOR UPDATE`,
+        `SELECT COALESCE(MAX(revision), 0) AS revision FROM settings.preference_revisions WHERE principal_id = $1`,
         [input.principalId],
       );
       const currentRev = revRes.rows[0]?.revision ?? 0;
@@ -1235,41 +1245,50 @@ export class PostgresSettingsRepository implements SettingsRepositoryPort {
     try {
       await client.query('BEGIN');
 
-      const existingIdem = await client.query<{
+      const existingCmd = await client.query<{
+        command_id: string;
         client_request_id: string;
+        command_payload: Record<string, unknown>;
+        project_id: string;
+        expected_revision: number;
         status: string;
         applied_revision: number | null;
+        completed_at: Date;
       }>(
-        `SELECT client_request_id, status, applied_revision FROM settings.settings_command_results WHERE idempotency_key = $1`,
+        `SELECT c.command_id, c.client_request_id, c.command_payload, c.project_id, c.expected_revision, r.status, r.applied_revision, r.completed_at
+         FROM settings.settings_commands c
+         JOIN settings.settings_command_results r USING (command_id)
+         WHERE c.idempotency_key = $1`,
         [input.idempotencyKey],
       );
-      if (existingIdem.rows.length > 0) {
-        const row = existingIdem.rows[0]!;
-        if (row.client_request_id !== input.clientRequestId) {
+      if (existingCmd.rows.length > 0) {
+        const row = existingCmd.rows[0]!;
+        const payloadMatch = JSON.stringify(row.command_payload) === JSON.stringify(input.settings);
+        if (
+          row.client_request_id !== input.clientRequestId ||
+          row.project_id !== input.projectId ||
+          row.expected_revision !== input.expectedSettingsRevision ||
+          !payloadMatch
+        ) {
           throw new FrontendContractError(
             'IDEMPOTENCY_KEY_REUSE_MISMATCH',
-            `Idempotency key '${input.idempotencyKey}' reused with different clientRequestId.`,
+            `Idempotency key '${input.idempotencyKey}' reused with mismatched parameters or payload.`,
           );
         }
         await client.query('COMMIT');
         return Object.freeze({
-          commandId: input.commandId,
-          clientRequestId: input.clientRequestId,
+          commandId: row.command_id,
+          clientRequestId: row.client_request_id,
           idempotencyKey: input.idempotencyKey,
           status: row.status as SettingsCommandResult['status'],
           appliedRevision: row.applied_revision ?? undefined,
-          completedAt: new Date().toISOString(),
+          completedAt: row.completed_at ? row.completed_at.toISOString() : new Date().toISOString(),
         });
       }
 
-      // Lock on settings_revisions, not project_admin.projects — independent revision tracking
-      const revRes = await client.query<{ revision: number }>(
-        `SELECT MAX(revision) AS revision FROM settings.settings_revisions WHERE project_id = $1 FOR UPDATE`,
-        [input.projectId],
-      );
-      // Verify project exists
+      // 1. Lock parent project row
       const projRes = await client.query<{ id: string }>(
-        `SELECT id FROM project_admin.projects WHERE id = $1`,
+        `SELECT id FROM project_admin.projects WHERE id = $1 FOR UPDATE`,
         [input.projectId],
       );
       if (projRes.rows.length === 0) {
@@ -1278,6 +1297,12 @@ export class PostgresSettingsRepository implements SettingsRepositoryPort {
           `Project '${input.projectId}' not found.`,
         );
       }
+
+      // 2. Query settings revision (no FOR UPDATE on aggregate)
+      const revRes = await client.query<{ revision: number }>(
+        `SELECT COALESCE(MAX(revision), 0) AS revision FROM settings.settings_revisions WHERE project_id = $1`,
+        [input.projectId],
+      );
       const currentRev = revRes.rows[0]?.revision ?? 0;
       if (currentRev !== input.expectedSettingsRevision) {
         throw new FrontendContractError(
@@ -1286,9 +1311,9 @@ export class PostgresSettingsRepository implements SettingsRepositoryPort {
         );
       }
 
-      // Check policy context revision
+      // 3. Query policy context revision (no FOR UPDATE on aggregate)
       const policyRevRes = await client.query<{ revision: number }>(
-        `SELECT MAX(revision) AS revision FROM settings.policy_context_revisions WHERE project_id = $1 FOR UPDATE`,
+        `SELECT COALESCE(MAX(revision), 0) AS revision FROM settings.policy_context_revisions WHERE project_id = $1`,
         [input.projectId],
       );
       const currentPolicyRev = policyRevRes.rows[0]?.revision ?? 0;
@@ -1323,7 +1348,7 @@ export class PostgresSettingsRepository implements SettingsRepositoryPort {
 
       // INSERT new policy_context_revisions row
       await client.query(
-        `INSERT INTO settings.policy_context_revisions (project_id, revision, compiled_context, created_at)
+        `INSERT INTO settings.policy_context_revisions (project_id, revision, policy_binding, created_at)
          VALUES ($1, $2, $3, now())`,
         [input.projectId, nextPolicyRev, JSON.stringify({})],
       );

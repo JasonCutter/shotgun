@@ -1,5 +1,3 @@
-import { randomUUID } from 'node:crypto';
-
 import type {
   Actor,
   AnyEnvelope,
@@ -10,6 +8,15 @@ import type {
   QueryResultEnvelope,
   SecurityContext,
 } from './types.js';
+
+const generateUUID = (): string => {
+  if (typeof globalThis !== 'undefined' && globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const nodeCrypto = require('node:crypto') as typeof import('node:crypto');
+  return nodeCrypto.randomUUID();
+};
 
 type RootContext = {
   readonly producerModule: string;
@@ -38,13 +45,13 @@ export const createCommand = <TPayload>(
       readonly sequence?: number;
     },
 ): CommandEnvelope<TPayload> => ({
-  messageId: input.messageId ?? randomUUID(),
+  messageId: input.messageId ?? generateUUID(),
   messageType: input.messageType,
   messageKind: 'command',
   schemaVersion: input.schemaVersion,
   producerModule: input.producerModule,
   producerVersion: input.producerVersion,
-  correlationId: input.correlationId ?? randomUUID(),
+  correlationId: input.correlationId ?? generateUUID(),
   idempotencyKey: input.idempotencyKey,
   projectId: input.projectId,
   actor: input.actor,
@@ -52,7 +59,7 @@ export const createCommand = <TPayload>(
   provenance: input.provenance,
   payload: input.payload,
   createdAt: input.createdAt ?? new Date().toISOString(),
-  traceId: input.traceId ?? randomUUID(),
+  traceId: input.traceId ?? generateUUID(),
   orderingKey: input.orderingKey,
   sequence: input.sequence,
 });
@@ -65,20 +72,20 @@ export const createQuery = <TPayload>(
       readonly payload: TPayload;
     },
 ): QueryEnvelope<TPayload> => ({
-  messageId: input.messageId ?? randomUUID(),
+  messageId: input.messageId ?? generateUUID(),
   messageType: input.messageType,
   messageKind: 'query',
   schemaVersion: input.schemaVersion,
   producerModule: input.producerModule,
   producerVersion: input.producerVersion,
-  correlationId: input.correlationId ?? randomUUID(),
+  correlationId: input.correlationId ?? generateUUID(),
   projectId: input.projectId,
   actor: input.actor,
   security: input.security,
   provenance: input.provenance,
   payload: input.payload,
   createdAt: input.createdAt ?? new Date().toISOString(),
-  traceId: input.traceId ?? randomUUID(),
+  traceId: input.traceId ?? generateUUID(),
 });
 
 type ChildInput<TPayload> = MessageIdentity & {
@@ -107,7 +114,7 @@ export const createChildEvent = <TPayload>(
     readonly sequence?: number;
   },
 ): EventEnvelope<TPayload> => ({
-  messageId: input.messageId ?? randomUUID(),
+  messageId: input.messageId ?? generateUUID(),
   messageType: input.messageType,
   messageKind: 'event',
   schemaVersion: input.schemaVersion,
@@ -125,7 +132,7 @@ export const createChildQuery = <TPayload>(
   parent: AnyEnvelope,
   input: ChildInput<TPayload>,
 ): QueryEnvelope<TPayload> => ({
-  messageId: input.messageId ?? randomUUID(),
+  messageId: input.messageId ?? generateUUID(),
   messageType: input.messageType,
   messageKind: 'query',
   schemaVersion: input.schemaVersion,
@@ -140,7 +147,7 @@ export const createQueryResult = <TPayload>(
   query: QueryEnvelope,
   input: ChildInput<TPayload>,
 ): QueryResultEnvelope<TPayload> => ({
-  messageId: input.messageId ?? randomUUID(),
+  messageId: input.messageId ?? generateUUID(),
   messageType: input.messageType,
   messageKind: 'query-result',
   schemaVersion: input.schemaVersion,

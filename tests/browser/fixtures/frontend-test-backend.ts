@@ -60,13 +60,15 @@ export async function startFrontendTestBackend() {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const backend = await startFrontendTestBackend();
-  const shutdown = () => {
-    void backend.close().then(
-      () => process.exit(0),
-      () => process.exit(1),
-    );
-  };
-  process.once('SIGINT', shutdown);
-  process.once('SIGTERM', shutdown);
+  void (async () => {
+    const backend = await startFrontendTestBackend();
+    const shutdown = () => {
+      void backend.close().then(
+        () => process.exit(0),
+        () => process.exit(1),
+      );
+    };
+    process.once('SIGINT', shutdown);
+    process.once('SIGTERM', shutdown);
+  })();
 }

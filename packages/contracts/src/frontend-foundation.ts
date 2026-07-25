@@ -2502,3 +2502,90 @@ export function decodeProjectAdministrationView(val: unknown): ProjectAdministra
     projects: Object.freeze(projects),
   });
 }
+
+export function decodeSettingsValidationResult(val: unknown): SettingsValidationResult {
+  if (!isRecord(val)) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'SettingsValidationResult must be a non-null object',
+    );
+  }
+  const obj = val;
+  const errors = Array.isArray(obj['errors'])
+    ? obj['errors'].map((e) => {
+        const item = isRecord(e) ? e : {};
+        return { key: String(item['key'] ?? ''), message: String(item['message'] ?? '') };
+      })
+    : [];
+  const warnings = Array.isArray(obj['warnings'])
+    ? obj['warnings'].map((w) => {
+        const item = isRecord(w) ? w : {};
+        return { key: String(item['key'] ?? ''), message: String(item['message'] ?? '') };
+      })
+    : [];
+
+  return Object.freeze({
+    isValid: Boolean(obj['isValid']),
+    errors: Object.freeze(errors),
+    warnings: Object.freeze(warnings),
+  });
+}
+
+export function decodeSettingsImpactPreview(val: unknown): SettingsImpactPreview {
+  if (!isRecord(val)) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'SettingsImpactPreview must be a non-null object',
+    );
+  }
+  const obj = val;
+  const affectedComponents = Array.isArray(obj['affectedComponents'])
+    ? obj['affectedComponents'].map(String)
+    : [];
+
+  return Object.freeze({
+    targetProjectId: String(obj['targetProjectId'] ?? ''),
+    expectedRevision: Number(obj['expectedRevision'] ?? 0),
+    requiresReview: Boolean(obj['requiresReview']),
+    requiresMigration: Boolean(obj['requiresMigration']),
+    requiresRestart: Boolean(obj['requiresRestart']),
+    riskLevel: decodeSettingsRiskLevel(obj['riskLevel']),
+    affectedComponents: Object.freeze(affectedComponents),
+    summaryDescription: String(obj['summaryDescription'] ?? ''),
+  });
+}
+
+export function decodeSettingsCommandResult(val: unknown): SettingsCommandResult {
+  if (!isRecord(val)) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'SettingsCommandResult must be a non-null object',
+    );
+  }
+  const obj = val;
+  const rawStatus = String(obj['status'] ?? 'FAILED');
+  const validStatuses: SettingsCommandStatus[] = [
+    'PENDING',
+    'APPLIED',
+    'REVIEW_REQUIRED',
+    'FAILED',
+    'OUTCOME_UNKNOWN',
+  ];
+  const status: SettingsCommandStatus = validStatuses.includes(rawStatus as SettingsCommandStatus)
+    ? (rawStatus as SettingsCommandStatus)
+    : 'FAILED';
+
+  return Object.freeze({
+    commandId: String(obj['commandId'] ?? ''),
+    clientRequestId: String(obj['clientRequestId'] ?? ''),
+    idempotencyKey: String(obj['idempotencyKey'] ?? ''),
+    status,
+    appliedRevision:
+      typeof obj['appliedRevision'] === 'number' ? obj['appliedRevision'] : undefined,
+    reviewProposalId:
+      typeof obj['reviewProposalId'] === 'string' ? obj['reviewProposalId'] : undefined,
+    errorMessage: typeof obj['errorMessage'] === 'string' ? obj['errorMessage'] : undefined,
+    completedAt: typeof obj['completedAt'] === 'string' ? obj['completedAt'] : undefined,
+    projectId: typeof obj['projectId'] === 'string' ? obj['projectId'] : undefined,
+  });
+}

@@ -70,6 +70,7 @@ export const useSettingsDraft = (
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [clientRequestId, setClientRequestId] = useState<string | null>(null);
   const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null);
+  const [activeCommandId, setActiveCommandId] = useState<string | null>(null);
 
   const isDirty = useMemo(() => Object.keys(draft).length > 0, [draft]);
   const { registerLeaveGuard } = useLeaveGuard();
@@ -112,6 +113,7 @@ export const useSettingsDraft = (
     setErrorMessage(null);
     setClientRequestId(null);
     setIdempotencyKey(null);
+    setActiveCommandId(null);
   }, []);
 
   const validate = useCallback(
@@ -188,6 +190,7 @@ export const useSettingsDraft = (
 
       setClientRequestId(reqId);
       setIdempotencyKey(idemKey);
+      setActiveCommandId(cmdId);
 
       try {
         const result = await apiClient.applySettingsCommand({
@@ -215,16 +218,44 @@ export const useSettingsDraft = (
         }
 
         return result;
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Network error';
-        if (msg.includes('REVISION_CONFLICT') || msg.includes('stale') || msg.includes('409')) {
+      } catch (err: unknown) {
+        const isConflict =
+          (typeof err === 'object' &&
+            err !== null &&
+            'code' in err &&
+            (err as { code: string }).code === 'CONFLICT') ||
+          (typeof err === 'object' &&
+            err !== null &&
+            'code' in err &&
+            (err as { code: string }).code === 'REVISION_CONFLICT') ||
+          (err instanceof Error &&
+            (err.message.includes('409') || err.message.includes('REVISION_CONFLICT')));
+
+        const isTimeoutOrNetwork =
+          (typeof err === 'object' &&
+            err !== null &&
+            'code' in err &&
+            ['TIMEOUT', 'NETWORK_ERROR', 'FETCH_FAILED'].includes(
+              (err as { code: string }).code,
+            )) ||
+          (typeof err === 'object' &&
+            err !== null &&
+            'status' in err &&
+            [504, 502, 503].includes((err as { status: number }).status)) ||
+          (err instanceof Error &&
+            (err.message.includes('timeout') ||
+              err.message.includes('Network') ||
+              err.message.includes('504')));
+
+        if (isConflict) {
           setState('STALE');
           setErrorMessage('Revision conflict detected. Server has newer settings.');
-        } else if (msg.includes('504') || msg.includes('timeout') || msg.includes('Network')) {
+        } else if (isTimeoutOrNetwork) {
           setState('OUTCOME_UNKNOWN');
           setErrorMessage('Server outcome unknown due to network error.');
         } else {
           setState('APPLY_FAILED');
+          const msg = err instanceof Error ? err.message : 'Apply failed';
           setErrorMessage(msg);
         }
         throw err;
@@ -244,9 +275,10 @@ export const useSettingsDraft = (
     async (apiClient: {
       getSettingsCommandStatus: (commandId: string) => Promise<SettingsCommandResult>;
     }): Promise<SettingsCommandResult | null> => {
-      if (!commandResult?.commandId) return null;
+      const targetCmdId = commandResult?.commandId ?? activeCommandId;
+      if (!targetCmdId) return null;
       try {
-        const status = await apiClient.getSettingsCommandStatus(commandResult.commandId);
+        const status = await apiClient.getSettingsCommandStatus(targetCmdId);
         setCommandResult(status);
         if (status.status === 'APPLIED') {
           setState('APPLIED');
@@ -261,7 +293,7 @@ export const useSettingsDraft = (
         return null;
       }
     },
-    [commandResult],
+    [commandResult, activeCommandId],
   );
 
   const markStale = useCallback((newServerRevision: number) => {

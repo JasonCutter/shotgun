@@ -111,22 +111,40 @@ export type ShotgunApiClient = {
   ): Promise<ProjectListItemView>;
   updateProject(
     projectId: string,
-    params: { name?: string; description?: string; expectedRevision: number },
+    params: {
+      name?: string;
+      description?: string;
+      expectedRevision: number;
+      clientRequestId: string;
+      idempotencyKey: string;
+    },
     options?: RequestOptions,
   ): Promise<ProjectListItemView>;
   archiveProject(
     projectId: string,
-    expectedRevision: number,
+    params: {
+      expectedRevision: number;
+      clientRequestId: string;
+      idempotencyKey: string;
+    },
     options?: RequestOptions,
   ): Promise<ProjectListItemView>;
   restoreProject(
     projectId: string,
-    expectedRevision: number,
+    params: {
+      expectedRevision: number;
+      clientRequestId: string;
+      idempotencyKey: string;
+    },
     options?: RequestOptions,
   ): Promise<ProjectListItemView>;
   requestDeleteProject(
     projectId: string,
-    expectedRevision: number,
+    params: {
+      expectedRevision: number;
+      clientRequestId: string;
+      idempotencyKey: string;
+    },
     options?: RequestOptions,
   ): Promise<ProjectListItemView>;
 

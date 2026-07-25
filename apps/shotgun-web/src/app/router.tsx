@@ -22,6 +22,7 @@ import { ConnectorsWorkspace } from '../routes/settings/connectors-workspace.js'
 import { DirectivesWorkspace } from '../routes/settings/directives-workspace.js';
 import { SchemaWorkspace } from '../routes/settings/schema-workspace.js';
 import { DiagnosticsWorkspace } from '../routes/settings/diagnostics-workspace.js';
+import { AdvancedWorkspace } from '../routes/settings/advanced-workspace.js';
 import type { AppRuntime } from './providers.js';
 import { ensureSessionBoundary, sessionBoundaryQueryOptions } from '../session/session-query.js';
 
@@ -100,6 +101,7 @@ export const createAppRouter = (runtime: AppRuntime) =>
             { path: 'directives', element: <DirectivesWorkspace /> },
             { path: 'schema', element: <SchemaWorkspace /> },
             { path: 'diagnostics', element: <DiagnosticsWorkspace /> },
+            { path: 'advanced', element: <AdvancedWorkspace /> },
           ],
         },
       ],

@@ -182,6 +182,18 @@ export function registerSettingsRoutes(
         operation: 'apply-settings-command',
       });
     }
+    const hasEdit =
+      membership.isOwner ||
+      membership.scopes.includes('owner') ||
+      membership.scopes.includes('admin');
+    if (!hasEdit) {
+      throw new ShotgunError({
+        code: 'PROJECT_ACCESS_DENIED',
+        safeMessage: `You do not have permission to manage settings on project '${targetProjectId}'.`,
+        module: 'shotgun-app',
+        operation: 'apply-settings-command',
+      });
+    }
 
     const projectDetail = await projectAdminRepo.getProjectDetails(targetProjectId);
     if (!projectDetail || !projectDetail.capability.canManagePolicies) {

@@ -28,9 +28,15 @@
    - `clientRequestId`, `idempotencyKey` 검증, CSRF 토큰 보호, expectedRevision 409 CONFLICT 충돌 처리
 
 5. **Client, Draft Controller, Leave Guard & Frontend Workspaces (`apps/shotgun-web`)**:
-   - `ShotgunApiClient` 5D 쿼리 키 구조 및 캐시 퍼지 로직
-   - `SettingsDraftController` 상태 기계 및 Option B Leave Guard 통합 (`useLeaveGuard`)
-   - WAI-ARIA / 키보드 접근성을 갖춘 `SettingsLayout` 및 10개 전용 워크스페이스 (`CategoryIndexView`, `PreferencesWorkspace`, `ProjectsWorkspace`, `ProjectDetailsWorkspace`, `ModelsWorkspace`, `CostsWorkspace`, `PrivacyWorkspace`, `ConnectorsWorkspace`, `DirectivesWorkspace`, `SchemaWorkspace`, `DiagnosticsWorkspace`)
+   - `ShotgunApiClient` 5D 쿼리 키 구조 및 캐시 퍼지 로직 (`purgeSettingsScopedCaches`)
+   - `SettingsDraftController` 상태 기계, draft command ID pinning, typed error 복구 및 Option B Leave Guard 통합 (`useLeaveGuard`)
+   - Runtime decoder 연결 (`decodeSettingsSnapshot`, `decodeSettingsValidationResult`, `decodeSettingsImpactPreview`, `decodeSettingsCommandResult`)
+   - WAI-ARIA / 키보드 접근성을 갖춘 `SettingsLayout` 및 11개 전용 워크스페이스 (`CategoryIndexView`, `PreferencesWorkspace`, `ProjectsWorkspace`, `ProjectDetailsWorkspace`, `ModelsWorkspace`, `CostsWorkspace`, `PrivacyWorkspace`, `ConnectorsWorkspace`, `DirectivesWorkspace`, `SchemaWorkspace`, `DiagnosticsWorkspace`, `AdvancedWorkspace`)
+
+6. **Persistent PostgreSQL Repository & Test Suite (`tests/database/section2-postgres.test.ts`)**:
+   - `PostgresProjectAdministrationRepository` & `PostgresSettingsRepository` 연결
+   - Atomic Project Creation Coordinator, `SELECT ... FOR UPDATE` 부모 행 잠금, `policy_binding` 스키마 정합성 보장
+   - `section2-postgres.test.ts` 추가 (프로젝트 원자적 생성, 설정 명령 revision 증가, 재시작 영속성, 롤백 안전성, idempotency key 재사용 불일치 검증)
 
 ---
 
@@ -39,7 +45,11 @@
 - **Verification Report**: [`docs/engineering/frontend-phase-1-section-2-verification-260725001.md`](file:///c:/dev/shotgun/docs/engineering/frontend-phase-1-section-2-verification-260725001.md)
 - **AC-01 ~ AC-30**: 30/30 전체 항목 PASS
 - **`npm run check:core`**: ALL GREEN (Lint, Format, Typecheck, Unit, Contract, Integration, Architecture)
-- **`npm run frontend:check`**: ALL GREEN (Web Typecheck, Vitest Web Unit, Vite Build, Playwright E2E)
+- **`npm run test:database`**: ALL GREEN (16 test files, 81 tests passed)
+- **`npm run test:unit`**: ALL GREEN (21 test files, 92 tests passed)
+- **`npm run test:contract`**: ALL GREEN (18 test files, 150 tests passed)
+- **`npm run test:integration`**: ALL GREEN (10 test files, 35 tests passed)
+- **`npm run frontend:test:e2e`**: ALL GREEN (2 spec files, 5 Playwright E2E browser tests passed)
 - **`npm run secret:scan`**: PASS (Zero secret leakage)
 - **`npm run oss:verify`**: PASS (68 decisions, 45 baseline references)
 

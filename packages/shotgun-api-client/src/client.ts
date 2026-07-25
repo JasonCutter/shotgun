@@ -12,20 +12,26 @@ import {
   decodeSessionEnvelope,
 } from './decode.js';
 import { ShotgunApiError } from './errors.js';
-import type {
-  SettingsSnapshot,
-  SettingsCategorySummary,
-  SettingsValidationResult,
-  SettingsImpactPreview,
-  SettingsCommandResult,
-  ProjectListItemView,
-  ModelDescriptorView,
-  CostBudgetView,
-  PrivacyRetentionView,
-  ConnectorSettingsView,
-  DirectiveProposalView,
-  SchemaPackView,
-  DiagnosticsView,
+import {
+  decodeSettingsSnapshot,
+  decodeSettingsValidationResult,
+  decodeSettingsImpactPreview,
+  decodeSettingsCommandResult,
+  decodeProjectListItemView,
+  decodeProductFeatureView,
+  type SettingsSnapshot,
+  type SettingsCategorySummary,
+  type SettingsValidationResult,
+  type SettingsImpactPreview,
+  type SettingsCommandResult,
+  type ProjectListItemView,
+  type ModelDescriptorView,
+  type CostBudgetView,
+  type PrivacyRetentionView,
+  type ConnectorSettingsView,
+  type DirectiveProposalView,
+  type SchemaPackView,
+  type DiagnosticsView,
 } from '../../contracts/src/index.js';
 
 const apiPath = (path: string): string => `/api/v1${path}`;
@@ -133,8 +139,8 @@ export const createShotgunApiClient = (
       const response = await request(`/settings/snapshot${query}`, {
         signal: requestOptions?.signal,
       });
-      const body = (await assertOk(response)) as { snapshot: SettingsSnapshot };
-      return body.snapshot;
+      const body = (await assertOk(response)) as { snapshot: unknown };
+      return decodeSettingsSnapshot(body.snapshot);
     },
 
     async getSettingsCategories(
@@ -193,8 +199,8 @@ export const createShotgunApiClient = (
           body: JSON.stringify({ targetProjectId, draft }),
           signal: requestOptions?.signal,
         });
-        const body = (await assertOk(response)) as { validation: SettingsValidationResult };
-        return body.validation;
+        const body = (await assertOk(response)) as { validation: unknown };
+        return decodeSettingsValidationResult(body.validation);
       });
     },
 
@@ -217,8 +223,8 @@ export const createShotgunApiClient = (
           }),
           signal: requestOptions?.signal,
         });
-        const body = (await assertOk(response)) as { impact: SettingsImpactPreview };
-        return body.impact;
+        const body = (await assertOk(response)) as { impact: unknown };
+        return decodeSettingsImpactPreview(body.impact);
       });
     },
 
@@ -241,8 +247,8 @@ export const createShotgunApiClient = (
           body: JSON.stringify(params),
           signal: requestOptions?.signal,
         });
-        const body = (await assertOk(response)) as { result: SettingsCommandResult };
-        return body.result;
+        const body = (await assertOk(response)) as { result: unknown };
+        return decodeSettingsCommandResult(body.result);
       });
     },
 
@@ -253,14 +259,14 @@ export const createShotgunApiClient = (
       const response = await request(`/settings/commands/${encodeURIComponent(commandId)}`, {
         signal: requestOptions?.signal,
       });
-      const body = (await assertOk(response)) as { result: SettingsCommandResult };
-      return body.result;
+      const body = (await assertOk(response)) as { result: unknown };
+      return decodeSettingsCommandResult(body.result);
     },
 
     async getProjects(requestOptions?: RequestOptions): Promise<readonly ProjectListItemView[]> {
       const response = await request('/projects', { signal: requestOptions?.signal });
-      const body = (await assertOk(response)) as { projects: readonly ProjectListItemView[] };
-      return body.projects;
+      const body = (await assertOk(response)) as { projects: unknown[] };
+      return Array.isArray(body.projects) ? body.projects.map(decodeProjectListItemView) : [];
     },
 
     async getProjectDetails(
@@ -270,8 +276,8 @@ export const createShotgunApiClient = (
       const response = await request(`/projects/${encodeURIComponent(projectId)}`, {
         signal: requestOptions?.signal,
       });
-      const body = (await assertOk(response)) as { project: ProjectListItemView };
-      return body.project;
+      const body = (await assertOk(response)) as { project: unknown };
+      return decodeProjectListItemView(body.project);
     },
 
     async createProject(
@@ -291,14 +297,20 @@ export const createShotgunApiClient = (
           body: JSON.stringify(params),
           signal: requestOptions?.signal,
         });
-        const body = (await assertOk(response)) as { project: ProjectListItemView };
-        return body.project;
+        const body = (await assertOk(response)) as { project: unknown };
+        return decodeProjectListItemView(body.project);
       });
     },
 
     async updateProject(
       projectId: string,
-      params: { name?: string; description?: string; expectedRevision: number },
+      params: {
+        name?: string;
+        description?: string;
+        expectedRevision: number;
+        clientRequestId: string;
+        idempotencyKey: string;
+      },
       requestOptions?: RequestOptions,
     ): Promise<ProjectListItemView> {
       return runMutation(requestOptions?.signal, async (csrfToken) => {
@@ -308,48 +320,60 @@ export const createShotgunApiClient = (
           body: JSON.stringify(params),
           signal: requestOptions?.signal,
         });
-        const body = (await assertOk(response)) as { project: ProjectListItemView };
-        return body.project;
+        const body = (await assertOk(response)) as { project: unknown };
+        return decodeProjectListItemView(body.project);
       });
     },
 
     async archiveProject(
       projectId: string,
-      expectedRevision: number,
+      params: {
+        expectedRevision: number;
+        clientRequestId: string;
+        idempotencyKey: string;
+      },
       requestOptions?: RequestOptions,
     ): Promise<ProjectListItemView> {
       return runMutation(requestOptions?.signal, async (csrfToken) => {
         const response = await request(`/projects/${encodeURIComponent(projectId)}/archive`, {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
-          body: JSON.stringify({ expectedRevision }),
+          body: JSON.stringify(params),
           signal: requestOptions?.signal,
         });
-        const body = (await assertOk(response)) as { project: ProjectListItemView };
-        return body.project;
+        const body = (await assertOk(response)) as { project: unknown };
+        return decodeProjectListItemView(body.project);
       });
     },
 
     async restoreProject(
       projectId: string,
-      expectedRevision: number,
+      params: {
+        expectedRevision: number;
+        clientRequestId: string;
+        idempotencyKey: string;
+      },
       requestOptions?: RequestOptions,
     ): Promise<ProjectListItemView> {
       return runMutation(requestOptions?.signal, async (csrfToken) => {
         const response = await request(`/projects/${encodeURIComponent(projectId)}/restore`, {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
-          body: JSON.stringify({ expectedRevision }),
+          body: JSON.stringify(params),
           signal: requestOptions?.signal,
         });
-        const body = (await assertOk(response)) as { project: ProjectListItemView };
-        return body.project;
+        const body = (await assertOk(response)) as { project: unknown };
+        return decodeProjectListItemView(body.project);
       });
     },
 
     async requestDeleteProject(
       projectId: string,
-      expectedRevision: number,
+      params: {
+        expectedRevision: number;
+        clientRequestId: string;
+        idempotencyKey: string;
+      },
       requestOptions?: RequestOptions,
     ): Promise<ProjectListItemView> {
       return runMutation(requestOptions?.signal, async (csrfToken) => {
@@ -358,12 +382,12 @@ export const createShotgunApiClient = (
           {
             method: 'POST',
             headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
-            body: JSON.stringify({ expectedRevision }),
+            body: JSON.stringify(params),
             signal: requestOptions?.signal,
           },
         );
-        const body = (await assertOk(response)) as { project: ProjectListItemView };
-        return body.project;
+        const body = (await assertOk(response)) as { project: unknown };
+        return decodeProjectListItemView(body.project);
       });
     },
 
@@ -377,10 +401,8 @@ export const createShotgunApiClient = (
       const response = await request(`/settings/models${query}`, {
         signal: requestOptions?.signal,
       });
-      const body = (await assertOk(response)) as {
-        models: ProductFeatureView<readonly ModelDescriptorView[]>;
-      };
-      return body.models;
+      const body = (await assertOk(response)) as { models: unknown };
+      return decodeProductFeatureView(body.models, (x) => x as readonly ModelDescriptorView[]);
     },
 
     async getCostBudget(
@@ -391,8 +413,8 @@ export const createShotgunApiClient = (
         ? `?targetProjectId=${encodeURIComponent(targetProjectId)}`
         : '';
       const response = await request(`/settings/costs${query}`, { signal: requestOptions?.signal });
-      const body = (await assertOk(response)) as { costs: ProductFeatureView<CostBudgetView> };
-      return body.costs;
+      const body = (await assertOk(response)) as { costs: unknown };
+      return decodeProductFeatureView(body.costs, (x) => x as CostBudgetView);
     },
 
     async getPrivacyRetention(
@@ -405,10 +427,8 @@ export const createShotgunApiClient = (
       const response = await request(`/settings/privacy${query}`, {
         signal: requestOptions?.signal,
       });
-      const body = (await assertOk(response)) as {
-        privacy: ProductFeatureView<PrivacyRetentionView>;
-      };
-      return body.privacy;
+      const body = (await assertOk(response)) as { privacy: unknown };
+      return decodeProductFeatureView(body.privacy, (x) => x as PrivacyRetentionView);
     },
 
     async getConnectorSettings(
@@ -421,10 +441,11 @@ export const createShotgunApiClient = (
       const response = await request(`/settings/connectors${query}`, {
         signal: requestOptions?.signal,
       });
-      const body = (await assertOk(response)) as {
-        connectors: ProductFeatureView<readonly ConnectorSettingsView[]>;
-      };
-      return body.connectors;
+      const body = (await assertOk(response)) as { connectors: unknown };
+      return decodeProductFeatureView(
+        body.connectors,
+        (x) => x as readonly ConnectorSettingsView[],
+      );
     },
 
     async getDirectiveProposals(
@@ -437,10 +458,8 @@ export const createShotgunApiClient = (
       const response = await request(`/settings/directives${query}`, {
         signal: requestOptions?.signal,
       });
-      const body = (await assertOk(response)) as {
-        proposals: ProductFeatureView<readonly DirectiveProposalView[]>;
-      };
-      return body.proposals;
+      const body = (await assertOk(response)) as { proposals: unknown };
+      return decodeProductFeatureView(body.proposals, (x) => x as readonly DirectiveProposalView[]);
     },
 
     async getSchemaPacks(
@@ -453,10 +472,8 @@ export const createShotgunApiClient = (
       const response = await request(`/settings/schema${query}`, {
         signal: requestOptions?.signal,
       });
-      const body = (await assertOk(response)) as {
-        schemaPacks: ProductFeatureView<readonly SchemaPackView[]>;
-      };
-      return body.schemaPacks;
+      const body = (await assertOk(response)) as { schemaPacks: unknown };
+      return decodeProductFeatureView(body.schemaPacks, (x) => x as readonly SchemaPackView[]);
     },
 
     async getDiagnostics(
@@ -469,10 +486,8 @@ export const createShotgunApiClient = (
       const response = await request(`/settings/diagnostics${query}`, {
         signal: requestOptions?.signal,
       });
-      const body = (await assertOk(response)) as {
-        diagnostics: ProductFeatureView<DiagnosticsView>;
-      };
-      return body.diagnostics;
+      const body = (await assertOk(response)) as { diagnostics: unknown };
+      return decodeProductFeatureView(body.diagnostics, (x) => x as DiagnosticsView);
     },
   };
 };

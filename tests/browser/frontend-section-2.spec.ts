@@ -65,6 +65,11 @@ test('Frontend Section 2 Settings & Project Administration End-to-End Flow', asy
     page.getByRole('heading', { name: 'System Diagnostics & Real-Fact Telemetry' }),
   ).toBeVisible();
 
+  await page.getByRole('link', { name: 'Advanced' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Advanced Settings & Policy Overrides' }),
+  ).toBeVisible();
+
   // 4. Security Negative Gate: No authority headers or raw secrets in storage/DOM
   expect(forbiddenHeaderUses).toEqual([]);
   const storage = await page.evaluate(() => ({

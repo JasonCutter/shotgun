@@ -214,6 +214,16 @@ export const SettingsLayout = () => {
                 Diagnostics
               </NavLink>
             </li>
+            <li>
+              <NavLink
+                to={`/settings/advanced?targetProjectId=${targetProjectId}`}
+                className={({ isActive }: { isActive: boolean }) =>
+                  isActive ? 'nav-tab active' : 'nav-tab'
+                }
+              >
+                Advanced
+              </NavLink>
+            </li>
           </ul>
         </nav>
       </header>

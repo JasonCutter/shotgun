@@ -159,6 +159,18 @@ export function registerProjectRoutes(
         operation: 'update-project',
       });
     }
+    const hasEdit =
+      membership.isOwner ||
+      membership.scopes.includes('owner') ||
+      membership.scopes.includes('admin');
+    if (!hasEdit) {
+      throw new ShotgunError({
+        code: 'PROJECT_ACCESS_DENIED',
+        safeMessage: `You do not have permission to update project '${request.params.projectId}'.`,
+        module: 'shotgun-app',
+        operation: 'update-project',
+      });
+    }
     const projectDetail = await projectAdminRepo.getProjectDetails(request.params.projectId);
     if (!projectDetail || !projectDetail.capability.canRename) {
       throw new ShotgunError({
@@ -192,6 +204,18 @@ export function registerProjectRoutes(
       throw new ShotgunError({
         code: 'PROJECT_ACCESS_DENIED',
         safeMessage: `You do not have access to project '${request.params.projectId}'.`,
+        module: 'shotgun-app',
+        operation: 'archive-project',
+      });
+    }
+    const hasEdit =
+      membership.isOwner ||
+      membership.scopes.includes('owner') ||
+      membership.scopes.includes('admin');
+    if (!hasEdit) {
+      throw new ShotgunError({
+        code: 'PROJECT_ACCESS_DENIED',
+        safeMessage: `You do not have permission to archive project '${request.params.projectId}'.`,
         module: 'shotgun-app',
         operation: 'archive-project',
       });
@@ -231,6 +255,18 @@ export function registerProjectRoutes(
         operation: 'restore-project',
       });
     }
+    const hasEdit =
+      membership.isOwner ||
+      membership.scopes.includes('owner') ||
+      membership.scopes.includes('admin');
+    if (!hasEdit) {
+      throw new ShotgunError({
+        code: 'PROJECT_ACCESS_DENIED',
+        safeMessage: `You do not have permission to restore project '${request.params.projectId}'.`,
+        module: 'shotgun-app',
+        operation: 'restore-project',
+      });
+    }
     const projectDetail = await projectAdminRepo.getProjectDetails(request.params.projectId);
     if (!projectDetail || !projectDetail.capability.canRestore) {
       throw new ShotgunError({
@@ -262,6 +298,18 @@ export function registerProjectRoutes(
       throw new ShotgunError({
         code: 'PROJECT_ACCESS_DENIED',
         safeMessage: `You do not have access to project '${request.params.projectId}'.`,
+        module: 'shotgun-app',
+        operation: 'delete-project',
+      });
+    }
+    const hasEdit =
+      membership.isOwner ||
+      membership.scopes.includes('owner') ||
+      membership.scopes.includes('admin');
+    if (!hasEdit) {
+      throw new ShotgunError({
+        code: 'PROJECT_ACCESS_DENIED',
+        safeMessage: `You do not have permission to delete project '${request.params.projectId}'.`,
         module: 'shotgun-app',
         operation: 'delete-project',
       });

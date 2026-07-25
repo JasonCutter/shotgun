@@ -291,12 +291,12 @@ export const isSameOriginRequest = (
   }
   expectedHost = expectedHost.replace(/^\[|\]$/g, '');
 
-  const hostMatches =
-    originHost === expectedHost ||
-    (isLoopbackHost &&
-      (expectedHost === '127.0.0.1' || expectedHost === '::1' || expectedHost === 'localhost'));
+  const isExpectedLoopbackHost =
+    expectedHost === '127.0.0.1' || expectedHost === '::1' || expectedHost === 'localhost';
 
-  const portMatches = originPort === expectedPort;
+  const hostMatches = originHost === expectedHost || (isLoopbackHost && isExpectedLoopbackHost);
+
+  const portMatches = originPort === expectedPort || (isLoopbackHost && isExpectedLoopbackHost);
 
   return hostMatches && portMatches;
 };

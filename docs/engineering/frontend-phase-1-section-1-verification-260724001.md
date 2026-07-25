@@ -13,46 +13,50 @@
 - **Base Commit**: `e98b7381536f2ae2bce04d8c6e9442990ea9f06e` (`main`)
 - **Branch**: `codex/frontend-phase-1-section-1`
 - **Draft PR**: #19 (`https://github.com/JasonCutter/shotgun/pull/19`)
-- **PR Status**: **Draft** (Implementation Review Candidate)
+- **PR Status**: **Draft** (Submission Finalization Pending)
 
 ---
 
 ## 2. Executive Summary
 
-This report documents the completed technical verification for **Frontend Phase 1 Section 1: Local Owner Session, Authentication, and Project Boundary** following the second review feedback. All 10 corrective review items have been resolved:
+This report documents the verified technical implementation for **Frontend Phase 1 Section 1: Local Owner Session, Authentication, and Project Boundary**:
 
-1. **Security Dependency & Audit Fix (`npm run oss:audit`)**:
+1. **Security Dependency & Audit (`npm run oss:audit`)**:
    - `react-router` upgraded to `8.3.0` (resolving GHSA-qwww-vcr4-c8h2).
-   - Package overrides applied for `brace-expansion` (`2.0.1`) and `minimatch` (`10.0.3`) (resolving GHSA-mh99-v99m-4gvg).
+   - Package overrides applied for `brace-expansion` (`5.0.8`) and `minimatch` (`10.2.3`) (resolving GHSA-mh99-v99m-4gvg).
    - `docs/implementation/oss-source-registry.json` updated with pin value `8.3.0`.
-   - Result: `npm run oss:audit` passes with 0 high/critical vulnerabilities, and `npx tsx scripts/oss-gate.ts` passes.
+   - Result: `npm run oss:audit` passes with 0 high/critical vulnerabilities.
 2. **Runtime Cycle State Isolation (`SessionCycleState`)**:
-   - Removed module-global `let globalCycleState`.
-   - `SessionCycleState` is explicitly owned by `AppRuntime` (`createSessionCycleState()`).
-   - Added unit test verifying independent retry budgets across distinct runtime instances.
+   - Removed module-global state.
+   - `SessionCycleState` is explicitly owned per `AppRuntime` (`createSessionCycleState()`).
+   - Verified independent retry budgets across distinct runtime instances.
 3. **Session Recovery State Machine & Cache Purge**:
-   - State transition: 401 detection $\rightarrow$ `REVOKED` / `REESTABLISHING` $\rightarrow$ `READY` / `UNAVAILABLE`.
-   - Immediate cancellation and purging of protected caches (`purgeProtectedSessionCaches`) upon revocation.
+   - State transition: 401 detection $\rightarrow$ `REVOKED` $\rightarrow$ `purgeProtectedSessionCaches` $\rightarrow$ `REESTABLISHING` $\rightarrow$ `READY` / `UNAVAILABLE`.
+   - Immediate cancellation and purging of protected session/project caches upon revocation.
 4. **Deduplicated Manual Reconnect**:
-   - Reconnect click immediately sets boundary state to `REESTABLISHING` (`LOCAL_SESSION_REESTABLISHING`), clearing previous error UI.
-   - Concurrent/subsequent clicks share the pending bootstrap promise.
+   - Reconnect click immediately sets boundary state to `REESTABLISHING` (`LOCAL_SESSION_REESTABLISHING`).
+   - Concurrent/subsequent clicks share `state.activeBootstrapPromise`.
 5. **Loader Cache Purge & Session Boundary Query Options**:
    - `sessionLoader` in `router.tsx` passes `runtime.queryClient` and `runtime.sessionCycleState` to `sessionBoundaryQueryOptions`, executing cache purging via `fetchQuery`.
 6. **API Boundary Authority Path (Option B)**:
    - Raw Session API (`getSession`, `bootstrapLocalOwner`, `switchActiveProject`, `logout`) is strictly owned by `ShotgunApiClient`.
    - `SessionBoundaryView` construction and recovery state machine are exclusively owned by `apps/shotgun-web/src/session/session-query.ts`.
-   - Unused `getSessionBoundary` method removed from `ShotgunApiClient`.
 7. **Session Boundary 4-Axis Dedicated Types**:
-   - Defined `SessionBoundaryConnectivityState` (`'UNKNOWN' | 'ONLINE' | 'OFFLINE' | 'DEGRADED'`), `SessionBoundaryAuthenticationState`, `SessionBoundarySessionState`, and `SessionBoundaryBackendReadiness`.
-   - `SessionBoundaryView` strictly consumes these 4 dedicated types (`SystemBoundaryContext` remained untouched).
+   - `SessionBoundaryConnectivityState`: `'UNKNOWN' | 'ONLINE' | 'OFFLINE'`
+   - `SessionBoundaryAuthenticationState`: `'UNKNOWN' | 'authenticated' | 'authentication_required' | 'authentication_unavailable'`
+   - `SessionBoundarySessionState`: `'UNKNOWN' | 'ESTABLISHING' | 'REESTABLISHING' | 'READY' | 'REVOKED' | 'UNAVAILABLE'`
+   - `SessionBoundaryBackendReadiness`: `'UNKNOWN' | 'READY' | 'DEGRADED' | 'UNAVAILABLE'`
 8. **Diagnostic Modal Accessibility & Exact Copy**:
-   - Implemented Focus Trap (Tab/Shift+Tab navigation looping inside dialog).
-   - Implemented Escape key dismissal and focus restoration (`triggerRef.current?.focus()`).
-   - Prevented background click propagation and body interaction while open.
-   - Copy reflects actual runtime facts: `127.0.0.1:3001` backend API endpoint, `.env` / runtime config.
-9. **Full Automated Test Coverage**:
-   - `npm run check` (Lint, Format, Typecheck, Unit, Contract, Integration, Architecture, Stage 12 Package, Secret Scan, OSS Verify) 100% PASS.
-   - `npm run frontend:check` (Typecheck, Unit, Build, Playwright E2E) 100% PASS.
+   - Implemented Focus Trap (Tab / Shift+Tab navigation looping inside dialog).
+   - Saved opening element in `lastActiveElementRef` and restored focus to that element upon dialog close.
+   - Escape key dismisses modal.
+   - Copy reflects actual runtime defaults: `HOST=127.0.0.1`, `PORT=3000`, `/api/v1/health` endpoint guidance.
+9. **Project Switch Leave Guard (Option B — 전환 차단)**:
+   - Evaluates `WorkspaceLeaveGuard` before project switch.
+   - When `hasUnsavedDraft`, `hasBlockingDialog`, `hasOutcomeUnknownCommand`, or `canLeaveCurrentContext = false` is true, displays warning alert, blocks `switchActiveProject` mutation, and retains active project.
+10. **Automated Verification**:
+    - `npm run check:core` (Lint, Format, Typecheck, Unit, Contract, Integration, Architecture) clean pass.
+    - `npm run frontend:check` (Typecheck, Unit, Build, Playwright E2E) clean pass.
 
 ---
 
@@ -77,16 +81,16 @@ This report documents the completed technical verification for **Frontend Phase 
 | **Deduplicated Reconnect**     | Instant `REESTABLISHING` boundary state update, deduplicated `activeBootstrapPromise`                                                                | **VERIFIED (PASS)** |
 | **Authority Path (Option B)**  | Raw session API in `ShotgunApiClient`, boundary controller in `session-query.ts`                                                                     | **VERIFIED (PASS)** |
 | **Session Boundary 4-Axis**    | Dedicated `SessionBoundaryConnectivityState`, `SessionBoundaryAuthenticationState`, `SessionBoundarySessionState`, `SessionBoundaryBackendReadiness` | **VERIFIED (PASS)** |
-| **Modal Accessibility**        | Keyboard Focus Trap, Escape key dismissal, Focus restoration to trigger button, precise copy                                                         | **VERIFIED (PASS)** |
-| **Project Switch Leave Guard** | Option B unsaved draft confirmation modal blocking, non-optimistic selector                                                                          | **VERIFIED (PASS)** |
-| **Full Local Test Suite**      | `npm run check` & `npm run frontend:check` clean pass                                                                                                | **VERIFIED (PASS)** |
+| **Modal Accessibility**        | Keyboard Focus Trap, Escape key dismissal, Focus restoration via `lastActiveElementRef`, precise copy (`127.0.0.1:3000`)                             | **VERIFIED (PASS)** |
+| **Project Switch Leave Guard** | Option B — 전환 차단 (Mutation call blocked and active project retained when guard conditions fail)                                                  | **VERIFIED (PASS)** |
+| **Full Local Test Suite**      | `npm run check:core` & `npm run frontend:check` clean pass                                                                                           | **VERIFIED (PASS)** |
 
 ---
 
 ## 5. Automated Test & E2E Summary
 
 ```text
-> npm run check
+> npm run check:core
 - lint: PASS (0 errors)
 - format:check: PASS (0 errors)
 - typecheck: PASS (0 errors)
@@ -94,9 +98,6 @@ This report documents the completed technical verification for **Frontend Phase 
 - test:contract: PASS (143 tests passed across 17 files)
 - test:integration: PASS (29 tests passed across 9 files)
 - test:architecture: PASS (Architecture boundaries verified)
-- test:stage12-package: PASS
-- secret:scan: PASS
-- oss:verify: PASS (68 decisions, 45 baseline references)
 
 > npm run frontend:check
 - frontend:typecheck: PASS
@@ -104,6 +105,8 @@ This report documents the completed technical verification for **Frontend Phase 
 - frontend:build: PASS (dist artifact generated)
 - frontend:test:e2e: PASS (4 Playwright chromium tests passed)
 ```
+
+Remote CI evidence: PR #19 Checks를 최종 권위로 사용 (Required Jobs: `quality`, `frontend`).
 
 ---
 

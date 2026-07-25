@@ -12,7 +12,7 @@ import { HomePage } from '../routes/home-page.js';
 import { PlaceholderPage } from '../routes/placeholder-page.js';
 import { SettingsPage } from '../routes/settings-page.js';
 import type { AppRuntime } from './providers.js';
-import { ensureSession, sessionQueryOptions } from '../session/session-query.js';
+import { ensureSessionBoundary, sessionBoundaryQueryOptions } from '../session/session-query.js';
 
 const RouteError = () => {
   const error = useRouteError();
@@ -23,9 +23,20 @@ const RouteError = () => {
 const sessionLoader =
   (runtime: AppRuntime) =>
   async ({ request }: LoaderFunctionArgs) => {
+    const opts = sessionBoundaryQueryOptions(
+      runtime.apiClient,
+      runtime.queryClient,
+      runtime.sessionCycleState,
+    );
     return await runtime.queryClient.fetchQuery({
-      ...sessionQueryOptions(runtime.apiClient),
-      queryFn: () => ensureSession(runtime.apiClient, request.signal),
+      ...opts,
+      queryFn: ({ signal }) =>
+        ensureSessionBoundary(
+          runtime.apiClient,
+          request.signal ?? signal,
+          runtime.queryClient,
+          runtime.sessionCycleState,
+        ),
     });
   };
 

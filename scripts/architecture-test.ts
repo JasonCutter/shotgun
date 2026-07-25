@@ -90,7 +90,31 @@ export const findArchitectureViolations = async (): Promise<string[]> => {
         violations.push(`${relativeFile} imports forbidden frontend dependency '${imported}'.`);
       }
       if (isFrontendApp && imported.startsWith('@shotgun/') && imported !== '@shotgun/api-client') {
-        violations.push(`${relativeFile} imports forbidden Shotgun package '${imported}'.`);
+        violations.push(
+          `${relativeFile} imports forbidden Shotgun package '${imported}' (only '@shotgun/api-client' is allowed).`,
+        );
+      }
+
+      const isActiveUiFile =
+        relativeFile.startsWith('apps/shotgun-web/src/routes/') ||
+        relativeFile.startsWith('apps/shotgun-web/src/shell/') ||
+        relativeFile.endsWith('session-boundary-screen.tsx') ||
+        relativeFile.endsWith('project-selector.tsx');
+
+      if (
+        isActiveUiFile &&
+        (source.includes('LogoutButton') ||
+          source.includes('로그아웃') ||
+          source.includes('비밀번호'))
+      ) {
+        violations.push(`${relativeFile} renders prohibited auth/logout UI in Local Owner mode.`);
+      }
+
+      if (
+        (isFrontendApp || isFrontendClient) &&
+        /x-(project-id|actor-id|principal-id)/i.test(source)
+      ) {
+        violations.push(`${relativeFile} contains prohibited legacy authority header.`);
       }
 
       const resolved = resolveRelativeImport(file, imported);

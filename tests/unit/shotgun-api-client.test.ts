@@ -154,4 +154,20 @@ describe('shotgun-api-client', () => {
     await expect(client.switchActiveProject('project-b')).rejects.toBeInstanceOf(ShotgunApiError);
     expect(mutationCalls).toBe(1);
   });
+
+  it('executes getSession correctly returning session envelope', async () => {
+    const fetch = vi.fn(async () => json({ session: session() }));
+    const result = await createShotgunApiClient({ fetch }).getSession();
+    expect(result.principal.id).toBe('principal-a');
+    expect(result.activeProject.id).toBe('project-a');
+  });
+
+  it('throws ShotgunApiError on 401 Unauthorized during getSession', async () => {
+    const fetch = vi.fn(async () =>
+      json({ code: 'SESSION_EXPIRED', message: 'Session expired' }, 401),
+    );
+    await expect(createShotgunApiClient({ fetch }).getSession()).rejects.toBeInstanceOf(
+      ShotgunApiError,
+    );
+  });
 });

@@ -8,6 +8,7 @@ import type { ProductSessionView, ShotgunApiClient } from '@shotgun/api-client';
 import { productSessionQueryKey } from '../app/query-keys.js';
 import { AppProviders, type AppRuntime } from '../app/providers.js';
 import { createFrontendQueryClient } from '../app/query-client.js';
+import { createSessionCycleState } from '../session/session-query.js';
 import { render } from '@testing-library/react';
 import { HomePage } from '../routes/home-page.js';
 import { PlaceholderPage } from '../routes/placeholder-page.js';
@@ -27,6 +28,7 @@ const session: ProductSessionView = {
 
 const runtime = (): AppRuntime => {
   const queryClient = createFrontendQueryClient();
+  const sessionCycleState = createSessionCycleState();
   queryClient.setQueryData(productSessionQueryKey, session);
   const apiClient: ShotgunApiClient = {
     bootstrapLocalOwner: vi.fn(async () => session),
@@ -34,7 +36,7 @@ const runtime = (): AppRuntime => {
     switchActiveProject: vi.fn(async () => session),
     logout: vi.fn(async () => undefined),
   };
-  return { apiClient, queryClient };
+  return { apiClient, queryClient, sessionCycleState };
 };
 
 describe('ApplicationShell', () => {

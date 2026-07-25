@@ -1517,7 +1517,7 @@
       "pin": {
         "type": "npm-lock",
         "package": "react-router",
-        "value": "7.18.1"
+        "value": "8.3.0"
       },
       "license": {
         "spdx": "MIT",

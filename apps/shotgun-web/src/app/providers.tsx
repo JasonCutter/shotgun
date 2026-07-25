@@ -3,12 +3,17 @@ import { createContext, useContext, type ReactNode } from 'react';
 
 import type { ShotgunApiClient } from '@shotgun/api-client';
 
+import type { SessionCycleState } from '../session/session-query.js';
+
 export type AppRuntime = {
   readonly apiClient: ShotgunApiClient;
   readonly queryClient: QueryClient;
+  readonly sessionCycleState: SessionCycleState;
 };
 
 const RuntimeContext = createContext<AppRuntime | undefined>(undefined);
+
+import { LeaveGuardProvider } from '../session/leave-guard-context.js';
 
 export const AppProviders = ({
   children,
@@ -18,7 +23,9 @@ export const AppProviders = ({
   readonly runtime: AppRuntime;
 }) => (
   <RuntimeContext.Provider value={runtime}>
-    <QueryClientProvider client={runtime.queryClient}>{children}</QueryClientProvider>
+    <QueryClientProvider client={runtime.queryClient}>
+      <LeaveGuardProvider>{children}</LeaveGuardProvider>
+    </QueryClientProvider>
   </RuntimeContext.Provider>
 );
 

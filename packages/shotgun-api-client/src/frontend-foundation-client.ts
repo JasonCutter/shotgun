@@ -11,16 +11,37 @@ import {
 } from '../../contracts/src/frontend-entry.js';
 import { computeCommandSemanticDigestAsync } from './frontend-digest-adapter.js';
 
+export type {
+  AuthenticationState,
+  BackendReadiness,
+  ConnectivityState,
+  ProductSessionView,
+  SessionBoundaryAuthenticationState,
+  SessionBoundaryBackendReadiness,
+  SessionBoundaryConnectivityState,
+  SessionBoundaryReasonCode,
+  SessionBoundarySessionState,
+  SessionBoundaryView,
+  SessionRecoveryAction,
+  SessionRecoveryActionId,
+  SessionState,
+  WorkspaceLeaveGuard,
+  WorkspaceLeaveState,
+} from '../../contracts/src/frontend-entry.js';
+
 export {
   computeCommandSemanticDigestAsync,
   webCryptoDigestProvider,
 } from './frontend-digest-adapter.js';
+
+export { FrontendContractError };
 
 export {
   buildCacheKey,
   calculateCacheInvalidationOnPolicyChange,
   createOperationalResourceKindRegistry,
   decodeOperationalResourceKindRegistrySnapshot,
+  decodeSessionBoundaryView,
   filterCacheKeysForProjectSwitch,
   purgeInaccessibleCachesOnAccessChange,
   type CacheKeyFactoryParams,

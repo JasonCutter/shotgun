@@ -833,21 +833,11 @@ export type ResourceSnapshot<TState = unknown> = {
 
 export type AuthenticationState = 'UNAUTHENTICATED' | 'AUTHENTICATING' | 'AUTHENTICATED';
 
-export type SessionState =
-  | 'LOCAL_SESSION_ESTABLISHING'
-  | 'LOCAL_SESSION_READY'
-  | 'LOCAL_SESSION_REESTABLISHING'
-  | 'LOCAL_SERVER_UNAVAILABLE'
-  | 'LOCAL_OWNER_DISABLED'
-  | 'ORIGIN_NOT_ALLOWED'
-  | 'PROVISIONING_FAILED'
-  | 'SESSION_REVOKED'
-  | 'EXPIRED'
-  | 'VALID';
+export type SessionState = 'EXPIRED' | 'VALID' | 'REVOKED';
 
-export type ConnectivityState = 'ONLINE' | 'OFFLINE' | 'DEGRADED';
+export type ConnectivityState = 'UNKNOWN' | 'ONLINE' | 'OFFLINE' | 'DEGRADED';
 
-export type BackendReadiness = 'READY' | 'INITIALIZING' | 'UNAVAILABLE';
+export type BackendReadiness = 'UNKNOWN' | 'READY' | 'INITIALIZING' | 'DEGRADED' | 'UNAVAILABLE';
 
 export type ProjectAccessContext = {
   readonly projectId: string;
@@ -896,13 +886,13 @@ export function evaluateCapabilityGuard(
   }
 
   // Step 2: Session state check
-  if (boundaryCtx.sessionState === 'EXPIRED' || boundaryCtx.sessionState === 'SESSION_REVOKED') {
+  if (boundaryCtx.sessionState === 'EXPIRED' || boundaryCtx.sessionState === 'REVOKED') {
     return {
       allowed: false,
       error: new FrontendContractError('SESSION_EXPIRED', 'Session expired or revoked'),
     };
   }
-  if (boundaryCtx.sessionState !== 'VALID' && boundaryCtx.sessionState !== 'LOCAL_SESSION_READY') {
+  if (boundaryCtx.sessionState !== 'VALID') {
     return {
       allowed: false,
       error: new FrontendContractError(
@@ -1577,4 +1567,389 @@ export function calculateCacheInvalidationOnPolicyChange(
   }
 
   return { validKeys, invalidatedKeys };
+}
+
+// ============================================================================
+// 18. Session Boundary View, Leave Guard & Decoder
+// ============================================================================
+
+export type ProductSessionView = {
+  readonly apiVersion: '1.0.0';
+  readonly principal: {
+    readonly id: string;
+    readonly actor: {
+      readonly type: 'user' | 'service';
+      readonly id: string;
+    };
+    readonly authenticationMethod: 'session' | 'development';
+  };
+  readonly activeProject: { readonly id: string };
+  readonly accessibleProjects: readonly {
+    readonly id: string;
+    readonly isOwner: boolean;
+  }[];
+  readonly session: { readonly expiresAt: string | null };
+};
+
+export type SessionBoundaryReasonCode =
+  | 'LOCAL_SESSION_ESTABLISHING'
+  | 'LOCAL_SESSION_READY'
+  | 'LOCAL_SESSION_REESTABLISHING'
+  | 'LOCAL_SERVER_UNAVAILABLE'
+  | 'LOCAL_OWNER_DISABLED'
+  | 'ORIGIN_NOT_ALLOWED'
+  | 'PROVISIONING_FAILED'
+  | 'SESSION_REVOKED';
+
+export type SessionBoundaryConnectivityState = 'UNKNOWN' | 'ONLINE' | 'OFFLINE';
+
+export type SessionBoundaryAuthenticationState =
+  'authenticated' | 'authentication_required' | 'authentication_unavailable';
+
+export type SessionBoundarySessionState =
+  'ESTABLISHING' | 'READY' | 'REESTABLISHING' | 'REVOKED' | 'UNAVAILABLE';
+
+export type SessionBoundaryBackendReadiness = 'UNKNOWN' | 'READY' | 'DEGRADED' | 'UNAVAILABLE';
+
+export type SessionRecoveryActionId = 'RECONNECT' | 'CHECK_LOCAL_SERVER' | 'CHECK_SETTINGS';
+
+export type SessionRecoveryAction = {
+  readonly id: SessionRecoveryActionId;
+  readonly label: string;
+  readonly enabled: boolean;
+};
+
+export type SessionBoundaryView = {
+  readonly schemaVersion: '1.0.0';
+  readonly authenticationAdapter: 'local_owner' | 'interactive';
+  readonly connectivityState: SessionBoundaryConnectivityState;
+  readonly authenticationState: SessionBoundaryAuthenticationState;
+  readonly sessionState: SessionBoundarySessionState;
+  readonly backendReadiness: SessionBoundaryBackendReadiness;
+  readonly reasonCode?: SessionBoundaryReasonCode;
+  readonly recoveryActions: readonly SessionRecoveryAction[];
+  readonly session: ProductSessionView | null;
+};
+
+export type WorkspaceLeaveState = {
+  readonly canLeaveCurrentContext: boolean;
+  readonly hasUnsavedDraft: boolean;
+  readonly hasBlockingDialog: boolean;
+  readonly hasOutcomeUnknownCommand: boolean;
+};
+
+export type WorkspaceLeaveGuard = () => WorkspaceLeaveState;
+
+export function decodeProductSessionView(input: unknown): ProductSessionView {
+  if (!isPlainObject(input)) {
+    throw new FrontendContractError('INVALID_REQUEST', 'ProductSessionView must be a plain object');
+  }
+  const s = input as Record<string, unknown>;
+  if (s['apiVersion'] !== '1.0.0') {
+    throw new FrontendContractError('INVALID_REQUEST', "apiVersion must be '1.0.0'");
+  }
+  if (!isPlainObject(s['principal'])) {
+    throw new FrontendContractError('INVALID_REQUEST', 'principal must be a plain object');
+  }
+  const pr = s['principal'] as Record<string, unknown>;
+  if (typeof pr['id'] !== 'string' || !pr['id'].trim()) {
+    throw new FrontendContractError('INVALID_REQUEST', 'principal.id must be a non-empty string');
+  }
+  if (!isPlainObject(pr['actor'])) {
+    throw new FrontendContractError('INVALID_REQUEST', 'principal.actor must be a plain object');
+  }
+  const act = pr['actor'] as Record<string, unknown>;
+  if (act['type'] !== 'user' && act['type'] !== 'service') {
+    throw new FrontendContractError('INVALID_REQUEST', "actor.type must be 'user' or 'service'");
+  }
+  if (typeof act['id'] !== 'string' || !act['id'].trim()) {
+    throw new FrontendContractError('INVALID_REQUEST', 'actor.id must be a non-empty string');
+  }
+  if (pr['authenticationMethod'] !== 'session' && pr['authenticationMethod'] !== 'development') {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      "authenticationMethod must be 'session' or 'development'",
+    );
+  }
+
+  if (!isPlainObject(s['activeProject'])) {
+    throw new FrontendContractError('INVALID_REQUEST', 'activeProject must be a plain object');
+  }
+  const ap = s['activeProject'] as Record<string, unknown>;
+  if (typeof ap['id'] !== 'string' || !ap['id'].trim()) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'activeProject.id must be a non-empty string',
+    );
+  }
+
+  if (!Array.isArray(s['accessibleProjects'])) {
+    throw new FrontendContractError('INVALID_REQUEST', 'accessibleProjects must be an array');
+  }
+  const accProjects = (s['accessibleProjects'] as unknown[]).map((p, idx) => {
+    if (!isPlainObject(p)) {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        `accessibleProjects[${idx}] must be a plain object`,
+      );
+    }
+    const item = p as Record<string, unknown>;
+    if (typeof item['id'] !== 'string' || !item['id'].trim()) {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        `accessibleProjects[${idx}].id must be a string`,
+      );
+    }
+    if (typeof item['isOwner'] !== 'boolean') {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        `accessibleProjects[${idx}].isOwner must be boolean`,
+      );
+    }
+    return Object.freeze({ id: item['id'] as string, isOwner: item['isOwner'] as boolean });
+  });
+  if (!isPlainObject(s['session'])) {
+    throw new FrontendContractError('INVALID_REQUEST', 'session must be a plain object');
+  }
+  const sess = s['session'] as Record<string, unknown>;
+  if (sess['expiresAt'] !== null && typeof sess['expiresAt'] !== 'string') {
+    throw new FrontendContractError('INVALID_REQUEST', 'session.expiresAt must be string or null');
+  }
+
+  if (!accProjects.some((p) => p.id === (ap['id'] as string))) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      `activeProject '${ap['id']}' must be included in accessibleProjects`,
+    );
+  }
+
+  return Object.freeze({
+    apiVersion: '1.0.0',
+    principal: Object.freeze({
+      id: pr['id'] as string,
+      actor: Object.freeze({
+        type: act['type'] as 'user' | 'service',
+        id: act['id'] as string,
+      }),
+      authenticationMethod: pr['authenticationMethod'] as 'session' | 'development',
+    }),
+    activeProject: Object.freeze({ id: ap['id'] as string }),
+    accessibleProjects: Object.freeze(accProjects),
+    session: Object.freeze({ expiresAt: (sess['expiresAt'] as string | null) ?? null }),
+  });
+}
+
+export function decodeSessionBoundaryView(input: unknown): SessionBoundaryView {
+  if (!isPlainObject(input)) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'SessionBoundaryView must be a plain object',
+    );
+  }
+  const b = input as Record<string, unknown>;
+  if (b['schemaVersion'] !== '1.0.0') {
+    throw new FrontendContractError('INVALID_REQUEST', "schemaVersion must be '1.0.0'");
+  }
+  if (
+    b['authenticationAdapter'] !== 'local_owner' &&
+    b['authenticationAdapter'] !== 'interactive'
+  ) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      "authenticationAdapter must be 'local_owner' or 'interactive'",
+    );
+  }
+
+  const validConn = new Set(['UNKNOWN', 'ONLINE', 'OFFLINE']);
+  if (typeof b['connectivityState'] !== 'string' || !validConn.has(b['connectivityState'])) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      `Invalid connectivityState '${b['connectivityState']}'`,
+    );
+  }
+
+  const validAuth = new Set([
+    'authenticated',
+    'authentication_required',
+    'authentication_unavailable',
+  ]);
+  if (typeof b['authenticationState'] !== 'string' || !validAuth.has(b['authenticationState'])) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      `Invalid authenticationState '${b['authenticationState']}'`,
+    );
+  }
+
+  const validSessState = new Set([
+    'ESTABLISHING',
+    'READY',
+    'REESTABLISHING',
+    'REVOKED',
+    'UNAVAILABLE',
+  ]);
+  if (typeof b['sessionState'] !== 'string' || !validSessState.has(b['sessionState'])) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      `Invalid sessionState '${b['sessionState']}'`,
+    );
+  }
+
+  const validBackend = new Set(['UNKNOWN', 'READY', 'DEGRADED', 'UNAVAILABLE']);
+  if (typeof b['backendReadiness'] !== 'string' || !validBackend.has(b['backendReadiness'])) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      `Invalid backendReadiness '${b['backendReadiness']}'`,
+    );
+  }
+
+  if (b['reasonCode'] !== undefined) {
+    const validReasons = new Set([
+      'LOCAL_SESSION_ESTABLISHING',
+      'LOCAL_SESSION_READY',
+      'LOCAL_SESSION_REESTABLISHING',
+      'LOCAL_SERVER_UNAVAILABLE',
+      'LOCAL_OWNER_DISABLED',
+      'ORIGIN_NOT_ALLOWED',
+      'PROVISIONING_FAILED',
+      'SESSION_REVOKED',
+    ]);
+    if (typeof b['reasonCode'] !== 'string' || !validReasons.has(b['reasonCode'])) {
+      throw new FrontendContractError('INVALID_REQUEST', `Invalid reasonCode '${b['reasonCode']}'`);
+    }
+  }
+
+  if (!Array.isArray(b['recoveryActions'])) {
+    throw new FrontendContractError('INVALID_REQUEST', 'recoveryActions must be an array');
+  }
+
+  const validActionIds = new Set(['RECONNECT', 'CHECK_LOCAL_SERVER', 'CHECK_SETTINGS']);
+  const seenActionIds = new Set<string>();
+  const actions = (b['recoveryActions'] as unknown[]).map((act, idx) => {
+    if (!isPlainObject(act)) {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        `recoveryActions[${idx}] must be a plain object`,
+      );
+    }
+    const a = act as Record<string, unknown>;
+    if (typeof a['id'] !== 'string' || !validActionIds.has(a['id'])) {
+      throw new FrontendContractError('INVALID_REQUEST', `recoveryActions[${idx}].id is invalid`);
+    }
+    if (seenActionIds.has(a['id'])) {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        `Duplicate recoveryAction id '${a['id']}'`,
+      );
+    }
+    seenActionIds.add(a['id']);
+
+    if (typeof a['label'] !== 'string' || !a['label'].trim()) {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        `recoveryActions[${idx}].label must be a non-empty string`,
+      );
+    }
+    if (typeof a['enabled'] !== 'boolean') {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        `recoveryActions[${idx}].enabled must be boolean`,
+      );
+    }
+    return Object.freeze({
+      id: a['id'] as SessionRecoveryActionId,
+      label: a['label'] as string,
+      enabled: a['enabled'] as boolean,
+    });
+  });
+
+  let sessionObj: ProductSessionView | null = null;
+  if (b['session'] !== null && b['session'] !== undefined) {
+    sessionObj = decodeProductSessionView(b['session']);
+  }
+
+  const sessionStateStr = b['sessionState'] as string;
+  const authStateStr = b['authenticationState'] as string;
+  const reasonCodeStr = b['reasonCode'] as string | undefined;
+
+  // Invariant 1: READY requires authenticated state and non-null session
+  if (sessionStateStr === 'READY') {
+    if (!sessionObj || authStateStr !== 'authenticated') {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        "Session state 'READY' requires authenticated state and valid session object",
+      );
+    }
+    if (reasonCodeStr !== undefined && reasonCodeStr !== 'LOCAL_SESSION_READY') {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        "Session state 'READY' requires reasonCode 'LOCAL_SESSION_READY'",
+      );
+    }
+  }
+
+  // Invariant 2: ESTABLISHING requires reasonCode 'LOCAL_SESSION_ESTABLISHING'
+  if (sessionStateStr === 'ESTABLISHING' && reasonCodeStr !== 'LOCAL_SESSION_ESTABLISHING') {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      "Session state 'ESTABLISHING' requires reasonCode 'LOCAL_SESSION_ESTABLISHING'",
+    );
+  }
+
+  // Invariant 3: REESTABLISHING requires reasonCode 'LOCAL_SESSION_REESTABLISHING'
+  if (sessionStateStr === 'REESTABLISHING' && reasonCodeStr !== 'LOCAL_SESSION_REESTABLISHING') {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      "Session state 'REESTABLISHING' requires reasonCode 'LOCAL_SESSION_REESTABLISHING'",
+    );
+  }
+
+  // Invariant 4: REVOKED requires reasonCode 'SESSION_REVOKED'
+  if (sessionStateStr === 'REVOKED' && reasonCodeStr !== 'SESSION_REVOKED') {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      "Session state 'REVOKED' requires reasonCode 'SESSION_REVOKED'",
+    );
+  }
+
+  // Invariant 5: Unavailable reason codes require sessionState 'UNAVAILABLE'
+  const unavailReasons = new Set([
+    'LOCAL_SERVER_UNAVAILABLE',
+    'LOCAL_OWNER_DISABLED',
+    'ORIGIN_NOT_ALLOWED',
+    'PROVISIONING_FAILED',
+  ]);
+  if (reasonCodeStr !== undefined && unavailReasons.has(reasonCodeStr)) {
+    if (sessionStateStr !== 'UNAVAILABLE') {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        `reasonCode '${reasonCodeStr}' requires sessionState 'UNAVAILABLE'`,
+      );
+    }
+  }
+
+  if (authStateStr === 'authenticated' && !sessionObj) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      "Authentication state 'authenticated' requires valid session object",
+    );
+  }
+
+  if (authStateStr === 'authentication_unavailable' && !reasonCodeStr) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      "Authentication state 'authentication_unavailable' requires reasonCode",
+    );
+  }
+
+  return Object.freeze({
+    schemaVersion: '1.0.0',
+    authenticationAdapter: b['authenticationAdapter'] as 'local_owner' | 'interactive',
+    connectivityState: b['connectivityState'] as SessionBoundaryConnectivityState,
+    authenticationState: authStateStr as SessionBoundaryAuthenticationState,
+    sessionState: sessionStateStr as SessionBoundarySessionState,
+    backendReadiness: b['backendReadiness'] as SessionBoundaryBackendReadiness,
+    reasonCode: reasonCodeStr as SessionBoundaryReasonCode | undefined,
+    recoveryActions: actions as readonly SessionRecoveryAction[],
+    session: sessionObj,
+  });
 }

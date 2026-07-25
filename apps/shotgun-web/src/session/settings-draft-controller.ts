@@ -11,7 +11,8 @@ import { useLeaveGuard } from './leave-guard-context.js';
 export type SettingsDraftController = {
   readonly state: SettingsDraftState;
   readonly targetProjectId: string;
-  readonly expectedRevision: number;
+  readonly expectedSettingsRevision: number;
+  readonly observedPolicyContextRevision: number;
   readonly draft: Record<string, unknown>;
   readonly isDirty: boolean;
   readonly validationResult: SettingsValidationResult | null;
@@ -30,7 +31,8 @@ export type SettingsDraftController = {
   }) => Promise<SettingsValidationResult>;
   readonly previewImpact: (apiClient: {
     previewSettingsImpact: (
-      expectedRevision: number,
+      expectedSettingsRevision: number,
+      observedPolicyContextRevision: number,
       draft: Record<string, unknown>,
       targetProjectId?: string,
     ) => Promise<SettingsImpactPreview>;
@@ -40,7 +42,8 @@ export type SettingsDraftController = {
       commandId: string;
       clientRequestId: string;
       idempotencyKey: string;
-      expectedRevision: number;
+      expectedSettingsRevision: number;
+      observedPolicyContextRevision: number;
       settings: Record<string, unknown>;
       targetProjectId?: string;
     }) => Promise<SettingsCommandResult>;
@@ -56,7 +59,8 @@ export const useSettingsDraft = (
   snapshot: SettingsSnapshot | null | undefined,
 ): SettingsDraftController => {
   const targetProjectId = snapshot?.targetProjectId ?? '';
-  const expectedRevision = snapshot?.settingsRevision ?? 1;
+  const expectedSettingsRevision = snapshot?.settingsRevision ?? 1;
+  const observedPolicyContextRevision = snapshot?.policyContextRevision ?? expectedSettingsRevision;
 
   const [state, setState] = useState<SettingsDraftState>('CLEAN');
   const [draft, setDraft] = useState<Record<string, unknown>>({});
@@ -140,14 +144,16 @@ export const useSettingsDraft = (
   const previewImpact = useCallback(
     async (apiClient: {
       previewSettingsImpact: (
-        expectedRevision: number,
+        expectedSettingsRevision: number,
+        observedPolicyContextRevision: number,
         draft: Record<string, unknown>,
         targetProjectId?: string,
       ) => Promise<SettingsImpactPreview>;
     }): Promise<SettingsImpactPreview | null> => {
       try {
         const preview = await apiClient.previewSettingsImpact(
-          expectedRevision,
+          expectedSettingsRevision,
+          observedPolicyContextRevision,
           draft,
           targetProjectId,
         );
@@ -159,7 +165,7 @@ export const useSettingsDraft = (
         return null;
       }
     },
-    [draft, expectedRevision, targetProjectId],
+    [draft, expectedSettingsRevision, observedPolicyContextRevision, targetProjectId],
   );
 
   const applyCommand = useCallback(
@@ -168,7 +174,8 @@ export const useSettingsDraft = (
         commandId: string;
         clientRequestId: string;
         idempotencyKey: string;
-        expectedRevision: number;
+        expectedSettingsRevision: number;
+        observedPolicyContextRevision: number;
         settings: Record<string, unknown>;
         targetProjectId?: string;
       }) => Promise<SettingsCommandResult>;
@@ -187,7 +194,8 @@ export const useSettingsDraft = (
           commandId: cmdId,
           clientRequestId: reqId,
           idempotencyKey: idemKey,
-          expectedRevision,
+          expectedSettingsRevision,
+          observedPolicyContextRevision,
           settings: draft,
           targetProjectId,
         });
@@ -222,7 +230,14 @@ export const useSettingsDraft = (
         throw err;
       }
     },
-    [clientRequestId, draft, expectedRevision, idempotencyKey, targetProjectId],
+    [
+      clientRequestId,
+      draft,
+      expectedSettingsRevision,
+      observedPolicyContextRevision,
+      idempotencyKey,
+      targetProjectId,
+    ],
   );
 
   const recoverOutcomeUnknown = useCallback(
@@ -257,7 +272,8 @@ export const useSettingsDraft = (
   return {
     state,
     targetProjectId,
-    expectedRevision,
+    expectedSettingsRevision,
+    observedPolicyContextRevision,
     draft,
     isDirty,
     validationResult,

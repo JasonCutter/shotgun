@@ -3,6 +3,7 @@ import type { SecurityHeaders } from '../server.js';
 import type { ProjectAdministrationRepositoryPort } from '../../../../modules/project-administration/src/index.js';
 import type { AuthRepositoryPort } from '../../../../packages/authentication/src/index.js';
 import { ShotgunError } from '../../../../packages/contracts/src/index.js';
+import { randomUUID } from 'crypto';
 
 export function registerProjectRoutes(
   server: FastifyInstance,
@@ -14,8 +15,35 @@ export function registerProjectRoutes(
 ): void {
   server.get<{ Headers: SecurityHeaders }>('/api/v1/projects', async (request) => {
     const { context } = await requireBrowserSession(request.headers);
-    const view = await projectAdminRepo.getProjects(context.principalId);
-    return { projects: view.projects };
+    const memberships = await authRepo.listMemberships(context.principalId);
+    if (memberships.length === 0) {
+      return { projects: [] };
+    }
+    const projectIds = memberships.map((m) => m.projectId);
+    const view = await projectAdminRepo.getProjects(projectIds);
+
+    // Merge membership data into the view
+    const projectsWithAccess = view.projects.map((p) => {
+      const mem = memberships.find((m) => m.projectId === p.id);
+      if (!mem) return p;
+      const hasEdit = mem.isOwner || mem.scopes.includes('owner') || mem.scopes.includes('admin');
+      const isActive = p.status === 'ACTIVE';
+      const isArchived = p.status === 'ARCHIVED';
+      return {
+        ...p,
+        isOwner: mem.isOwner,
+        capability: {
+          ...p.capability,
+          canRename: hasEdit && isActive,
+          canArchive: hasEdit && isActive,
+          canRestore: hasEdit && isArchived,
+          canDelete: hasEdit && (isActive || isArchived),
+          canManagePolicies: hasEdit && isActive,
+        },
+      };
+    });
+
+    return { projects: projectsWithAccess };
   });
 
   server.get<{ Params: { projectId: string }; Headers: SecurityHeaders }>(
@@ -43,7 +71,25 @@ export function registerProjectRoutes(
           operation: 'get-project-details',
         });
       }
-      return { project };
+      const hasEdit =
+        membership.isOwner ||
+        membership.scopes.includes('owner') ||
+        membership.scopes.includes('admin');
+      const isActive = project.status === 'ACTIVE';
+      const isArchived = project.status === 'ARCHIVED';
+      const enrichedProject = {
+        ...project,
+        isOwner: membership.isOwner,
+        capability: {
+          ...project.capability,
+          canRename: hasEdit && isActive,
+          canArchive: hasEdit && isActive,
+          canRestore: hasEdit && isArchived,
+          canDelete: hasEdit && (isActive || isArchived),
+          canManagePolicies: hasEdit && isActive,
+        },
+      };
+      return { project: enrichedProject };
     },
   );
 
@@ -69,10 +115,14 @@ export function registerProjectRoutes(
 
     // Atomic Project Creation Coordinator
     const project = await projectAdminRepo.createProject({
-      id: request.body.id,
+      commandId: randomUUID(),
+      clientRequestId: request.body.clientRequestId,
+      idempotencyKey: request.body.idempotencyKey,
+      projectId: request.body.id,
+      actorPrincipalId: context.principalId,
+      expectedProjectRevision: 0,
       name: request.body.name,
       description: request.body.description,
-      ownerId: context.principalId,
     });
 
     // Ensure owner membership in authRepo (handled atomically by projectAdminRepo)
@@ -86,6 +136,8 @@ export function registerProjectRoutes(
       name?: string;
       description?: string;
       expectedRevision: number;
+      clientRequestId: string;
+      idempotencyKey: string;
     };
     Headers: SecurityHeaders;
   }>('/api/v1/projects/:projectId', async (request) => {
@@ -117,17 +169,21 @@ export function registerProjectRoutes(
       });
     }
     const project = await projectAdminRepo.updateProject({
+      commandId: randomUUID(),
+      clientRequestId: request.body.clientRequestId,
+      idempotencyKey: request.body.idempotencyKey,
       projectId: request.params.projectId,
+      actorPrincipalId: context.principalId,
+      expectedProjectRevision: request.body.expectedRevision,
       name: request.body.name,
       description: request.body.description,
-      expectedRevision: request.body.expectedRevision,
     });
     return { project };
   });
 
   server.post<{
     Params: { projectId: string };
-    Body: { expectedRevision: number };
+    Body: { expectedRevision: number; clientRequestId: string; idempotencyKey: string };
     Headers: SecurityHeaders;
   }>('/api/v1/projects/:projectId/archive', async (request) => {
     const { context } = await requireBrowserSession(request.headers);
@@ -149,16 +205,20 @@ export function registerProjectRoutes(
         operation: 'archive-project',
       });
     }
-    const project = await projectAdminRepo.archiveProject(
-      request.params.projectId,
-      request.body.expectedRevision,
-    );
+    const project = await projectAdminRepo.archiveProject({
+      commandId: randomUUID(),
+      clientRequestId: request.body.clientRequestId,
+      idempotencyKey: request.body.idempotencyKey,
+      projectId: request.params.projectId,
+      actorPrincipalId: context.principalId,
+      expectedProjectRevision: request.body.expectedRevision,
+    });
     return { project };
   });
 
   server.post<{
     Params: { projectId: string };
-    Body: { expectedRevision: number };
+    Body: { expectedRevision: number; clientRequestId: string; idempotencyKey: string };
     Headers: SecurityHeaders;
   }>('/api/v1/projects/:projectId/restore', async (request) => {
     const { context } = await requireBrowserSession(request.headers);
@@ -180,16 +240,20 @@ export function registerProjectRoutes(
         operation: 'restore-project',
       });
     }
-    const project = await projectAdminRepo.restoreProject(
-      request.params.projectId,
-      request.body.expectedRevision,
-    );
+    const project = await projectAdminRepo.restoreProject({
+      commandId: randomUUID(),
+      clientRequestId: request.body.clientRequestId,
+      idempotencyKey: request.body.idempotencyKey,
+      projectId: request.params.projectId,
+      actorPrincipalId: context.principalId,
+      expectedProjectRevision: request.body.expectedRevision,
+    });
     return { project };
   });
 
   server.post<{
     Params: { projectId: string };
-    Body: { expectedRevision: number };
+    Body: { expectedRevision: number; clientRequestId: string; idempotencyKey: string };
     Headers: SecurityHeaders;
   }>('/api/v1/projects/:projectId/delete-request', async (request) => {
     const { context } = await requireBrowserSession(request.headers);
@@ -211,10 +275,14 @@ export function registerProjectRoutes(
         operation: 'delete-project',
       });
     }
-    const project = await projectAdminRepo.requestDeleteProject(
-      request.params.projectId,
-      request.body.expectedRevision,
-    );
+    const project = await projectAdminRepo.requestDeleteProject({
+      commandId: randomUUID(),
+      clientRequestId: request.body.clientRequestId,
+      idempotencyKey: request.body.idempotencyKey,
+      projectId: request.params.projectId,
+      actorPrincipalId: context.principalId,
+      expectedProjectRevision: request.body.expectedRevision,
+    });
     return { project };
   });
 }

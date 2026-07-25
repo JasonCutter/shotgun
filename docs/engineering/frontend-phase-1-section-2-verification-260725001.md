@@ -40,6 +40,13 @@ Phase 1 Section 2 establishes full **Settings & Project Administration** capabil
    - Option B Leave Guard integration (`useLeaveGuard` hook).
    - Responsive, WAI-ARIA accessible Settings layout and 10 dedicated Workspaces (`CategoryIndexView`, `PreferencesWorkspace`, `ProjectsWorkspace`, `ProjectDetailsWorkspace`, `ModelsWorkspace`, `CostsWorkspace`, `PrivacyWorkspace`, `ConnectorsWorkspace`, `DirectivesWorkspace`, `SchemaWorkspace`, `DiagnosticsWorkspace`).
 
+### 1.3 PostgreSQL Persistent Integration Remediation (Update)
+
+- **PostgreSQL Settings & Project Administration**: Replaced temporary in-memory mock endpoints with persistent PostgreSQL repository interactions.
+- **ProductFeatureView Implementation**: Implemented robust `ProductFeatureView<T>` wrapper and runtime decoders to correctly propagate and enforce `AVAILABLE`/`UNAVAILABLE` states across all feature-gated settings views.
+- **Database Migrations**: Refined Migration 017 to use project-scoped owner indices safely without IMMUTABLE function violations.
+- **Client API & TS Strictness**: Enforced TS type checking across the React UI controllers, API clients, and contracts.
+
 ---
 
 ## 2. Verification Results

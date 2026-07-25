@@ -19,6 +19,25 @@ export const ConnectorsWorkspace = () => {
   if (isLoading) return <div>Loading connector integrations...</div>;
   if (error) return <div className="error-banner">Failed to load connectors settings.</div>;
 
+  if (connectors?.availability === 'UNAVAILABLE') {
+    return (
+      <section className="connectors-workspace">
+        <h2 style={{ fontSize: '20px', marginBottom: '8px' }}>Connector Integrations</h2>
+        <div
+          style={{
+            color: '#b91c1c',
+            padding: '16px',
+            background: '#fef2f2',
+            border: '1px solid #f87171',
+            borderRadius: '8px',
+          }}
+        >
+          {connectors.disabledReason}
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="connectors-workspace">
       <h2 style={{ fontSize: '20px', marginBottom: '8px' }}>Connector Integrations</h2>
@@ -26,7 +45,7 @@ export const ConnectorsWorkspace = () => {
         Manage external action connectors, webhook integrations, and credential masking.
       </p>
 
-      {connectors?.length === 0 ? (
+      {connectors?.data?.length === 0 ? (
         <p style={{ color: '#64748b' }}>No connectors configured for project {targetProjectId}.</p>
       ) : (
         <div
@@ -36,7 +55,7 @@ export const ConnectorsWorkspace = () => {
             gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
           }}
         >
-          {connectors?.map((conn) => (
+          {connectors?.data?.map((conn) => (
             <div
               key={conn.connectorId}
               style={{

@@ -19,6 +19,27 @@ export const SchemaWorkspace = () => {
   if (isLoading) return <div>Loading schema packs...</div>;
   if (error) return <div className="error-banner">Failed to load schema packs.</div>;
 
+  if (schemaPacks?.availability === 'UNAVAILABLE') {
+    return (
+      <section className="schema-workspace">
+        <h2 style={{ fontSize: '20px', marginBottom: '8px' }}>
+          Schema Packs & Migration Requirements
+        </h2>
+        <div
+          style={{
+            color: '#b91c1c',
+            padding: '16px',
+            background: '#fef2f2',
+            border: '1px solid #f87171',
+            borderRadius: '8px',
+          }}
+        >
+          {schemaPacks.disabledReason}
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="schema-workspace">
       <h2 style={{ fontSize: '20px', marginBottom: '8px' }}>
@@ -28,7 +49,7 @@ export const SchemaWorkspace = () => {
         Manage installed knowledge schema packs, version upgrades, and migration requirements.
       </p>
 
-      {schemaPacks?.map((sp) => (
+      {schemaPacks?.data?.map((sp) => (
         <div
           key={sp.packId}
           style={{

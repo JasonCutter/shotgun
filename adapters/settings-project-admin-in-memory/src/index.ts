@@ -51,8 +51,8 @@ export class InMemoryProjectAdministrationRepository implements ProjectAdministr
     });
   }
 
-  async getProjects(principalId: string): Promise<ProjectAdministrationView> {
-    if (!principalId) throw new FrontendContractError('INVALID_REQUEST', 'principalId required');
+  async getProjects(projectIds: readonly string[]): Promise<ProjectAdministrationView> {
+    if (!projectIds) throw new FrontendContractError('INVALID_REQUEST', 'projectIds required');
     return Object.freeze({
       schemaVersion: '1.0.0',
       projects: Object.freeze(Array.from(this.projects.values())),
@@ -64,12 +64,15 @@ export class InMemoryProjectAdministrationRepository implements ProjectAdministr
   }
 
   async createProject(input: CreateProjectInput): Promise<ProjectListItemView> {
-    if (this.projects.has(input.id)) {
-      throw new FrontendContractError('INVALID_REQUEST', `Project '${input.id}' already exists.`);
+    if (this.projects.has(input.projectId)) {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        `Project '${input.projectId}' already exists.`,
+      );
     }
     const now = new Date().toISOString();
     const item: ProjectListItemView = Object.freeze({
-      id: input.id,
+      id: input.projectId,
       name: input.name,
       description: input.description,
       isOwner: true,
@@ -98,10 +101,10 @@ export class InMemoryProjectAdministrationRepository implements ProjectAdministr
         `Project '${input.projectId}' not found.`,
       );
     }
-    if (existing.revision !== input.expectedRevision) {
+    if (existing.revision !== input.expectedProjectRevision) {
       throw new FrontendContractError(
         'REVISION_CONFLICT',
-        `Expected revision ${input.expectedRevision} but found ${existing.revision}.`,
+        `Expected revision ${input.expectedProjectRevision} but found ${existing.revision}.`,
       );
     }
 
@@ -116,15 +119,18 @@ export class InMemoryProjectAdministrationRepository implements ProjectAdministr
     return updated;
   }
 
-  async archiveProject(projectId: string, expectedRevision: number): Promise<ProjectListItemView> {
-    const existing = this.projects.get(projectId);
+  async archiveProject(input: ProjectLifecycleCommandInput): Promise<ProjectListItemView> {
+    const existing = this.projects.get(input.projectId);
     if (!existing) {
-      throw new FrontendContractError('RESOURCE_RETIRED', `Project '${projectId}' not found.`);
+      throw new FrontendContractError(
+        'RESOURCE_RETIRED',
+        `Project '${input.projectId}' not found.`,
+      );
     }
-    if (existing.revision !== expectedRevision) {
+    if (existing.revision !== input.expectedProjectRevision) {
       throw new FrontendContractError(
         'REVISION_CONFLICT',
-        `Expected revision ${expectedRevision} but found ${existing.revision}.`,
+        `Expected revision ${input.expectedProjectRevision} but found ${existing.revision}.`,
       );
     }
 
@@ -140,19 +146,22 @@ export class InMemoryProjectAdministrationRepository implements ProjectAdministr
         canRestore: true,
       }),
     });
-    this.projects.set(projectId, updated);
+    this.projects.set(input.projectId, updated);
     return updated;
   }
 
-  async restoreProject(projectId: string, expectedRevision: number): Promise<ProjectListItemView> {
-    const existing = this.projects.get(projectId);
+  async restoreProject(input: ProjectLifecycleCommandInput): Promise<ProjectListItemView> {
+    const existing = this.projects.get(input.projectId);
     if (!existing) {
-      throw new FrontendContractError('RESOURCE_RETIRED', `Project '${projectId}' not found.`);
+      throw new FrontendContractError(
+        'RESOURCE_RETIRED',
+        `Project '${input.projectId}' not found.`,
+      );
     }
-    if (existing.revision !== expectedRevision) {
+    if (existing.revision !== input.expectedProjectRevision) {
       throw new FrontendContractError(
         'REVISION_CONFLICT',
-        `Expected revision ${expectedRevision} but found ${existing.revision}.`,
+        `Expected revision ${input.expectedProjectRevision} but found ${existing.revision}.`,
       );
     }
 
@@ -167,22 +176,22 @@ export class InMemoryProjectAdministrationRepository implements ProjectAdministr
         canRestore: false,
       }),
     });
-    this.projects.set(projectId, updated);
+    this.projects.set(input.projectId, updated);
     return updated;
   }
 
-  async requestDeleteProject(
-    projectId: string,
-    expectedRevision: number,
-  ): Promise<ProjectListItemView> {
-    const existing = this.projects.get(projectId);
+  async requestDeleteProject(input: ProjectLifecycleCommandInput): Promise<ProjectListItemView> {
+    const existing = this.projects.get(input.projectId);
     if (!existing) {
-      throw new FrontendContractError('RESOURCE_RETIRED', `Project '${projectId}' not found.`);
+      throw new FrontendContractError(
+        'RESOURCE_RETIRED',
+        `Project '${input.projectId}' not found.`,
+      );
     }
-    if (existing.revision !== expectedRevision) {
+    if (existing.revision !== input.expectedProjectRevision) {
       throw new FrontendContractError(
         'REVISION_CONFLICT',
-        `Expected revision ${expectedRevision} but found ${existing.revision}.`,
+        `Expected revision ${input.expectedProjectRevision} but found ${existing.revision}.`,
       );
     }
 
@@ -201,7 +210,7 @@ export class InMemoryProjectAdministrationRepository implements ProjectAdministr
         disabledReason: 'Delete request pending',
       }),
     });
-    this.projects.set(projectId, updated);
+    this.projects.set(input.projectId, updated);
     return updated;
   }
 }
@@ -238,12 +247,11 @@ export class InMemorySettingsRepository implements SettingsRepositoryPort {
   }
 
   async updatePrincipalPreferences(
-    principalId: string,
-    preferences: Record<string, unknown>,
+    input: ApplyPreferenceCommandInput,
   ): Promise<Record<string, unknown>> {
-    const existing = await this.getPrincipalPreferences(principalId);
-    const updated = { ...existing, ...preferences };
-    this.preferences.set(principalId, updated);
+    const existing = await this.getPrincipalPreferences(input.principalId);
+    const updated = { ...existing, ...input.preferences };
+    this.preferences.set(input.principalId, updated);
     return updated;
   }
 
@@ -411,14 +419,15 @@ export class InMemorySettingsRepository implements SettingsRepositoryPort {
 
   async previewSettingsImpact(
     projectId: string,
-    expectedRevision: number,
+    expectedSettingsRevision: number,
+    observedPolicyContextRevision: number,
     draft: Record<string, unknown>,
   ): Promise<SettingsImpactPreview> {
     const currentRev = this.projectRevisions.get(projectId) ?? 1;
-    if (currentRev !== expectedRevision) {
+    if (currentRev !== expectedSettingsRevision) {
       throw new FrontendContractError(
         'REVISION_CONFLICT',
-        `Expected revision ${expectedRevision} but current is ${currentRev}.`,
+        `Expected revision ${expectedSettingsRevision} but current is ${currentRev}.`,
       );
     }
 
@@ -439,7 +448,7 @@ export class InMemorySettingsRepository implements SettingsRepositoryPort {
 
     return Object.freeze({
       targetProjectId: projectId,
-      expectedRevision,
+      expectedRevision: expectedSettingsRevision,
       requiresReview,
       requiresMigration: false,
       requiresRestart,
@@ -463,10 +472,10 @@ export class InMemorySettingsRepository implements SettingsRepositoryPort {
     }
 
     const currentRev = this.projectRevisions.get(input.projectId) ?? 1;
-    if (currentRev !== input.expectedRevision) {
+    if (currentRev !== input.expectedSettingsRevision) {
       throw new FrontendContractError(
         'REVISION_CONFLICT',
-        `Expected revision ${input.expectedRevision} but current is ${currentRev}.`,
+        `Expected revision ${input.expectedSettingsRevision} but current is ${currentRev}.`,
       );
     }
 
@@ -480,7 +489,8 @@ export class InMemorySettingsRepository implements SettingsRepositoryPort {
 
     const impact = await this.previewSettingsImpact(
       input.projectId,
-      input.expectedRevision,
+      input.expectedSettingsRevision,
+      input.observedPolicyContextRevision,
       input.settings,
     );
 
@@ -528,122 +538,149 @@ export class InMemorySettingsRepository implements SettingsRepositoryPort {
     return this.commands.get(commandId) ?? null;
   }
 
-  async getModelDescriptors(projectId: string): Promise<readonly ModelDescriptorView[]> {
+  async getModelDescriptors(
+    projectId: string,
+  ): Promise<ProductFeatureView<readonly ModelDescriptorView[]>> {
     if (!projectId) throw new FrontendContractError('INVALID_REQUEST', 'projectId required');
-    return Object.freeze([
-      {
-        modelId: 'gemini-2.5-flash',
-        displayName: 'Gemini 2.5 Flash',
-        provider: 'google',
-        available: true,
-        isDefault: true,
-        capabilities: Object.freeze(['fast_answer', 'transformation']),
-        inputTypes: Object.freeze(['text', 'image']),
-        costClass: 'LOW',
-        privacyCharacteristics: 'No logging',
-      },
-      {
-        modelId: 'gemini-2.5-pro',
-        displayName: 'Gemini 2.5 Pro',
-        provider: 'google',
-        available: true,
-        isDefault: false,
-        capabilities: Object.freeze(['deep_analysis', 'reasoning']),
-        inputTypes: Object.freeze(['text', 'image', 'document']),
-        costClass: 'HIGH',
-        privacyCharacteristics: 'No logging',
-      },
-    ]);
-  }
-
-  async getCostBudget(projectId: string): Promise<CostBudgetView> {
     return Object.freeze({
-      targetProjectId: projectId,
-      currentUsageTokens: 145000,
-      estimatedCostUsd: 12.5,
-      confirmedCostUsd: 10.0,
-      warningThresholdUsd: 80.0,
-      softLimitUsd: 90.0,
-      hardLimitUsd: 100.0,
-      aggregationTimestamp: new Date().toISOString(),
-      status: 'NORMAL',
+      availability: 'AVAILABLE',
+      data: Object.freeze([
+        {
+          modelId: 'gemini-2.5-flash',
+          displayName: 'Gemini 2.5 Flash',
+          provider: 'google',
+          available: true,
+          isDefault: true,
+          capabilities: Object.freeze(['fast_answer', 'transformation']),
+          inputTypes: Object.freeze(['text', 'image']),
+          costClass: 'LOW',
+          privacyCharacteristics: 'No logging',
+        },
+        {
+          modelId: 'gemini-2.5-pro',
+          displayName: 'Gemini 2.5 Pro',
+          provider: 'google',
+          available: true,
+          isDefault: false,
+          capabilities: Object.freeze(['deep_analysis', 'reasoning']),
+          inputTypes: Object.freeze(['text', 'image', 'document']),
+          costClass: 'HIGH',
+          privacyCharacteristics: 'No logging',
+        },
+      ]),
     });
   }
 
-  async getPrivacyRetention(projectId: string): Promise<PrivacyRetentionView> {
+  async getCostBudget(projectId: string): Promise<ProductFeatureView<CostBudgetView>> {
     return Object.freeze({
-      targetProjectId: projectId,
-      profileName: 'LOCAL_ONLY',
-      sensitivityLevel: 'NORMAL',
-      externalTransferAllowed: false,
-      connectorAllowed: false,
-      telemetryAllowed: false,
-      exportAllowed: true,
-      retentionSummary: 'Assets retained indefinitely in local storage',
+      availability: 'AVAILABLE',
+      data: Object.freeze({
+        targetProjectId: projectId,
+        currentUsageTokens: 145000,
+        estimatedCostUsd: 12.5,
+        confirmedCostUsd: 10.0,
+        warningThresholdUsd: 80.0,
+        softLimitUsd: 90.0,
+        hardLimitUsd: 100.0,
+        aggregationTimestamp: new Date().toISOString(),
+        status: 'NORMAL',
+      }),
     });
   }
 
-  async getConnectorSettings(projectId: string): Promise<readonly ConnectorSettingsView[]> {
-    if (!projectId) throw new FrontendContractError('INVALID_REQUEST', 'projectId required');
-    return Object.freeze([
-      {
-        connectorId: 'github-connector',
-        name: 'GitHub Repository Connector',
-        status: 'CONNECTED',
-        maskedCredentials: 'ghp_****1234',
-        canTest: true,
-        canRotate: true,
-        canRevoke: true,
-      },
-      {
-        connectorId: 'slack-connector',
-        name: 'Slack Webhook',
-        status: 'NOT_CONFIGURED',
-        canTest: false,
-        canRotate: false,
-        canRevoke: false,
-      },
-    ]);
-  }
-
-  async getDirectiveProposals(projectId: string): Promise<readonly DirectiveProposalView[]> {
-    if (!projectId) throw new FrontendContractError('INVALID_REQUEST', 'projectId required');
-    return Object.freeze([
-      {
-        proposalId: 'prop-101',
-        resourceId: 'res-45',
-        directiveType: 'FACT_PRIORITY_OVERRIDE',
-        description: 'Override default fact ranking for release notes',
-        status: 'PROPOSED',
-        createdAt: new Date().toISOString(),
-      },
-    ]);
-  }
-
-  async getSchemaPacks(projectId: string): Promise<readonly SchemaPackView[]> {
-    if (!projectId) throw new FrontendContractError('INVALID_REQUEST', 'projectId required');
-    return Object.freeze([
-      {
-        packId: 'standard-v1',
-        name: 'Standard Knowledge Schema Pack',
-        version: '1.0.0',
-        compatibilityStatus: 'COMPATIBLE',
-        canUpgrade: true,
-        canDisable: false,
-      },
-    ]);
-  }
-
-  async getDiagnostics(projectId: string): Promise<DiagnosticsView> {
+  async getPrivacyRetention(projectId: string): Promise<ProductFeatureView<PrivacyRetentionView>> {
     return Object.freeze({
-      appVersion: '0.1.0',
-      serverVersion: '0.1.0',
-      activeProjectId: 'shotgun',
-      targetProjectId: projectId,
-      databaseReadiness: 'READY',
-      projectionReadiness: 'READY',
-      recentFailures: Object.freeze([]),
-      backupStatus: 'HEALTHY',
+      availability: 'AVAILABLE',
+      data: Object.freeze({
+        targetProjectId: projectId,
+        profileName: 'LOCAL_ONLY',
+        sensitivityLevel: 'NORMAL',
+        externalTransferAllowed: false,
+        connectorAllowed: false,
+        telemetryAllowed: false,
+        exportAllowed: true,
+        retentionSummary: 'Assets retained indefinitely in local storage',
+      }),
+    });
+  }
+
+  async getConnectorSettings(
+    projectId: string,
+  ): Promise<ProductFeatureView<readonly ConnectorSettingsView[]>> {
+    if (!projectId) throw new FrontendContractError('INVALID_REQUEST', 'projectId required');
+    return Object.freeze({
+      availability: 'AVAILABLE',
+      data: Object.freeze([
+        {
+          connectorId: 'github-connector',
+          name: 'GitHub Repository Connector',
+          status: 'CONNECTED',
+          maskedCredentials: 'ghp_****1234',
+          canTest: true,
+          canRotate: true,
+          canRevoke: true,
+        },
+        {
+          connectorId: 'slack-connector',
+          name: 'Slack Webhook',
+          status: 'NOT_CONFIGURED',
+          canTest: false,
+          canRotate: false,
+          canRevoke: false,
+        },
+      ]),
+    });
+  }
+
+  async getDirectiveProposals(
+    projectId: string,
+  ): Promise<ProductFeatureView<readonly DirectiveProposalView[]>> {
+    if (!projectId) throw new FrontendContractError('INVALID_REQUEST', 'projectId required');
+    return Object.freeze({
+      availability: 'AVAILABLE',
+      data: Object.freeze([
+        {
+          proposalId: 'prop-101',
+          resourceId: 'res-45',
+          directiveType: 'FACT_PRIORITY_OVERRIDE',
+          description: 'Override default fact ranking for release notes',
+          status: 'PROPOSED',
+          createdAt: new Date().toISOString(),
+        },
+      ]),
+    });
+  }
+
+  async getSchemaPacks(projectId: string): Promise<ProductFeatureView<readonly SchemaPackView[]>> {
+    if (!projectId) throw new FrontendContractError('INVALID_REQUEST', 'projectId required');
+    return Object.freeze({
+      availability: 'AVAILABLE',
+      data: Object.freeze([
+        {
+          packId: 'standard-v1',
+          name: 'Standard Knowledge Schema Pack',
+          version: '1.0.0',
+          compatibilityStatus: 'COMPATIBLE',
+          canUpgrade: true,
+          canDisable: false,
+        },
+      ]),
+    });
+  }
+
+  async getDiagnostics(projectId: string): Promise<ProductFeatureView<DiagnosticsView>> {
+    return Object.freeze({
+      availability: 'AVAILABLE',
+      data: Object.freeze({
+        appVersion: '0.1.0',
+        serverVersion: '0.1.0',
+        activeProjectId: 'shotgun',
+        targetProjectId: projectId,
+        databaseReadiness: 'READY',
+        projectionReadiness: 'READY',
+        recentFailures: Object.freeze([]),
+        backupStatus: 'HEALTHY',
+      }),
     });
   }
 }

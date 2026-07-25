@@ -3,11 +3,18 @@ import type {
   ProjectAdministrationView,
 } from '../../../packages/contracts/src/index.js';
 
-export type CreateProjectInput = {
-  readonly id: string;
+export type ProjectLifecycleCommandInput = {
+  readonly commandId: string;
+  readonly clientRequestId: string;
+  readonly idempotencyKey: string;
+  readonly actorPrincipalId: string;
+  readonly projectId: string;
+  readonly expectedProjectRevision: number;
+};
+
+export type CreateProjectInput = ProjectLifecycleCommandInput & {
   readonly name: string;
   readonly description?: string;
-  readonly ownerId: string;
   readonly locale?: string;
   readonly timezone?: string;
   readonly privacyProfile?: string;
@@ -15,19 +22,17 @@ export type CreateProjectInput = {
   readonly costProfile?: string;
 };
 
-export type UpdateProjectInput = {
-  readonly projectId: string;
+export type UpdateProjectInput = ProjectLifecycleCommandInput & {
   readonly name?: string;
   readonly description?: string;
-  readonly expectedRevision: number;
 };
 
 export type ProjectAdministrationRepositoryPort = {
-  getProjects(principalId: string): Promise<ProjectAdministrationView>;
+  getProjects(projectIds: readonly string[]): Promise<ProjectAdministrationView>;
   getProjectDetails(projectId: string): Promise<ProjectListItemView | null>;
   createProject(input: CreateProjectInput): Promise<ProjectListItemView>;
   updateProject(input: UpdateProjectInput): Promise<ProjectListItemView>;
-  archiveProject(projectId: string, expectedRevision: number): Promise<ProjectListItemView>;
-  restoreProject(projectId: string, expectedRevision: number): Promise<ProjectListItemView>;
-  requestDeleteProject(projectId: string, expectedRevision: number): Promise<ProjectListItemView>;
+  archiveProject(input: ProjectLifecycleCommandInput): Promise<ProjectListItemView>;
+  restoreProject(input: ProjectLifecycleCommandInput): Promise<ProjectListItemView>;
+  requestDeleteProject(input: ProjectLifecycleCommandInput): Promise<ProjectListItemView>;
 };

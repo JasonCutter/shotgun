@@ -59,17 +59,36 @@ export function registerSettingsRoutes(
     return { preferences };
   });
 
-  server.post<{ Body: Record<string, unknown>; Headers: SecurityHeaders }>(
-    '/api/v1/settings/preferences',
-    async (request) => {
-      const { context } = await requireBrowserSession(request.headers);
-      const preferences = await settingsRepo.updatePrincipalPreferences(
-        context.principalId,
-        request.body ?? {},
-      );
-      return { preferences };
-    },
-  );
+  server.post<{
+    Body: {
+      commandId: string;
+      clientRequestId: string;
+      idempotencyKey: string;
+      expectedPreferenceRevision: number;
+      preferences: Record<string, unknown>;
+    };
+    Headers: SecurityHeaders;
+  }>('/api/v1/settings/preferences', async (request) => {
+    const { context } = await requireBrowserSession(request.headers);
+    if (!request.body.commandId || !request.body.clientRequestId || !request.body.idempotencyKey) {
+      throw new ShotgunError({
+        code: 'VALIDATION_ERROR',
+        safeMessage: 'commandId, clientRequestId, and idempotencyKey are required.',
+        module: 'shotgun-app',
+        operation: 'update-principal-preferences',
+      });
+    }
+
+    const preferences = await settingsRepo.updatePrincipalPreferences({
+      commandId: request.body.commandId,
+      clientRequestId: request.body.clientRequestId,
+      idempotencyKey: request.body.idempotencyKey,
+      principalId: context.principalId,
+      expectedPreferenceRevision: request.body.expectedPreferenceRevision ?? 0,
+      preferences: request.body.preferences ?? {},
+    });
+    return { preferences };
+  });
 
   server.post<{
     Body: { targetProjectId?: string; draft: Record<string, unknown> };
@@ -96,7 +115,8 @@ export function registerSettingsRoutes(
   server.post<{
     Body: {
       targetProjectId?: string;
-      expectedRevision: number;
+      expectedSettingsRevision: number;
+      observedPolicyContextRevision: number;
       draft: Record<string, unknown>;
     };
     Headers: SecurityHeaders;
@@ -112,17 +132,18 @@ export function registerSettingsRoutes(
         operation: 'preview-settings-impact',
       });
     }
-    if (typeof request.body.expectedRevision !== 'number') {
+    if (typeof request.body.expectedSettingsRevision !== 'number') {
       throw new ShotgunError({
         code: 'VALIDATION_ERROR',
-        safeMessage: 'expectedRevision is required to preview settings impact.',
+        safeMessage: 'expectedSettingsRevision is required to preview settings impact.',
         module: 'shotgun-app',
         operation: 'preview-settings-impact',
       });
     }
     const impact = await settingsRepo.previewSettingsImpact(
       targetProjectId,
-      request.body.expectedRevision,
+      request.body.expectedSettingsRevision,
+      request.body.observedPolicyContextRevision ?? 0,
       request.body.draft ?? {},
     );
     return { impact };
@@ -134,7 +155,8 @@ export function registerSettingsRoutes(
       clientRequestId: string;
       idempotencyKey: string;
       targetProjectId?: string;
-      expectedRevision: number;
+      expectedSettingsRevision: number;
+      observedPolicyContextRevision: number;
       settings: Record<string, unknown>;
     };
     Headers: SecurityHeaders;
@@ -177,7 +199,8 @@ export function registerSettingsRoutes(
         clientRequestId: request.body.clientRequestId,
         idempotencyKey: request.body.idempotencyKey,
         projectId: targetProjectId,
-        expectedRevision: request.body.expectedRevision,
+        expectedSettingsRevision: request.body.expectedSettingsRevision,
+        observedPolicyContextRevision: request.body.observedPolicyContextRevision ?? 0,
         settings: request.body.settings ?? {},
         actorId: context.principalId,
       });
@@ -199,12 +222,24 @@ export function registerSettingsRoutes(
   server.get<{ Params: { commandId: string }; Headers: SecurityHeaders }>(
     '/api/v1/settings/commands/:commandId',
     async (request) => {
-      await requireBrowserSession(request.headers);
+      const { context } = await requireBrowserSession(request.headers);
       const result = await settingsRepo.getCommandStatus(request.params.commandId);
       if (!result) {
+        // Return NOT_FOUND without revealing whether the command belongs to another project
         throw new ShotgunError({
           code: 'NOT_FOUND',
-          safeMessage: `Command '${request.params.commandId}' not found.`,
+          safeMessage: `Command not found.`,
+          module: 'shotgun-app',
+          operation: 'get-settings-command-status',
+        });
+      }
+      // Verify the caller has membership on the command's project
+      const membership = await authRepo.findMembership(context.principalId, result.projectId ?? '');
+      if (!membership) {
+        // Treat as not found to avoid revealing command existence to unauthorized principals
+        throw new ShotgunError({
+          code: 'NOT_FOUND',
+          safeMessage: `Command not found.`,
           module: 'shotgun-app',
           operation: 'get-settings-command-status',
         });

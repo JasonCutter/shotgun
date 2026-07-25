@@ -19,6 +19,25 @@ export const DirectivesWorkspace = () => {
   if (isLoading) return <div>Loading directive proposals...</div>;
   if (error) return <div className="error-banner">Failed to load directive proposals.</div>;
 
+  if (proposals?.availability === 'UNAVAILABLE') {
+    return (
+      <section className="directives-workspace">
+        <h2 style={{ fontSize: '20px', marginBottom: '8px' }}>User Directives & Fact Priority</h2>
+        <div
+          style={{
+            color: '#b91c1c',
+            padding: '16px',
+            background: '#fef2f2',
+            border: '1px solid #f87171',
+            borderRadius: '8px',
+          }}
+        >
+          {proposals.disabledReason}
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="directives-workspace">
       <h2 style={{ fontSize: '20px', marginBottom: '8px' }}>User Directives & Fact Priority</h2>
@@ -26,13 +45,13 @@ export const DirectivesWorkspace = () => {
         Manage user directive proposals, fact ranking overrides, and rule priority conflicts.
       </p>
 
-      {proposals?.length === 0 ? (
+      {proposals?.data?.length === 0 ? (
         <p style={{ color: '#64748b' }}>
           No directive proposals active for project {targetProjectId}.
         </p>
       ) : (
         <div style={{ display: 'grid', gap: '16px' }}>
-          {proposals?.map((p) => (
+          {proposals?.data?.map((p) => (
             <div
               key={p.proposalId}
               style={{

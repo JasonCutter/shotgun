@@ -19,6 +19,25 @@ export const ModelsWorkspace = () => {
   if (isLoading) return <div>Loading model profiles...</div>;
   if (error) return <div className="error-banner">Failed to load model profiles.</div>;
 
+  if (models?.availability === 'UNAVAILABLE') {
+    return (
+      <section className="models-workspace">
+        <h2 style={{ fontSize: '20px', marginBottom: '8px' }}>AI Model Profiles & Routing</h2>
+        <div
+          style={{
+            color: '#b91c1c',
+            padding: '16px',
+            background: '#fef2f2',
+            border: '1px solid #f87171',
+            borderRadius: '8px',
+          }}
+        >
+          {models.disabledReason}
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="models-workspace">
       <h2 style={{ fontSize: '20px', marginBottom: '8px' }}>AI Model Profiles & Routing</h2>
@@ -33,7 +52,7 @@ export const ModelsWorkspace = () => {
           gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
         }}
       >
-        {models?.map((m) => (
+        {models?.data?.map((m) => (
           <div
             key={m.modelId}
             style={{

@@ -19,6 +19,29 @@ export const DiagnosticsWorkspace = () => {
   if (isLoading) return <div>Loading diagnostics real-fact telemetry...</div>;
   if (error || !diagnostics) return <div className="error-banner">Failed to load diagnostics.</div>;
 
+  if (diagnostics.availability === 'UNAVAILABLE') {
+    return (
+      <section className="diagnostics-workspace">
+        <h2 style={{ fontSize: '20px', marginBottom: '8px' }}>
+          System Diagnostics & Real-Fact Telemetry
+        </h2>
+        <div
+          style={{
+            color: '#b91c1c',
+            padding: '16px',
+            background: '#fef2f2',
+            border: '1px solid #f87171',
+            borderRadius: '8px',
+          }}
+        >
+          {diagnostics.disabledReason}
+        </div>
+      </section>
+    );
+  }
+
+  const diagnosticsData = diagnostics.data;
+
   return (
     <section className="diagnostics-workspace">
       <h2 style={{ fontSize: '20px', marginBottom: '8px' }}>
@@ -44,7 +67,7 @@ export const DiagnosticsWorkspace = () => {
           }}
         >
           <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>App Version</p>
-          <p style={{ margin: '4px 0 0 0', fontWeight: 600 }}>{diagnostics.appVersion}</p>
+          <p style={{ margin: '4px 0 0 0', fontWeight: 600 }}>{diagnosticsData.appVersion}</p>
         </div>
         <div
           style={{
@@ -55,7 +78,7 @@ export const DiagnosticsWorkspace = () => {
           }}
         >
           <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>Server Version</p>
-          <p style={{ margin: '4px 0 0 0', fontWeight: 600 }}>{diagnostics.serverVersion}</p>
+          <p style={{ margin: '4px 0 0 0', fontWeight: 600 }}>{diagnosticsData.serverVersion}</p>
         </div>
         <div
           style={{
@@ -70,10 +93,10 @@ export const DiagnosticsWorkspace = () => {
             style={{
               margin: '4px 0 0 0',
               fontWeight: 600,
-              color: diagnostics.databaseReadiness === 'READY' ? '#166534' : '#dc2626',
+              color: diagnosticsData.databaseReadiness === 'READY' ? '#166534' : '#dc2626',
             }}
           >
-            {diagnostics.databaseReadiness}
+            {diagnosticsData.databaseReadiness}
           </p>
         </div>
         <div
@@ -89,10 +112,10 @@ export const DiagnosticsWorkspace = () => {
             style={{
               margin: '4px 0 0 0',
               fontWeight: 600,
-              color: diagnostics.projectionReadiness === 'READY' ? '#166534' : '#dc2626',
+              color: diagnosticsData.projectionReadiness === 'READY' ? '#166534' : '#dc2626',
             }}
           >
-            {diagnostics.projectionReadiness}
+            {diagnosticsData.projectionReadiness}
           </p>
         </div>
         <div
@@ -108,10 +131,10 @@ export const DiagnosticsWorkspace = () => {
             style={{
               margin: '4px 0 0 0',
               fontWeight: 600,
-              color: diagnostics.backupStatus === 'HEALTHY' ? '#166534' : '#d97706',
+              color: diagnosticsData.backupStatus === 'HEALTHY' ? '#166534' : '#d97706',
             }}
           >
-            {diagnostics.backupStatus}
+            {diagnosticsData.backupStatus}
           </p>
         </div>
       </div>

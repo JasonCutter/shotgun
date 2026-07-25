@@ -33,7 +33,8 @@ describe('Settings Policy and Draft Controller Logic', () => {
       clientRequestId: 'client-req-1',
       idempotencyKey: 'idem-1',
       projectId: 'shotgun',
-      expectedRevision: 1,
+      expectedSettingsRevision: 1,
+      observedPolicyContextRevision: 1,
       settings: { 'general.locale': 'en-US' },
       actorId: 'principal-a',
     });
@@ -52,7 +53,8 @@ describe('Settings Policy and Draft Controller Logic', () => {
         clientRequestId: 'different-client-req',
         idempotencyKey: 'idem-1',
         projectId: 'shotgun',
-        expectedRevision: 2,
+        expectedSettingsRevision: 2,
+        observedPolicyContextRevision: 1,
         settings: { 'general.locale': 'en-US' },
         actorId: 'principal-a',
       }),
@@ -66,7 +68,8 @@ describe('Settings Policy and Draft Controller Logic', () => {
         clientRequestId: 'client-req-3',
         idempotencyKey: 'idem-3',
         projectId: 'shotgun',
-        expectedRevision: 1, // Current is 2
+        expectedSettingsRevision: 1, // Current is 2
+        observedPolicyContextRevision: 1,
         settings: { 'general.locale': 'ko-KR' },
         actorId: 'principal-a',
       }),

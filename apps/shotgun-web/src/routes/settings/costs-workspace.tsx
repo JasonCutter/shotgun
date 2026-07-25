@@ -20,6 +20,27 @@ export const CostsWorkspace = () => {
   if (error || !costs)
     return <div className="error-banner">Failed to load cost budget metrics.</div>;
 
+  if (costs.availability === 'UNAVAILABLE') {
+    return (
+      <section className="costs-workspace">
+        <h2 style={{ fontSize: '20px', marginBottom: '8px' }}>Costs & Budget Management</h2>
+        <div
+          style={{
+            color: '#b91c1c',
+            padding: '16px',
+            background: '#fef2f2',
+            border: '1px solid #f87171',
+            borderRadius: '8px',
+          }}
+        >
+          {costs.disabledReason}
+        </div>
+      </section>
+    );
+  }
+
+  const costsData = costs.data;
+
   return (
     <section className="costs-workspace">
       <h2 style={{ fontSize: '20px', marginBottom: '8px' }}>Costs & Budget Management</h2>
@@ -45,7 +66,7 @@ export const CostsWorkspace = () => {
         >
           <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>Tokens Used</p>
           <p style={{ margin: '4px 0 0 0', fontSize: '24px', fontWeight: 700 }}>
-            {costs.currentUsageTokens.toLocaleString()}
+            {costsData.currentUsageTokens.toLocaleString()}
           </p>
         </div>
         <div
@@ -58,7 +79,7 @@ export const CostsWorkspace = () => {
         >
           <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>Confirmed Cost</p>
           <p style={{ margin: '4px 0 0 0', fontSize: '24px', fontWeight: 700 }}>
-            ${costs.confirmedCostUsd.toFixed(2)}
+            ${costsData.confirmedCostUsd.toFixed(2)}
           </p>
         </div>
         <div
@@ -71,7 +92,7 @@ export const CostsWorkspace = () => {
         >
           <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>Soft Limit</p>
           <p style={{ margin: '4px 0 0 0', fontSize: '24px', fontWeight: 700, color: '#d97706' }}>
-            ${costs.softLimitUsd.toFixed(2)}
+            ${costsData.softLimitUsd.toFixed(2)}
           </p>
         </div>
         <div
@@ -84,7 +105,7 @@ export const CostsWorkspace = () => {
         >
           <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>Hard Limit</p>
           <p style={{ margin: '4px 0 0 0', fontSize: '24px', fontWeight: 700, color: '#dc2626' }}>
-            ${costs.hardLimitUsd.toFixed(2)}
+            ${costsData.hardLimitUsd.toFixed(2)}
           </p>
         </div>
       </div>

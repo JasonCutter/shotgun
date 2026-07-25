@@ -20,6 +20,27 @@ export const PrivacyWorkspace = () => {
   if (error || !privacy)
     return <div className="error-banner">Failed to load privacy settings.</div>;
 
+  if (privacy.availability === 'UNAVAILABLE') {
+    return (
+      <section className="privacy-workspace">
+        <h2 style={{ fontSize: '20px', marginBottom: '8px' }}>Privacy & Sensitivity Controls</h2>
+        <div
+          style={{
+            color: '#b91c1c',
+            padding: '16px',
+            background: '#fef2f2',
+            border: '1px solid #f87171',
+            borderRadius: '8px',
+          }}
+        >
+          {privacy.disabledReason}
+        </div>
+      </section>
+    );
+  }
+
+  const privacyData = privacy.data;
+
   return (
     <section className="privacy-workspace">
       <h2 style={{ fontSize: '20px', marginBottom: '8px' }}>Privacy & Sensitivity Controls</h2>
@@ -38,17 +59,17 @@ export const PrivacyWorkspace = () => {
         }}
       >
         <p>
-          <strong>Profile Name:</strong> {privacy.profileName}
+          <strong>Profile Name:</strong> {privacyData.profileName}
         </p>
         <p>
-          <strong>Sensitivity Level:</strong> {privacy.sensitivityLevel}
+          <strong>Sensitivity Level:</strong> {privacyData.sensitivityLevel}
         </p>
         <p>
           <strong>External Transfer Allowed:</strong>{' '}
-          {privacy.externalTransferAllowed ? 'Yes' : 'No'}
+          {privacyData.externalTransferAllowed ? 'Yes' : 'No'}
         </p>
         <p>
-          <strong>Retention Summary:</strong> {privacy.retentionSummary}
+          <strong>Retention Summary:</strong> {privacyData.retentionSummary}
         </p>
       </div>
     </section>

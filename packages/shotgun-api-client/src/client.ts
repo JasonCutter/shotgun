@@ -1,4 +1,9 @@
-import type { ProductSessionView, RequestOptions, ShotgunApiClient } from './contracts.js';
+import type {
+  ProductSessionView,
+  RequestOptions,
+  ProductFeatureView,
+  ShotgunApiClient,
+} from './contracts.js';
 import { createCsrfMutationManager } from './csrf-manager.js';
 import {
   decodeCsrfEnvelope,
@@ -155,14 +160,20 @@ export const createShotgunApiClient = (
     },
 
     async updatePrincipalPreferences(
-      preferences: Record<string, unknown>,
+      params: {
+        commandId: string;
+        clientRequestId: string;
+        idempotencyKey: string;
+        expectedPreferenceRevision: number;
+        preferences: Record<string, unknown>;
+      },
       requestOptions?: RequestOptions,
     ): Promise<Record<string, unknown>> {
       return runMutation(requestOptions?.signal, async (csrfToken) => {
         const response = await request('/settings/preferences', {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
-          body: JSON.stringify(preferences),
+          body: JSON.stringify(params),
           signal: requestOptions?.signal,
         });
         const body = (await assertOk(response)) as { preferences: Record<string, unknown> };
@@ -188,7 +199,8 @@ export const createShotgunApiClient = (
     },
 
     async previewSettingsImpact(
-      expectedRevision: number,
+      expectedSettingsRevision: number,
+      observedPolicyContextRevision: number,
       draft: Record<string, unknown>,
       targetProjectId?: string,
       requestOptions?: RequestOptions,
@@ -197,7 +209,12 @@ export const createShotgunApiClient = (
         const response = await request('/settings/impact', {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
-          body: JSON.stringify({ targetProjectId, expectedRevision, draft }),
+          body: JSON.stringify({
+            targetProjectId,
+            expectedSettingsRevision,
+            observedPolicyContextRevision,
+            draft,
+          }),
           signal: requestOptions?.signal,
         });
         const body = (await assertOk(response)) as { impact: SettingsImpactPreview };
@@ -210,7 +227,8 @@ export const createShotgunApiClient = (
         commandId: string;
         clientRequestId: string;
         idempotencyKey: string;
-        expectedRevision: number;
+        expectedSettingsRevision: number;
+        observedPolicyContextRevision: number;
         settings: Record<string, unknown>;
         targetProjectId?: string;
       },
@@ -352,96 +370,108 @@ export const createShotgunApiClient = (
     async getModelDescriptors(
       targetProjectId?: string,
       requestOptions?: RequestOptions,
-    ): Promise<readonly ModelDescriptorView[]> {
+    ): Promise<ProductFeatureView<readonly ModelDescriptorView[]>> {
       const query = targetProjectId
         ? `?targetProjectId=${encodeURIComponent(targetProjectId)}`
         : '';
       const response = await request(`/settings/models${query}`, {
         signal: requestOptions?.signal,
       });
-      const body = (await assertOk(response)) as { models: readonly ModelDescriptorView[] };
+      const body = (await assertOk(response)) as {
+        models: ProductFeatureView<readonly ModelDescriptorView[]>;
+      };
       return body.models;
     },
 
     async getCostBudget(
       targetProjectId?: string,
       requestOptions?: RequestOptions,
-    ): Promise<CostBudgetView> {
+    ): Promise<ProductFeatureView<CostBudgetView>> {
       const query = targetProjectId
         ? `?targetProjectId=${encodeURIComponent(targetProjectId)}`
         : '';
       const response = await request(`/settings/costs${query}`, { signal: requestOptions?.signal });
-      const body = (await assertOk(response)) as { costs: CostBudgetView };
+      const body = (await assertOk(response)) as { costs: ProductFeatureView<CostBudgetView> };
       return body.costs;
     },
 
     async getPrivacyRetention(
       targetProjectId?: string,
       requestOptions?: RequestOptions,
-    ): Promise<PrivacyRetentionView> {
+    ): Promise<ProductFeatureView<PrivacyRetentionView>> {
       const query = targetProjectId
         ? `?targetProjectId=${encodeURIComponent(targetProjectId)}`
         : '';
       const response = await request(`/settings/privacy${query}`, {
         signal: requestOptions?.signal,
       });
-      const body = (await assertOk(response)) as { privacy: PrivacyRetentionView };
+      const body = (await assertOk(response)) as {
+        privacy: ProductFeatureView<PrivacyRetentionView>;
+      };
       return body.privacy;
     },
 
     async getConnectorSettings(
       targetProjectId?: string,
       requestOptions?: RequestOptions,
-    ): Promise<readonly ConnectorSettingsView[]> {
+    ): Promise<ProductFeatureView<readonly ConnectorSettingsView[]>> {
       const query = targetProjectId
         ? `?targetProjectId=${encodeURIComponent(targetProjectId)}`
         : '';
       const response = await request(`/settings/connectors${query}`, {
         signal: requestOptions?.signal,
       });
-      const body = (await assertOk(response)) as { connectors: readonly ConnectorSettingsView[] };
+      const body = (await assertOk(response)) as {
+        connectors: ProductFeatureView<readonly ConnectorSettingsView[]>;
+      };
       return body.connectors;
     },
 
     async getDirectiveProposals(
       targetProjectId?: string,
       requestOptions?: RequestOptions,
-    ): Promise<readonly DirectiveProposalView[]> {
+    ): Promise<ProductFeatureView<readonly DirectiveProposalView[]>> {
       const query = targetProjectId
         ? `?targetProjectId=${encodeURIComponent(targetProjectId)}`
         : '';
       const response = await request(`/settings/directives${query}`, {
         signal: requestOptions?.signal,
       });
-      const body = (await assertOk(response)) as { proposals: readonly DirectiveProposalView[] };
+      const body = (await assertOk(response)) as {
+        proposals: ProductFeatureView<readonly DirectiveProposalView[]>;
+      };
       return body.proposals;
     },
 
     async getSchemaPacks(
       targetProjectId?: string,
       requestOptions?: RequestOptions,
-    ): Promise<readonly SchemaPackView[]> {
+    ): Promise<ProductFeatureView<readonly SchemaPackView[]>> {
       const query = targetProjectId
         ? `?targetProjectId=${encodeURIComponent(targetProjectId)}`
         : '';
       const response = await request(`/settings/schema${query}`, {
         signal: requestOptions?.signal,
       });
-      const body = (await assertOk(response)) as { schemaPacks: readonly SchemaPackView[] };
+      const body = (await assertOk(response)) as {
+        schemaPacks: ProductFeatureView<readonly SchemaPackView[]>;
+      };
       return body.schemaPacks;
     },
 
     async getDiagnostics(
       targetProjectId?: string,
       requestOptions?: RequestOptions,
-    ): Promise<DiagnosticsView> {
+    ): Promise<ProductFeatureView<DiagnosticsView>> {
       const query = targetProjectId
         ? `?targetProjectId=${encodeURIComponent(targetProjectId)}`
         : '';
       const response = await request(`/settings/diagnostics${query}`, {
         signal: requestOptions?.signal,
       });
-      const body = (await assertOk(response)) as { diagnostics: DiagnosticsView };
+      const body = (await assertOk(response)) as {
+        diagnostics: ProductFeatureView<DiagnosticsView>;
+      };
       return body.diagnostics;
     },
   };

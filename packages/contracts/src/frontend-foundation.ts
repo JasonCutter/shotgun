@@ -2072,6 +2072,8 @@ export type SettingsCommandResult = {
   readonly reviewProposalId?: string;
   readonly errorMessage?: string;
   readonly completedAt?: string;
+  /** Project binding — used server-side for authorization; not required in all views */
+  readonly projectId?: string;
 };
 
 export type ProjectCapabilityView = {
@@ -2100,6 +2102,17 @@ export type ProjectAdministrationView = {
   readonly schemaVersion: '1.0.0';
   readonly projects: readonly ProjectListItemView[];
 };
+
+export type ProductFeatureView<T> =
+  | {
+      readonly availability: 'AVAILABLE';
+      readonly data: T;
+    }
+  | {
+      readonly availability: 'UNAVAILABLE';
+      readonly applicationMode: 'UNAVAILABLE';
+      readonly disabledReason: string;
+    };
 
 export type ModelDescriptorView = {
   readonly modelId: string;
@@ -2189,6 +2202,37 @@ export type DiagnosticsView = {
 // Runtime Decoders with Fail-Closed Invariant Validation
 // ----------------------------------------------------------------------------
 
+export function isRecord(val: unknown): val is Record<string, unknown> {
+  return typeof val === 'object' && val !== null && !Array.isArray(val);
+}
+
+export function decodeProductFeatureView<T>(
+  val: unknown,
+  dataDecoder: (v: unknown) => T,
+): ProductFeatureView<T> {
+  if (!isRecord(val)) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'ProductFeatureView must be a non-null object',
+    );
+  }
+  if (val['availability'] === 'UNAVAILABLE') {
+    return Object.freeze({
+      availability: 'UNAVAILABLE',
+      applicationMode: 'UNAVAILABLE',
+      disabledReason:
+        typeof val['disabledReason'] === 'string' ? val['disabledReason'] : 'Not available.',
+    });
+  }
+  if (val['availability'] === 'AVAILABLE') {
+    return Object.freeze({
+      availability: 'AVAILABLE',
+      data: dataDecoder(val['data']),
+    });
+  }
+  throw new FrontendContractError('INVALID_REQUEST', 'Invalid ProductFeatureView availability');
+}
+
 export function decodeSettingsScope(val: unknown): SettingsScope {
   const allowed = new Set<SettingsScope>(['PRINCIPAL', 'PROJECT', 'SYSTEM', 'RESOURCE']);
   if (typeof val !== 'string' || !allowed.has(val as SettingsScope)) {
@@ -2245,13 +2289,13 @@ export function decodeProjectLifecycleStatus(val: unknown): ProjectLifecycleStat
 }
 
 export function decodeSettingDescriptor(val: unknown): SettingDescriptor {
-  if (!val || typeof val !== 'object') {
+  if (!isRecord(val)) {
     throw new FrontendContractError(
       'INVALID_REQUEST',
       'SettingDescriptor must be a non-null object',
     );
   }
-  const obj = val as Record<string, unknown>;
+  const obj = val;
 
   if (typeof obj['key'] !== 'string' || !obj['key']) {
     throw new FrontendContractError(
@@ -2264,8 +2308,8 @@ export function decodeSettingDescriptor(val: unknown): SettingDescriptor {
   const applicationMode = decodeSettingsApplicationMode(obj['applicationMode']);
   const riskLevel = decodeSettingsRiskLevel(obj['riskLevel']);
 
-  const cap = obj['capability'] as Record<string, unknown> | undefined;
-  if (!cap || typeof cap !== 'object') {
+  const cap = obj['capability'];
+  if (!isRecord(cap)) {
     throw new FrontendContractError(
       'INVALID_REQUEST',
       'SettingDescriptor requires capability object',
@@ -2314,46 +2358,59 @@ export function decodeSettingDescriptor(val: unknown): SettingDescriptor {
 }
 
 export function decodeSettingsCategorySummary(val: unknown): SettingsCategorySummary {
-  if (!val || typeof val !== 'object') {
+  if (!isRecord(val)) {
     throw new FrontendContractError(
       'INVALID_REQUEST',
       'SettingsCategorySummary must be a non-null object',
     );
   }
-  const obj = val as Record<string, unknown>;
+  const obj = val;
+
+  if (typeof obj['categoryId'] !== 'string' || !obj['categoryId']) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'SettingsCategorySummary requires categoryId',
+    );
+  }
+
+  const scope = decodeSettingsScope(obj['scope']);
+  const applicationMode = decodeSettingsApplicationMode(obj['applicationMode']);
+
+  const cap = obj['capability'];
+  if (!isRecord(cap)) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'SettingsCategorySummary requires capability object',
+    );
+  }
+
   return Object.freeze({
-    categoryId: String(obj['categoryId']),
+    categoryId: obj['categoryId'],
     label: String(obj['label'] ?? obj['categoryId']),
-    description: String(obj['description'] ?? ''),
-    scope: decodeSettingsScope(obj['scope']),
+    description: typeof obj['description'] === 'string' ? obj['description'] : '',
+    scope,
     totalSettingsCount: Number(obj['totalSettingsCount'] ?? 0),
     actionRequiredCount: Number(obj['actionRequiredCount'] ?? 0),
     warningCount: Number(obj['warningCount'] ?? 0),
-    applicationMode: decodeSettingsApplicationMode(obj['applicationMode']),
+    applicationMode,
     capability: Object.freeze({
-      canEdit: Boolean((obj['capability'] as Record<string, unknown> | undefined)?.canEdit),
-      canReset: Boolean((obj['capability'] as Record<string, unknown> | undefined)?.canReset),
-      canProposeReview: Boolean(
-        (obj['capability'] as Record<string, unknown> | undefined)?.canProposeReview,
-      ),
-      disabledReason:
-        typeof (obj['capability'] as Record<string, unknown> | undefined)?.disabledReason ===
-        'string'
-          ? ((obj['capability'] as Record<string, unknown>)['disabledReason'] as string)
-          : undefined,
+      canEdit: Boolean(cap['canEdit']),
+      canReset: Boolean(cap['canReset']),
+      canProposeReview: Boolean(cap['canProposeReview']),
+      disabledReason: typeof cap['disabledReason'] === 'string' ? cap['disabledReason'] : undefined,
     }),
     lastModifiedAt: typeof obj['lastModifiedAt'] === 'string' ? obj['lastModifiedAt'] : null,
   });
 }
 
 export function decodeSettingsSnapshot(val: unknown): SettingsSnapshot {
-  if (!val || typeof val !== 'object') {
+  if (!isRecord(val)) {
     throw new FrontendContractError(
       'INVALID_REQUEST',
       'SettingsSnapshot must be a non-null object',
     );
   }
-  const obj = val as Record<string, unknown>;
+  const obj = val;
 
   if (obj['schemaVersion'] !== '1.0.0') {
     throw new FrontendContractError(
@@ -2380,8 +2437,8 @@ export function decodeSettingsSnapshot(val: unknown): SettingsSnapshot {
 
   return Object.freeze({
     schemaVersion: '1.0.0',
-    targetProjectId: obj['targetProjectId'] as string,
-    settingsRevision: obj['settingsRevision'] as number,
+    targetProjectId: obj['targetProjectId'],
+    settingsRevision: obj['settingsRevision'],
     policyContextRevision: Number(obj['policyContextRevision'] ?? obj['settingsRevision']),
     categories: Object.freeze(categories),
     settings: Object.freeze(settings),
@@ -2390,22 +2447,22 @@ export function decodeSettingsSnapshot(val: unknown): SettingsSnapshot {
 }
 
 export function decodeProjectListItemView(val: unknown): ProjectListItemView {
-  if (!val || typeof val !== 'object') {
+  if (!isRecord(val)) {
     throw new FrontendContractError(
       'INVALID_REQUEST',
       'ProjectListItemView must be a non-null object',
     );
   }
-  const obj = val as Record<string, unknown>;
+  const obj = val;
   if (typeof obj['id'] !== 'string' || !obj['id']) {
     throw new FrontendContractError('INVALID_REQUEST', 'ProjectListItemView requires valid id');
   }
-  const cap = (obj['capability'] as Record<string, unknown>) ?? {};
+  const cap = isRecord(obj['capability']) ? obj['capability'] : {};
 
   return Object.freeze({
     id: String(obj['id']),
     name: String(obj['name'] ?? obj['id']),
-    description: typeof obj['description'] === 'string' ? obj['description'] : undefined,
+    description: typeof obj['description'] === 'string' ? obj['description'] : '',
     isOwner: Boolean(obj['isOwner']),
     status: decodeProjectLifecycleStatus(obj['status']),
     active: Boolean(obj['active']),
@@ -2424,23 +2481,22 @@ export function decodeProjectListItemView(val: unknown): ProjectListItemView {
 }
 
 export function decodeProjectAdministrationView(val: unknown): ProjectAdministrationView {
-  if (!val || typeof val !== 'object') {
+  if (!isRecord(val)) {
     throw new FrontendContractError(
       'INVALID_REQUEST',
       'ProjectAdministrationView must be a non-null object',
     );
   }
-  const obj = val as Record<string, unknown>;
+  const obj = val;
   if (obj['schemaVersion'] !== '1.0.0') {
     throw new FrontendContractError(
       'INVALID_REQUEST',
-      `Invalid ProjectAdministrationView schemaVersion: ${String(obj['schemaVersion'])}`,
+      `Unsupported ProjectAdministrationView schemaVersion: ${String(obj['schemaVersion'])}`,
     );
   }
   const projects = Array.isArray(obj['projects'])
     ? obj['projects'].map(decodeProjectListItemView)
     : [];
-
   return Object.freeze({
     schemaVersion: '1.0.0',
     projects: Object.freeze(projects),

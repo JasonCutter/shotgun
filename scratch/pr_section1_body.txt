@@ -1,0 +1,57 @@
+# Draft PR: Frontend Phase 1 Section 1 — Local Owner Session · Authentication · Project Boundary (2차 보완 반영)
+
+## PR 상태
+- **Status**: Draft PR (Review Only - Merge / PR Ready / Section 2 진입 금지 준수)
+- **Base Branch**: `main` (`e98b7381536f2ae2bce04d8c6e9442990ea9f06e`)
+- **Working Branch**: `codex/frontend-phase-1-section-1`
+- **Verification Report**: [`docs/engineering/frontend-phase-1-section-1-verification-260724001.md`](file:///c:/dev/shotgun/docs/engineering/frontend-phase-1-section-1-verification-260724001.md)
+
+---
+
+## 2차 보완 요청서 반영 항목
+
+1. **`npm run oss:audit` 취약점 해결**:
+   - `react-router`를 `8.3.0`으로 업그레이드 (GHSA-qwww-vcr4-c8h2).
+   - Package overrides에 `brace-expansion` (`2.0.1`) 및 `minimatch` (`10.0.3`) 추가 (GHSA-mh99-v99m-4gvg).
+   - `docs/implementation/oss-source-registry.json` pin value를 `8.3.0`으로 맞춤.
+   - `npm run oss:audit` (0 high vulnerability) 및 `scripts/oss-gate.ts` PASS.
+
+2. **`SessionCycleState` Runtime별 격리**:
+   - `let globalCycleState` 모듈 전역 변수 전면 제거.
+   - `SessionCycleState`를 `AppRuntime` 인스턴스가 소유하도록 변경하고, Router Loader와 ApplicationShell, Reconnect 함수가 해당 인스턴스의 상태를 사용.
+   - Distinct Runtime A/B 격리 단위 테스트 추가 (`isolates cycleState between distinct runtime instances`).
+
+3. **Session Recovery State Machine & 보호 캐시 Purge**:
+   - 401 감지 시 `REVOKED` -> `REESTABLISHING` -> `READY` / `UNAVAILABLE` 상태 전이.
+   - 401 및 Session Revocation 발생 시 이전 READY snapshot 및 보호 캐시(`purgeProtectedSessionCaches`)를 즉시 취소/Purge.
+
+4. **Manual Reconnect Deduplication**:
+   - `RECONNECT` 클릭 시 즉시 `sessionState: 'REESTABLISHING'`, `reasonCode: 'LOCAL_SESSION_REESTABLISHING'` 상태 기록.
+   - 연속 클릭 및 동시 호출 시 동일한 `activeBootstrapPromise`를 공유하여 중복 네트워크 요청 차단.
+
+5. **Loader Cache Purge 연결**:
+   - Route loader에서 `sessionBoundaryQueryOptions(runtime.apiClient, runtime.queryClient, runtime.sessionCycleState)`를 사용하여 `fetchQuery` 호출 시 보호 캐시 무효화 연결.
+
+6. **API Boundary 권위 경로 단일화 (Option B)**:
+   - Raw Session API (`getSession`, `bootstrapLocalOwner`, `switchActiveProject`, `logout`)는 `ShotgunApiClient`가 소유.
+   - Session Boundary 및 State Machine 전체는 `apps/shotgun-web/src/session/session-query.ts`가 단독 소유.
+   - API Client 내부에서 미사용되던 `getSessionBoundary` 메서드 정리.
+
+7. **Session Boundary 전용 4축 타입 완성**:
+   - `SessionBoundaryConnectivityState` (`'UNKNOWN' | 'ONLINE' | 'OFFLINE' | 'DEGRADED'`), `SessionBoundaryAuthenticationState`, `SessionBoundarySessionState`, `SessionBoundaryBackendReadiness` 4개 전용 타입 정의 및 `SessionBoundaryView` 적용 (`SystemBoundaryContext` 변경 없음).
+
+8. **Diagnostic Modal 접근성 및 안내 정확성**:
+   - Focus Trap (Tab, Shift+Tab 키 이동 시 대화상자 내 순환).
+   - Escape 키 모달 닫기 및 닫힌 후 트리거 버튼 포커스 복원.
+   - 모달 배경 클릭 및 이벤트 전파 차단.
+   - 실제 런타임 엔드포인트(`127.0.0.1:3001` / 백엔드 서비스) 및 환경 변수 기반 정확한 가이드 문구 적용.
+
+9. **Leave Guard Draft Protection (Option B)**:
+   - Project 전환 시 Unsaved Draft가 존재하면 `useBlocker` / confirmation dialog가 동작하여 사용자가 취소 시 Project Switch mutation 자체를 실행하지 않고 이전 선택 포인트를 유지.
+
+---
+
+## 검증 결과 요약
+
+- `npm run check`: **PASS** (Lint, Format, Typecheck, Unit 87건, Contract 143건, Integration 29건, Architecture, Package, Secret Scan, OSS Verify)
+- `npm run frontend:check`: **PASS** (Typecheck, Unit 8건, Build, Playwright E2E 1건)

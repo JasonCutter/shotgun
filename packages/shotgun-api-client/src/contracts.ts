@@ -15,6 +15,7 @@ import type {
   DirectiveProposalView,
   SchemaPackView,
   DiagnosticsView,
+  ProductFeatureView,
 } from '../../contracts/src/index.js';
 
 export type {
@@ -34,6 +35,7 @@ export type {
   DirectiveProposalView,
   SchemaPackView,
   DiagnosticsView,
+  ProductFeatureView,
 };
 
 export type ProductApiErrorBody = {
@@ -72,7 +74,8 @@ export type ShotgunApiClient = {
     options?: RequestOptions,
   ): Promise<SettingsValidationResult>;
   previewSettingsImpact(
-    expectedRevision: number,
+    expectedSettingsRevision: number,
+    observedPolicyContextRevision: number,
     draft: Record<string, unknown>,
     targetProjectId?: string,
     options?: RequestOptions,
@@ -82,7 +85,8 @@ export type ShotgunApiClient = {
       commandId: string;
       clientRequestId: string;
       idempotencyKey: string;
-      expectedRevision: number;
+      expectedSettingsRevision: number;
+      observedPolicyContextRevision: number;
       settings: Record<string, unknown>;
       targetProjectId?: string;
     },
@@ -129,23 +133,29 @@ export type ShotgunApiClient = {
   getModelDescriptors(
     targetProjectId?: string,
     options?: RequestOptions,
-  ): Promise<readonly ModelDescriptorView[]>;
-  getCostBudget(targetProjectId?: string, options?: RequestOptions): Promise<CostBudgetView>;
+  ): Promise<ProductFeatureView<readonly ModelDescriptorView[]>>;
+  getCostBudget(
+    targetProjectId?: string,
+    options?: RequestOptions,
+  ): Promise<ProductFeatureView<CostBudgetView>>;
   getPrivacyRetention(
     targetProjectId?: string,
     options?: RequestOptions,
-  ): Promise<PrivacyRetentionView>;
+  ): Promise<ProductFeatureView<PrivacyRetentionView>>;
   getConnectorSettings(
     targetProjectId?: string,
     options?: RequestOptions,
-  ): Promise<readonly ConnectorSettingsView[]>;
+  ): Promise<ProductFeatureView<readonly ConnectorSettingsView[]>>;
   getDirectiveProposals(
     targetProjectId?: string,
     options?: RequestOptions,
-  ): Promise<readonly DirectiveProposalView[]>;
+  ): Promise<ProductFeatureView<readonly DirectiveProposalView[]>>;
   getSchemaPacks(
     targetProjectId?: string,
     options?: RequestOptions,
-  ): Promise<readonly SchemaPackView[]>;
-  getDiagnostics(targetProjectId?: string, options?: RequestOptions): Promise<DiagnosticsView>;
+  ): Promise<ProductFeatureView<readonly SchemaPackView[]>>;
+  getDiagnostics(
+    targetProjectId?: string,
+    options?: RequestOptions,
+  ): Promise<ProductFeatureView<DiagnosticsView>>;
 };

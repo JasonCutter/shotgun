@@ -2,7 +2,35 @@ import { randomUUID } from 'node:crypto';
 
 import { Pool, type PoolClient, type QueryResultRow } from 'pg';
 
-import { ShotgunError } from '../../../packages/contracts/src/index.js';
+import {
+  FrontendContractError,
+  ShotgunError,
+  decodeProjectAdministrationView,
+  decodeProjectListItemView,
+  decodeSettingsSnapshot,
+  type ConnectorSettingsView,
+  type CostBudgetView,
+  type DiagnosticsView,
+  type DirectiveProposalView,
+  type ModelDescriptorView,
+  type PrivacyRetentionView,
+  type ProjectAdministrationView,
+  type ProjectListItemView,
+  type SchemaPackView,
+  type SettingsCommandResult,
+  type SettingsImpactPreview,
+  type SettingsSnapshot,
+  type SettingsValidationResult,
+} from '../../../packages/contracts/src/index.js';
+import type {
+  CreateProjectInput,
+  ProjectAdministrationRepositoryPort,
+  UpdateProjectInput,
+} from '../../../modules/project-administration/src/index.js';
+import type {
+  ApplySettingsCommandInput,
+  SettingsRepositoryPort,
+} from '../../../modules/settings-policy/src/index.js';
 import type {
   IntakeRepositoryPort,
   IntakeSubmission,
@@ -462,3 +490,641 @@ export class PostgresOriginalAssetRepository implements OriginalAssetRepositoryP
 
 export const createPostgresPool = (connectionString: string): Pool =>
   new Pool({ connectionString });
+
+// ============================================================================
+// Postgres Project Administration Repository & Settings Repository
+// ============================================================================
+
+export class PostgresProjectAdministrationRepository implements ProjectAdministrationRepositoryPort {
+  constructor(private readonly pool: Pool) {}
+
+  async getProjects(principalId: string): Promise<ProjectAdministrationView> {
+    if (!principalId) throw new FrontendContractError('INVALID_REQUEST', 'principalId required');
+    const res = await this.pool.query<{
+      id: string;
+      name: string;
+      description: string | null;
+      status: string;
+      active: boolean;
+      created_at: Date;
+      updated_at: Date;
+      revision: number;
+    }>(
+      `SELECT id, name, description, status, active, created_at, updated_at, revision
+       FROM project_admin.projects
+       ORDER BY created_at ASC`,
+    );
+
+    const projects: ProjectListItemView[] = res.rows.map((row) =>
+      decodeProjectListItemView({
+        id: row.id,
+        name: row.name,
+        description: row.description ?? undefined,
+        isOwner: true,
+        status: row.status,
+        active: row.active,
+        createdAt: row.created_at.toISOString(),
+        updatedAt: row.updated_at.toISOString(),
+        revision: Number(row.revision),
+        capability: {
+          canRename: row.status === 'ACTIVE',
+          canArchive: row.status === 'ACTIVE',
+          canRestore: row.status === 'ARCHIVED',
+          canDelete: row.status === 'ACTIVE' || row.status === 'ARCHIVED',
+          canManagePolicies: row.status === 'ACTIVE',
+        },
+      }),
+    );
+
+    return decodeProjectAdministrationView({
+      schemaVersion: '1.0.0',
+      projects,
+    });
+  }
+
+  async getProjectDetails(projectId: string): Promise<ProjectListItemView | null> {
+    const res = await this.pool.query<{
+      id: string;
+      name: string;
+      description: string | null;
+      status: string;
+      active: boolean;
+      created_at: Date;
+      updated_at: Date;
+      revision: number;
+    }>(
+      `SELECT id, name, description, status, active, created_at, updated_at, revision
+       FROM project_admin.projects
+       WHERE id = $1`,
+      [projectId],
+    );
+
+    if (res.rows.length === 0) return null;
+    const row = res.rows[0]!;
+    return decodeProjectListItemView({
+      id: row.id,
+      name: row.name,
+      description: row.description ?? undefined,
+      isOwner: true,
+      status: row.status,
+      active: row.active,
+      createdAt: row.created_at.toISOString(),
+      updatedAt: row.updated_at.toISOString(),
+      revision: Number(row.revision),
+      capability: {
+        canRename: row.status === 'ACTIVE',
+        canArchive: row.status === 'ACTIVE',
+        canRestore: row.status === 'ARCHIVED',
+        canDelete: row.status === 'ACTIVE' || row.status === 'ARCHIVED',
+        canManagePolicies: row.status === 'ACTIVE',
+      },
+    });
+  }
+
+  async createProject(input: CreateProjectInput): Promise<ProjectListItemView> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const now = new Date();
+      const insertRes = await client.query<{
+        id: string;
+        name: string;
+        description: string | null;
+        status: string;
+        active: boolean;
+        created_at: Date;
+        updated_at: Date;
+        revision: number;
+      }>(
+        `INSERT INTO project_admin.projects (id, name, description, status, active, created_at, updated_at, revision)
+         VALUES ($1, $2, $3, 'ACTIVE', false, $4, $4, 1)
+         RETURNING id, name, description, status, active, created_at, updated_at, revision`,
+        [input.id, input.name, input.description ?? null, now],
+      );
+
+      await client.query(
+        `INSERT INTO project_admin.project_revisions (project_id, revision, changed_by, change_reason, created_at)
+         VALUES ($1, 1, $2, 'Initial project creation', $3)`,
+        [input.id, input.ownerId, now],
+      );
+
+      await client.query('COMMIT');
+
+      const row = insertRes.rows[0]!;
+      return decodeProjectListItemView({
+        id: row.id,
+        name: row.name,
+        description: row.description ?? undefined,
+        isOwner: true,
+        status: row.status,
+        active: row.active,
+        createdAt: row.created_at.toISOString(),
+        updatedAt: row.updated_at.toISOString(),
+        revision: Number(row.revision),
+        capability: {
+          canRename: true,
+          canArchive: true,
+          canRestore: false,
+          canDelete: true,
+          canManagePolicies: true,
+        },
+      });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async updateProject(input: UpdateProjectInput): Promise<ProjectListItemView> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const checkRes = await client.query<{ revision: number }>(
+        `SELECT revision FROM project_admin.projects WHERE id = $1 FOR UPDATE`,
+        [input.projectId],
+      );
+      if (checkRes.rows.length === 0) {
+        throw new FrontendContractError(
+          'RESOURCE_RETIRED',
+          `Project '${input.projectId}' not found.`,
+        );
+      }
+      const currentRev = checkRes.rows[0]!.revision;
+      if (currentRev !== input.expectedRevision) {
+        throw new FrontendContractError(
+          'REVISION_CONFLICT',
+          `Expected revision ${input.expectedRevision} but current is ${currentRev}.`,
+        );
+      }
+
+      const nextRev = currentRev + 1;
+      const now = new Date();
+      const updateRes = await client.query<{
+        id: string;
+        name: string;
+        description: string | null;
+        status: string;
+        active: boolean;
+        created_at: Date;
+        updated_at: Date;
+        revision: number;
+      }>(
+        `UPDATE project_admin.projects
+         SET name = COALESCE($1, name), description = COALESCE($2, description), revision = $3, updated_at = $4
+         WHERE id = $5
+         RETURNING id, name, description, status, active, created_at, updated_at, revision`,
+        [input.name ?? null, input.description ?? null, nextRev, now, input.projectId],
+      );
+
+      await client.query('COMMIT');
+      const row = updateRes.rows[0]!;
+      return decodeProjectListItemView({
+        id: row.id,
+        name: row.name,
+        description: row.description ?? undefined,
+        isOwner: true,
+        status: row.status,
+        active: row.active,
+        createdAt: row.created_at.toISOString(),
+        updatedAt: row.updated_at.toISOString(),
+        revision: Number(row.revision),
+        capability: {
+          canRename: true,
+          canArchive: true,
+          canRestore: false,
+          canDelete: true,
+          canManagePolicies: true,
+        },
+      });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async archiveProject(projectId: string, expectedRevision: number): Promise<ProjectListItemView> {
+    return this.updateStatus(projectId, expectedRevision, 'ARCHIVED');
+  }
+
+  async restoreProject(projectId: string, expectedRevision: number): Promise<ProjectListItemView> {
+    return this.updateStatus(projectId, expectedRevision, 'ACTIVE');
+  }
+
+  async requestDeleteProject(
+    projectId: string,
+    expectedRevision: number,
+  ): Promise<ProjectListItemView> {
+    return this.updateStatus(projectId, expectedRevision, 'DELETE_REQUESTED');
+  }
+
+  private async updateStatus(
+    projectId: string,
+    expectedRevision: number,
+    newStatus: string,
+  ): Promise<ProjectListItemView> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const checkRes = await client.query<{ revision: number }>(
+        `SELECT revision FROM project_admin.projects WHERE id = $1 FOR UPDATE`,
+        [projectId],
+      );
+      if (checkRes.rows.length === 0) {
+        throw new FrontendContractError('RESOURCE_RETIRED', `Project '${projectId}' not found.`);
+      }
+      const currentRev = checkRes.rows[0]!.revision;
+      if (currentRev !== expectedRevision) {
+        throw new FrontendContractError(
+          'REVISION_CONFLICT',
+          `Expected revision ${expectedRevision} but current is ${currentRev}.`,
+        );
+      }
+
+      const nextRev = currentRev + 1;
+      const now = new Date();
+      const updateRes = await client.query<{
+        id: string;
+        name: string;
+        description: string | null;
+        status: string;
+        active: boolean;
+        created_at: Date;
+        updated_at: Date;
+        revision: number;
+      }>(
+        `UPDATE project_admin.projects
+         SET status = $1, revision = $2, updated_at = $3
+         WHERE id = $4
+         RETURNING id, name, description, status, active, created_at, updated_at, revision`,
+        [newStatus, nextRev, now, projectId],
+      );
+
+      await client.query('COMMIT');
+      const row = updateRes.rows[0]!;
+      return decodeProjectListItemView({
+        id: row.id,
+        name: row.name,
+        description: row.description ?? undefined,
+        isOwner: true,
+        status: row.status,
+        active: row.active,
+        createdAt: row.created_at.toISOString(),
+        updatedAt: row.updated_at.toISOString(),
+        revision: Number(row.revision),
+        capability: {
+          canRename: row.status === 'ACTIVE',
+          canArchive: row.status === 'ACTIVE',
+          canRestore: row.status === 'ARCHIVED',
+          canDelete: row.status === 'ACTIVE' || row.status === 'ARCHIVED',
+          canManagePolicies: row.status === 'ACTIVE',
+        },
+      });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+}
+
+export class PostgresSettingsRepository implements SettingsRepositoryPort {
+  constructor(private readonly pool: Pool) {}
+
+  async getPrincipalPreferences(principalId: string): Promise<Record<string, unknown>> {
+    const res = await this.pool.query<{ preferences: Record<string, unknown> }>(
+      `SELECT preferences FROM settings.principal_preferences WHERE principal_id = $1`,
+      [principalId],
+    );
+    return (
+      res.rows[0]?.preferences ?? {
+        locale: 'en-US',
+        timezone: 'UTC',
+        dateDisplay: 'YYYY-MM-DD',
+        screenDensity: 'COMFORTABLE',
+        reducedMotion: false,
+      }
+    );
+  }
+
+  async updatePrincipalPreferences(
+    principalId: string,
+    preferences: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const existing = await this.getPrincipalPreferences(principalId);
+    const updated = { ...existing, ...preferences };
+    await this.pool.query(
+      `INSERT INTO settings.principal_preferences (principal_id, preferences, updated_at)
+       VALUES ($1, $2, now())
+       ON CONFLICT (principal_id) DO UPDATE SET preferences = $2, updated_at = now()`,
+      [principalId, JSON.stringify(updated)],
+    );
+    return updated;
+  }
+
+  async getSettingsSnapshot(projectId: string): Promise<SettingsSnapshot> {
+    const revRes = await this.pool.query<{ revision: number }>(
+      `SELECT revision FROM project_admin.projects WHERE id = $1`,
+      [projectId],
+    );
+    const rev = revRes.rows[0]?.revision ?? 1;
+
+    return decodeSettingsSnapshot({
+      schemaVersion: '1.0.0',
+      targetProjectId: projectId,
+      settingsRevision: rev,
+      policyContextRevision: rev,
+      categories: [
+        {
+          categoryId: 'preferences',
+          label: 'User Preferences',
+          description: 'Personal display and locale settings',
+          scope: 'PRINCIPAL',
+          totalSettingsCount: 5,
+          actionRequiredCount: 0,
+          warningCount: 0,
+          applicationMode: 'IMMEDIATE',
+          capability: { canEdit: true, canReset: true, canProposeReview: false },
+          lastModifiedAt: new Date().toISOString(),
+        },
+        {
+          categoryId: 'projects',
+          label: 'Project Administration',
+          description: 'Project identity, lifecycle and access',
+          scope: 'PROJECT',
+          totalSettingsCount: 3,
+          actionRequiredCount: 0,
+          warningCount: 0,
+          applicationMode: 'IMMEDIATE',
+          capability: { canEdit: true, canReset: false, canProposeReview: false },
+          lastModifiedAt: new Date().toISOString(),
+        },
+      ],
+      settings: [
+        {
+          key: 'general.locale',
+          label: 'Locale',
+          description: 'Interface language and regional formatting',
+          scope: 'PRINCIPAL',
+          category: 'preferences',
+          valueType: 'string',
+          currentValue: 'ko-KR',
+          defaultValue: 'ko-KR',
+          applicationMode: 'IMMEDIATE',
+          riskLevel: 'LOW',
+          capability: { canEdit: true, canReset: true, canProposeReview: false },
+        },
+      ],
+      fetchedAt: new Date().toISOString(),
+    });
+  }
+
+  async validateSettingsDraft(
+    _projectId: string,
+    draft: Record<string, unknown>,
+  ): Promise<SettingsValidationResult> {
+    const errors: { key: string; message: string }[] = [];
+    const warnings: { key: string; message: string }[] = [];
+
+    if (
+      draft['costs.monthlyHardLimitUsd'] !== undefined &&
+      Number(draft['costs.monthlyHardLimitUsd']) < 0
+    ) {
+      errors.push({ key: 'costs.monthlyHardLimitUsd', message: 'Hard limit cannot be negative.' });
+    }
+
+    return Object.freeze({
+      isValid: errors.length === 0,
+      errors: Object.freeze(errors),
+      warnings: Object.freeze(warnings),
+    });
+  }
+
+  async previewSettingsImpact(
+    projectId: string,
+    expectedRevision: number,
+    draft: Record<string, unknown>,
+  ): Promise<SettingsImpactPreview> {
+    const revRes = await this.pool.query<{ revision: number }>(
+      `SELECT revision FROM project_admin.projects WHERE id = $1`,
+      [projectId],
+    );
+    const currentRev = revRes.rows[0]?.revision ?? 1;
+    if (currentRev !== expectedRevision) {
+      throw new FrontendContractError(
+        'REVISION_CONFLICT',
+        `Expected revision ${expectedRevision} but current is ${currentRev}.`,
+      );
+    }
+
+    return Object.freeze({
+      targetProjectId: projectId,
+      expectedRevision,
+      requiresReview: false,
+      requiresMigration: false,
+      requiresRestart: false,
+      riskLevel: 'LOW',
+      affectedComponents: Object.freeze(['settings-policy']),
+      summaryDescription: `Applying ${Object.keys(draft).length} setting changes to project ${projectId}.`,
+    });
+  }
+
+  async applySettingsCommand(input: ApplySettingsCommandInput): Promise<SettingsCommandResult> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const existingIdem = await client.query<{
+        client_request_id: string;
+        status: string;
+        applied_revision: number | null;
+      }>(
+        `SELECT client_request_id, status, applied_revision FROM settings.settings_command_results WHERE idempotency_key = $1`,
+        [input.idempotencyKey],
+      );
+      if (existingIdem.rows.length > 0) {
+        const row = existingIdem.rows[0]!;
+        if (row.client_request_id !== input.clientRequestId) {
+          throw new FrontendContractError(
+            'IDEMPOTENCY_KEY_REUSE_MISMATCH',
+            `Idempotency key '${input.idempotencyKey}' reused with different clientRequestId.`,
+          );
+        }
+        await client.query('COMMIT');
+        return Object.freeze({
+          commandId: input.commandId,
+          clientRequestId: input.clientRequestId,
+          idempotencyKey: input.idempotencyKey,
+          status: row.status as SettingsCommandResult['status'],
+          appliedRevision: row.applied_revision ?? undefined,
+          completedAt: new Date().toISOString(),
+        });
+      }
+
+      const revRes = await client.query<{ revision: number }>(
+        `SELECT revision FROM project_admin.projects WHERE id = $1 FOR UPDATE`,
+        [input.projectId],
+      );
+      if (revRes.rows.length === 0) {
+        throw new FrontendContractError(
+          'RESOURCE_RETIRED',
+          `Project '${input.projectId}' not found.`,
+        );
+      }
+      const currentRev = revRes.rows[0]!.revision;
+      if (currentRev !== input.expectedRevision) {
+        throw new FrontendContractError(
+          'REVISION_CONFLICT',
+          `Expected revision ${input.expectedRevision} but current is ${currentRev}.`,
+        );
+      }
+
+      const nextRev = currentRev + 1;
+      await client.query(
+        `UPDATE project_admin.projects SET revision = $1, updated_at = now() WHERE id = $2`,
+        [nextRev, input.projectId],
+      );
+
+      await client.query(
+        `INSERT INTO settings.settings_commands (command_id, client_request_id, idempotency_key, project_id, expected_revision, status, command_payload, created_at)
+         VALUES ($1, $2, $3, $4, $5, 'APPLIED', $6, now())`,
+        [
+          input.commandId,
+          input.clientRequestId,
+          input.idempotencyKey,
+          input.projectId,
+          input.expectedRevision,
+          JSON.stringify(input.settings),
+        ],
+      );
+
+      await client.query(
+        `INSERT INTO settings.settings_command_results (command_id, client_request_id, idempotency_key, status, applied_revision, completed_at)
+         VALUES ($1, $2, $3, 'APPLIED', $4, now())`,
+        [input.commandId, input.clientRequestId, input.idempotencyKey, nextRev],
+      );
+
+      await client.query('COMMIT');
+
+      return Object.freeze({
+        commandId: input.commandId,
+        clientRequestId: input.clientRequestId,
+        idempotencyKey: input.idempotencyKey,
+        status: 'APPLIED',
+        appliedRevision: nextRev,
+        completedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async getCommandStatus(commandId: string): Promise<SettingsCommandResult | null> {
+    const res = await this.pool.query<{
+      command_id: string;
+      client_request_id: string;
+      idempotency_key: string;
+      status: string;
+      applied_revision: number | null;
+      review_proposal_id: string | null;
+      error_message: string | null;
+      completed_at: Date;
+    }>(
+      `SELECT command_id, client_request_id, idempotency_key, status, applied_revision, review_proposal_id, error_message, completed_at
+       FROM settings.settings_command_results
+       WHERE command_id = $1`,
+      [commandId],
+    );
+    if (res.rows.length === 0) return null;
+    const row = res.rows[0]!;
+    return Object.freeze({
+      commandId: row.command_id,
+      clientRequestId: row.client_request_id,
+      idempotencyKey: row.idempotency_key,
+      status: row.status as SettingsCommandResult['status'],
+      appliedRevision: row.applied_revision ?? undefined,
+      reviewProposalId: row.review_proposal_id ?? undefined,
+      errorMessage: row.error_message ?? undefined,
+      completedAt: row.completed_at.toISOString(),
+    });
+  }
+
+  async getModelDescriptors(projectId: string): Promise<readonly ModelDescriptorView[]> {
+    if (!projectId) throw new FrontendContractError('INVALID_REQUEST', 'projectId required');
+    return Object.freeze([
+      {
+        modelId: 'gemini-2.5-flash',
+        displayName: 'Gemini 2.5 Flash',
+        provider: 'google',
+        available: true,
+        isDefault: true,
+        capabilities: Object.freeze(['fast_answer', 'transformation']),
+        inputTypes: Object.freeze(['text', 'image']),
+        costClass: 'LOW',
+        privacyCharacteristics: 'No logging',
+      },
+    ]);
+  }
+
+  async getCostBudget(projectId: string): Promise<CostBudgetView> {
+    return Object.freeze({
+      targetProjectId: projectId,
+      currentUsageTokens: 145000,
+      estimatedCostUsd: 12.5,
+      confirmedCostUsd: 10.0,
+      warningThresholdUsd: 80.0,
+      softLimitUsd: 90.0,
+      hardLimitUsd: 100.0,
+      aggregationTimestamp: new Date().toISOString(),
+      status: 'NORMAL',
+    });
+  }
+
+  async getPrivacyRetention(projectId: string): Promise<PrivacyRetentionView> {
+    return Object.freeze({
+      targetProjectId: projectId,
+      profileName: 'LOCAL_ONLY',
+      sensitivityLevel: 'NORMAL',
+      externalTransferAllowed: false,
+      connectorAllowed: false,
+      telemetryAllowed: false,
+      exportAllowed: true,
+      retentionSummary: 'Assets retained indefinitely in local storage',
+    });
+  }
+
+  async getConnectorSettings(projectId: string): Promise<readonly ConnectorSettingsView[]> {
+    if (!projectId) throw new FrontendContractError('INVALID_REQUEST', 'projectId required');
+    return Object.freeze([]);
+  }
+
+  async getDirectiveProposals(projectId: string): Promise<readonly DirectiveProposalView[]> {
+    if (!projectId) throw new FrontendContractError('INVALID_REQUEST', 'projectId required');
+    return Object.freeze([]);
+  }
+
+  async getSchemaPacks(projectId: string): Promise<readonly SchemaPackView[]> {
+    if (!projectId) throw new FrontendContractError('INVALID_REQUEST', 'projectId required');
+    return Object.freeze([]);
+  }
+
+  async getDiagnostics(projectId: string): Promise<DiagnosticsView> {
+    return Object.freeze({
+      appVersion: '0.1.0',
+      serverVersion: '0.1.0',
+      activeProjectId: 'shotgun',
+      targetProjectId: projectId,
+      databaseReadiness: 'READY',
+      projectionReadiness: 'READY',
+      recentFailures: Object.freeze([]),
+      backupStatus: 'HEALTHY',
+    });
+  }
+}

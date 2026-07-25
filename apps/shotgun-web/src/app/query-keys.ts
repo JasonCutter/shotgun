@@ -13,6 +13,25 @@ export const projectQueryKey = (
   ...parts: readonly unknown[]
 ) => ['project', principalId, projectId, resource, ...parts] as const;
 
+export const settings5DQueryKey = (
+  principalId: string,
+  targetProjectId: string,
+  resourceProjectId: string,
+  category: string,
+  revisionOrResourceId?: string | number,
+) =>
+  [
+    'settings',
+    principalId,
+    targetProjectId,
+    resourceProjectId,
+    category,
+    revisionOrResourceId ?? 'latest',
+  ] as const;
+
+export const projectAdminQueryKey = (principalId: string) =>
+  ['project-admin', principalId] as const;
+
 export const clearProjectQueries = async (queryClient: QueryClient): Promise<void> => {
   await queryClient.cancelQueries({ queryKey: ['project'] });
   queryClient.removeQueries({ queryKey: ['project'] });
@@ -20,6 +39,8 @@ export const clearProjectQueries = async (queryClient: QueryClient): Promise<voi
 
 export const purgeProjectScopedCaches = async (queryClient: QueryClient): Promise<void> => {
   await clearProjectQueries(queryClient);
+  await queryClient.cancelQueries({ queryKey: ['settings'] });
+  queryClient.removeQueries({ queryKey: ['settings'] });
 };
 
 export const purgeProtectedSessionCaches = async (queryClient: QueryClient): Promise<void> => {
@@ -27,6 +48,17 @@ export const purgeProtectedSessionCaches = async (queryClient: QueryClient): Pro
   queryClient.removeQueries({ queryKey: ['protected'] });
   await queryClient.cancelQueries({ queryKey: ['project'] });
   queryClient.removeQueries({ queryKey: ['project'] });
+  await queryClient.cancelQueries({ queryKey: ['settings'] });
+  queryClient.removeQueries({ queryKey: ['settings'] });
+  await queryClient.cancelQueries({ queryKey: ['project-admin'] });
+  queryClient.removeQueries({ queryKey: ['project-admin'] });
   await queryClient.cancelQueries({ queryKey: productSessionQueryKey });
   queryClient.removeQueries({ queryKey: productSessionQueryKey });
+};
+
+export const purgeSettingsScopedCaches = async (queryClient: QueryClient): Promise<void> => {
+  await queryClient.cancelQueries({ queryKey: ['settings'] });
+  queryClient.invalidateQueries({ queryKey: ['settings'] });
+  await queryClient.cancelQueries({ queryKey: ['project-admin'] });
+  queryClient.invalidateQueries({ queryKey: ['project-admin'] });
 };

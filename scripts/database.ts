@@ -33,6 +33,8 @@ const migrationFiles = async (): Promise<string[]> =>
 
 export const dropSchemas = async (): Promise<void> => {
   await withClient(async (client) => {
+    await client.query('DROP SCHEMA IF EXISTS settings CASCADE');
+    await client.query('DROP SCHEMA IF EXISTS project_admin CASCADE');
     await client.query('DROP SCHEMA IF EXISTS auth CASCADE');
     await client.query('DROP SCHEMA IF EXISTS action CASCADE');
     await client.query('DROP SCHEMA IF EXISTS projection CASCADE');
@@ -92,6 +94,8 @@ const migrate = async (): Promise<void> => {
 
 const reset = async (): Promise<void> => {
   await withClient(async (client) => {
+    await client.query('DROP SCHEMA IF EXISTS settings CASCADE');
+    await client.query('DROP SCHEMA IF EXISTS project_admin CASCADE');
     await client.query('DROP SCHEMA IF EXISTS auth CASCADE');
     await client.query('DROP SCHEMA IF EXISTS action CASCADE');
     await client.query('DROP SCHEMA IF EXISTS projection CASCADE');

@@ -29,13 +29,14 @@ const session: ProductSessionView = {
   session: { expiresAt: null },
 };
 
-const api = (overrides: Partial<ShotgunApiClient> = {}): ShotgunApiClient => ({
-  bootstrapLocalOwner: vi.fn(async () => session),
-  getSession: vi.fn(async () => session),
-  switchActiveProject: vi.fn(async () => session),
-  logout: vi.fn(async () => undefined),
-  ...overrides,
-});
+const api = (overrides: Partial<ShotgunApiClient> = {}): ShotgunApiClient =>
+  ({
+    bootstrapLocalOwner: vi.fn(async () => session),
+    getSession: vi.fn(async () => session),
+    switchActiveProject: vi.fn(async () => session),
+    logout: vi.fn(async () => undefined),
+    ...overrides,
+  }) as unknown as ShotgunApiClient;
 
 describe('Session Recovery State Machine', () => {
   it('자동 401 Recovery Cache Purge', async () => {

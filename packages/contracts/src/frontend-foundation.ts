@@ -1953,3 +1953,496 @@ export function decodeSessionBoundaryView(input: unknown): SessionBoundaryView {
     session: sessionObj,
   });
 }
+
+// ============================================================================
+// 10. Frontend Phase 1 Section 2 — Settings & Project Administration Contracts
+// ============================================================================
+
+export type SettingsScope = 'PRINCIPAL' | 'PROJECT' | 'SYSTEM' | 'RESOURCE';
+
+export type SettingsApplicationMode =
+  | 'IMMEDIATE'
+  | 'CONFIRM_REQUIRED'
+  | 'REVIEW_REQUIRED'
+  | 'RESTART_REQUIRED'
+  | 'MIGRATION_REQUIRED'
+  | 'READ_ONLY'
+  | 'UNAVAILABLE';
+
+export type SettingsRiskLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+
+export type SettingsDraftState =
+  | 'CLEAN'
+  | 'DIRTY'
+  | 'VALIDATING'
+  | 'READY_TO_APPLY'
+  | 'APPLYING'
+  | 'APPLIED'
+  | 'REVIEW_REQUIRED'
+  | 'OUTCOME_UNKNOWN'
+  | 'VALIDATION_FAILED'
+  | 'APPLY_FAILED'
+  | 'STALE';
+
+export type ProjectLifecycleStatus =
+  | 'ACTIVE'
+  | 'ARCHIVING'
+  | 'ARCHIVED'
+  | 'RESTORING'
+  | 'DELETE_REQUESTED'
+  | 'DELETING'
+  | 'DELETED'
+  | 'RECOVERY_REQUIRED';
+
+export type SettingCapability = {
+  readonly canEdit: boolean;
+  readonly canReset: boolean;
+  readonly canProposeReview: boolean;
+  readonly disabledReason?: string;
+};
+
+export type SettingValue =
+  string | number | boolean | readonly string[] | Record<string, unknown> | null;
+
+export type SettingDescriptor = {
+  readonly key: string;
+  readonly label: string;
+  readonly description: string;
+  readonly scope: SettingsScope;
+  readonly category: string;
+  readonly valueType: 'string' | 'number' | 'boolean' | 'string_array' | 'json';
+  readonly currentValue: SettingValue;
+  readonly defaultValue: SettingValue;
+  readonly applicationMode: SettingsApplicationMode;
+  readonly riskLevel: SettingsRiskLevel;
+  readonly capability: SettingCapability;
+  readonly options?: readonly { readonly label: string; readonly value: string }[];
+  readonly isSecret?: boolean;
+};
+
+export type SettingsCategorySummary = {
+  readonly categoryId: string;
+  readonly label: string;
+  readonly description: string;
+  readonly scope: SettingsScope;
+  readonly totalSettingsCount: number;
+  readonly actionRequiredCount: number;
+  readonly warningCount: number;
+  readonly applicationMode: SettingsApplicationMode;
+  readonly capability: SettingCapability;
+  readonly lastModifiedAt: string | null;
+};
+
+export type SettingsSnapshot = {
+  readonly schemaVersion: '1.0.0';
+  readonly targetProjectId: string;
+  readonly settingsRevision: number;
+  readonly policyContextRevision: number;
+  readonly categories: readonly SettingsCategorySummary[];
+  readonly settings: readonly SettingDescriptor[];
+  readonly fetchedAt: string;
+};
+
+export type SettingsValidationResult = {
+  readonly isValid: boolean;
+  readonly errors: readonly { readonly key: string; readonly message: string }[];
+  readonly warnings: readonly { readonly key: string; readonly message: string }[];
+};
+
+export type SettingsImpactPreview = {
+  readonly targetProjectId: string;
+  readonly expectedRevision: number;
+  readonly requiresReview: boolean;
+  readonly requiresMigration: boolean;
+  readonly requiresRestart: boolean;
+  readonly riskLevel: SettingsRiskLevel;
+  readonly affectedComponents: readonly string[];
+  readonly summaryDescription: string;
+};
+
+export type SettingsCommandStatus =
+  'PENDING' | 'APPLIED' | 'REVIEW_REQUIRED' | 'FAILED' | 'OUTCOME_UNKNOWN';
+
+export type SettingsCommandResult = {
+  readonly commandId: string;
+  readonly clientRequestId: string;
+  readonly idempotencyKey: string;
+  readonly status: SettingsCommandStatus;
+  readonly appliedRevision?: number;
+  readonly reviewProposalId?: string;
+  readonly errorMessage?: string;
+  readonly completedAt?: string;
+};
+
+export type ProjectCapabilityView = {
+  readonly canRename: boolean;
+  readonly canArchive: boolean;
+  readonly canRestore: boolean;
+  readonly canDelete: boolean;
+  readonly canManagePolicies: boolean;
+  readonly disabledReason?: string;
+};
+
+export type ProjectListItemView = {
+  readonly id: string;
+  readonly name: string;
+  readonly description?: string;
+  readonly isOwner: boolean;
+  readonly status: ProjectLifecycleStatus;
+  readonly active: boolean;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly revision: number;
+  readonly capability: ProjectCapabilityView;
+};
+
+export type ProjectAdministrationView = {
+  readonly schemaVersion: '1.0.0';
+  readonly projects: readonly ProjectListItemView[];
+};
+
+export type ModelDescriptorView = {
+  readonly modelId: string;
+  readonly displayName: string;
+  readonly provider: string;
+  readonly available: boolean;
+  readonly isDefault: boolean;
+  readonly capabilities: readonly string[];
+  readonly inputTypes: readonly string[];
+  readonly costClass: 'LOW' | 'MEDIUM' | 'HIGH';
+  readonly privacyCharacteristics: string;
+  readonly disabledReason?: string;
+};
+
+export type CostBudgetView = {
+  readonly targetProjectId: string;
+  readonly currentUsageTokens: number;
+  readonly estimatedCostUsd: number;
+  readonly confirmedCostUsd: number;
+  readonly warningThresholdUsd: number;
+  readonly softLimitUsd: number;
+  readonly hardLimitUsd: number;
+  readonly aggregationTimestamp: string;
+  readonly status:
+    'NORMAL' | 'WARNING_EXCEEDED' | 'SOFT_LIMIT_EXCEEDED' | 'HARD_LIMIT_EXCEEDED' | 'UNAVAILABLE';
+};
+
+export type PrivacyRetentionView = {
+  readonly targetProjectId: string;
+  readonly profileName: 'LOCAL_ONLY' | 'RESTRICTED_EXTERNAL' | 'CONTROLLED_EXTERNAL' | 'CUSTOM';
+  readonly sensitivityLevel: 'NORMAL' | 'SENSITIVE' | 'HIGHLY_SENSITIVE';
+  readonly externalTransferAllowed: boolean;
+  readonly connectorAllowed: boolean;
+  readonly telemetryAllowed: boolean;
+  readonly exportAllowed: boolean;
+  readonly retentionSummary: string;
+};
+
+export type ConnectorSettingsView = {
+  readonly connectorId: string;
+  readonly name: string;
+  readonly status:
+    | 'NOT_CONFIGURED'
+    | 'CONNECTING'
+    | 'CONNECTED'
+    | 'DEGRADED'
+    | 'REAUTH_REQUIRED'
+    | 'REVOKING'
+    | 'REVOKED'
+    | 'FAILED';
+  readonly maskedCredentials?: string;
+  readonly canTest: boolean;
+  readonly canRotate: boolean;
+  readonly canRevoke: boolean;
+};
+
+export type DirectiveProposalView = {
+  readonly proposalId: string;
+  readonly resourceId: string;
+  readonly directiveType: string;
+  readonly description: string;
+  readonly status: 'PROPOSED' | 'APPROVED' | 'REJECTED' | 'COMMITTED';
+  readonly createdAt: string;
+};
+
+export type SchemaPackView = {
+  readonly packId: string;
+  readonly name: string;
+  readonly version: string;
+  readonly compatibilityStatus: 'COMPATIBLE' | 'MIGRATION_REQUIRED' | 'INCOMPATIBLE';
+  readonly canUpgrade: boolean;
+  readonly canDisable: boolean;
+};
+
+export type DiagnosticsView = {
+  readonly appVersion: string;
+  readonly serverVersion: string;
+  readonly activeProjectId: string;
+  readonly targetProjectId: string;
+  readonly databaseReadiness: 'READY' | 'DEGRADED' | 'UNAVAILABLE';
+  readonly projectionReadiness: 'READY' | 'DEGRADED' | 'UNAVAILABLE';
+  readonly recentFailures: readonly string[];
+  readonly backupStatus: 'HEALTHY' | 'WARNING' | 'UNAVAILABLE';
+};
+
+// ----------------------------------------------------------------------------
+// Runtime Decoders with Fail-Closed Invariant Validation
+// ----------------------------------------------------------------------------
+
+export function decodeSettingsScope(val: unknown): SettingsScope {
+  const allowed = new Set<SettingsScope>(['PRINCIPAL', 'PROJECT', 'SYSTEM', 'RESOURCE']);
+  if (typeof val !== 'string' || !allowed.has(val as SettingsScope)) {
+    throw new FrontendContractError('INVALID_REQUEST', `Invalid SettingsScope: ${String(val)}`);
+  }
+  return val as SettingsScope;
+}
+
+export function decodeSettingsApplicationMode(val: unknown): SettingsApplicationMode {
+  const allowed = new Set<SettingsApplicationMode>([
+    'IMMEDIATE',
+    'CONFIRM_REQUIRED',
+    'REVIEW_REQUIRED',
+    'RESTART_REQUIRED',
+    'MIGRATION_REQUIRED',
+    'READ_ONLY',
+    'UNAVAILABLE',
+  ]);
+  if (typeof val !== 'string' || !allowed.has(val as SettingsApplicationMode)) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      `Invalid SettingsApplicationMode: ${String(val)}`,
+    );
+  }
+  return val as SettingsApplicationMode;
+}
+
+export function decodeSettingsRiskLevel(val: unknown): SettingsRiskLevel {
+  const allowed = new Set<SettingsRiskLevel>(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']);
+  if (typeof val !== 'string' || !allowed.has(val as SettingsRiskLevel)) {
+    throw new FrontendContractError('INVALID_REQUEST', `Invalid SettingsRiskLevel: ${String(val)}`);
+  }
+  return val as SettingsRiskLevel;
+}
+
+export function decodeProjectLifecycleStatus(val: unknown): ProjectLifecycleStatus {
+  const allowed = new Set<ProjectLifecycleStatus>([
+    'ACTIVE',
+    'ARCHIVING',
+    'ARCHIVED',
+    'RESTORING',
+    'DELETE_REQUESTED',
+    'DELETING',
+    'DELETED',
+    'RECOVERY_REQUIRED',
+  ]);
+  if (typeof val !== 'string' || !allowed.has(val as ProjectLifecycleStatus)) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      `Invalid ProjectLifecycleStatus: ${String(val)}`,
+    );
+  }
+  return val as ProjectLifecycleStatus;
+}
+
+export function decodeSettingDescriptor(val: unknown): SettingDescriptor {
+  if (!val || typeof val !== 'object') {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'SettingDescriptor must be a non-null object',
+    );
+  }
+  const obj = val as Record<string, unknown>;
+
+  if (typeof obj['key'] !== 'string' || !obj['key']) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'SettingDescriptor requires non-empty string key',
+    );
+  }
+
+  const scope = decodeSettingsScope(obj['scope']);
+  const applicationMode = decodeSettingsApplicationMode(obj['applicationMode']);
+  const riskLevel = decodeSettingsRiskLevel(obj['riskLevel']);
+
+  const cap = obj['capability'] as Record<string, unknown> | undefined;
+  if (!cap || typeof cap !== 'object') {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'SettingDescriptor requires capability object',
+    );
+  }
+
+  // Security Negative Gate: Check if raw secret values are present
+  if (
+    obj['isSecret'] === true &&
+    typeof obj['currentValue'] === 'string' &&
+    obj['currentValue'].length > 0 &&
+    !obj['currentValue'].includes('*')
+  ) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'SettingDescriptor must not expose unmasked secret values',
+    );
+  }
+
+  return Object.freeze({
+    key: obj['key'] as string,
+    label: (obj['label'] as string) ?? obj['key'],
+    description: (obj['description'] as string) ?? '',
+    scope,
+    category: (obj['category'] as string) ?? 'general',
+    valueType: (obj['valueType'] as SettingDescriptor['valueType']) ?? 'string',
+    currentValue: (obj['currentValue'] as SettingValue) ?? null,
+    defaultValue: (obj['defaultValue'] as SettingValue) ?? null,
+    applicationMode,
+    riskLevel,
+    capability: Object.freeze({
+      canEdit: Boolean(cap['canEdit']),
+      canReset: Boolean(cap['canReset']),
+      canProposeReview: Boolean(cap['canProposeReview']),
+      disabledReason: typeof cap['disabledReason'] === 'string' ? cap['disabledReason'] : undefined,
+    }),
+    options: Array.isArray(obj['options'])
+      ? Object.freeze(
+          obj['options'].map((opt) =>
+            Object.freeze({ label: String(opt.label), value: String(opt.value) }),
+          ),
+        )
+      : undefined,
+    isSecret: Boolean(obj['isSecret']),
+  });
+}
+
+export function decodeSettingsCategorySummary(val: unknown): SettingsCategorySummary {
+  if (!val || typeof val !== 'object') {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'SettingsCategorySummary must be a non-null object',
+    );
+  }
+  const obj = val as Record<string, unknown>;
+  return Object.freeze({
+    categoryId: String(obj['categoryId']),
+    label: String(obj['label'] ?? obj['categoryId']),
+    description: String(obj['description'] ?? ''),
+    scope: decodeSettingsScope(obj['scope']),
+    totalSettingsCount: Number(obj['totalSettingsCount'] ?? 0),
+    actionRequiredCount: Number(obj['actionRequiredCount'] ?? 0),
+    warningCount: Number(obj['warningCount'] ?? 0),
+    applicationMode: decodeSettingsApplicationMode(obj['applicationMode']),
+    capability: Object.freeze({
+      canEdit: Boolean((obj['capability'] as Record<string, unknown> | undefined)?.canEdit),
+      canReset: Boolean((obj['capability'] as Record<string, unknown> | undefined)?.canReset),
+      canProposeReview: Boolean(
+        (obj['capability'] as Record<string, unknown> | undefined)?.canProposeReview,
+      ),
+      disabledReason:
+        typeof (obj['capability'] as Record<string, unknown> | undefined)?.disabledReason ===
+        'string'
+          ? ((obj['capability'] as Record<string, unknown>)['disabledReason'] as string)
+          : undefined,
+    }),
+    lastModifiedAt: typeof obj['lastModifiedAt'] === 'string' ? obj['lastModifiedAt'] : null,
+  });
+}
+
+export function decodeSettingsSnapshot(val: unknown): SettingsSnapshot {
+  if (!val || typeof val !== 'object') {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'SettingsSnapshot must be a non-null object',
+    );
+  }
+  const obj = val as Record<string, unknown>;
+
+  if (obj['schemaVersion'] !== '1.0.0') {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      `Unsupported SettingsSnapshot schemaVersion: ${String(obj['schemaVersion'])}`,
+    );
+  }
+  if (typeof obj['targetProjectId'] !== 'string' || !obj['targetProjectId']) {
+    throw new FrontendContractError('INVALID_REQUEST', 'SettingsSnapshot requires targetProjectId');
+  }
+  if (typeof obj['settingsRevision'] !== 'number' || obj['settingsRevision'] < 0) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'SettingsSnapshot requires valid non-negative settingsRevision',
+    );
+  }
+
+  const categories = Array.isArray(obj['categories'])
+    ? obj['categories'].map(decodeSettingsCategorySummary)
+    : [];
+  const settings = Array.isArray(obj['settings'])
+    ? obj['settings'].map(decodeSettingDescriptor)
+    : [];
+
+  return Object.freeze({
+    schemaVersion: '1.0.0',
+    targetProjectId: obj['targetProjectId'] as string,
+    settingsRevision: obj['settingsRevision'] as number,
+    policyContextRevision: Number(obj['policyContextRevision'] ?? obj['settingsRevision']),
+    categories: Object.freeze(categories),
+    settings: Object.freeze(settings),
+    fetchedAt: String(obj['fetchedAt'] ?? new Date().toISOString()),
+  });
+}
+
+export function decodeProjectListItemView(val: unknown): ProjectListItemView {
+  if (!val || typeof val !== 'object') {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'ProjectListItemView must be a non-null object',
+    );
+  }
+  const obj = val as Record<string, unknown>;
+  if (typeof obj['id'] !== 'string' || !obj['id']) {
+    throw new FrontendContractError('INVALID_REQUEST', 'ProjectListItemView requires valid id');
+  }
+  const cap = (obj['capability'] as Record<string, unknown>) ?? {};
+
+  return Object.freeze({
+    id: String(obj['id']),
+    name: String(obj['name'] ?? obj['id']),
+    description: typeof obj['description'] === 'string' ? obj['description'] : undefined,
+    isOwner: Boolean(obj['isOwner']),
+    status: decodeProjectLifecycleStatus(obj['status']),
+    active: Boolean(obj['active']),
+    createdAt: String(obj['createdAt'] ?? new Date().toISOString()),
+    updatedAt: String(obj['updatedAt'] ?? new Date().toISOString()),
+    revision: Number(obj['revision'] ?? 1),
+    capability: Object.freeze({
+      canRename: Boolean(cap['canRename']),
+      canArchive: Boolean(cap['canArchive']),
+      canRestore: Boolean(cap['canRestore']),
+      canDelete: Boolean(cap['canDelete']),
+      canManagePolicies: Boolean(cap['canManagePolicies']),
+      disabledReason: typeof cap['disabledReason'] === 'string' ? cap['disabledReason'] : undefined,
+    }),
+  });
+}
+
+export function decodeProjectAdministrationView(val: unknown): ProjectAdministrationView {
+  if (!val || typeof val !== 'object') {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'ProjectAdministrationView must be a non-null object',
+    );
+  }
+  const obj = val as Record<string, unknown>;
+  if (obj['schemaVersion'] !== '1.0.0') {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      `Invalid ProjectAdministrationView schemaVersion: ${String(obj['schemaVersion'])}`,
+    );
+  }
+  const projects = Array.isArray(obj['projects'])
+    ? obj['projects'].map(decodeProjectListItemView)
+    : [];
+
+  return Object.freeze({
+    schemaVersion: '1.0.0',
+    projects: Object.freeze(projects),
+  });
+}

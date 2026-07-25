@@ -7,6 +7,21 @@ import {
   decodeSessionEnvelope,
 } from './decode.js';
 import { ShotgunApiError } from './errors.js';
+import type {
+  SettingsSnapshot,
+  SettingsCategorySummary,
+  SettingsValidationResult,
+  SettingsImpactPreview,
+  SettingsCommandResult,
+  ProjectListItemView,
+  ModelDescriptorView,
+  CostBudgetView,
+  PrivacyRetentionView,
+  ConnectorSettingsView,
+  DirectiveProposalView,
+  SchemaPackView,
+  DiagnosticsView,
+} from '../../contracts/src/index.js';
 
 const apiPath = (path: string): string => `/api/v1${path}`;
 
@@ -97,6 +112,337 @@ export const createShotgunApiClient = (
         });
         decodeLogoutEnvelope(await assertOk(response));
       });
+    },
+
+    // ------------------------------------------------------------------------
+    // Settings & Project Administration Client Methods
+    // ------------------------------------------------------------------------
+
+    async getSettingsSnapshot(
+      targetProjectId?: string,
+      requestOptions?: RequestOptions,
+    ): Promise<SettingsSnapshot> {
+      const query = targetProjectId
+        ? `?targetProjectId=${encodeURIComponent(targetProjectId)}`
+        : '';
+      const response = await request(`/settings/snapshot${query}`, {
+        signal: requestOptions?.signal,
+      });
+      const body = (await assertOk(response)) as { snapshot: SettingsSnapshot };
+      return body.snapshot;
+    },
+
+    async getSettingsCategories(
+      targetProjectId?: string,
+      requestOptions?: RequestOptions,
+    ): Promise<readonly SettingsCategorySummary[]> {
+      const query = targetProjectId
+        ? `?targetProjectId=${encodeURIComponent(targetProjectId)}`
+        : '';
+      const response = await request(`/settings/categories${query}`, {
+        signal: requestOptions?.signal,
+      });
+      const body = (await assertOk(response)) as { categories: readonly SettingsCategorySummary[] };
+      return body.categories;
+    },
+
+    async getPrincipalPreferences(
+      requestOptions?: RequestOptions,
+    ): Promise<Record<string, unknown>> {
+      const response = await request('/settings/preferences', { signal: requestOptions?.signal });
+      const body = (await assertOk(response)) as { preferences: Record<string, unknown> };
+      return body.preferences;
+    },
+
+    async updatePrincipalPreferences(
+      preferences: Record<string, unknown>,
+      requestOptions?: RequestOptions,
+    ): Promise<Record<string, unknown>> {
+      return runMutation(requestOptions?.signal, async (csrfToken) => {
+        const response = await request('/settings/preferences', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+          body: JSON.stringify(preferences),
+          signal: requestOptions?.signal,
+        });
+        const body = (await assertOk(response)) as { preferences: Record<string, unknown> };
+        return body.preferences;
+      });
+    },
+
+    async validateSettingsDraft(
+      draft: Record<string, unknown>,
+      targetProjectId?: string,
+      requestOptions?: RequestOptions,
+    ): Promise<SettingsValidationResult> {
+      return runMutation(requestOptions?.signal, async (csrfToken) => {
+        const response = await request('/settings/validate', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+          body: JSON.stringify({ targetProjectId, draft }),
+          signal: requestOptions?.signal,
+        });
+        const body = (await assertOk(response)) as { validation: SettingsValidationResult };
+        return body.validation;
+      });
+    },
+
+    async previewSettingsImpact(
+      expectedRevision: number,
+      draft: Record<string, unknown>,
+      targetProjectId?: string,
+      requestOptions?: RequestOptions,
+    ): Promise<SettingsImpactPreview> {
+      return runMutation(requestOptions?.signal, async (csrfToken) => {
+        const response = await request('/settings/impact', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+          body: JSON.stringify({ targetProjectId, expectedRevision, draft }),
+          signal: requestOptions?.signal,
+        });
+        const body = (await assertOk(response)) as { impact: SettingsImpactPreview };
+        return body.impact;
+      });
+    },
+
+    async applySettingsCommand(
+      params: {
+        commandId: string;
+        clientRequestId: string;
+        idempotencyKey: string;
+        expectedRevision: number;
+        settings: Record<string, unknown>;
+        targetProjectId?: string;
+      },
+      requestOptions?: RequestOptions,
+    ): Promise<SettingsCommandResult> {
+      return runMutation(requestOptions?.signal, async (csrfToken) => {
+        const response = await request('/settings/commands', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+          body: JSON.stringify(params),
+          signal: requestOptions?.signal,
+        });
+        const body = (await assertOk(response)) as { result: SettingsCommandResult };
+        return body.result;
+      });
+    },
+
+    async getSettingsCommandStatus(
+      commandId: string,
+      requestOptions?: RequestOptions,
+    ): Promise<SettingsCommandResult> {
+      const response = await request(`/settings/commands/${encodeURIComponent(commandId)}`, {
+        signal: requestOptions?.signal,
+      });
+      const body = (await assertOk(response)) as { result: SettingsCommandResult };
+      return body.result;
+    },
+
+    async getProjects(requestOptions?: RequestOptions): Promise<readonly ProjectListItemView[]> {
+      const response = await request('/projects', { signal: requestOptions?.signal });
+      const body = (await assertOk(response)) as { projects: readonly ProjectListItemView[] };
+      return body.projects;
+    },
+
+    async getProjectDetails(
+      projectId: string,
+      requestOptions?: RequestOptions,
+    ): Promise<ProjectListItemView> {
+      const response = await request(`/projects/${encodeURIComponent(projectId)}`, {
+        signal: requestOptions?.signal,
+      });
+      const body = (await assertOk(response)) as { project: ProjectListItemView };
+      return body.project;
+    },
+
+    async createProject(
+      params: {
+        id: string;
+        name: string;
+        description?: string;
+        clientRequestId: string;
+        idempotencyKey: string;
+      },
+      requestOptions?: RequestOptions,
+    ): Promise<ProjectListItemView> {
+      return runMutation(requestOptions?.signal, async (csrfToken) => {
+        const response = await request('/projects', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+          body: JSON.stringify(params),
+          signal: requestOptions?.signal,
+        });
+        const body = (await assertOk(response)) as { project: ProjectListItemView };
+        return body.project;
+      });
+    },
+
+    async updateProject(
+      projectId: string,
+      params: { name?: string; description?: string; expectedRevision: number },
+      requestOptions?: RequestOptions,
+    ): Promise<ProjectListItemView> {
+      return runMutation(requestOptions?.signal, async (csrfToken) => {
+        const response = await request(`/projects/${encodeURIComponent(projectId)}`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+          body: JSON.stringify(params),
+          signal: requestOptions?.signal,
+        });
+        const body = (await assertOk(response)) as { project: ProjectListItemView };
+        return body.project;
+      });
+    },
+
+    async archiveProject(
+      projectId: string,
+      expectedRevision: number,
+      requestOptions?: RequestOptions,
+    ): Promise<ProjectListItemView> {
+      return runMutation(requestOptions?.signal, async (csrfToken) => {
+        const response = await request(`/projects/${encodeURIComponent(projectId)}/archive`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+          body: JSON.stringify({ expectedRevision }),
+          signal: requestOptions?.signal,
+        });
+        const body = (await assertOk(response)) as { project: ProjectListItemView };
+        return body.project;
+      });
+    },
+
+    async restoreProject(
+      projectId: string,
+      expectedRevision: number,
+      requestOptions?: RequestOptions,
+    ): Promise<ProjectListItemView> {
+      return runMutation(requestOptions?.signal, async (csrfToken) => {
+        const response = await request(`/projects/${encodeURIComponent(projectId)}/restore`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+          body: JSON.stringify({ expectedRevision }),
+          signal: requestOptions?.signal,
+        });
+        const body = (await assertOk(response)) as { project: ProjectListItemView };
+        return body.project;
+      });
+    },
+
+    async requestDeleteProject(
+      projectId: string,
+      expectedRevision: number,
+      requestOptions?: RequestOptions,
+    ): Promise<ProjectListItemView> {
+      return runMutation(requestOptions?.signal, async (csrfToken) => {
+        const response = await request(
+          `/projects/${encodeURIComponent(projectId)}/delete-request`,
+          {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+            body: JSON.stringify({ expectedRevision }),
+            signal: requestOptions?.signal,
+          },
+        );
+        const body = (await assertOk(response)) as { project: ProjectListItemView };
+        return body.project;
+      });
+    },
+
+    async getModelDescriptors(
+      targetProjectId?: string,
+      requestOptions?: RequestOptions,
+    ): Promise<readonly ModelDescriptorView[]> {
+      const query = targetProjectId
+        ? `?targetProjectId=${encodeURIComponent(targetProjectId)}`
+        : '';
+      const response = await request(`/settings/models${query}`, {
+        signal: requestOptions?.signal,
+      });
+      const body = (await assertOk(response)) as { models: readonly ModelDescriptorView[] };
+      return body.models;
+    },
+
+    async getCostBudget(
+      targetProjectId?: string,
+      requestOptions?: RequestOptions,
+    ): Promise<CostBudgetView> {
+      const query = targetProjectId
+        ? `?targetProjectId=${encodeURIComponent(targetProjectId)}`
+        : '';
+      const response = await request(`/settings/costs${query}`, { signal: requestOptions?.signal });
+      const body = (await assertOk(response)) as { costs: CostBudgetView };
+      return body.costs;
+    },
+
+    async getPrivacyRetention(
+      targetProjectId?: string,
+      requestOptions?: RequestOptions,
+    ): Promise<PrivacyRetentionView> {
+      const query = targetProjectId
+        ? `?targetProjectId=${encodeURIComponent(targetProjectId)}`
+        : '';
+      const response = await request(`/settings/privacy${query}`, {
+        signal: requestOptions?.signal,
+      });
+      const body = (await assertOk(response)) as { privacy: PrivacyRetentionView };
+      return body.privacy;
+    },
+
+    async getConnectorSettings(
+      targetProjectId?: string,
+      requestOptions?: RequestOptions,
+    ): Promise<readonly ConnectorSettingsView[]> {
+      const query = targetProjectId
+        ? `?targetProjectId=${encodeURIComponent(targetProjectId)}`
+        : '';
+      const response = await request(`/settings/connectors${query}`, {
+        signal: requestOptions?.signal,
+      });
+      const body = (await assertOk(response)) as { connectors: readonly ConnectorSettingsView[] };
+      return body.connectors;
+    },
+
+    async getDirectiveProposals(
+      targetProjectId?: string,
+      requestOptions?: RequestOptions,
+    ): Promise<readonly DirectiveProposalView[]> {
+      const query = targetProjectId
+        ? `?targetProjectId=${encodeURIComponent(targetProjectId)}`
+        : '';
+      const response = await request(`/settings/directives${query}`, {
+        signal: requestOptions?.signal,
+      });
+      const body = (await assertOk(response)) as { proposals: readonly DirectiveProposalView[] };
+      return body.proposals;
+    },
+
+    async getSchemaPacks(
+      targetProjectId?: string,
+      requestOptions?: RequestOptions,
+    ): Promise<readonly SchemaPackView[]> {
+      const query = targetProjectId
+        ? `?targetProjectId=${encodeURIComponent(targetProjectId)}`
+        : '';
+      const response = await request(`/settings/schema${query}`, {
+        signal: requestOptions?.signal,
+      });
+      const body = (await assertOk(response)) as { schemaPacks: readonly SchemaPackView[] };
+      return body.schemaPacks;
+    },
+
+    async getDiagnostics(
+      targetProjectId?: string,
+      requestOptions?: RequestOptions,
+    ): Promise<DiagnosticsView> {
+      const query = targetProjectId
+        ? `?targetProjectId=${encodeURIComponent(targetProjectId)}`
+        : '';
+      const response = await request(`/settings/diagnostics${query}`, {
+        signal: requestOptions?.signal,
+      });
+      const body = (await assertOk(response)) as { diagnostics: DiagnosticsView };
+      return body.diagnostics;
     },
   };
 };

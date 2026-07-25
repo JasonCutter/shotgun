@@ -23,7 +23,7 @@ test('Frontend Section 1 restores server project context and protects routes', a
   await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
   await expect(page.locator('.project-summary')).toContainText('shotgun');
   await page.getByRole('link', { name: 'Settings' }).click();
-  await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: /Settings/ })).toBeVisible();
 
   await page.route('**/api/v1/session/active-project', async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 250));
@@ -35,7 +35,7 @@ test('Frontend Section 1 restores server project context and protects routes', a
   await expect(projectSelector).toHaveValue('project-b');
 
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: /Settings/ })).toBeVisible();
   await expect(projectSelector).toHaveValue('project-b');
   await expect(page.locator('.project-summary')).not.toContainText('shotgun');
 

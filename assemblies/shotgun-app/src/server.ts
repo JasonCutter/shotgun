@@ -44,6 +44,14 @@ import {
   InMemoryActionCandidateRepository,
   InMemoryActionExecutionRepository,
 } from '../../../adapters/stage11-in-memory/src/index.js';
+import {
+  InMemoryProjectAdministrationRepository,
+  InMemorySettingsRepository,
+} from '../../../adapters/settings-project-admin-in-memory/src/index.js';
+import type { ProjectAdministrationRepositoryPort } from '../../../modules/project-administration/src/index.js';
+import type { SettingsRepositoryPort } from '../../../modules/settings-policy/src/index.js';
+import { registerProjectRoutes } from './product-api/project-routes.js';
+import { registerSettingsRoutes } from './product-api/settings-routes.js';
 import { FakeDraftActionConnector } from '../../../adapters/action-connector-fake/src/index.js';
 import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
 import { InProcessTransport } from '../../../adapters/transport-in-process/src/index.js';
@@ -337,7 +345,7 @@ type ReviewDecisionRequest = ChangeSetRequest & {
   readonly reason: string;
 };
 
-type SecurityHeaders = {
+export type SecurityHeaders = {
   readonly 'x-project-id'?: string;
   readonly 'x-actor-id'?: string;
   readonly 'x-access-scope'?: string;
@@ -1064,6 +1072,13 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       await canonicalProjectionRecoveryReporter.report(value);
     },
   };
+  const projectAdminRepository =
+    ((options as Record<string, unknown>)[
+      'projectAdminRepository'
+    ] as ProjectAdministrationRepositoryPort) ?? new InMemoryProjectAdministrationRepository();
+  const settingsRepository =
+    ((options as Record<string, unknown>)['settingsRepository'] as SettingsRepositoryPort) ??
+    new InMemorySettingsRepository();
   const actionCandidateRepository =
     options.actionCandidateRepository ?? new InMemoryActionCandidateRepository();
   const actionConnector = options.actionConnector ?? new FakeDraftActionConnector();
@@ -1626,6 +1641,9 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     );
     return { message: 'Logged out' };
   });
+
+  registerProjectRoutes(server, projectAdminRepository, authRepository, requireBrowserSession);
+  registerSettingsRoutes(server, settingsRepository, requireBrowserSession);
 
   server.post<{ Body: { accountId: string; password: string; projectId: string } }>(
     '/auth/login',

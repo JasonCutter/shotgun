@@ -1601,7 +1601,7 @@ export type SessionBoundaryReasonCode =
   | 'PROVISIONING_FAILED'
   | 'SESSION_REVOKED';
 
-export type SessionBoundaryConnectivityState = 'UNKNOWN' | 'ONLINE' | 'OFFLINE' | 'DEGRADED';
+export type SessionBoundaryConnectivityState = 'UNKNOWN' | 'ONLINE' | 'OFFLINE';
 
 export type SessionBoundaryAuthenticationState =
   'authenticated' | 'authentication_required' | 'authentication_unavailable';

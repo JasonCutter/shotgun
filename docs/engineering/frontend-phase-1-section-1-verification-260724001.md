@@ -100,9 +100,9 @@ This report documents the completed technical verification for **Frontend Phase 
 
 > npm run frontend:check
 - frontend:typecheck: PASS
-- frontend:test: PASS (8 tests passed across 2 files)
+- frontend:test: PASS (18 tests passed across 5 files)
 - frontend:build: PASS (dist artifact generated)
-- frontend:test:e2e: PASS (1 Playwright chromium test passed)
+- frontend:test:e2e: PASS (4 Playwright chromium tests passed)
 ```
 
 ---

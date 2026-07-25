@@ -166,3 +166,61 @@ test('Frontend Section 1 restores server project context and protects routes', a
   await expect(page.getByRole('button', { name: '다시 연결' })).toBeVisible();
   await expect(page.getByRole('button', { name: '로컬 서버 상태 확인' })).toBeVisible();
 });
+
+test('기존 Session Revocation → 보호 Shell 제거 → REESTABLISHING 표시 → READY 복귀', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
+
+  // Route 401 on /session
+  await page.route('**/api/v1/session', async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({
+        status: 401,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'SESSION_REVOKED', message: 'Session revoked' }),
+      });
+    } else {
+      await route.continue();
+    }
+  });
+
+  await page.reload();
+  // Protected shell is removed, READY is restored after auto-bootstrap
+  await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
+});
+
+test('재수립 실패 → 다시 연결 → 성공 또는 Typed Error', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
+
+  await page.route(
+    (url) => url.pathname.startsWith('/api/v1/session'),
+    async (route) => {
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'LOCAL_SERVER_UNAVAILABLE', message: 'Server unavailable' }),
+      });
+    },
+  );
+
+  await page.reload();
+  await expect(page.getByRole('heading', { name: '로컬 서버에 연결할 수 없음' })).toBeVisible();
+  const reconnectBtn = page.getByRole('button', { name: '다시 연결' });
+  await expect(reconnectBtn).toBeVisible();
+  await reconnectBtn.click();
+  await expect(page.getByRole('heading', { name: '로컬 서버에 연결할 수 없음' })).toBeVisible();
+});
+
+test('이전 Project Cache Leakage 없음', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
+
+  const storage = await page.evaluate(() => ({
+    local: Object.keys(localStorage),
+    session: Object.keys(sessionStorage),
+  }));
+  expect(storage).toEqual({ local: [], session: [] });
+});

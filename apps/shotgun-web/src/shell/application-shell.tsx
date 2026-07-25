@@ -18,13 +18,16 @@ export const ApplicationShell = () => {
     sessionBoundaryQueryOptions(apiClient, queryClient, sessionCycleState),
   );
 
+  const connState =
+    connectivity.connectivityState === 'OFFLINE' ? ('OFFLINE' as const) : ('ONLINE' as const);
+
   if (boundaryQuery.isPending) {
     return (
       <SessionBoundaryScreen
         boundary={{
           schemaVersion: '1.0.0',
           authenticationAdapter: 'local_owner',
-          connectivityState: connectivity.connectivityState,
+          connectivityState: connState,
           authenticationState: 'authentication_unavailable',
           sessionState: 'ESTABLISHING',
           backendReadiness: 'UNKNOWN',
@@ -46,7 +49,7 @@ export const ApplicationShell = () => {
       : {
           schemaVersion: '1.0.0' as const,
           authenticationAdapter: 'local_owner' as const,
-          connectivityState: connectivity.connectivityState,
+          connectivityState: connState,
           authenticationState: 'authentication_unavailable' as const,
           sessionState: 'UNAVAILABLE' as const,
           backendReadiness: 'UNAVAILABLE' as const,

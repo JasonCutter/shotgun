@@ -62,7 +62,15 @@ export const SessionBoundaryScreen = ({
 
   useEffect(() => {
     if (activeDiagnosticModal) {
-      modalHeadingRef.current?.focus();
+      // Open 시 첫 번째 실제 Interactive Element로 Focus 이동
+      const firstInteractive = dialogCardRef.current?.querySelector<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+      if (firstInteractive) {
+        firstInteractive.focus();
+      } else {
+        modalHeadingRef.current?.focus();
+      }
     } else if (lastActiveElementRef.current) {
       lastActiveElementRef.current.focus();
       lastActiveElementRef.current = null;
@@ -102,20 +110,34 @@ export const SessionBoundaryScreen = ({
     }
 
     if (e.key === 'Tab' && dialogCardRef.current) {
-      const focusables = dialogCardRef.current.querySelectorAll<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      const focusables = Array.from(
+        dialogCardRef.current.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        ),
       );
       if (focusables.length === 0) return;
       const first = focusables[0];
       const last = focusables[focusables.length - 1];
       if (!first || !last) return;
 
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
+      const currentActive = document.activeElement as HTMLElement | null;
+      const isInsideFocusables = currentActive && focusables.includes(currentActive);
+
+      if (e.shiftKey) {
+        if (
+          !isInsideFocusables ||
+          currentActive === first ||
+          currentActive === modalHeadingRef.current ||
+          currentActive === dialogCardRef.current
+        ) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else {
+        if (!isInsideFocusables || currentActive === last) {
+          e.preventDefault();
+          first.focus();
+        }
       }
     }
   };
@@ -172,20 +194,20 @@ export const SessionBoundaryScreen = ({
             </h2>
             {activeDiagnosticModal === 'SERVER_HELP' ? (
               <div className="help-content">
-                <p>Shotgun 백엔드 서버 프로세스가 정상 실행 중인지 확인해 주세요.</p>
+                <p>실행 중인 Shotgun Backend의 HOST·PORT 환경변수를 확인하세요.</p>
                 <ul>
-                  <li>서버 프로세스 실행 상태 (`npm start` 또는 assemblies/shotgun-app)</li>
+                  <li>기본값은 HOST=127.0.0.1, PORT=3000입니다.</li>
+                  <li>백엔드 서버 프로세스가 정상 실행 중인지 확인해 주세요.</li>
                   <li>API Health 엔드포인트 응답 상태 (`/api/v1/health`)</li>
-                  <li>로컬 루프백 호스트 및 포트 연결 상태 (`127.0.0.1:3001`)</li>
                 </ul>
               </div>
             ) : (
               <div className="help-content">
                 <p>Local Owner Mode 설정 및 세션 환경변수를 확인해 주세요.</p>
                 <ul>
-                  <li>환경변수 및 설정 파일 (`.env` 또는 Runtime Config)</li>
-                  <li>Local Owner 계정 준비 상태</li>
-                  <li>허용된 브라우저 Origin (`http://127.0.0.1:5173` 등)</li>
+                  <li>실행 중인 Shotgun Backend의 HOST·PORT 환경변수를 확인하세요.</li>
+                  <li>기본값은 HOST=127.0.0.1, PORT=3000입니다.</li>
+                  <li>Local Owner 계정 준비 상태를 확인해 주세요.</li>
                 </ul>
               </div>
             )}

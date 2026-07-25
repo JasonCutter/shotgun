@@ -3,22 +3,35 @@ import { Outlet } from 'react-router';
 
 import { useAppRuntime } from '../app/providers.js';
 import { RouteFocus } from '../app/route-focus.js';
-import { LoadingState } from '../components/loading-state.js';
 import { SkipLink } from '../components/skip-link.js';
 
 import { SessionBoundaryScreen } from '../session/session-boundary-screen.js';
-import { sessionBoundaryQueryOptions } from '../session/session-query.js';
+import { reconnectSessionBoundary, sessionBoundaryQueryOptions } from '../session/session-query.js';
 import { PrimaryNavigation } from './primary-navigation.js';
 import { TopBar } from './top-bar.js';
 import { useConnectivityState } from './use-connectivity-state.js';
 
 export const ApplicationShell = () => {
-  const { apiClient } = useAppRuntime();
+  const { apiClient, queryClient } = useAppRuntime();
   const connectivity = useConnectivityState();
-  const boundaryQuery = useQuery(sessionBoundaryQueryOptions(apiClient));
+  const boundaryQuery = useQuery(sessionBoundaryQueryOptions(apiClient, queryClient));
 
   if (boundaryQuery.isPending) {
-    return <LoadingState message="Session 확인 중" />;
+    return (
+      <SessionBoundaryScreen
+        boundary={{
+          schemaVersion: '1.0.0',
+          authenticationAdapter: 'local_owner',
+          connectivityState: connectivity.connectivityState,
+          authenticationState: 'authentication_unavailable',
+          sessionState: 'ESTABLISHING',
+          backendReadiness: 'UNKNOWN',
+          reasonCode: 'LOCAL_SESSION_ESTABLISHING',
+          recoveryActions: [],
+          session: null,
+        }}
+      />
+    );
   }
 
   const boundary = boundaryQuery.data;
@@ -35,9 +48,7 @@ export const ApplicationShell = () => {
           authenticationState: 'authentication_unavailable' as const,
           sessionState: 'UNAVAILABLE' as const,
           backendReadiness: 'UNAVAILABLE' as const,
-          reasonCode: connectivity.isOffline
-            ? ('LOCAL_SERVER_UNAVAILABLE' as const)
-            : ('LOCAL_SERVER_UNAVAILABLE' as const),
+          reasonCode: 'LOCAL_SERVER_UNAVAILABLE' as const,
           recoveryActions: [
             { id: 'RECONNECT' as const, label: '다시 연결', enabled: true },
             { id: 'CHECK_LOCAL_SERVER' as const, label: '로컬 서버 상태 확인', enabled: true },
@@ -49,7 +60,7 @@ export const ApplicationShell = () => {
       <SessionBoundaryScreen
         boundary={activeBoundary}
         onReconnect={() => {
-          boundaryQuery.refetch();
+          void reconnectSessionBoundary(apiClient, queryClient);
         }}
       />
     );

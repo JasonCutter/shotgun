@@ -8,7 +8,7 @@
 
 - **Document Title**: Frontend Phase 1 Section 1 Technical Verification Report
 - **Document ID**: `DOC-FE-P1S1-VERIFY-260724001`
-- **Date**: 2026-07-24
+- **Date**: 2026-07-25
 - **Author**: Antigravity Assistant & Shotgun Frontend Engineering Team
 - **Base Commit**: `e98b7381536f2ae2bce04d8c6e9442990ea9f06e` (`main`)
 - **Branch**: `codex/frontend-phase-1-section-1`
@@ -19,19 +19,35 @@
 
 ## 2. Executive Summary
 
-This report documents the verification of **Frontend Phase 1 Section 1: Local Owner Session, Authentication, and Project Boundary**. All canonical design rules, ADR-099 specifications, single-cycle bootstrap limits, Local Owner UI policy (removal of login/logout/password UI), Session Boundary Error Screen, Leave Guard integration, and protective cache purging have been fully implemented and verified against the automated test suite and E2E browser tests.
+This report documents the verification of **Frontend Phase 1 Section 1: Local Owner Session, Authentication, and Project Boundary**. Single-cycle bootstrap limits, Local Owner UI policy (removal of login/logout/password UI from active routes), Session Boundary Error Screen, Leave Guard integration with Option B unsaved draft blocking, non-optimistic selector value, accessible diagnostic modals, and protective cache purging have been verified against the automated test suite and E2E browser tests.
 
 ---
 
 ## 3. Canonical References & ADRs
 
-1. _Shotgun Knowledge Flow Detailed Map v0.3_
-2. _Project Shotgun Frontend Phase 1–5 구현계획 v1.0_
-3. _Frontend Phase 1 — Platform Boundary_
-4. _Phase 1 Section 1 — Local Owner Session·Authentication·Project Boundary 결정문_
-5. _Frontend Phase 1–2 Cross-Phase Integration 결정문_
-6. _ADR-099 — Local Owner Session·Authentication Adapter Recovery Boundary_
-7. _Frontend Shared Contract Foundation_
+1. **Shotgun Knowledge Flow Detailed Map v0.3**
+   - Storage: Google Docs
+   - URL: `https://docs.google.com/document/d/1HazG-oAeJ8Sgg_mPmBiWpQqeCeeAoDUuWgqVNJR1DCg`
+2. **Project Shotgun Frontend Phase 1–5 구현계획 v1.0 (확정)**
+   - Storage: Notion (Architecture Hub)
+   - URL: `https://app.notion.com/p/3a75181d71ad817a9675c984455b2c3b`
+3. **Frontend and Human Interaction Architecture**
+   - Storage: Notion (Module Architecture / Core Specification)
+   - URL: `https://app.notion.com/p/3a15181d71ad81e4bfa4ee2578e692a0`
+4. **Frontend Phase 1 — Platform Boundary**
+   - Storage: Notion (Phase Implementation)
+   - URL: `https://app.notion.com/p/3a65181d71ad81b1836ec4503df86c46`
+5. **Phase 1 Section 1 — Local Owner Session·Authentication·Project Boundary 결정문**
+   - Storage: Notion (Section Decision Record)
+   - URL: `https://app.notion.com/p/3a65181d71ad81bb925cd9f153d4b175`
+6. **Frontend Phase 1–2 Cross-Phase Integration 결정문**
+   - Storage: Notion (Cross-Phase Architecture)
+   - URL: `https://app.notion.com/p/3a65181d71ad81e28b9cfb13f322e983`
+7. **ADR-099 — Local Owner Session·Authentication Adapter Recovery Boundary**
+   - Storage: Repository (`docs/architecture/adr/ADR-099-frontend-section-1-local-owner-session-and-authentication-boundary.md`) & Notion
+   - Relative Path: `docs/architecture/adr/ADR-099-frontend-section-1-local-owner-session-and-authentication-boundary.md`
+8. **Frontend Shared Contract Foundation 구현 기록**
+   - Storage: Repository (`main` branch merged commit `e98b7381536f2ae2bce04d8c6e9442990ea9f06e` / PR #17) & Notion
 
 ---
 
@@ -51,17 +67,17 @@ This report documents the verification of **Frontend Phase 1 Section 1: Local Ow
 
 ---
 
-## 6. Gap Analysis Matrix
+## 6. Verification Status Matrix
 
-| Requirement                     | Baseline State                        | Fulfilling Implementation                                                                                 | Status        |
-| :------------------------------ | :------------------------------------ | :-------------------------------------------------------------------------------------------------------- | :------------ |
-| **Session Boundary State Axes** | Generic error object                  | `SessionBoundaryView` with `connectivityState`, `authenticationState`, `sessionState`, `backendReadiness` | **COMPLETED** |
-| **Single-Cycle Bootstrap**      | Infinite 401 retry risk               | Deduplicated single-cycle `ensureSession` in `session-query.ts`                                           | **COMPLETED** |
-| **Local Owner UI Policy**       | `<LogoutButton />` in `SettingsPage`  | Removed `<LogoutButton />` from all Local Owner routes                                                    | **COMPLETED** |
-| **Typed Recovery Actions**      | Generic login text                    | `SessionRecoveryAction` (`RECONNECT`, `CHECK_LOCAL_SERVER`, `CHECK_SETTINGS`)                             | **COMPLETED** |
-| **Project Switch Leave Guard**  | Instant select switch                 | `WorkspaceLeavePort` & confirmation modal in `ProjectSelector`                                            | **COMPLETED** |
-| **Protective Cache Purging**    | Incomplete `['project']` invalidation | `purgeProjectScopedCaches` & `purgeProtectedSessionCaches` helpers                                        | **COMPLETED** |
-| **Browser Connectivity**        | Unmonitored                           | `useConnectivityState()` hook with `online`/`offline` event listeners                                     | **COMPLETED** |
+| Requirement                     | Baseline State                        | Fulfilling Implementation                                                                                 | Status       |
+| :------------------------------ | :------------------------------------ | :-------------------------------------------------------------------------------------------------------- | :----------- |
+| **Session Boundary State Axes** | Generic error object                  | `SessionBoundaryView` with `connectivityState`, `authenticationState`, `sessionState`, `backendReadiness` | **VERIFIED** |
+| **Single-Cycle Bootstrap**      | Infinite 401 retry risk               | Deduplicated single-cycle `ensureSession` & `SessionCycleState` in `session-query.ts`                     | **VERIFIED** |
+| **Local Owner UI Policy**       | `<LogoutButton />` in `SettingsPage`  | Removed `<LogoutButton />` from all active routes, architecture test verifies UI boundary                 | **VERIFIED** |
+| **Typed Recovery Actions**      | Generic login text                    | `SessionRecoveryAction` (`RECONNECT`, `CHECK_LOCAL_SERVER`, `CHECK_SETTINGS`) with diagnostic modals      | **VERIFIED** |
+| **Project Switch Leave Guard**  | Instant select switch                 | Option B draft blocking & non-optimistic selector value in `ProjectSelector`                              | **VERIFIED** |
+| **Protective Cache Purging**    | Incomplete `['project']` invalidation | `purgeProjectScopedCaches` & `purgeProtectedSessionCaches` query helpers in `query-keys.ts`               | **VERIFIED** |
+| **Browser Connectivity**        | Unmonitored                           | `useConnectivityState()` hook with `online`/`offline` event listeners                                     | **VERIFIED** |
 
 ---
 
@@ -69,10 +85,10 @@ This report documents the verification of **Frontend Phase 1 Section 1: Local Ow
 
 Defined in `packages/contracts/src/frontend-foundation.ts`:
 
-- **`ConnectivityState`**: `'UNKNOWN'`, `'ONLINE'`, `'OFFLINE'`
-- **`AuthenticationState`**: `'authenticated'`, `'authentication_required'`, `'authentication_unavailable'`
-- **`SessionState`**: `'ESTABLISHING'`, `'READY'`, `'REESTABLISHING'`, `'REVOKED'`, `'UNAVAILABLE'`
-- **`BackendReadiness`**: `'UNKNOWN'`, `'READY'`, `'DEGRADED'`, `'UNAVAILABLE'`
+- **`ConnectivityState`**: `'UNKNOWN'`, `'ONLINE'`, `'OFFLINE'`, `'DEGRADED'`
+- **`SessionBoundaryAuthenticationState`**: `'authenticated'`, `'authentication_required'`, `'authentication_unavailable'`
+- **`SessionBoundarySessionState`**: `'ESTABLISHING'`, `'READY'`, `'REESTABLISHING'`, `'REVOKED'`, `'UNAVAILABLE'`
+- **`BackendReadiness`**: `'UNKNOWN'`, `'READY'`, `'INITIALIZING'`, `'DEGRADED'`, `'UNAVAILABLE'`
 
 ---
 
@@ -87,8 +103,8 @@ Defined in `packages/contracts/src/frontend-foundation.ts`:
 
 ## 9. Local Owner Authentication & UI Policy
 
-- Removed `<LogoutButton />` from `SettingsPage` (`apps/shotgun-web/src/routes/settings-page.tsx`).
-- Zero occurrences of login/password/logout phrases in Local Owner UI.
+- Removed `<LogoutButton />` from active routes and top bar.
+- Architecture test (`scripts/architecture-test.ts`) verifies all active shell and route components under `apps/shotgun-web/src/routes/`, `apps/shotgun-web/src/shell/`, and session boundary screens contain zero prohibited auth/logout/password UI strings.
 - Preserved server-side `logout()` method in API client for future interactive auth adapter.
 
 ---
@@ -98,8 +114,8 @@ Defined in `packages/contracts/src/frontend-foundation.ts`:
 - Rendered via `<SessionBoundaryScreen />` when `sessionState !== 'READY'`.
 - Korean status messages corresponding to `reasonCode`.
 - Renders typed Recovery Actions (`RECONNECT`, `CHECK_LOCAL_SERVER`, `CHECK_SETTINGS`).
-- Focus automatically moves to main heading (`h1`) on mount.
-- ARIA roles: `role="alert"` for errors, `role="status"` for loading states.
+- Focus automatically moves to main heading (`h1`) on mount, and modal headings on diagnostic dialog open.
+- ARIA roles: `role="alert"` for errors, `role="status"` for loading states, `role="dialog"` for diagnostic help modals.
 
 ---
 
@@ -118,16 +134,17 @@ Defined in `packages/contracts/src/frontend-foundation.ts`:
   1. Connectivity (`OFFLINE` $\rightarrow$ alert, block).
   2. Session readiness (`READY`).
   3. `canLeaveCurrentContext`, `hasBlockingDialog`, `hasOutcomeUnknownCommand` $\rightarrow$ alert, block.
-  4. `hasUnsavedDraft` $\rightarrow$ displays accessible modal ("현재 Project에서 계속" vs "Draft를 폐기하고 전환").
+  4. `hasUnsavedDraft` $\rightarrow$ Option B guard message ("저장되지 않은 Draft가 있어 Project를 전환할 수 없습니다.").
+  5. Selector maintains non-optimistic server-confirmed project ID (`value={session.activeProject.id}`).
 
 ---
 
 ## 13. Cache Invalidation & Protection Boundaries
 
-- Added query namespaces to `apps/shotgun-web/src/app/query-keys.ts`:
-  - `productSessionQueryKey`, `sessionBoundaryQueryKey`, `projectScopedQueryKey`, `protectedQueryKey`, `globalQueryKey`, `unprotectedQueryKey`.
-- Implemented `purgeProjectScopedCaches` (clears project queries on project switch).
-- Implemented `purgeProtectedSessionCaches` (clears protected & session queries on revocation).
+- Query functions in `apps/shotgun-web/src/app/query-keys.ts`:
+  - `productSessionQueryKey`, `sessionBoundaryQueryKey`, `protectedQueryKey`, `globalQueryKey`, `unprotectedQueryKey`.
+- Implemented `purgeProjectScopedCaches` (runs `clearProjectQueries` to cancel and remove project-scoped queries on project switch).
+- Implemented `purgeProtectedSessionCaches` (cancels and removes protected queries, project queries, and session queries on revocation).
 
 ---
 
@@ -141,22 +158,27 @@ Defined in `packages/contracts/src/frontend-foundation.ts`:
 
 ## 15. Verification Suite & Test Results
 
-- `npm run format:write`: Passed
-- `npm run lint`: Passed
-- `npm run typecheck`: Passed
-- `npm run frontend:typecheck`: Passed
-- `npm run frontend:test`: Passed
-- `npx vitest run tests/unit/shotgun-api-client.test.ts`: Passed
-- `npx vitest run tests/contract`: Passed
-- `npx tsx scripts/architecture-test.ts`: Passed
-- `npm run frontend:build`: Passed
-- `npx playwright test tests/browser/frontend-section-1.spec.ts`: Passed
+- **Automated Tests**:
+  - `npm run format:check`: PASS
+  - `npm run lint`: PASS
+  - `npm run typecheck`: PASS
+  - `npm run frontend:typecheck`: PASS
+  - `npm run frontend:test`: PASS
+  - `npm test` (unit, contract, integration, architecture, stage12-package): PASS
+  - `npm run secret:scan`: PASS
+  - `npm run oss:verify`: PASS
+  - `npx playwright test`: PASS
+
+- **Manual Accessibility Verification**:
+  - Verified initial focus restoration to `h1` in `<SessionBoundaryScreen />` on reason code change.
+  - Verified focus trap and Escape key dismissal on diagnostic help modals (`CHECK_LOCAL_SERVER`, `CHECK_SETTINGS`).
+  - Verified focus restoration to Project Selector element on guard message triggers.
 
 ---
 
 ## 16. Open Issues & Future Scope
 
-- Section 2 (Knowledge Context & Scope Resolution) will build upon this foundation.
+- **Next Section**: `Phase 1 Section 2: Settings · Project Administration` (will commence after formal review approval of PR #19).
 
 ---
 
@@ -180,8 +202,4 @@ All work conducted complies strictly with Shotgun Working Rules (`AGENTS.md`) an
 - **Remote Branch**: `origin/codex/frontend-phase-1-section-1`
 - **Draft PR**: #19 (`https://github.com/JasonCutter/shotgun/pull/19`)
 - **PR Base**: `main` (`e98b7381536f2ae2bce04d8c6e9442990ea9f06e`)
-- **PR Head**: `codex/frontend-phase-1-section-1` (`3fad4e20a698edf0abdc03a484d2cf5f9a17d78e`)
-- **GitHub Actions Run ID**: `30099502718`
-- **`quality` Job**: PASS (Job ID: `89501710060`, Head SHA: `3fad4e20a698edf0abdc03a484d2cf5f9a17d78e`)
-- **`frontend` Job**: PASS (Job ID: `89501710102`, Head SHA: `3fad4e20a698edf0abdc03a484d2cf5f9a17d78e`)
-- **CI Status**: **ALL PASS** (PR remains in **Draft** state)
+- **PR Status**: **Draft** (PR Ready / Merge / Canonical sync forbidden until requested review approval)

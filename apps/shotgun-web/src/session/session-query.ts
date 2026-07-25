@@ -1,3 +1,4 @@
+import type { QueryClient } from '@tanstack/react-query';
 import { queryOptions } from '@tanstack/react-query';
 
 import {
@@ -9,36 +10,59 @@ import {
   type ShotgunApiClient,
 } from '@shotgun/api-client';
 
-import { productSessionQueryKey, sessionBoundaryQueryKey } from '../app/query-keys.js';
+import {
+  productSessionQueryKey,
+  purgeProtectedSessionCaches,
+  sessionBoundaryQueryKey,
+} from '../app/query-keys.js';
 
-let activeBootstrapPromise: Promise<ProductSessionView> | null = null;
-let hasAutoReestablishedInCycle = false;
+export type SessionCycleState = {
+  activeBootstrapPromise: Promise<ProductSessionView> | null;
+  autoRetryBudget: number;
+  hasHadReadySession: boolean;
+};
+
+export const createSessionCycleState = (): SessionCycleState => ({
+  activeBootstrapPromise: null,
+  autoRetryBudget: 1,
+  hasHadReadySession: false,
+});
+
+let globalCycleState = createSessionCycleState();
 
 export const resetSessionBoundaryCycleState = (): void => {
-  hasAutoReestablishedInCycle = false;
-  activeBootstrapPromise = null;
+  globalCycleState = createSessionCycleState();
 };
 
 export const ensureSession = async (
   apiClient: ShotgunApiClient,
   signal?: AbortSignal,
+  state: SessionCycleState = globalCycleState,
 ): Promise<ProductSessionView> => {
   try {
     const session = await apiClient.getSession({ signal });
-    hasAutoReestablishedInCycle = false;
+    state.autoRetryBudget = 1;
+    state.hasHadReadySession = true;
     return session;
   } catch (error) {
     if (error instanceof ShotgunApiError && error.status === 401) {
-      if (hasAutoReestablishedInCycle) {
+      if (state.activeBootstrapPromise) {
+        const session = await state.activeBootstrapPromise;
+        state.autoRetryBudget = 1;
+        state.hasHadReadySession = true;
+        return session;
+      }
+      if (state.autoRetryBudget <= 0) {
         throw error;
       }
-      if (!activeBootstrapPromise) {
-        hasAutoReestablishedInCycle = true;
-        activeBootstrapPromise = apiClient.bootstrapLocalOwner({ signal }).finally(() => {
-          activeBootstrapPromise = null;
-        });
-      }
-      return await activeBootstrapPromise;
+      state.autoRetryBudget -= 1;
+      state.activeBootstrapPromise = apiClient.bootstrapLocalOwner().finally(() => {
+        state.activeBootstrapPromise = null;
+      });
+      const session = await state.activeBootstrapPromise;
+      state.autoRetryBudget = 1;
+      state.hasHadReadySession = true;
+      return session;
     }
     throw error;
   }
@@ -47,9 +71,11 @@ export const ensureSession = async (
 export const ensureSessionBoundary = async (
   apiClient: ShotgunApiClient,
   signal?: AbortSignal,
+  queryClient?: QueryClient,
+  state: SessionCycleState = globalCycleState,
 ): Promise<SessionBoundaryView> => {
   try {
-    const session = await ensureSession(apiClient, signal);
+    const session = await ensureSession(apiClient, signal, state);
     return decodeSessionBoundaryView({
       schemaVersion: '1.0.0',
       authenticationAdapter: 'local_owner',
@@ -62,7 +88,46 @@ export const ensureSessionBoundary = async (
       session,
     });
   } catch (error) {
+    if (queryClient) {
+      await purgeProtectedSessionCaches(queryClient);
+    }
     return mapErrorToSessionBoundaryView(error);
+  }
+};
+
+export const reconnectSessionBoundary = async (
+  apiClient: ShotgunApiClient,
+  queryClient: QueryClient,
+  state: SessionCycleState = globalCycleState,
+): Promise<SessionBoundaryView> => {
+  state.autoRetryBudget = 1;
+  state.activeBootstrapPromise = null;
+  await purgeProtectedSessionCaches(queryClient);
+
+  try {
+    const session = await apiClient.bootstrapLocalOwner();
+    state.autoRetryBudget = 1;
+    state.hasHadReadySession = true;
+
+    const nextBoundary = decodeSessionBoundaryView({
+      schemaVersion: '1.0.0',
+      authenticationAdapter: 'local_owner',
+      connectivityState: 'ONLINE',
+      authenticationState: 'authenticated',
+      sessionState: 'READY',
+      backendReadiness: 'READY',
+      reasonCode: 'LOCAL_SESSION_READY',
+      recoveryActions: [],
+      session,
+    });
+
+    queryClient.setQueryData(productSessionQueryKey, session);
+    queryClient.setQueryData(sessionBoundaryQueryKey, nextBoundary);
+    return nextBoundary;
+  } catch (error) {
+    const errorBoundary = mapErrorToSessionBoundaryView(error);
+    queryClient.setQueryData(sessionBoundaryQueryKey, errorBoundary);
+    return errorBoundary;
   }
 };
 
@@ -74,10 +139,13 @@ export const sessionQueryOptions = (apiClient: ShotgunApiClient) =>
     staleTime: 30_000,
   });
 
-export const sessionBoundaryQueryOptions = (apiClient: ShotgunApiClient) =>
+export const sessionBoundaryQueryOptions = (
+  apiClient: ShotgunApiClient,
+  queryClient?: QueryClient,
+) =>
   queryOptions({
     queryKey: sessionBoundaryQueryKey,
-    queryFn: ({ signal }) => ensureSessionBoundary(apiClient, signal),
+    queryFn: ({ signal }) => ensureSessionBoundary(apiClient, signal, queryClient),
     retry: false,
     staleTime: 30_000,
   });

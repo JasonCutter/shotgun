@@ -831,30 +831,9 @@ export type ResourceSnapshot<TState = unknown> = {
 // 12. Session & Auth Boundary State & Sensitive Resource Masking Guard
 // ============================================================================
 
-export type AuthenticationState =
-  | 'UNAUTHENTICATED'
-  | 'AUTHENTICATING'
-  | 'AUTHENTICATED'
-  | 'authenticated'
-  | 'authentication_required'
-  | 'authentication_unavailable';
+export type AuthenticationState = 'UNAUTHENTICATED' | 'AUTHENTICATING' | 'AUTHENTICATED';
 
-export type SessionState =
-  | 'LOCAL_SESSION_ESTABLISHING'
-  | 'LOCAL_SESSION_READY'
-  | 'LOCAL_SESSION_REESTABLISHING'
-  | 'LOCAL_SERVER_UNAVAILABLE'
-  | 'LOCAL_OWNER_DISABLED'
-  | 'ORIGIN_NOT_ALLOWED'
-  | 'PROVISIONING_FAILED'
-  | 'SESSION_REVOKED'
-  | 'EXPIRED'
-  | 'VALID'
-  | 'ESTABLISHING'
-  | 'READY'
-  | 'REESTABLISHING'
-  | 'REVOKED'
-  | 'UNAVAILABLE';
+export type SessionState = 'EXPIRED' | 'VALID' | 'REVOKED';
 
 export type ConnectivityState = 'UNKNOWN' | 'ONLINE' | 'OFFLINE' | 'DEGRADED';
 
@@ -907,13 +886,13 @@ export function evaluateCapabilityGuard(
   }
 
   // Step 2: Session state check
-  if (boundaryCtx.sessionState === 'EXPIRED' || boundaryCtx.sessionState === 'SESSION_REVOKED') {
+  if (boundaryCtx.sessionState === 'EXPIRED' || boundaryCtx.sessionState === 'REVOKED') {
     return {
       allowed: false,
       error: new FrontendContractError('SESSION_EXPIRED', 'Session expired or revoked'),
     };
   }
-  if (boundaryCtx.sessionState !== 'VALID' && boundaryCtx.sessionState !== 'LOCAL_SESSION_READY') {
+  if (boundaryCtx.sessionState !== 'VALID') {
     return {
       allowed: false,
       error: new FrontendContractError(
@@ -1622,6 +1601,12 @@ export type SessionBoundaryReasonCode =
   | 'PROVISIONING_FAILED'
   | 'SESSION_REVOKED';
 
+export type SessionBoundaryAuthenticationState =
+  'authenticated' | 'authentication_required' | 'authentication_unavailable';
+
+export type SessionBoundarySessionState =
+  'ESTABLISHING' | 'READY' | 'REESTABLISHING' | 'REVOKED' | 'UNAVAILABLE';
+
 export type SessionRecoveryActionId = 'RECONNECT' | 'CHECK_LOCAL_SERVER' | 'CHECK_SETTINGS';
 
 export type SessionRecoveryAction = {
@@ -1634,8 +1619,8 @@ export type SessionBoundaryView = {
   readonly schemaVersion: '1.0.0';
   readonly authenticationAdapter: 'local_owner' | 'interactive';
   readonly connectivityState: ConnectivityState;
-  readonly authenticationState: AuthenticationState;
-  readonly sessionState: SessionState;
+  readonly authenticationState: SessionBoundaryAuthenticationState;
+  readonly sessionState: SessionBoundarySessionState;
   readonly backendReadiness: BackendReadiness;
   readonly reasonCode?: SessionBoundaryReasonCode;
   readonly recoveryActions: readonly SessionRecoveryAction[];
@@ -1719,13 +1704,19 @@ export function decodeProductSessionView(input: unknown): ProductSessionView {
     }
     return Object.freeze({ id: item['id'] as string, isOwner: item['isOwner'] as boolean });
   });
-
   if (!isPlainObject(s['session'])) {
     throw new FrontendContractError('INVALID_REQUEST', 'session must be a plain object');
   }
   const sess = s['session'] as Record<string, unknown>;
   if (sess['expiresAt'] !== null && typeof sess['expiresAt'] !== 'string') {
     throw new FrontendContractError('INVALID_REQUEST', 'session.expiresAt must be string or null');
+  }
+
+  if (!accProjects.some((p) => p.id === (ap['id'] as string))) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      `activeProject '${ap['id']}' must be included in accessibleProjects`,
+    );
   }
 
   return Object.freeze({
@@ -1872,24 +1863,74 @@ export function decodeSessionBoundaryView(input: unknown): SessionBoundaryView {
     sessionObj = decodeProductSessionView(b['session']);
   }
 
-  if (
-    b['sessionState'] === 'READY' &&
-    (!sessionObj || b['authenticationState'] !== 'authenticated')
-  ) {
+  const sessionStateStr = b['sessionState'] as string;
+  const authStateStr = b['authenticationState'] as string;
+  const reasonCodeStr = b['reasonCode'] as string | undefined;
+
+  // Invariant 1: READY requires authenticated state and non-null session
+  if (sessionStateStr === 'READY') {
+    if (!sessionObj || authStateStr !== 'authenticated') {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        "Session state 'READY' requires authenticated state and valid session object",
+      );
+    }
+    if (reasonCodeStr !== undefined && reasonCodeStr !== 'LOCAL_SESSION_READY') {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        "Session state 'READY' requires reasonCode 'LOCAL_SESSION_READY'",
+      );
+    }
+  }
+
+  // Invariant 2: ESTABLISHING requires reasonCode 'LOCAL_SESSION_ESTABLISHING'
+  if (sessionStateStr === 'ESTABLISHING' && reasonCodeStr !== 'LOCAL_SESSION_ESTABLISHING') {
     throw new FrontendContractError(
       'INVALID_REQUEST',
-      "Session state 'READY' requires authenticated state and valid session object",
+      "Session state 'ESTABLISHING' requires reasonCode 'LOCAL_SESSION_ESTABLISHING'",
     );
   }
 
-  if (b['authenticationState'] === 'authenticated' && !sessionObj) {
+  // Invariant 3: REESTABLISHING requires reasonCode 'LOCAL_SESSION_REESTABLISHING'
+  if (sessionStateStr === 'REESTABLISHING' && reasonCodeStr !== 'LOCAL_SESSION_REESTABLISHING') {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      "Session state 'REESTABLISHING' requires reasonCode 'LOCAL_SESSION_REESTABLISHING'",
+    );
+  }
+
+  // Invariant 4: REVOKED requires reasonCode 'SESSION_REVOKED'
+  if (sessionStateStr === 'REVOKED' && reasonCodeStr !== 'SESSION_REVOKED') {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      "Session state 'REVOKED' requires reasonCode 'SESSION_REVOKED'",
+    );
+  }
+
+  // Invariant 5: Unavailable reason codes require sessionState 'UNAVAILABLE'
+  const unavailReasons = new Set([
+    'LOCAL_SERVER_UNAVAILABLE',
+    'LOCAL_OWNER_DISABLED',
+    'ORIGIN_NOT_ALLOWED',
+    'PROVISIONING_FAILED',
+  ]);
+  if (reasonCodeStr !== undefined && unavailReasons.has(reasonCodeStr)) {
+    if (sessionStateStr !== 'UNAVAILABLE') {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        `reasonCode '${reasonCodeStr}' requires sessionState 'UNAVAILABLE'`,
+      );
+    }
+  }
+
+  if (authStateStr === 'authenticated' && !sessionObj) {
     throw new FrontendContractError(
       'INVALID_REQUEST',
       "Authentication state 'authenticated' requires valid session object",
     );
   }
 
-  if (b['authenticationState'] === 'authentication_unavailable' && !b['reasonCode']) {
+  if (authStateStr === 'authentication_unavailable' && !reasonCodeStr) {
     throw new FrontendContractError(
       'INVALID_REQUEST',
       "Authentication state 'authentication_unavailable' requires reasonCode",
@@ -1900,11 +1941,11 @@ export function decodeSessionBoundaryView(input: unknown): SessionBoundaryView {
     schemaVersion: '1.0.0',
     authenticationAdapter: b['authenticationAdapter'] as 'local_owner' | 'interactive',
     connectivityState: b['connectivityState'] as ConnectivityState,
-    authenticationState: b['authenticationState'] as AuthenticationState,
-    sessionState: b['sessionState'] as SessionState,
+    authenticationState: authStateStr as SessionBoundaryAuthenticationState,
+    sessionState: sessionStateStr as SessionBoundarySessionState,
     backendReadiness: b['backendReadiness'] as BackendReadiness,
-    ...(b['reasonCode'] !== undefined
-      ? { reasonCode: b['reasonCode'] as SessionBoundaryReasonCode }
+    ...(reasonCodeStr !== undefined
+      ? { reasonCode: reasonCodeStr as SessionBoundaryReasonCode }
       : {}),
     recoveryActions: Object.freeze(actions),
     session: sessionObj,

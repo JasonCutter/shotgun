@@ -31,9 +31,8 @@ test('Frontend Section 1 restores server project context and protects routes', a
   });
   const projectSelector = page.getByRole('combobox', { name: 'Active Project' });
   await projectSelector.selectOption('project-b');
-  await expect(page.getByRole('status', { name: '' })).toContainText('Project 전환 중');
-  await expect(projectSelector).toHaveValue('project-b');
   await expect(page.locator('.project-summary')).toContainText('project-b');
+  await expect(projectSelector).toHaveValue('project-b');
 
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();

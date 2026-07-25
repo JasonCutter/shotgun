@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import type {
   SessionBoundaryReasonCode,
@@ -49,10 +49,20 @@ export const SessionBoundaryScreen = ({
   readonly onReconnect?: () => void;
 }) => {
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const [activeDiagnosticModal, setActiveDiagnosticModal] = useState<
+    'SERVER_HELP' | 'SETTINGS_HELP' | null
+  >(null);
+  const modalHeadingRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
     headingRef.current?.focus();
   }, [boundary.reasonCode]);
+
+  useEffect(() => {
+    if (activeDiagnosticModal) {
+      modalHeadingRef.current?.focus();
+    }
+  }, [activeDiagnosticModal]);
 
   const reasonInfo = boundary.reasonCode
     ? (REASON_MESSAGES[boundary.reasonCode] ?? {
@@ -69,11 +79,9 @@ export const SessionBoundaryScreen = ({
     if (action.id === 'RECONNECT') {
       onReconnect?.();
     } else if (action.id === 'CHECK_LOCAL_SERVER') {
-      window.alert(
-        '로컬 서버 진단: http://127.0.0.1:3001 서버 프로세스 실행 상태 및 포트를 확인하세요.',
-      );
+      setActiveDiagnosticModal('SERVER_HELP');
     } else if (action.id === 'CHECK_SETTINGS') {
-      window.location.hash = '#/settings';
+      setActiveDiagnosticModal('SETTINGS_HELP');
     }
   };
 
@@ -106,6 +114,54 @@ export const SessionBoundaryScreen = ({
           </div>
         ) : null}
       </div>
+
+      {activeDiagnosticModal ? (
+        <div
+          className="modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="diagnostic-dialog-title"
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setActiveDiagnosticModal(null);
+          }}
+        >
+          <div className="modal-card" tabIndex={-1}>
+            <h2 id="diagnostic-dialog-title" ref={modalHeadingRef} tabIndex={-1}>
+              {activeDiagnosticModal === 'SERVER_HELP'
+                ? '로컬 서버 상태 진단'
+                : '로컬 환경 설정 안내'}
+            </h2>
+            {activeDiagnosticModal === 'SERVER_HELP' ? (
+              <div className="help-content">
+                <p>Shotgun 백엔드 서버 프로세스가 정상 실행 중인지 확인해 주세요.</p>
+                <ul>
+                  <li>서버 프로세스 실행 상태 (`npm run dev` 또는 백엔드 서비스)</li>
+                  <li>엔드포인트 통신 가능 여부 (기본 API 엔드포인트 `/api/v1/health`)</li>
+                  <li>방화벽 및 로컬 포트 바인딩 상태</li>
+                </ul>
+              </div>
+            ) : (
+              <div className="help-content">
+                <p>Local Owner Mode 설정 및 세션 환경변수를 확인해 주세요.</p>
+                <ul>
+                  <li>설정 파일 위치: `config/shotgun.config.json` 또는 환경변수 설정</li>
+                  <li>`SHOTGUN_LOCAL_OWNER_ENABLED=true` 설정 여부</li>
+                  <li>허용된 Origin (`http://127.0.0.1:*`, `http://localhost:*`) 접근 여부</li>
+                </ul>
+              </div>
+            )}
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="button button-primary"
+                onClick={() => setActiveDiagnosticModal(null)}
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };

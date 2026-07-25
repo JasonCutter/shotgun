@@ -1,6 +1,13 @@
-import type { SessionBoundaryView } from '../../contracts/src/frontend-entry.js';
-import { decodeSessionBoundaryView } from '../../contracts/src/frontend-entry.js';
-import type { ProductSessionView, RequestOptions, ShotgunApiClient } from './contracts.js';
+import {
+  FrontendContractError,
+  decodeSessionBoundaryView,
+} from '../../contracts/src/frontend-entry.js';
+import type {
+  ProductSessionView,
+  RequestOptions,
+  SessionBoundaryView,
+  ShotgunApiClient,
+} from './contracts.js';
 import { createCsrfMutationManager } from './csrf-manager.js';
 import {
   decodeCsrfEnvelope,
@@ -33,15 +40,9 @@ const assertOk = async (response: Response): Promise<unknown> => {
 };
 
 export const mapErrorToSessionBoundaryView = (error: unknown): SessionBoundaryView => {
-  const isNetworkError =
-    error instanceof TypeError ||
-    (error instanceof Error &&
-      (error.name === 'TypeError' ||
-        error.message.includes('fetch') ||
-        error.message.includes('network') ||
-        error.message.includes('connect')));
+  const isBrowserOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
 
-  if (isNetworkError) {
+  if (isBrowserOffline) {
     return decodeSessionBoundaryView({
       schemaVersion: '1.0.0',
       authenticationAdapter: 'local_owner',
@@ -54,6 +55,37 @@ export const mapErrorToSessionBoundaryView = (error: unknown): SessionBoundaryVi
         { id: 'RECONNECT', label: '다시 연결', enabled: true },
         { id: 'CHECK_LOCAL_SERVER', label: '로컬 서버 상태 확인', enabled: true },
       ],
+      session: null,
+    });
+  }
+
+  if (error instanceof FrontendContractError) {
+    return decodeSessionBoundaryView({
+      schemaVersion: '1.0.0',
+      authenticationAdapter: 'local_owner',
+      connectivityState: 'ONLINE',
+      authenticationState: 'authentication_unavailable',
+      sessionState: 'UNAVAILABLE',
+      backendReadiness: 'UNAVAILABLE',
+      reasonCode: 'PROVISIONING_FAILED',
+      recoveryActions: [
+        { id: 'RECONNECT', label: '다시 연결', enabled: true },
+        { id: 'CHECK_SETTINGS', label: '설정 확인', enabled: true },
+      ],
+      session: null,
+    });
+  }
+
+  if (error instanceof Error && error.name === 'AbortError') {
+    return decodeSessionBoundaryView({
+      schemaVersion: '1.0.0',
+      authenticationAdapter: 'local_owner',
+      connectivityState: 'ONLINE',
+      authenticationState: 'authentication_unavailable',
+      sessionState: 'ESTABLISHING',
+      backendReadiness: 'DEGRADED',
+      reasonCode: 'LOCAL_SESSION_ESTABLISHING',
+      recoveryActions: [],
       session: null,
     });
   }

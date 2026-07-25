@@ -163,18 +163,26 @@ describe('shotgun-api-client', () => {
     expect(boundary.session?.principal.id).toBe('principal-a');
   });
 
-  it('maps network errors to LOCAL_SERVER_UNAVAILABLE boundary view with recovery actions', async () => {
+  it('maps network errors when online to ONLINE connectivity and UNAVAILABLE backend', async () => {
     const fetch = vi.fn(async () => {
       throw new TypeError('Failed to fetch');
     });
     const boundary = await createShotgunApiClient({ fetch }).getSessionBoundary();
     expect(boundary.sessionState).toBe('UNAVAILABLE');
-    expect(boundary.connectivityState).toBe('OFFLINE');
+    expect(boundary.connectivityState).toBe('ONLINE');
+    expect(boundary.backendReadiness).toBe('UNAVAILABLE');
     expect(boundary.reasonCode).toBe('LOCAL_SERVER_UNAVAILABLE');
-    expect(boundary.recoveryActions).toHaveLength(2);
-    expect(boundary.recoveryActions.map((a: { readonly id: string }) => a.id)).toEqual([
-      'RECONNECT',
-      'CHECK_LOCAL_SERVER',
-    ]);
+    expect(boundary.recoveryActions.map((a) => a.id)).toEqual(['RECONNECT', 'CHECK_LOCAL_SERVER']);
+  });
+
+  it('maps 401 Unauthorized to REVOKED session boundary view', async () => {
+    const fetch = vi.fn(async () =>
+      json({ code: 'SESSION_EXPIRED', message: 'Session expired' }, 401),
+    );
+    const boundary = await createShotgunApiClient({ fetch }).getSessionBoundary();
+    expect(boundary.sessionState).toBe('REVOKED');
+    expect(boundary.authenticationState).toBe('authentication_required');
+    expect(boundary.reasonCode).toBe('SESSION_REVOKED');
+    expect(boundary.recoveryActions.map((a) => a.id)).toEqual(['RECONNECT']);
   });
 });

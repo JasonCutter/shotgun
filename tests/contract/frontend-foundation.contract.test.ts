@@ -922,10 +922,39 @@ describe('Frontend Foundation Contracts & Runtime Adapters', () => {
             authenticationState: 'authentication_unavailable',
             sessionState: 'UNAVAILABLE',
             backendReadiness: 'UNAVAILABLE',
+            reasonCode: 'LOCAL_SERVER_UNAVAILABLE',
             recoveryActions: [
               { id: 'RECONNECT', label: 'Retry 1', enabled: true },
               { id: 'RECONNECT', label: 'Retry 2', enabled: true },
             ],
+            session: null,
+          },
+        },
+        {
+          name: 'ESTABLISHING state with wrong reasonCode',
+          input: {
+            schemaVersion: '1.0.0',
+            authenticationAdapter: 'local_owner',
+            connectivityState: 'ONLINE',
+            authenticationState: 'authentication_unavailable',
+            sessionState: 'ESTABLISHING',
+            backendReadiness: 'UNKNOWN',
+            reasonCode: 'SESSION_REVOKED',
+            recoveryActions: [],
+            session: null,
+          },
+        },
+        {
+          name: 'REVOKED state with wrong reasonCode',
+          input: {
+            schemaVersion: '1.0.0',
+            authenticationAdapter: 'local_owner',
+            connectivityState: 'ONLINE',
+            authenticationState: 'authentication_required',
+            sessionState: 'REVOKED',
+            backendReadiness: 'READY',
+            reasonCode: 'LOCAL_SESSION_READY',
+            recoveryActions: [],
             session: null,
           },
         },
@@ -936,6 +965,34 @@ describe('Frontend Foundation Contracts & Runtime Adapters', () => {
           FrontendContractError,
         );
       }
+    });
+
+    it('should throw FrontendContractError when activeProject is not in accessibleProjects', () => {
+      const invalidProductSession = {
+        apiVersion: '1.0.0',
+        principal: {
+          id: 'usr-local-owner',
+          actor: { type: 'user', id: 'usr-local-owner' },
+          authenticationMethod: 'session',
+        },
+        activeProject: { id: 'project-inaccessible' },
+        accessibleProjects: [{ id: 'project-default', isOwner: true }],
+        session: { expiresAt: null },
+      };
+
+      const input = {
+        schemaVersion: '1.0.0',
+        authenticationAdapter: 'local_owner',
+        connectivityState: 'ONLINE',
+        authenticationState: 'authenticated',
+        sessionState: 'READY',
+        backendReadiness: 'READY',
+        reasonCode: 'LOCAL_SESSION_READY',
+        recoveryActions: [],
+        session: invalidProductSession,
+      };
+
+      expect(() => decodeSessionBoundaryView(input)).toThrowError(FrontendContractError);
     });
   });
 });

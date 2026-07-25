@@ -1,22 +1,9 @@
-import type { SessionBoundaryView } from '../../contracts/src/frontend-entry.js';
+import type {
+  ProductSessionView,
+  SessionBoundaryView,
+} from '../../contracts/src/frontend-entry.js';
 
-export type ProductSessionView = {
-  readonly apiVersion: '1.0.0';
-  readonly principal: {
-    readonly id: string;
-    readonly actor: {
-      readonly type: 'user' | 'service';
-      readonly id: string;
-    };
-    readonly authenticationMethod: 'session' | 'development';
-  };
-  readonly activeProject: { readonly id: string };
-  readonly accessibleProjects: readonly {
-    readonly id: string;
-    readonly isOwner: boolean;
-  }[];
-  readonly session: { readonly expiresAt: string | null };
-};
+export type { ProductSessionView, SessionBoundaryView };
 
 export type ProductApiErrorBody = {
   readonly code: string;

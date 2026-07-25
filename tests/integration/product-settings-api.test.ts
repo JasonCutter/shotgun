@@ -113,6 +113,19 @@ describe('Product Settings & Project Administration REST Endpoints', () => {
   });
 
   it('POST /api/v1/settings/commands applies command and increments revision', async () => {
+    // 1. Get current revision
+    const getRes = await server.inject({
+      method: 'GET',
+      url: '/api/v1/settings/snapshot?projectId=shotgun',
+      headers: { cookie: cookieHeader },
+    });
+    const resData = JSON.parse(getRes.body) as {
+      snapshot: { settingsRevision: number; policyContextRevision: number };
+    };
+    const currentRev = resData.snapshot.settingsRevision;
+    const policyRev = resData.snapshot.policyContextRevision;
+
+    // 2. Apply command
     const res = await server.inject({
       method: 'POST',
       url: '/api/v1/settings/commands',
@@ -126,17 +139,34 @@ describe('Product Settings & Project Administration REST Endpoints', () => {
         clientRequestId: 'req-cmd-1',
         idempotencyKey: 'idem-cmd-1',
         targetProjectId: 'shotgun',
-        expectedRevision: 1,
+        expectedSettingsRevision: currentRev,
+        observedPolicyContextRevision: policyRev,
         settings: { 'general.locale': 'ko-KR' },
       },
     });
+    if (res.statusCode !== 200) {
+      console.error('Settings Command Failed:', res.body);
+    }
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body) as { result: { status: string; appliedRevision: number } };
     expect(body.result.status).toBe('APPLIED');
-    expect(body.result.appliedRevision).toBe(2);
+    expect(body.result.appliedRevision).toBe(currentRev + 1);
   });
 
   it('POST /api/v1/settings/commands rejects stale expectedRevision (409 conflict)', async () => {
+    // 1. Get current revision
+    const getRes = await server.inject({
+      method: 'GET',
+      url: '/api/v1/settings/snapshot?projectId=shotgun',
+      headers: { cookie: cookieHeader },
+    });
+    const resData = JSON.parse(getRes.body) as {
+      snapshot: { settingsRevision: number; policyContextRevision: number };
+    };
+    const currentRev = resData.snapshot.settingsRevision;
+    const policyRev = resData.snapshot.policyContextRevision;
+
+    // 2. Try with stale revision
     const res = await server.inject({
       method: 'POST',
       url: '/api/v1/settings/commands',
@@ -150,7 +180,8 @@ describe('Product Settings & Project Administration REST Endpoints', () => {
         clientRequestId: 'req-cmd-stale',
         idempotencyKey: 'idem-cmd-stale',
         targetProjectId: 'shotgun',
-        expectedRevision: 1, // Current is 2
+        expectedSettingsRevision: currentRev - 1, // Definitely stale
+        observedPolicyContextRevision: policyRev,
         settings: { 'general.locale': 'en-US' },
       },
     });

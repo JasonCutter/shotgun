@@ -21,11 +21,13 @@ import {
   type SettingsImpactPreview,
   type SettingsSnapshot,
   type SettingsValidationResult,
+  type ProductFeatureView,
 } from '../../../packages/contracts/src/index.js';
 import type {
   CreateProjectInput,
   ProjectAdministrationRepositoryPort,
   UpdateProjectInput,
+  ProjectLifecycleCommandInput,
 } from '../../../modules/project-administration/src/index.js';
 import type {
   SettingsRepositoryPort,

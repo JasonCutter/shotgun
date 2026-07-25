@@ -14,14 +14,17 @@ import {
   type DirectiveProposalView,
   type SchemaPackView,
   type DiagnosticsView,
+  type ProductFeatureView,
 } from '../../../packages/contracts/src/index.js';
 import type {
   CreateProjectInput,
   ProjectAdministrationRepositoryPort,
   UpdateProjectInput,
+  ProjectLifecycleCommandInput,
 } from '../../../modules/project-administration/src/index.ts';
 import type {
   ApplySettingsCommandInput,
+  ApplyPreferenceCommandInput,
   SettingsRepositoryPort,
 } from '../../../modules/settings-policy/src/index.ts';
 
@@ -89,7 +92,7 @@ export class InMemoryProjectAdministrationRepository implements ProjectAdministr
         canManagePolicies: true,
       }),
     });
-    this.projects.set(input.id, item);
+    this.projects.set(input.projectId, item);
     return item;
   }
 
@@ -553,7 +556,7 @@ export class InMemorySettingsRepository implements SettingsRepositoryPort {
           isDefault: true,
           capabilities: Object.freeze(['fast_answer', 'transformation']),
           inputTypes: Object.freeze(['text', 'image']),
-          costClass: 'LOW',
+          costClass: 'LOW' as const,
           privacyCharacteristics: 'No logging',
         },
         {
@@ -564,7 +567,7 @@ export class InMemorySettingsRepository implements SettingsRepositoryPort {
           isDefault: false,
           capabilities: Object.freeze(['deep_analysis', 'reasoning']),
           inputTypes: Object.freeze(['text', 'image', 'document']),
-          costClass: 'HIGH',
+          costClass: 'HIGH' as const,
           privacyCharacteristics: 'No logging',
         },
       ]),
@@ -614,7 +617,7 @@ export class InMemorySettingsRepository implements SettingsRepositoryPort {
         {
           connectorId: 'github-connector',
           name: 'GitHub Repository Connector',
-          status: 'CONNECTED',
+          status: 'CONNECTED' as const,
           maskedCredentials: 'ghp_****1234',
           canTest: true,
           canRotate: true,
@@ -623,7 +626,7 @@ export class InMemorySettingsRepository implements SettingsRepositoryPort {
         {
           connectorId: 'slack-connector',
           name: 'Slack Webhook',
-          status: 'NOT_CONFIGURED',
+          status: 'NOT_CONFIGURED' as const,
           canTest: false,
           canRotate: false,
           canRevoke: false,
@@ -644,7 +647,7 @@ export class InMemorySettingsRepository implements SettingsRepositoryPort {
           resourceId: 'res-45',
           directiveType: 'FACT_PRIORITY_OVERRIDE',
           description: 'Override default fact ranking for release notes',
-          status: 'PROPOSED',
+          status: 'PROPOSED' as const,
           createdAt: new Date().toISOString(),
         },
       ]),
@@ -660,7 +663,7 @@ export class InMemorySettingsRepository implements SettingsRepositoryPort {
           packId: 'standard-v1',
           name: 'Standard Knowledge Schema Pack',
           version: '1.0.0',
-          compatibilityStatus: 'COMPATIBLE',
+          compatibilityStatus: 'COMPATIBLE' as const,
           canUpgrade: true,
           canDisable: false,
         },

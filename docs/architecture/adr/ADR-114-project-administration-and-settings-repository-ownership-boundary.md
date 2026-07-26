@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted (Proposed for Phase 1 Section 2 Implementation)
+Accepted for Phase 1 Section 2 implementation.
+
+Canonical synchronization is pending explicit user approval.
 
 ## Context
 
@@ -20,10 +22,18 @@ Previously, `AuthRepository` owned Principal, Session, Membership, and API Token
 2. **Atomic Project Creation Coordinator**:
    - Creating a new project requires updating both `ProjectAdministrationRepository`, `AuthRepository` (for Owner Membership), and `SettingsRepository` (for default Policy and initial Settings Snapshot).
    - Project creation is orchestrated by an atomic database transaction (or an explicit compensating saga coordinator in distributed setups). Partial failures revert the entire operation; a partial project creation is never returned as successful.
+   - Project creation is a principal-scoped administrative command. The request binds to the current session's active project for administrative authority while `payload.newProjectId` identifies the produced Project resource. The new Project is not represented as an existing `resourceProjectId`.
 
-3. **Expected Revision & Policy Context Pinning**:
-   - All state-changing operations require an `expectedRevision` parameter for optimistic concurrency control.
+3. **Versioned Command, Typed Preconditions, and Policy Context Pinning**:
+   - All state-changing operations use a versioned `FrontendCommandRequest` with one or more typed preconditions. Revisions, digests, Project binding, and policy conditions are validated atomically by the server before the domain write.
+   - The browser supplies `clientRequestId` and `idempotencyKey`; the server creates `commandId`, derives authoritative Principal, Project, Security, and Policy contexts, and computes `commandSemanticDigest`.
+   - The same idempotency key and semantic digest resolve to the existing command outcome. Reuse with a different digest is rejected with `IDEMPOTENCY_KEY_REUSE_MISMATCH`.
    - Policy changes increment `policy_context_revision` monotonically, allowing downstream engines to detect `POLICY_CONTEXT_CHANGED` and invalidate stale caches.
+
+4. **Frontend Command Gateway Ownership**:
+   - `FrontendCommandGateway` owns browser request validation, accepted context capture, semantic digest deduplication, command outcome state, and `clientRequestId`-based outcome resolution.
+   - Domain repositories do not expose browser-authored Principal, Actor, Capability, Security Context, Trace, accepted context, or command digest as authority.
+   - `commandId` is the Product API command resource identifier and remains distinct from any internal Kernel `messageId`.
 
 ## Rejected Alternatives
 
@@ -37,11 +47,16 @@ Previously, `AuthRepository` owned Principal, Session, Membership, and API Token
 
 - `packages/contracts`: Adds typed settings and project administration vocabularies, views, snapshots, and runtime decoders.
 - `modules/project-administration` & `modules/settings-policy`: Defines domain ports and repositories.
+- `modules/frontend-command-gateway`: Defines command acceptance, idempotency, outcome persistence, and recovery ports.
 - `adapters/postgres`: Implements PostgreSQL tables (`projects`, `project_settings`, `settings_revisions`, etc.).
+- `adapters/frontend-command-gateway-*`: Implements in-memory and PostgreSQL command ledger adapters.
 - `assemblies/shotgun-app`: Exposes `/api/v1/projects/*` and `/api/v1/settings/*` endpoints.
 - `apps/shotgun-web`: Implements `/settings/*` workspaces, Draft Controller, and Option B Leave Guard.
 
 ## Migration and Rollback
 
-- Database migrations add `project_admin` and `settings` schema tables incrementally.
-- Rollback can be executed cleanly via `DROP SCHEMA IF EXISTS project_admin CASCADE; DROP SCHEMA IF EXISTS settings CASCADE;`.
+- Database migrations add `project_admin`, `settings`, and `frontend_command` schema tables incrementally. The command ledger is migration `018` because migration `017` was already committed for the Project owner-scope correction and is not rewritten.
+- Application rollback disables the new write paths, preserves compatibility readers, and gates migration-dependent behavior behind an application feature switch.
+- Destructive down migrations are prohibited for production rollback. Schema corrections use a forward corrective migration.
+- Data recovery uses a verified backup restore or point-in-time recovery procedure.
+- Project tombstones, command outcomes, audit records, and revisions are retained according to policy. `DROP SCHEMA` is permitted only as part of an explicitly destructive development/test database reset, never as the production rollback contract.

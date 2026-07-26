@@ -1,38 +1,44 @@
-# Frontend Phase 1 Section 3 Candidate Implementation Plan
+# Frontend Phase 1 Section 3 Approved Implementation Baseline
 
 - Plan ID: `frontend-phase-1-section-3-implementation-plan-260726001`
 - Prepared: 2026-07-26
 - Baseline:
   `main@4b5c90a1bccad520c1bdfa2fc5114d8852ed59d2`
-- Status: **candidate; implementation not authorized**
+- Status: **approved implementation baseline; product implementation not started**
+- Approval date: 2026-07-26
+- Approver: User
+- Implementation authorization: **not granted; separate user authorization required**
 - Depends on:
   [Section 3 gap audit](../engineering/frontend-phase-1-section-3-gap-audit-260726001.md)
 - Canonical normalization:
   [Section 3 normalization record](../architecture/canonical-normalization/frontend-phase-1-section-3-normalization-260726001.md)
-- Proposed architecture:
+- Accepted architecture:
   [ADR-115](../architecture/adr/ADR-115-global-shell-action-center-read-projection-and-scope-boundary.md)
 
 ## Objective
 
-After explicit user approval, implement Frontend Phase 1 Section 3 as a
+After separate explicit product implementation authorization, implement
+Frontend Phase 1 Section 3 as a
 server-authoritative Global Shell and Home Action Center that reuses Sections 1
 and 2 without duplicating session, project, draft, command, or domain authority.
 
-This document defines a candidate sequence and ownership model. It does not
-authorize product code, migrations, dependencies, a PR, or a completion claim.
+This document is the approved implementation baseline. It does not authorize
+product code, migrations, dependencies, a Ready transition, merge, or a
+completion claim.
 
 ## Entry Conditions
 
 All conditions must be met before implementation starts:
 
-1. The user approves or revises the candidate acceptance criteria in the gap
-   audit.
-2. The user approves or revises proposed ADR-115.
-3. Representative dataset candidates, server pagination and caps, the
+1. **Completed 2026-07-26:** the user approved and froze AC-01–AC-27 in the
+   gap audit.
+2. **Completed 2026-07-26:** the user accepted ADR-115.
+3. **Pending:** representative dataset candidates, server pagination and caps, the
    prohibition of unbounded DOM/storage, and the measurement method are fixed.
 4. Existing adopted dependencies remain pinned. Any later OSS adoption requires
    an exact tag/commit, license/security/maintenance evidence, lockfile update,
    contract/replacement tests, and rollback.
+5. **Pending:** the user separately authorizes product implementation.
 
 Numeric performance budgets are a completion condition after baseline
 measurement, not an implementation entry condition.
@@ -68,23 +74,23 @@ measurement, not an implementation entry condition.
 - Whole-shell redesign beyond Section 3 contracts
 - Whole-frontend completion
 
-## Candidate AC Traceability
+## Approved AC Traceability
 
-The candidate definitions remain in the gap audit and are not frozen. This plan
-links every candidate without changing the AC-01–AC-27 count:
+The approved and frozen definitions remain in the gap audit. This plan links
+every AC without changing the AC-01–AC-27 count or meaning:
 
-| Candidate AC | Implementation plan area                                                                                |
-| ------------ | ------------------------------------------------------------------------------------------------------- |
-| AC-01        | Product API views, retained 1.0.0 decoders, 2.0.0 Project context, registry, and browser-write contract |
-| AC-02–AC-03  | Server-authoritative Global Shell and responsive navigation                                             |
-| AC-04–AC-05  | Active-project switch and resource-project binding                                                      |
-| AC-06–AC-13  | Home server snapshot, client draft composition, actions, Recent/Pinned, global summaries, and warning   |
-| AC-14–AC-15  | Protected global search and navigation-only command palette                                             |
-| AC-16–AC-18  | Zero-project session/bootstrap command, server route guard, and deep-link recovery                      |
-| AC-19–AC-21  | Offline/degraded behavior, cache isolation, and projection ownership                                    |
-| AC-22–AC-24  | Security, accessibility, and staged performance gate                                                    |
-| AC-25–AC-26  | Required automated gates and browser E2E                                                                |
-| AC-27        | Separate Frontend Phase 1 completion judgment                                                           |
+| Approved AC | Implementation plan area                                                                                |
+| ----------- | ------------------------------------------------------------------------------------------------------- |
+| AC-01       | Product API views, retained 1.0.0 decoders, 2.0.0 Project context, registry, and browser-write contract |
+| AC-02–AC-03 | Server-authoritative Global Shell and responsive navigation                                             |
+| AC-04–AC-05 | Active-project switch and resource-project binding                                                      |
+| AC-06–AC-13 | Home server snapshot, client draft composition, actions, Recent/Pinned, global summaries, and warning   |
+| AC-14–AC-15 | Protected global search and navigation-only command palette                                             |
+| AC-16–AC-18 | Zero-project session/bootstrap command, server route guard, and deep-link recovery                      |
+| AC-19–AC-21 | Offline/degraded behavior, cache isolation, and projection ownership                                    |
+| AC-22–AC-24 | Security, accessibility, and staged performance gate                                                    |
+| AC-25–AC-26 | Required automated gates and browser E2E                                                                |
+| AC-27       | Separate Frontend Phase 1 completion judgment                                                           |
 
 ## Architecture
 
@@ -117,13 +123,13 @@ view is tied to source watermarks and access/policy revisions. High-risk work
 navigates to the owning domain workspace and uses its existing command
 contract.
 
-The initial architecture is the ADR-115 candidate: an Application Coordinator
+The accepted ADR-115 architecture uses an Application Coordinator that
 composes non-persistent read views through ports; snapshot queries are
 authoritative; refresh uses focus refetch, explicit refresh, and approved
 bounded polling; no new SSE infrastructure, projection migration, or runtime
 dependency is introduced.
 
-## Candidate Contracts
+## Planned Contracts
 
 ### Global Shell
 
@@ -189,9 +195,10 @@ lookup, accepted context, and outcome resolution bind to the normalized
 discriminated scope. A principal-scoped request never fabricates a target
 Project.
 
-## Candidate Modules and Ports
+## Planned Modules and Ports
 
-Final module names require ADR approval. Candidate responsibilities are:
+Implementation names remain subject to ordinary code review. Their
+responsibilities must preserve these accepted boundaries:
 
 ### `GlobalShellProjectionPort`
 
@@ -238,24 +245,25 @@ Final module names require ADR approval. Candidate responsibilities are:
 
 ## Data Ownership
 
-| Data                                           | Owner                      | Section 3 usage                                    |
-| ---------------------------------------------- | -------------------------- | -------------------------------------------------- |
-| Session, principal, membership                 | Auth                       | Read through authorized view                       |
-| Project metadata/lifecycle                     | Project Administration     | Read safe labels and availability                  |
-| Settings and policy                            | `SettingsRepository`       | Read derived feature/readiness policy              |
-| Canonical/source/domain resources              | Owning domain modules      | Read typed minimal summaries                       |
-| Command execution/outcome                      | Owning command modules     | Navigate; never duplicate execution                |
-| Shell/action/background/notification snapshots | Candidate projection layer | Derived, revisioned, replaceable                   |
-| Pin presentation preference                    | `SettingsRepository`       | Principal preference; no domain/Canonical mutation |
-| Notification read presentation                 | `SettingsRepository`       | Principal cursor/watermark or bounded exceptions   |
-| Browser draft presentation                     | Browser/client local state | Separately labelled group; never server ranked     |
+| Data                                           | Owner                        | Section 3 usage                                    |
+| ---------------------------------------------- | ---------------------------- | -------------------------------------------------- |
+| Session, principal, membership                 | Auth                         | Read through authorized view                       |
+| Project metadata/lifecycle                     | Project Administration       | Read safe labels and availability                  |
+| Settings and policy                            | `SettingsRepository`         | Read derived feature/readiness policy              |
+| Canonical/source/domain resources              | Owning domain modules        | Read typed minimal summaries                       |
+| Command execution/outcome                      | Owning command modules       | Navigate; never duplicate execution                |
+| Shell/action/background/notification snapshots | Accepted projection boundary | Derived, revisioned, replaceable                   |
+| Pin presentation preference                    | `SettingsRepository`         | Principal preference; no domain/Canonical mutation |
+| Notification read presentation                 | `SettingsRepository`         | Principal cursor/watermark or bounded exceptions   |
+| Browser draft presentation                     | Browser/client local state   | Separately labelled group; never server ranked     |
 
 No OSS type, database identifier, or internal schema becomes a shared
 Canonical/Product API identifier.
 
 ## Product API Routes
 
-Exact route names are candidate details and must be fixed with the contract.
+Exact route names are planned implementation details and must be fixed by the
+versioned contract before implementation.
 The route family should support:
 
 ```text
@@ -627,7 +635,7 @@ forward-only additive migration with rebuild and rollback evidence. Rollback
 disables new view routes and returns to the Section 1/2 Shell without deleting
 domain, Canonical, command, or Settings preference data.
 
-## Candidate Commit Plan
+## Planned Commit Sequence
 
 Each commit must remain independently reviewable and gated:
 
@@ -641,8 +649,8 @@ Each commit must remain independently reviewable and gated:
 8. `test: add section 3 security accessibility and browser evidence`
 9. `docs: record section 3 verification and phase 1 decision`
 
-Actual grouping may change after AC/ADR approval. No implementation commit is
-authorized by this candidate plan.
+Actual grouping may change during implementation review. No implementation
+commit is authorized by this approved baseline.
 
 ## Risks and Mitigations
 
@@ -709,8 +717,10 @@ implemented, verified, merged, and evidenced. It does not imply Frontend Phase
 ```text
 Canonical normalization: complete within authorized Section 3 wording
 Repository gap audit: complete
-Candidate acceptance criteria: prepared, unapproved
-Candidate implementation plan: prepared, unapproved
+ADR-115: accepted 2026-07-26
+Acceptance criteria AC-01–AC-27: approved and frozen
+Implementation baseline: approved
+Product implementation authorization: not granted
 Section 3 product implementation: not started
 Frontend Phase 1: incomplete
 ```

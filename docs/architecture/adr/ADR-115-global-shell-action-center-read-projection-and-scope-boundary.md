@@ -2,11 +2,14 @@
 
 ## Status
 
-Proposed for Frontend Phase 1 Section 3.
+Accepted.
 
-User approval and Canonical synchronization are pending. This ADR is a review
-candidate and does not authorize product implementation, a database migration,
-or a new runtime dependency.
+- Approval date: 2026-07-26
+- Approver: User
+- Implementation status: Not started
+
+This acceptance freezes the architecture decision for Frontend Phase 1 Section 3. It does not authorize product implementation, a database migration, or a
+new runtime dependency.
 
 ## Context
 
@@ -322,7 +325,7 @@ measurements and the final performance gate passes.
 
 ## Impact Scope
 
-- `packages/contracts`: candidate Section 3 views, search request/response,
+- `packages/contracts`: planned Section 3 views, search request/response,
   navigation enum, route-guard decision, browser-draft presentation view,
   notification presentation state, `ProductSessionView 2.0.0`, and
   `FrontendCommandRequest 2.0.0` with retained 1.0.0 decoders.
@@ -357,9 +360,10 @@ measurements and the final performance gate passes.
 - cache scope/revision and session/principal replacement tests
 - baseline measurement followed by user-approved numeric performance gates
 
-## Candidate AC Traceability
+## Approved AC Traceability
 
-This proposed ADR supports the unapproved candidate AC set without freezing it:
+This accepted ADR supports the approved and frozen AC-01–AC-27 implementation
+acceptance criteria:
 
 - AC-01: shared Product API, retained 1.0.0, and discriminated 2.0.0
   principal/project/resource command boundary

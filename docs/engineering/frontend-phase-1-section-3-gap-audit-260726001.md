@@ -7,7 +7,7 @@
 - Baseline commit: `4b5c90a1bccad520c1bdfa2fc5114d8852ed59d2`
 - Audit branch: `codex/frontend-phase-1-section-3`
 - Scope: Home, Action Center, Global Shell, Frontend Phase 1 completion boundary
-- Result: **Section 3 implementation not started; candidate acceptance criteria require user approval**
+- Result: **Section 3 implementation not started; AC-01–AC-27 approved and frozen**
 
 ## Executive Summary
 
@@ -34,8 +34,8 @@ Three current behaviors or contracts conflict with later governing decisions:
    creation.
 
 No product code, schema, dependency, or migration was changed by this audit.
-The acceptance criteria in this document are candidates, not approved
-Canonical contracts.
+The acceptance criteria in this document were approved and frozen by the user
+on 2026-07-26 as the Canonical implementation acceptance criteria.
 
 ## PR #21 Required Corrections
 
@@ -55,9 +55,9 @@ The document review corrections are incorporated as follows:
 7. Dataset, pagination, caps, and measurement method are entry conditions;
    baseline-derived numeric budget approval is a completion condition.
 
-Proposed ADR-115 records the shared ownership, refresh, migration, OSS, Pinned,
-navigation, and `OUTCOME_UNKNOWN` boundaries. Candidate numbering remains
-AC-01–AC-27 and is not frozen.
+Accepted ADR-115 records the shared ownership, refresh, migration, OSS, Pinned,
+navigation, and `OUTCOME_UNKNOWN` boundaries. AC-01–AC-27 are approved and
+frozen.
 
 ## PR #21 Final Ownership Corrections
 
@@ -95,7 +95,7 @@ The audit used the following pages as the governing decision set:
 - [ADR-104 — Global Shell and Server-ranked Action Center Boundary](https://app.notion.com/p/3a65181d71ad81c78fb3c5b70df73304)
 - [Frontend Phase 1–5 Cross-Phase Integration Decision](https://app.notion.com/p/3a65181d71ad81e28b9cfb13f322e983)
 - [ADR-115 — Global Shell·Action Center Read Projection and Scope Boundary](../architecture/adr/ADR-115-global-shell-action-center-read-projection-and-scope-boundary.md)
-  (proposed; user approval pending)
+  (accepted 2026-07-26)
 - [Cross-phase normalization pending record](../architecture/canonical-normalization/frontend-cross-phase-normalization-pending-260726001.md)
 
 When wording conflicted, the later explicit ADR-104 and cross-phase decisions
@@ -480,7 +480,7 @@ The existing ownership boundaries should remain:
   presentation preference
 - `FrontendCommandGateway`: approved domain command entry
 
-Candidate read-side ports, subject to ADR and user approval:
+Approved read-side port boundaries:
 
 1. `GlobalShellProjectionPort`: shell, navigation, feature availability,
    readiness, and global warning snapshot.
@@ -512,7 +512,7 @@ An application coordinator may combine ports; the shell must not call multiple
 domain repositories directly and derive priority or authorization in the
 browser. Cross-domain write transactions are prohibited from these read paths.
 
-The proposed ADR-115 fixes the initial boundary as an Application
+Accepted ADR-115 fixes the initial boundary as an Application
 Coordinator-based non-persistent read projection with no initial migration or
 new SSE infrastructure. Persistent projection storage requires measured need,
 a separate ADR, and an additive migration.
@@ -567,7 +567,7 @@ completion. Virtualization remains evidence-driven.
 
 ## Recommended Implementation Order
 
-1. Approve candidate acceptance criteria and proposed ADR-115.
+1. Use the approved AC-01–AC-27 and accepted ADR-115 contract snapshot.
 2. Define versioned contracts, projection ports, safe routes, runtime decoders,
    and exact OSS decisions.
 3. Implement server-authorized read projections and Product API routes.
@@ -587,10 +587,11 @@ completion. Virtualization remains evidence-driven.
 
 Implementation must not start until:
 
-1. The user approves the wording and numbering of candidate AC-01–AC-27.
-2. The user approves proposed ADR-115.
-3. Representative dataset candidates, server pagination/caps, unbounded
+1. **Completed 2026-07-26:** the user approved and froze AC-01–AC-27.
+2. **Completed 2026-07-26:** the user accepted ADR-115.
+3. **Pending:** representative dataset candidates, server pagination/caps, unbounded
    DOM/storage prohibitions, and the measurement method are fixed.
+4. **Pending:** separate user authorization to start product implementation.
 
 The following are no longer open interpretation choices in this plan:
 
@@ -610,10 +611,12 @@ The following are no longer open interpretation choices in this plan:
   server-produced Project resource while exact 1.0.0 decoders remain supported.
 - Navigation uses the five Canonical availability values.
 
-## Candidate Acceptance Criteria
+## Approved and Frozen Acceptance Criteria
 
-The following are **unapproved candidates**. They are not Canonical and may not
-be used to claim completion until explicitly approved.
+The following AC-01–AC-27 were approved and frozen by the user on 2026-07-26.
+They are the Canonical implementation acceptance criteria. Changing a number or
+meaning requires a new ADR, a new Contract Snapshot revision, and explicit user
+approval.
 
 1. **AC-01 — Typed Product API and writes**: all Section 3 views are versioned
    and runtime-decoded; unknown schema and unsafe enum values fail closed. Exact
@@ -718,7 +721,7 @@ be used to claim completion until explicitly approved.
 23. **AC-23 — Accessibility**: all Section 3 surfaces pass keyboard, focus,
     name/role/state, live-region, reduced-motion, high-contrast, 200%-zoom,
     touch-target, and IME verification.
-24. **AC-24 — Performance**: dataset candidates, server pagination/caps,
+24. **AC-24 — Performance**: representative datasets, server pagination/caps,
     unbounded DOM/storage prohibitions, and measurement method are fixed before
     implementation. A baseline is measured after behavior exists. Before
     completion, the user approves numeric budgets derived from that evidence
@@ -738,29 +741,22 @@ be used to claim completion until explicitly approved.
     separately approved; this does not claim Phase 2 or whole-frontend
     completion.
 
-## Contract Snapshot Plan
+## Contract Snapshot
 
-Create an immutable implementation snapshot only after the user approves the
-ACs. It should contain:
+The approved immutable implementation snapshot is:
 
-- Section 3 decision
-- ADR-100
-- ADR-101
-- ADR-104
-- approved ADR-115
-- Cross-phase integration decision
-- the user-approved Section 3 acceptance criteria AC-01–AC-27
-
-Unapproved candidate ACs must not enter the snapshot.
+- [Frontend Phase 1 Section 3 Contract Snapshot](../architecture/contracts/snapshots/frontend-phase-1-section-3/frontend-phase-1-section-3-contract-snapshot-260726001.md)
 
 ## Audit Conclusion
 
-- Canonical normalization: complete for the explicitly authorized Section 3
-  wording only
+- Canonical synchronization: approved for Section 3 on 2026-07-26
 - Repository gap audit: complete at baseline commit
   `4b5c90a1bccad520c1bdfa2fc5114d8852ed59d2`
-- Candidate implementation plan: prepared
+- ADR-115: **accepted**
+- AC-01–AC-27: **approved and frozen**
+- Approved implementation baseline: prepared; separate implementation
+  authorization pending
 - Section 3 product implementation: **not started**
 - Frontend Phase 1: **incomplete**
-- Next action: user review and explicit approval or revision of candidate
-  AC-01–AC-27 and proposed ADR-115
+- Next action: complete the remaining dataset/pagination/cap/measurement entry
+  conditions and obtain separate product implementation authorization

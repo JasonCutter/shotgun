@@ -13,6 +13,7 @@ import {
   PostgresProjectAdministrationRepository,
   PostgresSettingsRepository,
 } from '../../../adapters/postgres/src/index.js';
+import { PostgresFrontendCommandGateway } from '../../../adapters/frontend-command-gateway-postgres/src/index.js';
 import {
   PostgresEvidenceRepository,
   PostgresTransformationRepository,
@@ -65,6 +66,7 @@ const canonicalKnowledgeRepository = new PostgresCanonicalKnowledgeRepository(po
 const { server } = await createApplication({
   projectAdminRepository: new PostgresProjectAdministrationRepository(pool),
   settingsRepository: new PostgresSettingsRepository(pool),
+  frontendCommandGateway: new PostgresFrontendCommandGateway(pool),
   intakeRepository: new PostgresIntakeRepository(pool),
   originalAssetRepository: new PostgresOriginalAssetRepository(pool),
   assetStorage: new LocalAssetStorage(storageRoot),

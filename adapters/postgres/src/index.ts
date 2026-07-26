@@ -34,6 +34,7 @@ import type {
   ApplySettingsCommandInput,
   ApplyPreferenceCommandInput,
 } from '../../../modules/settings-policy/src/index.js';
+import { deriveSettingsImpact } from '../../../modules/settings-policy/src/index.js';
 import type {
   IntakeRepositoryPort,
   IntakeSubmission,
@@ -1009,6 +1010,16 @@ export class PostgresSettingsRepository implements SettingsRepositoryPort {
     );
   }
 
+  async getPrincipalPreferenceRevision(principalId: string): Promise<number> {
+    const result = await this.pool.query<{ revision: number }>(
+      `SELECT COALESCE(MAX(revision), 0) AS revision
+       FROM settings.preference_revisions
+       WHERE principal_id = $1`,
+      [principalId],
+    );
+    return result.rows[0]?.revision ?? 0;
+  }
+
   async updatePrincipalPreferences(
     input: ApplyPreferenceCommandInput,
   ): Promise<Record<string, unknown>> {
@@ -1226,15 +1237,24 @@ export class PostgresSettingsRepository implements SettingsRepositoryPort {
       );
     }
 
-    // In a real implementation we would check observedPolicyContextRevision too
+    const policyRevisionResult = await this.pool.query<{ revision: number }>(
+      `SELECT MAX(revision) AS revision
+       FROM settings.policy_context_revisions
+       WHERE project_id = $1`,
+      [projectId],
+    );
+    const currentPolicyRevision = policyRevisionResult.rows[0]?.revision ?? 1;
+    if (currentPolicyRevision !== observedPolicyContextRevision) {
+      throw new FrontendContractError(
+        'POLICY_CONTEXT_CHANGED',
+        `Observed policy context revision ${observedPolicyContextRevision} but current is ${currentPolicyRevision}.`,
+      );
+    }
 
     return Object.freeze({
       targetProjectId: projectId,
       expectedRevision: expectedSettingsRevision,
-      requiresReview: false,
-      requiresMigration: false,
-      requiresRestart: false,
-      riskLevel: 'LOW',
+      ...deriveSettingsImpact(draft),
       affectedComponents: Object.freeze(['settings-policy']),
       summaryDescription: `Applying ${Object.keys(draft).length} setting changes to project ${projectId}.`,
     });
@@ -1280,6 +1300,7 @@ export class PostgresSettingsRepository implements SettingsRepositoryPort {
           commandId: row.command_id,
           clientRequestId: row.client_request_id,
           idempotencyKey: input.idempotencyKey,
+          projectId: row.project_id,
           status: row.status as SettingsCommandResult['status'],
           appliedRevision: row.applied_revision ?? undefined,
           completedAt: row.completed_at ? row.completed_at.toISOString() : new Date().toISOString(),
@@ -1393,6 +1414,7 @@ export class PostgresSettingsRepository implements SettingsRepositoryPort {
         commandId: input.commandId,
         clientRequestId: input.clientRequestId,
         idempotencyKey: input.idempotencyKey,
+        projectId: input.projectId,
         status: 'APPLIED',
         appliedRevision: nextRev,
         completedAt: new Date().toISOString(),

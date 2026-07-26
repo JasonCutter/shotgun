@@ -21,17 +21,23 @@ import type {
   ProjectAdministrationRepositoryPort,
   UpdateProjectInput,
   ProjectLifecycleCommandInput,
-} from '../../../modules/project-administration/src/index.ts';
+} from '../../../modules/project-administration/src/index.js';
 import type {
   ApplySettingsCommandInput,
   ApplyPreferenceCommandInput,
   SettingsRepositoryPort,
-} from '../../../modules/settings-policy/src/index.ts';
+} from '../../../modules/settings-policy/src/index.js';
+import { deriveSettingsImpact } from '../../../modules/settings-policy/src/index.js';
 
 export class InMemoryProjectAdministrationRepository implements ProjectAdministrationRepositoryPort {
   private readonly projects = new Map<string, ProjectListItemView>();
 
-  constructor() {
+  constructor(
+    private readonly createOwnerMembership?: (input: {
+      readonly principalId: string;
+      readonly projectId: string;
+    }) => Promise<void>,
+  ) {
     // Seed default shotgun project
     const now = new Date().toISOString();
     this.projects.set('shotgun', {
@@ -91,6 +97,10 @@ export class InMemoryProjectAdministrationRepository implements ProjectAdministr
         canDelete: true,
         canManagePolicies: true,
       }),
+    });
+    await this.createOwnerMembership?.({
+      principalId: input.actorPrincipalId,
+      projectId: input.projectId,
     });
     this.projects.set(input.projectId, item);
     return item;
@@ -220,6 +230,7 @@ export class InMemoryProjectAdministrationRepository implements ProjectAdministr
 
 export class InMemorySettingsRepository implements SettingsRepositoryPort {
   private readonly preferences = new Map<string, Record<string, unknown>>();
+  private readonly preferenceRevisions = new Map<string, number>();
   private readonly projectRevisions = new Map<string, number>();
   private readonly projectSettings = new Map<string, Map<string, unknown>>();
   private readonly commands = new Map<string, SettingsCommandResult>();
@@ -234,6 +245,7 @@ export class InMemorySettingsRepository implements SettingsRepositoryPort {
       screenDensity: 'COMFORTABLE',
       reducedMotion: false,
     });
+    this.preferenceRevisions.set('principal-a', 1);
     this.projectRevisions.set('shotgun', 1);
   }
 
@@ -249,12 +261,24 @@ export class InMemorySettingsRepository implements SettingsRepositoryPort {
     );
   }
 
+  async getPrincipalPreferenceRevision(principalId: string): Promise<number> {
+    return this.preferenceRevisions.get(principalId) ?? 0;
+  }
+
   async updatePrincipalPreferences(
     input: ApplyPreferenceCommandInput,
   ): Promise<Record<string, unknown>> {
+    const currentRevision = await this.getPrincipalPreferenceRevision(input.principalId);
+    if (currentRevision !== input.expectedPreferenceRevision) {
+      throw new FrontendContractError(
+        'REVISION_CONFLICT',
+        `Expected preference revision ${input.expectedPreferenceRevision} but current is ${currentRevision}.`,
+      );
+    }
     const existing = await this.getPrincipalPreferences(input.principalId);
     const updated = { ...existing, ...input.preferences };
     this.preferences.set(input.principalId, updated);
+    this.preferenceRevisions.set(input.principalId, currentRevision + 1);
     return updated;
   }
 
@@ -434,28 +458,12 @@ export class InMemorySettingsRepository implements SettingsRepositoryPort {
       );
     }
 
-    let riskLevel: SettingsImpactPreview['riskLevel'] = 'LOW';
-    let requiresReview = false;
-    const requiresRestart = false;
-
-    if (
-      draft['privacy.sensitivityLevel'] !== undefined ||
-      draft['privacy.externalTransferAllowed'] !== undefined
-    ) {
-      riskLevel = 'HIGH';
-      requiresReview = true;
-    }
-    if (draft['models.defaultAnswerProfile'] !== undefined) {
-      riskLevel = 'MEDIUM';
-    }
+    const derived = deriveSettingsImpact(draft);
 
     return Object.freeze({
       targetProjectId: projectId,
       expectedRevision: expectedSettingsRevision,
-      requiresReview,
-      requiresMigration: false,
-      requiresRestart,
-      riskLevel,
+      ...derived,
       affectedComponents: Object.freeze(['settings-policy', 'ai-provider-router']),
       summaryDescription: `Applying ${Object.keys(draft).length} setting changes to project ${projectId}.`,
     });
@@ -504,6 +512,7 @@ export class InMemorySettingsRepository implements SettingsRepositoryPort {
         commandId: input.commandId,
         clientRequestId: input.clientRequestId,
         idempotencyKey: input.idempotencyKey,
+        projectId: input.projectId,
         status: 'REVIEW_REQUIRED',
         reviewProposalId: proposalId,
         completedAt: new Date().toISOString(),
@@ -525,6 +534,7 @@ export class InMemorySettingsRepository implements SettingsRepositoryPort {
         commandId: input.commandId,
         clientRequestId: input.clientRequestId,
         idempotencyKey: input.idempotencyKey,
+        projectId: input.projectId,
         status: 'APPLIED',
         appliedRevision: nextRev,
         completedAt: new Date().toISOString(),

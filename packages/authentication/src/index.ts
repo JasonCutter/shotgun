@@ -93,6 +93,12 @@ export type AuthRepositoryPort = {
   listApiTokens(principalId: string): Promise<readonly Omit<IssuedApiToken, 'token'>[]>;
   findMembership(principalId: string, projectId: string): Promise<ProjectMembership | undefined>;
   listMemberships(principalId: string): Promise<readonly ProjectMembership[]>;
+  createProjectOwnerMembership?(input: {
+    readonly principalId: string;
+    readonly projectId: string;
+    readonly scopes: readonly string[];
+    readonly sensitivityClearance: SecurityContext['sensitivity'];
+  }): Promise<void>;
   appendAudit(event: {
     readonly principalId?: string;
     readonly projectId?: string;
@@ -408,6 +414,21 @@ export class InMemoryAuthRepository implements AuthRepositoryPort {
         membership.principalId === principalId &&
         (!membership.expiresAt || Date.parse(membership.expiresAt) > Date.now()),
     );
+  }
+
+  async createProjectOwnerMembership(input: {
+    readonly principalId: string;
+    readonly projectId: string;
+    readonly scopes: readonly string[];
+    readonly sensitivityClearance: SecurityContext['sensitivity'];
+  }): Promise<void> {
+    this.#memberships.set(`${input.principalId}:${input.projectId}`, {
+      principalId: input.principalId,
+      projectId: input.projectId,
+      scopes: Object.freeze([...input.scopes]),
+      sensitivityClearance: input.sensitivityClearance,
+      isOwner: true,
+    });
   }
 
   async appendAudit(event: {

@@ -1,14 +1,28 @@
 import type { FastifyInstance } from 'fastify';
 import type { SecurityHeaders } from '../server.js';
 import type { SettingsRepositoryPort } from '../../../../modules/settings-policy/src/index.js';
-import { ShotgunError, FrontendContractError } from '../../../../packages/contracts/src/index.js';
+import type { FrontendCommandGatewayPort } from '../../../../modules/frontend-command-gateway/src/index.js';
+import {
+  ShotgunError,
+  SECTION2_FRONTEND_COMMAND_TYPES,
+  validateSection2FrontendCommandRequest,
+  type ApplyProjectPolicyCommandPayload,
+  type UpdatePreferenceCommandPayload,
+} from '../../../../packages/contracts/src/index.js';
 
 import type { ProjectAdministrationRepositoryPort } from '../../../../modules/project-administration/src/index.js';
 import type { AuthRepositoryPort } from '../../../../packages/authentication/src/index.js';
+import {
+  acceptSection2Command,
+  rejectAcceptedCommand,
+  requireRevisionPrecondition,
+  toProductApiCommandError,
+} from './frontend-command-route.js';
 
 export function registerSettingsRoutes(
   server: FastifyInstance,
   settingsRepo: SettingsRepositoryPort,
+  commandGateway: FrontendCommandGatewayPort,
   authRepo: AuthRepositoryPort,
   projectAdminRepo: ProjectAdministrationRepositoryPort,
   requireBrowserSession: (headers: Record<string, string | string[] | undefined>) => Promise<{
@@ -56,39 +70,75 @@ export function registerSettingsRoutes(
   server.get<{ Headers: SecurityHeaders }>('/api/v1/settings/preferences', async (request) => {
     const { context } = await requireBrowserSession(request.headers);
     const preferences = await settingsRepo.getPrincipalPreferences(context.principalId);
-    return { preferences };
+    const preferenceRevision = await settingsRepo.getPrincipalPreferenceRevision(
+      context.principalId,
+    );
+    return { preferences, preferenceRevision };
   });
 
-  server.post<{
-    Body: {
-      commandId: string;
-      clientRequestId: string;
-      idempotencyKey: string;
-      expectedPreferenceRevision: number;
-      preferences: Record<string, unknown>;
-    };
-    Headers: SecurityHeaders;
-  }>('/api/v1/settings/preferences', async (request) => {
-    const { context } = await requireBrowserSession(request.headers);
-    if (!request.body.commandId || !request.body.clientRequestId || !request.body.idempotencyKey) {
-      throw new ShotgunError({
-        code: 'VALIDATION_ERROR',
-        safeMessage: 'commandId, clientRequestId, and idempotencyKey are required.',
-        module: 'shotgun-app',
-        operation: 'update-principal-preferences',
-      });
-    }
-
-    const preferences = await settingsRepo.updatePrincipalPreferences({
-      commandId: request.body.commandId,
-      clientRequestId: request.body.clientRequestId,
-      idempotencyKey: request.body.idempotencyKey,
-      principalId: context.principalId,
-      expectedPreferenceRevision: request.body.expectedPreferenceRevision ?? 0,
-      preferences: request.body.preferences ?? {},
-    });
-    return { preferences };
-  });
+  server.post<{ Body: unknown; Headers: SecurityHeaders }>(
+    '/api/v1/settings/preferences',
+    async (request) => {
+      const { context } = await requireBrowserSession(request.headers);
+      try {
+        const decoded = validateSection2FrontendCommandRequest(
+          request.body,
+          SECTION2_FRONTEND_COMMAND_TYPES.updatePreference,
+        );
+        const expectedPreferenceRevision = requireRevisionPrecondition(decoded, {
+          purpose: 'TARGET',
+          resourceKind: 'principal-preferences',
+          resourceId: 'self',
+        });
+        const accepted = await acceptSection2Command({
+          rawRequest: decoded,
+          expectedCommandType: SECTION2_FRONTEND_COMMAND_TYPES.updatePreference,
+          principalId: context.principalId,
+          sessionActiveProjectId: context.projectId,
+          settingsRepository: settingsRepo,
+          commandGateway,
+        });
+        if (accepted.replayed) {
+          const preferences = await settingsRepo.getPrincipalPreferences(context.principalId);
+          const preferenceRevision = await settingsRepo.getPrincipalPreferenceRevision(
+            context.principalId,
+          );
+          return { outcome: accepted.outcome, preferences, preferenceRevision };
+        }
+        try {
+          const payload = accepted.request.payload as UpdatePreferenceCommandPayload;
+          const preferences = await settingsRepo.updatePrincipalPreferences({
+            commandId: accepted.outcome.commandId,
+            clientRequestId: accepted.request.clientRequestId,
+            idempotencyKey: accepted.request.idempotencyKey,
+            principalId: context.principalId,
+            expectedPreferenceRevision,
+            preferences: payload.preferences,
+          });
+          const preferenceRevision = await settingsRepo.getPrincipalPreferenceRevision(
+            context.principalId,
+          );
+          const outcome = await commandGateway.complete({
+            commandId: accepted.outcome.commandId,
+            producedResources: [
+              {
+                resourceKind: 'principal-preferences',
+                resourceId: 'self',
+                resourceRevision: String(preferenceRevision),
+              },
+            ],
+            completedAt: new Date().toISOString(),
+          });
+          return { outcome, preferences, preferenceRevision };
+        } catch (error) {
+          await rejectAcceptedCommand(commandGateway, accepted.outcome.commandId, error);
+          throw error;
+        }
+      } catch (error) {
+        throw toProductApiCommandError(error, 'update-principal-preferences');
+      }
+    },
+  );
 
   server.post<{
     Body: { targetProjectId?: string; draft: Record<string, unknown> };
@@ -149,86 +199,137 @@ export function registerSettingsRoutes(
     return { impact };
   });
 
-  server.post<{
-    Body: {
-      commandId: string;
-      clientRequestId: string;
-      idempotencyKey: string;
-      targetProjectId?: string;
-      expectedSettingsRevision: number;
-      observedPolicyContextRevision: number;
-      settings: Record<string, unknown>;
-    };
-    Headers: SecurityHeaders;
-  }>('/api/v1/settings/commands', async (request) => {
-    const { context } = await requireBrowserSession(request.headers);
-    const targetProjectId = request.body.targetProjectId ?? context.projectId;
+  server.post<{ Body: unknown; Headers: SecurityHeaders }>(
+    '/api/v1/settings/commands',
+    async (request) => {
+      const { context } = await requireBrowserSession(request.headers);
+      try {
+        const decoded = validateSection2FrontendCommandRequest(
+          request.body,
+          SECTION2_FRONTEND_COMMAND_TYPES.applyProjectPolicy,
+        );
+        const targetProjectId = decoded.projectContext.targetProjectId;
 
-    if (!request.body.commandId || !request.body.clientRequestId || !request.body.idempotencyKey) {
+        const membership = await authRepo.findMembership(context.principalId, targetProjectId);
+        if (!membership) {
+          throw new ShotgunError({
+            code: 'PROJECT_ACCESS_DENIED',
+            safeMessage: `You do not have access to project '${targetProjectId}'.`,
+            module: 'shotgun-app',
+            operation: 'apply-settings-command',
+          });
+        }
+        const hasEdit =
+          membership.isOwner ||
+          membership.scopes.includes('owner') ||
+          membership.scopes.includes('admin');
+        if (!hasEdit) {
+          throw new ShotgunError({
+            code: 'PROJECT_ACCESS_DENIED',
+            safeMessage: `You do not have permission to manage settings on project '${targetProjectId}'.`,
+            module: 'shotgun-app',
+            operation: 'apply-settings-command',
+          });
+        }
+
+        const projectDetail = await projectAdminRepo.getProjectDetails(targetProjectId);
+        if (!projectDetail || !projectDetail.capability.canManagePolicies) {
+          throw new ShotgunError({
+            code: 'VALIDATION_ERROR',
+            safeMessage: `You do not have permission to manage policies on this project.`,
+            module: 'shotgun-app',
+            operation: 'apply-settings-command',
+          });
+        }
+
+        const expectedSettingsRevision = requireRevisionPrecondition(decoded, {
+          purpose: 'TARGET',
+          resourceKind: 'project-settings',
+          resourceId: targetProjectId,
+        });
+        const expectedPolicyContextRevision = requireRevisionPrecondition(decoded, {
+          purpose: 'POLICY',
+          resourceKind: 'project-policy-context',
+          resourceId: targetProjectId,
+        });
+        const accepted = await acceptSection2Command({
+          rawRequest: decoded,
+          expectedCommandType: SECTION2_FRONTEND_COMMAND_TYPES.applyProjectPolicy,
+          principalId: context.principalId,
+          sessionActiveProjectId: context.projectId,
+          settingsRepository: settingsRepo,
+          commandGateway,
+        });
+        if (accepted.replayed) {
+          const result = await settingsRepo.getCommandStatus(accepted.outcome.commandId);
+          return { outcome: accepted.outcome, result };
+        }
+        try {
+          const payload = accepted.request.payload as ApplyProjectPolicyCommandPayload;
+          const result = await settingsRepo.applySettingsCommand({
+            commandId: accepted.outcome.commandId,
+            clientRequestId: accepted.request.clientRequestId,
+            idempotencyKey: accepted.request.idempotencyKey,
+            projectId: targetProjectId,
+            expectedSettingsRevision,
+            observedPolicyContextRevision: expectedPolicyContextRevision,
+            settings: payload.settings,
+            actorId: context.principalId,
+          });
+          const outcome = await commandGateway.complete({
+            commandId: accepted.outcome.commandId,
+            producedResources: result.appliedRevision
+              ? [
+                  {
+                    resourceKind: 'project-settings',
+                    resourceId: targetProjectId,
+                    resourceRevision: String(result.appliedRevision),
+                  },
+                ]
+              : [],
+            completedAt: new Date().toISOString(),
+          });
+          return { outcome, result };
+        } catch (error) {
+          await rejectAcceptedCommand(commandGateway, accepted.outcome.commandId, error);
+          throw error;
+        }
+      } catch (error) {
+        throw toProductApiCommandError(error, 'apply-settings-command');
+      }
+    },
+  );
+
+  server.get<{
+    Params: { clientRequestId: string };
+    Headers: SecurityHeaders;
+  }>('/api/v1/frontend-commands/by-client-request/:clientRequestId', async (request) => {
+    const { context } = await requireBrowserSession(request.headers);
+    const outcome = await commandGateway.findByClientRequestId(
+      context.principalId,
+      request.params.clientRequestId,
+    );
+    if (!outcome) {
       throw new ShotgunError({
-        code: 'VALIDATION_ERROR',
-        safeMessage: 'commandId, clientRequestId, and idempotencyKey are required.',
-        module: 'shotgun-app',
-        operation: 'apply-settings-command',
+        code: 'NOT_FOUND',
+        safeMessage: 'Command outcome not found.',
+        module: 'frontend-command-gateway',
+        operation: 'resolve-command-outcome',
       });
     }
-
-    const membership = await authRepo.findMembership(context.principalId, targetProjectId);
+    const membership = await authRepo.findMembership(
+      context.principalId,
+      outcome.acceptedProjectContext.targetProjectId,
+    );
     if (!membership) {
       throw new ShotgunError({
-        code: 'PROJECT_ACCESS_DENIED',
-        safeMessage: `You do not have access to project '${targetProjectId}'.`,
-        module: 'shotgun-app',
-        operation: 'apply-settings-command',
+        code: 'NOT_FOUND',
+        safeMessage: 'Command outcome not found.',
+        module: 'frontend-command-gateway',
+        operation: 'resolve-command-outcome',
       });
     }
-    const hasEdit =
-      membership.isOwner ||
-      membership.scopes.includes('owner') ||
-      membership.scopes.includes('admin');
-    if (!hasEdit) {
-      throw new ShotgunError({
-        code: 'PROJECT_ACCESS_DENIED',
-        safeMessage: `You do not have permission to manage settings on project '${targetProjectId}'.`,
-        module: 'shotgun-app',
-        operation: 'apply-settings-command',
-      });
-    }
-
-    const projectDetail = await projectAdminRepo.getProjectDetails(targetProjectId);
-    if (!projectDetail || !projectDetail.capability.canManagePolicies) {
-      throw new ShotgunError({
-        code: 'VALIDATION_ERROR',
-        safeMessage: `You do not have permission to manage policies on this project.`,
-        module: 'shotgun-app',
-        operation: 'apply-settings-command',
-      });
-    }
-
-    try {
-      const result = await settingsRepo.applySettingsCommand({
-        commandId: request.body.commandId,
-        clientRequestId: request.body.clientRequestId,
-        idempotencyKey: request.body.idempotencyKey,
-        projectId: targetProjectId,
-        expectedSettingsRevision: request.body.expectedSettingsRevision,
-        observedPolicyContextRevision: request.body.observedPolicyContextRevision ?? 0,
-        settings: request.body.settings ?? {},
-        actorId: context.principalId,
-      });
-
-      return { result };
-    } catch (err: unknown) {
-      if (err instanceof FrontendContractError && err.code === 'REVISION_CONFLICT') {
-        throw new ShotgunError({
-          code: 'CONFLICT',
-          safeMessage: err.message,
-          module: 'settings-policy',
-          operation: 'apply-settings-command',
-        });
-      }
-      throw err;
-    }
+    return { outcome };
   });
 
   server.get<{ Params: { commandId: string }; Headers: SecurityHeaders }>(

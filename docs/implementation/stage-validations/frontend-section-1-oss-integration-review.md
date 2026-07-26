@@ -11,7 +11,7 @@
 | ----------------------- | ---------------- | ----------------------- | ----------------------- | ---------------------------------------------- |
 | React                   | `ADOPT`          | `19.2.8`                | MIT                     | Component와 accessible Application Shell       |
 | Vite                    | `ADOPT`          | `8.1.5`                 | MIT                     | loopback 개발 서버, same-origin proxy, build   |
-| React Router Data Mode  | `ADOPT`          | `7.18.1`                | MIT                     | Session loader, 보호 Route, navigation         |
+| React Router Data Mode  | `ADOPT`          | `8.3.0`                 | MIT                     | Session loader, 보호 Route, navigation         |
 | TanStack Query          | `ADOPT`          | `5.101.4`               | MIT                     | Session query와 Project cache 격리             |
 | Vitest                  | `ADOPT`          | `4.1.10`                | MIT                     | Frontend workspace component test              |
 | React Testing Library   | `ADOPT`          | `16.3.2`                | MIT                     | Role·Accessible Name 중심 component test       |

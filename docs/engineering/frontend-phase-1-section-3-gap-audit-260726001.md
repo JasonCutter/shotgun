@@ -20,7 +20,7 @@ Product API routes, runtime decoders, Home Action Center, global feeds, global
 search, command palette, first-run readiness, full route guards, or responsive
 shell.
 
-Two current behaviors conflict with later governing decisions:
+Three current behaviors or contracts conflict with later governing decisions:
 
 1. The Settings Leave Guard and project selector block project switching for an
    `OUTCOME_UNKNOWN` command. ADR-104 requires preserving and warning about that
@@ -28,6 +28,10 @@ Two current behaviors conflict with later governing decisions:
 2. Primary navigation is a static list containing placeholder routes. Section 3
    requires server-provided feature and navigation availability and prohibits
    dead or inferred navigation.
+3. `FrontendCommandRequest 1.0.0` requires active and target Project IDs, and
+   `ProductSessionView 1.0.0` requires an active Project. Those contracts cannot
+   represent authenticated zero-project onboarding or principal-scoped Project
+   creation.
 
 No product code, schema, dependency, or migration was changed by this audit.
 The acceptance criteria in this document are candidates, not approved
@@ -54,6 +58,30 @@ The document review corrections are incorporated as follows:
 Proposed ADR-115 records the shared ownership, refresh, migration, OSS, Pinned,
 navigation, and `OUTCOME_UNKNOWN` boundaries. Candidate numbering remains
 AC-01–AC-27 and is not frozen.
+
+## PR #21 Final Ownership Corrections
+
+The final re-review corrections close three additional contract gaps without
+adding acceptance criteria:
+
+1. Notification read state is a principal presentation preference owned by
+   `SettingsRepository`, addressed as
+   `notification-presentation-state/self`, guarded by its presentation
+   revision, and retained as a cursor/read watermark or bounded exception set.
+   `NotificationSummaryProjectionPort` owns only the derived read view.
+2. Zero-project `project.create.v1` uses
+   `FrontendCommandRequest 2.0.0` with a discriminated
+   `scope: 'PRINCIPAL'`. The server derives bootstrap authorization and returns
+   the Project as a produced resource. Exact 1.0.0 decoding remains supported.
+   `ProductSessionView 2.0.0` represents `activeProject: null`; its 1.0.0
+   decoder also remains supported.
+3. `HomeActionCenterView` contains server resources only. The browser client
+   reads allowed local drafts into `BrowserDraftPresentationView` and composes
+   a separately labelled Continue Working group without server ranking,
+   automatic upload, or shared server-resource identity.
+
+Only AC-01, AC-09, AC-12, and AC-16 are clarified below. The count remains
+AC-01–AC-27.
 
 ## Canonical Sources
 
@@ -182,10 +210,12 @@ No implementation or runtime decoder was found for:
 - `ActionCenterItem`
 - `PrimaryActionView`
 - `ContinueWorkingItem`
+- `BrowserDraftPresentationView`
 - `RecentResourceView`
 - `PinnedResourceView`
 - `BackgroundSummaryView`
 - `NotificationSummaryView`
+- `NotificationPresentationStateView`
 - `GlobalWarningView`
 - `NavigationItemView`
 - `FeatureAvailabilityView`
@@ -193,6 +223,9 @@ No implementation or runtime decoder was found for:
 - `GlobalSearchResultView`
 - `FirstRunReadinessView`
 - `RouteGuardDecisionView`
+- `ProductSessionView 2.0.0`
+- `FrontendCommandRequest 2.0.0`
+- `FrontendProjectContextInputV2`
 
 There are no Section 3 Product API routes, projection ports, repositories, or
 API-client methods for those views.
@@ -247,6 +280,26 @@ API-client methods for those views.
   `ACCESS_RESTRICTED`, or `HIDDEN` behavior.
 - Implementation impact: Global Shell Product API and route-guard work must
   precede final navigation rendering.
+
+### C-03: current Project context cannot represent zero-project creation
+
+- Current statement: `FrontendCommandRequest 1.0.0` requires both
+  `activeProjectId` and `targetProjectId`; its validation, semantic digest, and
+  command ledger bind a target Project. `ProductSessionView 1.0.0` requires a
+  non-null active Project.
+- Governing requirement: an authenticated principal with zero accessible
+  projects must be able to create the first Project without fabricating Project
+  authority.
+- Conflict reason: no legitimate Project ID exists before creation, so the
+  current command/session shapes cannot encode the bootstrap state.
+- Required replacement: retain exact 1.0.0 decoding and add
+  `FrontendCommandRequest 2.0.0` with discriminated
+  `PRINCIPAL`/`PROJECT`/`RESOURCE` contexts plus
+  `ProductSessionView 2.0.0` for zero-project sessions.
+- Implementation impact: version dispatch, semantic digest, command ledger,
+  coordinator mapping, zero-project Project creation, produced-resource
+  outcomes, and compatibility tests must be implemented before first-run
+  acceptance.
 
 ## OUT_OF_SCOPE
 
@@ -395,6 +448,25 @@ The server creates `commandId`, computes the semantic digest, atomically
 validates typed preconditions and accepted authority contexts, and resolves
 `OUTCOME_UNKNOWN` through `clientRequestId` without automatic new-key retry.
 
+The existing `FrontendCommandRequest 1.0.0` decoder and behavior remain exact.
+The new 2.0.0 request uses this discriminated Project context:
+
+```text
+PRINCIPAL: activeProjectId optional; no targetProjectId
+PROJECT: activeProjectId and targetProjectId required
+RESOURCE: activeProjectId, targetProjectId, and resourceProjectId required
+```
+
+The semantic digest, command ledger, accepted context, and outcome lookup bind
+the normalized scope. A `PRINCIPAL` command binds the authenticated principal,
+command type, and normalized scope without a fabricated target Project. It maps
+to a project-bound internal envelope only after the Project Creation
+Coordinator accepts the server-owned produced-Project binding.
+
+`ProductSessionView 2.0.0` permits `activeProject: null` only with
+`accessibleProjects: []` and `PROJECT_READY: false`. The exact 1.0.0 decoder
+continues to represent project-active sessions.
+
 Global search is a read query, not a command. It uses a versioned
 `GlobalSearchRequest` body and a typed response decoder over HTTP `POST`.
 
@@ -404,7 +476,8 @@ The existing ownership boundaries should remain:
 
 - `AuthRepository`: principal, session, membership
 - `ProjectAdministrationRepository`: project metadata and lifecycle
-- `SettingsRepository`: settings and policy
+- `SettingsRepository`: settings, policy, Pin preference, and notification
+  presentation preference
 - `FrontendCommandGateway`: approved domain command entry
 
 Candidate read-side ports, subject to ADR and user approval:
@@ -414,14 +487,24 @@ Candidate read-side ports, subject to ADR and user approval:
 2. `ActionCenterProjectionPort`: primary actions, attention, continue working,
    recent, and pinned presentation.
 3. `BackgroundSummaryProjectionPort`: principal-global background summary.
-4. `NotificationSummaryProjectionPort`: principal-global notification
-   presentation and read state, separate from domain resolution.
+4. `NotificationSummaryProjectionPort`: principal-global derived notification
+   summary and revision, separate from read-state ownership and domain
+   resolution.
 5. `GlobalSearchPort`: typed cross-resource search, using the existing Stage 7
    search projection only through a Knowledge-result adapter.
 
-Pinned state is a principal presentation preference owned through the existing
-`SettingsRepository` boundary. Pin and notification presentation writes use the
-common `FrontendCommandGateway`.
+Pinned state and notification read state are principal presentation preferences
+owned through the existing `SettingsRepository` boundary. Notification state
+uses resource `notification-presentation-state/self`, a principal presentation
+revision precondition, and bounded cursor/watermark or exception retention. Its
+mark-read command changes no Attention or domain state. Pin and notification
+presentation writes use the common `FrontendCommandGateway`, which owns command
+execution/outcome rather than preference storage.
+
+Browser drafts remain browser/client-local presentation state. The server
+`HomeActionCenterView` and `ActionCenterProjectionPort` contain and rank server
+resources only; the client composes validated local drafts through
+`BrowserDraftPresentationView` as a separate group.
 
 These ports own derived read snapshots/revisions only. They do not own
 Canonical, domain resource, command, membership, policy, or credential data.
@@ -433,6 +516,11 @@ The proposed ADR-115 fixes the initial boundary as an Application
 Coordinator-based non-persistent read projection with no initial migration or
 new SSE infrastructure. Persistent projection storage requires measured need,
 a separate ADR, and an additive migration.
+
+Notification presentation state is not projection storage: it reuses
+`SettingsRepository`. If that repository cannot represent the bounded
+cursor/watermark contract, implementation must stop for a user-approved
+additive migration instead of silently adding a side store.
 
 ## OSS Findings
 
@@ -514,6 +602,12 @@ The following are no longer open interpretation choices in this plan:
 - Newly reviewed Section 3 runtime OSS remains `DEFER`.
 - Pinned state is a principal presentation preference through
   `SettingsRepository`.
+- Notification read state is a bounded principal presentation preference
+  through `SettingsRepository`; it is not owned by a projection port.
+- Browser drafts are composed in the client through
+  `BrowserDraftPresentationView`, outside the server Action Center snapshot.
+- Zero-project Project creation uses a principal-scoped 2.0.0 command and a
+  server-produced Project resource while exact 1.0.0 decoders remain supported.
 - Navigation uses the five Canonical availability values.
 
 ## Candidate Acceptance Criteria
@@ -522,9 +616,12 @@ The following are **unapproved candidates**. They are not Canonical and may not
 be used to claim completion until explicitly approved.
 
 1. **AC-01 — Typed Product API and writes**: all Section 3 views are versioned
-   and runtime-decoded; unknown schema and unsafe enum values fail closed. Every
-   Section 3 browser write uses a complete `FrontendCommandRequest`, the fixed
-   command registry, server-created `commandId`, semantic digest, typed
+   and runtime-decoded; unknown schema and unsafe enum values fail closed. Exact
+   `ProductSessionView` and `FrontendCommandRequest` 1.0.0 decoders remain
+   supported while exact 2.0.0 decoders add zero-project session state and
+   discriminated `PRINCIPAL`/`PROJECT`/`RESOURCE` Project context. Every
+   Section 3 browser write uses a complete versioned request, the fixed command
+   registry, server-created `commandId`, scope-bound semantic digest, typed
    preconditions, decoded `FrontendCommandOutcomeView`, and
    `clientRequestId`-based `OUTCOME_UNKNOWN` recovery.
 2. **AC-02 — Server-authoritative shell**: `GlobalShellView` supplies session,
@@ -553,13 +650,15 @@ be used to claim completion until explicitly approved.
 8. **AC-08 — Attention Queue**: the server supplies persistent, ranked items
    with stable ID, priority, reason, project/resource reference, route,
    timestamps, capabilities, and visibility.
-9. **AC-09 — Continue Working**: approved restorable browser drafts and server
-   resources may appear. Every item declares `origin` as `BROWSER_DRAFT` or
-   `SERVER_RESOURCE` plus project binding, sensitivity, revision, expiry, and
-   availability. Settings drafts, already-submitted command forms,
-   `OUTCOME_UNKNOWN` resubmission states, inaccessible resources, and expired
-   downloads are excluded. A browser draft is never presented as a
-   server-ranked resource.
+9. **AC-09 — Continue Working**: `HomeActionCenterView` contains only
+   authorized server resources, server ranking, and server-resource identity.
+   The browser client validates approved restorable local drafts for project,
+   session, sensitivity, revision, expiry, and availability through
+   `BrowserDraftPresentationView`, then composes a separately labelled group.
+   Settings drafts, already-submitted command forms, `OUTCOME_UNKNOWN`
+   resubmission states, inaccessible resources, and expired downloads are
+   excluded. A browser draft is never server-ranked, automatically uploaded, or
+   assigned an identity reused by a server-resource item.
 10. **AC-10 — Recent/Pinned**: items are project-bound, reauthorized,
     sensitivity-masked, retirement-aware, and safely labelled across projects;
     pinning changes only the principal presentation preference through
@@ -567,9 +666,13 @@ be used to claim completion until explicitly approved.
 11. **AC-11 — Global Background**: a revisioned, explicitly scoped,
     principal-global view returns minimal typed references for accessible
     projects.
-12. **AC-12 — Global Notification**: notification presentation/read state is
-    separate from resolving the underlying domain issue and contains no full
-    domain payload.
+12. **AC-12 — Global Notification**: notification read state is a principal
+    presentation preference owned by `SettingsRepository`, addressed as
+    `notification-presentation-state/self`, checked against its presentation
+    revision, and stored as a cursor/read watermark or bounded exception set.
+    `NotificationSummaryProjectionPort` owns only the derived summary.
+    Mark-read changes no Attention or domain state, and the summary contains no
+    full domain payload.
 13. **AC-13 — Global Warning**: server/policy priority selects one leading
     warning and summarizes additional states without unbounded banner stacking.
 14. **AC-14 — Global Search**: `POST /product-api/frontend/search/query` accepts
@@ -583,10 +686,13 @@ be used to claim completion until explicitly approved.
     dialog/combobox, keyboard, announcement, focus-restore, and IME checks.
 16. **AC-16 — First-run readiness**: readiness comes from a server view that
     distinguishes required from optional capabilities. Zero accessible projects
-    is a valid authenticated first-run state with `SESSION_READY: true`,
-    `PROJECT_READY: false`, `activeProject: null`, `accessibleProjects: []`, no
-    Home Action Center query, and Project creation onboarding at
-    `/settings/projects`.
+    is a valid authenticated `ProductSessionView 2.0.0` state with
+    `SESSION_READY: true`, `PROJECT_READY: false`, `activeProject: null`,
+    `accessibleProjects: []`, no Home Action Center query, and Project creation
+    onboarding at `/settings/projects`. `project.create.v1` uses
+    `FrontendCommandRequest 2.0.0` with `scope: 'PRINCIPAL'`, server-derived
+    bootstrap authorization, and a produced Project resource; the server then
+    establishes the active Project through its authoritative session flow.
 17. **AC-17 — Route guard**: the server computes resource existence, resource
     project, membership, scope, sensitivity, feature availability, and
     existence masking into a final `RouteGuardDecisionView`. The browser checks

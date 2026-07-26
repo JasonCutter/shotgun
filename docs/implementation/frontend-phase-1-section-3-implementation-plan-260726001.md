@@ -73,18 +73,18 @@ measurement, not an implementation entry condition.
 The candidate definitions remain in the gap audit and are not frozen. This plan
 links every candidate without changing the AC-01–AC-27 count:
 
-| Candidate AC | Implementation plan area                                                                              |
-| ------------ | ----------------------------------------------------------------------------------------------------- |
-| AC-01        | Product API views, runtime decoders, presentation command registry, and common browser-write contract |
-| AC-02–AC-03  | Server-authoritative Global Shell and responsive navigation                                           |
-| AC-04–AC-05  | Active-project switch and resource-project binding                                                    |
-| AC-06–AC-13  | Home structure, actions, Attention, Continue Working, Recent/Pinned, global summaries, and warning    |
-| AC-14–AC-15  | Protected global search and navigation-only command palette                                           |
-| AC-16–AC-18  | Zero-project first run, server route-guard decision, and deep-link recovery                           |
-| AC-19–AC-21  | Offline/degraded behavior, cache isolation, and projection ownership                                  |
-| AC-22–AC-24  | Security, accessibility, and staged performance gate                                                  |
-| AC-25–AC-26  | Required automated gates and browser E2E                                                              |
-| AC-27        | Separate Frontend Phase 1 completion judgment                                                         |
+| Candidate AC | Implementation plan area                                                                                |
+| ------------ | ------------------------------------------------------------------------------------------------------- |
+| AC-01        | Product API views, retained 1.0.0 decoders, 2.0.0 Project context, registry, and browser-write contract |
+| AC-02–AC-03  | Server-authoritative Global Shell and responsive navigation                                             |
+| AC-04–AC-05  | Active-project switch and resource-project binding                                                      |
+| AC-06–AC-13  | Home server snapshot, client draft composition, actions, Recent/Pinned, global summaries, and warning   |
+| AC-14–AC-15  | Protected global search and navigation-only command palette                                             |
+| AC-16–AC-18  | Zero-project session/bootstrap command, server route guard, and deep-link recovery                      |
+| AC-19–AC-21  | Offline/degraded behavior, cache isolation, and projection ownership                                    |
+| AC-22–AC-24  | Security, accessibility, and staged performance gate                                                    |
+| AC-25–AC-26  | Required automated gates and browser E2E                                                                |
+| AC-27        | Separate Frontend Phase 1 completion judgment                                                           |
 
 ## Architecture
 
@@ -127,6 +127,7 @@ dependency is introduced.
 
 ### Global Shell
 
+- `ProductSessionView 2.0.0` with retained 1.0.0 decoder
 - `GlobalShellView`
 - `NavigationItemView`
 - `FeatureAvailabilityView`
@@ -141,6 +142,7 @@ dependency is introduced.
 - `PrimaryActionView`
 - `ActionCenterItem`
 - `ContinueWorkingItem`
+- `BrowserDraftPresentationView`
 - `RecentResourceView`
 - `PinnedResourceView`
 
@@ -153,8 +155,11 @@ dependency is introduced.
 
 ### Browser writes
 
-- `FrontendCommandRequest`
+- retained `FrontendCommandRequest 1.0.0`
+- `FrontendCommandRequest 2.0.0`
+- `FrontendProjectContextInputV2`
 - `FrontendCommandOutcomeView`
+- `NotificationPresentationStateView`
 - `notification.presentation.mark-read.v1`
 - `presentation.pin.upsert.v1`
 - `presentation.pin.remove.v1`
@@ -169,6 +174,20 @@ The browser supplies `clientRequestId` and `idempotencyKey`, never `commandId`.
 The server creates `commandId`, computes the semantic digest, atomically checks
 typed preconditions and accepted authority contexts, and resolves
 `OUTCOME_UNKNOWN` through `clientRequestId`.
+
+`FrontendCommandRequest 2.0.0` adds a discriminated Project context:
+
+```text
+PRINCIPAL: principal/bootstrap command; activeProjectId optional
+PROJECT: activeProjectId and targetProjectId required
+RESOURCE: activeProjectId, targetProjectId, and resourceProjectId required
+```
+
+The current 1.0.0 shape requires Project IDs, so its exact decoder and behavior
+remain supported while an exact 2.0.0 decoder is added. Semantic digest, ledger
+lookup, accepted context, and outcome resolution bind to the normalized
+discriminated scope. A principal-scoped request never fabricates a target
+Project.
 
 ## Candidate Modules and Ports
 
@@ -188,7 +207,8 @@ Final module names require ADR approval. Candidate responsibilities are:
 ### `ActionCenterProjectionPort`
 
 - Reads: approved resource summaries and domain-provided action candidates
-- Owns: server-ranked presentation snapshot, stable item identity, and revision
+- Owns: server-ranked presentation snapshot, server-resource item identity, and
+  revision
 - Does not own: domain resource state or command execution
 - Dependency direction: projection adapter toward typed domain summary ports
 - Transaction boundary: no cross-domain writes
@@ -202,8 +222,10 @@ Final module names require ADR approval. Candidate responsibilities are:
 
 ### `NotificationSummaryProjectionPort`
 
-- Reads: authorized notification projections and presentation/read state
-- Owns: notification presentation state, not domain issue resolution
+- Reads: authorized notification projections plus principal presentation state
+  from `SettingsRepository`
+- Owns: derived non-persistent summary view and revision only
+- Does not own: notification read state or domain issue resolution
 - Excludes: raw domain payloads and inferred resolution
 
 ### `GlobalSearchPort`
@@ -220,11 +242,13 @@ Final module names require ADR approval. Candidate responsibilities are:
 | ---------------------------------------------- | -------------------------- | -------------------------------------------------- |
 | Session, principal, membership                 | Auth                       | Read through authorized view                       |
 | Project metadata/lifecycle                     | Project Administration     | Read safe labels and availability                  |
-| Settings and policy                            | Settings                   | Read derived feature/readiness policy              |
+| Settings and policy                            | `SettingsRepository`       | Read derived feature/readiness policy              |
 | Canonical/source/domain resources              | Owning domain modules      | Read typed minimal summaries                       |
 | Command execution/outcome                      | Owning command modules     | Navigate; never duplicate execution                |
 | Shell/action/background/notification snapshots | Candidate projection layer | Derived, revisioned, replaceable                   |
-| Pin presentation preference                    | Settings                   | Principal preference; no domain/Canonical mutation |
+| Pin presentation preference                    | `SettingsRepository`       | Principal preference; no domain/Canonical mutation |
+| Notification read presentation                 | `SettingsRepository`       | Principal cursor/watermark or bounded exceptions   |
+| Browser draft presentation                     | Browser/client local state | Separately labelled group; never server ranked     |
 
 No OSS type, database identifier, or internal schema becomes a shared
 Canonical/Product API identifier.
@@ -241,6 +265,7 @@ POST /product-api/frontend/search/query
 POST /product-api/frontend/notifications/:id/read
 POST /product-api/frontend/pins
 DELETE /product-api/frontend/pins/:id
+POST /api/v1/projects
 ```
 
 Constraints:
@@ -256,8 +281,18 @@ Constraints:
   semantic digest, typed preconditions, idempotency, decoded
   `FrontendCommandOutcomeView`, and `clientRequestId`-based
   `OUTCOME_UNKNOWN` recovery.
+- `notification.presentation.mark-read.v1` uses `scope: 'PRINCIPAL'`, targets
+  `notification-presentation-state/self`, and checks the principal notification
+  presentation revision. It changes no Attention or domain state.
+- Notification read state is retained as a server cursor/read watermark or
+  bounded exception set; unbounded per-notification storage is prohibited.
 - Pinning and notification read state cannot resolve or mutate underlying
   domain truth.
+- Zero-project `project.create.v1` uses
+  `FrontendCommandRequest 2.0.0` with `scope: 'PRINCIPAL'`. The server derives
+  principal/bootstrap authorization and returns the created Project as a
+  produced resource; it does not require or trust a fabricated Project ID as
+  browser authority.
 - Routes never trust `X-Project-Id` or equivalent client authority.
 - External URLs are not accepted as arbitrary `targetRoute` values.
 
@@ -315,7 +350,8 @@ automatically.
 
 ### Home
 
-Render these regions in one typed snapshot:
+Render the six regions from one server-authoritative
+`HomeActionCenterView`:
 
 1. project state
 2. Primary Actions
@@ -327,12 +363,16 @@ Render these regions in one typed snapshot:
 Every region supports loading, empty, unavailable, stale, and error states
 without turning missing server data into an enabled action.
 
-Continue Working accepts both approved restorable browser drafts and server
-resources. Each item declares `origin` as `BROWSER_DRAFT` or
-`SERVER_RESOURCE`, plus project binding, sensitivity, revision, expiry, and
-availability. Settings drafts, submitted command forms, `OUTCOME_UNKNOWN`
-resubmission states, inaccessible resources, and expired downloads are
-excluded. Browser drafts are never represented as server-ranked resources.
+The server snapshot contains only server resources, server ranking, and server
+availability. The client presentation layer separately reads allowed local
+drafts into `BrowserDraftPresentationView` after validating project, session,
+sensitivity, revision, expiry, and availability. It composes them as a
+separately labelled Continue Working group.
+
+Settings drafts, submitted command forms, `OUTCOME_UNKNOWN` resubmission states,
+inaccessible resources, and expired downloads are excluded. Browser drafts are
+never inserted into server ranking, automatically uploaded, or assigned a
+stable ID reused by a server-resource item.
 
 ### Global search and command palette
 
@@ -375,6 +415,14 @@ to `SESSION_REQUIRED`, `NOT_FOUND`, or `BACKEND_UNAVAILABLE`. Optional
 model/connector absence disables dependent features rather than falsifying
 unrelated readiness. Actual settings changes occur in `/settings`.
 
+This requires `ProductSessionView 2.0.0`, whose decoder permits
+`activeProject: null` only with an empty accessible-project list and
+`PROJECT_READY: false`; the existing 1.0.0 decoder remains supported for
+project-active sessions. Project creation uses `project.create.v1` inside
+`FrontendCommandRequest 2.0.0` with `scope: 'PRINCIPAL'`. The outcome returns
+the Project as a produced resource, after which the server establishes the
+active Project through the existing server-authoritative session flow.
+
 ## Cache
 
 ### Home/project views
@@ -413,6 +461,9 @@ Rules:
    approved bounded polling. Snapshot queries remain authoritative; no new SSE
    infrastructure is introduced.
 6. Search queries and server data are not persisted in browser storage.
+7. Notification summaries include the principal notification presentation
+   revision and refetch after a mark-read outcome; retention uses a bounded
+   cursor/watermark contract rather than unbounded notification IDs.
 
 ## Security
 
@@ -471,11 +522,16 @@ conditions.
 
 ### Contract
 
-- runtime decoder acceptance/rejection
-- schema-version and unknown-enum failure
+- retained 1.0.0 and exact 2.0.0 session/command decoder
+  acceptance/rejection
+- schema/envelope-version dispatch and unknown-enum failure
 - scope/revision consistency
 - complete `FrontendCommandRequest` and `FrontendCommandOutcomeView` handling
+- `PRINCIPAL`/`PROJECT`/`RESOURCE` validation and semantic-digest separation
 - presentation command registry and server-generated `commandId`
+- notification presentation owner, revision precondition, cursor/watermark
+  retention, and no-domain-effect contract
+- `BrowserDraftPresentationView` local-only origin and identity contract
 - search read-query transport and query protection
 - `RouteGuardDecisionView` authority split
 - route registry validation
@@ -488,6 +544,8 @@ conditions.
 - cache invalidation/revision replay
 - notification-read versus domain-resolution separation
 - pin preference versus domain/Canonical separation
+- principal-scoped `project.create.v1`, server-derived bootstrap authority,
+  produced resource, and active-project establishment
 - presentation-write semantic digest, typed precondition, idempotency, and
   `clientRequestId` outcome recovery
 - focus refetch, explicit refresh, and bounded-poll snapshot behavior
@@ -510,8 +568,10 @@ conditions.
 - non-optimistic project switch
 - browser-draft guard and `OUTCOME_UNKNOWN` warning-without-block
 - all Home states
-- browser-draft/server-resource Continue Working origin separation
-- zero-project first-run onboarding
+- browser-draft separate-group composition, local validation, and
+  no-upload/no-server-ranking behavior
+- zero-project session, first-run onboarding, Project creation, and resulting
+  active-project establishment
 - server-decoded route-guard decisions
 - search/palette/readiness/guard/offline behavior
 - cache isolation and purging
@@ -550,7 +610,15 @@ task.
 
 The initial implementation uses an Application Coordinator over existing read
 ports with explicit watermarks and no persistent projection storage. It adds no
-database migration.
+database migration for the read projections.
+
+Pin and notification presentation preferences use the existing
+`SettingsRepository`. The initial notification design must fit its existing
+storage as a bounded cursor/read watermark or bounded exception set. If the
+repository cannot represent that contract, implementation stops: it must not
+create an unreviewed side store or an unbounded per-notification table. A
+user-approved additive migration and rollback plan are required before
+continuing.
 
 Persistent shell/action/background/notification projections may be considered
 later only when measured performance, replay, recovery, or stable-identity
@@ -564,7 +632,7 @@ domain, Canonical, command, or Settings preference data.
 Each commit must remain independently reviewable and gated:
 
 1. `docs: approve section 3 contracts and ADR-115`
-2. `feat(contracts): add section 3 product views and decoders`
+2. `feat(contracts): add section 3 views, retained v1 decoders, and v2 scope`
 3. `feat(api): add authorized section 3 projections`
 4. `feat(client): add section 3 api decoding and cache boundaries`
 5. `feat(web): add responsive global shell`
@@ -590,6 +658,9 @@ authorized by this candidate plan.
 | Palette reranks or executes unsafe work                        | Preserve server order; navigation-only command registry                  |
 | List performance damages accessibility                         | Server caps first; measured, replaceable virtualization                  |
 | New projection schema cannot roll back                         | Additive storage, rebuild path, feature disable, no domain-data deletion |
+| Notification read state has no owner or grows without bound    | Settings-owned principal watermark/cursor with bounded exceptions        |
+| Browser draft enters server ranking or gains a server identity | Separate local `BrowserDraftPresentationView` composition                |
+| Zero-project creation fabricates Project authority             | Principal-scoped v2 request; server-produced Project resource            |
 
 ## Rollback
 
@@ -602,7 +673,9 @@ Rollback must:
 4. retain domain and Canonical data
 5. retain or rebuild additive projections rather than destructively deleting
    source state
-6. revert any adopted OSS through Shotgun-owned component/port boundaries
+6. retain Pin and notification presentation preferences in
+   `SettingsRepository`
+7. revert any adopted OSS through Shotgun-owned component/port boundaries
 
 ## Completion Evidence
 
@@ -611,7 +684,13 @@ Section 3 can be proposed for completion only with:
 - approved AC and immutable contract snapshot
 - approved ADR-115 ownership/cache boundary
 - implementation scope and explicit exclusions
-- Product API schemas and decoder evidence
+- Product API schemas, retained 1.0.0 compatibility, exact 2.0.0
+  session/command dispatch, and decoder evidence
+- principal/project/resource scope, zero-project creation, and produced-resource
+  evidence
+- bounded notification presentation retention and no-domain-effect evidence
+- separate browser-draft client composition and no-upload/no-server-ranking
+  evidence
 - module/port/data ownership evidence
 - exact OSS version/commit/license/security/maintenance decisions
 - contract, architecture, security-negative, replacement, accessibility,

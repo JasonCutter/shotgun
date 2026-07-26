@@ -9,12 +9,16 @@ import type {
   SecurityContext,
 } from './types.js';
 
+type NodeCryptoUuidSubset = {
+  readonly randomUUID: () => string;
+};
+
 const generateUUID = (): string => {
   if (typeof globalThis !== 'undefined' && globalThis.crypto?.randomUUID) {
     return globalThis.crypto.randomUUID();
   }
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const nodeCrypto = require('node:crypto') as typeof import('node:crypto');
+  const nodeCrypto = require('node:crypto') as NodeCryptoUuidSubset;
   return nodeCrypto.randomUUID();
 };
 

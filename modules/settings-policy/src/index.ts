@@ -13,6 +13,54 @@ import type {
   ProductFeatureView,
 } from '../../../packages/contracts/src/index.js';
 
+export const deriveSettingsImpact = (
+  draft: Record<string, unknown>,
+): Pick<
+  SettingsImpactPreview,
+  | 'applicationMode'
+  | 'riskLevel'
+  | 'requiresConfirmation'
+  | 'requiresReview'
+  | 'requiresMigration'
+  | 'requiresRestart'
+  | 'affectedResources'
+  | 'retrospectiveEffect'
+> => {
+  const keys = Object.keys(draft);
+  const hasSchemaChange = keys.some((key) => key.startsWith('schema.'));
+  const hasPrivacyReduction = keys.some(
+    (key) =>
+      key === 'privacy.sensitivityLevel' ||
+      key === 'privacy.retentionDays' ||
+      key === 'privacy.externalTransferAllowed',
+  );
+  const hasHardBudget = keys.includes('costs.monthlyHardLimitUsd');
+  const hasModelRouting = keys.some((key) => key.startsWith('models.'));
+  const requiresMigration = hasSchemaChange;
+  const requiresReview = hasPrivacyReduction;
+  const requiresConfirmation = hasHardBudget || hasModelRouting;
+  return {
+    applicationMode: requiresMigration
+      ? 'MIGRATION_REQUIRED'
+      : requiresReview
+        ? 'REVIEW_REQUIRED'
+        : requiresConfirmation
+          ? 'CONFIRM_REQUIRED'
+          : 'IMMEDIATE',
+    riskLevel:
+      hasPrivacyReduction || hasSchemaChange ? 'HIGH' : requiresConfirmation ? 'MEDIUM' : 'LOW',
+    requiresConfirmation,
+    requiresReview,
+    requiresMigration,
+    requiresRestart: false,
+    affectedResources: keys.map((key) => `setting/${key}`),
+    retrospectiveEffect:
+      hasPrivacyReduction && keys.includes('privacy.retentionDays')
+        ? 'Existing retained material may require policy-governed cleanup review.'
+        : 'NONE',
+  };
+};
+
 export type ApplySettingsCommandInput = {
   readonly commandId: string;
   readonly clientRequestId: string;
@@ -36,6 +84,7 @@ export type ApplyPreferenceCommandInput = {
 export type SettingsRepositoryPort = {
   getSettingsSnapshot(projectId: string): Promise<SettingsSnapshot>;
   getPrincipalPreferences(principalId: string): Promise<Record<string, unknown>>;
+  getPrincipalPreferenceRevision(principalId: string): Promise<number>;
   updatePrincipalPreferences(input: ApplyPreferenceCommandInput): Promise<Record<string, unknown>>;
   validateSettingsDraft(
     projectId: string,

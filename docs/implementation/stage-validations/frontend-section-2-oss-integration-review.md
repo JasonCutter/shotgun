@@ -61,7 +61,10 @@
 
 - The five installed packages above are exact lockfile pins; production use of `latest`, an unpinned branch, or an automatic major upgrade is prohibited.
 - License values were checked from installed package metadata and official repositories. WAI-ARIA/focus-trap licenses are reference-candidate metadata and do not add shipped code.
-- Security evidence is the current run of `npm audit --audit-level=high`, repository secret scanning, OSS registry verification, and generated SBOM. Results remain pending until the commands are executed for the final working tree.
+- Security evidence includes successful CI Run
+  [`30184330373`](https://github.com/JasonCutter/shotgun/actions/runs/30184330373) for the
+  previous reviewed head, plus the audit, secret scan, OSS registry verification, and SBOM
+  commands recorded for each subsequent final working tree in the Draft PR evidence.
 - Maintenance recheck triggers: package major upgrade, abandoned release/security response, SSR introduction, database driver replacement, or a dialog accessibility finding.
 
 ## Migration·Rollback

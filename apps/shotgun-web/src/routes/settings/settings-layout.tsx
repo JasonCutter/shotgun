@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAppRuntime } from '../../app/providers.js';
 import { sessionQueryOptions } from '../../session/session-query.js';
 import { ProjectSelector } from '../../session/project-selector.js';
+import { useAccessibleDialog } from '../../app/use-accessible-dialog.js';
 
 export const SettingsLayout = () => {
   const { apiClient } = useAppRuntime();
@@ -17,8 +18,16 @@ export const SettingsLayout = () => {
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState<(() => void) | null>(null);
   const [confirmMessage, setConfirmMessage] = useState('');
+  const closeConfirmation = () => setConfirmModalOpen(false);
+  const confirmationDialog = useAccessibleDialog({
+    open: confirmModalOpen,
+    onClose: closeConfirmation,
+  });
 
   const requestConfirmation = (message: string, action: () => void) => {
+    confirmationDialog.captureInvoker(
+      document.activeElement instanceof HTMLElement ? document.activeElement : null,
+    );
     setConfirmMessage(message);
     setConfirmAction(() => action);
     setConfirmModalOpen(true);
@@ -26,7 +35,7 @@ export const SettingsLayout = () => {
 
   const handleConfirm = () => {
     if (confirmAction) confirmAction();
-    setConfirmModalOpen(false);
+    closeConfirmation();
   };
 
   return (
@@ -236,6 +245,10 @@ export const SettingsLayout = () => {
         <div
           role="dialog"
           aria-modal="true"
+          aria-labelledby="settings-confirm-dialog-title"
+          ref={confirmationDialog.dialogRef}
+          tabIndex={-1}
+          onKeyDown={confirmationDialog.onDialogKeyDown}
           className="modal-overlay"
           style={{
             position: 'fixed',
@@ -257,7 +270,7 @@ export const SettingsLayout = () => {
               width: '100%',
             }}
           >
-            <h3>Confirm Action</h3>
+            <h3 id="settings-confirm-dialog-title">Confirm Action</h3>
             <p>{confirmMessage}</p>
             <div
               style={{
@@ -267,11 +280,7 @@ export const SettingsLayout = () => {
                 marginTop: '20px',
               }}
             >
-              <button
-                type="button"
-                onClick={() => setConfirmModalOpen(false)}
-                style={{ padding: '8px 16px' }}
-              >
+              <button type="button" onClick={closeConfirmation} style={{ padding: '8px 16px' }}>
                 Cancel
               </button>
               <button

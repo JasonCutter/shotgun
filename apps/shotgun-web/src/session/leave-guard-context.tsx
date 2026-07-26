@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 
 import type { WorkspaceLeaveGuard, WorkspaceLeaveState } from '@shotgun/api-client';
 
@@ -22,14 +22,14 @@ const LeaveGuardContext = createContext<LeaveGuardContextValue>({
 export const LeaveGuardProvider = ({ children }: { readonly children: ReactNode }) => {
   const [guards, setGuards] = useState<readonly WorkspaceLeaveGuard[]>([]);
 
-  const registerLeaveGuard = (guard: WorkspaceLeaveGuard) => {
+  const registerLeaveGuard = useCallback((guard: WorkspaceLeaveGuard) => {
     setGuards((prev) => [...prev, guard]);
     return () => {
       setGuards((prev) => prev.filter((g) => g !== guard));
     };
-  };
+  }, []);
 
-  const getLeaveState = (): WorkspaceLeaveState => {
+  const getLeaveState = useCallback((): WorkspaceLeaveState => {
     if (guards.length === 0) return DEFAULT_LEAVE_STATE;
 
     let canLeaveCurrentContext = true;
@@ -51,13 +51,14 @@ export const LeaveGuardProvider = ({ children }: { readonly children: ReactNode 
       hasBlockingDialog,
       hasOutcomeUnknownCommand,
     };
-  };
+  }, [guards]);
 
-  return (
-    <LeaveGuardContext.Provider value={{ getLeaveState, registerLeaveGuard }}>
-      {children}
-    </LeaveGuardContext.Provider>
+  const value = useMemo(
+    () => ({ getLeaveState, registerLeaveGuard }),
+    [getLeaveState, registerLeaveGuard],
   );
+
+  return <LeaveGuardContext.Provider value={value}>{children}</LeaveGuardContext.Provider>;
 };
 
 export const useLeaveGuard = (): LeaveGuardContextValue => useContext(LeaveGuardContext);

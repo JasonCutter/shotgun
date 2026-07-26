@@ -5,12 +5,15 @@ import type {
   SettingsValidationResult,
   SettingsImpactPreview,
   SettingsCommandResult,
+  FrontendCommandOutcomeView,
+  FrontendCommandMutationResponse,
 } from '@shotgun/api-client';
 import { useLeaveGuard } from './leave-guard-context.js';
 
 export type SettingsDraftController = {
   readonly state: SettingsDraftState;
   readonly targetProjectId: string;
+  readonly activeProjectId: string;
   readonly expectedSettingsRevision: number;
   readonly observedPolicyContextRevision: number;
   readonly draft: Record<string, unknown>;
@@ -39,17 +42,21 @@ export type SettingsDraftController = {
   }) => Promise<SettingsImpactPreview | null>;
   readonly applyCommand: (apiClient: {
     applySettingsCommand: (params: {
-      commandId: string;
+      activeProjectId: string;
+      targetProjectId: string;
+      resourceProjectId: string;
       clientRequestId: string;
       idempotencyKey: string;
       expectedSettingsRevision: number;
       observedPolicyContextRevision: number;
       settings: Record<string, unknown>;
-      targetProjectId?: string;
-    }) => Promise<SettingsCommandResult>;
+    }) => Promise<FrontendCommandMutationResponse<SettingsCommandResult>>;
     getSettingsCommandStatus: (commandId: string) => Promise<SettingsCommandResult>;
   }) => Promise<SettingsCommandResult>;
   readonly recoverOutcomeUnknown: (apiClient: {
+    getFrontendCommandOutcomeByClientRequestId: (
+      clientRequestId: string,
+    ) => Promise<FrontendCommandOutcomeView>;
     getSettingsCommandStatus: (commandId: string) => Promise<SettingsCommandResult>;
   }) => Promise<SettingsCommandResult | null>;
   readonly markStale: (newServerRevision: number) => void;
@@ -57,8 +64,10 @@ export type SettingsDraftController = {
 
 export const useSettingsDraft = (
   snapshot: SettingsSnapshot | null | undefined,
+  sessionActiveProjectId?: string,
 ): SettingsDraftController => {
   const targetProjectId = snapshot?.targetProjectId ?? '';
+  const activeProjectId = sessionActiveProjectId ?? targetProjectId;
   const expectedSettingsRevision = snapshot?.settingsRevision ?? 1;
   const observedPolicyContextRevision = snapshot?.policyContextRevision ?? expectedSettingsRevision;
 
@@ -70,7 +79,6 @@ export const useSettingsDraft = (
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [clientRequestId, setClientRequestId] = useState<string | null>(null);
   const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null);
-  const [activeCommandId, setActiveCommandId] = useState<string | null>(null);
 
   const isDirty = useMemo(() => Object.keys(draft).length > 0, [draft]);
   const { registerLeaveGuard } = useLeaveGuard();
@@ -113,7 +121,6 @@ export const useSettingsDraft = (
     setErrorMessage(null);
     setClientRequestId(null);
     setIdempotencyKey(null);
-    setActiveCommandId(null);
   }, []);
 
   const validate = useCallback(
@@ -173,35 +180,36 @@ export const useSettingsDraft = (
   const applyCommand = useCallback(
     async (apiClient: {
       applySettingsCommand: (params: {
-        commandId: string;
+        activeProjectId: string;
+        targetProjectId: string;
+        resourceProjectId: string;
         clientRequestId: string;
         idempotencyKey: string;
         expectedSettingsRevision: number;
         observedPolicyContextRevision: number;
         settings: Record<string, unknown>;
-        targetProjectId?: string;
-      }) => Promise<SettingsCommandResult>;
+      }) => Promise<FrontendCommandMutationResponse<SettingsCommandResult>>;
       getSettingsCommandStatus: (commandId: string) => Promise<SettingsCommandResult>;
     }): Promise<SettingsCommandResult> => {
       setState('APPLYING');
       const reqId = clientRequestId ?? `req-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const idemKey = idempotencyKey ?? `idem-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      const cmdId = `cmd-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
       setClientRequestId(reqId);
       setIdempotencyKey(idemKey);
-      setActiveCommandId(cmdId);
 
       try {
-        const result = await apiClient.applySettingsCommand({
-          commandId: cmdId,
+        const response = await apiClient.applySettingsCommand({
+          activeProjectId,
+          targetProjectId,
+          resourceProjectId: targetProjectId,
           clientRequestId: reqId,
           idempotencyKey: idemKey,
           expectedSettingsRevision,
           observedPolicyContextRevision,
           settings: draft,
-          targetProjectId,
         });
+        const result = response.resource;
 
         setCommandResult(result);
 
@@ -219,33 +227,22 @@ export const useSettingsDraft = (
 
         return result;
       } catch (err: unknown) {
-        const isConflict =
-          (typeof err === 'object' &&
-            err !== null &&
-            'code' in err &&
-            (err as { code: string }).code === 'CONFLICT') ||
-          (typeof err === 'object' &&
-            err !== null &&
-            'code' in err &&
-            (err as { code: string }).code === 'REVISION_CONFLICT') ||
-          (err instanceof Error &&
-            (err.message.includes('409') || err.message.includes('REVISION_CONFLICT')));
-
-        const isTimeoutOrNetwork =
-          (typeof err === 'object' &&
-            err !== null &&
-            'code' in err &&
-            ['TIMEOUT', 'NETWORK_ERROR', 'FETCH_FAILED'].includes(
-              (err as { code: string }).code,
-            )) ||
-          (typeof err === 'object' &&
-            err !== null &&
-            'status' in err &&
-            [504, 502, 503].includes((err as { status: number }).status)) ||
-          (err instanceof Error &&
-            (err.message.includes('timeout') ||
-              err.message.includes('Network') ||
-              err.message.includes('504')));
+        const errorCode =
+          typeof err === 'object' && err !== null && 'code' in err
+            ? String((err as { code: unknown }).code)
+            : '';
+        const isConflict = [
+          'CONFLICT',
+          'REVISION_CONFLICT',
+          'DIGEST_MISMATCH',
+          'POLICY_CONTEXT_CHANGED',
+        ].includes(errorCode);
+        const isTimeoutOrNetwork = [
+          'OUTCOME_INDETERMINATE',
+          'TIMEOUT',
+          'NETWORK_ERROR',
+          'FETCH_FAILED',
+        ].includes(errorCode);
 
         if (isConflict) {
           setState('STALE');
@@ -263,6 +260,7 @@ export const useSettingsDraft = (
     },
     [
       clientRequestId,
+      activeProjectId,
       draft,
       expectedSettingsRevision,
       observedPolicyContextRevision,
@@ -273,12 +271,15 @@ export const useSettingsDraft = (
 
   const recoverOutcomeUnknown = useCallback(
     async (apiClient: {
+      getFrontendCommandOutcomeByClientRequestId: (
+        clientRequestId: string,
+      ) => Promise<FrontendCommandOutcomeView>;
       getSettingsCommandStatus: (commandId: string) => Promise<SettingsCommandResult>;
     }): Promise<SettingsCommandResult | null> => {
-      const targetCmdId = commandResult?.commandId ?? activeCommandId;
-      if (!targetCmdId) return null;
+      if (!clientRequestId) return null;
       try {
-        const status = await apiClient.getSettingsCommandStatus(targetCmdId);
+        const outcome = await apiClient.getFrontendCommandOutcomeByClientRequestId(clientRequestId);
+        const status = await apiClient.getSettingsCommandStatus(outcome.commandId);
         setCommandResult(status);
         if (status.status === 'APPLIED') {
           setState('APPLIED');
@@ -293,7 +294,7 @@ export const useSettingsDraft = (
         return null;
       }
     },
-    [commandResult, activeCommandId],
+    [clientRequestId],
   );
 
   const markStale = useCallback((newServerRevision: number) => {
@@ -304,6 +305,7 @@ export const useSettingsDraft = (
   return {
     state,
     targetProjectId,
+    activeProjectId,
     expectedSettingsRevision,
     observedPolicyContextRevision,
     draft,

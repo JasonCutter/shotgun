@@ -23,16 +23,31 @@ export const PreferencesWorkspace = () => {
 
   useEffect(() => {
     if (prefs) {
-      if (typeof prefs['locale'] === 'string') setLocale(prefs['locale']);
-      if (typeof prefs['timezone'] === 'string') setTimezone(prefs['timezone']);
-      if (typeof prefs['dateDisplay'] === 'string') setDateDisplay(prefs['dateDisplay']);
-      if (typeof prefs['screenDensity'] === 'string') setScreenDensity(prefs['screenDensity']);
-      if (typeof prefs['reducedMotion'] === 'boolean') setReducedMotion(prefs['reducedMotion']);
+      if (typeof prefs.preferences['locale'] === 'string') setLocale(prefs.preferences['locale']);
+      if (typeof prefs.preferences['timezone'] === 'string')
+        setTimezone(prefs.preferences['timezone']);
+      if (typeof prefs.preferences['dateDisplay'] === 'string')
+        setDateDisplay(prefs.preferences['dateDisplay']);
+      if (typeof prefs.preferences['screenDensity'] === 'string')
+        setScreenDensity(prefs.preferences['screenDensity']);
+      if (typeof prefs.preferences['reducedMotion'] === 'boolean')
+        setReducedMotion(prefs.preferences['reducedMotion']);
     }
   }, [prefs]);
 
   const mutation = useMutation({
-    mutationFn: (updated: Record<string, unknown>) => apiClient.updatePrincipalPreferences(updated),
+    mutationFn: (updated: Record<string, unknown>) => {
+      const activeProjectId = session?.activeProject.id ?? 'shotgun';
+      return apiClient.updatePrincipalPreferences({
+        activeProjectId,
+        targetProjectId: activeProjectId,
+        resourceProjectId: activeProjectId,
+        clientRequestId: crypto.randomUUID(),
+        idempotencyKey: crypto.randomUUID(),
+        expectedPreferenceRevision: prefs?.revision ?? 0,
+        preferences: updated,
+      });
+    },
     onSuccess: async () => {
       await purgeSettingsScopedCaches(queryClient);
       setSavedMessage('Preferences updated successfully.');

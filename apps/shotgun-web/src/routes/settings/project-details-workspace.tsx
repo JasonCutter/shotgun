@@ -3,11 +3,13 @@ import { useParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAppRuntime } from '../../app/providers.js';
 import { purgeSettingsScopedCaches } from '../../app/query-keys.js';
+import { sessionQueryOptions } from '../../session/session-query.js';
 
 export const ProjectDetailsWorkspace = () => {
   const { projectId } = useParams<{ projectId: string }>();
   const { apiClient } = useAppRuntime();
   const queryClient = useQueryClient();
+  const { data: session } = useQuery(sessionQueryOptions(apiClient));
 
   const targetId = projectId ?? 'shotgun';
 
@@ -25,7 +27,14 @@ export const ProjectDetailsWorkspace = () => {
 
   const updateMutation = useMutation({
     mutationFn: (params: { name?: string; description?: string; expectedRevision: number }) =>
-      apiClient.updateProject(targetId, params),
+      apiClient.updateProject(targetId, {
+        ...params,
+        activeProjectId: session?.activeProject.id ?? targetId,
+        targetProjectId: targetId,
+        resourceProjectId: targetId,
+        clientRequestId: crypto.randomUUID(),
+        idempotencyKey: crypto.randomUUID(),
+      }),
     onSuccess: async () => {
       await purgeSettingsScopedCaches(queryClient);
       queryClient.invalidateQueries({ queryKey: ['project-details', targetId] });
@@ -34,7 +43,15 @@ export const ProjectDetailsWorkspace = () => {
   });
 
   const archiveMutation = useMutation({
-    mutationFn: (expectedRevision: number) => apiClient.archiveProject(targetId, expectedRevision),
+    mutationFn: (expectedRevision: number) =>
+      apiClient.archiveProject(targetId, {
+        activeProjectId: session?.activeProject.id ?? targetId,
+        targetProjectId: targetId,
+        resourceProjectId: targetId,
+        expectedRevision,
+        clientRequestId: crypto.randomUUID(),
+        idempotencyKey: crypto.randomUUID(),
+      }),
     onSuccess: async () => {
       await purgeSettingsScopedCaches(queryClient);
       queryClient.invalidateQueries({ queryKey: ['project-details', targetId] });
@@ -43,7 +60,15 @@ export const ProjectDetailsWorkspace = () => {
   });
 
   const restoreMutation = useMutation({
-    mutationFn: (expectedRevision: number) => apiClient.restoreProject(targetId, expectedRevision),
+    mutationFn: (expectedRevision: number) =>
+      apiClient.restoreProject(targetId, {
+        activeProjectId: session?.activeProject.id ?? targetId,
+        targetProjectId: targetId,
+        resourceProjectId: targetId,
+        expectedRevision,
+        clientRequestId: crypto.randomUUID(),
+        idempotencyKey: crypto.randomUUID(),
+      }),
     onSuccess: async () => {
       await purgeSettingsScopedCaches(queryClient);
       queryClient.invalidateQueries({ queryKey: ['project-details', targetId] });
@@ -53,7 +78,14 @@ export const ProjectDetailsWorkspace = () => {
 
   const deleteRequestMutation = useMutation({
     mutationFn: (expectedRevision: number) =>
-      apiClient.requestDeleteProject(targetId, expectedRevision),
+      apiClient.requestDeleteProject(targetId, {
+        activeProjectId: session?.activeProject.id ?? targetId,
+        targetProjectId: targetId,
+        resourceProjectId: targetId,
+        expectedRevision,
+        clientRequestId: crypto.randomUUID(),
+        idempotencyKey: crypto.randomUUID(),
+      }),
     onSuccess: async () => {
       await purgeSettingsScopedCaches(queryClient);
       queryClient.invalidateQueries({ queryKey: ['project-details', targetId] });

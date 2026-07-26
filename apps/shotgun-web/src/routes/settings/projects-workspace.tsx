@@ -4,6 +4,7 @@ import { Link } from 'react-router';
 import { useAppRuntime } from '../../app/providers.js';
 import { projectAdminQueryKey, purgeSettingsScopedCaches } from '../../app/query-keys.js';
 import { sessionQueryOptions } from '../../session/session-query.js';
+import { useAccessibleDialog } from '../../app/use-accessible-dialog.js';
 
 export const ProjectsWorkspace = () => {
   const { apiClient } = useAppRuntime();
@@ -25,6 +26,11 @@ export const ProjectsWorkspace = () => {
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectDesc, setNewProjectDesc] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const closeCreateModal = () => setCreateModalOpen(false);
+  const createDialog = useAccessibleDialog({
+    open: createModalOpen,
+    onClose: closeCreateModal,
+  });
 
   const createMutation = useMutation({
     mutationFn: (params: {
@@ -33,7 +39,14 @@ export const ProjectsWorkspace = () => {
       description?: string;
       clientRequestId: string;
       idempotencyKey: string;
-    }) => apiClient.createProject(params),
+    }) => {
+      const activeProjectId = session?.activeProject.id ?? 'shotgun';
+      return apiClient.createProject({
+        ...params,
+        activeProjectId,
+        targetProjectId: activeProjectId,
+      });
+    },
     onSuccess: async () => {
       await purgeSettingsScopedCaches(queryClient);
       setCreateModalOpen(false);
@@ -82,7 +95,10 @@ export const ProjectsWorkspace = () => {
         </div>
         <button
           type="button"
-          onClick={() => setCreateModalOpen(true)}
+          onClick={(event) => {
+            createDialog.captureInvoker(event.currentTarget);
+            setCreateModalOpen(true);
+          }}
           style={{
             padding: '8px 16px',
             background: '#16a34a',
@@ -179,6 +195,9 @@ export const ProjectsWorkspace = () => {
           role="dialog"
           aria-modal="true"
           aria-labelledby="create-project-dialog-title"
+          ref={createDialog.dialogRef}
+          tabIndex={-1}
+          onKeyDown={createDialog.onDialogKeyDown}
           style={{
             position: 'fixed',
             inset: 0,
@@ -306,7 +325,7 @@ export const ProjectsWorkspace = () => {
                   marginTop: '12px',
                 }}
               >
-                <button type="button" onClick={() => setCreateModalOpen(false)}>
+                <button type="button" onClick={closeCreateModal}>
                   Cancel
                 </button>
                 <button

@@ -9,6 +9,8 @@
   [Section 3 gap audit](../engineering/frontend-phase-1-section-3-gap-audit-260726001.md)
 - Canonical normalization:
   [Section 3 normalization record](../architecture/canonical-normalization/frontend-phase-1-section-3-normalization-260726001.md)
+- Proposed architecture:
+  [ADR-115](../architecture/adr/ADR-115-global-shell-action-center-read-projection-and-scope-boundary.md)
 
 ## Objective
 
@@ -25,17 +27,15 @@ All conditions must be met before implementation starts:
 
 1. The user approves or revises the candidate acceptance criteria in the gap
    audit.
-2. The `OUTCOME_UNKNOWN` project-switch correction is explicitly authorized.
-3. A new ADR fixes projection-module ownership, persistence, cache revisions,
-   update watermarks, and rollback.
-4. Placeholder navigation behavior is chosen.
-5. Initial snapshot refresh transport is chosen: polling/revalidation or
-   refresh events.
-6. Pinned-resource presentation ownership is chosen.
-7. Representative large-data sets and measurable performance budgets are
-   approved.
-8. Any adopted OSS has an exact tag/commit, license/security/maintenance
-   evidence, lockfile update, contract/replacement tests, and rollback.
+2. The user approves or revises proposed ADR-115.
+3. Representative dataset candidates, server pagination and caps, the
+   prohibition of unbounded DOM/storage, and the measurement method are fixed.
+4. Existing adopted dependencies remain pinned. Any later OSS adoption requires
+   an exact tag/commit, license/security/maintenance evidence, lockfile update,
+   contract/replacement tests, and rollback.
+
+Numeric performance budgets are a completion condition after baseline
+measurement, not an implementation entry condition.
 
 ## Scope
 
@@ -68,6 +68,24 @@ All conditions must be met before implementation starts:
 - Whole-shell redesign beyond Section 3 contracts
 - Whole-frontend completion
 
+## Candidate AC Traceability
+
+The candidate definitions remain in the gap audit and are not frozen. This plan
+links every candidate without changing the AC-01–AC-27 count:
+
+| Candidate AC | Implementation plan area                                                                              |
+| ------------ | ----------------------------------------------------------------------------------------------------- |
+| AC-01        | Product API views, runtime decoders, presentation command registry, and common browser-write contract |
+| AC-02–AC-03  | Server-authoritative Global Shell and responsive navigation                                           |
+| AC-04–AC-05  | Active-project switch and resource-project binding                                                    |
+| AC-06–AC-13  | Home structure, actions, Attention, Continue Working, Recent/Pinned, global summaries, and warning    |
+| AC-14–AC-15  | Protected global search and navigation-only command palette                                           |
+| AC-16–AC-18  | Zero-project first run, server route-guard decision, and deep-link recovery                           |
+| AC-19–AC-21  | Offline/degraded behavior, cache isolation, and projection ownership                                  |
+| AC-22–AC-24  | Security, accessibility, and staged performance gate                                                  |
+| AC-25–AC-26  | Required automated gates and browser E2E                                                              |
+| AC-27        | Separate Frontend Phase 1 completion judgment                                                         |
+
 ## Architecture
 
 ```text
@@ -99,6 +117,12 @@ view is tied to source watermarks and access/policy revisions. High-risk work
 navigates to the owning domain workspace and uses its existing command
 contract.
 
+The initial architecture is the ADR-115 candidate: an Application Coordinator
+composes non-persistent read views through ports; snapshot queries are
+authoritative; refresh uses focus refetch, explicit refresh, and approved
+bounded polling; no new SSE infrastructure, projection migration, or runtime
+dependency is introduced.
+
 ## Candidate Contracts
 
 ### Global Shell
@@ -124,13 +148,27 @@ contract.
 
 - `GlobalSearchRequest`
 - `GlobalSearchResultView`
-- `RouteGuardFailureView`
+- `RouteGuardDecisionView`
 - safe `TargetRouteView` or equivalent registered-route discriminated union
+
+### Browser writes
+
+- `FrontendCommandRequest`
+- `FrontendCommandOutcomeView`
+- `notification.presentation.mark-read.v1`
+- `presentation.pin.upsert.v1`
+- `presentation.pin.remove.v1`
 
 Every response includes an explicit schema version, scope binding, access and
 policy revisions, projection revision, and fetch timestamp. Unsupported
 versions, unsafe unknown enums, invalid routes, and inconsistent scope fail
 closed.
+
+Every state-changing browser request uses the complete common command contract.
+The browser supplies `clientRequestId` and `idempotencyKey`, never `commandId`.
+The server creates `commandId`, computes the semantic digest, atomically checks
+typed preconditions and accepted authority contexts, and resolves
+`OUTCOME_UNKNOWN` through `clientRequestId`.
 
 ## Candidate Modules and Ports
 
@@ -178,15 +216,15 @@ Final module names require ADR approval. Candidate responsibilities are:
 
 ## Data Ownership
 
-| Data                                           | Owner                      | Section 3 usage                        |
-| ---------------------------------------------- | -------------------------- | -------------------------------------- |
-| Session, principal, membership                 | Auth                       | Read through authorized view           |
-| Project metadata/lifecycle                     | Project Administration     | Read safe labels and availability      |
-| Settings and policy                            | Settings                   | Read derived feature/readiness policy  |
-| Canonical/source/domain resources              | Owning domain modules      | Read typed minimal summaries           |
-| Command execution/outcome                      | Owning command modules     | Navigate; never duplicate execution    |
-| Shell/action/background/notification snapshots | Candidate projection layer | Derived, revisioned, replaceable       |
-| Pin presentation preference                    | User decision pending      | Must not mutate domain/Canonical state |
+| Data                                           | Owner                      | Section 3 usage                                    |
+| ---------------------------------------------- | -------------------------- | -------------------------------------------------- |
+| Session, principal, membership                 | Auth                       | Read through authorized view                       |
+| Project metadata/lifecycle                     | Project Administration     | Read safe labels and availability                  |
+| Settings and policy                            | Settings                   | Read derived feature/readiness policy              |
+| Canonical/source/domain resources              | Owning domain modules      | Read typed minimal summaries                       |
+| Command execution/outcome                      | Owning command modules     | Navigate; never duplicate execution                |
+| Shell/action/background/notification snapshots | Candidate projection layer | Derived, revisioned, replaceable                   |
+| Pin presentation preference                    | Settings                   | Principal preference; no domain/Canonical mutation |
 
 No OSS type, database identifier, or internal schema becomes a shared
 Canonical/Product API identifier.
@@ -199,7 +237,7 @@ The route family should support:
 ```text
 GET  /product-api/frontend/shell
 GET  /product-api/frontend/home
-GET  /product-api/frontend/search
+POST /product-api/frontend/search/query
 POST /product-api/frontend/notifications/:id/read
 POST /product-api/frontend/pins
 DELETE /product-api/frontend/pins/:id
@@ -207,10 +245,17 @@ DELETE /product-api/frontend/pins/:id
 
 Constraints:
 
-- `GET` views are server-authorized and revisioned.
-- Search uses a structured request and explicit project scope.
-- Read/pin mutations use CSRF, same-origin, idempotency where needed, and typed
-  outcomes.
+- Snapshot views are server-authorized and revisioned.
+- Search is a state-neutral read query with a versioned `GlobalSearchRequest`
+  body and typed response decoder. It is not a `FrontendCommandRequest`.
+- Raw search text is absent from the URL, default body logs, content telemetry,
+  browser storage, and persistent query caches. Telemetry may retain only
+  non-content metadata; a cache may use only a non-reversible query digest.
+- Notification and pin mutations use CSRF and same-origin protection plus a
+  complete versioned `FrontendCommandRequest`, server-generated `commandId`,
+  semantic digest, typed preconditions, idempotency, decoded
+  `FrontendCommandOutcomeView`, and `clientRequestId`-based
+  `OUTCOME_UNKNOWN` recovery.
 - Pinning and notification read state cannot resolve or mutate underlying
   domain truth.
 - Routes never trust `X-Project-Id` or equivalent client authority.
@@ -220,16 +265,23 @@ The route names above are planning placeholders, not approved public contracts.
 
 ## Client Routes and Guards
 
-Retain the existing application route tree and add a common guard pipeline:
+Retain the existing application route tree with this authority split:
 
-1. session
-2. principal
-3. resource existence
-4. resource-project binding
-5. membership
-6. scope/sensitivity
-7. feature/navigation availability
-8. render
+### Server
+
+1. resource existence
+2. resource-project binding
+3. membership
+4. scope and sensitivity
+5. feature/navigation availability
+6. existence masking
+7. final `RouteGuardDecisionView`
+
+### Client
+
+1. verify the session boundary
+2. runtime-decode `RouteGuardDecisionView`
+3. render the authorized route or typed failure state
 
 Typed outcomes:
 
@@ -241,9 +293,10 @@ Typed outcomes:
 - `FEATURE_UNAVAILABLE`
 - `RESOURCE_RETIRED`
 
-Sensitive existence is masked according to server policy. Deep-link
-restoration accepts registered internal routes only and does not change active
-project automatically.
+The browser does not calculate guard authority from independent API results.
+Sensitive existence is masked by the server. Deep-link restoration accepts
+registered internal routes only and does not change active project
+automatically.
 
 ## UI Workspaces
 
@@ -255,7 +308,8 @@ project automatically.
 - accessible More/drawer/popover overflow
 - global project selector
 - active/resource project warning
-- server navigation availability
+- server navigation availability using exactly `AVAILABLE`, `COMING_LATER`,
+  `TEMPORARILY_UNAVAILABLE`, `ACCESS_RESTRICTED`, and `HIDDEN`
 - readiness, background, notification, and prioritized warning presentation
 - settings entry
 
@@ -273,12 +327,21 @@ Render these regions in one typed snapshot:
 Every region supports loading, empty, unavailable, stale, and error states
 without turning missing server data into an enabled action.
 
+Continue Working accepts both approved restorable browser drafts and server
+resources. Each item declares `origin` as `BROWSER_DRAFT` or
+`SERVER_RESOURCE`, plus project binding, sensitivity, revision, expiry, and
+availability. Settings drafts, submitted command forms, `OUTCOME_UNKNOWN`
+resubmission states, inaccessible resources, and expired downloads are
+excluded. Browser drafts are never represented as server-ranked resources.
+
 ### Global search and command palette
 
 - Search defaults to active project.
 - Cross-project search is explicit and labelled.
 - Results preserve type, project, sensitivity-safe highlight, availability, and
   registered target route.
+- Search uses the protected `POST /product-api/frontend/search/query` read-query
+  contract; no raw query text is persisted or placed in a URL.
 - The palette preserves server order and only navigates or requests a
   server-confirmed project switch.
 - High-risk direct execution is absent.
@@ -295,8 +358,20 @@ Use server readiness categories:
 - `WORKER_READY`
 - `OPTIONAL_CONNECTOR_READY`
 
-Session, at least one accessible project, privacy profile, and
-storage/database readiness are candidate required conditions. Optional
+An authenticated session with no accessible project is a valid first-run
+state:
+
+```text
+SESSION_READY: true
+PROJECT_READY: false
+activeProject: null
+accessibleProjects: []
+HomeActionCenter: not queried
+```
+
+The Shell renders safely with `activeProject: null` and provides Project
+creation onboarding at `/settings/projects`. It does not convert zero projects
+to `SESSION_REQUIRED`, `NOT_FOUND`, or `BACKEND_UNAVAILABLE`. Optional
 model/connector absence disables dependent features rather than falsifying
 unrelated readiness. Actual settings changes occur in `/settings`.
 
@@ -334,8 +409,9 @@ Rules:
 3. Session or principal replacement purges every protected family, including
    `global`.
 4. Cached data is never presented as current after scope/revision mismatch.
-5. Refresh events carry only safe identifiers/revisions and trigger a snapshot
-   fetch; they do not carry authoritative domain payloads.
+5. Initial refresh uses TanStack Query focus refetch, explicit refresh, and
+   approved bounded polling. Snapshot queries remain authoritative; no new SSE
+   infrastructure is introduced.
 6. Search queries and server data are not persisted in browser storage.
 
 ## Security
@@ -367,16 +443,29 @@ Rules:
 
 ## Performance
 
-No numeric threshold is approved. Before implementation completion:
+Numeric thresholds require a measured baseline and are not implementation entry
+conditions.
 
-1. Approve representative counts for projects, attention items, notifications,
-   background jobs, and search results.
-2. Approve budgets for API payload, response/render latency, DOM size, cache
-   size, and refresh-event bursts.
-3. Use server caps and pagination by default.
-4. Adopt virtualization only when measurements show a benefit and replacement
+### Before implementation starts
+
+1. Fix representative dataset candidates for projects, attention items,
+   notifications, background work, and search results.
+2. Define server pagination and caps.
+3. Prohibit unbounded DOM, browser storage, polling, and event queues.
+4. Define the payload, latency, render, DOM, cache, and refresh measurement
+   method.
+
+### During implementation
+
+1. Measure the baseline after the relevant behavior exists.
+2. Use server caps and pagination by default.
+3. Adopt virtualization only when measurements show a benefit and replacement
    tests cover accessibility, focus, and stable item identity.
-5. Prevent unbounded browser storage, DOM growth, polling, and event queues.
+
+### Before completion
+
+1. Obtain user approval for numeric budgets derived from the baseline.
+2. Run and pass the final performance gate against those budgets.
 
 ## Tests
 
@@ -385,6 +474,10 @@ No numeric threshold is approved. Before implementation completion:
 - runtime decoder acceptance/rejection
 - schema-version and unknown-enum failure
 - scope/revision consistency
+- complete `FrontendCommandRequest` and `FrontendCommandOutcomeView` handling
+- presentation command registry and server-generated `commandId`
+- search read-query transport and query protection
+- `RouteGuardDecisionView` authority split
 - route registry validation
 - adapter replacement tests
 
@@ -395,7 +488,9 @@ No numeric threshold is approved. Before implementation completion:
 - cache invalidation/revision replay
 - notification-read versus domain-resolution separation
 - pin preference versus domain/Canonical separation
-- snapshot refresh and optional event reconnection/idempotency
+- presentation-write semantic digest, typed precondition, idempotency, and
+  `clientRequestId` outcome recovery
+- focus refetch, explicit refresh, and bounded-poll snapshot behavior
 
 ### Security negative
 
@@ -406,6 +501,8 @@ No numeric threshold is approved. Before implementation completion:
 - CSRF/same-origin
 - open redirect and unsafe deep link
 - protected search/notification metadata
+- raw search query absence from URL, logs, telemetry, storage, and persistent
+  query cache
 
 ### Frontend
 
@@ -413,6 +510,9 @@ No numeric threshold is approved. Before implementation completion:
 - non-optimistic project switch
 - browser-draft guard and `OUTCOME_UNKNOWN` warning-without-block
 - all Home states
+- browser-draft/server-resource Continue Working origin separation
+- zero-project first-run onboarding
+- server-decoded route-guard decisions
 - search/palette/readiness/guard/offline behavior
 - cache isolation and purging
 - keyboard, focus, live region, IME, and responsive behavior
@@ -439,32 +539,31 @@ Candidate decisions:
 | ddsyasas/llm-wiki               | `REFERENCE_ONLY`      | Action-centric hierarchy only                                                          |
 | Inkeep OpenKnowledge            | `REFERENCE_ONLY`      | Activity/cockpit patterns only; recheck source/license before code use                 |
 
+Every newly reviewed Section 3 runtime candidate remains `DEFER` for the
+initial implementation. No new SSE, virtualization, command-palette, or
+accessibility runtime is selected by this plan.
+
 No dependency installation or lockfile change is part of this plan-preparation
 task.
 
 ## Migration
 
-No migration is approved or required by the audit itself.
+The initial implementation uses an Application Coordinator over existing read
+ports with explicit watermarks and no persistent projection storage. It adds no
+database migration.
 
-Implementation has two candidate paths:
-
-1. **Coordinator-only initial projection**: construct authorized views from
-   existing read ports with explicit watermarks and no new persistence.
-2. **Additive projection storage**: add shell/action/background/notification
-   snapshot and pin-presentation tables plus outbox consumers when scale,
-   history, or stable identity requires it.
-
-The ADR must choose based on consistency, performance, replay, and operational
-evidence. Any schema work is forward-only and additive, with dual-read or
-rebuild capability as appropriate. Rollback disables new view routes and
-reverts the shell to the prior Section 1/2 behavior without deleting domain or
-Canonical data.
+Persistent shell/action/background/notification projections may be considered
+later only when measured performance, replay, recovery, or stable-identity
+requirements justify them. That change requires a separate ADR and a
+forward-only additive migration with rebuild and rollback evidence. Rollback
+disables new view routes and returns to the Section 1/2 Shell without deleting
+domain, Canonical, command, or Settings preference data.
 
 ## Candidate Commit Plan
 
 Each commit must remain independently reviewable and gated:
 
-1. `docs: approve section 3 contracts and architecture decision`
+1. `docs: approve section 3 contracts and ADR-115`
 2. `feat(contracts): add section 3 product views and decoders`
 3. `feat(api): add authorized section 3 projections`
 4. `feat(client): add section 3 api decoding and cache boundaries`
@@ -484,7 +583,7 @@ authorized by this candidate plan.
 | Browser recreates domain priority                              | Server-ranked typed Action Center snapshot                               |
 | Cross-project metadata leak                                    | Explicit accessible-scope revision, minimization, purge, negative tests  |
 | Shell couples to domain repositories                           | Projection/search ports and assembly coordinator                         |
-| Stale event treated as truth                                   | Events only trigger authorized snapshot fetch                            |
+| Stale refresh treated as truth                                 | Decoded snapshot query remains authoritative                             |
 | `OUTCOME_UNKNOWN` command is cancelled or navigation is locked | Preserve resource binding; warn and allow switch                         |
 | Dead/unauthorized navigation                                   | Server availability and typed route registry                             |
 | Global cache survives session/access change                    | Include every protected family in revision-aware purge                   |
@@ -499,7 +598,7 @@ Rollback must:
 1. disable Section 3 routes/features through server availability
 2. return to the current Section 1/2 shell without changing session or project
    authority
-3. stop optional refresh subscriptions and clear Section 3 caches
+3. stop bounded polling and clear Section 3 caches
 4. retain domain and Canonical data
 5. retain or rebuild additive projections rather than destructively deleting
    source state
@@ -510,7 +609,7 @@ Rollback must:
 Section 3 can be proposed for completion only with:
 
 - approved AC and immutable contract snapshot
-- approved ownership/cache ADR
+- approved ADR-115 ownership/cache boundary
 - implementation scope and explicit exclusions
 - Product API schemas and decoder evidence
 - module/port/data ownership evidence
@@ -518,7 +617,8 @@ Section 3 can be proposed for completion only with:
 - contract, architecture, security-negative, replacement, accessibility,
   performance, and browser E2E results
 - migration/rebuild/rollback exercise where persistence is added
-- no skipped or ignored required gates
+- no skipped, ignored, or `continue-on-error` required gates and no unexecuted
+  gate reported as passing
 - a separate explicit user judgment
 
 Frontend Phase 1 completion additionally requires Sections 1, 2, and 3 to be

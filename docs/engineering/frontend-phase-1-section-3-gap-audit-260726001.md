@@ -33,6 +33,28 @@ No product code, schema, dependency, or migration was changed by this audit.
 The acceptance criteria in this document are candidates, not approved
 Canonical contracts.
 
+## PR #21 Required Corrections
+
+The document review corrections are incorporated as follows:
+
+1. Pin and notification writes use fixed command-registry entries and the full
+   common `FrontendCommandRequest`/`FrontendCommandOutcomeView` boundary.
+2. Global search uses a protected POST read-query contract and never places raw
+   query text in a URL or persistent client/log/telemetry surface.
+3. Continue Working distinguishes approved `BROWSER_DRAFT` and
+   `SERVER_RESOURCE` origins instead of excluding every browser draft.
+4. Navigation uses the five Canonical availability values and their fixed
+   exposure behavior.
+5. Zero accessible projects is an explicit authenticated first-run state.
+6. The server computes the final `RouteGuardDecisionView`; the browser decodes
+   and renders it.
+7. Dataset, pagination, caps, and measurement method are entry conditions;
+   baseline-derived numeric budget approval is a completion condition.
+
+Proposed ADR-115 records the shared ownership, refresh, migration, OSS, Pinned,
+navigation, and `OUTCOME_UNKNOWN` boundaries. Candidate numbering remains
+AC-01–AC-27 and is not frozen.
+
 ## Canonical Sources
 
 The audit used the following pages as the governing decision set:
@@ -44,6 +66,8 @@ The audit used the following pages as the governing decision set:
 - [ADR-101 — Frontend Async Command, Resource Snapshot, Outcome Unknown](https://app.notion.com/p/3a65181d71ad815c8c23e6b1cbe8d962)
 - [ADR-104 — Global Shell and Server-ranked Action Center Boundary](https://app.notion.com/p/3a65181d71ad81c78fb3c5b70df73304)
 - [Frontend Phase 1–5 Cross-Phase Integration Decision](https://app.notion.com/p/3a65181d71ad81e28b9cfb13f322e983)
+- [ADR-115 — Global Shell·Action Center Read Projection and Scope Boundary](../architecture/adr/ADR-115-global-shell-action-center-read-projection-and-scope-boundary.md)
+  (proposed; user approval pending)
 - [Cross-phase normalization pending record](../architecture/canonical-normalization/frontend-cross-phase-normalization-pending-260726001.md)
 
 When wording conflicted, the later explicit ADR-104 and cross-phase decisions
@@ -165,9 +189,10 @@ No implementation or runtime decoder was found for:
 - `GlobalWarningView`
 - `NavigationItemView`
 - `FeatureAvailabilityView`
+- `GlobalSearchRequest`
 - `GlobalSearchResultView`
 - `FirstRunReadinessView`
-- `RouteGuardFailureView`
+- `RouteGuardDecisionView`
 
 There are no Section 3 Product API routes, projection ports, repositories, or
 API-client methods for those views.
@@ -185,7 +210,7 @@ API-client methods for those views.
 - Server-authoritative first-run/readiness experience
 - Typed route failures and safe deep-link restoration
 - Section 3 tablet/mobile navigation
-- Snapshot refresh signalling or SSE integration
+- Snapshot refresh through focus refetch, explicit refresh, and bounded polling
 - Large-data controls, measurement budgets, and virtualization decisions
 - Section 3 contract, security-negative, replacement, accessibility, and browser
   tests
@@ -218,7 +243,8 @@ API-client methods for those views.
 - Conflict reason: placeholder pages are represented as normal available
   product routes.
 - Required replacement: render decoded server navigation items with explicit
-  `AVAILABLE`, `UNAVAILABLE`, `COMING_LATER`, or hidden behavior as approved.
+  `AVAILABLE`, `COMING_LATER`, `TEMPORARILY_UNAVAILABLE`,
+  `ACCESS_RESTRICTED`, or `HIDDEN` behavior.
 - Implementation impact: Global Shell Product API and route-guard work must
   precede final navigation rendering.
 
@@ -258,8 +284,10 @@ areas. It must not duplicate their domain commands or claim they are complete.
    accessible-project-set, session, or principal revision changes.
 5. Validate `targetRoute` against a server/client route registry; prohibit open
    redirects and unsafe external URLs.
-6. Keep search text out of browser persistence and protected telemetry by
-   default.
+6. Send global search through
+   `POST /product-api/frontend/search/query`; keep raw query text out of URLs,
+   default body logs, browser persistence, persistent query caches, and content
+   telemetry.
 7. Treat refresh events as hints only and re-fetch an authorized snapshot.
 8. Add negative tests for cross-project access, revoked membership, sensitive
    resource masking, stale revisions, CSRF, unsafe deep links, and session
@@ -331,9 +359,11 @@ must reauthorize and purge affected global entries. Session/principal
 replacement must purge every protected key, including the future `global`
 family.
 
-SSE is not present. If later adopted, it is only an invalidation signal; the
-authorized revisioned snapshot remains authoritative. A scope/revision mismatch
-requires a full snapshot refresh.
+The initial implementation does not add SSE. TanStack Query focus refetch,
+explicit refresh, and approved bounded polling re-fetch the authorized
+revisioned snapshot. A scope/revision mismatch requires a full snapshot
+refresh. Any future event stream is an invalidation signal only and requires a
+separate contract and adoption decision.
 
 ## API Contract Findings
 
@@ -349,6 +379,24 @@ Every Section 3 view requires:
 TypeScript identity casts are not runtime validation. The web application must
 consume the API-client decoder output, not server/module types or domain
 repositories.
+
+Every Section 3 browser write also uses the complete versioned
+`FrontendCommandRequest` and returns a decoded `FrontendCommandOutcomeView`.
+The fixed presentation command registry is:
+
+```text
+notification.presentation.mark-read.v1
+presentation.pin.upsert.v1
+presentation.pin.remove.v1
+```
+
+The browser supplies `clientRequestId` and `idempotencyKey`, never `commandId`.
+The server creates `commandId`, computes the semantic digest, atomically
+validates typed preconditions and accepted authority contexts, and resolves
+`OUTCOME_UNKNOWN` through `clientRequestId` without automatic new-key retry.
+
+Global search is a read query, not a command. It uses a versioned
+`GlobalSearchRequest` body and a typed response decoder over HTTP `POST`.
 
 ## Repository and Port Ownership Findings
 
@@ -371,14 +419,20 @@ Candidate read-side ports, subject to ADR and user approval:
 5. `GlobalSearchPort`: typed cross-resource search, using the existing Stage 7
    search projection only through a Knowledge-result adapter.
 
+Pinned state is a principal presentation preference owned through the existing
+`SettingsRepository` boundary. Pin and notification presentation writes use the
+common `FrontendCommandGateway`.
+
 These ports own derived read snapshots/revisions only. They do not own
 Canonical, domain resource, command, membership, policy, or credential data.
 An application coordinator may combine ports; the shell must not call multiple
 domain repositories directly and derive priority or authorization in the
 browser. Cross-domain write transactions are prohibited from these read paths.
 
-A new ADR is required to fix module placement, snapshot persistence, cache
-boundaries, update watermarks, and rollback.
+The proposed ADR-115 fixes the initial boundary as an Application
+Coordinator-based non-persistent read projection with no initial migration or
+new SSE infrastructure. Persistent projection storage requires measured need,
+a separate ADR, and an additive migration.
 
 ## OSS Findings
 
@@ -407,7 +461,8 @@ remain excluded.
 Before any `ADOPT`, `EXTRACT`, or `AUGMENT` decision, record the exact upstream
 commit, lockfile, security/maintenance result, prototype, contract and
 replacement tests, and rollback. No new runtime dependency is approved by this
-audit.
+audit; every newly reviewed Section 3 runtime candidate remains `DEFER` for the
+initial implementation.
 
 ## Performance and Large-data Findings
 
@@ -415,20 +470,21 @@ There is no Section 3 list implementation today, so no current unbounded DOM or
 SSE flood exists to measure. Canonical does not provide numeric budgets. This
 audit does not invent pass thresholds.
 
-Implementation acceptance must first approve representative datasets and
-budgets for attention items, notifications, background jobs, search results,
-project count, cache size, render work, and refresh-event bursts. Pagination,
-server caps, incremental rendering, and virtualization should be selected from
-measured evidence. Local storage must not be used for unbounded server data.
+Before implementation starts, approve representative dataset candidates, server
+pagination and caps, the prohibition of unbounded DOM/storage, and the
+measurement method. Numeric budgets are not an entry condition without a
+baseline. Measure a baseline after the relevant behavior exists, then require
+user-approved numeric budgets and a passing final performance gate before
+completion. Virtualization remains evidence-driven.
 
 ## Recommended Implementation Order
 
-1. Approve candidate acceptance criteria and open the ownership/cache ADR.
+1. Approve candidate acceptance criteria and proposed ADR-115.
 2. Define versioned contracts, projection ports, safe routes, runtime decoders,
    and exact OSS decisions.
 3. Implement server-authorized read projections and Product API routes.
-4. Implement API-client decoding, cache identities, invalidation, and session
-   purge; decide snapshot polling versus refresh events.
+4. Implement API-client decoding, cache identities, invalidation, focus
+   refetch, explicit refresh, approved bounded polling, and session purge.
 5. Implement responsive Global Shell, global project selector, resource-project
    warning, server navigation, and prioritized warning presentation.
 6. Implement Home regions in server-ranked order.
@@ -439,108 +495,139 @@ measured evidence. Local storage must not be used for unbounded server data.
 9. Judge Frontend Phase 1 completion separately, only after Sections 1–3 are
    implemented, verified, merged, and explicitly approved.
 
-## Blocking Decisions
+## Approval and Entry Conditions
 
-Implementation must not start until the user resolves or approves:
+Implementation must not start until:
 
-1. Candidate AC numbering and wording.
-2. The `OUTCOME_UNKNOWN` switch correction and its Section 2 regression scope.
-3. Projection port/module ownership, persistence, and required ADR.
-4. Snapshot polling versus SSE/refresh-event scope for the initial release.
-5. React Aria/cmdk/virtualization/SSE library decisions and exact pinned commits.
-6. Representative data sets and numeric performance budgets.
-7. Server behavior for unavailable placeholder navigation: hidden,
-   unavailable, or `COMING_LATER`.
-8. Pinned-resource presentation storage ownership.
+1. The user approves the wording and numbering of candidate AC-01–AC-27.
+2. The user approves proposed ADR-115.
+3. Representative dataset candidates, server pagination/caps, unbounded
+   DOM/storage prohibitions, and the measurement method are fixed.
+
+The following are no longer open interpretation choices in this plan:
+
+- `OUTCOME_UNKNOWN` warns and preserves resource binding but does not block a
+  server-confirmed project switch.
+- Initial read projections are non-persistent and add no migration.
+- Initial refresh uses focus refetch, explicit refresh, and approved bounded
+  polling; no new SSE infrastructure is introduced.
+- Newly reviewed Section 3 runtime OSS remains `DEFER`.
+- Pinned state is a principal presentation preference through
+  `SettingsRepository`.
+- Navigation uses the five Canonical availability values.
 
 ## Candidate Acceptance Criteria
 
 The following are **unapproved candidates**. They are not Canonical and may not
 be used to claim completion until explicitly approved.
 
-1. **AC-C01 — Typed Product API**: all Section 3 views are versioned and
-   runtime-decoded; unknown schema and unsafe enum values fail closed.
-2. **AC-C02 — Server-authoritative shell**: `GlobalShellView` supplies session,
+1. **AC-01 — Typed Product API and writes**: all Section 3 views are versioned
+   and runtime-decoded; unknown schema and unsafe enum values fail closed. Every
+   Section 3 browser write uses a complete `FrontendCommandRequest`, the fixed
+   command registry, server-created `commandId`, semantic digest, typed
+   preconditions, decoded `FrontendCommandOutcomeView`, and
+   `clientRequestId`-based `OUTCOME_UNKNOWN` recovery.
+2. **AC-02 — Server-authoritative shell**: `GlobalShellView` supplies session,
    project, readiness, warning, background, notification, feature, and
-   navigation state without browser inference.
-3. **AC-C03 — Responsive navigation**: desktop, tablet, mobile, narrow-mobile,
+   navigation state without browser inference. Navigation availability is
+   exactly `AVAILABLE`, `COMING_LATER`, `TEMPORARILY_UNAVAILABLE`,
+   `ACCESS_RESTRICTED`, or `HIDDEN`, with the Canonical render and exposure
+   behavior for each value.
+3. **AC-03 — Responsive navigation**: desktop, tablet, mobile, narrow-mobile,
    and 200%-zoom layouts retain accessible access to every available global
    function.
-4. **AC-C04 — Active-project switch**: the accessible-project list and final
+4. **AC-04 — Active-project switch**: the accessible-project list and final
    selection are server-confirmed and non-optimistic; browser drafts and
    blocking dialogs guard leaving, while `OUTCOME_UNKNOWN` warns without
    cancelling or blocking the switch.
-5. **AC-C05 — Resource project**: active and resource project are both visible
+5. **AC-05 — Resource project**: active and resource project are both visible
    when different; resource-local actions remain bound to the resource project,
    and deep links never mutate active project automatically.
-6. **AC-C06 — Home structure**: Home renders project state, Primary Actions,
+6. **AC-06 — Home structure**: Home renders project state, Primary Actions,
    Attention, Continue Working, Recent/Pinned, and Operational Summary from a
    typed active-project view with loading, empty, error, unavailable, and stale
    states.
-7. **AC-C07 — Primary Actions**: availability, disabled reason, capability,
+7. **AC-07 — Primary Actions**: availability, disabled reason, capability,
    readiness, lifecycle, privacy/budget, and target route are server-provided;
    Home only navigates and executes no high-risk command.
-8. **AC-C08 — Attention Queue**: the server supplies persistent, ranked items
+8. **AC-08 — Attention Queue**: the server supplies persistent, ranked items
    with stable ID, priority, reason, project/resource reference, route,
    timestamps, capabilities, and visibility.
-9. **AC-C09 — Continue Working**: only approved restorable server resources
-   appear; Settings drafts, already-submitted command forms,
+9. **AC-09 — Continue Working**: approved restorable browser drafts and server
+   resources may appear. Every item declares `origin` as `BROWSER_DRAFT` or
+   `SERVER_RESOURCE` plus project binding, sensitivity, revision, expiry, and
+   availability. Settings drafts, already-submitted command forms,
    `OUTCOME_UNKNOWN` resubmission states, inaccessible resources, and expired
-   downloads are excluded.
-10. **AC-C10 — Recent/Pinned**: items are project-bound, reauthorized,
+   downloads are excluded. A browser draft is never presented as a
+   server-ranked resource.
+10. **AC-10 — Recent/Pinned**: items are project-bound, reauthorized,
     sensitivity-masked, retirement-aware, and safely labelled across projects;
-    pinning changes presentation state only.
-11. **AC-C11 — Global Background**: a revisioned, explicitly scoped,
+    pinning changes only the principal presentation preference through
+    `SettingsRepository`.
+11. **AC-11 — Global Background**: a revisioned, explicitly scoped,
     principal-global view returns minimal typed references for accessible
     projects.
-12. **AC-C12 — Global Notification**: notification presentation/read state is
+12. **AC-12 — Global Notification**: notification presentation/read state is
     separate from resolving the underlying domain issue and contains no full
     domain payload.
-13. **AC-C13 — Global Warning**: server/policy priority selects one leading
+13. **AC-13 — Global Warning**: server/policy priority selects one leading
     warning and summarizes additional states without unbounded banner stacking.
-14. **AC-C14 — Global Search**: results are typed, authorized, sensitivity
-    aware, and active-project scoped by default; cross-project search is
-    explicit and labelled, and query text is not persisted.
-15. **AC-C15 — Command palette**: the palette offers approved navigation and
+14. **AC-14 — Global Search**: `POST /product-api/frontend/search/query` accepts
+    a versioned `GlobalSearchRequest` and returns runtime-decoded, typed,
+    authorized, sensitivity-aware results. Scope defaults to the active project
+    and cross-project scope is explicit and labelled. Raw query text never
+    appears in a URL, browser storage, persistent query cache, default body log,
+    or content telemetry; a cache may retain only a non-reversible digest.
+15. **AC-15 — Command palette**: the palette offers approved navigation and
     project-switch commands only, preserves server ranking, and passes
     dialog/combobox, keyboard, announcement, focus-restore, and IME checks.
-16. **AC-C16 — First-run readiness**: readiness comes from a server view that
-    distinguishes required from optional capabilities; settings changes occur
-    only in Settings.
-17. **AC-C17 — Route guard**: session, principal, existence, resource project,
-    membership, sensitivity/scope, feature availability, and render checks
-    produce typed failure states with sensitive existence masking.
-18. **AC-C18 — Deep-link recovery**: permitted links restore the target route
+16. **AC-16 — First-run readiness**: readiness comes from a server view that
+    distinguishes required from optional capabilities. Zero accessible projects
+    is a valid authenticated first-run state with `SESSION_READY: true`,
+    `PROJECT_READY: false`, `activeProject: null`, `accessibleProjects: []`, no
+    Home Action Center query, and Project creation onboarding at
+    `/settings/projects`.
+17. **AC-17 — Route guard**: the server computes resource existence, resource
+    project, membership, scope, sensitivity, feature availability, and
+    existence masking into a final `RouteGuardDecisionView`. The browser checks
+    the session boundary, runtime-decodes that decision, and renders the route
+    or typed failure; it does not calculate guard authority.
+18. **AC-18 — Deep-link recovery**: permitted links restore the target route
     and project context without unsafe redirects or active-project mutation;
     forbidden, retired, unavailable, and session-required cases are explicit.
-19. **AC-C19 — Offline/degraded**: safe cached UI is clearly stale; project
+19. **AC-19 — Offline/degraded**: safe cached UI is clearly stale; project
     switch, server commands, issue resolution, review, search, external action,
     and notification synchronization are blocked or explicitly unavailable.
-20. **AC-C20 — Cache isolation**: Home/global keys include approved
+20. **AC-20 — Cache isolation**: Home/global keys include approved
     principal/session/scope/access/policy/projection revisions and purge
     correctly on project, membership, sensitivity, policy, session, or
     principal change.
-21. **AC-C21 — Ownership**: shell aggregation uses approved projection/search
+21. **AC-21 — Ownership**: shell aggregation uses approved projection/search
     ports, not browser composition or direct domain-repository access; read
     projections own no domain or Canonical truth.
-22. **AC-C22 — Security**: negative tests cover authority headers,
+22. **AC-22 — Security**: negative tests cover authority headers,
     cross-project access, revocation, masking, protected query/notification
     metadata, cache purge, credentials, existence masking, CSRF, same-origin,
     open redirects, and unsafe deep links.
-23. **AC-C23 — Accessibility**: all Section 3 surfaces pass keyboard, focus,
+23. **AC-23 — Accessibility**: all Section 3 surfaces pass keyboard, focus,
     name/role/state, live-region, reduced-motion, high-contrast, 200%-zoom,
     touch-target, and IME verification.
-24. **AC-C24 — Performance**: user-approved datasets and budgets govern server
-    caps, pagination, cache size, DOM size, render work, and refresh bursts;
-    measured evidence determines virtualization.
-25. **AC-C25 — Automated verification**: contract, architecture, security,
-    replacement, cache/revision, and OSS integration gates pass without skipped
-    failures.
-26. **AC-C26 — Browser E2E**: representative desktop/tablet/mobile flows cover
+24. **AC-24 — Performance**: dataset candidates, server pagination/caps,
+    unbounded DOM/storage prohibitions, and measurement method are fixed before
+    implementation. A baseline is measured after behavior exists. Before
+    completion, the user approves numeric budgets derived from that evidence
+    and the final performance gate passes; measured evidence determines
+    virtualization.
+25. **AC-25 — Automated verification**: every required contract, architecture,
+    security, replacement, cache/revision, OSS integration, accessibility,
+    performance, and browser gate is executed and passes. No required gate may
+    be skipped, ignored, marked `continue-on-error`, or reported as passing
+    without execution.
+26. **AC-26 — Browser E2E**: representative desktop/tablet/mobile flows cover
     session, project switch, Home, warnings, navigation, search, palette,
     guarded/deep-linked resources, offline/degraded behavior, and sensitive
     denial.
-27. **AC-C27 — Phase 1 completion gate**: Frontend Phase 1 is complete only
+27. **AC-27 — Phase 1 completion gate**: Frontend Phase 1 is complete only
     after Sections 1, 2, and 3 are implemented, verified, merged, evidenced, and
     separately approved; this does not claim Phase 2 or whole-frontend
     completion.
@@ -554,8 +641,9 @@ ACs. It should contain:
 - ADR-100
 - ADR-101
 - ADR-104
+- approved ADR-115
 - Cross-phase integration decision
-- the user-approved Section 3 acceptance criteria
+- the user-approved Section 3 acceptance criteria AC-01–AC-27
 
 Unapproved candidate ACs must not enter the snapshot.
 
@@ -568,5 +656,5 @@ Unapproved candidate ACs must not enter the snapshot.
 - Candidate implementation plan: prepared
 - Section 3 product implementation: **not started**
 - Frontend Phase 1: **incomplete**
-- Next action: user review and explicit approval or revision of the candidate
-  ACs and blocking decisions
+- Next action: user review and explicit approval or revision of candidate
+  AC-01–AC-27 and proposed ADR-115

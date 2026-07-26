@@ -1,7 +1,8 @@
 # Frontend Phase 1 Section 3 Implementation Entry Conditions
 
 - Record ID: `frontend-phase-1-section-3-implementation-entry-conditions-260726001`
-- Status: **Candidate — user approval required**
+- Status: **Approved and frozen — 2026-07-26**
+- Approval: **User approved the implementation entry conditions; product implementation remains separately unauthorized**
 - Repository baseline: `main@573cf0301cd856123f9f9612350801e68561d145`
 - Architecture: ADR-115 **Accepted**
 - AC-01–AC-27: **Approved and frozen**
@@ -27,9 +28,12 @@ This record does not authorize:
   work, or a Frontend Phase 1 completion claim.
 
 `EXISTING` means observed in the checked baseline. `DERIVED` means inferred from
-the listed code, fixture, or contract evidence. `PROPOSED` means a candidate for
-a separately authorized implementation decision. `DEFERRED` means that no
-baseline evidence exists to justify fixing the value now.
+the listed code, fixture, or contract evidence. `PROPOSED` identifies the
+candidate origin of an entry-condition value. The user approval recorded above
+freezes those `PROPOSED` values as Section 3 implementation entry conditions;
+it does not make them a public Product API schema or authorize product code.
+`DEFERRED` means that no baseline evidence exists to justify fixing the value
+now.
 
 No numeric performance budget is set by this record. Numeric completion budgets
 remain a post-baseline, user-approved performance-gate decision under ADR-115
@@ -355,12 +359,16 @@ Trigger conditions are:
   a database migration becomes required before implementation.
 - Existing cache ownership cannot isolate Project and principal-global scope.
 
-## Required approval before product implementation
+## Approval record and product implementation boundary
 
-Before any Section 3 product code starts, the user must explicitly approve this
-Candidate record or a successor that fixes the candidate dataset, list-contract
-shape, structural bounds, and measurement method. That approval still does not
-approve numeric performance budgets; those follow a measured baseline.
+The user approved and froze this record's dataset inputs, list-contract shape,
+structural safety bounds, and measurement method on 2026-07-26. This approval
+does not approve numeric performance completion budgets; those follow a
+measured baseline and a separate user decision.
+
+Section 3 product implementation still requires a separate explicit user
+authorization. Until then, no Product TypeScript, Product API, projection port,
+database migration, dependency, or runtime change may start.
 
 The product implementation then remains bound to ADR-115, the immutable
 AC-01–AC-27 Snapshot, existing architecture and Stage 12 gates, and the
@@ -373,10 +381,11 @@ Required for this record:
 - `git diff --check`
 - `git diff --cached --check`
 - `npm run format:check`
-- exact assertion that this record remains `Candidate`, does not authorize
-  product implementation, does not modify AC-01–AC-27 or ADR-115, distinguishes
-  current PR #21 state from historical Draft state, contains every required
-  dataset and list category, and fixes no numeric performance budget.
+- exact assertion that this record is approved and frozen while product
+  implementation remains unauthorized; it does not modify AC-01–AC-27 or
+  ADR-115, distinguishes current PR #21 state from historical Draft state,
+  contains every required dataset and list category, and fixes no numeric
+  performance completion budget.
 
 Not run for this documentation-only change: new Product, Database, Browser E2E,
 or performance suites. No such unexecuted suite is represented as passing.

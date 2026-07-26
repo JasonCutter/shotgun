@@ -1,4 +1,12 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  createElement,
+  useCallback,
+  useContext,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
 
 import type { WorkspaceLeaveGuard, WorkspaceLeaveState } from '@shotgun/api-client';
 
@@ -58,7 +66,7 @@ export const LeaveGuardProvider = ({ children }: { readonly children: ReactNode 
     [getLeaveState, registerLeaveGuard],
   );
 
-  return <LeaveGuardContext.Provider value={value}>{children}</LeaveGuardContext.Provider>;
+  return createElement(LeaveGuardContext.Provider, { value }, children);
 };
 
 export const useLeaveGuard = (): LeaveGuardContextValue => useContext(LeaveGuardContext);

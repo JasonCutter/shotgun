@@ -14,6 +14,7 @@ export type SettingsDraftController = {
   readonly state: SettingsDraftState;
   readonly targetProjectId: string;
   readonly activeProjectId: string;
+  readonly resourceProjectId: string;
   readonly expectedSettingsRevision: number;
   readonly observedPolicyContextRevision: number;
   readonly draft: Record<string, unknown>;
@@ -62,17 +63,38 @@ export type SettingsDraftController = {
   readonly markStale: (newServerRevision: number) => void;
 };
 
+type PinnedSettingsDraftContext = {
+  readonly activeProjectId: string;
+  readonly targetProjectId: string;
+  readonly resourceProjectId: string;
+  readonly settingsRevision: number;
+  readonly policyContextRevision: number;
+};
+
 export const useSettingsDraft = (
   snapshot: SettingsSnapshot | null | undefined,
   sessionActiveProjectId?: string,
 ): SettingsDraftController => {
-  const targetProjectId = snapshot?.targetProjectId ?? '';
-  const activeProjectId = sessionActiveProjectId ?? targetProjectId;
-  const expectedSettingsRevision = snapshot?.settingsRevision ?? 1;
-  const observedPolicyContextRevision = snapshot?.policyContextRevision ?? expectedSettingsRevision;
+  const liveContext = useMemo<PinnedSettingsDraftContext>(() => {
+    const targetProjectId = snapshot?.targetProjectId ?? '';
+    const settingsRevision = snapshot?.settingsRevision ?? 1;
+    return {
+      activeProjectId: sessionActiveProjectId ?? targetProjectId,
+      targetProjectId,
+      resourceProjectId: targetProjectId,
+      settingsRevision,
+      policyContextRevision: snapshot?.policyContextRevision ?? settingsRevision,
+    };
+  }, [
+    sessionActiveProjectId,
+    snapshot?.policyContextRevision,
+    snapshot?.settingsRevision,
+    snapshot?.targetProjectId,
+  ]);
 
   const [state, setState] = useState<SettingsDraftState>('CLEAN');
   const [draft, setDraft] = useState<Record<string, unknown>>({});
+  const [pinnedContext, setPinnedContext] = useState<PinnedSettingsDraftContext | null>(null);
   const [validationResult, setValidationResult] = useState<SettingsValidationResult | null>(null);
   const [impactPreview, setImpactPreview] = useState<SettingsImpactPreview | null>(null);
   const [commandResult, setCommandResult] = useState<SettingsCommandResult | null>(null);
@@ -81,6 +103,14 @@ export const useSettingsDraft = (
   const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null);
 
   const isDirty = useMemo(() => Object.keys(draft).length > 0, [draft]);
+  const effectiveContext = pinnedContext ?? liveContext;
+  const {
+    activeProjectId,
+    targetProjectId,
+    resourceProjectId,
+    settingsRevision: expectedSettingsRevision,
+    policyContextRevision: observedPolicyContextRevision,
+  } = effectiveContext;
   const { registerLeaveGuard } = useLeaveGuard();
 
   // Option B Leave Guard: Register dirty state
@@ -101,19 +131,52 @@ export const useSettingsDraft = (
     }));
   }, [registerLeaveGuard, isDirty, state]);
 
-  const setDraftValue = useCallback((key: string, value: unknown) => {
-    setDraft((prev) => {
-      const next = { ...prev, [key]: value };
-      return next;
-    });
-    setState('DIRTY');
+  useEffect(() => {
+    if (
+      !pinnedContext ||
+      !isDirty ||
+      state === 'STALE' ||
+      state === 'APPLYING' ||
+      state === 'OUTCOME_UNKNOWN'
+    ) {
+      return;
+    }
+
+    const projectChanged =
+      liveContext.activeProjectId !== pinnedContext.activeProjectId ||
+      liveContext.targetProjectId !== pinnedContext.targetProjectId ||
+      liveContext.resourceProjectId !== pinnedContext.resourceProjectId;
+    const revisionChanged =
+      liveContext.settingsRevision !== pinnedContext.settingsRevision ||
+      liveContext.policyContextRevision !== pinnedContext.policyContextRevision;
+
+    if (!projectChanged && !revisionChanged) return;
+
+    setState('STALE');
     setValidationResult(null);
     setImpactPreview(null);
-    setErrorMessage(null);
-  }, []);
+    setErrorMessage(
+      projectChanged
+        ? 'Project context changed while this Settings draft was open.'
+        : `Server settings or policy revision changed from ${pinnedContext.settingsRevision}/${pinnedContext.policyContextRevision} to ${liveContext.settingsRevision}/${liveContext.policyContextRevision}.`,
+    );
+  }, [isDirty, liveContext, pinnedContext, state]);
+
+  const setDraftValue = useCallback(
+    (key: string, value: unknown) => {
+      if (!isDirty) setPinnedContext(liveContext);
+      setDraft((prev) => ({ ...prev, [key]: value }));
+      setState('DIRTY');
+      setValidationResult(null);
+      setImpactPreview(null);
+      setErrorMessage(null);
+    },
+    [isDirty, liveContext],
+  );
 
   const resetDraft = useCallback(() => {
     setDraft({});
+    setPinnedContext(null);
     setState('CLEAN');
     setValidationResult(null);
     setImpactPreview(null);
@@ -202,7 +265,7 @@ export const useSettingsDraft = (
         const response = await apiClient.applySettingsCommand({
           activeProjectId,
           targetProjectId,
-          resourceProjectId: targetProjectId,
+          resourceProjectId,
           clientRequestId: reqId,
           idempotencyKey: idemKey,
           expectedSettingsRevision,
@@ -265,6 +328,7 @@ export const useSettingsDraft = (
       expectedSettingsRevision,
       observedPolicyContextRevision,
       idempotencyKey,
+      resourceProjectId,
       targetProjectId,
     ],
   );
@@ -306,6 +370,7 @@ export const useSettingsDraft = (
     state,
     targetProjectId,
     activeProjectId,
+    resourceProjectId,
     expectedSettingsRevision,
     observedPolicyContextRevision,
     draft,

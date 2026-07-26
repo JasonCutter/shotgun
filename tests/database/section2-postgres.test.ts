@@ -1,12 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { PostgresAuthRepository } from '../../adapters/postgres-auth/src/index.js';
+import { PostgresFrontendCommandGateway } from '../../adapters/frontend-command-gateway-postgres/src/index.js';
 import {
   createPostgresPool,
   PostgresProjectAdministrationRepository,
   PostgresSettingsRepository,
 } from '../../adapters/postgres/src/index.js';
 import { FrontendContractError } from '../../packages/contracts/src/index.js';
+import type { FrontendCommandRequest } from '../../packages/contracts/src/index.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
@@ -15,10 +17,12 @@ describe.runIf(pool)('Persistent PostgreSQL Section 2 Settings & Project Adminis
   let projectAdminRepo: PostgresProjectAdministrationRepository;
   let settingsRepo: PostgresSettingsRepository;
   let authRepo: PostgresAuthRepository;
+  let commandGateway: PostgresFrontendCommandGateway;
 
   beforeEach(async () => {
     await pool!.query(`
       DELETE FROM project_admin.project_command_results WHERE command_id IN (SELECT command_id FROM project_admin.project_commands WHERE project_id LIKE 'pg-proj-%');
+      DELETE FROM frontend_command.command_ledger WHERE target_project_id LIKE 'pg-proj-%';
       DELETE FROM project_admin.project_commands WHERE project_id LIKE 'pg-proj-%';
       DELETE FROM project_admin.project_revisions WHERE project_id LIKE 'pg-proj-%';
       DELETE FROM settings.settings_audit_events WHERE project_id LIKE 'pg-proj-%';
@@ -33,6 +37,7 @@ describe.runIf(pool)('Persistent PostgreSQL Section 2 Settings & Project Adminis
     projectAdminRepo = new PostgresProjectAdministrationRepository(pool!);
     settingsRepo = new PostgresSettingsRepository(pool!);
     authRepo = new PostgresAuthRepository(pool!);
+    commandGateway = new PostgresFrontendCommandGateway(pool!);
   });
 
   afterAll(async () => {
@@ -226,5 +231,73 @@ describe.runIf(pool)('Persistent PostgreSQL Section 2 Settings & Project Adminis
     // Verify revision is still 1
     const snapshot = await settingsRepo.getSettingsSnapshot(projId);
     expect(snapshot.settingsRevision).toBe(1);
+  });
+
+  it('persists accepted context, semantic digest, outcome revision, and clientRequestId recovery', async () => {
+    const projectId = `pg-proj-${randomUUID().slice(0, 8)}`;
+    const principalId = randomUUID();
+    const clientRequestId = `req-ledger-${randomUUID()}`;
+    const request: FrontendCommandRequest = {
+      envelopeVersion: '1.0.0',
+      commandType: 'project.metadata.update.v1',
+      commandSchemaVersion: '1.0.0',
+      clientRequestId,
+      idempotencyKey: `idem-ledger-${randomUUID()}`,
+      projectContext: {
+        activeProjectId: projectId,
+        targetProjectId: projectId,
+        resourceProjectId: projectId,
+      },
+      policyBinding: { mode: 'CURRENT', observedPolicyContextRevision: '1' },
+      preconditions: [
+        {
+          purpose: 'TARGET',
+          subject: { resourceKind: 'project', resourceId: projectId },
+          expectedRevision: '1',
+        },
+      ],
+      clientIssuedAt: new Date().toISOString(),
+      payload: { name: 'Ledger Project' },
+    };
+    const commandId = randomUUID();
+    const acceptedAt = new Date().toISOString();
+    const accepted = await commandGateway.accept({
+      commandId,
+      commandRevision: '1',
+      principalId,
+      request,
+      commandSemanticDigest: 'digest-ledger-1',
+      acceptedPolicyContext: {
+        policyContextId: `project-policy-context/${projectId}`,
+        policyContextRevision: '1',
+        acceptedAt,
+      },
+      correlationId: randomUUID(),
+      traceId: randomUUID(),
+      receivedAt: acceptedAt,
+      acceptedAt,
+    });
+    expect(accepted.replayed).toBe(false);
+
+    await commandGateway.complete({
+      commandId,
+      producedResources: [
+        { resourceKind: 'project', resourceId: projectId, resourceRevision: '2' },
+      ],
+      completedAt: new Date().toISOString(),
+    });
+
+    const recovered = await commandGateway.findByClientRequestId(principalId, clientRequestId);
+    expect(recovered).toMatchObject({
+      commandId,
+      commandRevision: '2',
+      commandSemanticDigest: 'digest-ledger-1',
+      outcomeState: 'COMPLETED',
+      completionDisposition: 'SUCCEEDED',
+    });
+    expect(recovered?.acceptedPolicyContext.policyContextRevision).toBe('1');
+    expect(recovered?.producedResources).toEqual([
+      { resourceKind: 'project', resourceId: projectId, resourceRevision: '2' },
+    ]);
   });
 });

@@ -18,6 +18,7 @@ import {
   purgeInaccessibleCachesOnAccessChange,
   resolveOutcomeState,
   validateFrontendCommandRequest,
+  validateSection2FrontendCommandRequest,
   validateTypedPreconditions,
   type AcceptedPolicyContext,
   type AcceptedPrincipalContext,
@@ -37,6 +38,35 @@ import {
 } from '../../packages/shotgun-api-client/src/index.js';
 
 describe('Frontend Foundation Contracts & Runtime Adapters', () => {
+  describe('Section 2 command registry and authority boundary', () => {
+    it.each(['commandId', 'principal', 'actor', 'securityContext', 'acceptedPolicyContext'])(
+      'rejects browser injection of %s',
+      (field) => {
+        const request = { ...createValidRequest(), [field]: 'browser-controlled' };
+        expect(() => validateFrontendCommandRequest(request)).toThrowError(
+          expect.objectContaining({ code: 'PRECONDITION_ACCESS_DENIED' }),
+        );
+      },
+    );
+
+    it('rejects unsupported command schema and command type for a route', () => {
+      const request = {
+        ...createValidRequest(),
+        commandType: 'project.archive.v1',
+        commandSchemaVersion: '2.0.0',
+        payload: {},
+      };
+      expect(() =>
+        validateSection2FrontendCommandRequest(request, 'project.archive.v1'),
+      ).toThrowError(expect.objectContaining({ code: 'INVALID_REQUEST' }));
+      expect(() =>
+        validateSection2FrontendCommandRequest(
+          { ...request, commandSchemaVersion: '1.0.0' },
+          'project.restore.v1',
+        ),
+      ).toThrowError(expect.objectContaining({ code: 'INVALID_REQUEST' }));
+    });
+  });
   const createValidRequest = (
     overrides?: Partial<FrontendCommandRequest<{ text: string }>>,
   ): FrontendCommandRequest<{ text: string }> => ({

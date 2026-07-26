@@ -125,12 +125,13 @@ server-authoritative.
 
 ## Candidate datasets
 
-The current fixture set has only smoke coverage, so the following datasets are
-candidate shapes, not seeded counts or performance claims. Each dataset must
-record item count, project count, principal count, resource/sensitivity
-distribution, cross-project ratio, retired/forbidden/unavailable ratio,
-`OUTCOME_UNKNOWN` inclusion, generator/seed location, and replayability before
-it is used for a measured baseline.
+The current fixture set has only smoke coverage. The following numbers are
+`PROPOSED` implementation-entry dataset candidates, not measured performance
+claims or completion budgets. Each seed must record item count, project count,
+principal count, resource/sensitivity distribution, cross-project ratio,
+retired/forbidden/unavailable ratio, `OUTCOME_UNKNOWN` inclusion,
+generator/seed location, and replayability before it is used for a measured
+baseline.
 
 | Axis                              | Baseline                                               | Representative                                                                                          | Stress                                                                                          | Current evidence                                                             |
 | --------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
@@ -144,6 +145,33 @@ it is used for a measured baseline.
 | Global Search                     | Stage 7 canonical search smoke query.                  | Typed result kinds, authorization masking, result ranking, and non-content telemetry.                   | Existing Stage 7 maximum-20 owned-claim search plus distinct Section 3 contract boundary tests. | `EXISTING` Stage 7 cap; Section 3 dataset `PROPOSED`.                        |
 | Route Guard and commands          | Existing Section 1/2 guarded routes and command tests. | Zero-project session, denied/not-found masking, project switch, concurrent and `OUTCOME_UNKNOWN` cases. | Repeated scope/revision changes without stale protected-cache presentation.                     | `DERIVED`; no Section 3 seed.                                                |
 
+### Proposed numeric dataset candidates
+
+Counts are per deterministic seed unless stated otherwise. Inaccessible or
+forbidden records are created only for server-side authorization and masking
+assertions; their titles, snippets, and identifiers are never published to the
+browser test evidence.
+
+| Dimension                                |   Baseline | Representative |       Stress | Classification and use                                                                                   |
+| ---------------------------------------- | ---------: | -------------: | -----------: | -------------------------------------------------------------------------------------------------------- |
+| Principals                               |          1 |              2 |            5 | `PROPOSED`; validates principal replacement and global-scope isolation.                                  |
+| Accessible Projects per active principal |          1 |             25 |          250 | `PROPOSED`; supports selector paging, separate active Project delivery, search, and cursor invalidation. |
+| Navigation Items / Primary Actions       |      8 / 4 |          8 / 4 |        8 / 4 | `DERIVED` from the approved Shell navigation and primary-action set.                                     |
+| Attention Items                          |          3 |             25 |          100 | `PROPOSED`; includes severity, stale, recovery, and masking cases.                                       |
+| Continue Working server resources        |          5 |             25 |          100 | `PROPOSED`; includes one `OUTCOME_UNKNOWN` resource in representative and stress data.                   |
+| Browser Drafts                           |          0 |              5 |           10 | `PROPOSED`; 10 is also the local-registry safety cap.                                                    |
+| Recent Resources / Pinned Resources      |     10 / 5 |        25 / 25 |      50 / 50 | `PROPOSED`; typed resources include safe cross-project labels where authorized.                          |
+| Background Items                         |         10 |             50 |          200 | `PROPOSED`; principal-global items span the accessible Project set.                                      |
+| Notifications                            |         25 |            100 |          500 | `PROPOSED`; supports cursor/watermark and bounded exception behavior.                                    |
+| Search Corpus / returned Results         | 1,000 / 10 |    10,000 / 20 | 100,000 / 20 | `PROPOSED` for Section 3 typed search; these values are not inherited from Stage 7.                      |
+| Route Guard requests                     |         10 |             50 |          200 | `PROPOSED`; includes zero-project, hidden, denied, retired, and unavailable decisions.                   |
+| Concurrent or `OUTCOME_UNKNOWN` commands |          2 |             10 |           25 | `PROPOSED`; used for leave-warning and outcome lookup scenarios, not command throughput claims.          |
+
+Representative and stress seeds must include at least 20% cross-project
+authorized items and at least 10% server-side unavailable, retired, or
+forbidden candidates. Only authorized, safe results may cross the Product API
+boundary.
+
 ### Dataset provenance rules
 
 1. Existing Stage 7 search fixtures may demonstrate its owned claim-search cap;
@@ -153,27 +181,27 @@ it is used for a measured baseline.
 3. A future dataset seed must be deterministic, versioned, and independently
    reproducible. It must contain no secrets, raw search queries, inaccessible
    titles, or protected resource payloads in published evidence.
-4. No count is fixed in this record. Counts become a measured-baseline input,
-   not an invented completion target.
+4. The proposed counts are entry-condition inputs for deterministic seed and
+   boundary testing. They are not latency, memory, or completion targets.
 
 ## Candidate pagination and response-cap matrix
 
 The structural rule is fixed: list responses are bounded server responses, and
-the browser does not locally materialize an unbounded protected dataset. Numeric
-page sizes, maximums, and hard caps are intentionally `DEFERRED` until the
-candidate datasets and server contracts are approved.
+the browser does not locally materialize an unbounded protected dataset. The
+following `PROPOSED` page sizes and hard caps are implementation safety
+contracts, not measured performance budgets.
 
-| View or query                     | Current evidence                                                                              | Candidate pagination                                                                                                               | Default / max / hard cap                                                                     | Stable ordering and cursor                                                                                             | Authorization and deleted-item behavior                                                        | Client policy                                                                    |
-| --------------------------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| Accessible Project list           | Existing Settings list is an unbounded array.                                                 | `PROPOSED`: server cursor/keyset list for any Section 3 large-list use; do not reuse the existing unbounded endpoint.              | `DEFERRED`                                                                                   | `PROPOSED`: server-defined stable Project lifecycle/name key plus opaque cursor and accessible-project-set revision.   | Reauthorize each page; omit or mask inaccessible/retired existence according to server policy. | Query only the requested page; no full-list browser sort/filter.                 |
-| Attention Queue                   | No Section 3 implementation.                                                                  | `PROPOSED`: cursor/keyset server ranking.                                                                                          | `DEFERRED`                                                                                   | Server priority plus stable item identity; opaque cursor binds active Project, policy/access, and projection revision. | Fail closed/refetch on scope or revision mismatch; do not expose sensitive total counts.       | Bounded first-page render; next page only on explicit user need.                 |
-| Continue Working server resources | No Section 3 implementation.                                                                  | `PROPOSED`: cursor/keyset server ranking.                                                                                          | `DEFERRED`                                                                                   | Server recency/rank plus stable typed resource identity; opaque revision-bound cursor.                                 | Purge unavailable/revoked items; preserve only safe typed references.                          | Separate from browser drafts.                                                    |
-| Recent Resources                  | No Section 3 implementation.                                                                  | `PROPOSED`: cursor/keyset.                                                                                                         | `DEFERRED`                                                                                   | Server recency plus typed resource identity.                                                                           | Reauthorize and mask before serialization.                                                     | No browser aggregation across Projects.                                          |
-| Pinned Resources                  | No Section 3 implementation.                                                                  | `PROPOSED`: bounded snapshot or cursor/keyset, selected after dataset evidence.                                                    | `DEFERRED`                                                                                   | Server preference order plus stable resource identity.                                                                 | Pinned preference never overrides access/revocation.                                           | No unbounded retained pin IDs.                                                   |
-| Background Summary detail         | No Section 3 implementation.                                                                  | `PROPOSED`: server-bounded summary, cursor/keyset only if detail expansion needs it.                                               | `DEFERRED`                                                                                   | Server operational ordering and typed resource identity.                                                               | Principal-global scope with `resourceProjectId` and safe label.                                | Do not discard valid global data solely on active-Project change.                |
-| Notification Summary              | No Section 3 implementation.                                                                  | `PROPOSED`: cursor/keyset summary with bounded watermark/exception retention.                                                      | `DEFERRED`                                                                                   | Server event order plus notification identity; opaque cursor excludes raw sensitive IDs.                               | Principal-global reauthorization and purge on membership/sensitivity revision.                 | Mark-read refetches the derived view; no unbounded notification-ID accumulation. |
-| Global Search                     | Stage 7 owned claim search defaults to `10`, schema maximum `20`, and SQL `LIMIT`; no cursor. | `PROPOSED`: bounded typed search snapshot for an approved Section 3 adapter; cursor only if a later measured contract requires it. | Existing Stage 7 `10/20` is not automatically a Section 3 value; Section 3 value `DEFERRED`. | Server ranking only; query text never appears in cursor, URL, storage, or logs.                                        | Server performs type, scope, sensitivity, and existence masking before response.               | Raw query is never persisted; any cache key uses a non-reversible digest only.   |
-| Command Palette navigation/search | No Section 3 implementation.                                                                  | `PROPOSED`: bounded snapshot supplied by server navigation/search contracts.                                                       | `DEFERRED`                                                                                   | Server availability/ranking and stable command/result identity.                                                        | Hidden means absent from DOM, palette, and search.                                             | Filter only within an already authorized bounded result set.                     |
+| View or query                     | Current evidence                                                                              | Candidate pagination                                                          | Default / max / hard cap               | Stable ordering and cursor                                                                                                      | Authorization and deleted-item behavior                                                                      | Client policy                                                                                      |
+| --------------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| Accessible Project list           | Existing Settings list is an unbounded array.                                                 | `PROPOSED`: cursor/keyset; do not reuse the existing unbounded endpoint.      | 25 / 50 / 50                           | `createdAt DESC, projectId ASC`; opaque cursor binds accessible-project-set, policy, and projection revisions.                  | Reauthorize every page; revision change invalidates the cursor; omit or mask inaccessible/retired existence. | Return active Project separately even outside the page; offer Project search and next-page access. |
+| Attention Queue                   | No Section 3 implementation.                                                                  | `PROPOSED`: cursor/keyset server ranking.                                     | 25 / 50 / 50                           | Server severity, urgency, rank, and stable item ID; opaque cursor binds active Project, policy/access, and projection revision. | Fail closed/refetch on scope or revision mismatch; do not expose sensitive total counts.                     | Retain at most two fetched pages; explicit next-page access only.                                  |
+| Continue Working server resources | No Section 3 implementation.                                                                  | `PROPOSED`: cursor/keyset server ranking.                                     | 25 / 50 / 50                           | Server recency/rank and stable typed resource ID; opaque revision-bound cursor.                                                 | Purge unavailable/revoked items; preserve only safe typed references.                                        | Separate from browser drafts; retain at most two fetched pages.                                    |
+| Recent Resources                  | No Section 3 implementation.                                                                  | `PROPOSED`: bounded snapshot.                                                 | 25 / 50 / 50                           | Server recency and typed resource ID; one revision-bound snapshot.                                                              | Reauthorize and mask before serialization.                                                                   | No browser aggregation across Projects; replace rather than append snapshot.                       |
+| Pinned Resources                  | No Section 3 implementation.                                                                  | `PROPOSED`: bounded snapshot.                                                 | 50 / 50 / 50                           | Server preference order and stable resource ID; one revision-bound snapshot.                                                    | Pinned preference never overrides access/revocation.                                                         | Replace snapshot; no retained pin-ID history.                                                      |
+| Background Summary detail         | No Section 3 implementation.                                                                  | `PROPOSED`: bounded summary plus cursor/keyset detail.                        | 20 summary groups; 25 / 50 / 50 detail | Server operational order and typed resource ID; detail cursor binds accessible-project-set and projection revisions.            | Principal-global scope with `resourceProjectId` and safe label.                                              | Preserve valid global view across Project switch; retain at most two detail pages.                 |
+| Notification Summary              | No Section 3 implementation.                                                                  | `PROPOSED`: cursor/keyset summary with bounded watermark/exception retention. | 25 / 50 / 50                           | Server event order and notification ID; opaque cursor excludes raw sensitive IDs.                                               | Principal-global reauthorization and purge on membership/sensitivity revision.                               | Mark-read refetches; retain at most two pages.                                                     |
+| Global Search                     | Stage 7 owned claim search defaults to `10`, schema maximum `20`, and SQL `LIMIT`; no cursor. | `PROPOSED`: bounded typed search snapshot.                                    | 20 / 20 / 20                           | Server ranking only; query text never appears in snapshot key, URL, storage, or logs.                                           | Server applies type, scope, sensitivity, and existence masking before response.                              | Raw query is never persisted; replace, never append, the snapshot.                                 |
+| Command Palette navigation/search | No Section 3 implementation.                                                                  | `PROPOSED`: bounded snapshot supplied by server navigation/search contracts.  | 20 / 20 / 20                           | Server availability/ranking and stable command/result identity.                                                                 | Hidden means absent from DOM, palette, and search.                                                           | Filter only within the authorized bounded snapshot.                                                |
 
 No offset pagination is proposed because no existing Section 3 offset contract or
 revision-safe offset behavior exists. A future choice of offset requires explicit
@@ -196,12 +224,34 @@ snapshot binding.
 - Browser drafts remain a client presentation group; they are not uploaded,
   server-ranked, or assigned server stable IDs.
 
+### Proposed client safety caps
+
+These limits are `PROPOSED` implementation safety limits. They are independent
+of later latency or rendering completion budgets and must be enforced before
+data reaches a rendered or retained unbounded collection.
+
+| Client concern                                       | Proposed safety cap                                                      | Required behavior at the cap                                                                                                  |
+| ---------------------------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| Navigation DOM rows                                  | 8                                                                        | Render the server availability snapshot only; no client expansion.                                                            |
+| Attention DOM rows                                   | 50                                                                       | Render at most two 25-item pages; require explicit next-page fetch after replacement/eviction.                                |
+| Continue Working server DOM rows                     | 50                                                                       | Render at most two 25-item pages; browser drafts use a separate group.                                                        |
+| Continue Working browser-draft DOM rows              | 10                                                                       | Reject/expire additional local drafts through the registry; do not evict a valid draft silently.                              |
+| Recent DOM rows / Pinned DOM rows                    | 50 / 50                                                                  | Render the bounded server snapshot only.                                                                                      |
+| Background detail DOM rows                           | 50                                                                       | Render at most two 25-item detail pages; summary remains bounded to 20 groups.                                                |
+| Notification DOM rows                                | 50                                                                       | Render at most two 25-item pages; refetch from watermark instead of accumulating IDs.                                         |
+| Search DOM rows / Command Palette result rows        | 20 / 20                                                                  | Replace the bounded snapshot on query/filter change; never append an unbounded client result set.                             |
+| TanStack Query retained pages per Section 3 list key | 2                                                                        | Evict the oldest page before retaining a third; no persistent query cache.                                                    |
+| Project-switch cache preservation                    | 0 prior active-Project Section 3 pages; valid principal-global keys only | Cancel and remove project-scoped keys on switch; retain global keys only while their scope/policy revisions still match.      |
+| Browser Draft registry                               | 10 drafts, 64 KiB per draft, 512 KiB total                               | Reject new draft writes over either limit with a typed local limit state; never truncate or auto-upload.                      |
+| Notification explicit exception set                  | 100 IDs                                                                  | Compact through an authoritative server watermark/snapshot before adding another exception; never silently drop an exception. |
+| Route recovery state                                 | 8 KiB per route, 32 KiB per Session                                      | Drop only non-authoritative presentation state on overflow and retain a safe default route state.                             |
+| Persisted UI preferences                             | 16 KiB per Principal                                                     | Reject surplus preference payload; do not store protected resource metadata or server data.                                   |
+
 ### Numeric completion budgets deferred
 
-The following are required measurement dimensions but have no approved numeric
-value yet: simultaneously rendered rows, cache entries/bytes, draft count,
-draft payload bytes, route-recovery bytes, persisted-preference bytes, response
-bytes, render time, and retained-query lifetime. Virtualization is also
+The following remain performance-completion dimensions with no approved target:
+response bytes, server/query/projection/decode/render latency, interaction
+readiness, cache memory, and retained-query lifetime. Virtualization is also
 `DEFERRED`; it is not adopted automatically and requires measured benefit plus
 accessibility, focus, and stable-identity replacement evidence.
 
@@ -215,14 +265,30 @@ Each baseline result must record:
   environment record; browser exact version must be captured in every result.
 - Browser, viewport/device profile, headless/headed mode, CPU throttling,
   network profile, build mode, database state, seed revision, and cold/warm
-  cache condition.
-- Measurement repetition count, median, P95, and outlier rule. These are
-  required fields; their numeric values are not fixed here.
+  cache condition as fixed below.
 - Repository commit, test command, fixture/seed digest, and artifact digest.
 
 The existing Playwright configuration uses the `Desktop Chrome` device profile,
 headless execution, and failure-only trace/screenshot/video retention. It is a
 starting harness, not a completed Section 3 performance harness.
+
+### Fixed measurement procedure candidate
+
+| Concern              | Fixed candidate                                                                                                                                                                               |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Browser engine       | Chromium through the pinned Playwright version; record the exact browser build.                                                                                                               |
+| Desktop viewport     | 1440 × 900 CSS pixels.                                                                                                                                                                        |
+| Mobile viewport      | 390 × 844 CSS pixels with touch enabled.                                                                                                                                                      |
+| CPU profile          | Desktop: 4× throttling. Mobile: 6× throttling.                                                                                                                                                |
+| Network profile      | Desktop: 10 Mbps down, 2 Mbps up, 40 ms RTT. Mobile: 1.6 Mbps down, 750 Kbps up, 150 ms RTT.                                                                                                  |
+| Build and database   | Production build against a reset database and the versioned deterministic seed.                                                                                                               |
+| Warm-up              | 3 unrecorded warm-up iterations for each scenario/profile.                                                                                                                                    |
+| Recorded repetitions | 15 per scenario/profile: 5 cold-profile and 10 warm-profile runs.                                                                                                                             |
+| Cold profile         | Fresh browser context, empty browser storage, empty Query Client, and freshly seeded/reset test state.                                                                                        |
+| Warm profile         | Same authenticated browser context after one successful authorized snapshot; no scope, policy, or seed change between runs.                                                                   |
+| Statistics           | Report every valid run, median, and nearest-rank P95 separately for cold and warm sets.                                                                                                       |
+| Outliers             | Do not discard statistical outliers. Exclude only an instrumented failure with its error, trace reference, and rerun count recorded; a replacement run is appended, not substituted silently. |
+| Evidence location    | `docs/engineering/performance/frontend-phase-1-section-3-performance-baseline-<date>-<sequence>.md` and `artifacts/performance/frontend-phase-1-section-3/<date>-<sequence>/`.                |
 
 ### Required scenarios
 
@@ -249,7 +315,7 @@ number.
 
 ### Evidence location and safety
 
-Future measured evidence belongs at:
+Measured evidence belongs at:
 
 ```text
 docs/engineering/performance/
@@ -258,10 +324,10 @@ frontend-phase-1-section-3-performance-baseline-<date>-<sequence>.md
 artifacts/performance/frontend-phase-1-section-3/
 ```
 
-The paths are candidate locations only; no directory or artifact is created by
-this record. Published trace, HAR, screenshot, or result summaries must exclude
-raw search text, cookies, CSRF tokens, credentials, sensitive titles, and
-inaccessible Project or Resource identifiers.
+No directory or artifact is created by this record. Published trace, HAR,
+screenshot, or result summaries must exclude raw search text, cookies, CSRF
+tokens, credentials, sensitive titles, and inaccessible Project or Resource
+identifiers.
 
 ## Authorization boundary and ADR review
 

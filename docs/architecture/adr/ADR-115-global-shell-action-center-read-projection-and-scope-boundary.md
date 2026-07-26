@@ -31,7 +31,7 @@ The initial Section 3 implementation does not yet have measured evidence that
 requires persistent projection tables, a new SSE runtime, list virtualization,
 or another UI runtime dependency.
 
-## Proposed Decision
+## Decision
 
 ### 1. Initial read projection
 

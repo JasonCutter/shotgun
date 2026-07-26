@@ -16,6 +16,7 @@ import type {
   SchemaPackView,
   DiagnosticsView,
   ProductFeatureView,
+  FrontendCommandOutcomeView,
 } from '../../contracts/src/index.js';
 
 export type {
@@ -36,6 +37,21 @@ export type {
   SchemaPackView,
   DiagnosticsView,
   ProductFeatureView,
+  FrontendCommandOutcomeView,
+};
+
+export type FrontendCommandMutationResponse<T> = {
+  readonly outcome: FrontendCommandOutcomeView;
+  readonly resource: T;
+};
+
+export type FrontendCommandSubmission = {
+  readonly activeProjectId: string;
+  readonly targetProjectId: string;
+  readonly resourceProjectId?: string;
+  readonly clientRequestId: string;
+  readonly idempotencyKey: string;
+  readonly clientIssuedAt?: string;
 };
 
 export type ProductApiErrorBody = {
@@ -63,11 +79,21 @@ export type ShotgunApiClient = {
     targetProjectId?: string,
     options?: RequestOptions,
   ): Promise<readonly SettingsCategorySummary[]>;
-  getPrincipalPreferences(options?: RequestOptions): Promise<Record<string, unknown>>;
-  updatePrincipalPreferences(
-    preferences: Record<string, unknown>,
+  getPrincipalPreferences(
     options?: RequestOptions,
-  ): Promise<Record<string, unknown>>;
+  ): Promise<{ readonly preferences: Record<string, unknown>; readonly revision: number }>;
+  updatePrincipalPreferences(
+    params: FrontendCommandSubmission & {
+      readonly expectedPreferenceRevision: number;
+      readonly preferences: Record<string, unknown>;
+    },
+    options?: RequestOptions,
+  ): Promise<
+    FrontendCommandMutationResponse<{
+      readonly preferences: Record<string, unknown>;
+      readonly revision: number;
+    }>
+  >;
   validateSettingsDraft(
     draft: Record<string, unknown>,
     targetProjectId?: string,
@@ -81,17 +107,17 @@ export type ShotgunApiClient = {
     options?: RequestOptions,
   ): Promise<SettingsImpactPreview>;
   applySettingsCommand(
-    params: {
-      commandId: string;
-      clientRequestId: string;
-      idempotencyKey: string;
+    params: FrontendCommandSubmission & {
       expectedSettingsRevision: number;
       observedPolicyContextRevision: number;
       settings: Record<string, unknown>;
-      targetProjectId?: string;
     },
     options?: RequestOptions,
-  ): Promise<SettingsCommandResult>;
+  ): Promise<FrontendCommandMutationResponse<SettingsCommandResult>>;
+  getFrontendCommandOutcomeByClientRequestId(
+    clientRequestId: string,
+    options?: RequestOptions,
+  ): Promise<FrontendCommandOutcomeView>;
   getSettingsCommandStatus(
     commandId: string,
     options?: RequestOptions,
@@ -100,53 +126,43 @@ export type ShotgunApiClient = {
   getProjects(options?: RequestOptions): Promise<readonly ProjectListItemView[]>;
   getProjectDetails(projectId: string, options?: RequestOptions): Promise<ProjectListItemView>;
   createProject(
-    params: {
+    params: FrontendCommandSubmission & {
       id: string;
       name: string;
       description?: string;
-      clientRequestId: string;
-      idempotencyKey: string;
     },
     options?: RequestOptions,
-  ): Promise<ProjectListItemView>;
+  ): Promise<FrontendCommandMutationResponse<ProjectListItemView>>;
   updateProject(
     projectId: string,
-    params: {
+    params: FrontendCommandSubmission & {
       name?: string;
       description?: string;
       expectedRevision: number;
-      clientRequestId: string;
-      idempotencyKey: string;
     },
     options?: RequestOptions,
-  ): Promise<ProjectListItemView>;
+  ): Promise<FrontendCommandMutationResponse<ProjectListItemView>>;
   archiveProject(
     projectId: string,
-    params: {
+    params: FrontendCommandSubmission & {
       expectedRevision: number;
-      clientRequestId: string;
-      idempotencyKey: string;
     },
     options?: RequestOptions,
-  ): Promise<ProjectListItemView>;
+  ): Promise<FrontendCommandMutationResponse<ProjectListItemView>>;
   restoreProject(
     projectId: string,
-    params: {
+    params: FrontendCommandSubmission & {
       expectedRevision: number;
-      clientRequestId: string;
-      idempotencyKey: string;
     },
     options?: RequestOptions,
-  ): Promise<ProjectListItemView>;
+  ): Promise<FrontendCommandMutationResponse<ProjectListItemView>>;
   requestDeleteProject(
     projectId: string,
-    params: {
+    params: FrontendCommandSubmission & {
       expectedRevision: number;
-      clientRequestId: string;
-      idempotencyKey: string;
     },
     options?: RequestOptions,
-  ): Promise<ProjectListItemView>;
+  ): Promise<FrontendCommandMutationResponse<ProjectListItemView>>;
 
   getModelDescriptors(
     targetProjectId?: string,

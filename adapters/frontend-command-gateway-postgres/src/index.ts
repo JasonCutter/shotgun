@@ -1,0 +1,225 @@
+import type { Pool } from 'pg';
+
+import {
+  FrontendContractError,
+  type FrontendCommandOutcomeView,
+} from '../../../packages/contracts/src/index.js';
+import {
+  createAcceptedFrontendCommandOutcome,
+  type AcceptFrontendCommandInput,
+  type AcceptFrontendCommandResult,
+  type CompleteFrontendCommandInput,
+  type FrontendCommandGatewayPort,
+  type RejectFrontendCommandInput,
+} from '../../../modules/frontend-command-gateway/src/index.js';
+
+type CommandLedgerRow = {
+  command_id: string;
+  command_revision: string;
+  client_request_id: string;
+  idempotency_key: string;
+  principal_id: string;
+  target_project_id: string;
+  command_type: string;
+  command_schema_version: string;
+  command_semantic_digest: string;
+  outcome_state: FrontendCommandOutcomeView['outcomeState'];
+  completion_disposition: FrontendCommandOutcomeView['completionDisposition'] | null;
+  accepted_principal_context: FrontendCommandOutcomeView['acceptedPrincipalContext'];
+  accepted_project_context: FrontendCommandOutcomeView['acceptedProjectContext'];
+  accepted_policy_context: FrontendCommandOutcomeView['acceptedPolicyContext'];
+  produced_resources: FrontendCommandOutcomeView['producedResources'];
+  rejection: FrontendCommandOutcomeView['rejection'] | null;
+  correlation_id: string;
+  trace_id: string;
+  received_at: Date;
+  accepted_at: Date | null;
+  completed_at: Date | null;
+  last_updated_at: Date;
+};
+
+const toOutcome = (row: CommandLedgerRow): FrontendCommandOutcomeView => ({
+  commandId: row.command_id,
+  commandRevision: String(row.command_revision),
+  clientRequestId: row.client_request_id,
+  idempotencyKey: row.idempotency_key,
+  commandType: row.command_type,
+  commandSchemaVersion: row.command_schema_version,
+  commandSemanticDigest: row.command_semantic_digest,
+  outcomeState: row.outcome_state,
+  ...(row.completion_disposition ? { completionDisposition: row.completion_disposition } : {}),
+  acceptedPrincipalContext: row.accepted_principal_context,
+  acceptedProjectContext: row.accepted_project_context,
+  acceptedPolicyContext: row.accepted_policy_context,
+  correlationId: row.correlation_id,
+  traceId: row.trace_id,
+  producedResources: row.produced_resources,
+  ...(row.rejection ? { rejection: row.rejection } : {}),
+  receivedAt: row.received_at.toISOString(),
+  ...(row.accepted_at ? { acceptedAt: row.accepted_at.toISOString() } : {}),
+  ...(row.completed_at ? { completedAt: row.completed_at.toISOString() } : {}),
+  lastUpdatedAt: row.last_updated_at.toISOString(),
+});
+
+export class PostgresFrontendCommandGateway implements FrontendCommandGatewayPort {
+  constructor(private readonly pool: Pool) {}
+
+  async accept(input: AcceptFrontendCommandInput): Promise<AcceptFrontendCommandResult> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const existing = await client.query<CommandLedgerRow>(
+        `SELECT *
+         FROM frontend_command.command_ledger
+         WHERE (principal_id = $1 AND client_request_id = $2)
+            OR (
+              principal_id = $1
+              AND target_project_id = $3
+              AND command_type = $4
+              AND command_schema_version = $5
+              AND idempotency_key = $6
+            )
+         FOR UPDATE`,
+        [
+          input.principalId,
+          input.request.clientRequestId,
+          input.request.projectContext.targetProjectId,
+          input.request.commandType,
+          input.request.commandSchemaVersion,
+          input.request.idempotencyKey,
+        ],
+      );
+      if (existing.rows[0]) {
+        const outcome = toOutcome(existing.rows[0]);
+        if (
+          outcome.clientRequestId === input.request.clientRequestId &&
+          outcome.idempotencyKey !== input.request.idempotencyKey
+        ) {
+          throw new FrontendContractError(
+            'IDEMPOTENCY_KEY_REUSE_MISMATCH',
+            'clientRequestId cannot be rebound to a different idempotency key.',
+          );
+        }
+        if (outcome.commandSemanticDigest !== input.commandSemanticDigest) {
+          throw new FrontendContractError(
+            'IDEMPOTENCY_KEY_REUSE_MISMATCH',
+            'Existing frontend command has a different semantic digest.',
+          );
+        }
+        await client.query('COMMIT');
+        return { outcome, replayed: true };
+      }
+
+      const outcome = createAcceptedFrontendCommandOutcome(input);
+      await client.query(
+        `INSERT INTO frontend_command.command_ledger (
+          command_id, command_revision, client_request_id, idempotency_key,
+          principal_id, target_project_id, resource_project_id, command_type,
+          command_schema_version, command_semantic_digest, policy_binding,
+          accepted_principal_context, accepted_project_context, accepted_policy_context,
+          preconditions, command_payload, outcome_state, completion_disposition,
+          produced_resources, rejection, correlation_id, trace_id, received_at,
+          accepted_at, completed_at, last_updated_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+          $11::jsonb, $12::jsonb, $13::jsonb, $14::jsonb, $15::jsonb, $16::jsonb,
+          $17, $18, $19::jsonb, $20::jsonb, $21, $22, $23, $24, $25, $26
+        )`,
+        [
+          outcome.commandId,
+          Number(outcome.commandRevision),
+          outcome.clientRequestId,
+          outcome.idempotencyKey,
+          input.principalId,
+          input.request.projectContext.targetProjectId,
+          input.request.projectContext.resourceProjectId ?? null,
+          outcome.commandType,
+          outcome.commandSchemaVersion,
+          outcome.commandSemanticDigest,
+          JSON.stringify(input.request.policyBinding),
+          JSON.stringify(outcome.acceptedPrincipalContext),
+          JSON.stringify(outcome.acceptedProjectContext),
+          JSON.stringify(outcome.acceptedPolicyContext),
+          JSON.stringify(input.request.preconditions),
+          JSON.stringify(input.request.payload),
+          outcome.outcomeState,
+          outcome.completionDisposition ?? null,
+          JSON.stringify(outcome.producedResources),
+          outcome.rejection ? JSON.stringify(outcome.rejection) : null,
+          outcome.correlationId,
+          outcome.traceId,
+          outcome.receivedAt,
+          outcome.acceptedAt ?? null,
+          outcome.completedAt ?? null,
+          outcome.lastUpdatedAt,
+        ],
+      );
+      await client.query('COMMIT');
+      return { outcome, replayed: false };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async complete(input: CompleteFrontendCommandInput): Promise<FrontendCommandOutcomeView> {
+    const result = await this.pool.query<CommandLedgerRow>(
+      `UPDATE frontend_command.command_ledger
+       SET command_revision = command_revision + 1,
+           outcome_state = 'COMPLETED',
+           completion_disposition = 'SUCCEEDED',
+           produced_resources = $2::jsonb,
+           completed_at = $3,
+           last_updated_at = $3
+       WHERE command_id = $1
+       RETURNING *`,
+      [input.commandId, JSON.stringify(input.producedResources), input.completedAt],
+    );
+    return this.requireOutcome(result.rows[0], input.commandId);
+  }
+
+  async reject(input: RejectFrontendCommandInput): Promise<FrontendCommandOutcomeView> {
+    const result = await this.pool.query<CommandLedgerRow>(
+      `UPDATE frontend_command.command_ledger
+       SET command_revision = command_revision + 1,
+           outcome_state = 'REJECTED',
+           completion_disposition = 'FAILED',
+           rejection = $2::jsonb,
+           completed_at = $3,
+           last_updated_at = $3
+       WHERE command_id = $1
+       RETURNING *`,
+      [
+        input.commandId,
+        JSON.stringify({ code: input.code, message: input.message, retryable: false }),
+        input.completedAt,
+      ],
+    );
+    return this.requireOutcome(result.rows[0], input.commandId);
+  }
+
+  async findByClientRequestId(
+    principalId: string,
+    clientRequestId: string,
+  ): Promise<FrontendCommandOutcomeView | null> {
+    const result = await this.pool.query<CommandLedgerRow>(
+      `SELECT *
+       FROM frontend_command.command_ledger
+       WHERE principal_id = $1 AND client_request_id = $2`,
+      [principalId, clientRequestId],
+    );
+    return result.rows[0] ? toOutcome(result.rows[0]) : null;
+  }
+
+  private requireOutcome(
+    row: CommandLedgerRow | undefined,
+    commandId: string,
+  ): FrontendCommandOutcomeView {
+    if (!row) {
+      throw new FrontendContractError('RESOURCE_RETIRED', `Command '${commandId}' not found.`);
+    }
+    return toOutcome(row);
+  }
+}

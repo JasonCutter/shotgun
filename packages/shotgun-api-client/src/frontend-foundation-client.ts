@@ -42,6 +42,7 @@ export {
   createOperationalResourceKindRegistry,
   decodeOperationalResourceKindRegistrySnapshot,
   decodeSessionBoundaryView,
+  decodeProductFeatureView,
   filterCacheKeysForProjectSwitch,
   purgeInaccessibleCachesOnAccessChange,
   type CacheKeyFactoryParams,

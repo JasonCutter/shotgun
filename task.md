@@ -1,0 +1,27 @@
+# Implementation Checklist
+
+- `[x]` 1. Wire Persistent Runtime
+  - `[x]` Add `projectAdminRepository` and `settingsRepository` to `ApplicationOptions` in `server.ts`
+  - `[x]` Instantiate `PostgresProjectAdministrationRepository` and `PostgresSettingsRepository` in `main.ts`
+- `[x]` 2. Enforce Project Access & Capabilities
+  - `[x]` Target Project Membership Checks in `project-routes.ts` and `settings-routes.ts`
+  - `[x]` Capability Checks for Rename/Archive/Restore/Delete
+  - `[x]` Command Idempotency with `clientRequestId` and `idempotencyKey`
+- `[x]` 3. Project Creation Coordinator
+  - `[x]` Build atomic transaction spanning `project_admin`, `auth`, and `settings`
+  - `[x]` Rollback on failure
+- `[ ]` 4. Settings Repository Real Persistence
+  - `[ ]` Remove mock data from `PostgresSettingsRepository`
+  - `[ ]` Implement transactional `applyCommand`
+- `[ ]` 5. Database Schema Constraints
+  - `[ ]` Add CHECK constraints to `016_stage1_section2_settings_project_admin.sql`
+- `[ ]` 6. Frontend: Draft Controller & Workspaces
+  - `[ ]` Pin draft properties (`targetProjectId`, `expectedRevision`, etc.)
+  - `[ ]` Map typed errors (`STALE`, etc.)
+  - `[ ]` Use `settings5DQueryKey` exclusively
+  - `[ ]` Return `UNAVAILABLE` or `READ_ONLY` for unimplemented sections
+- `[ ]` 7. Accessibility (WAI-ARIA Dialogs)
+  - `[ ]` Verify Dialog Focus Traps, Escape to close, Focus Restore
+- `[ ]` 8. Tests & Verification
+  - `[ ]` Rewrite/fix Contract, Unit, Integration, E2E tests
+  - `[ ]` Run `check:core`, `frontend:check`, etc.

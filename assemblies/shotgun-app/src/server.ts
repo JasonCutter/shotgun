@@ -44,6 +44,16 @@ import {
   InMemoryActionCandidateRepository,
   InMemoryActionExecutionRepository,
 } from '../../../adapters/stage11-in-memory/src/index.js';
+import {
+  InMemoryProjectAdministrationRepository,
+  InMemorySettingsRepository,
+} from '../../../adapters/settings-project-admin-in-memory/src/index.js';
+import { InMemoryFrontendCommandGateway } from '../../../adapters/frontend-command-gateway-in-memory/src/index.js';
+import type { ProjectAdministrationRepositoryPort } from '../../../modules/project-administration/src/index.js';
+import type { SettingsRepositoryPort } from '../../../modules/settings-policy/src/index.js';
+import type { FrontendCommandGatewayPort } from '../../../modules/frontend-command-gateway/src/index.js';
+import { registerProjectRoutes } from './product-api/project-routes.js';
+import { registerSettingsRoutes } from './product-api/settings-routes.js';
 import { FakeDraftActionConnector } from '../../../adapters/action-connector-fake/src/index.js';
 import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
 import { InProcessTransport } from '../../../adapters/transport-in-process/src/index.js';
@@ -272,7 +282,7 @@ export const isSameOriginRequest = (
   }
 
   let expectedHost = hostHeader.trim().toLowerCase();
-  let expectedPort = '80';
+  let expectedPort = parsedUrl.protocol === 'https:' ? '443' : '80';
   if (expectedHost.includes(':')) {
     const lastColon = expectedHost.lastIndexOf(':');
     const bracketIndex = expectedHost.lastIndexOf(']');
@@ -283,10 +293,10 @@ export const isSameOriginRequest = (
   }
   expectedHost = expectedHost.replace(/^\[|\]$/g, '');
 
-  const hostMatches =
-    originHost === expectedHost ||
-    (isLoopbackHost &&
-      (expectedHost === '127.0.0.1' || expectedHost === '::1' || expectedHost === 'localhost'));
+  const isExpectedLoopbackHost =
+    expectedHost === '127.0.0.1' || expectedHost === '::1' || expectedHost === 'localhost';
+
+  const hostMatches = originHost === expectedHost || (isLoopbackHost && isExpectedLoopbackHost);
 
   const portMatches = originPort === expectedPort;
 
@@ -337,7 +347,7 @@ type ReviewDecisionRequest = ChangeSetRequest & {
   readonly reason: string;
 };
 
-type SecurityHeaders = {
+export type SecurityHeaders = {
   readonly 'x-project-id'?: string;
   readonly 'x-actor-id'?: string;
   readonly 'x-access-scope'?: string;
@@ -376,6 +386,9 @@ export type ApplicationOptions = {
   readonly actionConnector?: ActionConnectorPort;
   readonly authRepository?: AuthRepositoryPort;
   readonly authenticationAdapter?: AuthenticationPort;
+  readonly projectAdminRepository?: ProjectAdministrationRepositoryPort;
+  readonly settingsRepository?: SettingsRepositoryPort;
+  readonly frontendCommandGateway?: FrontendCommandGatewayPort;
   readonly host?: string;
   readonly production?: boolean;
   readonly canonicalProjectionRecoveryIntervalMs?: number | false;
@@ -1064,10 +1077,26 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       await canonicalProjectionRecoveryReporter.report(value);
     },
   };
+  const authRepository = options.authRepository ?? new InMemoryAuthRepository();
+  const projectAdminRepository =
+    options.projectAdminRepository ??
+    new InMemoryProjectAdministrationRepository(async ({ principalId, projectId }) => {
+      if (!authRepository.createProjectOwnerMembership) {
+        throw new Error('Authentication adapter does not support Project owner provisioning.');
+      }
+      await authRepository.createProjectOwnerMembership({
+        principalId,
+        projectId,
+        scopes: ['owner'],
+        sensitivityClearance: 'private',
+      });
+    });
+  const settingsRepository = options.settingsRepository ?? new InMemorySettingsRepository();
+  const frontendCommandGateway =
+    options.frontendCommandGateway ?? new InMemoryFrontendCommandGateway();
   const actionCandidateRepository =
     options.actionCandidateRepository ?? new InMemoryActionCandidateRepository();
   const actionConnector = options.actionConnector ?? new FakeDraftActionConnector();
-  const authRepository = options.authRepository ?? new InMemoryAuthRepository();
   const production = options.production ?? process.env.NODE_ENV === 'production';
   const testDevelopmentAuth =
     process.env.VITEST === 'true' && !options.authRepository && !production;
@@ -1307,19 +1336,31 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
             'POLICY_DENIED',
             'ACTION_AUTHORIZATION_DENIED',
             'ACTION_CONNECTOR_NOT_ALLOWED',
+            'CAPABILITY_DENIED',
+            'PRECONDITION_ACCESS_DENIED',
+            'RESOURCE_ACCESS_REVOKED',
           ].includes(error.code)
         ? 403
         : ['NOT_FOUND', 'ACTION_REFERENCE_NOT_FOUND'].includes(error.code)
           ? 404
-          : ['CONFLICT', 'STALE_VERSION', 'STALE_APPROVAL', 'STALE_ACTION_SNAPSHOT'].includes(
-                error.code,
-              )
+          : [
+                'CONFLICT',
+                'STALE_VERSION',
+                'STALE_APPROVAL',
+                'STALE_ACTION_SNAPSHOT',
+                'REVISION_CONFLICT',
+                'DIGEST_MISMATCH',
+                'POLICY_CONTEXT_CHANGED',
+                'IDEMPOTENCY_KEY_REUSE_MISMATCH',
+              ].includes(error.code)
             ? 409
             : [
                   'VALIDATION_ERROR',
                   'LEGACY_SECURITY_HEADER_FORBIDDEN',
                   'PROJECT_CONTEXT_REQUIRED',
                   'ACTION_SERVER_BINDING_REQUIRED',
+                  'INVALID_REQUEST',
+                  'RESOURCE_PROJECT_MISMATCH',
                 ].includes(error.code)
               ? 400
               : 500;
@@ -1626,6 +1667,23 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     );
     return { message: 'Logged out' };
   });
+
+  registerProjectRoutes(
+    server,
+    projectAdminRepository,
+    settingsRepository,
+    frontendCommandGateway,
+    authRepository,
+    requireBrowserSession,
+  );
+  registerSettingsRoutes(
+    server,
+    settingsRepository,
+    frontendCommandGateway,
+    authRepository,
+    projectAdminRepository,
+    requireBrowserSession,
+  );
 
   server.post<{ Body: { accountId: string; password: string; projectId: string } }>(
     '/auth/login',

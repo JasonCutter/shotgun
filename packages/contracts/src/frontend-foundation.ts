@@ -284,6 +284,174 @@ export type FrontendCommandRequest<TPayload = unknown> = {
   readonly payload: TPayload;
 };
 
+export const SECTION2_FRONTEND_COMMAND_TYPES = {
+  updatePreference: 'settings.preference.update.v1',
+  applyProjectPolicy: 'settings.project-policy.apply.v1',
+  createProject: 'project.create.v1',
+  updateProjectMetadata: 'project.metadata.update.v1',
+  archiveProject: 'project.archive.v1',
+  restoreProject: 'project.restore.v1',
+  requestProjectDeletion: 'project.delete-request.v1',
+} as const;
+
+export type Section2FrontendCommandType =
+  (typeof SECTION2_FRONTEND_COMMAND_TYPES)[keyof typeof SECTION2_FRONTEND_COMMAND_TYPES];
+
+export type UpdatePreferenceCommandPayload = {
+  readonly preferences: Record<string, unknown>;
+};
+
+export type ApplyProjectPolicyCommandPayload = {
+  readonly settings: Record<string, unknown>;
+};
+
+export type CreateProjectCommandPayload = {
+  readonly newProjectId: string;
+  readonly name: string;
+  readonly description?: string;
+  readonly locale?: string;
+  readonly timezone?: string;
+  readonly privacyProfile?: string;
+  readonly modelProfile?: string;
+  readonly costProfile?: string;
+};
+
+export type UpdateProjectMetadataCommandPayload = {
+  readonly name?: string;
+  readonly description?: string;
+};
+
+export type ProjectLifecycleCommandPayload = Record<string, never>;
+
+export type Section2FrontendCommandPayload =
+  | UpdatePreferenceCommandPayload
+  | ApplyProjectPolicyCommandPayload
+  | CreateProjectCommandPayload
+  | UpdateProjectMetadataCommandPayload
+  | ProjectLifecycleCommandPayload;
+
+const assertRecordPayload = (value: unknown, commandType: string): Record<string, unknown> => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      `${commandType} payload must be a non-null object`,
+    );
+  }
+  return value as Record<string, unknown>;
+};
+
+const assertOnlyPayloadKeys = (
+  payload: Record<string, unknown>,
+  commandType: string,
+  allowedKeys: readonly string[],
+): void => {
+  const unexpected = Object.keys(payload).filter((key) => !allowedKeys.includes(key));
+  if (unexpected.length > 0) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      `${commandType} payload contains unsupported fields: ${unexpected.join(', ')}`,
+    );
+  }
+};
+
+export function decodeSection2CommandPayload(
+  commandType: Section2FrontendCommandType,
+  value: unknown,
+): Section2FrontendCommandPayload {
+  const payload = assertRecordPayload(value, commandType);
+
+  switch (commandType) {
+    case SECTION2_FRONTEND_COMMAND_TYPES.updatePreference:
+      assertOnlyPayloadKeys(payload, commandType, ['preferences']);
+      return {
+        preferences: assertRecordPayload(payload['preferences'], `${commandType}.preferences`),
+      };
+    case SECTION2_FRONTEND_COMMAND_TYPES.applyProjectPolicy:
+      assertOnlyPayloadKeys(payload, commandType, ['settings']);
+      return {
+        settings: assertRecordPayload(payload['settings'], `${commandType}.settings`),
+      };
+    case SECTION2_FRONTEND_COMMAND_TYPES.createProject: {
+      assertOnlyPayloadKeys(payload, commandType, [
+        'newProjectId',
+        'name',
+        'description',
+        'locale',
+        'timezone',
+        'privacyProfile',
+        'modelProfile',
+        'costProfile',
+      ]);
+      if (typeof payload['newProjectId'] !== 'string' || !payload['newProjectId'].trim()) {
+        throw new FrontendContractError('INVALID_REQUEST', 'payload.newProjectId is required');
+      }
+      if (typeof payload['name'] !== 'string' || !payload['name'].trim()) {
+        throw new FrontendContractError('INVALID_REQUEST', 'payload.name is required');
+      }
+      for (const optionalKey of [
+        'description',
+        'locale',
+        'timezone',
+        'privacyProfile',
+        'modelProfile',
+        'costProfile',
+      ]) {
+        if (payload[optionalKey] !== undefined && typeof payload[optionalKey] !== 'string') {
+          throw new FrontendContractError(
+            'INVALID_REQUEST',
+            `payload.${optionalKey} must be a string when provided`,
+          );
+        }
+      }
+      return payload as CreateProjectCommandPayload;
+    }
+    case SECTION2_FRONTEND_COMMAND_TYPES.updateProjectMetadata:
+      assertOnlyPayloadKeys(payload, commandType, ['name', 'description']);
+      if (payload['name'] === undefined && payload['description'] === undefined) {
+        throw new FrontendContractError(
+          'INVALID_REQUEST',
+          'Project metadata update requires name or description',
+        );
+      }
+      if (payload['name'] !== undefined && typeof payload['name'] !== 'string') {
+        throw new FrontendContractError('INVALID_REQUEST', 'payload.name must be a string');
+      }
+      if (payload['description'] !== undefined && typeof payload['description'] !== 'string') {
+        throw new FrontendContractError('INVALID_REQUEST', 'payload.description must be a string');
+      }
+      return payload as UpdateProjectMetadataCommandPayload;
+    case SECTION2_FRONTEND_COMMAND_TYPES.archiveProject:
+    case SECTION2_FRONTEND_COMMAND_TYPES.restoreProject:
+    case SECTION2_FRONTEND_COMMAND_TYPES.requestProjectDeletion:
+      assertOnlyPayloadKeys(payload, commandType, []);
+      return {};
+  }
+}
+
+export function validateSection2FrontendCommandRequest(
+  input: unknown,
+  expectedCommandType: Section2FrontendCommandType,
+): FrontendCommandRequest<Section2FrontendCommandPayload> {
+  const isNewResource = expectedCommandType === SECTION2_FRONTEND_COMMAND_TYPES.createProject;
+  const request = validateFrontendCommandRequest(input, { isNewResource });
+  if (request.commandType !== expectedCommandType) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      `Route requires commandType '${expectedCommandType}', received '${request.commandType}'`,
+    );
+  }
+  if (request.commandSchemaVersion !== '1.0.0') {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      `Unsupported commandSchemaVersion '${request.commandSchemaVersion}' for '${expectedCommandType}'`,
+    );
+  }
+  return {
+    ...request,
+    payload: decodeSection2CommandPayload(expectedCommandType, request.payload),
+  };
+}
+
 export function validateJSONValue(
   val: unknown,
   path = 'payload',
@@ -363,21 +531,28 @@ export function validateFrontendCommandRequest(
 
   const req = input as Record<string, unknown>;
 
-  // Reject top-level traceId injection
   if ('traceId' in req) {
     throw new FrontendContractError('INVALID_REQUEST', 'Client cannot inject top-level traceId');
   }
 
   // Client cannot inject server-authoritative fields
-  if (
-    'principal' in req ||
-    'security' in req ||
-    'capabilities' in req ||
-    'internalTraceId' in req
-  ) {
+  const injectedAuthorityFields = [
+    'commandId',
+    'principal',
+    'actor',
+    'security',
+    'securityContext',
+    'capabilities',
+    'internalTraceId',
+    'acceptedPrincipalContext',
+    'acceptedProjectContext',
+    'acceptedPolicyContext',
+    'commandSemanticDigest',
+  ].filter((field) => field in req);
+  if (injectedAuthorityFields.length > 0) {
     throw new FrontendContractError(
       'PRECONDITION_ACCESS_DENIED',
-      'Client cannot inject server-authoritative fields (principal, security, capabilities, internalTraceId)',
+      `Client cannot inject server-authoritative fields: ${injectedAuthorityFields.join(', ')}`,
     );
   }
 
@@ -567,6 +742,16 @@ export function buildCommandSemanticDigestInput<TPayload>(
   };
 
   return deterministicCanonicalizePayload(digestPayload);
+}
+
+export function buildPrincipalScopedCommandSemanticDigestInput<TPayload>(
+  request: FrontendCommandRequest<TPayload>,
+  principalId: string,
+): string {
+  return deterministicCanonicalizePayload({
+    principalId,
+    request: JSON.parse(buildCommandSemanticDigestInput(request)) as unknown,
+  });
 }
 
 // ============================================================================
@@ -1951,5 +2136,945 @@ export function decodeSessionBoundaryView(input: unknown): SessionBoundaryView {
     reasonCode: reasonCodeStr as SessionBoundaryReasonCode | undefined,
     recoveryActions: actions as readonly SessionRecoveryAction[],
     session: sessionObj,
+  });
+}
+
+// ============================================================================
+// 10. Frontend Phase 1 Section 2 — Settings & Project Administration Contracts
+// ============================================================================
+
+export type SettingsScope = 'PRINCIPAL' | 'PROJECT' | 'SYSTEM' | 'RESOURCE';
+
+export type SettingsApplicationMode =
+  | 'IMMEDIATE'
+  | 'CONFIRM_REQUIRED'
+  | 'REVIEW_REQUIRED'
+  | 'RESTART_REQUIRED'
+  | 'MIGRATION_REQUIRED'
+  | 'READ_ONLY'
+  | 'UNAVAILABLE';
+
+export type SettingsRiskLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+
+export type SettingsDraftState =
+  | 'CLEAN'
+  | 'DIRTY'
+  | 'VALIDATING'
+  | 'READY_TO_APPLY'
+  | 'APPLYING'
+  | 'APPLIED'
+  | 'REVIEW_REQUIRED'
+  | 'OUTCOME_UNKNOWN'
+  | 'VALIDATION_FAILED'
+  | 'APPLY_FAILED'
+  | 'STALE';
+
+export type ProjectLifecycleStatus =
+  | 'ACTIVE'
+  | 'ARCHIVING'
+  | 'ARCHIVED'
+  | 'RESTORING'
+  | 'DELETE_REQUESTED'
+  | 'DELETING'
+  | 'DELETED'
+  | 'RECOVERY_REQUIRED';
+
+export type SettingCapability = {
+  readonly canEdit: boolean;
+  readonly canReset: boolean;
+  readonly canProposeReview: boolean;
+  readonly disabledReason?: string;
+};
+
+export type SettingValue =
+  string | number | boolean | readonly string[] | Record<string, unknown> | null;
+
+export type SettingDescriptor = {
+  readonly key: string;
+  readonly label: string;
+  readonly description: string;
+  readonly scope: SettingsScope;
+  readonly category: string;
+  readonly valueType: 'string' | 'number' | 'boolean' | 'string_array' | 'json';
+  readonly currentValue: SettingValue;
+  readonly defaultValue: SettingValue;
+  readonly applicationMode: SettingsApplicationMode;
+  readonly riskLevel: SettingsRiskLevel;
+  readonly capability: SettingCapability;
+  readonly options?: readonly { readonly label: string; readonly value: string }[];
+  readonly isSecret?: boolean;
+};
+
+export type SettingsCategorySummary = {
+  readonly categoryId: string;
+  readonly label: string;
+  readonly description: string;
+  readonly scope: SettingsScope;
+  readonly totalSettingsCount: number;
+  readonly actionRequiredCount: number;
+  readonly warningCount: number;
+  readonly applicationMode: SettingsApplicationMode;
+  readonly capability: SettingCapability;
+  readonly lastModifiedAt: string | null;
+};
+
+export type SettingsSnapshot = {
+  readonly schemaVersion: '1.0.0';
+  readonly targetProjectId: string;
+  readonly settingsRevision: number;
+  readonly policyContextRevision: number;
+  readonly categories: readonly SettingsCategorySummary[];
+  readonly settings: readonly SettingDescriptor[];
+  readonly fetchedAt: string;
+};
+
+export type SettingsValidationResult = {
+  readonly isValid: boolean;
+  readonly errors: readonly { readonly key: string; readonly message: string }[];
+  readonly warnings: readonly { readonly key: string; readonly message: string }[];
+};
+
+export type SettingsImpactPreview = {
+  readonly targetProjectId: string;
+  readonly expectedRevision: number;
+  readonly applicationMode: SettingsApplicationMode;
+  readonly requiresConfirmation: boolean;
+  readonly requiresReview: boolean;
+  readonly requiresMigration: boolean;
+  readonly requiresRestart: boolean;
+  readonly riskLevel: SettingsRiskLevel;
+  readonly affectedComponents: readonly string[];
+  readonly affectedResources: readonly string[];
+  readonly retrospectiveEffect: string;
+  readonly summaryDescription: string;
+};
+
+export type SettingsCommandStatus =
+  'PENDING' | 'APPLIED' | 'REVIEW_REQUIRED' | 'FAILED' | 'OUTCOME_UNKNOWN';
+
+export type SettingsCommandResult = {
+  readonly commandId: string;
+  readonly clientRequestId: string;
+  readonly idempotencyKey: string;
+  readonly status: SettingsCommandStatus;
+  readonly appliedRevision?: number;
+  readonly reviewProposalId?: string;
+  readonly errorMessage?: string;
+  readonly completedAt?: string;
+  /** Project binding — used server-side for authorization; not required in all views */
+  readonly projectId?: string;
+};
+
+export type ProjectCapabilityView = {
+  readonly canRename: boolean;
+  readonly canArchive: boolean;
+  readonly canRestore: boolean;
+  readonly canDelete: boolean;
+  readonly canManagePolicies: boolean;
+  readonly disabledReason?: string;
+};
+
+export type ProjectListItemView = {
+  readonly id: string;
+  readonly name: string;
+  readonly description?: string;
+  readonly isOwner: boolean;
+  readonly status: ProjectLifecycleStatus;
+  readonly active: boolean;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly revision: number;
+  readonly capability: ProjectCapabilityView;
+};
+
+export type ProjectAdministrationView = {
+  readonly schemaVersion: '1.0.0';
+  readonly projects: readonly ProjectListItemView[];
+};
+
+export type ProductFeatureView<T> =
+  | {
+      readonly availability: 'AVAILABLE';
+      readonly data: T;
+    }
+  | {
+      readonly availability: 'UNAVAILABLE';
+      readonly applicationMode: 'UNAVAILABLE';
+      readonly disabledReason: string;
+    };
+
+export type ModelDescriptorView = {
+  readonly modelId: string;
+  readonly displayName: string;
+  readonly provider: string;
+  readonly available: boolean;
+  readonly isDefault: boolean;
+  readonly capabilities: readonly string[];
+  readonly inputTypes: readonly string[];
+  readonly costClass: 'LOW' | 'MEDIUM' | 'HIGH';
+  readonly privacyCharacteristics: string;
+  readonly disabledReason?: string;
+};
+
+export type CostBudgetView = {
+  readonly targetProjectId: string;
+  readonly currentUsageTokens: number;
+  readonly estimatedCostUsd: number;
+  readonly confirmedCostUsd: number;
+  readonly warningThresholdUsd: number;
+  readonly softLimitUsd: number;
+  readonly hardLimitUsd: number;
+  readonly aggregationTimestamp: string;
+  readonly status:
+    'NORMAL' | 'WARNING_EXCEEDED' | 'SOFT_LIMIT_EXCEEDED' | 'HARD_LIMIT_EXCEEDED' | 'UNAVAILABLE';
+};
+
+export type PrivacyRetentionView = {
+  readonly targetProjectId: string;
+  readonly profileName: 'LOCAL_ONLY' | 'RESTRICTED_EXTERNAL' | 'CONTROLLED_EXTERNAL' | 'CUSTOM';
+  readonly sensitivityLevel: 'NORMAL' | 'SENSITIVE' | 'HIGHLY_SENSITIVE';
+  readonly externalTransferAllowed: boolean;
+  readonly connectorAllowed: boolean;
+  readonly telemetryAllowed: boolean;
+  readonly exportAllowed: boolean;
+  readonly retentionSummary: string;
+};
+
+export type ConnectorSettingsView = {
+  readonly connectorId: string;
+  readonly name: string;
+  readonly status:
+    | 'NOT_CONFIGURED'
+    | 'CONNECTING'
+    | 'CONNECTED'
+    | 'DEGRADED'
+    | 'REAUTH_REQUIRED'
+    | 'REVOKING'
+    | 'REVOKED'
+    | 'FAILED';
+  readonly maskedCredentials?: string;
+  readonly canTest: boolean;
+  readonly canRotate: boolean;
+  readonly canRevoke: boolean;
+};
+
+export type DirectiveProposalView = {
+  readonly proposalId: string;
+  readonly resourceId: string;
+  readonly directiveType: string;
+  readonly description: string;
+  readonly status: 'PROPOSED' | 'APPROVED' | 'REJECTED' | 'COMMITTED';
+  readonly createdAt: string;
+};
+
+export type SchemaPackView = {
+  readonly packId: string;
+  readonly name: string;
+  readonly version: string;
+  readonly compatibilityStatus: 'COMPATIBLE' | 'MIGRATION_REQUIRED' | 'INCOMPATIBLE';
+  readonly canUpgrade: boolean;
+  readonly canDisable: boolean;
+};
+
+export type DiagnosticsView = {
+  readonly appVersion: string;
+  readonly serverVersion: string;
+  readonly activeProjectId: string;
+  readonly targetProjectId: string;
+  readonly databaseReadiness: 'READY' | 'DEGRADED' | 'UNAVAILABLE';
+  readonly projectionReadiness: 'READY' | 'DEGRADED' | 'UNAVAILABLE';
+  readonly recentFailures: readonly string[];
+  readonly backupStatus: 'HEALTHY' | 'WARNING' | 'UNAVAILABLE';
+};
+
+// ----------------------------------------------------------------------------
+// Runtime Decoders with Fail-Closed Invariant Validation
+// ----------------------------------------------------------------------------
+
+export function isRecord(val: unknown): val is Record<string, unknown> {
+  return typeof val === 'object' && val !== null && !Array.isArray(val);
+}
+
+export function decodeProductFeatureView<T>(
+  val: unknown,
+  dataDecoder: (v: unknown) => T,
+): ProductFeatureView<T> {
+  if (!isRecord(val)) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'ProductFeatureView must be a non-null object',
+    );
+  }
+  if (val['availability'] === 'UNAVAILABLE') {
+    return Object.freeze({
+      availability: 'UNAVAILABLE',
+      applicationMode: 'UNAVAILABLE',
+      disabledReason:
+        typeof val['disabledReason'] === 'string' ? val['disabledReason'] : 'Not available.',
+    });
+  }
+  if (val['availability'] === 'AVAILABLE') {
+    return Object.freeze({
+      availability: 'AVAILABLE',
+      data: dataDecoder(val['data']),
+    });
+  }
+  throw new FrontendContractError('INVALID_REQUEST', 'Invalid ProductFeatureView availability');
+}
+
+export function decodeSettingsScope(val: unknown): SettingsScope {
+  const allowed = new Set<SettingsScope>(['PRINCIPAL', 'PROJECT', 'SYSTEM', 'RESOURCE']);
+  if (typeof val !== 'string' || !allowed.has(val as SettingsScope)) {
+    throw new FrontendContractError('INVALID_REQUEST', `Invalid SettingsScope: ${String(val)}`);
+  }
+  return val as SettingsScope;
+}
+
+export function decodeSettingsApplicationMode(val: unknown): SettingsApplicationMode {
+  const allowed = new Set<SettingsApplicationMode>([
+    'IMMEDIATE',
+    'CONFIRM_REQUIRED',
+    'REVIEW_REQUIRED',
+    'RESTART_REQUIRED',
+    'MIGRATION_REQUIRED',
+    'READ_ONLY',
+    'UNAVAILABLE',
+  ]);
+  if (typeof val !== 'string' || !allowed.has(val as SettingsApplicationMode)) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      `Invalid SettingsApplicationMode: ${String(val)}`,
+    );
+  }
+  return val as SettingsApplicationMode;
+}
+
+export function decodeSettingsRiskLevel(val: unknown): SettingsRiskLevel {
+  const allowed = new Set<SettingsRiskLevel>(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']);
+  if (typeof val !== 'string' || !allowed.has(val as SettingsRiskLevel)) {
+    throw new FrontendContractError('INVALID_REQUEST', `Invalid SettingsRiskLevel: ${String(val)}`);
+  }
+  return val as SettingsRiskLevel;
+}
+
+export function decodeProjectLifecycleStatus(val: unknown): ProjectLifecycleStatus {
+  const allowed = new Set<ProjectLifecycleStatus>([
+    'ACTIVE',
+    'ARCHIVING',
+    'ARCHIVED',
+    'RESTORING',
+    'DELETE_REQUESTED',
+    'DELETING',
+    'DELETED',
+    'RECOVERY_REQUIRED',
+  ]);
+  if (typeof val !== 'string' || !allowed.has(val as ProjectLifecycleStatus)) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      `Invalid ProjectLifecycleStatus: ${String(val)}`,
+    );
+  }
+  return val as ProjectLifecycleStatus;
+}
+
+export function decodeSettingDescriptor(val: unknown): SettingDescriptor {
+  if (!isRecord(val)) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'SettingDescriptor must be a non-null object',
+    );
+  }
+  const obj = val;
+
+  if (typeof obj['key'] !== 'string' || !obj['key']) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'SettingDescriptor requires non-empty string key',
+    );
+  }
+
+  const scope = decodeSettingsScope(obj['scope']);
+  const applicationMode = decodeSettingsApplicationMode(obj['applicationMode']);
+  const riskLevel = decodeSettingsRiskLevel(obj['riskLevel']);
+
+  const cap = obj['capability'];
+  if (!isRecord(cap)) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'SettingDescriptor requires capability object',
+    );
+  }
+
+  // Security Negative Gate: Check if raw secret values are present
+  if (
+    obj['isSecret'] === true &&
+    typeof obj['currentValue'] === 'string' &&
+    obj['currentValue'].length > 0 &&
+    !obj['currentValue'].includes('*')
+  ) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'SettingDescriptor must not expose unmasked secret values',
+    );
+  }
+
+  return Object.freeze({
+    key: obj['key'] as string,
+    label: (obj['label'] as string) ?? obj['key'],
+    description: (obj['description'] as string) ?? '',
+    scope,
+    category: (obj['category'] as string) ?? 'general',
+    valueType: (obj['valueType'] as SettingDescriptor['valueType']) ?? 'string',
+    currentValue: (obj['currentValue'] as SettingValue) ?? null,
+    defaultValue: (obj['defaultValue'] as SettingValue) ?? null,
+    applicationMode,
+    riskLevel,
+    capability: Object.freeze({
+      canEdit: Boolean(cap['canEdit']),
+      canReset: Boolean(cap['canReset']),
+      canProposeReview: Boolean(cap['canProposeReview']),
+      disabledReason: typeof cap['disabledReason'] === 'string' ? cap['disabledReason'] : undefined,
+    }),
+    options: Array.isArray(obj['options'])
+      ? Object.freeze(
+          obj['options'].map((opt) =>
+            Object.freeze({ label: String(opt.label), value: String(opt.value) }),
+          ),
+        )
+      : undefined,
+    isSecret: Boolean(obj['isSecret']),
+  });
+}
+
+export function decodeSettingsCategorySummary(val: unknown): SettingsCategorySummary {
+  if (!isRecord(val)) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'SettingsCategorySummary must be a non-null object',
+    );
+  }
+  const obj = val;
+
+  if (typeof obj['categoryId'] !== 'string' || !obj['categoryId']) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'SettingsCategorySummary requires categoryId',
+    );
+  }
+
+  const scope = decodeSettingsScope(obj['scope']);
+  const applicationMode = decodeSettingsApplicationMode(obj['applicationMode']);
+
+  const cap = obj['capability'];
+  if (!isRecord(cap)) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'SettingsCategorySummary requires capability object',
+    );
+  }
+
+  return Object.freeze({
+    categoryId: obj['categoryId'],
+    label: String(obj['label'] ?? obj['categoryId']),
+    description: typeof obj['description'] === 'string' ? obj['description'] : '',
+    scope,
+    totalSettingsCount: Number(obj['totalSettingsCount'] ?? 0),
+    actionRequiredCount: Number(obj['actionRequiredCount'] ?? 0),
+    warningCount: Number(obj['warningCount'] ?? 0),
+    applicationMode,
+    capability: Object.freeze({
+      canEdit: Boolean(cap['canEdit']),
+      canReset: Boolean(cap['canReset']),
+      canProposeReview: Boolean(cap['canProposeReview']),
+      disabledReason: typeof cap['disabledReason'] === 'string' ? cap['disabledReason'] : undefined,
+    }),
+    lastModifiedAt: typeof obj['lastModifiedAt'] === 'string' ? obj['lastModifiedAt'] : null,
+  });
+}
+
+export function decodeSettingsSnapshot(val: unknown): SettingsSnapshot {
+  if (!isRecord(val)) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'SettingsSnapshot must be a non-null object',
+    );
+  }
+  const obj = val;
+
+  if (obj['schemaVersion'] !== '1.0.0') {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      `Unsupported SettingsSnapshot schemaVersion: ${String(obj['schemaVersion'])}`,
+    );
+  }
+  if (typeof obj['targetProjectId'] !== 'string' || !obj['targetProjectId']) {
+    throw new FrontendContractError('INVALID_REQUEST', 'SettingsSnapshot requires targetProjectId');
+  }
+  if (typeof obj['settingsRevision'] !== 'number' || obj['settingsRevision'] < 0) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'SettingsSnapshot requires valid non-negative settingsRevision',
+    );
+  }
+
+  const categories = Array.isArray(obj['categories'])
+    ? obj['categories'].map(decodeSettingsCategorySummary)
+    : [];
+  const settings = Array.isArray(obj['settings'])
+    ? obj['settings'].map(decodeSettingDescriptor)
+    : [];
+
+  return Object.freeze({
+    schemaVersion: '1.0.0',
+    targetProjectId: obj['targetProjectId'],
+    settingsRevision: obj['settingsRevision'],
+    policyContextRevision: Number(obj['policyContextRevision'] ?? obj['settingsRevision']),
+    categories: Object.freeze(categories),
+    settings: Object.freeze(settings),
+    fetchedAt: String(obj['fetchedAt'] ?? new Date().toISOString()),
+  });
+}
+
+export function decodeProjectListItemView(val: unknown): ProjectListItemView {
+  if (!isRecord(val)) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'ProjectListItemView must be a non-null object',
+    );
+  }
+  const obj = val;
+  if (typeof obj['id'] !== 'string' || !obj['id']) {
+    throw new FrontendContractError('INVALID_REQUEST', 'ProjectListItemView requires valid id');
+  }
+  const cap = isRecord(obj['capability']) ? obj['capability'] : {};
+
+  return Object.freeze({
+    id: String(obj['id']),
+    name: String(obj['name'] ?? obj['id']),
+    description: typeof obj['description'] === 'string' ? obj['description'] : '',
+    isOwner: Boolean(obj['isOwner']),
+    status: decodeProjectLifecycleStatus(obj['status']),
+    active: Boolean(obj['active']),
+    createdAt: String(obj['createdAt'] ?? new Date().toISOString()),
+    updatedAt: String(obj['updatedAt'] ?? new Date().toISOString()),
+    revision: Number(obj['revision'] ?? 1),
+    capability: Object.freeze({
+      canRename: Boolean(cap['canRename']),
+      canArchive: Boolean(cap['canArchive']),
+      canRestore: Boolean(cap['canRestore']),
+      canDelete: Boolean(cap['canDelete']),
+      canManagePolicies: Boolean(cap['canManagePolicies']),
+      disabledReason: typeof cap['disabledReason'] === 'string' ? cap['disabledReason'] : undefined,
+    }),
+  });
+}
+
+export function decodeProjectAdministrationView(val: unknown): ProjectAdministrationView {
+  if (!isRecord(val)) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'ProjectAdministrationView must be a non-null object',
+    );
+  }
+  const obj = val;
+  if (obj['schemaVersion'] !== '1.0.0') {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      `Unsupported ProjectAdministrationView schemaVersion: ${String(obj['schemaVersion'])}`,
+    );
+  }
+  const projects = Array.isArray(obj['projects'])
+    ? obj['projects'].map(decodeProjectListItemView)
+    : [];
+  return Object.freeze({
+    schemaVersion: '1.0.0',
+    projects: Object.freeze(projects),
+  });
+}
+
+export function decodeSettingsValidationResult(val: unknown): SettingsValidationResult {
+  if (!isRecord(val)) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'SettingsValidationResult must be a non-null object',
+    );
+  }
+  const obj = val;
+  const errors = Array.isArray(obj['errors'])
+    ? obj['errors'].map((e) => {
+        const item = isRecord(e) ? e : {};
+        return { key: String(item['key'] ?? ''), message: String(item['message'] ?? '') };
+      })
+    : [];
+  const warnings = Array.isArray(obj['warnings'])
+    ? obj['warnings'].map((w) => {
+        const item = isRecord(w) ? w : {};
+        return { key: String(item['key'] ?? ''), message: String(item['message'] ?? '') };
+      })
+    : [];
+
+  return Object.freeze({
+    isValid: Boolean(obj['isValid']),
+    errors: Object.freeze(errors),
+    warnings: Object.freeze(warnings),
+  });
+}
+
+export function decodeSettingsImpactPreview(val: unknown): SettingsImpactPreview {
+  if (!isRecord(val)) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'SettingsImpactPreview must be a non-null object',
+    );
+  }
+  const obj = val;
+  const affectedComponents = Array.isArray(obj['affectedComponents'])
+    ? obj['affectedComponents'].map(String)
+    : [];
+  const affectedResources = Array.isArray(obj['affectedResources'])
+    ? obj['affectedResources'].map(String)
+    : [];
+
+  return Object.freeze({
+    targetProjectId: String(obj['targetProjectId'] ?? ''),
+    expectedRevision: Number(obj['expectedRevision'] ?? 0),
+    applicationMode: decodeSettingsApplicationMode(obj['applicationMode']),
+    requiresConfirmation: Boolean(obj['requiresConfirmation']),
+    requiresReview: Boolean(obj['requiresReview']),
+    requiresMigration: Boolean(obj['requiresMigration']),
+    requiresRestart: Boolean(obj['requiresRestart']),
+    riskLevel: decodeSettingsRiskLevel(obj['riskLevel']),
+    affectedComponents: Object.freeze(affectedComponents),
+    affectedResources: Object.freeze(affectedResources),
+    retrospectiveEffect: String(obj['retrospectiveEffect'] ?? 'NONE'),
+    summaryDescription: String(obj['summaryDescription'] ?? ''),
+  });
+}
+
+export function decodeSettingsCommandResult(val: unknown): SettingsCommandResult {
+  if (!isRecord(val)) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'SettingsCommandResult must be a non-null object',
+    );
+  }
+  const obj = val;
+  const rawStatus = String(obj['status'] ?? 'FAILED');
+  const validStatuses: SettingsCommandStatus[] = [
+    'PENDING',
+    'APPLIED',
+    'REVIEW_REQUIRED',
+    'FAILED',
+    'OUTCOME_UNKNOWN',
+  ];
+  const status: SettingsCommandStatus = validStatuses.includes(rawStatus as SettingsCommandStatus)
+    ? (rawStatus as SettingsCommandStatus)
+    : 'FAILED';
+
+  return Object.freeze({
+    commandId: String(obj['commandId'] ?? ''),
+    clientRequestId: String(obj['clientRequestId'] ?? ''),
+    idempotencyKey: String(obj['idempotencyKey'] ?? ''),
+    status,
+    appliedRevision:
+      typeof obj['appliedRevision'] === 'number' ? obj['appliedRevision'] : undefined,
+    reviewProposalId:
+      typeof obj['reviewProposalId'] === 'string' ? obj['reviewProposalId'] : undefined,
+    errorMessage: typeof obj['errorMessage'] === 'string' ? obj['errorMessage'] : undefined,
+    completedAt: typeof obj['completedAt'] === 'string' ? obj['completedAt'] : undefined,
+    projectId: typeof obj['projectId'] === 'string' ? obj['projectId'] : undefined,
+  });
+}
+
+export function decodePrincipalPreferences(val: unknown): Readonly<Record<string, unknown>> {
+  if (!isRecord(val)) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'Principal preferences must be a non-null object',
+    );
+  }
+  validateJSONValue(val, 'preferences');
+  return Object.freeze({ ...val });
+}
+
+const requireStringField = (
+  value: Record<string, unknown>,
+  field: string,
+  viewName: string,
+): string => {
+  if (typeof value[field] !== 'string') {
+    throw new FrontendContractError('INVALID_REQUEST', `${viewName}.${field} must be a string`);
+  }
+  return value[field];
+};
+
+const requireNumberField = (
+  value: Record<string, unknown>,
+  field: string,
+  viewName: string,
+): number => {
+  if (typeof value[field] !== 'number' || !Number.isFinite(value[field])) {
+    throw new FrontendContractError('INVALID_REQUEST', `${viewName}.${field} must be a number`);
+  }
+  return value[field];
+};
+
+const requireBooleanField = (
+  value: Record<string, unknown>,
+  field: string,
+  viewName: string,
+): boolean => {
+  if (typeof value[field] !== 'boolean') {
+    throw new FrontendContractError('INVALID_REQUEST', `${viewName}.${field} must be a boolean`);
+  }
+  return value[field];
+};
+
+export function decodeFrontendCommandOutcomeView(val: unknown): FrontendCommandOutcomeView {
+  if (!isRecord(val)) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'FrontendCommandOutcomeView must be an object',
+    );
+  }
+  const principal = val['acceptedPrincipalContext'];
+  const actor = isRecord(principal) ? principal['actor'] : undefined;
+  const project = val['acceptedProjectContext'];
+  const policy = val['acceptedPolicyContext'];
+  if (!isRecord(principal) || !isRecord(actor) || !isRecord(project) || !isRecord(policy)) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'FrontendCommandOutcomeView requires accepted context objects',
+    );
+  }
+  const outcomeState = val['outcomeState'];
+  if (!['ACCEPTED', 'COMPLETED', 'REJECTED', 'OUTCOME_UNKNOWN'].includes(String(outcomeState))) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'FrontendCommandOutcomeView has invalid outcomeState',
+    );
+  }
+  const producedResources = Array.isArray(val['producedResources'])
+    ? val['producedResources'].map((item) => {
+        if (!isRecord(item)) {
+          throw new FrontendContractError('INVALID_REQUEST', 'Produced resource must be an object');
+        }
+        return Object.freeze({
+          resourceKind: requireStringField(item, 'resourceKind', 'ProducedResourceRef'),
+          resourceId: requireStringField(item, 'resourceId', 'ProducedResourceRef'),
+          ...(typeof item['resourceRevision'] === 'string'
+            ? { resourceRevision: item['resourceRevision'] }
+            : {}),
+        });
+      })
+    : [];
+  return Object.freeze({
+    commandId: requireStringField(val, 'commandId', 'FrontendCommandOutcomeView'),
+    commandRevision: requireStringField(val, 'commandRevision', 'FrontendCommandOutcomeView'),
+    clientRequestId: requireStringField(val, 'clientRequestId', 'FrontendCommandOutcomeView'),
+    idempotencyKey: requireStringField(val, 'idempotencyKey', 'FrontendCommandOutcomeView'),
+    commandType: requireStringField(val, 'commandType', 'FrontendCommandOutcomeView'),
+    commandSchemaVersion: requireStringField(
+      val,
+      'commandSchemaVersion',
+      'FrontendCommandOutcomeView',
+    ),
+    commandSemanticDigest: requireStringField(
+      val,
+      'commandSemanticDigest',
+      'FrontendCommandOutcomeView',
+    ),
+    outcomeState: outcomeState as OutcomeState,
+    ...(typeof val['completionDisposition'] === 'string'
+      ? { completionDisposition: val['completionDisposition'] as CompletionDisposition }
+      : {}),
+    acceptedPrincipalContext: Object.freeze({
+      principalId: requireStringField(principal, 'principalId', 'AcceptedPrincipalContext'),
+      actor: Object.freeze({
+        type: actor['type'] === 'service' ? 'service' : 'user',
+        id: requireStringField(actor, 'id', 'AcceptedPrincipalContext.actor'),
+      }),
+    }),
+    acceptedProjectContext: Object.freeze({
+      targetProjectId: requireStringField(project, 'targetProjectId', 'AcceptedProjectContext'),
+    }),
+    acceptedPolicyContext: Object.freeze({
+      policyContextId: requireStringField(policy, 'policyContextId', 'AcceptedPolicyContext'),
+      policyContextRevision: requireStringField(
+        policy,
+        'policyContextRevision',
+        'AcceptedPolicyContext',
+      ),
+      acceptedAt: requireStringField(policy, 'acceptedAt', 'AcceptedPolicyContext'),
+    }),
+    correlationId: requireStringField(val, 'correlationId', 'FrontendCommandOutcomeView'),
+    ...(typeof val['traceId'] === 'string' ? { traceId: val['traceId'] } : {}),
+    producedResources: Object.freeze(producedResources),
+    receivedAt: requireStringField(val, 'receivedAt', 'FrontendCommandOutcomeView'),
+    ...(typeof val['acceptedAt'] === 'string' ? { acceptedAt: val['acceptedAt'] } : {}),
+    ...(typeof val['completedAt'] === 'string' ? { completedAt: val['completedAt'] } : {}),
+    lastUpdatedAt: requireStringField(val, 'lastUpdatedAt', 'FrontendCommandOutcomeView'),
+  });
+}
+
+export function decodeModelDescriptorView(val: unknown): ModelDescriptorView {
+  if (!isRecord(val)) {
+    throw new FrontendContractError('INVALID_REQUEST', 'ModelDescriptorView must be an object');
+  }
+  const costClass = requireStringField(val, 'costClass', 'ModelDescriptorView');
+  if (!['LOW', 'MEDIUM', 'HIGH'].includes(costClass)) {
+    throw new FrontendContractError('INVALID_REQUEST', 'ModelDescriptorView.costClass is invalid');
+  }
+  return Object.freeze({
+    modelId: requireStringField(val, 'modelId', 'ModelDescriptorView'),
+    displayName: requireStringField(val, 'displayName', 'ModelDescriptorView'),
+    provider: requireStringField(val, 'provider', 'ModelDescriptorView'),
+    available: requireBooleanField(val, 'available', 'ModelDescriptorView'),
+    isDefault: requireBooleanField(val, 'isDefault', 'ModelDescriptorView'),
+    capabilities: Object.freeze(
+      Array.isArray(val['capabilities']) ? val['capabilities'].map(String) : [],
+    ),
+    inputTypes: Object.freeze(
+      Array.isArray(val['inputTypes']) ? val['inputTypes'].map(String) : [],
+    ),
+    costClass: costClass as ModelDescriptorView['costClass'],
+    privacyCharacteristics: requireStringField(
+      val,
+      'privacyCharacteristics',
+      'ModelDescriptorView',
+    ),
+    ...(typeof val['disabledReason'] === 'string' ? { disabledReason: val['disabledReason'] } : {}),
+  });
+}
+
+export function decodeCostBudgetView(val: unknown): CostBudgetView {
+  if (!isRecord(val)) {
+    throw new FrontendContractError('INVALID_REQUEST', 'CostBudgetView must be an object');
+  }
+  return Object.freeze({
+    targetProjectId: requireStringField(val, 'targetProjectId', 'CostBudgetView'),
+    currentUsageTokens: requireNumberField(val, 'currentUsageTokens', 'CostBudgetView'),
+    estimatedCostUsd: requireNumberField(val, 'estimatedCostUsd', 'CostBudgetView'),
+    confirmedCostUsd: requireNumberField(val, 'confirmedCostUsd', 'CostBudgetView'),
+    warningThresholdUsd: requireNumberField(val, 'warningThresholdUsd', 'CostBudgetView'),
+    softLimitUsd: requireNumberField(val, 'softLimitUsd', 'CostBudgetView'),
+    hardLimitUsd: requireNumberField(val, 'hardLimitUsd', 'CostBudgetView'),
+    aggregationTimestamp: requireStringField(val, 'aggregationTimestamp', 'CostBudgetView'),
+    status: requireStringField(val, 'status', 'CostBudgetView') as CostBudgetView['status'],
+  });
+}
+
+export function decodePrivacyRetentionView(val: unknown): PrivacyRetentionView {
+  if (!isRecord(val)) {
+    throw new FrontendContractError('INVALID_REQUEST', 'PrivacyRetentionView must be an object');
+  }
+  return Object.freeze({
+    targetProjectId: requireStringField(val, 'targetProjectId', 'PrivacyRetentionView'),
+    profileName: requireStringField(
+      val,
+      'profileName',
+      'PrivacyRetentionView',
+    ) as PrivacyRetentionView['profileName'],
+    sensitivityLevel: requireStringField(
+      val,
+      'sensitivityLevel',
+      'PrivacyRetentionView',
+    ) as PrivacyRetentionView['sensitivityLevel'],
+    externalTransferAllowed: requireBooleanField(
+      val,
+      'externalTransferAllowed',
+      'PrivacyRetentionView',
+    ),
+    connectorAllowed: requireBooleanField(val, 'connectorAllowed', 'PrivacyRetentionView'),
+    telemetryAllowed: requireBooleanField(val, 'telemetryAllowed', 'PrivacyRetentionView'),
+    exportAllowed: requireBooleanField(val, 'exportAllowed', 'PrivacyRetentionView'),
+    retentionSummary: requireStringField(val, 'retentionSummary', 'PrivacyRetentionView'),
+  });
+}
+
+export function decodeConnectorSettingsView(val: unknown): ConnectorSettingsView {
+  if (!isRecord(val)) {
+    throw new FrontendContractError('INVALID_REQUEST', 'ConnectorSettingsView must be an object');
+  }
+  return Object.freeze({
+    connectorId: requireStringField(val, 'connectorId', 'ConnectorSettingsView'),
+    name: requireStringField(val, 'name', 'ConnectorSettingsView'),
+    status: requireStringField(
+      val,
+      'status',
+      'ConnectorSettingsView',
+    ) as ConnectorSettingsView['status'],
+    ...(typeof val['maskedCredentials'] === 'string'
+      ? { maskedCredentials: val['maskedCredentials'] }
+      : {}),
+    canTest: requireBooleanField(val, 'canTest', 'ConnectorSettingsView'),
+    canRotate: requireBooleanField(val, 'canRotate', 'ConnectorSettingsView'),
+    canRevoke: requireBooleanField(val, 'canRevoke', 'ConnectorSettingsView'),
+  });
+}
+
+export function decodeDirectiveProposalView(val: unknown): DirectiveProposalView {
+  if (!isRecord(val)) {
+    throw new FrontendContractError('INVALID_REQUEST', 'DirectiveProposalView must be an object');
+  }
+  return Object.freeze({
+    proposalId: requireStringField(val, 'proposalId', 'DirectiveProposalView'),
+    resourceId: requireStringField(val, 'resourceId', 'DirectiveProposalView'),
+    directiveType: requireStringField(val, 'directiveType', 'DirectiveProposalView'),
+    description: requireStringField(val, 'description', 'DirectiveProposalView'),
+    status: requireStringField(
+      val,
+      'status',
+      'DirectiveProposalView',
+    ) as DirectiveProposalView['status'],
+    createdAt: requireStringField(val, 'createdAt', 'DirectiveProposalView'),
+  });
+}
+
+export function decodeSchemaPackView(val: unknown): SchemaPackView {
+  if (!isRecord(val)) {
+    throw new FrontendContractError('INVALID_REQUEST', 'SchemaPackView must be an object');
+  }
+  return Object.freeze({
+    packId: requireStringField(val, 'packId', 'SchemaPackView'),
+    name: requireStringField(val, 'name', 'SchemaPackView'),
+    version: requireStringField(val, 'version', 'SchemaPackView'),
+    compatibilityStatus: requireStringField(
+      val,
+      'compatibilityStatus',
+      'SchemaPackView',
+    ) as SchemaPackView['compatibilityStatus'],
+    canUpgrade: requireBooleanField(val, 'canUpgrade', 'SchemaPackView'),
+    canDisable: requireBooleanField(val, 'canDisable', 'SchemaPackView'),
+  });
+}
+
+export function decodeDiagnosticsView(val: unknown): DiagnosticsView {
+  if (!isRecord(val)) {
+    throw new FrontendContractError('INVALID_REQUEST', 'DiagnosticsView must be an object');
+  }
+  return Object.freeze({
+    appVersion: requireStringField(val, 'appVersion', 'DiagnosticsView'),
+    serverVersion: requireStringField(val, 'serverVersion', 'DiagnosticsView'),
+    activeProjectId: requireStringField(val, 'activeProjectId', 'DiagnosticsView'),
+    targetProjectId: requireStringField(val, 'targetProjectId', 'DiagnosticsView'),
+    databaseReadiness: requireStringField(
+      val,
+      'databaseReadiness',
+      'DiagnosticsView',
+    ) as DiagnosticsView['databaseReadiness'],
+    projectionReadiness: requireStringField(
+      val,
+      'projectionReadiness',
+      'DiagnosticsView',
+    ) as DiagnosticsView['projectionReadiness'],
+    recentFailures: Object.freeze(
+      Array.isArray(val['recentFailures']) ? val['recentFailures'].map(String) : [],
+    ),
+    backupStatus: requireStringField(
+      val,
+      'backupStatus',
+      'DiagnosticsView',
+    ) as DiagnosticsView['backupStatus'],
   });
 }

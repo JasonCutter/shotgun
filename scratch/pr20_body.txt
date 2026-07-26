@@ -1,0 +1,61 @@
+# Frontend Phase 1 Section 2 — Settings and Project Administration
+
+## 1. 개요 (Overview)
+
+본 PR은 **Frontend Phase 1 Section 2 (Settings · Project Administration)** 구현을 완성합니다.
+사용자 승인(2026-07-25), Gap Audit, ADR-114, 그리고 AC-01~AC-30 요구사항을 100% 준수합니다.
+
+---
+
+## 2. 주요 구현 내용 (Key Implementation)
+
+1. **소유권 경계 격리 (ADR-114)**:
+   - `AuthRepository`: Principal, Session, Membership, API Token
+   - `ProjectAdministrationRepository`: Project identity/metadata, status, capability, revision
+   - `SettingsRepository`: Principal Preference, Project Policy, System/Resource Settings, Revisions, Command Execution
+
+2. **계약 & 디코더 (`packages/contracts`)**:
+   - 디코더 기반 fail-closed 검증 및 비가공 시크릿 노출 차단 가드 구현
+   - `SettingDescriptor`, `SettingsSnapshot`, `ProjectListItemView`, `ModelDescriptorView`, `CostBudgetView`, `PrivacyRetentionView`, `ConnectorSettingsView`, `DirectiveProposalView`, `SchemaPackView`, `DiagnosticsView` 디코더 완성
+
+3. **Domain Port, InMemory/Postgres Repository & DB Migration**:
+   - `modules/project-administration`, `modules/settings-policy`
+   - `adapters/settings-project-admin-in-memory`, `adapters/postgres`
+   - `db/migrations/016_stage1_section2_settings_project_admin.sql` (`project_admin`, `settings` 스키마)
+
+4. **Product REST API Endpoints (`assemblies/shotgun-app`)**:
+   - `/api/v1/projects/*` & `/api/v1/settings/*` Fastify 라우트 핸들러 구현
+   - `clientRequestId`, `idempotencyKey` 검증, CSRF 토큰 보호, expectedRevision 409 CONFLICT 충돌 처리
+
+5. **Client, Draft Controller, Leave Guard & Frontend Workspaces (`apps/shotgun-web`)**:
+   - `ShotgunApiClient` 5D 쿼리 키 구조 및 캐시 퍼지 로직 (`purgeSettingsScopedCaches`)
+   - `SettingsDraftController` 상태 기계, draft command ID pinning, typed error 복구 및 Option B Leave Guard 통합 (`useLeaveGuard`)
+   - Runtime decoder 연결 (`decodeSettingsSnapshot`, `decodeSettingsValidationResult`, `decodeSettingsImpactPreview`, `decodeSettingsCommandResult`)
+   - WAI-ARIA / 키보드 접근성을 갖춘 `SettingsLayout` 및 11개 전용 워크스페이스 (`CategoryIndexView`, `PreferencesWorkspace`, `ProjectsWorkspace`, `ProjectDetailsWorkspace`, `ModelsWorkspace`, `CostsWorkspace`, `PrivacyWorkspace`, `ConnectorsWorkspace`, `DirectivesWorkspace`, `SchemaWorkspace`, `DiagnosticsWorkspace`, `AdvancedWorkspace`)
+
+6. **Persistent PostgreSQL Repository & Test Suite (`tests/database/section2-postgres.test.ts`)**:
+   - `PostgresProjectAdministrationRepository` & `PostgresSettingsRepository` 연결
+   - Atomic Project Creation Coordinator, `SELECT ... FOR UPDATE` 부모 행 잠금, `policy_binding` 스키마 정합성 보장
+   - `section2-postgres.test.ts` 추가 (프로젝트 원자적 생성, 설정 명령 revision 증가, 재시작 영속성, 롤백 안전성, idempotency key 재사용 불일치 검증)
+
+---
+
+## 3. 검증 결과 (Verification Results)
+
+- **Verification Report**: [`docs/engineering/frontend-phase-1-section-2-verification-260725001.md`](file:///c:/dev/shotgun/docs/engineering/frontend-phase-1-section-2-verification-260725001.md)
+- **AC-01 ~ AC-30**: 30/30 전체 항목 PASS
+- **`npm run check:core`**: ALL GREEN (Lint, Format, Typecheck, Unit, Contract, Integration, Architecture)
+- **`npm run test:database`**: ALL GREEN (16 test files, 81 tests passed)
+- **`npm run test:unit`**: ALL GREEN (21 test files, 92 tests passed)
+- **`npm run test:contract`**: ALL GREEN (18 test files, 150 tests passed)
+- **`npm run test:integration`**: ALL GREEN (10 test files, 35 tests passed)
+- **`npm run frontend:test:e2e`**: ALL GREEN (2 spec files, 5 Playwright E2E browser tests passed)
+- **`npm run secret:scan`**: PASS (Zero secret leakage)
+- **`npm run oss:verify`**: PASS (68 decisions, 45 baseline references)
+
+---
+
+## 4. Draft PR 상태 및 준수사항
+
+- 본 PR은 사용자 지침에 따라 Draft 상태로 유지합니다.
+- 임의 권한 승인 요청이나 가공된 지표/더미 UI 없이 실제 계약과 검증된 데이터에 기반합니다.

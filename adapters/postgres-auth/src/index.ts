@@ -324,6 +324,24 @@ export class PostgresAuthRepository implements AuthRepositoryPort {
     );
     return result.rows.map(membership);
   }
+  async createProjectOwnerMembership(input: {
+    readonly principalId: string;
+    readonly projectId: string;
+    readonly scopes: readonly string[];
+    readonly sensitivityClearance: SecurityContext['sensitivity'];
+  }): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO auth.project_memberships (
+         principal_id, project_id, scopes, sensitivity_clearance, is_owner
+       )
+       VALUES ($1, $2, $3, $4, true)
+       ON CONFLICT (principal_id, project_id) DO UPDATE
+       SET scopes = EXCLUDED.scopes,
+           sensitivity_clearance = EXCLUDED.sensitivity_clearance,
+           is_owner = true`,
+      [input.principalId, input.projectId, [...input.scopes], input.sensitivityClearance],
+    );
+  }
   async appendAudit(event: {
     principalId?: string;
     projectId?: string;

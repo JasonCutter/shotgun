@@ -45,13 +45,14 @@ const renderRoute = (element: React.ReactNode, apiClient: ShotgunApiClient) => {
   return { queryClient, router, sessionCycleState };
 };
 
-const api = (overrides: Partial<ShotgunApiClient> = {}): ShotgunApiClient => ({
-  bootstrapLocalOwner: vi.fn(async () => session),
-  getSession: vi.fn(async () => session),
-  switchActiveProject: vi.fn(async () => session),
-  logout: vi.fn(async () => undefined),
-  ...overrides,
-});
+const api = (overrides: Partial<ShotgunApiClient> = {}): ShotgunApiClient =>
+  ({
+    bootstrapLocalOwner: vi.fn(async () => session),
+    getSession: vi.fn(async () => session),
+    switchActiveProject: vi.fn(async () => session),
+    logout: vi.fn(async () => undefined),
+    ...overrides,
+  }) as unknown as ShotgunApiClient;
 
 describe('Session controls', () => {
   it('authenticates local owner when session is missing without showing login screen', async () => {

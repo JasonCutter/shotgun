@@ -35,7 +35,7 @@ const runtime = (): AppRuntime => {
     getSession: vi.fn(async () => session),
     switchActiveProject: vi.fn(async () => session),
     logout: vi.fn(async () => undefined),
-  };
+  } as unknown as ShotgunApiClient;
   return { apiClient, queryClient, sessionCycleState };
 };
 

@@ -1,0 +1,74 @@
+{
+  "snapshotSet": "frontend-phase-1-section-2",
+  "exportScope": "Contract-relevant visible excerpts; limitations are recorded in the affected files.",
+  "verifiedByCommit": "00a49ae396d4536c50788d23dcbb06583680ec0b",
+  "entries": [
+    {
+      "canonicalTitle": "Phase 1 Section 2 — Settings·Project Administration 결정문 (확정)",
+      "canonicalUrl": "https://app.notion.com/p/3a65181d71ad81e0aabeff1ec7b6d161",
+      "fetchedAt": "2026-07-25T10:47:10.330Z",
+      "sourceLastEditedAt": "2026-07-25T10:47:00.000Z",
+      "exportedFile": "section-2-decision.md",
+      "sha256": "9137d681c97710ad0175a0fa1af12e140d383cd077797dc98dd2a2498b0f384c",
+      "supersedes": []
+    },
+    {
+      "canonicalTitle": "ADR-101 — Frontend Async Command·Resource Snapshot·Outcome Unknown",
+      "canonicalUrl": "https://app.notion.com/p/3a65181d71ad815c8c23e6b1cbe8d962",
+      "fetchedAt": "2026-07-24T02:28:20.231Z",
+      "sourceLastEditedAt": null,
+      "exportedFile": "adr-101.md",
+      "sha256": "230fe3c58f52b689a626ad959d9efcd101af382bd55ff881d9c18ca88bc7e786",
+      "supersedes": []
+    },
+    {
+      "canonicalTitle": "ADR-103 — Settings as Typed Project Policy Control Plane",
+      "canonicalUrl": "https://app.notion.com/p/3a65181d71ad81769f37e50336c18f0c",
+      "fetchedAt": "2026-07-23T19:59:18.316Z",
+      "sourceLastEditedAt": "2026-07-23T19:59:00.000Z",
+      "exportedFile": "adr-103.md",
+      "sha256": "f355e098e1ae602186709be594d69da7b4cd07a4f0a6d695d8cbeb663e7cf8bb",
+      "supersedes": []
+    },
+    {
+      "canonicalTitle": "ADR-105 — Frontend Policy Context Pinning and Current-policy Revalidation",
+      "canonicalUrl": "https://app.notion.com/p/3a65181d71ad81b7bf83e54de4d814e6",
+      "fetchedAt": "2026-07-23T19:52:29.056Z",
+      "sourceLastEditedAt": "2026-07-23T19:52:00.000Z",
+      "exportedFile": "adr-105.md",
+      "sha256": "35fb08ade71bffa802abfd77e0dce1ab368c6183e694fa9c83fe6caaf5a0da15",
+      "supersedes": []
+    },
+    {
+      "canonicalTitle": "Frontend Phase 1–2 Cross-Phase Integration 결정문 (Contract 정규화 완료)",
+      "canonicalUrl": "https://app.notion.com/p/3a65181d71ad81e28b9cfb13f322e983",
+      "fetchedAt": "2026-07-24T03:11:07.988Z",
+      "sourceLastEditedAt": "2026-07-24T03:11:00.000Z",
+      "exportedFile": "cross-phase-integration.md",
+      "sha256": "0391cceaa999d25f7c86928d2ca2cce2d13317265ad0c8a0feb4b3b326b2ac0a",
+      "supersedes": [
+        "Client-constant Ask default",
+        "Settings Draft in Home Continue Working",
+        "Scalar expected revision"
+      ]
+    },
+    {
+      "canonicalTitle": "ADR-114 — Project Administration and Settings Repository Ownership Boundary",
+      "canonicalUrl": "docs/architecture/adr/ADR-114-project-administration-and-settings-repository-ownership-boundary.md",
+      "fetchedAt": "2026-07-26",
+      "sourceLastEditedAt": null,
+      "exportedFile": "adr-114.md",
+      "sha256": "8954f827507b84d9ff59823b97cfe39da5ab26e61b73e5063fbe4de000f46239",
+      "supersedes": ["Scalar expectedRevision", "DROP SCHEMA production rollback"]
+    },
+    {
+      "canonicalTitle": "Frontend Phase 1 Section 2 Gap Audit and fixed AC-01 through AC-30",
+      "canonicalUrl": "https://app.notion.com/p/3a65181d71ad81e0aabeff1ec7b6d161",
+      "fetchedAt": "2026-07-26",
+      "sourceLastEditedAt": "2026-07-25T10:47:00.000Z",
+      "exportedFile": "acceptance-criteria-ac01-ac30.md",
+      "sha256": "b06c487f1d8f1f31d1ab22f14212f80d7412ec59db33754846169dda15c9c1d8",
+      "supersedes": []
+    }
+  ]
+}

@@ -16,6 +16,7 @@ Shotgun을 독립적인 기능 모듈과 공통 연결 계약으로 구성하기
 - [ADR-076 — Modular Monolith First](./adr/ADR-076-modular-monolith-first.md)
 - [ADR-077 — Common Contracts and Connector Runtime](./adr/ADR-077-common-contracts-and-connector-runtime.md)
 - [ADR-078 — Replaceable Open-source Assignments](./adr/ADR-078-replaceable-open-source-assignments.md)
+- [ADR-114 — Project Administration and Settings Repository Ownership Boundary](../adr/ADR-114-project-administration-and-settings-repository-ownership-boundary.md)
 
 ## 핵심 결정
 
@@ -51,17 +52,18 @@ flowchart TB
 
 ## 결정 상태
 
-| 항목 | 상태 |
-|---|---|
-| 모듈 중심 구조 | Accepted |
-| 모듈러 모놀리스 우선 | Accepted |
-| 공통 Connector 계약 | Accepted |
-| 직접 DB 접근 금지 | Accepted |
-| 모듈별 데이터 소유권 | Accepted |
-| Local Owner Session 및 Method-Neutral Authentication Boundary (ADR-099) | Accepted |
-| 오픈소스 역할 배치 | Baseline Candidate |
-| 개별 제품·라이브러리 최종 채택 | Implementation Validation |
-| 독립 서비스 분리 시점 | Deferred until measured |
+| 항목                                                                    | 상태                                                                                           |
+| ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| 모듈 중심 구조                                                          | Accepted                                                                                       |
+| 모듈러 모놀리스 우선                                                    | Accepted                                                                                       |
+| 공통 Connector 계약                                                     | Accepted                                                                                       |
+| 직접 DB 접근 금지                                                       | Accepted                                                                                       |
+| 모듈별 데이터 소유권                                                    | Accepted                                                                                       |
+| Local Owner Session 및 Method-Neutral Authentication Boundary (ADR-099) | Accepted                                                                                       |
+| Project Administration·Settings Repository Ownership Boundary (ADR-114) | Accepted for Phase 1 Section 2 implementation; Canonical synchronization pending user approval |
+| 오픈소스 역할 배치                                                      | Baseline Candidate                                                                             |
+| 개별 제품·라이브러리 최종 채택                                          | Implementation Validation                                                                      |
+| 독립 서비스 분리 시점                                                   | Deferred until measured                                                                        |
 
 ## 변경 원칙
 

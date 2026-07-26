@@ -155,6 +155,30 @@ describe('shotgun-api-client', () => {
     expect(mutationCalls).toBe(1);
   });
 
+  it('classifies an unreceived Section 2 command response as outcome indeterminate', async () => {
+    const fetch = vi.fn(async (input: string | URL | Request) => {
+      if (String(input).endsWith('/security/csrf')) return json({ csrfToken: 'csrf-command' });
+      throw new TypeError('response connection closed');
+    });
+    const client = createShotgunApiClient({ fetch });
+    await expect(
+      client.applySettingsCommand({
+        activeProjectId: 'project-a',
+        targetProjectId: 'project-a',
+        resourceProjectId: 'project-a',
+        clientRequestId: 'request-a',
+        idempotencyKey: 'intent-a',
+        expectedSettingsRevision: 1,
+        observedPolicyContextRevision: 1,
+        settings: { 'models.defaultAnswerProfile': 'model-b' },
+      }),
+    ).rejects.toMatchObject({
+      code: 'OUTCOME_INDETERMINATE',
+      status: 0,
+    });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
   it('executes getSession correctly returning session envelope', async () => {
     const fetch = vi.fn(async () => json({ session: session() }));
     const result = await createShotgunApiClient({ fetch }).getSession();

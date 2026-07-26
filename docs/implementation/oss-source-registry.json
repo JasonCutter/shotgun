@@ -1527,7 +1527,7 @@
       "decision": "ADOPT",
       "scope": "Frontend Section 1 public/protected route loaders, redirects, navigation, and route revalidation",
       "security": "Protected route loader requires a server Product Session and redirects 401 responses to login",
-      "maintenance": "Exact latest stable 7.x version 7.18.1 is locked; Framework Mode is excluded",
+      "maintenance": "Exact version 8.3.0 is locked; Framework Mode is excluded and future major upgrades require explicit review",
       "evidence": [
         "Protected loader component tests",
         "Chromium route navigation and direct-access denial"

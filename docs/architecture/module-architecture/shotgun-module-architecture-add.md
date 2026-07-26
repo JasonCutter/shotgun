@@ -111,6 +111,10 @@ Domain Module은 외부 제품 SDK를 직접 호출하지 않는다.
 
 ```text
 runtime.*
+auth.*
+project_admin.*
+settings.*
+frontend_command.*
 intake.*
 asset.*
 transform.*
@@ -128,6 +132,10 @@ audit.*
 ```
 
 다른 모듈의 Schema를 직접 읽거나 수정하지 않는다. Query Port, Command, Event 또는 Projection을 사용한다.
+
+Authentication은 Principal·Session·Membership·Token을, Project Administration은 Project Identity·Metadata·Lifecycle·Project Revision을, Settings Policy는 Principal Preference·Project/System/Resource Setting·Settings Revision·Policy Context를 소유한다. Frontend Command Gateway는 Browser Command의 accepted context, semantic digest, idempotency, outcome과 recovery ledger를 소유한다.
+
+여러 소유권 경계를 한 번에 갱신해야 하는 Project 생성과 같은 작업은 Assembly의 Application Coordinator 또는 명시적인 Transaction Adapter에서만 수행한다. 이 예외는 해당 Adapter에 다른 Schema의 소유권을 이전하지 않으며, 각 Module Port와 공통 Contract Test를 유지해야 한다.
 
 ## 5. 전체 구조
 
@@ -371,13 +379,13 @@ Asset Resolver가 권한 확인과 signed access를 담당한다.
 
 동일한 Port를 여러 Transport가 구현할 수 있다.
 
-| 단계 | 기본 Transport |
-|---|---|
-| 단위 테스트 | In-memory |
-| 초기 제품 | In-process |
-| 무거운 비동기 작업 | Queue Worker |
-| 독립 배포 | HTTP 또는 gRPC |
-| 외부 통합 | Webhook 또는 MCP |
+| 단계               | 기본 Transport   |
+| ------------------ | ---------------- |
+| 단위 테스트        | In-memory        |
+| 초기 제품          | In-process       |
+| 무거운 비동기 작업 | Queue Worker     |
+| 독립 배포          | HTTP 또는 gRPC   |
+| 외부 통합          | Webhook 또는 MCP |
 
 Domain Module은 사용 중인 Transport를 알지 않는다.
 
@@ -419,9 +427,9 @@ module:
 compatibility:
   contracts:
     - name: shotgun-contracts
-      range: ">=1.0 <2.0"
+      range: '>=1.0 <2.0'
   runtime:
-    range: ">=0.1 <1.0"
+    range: '>=0.1 <1.0'
 
 deployment:
   modes:
@@ -488,36 +496,40 @@ Manifest는 자동 배선, 호환성 검사, 테스트 Fixture 생성과 Assembl
 
 ### 9.1 Core Infrastructure Modules
 
-| 모듈 | 책임 | 주요 입력 | 주요 출력 |
-|---|---|---|---|
-| Contracts | 공통 Envelope·ID·Schema | Schema 정의 | SDK·Schema artifact |
-| Connector Runtime | Command·Event·Query·Asset 전달 | Message | Delivery result |
-| Orchestration | Job·Attempt·Batch·Retry | Command·Schedule | Job event |
-| Module Registry | 모듈·Capability 등록 | Manifest | Routing table |
-| Policy & Security | 권한·민감도·승인 토큰 | Security context | Permit·Deny |
-| Observability & Audit | Trace·비용·감사 | Telemetry event | Metrics·Audit |
+| 모듈                     | 책임                                                                     | 주요 입력                        | 주요 출력                               |
+| ------------------------ | ------------------------------------------------------------------------ | -------------------------------- | --------------------------------------- |
+| Contracts                | 공통 Envelope·ID·Schema                                                  | Schema 정의                      | SDK·Schema artifact                     |
+| Connector Runtime        | Command·Event·Query·Asset 전달                                           | Message                          | Delivery result                         |
+| Orchestration            | Job·Attempt·Batch·Retry                                                  | Command·Schedule                 | Job event                               |
+| Module Registry          | 모듈·Capability 등록                                                     | Manifest                         | Routing table                           |
+| Policy & Security        | 권한·민감도·승인 토큰                                                    | Security context                 | Permit·Deny                             |
+| Observability & Audit    | Trace·비용·감사                                                          | Telemetry event                  | Metrics·Audit                           |
+| Authentication           | Principal·Session·Membership·Token                                       | 인증·세션 요청                   | 권위 Principal·Session·Membership       |
+| Project Administration   | Project Identity·Metadata·Lifecycle·Project Revision                     | Project 관리 Command·Query       | Project Snapshot·Capability             |
+| Settings Policy          | Preference·Project/System/Resource Setting·Revision·Policy Context       | 설정 검증·Preview·Apply          | Settings Snapshot·Impact·Policy Context |
+| Frontend Command Gateway | Browser Command 검증·Accepted Context·Semantic Digest·Outcome Resolution | Versioned FrontendCommandRequest | FrontendCommandOutcomeView              |
 
 ### 9.2 Knowledge Flow Modules
 
-| 모듈 | 핵심 책임 | Knowledge Flow |
-|---|---|---|
-| Intake | 파일·URL·텍스트·Connector 입력 | Phase 1 |
-| Original Asset | 원본 불변 저장·버전·Hash·중복 | Phase 1 |
-| Transformation | 문서·이미지를 DocumentIR로 변환하며 영상 URL은 접근 가능한 텍스트 자막·스크립트만 처리 | Phase 2 |
-| Evidence | SourceMap·EvidenceSpan·Citation·원문 복귀 | Phase 2 |
-| AI Provider | GPT·Gemini·Claude 공통 호출·라우팅 | 전 Phase |
-| Candidate Generation | Claim·Entity·Relation·Event·Decision·Action 후보 | Phase 3 |
-| Validation | Schema·Evidence·시간·시각·정책 검증 | Phase 2~3 |
-| Comparison & Conflict | 중복·충돌·시간·Directive·Priority 비교 | Phase 4 |
-| Impact Analysis | Typed edge 기반 직접·재귀 영향 계산 | Phase 4 |
-| ChangeSet & Review | Diff·ChangeSet·승인·보류·거절 | Phase 4 |
-| Canonical Knowledge | Fact·Claim·Entity·Relation·History 원장 | Phase 5 |
-| Projection | Compiled Truth·검색·Graph·Cache | Phase 5 |
-| Knowledge Discovery | Gap·새 관계·패턴·행동 후보 | Phase 5 |
-| Output Generation | 답변·요약·보고서·콘텐츠·파일 | Phase 6 |
-| Risk & Policy | R0~R4·검토·실행 승인 정책 | Phase 6 |
-| Action Execution | 승인된 외부 Action 실행·검증·보상 | Phase 6 |
-| Feedback & Reentry | 수정·피드백의 Phase별 재진입 | Phase 6 |
+| 모듈                  | 핵심 책임                                                                              | Knowledge Flow |
+| --------------------- | -------------------------------------------------------------------------------------- | -------------- |
+| Intake                | 파일·URL·텍스트·Connector 입력                                                         | Phase 1        |
+| Original Asset        | 원본 불변 저장·버전·Hash·중복                                                          | Phase 1        |
+| Transformation        | 문서·이미지를 DocumentIR로 변환하며 영상 URL은 접근 가능한 텍스트 자막·스크립트만 처리 | Phase 2        |
+| Evidence              | SourceMap·EvidenceSpan·Citation·원문 복귀                                              | Phase 2        |
+| AI Provider           | GPT·Gemini·Claude 공통 호출·라우팅                                                     | 전 Phase       |
+| Candidate Generation  | Claim·Entity·Relation·Event·Decision·Action 후보                                       | Phase 3        |
+| Validation            | Schema·Evidence·시간·시각·정책 검증                                                    | Phase 2~3      |
+| Comparison & Conflict | 중복·충돌·시간·Directive·Priority 비교                                                 | Phase 4        |
+| Impact Analysis       | Typed edge 기반 직접·재귀 영향 계산                                                    | Phase 4        |
+| ChangeSet & Review    | Diff·ChangeSet·승인·보류·거절                                                          | Phase 4        |
+| Canonical Knowledge   | Fact·Claim·Entity·Relation·History 원장                                                | Phase 5        |
+| Projection            | Compiled Truth·검색·Graph·Cache                                                        | Phase 5        |
+| Knowledge Discovery   | Gap·새 관계·패턴·행동 후보                                                             | Phase 5        |
+| Output Generation     | 답변·요약·보고서·콘텐츠·파일                                                           | Phase 6        |
+| Risk & Policy         | R0~R4·검토·실행 승인 정책                                                              | Phase 6        |
+| Action Execution      | 승인된 외부 Action 실행·검증·보상                                                      | Phase 6        |
+| Feedback & Reentry    | 수정·피드백의 Phase별 재진입                                                           | Phase 6        |
 
 ## 10. 모듈별 독립성 요구사항
 
@@ -543,7 +555,7 @@ GPT, Gemini, Claude를 주요 공급자로 폭넓게 활용한다.
 - text generation
 - structured output
 - vision
-- audio understanding *(공통 AI Provider capability 후보이며 Shotgun Assembly에서는 비활성화)*
+- audio understanding _(공통 AI Provider capability 후보이며 Shotgun Assembly에서는 비활성화)_
 - tool calling
 - long context
 - embedding
@@ -847,14 +859,14 @@ shotgun/
 
 ## 18. 모듈과 Knowledge Flow Phase 매핑
 
-| Phase | 핵심 모듈 | 공통 참여 모듈 |
-|---|---|---|
-| Phase 1 | Intake, Original Asset | Contracts, Runtime, Policy, Audit |
-| Phase 2 | Transformation, Evidence | AI Provider, Validation, Runtime |
-| Phase 3 | Candidate Generation | AI Provider, Validation, Evidence |
-| Phase 4 | Comparison, Impact, ChangeSet & Review | Policy, AI Provider, Audit |
-| Phase 5 | Canonical Knowledge, Projection, Discovery | Runtime, Policy, Audit |
-| Phase 6 | Output, Risk, Action, Feedback | AI Provider, Runtime, Audit |
+| Phase   | 핵심 모듈                                  | 공통 참여 모듈                    |
+| ------- | ------------------------------------------ | --------------------------------- |
+| Phase 1 | Intake, Original Asset                     | Contracts, Runtime, Policy, Audit |
+| Phase 2 | Transformation, Evidence                   | AI Provider, Validation, Runtime  |
+| Phase 3 | Candidate Generation                       | AI Provider, Validation, Evidence |
+| Phase 4 | Comparison, Impact, ChangeSet & Review     | Policy, AI Provider, Audit        |
+| Phase 5 | Canonical Knowledge, Projection, Discovery | Runtime, Policy, Audit            |
+| Phase 6 | Output, Risk, Action, Feedback             | AI Provider, Runtime, Audit       |
 
 Phase는 모듈 디렉터리가 아니다. 여러 모듈을 연결한 Workflow와 Acceptance Test다.
 

@@ -33,6 +33,9 @@ const migrationFiles = async (): Promise<string[]> =>
 
 export const dropSchemas = async (): Promise<void> => {
   await withClient(async (client) => {
+    await client.query('DROP SCHEMA IF EXISTS frontend_command CASCADE');
+    await client.query('DROP SCHEMA IF EXISTS settings CASCADE');
+    await client.query('DROP SCHEMA IF EXISTS project_admin CASCADE');
     await client.query('DROP SCHEMA IF EXISTS auth CASCADE');
     await client.query('DROP SCHEMA IF EXISTS action CASCADE');
     await client.query('DROP SCHEMA IF EXISTS projection CASCADE');
@@ -92,6 +95,9 @@ const migrate = async (): Promise<void> => {
 
 const reset = async (): Promise<void> => {
   await withClient(async (client) => {
+    await client.query('DROP SCHEMA IF EXISTS frontend_command CASCADE');
+    await client.query('DROP SCHEMA IF EXISTS settings CASCADE');
+    await client.query('DROP SCHEMA IF EXISTS project_admin CASCADE');
     await client.query('DROP SCHEMA IF EXISTS auth CASCADE');
     await client.query('DROP SCHEMA IF EXISTS action CASCADE');
     await client.query('DROP SCHEMA IF EXISTS projection CASCADE');
@@ -214,6 +220,15 @@ const verify = async (): Promise<void> => {
     const authAuditTable = await client.query<{ table: string | null }>(
       "SELECT to_regclass('auth.audit_events') AS table",
     );
+    const projectAdministrationTable = await client.query<{ table: string | null }>(
+      "SELECT to_regclass('project_admin.projects') AS table",
+    );
+    const settingsSnapshotTable = await client.query<{ table: string | null }>(
+      "SELECT to_regclass('settings.project_settings') AS table",
+    );
+    const frontendCommandLedgerTable = await client.query<{ table: string | null }>(
+      "SELECT to_regclass('frontend_command.command_ledger') AS table",
+    );
     if (
       table.rows[0]?.table !== 'runtime.schema_migrations' ||
       count.rows[0]?.count !== expectedMigrationCount ||
@@ -247,7 +262,10 @@ const verify = async (): Promise<void> => {
       authMembershipTable.rows[0]?.table !== 'auth.project_memberships' ||
       authSessionTable.rows[0]?.table !== 'auth.sessions' ||
       authApiTokenTable.rows[0]?.table !== 'auth.api_tokens' ||
-      authAuditTable.rows[0]?.table !== 'auth.audit_events'
+      authAuditTable.rows[0]?.table !== 'auth.audit_events' ||
+      projectAdministrationTable.rows[0]?.table !== 'project_admin.projects' ||
+      settingsSnapshotTable.rows[0]?.table !== 'settings.project_settings' ||
+      frontendCommandLedgerTable.rows[0]?.table !== 'frontend_command.command_ledger'
     ) {
       throw new Error('Database bootstrap verification failed.');
     }

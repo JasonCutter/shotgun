@@ -5,12 +5,18 @@ on:
   push:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
 jobs:
   quality:
+    name: Quality
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     services:
       postgres:
         image: postgres:16.14-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
@@ -28,33 +34,59 @@ jobs:
     env:
       DATABASE_URL: postgres://shotgun:shotgun@localhost:5432/shotgun
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: pip
           cache-dependency-path: |
             adapters/document-format-python/requirements.lock
             adapters/networkx-impact-oracle/requirements.lock
-      - run: >-
+      - name: Install Python dependencies
+        run: >-
           python -m pip install
           -r adapters/document-format-python/requirements.lock
           -r adapters/networkx-impact-oracle/requirements.lock
-      - run: npm ci
-      - run: npm run oss:audit
-      - run: npm sbom --sbom-format cyclonedx > sbom.cdx.json
-      - run: node -e "JSON.parse(require('node:fs').readFileSync('sbom.cdx.json', 'utf8'))"
-      - run: npm run db:reset
-      - run: npm run stage12:reuse-operations-gate
-      - run: npm run check:core
-      - run: npm run test:database
+      - name: Install Node.js dependencies
+        run: npm ci
+      - name: Check formatting
+        run: npm run format:check 2>&1 | tee format-check.log
+      - name: Upload formatting diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: formatting-diagnostics
+          path: format-check.log
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Audit dependencies
+        run: npm run oss:audit
+      - name: Generate SBOM
+        run: npm sbom --sbom-format cyclonedx > sbom.cdx.json
+      - name: Verify SBOM JSON
+        run: node -e "JSON.parse(require('node:fs').readFileSync('sbom.cdx.json', 'utf8'))"
+      - name: Reset test database
+        run: npm run db:reset
+      - name: Run Stage 12 reuse and operations gate
+        run: npm run stage12:reuse-operations-gate
+      - name: Run CI test suite
+        run: npm run test:ci
+      - name: Run database tests
+        run: npm run test:database
 
   frontend:
+    name: Frontend
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     services:
       postgres:
         image: postgres:16.14-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
@@ -72,15 +104,39 @@ jobs:
     env:
       DATABASE_URL: postgres://shotgun:shotgun@localhost:5432/shotgun
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
-      - run: npm ci
-      - run: npm run frontend:typecheck
-      - run: npm run frontend:test
-      - run: npm run frontend:build
-      - run: npx playwright install --with-deps chromium
-      - run: npm run db:reset
-      - run: npm run frontend:test:e2e
+      - name: Install Node.js dependencies
+        run: npm ci
+      - name: Typecheck frontend
+        run: npm run frontend:typecheck
+      - name: Test frontend
+        run: npm run frontend:test
+      - name: Build frontend
+        run: npm run frontend:build
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Reset frontend test database
+        run: npm run db:reset
+      - name: Run frontend end-to-end tests
+        run: npm run frontend:test:e2e
+
+  required-gates:
+    name: Required Gates
+    if: always()
+    needs: [quality, frontend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify required jobs succeeded
+        env:
+          QUALITY_RESULT: ${{ needs.quality.result }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
+        run: |
+          test "$QUALITY_RESULT" = "success"
+          test "$FRONTEND_RESULT" = "success"

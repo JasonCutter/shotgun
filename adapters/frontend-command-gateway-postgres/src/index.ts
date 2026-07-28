@@ -2,6 +2,8 @@ import type { Pool } from 'pg';
 
 import {
   FrontendContractError,
+  getFailureDescriptor,
+  isErrorCode,
   type FrontendCommandOutcomeView,
 } from '../../../packages/contracts/src/index.js';
 import {
@@ -181,6 +183,13 @@ export class PostgresFrontendCommandGateway implements FrontendCommandGatewayPor
   }
 
   async reject(input: RejectFrontendCommandInput): Promise<FrontendCommandOutcomeView> {
+    if (!isErrorCode(input.code)) {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        'Frontend Command Ledger rejection code must be registered.',
+      );
+    }
+    const descriptor = getFailureDescriptor(input.code);
     const result = await this.pool.query<CommandLedgerRow>(
       `UPDATE frontend_command.command_ledger
        SET command_revision = command_revision + 1,
@@ -193,7 +202,15 @@ export class PostgresFrontendCommandGateway implements FrontendCommandGatewayPor
        RETURNING *`,
       [
         input.commandId,
-        JSON.stringify({ code: input.code, message: input.message, retryable: false }),
+        JSON.stringify({
+          code: input.code,
+          message: input.message,
+          category: descriptor.category,
+          retryability: descriptor.retryability,
+          recovery: descriptor.recovery,
+          retryable: descriptor.retryability === 'SAFE',
+          ...(input.correlationId === undefined ? {} : { correlationId: input.correlationId }),
+        }),
         input.completedAt,
       ],
     );

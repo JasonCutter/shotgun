@@ -1,5 +1,6 @@
 import type {
   AcceptedPolicyContext,
+  ErrorCode,
   FrontendCommandOutcomeView,
   FrontendCommandRequest,
   ProducedResourceRef,
@@ -31,8 +32,9 @@ export type CompleteFrontendCommandInput = {
 
 export type RejectFrontendCommandInput = {
   readonly commandId: string;
-  readonly code: string;
+  readonly code: ErrorCode;
   readonly message: string;
+  readonly correlationId?: string;
   readonly completedAt: string;
 };
 

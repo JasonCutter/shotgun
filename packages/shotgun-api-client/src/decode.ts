@@ -1,3 +1,4 @@
+import { decodeProductFailureEnvelope } from '../../contracts/src/index.js';
 import type { ProductApiErrorBody, ProductSessionView } from './contracts.js';
 import { invalidProductApiResponse } from './errors.js';
 
@@ -65,19 +66,8 @@ export const decodeCsrfEnvelope = (value: unknown): string => {
   return value.csrfToken;
 };
 
-export const decodeProductApiErrorBody = (value: unknown): ProductApiErrorBody | undefined => {
-  if (!isRecord(value) || !nonEmptyString(value.code) || !nonEmptyString(value.message)) {
-    return undefined;
-  }
-  if (value.correlationId !== undefined && typeof value.correlationId !== 'string') {
-    return undefined;
-  }
-  return {
-    code: value.code,
-    message: value.message,
-    ...(value.correlationId === undefined ? {} : { correlationId: value.correlationId }),
-  };
-};
+export const decodeProductApiErrorBody = (value: unknown): ProductApiErrorBody | undefined =>
+  decodeProductFailureEnvelope(value);
 
 export const decodeLogoutEnvelope = (value: unknown): void => {
   if (!isRecord(value) || value.message !== 'Logged out') throw invalidProductApiResponse();

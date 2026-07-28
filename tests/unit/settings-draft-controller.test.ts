@@ -13,6 +13,7 @@ import {
   useLeaveGuard,
 } from '../../apps/shotgun-web/src/session/leave-guard-context.js';
 import { useSettingsDraft } from '../../apps/shotgun-web/src/session/settings-draft-controller.js';
+import { outcomeIndeterminateApiError } from '../../packages/shotgun-api-client/src/index.js';
 
 const wrapper = ({ children }: { readonly children: ReactNode }) =>
   createElement(LeaveGuardProvider, null, children);
@@ -125,9 +126,7 @@ describe('useSettingsDraft', () => {
     });
     const applySettingsCommand = vi
       .fn()
-      .mockRejectedValue(
-        Object.assign(new Error('response lost'), { code: 'OUTCOME_INDETERMINATE' }),
-      );
+      .mockRejectedValue(outcomeIndeterminateApiError('request-from-api-error'));
 
     act(() => {
       result.current.controller.setDraftValue('models.defaultAnswerProfile', 'model-b');
@@ -144,6 +143,10 @@ describe('useSettingsDraft', () => {
     const clientRequestId = result.current.controller.clientRequestId;
     expect(clientRequestId).not.toBeNull();
     expect(result.current.controller.state).toBe('OUTCOME_UNKNOWN');
+    expect(result.current.controller.failure).toMatchObject({
+      code: 'OUTCOME_INDETERMINATE',
+      state: 'OUTCOME_UNKNOWN',
+    });
     expect(applySettingsCommand).toHaveBeenCalledTimes(1);
 
     const commandId = 'command-existing';

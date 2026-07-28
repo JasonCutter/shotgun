@@ -38,7 +38,13 @@ jobs:
       - name: Typecheck generated implementation
         run: npm run typecheck
       - name: Run generated contract tests
-        run: npm run test:contract
+        run: npm run test:contract 2>&1 | tee contract-test.log
+      - name: Upload contract diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: adr-118-contract-diagnostics
+          path: contract-test.log
       - name: Run generated unit tests
         run: npm run test:unit
       - name: Commit generated implementation

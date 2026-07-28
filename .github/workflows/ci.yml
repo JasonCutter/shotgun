@@ -46,7 +46,13 @@ jobs:
           name: adr-118-contract-diagnostics
           path: contract-test.log
       - name: Run generated unit tests
-        run: npm run test:unit
+        run: npm run test:unit 2>&1 | tee unit-test.log
+      - name: Upload unit diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: adr-118-unit-diagnostics
+          path: unit-test.log
       - name: Commit generated implementation
         run: |
           git config user.name "github-actions[bot]"

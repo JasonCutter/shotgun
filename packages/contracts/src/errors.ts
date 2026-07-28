@@ -39,7 +39,9 @@ export type ErrorCode =
   | 'CAPABILITY_DENIED'
   | 'OUTCOME_INDETERMINATE'
   | 'RESOURCE_ACCESS_REVOKED'
-  | 'INVALID_REQUEST';
+  | 'RETENTION_EXPIRED'
+  | 'INVALID_REQUEST'
+  | 'INTERNAL_UNCLASSIFIED';
 
 export type ShotgunErrorInput = {
   readonly code: ErrorCode;

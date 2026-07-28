@@ -1,0 +1,104 @@
+schema_version: 1
+transition:
+  status: in_progress
+  governing_adr: docs/architecture/adr/ADR-117-documentation-source-of-truth-canonicalization-and-publication-boundary.md
+  temporary_authority: notion
+  target_authority: github-main
+  repository: JasonCutter/shotgun
+  branch: main
+  cutover_commit: null
+  cutover_approved_by: null
+  cutover_approved_at: null
+
+classifications:
+  - CANONICAL
+  - CANDIDATE
+  - REFERENCE
+  - GENERATED
+  - ARCHIVED
+  - SUPERSEDED
+  - DUPLICATE
+
+required_metadata:
+  accepted_document:
+    - id
+    - path
+    - classification
+    - status
+    - approved_by
+    - approved_at
+  external_reference:
+    - id
+    - classification
+    - role
+    - source
+    - retention_status
+
+documents:
+  - id: ADR-116
+    path: docs/architecture/adr/ADR-116-zero-project-session-principal-command-project-bootstrap-persistence-boundary.md
+    classification: CANONICAL
+    status: accepted_pending_cutover
+    approved_by: user
+    approved_at: 2026-07-28
+    legacy_source: notion
+    legacy_source_id: 3ab5181d-71ad-81ff-87c2-d92e7a87a00b
+    supersedes: []
+
+  - id: ADR-117
+    path: docs/architecture/adr/ADR-117-documentation-source-of-truth-canonicalization-and-publication-boundary.md
+    classification: CANONICAL
+    status: accepted_pending_cutover
+    approved_by: user
+    approved_at: 2026-07-28
+    legacy_source: notion
+    legacy_source_id: 3ab5181d-71ad-8197-90a1-c8de109fdfd7
+    supersedes:
+      - notion-canonical-storage-decision-2026-07-16-after-cutover
+
+  - id: FRONTEND-PHASE-1-SECTION-3-PERSISTENCE-CONTRACT-REVISION-260728001
+    path: docs/architecture/contracts/snapshots/frontend-phase-1-section-3/frontend-phase-1-section-3-persistence-contract-revision-260728001.md
+    classification: CANONICAL
+    status: approved_pending_cutover
+    approved_by: user
+    approved_at: 2026-07-28
+    governing_adr: ADR-116
+    supersedes: []
+
+  - id: SHOTGUN-KNOWLEDGE-FLOW-BASELINE-V1
+    path: docs/SHOTGUN_KNOWLEDGE_FLOW_BASELINE_v1.0.html
+    classification: CANONICAL
+    status: existing_requires_inventory
+    source_format: html
+    preferred_source_format: markdown_or_structured_source
+
+  - id: SHOTGUN-REFERENCE-ARCHITECTURE-STRATEGY-KO
+    path: docs/shotgun_reference_architecture_strategy_ko.html
+    classification: REFERENCE
+    status: existing_requires_inventory
+
+external_references:
+  - id: SHOTGUN-KNOWLEDGE-FLOW-DETAILED-MAP
+    classification: CANONICAL
+    role: governing_reference
+    source:
+      provider: google-drive
+      document_id: 1HazG-oAeJ8Sgg_mPmBiWpQqeCeeAoDUuWgqVNJR1DCg
+    target_path: docs/architecture/knowledge-flow/shotgun-knowledge-flow-detailed-map.md
+    retention_status: migrate_then_archive_legacy
+    migration_status: pending
+
+inventory:
+  status: pending
+  required_sources:
+    - notion
+    - google-drive
+    - git
+  unresolved_items:
+    - export Phase 1-6 ADD documents
+    - export Frontend and Human Interaction Architecture hierarchy
+    - reconcile ADR index and document numbering
+    - classify Stage 12.1 architecture records
+    - classify implementation and engineering completion records
+    - identify duplicates and superseded snapshots
+    - establish generated-artifact ownership

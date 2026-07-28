@@ -114,7 +114,13 @@ jobs:
       - name: Install Node.js dependencies
         run: npm ci
       - name: Typecheck frontend
-        run: npm run frontend:typecheck
+        run: npm run frontend:typecheck 2>&1 | tee frontend-typecheck.log
+      - name: Upload frontend typecheck diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-typecheck-diagnostics
+          path: frontend-typecheck.log
       - name: Test frontend
         run: npm run frontend:test
       - name: Build frontend

@@ -13,6 +13,17 @@ Shotgun은 한 점에 모인 지식이 산탄총의 탄환처럼 여러 방향�
 - 우선순위는 복잡한 전체 구조보다 작동하는 MVP 완성
 - 원본 접수부터 Claim Canonical·인용 답변, Rich Knowledge·Compiled Truth와 Risk·Preview·Approval·Preflight·Verify Action 흐름까지 지원
 
+## 문서 Canonical 전환
+
+Project Shotgun은 ADR-117에 따라 Notion 중심 문서 운영에서 Git `main` 단일 진실 공급원으로 전환 중입니다.
+
+- 전환 정책: [`docs/CANONICAL.md`](docs/CANONICAL.md)
+- Canonical Manifest: [`docs/canonical-manifest.yaml`](docs/canonical-manifest.yaml)
+- 전환 계획: [`docs/governance/documentation-sot-cutover-plan-260728001.md`](docs/governance/documentation-sot-cutover-plan-260728001.md)
+- 현재 상태: **Cutover pending**
+
+전환 PR이 검증·병합되고 사용자가 Cutover Commit을 승인하기 전까지 기존 Notion Canonical 정책은 임시로 유지됩니다. Git Branch의 문서는 승인된 전환 후보이며 아직 최종 Cutover를 의미하지 않습니다.
+
 ## 개발 시작
 
 개발 환경은 [Stage 0 문서](docs/engineering/stage-0-development.md)를 따르고,

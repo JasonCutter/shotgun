@@ -65,7 +65,11 @@ export const parseBootstrapOptions = (args: readonly string[]): BootstrapOptions
   };
 };
 
-const npmCommand = (name: string, npmCli: string, scriptArgs: readonly string[]): BootstrapCommand => ({
+const npmCommand = (
+  name: string,
+  npmCli: string,
+  scriptArgs: readonly string[],
+): BootstrapCommand => ({
   name,
   command: process.execPath,
   args: [npmCli, ...scriptArgs],
@@ -79,7 +83,9 @@ export const buildBootstrapPlan = (
 
   const npmCli = environment.npm_execpath;
   if (!npmCli) {
-    throw new BootstrapCliError('npm_execpath is required. Run bootstrap through npm run bootstrap.');
+    throw new BootstrapCliError(
+      'npm_execpath is required. Run bootstrap through npm run bootstrap.',
+    );
   }
 
   const commands: BootstrapCommand[] = [];

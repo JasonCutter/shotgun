@@ -21,7 +21,7 @@ describe('Product API typed failure envelope', () => {
     expect(response.statusCode).toBe(401);
     expect(JSON.parse(response.body)).toMatchObject({
       schemaVersion: '1.0.0',
-      code: 'AUTHENTICATION_REQUIRED',
+      code: 'AUTHENTICATION_INVALID',
       category: 'AUTHENTICATION',
       retryability: 'NEVER',
       recovery: 'REAUTHENTICATE',

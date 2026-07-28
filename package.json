@@ -15,7 +15,9 @@
     "assemblies/*"
   ],
   "scripts": {
-    "bootstrap": "npm ci && docker compose up -d db && npm run db:reset",
+    "bootstrap": "tsx scripts/bootstrap.ts",
+    "bootstrap:reset": "npm run bootstrap -- --reset-db",
+    "bootstrap:quick": "npm run bootstrap -- --skip-db",
     "dev": "tsx watch assemblies/shotgun-app/src/main.ts",
     "dev:web": "npm --workspace @shotgun/web run dev",
     "start": "tsx assemblies/shotgun-app/src/main.ts",
@@ -28,6 +30,8 @@
     "test:integration": "vitest run tests/integration",
     "test:database": "node --env-file-if-exists=.env node_modules/vitest/vitest.mjs run tests/database --maxWorkers=1",
     "test:live-ai": "vitest run tests/live/gemini-provider.live.test.ts --maxWorkers=1",
+    "test:quick": "npm run test:unit && npm run test:contract && npm run test:architecture",
+    "test:ci": "npm run test:unit && npm run test:contract && npm run test:integration && npm run test:architecture && npm run test:stage12-package",
     "frontend:typecheck": "npm --workspace @shotgun/web run typecheck",
     "frontend:test": "npm --workspace @shotgun/web run test",
     "frontend:build": "npm --workspace @shotgun/web run build",
@@ -40,7 +44,7 @@
     "stage12:reuse-operations-gate": "node --env-file-if-exists=.env node_modules/tsx/dist/cli.mjs scripts/stage12-reuse-operations-gate.ts",
     "test:architecture": "tsx scripts/architecture-test.ts",
     "test:stage12-package": "tsx scripts/stage12-package-test.ts",
-    "test": "npm run test:unit && npm run test:contract && npm run test:integration && npm run test:architecture && npm run test:stage12-package",
+    "test": "npm run test:ci",
     "oss:verify": "tsx scripts/oss-gate.ts",
     "oss:audit": "npm audit --audit-level=high",
     "oss:sbom": "npm sbom --sbom-format cyclonedx",

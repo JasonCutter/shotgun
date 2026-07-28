@@ -51,8 +51,9 @@ describe('bootstrap command', () => {
 
   it('stops immediately and preserves a failing child exit code', () => {
     const completed: string[] = [];
+    let failure: unknown;
 
-    expect(() =>
+    try {
       executeBootstrap(
         [],
         (step) => {
@@ -60,9 +61,13 @@ describe('bootstrap command', () => {
           return step.name === 'database-wait' ? 37 : 0;
         },
         environment,
-      ),
-    ).toThrow(expect.objectContaining<Partial<BootstrapCommandError>>({ exitCode: 37 }));
+      );
+    } catch (error) {
+      failure = error;
+    }
 
+    expect(failure).toBeInstanceOf(BootstrapCommandError);
+    expect((failure as BootstrapCommandError).exitCode).toBe(37);
     expect(completed).toEqual(['install', 'database-wait']);
   });
 

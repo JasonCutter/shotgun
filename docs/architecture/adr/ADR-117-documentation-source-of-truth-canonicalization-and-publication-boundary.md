@@ -8,6 +8,8 @@ Accepted.
 - Approver: User
 - Transition status: cutover PR pending
 - Scope: all Project Shotgun documentation
+- Clarification approved: 2026-07-29 — all durable reports and inspection
+  results require Git-backed records
 
 ## Context
 
@@ -127,7 +129,34 @@ SUPERSEDED
 DUPLICATE
 ```
 
-### 7. Documentation gates
+### 7. Git-backed reports and verification records
+
+All durable reports, audits, inspection results, test results, verification
+records, and completion evidence must be stored as Git-tracked repository
+documents. This applies to new work during the transition period without
+changing the `pending` cutover state.
+
+Material evidence records identify the subject commit, execution date,
+commands or procedures, relevant environment, per-check
+`PASS`/`FAIL`/`BLOCKED`/`NOT_RUN` status, failures, skips, retries, remote
+evidence links, externally retained artifact integrity, known limits, and the
+claim supported.
+
+Local files, terminal output, chat, external-only text, pull request comments,
+and expiring GitHub Actions logs cannot be the sole durable evidence for a
+completion or publication claim. The material result must be summarized under
+`docs/`.
+
+Local verification, remote CI, approval, merge, deployment, and production
+verification remain separate evidence classes. None may be inferred from
+another, and a failed or unexecuted check cannot be reported as passed.
+
+Large, sensitive, licensed, or regulated artifacts may remain in an approved
+external store only when a safe Git reference manifest records identity,
+location, access boundary, version or integrity information, retention state,
+and Canonical status.
+
+### 8. Documentation gates
 
 The transition and future documentation pull requests should provide these gates:
 

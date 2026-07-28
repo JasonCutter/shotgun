@@ -56,6 +56,44 @@ The following are Canonical when listed in `docs/canonical-manifest.yaml` and me
 - governance, security, operations, and quality policies
 - decision history, open issues, rejected alternatives, and impact records
 
+## GitHub report and verification record requirement
+
+All durable Shotgun reports, audits, inspection results, test results,
+verification records, and completion evidence must be stored as Git-tracked
+repository documents. This rule applies to new work during the transition
+period and does not itself complete the Canonical cutover.
+
+A material result used to support an implementation, Gate, approval, release,
+deployment, or completion claim must be committed with the work or in a
+dedicated evidence pull request that identifies the exact subject commit. The
+record must include, as applicable:
+
+- record identity and execution date,
+- subject branch and commit SHA,
+- command, check, scenario, or manual procedure,
+- relevant environment and dependency versions,
+- explicit `PASS`, `FAIL`, `BLOCKED`, or `NOT_RUN` for every required check,
+- failures, skips, retries, flaky behavior, and their reasons,
+- links to GitHub Actions runs, pull requests, releases, or external evidence,
+- integrity and retention information for externally stored artifacts,
+- known limits and the exact claim the evidence supports.
+
+Local terminal output, chat, an external-only text document, a pull request
+comment, or an expiring GitHub Actions log is supporting material, not the sole
+durable record. Material results must be summarized under `docs/`, normally in
+`docs/engineering/`, `docs/implementation/stage-validations/`, or the relevant
+architecture implementation-record path.
+
+Local verification, remote CI, reviewer or user approval, merge, deployment,
+and production verification are distinct evidence states. A failed, blocked,
+or unexecuted check must not be recorded as passed.
+
+Large, sensitive, licensed, or regulated artifacts may remain outside Git, but
+their safe Git reference manifest must record identity, location, access
+boundary, version or checksum, retention state, and Canonical status. Secrets
+and prohibited redistributable material must not be committed to satisfy this
+rule.
+
 ## Repository rules
 
 1. Do not silently overwrite earlier decisions. Record `supersedes` and the reason.

@@ -34,6 +34,36 @@ Asset Resolver는 [Stage 2 문서](docs/engineering/stage-2-intake-original-asse
 [Stage 11 문서](docs/engineering/stage-11-risk-controlled-external-action.md), 모듈 재사용은
 [Stage 12 문서](docs/engineering/stage-12-module-reuse-validation.md)에서 확인한다.
 
+### Bootstrap
+
+```bash
+# 기본: npm ci → DB 기동·대기 → migrate → verify
+npm run bootstrap
+
+# DB 작업 없이 의존성만 설치
+npm run bootstrap:quick
+
+# 의존성 설치 없이 DB만 준비
+npm run bootstrap -- --skip-install
+
+# 명시적으로만 파괴적 DB reset 실행
+npm run bootstrap:reset
+```
+
+`--skip-db`와 `--reset-db`는 함께 사용할 수 없으며, 알 수 없는 옵션이나 하위 명령 실패는 즉시 오류로 종료된다.
+
+### 테스트 모드
+
+```bash
+# 빠른 로컬 피드백: unit + contract + architecture
+npm run test:quick
+
+# CI 기준: unit + contract + integration + architecture + Stage 12 package
+npm run test:ci
+```
+
+`npm test`는 CI 기준 범위를 유지하며 `test:ci`를 실행한다.
+
 ### Frontend Section 1 로컬 개발
 
 두 터미널에서 Backend와 독립 Frontend를 각각 실행한다.

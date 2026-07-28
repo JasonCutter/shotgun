@@ -57,7 +57,13 @@ jobs:
       - name: Install Node.js dependencies
         run: npm ci
       - name: Check formatting
-        run: npm run format:check
+        run: npm run format:check 2>&1 | tee format-check.log
+      - name: Upload formatting diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: formatting-diagnostics
+          path: format-check.log
       - name: Lint
         run: npm run lint
       - name: Typecheck

@@ -8,6 +8,7 @@ export * from './compiled-truth.js';
 export * from './document-evidence.js';
 export * from './knowledge-model.js';
 export * from './errors.js';
+export * from './failure-contract.js';
 export * from './envelope-codec.js';
 export * from './factories.js';
 export * from './schema-registry.js';

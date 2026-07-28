@@ -1,271 +1,236 @@
-# ADR-117 — Documentation Source of Truth, Canonicalization, and Publication Boundary
+# ADR-117 — Documentation Source of Truth·Canonicalization·Publication Boundary
 
 ## Status
 
-Accepted by user on 2026-07-29.
+Accepted.
 
-- Publication status: `PENDING_CANONICALIZATION`
-- Canonical cutover status: `pending`
-- Implementation status: documentation policy Candidate
-
-Acceptance authorizes this decision. It does not make the working branch or
-pull request Canonical, and it does not complete the cutover recorded in
-`docs/CANONICAL.md`.
+- Approval date: 2026-07-28
+- Approver: User
+- Transition status: cutover PR pending
+- Scope: all Project Shotgun documentation
+- Clarification approved: 2026-07-29 — all durable reports and inspection
+  results require Git-backed records
 
 ## Context
 
-Shotgun architecture, implementation, verification, and operational evidence
-has been created across Git, local workspaces, chat, Notion, Google Drive,
-pull requests, and CI systems. That distribution creates several risks:
+Project Shotgun documentation is split across Notion, Git, and Google Drive.
 
-- two systems can appear to be authoritative at the same time
-- a locally generated report can support a completion claim without durable
-  review history
-- pull request comments and CI logs can expire or become difficult to connect
-  to the exact implementation commit
-- external edits can bypass repository review and required CI
-- approvals, implementation, remote CI, merge, deployment, and production
-  verification can be incorrectly collapsed into a single status
-- generated documents can lose their source revision or generator provenance
+Since 2026-07-16, Notion has been the ADD Canonical store. In practice, ADRs, contract snapshots, implementation plans, and engineering verification already change beside the code in Git pull requests.
 
-The repository already stores ADRs, contract snapshots, engineering reports,
-Stage validation records, implementation plans, and completion records.
-Shotgun needs one explicit ownership and publication boundary that applies to
-all of these document classes.
+This creates two effective authorities:
 
-This ADR governs documentation authority and evidence persistence. It does not
-change the Canonical Knowledge module's product-data write authority,
-Claim/Fact boundary, user approval rules, or external Action approval model.
+- the latest user-approved decision in Notion,
+- the version that Codex and CI can read from Git `main`.
+
+The split causes drift, prevents atomic review of code and architecture, makes branch-specific design changes difficult, and relies on manual export.
 
 ## Decision
 
-### 1. GitHub repository ownership
+### 1. Git `main` becomes the single Canonical source
 
-After the approved cutover, the GitHub repository
-`https://github.com/JasonCutter/shotgun` is the single source of truth for all
-Shotgun-authored authoritative text documentation. The Canonical branch is
-`main`, and each published document revision is identified by a Git commit
-SHA.
+The repository `JasonCutter/shotgun`, default branch `main`, will be the only Canonical source for Project Shotgun's authoritative text documents.
 
-A branch or pull request contains a Candidate. Review, required CI, and merge
-into `main` establish the Canonical Revision. User approval authorizes a
-decision but does not bypass publication.
+Canonical scope includes:
 
-### 2. Mandatory Git-backed records
+- Knowledge Flow baseline and Detailed Map
+- Phase 1–6 ADDs
+- Frontend and Human Interaction Architecture
+- ADRs and user-approved decision records
+- contract snapshots and schema/migration/rollback contracts
+- implementation plans and roadmaps
+- engineering verification and completion records
+- change history, unresolved issues, rejected alternatives, and impact scope
+- operating, security, and quality policies
 
-All durable reports, audits, inspection results, verification results,
-completion records, decision records, plans, contracts, and operational
-records must be stored as Git-tracked repository files.
+User approval remains mandatory. Approval alone does not make a revision Canonical: the approved change must be reviewed and merged into Git `main`.
 
-This rule applies immediately to new work during the cutover period: evidence
-created before cutover must still be prepared on the work branch and reviewed
-in Git. Pre-cutover authority remains unchanged until the cutover revision is
-merged, but new local-only or external-only result documents are not an
-acceptable completion record.
+### 2. Cutover is explicit and forward-only
 
-The following supporting material does not satisfy the rule by itself:
+This ADR does not immediately revoke the current Notion authority.
 
-- local files or terminal output
-- chat messages
-- Notion-only or Google Drive-only text
-- GitHub Issue, Discussion, pull request description, or comment
-- an expiring GitHub Actions log or artifact
+A transition pull request must satisfy all of the following before a `Canonical Cutover Commit` is declared:
 
-Material results from those sources must be summarized in a repository
-document that identifies the exact source and subject revision.
+1. inventory Notion, Google Drive, and Git documents,
+2. export and normalize existing Canonical documents into Git,
+3. include ADR-116 and the Section 3 persistence contract revision,
+4. add `docs/CANONICAL.md` and `docs/canonical-manifest.yaml`,
+5. validate links, ADR numbering, approval metadata, and supersession relations,
+6. resolve Notion/Git drift without using timestamps as automatic authority,
+7. receive explicit user cutover approval.
 
-### 3. Verification evidence schema
+Until the cutover commit is approved and merged, Notion remains the temporary transition authority. After that commit, Git `main` is the sole Canonical source.
 
-Every verification or inspection record used for a claim must record, as
-applicable:
+### 3. Notion becomes working space and published mirror
 
-- record identity and execution date
-- subject branch and commit SHA
-- commands, checks, scenarios, and manual procedures
-- material environment and version information
-- explicit `PASS`, `FAIL`, `BLOCKED`, or `NOT_RUN` result for every required
-  item
-- failures, skips, retries, flaky behavior, and their reasons
-- remote CI, artifact, pull request, release, or deployment references
-- checksum and retention details for external artifacts
-- known limits and the exact claim supported
+After cutover, Notion is retained for:
 
-Local validation, remote CI, reviewer approval, merge, deployment, and
-production verification remain separate evidence classes. None may be inferred
-from another.
+- architecture meetings and Candidate drafts,
+- readable published mirrors,
+- navigation hubs,
+- historical archive.
 
-### 4. Repository placement
+A Notion-only edit is a Candidate, not Canonical Knowledge.
 
-Documents use stable paths according to ownership:
-
-- `docs/architecture/`: ADDs, ADRs, contracts, normalization records, and
-  architecture implementation records
-- `docs/implementation/`: plans, roadmaps, policy, risk, release, OSS
-  evaluation, and Stage validation
-- `docs/engineering/`: engineering reports, verification, completion records,
-  operational runbooks, drills, and measured baselines
-
-A new document class may add a more specific directory under `docs/`. It may
-not select an external system as its sole durable home.
-
-### 5. Publication and correction
-
-The publication flow is:
+The authoritative synchronization direction is:
 
 ```text
-Candidate
-→ User Approval
-→ Git Branch and Pull Request
-→ Review and Required CI
-→ main Merge
-→ Canonical Revision
-→ Optional External Mirror
+Git main -> Notion mirror
 ```
 
-Published records are corrected with a new commit that preserves the previous
-result and explains supersession. Reports are not silently rewritten to make a
-failed or incomplete check appear successful.
+Bidirectional automatic synchronization is prohibited.
 
-Generated documents record their Canonical inputs, generator identity and
-version, output revision, and reproduction method.
+Mirror pages should expose, where practical:
 
-### 6. External systems
+- Canonical repository,
+- Canonical path,
+- Canonical commit SHA,
+- last synchronization date,
+- Mirror or Candidate status.
 
-Notion is limited to meeting workspaces, Candidate drafts, navigation,
-historical archives, and read-only mirrors. Google Drive or another controlled
-store may retain large binaries, scans, vendor material, licensed material, or
-other content that cannot safely or legally be stored in Git.
+### 4. Google Drive becomes reference and archive storage
 
-Material retained externally requires a Git-tracked reference manifest with
-identity, purpose, owner, external location, access boundary, retention state,
-version or integrity hash, and Canonical status.
+Shotgun-authored governing text documents are inventoried and moved into Git.
 
-After cutover, synchronization is one way:
+Google Drive or another external store may retain:
+
+- large binaries and scans,
+- external vendor material,
+- material whose license makes repository redistribution inappropriate,
+- temporary exports.
+
+Externally retained material must be represented by a Git reference manifest that records its identity, role, source location, integrity data when available, and retention status.
+
+### 5. Canonicalization flow
 
 ```text
-GitHub main
-→ External read-only mirror
+architecture meeting or change proposal
+-> Candidate
+-> user approval
+-> Git branch documentation change
+-> pull request review and CI
+-> merge to main
+-> Canonical revision
+-> optional Notion mirror publication
 ```
 
-External edits are Candidates until reviewed and merged through Git.
+AI output is Candidate until user approval. After approval, it remains `PENDING_CANONICALIZATION` until the Git merge completes.
 
-Secrets, credentials, regulated personal data, and prohibited redistributable
-material remain outside Git. Their repository record must be redacted and must
-reference the controlled source without exposing sensitive values.
+### 6. Document classifications
 
-### 7. Completion boundary
+Every managed document is classified as one of:
 
-An implementation, Stage, Gate, release, migration, rollback, or operational
-claim is not complete when its required report or inspection result has not
-been recorded in Git.
-
-The committed record must distinguish:
-
-- implementation present
-- local verification
-- remote CI
-- reviewer or user approval
-- merge
-- deployment
-- production verification
-
-Missing documentation automation is reported as `NOT_IMPLEMENTED`; it is not a
-passing result and does not waive the requirement to commit the record.
-
-### 8. Cutover boundary
-
-The initial Cutover Record remains:
-
-```yaml
-status: pending
-cutover_commit: null
-approved_by: null
-approved_at: null
+```text
+CANONICAL
+CANDIDATE
+REFERENCE
+GENERATED
+ARCHIVED
+SUPERSEDED
+DUPLICATE
 ```
 
-The cutover requires a separately reviewable revision that inventories legacy
-authoritative sources, imports or references required material, verifies
-provenance and links, and receives explicit cutover approval. This ADR must not
-be mixed into an unrelated product implementation pull request.
+### 7. Git-backed reports and verification records
 
-## Alternatives Considered
+All durable reports, audits, inspection results, test results, verification
+records, and completion evidence must be stored as Git-tracked repository
+documents. This applies to new work during the transition period without
+changing the `pending` cutover state.
 
-### Dual Canonical ownership in GitHub and Notion
+Material evidence records identify the subject commit, execution date,
+commands or procedures, relevant environment, per-check
+`PASS`/`FAIL`/`BLOCKED`/`NOT_RUN` status, failures, skips, retries, remote
+evidence links, externally retained artifact integrity, known limits, and the
+claim supported.
 
-Rejected. Concurrent authority creates drift and forces implementers to infer
-which copy wins.
+Local files, terminal output, chat, external-only text, pull request comments,
+and expiring GitHub Actions logs cannot be the sole durable evidence for a
+completion or publication claim. The material result must be summarized under
+`docs/`.
 
-### Latest edit wins
+Local verification, remote CI, approval, merge, deployment, and production
+verification remain separate evidence classes. None may be inferred from
+another, and a failed or unexecuted check cannot be reported as passed.
 
-Rejected. Modification time does not establish approval, review, provenance,
-or semantic authority.
+Large, sensitive, licensed, or regulated artifacts may remain in an approved
+external store only when a safe Git reference manifest records identity,
+location, access boundary, version or integrity information, retention state,
+and Canonical status.
 
-### Pull request or CI-only evidence
+### 8. Documentation gates
 
-Rejected. Descriptions, comments, logs, and artifacts can be edited, expire, or
-become detached from the durable documentation history.
+The transition and future documentation pull requests should provide these gates:
 
-### Local report with a final chat summary
+```text
+docs:validate
+docs:links
+docs:adr-index
+docs:canonical
+docs:drift
+```
 
-Rejected. The result is not repository-reviewable and cannot provide a stable
-commit-addressed evidence trail.
+They validate at least:
 
-### Store every raw artifact directly in Git
+- duplicate ADR identifiers,
+- required metadata and approval state,
+- relative links and referenced files,
+- contract snapshot existence,
+- Candidate/Canonical classification conflicts,
+- supersession consistency,
+- direct edits to generated artifacts,
+- Notion-only Canonical references.
 
-Rejected. Large, sensitive, licensed, or regulated artifacts require a
-controlled external store. Git retains their safe reference manifest and the
-durable result summary.
+## Preserved decisions
 
-## Impact Scope
+The transition preserves:
 
-- `docs/CANONICAL.md`: authority, record classes, publication flow, evidence
-  requirements, external boundaries, and cutover state
-- all future reports and inspection results under `docs/`
-- pull request templates and documentation validation automation in follow-up
-  work
-- Notion and Google Drive publication processes after cutover
+- AI results are Candidate before approval,
+- explicit user approval boundaries,
+- no automatic Canonical promotion,
+- Claim/Fact separation,
+- Compiled Truth as a derived projection,
+- separate recording of decisions, open issues, rejected alternatives, and impacts,
+- decision history and reasons are not silently overwritten.
 
-This ADR changes documentation governance only. It adds no runtime dependency,
-database migration, product-data schema, or Canonical Knowledge write path.
+## Supersedes
 
-## OSS Integration Decision
+The 2026-07-16 decision that Notion is the Project Shotgun ADD Canonical store is superseded **only after** the Canonical Cutover Commit.
 
-`NO_RELEVANT_OSS`
+Before cutover it remains the transition authority.
 
-This decision defines repository governance and publication authority rather
-than a replaceable runtime capability. The reviewed integration surface is
-GitHub repository history, pull requests, Actions references, and optional
-external mirrors. No third-party runtime or library is adopted, extracted,
-augmented, or pinned by this ADR.
+## Rejected alternatives
 
-## Migration
+### Keep Notion Canonical and Git as a manual snapshot
 
-1. Inventory current repository and external authoritative text.
-2. Record ownership, source revision, approval state, and supersession status.
-3. Move Shotgun-authored authoritative text into `docs/`.
-4. Create Git reference manifests for allowed external artifacts.
-5. Add link, index, Canonical-state, and drift validation.
-6. Review and merge the explicitly approved cutover revision.
-7. Generate external read-only mirrors from the merged commit.
+Rejected because manual synchronization and drift remain structural risks.
 
-The migration is additive. Existing sources are not deleted or declared
-non-authoritative before the approved cutover.
+### Make Notion and Git co-Canonical
 
-## Rollback
+Rejected because conflict resolution would require another authority, so it is not a single source of truth.
 
-Before cutover, rollback closes or reverts the Candidate and leaves existing
-authority unchanged.
+### Bidirectional automatic synchronization
 
-After cutover, rollback is a new reviewed Git revision. It preserves Git
-history and evidence records, disables broken mirror publication if necessary,
-and does not promote an external system back to Canonical without a separate
-approved ADR.
+Rejected because concurrent edits and block/Markdown conversion loss require a separate conflict-resolution system.
 
-## Verification Required
+### Put every binary in Git
 
-- confirm both governing document paths exist in the repository
-- run repository formatting for the changed Markdown
-- run the architecture test to ensure no implementation boundary changed
-- run every implemented documentation validation script
-- report absent documentation scripts as `NOT_IMPLEMENTED`
-- verify the Cutover Record remains `pending` until the approved merge revision
+Rejected because repository growth and licensing constraints differ from authoritative text-contract needs. Reference manifests or separately approved Git LFS may be used.
+
+## Impact
+
+- Notion Canonical-hub policy
+- repository documentation structure and CI
+- Codex implementation-input boundary
+- Google Drive reference retention
+- architecture and contract PR workflow
+- export and mirror automation
+
+## Excluded
+
+- immediate deletion or archival of all Notion pages,
+- claiming Git is already Canonical before cutover,
+- bulk deletion of Google Drive references,
+- product-code or Frontend Phase 1 Section 3 implementation authorization.
+
+## Approval boundary
+
+This ADR accepts the direction and cutover conditions. Export, repository migration, CI implementation, transition-PR merge, and final cutover declaration remain separately verified execution steps.

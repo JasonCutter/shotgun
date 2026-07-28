@@ -1,229 +1,145 @@
-# Shotgun Documentation Canonical Record
+# Project Shotgun Canonical Documentation Policy
 
-## 1. Document Status
+## Current transition state
 
-- Repository: `JasonCutter/shotgun`
-- Canonical branch after cutover: `main`
-- Governing decision:
-  `docs/architecture/adr/ADR-117-documentation-source-of-truth-canonicalization-and-publication-boundary.md`
-- Policy decision: user approved on 2026-07-29
-- Publication state: `PENDING_CANONICALIZATION`
-- Canonical cutover: not completed
+Project Shotgun is transitioning from a Notion-first Canonical model to a Git `main` Single Source of Truth under [ADR-117](architecture/adr/ADR-117-documentation-source-of-truth-canonicalization-and-publication-boundary.md).
 
-This file records the target documentation operating model and the current
-cutover state. User approval authorizes the policy, but a document becomes a
-Canonical Revision only after review, required CI, and merge into GitHub
-`main`.
+This file is part of the transition PR. **The cutover is not complete merely because this file exists.**
 
-## 2. Source of Truth
+Until an explicitly approved `Canonical Cutover Commit` is merged:
 
-After cutover, all Shotgun-authored authoritative text documents are managed in
-the GitHub repository:
+- Notion remains the temporary transition authority for previously Canonical ADD content.
+- Git records the proposed normalized Canonical documents and validation machinery.
+- Drift must be resolved by approval history and document meaning, not by latest timestamp.
 
-`https://github.com/JasonCutter/shotgun`
+After the cutover commit:
 
-The Canonical branch is `main`, and a Canonical Revision is identified by its
-Git commit SHA. A document that exists only in another branch, a pull request,
-a local workspace, chat, Notion, Google Drive, or another external system is
-not Canonical.
+- GitHub repository `JasonCutter/shotgun`, branch `main`, is the only Canonical source for authoritative text documents.
+- Notion is Candidate working space, published mirror, navigation hub, and archive.
+- Google Drive is reference/archive storage for external or unsuitable-for-Git material.
 
-User approval and Canonical publication are separate facts:
-
-1. User approval authorizes a decision or candidate change.
-2. A Git branch and pull request make the exact proposed revision reviewable.
-3. Review and required CI provide publication evidence.
-4. Merge into `main` creates the Canonical Revision.
-
-Until the cutover recorded in Section 10 is completed, existing governing
-sources retain the authority documented in the repository. This file does not
-silently supersede or delete a pre-cutover source.
-
-## 3. Documents That Must Be Stored in GitHub
-
-Every durable document created for Shotgun work must be recorded as a
-Git-tracked repository file. This requirement includes, at minimum:
-
-- Architecture Design Documents, ADRs, contract snapshots, schemas, migration
-  and rollback contracts
-- implementation plans, roadmaps, risk registers, open issues, rejected
-  alternatives, and decision histories
-- engineering reports, audits, reviews, gap analyses, impact analyses, and
-  completion records
-- test, contract, architecture, database, security, quality, OSS, license,
-  performance, migration, rollback, backup, restore, release, and deployment
-  inspection results
-- approval evidence, production verification records, incident reports,
-  postmortems, and corrective-action records
-- generated verification summaries, manifests, indexes, checksums, and other
-  records used to support a status or completion claim
-
-The normal repository locations are:
-
-- `docs/architecture/` for architecture, ADRs, contracts, and implementation
-  records
-- `docs/implementation/` for plans, roadmaps, policies, risk, and Stage
-  validation records
-- `docs/engineering/` for engineering reports, verification results,
-  completion records, operational runbooks, and drills
-
-New document classes may introduce a more specific path under `docs/`, but
-must not be kept only outside the repository.
-
-## 4. Verification and Inspection Record Contract
-
-A report or inspection result that supports an implementation, Gate, release,
-approval, or completion claim must be committed in the same pull request as
-the work, or in a dedicated evidence pull request that names the exact subject
-commit.
-
-Each durable verification record must include, as applicable:
-
-- record identity and date
-- subject repository, branch, and commit SHA
-- command, check, scenario, or manual procedure executed
-- relevant environment and dependency versions
-- result for every required check: `PASS`, `FAIL`, `BLOCKED`, or `NOT_RUN`
-- failures, skips, retries, flaky behavior, and their reasons
-- links to GitHub Actions runs, artifacts, pull requests, releases, or external
-  evidence
-- integrity hash and retention information for externally stored artifacts
-- known limits and the claim the evidence does or does not support
-
-Local terminal output, a chat response, a pull request comment, or an expiring
-GitHub Actions log is supporting material, not the sole durable verification
-record. Material results must be summarized in a Git-tracked file. A check
-that failed, was blocked, or was not run must not be recorded as passed.
-
-Local execution, remote CI, reviewer approval, merge, deployment, and
-production verification are distinct evidence states and must not be
-collapsed into one completion claim.
-
-## 5. Documentation Change and Publication Flow
+## Canonicalization lifecycle
 
 ```text
-Architecture Meeting or Change Proposal
-→ Candidate
-→ User Approval
-→ Git Documentation Branch
-→ Pull Request
-→ Review and Required CI
-→ main Merge
-→ Canonical Revision identified by Commit SHA
-→ Optional External Mirror
+Candidate
+-> User Approved
+-> Pending Canonicalization
+-> Git Pull Request
+-> Review and CI
+-> Merge to main
+-> Canonical
+-> Optional Notion Mirror
 ```
 
-AI-authored requests, designs, ADR drafts, and review results remain Candidates
-until approved. Approved documents remain `PENDING_CANONICALIZATION` until
-merged into `main`.
+Definitions:
 
-A code change that alters or clarifies architecture, contracts, operations, or
-completion evidence must update the affected repository documents in the same
-pull request. A pure implementation with no documentation impact must state:
+- **Candidate**: proposed content. AI-generated content is Candidate by default.
+- **User Approved**: the user accepted the decision or text, but it may not yet exist in Git `main`.
+- **Pending Canonicalization**: approved content awaiting a repository PR and merge.
+- **Canonical**: merged into Git `main` after the cutover boundary.
+- **Generated**: derived output that must be reproducible from Canonical sources.
+- **Reference**: supporting material that does not define product truth.
+- **Superseded**: retained historical content replaced by a later approved decision.
+
+## Canonical document classes
+
+The following are Canonical when listed in `docs/canonical-manifest.yaml` and merged to `main`:
+
+- Knowledge Flow baseline and Detailed Map
+- Phase ADDs
+- cross-phase and frontend architecture
+- ADRs
+- contract snapshots
+- schema, migration, and rollback contracts
+- implementation plans and roadmaps
+- engineering verification and completion records
+- governance, security, operations, and quality policies
+- decision history, open issues, rejected alternatives, and impact records
+
+## GitHub report and verification record requirement
+
+All durable Shotgun reports, audits, inspection results, test results,
+verification records, and completion evidence must be stored as Git-tracked
+repository documents. This rule applies to new work during the transition
+period and does not itself complete the Canonical cutover.
+
+A material result used to support an implementation, Gate, approval, release,
+deployment, or completion claim must be committed with the work or in a
+dedicated evidence pull request that identifies the exact subject commit. The
+record must include, as applicable:
+
+- record identity and execution date,
+- subject branch and commit SHA,
+- command, check, scenario, or manual procedure,
+- relevant environment and dependency versions,
+- explicit `PASS`, `FAIL`, `BLOCKED`, or `NOT_RUN` for every required check,
+- failures, skips, retries, flaky behavior, and their reasons,
+- links to GitHub Actions runs, pull requests, releases, or external evidence,
+- integrity and retention information for externally stored artifacts,
+- known limits and the exact claim the evidence supports.
+
+Local terminal output, chat, an external-only text document, a pull request
+comment, or an expiring GitHub Actions log is supporting material, not the sole
+durable record. Material results must be summarized under `docs/`, normally in
+`docs/engineering/`, `docs/implementation/stage-validations/`, or the relevant
+architecture implementation-record path.
+
+Local verification, remote CI, reviewer or user approval, merge, deployment,
+and production verification are distinct evidence states. A failed, blocked,
+or unexecuted check must not be recorded as passed.
+
+Large, sensitive, licensed, or regulated artifacts may remain outside Git, but
+their safe Git reference manifest must record identity, location, access
+boundary, version or checksum, retention state, and Canonical status. Secrets
+and prohibited redistributable material must not be committed to satisfy this
+rule.
+
+## Repository rules
+
+1. Do not silently overwrite earlier decisions. Record `supersedes` and the reason.
+2. Keep Claim and Fact distinct.
+3. Treat Compiled Truth as a derived projection.
+4. Do not promote AI output to Canonical without user approval.
+5. User approval does not bypass Git review and merge after cutover.
+6. Code that changes an architecture or contract boundary must update the governing document or explain why no change is needed.
+7. Generated files must identify their Canonical inputs and generator.
+8. External references must be represented in a manifest when the source is not stored in Git.
+
+## Notion mirror requirements
+
+After cutover, a mirrored page should show:
 
 ```text
-Canonical documentation impact: NONE
-Reason: <why the approved contract is unchanged>
+Canonical status: Mirror
+Canonical repository: JasonCutter/shotgun
+Canonical path: docs/...
+Canonical revision: <commit SHA>
+Last synchronized: <date>
 ```
 
-A documentation change must state:
+Notion-only edits remain Candidate until represented in a Git PR and merged.
 
-```text
-Canonical documentation impact: UPDATED
-Governing documents:
-- <repository path>
+## Google Drive boundary
 
-Change type:
-- clarification
-- implementation record
-- verification evidence
-- supersession
-- new decision requiring approval
-```
+Move Shotgun-authored governing text into Git. Keep external, large, licensed, or binary material outside Git where appropriate and describe it through a reference manifest.
 
-If implementation reveals a new architecture decision, work must not silently
-rewrite an accepted ADR. The new decision and impact scope require a separate
-Candidate and approval.
+Do not delete legacy material during inventory. Mark it as migrated, archived, superseded, duplicate, or retained reference only after verification.
 
-## 6. GitHub Publication Boundary
+## Cutover prerequisites
 
-- The official publication unit is a revision merged into GitHub `main`.
-- A pull request is a reviewable publication candidate, not a Canonical
-  Revision.
-- Releases, documentation sites, and mirrors must be generated from an
-  identified Canonical Revision.
-- Generated documents must identify their Canonical inputs, generator, and
-  reproducible version.
-- Corrections preserve history through a new commit; published evidence is not
-  silently overwritten to change a prior result.
-- GitHub Issues, Discussions, pull request descriptions, comments, Actions
-  logs, and release notes may support a repository document, but do not replace
-  a required durable record under `docs/`.
+The final cutover requires:
 
-## 7. External Systems and Large Artifacts
+- complete document inventory,
+- normalized Git paths,
+- ADR and contract indexes,
+- link validation,
+- approval and supersession validation,
+- Notion/Git drift resolution,
+- explicit user approval of the cutover commit.
 
-Notion may be used for meetings, Candidate drafts, navigation, historical
-archives, and read-only mirrors. Google Drive or another controlled store may
-hold large binaries, scans, vendor material, licensed material that cannot be
-redistributed in Git, or temporary exports.
+The cutover commit SHA must be recorded in this file and in `docs/canonical-manifest.yaml`.
 
-External material that supports a Shotgun decision or claim requires a
-Git-tracked reference manifest containing:
-
-- stable identity and purpose
-- external location and access boundary
-- owner and retention status
-- version, checksum, or equivalent integrity information
-- Canonical status
-- the repository document and commit that reference it
-
-An external-only text document is not an authoritative Shotgun record. Secrets,
-credentials, regulated personal data, and material prohibited from
-redistribution must not be committed merely to satisfy this policy; commit a
-redacted record and safe reference manifest instead.
-
-The allowed synchronization direction after cutover is:
-
-```text
-GitHub main
-→ External read-only mirror
-```
-
-Bidirectional Canonical synchronization and external edits promoted without a
-Git pull request are prohibited.
-
-## 8. Completion and Gate Claims
-
-Work must not be reported as complete when a required report or inspection
-result exists only locally or outside GitHub. A completion proposal must point
-to:
-
-- the implementation commit or pull request
-- the Git-tracked verification and completion records
-- the remote CI run when required
-- separate approval, merge, deployment, and production evidence when those
-  states are claimed
-
-Missing documentation automation does not waive the persistence requirement.
-Until repository documentation gates are implemented, their state must be
-reported as `NOT_IMPLEMENTED`; they must not be described as passed.
-
-## 9. Migration and Rollback
-
-The cutover is additive:
-
-1. inventory pre-cutover authoritative documents and external evidence
-2. copy or convert Shotgun-authored text into repository paths
-3. add reference manifests for material that must remain external
-4. review links, provenance, supersession, and sensitive-data handling
-5. merge the approved cutover revision into `main`
-6. publish read-only mirrors from that revision
-
-Rollback before cutover means closing or reverting the Candidate without
-changing current authority. Rollback after cutover uses a new reviewed Git
-revision; it does not delete history or make an external system authoritative
-again.
-
-## 10. Cutover Record
+## Cutover record
 
 ```yaml
 status: pending
@@ -231,6 +147,3 @@ cutover_commit: null
 approved_by: null
 approved_at: null
 ```
-
-These fields may be changed only by the explicitly approved cutover revision.
-Creating or editing this Candidate does not itself complete the cutover.

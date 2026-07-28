@@ -13,6 +13,17 @@ Shotgun은 한 점에 모인 지식이 산탄총의 탄환처럼 여러 방향�
 - 우선순위는 복잡한 전체 구조보다 작동하는 MVP 완성
 - 원본 접수부터 Claim Canonical·인용 답변, Rich Knowledge·Compiled Truth와 Risk·Preview·Approval·Preflight·Verify Action 흐름까지 지원
 
+## 문서 Canonical 전환
+
+Project Shotgun은 ADR-117에 따라 Notion 중심 문서 운영에서 Git `main` 단일 진실 공급원으로 전환 중입니다.
+
+- 전환 정책: [`docs/CANONICAL.md`](docs/CANONICAL.md)
+- Canonical Manifest: [`docs/canonical-manifest.yaml`](docs/canonical-manifest.yaml)
+- 전환 계획: [`docs/governance/documentation-sot-cutover-plan-260728001.md`](docs/governance/documentation-sot-cutover-plan-260728001.md)
+- 현재 상태: **Cutover pending**
+
+전환 PR이 검증·병합되고 사용자가 Cutover Commit을 승인하기 전까지 기존 Notion Canonical 정책은 임시로 유지됩니다. Git Branch의 문서는 승인된 전환 후보이며 아직 최종 Cutover를 의미하지 않습니다.
+
 ## 개발 시작
 
 개발 환경은 [Stage 0 문서](docs/engineering/stage-0-development.md)를 따르고,
@@ -22,6 +33,36 @@ Asset Resolver는 [Stage 2 문서](docs/engineering/stage-2-intake-original-asse
 [Stage 9 문서](docs/engineering/stage-9-knowledge-model.md), 안전한 외부 Action은
 [Stage 11 문서](docs/engineering/stage-11-risk-controlled-external-action.md), 모듈 재사용은
 [Stage 12 문서](docs/engineering/stage-12-module-reuse-validation.md)에서 확인한다.
+
+### Bootstrap
+
+```bash
+# 기본: npm ci → DB 기동·대기 → migrate → verify
+npm run bootstrap
+
+# DB 작업 없이 의존성만 설치
+npm run bootstrap:quick
+
+# 의존성 설치 없이 DB만 준비
+npm run bootstrap -- --skip-install
+
+# 명시적으로만 파괴적 DB reset 실행
+npm run bootstrap:reset
+```
+
+`--skip-db`와 `--reset-db`는 함께 사용할 수 없으며, 알 수 없는 옵션이나 하위 명령 실패는 즉시 오류로 종료된다.
+
+### 테스트 모드
+
+```bash
+# 빠른 로컬 피드백: unit + contract + architecture
+npm run test:quick
+
+# CI 기준: unit + contract + integration + architecture + Stage 12 package
+npm run test:ci
+```
+
+`npm test`는 CI 기준 범위를 유지하며 `test:ci`를 실행한다.
 
 ### Frontend Section 1 로컬 개발
 

@@ -1,5 +1,9 @@
-import { FrontendContractError } from '../../../packages/contracts/src/index.js';
-import type { FrontendCommandOutcomeView } from '../../../packages/contracts/src/index.js';
+import {
+  FrontendContractError,
+  getFailureDescriptor,
+  isErrorCode,
+  type FrontendCommandOutcomeView,
+} from '../../../packages/contracts/src/index.js';
 import {
   createAcceptedFrontendCommandOutcome,
   type AcceptFrontendCommandInput,
@@ -73,7 +77,14 @@ export class InMemoryFrontendCommandGateway implements FrontendCommandGatewayPor
   }
 
   async reject(input: RejectFrontendCommandInput): Promise<FrontendCommandOutcomeView> {
+    if (!isErrorCode(input.code)) {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        'Frontend Command Ledger rejection code must be registered.',
+      );
+    }
     const existing = this.requireRecord(input.commandId);
+    const descriptor = getFailureDescriptor(input.code);
     const outcome: FrontendCommandOutcomeView = {
       ...existing.outcome,
       commandRevision: String(Number(existing.outcome.commandRevision) + 1),
@@ -82,7 +93,11 @@ export class InMemoryFrontendCommandGateway implements FrontendCommandGatewayPor
       rejection: {
         code: input.code,
         message: input.message,
-        retryable: false,
+        category: descriptor.category,
+        retryability: descriptor.retryability,
+        recovery: descriptor.recovery,
+        retryable: descriptor.retryability === 'SAFE',
+        ...(input.correlationId === undefined ? {} : { correlationId: input.correlationId }),
       },
       completedAt: input.completedAt,
       lastUpdatedAt: input.completedAt,

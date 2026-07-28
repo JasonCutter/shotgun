@@ -12,7 +12,12 @@ import {
   decodeProductApiErrorBody,
   decodeSessionEnvelope,
 } from './decode.js';
-import { ShotgunApiError } from './errors.js';
+import {
+  ShotgunApiError,
+  outcomeIndeterminateApiError,
+  productFailureApiError,
+  remoteUnclassifiedProductApiFailure,
+} from './errors.js';
 import {
   decodeSettingsSnapshot,
   decodeSettingsCategorySummary,
@@ -96,13 +101,9 @@ const readJson = async (response: Response): Promise<unknown> => {
 const assertOk = async (response: Response): Promise<unknown> => {
   const body = await readJson(response);
   if (response.ok) return body;
-  const error = decodeProductApiErrorBody(body);
-  throw new ShotgunApiError({
-    status: response.status,
-    code: error?.code ?? 'REQUEST_FAILED',
-    message: error?.message ?? 'Request failed.',
-    ...(error?.correlationId === undefined ? {} : { correlationId: error.correlationId }),
-  });
+  const failure = decodeProductApiErrorBody(body);
+  if (!failure) throw remoteUnclassifiedProductApiFailure(response.status);
+  throw productFailureApiError(response.status, failure);
 };
 
 export const createShotgunApiClient = (
@@ -131,6 +132,7 @@ export const createShotgunApiClient = (
 
   const runCommandMutation = async <T>(
     signal: AbortSignal | undefined,
+    clientRequestId: string,
     mutation: (csrfToken: string) => Promise<T>,
   ): Promise<T> =>
     runMutation(signal, async (csrfToken) => {
@@ -138,12 +140,7 @@ export const createShotgunApiClient = (
         return await mutation(csrfToken);
       } catch (error) {
         if (error instanceof ShotgunApiError) throw error;
-        throw new ShotgunApiError({
-          status: 0,
-          code: 'OUTCOME_INDETERMINATE',
-          message:
-            'The mutation response was not received. Resolve the existing outcome before retrying.',
-        });
+        throw outcomeIndeterminateApiError(clientRequestId);
       }
     });
 
@@ -258,39 +255,43 @@ export const createShotgunApiClient = (
         readonly revision: number;
       }>
     > {
-      return runCommandMutation(requestOptions?.signal, async (csrfToken) => {
-        const response = await request('/settings/preferences', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
-          body: JSON.stringify(
-            createCommandRequest({
-              ...params,
-              commandType: SECTION2_FRONTEND_COMMAND_TYPES.updatePreference,
-              preconditions: [
-                {
-                  purpose: 'TARGET',
-                  subject: { resourceKind: 'principal-preferences', resourceId: 'self' },
-                  expectedRevision: String(params.expectedPreferenceRevision),
-                },
-              ],
-              payload: { preferences: params.preferences },
-            }),
-          ),
-          signal: requestOptions?.signal,
-        });
-        const body = (await assertOk(response)) as {
-          outcome: unknown;
-          preferences: Record<string, unknown>;
-          preferenceRevision: number;
-        };
-        return {
-          outcome: decodeFrontendCommandOutcomeView(body.outcome),
-          resource: {
-            preferences: decodePrincipalPreferences(body.preferences),
-            revision: body.preferenceRevision,
-          },
-        };
-      });
+      return runCommandMutation(
+        requestOptions?.signal,
+        params.clientRequestId,
+        async (csrfToken) => {
+          const response = await request('/settings/preferences', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+            body: JSON.stringify(
+              createCommandRequest({
+                ...params,
+                commandType: SECTION2_FRONTEND_COMMAND_TYPES.updatePreference,
+                preconditions: [
+                  {
+                    purpose: 'TARGET',
+                    subject: { resourceKind: 'principal-preferences', resourceId: 'self' },
+                    expectedRevision: String(params.expectedPreferenceRevision),
+                  },
+                ],
+                payload: { preferences: params.preferences },
+              }),
+            ),
+            signal: requestOptions?.signal,
+          });
+          const body = (await assertOk(response)) as {
+            outcome: unknown;
+            preferences: Record<string, unknown>;
+            preferenceRevision: number;
+          };
+          return {
+            outcome: decodeFrontendCommandOutcomeView(body.outcome),
+            resource: {
+              preferences: decodePrincipalPreferences(body.preferences),
+              revision: body.preferenceRevision,
+            },
+          };
+        },
+      );
     },
 
     async validateSettingsDraft(
@@ -348,44 +349,48 @@ export const createShotgunApiClient = (
       },
       requestOptions?: RequestOptions,
     ): Promise<FrontendCommandMutationResponse<SettingsCommandResult>> {
-      return runCommandMutation(requestOptions?.signal, async (csrfToken) => {
-        const response = await request('/settings/commands', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
-          body: JSON.stringify(
-            createCommandRequest({
-              ...params,
-              commandType: SECTION2_FRONTEND_COMMAND_TYPES.applyProjectPolicy,
-              observedPolicyContextRevision: params.observedPolicyContextRevision,
-              preconditions: [
-                {
-                  purpose: 'TARGET',
-                  subject: {
-                    resourceKind: 'project-settings',
-                    resourceId: params.targetProjectId,
+      return runCommandMutation(
+        requestOptions?.signal,
+        params.clientRequestId,
+        async (csrfToken) => {
+          const response = await request('/settings/commands', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+            body: JSON.stringify(
+              createCommandRequest({
+                ...params,
+                commandType: SECTION2_FRONTEND_COMMAND_TYPES.applyProjectPolicy,
+                observedPolicyContextRevision: params.observedPolicyContextRevision,
+                preconditions: [
+                  {
+                    purpose: 'TARGET',
+                    subject: {
+                      resourceKind: 'project-settings',
+                      resourceId: params.targetProjectId,
+                    },
+                    expectedRevision: String(params.expectedSettingsRevision),
                   },
-                  expectedRevision: String(params.expectedSettingsRevision),
-                },
-                {
-                  purpose: 'POLICY',
-                  subject: {
-                    resourceKind: 'project-policy-context',
-                    resourceId: params.targetProjectId,
+                  {
+                    purpose: 'POLICY',
+                    subject: {
+                      resourceKind: 'project-policy-context',
+                      resourceId: params.targetProjectId,
+                    },
+                    expectedRevision: String(params.observedPolicyContextRevision),
                   },
-                  expectedRevision: String(params.observedPolicyContextRevision),
-                },
-              ],
-              payload: { settings: params.settings },
-            }),
-          ),
-          signal: requestOptions?.signal,
-        });
-        const body = (await assertOk(response)) as { outcome: unknown; result: unknown };
-        return {
-          outcome: decodeFrontendCommandOutcomeView(body.outcome),
-          resource: decodeSettingsCommandResult(body.result),
-        };
-      });
+                ],
+                payload: { settings: params.settings },
+              }),
+            ),
+            signal: requestOptions?.signal,
+          });
+          const body = (await assertOk(response)) as { outcome: unknown; result: unknown };
+          return {
+            outcome: decodeFrontendCommandOutcomeView(body.outcome),
+            resource: decodeSettingsCommandResult(body.result),
+          };
+        },
+      );
     },
 
     async getFrontendCommandOutcomeByClientRequestId(
@@ -442,30 +447,34 @@ export const createShotgunApiClient = (
       },
       requestOptions?: RequestOptions,
     ): Promise<FrontendCommandMutationResponse<ProjectListItemView>> {
-      return runCommandMutation(requestOptions?.signal, async (csrfToken) => {
-        const response = await request('/projects', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
-          body: JSON.stringify(
-            createCommandRequest({
-              ...params,
-              commandType: SECTION2_FRONTEND_COMMAND_TYPES.createProject,
-              preconditions: [],
-              payload: {
-                newProjectId: params.id,
-                name: params.name,
-                ...(params.description === undefined ? {} : { description: params.description }),
-              },
-            }),
-          ),
-          signal: requestOptions?.signal,
-        });
-        const body = (await assertOk(response)) as { outcome: unknown; project: unknown };
-        return {
-          outcome: decodeFrontendCommandOutcomeView(body.outcome),
-          resource: decodeProjectListItemView(body.project),
-        };
-      });
+      return runCommandMutation(
+        requestOptions?.signal,
+        params.clientRequestId,
+        async (csrfToken) => {
+          const response = await request('/projects', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+            body: JSON.stringify(
+              createCommandRequest({
+                ...params,
+                commandType: SECTION2_FRONTEND_COMMAND_TYPES.createProject,
+                preconditions: [],
+                payload: {
+                  newProjectId: params.id,
+                  name: params.name,
+                  ...(params.description === undefined ? {} : { description: params.description }),
+                },
+              }),
+            ),
+            signal: requestOptions?.signal,
+          });
+          const body = (await assertOk(response)) as { outcome: unknown; project: unknown };
+          return {
+            outcome: decodeFrontendCommandOutcomeView(body.outcome),
+            resource: decodeProjectListItemView(body.project),
+          };
+        },
+      );
     },
 
     async updateProject(
@@ -483,35 +492,39 @@ export const createShotgunApiClient = (
       },
       requestOptions?: RequestOptions,
     ): Promise<FrontendCommandMutationResponse<ProjectListItemView>> {
-      return runCommandMutation(requestOptions?.signal, async (csrfToken) => {
-        const response = await request(`/projects/${encodeURIComponent(projectId)}`, {
-          method: 'PATCH',
-          headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
-          body: JSON.stringify(
-            createCommandRequest({
-              ...params,
-              commandType: SECTION2_FRONTEND_COMMAND_TYPES.updateProjectMetadata,
-              preconditions: [
-                {
-                  purpose: 'TARGET',
-                  subject: { resourceKind: 'project', resourceId: projectId },
-                  expectedRevision: String(params.expectedRevision),
+      return runCommandMutation(
+        requestOptions?.signal,
+        params.clientRequestId,
+        async (csrfToken) => {
+          const response = await request(`/projects/${encodeURIComponent(projectId)}`, {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+            body: JSON.stringify(
+              createCommandRequest({
+                ...params,
+                commandType: SECTION2_FRONTEND_COMMAND_TYPES.updateProjectMetadata,
+                preconditions: [
+                  {
+                    purpose: 'TARGET',
+                    subject: { resourceKind: 'project', resourceId: projectId },
+                    expectedRevision: String(params.expectedRevision),
+                  },
+                ],
+                payload: {
+                  ...(params.name === undefined ? {} : { name: params.name }),
+                  ...(params.description === undefined ? {} : { description: params.description }),
                 },
-              ],
-              payload: {
-                ...(params.name === undefined ? {} : { name: params.name }),
-                ...(params.description === undefined ? {} : { description: params.description }),
-              },
-            }),
-          ),
-          signal: requestOptions?.signal,
-        });
-        const body = (await assertOk(response)) as { outcome: unknown; project: unknown };
-        return {
-          outcome: decodeFrontendCommandOutcomeView(body.outcome),
-          resource: decodeProjectListItemView(body.project),
-        };
-      });
+              }),
+            ),
+            signal: requestOptions?.signal,
+          });
+          const body = (await assertOk(response)) as { outcome: unknown; project: unknown };
+          return {
+            outcome: decodeFrontendCommandOutcomeView(body.outcome),
+            resource: decodeProjectListItemView(body.project),
+          };
+        },
+      );
     },
 
     async archiveProject(
@@ -527,32 +540,36 @@ export const createShotgunApiClient = (
       },
       requestOptions?: RequestOptions,
     ): Promise<FrontendCommandMutationResponse<ProjectListItemView>> {
-      return runCommandMutation(requestOptions?.signal, async (csrfToken) => {
-        const response = await request(`/projects/${encodeURIComponent(projectId)}/archive`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
-          body: JSON.stringify(
-            createCommandRequest({
-              ...params,
-              commandType: SECTION2_FRONTEND_COMMAND_TYPES.archiveProject,
-              preconditions: [
-                {
-                  purpose: 'TARGET',
-                  subject: { resourceKind: 'project', resourceId: projectId },
-                  expectedRevision: String(params.expectedRevision),
-                },
-              ],
-              payload: {},
-            }),
-          ),
-          signal: requestOptions?.signal,
-        });
-        const body = (await assertOk(response)) as { outcome: unknown; project: unknown };
-        return {
-          outcome: decodeFrontendCommandOutcomeView(body.outcome),
-          resource: decodeProjectListItemView(body.project),
-        };
-      });
+      return runCommandMutation(
+        requestOptions?.signal,
+        params.clientRequestId,
+        async (csrfToken) => {
+          const response = await request(`/projects/${encodeURIComponent(projectId)}/archive`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+            body: JSON.stringify(
+              createCommandRequest({
+                ...params,
+                commandType: SECTION2_FRONTEND_COMMAND_TYPES.archiveProject,
+                preconditions: [
+                  {
+                    purpose: 'TARGET',
+                    subject: { resourceKind: 'project', resourceId: projectId },
+                    expectedRevision: String(params.expectedRevision),
+                  },
+                ],
+                payload: {},
+              }),
+            ),
+            signal: requestOptions?.signal,
+          });
+          const body = (await assertOk(response)) as { outcome: unknown; project: unknown };
+          return {
+            outcome: decodeFrontendCommandOutcomeView(body.outcome),
+            resource: decodeProjectListItemView(body.project),
+          };
+        },
+      );
     },
 
     async restoreProject(
@@ -568,32 +585,36 @@ export const createShotgunApiClient = (
       },
       requestOptions?: RequestOptions,
     ): Promise<FrontendCommandMutationResponse<ProjectListItemView>> {
-      return runCommandMutation(requestOptions?.signal, async (csrfToken) => {
-        const response = await request(`/projects/${encodeURIComponent(projectId)}/restore`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
-          body: JSON.stringify(
-            createCommandRequest({
-              ...params,
-              commandType: SECTION2_FRONTEND_COMMAND_TYPES.restoreProject,
-              preconditions: [
-                {
-                  purpose: 'TARGET',
-                  subject: { resourceKind: 'project', resourceId: projectId },
-                  expectedRevision: String(params.expectedRevision),
-                },
-              ],
-              payload: {},
-            }),
-          ),
-          signal: requestOptions?.signal,
-        });
-        const body = (await assertOk(response)) as { outcome: unknown; project: unknown };
-        return {
-          outcome: decodeFrontendCommandOutcomeView(body.outcome),
-          resource: decodeProjectListItemView(body.project),
-        };
-      });
+      return runCommandMutation(
+        requestOptions?.signal,
+        params.clientRequestId,
+        async (csrfToken) => {
+          const response = await request(`/projects/${encodeURIComponent(projectId)}/restore`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+            body: JSON.stringify(
+              createCommandRequest({
+                ...params,
+                commandType: SECTION2_FRONTEND_COMMAND_TYPES.restoreProject,
+                preconditions: [
+                  {
+                    purpose: 'TARGET',
+                    subject: { resourceKind: 'project', resourceId: projectId },
+                    expectedRevision: String(params.expectedRevision),
+                  },
+                ],
+                payload: {},
+              }),
+            ),
+            signal: requestOptions?.signal,
+          });
+          const body = (await assertOk(response)) as { outcome: unknown; project: unknown };
+          return {
+            outcome: decodeFrontendCommandOutcomeView(body.outcome),
+            resource: decodeProjectListItemView(body.project),
+          };
+        },
+      );
     },
 
     async requestDeleteProject(
@@ -609,35 +630,39 @@ export const createShotgunApiClient = (
       },
       requestOptions?: RequestOptions,
     ): Promise<FrontendCommandMutationResponse<ProjectListItemView>> {
-      return runCommandMutation(requestOptions?.signal, async (csrfToken) => {
-        const response = await request(
-          `/projects/${encodeURIComponent(projectId)}/delete-request`,
-          {
-            method: 'POST',
-            headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
-            body: JSON.stringify(
-              createCommandRequest({
-                ...params,
-                commandType: SECTION2_FRONTEND_COMMAND_TYPES.requestProjectDeletion,
-                preconditions: [
-                  {
-                    purpose: 'TARGET',
-                    subject: { resourceKind: 'project', resourceId: projectId },
-                    expectedRevision: String(params.expectedRevision),
-                  },
-                ],
-                payload: {},
-              }),
-            ),
-            signal: requestOptions?.signal,
-          },
-        );
-        const body = (await assertOk(response)) as { outcome: unknown; project: unknown };
-        return {
-          outcome: decodeFrontendCommandOutcomeView(body.outcome),
-          resource: decodeProjectListItemView(body.project),
-        };
-      });
+      return runCommandMutation(
+        requestOptions?.signal,
+        params.clientRequestId,
+        async (csrfToken) => {
+          const response = await request(
+            `/projects/${encodeURIComponent(projectId)}/delete-request`,
+            {
+              method: 'POST',
+              headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+              body: JSON.stringify(
+                createCommandRequest({
+                  ...params,
+                  commandType: SECTION2_FRONTEND_COMMAND_TYPES.requestProjectDeletion,
+                  preconditions: [
+                    {
+                      purpose: 'TARGET',
+                      subject: { resourceKind: 'project', resourceId: projectId },
+                      expectedRevision: String(params.expectedRevision),
+                    },
+                  ],
+                  payload: {},
+                }),
+              ),
+              signal: requestOptions?.signal,
+            },
+          );
+          const body = (await assertOk(response)) as { outcome: unknown; project: unknown };
+          return {
+            outcome: decodeFrontendCommandOutcomeView(body.outcome),
+            resource: decodeProjectListItemView(body.project),
+          };
+        },
+      );
     },
 
     async getModelDescriptors(

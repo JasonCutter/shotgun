@@ -66,6 +66,8 @@ import {
   sha256Text,
   validationResultDigest,
   ShotgunError,
+  createProductFailureEnvelope,
+  getFailureDescriptor,
   ShotgunKernel,
   type AssetReference,
   type MessageTransport,
@@ -1314,61 +1316,36 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   const server = Fastify({ logger: false });
 
   server.setErrorHandler(async (error, request, reply) => {
-    if (!(error instanceof ShotgunError)) {
-      return reply.status(500).send({ code: 'TERMINAL_FAILURE', message: 'Request failed.' });
-    }
+    const normalized =
+      error instanceof ShotgunError
+        ? error
+        : new ShotgunError({
+            code: 'INTERNAL_UNCLASSIFIED',
+            safeMessage: 'Request failed.',
+            module: 'product-api',
+            operation: 'request',
+            cause: error,
+          });
+    const descriptor = getFailureDescriptor(normalized.code);
     const context = trustedRequestContexts.get(request.headers as object);
     try {
       await authRepository.appendAudit({
         principalId: context?.principalId,
         projectId: context?.projectId,
-        event: `REQUEST_DENIED:${error.code}`,
+        event: `REQUEST_DENIED:${normalized.code}`,
       });
     } catch {
       // Do not replace a safe denial response with an audit-storage implementation error.
     }
-    const status = ['AUTHENTICATION_REQUIRED', 'AUTHENTICATION_INVALID'].includes(error.code)
-      ? 401
-      : [
-            'AUTHORIZATION_DENIED',
-            'PROJECT_ACCESS_DENIED',
-            'REQUEST_ORIGIN_DENIED',
-            'POLICY_DENIED',
-            'ACTION_AUTHORIZATION_DENIED',
-            'ACTION_CONNECTOR_NOT_ALLOWED',
-            'CAPABILITY_DENIED',
-            'PRECONDITION_ACCESS_DENIED',
-            'RESOURCE_ACCESS_REVOKED',
-          ].includes(error.code)
-        ? 403
-        : ['NOT_FOUND', 'ACTION_REFERENCE_NOT_FOUND'].includes(error.code)
-          ? 404
-          : [
-                'CONFLICT',
-                'STALE_VERSION',
-                'STALE_APPROVAL',
-                'STALE_ACTION_SNAPSHOT',
-                'REVISION_CONFLICT',
-                'DIGEST_MISMATCH',
-                'POLICY_CONTEXT_CHANGED',
-                'IDEMPOTENCY_KEY_REUSE_MISMATCH',
-              ].includes(error.code)
-            ? 409
-            : [
-                  'VALIDATION_ERROR',
-                  'LEGACY_SECURITY_HEADER_FORBIDDEN',
-                  'PROJECT_CONTEXT_REQUIRED',
-                  'ACTION_SERVER_BINDING_REQUIRED',
-                  'INVALID_REQUEST',
-                  'RESOURCE_PROJECT_MISMATCH',
-                ].includes(error.code)
-              ? 400
-              : 500;
-    return reply.status(status).send({
-      code: error.code,
-      message: error.safeMessage,
-      correlationId: error.correlationId,
-    });
+    return reply.status(descriptor.httpStatus).send(
+      createProductFailureEnvelope({
+        code: normalized.code,
+        message: normalized.safeMessage,
+        ...(normalized.correlationId === undefined
+          ? {}
+          : { correlationId: normalized.correlationId }),
+      }),
+    );
   });
 
   const serverHost = options.host ?? process.env.HOST ?? '127.0.0.1';

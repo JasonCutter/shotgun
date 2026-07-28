@@ -17,6 +17,13 @@ import type {
   DiagnosticsView,
   ProductFeatureView,
   FrontendCommandOutcomeView,
+  ErrorCode,
+  FailureCategory,
+  FailureRetryability,
+  FailureRecovery,
+  ProductFailureDetails,
+  ProductFailureEnvelope,
+  TypedFrontendFailure,
 } from '../../contracts/src/index.js';
 
 export type {
@@ -38,7 +45,20 @@ export type {
   DiagnosticsView,
   ProductFeatureView,
   FrontendCommandOutcomeView,
+  ErrorCode,
+  FailureCategory,
+  FailureRetryability,
+  FailureRecovery,
+  ProductFailureDetails,
+  ProductFailureEnvelope,
+  TypedFrontendFailure,
 };
+
+export {
+  deriveFrontendFailure,
+  getFailureDescriptor,
+  isErrorCode,
+} from '../../contracts/src/index.js';
 
 export type FrontendCommandMutationResponse<T> = {
   readonly outcome: FrontendCommandOutcomeView;
@@ -54,11 +74,7 @@ export type FrontendCommandSubmission = {
   readonly clientIssuedAt?: string;
 };
 
-export type ProductApiErrorBody = {
-  readonly code: string;
-  readonly message: string;
-  readonly correlationId?: string;
-};
+export type ProductApiErrorBody = ProductFailureEnvelope;
 
 export type RequestOptions = {
   readonly signal?: AbortSignal;

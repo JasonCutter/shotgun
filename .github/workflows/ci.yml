@@ -79,13 +79,7 @@ jobs:
       - name: Run Stage 12 reuse and operations gate
         run: npm run stage12:reuse-operations-gate
       - name: Run CI test suite
-        run: npm run test:ci 2>&1 | tee test-ci.log
-      - name: Upload test CI diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-ci-diagnostics
-          path: test-ci.log
+        run: npm run test:ci
       - name: Run database tests
         run: npm run test:database
 
@@ -120,13 +114,7 @@ jobs:
       - name: Install Node.js dependencies
         run: npm ci
       - name: Typecheck frontend
-        run: npm run frontend:typecheck 2>&1 | tee frontend-typecheck.log
-      - name: Upload frontend typecheck diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-typecheck-diagnostics
-          path: frontend-typecheck.log
+        run: npm run frontend:typecheck
       - name: Test frontend
         run: npm run frontend:test
       - name: Build frontend

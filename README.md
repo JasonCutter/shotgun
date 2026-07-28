@@ -13,16 +13,20 @@ Shotgun은 한 점에 모인 지식이 산탄총의 탄환처럼 여러 방향�
 - 우선순위는 복잡한 전체 구조보다 작동하는 MVP 완성
 - 원본 접수부터 Claim Canonical·인용 답변, Rich Knowledge·Compiled Truth와 Risk·Preview·Approval·Preflight·Verify Action 흐름까지 지원
 
-## 문서 Canonical 전환
+## 문서 Canonical 운영
 
-Project Shotgun은 ADR-117에 따라 Notion 중심 문서 운영에서 Git `main` 단일 진실 공급원으로 전환 중입니다.
+Project Shotgun의 유일한 문서 Canonical 권한은 GitHub 저장소 `JasonCutter/shotgun`의 `main` 브랜치입니다.
 
-- 전환 정책: [`docs/CANONICAL.md`](docs/CANONICAL.md)
+- Canonical 정책: [`docs/CANONICAL.md`](docs/CANONICAL.md)
 - Canonical Manifest: [`docs/canonical-manifest.yaml`](docs/canonical-manifest.yaml)
-- 전환 계획: [`docs/governance/documentation-sot-cutover-plan-260728001.md`](docs/governance/documentation-sot-cutover-plan-260728001.md)
-- 현재 상태: **Cutover pending**
+- 최초 전환 결정: [`ADR-117`](docs/architecture/adr/ADR-117-documentation-source-of-truth-canonicalization-and-publication-boundary.md)
+- Cutover 활성화 및 레거시 이관 경계: [`ADR-120`](docs/architecture/adr/ADR-120-canonical-cutover-activation-and-legacy-migration-boundary.md)
+- 이관 계획과 잔여 작업: [`docs/governance/documentation-sot-cutover-plan-260728001.md`](docs/governance/documentation-sot-cutover-plan-260728001.md)
+- 현재 상태: **GitHub `main` Canonical active / legacy migration in progress**
 
-전환 PR이 검증·병합되고 사용자가 Cutover Commit을 승인하기 전까지 기존 Notion Canonical 정책은 임시로 유지됩니다. Git Branch의 문서는 승인된 전환 후보이며 아직 최종 Cutover를 의미하지 않습니다.
+Notion은 Candidate 작업 공간·미러·탐색 허브·기록 보관소이며, Google Drive 등 외부 저장소는 Reference 또는 Archive다. 외부에만 있는 문서는 Git PR로 이관·검토·승인·병합되기 전에는 새로운 구현을 지배하는 Canonical 문서가 아니다.
+
+모든 보고서, 감사 결과, 검사 결과, 테스트 결과, 검증 기록 및 완료 증거는 Git으로 추적되는 저장소 문서로 기록한다.
 
 ## 개발 시작
 

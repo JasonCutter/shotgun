@@ -8,8 +8,10 @@
 - Base branch: `main`
 - Base commit: `280428499b464fd51b2403f0241edc5b86d24fea`
 - Working branch: `codex/adr-117-documentation-ssot`
+- Initial policy commit: `36bf899224233fa3736ef4e76e94b928ad3097aa`
+- Draft PR: `https://github.com/JasonCutter/shotgun/pull/31`
 - Subject revision: the Git commit containing this record
-- Result: local documentation Candidate verified
+- Result: documentation Candidate published to GitHub; remote CI pending
 
 ## Scope
 
@@ -49,8 +51,8 @@ this verification scope.
 | ---------------------- | --------- | ------------------------------------------------------------------ |
 | Implementation         | `PASS`    | The three documentation files exist on the working branch.         |
 | Local verification     | `PASS`    | The checks listed above passed after the recorded formatting fix.  |
-| GitHub publication     | `PENDING` | The authenticated branch has not yet been pushed.                  |
-| Remote CI              | `NOT_RUN` | No GitHub Actions run exists before branch publication.            |
+| GitHub publication     | `PASS`    | Branch and Draft PR #31 were published to `JasonCutter/shotgun`.   |
+| Remote CI              | `PENDING` | GitHub Actions status must be recorded after the final push.       |
 | Reviewer/user approval | `PENDING` | Policy direction was requested by the user; PR review is separate. |
 | Merge                  | `PENDING` | No merge is authorized or performed by this record.                |
 | Canonical publication  | `PENDING` | Only a reviewed merge into `main` can publish the revision.        |
@@ -61,7 +63,7 @@ this verification scope.
 
 - Repository documentation validation, link, ADR index, Canonical-state, and
   drift scripts are not implemented in `package.json`.
-- Remote CI evidence remains unavailable until GitHub publication.
+- Remote CI is not a passing result until GitHub Actions completes.
 - This record does not approve merge or declare the documentation cutover
   complete.
 

@@ -13,6 +13,34 @@ permissions:
   contents: read
 
 jobs:
+  diagnostics:
+    name: ADR-118 Diagnostics
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install Node.js dependencies
+        run: npm ci
+      - name: Capture frontend typecheck
+        continue-on-error: true
+        run: npm run frontend:typecheck > frontend-typecheck.log 2>&1
+      - name: Capture CI tests
+        continue-on-error: true
+        run: npm run test:ci > test-ci.log 2>&1
+      - name: Upload ADR-118 diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: adr-118-diagnostics
+          path: |
+            frontend-typecheck.log
+            test-ci.log
+
   quality:
     name: Quality
     runs-on: ubuntu-latest

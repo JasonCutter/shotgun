@@ -67,40 +67,28 @@ export const FAILURE_DESCRIPTORS = {
   LEGACY_SECURITY_HEADER_FORBIDDEN: failure('VALIDATION', 'NEVER', 'FIX_REQUEST', 400),
   REQUEST_ORIGIN_DENIED: failure('AUTHORIZATION', 'NEVER', 'NONE', 403),
   ACTION_SERVER_BINDING_REQUIRED: failure('VALIDATION', 'NEVER', 'FIX_REQUEST', 400),
-  ACTION_REFERENCE_NOT_FOUND: failure(
-    'NOT_FOUND',
-    'NEVER',
-    'NONE',
-    404,
-    ['resourceKind', 'resourceId'],
-  ),
-  STALE_ACTION_SNAPSHOT: failure(
-    'CONFLICT',
-    'CONDITIONAL',
-    'REFRESH_AND_REAPPLY',
-    409,
-    ['expectedRevision', 'actualRevision'],
-  ),
+  ACTION_REFERENCE_NOT_FOUND: failure('NOT_FOUND', 'NEVER', 'NONE', 404, [
+    'resourceKind',
+    'resourceId',
+  ]),
+  STALE_ACTION_SNAPSHOT: failure('CONFLICT', 'CONDITIONAL', 'REFRESH_AND_REAPPLY', 409, [
+    'expectedRevision',
+    'actualRevision',
+  ]),
   ACTION_AUTHORIZATION_DENIED: failure('AUTHORIZATION', 'NEVER', 'REQUEST_ACCESS', 403),
   ACTION_CONNECTOR_NOT_ALLOWED: failure('AUTHORIZATION', 'NEVER', 'NONE', 403),
   VALIDATION_ERROR: failure('VALIDATION', 'NEVER', 'FIX_REQUEST', 400),
   POLICY_DENIED: failure('AUTHORIZATION', 'NEVER', 'REQUEST_ACCESS', 403),
   NOT_FOUND: failure('NOT_FOUND', 'NEVER', 'NONE', 404, ['resourceKind', 'resourceId']),
   CONFLICT: failure('CONFLICT', 'CONDITIONAL', 'REFRESH_AND_REAPPLY', 409),
-  STALE_VERSION: failure(
-    'CONFLICT',
-    'CONDITIONAL',
-    'REFRESH_AND_REAPPLY',
-    409,
-    ['expectedRevision', 'actualRevision'],
-  ),
-  STALE_APPROVAL: failure(
-    'CONFLICT',
-    'CONDITIONAL',
-    'REFRESH_AND_REAPPLY',
-    409,
-    ['expectedRevision', 'actualRevision'],
-  ),
+  STALE_VERSION: failure('CONFLICT', 'CONDITIONAL', 'REFRESH_AND_REAPPLY', 409, [
+    'expectedRevision',
+    'actualRevision',
+  ]),
+  STALE_APPROVAL: failure('CONFLICT', 'CONDITIONAL', 'REFRESH_AND_REAPPLY', 409, [
+    'expectedRevision',
+    'actualRevision',
+  ]),
   RETRYABLE_DEPENDENCY: failure('DEPENDENCY', 'SAFE', 'RETRY', 503),
   RATE_LIMITED: failure('RATE_LIMIT', 'SAFE', 'RETRY_AFTER', 429, ['retryAfterSeconds']),
   TIMEOUT: failure('TIMEOUT', 'CONDITIONAL', 'RETRY', 504),
@@ -112,45 +100,28 @@ export const FAILURE_DESCRIPTORS = {
   FORMAT_UNSUPPORTED: failure('VALIDATION', 'NEVER', 'FIX_REQUEST', 415),
   MULTIMODAL_VALIDATION_REQUIRED: failure('VALIDATION', 'CONDITIONAL', 'FIX_REQUEST', 422),
   REPLAY_BLOCKED: failure('CONFLICT', 'NEVER', 'NONE', 409),
-  REVISION_CONFLICT: failure(
-    'CONFLICT',
-    'CONDITIONAL',
-    'REFRESH_AND_REAPPLY',
-    409,
-    ['expectedRevision', 'actualRevision'],
-  ),
-  DIGEST_MISMATCH: failure(
-    'CONFLICT',
-    'CONDITIONAL',
-    'REFRESH_AND_REAPPLY',
-    409,
-    ['expectedDigest', 'actualDigest'],
-  ),
+  REVISION_CONFLICT: failure('CONFLICT', 'CONDITIONAL', 'REFRESH_AND_REAPPLY', 409, [
+    'expectedRevision',
+    'actualRevision',
+  ]),
+  DIGEST_MISMATCH: failure('CONFLICT', 'CONDITIONAL', 'REFRESH_AND_REAPPLY', 409, [
+    'expectedDigest',
+    'actualDigest',
+  ]),
   RESOURCE_RETIRED: failure('NOT_FOUND', 'NEVER', 'NONE', 410, ['resourceKind', 'resourceId']),
-  RESOURCE_PROJECT_MISMATCH: failure(
-    'VALIDATION',
-    'NEVER',
-    'FIX_REQUEST',
-    400,
-    ['resourceKind', 'resourceId'],
-  ),
+  RESOURCE_PROJECT_MISMATCH: failure('VALIDATION', 'NEVER', 'FIX_REQUEST', 400, [
+    'resourceKind',
+    'resourceId',
+  ]),
   PRECONDITION_ACCESS_DENIED: failure('AUTHORIZATION', 'NEVER', 'REQUEST_ACCESS', 403),
-  POLICY_CONTEXT_CHANGED: failure(
-    'CONFLICT',
-    'CONDITIONAL',
-    'REFRESH_AND_REAPPLY',
-    409,
-    ['expectedRevision', 'actualRevision'],
-  ),
+  POLICY_CONTEXT_CHANGED: failure('CONFLICT', 'CONDITIONAL', 'REFRESH_AND_REAPPLY', 409, [
+    'expectedRevision',
+    'actualRevision',
+  ]),
   IDEMPOTENCY_KEY_REUSE_MISMATCH: failure('CONFLICT', 'NEVER', 'NONE', 409),
   SESSION_EXPIRED: failure('AUTHENTICATION', 'NEVER', 'REAUTHENTICATE', 401),
   CAPABILITY_DENIED: failure('AUTHORIZATION', 'NEVER', 'REQUEST_ACCESS', 403),
-  OUTCOME_INDETERMINATE: failure(
-    'OUTCOME_UNKNOWN',
-    'UNKNOWN',
-    'RESOLVE_EXISTING_OUTCOME',
-    503,
-  ),
+  OUTCOME_INDETERMINATE: failure('OUTCOME_UNKNOWN', 'UNKNOWN', 'RESOLVE_EXISTING_OUTCOME', 503),
   RESOURCE_ACCESS_REVOKED: failure('AUTHORIZATION', 'NEVER', 'REQUEST_ACCESS', 403),
   RETENTION_EXPIRED: failure('NOT_FOUND', 'NEVER', 'NONE', 410),
   INVALID_REQUEST: failure('VALIDATION', 'NEVER', 'FIX_REQUEST', 400),
@@ -297,5 +268,11 @@ export const deriveFrontendFailure = (code: ErrorCode): TypedFrontendFailure => 
       state = descriptor.category === 'NOT_FOUND' ? 'NOT_FOUND' : 'APPLY_FAILED';
       break;
   }
-  return { code, ...descriptor, state };
+  return {
+    code,
+    category: descriptor.category,
+    retryability: descriptor.retryability,
+    recovery: descriptor.recovery,
+    state,
+  };
 };

@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
+import { ShotgunApiError, deriveFrontendFailure } from '@shotgun/api-client';
 import type {
   SettingsDraftState,
   SettingsSnapshot,
@@ -7,6 +8,7 @@ import type {
   SettingsCommandResult,
   FrontendCommandOutcomeView,
   FrontendCommandMutationResponse,
+  TypedFrontendFailure,
 } from '@shotgun/api-client';
 import { useLeaveGuard } from './leave-guard-context.js';
 
@@ -23,6 +25,7 @@ export type SettingsDraftController = {
   readonly impactPreview: SettingsImpactPreview | null;
   readonly commandResult: SettingsCommandResult | null;
   readonly errorMessage: string | null;
+  readonly failure: TypedFrontendFailure | null;
   readonly clientRequestId: string | null;
   readonly idempotencyKey: string | null;
   readonly setDraftValue: (key: string, value: unknown) => void;
@@ -71,6 +74,11 @@ type PinnedSettingsDraftContext = {
   readonly policyContextRevision: number;
 };
 
+const typedFailureFrom = (error: unknown): TypedFrontendFailure | null =>
+  error instanceof ShotgunApiError && error.failure
+    ? deriveFrontendFailure(error.failure.code)
+    : null;
+
 export const useSettingsDraft = (
   snapshot: SettingsSnapshot | null | undefined,
   sessionActiveProjectId?: string,
@@ -99,6 +107,7 @@ export const useSettingsDraft = (
   const [impactPreview, setImpactPreview] = useState<SettingsImpactPreview | null>(null);
   const [commandResult, setCommandResult] = useState<SettingsCommandResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [failure, setFailure] = useState<TypedFrontendFailure | null>(null);
   const [clientRequestId, setClientRequestId] = useState<string | null>(null);
   const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null);
 
@@ -170,6 +179,7 @@ export const useSettingsDraft = (
       setValidationResult(null);
       setImpactPreview(null);
       setErrorMessage(null);
+      setFailure(null);
     },
     [isDirty, liveContext],
   );
@@ -182,6 +192,7 @@ export const useSettingsDraft = (
     setImpactPreview(null);
     setCommandResult(null);
     setErrorMessage(null);
+    setFailure(null);
     setClientRequestId(null);
     setIdempotencyKey(null);
   }, []);
@@ -204,7 +215,9 @@ export const useSettingsDraft = (
         }
         return res;
       } catch (err) {
-        setState('VALIDATION_FAILED');
+        const typedFailure = typedFailureFrom(err);
+        setFailure(typedFailure);
+        setState(typedFailure?.state === 'STALE' ? 'STALE' : 'VALIDATION_FAILED');
         const msg = err instanceof Error ? err.message : 'Validation failed';
         setErrorMessage(msg);
         throw err;
@@ -232,6 +245,9 @@ export const useSettingsDraft = (
         setImpactPreview(preview);
         return preview;
       } catch (err) {
+        const typedFailure = typedFailureFrom(err);
+        setFailure(typedFailure);
+        if (typedFailure?.state === 'STALE') setState('STALE');
         const msg = err instanceof Error ? err.message : 'Impact preview failed';
         setErrorMessage(msg);
         return null;
@@ -275,6 +291,7 @@ export const useSettingsDraft = (
         const result = response.resource;
 
         setCommandResult(result);
+        setFailure(null);
 
         if (result.status === 'APPLIED') {
           setState('APPLIED');
@@ -290,34 +307,17 @@ export const useSettingsDraft = (
 
         return result;
       } catch (err: unknown) {
-        const errorCode =
-          typeof err === 'object' && err !== null && 'code' in err
-            ? String((err as { code: unknown }).code)
-            : '';
-        const isConflict = [
-          'CONFLICT',
-          'REVISION_CONFLICT',
-          'DIGEST_MISMATCH',
-          'POLICY_CONTEXT_CHANGED',
-        ].includes(errorCode);
-        const isTimeoutOrNetwork = [
-          'OUTCOME_INDETERMINATE',
-          'TIMEOUT',
-          'NETWORK_ERROR',
-          'FETCH_FAILED',
-        ].includes(errorCode);
-
-        if (isConflict) {
+        const typedFailure = typedFailureFrom(err);
+        setFailure(typedFailure);
+        if (typedFailure?.state === 'STALE') {
           setState('STALE');
-          setErrorMessage('Revision conflict detected. Server has newer settings.');
-        } else if (isTimeoutOrNetwork) {
+        } else if (typedFailure?.state === 'OUTCOME_UNKNOWN') {
           setState('OUTCOME_UNKNOWN');
-          setErrorMessage('Server outcome unknown due to network error.');
         } else {
           setState('APPLY_FAILED');
-          const msg = err instanceof Error ? err.message : 'Apply failed';
-          setErrorMessage(msg);
         }
+        const msg = err instanceof Error ? err.message : 'Apply failed';
+        setErrorMessage(msg);
         throw err;
       }
     },
@@ -345,6 +345,7 @@ export const useSettingsDraft = (
         const outcome = await apiClient.getFrontendCommandOutcomeByClientRequestId(clientRequestId);
         const status = await apiClient.getSettingsCommandStatus(outcome.commandId);
         setCommandResult(status);
+        setFailure(null);
         if (status.status === 'APPLIED') {
           setState('APPLIED');
           setDraft({});
@@ -379,6 +380,7 @@ export const useSettingsDraft = (
     impactPreview,
     commandResult,
     errorMessage,
+    failure,
     clientRequestId,
     idempotencyKey,
     setDraftValue,

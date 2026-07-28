@@ -45,9 +45,7 @@ describe('bootstrap command', () => {
   });
 
   it('rejects conflicting and unsupported options', () => {
-    expect(() => parseBootstrapOptions(['--skip-db', '--reset-db'])).toThrow(
-      BootstrapCliError,
-    );
+    expect(() => parseBootstrapOptions(['--skip-db', '--reset-db'])).toThrow(BootstrapCliError);
     expect(() => parseBootstrapOptions(['--unknown'])).toThrow(BootstrapCliError);
   });
 

@@ -8,9 +8,7 @@ import {
 } from '../../contracts/src/index.js';
 
 export type ShotgunApiErrorCode =
-  | ErrorCode
-  | 'REMOTE_UNCLASSIFIED'
-  | 'INVALID_PRODUCT_API_RESPONSE';
+  ErrorCode | 'REMOTE_UNCLASSIFIED' | 'INVALID_PRODUCT_API_RESPONSE';
 
 export class ShotgunApiError extends Error {
   readonly status: number;

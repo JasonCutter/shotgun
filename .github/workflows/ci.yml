@@ -10,60 +10,10 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  codemod:
-    name: ADR-118 Codemod
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - name: Check out implementation branch
-        uses: actions/checkout@v4
-        with:
-          ref: agent/adr-118-typed-failure-implementation
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-      - name: Apply ADR-118 codemod
-        run: |
-          node scripts/adr118-codemod.mjs
-          node scripts/adr118-codemod-cleanup.mjs
-      - name: Install dependencies
-        run: npm ci
-      - name: Format changed files
-        run: npm run format:write
-      - name: Typecheck generated implementation
-        run: npm run typecheck
-      - name: Run generated contract tests
-        run: npm run test:contract 2>&1 | tee contract-test.log
-      - name: Upload contract diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: adr-118-contract-diagnostics
-          path: contract-test.log
-      - name: Run generated unit tests
-        run: npm run test:unit 2>&1 | tee unit-test.log
-      - name: Upload unit diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: adr-118-unit-diagnostics
-          path: unit-test.log
-      - name: Commit generated implementation
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git diff --cached --quiet && exit 1
-          git commit -m "feat: implement ADR-118 typed failure contract"
-          git push origin HEAD:agent/adr-118-typed-failure-implementation
-
   quality:
-    needs: codemod
     name: Quality
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -86,8 +36,6 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          ref: agent/adr-118-typed-failure-implementation
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -136,7 +84,6 @@ jobs:
         run: npm run test:database
 
   frontend:
-    needs: codemod
     name: Frontend
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -159,8 +106,6 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          ref: agent/adr-118-typed-failure-implementation
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -184,7 +129,7 @@ jobs:
   required-gates:
     name: Required Gates
     if: always()
-    needs: [codemod, quality, frontend]
+    needs: [quality, frontend]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

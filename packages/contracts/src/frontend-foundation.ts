@@ -1,22 +1,13 @@
 import type { CommandEnvelope } from './types.js';
+import type { ErrorCode } from './errors.js';
+import { getFailureDescriptor } from './failure-contract.js';
+import type { FailureCategory, FailureRecovery, FailureRetryability } from './failure-contract.js';
 
 // ============================================================================
 // 1. Typed Error Contract & Error Classification
 // ============================================================================
 
-export type FrontendErrorCode =
-  | 'REVISION_CONFLICT'
-  | 'DIGEST_MISMATCH'
-  | 'RESOURCE_RETIRED'
-  | 'RESOURCE_PROJECT_MISMATCH'
-  | 'PRECONDITION_ACCESS_DENIED'
-  | 'POLICY_CONTEXT_CHANGED'
-  | 'IDEMPOTENCY_KEY_REUSE_MISMATCH'
-  | 'SESSION_EXPIRED'
-  | 'CAPABILITY_DENIED'
-  | 'OUTCOME_INDETERMINATE'
-  | 'RESOURCE_ACCESS_REVOKED'
-  | 'INVALID_REQUEST';
+export type FrontendErrorCode = ErrorCode;
 
 export type FrontendErrorCategoryFlags = {
   readonly userFixRequired: boolean;
@@ -40,53 +31,20 @@ export class FrontendContractError extends Error {
 }
 
 export function classifyFrontendErrorCode(code: FrontendErrorCode): FrontendErrorCategoryFlags {
-  switch (code) {
-    case 'REVISION_CONFLICT':
-    case 'DIGEST_MISMATCH':
-    case 'POLICY_CONTEXT_CHANGED':
-      return {
-        userFixRequired: false,
-        refetchNeeded: true,
-        authRecoveryNeeded: false,
-        explicitRetryAllowed: true,
-        autoRetryForbidden: true,
-        supportNeeded: false,
-      };
-    case 'INVALID_REQUEST':
-    case 'RESOURCE_PROJECT_MISMATCH':
-    case 'PRECONDITION_ACCESS_DENIED':
-    case 'IDEMPOTENCY_KEY_REUSE_MISMATCH':
-      return {
-        userFixRequired: true,
-        refetchNeeded: false,
-        authRecoveryNeeded: false,
-        explicitRetryAllowed: true,
-        autoRetryForbidden: true,
-        supportNeeded: false,
-      };
-    case 'SESSION_EXPIRED':
-    case 'RESOURCE_ACCESS_REVOKED':
-    case 'CAPABILITY_DENIED':
-      return {
-        userFixRequired: false,
-        refetchNeeded: false,
-        authRecoveryNeeded: true,
-        explicitRetryAllowed: false,
-        autoRetryForbidden: true,
-        supportNeeded: false,
-      };
-    case 'OUTCOME_INDETERMINATE':
-    case 'RESOURCE_RETIRED':
-    default:
-      return {
-        userFixRequired: false,
-        refetchNeeded: true,
-        authRecoveryNeeded: false,
-        explicitRetryAllowed: false,
-        autoRetryForbidden: true,
-        supportNeeded: true,
-      };
-  }
+  const descriptor = getFailureDescriptor(code);
+  return {
+    userFixRequired: descriptor.recovery === 'FIX_REQUEST',
+    refetchNeeded:
+      descriptor.recovery === 'REFRESH_AND_REAPPLY' ||
+      descriptor.recovery === 'RESOLVE_EXISTING_OUTCOME',
+    authRecoveryNeeded:
+      descriptor.recovery === 'REAUTHENTICATE' || descriptor.recovery === 'REQUEST_ACCESS',
+    explicitRetryAllowed:
+      descriptor.retryability === 'SAFE' || descriptor.retryability === 'CONDITIONAL',
+    autoRetryForbidden:
+      descriptor.retryability !== 'SAFE' || descriptor.recovery === 'RESOLVE_EXISTING_OUTCOME',
+    supportNeeded: descriptor.recovery === 'CONTACT_SUPPORT',
+  };
 }
 
 // ============================================================================
@@ -769,10 +727,13 @@ export type ProducedResourceRef = {
 };
 
 export type CommandRejectionDetail = {
-  readonly code: string;
+  readonly code: ErrorCode;
   readonly message: string;
-  readonly category?: string;
+  readonly category?: FailureCategory;
+  readonly retryability?: FailureRetryability;
+  readonly recovery?: FailureRecovery;
   readonly retryable?: boolean;
+  readonly correlationId?: string;
 };
 
 export type FrontendCommandOutcomeView = {

@@ -109,9 +109,7 @@ export const rejectAcceptedCommand = async (
     commandId,
     code: normalized.code,
     message: normalized.safeMessage,
-    ...(normalized.correlationId === undefined
-      ? {}
-      : { correlationId: normalized.correlationId }),
+    ...(normalized.correlationId === undefined ? {} : { correlationId: normalized.correlationId }),
     completedAt: new Date().toISOString(),
   });
 };

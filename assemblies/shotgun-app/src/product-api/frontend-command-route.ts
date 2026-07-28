@@ -104,17 +104,14 @@ export const rejectAcceptedCommand = async (
   commandId: string,
   error: unknown,
 ): Promise<void> => {
-  const code =
-    error instanceof FrontendContractError
-      ? error.code
-      : typeof error === 'object' && error !== null && 'code' in error
-        ? String(error.code)
-        : 'INTERNAL_ERROR';
-  const message = error instanceof Error ? error.message : 'Command execution failed.';
+  const normalized = toProductApiCommandError(error, 'reject-command');
   await gateway.reject({
     commandId,
-    code,
-    message,
+    code: normalized.code,
+    message: normalized.safeMessage,
+    ...(normalized.correlationId === undefined
+      ? {}
+      : { correlationId: normalized.correlationId }),
     completedAt: new Date().toISOString(),
   });
 };
@@ -127,12 +124,14 @@ export const toProductApiCommandError = (error: unknown, operation: string): Sho
       safeMessage: error.message,
       module: 'frontend-command-gateway',
       operation,
+      ...(error.correlationId === undefined ? {} : { correlationId: error.correlationId }),
     });
   }
   return new ShotgunError({
-    code: 'TERMINAL_FAILURE',
+    code: 'INTERNAL_UNCLASSIFIED',
     safeMessage: 'Command execution failed.',
     module: 'frontend-command-gateway',
     operation,
+    cause: error,
   });
 };

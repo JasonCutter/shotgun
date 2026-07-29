@@ -1,5 +1,10 @@
-import { decodeProductFailureEnvelope } from '../../contracts/src/index.js';
-import type { ProductApiErrorBody, ProductSessionView } from './contracts.js';
+import {
+  decodeProductFailureEnvelope,
+  decodeProductSessionView as decodeProductSessionViewV1,
+  decodeProductSessionViewV2,
+  decodeSessionBoundaryView as decodeLegacySessionBoundaryView,
+} from '../../contracts/src/index.js';
+import type { ProductApiErrorBody, ProductSessionView, SessionBoundaryView } from './contracts.js';
 import { invalidProductApiResponse } from './errors.js';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -9,7 +14,20 @@ const nonEmptyString = (value: unknown): value is string =>
   typeof value === 'string' && value.trim().length > 0;
 
 export const decodeProductSessionView = (value: unknown): ProductSessionView => {
-  if (!isRecord(value) || value.apiVersion !== '1.0.0') throw invalidProductApiResponse();
+  if (!isRecord(value)) throw invalidProductApiResponse();
+  try {
+    if (value.apiVersion === '2.0.0') return decodeProductSessionViewV2(value);
+    if (value.apiVersion === '1.0.0') return decodeProductSessionViewV1(value);
+  } catch {
+    throw invalidProductApiResponse();
+  }
+  throw invalidProductApiResponse();
+  /*
+   * The explicit contract decoders above are the authority. This legacy block
+   * remains unreachable only until the V1-shaped manual decoder is removed in
+   * a separately approved compatibility cleanup.
+   */
+  /*
   const principal = value.principal;
   const activeProject = value.activeProject;
   const accessibleProjects = value.accessibleProjects;
@@ -54,11 +72,43 @@ export const decodeProductSessionView = (value: unknown): ProductSessionView => 
     accessibleProjects: projects,
     session: { expiresAt: session.expiresAt },
   };
+  */
 };
 
 export const decodeSessionEnvelope = (value: unknown): ProductSessionView => {
   if (!isRecord(value)) throw invalidProductApiResponse();
   return decodeProductSessionView(value.session);
+};
+
+export const decodeSessionBoundaryView = (value: unknown): SessionBoundaryView => {
+  if (!isRecord(value)) throw invalidProductApiResponse();
+  const session =
+    value.session === null || value.session === undefined
+      ? null
+      : decodeProductSessionView(value.session);
+  const validationSession =
+    session?.apiVersion === '2.0.0'
+      ? {
+          apiVersion: '1.0.0',
+          principal: session.principal,
+          activeProject: {
+            id: session.activeProject?.id ?? 'boundary-validation-project',
+          },
+          accessibleProjects: session.activeProject
+            ? session.accessibleProjects
+            : [{ id: 'boundary-validation-project', isOwner: false }],
+          session: session.session,
+        }
+      : session;
+  try {
+    const boundary = decodeLegacySessionBoundaryView({
+      ...value,
+      session: validationSession,
+    });
+    return { ...boundary, session };
+  } catch {
+    throw invalidProductApiResponse();
+  }
 };
 
 export const decodeCsrfEnvelope = (value: unknown): string => {

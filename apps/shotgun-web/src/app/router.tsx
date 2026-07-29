@@ -25,6 +25,7 @@ import { DiagnosticsWorkspace } from '../routes/settings/diagnostics-workspace.j
 import { AdvancedWorkspace } from '../routes/settings/advanced-workspace.js';
 import type { AppRuntime } from './providers.js';
 import { ensureSessionBoundary, sessionBoundaryQueryOptions } from '../session/session-query.js';
+import type { TargetRouteView } from '@shotgun/api-client';
 
 const RouteError = () => {
   const error = useRouteError();
@@ -52,6 +53,39 @@ const sessionLoader =
     });
   };
 
+const guardedRouteLoader =
+  (runtime: AppRuntime, targetRoute: TargetRouteView) =>
+  async ({ params, request }: LoaderFunctionArgs) => {
+    const sessionOptions = sessionBoundaryQueryOptions(
+      runtime.apiClient,
+      runtime.queryClient,
+      runtime.sessionCycleState,
+    );
+    const boundary = await runtime.queryClient.fetchQuery({
+      ...sessionOptions,
+      queryFn: ({ signal }) =>
+        ensureSessionBoundary(
+          runtime.apiClient,
+          request.signal ?? signal,
+          runtime.queryClient,
+          runtime.sessionCycleState,
+        ),
+    });
+    if (boundary.sessionState !== 'READY' || !boundary.session) {
+      throw new Error('A ready Session is required before route authorization.');
+    }
+    const url = new URL(request.url);
+    const resourceProjectId =
+      params.projectId ?? url.searchParams.get('resourceProjectId') ?? undefined;
+    const decision = await runtime.apiClient.getRouteGuardDecision(targetRoute, resourceProjectId, {
+      signal: request.signal,
+    });
+    if (decision.decision !== 'ALLOW') {
+      throw new Error(decision.message);
+    }
+    return decision;
+  };
+
 export const createAppRouter = (runtime: AppRuntime) =>
   createBrowserRouter([
     {
@@ -64,36 +98,64 @@ export const createAppRouter = (runtime: AppRuntime) =>
         { index: true, element: <HomePage /> },
         {
           path: 'sources',
+          loader: guardedRouteLoader(runtime, { routeId: 'sources', href: '/sources' }),
           element: <PlaceholderPage heading="Sources" nextSection="후속 Frontend Section" />,
         },
         {
           path: 'ask',
+          loader: guardedRouteLoader(runtime, { routeId: 'ask', href: '/ask' }),
           element: <PlaceholderPage heading="Ask" nextSection="후속 Frontend Section" />,
         },
         {
           path: 'knowledge',
+          loader: guardedRouteLoader(runtime, {
+            routeId: 'knowledge',
+            href: '/knowledge',
+          }),
           element: <PlaceholderPage heading="Knowledge" nextSection="후속 Frontend Section" />,
         },
         {
           path: 'review',
+          loader: guardedRouteLoader(runtime, { routeId: 'review', href: '/review' }),
           element: <PlaceholderPage heading="Review" nextSection="후속 Frontend Section" />,
         },
         {
           path: 'activity',
+          loader: () => {
+            throw new Error('Activity is not a registered Section 3 route.');
+          },
           element: <PlaceholderPage heading="Activity" nextSection="후속 Frontend Section" />,
         },
         {
           path: 'history',
+          loader: () => {
+            throw new Error('History is not a registered Section 3 route.');
+          },
           element: <PlaceholderPage heading="History" nextSection="후속 Frontend Section" />,
         },
         {
           path: 'settings',
+          loader: guardedRouteLoader(runtime, { routeId: 'settings', href: '/settings' }),
           element: <SettingsLayout />,
           children: [
             { index: true, element: <CategoryIndexView /> },
             { path: 'preferences', element: <PreferencesWorkspace /> },
-            { path: 'projects', element: <ProjectsWorkspace /> },
-            { path: 'projects/:projectId', element: <ProjectDetailsWorkspace /> },
+            {
+              path: 'projects',
+              loader: guardedRouteLoader(runtime, {
+                routeId: 'settings-projects',
+                href: '/settings/projects',
+              }),
+              element: <ProjectsWorkspace />,
+            },
+            {
+              path: 'projects/:projectId',
+              loader: guardedRouteLoader(runtime, {
+                routeId: 'settings-projects',
+                href: '/settings/projects',
+              }),
+              element: <ProjectDetailsWorkspace />,
+            },
             { path: 'models', element: <ModelsWorkspace /> },
             { path: 'costs', element: <CostsWorkspace /> },
             { path: 'privacy', element: <PrivacyWorkspace /> },

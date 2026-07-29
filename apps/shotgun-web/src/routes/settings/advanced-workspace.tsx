@@ -25,7 +25,7 @@ export const AdvancedWorkspace = () => {
     queryKey: ['settings', 'snapshot', targetProjectId],
     queryFn: () => apiClient.getSettingsSnapshot(targetProjectId),
   });
-  const controller = useSettingsDraft(snapshot, session?.activeProject.id);
+  const controller = useSettingsDraft(snapshot, session?.activeProject?.id);
   const editableSetting = snapshot?.settings.find(
     (setting) => setting.key === 'models.defaultAnswerProfile',
   );

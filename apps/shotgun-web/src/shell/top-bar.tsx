@@ -1,13 +1,27 @@
-import type { ProductSessionView } from '@shotgun/api-client';
+import type { GlobalShellView, ProductSessionView } from '@shotgun/api-client';
 
-export const TopBar = ({ session }: { readonly session: ProductSessionView }) => (
+import { ProjectSelector } from '../session/project-selector.js';
+import { GlobalTools } from '../section3/global-tools.js';
+
+export const TopBar = ({
+  session,
+  shell,
+}: {
+  readonly session: ProductSessionView;
+  readonly shell: GlobalShellView;
+}) => (
   <header className="top-bar">
     <div>
       <p className="product-name">Shotgun</p>
       <p className="project-summary">
-        Principal <strong>{session.principal.id}</strong> | 현재 Project{' '}
-        <strong>{session.activeProject.id}</strong>
+        Principal <strong>{session.principal.id}</strong>
+        {' · '}
+        Active Project <strong>{shell.activeProject?.label ?? 'Not created'}</strong>
       </p>
+    </div>
+    <div className="shell-controls">
+      <ProjectSelector session={session} />
+      <GlobalTools shell={shell} />
     </div>
   </header>
 );

@@ -2,11 +2,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { createApplication } from '../../../assemblies/shotgun-app/src/server.js';
+import { InMemoryProjectAdministrationRepository } from '../../../adapters/settings-project-admin-in-memory/src/index.js';
 import {
   DEFAULT_PROJECT_ID,
   InMemoryAuthRepository,
   LOCAL_OWNER_ACCOUNT_ID,
-  type ProjectMembership,
 } from '../../../packages/authentication/src/index.js';
 
 export async function startFrontendTestBackend() {
@@ -25,26 +25,30 @@ export async function startFrontendTestBackend() {
   if (!ownerMembership) throw new Error('Frontend browser fixture local owner was not created.');
   const principalId = ownerMembership.principalId;
 
-  const projectB: ProjectMembership = {
-    principalId,
+  const projectAdminRepository = new InMemoryProjectAdministrationRepository(
+    async ({ principalId: membershipPrincipalId, projectId }) => {
+      await authRepository.createProjectOwnerMembership({
+        principalId: membershipPrincipalId,
+        projectId,
+        scopes: ['owner'],
+        sensitivityClearance: 'private',
+      });
+    },
+  );
+  await projectAdminRepository.createProject({
+    commandId: 'browser-fixture-project-b',
+    clientRequestId: 'browser-fixture-project-b',
+    idempotencyKey: 'browser-fixture-project-b',
     projectId: 'project-b',
-    scopes: ['owner'],
-    sensitivityClearance: 'private',
-    isOwner: false,
-  };
-  const findMembership = authRepository.findMembership.bind(authRepository);
-  const listMemberships = authRepository.listMemberships.bind(authRepository);
-  authRepository.findMembership = async (pid, projectId) =>
-    pid === projectB.principalId && projectId === projectB.projectId
-      ? projectB
-      : findMembership(pid, projectId);
-  authRepository.listMemberships = async (pid) => [
-    ...(await listMemberships(pid)),
-    ...(pid === projectB.principalId ? [projectB] : []),
-  ];
+    name: 'Project B',
+    description: 'Browser test Project',
+    actorPrincipalId: principalId,
+    expectedProjectRevision: 0,
+  });
 
   const application = await createApplication({
     authRepository,
+    projectAdminRepository,
     canonicalProjectionRecoveryIntervalMs: false,
   });
   await application.server.listen({ host: '127.0.0.1', port: 3001 });

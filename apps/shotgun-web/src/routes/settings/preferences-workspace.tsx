@@ -37,7 +37,8 @@ export const PreferencesWorkspace = () => {
 
   const mutation = useMutation({
     mutationFn: (updated: Record<string, unknown>) => {
-      const activeProjectId = session?.activeProject.id ?? 'shotgun';
+      const activeProjectId = session?.activeProject?.id;
+      if (!activeProjectId) throw new Error('An active Project is required.');
       return apiClient.updatePrincipalPreferences({
         activeProjectId,
         targetProjectId: activeProjectId,

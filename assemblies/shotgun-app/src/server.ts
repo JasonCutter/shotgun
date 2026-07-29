@@ -12,6 +12,7 @@ import {
   hashSecuritySecret,
   type AuthRepositoryPort,
   type AuthenticationPort,
+  type TrustedPrincipalContext,
   type TrustedSecurityContext,
 } from '../../../packages/authentication/src/index.js';
 
@@ -46,13 +47,27 @@ import {
 } from '../../../adapters/stage11-in-memory/src/index.js';
 import {
   InMemoryProjectAdministrationRepository,
+  InMemoryProjectBootstrapUnitOfWork,
   InMemorySettingsRepository,
 } from '../../../adapters/settings-project-admin-in-memory/src/index.js';
 import { InMemoryFrontendCommandGateway } from '../../../adapters/frontend-command-gateway-in-memory/src/index.js';
-import type { ProjectAdministrationRepositoryPort } from '../../../modules/project-administration/src/index.js';
+import {
+  InMemoryActionCenterProjection,
+  InMemoryBackgroundSummaryProjection,
+  InMemoryGlobalSearch,
+  InMemoryGlobalShellProjection,
+  InMemoryNotificationSummaryProjection,
+  InMemoryRouteGuardProjection,
+} from '../../../adapters/frontend-product-read-in-memory/src/index.js';
+import { FrontendProductReadCoordinator } from '../../../modules/frontend-product-read/src/index.js';
+import type {
+  ProjectAdministrationRepositoryPort,
+  ProjectBootstrapUnitOfWorkPort,
+} from '../../../modules/project-administration/src/index.js';
 import type { SettingsRepositoryPort } from '../../../modules/settings-policy/src/index.js';
 import type { FrontendCommandGatewayPort } from '../../../modules/frontend-command-gateway/src/index.js';
 import { registerProjectRoutes } from './product-api/project-routes.js';
+import { registerFrontendProductRoutes } from './product-api/frontend-product-routes.js';
 import { registerSettingsRoutes } from './product-api/settings-routes.js';
 import { FakeDraftActionConnector } from '../../../adapters/action-connector-fake/src/index.js';
 import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
@@ -389,8 +404,10 @@ export type ApplicationOptions = {
   readonly authRepository?: AuthRepositoryPort;
   readonly authenticationAdapter?: AuthenticationPort;
   readonly projectAdminRepository?: ProjectAdministrationRepositoryPort;
+  readonly projectBootstrapUnitOfWork?: ProjectBootstrapUnitOfWorkPort;
   readonly settingsRepository?: SettingsRepositoryPort;
   readonly frontendCommandGateway?: FrontendCommandGatewayPort;
+  readonly frontendProductReadCoordinator?: FrontendProductReadCoordinator;
   readonly host?: string;
   readonly production?: boolean;
   readonly canonicalProjectionRecoveryIntervalMs?: number | false;
@@ -739,6 +756,7 @@ export const startCanonicalProjectionRecoveryWorker = (
 };
 
 const trustedRequestContexts = new WeakMap<object, TrustedSecurityContext>();
+const trustedPrincipalContexts = new WeakMap<object, TrustedPrincipalContext>();
 
 const askPage = (): string => `<!doctype html>
 <html lang="ko">
@@ -827,6 +845,19 @@ const requestContext = (headers: SecurityHeaders) => {
       safeMessage: 'Authentication is required.',
       module: 'shotgun-app',
       operation: 'trusted-request-context',
+    });
+  }
+  return context;
+};
+
+const requestPrincipalContext = (headers: SecurityHeaders): TrustedPrincipalContext => {
+  const context = trustedPrincipalContexts.get(headers as object);
+  if (!context) {
+    throw new ShotgunError({
+      code: 'AUTHENTICATION_REQUIRED',
+      safeMessage: 'Principal authentication is required.',
+      module: 'shotgun-app',
+      operation: 'trusted-principal-context',
     });
   }
   return context;
@@ -1096,6 +1127,22 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   const settingsRepository = options.settingsRepository ?? new InMemorySettingsRepository();
   const frontendCommandGateway =
     options.frontendCommandGateway ?? new InMemoryFrontendCommandGateway();
+  const frontendProductReadCoordinator =
+    options.frontendProductReadCoordinator ??
+    new FrontendProductReadCoordinator(
+      new InMemoryGlobalShellProjection(),
+      new InMemoryActionCenterProjection(),
+      new InMemoryBackgroundSummaryProjection(),
+      new InMemoryNotificationSummaryProjection(),
+      new InMemoryGlobalSearch(),
+      new InMemoryRouteGuardProjection(),
+    );
+  const projectBootstrapUnitOfWork =
+    options.projectBootstrapUnitOfWork ??
+    (projectAdminRepository instanceof InMemoryProjectAdministrationRepository &&
+    authRepository instanceof InMemoryAuthRepository
+      ? new InMemoryProjectBootstrapUnitOfWork(projectAdminRepository, authRepository)
+      : undefined);
   const actionCandidateRepository =
     options.actionCandidateRepository ?? new InMemoryActionCandidateRepository();
   const actionConnector = options.actionConnector ?? new FakeDraftActionConnector();
@@ -1328,9 +1375,10 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
           });
     const descriptor = getFailureDescriptor(normalized.code);
     const context = trustedRequestContexts.get(request.headers as object);
+    const principalContext = trustedPrincipalContexts.get(request.headers as object);
     try {
       await authRepository.appendAudit({
-        principalId: context?.principalId,
+        principalId: context?.principalId ?? principalContext?.principalId,
         projectId: context?.projectId,
         event: `REQUEST_DENIED:${normalized.code}`,
       });
@@ -1389,6 +1437,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     const authorization = headers.authorization;
     const bearer = authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
     let context: TrustedSecurityContext | undefined;
+    let principalContext: TrustedPrincipalContext | undefined;
     if (bearer) {
       const principal = await authRepository.findApiToken(bearer);
       const projectId = headers['x-shotgun-project']?.trim();
@@ -1413,6 +1462,12 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
         requiredScopes: [],
         tokenScopeCeiling: principal.scopeCeiling,
       });
+      principalContext = {
+        principalId: principal.principalId,
+        actor: principal.actor,
+        authenticationMethod: principal.authenticationMethod,
+        credentialId: principal.credentialId,
+      };
     } else {
       const sessionToken = parseCookie(headers.cookie, sessionCookieName);
       if (!sessionToken && testPrincipal) {
@@ -1422,6 +1477,12 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
           projectId: 'shotgun',
           requiredScopes: [],
         });
+        principalContext = {
+          principalId: testPrincipal.principalId,
+          actor: testPrincipal.actor,
+          authenticationMethod: testPrincipal.authenticationMethod,
+          credentialId: testPrincipal.credentialId,
+        };
       }
       if (!sessionToken && !context)
         throw new ShotgunError({
@@ -1432,6 +1493,9 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
         });
       if (context) {
         trustedRequestContexts.set(request.headers as object, context);
+        if (principalContext) {
+          trustedPrincipalContexts.set(request.headers as object, principalContext);
+        }
         return;
       }
       if (!sessionToken)
@@ -1462,39 +1526,70 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
             operation: 'verify-csrf',
           });
       }
-      context = await authorize({
-        repository: authRepository,
-        principal,
-        projectId: session.activeProjectId,
-        requiredScopes: [],
-      });
+      principalContext = {
+        principalId: principal.principalId,
+        actor: principal.actor,
+        authenticationMethod: principal.authenticationMethod,
+        credentialId: principal.credentialId,
+      };
+      if (session.activeProjectId === null) {
+        const memberships = await authRepository.listMemberships(principal.principalId);
+        if (memberships.length > 0) {
+          throw new ShotgunError({
+            code: 'LOCAL_PROJECT_SELECTION_REQUIRED',
+            safeMessage:
+              'Accessible Projects exist without an authoritative active Project selection.',
+            module: 'shotgun-app',
+            operation: 'authorize-zero-project-session',
+          });
+        }
+      } else {
+        context = await authorize({
+          repository: authRepository,
+          principal,
+          projectId: session.activeProjectId,
+          requiredScopes: [],
+        });
+      }
     }
-    if (!context)
+    if (!principalContext)
+      throw new ShotgunError({
+        code: 'AUTHENTICATION_INVALID',
+        safeMessage: 'Principal authentication is unavailable.',
+        module: 'shotgun-app',
+        operation: 'authenticate-principal',
+      });
+    if (!context && bearer)
       throw new ShotgunError({
         code: 'PROJECT_ACCESS_DENIED',
         safeMessage: 'Project membership or authorization is missing.',
         module: 'shotgun-app',
         operation: 'authorize-request',
       });
-    trustedRequestContexts.set(request.headers as object, context);
+    trustedPrincipalContexts.set(request.headers as object, principalContext);
+    if (context) {
+      trustedRequestContexts.set(request.headers as object, context);
+    }
     await authRepository.appendAudit({
-      principalId: context.principalId,
-      projectId: context.projectId,
+      principalId: principalContext.principalId,
+      projectId: context?.projectId,
       event: 'REQUEST_AUTHORIZED',
     });
   });
 
-  const requireBrowserSession = async (
+  const requirePrincipalBrowserSession = async (
     headers: SecurityHeaders,
   ): Promise<{
-    readonly context: TrustedSecurityContext;
+    readonly principalContext: TrustedPrincipalContext;
+    readonly context?: TrustedSecurityContext;
     readonly sessionToken: string;
     readonly session: Awaited<ReturnType<AuthRepositoryPort['findSession']>> & {};
   }> => {
-    const context = requestContext(headers);
+    const principalContext = requestPrincipalContext(headers);
+    const context = trustedRequestContexts.get(headers as object);
     const sessionToken = parseCookie(headers.cookie, sessionCookieName);
     const session = sessionToken ? await authRepository.findSession(sessionToken) : undefined;
-    if (context.authenticationMethod === 'api_token' || !sessionToken || !session) {
+    if (principalContext.authenticationMethod === 'api_token' || !sessionToken || !session) {
       throw new ShotgunError({
         code: 'AUTHENTICATION_INVALID',
         safeMessage: 'Session is invalid, expired, or revoked.',
@@ -1502,17 +1597,44 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
         operation: 'require-product-session',
       });
     }
-    return { context, sessionToken, session };
+    return {
+      principalContext,
+      ...(context === undefined ? {} : { context }),
+      sessionToken,
+      session,
+    };
+  };
+
+  const requireBrowserSession = async (
+    headers: SecurityHeaders,
+  ): Promise<{
+    readonly principalContext: TrustedPrincipalContext;
+    readonly context: TrustedSecurityContext;
+    readonly sessionToken: string;
+    readonly session: Awaited<ReturnType<AuthRepositoryPort['findSession']>> & {};
+  }> => {
+    const current = await requirePrincipalBrowserSession(headers);
+    if (!current.context) {
+      throw new ShotgunError({
+        code: 'PROJECT_CONTEXT_REQUIRED',
+        safeMessage: 'An active Project is required for this operation.',
+        module: 'shotgun-app',
+        operation: 'require-project-session',
+      });
+    }
+    return { ...current, context: current.context };
   };
 
   const productSessionView = async (
-    context: TrustedSecurityContext,
+    principalContext: TrustedPrincipalContext,
+    projectContext: TrustedSecurityContext | undefined,
     sessionExpiresAt: string | null,
   ): Promise<ProductSessionView> =>
     createProductSessionView({
-      context,
+      principalContext,
+      ...(projectContext === undefined ? {} : { projectContext }),
       sessionExpiresAt,
-      memberships: await authRepository.listMemberships(context.principalId),
+      memberships: await authRepository.listMemberships(principalContext.principalId),
     });
 
   const authenticationAdapter =
@@ -1554,26 +1676,32 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       });
     }
 
-    const { session, context } = result;
+    const { session, principalContext, context } = result;
     await authRepository.appendAudit({
-      principalId: context.principalId,
-      projectId: context.projectId,
+      principalId: principalContext.principalId,
+      projectId: context?.projectId,
       event: 'LOCAL_OWNER_SESSION_CREATED',
     });
     reply.header(
       'Set-Cookie',
       `${sessionCookieName}=${session.sessionToken}; HttpOnly; SameSite=Lax; Path=/${production ? '; Secure' : ''}`,
     );
-    return { session: await productSessionView(context, session.expiresAt) };
+    return {
+      session: await productSessionView(principalContext, context, session.expiresAt),
+    };
   });
 
   server.get<{ Headers: SecurityHeaders }>('/api/v1/session', async (request) => {
-    const { context, session } = await requireBrowserSession(request.headers);
-    return { session: await productSessionView(context, session.expiresAt) };
+    const { principalContext, context, session } = await requirePrincipalBrowserSession(
+      request.headers,
+    );
+    return {
+      session: await productSessionView(principalContext, context, session.expiresAt),
+    };
   });
 
   server.get<{ Headers: SecurityHeaders }>('/api/v1/security/csrf', async (request) => {
-    const { sessionToken } = await requireBrowserSession(request.headers);
+    const { sessionToken } = await requirePrincipalBrowserSession(request.headers);
     const newCsrf = randomUUID();
     await authRepository.updateSessionCsrf(sessionToken, newCsrf);
     return { csrfToken: newCsrf };
@@ -1582,9 +1710,9 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   server.post<{ Body: { projectId: string }; Headers: SecurityHeaders }>(
     '/api/v1/session/active-project',
     async (request) => {
-      const current = await requireBrowserSession(request.headers);
+      const current = await requirePrincipalBrowserSession(request.headers);
       const membership = await authRepository.findMembership(
-        current.context.principalId,
+        current.principalContext.principalId,
         request.body.projectId,
       );
       if (!membership) {
@@ -1626,17 +1754,26 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
           operation: 'product-set-active-project',
         });
       }
-      return { session: await productSessionView(nextContext, refreshed.expiresAt) };
+      return {
+        session: await productSessionView(
+          current.principalContext,
+          nextContext,
+          refreshed.expiresAt,
+        ),
+      };
     },
   );
 
   server.post<{ Headers: SecurityHeaders }>('/api/v1/session/logout', async (request, reply) => {
     const sessionToken = parseCookie(request.headers.cookie, sessionCookieName);
     const context = trustedRequestContexts.get(request.headers as object);
+    const principalContext = trustedPrincipalContexts.get(request.headers as object);
     if (sessionToken) {
       await authenticationAdapter.revokeSession(sessionToken);
-    } else if (context?.principalId) {
-      await authenticationAdapter.revokeSession(context.principalId);
+    } else if (context?.principalId ?? principalContext?.principalId) {
+      await authenticationAdapter.revokeSession(
+        (context?.principalId ?? principalContext?.principalId)!,
+      );
     }
     reply.header(
       'Set-Cookie',
@@ -1651,7 +1788,16 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     settingsRepository,
     frontendCommandGateway,
     authRepository,
-    requireBrowserSession,
+    requirePrincipalBrowserSession,
+    projectBootstrapUnitOfWork,
+  );
+  registerFrontendProductRoutes(
+    server,
+    frontendProductReadCoordinator,
+    authRepository,
+    projectAdminRepository,
+    settingsRepository,
+    requirePrincipalBrowserSession,
   );
   registerSettingsRoutes(
     server,

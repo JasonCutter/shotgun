@@ -11,6 +11,7 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       '/api': { target: backendTarget, changeOrigin: false },
+      '/product-api': { target: backendTarget, changeOrigin: false },
       '/health': { target: backendTarget, changeOrigin: false },
     },
   },

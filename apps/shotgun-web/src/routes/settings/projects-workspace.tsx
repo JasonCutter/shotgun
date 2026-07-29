@@ -1,14 +1,21 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { useAppRuntime } from '../../app/providers.js';
-import { projectAdminQueryKey, purgeSettingsScopedCaches } from '../../app/query-keys.js';
+import {
+  productSessionQueryKey,
+  projectAdminQueryKey,
+  purgeProtectedSessionCaches,
+  purgeSettingsScopedCaches,
+  sessionBoundaryQueryKey,
+} from '../../app/query-keys.js';
 import { sessionQueryOptions } from '../../session/session-query.js';
 import { useAccessibleDialog } from '../../app/use-accessible-dialog.js';
 
 export const ProjectsWorkspace = () => {
   const { apiClient } = useAppRuntime();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { data: session } = useQuery(sessionQueryOptions(apiClient));
   const principalId = session?.principal.id ?? 'principal-a';
 
@@ -40,7 +47,18 @@ export const ProjectsWorkspace = () => {
       clientRequestId: string;
       idempotencyKey: string;
     }) => {
-      const activeProjectId = session?.activeProject.id ?? 'shotgun';
+      if (!session) throw new Error('Session is unavailable.');
+      if (!session.activeProject) {
+        return apiClient.createFirstProject({
+          name: params.name,
+          ...(params.description ? { description: params.description } : {}),
+          projectAccessRevision:
+            session.apiVersion === '2.0.0' ? session.projectAccessRevision : '0',
+          clientRequestId: params.clientRequestId,
+          idempotencyKey: params.idempotencyKey,
+        });
+      }
+      const activeProjectId = session.activeProject.id;
       return apiClient.createProject({
         ...params,
         activeProjectId,
@@ -48,7 +66,19 @@ export const ProjectsWorkspace = () => {
       });
     },
     onSuccess: async () => {
-      await purgeSettingsScopedCaches(queryClient);
+      if (!session?.activeProject) {
+        const nextSession = await apiClient.getSession();
+        await purgeProtectedSessionCaches(queryClient);
+        queryClient.setQueryData(productSessionQueryKey, nextSession);
+        queryClient.setQueryData(sessionBoundaryQueryKey, (current: unknown) =>
+          typeof current === 'object' && current !== null
+            ? { ...current, session: nextSession }
+            : current,
+        );
+        navigate('/');
+      } else {
+        await purgeSettingsScopedCaches(queryClient);
+      }
       setCreateModalOpen(false);
       setNewProjectId('');
       setNewProjectName('');
@@ -63,13 +93,12 @@ export const ProjectsWorkspace = () => {
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
-    const reqId = `req-${Date.now()}`;
-    const idemKey = `idem-create-${newProjectId}-${Date.now()}`;
+    const idemKey = crypto.randomUUID();
     createMutation.mutate({
-      id: newProjectId,
+      id: session?.activeProject ? newProjectId : '',
       name: newProjectName,
       description: newProjectDesc,
-      clientRequestId: reqId,
+      clientRequestId: crypto.randomUUID(),
       idempotencyKey: idemKey,
     });
   };
@@ -218,7 +247,7 @@ export const ProjectsWorkspace = () => {
             }}
           >
             <h2 id="create-project-dialog-title" style={{ marginTop: 0 }}>
-              Create Project
+              {session?.activeProject ? 'Create Project' : 'Create your first Project'}
             </h2>
 
             {errorMessage && (
@@ -237,32 +266,34 @@ export const ProjectsWorkspace = () => {
             )}
 
             <form onSubmit={handleCreateSubmit} style={{ display: 'grid', gap: '12px' }}>
-              <div>
-                <label
-                  htmlFor="new-proj-id"
-                  style={{
-                    display: 'block',
-                    fontWeight: 600,
-                    fontSize: '13px',
-                    marginBottom: '4px',
-                  }}
-                >
-                  Project ID (Immutable)
-                </label>
-                <input
-                  id="new-proj-id"
-                  required
-                  value={newProjectId}
-                  onChange={(e) => setNewProjectId(e.target.value)}
-                  placeholder="e.g., my-new-project"
-                  style={{
-                    width: '100%',
-                    padding: '8px',
-                    borderRadius: '4px',
-                    border: '1px solid #cbd5e1',
-                  }}
-                />
-              </div>
+              {session?.activeProject ? (
+                <div>
+                  <label
+                    htmlFor="new-proj-id"
+                    style={{
+                      display: 'block',
+                      fontWeight: 600,
+                      fontSize: '13px',
+                      marginBottom: '4px',
+                    }}
+                  >
+                    Project ID (Immutable)
+                  </label>
+                  <input
+                    id="new-proj-id"
+                    required
+                    value={newProjectId}
+                    onChange={(e) => setNewProjectId(e.target.value)}
+                    placeholder="e.g., my-new-project"
+                    style={{
+                      width: '100%',
+                      padding: '8px',
+                      borderRadius: '4px',
+                      border: '1px solid #cbd5e1',
+                    }}
+                  />
+                </div>
+              ) : null}
 
               <div>
                 <label

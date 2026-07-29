@@ -39,6 +39,33 @@ const api = (overrides: Partial<ShotgunApiClient> = {}): ShotgunApiClient =>
   }) as unknown as ShotgunApiClient;
 
 describe('Session Recovery State Machine', () => {
+  it('treats a zero-project Product Session V2 as READY', async () => {
+    const zeroProjectSession: ProductSessionView = {
+      apiVersion: '2.0.0',
+      principal: session.principal,
+      activeProject: null,
+      accessibleProjects: [],
+      session: { expiresAt: null },
+      sessionReady: true,
+      projectReady: false,
+      projectAccessRevision: '0',
+    };
+    const boundary = await ensureSessionBoundary(
+      api({ getSession: vi.fn(async () => zeroProjectSession) }),
+      undefined,
+      createFrontendQueryClient(),
+      createSessionCycleState(),
+    );
+    expect(boundary).toMatchObject({
+      sessionState: 'READY',
+      session: {
+        apiVersion: '2.0.0',
+        activeProject: null,
+        accessibleProjects: [],
+      },
+    });
+  });
+
   it('자동 401 Recovery Cache Purge', async () => {
     const queryClient = createFrontendQueryClient();
     queryClient.setQueryData(productSessionQueryKey, session);

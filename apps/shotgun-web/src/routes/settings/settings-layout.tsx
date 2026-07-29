@@ -11,7 +11,7 @@ export const SettingsLayout = () => {
   const { data: session } = useQuery(sessionQueryOptions(apiClient));
   const [searchParams] = useSearchParams();
 
-  const activeProjectId = session?.activeProject.id ?? 'shotgun';
+  const activeProjectId = session?.activeProject?.id ?? '';
   const targetProjectId = searchParams.get('targetProjectId') ?? activeProjectId;
   const resourceProjectId = searchParams.get('resourceProjectId') ?? targetProjectId;
 
@@ -82,7 +82,7 @@ export const SettingsLayout = () => {
                 color: '#0369a1',
               }}
             >
-              Active Project: <strong>{activeProjectId}</strong>
+              Active Project: <strong>{activeProjectId || 'Not created'}</strong>
             </span>
             <span
               className="badge target-project"
@@ -122,27 +122,31 @@ export const SettingsLayout = () => {
               margin: 0,
             }}
           >
-            <li>
-              <NavLink
-                end
-                to={`/settings?targetProjectId=${targetProjectId}`}
-                className={({ isActive }: { isActive: boolean }) =>
-                  isActive ? 'nav-tab active' : 'nav-tab'
-                }
-              >
-                Category Index
-              </NavLink>
-            </li>
-            <li>
-              <NavLink
-                to={`/settings/preferences?targetProjectId=${targetProjectId}`}
-                className={({ isActive }: { isActive: boolean }) =>
-                  isActive ? 'nav-tab active' : 'nav-tab'
-                }
-              >
-                Preferences
-              </NavLink>
-            </li>
+            {activeProjectId ? (
+              <li>
+                <NavLink
+                  end
+                  to={`/settings?targetProjectId=${targetProjectId}`}
+                  className={({ isActive }: { isActive: boolean }) =>
+                    isActive ? 'nav-tab active' : 'nav-tab'
+                  }
+                >
+                  Category Index
+                </NavLink>
+              </li>
+            ) : null}
+            {activeProjectId ? (
+              <li>
+                <NavLink
+                  to={`/settings/preferences?targetProjectId=${targetProjectId}`}
+                  className={({ isActive }: { isActive: boolean }) =>
+                    isActive ? 'nav-tab active' : 'nav-tab'
+                  }
+                >
+                  Preferences
+                </NavLink>
+              </li>
+            ) : null}
             <li>
               <NavLink
                 to={`/settings/projects?targetProjectId=${targetProjectId}`}

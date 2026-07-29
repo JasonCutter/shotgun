@@ -78,7 +78,7 @@ describe('Frontend Product Session API', () => {
     await app.server.close();
   });
 
-  it('ignores requested projectId in local-bootstrap body and always uses shotgun project', async () => {
+  it('ignores requested projectId and establishes an authority-free zero-project Session', async () => {
     const app = await createApplication({ authRepository, production: false });
 
     // Send body with { projectId: 'other-project' }
@@ -92,7 +92,8 @@ describe('Frontend Product Session API', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
       session: {
-        activeProject: { id: 'shotgun' },
+        activeProject: null,
+        accessibleProjects: [],
       },
     });
 

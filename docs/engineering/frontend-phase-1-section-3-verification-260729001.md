@@ -5,8 +5,8 @@
 - Repository: `JasonCutter/shotgun`
 - Base SHA: `ec750c91c2a405cfa684bb73eed73e4ad02938c2`
 - Branch: `codex/frontend-phase-1-section-3`
-- Status: **IMPLEMENTATION_IN_PROGRESS**
-- Draft PR: **PENDING**
+- Status: **VERIFIED_WITH_EXPLICIT_BLOCKERS**
+- Draft PR: [#42](https://github.com/JasonCutter/shotgun/pull/42)
 - Final Head SHA: **PENDING**
 - Frontend Phase 1 completion: **NOT APPROVED**
 - Canonical authority: GitHub `main`
@@ -86,7 +86,7 @@ only authorized sensitivity-safe metadata.
 
 ### Database migration
 
-`REQUIRED_PENDING_APPROVAL`
+`APPROVED_IMPLEMENTED`
 
 The Base does not contain the ADR-116 schema expansion needed for:
 
@@ -114,7 +114,8 @@ Preflight
 Required rollback is to the V1/V2 compatibility application after V2 data is
 activated. Converting V2 rows to V1, restoring `active_project_id NOT NULL`
 while zero-project Sessions exist, or inserting fake Projects is prohibited.
-No migration is created or executed before separate user approval.
+The migration was created and executed after the user granted the separate
+ADR-116 migration approval.
 
 ### Runtime dependency
 
@@ -219,8 +220,204 @@ final Head; none is waived.
 ## 9. Current approval boundary
 
 - Implementation start: **APPROVED**
-- ADR-116 database migration creation/execution: **PENDING SEPARATE APPROVAL**
+- ADR-116 database migration creation/execution: **APPROVED AND DONE**
 - New runtime dependency: **NONE REQUESTED**
 - Draft PR Ready transition: **NOT APPROVED**
 - Merge: **NOT APPROVED**
 - Frontend Phase 1 completion: **NOT APPROVED**
+
+## 10. Final implementation update
+
+The initial matrix and baseline above are retained as historical evidence.
+This section is the current implementation and verification state.
+
+Implemented scope:
+
+- Product Session V2 and Frontend Command V2 runtime contracts while retaining
+  the exact V1 API and writer path.
+- additive ADR-116 migration, deterministic V1 backfill, compatibility trigger,
+  and server-authoritative `PRINCIPAL project.create.v1`.
+- atomic first-Project bootstrap across Project, single Owner membership,
+  active Session, Settings/Policy revisions, command result, and audit records.
+- replaceable Section 3 read ports, server Global Shell and Home projections,
+  protected Search, and server Route Guard.
+- responsive Global Shell, six-area Home Action Center, navigation-only Command
+  Palette, zero-project onboarding, browser-draft isolation, cache isolation,
+  degraded-state presentation, and recovery behavior.
+
+The user-owned untracked file
+`docs/engineering/frontend-phase-1-section-3-adr-required-candidate-260728001.md`
+remains unmodified and is excluded from every commit.
+
+## 11. Migration execution, compatibility, and rollback
+
+Migration:
+`db/migrations/019_frontend_section3_principal_bootstrap.sql`
+
+### Expand
+
+- `auth.sessions.active_project_id` becomes nullable.
+- Command Ledger adds `envelope_version`, `scope_kind`,
+  `active_project_id`, and `scope_binding_key`.
+- `target_project_id` becomes nullable only for a valid V2 `PRINCIPAL` shape.
+- V1/V2 scope-shape constraints and version-aware idempotency/scope indexes
+  are additive.
+- the existing single-Owner partial unique index is preserved and normalized
+  to `auth_single_owner_per_project_idx`.
+
+Preflight fails closed if an active Project has multiple Owners or an active
+Session references a Project without a matching membership.
+
+### Compatibility
+
+- every V1 row is deterministically backfilled to envelope `1.0.0`, scope
+  `PROJECT`, its existing target Project, and the exact canonical scope-binding
+  JSON used by the TypeScript digest implementation.
+- `frontend_command.apply_v1_scope_defaults()` and its `BEFORE INSERT` trigger
+  keep an unmodified V1 writer operational after migration 019.
+- V1 command lookup, idempotency error meaning, Product Session, and existing
+  Section 2 command APIs remain available.
+- migration replay through `runtime.schema_migrations` is idempotent.
+
+### Activate
+
+- a fresh Local Owner Session is valid with `activeProject: null` and
+  `accessibleProjects: []`.
+- the browser sends only a `PRINCIPAL` command and access revision `0`; it does
+  not send a Project ID.
+- the server creates the UUID Project, one Owner membership, active Session,
+  command result, Settings/Policy state, and audits in one database
+  transaction.
+- a late Settings failure rolls back all bootstrap writes; concurrent initial
+  bootstrap attempts permit exactly one commit.
+- completed outcomes are recoverable by the original `clientRequestId`; an
+  indeterminate outcome is not automatically resubmitted.
+
+### Rollback and data impact
+
+- before V2 activation, the V1 application can continue writing through the
+  compatibility trigger.
+- after any V2 or zero-project data exists, application rollback targets the
+  V1/V2 compatibility application, not the pre-019 schema.
+- rollback must not restore `active_project_id NOT NULL`, drop V2 columns, or
+  translate Principal commands into fabricated Projects.
+- schema contraction and V1 removal require a separately approved migration
+  after proving that no zero-project Session or V2 ledger row remains.
+- existing V1 rows and identifiers are preserved.
+
+Runtime dependency change: **NONE**
+
+## 12. Final AC-01 through AC-27 matrix
+
+Only `PASS`, `FAIL`, `BLOCKED`, and `NOT_RUN` are used.
+
+| AC    | Status    | Evidence                                                                                                                  |
+| ----- | --------- | ------------------------------------------------------------------------------------------------------------------------- |
+| AC-01 | `PASS`    | V1/V2 contracts, deep runtime decoders, typed failures, scoped keys, browser-write negatives                              |
+| AC-02 | `PASS`    | server Global Shell projection and Product API integration                                                                |
+| AC-03 | `PASS`    | desktop, tablet rail, mobile bottom navigation/More, and 200% browser scenario                                            |
+| AC-04 | `PASS`    | non-optimistic switch, Leave Guard, unknown-outcome warning, scoped purge                                                 |
+| AC-05 | `PASS`    | active/resource Project simultaneous presentation and deep-link binding                                                   |
+| AC-06 | `PASS`    | six-area typed Home with loading, empty, stale, and error presentation                                                    |
+| AC-07 | `PASS`    | server Primary Actions; unavailable workspaces have no active link                                                        |
+| AC-08 | `PASS`    | bounded Attention decoder preserves server order and stable identity                                                      |
+| AC-09 | `PASS`    | browser draft identity, expiry, revision, Project, Session, sensitivity, and route validation                             |
+| AC-10 | `PASS`    | bounded Recent/Pinned server snapshots and Project binding                                                                |
+| AC-11 | `PASS`    | independent background summary port composed by the coordinator                                                           |
+| AC-12 | `PASS`    | notification presentation port separated from domain resolution                                                           |
+| AC-13 | `PASS`    | single server-prioritized warning plus bounded additional count                                                           |
+| AC-14 | `PASS`    | protected typed Search, explicit cross-Project scope, transient raw text                                                  |
+| AC-15 | `PASS`    | navigation-only palette, shortcut, focus trap/restore, no high-risk commands                                              |
+| AC-16 | `PASS`    | zero-project V2 Session, Principal bootstrap, atomic/replay/concurrency DB tests, browser onboarding                      |
+| AC-17 | `PASS`    | server Route Guard and denied-route decoder masking                                                                       |
+| AC-18 | `PASS`    | allowed/masked deep links do not mutate active Project                                                                    |
+| AC-19 | `PASS`    | separate connectivity/session/backend/readiness/stale states and no outcome auto-resubmit                                 |
+| AC-20 | `PASS`    | Principal/Session/Project/revision keys, switch purge, global cache preservation                                          |
+| AC-21 | `PASS`    | replaceable read ports/coordinator and architecture boundary test                                                         |
+| AC-22 | `PASS`    | authority header/injection, CSRF, cross-Project, sensitivity, Search, masking negatives                                   |
+| AC-23 | `PASS`    | keyboard, name/role/state, focus trap/restore, live status, responsive and 200% scenarios                                 |
+| AC-24 | `BLOCKED` | baseline is 594.38 kB JS / 170.82 kB gzip; Vite reports a 500 kB chunk warning and no user-approved Product budget exists |
+| AC-25 | `BLOCKED` | implementation suites pass, but Base `format:check` and `docs:knowledge-flow:check` failures remain                       |
+| AC-26 | `PASS`    | 13 Chromium E2E tests including 5 Section 3 scenarios                                                                     |
+| AC-27 | `BLOCKED` | requires final Draft PR gates, user approval, merge, and separate completion review                                       |
+
+Section 3 and Frontend Phase 1 are not declared complete.
+
+## 13. Final local verification
+
+### Passing commands
+
+| Command                                 | Result                                                                                              |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `npm run docs:validate`                 | `PASS`: 289 links, ADR 1-121, registries and migration drift                                        |
+| `npm run lint`                          | `PASS`                                                                                              |
+| `npm run typecheck`                     | `PASS`                                                                                              |
+| `npm run test:ci`                       | `PASS`: Unit, Contract, Integration, Architecture, and Stage 12 package on the final local worktree |
+| `npm run test:unit`                     | `PASS`: 25 files, 113 tests                                                                         |
+| `npm run test:contract`                 | `PASS`: 20 files, 171 tests                                                                         |
+| `npm run test:integration`              | `PASS`: 13 files, 48 tests                                                                          |
+| `npm run test:architecture`             | `PASS`                                                                                              |
+| `npm run test:stage12-package`          | `PASS` after approved OS-level npm cache access                                                     |
+| `npm run test:database`                 | `PASS`: 17 files, 86 tests                                                                          |
+| `npm run db:reset`                      | `PASS`: migrations 001 through 019 reapplied                                                        |
+| `npm run db:verify`                     | `PASS`                                                                                              |
+| `npm run frontend:typecheck`            | `PASS`                                                                                              |
+| `npm run frontend:test`                 | `PASS`: 6 files, 22 tests                                                                           |
+| `npm run frontend:build`                | `PASS`, with the AC-24 chunk warning recorded                                                       |
+| `npm run frontend:test:e2e`             | `PASS`: 13 tests                                                                                    |
+| `npm run stage12:reuse-operations-gate` | `PASS`: package, assembly/replacement, quality, DB, secret, OSS                                     |
+| `npm run oss:audit`                     | `PASS`: 0 vulnerabilities                                                                           |
+
+### Explicit blockers
+
+| Command                             | Result                                                                                    |
+| ----------------------------------- | ----------------------------------------------------------------------------------------- |
+| `npm run docs:knowledge-flow:check` | `FAIL`: generated Knowledge Flow baseline is stale; identical Base failure                |
+| `npm run format:check`              | `FAIL`: the same 17 Base files remain unformatted; Section 3 changed files were formatted |
+
+The 17 formatting failures include existing unit/script files, unrelated
+engineering records, ADR-118/119 index material, and generated-artifact
+metadata. They are not silently reformatted in this scoped PR.
+
+## 14. Final failure and retry history
+
+1. PostgreSQL was initially unavailable. The repository database container was
+   started, migration 019 was applied, a clean reset was performed, and the
+   full Database Gate passed.
+2. Migration review found that non-null V2 columns alone would break an old V1
+   writer. A compatibility trigger and real post-migration V1 INSERT regression
+   were added before activation.
+3. one terminated database command left task-started Node children holding
+   locks. Only those processes were stopped; reset and migration tests passed.
+4. browser tests exposed a missing Vite `/product-api` proxy and a
+   Session/Route-Guard loader race. The proxy and query-deduplicated Session
+   ordering were corrected.
+5. Search checkbox state read a React event after the callback. The checked
+   value is captured synchronously and E2E passes.
+6. zero-project E2E exposed a V1-only Session Boundary decoder. The API client
+   now validates and carries Product Session V1 or V2 while V1 remains intact.
+7. asynchronous Home rendering exposed missed heading focus. A bounded
+   MutationObserver focuses the route H1 and disconnects.
+8. the browser fixture custom Project repository omitted the Owner membership
+   callback. Restoring it fixed the Section 2 parallel regression.
+9. Stage 12 package and audit initially failed on restricted npm cache/network
+   access. Exact commands passed with approved OS-level access. The temporary
+   workspace cache was verified and removed.
+10. formatting and Knowledge Flow retain their exact Base failures; no waiver
+    or false PASS is recorded.
+11. the first final `test:ci` retry hit the existing Stage 9 NetworkX comparison
+    test's 5-second timeout at 5.466 seconds. The focused test then passed in
+    1.600 and 1.367 seconds for its two adapters, and an unchanged full
+    `test:ci` rerun passed all 113 Unit, 171 Contract, and 48 Integration tests,
+    Architecture, and the Stage 12 package check.
+
+## 15. Final publication boundary
+
+- Required checks on the final Draft PR head: **PENDING AFTER PUSH**
+- Draft PR Ready transition: **NOT APPROVED**
+- Merge: **NOT APPROVED**
+- Frontend Phase 1 completion: **NOT APPROVED**
+- Phase 2 start: **NOT APPROVED**
+
+The Draft PR remains Draft. AC-24, AC-25, and AC-27 remain blocked until their
+separate authority and repository conditions are satisfied.

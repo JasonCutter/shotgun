@@ -32,12 +32,19 @@ export type TrustedSecurityContext = {
   readonly security: SecurityContext;
 };
 
+export type TrustedPrincipalContext = {
+  readonly principalId: string;
+  readonly actor: Actor;
+  readonly authenticationMethod: AuthMethod;
+  readonly credentialId?: string;
+};
+
 export type AuthSession = {
   readonly sessionId: string;
   readonly sessionToken: string;
   readonly csrfToken: string;
   readonly principalId: string;
-  readonly activeProjectId: string;
+  readonly activeProjectId: string | null;
   readonly expiresAt: string;
   readonly csrfHash?: string;
 };
@@ -52,6 +59,10 @@ export const LOCAL_OWNER_ACCOUNT_ID = 'local-owner';
 export const DEFAULT_PROJECT_ID = 'shotgun';
 
 export type AuthRepositoryPort = {
+  bootstrapLocalOwnerPrincipal(input: {
+    readonly accountId: string;
+    readonly passwordHash?: string;
+  }): Promise<AuthenticatedPrincipal>;
   bootstrapOwner(input: {
     readonly accountId: string;
     readonly passwordHash?: string;
@@ -60,6 +71,7 @@ export type AuthRepositoryPort = {
     readonly sensitivityClearance: SecurityContext['sensitivity'];
   }): Promise<void>;
   findOwnerMembership(accountId: string, projectId: string): Promise<ProjectMembership | undefined>;
+  findPrincipalByAccountId(accountId: string): Promise<AuthenticatedPrincipal | undefined>;
   authenticatePassword(
     accountId: string,
     password: string,
@@ -71,7 +83,7 @@ export type AuthRepositoryPort = {
   ): Promise<AuthenticatedPrincipal | undefined>;
   createSession(
     principalId: string,
-    activeProjectId: string,
+    activeProjectId: string | null,
     expiresAt: string,
   ): Promise<AuthSession>;
   findSession(sessionToken: string): Promise<AuthSession | undefined>;
@@ -179,6 +191,38 @@ export class InMemoryAuthRepository implements AuthRepositoryPort {
   readonly audit: { principalId?: string; projectId?: string; event: string; reason?: string }[] =
     [];
 
+  async bootstrapLocalOwnerPrincipal(input: {
+    readonly accountId: string;
+    readonly passwordHash?: string;
+  }): Promise<AuthenticatedPrincipal> {
+    const accountId = input.accountId.trim().toLowerCase();
+    if (!accountId) throw new Error('Account ID is required.');
+    const existingPrincipalId = this.#accountIds.get(accountId);
+    if (existingPrincipalId) {
+      const existing = this.#principals.get(existingPrincipalId)?.principal;
+      if (!existing || existing.status !== 'active') {
+        throw new Error('Local Owner principal is unavailable.');
+      }
+      return { ...existing, authenticationMethod: 'session' };
+    }
+    const principalId = randomUUID();
+    const principal: AuthenticatedPrincipal = {
+      principalId,
+      actor: { type: 'user', id: principalId },
+      kind: 'user',
+      status: 'active',
+      authenticationMethod: 'session',
+      credentialId: principalId,
+    };
+    this.#principals.set(principalId, {
+      principal,
+      accountId,
+      ...(input.passwordHash ? { passwordHash: input.passwordHash } : {}),
+    });
+    this.#accountIds.set(accountId, principalId);
+    return principal;
+  }
+
   async bootstrapOwner(input: Parameters<AuthRepositoryPort['bootstrapOwner']>[0]): Promise<void> {
     const accountId = input.accountId.trim().toLowerCase();
     if (!accountId) throw new Error('Account ID is required.');
@@ -264,9 +308,15 @@ export class InMemoryAuthRepository implements AuthRepositoryPort {
     return membership && isActiveOwner(membership) ? membership : undefined;
   }
 
+  async findPrincipalByAccountId(accountId: string): Promise<AuthenticatedPrincipal | undefined> {
+    const principalId = this.#accountIds.get(accountId.trim().toLowerCase());
+    const stored = principalId ? this.#principals.get(principalId)?.principal : undefined;
+    return stored?.status === 'active' ? { ...stored, authenticationMethod: 'session' } : undefined;
+  }
+
   async createSession(
     principalId: string,
-    activeProjectId: string,
+    activeProjectId: string | null,
     expiresAt: string,
   ): Promise<AuthSession> {
     const sessionToken = randomSecret();
@@ -313,6 +363,44 @@ export class InMemoryAuthRepository implements AuthRepositoryPort {
       ...session,
       activeProjectId,
     });
+  }
+
+  assertZeroProjectSession(sessionId: string, principalId: string): void {
+    const session = [...this.#sessions.values()].find(
+      (candidate) =>
+        candidate.sessionId === sessionId &&
+        candidate.principalId === principalId &&
+        !candidate.revokedAt &&
+        Date.parse(candidate.expiresAt) > Date.now(),
+    );
+    if (!session) throw new Error('Invalid or expired Session.');
+    if (session.activeProjectId !== null) {
+      throw new Error('Session is not in zero-project state.');
+    }
+    const activeMemberships = [...this.#memberships.values()].filter(
+      (membership) =>
+        membership.principalId === principalId &&
+        (!membership.expiresAt || Date.parse(membership.expiresAt) > Date.now()),
+    );
+    if (activeMemberships.length > 0) {
+      throw new Error('Principal already has an accessible Project.');
+    }
+  }
+
+  updateSessionProjectById(sessionId: string, principalId: string, projectId: string | null): void {
+    const entry = [...this.#sessions.entries()].find(
+      ([, candidate]) =>
+        candidate.sessionId === sessionId &&
+        candidate.principalId === principalId &&
+        !candidate.revokedAt &&
+        Date.parse(candidate.expiresAt) > Date.now(),
+    );
+    if (!entry) throw new Error('Invalid or expired Session.');
+    this.#sessions.set(entry[0], { ...entry[1], activeProjectId: projectId });
+  }
+
+  removeProjectMembershipForRollback(principalId: string, projectId: string): void {
+    this.#memberships.delete(`${principalId}:${projectId}`);
   }
 
   async findPrincipal(
@@ -483,7 +571,8 @@ export type AuthenticationResult =
   | {
       readonly status: 'authenticated';
       readonly session: AuthSession;
-      readonly context: TrustedSecurityContext;
+      readonly principalContext: TrustedPrincipalContext;
+      readonly context?: TrustedSecurityContext;
     }
   | {
       readonly status: 'authentication_required';
@@ -504,7 +593,7 @@ export type AuthenticationPort = {
 export type LocalOwnerProvisioningService = {
   ensureLocalOwnerIdentity(input?: { readonly defaultProjectId?: string }): Promise<{
     readonly principal: AuthenticatedPrincipal;
-    readonly membership: ProjectMembership;
+    readonly membership?: ProjectMembership;
   }>;
 };
 
@@ -513,45 +602,35 @@ export class DefaultLocalOwnerProvisioningService implements LocalOwnerProvision
 
   async ensureLocalOwnerIdentity(input?: { readonly defaultProjectId?: string }): Promise<{
     readonly principal: AuthenticatedPrincipal;
-    readonly membership: ProjectMembership;
+    readonly membership?: ProjectMembership;
   }> {
     const defaultProjectId = input?.defaultProjectId?.trim() || DEFAULT_PROJECT_ID;
+    let principal = await this.repository.findPrincipalByAccountId(LOCAL_OWNER_ACCOUNT_ID);
     let ownerMembership = await this.repository.findOwnerMembership(
       LOCAL_OWNER_ACCOUNT_ID,
       defaultProjectId,
     );
-    if (!ownerMembership) {
-      try {
-        await this.repository.bootstrapOwner({
-          accountId: LOCAL_OWNER_ACCOUNT_ID,
-          projectId: defaultProjectId,
-          scopes: ['owner'],
-          sensitivityClearance: 'private',
-        });
-      } catch {
-        // Idempotent catch if bootstrapOwner fails due to race/pre-existence
-      }
-      ownerMembership = await this.repository.findOwnerMembership(
-        LOCAL_OWNER_ACCOUNT_ID,
-        defaultProjectId,
-      );
+    if (!principal) {
+      principal = await this.repository.bootstrapLocalOwnerPrincipal({
+        accountId: LOCAL_OWNER_ACCOUNT_ID,
+      });
+      ownerMembership = undefined;
     }
 
-    if (!ownerMembership) {
-      throw new Error('Failed to provision local owner identity.');
-    }
-
-    const principal = await this.repository.findPrincipal(
-      ownerMembership.principalId,
+    const resolvedPrincipal = await this.repository.findPrincipal(
+      principal.principalId,
       'session',
-      ownerMembership.principalId,
+      principal.principalId,
     );
 
-    if (!principal) {
+    if (!resolvedPrincipal) {
       throw new Error('Local owner principal not found.');
     }
 
-    return { principal, membership: ownerMembership };
+    return {
+      principal: resolvedPrincipal,
+      ...(ownerMembership === undefined ? {} : { membership: ownerMembership }),
+    };
   }
 }
 
@@ -586,6 +665,27 @@ export class LocalOwnerAuthenticationAdapter implements AuthenticationPort {
           reason: 'Principal not found.',
         };
       }
+      const principalContext: TrustedPrincipalContext = {
+        principalId: principal.principalId,
+        actor: principal.actor,
+        authenticationMethod: principal.authenticationMethod,
+        credentialId: principal.credentialId,
+      };
+      if (session.activeProjectId === null) {
+        const memberships = await this.repository.listMemberships(principal.principalId);
+        if (memberships.length > 0) {
+          return {
+            status: 'authentication_unavailable',
+            code: 'LOCAL_PROJECT_SELECTION_REQUIRED',
+            reason: 'An accessible Project exists but the Session has no authoritative selection.',
+          };
+        }
+        return {
+          status: 'authenticated',
+          session,
+          principalContext,
+        };
+      }
       const trustedContext = await authorize({
         repository: this.repository,
         principal,
@@ -602,6 +702,7 @@ export class LocalOwnerAuthenticationAdapter implements AuthenticationPort {
       return {
         status: 'authenticated',
         session,
+        principalContext,
         context: trustedContext,
       };
     }
@@ -631,29 +732,29 @@ export class LocalOwnerAuthenticationAdapter implements AuthenticationPort {
 
       const session = await this.repository.createSession(
         principal.principalId,
-        membership.projectId,
+        membership?.projectId ?? null,
         new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
       );
 
-      const trustedContext = await authorize({
-        repository: this.repository,
-        principal,
-        projectId: membership.projectId,
-        requiredScopes: [],
-      });
-
-      if (!trustedContext) {
-        return {
-          status: 'authentication_unavailable',
-          code: 'LOCAL_BOOTSTRAP_FAILED',
-          reason: 'Failed to authorize created local owner membership.',
-        };
-      }
+      const trustedContext = membership
+        ? await authorize({
+            repository: this.repository,
+            principal,
+            projectId: membership.projectId,
+            requiredScopes: [],
+          })
+        : undefined;
 
       return {
         status: 'authenticated',
         session,
-        context: trustedContext,
+        principalContext: {
+          principalId: principal.principalId,
+          actor: principal.actor,
+          authenticationMethod: principal.authenticationMethod,
+          credentialId: principal.credentialId,
+        },
+        ...(trustedContext === undefined ? {} : { context: trustedContext }),
       };
     } catch (error) {
       return {

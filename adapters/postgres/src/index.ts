@@ -25,6 +25,9 @@ import {
 } from '../../../packages/contracts/src/index.js';
 import type {
   CreateProjectInput,
+  ProjectBootstrapInput,
+  ProjectBootstrapResult,
+  ProjectBootstrapUnitOfWorkPort,
   ProjectAdministrationRepositoryPort,
   UpdateProjectInput,
   ProjectLifecycleCommandInput,
@@ -986,6 +989,234 @@ export class PostgresProjectAdministrationRepository implements ProjectAdministr
     } finally {
       client.release();
     }
+  }
+}
+
+export class PostgresProjectBootstrapUnitOfWork implements ProjectBootstrapUnitOfWorkPort {
+  constructor(private readonly pool: Pool) {}
+
+  async bootstrap(input: ProjectBootstrapInput): Promise<ProjectBootstrapResult> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const session = await client.query<{
+        active_project_id: string | null;
+        revoked_at: Date | null;
+        expires_at: Date;
+      }>(
+        `SELECT active_project_id, revoked_at, expires_at
+         FROM auth.sessions
+         WHERE session_id = $1
+           AND principal_id = $2
+         FOR UPDATE`,
+        [input.sessionId, input.principalId],
+      );
+      const sessionRow = session.rows[0];
+      if (!sessionRow || sessionRow.revoked_at || sessionRow.expires_at.getTime() <= Date.now()) {
+        throw new ShotgunError({
+          code: 'AUTHENTICATION_INVALID',
+          safeMessage: 'The bootstrap Session is invalid, expired, or revoked.',
+          module: 'project-bootstrap',
+          operation: 'lock-zero-project-session',
+        });
+      }
+
+      const existing = await this.findCompletedWithClient(client, input.commandId);
+      if (existing) {
+        await client.query('COMMIT');
+        return { project: existing, replayed: true };
+      }
+
+      const memberships = await client.query<{ count: string }>(
+        `SELECT count(*)::text AS count
+         FROM auth.project_memberships
+         WHERE principal_id = $1
+           AND (expires_at IS NULL OR expires_at > now())`,
+        [input.principalId],
+      );
+      const actualAccessRevision = memberships.rows[0]?.count ?? '0';
+      if (
+        input.observedProjectAccessRevision !== undefined &&
+        input.observedProjectAccessRevision !== actualAccessRevision
+      ) {
+        throw new ShotgunError({
+          code: 'PROJECT_ACCESS_REVISION_CONFLICT',
+          safeMessage: 'The accessible Project set changed before bootstrap.',
+          module: 'project-bootstrap',
+          operation: 'verify-project-access-revision',
+        });
+      }
+      if (sessionRow.active_project_id !== null || actualAccessRevision !== '0') {
+        throw new ShotgunError({
+          code: 'ZERO_PROJECT_PRECONDITION_FAILED',
+          safeMessage: 'The Session is no longer in the zero-project state.',
+          module: 'project-bootstrap',
+          operation: 'verify-zero-project-state',
+        });
+      }
+
+      const projectId = randomUUID();
+      const createdAt = new Date();
+      const inserted = await client.query<{
+        id: string;
+        name: string;
+        description: string | null;
+        status: string;
+        active: boolean;
+        created_at: Date;
+        updated_at: Date;
+        revision: number;
+      }>(
+        `INSERT INTO project_admin.projects (
+           id, name, description, status, active, created_at, updated_at, revision
+         ) VALUES ($1, $2, $3, 'ACTIVE', true, $4, $4, 1)
+         RETURNING id, name, description, status, active, created_at, updated_at, revision`,
+        [projectId, input.payload.name, input.payload.description ?? null, createdAt],
+      );
+      await client.query(
+        `INSERT INTO project_admin.project_revisions (
+           project_id, revision, changed_by, change_reason, created_at
+         ) VALUES ($1, 1, $2, 'Initial zero-project bootstrap', $3)`,
+        [projectId, input.principalId, createdAt],
+      );
+      await client.query(
+        `INSERT INTO auth.project_memberships (
+           principal_id, project_id, scopes, sensitivity_clearance, is_owner
+         ) VALUES ($1, $2, $3, 'private', true)`,
+        [input.principalId, projectId, ['owner']],
+      );
+      await client.query(
+        `UPDATE auth.sessions
+         SET active_project_id = $2
+         WHERE session_id = $1
+           AND active_project_id IS NULL`,
+        [input.sessionId, projectId],
+      );
+      await client.query(
+        `INSERT INTO settings.settings_revisions (
+           project_id, revision, settings_snapshot, created_at
+         ) VALUES ($1, 1, '{}'::jsonb, $2)`,
+        [projectId, createdAt],
+      );
+      await client.query(
+        `INSERT INTO settings.policy_context_revisions (
+           project_id, revision, policy_binding, created_at
+         ) VALUES ($1, 1, '{}'::jsonb, $2)`,
+        [projectId, createdAt],
+      );
+      await client.query(
+        `INSERT INTO project_admin.project_commands (
+           command_id, client_request_id, idempotency_key, project_id, actor_id,
+           expected_revision, command_type, command_payload, status, created_at
+         ) VALUES ($1, $2, $3, $4, $5, 0, 'CREATE_PROJECT_BOOTSTRAP', $6, 'APPLIED', $7)`,
+        [
+          input.commandId,
+          input.clientRequestId,
+          input.idempotencyKey,
+          projectId,
+          input.principalId,
+          JSON.stringify(input.payload),
+          createdAt,
+        ],
+      );
+      await client.query(
+        `INSERT INTO project_admin.project_command_results (
+           command_id, client_request_id, idempotency_key, status,
+           applied_revision, completed_at
+         ) VALUES ($1, $2, $3, 'APPLIED', 1, $4)`,
+        [input.commandId, input.clientRequestId, input.idempotencyKey, createdAt],
+      );
+      await client.query(
+        `INSERT INTO auth.audit_events (
+           audit_event_id, principal_id, project_id, event, reason, created_at
+         ) VALUES ($1, $2, $3, 'PROJECT_BOOTSTRAP_COMMITTED', $4, $5)`,
+        [randomUUID(), input.principalId, projectId, `commandId=${input.commandId}`, createdAt],
+      );
+      await client.query(
+        `INSERT INTO settings.settings_audit_events (
+           event_id, project_id, actor_id, action_name, risk_level, details, timestamp
+         ) VALUES ($1, $2, $3, 'PROJECT_CREATED', 'LOW', $4, $5)`,
+        [
+          randomUUID(),
+          projectId,
+          input.principalId,
+          JSON.stringify({ bootstrap: true, commandId: input.commandId }),
+          createdAt,
+        ],
+      );
+      await client.query('COMMIT');
+      return { project: this.toProjectView(inserted.rows[0]!), replayed: false };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async findCompleted(commandId: string): Promise<ProjectListItemView | null> {
+    const client = await this.pool.connect();
+    try {
+      return await this.findCompletedWithClient(client, commandId);
+    } finally {
+      client.release();
+    }
+  }
+
+  private async findCompletedWithClient(
+    client: PoolClient,
+    commandId: string,
+  ): Promise<ProjectListItemView | null> {
+    const result = await client.query<{
+      id: string;
+      name: string;
+      description: string | null;
+      status: string;
+      active: boolean;
+      created_at: Date;
+      updated_at: Date;
+      revision: number;
+    }>(
+      `SELECT project.id, project.name, project.description, project.status,
+              project.active, project.created_at, project.updated_at, project.revision
+       FROM project_admin.project_commands command
+       JOIN project_admin.projects project ON project.id = command.project_id
+       WHERE command.command_id = $1
+         AND command.command_type = 'CREATE_PROJECT_BOOTSTRAP'
+         AND command.status = 'APPLIED'`,
+      [commandId],
+    );
+    return result.rows[0] ? this.toProjectView(result.rows[0]) : null;
+  }
+
+  private toProjectView(row: {
+    id: string;
+    name: string;
+    description: string | null;
+    status: string;
+    active: boolean;
+    created_at: Date;
+    updated_at: Date;
+    revision: number;
+  }): ProjectListItemView {
+    return decodeProjectListItemView({
+      id: row.id,
+      name: row.name,
+      description: row.description ?? undefined,
+      isOwner: true,
+      status: row.status,
+      active: row.active,
+      createdAt: row.created_at.toISOString(),
+      updatedAt: row.updated_at.toISOString(),
+      revision: Number(row.revision),
+      capability: {
+        canRename: row.status === 'ACTIVE',
+        canArchive: row.status === 'ACTIVE',
+        canRestore: row.status === 'ARCHIVED',
+        canDelete: row.status === 'ACTIVE' || row.status === 'ARCHIVED',
+        canManagePolicies: row.status === 'ACTIVE',
+      },
+    });
   }
 }
 

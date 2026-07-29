@@ -14,41 +14,47 @@ const makeBoundary = () =>
     backendReadiness: 'UNAVAILABLE' as const,
     reasonCode: 'LOCAL_SERVER_UNAVAILABLE' as const,
     recoveryActions: [
-      { id: 'CHECK_LOCAL_SERVER' as const, label: '로컬 서버 상태 확인', enabled: true },
+      {
+        id: 'CHECK_LOCAL_SERVER' as const,
+        label: 'Check local server status',
+        enabled: true,
+      },
     ],
     session: null,
   }) as const;
 
 describe('Diagnostic Modal Accessibility', () => {
-  it('Modal Shift+Tab Focus Trap', async () => {
+  it('traps Shift+Tab focus inside the modal', async () => {
     const user = userEvent.setup();
     render(<SessionBoundaryScreen boundary={makeBoundary()} />);
 
-    const openBtn = screen.getByRole('button', { name: '로컬 서버 상태 확인' });
-    await user.click(openBtn);
+    const openButton = screen.getByRole('button', {
+      name: 'Check local server status',
+    });
+    await user.click(openButton);
 
     const dialog = screen.getByRole('dialog');
-    const closeBtn = screen.getByRole('button', { name: '닫기' });
-    expect(document.activeElement).toBe(closeBtn);
+    const closeButton = screen.getByRole('button', { name: 'Close' });
+    expect(document.activeElement).toBe(closeButton);
 
-    // Shift+Tab from the only interactive element wraps back to itself
     await user.keyboard('{Shift>}{Tab}{/Shift}');
     expect(dialog.contains(document.activeElement)).toBe(true);
-    expect(document.activeElement).toBe(closeBtn);
+    expect(document.activeElement).toBe(closeButton);
   });
 
-  it('Modal Trigger Focus Restore', async () => {
+  it('restores focus to the modal trigger', async () => {
     const user = userEvent.setup();
     render(<SessionBoundaryScreen boundary={makeBoundary()} />);
 
-    const openBtn = screen.getByRole('button', { name: '로컬 서버 상태 확인' });
-    await user.click(openBtn);
+    const openButton = screen.getByRole('button', {
+      name: 'Check local server status',
+    });
+    await user.click(openButton);
     expect(screen.getByRole('dialog')).toBeTruthy();
 
-    const closeBtn = screen.getByRole('button', { name: '닫기' });
-    await user.click(closeBtn);
+    await user.click(screen.getByRole('button', { name: 'Close' }));
 
     expect(screen.queryByRole('dialog')).toBeNull();
-    expect(document.activeElement).toBe(openBtn);
+    expect(document.activeElement).toBe(openButton);
   });
 });

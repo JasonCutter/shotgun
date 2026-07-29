@@ -9,7 +9,7 @@ export const CategoryIndexView = () => {
   const { data: session } = useQuery(sessionQueryOptions(apiClient));
   const [searchParams] = useSearchParams();
 
-  const activeProjectId = session?.activeProject.id ?? 'shotgun';
+  const activeProjectId = session?.activeProject?.id ?? '';
   const targetProjectId = searchParams.get('targetProjectId') ?? activeProjectId;
   const principalId = session?.principal.id ?? 'principal-a';
 

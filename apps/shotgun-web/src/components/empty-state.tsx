@@ -1,6 +1,16 @@
-export const EmptyState = ({ detail }: { readonly detail: string }) => (
-  <section className="state-card state-card--empty" aria-label="기능 연결 상태">
-    <p>이 기능은 아직 Frontend Section 1에 연결되지 않았습니다.</p>
-    <p>{detail}</p>
+export const EmptyState = ({
+  detail,
+  title = 'Nothing to show',
+  description,
+}: {
+  readonly detail?: string;
+  readonly title?: string;
+  readonly description?: string;
+}) => (
+  <section className="state-card state-card--empty" aria-label={title}>
+    <p>
+      <strong>{title}</strong>
+    </p>
+    <p>{description ?? detail}</p>
   </section>
 );

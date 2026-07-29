@@ -1,4 +1,5 @@
 import type {
+  CreateProjectCommandPayloadV2,
   ProjectListItemView,
   ProjectAdministrationView,
 } from '../../../packages/contracts/src/index.js';
@@ -35,4 +36,24 @@ export type ProjectAdministrationRepositoryPort = {
   archiveProject(input: ProjectLifecycleCommandInput): Promise<ProjectListItemView>;
   restoreProject(input: ProjectLifecycleCommandInput): Promise<ProjectListItemView>;
   requestDeleteProject(input: ProjectLifecycleCommandInput): Promise<ProjectListItemView>;
+};
+
+export type ProjectBootstrapInput = {
+  readonly commandId: string;
+  readonly clientRequestId: string;
+  readonly idempotencyKey: string;
+  readonly principalId: string;
+  readonly sessionId: string;
+  readonly observedProjectAccessRevision?: string;
+  readonly payload: CreateProjectCommandPayloadV2;
+};
+
+export type ProjectBootstrapResult = {
+  readonly project: ProjectListItemView;
+  readonly replayed: boolean;
+};
+
+export type ProjectBootstrapUnitOfWorkPort = {
+  bootstrap(input: ProjectBootstrapInput): Promise<ProjectBootstrapResult>;
+  findCompleted(commandId: string): Promise<ProjectListItemView | null>;
 };

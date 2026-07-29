@@ -9,7 +9,7 @@ import {
 } from '../../packages/authentication/src/index.js';
 
 describe('AuthenticationPort and LocalOwnerAuthenticationAdapter Contract', () => {
-  it('successfully creates local owner session for valid loopback requests', async () => {
+  it('creates a Principal-only zero-project Session for a fresh valid loopback request', async () => {
     const repository = new InMemoryAuthRepository();
     const adapter = new LocalOwnerAuthenticationAdapter(repository);
 
@@ -22,8 +22,9 @@ describe('AuthenticationPort and LocalOwnerAuthenticationAdapter Contract', () =
 
     expect(result.status).toBe('authenticated');
     if (result.status === 'authenticated') {
-      expect(result.context.projectId).toBe('shotgun');
-      expect(result.context.security.accessScope).toContain('owner');
+      expect(result.principalContext.principalId).toBeTruthy();
+      expect(result.context).toBeUndefined();
+      expect(result.session.activeProjectId).toBeNull();
       expect(result.session.sessionToken).toBeTruthy();
     }
   });
@@ -49,8 +50,9 @@ describe('AuthenticationPort and LocalOwnerAuthenticationAdapter Contract', () =
     expect(first.status).toBe('authenticated');
     expect(second.status).toBe('authenticated');
     if (first.status === 'authenticated' && second.status === 'authenticated') {
-      expect(first.context.principalId).toBe(second.context.principalId);
-      expect(first.context.projectId).toBe(second.context.projectId);
+      expect(first.principalContext.principalId).toBe(second.principalContext.principalId);
+      expect(first.context).toBeUndefined();
+      expect(second.context).toBeUndefined();
     }
   });
 

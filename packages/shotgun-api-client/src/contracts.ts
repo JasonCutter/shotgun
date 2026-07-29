@@ -1,6 +1,7 @@
 import type {
-  ProductSessionView,
-  SessionBoundaryView,
+  AnyFrontendCommandOutcomeView,
+  AnyProductSessionView,
+  SessionBoundaryView as LegacySessionBoundaryView,
   SettingsDraftState,
   SettingsSnapshot,
   SettingsCategorySummary,
@@ -24,11 +25,22 @@ import type {
   ProductFailureDetails,
   ProductFailureEnvelope,
   TypedFrontendFailure,
+  GlobalSearchRequest,
+  GlobalSearchResultView,
+  GlobalShellView,
+  HomeActionCenterView,
+  RouteGuardDecisionView,
+  TargetRouteView,
+  BrowserDraftPresentationView,
+  NavigationAvailability,
 } from '../../contracts/src/index.js';
 
+export type ProductSessionView = AnyProductSessionView;
+export type SessionBoundaryView = Omit<LegacySessionBoundaryView, 'session'> & {
+  readonly session: ProductSessionView | null;
+};
+
 export type {
-  ProductSessionView,
-  SessionBoundaryView,
   SettingsDraftState,
   SettingsSnapshot,
   SettingsCategorySummary,
@@ -45,6 +57,15 @@ export type {
   DiagnosticsView,
   ProductFeatureView,
   FrontendCommandOutcomeView,
+  AnyFrontendCommandOutcomeView,
+  GlobalSearchRequest,
+  GlobalSearchResultView,
+  GlobalShellView,
+  HomeActionCenterView,
+  RouteGuardDecisionView,
+  TargetRouteView,
+  BrowserDraftPresentationView,
+  NavigationAvailability,
   ErrorCode,
   FailureCategory,
   FailureRetryability,
@@ -61,7 +82,7 @@ export {
 } from '../../contracts/src/index.js';
 
 export type FrontendCommandMutationResponse<T> = {
-  readonly outcome: FrontendCommandOutcomeView;
+  readonly outcome: AnyFrontendCommandOutcomeView;
   readonly resource: T;
 };
 
@@ -85,6 +106,33 @@ export type ShotgunApiClient = {
   getSession(options?: RequestOptions): Promise<ProductSessionView>;
   switchActiveProject(projectId: string, options?: RequestOptions): Promise<ProductSessionView>;
   logout(options?: RequestOptions): Promise<void>;
+  getGlobalShell(options?: RequestOptions): Promise<GlobalShellView>;
+  getHomeActionCenter(options?: RequestOptions): Promise<HomeActionCenterView>;
+  searchGlobal(
+    request: GlobalSearchRequest,
+    options?: RequestOptions,
+  ): Promise<GlobalSearchResultView>;
+  getRouteGuardDecision(
+    targetRoute: TargetRouteView,
+    resourceProjectId?: string,
+    options?: RequestOptions,
+  ): Promise<RouteGuardDecisionView>;
+  createFirstProject(
+    params: {
+      readonly name: string;
+      readonly description?: string;
+      readonly locale?: string;
+      readonly timezone?: string;
+      readonly privacyProfile?: string;
+      readonly modelProfile?: string;
+      readonly costProfile?: string;
+      readonly projectAccessRevision: string;
+      readonly clientRequestId: string;
+      readonly idempotencyKey: string;
+      readonly clientIssuedAt?: string;
+    },
+    options?: RequestOptions,
+  ): Promise<FrontendCommandMutationResponse<ProjectListItemView>>;
 
   // Settings & Project Administration
   getSettingsSnapshot(

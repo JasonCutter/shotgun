@@ -1,7 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 
 import type { FrontendCommandGatewayPort } from '../../../../modules/frontend-command-gateway/src/index.js';
-import type { ProjectAdministrationRepositoryPort } from '../../../../modules/project-administration/src/index.js';
+import type {
+  ProjectAdministrationRepositoryPort,
+  ProjectBootstrapUnitOfWorkPort,
+} from '../../../../modules/project-administration/src/index.js';
 import type { SettingsRepositoryPort } from '../../../../modules/settings-policy/src/index.js';
 import type { AuthRepositoryPort } from '../../../../packages/authentication/src/index.js';
 import {
@@ -15,15 +18,18 @@ import {
 } from '../../../../packages/contracts/src/index.js';
 import type { SecurityHeaders } from '../server.js';
 import {
+  acceptPrincipalProjectCreateCommand,
   acceptSection2Command,
   rejectAcceptedCommand,
   requireRevisionPrecondition,
   toProductApiCommandError,
 } from './frontend-command-route.js';
 
-type BrowserSessionResolver = (
-  headers: Record<string, string | string[] | undefined>,
-) => Promise<{ context: { principalId: string; projectId: string } }>;
+type BrowserSessionResolver = (headers: Record<string, string | string[] | undefined>) => Promise<{
+  principalContext: { principalId: string };
+  context?: { principalId: string; projectId: string };
+  session: { sessionId: string; activeProjectId: string | null };
+}>;
 
 const canAdminister = (membership: {
   readonly isOwner: boolean;
@@ -77,10 +83,11 @@ export function registerProjectRoutes(
   commandGateway: FrontendCommandGatewayPort,
   authRepo: AuthRepositoryPort,
   requireBrowserSession: BrowserSessionResolver,
+  projectBootstrapUnitOfWork?: ProjectBootstrapUnitOfWorkPort,
 ): void {
   server.get<{ Headers: SecurityHeaders }>('/api/v1/projects', async (request) => {
-    const { context } = await requireBrowserSession(request.headers);
-    const memberships = await authRepo.listMemberships(context.principalId);
+    const { principalContext } = await requireBrowserSession(request.headers);
+    const memberships = await authRepo.listMemberships(principalContext.principalId);
     if (memberships.length === 0) return { projects: [] };
     const view = await projectAdminRepo.getProjects(memberships.map((item) => item.projectId));
     return {
@@ -98,9 +105,9 @@ export function registerProjectRoutes(
   server.get<{ Params: { projectId: string }; Headers: SecurityHeaders }>(
     '/api/v1/projects/:projectId',
     async (request) => {
-      const { context } = await requireBrowserSession(request.headers);
+      const { principalContext } = await requireBrowserSession(request.headers);
       const membership = await authRepo.findMembership(
-        context.principalId,
+        principalContext.principalId,
         request.params.projectId,
       );
       if (!membership) {
@@ -125,7 +132,92 @@ export function registerProjectRoutes(
   );
 
   server.post<{ Body: unknown; Headers: SecurityHeaders }>('/api/v1/projects', async (request) => {
-    const { context } = await requireBrowserSession(request.headers);
+    const { principalContext, context, session } = await requireBrowserSession(request.headers);
+    if (
+      typeof request.body === 'object' &&
+      request.body !== null &&
+      'envelopeVersion' in request.body &&
+      request.body.envelopeVersion === '2.0.0'
+    ) {
+      try {
+        if (!projectBootstrapUnitOfWork) {
+          throw new ShotgunError({
+            code: 'CAPABILITY_DENIED',
+            safeMessage: 'First Project bootstrap is not available in this runtime.',
+            module: 'shotgun-app',
+            operation: 'create-first-project',
+          });
+        }
+        if (context || session.activeProjectId !== null) {
+          throw new ShotgunError({
+            code: 'ZERO_PROJECT_PRECONDITION_FAILED',
+            safeMessage: 'The Session is no longer in the zero-project state.',
+            module: 'shotgun-app',
+            operation: 'create-first-project',
+          });
+        }
+        const accepted = await acceptPrincipalProjectCreateCommand({
+          rawRequest: request.body,
+          principalId: principalContext.principalId,
+          sessionActiveProjectId: session.activeProjectId,
+          commandGateway,
+        });
+        let committedProject = await projectBootstrapUnitOfWork.findCompleted(
+          accepted.outcome.commandId,
+        );
+        try {
+          if (!committedProject) {
+            const result = await projectBootstrapUnitOfWork.bootstrap({
+              commandId: accepted.outcome.commandId,
+              clientRequestId: accepted.request.clientRequestId,
+              idempotencyKey: accepted.request.idempotencyKey,
+              principalId: principalContext.principalId,
+              sessionId: session.sessionId,
+              observedProjectAccessRevision:
+                accepted.request.projectContext.observedProjectAccessRevision,
+              payload: accepted.request.payload,
+            });
+            committedProject = result.project;
+          }
+        } catch (error) {
+          await rejectAcceptedCommand(commandGateway, accepted.outcome.commandId, error);
+          throw error;
+        }
+        try {
+          const outcome = await commandGateway.complete({
+            commandId: accepted.outcome.commandId,
+            producedResources: [
+              {
+                resourceKind: 'project',
+                resourceId: committedProject.id,
+                resourceRevision: String(committedProject.revision),
+              },
+            ],
+            completedAt: new Date().toISOString(),
+          });
+          return { outcome, project: committedProject };
+        } catch (error) {
+          throw new ShotgunError({
+            code: 'PROJECT_BOOTSTRAP_OUTCOME_UNKNOWN',
+            safeMessage:
+              'The Project may have been created. Resolve the original clientRequestId before retrying.',
+            module: 'shotgun-app',
+            operation: 'complete-first-project-command',
+            cause: error,
+          });
+        }
+      } catch (error) {
+        throw toProductApiCommandError(error, 'create-first-project');
+      }
+    }
+    if (!context) {
+      throw new ShotgunError({
+        code: 'PROJECT_CONTEXT_REQUIRED',
+        safeMessage: 'The V1 Project creation route requires an active Project.',
+        module: 'shotgun-app',
+        operation: 'create-project-v1',
+      });
+    }
     try {
       const decoded = validateSection2FrontendCommandRequest(
         request.body,
@@ -296,6 +388,14 @@ const registerExistingProjectCommand = (input: {
     url: input.path,
     handler: async (request) => {
       const { context } = await input.requireBrowserSession(request.headers);
+      if (!context) {
+        throw new ShotgunError({
+          code: 'PROJECT_CONTEXT_REQUIRED',
+          safeMessage: 'An active Project is required for this operation.',
+          module: 'shotgun-app',
+          operation: input.operation,
+        });
+      }
       try {
         const decoded = validateSection2FrontendCommandRequest(request.body, input.commandType);
         if (

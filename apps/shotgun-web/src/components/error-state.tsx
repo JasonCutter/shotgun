@@ -1,22 +1,27 @@
 import { ShotgunApiError } from '@shotgun/api-client';
 
 const errorMessages: Readonly<Record<string, string>> = {
-  AUTHENTICATION_REQUIRED: '로그인이 필요합니다.',
-  AUTHENTICATION_INVALID: '로그인 정보가 유효하지 않습니다.',
-  PROJECT_ACCESS_DENIED: '이 Project에 접근할 수 없습니다.',
-  REQUEST_ORIGIN_DENIED: '보안 확인에 실패했습니다. 다시 시도해 주세요.',
-  INVALID_PRODUCT_API_RESPONSE: '서버 응답을 안전하게 확인할 수 없습니다.',
+  AUTHENTICATION_REQUIRED: 'Sign in is required.',
+  AUTHENTICATION_INVALID: 'The authentication information is invalid.',
+  PROJECT_ACCESS_DENIED: 'You do not have access to this Project.',
+  REQUEST_ORIGIN_DENIED: 'The request origin was denied. Try again from this app.',
+  INVALID_PRODUCT_API_RESPONSE:
+    'The server response did not match the protected Product API contract.',
 };
 
 export const safeErrorMessage = (error: unknown): string => {
   if (error instanceof ShotgunApiError) {
     return (
       errorMessages[error.code] ??
-      (error.status >= 500 ? '서버 요청에 실패했습니다.' : error.message)
+      (error.status >= 500 ? 'The server request failed.' : error.message)
     );
   }
-  if (error instanceof TypeError) return '네트워크 연결을 확인한 뒤 다시 시도해 주세요.';
-  return '요청을 완료하지 못했습니다.';
+  if (error instanceof TypeError) {
+    return 'Check the network connection and try again.';
+  }
+  return error instanceof Error && error.message
+    ? error.message
+    : 'The request could not be completed.';
 };
 
 export const ErrorState = ({
@@ -28,12 +33,12 @@ export const ErrorState = ({
 }) => (
   <section className="state-card state-card--error" aria-labelledby="error-heading">
     <h1 id="error-heading" tabIndex={-1}>
-      요청 오류
+      Request error
     </h1>
     <p role="alert">{safeErrorMessage(error)}</p>
     {onRetry ? (
       <button type="button" onClick={onRetry}>
-        다시 시도
+        Try again
       </button>
     ) : null}
   </section>

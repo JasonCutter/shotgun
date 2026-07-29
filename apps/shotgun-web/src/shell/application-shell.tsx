@@ -3,8 +3,10 @@ import { Outlet } from 'react-router';
 
 import { useAppRuntime } from '../app/providers.js';
 import { RouteFocus } from '../app/route-focus.js';
+import { ErrorState } from '../components/error-state.js';
+import { LoadingState } from '../components/loading-state.js';
 import { SkipLink } from '../components/skip-link.js';
-
+import { globalShellQueryOptions } from '../section3/section3-queries.js';
 import { SessionBoundaryScreen } from '../session/session-boundary-screen.js';
 import { reconnectSessionBoundary, sessionBoundaryQueryOptions } from '../session/session-query.js';
 import { PrimaryNavigation } from './primary-navigation.js';
@@ -17,6 +19,9 @@ export const ApplicationShell = () => {
   const boundaryQuery = useQuery(
     sessionBoundaryQueryOptions(apiClient, queryClient, sessionCycleState),
   );
+  const readySession =
+    boundaryQuery.data?.sessionState === 'READY' ? boundaryQuery.data.session : null;
+  const shellQuery = useQuery(globalShellQueryOptions(apiClient, readySession));
 
   const connState =
     connectivity.connectivityState === 'OFFLINE' ? ('OFFLINE' as const) : ('ONLINE' as const);
@@ -40,7 +45,6 @@ export const ApplicationShell = () => {
   }
 
   const boundary = boundaryQuery.data;
-
   if (!boundary || boundary.sessionState !== 'READY' || !boundary.session) {
     const activeBoundary = boundary
       ? connectivity.isOffline
@@ -55,8 +59,12 @@ export const ApplicationShell = () => {
           backendReadiness: 'UNAVAILABLE' as const,
           reasonCode: 'LOCAL_SERVER_UNAVAILABLE' as const,
           recoveryActions: [
-            { id: 'RECONNECT' as const, label: '다시 연결', enabled: true },
-            { id: 'CHECK_LOCAL_SERVER' as const, label: '로컬 서버 상태 확인', enabled: true },
+            { id: 'RECONNECT' as const, label: 'Reconnect', enabled: true },
+            {
+              id: 'CHECK_LOCAL_SERVER' as const,
+              label: 'Check local server status',
+              enabled: true,
+            },
           ],
           session: null,
         };
@@ -71,15 +79,45 @@ export const ApplicationShell = () => {
     );
   }
 
+  if (shellQuery.error) {
+    return (
+      <ErrorState
+        error={shellQuery.error}
+        onRetry={() => {
+          void shellQuery.refetch();
+        }}
+      />
+    );
+  }
+  if (shellQuery.isPending || !shellQuery.data) {
+    return <LoadingState message="Loading Global Shell…" />;
+  }
+  const shell = shellQuery.data;
+
   return (
     <div className="application-shell">
       <SkipLink />
-      <TopBar session={boundary.session} />
+      <TopBar session={boundary.session} shell={shell} />
+      {connectivity.isOffline ? (
+        <div className="global-banner global-banner-critical" role="alert">
+          Offline. Cached information may be stale; server actions and Search are disabled.
+        </div>
+      ) : shell.leadingWarning ? (
+        <div
+          className={`global-banner global-banner-${shell.leadingWarning.severity.toLowerCase()}`}
+          role={shell.leadingWarning.severity === 'CRITICAL' ? 'alert' : 'status'}
+        >
+          {shell.leadingWarning.message}
+          {shell.leadingWarning.additionalCount > 0
+            ? ` (${shell.leadingWarning.additionalCount} additional states)`
+            : ''}
+        </div>
+      ) : null}
       <div className="workspace-layout">
-        <PrimaryNavigation />
+        <PrimaryNavigation navigation={shell.navigation} />
         <main id="main-content" tabIndex={-1}>
           <RouteFocus />
-          <Outlet />
+          <Outlet context={{ shell }} />
         </main>
       </div>
     </div>

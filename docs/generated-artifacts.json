@@ -47,6 +47,19 @@
       "authority": "approved contract after user approval and Git merge"
     },
     {
+      "id": "KNOWLEDGE-FLOW-BASELINE-HTML",
+      "class": "GENERATED_VERSIONED_PRESENTATION",
+      "target": "docs/SHOTGUN_KNOWLEDGE_FLOW_BASELINE_v1.0.html",
+      "versioned": true,
+      "owner": "knowledge-flow-governance",
+      "canonicalInputs": [
+        "docs/architecture/knowledge-flow/knowledge-flow-baseline-v1.0.json"
+      ],
+      "generator": "scripts/render-knowledge-flow-baseline.mjs",
+      "regenerationTrigger": "approved structured-source change",
+      "authority": "presentation artifact only; JSON source is Canonical"
+    },
+    {
       "id": "KNOWLEDGE-FLOW-DETAILED-MAP-MIGRATION",
       "class": "MIGRATED_CANONICAL",
       "target": "docs/architecture/knowledge-flow/shotgun-knowledge-flow-detailed-map.md",

@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "identifierFormat": "ADR-NNN",
+  "identifierPolicy": {
+    "acceptedIdentifiersAreImmutable": true,
+    "renumberingAllowed": false,
+    "duplicateOwnersAllowed": false,
+    "gapsRequireExplicitRegistration": true
+  },
+  "expectedRange": {
+    "start": 1,
+    "end": 121,
+    "allowedGaps": []
+  },
+  "ownerRules": [
+    {
+      "start": 1,
+      "end": 17,
+      "kind": "INDIVIDUAL_FILES",
+      "path": "docs/architecture/adr",
+      "filenamePattern": "ADR-NNN-*.md"
+    },
+    {
+      "start": 18,
+      "end": 26,
+      "kind": "CONSOLIDATED_PHASE_RECORD",
+      "path": "docs/architecture/add/phase-02-transformation-and-grounding/architecture-decision-records.md"
+    },
+    {
+      "start": 27,
+      "end": 36,
+      "kind": "CONSOLIDATED_PHASE_RECORD",
+      "path": "docs/architecture/add/phase-03-knowledge-candidate-generation/architecture-decision-records.md"
+    },
+    {
+      "start": 37,
+      "end": 48,
+      "kind": "CONSOLIDATED_PHASE_RECORD",
+      "path": "docs/architecture/add/phase-04-comparison-change-approval/architecture-decision-records.md"
+    },
+    {
+      "start": 49,
+      "end": 60,
+      "kind": "CONSOLIDATED_PHASE_RECORD",
+      "path": "docs/architecture/add/phase-05-canonical-knowledge-and-discovery/architecture-decision-records.md"
+    },
+    {
+      "start": 61,
+      "end": 75,
+      "kind": "CONSOLIDATED_PHASE_RECORD",
+      "path": "docs/architecture/add/phase-06-utilization-results-feedback/architecture-decision-records.md"
+    },
+    {
+      "start": 76,
+      "end": 121,
+      "kind": "INDIVIDUAL_FILES",
+      "path": "docs/architecture/adr",
+      "filenamePattern": "ADR-NNN-*.md"
+    }
+  ],
+  "duplicateClassifications": [],
+  "supersessionRule": "Supersession keeps both identifiers and requires explicit metadata; identifiers are never reused.",
+  "governingAdr": "ADR-121"
+}

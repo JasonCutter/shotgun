@@ -6,6 +6,9 @@
 - Base SHA: `ec750c91c2a405cfa684bb73eed73e4ad02938c2`
 - Implementation Head: `1eccfb380a31b65af1ecf04c58e64150ea52b563`
 - Measurement Head: `6df6a2ee6e9d1697311ddac74d94d822ed86098c`
+- Approved Performance Gate measurement Head:
+  `19ff80a74d3e69413aaa3b0ccf93016f67bbd132`
+- Final Evidence Head: `7428d497730bf5537d8e7af7f3fbb94e6981645f`
 - Branch: `codex/frontend-phase-1-section-3`
 - Draft PR: [#42](https://github.com/JasonCutter/shotgun/pull/42)
 - Status: **BUDGET_APPROVED**

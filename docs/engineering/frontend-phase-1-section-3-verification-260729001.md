@@ -10,8 +10,8 @@
 - Measurement Head SHA: `6df6a2ee6e9d1697311ddac74d94d822ed86098c`
 - Approved Performance Gate measurement Head SHA:
   `19ff80a74d3e69413aaa3b0ccf93016f67bbd132`
-- Final Evidence Head SHA: `9ac3da943a5344a41bdcb77cc206d1a39c1ef16e`
-- Validated Publication Head SHA:
+- Final Evidence Head SHA: `7428d497730bf5537d8e7af7f3fbb94e6981645f`
+- Prior validated Publication Head SHA:
   `d5f4e65bd43211d97d168079e3d0650b2e04f3c9`
 - Frontend Phase 1 completion: **NOT APPROVED**
 - Canonical authority: GitHub `main`

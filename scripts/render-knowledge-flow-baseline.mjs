@@ -8,6 +8,7 @@ const sourcePath = path.join(
 );
 const outputPath = path.join(repoRoot, 'docs/SHOTGUN_KNOWLEDGE_FLOW_BASELINE_v1.0.html');
 const source = JSON.parse(readFileSync(sourcePath, 'utf8'));
+const checkOnly = process.argv.includes('--check');
 
 const escapeHtml = (value) =>
   String(value)
@@ -71,7 +72,20 @@ document.querySelectorAll('.phase').forEach((button)=>button.addEventListener('c
 </html>
 `;
 
-writeFileSync(outputPath, html, 'utf8');
-console.log(
-  `Wrote ${path.relative(repoRoot, outputPath)} from ${path.relative(repoRoot, sourcePath)}`,
-);
+if (checkOnly) {
+  const current = readFileSync(outputPath, 'utf8');
+  if (current !== html) {
+    console.error(
+      `Generated Knowledge Flow baseline is stale. Run: node ${path.relative(repoRoot, import.meta.filename)}.`,
+    );
+    process.exit(1);
+  }
+  console.log(
+    `PASS: ${path.relative(repoRoot, outputPath)} matches ${path.relative(repoRoot, sourcePath)}`,
+  );
+} else {
+  writeFileSync(outputPath, html, 'utf8');
+  console.log(
+    `Wrote ${path.relative(repoRoot, outputPath)} from ${path.relative(repoRoot, sourcePath)}`,
+  );
+}

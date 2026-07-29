@@ -1,19 +1,22 @@
 schema_version: 1
 transition:
-  status: in_progress
-  governing_adr: docs/architecture/adr/ADR-117-documentation-source-of-truth-canonicalization-and-publication-boundary.md
-  temporary_authority: notion
-  target_authority: github-main
+  status: active
+  governing_adr: docs/architecture/adr/ADR-120-canonical-cutover-activation-and-legacy-migration-boundary.md
+  prior_governing_adr: docs/architecture/adr/ADR-117-documentation-source-of-truth-canonicalization-and-publication-boundary.md
+  temporary_authority: none
+  canonical_authority: github-main
   repository: JasonCutter/shotgun
   branch: main
-  cutover_commit: null
-  cutover_approved_by: null
-  cutover_approved_at: null
+  cutover_commit: 08a6c7eb48b893a9309dfb90fbc3c4774a1f19a7
+  cutover_approved_by: user
+  cutover_approved_at: 2026-07-29
+  legacy_migration_status: in_progress_non_blocking
 
 classifications:
   - CANONICAL
   - CANDIDATE
   - REFERENCE
+  - REFERENCE_PENDING_MIGRATION
   - GENERATED
   - ARCHIVED
   - SUPERSEDED
@@ -38,7 +41,7 @@ documents:
   - id: ADR-116
     path: docs/architecture/adr/ADR-116-zero-project-session-principal-command-project-bootstrap-persistence-boundary.md
     classification: CANONICAL
-    status: accepted_pending_cutover
+    status: accepted
     approved_by: user
     approved_at: 2026-07-28
     legacy_source: notion
@@ -48,7 +51,7 @@ documents:
   - id: ADR-117
     path: docs/architecture/adr/ADR-117-documentation-source-of-truth-canonicalization-and-publication-boundary.md
     classification: CANONICAL
-    status: accepted_pending_cutover
+    status: accepted_amended_by_adr_120
     approved_by: user
     approved_at: 2026-07-28
     legacy_source: notion
@@ -56,10 +59,20 @@ documents:
     supersedes:
       - notion-canonical-storage-decision-2026-07-16-after-cutover
 
+  - id: ADR-120
+    path: docs/architecture/adr/ADR-120-canonical-cutover-activation-and-legacy-migration-boundary.md
+    classification: CANONICAL
+    status: accepted
+    approved_by: user
+    approved_at: 2026-07-29
+    supersedes:
+      - adr-117-pre-cutover-sequencing-requirement
+      - documentation-sot-cutover-plan-pre-cutover-blocking-sequence
+
   - id: FRONTEND-PHASE-1-SECTION-3-PERSISTENCE-CONTRACT-REVISION-260728001
     path: docs/architecture/contracts/snapshots/frontend-phase-1-section-3/frontend-phase-1-section-3-persistence-contract-revision-260728001.md
     classification: CANONICAL
-    status: approved_pending_cutover
+    status: approved
     approved_by: user
     approved_at: 2026-07-28
     governing_adr: ADR-116
@@ -68,28 +81,30 @@ documents:
   - id: SHOTGUN-KNOWLEDGE-FLOW-BASELINE-V1
     path: docs/SHOTGUN_KNOWLEDGE_FLOW_BASELINE_v1.0.html
     classification: CANONICAL
-    status: existing_requires_inventory
+    status: canonical_as_is_normalization_pending
     source_format: html
     preferred_source_format: markdown_or_structured_source
 
   - id: SHOTGUN-REFERENCE-ARCHITECTURE-STRATEGY-KO
     path: docs/shotgun_reference_architecture_strategy_ko.html
     classification: REFERENCE
-    status: existing_requires_inventory
+    status: retained_reference_inventory_pending
 
 external_references:
   - id: SHOTGUN-KNOWLEDGE-FLOW-DETAILED-MAP
-    classification: CANONICAL
-    role: governing_reference
+    classification: REFERENCE_PENDING_MIGRATION
+    role: legacy_governing_reference_pending_git_canonicalization
     source:
       provider: google-drive
       document_id: 1HazG-oAeJ8Sgg_mPmBiWpQqeCeeAoDUuWgqVNJR1DCg
     target_path: docs/architecture/knowledge-flow/shotgun-knowledge-flow-detailed-map.md
     retention_status: migrate_then_archive_legacy
     migration_status: pending
+    canonical_authority: none_until_git_merge
 
 inventory:
-  status: pending
+  status: in_progress_non_blocking
+  authority_effect: none
   required_sources:
     - notion
     - google-drive
@@ -97,8 +112,10 @@ inventory:
   unresolved_items:
     - export Phase 1-6 ADD documents
     - export Frontend and Human Interaction Architecture hierarchy
+    - migrate Shotgun Knowledge Flow Detailed Map
     - reconcile ADR index and document numbering
     - classify Stage 12.1 architecture records
     - classify implementation and engineering completion records
     - identify duplicates and superseded snapshots
     - establish generated-artifact ownership
+  rule: unresolved legacy items are non-canonical until imported, reconciled, approved where required, and merged to main

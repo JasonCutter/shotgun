@@ -4,192 +4,105 @@
 - Created: 2026-07-28
 - Amended: 2026-07-29
 - Authority cutover status: active
-- Legacy migration status: in progress, non-blocking
+- Governance implementation status: complete
+- Final cross-store inventory status: pending, non-blocking
 - Governing ADRs:
   - [ADR-117](../architecture/adr/ADR-117-documentation-source-of-truth-canonicalization-and-publication-boundary.md)
   - [ADR-120](../architecture/adr/ADR-120-canonical-cutover-activation-and-legacy-migration-boundary.md)
+  - [ADR-121](../architecture/adr/ADR-121-identifier-stability-registry-and-duplicate-resolution-boundary.md)
 - Canonical repository: `JasonCutter/shotgun`
 - Canonical branch: `main`
 - Canonical Cutover Commit: `08a6c7eb48b893a9309dfb90fbc3c4774a1f19a7`
 
 ## Current operating state
 
-GitHub `main` is the sole Canonical authority when the recorded Cutover Commit is reachable from `main`.
+GitHub `main` is the sole Canonical authority. Notion is Candidate workspace, mirror, navigation hub, Legacy Reference and historical archive. Google Drive and other external stores are Reference or Archive locations.
 
-Notion is Candidate workspace, mirror, navigation hub, and historical archive. Google Drive and other external stores are Reference or Archive locations. Unmigrated legacy items are not a second authority.
+The governance backlog requested on 2026-07-29 has been implemented:
 
-The original plan required complete historical inventory, export, validation tooling, and drift resolution before authority cutover. ADR-120 supersedes only that blocking sequence. Remaining migration work continues visibly after cutover and must not be reported as complete until verified.
+- Phase 1–6 ADD hierarchy migration;
+- Project-wide ADR identifier and duplicate-owner governance;
+- Stage 12.1 record classification;
+- Engineering Evidence classification;
+- Generated Artifact Ownership;
+- automated documentation validation commands and CI Gate.
 
-## Objective
-
-Preserve Project Shotgun's authoritative text, approval history, superseded decisions, open issues, source provenance, reports, inspections, tests, and completion evidence in Git without either:
-
-- retaining two active Canonical authorities, or
-- falsely claiming that the legacy migration backlog is complete.
-
-## Completed foundation
-
-The repository contains:
-
-- ADR-116
-- ADR-117
-- ADR-120
-- Section 3 persistence contract revision
-- `docs/CANONICAL.md`
-- `docs/canonical-manifest.yaml`
-- this plan
-- README Canonical status
-- Git-backed report and verification-record requirements
-
-Authority cutover was explicitly approved by the user on 2026-07-29.
+The final Notion, Google Drive and Git inventory remains visible and non-blocking. It does not create a second authority.
 
 ## Completed migration increments
 
-### Google Drive — Knowledge Flow Detailed Map
+### Knowledge Flow Detailed Map
 
 ```text
-Title: Shotgun Knowledge Flow Detailed Map
-Source provider: Google Drive / Google Docs
-Source document ID: 1HazG-oAeJ8Sgg_mPmBiWpQqeCeeAoDUuWgqVNJR1DCg
-Source revision: 9
-Source version: v0.3
+Source: Google Docs document 1HazG-oAeJ8Sgg_mPmBiWpQqeCeeAoDUuWgqVNJR1DCg
+Revision: 9
+Version: v0.3
 Target: docs/architecture/knowledge-flow/shotgun-knowledge-flow-detailed-map.md
-Target classification: CANONICAL
-Legacy source classification: REFERENCE
 Verification: docs/engineering/knowledge-flow-detailed-map-migration-verification-260729001.md
 ```
 
-The Google Drive source is retained and is not deleted. New edits made only in Google Docs are non-Canonical until represented in a reviewed Git pull request and merged to `main`.
+The Google Drive source remains a Legacy Reference. New Drive-only edits are Candidate.
 
-### Notion — Frontend and Human Interaction Architecture
+### Frontend and Human Interaction Architecture
 
 ```text
-Root source page: 3a15181d-71ad-81e4-bfa4-ee2578e692a0
-Implementation plan source: 3a75181d-71ad-817a-9675-c984455b2c3b
-ADR index source: 3a65181d-71ad-8182-b0fb-f84d722f98a2
+Source root: Notion page 3a15181d-71ad-81e4-bfa4-ee2578e692a0
 Target root: docs/architecture/frontend/README.md
 Implementation plan: docs/implementation/frontend-phase-1-5-plan-v1.0.md
-Target classification: CANONICAL
-Legacy hierarchy classification: REFERENCE
 Verification: docs/engineering/frontend-architecture-migration-verification-260729001.md
 ```
 
-Migrated structure:
+The consolidated Git hierarchy preserves five Phases, twelve Sections, Cross-Phase contracts, the Frontend ADR index, status reconciliation and implementation boundaries.
 
-- Frontend Architecture entrypoint
-- Phase 1 through Phase 5
-- 12 Section structure and current implementation status
-- Phase 1–2 integration and Phases 1–5 completion audit contracts
-- Frontend ADR index
-- Frontend Phase 1–5 Implementation Plan v1.0
-- source inventory, status reconciliation and verification evidence
-
-The migration uses a consolidated Git hierarchy rather than creating one file per historical Notion child page. Historical child pages remain Legacy References. Existing Git ADR, contract snapshot and engineering files are not duplicated or renamed.
-
-The migration preserves these distinctions:
-
-- Architecture/Contract completion versus Product implementation completion
-- Phase 1 Sections 1 and 2 completed versus Section 3 implementation not started at source capture
-- Phase 1 incomplete
-- Phases 2 through 5 design/contract confirmed with Product implementation verification pending
-- historical plan state versus later evidence-backed completion state
-
-After merge, Notion-only Frontend edits are Candidate until represented in Git and merged.
-
-## Post-cutover migration work
-
-### 1. Inventory
-
-Inventory all relevant Notion, Google Drive, and Git documents.
-
-For each item record:
+### Phase 1–6 ADD hierarchy
 
 ```text
-id
-title
-source
-source identifier or URL
-current Git path when present
-classification
-approval state
-approval date
-supersedes / superseded-by
-content owner
-migration target
-migration status
+Source root: Notion page 39f5181d-71ad-81a6-a51f-f7f2a3a88ee6
+Original export commit: f0d7f7a65a11f28dc9e3bc3a6e47a084b46541eb
+Target root: docs/architecture/add/README.md
+Documents: 63 Markdown source documents plus migration verification
+Coverage: Phase 1–6, Step 1–22, approved Section records, ADR-018–075
+Verification: docs/engineering/phase-1-6-add-migration-verification-260729001.md
 ```
 
-Rules:
+Historical Notion authority wording is retained as dated provenance. Git `main` is the current authority.
 
-- Do not infer authority from the latest modified timestamp.
-- Do not delete duplicates during inventory.
-- Preserve exact approval and completion claims.
-- Separate design, implementation, local verification, remote CI, approval, merge, deployment, and production verification.
-- Unmigrated items remain non-Canonical.
+## Completed governance increments
 
-### 2. Export and normalize
+### ADR identifier and duplicate governance
 
-#### Notion
+- Governing decision: ADR-121
+- Registry: `docs/architecture/adr/adr-registry.json`
+- Accepted identifiers are immutable.
+- Each identifier has one authoritative owner.
+- ADR-018–075 remain owned by consolidated Phase records.
+- Other authoritative occurrences use individual ADR files.
+- Duplicates are classified, not silently deleted.
 
-Remaining reviewed Git migration scope:
+### Stage 12.1 classification
 
-- ADD hub and Phase 1–6 ADDs
-- Project-wide ADR indexes and ADR reconciliation
-- Stage 12.1 Architecture records
-- user decision records not already represented in Git
-- change history and unresolved-item pages
+- Classification: `docs/architecture/stage-12-1/README.md`
+- Final current status authority: `docs/engineering/stage-12-1-completion-record.md`
+- Architecture, Gate evidence, final completion, deferred work and historical statuses are separated.
 
-The Frontend Architecture hierarchy is recorded in the completed increment above.
+### Engineering Evidence classification
 
-Retain stable IDs, legacy URLs, provenance, approval state, supersession rationale, rejected alternatives, and impact. Do not promote Candidate text during export.
+- Policy: `docs/engineering/README.md`
+- Registry: `docs/engineering/evidence-registry.json`
+- Local, CI, review, approval, merge, release, deployment and production verification remain distinct.
 
-#### Google Drive
+### Generated Artifact Ownership
 
-Move remaining Shotgun-authored governing text to Git through reviewed migration pull requests.
+- Policy: `docs/governance/generated-artifact-ownership.md`
+- Registry: `docs/generated-artifacts.json`
+- Compiled Truth remains a derived runtime projection.
+- approved snapshots are retained approval artifacts;
+- transient CI output is supporting evidence only;
+- lockfiles and migrated outputs have explicit ownership.
 
-The Knowledge Flow Detailed Map migration is complete. External, large, licensed, sensitive, regulated, or binary materials may remain outside Git with a safe reference-manifest entry.
+### Documentation validation tooling
 
-#### Existing Git documents
-
-Classify and reconcile:
-
-- existing ADRs
-- contract snapshots
-- canonical-normalization records
-- implementation plans
-- engineering audits and completion records
-- HTML baselines and generated outputs
-
-## Preferred Canonical structure
-
-Preserve stable paths where safe and use this structure for new normalization:
-
-```text
-docs/
-├─ CANONICAL.md
-├─ canonical-manifest.yaml
-├─ architecture/
-│  ├─ add/
-│  ├─ adr/
-│  ├─ contracts/
-│  │  └─ snapshots/
-│  ├─ decisions/
-│  ├─ frontend/
-│  ├─ knowledge-flow/
-│  └─ canonical-normalization/
-├─ implementation/
-├─ engineering/
-├─ governance/
-├─ operations/
-├─ references/
-└─ archive/
-```
-
-Avoid a path-only rewrite when it would break history or repository-relative links without providing a clear governance benefit.
-
-## Validation tooling backlog
-
-Implement scripts equivalent to:
+Commands:
 
 ```text
 npm run docs:validate
@@ -199,74 +112,83 @@ npm run docs:canonical
 npm run docs:drift
 ```
 
-Minimum checks:
+The Quality CI job runs `npm run docs:validate` before formatting, lint and tests.
 
-- required metadata and known classifications
-- duplicate document and ADR IDs
-- repository-relative links and referenced files
-- approval and supersession consistency
-- Candidate/Canonical conflicts
-- generated-artifact source ownership
-- external-only Canonical claims
-- Notion mirror metadata and Git revision validity
+Checks include:
 
-Until a gate is implemented, record it as `NOT_IMPLEMENTED`; never report it as `PASS`.
+- repository-relative links;
+- ADR identifier ownership, completeness and duplicate owners;
+- Canonical governance paths;
+- Evidence Registry paths;
+- Generated Artifact ownership metadata and versioned targets;
+- Manifest target existence;
+- completed migration items remaining incorrectly unresolved.
 
-## Migration pull-request evidence
+## Preferred Canonical structure
 
-Each material migration PR must show:
+```text
+docs/
+├─ CANONICAL.md
+├─ canonical-manifest.yaml
+├─ generated-artifacts.json
+├─ architecture/
+│  ├─ add/
+│  ├─ adr/
+│  ├─ contracts/
+│  ├─ frontend/
+│  ├─ knowledge-flow/
+│  └─ stage-12-1/
+├─ engineering/
+├─ implementation/
+├─ governance/
+├─ operations/
+├─ references/
+└─ archive/
+```
 
-- inventory items included
-- migrated document count by classification
-- unresolved drift and conflicts
-- generated/reference exclusions
-- local and remote validation results
-- provenance and approval state
-- exact Git commit that the evidence supports
+Avoid path-only rewrites that break stable history without a governance benefit.
 
-No unresolved Canonical conflict may be hidden. A semantic conflict requires explicit user review before the imported text becomes Canonical.
+## Migration and evidence rules
+
+Each material migration or governance PR must show:
+
+- inventory items included;
+- classification and approval state;
+- source provenance;
+- unresolved drift and conflicts;
+- exact subject commit;
+- local and remote results without converting `NOT_RUN` into `PASS`;
+- known limits;
+- final merge and publication state.
+
+No unresolved Canonical conflict may be hidden. A semantic conflict requires explicit user review.
 
 ## Publication and mirror update
 
-- Git `main` is authoritative even when a mirror is stale.
-- Git-to-Notion publication may be automated as one-way synchronization.
+- Git `main` remains authoritative even when a mirror is stale.
+- Git-to-Notion publication may be automated one-way.
 - Bidirectional automatic synchronization is prohibited.
-- High-value mirrors should identify Canonical path, commit SHA, status, and synchronization date.
-- Legacy Google Drive or Notion material may be marked archive only after successful migration verification; do not delete it as part of inventory.
+- High-value mirrors should show Canonical path, revision, status and synchronization date.
+- Legacy external sources are retained until inventory and archival verification complete.
 
 ## Rollback boundary
 
-Do not silently restore Notion or another external store as Canonical. A reversal requires a new ADR that records the reason, data-loss risk, conflict policy, and new cutover boundary, plus explicit user approval.
+Do not silently restore Notion or another store as Canonical. Reversal requires a new ADR, explicit user approval and a recorded cutover boundary.
 
-## Completion criteria for legacy migration
+## Remaining inventory backlog
 
-Legacy migration is complete only when:
+- complete the final Notion, Google Drive and Git inventory;
+- review non-ADR duplicate and superseded contract snapshots;
+- normalize the HTML Knowledge Flow baseline to a structured source format;
+- add commit metadata to high-value mirrors and archive legacy sources safely.
 
-- the final inventory is committed,
-- required governing documents are migrated,
-- documentation gates are implemented and pass,
-- unresolved semantic drift is resolved,
-- mirrors and external references have correct status metadata,
-- contributors can identify every active Canonical governing document from Git alone.
-
-These criteria govern migration completion, not the already active GitHub authority cutover.
-
-## Current unresolved backlog
-
-- Phase 1–6 ADD migration
-- Project-wide ADR number, duplicate and supersession reconciliation
-- Stage 12.1 architecture record classification
-- implementation and engineering completion-record classification
-- duplicate and superseded snapshot review
-- generated-artifact ownership
-- documentation validation tooling
-- final Notion, Google Drive and Git inventory
+These items have no authority effect and must not be reported as complete before verification.
 
 ## Decision history
 
-- 2026-07-28: ADR-117 accepted Git `main` as the target authority and defined a pre-cutover migration sequence.
-- 2026-07-29: Git-backed durable-report requirements were added.
-- 2026-07-29: the user directed that the `pending` state be resolved.
-- 2026-07-29: ADR-120 separated immediate authority activation from truthful, continuing legacy migration and superseded the original blocking sequence only.
-- 2026-07-29: Knowledge Flow Detailed Map v0.3, Google Docs revision `9`, was migrated with provenance and verification evidence.
-- 2026-07-29: Frontend and Human Interaction Architecture was consolidated from its approved Notion hierarchy into Git, preserving current status, cross-phase contracts, implementation boundaries and legacy source references.
+- 2026-07-28: ADR-117 defined Git `main` as the target authority and a pre-cutover migration sequence.
+- 2026-07-29: ADR-120 activated Git authority while preserving a visible post-cutover migration backlog.
+- 2026-07-29: Knowledge Flow Detailed Map migrated with source provenance.
+- 2026-07-29: Frontend Architecture migrated and status-reconciled.
+- 2026-07-29: Phase 1–6 ADD hierarchy migrated from the verified historical export.
+- 2026-07-29: ADR-121, Stage 12.1 and Evidence classifications, Generated Artifact Ownership and documentation validation tooling completed the authorized governance work.

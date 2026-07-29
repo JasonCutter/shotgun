@@ -2,6 +2,12 @@
   "schemaVersion": 1,
   "snapshotDate": "2026-07-29",
   "snapshotBaseCommit": "92a458c475ffd5ab928e2c30a2e43faf2c0f68b7",
+  "completionSequence": {
+    "inventoryMergeCommit": "445c7fce93c9bec8c262da39ea0ea8688eaeca3d",
+    "contractReconciliationMergeCommit": "87946bdbda8d407d7d3b8d1e6a30411d433efdd8",
+    "structuredBaselineMergeCommit": "094eb1f486f808a315c0f4eeaaae01c58c327c61",
+    "mirrorArchiveMergeCommit": "2961ceecaa86addf4046950a7acc09f175091568"
+  },
   "scope": "Project Shotgun governing documents and durable evidence",
   "canonicalAuthority": {
     "provider": "github",
@@ -16,21 +22,21 @@
   },
   "notion": {
     "classification": "REFERENCE_MIRROR_ARCHIVE",
-    "status": "INVENTORIED_BY_REGISTERED_ROOTS",
+    "status": "INVENTORIED_AND_HIGH_VALUE_METADATA_NORMALIZED",
     "roots": [
       {
         "id": "39f5181d-71ad-81a6-a51f-f7f2a3a88ee6",
         "title": "Project Shotgun — Architecture Design Documents",
         "coverage": "Phase 1–6 ADD hierarchy, child ADR records, decisions, validation and change history",
         "gitTarget": "docs/architecture/add/README.md",
-        "retention": "LEGACY_REFERENCE_AND_HISTORY"
+        "retention": "MIRROR_LEGACY_REFERENCE_AND_HISTORY"
       },
       {
         "id": "3a15181d-71ad-81e4-bfa4-ee2578e692a0",
         "title": "Frontend and Human Interaction Architecture",
         "coverage": "Frontend phases, sections, cross-phase contracts and child decision records",
         "gitTarget": "docs/architecture/frontend/README.md",
-        "retention": "LEGACY_REFERENCE_AND_HISTORY"
+        "retention": "MIRROR_LEGACY_REFERENCE_AND_HISTORY"
       }
     ],
     "standaloneHighValueItems": [
@@ -50,13 +56,13 @@
         "id": "3a55181d-71ad-8117-b8b8-f5edd362a78e",
         "title": "Stage 12.1 — Quality Evaluation Architecture",
         "gitTarget": "docs/architecture/stage-12-1/README.md",
-        "retention": "LEGACY_REFERENCE"
+        "retention": "LEGACY_REFERENCE_HISTORICAL_STAGE_RECORD"
       },
       {
         "id": "3ab5181d-71ad-8197-90a1-c8de109fdfd7",
         "title": "ADR-117 — Documentation Source of Truth",
         "gitTarget": "docs/architecture/adr/ADR-117-documentation-source-of-truth-canonicalization-and-publication-boundary.md",
-        "retention": "MIRROR"
+        "retention": "MIRROR_HISTORICAL_PRE_CUTOVER_DECISION"
       },
       {
         "id": "3ab5181d-71ad-81ff-87c2-d92e7a87a00b",
@@ -79,8 +85,8 @@
       {
         "id": "39f5181d-71ad-8136-89af-fedef6ea57cf",
         "title": "Project Shotgun — Phase 1 잔여 설계회의 준비안 허브",
-        "gitTarget": null,
-        "retention": "ARCHIVE_CANDIDATE",
+        "gitTarget": "docs/architecture/add/phase-01-input-and-original-preservation/README.md",
+        "retention": "ARCHIVED_HISTORICAL_PREPARATION_HUB",
         "reason": "historical preparation hub superseded by approved Phase 1 ADD hierarchy"
       }
     ],
@@ -88,12 +94,12 @@
   },
   "googleDrive": {
     "classification": "REFERENCE_ARCHIVE",
-    "status": "INVENTORIED_BY_SEARCH_AND_EXPLICIT_ID",
+    "status": "INVENTORIED_AND_HIGH_VALUE_METADATA_NORMALIZED",
     "items": [
       {
         "id": "1HazG-oAeJ8Sgg_mPmBiWpQqeCeeAoDUuWgqVNJR1DCg",
         "title": "Shotgun Knowledge Flow Detailed Map",
-        "revision": "9",
+        "revisionAfterMetadataUpdate": "AIroW37fHy46xXR0Q0MxHavVg64gsEkmPM5pHaoUg8U8ZIsnMzlUZGGcKQfFupMGuZ8ZKcILqeFuYMlZK0Aqe6BkgPDdoqj8aPElh_kyyVx_",
         "gitTarget": "docs/architecture/knowledge-flow/shotgun-knowledge-flow-detailed-map.md",
         "retention": "LEGACY_SOURCE_REFERENCE",
         "canonicalAuthority": "GIT_MAIN_AT_TARGET"
@@ -101,20 +107,34 @@
     ],
     "excludedSearchResultsRule": "Files without a Project Shotgun governing relationship are outside inventory scope even when broad Drive search returns them"
   },
+  "contractSnapshots": {
+    "registry": "docs/architecture/contracts/contract-snapshot-registry.json",
+    "status": "RECONCILED",
+    "duplicates": 0,
+    "supersededWholeRecords": 0,
+    "unresolvedAuthorityConflicts": 0
+  },
+  "knowledgeFlowBaseline": {
+    "canonicalStructuredSource": "docs/architecture/knowledge-flow/knowledge-flow-baseline-v1.0.json",
+    "generatedPresentation": "docs/SHOTGUN_KNOWLEDGE_FLOW_BASELINE_v1.0.html",
+    "generator": "scripts/render-knowledge-flow-baseline.mjs",
+    "status": "STRUCTURED_SOURCE_ACTIVE_AND_DRIFT_GATED"
+  },
+  "mirrorArchiveRegistry": "docs/inventory/mirror-archive-registry.json",
   "conflictResolution": {
     "preferredAuthority": "latest user-approved Git record with durable implementation or verification evidence",
     "externalNewerTimestampDoesNotOverrideGit": true,
-    "ambiguousHistoricalItem": "retain as REFERENCE or ARCHIVE_CANDIDATE; do not promote or delete",
+    "ambiguousHistoricalItem": "retain as REFERENCE or ARCHIVED; do not promote or delete",
     "semanticConflict": "record explicit decision and supersession; never silently merge"
   },
   "result": {
+    "status": "COMPLETE",
     "knownGoverningRootsCovered": true,
     "externalCanonicalAuthoritiesRemaining": false,
     "unclassifiedHighValueExternalItemsRemaining": false,
-    "followupWork": [
-      "non-ADR contract snapshot duplicate and supersession review",
-      "HTML Knowledge Flow baseline structured-source conversion",
-      "high-value mirror commit metadata and archive normalization"
-    ]
+    "unresolvedContractSnapshotAuthorityConflicts": 0,
+    "structuredBaselinePending": false,
+    "highValueMirrorMetadataPending": false,
+    "followupWork": []
   }
 }

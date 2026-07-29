@@ -10,7 +10,8 @@ transition:
   cutover_commit: 08a6c7eb48b893a9309dfb90fbc3c4774a1f19a7
   cutover_approved_by: user
   cutover_approved_at: 2026-07-29
-  legacy_migration_status: governance_complete_final_inventory_pending
+  legacy_migration_status: complete
+  inventory_status: complete
 
 classifications:
   - CANONICAL
@@ -94,12 +95,34 @@ documents:
     governing_adr: ADR-116
     supersedes: []
 
-  - id: SHOTGUN-KNOWLEDGE-FLOW-BASELINE-V1
-    path: docs/SHOTGUN_KNOWLEDGE_FLOW_BASELINE_v1.0.html
+  - id: CONTRACT-SNAPSHOT-REGISTRY
+    path: docs/architecture/contracts/contract-snapshot-registry.json
     classification: CANONICAL
-    status: canonical_as_is_normalization_pending
-    source_format: html
-    preferred_source_format: markdown_or_structured_source
+    status: reconciled_active
+    approved_by: user
+    approved_at: 2026-07-29
+    policy: docs/architecture/contracts/README.md
+    verification_record: docs/engineering/contract-snapshot-reconciliation-verification-260729001.md
+
+  - id: SHOTGUN-KNOWLEDGE-FLOW-BASELINE-V1-STRUCTURED-SOURCE
+    path: docs/architecture/knowledge-flow/knowledge-flow-baseline-v1.0.json
+    classification: CANONICAL
+    status: active_structured_source
+    approved_by: user
+    approved_at: 2026-07-29
+    document_version: v1.0
+    generated_presentation: docs/SHOTGUN_KNOWLEDGE_FLOW_BASELINE_v1.0.html
+    generator: scripts/render-knowledge-flow-baseline.mjs
+    verification_record: docs/engineering/knowledge-flow-baseline-structured-source-verification-260729001.md
+
+  - id: SHOTGUN-KNOWLEDGE-FLOW-BASELINE-V1-HTML
+    path: docs/SHOTGUN_KNOWLEDGE_FLOW_BASELINE_v1.0.html
+    classification: GENERATED
+    status: generated_versioned_presentation
+    approved_by: user
+    approved_at: 2026-07-29
+    canonical_source: docs/architecture/knowledge-flow/knowledge-flow-baseline-v1.0.json
+    generator: scripts/render-knowledge-flow-baseline.mjs
 
   - id: SHOTGUN-KNOWLEDGE-FLOW-DETAILED-MAP
     path: docs/architecture/knowledge-flow/shotgun-knowledge-flow-detailed-map.md
@@ -111,8 +134,8 @@ documents:
     source:
       provider: google-drive
       document_id: 1HazG-oAeJ8Sgg_mPmBiWpQqeCeeAoDUuWgqVNJR1DCg
-      revision_id: "9"
-      modified_at: 2026-07-24T12:15:20.335Z
+      migration_revision_id: "9"
+      metadata_revision_id: AIroW37fHy46xXR0Q0MxHavVg64gsEkmPM5pHaoUg8U8ZIsnMzlUZGGcKQfFupMGuZ8ZKcILqeFuYMlZK0Aqe6BkgPDdoqj8aPElh_kyyVx_
       export_mime_type: text/markdown
       export_sha256: ced8a29b74c0c24b1cb82607077ea92b6ecc7dc90f75d17f539241b6c5acc2e7
     migration:
@@ -205,16 +228,44 @@ documents:
     approved_by: user
     approved_at: 2026-07-29
     commands:
+      - docs:knowledge-flow:check
       - docs:validate
       - docs:links
       - docs:adr-index
       - docs:canonical
       - docs:drift
 
+  - id: FINAL-CROSS-STORE-INVENTORY
+    path: docs/inventory/cross-store-inventory.json
+    classification: CANONICAL
+    status: complete
+    approved_by: user
+    approved_at: 2026-07-29
+    policy: docs/inventory/README.md
+    verification_record: docs/engineering/final-cross-store-inventory-verification-260729001.md
+
+  - id: MIRROR-ARCHIVE-REGISTRY
+    path: docs/inventory/mirror-archive-registry.json
+    classification: CANONICAL
+    status: complete
+    approved_by: user
+    approved_at: 2026-07-29
+    policy: docs/inventory/mirrors-and-archives.md
+    verification_record: docs/engineering/mirror-archive-normalization-verification-260729001.md
+
+  - id: DOCUMENTATION-LEGACY-MIGRATION-COMPLETION
+    path: docs/engineering/documentation-legacy-migration-completion-260729001.md
+    classification: CANONICAL
+    status: final_after_merge
+    approved_by: user
+    approved_at: 2026-07-29
+    tested_head: b3e101cc08b86c07c49d4a8940dc242d9766a403
+    github_actions_run: 30422731186
+
   - id: SHOTGUN-REFERENCE-ARCHITECTURE-STRATEGY-KO
     path: docs/shotgun_reference_architecture_strategy_ko.html
     classification: REFERENCE
-    status: retained_reference_inventory_pending
+    status: retained_reference_inventoried
 
 external_references:
   - id: SHOTGUN-KNOWLEDGE-FLOW-DETAILED-MAP-GOOGLE-DRIVE
@@ -223,39 +274,53 @@ external_references:
     source:
       provider: google-drive
       document_id: 1HazG-oAeJ8Sgg_mPmBiWpQqeCeeAoDUuWgqVNJR1DCg
-      revision_id: "9"
-      modified_at: 2026-07-24T12:15:20.335Z
+      metadata_revision_id: AIroW37fHy46xXR0Q0MxHavVg64gsEkmPM5pHaoUg8U8ZIsnMzlUZGGcKQfFupMGuZ8ZKcILqeFuYMlZK0Aqe6BkgPDdoqj8aPElh_kyyVx_
     target_path: docs/architecture/knowledge-flow/shotgun-knowledge-flow-detailed-map.md
-    retention_status: retain_as_legacy_source
+    retention_status: retain_as_legacy_source_with_canonical_metadata
     migration_status: migrated_to_git
+    mirror_metadata_status: normalized
     canonical_authority: git-main-at-target-path
 
   - id: PHASE-1-6-ADD-NOTION-HIERARCHY
     classification: REFERENCE
-    role: legacy_source_hierarchy_after_git_migration
+    role: mirror_and_legacy_source_hierarchy_after_git_migration
     source:
       provider: notion
       root_page_id: 39f5181d-71ad-81a6-a51f-f7f2a3a88ee6
     target_path: docs/architecture/add/README.md
-    retention_status: retain_as_legacy_source_and_history
+    retention_status: retain_as_mirror_legacy_source_and_history
     migration_status: migrated_to_git
+    mirror_metadata_status: normalized
     canonical_authority: git-main-at-target-paths
 
   - id: FRONTEND-ARCHITECTURE-NOTION-HIERARCHY
     classification: REFERENCE
-    role: legacy_source_hierarchy_after_git_consolidation
+    role: mirror_and_legacy_source_hierarchy_after_git_consolidation
     source:
       provider: notion
       root_page_id: 3a15181d-71ad-81e4-bfa4-ee2578e692a0
       implementation_plan_page_id: 3a75181d-71ad-817a-9675-c984455b2c3b
       adr_index_page_id: 3a65181d-71ad-8182-b0fb-f84d722f98a2
     target_path: docs/architecture/frontend/README.md
-    retention_status: retain_as_legacy_source_and_history
+    retention_status: retain_as_mirror_legacy_source_and_history
     migration_status: migrated_to_git_consolidated
+    mirror_metadata_status: normalized
     canonical_authority: git-main-at-target-paths
 
+  - id: PHASE-1-PREPARATION-HUB-NOTION
+    classification: ARCHIVED
+    role: historical_preparation_hub
+    source:
+      provider: notion
+      page_id: 39f5181d-71ad-8136-89af-fedef6ea57cf
+    target_path: docs/architecture/add/phase-01-input-and-original-preservation/README.md
+    retention_status: archived_in_place_no_deletion
+    mirror_metadata_status: normalized
+    canonical_authority: git-main-at-target-path
+
 inventory:
-  status: governance_complete_final_inventory_pending
+  status: complete
+  completed_at: 2026-07-29
   authority_effect: none
   required_sources:
     - notion
@@ -290,8 +355,26 @@ inventory:
       completed_at: 2026-07-29
       target_path: scripts/docs-validation.ts
       ci_workflow: .github/workflows/ci.yml
-  unresolved_items:
-    - complete final Notion, Google Drive, and Git inventory
-    - review non-ADR duplicate and superseded contract snapshots
-    - normalize the HTML Knowledge Flow baseline to a structured source format
-  rule: unresolved legacy items are non-canonical until imported, reconciled, approved where required, and merged to main
+    - id: FINAL-CROSS-STORE-INVENTORY
+      completed_at: 2026-07-29
+      target_path: docs/inventory/cross-store-inventory.json
+      verification_record: docs/engineering/final-cross-store-inventory-verification-260729001.md
+      merge_commit: 445c7fce93c9bec8c262da39ea0ea8688eaeca3d
+    - id: CONTRACT-SNAPSHOT-RECONCILIATION
+      completed_at: 2026-07-29
+      target_path: docs/architecture/contracts/contract-snapshot-registry.json
+      verification_record: docs/engineering/contract-snapshot-reconciliation-verification-260729001.md
+      merge_commit: 87946bdbda8d407d7d3b8d1e6a30411d433efdd8
+    - id: KNOWLEDGE-FLOW-BASELINE-STRUCTURED-SOURCE
+      completed_at: 2026-07-29
+      target_path: docs/architecture/knowledge-flow/knowledge-flow-baseline-v1.0.json
+      verification_record: docs/engineering/knowledge-flow-baseline-structured-source-verification-260729001.md
+      merge_commit: 094eb1f486f808a315c0f4eeaaae01c58c327c61
+    - id: MIRROR-ARCHIVE-NORMALIZATION
+      completed_at: 2026-07-29
+      target_path: docs/inventory/mirror-archive-registry.json
+      verification_record: docs/engineering/mirror-archive-normalization-verification-260729001.md
+      merge_commit: 2961ceecaa86addf4046950a7acc09f175091568
+  unresolved_items: []
+  completion_record: docs/engineering/documentation-legacy-migration-completion-260729001.md
+  rule: new or newly discovered external items enter ongoing inventory maintenance without restoring a second Canonical authority

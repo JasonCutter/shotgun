@@ -54,6 +54,19 @@
       "githubActionsRun": "30419307755"
     },
     {
+      "id": "DOCUMENTATION-LEGACY-MIGRATION-COMPLETION-260729001",
+      "path": "docs/engineering/documentation-legacy-migration-completion-260729001.md",
+      "class": "COMPLETION_RECORD",
+      "scope": "documentation-legacy-migration-and-final-inventory",
+      "statusAuthority": "FINAL_AFTER_PR_41_MERGE",
+      "approvedBy": "user",
+      "approvedAt": "2026-07-29",
+      "testedContentHead": "b3e101cc08b86c07c49d4a8940dc242d9766a403",
+      "testedEvidenceHead": "8a6e2f57c4fa57d24e8d163b63d47b3a9d3687f1",
+      "githubActionsRuns": ["30422731186", "30423006240"],
+      "retryHistory": "Initial final-evidence Quality attempt failed two existing database migration tests by 5000 ms timeout; failed-job rerun on identical Head passed Quality and Required Gates."
+    },
+    {
       "id": "FRONTEND-PHASE-1-SECTION-1-VERIFICATION-260724001",
       "path": "docs/engineering/frontend-phase-1-section-1-verification-260724001.md",
       "class": "IMPLEMENTATION_VERIFICATION",

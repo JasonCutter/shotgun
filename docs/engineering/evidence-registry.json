@@ -61,8 +61,10 @@
       "statusAuthority": "FINAL_AFTER_PR_41_MERGE",
       "approvedBy": "user",
       "approvedAt": "2026-07-29",
-      "testedHead": "b3e101cc08b86c07c49d4a8940dc242d9766a403",
-      "githubActionsRun": "30422731186"
+      "testedContentHead": "b3e101cc08b86c07c49d4a8940dc242d9766a403",
+      "testedEvidenceHead": "8a6e2f57c4fa57d24e8d163b63d47b3a9d3687f1",
+      "githubActionsRuns": ["30422731186", "30423006240"],
+      "retryHistory": "Initial final-evidence Quality attempt failed two existing database migration tests by 5000 ms timeout; failed-job rerun on identical Head passed Quality and Required Gates."
     },
     {
       "id": "FRONTEND-PHASE-1-SECTION-1-VERIFICATION-260724001",

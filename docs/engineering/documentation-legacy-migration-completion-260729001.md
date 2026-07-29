@@ -49,7 +49,9 @@ This record, the updated Manifest and the updated Canonical policy become effect
 
 ## Verification state
 
-Tested content Head: `b3e101cc08b86c07c49d4a8940dc242d9766a403`
+### Tested completion-content Head
+
+Head: `b3e101cc08b86c07c49d4a8940dc242d9766a403`
 
 GitHub Actions Run: `30422731186`
 
@@ -70,8 +72,32 @@ GitHub Actions Run: `30422731186`
 | Frontend | PASS |
 | Required Gates | PASS |
 
-The tested Head proves the completed state content. This evidence update creates a final Evidence Head that must pass the same required checks before merge.
+### Final Evidence Head and retry history
+
+Head: `8a6e2f57c4fa57d24e8d163b63d47b3a9d3687f1`
+
+GitHub Actions Run: `30423006240`
+
+First attempt:
+
+- Knowledge Flow generated-output, documentation Governance, formatting, lint, typecheck, dependency audit, Stage 12, CI suite and Frontend: PASS.
+- Database tests: FAIL.
+- Failed tests: two existing `Migration 014 -> 015` cases in `tests/database/auth-postgres.test.ts`.
+- Failure type: both exceeded the existing 5,000 ms test timeout.
+- Product or documentation code failure was not identified.
+- Required Gates: FAIL because Quality failed.
+
+Failed-job rerun on the identical Head, without code or test changes:
+
+- Database tests: PASS.
+- Quality: PASS.
+- Frontend: PASS.
+- Required Gates: PASS.
+
+Classification: environment-sensitive timeout retry. The initial failure is retained and is not rewritten as a first-attempt PASS. The successful identical-Head rerun demonstrates that the completion content did not introduce a deterministic Database regression.
+
+This evidence-record update creates the PR's last documentation-only Head. That Head must pass the full required CI once more before merge.
 
 ## Claim supported
 
-After the final Evidence Head passes required CI and PR #41 is merged, Project Shotgun's recorded documentation legacy migration and final cross-store inventory status is `complete`, with no unresolved item in the authorized scope.
+After the final documentation-only Head passes required CI and PR #41 is merged, Project Shotgun's recorded documentation legacy migration and final cross-store inventory status is `complete`, with no unresolved item in the authorized scope.

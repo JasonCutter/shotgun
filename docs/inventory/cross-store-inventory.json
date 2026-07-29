@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "snapshotDate": "2026-07-29",
+  "snapshotBaseCommit": "92a458c475ffd5ab928e2c30a2e43faf2c0f68b7",
+  "scope": "Project Shotgun governing documents and durable evidence",
+  "canonicalAuthority": {
+    "provider": "github",
+    "repository": "JasonCutter/shotgun",
+    "branch": "main"
+  },
+  "git": {
+    "classification": "CANONICAL_AUTHORITY",
+    "inclusionRule": "all tracked files under docs plus scripts/docs-validation.ts, .github/workflows/ci.yml and package.json documentation commands",
+    "enumerationCommand": "git ls-files docs scripts/docs-validation.ts .github/workflows/ci.yml package.json",
+    "status": "INVENTORIED_BY_TRACKED_SET"
+  },
+  "notion": {
+    "classification": "REFERENCE_MIRROR_ARCHIVE",
+    "status": "INVENTORIED_BY_REGISTERED_ROOTS",
+    "roots": [
+      {
+        "id": "39f5181d-71ad-81a6-a51f-f7f2a3a88ee6",
+        "title": "Project Shotgun — Architecture Design Documents",
+        "coverage": "Phase 1–6 ADD hierarchy, child ADR records, decisions, validation and change history",
+        "gitTarget": "docs/architecture/add/README.md",
+        "retention": "LEGACY_REFERENCE_AND_HISTORY"
+      },
+      {
+        "id": "3a15181d-71ad-81e4-bfa4-ee2578e692a0",
+        "title": "Frontend and Human Interaction Architecture",
+        "coverage": "Frontend phases, sections, cross-phase contracts and child decision records",
+        "gitTarget": "docs/architecture/frontend/README.md",
+        "retention": "LEGACY_REFERENCE_AND_HISTORY"
+      }
+    ],
+    "standaloneHighValueItems": [
+      {
+        "id": "3a75181d-71ad-817a-9675-c984455b2c3b",
+        "title": "Project Shotgun Frontend Phase 1–5 구현계획 v1.0",
+        "gitTarget": "docs/implementation/frontend-phase-1-5-plan-v1.0.md",
+        "retention": "MIRROR"
+      },
+      {
+        "id": "3a65181d-71ad-8182-b0fb-f84d722f98a2",
+        "title": "Frontend Architecture Decision Records",
+        "gitTarget": "docs/architecture/frontend/adr-index.md",
+        "retention": "MIRROR_AND_LEGACY_INDEX"
+      },
+      {
+        "id": "3a55181d-71ad-8117-b8b8-f5edd362a78e",
+        "title": "Stage 12.1 — Quality Evaluation Architecture",
+        "gitTarget": "docs/architecture/stage-12-1/README.md",
+        "retention": "LEGACY_REFERENCE"
+      },
+      {
+        "id": "3ab5181d-71ad-8197-90a1-c8de109fdfd7",
+        "title": "ADR-117 — Documentation Source of Truth",
+        "gitTarget": "docs/architecture/adr/ADR-117-documentation-source-of-truth-canonicalization-and-publication-boundary.md",
+        "retention": "MIRROR"
+      },
+      {
+        "id": "3ab5181d-71ad-81ff-87c2-d92e7a87a00b",
+        "title": "ADR-116 — Zero-project Session Boundary",
+        "gitTarget": "docs/architecture/adr/ADR-116-zero-project-session-principal-command-project-bootstrap-persistence-boundary.md",
+        "retention": "MIRROR"
+      },
+      {
+        "id": "3ab5181d-71ad-81de-8fa2-d52827afed19",
+        "title": "ADR-118 — Typed Failure Taxonomy",
+        "gitTarget": "docs/architecture/adr/ADR-118-typed-failure-taxonomy-and-translation-boundary.md",
+        "retention": "MIRROR"
+      },
+      {
+        "id": "3ab5181d-71ad-8132-85cb-d3154108c4a5",
+        "title": "ADR-119 — Frontend State and Cache Ownership",
+        "gitTarget": "docs/architecture/adr/ADR-119-frontend-server-state-draft-state-and-cache-ownership-boundary.md",
+        "retention": "MIRROR"
+      },
+      {
+        "id": "39f5181d-71ad-8136-89af-fedef6ea57cf",
+        "title": "Project Shotgun — Phase 1 잔여 설계회의 준비안 허브",
+        "gitTarget": null,
+        "retention": "ARCHIVE_CANDIDATE",
+        "reason": "historical preparation hub superseded by approved Phase 1 ADD hierarchy"
+      }
+    ],
+    "authorityRule": "Notion-only edits are Candidate until represented in a reviewed Git pull request and merged to main"
+  },
+  "googleDrive": {
+    "classification": "REFERENCE_ARCHIVE",
+    "status": "INVENTORIED_BY_SEARCH_AND_EXPLICIT_ID",
+    "items": [
+      {
+        "id": "1HazG-oAeJ8Sgg_mPmBiWpQqeCeeAoDUuWgqVNJR1DCg",
+        "title": "Shotgun Knowledge Flow Detailed Map",
+        "revision": "9",
+        "gitTarget": "docs/architecture/knowledge-flow/shotgun-knowledge-flow-detailed-map.md",
+        "retention": "LEGACY_SOURCE_REFERENCE",
+        "canonicalAuthority": "GIT_MAIN_AT_TARGET"
+      }
+    ],
+    "excludedSearchResultsRule": "Files without a Project Shotgun governing relationship are outside inventory scope even when broad Drive search returns them"
+  },
+  "conflictResolution": {
+    "preferredAuthority": "latest user-approved Git record with durable implementation or verification evidence",
+    "externalNewerTimestampDoesNotOverrideGit": true,
+    "ambiguousHistoricalItem": "retain as REFERENCE or ARCHIVE_CANDIDATE; do not promote or delete",
+    "semanticConflict": "record explicit decision and supersession; never silently merge"
+  },
+  "result": {
+    "knownGoverningRootsCovered": true,
+    "externalCanonicalAuthoritiesRemaining": false,
+    "unclassifiedHighValueExternalItemsRemaining": false,
+    "followupWork": [
+      "non-ADR contract snapshot duplicate and supersession review",
+      "HTML Knowledge Flow baseline structured-source conversion",
+      "high-value mirror commit metadata and archive normalization"
+    ]
+  }
+}

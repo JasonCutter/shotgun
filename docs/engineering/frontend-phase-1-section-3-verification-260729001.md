@@ -5,9 +5,9 @@
 - Repository: `JasonCutter/shotgun`
 - Base SHA: `ec750c91c2a405cfa684bb73eed73e4ad02938c2`
 - Branch: `codex/frontend-phase-1-section-3`
-- Status: **VERIFIED_WITH_EXPLICIT_BLOCKERS**
+- Status: **PERFORMANCE_BUDGET_APPROVAL_PENDING**
 - Draft PR: [#42](https://github.com/JasonCutter/shotgun/pull/42)
-- Final Head SHA: **PENDING**
+- Final Head SHA: `6df6a2ee6e9d1697311ddac74d94d822ed86098c`
 - Frontend Phase 1 completion: **NOT APPROVED**
 - Canonical authority: GitHub `main`
 - Notion classification: Execution Mirror / Candidate
@@ -311,35 +311,35 @@ Runtime dependency change: **NONE**
 
 Only `PASS`, `FAIL`, `BLOCKED`, and `NOT_RUN` are used.
 
-| AC    | Status    | Evidence                                                                                                                  |
-| ----- | --------- | ------------------------------------------------------------------------------------------------------------------------- |
-| AC-01 | `PASS`    | V1/V2 contracts, deep runtime decoders, typed failures, scoped keys, browser-write negatives                              |
-| AC-02 | `PASS`    | server Global Shell projection and Product API integration                                                                |
-| AC-03 | `PASS`    | desktop, tablet rail, mobile bottom navigation/More, and 200% browser scenario                                            |
-| AC-04 | `PASS`    | non-optimistic switch, Leave Guard, unknown-outcome warning, scoped purge                                                 |
-| AC-05 | `PASS`    | active/resource Project simultaneous presentation and deep-link binding                                                   |
-| AC-06 | `PASS`    | six-area typed Home with loading, empty, stale, and error presentation                                                    |
-| AC-07 | `PASS`    | server Primary Actions; unavailable workspaces have no active link                                                        |
-| AC-08 | `PASS`    | bounded Attention decoder preserves server order and stable identity                                                      |
-| AC-09 | `PASS`    | browser draft identity, expiry, revision, Project, Session, sensitivity, and route validation                             |
-| AC-10 | `PASS`    | bounded Recent/Pinned server snapshots and Project binding                                                                |
-| AC-11 | `PASS`    | independent background summary port composed by the coordinator                                                           |
-| AC-12 | `PASS`    | notification presentation port separated from domain resolution                                                           |
-| AC-13 | `PASS`    | single server-prioritized warning plus bounded additional count                                                           |
-| AC-14 | `PASS`    | protected typed Search, explicit cross-Project scope, transient raw text                                                  |
-| AC-15 | `PASS`    | navigation-only palette, shortcut, focus trap/restore, no high-risk commands                                              |
-| AC-16 | `PASS`    | zero-project V2 Session, Principal bootstrap, atomic/replay/concurrency DB tests, browser onboarding                      |
-| AC-17 | `PASS`    | server Route Guard and denied-route decoder masking                                                                       |
-| AC-18 | `PASS`    | allowed/masked deep links do not mutate active Project                                                                    |
-| AC-19 | `PASS`    | separate connectivity/session/backend/readiness/stale states and no outcome auto-resubmit                                 |
-| AC-20 | `PASS`    | Principal/Session/Project/revision keys, switch purge, global cache preservation                                          |
-| AC-21 | `PASS`    | replaceable read ports/coordinator and architecture boundary test                                                         |
-| AC-22 | `PASS`    | authority header/injection, CSRF, cross-Project, sensitivity, Search, masking negatives                                   |
-| AC-23 | `PASS`    | keyboard, name/role/state, focus trap/restore, live status, responsive and 200% scenarios                                 |
-| AC-24 | `BLOCKED` | baseline is 594.38 kB JS / 170.82 kB gzip; Vite reports a 500 kB chunk warning and no user-approved Product budget exists |
-| AC-25 | `BLOCKED` | implementation suites pass, but Base `format:check` and `docs:knowledge-flow:check` failures remain                       |
-| AC-26 | `PASS`    | 13 Chromium E2E tests including 5 Section 3 scenarios                                                                     |
-| AC-27 | `BLOCKED` | requires final Draft PR gates, user approval, merge, and separate completion review                                       |
+| AC    | Status    | Evidence                                                                                             |
+| ----- | --------- | ---------------------------------------------------------------------------------------------------- |
+| AC-01 | `PASS`    | V1/V2 contracts, deep runtime decoders, typed failures, scoped keys, browser-write negatives         |
+| AC-02 | `PASS`    | server Global Shell projection and Product API integration                                           |
+| AC-03 | `PASS`    | desktop, tablet rail, mobile bottom navigation/More, and 200% browser scenario                       |
+| AC-04 | `PASS`    | non-optimistic switch, Leave Guard, unknown-outcome warning, scoped purge                            |
+| AC-05 | `PASS`    | active/resource Project simultaneous presentation and deep-link binding                              |
+| AC-06 | `PASS`    | six-area typed Home with loading, empty, stale, and error presentation                               |
+| AC-07 | `PASS`    | server Primary Actions; unavailable workspaces have no active link                                   |
+| AC-08 | `PASS`    | bounded Attention decoder preserves server order and stable identity                                 |
+| AC-09 | `PASS`    | browser draft identity, expiry, revision, Project, Session, sensitivity, and route validation        |
+| AC-10 | `PASS`    | bounded Recent/Pinned server snapshots and Project binding                                           |
+| AC-11 | `PASS`    | independent background summary port composed by the coordinator                                      |
+| AC-12 | `PASS`    | notification presentation port separated from domain resolution                                      |
+| AC-13 | `PASS`    | single server-prioritized warning plus bounded additional count                                      |
+| AC-14 | `PASS`    | protected typed Search, explicit cross-Project scope, transient raw text                             |
+| AC-15 | `PASS`    | navigation-only palette, shortcut, focus trap/restore, no high-risk commands                         |
+| AC-16 | `PASS`    | zero-project V2 Session, Principal bootstrap, atomic/replay/concurrency DB tests, browser onboarding |
+| AC-17 | `PASS`    | server Route Guard and denied-route decoder masking                                                  |
+| AC-18 | `PASS`    | allowed/masked deep links do not mutate active Project                                               |
+| AC-19 | `PASS`    | separate connectivity/session/backend/readiness/stale states and no outcome auto-resubmit            |
+| AC-20 | `PASS`    | Principal/Session/Project/revision keys, switch purge, global cache preservation                     |
+| AC-21 | `PASS`    | replaceable read ports/coordinator and architecture boundary test                                    |
+| AC-22 | `PASS`    | authority header/injection, CSRF, cross-Project, sensitivity, Search, masking negatives              |
+| AC-23 | `PASS`    | keyboard, name/role/state, focus trap/restore, live status, responsive and 200% scenarios            |
+| AC-24 | `BLOCKED` | 600-run baseline and numeric budget candidates recorded; explicit numeric budget approval remains    |
+| AC-25 | `PASS`    | exact Head `1eccfb38` passed every required GitHub Gate in run `30444809403`                         |
+| AC-26 | `PASS`    | 13 Chromium E2E tests including 5 Section 3 scenarios                                                |
+| AC-27 | `BLOCKED` | requires final Draft PR gates, user approval, merge, and separate completion review                  |
 
 Section 3 and Frontend Phase 1 are not declared complete.
 
@@ -353,7 +353,7 @@ Section 3 and Frontend Phase 1 are not declared complete.
 | `npm run lint`                          | `PASS`                                                                                              |
 | `npm run typecheck`                     | `PASS`                                                                                              |
 | `npm run test:ci`                       | `PASS`: Unit, Contract, Integration, Architecture, and Stage 12 package on the final local worktree |
-| `npm run test:unit`                     | `PASS`: 25 files, 113 tests                                                                         |
+| `npm run test:unit`                     | `PASS`: 26 files, 115 tests                                                                         |
 | `npm run test:contract`                 | `PASS`: 20 files, 171 tests                                                                         |
 | `npm run test:integration`              | `PASS`: 13 files, 48 tests                                                                          |
 | `npm run test:architecture`             | `PASS`                                                                                              |
@@ -363,22 +363,24 @@ Section 3 and Frontend Phase 1 are not declared complete.
 | `npm run db:verify`                     | `PASS`                                                                                              |
 | `npm run frontend:typecheck`            | `PASS`                                                                                              |
 | `npm run frontend:test`                 | `PASS`: 6 files, 22 tests                                                                           |
-| `npm run frontend:build`                | `PASS`, with the AC-24 chunk warning recorded                                                       |
+| `npm run frontend:build`                | `PASS`: 594.76 kB JS / 170.93 kB gzip, with the AC-24 chunk warning recorded                        |
 | `npm run frontend:test:e2e`             | `PASS`: 13 tests                                                                                    |
+| `npm run frontend:performance:baseline` | `PASS`: 600 runs, 0 failures, artifact digest `c5c7ef75...84332`                                    |
 | `npm run stage12:reuse-operations-gate` | `PASS`: package, assembly/replacement, quality, DB, secret, OSS                                     |
 | `npm run oss:audit`                     | `PASS`: 0 vulnerabilities                                                                           |
 | GitHub Actions run `30444459626`        | `PASS` on implementation Head `6e7fa537`: Frontend, Quality, and Required Gates                     |
+| GitHub Actions run `30444809403`        | `PASS` on exact Head `1eccfb38`: Frontend, Quality, Required Gates, Database, and E2E               |
 
-### Explicit blockers
+### Local environment divergence
 
-| Command                             | Result                                                                                    |
-| ----------------------------------- | ----------------------------------------------------------------------------------------- |
-| `npm run docs:knowledge-flow:check` | `FAIL`: generated Knowledge Flow baseline is stale; identical Base failure                |
-| `npm run format:check`              | `FAIL`: the same 17 Base files remain unformatted; Section 3 changed files were formatted |
+| Command                             | Result                                                                                          |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `npm run docs:knowledge-flow:check` | `LOCAL_ENVIRONMENT_DIVERGENCE`: generated baseline differed locally; exact Head passed remotely |
+| `npm run format:check`              | `LOCAL_ENVIRONMENT_DIVERGENCE`: local Windows result differed; exact Head passed remotely       |
 
-The 17 formatting failures include existing unit/script files, unrelated
-engineering records, ADR-118/119 index material, and generated-artifact
-metadata. They are not silently reformatted in this scoped PR.
+These results remain visible and are not rewritten as local passes. GitHub
+Actions run `30444809403` executed both required Gates on the exact final
+implementation Head in a clean environment, so they do not block AC-25.
 
 ## 14. Final failure and retry history
 
@@ -404,22 +406,66 @@ metadata. They are not silently reformatted in this scoped PR.
 9. Stage 12 package and audit initially failed on restricted npm cache/network
    access. Exact commands passed with approved OS-level access. The temporary
    workspace cache was verified and removed.
-10. formatting and Knowledge Flow retain their exact Base failures; no waiver
-    or false PASS is recorded.
+10. local Windows formatting and Knowledge Flow divergence remains recorded;
+    the exact implementation Head passed both required Gates in GitHub Actions
+    run `30444809403`.
 11. the first final `test:ci` retry hit the existing Stage 9 NetworkX comparison
     test's 5-second timeout at 5.466 seconds. The focused test then passed in
     1.600 and 1.367 seconds for its two adapters, and an unchanged full
     `test:ci` rerun passed all 113 Unit, 171 Contract, and 48 Integration tests,
     Architecture, and the Stage 12 package check.
+12. the performance harness preflight corrected Windows process invocation,
+    an unsafe temporary-output location, cross-Project fixture data, an omitted
+    metric timestamp, and Scenario 05 route readiness. The first canonical
+    Scenario 05 attempt then exposed structural sharing that prevented the
+    browser-draft composition boundary from remounting. The harness now uses a
+    Settings-to-Home navigation, and the final canonical run passed 600 runs
+    with zero measured failures.
+13. parallel local Gate execution caused a 5.025-second Stage 8 test timeout
+    and a 10.135-second Database setup-hook timeout. The focused tests passed
+    in 2.145 and 1.764 seconds. Sequential reruns then passed exact
+    `test:ci` (115 Unit, 171 Contract, 48 Integration, Architecture, Package),
+    all 86 Database tests, and the complete Stage 12 reuse operations Gate.
+14. the first focused Database retry omitted the repository `.env` loader and
+    failed before collecting tests. Repeating the exact test with
+    `--env-file-if-exists=.env` passed; no test assertion was changed.
+15. local `npm pack` and dependency Audit initially hit restricted npm cache
+    and registry access. Their exact commands passed with approved OS-level
+    access, and Audit reported zero vulnerabilities.
 
-## 15. Final publication boundary
+## 15. Performance evidence
+
+- Baseline:
+  `docs/engineering/performance/frontend-phase-1-section-3-performance-baseline-260729001.md`
+- Artifact path:
+  `artifacts/performance/frontend-phase-1-section-3/260729001/`
+- Measurement Head: `6df6a2ee6e9d1697311ddac74d94d822ed86098c`
+- Recorded runs: 600
+- Measured failures: 0
+- Artifact aggregate SHA-256:
+  `c5c7ef75bfdc3f9a932d50b2f9cb8b1be65392952f62e0ebe49a3b4970084332`
+- Measured bundle: 597,436 raw JavaScript bytes; 170,169 direct gzip bytes;
+  Vite reports 597.43 kB / 171.86 kB gzip and the 500 kB warning.
+- Final uninstrumented Product build: 594.76 kB / 170.93 kB gzip.
+- Worst Interaction Readiness P95: Desktop Cold 5,289.9 ms, Desktop Warm
+  1,663.3 ms, Mobile Cold 12,462.4 ms, Mobile Warm 3,431.1 ms.
+- Proposed budgets: recorded in the baseline and awaiting explicit approval.
+- Optimization decision: route-level lazy splitting is recommended;
+  virtualization is not required at the current caps.
+
+## 16. Final publication boundary
 
 - Implementation Head `6e7fa537` GitHub Actions run `30444459626`:
   **FRONTEND PASS, QUALITY PASS, REQUIRED GATES PASS**
+- Exact prior final Head `1eccfb38` GitHub Actions run `30444809403`:
+  **KNOWLEDGE FLOW, DOCUMENTATION, FORMAT, LINT, TYPECHECK, DEPENDENCY,
+  STAGE 12, CI, DATABASE, FRONTEND TYPECHECK/TEST/BUILD/E2E, QUALITY,
+  FRONTEND, REQUIRED GATES PASS**
 - Draft PR Ready transition: **NOT APPROVED**
 - Merge: **NOT APPROVED**
 - Frontend Phase 1 completion: **NOT APPROVED**
 - Phase 2 start: **NOT APPROVED**
 
-The Draft PR remains Draft. AC-24, AC-25, and AC-27 remain blocked until their
-separate authority and repository conditions are satisfied.
+The Draft PR remains Draft. AC-24 remains blocked on numeric budget approval,
+and AC-27 remains blocked on merge plus a separate completion review. AC-25 is
+`PASS`.

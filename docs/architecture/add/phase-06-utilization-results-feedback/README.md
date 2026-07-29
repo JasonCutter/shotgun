@@ -1,10 +1,13 @@
-<!-- Canonical source: https://app.notion.com/p/39f5181d71ad81948c94cbf0a894ea01 -->
+<!-- Legacy source: https://app.notion.com/p/39f5181d71ad81948c94cbf0a894ea01 -->
 
 # Phase 6 — 활용·결과·피드백
 
-- 상태: 완료
-- 범위: Step 18~22, Section 43개
-- Canonical 원문: [Notion Phase 6 ADD](https://app.notion.com/p/39f5181d71ad81948c94cbf0a894ea01)
+> **Canonical authority:** 현재 권위는 GitHub `main`의 이 문서 계층이다. 아래 Notion 링크는 승인 당시의 Legacy Source와 변경 이력을 식별하기 위한 Reference다.
+
+- 설계 상태: 완료
+- 범위: Step 18–22, Section 43개
+- Legacy 원문: [Notion Phase 6 ADD](https://app.notion.com/p/39f5181d71ad81948c94cbf0a894ea01)
+- 상위 정책: [Project Shotgun ADD](../README.md)
 
 ## 문서
 

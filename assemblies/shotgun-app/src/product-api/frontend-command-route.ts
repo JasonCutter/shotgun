@@ -6,11 +6,15 @@ import type {
   AcceptFrontendCommandResult,
 } from '../../../../modules/frontend-command-gateway/src/index.js';
 import {
+  buildFrontendCommandV2SemanticDigestInput,
   buildPrincipalScopedCommandSemanticDigestInput,
   FrontendContractError,
   ShotgunError,
+  validatePrincipalProjectCreateRequest,
   validateSection2FrontendCommandRequest,
+  type CreateProjectCommandPayloadV2,
   type FrontendCommandRequest,
+  type FrontendCommandRequestV2,
   type Section2FrontendCommandPayload,
   type Section2FrontendCommandType,
   type TypedPreconditionPurpose,
@@ -18,6 +22,50 @@ import {
 
 export type AcceptedSection2Command = AcceptFrontendCommandResult & {
   readonly request: FrontendCommandRequest<Section2FrontendCommandPayload>;
+};
+
+export type AcceptedPrincipalProjectCreateCommand = AcceptFrontendCommandResult & {
+  readonly request: FrontendCommandRequestV2<CreateProjectCommandPayloadV2>;
+};
+
+export const acceptPrincipalProjectCreateCommand = async (input: {
+  readonly rawRequest: unknown;
+  readonly principalId: string;
+  readonly sessionActiveProjectId: string | null;
+  readonly commandGateway: FrontendCommandGatewayPort;
+}): Promise<AcceptedPrincipalProjectCreateCommand> => {
+  const request = validatePrincipalProjectCreateRequest(input.rawRequest);
+  if (input.sessionActiveProjectId !== null) {
+    throw new FrontendContractError(
+      'ZERO_PROJECT_PRECONDITION_FAILED',
+      'PRINCIPAL project.create.v1 requires a zero-project Session.',
+    );
+  }
+  const receivedAt = new Date().toISOString();
+  const acceptedAt = new Date().toISOString();
+  const acceptedPolicyContext = {
+    policyContextId: 'principal-project-bootstrap-policy',
+    policyContextRevision: '1',
+    acceptedAt,
+  };
+  const commandSemanticDigest = createHash('sha256')
+    .update(
+      buildFrontendCommandV2SemanticDigestInput(request, input.principalId, acceptedPolicyContext),
+    )
+    .digest('hex');
+  const accepted = await input.commandGateway.accept({
+    commandId: randomUUID(),
+    commandRevision: '1',
+    principalId: input.principalId,
+    request,
+    commandSemanticDigest,
+    acceptedPolicyContext,
+    correlationId: request.correlationContext?.correlationId ?? randomUUID(),
+    traceId: randomUUID(),
+    receivedAt,
+    acceptedAt,
+  });
+  return { ...accepted, request };
 };
 
 export const acceptSection2Command = async (input: {

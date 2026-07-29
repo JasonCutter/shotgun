@@ -193,7 +193,7 @@ describe('authentication primitives and local bootstrap security', () => {
       expect(localMembership).toBeUndefined();
     }, 15_000);
 
-    it('creates an explicit Local Owner identity when none exists', async () => {
+    it('creates an explicit Local Owner Principal without a hidden Project', async () => {
       const repository = new InMemoryAuthRepository();
       const adapter = new LocalOwnerAuthenticationAdapter(repository);
 
@@ -214,14 +214,17 @@ describe('authentication primitives and local bootstrap security', () => {
 
       expect(result.status).toBe('authenticated');
 
-      // After bootstrap, Local Owner must exist with correct identifiers
+      // Fresh bootstrap creates only the Principal and a zero-project Session.
       const after = await repository.findOwnerMembership(
         LOCAL_OWNER_ACCOUNT_ID,
         DEFAULT_PROJECT_ID,
       );
-      expect(after).toBeDefined();
-      expect(after?.isOwner).toBe(true);
-      expect(after?.projectId).toBe(DEFAULT_PROJECT_ID);
+      expect(after).toBeUndefined();
+      if (result.status === 'authenticated') {
+        expect(result.principalContext.principalId).toBeTruthy();
+        expect(result.session.activeProjectId).toBeNull();
+        expect(result.context).toBeUndefined();
+      }
     });
 
     it('reuses the same Local Owner principal and membership on repeated bootstrap', async () => {
@@ -246,11 +249,10 @@ describe('authentication primitives and local bootstrap security', () => {
       expect(second.status).toBe('authenticated');
       if (first.status !== 'authenticated' || second.status !== 'authenticated') return;
 
-      // Same principal ID must be reused
-      expect(first.context.principalId).toBe(second.context.principalId);
-      // Same project
-      expect(first.context.projectId).toBe(second.context.projectId);
-      expect(first.context.projectId).toBe(DEFAULT_PROJECT_ID);
+      expect(first.principalContext.principalId).toBe(second.principalContext.principalId);
+      expect(first.context).toBeUndefined();
+      expect(second.context).toBeUndefined();
+      expect(first.session.activeProjectId).toBeNull();
     });
 
     it('does not alter other principals, projects, or memberships during local bootstrap', async () => {
@@ -286,13 +288,12 @@ describe('authentication primitives and local bootstrap security', () => {
       expect(teamLeadAfter?.projectId).toBe('project-alpha');
       expect(teamLeadAfter?.isOwner).toBe(true);
 
-      // team-lead must not appear as Local Owner
-      const localOwner = await repository.findOwnerMembership(
-        LOCAL_OWNER_ACCOUNT_ID,
-        DEFAULT_PROJECT_ID,
-      );
+      // The zero-project Local Owner Principal must not create a hidden Project membership.
+      const localOwner = await repository.findPrincipalByAccountId(LOCAL_OWNER_ACCOUNT_ID);
+      const localOwnerMemberships = await repository.listMemberships(localOwner!.principalId);
       expect(localOwner).toBeDefined();
       expect(localOwner?.principalId).not.toBe(teamLeadBefore?.principalId);
+      expect(localOwnerMemberships).toEqual([]);
     }, 15_000);
   });
 

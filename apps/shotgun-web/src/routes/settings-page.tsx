@@ -19,7 +19,7 @@ export const SettingsPage = () => {
         </div>
         <div>
           <dt>Active Project</dt>
-          <dd>{session.activeProject.id}</dd>
+          <dd>{session.activeProject?.id ?? 'Not created'}</dd>
         </div>
       </dl>
       <section aria-labelledby="project-settings-heading">

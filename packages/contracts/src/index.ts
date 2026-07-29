@@ -14,3 +14,4 @@ export * from './factories.js';
 export * from './schema-registry.js';
 export * from './types.js';
 export * from './frontend-foundation.js';
+export * from './frontend-section3.js';

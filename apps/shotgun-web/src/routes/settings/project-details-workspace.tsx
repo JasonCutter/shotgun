@@ -29,7 +29,7 @@ export const ProjectDetailsWorkspace = () => {
     mutationFn: (params: { name?: string; description?: string; expectedRevision: number }) =>
       apiClient.updateProject(targetId, {
         ...params,
-        activeProjectId: session?.activeProject.id ?? targetId,
+        activeProjectId: session?.activeProject?.id ?? targetId,
         targetProjectId: targetId,
         resourceProjectId: targetId,
         clientRequestId: crypto.randomUUID(),
@@ -45,7 +45,7 @@ export const ProjectDetailsWorkspace = () => {
   const archiveMutation = useMutation({
     mutationFn: (expectedRevision: number) =>
       apiClient.archiveProject(targetId, {
-        activeProjectId: session?.activeProject.id ?? targetId,
+        activeProjectId: session?.activeProject?.id ?? targetId,
         targetProjectId: targetId,
         resourceProjectId: targetId,
         expectedRevision,
@@ -62,7 +62,7 @@ export const ProjectDetailsWorkspace = () => {
   const restoreMutation = useMutation({
     mutationFn: (expectedRevision: number) =>
       apiClient.restoreProject(targetId, {
-        activeProjectId: session?.activeProject.id ?? targetId,
+        activeProjectId: session?.activeProject?.id ?? targetId,
         targetProjectId: targetId,
         resourceProjectId: targetId,
         expectedRevision,
@@ -79,7 +79,7 @@ export const ProjectDetailsWorkspace = () => {
   const deleteRequestMutation = useMutation({
     mutationFn: (expectedRevision: number) =>
       apiClient.requestDeleteProject(targetId, {
-        activeProjectId: session?.activeProject.id ?? targetId,
+        activeProjectId: session?.activeProject?.id ?? targetId,
         targetProjectId: targetId,
         resourceProjectId: targetId,
         expectedRevision,

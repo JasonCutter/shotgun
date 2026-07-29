@@ -1,0 +1,104 @@
+{
+  "schemaVersion": "1.0.0",
+  "budgetId": "frontend-phase-1-section-3-local-product-performance-budget-v1.0",
+  "name": "Frontend Phase 1 Section 3 Local Product Performance Budget v1.0",
+  "status": "APPROVED",
+  "approval": {
+    "actor": "user",
+    "date": "2026-07-29"
+  },
+  "measurementContract": {
+    "datasets": ["representative", "stress"],
+    "profiles": {
+      "desktop": {
+        "viewport": { "width": 1440, "height": 900 },
+        "hasTouch": false,
+        "isMobile": false,
+        "cpuThrottlingRate": 4,
+        "network": {
+          "downloadMbps": 10,
+          "uploadMbps": 2,
+          "latencyMs": 40
+        }
+      },
+      "mobile": {
+        "viewport": { "width": 390, "height": 844 },
+        "hasTouch": true,
+        "isMobile": true,
+        "cpuThrottlingRate": 6,
+        "network": {
+          "downloadMbps": 1.6,
+          "uploadMbps": 0.75,
+          "latencyMs": 150
+        }
+      }
+    },
+    "scenarios": [
+      "01-global-shell-authorized-snapshot",
+      "02-zero-project-shell",
+      "03-project-switch-cache-invalidation",
+      "04-home-attention-first-page",
+      "05-continue-working-and-browser-drafts",
+      "06-notification-summary-refresh",
+      "07-global-search-and-command-palette",
+      "08-route-guard-masked-decision",
+      "09-revision-cache-purge",
+      "10-offline-degraded-transition"
+    ],
+    "warmupRuns": 3,
+    "recordedRuns": {
+      "cold": 5,
+      "warm": 10
+    },
+    "statistic": "NEAREST_RANK_P95",
+    "seedDigests": {
+      "representative": "1627fc93702b45b0a47d9c379fefa06c6f21ab2080b6e462e4f310600583e783",
+      "stress": "53302e706045c99c81b1e23362924ca60253040544769cdd8c554d971becca68"
+    }
+  },
+  "globalP95Limits": {
+    "serverQueryMs": 2.5,
+    "projectionCompositionMs": 2.5,
+    "responseBytes": 140000,
+    "networkTransferBytes": 140000,
+    "domNodes": 750,
+    "cacheQueryCount": 6,
+    "cacheActiveQueryCount": 5,
+    "cacheSerializedBytes": 81920,
+    "browserStorageBytes": 4096,
+    "jsHeapUsedBytes": 25165824
+  },
+  "profileCacheP95Limits": {
+    "networkTransferMs": {
+      "desktop": { "cold": 2250, "warm": 500 },
+      "mobile": { "cold": 5000, "warm": 1400 }
+    },
+    "runtimeDecodeMs": {
+      "desktop": { "cold": 50, "warm": 20 },
+      "mobile": { "cold": 110, "warm": 45 }
+    },
+    "clientRenderMs": {
+      "desktop": { "cold": 5000, "warm": 2000 },
+      "mobile": { "cold": 12000, "warm": 4000 }
+    },
+    "interactionReadinessMs": {
+      "desktop": { "cold": 6500, "warm": 2100 },
+      "mobile": { "cold": 15000, "warm": 4500 }
+    }
+  },
+  "notApplicable": {
+    "serverQueryMs": ["10-offline-degraded-transition"],
+    "projectionCompositionMs": ["10-offline-degraded-transition"],
+    "networkTransferMs": ["10-offline-degraded-transition"]
+  },
+  "javascriptBundle": {
+    "rawBytes": 640000,
+    "directGzipBytes": 185000
+  },
+  "scopeLimitations": {
+    "notification": "SUMMARY_REFRESH_ONLY",
+    "deployment": "LOCAL_PRODUCT_REGRESSION_GATE_NOT_PRODUCTION_SLO",
+    "routeLevelCodeSplitting": "RECOMMENDED_NOT_BLOCKING",
+    "virtualization": "NOT_ADOPTED_RECONSIDER_ON_BUDGET_VIOLATION"
+  }
+}

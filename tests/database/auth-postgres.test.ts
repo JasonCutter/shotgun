@@ -106,7 +106,7 @@ describe.runIf(pool)('Stage 12.1 P0-1 PostgreSQL authentication persistence', ()
       expect(localOwner).toBeUndefined();
     });
 
-    it('Scenario 3 & 4: safely refuses Local Bootstrap when a regular owner exists and behaves identically in PostgreSQL & InMemory', async () => {
+    it('Scenario 3 & 4: creates an isolated zero-project Local Owner Principal without replacing a regular owner', async () => {
       const repository = new PostgresAuthRepository(pool!);
       await repository.bootstrapOwner({
         accountId: 'regular-admin',
@@ -124,9 +124,10 @@ describe.runIf(pool)('Stage 12.1 P0-1 PostgreSQL authentication persistence', ()
         localOwnerEnabled: true,
       });
 
-      expect(result.status).toBe('authentication_unavailable');
-      if (result.status !== 'authentication_unavailable') return;
-      expect(result.code).toBe('LOCAL_BOOTSTRAP_FAILED');
+      expect(result.status).toBe('authenticated');
+      if (result.status !== 'authenticated') return;
+      expect(result.context).toBeUndefined();
+      expect(result.session.activeProjectId).toBeNull();
 
       // Verify regular-admin remains intact and Local Owner was not created
       const regularAdmin = await repository.findOwnerMembership(
@@ -140,6 +141,10 @@ describe.runIf(pool)('Stage 12.1 P0-1 PostgreSQL authentication persistence', ()
         DEFAULT_PROJECT_ID,
       );
       expect(localOwner).toBeUndefined();
+      expect(await repository.findPrincipalByAccountId(LOCAL_OWNER_ACCOUNT_ID)).toMatchObject({
+        principalId: result.principalContext.principalId,
+      });
+      expect(await repository.listMemberships(result.principalContext.principalId)).toEqual([]);
     });
 
     it('Scenario 5: repeated bootstrap creates no duplicate principal or membership', async () => {
@@ -163,7 +168,7 @@ describe.runIf(pool)('Stage 12.1 P0-1 PostgreSQL authentication persistence', ()
       expect(second.status).toBe('authenticated');
       if (first.status !== 'authenticated' || second.status !== 'authenticated') return;
 
-      expect(first.context.principalId).toBe(second.context.principalId);
+      expect(first.principalContext.principalId).toBe(second.principalContext.principalId);
 
       const principals = await pool!.query(
         'SELECT count(*) FROM auth.principals WHERE account_id = $1',
@@ -173,9 +178,9 @@ describe.runIf(pool)('Stage 12.1 P0-1 PostgreSQL authentication persistence', ()
 
       const memberships = await pool!.query(
         'SELECT count(*) FROM auth.project_memberships WHERE principal_id = $1',
-        [first.context.principalId],
+        [first.principalContext.principalId],
       );
-      expect(Number.parseInt(memberships.rows[0].count, 10)).toBe(1);
+      expect(Number.parseInt(memberships.rows[0].count, 10)).toBe(0);
     });
 
     it('Scenario 6: other principals and memberships remain unchanged', async () => {

@@ -319,7 +319,16 @@ export function registerSettingsRoutes(
     }
     const membership = await authRepo.findMembership(
       context.principalId,
-      outcome.acceptedProjectContext.targetProjectId,
+      'targetProjectId' in outcome.acceptedProjectContext
+        ? outcome.acceptedProjectContext.targetProjectId
+        : (() => {
+            throw new ShotgunError({
+              code: 'PROJECT_CONTEXT_REQUIRED',
+              safeMessage: 'Settings outcome requires Project scope.',
+              module: 'shotgun-app',
+              operation: 'settings-outcome-project',
+            });
+          })(),
     );
     if (!membership) {
       throw new ShotgunError({

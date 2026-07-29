@@ -183,7 +183,99 @@ describe('shotgun-api-client', () => {
     const fetch = vi.fn(async () => json({ session: session() }));
     const result = await createShotgunApiClient({ fetch }).getSession();
     expect(result.principal.id).toBe('principal-a');
-    expect(result.activeProject.id).toBe('project-a');
+    expect(result.activeProject?.id).toBe('project-a');
+  });
+
+  it('decodes a zero-project Product Session V2 without fabricating a Project', async () => {
+    const fetch = vi.fn(async () =>
+      json({
+        session: {
+          apiVersion: '2.0.0',
+          principal: session().principal,
+          activeProject: null,
+          accessibleProjects: [],
+          session: { expiresAt: null },
+          sessionReady: true,
+          projectReady: false,
+          projectAccessRevision: '0',
+        },
+      }),
+    );
+    const result = await createShotgunApiClient({ fetch }).getSession();
+    expect(result.apiVersion).toBe('2.0.0');
+    expect(result.activeProject).toBeNull();
+    expect(result.accessibleProjects).toEqual([]);
+  });
+
+  it('sends raw Search text only in the protected POST body and never in the URL', async () => {
+    const rawQuery = 'confidential search phrase';
+    const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      void init;
+      const url = String(input);
+      if (url.endsWith('/api/v1/security/csrf')) {
+        return json({ csrfToken: 'csrf-search' });
+      }
+      return json({
+        result: {
+          schemaVersion: '1.0.0',
+          scope: 'ACTIVE_PROJECT',
+          results: [],
+          projectionRevision: 'search-1',
+          fetchedAt: '2026-07-29T00:00:00.000Z',
+        },
+      });
+    });
+    await createShotgunApiClient({ fetch }).searchGlobal({
+      schemaVersion: '1.0.0',
+      query: rawQuery,
+      scope: { kind: 'ACTIVE_PROJECT' },
+      limit: 20,
+    });
+    const [searchUrl, searchInit] = fetch.mock.calls[1]!;
+    expect(String(searchUrl)).toBe('/product-api/frontend/search/query');
+    expect(String(searchUrl)).not.toContain(rawQuery);
+    expect(searchInit?.method).toBe('POST');
+    expect(JSON.parse(String(searchInit?.body))).toMatchObject({ query: rawQuery });
+  });
+
+  it('never sends a browser-created Project ID in PRINCIPAL bootstrap', async () => {
+    let bootstrapBody: Record<string, unknown> | undefined;
+    const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input).endsWith('/security/csrf')) {
+        return json({ csrfToken: 'csrf-bootstrap' });
+      }
+      bootstrapBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return json(
+        {
+          schemaVersion: '1.0.0',
+          code: 'ZERO_PROJECT_PRECONDITION_FAILED',
+          message: 'Fixture stop.',
+          category: 'CONFLICT',
+          retryability: 'NEVER',
+          recovery: 'REFRESH_AND_REAPPLY',
+          retryable: false,
+          details: {},
+        },
+        409,
+      );
+    });
+    await expect(
+      createShotgunApiClient({ fetch }).createFirstProject({
+        name: 'First Project',
+        projectAccessRevision: '0',
+        clientRequestId: 'request-first',
+        idempotencyKey: 'idempotency-first',
+      }),
+    ).rejects.toBeInstanceOf(ShotgunApiError);
+    expect(bootstrapBody).toMatchObject({
+      envelopeVersion: '2.0.0',
+      projectContext: {
+        scope: 'PRINCIPAL',
+        observedProjectAccessRevision: '0',
+      },
+      payload: { name: 'First Project' },
+    });
+    expect(JSON.stringify(bootstrapBody)).not.toContain('newProjectId');
   });
 
   it('throws ShotgunApiError on 401 Unauthorized during getSession', async () => {

@@ -1,8 +1,9 @@
 import {
   FrontendContractError,
+  frontendCommandScopeBindingKey,
   getFailureDescriptor,
   isErrorCode,
-  type FrontendCommandOutcomeView,
+  type AnyFrontendCommandOutcomeView,
 } from '../../../packages/contracts/src/index.js';
 import {
   createAcceptedFrontendCommandOutcome,
@@ -15,7 +16,9 @@ import {
 
 type LedgerRecord = {
   readonly principalId: string;
-  readonly outcome: FrontendCommandOutcomeView;
+  readonly envelopeVersion: '1.0.0' | '2.0.0';
+  readonly scopeBindingKey: string;
+  readonly outcome: AnyFrontendCommandOutcomeView;
 };
 
 export class InMemoryFrontendCommandGateway implements FrontendCommandGatewayPort {
@@ -27,12 +30,29 @@ export class InMemoryFrontendCommandGateway implements FrontendCommandGatewayPor
     const requestScope = `${input.principalId}:${input.request.clientRequestId}`;
     const idempotencyScope = [
       input.principalId,
-      input.request.projectContext.targetProjectId,
+      input.request.envelopeVersion,
+      input.request.envelopeVersion === '1.0.0' ? 'PROJECT' : input.request.projectContext.scope,
+      frontendCommandScopeBindingKey(input.request),
       input.request.commandType,
       input.request.commandSchemaVersion,
       input.request.idempotencyKey,
     ].join(':');
     const existingByRequest = this.byClientRequestId.get(requestScope);
+    if (
+      existingByRequest &&
+      (existingByRequest.envelopeVersion !== input.request.envelopeVersion ||
+        existingByRequest.scopeBindingKey !== frontendCommandScopeBindingKey(input.request) ||
+        existingByRequest.outcome.commandType !== input.request.commandType ||
+        existingByRequest.outcome.commandSchemaVersion !== input.request.commandSchemaVersion ||
+        existingByRequest.outcome.commandSemanticDigest !== input.commandSemanticDigest)
+    ) {
+      throw new FrontendContractError(
+        input.request.envelopeVersion === '2.0.0'
+          ? 'CLIENT_REQUEST_MEANING_MISMATCH'
+          : 'IDEMPOTENCY_KEY_REUSE_MISMATCH',
+        'clientRequestId cannot be rebound to different command meaning.',
+      );
+    }
     if (
       existingByRequest &&
       existingByRequest.outcome.idempotencyKey !== input.request.idempotencyKey
@@ -54,16 +74,22 @@ export class InMemoryFrontendCommandGateway implements FrontendCommandGatewayPor
     }
 
     const outcome = createAcceptedFrontendCommandOutcome(input);
-    const record = { principalId: input.principalId, outcome };
+    const record = {
+      principalId: input.principalId,
+      envelopeVersion: input.request.envelopeVersion,
+      scopeBindingKey: frontendCommandScopeBindingKey(input.request),
+      outcome,
+    };
     this.byCommandId.set(outcome.commandId, record);
     this.byClientRequestId.set(requestScope, record);
     this.byIdempotencyScope.set(idempotencyScope, record);
     return { outcome, replayed: false };
   }
 
-  async complete(input: CompleteFrontendCommandInput): Promise<FrontendCommandOutcomeView> {
+  async complete(input: CompleteFrontendCommandInput): Promise<AnyFrontendCommandOutcomeView> {
     const existing = this.requireRecord(input.commandId);
-    const outcome: FrontendCommandOutcomeView = {
+    if (existing.outcome.outcomeState === 'COMPLETED') return existing.outcome;
+    const outcome: AnyFrontendCommandOutcomeView = {
       ...existing.outcome,
       commandRevision: String(Number(existing.outcome.commandRevision) + 1),
       outcomeState: 'COMPLETED',
@@ -76,7 +102,7 @@ export class InMemoryFrontendCommandGateway implements FrontendCommandGatewayPor
     return outcome;
   }
 
-  async reject(input: RejectFrontendCommandInput): Promise<FrontendCommandOutcomeView> {
+  async reject(input: RejectFrontendCommandInput): Promise<AnyFrontendCommandOutcomeView> {
     if (!isErrorCode(input.code)) {
       throw new FrontendContractError(
         'INVALID_REQUEST',
@@ -85,7 +111,8 @@ export class InMemoryFrontendCommandGateway implements FrontendCommandGatewayPor
     }
     const existing = this.requireRecord(input.commandId);
     const descriptor = getFailureDescriptor(input.code);
-    const outcome: FrontendCommandOutcomeView = {
+    if (existing.outcome.outcomeState === 'COMPLETED') return existing.outcome;
+    const outcome: AnyFrontendCommandOutcomeView = {
       ...existing.outcome,
       commandRevision: String(Number(existing.outcome.commandRevision) + 1),
       outcomeState: 'REJECTED',
@@ -109,7 +136,7 @@ export class InMemoryFrontendCommandGateway implements FrontendCommandGatewayPor
   async findByClientRequestId(
     principalId: string,
     clientRequestId: string,
-  ): Promise<FrontendCommandOutcomeView | null> {
+  ): Promise<AnyFrontendCommandOutcomeView | null> {
     return this.byClientRequestId.get(`${principalId}:${clientRequestId}`)?.outcome ?? null;
   }
 
@@ -121,8 +148,8 @@ export class InMemoryFrontendCommandGateway implements FrontendCommandGatewayPor
     return record;
   }
 
-  private replaceOutcome(record: LedgerRecord, outcome: FrontendCommandOutcomeView): void {
-    const replacement = { principalId: record.principalId, outcome };
+  private replaceOutcome(record: LedgerRecord, outcome: AnyFrontendCommandOutcomeView): void {
+    const replacement = { ...record, outcome };
     this.byCommandId.set(outcome.commandId, replacement);
     this.byClientRequestId.set(`${record.principalId}:${outcome.clientRequestId}`, replacement);
     for (const [key, value] of this.byIdempotencyScope.entries()) {

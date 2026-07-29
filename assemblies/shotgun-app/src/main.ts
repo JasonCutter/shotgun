@@ -11,6 +11,7 @@ import {
   PostgresIntakeRepository,
   PostgresOriginalAssetRepository,
   PostgresProjectAdministrationRepository,
+  PostgresProjectBootstrapUnitOfWork,
   PostgresSettingsRepository,
 } from '../../../adapters/postgres/src/index.js';
 import { PostgresFrontendCommandGateway } from '../../../adapters/frontend-command-gateway-postgres/src/index.js';
@@ -65,6 +66,7 @@ const plainTextAdapter = new LucasAugmentedPlainTextAdapter();
 const canonicalKnowledgeRepository = new PostgresCanonicalKnowledgeRepository(pool);
 const { server } = await createApplication({
   projectAdminRepository: new PostgresProjectAdministrationRepository(pool),
+  projectBootstrapUnitOfWork: new PostgresProjectBootstrapUnitOfWork(pool),
   settingsRepository: new PostgresSettingsRepository(pool),
   frontendCommandGateway: new PostgresFrontendCommandGateway(pool),
   intakeRepository: new PostgresIntakeRepository(pool),

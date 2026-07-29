@@ -6,39 +6,49 @@ import type {
   SessionRecoveryAction,
 } from '@shotgun/api-client';
 
-const REASON_MESSAGES: Record<SessionBoundaryReasonCode, { title: string; description: string }> = {
+const REASON_MESSAGES: Record<
+  SessionBoundaryReasonCode,
+  { readonly title: string; readonly description: string }
+> = {
   LOCAL_SESSION_ESTABLISHING: {
-    title: '로컬 Session 준비 중',
-    description: 'Local Owner Session 환경을 준비하는 중입니다.',
+    title: 'Preparing Local Owner Session',
+    description: 'The local Session boundary is being established.',
   },
   LOCAL_SESSION_READY: {
-    title: 'Session 준비 완료',
-    description: 'Local Owner Session이 수립되었습니다.',
+    title: 'Session ready',
+    description: 'The Local Owner Session is ready.',
   },
   LOCAL_SESSION_REESTABLISHING: {
-    title: 'Session 다시 연결 중',
-    description: '기존 Session 무효화 후 Local Owner Session을 다시 수립하고 있습니다.',
+    title: 'Reconnecting Session',
+    description:
+      'The prior Session is no longer valid. A new Local Owner Session is being established.',
   },
   LOCAL_SERVER_UNAVAILABLE: {
-    title: '로컬 서버에 연결할 수 없음',
-    description: 'Shotgun 로컬 서버 프로세스 또는 네트워크 연결 상태를 확인해 주세요.',
+    title: 'Local server unavailable',
+    description: 'Check the Shotgun backend process and local network connection.',
   },
   LOCAL_OWNER_DISABLED: {
-    title: 'Local Owner Mode가 비활성화됨',
-    description: '현재 서버 설정에서 Local Owner Mode가 활성화되어 있지 않습니다.',
+    title: 'Local Owner Mode is disabled',
+    description: 'Enable Local Owner Mode in the server configuration.',
   },
   ORIGIN_NOT_ALLOWED: {
-    title: '현재 주소에서는 Local Owner Session을 사용할 수 없음',
-    description: '허용되지 않은 Origin 또는 외부 주소에서의 접근이 차단되었습니다.',
+    title: 'Local Owner Session unavailable at this address',
+    description: 'The server denied this browser origin.',
   },
   PROVISIONING_FAILED: {
-    title: 'Local Owner 환경을 준비하지 못함',
-    description: 'Local Owner 계정 및 기본 Project 프로비저닝에 실패했습니다.',
+    title: 'Local Owner setup failed',
+    description: 'The server could not provision the Local Owner environment.',
   },
   SESSION_REVOKED: {
-    title: '기존 Session이 종료됨',
-    description: '이전 Session이 만료되었거나 폐기되었습니다. 다시 연결을 시도해 주세요.',
+    title: 'Session ended',
+    description: 'The previous Session expired or was revoked. Reconnect to continue.',
   },
+};
+
+const ACTION_LABELS: Record<SessionRecoveryAction['id'], string> = {
+  RECONNECT: 'Reconnect',
+  CHECK_LOCAL_SERVER: 'Check local server status',
+  CHECK_SETTINGS: 'Check settings',
 };
 
 export const SessionBoundaryScreen = ({
@@ -62,15 +72,10 @@ export const SessionBoundaryScreen = ({
 
   useEffect(() => {
     if (activeDiagnosticModal) {
-      // Open 시 첫 번째 실제 Interactive Element로 Focus 이동
       const firstInteractive = dialogCardRef.current?.querySelector<HTMLElement>(
         'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
       );
-      if (firstInteractive) {
-        firstInteractive.focus();
-      } else {
-        modalHeadingRef.current?.focus();
-      }
+      (firstInteractive ?? modalHeadingRef.current)?.focus();
     } else if (lastActiveElementRef.current) {
       lastActiveElementRef.current.focus();
       lastActiveElementRef.current = null;
@@ -79,11 +84,13 @@ export const SessionBoundaryScreen = ({
 
   const reasonInfo = boundary.reasonCode
     ? (REASON_MESSAGES[boundary.reasonCode] ?? {
-        title: 'Session 상태 확인 필요',
-        description: 'Session 상태를 다시 확인해 주세요.',
+        title: 'Session status requires attention',
+        description: 'Refresh the Session status.',
       })
-    : { title: 'Session 연결 확인 중', description: 'Session 상태를 확인하는 중입니다.' };
-
+    : {
+        title: 'Checking Session',
+        description: 'The Session status is being checked.',
+      };
   const isEstablishing =
     boundary.sessionState === 'ESTABLISHING' || boundary.sessionState === 'REESTABLISHING';
 
@@ -102,43 +109,29 @@ export const SessionBoundaryScreen = ({
     }
   };
 
-  const handleDialogKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'Escape') {
-      e.stopPropagation();
+  const handleDialogKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      event.stopPropagation();
       setActiveDiagnosticModal(null);
       return;
     }
+    if (event.key !== 'Tab' || !dialogCardRef.current) return;
 
-    if (e.key === 'Tab' && dialogCardRef.current) {
-      const focusables = Array.from(
-        dialogCardRef.current.querySelectorAll<HTMLElement>(
-          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-        ),
-      );
-      if (focusables.length === 0) return;
-      const first = focusables[0];
-      const last = focusables[focusables.length - 1];
-      if (!first || !last) return;
-
-      const currentActive = document.activeElement as HTMLElement | null;
-      const isInsideFocusables = currentActive && focusables.includes(currentActive);
-
-      if (e.shiftKey) {
-        if (
-          !isInsideFocusables ||
-          currentActive === first ||
-          currentActive === modalHeadingRef.current ||
-          currentActive === dialogCardRef.current
-        ) {
-          e.preventDefault();
-          last.focus();
-        }
-      } else {
-        if (!isInsideFocusables || currentActive === last) {
-          e.preventDefault();
-          first.focus();
-        }
-      }
+    const focusables = Array.from(
+      dialogCardRef.current.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      ),
+    );
+    const first = focusables[0];
+    const last = focusables.at(-1);
+    if (!first || !last) return;
+    const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (event.shiftKey && (!active || active === first)) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
     }
   };
 
@@ -157,15 +150,17 @@ export const SessionBoundaryScreen = ({
 
         {boundary.recoveryActions.length > 0 ? (
           <div className="recovery-actions" role="group" aria-label="Recovery actions">
-            {boundary.recoveryActions.map((act: SessionRecoveryAction) => (
+            {boundary.recoveryActions.map((action) => (
               <button
-                key={act.id}
+                key={action.id}
                 type="button"
-                className={`button ${act.id === 'RECONNECT' ? 'button-primary' : 'button-secondary'}`}
-                disabled={!act.enabled || isEstablishing}
-                onClick={(e) => handleAction(act, e)}
+                className={`button ${
+                  action.id === 'RECONNECT' ? 'button-primary' : 'button-secondary'
+                }`}
+                disabled={!action.enabled || isEstablishing}
+                onClick={(event) => handleAction(action, event)}
               >
-                {act.label}
+                {ACTION_LABELS[action.id]}
               </button>
             ))}
           </div>
@@ -185,39 +180,32 @@ export const SessionBoundaryScreen = ({
             ref={dialogCardRef}
             className="modal-card"
             tabIndex={-1}
-            onClick={(e) => e.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
           >
             <h2 id="diagnostic-dialog-title" ref={modalHeadingRef} tabIndex={-1}>
               {activeDiagnosticModal === 'SERVER_HELP'
-                ? '로컬 서버 상태 진단'
-                : '로컬 환경 설정 안내'}
+                ? 'Local server diagnostics'
+                : 'Local environment settings'}
             </h2>
-            {activeDiagnosticModal === 'SERVER_HELP' ? (
-              <div className="help-content">
-                <p>실행 중인 Shotgun Backend의 HOST·PORT 환경변수를 확인하세요.</p>
-                <ul>
-                  <li>기본값은 HOST=127.0.0.1, PORT=3000입니다.</li>
-                  <li>백엔드 서버 프로세스가 정상 실행 중인지 확인해 주세요.</li>
-                  <li>API Health 엔드포인트 응답 상태 (`/api/v1/health`)</li>
-                </ul>
-              </div>
-            ) : (
-              <div className="help-content">
-                <p>Local Owner Mode 설정 및 세션 환경변수를 확인해 주세요.</p>
-                <ul>
-                  <li>실행 중인 Shotgun Backend의 HOST·PORT 환경변수를 확인하세요.</li>
-                  <li>기본값은 HOST=127.0.0.1, PORT=3000입니다.</li>
-                  <li>Local Owner 계정 준비 상태를 확인해 주세요.</li>
-                </ul>
-              </div>
-            )}
+            <div className="help-content">
+              <p>
+                {activeDiagnosticModal === 'SERVER_HELP'
+                  ? 'Verify that the Shotgun backend is running and reachable.'
+                  : 'Verify the Local Owner Mode and Session configuration.'}
+              </p>
+              <ul>
+                <li>The default backend address is 127.0.0.1:3000.</li>
+                <li>Confirm that the backend process is healthy.</li>
+                <li>Use the health endpoint without entering secrets.</li>
+              </ul>
+            </div>
             <div className="modal-actions">
               <button
                 type="button"
                 className="button button-primary"
                 onClick={() => setActiveDiagnosticModal(null)}
               >
-                닫기
+                Close
               </button>
             </div>
           </div>

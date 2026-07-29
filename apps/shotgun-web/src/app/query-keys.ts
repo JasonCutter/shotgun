@@ -32,6 +32,31 @@ export const settings5DQueryKey = (
 export const projectAdminQueryKey = (principalId: string) =>
   ['project-admin', principalId] as const;
 
+export const globalShellQueryKey = (
+  principalId: string,
+  activeProjectId: string | null,
+  accessRevision: string,
+) => ['protected', 'global-shell', principalId, activeProjectId, accessRevision] as const;
+
+export const homeActionCenterQueryKey = (input: {
+  readonly principalId: string;
+  readonly sessionId: string;
+  readonly activeProjectId: string;
+  readonly accessRevision: string;
+  readonly policyContextRevision: string;
+  readonly projectionRevision: string;
+}) =>
+  [
+    'project',
+    input.principalId,
+    input.activeProjectId,
+    'home-action-center',
+    input.sessionId,
+    input.accessRevision,
+    input.policyContextRevision,
+    input.projectionRevision,
+  ] as const;
+
 export const clearProjectQueries = async (queryClient: QueryClient): Promise<void> => {
   await queryClient.cancelQueries({ queryKey: ['project'] });
   queryClient.removeQueries({ queryKey: ['project'] });
@@ -41,6 +66,8 @@ export const purgeProjectScopedCaches = async (queryClient: QueryClient): Promis
   await clearProjectQueries(queryClient);
   await queryClient.cancelQueries({ queryKey: ['settings'] });
   queryClient.removeQueries({ queryKey: ['settings'] });
+  await queryClient.cancelQueries({ queryKey: ['protected', 'global-shell'] });
+  queryClient.removeQueries({ queryKey: ['protected', 'global-shell'] });
 };
 
 export const purgeProtectedSessionCaches = async (queryClient: QueryClient): Promise<void> => {

@@ -35,6 +35,11 @@ import {
   decodeDirectiveProposalView,
   decodeSchemaPackView,
   decodeDiagnosticsView,
+  decodeAnyFrontendCommandOutcomeView,
+  decodeGlobalSearchResultView,
+  decodeGlobalShellView,
+  decodeHomeActionCenterView,
+  decodeRouteGuardDecisionView,
   SECTION2_FRONTEND_COMMAND_TYPES,
   type SettingsSnapshot,
   type SettingsCategorySummary,
@@ -49,6 +54,12 @@ import {
   type DirectiveProposalView,
   type SchemaPackView,
   type DiagnosticsView,
+  type GlobalSearchRequest,
+  type GlobalSearchResultView,
+  type GlobalShellView,
+  type HomeActionCenterView,
+  type RouteGuardDecisionView,
+  type TargetRouteView,
 } from '../../contracts/src/index.js';
 
 const createCommandRequest = (input: {
@@ -106,6 +117,27 @@ const assertOk = async (response: Response): Promise<unknown> => {
   throw productFailureApiError(response.status, failure);
 };
 
+const decodeMeasured = <T>(metric: string, decode: () => T): T => {
+  const performanceMetricsEnabled =
+    (
+      globalThis as typeof globalThis & {
+        __SHOTGUN_PERFORMANCE_METRICS__?: boolean;
+      }
+    ).__SHOTGUN_PERFORMANCE_METRICS__ === true;
+  if (!performanceMetricsEnabled || typeof globalThis.performance === 'undefined') {
+    return decode();
+  }
+  const startedAt = globalThis.performance.now();
+  try {
+    return decode();
+  } finally {
+    globalThis.performance.measure(`shotgun:decode:${metric}`, {
+      start: startedAt,
+      end: globalThis.performance.now(),
+    });
+  }
+};
+
 export const createShotgunApiClient = (
   options: {
     readonly fetch?: typeof globalThis.fetch;
@@ -115,6 +147,11 @@ export const createShotgunApiClient = (
 
   const request = (path: string, init: RequestInit = {}): Promise<Response> =>
     fetchImplementation(apiPath(path), {
+      ...init,
+      credentials: 'same-origin',
+    });
+  const productRequest = (path: string, init: RequestInit = {}): Promise<Response> =>
+    fetchImplementation(`/product-api/frontend${path}`, {
       ...init,
       credentials: 'same-origin',
     });
@@ -187,6 +224,129 @@ export const createShotgunApiClient = (
         });
         decodeLogoutEnvelope(await assertOk(response));
       });
+    },
+
+    async getGlobalShell(requestOptions?: RequestOptions): Promise<GlobalShellView> {
+      const response = await productRequest('/global-shell', {
+        signal: requestOptions?.signal,
+      });
+      const body = (await assertOk(response)) as { shell: unknown };
+      return decodeMeasured('global-shell', () => decodeGlobalShellView(body.shell));
+    },
+
+    async getHomeActionCenter(requestOptions?: RequestOptions): Promise<HomeActionCenterView> {
+      const response = await productRequest('/home', {
+        signal: requestOptions?.signal,
+      });
+      const body = (await assertOk(response)) as { home: unknown };
+      return decodeMeasured('home', () => decodeHomeActionCenterView(body.home));
+    },
+
+    async searchGlobal(
+      searchRequest: GlobalSearchRequest,
+      requestOptions?: RequestOptions,
+    ): Promise<GlobalSearchResultView> {
+      return runMutation(requestOptions?.signal, async (csrfToken) => {
+        const response = await productRequest('/search/query', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-csrf-token': csrfToken,
+          },
+          body: JSON.stringify(searchRequest),
+          signal: requestOptions?.signal,
+        });
+        const body = (await assertOk(response)) as { result: unknown };
+        return decodeMeasured('search', () => decodeGlobalSearchResultView(body.result));
+      });
+    },
+
+    async getRouteGuardDecision(
+      targetRoute: TargetRouteView,
+      resourceProjectId?: string,
+      requestOptions?: RequestOptions,
+    ): Promise<RouteGuardDecisionView> {
+      return runMutation(requestOptions?.signal, async (csrfToken) => {
+        const response = await productRequest('/route-guard', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-csrf-token': csrfToken,
+          },
+          body: JSON.stringify({
+            targetRoute,
+            ...(resourceProjectId === undefined ? {} : { resourceProjectId }),
+          }),
+          signal: requestOptions?.signal,
+        });
+        const body = (await assertOk(response)) as { decision: unknown };
+        return decodeMeasured('route-guard', () => decodeRouteGuardDecisionView(body.decision));
+      });
+    },
+
+    async createFirstProject(
+      params: {
+        name: string;
+        description?: string;
+        locale?: string;
+        timezone?: string;
+        privacyProfile?: string;
+        modelProfile?: string;
+        costProfile?: string;
+        projectAccessRevision: string;
+        clientRequestId: string;
+        idempotencyKey: string;
+        clientIssuedAt?: string;
+      },
+      requestOptions?: RequestOptions,
+    ): Promise<FrontendCommandMutationResponse<ProjectListItemView>> {
+      return runCommandMutation(
+        requestOptions?.signal,
+        params.clientRequestId,
+        async (csrfToken) => {
+          const response = await request('/projects', {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              'x-csrf-token': csrfToken,
+            },
+            body: JSON.stringify({
+              envelopeVersion: '2.0.0',
+              commandType: 'project.create.v1',
+              commandSchemaVersion: '1.0.0',
+              clientRequestId: params.clientRequestId,
+              idempotencyKey: params.idempotencyKey,
+              projectContext: {
+                scope: 'PRINCIPAL',
+                observedProjectAccessRevision: params.projectAccessRevision,
+              },
+              policyBinding: { mode: 'CURRENT' },
+              preconditions: [],
+              clientIssuedAt: params.clientIssuedAt ?? new Date().toISOString(),
+              payload: {
+                name: params.name,
+                ...(params.description === undefined ? {} : { description: params.description }),
+                ...(params.locale === undefined ? {} : { locale: params.locale }),
+                ...(params.timezone === undefined ? {} : { timezone: params.timezone }),
+                ...(params.privacyProfile === undefined
+                  ? {}
+                  : { privacyProfile: params.privacyProfile }),
+                ...(params.modelProfile === undefined ? {} : { modelProfile: params.modelProfile }),
+                ...(params.costProfile === undefined ? {} : { costProfile: params.costProfile }),
+              },
+            }),
+            signal: requestOptions?.signal,
+          });
+          const body = (await assertOk(response)) as {
+            outcome: unknown;
+            project: unknown;
+          };
+          return {
+            outcome: decodeAnyFrontendCommandOutcomeView(body.outcome),
+            resource: decodeProjectListItemView(body.project),
+          };
+        },
+      );
     },
 
     // ------------------------------------------------------------------------

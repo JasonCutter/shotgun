@@ -1,3 +1,6 @@
+import { randomUUID } from 'node:crypto';
+
+import type { InMemoryAuthRepository } from '../../../packages/authentication/src/index.js';
 import {
   FrontendContractError,
   decodeSettingsSnapshot,
@@ -18,6 +21,9 @@ import {
 } from '../../../packages/contracts/src/index.js';
 import type {
   CreateProjectInput,
+  ProjectBootstrapInput,
+  ProjectBootstrapResult,
+  ProjectBootstrapUnitOfWorkPort,
   ProjectAdministrationRepositoryPort,
   UpdateProjectInput,
   ProjectLifecycleCommandInput,
@@ -37,8 +43,10 @@ export class InMemoryProjectAdministrationRepository implements ProjectAdministr
       readonly principalId: string;
       readonly projectId: string;
     }) => Promise<void>,
+    seedDefaultProject = true,
   ) {
-    // Seed default shotgun project
+    if (!seedDefaultProject) return;
+    // Seed the compatibility Project only for existing/test installations.
     const now = new Date().toISOString();
     this.projects.set('shotgun', {
       id: 'shotgun',
@@ -70,6 +78,18 @@ export class InMemoryProjectAdministrationRepository implements ProjectAdministr
 
   async getProjectDetails(projectId: string): Promise<ProjectListItemView | null> {
     return this.projects.get(projectId) ?? null;
+  }
+
+  removeProjectForRollback(projectId: string): void {
+    this.projects.delete(projectId);
+  }
+
+  activateProjectForBootstrap(projectId: string): ProjectListItemView {
+    const project = this.projects.get(projectId);
+    if (!project) throw new Error('Bootstrap Project not found.');
+    const activeProject = Object.freeze({ ...project, active: true });
+    this.projects.set(projectId, activeProject);
+    return activeProject;
   }
 
   async createProject(input: CreateProjectInput): Promise<ProjectListItemView> {
@@ -225,6 +245,78 @@ export class InMemoryProjectAdministrationRepository implements ProjectAdministr
     });
     this.projects.set(input.projectId, updated);
     return updated;
+  }
+}
+
+export class InMemoryProjectBootstrapUnitOfWork implements ProjectBootstrapUnitOfWorkPort {
+  private readonly completed = new Map<string, ProjectListItemView>();
+  private readonly sessionLocks = new Map<string, Promise<void>>();
+
+  constructor(
+    private readonly projects: InMemoryProjectAdministrationRepository,
+    private readonly auth: InMemoryAuthRepository,
+  ) {}
+
+  async bootstrap(input: ProjectBootstrapInput): Promise<ProjectBootstrapResult> {
+    const previous = this.sessionLocks.get(input.sessionId) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const queued = previous.then(() => current);
+    this.sessionLocks.set(input.sessionId, queued);
+    await previous;
+    try {
+      const completed = this.completed.get(input.commandId);
+      if (completed) return { project: completed, replayed: true };
+      if (
+        input.observedProjectAccessRevision !== undefined &&
+        input.observedProjectAccessRevision !== '0'
+      ) {
+        throw new FrontendContractError(
+          'PROJECT_ACCESS_REVISION_CONFLICT',
+          'The accessible Project set changed before bootstrap.',
+        );
+      }
+      try {
+        this.auth.assertZeroProjectSession(input.sessionId, input.principalId);
+      } catch {
+        throw new FrontendContractError(
+          'ZERO_PROJECT_PRECONDITION_FAILED',
+          'The Session is no longer in the zero-project state.',
+        );
+      }
+      const projectId = randomUUID();
+      try {
+        const project = await this.projects.createProject({
+          commandId: input.commandId,
+          clientRequestId: input.clientRequestId,
+          idempotencyKey: input.idempotencyKey,
+          actorPrincipalId: input.principalId,
+          projectId,
+          expectedProjectRevision: 0,
+          ...input.payload,
+        });
+        this.auth.updateSessionProjectById(input.sessionId, input.principalId, projectId);
+        const activeProject = this.projects.activateProjectForBootstrap(project.id);
+        this.completed.set(input.commandId, activeProject);
+        return { project: activeProject, replayed: false };
+      } catch (error) {
+        this.projects.removeProjectForRollback(projectId);
+        this.auth.removeProjectMembershipForRollback(input.principalId, projectId);
+        this.auth.updateSessionProjectById(input.sessionId, input.principalId, null);
+        throw error;
+      }
+    } finally {
+      release();
+      if (this.sessionLocks.get(input.sessionId) === queued) {
+        this.sessionLocks.delete(input.sessionId);
+      }
+    }
+  }
+
+  async findCompleted(commandId: string): Promise<ProjectListItemView | null> {
+    return this.completed.get(commandId) ?? null;
   }
 }
 

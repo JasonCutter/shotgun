@@ -1,8 +1,8 @@
 import type {
   AcceptedPolicyContext,
+  AnyFrontendCommandOutcomeView,
+  AnyFrontendCommandRequest,
   ErrorCode,
-  FrontendCommandOutcomeView,
-  FrontendCommandRequest,
   ProducedResourceRef,
 } from '../../../packages/contracts/src/index.js';
 
@@ -10,7 +10,7 @@ export type AcceptFrontendCommandInput = {
   readonly commandId: string;
   readonly commandRevision: string;
   readonly principalId: string;
-  readonly request: FrontendCommandRequest;
+  readonly request: AnyFrontendCommandRequest;
   readonly commandSemanticDigest: string;
   readonly acceptedPolicyContext: AcceptedPolicyContext;
   readonly correlationId: string;
@@ -20,7 +20,7 @@ export type AcceptFrontendCommandInput = {
 };
 
 export type AcceptFrontendCommandResult = {
-  readonly outcome: FrontendCommandOutcomeView;
+  readonly outcome: AnyFrontendCommandOutcomeView;
   readonly replayed: boolean;
 };
 
@@ -40,37 +40,39 @@ export type RejectFrontendCommandInput = {
 
 export type FrontendCommandGatewayPort = {
   accept(input: AcceptFrontendCommandInput): Promise<AcceptFrontendCommandResult>;
-  complete(input: CompleteFrontendCommandInput): Promise<FrontendCommandOutcomeView>;
-  reject(input: RejectFrontendCommandInput): Promise<FrontendCommandOutcomeView>;
+  complete(input: CompleteFrontendCommandInput): Promise<AnyFrontendCommandOutcomeView>;
+  reject(input: RejectFrontendCommandInput): Promise<AnyFrontendCommandOutcomeView>;
   findByClientRequestId(
     principalId: string,
     clientRequestId: string,
-  ): Promise<FrontendCommandOutcomeView | null>;
+  ): Promise<AnyFrontendCommandOutcomeView | null>;
 };
 
 export const createAcceptedFrontendCommandOutcome = (
   input: AcceptFrontendCommandInput,
-): FrontendCommandOutcomeView => ({
-  commandId: input.commandId,
-  commandRevision: input.commandRevision,
-  clientRequestId: input.request.clientRequestId,
-  idempotencyKey: input.request.idempotencyKey,
-  commandType: input.request.commandType,
-  commandSchemaVersion: input.request.commandSchemaVersion,
-  commandSemanticDigest: input.commandSemanticDigest,
-  outcomeState: 'ACCEPTED',
-  acceptedPrincipalContext: {
-    principalId: input.principalId,
-    actor: { type: 'user', id: input.principalId },
-  },
-  acceptedProjectContext: {
-    targetProjectId: input.request.projectContext.targetProjectId,
-  },
-  acceptedPolicyContext: input.acceptedPolicyContext,
-  correlationId: input.correlationId,
-  traceId: input.traceId,
-  producedResources: [],
-  receivedAt: input.receivedAt,
-  acceptedAt: input.acceptedAt,
-  lastUpdatedAt: input.acceptedAt,
-});
+): AnyFrontendCommandOutcomeView =>
+  ({
+    commandId: input.commandId,
+    commandRevision: input.commandRevision,
+    clientRequestId: input.request.clientRequestId,
+    idempotencyKey: input.request.idempotencyKey,
+    commandType: input.request.commandType,
+    commandSchemaVersion: input.request.commandSchemaVersion,
+    commandSemanticDigest: input.commandSemanticDigest,
+    outcomeState: 'ACCEPTED',
+    acceptedPrincipalContext: {
+      principalId: input.principalId,
+      actor: { type: 'user', id: input.principalId },
+    },
+    acceptedProjectContext:
+      input.request.envelopeVersion === '1.0.0'
+        ? { targetProjectId: input.request.projectContext.targetProjectId }
+        : input.request.projectContext,
+    acceptedPolicyContext: input.acceptedPolicyContext,
+    correlationId: input.correlationId,
+    traceId: input.traceId,
+    producedResources: [],
+    receivedAt: input.receivedAt,
+    acceptedAt: input.acceptedAt,
+    lastUpdatedAt: input.acceptedAt,
+  }) as AnyFrontendCommandOutcomeView;

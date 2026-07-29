@@ -106,13 +106,17 @@ Move Shotgun-authored governing text into Git through reviewed migration PRs. Ke
 
 Do not delete legacy material during inventory. Mark it as migrated, archived, superseded, duplicate, or retained reference only after verification. External or unmigrated material is not a second Canonical authority.
 
+## Completed migration increments
+
+- 2026-07-29: `Shotgun Knowledge Flow Detailed Map` v0.3 was migrated from Google Docs revision `9` to [`docs/architecture/knowledge-flow/shotgun-knowledge-flow-detailed-map.md`](architecture/knowledge-flow/shotgun-knowledge-flow-detailed-map.md). The Google Drive document is retained as a legacy Reference. Migration evidence is recorded in [`docs/engineering/knowledge-flow-detailed-map-migration-verification-260729001.md`](engineering/knowledge-flow-detailed-map-migration-verification-260729001.md).
+
 ## Post-cutover migration backlog
 
 The following work continues without changing the active GitHub authority:
 
 - complete Notion, Google Drive, and Git document inventory,
 - normalize remaining Git paths,
-- migrate the Knowledge Flow Detailed Map and remaining governing text,
+- migrate remaining governing text,
 - export and reconcile Phase ADD and frontend architecture history,
 - complete ADR and contract indexes,
 - implement link, metadata, canonical, and drift validation gates,

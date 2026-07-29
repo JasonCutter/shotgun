@@ -85,22 +85,44 @@ documents:
     source_format: html
     preferred_source_format: markdown_or_structured_source
 
+  - id: SHOTGUN-KNOWLEDGE-FLOW-DETAILED-MAP
+    path: docs/architecture/knowledge-flow/shotgun-knowledge-flow-detailed-map.md
+    classification: CANONICAL
+    status: canonical_working_draft
+    approved_by: user
+    approved_at: 2026-07-29
+    document_version: v0.3
+    source:
+      provider: google-drive
+      document_id: 1HazG-oAeJ8Sgg_mPmBiWpQqeCeeAoDUuWgqVNJR1DCg
+      revision_id: "9"
+      modified_at: 2026-07-24T12:15:20.335Z
+      export_mime_type: text/markdown
+      export_sha256: ced8a29b74c0c24b1cb82607077ea92b6ecc7dc90f75d17f539241b6c5acc2e7
+    migration:
+      status: migrated_to_git
+      migrated_at: 2026-07-29
+      semantic_change: false
+      verification_record: docs/engineering/knowledge-flow-detailed-map-migration-verification-260729001.md
+
   - id: SHOTGUN-REFERENCE-ARCHITECTURE-STRATEGY-KO
     path: docs/shotgun_reference_architecture_strategy_ko.html
     classification: REFERENCE
     status: retained_reference_inventory_pending
 
 external_references:
-  - id: SHOTGUN-KNOWLEDGE-FLOW-DETAILED-MAP
-    classification: REFERENCE_PENDING_MIGRATION
-    role: legacy_governing_reference_pending_git_canonicalization
+  - id: SHOTGUN-KNOWLEDGE-FLOW-DETAILED-MAP-GOOGLE-DRIVE
+    classification: REFERENCE
+    role: legacy_source_after_git_migration
     source:
       provider: google-drive
       document_id: 1HazG-oAeJ8Sgg_mPmBiWpQqeCeeAoDUuWgqVNJR1DCg
+      revision_id: "9"
+      modified_at: 2026-07-24T12:15:20.335Z
     target_path: docs/architecture/knowledge-flow/shotgun-knowledge-flow-detailed-map.md
-    retention_status: migrate_then_archive_legacy
-    migration_status: pending
-    canonical_authority: none_until_git_merge
+    retention_status: retain_as_legacy_source
+    migration_status: migrated_to_git
+    canonical_authority: git-main-at-target-path
 
 inventory:
   status: in_progress_non_blocking
@@ -109,10 +131,14 @@ inventory:
     - notion
     - google-drive
     - git
+  completed_items:
+    - id: SHOTGUN-KNOWLEDGE-FLOW-DETAILED-MAP
+      completed_at: 2026-07-29
+      target_path: docs/architecture/knowledge-flow/shotgun-knowledge-flow-detailed-map.md
+      verification_record: docs/engineering/knowledge-flow-detailed-map-migration-verification-260729001.md
   unresolved_items:
     - export Phase 1-6 ADD documents
     - export Frontend and Human Interaction Architecture hierarchy
-    - migrate Shotgun Knowledge Flow Detailed Map
     - reconcile ADR index and document numbering
     - classify Stage 12.1 architecture records
     - classify implementation and engineering completion records

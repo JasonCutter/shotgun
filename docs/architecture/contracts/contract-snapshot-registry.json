@@ -62,7 +62,7 @@
       "classification": "ACTIVE_BASE",
       "approvalDate": "2026-07-30",
       "sourcePr": 44,
-      "mergeCommit": null,
+      "mergeCommit": "f1e9b01cbf5a869f1fc43fea2a7719b3a35a79f6",
       "governingAdr": "ADR-122",
       "base": null,
       "supersedes": [],

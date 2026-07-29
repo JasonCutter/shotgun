@@ -1,0 +1,51 @@
+{
+  "schemaVersion": "1.0.0",
+  "aggregateSha256": "cbe16ccfb607147d636d459f51dc62ebf283f236e23aa2615d9f659f03463e63",
+  "files": [
+    {
+      "name": "environment.json",
+      "bytes": 1224,
+      "sha256": "999be8ed2d04c9f15f417f531761c9fa39699b577bb7e7fa5b2181d444fd4f99"
+    },
+    {
+      "name": "seed-manifest.json",
+      "bytes": 1700,
+      "sha256": "670f15994fbe918547f7012ab8def8f8f0a926bd4cd3c695e29fc2572f85bc70"
+    },
+    {
+      "name": "raw-runs.json",
+      "bytes": 389797,
+      "sha256": "125c10ca3ab29cb93170d31c68f372b496ef12eaba4edfa0aa483e65bc49f190"
+    },
+    {
+      "name": "summary.json",
+      "bytes": 328781,
+      "sha256": "c91f9fe0b65a4ce7a676d42cdbd6d9dd11fa6e6ae242788a5d609365b184dcb9"
+    },
+    {
+      "name": "failures.json",
+      "bytes": 3,
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "name": "execution-history.json",
+      "bytes": 1180,
+      "sha256": "50e88b242ba5cbd945b98c7984460ec03a3fbedf5988e05a40e266f795f0eb09"
+    },
+    {
+      "name": "bundle.json",
+      "bytes": 338,
+      "sha256": "9c477d38149b8896f15088edfef15c59f29af03c12517359932a24fc196062dd"
+    },
+    {
+      "name": "performance-budget.json",
+      "bytes": 3434,
+      "sha256": "6d4a75c60489cb7b628c329cc39f7782b07d38055733a7a9d09dd1951b24600b"
+    },
+    {
+      "name": "budget-gate.json",
+      "bytes": 337180,
+      "sha256": "bc6c01b11b3ffe23ec684202c3261f6373b4d283d2241ae8de5086a62e2700bf"
+    }
+  ]
+}

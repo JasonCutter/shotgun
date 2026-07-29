@@ -19,7 +19,7 @@ import {
   evaluatePerformanceBudget,
 } from '../tests/performance/frontend-section3-performance-budget.js';
 
-const ARTIFACT_SEQUENCE = '260729002';
+const ARTIFACT_SEQUENCE = '260729003';
 const IMPLEMENTATION_HEAD = '1eccfb380a31b65af1ecf04c58e64150ea52b563';
 const BUDGET_PATH =
   'tests/performance/frontend-section3-local-product-performance-budget-v1.0.json';
@@ -1017,7 +1017,7 @@ const main = async (): Promise<void> => {
     warmCount,
     statistics: 'median and nearest-rank P95; no statistical outlier removal',
     command: shouldWriteCanonical
-      ? 'npm run frontend:performance:baseline'
+      ? 'npm run frontend:performance:gate'
       : 'tsx scripts/frontend-section3-performance.ts --smoke',
   };
   const seedManifest = selectedDatasets.map((kind) => {

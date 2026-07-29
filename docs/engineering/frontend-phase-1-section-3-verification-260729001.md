@@ -5,9 +5,11 @@
 - Repository: `JasonCutter/shotgun`
 - Base SHA: `ec750c91c2a405cfa684bb73eed73e4ad02938c2`
 - Branch: `codex/frontend-phase-1-section-3`
-- Status: **PERFORMANCE_BUDGET_APPROVAL_PENDING**
+- Status: **AC-01_THROUGH_AC-26_PASS_AC-27_BLOCKED**
 - Draft PR: [#42](https://github.com/JasonCutter/shotgun/pull/42)
 - Measurement Head SHA: `6df6a2ee6e9d1697311ddac74d94d822ed86098c`
+- Approved Performance Gate measurement Head SHA:
+  `19ff80a74d3e69413aaa3b0ccf93016f67bbd132`
 - Final Evidence Head SHA: `9ac3da943a5344a41bdcb77cc206d1a39c1ef16e`
 - Validated Publication Head SHA:
   `d5f4e65bd43211d97d168079e3d0650b2e04f3c9`
@@ -339,10 +341,19 @@ Only `PASS`, `FAIL`, `BLOCKED`, and `NOT_RUN` are used.
 | AC-21 | `PASS`    | replaceable read ports/coordinator and architecture boundary test                                    |
 | AC-22 | `PASS`    | authority header/injection, CSRF, cross-Project, sensitivity, Search, masking negatives              |
 | AC-23 | `PASS`    | keyboard, name/role/state, focus trap/restore, live status, responsive and 200% scenarios            |
-| AC-24 | `BLOCKED` | 600-run baseline and numeric budget candidates recorded; explicit numeric budget approval remains    |
+| AC-24 | `PASS`    | approved machine budget; final 600-run Gate passed 1,133 checks with no violations                   |
 | AC-25 | `PASS`    | exact Head `1eccfb38` passed every required GitHub Gate in run `30444809403`                         |
 | AC-26 | `PASS`    | 13 Chromium E2E tests including 5 Section 3 scenarios                                                |
 | AC-27 | `BLOCKED` | requires final Draft PR gates, user approval, merge, and separate completion review                  |
+
+Final status summary:
+
+```text
+PASS: AC-01~AC-26
+BLOCKED: AC-27
+FAIL: none
+NOT_RUN: none
+```
 
 Section 3 and Frontend Phase 1 are not declared complete.
 
@@ -350,30 +361,31 @@ Section 3 and Frontend Phase 1 are not declared complete.
 
 ### Passing commands
 
-| Command                                 | Result                                                                                              |
-| --------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `npm run docs:validate`                 | `PASS`: 289 links, ADR 1-121, registries and migration drift                                        |
-| `npm run lint`                          | `PASS`                                                                                              |
-| `npm run typecheck`                     | `PASS`                                                                                              |
-| `npm run test:ci`                       | `PASS`: Unit, Contract, Integration, Architecture, and Stage 12 package on the final local worktree |
-| `npm run test:unit`                     | `PASS`: 26 files, 115 tests                                                                         |
-| `npm run test:contract`                 | `PASS`: 20 files, 171 tests                                                                         |
-| `npm run test:integration`              | `PASS`: 13 files, 48 tests                                                                          |
-| `npm run test:architecture`             | `PASS`                                                                                              |
-| `npm run test:stage12-package`          | `PASS` after approved OS-level npm cache access                                                     |
-| `npm run test:database`                 | `PASS`: 17 files, 86 tests                                                                          |
-| `npm run db:reset`                      | `PASS`: migrations 001 through 019 reapplied                                                        |
-| `npm run db:verify`                     | `PASS`                                                                                              |
-| `npm run frontend:typecheck`            | `PASS`                                                                                              |
-| `npm run frontend:test`                 | `PASS`: 6 files, 22 tests                                                                           |
-| `npm run frontend:build`                | `PASS`: 594.76 kB JS / 170.93 kB gzip, with the AC-24 chunk warning recorded                        |
-| `npm run frontend:test:e2e`             | `PASS`: 13 tests                                                                                    |
-| `npm run frontend:performance:baseline` | `PASS`: 600 runs, 0 failures, artifact digest `c5c7ef75...84332`                                    |
-| `npm run stage12:reuse-operations-gate` | `PASS`: package, assembly/replacement, quality, DB, secret, OSS                                     |
-| `npm run oss:audit`                     | `PASS`: 0 vulnerabilities                                                                           |
-| GitHub Actions run `30444459626`        | `PASS` on implementation Head `6e7fa537`: Frontend, Quality, and Required Gates                     |
-| GitHub Actions run `30444809403`        | `PASS` on exact Head `1eccfb38`: Frontend, Quality, Required Gates, Database, and E2E               |
-| GitHub Actions run `30455161697`        | `PASS` on publication Head `d5f4e65b`: Frontend 1m13s, Quality 2m10s, Required Gates 4s             |
+| Command                                 | Result                                                                                  |
+| --------------------------------------- | --------------------------------------------------------------------------------------- |
+| `npm run docs:validate`                 | `PASS`: 289 links, ADR 1-121, registries and migration drift                            |
+| `npm run lint`                          | `PASS`                                                                                  |
+| `npm run typecheck`                     | `PASS`                                                                                  |
+| `npm run test:ci`                       | `PASS`: 118 Unit, 171 Contract, 48 Integration, Architecture, and Stage 12 package      |
+| `npm run test:unit`                     | `PASS`: 27 files, 118 tests                                                             |
+| `npm run test:contract`                 | `PASS`: 20 files, 171 tests                                                             |
+| `npm run test:integration`              | `PASS`: 13 files, 48 tests                                                              |
+| `npm run test:architecture`             | `PASS`                                                                                  |
+| `npm run test:stage12-package`          | `PASS` after approved OS-level npm cache access                                         |
+| `npm run test:database`                 | `PASS`: 17 files, 86 tests                                                              |
+| `npm run db:reset`                      | `PASS`: migrations 001 through 019 reapplied                                            |
+| `npm run db:verify`                     | `PASS`                                                                                  |
+| `npm run frontend:typecheck`            | `PASS`                                                                                  |
+| `npm run frontend:test`                 | `PASS`: 6 files, 22 tests                                                               |
+| `npm run frontend:build`                | `PASS`: 594.76 kB JS / 170.93 kB gzip, with the AC-24 chunk warning recorded            |
+| `npm run frontend:test:e2e`             | `PASS`: 13 tests                                                                        |
+| `npm run frontend:performance:baseline` | `PASS`: 600 runs, 0 failures, artifact digest `c5c7ef75...84332`                        |
+| `npm run frontend:performance:gate`     | `PASS`: approved budget, 600 runs, 0 failures, 0 violations, digest `cbe16ccf...463e63` |
+| `npm run stage12:reuse-operations-gate` | `PASS`: package, assembly/replacement, quality, DB, secret, OSS                         |
+| `npm run oss:audit`                     | `PASS`: 0 vulnerabilities                                                               |
+| GitHub Actions run `30444459626`        | `PASS` on implementation Head `6e7fa537`: Frontend, Quality, and Required Gates         |
+| GitHub Actions run `30444809403`        | `PASS` on exact Head `1eccfb38`: Frontend, Quality, Required Gates, Database, and E2E   |
+| GitHub Actions run `30455161697`        | `PASS` on publication Head `d5f4e65b`: Frontend 1m13s, Quality 2m10s, Required Gates 4s |
 
 ### Local environment divergence
 
@@ -385,6 +397,10 @@ Section 3 and Frontend Phase 1 are not declared complete.
 These results remain visible and are not rewritten as local passes. GitHub
 Actions run `30444809403` executed both required Gates on the exact final
 implementation Head in a clean environment, so they do not block AC-25.
+The AC-24 evidence update repeated both checks: every file changed by this work
+passes targeted Prettier validation, while the full repository check still
+lists 17 pre-existing files and the generated Knowledge Flow baseline remains
+stale. Those unrelated files were not rewritten.
 
 ## 14. Final failure and retry history
 
@@ -436,6 +452,24 @@ implementation Head in a clean environment, so they do not block AC-25.
 15. local `npm pack` and dependency Audit initially hit restricted npm cache
     and registry access. Their exact commands passed with approved OS-level
     access, and Audit reported zero vulnerabilities.
+16. the first approved Performance Gate run recorded 600 valid runs and zero
+    measurement failures, but failed one budget check. Representative /
+    Desktop / `06-notification-summary-refresh` / Warm Projection Composition
+    P95 was 4.077 ms against the approved 2.5 ms limit. The failed artifact and
+    aggregate `46df69c0...09c710` were preserved; no run was excluded and no
+    budget was changed.
+17. a reduced, non-canonical diagnostic observed the same Warm path at
+    1.048 ms. The official unchanged-contract retry was written to a new
+    artifact sequence and passed 1,133 checks across 80 groups and 600 valid
+    runs, with zero measurement failures and zero violations. Its verified
+    aggregate is `cbe16ccf...463e63`.
+18. local dependency Audit initially could not reach the npm Registry. The
+    exact `npm run oss:audit` command passed with approved external access and
+    reported zero vulnerabilities.
+19. local Stage 12 and the first exact `test:ci` attempt reached `npm pack` but
+    Windows denied the restricted npm cache with `EPERM`. Stage 12 and the
+    complete unchanged `test:ci` command passed with approved OS-level cache
+    access. No assertion, package, or dependency was changed.
 
 ## 15. Performance evidence
 
@@ -443,6 +477,10 @@ implementation Head in a clean environment, so they do not block AC-25.
   `docs/engineering/performance/frontend-phase-1-section-3-performance-baseline-260729001.md`
 - Artifact path:
   `artifacts/performance/frontend-phase-1-section-3/260729001/`
+- Failed approved-Gate artifact path:
+  `artifacts/performance/frontend-phase-1-section-3/260729002/`
+- Passing approved-Gate artifact path:
+  `artifacts/performance/frontend-phase-1-section-3/260729003/`
 - Measurement Head: `6df6a2ee6e9d1697311ddac74d94d822ed86098c`
 - Recorded runs: 600
 - Measured failures: 0
@@ -453,7 +491,17 @@ implementation Head in a clean environment, so they do not block AC-25.
 - Final uninstrumented Product build: 594.76 kB / 170.93 kB gzip.
 - Worst Interaction Readiness P95: Desktop Cold 5,289.9 ms, Desktop Warm
   1,663.3 ms, Mobile Cold 12,462.4 ms, Mobile Warm 3,431.1 ms.
-- Proposed budgets: recorded in the baseline and awaiting explicit approval.
+- Approved budget:
+  `Frontend Phase 1 Section 3 Local Product Performance Budget v1.0`
+  (`user / 2026-07-29`).
+- Machine-readable budget:
+  `tests/performance/frontend-section3-local-product-performance-budget-v1.0.json`
+  with SHA-256
+  `a26d15372331013fb4a39a1cd2208ebe984db0457cc327faee5d3526a6800187`.
+- Final Performance Gate: `PASS`, 600 runs, 0 measured failures, 0 budget
+  violations, 1,133 checks, 80 groups, Artifact Manifest verified.
+- Final Performance Gate aggregate SHA-256:
+  `cbe16ccfb607147d636d459f51dc62ebf283f236e23aa2615d9f659f03463e63`.
 - Optimization decision: route-level lazy splitting is recommended;
   virtualization is not required at the current caps.
 
@@ -472,6 +520,6 @@ implementation Head in a clean environment, so they do not block AC-25.
 - Frontend Phase 1 completion: **NOT APPROVED**
 - Phase 2 start: **NOT APPROVED**
 
-The Draft PR remains Draft. AC-24 remains blocked on numeric budget approval,
-and AC-27 remains blocked on merge plus a separate completion review. AC-25 is
-`PASS`.
+The Draft PR remains Draft. AC-01 through AC-26 are `PASS`. AC-27 remains
+`BLOCKED` on user-approved Ready transition, merge, and a separate Frontend
+Phase 1 Completion Review.

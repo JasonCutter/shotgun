@@ -8,16 +8,23 @@
 - Measurement Head: `6df6a2ee6e9d1697311ddac74d94d822ed86098c`
 - Branch: `codex/frontend-phase-1-section-3`
 - Draft PR: [#42](https://github.com/JasonCutter/shotgun/pull/42)
-- Status: **BASELINE_PASS_BUDGET_APPROVAL_PENDING**
-- AC-24: **BLOCKED**
+- Status: **BUDGET_APPROVED**
+- Approved budget:
+  **Frontend Phase 1 Section 3 Local Product Performance Budget v1.0**
+- Approver / approval date: `user / 2026-07-29`
+- AC-24: **PASS**
 - Artifact aggregate SHA-256:
   `c5c7ef75bfdc3f9a932d50b2f9cb8b1be65392952f62e0ebe49a3b4970084332`
+- Final Performance Gate artifact aggregate SHA-256:
+  `cbe16ccfb607147d636d459f51dc62ebf283f236e23aa2615d9f659f03463e63`
 
 ## 1. Decision boundary
 
-This record supplies the deterministic local Product baseline and numeric
-budget candidates required for AC-24. The numbers are not Canonical completion
-budgets until the user approves them. AC-24 therefore remains `BLOCKED`.
+This record supplies the deterministic local Product baseline and the approved
+numeric regression budget required for AC-24. The budget is fixed in the
+machine-readable
+`tests/performance/frontend-section3-local-product-performance-budget-v1.0.json`
+contract and enforced by the repository Performance Gate.
 
 This record does not approve the Draft PR Ready transition, merge, Frontend
 Phase 1 completion, Phase 2 work, a new runtime dependency, or removal of the
@@ -35,7 +42,7 @@ or production SLO claim.
 Command:
 
 ```bash
-npm run frontend:performance:baseline
+npm run frontend:performance:gate
 ```
 
 The command:
@@ -162,12 +169,15 @@ The final local uninstrumented build reports 594.76 kB / 170.93 kB gzip; the
 previous implementation evidence reported 594.38 kB / 170.82 kB gzip. The
 bridge does not change the Product authority model.
 
-## 7. Numeric budget candidates
+## 7. Approved numeric budget
 
-These are `PROPOSED`, not approved. They use the observed worst P95 plus
-approximately 20-30% repeatability headroom, rounded to reviewable units.
+Approval name:
+`Frontend Phase 1 Section 3 Local Product Performance Budget v1.0`.
+The user approved these limits on 2026-07-29. They apply only to the fixed
+Representative and Stress seeds, Desktop and Mobile profiles, 10 scenarios,
+three warm-ups, five Cold runs, ten Warm runs, and nearest-rank P95 contract.
 
-| Dimension                                    |                           Proposed P95 budget |
+| Dimension                                    |                           Approved P95 budget |
 | -------------------------------------------- | --------------------------------------------: |
 | Server Query                                 |                                     <= 2.5 ms |
 | Projection Composition                       |                                     <= 2.5 ms |
@@ -188,9 +198,11 @@ approximately 20-30% repeatability headroom, rounded to reviewable units.
 | JS Heap Used                                 |                                     <= 24 MiB |
 | JavaScript bundle                            | <= 640,000 raw B and <= 185,000 direct gzip B |
 
-Any approved budget must be enforced against the same versioned seed, profiles,
-scenario boundaries, statistics, and artifact retention rules. Deployed
-performance needs a separate environment-specific SLO.
+The Gate fails on any budget breach and preserves measured failures,
+exclusions, retries, replacement runs, the Artifact Manifest, and aggregate
+SHA-256. This is a reproducible Local Product Regression Gate. It is not a
+Production, CDN, real-device, deployment, or SLO claim. Notification Detail and
+Mark-read are outside this measurement scope.
 
 ## 8. Optimization decision
 
@@ -241,10 +253,27 @@ The final canonical run recorded no instrumented failure and
 `npm` was blocked by the local `npm.ps1` execution policy before measurement
 started; `npm.cmd` executed the exact repository commands successfully.
 
+After budget approval, the first automated Gate run was preserved at
+`260729002`. It recorded 600 valid runs and no measurement failures, but failed
+one budget check: Representative / Desktop /
+`06-notification-summary-refresh` / Warm Projection Composition P95 was
+4.077 ms against the approved 2.5 ms limit. Its aggregate SHA-256 is
+`46df69c032a104e1ad4ad089a19eaa6a3deda624d00e6df89877a06f2309c710`.
+No run was excluded and the budget was not changed.
+
+A reduced non-canonical diagnostic observed the same Warm path at 1.048 ms.
+The official retry used the unchanged measurement contract and was written to
+`260729003`, without overwriting the failed run. It passed all 1,133 checks
+across 80 groups and 600 valid runs, with zero measurement failures and zero
+budget violations. Its verified aggregate SHA-256 is
+`cbe16ccfb607147d636d459f51dc62ebf283f236e23aa2615d9f659f03463e63`.
+
 ## 10. Artifact inventory
 
-Artifacts are stored in
-`artifacts/performance/frontend-phase-1-section-3/260729001/`:
+Baseline artifacts are stored in
+`artifacts/performance/frontend-phase-1-section-3/260729001/`. The approved
+Gate attempt and retry are stored without replacement in `260729002/` and
+`260729003/`.
 
 - `environment.json`
 - `seed-manifest.json`
@@ -253,6 +282,8 @@ Artifacts are stored in
 - `failures.json`
 - `execution-history.json`
 - `bundle.json`
+- `performance-budget.json` (approved Gate artifacts)
+- `budget-gate.json` (approved Gate artifacts)
 - `artifact-manifest.json`
 
 The aggregate digest covers every file except the manifest that records the
@@ -268,7 +299,12 @@ content.
 - split server/network/decode/client/readiness/DOM/cache/memory evidence:
   `PASS`
 - bundle, retry history, and artifact digest: `PASS`
-- numeric budget approval: `BLOCKED`
+- numeric budget approval: `PASS` — `user / 2026-07-29`
+- machine-readable budget and fail-closed evaluator: `PASS`
+- final approved Performance Gate: `PASS` — 600 runs, zero failures, zero
+  violations, verified Artifact Manifest
 
-AC-24 remains `BLOCKED` only on explicit approval of the proposed numeric
-budgets and any resulting optimization condition.
+AC-24 is `PASS`. Route-level lazy loading remains a recommended, non-blocking
+follow-up. Virtualization is not adopted and is reconsidered only after an
+actual approved DOM, heap, or readiness budget breach with accessibility
+evidence.

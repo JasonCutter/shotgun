@@ -1,0 +1,26 @@
+[
+  {
+    "phase": "SMOKE_PREFLIGHT",
+    "status": "RECOVERED",
+    "attempts": [
+      "Windows npm.cmd direct spawn returned null status.",
+      "Sandbox denied C:\\tmp smoke output creation.",
+      "Performance Home seed exposed cross-Project resources and failed closed.",
+      "Browser metric collection omitted the end timestamp argument.",
+      "Windows npm.cmd version lookup returned EINVAL.",
+      "Scenario 05 first waited for a non-existent exact Settings heading after navigation."
+    ],
+    "finalResult": "Initial 4-run smoke and focused Scenario 05 2-run smoke passed with zero measured failures."
+  },
+  {
+    "phase": "CANONICAL_ATTEMPT_1",
+    "status": "RETRIED_AFTER_FIX",
+    "dataset": "representative",
+    "profile": "desktop",
+    "scenario": "05-continue-working-and-browser-drafts",
+    "cacheProfile": "warm-up",
+    "attempts": 2,
+    "error": "Browser draft readiness timed out because an identical Home refetch was structurally shared and did not remount the draft composition boundary.",
+    "correction": "The scenario now performs client-side Settings-to-Home remount after refetch; no Product authority or server ranking changed."
+  }
+]

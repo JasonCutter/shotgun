@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "1.0.0",
+  "implementationHead": "1eccfb380a31b65af1ecf04c58e64150ea52b563",
+  "measurementHead": "19ff80a74d3e69413aaa3b0ccf93016f67bbd132",
+  "node": "v24.15.0",
+  "npm": "11.12.1",
+  "playwright": "1.61.1",
+  "browser": "Chromium 149.0.7827.55",
+  "headless": true,
+  "buildMode": "production Vite bundle with E2E performance bridge",
+  "databaseState": "reset through migration 019 before measurement",
+  "profiles": [
+    {
+      "id": "desktop",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "hasTouch": false,
+      "isMobile": false,
+      "cpuThrottlingRate": 4,
+      "network": {
+        "downloadMbps": 10,
+        "uploadMbps": 2,
+        "latencyMs": 40
+      }
+    },
+    {
+      "id": "mobile",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "hasTouch": true,
+      "isMobile": true,
+      "cpuThrottlingRate": 6,
+      "network": {
+        "downloadMbps": 1.6,
+        "uploadMbps": 0.75,
+        "latencyMs": 150
+      }
+    }
+  ],
+  "warmupCount": 3,
+  "coldCount": 5,
+  "warmCount": 10,
+  "statistics": "median and nearest-rank P95; no statistical outlier removal",
+  "command": "npm run frontend:performance:baseline"
+}

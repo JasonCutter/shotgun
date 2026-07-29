@@ -38,6 +38,8 @@
     "frontend:test:backend": "tsx tests/browser/fixtures/frontend-test-backend.ts",
     "frontend:test:e2e": "playwright test",
     "frontend:check": "npm run frontend:typecheck && npm run frontend:test && npm run frontend:build && npm run frontend:test:e2e",
+    "docs:knowledge-flow:render": "node scripts/render-knowledge-flow-baseline.mjs",
+    "docs:knowledge-flow:check": "node scripts/render-knowledge-flow-baseline.mjs --check",
     "docs:validate": "tsx scripts/docs-validation.ts all",
     "docs:links": "tsx scripts/docs-validation.ts links",
     "docs:adr-index": "tsx scripts/docs-validation.ts adr",
@@ -63,7 +65,7 @@
     "auth:bootstrap-owner": "tsx scripts/auth-bootstrap-owner.ts",
     "secret:scan": "tsx scripts/secret-scan.ts",
     "check:core": "npm run lint && npm run format:check && npm run typecheck && npm run test:unit && npm run test:contract && npm run test:integration && npm run test:architecture",
-    "check": "npm run docs:validate && npm run check:core && npm run test:stage12-package && npm run secret:scan && npm run oss:verify"
+    "check": "npm run docs:knowledge-flow:check && npm run docs:validate && npm run check:core && npm run test:stage12-package && npm run secret:scan && npm run oss:verify"
   },
   "dependencies": {
     "@google/genai": "2.12.0",

@@ -11,7 +11,7 @@ legacy_source_id: 3a65181d-71ad-8182-b0fb-f84d722f98a2
 
 ## 범위
 
-Frontend and Human Interaction Architecture의 횡단 ADR을 식별한다. 이 인덱스는 ADR 본문의 결정과 변경 이력을 대체하지 않으며, 기존 Git ADR 파일을 이동하거나 이름을 바꾸지 않는다.
+Frontend and Human Interaction Architecture의 횡단 ADR을 식별한다. 이 인덱스는 ADR 본문의 결정과 변경 이력을 대체하지 않으며 ADR 번호와 Accepted 상태를 보존한다.
 
 | ADR | 제목 | 상태 | Legacy Notion ID |
 | --- | --- | --- | --- |
@@ -38,14 +38,21 @@ Frontend and Human Interaction Architecture의 횡단 ADR을 식별한다. 이 �
 
 ADR-117과 ADR-120은 Frontend 기능 ADR이 아니라 Project 전체 문서 Canonical 운영을 지배한다.
 
+## Git 소유 경계
+
+- ADR-099와 ADR-114–119의 권위 본문은 `docs/architecture/adr/`의 개별 Git 파일이다.
+- ADR-100–113의 권위 본문은 [`adr-100-113-consolidated-record.md`](adr-100-113-consolidated-record.md)다.
+- 개별 Notion 페이지는 Legacy Reference와 승인 당시의 원문 이력이다.
+- 전역 번호·Gap·Owner 정보는 [`docs/architecture/adr/adr-registry.json`](../adr/adr-registry.json)이 지배한다.
+
 ## 인덱스 규칙
 
-1. ADR의 최신 권위 본문은 `docs/architecture/adr/` 아래 Git 파일이다.
+1. 인덱스가 ADR 본문을 대체하지 않는다.
 2. 동일 번호 또는 제목의 Notion 페이지는 Legacy Reference 또는 Mirror다.
 3. 이관 과정에서 ADR 번호, Accepted 상태 또는 구현 완료 상태를 추측해 변경하지 않는다.
 4. ADR 본문과 Phase 통합 문서가 충돌하면 변경 이력과 승인 시점을 대조하고 명시적으로 조정한다.
 5. 설계 Accepted, Product 구현, 원격 CI, Merge와 Production 검증을 별도 상태로 기록한다.
-6. ADR-115·116·118·119의 후속 변경은 기존 결정을 조용히 덮어쓰지 않고 새 ADR 또는 명시적 Amendment를 사용한다.
+6. 후속 변경은 기존 결정을 조용히 덮어쓰지 않고 새 ADR 또는 명시적 Amendment를 사용한다.
 
 ## 알려진 역사적 상태 차이
 
@@ -54,6 +61,9 @@ ADR-117과 ADR-120은 Frontend 기능 ADR이 아니라 Project 전체 문서 Can
 - 따라서 현재 상태 표시는 이후 승인·병합 기록을 따른다. 초기 기록은 당시 Fact로 보존하며 삭제하지 않는다.
 - ADR-119의 설계 문서 병합과 Product 구현 완료는 별개다.
 
-## 후속 ADR 정리 경계
+## 2026-07-29 전역 정리 결과
 
-이 인덱스 생성은 Project 전체 ADR 번호·중복·Supersession 전수 조사를 완료했다는 의미가 아니다. 전역 ADR reconciliation은 별도 레거시 이관 Backlog로 유지한다.
+- ADR-100–113을 승인 본문과 Contract Normalization 이력이 보존된 통합 Git 소유 기록으로 이관했다.
+- 번호를 재사용하거나 변경하지 않았다.
+- Notion 원문을 삭제하지 않고 Legacy Reference로 유지했다.
+- Project-wide ADR 소유자와 명시적 Legacy Gap은 ADR-121과 전역 Registry에서 검증한다.

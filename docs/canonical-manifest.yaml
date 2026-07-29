@@ -105,6 +105,40 @@ documents:
       semantic_change: false
       verification_record: docs/engineering/knowledge-flow-detailed-map-migration-verification-260729001.md
 
+  - id: FRONTEND-AND-HUMAN-INTERACTION-ARCHITECTURE
+    path: docs/architecture/frontend/README.md
+    classification: CANONICAL
+    status: architecture_confirmed_contract_normalized_implementation_verification_pending
+    approved_by: user
+    approved_at: 2026-07-24
+    source:
+      provider: notion
+      page_id: 3a15181d-71ad-81e4-bfa4-ee2578e692a0
+    child_structure:
+      phase_count: 5
+      section_count: 12
+      cross_phase_contract: docs/architecture/frontend/cross-phase-contract-and-completion-audit.md
+      adr_index: docs/architecture/frontend/adr-index.md
+    migration:
+      status: migrated_to_git
+      migrated_at: 2026-07-29
+      method: consolidated_current_governing_hierarchy
+      verification_record: docs/engineering/frontend-architecture-migration-verification-260729001.md
+
+  - id: FRONTEND-PHASE-1-5-IMPLEMENTATION-PLAN-V1
+    path: docs/implementation/frontend-phase-1-5-plan-v1.0.md
+    classification: CANONICAL
+    status: confirmed_plan_current_status_amended_by_later_completion_records
+    approved_by: user
+    approved_at: 2026-07-24
+    source:
+      provider: notion
+      page_id: 3a75181d-71ad-817a-9675-c984455b2c3b
+    migration:
+      status: migrated_to_git
+      migrated_at: 2026-07-29
+      verification_record: docs/engineering/frontend-architecture-migration-verification-260729001.md
+
   - id: SHOTGUN-REFERENCE-ARCHITECTURE-STRATEGY-KO
     path: docs/shotgun_reference_architecture_strategy_ko.html
     classification: REFERENCE
@@ -124,6 +158,19 @@ external_references:
     migration_status: migrated_to_git
     canonical_authority: git-main-at-target-path
 
+  - id: FRONTEND-ARCHITECTURE-NOTION-HIERARCHY
+    classification: REFERENCE
+    role: legacy_source_hierarchy_after_git_consolidation
+    source:
+      provider: notion
+      root_page_id: 3a15181d-71ad-81e4-bfa4-ee2578e692a0
+      implementation_plan_page_id: 3a75181d-71ad-817a-9675-c984455b2c3b
+      adr_index_page_id: 3a65181d-71ad-8182-b0fb-f84d722f98a2
+    target_path: docs/architecture/frontend/README.md
+    retention_status: retain_as_legacy_source_and_history
+    migration_status: migrated_to_git_consolidated
+    canonical_authority: git-main-at-target-paths
+
 inventory:
   status: in_progress_non_blocking
   authority_effect: none
@@ -136,12 +183,17 @@ inventory:
       completed_at: 2026-07-29
       target_path: docs/architecture/knowledge-flow/shotgun-knowledge-flow-detailed-map.md
       verification_record: docs/engineering/knowledge-flow-detailed-map-migration-verification-260729001.md
+    - id: FRONTEND-AND-HUMAN-INTERACTION-ARCHITECTURE
+      completed_at: 2026-07-29
+      target_path: docs/architecture/frontend/README.md
+      verification_record: docs/engineering/frontend-architecture-migration-verification-260729001.md
   unresolved_items:
     - export Phase 1-6 ADD documents
-    - export Frontend and Human Interaction Architecture hierarchy
-    - reconcile ADR index and document numbering
+    - reconcile project-wide ADR index and document numbering
     - classify Stage 12.1 architecture records
     - classify implementation and engineering completion records
     - identify duplicates and superseded snapshots
     - establish generated-artifact ownership
+    - implement documentation validation tooling
+    - complete final Notion, Google Drive, and Git inventory
   rule: unresolved legacy items are non-canonical until imported, reconciled, approved where required, and merged to main

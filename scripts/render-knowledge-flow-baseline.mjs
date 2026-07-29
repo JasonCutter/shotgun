@@ -1,5 +1,7 @@
+import console from 'node:console';
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import process from 'node:process';
 
 const repoRoot = process.cwd();
 const sourcePath = path.join(

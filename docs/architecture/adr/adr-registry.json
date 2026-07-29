@@ -10,16 +10,51 @@
   "expectedRange": {
     "start": 1,
     "end": 121,
-    "allowedGaps": []
+    "allowedGaps": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      76,
+      77,
+      78,
+      95
+    ]
   },
-  "ownerRules": [
+  "gapClassifications": [
     {
       "start": 1,
       "end": 17,
-      "kind": "INDIVIDUAL_FILES",
-      "path": "docs/architecture/adr",
-      "filenamePattern": "ADR-NNN-*.md"
+      "classification": "LEGACY_IDENTIFIER_GAP_NO_GIT_OWNER_IDENTIFIED",
+      "reason": "No authoritative Git ADR owner was found during the 2026-07-29 reconciliation. These identifiers remain reserved and cannot be reused."
     },
+    {
+      "start": 76,
+      "end": 78,
+      "classification": "LEGACY_IDENTIFIER_GAP_NO_GIT_OWNER_IDENTIFIED",
+      "reason": "The Phase ADR range ends at ADR-075 and the first later individual owner begins at ADR-079. The unused identifiers remain reserved."
+    },
+    {
+      "start": 95,
+      "end": 95,
+      "classification": "LEGACY_IDENTIFIER_GAP_NO_GIT_OWNER_IDENTIFIED",
+      "reason": "No authoritative Git owner was found between ADR-094 and ADR-096. The identifier remains reserved pending historical evidence."
+    }
+  ],
+  "ownerRules": [
     {
       "start": 18,
       "end": 26,
@@ -51,7 +86,27 @@
       "path": "docs/architecture/add/phase-06-utilization-results-feedback/architecture-decision-records.md"
     },
     {
-      "start": 76,
+      "start": 79,
+      "end": 94,
+      "kind": "INDIVIDUAL_FILES",
+      "path": "docs/architecture/adr",
+      "filenamePattern": "ADR-NNN-*.md"
+    },
+    {
+      "start": 96,
+      "end": 99,
+      "kind": "INDIVIDUAL_FILES",
+      "path": "docs/architecture/adr",
+      "filenamePattern": "ADR-NNN-*.md"
+    },
+    {
+      "start": 100,
+      "end": 113,
+      "kind": "CONSOLIDATED_PHASE_RECORD",
+      "path": "docs/architecture/frontend/adr-100-113-consolidated-record.md"
+    },
+    {
+      "start": 114,
       "end": 121,
       "kind": "INDIVIDUAL_FILES",
       "path": "docs/architecture/adr",

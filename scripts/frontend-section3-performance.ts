@@ -3,6 +3,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFile, readdir, stat, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
+import { gzipSync } from 'node:zlib';
 
 import { chromium, type BrowserContext, type CDPSession, type Page } from '@playwright/test';
 
@@ -22,6 +23,9 @@ const ZERO_BACKEND_PORT = 3002;
 const STATIC_PORT = 4173;
 const isSmoke = process.argv.includes('--smoke');
 const shouldWriteCanonical = process.argv.includes('--write');
+const smokeScenarioId = process.argv
+  .find((argument) => argument.startsWith('--scenario='))
+  ?.slice('--scenario='.length);
 
 if (!isSmoke && !shouldWriteCanonical) {
   throw new Error('Use --write for the canonical baseline or --smoke for a reduced harness check.');
@@ -277,6 +281,10 @@ const scenarios: readonly Scenario[] = [
         { activeContext: active, draftCount: manifest.browserDrafts },
       );
       await bridgeCall<void>(page, 'refetchHome');
+      await page.locator('a[href="/settings"]:visible').first().click();
+      await page.waitForURL(/\/settings$/);
+      await page.locator('a[href="/"]:visible').first().click();
+      await waitForActiveHome(page);
       await page.getByText('Browser draft 001', { exact: true }).waitFor();
       await afterRender(page);
     },
@@ -744,7 +752,12 @@ const bundleInventory = async (repositoryRoot: string) => {
   return Promise.all(
     entries.sort().map(async (name) => {
       const payload = await readFile(path.join(assetsRoot, name));
-      return { name, bytes: payload.byteLength, sha256: sha256(payload) };
+      return {
+        name,
+        bytes: payload.byteLength,
+        gzipBytes: gzipSync(payload).byteLength,
+        sha256: sha256(payload),
+      };
     }),
   );
 };
@@ -798,7 +811,14 @@ const main = async (): Promise<void> => {
     ? ['representative']
     : ['representative', 'stress'];
   const selectedProfiles = isSmoke ? profiles.slice(0, 1) : profiles;
-  const selectedScenarios = isSmoke ? scenarios.slice(0, 2) : scenarios;
+  const selectedScenarios = isSmoke
+    ? smokeScenarioId
+      ? scenarios.filter((scenario) => scenario.id === smokeScenarioId)
+      : scenarios.slice(0, 2)
+    : scenarios;
+  if (selectedScenarios.length === 0) {
+    throw new Error(`Unknown performance scenario: ${smokeScenarioId ?? 'none'}.`);
+  }
   const warmupCount = isSmoke ? 0 : 3;
   const coldCount = isSmoke ? 1 : 5;
   const warmCount = isSmoke ? 1 : 10;
@@ -995,12 +1015,42 @@ const main = async (): Promise<void> => {
   });
   const summary = summarizeRuns(runs);
   const bundle = await bundleInventory(repositoryRoot);
+  const executionHistory = [
+    {
+      phase: 'SMOKE_PREFLIGHT',
+      status: 'RECOVERED',
+      attempts: [
+        'Windows npm.cmd direct spawn returned null status.',
+        'Sandbox denied C:\\tmp smoke output creation.',
+        'Performance Home seed exposed cross-Project resources and failed closed.',
+        'Browser metric collection omitted the end timestamp argument.',
+        'Windows npm.cmd version lookup returned EINVAL.',
+        'Scenario 05 first waited for a non-existent exact Settings heading after navigation.',
+      ],
+      finalResult:
+        'Initial 4-run smoke and focused Scenario 05 2-run smoke passed with zero measured failures.',
+    },
+    {
+      phase: 'CANONICAL_ATTEMPT_1',
+      status: 'RETRIED_AFTER_FIX',
+      dataset: 'representative',
+      profile: 'desktop',
+      scenario: '05-continue-working-and-browser-drafts',
+      cacheProfile: 'warm-up',
+      attempts: 2,
+      error:
+        'Browser draft readiness timed out because an identical Home refetch was structurally shared and did not remount the draft composition boundary.',
+      correction:
+        'The scenario now performs client-side Settings-to-Home remount after refetch; no Product authority or server ranking changed.',
+    },
+  ];
 
   await writeJson(path.join(outputRoot, 'environment.json'), environment);
   await writeJson(path.join(outputRoot, 'seed-manifest.json'), seedManifest);
   await writeJson(path.join(outputRoot, 'raw-runs.json'), runs);
   await writeJson(path.join(outputRoot, 'summary.json'), summary);
   await writeJson(path.join(outputRoot, 'failures.json'), failures);
+  await writeJson(path.join(outputRoot, 'execution-history.json'), executionHistory);
   await writeJson(path.join(outputRoot, 'bundle.json'), bundle);
 
   const artifactFiles = [
@@ -1009,6 +1059,7 @@ const main = async (): Promise<void> => {
     'raw-runs.json',
     'summary.json',
     'failures.json',
+    'execution-history.json',
     'bundle.json',
   ];
   const fileDigests = await Promise.all(

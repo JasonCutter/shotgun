@@ -7,7 +7,8 @@
 - Branch: `codex/frontend-phase-1-section-3`
 - Status: **PERFORMANCE_BUDGET_APPROVAL_PENDING**
 - Draft PR: [#42](https://github.com/JasonCutter/shotgun/pull/42)
-- Final Head SHA: `6df6a2ee6e9d1697311ddac74d94d822ed86098c`
+- Measurement Head SHA: `6df6a2ee6e9d1697311ddac74d94d822ed86098c`
+- Final Evidence Head SHA: `9ac3da943a5344a41bdcb77cc206d1a39c1ef16e`
 - Frontend Phase 1 completion: **NOT APPROVED**
 - Canonical authority: GitHub `main`
 - Notion classification: Execution Mirror / Candidate

@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "governingPolicy": "docs/governance/generated-artifact-ownership.md",
+  "artifacts": [
+    {
+      "id": "NPM-LOCKFILE",
+      "class": "LOCKFILE",
+      "target": "package-lock.json",
+      "versioned": true,
+      "owner": "repository-dependency-governance",
+      "canonicalInputs": ["package.json"],
+      "generator": "npm 11 dependency resolution",
+      "regenerationTrigger": "approved dependency or workspace manifest change",
+      "authority": "reproducible dependency resolution; not architecture authority"
+    },
+    {
+      "id": "CI-SBOM",
+      "class": "GENERATED_TRANSIENT",
+      "target": "sbom.cdx.json",
+      "versioned": false,
+      "owner": "security-and-oss-governance",
+      "canonicalInputs": ["package.json", "package-lock.json"],
+      "generator": "npm sbom --sbom-format cyclonedx",
+      "regenerationTrigger": "each Quality CI run",
+      "authority": "supporting evidence only"
+    },
+    {
+      "id": "COMPILED-TRUTH",
+      "class": "DERIVED_RUNTIME_PROJECTION",
+      "target": "runtime:compiled-truth",
+      "versioned": false,
+      "owner": "compiled-truth-projection-module",
+      "canonicalInputs": ["Canonical Knowledge revisions", "approved projection contracts"],
+      "generator": "Compiled Truth projection pipeline",
+      "regenerationTrigger": "Canonical change or full projection rebuild",
+      "authority": "derived projection; direct Canonical writes prohibited"
+    },
+    {
+      "id": "ARCHITECTURE-CONTRACT-SNAPSHOTS",
+      "class": "APPROVED_SNAPSHOT",
+      "target": "docs/architecture/contracts/snapshots",
+      "versioned": true,
+      "owner": "architecture-contract-governance",
+      "canonicalInputs": ["accepted ADRs", "approved acceptance criteria", "approved contract revisions"],
+      "generator": "authoring or snapshot tooling followed by explicit review",
+      "regenerationTrigger": "new approved revision at a new path; no silent overwrite",
+      "authority": "approved contract after user approval and Git merge"
+    },
+    {
+      "id": "KNOWLEDGE-FLOW-DETAILED-MAP-MIGRATION",
+      "class": "MIGRATED_CANONICAL",
+      "target": "docs/architecture/knowledge-flow/shotgun-knowledge-flow-detailed-map.md",
+      "versioned": true,
+      "owner": "knowledge-flow-governance",
+      "canonicalInputs": ["Google Docs document 1HazG-oAeJ8Sgg_mPmBiWpQqeCeeAoDUuWgqVNJR1DCg revision 9"],
+      "generator": "Google Docs Markdown export and reviewed normalization",
+      "regenerationTrigger": "approved Git change; external-only edits are Candidate",
+      "authority": "Git target is Canonical after migration merge"
+    },
+    {
+      "id": "FRONTEND-ARCHITECTURE-MIGRATION",
+      "class": "MIGRATED_CANONICAL",
+      "target": "docs/architecture/frontend/README.md",
+      "versioned": true,
+      "owner": "frontend-architecture-governance",
+      "canonicalInputs": ["approved Notion Frontend Architecture hierarchy"],
+      "generator": "reviewed hierarchy consolidation",
+      "regenerationTrigger": "approved Git change",
+      "authority": "Git hierarchy is Canonical"
+    },
+    {
+      "id": "PHASE-1-6-ADD-MIGRATION",
+      "class": "MIGRATED_CANONICAL",
+      "target": "docs/architecture/add/README.md",
+      "versioned": true,
+      "owner": "knowledge-flow-add-governance",
+      "canonicalInputs": ["approved Notion Phase 1-6 ADD hierarchy", "export commit f0d7f7a65a11f28dc9e3bc3a6e47a084b46541eb"],
+      "generator": "reviewed Markdown export and authority normalization",
+      "regenerationTrigger": "approved Git change",
+      "authority": "Git ADD hierarchy is Canonical"
+    }
+  ]
+}

@@ -56,6 +56,8 @@ jobs:
           -r adapters/networkx-impact-oracle/requirements.lock
       - name: Install Node.js dependencies
         run: npm ci
+      - name: Verify Knowledge Flow generated baseline
+        run: npm run docs:knowledge-flow:check
       - name: Validate documentation governance
         run: npm run docs:validate
       - name: Check formatting

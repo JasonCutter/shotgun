@@ -7,6 +7,7 @@ Shotgun은 한 점에 모인 지식이 산탄총의 탄환처럼 여러 방향�
 
 - Stage 12까지 완료되어 독립 Module Package, Assembly Manifest와 OSS Adapter 교체까지 검증된 상태
 - 최종 순서도 기준본: `docs/SHOTGUN_KNOWLEDGE_FLOW_BASELINE_v1.0.html`
+- Knowledge Flow Detailed Map: [`docs/architecture/knowledge-flow/shotgun-knowledge-flow-detailed-map.md`](docs/architecture/knowledge-flow/shotgun-knowledge-flow-detailed-map.md)
 - 상세 아키텍처 참고: `docs/shotgun_reference_architecture_strategy_ko.html`
 - 모듈 아키텍처 기준선: `docs/architecture/module-architecture/README.md`
 - 구현계획 기준선: `docs/implementation/README.md`

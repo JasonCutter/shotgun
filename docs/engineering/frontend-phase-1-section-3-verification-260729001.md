@@ -11,6 +11,10 @@
 - Approved Performance Gate measurement Head SHA:
   `19ff80a74d3e69413aaa3b0ccf93016f67bbd132`
 - Final Evidence Head SHA: `7428d497730bf5537d8e7af7f3fbb94e6981645f`
+- Validated AC-24 Evidence Publication Head SHA:
+  `d01d7bf6b9156af67892e3f51bd6f38c1aa4c3d5`
+- AC-24 Evidence GitHub Actions run:
+  [30467970797](https://github.com/JasonCutter/shotgun/actions/runs/30467970797)
 - Prior validated Publication Head SHA:
   `d5f4e65bd43211d97d168079e3d0650b2e04f3c9`
 - Frontend Phase 1 completion: **NOT APPROVED**
@@ -386,6 +390,7 @@ Section 3 and Frontend Phase 1 are not declared complete.
 | GitHub Actions run `30444459626`        | `PASS` on implementation Head `6e7fa537`: Frontend, Quality, and Required Gates         |
 | GitHub Actions run `30444809403`        | `PASS` on exact Head `1eccfb38`: Frontend, Quality, Required Gates, Database, and E2E   |
 | GitHub Actions run `30455161697`        | `PASS` on publication Head `d5f4e65b`: Frontend 1m13s, Quality 2m10s, Required Gates 4s |
+| GitHub Actions run `30467970797`        | `PASS` on AC-24 publication Head `d01d7bf6`: Frontend 1m46s, Quality 2m14s, Required 3s |
 
 ### Local environment divergence
 
@@ -514,6 +519,9 @@ stale. Those unrelated files were not rewritten.
   STAGE 12, CI, DATABASE, FRONTEND TYPECHECK/TEST/BUILD/E2E, QUALITY,
   FRONTEND, REQUIRED GATES PASS**
 - Evidence publication Head `d5f4e65b` GitHub Actions run `30455161697`:
+  **FRONTEND PASS, QUALITY PASS, REQUIRED GATES PASS**
+- AC-24 Evidence publication Head `d01d7bf6` GitHub Actions run
+  `30467970797`:
   **FRONTEND PASS, QUALITY PASS, REQUIRED GATES PASS**
 - Draft PR Ready transition: **NOT APPROVED**
 - Merge: **NOT APPROVED**

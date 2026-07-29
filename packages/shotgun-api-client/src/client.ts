@@ -117,6 +117,27 @@ const assertOk = async (response: Response): Promise<unknown> => {
   throw productFailureApiError(response.status, failure);
 };
 
+const decodeMeasured = <T>(metric: string, decode: () => T): T => {
+  const performanceMetricsEnabled =
+    (
+      globalThis as typeof globalThis & {
+        __SHOTGUN_PERFORMANCE_METRICS__?: boolean;
+      }
+    ).__SHOTGUN_PERFORMANCE_METRICS__ === true;
+  if (!performanceMetricsEnabled || typeof globalThis.performance === 'undefined') {
+    return decode();
+  }
+  const startedAt = globalThis.performance.now();
+  try {
+    return decode();
+  } finally {
+    globalThis.performance.measure(`shotgun:decode:${metric}`, {
+      start: startedAt,
+      end: globalThis.performance.now(),
+    });
+  }
+};
+
 export const createShotgunApiClient = (
   options: {
     readonly fetch?: typeof globalThis.fetch;
@@ -210,7 +231,7 @@ export const createShotgunApiClient = (
         signal: requestOptions?.signal,
       });
       const body = (await assertOk(response)) as { shell: unknown };
-      return decodeGlobalShellView(body.shell);
+      return decodeMeasured('global-shell', () => decodeGlobalShellView(body.shell));
     },
 
     async getHomeActionCenter(requestOptions?: RequestOptions): Promise<HomeActionCenterView> {
@@ -218,7 +239,7 @@ export const createShotgunApiClient = (
         signal: requestOptions?.signal,
       });
       const body = (await assertOk(response)) as { home: unknown };
-      return decodeHomeActionCenterView(body.home);
+      return decodeMeasured('home', () => decodeHomeActionCenterView(body.home));
     },
 
     async searchGlobal(
@@ -236,7 +257,7 @@ export const createShotgunApiClient = (
           signal: requestOptions?.signal,
         });
         const body = (await assertOk(response)) as { result: unknown };
-        return decodeGlobalSearchResultView(body.result);
+        return decodeMeasured('search', () => decodeGlobalSearchResultView(body.result));
       });
     },
 
@@ -259,7 +280,7 @@ export const createShotgunApiClient = (
           signal: requestOptions?.signal,
         });
         const body = (await assertOk(response)) as { decision: unknown };
-        return decodeRouteGuardDecisionView(body.decision);
+        return decodeMeasured('route-guard', () => decodeRouteGuardDecisionView(body.decision));
       });
     },
 

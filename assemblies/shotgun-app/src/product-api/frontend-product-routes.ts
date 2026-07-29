@@ -27,6 +27,13 @@ export const registerFrontendProductRoutes = (
   settingsRepository: SettingsRepositoryPort,
   requirePrincipalBrowserSession: PrincipalSessionResolver,
 ): void => {
+  const timed = async <T>(operation: () => Promise<T>) => {
+    const startedAt = performance.now();
+    const value = await operation();
+    return { value, durationMs: performance.now() - startedAt };
+  };
+  const serverTiming = (queryMs: number, projectionMs: number): string =>
+    `query;dur=${queryMs.toFixed(3)}, projection;dur=${projectionMs.toFixed(3)}`;
   const buildScope = async (headers: SecurityHeaders) => {
     const current = await requirePrincipalBrowserSession(headers);
     const memberships = await authRepository.listMemberships(current.principalContext.principalId);
@@ -75,14 +82,17 @@ export const registerFrontendProductRoutes = (
 
   server.get<{ Headers: SecurityHeaders }>(
     '/product-api/frontend/global-shell',
-    async (request) => ({
-      shell: await coordinator.getGlobalShell(await buildScope(request.headers)),
-    }),
+    async (request, reply) => {
+      const scope = await timed(() => buildScope(request.headers));
+      const projection = await timed(() => coordinator.getGlobalShell(scope.value));
+      reply.header('server-timing', serverTiming(scope.durationMs, projection.durationMs));
+      return { shell: projection.value };
+    },
   );
 
-  server.get<{ Headers: SecurityHeaders }>('/product-api/frontend/home', async (request) => {
-    const scope = await buildScope(request.headers);
-    if (!scope.activeProject) {
+  server.get<{ Headers: SecurityHeaders }>('/product-api/frontend/home', async (request, reply) => {
+    const scope = await timed(() => buildScope(request.headers));
+    if (!scope.value.activeProject) {
       throw new ShotgunError({
         code: 'PROJECT_CONTEXT_REQUIRED',
         safeMessage: 'Home requires an active Project.',
@@ -90,14 +100,18 @@ export const registerFrontendProductRoutes = (
         operation: 'get-home',
       });
     }
-    return { home: await coordinator.getHome({ ...scope, activeProject: scope.activeProject }) };
+    const projection = await timed(() =>
+      coordinator.getHome({ ...scope.value, activeProject: scope.value.activeProject! }),
+    );
+    reply.header('server-timing', serverTiming(scope.durationMs, projection.durationMs));
+    return { home: projection.value };
   });
 
   server.post<{ Body: unknown; Headers: SecurityHeaders }>(
     '/product-api/frontend/search/query',
-    async (request) => {
-      const scope = await buildScope(request.headers);
-      if (!scope.activeProject) {
+    async (request, reply) => {
+      const scope = await timed(() => buildScope(request.headers));
+      if (!scope.value.activeProject) {
         throw new ShotgunError({
           code: 'PROJECT_CONTEXT_REQUIRED',
           safeMessage: 'Search requires an active Project.',
@@ -109,7 +123,8 @@ export const registerFrontendProductRoutes = (
       if (
         decoded.scope.kind === 'CROSS_PROJECT' &&
         decoded.scope.projectIds.some(
-          (projectId) => !scope.accessibleProjects.some((project) => project.id === projectId),
+          (projectId) =>
+            !scope.value.accessibleProjects.some((project) => project.id === projectId),
         )
       ) {
         throw new ShotgunError({
@@ -119,21 +134,23 @@ export const registerFrontendProductRoutes = (
           operation: 'global-search',
         });
       }
-      return {
-        result: await coordinator.search({
-          ...scope,
-          activeProject: scope.activeProject,
+      const projection = await timed(() =>
+        coordinator.search({
+          ...scope.value,
+          activeProject: scope.value.activeProject!,
           request: decoded,
         }),
-      };
+      );
+      reply.header('server-timing', serverTiming(scope.durationMs, projection.durationMs));
+      return { result: projection.value };
     },
   );
 
   server.post<{
     Body: { targetRoute?: unknown; resourceProjectId?: unknown };
     Headers: SecurityHeaders;
-  }>('/product-api/frontend/route-guard', async (request) => {
-    const scope = await buildScope(request.headers);
+  }>('/product-api/frontend/route-guard', async (request, reply) => {
+    const scope = await timed(() => buildScope(request.headers));
     const requestedRoute = decodeTargetRouteView(request.body?.targetRoute);
     const resourceProjectId = request.body?.resourceProjectId;
     if (resourceProjectId !== undefined && typeof resourceProjectId !== 'string') {
@@ -144,12 +161,14 @@ export const registerFrontendProductRoutes = (
         operation: 'route-guard',
       });
     }
-    return {
-      decision: await coordinator.guard({
-        ...scope,
+    const projection = await timed(() =>
+      coordinator.guard({
+        ...scope.value,
         requestedRoute,
         ...(resourceProjectId === undefined ? {} : { resourceProjectId }),
       }),
-    };
+    );
+    reply.header('server-timing', serverTiming(scope.durationMs, projection.durationMs));
+    return { decision: projection.value };
   });
 };

@@ -7,6 +7,7 @@
 - Repository: `JasonCutter/shotgun`
 - Base commit: `0d1a766d8ae4554c2162ca151b95bb321cd1e419`
 - Working branch: `agent/migrate-frontend-architecture`
+- Tested content head: `9a23e60f99844c02ff0c6f932891915e0c855023`
 - Governing policy: `docs/CANONICAL.md`
 - Governing ADR: ADR-120
 - Product/runtime impact: none
@@ -104,9 +105,23 @@ Source pages use words such as `완료` for some design decision parents. The hi
 | `npm run docs:adr-index` | `NOT_IMPLEMENTED` | no matching script at base |
 | `npm run docs:canonical` | `NOT_IMPLEMENTED` | no matching script at base |
 | `npm run docs:drift` | `NOT_IMPLEMENTED` | no matching script at base |
-| Remote GitHub Actions | `PENDING` | required on PR head |
-| Merge | `PENDING` | authorized by current user instruction after required CI passes |
+| Remote GitHub Actions on tested content head | `PASS` | Run `30412984723`; Quality, Frontend and Required Gates succeeded |
+| Merge | `PENDING` | authorized by current user instruction after final evidence-head CI |
 | Canonical publication | `PENDING` | active when merged to `main` |
+
+## Remote CI evidence
+
+Tested content head:
+
+```text
+Head: 9a23e60f99844c02ff0c6f932891915e0c855023
+GitHub Actions Run: 30412984723
+Quality: PASS
+Frontend: PASS
+Required Gates: PASS
+```
+
+The next commit changes only this verification record to preserve the above durable evidence. The final evidence head must pass the same required GitHub checks before merge. No architecture, policy, Manifest, plan or Product content changes after the tested content head.
 
 ## Backlog effect after merge
 

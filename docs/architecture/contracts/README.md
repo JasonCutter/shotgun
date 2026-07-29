@@ -13,6 +13,13 @@ This directory governs non-ADR Contract Snapshots and revisions. Snapshot files 
 - `DUPLICATE_REFERENCE`: non-owner copy that adds no independent approved meaning.
 - `HISTORICAL`: retained evidence that is no longer part of the effective contract.
 
+## Registered records
+
+- [Frontend Phase 1 Section 2 State and Cache Ownership Revision](snapshots/frontend-phase-1-section-2/frontend-phase-1-section-2-state-cache-ownership-revision-260728001.md)
+- [Frontend Phase 1 Section 3 Contract Snapshot](snapshots/frontend-phase-1-section-3/frontend-phase-1-section-3-contract-snapshot-260726001.md)
+- [Frontend Phase 1 Section 3 Persistence Contract Revision](snapshots/frontend-phase-1-section-3/frontend-phase-1-section-3-persistence-contract-revision-260728001.md)
+- Machine-readable lineage: [`contract-snapshot-registry.json`](contract-snapshot-registry.json)
+
 ## Effective-contract rule
 
 An effective contract can be composed from multiple immutable records. A later revision does not automatically supersede its base. Supersession requires explicit scope, reason, approval and a `supersedes` relationship.
@@ -33,7 +40,7 @@ The persistence revision explicitly preserves AC-01–AC-27 and adds implementab
 3. Record approval, source PR and effective order in the Registry.
 4. A title or topic overlap is not sufficient to classify a duplicate.
 5. Product implementation status is separate from Contract approval status.
-6. `npm run docs:validate` must verify every registered Snapshot path.
+6. `npm run docs:validate` verifies the registered Markdown paths through repository-relative links.
 
 ## Current result
 

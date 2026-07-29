@@ -10,7 +10,7 @@ transition:
   cutover_commit: 08a6c7eb48b893a9309dfb90fbc3c4774a1f19a7
   cutover_approved_by: user
   cutover_approved_at: 2026-07-29
-  legacy_migration_status: in_progress_non_blocking
+  legacy_migration_status: governance_complete_final_inventory_pending
 
 classifications:
   - CANONICAL
@@ -69,6 +69,22 @@ documents:
       - adr-117-pre-cutover-sequencing-requirement
       - documentation-sot-cutover-plan-pre-cutover-blocking-sequence
 
+  - id: ADR-121
+    path: docs/architecture/adr/ADR-121-identifier-stability-registry-and-duplicate-resolution-boundary.md
+    classification: CANONICAL
+    status: accepted
+    approved_by: user
+    approved_at: 2026-07-29
+    governs: docs/architecture/adr/adr-registry.json
+
+  - id: GLOBAL-ADR-REGISTRY
+    path: docs/architecture/adr/adr-registry.json
+    classification: CANONICAL
+    status: active
+    approved_by: user
+    approved_at: 2026-07-29
+    governing_adr: ADR-121
+
   - id: FRONTEND-PHASE-1-SECTION-3-PERSISTENCE-CONTRACT-REVISION-260728001
     path: docs/architecture/contracts/snapshots/frontend-phase-1-section-3/frontend-phase-1-section-3-persistence-contract-revision-260728001.md
     classification: CANONICAL
@@ -105,6 +121,25 @@ documents:
       semantic_change: false
       verification_record: docs/engineering/knowledge-flow-detailed-map-migration-verification-260729001.md
 
+  - id: SHOTGUN-PHASE-1-6-ADD
+    path: docs/architecture/add/README.md
+    classification: CANONICAL
+    status: approved_architecture_hierarchy_migrated
+    approved_by: user
+    approved_at: 2026-07-16
+    source:
+      provider: notion
+      root_page_id: 39f5181d-71ad-81a6-a51f-f7f2a3a88ee6
+    child_structure:
+      phase_count: 6
+      step_count: 22
+      historical_adr_range: ADR-018-ADR-075
+    migration:
+      status: migrated_to_git
+      migrated_at: 2026-07-29
+      source_export_commit: f0d7f7a65a11f28dc9e3bc3a6e47a084b46541eb
+      verification_record: docs/engineering/phase-1-6-add-migration-verification-260729001.md
+
   - id: FRONTEND-AND-HUMAN-INTERACTION-ARCHITECTURE
     path: docs/architecture/frontend/README.md
     classification: CANONICAL
@@ -139,6 +174,43 @@ documents:
       migrated_at: 2026-07-29
       verification_record: docs/engineering/frontend-architecture-migration-verification-260729001.md
 
+  - id: STAGE-12-1-RECORD-CLASSIFICATION
+    path: docs/architecture/stage-12-1/README.md
+    classification: CANONICAL
+    status: active_classification
+    approved_by: user
+    approved_at: 2026-07-29
+    final_completion_record: docs/engineering/stage-12-1-completion-record.md
+
+  - id: ENGINEERING-EVIDENCE-REGISTRY
+    path: docs/engineering/evidence-registry.json
+    classification: CANONICAL
+    status: active
+    approved_by: user
+    approved_at: 2026-07-29
+    policy: docs/engineering/README.md
+
+  - id: GENERATED-ARTIFACT-OWNERSHIP
+    path: docs/governance/generated-artifact-ownership.md
+    classification: CANONICAL
+    status: active
+    approved_by: user
+    approved_at: 2026-07-29
+    registry: docs/generated-artifacts.json
+
+  - id: DOCUMENTATION-VALIDATION-TOOLING
+    path: scripts/docs-validation.ts
+    classification: CANONICAL
+    status: active_ci_gate
+    approved_by: user
+    approved_at: 2026-07-29
+    commands:
+      - docs:validate
+      - docs:links
+      - docs:adr-index
+      - docs:canonical
+      - docs:drift
+
   - id: SHOTGUN-REFERENCE-ARCHITECTURE-STRATEGY-KO
     path: docs/shotgun_reference_architecture_strategy_ko.html
     classification: REFERENCE
@@ -158,6 +230,17 @@ external_references:
     migration_status: migrated_to_git
     canonical_authority: git-main-at-target-path
 
+  - id: PHASE-1-6-ADD-NOTION-HIERARCHY
+    classification: REFERENCE
+    role: legacy_source_hierarchy_after_git_migration
+    source:
+      provider: notion
+      root_page_id: 39f5181d-71ad-81a6-a51f-f7f2a3a88ee6
+    target_path: docs/architecture/add/README.md
+    retention_status: retain_as_legacy_source_and_history
+    migration_status: migrated_to_git
+    canonical_authority: git-main-at-target-paths
+
   - id: FRONTEND-ARCHITECTURE-NOTION-HIERARCHY
     classification: REFERENCE
     role: legacy_source_hierarchy_after_git_consolidation
@@ -172,7 +255,7 @@ external_references:
     canonical_authority: git-main-at-target-paths
 
 inventory:
-  status: in_progress_non_blocking
+  status: governance_complete_final_inventory_pending
   authority_effect: none
   required_sources:
     - notion
@@ -187,13 +270,28 @@ inventory:
       completed_at: 2026-07-29
       target_path: docs/architecture/frontend/README.md
       verification_record: docs/engineering/frontend-architecture-migration-verification-260729001.md
+    - id: SHOTGUN-PHASE-1-6-ADD
+      completed_at: 2026-07-29
+      target_path: docs/architecture/add/README.md
+      verification_record: docs/engineering/phase-1-6-add-migration-verification-260729001.md
+    - id: GLOBAL-ADR-GOVERNANCE
+      completed_at: 2026-07-29
+      target_path: docs/architecture/adr/adr-registry.json
+      governing_adr: ADR-121
+    - id: STAGE-12-1-AND-EVIDENCE-CLASSIFICATION
+      completed_at: 2026-07-29
+      target_path: docs/architecture/stage-12-1/README.md
+      evidence_registry: docs/engineering/evidence-registry.json
+    - id: GENERATED-ARTIFACT-OWNERSHIP
+      completed_at: 2026-07-29
+      target_path: docs/governance/generated-artifact-ownership.md
+      registry: docs/generated-artifacts.json
+    - id: DOCUMENTATION-VALIDATION-TOOLING
+      completed_at: 2026-07-29
+      target_path: scripts/docs-validation.ts
+      ci_workflow: .github/workflows/ci.yml
   unresolved_items:
-    - export Phase 1-6 ADD documents
-    - reconcile project-wide ADR index and document numbering
-    - classify Stage 12.1 architecture records
-    - classify implementation and engineering completion records
-    - identify duplicates and superseded snapshots
-    - establish generated-artifact ownership
-    - implement documentation validation tooling
     - complete final Notion, Google Drive, and Git inventory
+    - review non-ADR duplicate and superseded contract snapshots
+    - normalize the HTML Knowledge Flow baseline to a structured source format
   rule: unresolved legacy items are non-canonical until imported, reconciled, approved where required, and merged to main

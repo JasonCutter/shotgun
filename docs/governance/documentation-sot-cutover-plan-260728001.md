@@ -43,6 +43,26 @@ The repository contains:
 
 Authority cutover was explicitly approved by the user on 2026-07-29.
 
+## Completed migration increments
+
+### Google Drive — Knowledge Flow Detailed Map
+
+The following governing document was migrated through the current reviewed Git change:
+
+```text
+Title: Shotgun Knowledge Flow Detailed Map
+Source provider: Google Drive / Google Docs
+Source document ID: 1HazG-oAeJ8Sgg_mPmBiWpQqeCeeAoDUuWgqVNJR1DCg
+Source revision: 9
+Source version: v0.3
+Target: docs/architecture/knowledge-flow/shotgun-knowledge-flow-detailed-map.md
+Target classification after merge: CANONICAL
+Legacy source classification after merge: REFERENCE
+Verification: docs/engineering/knowledge-flow-detailed-map-migration-verification-260729001.md
+```
+
+The Google Drive source is retained and is not deleted. After merge, new edits made only in Google Docs are non-Canonical until represented in a reviewed Git pull request and merged to `main`.
+
 ## Post-cutover migration work
 
 ### 1. Inventory
@@ -91,18 +111,9 @@ Retain stable IDs, legacy URLs, provenance, approval state, supersession rationa
 
 #### Google Drive
 
-Move Shotgun-authored governing text to Git.
+Move remaining Shotgun-authored governing text to Git through reviewed migration pull requests.
 
-Known pending item:
-
-```text
-Shotgun Knowledge Flow Detailed Map
-Google Drive ID: 1HazG-oAeJ8Sgg_mPmBiWpQqeCeeAoDUuWgqVNJR1DCg
-Target: docs/architecture/knowledge-flow/shotgun-knowledge-flow-detailed-map.md
-Current classification: REFERENCE_PENDING_MIGRATION
-```
-
-External, large, licensed, sensitive, regulated, or binary materials may remain outside Git with a safe reference-manifest entry.
+The Knowledge Flow Detailed Map migration is recorded in the completed migration section above. External, large, licensed, sensitive, regulated, or binary materials may remain outside Git with a safe reference-manifest entry.
 
 #### Existing Git documents
 
@@ -211,3 +222,4 @@ These criteria govern migration completion, not the already active GitHub author
 - 2026-07-29: Git-backed durable-report requirements were added.
 - 2026-07-29: the user directed that the `pending` state be resolved.
 - 2026-07-29: ADR-120 separated immediate authority activation from truthful, continuing legacy migration and superseded the original blocking sequence only.
+- 2026-07-29: Knowledge Flow Detailed Map v0.3, Google Docs revision `9`, was migrated to the repository target path with source provenance and verification evidence; the Google Drive source remains a legacy Reference.

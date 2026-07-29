@@ -6,14 +6,17 @@ Shotgun은 한 점에 모인 지식이 산탄총의 탄환처럼 여러 방향�
 ## 현재 단계
 
 - Stage 12까지 완료되어 독립 Module Package, Assembly Manifest와 OSS Adapter 교체까지 검증된 상태
-- 최종 순서도 기준본: `docs/SHOTGUN_KNOWLEDGE_FLOW_BASELINE_v1.0.html`
+- Knowledge Flow 기준본 구조화 원본: [`docs/architecture/knowledge-flow/knowledge-flow-baseline-v1.0.json`](docs/architecture/knowledge-flow/knowledge-flow-baseline-v1.0.json)
+- 생성된 Knowledge Flow HTML: [`docs/SHOTGUN_KNOWLEDGE_FLOW_BASELINE_v1.0.html`](docs/SHOTGUN_KNOWLEDGE_FLOW_BASELINE_v1.0.html)
 - Knowledge Flow Detailed Map: [`docs/architecture/knowledge-flow/shotgun-knowledge-flow-detailed-map.md`](docs/architecture/knowledge-flow/shotgun-knowledge-flow-detailed-map.md)
 - Phase 1–6 ADD: [`docs/architecture/add/README.md`](docs/architecture/add/README.md)
 - Frontend Architecture: [`docs/architecture/frontend/README.md`](docs/architecture/frontend/README.md)
 - 전역 ADR Registry: [`docs/architecture/adr/README.md`](docs/architecture/adr/README.md)
+- Contract Snapshot Registry: [`docs/architecture/contracts/README.md`](docs/architecture/contracts/README.md)
 - Stage 12.1 기록 분류: [`docs/architecture/stage-12-1/README.md`](docs/architecture/stage-12-1/README.md)
 - Engineering Evidence 분류: [`docs/engineering/README.md`](docs/engineering/README.md)
 - Generated Artifact Ownership: [`docs/governance/generated-artifact-ownership.md`](docs/governance/generated-artifact-ownership.md)
+- 최종 Cross-store Inventory: [`docs/inventory/README.md`](docs/inventory/README.md)
 - 상세 아키텍처 참고: `docs/shotgun_reference_architecture_strategy_ko.html`
 - 모듈 아키텍처 기준선: `docs/architecture/module-architecture/README.md`
 - 구현계획 기준선: `docs/implementation/README.md`
@@ -29,8 +32,9 @@ Project Shotgun의 유일한 문서 Canonical 권한은 GitHub 저장소 `JasonC
 - 최초 전환 결정: [`ADR-117`](docs/architecture/adr/ADR-117-documentation-source-of-truth-canonicalization-and-publication-boundary.md)
 - Cutover 활성화 및 레거시 이관 경계: [`ADR-120`](docs/architecture/adr/ADR-120-canonical-cutover-activation-and-legacy-migration-boundary.md)
 - ADR 번호·중복·소유권 경계: [`ADR-121`](docs/architecture/adr/ADR-121-identifier-stability-registry-and-duplicate-resolution-boundary.md)
-- 이관 계획과 잔여 작업: [`docs/governance/documentation-sot-cutover-plan-260728001.md`](docs/governance/documentation-sot-cutover-plan-260728001.md)
-- 현재 상태: **GitHub `main` Canonical active / documentation governance complete / final inventory pending**
+- 이관 계획과 완료 기록: [`docs/governance/documentation-sot-cutover-plan-260728001.md`](docs/governance/documentation-sot-cutover-plan-260728001.md)
+- 완료 증거: [`docs/engineering/documentation-legacy-migration-completion-260729001.md`](docs/engineering/documentation-legacy-migration-completion-260729001.md)
+- 현재 상태: **GitHub `main` Canonical active / documentation legacy migration complete / final inventory complete**
 
 Notion은 Candidate 작업 공간·미러·탐색 허브·Legacy Reference·기록 보관소이며, Google Drive 등 외부 저장소는 Reference 또는 Archive입니다. 외부에만 있는 문서는 Git PR로 이관·검토·승인·병합되기 전에는 새로운 구현을 지배하는 Canonical 문서가 아닙니다.
 
@@ -39,6 +43,7 @@ Notion은 Candidate 작업 공간·미러·탐색 허브·Legacy Reference·기�
 ### 문서 검증
 
 ```bash
+npm run docs:knowledge-flow:check
 npm run docs:validate
 npm run docs:links
 npm run docs:adr-index
@@ -46,7 +51,7 @@ npm run docs:canonical
 npm run docs:drift
 ```
 
-`docs:validate`는 Quality CI의 필수 Step이며 상대 링크, ADR 소유권, Canonical·Evidence·Generated Registry와 이관 Drift를 검사합니다.
+Knowledge Flow 생성물 일치 검사와 `docs:validate`는 Quality CI의 필수 Step입니다. 상대 링크, ADR 소유권, Canonical·Evidence·Generated Registry, Contract Snapshot 경계와 이관 Drift를 검사합니다.
 
 ## 개발 시작
 

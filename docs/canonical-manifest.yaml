@@ -256,9 +256,11 @@ documents:
   - id: DOCUMENTATION-LEGACY-MIGRATION-COMPLETION
     path: docs/engineering/documentation-legacy-migration-completion-260729001.md
     classification: CANONICAL
-    status: completion_record_pending_final_merge
+    status: final_after_merge
     approved_by: user
     approved_at: 2026-07-29
+    tested_head: b3e101cc08b86c07c49d4a8940dc242d9766a403
+    github_actions_run: 30422731186
 
   - id: SHOTGUN-REFERENCE-ARCHITECTURE-STRATEGY-KO
     path: docs/shotgun_reference_architecture_strategy_ko.html

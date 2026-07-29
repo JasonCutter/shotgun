@@ -1,9 +1,9 @@
 ---
 id: FRONTEND-PHASE-1-5-IMPLEMENTATION-PLAN-V1
 classification: CANONICAL
-status: confirmed_plan_current_status_amended_by_later_completion_records
+status: confirmed_plan_phase_1_complete_phase_2_next
 approved_by: user
-approved_at: 2026-07-24
+approved_at: 2026-07-30
 migrated_at: 2026-07-29
 legacy_source_id: 3a75181d-71ad-817a-9675-c984455b2c3b
 ---
@@ -14,8 +14,9 @@ legacy_source_id: 3a75181d-71ad-817a-9675-c984455b2c3b
 
 - Canonical Implementation Plan v1.0: 확정
 - 원 확정일: 2026-07-24
+- 현재 상태 갱신일: 2026-07-30
 - 목적: Frontend 설계 순서, 구현 순서, PR 경계와 완료 판정을 하나의 Phase 체계로 통일
-- 현재 상태는 이후 승인·구현·병합 기록을 반영한다.
+- 현재 상태는 이후 승인·구현·병합·완료 기록을 반영한다.
 
 ## 정식 구현 순서
 
@@ -50,15 +51,15 @@ Knowledge Flow의 6개 Phase와 Frontend Phase 0~5는 대체 관계가 아니다
 
 ```text
 Phase 0 — Shared Contract Foundation: 구현·검증·병합 완료
-Phase 1 Section 1: 구현·검증·병합 완료
-Phase 1 Section 2: 구현·검증·병합 완료
-Phase 1 Section 3: 설계·Contract 승인·동결 / Product 구현 미착수
-Frontend Phase 1: 미완료
+Phase 1 Section 1: 구현·검증·병합·사용자 승인 완료
+Phase 1 Section 2: 구현·검증·병합·사용자 승인 완료
+Phase 1 Section 3: 구현·검증·성능 Gate·병합·사용자 승인 완료
+Frontend Phase 1: COMPLETE / USER APPROVED
 Phase 2~5: 설계·Contract 확정 / Product 구현 검증 대기
 Cross-Phase Product Verification: 미착수
 ```
 
-원 Notion v1.0의 초기 상태 표에 있던 “Phase 1 Section 2 미착수”는 당시 상태다. 이후 PR #20과 승인된 완료 기록이 이를 대체하며, 과거 기록 자체는 삭제하지 않는다.
+원 Notion v1.0의 초기 상태와 각 Section의 과거 `미착수`, `Draft`, `Pending` 문구는 당시 상태다. 이후 병합된 검증 및 완료 기록이 현재 상태를 결정하며 과거 기록 자체는 삭제하지 않는다.
 
 ## Phase 1 — Platform Boundary
 
@@ -78,20 +79,26 @@ Cross-Phase Product Verification: 미착수
 
 ### Section 3 — Home·Action Center·Global Shell
 
-- 상태: 설계·Contract 승인·동결 / 구현 미착수
+- 상태: 완료
+- PR #42
+- Merge Commit: `3f1aa93c7b5ce6a795b796f44124ed67112716c0`
 - ADR-115·116 Accepted
-- AC-01~AC-27 Approved and frozen
-- Product 구현, Migration, 새 Runtime Dependency 또는 AC 변경은 별도 승인 없이는 수행하지 않는다.
+- AC-01~AC-27 PASS
+- ADR-116 Migration 019, Product Session·Command V2, Principal Bootstrap, Global Shell, Home Action Center, Search, Route Guard, Recovery, Accessibility, E2E와 Performance Gate를 포함한다.
+- Verification: `docs/engineering/frontend-phase-1-section-3-verification-260729001.md`
+- Completion Review: `docs/engineering/frontend-phase-1-completion-review-260730001.md`
 
-Phase 1 완료 조건:
+Phase 1 완료 흐름:
 
 ```text
-Session 수립
-→ Project 선택·관리
+Local Owner Session 수립
+→ Project 생성·선택·관리
 → Settings 관리
 → Home에서 상태·필요 조치 확인
 → 각 Workspace로 안전하게 이동
 ```
+
+Frontend Phase 1은 2026-07-30 별도 Completion Review와 사용자 승인으로 완료됐다.
 
 ## Phase 2 — Knowledge Input·Question
 
@@ -111,6 +118,8 @@ Session 수립
 - Streaming·Partial Result·Outcome Resolution
 - Export·Feedback·Knowledge Transition
 - DraftChangeSetSeed·IntakeDraftSeed·UserDirectiveProposal 진입
+
+Phase 2는 계획·Contract 단계이며 Product 구현은 별도 요청서와 승인 전 시작하지 않는다.
 
 ## Phase 3 — Knowledge Understanding·Editing
 
@@ -191,6 +200,8 @@ Section 1개
 
 ## 다음 구현 경계
 
-현재 다음 Product 구현 대상은 Phase 1 Section 3이다. 다만 ADR-119 Product 구현이 Section 3 착수 전 Engineering Foundation으로 별도 승인되어 진행될 경우, 그것은 새 Product Section이 아니라 승인된 횡단 State/Cache 계약 구현으로 기록한다.
+계획상 다음 Product 구현 대상은 **Frontend Phase 2 Section 1 — Sources Workspace**다.
 
-이 문서 이관 자체는 Section 3 Product 구현 승인, Phase 1 완료 또는 Phase 2 착수를 의미하지 않는다.
+Phase 1 완료가 Phase 2 착수를 자동 승인하지는 않는다. Phase 2 Section 1의 Canonical Contract, Gap Audit, 고정 Acceptance Criteria, 구현 요청서와 별도 사용자 착수 승인이 필요하다.
+
+Route-level Lazy Loading·Code Splitting은 Section 3 성능 증거에서 권장된 비차단 횡단 후속 작업이다. Phase 2 착수 전에 반드시 수행해야 하는 차단 조건은 아니며, 별도 범위와 검증으로 관리한다.

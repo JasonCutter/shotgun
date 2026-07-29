@@ -39,6 +39,7 @@
     "frontend:test:e2e": "playwright test",
     "frontend:check": "npm run frontend:typecheck && npm run frontend:test && npm run frontend:build && npm run frontend:test:e2e",
     "frontend:performance:baseline": "tsx scripts/frontend-section3-performance.ts --write",
+    "frontend:performance:gate": "tsx scripts/frontend-section3-performance.ts --write",
     "docs:knowledge-flow:render": "node scripts/render-knowledge-flow-baseline.mjs",
     "docs:knowledge-flow:check": "node scripts/render-knowledge-flow-baseline.mjs --check",
     "docs:validate": "tsx scripts/docs-validation.ts all",

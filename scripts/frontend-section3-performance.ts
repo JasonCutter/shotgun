@@ -14,9 +14,15 @@ import {
   type PerformanceDatasetKind,
   type PerformanceDatasetManifest,
 } from '../tests/performance/frontend-section3-performance-seed.js';
+import {
+  decodePerformanceBudget,
+  evaluatePerformanceBudget,
+} from '../tests/performance/frontend-section3-performance-budget.js';
 
-const ARTIFACT_SEQUENCE = '260729001';
+const ARTIFACT_SEQUENCE = '260729002';
 const IMPLEMENTATION_HEAD = '1eccfb380a31b65af1ecf04c58e64150ea52b563';
+const BUDGET_PATH =
+  'tests/performance/frontend-section3-local-product-performance-budget-v1.0.json';
 const BASE_URL = 'http://127.0.0.1:4173';
 const ACTIVE_BACKEND_PORT = 3001;
 const ZERO_BACKEND_PORT = 3002;
@@ -726,7 +732,12 @@ const summarizeRuns = (runs: readonly RunMetric[]) => {
     groups.set(key, [...(groups.get(key) ?? []), run]);
   }
   return [...groups.entries()].map(([key, groupedRuns]) => {
-    const [dataset, profile, scenario, cacheProfile] = key.split('|');
+    const [dataset, profile, scenario, cacheProfile] = key.split('|') as [
+      string,
+      string,
+      string,
+      string,
+    ];
     return {
       dataset,
       profile,
@@ -1015,6 +1026,35 @@ const main = async (): Promise<void> => {
   });
   const summary = summarizeRuns(runs);
   const bundle = await bundleInventory(repositoryRoot);
+  const budgetPayload = await readFile(path.join(repositoryRoot, BUDGET_PATH));
+  const budget = decodePerformanceBudget(JSON.parse(budgetPayload.toString('utf8')));
+  const budgetGate = shouldWriteCanonical
+    ? evaluatePerformanceBudget({
+        budget,
+        environment,
+        seedManifest,
+        summary,
+        runs,
+        failures,
+        bundle,
+        budgetSha256: sha256(budgetPayload),
+      })
+    : {
+        schemaVersion: '1.0.0',
+        budgetId: budget.budgetId,
+        budgetName: budget.name,
+        budgetStatus: budget.status,
+        approval: budget.approval,
+        budgetSha256: sha256(budgetPayload),
+        status: 'NOT_RUN' as const,
+        checks: [],
+        violations: [],
+        recordedRuns: runs.length,
+        measuredFailures: failures.length,
+        exclusions: [],
+        scopeLimitations: budget.scopeLimitations,
+        reason: 'Smoke runs do not claim the approved full performance contract.',
+      };
   const executionHistory = [
     {
       phase: 'SMOKE_PREFLIGHT',
@@ -1052,6 +1092,8 @@ const main = async (): Promise<void> => {
   await writeJson(path.join(outputRoot, 'failures.json'), failures);
   await writeJson(path.join(outputRoot, 'execution-history.json'), executionHistory);
   await writeJson(path.join(outputRoot, 'bundle.json'), bundle);
+  await writeJson(path.join(outputRoot, 'performance-budget.json'), budget);
+  await writeJson(path.join(outputRoot, 'budget-gate.json'), budgetGate);
 
   const artifactFiles = [
     'environment.json',
@@ -1061,6 +1103,8 @@ const main = async (): Promise<void> => {
     'failures.json',
     'execution-history.json',
     'bundle.json',
+    'performance-budget.json',
+    'budget-gate.json',
   ];
   const fileDigests = await Promise.all(
     artifactFiles.map(async (name) => {
@@ -1076,17 +1120,37 @@ const main = async (): Promise<void> => {
     aggregateSha256,
     files: fileDigests,
   });
+  for (const file of fileDigests) {
+    const payload = await readFile(path.join(outputRoot, file.name));
+    if (sha256(payload) !== file.sha256) {
+      throw new Error(`Artifact digest verification failed for ${file.name}.`);
+    }
+  }
+  const verifiedAggregateSha256 = sha256(
+    fileDigests.map((file) => `${file.name}:${file.sha256}`).join('\n'),
+  );
+  if (verifiedAggregateSha256 !== aggregateSha256) {
+    throw new Error('Artifact aggregate SHA-256 verification failed.');
+  }
 
   console.log(
     JSON.stringify({
-      status: 'PASS',
+      status: shouldWriteCanonical ? budgetGate.status : 'PASS',
       mode: shouldWriteCanonical ? 'canonical' : 'smoke',
       outputRoot,
       runs: runs.length,
       failures: failures.length,
+      budgetId: budget.budgetId,
+      budgetViolations: budgetGate.violations.length,
       aggregateSha256,
+      artifactManifestVerified: true,
     }),
   );
+  if (shouldWriteCanonical && budgetGate.status !== 'PASS') {
+    throw new Error(
+      `Performance budget gate failed with ${budgetGate.violations.length} violation(s).`,
+    );
+  }
 };
 
 await main();

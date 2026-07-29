@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "snapshotDate": "2026-07-29",
+  "snapshotDate": "2026-07-30",
   "rules": {
     "approvedSnapshotsAreImmutable": true,
     "laterDateImpliesSupersession": false,
@@ -54,6 +54,21 @@
       "effectiveOrder": 2,
       "preserves": ["AC-01", "AC-02", "AC-03", "AC-04", "AC-05", "AC-06", "AC-07", "AC-08", "AC-09", "AC-10", "AC-11", "AC-12", "AC-13", "AC-14", "AC-15", "AC-16", "AC-17", "AC-18", "AC-19", "AC-20", "AC-21", "AC-22", "AC-23", "AC-24", "AC-25", "AC-26", "AC-27"],
       "productImplementationAtApproval": "NOT_AUTHORIZED"
+    },
+    {
+      "id": "frontend-phase-2-section-1-contract-snapshot-260730001",
+      "path": "docs/architecture/contracts/snapshots/frontend-phase-2-section-1/frontend-phase-2-section-1-contract-snapshot-260730001.md",
+      "scope": "frontend-phase-2-section-1-approved-ac-01-through-ac-32",
+      "classification": "ACTIVE_BASE",
+      "approvalDate": "2026-07-30",
+      "sourcePr": 44,
+      "mergeCommit": null,
+      "governingAdr": "ADR-122",
+      "base": null,
+      "supersedes": [],
+      "duplicateOf": null,
+      "effectiveOrder": 1,
+      "productImplementationAtApproval": "NOT_STARTED_SEPARATELY_UNAUTHORIZED"
     }
   ],
   "effectiveContracts": [
@@ -67,10 +82,14 @@
         "frontend-phase-1-section-3-contract-snapshot-260726001",
         "frontend-phase-1-section-3-persistence-contract-revision-260728001"
       ]
+    },
+    {
+      "scope": "frontend-phase-2-section-1",
+      "orderedRecords": ["frontend-phase-2-section-1-contract-snapshot-260730001"]
     }
   ],
   "reviewResult": {
-    "registeredRecords": 3,
+    "registeredRecords": 4,
     "duplicates": 0,
     "supersededWholeRecords": 0,
     "additiveAmendments": 1,

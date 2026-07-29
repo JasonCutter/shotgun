@@ -1,7 +1,7 @@
 ---
 id: FRONTEND-PHASE-1-5-IMPLEMENTATION-PLAN-V1
 classification: CANONICAL
-status: confirmed_plan_phase_1_complete_phase_2_next
+status: confirmed_plan_phase_1_complete_phase_2_section_1_contract_ready
 approved_by: user
 approved_at: 2026-07-30
 migrated_at: 2026-07-29
@@ -55,7 +55,9 @@ Phase 1 Section 1: 구현·검증·병합·사용자 승인 완료
 Phase 1 Section 2: 구현·검증·병합·사용자 승인 완료
 Phase 1 Section 3: 구현·검증·성능 Gate·병합·사용자 승인 완료
 Frontend Phase 1: COMPLETE / USER APPROVED
-Phase 2~5: 설계·Contract 확정 / Product 구현 검증 대기
+Phase 2 Section 1: Gap Audit·ADR-122·AC-01~AC-32·Contract Snapshot·구현 요청서 완료 / Product 구현 미착수
+Phase 2 Section 2: 설계·Contract 확정 / Product 구현 미착수
+Phase 3~5: 설계·Contract 확정 / Product 구현 검증 대기
 Cross-Phase Product Verification: 미착수
 ```
 
@@ -104,11 +106,18 @@ Frontend Phase 1은 2026-07-30 별도 Completion Review와 사용자 승인으�
 
 ### Section 1 — Sources Workspace
 
+- 상태: 설계·Gap Audit·Contract 승인·동결 / Product 구현 미착수
+- ADR-122 Accepted
+- AC-01~AC-32 Approved and frozen
+- Gap Audit: `docs/engineering/frontend-phase-2-section-1-gap-audit-260730001.md`
+- Contract Snapshot: `docs/architecture/contracts/snapshots/frontend-phase-2-section-1/frontend-phase-2-section-1-contract-snapshot-260730001.md`
+- Implementation Request: `docs/implementation/frontend-phase-2-section-1-implementation-request-260730001.md`
 - File·URL·Text 입력
 - Intake Draft·검증·정확 중복
 - Source Library·Metadata·Preview
 - SourceVersion·EvidenceSpan·Citation
 - 처리 상태·취소·재시도·복구
+- Product 구현, Migration, 신규 Runtime Dependency, Ready·Merge는 별도 승인 전 수행하지 않는다.
 
 ### Section 2 — Ask·Conversations Workspace
 
@@ -119,7 +128,7 @@ Frontend Phase 1은 2026-07-30 별도 Completion Review와 사용자 승인으�
 - Export·Feedback·Knowledge Transition
 - DraftChangeSetSeed·IntakeDraftSeed·UserDirectiveProposal 진입
 
-Phase 2는 계획·Contract 단계이며 Product 구현은 별도 요청서와 승인 전 시작하지 않는다.
+Phase 2 Section 2는 Section 1 구현·검증·승인·병합 전 시작하지 않는다.
 
 ## Phase 3 — Knowledge Understanding·Editing
 
@@ -200,8 +209,8 @@ Section 1개
 
 ## 다음 구현 경계
 
-계획상 다음 Product 구현 대상은 **Frontend Phase 2 Section 1 — Sources Workspace**다.
+다음 Product 구현 대상은 **Frontend Phase 2 Section 1 — Sources Workspace**다.
 
-Phase 1 완료가 Phase 2 착수를 자동 승인하지는 않는다. Phase 2 Section 1의 Canonical Contract, Gap Audit, 고정 Acceptance Criteria, 구현 요청서와 별도 사용자 착수 승인이 필요하다.
+Canonical Contract와 구현 요청서는 준비됐지만 Product 구현 착수는 별도 사용자 지시가 필요하다. 착수 후 실제 Schema·Dependency Gap이 확인되면 Migration과 신규 Runtime Dependency를 각각 별도 승인한다.
 
 Route-level Lazy Loading·Code Splitting은 Section 3 성능 증거에서 권장된 비차단 횡단 후속 작업이다. Phase 2 착수 전에 반드시 수행해야 하는 차단 조건은 아니며, 별도 범위와 검증으로 관리한다.

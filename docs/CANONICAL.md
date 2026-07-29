@@ -109,6 +109,18 @@ Do not delete legacy material during inventory. Mark it as migrated, archived, s
 ## Completed migration increments
 
 - 2026-07-29: `Shotgun Knowledge Flow Detailed Map` v0.3 was migrated from Google Docs revision `9` to [`docs/architecture/knowledge-flow/shotgun-knowledge-flow-detailed-map.md`](architecture/knowledge-flow/shotgun-knowledge-flow-detailed-map.md). The Google Drive document is retained as a legacy Reference. Migration evidence is recorded in [`docs/engineering/knowledge-flow-detailed-map-migration-verification-260729001.md`](engineering/knowledge-flow-detailed-map-migration-verification-260729001.md).
+- 2026-07-29: the approved `Frontend and Human Interaction Architecture` hierarchy was migrated from Notion to [`docs/architecture/frontend/`](architecture/frontend/README.md), including five Phases, twelve Sections, Cross-Phase contracts, the Frontend ADR index, and [`Frontend Phase 1–5 구현계획 v1.0`](implementation/frontend-phase-1-5-plan-v1.0.md). Notion pages are retained as legacy source and history references. Migration evidence is recorded in [`docs/engineering/frontend-architecture-migration-verification-260729001.md`](engineering/frontend-architecture-migration-verification-260729001.md).
+
+## Frontend Canonical boundary
+
+The current Frontend Architecture entrypoint is [`docs/architecture/frontend/README.md`](architecture/frontend/README.md).
+
+- Architecture and Contract completion do not imply Product implementation completion.
+- Phase 1 Sections 1 and 2 are implemented, verified and merged.
+- Phase 1 Section 3 is design/contract approved and frozen but Product implementation was not started at migration capture.
+- Phase 1 is incomplete.
+- Phases 2 through 5 are design/contract confirmed with Product implementation verification pending.
+- Historical Notion pages remain Reference; future Notion-only edits are Candidate.
 
 ## Post-cutover migration backlog
 
@@ -116,11 +128,12 @@ The following work continues without changing the active GitHub authority:
 
 - complete Notion, Google Drive, and Git document inventory,
 - normalize remaining Git paths,
-- migrate remaining governing text,
-- export and reconcile Phase ADD and frontend architecture history,
-- complete ADR and contract indexes,
+- migrate Phase 1–6 ADDs and remaining governing text,
+- complete Project-wide ADR and contract reconciliation,
+- classify Stage 12.1 and engineering completion records,
 - implement link, metadata, canonical, and drift validation gates,
 - resolve historical approval and supersession gaps,
+- establish generated-artifact ownership,
 - add commit metadata to high-value mirrors and archive legacy sources safely.
 
 Backlog completion must be reported truthfully. An unresolved item remains `REFERENCE_PENDING_MIGRATION` or another non-Canonical classification until its Git canonicalization completes.

@@ -47,8 +47,6 @@ Authority cutover was explicitly approved by the user on 2026-07-29.
 
 ### Google Drive — Knowledge Flow Detailed Map
 
-The following governing document was migrated through the current reviewed Git change:
-
 ```text
 Title: Shotgun Knowledge Flow Detailed Map
 Source provider: Google Drive / Google Docs
@@ -56,12 +54,47 @@ Source document ID: 1HazG-oAeJ8Sgg_mPmBiWpQqeCeeAoDUuWgqVNJR1DCg
 Source revision: 9
 Source version: v0.3
 Target: docs/architecture/knowledge-flow/shotgun-knowledge-flow-detailed-map.md
-Target classification after merge: CANONICAL
-Legacy source classification after merge: REFERENCE
+Target classification: CANONICAL
+Legacy source classification: REFERENCE
 Verification: docs/engineering/knowledge-flow-detailed-map-migration-verification-260729001.md
 ```
 
-The Google Drive source is retained and is not deleted. After merge, new edits made only in Google Docs are non-Canonical until represented in a reviewed Git pull request and merged to `main`.
+The Google Drive source is retained and is not deleted. New edits made only in Google Docs are non-Canonical until represented in a reviewed Git pull request and merged to `main`.
+
+### Notion — Frontend and Human Interaction Architecture
+
+```text
+Root source page: 3a15181d-71ad-81e4-bfa4-ee2578e692a0
+Implementation plan source: 3a75181d-71ad-817a-9675-c984455b2c3b
+ADR index source: 3a65181d-71ad-8182-b0fb-f84d722f98a2
+Target root: docs/architecture/frontend/README.md
+Implementation plan: docs/implementation/frontend-phase-1-5-plan-v1.0.md
+Target classification: CANONICAL
+Legacy hierarchy classification: REFERENCE
+Verification: docs/engineering/frontend-architecture-migration-verification-260729001.md
+```
+
+Migrated structure:
+
+- Frontend Architecture entrypoint
+- Phase 1 through Phase 5
+- 12 Section structure and current implementation status
+- Phase 1–2 integration and Phases 1–5 completion audit contracts
+- Frontend ADR index
+- Frontend Phase 1–5 Implementation Plan v1.0
+- source inventory, status reconciliation and verification evidence
+
+The migration uses a consolidated Git hierarchy rather than creating one file per historical Notion child page. Historical child pages remain Legacy References. Existing Git ADR, contract snapshot and engineering files are not duplicated or renamed.
+
+The migration preserves these distinctions:
+
+- Architecture/Contract completion versus Product implementation completion
+- Phase 1 Sections 1 and 2 completed versus Section 3 implementation not started at source capture
+- Phase 1 incomplete
+- Phases 2 through 5 design/contract confirmed with Product implementation verification pending
+- historical plan state versus later evidence-backed completion state
+
+After merge, Notion-only Frontend edits are Candidate until represented in Git and merged.
 
 ## Post-cutover migration work
 
@@ -98,14 +131,15 @@ Rules:
 
 #### Notion
 
-Migrate through reviewed Git pull requests:
+Remaining reviewed Git migration scope:
 
 - ADD hub and Phase 1–6 ADDs
-- Phase ADR indexes and ADR pages
-- Frontend Architecture hierarchy
+- Project-wide ADR indexes and ADR reconciliation
 - Stage 12.1 Architecture records
-- user decision records
+- user decision records not already represented in Git
 - change history and unresolved-item pages
+
+The Frontend Architecture hierarchy is recorded in the completed increment above.
 
 Retain stable IDs, legacy URLs, provenance, approval state, supersession rationale, rejected alternatives, and impact. Do not promote Candidate text during export.
 
@@ -113,7 +147,7 @@ Retain stable IDs, legacy URLs, provenance, approval state, supersession rationa
 
 Move remaining Shotgun-authored governing text to Git through reviewed migration pull requests.
 
-The Knowledge Flow Detailed Map migration is recorded in the completed migration section above. External, large, licensed, sensitive, regulated, or binary materials may remain outside Git with a safe reference-manifest entry.
+The Knowledge Flow Detailed Map migration is complete. External, large, licensed, sensitive, regulated, or binary materials may remain outside Git with a safe reference-manifest entry.
 
 #### Existing Git documents
 
@@ -140,6 +174,7 @@ docs/
 │  ├─ contracts/
 │  │  └─ snapshots/
 │  ├─ decisions/
+│  ├─ frontend/
 │  ├─ knowledge-flow/
 │  └─ canonical-normalization/
 ├─ implementation/
@@ -197,7 +232,7 @@ No unresolved Canonical conflict may be hidden. A semantic conflict requires exp
 - Git-to-Notion publication may be automated as one-way synchronization.
 - Bidirectional automatic synchronization is prohibited.
 - High-value mirrors should identify Canonical path, commit SHA, status, and synchronization date.
-- Legacy Google Drive material may be marked archive only after successful migration verification; do not delete it as part of inventory.
+- Legacy Google Drive or Notion material may be marked archive only after successful migration verification; do not delete it as part of inventory.
 
 ## Rollback boundary
 
@@ -216,10 +251,22 @@ Legacy migration is complete only when:
 
 These criteria govern migration completion, not the already active GitHub authority cutover.
 
+## Current unresolved backlog
+
+- Phase 1–6 ADD migration
+- Project-wide ADR number, duplicate and supersession reconciliation
+- Stage 12.1 architecture record classification
+- implementation and engineering completion-record classification
+- duplicate and superseded snapshot review
+- generated-artifact ownership
+- documentation validation tooling
+- final Notion, Google Drive and Git inventory
+
 ## Decision history
 
 - 2026-07-28: ADR-117 accepted Git `main` as the target authority and defined a pre-cutover migration sequence.
 - 2026-07-29: Git-backed durable-report requirements were added.
 - 2026-07-29: the user directed that the `pending` state be resolved.
 - 2026-07-29: ADR-120 separated immediate authority activation from truthful, continuing legacy migration and superseded the original blocking sequence only.
-- 2026-07-29: Knowledge Flow Detailed Map v0.3, Google Docs revision `9`, was migrated to the repository target path with source provenance and verification evidence; the Google Drive source remains a legacy Reference.
+- 2026-07-29: Knowledge Flow Detailed Map v0.3, Google Docs revision `9`, was migrated with provenance and verification evidence.
+- 2026-07-29: Frontend and Human Interaction Architecture was consolidated from its approved Notion hierarchy into Git, preserving current status, cross-phase contracts, implementation boundaries and legacy source references.

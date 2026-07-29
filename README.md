@@ -8,11 +8,23 @@ Shotgun은 한 점에 모인 지식이 산탄총의 탄환처럼 여러 방향�
 - Stage 12까지 완료되어 독립 Module Package, Assembly Manifest와 OSS Adapter 교체까지 검증된 상태
 - 최종 순서도 기준본: `docs/SHOTGUN_KNOWLEDGE_FLOW_BASELINE_v1.0.html`
 - Knowledge Flow Detailed Map: [`docs/architecture/knowledge-flow/shotgun-knowledge-flow-detailed-map.md`](docs/architecture/knowledge-flow/shotgun-knowledge-flow-detailed-map.md)
+- Frontend and Human Interaction Architecture: [`docs/architecture/frontend/README.md`](docs/architecture/frontend/README.md)
+- Frontend Phase 1–5 구현계획: [`docs/implementation/frontend-phase-1-5-plan-v1.0.md`](docs/implementation/frontend-phase-1-5-plan-v1.0.md)
 - 상세 아키텍처 참고: `docs/shotgun_reference_architecture_strategy_ko.html`
 - 모듈 아키텍처 기준선: `docs/architecture/module-architecture/README.md`
 - 구현계획 기준선: `docs/implementation/README.md`
 - 우선순위는 복잡한 전체 구조보다 작동하는 MVP 완성
 - 원본 접수부터 Claim Canonical·인용 답변, Rich Knowledge·Compiled Truth와 Risk·Preview·Approval·Preflight·Verify Action 흐름까지 지원
+
+## Frontend 현재 상태
+
+- Shared Contract Foundation: 완료
+- Phase 1 Section 1·2: 구현·검증·병합 완료
+- Phase 1 Section 3: 설계·Contract 승인·동결 / Product 구현 미착수
+- Frontend Phase 1: 미완료
+- Phase 2~5: 설계·Contract 확정 / Product 구현 검증 대기
+
+Architecture 또는 Contract 확정만으로 Product 구현 완료를 선언하지 않는다.
 
 ## 문서 Canonical 운영
 

@@ -1,0 +1,59 @@
+---
+id: FRONTEND-ARCHITECTURE-ADR-INDEX
+classification: CANONICAL
+status: active_index
+approved_by: user
+approved_at: 2026-07-29
+legacy_source_id: 3a65181d-71ad-8182-b0fb-f84d722f98a2
+---
+
+# Frontend Architecture ADR Index
+
+## 범위
+
+Frontend and Human Interaction Architecture의 횡단 ADR을 식별한다. 이 인덱스는 ADR 본문의 결정과 변경 이력을 대체하지 않으며, 기존 Git ADR 파일을 이동하거나 이름을 바꾸지 않는다.
+
+| ADR | 제목 | 상태 | Legacy Notion ID |
+| --- | --- | --- | --- |
+| ADR-099 | Local Owner Session·Authentication Adapter Recovery Boundary | Accepted | `3a65181d-71ad-8137-b3ec-e21f484c9f16` |
+| ADR-100 | Active Project·Resource Project·Draft Project Binding | Accepted | `3a65181d-71ad-8182-ab8f-c67e791ebd85` |
+| ADR-101 | Frontend Async Command·Resource Snapshot·Outcome Unknown | Accepted | `3a65181d-71ad-815c-8c23-e6b1cbe8d962` |
+| ADR-102 | Source Library·Ask Exploration·Intake Re-entry Boundary | Accepted | `3a65181d-71ad-81e3-b95e-eae1a0ca61fb` |
+| ADR-103 | Settings as Typed Project Policy Control Plane | Accepted | `3a65181d-71ad-8176-9f37-e50336c18f0c` |
+| ADR-104 | Global Shell and Server-ranked Action Center Boundary | Accepted | `3a65181d-71ad-81c7-8fb3-c5b70df73304` |
+| ADR-105 | Frontend Policy Context Pinning and Current-policy Revalidation | Accepted | `3a65181d-71ad-81b7-bf83-e54de4d814e6` |
+| ADR-106 | Knowledge Workspace as Projection-based Read Model | Accepted | `3a65181d-71ad-8197-984c-cb1e6e7b7117` |
+| ADR-107 | Knowledge Editor as DraftChangeSet Authoring Boundary | Accepted | `3a65181d-71ad-8159-af15-e1467969ebbf` |
+| ADR-108 | Typed Semantic Graph Projection with Accessible Fallback | Accepted | `3a65181d-71ad-81c9-a864-d74dfbbe01b7` |
+| ADR-109 | Review Center as Item-level Approval Gateway | Accepted | `3a65181d-71ad-813b-9f5f-c2160415321b` |
+| ADR-110 | External Action Validation·Approval·Preflight·Verify Boundary | Accepted | `3a65181d-71ad-81bd-a332-e17f354c1305` |
+| ADR-111 | Activity Workspace as Job·Attempt·Event Projection | Accepted | `3a65181d-71ad-8111-8e8e-d9f6ce0dd968` |
+| ADR-112 | Immutable History and Reversal ChangeSet Boundary | Accepted | `3a65181d-71ad-81ba-b9a3-d3ed2b38f6ca` |
+| ADR-113 | Five-phase Frontend Responsibility Separation and Design Completion Boundary | Accepted | `3a65181d-71ad-818f-818c-c00af7bd77c4` |
+| ADR-114 | Project Administration and Settings Repository Ownership Boundary | Accepted | `3a95181d-71ad-81c9-ab5e-f4348be1b08e` |
+| ADR-115 | Global Shell·Action Center Read Projection and Scope Boundary | Accepted 2026-07-26 / implementation not started | `3a95181d-71ad-8155-85d3-ccb0420fb998` |
+| ADR-116 | Zero-project Session·Principal Command·Project Bootstrap Persistence Boundary | Accepted 2026-07-28 | `3ab5181d-71ad-81ff-87c2-d92e7a87a00b` |
+| ADR-118 | Typed Failure Taxonomy and Translation Boundary | Accepted / Product implementation merged | `3ab5181d-71ad-81de-8fa2-d52827afed19` |
+| ADR-119 | Frontend Server State, Draft State and Cache Ownership Boundary | Accepted / Product implementation pending at migration time | `3ab5181d-71ad-8132-85cb-d3154108c4a5` |
+
+ADR-117과 ADR-120은 Frontend 기능 ADR이 아니라 Project 전체 문서 Canonical 운영을 지배한다.
+
+## 인덱스 규칙
+
+1. ADR의 최신 권위 본문은 `docs/architecture/adr/` 아래 Git 파일이다.
+2. 동일 번호 또는 제목의 Notion 페이지는 Legacy Reference 또는 Mirror다.
+3. 이관 과정에서 ADR 번호, Accepted 상태 또는 구현 완료 상태를 추측해 변경하지 않는다.
+4. ADR 본문과 Phase 통합 문서가 충돌하면 변경 이력과 승인 시점을 대조하고 명시적으로 조정한다.
+5. 설계 Accepted, Product 구현, 원격 CI, Merge와 Production 검증을 별도 상태로 기록한다.
+6. ADR-115·116·118·119의 후속 변경은 기존 결정을 조용히 덮어쓰지 않고 새 ADR 또는 명시적 Amendment를 사용한다.
+
+## 알려진 역사적 상태 차이
+
+- Frontend 구현계획 v1.0의 초기 상태에는 Phase 1 Section 2가 미착수로 기록돼 있다.
+- 이후 PR #20과 Phase 1 상위 결정문이 Section 2 구현·검증·병합 완료를 확정했다.
+- 따라서 현재 상태 표시는 이후 승인·병합 기록을 따른다. 초기 기록은 당시 Fact로 보존하며 삭제하지 않는다.
+- ADR-119의 설계 문서 병합과 Product 구현 완료는 별개다.
+
+## 후속 ADR 정리 경계
+
+이 인덱스 생성은 Project 전체 ADR 번호·중복·Supersession 전수 조사를 완료했다는 의미가 아니다. 전역 ADR reconciliation은 별도 레거시 이관 Backlog로 유지한다.

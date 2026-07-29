@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "recordClasses": [
+    "ARCHITECTURE_VERIFICATION",
+    "IMPLEMENTATION_VERIFICATION",
+    "MIGRATION_VERIFICATION",
+    "AUDIT_REPORT",
+    "GATE_RECORD",
+    "COMPLETION_RECORD",
+    "DEPLOYMENT_VERIFICATION",
+    "PRODUCTION_VERIFICATION",
+    "REFERENCE_EVIDENCE"
+  ],
+  "records": [
+    {
+      "id": "STAGE-12-1-COMPLETION",
+      "path": "docs/engineering/stage-12-1-completion-record.md",
+      "class": "COMPLETION_RECORD",
+      "scope": "stage-12.1",
+      "statusAuthority": "FINAL",
+      "approvedBy": "user",
+      "approvedAt": "2026-07-22"
+    },
+    {
+      "id": "KNOWLEDGE-FLOW-DETAILED-MAP-MIGRATION-260729001",
+      "path": "docs/engineering/knowledge-flow-detailed-map-migration-verification-260729001.md",
+      "class": "MIGRATION_VERIFICATION",
+      "scope": "knowledge-flow-detailed-map",
+      "statusAuthority": "MIGRATION_INCREMENT"
+    },
+    {
+      "id": "FRONTEND-ARCHITECTURE-MIGRATION-260729001",
+      "path": "docs/engineering/frontend-architecture-migration-verification-260729001.md",
+      "class": "MIGRATION_VERIFICATION",
+      "scope": "frontend-architecture",
+      "statusAuthority": "MIGRATION_INCREMENT"
+    },
+    {
+      "id": "PHASE-1-6-ADD-MIGRATION-260729001",
+      "path": "docs/engineering/phase-1-6-add-migration-verification-260729001.md",
+      "class": "MIGRATION_VERIFICATION",
+      "scope": "phase-1-6-add",
+      "statusAuthority": "MIGRATION_INCREMENT"
+    },
+    {
+      "id": "FRONTEND-PHASE-1-SECTION-1-VERIFICATION-260724001",
+      "path": "docs/engineering/frontend-phase-1-section-1-verification-260724001.md",
+      "class": "IMPLEMENTATION_VERIFICATION",
+      "scope": "frontend-phase-1-section-1",
+      "statusAuthority": "SECTION_COMPLETION_EVIDENCE"
+    },
+    {
+      "id": "FRONTEND-PHASE-1-SECTION-2-VERIFICATION-260725001",
+      "path": "docs/engineering/frontend-phase-1-section-2-verification-260725001.md",
+      "class": "IMPLEMENTATION_VERIFICATION",
+      "scope": "frontend-phase-1-section-2",
+      "statusAuthority": "SECTION_COMPLETION_EVIDENCE"
+    }
+  ],
+  "rules": {
+    "externalOnlyCompletionAuthorityAllowed": false,
+    "approvalDoesNotImplyMerge": true,
+    "ciDoesNotImplyDeployment": true,
+    "deploymentDoesNotImplyProductionVerification": true,
+    "historicalRecordsAreRetained": true
+  }
+}

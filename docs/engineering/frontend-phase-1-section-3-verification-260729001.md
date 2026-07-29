@@ -9,6 +9,8 @@
 - Draft PR: [#42](https://github.com/JasonCutter/shotgun/pull/42)
 - Measurement Head SHA: `6df6a2ee6e9d1697311ddac74d94d822ed86098c`
 - Final Evidence Head SHA: `9ac3da943a5344a41bdcb77cc206d1a39c1ef16e`
+- Validated Publication Head SHA:
+  `d5f4e65bd43211d97d168079e3d0650b2e04f3c9`
 - Frontend Phase 1 completion: **NOT APPROVED**
 - Canonical authority: GitHub `main`
 - Notion classification: Execution Mirror / Candidate
@@ -371,6 +373,7 @@ Section 3 and Frontend Phase 1 are not declared complete.
 | `npm run oss:audit`                     | `PASS`: 0 vulnerabilities                                                                           |
 | GitHub Actions run `30444459626`        | `PASS` on implementation Head `6e7fa537`: Frontend, Quality, and Required Gates                     |
 | GitHub Actions run `30444809403`        | `PASS` on exact Head `1eccfb38`: Frontend, Quality, Required Gates, Database, and E2E               |
+| GitHub Actions run `30455161697`        | `PASS` on publication Head `d5f4e65b`: Frontend 1m13s, Quality 2m10s, Required Gates 4s             |
 
 ### Local environment divergence
 
@@ -462,6 +465,8 @@ implementation Head in a clean environment, so they do not block AC-25.
   **KNOWLEDGE FLOW, DOCUMENTATION, FORMAT, LINT, TYPECHECK, DEPENDENCY,
   STAGE 12, CI, DATABASE, FRONTEND TYPECHECK/TEST/BUILD/E2E, QUALITY,
   FRONTEND, REQUIRED GATES PASS**
+- Evidence publication Head `d5f4e65b` GitHub Actions run `30455161697`:
+  **FRONTEND PASS, QUALITY PASS, REQUIRED GATES PASS**
 - Draft PR Ready transition: **NOT APPROVED**
 - Merge: **NOT APPROVED**
 - Frontend Phase 1 completion: **NOT APPROVED**

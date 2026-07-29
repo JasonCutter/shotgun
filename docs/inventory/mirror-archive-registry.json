@@ -1,0 +1,113 @@
+{
+  "schemaVersion": 1,
+  "snapshotDate": "2026-07-29",
+  "canonicalRevision": "094eb1f486f808a315c0f4eeaaae01c58c327c61",
+  "policy": {
+    "canonicalAuthority": "github-main",
+    "metadataDirection": "git-main-to-external-mirror",
+    "externalOnlyEditsAreCandidate": true,
+    "archiveDeletesSource": false
+  },
+  "records": [
+    {
+      "provider": "notion",
+      "sourceId": "39f5181d-71ad-81a6-a51f-f7f2a3a88ee6",
+      "title": "Project Shotgun — Architecture Design Documents",
+      "classification": "MIRROR_LEGACY_REFERENCE",
+      "canonicalPath": "docs/architecture/add/README.md",
+      "metadataUpdated": true
+    },
+    {
+      "provider": "notion",
+      "sourceId": "3a15181d-71ad-81e4-bfa4-ee2578e692a0",
+      "title": "Frontend and Human Interaction Architecture",
+      "classification": "MIRROR_LEGACY_REFERENCE",
+      "canonicalPath": "docs/architecture/frontend/README.md",
+      "metadataUpdated": true
+    },
+    {
+      "provider": "notion",
+      "sourceId": "3a75181d-71ad-817a-9675-c984455b2c3b",
+      "title": "Project Shotgun Frontend Phase 1–5 구현계획 v1.0",
+      "classification": "MIRROR",
+      "canonicalPath": "docs/implementation/frontend-phase-1-5-plan-v1.0.md",
+      "metadataUpdated": true
+    },
+    {
+      "provider": "notion",
+      "sourceId": "3a65181d-71ad-8182-b0fb-f84d722f98a2",
+      "title": "Frontend Architecture Decision Records",
+      "classification": "MIRROR_LEGACY_INDEX",
+      "canonicalPath": "docs/architecture/frontend/adr-index.md",
+      "registryPath": "docs/architecture/adr/adr-registry.json",
+      "metadataUpdated": true
+    },
+    {
+      "provider": "notion",
+      "sourceId": "3a55181d-71ad-8117-b8b8-f5edd362a78e",
+      "title": "Stage 12.1 — Quality Evaluation Architecture",
+      "classification": "LEGACY_REFERENCE_HISTORICAL_STAGE_RECORD",
+      "canonicalPath": "docs/architecture/stage-12-1/README.md",
+      "finalAuthorityPath": "docs/engineering/stage-12-1-completion-record.md",
+      "metadataUpdated": true
+    },
+    {
+      "provider": "notion",
+      "sourceId": "3ab5181d-71ad-81ff-87c2-d92e7a87a00b",
+      "title": "ADR-116 — Zero-project Session Boundary",
+      "classification": "MIRROR",
+      "canonicalPath": "docs/architecture/adr/ADR-116-zero-project-session-principal-command-project-bootstrap-persistence-boundary.md",
+      "metadataUpdated": true
+    },
+    {
+      "provider": "notion",
+      "sourceId": "3ab5181d-71ad-8197-90a1-c8de109fdfd7",
+      "title": "ADR-117 — Documentation Source of Truth",
+      "classification": "MIRROR_HISTORICAL_PRE_CUTOVER_DECISION",
+      "canonicalPath": "docs/architecture/adr/ADR-117-documentation-source-of-truth-canonicalization-and-publication-boundary.md",
+      "amendedBy": "docs/architecture/adr/ADR-120-canonical-cutover-activation-and-legacy-migration-boundary.md",
+      "metadataUpdated": true
+    },
+    {
+      "provider": "notion",
+      "sourceId": "3ab5181d-71ad-81de-8fa2-d52827afed19",
+      "title": "ADR-118 — Typed Failure Taxonomy",
+      "classification": "MIRROR",
+      "canonicalPath": "docs/architecture/adr/ADR-118-typed-failure-taxonomy-and-translation-boundary.md",
+      "metadataUpdated": true
+    },
+    {
+      "provider": "notion",
+      "sourceId": "3ab5181d-71ad-8132-85cb-d3154108c4a5",
+      "title": "ADR-119 — Frontend State and Cache Ownership",
+      "classification": "MIRROR",
+      "canonicalPath": "docs/architecture/adr/ADR-119-frontend-server-state-draft-state-and-cache-ownership-boundary.md",
+      "metadataUpdated": true
+    },
+    {
+      "provider": "notion",
+      "sourceId": "39f5181d-71ad-8136-89af-fedef6ea57cf",
+      "title": "Project Shotgun — Phase 1 잔여 설계회의 준비안 허브",
+      "classification": "ARCHIVED_HISTORICAL_PREPARATION_HUB",
+      "supersededBy": "docs/architecture/add/phase-01-input-and-original-preservation/README.md",
+      "metadataUpdated": true,
+      "deleted": false
+    },
+    {
+      "provider": "google-drive",
+      "sourceId": "1HazG-oAeJ8Sgg_mPmBiWpQqeCeeAoDUuWgqVNJR1DCg",
+      "title": "Shotgun Knowledge Flow Detailed Map",
+      "classification": "LEGACY_SOURCE_REFERENCE",
+      "canonicalPath": "docs/architecture/knowledge-flow/shotgun-knowledge-flow-detailed-map.md",
+      "sourceRevisionAfterUpdate": "AIroW37fHy46xXR0Q0MxHavVg64gsEkmPM5pHaoUg8U8ZIsnMzlUZGGcKQfFupMGuZ8ZKcILqeFuYMlZK0Aqe6BkgPDdoqj8aPElh_kyyVx_",
+      "metadataUpdated": true
+    }
+  ],
+  "result": {
+    "records": 11,
+    "mirrorsOrReferencesNormalized": 10,
+    "archivesNormalized": 1,
+    "sourcesDeleted": 0,
+    "unresolvedHighValueMirrorMetadata": 0
+  }
+}

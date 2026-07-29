@@ -54,6 +54,17 @@
       "githubActionsRun": "30419307755"
     },
     {
+      "id": "DOCUMENTATION-LEGACY-MIGRATION-COMPLETION-260729001",
+      "path": "docs/engineering/documentation-legacy-migration-completion-260729001.md",
+      "class": "COMPLETION_RECORD",
+      "scope": "documentation-legacy-migration-and-final-inventory",
+      "statusAuthority": "FINAL_AFTER_PR_41_MERGE",
+      "approvedBy": "user",
+      "approvedAt": "2026-07-29",
+      "testedHead": "b3e101cc08b86c07c49d4a8940dc242d9766a403",
+      "githubActionsRun": "30422731186"
+    },
+    {
       "id": "FRONTEND-PHASE-1-SECTION-1-VERIFICATION-260724001",
       "path": "docs/engineering/frontend-phase-1-section-1-verification-260724001.md",
       "class": "IMPLEMENTATION_VERIFICATION",

@@ -2,16 +2,30 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { createApplication } from '../../../assemblies/shotgun-app/src/server.js';
-import { InMemoryProjectAdministrationRepository } from '../../../adapters/settings-project-admin-in-memory/src/index.js';
+import { configureSourcesWriteRuntime } from '../../../assemblies/shotgun-app/src/product-api/sources-write-runtime.js';
+import { SealedSourcesStagingService } from '../../../adapters/frontend-sources-staging-sealed/src/index.js';
+import { PostgresFrontendCommandGateway } from '../../../adapters/frontend-command-gateway-postgres/src/index.js';
+import { PostgresSourcesProductService } from '../../../adapters/frontend-sources-write-postgres/src/product-service.js';
+import {
+  createPostgresPool,
+  PostgresIntakeRepository,
+  PostgresOriginalAssetRepository,
+  PostgresProjectAdministrationRepository,
+  PostgresProjectBootstrapUnitOfWork,
+  PostgresSettingsRepository,
+} from '../../../adapters/postgres/src/index.js';
+import { InMemoryAssetStorage } from '../../../adapters/stage2-in-memory/src/index.js';
+import { PostgresAuthRepository } from '../../../adapters/postgres-auth/src/index.js';
 import {
   DEFAULT_PROJECT_ID,
-  InMemoryAuthRepository,
   LOCAL_OWNER_ACCOUNT_ID,
 } from '../../../packages/authentication/src/index.js';
 
 export async function startFrontendTestBackend() {
-  const authRepository = new InMemoryAuthRepository();
-  // Bootstrap a credential-less Local Owner in the default project (shotgun)
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) throw new Error('DATABASE_URL is required for the browser fixture.');
+  const pool = createPostgresPool(databaseUrl);
+  const authRepository = new PostgresAuthRepository(pool);
   await authRepository.bootstrapOwner({
     accountId: LOCAL_OWNER_ACCOUNT_ID,
     projectId: DEFAULT_PROJECT_ID,
@@ -25,31 +39,52 @@ export async function startFrontendTestBackend() {
   if (!ownerMembership) throw new Error('Frontend browser fixture local owner was not created.');
   const principalId = ownerMembership.principalId;
 
-  const projectAdminRepository = new InMemoryProjectAdministrationRepository(
-    async ({ principalId: membershipPrincipalId, projectId }) => {
-      await authRepository.createProjectOwnerMembership({
-        principalId: membershipPrincipalId,
-        projectId,
-        scopes: ['owner'],
-        sensitivityClearance: 'private',
-      });
-    },
-  );
-  await projectAdminRepository.createProject({
-    commandId: 'browser-fixture-project-b',
-    clientRequestId: 'browser-fixture-project-b',
-    idempotencyKey: 'browser-fixture-project-b',
+  const projectAdminRepository = new PostgresProjectAdministrationRepository(pool);
+  const existingProject = await projectAdminRepository.getProject('project-b');
+  if (!existingProject) {
+    await projectAdminRepository.createProject({
+      commandId: 'browser-fixture-project-b',
+      clientRequestId: 'browser-fixture-project-b',
+      idempotencyKey: 'browser-fixture-project-b',
+      projectId: 'project-b',
+      name: 'Project B',
+      description: 'Browser test Project',
+      actorPrincipalId: principalId,
+      expectedProjectRevision: 0,
+    });
+  }
+  await authRepository.createProjectOwnerMembership({
+    principalId,
     projectId: 'project-b',
-    name: 'Project B',
-    description: 'Browser test Project',
-    actorPrincipalId: principalId,
-    expectedProjectRevision: 0,
+    scopes: ['owner'],
+    sensitivityClearance: 'private',
   });
 
+  const assetStorage = new InMemoryAssetStorage();
+  const commandGateway = new PostgresFrontendCommandGateway(pool);
+  const staging = new SealedSourcesStagingService(
+    assetStorage,
+    'browser-fixture-sources-staging-secret-32-characters',
+  );
+  const removeWriteRuntime = configureSourcesWriteRuntime({
+    commandGateway,
+    staging,
+    productService: new PostgresSourcesProductService(pool, staging),
+  });
   const application = await createApplication({
     authRepository,
     projectAdminRepository,
+    projectBootstrapUnitOfWork: new PostgresProjectBootstrapUnitOfWork(pool),
+    settingsRepository: new PostgresSettingsRepository(pool),
+    frontendCommandGateway: commandGateway,
+    intakeRepository: new PostgresIntakeRepository(pool),
+    originalAssetRepository: new PostgresOriginalAssetRepository(pool),
+    assetStorage,
     canonicalProjectionRecoveryIntervalMs: false,
+    closeResources: async () => {
+      removeWriteRuntime();
+      await pool.end();
+    },
   });
   await application.server.listen({ host: '127.0.0.1', port: 3001 });
 

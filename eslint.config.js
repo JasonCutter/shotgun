@@ -15,7 +15,15 @@ export default tseslint.config(
   {
     files: ['adapters/frontend-sources-write-postgres/src/product-service.ts'],
     rules: {
-      '@typescript-eslint/no-unused-vars': 'off',
+      // These two imported contracts are retained as explicit Stage 2/URL persistence
+      // compatibility witnesses while the Product service owns the activated orchestration.
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          varsIgnorePattern:
+            '^(CreateSourcesIntakeSubmissionInput|SourcesUrlSuccessProvenance)$',
+        },
+      ],
     },
   },
 );

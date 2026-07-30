@@ -1,4 +1,5 @@
-import { createHash, isIP } from 'node:crypto';
+import { createHash } from 'node:crypto';
+import { isIP } from 'node:net';
 
 import { ShotgunError } from '../../../packages/contracts/src/index.js';
 
@@ -144,7 +145,7 @@ const assertAddressSet = (addresses: readonly string[]): readonly string[] => {
 
 const redact = (url: URL): string => {
   const copy = new URL(url.toString());
-  for (const key of copy.searchParams.keys()) copy.searchParams.set(key, '[REDACTED]');
+  for (const key of [...copy.searchParams.keys()]) copy.searchParams.set(key, '[REDACTED]');
   return copy.toString();
 };
 
@@ -243,12 +244,7 @@ export class SecureUrlAcquisitionCoordinator {
           return fail('URL acquisition exceeded the redirect limit.', 'redirect-limit');
         }
         const next = normalize(new URL(response.redirectLocation, current).toString());
-        redirects.push({
-          ordinal,
-          from: redact(current),
-          to: redact(next),
-          status: response.status,
-        });
+        redirects.push({ ordinal, from: redact(current), to: redact(next), status: response.status });
         current = next;
         continue;
       }

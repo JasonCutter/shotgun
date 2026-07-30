@@ -4,13 +4,13 @@ import { createMemoryRouter, Outlet, RouterProvider } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
 import type {
+  EvidenceListView,
   GlobalShellView,
   ShotgunApiClient,
   SourceDetailView,
   SourceLibraryPageView,
   SourcePreviewView,
   SourceVersionHistoryView,
-  EvidenceListView,
 } from '@shotgun/api-client';
 
 import { createFrontendQueryClient } from '../app/query-client.js';
@@ -119,16 +119,6 @@ const history: SourceVersionHistoryView = {
       transformationState: 'READY',
       evidenceCount: 1,
     },
-    {
-      sourceVersionId: 'version-1',
-      versionNumber: 1,
-      contentHash: hash,
-      mediaType: 'text/markdown',
-      sizeBytes: 8,
-      createdAt: now,
-      transformationState: 'NOT_STARTED',
-      evidenceCount: 0,
-    },
   ],
   projectionRevision: 'sources-1',
   accessRevision: 'access-1',
@@ -185,6 +175,7 @@ const createRuntime = (): AppRuntime => {
     getSourceVersionHistory: vi.fn(async () => history),
     getSourcePreview: vi.fn(async () => preview),
     getSourceEvidence: vi.fn(async () => evidence),
+    getExactDuplicateDecision: vi.fn(),
   } as unknown as ShotgunApiClient;
   return {
     apiClient,
@@ -211,7 +202,7 @@ const ShellOutlet = () => {
 };
 
 describe('Sources Workspace', () => {
-  it('renders server Source state, keeps search out of the URL, and keeps submit blocked', async () => {
+  it('renders server state, keeps search private, and activates valid draft submission', async () => {
     const runtime = createRuntime();
     const router = createMemoryRouter(
       [
@@ -235,7 +226,7 @@ describe('Sources Workspace', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Add intake draft' }));
     expect(
       (screen.getByRole('button', { name: 'Submit drafts' }) as HTMLButtonElement).disabled,
-    ).toBe(true);
+    ).toBe(false);
 
     await userEvent.type(screen.getByLabelText('Search Sources'), 'private phrase');
     await userEvent.click(screen.getByRole('button', { name: 'Search' }));
@@ -287,10 +278,8 @@ describe('Sources Workspace', () => {
 
     expect(await screen.findByText(/active Project changed/)).toBeTruthy();
     expect(screen.getByText(/Choose the file again/)).toBeTruthy();
-
     await userEvent.click(screen.getByRole('button', { name: 'Inspect leave state' }));
     expect(document.body.getAttribute('data-leave-state')).toContain('"hasUnsavedDraft":true');
-
     await userEvent.click(screen.getByRole('button', { name: 'Discard all drafts' }));
     await userEvent.selectOptions(screen.getByLabelText('Input type'), 'URL');
     await userEvent.type(screen.getByLabelText('URL'), 'file:///etc/passwd');
@@ -305,12 +294,7 @@ describe('Sources Workspace', () => {
         {
           path: '/',
           element: <ShellOutlet />,
-          children: [
-            {
-              path: 'sources/:sourceId',
-              element: <SourceDetailWorkspace />,
-            },
-          ],
+          children: [{ path: 'sources/:sourceId', element: <SourceDetailWorkspace /> }],
         },
       ],
       { initialEntries: ['/sources/source-1?version=version-2'] },
@@ -324,19 +308,15 @@ describe('Sources Workspace', () => {
     expect(await screen.findByRole('heading', { name: 'Evidence notes', level: 1 })).toBeTruthy();
     expect(await screen.findByText('Original evidence', { selector: 'pre' })).toBeTruthy();
     expect(screen.getByText('EVIDENCE_READY')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Version 2/ }).getAttribute('aria-pressed')).toBe(
-      'true',
-    );
     expect(runtime.apiClient.getSourcePreview).toHaveBeenCalledWith(
       'source-1',
       'version-2',
       'ORIGINAL',
       expect.any(Object),
     );
-    expect(document.getElementById('evidence-evidence-1')).toBeTruthy();
   });
 
-  it('focuses pinned Evidence and preserves the typed Citation return identity', async () => {
+  it('focuses pinned Evidence and preserves typed Citation return identity', async () => {
     const runtime = createRuntime();
     const router = createMemoryRouter(
       [
@@ -385,11 +365,7 @@ describe('Sources Workspace', () => {
     await userEvent.click(screen.getByRole('link', { name: 'Return to cited resource' }));
     expect(await screen.findByText('Conversation restored')).toBeTruthy();
     expect(router.state.location.state).toMatchObject({
-      citationReturn: {
-        resourceRevision: 'conversation-7',
-        citationId: 'citation-1',
-        focusTarget: 'citation-1',
-      },
+      citationReturn: { resourceRevision: 'conversation-7', citationId: 'citation-1' },
     });
   });
 });

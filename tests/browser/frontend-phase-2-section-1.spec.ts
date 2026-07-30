@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('Sources keeps draft input route-scoped, blocks server submit, and releases Project switch immediately after discard', async ({
+test('Sources stages and submits Direct Text, then releases Project switching after success', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -13,15 +13,10 @@ test('Sources keeps draft input route-scoped, blocks server submit, and releases
   await page.getByRole('button', { name: 'Add intake draft' }).click();
 
   await expect(page.getByRole('list', { name: 'Intake drafts' })).toContainText('E2E draft');
-  await expect(page.getByRole('button', { name: 'Submit drafts' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Submit drafts' })).toBeEnabled();
   await expect(
     page.getByText('Client preflight passed. The Server will validate again.'),
   ).toBeVisible();
-
-  const selector = page.getByRole('combobox', { name: 'Active Project' });
-  await selector.selectOption('project-b');
-  await expect(selector).toHaveValue('shotgun');
-  await expect(page.getByRole('alert')).toContainText('current Workspace');
 
   await expect
     .poll(() =>
@@ -29,7 +24,11 @@ test('Sources keeps draft input route-scoped, blocks server submit, and releases
     )
     .not.toContain('Transient browser-only evidence');
 
-  await page.getByRole('button', { name: 'Discard all drafts' }).click();
+  await page.getByRole('button', { name: 'Submit drafts' }).click();
+  await expect(page.getByRole('heading', { name: 'Submission SUCCEEDED' })).toBeVisible();
+  await expect(page.getByText('No route-scoped drafts.')).toBeVisible();
+
+  const selector = page.getByRole('combobox', { name: 'Active Project' });
   await selector.selectOption('project-b');
   await expect(selector).toHaveValue('project-b');
 });

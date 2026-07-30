@@ -6,3 +6,4 @@ export * from './errors.js';
 export * from './frontend-foundation-client.js';
 export * from './frontend-digest-adapter.js';
 export * from './sources-write-client.js';
+export * from './sources-write-types.js';

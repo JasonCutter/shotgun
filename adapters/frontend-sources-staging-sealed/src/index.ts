@@ -281,8 +281,9 @@ export class SealedSourcesStagingService implements SourcesStagingServicePort {
     if (!reference.startsWith(TOKEN_PREFIX)) {
       return fail('POLICY_DENIED', 'The Sources staging reference is invalid.');
     }
-    const packed = Buffer.from(reference.slice(TOKEN_PREFIX.length), 'base64url');
-    if (packed.byteLength < 29) {
+    const encoded = reference.slice(TOKEN_PREFIX.length);
+    const packed = Buffer.from(encoded, 'base64url');
+    if (packed.byteLength < 29 || packed.toString('base64url') !== encoded) {
       return fail('POLICY_DENIED', 'The Sources staging reference is invalid.');
     }
     const iv = packed.subarray(0, 12);

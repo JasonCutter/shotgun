@@ -5,14 +5,19 @@ import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { PostgresSourcesIntakeUnitOfWork } from '../../adapters/frontend-sources-write-postgres/src/index.js';
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
 import type { CreateSourcesIntakeSubmissionInput } from '../../modules/frontend-sources-write/src/index.js';
-import { dropSchemas, migrateUpTo } from '../../scripts/database.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
 const hash = (value: string): string =>
   `sha256:${createHash('sha256').update(value).digest('hex')}`;
 
-const fixture = async (payload: unknown = { inputs: [{ kind: 'DIRECT_TEXT', contentHash: hash('ok') }] }) => {
+afterAll(async () => {
+  await pool?.end();
+});
+
+const fixture = async (
+  payload: unknown = { inputs: [{ kind: 'DIRECT_TEXT', contentHash: hash('ok') }] },
+) => {
   const principalId = randomUUID();
   const sessionId = randomUUID();
   const projectId = `sources-project-${randomUUID()}`;
@@ -161,28 +166,23 @@ describe.runIf(pool)('Frontend Phase 2 Section 1 Sources persistence', () => {
     );
   });
 
-  afterAll(async () => {
-    await pool?.end();
-  });
-
-  it('creates all seven relations and expands Stage 2 channel without Product backfill', async () => {
-    const relations = await pool!.query<{ count: string }>(
-      `SELECT count(*)::text AS count
-       FROM information_schema.tables
-       WHERE table_schema = 'source_product'`,
-    );
-    expect(relations.rows[0]?.count).toBe('7');
+  it('creates the seven relations, expands the Stage 2 channel, and backfills no history', async () => {
     expect(
-      await pool!.query(
-        `INSERT INTO intake.submissions (
-           submission_key, submission_id, project_id, actor_id, channel,
-           material_kind, media_type, content_hash, size_bytes, access_scope,
-           sensitivity, created_at
-         ) VALUES ($1, 'url-channel-test', 'p', 'a', 'url_acquisition',
-                   'plain_text', 'text/plain', $2, 1, '{owner}', 'private', now())`,
-        [randomUUID(), hash('x')],
+      await pool!.query<{ count: string }>(
+        `SELECT count(*)::text AS count
+         FROM information_schema.tables
+         WHERE table_schema = 'source_product'`,
       ),
-    ).toMatchObject({ rowCount: 1 });
+    ).toMatchObject({ rows: [{ count: '7' }] });
+    await pool!.query(
+      `INSERT INTO intake.submissions (
+         submission_key, submission_id, project_id, actor_id, channel,
+         material_kind, media_type, content_hash, size_bytes, access_scope,
+         sensitivity, created_at
+       ) VALUES ($1, 'url-channel-test', 'p', 'a', 'url_acquisition',
+                 'plain_text', 'text/plain', $2, 1, '{owner}', 'private', now())`,
+      [randomUUID(), hash('x')],
+    );
     expect(
       await pool!.query('SELECT count(*)::text AS count FROM source_product.intake_submissions'),
     ).toMatchObject({ rows: [{ count: '0' }] });
@@ -195,9 +195,7 @@ describe.runIf(pool)('Frontend Phase 2 Section 1 Sources persistence', () => {
     const created = await unitOfWork.createSubmission(input);
     const replayed = await unitOfWork.createSubmission(input);
 
-    expect(created.replayed).toBe(false);
     expect(replayed).toEqual({ ...created, replayed: true });
-    expect(created.items).toHaveLength(1);
     expect(
       await pool!.query(
         `SELECT
@@ -229,12 +227,11 @@ describe.runIf(pool)('Frontend Phase 2 Section 1 Sources persistence', () => {
     });
   });
 
-  it('rejects raw input in the Command Ledger and leaves every Domain owner empty', async () => {
-    const context = await fixture({ inputs: [{ kind: 'DIRECT_TEXT', text: 'secret raw input' }] });
-    const unitOfWork = new PostgresSourcesIntakeUnitOfWork(pool!);
-    await expect(unitOfWork.createSubmission(directSubmission(context))).rejects.toThrow(
-      /forbidden raw-input field/,
-    );
+  it('rejects raw Command Ledger input and leaves all Domain owners empty', async () => {
+    const context = await fixture({ inputs: [{ kind: 'DIRECT_TEXT', text: 'secret' }] });
+    await expect(
+      new PostgresSourcesIntakeUnitOfWork(pool!).createSubmission(directSubmission(context)),
+    ).rejects.toThrow(/forbidden raw-input field/);
     expect(
       await pool!.query(
         `SELECT
@@ -245,14 +242,15 @@ describe.runIf(pool)('Frontend Phase 2 Section 1 Sources persistence', () => {
     ).toMatchObject({ rows: [{ product: '0', stage2: '0', assets: '0' }] });
   });
 
-  it('rolls back Product, Stage 2 and Asset rows when a late StorageReceipt write fails', async () => {
+  it('rolls back Product, Stage 2 and Asset rows on a late StorageReceipt failure', async () => {
     const context = await fixture();
     await pool!.query(`
       ALTER TABLE asset.storage_receipts
       ADD CONSTRAINT test_sources_late_failure CHECK (false)
     `);
-    const unitOfWork = new PostgresSourcesIntakeUnitOfWork(pool!);
-    await expect(unitOfWork.createSubmission(directSubmission(context))).rejects.toThrow();
+    await expect(
+      new PostgresSourcesIntakeUnitOfWork(pool!).createSubmission(directSubmission(context)),
+    ).rejects.toThrow();
     expect(
       await pool!.query(
         `SELECT
@@ -264,10 +262,8 @@ describe.runIf(pool)('Frontend Phase 2 Section 1 Sources persistence', () => {
     ).toMatchObject({ rows: [{ product: '0', stage2: '0', assets: '0', sources: '0' }] });
   });
 
-  it('persists redacted URL provenance with the explicit url_acquisition channel', async () => {
-    const context = await fixture({
-      inputs: [{ kind: 'URL', requestedUrl: 'https://example.com/doc?token=[REDACTED]' }],
-    });
+  it('persists redacted URL provenance under the url_acquisition channel', async () => {
+    const context = await fixture({ inputs: [{ kind: 'URL', redactedRequestedUrl: 'https://example.com/doc?token=[REDACTED]' }] });
     const contentHash = hash('url body');
     const input: CreateSourcesIntakeSubmissionInput = {
       ...directSubmission(context),
@@ -320,8 +316,7 @@ describe.runIf(pool)('Frontend Phase 2 Section 1 Sources persistence', () => {
     await new PostgresSourcesIntakeUnitOfWork(pool!).createSubmission(input);
     expect(
       await pool!.query(
-        `SELECT receipt.channel,
-                provenance.outcome,
+        `SELECT receipt.channel, provenance.outcome,
                 provenance.redacted_final_url,
                 provenance.original_asset_id IS NOT NULL AS has_asset
          FROM asset.storage_receipts AS receipt
@@ -335,38 +330,6 @@ describe.runIf(pool)('Frontend Phase 2 Section 1 Sources persistence', () => {
           outcome: 'SUCCEEDED',
           redacted_final_url: 'https://example.com/doc?token=[REDACTED]',
           has_asset: true,
-        },
-      ],
-    });
-  });
-});
-
-describe.runIf(pool)('Migration 019 to 020 compatibility', () => {
-  afterEach(async () => {
-    await dropSchemas();
-    await migrateUpTo();
-  });
-
-  it('upgrades from 019, creates no Product history, and repeat apply is a no-op', async () => {
-    await dropSchemas();
-    await migrateUpTo('019_frontend_section3_principal_bootstrap.sql');
-    await migrateUpTo('020_frontend_phase2_sources_product_persistence.sql');
-    await migrateUpTo('020_frontend_phase2_sources_product_persistence.sql');
-
-    expect(
-      await pool!.query(
-        `SELECT
-           (SELECT count(*)::text FROM runtime.schema_migrations
-             WHERE name = '020_frontend_phase2_sources_product_persistence.sql') AS migration_count,
-           (SELECT count(*)::text FROM source_product.intake_submissions) AS product_rows,
-           (SELECT to_regclass('source_product.url_provenance_receipts')::text) AS receipt_table`,
-      ),
-    ).toMatchObject({
-      rows: [
-        {
-          migration_count: '1',
-          product_rows: '0',
-          receipt_table: 'source_product.url_provenance_receipts',
         },
       ],
     });

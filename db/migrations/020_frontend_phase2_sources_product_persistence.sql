@@ -72,15 +72,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS asset_source_versions_asset_version_uidx
 
 CREATE SCHEMA source_product;
 
-CREATE FUNCTION source_product.text_array_is_unique(values text[])
+CREATE FUNCTION source_product.text_array_is_unique(array_values text[])
 RETURNS boolean
 LANGUAGE sql
 IMMUTABLE
 STRICT
 AS $$
-  SELECT cardinality(values) = (
+  SELECT cardinality(array_values) = (
     SELECT count(DISTINCT value)
-    FROM unnest(values) AS value
+    FROM unnest(array_values) AS value
   )
 $$;
 

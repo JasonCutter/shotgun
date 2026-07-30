@@ -95,8 +95,13 @@ export class NodeUrlHopTransport implements UrlHopTransportPort {
           operation: `${phase}-timeout`,
           retryable: true,
         });
-      const destroyWith = (request: http.ClientRequest, error: ShotgunError) => {
+      const abortWith = (
+        request: http.ClientRequest,
+        error: ShotgunError,
+        operation: string,
+      ) => {
         terminalError = error;
+        finishError(error, operation);
         request.destroy(error);
       };
 
@@ -144,16 +149,17 @@ export class NodeUrlHopTransport implements UrlHopTransportPort {
           const resetBodyTimer = () => {
             if (timers.body) clearTimeout(timers.body);
             timers.body = setTimeout(() => {
-              destroyWith(request, timeout('body'));
+              abortWith(request, timeout('body'), 'body-timeout');
             }, input.limits.bodyTimeoutMs);
           };
           resetBodyTimer();
           response.on('data', (chunk: Buffer | Uint8Array | string) => {
+            if (settled) return;
             resetBodyTimer();
             const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
             received += bytes.byteLength;
             if (received > input.limits.maxCompressedBytes) {
-              destroyWith(
+              abortWith(
                 request,
                 new ShotgunError({
                   code: 'VALIDATION_ERROR',
@@ -161,6 +167,7 @@ export class NodeUrlHopTransport implements UrlHopTransportPort {
                   module: 'url-acquisition-node',
                   operation: 'stream-size-limit',
                 }),
+                'stream-size-limit',
               );
               return;
             }
@@ -192,15 +199,15 @@ export class NodeUrlHopTransport implements UrlHopTransportPort {
       );
 
       timers.total = setTimeout(
-        () => destroyWith(request, timeout('total')),
+        () => abortWith(request, timeout('total'), 'total-timeout'),
         input.limits.totalTimeoutMs,
       );
       timers.connect = setTimeout(
-        () => destroyWith(request, timeout('connect')),
+        () => abortWith(request, timeout('connect'), 'connect-timeout'),
         input.limits.connectTimeoutMs,
       );
       timers.header = setTimeout(
-        () => destroyWith(request, timeout('header')),
+        () => abortWith(request, timeout('header'), 'header-timeout'),
         input.limits.headerTimeoutMs,
       );
       request.once('socket', (socket) => {

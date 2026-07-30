@@ -1,0 +1,191 @@
+import { lookup } from 'node:dns/promises';
+import http from 'node:http';
+import https from 'node:https';
+import { isIP } from 'node:net';
+
+import { ShotgunError } from '../../../packages/contracts/src/index.js';
+import type {
+  UrlHopResponse,
+  UrlHopTransportPort,
+  UrlResolverPort,
+} from '../../../modules/url-acquisition/src/index.js';
+
+const normalizedRemoteAddress = (address: string | undefined): string => {
+  const value = address?.toLocaleLowerCase() ?? '';
+  return value.startsWith('::ffff:') ? value.slice(7) : value;
+};
+
+const transportError = (error: unknown, operation: string): ShotgunError =>
+  error instanceof ShotgunError
+    ? error
+    : new ShotgunError({
+        code: 'RETRYABLE_DEPENDENCY',
+        safeMessage: 'URL acquisition transport failed.',
+        module: 'url-acquisition-node',
+        operation,
+        retryable: true,
+        cause: error,
+      });
+
+export class NodeUrlResolver implements UrlResolverPort {
+  async resolve(hostname: string): Promise<readonly string[]> {
+    try {
+      const records = await lookup(hostname, { all: true, verbatim: true });
+      return records.map((record) => record.address);
+    } catch (error) {
+      throw transportError(error, 'dns-lookup');
+    }
+  }
+}
+
+export class NodeUrlHopTransport implements UrlHopTransportPort {
+  async request(input: Parameters<UrlHopTransportPort['request']>[0]): Promise<UrlHopResponse> {
+    const parsed = new URL(input.url);
+    const address = input.approvedAddresses[0];
+    if (!address || isIP(address) === 0) {
+      throw new ShotgunError({
+        code: 'POLICY_DENIED',
+        safeMessage: 'URL acquisition has no approved destination address.',
+        module: 'url-acquisition-node',
+        operation: 'select-address',
+      });
+    }
+    const client = parsed.protocol === 'https:' ? https : http;
+    return new Promise<UrlHopResponse>((resolve, reject) => {
+      let settled = false;
+      let responseStarted = false;
+      let connected = false;
+      let totalTimer: NodeJS.Timeout | undefined;
+      let connectTimer: NodeJS.Timeout | undefined;
+      let headerTimer: NodeJS.Timeout | undefined;
+      let bodyTimer: NodeJS.Timeout | undefined;
+
+      const clearTimers = () => {
+        if (totalTimer) clearTimeout(totalTimer);
+        if (connectTimer) clearTimeout(connectTimer);
+        if (headerTimer) clearTimeout(headerTimer);
+        if (bodyTimer) clearTimeout(bodyTimer);
+      };
+      const finishError = (error: unknown, operation: string) => {
+        if (settled) return;
+        settled = true;
+        clearTimers();
+        reject(transportError(error, operation));
+      };
+      const timeout = (phase: string) =>
+        new ShotgunError({
+          code: 'TIMEOUT',
+          safeMessage: `URL acquisition ${phase} timeout.`,
+          module: 'url-acquisition-node',
+          operation: `${phase}-timeout`,
+          retryable: true,
+        });
+
+      const request = client.request(
+        {
+          protocol: parsed.protocol,
+          hostname: parsed.hostname,
+          port: parsed.port || undefined,
+          method: 'GET',
+          path: `${parsed.pathname}${parsed.search}`,
+          servername: parsed.protocol === 'https:' ? parsed.hostname : undefined,
+          headers: {
+            accept: 'text/plain, text/markdown;q=0.9',
+            'accept-encoding': 'identity',
+            'user-agent': 'Shotgun-Source-Acquisition/1.0',
+          },
+          lookup: (_hostname, _options, callback) => {
+            callback(null, address, isIP(address) as 4 | 6);
+          },
+          agent: false,
+        },
+        (response) => {
+          responseStarted = true;
+          if (headerTimer) clearTimeout(headerTimer);
+          const encoding = response.headers['content-encoding'];
+          if (encoding && encoding.toLocaleLowerCase() !== 'identity') {
+            response.resume();
+            finishError(
+              new ShotgunError({
+                code: 'VALIDATION_ERROR',
+                safeMessage: 'Compressed URL responses are not accepted by this runtime.',
+                module: 'url-acquisition-node',
+                operation: 'content-encoding',
+              }),
+              'content-encoding',
+            );
+            return;
+          }
+          const chunks: Buffer[] = [];
+          let received = 0;
+          const resetBodyTimer = () => {
+            if (bodyTimer) clearTimeout(bodyTimer);
+            bodyTimer = setTimeout(() => {
+              request.destroy(timeout('body'));
+            }, input.limits.bodyTimeoutMs);
+          };
+          resetBodyTimer();
+          response.on('data', (chunk: Buffer | Uint8Array | string) => {
+            resetBodyTimer();
+            const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+            received += bytes.byteLength;
+            if (received > input.limits.maxCompressedBytes) {
+              request.destroy(
+                new ShotgunError({
+                  code: 'VALIDATION_ERROR',
+                  safeMessage: 'URL response exceeds the approved byte limit.',
+                  module: 'url-acquisition-node',
+                  operation: 'stream-size-limit',
+                }),
+              );
+              return;
+            }
+            chunks.push(bytes);
+          });
+          response.once('end', () => {
+            if (settled) return;
+            settled = true;
+            clearTimers();
+            const headers: Record<string, string | undefined> = {};
+            for (const [key, value] of Object.entries(response.headers)) {
+              headers[key.toLocaleLowerCase()] = Array.isArray(value) ? value.join(', ') : value;
+            }
+            resolve({
+              status: response.statusCode ?? 0,
+              connectedAddress: normalizedRemoteAddress(response.socket.remoteAddress),
+              headers,
+              body: Buffer.concat(chunks),
+              compressedBytes: received,
+              ...(typeof response.headers.location === 'string'
+                ? { redirectLocation: response.headers.location }
+                : {}),
+            });
+          });
+          response.once('error', (error) => finishError(error, 'response-stream'));
+        },
+      );
+
+      totalTimer = setTimeout(() => request.destroy(timeout('total')), input.limits.totalTimeoutMs);
+      connectTimer = setTimeout(
+        () => request.destroy(timeout('connect')),
+        input.limits.connectTimeoutMs,
+      );
+      headerTimer = setTimeout(
+        () => request.destroy(timeout('header')),
+        input.limits.headerTimeoutMs,
+      );
+      request.once('socket', (socket) => {
+        const onConnected = () => {
+          connected = true;
+          if (connectTimer) clearTimeout(connectTimer);
+        };
+        socket.once(parsed.protocol === 'https:' ? 'secureConnect' : 'connect', onConnected);
+      });
+      request.once('error', (error) => {
+        const phase = !connected ? 'connect' : !responseStarted ? 'headers' : 'request';
+        finishError(error, phase);
+      });
+      request.end();
+    });
+  }
+}

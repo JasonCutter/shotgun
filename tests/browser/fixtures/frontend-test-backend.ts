@@ -12,8 +12,8 @@ import {
   PostgresOriginalAssetRepository,
   PostgresProjectAdministrationRepository,
   PostgresProjectBootstrapUnitOfWork,
-  PostgresSettingsRepository,
 } from '../../../adapters/postgres/src/index.js';
+import { InMemorySettingsRepository } from '../../../adapters/settings-project-admin-in-memory/src/index.js';
 import { InMemoryAssetStorage } from '../../../adapters/stage2-in-memory/src/index.js';
 import { PostgresAuthRepository } from '../../../adapters/postgres-auth/src/index.js';
 import {
@@ -38,7 +38,7 @@ export async function startFrontendTestBackend() {
     clientRequestId: 'browser-fixture-default-project',
     idempotencyKey: 'browser-fixture-default-project',
     projectId: DEFAULT_PROJECT_ID,
-    name: 'Shotgun',
+    name: 'shotgun',
     description: 'Browser test default Project',
     actorPrincipalId: principalId,
     expectedProjectRevision: 0,
@@ -82,7 +82,7 @@ export async function startFrontendTestBackend() {
     authRepository,
     projectAdminRepository,
     projectBootstrapUnitOfWork: new PostgresProjectBootstrapUnitOfWork(pool),
-    settingsRepository: new PostgresSettingsRepository(pool),
+    settingsRepository: new InMemorySettingsRepository(),
     frontendCommandGateway: commandGateway,
     intakeRepository: new PostgresIntakeRepository(pool),
     originalAssetRepository: new PostgresOriginalAssetRepository(pool),

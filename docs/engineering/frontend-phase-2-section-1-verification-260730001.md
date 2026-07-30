@@ -7,10 +7,12 @@
 - Branch: `codex/frontend-phase-2-section-1`
 - Status: **BLOCKED_AWAITING_MIGRATION_APPROVAL**
 - Draft PR: [#46](https://github.com/JasonCutter/shotgun/pull/46)
+- Latest verified implementation Head SHA: `577695d139f90382eaa4ea4f9157cab9551e390b`
 - Final Evidence Head SHA: `PENDING`
 - Canonical authority: GitHub `main`
 - Notion classification: Execution Mirror / Candidate
 - Product implementation authorization: user, 2026-07-30
+- Focused Leave Guard correction authorization: user, 2026-07-30
 - Ready transition: **NOT APPROVED**
 - Merge: **NOT APPROVED**
 - Frontend Phase 2 completion: **NOT APPROVED**
@@ -43,7 +45,11 @@ database migration remain outside the current authorization.
 | Section 3 PR                                  | [#42](https://github.com/JasonCutter/shotgun/pull/42), merged                                                           |
 | Section 1 contract PRs                        | [#44](https://github.com/JasonCutter/shotgun/pull/44) and [#45](https://github.com/JasonCutter/shotgun/pull/45), merged |
 | Base required-gate run                        | [30499930248](https://github.com/JasonCutter/shotgun/actions/runs/30499930248), `PASS`                                  |
-| Isolated implementation worktree              | `C:\tmp\shotgun-frontend-phase-2-section-1`                                                                             |
+| Initial implementation Head                   | `d37e8f4fa7b2a43743d4e1fb070be936ff26a2bc`                                                                              |
+| Initial implementation CI                     | [30505493270](https://github.com/JasonCutter/shotgun/actions/runs/30505493270), Frontend E2E and Required Gates `FAIL`  |
+| Focused correction Head                       | `577695d139f90382eaa4ea4f9157cab9551e390b`                                                                              |
+| Focused correction CI                         | [30514616845](https://github.com/JasonCutter/shotgun/actions/runs/30514616845), all jobs `PASS`                         |
+| Isolated implementation worktree              | `C:\tmp\shotgun-frontend-phase-2-section-1`                                                                            |
 | Original worktree protection                  | The user-owned untracked Section 3 ADR candidate remains untouched and excluded                                         |
 
 ## 3. Initial gap and impact audit
@@ -147,7 +153,7 @@ Only `PASS`, `FAIL`, `BLOCKED`, and `NOT_RUN` are used. An item remains
 | AC-01 | `PASS`         | versioned Sources requests/views, deep decoder and unknown-version/enum fail-closed tests                                     |
 | AC-02 | `PASS`         | server-derived Principal/Session/Project/capability/sensitivity/policy and authority-header negative tests                    |
 | AC-03 | `PASS`         | protected `/sources` route, registered deep links and Route Guard integration                                                 |
-| AC-04 | `PASS`         | project-fixed route draft queue, switch isolation and leave-guard tests                                                       |
+| AC-04 | `PASS`         | project-fixed route draft queue, synchronous Leave Guard ownership, switch isolation and deletion regressions                 |
 | AC-05 | `PASS`         | bounded Draft Seed handoff and re-entry without browser authority                                                             |
 | AC-06 | `BLOCKED`      | Direct Text and File can proceed; URL mode depends on approved provenance persistence                                         |
 | AC-07 | `NOT_RUN`      | advisory client preflight plus authoritative server validation tests                                                          |
@@ -184,10 +190,11 @@ Current aggregate:
 - `NOT_RUN`: AC-07, AC-08, AC-29, AC-31
 - `FAIL`: none
 
-## 7. Local verification
+## 7. Local and remote verification
 
-The exact Base required-gate run passed remotely. Local commands are recorded
-below as they run; a remote pass does not conceal local environment divergence.
+The exact Base required-gate run passed remotely. Local commands and exact-head
+remote results are retained separately; a remote pass does not conceal local
+environment divergence.
 
 | Command                                 | Result                         | Evidence                                                                                                                             |
 | --------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
@@ -200,10 +207,13 @@ below as they run; a remote pass does not conceal local environment divergence.
 | `npm run stage12:reuse-operations-gate` | `PASS`                         | all six steps passed against the isolated PostgreSQL 16 database                                                                     |
 | `npm run test:ci`                       | `LOCAL_ENVIRONMENT_DIVERGENCE` | earlier full run passed; final reruns hit unrelated 5-second Stage 9 and cited-search timeouts, both passed immediately in isolation |
 | `npm run test:database`                 | `PASS`                         | 17 files / 86 tests on a fresh isolated PostgreSQL 16 volume using existing migrations only                                          |
-| `npm run frontend:typecheck`            | `PASS`                         | Sources Library, detail, history, Preview and Evidence UI typecheck                                                                  |
-| `npm run frontend:test`                 | `PASS`                         | 7 files / 26 tests, including Draft isolation, Leave Guard, Citation return and Version pinning                                      |
-| `npm run frontend:build`                | `PASS`                         | Vite production build; JS 631.78 kB raw / 179.86 kB direct gzip, baseline only                                                       |
-| `npm run frontend:test:e2e`             | `PASS`                         | 15 Chromium tests, including 2 Sources Project-isolation, transient-input, mobile and offline scenarios                              |
+| `npm run frontend:typecheck`            | `PASS`                         | Sources Library, detail, history, Preview, Evidence and synchronous Leave Guard typecheck                                            |
+| `npm run frontend:test`                 | `PASS`                         | exact-head remote run: 9 files / 30 tests, including Unit and route-level integration deletion regressions                           |
+| `npm run frontend:build`                | `PASS`                         | Vite production build; no new runtime dependency                                                                                     |
+| `npm run frontend:test:e2e`             | `PASS`                         | exact-head remote run: 16 Chromium tests, including discard-all and partial-delete immediate Project-switch regressions              |
+| GitHub Actions Frontend                 | `PASS`                         | Run `30514616845`, Head `577695d139f90382eaa4ea4f9157cab9551e390b`                                                                  |
+| GitHub Actions Quality                  | `PASS`                         | Run `30514616845`, all documentation, lint, typecheck, audit, Stage 12, CI and Database steps                                         |
+| GitHub Actions Required Gates           | `PASS`                         | Run `30514616845`                                                                                                                     |
 
 ## 8. Failure and retry history
 
@@ -257,28 +267,47 @@ below as they run; a remote pass does not conceal local environment divergence.
     integration, frontend and E2E tests remained green. This is retained as
     `LOCAL_ENVIRONMENT_DIVERGENCE`; exact-head GitHub Actions is required before
     the repository Gate can be treated as passed.
+12. Exact-head GitHub Actions Run `30505493270` on Head
+    `d37e8f4fa7b2a43743d4e1fb070be936ff26a2bc` passed Quality, Database and
+    Stage 12 but failed the Sources Chromium scenario. After `Discard all
+    drafts`, the Leave Guard still exposed the previous `hasUnsavedDraft=true`
+    closure for one render and rejected the immediately following switch from
+    `shotgun` to `project-b`. The retry reproduced the same failure. The failed
+    run and logs remain preserved.
+13. The approved focused correction changed the Draft Queue to maintain a
+    synchronous `itemsRef` as the Guard state owner. Every add, single remove and
+    discard-all transition updates the ref before React rendering, while one
+    stable registered Guard reads the latest queue. No wait, retry, timeout
+    increase, Route Guard bypass, cache bypass or authority change was used.
+    Unit tests cover the sole-draft and multi-draft transitions; route-level
+    integration tests cover partial delete and discard-all; Chromium tests cover
+    immediate Project switching after both paths. Exact-head Run `30514616845`
+    passed Frontend, Quality and Required Gates on Head
+    `577695d139f90382eaa4ea4f9157cab9551e390b`.
 
 ## 9. Implemented evidence to date
 
-| Area                                     | Evidence                                                           |
-| ---------------------------------------- | ------------------------------------------------------------------ |
-| Product contracts                        | `frontend-sources.contract.test.ts`: 12 `PASS`                     |
-| Read coordinator and replacement adapter | `frontend-sources-read-coordinator.test.ts`: 4 `PASS`              |
-| Product API security and integration     | `frontend-sources-product-api.test.ts`: 3 `PASS`                   |
-| Query/cache isolation and regression     | focused query-key and Section 3 suites: 14 `PASS`                  |
-| Sources browser components               | `sources-workspace.test.tsx`: 4 `PASS`; full frontend: 7/26 `PASS` |
-| Architecture boundary                    | `npm run test:architecture`: `PASS` after narrow Port correction   |
-| Browser E2E                              | Phase 2 Section 1: 2 `PASS`; full frontend regression: 15 `PASS`   |
-| Database regression                      | existing migrations only: 17 files / 86 tests `PASS`               |
+| Area                                     | Evidence                                                                                                            |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Product contracts                        | `frontend-sources.contract.test.ts`: 12 `PASS`                                                                      |
+| Read coordinator and replacement adapter | `frontend-sources-read-coordinator.test.ts`: 4 `PASS`                                                               |
+| Product API security and integration     | `frontend-sources-product-api.test.ts`: 3 `PASS`                                                                    |
+| Query/cache isolation and regression     | focused query-key and Section 3 suites: 14 `PASS`                                                                   |
+| Sources browser components               | full frontend exact-head run: 9 files / 30 tests `PASS`                                                            |
+| Leave Guard Unit regression              | `source-intake-drafts.test.tsx`: sole delete and partial/last delete synchronous ownership `PASS`                  |
+| Leave Guard route integration            | `sources-leave-guard.integration.test.tsx`: partial delete and discard-all `PASS`                                  |
+| Architecture boundary                    | `npm run test:architecture`: `PASS` after narrow Port correction                                                    |
+| Browser E2E                              | Phase 2 Section 1 includes 3 scenarios; full exact-head Chromium regression: 16 `PASS`                             |
+| Database regression                      | existing migrations only: 17 files / 86 tests `PASS`                                                               |
 
 The current Product slice exposes an Active-Project bounded Library, protected
 POST search, masked Source detail, explicit SourceVersion history and pinning,
 Original Preview, Evidence locators, typed Citation return, a project-fixed
-route draft queue, advisory Direct Text/File/URL validation, Leave Guard and
-responsive UI. Intake submission, durable Snapshot, exact duplicate
-disposition, secure URL acquisition and URL provenance remain blocked on the
-separately approved additive persistence boundary and are not represented as
-complete. The proposed boundary is recorded in
+route draft queue, advisory Direct Text/File/URL validation, synchronous Leave
+Guard ownership and responsive UI. Intake submission, durable Snapshot, exact
+duplicate disposition, secure URL acquisition and URL provenance remain blocked
+on the separately approved additive persistence boundary and are not represented
+as complete. The proposed boundary is recorded in
 `frontend-phase-2-section-1-migration-approval-candidate-260730001.md`.
 
 No Section 1 database migration was created or activated. Local database

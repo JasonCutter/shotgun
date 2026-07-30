@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { readdir, readFile, mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { Client } from 'pg';
@@ -23,6 +23,7 @@ import {
   validateEvaluationRun,
 } from '../packages/quality-evaluation/src/index.js';
 import type { HandlerContext } from '../packages/module-sdk/src/index.js';
+import { migrateUpTo } from './database.js';
 import { loadQualityCorpus } from '../tests/helpers/quality-evaluation.js';
 
 const baseDatabaseUrl = process.env.DATABASE_URL;
@@ -30,7 +31,6 @@ if (!baseDatabaseUrl)
   throw new Error('DATABASE_URL is required for the PostgreSQL search baseline.');
 
 const outputFile = path.resolve('docs', 'engineering', 'baselines', 'search-baseline.v1.json');
-const migrationDirectory = path.resolve('db', 'migrations');
 const applicationCommitSha = (): string =>
   execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 
@@ -45,18 +45,13 @@ const admin = new Client({ connectionString: baseUrl.toString() });
 let databaseCreated = false;
 
 const applyMigrations = async (connectionString: string): Promise<void> => {
-  const client = new Client({ connectionString });
-  await client.connect();
+  const previous = process.env.DATABASE_URL;
+  process.env.DATABASE_URL = connectionString;
   try {
-    await client.query('CREATE SCHEMA IF NOT EXISTS runtime');
-    const files = (await readdir(migrationDirectory))
-      .filter((file) => file.endsWith('.sql'))
-      .sort();
-    for (const file of files) {
-      await client.query(await readFile(path.join(migrationDirectory, file), 'utf8'));
-    }
+    await migrateUpTo();
   } finally {
-    await client.end();
+    if (previous === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = previous;
   }
 };
 

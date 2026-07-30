@@ -64,11 +64,9 @@ describe('Frontend Section 3 Product API', () => {
     });
     expect(shell.navigation.find((item) => item.id === 'sources')).toEqual(
       expect.objectContaining({
-        availability: 'COMING_LATER',
+        availability: 'AVAILABLE',
+        targetRoute: { routeId: 'sources', href: '/sources' },
       }),
-    );
-    expect(shell.navigation.find((item) => item.id === 'sources')).not.toHaveProperty(
-      'targetRoute',
     );
     expect(shell.features.map((feature) => feature.id)).toEqual([
       'global-search',

@@ -45,12 +45,13 @@ test('Frontend Section 1 restores server Project context and protects routes', a
 
   for (const [link, heading] of [
     ['Home', 'Home'],
+    ['Sources', 'Sources'],
     ['Settings', 'Settings'],
   ] as const) {
     await page.getByRole('link', { name: link }).click();
     await expect(page.getByRole('heading', { level: 1, name: heading })).toBeFocused();
   }
-  for (const unavailable of ['Sources', 'Ask', 'Knowledge', 'Review']) {
+  for (const unavailable of ['Ask', 'Knowledge', 'Review']) {
     await expect(page.getByRole('link', { name: unavailable })).toHaveCount(0);
     await expect(
       page.locator('.navigation-disabled', { hasText: unavailable }).first(),
@@ -65,8 +66,7 @@ test('Frontend Section 1 restores server Project context and protects routes', a
   expect(forbiddenHeaderUses).toEqual([]);
 
   await page.goto('/sources');
-  await expect(page.getByRole('heading', { name: 'Request error' })).toBeVisible();
-  await expect(page.getByRole('alert')).toContainText('not available');
+  await expect(page.getByRole('heading', { name: 'Sources' })).toBeVisible();
 
   const digestResults = await page.evaluate(async () => {
     const adapter = (

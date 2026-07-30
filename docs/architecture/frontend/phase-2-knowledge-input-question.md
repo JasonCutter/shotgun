@@ -1,7 +1,7 @@
 ---
 id: FRONTEND-PHASE-2-KNOWLEDGE-INPUT-QUESTION
 classification: CANONICAL
-status: section_1_contract_frozen_implementation_pending_section_2_design_confirmed
+status: section_1_complete_section_2_design_confirmed_not_started
 approved_by: user
 approved_at: 2026-07-30
 legacy_source_id: 3a65181d-71ad-8122-bfda-c9be8016ef33
@@ -11,21 +11,28 @@ legacy_source_id: 3a65181d-71ad-8122-bfda-c9be8016ef33
 
 ## 상태
 
-- Section 1 Sources Workspace: Gap Audit 완료, ADR-122 Accepted, AC-01~AC-32 승인·동결, Product 구현 미착수
-- Section 2 Ask·Conversations: 설계·공통 Contract 정규화 완료, Product 구현 미착수
-- Phase 2 Product 구현·Contract Test·E2E·보안·접근성 완료는 별도 판정
+- Section 1 Sources Workspace: **COMPLETE / USER APPROVED AFTER PR #46 MERGE**
+- Section 1 ADR-122: Accepted
+- Section 1 AC-01~AC-32: PASS
+- Section 1 Migration 020: 승인·구현·검증 완료
+- Section 2 Ask·Conversations: 설계·공통 Contract 정규화 완료 / Product 구현 미착수
+- Frontend Phase 2: IN PROGRESS
 - 관련 ADR: ADR-100, ADR-101, ADR-102, ADR-103, ADR-104, ADR-105, ADR-122
 
 ## Section 1 — Sources Workspace
 
-현재 판정:
+최종 판정:
 
 - Gap Audit: 완료
 - ADR-122: Accepted
-- AC-01~AC-32: Approved and frozen
+- AC-01~AC-32: PASS
 - Contract Snapshot: `frontend-phase-2-section-1-contract-snapshot-260730001`
-- 구현 요청서: 작성 완료 / 별도 착수 지시 대기
-- Product 구현·Migration·신규 Runtime Dependency: 미착수·미승인
+- Product 구현: 완료
+- Migration 020: 승인·구현·검증 완료
+- 신규 Runtime Dependency: 필요 없음 / 추가 없음
+- Exact-head 검증: `496af3d5a5b5903dbd1dcc6a19af157a6b836214`, GitHub Actions `30536214153` PASS
+- 사용자 완료·Ready·Merge 승인: 2026-07-30
+- Canonical 완료 효력: PR #46이 `main`에 병합될 때 발생
 
 범위:
 
@@ -43,11 +50,12 @@ legacy_source_id: 3a65181d-71ad-8122-bfda-c9be8016ef33
 - Source Draft는 생성 Project에 고정하며 Project 전환으로 자동 이전하지 않는다.
 - IntakeSubmission은 생성 시 `targetProjectId`에 결속한다.
 - Browser는 Principal·Project·Scope·Sensitivity 권위를 구성하지 않고 보호된 Sources Product API만 사용한다.
+- Raw input은 Command Ledger 수락 전에 Server Staging 경계를 통과하며 Ledger에는 불투명 Reference만 남긴다.
+- URL Acquisition은 Browser가 아니라 SSRF 방어를 갖춘 Server Port가 수행한다.
 - Source Library 표시 가능성, Preview readiness와 Ask 사용 가능성을 분리한다.
 - Ask 가능 여부는 Server `askUsageState`와 Capability로 제공한다.
 - Source 선택은 특정 SourceVersion을 고정하고 새 Version으로 자동 이동하지 않는다.
 - Exact Duplicate는 Server Decision Snapshot과 명시적 사용자 Disposition을 사용한다.
-- URL Acquisition은 Browser가 아니라 SSRF 방어를 갖춘 Server Port가 수행한다.
 - Citation은 SourceVersion·EvidenceSpan·Locator에 고정한다.
 
 Canonical records:
@@ -56,10 +64,14 @@ Canonical records:
 - [ADR-122](../adr/ADR-122-sources-workspace-intake-duplicate-url-and-lifecycle-boundary.md)
 - [Contract Snapshot](../contracts/snapshots/frontend-phase-2-section-1/frontend-phase-2-section-1-contract-snapshot-260730001.md)
 - [Implementation Request](../../implementation/frontend-phase-2-section-1-implementation-request-260730001.md)
+- [Final Verification](../../engineering/frontend-phase-2-section-1-verification-260730001.md)
+- [Completion Record](../../engineering/frontend-phase-2-section-1-completion-record-260730001.md)
 
-Legacy 하위 결정문은 Sources Workspace 1-1~1-7의 출처 이력으로 보존한다. 현재 효력 있는 계약은 이 문서, ADR-122, Section Contract Snapshot과 Cross-Phase 문서가 제공한다.
+Legacy 하위 결정문과 과거 `미착수`, `BLOCKED`, `NOT_RUN` 문구는 해당 시점의 출처 이력으로 보존한다. 현재 효력 있는 완료 판정은 PR #46 병합 후 위 Final Verification과 Completion Record가 제공한다.
 
 ## Section 2 — Ask·Conversations Workspace
+
+현재 상태: **DESIGN CONFIRMED / PRODUCT IMPLEMENTATION NOT STARTED**
 
 범위:
 
@@ -82,6 +94,8 @@ Legacy 하위 결정문은 Sources Workspace 1-1~1-7의 출처 이력으로 보�
 - `OUTCOME_UNKNOWN`에서는 같은 질문·Command를 새 Key로 자동 재제출하지 않는다.
 - Citation 복귀는 원래 Conversation·Branch·Turn·Result Revision·Scroll·Focus를 복원하고 최신 결과로 자동 이동하지 않는다.
 
+Section 1 완료는 Section 2 착수의 선행조건을 충족하지만, Section 2 Product 구현을 자동 승인하지 않는다. 별도 구현 요청과 사용자 착수 승인이 필요하다.
+
 ## Phase 2 완료 조건
 
 ```text
@@ -94,4 +108,4 @@ Legacy 하위 결정문은 Sources Workspace 1-1~1-7의 출처 이력으로 보�
 → 후속 Knowledge 작업으로 전환
 ```
 
-이 완료 조건은 설계 기준이며 현재 Product 구현 완료를 의미하지 않는다. Section 1 구현·검증·사용자 승인·병합 전에는 Section 2 구현을 시작하지 않는다.
+Section 1은 위 흐름의 자료 입력부터 SourceVersion·Evidence 복귀 경계까지 완료했다. Section 2가 미착수이므로 Frontend Phase 2 전체는 아직 완료가 아니다.

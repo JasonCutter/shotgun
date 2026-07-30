@@ -70,7 +70,19 @@ export class InMemoryGlobalShellProjection implements GlobalShellProjectionPort 
               availability: 'TEMPORARILY_UNAVAILABLE',
               reason: 'Create a Project to open Home.',
             },
-        unavailableWorkspace('sources', 'Sources'),
+        projectReady
+          ? {
+              id: 'sources',
+              label: 'Sources',
+              availability: 'AVAILABLE',
+              targetRoute: routes.sources,
+            }
+          : {
+              id: 'sources',
+              label: 'Sources',
+              availability: 'TEMPORARILY_UNAVAILABLE',
+              reason: 'Create a Project to open Sources.',
+            },
         unavailableWorkspace('ask', 'Ask'),
         unavailableWorkspace('knowledge', 'Knowledge'),
         unavailableWorkspace('review', 'Review'),
@@ -158,7 +170,12 @@ export class InMemoryActionCenterProjection implements ActionCenterProjectionPor
       activeProject: input.activeProject,
       projectState: { lifecycle: 'ACTIVE', message: 'Project is ready.' },
       primaryActions: [
-        unavailable('add-source', 'Add source', routes.sources),
+        {
+          id: 'add-source',
+          label: 'Add source',
+          availability: 'AVAILABLE',
+          targetRoute: routes.sources,
+        },
         unavailable('ask', 'Ask', routes.ask),
         unavailable('explore-knowledge', 'Explore knowledge', routes.knowledge),
         unavailable('review-changes', 'Review changes', routes.review),
@@ -215,7 +232,7 @@ export class InMemoryRouteGuardProjection implements RouteGuardProjectionPort {
     const resourceProject = input.resourceProjectId
       ? input.accessibleProjects.find((project) => project.id === input.resourceProjectId)
       : undefined;
-    const workspaceAvailable = new Set(['home', 'settings', 'settings-projects']).has(
+    const workspaceAvailable = new Set(['home', 'sources', 'settings', 'settings-projects']).has(
       input.requestedRoute.routeId,
     );
     return decodeRouteGuardDecisionView({

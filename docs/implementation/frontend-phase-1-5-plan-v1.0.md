@@ -1,7 +1,7 @@
 ---
 id: FRONTEND-PHASE-1-5-IMPLEMENTATION-PLAN-V1
 classification: CANONICAL
-status: confirmed_plan_phase_1_complete_phase_2_section_1_contract_ready
+status: confirmed_plan_phase_1_complete_phase_2_section_1_complete
 approved_by: user
 approved_at: 2026-07-30
 migrated_at: 2026-07-29
@@ -55,13 +55,13 @@ Phase 1 Section 1: 구현·검증·병합·사용자 승인 완료
 Phase 1 Section 2: 구현·검증·병합·사용자 승인 완료
 Phase 1 Section 3: 구현·검증·성능 Gate·병합·사용자 승인 완료
 Frontend Phase 1: COMPLETE / USER APPROVED
-Phase 2 Section 1: Gap Audit·ADR-122·AC-01~AC-32·Contract Snapshot·구현 요청서 완료 / Product 구현 미착수
+Phase 2 Section 1: 구현·Migration 020·검증·사용자 승인 완료 / PR #46 병합 시 Canonical COMPLETE
 Phase 2 Section 2: 설계·Contract 확정 / Product 구현 미착수
 Phase 3~5: 설계·Contract 확정 / Product 구현 검증 대기
 Cross-Phase Product Verification: 미착수
 ```
 
-원 Notion v1.0의 초기 상태와 각 Section의 과거 `미착수`, `Draft`, `Pending` 문구는 당시 상태다. 이후 병합된 검증 및 완료 기록이 현재 상태를 결정하며 과거 기록 자체는 삭제하지 않는다.
+원 Notion v1.0의 초기 상태와 각 Section의 과거 `미착수`, `Draft`, `Pending`, `BLOCKED` 문구는 당시 상태다. 이후 병합된 검증 및 완료 기록이 현재 상태를 결정하며 과거 기록 자체는 삭제하지 않는다.
 
 ## Phase 1 — Platform Boundary
 
@@ -106,21 +106,31 @@ Frontend Phase 1은 2026-07-30 별도 Completion Review와 사용자 승인으�
 
 ### Section 1 — Sources Workspace
 
-- 상태: 설계·Gap Audit·Contract 승인·동결 / Product 구현 미착수
+- 상태: **COMPLETE / USER APPROVED AFTER PR #46 MERGE**
+- PR #46
 - ADR-122 Accepted
-- AC-01~AC-32 Approved and frozen
+- AC-01~AC-32 PASS
+- Migration 020 승인·구현·검증 완료
+- 신규 Runtime Dependency 필요 없음 / 추가 없음
+- Tested Product Head: `496af3d5a5b5903dbd1dcc6a19af157a6b836214`
+- Exact-head GitHub Actions: `30536214153` PASS
 - Gap Audit: `docs/engineering/frontend-phase-2-section-1-gap-audit-260730001.md`
 - Contract Snapshot: `docs/architecture/contracts/snapshots/frontend-phase-2-section-1/frontend-phase-2-section-1-contract-snapshot-260730001.md`
 - Implementation Request: `docs/implementation/frontend-phase-2-section-1-implementation-request-260730001.md`
+- Final Verification: `docs/engineering/frontend-phase-2-section-1-verification-260730001.md`
+- Completion Record: `docs/engineering/frontend-phase-2-section-1-completion-record-260730001.md`
 - File·URL·Text 입력
 - Intake Draft·검증·정확 중복
+- Production Raw-input Staging과 Server URL Acquisition
 - Source Library·Metadata·Preview
 - SourceVersion·EvidenceSpan·Citation
-- 처리 상태·취소·재시도·복구
-- Product 구현, Migration, 신규 Runtime Dependency, Ready·Merge는 별도 승인 전 수행하지 않는다.
+- 처리 상태·부분 성공·취소·재시도·복구
+
+Section 완료 효력은 승인만으로 발생하지 않고 PR #46이 `main`에 병합될 때 발생한다.
 
 ### Section 2 — Ask·Conversations Workspace
 
+- 상태: 설계·Contract 확정 / Product 구현 미착수
 - Conversation·Branch·Turn
 - QueryPlan·Source Exploration·Answer Run
 - Citation·Model·Cost
@@ -128,7 +138,7 @@ Frontend Phase 1은 2026-07-30 별도 Completion Review와 사용자 승인으�
 - Export·Feedback·Knowledge Transition
 - DraftChangeSetSeed·IntakeDraftSeed·UserDirectiveProposal 진입
 
-Phase 2 Section 2는 Section 1 구현·검증·승인·병합 전 시작하지 않는다.
+Section 1 완료는 Section 2의 선행조건을 충족하지만 Section 2 Product 구현을 자동 승인하지 않는다. 별도 구현 요청과 사용자 착수 승인이 필요하다.
 
 ## Phase 3 — Knowledge Understanding·Editing
 
@@ -209,8 +219,8 @@ Section 1개
 
 ## 다음 구현 경계
 
-다음 Product 구현 대상은 **Frontend Phase 2 Section 1 — Sources Workspace**다.
+다음 Product 구현 대상은 **Frontend Phase 2 Section 2 — Ask·Conversations Workspace**다.
 
-Canonical Contract와 구현 요청서는 준비됐지만 Product 구현 착수는 별도 사용자 지시가 필요하다. 착수 후 실제 Schema·Dependency Gap이 확인되면 Migration과 신규 Runtime Dependency를 각각 별도 승인한다.
+Section 2의 설계와 Contract는 확정됐지만 Product 구현은 시작되지 않았다. Section 1의 PR #46 병합과 Canonical 완료 확인 후에도 별도 구현 요청과 사용자 착수 승인이 있어야 한다. 이 계획 갱신은 Section 2 착수 승인이 아니다.
 
-Route-level Lazy Loading·Code Splitting은 Section 3 성능 증거에서 권장된 비차단 횡단 후속 작업이다. Phase 2 착수 전에 반드시 수행해야 하는 차단 조건은 아니며, 별도 범위와 검증으로 관리한다.
+Route-level Lazy Loading·Code Splitting은 Section 3 성능 증거에서 권장된 비차단 횡단 후속 작업이다. 별도 범위와 검증으로 관리한다.

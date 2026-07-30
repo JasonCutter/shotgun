@@ -1,7 +1,7 @@
 ---
 id: FRONTEND-AND-HUMAN-INTERACTION-ARCHITECTURE
 classification: CANONICAL
-status: architecture_confirmed_phase_1_complete_phase_2_to_5_pending
+status: architecture_confirmed_phase_1_complete_phase_2_section_1_complete
 approved_by: user
 approved_at: 2026-07-30
 migrated_at: 2026-07-29
@@ -17,12 +17,16 @@ legacy_source_id: 3a15181d-71ad-81e4-bfa4-ee2578e692a0
 - Phase 1~5 Section 설계: **완료**
 - Cross-Phase Contract 정규화: **완료**
 - Frontend Phase 1: **COMPLETE / USER APPROVED**
-- Frontend Phase 2~5: **설계·Contract 확정 / Product 구현 검증 대기**
+- Frontend Phase 2 Section 1 — Sources Workspace: **COMPLETE / USER APPROVED AFTER PR #46 MERGE**
+- Frontend Phase 2 Section 2: **설계·Contract 확정 / Product 구현 미착수**
+- Frontend Phase 3~5: **설계·Contract 확정 / Product 구현 검증 대기**
 - Cross-Phase Product Verification: **미착수**
 - 전체 Frontend 완료: **미완료**
 
 Phase 1 완료 권위는
 [`Frontend Phase 1 Completion Review`](../../engineering/frontend-phase-1-completion-review-260730001.md)에 있다.
+Phase 2 Section 1 완료 권위는
+[`Frontend Phase 2 Section 1 Completion Record`](../../engineering/frontend-phase-2-section-1-completion-record-260730001.md)에 있다.
 
 이 문서는 Knowledge Flow의 6개 지식 생명주기 Phase를 대체하지 않는다. Frontend Phase 0~5는 Knowledge Flow 전반의 입력, 인용, 검토, 진행 상태, 그래프, 출력과 접근성 정책을 연결하는 횡단 Product 구현 축이다.
 
@@ -47,7 +51,7 @@ Shared Contract Foundation (Phase 0)
 | Phase 1 — Platform Boundary | 1. Local Owner Session·Authentication·Project Boundary | 구현·검증·병합·승인 완료 |
 |  | 2. Settings·Project Administration | 구현·검증·병합·승인 완료 |
 |  | 3. Home·Action Center·Global Shell | 구현·검증·성능 Gate·병합·승인 완료 |
-| Phase 2 — Knowledge Input·Question | 1. Sources Workspace | 설계·Contract 확정 / 구현 미착수 |
+| Phase 2 — Knowledge Input·Question | 1. Sources Workspace | 구현·Migration 020·검증·승인 완료 / PR #46 병합 시 Canonical 완료 |
 |  | 2. Ask·Conversations Workspace | 설계·Contract 확정 / 구현 미착수 |
 | Phase 3 — Knowledge Understanding·Editing | 1. Knowledge Workspace | 설계·Contract 확정 / 구현 검증 대기 |
 |  | 2. Knowledge Editor·DraftChangeSet Authoring | 설계·Contract 확정 / 구현 검증 대기 |
@@ -57,7 +61,7 @@ Shared Contract Foundation (Phase 0)
 | Phase 5 — Operations·Audit | 1. Agent·Job Activity Workspace | 설계·Contract 확정 / 구현 검증 대기 |
 |  | 2. History·Audit·Rollback | 설계·Contract 확정 / 구현 검증 대기 |
 
-Phase 1 완료가 Phase 2 착수를 자동 승인하지 않는다. 계획상 다음 Section은 Phase 2 Section 1 — Sources Workspace이며 별도 Gap Audit, Acceptance Criteria, 구현 요청서와 사용자 착수 승인이 필요하다.
+Section 완료는 구현, exact-head 검증, 사용자 승인과 `main` 병합을 모두 요구한다. Phase 2 Section 1 완료가 Phase 2 Section 2 착수를 자동 승인하지 않는다. 다음 Product 구현 대상은 Phase 2 Section 2지만 별도 구현 요청과 사용자 착수 승인이 필요하다.
 
 ## 사용자 Route
 
@@ -121,7 +125,7 @@ Frontend, DOM, Markdown, Canvas, Query Cache, Browser Draft와 UI Projection은 
 - Desktop·Tablet·Mobile, Keyboard, Screen Reader, 200% 확대
 - 성능·대용량·Virtualization·Cache 격리
 
-설계 또는 Contract 확정만으로 구현 완료를 선언하지 않는다. Phase 1 완료는 Section 1~3의 구현·검증·병합과 별도 Completion Review를 거쳐 확정됐다.
+설계 또는 Contract 확정만으로 구현 완료를 선언하지 않는다. Phase 1은 별도 Completion Review로 완료됐고, Phase 2 Section 1은 ADR-122, AC-01~AC-32, Migration 020, exact-head 원격 Gate, 사용자 승인과 PR #46 병합으로 완료된다.
 
 ## Canonical 하위 문서
 

@@ -6,6 +6,10 @@ import {
   homeActionCenterQueryKey,
   projectQueryKey,
   purgeProjectScopedCaches,
+  sourceDetailQueryKey,
+  sourceEvidenceQueryKey,
+  sourcePreviewQueryKey,
+  sourcesLibraryQueryKey,
 } from '../../apps/shotgun-web/src/app/query-keys.js';
 
 describe('Frontend project query keys', () => {
@@ -51,6 +55,40 @@ describe('Frontend project query keys', () => {
     );
     expect(globalShellQueryKey('principal-a', null, '0')).not.toEqual(
       globalShellQueryKey('principal-b', null, '0'),
+    );
+  });
+
+  it('binds Sources caches to Principal, Session, Projects, revision, sensitivity and policy', () => {
+    const base = {
+      principalId: 'principal-a',
+      sessionId: 'session-a',
+      activeProjectId: 'project-a',
+      resourceProjectId: 'project-a',
+      projectionRevision: 'projection-1',
+      sensitivity: 'private',
+      policyContextRevision: 'policy-1',
+    };
+    const library = sourcesLibraryQueryKey(base, 'query-digest');
+    expect(sourcesLibraryQueryKey({ ...base, sessionId: 'session-b' }, 'query-digest')).not.toEqual(
+      library,
+    );
+    expect(
+      sourcesLibraryQueryKey({ ...base, resourceProjectId: 'project-b' }, 'query-digest'),
+    ).not.toEqual(library);
+    expect(
+      sourcesLibraryQueryKey({ ...base, sensitivity: 'restricted' }, 'query-digest'),
+    ).not.toEqual(library);
+    expect(
+      sourcesLibraryQueryKey({ ...base, policyContextRevision: 'policy-2' }, 'query-digest'),
+    ).not.toEqual(library);
+    expect(sourceDetailQueryKey(base, 'source-a')).not.toEqual(
+      sourceDetailQueryKey(base, 'source-b'),
+    );
+    expect(sourcePreviewQueryKey(base, 'source-a', 'version-a', 'ORIGINAL')).not.toEqual(
+      sourcePreviewQueryKey(base, 'source-a', 'version-b', 'ORIGINAL'),
+    );
+    expect(sourceEvidenceQueryKey(base, 'source-a', 'version-a')).not.toEqual(
+      sourceEvidenceQueryKey(base, 'source-a', 'version-b'),
     );
   });
 

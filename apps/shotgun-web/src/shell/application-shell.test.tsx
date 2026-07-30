@@ -55,8 +55,8 @@ const shell: GlobalShellView = {
     {
       id: 'sources',
       label: 'Sources',
-      availability: 'COMING_LATER',
-      reason: 'Not implemented.',
+      availability: 'AVAILABLE',
+      targetRoute: { routeId: 'sources', href: '/sources' },
     },
     {
       id: 'settings',
@@ -153,10 +153,8 @@ describe('ApplicationShell', () => {
     expect(screen.getByText('Project A', { selector: 'strong' })).toBeTruthy();
   });
 
-  it('does not expose an unimplemented workspace as an active link', async () => {
+  it('exposes the implemented Sources workspace as a registered link', async () => {
     renderShell();
-    const unavailable = await screen.findAllByText('Sources');
-    expect(unavailable.every((item) => item.getAttribute('aria-disabled') === 'true')).toBe(true);
-    expect(screen.queryByRole('link', { name: 'Sources' })).toBeNull();
+    expect((await screen.findAllByRole('link', { name: 'Sources' })).length).toBeGreaterThan(0);
   });
 });

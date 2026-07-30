@@ -4,6 +4,8 @@ import 'dotenv/config';
 
 import { LocalAssetStorage } from '../../../adapters/asset-storage-local/src/index.js';
 import { GeminiAIProviderAdapter } from '../../../adapters/ai-provider-gemini/src/index.js';
+import { SealedSourcesStagingService } from '../../../adapters/frontend-sources-staging-sealed/src/index.js';
+import { PostgresSourcesProductService } from '../../../adapters/frontend-sources-write-postgres/src/product-service.js';
 import { LucasAugmentedPlainTextAdapter } from '../../../adapters/plain-text-lucas-augmented/src/index.js';
 import { PythonDocumentFormatAdapter } from '../../../adapters/document-format-python/src/index.js';
 import {
@@ -37,14 +39,22 @@ import {
   PostgresActionExecutionRepository,
 } from '../../../adapters/postgres-stage11/src/index.js';
 import { PostgresAuthRepository } from '../../../adapters/postgres-auth/src/index.js';
+import { NodeUrlHopTransport, NodeUrlResolver } from '../../../adapters/url-acquisition-node/src/index.js';
 import { FakeDraftActionConnector } from '../../../adapters/action-connector-fake/src/index.js';
 import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
+import { SecureUrlAcquisitionCoordinator } from '../../../modules/url-acquisition/src/index.js';
+import { configureSourcesWriteRuntime } from './product-api/sources-write-runtime.js';
 import { createApplication } from './server.js';
 import { assertRuntimeSecurityConfiguration } from './runtime-security.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
   throw new Error('DATABASE_URL is required for persistent Stage 2 runtime.');
+}
+
+const stagingSecret = process.env.SOURCES_STAGING_SECRET;
+if (!stagingSecret || stagingSecret.trim().length < 32) {
+  throw new Error('SOURCES_STAGING_SECRET with at least 32 characters is required.');
 }
 
 const pool = createPostgresPool(databaseUrl);
@@ -62,16 +72,28 @@ assertRuntimeSecurityConfiguration({
   developmentAuthEnabled: process.env.SHOTGUN_DEVELOPMENT_AUTH === 'true',
 });
 const storageRoot = path.resolve(process.env.ASSET_STORAGE_ROOT ?? '.data/assets');
+const assetStorage = new LocalAssetStorage(storageRoot);
+const commandGateway = new PostgresFrontendCommandGateway(pool);
+const urlAcquisition = new SecureUrlAcquisitionCoordinator(
+  new NodeUrlResolver(),
+  new NodeUrlHopTransport(),
+);
+const staging = new SealedSourcesStagingService(assetStorage, stagingSecret, urlAcquisition);
+const removeSourcesWriteRuntime = configureSourcesWriteRuntime({
+  commandGateway,
+  staging,
+  productService: new PostgresSourcesProductService(pool, staging),
+});
 const plainTextAdapter = new LucasAugmentedPlainTextAdapter();
 const canonicalKnowledgeRepository = new PostgresCanonicalKnowledgeRepository(pool);
 const { server } = await createApplication({
   projectAdminRepository: new PostgresProjectAdministrationRepository(pool),
   projectBootstrapUnitOfWork: new PostgresProjectBootstrapUnitOfWork(pool),
   settingsRepository: new PostgresSettingsRepository(pool),
-  frontendCommandGateway: new PostgresFrontendCommandGateway(pool),
+  frontendCommandGateway: commandGateway,
   intakeRepository: new PostgresIntakeRepository(pool),
   originalAssetRepository: new PostgresOriginalAssetRepository(pool),
-  assetStorage: new LocalAssetStorage(storageRoot),
+  assetStorage,
   transformationRepository: new PostgresTransformationRepository(pool),
   evidenceRepository: new PostgresEvidenceRepository(pool),
   aiProviderRepository: new PostgresAIProviderCallRepository(pool),
@@ -101,7 +123,10 @@ const { server } = await createApplication({
     allowRestricted: false,
     maxAttempts: 2,
   },
-  closeResources: async () => pool.end(),
+  closeResources: async () => {
+    removeSourcesWriteRuntime();
+    await pool.end();
+  },
 });
 
 await server.listen({ host, port });

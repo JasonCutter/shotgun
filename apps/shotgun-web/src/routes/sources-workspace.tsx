@@ -1,8 +1,15 @@
 import { useQuery } from '@tanstack/react-query';
-import { useMemo, useState, type FormEvent } from 'react';
+import { useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useLocation, useOutletContext } from 'react-router';
 
-import type { GlobalShellView, SourceLibraryQuery } from '@shotgun/api-client';
+import {
+  createSourcesWriteClient,
+  type ExactDuplicateDecisionView,
+  type GlobalShellView,
+  type IntakeSubmissionSnapshot,
+  type SourceLibraryQuery,
+  type StagedSourcesIntakeInput,
+} from '@shotgun/api-client';
 
 import { useAppRuntime } from '../app/providers.js';
 import { EmptyState } from '../components/empty-state.js';
@@ -19,11 +26,21 @@ const DEFAULT_QUERY: SourceLibraryQuery = {
   limit: 50,
 };
 
+const identity = (prefix: string): string =>
+  `${prefix}-${typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : Date.now()}`;
+
 export const SourcesWorkspace = () => {
   const { apiClient } = useAppRuntime();
   const { shell } = useOutletContext<{ readonly shell: GlobalShellView }>();
   const location = useLocation();
   const connectivity = useConnectivityState();
+  const writeClient = useMemo(() => createSourcesWriteClient(), []);
+  const commandIdentity = useRef<{
+    readonly fingerprint: string;
+    readonly clientRequestId: string;
+    readonly idempotencyKey: string;
+    readonly draftId: string;
+  }>();
   const [searchInput, setSearchInput] = useState('');
   const [appliedQuery, setAppliedQuery] = useState('');
   const [intakeKind, setIntakeKind] = useState<'DIRECT_TEXT' | 'FILE' | 'URL'>('DIRECT_TEXT');
@@ -31,6 +48,10 @@ export const SourcesWorkspace = () => {
   const [directText, setDirectText] = useState('');
   const [requestedUrl, setRequestedUrl] = useState('');
   const [selectedFile, setSelectedFile] = useState<File>();
+  const [submission, setSubmission] = useState<IntakeSubmissionSnapshot>();
+  const [decision, setDecision] = useState<ExactDuplicateDecisionView>();
+  const [mutationState, setMutationState] = useState<'IDLE' | 'STAGING' | 'SUBMITTING'>('IDLE');
+  const [mutationError, setMutationError] = useState<string>();
   const query = useMemo<SourceLibraryQuery>(
     () => ({
       ...DEFAULT_QUERY,
@@ -54,6 +75,7 @@ export const SourcesWorkspace = () => {
     );
   }
 
+  const projectId = shell.activeProject.id;
   const onSearch = (event: FormEvent) => {
     event.preventDefault();
     if (!connectivity.isOffline) setAppliedQuery(searchInput);
@@ -73,6 +95,193 @@ export const SourcesWorkspace = () => {
     }
     setIntakeLabel('');
   };
+
+  const commandFor = (fingerprint: string) => {
+    if (commandIdentity.current?.fingerprint === fingerprint) return commandIdentity.current;
+    const next = {
+      fingerprint,
+      clientRequestId: identity('sources-request'),
+      idempotencyKey: identity('sources-idempotency'),
+      draftId: identity('sources-draft'),
+    };
+    commandIdentity.current = next;
+    return next;
+  };
+
+  const submitDrafts = async () => {
+    const ready = draftQueue.items.every((item) => item.validation === 'READY');
+    if (
+      !ready ||
+      draftQueue.items.length === 0 ||
+      draftQueue.activeProjectMismatch ||
+      connectivity.isOffline ||
+      mutationState !== 'IDLE'
+    ) {
+      return;
+    }
+    const fingerprint = draftQueue.items.map((item) => item.draftItemId).join('|');
+    const command = commandFor(fingerprint);
+    setMutationError(undefined);
+    setMutationState('STAGING');
+    try {
+      const staged: StagedSourcesIntakeInput[] = [];
+      for (const item of draftQueue.items) {
+        if (item.kind === 'FILE_METADATA') {
+          throw new Error('Choose the file again before submission.');
+        }
+        if (item.kind === 'DIRECT_TEXT') {
+          const receipt = await writeClient.stageBytes({
+            draftId: command.draftId,
+            itemId: item.draftItemId,
+            kind: 'DIRECT_TEXT',
+            label: item.label,
+            mediaType: 'text/plain',
+            bytes: new TextEncoder().encode(item.text),
+          });
+          staged.push({
+            itemId: item.draftItemId,
+            kind: 'DIRECT_TEXT',
+            label: item.label,
+            stagingReference: receipt.stagingReference,
+          });
+        } else if (item.kind === 'FILE') {
+          const receipt = await writeClient.stageBytes({
+            draftId: command.draftId,
+            itemId: item.draftItemId,
+            kind: 'FILE',
+            label: item.label,
+            mediaType: item.file.type as 'text/plain' | 'text/markdown',
+            fileName: item.file.name,
+            bytes: new Uint8Array(await item.file.arrayBuffer()),
+          });
+          staged.push({
+            itemId: item.draftItemId,
+            kind: 'FILE',
+            label: item.label,
+            fileName: item.file.name,
+            mediaType: item.file.type as 'text/plain' | 'text/markdown',
+            stagingReference: receipt.stagingReference,
+          });
+        } else {
+          const receipt = await writeClient.stageUrl({
+            draftId: command.draftId,
+            itemId: item.draftItemId,
+            label: item.label,
+            requestedUrl: item.requestedUrl,
+          });
+          staged.push({
+            itemId: item.draftItemId,
+            kind: 'URL',
+            label: item.label,
+            stagingReference: receipt.stagingReference,
+          });
+        }
+      }
+      setMutationState('SUBMITTING');
+      const result = await writeClient.submit({
+        activeProjectId: projectId,
+        targetProjectId: projectId,
+        clientRequestId: command.clientRequestId,
+        idempotencyKey: command.idempotencyKey,
+        draftId: command.draftId,
+        inputs: staged,
+      });
+      setSubmission(result.resource);
+      setDecision(undefined);
+      draftQueue.discardAll();
+      commandIdentity.current = undefined;
+      await library.refetch();
+    } catch (error) {
+      setMutationError(error instanceof Error ? error.message : 'Sources submission failed.');
+    } finally {
+      setMutationState('IDLE');
+    }
+  };
+
+  const reviewDuplicate = async (decisionId: string) => {
+    setMutationError(undefined);
+    try {
+      setDecision(await apiClient.getExactDuplicateDecision(decisionId));
+    } catch (error) {
+      setMutationError(error instanceof Error ? error.message : 'Duplicate decision failed.');
+    }
+  };
+
+  const resolveDuplicate = async (
+    disposition: ExactDuplicateDecisionView['allowedDispositions'][number],
+  ) => {
+    if (!decision || connectivity.isOffline) return;
+    setMutationState('SUBMITTING');
+    setMutationError(undefined);
+    try {
+      const result = await writeClient.resolveDuplicate({
+        activeProjectId: projectId,
+        targetProjectId: projectId,
+        clientRequestId: identity('sources-duplicate-request'),
+        idempotencyKey: identity('sources-duplicate-idempotency'),
+        decisionId: decision.decisionId,
+        disposition,
+        ...(disposition === 'CREATE_VERSION_CANDIDATE'
+          ? { targetSourceId: decision.existingSource.sourceId }
+          : {}),
+      });
+      setSubmission(result.resource);
+      setDecision(undefined);
+      await library.refetch();
+    } catch (error) {
+      setMutationError(error instanceof Error ? error.message : 'Duplicate resolution failed.');
+    } finally {
+      setMutationState('IDLE');
+    }
+  };
+
+  const cancelSubmission = async () => {
+    if (!submission || connectivity.isOffline) return;
+    setMutationState('SUBMITTING');
+    try {
+      const result = await writeClient.cancel({
+        activeProjectId: projectId,
+        targetProjectId: projectId,
+        clientRequestId: identity('sources-cancel-request'),
+        idempotencyKey: identity('sources-cancel-idempotency'),
+        submissionId: submission.submissionId,
+      });
+      setSubmission(result.resource);
+    } catch (error) {
+      setMutationError(error instanceof Error ? error.message : 'Cancellation failed.');
+    } finally {
+      setMutationState('IDLE');
+    }
+  };
+
+  const retryItem = async (itemId: string, mode: 'SAME_CONTEXT' | 'CURRENT_POLICY') => {
+    if (!submission || connectivity.isOffline) return;
+    setMutationState('SUBMITTING');
+    try {
+      const result = await writeClient.retry({
+        activeProjectId: projectId,
+        targetProjectId: projectId,
+        clientRequestId: identity('sources-retry-request'),
+        idempotencyKey: identity('sources-retry-idempotency'),
+        submissionId: submission.submissionId,
+        itemIds: [itemId],
+        mode,
+      });
+      setSubmission(result.resource);
+      await library.refetch();
+    } catch (error) {
+      setMutationError(error instanceof Error ? error.message : 'Retry failed.');
+    } finally {
+      setMutationState('IDLE');
+    }
+  };
+
+  const readyToSubmit =
+    draftQueue.items.length > 0 &&
+    draftQueue.items.every((item) => item.validation === 'READY') &&
+    !draftQueue.activeProjectMismatch &&
+    !connectivity.isOffline &&
+    mutationState === 'IDLE';
 
   return (
     <section className="route-page sources-workspace">
@@ -102,10 +311,18 @@ export const SourcesWorkspace = () => {
             The incoming Draft Seed failed its typed contract and was rejected.
           </p>
         ) : null}
-        <p className="status-message" role="status">
-          Server submission is unavailable until the approved Intake Snapshot and URL provenance
-          persistence boundary is activated.
+        <p className="status-message" role="status" aria-live="polite">
+          {mutationState === 'STAGING'
+            ? 'Staging immutable Source bytes…'
+            : mutationState === 'SUBMITTING'
+              ? 'Submitting the server-authoritative Intake command…'
+              : 'Server submission is active. Raw input is staged before the Command Ledger is accepted.'}
         </p>
+        {mutationError ? (
+          <p className="warning-state" role="alert">
+            {mutationError}
+          </p>
+        ) : null}
         <form className="source-intake-form" onSubmit={onAddDraft}>
           <label htmlFor="source-intake-kind">Input type</label>
           <select
@@ -132,7 +349,7 @@ export const SourcesWorkspace = () => {
               <textarea
                 id="source-intake-text"
                 value={directText}
-                maxLength={10 * 1024 * 1024}
+                maxLength={1_048_576}
                 onChange={(event) => setDirectText(event.target.value)}
               />
             </>
@@ -143,6 +360,7 @@ export const SourcesWorkspace = () => {
               <input
                 id="source-intake-file"
                 type="file"
+                accept="text/plain,text/markdown,.txt,.md"
                 onChange={(event) => setSelectedFile(event.target.files?.[0])}
               />
             </>
@@ -186,15 +404,81 @@ export const SourcesWorkspace = () => {
               <button type="button" onClick={draftQueue.discardAll}>
                 Discard all drafts
               </button>
-              <button
-                type="button"
-                disabled
-                title="Requires the separately approved durable Intake persistence boundary."
-              >
+              <button type="button" disabled={!readyToSubmit} onClick={() => void submitDrafts()}>
                 Submit drafts
               </button>
             </div>
           </>
+        ) : null}
+
+        {submission ? (
+          <section aria-labelledby="submission-status-heading">
+            <h3 id="submission-status-heading">Submission {submission.state}</h3>
+            <p>
+              Submission ID: <code>{submission.submissionId}</code>
+            </p>
+            <ul className="source-intake-list" aria-label="Submission items">
+              {submission.items.map((item) => (
+                <li key={item.itemId}>
+                  <div>
+                    <strong>{item.manifest.label}</strong>
+                    <p>{item.state}</p>
+                    {item.attentionReason ? <small>{item.attentionReason}</small> : null}
+                  </div>
+                  <div className="source-intake-actions">
+                    {item.duplicateDecisionId ? (
+                      <button
+                        type="button"
+                        onClick={() => void reviewDuplicate(item.duplicateDecisionId!)}
+                      >
+                        Review duplicate
+                      </button>
+                    ) : null}
+                    {item.capabilities.includes('RETRY_SAME_CONTEXT') ? (
+                      <button type="button" onClick={() => void retryItem(item.itemId, 'SAME_CONTEXT')}>
+                        Retry same context
+                      </button>
+                    ) : null}
+                    {item.capabilities.includes('RETRY_CURRENT_POLICY') ? (
+                      <button
+                        type="button"
+                        onClick={() => void retryItem(item.itemId, 'CURRENT_POLICY')}
+                      >
+                        Retry current policy
+                      </button>
+                    ) : null}
+                  </div>
+                </li>
+              ))}
+            </ul>
+            {submission.capabilities.includes('CANCEL') ? (
+              <button type="button" onClick={() => void cancelSubmission()}>
+                Cancel submission
+              </button>
+            ) : null}
+          </section>
+        ) : null}
+
+        {decision ? (
+          <section role="dialog" aria-labelledby="duplicate-decision-heading" aria-modal="false">
+            <h3 id="duplicate-decision-heading">Exact duplicate decision</h3>
+            <p>
+              Existing Source: <strong>{decision.existingSource.label}</strong>, Version{' '}
+              {decision.existingSource.versionNumber}
+            </p>
+            <div className="source-intake-actions">
+              {decision.allowedDispositions.map((disposition) => (
+                <button
+                  key={disposition}
+                  type="button"
+                  onClick={() => void resolveDuplicate(disposition)}
+                  disabled={mutationState !== 'IDLE' || connectivity.isOffline}
+                >
+                  {disposition.replaceAll('_', ' ')}
+                </button>
+              ))}
+            </div>
+          </section>
         ) : null}
       </section>
 

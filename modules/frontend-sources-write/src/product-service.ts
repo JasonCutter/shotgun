@@ -3,8 +3,64 @@ import type {
   ExactDuplicateDisposition,
   IntakeSubmissionSnapshot,
   SourcesSensitivity,
+  SourcesStagingInputKind,
+  SourcesStagingReceipt,
 } from '../../../packages/contracts/src/index.js';
-import type { ResolvedSourcesStagingArtifact } from '../../frontend-sources-staging/src/index.js';
+import type {
+  SourcesIntakeChannel,
+  SourcesIntakeInputKind,
+  SourcesUrlSuccessProvenance,
+} from './index.js';
+
+export type ResolvedSourcesStagingArtifact = {
+  readonly draftId: string;
+  readonly itemId: string;
+  readonly projectId: string;
+  readonly principalId: string;
+  readonly kind: SourcesIntakeInputKind;
+  readonly label: string;
+  readonly channel: SourcesIntakeChannel;
+  readonly mediaType: 'text/plain' | 'text/markdown';
+  readonly contentHash: string;
+  readonly sizeBytes: number;
+  readonly storageKey: string;
+  readonly stagingReference?: string;
+  readonly fileName?: string;
+  readonly redactedRequestedUrl?: string;
+  readonly urlProvenance?: SourcesUrlSuccessProvenance;
+  readonly issuedAt: string;
+  readonly expiresAt: string;
+};
+
+export type SourcesStagingServicePort = {
+  stageBytes(input: {
+    readonly draftId: string;
+    readonly itemId: string;
+    readonly projectId: string;
+    readonly principalId: string;
+    readonly kind: 'DIRECT_TEXT' | 'FILE';
+    readonly label: string;
+    readonly mediaType: 'text/plain' | 'text/markdown';
+    readonly fileName?: string;
+    readonly bytes: Uint8Array;
+  }): Promise<SourcesStagingReceipt>;
+  stageUrl(input: {
+    readonly draftId: string;
+    readonly itemId: string;
+    readonly projectId: string;
+    readonly principalId: string;
+    readonly label: string;
+    readonly requestedUrl: string;
+  }): Promise<SourcesStagingReceipt>;
+  resolve(input: {
+    readonly stagingReference: string;
+    readonly draftId: string;
+    readonly itemId: string;
+    readonly projectId: string;
+    readonly principalId: string;
+    readonly kind: SourcesStagingInputKind;
+  }): Promise<ResolvedSourcesStagingArtifact>;
+};
 
 export type SourcesProductWriteScope = {
   readonly principalId: string;

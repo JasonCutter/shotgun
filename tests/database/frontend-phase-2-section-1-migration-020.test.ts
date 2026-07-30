@@ -47,7 +47,7 @@ describe.runIf(pool)('Migration 019 to 020 compatibility', () => {
     await pool!.query(`
       ALTER TABLE intake.submissions DROP CONSTRAINT submissions_channel_check;
       ALTER TABLE intake.submissions ADD CONSTRAINT submissions_channel_check
-        CHECK (channel IN ('direct_text', 'file_upload', 'unexpected_channel'));
+        CHECK (channel IN ('direct_text', 'unexpected_channel'));
     `);
 
     await expect(

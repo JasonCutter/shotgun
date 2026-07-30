@@ -4,6 +4,7 @@ import 'dotenv/config';
 
 import { LocalAssetStorage } from '../../../adapters/asset-storage-local/src/index.js';
 import { GeminiAIProviderAdapter } from '../../../adapters/ai-provider-gemini/src/index.js';
+import { SealedSourcesStagingService } from '../../../adapters/frontend-sources-staging-sealed/src/index.js';
 import { PostgresSourcesProductService } from '../../../adapters/frontend-sources-write-postgres/src/product-service.js';
 import { LucasAugmentedPlainTextAdapter } from '../../../adapters/plain-text-lucas-augmented/src/index.js';
 import { PythonDocumentFormatAdapter } from '../../../adapters/document-format-python/src/index.js';
@@ -41,7 +42,6 @@ import { PostgresAuthRepository } from '../../../adapters/postgres-auth/src/inde
 import { NodeUrlHopTransport, NodeUrlResolver } from '../../../adapters/url-acquisition-node/src/index.js';
 import { FakeDraftActionConnector } from '../../../adapters/action-connector-fake/src/index.js';
 import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
-import { SealedSourcesStagingService } from '../../../modules/frontend-sources-staging/src/index.js';
 import { SecureUrlAcquisitionCoordinator } from '../../../modules/url-acquisition/src/index.js';
 import { configureSourcesWriteRuntime } from './product-api/sources-write-runtime.js';
 import { createApplication } from './server.js';

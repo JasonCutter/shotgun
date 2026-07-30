@@ -330,6 +330,31 @@ export type CitationReturnTarget = {
   readonly panelId?: string;
 };
 
+export type IntakeDraftSeed = {
+  readonly schemaVersion: SourcesSchemaVersion;
+  readonly seedId: string;
+  readonly projectId: string;
+  readonly originatingWorkspace: string;
+  readonly input:
+    | {
+        readonly kind: 'DIRECT_TEXT';
+        readonly label: string;
+        readonly text: string;
+      }
+    | {
+        readonly kind: 'URL';
+        readonly label: string;
+        readonly requestedUrl: string;
+      }
+    | {
+        readonly kind: 'FILE_METADATA';
+        readonly label: string;
+        readonly fileName: string;
+        readonly mediaType: string;
+        readonly sizeBytes: number;
+      };
+};
+
 export const SOURCES_FRONTEND_COMMAND_TYPES = {
   submit: 'sources.intake.submit.v1',
   cancel: 'sources.intake.cancel.v1',
@@ -405,6 +430,19 @@ const stringValue = (value: unknown, path: string): string =>
 
 const optionalString = (value: unknown, path: string): string | undefined =>
   value === undefined ? undefined : stringValue(value, path);
+
+const boundedString = (value: unknown, path: string, maximum: number): string => {
+  const decoded = stringValue(value, path);
+  return decoded.length <= maximum
+    ? decoded
+    : fail(`${path} must contain at most ${maximum} characters.`);
+};
+
+const optionalBoundedString = (
+  value: unknown,
+  path: string,
+  maximum: number,
+): string | undefined => (value === undefined ? undefined : boundedString(value, path, maximum));
 
 const booleanValue = (value: unknown, path: string): boolean =>
   typeof value === 'boolean' ? value : fail(`${path} must be boolean.`);
@@ -1088,6 +1126,17 @@ const requestString = (value: unknown, path: string): string => {
   return value;
 };
 
+const boundedRequestString = (value: unknown, path: string, maximum: number): string => {
+  const decoded = requestString(value, path);
+  if (decoded.length > maximum) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      `${path} must contain at most ${maximum} characters.`,
+    );
+  }
+  return decoded;
+};
+
 const requestArray = (value: unknown, path: string, maximum: number): readonly unknown[] => {
   if (!Array.isArray(value) || value.length === 0 || value.length > maximum) {
     throw new FrontendContractError(
@@ -1327,28 +1376,154 @@ export const decodeEvidenceListView = (input: unknown): EvidenceListView => {
 export const decodeCitationReturnTarget = (input: unknown): CitationReturnTarget => {
   const value = record(input, 'CitationReturnTarget');
   schema(value, 'CitationReturnTarget');
-  const originRoute = stringValue(value['originRoute'], 'CitationReturnTarget.originRoute');
+  const originRoute = boundedString(value['originRoute'], 'CitationReturnTarget.originRoute', 2048);
   if (!originRoute.startsWith('/') || originRoute.startsWith('//')) {
     fail('CitationReturnTarget.originRoute must be an internal absolute route.');
   }
-  const scrollAnchor = optionalString(value['scrollAnchor'], 'CitationReturnTarget.scrollAnchor');
-  const focusTarget = optionalString(value['focusTarget'], 'CitationReturnTarget.focusTarget');
-  const panelId = optionalString(value['panelId'], 'CitationReturnTarget.panelId');
+  const scrollAnchor = optionalBoundedString(
+    value['scrollAnchor'],
+    'CitationReturnTarget.scrollAnchor',
+    512,
+  );
+  const focusTarget = optionalBoundedString(
+    value['focusTarget'],
+    'CitationReturnTarget.focusTarget',
+    512,
+  );
+  const panelId = optionalBoundedString(value['panelId'], 'CitationReturnTarget.panelId', 512);
   return {
     schemaVersion: SOURCES_SCHEMA_VERSION,
     originRoute,
-    resourceKind: stringValue(value['resourceKind'], 'CitationReturnTarget.resourceKind'),
-    resourceId: stringValue(value['resourceId'], 'CitationReturnTarget.resourceId'),
-    resourceRevision: stringValue(
+    resourceKind: boundedString(value['resourceKind'], 'CitationReturnTarget.resourceKind', 200),
+    resourceId: boundedString(value['resourceId'], 'CitationReturnTarget.resourceId', 512),
+    resourceRevision: boundedString(
       value['resourceRevision'],
       'CitationReturnTarget.resourceRevision',
+      512,
     ),
-    citationId: stringValue(value['citationId'], 'CitationReturnTarget.citationId'),
-    sourceId: stringValue(value['sourceId'], 'CitationReturnTarget.sourceId'),
-    sourceVersionId: stringValue(value['sourceVersionId'], 'CitationReturnTarget.sourceVersionId'),
-    evidenceId: stringValue(value['evidenceId'], 'CitationReturnTarget.evidenceId'),
+    citationId: boundedString(value['citationId'], 'CitationReturnTarget.citationId', 512),
+    sourceId: boundedString(value['sourceId'], 'CitationReturnTarget.sourceId', 512),
+    sourceVersionId: boundedString(
+      value['sourceVersionId'],
+      'CitationReturnTarget.sourceVersionId',
+      512,
+    ),
+    evidenceId: boundedString(value['evidenceId'], 'CitationReturnTarget.evidenceId', 512),
     ...(scrollAnchor === undefined ? {} : { scrollAnchor }),
     ...(focusTarget === undefined ? {} : { focusTarget }),
     ...(panelId === undefined ? {} : { panelId }),
   };
+};
+
+export const decodeIntakeDraftSeed = (input: unknown): IntakeDraftSeed => {
+  const value = record(input, 'IntakeDraftSeed');
+  schema(value, 'IntakeDraftSeed');
+  onlyRequestKeys(
+    value,
+    ['schemaVersion', 'seedId', 'projectId', 'originatingWorkspace', 'input'],
+    'IntakeDraftSeed',
+  );
+  const inputValue = requestRecord(value['input'], 'IntakeDraftSeed.input');
+  const common = {
+    schemaVersion: SOURCES_SCHEMA_VERSION,
+    seedId: boundedRequestString(value['seedId'], 'IntakeDraftSeed.seedId', 512),
+    projectId: boundedRequestString(value['projectId'], 'IntakeDraftSeed.projectId', 512),
+    originatingWorkspace: boundedRequestString(
+      value['originatingWorkspace'],
+      'IntakeDraftSeed.originatingWorkspace',
+      200,
+    ),
+  };
+  const kind = inputValue['kind'];
+  if (kind === 'DIRECT_TEXT') {
+    onlyRequestKeys(inputValue, ['kind', 'label', 'text'], 'IntakeDraftSeed.input');
+    const text = boundedRequestString(
+      inputValue['text'],
+      'IntakeDraftSeed.input.text',
+      10 * 1024 * 1024,
+    );
+    if (new TextEncoder().encode(text).byteLength > 10 * 1024 * 1024) {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        'IntakeDraftSeed.input.text exceeds the current 10 MiB intake limit.',
+      );
+    }
+    return {
+      ...common,
+      input: {
+        kind,
+        label: boundedRequestString(inputValue['label'], 'IntakeDraftSeed.input.label', 200),
+        text,
+      },
+    };
+  }
+  if (kind === 'URL') {
+    onlyRequestKeys(inputValue, ['kind', 'label', 'requestedUrl'], 'IntakeDraftSeed.input');
+    const requestedUrl = requestString(
+      inputValue['requestedUrl'],
+      'IntakeDraftSeed.input.requestedUrl',
+    );
+    if (requestedUrl.length > 2048) {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        'IntakeDraftSeed.input.requestedUrl must contain at most 2048 characters.',
+      );
+    }
+    let parsed: URL;
+    try {
+      parsed = new URL(requestedUrl);
+    } catch {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        'IntakeDraftSeed.input.requestedUrl must be an absolute HTTP(S) URL.',
+      );
+    }
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        'IntakeDraftSeed.input.requestedUrl protocol is unsupported.',
+      );
+    }
+    return {
+      ...common,
+      input: {
+        kind,
+        label: boundedRequestString(inputValue['label'], 'IntakeDraftSeed.input.label', 200),
+        requestedUrl,
+      },
+    };
+  }
+  if (kind === 'FILE_METADATA') {
+    onlyRequestKeys(
+      inputValue,
+      ['kind', 'label', 'fileName', 'mediaType', 'sizeBytes'],
+      'IntakeDraftSeed.input',
+    );
+    const sizeBytes = integer(inputValue['sizeBytes'], 'IntakeDraftSeed.input.sizeBytes', 1);
+    if (sizeBytes > 10 * 1024 * 1024) {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        'IntakeDraftSeed.input.sizeBytes exceeds the current 10 MiB intake limit.',
+      );
+    }
+    return {
+      ...common,
+      input: {
+        kind,
+        label: boundedRequestString(inputValue['label'], 'IntakeDraftSeed.input.label', 200),
+        fileName: boundedRequestString(
+          inputValue['fileName'],
+          'IntakeDraftSeed.input.fileName',
+          255,
+        ),
+        mediaType: boundedRequestString(
+          inputValue['mediaType'],
+          'IntakeDraftSeed.input.mediaType',
+          200,
+        ),
+        sizeBytes,
+      },
+    };
+  }
+  throw new FrontendContractError('INVALID_REQUEST', 'IntakeDraftSeed.input.kind is unsupported.');
 };

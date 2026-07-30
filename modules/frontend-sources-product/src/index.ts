@@ -1,7 +1,5 @@
 import { createHash } from 'node:crypto';
 
-import type { AssetStoragePort } from '../../original-asset/src/index.js';
-import type { EvidenceRepositoryPort } from '../../evidence/src/index.js';
 import {
   decodeEvidenceListView,
   decodeSourceDetailView,
@@ -11,6 +9,7 @@ import {
   ShotgunError,
   stableJson,
   type EvidenceListView,
+  type EvidenceSpan,
   type SourceDetailView,
   type SourceLibraryPageView,
   type SourceLibraryQuery,
@@ -36,6 +35,14 @@ export type SourcesProjectionRecord = {
 
 export type SourcesProjectionRepositoryPort = {
   listProjectSourceVersions(projectId: string): Promise<readonly SourcesProjectionRecord[]>;
+};
+
+export type SourcesAssetReaderPort = {
+  read(storageKey: string): Promise<Uint8Array | undefined>;
+};
+
+export type SourcesEvidenceReaderPort = {
+  listBySourceVersion(projectId: string, sourceVersionId: string): Promise<readonly EvidenceSpan[]>;
 };
 
 export type SourcesReadScope = {
@@ -155,8 +162,8 @@ const sortLibrary = (
 export class FrontendSourcesReadCoordinator {
   constructor(
     private readonly sources: SourcesProjectionRepositoryPort,
-    private readonly storage: AssetStoragePort,
-    private readonly evidence: EvidenceRepositoryPort,
+    private readonly storage: SourcesAssetReaderPort,
+    private readonly evidence: SourcesEvidenceReaderPort,
   ) {}
 
   private async authorizedRecords(scope: SourcesReadScope) {

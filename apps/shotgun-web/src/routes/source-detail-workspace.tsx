@@ -1,7 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
-import { Link, useOutletContext, useParams, useSearchParams } from 'react-router';
+import { useEffect, useMemo } from 'react';
+import { Link, useLocation, useOutletContext, useParams, useSearchParams } from 'react-router';
 
-import type { GlobalShellView } from '@shotgun/api-client';
+import {
+  decodeCitationReturnTarget,
+  type CitationReturnTarget,
+  type GlobalShellView,
+} from '@shotgun/api-client';
 
 import { useAppRuntime } from '../app/providers.js';
 import { ErrorState } from '../components/error-state.js';
@@ -17,6 +22,7 @@ export const SourceDetailWorkspace = () => {
   const { apiClient } = useAppRuntime();
   const { shell } = useOutletContext<{ readonly shell: GlobalShellView }>();
   const { sourceId = '' } = useParams();
+  const location = useLocation();
   const [searchParameters, setSearchParameters] = useSearchParams();
   const detail = useQuery(sourceDetailQueryOptions(apiClient, shell, sourceId));
   const selectedVersionId =
@@ -30,6 +36,28 @@ export const SourceDetailWorkspace = () => {
   const evidence = useQuery(
     sourceEvidenceQueryOptions(apiClient, shell, sourceId, selectedVersionId),
   );
+  const citationReturnTarget = useMemo<CitationReturnTarget | undefined>(() => {
+    const candidate =
+      typeof location.state === 'object' && location.state !== null
+        ? (location.state as { readonly citationReturnTarget?: unknown }).citationReturnTarget
+        : undefined;
+    if (candidate === undefined) return undefined;
+    try {
+      const decoded = decodeCitationReturnTarget(candidate);
+      return decoded.sourceId === sourceId && decoded.sourceVersionId === selectedVersionId
+        ? decoded
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  }, [location.state, selectedVersionId, sourceId]);
+
+  useEffect(() => {
+    if (!citationReturnTarget || !evidence.data) return;
+    const target = document.getElementById(`evidence-${citationReturnTarget.evidenceId}`);
+    target?.scrollIntoView?.({ block: 'center' });
+    target?.focus();
+  }, [citationReturnTarget, evidence.data]);
 
   if (detail.isPending) return <LoadingState message="Loading Source…" />;
   if (detail.error) return <ErrorState error={detail.error} />;
@@ -42,6 +70,26 @@ export const SourceDetailWorkspace = () => {
       <p>
         <Link to="/sources">Back to Source Library</Link>
       </p>
+      {citationReturnTarget ? (
+        <p>
+          <Link
+            to={citationReturnTarget.originRoute}
+            state={{
+              citationReturn: {
+                resourceKind: citationReturnTarget.resourceKind,
+                resourceId: citationReturnTarget.resourceId,
+                resourceRevision: citationReturnTarget.resourceRevision,
+                citationId: citationReturnTarget.citationId,
+                scrollAnchor: citationReturnTarget.scrollAnchor,
+                focusTarget: citationReturnTarget.focusTarget,
+                panelId: citationReturnTarget.panelId,
+              },
+            }}
+          >
+            Return to cited resource
+          </Link>
+        </p>
+      ) : null}
       <dl className="identity-summary">
         <div>
           <dt>Source</dt>

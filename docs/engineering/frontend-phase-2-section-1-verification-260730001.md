@@ -5,7 +5,7 @@
 - Repository: `JasonCutter/shotgun`
 - Base SHA: `9c3690162c33e02c5d0b3b3cdf79bce67cedc63b`
 - Branch: `codex/frontend-phase-2-section-1`
-- Status: **IMPLEMENTATION_IN_PROGRESS**
+- Status: **BLOCKED_AWAITING_MIGRATION_APPROVAL**
 - Draft PR: [#46](https://github.com/JasonCutter/shotgun/pull/46)
 - Final Evidence Head SHA: `PENDING`
 - Canonical authority: GitHub `main`
@@ -145,58 +145,65 @@ Only `PASS`, `FAIL`, `BLOCKED`, and `NOT_RUN` are used. An item remains
 | AC    | Current status | Planned code and evidence                                                                                                     |
 | ----- | -------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | AC-01 | `PASS`         | versioned Sources requests/views, deep decoder and unknown-version/enum fail-closed tests                                     |
-| AC-02 | `NOT_RUN`      | server-derived Principal/Session/Project/capability/sensitivity/policy and authority-header negative tests                    |
+| AC-02 | `PASS`         | server-derived Principal/Session/Project/capability/sensitivity/policy and authority-header negative tests                    |
 | AC-03 | `PASS`         | protected `/sources` route, registered deep links and Route Guard integration                                                 |
-| AC-04 | `NOT_RUN`      | project-fixed route draft queue, switch isolation and leave-guard tests                                                       |
-| AC-05 | `NOT_RUN`      | bounded Draft Seed handoff and re-entry without browser authority                                                             |
+| AC-04 | `PASS`         | project-fixed route draft queue, switch isolation and leave-guard tests                                                       |
+| AC-05 | `PASS`         | bounded Draft Seed handoff and re-entry without browser authority                                                             |
 | AC-06 | `BLOCKED`      | Direct Text and File can proceed; URL mode depends on approved provenance persistence                                         |
 | AC-07 | `NOT_RUN`      | advisory client preflight plus authoritative server validation tests                                                          |
 | AC-08 | `NOT_RUN`      | upload, hash/size/media validation and immutable original-byte restoration                                                    |
 | AC-09 | `BLOCKED`      | replaceable server URL acquisition adapter and SSRF/DNS-rebinding corpus; durable attempt receipt requires migration approval |
 | AC-10 | `BLOCKED`      | immutable URL provenance receipt and revision require additive persistence approval                                           |
-| AC-11 | `NOT_RUN`      | versioned command, semantic digest, idempotency and mismatch tests                                                            |
-| AC-12 | `NOT_RUN`      | server-authoritative Intake Submission Snapshot and revision                                                                  |
-| AC-13 | `NOT_RUN`      | multi-item partial result and stable user-attention presentation                                                              |
-| AC-14 | `NOT_RUN`      | `clientRequestId` outcome recovery without automatic resubmission                                                             |
-| AC-15 | `NOT_RUN`      | cancellation state machine and too-late/no-op semantics                                                                       |
-| AC-16 | `NOT_RUN`      | domain retry with a new explicit command and no blind transport retry                                                         |
-| AC-17 | `NOT_RUN`      | server exact-content detection and authorized duplicate evidence                                                              |
-| AC-18 | `NOT_RUN`      | immutable duplicate disposition command and allowed-enum tests                                                                |
-| AC-19 | `NOT_RUN`      | duplicate decision revision, race and stale precondition tests                                                                |
+| AC-11 | `BLOCKED`      | versioned command, semantic digest, idempotency and mismatch tests require durable submission owner                           |
+| AC-12 | `BLOCKED`      | server-authoritative Intake Submission Snapshot and revision require additive persistence                                     |
+| AC-13 | `BLOCKED`      | multi-item partial result and stable user-attention presentation require durable per-item state                               |
+| AC-14 | `BLOCKED`      | `clientRequestId` outcome recovery cannot activate before atomic submission ownership                                         |
+| AC-15 | `BLOCKED`      | cancellation state machine and too-late/no-op semantics require durable transition state                                      |
+| AC-16 | `BLOCKED`      | domain retry with a new explicit command requires durable attempt history                                                     |
+| AC-17 | `BLOCKED`      | server exact-content detection requires a durable authorized duplicate decision                                               |
+| AC-18 | `BLOCKED`      | immutable duplicate disposition requires an accepted disposition owner                                                        |
+| AC-19 | `BLOCKED`      | duplicate decision revision, race and stale precondition tests require additive persistence                                   |
 | AC-20 | `PASS`         | bounded Active-Project Source Library projection                                                                              |
-| AC-21 | `NOT_RUN`      | protected POST search/filter/sort/cursor contract and ordering tests                                                          |
-| AC-22 | `NOT_RUN`      | separate library visibility, Preview readiness and Ask usage-state axes                                                       |
+| AC-21 | `PASS`         | protected POST search/filter/sort/cursor contract and ordering tests                                                          |
+| AC-22 | `PASS`         | separate library visibility, Preview readiness and Ask usage-state axes                                                       |
 | AC-23 | `PASS`         | Source detail, immutable identity and protected metadata masking                                                              |
 | AC-24 | `PASS`         | SourceVersion history, explicit Version pin and no-auto-latest tests                                                          |
 | AC-25 | `PASS`         | original/transformed Preview and supported text/page/cell/shape/CSS locators                                                  |
 | AC-26 | `PASS`         | Evidence list/highlight and capability-revalidated original return                                                            |
-| AC-27 | `NOT_RUN`      | typed CitationReturnTarget with focus and scroll restoration                                                                  |
-| AC-28 | `NOT_RUN`      | Principal/Session/Project/Source/Version/revision/sensitivity/policy cache isolation and purge                                |
+| AC-27 | `PASS`         | typed CitationReturnTarget with pinned Evidence focus and return-state restoration                                            |
+| AC-28 | `PASS`         | Principal/Session/Project/Source/Version/revision/sensitivity/policy cache isolation and purge                                |
 | AC-29 | `NOT_RUN`      | stale authorized read-only offline snapshot and blocked write/search/download tests                                           |
-| AC-30 | `NOT_RUN`      | CSRF, authority, cross-Project, masking, storage, logging, SSRF and capability negative suites                                |
+| AC-30 | `BLOCKED`      | completed CSRF, authority, cross-Project and masking tests; URL SSRF and receipt suites require approved persistence          |
 | AC-31 | `NOT_RUN`      | keyboard, screen reader, focus, zoom, responsive, representative/stress performance baseline and later budget                 |
 | AC-32 | `BLOCKED`      | requires implementation evidence, Draft PR gates, user approval and merge; no Phase 2 completion claim                        |
 
-## 7. Pre-change baseline
+Current aggregate:
+
+- `PASS`: AC-01 through AC-05, AC-20 through AC-28
+- `BLOCKED`: AC-06, AC-09 through AC-19, AC-30, AC-32
+- `NOT_RUN`: AC-07, AC-08, AC-29, AC-31
+- `FAIL`: none
+
+## 7. Local verification
 
 The exact Base required-gate run passed remotely. Local commands are recorded
 below as they run; a remote pass does not conceal local environment divergence.
 
-| Command                                                      | Result                         | Evidence                                                                                                                         |
-| ------------------------------------------------------------ | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
-| `npm run docs:knowledge-flow:check`                          | `NOT_RUN`                      | pending local baseline                                                                                                           |
-| `npm run docs:validate`                                      | `PASS`                         | 303 Markdown links, ADR 1-122, Canonical/evidence/generated-artifact registries and migration drift                              |
-| `npm run format:check`                                       | `LOCAL_ENVIRONMENT_DIVERGENCE` | 21 unchanged Base files reported by Windows line-ending/format comparison; all Section 1 changed files were formatted explicitly |
-| `npm run lint`                                               | `PASS`                         | full repository ESLint gate                                                                                                      |
-| `npm run typecheck`                                          | `PASS`                         | root TypeScript validation after Sources contracts, adapters, coordinator and routes                                             |
-| `npm run audit:dependencies` or current canonical equivalent | `NOT_RUN`                      | pending local baseline                                                                                                           |
-| `npm run stage12:reuse-operations-gate`                      | `NOT_RUN`                      | pending local baseline                                                                                                           |
-| `npm run test:ci`                                            | `NOT_RUN`                      | pending local baseline                                                                                                           |
-| `npm run test:database`                                      | `NOT_RUN`                      | pending local baseline                                                                                                           |
-| `npm run frontend:typecheck`                                 | `PASS`                         | Sources Library, detail, history, Preview and Evidence UI typecheck                                                              |
-| `npm run frontend:test`                                      | `PASS`                         | 7 files / 24 tests, including Sources accessibility state and Version pinning                                                    |
-| `npm run frontend:build`                                     | `PASS`                         | Vite production build; JS 621.44 kB raw / 177.08 kB direct gzip, baseline only                                                   |
-| `npm --prefix apps/shotgun-web run test:e2e`                 | `NOT_RUN`                      | pending local baseline                                                                                                           |
+| Command                                 | Result                         | Evidence                                                                                                                             |
+| --------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `npm run docs:knowledge-flow:check`     | `PASS`                         | generated HTML was rendered locally, then matched the tracked JSON baseline                                                          |
+| `npm run docs:validate`                 | `PASS`                         | 303 Markdown links, ADR 1-122, Canonical/evidence/generated-artifact registries and migration drift                                  |
+| `npm run format:check`                  | `LOCAL_ENVIRONMENT_DIVERGENCE` | 21 unchanged Base files reported by Windows line-ending/format comparison; all Section 1 changed files were formatted explicitly     |
+| `npm run lint`                          | `PASS`                         | full repository ESLint gate                                                                                                          |
+| `npm run typecheck`                     | `PASS`                         | root TypeScript validation after Sources contracts, adapters, coordinator and routes                                                 |
+| `npm run oss:audit`                     | `PASS`                         | canonical repository command; zero vulnerabilities                                                                                   |
+| `npm run stage12:reuse-operations-gate` | `PASS`                         | all six steps passed against the isolated PostgreSQL 16 database                                                                     |
+| `npm run test:ci`                       | `LOCAL_ENVIRONMENT_DIVERGENCE` | earlier full run passed; final reruns hit unrelated 5-second Stage 9 and cited-search timeouts, both passed immediately in isolation |
+| `npm run test:database`                 | `PASS`                         | 17 files / 86 tests on a fresh isolated PostgreSQL 16 volume using existing migrations only                                          |
+| `npm run frontend:typecheck`            | `PASS`                         | Sources Library, detail, history, Preview and Evidence UI typecheck                                                                  |
+| `npm run frontend:test`                 | `PASS`                         | 7 files / 26 tests, including Draft isolation, Leave Guard, Citation return and Version pinning                                      |
+| `npm run frontend:build`                | `PASS`                         | Vite production build; JS 631.78 kB raw / 179.86 kB direct gzip, baseline only                                                       |
+| `npm run frontend:test:e2e`             | `PASS`                         | 15 Chromium tests, including 2 Sources Project-isolation, transient-input, mobile and offline scenarios                              |
 
 ## 8. Failure and retry history
 
@@ -219,29 +226,70 @@ below as they run; a remote pass does not conceal local environment divergence.
 5. Full `format:check` reported 21 unchanged Base files on Windows. All Section
    1 changed files were explicitly formatted and `lint` passed. This is retained
    as `LOCAL_ENVIRONMENT_DIVERGENCE`; it is not converted to `PASS` or hidden.
+6. The first full `test:ci` attempt reached the Architecture gate and found that
+   the new Product read coordinator imported Stage 2 and Stage 3 domain modules
+   directly. The coordinator now owns narrow structural read Ports backed by
+   shared contract types. The Architecture gate rerun passed.
+7. The first expanded Sources browser test expected the disabled Submit action
+   before a route draft existed. The assertion now creates a local Direct Text
+   draft first, verifies the disabled server submission action, and passed on
+   rerun.
+8. The work order listed `audit:dependencies`, but the current Canonical
+   repository command is `oss:audit`. The unavailable command failed explicitly;
+   `npm run oss:audit` then passed with zero vulnerabilities.
+9. The first Stage 12 Gate attempt had no `DATABASE_URL` and stopped at the
+   quality baseline. Docker Desktop was installed but stopped; direct service
+   startup was denied by Windows, so the desktop engine was started as a hidden
+   background process. A first `docker compose up -d postgres` used the wrong
+   service name and failed without state change. `docker compose up -d db`
+   created a worktree-specific PostgreSQL 16 volume, existing migrations were
+   applied, and both Database and Stage 12 reruns passed.
+10. The first full E2E rerun correctly exposed an obsolete Section 1 assertion
+    that Sources must remain unavailable. The regression now recognizes Sources
+    as the only newly available Workspace. A second run exposed an existing
+    ambiguous Project Administration heading locator; it was narrowed with
+    `exact: true`. The final full run passed 15 of 15 tests.
+11. After the final bounded Draft Seed decoder change, two full `test:ci`
+    attempts encountered different pre-existing 5-second timeouts under local
+    parallel load: Stage 9 NetworkX traversal at 5.35 seconds, then the cited
+    search walking skeleton at 5.04 seconds. Each failed test passed immediately
+    in isolation at 1.50 and 1.53 seconds respectively. Section 1 contract,
+    integration, frontend and E2E tests remained green. This is retained as
+    `LOCAL_ENVIRONMENT_DIVERGENCE`; exact-head GitHub Actions is required before
+    the repository Gate can be treated as passed.
 
 ## 9. Implemented evidence to date
 
-| Area                                     | Evidence                                                               |
-| ---------------------------------------- | ---------------------------------------------------------------------- |
-| Product contracts                        | `frontend-sources.contract.test.ts`: 11 `PASS`                         |
-| Read coordinator and replacement adapter | `frontend-sources-read-coordinator.test.ts`: 4 `PASS`                  |
-| Product API security and integration     | `frontend-sources-product-api.test.ts`: 3 `PASS`                       |
-| Query/cache isolation and regression     | focused query-key and Section 3 suites: 14 `PASS`                      |
-| Sources browser components               | `sources-workspace.test.tsx`: 2 `PASS`; full frontend suite: 24 `PASS` |
+| Area                                     | Evidence                                                           |
+| ---------------------------------------- | ------------------------------------------------------------------ |
+| Product contracts                        | `frontend-sources.contract.test.ts`: 12 `PASS`                     |
+| Read coordinator and replacement adapter | `frontend-sources-read-coordinator.test.ts`: 4 `PASS`              |
+| Product API security and integration     | `frontend-sources-product-api.test.ts`: 3 `PASS`                   |
+| Query/cache isolation and regression     | focused query-key and Section 3 suites: 14 `PASS`                  |
+| Sources browser components               | `sources-workspace.test.tsx`: 4 `PASS`; full frontend: 7/26 `PASS` |
+| Architecture boundary                    | `npm run test:architecture`: `PASS` after narrow Port correction   |
+| Browser E2E                              | Phase 2 Section 1: 2 `PASS`; full frontend regression: 15 `PASS`   |
+| Database regression                      | existing migrations only: 17 files / 86 tests `PASS`               |
 
 The current Product slice exposes an Active-Project bounded Library, protected
 POST search, masked Source detail, explicit SourceVersion history and pinning,
-Original Preview, Evidence locators and responsive UI. Intake submission,
-durable Snapshot, exact duplicate disposition, secure URL acquisition and URL
-provenance remain blocked on the separately approved additive persistence
-boundary and are not represented as complete.
+Original Preview, Evidence locators, typed Citation return, a project-fixed
+route draft queue, advisory Direct Text/File/URL validation, Leave Guard and
+responsive UI. Intake submission, durable Snapshot, exact duplicate
+disposition, secure URL acquisition and URL provenance remain blocked on the
+separately approved additive persistence boundary and are not represented as
+complete. The proposed boundary is recorded in
+`frontend-phase-2-section-1-migration-approval-candidate-260730001.md`.
+
+No Section 1 database migration was created or activated. Local database
+verification applied only existing migrations to the isolated
+`shotgun-frontend-phase-2-section-1_shotgun-postgres` volume.
 
 ## 10. Approval boundaries
 
 The following remain explicitly unapproved:
 
-- database migration creation or execution
+- Section 1 database migration creation or activation
 - new runtime dependency
 - PR Ready transition
 - merge to `main`

@@ -42,6 +42,8 @@ import type {
   IntakeSubmissionSnapshot,
   ExactDuplicateDecisionView,
   SubmitSourcesIntakeCommandPayload,
+  CitationReturnTarget,
+  IntakeDraftSeed,
 } from '../../contracts/src/index.js';
 
 export type ProductSessionView = AnyProductSessionView;
@@ -84,6 +86,8 @@ export type {
   IntakeSubmissionSnapshot,
   ExactDuplicateDecisionView,
   SubmitSourcesIntakeCommandPayload,
+  CitationReturnTarget,
+  IntakeDraftSeed,
   ErrorCode,
   FailureCategory,
   FailureRetryability,
@@ -97,6 +101,8 @@ export {
   deriveFrontendFailure,
   getFailureDescriptor,
   isErrorCode,
+  decodeCitationReturnTarget,
+  decodeIntakeDraftSeed,
 } from '../../contracts/src/index.js';
 
 export type FrontendCommandMutationResponse<T> = {

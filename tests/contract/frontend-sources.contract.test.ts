@@ -6,6 +6,7 @@ import {
   decodeEvidenceListView,
   decodeExactDuplicateDecisionView,
   decodeIntakeSubmissionSnapshot,
+  decodeIntakeDraftSeed,
   decodeSourceDetailView,
   decodeSourceLibraryPageView,
   decodeSourceLibraryQuery,
@@ -553,5 +554,52 @@ describe('Frontend Phase 2 Section 1 Sources contracts', () => {
         evidenceId: 'evidence-1',
       }),
     ).toThrow(/internal absolute route/);
+  });
+
+  it('decodes bounded Draft Seeds and rejects browser-created Source authority', () => {
+    expect(
+      decodeIntakeDraftSeed({
+        schemaVersion: '1.0.0',
+        seedId: 'seed-1',
+        projectId: 'project-1',
+        originatingWorkspace: 'ask',
+        input: {
+          kind: 'DIRECT_TEXT',
+          label: 'Question context',
+          text: 'Evidence supplied by the user.',
+        },
+      }).projectId,
+    ).toBe('project-1');
+
+    expect(() =>
+      decodeIntakeDraftSeed({
+        schemaVersion: '1.0.0',
+        seedId: 'seed-2',
+        projectId: 'project-1',
+        originatingWorkspace: 'ask',
+        sourceId: 'browser-source',
+        input: {
+          kind: 'URL',
+          label: 'Reference',
+          requestedUrl: 'https://example.com/reference',
+        },
+      }),
+    ).toThrow(/unsupported fields/);
+
+    expect(() =>
+      decodeIntakeDraftSeed({
+        schemaVersion: '1.0.0',
+        seedId: 'seed-3',
+        projectId: 'project-1',
+        originatingWorkspace: 'ask',
+        input: {
+          kind: 'FILE_METADATA',
+          label: 'Oversized file',
+          fileName: 'large.pdf',
+          mediaType: 'application/pdf',
+          sizeBytes: 10 * 1024 * 1024 + 1,
+        },
+      }),
+    ).toThrow(/10 MiB/);
   });
 });

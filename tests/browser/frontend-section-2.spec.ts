@@ -36,7 +36,9 @@ test('Frontend Section 2 Settings & Project Administration End-to-End Flow', asy
   await expect(page.getByRole('heading', { name: 'User Preferences Workspace' })).toBeVisible();
 
   await page.getByRole('link', { name: 'Project Admin' }).click();
-  await expect(page.getByRole('heading', { name: 'Project Administration' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Project Administration', exact: true }),
+  ).toBeVisible();
 
   await page.getByRole('link', { name: 'Models' }).click();
   await expect(page.getByRole('heading', { name: 'AI Model Profiles & Routing' })).toBeVisible();

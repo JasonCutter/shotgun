@@ -407,6 +407,63 @@ main {
   padding: 0.65rem 0.75rem;
 }
 
+.source-intake-form {
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.35fr) minmax(12rem, 1fr);
+  align-items: center;
+  gap: 0.65rem 1rem;
+  margin-block: 1rem;
+}
+
+.source-intake-form label {
+  font-weight: 700;
+}
+
+.source-intake-form input,
+.source-intake-form select,
+.source-intake-form textarea {
+  min-height: 2.75rem;
+  border: 1px solid #8e9c93;
+  border-radius: 0.5rem;
+  padding: 0.65rem 0.75rem;
+}
+
+.source-intake-form textarea {
+  min-height: 8rem;
+  resize: vertical;
+}
+
+.source-intake-form button {
+  grid-column: 2;
+  justify-self: start;
+}
+
+.source-intake-list {
+  list-style: none;
+  margin: 1rem 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.source-intake-list > li,
+.source-intake-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.source-intake-list > li {
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+  padding: 1rem;
+}
+
+.source-intake-actions {
+  justify-content: flex-end;
+}
+
 .source-library-list,
 .source-version-list,
 .source-evidence-list {
@@ -512,6 +569,20 @@ main {
 
   main {
     padding: 1.25rem 1rem 7rem;
+  }
+
+  .source-intake-form {
+    grid-template-columns: 1fr;
+  }
+
+  .source-intake-form button {
+    grid-column: 1;
+  }
+
+  .source-intake-list > li,
+  .source-intake-actions {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .mobile-navigation {

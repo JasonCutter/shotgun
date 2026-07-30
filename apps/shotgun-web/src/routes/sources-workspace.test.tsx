@@ -16,6 +16,7 @@ import type {
 import { createFrontendQueryClient } from '../app/query-client.js';
 import { AppProviders, type AppRuntime } from '../app/providers.js';
 import { createSessionCycleState } from '../session/session-query.js';
+import { useLeaveGuard } from '../session/leave-guard-context.js';
 import { SourceDetailWorkspace } from './source-detail-workspace.js';
 import { SourcesWorkspace } from './sources-workspace.js';
 
@@ -192,10 +193,25 @@ const createRuntime = (): AppRuntime => {
   };
 };
 
-const ShellOutlet = () => <Outlet context={{ shell }} />;
+const ShellOutlet = () => {
+  const { getLeaveState } = useLeaveGuard();
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() =>
+          document.body.setAttribute('data-leave-state', JSON.stringify(getLeaveState()))
+        }
+      >
+        Inspect leave state
+      </button>
+      <Outlet context={{ shell }} />
+    </>
+  );
+};
 
 describe('Sources Workspace', () => {
-  it('renders server Source state, keeps search out of the URL, and disables unowned writes', async () => {
+  it('renders server Source state, keeps search out of the URL, and keeps submit blocked', async () => {
     const runtime = createRuntime();
     const router = createMemoryRouter(
       [
@@ -215,8 +231,10 @@ describe('Sources Workspace', () => {
 
     expect(await screen.findByRole('heading', { name: 'Sources', level: 1 })).toBeTruthy();
     expect(await screen.findByText('Evidence notes')).toBeTruthy();
+    await userEvent.type(screen.getByLabelText('Direct Text'), 'Local draft');
+    await userEvent.click(screen.getByRole('button', { name: 'Add intake draft' }));
     expect(
-      (screen.getByRole('button', { name: 'Add intake draft' }) as HTMLButtonElement).disabled,
+      (screen.getByRole('button', { name: 'Submit drafts' }) as HTMLButtonElement).disabled,
     ).toBe(true);
 
     await userEvent.type(screen.getByLabelText('Search Sources'), 'private phrase');
@@ -226,6 +244,58 @@ describe('Sources Workspace', () => {
       expect.objectContaining({ query: 'private phrase' }),
       expect.any(Object),
     );
+  });
+
+  it('keeps route drafts project-fixed, validates advisory inputs, and registers Leave Guard', async () => {
+    const runtime = createRuntime();
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <ShellOutlet />,
+          children: [{ path: 'sources', element: <SourcesWorkspace /> }],
+        },
+      ],
+      {
+        initialEntries: [
+          {
+            pathname: '/sources',
+            state: {
+              intakeDraftSeed: {
+                schemaVersion: '1.0.0',
+                seedId: 'seed-1',
+                projectId: 'project-seed',
+                originatingWorkspace: 'ask',
+                input: {
+                  kind: 'FILE_METADATA',
+                  label: 'Seeded file',
+                  fileName: 'notes.md',
+                  mediaType: 'text/markdown',
+                  sizeBytes: 12,
+                },
+              },
+            },
+          },
+        ],
+      },
+    );
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    expect(await screen.findByText(/active Project changed/)).toBeTruthy();
+    expect(screen.getByText(/Choose the file again/)).toBeTruthy();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Inspect leave state' }));
+    expect(document.body.getAttribute('data-leave-state')).toContain('"hasUnsavedDraft":true');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Discard all drafts' }));
+    await userEvent.selectOptions(screen.getByLabelText('Input type'), 'URL');
+    await userEvent.type(screen.getByLabelText('URL'), 'file:///etc/passwd');
+    await userEvent.click(screen.getByRole('button', { name: 'Add intake draft' }));
+    expect(screen.getByText('Enter an absolute HTTP(S) URL.')).toBeTruthy();
   });
 
   it('pins detail, history, Preview and Evidence to the requested SourceVersion', async () => {
@@ -264,5 +334,62 @@ describe('Sources Workspace', () => {
       expect.any(Object),
     );
     expect(document.getElementById('evidence-evidence-1')).toBeTruthy();
+  });
+
+  it('focuses pinned Evidence and preserves the typed Citation return identity', async () => {
+    const runtime = createRuntime();
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <ShellOutlet />,
+          children: [
+            { path: 'sources/:sourceId', element: <SourceDetailWorkspace /> },
+            { path: 'ask/conversations/:conversationId', element: <p>Conversation restored</p> },
+          ],
+        },
+      ],
+      {
+        initialEntries: [
+          {
+            pathname: '/sources/source-1',
+            search: '?version=version-2',
+            state: {
+              citationReturnTarget: {
+                schemaVersion: '1.0.0',
+                originRoute: '/ask/conversations/conversation-1',
+                resourceKind: 'conversation',
+                resourceId: 'conversation-1',
+                resourceRevision: 'conversation-7',
+                citationId: 'citation-1',
+                sourceId: 'source-1',
+                sourceVersionId: 'version-2',
+                evidenceId: 'evidence-1',
+                scrollAnchor: 'message-4',
+                focusTarget: 'citation-1',
+                panelId: 'evidence-panel',
+              },
+            },
+          },
+        ],
+      },
+    );
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    const evidenceItem = await screen.findByText('Original evidence', { selector: 'strong' });
+    expect(evidenceItem.parentElement).toBe(document.activeElement);
+    await userEvent.click(screen.getByRole('link', { name: 'Return to cited resource' }));
+    expect(await screen.findByText('Conversation restored')).toBeTruthy();
+    expect(router.state.location.state).toMatchObject({
+      citationReturn: {
+        resourceRevision: 'conversation-7',
+        citationId: 'citation-1',
+        focusTarget: 'citation-1',
+      },
+    });
   });
 });

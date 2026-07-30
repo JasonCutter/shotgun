@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState, type FormEvent } from 'react';
-import { Link, useOutletContext } from 'react-router';
+import { Link, useLocation, useOutletContext } from 'react-router';
 
 import type { GlobalShellView, SourceLibraryQuery } from '@shotgun/api-client';
 
@@ -9,6 +9,7 @@ import { EmptyState } from '../components/empty-state.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
 import { sourcesLibraryQueryOptions } from '../sources/sources-queries.js';
+import { useSourceIntakeDraftQueue } from '../sources/source-intake-drafts.js';
 import { useConnectivityState } from '../shell/use-connectivity-state.js';
 
 const DEFAULT_QUERY: SourceLibraryQuery = {
@@ -21,9 +22,15 @@ const DEFAULT_QUERY: SourceLibraryQuery = {
 export const SourcesWorkspace = () => {
   const { apiClient } = useAppRuntime();
   const { shell } = useOutletContext<{ readonly shell: GlobalShellView }>();
+  const location = useLocation();
   const connectivity = useConnectivityState();
   const [searchInput, setSearchInput] = useState('');
   const [appliedQuery, setAppliedQuery] = useState('');
+  const [intakeKind, setIntakeKind] = useState<'DIRECT_TEXT' | 'FILE' | 'URL'>('DIRECT_TEXT');
+  const [intakeLabel, setIntakeLabel] = useState('');
+  const [directText, setDirectText] = useState('');
+  const [requestedUrl, setRequestedUrl] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File>();
   const query = useMemo<SourceLibraryQuery>(
     () => ({
       ...DEFAULT_QUERY,
@@ -32,6 +39,11 @@ export const SourcesWorkspace = () => {
     [appliedQuery],
   );
   const library = useQuery(sourcesLibraryQueryOptions(apiClient, shell, query));
+  const seed =
+    typeof location.state === 'object' && location.state !== null
+      ? (location.state as { readonly intakeDraftSeed?: unknown }).intakeDraftSeed
+      : undefined;
+  const draftQueue = useSourceIntakeDraftQueue(shell.activeProject?.id ?? '', seed);
 
   if (!shell.activeProject) {
     return (
@@ -45,6 +57,21 @@ export const SourcesWorkspace = () => {
   const onSearch = (event: FormEvent) => {
     event.preventDefault();
     if (!connectivity.isOffline) setAppliedQuery(searchInput);
+  };
+
+  const onAddDraft = (event: FormEvent) => {
+    event.preventDefault();
+    if (intakeKind === 'DIRECT_TEXT') {
+      draftQueue.addDirectText(intakeLabel, directText);
+      setDirectText('');
+    } else if (intakeKind === 'URL') {
+      draftQueue.addUrl(intakeLabel, requestedUrl);
+      setRequestedUrl('');
+    } else if (selectedFile) {
+      draftQueue.addFile(intakeLabel, selectedFile);
+      setSelectedFile(undefined);
+    }
+    setIntakeLabel('');
   };
 
   return (
@@ -61,13 +88,114 @@ export const SourcesWorkspace = () => {
           Direct Text, File and URL drafts remain fixed to this Project until you explicitly submit
           or discard them.
         </p>
+        <p>
+          Draft Project: <strong>{draftQueue.draftProjectId}</strong>
+        </p>
+        {draftQueue.activeProjectMismatch ? (
+          <p className="warning-state" role="alert">
+            The active Project changed. These drafts remain isolated to their original Project and
+            cannot be submitted from the current context.
+          </p>
+        ) : null}
+        {draftQueue.invalidSeed ? (
+          <p className="warning-state" role="alert">
+            The incoming Draft Seed failed its typed contract and was rejected.
+          </p>
+        ) : null}
         <p className="status-message" role="status">
           Server submission is unavailable until the approved Intake Snapshot and URL provenance
           persistence boundary is activated.
         </p>
-        <button type="button" disabled aria-describedby="source-intake-heading">
-          Add intake draft
-        </button>
+        <form className="source-intake-form" onSubmit={onAddDraft}>
+          <label htmlFor="source-intake-kind">Input type</label>
+          <select
+            id="source-intake-kind"
+            value={intakeKind}
+            onChange={(event) =>
+              setIntakeKind(event.target.value as 'DIRECT_TEXT' | 'FILE' | 'URL')
+            }
+          >
+            <option value="DIRECT_TEXT">Direct Text</option>
+            <option value="FILE">File</option>
+            <option value="URL">URL</option>
+          </select>
+          <label htmlFor="source-intake-label">Label</label>
+          <input
+            id="source-intake-label"
+            value={intakeLabel}
+            maxLength={200}
+            onChange={(event) => setIntakeLabel(event.target.value)}
+          />
+          {intakeKind === 'DIRECT_TEXT' ? (
+            <>
+              <label htmlFor="source-intake-text">Direct Text</label>
+              <textarea
+                id="source-intake-text"
+                value={directText}
+                maxLength={10 * 1024 * 1024}
+                onChange={(event) => setDirectText(event.target.value)}
+              />
+            </>
+          ) : null}
+          {intakeKind === 'FILE' ? (
+            <>
+              <label htmlFor="source-intake-file">File</label>
+              <input
+                id="source-intake-file"
+                type="file"
+                onChange={(event) => setSelectedFile(event.target.files?.[0])}
+              />
+            </>
+          ) : null}
+          {intakeKind === 'URL' ? (
+            <>
+              <label htmlFor="source-intake-url">URL</label>
+              <input
+                id="source-intake-url"
+                type="url"
+                value={requestedUrl}
+                maxLength={2048}
+                onChange={(event) => setRequestedUrl(event.target.value)}
+              />
+            </>
+          ) : null}
+          <button type="submit" disabled={intakeKind === 'FILE' && !selectedFile}>
+            Add intake draft
+          </button>
+        </form>
+        {draftQueue.items.length === 0 ? <p>No route-scoped drafts.</p> : null}
+        {draftQueue.items.length > 0 ? (
+          <>
+            <ul className="source-intake-list" aria-label="Intake drafts">
+              {draftQueue.items.map((item) => (
+                <li key={item.draftItemId}>
+                  <div>
+                    <strong>{item.label}</strong>
+                    <p>
+                      {item.kind} · {item.validation}
+                    </p>
+                    <small>{item.message}</small>
+                  </div>
+                  <button type="button" onClick={() => draftQueue.remove(item.draftItemId)}>
+                    Remove {item.label}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <div className="source-intake-actions">
+              <button type="button" onClick={draftQueue.discardAll}>
+                Discard all drafts
+              </button>
+              <button
+                type="button"
+                disabled
+                title="Requires the separately approved durable Intake persistence boundary."
+              >
+                Submit drafts
+              </button>
+            </div>
+          </>
+        ) : null}
       </section>
 
       <section className="action-card" aria-labelledby="source-library-heading">

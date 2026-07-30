@@ -42,7 +42,7 @@ export class PostgresSourcesIntakeLifecycle implements SourcesIntakeLifecyclePor
       for (const item of items) {
         if (!['FAILED', 'CANCELLED', 'OUTCOME_INDETERMINATE'].includes(item.state)) {
           throw new ShotgunError({
-            code: 'INVALID_STATE_TRANSITION',
+            code: 'VALIDATION_ERROR',
             safeMessage: 'Only failed, cancelled or outcome-indeterminate Items may be retried.',
             module: 'frontend-sources-write-postgres',
             operation: 'retry-items',

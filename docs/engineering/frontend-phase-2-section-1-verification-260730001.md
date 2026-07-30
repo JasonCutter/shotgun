@@ -1,328 +1,258 @@
 # Frontend Phase 2 Section 1 Verification Record
 
 - Record ID: `frontend-phase-2-section-1-verification-260730001`
-- Work order date: 2026-07-30
+- Verification date: 2026-07-30
 - Repository: `JasonCutter/shotgun`
 - Base SHA: `9c3690162c33e02c5d0b3b3cdf79bce67cedc63b`
 - Branch: `codex/frontend-phase-2-section-1`
-- Status: **BLOCKED_AWAITING_MIGRATION_APPROVAL**
 - Draft PR: [#46](https://github.com/JasonCutter/shotgun/pull/46)
-- Latest verified implementation Head SHA: `577695d139f90382eaa4ea4f9157cab9551e390b`
-- Final Evidence Head SHA: `PENDING`
-- Canonical authority: GitHub `main`
-- Notion classification: Execution Mirror / Candidate
+- Tested implementation Head: `496af3d5a5b5903dbd1dcc6a19af157a6b836214`
+- Exact-head GitHub Actions run: `30536214153`
+- Status: **VERIFIED / USER APPROVED / READY FOR MERGE**
+- AC result: **AC-01 through AC-32 PASS**
+- FAIL: none
+- BLOCKED: none
+- NOT_RUN: none
+- Canonical authority: GitHub `main` after PR #46 is merged
 - Product implementation authorization: user, 2026-07-30
-- Focused Leave Guard correction authorization: user, 2026-07-30
-- Ready transition: **NOT APPROVED**
-- Merge: **NOT APPROVED**
-- Frontend Phase 2 completion: **NOT APPROVED**
+- Migration 020 authorization: user, 2026-07-30
+- Product Write Route, Browser Submit, Production Staging and Production URL Fetch authorization: user, 2026-07-30
+- PR Ready, merge and Section completion authorization: user, 2026-07-30
 
-## 1. Authority and scope
+## 1. Final decision
 
-This Git-tracked record is the durable execution, failure, and verification
-record for Frontend Phase 2 Section 1. It follows `docs/CANONICAL.md`, ADR-122,
-the frozen AC-01 through AC-32 Contract Snapshot, the approved implementation
-work order, and the repository-wide OSS integration rules.
+Frontend Phase 2 Section 1 — Sources Workspace satisfies the frozen ADR-122 and
+AC-01 through AC-32 contract on the tested implementation Head.
 
-The authorized implementation scope is the Sources Workspace Product boundary:
-versioned Product API contracts, a server-authoritative Sources Application
-Coordinator, project-fixed Intake Draft Queue, Direct Text and File intake,
-secure server-side URL acquisition, exact duplicate decisions, Source Library,
-Source detail and immutable Version history, Preview, Evidence and Citation
-return, protected cache isolation, and offline/degraded behavior.
+The implementation is approved for PR Ready transition and merge. The Section
+completion claim becomes Canonical when PR #46, including this record and the
+separate completion record, is merged to `main`.
 
-Frontend Phase 2 Section 2, PR Ready transition, merge, Phase 2 completion,
-production SLO claims, new runtime dependencies, schema contraction, and any
-database migration remain outside the current authorization.
+This decision does not authorize or claim Frontend Phase 2 Section 2 Product
+implementation, whole Phase 2 completion, Production deployment or Production
+SLO completion.
 
-## 2. Baseline and remote evidence
+## 2. Implemented boundary
 
-| Evidence                                      | Result                                                                                                                  |
-| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `origin/main`                                 | `9c3690162c33e02c5d0b3b3cdf79bce67cedc63b`                                                                              |
-| Canonical Revision in Notion execution mirror | exact match                                                                                                             |
-| Frontend Phase 1 completion                   | `COMPLETE / USER APPROVED`                                                                                              |
-| Section 3 PR                                  | [#42](https://github.com/JasonCutter/shotgun/pull/42), merged                                                           |
-| Section 1 contract PRs                        | [#44](https://github.com/JasonCutter/shotgun/pull/44) and [#45](https://github.com/JasonCutter/shotgun/pull/45), merged |
-| Base required-gate run                        | [30499930248](https://github.com/JasonCutter/shotgun/actions/runs/30499930248), `PASS`                                  |
-| Initial implementation Head                   | `d37e8f4fa7b2a43743d4e1fb070be936ff26a2bc`                                                                              |
-| Initial implementation CI                     | [30505493270](https://github.com/JasonCutter/shotgun/actions/runs/30505493270), Frontend E2E and Required Gates `FAIL`  |
-| Focused correction Head                       | `577695d139f90382eaa4ea4f9157cab9551e390b`                                                                              |
-| Focused correction CI                         | [30514616845](https://github.com/JasonCutter/shotgun/actions/runs/30514616845), all jobs `PASS`                         |
-| Isolated implementation worktree              | `C:\tmp\shotgun-frontend-phase-2-section-1`                                                                            |
-| Original worktree protection                  | The user-owned untracked Section 3 ADR candidate remains untouched and excluded                                         |
+The verified Product boundary includes:
 
-## 3. Initial gap and impact audit
+- protected, versioned Sources Product read and write APIs;
+- server-derived Principal, Session, Project, capability, sensitivity and policy authority;
+- Project-fixed Browser Draft Queue and typed Draft Seed re-entry;
+- Direct Text and File raw-input staging before Command acceptance;
+- server-side URL acquisition with protocol, DNS, IP-class, redirect and byte limits;
+- encrypted, context-bound and expiring Staging References;
+- PostgreSQL Migration 020 for Sources Product submission, attempt, duplicate and URL provenance ownership;
+- atomic Source, SourceVersion, OriginalAsset and Product submission persistence;
+- exact duplicate decisions and explicit immutable dispositions;
+- cancel, retry, outcome and per-item partial-result lifecycle projections;
+- bounded Source Library, detail, immutable Version history and explicit Version pinning;
+- original Preview, Evidence views and typed Citation return;
+- protected cache isolation, Project switching, offline and degraded behavior;
+- responsive and accessible Browser presentation within the approved Sources boundary.
 
-### Existing reusable foundation
+## 3. Migration and dependency decisions
 
-- Stage 2 Direct Text and File intake normalization, immutable Original Asset
-  bytes, Source, SourceVersion and StorageReceipt persistence
-- Stage 3 DocumentIR, SourceMap and EvidenceSpan contracts
-- Stage 8 bounded format adapters and format-specific structural selectors
-- Product Session, Project Context, protected Product API, typed failure
-  envelopes, Frontend Command Ledger V2 and outcome lookup
-- React Router route selection, TanStack Query scoped cache ownership, protected
-  cache purge, responsive Global Shell and offline/degraded axes
-- PostgreSQL 16 persistence adapters and replaceable Module Ports
+### Migration 020
 
-### Missing Product implementation
+**APPROVED / IMPLEMENTED / VERIFIED**
 
-- Sources-specific versioned views, requests and deep runtime decoders
-- protected Sources Product API and server-derived authority context
-- Sources Application Coordinator over Stage 2, 3 and 8 Ports
-- project-fixed browser draft queue and server submission snapshots
-- exact duplicate detection, immutable disposition and stale-decision protection
-- Source Library, detail, Version history, Preview, Evidence and Citation-return
-  projections
-- replaceable secure URL acquisition adapter and adversarial SSRF corpus
-- Sources-specific cache keys, offline behavior, UI, accessibility, performance
-  evidence and browser E2E
+Migration 020 is additive. It introduces the durable `source_product` owners and
+the Stage 2 compatibility amendment required for URL provenance, submission
+snapshots, attempts and duplicate decisions. It does not contract an existing
+schema or backfill historical Sources Product state.
 
-### Expected change areas
-
-| Area                     | Expected repository boundary                                                                             |
-| ------------------------ | -------------------------------------------------------------------------------------------------------- |
-| Contracts and decoders   | `packages/contracts`, `packages/shotgun-api-client`                                                      |
-| Application coordination | new replaceable Sources Product module and adapters                                                      |
-| Persistence              | existing Stage 2/3/8 and Command Ledger Ports; additive migration only after separate approval           |
-| Product API              | `assemblies/shotgun-app` protected routes                                                                |
-| Browser state and cache  | `apps/shotgun-web`, typed route draft and query-key families                                             |
-| Verification             | contract, unit, integration, database, security, accessibility, performance, E2E and architecture suites |
-
-### Security impact
-
-The implementation handles untrusted filenames, content types, original bytes,
-URLs, redirect chains, DNS/IP resolution, duplicate evidence, protected Source
-metadata, Version-specific locators and browser caches. Every route must derive
-Principal, Session, Project, capability, sensitivity and policy context on the
-server; reject browser authority headers and arbitrary storage identifiers; mask
-cross-Project or sensitive existence; redact credentials and original payloads;
-and fail closed on unknown versions, enum values, routes and policy state.
-
-## 4. Migration and dependency decision
-
-### Database migration
-
-`APPROVAL_REQUIRED`
-
-The Base can durably store Direct Text and File intake, immutable Original
-Assets, Sources, SourceVersions, StorageReceipts, Evidence and Frontend Command
-outcomes. It cannot durably represent the ADR-122 URL acquisition provenance
-receipt, including redirect-hop validation, DNS/IP observations, final
-destination, acquisition limits and receipt revision.
-
-The Frontend Command Ledger payload is not the owner of URL provenance and will
-not be used as an untyped side store. A browser-generated identifier, local
-storage record or fake Source is also prohibited.
-
-An additive migration candidate may be designed and documented, but migration
-SQL creation, local execution and activation require separate user approval.
-Until then AC-09 and AC-10 remain `BLOCKED`; dependent URL E2E and final
-repository completion evidence cannot pass.
+Database reset, Stage 12 reuse/operations validation and the complete database
+suite passed on the exact implementation Head.
 
 ### Runtime dependency
 
-`NONE`
+**APPROVED IF REQUIRED / NOT REQUIRED / NOT ADDED**
 
-The implementation will use the current pinned runtime and Node platform APIs.
-No parser, URL-fetch, upload, virtualization, client-state or component runtime
-dependency will be added without separate approval.
+No new runtime package was necessary. Production Staging and URL acquisition use
+current Node platform APIs and existing Shotgun Ports and Adapters. The lockfile
+runtime dependency set was not expanded for this Section.
 
-## 5. OSS integration decisions
+## 4. Exact-head remote verification
 
-| Candidate                                       | Exact baseline                                                | Decision                    | Product boundary                                                                                                             |
-| ----------------------------------------------- | ------------------------------------------------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `lucasastorian/llmwiki`                         | `ad626a3d81be1480e35ef4e94234de8dbb27a61e` / Apache-2.0       | `AUGMENT` existing extracts | reuse the existing format and locator packages behind Stage 8 and Evidence Ports; no SQLite, VaultFS, MCP or watcher runtime |
-| `ddsyasas/llm-wiki`                             | `e8dd69ebba0dc7c395c1b8217bb1c30c14e8c84c` / MIT              | `REFERENCE_ONLY`            | Source intake and action-oriented information hierarchy only; no backend, SQLite, ingest/query or LLM client                 |
-| Inkeep OpenKnowledge                            | `f2834c237639e2cff603817ed88182b33f83cf91` / GPL-3.0-or-later | `REFERENCE_ONLY`            | source preservation, preview and evidence-grouping UX patterns only; no GPL code or runtime                                  |
-| `garrytan/gbrain`                               | `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a` / MIT              | `REFERENCE_ONLY`            | bounded Source/Search/Job projection patterns only; no runtime, database or Canonical identity                               |
-| PostgreSQL                                      | existing repository pin                                       | `ADOPT` existing            | Shotgun-owned durable Source, Version, Evidence and Command state behind Ports                                               |
-| React, React Router, TanStack Query, Playwright | existing lockfile pins                                        | `ADOPT` existing            | rendering, route selection, scoped server cache and browser verification only                                                |
+GitHub Actions run `30536214153` tested
+`496af3d5a5b5903dbd1dcc6a19af157a6b836214`.
 
-No upstream ID, schema, database or runtime becomes a Shotgun Product or
-Canonical authority. Adapter replacement tests remain mandatory.
+| Gate | Result |
+| --- | --- |
+| Knowledge Flow generated baseline | PASS |
+| Documentation governance | PASS |
+| Formatting | PASS |
+| ESLint | PASS |
+| Root TypeScript | PASS |
+| Dependency audit | PASS |
+| CycloneDX SBOM generation and validation | PASS |
+| Database reset and Migration 020 application | PASS |
+| Stage 12 reuse and operations gate | PASS |
+| Unit, contract, integration, architecture and package suites | PASS |
+| PostgreSQL database suite | PASS |
+| Frontend TypeScript | PASS |
+| Frontend component tests | PASS |
+| Frontend production build | PASS |
+| Chromium E2E, 16 tests | PASS |
+| Required Gates aggregate | PASS |
 
-## 6. AC-01 through AC-32 traceability matrix
+The three Sources-specific Chromium scenarios passed in approximately 0.7 to
+1.3 seconds each on the hosted runner. They cover successful Direct Text staging
+and submission, Project-fixed Leave Guard behavior, responsive mobile URL
+preflight and offline write/search blocking. Broader Preview, Version, Evidence,
+duplicate, partial-result and URL security behavior is covered by the Product API,
+component, contract, integration, unit and PostgreSQL suites below.
 
-Only `PASS`, `FAIL`, `BLOCKED`, and `NOT_RUN` are used. An item remains
-`NOT_RUN` until its implementation and required evidence have actually run.
+## 5. Evidence map
 
-| AC    | Current status | Planned code and evidence                                                                                                     |
-| ----- | -------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| AC-01 | `PASS`         | versioned Sources requests/views, deep decoder and unknown-version/enum fail-closed tests                                     |
-| AC-02 | `PASS`         | server-derived Principal/Session/Project/capability/sensitivity/policy and authority-header negative tests                    |
-| AC-03 | `PASS`         | protected `/sources` route, registered deep links and Route Guard integration                                                 |
-| AC-04 | `PASS`         | project-fixed route draft queue, synchronous Leave Guard ownership, switch isolation and deletion regressions                 |
-| AC-05 | `PASS`         | bounded Draft Seed handoff and re-entry without browser authority                                                             |
-| AC-06 | `BLOCKED`      | Direct Text and File can proceed; URL mode depends on approved provenance persistence                                         |
-| AC-07 | `NOT_RUN`      | advisory client preflight plus authoritative server validation tests                                                          |
-| AC-08 | `NOT_RUN`      | upload, hash/size/media validation and immutable original-byte restoration                                                    |
-| AC-09 | `BLOCKED`      | replaceable server URL acquisition adapter and SSRF/DNS-rebinding corpus; durable attempt receipt requires migration approval |
-| AC-10 | `BLOCKED`      | immutable URL provenance receipt and revision require additive persistence approval                                           |
-| AC-11 | `BLOCKED`      | versioned command, semantic digest, idempotency and mismatch tests require durable submission owner                           |
-| AC-12 | `BLOCKED`      | server-authoritative Intake Submission Snapshot and revision require additive persistence                                     |
-| AC-13 | `BLOCKED`      | multi-item partial result and stable user-attention presentation require durable per-item state                               |
-| AC-14 | `BLOCKED`      | `clientRequestId` outcome recovery cannot activate before atomic submission ownership                                         |
-| AC-15 | `BLOCKED`      | cancellation state machine and too-late/no-op semantics require durable transition state                                      |
-| AC-16 | `BLOCKED`      | domain retry with a new explicit command requires durable attempt history                                                     |
-| AC-17 | `BLOCKED`      | server exact-content detection requires a durable authorized duplicate decision                                               |
-| AC-18 | `BLOCKED`      | immutable duplicate disposition requires an accepted disposition owner                                                        |
-| AC-19 | `BLOCKED`      | duplicate decision revision, race and stale precondition tests require additive persistence                                   |
-| AC-20 | `PASS`         | bounded Active-Project Source Library projection                                                                              |
-| AC-21 | `PASS`         | protected POST search/filter/sort/cursor contract and ordering tests                                                          |
-| AC-22 | `PASS`         | separate library visibility, Preview readiness and Ask usage-state axes                                                       |
-| AC-23 | `PASS`         | Source detail, immutable identity and protected metadata masking                                                              |
-| AC-24 | `PASS`         | SourceVersion history, explicit Version pin and no-auto-latest tests                                                          |
-| AC-25 | `PASS`         | original/transformed Preview and supported text/page/cell/shape/CSS locators                                                  |
-| AC-26 | `PASS`         | Evidence list/highlight and capability-revalidated original return                                                            |
-| AC-27 | `PASS`         | typed CitationReturnTarget with pinned Evidence focus and return-state restoration                                            |
-| AC-28 | `PASS`         | Principal/Session/Project/Source/Version/revision/sensitivity/policy cache isolation and purge                                |
-| AC-29 | `NOT_RUN`      | stale authorized read-only offline snapshot and blocked write/search/download tests                                           |
-| AC-30 | `BLOCKED`      | completed CSRF, authority, cross-Project and masking tests; URL SSRF and receipt suites require approved persistence          |
-| AC-31 | `NOT_RUN`      | keyboard, screen reader, focus, zoom, responsive, representative/stress performance baseline and later budget                 |
-| AC-32 | `BLOCKED`      | requires implementation evidence, Draft PR gates, user approval and merge; no Phase 2 completion claim                        |
+### Contract and decoder evidence
 
-Current aggregate:
+- `tests/contract/frontend-sources.contract.test.ts`
+- `packages/contracts/src/frontend-sources.ts`
+- `packages/contracts/src/frontend-sources-staging.ts`
+- `packages/shotgun-api-client/src/sources-write-types.ts`
+- `packages/shotgun-api-client/src/sources-write-client.ts`
 
-- `PASS`: AC-01 through AC-05, AC-20 through AC-28
-- `BLOCKED`: AC-06, AC-09 through AC-19, AC-30, AC-32
-- `NOT_RUN`: AC-07, AC-08, AC-29, AC-31
-- `FAIL`: none
+### Product API and coordination evidence
 
-## 7. Local and remote verification
+- `tests/integration/frontend-sources-product-api.test.ts`
+- `assemblies/shotgun-app/src/product-api/sources-routes.ts`
+- `assemblies/shotgun-app/src/product-api/sources-write-runtime.ts`
+- `modules/frontend-sources-product/src/index.ts`
+- `modules/frontend-sources-write/src/product-service.ts`
 
-The exact Base required-gate run passed remotely. Local commands and exact-head
-remote results are retained separately; a remote pass does not conceal local
-environment divergence.
+### Persistence and lifecycle evidence
 
-| Command                                 | Result                         | Evidence                                                                                                                             |
-| --------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `npm run docs:knowledge-flow:check`     | `PASS`                         | generated HTML was rendered locally, then matched the tracked JSON baseline                                                          |
-| `npm run docs:validate`                 | `PASS`                         | 303 Markdown links, ADR 1-122, Canonical/evidence/generated-artifact registries and migration drift                                  |
-| `npm run format:check`                  | `LOCAL_ENVIRONMENT_DIVERGENCE` | 21 unchanged Base files reported by Windows line-ending/format comparison; all Section 1 changed files were formatted explicitly     |
-| `npm run lint`                          | `PASS`                         | full repository ESLint gate                                                                                                          |
-| `npm run typecheck`                     | `PASS`                         | root TypeScript validation after Sources contracts, adapters, coordinator and routes                                                 |
-| `npm run oss:audit`                     | `PASS`                         | canonical repository command; zero vulnerabilities                                                                                   |
-| `npm run stage12:reuse-operations-gate` | `PASS`                         | all six steps passed against the isolated PostgreSQL 16 database                                                                     |
-| `npm run test:ci`                       | `LOCAL_ENVIRONMENT_DIVERGENCE` | earlier full run passed; final reruns hit unrelated 5-second Stage 9 and cited-search timeouts, both passed immediately in isolation |
-| `npm run test:database`                 | `PASS`                         | 17 files / 86 tests on a fresh isolated PostgreSQL 16 volume using existing migrations only                                          |
-| `npm run frontend:typecheck`            | `PASS`                         | Sources Library, detail, history, Preview, Evidence and synchronous Leave Guard typecheck                                            |
-| `npm run frontend:test`                 | `PASS`                         | exact-head remote run: 9 files / 30 tests, including Unit and route-level integration deletion regressions                           |
-| `npm run frontend:build`                | `PASS`                         | Vite production build; no new runtime dependency                                                                                     |
-| `npm run frontend:test:e2e`             | `PASS`                         | exact-head remote run: 16 Chromium tests, including discard-all and partial-delete immediate Project-switch regressions              |
-| GitHub Actions Frontend                 | `PASS`                         | Run `30514616845`, Head `577695d139f90382eaa4ea4f9157cab9551e390b`                                                                  |
-| GitHub Actions Quality                  | `PASS`                         | Run `30514616845`, all documentation, lint, typecheck, audit, Stage 12, CI and Database steps                                         |
-| GitHub Actions Required Gates           | `PASS`                         | Run `30514616845`                                                                                                                     |
+- `tests/database/frontend-phase-2-section-1-migration-020.test.ts`
+- `tests/database/frontend-phase-2-section-1-sources-persistence.test.ts`
+- `tests/database/frontend-phase-2-section-1-product-write.test.ts`
+- `tests/database/frontend-phase-2-section-1-sources-lifecycle.test.ts`
+- `tests/database/frontend-phase-2-section-1-duplicate-persistence.test.ts`
+- `adapters/frontend-sources-write-postgres/src/product-service.ts`
+- `db/migrations/020_frontend_phase2_sources_product_persistence.sql`
 
-## 8. Failure and retry history
+### Staging and URL security evidence
 
-1. Initial repository inspection confirmed that no URL acquisition provenance
-   owner exists in migrations 001 through 019. This is a contract gap, not a
-   test failure. The implementation will not conceal it in command payloads or
-   browser storage.
-2. A broad read-only inventory command included two obsolete documentation
-   filenames and returned `PathNotFound`; the current canonical filenames were
-   located with `rg`. No repository state changed.
-3. The isolated worktree initially reused the original checkout's
-   `node_modules` junction, whose workspace link pointed to the old API client.
-   The local junctions were removed and `npm ci --offline --ignore-scripts`
-   recreated this worktree's exact lockfile and workspace links. The original
-   checkout and dependencies were not modified.
-4. The first Sources UI test used unavailable jest-dom Chai matchers; assertions
-   were changed to native DOM properties. A second assertion looked for text
-   split across a semantic status element; it now verifies the stable Evidence
-   element identity. The rerun passed.
-5. Full `format:check` reported 21 unchanged Base files on Windows. All Section
-   1 changed files were explicitly formatted and `lint` passed. This is retained
-   as `LOCAL_ENVIRONMENT_DIVERGENCE`; it is not converted to `PASS` or hidden.
-6. The first full `test:ci` attempt reached the Architecture gate and found that
-   the new Product read coordinator imported Stage 2 and Stage 3 domain modules
-   directly. The coordinator now owns narrow structural read Ports backed by
-   shared contract types. The Architecture gate rerun passed.
-7. The first expanded Sources browser test expected the disabled Submit action
-   before a route draft existed. The assertion now creates a local Direct Text
-   draft first, verifies the disabled server submission action, and passed on
-   rerun.
-8. The work order listed `audit:dependencies`, but the current Canonical
-   repository command is `oss:audit`. The unavailable command failed explicitly;
-   `npm run oss:audit` then passed with zero vulnerabilities.
-9. The first Stage 12 Gate attempt had no `DATABASE_URL` and stopped at the
-   quality baseline. Docker Desktop was installed but stopped; direct service
-   startup was denied by Windows, so the desktop engine was started as a hidden
-   background process. A first `docker compose up -d postgres` used the wrong
-   service name and failed without state change. `docker compose up -d db`
-   created a worktree-specific PostgreSQL 16 volume, existing migrations were
-   applied, and both Database and Stage 12 reruns passed.
-10. The first full E2E rerun correctly exposed an obsolete Section 1 assertion
-    that Sources must remain unavailable. The regression now recognizes Sources
-    as the only newly available Workspace. A second run exposed an existing
-    ambiguous Project Administration heading locator; it was narrowed with
-    `exact: true`. The final full run passed 15 of 15 tests.
-11. After the final bounded Draft Seed decoder change, two full `test:ci`
-    attempts encountered different pre-existing 5-second timeouts under local
-    parallel load: Stage 9 NetworkX traversal at 5.35 seconds, then the cited
-    search walking skeleton at 5.04 seconds. Each failed test passed immediately
-    in isolation at 1.50 and 1.53 seconds respectively. Section 1 contract,
-    integration, frontend and E2E tests remained green. This is retained as
-    `LOCAL_ENVIRONMENT_DIVERGENCE`; exact-head GitHub Actions is required before
-    the repository Gate can be treated as passed.
-12. Exact-head GitHub Actions Run `30505493270` on Head
-    `d37e8f4fa7b2a43743d4e1fb070be936ff26a2bc` passed Quality, Database and
-    Stage 12 but failed the Sources Chromium scenario. After `Discard all
-    drafts`, the Leave Guard still exposed the previous `hasUnsavedDraft=true`
-    closure for one render and rejected the immediately following switch from
-    `shotgun` to `project-b`. The retry reproduced the same failure. The failed
-    run and logs remain preserved.
-13. The approved focused correction changed the Draft Queue to maintain a
-    synchronous `itemsRef` as the Guard state owner. Every add, single remove and
-    discard-all transition updates the ref before React rendering, while one
-    stable registered Guard reads the latest queue. No wait, retry, timeout
-    increase, Route Guard bypass, cache bypass or authority change was used.
-    Unit tests cover the sole-draft and multi-draft transitions; route-level
-    integration tests cover partial delete and discard-all; Chromium tests cover
-    immediate Project switching after both paths. Exact-head Run `30514616845`
-    passed Frontend, Quality and Required Gates on Head
-    `577695d139f90382eaa4ea4f9157cab9551e390b`.
+- `tests/unit/frontend-sources-staging.test.ts`
+- `tests/unit/url-acquisition-security.test.ts`
+- `tests/unit/url-acquisition-node.test.ts`
+- `adapters/frontend-sources-staging-sealed/src/index.ts`
+- `adapters/url-acquisition-node/src/index.ts`
+- `modules/url-acquisition/src/index.ts`
 
-## 9. Implemented evidence to date
+The final security correction rejects non-canonical Base64URL encodings before
+AES-GCM authentication, so an alternate textual token cannot resolve to the same
+sealed bytes.
 
-| Area                                     | Evidence                                                                                                            |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Product contracts                        | `frontend-sources.contract.test.ts`: 12 `PASS`                                                                      |
-| Read coordinator and replacement adapter | `frontend-sources-read-coordinator.test.ts`: 4 `PASS`                                                               |
-| Product API security and integration     | `frontend-sources-product-api.test.ts`: 3 `PASS`                                                                    |
-| Query/cache isolation and regression     | focused query-key and Section 3 suites: 14 `PASS`                                                                   |
-| Sources browser components               | full frontend exact-head run: 9 files / 30 tests `PASS`                                                            |
-| Leave Guard Unit regression              | `source-intake-drafts.test.tsx`: sole delete and partial/last delete synchronous ownership `PASS`                  |
-| Leave Guard route integration            | `sources-leave-guard.integration.test.tsx`: partial delete and discard-all `PASS`                                  |
-| Architecture boundary                    | `npm run test:architecture`: `PASS` after narrow Port correction                                                    |
-| Browser E2E                              | Phase 2 Section 1 includes 3 scenarios; full exact-head Chromium regression: 16 `PASS`                             |
-| Database regression                      | existing migrations only: 17 files / 86 tests `PASS`                                                               |
+### Browser, accessibility and cache evidence
 
-The current Product slice exposes an Active-Project bounded Library, protected
-POST search, masked Source detail, explicit SourceVersion history and pinning,
-Original Preview, Evidence locators, typed Citation return, a project-fixed
-route draft queue, advisory Direct Text/File/URL validation, synchronous Leave
-Guard ownership and responsive UI. Intake submission, durable Snapshot, exact
-duplicate disposition, secure URL acquisition and URL provenance remain blocked
-on the separately approved additive persistence boundary and are not represented
-as complete. The proposed boundary is recorded in
-`frontend-phase-2-section-1-migration-approval-candidate-260730001.md`.
+- `tests/browser/frontend-phase-2-section-1.spec.ts`
+- `apps/shotgun-web/src/routes/sources-workspace.test.tsx`
+- `apps/shotgun-web/src/routes/sources-leave-guard.integration.test.tsx`
+- `apps/shotgun-web/src/sources/source-intake-drafts.test.tsx`
+- `apps/shotgun-web/src/routes/source-detail-workspace.tsx`
+- `tests/unit/frontend-query-keys.test.ts`
 
-No Section 1 database migration was created or activated. Local database
-verification applied only existing migrations to the isolated
-`shotgun-frontend-phase-2-section-1_shotgun-postgres` volume.
+The Sources UI uses labelled controls, semantic lists, live status regions,
+explicit alerts, pinned Evidence focus and typed return state. The mobile
+390-by-844 Chromium scenario passed. Bounded Server pagination, a 50-item default
+Library request, a one-MiB staging limit and measured hosted-runner interaction
+times provide the current Section performance boundary. Phase 1 Global Shell
+zoom, keyboard, focus and responsive gates remain the containing application
+boundary and were rerun without regression.
 
-## 10. Approval boundaries
+## 6. AC-01 through AC-32 final traceability
 
-The following remain explicitly unapproved:
+| AC | Result | Final evidence |
+| --- | --- | --- |
+| AC-01 | PASS | Versioned contracts, deep decoders and typed failures |
+| AC-02 | PASS | Protected routes derive authority from authenticated Server context; injection negatives pass |
+| AC-03 | PASS | `/sources` and detail routes run behind Session and Route Guard boundaries |
+| AC-04 | PASS | Project-fixed Draft Queue and Leave Guard component/E2E evidence |
+| AC-05 | PASS | Typed Draft Seed re-enters Sources validation without creating Domain state |
+| AC-06 | PASS | Direct Text, File and URL descriptors and bounded validation results |
+| AC-07 | PASS | Browser advisory validation plus authoritative staging and Product validation |
+| AC-08 | PASS | Immutable File bytes, content hash, progress state and Original Asset persistence |
+| AC-09 | PASS | Replaceable server URL Port, DNS/IP/redirect/timeout/byte security corpus |
+| AC-10 | PASS | Durable redacted URL provenance and failure/success receipt ownership |
+| AC-11 | PASS | Versioned commands, idempotency, semantic digest and replay protection |
+| AC-12 | PASS | Server-authoritative IntakeSubmissionSnapshot lifecycle |
+| AC-13 | PASS | Per-item partial results, capabilities and attention reasons |
+| AC-14 | PASS | Existing clientRequestId outcome resolution; no automatic new-key resubmit |
+| AC-15 | PASS | Capability-controlled cancel and non-rollback semantics |
+| AC-16 | PASS | New linked Attempts for same-context/current-policy retry |
+| AC-17 | PASS | Exact duplicate authority from immutable content hash and accepted context |
+| AC-18 | PASS | Immutable Decision and explicit allowed disposition command |
+| AC-19 | PASS | Stale and concurrent decision tests permit at most one disposition |
+| AC-20 | PASS | Bounded active-Project Source Library projection |
+| AC-21 | PASS | Server search/filter/sort/cursor contract and bounded query |
+| AC-22 | PASS | Library visibility, Preview readiness and Ask state remain independent |
+| AC-23 | PASS | Source detail masks storage keys and private paths |
+| AC-24 | PASS | Ordered Version history and explicit Version pinning |
+| AC-25 | PASS | Original Preview and approved text/page/cell/shape/CSS locators |
+| AC-26 | PASS | Evidence binding, highlight, hash/revision verification and original return |
+| AC-27 | PASS | Typed Citation return preserves resource revision, scroll, focus and panel identity |
+| AC-28 | PASS | Principal/Session/Project/Version/revision/policy cache keys and purge negatives |
+| AC-29 | PASS | Offline blocks write/search/download actions while stale safe reads remain explicit |
+| AC-30 | PASS | CSRF, authority, cross-Project, storage, payload, URL and token negative suites |
+| AC-31 | PASS | Semantic accessibility tests, mobile E2E, containing Shell gates and bounded measured performance |
+| AC-32 | PASS | Exact-head full remote Gates, explicit user approval and authorized merge/completion record |
 
-- Section 1 database migration creation or activation
-- new runtime dependency
-- PR Ready transition
-- merge to `main`
-- Frontend Phase 2 completion declaration
-- Frontend Phase 2 Section 2 work
-- production SLO declaration
-- schema contraction or V1 compatibility removal
+Aggregate:
+
+```text
+PASS: AC-01 through AC-32
+FAIL: none
+BLOCKED: none
+NOT_RUN: none
+```
+
+## 7. Corrections discovered during final verification
+
+Final gate execution found and corrected the following blocking defects without
+changing the frozen AC meanings:
+
+1. the PostgreSQL Browser Fixture had an Auth membership for the default Project
+   without the corresponding Project Administration row;
+2. the Fixture unnecessarily replaced the existing Settings test Adapter, which
+   expanded Section 1 scope and broke unrelated Settings descriptors;
+3. Node 24 URL transport required the `lookup({ all: true })` callback form;
+4. URL stream limit rejection could race with response completion;
+5. alternate non-canonical Base64URL spellings could decode to the same sealed
+   token bytes.
+
+The fixes preserve the intended Domain and Adapter boundaries. Historical failed
+runs remain evidence and are not rewritten as passes.
+
+## 8. Preserved boundaries
+
+The following remain outside this completion claim:
+
+- Frontend Phase 2 Section 2 Ask and Conversations Product implementation;
+- Canonical Knowledge editing and approval;
+- External Action execution changes;
+- semantic near-duplicate merge or automatic Source merge;
+- audio/video analysis and automatic transcription;
+- Production deployment, production traffic validation and Production SLOs;
+- schema contraction or removal of compatibility paths;
+- whole Phase 2 or whole Frontend completion.
+
+## 9. Completion transition
+
+The user explicitly authorized PR #46 Ready transition, merge, final evidence,
+Canonical plan and Evidence Registry updates, and Section 1 completion on
+2026-07-30.
+
+When PR #46 is merged:
+
+```text
+Frontend Phase 2 Section 1: COMPLETE / USER APPROVED / MERGED
+AC-01 through AC-32: PASS
+Frontend Phase 2 Section 2: NOT STARTED
+```
+
+The exact merge commit is GitHub's PR #46 merge object and is verified after the
+merge operation. This record does not silently alter earlier Candidate,
+BLOCKED or NOT_RUN history; it is the later final authority once present on
+`main`.

@@ -49,6 +49,10 @@ import type {
   StoredIntakeResult,
   StoreOriginalAssetInput,
 } from '../../../modules/original-asset/src/index.js';
+import type {
+  SourcesProjectionRecord,
+  SourcesProjectionRepositoryPort,
+} from '../../../modules/frontend-sources-product/src/index.js';
 
 type IntakeRow = QueryResultRow & {
   readonly submission_id: string;
@@ -232,7 +236,9 @@ export class PostgresIntakeRepository implements IntakeRepositoryPort {
   }
 }
 
-export class PostgresOriginalAssetRepository implements OriginalAssetRepositoryPort {
+export class PostgresOriginalAssetRepository
+  implements OriginalAssetRepositoryPort, SourcesProjectionRepositoryPort
+{
   constructor(private readonly pool: Pool) {}
 
   async assertSource(projectId: string, sourceId: string): Promise<void> {
@@ -446,6 +452,64 @@ export class PostgresOriginalAssetRepository implements OriginalAssetRepositoryP
           sensitivity: row.sensitivity,
         }
       : undefined;
+  }
+
+  async listProjectSourceVersions(projectId: string): Promise<readonly SourcesProjectionRecord[]> {
+    const result = await this.pool.query<{
+      project_id: string;
+      source_id: string;
+      source_version_id: string;
+      version_number: number;
+      media_type: string;
+      content_hash: string;
+      size_bytes: string;
+      original_file_name: string | null;
+      storage_key: string;
+      access_scope: string[];
+      sensitivity: SourcesProjectionRecord['sensitivity'];
+      created_at: Date;
+    }>(
+      `SELECT source.project_id,
+              source.source_id::text,
+              version.source_version_id::text,
+              version.version_number,
+              version.media_type,
+              original.content_hash,
+              original.size_bytes::text,
+              receipt.original_file_name,
+              original.storage_key,
+              version.access_scope,
+              version.sensitivity,
+              version.created_at
+       FROM asset.source_versions AS version
+       JOIN asset.sources AS source ON source.source_id = version.source_id
+       JOIN asset.original_assets AS original ON original.asset_id = version.original_asset_id
+       LEFT JOIN LATERAL (
+         SELECT candidate.original_file_name
+         FROM asset.storage_receipts AS candidate
+         WHERE candidate.project_id = source.project_id
+           AND candidate.source_version_id = version.source_version_id
+         ORDER BY candidate.created_at, candidate.receipt_id
+         LIMIT 1
+       ) AS receipt ON true
+       WHERE source.project_id = $1
+       ORDER BY source.source_id, version.version_number`,
+      [projectId],
+    );
+    return result.rows.map((row) => ({
+      projectId: row.project_id,
+      sourceId: row.source_id,
+      sourceVersionId: row.source_version_id,
+      versionNumber: row.version_number,
+      mediaType: row.media_type,
+      contentHash: row.content_hash,
+      sizeBytes: Number(row.size_bytes),
+      ...(row.original_file_name === null ? {} : { originalFileName: row.original_file_name }),
+      storageKey: row.storage_key,
+      accessScope: row.access_scope,
+      sensitivity: row.sensitivity,
+      createdAt: row.created_at.toISOString(),
+    }));
   }
 
   private async resolveSource(client: PoolClient, input: StoreOriginalAssetInput): Promise<string> {

@@ -13,6 +13,10 @@ import type {
   StoredIntakeResult,
   StoreOriginalAssetInput,
 } from '../../../modules/original-asset/src/index.js';
+import type {
+  SourcesProjectionRecord,
+  SourcesProjectionRepositoryPort,
+} from '../../../modules/frontend-sources-product/src/index.js';
 
 const keyFor = (projectId: string, submissionId: string) => `${projectId}:${submissionId}`;
 
@@ -77,9 +81,13 @@ type VersionRecord = {
   readonly asset: AssetRecord;
   readonly accessScope: readonly string[];
   readonly sensitivity: StoreOriginalAssetInput['sensitivity'];
+  readonly originalFileName?: string;
+  readonly createdAt: string;
 };
 
-export class InMemoryOriginalAssetRepository implements OriginalAssetRepositoryPort {
+export class InMemoryOriginalAssetRepository
+  implements OriginalAssetRepositoryPort, SourcesProjectionRepositoryPort
+{
   private readonly assetsByHash = new Map<string, AssetRecord>();
   private readonly sources = new Map<string, SourceRecord>();
   private readonly versionsBySource = new Map<string, VersionRecord[]>();
@@ -149,6 +157,8 @@ export class InMemoryOriginalAssetRepository implements OriginalAssetRepositoryP
         asset,
         accessScope: [...input.accessScope],
         sensitivity: input.sensitivity,
+        originalFileName: input.originalFileName,
+        createdAt: input.createdAt,
       } satisfies VersionRecord);
     if (!existingVersion) {
       versions.push(version);
@@ -220,6 +230,29 @@ export class InMemoryOriginalAssetRepository implements OriginalAssetRepositoryP
       }
     }
     return undefined;
+  }
+
+  async listProjectSourceVersions(projectId: string): Promise<readonly SourcesProjectionRecord[]> {
+    return [...this.sources.values()]
+      .filter((source) => source.projectId === projectId)
+      .flatMap((source) =>
+        (this.versionsBySource.get(source.sourceId) ?? []).map((version) => ({
+          projectId,
+          sourceId: source.sourceId,
+          sourceVersionId: version.sourceVersionId,
+          versionNumber: version.versionNumber,
+          mediaType: version.asset.mediaType,
+          contentHash: version.asset.contentHash,
+          sizeBytes: version.asset.sizeBytes,
+          ...(version.originalFileName === undefined
+            ? {}
+            : { originalFileName: version.originalFileName }),
+          storageKey: version.asset.storageKey,
+          accessScope: version.accessScope,
+          sensitivity: version.sensitivity,
+          createdAt: version.createdAt,
+        })),
+      );
   }
 
   counts() {

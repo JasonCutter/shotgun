@@ -6,7 +6,7 @@
 - Base SHA: `9c3690162c33e02c5d0b3b3cdf79bce67cedc63b`
 - Branch: `codex/frontend-phase-2-section-1`
 - Status: **IMPLEMENTATION_IN_PROGRESS**
-- Draft PR: `PENDING`
+- Draft PR: [#46](https://github.com/JasonCutter/shotgun/pull/46)
 - Final Evidence Head SHA: `PENDING`
 - Canonical authority: GitHub `main`
 - Notion classification: Execution Mirror / Candidate
@@ -142,11 +142,11 @@ Canonical authority. Adapter replacement tests remain mandatory.
 Only `PASS`, `FAIL`, `BLOCKED`, and `NOT_RUN` are used. An item remains
 `NOT_RUN` until its implementation and required evidence have actually run.
 
-| AC    | Initial status | Planned code and evidence                                                                                                     |
+| AC    | Current status | Planned code and evidence                                                                                                     |
 | ----- | -------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| AC-01 | `NOT_RUN`      | versioned Sources requests/views, deep decoder and unknown-version/enum fail-closed tests                                     |
+| AC-01 | `PASS`         | versioned Sources requests/views, deep decoder and unknown-version/enum fail-closed tests                                     |
 | AC-02 | `NOT_RUN`      | server-derived Principal/Session/Project/capability/sensitivity/policy and authority-header negative tests                    |
-| AC-03 | `NOT_RUN`      | protected `/sources` route, registered deep links and Route Guard integration                                                 |
+| AC-03 | `PASS`         | protected `/sources` route, registered deep links and Route Guard integration                                                 |
 | AC-04 | `NOT_RUN`      | project-fixed route draft queue, switch isolation and leave-guard tests                                                       |
 | AC-05 | `NOT_RUN`      | bounded Draft Seed handoff and re-entry without browser authority                                                             |
 | AC-06 | `BLOCKED`      | Direct Text and File can proceed; URL mode depends on approved provenance persistence                                         |
@@ -163,13 +163,13 @@ Only `PASS`, `FAIL`, `BLOCKED`, and `NOT_RUN` are used. An item remains
 | AC-17 | `NOT_RUN`      | server exact-content detection and authorized duplicate evidence                                                              |
 | AC-18 | `NOT_RUN`      | immutable duplicate disposition command and allowed-enum tests                                                                |
 | AC-19 | `NOT_RUN`      | duplicate decision revision, race and stale precondition tests                                                                |
-| AC-20 | `NOT_RUN`      | bounded Active-Project Source Library projection                                                                              |
+| AC-20 | `PASS`         | bounded Active-Project Source Library projection                                                                              |
 | AC-21 | `NOT_RUN`      | protected POST search/filter/sort/cursor contract and ordering tests                                                          |
 | AC-22 | `NOT_RUN`      | separate library visibility, Preview readiness and Ask usage-state axes                                                       |
-| AC-23 | `NOT_RUN`      | Source detail, immutable identity and protected metadata masking                                                              |
-| AC-24 | `NOT_RUN`      | SourceVersion history, explicit Version pin and no-auto-latest tests                                                          |
-| AC-25 | `NOT_RUN`      | original/transformed Preview and supported text/page/cell/shape/CSS locators                                                  |
-| AC-26 | `NOT_RUN`      | Evidence list/highlight and capability-revalidated original return                                                            |
+| AC-23 | `PASS`         | Source detail, immutable identity and protected metadata masking                                                              |
+| AC-24 | `PASS`         | SourceVersion history, explicit Version pin and no-auto-latest tests                                                          |
+| AC-25 | `PASS`         | original/transformed Preview and supported text/page/cell/shape/CSS locators                                                  |
+| AC-26 | `PASS`         | Evidence list/highlight and capability-revalidated original return                                                            |
 | AC-27 | `NOT_RUN`      | typed CitationReturnTarget with focus and scroll restoration                                                                  |
 | AC-28 | `NOT_RUN`      | Principal/Session/Project/Source/Version/revision/sensitivity/policy cache isolation and purge                                |
 | AC-29 | `NOT_RUN`      | stale authorized read-only offline snapshot and blocked write/search/download tests                                           |
@@ -182,21 +182,21 @@ Only `PASS`, `FAIL`, `BLOCKED`, and `NOT_RUN` are used. An item remains
 The exact Base required-gate run passed remotely. Local commands are recorded
 below as they run; a remote pass does not conceal local environment divergence.
 
-| Command                                                      | Result    | Evidence                                                                                            |
-| ------------------------------------------------------------ | --------- | --------------------------------------------------------------------------------------------------- |
-| `npm run docs:knowledge-flow:check`                          | `NOT_RUN` | pending local baseline                                                                              |
-| `npm run docs:validate`                                      | `PASS`    | 303 Markdown links, ADR 1-122, Canonical/evidence/generated-artifact registries and migration drift |
-| `npm run format:check`                                       | `NOT_RUN` | pending local baseline                                                                              |
-| `npm run lint`                                               | `NOT_RUN` | pending local baseline                                                                              |
-| `npm run typecheck`                                          | `NOT_RUN` | pending local baseline                                                                              |
-| `npm run audit:dependencies` or current canonical equivalent | `NOT_RUN` | pending local baseline                                                                              |
-| `npm run stage12:reuse-operations-gate`                      | `NOT_RUN` | pending local baseline                                                                              |
-| `npm run test:ci`                                            | `NOT_RUN` | pending local baseline                                                                              |
-| `npm run test:database`                                      | `NOT_RUN` | pending local baseline                                                                              |
-| `npm --prefix apps/shotgun-web run typecheck`                | `NOT_RUN` | pending local baseline                                                                              |
-| `npm --prefix apps/shotgun-web test`                         | `NOT_RUN` | pending local baseline                                                                              |
-| `npm --prefix apps/shotgun-web run build`                    | `NOT_RUN` | pending local baseline                                                                              |
-| `npm --prefix apps/shotgun-web run test:e2e`                 | `NOT_RUN` | pending local baseline                                                                              |
+| Command                                                      | Result                         | Evidence                                                                                                                         |
+| ------------------------------------------------------------ | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run docs:knowledge-flow:check`                          | `NOT_RUN`                      | pending local baseline                                                                                                           |
+| `npm run docs:validate`                                      | `PASS`                         | 303 Markdown links, ADR 1-122, Canonical/evidence/generated-artifact registries and migration drift                              |
+| `npm run format:check`                                       | `LOCAL_ENVIRONMENT_DIVERGENCE` | 21 unchanged Base files reported by Windows line-ending/format comparison; all Section 1 changed files were formatted explicitly |
+| `npm run lint`                                               | `PASS`                         | full repository ESLint gate                                                                                                      |
+| `npm run typecheck`                                          | `PASS`                         | root TypeScript validation after Sources contracts, adapters, coordinator and routes                                             |
+| `npm run audit:dependencies` or current canonical equivalent | `NOT_RUN`                      | pending local baseline                                                                                                           |
+| `npm run stage12:reuse-operations-gate`                      | `NOT_RUN`                      | pending local baseline                                                                                                           |
+| `npm run test:ci`                                            | `NOT_RUN`                      | pending local baseline                                                                                                           |
+| `npm run test:database`                                      | `NOT_RUN`                      | pending local baseline                                                                                                           |
+| `npm run frontend:typecheck`                                 | `PASS`                         | Sources Library, detail, history, Preview and Evidence UI typecheck                                                              |
+| `npm run frontend:test`                                      | `PASS`                         | 7 files / 24 tests, including Sources accessibility state and Version pinning                                                    |
+| `npm run frontend:build`                                     | `PASS`                         | Vite production build; JS 621.44 kB raw / 177.08 kB direct gzip, baseline only                                                   |
+| `npm --prefix apps/shotgun-web run test:e2e`                 | `NOT_RUN`                      | pending local baseline                                                                                                           |
 
 ## 8. Failure and retry history
 
@@ -207,8 +207,37 @@ below as they run; a remote pass does not conceal local environment divergence.
 2. A broad read-only inventory command included two obsolete documentation
    filenames and returned `PathNotFound`; the current canonical filenames were
    located with `rg`. No repository state changed.
+3. The isolated worktree initially reused the original checkout's
+   `node_modules` junction, whose workspace link pointed to the old API client.
+   The local junctions were removed and `npm ci --offline --ignore-scripts`
+   recreated this worktree's exact lockfile and workspace links. The original
+   checkout and dependencies were not modified.
+4. The first Sources UI test used unavailable jest-dom Chai matchers; assertions
+   were changed to native DOM properties. A second assertion looked for text
+   split across a semantic status element; it now verifies the stable Evidence
+   element identity. The rerun passed.
+5. Full `format:check` reported 21 unchanged Base files on Windows. All Section
+   1 changed files were explicitly formatted and `lint` passed. This is retained
+   as `LOCAL_ENVIRONMENT_DIVERGENCE`; it is not converted to `PASS` or hidden.
 
-## 9. Approval boundaries
+## 9. Implemented evidence to date
+
+| Area                                     | Evidence                                                               |
+| ---------------------------------------- | ---------------------------------------------------------------------- |
+| Product contracts                        | `frontend-sources.contract.test.ts`: 11 `PASS`                         |
+| Read coordinator and replacement adapter | `frontend-sources-read-coordinator.test.ts`: 4 `PASS`                  |
+| Product API security and integration     | `frontend-sources-product-api.test.ts`: 3 `PASS`                       |
+| Query/cache isolation and regression     | focused query-key and Section 3 suites: 14 `PASS`                      |
+| Sources browser components               | `sources-workspace.test.tsx`: 2 `PASS`; full frontend suite: 24 `PASS` |
+
+The current Product slice exposes an Active-Project bounded Library, protected
+POST search, masked Source detail, explicit SourceVersion history and pinning,
+Original Preview, Evidence locators and responsive UI. Intake submission,
+durable Snapshot, exact duplicate disposition, secure URL acquisition and URL
+provenance remain blocked on the separately approved additive persistence
+boundary and are not represented as complete.
+
+## 10. Approval boundaries
 
 The following remain explicitly unapproved:
 

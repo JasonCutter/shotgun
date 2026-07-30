@@ -365,6 +365,110 @@ main {
   border: 0;
 }
 
+.sources-workspace,
+.source-detail-workspace {
+  display: grid;
+  gap: 1rem;
+}
+
+.sources-workspace > .eyebrow,
+.sources-workspace > h1,
+.source-detail-workspace > .eyebrow,
+.source-detail-workspace > h1 {
+  margin-bottom: 0;
+}
+
+.source-library-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 2rem;
+}
+
+.source-search {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.source-search label {
+  font-weight: 700;
+}
+
+.source-search > div {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.source-search input {
+  min-width: min(22rem, 60vw);
+  min-height: 2.75rem;
+  border: 1px solid #8e9c93;
+  border-radius: 0.5rem;
+  padding: 0.65rem 0.75rem;
+}
+
+.source-library-list,
+.source-version-list,
+.source-evidence-list {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.source-library-list > li,
+.source-evidence-list > li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+  padding: 1rem;
+}
+
+.source-library-list h3 {
+  margin: 0;
+}
+
+.source-library-status {
+  display: grid;
+  justify-items: end;
+  gap: 0.45rem;
+  text-align: right;
+}
+
+.source-library-status span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.source-version-list button {
+  width: 100%;
+  text-align: left;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.source-version-list .selected-version {
+  outline: 0.2rem solid var(--accent);
+  outline-offset: 0.1rem;
+}
+
+.source-preview {
+  max-height: 28rem;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: #f8fafc;
+  padding: 1rem;
+  white-space: pre-wrap;
+}
+
 @media (min-width: 761px) and (max-width: 1100px) {
   .workspace-layout {
     grid-template-columns: 7rem minmax(0, 1fr);
@@ -459,6 +563,28 @@ main {
   .two-column-list,
   .summary-grid {
     grid-template-columns: 1fr;
+  }
+
+  .source-library-heading,
+  .source-library-list > li,
+  .source-evidence-list > li {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .source-library-status {
+    justify-items: start;
+    text-align: left;
+  }
+
+  .source-search > div {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .source-search input {
+    min-width: 0;
+    width: 100%;
   }
 }
 

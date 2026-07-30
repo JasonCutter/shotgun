@@ -33,6 +33,15 @@ import type {
   TargetRouteView,
   BrowserDraftPresentationView,
   NavigationAvailability,
+  SourceLibraryQuery,
+  SourceLibraryPageView,
+  SourceDetailView,
+  SourceVersionHistoryView,
+  SourcePreviewView,
+  EvidenceListView,
+  IntakeSubmissionSnapshot,
+  ExactDuplicateDecisionView,
+  SubmitSourcesIntakeCommandPayload,
 } from '../../contracts/src/index.js';
 
 export type ProductSessionView = AnyProductSessionView;
@@ -66,6 +75,15 @@ export type {
   TargetRouteView,
   BrowserDraftPresentationView,
   NavigationAvailability,
+  SourceLibraryQuery,
+  SourceLibraryPageView,
+  SourceDetailView,
+  SourceVersionHistoryView,
+  SourcePreviewView,
+  EvidenceListView,
+  IntakeSubmissionSnapshot,
+  ExactDuplicateDecisionView,
+  SubmitSourcesIntakeCommandPayload,
   ErrorCode,
   FailureCategory,
   FailureRetryability,
@@ -117,6 +135,38 @@ export type ShotgunApiClient = {
     resourceProjectId?: string,
     options?: RequestOptions,
   ): Promise<RouteGuardDecisionView>;
+  listSources(query: SourceLibraryQuery, options?: RequestOptions): Promise<SourceLibraryPageView>;
+  getSourceDetail(sourceId: string, options?: RequestOptions): Promise<SourceDetailView>;
+  getSourceVersionHistory(
+    sourceId: string,
+    selectedSourceVersionId: string,
+    cursor?: string,
+    options?: RequestOptions,
+  ): Promise<SourceVersionHistoryView>;
+  getSourcePreview(
+    sourceId: string,
+    sourceVersionId: string,
+    mode: 'ORIGINAL' | 'TRANSFORMED',
+    options?: RequestOptions,
+  ): Promise<SourcePreviewView>;
+  getSourceEvidence(
+    sourceId: string,
+    sourceVersionId: string,
+    cursor?: string,
+    options?: RequestOptions,
+  ): Promise<EvidenceListView>;
+  getIntakeSubmission(
+    submissionId: string,
+    options?: RequestOptions,
+  ): Promise<IntakeSubmissionSnapshot>;
+  getExactDuplicateDecision(
+    decisionId: string,
+    options?: RequestOptions,
+  ): Promise<ExactDuplicateDecisionView>;
+  submitSourcesIntake(
+    params: FrontendCommandSubmission & SubmitSourcesIntakeCommandPayload,
+    options?: RequestOptions,
+  ): Promise<FrontendCommandMutationResponse<IntakeSubmissionSnapshot>>;
   createFirstProject(
     params: {
       readonly name: string;

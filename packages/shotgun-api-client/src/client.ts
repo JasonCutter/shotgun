@@ -3,6 +3,7 @@ import type {
   RequestOptions,
   ProductFeatureView,
   ShotgunApiClient,
+  FrontendCommandSubmission,
   FrontendCommandMutationResponse,
 } from './contracts.js';
 import { createCsrfMutationManager } from './csrf-manager.js';
@@ -40,6 +41,14 @@ import {
   decodeGlobalShellView,
   decodeHomeActionCenterView,
   decodeRouteGuardDecisionView,
+  decodeSourceLibraryPageView,
+  decodeSourceDetailView,
+  decodeSourceVersionHistoryView,
+  decodeSourcePreviewView,
+  decodeEvidenceListView,
+  decodeIntakeSubmissionSnapshot,
+  decodeExactDuplicateDecisionView,
+  SOURCES_FRONTEND_COMMAND_TYPES,
   SECTION2_FRONTEND_COMMAND_TYPES,
   type SettingsSnapshot,
   type SettingsCategorySummary,
@@ -60,6 +69,15 @@ import {
   type HomeActionCenterView,
   type RouteGuardDecisionView,
   type TargetRouteView,
+  type SourceLibraryQuery,
+  type SourceLibraryPageView,
+  type SourceDetailView,
+  type SourceVersionHistoryView,
+  type SourcePreviewView,
+  type EvidenceListView,
+  type IntakeSubmissionSnapshot,
+  type ExactDuplicateDecisionView,
+  type SubmitSourcesIntakeCommandPayload,
 } from '../../contracts/src/index.js';
 
 const createCommandRequest = (input: {
@@ -282,6 +300,155 @@ export const createShotgunApiClient = (
         const body = (await assertOk(response)) as { decision: unknown };
         return decodeMeasured('route-guard', () => decodeRouteGuardDecisionView(body.decision));
       });
+    },
+
+    async listSources(
+      sourceQuery: SourceLibraryQuery,
+      requestOptions?: RequestOptions,
+    ): Promise<SourceLibraryPageView> {
+      return runMutation(requestOptions?.signal, async (csrfToken) => {
+        const response = await productRequest('/sources/query', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-csrf-token': csrfToken,
+          },
+          body: JSON.stringify(sourceQuery),
+          signal: requestOptions?.signal,
+        });
+        const body = (await assertOk(response)) as { page: unknown };
+        return decodeMeasured('sources-library', () => decodeSourceLibraryPageView(body.page));
+      });
+    },
+
+    async getSourceDetail(
+      sourceId: string,
+      requestOptions?: RequestOptions,
+    ): Promise<SourceDetailView> {
+      const response = await productRequest(`/sources/${encodeURIComponent(sourceId)}`, {
+        signal: requestOptions?.signal,
+      });
+      const body = (await assertOk(response)) as { source: unknown };
+      return decodeMeasured('source-detail', () => decodeSourceDetailView(body.source));
+    },
+
+    async getSourceVersionHistory(
+      sourceId: string,
+      selectedSourceVersionId: string,
+      cursor?: string,
+      requestOptions?: RequestOptions,
+    ): Promise<SourceVersionHistoryView> {
+      const parameters = new URLSearchParams({ selectedSourceVersionId });
+      if (cursor !== undefined) parameters.set('cursor', cursor);
+      const response = await productRequest(
+        `/sources/${encodeURIComponent(sourceId)}/versions?${parameters.toString()}`,
+        { signal: requestOptions?.signal },
+      );
+      const body = (await assertOk(response)) as { history: unknown };
+      return decodeMeasured('source-history', () => decodeSourceVersionHistoryView(body.history));
+    },
+
+    async getSourcePreview(
+      sourceId: string,
+      sourceVersionId: string,
+      mode: 'ORIGINAL' | 'TRANSFORMED',
+      requestOptions?: RequestOptions,
+    ): Promise<SourcePreviewView> {
+      const parameters = new URLSearchParams({ mode });
+      const response = await productRequest(
+        `/sources/${encodeURIComponent(sourceId)}/versions/${encodeURIComponent(sourceVersionId)}/preview?${parameters.toString()}`,
+        { signal: requestOptions?.signal },
+      );
+      const body = (await assertOk(response)) as { preview: unknown };
+      return decodeMeasured('source-preview', () => decodeSourcePreviewView(body.preview));
+    },
+
+    async getSourceEvidence(
+      sourceId: string,
+      sourceVersionId: string,
+      cursor?: string,
+      requestOptions?: RequestOptions,
+    ): Promise<EvidenceListView> {
+      const parameters = new URLSearchParams();
+      if (cursor !== undefined) parameters.set('cursor', cursor);
+      const query = parameters.size === 0 ? '' : `?${parameters.toString()}`;
+      const response = await productRequest(
+        `/sources/${encodeURIComponent(sourceId)}/versions/${encodeURIComponent(sourceVersionId)}/evidence${query}`,
+        { signal: requestOptions?.signal },
+      );
+      const body = (await assertOk(response)) as { evidence: unknown };
+      return decodeMeasured('source-evidence', () => decodeEvidenceListView(body.evidence));
+    },
+
+    async getIntakeSubmission(
+      submissionId: string,
+      requestOptions?: RequestOptions,
+    ): Promise<IntakeSubmissionSnapshot> {
+      const response = await productRequest(
+        `/sources/submissions/${encodeURIComponent(submissionId)}`,
+        { signal: requestOptions?.signal },
+      );
+      const body = (await assertOk(response)) as { submission: unknown };
+      return decodeMeasured('source-submission', () =>
+        decodeIntakeSubmissionSnapshot(body.submission),
+      );
+    },
+
+    async getExactDuplicateDecision(
+      decisionId: string,
+      requestOptions?: RequestOptions,
+    ): Promise<ExactDuplicateDecisionView> {
+      const response = await productRequest(
+        `/sources/duplicate-decisions/${encodeURIComponent(decisionId)}`,
+        { signal: requestOptions?.signal },
+      );
+      const body = (await assertOk(response)) as { decision: unknown };
+      return decodeMeasured('source-duplicate-decision', () =>
+        decodeExactDuplicateDecisionView(body.decision),
+      );
+    },
+
+    async submitSourcesIntake(
+      params: FrontendCommandSubmission & SubmitSourcesIntakeCommandPayload,
+      requestOptions?: RequestOptions,
+    ): Promise<FrontendCommandMutationResponse<IntakeSubmissionSnapshot>> {
+      return runCommandMutation(
+        requestOptions?.signal,
+        params.clientRequestId,
+        async (csrfToken) => {
+          const response = await productRequest('/sources/submissions', {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              'x-csrf-token': csrfToken,
+            },
+            body: JSON.stringify(
+              createCommandRequest({
+                commandType: SOURCES_FRONTEND_COMMAND_TYPES.submit,
+                activeProjectId: params.activeProjectId,
+                targetProjectId: params.targetProjectId,
+                clientRequestId: params.clientRequestId,
+                idempotencyKey: params.idempotencyKey,
+                clientIssuedAt: params.clientIssuedAt,
+                preconditions: [],
+                payload: {
+                  draftId: params.draftId,
+                  inputs: params.inputs,
+                },
+              }),
+            ),
+            signal: requestOptions?.signal,
+          });
+          const body = (await assertOk(response)) as {
+            outcome: unknown;
+            submission: unknown;
+          };
+          return {
+            outcome: decodeAnyFrontendCommandOutcomeView(body.outcome),
+            resource: decodeIntakeSubmissionSnapshot(body.submission),
+          };
+        },
+      );
     },
 
     async createFirstProject(

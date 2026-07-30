@@ -60,6 +60,10 @@ import {
   InMemoryRouteGuardProjection,
 } from '../../../adapters/frontend-product-read-in-memory/src/index.js';
 import { FrontendProductReadCoordinator } from '../../../modules/frontend-product-read/src/index.js';
+import {
+  FrontendSourcesReadCoordinator,
+  type SourcesProjectionRepositoryPort,
+} from '../../../modules/frontend-sources-product/src/index.js';
 import type {
   ProjectAdministrationRepositoryPort,
   ProjectBootstrapUnitOfWorkPort,
@@ -69,6 +73,7 @@ import type { FrontendCommandGatewayPort } from '../../../modules/frontend-comma
 import { registerProjectRoutes } from './product-api/project-routes.js';
 import { registerFrontendProductRoutes } from './product-api/frontend-product-routes.js';
 import { registerSettingsRoutes } from './product-api/settings-routes.js';
+import { registerSourcesRoutes } from './product-api/sources-routes.js';
 import { FakeDraftActionConnector } from '../../../adapters/action-connector-fake/src/index.js';
 import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
 import { InProcessTransport } from '../../../adapters/transport-in-process/src/index.js';
@@ -408,6 +413,7 @@ export type ApplicationOptions = {
   readonly settingsRepository?: SettingsRepositoryPort;
   readonly frontendCommandGateway?: FrontendCommandGatewayPort;
   readonly frontendProductReadCoordinator?: FrontendProductReadCoordinator;
+  readonly sourcesProjectionRepository?: SourcesProjectionRepositoryPort;
   readonly host?: string;
   readonly production?: boolean;
   readonly canonicalProjectionRecoveryIntervalMs?: number | false;
@@ -1137,6 +1143,26 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       new InMemoryGlobalSearch(),
       new InMemoryRouteGuardProjection(),
     );
+  const sourcesProjectionRepository =
+    options.sourcesProjectionRepository ??
+    ('listProjectSourceVersions' in originalAssetRepository &&
+    typeof originalAssetRepository.listProjectSourceVersions === 'function'
+      ? (originalAssetRepository as OriginalAssetRepositoryPort & SourcesProjectionRepositoryPort)
+      : {
+          async listProjectSourceVersions(): Promise<never> {
+            throw new ShotgunError({
+              code: 'CAPABILITY_DENIED',
+              safeMessage: 'Sources projection is unavailable in this runtime.',
+              module: 'frontend-sources-product',
+              operation: 'list-source-versions',
+            });
+          },
+        });
+  const frontendSourcesReadCoordinator = new FrontendSourcesReadCoordinator(
+    sourcesProjectionRepository,
+    assetStorage,
+    evidenceRepository,
+  );
   const projectBootstrapUnitOfWork =
     options.projectBootstrapUnitOfWork ??
     (projectAdminRepository instanceof InMemoryProjectAdministrationRepository &&
@@ -1796,6 +1822,13 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     frontendProductReadCoordinator,
     authRepository,
     projectAdminRepository,
+    settingsRepository,
+    requirePrincipalBrowserSession,
+  );
+  registerSourcesRoutes(
+    server,
+    frontendSourcesReadCoordinator,
+    authRepository,
     settingsRepository,
     requirePrincipalBrowserSession,
   );

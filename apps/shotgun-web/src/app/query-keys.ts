@@ -57,6 +57,63 @@ export const homeActionCenterQueryKey = (input: {
     input.projectionRevision,
   ] as const;
 
+export type SourcesQueryScope = {
+  readonly principalId: string;
+  readonly sessionId: string;
+  readonly activeProjectId: string;
+  readonly resourceProjectId: string;
+  readonly projectionRevision: string;
+  readonly sensitivity: string;
+  readonly policyContextRevision: string;
+};
+
+const sourcesScopeKey = (scope: SourcesQueryScope) =>
+  [
+    'project',
+    scope.principalId,
+    scope.sessionId,
+    scope.activeProjectId,
+    scope.resourceProjectId,
+    scope.projectionRevision,
+    scope.sensitivity,
+    scope.policyContextRevision,
+  ] as const;
+
+export const sourcesLibraryQueryKey = (scope: SourcesQueryScope, clientQueryDigest: string) =>
+  [...sourcesScopeKey(scope), 'sources-library', clientQueryDigest] as const;
+
+export const sourceDetailQueryKey = (scope: SourcesQueryScope, sourceId: string) =>
+  [...sourcesScopeKey(scope), 'source', sourceId] as const;
+
+export const sourceVersionHistoryQueryKey = (
+  scope: SourcesQueryScope,
+  sourceId: string,
+  sourceVersionId: string,
+) => [...sourcesScopeKey(scope), 'source', sourceId, 'versions', sourceVersionId] as const;
+
+export const sourcePreviewQueryKey = (
+  scope: SourcesQueryScope,
+  sourceId: string,
+  sourceVersionId: string,
+  mode: 'ORIGINAL' | 'TRANSFORMED',
+) =>
+  [
+    ...sourcesScopeKey(scope),
+    'source',
+    sourceId,
+    'version',
+    sourceVersionId,
+    'preview',
+    mode,
+  ] as const;
+
+export const sourceEvidenceQueryKey = (
+  scope: SourcesQueryScope,
+  sourceId: string,
+  sourceVersionId: string,
+) =>
+  [...sourcesScopeKey(scope), 'source', sourceId, 'version', sourceVersionId, 'evidence'] as const;
+
 export const clearProjectQueries = async (queryClient: QueryClient): Promise<void> => {
   await queryClient.cancelQueries({ queryKey: ['project'] });
   queryClient.removeQueries({ queryKey: ['project'] });

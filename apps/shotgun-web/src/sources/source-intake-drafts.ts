@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { decodeIntakeDraftSeed, type IntakeDraftSeed } from '@shotgun/api-client';
 
@@ -141,20 +141,37 @@ export const useSourceIntakeDraftQueue = (activeProjectId: string, seedInput?: u
     [activeProjectId, seedInput],
   );
   const [items, setItems] = useState<readonly SourceIntakeDraftItem[]>(initial.items);
+  const itemsRef = useRef<readonly SourceIntakeDraftItem[]>(initial.items);
   const [draftProjectId, setDraftProjectId] = useState(
     initial.items[0]?.projectId ?? activeProjectId,
   );
   const { registerLeaveGuard } = useLeaveGuard();
 
+  const updateItems = useCallback(
+    (
+      updater: (
+        current: readonly SourceIntakeDraftItem[],
+      ) => readonly SourceIntakeDraftItem[],
+    ) => {
+      const nextItems = updater(itemsRef.current);
+      itemsRef.current = nextItems;
+      setItems(nextItems);
+    },
+    [],
+  );
+
   useEffect(
     () =>
-      registerLeaveGuard(() => ({
-        canLeaveCurrentContext: items.length === 0,
-        hasUnsavedDraft: items.length > 0,
-        hasBlockingDialog: false,
-        hasOutcomeUnknownCommand: false,
-      })),
-    [items.length, registerLeaveGuard],
+      registerLeaveGuard(() => {
+        const hasUnsavedDraft = itemsRef.current.length > 0;
+        return {
+          canLeaveCurrentContext: !hasUnsavedDraft,
+          hasUnsavedDraft,
+          hasBlockingDialog: false,
+          hasOutcomeUnknownCommand: false,
+        };
+      }),
+    [registerLeaveGuard],
   );
 
   useEffect(() => {
@@ -164,7 +181,7 @@ export const useSourceIntakeDraftQueue = (activeProjectId: string, seedInput?: u
   const addDirectText = (label: string, text: string) => {
     const trimmed = text.trim();
     const sizeValid = new TextEncoder().encode(text).byteLength <= 10 * 1024 * 1024;
-    setItems((current) => [
+    updateItems((current) => [
       ...current,
       {
         draftItemId: createId(),
@@ -186,7 +203,7 @@ export const useSourceIntakeDraftQueue = (activeProjectId: string, seedInput?: u
   const addFile = (label: string, file: File) => {
     const supported = supportedFileTypes.has(file.type);
     const sizeValid = file.size > 0 && file.size <= 10 * 1024 * 1024;
-    setItems((current) => [
+    updateItems((current) => [
       ...current,
       {
         draftItemId: createId(),
@@ -211,7 +228,7 @@ export const useSourceIntakeDraftQueue = (activeProjectId: string, seedInput?: u
     } catch {
       valid = false;
     }
-    setItems((current) => [
+    updateItems((current) => [
       ...current,
       {
         draftItemId: createId(),
@@ -236,7 +253,7 @@ export const useSourceIntakeDraftQueue = (activeProjectId: string, seedInput?: u
     addFile,
     addUrl,
     remove: (draftItemId: string) =>
-      setItems((current) => current.filter((item) => item.draftItemId !== draftItemId)),
-    discardAll: () => setItems([]),
+      updateItems((current) => current.filter((item) => item.draftItemId !== draftItemId)),
+    discardAll: () => updateItems(() => []),
   };
 };

@@ -124,3 +124,5 @@ export type SourcesIntakeUnitOfWorkPort = {
   ): Promise<ExactDuplicateDecisionResult>;
   resolveExactDuplicateDecision(input: ResolveExactDuplicateDecisionInput): Promise<void>;
 };
+
+export * from './product-service.js';

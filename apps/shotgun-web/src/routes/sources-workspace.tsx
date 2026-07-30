@@ -29,18 +29,20 @@ const DEFAULT_QUERY: SourceLibraryQuery = {
 const identity = (prefix: string): string =>
   `${prefix}-${typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : Date.now()}`;
 
+type DraftCommandIdentity = {
+  readonly fingerprint: string;
+  readonly clientRequestId: string;
+  readonly idempotencyKey: string;
+  readonly draftId: string;
+};
+
 export const SourcesWorkspace = () => {
   const { apiClient } = useAppRuntime();
   const { shell } = useOutletContext<{ readonly shell: GlobalShellView }>();
   const location = useLocation();
   const connectivity = useConnectivityState();
   const writeClient = useMemo(() => createSourcesWriteClient(), []);
-  const commandIdentity = useRef<{
-    readonly fingerprint: string;
-    readonly clientRequestId: string;
-    readonly idempotencyKey: string;
-    readonly draftId: string;
-  }>();
+  const commandIdentity = useRef<DraftCommandIdentity | undefined>(undefined);
   const [searchInput, setSearchInput] = useState('');
   const [appliedQuery, setAppliedQuery] = useState('');
   const [intakeKind, setIntakeKind] = useState<'DIRECT_TEXT' | 'FILE' | 'URL'>('DIRECT_TEXT');
@@ -96,9 +98,9 @@ export const SourcesWorkspace = () => {
     setIntakeLabel('');
   };
 
-  const commandFor = (fingerprint: string) => {
+  const commandFor = (fingerprint: string): DraftCommandIdentity => {
     if (commandIdentity.current?.fingerprint === fingerprint) return commandIdentity.current;
-    const next = {
+    const next: DraftCommandIdentity = {
       fingerprint,
       clientRequestId: identity('sources-request'),
       idempotencyKey: identity('sources-idempotency'),
@@ -435,7 +437,10 @@ export const SourcesWorkspace = () => {
                       </button>
                     ) : null}
                     {item.capabilities.includes('RETRY_SAME_CONTEXT') ? (
-                      <button type="button" onClick={() => void retryItem(item.itemId, 'SAME_CONTEXT')}>
+                      <button
+                        type="button"
+                        onClick={() => void retryItem(item.itemId, 'SAME_CONTEXT')}
+                      >
                         Retry same context
                       </button>
                     ) : null}

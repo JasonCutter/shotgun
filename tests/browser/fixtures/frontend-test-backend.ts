@@ -26,20 +26,30 @@ export async function startFrontendTestBackend() {
   if (!databaseUrl) throw new Error('DATABASE_URL is required for the browser fixture.');
   const pool = createPostgresPool(databaseUrl);
   const authRepository = new PostgresAuthRepository(pool);
-  await authRepository.bootstrapOwner({
+  const projectAdminRepository = new PostgresProjectAdministrationRepository(pool);
+
+  const localOwner = await authRepository.bootstrapLocalOwnerPrincipal({
     accountId: LOCAL_OWNER_ACCOUNT_ID,
+  });
+  const principalId = localOwner.principalId;
+
+  await projectAdminRepository.createProject({
+    commandId: 'browser-fixture-default-project',
+    clientRequestId: 'browser-fixture-default-project',
+    idempotencyKey: 'browser-fixture-default-project',
+    projectId: DEFAULT_PROJECT_ID,
+    name: 'Shotgun',
+    description: 'Browser test default Project',
+    actorPrincipalId: principalId,
+    expectedProjectRevision: 0,
+  });
+  await authRepository.createProjectOwnerMembership({
+    principalId,
     projectId: DEFAULT_PROJECT_ID,
     scopes: ['owner'],
     sensitivityClearance: 'private',
   });
-  const ownerMembership = await authRepository.findOwnerMembership(
-    LOCAL_OWNER_ACCOUNT_ID,
-    DEFAULT_PROJECT_ID,
-  );
-  if (!ownerMembership) throw new Error('Frontend browser fixture local owner was not created.');
-  const principalId = ownerMembership.principalId;
 
-  const projectAdminRepository = new PostgresProjectAdministrationRepository(pool);
   await projectAdminRepository.createProject({
     commandId: 'browser-fixture-project-b',
     clientRequestId: 'browser-fixture-project-b',

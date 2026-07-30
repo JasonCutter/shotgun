@@ -18,11 +18,13 @@ const limits = {
 };
 
 class Resolver implements UrlResolverPort {
+  private readonly indexes = new Map<string, number>();
   constructor(private readonly answers: Record<string, readonly (readonly string[])[]>) {}
   async resolve(hostname: string): Promise<readonly string[]> {
-    const queue = this.answers[hostname];
-    const answer = queue?.shift?.();
-    return answer ?? queue?.[queue.length - 1] ?? [];
+    const queue = this.answers[hostname] ?? [];
+    const index = this.indexes.get(hostname) ?? 0;
+    this.indexes.set(hostname, index + 1);
+    return queue[Math.min(index, Math.max(0, queue.length - 1))] ?? [];
   }
 }
 
@@ -47,7 +49,7 @@ const response = (overrides: Partial<UrlHopResponse> = {}): UrlHopResponse => ({
 });
 
 const coordinator = (
-  answers: Record<string, (string[])[]>,
+  answers: Record<string, readonly (readonly string[])[]>,
   responses: UrlHopResponse[],
 ): { service: SecureUrlAcquisitionCoordinator; transport: Transport } => {
   const transport = new Transport(responses);
@@ -129,7 +131,7 @@ describe('secure URL acquisition policy', () => {
     ).rejects.toThrow(/address set changed/);
 
     const escaped = coordinator(
-      { 'example.com': [['93.184.216.34']] },
+      { 'example.com': [['93.184.216.34'], ['93.184.216.34']] },
       [response({ connectedAddress: '8.8.8.8' })],
     );
     await expect(

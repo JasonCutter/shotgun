@@ -44,18 +44,8 @@ export type SourceIntakeDraftItem =
       readonly message: string;
     };
 
-const supportedFileTypes = new Set([
-  'text/plain',
-  'text/markdown',
-  'text/html',
-  'application/pdf',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'text/csv',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-  'image/png',
-  'image/jpeg',
-]);
+const MAX_ACTIVE_BYTES = 1_048_576;
+const supportedFileTypes = new Set(['text/plain', 'text/markdown']);
 
 let nextDraftItemId = 0;
 const createId = (): string => {
@@ -76,6 +66,7 @@ const decodeSeed = (
       label: decoded.input.label,
     };
     if (decoded.input.kind === 'DIRECT_TEXT') {
+      const size = new TextEncoder().encode(decoded.input.text).byteLength;
       return {
         seed: decoded,
         items: [
@@ -83,8 +74,12 @@ const decodeSeed = (
             ...common,
             kind: 'DIRECT_TEXT',
             text: decoded.input.text,
-            validation: decoded.input.text.trim() ? 'READY' : 'INVALID',
-            message: 'Seeded Direct Text must be reviewed before submission.',
+            validation:
+              decoded.input.text.trim() && size <= MAX_ACTIVE_BYTES ? 'READY' : 'INVALID',
+            message:
+              size <= MAX_ACTIVE_BYTES
+                ? 'Seeded Direct Text must be reviewed before submission.'
+                : 'Seeded Direct Text exceeds the active one MiB boundary.',
           },
         ],
       };
@@ -180,7 +175,7 @@ export const useSourceIntakeDraftQueue = (activeProjectId: string, seedInput?: u
 
   const addDirectText = (label: string, text: string) => {
     const trimmed = text.trim();
-    const sizeValid = new TextEncoder().encode(text).byteLength <= 10 * 1024 * 1024;
+    const sizeValid = new TextEncoder().encode(text).byteLength <= MAX_ACTIVE_BYTES;
     updateItems((current) => [
       ...current,
       {
@@ -194,7 +189,7 @@ export const useSourceIntakeDraftQueue = (activeProjectId: string, seedInput?: u
           trimmed.length === 0
             ? 'Direct Text cannot be empty.'
             : !sizeValid
-              ? 'Direct Text exceeds the current 10 MiB advisory limit.'
+              ? 'Direct Text exceeds the active one MiB limit.'
               : 'Client preflight passed. The Server will validate again.',
       },
     ]);
@@ -202,7 +197,7 @@ export const useSourceIntakeDraftQueue = (activeProjectId: string, seedInput?: u
 
   const addFile = (label: string, file: File) => {
     const supported = supportedFileTypes.has(file.type);
-    const sizeValid = file.size > 0 && file.size <= 10 * 1024 * 1024;
+    const sizeValid = file.size > 0 && file.size <= MAX_ACTIVE_BYTES;
     updateItems((current) => [
       ...current,
       {
@@ -213,9 +208,9 @@ export const useSourceIntakeDraftQueue = (activeProjectId: string, seedInput?: u
         file,
         validation: supported && sizeValid ? 'READY' : 'INVALID',
         message: !supported
-          ? 'The declared file type is not in the client advisory allowlist.'
+          ? 'Only text/plain and text/markdown are active in this Section.'
           : !sizeValid
-            ? 'The file must be between 1 byte and 10 MiB.'
+            ? 'The file must be between 1 byte and one MiB.'
             : 'Client preflight passed. The Server will verify bytes, type and filename.',
       },
     ]);
@@ -238,7 +233,7 @@ export const useSourceIntakeDraftQueue = (activeProjectId: string, seedInput?: u
         requestedUrl,
         validation: valid ? 'READY' : 'INVALID',
         message: valid
-          ? 'Descriptor accepted locally. The Server will perform all acquisition and SSRF validation.'
+          ? 'Descriptor accepted locally. The Server will perform acquisition and SSRF validation.'
           : 'Enter an absolute HTTP(S) URL.',
       },
     ]);

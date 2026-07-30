@@ -55,16 +55,18 @@ export class NodeUrlHopTransport implements UrlHopTransportPort {
       let settled = false;
       let responseStarted = false;
       let connected = false;
-      let totalTimer: NodeJS.Timeout | undefined;
-      let connectTimer: NodeJS.Timeout | undefined;
-      let headerTimer: NodeJS.Timeout | undefined;
-      let bodyTimer: NodeJS.Timeout | undefined;
+      const timers: {
+        total?: NodeJS.Timeout;
+        connect?: NodeJS.Timeout;
+        header?: NodeJS.Timeout;
+        body?: NodeJS.Timeout;
+      } = {};
 
       const clearTimers = () => {
-        if (totalTimer) clearTimeout(totalTimer);
-        if (connectTimer) clearTimeout(connectTimer);
-        if (headerTimer) clearTimeout(headerTimer);
-        if (bodyTimer) clearTimeout(bodyTimer);
+        if (timers.total) clearTimeout(timers.total);
+        if (timers.connect) clearTimeout(timers.connect);
+        if (timers.header) clearTimeout(timers.header);
+        if (timers.body) clearTimeout(timers.body);
       };
       const finishError = (error: unknown, operation: string) => {
         if (settled) return;
@@ -101,7 +103,7 @@ export class NodeUrlHopTransport implements UrlHopTransportPort {
         },
         (response) => {
           responseStarted = true;
-          if (headerTimer) clearTimeout(headerTimer);
+          if (timers.header) clearTimeout(timers.header);
           const encoding = response.headers['content-encoding'];
           if (encoding && encoding.toLocaleLowerCase() !== 'identity') {
             response.resume();
@@ -119,8 +121,8 @@ export class NodeUrlHopTransport implements UrlHopTransportPort {
           const chunks: Buffer[] = [];
           let received = 0;
           const resetBodyTimer = () => {
-            if (bodyTimer) clearTimeout(bodyTimer);
-            bodyTimer = setTimeout(() => {
+            if (timers.body) clearTimeout(timers.body);
+            timers.body = setTimeout(() => {
               request.destroy(timeout('body'));
             }, input.limits.bodyTimeoutMs);
           };
@@ -165,19 +167,22 @@ export class NodeUrlHopTransport implements UrlHopTransportPort {
         },
       );
 
-      totalTimer = setTimeout(() => request.destroy(timeout('total')), input.limits.totalTimeoutMs);
-      connectTimer = setTimeout(
+      timers.total = setTimeout(
+        () => request.destroy(timeout('total')),
+        input.limits.totalTimeoutMs,
+      );
+      timers.connect = setTimeout(
         () => request.destroy(timeout('connect')),
         input.limits.connectTimeoutMs,
       );
-      headerTimer = setTimeout(
+      timers.header = setTimeout(
         () => request.destroy(timeout('header')),
         input.limits.headerTimeoutMs,
       );
       request.once('socket', (socket) => {
         const onConnected = () => {
           connected = true;
-          if (connectTimer) clearTimeout(connectTimer);
+          if (timers.connect) clearTimeout(timers.connect);
         };
         socket.once(parsed.protocol === 'https:' ? 'secureConnect' : 'connect', onConnected);
       });

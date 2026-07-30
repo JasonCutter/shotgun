@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('Sources keeps draft input route-scoped, blocks server submit, and guards Project switch', async ({
+test('Sources keeps draft input route-scoped, blocks server submit, and releases Project switch immediately after discard', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -30,6 +30,30 @@ test('Sources keeps draft input route-scoped, blocks server submit, and guards P
     .not.toContain('Transient browser-only evidence');
 
   await page.getByRole('button', { name: 'Discard all drafts' }).click();
+  await selector.selectOption('project-b');
+  await expect(selector).toHaveValue('project-b');
+});
+
+test('Sources keeps Project switching blocked after a partial delete and releases it after the last delete', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/sources');
+
+  await page.getByLabel('Label').fill('Draft A');
+  await page.getByLabel('Direct Text').fill('First transient draft');
+  await page.getByRole('button', { name: 'Add intake draft' }).click();
+  await page.getByLabel('Label').fill('Draft B');
+  await page.getByLabel('Direct Text').fill('Second transient draft');
+  await page.getByRole('button', { name: 'Add intake draft' }).click();
+
+  const selector = page.getByRole('combobox', { name: 'Active Project' });
+  await page.getByRole('button', { name: 'Remove Draft A' }).click();
+  await selector.selectOption('project-b');
+  await expect(selector).toHaveValue('shotgun');
+  await expect(page.getByRole('alert')).toContainText('current Workspace');
+
+  await page.getByRole('button', { name: 'Remove Draft B' }).click();
   await selector.selectOption('project-b');
   await expect(selector).toHaveValue('project-b');
 });

@@ -1,0 +1,1406 @@
+import { randomUUID } from 'node:crypto';
+
+import type { Pool, PoolClient, QueryResultRow } from 'pg';
+
+import {
+  ShotgunError,
+  SOURCES_SCHEMA_VERSION,
+  type ExactDuplicateDecisionView,
+  type IntakeSubmissionItemView,
+  type IntakeSubmissionSnapshot,
+  type SourcesCapability,
+} from '../../../packages/contracts/src/index.js';
+import type { SourcesStagingServicePort } from '../../../modules/frontend-sources-staging/src/index.js';
+import type {
+  CancelSourcesProductInput,
+  ResolveSourcesDuplicateProductInput,
+  RetrySourcesProductInput,
+  SourcesProductWriteScope,
+  SourcesProductWriteServicePort,
+  SubmitSourcesProductInput,
+} from '../../../modules/frontend-sources-write/src/product-service.js';
+import type {
+  CreateSourcesIntakeSubmissionInput,
+  SourcesIntakeStoredItemInput,
+  SourcesUrlSuccessProvenance,
+} from '../../../modules/frontend-sources-write/src/index.js';
+import { assertSourcesLedgerManifestSafe } from './index.js';
+import { PostgresSourcesIntakeLifecycle } from './lifecycle.js';
+
+const ALLOWED_DISPOSITIONS = [
+  'REUSE_EXISTING_VERSION',
+  'CREATE_VERSION_CANDIDATE',
+  'CREATE_SEPARATE_SOURCE',
+  'CANCEL_SUBMISSION',
+] as const;
+
+type DuplicateRecord = {
+  readonly sourceId: string;
+  readonly sourceVersionId: string;
+  readonly versionNumber: number;
+  readonly originalAssetId: string;
+};
+
+type ProductItemRow = QueryResultRow & {
+  readonly submission_item_id: string;
+  readonly client_item_id: string;
+  readonly input_kind: 'DIRECT_TEXT' | 'FILE' | 'URL';
+  readonly label: string;
+  readonly input_manifest: Record<string, unknown>;
+  readonly state: IntakeSubmissionItemView['state'];
+  readonly validation_results: unknown;
+  readonly content_hash: string | null;
+  readonly media_type: string | null;
+  readonly size_bytes: string | null;
+  readonly produced_source_id: string | null;
+  readonly produced_source_version_id: string | null;
+  readonly active_duplicate_decision_id: string | null;
+  readonly attention_reason: string | null;
+  readonly safe_failure_code: string | null;
+  readonly safe_failure_message: string | null;
+  readonly safe_failure_retryable: boolean | null;
+  readonly item_revision: string;
+  readonly version_number: number | null;
+};
+
+const iso = (value: Date | string): string =>
+  value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+
+const inputCapabilities = (state: IntakeSubmissionItemView['state']): readonly SourcesCapability[] => {
+  if (state === 'ACTION_REQUIRED') return ['RESOLVE_DUPLICATE', 'CANCEL'];
+  if (state === 'FAILED' || state === 'CANCELLED' || state === 'OUTCOME_INDETERMINATE') {
+    return ['RETRY_SAME_CONTEXT', 'RETRY_CURRENT_POLICY'];
+  }
+  if (state === 'VALIDATING' || state === 'QUEUED' || state === 'RUNNING') return ['CANCEL'];
+  return [];
+};
+
+const submissionCapabilities = (
+  state: IntakeSubmissionSnapshot['state'],
+): readonly SourcesCapability[] => {
+  if (state === 'FAILED' || state === 'CANCELLED' || state === 'OUTCOME_INDETERMINATE') {
+    return ['RETRY_SAME_CONTEXT', 'RETRY_CURRENT_POLICY'];
+  }
+  if (
+    state === 'VALIDATING' ||
+    state === 'QUEUED' ||
+    state === 'RUNNING' ||
+    state === 'PARTIAL' ||
+    state === 'ACTION_REQUIRED'
+  ) {
+    return ['CANCEL'];
+  }
+  return [];
+};
+
+const safeManifest = (
+  artifact: SubmitSourcesProductInput['items'][number],
+): Readonly<Record<string, unknown>> => ({
+  kind: artifact.kind,
+  itemId: artifact.itemId,
+  label: artifact.label,
+  mediaType: artifact.mediaType,
+  sizeBytes: artifact.sizeBytes,
+  contentHash: artifact.contentHash,
+  stagingReference: artifact.kind === 'URL' ? artifact.redactedRequestedUrl : 'sealed',
+  ...(artifact.fileName === undefined ? {} : { fileName: artifact.fileName }),
+  ...(artifact.redactedRequestedUrl === undefined
+    ? {}
+    : { requestedUrl: artifact.redactedRequestedUrl }),
+});
+
+const storedItem = (
+  artifact: SubmitSourcesProductInput['items'][number],
+  requestedSourceId?: string,
+): SourcesIntakeStoredItemInput => ({
+  clientItemId: artifact.itemId,
+  inputKind: artifact.kind,
+  label: artifact.label,
+  inputManifest: {
+    ...safeManifest(artifact),
+    stagingReference: artifact.kind === 'URL' ? artifact.redactedRequestedUrl : 'sealed',
+  },
+  channel: artifact.channel,
+  mediaType: artifact.mediaType,
+  contentHash: artifact.contentHash,
+  sizeBytes: artifact.sizeBytes,
+  storageKey: artifact.storageKey,
+  ...(artifact.fileName === undefined ? {} : { originalFileName: artifact.fileName }),
+  ...(requestedSourceId === undefined ? {} : { requestedSourceId }),
+  ...(artifact.urlProvenance === undefined ? {} : { urlProvenance: artifact.urlProvenance }),
+});
+
+export class PostgresSourcesProductService implements SourcesProductWriteServicePort {
+  private readonly lifecycle: PostgresSourcesIntakeLifecycle;
+
+  constructor(
+    private readonly pool: Pool,
+    private readonly staging: SourcesStagingServicePort,
+  ) {
+    this.lifecycle = new PostgresSourcesIntakeLifecycle(pool);
+  }
+
+  async submit(input: SubmitSourcesProductInput): Promise<IntakeSubmissionSnapshot> {
+    const existing = await this.getSubmission(input.scope, input.submissionId);
+    if (existing) return existing;
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+        `${input.scope.projectId}:${input.submissionId}`,
+      ]);
+      await this.assertAcceptedCommand(
+        client,
+        input.commandId,
+        input.scope,
+        'sources.intake.submit.v1',
+      );
+      await client.query(
+        `INSERT INTO source_product.intake_submissions (
+           submission_id, project_id, principal_id, session_id, create_command_id,
+           state, accepted_policy_context_id, accepted_policy_binding,
+           access_revision, policy_context_revision, created_at, updated_at
+         ) VALUES ($1, $2, $3, $4, $5, 'RUNNING', $6, $7::jsonb, $8, $9, $10, $10)`,
+        [
+          input.submissionId,
+          input.scope.projectId,
+          input.scope.principalId,
+          input.scope.sessionId,
+          input.commandId,
+          input.scope.acceptedPolicyContextId,
+          JSON.stringify(input.scope.acceptedPolicyBinding),
+          input.scope.accessRevision,
+          input.scope.policyContextRevision,
+          input.createdAt,
+        ],
+      );
+
+      let succeeded = 0;
+      let actionRequired = 0;
+      for (const [ordinal, artifact] of input.items.entries()) {
+        const itemId = randomUUID();
+        const attemptId = randomUUID();
+        const manifest = {
+          ...safeManifest(artifact),
+          stagingReference: this.referenceForArtifact(artifact),
+        };
+        assertSourcesLedgerManifestSafe(manifest);
+        await this.insertItemAndAttempt(
+          client,
+          input,
+          artifact,
+          itemId,
+          attemptId,
+          ordinal,
+          manifest,
+        );
+        const duplicate = await this.findDuplicate(
+          client,
+          input.scope.projectId,
+          artifact.contentHash,
+        );
+        if (duplicate) {
+          await this.createDuplicateDecision(
+            client,
+            input,
+            artifact,
+            itemId,
+            attemptId,
+            duplicate,
+          );
+          actionRequired += 1;
+        } else {
+          await this.materialize(
+            client,
+            input.scope,
+            input.submissionId,
+            itemId,
+            attemptId,
+            storedItem(artifact),
+            input.createdAt,
+          );
+          succeeded += 1;
+        }
+      }
+      const state =
+        actionRequired === 0
+          ? 'SUCCEEDED'
+          : succeeded === 0
+            ? 'ACTION_REQUIRED'
+            : 'PARTIAL';
+      await client.query(
+        `UPDATE source_product.intake_submissions
+         SET state = $2, completed_at = CASE WHEN $2 = 'SUCCEEDED' THEN $3::timestamptz ELSE NULL END
+         WHERE submission_id = $1`,
+        [input.submissionId, state, input.createdAt],
+      );
+      await client.query('COMMIT');
+      return (await this.getSubmission(input.scope, input.submissionId))!;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async getSubmission(
+    scope: SourcesProductWriteScope,
+    submissionId: string,
+  ): Promise<IntakeSubmissionSnapshot | undefined> {
+    const submission = await this.pool.query<{
+      submission_id: string;
+      principal_id: string;
+      session_id: string;
+      project_id: string;
+      state: IntakeSubmissionSnapshot['state'];
+      accepted_policy_context_id: string;
+      submission_revision: string;
+      access_revision: string;
+      policy_context_revision: string;
+      created_at: Date;
+      updated_at: Date;
+    }>(
+      `SELECT submission_id::text, principal_id::text, session_id::text, project_id,
+              state, accepted_policy_context_id, submission_revision::text,
+              access_revision, policy_context_revision, created_at, updated_at
+       FROM source_product.intake_submissions
+       WHERE project_id = $1 AND submission_id = $2`,
+      [scope.projectId, submissionId],
+    );
+    const row = submission.rows[0];
+    if (!row) return undefined;
+    if (row.principal_id !== scope.principalId) return undefined;
+    const items = await this.pool.query<ProductItemRow>(
+      `SELECT item.submission_item_id::text, item.client_item_id, item.input_kind,
+              item.label, item.input_manifest, item.state, item.validation_results,
+              item.content_hash, item.media_type, item.size_bytes::text,
+              item.produced_source_id::text, item.produced_source_version_id::text,
+              item.active_duplicate_decision_id::text, item.attention_reason,
+              item.safe_failure_code, item.safe_failure_message,
+              item.safe_failure_retryable, item.item_revision::text,
+              version.version_number
+       FROM source_product.intake_submission_items AS item
+       LEFT JOIN asset.source_versions AS version
+         ON version.source_version_id = item.produced_source_version_id
+       WHERE item.project_id = $1 AND item.submission_id = $2
+       ORDER BY item.ordinal`,
+      [scope.projectId, submissionId],
+    );
+    return {
+      schemaVersion: SOURCES_SCHEMA_VERSION,
+      submissionId: row.submission_id,
+      principalId: row.principal_id,
+      sessionId: row.session_id,
+      projectId: row.project_id,
+      state: row.state,
+      items: items.rows.map((item) => this.publicItem(scope, item)),
+      capabilities: submissionCapabilities(row.state),
+      acceptedPolicyContextId: row.accepted_policy_context_id,
+      submissionRevision: row.submission_revision,
+      accessRevision: row.access_revision,
+      policyContextRevision: row.policy_context_revision,
+      createdAt: iso(row.created_at),
+      updatedAt: iso(row.updated_at),
+      stale:
+        row.access_revision !== scope.accessRevision ||
+        row.policy_context_revision !== scope.policyContextRevision,
+    };
+  }
+
+  async getDuplicateDecision(
+    scope: SourcesProductWriteScope,
+    decisionId: string,
+  ): Promise<ExactDuplicateDecisionView | undefined> {
+    const result = await this.pool.query<{
+      decision_id: string;
+      submission_id: string;
+      submission_item_id: string;
+      project_id: string;
+      content_hash: string;
+      existing_source_id: string;
+      existing_source_version_id: string;
+      allowed_dispositions: ExactDuplicateDecisionView['allowedDispositions'];
+      decision_revision: string;
+      observed_source_revision: string;
+      access_revision: string;
+      policy_context_revision: string;
+      created_at: Date;
+      version_number: number;
+      label: string | null;
+    }>(
+      `SELECT decision.decision_id::text, decision.submission_id::text,
+              decision.submission_item_id::text, decision.project_id,
+              decision.content_hash, decision.existing_source_id::text,
+              decision.existing_source_version_id::text,
+              decision.allowed_dispositions, decision.decision_revision::text,
+              decision.observed_source_revision, decision.access_revision,
+              decision.policy_context_revision, decision.created_at,
+              version.version_number, receipt.original_file_name AS label
+       FROM source_product.exact_duplicate_decisions AS decision
+       JOIN asset.source_versions AS version
+         ON version.source_version_id = decision.existing_source_version_id
+       LEFT JOIN LATERAL (
+         SELECT original_file_name
+         FROM asset.storage_receipts
+         WHERE project_id = decision.project_id
+           AND source_version_id = decision.existing_source_version_id
+         ORDER BY created_at, receipt_id LIMIT 1
+       ) AS receipt ON true
+       WHERE decision.project_id = $1 AND decision.decision_id = $2`,
+      [scope.projectId, decisionId],
+    );
+    const row = result.rows[0];
+    if (!row) return undefined;
+    return {
+      schemaVersion: SOURCES_SCHEMA_VERSION,
+      decisionId: row.decision_id,
+      submissionId: row.submission_id,
+      itemId: row.submission_item_id,
+      projectId: row.project_id,
+      contentHash: row.content_hash,
+      existingSource: {
+        sourceId: row.existing_source_id,
+        sourceVersionId: row.existing_source_version_id,
+        label: row.label ?? `Source ${row.existing_source_id.slice(0, 8)}`,
+        versionNumber: row.version_number,
+      },
+      allowedDispositions: row.allowed_dispositions,
+      decisionRevision: row.decision_revision,
+      sourceRevision: row.observed_source_revision,
+      accessRevision: row.access_revision,
+      policyContextRevision: row.policy_context_revision,
+      createdAt: iso(row.created_at),
+    };
+  }
+
+  async resolveDuplicate(
+    input: ResolveSourcesDuplicateProductInput,
+  ): Promise<IntakeSubmissionSnapshot> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const decision = await client.query<{
+        submission_id: string;
+        submission_item_id: string;
+        decision_revision: string;
+        access_revision: string;
+        policy_context_revision: string;
+        existing_source_id: string;
+        existing_source_version_id: string;
+        content_hash: string;
+        input_kind: 'DIRECT_TEXT' | 'FILE' | 'URL';
+        client_item_id: string;
+        input_manifest: Record<string, unknown>;
+        label: string;
+        state: string;
+      }>(
+        `SELECT decision.submission_id::text, decision.submission_item_id::text,
+                decision.decision_revision::text, decision.access_revision,
+                decision.policy_context_revision, decision.existing_source_id::text,
+                decision.existing_source_version_id::text, decision.content_hash,
+                item.input_kind, item.client_item_id, item.input_manifest, item.label, item.state
+         FROM source_product.exact_duplicate_decisions AS decision
+         JOIN source_product.intake_submission_items AS item
+           ON item.submission_item_id = decision.submission_item_id
+         WHERE decision.project_id = $1 AND decision.decision_id = $2
+         FOR UPDATE OF decision, item`,
+        [input.scope.projectId, input.decisionId],
+      );
+      const row = decision.rows[0];
+      if (!row) throw this.notFound();
+      if (
+        row.decision_revision !== input.observedDecisionRevision ||
+        row.access_revision !== input.scope.accessRevision ||
+        row.policy_context_revision !== input.scope.policyContextRevision
+      ) {
+        throw new ShotgunError({
+          code: 'STALE_VERSION',
+          safeMessage: 'The duplicate decision is stale.',
+          module: 'frontend-sources-write-postgres',
+          operation: 'resolve-duplicate',
+        });
+      }
+      await this.assertAcceptedCommand(
+        client,
+        input.commandId,
+        input.scope,
+        'sources.duplicate.resolve.v1',
+      );
+      await client.query(
+        `INSERT INTO source_product.exact_duplicate_dispositions (
+           disposition_id, project_id, submission_id, submission_item_id,
+           decision_id, observed_decision_revision, command_id, disposition,
+           target_source_id, created_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          randomUUID(),
+          input.scope.projectId,
+          row.submission_id,
+          row.submission_item_id,
+          input.decisionId,
+          Number(input.observedDecisionRevision),
+          input.commandId,
+          input.disposition,
+          input.targetSourceId ?? null,
+          input.createdAt,
+        ],
+      );
+      await client.query(
+        `UPDATE source_product.intake_submissions
+         SET state = 'RUNNING'
+         WHERE submission_id = $1 AND state IN ('PARTIAL', 'ACTION_REQUIRED')`,
+        [row.submission_id],
+      );
+      if (input.disposition === 'CANCEL_SUBMISSION') {
+        await client.query(
+          `UPDATE source_product.intake_submission_items
+           SET state = 'CANCEL_REQUESTED' WHERE submission_item_id = $1`,
+          [row.submission_item_id],
+        );
+        await client.query(
+          `UPDATE source_product.intake_submission_items
+           SET state = 'CANCELLED', completed_at = $2 WHERE submission_item_id = $1`,
+          [row.submission_item_id, input.createdAt],
+        );
+      } else {
+        const reference = String(row.input_manifest['stagingReference'] ?? '');
+        const artifact = await this.staging.resolve({
+          stagingReference: reference,
+          draftId: String(row.input_manifest['draftId'] ?? ''),
+          itemId: row.client_item_id,
+          projectId: input.scope.projectId,
+          principalId: input.scope.principalId,
+          kind: row.input_kind,
+        });
+        await client.query(
+          `UPDATE source_product.intake_submission_items
+           SET state = 'RUNNING' WHERE submission_item_id = $1`,
+          [row.submission_item_id],
+        );
+        const attemptId = await this.createResolutionAttempt(
+          client,
+          input,
+          row.submission_id,
+          row.submission_item_id,
+        );
+        if (input.disposition === 'REUSE_EXISTING_VERSION') {
+          await this.reuseExistingVersion(
+            client,
+            input.scope,
+            row.submission_item_id,
+            attemptId,
+            artifact,
+            row.existing_source_id,
+            row.existing_source_version_id,
+            input.createdAt,
+          );
+        } else {
+          await this.materialize(
+            client,
+            input.scope,
+            row.submission_id,
+            row.submission_item_id,
+            attemptId,
+            storedItem(
+              artifact,
+              input.disposition === 'CREATE_VERSION_CANDIDATE'
+                ? row.existing_source_id
+                : undefined,
+            ),
+            input.createdAt,
+            input.disposition === 'CREATE_VERSION_CANDIDATE',
+          );
+        }
+      }
+      await this.recomputeSubmission(client, row.submission_id, input.createdAt);
+      await client.query('COMMIT');
+      return (await this.getSubmission(input.scope, row.submission_id))!;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async retry(input: RetrySourcesProductInput): Promise<IntakeSubmissionSnapshot> {
+    await this.lifecycle.retryItems({
+      projectId: input.scope.projectId,
+      submissionId: input.submissionId,
+      submissionItemIds: input.itemIds,
+      commandId: input.commandId,
+      correlationId: input.correlationId,
+      mode: input.mode,
+      acceptedPolicyContextId: input.scope.acceptedPolicyContextId,
+      acceptedPolicyBinding: input.scope.acceptedPolicyBinding,
+      createdAt: input.createdAt,
+    });
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `UPDATE source_product.intake_submissions SET state = 'RUNNING'
+         WHERE submission_id = $1 AND state = 'QUEUED'`,
+        [input.submissionId],
+      );
+      for (const itemId of input.itemIds) {
+        const item = await client.query<{
+          input_kind: 'DIRECT_TEXT' | 'FILE' | 'URL';
+          client_item_id: string;
+          input_manifest: Record<string, unknown>;
+          content_hash: string;
+          submission_item_id: string;
+          intake_attempt_id: string;
+        }>(
+          `SELECT item.input_kind, item.client_item_id, item.input_manifest,
+                  item.content_hash, item.submission_item_id::text,
+                  attempt.intake_attempt_id::text
+           FROM source_product.intake_submission_items AS item
+           JOIN LATERAL (
+             SELECT intake_attempt_id
+             FROM source_product.intake_attempts
+             WHERE submission_item_id = item.submission_item_id
+             ORDER BY attempt_number DESC LIMIT 1
+           ) AS attempt ON true
+           WHERE item.project_id = $1 AND item.submission_id = $2
+             AND item.submission_item_id = $3
+           FOR UPDATE OF item`,
+          [input.scope.projectId, input.submissionId, itemId],
+        );
+        const row = item.rows[0];
+        if (!row) throw this.notFound();
+        await client.query(
+          `UPDATE source_product.intake_attempts SET state = 'RUNNING'
+           WHERE intake_attempt_id = $1 AND state = 'ACCEPTED'`,
+          [row.intake_attempt_id],
+        );
+        await client.query(
+          `UPDATE source_product.intake_submission_items SET state = 'RUNNING'
+           WHERE submission_item_id = $1 AND state = 'QUEUED'`,
+          [row.submission_item_id],
+        );
+        const artifact = await this.staging.resolve({
+          stagingReference: String(row.input_manifest['stagingReference'] ?? ''),
+          draftId: String(row.input_manifest['draftId'] ?? ''),
+          itemId: row.client_item_id,
+          projectId: input.scope.projectId,
+          principalId: input.scope.principalId,
+          kind: row.input_kind,
+        });
+        const duplicate = await this.findDuplicate(
+          client,
+          input.scope.projectId,
+          artifact.contentHash,
+        );
+        if (duplicate) {
+          await this.createRetryDuplicateDecision(
+            client,
+            input,
+            artifact,
+            row.submission_item_id,
+            row.intake_attempt_id,
+            duplicate,
+          );
+        } else {
+          await this.materialize(
+            client,
+            input.scope,
+            input.submissionId,
+            row.submission_item_id,
+            row.intake_attempt_id,
+            storedItem(artifact),
+            input.createdAt,
+          );
+        }
+      }
+      await this.recomputeSubmission(client, input.submissionId, input.createdAt);
+      await client.query('COMMIT');
+      return (await this.getSubmission(input.scope, input.submissionId))!;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async cancel(input: CancelSourcesProductInput): Promise<IntakeSubmissionSnapshot> {
+    await this.lifecycle.cancelSubmission({
+      projectId: input.scope.projectId,
+      submissionId: input.submissionId,
+      commandId: input.commandId,
+      correlationId: input.correlationId,
+      acceptedPolicyContextId: input.scope.acceptedPolicyContextId,
+      acceptedPolicyBinding: input.scope.acceptedPolicyBinding,
+      createdAt: input.createdAt,
+    });
+    const snapshot = await this.getSubmission(input.scope, input.submissionId);
+    if (!snapshot) throw this.notFound();
+    return snapshot;
+  }
+
+  private referenceForArtifact(artifact: SubmitSourcesProductInput['items'][number]): string {
+    const value = artifact as SubmitSourcesProductInput['items'][number] & {
+      readonly stagingReference?: string;
+    };
+    if (!value.stagingReference) {
+      throw new ShotgunError({
+        code: 'INVALID_REQUEST',
+        safeMessage: 'Resolved staging artifact is missing its sealed reference.',
+        module: 'frontend-sources-write-postgres',
+        operation: 'persist-staging-reference',
+      });
+    }
+    return value.stagingReference;
+  }
+
+  private async insertItemAndAttempt(
+    client: PoolClient,
+    input: SubmitSourcesProductInput,
+    artifact: SubmitSourcesProductInput['items'][number],
+    itemId: string,
+    attemptId: string,
+    ordinal: number,
+    manifest: Readonly<Record<string, unknown>>,
+  ): Promise<void> {
+    await client.query(
+      `INSERT INTO source_product.intake_submission_items (
+         submission_item_id, project_id, submission_id, client_item_id, ordinal,
+         input_kind, label, input_manifest, state, validation_results,
+         content_hash, media_type, size_bytes, created_at, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, 'RUNNING', $9::jsonb,
+                 $10, $11, $12, $13, $13)`,
+      [
+        itemId,
+        input.scope.projectId,
+        input.submissionId,
+        artifact.itemId,
+        ordinal,
+        artifact.kind,
+        artifact.label,
+        JSON.stringify({ ...manifest, draftId: input.draftId }),
+        JSON.stringify([
+          { code: 'VALID', valid: true, message: 'Server staging validation passed.' },
+        ]),
+        artifact.contentHash,
+        artifact.mediaType,
+        artifact.sizeBytes,
+        input.createdAt,
+      ],
+    );
+    await client.query(
+      `INSERT INTO source_product.intake_attempts (
+         intake_attempt_id, project_id, submission_id, submission_item_id,
+         command_id, attempt_number, attempt_kind, state, correlation_id,
+         accepted_policy_context_id, accepted_policy_binding, created_at, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, 1, 'SUBMIT', 'RUNNING', $6, $7, $8::jsonb, $9, $9)`,
+      [
+        attemptId,
+        input.scope.projectId,
+        input.submissionId,
+        itemId,
+        input.commandId,
+        input.correlationId,
+        input.scope.acceptedPolicyContextId,
+        JSON.stringify(input.scope.acceptedPolicyBinding),
+        input.createdAt,
+      ],
+    );
+  }
+
+  private async createDuplicateDecision(
+    client: PoolClient,
+    input: SubmitSourcesProductInput,
+    artifact: SubmitSourcesProductInput['items'][number],
+    itemId: string,
+    attemptId: string,
+    duplicate: DuplicateRecord,
+  ): Promise<void> {
+    const decisionId = randomUUID();
+    await client.query(
+      `INSERT INTO source_product.exact_duplicate_decisions (
+         decision_id, project_id, submission_id, submission_item_id,
+         decision_revision, content_hash, existing_source_id,
+         existing_source_version_id, allowed_dispositions,
+         observed_source_revision, access_revision, policy_context_revision,
+         supersedes_decision_id, created_at
+       ) VALUES ($1, $2, $3, $4, 1, $5, $6, $7, $8, $9, $10, $11, NULL, $12)`,
+      [
+        decisionId,
+        input.scope.projectId,
+        input.submissionId,
+        itemId,
+        artifact.contentHash,
+        duplicate.sourceId,
+        duplicate.sourceVersionId,
+        ALLOWED_DISPOSITIONS,
+        String(duplicate.versionNumber),
+        input.scope.accessRevision,
+        input.scope.policyContextRevision,
+        input.createdAt,
+      ],
+    );
+    await client.query(
+      `UPDATE source_product.intake_submission_items
+       SET active_duplicate_decision_id = $2, state = 'ACTION_REQUIRED',
+           attention_reason = 'An exact-content match requires an explicit disposition.'
+       WHERE submission_item_id = $1`,
+      [itemId, decisionId],
+    );
+    await client.query(
+      `UPDATE source_product.intake_attempts SET state = 'SUCCEEDED', completed_at = $2
+       WHERE intake_attempt_id = $1`,
+      [attemptId, input.createdAt],
+    );
+  }
+
+  private async createRetryDuplicateDecision(
+    client: PoolClient,
+    input: RetrySourcesProductInput,
+    artifact: SubmitSourcesProductInput['items'][number],
+    itemId: string,
+    attemptId: string,
+    duplicate: DuplicateRecord,
+  ): Promise<void> {
+    const previous = await client.query<{ decision_id: string; decision_revision: string }>(
+      `SELECT decision_id::text, decision_revision::text
+       FROM source_product.exact_duplicate_decisions
+       WHERE submission_item_id = $1
+       ORDER BY decision_revision DESC LIMIT 1 FOR UPDATE`,
+      [itemId],
+    );
+    const revision = Number(previous.rows[0]?.decision_revision ?? 0) + 1;
+    const decisionId = randomUUID();
+    await client.query(
+      `INSERT INTO source_product.exact_duplicate_decisions (
+         decision_id, project_id, submission_id, submission_item_id,
+         decision_revision, content_hash, existing_source_id,
+         existing_source_version_id, allowed_dispositions,
+         observed_source_revision, access_revision, policy_context_revision,
+         supersedes_decision_id, created_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+      [
+        decisionId,
+        input.scope.projectId,
+        input.submissionId,
+        itemId,
+        revision,
+        artifact.contentHash,
+        duplicate.sourceId,
+        duplicate.sourceVersionId,
+        ALLOWED_DISPOSITIONS,
+        String(duplicate.versionNumber),
+        input.scope.accessRevision,
+        input.scope.policyContextRevision,
+        previous.rows[0]?.decision_id ?? null,
+        input.createdAt,
+      ],
+    );
+    await client.query(
+      `UPDATE source_product.intake_submission_items
+       SET active_duplicate_decision_id = $2, state = 'ACTION_REQUIRED',
+           attention_reason = 'An exact-content match requires an explicit disposition.'
+       WHERE submission_item_id = $1`,
+      [itemId, decisionId],
+    );
+    await client.query(
+      `UPDATE source_product.intake_attempts SET state = 'SUCCEEDED', completed_at = $2
+       WHERE intake_attempt_id = $1`,
+      [attemptId, input.createdAt],
+    );
+  }
+
+  private async findDuplicate(
+    client: PoolClient,
+    projectId: string,
+    contentHash: string,
+  ): Promise<DuplicateRecord | undefined> {
+    const result = await client.query<{
+      source_id: string;
+      source_version_id: string;
+      version_number: number;
+      original_asset_id: string;
+    }>(
+      `SELECT source.source_id::text, version.source_version_id::text,
+              version.version_number, version.original_asset_id::text
+       FROM asset.original_assets AS original
+       JOIN asset.source_versions AS version ON version.original_asset_id = original.asset_id
+       JOIN asset.sources AS source ON source.source_id = version.source_id
+       WHERE source.project_id = $1 AND original.content_hash = $2
+       ORDER BY version.created_at, version.source_version_id
+       LIMIT 1`,
+      [projectId, contentHash],
+    );
+    const row = result.rows[0];
+    return row
+      ? {
+          sourceId: row.source_id,
+          sourceVersionId: row.source_version_id,
+          versionNumber: row.version_number,
+          originalAssetId: row.original_asset_id,
+        }
+      : undefined;
+  }
+
+  private async materialize(
+    client: PoolClient,
+    scope: SourcesProductWriteScope,
+    submissionId: string,
+    itemId: string,
+    attemptId: string,
+    item: SourcesIntakeStoredItemInput,
+    createdAt: string,
+    forceNewVersion = false,
+  ): Promise<void> {
+    const recovered = await this.recoverExistingStage2(client, scope.projectId, itemId);
+    if (recovered) {
+      await this.finishItem(client, itemId, attemptId, recovered.sourceId, recovered.sourceVersionId, createdAt);
+      return;
+    }
+    await this.insertStage2Submission(client, scope, itemId, item, createdAt);
+    const assetInsert = await client.query<{ asset_id: string }>(
+      `INSERT INTO asset.original_assets (asset_id, content_hash, size_bytes, storage_key, created_at)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (content_hash) DO NOTHING RETURNING asset_id::text`,
+      [randomUUID(), item.contentHash, item.sizeBytes, item.storageKey, createdAt],
+    );
+    const assetReused = assetInsert.rowCount === 0;
+    const asset = await client.query<{ asset_id: string }>(
+      'SELECT asset_id::text FROM asset.original_assets WHERE content_hash = $1',
+      [item.contentHash],
+    );
+    const originalAssetId = asset.rows[0]?.asset_id;
+    if (!originalAssetId) throw new Error('Original Asset was not resolved.');
+    const sourceId = await this.resolveOrCreateSource(
+      client,
+      scope,
+      item.requestedSourceId,
+      createdAt,
+    );
+    let sourceVersionId: string | undefined;
+    let versionNumber: number | undefined;
+    if (!forceNewVersion) {
+      const existing = await client.query<{ source_version_id: string; version_number: number }>(
+        `SELECT source_version_id::text, version_number
+         FROM asset.source_versions WHERE source_id = $1 AND original_asset_id = $2
+         ORDER BY version_number LIMIT 1`,
+        [sourceId, originalAssetId],
+      );
+      sourceVersionId = existing.rows[0]?.source_version_id;
+      versionNumber = existing.rows[0]?.version_number;
+    }
+    const versionCreated = sourceVersionId === undefined;
+    if (!sourceVersionId || versionNumber === undefined) {
+      const next = await client.query<{ next_version: number }>(
+        `SELECT COALESCE(MAX(version_number), 0) + 1 AS next_version
+         FROM asset.source_versions WHERE source_id = $1`,
+        [sourceId],
+      );
+      sourceVersionId = randomUUID();
+      versionNumber = Number(next.rows[0]?.next_version ?? 1);
+      await client.query(
+        `INSERT INTO asset.source_versions (
+           source_version_id, source_id, version_number, original_asset_id,
+           media_type, access_scope, sensitivity, created_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [
+          sourceVersionId,
+          sourceId,
+          versionNumber,
+          originalAssetId,
+          item.mediaType,
+          scope.accessScopes,
+          scope.sensitivity,
+          createdAt,
+        ],
+      );
+    }
+    await this.insertStorageReceipt(
+      client,
+      scope.projectId,
+      itemId,
+      sourceVersionId,
+      item,
+      assetReused,
+      versionCreated,
+      createdAt,
+    );
+    if (item.urlProvenance) {
+      await this.insertUrlReceipt(
+        client,
+        scope,
+        submissionId,
+        itemId,
+        attemptId,
+        item,
+        originalAssetId,
+        sourceVersionId,
+        createdAt,
+      );
+    }
+    await this.finishItem(client, itemId, attemptId, sourceId, sourceVersionId, createdAt);
+  }
+
+  private async reuseExistingVersion(
+    client: PoolClient,
+    scope: SourcesProductWriteScope,
+    itemId: string,
+    attemptId: string,
+    artifact: SubmitSourcesProductInput['items'][number],
+    sourceId: string,
+    sourceVersionId: string,
+    createdAt: string,
+  ): Promise<void> {
+    const version = await client.query<{ original_asset_id: string }>(
+      `SELECT original_asset_id::text FROM asset.source_versions
+       WHERE source_id = $1 AND source_version_id = $2`,
+      [sourceId, sourceVersionId],
+    );
+    if (!version.rows[0]) throw this.notFound();
+    const item = storedItem(artifact, sourceId);
+    await this.insertStage2Submission(client, scope, itemId, item, createdAt);
+    await this.insertStorageReceipt(
+      client,
+      scope.projectId,
+      itemId,
+      sourceVersionId,
+      item,
+      true,
+      false,
+      createdAt,
+    );
+    if (item.urlProvenance) {
+      await this.insertUrlReceipt(
+        client,
+        scope,
+        '',
+        itemId,
+        attemptId,
+        item,
+        version.rows[0].original_asset_id,
+        sourceVersionId,
+        createdAt,
+      );
+    }
+    await this.finishItem(client, itemId, attemptId, sourceId, sourceVersionId, createdAt);
+  }
+
+  private async insertStage2Submission(
+    client: PoolClient,
+    scope: SourcesProductWriteScope,
+    itemId: string,
+    item: SourcesIntakeStoredItemInput,
+    createdAt: string,
+  ): Promise<void> {
+    await client.query(
+      `INSERT INTO intake.submissions (
+         submission_key, submission_id, project_id, actor_id, requested_source_id,
+         channel, material_kind, media_type, original_file_name, content_hash,
+         size_bytes, access_scope, sensitivity, created_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, 'plain_text', $7, $8, $9, $10, $11, $12, $13)`,
+      [
+        randomUUID(),
+        itemId,
+        scope.projectId,
+        scope.principalId,
+        item.requestedSourceId ?? null,
+        item.channel,
+        item.mediaType,
+        item.originalFileName ?? null,
+        item.contentHash,
+        item.sizeBytes,
+        scope.accessScopes,
+        scope.sensitivity,
+        createdAt,
+      ],
+    );
+  }
+
+  private async insertStorageReceipt(
+    client: PoolClient,
+    projectId: string,
+    itemId: string,
+    sourceVersionId: string,
+    item: SourcesIntakeStoredItemInput,
+    assetReused: boolean,
+    versionCreated: boolean,
+    createdAt: string,
+  ): Promise<void> {
+    await client.query(
+      `INSERT INTO asset.storage_receipts (
+         receipt_id, submission_id, project_id, source_version_id, channel,
+         material_kind, original_file_name, asset_reused, version_created, created_at
+       ) VALUES ($1, $2, $3, $4, $5, 'plain_text', $6, $7, $8, $9)`,
+      [
+        randomUUID(),
+        itemId,
+        projectId,
+        sourceVersionId,
+        item.channel,
+        item.originalFileName ?? null,
+        assetReused,
+        versionCreated,
+        createdAt,
+      ],
+    );
+  }
+
+  private async insertUrlReceipt(
+    client: PoolClient,
+    scope: SourcesProductWriteScope,
+    submissionId: string,
+    itemId: string,
+    attemptId: string,
+    item: SourcesIntakeStoredItemInput,
+    originalAssetId: string,
+    sourceVersionId: string,
+    createdAt: string,
+  ): Promise<void> {
+    const p = item.urlProvenance;
+    if (!p) return;
+    const actualSubmissionId =
+      submissionId ||
+      (
+        await client.query<{ submission_id: string }>(
+          `SELECT submission_id::text FROM source_product.intake_submission_items
+           WHERE submission_item_id = $1`,
+          [itemId],
+        )
+      ).rows[0]?.submission_id;
+    if (!actualSubmissionId) throw new Error('URL Product Submission was not resolved.');
+    const urlAttemptId = randomUUID();
+    await client.query(
+      `INSERT INTO source_product.url_acquisition_attempts (
+         url_acquisition_attempt_id, project_id, submission_id, submission_item_id,
+         intake_attempt_id, normalized_requested_url, redacted_requested_url,
+         state, max_redirects, connect_timeout_ms, header_timeout_ms, body_timeout_ms,
+         total_timeout_ms, max_compressed_bytes, max_decompressed_bytes,
+         accepted_policy_context_id, policy_context_revision, retention_class,
+         retention_expires_at, created_at, updated_at, completed_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'SUCCEEDED', $8, $9, $10, $11,
+                 $12, $13, $14, $15, $16, $17, $18, $19, $19, $19)`,
+      [
+        urlAttemptId,
+        scope.projectId,
+        actualSubmissionId,
+        itemId,
+        attemptId,
+        p.normalizedRequestedUrl,
+        p.redactedRequestedUrl,
+        p.limits.maxRedirects,
+        p.limits.connectTimeoutMs,
+        p.limits.headerTimeoutMs,
+        p.limits.bodyTimeoutMs,
+        p.limits.totalTimeoutMs,
+        p.limits.maxCompressedBytes,
+        p.limits.maxDecompressedBytes,
+        scope.acceptedPolicyContextId,
+        scope.policyContextRevision,
+        p.retentionClass,
+        p.retentionExpiresAt ?? null,
+        createdAt,
+      ],
+    );
+    await client.query(
+      `INSERT INTO source_product.url_provenance_receipts (
+         url_provenance_receipt_id, project_id, submission_id, submission_item_id,
+         url_acquisition_attempt_id, outcome, redacted_requested_url,
+         redacted_final_url, redirect_chain_digest, redirect_observations,
+         dns_observations, response_status, response_content_type,
+         response_content_length, compressed_bytes, decompressed_bytes,
+         response_metadata, content_hash, original_asset_id, source_version_id,
+         retention_class, retention_expires_at, retrieved_at, created_at
+       ) VALUES ($1, $2, $3, $4, $5, 'SUCCEEDED', $6, $7, $8, $9::jsonb,
+                 $10::jsonb, $11, $12, $13, $14, $15, $16::jsonb, $17,
+                 $18, $19, $20, $21, $22, $23)`,
+      [
+        randomUUID(),
+        scope.projectId,
+        actualSubmissionId,
+        itemId,
+        urlAttemptId,
+        p.redactedRequestedUrl,
+        p.redactedFinalUrl,
+        p.redirectChainDigest,
+        JSON.stringify(p.redirectObservations),
+        JSON.stringify(p.dnsObservations),
+        p.responseStatus,
+        p.responseContentType,
+        p.responseContentLength ?? null,
+        p.compressedBytes,
+        p.decompressedBytes,
+        JSON.stringify(p.responseMetadata),
+        item.contentHash,
+        originalAssetId,
+        sourceVersionId,
+        p.retentionClass,
+        p.retentionExpiresAt ?? null,
+        p.retrievedAt,
+        createdAt,
+      ],
+    );
+  }
+
+  private async resolveOrCreateSource(
+    client: PoolClient,
+    scope: SourcesProductWriteScope,
+    requestedSourceId: string | undefined,
+    createdAt: string,
+  ): Promise<string> {
+    if (requestedSourceId) {
+      const source = await client.query<{ source_id: string }>(
+        `SELECT source_id::text FROM asset.sources
+         WHERE project_id = $1 AND source_id = $2 FOR UPDATE`,
+        [scope.projectId, requestedSourceId],
+      );
+      if (!source.rows[0]) throw this.notFound();
+      return source.rows[0].source_id;
+    }
+    const sourceId = randomUUID();
+    await client.query(
+      `INSERT INTO asset.sources (source_id, project_id, created_by_actor_id, created_at)
+       VALUES ($1, $2, $3, $4)`,
+      [sourceId, scope.projectId, scope.principalId, createdAt],
+    );
+    return sourceId;
+  }
+
+  private async finishItem(
+    client: PoolClient,
+    itemId: string,
+    attemptId: string,
+    sourceId: string,
+    sourceVersionId: string,
+    createdAt: string,
+  ): Promise<void> {
+    await client.query(
+      `UPDATE source_product.intake_submission_items
+       SET stage2_submission_id = submission_item_id::text,
+           produced_source_id = $2, produced_source_version_id = $3,
+           active_duplicate_decision_id = NULL, attention_reason = NULL,
+           state = 'SUCCEEDED', completed_at = $4
+       WHERE submission_item_id = $1`,
+      [itemId, sourceId, sourceVersionId, createdAt],
+    );
+    await client.query(
+      `UPDATE source_product.intake_attempts
+       SET state = CASE WHEN state = 'ACCEPTED' THEN 'RUNNING' ELSE state END
+       WHERE intake_attempt_id = $1`,
+      [attemptId],
+    );
+    await client.query(
+      `UPDATE source_product.intake_attempts
+       SET state = 'SUCCEEDED', completed_at = $2 WHERE intake_attempt_id = $1`,
+      [attemptId, createdAt],
+    );
+  }
+
+  private async recoverExistingStage2(
+    client: PoolClient,
+    projectId: string,
+    itemId: string,
+  ): Promise<{ sourceId: string; sourceVersionId: string } | undefined> {
+    const result = await client.query<{ source_id: string; source_version_id: string }>(
+      `SELECT version.source_id::text, receipt.source_version_id::text
+       FROM asset.storage_receipts AS receipt
+       JOIN asset.source_versions AS version
+         ON version.source_version_id = receipt.source_version_id
+       WHERE receipt.project_id = $1 AND receipt.submission_id = $2`,
+      [projectId, itemId],
+    );
+    const row = result.rows[0];
+    return row ? { sourceId: row.source_id, sourceVersionId: row.source_version_id } : undefined;
+  }
+
+  private async createResolutionAttempt(
+    client: PoolClient,
+    input: ResolveSourcesDuplicateProductInput,
+    submissionId: string,
+    itemId: string,
+  ): Promise<string> {
+    const previous = await client.query<{ attempt_id: string; attempt_number: number }>(
+      `SELECT intake_attempt_id::text AS attempt_id, attempt_number
+       FROM source_product.intake_attempts
+       WHERE submission_item_id = $1 ORDER BY attempt_number DESC LIMIT 1 FOR UPDATE`,
+      [itemId],
+    );
+    const attemptId = randomUUID();
+    await client.query(
+      `INSERT INTO source_product.intake_attempts (
+         intake_attempt_id, project_id, submission_id, submission_item_id,
+         command_id, attempt_number, attempt_kind, state, correlation_id,
+         causation_attempt_id, accepted_policy_context_id,
+         accepted_policy_binding, created_at, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, 'RETRY_CURRENT_POLICY', 'RUNNING',
+                 $7, $8, $9, $10::jsonb, $11, $11)`,
+      [
+        attemptId,
+        input.scope.projectId,
+        submissionId,
+        itemId,
+        input.commandId,
+        Number(previous.rows[0]?.attempt_number ?? 0) + 1,
+        input.correlationId,
+        previous.rows[0]?.attempt_id ?? null,
+        input.scope.acceptedPolicyContextId,
+        JSON.stringify(input.scope.acceptedPolicyBinding),
+        input.createdAt,
+      ],
+    );
+    return attemptId;
+  }
+
+  private async recomputeSubmission(
+    client: PoolClient,
+    submissionId: string,
+    createdAt: string,
+  ): Promise<void> {
+    const result = await client.query<{ state: IntakeSubmissionItemView['state']; count: string }>(
+      `SELECT state, count(*)::text AS count
+       FROM source_product.intake_submission_items
+       WHERE submission_id = $1 GROUP BY state`,
+      [submissionId],
+    );
+    const counts = new Map(result.rows.map((row) => [row.state, Number(row.count)]));
+    const total = [...counts.values()].reduce((sum, count) => sum + count, 0);
+    const succeeded = counts.get('SUCCEEDED') ?? 0;
+    const cancelled = counts.get('CANCELLED') ?? 0;
+    const action = counts.get('ACTION_REQUIRED') ?? 0;
+    const failed = counts.get('FAILED') ?? 0;
+    let state: IntakeSubmissionSnapshot['state'];
+    if (succeeded === total) state = 'SUCCEEDED';
+    else if (cancelled === total) state = 'CANCELLED';
+    else if (action > 0 && succeeded + cancelled + failed > 0) state = 'PARTIAL';
+    else if (action > 0) state = 'ACTION_REQUIRED';
+    else if (failed === total) state = 'FAILED';
+    else if (failed > 0 || cancelled > 0) state = 'PARTIAL';
+    else state = 'RUNNING';
+    await client.query(
+      `UPDATE source_product.intake_submissions
+       SET state = $2,
+           completed_at = CASE WHEN $2 IN ('SUCCEEDED', 'FAILED', 'CANCELLED')
+                               THEN $3::timestamptz ELSE NULL END
+       WHERE submission_id = $1`,
+      [submissionId, state, createdAt],
+    );
+  }
+
+  private async assertAcceptedCommand(
+    client: PoolClient,
+    commandId: string,
+    scope: SourcesProductWriteScope,
+    commandType: string,
+  ): Promise<void> {
+    const result = await client.query<{
+      principal_id: string;
+      active_project_id: string | null;
+      target_project_id: string | null;
+      command_type: string;
+      outcome_state: string;
+      command_payload: unknown;
+    }>(
+      `SELECT principal_id::text, active_project_id, target_project_id,
+              command_type, outcome_state, command_payload
+       FROM frontend_command.command_ledger WHERE command_id = $1 FOR SHARE`,
+      [commandId],
+    );
+    const row = result.rows[0];
+    if (
+      !row ||
+      row.outcome_state !== 'ACCEPTED' ||
+      row.command_type !== commandType ||
+      row.principal_id !== scope.principalId ||
+      row.active_project_id !== scope.projectId ||
+      row.target_project_id !== scope.projectId
+    ) {
+      throw new ShotgunError({
+        code: 'POLICY_DENIED',
+        safeMessage: 'The accepted Command does not match this Sources operation.',
+        module: 'frontend-sources-write-postgres',
+        operation: 'assert-product-command',
+      });
+    }
+    assertSourcesLedgerManifestSafe(row.command_payload);
+  }
+
+  private publicItem(
+    scope: SourcesProductWriteScope,
+    item: ProductItemRow,
+  ): IntakeSubmissionItemView {
+    const base = {
+      itemId: item.submission_item_id,
+      label: item.label,
+      sizeBytes: Number(item.size_bytes ?? 0),
+      ...(item.content_hash === null ? {} : { contentHash: item.content_hash }),
+    };
+    const manifest =
+      item.input_kind === 'DIRECT_TEXT'
+        ? {
+            kind: 'DIRECT_TEXT' as const,
+            ...base,
+            mediaType: 'text/plain' as const,
+          }
+        : item.input_kind === 'FILE'
+          ? {
+              kind: 'FILE' as const,
+              ...base,
+              fileName: String(item.input_manifest['fileName'] ?? item.label),
+              mediaType: String(item.media_type ?? 'text/plain'),
+            }
+          : {
+              kind: 'URL' as const,
+              ...base,
+              requestedUrl: String(
+                item.input_manifest['requestedUrl'] ?? 'https://redacted.invalid/',
+              ),
+              ...(item.media_type === null ? {} : { mediaType: item.media_type }),
+            };
+    const validation = Array.isArray(item.validation_results)
+      ? (item.validation_results as IntakeSubmissionItemView['validation'])
+      : [];
+    return {
+      itemId: item.submission_item_id,
+      manifest,
+      state: item.state,
+      validation,
+      ...(item.produced_source_id === null ||
+      item.produced_source_version_id === null ||
+      item.version_number === null
+        ? {}
+        : {
+            producedResource: {
+              sourceId: item.produced_source_id,
+              sourceVersionId: item.produced_source_version_id,
+              projectId: scope.projectId,
+              versionNumber: item.version_number,
+            },
+          }),
+      ...(item.active_duplicate_decision_id === null
+        ? {}
+        : { duplicateDecisionId: item.active_duplicate_decision_id }),
+      ...(item.safe_failure_code === null ||
+      item.safe_failure_message === null ||
+      item.safe_failure_retryable === null
+        ? {}
+        : {
+            safeFailure: {
+              code: item.safe_failure_code,
+              message: item.safe_failure_message,
+              retryable: item.safe_failure_retryable,
+            },
+          }),
+      capabilities: inputCapabilities(item.state),
+      ...(item.attention_reason === null ? {} : { attentionReason: item.attention_reason }),
+    };
+  }
+
+  private notFound(): ShotgunError {
+    return new ShotgunError({
+      code: 'NOT_FOUND',
+      safeMessage: 'The requested Sources resource was not found.',
+      module: 'frontend-sources-write-postgres',
+      operation: 'read-product-resource',
+    });
+  }
+}

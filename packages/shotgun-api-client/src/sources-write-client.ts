@@ -173,6 +173,8 @@ export const createSourcesWriteClient = (
       });
       if (input.fileName !== undefined) parameters.set('fileName', input.fileName);
       const token = await csrf(options?.signal);
+      const bodyBytes = new Uint8Array(input.bytes.byteLength);
+      bodyBytes.set(input.bytes);
       const response = await fetchImpl(
         `${productBase}/sources/staging/bytes?${parameters.toString()}`,
         {
@@ -182,7 +184,7 @@ export const createSourcesWriteClient = (
             'content-type': 'application/octet-stream',
             'x-csrf-token': token,
           },
-          body: input.bytes,
+          body: bodyBytes.buffer,
           signal: options?.signal,
         },
       );

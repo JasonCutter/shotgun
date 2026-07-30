@@ -40,19 +40,16 @@ export async function startFrontendTestBackend() {
   const principalId = ownerMembership.principalId;
 
   const projectAdminRepository = new PostgresProjectAdministrationRepository(pool);
-  const existingProject = await projectAdminRepository.getProject('project-b');
-  if (!existingProject) {
-    await projectAdminRepository.createProject({
-      commandId: 'browser-fixture-project-b',
-      clientRequestId: 'browser-fixture-project-b',
-      idempotencyKey: 'browser-fixture-project-b',
-      projectId: 'project-b',
-      name: 'Project B',
-      description: 'Browser test Project',
-      actorPrincipalId: principalId,
-      expectedProjectRevision: 0,
-    });
-  }
+  await projectAdminRepository.createProject({
+    commandId: 'browser-fixture-project-b',
+    clientRequestId: 'browser-fixture-project-b',
+    idempotencyKey: 'browser-fixture-project-b',
+    projectId: 'project-b',
+    name: 'Project B',
+    description: 'Browser test Project',
+    actorPrincipalId: principalId,
+    expectedProjectRevision: 0,
+  });
   await authRepository.createProjectOwnerMembership({
     principalId,
     projectId: 'project-b',

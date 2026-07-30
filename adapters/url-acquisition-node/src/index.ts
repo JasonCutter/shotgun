@@ -27,6 +27,16 @@ const transportError = (error: unknown, operation: string): ShotgunError =>
         cause: error,
       });
 
+type LookupOneCallback = (
+  error: NodeJS.ErrnoException | null,
+  address: string,
+  family: 4 | 6,
+) => void;
+type LookupAllCallback = (
+  error: NodeJS.ErrnoException | null,
+  addresses: readonly { readonly address: string; readonly family: 4 | 6 }[],
+) => void;
+
 export class NodeUrlResolver implements UrlResolverPort {
   async resolve(hostname: string): Promise<readonly string[]> {
     try {
@@ -42,7 +52,8 @@ export class NodeUrlHopTransport implements UrlHopTransportPort {
   async request(input: Parameters<UrlHopTransportPort['request']>[0]): Promise<UrlHopResponse> {
     const parsed = new URL(input.url);
     const address = input.approvedAddresses[0];
-    if (!address || isIP(address) === 0) {
+    const addressFamily = address ? isIP(address) : 0;
+    if (!address || (addressFamily !== 4 && addressFamily !== 6)) {
       throw new ShotgunError({
         code: 'POLICY_DENIED',
         safeMessage: 'URL acquisition has no approved destination address.',
@@ -50,11 +61,13 @@ export class NodeUrlHopTransport implements UrlHopTransportPort {
         operation: 'select-address',
       });
     }
+    const family = addressFamily as 4 | 6;
     const client = parsed.protocol === 'https:' ? https : http;
     return new Promise<UrlHopResponse>((resolve, reject) => {
       let settled = false;
       let responseStarted = false;
       let connected = false;
+      let terminalError: ShotgunError | undefined;
       const timers: {
         total?: NodeJS.Timeout;
         connect?: NodeJS.Timeout;
@@ -82,6 +95,10 @@ export class NodeUrlHopTransport implements UrlHopTransportPort {
           operation: `${phase}-timeout`,
           retryable: true,
         });
+      const destroyWith = (request: http.ClientRequest, error: ShotgunError) => {
+        terminalError = error;
+        request.destroy(error);
+      };
 
       const request = client.request(
         {
@@ -96,8 +113,12 @@ export class NodeUrlHopTransport implements UrlHopTransportPort {
             'accept-encoding': 'identity',
             'user-agent': 'Shotgun-Source-Acquisition/1.0',
           },
-          lookup: (_hostname, _options, callback) => {
-            callback(null, address, isIP(address) as 4 | 6);
+          lookup: (_hostname, options, callback) => {
+            if (typeof options === 'object' && options.all === true) {
+              (callback as LookupAllCallback)(null, [{ address, family }]);
+              return;
+            }
+            (callback as LookupOneCallback)(null, address, family);
           },
           agent: false,
         },
@@ -123,7 +144,7 @@ export class NodeUrlHopTransport implements UrlHopTransportPort {
           const resetBodyTimer = () => {
             if (timers.body) clearTimeout(timers.body);
             timers.body = setTimeout(() => {
-              request.destroy(timeout('body'));
+              destroyWith(request, timeout('body'));
             }, input.limits.bodyTimeoutMs);
           };
           resetBodyTimer();
@@ -132,7 +153,8 @@ export class NodeUrlHopTransport implements UrlHopTransportPort {
             const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
             received += bytes.byteLength;
             if (received > input.limits.maxCompressedBytes) {
-              request.destroy(
+              destroyWith(
+                request,
                 new ShotgunError({
                   code: 'VALIDATION_ERROR',
                   safeMessage: 'URL response exceeds the approved byte limit.',
@@ -163,20 +185,22 @@ export class NodeUrlHopTransport implements UrlHopTransportPort {
                 : {}),
             });
           });
-          response.once('error', (error) => finishError(error, 'response-stream'));
+          response.once('error', (error) =>
+            finishError(terminalError ?? error, 'response-stream'),
+          );
         },
       );
 
       timers.total = setTimeout(
-        () => request.destroy(timeout('total')),
+        () => destroyWith(request, timeout('total')),
         input.limits.totalTimeoutMs,
       );
       timers.connect = setTimeout(
-        () => request.destroy(timeout('connect')),
+        () => destroyWith(request, timeout('connect')),
         input.limits.connectTimeoutMs,
       );
       timers.header = setTimeout(
-        () => request.destroy(timeout('header')),
+        () => destroyWith(request, timeout('header')),
         input.limits.headerTimeoutMs,
       );
       request.once('socket', (socket) => {
@@ -188,7 +212,7 @@ export class NodeUrlHopTransport implements UrlHopTransportPort {
       });
       request.once('error', (error) => {
         const phase = !connected ? 'connect' : !responseStarted ? 'headers' : 'request';
-        finishError(error, phase);
+        finishError(terminalError ?? error, phase);
       });
       request.end();
     });

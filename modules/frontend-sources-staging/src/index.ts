@@ -1,10 +1,4 @@
-import {
-  createCipheriv,
-  createDecipheriv,
-  createHash,
-  randomBytes,
-  timingSafeEqual,
-} from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 
 import type { AssetStoragePort } from '../../original-asset/src/index.js';
 import type {
@@ -88,7 +82,10 @@ const TOKEN_PREFIX = 'sources-stage-v1.';
 const sha256 = (bytes: Uint8Array): string =>
   `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
 
-const fail = (code: 'VALIDATION_ERROR' | 'POLICY_DENIED' | 'RETENTION_EXPIRED', message: string): never => {
+const fail = (
+  code: 'VALIDATION_ERROR' | 'POLICY_DENIED' | 'RETENTION_EXPIRED',
+  message: string,
+): never => {
   throw new ShotgunError({
     code,
     safeMessage: message,
@@ -127,6 +124,31 @@ const toUrlProvenance = (
   retrievedAt: now,
   limits,
 });
+
+const isArtifact = (value: unknown): value is ResolvedSourcesStagingArtifact => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate['draftId'] === 'string' &&
+    typeof candidate['itemId'] === 'string' &&
+    typeof candidate['projectId'] === 'string' &&
+    typeof candidate['principalId'] === 'string' &&
+    ['DIRECT_TEXT', 'FILE', 'URL'].includes(String(candidate['kind'])) &&
+    typeof candidate['label'] === 'string' &&
+    ['direct_text', 'file_upload', 'url_acquisition'].includes(String(candidate['channel'])) &&
+    ['text/plain', 'text/markdown'].includes(String(candidate['mediaType'])) &&
+    typeof candidate['contentHash'] === 'string' &&
+    /^sha256:[a-f0-9]{64}$/.test(candidate['contentHash']) &&
+    Number.isInteger(candidate['sizeBytes']) &&
+    Number(candidate['sizeBytes']) > 0 &&
+    Number(candidate['sizeBytes']) <= MAX_BYTES &&
+    typeof candidate['storageKey'] === 'string' &&
+    typeof candidate['issuedAt'] === 'string' &&
+    !Number.isNaN(Date.parse(candidate['issuedAt'])) &&
+    typeof candidate['expiresAt'] === 'string' &&
+    !Number.isNaN(Date.parse(candidate['expiresAt']))
+  );
+};
 
 export class SealedSourcesStagingService implements SourcesStagingServicePort {
   private readonly key: Buffer;
@@ -248,7 +270,10 @@ export class SealedSourcesStagingService implements SourcesStagingServicePort {
       artifact.principalId !== input.principalId ||
       artifact.kind !== input.kind
     ) {
-      return fail('POLICY_DENIED', 'The Sources staging reference does not match this request context.');
+      return fail(
+        'POLICY_DENIED',
+        'The Sources staging reference does not match this request context.',
+      );
     }
     if (Date.parse(artifact.expiresAt) <= this.now().getTime()) {
       return fail('RETENTION_EXPIRED', 'The Sources staging reference has expired.');
@@ -305,12 +330,7 @@ export class SealedSourcesStagingService implements SourcesStagingServicePort {
     if (!reference.startsWith(TOKEN_PREFIX)) {
       return fail('POLICY_DENIED', 'The Sources staging reference is invalid.');
     }
-    let packed: Buffer;
-    try {
-      packed = Buffer.from(reference.slice(TOKEN_PREFIX.length), 'base64url');
-    } catch {
-      return fail('POLICY_DENIED', 'The Sources staging reference is invalid.');
-    }
+    const packed = Buffer.from(reference.slice(TOKEN_PREFIX.length), 'base64url');
     if (packed.byteLength < 29) {
       return fail('POLICY_DENIED', 'The Sources staging reference is invalid.');
     }
@@ -322,13 +342,9 @@ export class SealedSourcesStagingService implements SourcesStagingServicePort {
       decipher.setAAD(Buffer.from(TOKEN_PREFIX, 'utf8'));
       decipher.setAuthTag(tag);
       const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
-      const parsed = JSON.parse(plaintext.toString('utf8')) as ResolvedSourcesStagingArtifact;
-      const canonicalTag = createCipheriv('aes-256-gcm', this.key, iv);
-      canonicalTag.setAAD(Buffer.from(TOKEN_PREFIX, 'utf8'));
-      canonicalTag.update(plaintext);
-      canonicalTag.final();
-      if (!timingSafeEqual(tag, tag)) {
-        return fail('POLICY_DENIED', 'The Sources staging reference is invalid.');
+      const parsed: unknown = JSON.parse(plaintext.toString('utf8'));
+      if (!isArtifact(parsed)) {
+        return fail('POLICY_DENIED', 'The Sources staging reference payload is invalid.');
       }
       return parsed;
     } catch {

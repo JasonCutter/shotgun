@@ -2,8 +2,8 @@ import { createHash } from 'node:crypto';
 
 import { describe, expect, it } from 'vitest';
 
+import { SealedSourcesStagingService } from '../../adapters/frontend-sources-staging-sealed/src/index.js';
 import type { AssetStoragePort } from '../../modules/original-asset/src/index.js';
-import { SealedSourcesStagingService } from '../../modules/frontend-sources-staging/src/index.js';
 
 class MemoryStorage implements AssetStoragePort {
   readonly values = new Map<string, Uint8Array>();
@@ -67,6 +67,7 @@ describe('sealed Sources staging service', () => {
     });
     expect(await storage.read(artifact.storageKey)).toEqual(base.bytes);
     expect(artifact.contentHash).toBe(receipt.contentHash);
+    expect(artifact.stagingReference).toBe(receipt.stagingReference);
   });
 
   it('rejects token tampering and cross-Project or cross-Principal replay', async () => {

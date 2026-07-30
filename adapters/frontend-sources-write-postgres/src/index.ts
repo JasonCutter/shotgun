@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { Pool, type PoolClient, type QueryResultRow } from 'pg';
+import type { Pool, PoolClient, QueryResultRow } from 'pg';
 
 import { ShotgunError } from '../../../packages/contracts/src/index.js';
 import type {
@@ -15,33 +15,27 @@ import type {
 } from '../../../modules/frontend-sources-write/src/index.js';
 
 type CommandRow = QueryResultRow & {
-  readonly command_id: string;
-  readonly principal_id: string;
-  readonly active_project_id: string | null;
-  readonly target_project_id: string | null;
-  readonly command_type: string;
-  readonly outcome_state: string;
-  readonly command_payload: unknown;
-};
-
-type ExistingSubmissionRow = QueryResultRow & {
-  readonly submission_id: string;
-  readonly project_id: string;
-  readonly submission_revision: string;
+  command_id: string;
+  principal_id: string;
+  active_project_id: string | null;
+  target_project_id: string | null;
+  command_type: string;
+  outcome_state: string;
+  command_payload: unknown;
 };
 
 type StoredItemRow = QueryResultRow & {
-  readonly submission_item_id: string;
-  readonly client_item_id: string;
-  readonly source_id: string;
-  readonly source_version_id: string;
-  readonly version_number: number;
-  readonly original_asset_id: string;
-  readonly asset_reused: boolean;
-  readonly version_created: boolean;
+  submission_item_id: string;
+  client_item_id: string;
+  source_id: string;
+  source_version_id: string;
+  version_number: number;
+  original_asset_id: string;
+  asset_reused: boolean;
+  version_created: boolean;
 };
 
-const forbiddenPayloadKeys = new Set([
+const forbiddenKeys = new Set([
   'authorization',
   'bytes',
   'contentbase64',
@@ -54,14 +48,14 @@ const forbiddenPayloadKeys = new Set([
   'text',
 ]);
 
-const assertSafeLedgerManifest = (value: unknown, path = 'payload'): void => {
+export const assertSourcesLedgerManifestSafe = (value: unknown, path = 'payload'): void => {
   if (Array.isArray(value)) {
-    value.forEach((item, index) => assertSafeLedgerManifest(item, `${path}[${index}]`));
+    value.forEach((item, index) => assertSourcesLedgerManifestSafe(item, `${path}[${index}]`));
     return;
   }
   if (typeof value !== 'object' || value === null) return;
   for (const [key, child] of Object.entries(value)) {
-    if (forbiddenPayloadKeys.has(key.toLocaleLowerCase())) {
+    if (forbiddenKeys.has(key.toLocaleLowerCase())) {
       throw new ShotgunError({
         code: 'POLICY_DENIED',
         safeMessage: `Frontend Command Ledger payload contains forbidden raw-input field '${path}.${key}'.`,
@@ -69,11 +63,11 @@ const assertSafeLedgerManifest = (value: unknown, path = 'payload'): void => {
         operation: 'assert-safe-ledger-manifest',
       });
     }
-    assertSafeLedgerManifest(child, `${path}.${key}`);
+    assertSourcesLedgerManifestSafe(child, `${path}.${key}`);
   }
 };
 
-const assertItemContract = (item: SourcesIntakeStoredItemInput): void => {
+const validateItem = (item: SourcesIntakeStoredItemInput): void => {
   const expectedChannel = {
     DIRECT_TEXT: 'direct_text',
     FILE: 'file_upload',
@@ -103,23 +97,15 @@ const assertItemContract = (item: SourcesIntakeStoredItemInput): void => {
       operation: 'validate-item-hash',
     });
   }
-  if (item.inputKind === 'URL' && !item.urlProvenance) {
+  if ((item.inputKind === 'URL') !== Boolean(item.urlProvenance)) {
     throw new ShotgunError({
       code: 'VALIDATION_ERROR',
-      safeMessage: 'A successful URL Item requires safe provenance.',
+      safeMessage: 'Successful URL Items require URL provenance and non-URL Items prohibit it.',
       module: 'frontend-sources-write-postgres',
       operation: 'validate-url-provenance',
     });
   }
-  if (item.inputKind !== 'URL' && item.urlProvenance) {
-    throw new ShotgunError({
-      code: 'VALIDATION_ERROR',
-      safeMessage: 'Only URL Items may provide URL provenance.',
-      module: 'frontend-sources-write-postgres',
-      operation: 'validate-url-provenance',
-    });
-  }
-  assertSafeLedgerManifest(item.inputManifest, 'inputManifest');
+  assertSourcesLedgerManifestSafe(item.inputManifest, 'inputManifest');
 };
 
 export class PostgresSourcesIntakeUnitOfWork implements SourcesIntakeUnitOfWorkPort {
@@ -136,8 +122,8 @@ export class PostgresSourcesIntakeUnitOfWork implements SourcesIntakeUnitOfWorkP
         operation: 'create-submission',
       });
     }
+    input.items.forEach(validateItem);
 
-    input.items.forEach(assertItemContract);
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
@@ -145,7 +131,11 @@ export class PostgresSourcesIntakeUnitOfWork implements SourcesIntakeUnitOfWorkP
         `${input.projectId}:${input.submissionId}`,
       ]);
 
-      const replay = await client.query<ExistingSubmissionRow>(
+      const replay = await client.query<{
+        submission_id: string;
+        project_id: string;
+        submission_revision: string;
+      }>(
         `SELECT submission_id::text, project_id, submission_revision::text
          FROM source_product.intake_submissions
          WHERE create_command_id = $1
@@ -153,30 +143,26 @@ export class PostgresSourcesIntakeUnitOfWork implements SourcesIntakeUnitOfWorkP
         [input.createCommandId],
       );
       if (replay.rows[0]) {
-        const result = await this.loadSubmissionResult(client, replay.rows[0], true);
+        const result = await this.loadResult(client, replay.rows[0], true);
         await client.query('COMMIT');
         return result;
       }
 
-      const command = await this.assertAcceptedCommand(
+      const command = await this.acceptedCommand(
         client,
         input.createCommandId,
-        input.principalId,
         input.projectId,
         'sources.intake.submit.v1',
+        input.principalId,
       );
-      assertSafeLedgerManifest(command.command_payload);
+      assertSourcesLedgerManifestSafe(command.command_payload);
 
       await client.query(
         `INSERT INTO source_product.intake_submissions (
            submission_id, project_id, principal_id, session_id, create_command_id,
-           state, origin_kind, accepted_policy_context_id, accepted_policy_binding,
-           access_revision, policy_context_revision, submission_revision,
-           created_at, updated_at
-         ) VALUES (
-           $1, $2, $3, $4, $5, 'RUNNING', 'NATIVE', $6, $7::jsonb,
-           $8, $9, 1, $10, $10
-         )`,
+           state, accepted_policy_context_id, accepted_policy_binding,
+           access_revision, policy_context_revision, created_at, updated_at
+         ) VALUES ($1, $2, $3, $4, $5, 'RUNNING', $6, $7::jsonb, $8, $9, $10, $10)`,
         [
           input.submissionId,
           input.projectId,
@@ -191,9 +177,9 @@ export class PostgresSourcesIntakeUnitOfWork implements SourcesIntakeUnitOfWorkP
         ],
       );
 
-      const results: SourcesIntakeStoredItemResult[] = [];
+      const items: SourcesIntakeStoredItemResult[] = [];
       for (const [ordinal, item] of input.items.entries()) {
-        results.push(await this.storeItem(client, input, item, ordinal));
+        items.push(await this.storeItem(client, input, item, ordinal));
       }
 
       const completed = await client.query<{ submission_revision: string }>(
@@ -204,17 +190,14 @@ export class PostgresSourcesIntakeUnitOfWork implements SourcesIntakeUnitOfWorkP
         [input.submissionId, input.createdAt],
       );
       const submissionRevision = completed.rows[0]?.submission_revision;
-      if (!submissionRevision) {
-        throw new Error('Sources submission did not complete.');
-      }
-
+      if (!submissionRevision) throw new Error('Sources submission did not complete.');
       await client.query('COMMIT');
       return {
         submissionId: input.submissionId,
         projectId: input.projectId,
         submissionRevision,
         replayed: false,
-        items: results,
+        items,
       };
     } catch (error) {
       await client.query('ROLLBACK');
@@ -233,20 +216,14 @@ export class PostgresSourcesIntakeUnitOfWork implements SourcesIntakeUnitOfWorkP
       await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
         `${input.projectId}:${input.submissionId}`,
       ]);
-      const item = await client.query<{
-        content_hash: string | null;
-        active_duplicate_decision_id: string | null;
-      }>(
-        `SELECT content_hash, active_duplicate_decision_id::text
+      const item = await client.query<{ content_hash: string | null }>(
+        `SELECT content_hash
          FROM source_product.intake_submission_items
-         WHERE project_id = $1
-           AND submission_id = $2
-           AND submission_item_id = $3
+         WHERE project_id = $1 AND submission_id = $2 AND submission_item_id = $3
          FOR UPDATE`,
         [input.projectId, input.submissionId, input.submissionItemId],
       );
-      const row = item.rows[0];
-      if (!row || row.content_hash !== input.contentHash) {
+      if (item.rows[0]?.content_hash !== input.contentHash) {
         throw new ShotgunError({
           code: 'STALE_VERSION',
           safeMessage: 'The Sources Item changed before duplicate evaluation.',
@@ -254,7 +231,6 @@ export class PostgresSourcesIntakeUnitOfWork implements SourcesIntakeUnitOfWorkP
           operation: 'create-duplicate-decision',
         });
       }
-
       const previous = await client.query<{
         decision_id: string;
         decision_revision: string;
@@ -262,13 +238,11 @@ export class PostgresSourcesIntakeUnitOfWork implements SourcesIntakeUnitOfWorkP
         `SELECT decision_id::text, decision_revision::text
          FROM source_product.exact_duplicate_decisions
          WHERE submission_item_id = $1
-         ORDER BY decision_revision DESC
-         LIMIT 1
-         FOR UPDATE`,
+         ORDER BY decision_revision DESC LIMIT 1 FOR UPDATE`,
         [input.submissionItemId],
       );
-      const revision = Number(previous.rows[0]?.decision_revision ?? 0) + 1;
       const decisionId = randomUUID();
+      const revision = Number(previous.rows[0]?.decision_revision ?? 0) + 1;
       await client.query(
         `INSERT INTO source_product.exact_duplicate_decisions (
            decision_id, project_id, submission_id, submission_item_id,
@@ -276,10 +250,7 @@ export class PostgresSourcesIntakeUnitOfWork implements SourcesIntakeUnitOfWorkP
            existing_source_version_id, allowed_dispositions,
            observed_source_revision, access_revision, policy_context_revision,
            supersedes_decision_id, created_at
-         ) VALUES (
-           $1, $2, $3, $4, $5, $6, $7, $8, $9,
-           $10, $11, $12, $13, $14
-         )`,
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
         [
           decisionId,
           input.projectId,
@@ -299,8 +270,7 @@ export class PostgresSourcesIntakeUnitOfWork implements SourcesIntakeUnitOfWorkP
       );
       await client.query(
         `UPDATE source_product.intake_submission_items
-         SET active_duplicate_decision_id = $2,
-             state = 'ACTION_REQUIRED'
+         SET active_duplicate_decision_id = $2, state = 'ACTION_REQUIRED'
          WHERE submission_item_id = $1`,
         [input.submissionItemId, decisionId],
       );
@@ -314,19 +284,16 @@ export class PostgresSourcesIntakeUnitOfWork implements SourcesIntakeUnitOfWorkP
     }
   }
 
-  async resolveExactDuplicateDecision(
-    input: ResolveExactDuplicateDecisionInput,
-  ): Promise<void> {
+  async resolveExactDuplicateDecision(input: ResolveExactDuplicateDecisionInput): Promise<void> {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
       await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
         `${input.projectId}:${input.submissionId}`,
       ]);
-      await this.assertAcceptedCommand(
+      await this.acceptedCommand(
         client,
         input.commandId,
-        undefined,
         input.projectId,
         'sources.duplicate.resolve.v1',
       );
@@ -366,18 +333,12 @@ export class PostgresSourcesIntakeUnitOfWork implements SourcesIntakeUnitOfWorkP
   ): Promise<SourcesIntakeStoredItemResult> {
     const submissionItemId = randomUUID();
     const intakeAttemptId = randomUUID();
-    const stage2SubmissionId = submissionItemId;
-
     await client.query(
       `INSERT INTO source_product.intake_submission_items (
-         submission_item_id, project_id, submission_id, client_item_id,
-         ordinal, input_kind, label, input_manifest, state,
-         validation_results, content_hash, media_type, size_bytes,
-         item_revision, created_at, updated_at
-       ) VALUES (
-         $1, $2, $3, $4, $5, $6, $7, $8::jsonb, 'RUNNING',
-         '[]'::jsonb, $9, $10, $11, 1, $12, $12
-       )`,
+         submission_item_id, project_id, submission_id, client_item_id, ordinal,
+         input_kind, label, input_manifest, state, content_hash, media_type,
+         size_bytes, created_at, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, 'RUNNING', $9, $10, $11, $12, $12)`,
       [
         submissionItemId,
         submission.projectId,
@@ -393,17 +354,12 @@ export class PostgresSourcesIntakeUnitOfWork implements SourcesIntakeUnitOfWorkP
         submission.createdAt,
       ],
     );
-
     await client.query(
       `INSERT INTO source_product.intake_attempts (
          intake_attempt_id, project_id, submission_id, submission_item_id,
          command_id, attempt_number, attempt_kind, state, correlation_id,
-         causation_attempt_id, accepted_policy_context_id,
-         accepted_policy_binding, attempt_revision, created_at, updated_at
-       ) VALUES (
-         $1, $2, $3, $4, $5, 1, 'SUBMIT', 'RUNNING', $6,
-         NULL, $7, $8::jsonb, 1, $9, $9
-       )`,
+         accepted_policy_context_id, accepted_policy_binding, created_at, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, 1, 'SUBMIT', 'RUNNING', $6, $7, $8::jsonb, $9, $9)`,
       [
         intakeAttemptId,
         submission.projectId,
@@ -416,20 +372,15 @@ export class PostgresSourcesIntakeUnitOfWork implements SourcesIntakeUnitOfWorkP
         submission.createdAt,
       ],
     );
-
     await client.query(
       `INSERT INTO intake.submissions (
-         submission_key, submission_id, project_id, actor_id,
-         requested_source_id, channel, material_kind, media_type,
-         original_file_name, content_hash, size_bytes, access_scope,
-         sensitivity, created_at
-       ) VALUES (
-         $1, $2, $3, $4, $5, $6, 'plain_text', $7,
-         $8, $9, $10, $11, $12, $13
-       )`,
+         submission_key, submission_id, project_id, actor_id, requested_source_id,
+         channel, material_kind, media_type, original_file_name, content_hash,
+         size_bytes, access_scope, sensitivity, created_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, 'plain_text', $7, $8, $9, $10, $11, $12, $13)`,
       [
         randomUUID(),
-        stage2SubmissionId,
+        submissionItemId,
         submission.projectId,
         submission.principalId,
         item.requestedSourceId ?? null,
@@ -444,43 +395,33 @@ export class PostgresSourcesIntakeUnitOfWork implements SourcesIntakeUnitOfWorkP
       ],
     );
 
-    const insertedAsset = await client.query<{ asset_id: string }>(
-      `INSERT INTO asset.original_assets (
-         asset_id, content_hash, size_bytes, storage_key, created_at
-       ) VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (content_hash) DO NOTHING
-       RETURNING asset_id::text`,
+    const assetInsert = await client.query<{ asset_id: string }>(
+      `INSERT INTO asset.original_assets (asset_id, content_hash, size_bytes, storage_key, created_at)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (content_hash) DO NOTHING RETURNING asset_id::text`,
       [randomUUID(), item.contentHash, item.sizeBytes, item.storageKey, submission.createdAt],
     );
-    const assetReused = insertedAsset.rowCount === 0;
+    const assetReused = assetInsert.rowCount === 0;
     const asset = await client.query<{ asset_id: string }>(
-      `SELECT asset_id::text
-       FROM asset.original_assets
-       WHERE content_hash = $1`,
+      'SELECT asset_id::text FROM asset.original_assets WHERE content_hash = $1',
       [item.contentHash],
     );
     const originalAssetId = asset.rows[0]?.asset_id;
     if (!originalAssetId) throw new Error('Original Asset was not resolved.');
 
-    const sourceId = await this.resolveSource(client, submission, item.requestedSourceId);
-    const existingVersion = await client.query<{
-      source_version_id: string;
-      version_number: number;
-    }>(
+    const sourceId = await this.source(client, submission, item.requestedSourceId);
+    const existing = await client.query<{ source_version_id: string; version_number: number }>(
       `SELECT source_version_id::text, version_number
-       FROM asset.source_versions
-       WHERE source_id = $1 AND original_asset_id = $2`,
+       FROM asset.source_versions WHERE source_id = $1 AND original_asset_id = $2`,
       [sourceId, originalAssetId],
     );
-
-    let sourceVersionId = existingVersion.rows[0]?.source_version_id;
-    let versionNumber = existingVersion.rows[0]?.version_number;
+    let sourceVersionId = existing.rows[0]?.source_version_id;
+    let versionNumber = existing.rows[0]?.version_number;
     const versionCreated = sourceVersionId === undefined;
     if (!sourceVersionId || versionNumber === undefined) {
       const next = await client.query<{ next_version: number }>(
         `SELECT COALESCE(MAX(version_number), 0) + 1 AS next_version
-         FROM asset.source_versions
-         WHERE source_id = $1`,
+         FROM asset.source_versions WHERE source_id = $1`,
         [sourceId],
       );
       sourceVersionId = randomUUID();
@@ -502,16 +443,14 @@ export class PostgresSourcesIntakeUnitOfWork implements SourcesIntakeUnitOfWorkP
         ],
       );
     }
-
     await client.query(
       `INSERT INTO asset.storage_receipts (
-         receipt_id, submission_id, project_id, source_version_id,
-         channel, material_kind, original_file_name, asset_reused,
-         version_created, created_at
+         receipt_id, submission_id, project_id, source_version_id, channel,
+         material_kind, original_file_name, asset_reused, version_created, created_at
        ) VALUES ($1, $2, $3, $4, $5, 'plain_text', $6, $7, $8, $9)`,
       [
         randomUUID(),
-        stage2SubmissionId,
+        submissionItemId,
         submission.projectId,
         sourceVersionId,
         item.channel,
@@ -521,33 +460,21 @@ export class PostgresSourcesIntakeUnitOfWork implements SourcesIntakeUnitOfWorkP
         submission.createdAt,
       ],
     );
-
     await client.query(
       `UPDATE source_product.intake_submission_items
-       SET stage2_submission_id = $2,
-           produced_source_id = $3,
-           produced_source_version_id = $4,
-           state = 'SUCCEEDED',
-           completed_at = $5
+       SET stage2_submission_id = submission_item_id::text,
+           produced_source_id = $2, produced_source_version_id = $3,
+           state = 'SUCCEEDED', completed_at = $4
        WHERE submission_item_id = $1`,
-      [
-        submissionItemId,
-        stage2SubmissionId,
-        sourceId,
-        sourceVersionId,
-        submission.createdAt,
-      ],
+      [submissionItemId, sourceId, sourceVersionId, submission.createdAt],
     );
-
     await client.query(
       `UPDATE source_product.intake_attempts
-       SET state = 'SUCCEEDED', completed_at = $2
-       WHERE intake_attempt_id = $1`,
+       SET state = 'SUCCEEDED', completed_at = $2 WHERE intake_attempt_id = $1`,
       [intakeAttemptId, submission.createdAt],
     );
-
     if (item.urlProvenance) {
-      await this.storeUrlProvenance(
+      await this.urlReceipt(
         client,
         submission,
         item,
@@ -557,7 +484,6 @@ export class PostgresSourcesIntakeUnitOfWork implements SourcesIntakeUnitOfWorkP
         sourceVersionId,
       );
     }
-
     return {
       submissionItemId,
       clientItemId: item.clientItemId,
@@ -570,7 +496,7 @@ export class PostgresSourcesIntakeUnitOfWork implements SourcesIntakeUnitOfWorkP
     };
   }
 
-  private async storeUrlProvenance(
+  private async urlReceipt(
     client: PoolClient,
     submission: CreateSourcesIntakeSubmissionInput,
     item: SourcesIntakeStoredItemInput,
@@ -579,102 +505,93 @@ export class PostgresSourcesIntakeUnitOfWork implements SourcesIntakeUnitOfWorkP
     originalAssetId: string,
     sourceVersionId: string,
   ): Promise<void> {
-    const provenance = item.urlProvenance;
-    if (!provenance) return;
+    const p = item.urlProvenance;
+    if (!p) return;
     const urlAttemptId = randomUUID();
     await client.query(
       `INSERT INTO source_product.url_acquisition_attempts (
-         url_acquisition_attempt_id, project_id, submission_id,
-         submission_item_id, intake_attempt_id, normalized_requested_url,
-         redacted_requested_url, state, max_redirects, connect_timeout_ms,
-         header_timeout_ms, body_timeout_ms, total_timeout_ms,
-         max_compressed_bytes, max_decompressed_bytes,
-         accepted_policy_context_id, policy_context_revision,
-         retention_class, retention_expires_at, acquisition_revision,
-         created_at, updated_at, completed_at
-       ) VALUES (
-         $1, $2, $3, $4, $5, $6, $7, 'SUCCEEDED', $8, $9,
-         $10, $11, $12, $13, $14, $15, $16, $17, $18, 1, $19, $19, $19
-       )`,
+         url_acquisition_attempt_id, project_id, submission_id, submission_item_id,
+         intake_attempt_id, normalized_requested_url, redacted_requested_url,
+         state, max_redirects, connect_timeout_ms, header_timeout_ms, body_timeout_ms,
+         total_timeout_ms, max_compressed_bytes, max_decompressed_bytes,
+         accepted_policy_context_id, policy_context_revision, retention_class,
+         retention_expires_at, created_at, updated_at, completed_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'SUCCEEDED', $8, $9, $10, $11,
+                 $12, $13, $14, $15, $16, $17, $18, $19, $19, $19)`,
       [
         urlAttemptId,
         submission.projectId,
         submission.submissionId,
         submissionItemId,
         intakeAttemptId,
-        provenance.normalizedRequestedUrl,
-        provenance.redactedRequestedUrl,
-        provenance.limits.maxRedirects,
-        provenance.limits.connectTimeoutMs,
-        provenance.limits.headerTimeoutMs,
-        provenance.limits.bodyTimeoutMs,
-        provenance.limits.totalTimeoutMs,
-        provenance.limits.maxCompressedBytes,
-        provenance.limits.maxDecompressedBytes,
+        p.normalizedRequestedUrl,
+        p.redactedRequestedUrl,
+        p.limits.maxRedirects,
+        p.limits.connectTimeoutMs,
+        p.limits.headerTimeoutMs,
+        p.limits.bodyTimeoutMs,
+        p.limits.totalTimeoutMs,
+        p.limits.maxCompressedBytes,
+        p.limits.maxDecompressedBytes,
         submission.acceptedPolicyContextId,
         submission.policyContextRevision,
-        provenance.retentionClass,
-        provenance.retentionExpiresAt ?? null,
+        p.retentionClass,
+        p.retentionExpiresAt ?? null,
         submission.createdAt,
       ],
     );
     await client.query(
       `INSERT INTO source_product.url_provenance_receipts (
-         url_provenance_receipt_id, project_id, submission_id,
-         submission_item_id, url_acquisition_attempt_id, receipt_revision,
-         outcome, redacted_requested_url, redacted_final_url,
-         redirect_chain_digest, redirect_observations, dns_observations,
-         response_status, response_content_type, response_content_length,
-         compressed_bytes, decompressed_bytes, response_metadata,
-         content_hash, original_asset_id, source_version_id, failure_code,
+         url_provenance_receipt_id, project_id, submission_id, submission_item_id,
+         url_acquisition_attempt_id, outcome, redacted_requested_url,
+         redacted_final_url, redirect_chain_digest, redirect_observations,
+         dns_observations, response_status, response_content_type,
+         response_content_length, compressed_bytes, decompressed_bytes,
+         response_metadata, content_hash, original_asset_id, source_version_id,
          retention_class, retention_expires_at, retrieved_at, created_at
-       ) VALUES (
-         $1, $2, $3, $4, $5, 1, 'SUCCEEDED', $6, $7, $8,
-         $9::jsonb, $10::jsonb, $11, $12, $13, $14, $15, $16::jsonb,
-         $17, $18, $19, NULL, $20, $21, $22, $23
-       )`,
+       ) VALUES ($1, $2, $3, $4, $5, 'SUCCEEDED', $6, $7, $8, $9::jsonb,
+                 $10::jsonb, $11, $12, $13, $14, $15, $16::jsonb, $17,
+                 $18, $19, $20, $21, $22, $23)`,
       [
         randomUUID(),
         submission.projectId,
         submission.submissionId,
         submissionItemId,
         urlAttemptId,
-        provenance.redactedRequestedUrl,
-        provenance.redactedFinalUrl,
-        provenance.redirectChainDigest,
-        JSON.stringify(provenance.redirectObservations),
-        JSON.stringify(provenance.dnsObservations),
-        provenance.responseStatus,
-        provenance.responseContentType,
-        provenance.responseContentLength ?? null,
-        provenance.compressedBytes,
-        provenance.decompressedBytes,
-        JSON.stringify(provenance.responseMetadata),
+        p.redactedRequestedUrl,
+        p.redactedFinalUrl,
+        p.redirectChainDigest,
+        JSON.stringify(p.redirectObservations),
+        JSON.stringify(p.dnsObservations),
+        p.responseStatus,
+        p.responseContentType,
+        p.responseContentLength ?? null,
+        p.compressedBytes,
+        p.decompressedBytes,
+        JSON.stringify(p.responseMetadata),
         item.contentHash,
         originalAssetId,
         sourceVersionId,
-        provenance.retentionClass,
-        provenance.retentionExpiresAt ?? null,
-        provenance.retrievedAt,
+        p.retentionClass,
+        p.retentionExpiresAt ?? null,
+        p.retrievedAt,
         submission.createdAt,
       ],
     );
   }
 
-  private async resolveSource(
+  private async source(
     client: PoolClient,
     submission: CreateSourcesIntakeSubmissionInput,
     requestedSourceId?: string,
   ): Promise<string> {
     if (requestedSourceId) {
-      const source = await client.query<{ source_id: string }>(
-        `SELECT source_id::text
-         FROM asset.sources
-         WHERE source_id = $1 AND project_id = $2
-         FOR UPDATE`,
+      const result = await client.query<{ source_id: string }>(
+        `SELECT source_id::text FROM asset.sources
+         WHERE source_id = $1 AND project_id = $2 FOR UPDATE`,
         [requestedSourceId, submission.projectId],
       );
-      const sourceId = source.rows[0]?.source_id;
+      const sourceId = result.rows[0]?.source_id;
       if (!sourceId) {
         throw new ShotgunError({
           code: 'NOT_FOUND',
@@ -687,37 +604,34 @@ export class PostgresSourcesIntakeUnitOfWork implements SourcesIntakeUnitOfWorkP
     }
     const sourceId = randomUUID();
     await client.query(
-      `INSERT INTO asset.sources (
-         source_id, project_id, created_by_actor_id, created_at
-       ) VALUES ($1, $2, $3, $4)`,
+      `INSERT INTO asset.sources (source_id, project_id, created_by_actor_id, created_at)
+       VALUES ($1, $2, $3, $4)`,
       [sourceId, submission.projectId, submission.principalId, submission.createdAt],
     );
     return sourceId;
   }
 
-  private async assertAcceptedCommand(
+  private async acceptedCommand(
     client: PoolClient,
     commandId: string,
-    principalId: string | undefined,
     projectId: string,
     commandType: string,
+    principalId?: string,
   ): Promise<CommandRow> {
     const result = await client.query<CommandRow>(
-      `SELECT command_id, principal_id::text, active_project_id,
-              target_project_id, command_type, outcome_state, command_payload
-       FROM frontend_command.command_ledger
-       WHERE command_id = $1
-       FOR SHARE`,
+      `SELECT command_id, principal_id::text, active_project_id, target_project_id,
+              command_type, outcome_state, command_payload
+       FROM frontend_command.command_ledger WHERE command_id = $1 FOR SHARE`,
       [commandId],
     );
-    const command = result.rows[0];
+    const row = result.rows[0];
     if (
-      !command ||
-      command.outcome_state !== 'ACCEPTED' ||
-      command.command_type !== commandType ||
-      (principalId !== undefined && command.principal_id !== principalId) ||
-      command.active_project_id !== projectId ||
-      command.target_project_id !== projectId
+      !row ||
+      row.outcome_state !== 'ACCEPTED' ||
+      row.command_type !== commandType ||
+      (principalId !== undefined && row.principal_id !== principalId) ||
+      row.active_project_id !== projectId ||
+      row.target_project_id !== projectId
     ) {
       throw new ShotgunError({
         code: 'POLICY_DENIED',
@@ -726,31 +640,27 @@ export class PostgresSourcesIntakeUnitOfWork implements SourcesIntakeUnitOfWorkP
         operation: 'assert-accepted-command',
       });
     }
-    return command;
+    return row;
   }
 
-  private async loadSubmissionResult(
+  private async loadResult(
     client: PoolClient,
-    submission: ExistingSubmissionRow,
+    submission: { submission_id: string; project_id: string; submission_revision: string },
     replayed: boolean,
   ): Promise<SourcesIntakeSubmissionResult> {
     const items = await client.query<StoredItemRow>(
-      `SELECT item.submission_item_id::text,
-              item.client_item_id,
+      `SELECT item.submission_item_id::text, item.client_item_id,
               item.produced_source_id::text AS source_id,
               item.produced_source_version_id::text AS source_version_id,
-              version.version_number,
-              version.original_asset_id::text,
-              receipt.asset_reused,
-              receipt.version_created
+              version.version_number, version.original_asset_id::text,
+              receipt.asset_reused, receipt.version_created
        FROM source_product.intake_submission_items AS item
        JOIN asset.source_versions AS version
          ON version.source_version_id = item.produced_source_version_id
        JOIN asset.storage_receipts AS receipt
          ON receipt.project_id = item.project_id
         AND receipt.submission_id = item.stage2_submission_id
-       WHERE item.submission_id = $1
-       ORDER BY item.ordinal`,
+       WHERE item.submission_id = $1 ORDER BY item.ordinal`,
       [submission.submission_id],
     );
     return {

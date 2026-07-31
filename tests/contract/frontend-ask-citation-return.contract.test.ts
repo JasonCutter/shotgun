@@ -49,8 +49,9 @@ describe('Ask citation return contracts', () => {
   });
 
   it('rejects missing Conversation identities and unknown fields', () => {
-    const { answerRunId: _answerRunId, ...missingAnswerRun } = state;
-    expect(() => decodeAskCitationReturnState(missingAnswerRun)).toThrow(FrontendContractError);
+    expect(() =>
+      decodeAskCitationReturnState({ ...state, answerRunId: undefined }),
+    ).toThrow(FrontendContractError);
     expect(() =>
       decodeAskCitationReturnState({ ...state, projectId: 'browser-authority' }),
     ).toThrow(FrontendContractError);

@@ -74,7 +74,7 @@ test('Ask citation keeps SourceVersion pinned and restores exact conversation co
     ),
   );
   await expect(page.getByText(ASK_FIXTURE.sourceVersionId)).toBeVisible();
-  await expect(page.getByText(ASK_FIXTURE.sourceText)).toBeVisible();
+  await expect(page.locator('pre.source-preview')).toContainText(ASK_FIXTURE.sourceText);
   await expect(page.locator('.source-evidence-list li:focus')).toHaveCount(1);
 
   await page.getByRole('link', { name: 'Return to cited resource' }).click();

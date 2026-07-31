@@ -3,7 +3,10 @@
 **Proposal ID**: `frontend-phase-2-section-2-persistence-migration-proposal-260801001`  
 **Date**: 2026-08-01  
 **Repository**: `JasonCutter/shotgun`  
-**Status**: `APPROVED` (Approved by User on 2026-08-01)  
+**Status**: `APPROVED FOR DRAFT FILE CREATION / REQUIRES ADR-123 REMEDIATION BEFORE ACTIVATION`  
+**Architecture review addendum**: `frontend-phase-2-section-2-persistence-migration-architecture-review-addendum-260801001.md`  
+
+The user-approved creation of migration 021 is preserved. The DDL below is the original candidate proposal and is retained for history. ADR-123 and the Slices 4–5 Frozen Implementation Contract now require revision before PR Ready, merge or database activation.
 
 ---
 
@@ -14,11 +17,13 @@ An audit of `db/migrations/001`~`020` indicates that:
 - `018_frontend_command_request_outcome_contract.sql` provides `frontend_command_requests` and `frontend_command_outcomes` tables for generic command ledger persistence.
 - **No tables exist for Ask Conversation, Branch, Turn, AnswerRun, Statement, Citation, or SourceSelection**.
 
-Therefore, a dedicated SQL migration file `021_frontend_phase2_ask_product_persistence.sql` is proposed.
+Therefore, a dedicated SQL migration file `021_frontend_phase2_ask_product_persistence.sql` was proposed and created on the draft branch after explicit user approval.
 
 ---
 
-## 2. Proposed DDL Specification
+## 2. Original Candidate DDL Specification
+
+The following DDL is preserved as the first candidate and is not the frozen production target.
 
 ```sql
 -- 021_frontend_phase2_ask_product_persistence.sql
@@ -104,18 +109,28 @@ CREATE TABLE IF NOT EXISTS ask_source_selections (
 
 ---
 
-## 3. Transaction, Lock, Backfill & Rollback Strategy
+## 3. Original Transaction, Lock, Backfill & Rollback Assessment
 
 1. **Transaction & Lock Impact**:
    - New table additions (`CREATE TABLE IF NOT EXISTS`). Zero lock impact on existing tables.
 2. **Backfill**:
    - New feature persistence. Zero backfill required for existing historical data.
-3. **Rollback Strategy**:
-   - Downgrade script: `DROP TABLE IF EXISTS ask_source_selections, ask_citations, ask_statements, ask_answer_runs, ask_turns, ask_branches, ask_conversations CASCADE;`
+3. **Original Rollback Proposal**:
+   - `DROP TABLE IF EXISTS ask_source_selections, ask_citations, ask_statements, ask_answer_runs, ask_turns, ask_branches, ask_conversations CASCADE;`
+
+These statements remain historical candidate assumptions. Final transaction, managed schema, reset, verify, runtime adapter and rollback or forward-repair behavior must satisfy ADR-123 and the architecture review addendum.
 
 ---
 
-## 4. User Review & Approval Request
+## 4. Approval and Current Governance Status
 
-> [!IMPORTANT]
-> This DDL proposal is submitted for user review. No migration files will be created in `db/migrations` and no database migrations will be executed until explicit user approval is granted.
+The user explicitly approved creation of the migration file on 2026-08-01, and migration 021 was created on the draft branch.
+
+Subsequent architecture review established that the initial DDL is incomplete as a production persistence design. Required revisions include managed schema ownership, globally unique identifiers, aggregate and revision constraints, Command Ledger integration, production PostgreSQL repository wiring, database reset/verify registration, transaction rollback and restart durability evidence.
+
+Accordingly:
+
+- draft file creation: **APPROVED / COMPLETED**;
+- current DDL as frozen production target: **NOT ACCEPTED**;
+- revision under ADR-123: **AUTHORIZED / REQUIRED**;
+- migration activation, PR Ready, merge and Section completion: **NOT AUTHORIZED**.

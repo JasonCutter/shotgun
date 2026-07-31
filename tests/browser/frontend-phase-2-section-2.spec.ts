@@ -36,7 +36,9 @@ test('Ask deep link uses accessible Resource Project without changing Active Pro
   await page.goto(`/ask/conversations/${ASK_FIXTURE.conversationId}`);
 
   await expect(page.getByRole('heading', { name: 'Ask', level: 1 })).toBeVisible();
-  await expect(page.getByText(ASK_FIXTURE.conversationTitle)).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: ASK_FIXTURE.conversationTitle, level: 3 }),
+  ).toBeVisible();
   await expect(page.getByRole('combobox', { name: 'Active Project' })).toHaveValue(
     ASK_FIXTURE.projectAId,
   );
@@ -61,7 +63,9 @@ test('Ask citation keeps SourceVersion pinned and restores exact conversation co
   const projectSelector = page.getByRole('combobox', { name: 'Active Project' });
   await projectSelector.selectOption(ASK_FIXTURE.projectBId);
   await expect(projectSelector).toHaveValue(ASK_FIXTURE.projectBId);
-  await expect(page.getByText(ASK_FIXTURE.conversationTitle)).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: ASK_FIXTURE.conversationTitle, level: 3 }),
+  ).toBeVisible();
 
   await page.getByRole('link', { name: 'Open pinned Evidence' }).click();
   await expect(page).toHaveURL(
@@ -76,5 +80,7 @@ test('Ask citation keeps SourceVersion pinned and restores exact conversation co
   await page.getByRole('link', { name: 'Return to cited resource' }).click();
   await expect(page).toHaveURL(`/ask/conversations/${ASK_FIXTURE.conversationId}`);
   await expect(page.locator(`#citation-${ASK_FIXTURE.citationId}`)).toBeFocused();
-  await expect(page.getByText(ASK_FIXTURE.conversationTitle)).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: ASK_FIXTURE.conversationTitle, level: 3 }),
+  ).toBeVisible();
 });

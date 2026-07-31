@@ -69,6 +69,50 @@ export const createAskWorkspaceClient = (
   options: { readonly fetch?: typeof globalThis.fetch } = {},
 ): AskWorkspaceClient => {
   const request = options.fetch ?? globalThis.fetch;
+  let csrfToken: string | undefined;
+
+  const csrf = async (signal?: AbortSignal): Promise<string> => {
+    if (csrfToken) return csrfToken;
+    const response = await request('/api/v1/security/csrf', {
+      credentials: 'same-origin',
+      signal,
+    });
+    const body = (await assertOk(response)) as { readonly csrfToken?: unknown };
+    if (typeof body.csrfToken !== 'string' || body.csrfToken.length === 0) {
+      throw new FrontendContractError('UNSUPPORTED_SCHEMA', 'The CSRF token response is invalid.');
+    }
+    csrfToken = body.csrfToken;
+    return csrfToken;
+  };
+
+  const submit = async (
+    params: SubmitAskQuestionRequest,
+    signal?: AbortSignal,
+  ): Promise<Response> => {
+    const token = await csrf(signal);
+    let response = await request('/product-api/frontend/ask/questions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-csrf-token': token },
+      credentials: 'same-origin',
+      body: JSON.stringify(params),
+      signal,
+    });
+    if (response.status === 403) {
+      csrfToken = undefined;
+      response = await request('/product-api/frontend/ask/questions', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-csrf-token': await csrf(signal),
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify(params),
+        signal,
+      });
+    }
+    return response;
+  };
+
   return {
     async getWorkspace(conversationId, requestOptions) {
       const parameters = new URLSearchParams();
@@ -143,13 +187,7 @@ export const createAskWorkspaceClient = (
       return answerRun;
     },
     async submitQuestion(params, requestOptions) {
-      const response = await request('/product-api/frontend/ask/questions', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify(params),
-        signal: requestOptions?.signal,
-      });
+      const response = await submit(params, requestOptions?.signal);
       const body = (await assertOk(response)) as { submission?: unknown };
       const submission = decodeAskQuestionSubmissionView(body.submission);
       if (params.conversationId && submission.answerRun.conversationId !== params.conversationId) {

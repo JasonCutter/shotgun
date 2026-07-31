@@ -148,16 +148,18 @@ export const decodeSubmitAskQuestionRequest = (value: unknown): SubmitAskQuestio
     'sourceSelections',
   ]);
   if (Object.keys(input).some((key) => !allowed.has(key))) fail('request contains authority fields.');
-  if (!Array.isArray(input.sourceSelections) || input.sourceSelections.length > 50) {
+  const rawSelections = input.sourceSelections;
+  if (!Array.isArray(rawSelections) || rawSelections.length > 50) {
     fail('request.sourceSelections is invalid.');
   }
-  const sourceSelections = input.sourceSelections.map((item, index) => {
+  const sourceSelections = (rawSelections as readonly unknown[]).map((item, index) => {
     const selection = object(item, `request.sourceSelections[${index}]`);
-    if (!Array.isArray(selection.evidenceIds)) fail('selection.evidenceIds is invalid.');
+    const rawEvidence = selection.evidenceIds;
+    if (!Array.isArray(rawEvidence)) fail('selection.evidenceIds is invalid.');
     return {
       sourceId: text(selection.sourceId, 'selection.sourceId'),
       sourceVersionId: text(selection.sourceVersionId, 'selection.sourceVersionId'),
-      evidenceIds: selection.evidenceIds.map((id) => text(id, 'selection.evidenceId')),
+      evidenceIds: (rawEvidence as readonly unknown[]).map((id) => text(id, 'selection.evidenceId')),
     };
   });
   return {
@@ -174,10 +176,21 @@ export const decodeSubmitAskQuestionRequest = (value: unknown): SubmitAskQuestio
   };
 };
 
+export type AskBranchView = AskConversationView['branches'][number];
+
 export const decodeAskWorkspaceView = (value: unknown): AskWorkspaceView => {
   const input = object(value, 'workspace');
   schema(input, 'workspace');
   return value as AskWorkspaceView;
+};
+export const decodeAskConversationView = (value: unknown): AskConversationView => {
+  const input = object(value, 'conversation');
+  schema(input, 'conversation');
+  return value as AskConversationView;
+};
+export const decodeAskBranchView = (value: unknown): AskBranchView => {
+  const input = object(value, 'branch');
+  return value as AskBranchView;
 };
 export const decodeAskAnswerRunSnapshot = (value: unknown): AskAnswerRunSnapshot => {
   const input = object(value, 'answerRun');

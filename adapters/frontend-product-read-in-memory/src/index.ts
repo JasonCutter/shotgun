@@ -1,7 +1,17 @@
 import {
+  ASK_SCHEMA_VERSION,
+  decodeAskAnswerRunSnapshot,
+  decodeAskBranchView,
+  decodeAskConversationView,
+  decodeAskWorkspaceView,
   decodeGlobalSearchResultView,
   decodeHomeActionCenterView,
   decodeRouteGuardDecisionView,
+  ShotgunError,
+  type AskAnswerRunSnapshot,
+  type AskBranchView,
+  type AskConversationView,
+  type AskWorkspaceView,
   type GlobalSearchResultView,
   type GlobalShellView,
   type HomeActionCenterView,
@@ -10,6 +20,7 @@ import {
 } from '../../../packages/contracts/src/index.js';
 import type {
   ActionCenterProjectionPort,
+  AskWorkspaceProjectionPort,
   BackgroundSummaryProjectionPort,
   FrontendReadScope,
   GlobalSearchPort,
@@ -83,7 +94,19 @@ export class InMemoryGlobalShellProjection implements GlobalShellProjectionPort 
               availability: 'TEMPORARILY_UNAVAILABLE',
               reason: 'Create a Project to open Sources.',
             },
-        unavailableWorkspace('ask', 'Ask'),
+        projectReady
+          ? {
+              id: 'ask',
+              label: 'Ask',
+              availability: 'AVAILABLE',
+              targetRoute: routes.ask,
+            }
+          : {
+              id: 'ask',
+              label: 'Ask',
+              availability: 'TEMPORARILY_UNAVAILABLE',
+              reason: 'Create a Project to open Ask.',
+            },
         unavailableWorkspace('knowledge', 'Knowledge'),
         unavailableWorkspace('review', 'Review'),
         {
@@ -176,7 +199,12 @@ export class InMemoryActionCenterProjection implements ActionCenterProjectionPor
           availability: 'AVAILABLE',
           targetRoute: routes.sources,
         },
-        unavailable('ask', 'Ask', routes.ask),
+        {
+          id: 'ask',
+          label: 'Ask',
+          availability: 'AVAILABLE',
+          targetRoute: routes.ask,
+        },
         unavailable('explore-knowledge', 'Explore knowledge', routes.knowledge),
         unavailable('review-changes', 'Review changes', routes.review),
       ],
@@ -232,7 +260,7 @@ export class InMemoryRouteGuardProjection implements RouteGuardProjectionPort {
     const resourceProject = input.resourceProjectId
       ? input.accessibleProjects.find((project) => project.id === input.resourceProjectId)
       : undefined;
-    const workspaceAvailable = new Set(['home', 'sources', 'settings', 'settings-projects']).has(
+    const workspaceAvailable = new Set(['home', 'sources', 'ask', 'settings', 'settings-projects']).has(
       input.requestedRoute.routeId,
     );
     return decodeRouteGuardDecisionView({
@@ -264,5 +292,127 @@ export class InMemoryRouteGuardProjection implements RouteGuardProjectionPort {
       accessRevision: input.accessRevision,
       policyContextRevision: input.policyContextRevision,
     });
+  }
+}
+
+export class InMemoryAskWorkspaceProjection implements AskWorkspaceProjectionPort {
+  private readonly conversations = new Map<string, AskConversationView>();
+  private readonly answerRuns = new Map<string, AskAnswerRunSnapshot>();
+
+  addConversation(conversation: AskConversationView): void {
+    this.conversations.set(conversation.conversationId, conversation);
+  }
+
+  addAnswerRun(answerRun: AskAnswerRunSnapshot): void {
+    this.answerRuns.set(answerRun.answerRunId, answerRun);
+  }
+
+  async getWorkspace(
+    input: FrontendReadScope & { readonly conversationId?: string },
+  ): Promise<AskWorkspaceView> {
+    const projectId = input.activeProject?.id ?? 'none';
+    const projectConversations = Array.from(this.conversations.values()).filter(
+      (c) => c.projectId === projectId,
+    );
+
+    let selectedConversation: AskConversationView | undefined;
+    if (input.conversationId) {
+      const candidate = this.conversations.get(input.conversationId);
+      if (!candidate || candidate.projectId !== projectId) {
+        throw new ShotgunError({
+          code: 'NOT_FOUND',
+          safeMessage: 'The requested conversation was not found.',
+          module: 'frontend-product-read',
+          operation: 'get-ask-workspace',
+        });
+      }
+      selectedConversation = candidate;
+    }
+
+    return decodeAskWorkspaceView({
+      schemaVersion: ASK_SCHEMA_VERSION,
+      principalId: input.principalId,
+      sessionId: input.sessionId,
+      projectId,
+      defaultAskMode: 'CANONICAL_ONLY',
+      availableAskModes: ['CANONICAL_ONLY', 'SOURCE_EXPLORATION', 'HYBRID'],
+      conversations: projectConversations.map((c) => {
+        const activeBranch = c.branches.find((b) => b.branchId === c.activeBranchId);
+        const turns = activeBranch?.turns ?? [];
+        const latestTurn = turns[turns.length - 1];
+        return {
+          conversationId: c.conversationId,
+          projectId: c.projectId,
+          title: c.title,
+          activeBranchId: c.activeBranchId,
+          turnCount: turns.length,
+          latestRunState: latestTurn?.answerRun.state ?? 'QUEUED',
+          updatedAt: c.updatedAt,
+        };
+      }),
+      ...(selectedConversation ? { selectedConversation } : {}),
+      capabilities: [
+        'SUBMIT_QUESTION',
+        'CANCEL',
+        'RETRY_SAME_CONTEXT',
+        'RETRY_CURRENT_POLICY',
+        'EXPORT',
+        'CREATE_INTAKE_DRAFT',
+        'CREATE_DRAFT_CHANGE_SET',
+        'PROPOSE_DIRECTIVE',
+      ],
+      projectionRevision: `ask-workspace-${projectId}-${input.accessRevision}`,
+      accessRevision: input.accessRevision,
+      policyContextRevision: input.policyContextRevision,
+      fetchedAt: now(),
+      stale: false,
+    });
+  }
+
+  async getConversation(
+    input: FrontendReadScope & { readonly conversationId: string },
+  ): Promise<AskConversationView> {
+    const projectId = input.activeProject?.id;
+    const candidate = this.conversations.get(input.conversationId);
+    if (!candidate || (projectId && candidate.projectId !== projectId)) {
+      throw new ShotgunError({
+        code: 'NOT_FOUND',
+        safeMessage: 'The requested conversation was not found.',
+        module: 'frontend-product-read',
+        operation: 'get-conversation',
+      });
+    }
+    return decodeAskConversationView(candidate);
+  }
+
+  async getBranch(
+    input: FrontendReadScope & { readonly conversationId: string; readonly branchId: string },
+  ): Promise<AskBranchView> {
+    const conversation = await this.getConversation(input);
+    const branch = conversation.branches.find((b) => b.branchId === input.branchId);
+    if (!branch) {
+      throw new ShotgunError({
+        code: 'NOT_FOUND',
+        safeMessage: 'The requested branch was not found.',
+        module: 'frontend-product-read',
+        operation: 'get-branch',
+      });
+    }
+    return decodeAskBranchView(branch);
+  }
+
+  async getAnswerRun(
+    input: FrontendReadScope & { readonly answerRunId: string },
+  ): Promise<AskAnswerRunSnapshot> {
+    const candidate = this.answerRuns.get(input.answerRunId);
+    if (!candidate || (input.activeProject && candidate.projectId !== input.activeProject.id)) {
+      throw new ShotgunError({
+        code: 'NOT_FOUND',
+        safeMessage: 'The requested answer run was not found.',
+        module: 'frontend-product-read',
+        operation: 'get-answer-run',
+      });
+    }
+    return decodeAskAnswerRunSnapshot(candidate);
   }
 }

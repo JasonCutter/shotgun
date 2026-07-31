@@ -171,4 +171,69 @@ export const registerFrontendProductRoutes = (
     reply.header('server-timing', serverTiming(scope.durationMs, projection.durationMs));
     return { decision: projection.value };
   });
+
+  server.get<{
+    Querystring: { conversationId?: string };
+    Headers: SecurityHeaders;
+  }>('/product-api/frontend/ask', async (request, reply) => {
+    const scope = await timed(() => buildScope(request.headers));
+    const conversationId = request.query.conversationId;
+    const projection = await timed(() =>
+      coordinator.getAskWorkspace({
+        ...scope.value,
+        ...(conversationId ? { conversationId } : {}),
+      }),
+    );
+    reply.header('server-timing', serverTiming(scope.durationMs, projection.durationMs));
+    return { workspace: projection.value };
+  });
+
+  server.get<{
+    Params: { conversationId: string };
+    Headers: SecurityHeaders;
+  }>('/product-api/frontend/ask/conversations/:conversationId', async (request, reply) => {
+    const scope = await timed(() => buildScope(request.headers));
+    const projection = await timed(() =>
+      coordinator.getAskConversation({
+        ...scope.value,
+        conversationId: request.params.conversationId,
+      }),
+    );
+    reply.header('server-timing', serverTiming(scope.durationMs, projection.durationMs));
+    return { conversation: projection.value };
+  });
+
+  server.get<{
+    Params: { conversationId: string; branchId: string };
+    Headers: SecurityHeaders;
+  }>(
+    '/product-api/frontend/ask/conversations/:conversationId/branches/:branchId',
+    async (request, reply) => {
+      const scope = await timed(() => buildScope(request.headers));
+      const projection = await timed(() =>
+        coordinator.getAskBranch({
+          ...scope.value,
+          conversationId: request.params.conversationId,
+          branchId: request.params.branchId,
+        }),
+      );
+      reply.header('server-timing', serverTiming(scope.durationMs, projection.durationMs));
+      return { branch: projection.value };
+    },
+  );
+
+  server.get<{
+    Params: { answerRunId: string };
+    Headers: SecurityHeaders;
+  }>('/product-api/frontend/ask/answer-runs/:answerRunId', async (request, reply) => {
+    const scope = await timed(() => buildScope(request.headers));
+    const projection = await timed(() =>
+      coordinator.getAskAnswerRun({
+        ...scope.value,
+        answerRunId: request.params.answerRunId,
+      }),
+    );
+    reply.header('server-timing', serverTiming(scope.durationMs, projection.durationMs));
+    return { answerRun: projection.value };
+  });
 };

@@ -2,6 +2,7 @@ export type {
   AskMode,
   AskWorkspaceView,
   AskConversationView,
+  AskBranchView,
   AskAnswerRunSnapshot,
   AskQuestionSubmissionView,
   AskSourceSelectionView,

@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
+import { InMemoryAskWorkspaceProjection } from '../../adapters/frontend-product-read-in-memory/src/index.js';
 import {
   ASK_SCHEMA_VERSION,
   FrontendContractError,
+  ShotgunError,
+  decodeAskAnswerRunSnapshot,
+  decodeAskBranchView,
+  decodeAskConversationView,
   decodeAskQuestionSubmissionView,
   decodeAskWorkspaceView,
   decodeSubmitAskQuestionRequest,
@@ -48,6 +53,32 @@ const answerRun = {
   stale: false,
 } as const;
 
+const conversation = {
+  schemaVersion: ASK_SCHEMA_VERSION,
+  conversationId: 'conversation-1',
+  projectId: 'project-1',
+  title: 'Canonical Architecture Query',
+  activeBranchId: 'branch-1',
+  branches: [
+    {
+      branchId: 'branch-1',
+      label: 'Main Branch',
+      turns: [
+        {
+          turnId: 'turn-1',
+          ordinal: 1,
+          userMessage: 'What is canonical?',
+          createdAt: now,
+          answerRun,
+        },
+      ],
+    },
+  ],
+  conversationRevision: 'rev-1',
+  createdAt: now,
+  updatedAt: now,
+} as const;
+
 describe('Frontend Ask contracts', () => {
   it('decodes the server workspace and answer-run envelope', () => {
     expect(decodeAskWorkspaceView(workspace)).toEqual(workspace);
@@ -83,5 +114,58 @@ describe('Frontend Ask contracts', () => {
         sourceSelections: [],
       }),
     ).toThrow(FrontendContractError);
+  });
+
+  it('decodes conversation and branch views accurately', () => {
+    expect(decodeAskConversationView(conversation)).toEqual(conversation);
+    expect(decodeAskBranchView(conversation.branches[0])).toEqual(conversation.branches[0]);
+  });
+
+  it('masks unaccessible project resources in read projection', async () => {
+    const projection = new InMemoryAskWorkspaceProjection();
+    projection.addConversation(conversation);
+    projection.addAnswerRun(answerRun);
+
+    const scope = {
+      principalId: 'principal-1',
+      sessionId: 'session-1',
+      activeProject: {
+        id: 'project-1',
+        label: 'Project One',
+        isOwner: true,
+        sensitivityClearance: 'private' as const,
+      },
+      accessibleProjects: [
+        {
+          id: 'project-1',
+          label: 'Project One',
+          isOwner: true,
+          sensitivityClearance: 'private' as const,
+        },
+      ],
+      accessRevision: '1',
+      policyContextRevision: '1',
+    };
+
+    const loadedWorkspace = await projection.getWorkspace({ ...scope, conversationId: 'conversation-1' });
+    expect(loadedWorkspace.selectedConversation).toMatchObject({ conversationId: 'conversation-1' });
+
+    const otherScope = {
+      ...scope,
+      activeProject: {
+        id: 'project-2',
+        label: 'Project Two',
+        isOwner: false,
+        sensitivityClearance: 'public' as const,
+      },
+    };
+
+    await expect(
+      projection.getWorkspace({ ...otherScope, conversationId: 'conversation-1' }),
+    ).rejects.toThrow(ShotgunError);
+
+    await expect(
+      projection.getConversation({ ...otherScope, conversationId: 'conversation-1' }),
+    ).rejects.toThrow(ShotgunError);
   });
 });

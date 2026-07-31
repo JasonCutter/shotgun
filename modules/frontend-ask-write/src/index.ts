@@ -44,8 +44,8 @@ export type PersistAskQuestionInput = {
   readonly question: string;
   readonly mode: NonNullable<SubmitAskQuestionRequest['mode']>;
   readonly sourceSelections: readonly AskSourceSelectionView[];
-  readonly conversationId?: string;
-  readonly branchId?: string;
+  readonly conversationId: string;
+  readonly branchId: string;
   readonly expectedConversationRevision?: string;
   readonly expectedBranchRevision?: string;
   readonly accessRevision: string;
@@ -106,6 +106,19 @@ const findProducedResource = (
   resourceKind: string,
 ): { readonly resourceId: string; readonly resourceRevision?: string } | undefined =>
   outcome.producedResources.find((resource) => resource.resourceKind === resourceKind);
+
+const targetProjectIdFromOutcome = (outcome: AnyFrontendCommandOutcomeView): string => {
+  const context = outcome.acceptedProjectContext;
+  if ('targetProjectId' in context && typeof context.targetProjectId === 'string') {
+    return context.targetProjectId;
+  }
+  throw new ShotgunError({
+    code: 'INTERNAL_UNCLASSIFIED',
+    safeMessage: 'The Ask command outcome is missing its target Project binding.',
+    module: 'frontend-ask-write',
+    operation: 'resolve-question-outcome',
+  });
+};
 
 export class AskCommandCoordinator {
   constructor(
@@ -226,8 +239,8 @@ export class AskCommandCoordinator {
           question: request.question.trim(),
           mode,
           sourceSelections: request.sourceSelections,
-          ...(request.conversationId ? { conversationId: request.conversationId } : {}),
-          ...(authority.branchId ? { branchId: authority.branchId } : {}),
+          conversationId: request.conversationId ?? '',
+          branchId: authority.branchId ?? '',
           ...(request.expectedConversationRevision
             ? { expectedConversationRevision: request.expectedConversationRevision }
             : {}),
@@ -332,7 +345,7 @@ export class AskCommandCoordinator {
       throw this.notFoundOutcome();
     }
 
-    const targetProjectId = outcome.acceptedProjectContext.targetProjectId;
+    const targetProjectId = targetProjectIdFromOutcome(outcome);
     if (!input.accessibleProjects.some((project) => project.id === targetProjectId)) {
       throw this.notFoundOutcome();
     }
@@ -493,7 +506,7 @@ export class AskCommandCoordinator {
       ...input,
       answerRunId: answerRunResource.resourceId,
     });
-    if (answerRun.projectId !== outcome.acceptedProjectContext.targetProjectId) {
+    if (answerRun.projectId !== targetProjectIdFromOutcome(outcome)) {
       throw this.notFoundOutcome();
     }
     return {

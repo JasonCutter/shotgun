@@ -1,11 +1,9 @@
+import { decodeGlobalShellView } from '../../../packages/contracts/src/index.js';
 import type {
   AskAnswerRunSnapshot,
   AskBranchView,
   AskConversationView,
   AskWorkspaceView,
-  AskQuestionSubmissionOutcomeView,
-  AskQuestionSubmissionView,
-  SubmitAskQuestionRequest,
   GlobalSearchRequest,
   GlobalSearchResultView,
   GlobalShellView,
@@ -13,7 +11,6 @@ import type {
   RouteGuardDecisionView,
   TargetRouteView,
 } from '../../../packages/contracts/src/index.js';
-import { decodeGlobalShellView } from '../../../packages/contracts/src/index.js';
 
 export type AuthorizedProjectSummary = {
   readonly id: string;

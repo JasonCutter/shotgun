@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams, useOutletContext } from 'react-router';
 
 import {
@@ -21,8 +21,21 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   const { registerLeaveGuard } = useLeaveGuard();
   const [workspace, setWorkspace] = useState<AskWorkspaceView>();
   const [question, setQuestion] = useState('');
+  const [draftOwnerProjectId, setDraftOwnerProjectId] = useState<string | undefined>(
+    shell.activeProject?.id,
+  );
   const [mode, setMode] = useState<AskMode>('CANONICAL_ONLY');
   const [error, setError] = useState<unknown>();
+
+  const questionRef = useRef(question);
+  questionRef.current = question;
+
+  useEffect(() => {
+    if (shell.activeProject?.id && draftOwnerProjectId !== shell.activeProject.id) {
+      setQuestion('');
+      setDraftOwnerProjectId(shell.activeProject.id);
+    }
+  }, [shell.activeProject?.id, draftOwnerProjectId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -42,16 +55,16 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   useEffect(
     () =>
       registerLeaveGuard(() => ({
-        canLeaveCurrentContext: question.trim().length === 0,
-        hasUnsavedDraft: question.trim().length > 0,
+        canLeaveCurrentContext: questionRef.current.trim().length === 0,
+        hasUnsavedDraft: questionRef.current.trim().length > 0,
         hasBlockingDialog: false,
         hasOutcomeUnknownCommand: false,
       })),
     [question, registerLeaveGuard],
   );
 
-  if (!shell.activeProject) {
-    return <p>Create a Project before asking questions.</p>;
+  if (!shell.activeProject && !conversationId) {
+    return <p>Create or select a Project before asking questions.</p>;
   }
   if (error) return <ErrorState error={error} onRetry={() => window.location.reload()} />;
   if (!workspace) return <LoadingState message="Loading Ask workspace…" />;
@@ -64,7 +77,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
       <p className="eyebrow">Knowledge question</p>
       <h1 tabIndex={-1}>Ask</h1>
       <p>
-        Project: <strong>{shell.activeProject.label}</strong>
+        Project: <strong>{workspace.projectId}</strong>
       </p>
 
       <section className="action-card" aria-labelledby="ask-draft-heading">
@@ -74,7 +87,11 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
           never treated as Canonical knowledge or original Evidence.
         </p>
         <label htmlFor="ask-mode">Ask mode</label>
-        <select id="ask-mode" value={mode} onChange={(event) => setMode(event.target.value as AskMode)}>
+        <select
+          id="ask-mode"
+          value={mode}
+          onChange={(event) => setMode(event.target.value as AskMode)}
+        >
           {workspace.availableAskModes.map((availableMode) => (
             <option key={availableMode} value={availableMode}>
               {availableMode}
@@ -92,7 +109,9 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
           Submit question
         </button>
         {!submissionAvailable ? (
-          <p role="status">Server question submission is not active in this implementation slice.</p>
+          <p role="status">
+            Server question submission is not active in this implementation slice.
+          </p>
         ) : null}
       </section>
 
@@ -103,7 +122,10 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
           <ul aria-label="Conversations">
             {workspace.conversations.map((item) => (
               <li key={item.conversationId}>
-                <strong>{item.title}</strong> · {item.turnCount} turns · {item.latestRunState}
+                <Link to={`/ask/conversations/${encodeURIComponent(item.conversationId)}`}>
+                  <strong>{item.title}</strong>
+                </Link>{' '}
+                · {item.turnCount} turns · {item.latestRunState}
               </li>
             ))}
           </ul>
@@ -132,11 +154,16 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                                     originRoute: `/ask/conversations/${conversation.conversationId}`,
                                     resourceKind: 'conversation',
                                     resourceId: conversation.conversationId,
+                                    branchId: branch.branchId,
+                                    turnId: turn.turnId,
+                                    answerRunId: turn.answerRun.answerRunId,
+                                    answerRevision: turn.answerRun.answerRevision,
                                     resourceRevision: conversation.conversationRevision,
                                     citationId: citation.citationId,
                                     sourceId: citation.sourceId,
                                     sourceVersionId: citation.sourceVersionId,
                                     evidenceId: citation.evidenceId,
+                                    scrollTarget: citation.citationId,
                                     focusTarget: citation.citationId,
                                   },
                                 }}

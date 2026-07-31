@@ -8,6 +8,8 @@ import {
   type AskConversationView,
   type AskWorkspaceView,
 } from '../../contracts/src/index.js';
+import { decodeProductApiErrorBody } from './decode.js';
+import { productFailureApiError, remoteUnclassifiedProductApiFailure } from './errors.js';
 
 export type AskWorkspaceClient = {
   getWorkspace(
@@ -29,6 +31,22 @@ export type AskWorkspaceClient = {
   ): Promise<AskAnswerRunSnapshot>;
 };
 
+const readJson = async (response: Response): Promise<unknown> => {
+  try {
+    return await response.json();
+  } catch {
+    return undefined;
+  }
+};
+
+const assertOk = async (response: Response): Promise<unknown> => {
+  const body = await readJson(response);
+  if (response.ok) return body;
+  const failure = decodeProductApiErrorBody(body);
+  if (!failure) throw remoteUnclassifiedProductApiFailure(response.status);
+  throw productFailureApiError(response.status, failure);
+};
+
 export const createAskWorkspaceClient = (
   options: { readonly fetch?: typeof globalThis.fetch } = {},
 ): AskWorkspaceClient => {
@@ -42,8 +60,7 @@ export const createAskWorkspaceClient = (
         credentials: 'same-origin',
         signal: requestOptions?.signal,
       });
-      if (!response.ok) throw new Error(`Ask workspace failed with status ${response.status}.`);
-      const body = (await response.json()) as { workspace?: unknown };
+      const body = (await assertOk(response)) as { workspace?: unknown };
       return decodeAskWorkspaceView(body.workspace);
     },
     async getConversation(conversationId, requestOptions) {
@@ -54,8 +71,7 @@ export const createAskWorkspaceClient = (
           signal: requestOptions?.signal,
         },
       );
-      if (!response.ok) throw new Error(`Get conversation failed with status ${response.status}.`);
-      const body = (await response.json()) as { conversation?: unknown };
+      const body = (await assertOk(response)) as { conversation?: unknown };
       return decodeAskConversationView(body.conversation);
     },
     async getBranch(conversationId, branchId, requestOptions) {
@@ -66,8 +82,7 @@ export const createAskWorkspaceClient = (
           signal: requestOptions?.signal,
         },
       );
-      if (!response.ok) throw new Error(`Get branch failed with status ${response.status}.`);
-      const body = (await response.json()) as { branch?: unknown };
+      const body = (await assertOk(response)) as { branch?: unknown };
       return decodeAskBranchView(body.branch);
     },
     async getAnswerRun(answerRunId, requestOptions) {
@@ -78,8 +93,7 @@ export const createAskWorkspaceClient = (
           signal: requestOptions?.signal,
         },
       );
-      if (!response.ok) throw new Error(`Get answer run failed with status ${response.status}.`);
-      const body = (await response.json()) as { answerRun?: unknown };
+      const body = (await assertOk(response)) as { answerRun?: unknown };
       return decodeAskAnswerRunSnapshot(body.answerRun);
     },
   };

@@ -49,7 +49,7 @@ describe('Frontend Ask Product API Integration', () => {
       defaultAskMode: 'CANONICAL_ONLY',
       availableAskModes: ['CANONICAL_ONLY', 'SOURCE_EXPLORATION', 'HYBRID'],
     });
-    expect(workspace.capabilities).toContain('SUBMIT_QUESTION');
+    expect(workspace.capabilities).toEqual([]);
 
     const csrfToken = (
       await application.server.inject({

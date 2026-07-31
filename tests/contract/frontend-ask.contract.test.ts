@@ -98,9 +98,7 @@ describe('Frontend Ask contracts', () => {
         clientRequestId: 'request-1',
         idempotencyKey: 'idem-1',
         question: 'Use this source.',
-        sourceSelections: [
-          { sourceId: 'source-1', sourceVersionId: 'version-2', evidenceIds: [] },
-        ],
+        sourceSelections: [{ sourceId: 'source-1', sourceVersionId: 'version-2', evidenceIds: [] }],
       }),
     ).toMatchObject({ sourceSelections: [{ sourceVersionId: 'version-2' }] });
 
@@ -121,19 +119,48 @@ describe('Frontend Ask contracts', () => {
     expect(decodeAskBranchView(conversation.branches[0])).toEqual(conversation.branches[0]);
   });
 
-  it('masks unaccessible project resources in read projection', async () => {
+  it('rejects unknown fields in workspace and answer-run decoders', () => {
+    expect(() =>
+      decodeAskWorkspaceView({
+        ...workspace,
+        unknownField: 'malicious',
+      }),
+    ).toThrow(FrontendContractError);
+
+    expect(() =>
+      decodeAskAnswerRunSnapshot({
+        ...answerRun,
+        extraAuthorityField: 'invalid',
+      }),
+    ).toThrow(FrontendContractError);
+  });
+
+  it('blocks zero-project workspace reads with NOT_FOUND error', async () => {
+    const projection = new InMemoryAskWorkspaceProjection();
+    const scope = {
+      principalId: 'principal-1',
+      sessionId: 'session-1',
+      activeProject: null,
+      accessibleProjects: [],
+      accessRevision: '1',
+      policyContextRevision: '1',
+    };
+
+    await expect(projection.getWorkspace(scope)).rejects.toThrow(ShotgunError);
+  });
+
+  it('supports deep-linking accessible conversation without active project auto-switching', async () => {
     const projection = new InMemoryAskWorkspaceProjection();
     projection.addConversation(conversation);
-    projection.addAnswerRun(answerRun);
 
     const scope = {
       principalId: 'principal-1',
       sessionId: 'session-1',
       activeProject: {
-        id: 'project-1',
-        label: 'Project One',
-        isOwner: true,
-        sensitivityClearance: 'private' as const,
+        id: 'project-2',
+        label: 'Project Two',
+        isOwner: false,
+        sensitivityClearance: 'public' as const,
       },
       accessibleProjects: [
         {
@@ -142,30 +169,22 @@ describe('Frontend Ask contracts', () => {
           isOwner: true,
           sensitivityClearance: 'private' as const,
         },
+        {
+          id: 'project-2',
+          label: 'Project Two',
+          isOwner: false,
+          sensitivityClearance: 'public' as const,
+        },
       ],
       accessRevision: '1',
       policyContextRevision: '1',
     };
 
-    const loadedWorkspace = await projection.getWorkspace({ ...scope, conversationId: 'conversation-1' });
-    expect(loadedWorkspace.selectedConversation).toMatchObject({ conversationId: 'conversation-1' });
-
-    const otherScope = {
+    const loadedWorkspace = await projection.getWorkspace({
       ...scope,
-      activeProject: {
-        id: 'project-2',
-        label: 'Project Two',
-        isOwner: false,
-        sensitivityClearance: 'public' as const,
-      },
-    };
-
-    await expect(
-      projection.getWorkspace({ ...otherScope, conversationId: 'conversation-1' }),
-    ).rejects.toThrow(ShotgunError);
-
-    await expect(
-      projection.getConversation({ ...otherScope, conversationId: 'conversation-1' }),
-    ).rejects.toThrow(ShotgunError);
+      conversationId: 'conversation-1',
+    });
+    expect(loadedWorkspace.projectId).toBe('project-1');
+    expect(loadedWorkspace.selectedConversation?.conversationId).toBe('conversation-1');
   });
 });

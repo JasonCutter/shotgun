@@ -95,7 +95,7 @@ const mockWorkspace: AskWorkspaceView = {
                 },
               ],
               sourceSelections: [],
-              capabilities: ['EXPORT'],
+              capabilities: [],
               answerRevision: 'a-1',
               conversationRevision: 'c-1',
               accessRevision: '1',
@@ -112,7 +112,7 @@ const mockWorkspace: AskWorkspaceView = {
     createdAt: '2026-07-31T00:00:00.000Z',
     updatedAt: '2026-07-31T00:00:00.000Z',
   },
-  capabilities: ['SUBMIT_QUESTION'],
+  capabilities: [],
   projectionRevision: 'p-1',
   accessRevision: '1',
   policyContextRevision: '1',
@@ -122,7 +122,11 @@ const mockWorkspace: AskWorkspaceView = {
 
 const LeaveGuardStatus = () => {
   const { getLeaveState } = useLeaveGuard();
-  return <div data-testid="leave-status">{getLeaveState().canLeaveCurrentContext ? 'ALLOWED' : 'BLOCKED'}</div>;
+  return (
+    <div data-testid="leave-status">
+      {getLeaveState().canLeaveCurrentContext ? 'ALLOWED' : 'BLOCKED'}
+    </div>
+  );
 };
 
 const ShellOutlet = () => <Outlet context={{ shell: mockShell }} />;
@@ -177,7 +181,7 @@ describe('AskWorkspace', () => {
     );
   });
 
-  it('triggers Leave Guard when question text is typed', async () => {
+  it('triggers Leave Guard when question text is typed and isolates draft per project owner', async () => {
     const user = userEvent.setup();
     const mockClient: AskWorkspaceClient = {
       getWorkspace: vi.fn().mockResolvedValue(mockWorkspace),

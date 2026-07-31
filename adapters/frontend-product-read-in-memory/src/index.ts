@@ -260,9 +260,13 @@ export class InMemoryRouteGuardProjection implements RouteGuardProjectionPort {
     const resourceProject = input.resourceProjectId
       ? input.accessibleProjects.find((project) => project.id === input.resourceProjectId)
       : undefined;
-    const workspaceAvailable = new Set(['home', 'sources', 'ask', 'settings', 'settings-projects']).has(
-      input.requestedRoute.routeId,
-    );
+    const workspaceAvailable = new Set([
+      'home',
+      'sources',
+      'ask',
+      'settings',
+      'settings-projects',
+    ]).has(input.requestedRoute.routeId);
     return decodeRouteGuardDecisionView({
       schemaVersion: '1.0.0',
       decision:
@@ -310,15 +314,14 @@ export class InMemoryAskWorkspaceProjection implements AskWorkspaceProjectionPor
   async getWorkspace(
     input: FrontendReadScope & { readonly conversationId?: string },
   ): Promise<AskWorkspaceView> {
-    const projectId = input.activeProject?.id ?? 'none';
-    const projectConversations = Array.from(this.conversations.values()).filter(
-      (c) => c.projectId === projectId,
-    );
-
+    let targetProjectId: string | undefined;
     let selectedConversation: AskConversationView | undefined;
+
     if (input.conversationId) {
       const candidate = this.conversations.get(input.conversationId);
-      if (!candidate || candidate.projectId !== projectId) {
+      const isAccessible =
+        candidate && input.accessibleProjects.some((p) => p.id === candidate.projectId);
+      if (!candidate || !isAccessible) {
         throw new ShotgunError({
           code: 'NOT_FOUND',
           safeMessage: 'The requested conversation was not found.',
@@ -327,13 +330,28 @@ export class InMemoryAskWorkspaceProjection implements AskWorkspaceProjectionPor
         });
       }
       selectedConversation = candidate;
+      targetProjectId = candidate.projectId;
+    } else {
+      if (!input.activeProject) {
+        throw new ShotgunError({
+          code: 'NOT_FOUND',
+          safeMessage: 'An active project is required to access Ask workspace.',
+          module: 'frontend-product-read',
+          operation: 'get-ask-workspace',
+        });
+      }
+      targetProjectId = input.activeProject.id;
     }
+
+    const projectConversations = Array.from(this.conversations.values()).filter(
+      (c) => c.projectId === targetProjectId,
+    );
 
     return decodeAskWorkspaceView({
       schemaVersion: ASK_SCHEMA_VERSION,
       principalId: input.principalId,
       sessionId: input.sessionId,
-      projectId,
+      projectId: targetProjectId,
       defaultAskMode: 'CANONICAL_ONLY',
       availableAskModes: ['CANONICAL_ONLY', 'SOURCE_EXPLORATION', 'HYBRID'],
       conversations: projectConversations.map((c) => {
@@ -351,17 +369,8 @@ export class InMemoryAskWorkspaceProjection implements AskWorkspaceProjectionPor
         };
       }),
       ...(selectedConversation ? { selectedConversation } : {}),
-      capabilities: [
-        'SUBMIT_QUESTION',
-        'CANCEL',
-        'RETRY_SAME_CONTEXT',
-        'RETRY_CURRENT_POLICY',
-        'EXPORT',
-        'CREATE_INTAKE_DRAFT',
-        'CREATE_DRAFT_CHANGE_SET',
-        'PROPOSE_DIRECTIVE',
-      ],
-      projectionRevision: `ask-workspace-${projectId}-${input.accessRevision}`,
+      capabilities: [],
+      projectionRevision: `ask-workspace-${targetProjectId}-${input.accessRevision}`,
       accessRevision: input.accessRevision,
       policyContextRevision: input.policyContextRevision,
       fetchedAt: now(),
@@ -372,9 +381,10 @@ export class InMemoryAskWorkspaceProjection implements AskWorkspaceProjectionPor
   async getConversation(
     input: FrontendReadScope & { readonly conversationId: string },
   ): Promise<AskConversationView> {
-    const projectId = input.activeProject?.id;
     const candidate = this.conversations.get(input.conversationId);
-    if (!candidate || (projectId && candidate.projectId !== projectId)) {
+    const isAccessible =
+      candidate && input.accessibleProjects.some((p) => p.id === candidate.projectId);
+    if (!candidate || !isAccessible) {
       throw new ShotgunError({
         code: 'NOT_FOUND',
         safeMessage: 'The requested conversation was not found.',
@@ -405,7 +415,9 @@ export class InMemoryAskWorkspaceProjection implements AskWorkspaceProjectionPor
     input: FrontendReadScope & { readonly answerRunId: string },
   ): Promise<AskAnswerRunSnapshot> {
     const candidate = this.answerRuns.get(input.answerRunId);
-    if (!candidate || (input.activeProject && candidate.projectId !== input.activeProject.id)) {
+    const isAccessible =
+      candidate && input.accessibleProjects.some((p) => p.id === candidate.projectId);
+    if (!candidate || !isAccessible) {
       throw new ShotgunError({
         code: 'NOT_FOUND',
         safeMessage: 'The requested answer run was not found.',

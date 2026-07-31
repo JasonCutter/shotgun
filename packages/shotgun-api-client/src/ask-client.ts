@@ -3,7 +3,7 @@ import {
   decodeAskAnswerRunSnapshot,
   decodeAskBranchView,
   decodeAskConversationView,
-  decodeAskWorkspaceView,
+  decodeAskWorkspaceViewWithInvariants,
   type AskAnswerRunSnapshot,
   type AskBranchView,
   type AskConversationView,
@@ -66,7 +66,7 @@ export const createAskWorkspaceClient = (
         signal: requestOptions?.signal,
       });
       const body = (await assertOk(response)) as { workspace?: unknown };
-      const workspace = decodeAskWorkspaceView(body.workspace);
+      const workspace = decodeAskWorkspaceViewWithInvariants(body.workspace);
       if (
         conversationId &&
         workspace.selectedConversation?.conversationId !== conversationId

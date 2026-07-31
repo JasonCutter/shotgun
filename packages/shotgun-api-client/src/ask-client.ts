@@ -1,4 +1,5 @@
 import {
+  FrontendContractError,
   decodeAskAnswerRunSnapshot,
   decodeAskBranchView,
   decodeAskConversationView,
@@ -47,6 +48,10 @@ const assertOk = async (response: Response): Promise<unknown> => {
   throw productFailureApiError(response.status, failure);
 };
 
+const identityMismatch = (message: string): never => {
+  throw new FrontendContractError('UNSUPPORTED_SCHEMA', message);
+};
+
 export const createAskWorkspaceClient = (
   options: { readonly fetch?: typeof globalThis.fetch } = {},
 ): AskWorkspaceClient => {
@@ -61,7 +66,14 @@ export const createAskWorkspaceClient = (
         signal: requestOptions?.signal,
       });
       const body = (await assertOk(response)) as { workspace?: unknown };
-      return decodeAskWorkspaceView(body.workspace);
+      const workspace = decodeAskWorkspaceView(body.workspace);
+      if (
+        conversationId &&
+        workspace.selectedConversation?.conversationId !== conversationId
+      ) {
+        identityMismatch('Ask Workspace response does not match the requested Conversation.');
+      }
+      return workspace;
     },
     async getConversation(conversationId, requestOptions) {
       const response = await request(
@@ -72,7 +84,11 @@ export const createAskWorkspaceClient = (
         },
       );
       const body = (await assertOk(response)) as { conversation?: unknown };
-      return decodeAskConversationView(body.conversation);
+      const conversation = decodeAskConversationView(body.conversation);
+      if (conversation.conversationId !== conversationId) {
+        identityMismatch('Ask Conversation response identity does not match the request.');
+      }
+      return conversation;
     },
     async getBranch(conversationId, branchId, requestOptions) {
       const response = await request(
@@ -83,7 +99,20 @@ export const createAskWorkspaceClient = (
         },
       );
       const body = (await assertOk(response)) as { branch?: unknown };
-      return decodeAskBranchView(body.branch);
+      const branch = decodeAskBranchView(body.branch);
+      if (branch.branchId !== branchId) {
+        identityMismatch('Ask Branch response identity does not match the request.');
+      }
+      for (const turn of branch.turns) {
+        if (
+          turn.answerRun.conversationId !== conversationId ||
+          turn.answerRun.branchId !== branchId ||
+          turn.answerRun.turnId !== turn.turnId
+        ) {
+          identityMismatch('Ask Branch response contains a mismatched AnswerRun identity.');
+        }
+      }
+      return branch;
     },
     async getAnswerRun(answerRunId, requestOptions) {
       const response = await request(
@@ -94,7 +123,11 @@ export const createAskWorkspaceClient = (
         },
       );
       const body = (await assertOk(response)) as { answerRun?: unknown };
-      return decodeAskAnswerRunSnapshot(body.answerRun);
+      const answerRun = decodeAskAnswerRunSnapshot(body.answerRun);
+      if (answerRun.answerRunId !== answerRunId) {
+        identityMismatch('Ask AnswerRun response identity does not match the request.');
+      }
+      return answerRun;
     },
   };
 };

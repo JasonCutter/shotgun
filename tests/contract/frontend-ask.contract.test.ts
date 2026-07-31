@@ -227,4 +227,70 @@ describe('Frontend Ask contracts', () => {
     expect(loadedWorkspace.projectId).toBe('project-1');
     expect(loadedWorkspace.selectedConversation?.conversationId).toBe('conversation-1');
   });
+
+  it('supports submitQuestion command creation, idempotency replay, and outcome resolution', async () => {
+    const projection = new InMemoryAskWorkspaceProjection();
+    const scope = {
+      principalId: 'principal-1',
+      sessionId: 'session-1',
+      activeProject: {
+        id: 'project-1',
+        label: 'Project One',
+        isOwner: true,
+        sensitivityClearance: 'private' as const,
+      },
+      accessibleProjects: [
+        {
+          id: 'project-1',
+          label: 'Project One',
+          isOwner: true,
+          sensitivityClearance: 'private' as const,
+        },
+      ],
+      accessRevision: '1',
+      policyContextRevision: '1',
+    };
+
+    const submitRequest = {
+      schemaVersion: ASK_SCHEMA_VERSION,
+      clientRequestId: 'req-100',
+      idempotencyKey: 'idemp-100',
+      question: 'New question testing submit command',
+      mode: 'CANONICAL_ONLY' as const,
+      sourceSelections: [],
+    };
+
+    const submission = await projection.submitQuestion({
+      ...scope,
+      request: submitRequest,
+    });
+
+    expect(submission.answerRun.state).toBe('ACTION_REQUIRED');
+    expect(submission.answerRun.question).toBe('New question testing submit command');
+    expect(submission.workspace.conversations.length).toBe(1);
+
+    // Idempotency Replay
+    const replayedSubmission = await projection.submitQuestion({
+      ...scope,
+      request: submitRequest,
+    });
+    expect(replayedSubmission).toEqual(submission);
+
+    // Idempotency Conflict check on different payload
+    await expect(
+      projection.submitQuestion({
+        ...scope,
+        request: { ...submitRequest, question: 'Different question payload' },
+      }),
+    ).rejects.toThrow(ShotgunError);
+
+    // Outcome Resolution by clientRequestId
+    const outcome = await projection.getQuestionSubmissionByClientRequestId({
+      ...scope,
+      clientRequestId: 'req-100',
+    });
+    expect(outcome.outcomeState).toBe('COMPLETED');
+    expect(outcome.clientRequestId).toBe('req-100');
+    expect(outcome.conversationId).toBe(submission.answerRun.conversationId);
+  });
 });

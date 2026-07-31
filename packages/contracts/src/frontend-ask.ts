@@ -600,6 +600,21 @@ export const decodeSubmitAskQuestionRequest = (value: unknown): SubmitAskQuestio
   };
 };
 
+export type AskQuestionSubmissionOutcomeView = {
+  readonly schemaVersion: typeof ASK_SCHEMA_VERSION;
+  readonly outcomeState: 'ACCEPTED' | 'COMPLETED' | 'REJECTED' | 'OUTCOME_UNKNOWN';
+  readonly clientRequestId: string;
+  readonly idempotencyKey: string;
+  readonly commandId: string;
+  readonly conversationId: string;
+  readonly branchId: string;
+  readonly turnId: string;
+  readonly answerRunId: string;
+  readonly answerRun?: AskAnswerRunSnapshot;
+  readonly failureCode?: string;
+  readonly failureMessage?: string;
+};
+
 export const decodeAskQuestionSubmissionView = (value: unknown): AskQuestionSubmissionView => {
   const input = strictObject(value, ['schemaVersion', 'answerRun', 'workspace'], 'submission');
   schema(input, 'submission');
@@ -607,5 +622,57 @@ export const decodeAskQuestionSubmissionView = (value: unknown): AskQuestionSubm
     schemaVersion: ASK_SCHEMA_VERSION,
     answerRun: decodeAskAnswerRunSnapshot(input.answerRun, 'submission.answerRun'),
     workspace: decodeAskWorkspaceView(input.workspace, 'submission.workspace'),
+  };
+};
+
+export const decodeAskQuestionSubmissionOutcomeView = (
+  value: unknown,
+): AskQuestionSubmissionOutcomeView => {
+  const input = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'outcomeState',
+      'clientRequestId',
+      'idempotencyKey',
+      'commandId',
+      'conversationId',
+      'branchId',
+      'turnId',
+      'answerRunId',
+      'answerRun',
+      'failureCode',
+      'failureMessage',
+    ],
+    'outcome',
+  );
+  schema(input, 'outcome');
+  const outcomeStateStr = text(input.outcomeState, 'outcome.outcomeState', 1, 32);
+  const validStates = new Set(['ACCEPTED', 'COMPLETED', 'REJECTED', 'OUTCOME_UNKNOWN']);
+  if (!validStates.has(outcomeStateStr)) {
+    fail(`outcome.outcomeState '${outcomeStateStr}' is invalid.`);
+  }
+  const outcomeState = outcomeStateStr as AskQuestionSubmissionOutcomeView['outcomeState'];
+  const answerRun =
+    input.answerRun === undefined
+      ? undefined
+      : decodeAskAnswerRunSnapshot(input.answerRun, 'outcome.answerRun');
+  return {
+    schemaVersion: ASK_SCHEMA_VERSION,
+    outcomeState,
+    clientRequestId: idString(input.clientRequestId, 'outcome.clientRequestId'),
+    idempotencyKey: idString(input.idempotencyKey, 'outcome.idempotencyKey'),
+    commandId: idString(input.commandId, 'outcome.commandId'),
+    conversationId: idString(input.conversationId, 'outcome.conversationId'),
+    branchId: idString(input.branchId, 'outcome.branchId'),
+    turnId: idString(input.turnId, 'outcome.turnId'),
+    answerRunId: idString(input.answerRunId, 'outcome.answerRunId'),
+    ...(answerRun === undefined ? {} : { answerRun }),
+    ...(input.failureCode === undefined
+      ? {}
+      : { failureCode: idString(input.failureCode, 'outcome.failureCode') }),
+    ...(input.failureMessage === undefined
+      ? {}
+      : { failureMessage: text(input.failureMessage, 'outcome.failureMessage', 1, 1000) }),
   };
 };

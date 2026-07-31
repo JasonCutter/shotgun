@@ -3,11 +3,16 @@ import {
   decodeAskAnswerRunSnapshot,
   decodeAskBranchView,
   decodeAskConversationView,
+  decodeAskQuestionSubmissionOutcomeView,
+  decodeAskQuestionSubmissionView,
   decodeAskWorkspaceViewWithInvariants,
   type AskAnswerRunSnapshot,
   type AskBranchView,
   type AskConversationView,
+  type AskQuestionSubmissionOutcomeView,
+  type AskQuestionSubmissionView,
   type AskWorkspaceView,
+  type SubmitAskQuestionRequest,
 } from '../../contracts/src/index.js';
 import { decodeProductApiErrorBody } from './decode.js';
 import { productFailureApiError, remoteUnclassifiedProductApiFailure } from './errors.js';
@@ -30,6 +35,14 @@ export type AskWorkspaceClient = {
     answerRunId: string,
     options?: { readonly signal?: AbortSignal },
   ): Promise<AskAnswerRunSnapshot>;
+  submitQuestion(
+    params: SubmitAskQuestionRequest,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<AskQuestionSubmissionView>;
+  getQuestionSubmissionByClientRequestId(
+    clientRequestId: string,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<AskQuestionSubmissionOutcomeView>;
 };
 
 const readJson = async (response: Response): Promise<unknown> => {
@@ -128,6 +141,36 @@ export const createAskWorkspaceClient = (
         identityMismatch('Ask AnswerRun response identity does not match the request.');
       }
       return answerRun;
+    },
+    async submitQuestion(params, requestOptions) {
+      const response = await request('/product-api/frontend/ask/questions', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(params),
+        signal: requestOptions?.signal,
+      });
+      const body = (await assertOk(response)) as { submission?: unknown };
+      const submission = decodeAskQuestionSubmissionView(body.submission);
+      if (params.conversationId && submission.answerRun.conversationId !== params.conversationId) {
+        identityMismatch('Ask Question submission response does not match the requested Conversation.');
+      }
+      return submission;
+    },
+    async getQuestionSubmissionByClientRequestId(clientRequestId, requestOptions) {
+      const response = await request(
+        `/product-api/frontend/ask/question-submissions/by-client-request/${encodeURIComponent(clientRequestId)}`,
+        {
+          credentials: 'same-origin',
+          signal: requestOptions?.signal,
+        },
+      );
+      const body = (await assertOk(response)) as { outcome?: unknown };
+      const outcome = decodeAskQuestionSubmissionOutcomeView(body.outcome);
+      if (outcome.clientRequestId !== clientRequestId) {
+        identityMismatch('Ask Question submission outcome clientRequestId does not match request.');
+      }
+      return outcome;
     },
   };
 };

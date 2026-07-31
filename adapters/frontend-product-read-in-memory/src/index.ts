@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import {
   ASK_SCHEMA_VERSION,
   decodeAskAnswerRunSnapshot,
@@ -12,6 +14,9 @@ import {
   type AskBranchView,
   type AskConversationView,
   type AskWorkspaceView,
+  type AskQuestionSubmissionOutcomeView,
+  type AskQuestionSubmissionView,
+  type SubmitAskQuestionRequest,
   type GlobalSearchResultView,
   type GlobalShellView,
   type HomeActionCenterView,
@@ -369,7 +374,7 @@ export class InMemoryAskWorkspaceProjection implements AskWorkspaceProjectionPor
         };
       }),
       ...(selectedConversation ? { selectedConversation } : {}),
-      capabilities: [],
+      capabilities: ['SUBMIT_QUESTION'],
       projectionRevision: `ask-workspace-${targetProjectId}-${input.accessRevision}`,
       accessRevision: input.accessRevision,
       policyContextRevision: input.policyContextRevision,
@@ -426,5 +431,231 @@ export class InMemoryAskWorkspaceProjection implements AskWorkspaceProjectionPor
       });
     }
     return decodeAskAnswerRunSnapshot(candidate);
+  }
+
+  private readonly commandLedger = new Map<
+    string,
+    {
+      readonly request: SubmitAskQuestionRequest;
+      readonly outcome: AskQuestionSubmissionOutcomeView;
+      readonly submission: AskQuestionSubmissionView;
+    }
+  >();
+  private readonly byClientRequestId = new Map<string, AskQuestionSubmissionOutcomeView>();
+
+  async submitQuestion(
+    input: FrontendReadScope & { readonly request: SubmitAskQuestionRequest },
+  ): Promise<AskQuestionSubmissionView> {
+    const { request: req } = input;
+    const targetProjectId = req.conversationId
+      ? this.conversations.get(req.conversationId)?.projectId
+      : input.activeProject?.id;
+
+    if (!targetProjectId) {
+      throw new ShotgunError({
+        code: 'NOT_FOUND',
+        safeMessage: 'Target project is required for Ask question submission.',
+        module: 'frontend-product-read',
+        operation: 'submit-question',
+      });
+    }
+
+    const ledgerKey = `${input.principalId}:${targetProjectId}:${req.idempotencyKey}`;
+    const existing = this.commandLedger.get(ledgerKey);
+    if (existing) {
+      if (
+        existing.request.question === req.question &&
+        existing.request.conversationId === req.conversationId
+      ) {
+        return existing.submission;
+      }
+      throw new ShotgunError({
+        code: 'CONFLICT',
+        safeMessage: 'Command idempotency key conflict with a different payload.',
+        module: 'frontend-product-read',
+        operation: 'submit-question',
+      });
+    }
+
+    let conversation: AskConversationView;
+    let branchId: string;
+    let turnId: string;
+    let answerRunId: string;
+
+    if (req.conversationId) {
+      const existingConv = this.conversations.get(req.conversationId);
+      const isAccessible =
+        existingConv && input.accessibleProjects.some((p) => p.id === existingConv.projectId);
+      if (!existingConv || !isAccessible) {
+        throw new ShotgunError({
+          code: 'NOT_FOUND',
+          safeMessage: 'The requested conversation was not found.',
+          module: 'frontend-product-read',
+          operation: 'submit-question',
+        });
+      }
+      branchId = req.branchId ?? existingConv.activeBranchId;
+      const targetBranchIndex = existingConv.branches.findIndex((b) => b.branchId === branchId);
+      const targetBranch = existingConv.branches[targetBranchIndex];
+      if (!targetBranch) {
+        throw new ShotgunError({
+          code: 'NOT_FOUND',
+          safeMessage: 'The requested branch was not found.',
+          module: 'frontend-product-read',
+          operation: 'submit-question',
+        });
+      }
+
+      turnId = `turn-${targetBranch.turns.length + 1}`;
+      answerRunId = `run-${randomUUID()}`;
+      const timestampNow = now();
+
+      const newAnswerRun: AskAnswerRunSnapshot = {
+        schemaVersion: ASK_SCHEMA_VERSION,
+        answerRunId,
+        conversationId: existingConv.conversationId,
+        branchId,
+        turnId,
+        projectId: existingConv.projectId,
+        mode: req.mode ?? 'CANONICAL_ONLY',
+        state: 'ACTION_REQUIRED',
+        question: req.question,
+        statements: [],
+        sourceSelections: req.sourceSelections,
+        capabilities: ['SUBMIT_QUESTION'],
+        answerRevision: `answer-rev-${turnId}`,
+        conversationRevision: `conv-rev-${Date.now()}`,
+        accessRevision: input.accessRevision,
+        policyContextRevision: input.policyContextRevision,
+        createdAt: timestampNow,
+        updatedAt: timestampNow,
+        stale: false,
+      };
+
+      const newTurn = {
+        turnId,
+        ordinal: targetBranch.turns.length + 1,
+        userMessage: req.question,
+        createdAt: timestampNow,
+        answerRun: newAnswerRun,
+      };
+
+      const updatedTurns = [...targetBranch.turns, newTurn];
+      const updatedBranch = { ...targetBranch, turns: updatedTurns };
+      const updatedBranches = [...existingConv.branches];
+      updatedBranches[targetBranchIndex] = updatedBranch;
+
+      conversation = {
+        ...existingConv,
+        branches: updatedBranches,
+        conversationRevision: `conv-rev-${Date.now()}`,
+        updatedAt: timestampNow,
+      };
+
+      this.answerRuns.set(answerRunId, newAnswerRun);
+      this.conversations.set(conversation.conversationId, conversation);
+    } else {
+      const convId = `conv-${randomUUID()}`;
+      branchId = 'branch-main';
+      turnId = 'turn-1';
+      answerRunId = `run-${randomUUID()}`;
+      const timestampNow = now();
+
+      const newAnswerRun: AskAnswerRunSnapshot = {
+        schemaVersion: ASK_SCHEMA_VERSION,
+        answerRunId,
+        conversationId: convId,
+        branchId,
+        turnId,
+        projectId: targetProjectId,
+        mode: req.mode ?? 'CANONICAL_ONLY',
+        state: 'ACTION_REQUIRED',
+        question: req.question,
+        statements: [],
+        sourceSelections: req.sourceSelections,
+        capabilities: ['SUBMIT_QUESTION'],
+        answerRevision: 'answer-rev-1',
+        conversationRevision: 'conv-rev-1',
+        accessRevision: input.accessRevision,
+        policyContextRevision: input.policyContextRevision,
+        createdAt: timestampNow,
+        updatedAt: timestampNow,
+        stale: false,
+      };
+
+      const newBranch: AskBranchView = {
+        branchId,
+        label: 'Main Branch',
+        turns: [
+          {
+            turnId,
+            ordinal: 1,
+            userMessage: req.question,
+            createdAt: timestampNow,
+            answerRun: newAnswerRun,
+          },
+        ],
+      };
+
+      conversation = {
+        schemaVersion: ASK_SCHEMA_VERSION,
+        conversationId: convId,
+        projectId: targetProjectId,
+        title: req.question.slice(0, 50),
+        activeBranchId: branchId,
+        branches: [newBranch],
+        conversationRevision: 'conv-rev-1',
+        createdAt: timestampNow,
+        updatedAt: timestampNow,
+      };
+
+      this.answerRuns.set(answerRunId, newAnswerRun);
+      this.conversations.set(convId, conversation);
+    }
+
+    const workspace = await this.getWorkspace({
+      ...input,
+      conversationId: conversation.conversationId,
+    });
+
+    const answerRun = this.answerRuns.get(answerRunId)!;
+    const submission: AskQuestionSubmissionView = {
+      schemaVersion: ASK_SCHEMA_VERSION,
+      answerRun,
+      workspace,
+    };
+
+    const outcome: AskQuestionSubmissionOutcomeView = {
+      schemaVersion: ASK_SCHEMA_VERSION,
+      outcomeState: 'COMPLETED',
+      clientRequestId: req.clientRequestId,
+      idempotencyKey: req.idempotencyKey,
+      commandId: `cmd-${randomUUID()}`,
+      conversationId: conversation.conversationId,
+      branchId,
+      turnId,
+      answerRunId,
+      answerRun,
+    };
+
+    this.commandLedger.set(ledgerKey, { request: req, outcome, submission });
+    this.byClientRequestId.set(req.clientRequestId, outcome);
+
+    return submission;
+  }
+
+  async getQuestionSubmissionByClientRequestId(
+    input: FrontendReadScope & { readonly clientRequestId: string },
+  ): Promise<AskQuestionSubmissionOutcomeView> {
+    const outcome = this.byClientRequestId.get(input.clientRequestId);
+    if (!outcome) {
+      throw new ShotgunError({
+        code: 'NOT_FOUND',
+        safeMessage: 'The requested question submission outcome was not found.',
+        module: 'frontend-product-read',
+        operation: 'get-question-submission-outcome',
+      });
+    }
+    return outcome;
   }
 }

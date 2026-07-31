@@ -7,6 +7,7 @@ import type { AuthRepositoryPort } from '../../../../packages/authentication/src
 import {
   ShotgunError,
   decodeGlobalSearchRequest,
+  decodeSubmitAskQuestionRequest,
   decodeTargetRouteView,
 } from '../../../../packages/contracts/src/index.js';
 import type { SecurityHeaders } from '../server.js';
@@ -236,4 +237,38 @@ export const registerFrontendProductRoutes = (
     reply.header('server-timing', serverTiming(scope.durationMs, projection.durationMs));
     return { answerRun: projection.value };
   });
+
+  server.post<{
+    Body: unknown;
+    Headers: SecurityHeaders;
+  }>('/product-api/frontend/ask/questions', async (request, reply) => {
+    const scope = await timed(() => buildScope(request.headers));
+    const decodedRequest = decodeSubmitAskQuestionRequest(request.body);
+    const projection = await timed(() =>
+      coordinator.submitQuestion({
+        ...scope.value,
+        request: decodedRequest,
+      }),
+    );
+    reply.header('server-timing', serverTiming(scope.durationMs, projection.durationMs));
+    return { submission: projection.value };
+  });
+
+  server.get<{
+    Params: { clientRequestId: string };
+    Headers: SecurityHeaders;
+  }>(
+    '/product-api/frontend/ask/question-submissions/by-client-request/:clientRequestId',
+    async (request, reply) => {
+      const scope = await timed(() => buildScope(request.headers));
+      const projection = await timed(() =>
+        coordinator.getQuestionSubmissionByClientRequestId({
+          ...scope.value,
+          clientRequestId: request.params.clientRequestId,
+        }),
+      );
+      reply.header('server-timing', serverTiming(scope.durationMs, projection.durationMs));
+      return { outcome: projection.value };
+    },
+  );
 };

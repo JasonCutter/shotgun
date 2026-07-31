@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation, useParams, useOutletContext } from 'react-router';
+import { Link, useLocation, useNavigate, useParams, useOutletContext } from 'react-router';
 
 import {
   decodeAskCitationReturnState,
@@ -26,7 +26,9 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   const [question, setQuestion] = useState('');
   const [draftOwnerProjectId, setDraftOwnerProjectId] = useState<string>();
   const [mode, setMode] = useState<AskMode>('CANONICAL_ONLY');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<unknown>();
+  const navigate = useNavigate();
 
   const questionRef = useRef(question);
   questionRef.current = question;
@@ -122,6 +124,35 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   const submissionAvailable = workspace.capabilities.includes('SUBMIT_QUESTION');
   const conversation = workspace.selectedConversation;
 
+  const handleSubmitQuestion = async () => {
+    if (!draftReady || !submissionAvailable || question.trim().length === 0 || isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      const clientRequestId = `req-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      const idempotencyKey = `idemp-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      const submission = await askClient.submitQuestion({
+        schemaVersion: '1.0.0',
+        clientRequestId,
+        idempotencyKey,
+        ...(conversationId ? { conversationId } : {}),
+        question: question.trim(),
+        mode,
+        sourceSelections: [],
+      });
+      setQuestion('');
+      questionRef.current = '';
+      if (submission.answerRun.conversationId !== conversationId) {
+        navigate(`/ask/conversations/${encodeURIComponent(submission.answerRun.conversationId)}`);
+      } else {
+        setWorkspace(submission.workspace);
+      }
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError : new Error(String(submitError)));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <section className="route-page ask-workspace">
       <p className="eyebrow">Knowledge question</p>
@@ -159,9 +190,12 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
         />
         <button
           type="button"
-          disabled={!draftReady || !submissionAvailable || question.trim().length === 0}
+          disabled={
+            !draftReady || !submissionAvailable || question.trim().length === 0 || isSubmitting
+          }
+          onClick={handleSubmitQuestion}
         >
-          Submit question
+          {isSubmitting ? 'Submitting…' : 'Submit question'}
         </button>
         {!submissionAvailable ? (
           <p role="status">

@@ -27,11 +27,11 @@ This directory and the registered consolidated ADR documents form the global ADR
 | ADR-095 | Reserved Legacy Gap |
 | ADR-096–ADR-099 | Individual files in this directory |
 | ADR-100–ADR-113 | [Frontend consolidated record](../frontend/adr-100-113-consolidated-record.md) |
-| ADR-114–ADR-122 | Individual files in this directory |
+| ADR-114–ADR-123 | Individual files in this directory |
 
 The Phase records under `docs/architecture/add/` retain their approved 2026-07-16 decision text. ADR-100–113 preserve the accepted Frontend decisions and later Contract Normalization outcomes in one Git owner record while the individual Notion pages remain Legacy References.
 
-The current latest individual decision is [ADR-122 — Sources Workspace Intake Draft, Duplicate Resolution, URL Acquisition and Source Lifecycle Boundary](ADR-122-sources-workspace-intake-duplicate-url-and-lifecycle-boundary.md).
+The current latest individual decision is [ADR-123 — Ask Command, Conversation Aggregate, Persistence and Outcome Recovery Boundary](ADR-123-ask-command-conversation-persistence-and-outcome-recovery-boundary.md).
 
 ## Reserved-gap rule
 

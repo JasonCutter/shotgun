@@ -2,8 +2,23 @@ import path from 'node:path';
 
 import 'dotenv/config';
 
+import { FakeDraftActionConnector } from '../../../adapters/action-connector-fake/src/index.js';
 import { LocalAssetStorage } from '../../../adapters/asset-storage-local/src/index.js';
 import { GeminiAIProviderAdapter } from '../../../adapters/ai-provider-gemini/src/index.js';
+import { PostgresFrontendCommandGateway } from '../../../adapters/frontend-command-gateway-postgres/src/index.js';
+import {
+  PostgresAskConversationRepository,
+  PostgresAskSourceSelectionValidator,
+  PostgresAskWorkspaceProjection,
+} from '../../../adapters/frontend-ask-write-postgres/src/index.js';
+import {
+  InMemoryActionCenterProjection,
+  InMemoryBackgroundSummaryProjection,
+  InMemoryGlobalSearch,
+  InMemoryGlobalShellProjection,
+  InMemoryNotificationSummaryProjection,
+  InMemoryRouteGuardProjection,
+} from '../../../adapters/frontend-product-read-in-memory/src/index.js';
 import { SealedSourcesStagingService } from '../../../adapters/frontend-sources-staging-sealed/src/index.js';
 import { PostgresSourcesProductService } from '../../../adapters/frontend-sources-write-postgres/src/product-service.js';
 import { LucasAugmentedPlainTextAdapter } from '../../../adapters/plain-text-lucas-augmented/src/index.js';
@@ -16,7 +31,11 @@ import {
   PostgresProjectBootstrapUnitOfWork,
   PostgresSettingsRepository,
 } from '../../../adapters/postgres/src/index.js';
-import { PostgresFrontendCommandGateway } from '../../../adapters/frontend-command-gateway-postgres/src/index.js';
+import {
+  PostgresActionCandidateRepository,
+  PostgresActionExecutionRepository,
+} from '../../../adapters/postgres-stage11/src/index.js';
+import { PostgresCompiledTruthRepository } from '../../../adapters/postgres-stage10/src/index.js';
 import {
   PostgresEvidenceRepository,
   PostgresTransformationRepository,
@@ -33,32 +52,15 @@ import {
 import { PostgresCanonicalKnowledgeRepository } from '../../../adapters/postgres-stage6/src/index.js';
 import { PostgresSearchProjectionRepository } from '../../../adapters/postgres-stage7/src/index.js';
 import { PostgresKnowledgeModelRepository } from '../../../adapters/postgres-stage9/src/index.js';
-import { PostgresCompiledTruthRepository } from '../../../adapters/postgres-stage10/src/index.js';
-import {
-  PostgresActionCandidateRepository,
-  PostgresActionExecutionRepository,
-} from '../../../adapters/postgres-stage11/src/index.js';
 import { PostgresAuthRepository } from '../../../adapters/postgres-auth/src/index.js';
-import { NodeUrlHopTransport, NodeUrlResolver } from '../../../adapters/url-acquisition-node/src/index.js';
-import { FakeDraftActionConnector } from '../../../adapters/action-connector-fake/src/index.js';
 import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
+import { NodeUrlHopTransport, NodeUrlResolver } from '../../../adapters/url-acquisition-node/src/index.js';
+import { AskCommandCoordinator } from '../../../modules/frontend-ask-write/src/index.js';
+import { FrontendProductReadCoordinator } from '../../../modules/frontend-product-read/src/index.js';
 import { SecureUrlAcquisitionCoordinator } from '../../../modules/url-acquisition/src/index.js';
 import { configureSourcesWriteRuntime } from './product-api/sources-write-runtime.js';
-import { createApplication } from './server.js';
 import { assertRuntimeSecurityConfiguration } from './runtime-security.js';
-
-import {
-  InMemoryActionCenterProjection,
-  InMemoryAskWorkspaceProjection,
-  InMemoryBackgroundSummaryProjection,
-  InMemoryGlobalSearch,
-  InMemoryGlobalShellProjection,
-  InMemoryNotificationSummaryProjection,
-  InMemoryRouteGuardProjection,
-} from '../../../adapters/frontend-product-read-in-memory/src/index.js';
-import { FrontendProductReadCoordinator } from '../../../modules/frontend-product-read/src/index.js';
-import { AskCommandCoordinator } from '../../../modules/frontend-ask-write/src/index.js';
-import { PostgresAskConversationRepository } from '../../../adapters/frontend-ask-write-postgres/src/index.js';
+import { createApplication } from './server.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -99,12 +101,14 @@ const removeSourcesWriteRuntime = configureSourcesWriteRuntime({
 });
 const plainTextAdapter = new LucasAugmentedPlainTextAdapter();
 const canonicalKnowledgeRepository = new PostgresCanonicalKnowledgeRepository(pool);
-const postgresAskConversationRepository = new PostgresAskConversationRepository(pool);
-const inMemoryAskWorkspace = new InMemoryAskWorkspaceProjection();
+const askConversationRepository = new PostgresAskConversationRepository(pool);
+const askWorkspaceProjection = new PostgresAskWorkspaceProjection(pool);
+const askSourceSelectionValidator = new PostgresAskSourceSelectionValidator(pool);
 const askCommandCoordinator = new AskCommandCoordinator(
   commandGateway,
-  postgresAskConversationRepository,
-  inMemoryAskWorkspace
+  askConversationRepository,
+  askWorkspaceProjection,
+  askSourceSelectionValidator,
 );
 const frontendProductReadCoordinator = new FrontendProductReadCoordinator(
   new InMemoryGlobalShellProjection(),
@@ -113,7 +117,7 @@ const frontendProductReadCoordinator = new FrontendProductReadCoordinator(
   new InMemoryNotificationSummaryProjection(),
   new InMemoryGlobalSearch(),
   new InMemoryRouteGuardProjection(),
-  inMemoryAskWorkspace
+  askWorkspaceProjection,
 );
 
 const { server } = await createApplication({

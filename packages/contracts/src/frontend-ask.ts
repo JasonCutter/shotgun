@@ -48,6 +48,7 @@ export type AskAnswerRunSnapshot = {
   readonly projectId: string;
   readonly mode: AskMode;
   readonly state: AskAnswerRunState;
+  readonly attentionReason?: 'MODEL_EXECUTION_NOT_CONFIGURED';
   readonly question: string;
   readonly statements: readonly {
     readonly statementId: string;
@@ -67,9 +68,11 @@ export type AskAnswerRunSnapshot = {
 
 export type AskBranchView = {
   readonly branchId: string;
+  readonly branchRevision?: string;
   readonly label: string;
   readonly turns: readonly {
     readonly turnId: string;
+    readonly turnRevision?: string;
     readonly ordinal: number;
     readonly userMessage: string;
     readonly createdAt: string;
@@ -314,6 +317,7 @@ export const decodeAskAnswerRunSnapshot = (
       'projectId',
       'mode',
       'state',
+      'attentionReason',
       'question',
       'statements',
       'sourceSelections',
@@ -329,6 +333,12 @@ export const decodeAskAnswerRunSnapshot = (
     path,
   );
   schema(obj, path);
+  const attentionReason =
+    obj.attentionReason === undefined
+      ? undefined
+      : obj.attentionReason === 'MODEL_EXECUTION_NOT_CONFIGURED'
+        ? 'MODEL_EXECUTION_NOT_CONFIGURED'
+        : fail(`${path}.attentionReason is unsupported.`);
   return {
     schemaVersion: ASK_SCHEMA_VERSION,
     answerRunId: idString(obj.answerRunId, `${path}.answerRunId`),
@@ -338,6 +348,7 @@ export const decodeAskAnswerRunSnapshot = (
     projectId: idString(obj.projectId, `${path}.projectId`),
     mode: askMode(obj.mode, `${path}.mode`),
     state: askAnswerRunState(obj.state, `${path}.state`),
+    ...(attentionReason ? { attentionReason } : {}),
     question: text(obj.question, `${path}.question`, 1, 10000),
     statements: array(obj.statements, `${path}.statements`, (stmt, i) => {
       const stmtObj = strictObject(
@@ -370,14 +381,17 @@ export const decodeAskAnswerRunSnapshot = (
 };
 
 export const decodeAskBranchView = (value: unknown, path = 'branch'): AskBranchView => {
-  const obj = strictObject(value, ['branchId', 'label', 'turns'], path);
+  const obj = strictObject(value, ['branchId', 'branchRevision', 'label', 'turns'], path);
   return {
     branchId: idString(obj.branchId, `${path}.branchId`),
+    ...(obj.branchRevision === undefined
+      ? {}
+      : { branchRevision: idString(obj.branchRevision, `${path}.branchRevision`) }),
     label: text(obj.label, `${path}.label`, 1, 256),
     turns: array(obj.turns, `${path}.turns`, (turn, i) => {
       const turnObj = strictObject(
         turn,
-        ['turnId', 'ordinal', 'userMessage', 'createdAt', 'answerRun'],
+        ['turnId', 'turnRevision', 'ordinal', 'userMessage', 'createdAt', 'answerRun'],
         `${path}.turns[${i}]`,
       );
       const ordinal =
@@ -388,6 +402,9 @@ export const decodeAskBranchView = (value: unknown, path = 'branch'): AskBranchV
           : fail(`${path}.turns[${i}].ordinal must be a positive integer.`);
       return {
         turnId: idString(turnObj.turnId, `${path}.turns[${i}].turnId`),
+        ...(turnObj.turnRevision === undefined
+          ? {}
+          : { turnRevision: idString(turnObj.turnRevision, `${path}.turns[${i}].turnRevision`) }),
         ordinal,
         userMessage: text(turnObj.userMessage, `${path}.turns[${i}].userMessage`, 1, 10000),
         createdAt: timestamp(turnObj.createdAt, `${path}.turns[${i}].createdAt`),
@@ -608,35 +625,42 @@ export const decodeSubmitAskQuestionRequest = (value: unknown): SubmitAskQuestio
       : { branchId: idString(input.branchId, 'request.branchId') }),
     ...(input.expectedConversationRevision === undefined
       ? {}
-      : { expectedConversationRevision: idString(input.expectedConversationRevision, 'request.expectedConversationRevision') }),
+      : {
+          expectedConversationRevision: idString(
+            input.expectedConversationRevision,
+            'request.expectedConversationRevision',
+          ),
+        }),
     ...(input.expectedBranchRevision === undefined
       ? {}
-      : { expectedBranchRevision: idString(input.expectedBranchRevision, 'request.expectedBranchRevision') }),
+      : {
+          expectedBranchRevision: idString(
+            input.expectedBranchRevision,
+            'request.expectedBranchRevision',
+          ),
+        }),
     question: text(input.question, 'request.question', 1, 10000),
     ...(input.mode === undefined ? {} : { mode: askMode(input.mode, 'request.mode') }),
     sourceSelections,
   };
 };
 
-export const computeSubmitAskQuestionDigest = (request: SubmitAskQuestionRequest): string => {
-  // semantic digest must include meaning-bearing fields in a stable way
-  const data = {
+export const computeSubmitAskQuestionDigest = (request: SubmitAskQuestionRequest): string =>
+  JSON.stringify({
     commandType: 'SUBMIT_QUESTION',
-    schemaVersion: request.schemaVersion,
-    question: request.question,
-    mode: request.mode ?? 'HYBRID',
+    commandSchemaVersion: ASK_SCHEMA_VERSION,
+    question: request.question.trim(),
+    mode: request.mode ?? 'CANONICAL_ONLY',
     conversationId: request.conversationId ?? null,
     branchId: request.branchId ?? null,
     expectedConversationRevision: request.expectedConversationRevision ?? null,
     expectedBranchRevision: request.expectedBranchRevision ?? null,
-    sourceSelections: request.sourceSelections.map(sel => ({
-      sourceId: sel.sourceId,
-      sourceVersionId: sel.sourceVersionId,
-      evidenceIds: [...sel.evidenceIds].sort(),
+    sourceSelections: request.sourceSelections.map((selection) => ({
+      sourceId: selection.sourceId,
+      sourceVersionId: selection.sourceVersionId,
+      evidenceIds: [...selection.evidenceIds],
     })),
-  };
-  return JSON.stringify(data);
-};
+  });
 
 export type AskQuestionSubmissionOutcomeView = {
   readonly schemaVersion: typeof ASK_SCHEMA_VERSION;
@@ -644,10 +668,10 @@ export type AskQuestionSubmissionOutcomeView = {
   readonly clientRequestId: string;
   readonly idempotencyKey: string;
   readonly commandId: string;
-  readonly conversationId: string;
-  readonly branchId: string;
-  readonly turnId: string;
-  readonly answerRunId: string;
+  readonly conversationId?: string;
+  readonly branchId?: string;
+  readonly turnId?: string;
+  readonly answerRunId?: string;
   readonly answerRun?: AskAnswerRunSnapshot;
   readonly failureCode?: string;
   readonly failureMessage?: string;
@@ -695,17 +719,36 @@ export const decodeAskQuestionSubmissionOutcomeView = (
     input.answerRun === undefined
       ? undefined
       : decodeAskAnswerRunSnapshot(input.answerRun, 'outcome.answerRun');
+  const conversationId =
+    input.conversationId === undefined
+      ? undefined
+      : idString(input.conversationId, 'outcome.conversationId');
+  const branchId =
+    input.branchId === undefined ? undefined : idString(input.branchId, 'outcome.branchId');
+  const turnId = input.turnId === undefined ? undefined : idString(input.turnId, 'outcome.turnId');
+  const answerRunId =
+    input.answerRunId === undefined
+      ? undefined
+      : idString(input.answerRunId, 'outcome.answerRunId');
+
+  if (
+    outcomeState === 'COMPLETED' &&
+    (!conversationId || !branchId || !turnId || !answerRunId || !answerRun)
+  ) {
+    fail('Completed outcome must include all resource identities and the authoritative answerRun.');
+  }
+
   return {
     schemaVersion: ASK_SCHEMA_VERSION,
     outcomeState,
     clientRequestId: idString(input.clientRequestId, 'outcome.clientRequestId'),
     idempotencyKey: idString(input.idempotencyKey, 'outcome.idempotencyKey'),
     commandId: idString(input.commandId, 'outcome.commandId'),
-    conversationId: idString(input.conversationId, 'outcome.conversationId'),
-    branchId: idString(input.branchId, 'outcome.branchId'),
-    turnId: idString(input.turnId, 'outcome.turnId'),
-    answerRunId: idString(input.answerRunId, 'outcome.answerRunId'),
-    ...(answerRun === undefined ? {} : { answerRun }),
+    ...(conversationId ? { conversationId } : {}),
+    ...(branchId ? { branchId } : {}),
+    ...(turnId ? { turnId } : {}),
+    ...(answerRunId ? { answerRunId } : {}),
+    ...(answerRun ? { answerRun } : {}),
     ...(input.failureCode === undefined
       ? {}
       : { failureCode: idString(input.failureCode, 'outcome.failureCode') }),

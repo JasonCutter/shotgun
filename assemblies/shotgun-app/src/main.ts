@@ -47,6 +47,19 @@ import { configureSourcesWriteRuntime } from './product-api/sources-write-runtim
 import { createApplication } from './server.js';
 import { assertRuntimeSecurityConfiguration } from './runtime-security.js';
 
+import {
+  InMemoryActionCenterProjection,
+  InMemoryAskWorkspaceProjection,
+  InMemoryBackgroundSummaryProjection,
+  InMemoryGlobalSearch,
+  InMemoryGlobalShellProjection,
+  InMemoryNotificationSummaryProjection,
+  InMemoryRouteGuardProjection,
+} from '../../../adapters/frontend-product-read-in-memory/src/index.js';
+import { FrontendProductReadCoordinator } from '../../../modules/frontend-product-read/src/index.js';
+import { AskCommandCoordinator } from '../../../modules/frontend-ask-write/src/index.js';
+import { PostgresAskConversationRepository } from '../../../adapters/frontend-ask-write-postgres/src/index.js';
+
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
   throw new Error('DATABASE_URL is required for persistent Stage 2 runtime.');
@@ -86,11 +99,30 @@ const removeSourcesWriteRuntime = configureSourcesWriteRuntime({
 });
 const plainTextAdapter = new LucasAugmentedPlainTextAdapter();
 const canonicalKnowledgeRepository = new PostgresCanonicalKnowledgeRepository(pool);
+const postgresAskConversationRepository = new PostgresAskConversationRepository(pool);
+const inMemoryAskWorkspace = new InMemoryAskWorkspaceProjection();
+const askCommandCoordinator = new AskCommandCoordinator(
+  commandGateway,
+  postgresAskConversationRepository,
+  inMemoryAskWorkspace
+);
+const frontendProductReadCoordinator = new FrontendProductReadCoordinator(
+  new InMemoryGlobalShellProjection(),
+  new InMemoryActionCenterProjection(),
+  new InMemoryBackgroundSummaryProjection(),
+  new InMemoryNotificationSummaryProjection(),
+  new InMemoryGlobalSearch(),
+  new InMemoryRouteGuardProjection(),
+  inMemoryAskWorkspace
+);
+
 const { server } = await createApplication({
   projectAdminRepository: new PostgresProjectAdministrationRepository(pool),
   projectBootstrapUnitOfWork: new PostgresProjectBootstrapUnitOfWork(pool),
   settingsRepository: new PostgresSettingsRepository(pool),
   frontendCommandGateway: commandGateway,
+  askCommandCoordinator,
+  frontendProductReadCoordinator,
   intakeRepository: new PostgresIntakeRepository(pool),
   originalAssetRepository: new PostgresOriginalAssetRepository(pool),
   assetStorage,

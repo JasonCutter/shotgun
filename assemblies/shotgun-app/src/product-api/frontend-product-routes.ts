@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 
 import type { FrontendProductReadCoordinator } from '../../../../modules/frontend-product-read/src/index.js';
+import type { AskCommandCoordinator } from '../../../../modules/frontend-ask-write/src/index.js';
 import type { ProjectAdministrationRepositoryPort } from '../../../../modules/project-administration/src/index.js';
 import type { SettingsRepositoryPort } from '../../../../modules/settings-policy/src/index.js';
 import type { AuthRepositoryPort } from '../../../../packages/authentication/src/index.js';
@@ -27,6 +28,9 @@ export const registerFrontendProductRoutes = (
   projectRepository: ProjectAdministrationRepositoryPort,
   settingsRepository: SettingsRepositoryPort,
   requirePrincipalBrowserSession: PrincipalSessionResolver,
+  options?: {
+    readonly askCommandCoordinator?: AskCommandCoordinator;
+  },
 ): void => {
   const timed = async <T>(operation: () => Promise<T>) => {
     const startedAt = performance.now();
@@ -244,12 +248,20 @@ export const registerFrontendProductRoutes = (
   }>('/product-api/frontend/ask/questions', async (request, reply) => {
     const scope = await timed(() => buildScope(request.headers));
     const decodedRequest = decodeSubmitAskQuestionRequest(request.body);
-    const projection = await timed(() =>
-      coordinator.submitQuestion({
+    const projection = await timed(() => {
+      if (!options?.askCommandCoordinator) {
+        throw new ShotgunError({
+          code: 'NOT_FOUND',
+          safeMessage: 'AskCommandCoordinator is not configured.',
+          module: 'frontend-product-read',
+          operation: 'submit-question',
+        });
+      }
+      return options.askCommandCoordinator.submitQuestion({
         ...scope.value,
         request: decodedRequest,
-      }),
-    );
+      });
+    });
     reply.header('server-timing', serverTiming(scope.durationMs, projection.durationMs));
     return { submission: projection.value };
   });
@@ -261,12 +273,20 @@ export const registerFrontendProductRoutes = (
     '/product-api/frontend/ask/question-submissions/by-client-request/:clientRequestId',
     async (request, reply) => {
       const scope = await timed(() => buildScope(request.headers));
-      const projection = await timed(() =>
-        coordinator.getQuestionSubmissionByClientRequestId({
+      const projection = await timed(() => {
+        if (!options?.askCommandCoordinator) {
+          throw new ShotgunError({
+            code: 'NOT_FOUND',
+            safeMessage: 'AskCommandCoordinator is not configured.',
+            module: 'frontend-product-read',
+            operation: 'get-question-submission',
+          });
+        }
+        return options.askCommandCoordinator.getQuestionSubmissionByClientRequestId({
           ...scope.value,
           clientRequestId: request.params.clientRequestId,
-        }),
-      );
+        });
+      });
       reply.header('server-timing', serverTiming(scope.durationMs, projection.durationMs));
       return { outcome: projection.value };
     },

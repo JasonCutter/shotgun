@@ -120,6 +120,8 @@ export type SubmitAskQuestionRequest = {
   readonly idempotencyKey: string;
   readonly conversationId?: string;
   readonly branchId?: string;
+  readonly expectedConversationRevision?: string;
+  readonly expectedBranchRevision?: string;
   readonly question: string;
   readonly mode?: AskMode;
   readonly sourceSelections: readonly AskSourceSelectionView[];
@@ -574,6 +576,8 @@ export const decodeSubmitAskQuestionRequest = (value: unknown): SubmitAskQuestio
       'idempotencyKey',
       'conversationId',
       'branchId',
+      'expectedConversationRevision',
+      'expectedBranchRevision',
       'question',
       'mode',
       'sourceSelections',
@@ -584,6 +588,14 @@ export const decodeSubmitAskQuestionRequest = (value: unknown): SubmitAskQuestio
   const sourceSelections = array(input.sourceSelections, 'request.sourceSelections', (sel, i) =>
     decodeAskSourceSelectionView(sel, `request.sourceSelections[${i}]`),
   );
+
+  if (
+    (input.conversationId !== undefined || input.branchId !== undefined) &&
+    (input.expectedConversationRevision === undefined || input.expectedBranchRevision === undefined)
+  ) {
+    fail('expectedConversationRevision and expectedBranchRevision are required for follow-up commands.');
+  }
+
   return {
     schemaVersion: ASK_SCHEMA_VERSION,
     clientRequestId: idString(input.clientRequestId, 'request.clientRequestId'),
@@ -594,10 +606,36 @@ export const decodeSubmitAskQuestionRequest = (value: unknown): SubmitAskQuestio
     ...(input.branchId === undefined
       ? {}
       : { branchId: idString(input.branchId, 'request.branchId') }),
+    ...(input.expectedConversationRevision === undefined
+      ? {}
+      : { expectedConversationRevision: idString(input.expectedConversationRevision, 'request.expectedConversationRevision') }),
+    ...(input.expectedBranchRevision === undefined
+      ? {}
+      : { expectedBranchRevision: idString(input.expectedBranchRevision, 'request.expectedBranchRevision') }),
     question: text(input.question, 'request.question', 1, 10000),
     ...(input.mode === undefined ? {} : { mode: askMode(input.mode, 'request.mode') }),
     sourceSelections,
   };
+};
+
+export const computeSubmitAskQuestionDigest = (request: SubmitAskQuestionRequest): string => {
+  // semantic digest must include meaning-bearing fields in a stable way
+  const data = {
+    commandType: 'SUBMIT_QUESTION',
+    schemaVersion: request.schemaVersion,
+    question: request.question,
+    mode: request.mode ?? 'HYBRID',
+    conversationId: request.conversationId ?? null,
+    branchId: request.branchId ?? null,
+    expectedConversationRevision: request.expectedConversationRevision ?? null,
+    expectedBranchRevision: request.expectedBranchRevision ?? null,
+    sourceSelections: request.sourceSelections.map(sel => ({
+      sourceId: sel.sourceId,
+      sourceVersionId: sel.sourceVersionId,
+      evidenceIds: [...sel.evidenceIds].sort(),
+    })),
+  };
+  return JSON.stringify(data);
 };
 
 export type AskQuestionSubmissionOutcomeView = {

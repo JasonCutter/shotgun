@@ -9,6 +9,8 @@ import {
   type AskWorkspaceClient,
   type AskWorkspaceView,
   type GlobalShellView,
+  type AskQuestionSubmissionView,
+  type AskQuestionSubmissionOutcomeView,
 } from '@shotgun/api-client';
 
 import { ErrorState } from '../components/error-state.js';
@@ -130,15 +132,41 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     try {
       const clientRequestId = `req-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
       const idempotencyKey = `idemp-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-      const submission = await askClient.submitQuestion({
-        schemaVersion: '1.0.0',
-        clientRequestId,
-        idempotencyKey,
-        ...(conversationId ? { conversationId } : {}),
-        question: question.trim(),
-        mode,
-        sourceSelections: [],
-      });
+      let submission: AskQuestionSubmissionView | undefined;
+      try {
+        submission = await askClient.submitQuestion({
+          schemaVersion: '1.0.0',
+          clientRequestId,
+          idempotencyKey,
+          ...(conversationId ? { conversationId } : {}),
+          question: question.trim(),
+          mode,
+          sourceSelections: [],
+        });
+      } catch (submitError) {
+        // Outcome recovery: Attempt to fetch the submission outcome if the initial request failed or timed out.
+        let recoveryAttempts = 0;
+        let outcome: AskQuestionSubmissionOutcomeView | undefined;
+        while (recoveryAttempts < 3 && !outcome) {
+          recoveryAttempts++;
+          try {
+            await new Promise((resolve) => setTimeout(resolve, 1000 * recoveryAttempts));
+            const recovered = await askClient.getQuestionSubmissionByClientRequestId(clientRequestId);
+            if (recovered.outcome === 'success' && recovered.submission) {
+              outcome = recovered;
+            }
+          } catch (recoveryError) {
+            // Ignore recovery errors and keep polling if possible.
+          }
+        }
+        
+        if (outcome?.submission) {
+          submission = outcome.submission;
+        } else {
+          throw submitError;
+        }
+      }
+
       setQuestion('');
       questionRef.current = '';
       if (submission.answerRun.conversationId !== conversationId) {

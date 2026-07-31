@@ -87,12 +87,6 @@ export type AskWorkspaceProjectionPort = {
   getAnswerRun(
     input: FrontendReadScope & { readonly answerRunId: string },
   ): Promise<AskAnswerRunSnapshot>;
-  submitQuestion?(
-    input: FrontendReadScope & { readonly request: SubmitAskQuestionRequest },
-  ): Promise<AskQuestionSubmissionView>;
-  getQuestionSubmissionByClientRequestId?(
-    input: FrontendReadScope & { readonly clientRequestId: string },
-  ): Promise<AskQuestionSubmissionOutcomeView>;
 };
 
 export class FrontendProductReadCoordinator {
@@ -173,25 +167,5 @@ export class FrontendProductReadCoordinator {
       throw new Error('AskWorkspaceProjectionPort is not configured.');
     }
     return this.askWorkspace.getAnswerRun(input);
-  }
-
-  submitQuestion(
-    input: FrontendReadScope & { readonly request: SubmitAskQuestionRequest },
-  ): Promise<AskQuestionSubmissionView> {
-    if (!this.askWorkspace?.submitQuestion) {
-      throw new Error('AskWorkspaceProjectionPort.submitQuestion is not configured.');
-    }
-    return this.askWorkspace.submitQuestion(input);
-  }
-
-  getQuestionSubmissionByClientRequestId(
-    input: FrontendReadScope & { readonly clientRequestId: string },
-  ): Promise<AskQuestionSubmissionOutcomeView> {
-    if (!this.askWorkspace?.getQuestionSubmissionByClientRequestId) {
-      throw new Error(
-        'AskWorkspaceProjectionPort.getQuestionSubmissionByClientRequestId is not configured.',
-      );
-    }
-    return this.askWorkspace.getQuestionSubmissionByClientRequestId(input);
   }
 }

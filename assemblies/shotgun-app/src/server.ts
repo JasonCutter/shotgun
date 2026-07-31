@@ -61,10 +61,12 @@ import {
   InMemoryRouteGuardProjection,
 } from '../../../adapters/frontend-product-read-in-memory/src/index.js';
 import { FrontendProductReadCoordinator } from '../../../modules/frontend-product-read/src/index.js';
+import { AskCommandCoordinator } from '../../../modules/frontend-ask-write/src/index.js';
 import {
   FrontendSourcesReadCoordinator,
   type SourcesProjectionRepositoryPort,
 } from '../../../modules/frontend-sources-product/src/index.js';
+import { InMemoryAskConversationRepository } from '../../../adapters/frontend-ask-write-in-memory/src/index.js';
 import type {
   ProjectAdministrationRepositoryPort,
   ProjectBootstrapUnitOfWorkPort,
@@ -414,6 +416,7 @@ export type ApplicationOptions = {
   readonly settingsRepository?: SettingsRepositoryPort;
   readonly frontendCommandGateway?: FrontendCommandGatewayPort;
   readonly frontendProductReadCoordinator?: FrontendProductReadCoordinator;
+  readonly askCommandCoordinator?: AskCommandCoordinator;
   readonly sourcesProjectionRepository?: SourcesProjectionRepositoryPort;
   readonly host?: string;
   readonly production?: boolean;
@@ -1134,6 +1137,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   const settingsRepository = options.settingsRepository ?? new InMemorySettingsRepository();
   const frontendCommandGateway =
     options.frontendCommandGateway ?? new InMemoryFrontendCommandGateway();
+  const inMemoryAskWorkspace = new InMemoryAskWorkspaceProjection();
   const frontendProductReadCoordinator =
     options.frontendProductReadCoordinator ??
     new FrontendProductReadCoordinator(
@@ -1143,7 +1147,14 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       new InMemoryNotificationSummaryProjection(),
       new InMemoryGlobalSearch(),
       new InMemoryRouteGuardProjection(),
-      new InMemoryAskWorkspaceProjection(),
+      inMemoryAskWorkspace,
+    );
+  const askCommandCoordinator = 
+    options.askCommandCoordinator ??
+    new AskCommandCoordinator(
+      frontendCommandGateway,
+      new InMemoryAskConversationRepository(),
+      inMemoryAskWorkspace,
     );
   const sourcesProjectionRepository =
     options.sourcesProjectionRepository ??
@@ -1826,6 +1837,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     projectAdminRepository,
     settingsRepository,
     requirePrincipalBrowserSession,
+    { askCommandCoordinator: options.askCommandCoordinator },
   );
   registerSourcesRoutes(
     server,

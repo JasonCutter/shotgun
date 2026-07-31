@@ -1,0 +1,17 @@
+export const ASK_FIXTURE = {
+  projectAId: 'shotgun',
+  projectBId: 'project-b',
+  inaccessibleProjectId: 'project-c',
+  conversationId: 'ask-conversation-project-b',
+  inaccessibleConversationId: 'ask-conversation-project-c',
+  branchId: 'ask-branch-main',
+  turnId: 'ask-turn-1',
+  answerRunId: 'ask-answer-run-1',
+  statementId: 'ask-statement-1',
+  citationId: 'ask-citation-1',
+  sourceId: 'ask-source-project-b',
+  sourceVersionId: 'ask-source-version-project-b-v1',
+  evidencePointer: '/blocks/0',
+  sourceText: 'Shotgun Canonical knowledge is derived from approved records.',
+  conversationTitle: 'Project B Canonical Architecture',
+} as const;

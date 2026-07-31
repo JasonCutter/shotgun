@@ -9,7 +9,7 @@
   },
   "expectedRange": {
     "start": 1,
-    "end": 122,
+    "end": 123,
     "allowedGaps": [
       1,
       2,
@@ -107,7 +107,7 @@
     },
     {
       "start": 114,
-      "end": 122,
+      "end": 123,
       "kind": "INDIVIDUAL_FILES",
       "path": "docs/architecture/adr",
       "filenamePattern": "ADR-NNN-*.md"

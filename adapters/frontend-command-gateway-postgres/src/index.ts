@@ -1,4 +1,4 @@
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 
 import {
   FrontendContractError,
@@ -221,22 +221,49 @@ export class PostgresFrontendCommandGateway implements FrontendCommandGatewayPor
     }
   }
 
-  async complete(input: CompleteFrontendCommandInput): Promise<AnyFrontendCommandOutcomeView> {
-    const result = await this.pool.query<CommandLedgerRow>(
-      `UPDATE frontend_command.command_ledger
-       SET command_revision = command_revision + 1,
-           outcome_state = 'COMPLETED',
-           completion_disposition = 'SUCCEEDED',
-           produced_resources = $2::jsonb,
-           completed_at = $3,
-           last_updated_at = $3
-       WHERE command_id = $1
-         AND outcome_state <> 'COMPLETED'
-       RETURNING *`,
-      [input.commandId, JSON.stringify(input.producedResources), input.completedAt],
+  async lockAcceptedForExecution(
+    transaction: unknown,
+    commandId: string,
+  ): Promise<AnyFrontendCommandOutcomeView> {
+    const client = transaction as PoolClient;
+    const result = await client.query<CommandLedgerRow>(
+      'SELECT * FROM frontend_command.command_ledger WHERE command_id = $1 FOR UPDATE',
+      [commandId],
     );
-    if (result.rows[0]) return toOutcome(result.rows[0]);
-    return this.findByCommandId(input.commandId);
+    const row = result.rows[0];
+    if (!row) {
+      throw new FrontendContractError('RESOURCE_RETIRED', `Command '${commandId}' not found.`);
+    }
+    const outcome = toOutcome(row);
+    if (outcome.outcomeState !== 'ACCEPTED' && outcome.outcomeState !== 'COMPLETED') {
+      throw new FrontendContractError(
+        'RESOURCE_RETIRED',
+        `Command '${commandId}' is not executable from state '${outcome.outcomeState}'.`,
+      );
+    }
+    return outcome;
+  }
+
+  async completeInTransaction(
+    transaction: unknown,
+    input: CompleteFrontendCommandInput,
+  ): Promise<AnyFrontendCommandOutcomeView> {
+    return this.completeWithClient(transaction as PoolClient, input);
+  }
+
+  async complete(input: CompleteFrontendCommandInput): Promise<AnyFrontendCommandOutcomeView> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const outcome = await this.completeWithClient(client, input);
+      await client.query('COMMIT');
+      return outcome;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async reject(input: RejectFrontendCommandInput): Promise<AnyFrontendCommandOutcomeView> {
@@ -256,7 +283,7 @@ export class PostgresFrontendCommandGateway implements FrontendCommandGatewayPor
            completed_at = $3,
            last_updated_at = $3
        WHERE command_id = $1
-         AND outcome_state <> 'COMPLETED'
+         AND outcome_state = 'ACCEPTED'
        RETURNING *`,
       [
         input.commandId,
@@ -287,6 +314,35 @@ export class PostgresFrontendCommandGateway implements FrontendCommandGatewayPor
       [principalId, clientRequestId],
     );
     return result.rows[0] ? toOutcome(result.rows[0]) : null;
+  }
+
+  private async completeWithClient(
+    client: PoolClient,
+    input: CompleteFrontendCommandInput,
+  ): Promise<AnyFrontendCommandOutcomeView> {
+    const result = await client.query<CommandLedgerRow>(
+      `UPDATE frontend_command.command_ledger
+       SET command_revision = command_revision + 1,
+           outcome_state = 'COMPLETED',
+           completion_disposition = 'SUCCEEDED',
+           produced_resources = $2::jsonb,
+           completed_at = $3,
+           last_updated_at = $3
+       WHERE command_id = $1
+         AND outcome_state = 'ACCEPTED'
+       RETURNING *`,
+      [input.commandId, JSON.stringify(input.producedResources), input.completedAt],
+    );
+    if (result.rows[0]) return toOutcome(result.rows[0]);
+
+    const existing = await client.query<CommandLedgerRow>(
+      'SELECT * FROM frontend_command.command_ledger WHERE command_id = $1',
+      [input.commandId],
+    );
+    if (!existing.rows[0]) {
+      throw new FrontendContractError('RESOURCE_RETIRED', `Command '${input.commandId}' not found.`);
+    }
+    return toOutcome(existing.rows[0]);
   }
 
   private async findByCommandId(commandId: string): Promise<AnyFrontendCommandOutcomeView> {

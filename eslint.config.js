@@ -26,4 +26,15 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    files: ['assemblies/shotgun-app/src/server.ts'],
+    rules: {
+      // The default in-memory coordinator is retained only as an explicit local/test
+      // compatibility witness. Production and browser fixtures inject their coordinator.
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { varsIgnorePattern: '^askCommandCoordinator$' },
+      ],
+    },
+  },
 );

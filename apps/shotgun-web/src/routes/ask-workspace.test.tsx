@@ -138,6 +138,8 @@ describe('AskWorkspace', () => {
       getConversation: vi.fn().mockResolvedValue(mockWorkspace.selectedConversation!),
       getBranch: vi.fn(),
       getAnswerRun: vi.fn(),
+      submitQuestion: vi.fn(),
+      getQuestionSubmissionByClientRequestId: vi.fn(),
     };
 
     const router = createMemoryRouter(
@@ -188,6 +190,8 @@ describe('AskWorkspace', () => {
       getConversation: vi.fn().mockResolvedValue(mockWorkspace.selectedConversation!),
       getBranch: vi.fn(),
       getAnswerRun: vi.fn(),
+      submitQuestion: vi.fn(),
+      getQuestionSubmissionByClientRequestId: vi.fn(),
     };
 
     const router = createMemoryRouter(

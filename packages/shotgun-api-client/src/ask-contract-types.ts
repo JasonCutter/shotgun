@@ -10,6 +10,7 @@ export type {
   AskWorkspaceView,
   SubmitAskQuestionRequest,
   AskQuestionSubmissionView,
+  AskQuestionSubmissionOutcomeView,
   AskCitationReturnState,
   ConversationCitationReturnTarget,
 } from '../../contracts/src/index.js';
@@ -17,4 +18,5 @@ export type {
 export {
   decodeAskCitationReturnState,
   decodeConversationCitationReturnTarget,
+  decodeAskQuestionSubmissionOutcomeView,
 } from '../../contracts/src/index.js';

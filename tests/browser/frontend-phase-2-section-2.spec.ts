@@ -2,14 +2,18 @@ import { expect, test } from '@playwright/test';
 
 import { ASK_FIXTURE } from './fixtures/ask-workspace-fixture.js';
 
-test('Ask navigation exposes read-only workspace capability', async ({ page }) => {
+test('Ask navigation enables question submission and clears draft on success', async ({ page }) => {
   await page.goto('/ask');
   await expect(page.getByRole('heading', { name: 'Ask', level: 1 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Question Draft' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Submit question' })).toBeDisabled();
-  await expect(
-    page.getByText('Server question submission is not active in this implementation slice.'),
-  ).toBeVisible();
+
+  const questionInput = page.getByRole('textbox', { name: 'Question', exact: true });
+  await questionInput.fill('How does command gateway handle idempotency?');
+  await expect(page.getByRole('button', { name: 'Submit question' })).toBeEnabled();
+
+  await page.getByRole('button', { name: 'Submit question' }).click();
+  await expect(questionInput).toHaveValue('');
+  await expect(page.getByText('How does command gateway handle idempotency?')).toBeVisible();
 });
 
 test('Ask draft blocks Project switching and is not moved to the next Project', async ({ page }) => {

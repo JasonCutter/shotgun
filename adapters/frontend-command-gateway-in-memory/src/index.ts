@@ -86,6 +86,27 @@ export class InMemoryFrontendCommandGateway implements FrontendCommandGatewayPor
     return { outcome, replayed: false };
   }
 
+  async lockAcceptedForExecution(
+    _transaction: unknown,
+    commandId: string,
+  ): Promise<AnyFrontendCommandOutcomeView> {
+    const outcome = this.requireRecord(commandId).outcome;
+    if (outcome.outcomeState !== 'ACCEPTED' && outcome.outcomeState !== 'COMPLETED') {
+      throw new FrontendContractError(
+        'RESOURCE_RETIRED',
+        `Command '${commandId}' is not executable from state '${outcome.outcomeState}'.`,
+      );
+    }
+    return outcome;
+  }
+
+  async completeInTransaction(
+    _transaction: unknown,
+    input: CompleteFrontendCommandInput,
+  ): Promise<AnyFrontendCommandOutcomeView> {
+    return this.complete(input);
+  }
+
   async complete(input: CompleteFrontendCommandInput): Promise<AnyFrontendCommandOutcomeView> {
     const existing = this.requireRecord(input.commandId);
     if (existing.outcome.outcomeState === 'COMPLETED') return existing.outcome;

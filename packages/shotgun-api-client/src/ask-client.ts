@@ -3,11 +3,16 @@ import {
   decodeAskAnswerRunSnapshot,
   decodeAskBranchView,
   decodeAskConversationView,
+  decodeAskQuestionSubmissionOutcomeView,
+  decodeAskQuestionSubmissionView,
   decodeAskWorkspaceViewWithInvariants,
   type AskAnswerRunSnapshot,
   type AskBranchView,
   type AskConversationView,
+  type AskQuestionSubmissionOutcomeView,
+  type AskQuestionSubmissionView,
   type AskWorkspaceView,
+  type SubmitAskQuestionRequest,
 } from '../../contracts/src/index.js';
 import { decodeProductApiErrorBody } from './decode.js';
 import { productFailureApiError, remoteUnclassifiedProductApiFailure } from './errors.js';
@@ -30,6 +35,14 @@ export type AskWorkspaceClient = {
     answerRunId: string,
     options?: { readonly signal?: AbortSignal },
   ): Promise<AskAnswerRunSnapshot>;
+  submitQuestion(
+    params: SubmitAskQuestionRequest,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<AskQuestionSubmissionView>;
+  getQuestionSubmissionByClientRequestId(
+    clientRequestId: string,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<AskQuestionSubmissionOutcomeView>;
 };
 
 const readJson = async (response: Response): Promise<unknown> => {
@@ -56,6 +69,50 @@ export const createAskWorkspaceClient = (
   options: { readonly fetch?: typeof globalThis.fetch } = {},
 ): AskWorkspaceClient => {
   const request = options.fetch ?? globalThis.fetch;
+  let csrfToken: string | undefined;
+
+  const csrf = async (signal?: AbortSignal): Promise<string> => {
+    if (csrfToken) return csrfToken;
+    const response = await request('/api/v1/security/csrf', {
+      credentials: 'same-origin',
+      signal,
+    });
+    const body = (await assertOk(response)) as { readonly csrfToken?: unknown };
+    if (typeof body.csrfToken !== 'string' || body.csrfToken.length === 0) {
+      throw new FrontendContractError('UNSUPPORTED_SCHEMA', 'The CSRF token response is invalid.');
+    }
+    csrfToken = body.csrfToken;
+    return csrfToken;
+  };
+
+  const submit = async (
+    params: SubmitAskQuestionRequest,
+    signal?: AbortSignal,
+  ): Promise<Response> => {
+    const token = await csrf(signal);
+    let response = await request('/product-api/frontend/ask/questions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-csrf-token': token },
+      credentials: 'same-origin',
+      body: JSON.stringify(params),
+      signal,
+    });
+    if (response.status === 403) {
+      csrfToken = undefined;
+      response = await request('/product-api/frontend/ask/questions', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-csrf-token': await csrf(signal),
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify(params),
+        signal,
+      });
+    }
+    return response;
+  };
+
   return {
     async getWorkspace(conversationId, requestOptions) {
       const parameters = new URLSearchParams();
@@ -128,6 +185,30 @@ export const createAskWorkspaceClient = (
         identityMismatch('Ask AnswerRun response identity does not match the request.');
       }
       return answerRun;
+    },
+    async submitQuestion(params, requestOptions) {
+      const response = await submit(params, requestOptions?.signal);
+      const body = (await assertOk(response)) as { submission?: unknown };
+      const submission = decodeAskQuestionSubmissionView(body.submission);
+      if (params.conversationId && submission.answerRun.conversationId !== params.conversationId) {
+        identityMismatch('Ask Question submission response does not match the requested Conversation.');
+      }
+      return submission;
+    },
+    async getQuestionSubmissionByClientRequestId(clientRequestId, requestOptions) {
+      const response = await request(
+        `/product-api/frontend/ask/question-submissions/by-client-request/${encodeURIComponent(clientRequestId)}`,
+        {
+          credentials: 'same-origin',
+          signal: requestOptions?.signal,
+        },
+      );
+      const body = (await assertOk(response)) as { outcome?: unknown };
+      const outcome = decodeAskQuestionSubmissionOutcomeView(body.outcome);
+      if (outcome.clientRequestId !== clientRequestId) {
+        identityMismatch('Ask Question submission outcome clientRequestId does not match request.');
+      }
+      return outcome;
     },
   };
 };

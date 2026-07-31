@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation, useParams, useOutletContext } from 'react-router';
+import { Link, useLocation, useNavigate, useParams, useOutletContext } from 'react-router';
 
 import {
-  decodeAskCitationReturnState,
   createAskWorkspaceClient,
+  decodeAskCitationReturnState,
   type AskCitationReturnState,
   type AskMode,
+  type AskQuestionSubmissionOutcomeView,
+  type AskQuestionSubmissionView,
   type AskWorkspaceClient,
   type AskWorkspaceView,
   type GlobalShellView,
@@ -14,6 +16,16 @@ import {
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
 import { useLeaveGuard } from '../session/leave-guard-context.js';
+
+type PendingAskCommand = {
+  readonly clientRequestId: string;
+  readonly idempotencyKey: string;
+};
+
+type OutcomeResolution =
+  | { readonly kind: 'COMPLETED'; readonly submission: AskQuestionSubmissionView }
+  | { readonly kind: 'REJECTED'; readonly message: string }
+  | { readonly kind: 'UNKNOWN' };
 
 export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient }) => {
   const { conversationId } = useParams<{ readonly conversationId?: string }>();
@@ -26,7 +38,12 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   const [question, setQuestion] = useState('');
   const [draftOwnerProjectId, setDraftOwnerProjectId] = useState<string>();
   const [mode, setMode] = useState<AskMode>('CANONICAL_ONLY');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pendingCommand, setPendingCommand] = useState<PendingAskCommand>();
+  const [outcomeUnknown, setOutcomeUnknown] = useState(false);
+  const [submissionNotice, setSubmissionNotice] = useState<string>();
   const [error, setError] = useState<unknown>();
+  const navigate = useNavigate();
 
   const questionRef = useRef(question);
   questionRef.current = question;
@@ -36,6 +53,9 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     setWorkspace(undefined);
     setQuestion('');
     setDraftOwnerProjectId(undefined);
+    setPendingCommand(undefined);
+    setOutcomeUnknown(false);
+    setSubmissionNotice(undefined);
     setError(undefined);
     void askClient
       .getWorkspace(conversationId, { signal: controller.signal })
@@ -53,12 +73,12 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   useEffect(
     () =>
       registerLeaveGuard(() => ({
-        canLeaveCurrentContext: questionRef.current.trim().length === 0,
+        canLeaveCurrentContext: questionRef.current.trim().length === 0 && !outcomeUnknown,
         hasUnsavedDraft: questionRef.current.trim().length > 0,
         hasBlockingDialog: false,
-        hasOutcomeUnknownCommand: false,
+        hasOutcomeUnknownCommand: outcomeUnknown,
       })),
-    [question, registerLeaveGuard],
+    [outcomeUnknown, question, registerLeaveGuard],
   );
 
   const citationReturn = useMemo<AskCitationReturnState | undefined>(() => {
@@ -119,8 +139,152 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     expectedDraftProjectId !== undefined &&
     workspace.projectId === expectedDraftProjectId &&
     draftOwnerProjectId === workspace.projectId;
-  const submissionAvailable = workspace.capabilities.includes('SUBMIT_QUESTION');
   const conversation = workspace.selectedConversation;
+  const activeBranch = conversation?.branches.find(
+    (branch) => branch.branchId === conversation.activeBranchId,
+  );
+  const followUpReady =
+    !conversationId ||
+    Boolean(conversation && activeBranch?.branchRevision && conversation.conversationRevision);
+  const submissionAvailable =
+    workspace.capabilities.includes('SUBMIT_QUESTION') && followUpReady;
+
+  const applyVerifiedSubmission = (submission: AskQuestionSubmissionView) => {
+    setPendingCommand(undefined);
+    setOutcomeUnknown(false);
+    setSubmissionNotice(undefined);
+    setQuestion('');
+    questionRef.current = '';
+    if (submission.answerRun.conversationId !== conversationId) {
+      navigate(`/ask/conversations/${encodeURIComponent(submission.answerRun.conversationId)}`);
+    } else {
+      setWorkspace(submission.workspace);
+    }
+  };
+
+  const submissionFromOutcome = async (
+    outcome: AskQuestionSubmissionOutcomeView,
+  ): Promise<AskQuestionSubmissionView | undefined> => {
+    if (
+      outcome.outcomeState !== 'COMPLETED' ||
+      !outcome.answerRun ||
+      !outcome.conversationId
+    ) {
+      return undefined;
+    }
+    const recoveredWorkspace = await askClient.getWorkspace(outcome.conversationId);
+    return {
+      schemaVersion: '1.0.0',
+      answerRun: outcome.answerRun,
+      workspace: recoveredWorkspace,
+    };
+  };
+
+  const resolveExistingOutcome = async (
+    command: PendingAskCommand,
+    attempts: number,
+  ): Promise<OutcomeResolution> => {
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      if (attempt > 1) {
+        await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
+      }
+      try {
+        const outcome = await askClient.getQuestionSubmissionByClientRequestId(
+          command.clientRequestId,
+        );
+        const recoveredSubmission = await submissionFromOutcome(outcome);
+        if (recoveredSubmission) {
+          return { kind: 'COMPLETED', submission: recoveredSubmission };
+        }
+        if (outcome.outcomeState === 'REJECTED') {
+          return {
+            kind: 'REJECTED',
+            message:
+              outcome.failureMessage ??
+              'The question submission was rejected. The Draft was preserved.',
+          };
+        }
+      } catch {
+        // Outcome lookup is retried without resubmitting the mutation.
+      }
+    }
+    return { kind: 'UNKNOWN' };
+  };
+
+  const applyResolution = (resolution: OutcomeResolution) => {
+    if (resolution.kind === 'COMPLETED') {
+      applyVerifiedSubmission(resolution.submission);
+      return;
+    }
+    if (resolution.kind === 'REJECTED') {
+      setPendingCommand(undefined);
+      setOutcomeUnknown(false);
+      setSubmissionNotice(resolution.message);
+      return;
+    }
+    setOutcomeUnknown(true);
+    setSubmissionNotice(
+      'The submission outcome is still unknown. The original request identity and Draft are preserved.',
+    );
+  };
+
+  const handleResolveOutcome = async () => {
+    if (!pendingCommand || isSubmitting) return;
+    setIsSubmitting(true);
+    setSubmissionNotice('Checking the existing submission outcome…');
+    try {
+      applyResolution(await resolveExistingOutcome(pendingCommand, 1));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSubmitQuestion = async () => {
+    if (
+      !draftReady ||
+      !submissionAvailable ||
+      question.trim().length === 0 ||
+      isSubmitting ||
+      outcomeUnknown
+    ) {
+      return;
+    }
+    setIsSubmitting(true);
+    setSubmissionNotice(undefined);
+    const command =
+      pendingCommand ??
+      ({
+        clientRequestId: `req-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+        idempotencyKey: `idemp-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      } satisfies PendingAskCommand);
+    setPendingCommand(command);
+
+    try {
+      const followUpRequest =
+        conversationId && conversation && activeBranch?.branchRevision
+          ? {
+              conversationId,
+              branchId: activeBranch.branchId,
+              expectedConversationRevision: conversation.conversationRevision,
+              expectedBranchRevision: activeBranch.branchRevision,
+            }
+          : {};
+      const submission = await askClient.submitQuestion({
+        schemaVersion: '1.0.0',
+        clientRequestId: command.clientRequestId,
+        idempotencyKey: command.idempotencyKey,
+        ...followUpRequest,
+        question: question.trim(),
+        mode,
+        sourceSelections: [],
+      });
+      applyVerifiedSubmission(submission);
+    } catch {
+      applyResolution(await resolveExistingOutcome(command, 3));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <section className="route-page ask-workspace">
@@ -140,7 +304,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
         <select
           id="ask-mode"
           value={mode}
-          disabled={!draftReady}
+          disabled={!draftReady || outcomeUnknown}
           onChange={(event) => setMode(event.target.value as AskMode)}
         >
           {workspace.availableAskModes.map((availableMode) => (
@@ -154,18 +318,31 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
           id="ask-question"
           value={question}
           maxLength={10_000}
-          disabled={!draftReady}
+          disabled={!draftReady || outcomeUnknown}
           onChange={(event) => setQuestion(event.target.value)}
         />
         <button
           type="button"
-          disabled={!draftReady || !submissionAvailable || question.trim().length === 0}
+          disabled={
+            !draftReady ||
+            !submissionAvailable ||
+            question.trim().length === 0 ||
+            isSubmitting ||
+            outcomeUnknown
+          }
+          onClick={handleSubmitQuestion}
         >
-          Submit question
+          {isSubmitting ? 'Submitting…' : 'Submit question'}
         </button>
+        {outcomeUnknown && pendingCommand ? (
+          <button type="button" disabled={isSubmitting} onClick={handleResolveOutcome}>
+            Check submission outcome
+          </button>
+        ) : null}
+        {submissionNotice ? <p role="status">{submissionNotice}</p> : null}
         {!submissionAvailable ? (
           <p role="status">
-            Server question submission is not active in this implementation slice.
+            Server question submission is not available for this Conversation state.
           </p>
         ) : null}
       </section>

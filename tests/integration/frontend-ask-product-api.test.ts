@@ -48,8 +48,8 @@ describe('Frontend Ask Product API Integration', () => {
       projectId: 'shotgun',
       defaultAskMode: 'CANONICAL_ONLY',
       availableAskModes: ['CANONICAL_ONLY', 'SOURCE_EXPLORATION', 'HYBRID'],
+      capabilities: ['SUBMIT_QUESTION'],
     });
-    expect(workspace.capabilities).toEqual([]);
 
     const csrfToken = (
       await application.server.inject({

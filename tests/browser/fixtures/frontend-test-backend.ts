@@ -4,8 +4,10 @@ import { fileURLToPath } from 'node:url';
 
 import { createApplication } from '../../../assemblies/shotgun-app/src/server.js';
 import { configureSourcesWriteRuntime } from '../../../assemblies/shotgun-app/src/product-api/sources-write-runtime.js';
-import { SealedSourcesStagingService } from '../../../adapters/frontend-sources-staging-sealed/src/index.js';
+import { InMemoryFrontendCommandGateway } from '../../../adapters/frontend-command-gateway-in-memory/src/index.js';
 import { PostgresFrontendCommandGateway } from '../../../adapters/frontend-command-gateway-postgres/src/index.js';
+import { InMemoryAskConversationRepository } from '../../../adapters/frontend-ask-write-in-memory/src/index.js';
+import { SealedSourcesStagingService } from '../../../adapters/frontend-sources-staging-sealed/src/index.js';
 import { PostgresSourcesProductService } from '../../../adapters/frontend-sources-write-postgres/src/product-service.js';
 import {
   InMemoryActionCenterProjection,
@@ -23,16 +25,21 @@ import {
   PostgresProjectAdministrationRepository,
   PostgresProjectBootstrapUnitOfWork,
 } from '../../../adapters/postgres/src/index.js';
+import { PostgresAuthRepository } from '../../../adapters/postgres-auth/src/index.js';
 import { InMemorySettingsRepository } from '../../../adapters/settings-project-admin-in-memory/src/index.js';
 import { InMemoryAssetStorage } from '../../../adapters/stage2-in-memory/src/index.js';
 import { InMemoryEvidenceRepository } from '../../../adapters/stage3-in-memory/src/index.js';
-import { PostgresAuthRepository } from '../../../adapters/postgres-auth/src/index.js';
+import { AskCommandCoordinator } from '../../../modules/frontend-ask-write/src/index.js';
 import { FrontendProductReadCoordinator } from '../../../modules/frontend-product-read/src/index.js';
 import {
   DEFAULT_PROJECT_ID,
   LOCAL_OWNER_ACCOUNT_ID,
 } from '../../../packages/authentication/src/index.js';
-import { sha256Text, type AskAnswerRunSnapshot, type AskConversationView } from '../../../packages/contracts/src/index.js';
+import {
+  sha256Text,
+  type AskAnswerRunSnapshot,
+  type AskConversationView,
+} from '../../../packages/contracts/src/index.js';
 import { ASK_FIXTURE } from './ask-workspace-fixture.js';
 
 const sha256Bytes = (bytes: Uint8Array): string =>
@@ -165,10 +172,12 @@ export async function startFrontendTestBackend() {
     branches: [
       {
         branchId: ASK_FIXTURE.branchId,
+        branchRevision: 'ask-branch-revision-1',
         label: 'Main Branch',
         turns: [
           {
             turnId: ASK_FIXTURE.turnId,
+            turnRevision: 'ask-turn-revision-1',
             ordinal: 1,
             userMessage: answerRun.question,
             createdAt: answerRun.createdAt,
@@ -199,10 +208,12 @@ export async function startFrontendTestBackend() {
     branches: [
       {
         branchId: inaccessibleAnswerRun.branchId,
+        branchRevision: 'ask-branch-project-c-revision-1',
         label: 'Masked Branch',
         turns: [
           {
             turnId: inaccessibleAnswerRun.turnId,
+            turnRevision: 'ask-turn-project-c-revision-1',
             ordinal: 1,
             userMessage: inaccessibleAnswerRun.question,
             createdAt: inaccessibleAnswerRun.createdAt,
@@ -215,9 +226,7 @@ export async function startFrontendTestBackend() {
 
   const askProjection = new InMemoryAskWorkspaceProjection();
   askProjection.addConversation(conversation);
-  askProjection.addAnswerRun(answerRun);
   askProjection.addConversation(inaccessibleConversation);
-  askProjection.addAnswerRun(inaccessibleAnswerRun);
   const frontendProductReadCoordinator = new FrontendProductReadCoordinator(
     new InMemoryGlobalShellProjection(),
     new InMemoryActionCenterProjection(),
@@ -250,6 +259,14 @@ export async function startFrontendTestBackend() {
   };
 
   const commandGateway = new PostgresFrontendCommandGateway(pool);
+  const askGateway = new InMemoryFrontendCommandGateway();
+  const askRepository = new InMemoryAskConversationRepository();
+  askRepository.onSave = (aggregate) => askProjection.addConversation(aggregate.conversation);
+  const askCommandCoordinator = new AskCommandCoordinator(
+    askGateway,
+    askRepository,
+    askProjection,
+  );
   const staging = new SealedSourcesStagingService(
     assetStorage,
     'browser-fixture-sources-staging-secret-32-characters',
@@ -266,6 +283,7 @@ export async function startFrontendTestBackend() {
     settingsRepository: new InMemorySettingsRepository(),
     frontendCommandGateway: commandGateway,
     frontendProductReadCoordinator,
+    askCommandCoordinator,
     sourcesProjectionRepository,
     intakeRepository: new PostgresIntakeRepository(pool),
     originalAssetRepository: new PostgresOriginalAssetRepository(pool),

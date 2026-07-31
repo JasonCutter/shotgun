@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -7,6 +8,15 @@ import { SealedSourcesStagingService } from '../../../adapters/frontend-sources-
 import { PostgresFrontendCommandGateway } from '../../../adapters/frontend-command-gateway-postgres/src/index.js';
 import { PostgresSourcesProductService } from '../../../adapters/frontend-sources-write-postgres/src/product-service.js';
 import {
+  InMemoryActionCenterProjection,
+  InMemoryAskWorkspaceProjection,
+  InMemoryBackgroundSummaryProjection,
+  InMemoryGlobalSearch,
+  InMemoryGlobalShellProjection,
+  InMemoryNotificationSummaryProjection,
+  InMemoryRouteGuardProjection,
+} from '../../../adapters/frontend-product-read-in-memory/src/index.js';
+import {
   createPostgresPool,
   PostgresIntakeRepository,
   PostgresOriginalAssetRepository,
@@ -15,11 +25,18 @@ import {
 } from '../../../adapters/postgres/src/index.js';
 import { InMemorySettingsRepository } from '../../../adapters/settings-project-admin-in-memory/src/index.js';
 import { InMemoryAssetStorage } from '../../../adapters/stage2-in-memory/src/index.js';
+import { InMemoryEvidenceRepository } from '../../../adapters/stage3-in-memory/src/index.js';
 import { PostgresAuthRepository } from '../../../adapters/postgres-auth/src/index.js';
+import { FrontendProductReadCoordinator } from '../../../modules/frontend-product-read/src/index.js';
 import {
   DEFAULT_PROJECT_ID,
   LOCAL_OWNER_ACCOUNT_ID,
 } from '../../../packages/authentication/src/index.js';
+import { sha256Text, type AskAnswerRunSnapshot, type AskConversationView } from '../../../packages/contracts/src/index.js';
+import { ASK_FIXTURE } from './ask-workspace-fixture.js';
+
+const sha256Bytes = (bytes: Uint8Array): string =>
+  `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
 
 export async function startFrontendTestBackend() {
   const databaseUrl = process.env.DATABASE_URL;
@@ -54,7 +71,7 @@ export async function startFrontendTestBackend() {
     commandId: 'browser-fixture-project-b',
     clientRequestId: 'browser-fixture-project-b',
     idempotencyKey: 'browser-fixture-project-b',
-    projectId: 'project-b',
+    projectId: ASK_FIXTURE.projectBId,
     name: 'Project B',
     description: 'Browser test Project',
     actorPrincipalId: principalId,
@@ -62,12 +79,176 @@ export async function startFrontendTestBackend() {
   });
   await authRepository.createProjectOwnerMembership({
     principalId,
-    projectId: 'project-b',
+    projectId: ASK_FIXTURE.projectBId,
     scopes: ['owner'],
     sensitivityClearance: 'private',
   });
 
   const assetStorage = new InMemoryAssetStorage();
+  const evidenceRepository = new InMemoryEvidenceRepository();
+  const sourceBytes = new TextEncoder().encode(ASK_FIXTURE.sourceText);
+  const sourceContentHash = sha256Bytes(sourceBytes);
+  const sourceStorageKey = await assetStorage.put(sourceContentHash, sourceBytes);
+  const indexedEvidence = await evidenceRepository.index([
+    {
+      revisionId: 'ask-fixture-revision-1',
+      projectId: ASK_FIXTURE.projectBId,
+      sourceId: ASK_FIXTURE.sourceId,
+      sourceVersionId: ASK_FIXTURE.sourceVersionId,
+      pointer: ASK_FIXTURE.evidencePointer,
+      nodeKind: 'paragraph',
+      origin: 'source',
+      position: {
+        type: 'TextPositionSelector',
+        start: 0,
+        end: ASK_FIXTURE.sourceText.length,
+        unit: 'unicode-code-point',
+      },
+      quote: {
+        type: 'TextQuoteSelector',
+        exact: ASK_FIXTURE.sourceText,
+      },
+      exactHash: sha256Text(ASK_FIXTURE.sourceText),
+      accessScope: ['owner'],
+      sensitivity: 'private',
+      createdAt: '2026-07-31T10:00:00.000Z',
+    },
+  ]);
+  const evidenceId = indexedEvidence.items[0]!.evidenceId;
+
+  const answerRun: AskAnswerRunSnapshot = {
+    schemaVersion: '1.0.0',
+    answerRunId: ASK_FIXTURE.answerRunId,
+    conversationId: ASK_FIXTURE.conversationId,
+    branchId: ASK_FIXTURE.branchId,
+    turnId: ASK_FIXTURE.turnId,
+    projectId: ASK_FIXTURE.projectBId,
+    mode: 'CANONICAL_ONLY',
+    state: 'SUCCEEDED',
+    question: 'What does the approved Shotgun record establish?',
+    statements: [
+      {
+        statementId: ASK_FIXTURE.statementId,
+        text: ASK_FIXTURE.sourceText,
+        citations: [
+          {
+            citationId: ASK_FIXTURE.citationId,
+            sourceId: ASK_FIXTURE.sourceId,
+            sourceVersionId: ASK_FIXTURE.sourceVersionId,
+            evidenceId,
+          },
+        ],
+      },
+    ],
+    sourceSelections: [
+      {
+        sourceId: ASK_FIXTURE.sourceId,
+        sourceVersionId: ASK_FIXTURE.sourceVersionId,
+        evidenceIds: [evidenceId],
+      },
+    ],
+    capabilities: [],
+    answerRevision: 'ask-answer-revision-1',
+    conversationRevision: 'ask-conversation-revision-1',
+    accessRevision: '1',
+    policyContextRevision: '1',
+    createdAt: '2026-07-31T10:00:00.000Z',
+    updatedAt: '2026-07-31T10:00:00.000Z',
+    stale: false,
+  };
+  const conversation: AskConversationView = {
+    schemaVersion: '1.0.0',
+    conversationId: ASK_FIXTURE.conversationId,
+    projectId: ASK_FIXTURE.projectBId,
+    title: ASK_FIXTURE.conversationTitle,
+    activeBranchId: ASK_FIXTURE.branchId,
+    branches: [
+      {
+        branchId: ASK_FIXTURE.branchId,
+        label: 'Main Branch',
+        turns: [
+          {
+            turnId: ASK_FIXTURE.turnId,
+            ordinal: 1,
+            userMessage: answerRun.question,
+            createdAt: answerRun.createdAt,
+            answerRun,
+          },
+        ],
+      },
+    ],
+    conversationRevision: answerRun.conversationRevision,
+    createdAt: answerRun.createdAt,
+    updatedAt: answerRun.updatedAt,
+  };
+  const inaccessibleAnswerRun: AskAnswerRunSnapshot = {
+    ...answerRun,
+    answerRunId: 'ask-answer-run-project-c',
+    conversationId: ASK_FIXTURE.inaccessibleConversationId,
+    branchId: 'ask-branch-project-c',
+    turnId: 'ask-turn-project-c',
+    projectId: ASK_FIXTURE.inaccessibleProjectId,
+    statements: [],
+    sourceSelections: [],
+  };
+  const inaccessibleConversation: AskConversationView = {
+    ...conversation,
+    conversationId: ASK_FIXTURE.inaccessibleConversationId,
+    projectId: ASK_FIXTURE.inaccessibleProjectId,
+    activeBranchId: inaccessibleAnswerRun.branchId,
+    branches: [
+      {
+        branchId: inaccessibleAnswerRun.branchId,
+        label: 'Masked Branch',
+        turns: [
+          {
+            turnId: inaccessibleAnswerRun.turnId,
+            ordinal: 1,
+            userMessage: inaccessibleAnswerRun.question,
+            createdAt: inaccessibleAnswerRun.createdAt,
+            answerRun: inaccessibleAnswerRun,
+          },
+        ],
+      },
+    ],
+  };
+
+  const askProjection = new InMemoryAskWorkspaceProjection();
+  askProjection.addConversation(conversation);
+  askProjection.addAnswerRun(answerRun);
+  askProjection.addConversation(inaccessibleConversation);
+  askProjection.addAnswerRun(inaccessibleAnswerRun);
+  const frontendProductReadCoordinator = new FrontendProductReadCoordinator(
+    new InMemoryGlobalShellProjection(),
+    new InMemoryActionCenterProjection(),
+    new InMemoryBackgroundSummaryProjection(),
+    new InMemoryNotificationSummaryProjection(),
+    new InMemoryGlobalSearch(),
+    new InMemoryRouteGuardProjection(),
+    askProjection,
+  );
+  const sourcesProjectionRepository = {
+    async listProjectSourceVersions(projectId: string) {
+      if (projectId !== ASK_FIXTURE.projectBId) return [];
+      return [
+        {
+          projectId: ASK_FIXTURE.projectBId,
+          sourceId: ASK_FIXTURE.sourceId,
+          sourceVersionId: ASK_FIXTURE.sourceVersionId,
+          versionNumber: 1,
+          mediaType: 'text/plain',
+          contentHash: sourceContentHash,
+          sizeBytes: sourceBytes.byteLength,
+          originalFileName: 'ask-citation-source.txt',
+          storageKey: sourceStorageKey,
+          accessScope: ['owner'],
+          sensitivity: 'private' as const,
+          createdAt: '2026-07-31T10:00:00.000Z',
+        },
+      ];
+    },
+  };
+
   const commandGateway = new PostgresFrontendCommandGateway(pool);
   const staging = new SealedSourcesStagingService(
     assetStorage,
@@ -84,8 +265,11 @@ export async function startFrontendTestBackend() {
     projectBootstrapUnitOfWork: new PostgresProjectBootstrapUnitOfWork(pool),
     settingsRepository: new InMemorySettingsRepository(),
     frontendCommandGateway: commandGateway,
+    frontendProductReadCoordinator,
+    sourcesProjectionRepository,
     intakeRepository: new PostgresIntakeRepository(pool),
     originalAssetRepository: new PostgresOriginalAssetRepository(pool),
+    evidenceRepository,
     assetStorage,
     canonicalProjectionRecoveryIntervalMs: false,
     closeResources: async () => {

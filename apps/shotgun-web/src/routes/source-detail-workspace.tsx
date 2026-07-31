@@ -4,7 +4,9 @@ import { Link, useLocation, useOutletContext, useParams, useSearchParams } from 
 
 import {
   decodeCitationReturnTarget,
+  decodeConversationCitationReturnTarget,
   type CitationReturnTarget,
+  type ConversationCitationReturnTarget,
   type GlobalShellView,
 } from '@shotgun/api-client';
 
@@ -51,9 +53,23 @@ export const SourceDetailWorkspace = () => {
       return undefined;
     }
   }, [location.state, selectedVersionId, sourceId]);
+  const conversationReturnTarget = useMemo<ConversationCitationReturnTarget | undefined>(() => {
+    if (!citationReturnTarget || citationReturnTarget.resourceKind !== 'conversation') {
+      return undefined;
+    }
+    try {
+      return decodeConversationCitationReturnTarget(citationReturnTarget);
+    } catch {
+      return undefined;
+    }
+  }, [citationReturnTarget]);
 
   useEffect(() => {
     if (!citationReturnTarget || !evidence.data) return;
+    const evidenceExists = evidence.data.items.some(
+      (item) => item.evidenceId === citationReturnTarget.evidenceId,
+    );
+    if (!evidenceExists) return;
     const target = document.getElementById(`evidence-${citationReturnTarget.evidenceId}`);
     target?.scrollIntoView?.({ block: 'center' });
     target?.focus();
@@ -70,19 +86,25 @@ export const SourceDetailWorkspace = () => {
       <p>
         <Link to="/sources">Back to Source Library</Link>
       </p>
-      {citationReturnTarget ? (
+      {conversationReturnTarget ? (
         <p>
           <Link
-            to={citationReturnTarget.originRoute}
+            to={conversationReturnTarget.originRoute}
             state={{
               citationReturn: {
-                resourceKind: citationReturnTarget.resourceKind,
-                resourceId: citationReturnTarget.resourceId,
-                resourceRevision: citationReturnTarget.resourceRevision,
-                citationId: citationReturnTarget.citationId,
-                scrollAnchor: citationReturnTarget.scrollAnchor,
-                focusTarget: citationReturnTarget.focusTarget,
-                panelId: citationReturnTarget.panelId,
+                schemaVersion: conversationReturnTarget.schemaVersion,
+                resourceKind: conversationReturnTarget.resourceKind,
+                resourceId: conversationReturnTarget.resourceId,
+                conversationId: conversationReturnTarget.conversationId,
+                branchId: conversationReturnTarget.branchId,
+                turnId: conversationReturnTarget.turnId,
+                answerRunId: conversationReturnTarget.answerRunId,
+                answerRevision: conversationReturnTarget.answerRevision,
+                resourceRevision: conversationReturnTarget.resourceRevision,
+                citationId: conversationReturnTarget.citationId,
+                scrollAnchor: conversationReturnTarget.scrollAnchor,
+                focusTarget: conversationReturnTarget.focusTarget,
+                panelId: conversationReturnTarget.panelId,
               },
             }}
           >

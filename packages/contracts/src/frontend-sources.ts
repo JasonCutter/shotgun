@@ -320,6 +320,11 @@ export type CitationReturnTarget = {
   readonly originRoute: string;
   readonly resourceKind: string;
   readonly resourceId: string;
+  readonly conversationId?: string;
+  readonly branchId?: string;
+  readonly turnId?: string;
+  readonly answerRunId?: string;
+  readonly answerRevision?: string;
   readonly resourceRevision: string;
   readonly citationId: string;
   readonly sourceId: string;
@@ -1380,6 +1385,23 @@ export const decodeCitationReturnTarget = (input: unknown): CitationReturnTarget
   if (!originRoute.startsWith('/') || originRoute.startsWith('//')) {
     fail('CitationReturnTarget.originRoute must be an internal absolute route.');
   }
+  const conversationId = optionalBoundedString(
+    value['conversationId'],
+    'CitationReturnTarget.conversationId',
+    512,
+  );
+  const branchId = optionalBoundedString(value['branchId'], 'CitationReturnTarget.branchId', 512);
+  const turnId = optionalBoundedString(value['turnId'], 'CitationReturnTarget.turnId', 512);
+  const answerRunId = optionalBoundedString(
+    value['answerRunId'],
+    'CitationReturnTarget.answerRunId',
+    512,
+  );
+  const answerRevision = optionalBoundedString(
+    value['answerRevision'],
+    'CitationReturnTarget.answerRevision',
+    512,
+  );
   const scrollAnchor = optionalBoundedString(
     value['scrollAnchor'],
     'CitationReturnTarget.scrollAnchor',
@@ -1396,6 +1418,11 @@ export const decodeCitationReturnTarget = (input: unknown): CitationReturnTarget
     originRoute,
     resourceKind: boundedString(value['resourceKind'], 'CitationReturnTarget.resourceKind', 200),
     resourceId: boundedString(value['resourceId'], 'CitationReturnTarget.resourceId', 512),
+    ...(conversationId === undefined ? {} : { conversationId }),
+    ...(branchId === undefined ? {} : { branchId }),
+    ...(turnId === undefined ? {} : { turnId }),
+    ...(answerRunId === undefined ? {} : { answerRunId }),
+    ...(answerRevision === undefined ? {} : { answerRevision }),
     resourceRevision: boundedString(
       value['resourceRevision'],
       'CitationReturnTarget.resourceRevision',

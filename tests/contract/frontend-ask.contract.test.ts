@@ -1,0 +1,230 @@
+import { describe, expect, it } from 'vitest';
+
+import { InMemoryAskWorkspaceProjection } from '../../adapters/frontend-product-read-in-memory/src/index.js';
+import {
+  ASK_SCHEMA_VERSION,
+  FrontendContractError,
+  ShotgunError,
+  decodeAskAnswerRunSnapshot,
+  decodeAskBranchView,
+  decodeAskConversationView,
+  decodeAskQuestionSubmissionView,
+  decodeAskWorkspaceView,
+  decodeSubmitAskQuestionRequest,
+} from '../../packages/contracts/src/index.js';
+
+const now = '2026-07-31T07:00:00.000Z';
+
+const workspace = {
+  schemaVersion: ASK_SCHEMA_VERSION,
+  principalId: 'principal-1',
+  sessionId: 'session-1',
+  projectId: 'project-1',
+  defaultAskMode: 'CANONICAL_ONLY',
+  availableAskModes: ['CANONICAL_ONLY'],
+  conversations: [],
+  capabilities: [],
+  projectionRevision: 'ask-1',
+  accessRevision: 'access-1',
+  policyContextRevision: 'policy-1',
+  fetchedAt: now,
+  stale: false,
+} as const;
+
+const answerRun = {
+  schemaVersion: ASK_SCHEMA_VERSION,
+  answerRunId: 'run-1',
+  conversationId: 'conversation-1',
+  branchId: 'branch-1',
+  turnId: 'turn-1',
+  projectId: 'project-1',
+  mode: 'CANONICAL_ONLY',
+  state: 'QUEUED',
+  question: 'What is canonical?',
+  statements: [],
+  sourceSelections: [],
+  capabilities: ['CANCEL'],
+  answerRevision: 'answer-1',
+  conversationRevision: 'conversation-1',
+  accessRevision: 'access-1',
+  policyContextRevision: 'policy-1',
+  createdAt: now,
+  updatedAt: now,
+  stale: false,
+} as const;
+
+const conversation = {
+  schemaVersion: ASK_SCHEMA_VERSION,
+  conversationId: 'conversation-1',
+  projectId: 'project-1',
+  title: 'Canonical Architecture Query',
+  activeBranchId: 'branch-1',
+  branches: [
+    {
+      branchId: 'branch-1',
+      label: 'Main Branch',
+      turns: [
+        {
+          turnId: 'turn-1',
+          ordinal: 1,
+          userMessage: 'What is canonical?',
+          createdAt: now,
+          answerRun,
+        },
+      ],
+    },
+  ],
+  conversationRevision: 'rev-1',
+  createdAt: now,
+  updatedAt: now,
+} as const;
+
+describe('Frontend Ask contracts', () => {
+  it('decodes the server workspace and answer-run envelope', () => {
+    expect(decodeAskWorkspaceView(workspace)).toEqual(workspace);
+    expect(
+      decodeAskQuestionSubmissionView({
+        schemaVersion: ASK_SCHEMA_VERSION,
+        answerRun,
+        workspace,
+      }),
+    ).toMatchObject({ answerRun: { answerRunId: 'run-1' }, workspace: { projectId: 'project-1' } });
+  });
+
+  it('requires SourceVersion pinning and rejects browser authority fields', () => {
+    expect(
+      decodeSubmitAskQuestionRequest({
+        schemaVersion: ASK_SCHEMA_VERSION,
+        clientRequestId: 'request-1',
+        idempotencyKey: 'idem-1',
+        question: 'Use this source.',
+        sourceSelections: [{ sourceId: 'source-1', sourceVersionId: 'version-2', evidenceIds: [] }],
+      }),
+    ).toMatchObject({ sourceSelections: [{ sourceVersionId: 'version-2' }] });
+
+    expect(() =>
+      decodeSubmitAskQuestionRequest({
+        schemaVersion: ASK_SCHEMA_VERSION,
+        clientRequestId: 'request-2',
+        idempotencyKey: 'idem-2',
+        question: 'Do not trust this project id.',
+        projectId: 'browser-authority',
+        sourceSelections: [],
+      }),
+    ).toThrow(FrontendContractError);
+  });
+
+  it('decodes conversation and branch views accurately', () => {
+    expect(decodeAskConversationView(conversation)).toEqual(conversation);
+    expect(decodeAskBranchView(conversation.branches[0])).toEqual(conversation.branches[0]);
+  });
+
+  it('rejects unknown fields in workspace and answer-run decoders', () => {
+    expect(() =>
+      decodeAskWorkspaceView({
+        ...workspace,
+        unknownField: 'malicious',
+      }),
+    ).toThrow(FrontendContractError);
+
+    expect(() =>
+      decodeAskAnswerRunSnapshot({
+        ...answerRun,
+        extraAuthorityField: 'invalid',
+      }),
+    ).toThrow(FrontendContractError);
+  });
+
+  it('enforces cross-field validations, integer constraints, and strict ISO 8601 timestamps', () => {
+    expect(() =>
+      decodeAskConversationView({
+        ...conversation,
+        activeBranchId: 'non-existent-branch',
+      }),
+    ).toThrow(FrontendContractError);
+
+    expect(() =>
+      decodeAskWorkspaceView({
+        ...workspace,
+        defaultAskMode: 'HYBRID',
+        availableAskModes: ['CANONICAL_ONLY'],
+      }),
+    ).toThrow(FrontendContractError);
+
+    expect(() =>
+      decodeAskBranchView({
+        branchId: 'branch-1',
+        label: 'Branch 1',
+        turns: [
+          {
+            turnId: 'turn-1',
+            ordinal: 1.5,
+            userMessage: 'Test',
+            createdAt: now,
+            answerRun,
+          },
+        ],
+      }),
+    ).toThrow(FrontendContractError);
+
+    expect(() =>
+      decodeAskConversationView({
+        ...conversation,
+        createdAt: 'invalid-date-format',
+      }),
+    ).toThrow(FrontendContractError);
+  });
+
+  it('blocks zero-project workspace reads with NOT_FOUND error', async () => {
+    const projection = new InMemoryAskWorkspaceProjection();
+    const scope = {
+      principalId: 'principal-1',
+      sessionId: 'session-1',
+      activeProject: null,
+      accessibleProjects: [],
+      accessRevision: '1',
+      policyContextRevision: '1',
+    };
+
+    await expect(projection.getWorkspace(scope)).rejects.toThrow(ShotgunError);
+  });
+
+  it('supports deep-linking accessible conversation without active project auto-switching', async () => {
+    const projection = new InMemoryAskWorkspaceProjection();
+    projection.addConversation(conversation);
+
+    const scope = {
+      principalId: 'principal-1',
+      sessionId: 'session-1',
+      activeProject: {
+        id: 'project-2',
+        label: 'Project Two',
+        isOwner: false,
+        sensitivityClearance: 'public' as const,
+      },
+      accessibleProjects: [
+        {
+          id: 'project-1',
+          label: 'Project One',
+          isOwner: true,
+          sensitivityClearance: 'private' as const,
+        },
+        {
+          id: 'project-2',
+          label: 'Project Two',
+          isOwner: false,
+          sensitivityClearance: 'public' as const,
+        },
+      ],
+      accessRevision: '1',
+      policyContextRevision: '1',
+    };
+
+    const loadedWorkspace = await projection.getWorkspace({
+      ...scope,
+      conversationId: 'conversation-1',
+    });
+    expect(loadedWorkspace.projectId).toBe('project-1');
+    expect(loadedWorkspace.selectedConversation?.conversationId).toBe('conversation-1');
+  });
+});

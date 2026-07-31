@@ -1,4 +1,8 @@
 import type {
+  AskAnswerRunSnapshot,
+  AskBranchView,
+  AskConversationView,
+  AskWorkspaceView,
   GlobalSearchRequest,
   GlobalSearchResultView,
   GlobalShellView,
@@ -67,6 +71,21 @@ export type RouteGuardProjectionPort = {
   ): Promise<RouteGuardDecisionView>;
 };
 
+export type AskWorkspaceProjectionPort = {
+  getWorkspace(
+    input: FrontendReadScope & { readonly conversationId?: string },
+  ): Promise<AskWorkspaceView>;
+  getConversation(
+    input: FrontendReadScope & { readonly conversationId: string },
+  ): Promise<AskConversationView>;
+  getBranch(
+    input: FrontendReadScope & { readonly conversationId: string; readonly branchId: string },
+  ): Promise<AskBranchView>;
+  getAnswerRun(
+    input: FrontendReadScope & { readonly answerRunId: string },
+  ): Promise<AskAnswerRunSnapshot>;
+};
+
 export class FrontendProductReadCoordinator {
   constructor(
     private readonly shell: GlobalShellProjectionPort,
@@ -75,6 +94,7 @@ export class FrontendProductReadCoordinator {
     private readonly notifications: NotificationSummaryProjectionPort,
     private readonly searchPort: GlobalSearchPort,
     private readonly routeGuard: RouteGuardProjectionPort,
+    private readonly askWorkspace?: AskWorkspaceProjectionPort,
   ) {}
 
   async getGlobalShell(input: FrontendReadScope): Promise<GlobalShellView> {
@@ -108,5 +128,41 @@ export class FrontendProductReadCoordinator {
     },
   ): Promise<RouteGuardDecisionView> {
     return this.routeGuard.decide(input);
+  }
+
+  getAskWorkspace(
+    input: FrontendReadScope & { readonly conversationId?: string },
+  ): Promise<AskWorkspaceView> {
+    if (!this.askWorkspace) {
+      throw new Error('AskWorkspaceProjectionPort is not configured.');
+    }
+    return this.askWorkspace.getWorkspace(input);
+  }
+
+  getAskConversation(
+    input: FrontendReadScope & { readonly conversationId: string },
+  ): Promise<AskConversationView> {
+    if (!this.askWorkspace) {
+      throw new Error('AskWorkspaceProjectionPort is not configured.');
+    }
+    return this.askWorkspace.getConversation(input);
+  }
+
+  getAskBranch(
+    input: FrontendReadScope & { readonly conversationId: string; readonly branchId: string },
+  ): Promise<AskBranchView> {
+    if (!this.askWorkspace) {
+      throw new Error('AskWorkspaceProjectionPort is not configured.');
+    }
+    return this.askWorkspace.getBranch(input);
+  }
+
+  getAskAnswerRun(
+    input: FrontendReadScope & { readonly answerRunId: string },
+  ): Promise<AskAnswerRunSnapshot> {
+    if (!this.askWorkspace) {
+      throw new Error('AskWorkspaceProjectionPort is not configured.');
+    }
+    return this.askWorkspace.getAnswerRun(input);
   }
 }

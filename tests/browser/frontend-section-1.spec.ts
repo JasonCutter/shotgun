@@ -46,12 +46,13 @@ test('Frontend Section 1 restores server Project context and protects routes', a
   for (const [link, heading] of [
     ['Home', 'Home'],
     ['Sources', 'Sources'],
+    ['Ask', 'Ask'],
     ['Settings', 'Settings'],
   ] as const) {
     await page.getByRole('link', { name: link }).click();
     await expect(page.getByRole('heading', { level: 1, name: heading })).toBeFocused();
   }
-  for (const unavailable of ['Ask', 'Knowledge', 'Review']) {
+  for (const unavailable of ['Knowledge', 'Review']) {
     await expect(page.getByRole('link', { name: unavailable })).toHaveCount(0);
     await expect(
       page.locator('.navigation-disabled', { hasText: unavailable }).first(),

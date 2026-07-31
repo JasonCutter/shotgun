@@ -53,6 +53,7 @@ import {
 import { InMemoryFrontendCommandGateway } from '../../../adapters/frontend-command-gateway-in-memory/src/index.js';
 import {
   InMemoryActionCenterProjection,
+  InMemoryAskWorkspaceProjection,
   InMemoryBackgroundSummaryProjection,
   InMemoryGlobalSearch,
   InMemoryGlobalShellProjection,
@@ -1142,6 +1143,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       new InMemoryNotificationSummaryProjection(),
       new InMemoryGlobalSearch(),
       new InMemoryRouteGuardProjection(),
+      new InMemoryAskWorkspaceProjection(),
     );
   const sourcesProjectionRepository =
     options.sourcesProjectionRepository ??

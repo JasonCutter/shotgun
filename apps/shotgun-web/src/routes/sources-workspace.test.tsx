@@ -340,12 +340,17 @@ describe('Sources Workspace', () => {
                 originRoute: '/ask/conversations/conversation-1',
                 resourceKind: 'conversation',
                 resourceId: 'conversation-1',
+                conversationId: 'conversation-1',
+                branchId: 'branch-1',
+                turnId: 'turn-1',
+                answerRunId: 'answer-run-1',
+                answerRevision: 'answer-revision-1',
                 resourceRevision: 'conversation-7',
                 citationId: 'citation-1',
                 sourceId: 'source-1',
                 sourceVersionId: 'version-2',
                 evidenceId: 'evidence-1',
-                scrollAnchor: 'message-4',
+                scrollAnchor: 'citation-1',
                 focusTarget: 'citation-1',
                 panelId: 'evidence-panel',
               },
@@ -365,7 +370,14 @@ describe('Sources Workspace', () => {
     await userEvent.click(screen.getByRole('link', { name: 'Return to cited resource' }));
     expect(await screen.findByText('Conversation restored')).toBeTruthy();
     expect(router.state.location.state).toMatchObject({
-      citationReturn: { resourceRevision: 'conversation-7', citationId: 'citation-1' },
+      citationReturn: {
+        conversationId: 'conversation-1',
+        branchId: 'branch-1',
+        turnId: 'turn-1',
+        answerRunId: 'answer-run-1',
+        resourceRevision: 'conversation-7',
+        citationId: 'citation-1',
+      },
     });
   });
 });

@@ -2,8 +2,11 @@
 
 - Snapshot ID: `frontend-phase-2-section-2-contract-snapshot-260731001`
 - Date: 2026-07-31
-- Status: CANDIDATE IN DRAFT PR
-- ADR: ADR-123 Proposed
+- Status: **HISTORICAL CANDIDATE SNAPSHOT — AC DEFINITIONS PRESERVED**
+- ADR: ADR-123 Accepted on 2026-08-01
+- Slices 4–5 successor contract: `frontend-phase-2-section-2-slices-4-5-frozen-implementation-contract-260801001.md`
+
+This document preserves the original AC-01 through AC-24 meanings used for Slices 1–3 and the remaining Section 2 work. It is not deleted or silently rewritten. ADR-123 and the approved Slices 4–5 Frozen Implementation Contract add concrete Write and Persistence implementation gates without renumbering or changing these acceptance criteria.
 
 ## Candidate Acceptance Criteria
 
@@ -32,6 +35,14 @@
 - AC-23 Canonical change candidates use `DraftChangeSetSeed`; directives use `UserDirectiveProposalSeed`.
 - AC-24 Accessibility, responsive UI, performance, Contract, integration, and E2E gates pass before completion.
 
-## Current implementation status
+## Historical implementation status at snapshot creation
 
-AC-05 contract and Browser draft shell: IN PROGRESS. AC-01 decoder foundation: IN PROGRESS. Remaining criteria: NOT RUN. No criterion is marked PASS by this snapshot.
+As recorded on 2026-07-31: AC-05 contract and Browser draft shell were IN PROGRESS. AC-01 decoder foundation was IN PROGRESS. Remaining criteria were NOT RUN. No criterion was marked PASS by this snapshot.
+
+## Later governance status
+
+- Slices 1–3 were separately verified, user-approved and merged through PR #47.
+- ADR-123 was accepted on 2026-08-01.
+- Slices 4–5 implementation gates were approved and frozen in `frontend-phase-2-section-2-slices-4-5-frozen-implementation-contract-260801001.md`.
+- The reviewed Slices 4–5 candidate at `8c8cdc542e3c598d10fd62aaa2e10f2ed28a01b1` remains blocked pending architecture remediation.
+- This status does not declare Section 2 complete.

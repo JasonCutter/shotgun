@@ -58,7 +58,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
         hasBlockingDialog: false,
         hasOutcomeUnknownCommand: false,
       })),
-    [registerLeaveGuard],
+    [question, registerLeaveGuard],
   );
 
   const citationReturn = useMemo<AskCitationReturnState | undefined>(() => {

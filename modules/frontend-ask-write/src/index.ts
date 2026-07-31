@@ -5,19 +5,21 @@ import {
   FrontendContractError,
   ShotgunError,
   computeSubmitAskQuestionDigest,
+  type AcceptedPolicyContext,
   type AnyFrontendCommandOutcomeView,
   type AnyFrontendCommandRequest,
+  type AskAnswerRunSnapshot,
+  type AskBranchView,
+  type AskConversationView,
   type AskQuestionSubmissionOutcomeView,
   type AskQuestionSubmissionView,
   type AskSourceSelectionView,
+  type AskWorkspaceView,
+  type ErrorCode,
+  type ProducedResourceRef,
   type SubmitAskQuestionRequest,
   type TypedPrecondition,
 } from '../../../packages/contracts/src/index.js';
-import type { FrontendCommandGatewayPort } from '../../frontend-command-gateway/src/index.js';
-import type {
-  AskWorkspaceProjectionPort,
-  FrontendReadScope,
-} from '../../frontend-product-read/src/index.js';
 
 export const ASK_RESOURCE_KIND = {
   conversation: 'ASK_CONVERSATION',
@@ -25,6 +27,78 @@ export const ASK_RESOURCE_KIND = {
   turn: 'ASK_TURN',
   answerRun: 'ASK_ANSWER_RUN',
 } as const;
+
+export type AskAuthorizedProjectSummary = {
+  readonly id: string;
+  readonly label: string;
+  readonly isOwner: boolean;
+  readonly sensitivityClearance: 'public' | 'internal' | 'private' | 'restricted';
+};
+
+export type AskReadScope = {
+  readonly principalId: string;
+  readonly sessionId: string;
+  readonly activeProject: AskAuthorizedProjectSummary | null;
+  readonly accessibleProjects: readonly AskAuthorizedProjectSummary[];
+  readonly accessRevision: string;
+  readonly policyContextRevision: string;
+};
+
+export type AskWorkspaceQueryPort = {
+  getWorkspace(
+    input: AskReadScope & { readonly conversationId?: string },
+  ): Promise<AskWorkspaceView>;
+  getConversation(
+    input: AskReadScope & { readonly conversationId: string },
+  ): Promise<AskConversationView>;
+  getBranch(
+    input: AskReadScope & { readonly conversationId: string; readonly branchId: string },
+  ): Promise<AskBranchView>;
+  getAnswerRun(
+    input: AskReadScope & { readonly answerRunId: string },
+  ): Promise<AskAnswerRunSnapshot>;
+};
+
+export type AskFrontendCommandGatewayPort = {
+  accept(input: {
+    readonly commandId: string;
+    readonly commandRevision: string;
+    readonly principalId: string;
+    readonly request: AnyFrontendCommandRequest;
+    readonly commandSemanticDigest: string;
+    readonly acceptedPolicyContext: AcceptedPolicyContext;
+    readonly correlationId: string;
+    readonly traceId: string;
+    readonly receivedAt: string;
+    readonly acceptedAt: string;
+  }): Promise<{
+    readonly outcome: AnyFrontendCommandOutcomeView;
+    readonly replayed: boolean;
+  }>;
+  lockAcceptedForExecution(
+    transaction: unknown,
+    commandId: string,
+  ): Promise<AnyFrontendCommandOutcomeView>;
+  completeInTransaction(
+    transaction: unknown,
+    input: {
+      readonly commandId: string;
+      readonly producedResources: readonly ProducedResourceRef[];
+      readonly completedAt: string;
+    },
+  ): Promise<AnyFrontendCommandOutcomeView>;
+  reject(input: {
+    readonly commandId: string;
+    readonly code: ErrorCode;
+    readonly message: string;
+    readonly correlationId?: string;
+    readonly completedAt: string;
+  }): Promise<AnyFrontendCommandOutcomeView>;
+  findByClientRequestId(
+    principalId: string,
+    clientRequestId: string,
+  ): Promise<AnyFrontendCommandOutcomeView | null>;
+};
 
 export type AskCommittedQuestion = {
   readonly projectId: string;
@@ -75,7 +149,7 @@ export type AskSourceSelectionValidatorPort = {
   validate(input: {
     readonly principalId: string;
     readonly projectId: string;
-    readonly sensitivityClearance: FrontendReadScope['accessibleProjects'][number]['sensitivityClearance'];
+    readonly sensitivityClearance: AskAuthorizedProjectSummary['sensitivityClearance'];
     readonly mode: NonNullable<SubmitAskQuestionRequest['mode']>;
     readonly policyContextRevision: string;
     readonly sourceSelections: readonly AskSourceSelectionView[];
@@ -122,29 +196,19 @@ const targetProjectIdFromOutcome = (outcome: AnyFrontendCommandOutcomeView): str
 
 export class AskCommandCoordinator {
   constructor(
-    private readonly commandGateway: FrontendCommandGatewayPort,
+    private readonly commandGateway: AskFrontendCommandGatewayPort,
     private readonly repository: AskConversationRepositoryPort,
-    private readonly askWorkspace: AskWorkspaceProjectionPort,
+    private readonly askWorkspace: AskWorkspaceQueryPort,
     private readonly sourceValidator: AskSourceSelectionValidatorPort =
       new EmptyOnlyAskSourceSelectionValidator(),
   ) {}
 
   async submitQuestion(
-    input: FrontendReadScope & { readonly request: SubmitAskQuestionRequest },
+    input: AskReadScope & { readonly request: SubmitAskQuestionRequest },
   ): Promise<AskQuestionSubmissionView> {
     const request = input.request;
     const mode = request.mode ?? 'CANONICAL_ONLY';
     const authority = await this.resolveAuthority(input);
-
-    await this.sourceValidator.validate({
-      principalId: input.principalId,
-      projectId: authority.targetProjectId,
-      sensitivityClearance: authority.sensitivityClearance,
-      mode,
-      policyContextRevision: input.policyContextRevision,
-      sourceSelections: request.sourceSelections,
-    });
-
     const now = new Date().toISOString();
     const semanticDigest = computeSubmitAskQuestionDigest(request);
     const preconditions = this.buildPreconditions(request);
@@ -223,6 +287,15 @@ export class AskCommandCoordinator {
     let completedByConcurrentExecution: AnyFrontendCommandOutcomeView | undefined;
 
     try {
+      await this.sourceValidator.validate({
+        principalId: input.principalId,
+        projectId: authority.targetProjectId,
+        sensitivityClearance: authority.sensitivityClearance,
+        mode,
+        policyContextRevision: input.policyContextRevision,
+        sourceSelections: request.sourceSelections,
+      });
+
       await this.repository.transaction(async (transaction) => {
         const locked = await this.commandGateway.lockAcceptedForExecution(
           transaction,
@@ -290,10 +363,12 @@ export class AskCommandCoordinator {
         });
       });
     } catch (error) {
-      const rejectionCode =
+      const rejectionCode: ErrorCode =
         error instanceof ShotgunError && error.code === 'REVISION_CONFLICT'
           ? 'REVISION_CONFLICT'
-          : 'INTERNAL_UNCLASSIFIED';
+          : error instanceof ShotgunError && error.code === 'INVALID_REQUEST'
+            ? 'INVALID_REQUEST'
+            : 'INTERNAL_UNCLASSIFIED';
       try {
         await this.commandGateway.reject({
           commandId: effectiveCommandId,
@@ -335,7 +410,7 @@ export class AskCommandCoordinator {
   }
 
   async getQuestionSubmissionByClientRequestId(
-    input: FrontendReadScope & { readonly clientRequestId: string },
+    input: AskReadScope & { readonly clientRequestId: string },
   ): Promise<AskQuestionSubmissionOutcomeView> {
     const outcome = await this.commandGateway.findByClientRequestId(
       input.principalId,
@@ -351,8 +426,7 @@ export class AskCommandCoordinator {
     }
 
     if (outcome.outcomeState === 'COMPLETED') {
-      const completed = await this.outcomeFromCompletedCommand(input, outcome);
-      return completed;
+      return this.outcomeFromCompletedCommand(input, outcome);
     }
 
     return {
@@ -372,11 +446,11 @@ export class AskCommandCoordinator {
   }
 
   private async resolveAuthority(
-    input: FrontendReadScope & { readonly request: SubmitAskQuestionRequest },
+    input: AskReadScope & { readonly request: SubmitAskQuestionRequest },
   ): Promise<{
     readonly targetProjectId: string;
     readonly branchId?: string;
-    readonly sensitivityClearance: FrontendReadScope['accessibleProjects'][number]['sensitivityClearance'];
+    readonly sensitivityClearance: AskAuthorizedProjectSummary['sensitivityClearance'];
   }> {
     if (!input.request.conversationId) {
       if (!input.activeProject) {
@@ -424,17 +498,6 @@ export class AskCommandCoordinator {
         operation: 'resolve-follow-up',
       });
     }
-    if (
-      conversation.conversationRevision !== input.request.expectedConversationRevision ||
-      branch.branchRevision !== input.request.expectedBranchRevision
-    ) {
-      throw new ShotgunError({
-        code: 'REVISION_CONFLICT',
-        safeMessage: 'The Conversation changed. Refresh before submitting the follow-up.',
-        module: 'frontend-ask-write',
-        operation: 'resolve-follow-up',
-      });
-    }
 
     return {
       targetProjectId: conversation.projectId,
@@ -463,7 +526,7 @@ export class AskCommandCoordinator {
   }
 
   private async submissionFromCompletedOutcome(
-    input: FrontendReadScope,
+    input: AskReadScope,
     outcome: AnyFrontendCommandOutcomeView,
   ): Promise<AskQuestionSubmissionView> {
     const completed = await this.outcomeFromCompletedCommand(input, outcome);
@@ -487,7 +550,7 @@ export class AskCommandCoordinator {
   }
 
   private async outcomeFromCompletedCommand(
-    input: FrontendReadScope,
+    input: AskReadScope,
     outcome: AnyFrontendCommandOutcomeView,
   ): Promise<AskQuestionSubmissionOutcomeView> {
     const conversation = findProducedResource(outcome, ASK_RESOURCE_KIND.conversation);

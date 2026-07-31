@@ -1,4 +1,4 @@
-BEGIN;
+-- The managed migration runner owns the transaction boundary for this file.
 
 DO $$
 BEGIN
@@ -187,5 +187,3 @@ CREATE TABLE frontend_ask.citations (
     REFERENCES asset.source_versions(source_id, source_version_id)
     ON DELETE RESTRICT
 );
-
-COMMIT;

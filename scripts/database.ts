@@ -32,6 +32,7 @@ const migrationFiles = async (): Promise<string[]> =>
   (await readdir(migrationDirectory)).filter((file) => file.endsWith('.sql')).sort();
 
 const managedSchemas = [
+  'frontend_ask',
   'source_product',
   'frontend_command',
   'settings',
@@ -149,6 +150,14 @@ const requiredTables = [
   'source_product.exact_duplicate_dispositions',
   'source_product.url_acquisition_attempts',
   'source_product.url_provenance_receipts',
+  'frontend_ask.conversations',
+  'frontend_ask.branches',
+  'frontend_ask.turns',
+  'frontend_ask.answer_runs',
+  'frontend_ask.source_selections',
+  'frontend_ask.source_selection_evidence',
+  'frontend_ask.statements',
+  'frontend_ask.citations',
 ] as const;
 
 const verify = async (): Promise<void> => {

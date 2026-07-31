@@ -6,16 +6,21 @@ import {
   createAskWorkspaceClient,
   type AskCitationReturnState,
   type AskMode,
+  type AskQuestionSubmissionOutcomeView,
+  type AskQuestionSubmissionView,
   type AskWorkspaceClient,
   type AskWorkspaceView,
   type GlobalShellView,
-  type AskQuestionSubmissionView,
-  type AskQuestionSubmissionOutcomeView,
 } from '@shotgun/api-client';
 
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
 import { useLeaveGuard } from '../session/leave-guard-context.js';
+
+type PendingAskCommand = {
+  readonly clientRequestId: string;
+  readonly idempotencyKey: string;
+};
 
 export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient }) => {
   const { conversationId } = useParams<{ readonly conversationId?: string }>();
@@ -29,6 +34,9 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   const [draftOwnerProjectId, setDraftOwnerProjectId] = useState<string>();
   const [mode, setMode] = useState<AskMode>('CANONICAL_ONLY');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pendingCommand, setPendingCommand] = useState<PendingAskCommand>();
+  const [outcomeUnknown, setOutcomeUnknown] = useState(false);
+  const [submissionNotice, setSubmissionNotice] = useState<string>();
   const [error, setError] = useState<unknown>();
   const navigate = useNavigate();
 
@@ -40,6 +48,9 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     setWorkspace(undefined);
     setQuestion('');
     setDraftOwnerProjectId(undefined);
+    setPendingCommand(undefined);
+    setOutcomeUnknown(false);
+    setSubmissionNotice(undefined);
     setError(undefined);
     void askClient
       .getWorkspace(conversationId, { signal: controller.signal })
@@ -57,12 +68,13 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   useEffect(
     () =>
       registerLeaveGuard(() => ({
-        canLeaveCurrentContext: questionRef.current.trim().length === 0,
+        canLeaveCurrentContext:
+          questionRef.current.trim().length === 0 && !outcomeUnknown,
         hasUnsavedDraft: questionRef.current.trim().length > 0,
         hasBlockingDialog: false,
-        hasOutcomeUnknownCommand: false,
+        hasOutcomeUnknownCommand: outcomeUnknown,
       })),
-    [question, registerLeaveGuard],
+    [outcomeUnknown, registerLeaveGuard],
   );
 
   const citationReturn = useMemo<AskCitationReturnState | undefined>(() => {
@@ -126,56 +138,120 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   const submissionAvailable = workspace.capabilities.includes('SUBMIT_QUESTION');
   const conversation = workspace.selectedConversation;
 
-  const handleSubmitQuestion = async () => {
-    if (!draftReady || !submissionAvailable || question.trim().length === 0 || isSubmitting) return;
-    setIsSubmitting(true);
-    try {
-      const clientRequestId = `req-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-      const idempotencyKey = `idemp-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-      let submission: AskQuestionSubmissionView | undefined;
-      try {
-        submission = await askClient.submitQuestion({
-          schemaVersion: '1.0.0',
-          clientRequestId,
-          idempotencyKey,
-          ...(conversationId ? { conversationId } : {}),
-          question: question.trim(),
-          mode,
-          sourceSelections: [],
-        });
-      } catch (submitError) {
-        // Outcome recovery: Attempt to fetch the submission outcome if the initial request failed or timed out.
-        let recoveryAttempts = 0;
-        let outcome: AskQuestionSubmissionOutcomeView | undefined;
-        while (recoveryAttempts < 3 && !outcome) {
-          recoveryAttempts++;
-          try {
-            await new Promise((resolve) => setTimeout(resolve, 1000 * recoveryAttempts));
-            const recovered = await askClient.getQuestionSubmissionByClientRequestId(clientRequestId);
-            if (recovered.outcome === 'success' && recovered.submission) {
-              outcome = recovered;
-            }
-          } catch (recoveryError) {
-            // Ignore recovery errors and keep polling if possible.
-          }
-        }
-        
-        if (outcome?.submission) {
-          submission = outcome.submission;
-        } else {
-          throw submitError;
-        }
-      }
+  const applyVerifiedSubmission = (submission: AskQuestionSubmissionView) => {
+    setPendingCommand(undefined);
+    setOutcomeUnknown(false);
+    setSubmissionNotice(undefined);
+    setQuestion('');
+    questionRef.current = '';
+    if (submission.answerRun.conversationId !== conversationId) {
+      navigate(`/ask/conversations/${encodeURIComponent(submission.answerRun.conversationId)}`);
+    } else {
+      setWorkspace(submission.workspace);
+    }
+  };
 
-      setQuestion('');
-      questionRef.current = '';
-      if (submission.answerRun.conversationId !== conversationId) {
-        navigate(`/ask/conversations/${encodeURIComponent(submission.answerRun.conversationId)}`);
-      } else {
-        setWorkspace(submission.workspace);
+  const submissionFromOutcome = async (
+    outcome: AskQuestionSubmissionOutcomeView,
+  ): Promise<AskQuestionSubmissionView | undefined> => {
+    if (outcome.outcomeState !== 'COMPLETED' || !outcome.answerRun) return undefined;
+    const recoveredWorkspace = await askClient.getWorkspace(outcome.conversationId);
+    return {
+      schemaVersion: '1.0.0',
+      answerRun: outcome.answerRun,
+      workspace: recoveredWorkspace,
+    };
+  };
+
+  const resolveExistingOutcome = async (
+    command: PendingAskCommand,
+    attempts: number,
+  ): Promise<AskQuestionSubmissionView | undefined> => {
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      if (attempt > 1) {
+        await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
       }
-    } catch (submitError) {
-      setError(submitError instanceof Error ? submitError : new Error(String(submitError)));
+      try {
+        const outcome = await askClient.getQuestionSubmissionByClientRequestId(
+          command.clientRequestId,
+        );
+        const recoveredSubmission = await submissionFromOutcome(outcome);
+        if (recoveredSubmission) return recoveredSubmission;
+        if (outcome.outcomeState === 'REJECTED') {
+          setPendingCommand(undefined);
+          setOutcomeUnknown(false);
+          setSubmissionNotice(
+            outcome.failureMessage ?? 'The question submission was rejected. The Draft was preserved.',
+          );
+          return undefined;
+        }
+      } catch {
+        // Outcome lookup is intentionally retried without resubmitting the mutation.
+      }
+    }
+    return undefined;
+  };
+
+  const handleResolveOutcome = async () => {
+    if (!pendingCommand || isSubmitting) return;
+    setIsSubmitting(true);
+    setSubmissionNotice('Checking the existing submission outcome…');
+    try {
+      const recoveredSubmission = await resolveExistingOutcome(pendingCommand, 1);
+      if (recoveredSubmission) {
+        applyVerifiedSubmission(recoveredSubmission);
+      } else if (pendingCommand) {
+        setOutcomeUnknown(true);
+        setSubmissionNotice(
+          'The submission outcome is still unknown. The original request identity and Draft are preserved.',
+        );
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSubmitQuestion = async () => {
+    if (
+      !draftReady ||
+      !submissionAvailable ||
+      question.trim().length === 0 ||
+      isSubmitting ||
+      outcomeUnknown
+    ) {
+      return;
+    }
+    setIsSubmitting(true);
+    setSubmissionNotice(undefined);
+    const command =
+      pendingCommand ??
+      ({
+        clientRequestId: `req-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+        idempotencyKey: `idemp-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      } satisfies PendingAskCommand);
+    setPendingCommand(command);
+
+    try {
+      const submission = await askClient.submitQuestion({
+        schemaVersion: '1.0.0',
+        clientRequestId: command.clientRequestId,
+        idempotencyKey: command.idempotencyKey,
+        ...(conversationId ? { conversationId } : {}),
+        question: question.trim(),
+        mode,
+        sourceSelections: [],
+      });
+      applyVerifiedSubmission(submission);
+    } catch {
+      const recoveredSubmission = await resolveExistingOutcome(command, 3);
+      if (recoveredSubmission) {
+        applyVerifiedSubmission(recoveredSubmission);
+      } else {
+        setOutcomeUnknown(true);
+        setSubmissionNotice(
+          'The submission outcome is unknown. No new command was created; use “Check submission outcome” to resolve the original request.',
+        );
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -199,7 +275,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
         <select
           id="ask-mode"
           value={mode}
-          disabled={!draftReady}
+          disabled={!draftReady || outcomeUnknown}
           onChange={(event) => setMode(event.target.value as AskMode)}
         >
           {workspace.availableAskModes.map((availableMode) => (
@@ -213,18 +289,28 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
           id="ask-question"
           value={question}
           maxLength={10_000}
-          disabled={!draftReady}
+          disabled={!draftReady || outcomeUnknown}
           onChange={(event) => setQuestion(event.target.value)}
         />
         <button
           type="button"
           disabled={
-            !draftReady || !submissionAvailable || question.trim().length === 0 || isSubmitting
+            !draftReady ||
+            !submissionAvailable ||
+            question.trim().length === 0 ||
+            isSubmitting ||
+            outcomeUnknown
           }
           onClick={handleSubmitQuestion}
         >
           {isSubmitting ? 'Submitting…' : 'Submit question'}
         </button>
+        {outcomeUnknown && pendingCommand ? (
+          <button type="button" disabled={isSubmitting} onClick={handleResolveOutcome}>
+            Check submission outcome
+          </button>
+        ) : null}
+        {submissionNotice ? <p role="status">{submissionNotice}</p> : null}
         {!submissionAvailable ? (
           <p role="status">
             Server question submission is not active in this implementation slice.

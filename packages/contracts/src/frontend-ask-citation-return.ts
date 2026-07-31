@@ -66,7 +66,7 @@ const boundedString = (
   if (typeof value !== 'string' || value.trim().length === 0 || value.length > maximum) {
     fail(`${path} must be a non-empty string with at most ${maximum} characters.`);
   }
-  return value;
+  return value as string;
 };
 
 const optionalBoundedString = (

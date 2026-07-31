@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useParams, useOutletContext } from 'react-router';
 
 import {
+  decodeAskCitationReturnState,
   createAskWorkspaceClient,
+  type AskCitationReturnState,
   type AskMode,
   type AskWorkspaceClient,
   type AskWorkspaceView,
@@ -22,7 +24,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   const { registerLeaveGuard } = useLeaveGuard();
   const [workspace, setWorkspace] = useState<AskWorkspaceView>();
   const [question, setQuestion] = useState('');
-  const [draftOwnerProjectId, setDraftOwnerProjectId] = useState<string | undefined>();
+  const [draftOwnerProjectId, setDraftOwnerProjectId] = useState<string>();
   const [mode, setMode] = useState<AskMode>('CANONICAL_ONLY');
   const [error, setError] = useState<unknown>();
 
@@ -31,11 +33,15 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
 
   useEffect(() => {
     const controller = new AbortController();
+    setWorkspace(undefined);
+    setQuestion('');
+    setDraftOwnerProjectId(undefined);
     setError(undefined);
     void askClient
       .getWorkspace(conversationId, { signal: controller.signal })
       .then((value) => {
         setWorkspace(value);
+        setDraftOwnerProjectId(value.projectId);
         setMode(value.defaultAskMode);
       })
       .catch((reason: unknown) => {
@@ -43,13 +49,6 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
       });
     return () => controller.abort();
   }, [askClient, conversationId, shell.activeProject?.id]);
-
-  useEffect(() => {
-    if (workspace && draftOwnerProjectId !== workspace.projectId) {
-      setQuestion('');
-      setDraftOwnerProjectId(workspace.projectId);
-    }
-  }, [workspace, draftOwnerProjectId]);
 
   useEffect(
     () =>
@@ -59,33 +58,55 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
         hasBlockingDialog: false,
         hasOutcomeUnknownCommand: false,
       })),
-    [question, registerLeaveGuard],
+    [registerLeaveGuard],
   );
 
-  const citationReturn = useMemo(() => {
-    if (typeof location.state === 'object' && location.state !== null) {
-      return (location.state as { readonly citationReturn?: Record<string, unknown> })
-        .citationReturn;
+  const citationReturn = useMemo<AskCitationReturnState | undefined>(() => {
+    const candidate =
+      typeof location.state === 'object' && location.state !== null
+        ? (location.state as { readonly citationReturn?: unknown }).citationReturn
+        : undefined;
+    if (candidate === undefined) return undefined;
+    try {
+      return decodeAskCitationReturnState(candidate);
+    } catch {
+      return undefined;
     }
-    return undefined;
   }, [location.state]);
 
-  useEffect(() => {
-    if (!citationReturn || !workspace) return;
-    const targetId =
-      (citationReturn.focusTarget as string) ||
-      (citationReturn.scrollAnchor as string) ||
-      (citationReturn.citationId as string) ||
-      (citationReturn.turnId as string);
-    if (targetId) {
-      const el =
-        document.getElementById(`citation-${targetId}`) ||
-        document.getElementById(`turn-${targetId}`) ||
-        document.getElementById(targetId);
-      el?.scrollIntoView?.({ block: 'center' });
-      el?.focus?.();
+  const validatedReturnTargetId = useMemo(() => {
+    if (!citationReturn || !workspace?.selectedConversation) return undefined;
+    const conversation = workspace.selectedConversation;
+    if (
+      citationReturn.conversationId !== conversation.conversationId ||
+      citationReturn.resourceId !== conversation.conversationId ||
+      citationReturn.resourceRevision !== conversation.conversationRevision
+    ) {
+      return undefined;
     }
+    const branch = conversation.branches.find(
+      (candidate) => candidate.branchId === citationReturn.branchId,
+    );
+    const turn = branch?.turns.find((candidate) => candidate.turnId === citationReturn.turnId);
+    if (
+      !turn ||
+      turn.answerRun.answerRunId !== citationReturn.answerRunId ||
+      turn.answerRun.answerRevision !== citationReturn.answerRevision
+    ) {
+      return undefined;
+    }
+    const citationExists = turn.answerRun.statements.some((statement) =>
+      statement.citations.some((citation) => citation.citationId === citationReturn.citationId),
+    );
+    return citationExists ? `citation-${citationReturn.citationId}` : undefined;
   }, [citationReturn, workspace]);
+
+  useEffect(() => {
+    if (!validatedReturnTargetId) return;
+    const target = document.getElementById(validatedReturnTargetId);
+    target?.scrollIntoView?.({ block: 'center' });
+    target?.focus?.();
+  }, [validatedReturnTargetId]);
 
   if (!shell.activeProject && !conversationId) {
     return <p>Create or select a Project before asking questions.</p>;
@@ -93,6 +114,11 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   if (error) return <ErrorState error={error} onRetry={() => window.location.reload()} />;
   if (!workspace) return <LoadingState message="Loading Ask workspace…" />;
 
+  const expectedDraftProjectId = conversationId ? workspace.projectId : shell.activeProject?.id;
+  const draftReady =
+    expectedDraftProjectId !== undefined &&
+    workspace.projectId === expectedDraftProjectId &&
+    draftOwnerProjectId === workspace.projectId;
   const submissionAvailable = workspace.capabilities.includes('SUBMIT_QUESTION');
   const conversation = workspace.selectedConversation;
 
@@ -114,6 +140,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
         <select
           id="ask-mode"
           value={mode}
+          disabled={!draftReady}
           onChange={(event) => setMode(event.target.value as AskMode)}
         >
           {workspace.availableAskModes.map((availableMode) => (
@@ -127,9 +154,13 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
           id="ask-question"
           value={question}
           maxLength={10_000}
+          disabled={!draftReady}
           onChange={(event) => setQuestion(event.target.value)}
         />
-        <button type="button" disabled={!submissionAvailable || question.trim().length === 0}>
+        <button
+          type="button"
+          disabled={!draftReady || !submissionAvailable || question.trim().length === 0}
+        >
           Submit question
         </button>
         {!submissionAvailable ? (
@@ -185,7 +216,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                                 state={{
                                   citationReturnTarget: {
                                     schemaVersion: '1.0.0',
-                                    originRoute: `/ask/conversations/${conversation.conversationId}`,
+                                    originRoute: `/ask/conversations/${encodeURIComponent(conversation.conversationId)}`,
                                     resourceKind: 'conversation',
                                     resourceId: conversation.conversationId,
                                     conversationId: conversation.conversationId,

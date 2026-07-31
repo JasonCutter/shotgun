@@ -1,49 +1,80 @@
 import { expect, test } from '@playwright/test';
 
-test('Ask Workspace enforces draft locking, project isolation, deep links, masking, disabled submission, and citation return', async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 1280, height: 900 });
+import { ASK_FIXTURE } from './fixtures/ask-workspace-fixture.js';
 
-  // 1. /ask entry
+test('Ask navigation exposes read-only workspace capability', async ({ page }) => {
   await page.goto('/ask');
   await expect(page.getByRole('heading', { name: 'Ask', level: 1 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Question Draft' })).toBeVisible();
-
-  // 2. Submit capability not advertised, submit button disabled
-  const submitButton = page.getByRole('button', { name: 'Submit question' });
-  await expect(submitButton).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Submit question' })).toBeDisabled();
   await expect(
     page.getByText('Server question submission is not active in this implementation slice.'),
   ).toBeVisible();
+});
 
-  // 3. Typing question blocks project switching
-  const questionInput = page.getByLabel('Question');
-  await questionInput.fill('Transient browser draft question');
-  const projectSelector = page.getByRole('combobox', { name: 'Active Project' });
-  await projectSelector.selectOption('project-b');
-  await expect(projectSelector).toHaveValue('shotgun');
-  await expect(page.getByRole('alert')).toContainText('current Workspace');
-
-  // 4. Discarding draft allows project switching
-  await questionInput.fill('');
-  await projectSelector.selectOption('project-b');
-  await expect(projectSelector).toHaveValue('project-b');
-
-  // Switch back to shotgun for conversation tests
-  await projectSelector.selectOption('shotgun');
-  await expect(projectSelector).toHaveValue('shotgun');
-
-  // 5. Accessible non-active project conversation deep link does NOT auto-switch active project
-  // project-b is accessible, conversation conv-project-b belongs to project-b
-  // We visit /ask/conversations/conv-project-b while active project is 'shotgun'
-  // In frontend-test-backend / in-memory fixture, let's navigate to conversation if present or test masking
-  await page.goto('/ask/conversations/conv-unknown-nonexistent');
-  await expect(
-    page.getByText(/The requested conversation was not found|The resource was not found|Error/i),
-  ).toBeVisible();
-
-  // Return to /ask
+test('Ask draft blocks Project switching and is not moved to the next Project', async ({ page }) => {
   await page.goto('/ask');
+  const questionInput = page.getByRole('textbox', { name: 'Question', exact: true });
+  const projectSelector = page.getByRole('combobox', { name: 'Active Project' });
+
+  await questionInput.fill('Transient browser draft question');
+  await projectSelector.selectOption(ASK_FIXTURE.projectBId);
+  await expect(projectSelector).toHaveValue(ASK_FIXTURE.projectAId);
+  await expect(page.getByRole('alert')).toContainText('current Workspace');
+  await expect(questionInput).toHaveValue('Transient browser draft question');
+
+  await questionInput.fill('');
+  await projectSelector.selectOption(ASK_FIXTURE.projectBId);
+  await expect(projectSelector).toHaveValue(ASK_FIXTURE.projectBId);
   await expect(page.getByRole('heading', { name: 'Ask', level: 1 })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Question', exact: true })).toHaveValue('');
+});
+
+test('Ask deep link uses accessible Resource Project without changing Active Project', async ({
+  page,
+}) => {
+  await page.goto(`/ask/conversations/${ASK_FIXTURE.conversationId}`);
+
+  await expect(page.getByRole('heading', { name: 'Ask', level: 1 })).toBeVisible();
+  await expect(page.getByText(ASK_FIXTURE.conversationTitle)).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Active Project' })).toHaveValue(
+    ASK_FIXTURE.projectAId,
+  );
+  await expect(page.getByText(`Project: ${ASK_FIXTURE.projectBId}`)).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Question', exact: true })).toBeEnabled();
+});
+
+test('Ask masks inaccessible Conversation as NOT_FOUND', async ({ page }) => {
+  await page.goto(`/ask/conversations/${ASK_FIXTURE.inaccessibleConversationId}`);
+  await expect(
+    page.getByText(/requested conversation was not found|resource was not found/i),
+  ).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Active Project' })).toHaveValue(
+    ASK_FIXTURE.projectAId,
+  );
+});
+
+test('Ask citation keeps SourceVersion pinned and restores exact conversation context', async ({
+  page,
+}) => {
+  await page.goto(`/ask/conversations/${ASK_FIXTURE.conversationId}`);
+  const projectSelector = page.getByRole('combobox', { name: 'Active Project' });
+  await projectSelector.selectOption(ASK_FIXTURE.projectBId);
+  await expect(projectSelector).toHaveValue(ASK_FIXTURE.projectBId);
+  await expect(page.getByText(ASK_FIXTURE.conversationTitle)).toBeVisible();
+
+  await page.getByRole('link', { name: 'Open pinned Evidence' }).click();
+  await expect(page).toHaveURL(
+    new RegExp(
+      `/sources/${ASK_FIXTURE.sourceId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\?version=${ASK_FIXTURE.sourceVersionId}`,
+    ),
+  );
+  await expect(page.getByText(ASK_FIXTURE.sourceVersionId)).toBeVisible();
+  await expect(page.getByText(ASK_FIXTURE.sourceText)).toBeVisible();
+  await expect(page.locator('.source-evidence-list li:focus')).toHaveCount(1);
+
+  await page.getByRole('link', { name: 'Return to cited resource' }).click();
+  await expect(page).toHaveURL(`/ask/conversations/${ASK_FIXTURE.conversationId}`);
+  await expect(page.locator(`#citation-${ASK_FIXTURE.citationId}`)).toBeFocused();
+  await expect(page.getByText(ASK_FIXTURE.conversationTitle)).toBeVisible();
 });

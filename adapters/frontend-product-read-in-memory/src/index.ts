@@ -1,7 +1,6 @@
-import { randomUUID } from 'node:crypto';
-
 import {
   ASK_SCHEMA_VERSION,
+  ShotgunError,
   decodeAskAnswerRunSnapshot,
   decodeAskBranchView,
   decodeAskConversationView,
@@ -9,14 +8,10 @@ import {
   decodeGlobalSearchResultView,
   decodeHomeActionCenterView,
   decodeRouteGuardDecisionView,
-  ShotgunError,
   type AskAnswerRunSnapshot,
   type AskBranchView,
   type AskConversationView,
   type AskWorkspaceView,
-  type AskQuestionSubmissionOutcomeView,
-  type AskQuestionSubmissionView,
-  type SubmitAskQuestionRequest,
   type GlobalSearchResultView,
   type GlobalShellView,
   type HomeActionCenterView,
@@ -310,6 +305,11 @@ export class InMemoryAskWorkspaceProjection implements AskWorkspaceProjectionPor
 
   addConversation(conversation: AskConversationView): void {
     this.conversations.set(conversation.conversationId, conversation);
+    for (const branch of conversation.branches) {
+      for (const turn of branch.turns) {
+        this.answerRuns.set(turn.answerRun.answerRunId, turn.answerRun);
+      }
+    }
   }
 
   addAnswerRun(answerRun: AskAnswerRunSnapshot): void {
@@ -325,7 +325,7 @@ export class InMemoryAskWorkspaceProjection implements AskWorkspaceProjectionPor
     if (input.conversationId) {
       const candidate = this.conversations.get(input.conversationId);
       const isAccessible =
-        candidate && input.accessibleProjects.some((p) => p.id === candidate.projectId);
+        candidate && input.accessibleProjects.some((project) => project.id === candidate.projectId);
       if (!candidate || !isAccessible) {
         throw new ShotgunError({
           code: 'NOT_FOUND',
@@ -349,7 +349,7 @@ export class InMemoryAskWorkspaceProjection implements AskWorkspaceProjectionPor
     }
 
     const projectConversations = Array.from(this.conversations.values()).filter(
-      (c) => c.projectId === targetProjectId,
+      (conversation) => conversation.projectId === targetProjectId,
     );
 
     return decodeAskWorkspaceView({
@@ -359,18 +359,20 @@ export class InMemoryAskWorkspaceProjection implements AskWorkspaceProjectionPor
       projectId: targetProjectId,
       defaultAskMode: 'CANONICAL_ONLY',
       availableAskModes: ['CANONICAL_ONLY', 'SOURCE_EXPLORATION', 'HYBRID'],
-      conversations: projectConversations.map((c) => {
-        const activeBranch = c.branches.find((b) => b.branchId === c.activeBranchId);
+      conversations: projectConversations.map((conversation) => {
+        const activeBranch = conversation.branches.find(
+          (branch) => branch.branchId === conversation.activeBranchId,
+        );
         const turns = activeBranch?.turns ?? [];
         const latestTurn = turns[turns.length - 1];
         return {
-          conversationId: c.conversationId,
-          projectId: c.projectId,
-          title: c.title,
-          activeBranchId: c.activeBranchId,
+          conversationId: conversation.conversationId,
+          projectId: conversation.projectId,
+          title: conversation.title,
+          activeBranchId: conversation.activeBranchId,
           turnCount: turns.length,
-          latestRunState: latestTurn?.answerRun.state ?? 'QUEUED',
-          updatedAt: c.updatedAt,
+          latestRunState: latestTurn?.answerRun.state ?? 'ACTION_REQUIRED',
+          updatedAt: conversation.updatedAt,
         };
       }),
       ...(selectedConversation ? { selectedConversation } : {}),
@@ -388,7 +390,7 @@ export class InMemoryAskWorkspaceProjection implements AskWorkspaceProjectionPor
   ): Promise<AskConversationView> {
     const candidate = this.conversations.get(input.conversationId);
     const isAccessible =
-      candidate && input.accessibleProjects.some((p) => p.id === candidate.projectId);
+      candidate && input.accessibleProjects.some((project) => project.id === candidate.projectId);
     if (!candidate || !isAccessible) {
       throw new ShotgunError({
         code: 'NOT_FOUND',
@@ -404,7 +406,7 @@ export class InMemoryAskWorkspaceProjection implements AskWorkspaceProjectionPor
     input: FrontendReadScope & { readonly conversationId: string; readonly branchId: string },
   ): Promise<AskBranchView> {
     const conversation = await this.getConversation(input);
-    const branch = conversation.branches.find((b) => b.branchId === input.branchId);
+    const branch = conversation.branches.find((candidate) => candidate.branchId === input.branchId);
     if (!branch) {
       throw new ShotgunError({
         code: 'NOT_FOUND',
@@ -421,7 +423,7 @@ export class InMemoryAskWorkspaceProjection implements AskWorkspaceProjectionPor
   ): Promise<AskAnswerRunSnapshot> {
     const candidate = this.answerRuns.get(input.answerRunId);
     const isAccessible =
-      candidate && input.accessibleProjects.some((p) => p.id === candidate.projectId);
+      candidate && input.accessibleProjects.some((project) => project.id === candidate.projectId);
     if (!candidate || !isAccessible) {
       throw new ShotgunError({
         code: 'NOT_FOUND',
@@ -432,5 +434,4 @@ export class InMemoryAskWorkspaceProjection implements AskWorkspaceProjectionPor
     }
     return decodeAskAnswerRunSnapshot(candidate);
   }
-
 }

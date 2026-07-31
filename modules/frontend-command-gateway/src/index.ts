@@ -40,6 +40,14 @@ export type RejectFrontendCommandInput = {
 
 export type FrontendCommandGatewayPort = {
   accept(input: AcceptFrontendCommandInput): Promise<AcceptFrontendCommandResult>;
+  lockAcceptedForExecution(
+    transaction: unknown,
+    commandId: string,
+  ): Promise<AnyFrontendCommandOutcomeView>;
+  completeInTransaction(
+    transaction: unknown,
+    input: CompleteFrontendCommandInput,
+  ): Promise<AnyFrontendCommandOutcomeView>;
   complete(input: CompleteFrontendCommandInput): Promise<AnyFrontendCommandOutcomeView>;
   reject(input: RejectFrontendCommandInput): Promise<AnyFrontendCommandOutcomeView>;
   findByClientRequestId(

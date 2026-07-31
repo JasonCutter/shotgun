@@ -8,3 +8,4 @@ export * from './frontend-digest-adapter.js';
 export * from './sources-write-client.js';
 export * from './sources-write-types.js';
 export * from './ask-client.js';
+export * from './ask-contract-types.js';

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useOutletContext } from 'react-router';
+import { Link, useParams, useOutletContext } from 'react-router';
 
 import {
   createAskWorkspaceClient,
@@ -14,6 +14,7 @@ import { LoadingState } from '../components/loading-state.js';
 import { useLeaveGuard } from '../session/leave-guard-context.js';
 
 export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient }) => {
+  const { conversationId } = useParams<{ readonly conversationId?: string }>();
   const { shell } = useOutletContext<{ readonly shell: GlobalShellView }>();
   const ownedClient = useMemo(() => createAskWorkspaceClient(), []);
   const askClient = client ?? ownedClient;
@@ -25,8 +26,9 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
 
   useEffect(() => {
     const controller = new AbortController();
+    setError(undefined);
     void askClient
-      .getWorkspace(undefined, { signal: controller.signal })
+      .getWorkspace(conversationId, { signal: controller.signal })
       .then((value) => {
         setWorkspace(value);
         setMode(value.defaultAskMode);
@@ -35,7 +37,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
         if (!controller.signal.aborted) setError(reason);
       });
     return () => controller.abort();
-  }, [askClient]);
+  }, [askClient, conversationId, shell.activeProject?.id]);
 
   useEffect(
     () =>

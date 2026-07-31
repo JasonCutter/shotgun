@@ -25,6 +25,7 @@ import { DiagnosticsWorkspace } from '../routes/settings/diagnostics-workspace.j
 import { AdvancedWorkspace } from '../routes/settings/advanced-workspace.js';
 import { SourcesWorkspace } from '../routes/sources-workspace.js';
 import { SourceDetailWorkspace } from '../routes/source-detail-workspace.js';
+import { AskWorkspace } from '../routes/ask-workspace.js';
 import type { AppRuntime } from './providers.js';
 import { ensureSessionBoundary, sessionBoundaryQueryOptions } from '../session/session-query.js';
 import type { TargetRouteView } from '@shotgun/api-client';
@@ -111,7 +112,12 @@ export const createAppRouter = (runtime: AppRuntime) =>
         {
           path: 'ask',
           loader: guardedRouteLoader(runtime, { routeId: 'ask', href: '/ask' }),
-          element: <PlaceholderPage heading="Ask" nextSection="후속 Frontend Section" />,
+          element: <AskWorkspace />,
+        },
+        {
+          path: 'ask/conversations/:conversationId',
+          loader: guardedRouteLoader(runtime, { routeId: 'ask', href: '/ask' }),
+          element: <AskWorkspace />,
         },
         {
           path: 'knowledge',

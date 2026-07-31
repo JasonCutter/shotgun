@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useParams, useOutletContext } from 'react-router';
+import { Link, useLocation, useParams, useOutletContext } from 'react-router';
 
 import {
   createAskWorkspaceClient,
@@ -16,26 +16,18 @@ import { useLeaveGuard } from '../session/leave-guard-context.js';
 export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient }) => {
   const { conversationId } = useParams<{ readonly conversationId?: string }>();
   const { shell } = useOutletContext<{ readonly shell: GlobalShellView }>();
+  const location = useLocation();
   const ownedClient = useMemo(() => createAskWorkspaceClient(), []);
   const askClient = client ?? ownedClient;
   const { registerLeaveGuard } = useLeaveGuard();
   const [workspace, setWorkspace] = useState<AskWorkspaceView>();
   const [question, setQuestion] = useState('');
-  const [draftOwnerProjectId, setDraftOwnerProjectId] = useState<string | undefined>(
-    shell.activeProject?.id,
-  );
+  const [draftOwnerProjectId, setDraftOwnerProjectId] = useState<string | undefined>();
   const [mode, setMode] = useState<AskMode>('CANONICAL_ONLY');
   const [error, setError] = useState<unknown>();
 
   const questionRef = useRef(question);
   questionRef.current = question;
-
-  useEffect(() => {
-    if (shell.activeProject?.id && draftOwnerProjectId !== shell.activeProject.id) {
-      setQuestion('');
-      setDraftOwnerProjectId(shell.activeProject.id);
-    }
-  }, [shell.activeProject?.id, draftOwnerProjectId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -52,6 +44,13 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     return () => controller.abort();
   }, [askClient, conversationId, shell.activeProject?.id]);
 
+  useEffect(() => {
+    if (workspace && draftOwnerProjectId !== workspace.projectId) {
+      setQuestion('');
+      setDraftOwnerProjectId(workspace.projectId);
+    }
+  }, [workspace, draftOwnerProjectId]);
+
   useEffect(
     () =>
       registerLeaveGuard(() => ({
@@ -62,6 +61,31 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
       })),
     [question, registerLeaveGuard],
   );
+
+  const citationReturn = useMemo(() => {
+    if (typeof location.state === 'object' && location.state !== null) {
+      return (location.state as { readonly citationReturn?: Record<string, unknown> })
+        .citationReturn;
+    }
+    return undefined;
+  }, [location.state]);
+
+  useEffect(() => {
+    if (!citationReturn || !workspace) return;
+    const targetId =
+      (citationReturn.focusTarget as string) ||
+      (citationReturn.scrollAnchor as string) ||
+      (citationReturn.citationId as string) ||
+      (citationReturn.turnId as string);
+    if (targetId) {
+      const el =
+        document.getElementById(`citation-${targetId}`) ||
+        document.getElementById(`turn-${targetId}`) ||
+        document.getElementById(targetId);
+      el?.scrollIntoView?.({ block: 'center' });
+      el?.focus?.();
+    }
+  }, [citationReturn, workspace]);
 
   if (!shell.activeProject && !conversationId) {
     return <p>Create or select a Project before asking questions.</p>;
@@ -132,20 +156,30 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
         ) : null}
 
         {conversation ? (
-          <section aria-label="Selected conversation">
+          <section
+            aria-label="Selected conversation"
+            id={`conversation-${conversation.conversationId}`}
+          >
             <h3>{conversation.title}</h3>
             {conversation.branches.map((branch) => (
-              <ol key={branch.branchId} aria-label={branch.label}>
+              <ol key={branch.branchId} id={`branch-${branch.branchId}`} aria-label={branch.label}>
                 {branch.turns.map((turn) => (
-                  <li key={turn.turnId}>
+                  <li key={turn.turnId} id={`turn-${turn.turnId}`} tabIndex={-1}>
                     <p>{turn.userMessage}</p>
                     <p>Answer run: {turn.answerRun.state}</p>
                     {turn.answerRun.statements.map((statement) => (
-                      <article key={statement.statementId}>
+                      <article
+                        key={statement.statementId}
+                        id={`statement-${statement.statementId}`}
+                      >
                         <p>{statement.text}</p>
                         <ul>
                           {statement.citations.map((citation) => (
-                            <li key={citation.citationId}>
+                            <li
+                              key={citation.citationId}
+                              id={`citation-${citation.citationId}`}
+                              tabIndex={-1}
+                            >
                               <Link
                                 to={`/sources/${encodeURIComponent(citation.sourceId)}?version=${encodeURIComponent(citation.sourceVersionId)}`}
                                 state={{
@@ -154,6 +188,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                                     originRoute: `/ask/conversations/${conversation.conversationId}`,
                                     resourceKind: 'conversation',
                                     resourceId: conversation.conversationId,
+                                    conversationId: conversation.conversationId,
                                     branchId: branch.branchId,
                                     turnId: turn.turnId,
                                     answerRunId: turn.answerRun.answerRunId,
@@ -163,8 +198,9 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                                     sourceId: citation.sourceId,
                                     sourceVersionId: citation.sourceVersionId,
                                     evidenceId: citation.evidenceId,
-                                    scrollTarget: citation.citationId,
+                                    scrollAnchor: citation.citationId,
                                     focusTarget: citation.citationId,
+                                    panelId: 'conversations',
                                   },
                                 }}
                               >

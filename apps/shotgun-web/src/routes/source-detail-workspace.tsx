@@ -78,6 +78,11 @@ export const SourceDetailWorkspace = () => {
               citationReturn: {
                 resourceKind: citationReturnTarget.resourceKind,
                 resourceId: citationReturnTarget.resourceId,
+                conversationId: citationReturnTarget.conversationId,
+                branchId: citationReturnTarget.branchId,
+                turnId: citationReturnTarget.turnId,
+                answerRunId: citationReturnTarget.answerRunId,
+                answerRevision: citationReturnTarget.answerRevision,
                 resourceRevision: citationReturnTarget.resourceRevision,
                 citationId: citationReturnTarget.citationId,
                 scrollAnchor: citationReturnTarget.scrollAnchor,

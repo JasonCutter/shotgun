@@ -171,7 +171,10 @@ const idString = (value: unknown, path: string): string => text(value, path, 1, 
 
 const timestamp = (value: unknown, path: string): string => {
   const val = text(value, path, 1, 100);
-  if (isNaN(Date.parse(val))) fail(`${path} is not a valid ISO timestamp.`);
+  const iso8601Regex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+  if (!iso8601Regex.test(val) || isNaN(Date.parse(val))) {
+    fail(`${path} is not a valid ISO 8601 timestamp.`);
+  }
   return val;
 };
 
@@ -275,6 +278,12 @@ export const decodeAskCitationView = (value: unknown, path = 'citation'): AskCit
     fail(`${path} must contain evidenceId or non-empty evidenceIds.`);
   }
 
+  if (obj.evidenceId !== undefined && evidenceIds && evidenceIds.length > 0) {
+    if (evidenceIds[0] !== evidenceId) {
+      fail(`${path}.evidenceId '${evidenceId}' does not match evidenceIds[0] '${evidenceIds[0]}'.`);
+    }
+  }
+
   const exactQuote =
     obj.exactQuote !== undefined ? text(obj.exactQuote, `${path}.exactQuote`, 0, 10000) : undefined;
 
@@ -370,7 +379,9 @@ export const decodeAskBranchView = (value: unknown, path = 'branch'): AskBranchV
         `${path}.turns[${i}]`,
       );
       const ordinal =
-        typeof turnObj.ordinal === 'number' && turnObj.ordinal >= 1
+        typeof turnObj.ordinal === 'number' &&
+        Number.isInteger(turnObj.ordinal) &&
+        turnObj.ordinal >= 1
           ? turnObj.ordinal
           : fail(`${path}.turns[${i}].ordinal must be a positive integer.`);
       return {
@@ -404,15 +415,51 @@ export const decodeAskConversationView = (
     path,
   );
   schema(obj, path);
+  const conversationId = idString(obj.conversationId, `${path}.conversationId`);
+  const projectId = idString(obj.projectId, `${path}.projectId`);
+  const title = text(obj.title, `${path}.title`, 1, 256);
+  const activeBranchId = idString(obj.activeBranchId, `${path}.activeBranchId`);
+  const branches = array(obj.branches, `${path}.branches`, (br, i) =>
+    decodeAskBranchView(br, `${path}.branches[${i}]`),
+  );
+
+  const activeBranchExists = branches.some((b) => b.branchId === activeBranchId);
+  if (!activeBranchExists) {
+    fail(`${path}.activeBranchId '${activeBranchId}' does not exist in branches.`);
+  }
+
+  for (let i = 0; i < branches.length; i++) {
+    const branch = branches[i];
+    if (!branch) continue;
+    for (let j = 0; j < branch.turns.length; j++) {
+      const turn = branch.turns[j];
+      if (!turn) continue;
+      if (turn.answerRun.conversationId !== conversationId) {
+        fail(
+          `${path}.branches[${i}].turns[${j}].answerRun.conversationId must match conversationId.`,
+        );
+      }
+      if (turn.answerRun.branchId !== branch.branchId) {
+        fail(`${path}.branches[${i}].turns[${j}].answerRun.branchId must match branch.branchId.`);
+      }
+      if (turn.answerRun.turnId !== turn.turnId) {
+        fail(`${path}.branches[${i}].turns[${j}].answerRun.turnId must match turn.turnId.`);
+      }
+      if (turn.answerRun.projectId !== projectId) {
+        fail(
+          `${path}.branches[${i}].turns[${j}].answerRun.projectId must match conversation.projectId.`,
+        );
+      }
+    }
+  }
+
   return {
     schemaVersion: ASK_SCHEMA_VERSION,
-    conversationId: idString(obj.conversationId, `${path}.conversationId`),
-    projectId: idString(obj.projectId, `${path}.projectId`),
-    title: text(obj.title, `${path}.title`, 1, 256),
-    activeBranchId: idString(obj.activeBranchId, `${path}.activeBranchId`),
-    branches: array(obj.branches, `${path}.branches`, (br, i) =>
-      decodeAskBranchView(br, `${path}.branches[${i}]`),
-    ),
+    conversationId,
+    projectId,
+    title,
+    activeBranchId,
+    branches,
     conversationRevision: idString(obj.conversationRevision, `${path}.conversationRevision`),
     createdAt: timestamp(obj.createdAt, `${path}.createdAt`),
     updatedAt: timestamp(obj.updatedAt, `${path}.updatedAt`),
@@ -441,15 +488,32 @@ export const decodeAskWorkspaceView = (value: unknown, path = 'workspace'): AskW
     path,
   );
   schema(obj, path);
+  const projectId = idString(obj.projectId, `${path}.projectId`);
+  const defaultAskMode = askMode(obj.defaultAskMode, `${path}.defaultAskMode`);
+  const availableAskModes = array(obj.availableAskModes, `${path}.availableAskModes`, (mode, i) =>
+    askMode(mode, `${path}.availableAskModes[${i}]`),
+  );
+
+  if (!availableAskModes.includes(defaultAskMode)) {
+    fail(`${path}.defaultAskMode '${defaultAskMode}' is not in availableAskModes.`);
+  }
+
+  const selectedConversation =
+    obj.selectedConversation !== undefined
+      ? decodeAskConversationView(obj.selectedConversation, `${path}.selectedConversation`)
+      : undefined;
+
+  if (selectedConversation && selectedConversation.projectId !== projectId) {
+    fail(`${path}.selectedConversation.projectId must match workspace.projectId.`);
+  }
+
   return {
     schemaVersion: ASK_SCHEMA_VERSION,
     principalId: idString(obj.principalId, `${path}.principalId`),
     sessionId: idString(obj.sessionId, `${path}.sessionId`),
-    projectId: idString(obj.projectId, `${path}.projectId`),
-    defaultAskMode: askMode(obj.defaultAskMode, `${path}.defaultAskMode`),
-    availableAskModes: array(obj.availableAskModes, `${path}.availableAskModes`, (mode, i) =>
-      askMode(mode, `${path}.availableAskModes[${i}]`),
-    ),
+    projectId,
+    defaultAskMode,
+    availableAskModes,
     conversations: array(obj.conversations, `${path}.conversations`, (conv, i) => {
       const convObj = strictObject(
         conv,
@@ -465,9 +529,11 @@ export const decodeAskWorkspaceView = (value: unknown, path = 'workspace'): AskW
         `${path}.conversations[${i}]`,
       );
       const turnCount =
-        typeof convObj.turnCount === 'number' && convObj.turnCount >= 0
+        typeof convObj.turnCount === 'number' &&
+        Number.isInteger(convObj.turnCount) &&
+        convObj.turnCount >= 0
           ? convObj.turnCount
-          : fail(`${path}.conversations[${i}].turnCount must be non-negative.`);
+          : fail(`${path}.conversations[${i}].turnCount must be a non-negative integer.`);
       return {
         conversationId: idString(
           convObj.conversationId,
@@ -487,14 +553,7 @@ export const decodeAskWorkspaceView = (value: unknown, path = 'workspace'): AskW
         updatedAt: timestamp(convObj.updatedAt, `${path}.conversations[${i}].updatedAt`),
       };
     }),
-    ...(obj.selectedConversation !== undefined
-      ? {
-          selectedConversation: decodeAskConversationView(
-            obj.selectedConversation,
-            `${path}.selectedConversation`,
-          ),
-        }
-      : {}),
+    ...(selectedConversation ? { selectedConversation } : {}),
     capabilities: array(obj.capabilities, `${path}.capabilities`, (cap, i) =>
       askCapability(cap, `${path}.capabilities[${i}]`),
     ),

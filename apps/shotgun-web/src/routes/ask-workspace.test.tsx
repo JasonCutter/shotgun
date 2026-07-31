@@ -221,9 +221,15 @@ describe('AskWorkspace', () => {
       expect(screen.getByTestId('leave-status').textContent).toBe('ALLOWED');
     });
 
+    const submitBtn = screen.getByRole('button', { name: 'Submit question' });
+    expect((submitBtn as HTMLButtonElement).disabled).toBe(true);
+
     const textarea = screen.getByLabelText('Question');
     await user.type(textarea, 'Is this draft protected?');
 
     expect(screen.getByTestId('leave-status').textContent).toBe('BLOCKED');
+
+    await user.clear(textarea);
+    expect(screen.getByTestId('leave-status').textContent).toBe('ALLOWED');
   });
 });

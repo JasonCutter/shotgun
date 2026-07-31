@@ -135,6 +135,46 @@ describe('Frontend Ask contracts', () => {
     ).toThrow(FrontendContractError);
   });
 
+  it('enforces cross-field validations, integer constraints, and strict ISO 8601 timestamps', () => {
+    expect(() =>
+      decodeAskConversationView({
+        ...conversation,
+        activeBranchId: 'non-existent-branch',
+      }),
+    ).toThrow(FrontendContractError);
+
+    expect(() =>
+      decodeAskWorkspaceView({
+        ...workspace,
+        defaultAskMode: 'HYBRID',
+        availableAskModes: ['CANONICAL_ONLY'],
+      }),
+    ).toThrow(FrontendContractError);
+
+    expect(() =>
+      decodeAskBranchView({
+        branchId: 'branch-1',
+        label: 'Branch 1',
+        turns: [
+          {
+            turnId: 'turn-1',
+            ordinal: 1.5,
+            userMessage: 'Test',
+            createdAt: now,
+            answerRun,
+          },
+        ],
+      }),
+    ).toThrow(FrontendContractError);
+
+    expect(() =>
+      decodeAskConversationView({
+        ...conversation,
+        createdAt: 'invalid-date-format',
+      }),
+    ).toThrow(FrontendContractError);
+  });
+
   it('blocks zero-project workspace reads with NOT_FOUND error', async () => {
     const projection = new InMemoryAskWorkspaceProjection();
     const scope = {

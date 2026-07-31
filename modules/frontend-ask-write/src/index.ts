@@ -1,336 +1,319 @@
 import { randomUUID } from 'node:crypto';
-import {
-  FrontendContractError,
-  type AnyFrontendCommandRequest,
-  type AskAnswerRunSnapshot,
-  type AskBranchView,
-  type AskConversationView,
-  type AskQuestionSubmissionOutcomeView,
-  type AskQuestionSubmissionView,
-  type SubmitAskQuestionRequest,
-} from '../../../packages/contracts/src/index.js';
+
 import {
   ASK_SCHEMA_VERSION,
+  FrontendContractError,
   ShotgunError,
   computeSubmitAskQuestionDigest,
+  type AnyFrontendCommandOutcomeView,
+  type AnyFrontendCommandRequest,
+  type AskQuestionSubmissionOutcomeView,
+  type AskQuestionSubmissionView,
+  type AskSourceSelectionView,
+  type SubmitAskQuestionRequest,
+  type TypedPrecondition,
 } from '../../../packages/contracts/src/index.js';
-import type { FrontendCommandGatewayPort } from '../../../modules/frontend-command-gateway/src/index.js';
+import type { FrontendCommandGatewayPort } from '../../frontend-command-gateway/src/index.js';
 import type {
-  FrontendReadScope,
   AskWorkspaceProjectionPort,
-} from '../../../modules/frontend-product-read/src/index.js';
+  FrontendReadScope,
+} from '../../frontend-product-read/src/index.js';
+
+export const ASK_RESOURCE_KIND = {
+  conversation: 'ASK_CONVERSATION',
+  branch: 'ASK_BRANCH',
+  turn: 'ASK_TURN',
+  answerRun: 'ASK_ANSWER_RUN',
+} as const;
+
+export type AskCommittedQuestion = {
+  readonly projectId: string;
+  readonly conversationId: string;
+  readonly branchId: string;
+  readonly turnId: string;
+  readonly answerRunId: string;
+  readonly conversationRevision: string;
+  readonly branchRevision: string;
+  readonly turnRevision: string;
+  readonly answerRevision: string;
+};
+
+export type PersistAskQuestionInput = {
+  readonly commandId: string;
+  readonly projectId: string;
+  readonly question: string;
+  readonly mode: NonNullable<SubmitAskQuestionRequest['mode']>;
+  readonly sourceSelections: readonly AskSourceSelectionView[];
+  readonly conversationId?: string;
+  readonly branchId?: string;
+  readonly expectedConversationRevision?: string;
+  readonly expectedBranchRevision?: string;
+  readonly accessRevision: string;
+  readonly policyContextRevision: string;
+  readonly createdAt: string;
+  readonly generated: {
+    readonly conversationId: string;
+    readonly branchId: string;
+    readonly turnId: string;
+    readonly answerRunId: string;
+    readonly conversationRevision: string;
+    readonly branchRevision: string;
+    readonly turnRevision: string;
+    readonly answerRevision: string;
+  };
+};
 
 export type AskConversationRepositoryPort = {
-  transaction<T>(
-    action: (client: unknown) => Promise<T>,
-  ): Promise<T>;
-  
-  saveAggregate(
-    client: unknown,
-    aggregate: {
-      conversation: AskConversationView;
-      branch: AskBranchView;
-      turn: AskBranchView['turns'][0];
-      answerRun: AskAnswerRunSnapshot;
-    },
-    expectedConversationRevision?: string,
-    expectedBranchRevision?: string,
-  ): Promise<void>;
-
-  getConversationOutcome(
-    clientRequestId: string,
-    principalId: string,
-    projectId: string,
-  ): Promise<AskQuestionSubmissionOutcomeView | undefined>;
+  transaction<T>(action: (transaction: unknown) => Promise<T>): Promise<T>;
+  persistQuestion(
+    transaction: unknown,
+    input: PersistAskQuestionInput,
+  ): Promise<AskCommittedQuestion>;
 };
+
+export type AskSourceSelectionValidatorPort = {
+  validate(input: {
+    readonly principalId: string;
+    readonly projectId: string;
+    readonly sensitivityClearance: FrontendReadScope['accessibleProjects'][number]['sensitivityClearance'];
+    readonly mode: NonNullable<SubmitAskQuestionRequest['mode']>;
+    readonly policyContextRevision: string;
+    readonly sourceSelections: readonly AskSourceSelectionView[];
+  }): Promise<void>;
+};
+
+export class EmptyOnlyAskSourceSelectionValidator implements AskSourceSelectionValidatorPort {
+  async validate(input: {
+    readonly sourceSelections: readonly AskSourceSelectionView[];
+  }): Promise<void> {
+    if (input.sourceSelections.length > 0) {
+      throw new ShotgunError({
+        code: 'INVALID_REQUEST',
+        safeMessage: 'Source selections require an authoritative Source validator.',
+        module: 'frontend-ask-write',
+        operation: 'validate-source-selections',
+      });
+    }
+  }
+}
+
+const generatedIdentity = (prefix: string): string => `${prefix}-${randomUUID()}`;
+
+const generatedRevision = (kind: string): string => `${kind}-rev-${randomUUID()}`;
+
+const findProducedResource = (
+  outcome: AnyFrontendCommandOutcomeView,
+  resourceKind: string,
+): { readonly resourceId: string; readonly resourceRevision?: string } | undefined =>
+  outcome.producedResources.find((resource) => resource.resourceKind === resourceKind);
 
 export class AskCommandCoordinator {
   constructor(
     private readonly commandGateway: FrontendCommandGatewayPort,
     private readonly repository: AskConversationRepositoryPort,
     private readonly askWorkspace: AskWorkspaceProjectionPort,
+    private readonly sourceValidator: AskSourceSelectionValidatorPort =
+      new EmptyOnlyAskSourceSelectionValidator(),
   ) {}
 
   async submitQuestion(
     input: FrontendReadScope & { readonly request: SubmitAskQuestionRequest },
   ): Promise<AskQuestionSubmissionView> {
-    const { request: req, principalId, activeProject, accessRevision, policyContextRevision } = input;
+    const request = input.request;
+    const mode = request.mode ?? 'CANONICAL_ONLY';
+    const authority = await this.resolveAuthority(input);
 
-    let targetProjectId: string;
-    let expectedConversationRevision = req.expectedConversationRevision;
-    let expectedBranchRevision = req.expectedBranchRevision;
+    await this.sourceValidator.validate({
+      principalId: input.principalId,
+      projectId: authority.targetProjectId,
+      sensitivityClearance: authority.sensitivityClearance,
+      mode,
+      policyContextRevision: input.policyContextRevision,
+      sourceSelections: request.sourceSelections,
+    });
 
-    if (req.conversationId) {
-      if (!expectedConversationRevision || !expectedBranchRevision) {
-        throw new ShotgunError({
-          code: 'INVALID_REQUEST',
-          safeMessage: 'expectedConversationRevision and expectedBranchRevision are required for follow-up questions.',
-          module: 'frontend-ask-write',
-          operation: 'submit-question',
-        });
-      }
-      const existingConv = await this.askWorkspace.getConversation({
-        ...input,
-        conversationId: req.conversationId,
-      });
-      targetProjectId = existingConv.projectId;
-    } else {
-      if (!activeProject) {
-        throw new ShotgunError({
-          code: 'NOT_FOUND',
-          safeMessage: 'Active project is required for a new question.',
-          module: 'frontend-ask-write',
-          operation: 'submit-question',
-        });
-      }
-      targetProjectId = activeProject.id;
-    }
-
-    const semanticDigest = computeSubmitAskQuestionDigest(req);
-
-    const commandId = `cmd-${randomUUID()}`;
-    const commandRevision = `cmd-rev-${Date.now()}`;
-    const nowTimestamp = new Date().toISOString();
-    
+    const now = new Date().toISOString();
+    const semanticDigest = computeSubmitAskQuestionDigest(request);
+    const preconditions = this.buildPreconditions(request);
+    const commandId = generatedIdentity('cmd');
     const commandRequest: AnyFrontendCommandRequest = {
       envelopeVersion: '1.0.0',
       commandType: 'SUBMIT_QUESTION',
       commandSchemaVersion: ASK_SCHEMA_VERSION,
-      clientRequestId: req.clientRequestId,
-      idempotencyKey: req.idempotencyKey,
+      clientRequestId: request.clientRequestId,
+      idempotencyKey: request.idempotencyKey,
       projectContext: {
-        activeProjectId: input.activeProject?.id ?? targetProjectId,
-        targetProjectId: targetProjectId,
-        observedProjectAccessRevision: accessRevision,
+        activeProjectId: input.activeProject?.id ?? authority.targetProjectId,
+        targetProjectId: authority.targetProjectId,
+        ...(request.conversationId
+          ? { resourceProjectId: authority.targetProjectId }
+          : {}),
+        observedProjectAccessRevision: input.accessRevision,
       },
       policyBinding: {
         mode: 'CURRENT',
-        observedPolicyContextRevision: policyContextRevision,
+        observedPolicyContextRevision: input.policyContextRevision,
       },
-      preconditions: [],
-      clientIssuedAt: nowTimestamp,
-      payload: req,
+      preconditions,
+      clientIssuedAt: now,
+      payload: request,
     };
 
-    let acceptResult;
+    let accepted;
     try {
-      acceptResult = await this.commandGateway.accept({
+      accepted = await this.commandGateway.accept({
         commandId,
-        commandRevision,
-        principalId,
+        commandRevision: '1',
+        principalId: input.principalId,
         request: commandRequest,
         commandSemanticDigest: semanticDigest,
         acceptedPolicyContext: {
-          policyContextId: 'default',
-          policyContextRevision,
-          acceptedAt: nowTimestamp,
+          policyContextId: 'frontend-ask-current-policy',
+          policyContextRevision: input.policyContextRevision,
+          acceptedAt: now,
         },
-        correlationId: `corr-${randomUUID()}`,
-        traceId: `trace-${randomUUID()}`,
-        receivedAt: nowTimestamp,
-        acceptedAt: nowTimestamp,
+        correlationId: generatedIdentity('corr'),
+        traceId: generatedIdentity('trace'),
+        receivedAt: now,
+        acceptedAt: now,
       });
     } catch (error) {
-      if (error instanceof FrontendContractError && 
-         (error.code === 'IDEMPOTENCY_KEY_REUSE_MISMATCH' || error.code === 'CLIENT_REQUEST_MEANING_MISMATCH')) {
+      if (
+        error instanceof FrontendContractError &&
+        (error.code === 'IDEMPOTENCY_KEY_REUSE_MISMATCH' ||
+          error.code === 'CLIENT_REQUEST_MEANING_MISMATCH')
+      ) {
         throw new ShotgunError({
           code: 'CONFLICT',
-          safeMessage: 'Command idempotency key conflict with a different payload or semantic digest.',
+          safeMessage: 'The request identity is already bound to different command meaning.',
           module: 'frontend-ask-write',
-          operation: 'submit-question',
+          operation: 'accept-question',
         });
       }
       throw error;
     }
 
-    if (acceptResult.replayed && acceptResult.outcome.outcomeState === 'COMPLETED') {
-      const outcome = await this.repository.getConversationOutcome(
-        req.clientRequestId,
-        principalId,
-        targetProjectId,
-      );
-      if (!outcome || outcome.outcomeState !== 'COMPLETED' || !outcome.answerRun) {
-        throw new ShotgunError({
-          code: 'INTERNAL_UNCLASSIFIED',
-          safeMessage: 'Unable to start candidate materialization process.',
-          module: 'frontend-ask-write',
-          operation: 'submit-question',
-        });
-      }
-      const workspace = await this.askWorkspace.getWorkspace({
-        ...input,
-        conversationId: outcome.conversationId,
+    if (accepted.outcome.outcomeState === 'COMPLETED') {
+      return this.submissionFromCompletedOutcome(input, accepted.outcome);
+    }
+    if (accepted.outcome.outcomeState === 'REJECTED') {
+      throw new ShotgunError({
+        code: 'CONFLICT',
+        safeMessage: accepted.outcome.rejection?.message ?? 'The question command was rejected.',
+        module: 'frontend-ask-write',
+        operation: 'replay-question',
       });
-      return {
-        schemaVersion: ASK_SCHEMA_VERSION,
-        answerRun: outcome.answerRun,
-        workspace,
-      };
     }
 
-    // NEW or REPLAY_ACCEPTED (needs completion)
-    const effectiveCommandId = acceptResult.replayed ? acceptResult.outcome.commandId : commandId;
-
-    let conversation!: AskConversationView;
-    let branch!: AskBranchView;
-    let turn!: AskBranchView['turns'][0];
-    let answerRun!: AskAnswerRunSnapshot;
+    const effectiveCommandId = accepted.outcome.commandId;
+    let committed: AskCommittedQuestion | undefined;
+    let completedByConcurrentExecution: AnyFrontendCommandOutcomeView | undefined;
 
     try {
-      await this.repository.transaction(async (tx) => {
-        let branchId: string;
-        let turnId: string;
-        let answerRunId: string;
-        let turnOrdinal: number;
-        let newConversationRevision: string;
-
-        if (req.conversationId) {
-          const existingConv = await this.askWorkspace.getConversation({
-            ...input,
-            conversationId: req.conversationId,
-          });
-          branchId = req.branchId ?? existingConv.activeBranchId;
-          const targetBranch = existingConv.branches.find((b) => b.branchId === branchId);
-          if (!targetBranch) {
-            throw new ShotgunError({
-              code: 'NOT_FOUND',
-              safeMessage: 'The requested branch was not found.',
-              module: 'frontend-ask-write',
-              operation: 'submit-question',
-            });
-          }
-          turnOrdinal = targetBranch.turns.length + 1;
-          turnId = `turn-${randomUUID()}`;
-          answerRunId = `run-${randomUUID()}`;
-          newConversationRevision = `conv-rev-${Date.now()}`;
-
-          answerRun = {
-            schemaVersion: ASK_SCHEMA_VERSION,
-            answerRunId,
-            conversationId: existingConv.conversationId,
-            branchId,
-            turnId,
-            projectId: existingConv.projectId,
-            mode: req.mode ?? 'CANONICAL_ONLY',
-            state: 'QUEUED',
-            question: req.question,
-            statements: [],
-            sourceSelections: req.sourceSelections,
-            capabilities: ['SUBMIT_QUESTION'],
-            answerRevision: `answer-rev-${turnId}`,
-            conversationRevision: newConversationRevision,
-            accessRevision,
-            policyContextRevision,
-            createdAt: nowTimestamp,
-            updatedAt: nowTimestamp,
-            stale: false,
-          };
-
-          turn = {
-            turnId,
-            ordinal: turnOrdinal,
-            userMessage: req.question,
-            createdAt: nowTimestamp,
-            answerRun,
-          };
-
-          const updatedTurns = [...targetBranch.turns, turn];
-          branch = { ...targetBranch, turns: updatedTurns };
-
-          const updatedBranches = existingConv.branches.map(b => b.branchId === branchId ? branch : b);
-
-          conversation = {
-            ...existingConv,
-            branches: updatedBranches,
-            conversationRevision: newConversationRevision,
-            updatedAt: nowTimestamp,
-          };
-        } else {
-          const convId = `conv-${randomUUID()}`;
-          branchId = `branch-${randomUUID()}`;
-          turnId = `turn-${randomUUID()}`;
-          answerRunId = `run-${randomUUID()}`;
-          turnOrdinal = 1;
-          newConversationRevision = `conv-rev-${Date.now()}`;
-
-          answerRun = {
-            schemaVersion: ASK_SCHEMA_VERSION,
-            answerRunId,
-            conversationId: convId,
-            branchId,
-            turnId,
-            projectId: targetProjectId,
-            mode: req.mode ?? 'CANONICAL_ONLY',
-            state: 'QUEUED',
-            question: req.question,
-            statements: [],
-            sourceSelections: req.sourceSelections,
-            capabilities: ['SUBMIT_QUESTION'],
-            answerRevision: `answer-rev-${turnId}`,
-            conversationRevision: newConversationRevision,
-            accessRevision,
-            policyContextRevision,
-            createdAt: nowTimestamp,
-            updatedAt: nowTimestamp,
-            stale: false,
-          };
-
-          turn = {
-            turnId,
-            ordinal: turnOrdinal,
-            userMessage: req.question,
-            createdAt: nowTimestamp,
-            answerRun,
-          };
-
-          branch = {
-            branchId,
-            label: 'Main Branch',
-            turns: [turn],
-          };
-
-          conversation = {
-            schemaVersion: ASK_SCHEMA_VERSION,
-            conversationId: convId,
-            projectId: targetProjectId,
-            title: req.question.slice(0, 50),
-            activeBranchId: branchId,
-            branches: [branch],
-            conversationRevision: newConversationRevision,
-            createdAt: nowTimestamp,
-            updatedAt: nowTimestamp,
-          };
+      await this.repository.transaction(async (transaction) => {
+        const locked = await this.commandGateway.lockAcceptedForExecution(
+          transaction,
+          effectiveCommandId,
+        );
+        if (locked.outcomeState === 'COMPLETED') {
+          completedByConcurrentExecution = locked;
+          return;
         }
 
-        await this.repository.saveAggregate(tx, {
-          conversation,
-          branch,
-          turn,
-          answerRun
-        }, req.conversationId ? expectedConversationRevision : undefined, req.conversationId ? expectedBranchRevision : undefined);
-
-        await this.commandGateway.complete({
+        committed = await this.repository.persistQuestion(transaction, {
           commandId: effectiveCommandId,
-          producedResources: [],
+          projectId: authority.targetProjectId,
+          question: request.question.trim(),
+          mode,
+          sourceSelections: request.sourceSelections,
+          ...(request.conversationId ? { conversationId: request.conversationId } : {}),
+          ...(authority.branchId ? { branchId: authority.branchId } : {}),
+          ...(request.expectedConversationRevision
+            ? { expectedConversationRevision: request.expectedConversationRevision }
+            : {}),
+          ...(request.expectedBranchRevision
+            ? { expectedBranchRevision: request.expectedBranchRevision }
+            : {}),
+          accessRevision: input.accessRevision,
+          policyContextRevision: input.policyContextRevision,
+          createdAt: now,
+          generated: {
+            conversationId: generatedIdentity('conv'),
+            branchId: generatedIdentity('branch'),
+            turnId: generatedIdentity('turn'),
+            answerRunId: generatedIdentity('run'),
+            conversationRevision: generatedRevision('conversation'),
+            branchRevision: generatedRevision('branch'),
+            turnRevision: generatedRevision('turn'),
+            answerRevision: generatedRevision('answer'),
+          },
+        });
+
+        await this.commandGateway.completeInTransaction(transaction, {
+          commandId: effectiveCommandId,
+          producedResources: [
+            {
+              resourceKind: ASK_RESOURCE_KIND.conversation,
+              resourceId: committed.conversationId,
+              resourceRevision: committed.conversationRevision,
+            },
+            {
+              resourceKind: ASK_RESOURCE_KIND.branch,
+              resourceId: committed.branchId,
+              resourceRevision: committed.branchRevision,
+            },
+            {
+              resourceKind: ASK_RESOURCE_KIND.turn,
+              resourceId: committed.turnId,
+              resourceRevision: committed.turnRevision,
+            },
+            {
+              resourceKind: ASK_RESOURCE_KIND.answerRun,
+              resourceId: committed.answerRunId,
+              resourceRevision: committed.answerRevision,
+            },
+          ],
           completedAt: new Date().toISOString(),
         });
       });
     } catch (error) {
-      const isStale = error instanceof ShotgunError && error.code === 'REVISION_CONFLICT';
-      await this.commandGateway.reject({
-        commandId: effectiveCommandId,
-        code: isStale ? 'REVISION_CONFLICT' : 'INTERNAL_UNCLASSIFIED',
-        message: error instanceof Error ? error.message : 'Unknown error',
-        completedAt: new Date().toISOString(),
-      });
+      const rejectionCode =
+        error instanceof ShotgunError && error.code === 'REVISION_CONFLICT'
+          ? 'REVISION_CONFLICT'
+          : 'INTERNAL_UNCLASSIFIED';
+      try {
+        await this.commandGateway.reject({
+          commandId: effectiveCommandId,
+          code: rejectionCode,
+          message: error instanceof Error ? error.message : 'Question command failed.',
+          completedAt: new Date().toISOString(),
+        });
+      } catch {
+        // The transaction may have been completed concurrently. Preserve the original error.
+      }
       throw error;
     }
 
+    if (completedByConcurrentExecution) {
+      return this.submissionFromCompletedOutcome(input, completedByConcurrentExecution);
+    }
+    if (!committed) {
+      throw new ShotgunError({
+        code: 'INTERNAL_UNCLASSIFIED',
+        safeMessage: 'The question command completed without authoritative resources.',
+        module: 'frontend-ask-write',
+        operation: 'submit-question',
+      });
+    }
+
+    const answerRun = await this.askWorkspace.getAnswerRun({
+      ...input,
+      answerRunId: committed.answerRunId,
+    });
     const workspace = await this.askWorkspace.getWorkspace({
       ...input,
-      conversationId: conversation.conversationId,
+      conversationId: committed.conversationId,
     });
-
     return {
       schemaVersion: ASK_SCHEMA_VERSION,
       answerRun,
@@ -341,22 +324,198 @@ export class AskCommandCoordinator {
   async getQuestionSubmissionByClientRequestId(
     input: FrontendReadScope & { readonly clientRequestId: string },
   ): Promise<AskQuestionSubmissionOutcomeView> {
-    // Check outcome in all accessible projects or specific logic?
-    // Based on Slices 4-5 frozen contract, the outcome scope is Principal and Project.
-    // If not found in active project, we search? Wait, the UI doesn't pass a project. We should just query by principal + clientRequest.
-    const outcome = await this.repository.getConversationOutcome(
-      input.clientRequestId,
+    const outcome = await this.commandGateway.findByClientRequestId(
       input.principalId,
-      input.activeProject?.id ?? '', // We might need to adjust this depending on the exact requirement.
+      input.clientRequestId,
     );
-    if (!outcome) {
+    if (!outcome || outcome.commandType !== 'SUBMIT_QUESTION') {
+      throw this.notFoundOutcome();
+    }
+
+    const targetProjectId = outcome.acceptedProjectContext.targetProjectId;
+    if (!input.accessibleProjects.some((project) => project.id === targetProjectId)) {
+      throw this.notFoundOutcome();
+    }
+
+    if (outcome.outcomeState === 'COMPLETED') {
+      const completed = await this.outcomeFromCompletedCommand(input, outcome);
+      return completed;
+    }
+
+    return {
+      schemaVersion: ASK_SCHEMA_VERSION,
+      outcomeState:
+        outcome.outcomeState === 'ACCEPTED' ? 'OUTCOME_UNKNOWN' : outcome.outcomeState,
+      clientRequestId: outcome.clientRequestId,
+      idempotencyKey: outcome.idempotencyKey,
+      commandId: outcome.commandId,
+      ...(outcome.rejection
+        ? {
+            failureCode: outcome.rejection.code,
+            failureMessage: outcome.rejection.message,
+          }
+        : {}),
+    };
+  }
+
+  private async resolveAuthority(
+    input: FrontendReadScope & { readonly request: SubmitAskQuestionRequest },
+  ): Promise<{
+    readonly targetProjectId: string;
+    readonly branchId?: string;
+    readonly sensitivityClearance: FrontendReadScope['accessibleProjects'][number]['sensitivityClearance'];
+  }> {
+    if (!input.request.conversationId) {
+      if (!input.activeProject) {
+        throw new ShotgunError({
+          code: 'NOT_FOUND',
+          safeMessage: 'An active Project is required for a new question.',
+          module: 'frontend-ask-write',
+          operation: 'resolve-question-project',
+        });
+      }
+      return {
+        targetProjectId: input.activeProject.id,
+        sensitivityClearance: input.activeProject.sensitivityClearance,
+      };
+    }
+
+    if (
+      !input.request.expectedConversationRevision ||
+      !input.request.expectedBranchRevision
+    ) {
       throw new ShotgunError({
-        code: 'NOT_FOUND',
-        safeMessage: 'The requested question submission outcome was not found.',
+        code: 'INVALID_REQUEST',
+        safeMessage: 'Follow-up questions require Conversation and Branch revisions.',
         module: 'frontend-ask-write',
-        operation: 'get-question-submission-outcome',
+        operation: 'resolve-follow-up',
       });
     }
-    return outcome;
+
+    const conversation = await this.askWorkspace.getConversation({
+      ...input,
+      conversationId: input.request.conversationId,
+    });
+    const project = input.accessibleProjects.find(
+      (candidate) => candidate.id === conversation.projectId,
+    );
+    if (!project) throw this.notFoundOutcome();
+
+    const branchId = input.request.branchId ?? conversation.activeBranchId;
+    const branch = conversation.branches.find((candidate) => candidate.branchId === branchId);
+    if (!branch) {
+      throw new ShotgunError({
+        code: 'NOT_FOUND',
+        safeMessage: 'The requested Conversation Branch was not found.',
+        module: 'frontend-ask-write',
+        operation: 'resolve-follow-up',
+      });
+    }
+    if (
+      conversation.conversationRevision !== input.request.expectedConversationRevision ||
+      branch.branchRevision !== input.request.expectedBranchRevision
+    ) {
+      throw new ShotgunError({
+        code: 'REVISION_CONFLICT',
+        safeMessage: 'The Conversation changed. Refresh before submitting the follow-up.',
+        module: 'frontend-ask-write',
+        operation: 'resolve-follow-up',
+      });
+    }
+
+    return {
+      targetProjectId: conversation.projectId,
+      branchId,
+      sensitivityClearance: project.sensitivityClearance,
+    };
+  }
+
+  private buildPreconditions(request: SubmitAskQuestionRequest): readonly TypedPrecondition[] {
+    if (!request.conversationId) return [];
+    return [
+      {
+        purpose: 'TARGET',
+        subject: { resourceKind: ASK_RESOURCE_KIND.conversation, resourceId: request.conversationId },
+        expectedRevision: request.expectedConversationRevision,
+      },
+      {
+        purpose: 'TARGET',
+        subject: {
+          resourceKind: ASK_RESOURCE_KIND.branch,
+          resourceId: request.branchId ?? 'ACTIVE_BRANCH',
+        },
+        expectedRevision: request.expectedBranchRevision,
+      },
+    ];
+  }
+
+  private async submissionFromCompletedOutcome(
+    input: FrontendReadScope,
+    outcome: AnyFrontendCommandOutcomeView,
+  ): Promise<AskQuestionSubmissionView> {
+    const completed = await this.outcomeFromCompletedCommand(input, outcome);
+    if (!completed.answerRun || !completed.conversationId) {
+      throw new ShotgunError({
+        code: 'INTERNAL_UNCLASSIFIED',
+        safeMessage: 'The completed command is missing its Ask resources.',
+        module: 'frontend-ask-write',
+        operation: 'replay-question',
+      });
+    }
+    const workspace = await this.askWorkspace.getWorkspace({
+      ...input,
+      conversationId: completed.conversationId,
+    });
+    return {
+      schemaVersion: ASK_SCHEMA_VERSION,
+      answerRun: completed.answerRun,
+      workspace,
+    };
+  }
+
+  private async outcomeFromCompletedCommand(
+    input: FrontendReadScope,
+    outcome: AnyFrontendCommandOutcomeView,
+  ): Promise<AskQuestionSubmissionOutcomeView> {
+    const conversation = findProducedResource(outcome, ASK_RESOURCE_KIND.conversation);
+    const branch = findProducedResource(outcome, ASK_RESOURCE_KIND.branch);
+    const turn = findProducedResource(outcome, ASK_RESOURCE_KIND.turn);
+    const answerRunResource = findProducedResource(outcome, ASK_RESOURCE_KIND.answerRun);
+    if (!conversation || !branch || !turn || !answerRunResource) {
+      throw new ShotgunError({
+        code: 'INTERNAL_UNCLASSIFIED',
+        safeMessage: 'The command outcome does not contain the required Ask resources.',
+        module: 'frontend-ask-write',
+        operation: 'resolve-question-outcome',
+      });
+    }
+    const answerRun = await this.askWorkspace.getAnswerRun({
+      ...input,
+      answerRunId: answerRunResource.resourceId,
+    });
+    if (answerRun.projectId !== outcome.acceptedProjectContext.targetProjectId) {
+      throw this.notFoundOutcome();
+    }
+    return {
+      schemaVersion: ASK_SCHEMA_VERSION,
+      outcomeState: 'COMPLETED',
+      clientRequestId: outcome.clientRequestId,
+      idempotencyKey: outcome.idempotencyKey,
+      commandId: outcome.commandId,
+      conversationId: conversation.resourceId,
+      branchId: branch.resourceId,
+      turnId: turn.resourceId,
+      answerRunId: answerRunResource.resourceId,
+      answerRun,
+    };
+  }
+
+  private notFoundOutcome(): ShotgunError {
+    return new ShotgunError({
+      code: 'NOT_FOUND',
+      safeMessage: 'The requested question submission was not found.',
+      module: 'frontend-ask-write',
+      operation: 'resolve-question-outcome',
+    });
   }
 }

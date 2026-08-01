@@ -1,8 +1,9 @@
 # ADR-124 — Frontend Work Item Identity, Scope Amendment, and Completion Authority Boundary
 
-- Status: **Proposed / Candidate**
+- Status: **Accepted**
 - Proposal date: 2026-08-01
-- Approved by: not yet approved
+- Decision date: 2026-08-01
+- Approved by: user
 - Scope: Frontend Phase and Section planning, status projection, completion claims, and correction records
 - Supersedes: none
 - Related ADRs: ADR-113, ADR-117, ADR-120, ADR-121, ADR-123
@@ -13,11 +14,11 @@ Frontend status was repeated manually across architecture, implementation, ADD, 
 
 The repository needs one machine-readable identity and status authority that preserves historical records while preventing a child increment, a narrow frozen contract, or a prose edit from silently completing its parent Section.
 
-## Proposed decision
+## Decision
 
 ### 1. Stable Work Item identity
 
-`docs/project/frontend-work-items.json` is the proposed Canonical registry for Frontend Phase, Section, and named Increment identity. Registered identifiers are stable. A Section or Increment that is absent from the registry does not exist as an active Product work item.
+`docs/project/frontend-work-items.json` is the Canonical registry for Frontend Phase, Section, and named Increment identity. Registered identifiers are stable. A Section or Increment that is absent from the registry does not exist as an active Product work item.
 
 The Section chain is explicit through reciprocal `predecessor` and `successor` links. The successor of `FE-P2-S2` is `FE-P3-S1`; no intermediate Section is defined.
 
@@ -90,4 +91,4 @@ Rollback is a Git revert of this governance change. A rollback must not revive t
 
 ## Approval boundary
 
-This ADR remains Proposed/Candidate until explicit user approval and merge to `main`. Its presence does not approve the remaining Section 2 scope, mark Section 2 or Phase 2 complete, authorize Phase 3 implementation, make a pull request Ready, or authorize merge.
+This ADR was accepted by the user on 2026-08-01. Acceptance establishes the governance boundary described here; it does not approve the remaining Section 2 scope, mark Section 2 or Phase 2 complete, authorize Phase 3 implementation, or approve any Scope Amendment not recorded under this ADR.

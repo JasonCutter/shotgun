@@ -31,7 +31,7 @@ This directory and the registered consolidated ADR documents form the global ADR
 
 The Phase records under `docs/architecture/add/` retain their approved 2026-07-16 decision text. ADR-100–113 preserve the accepted Frontend decisions and later Contract Normalization outcomes in one Git owner record while the individual Notion pages remain Legacy References.
 
-The current latest individual decision is [ADR-124 — Frontend Work Item Identity, Scope Amendment, and Completion Authority Boundary](ADR-124-frontend-work-item-identity-scope-amendment-and-completion-authority-boundary.md), currently Proposed/Candidate.
+The current latest individual decision is [ADR-124 — Frontend Work Item Identity, Scope Amendment, and Completion Authority Boundary](ADR-124-frontend-work-item-identity-scope-amendment-and-completion-authority-boundary.md), currently Accepted.
 
 ## Reserved-gap rule
 

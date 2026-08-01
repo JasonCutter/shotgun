@@ -67,7 +67,7 @@ Phase 2부터 Phase 6까지의 과거 승인 ADR-018–ADR-075는 Phase별 ADR �
 PR #48의 Ask Write·Persistence·Outcome Recovery 구현과 검증은 유효한 Increment 증거로 보존한다. 이후 ADD에 기록된 parent Section 완료 해석은 원 Section Contract의 미구현 필수 범위를 반영하지 못했으므로 현재 상태 권위에서 대체한다.
 
 - 정정 기록: [`frontend-phase-2-completion-status-reconciliation-260801001.md`](../../engineering/frontend-phase-2-completion-status-reconciliation-260801001.md)
-- Proposed governance ADR: [`ADR-124`](../adr/ADR-124-frontend-work-item-identity-scope-amendment-and-completion-authority-boundary.md)
+- Accepted governance ADR: [`ADR-124`](../adr/ADR-124-frontend-work-item-identity-scope-amendment-and-completion-authority-boundary.md)
 - Work Item Registry: [`frontend-work-items.json`](../../project/frontend-work-items.json)
 - Section Completion Manifest: [`FE-P2-S2.json`](../../project/completions/FE-P2-S2.json)
 - 보존된 PR #48 검증 기록: [`frontend-phase-2-section-2-slices-4-5-verification-and-completion-record-260801001.md`](../../implementation/frontend-phase-2-section-2-slices-4-5-verification-and-completion-record-260801001.md)

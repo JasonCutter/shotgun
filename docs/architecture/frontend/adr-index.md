@@ -37,9 +37,9 @@ Frontend and Human Interaction Architecture의 횡단 ADR을 식별한다. 이 �
 | ADR-119 | Frontend Server State, Draft State and Cache Ownership Boundary                 | Accepted / Product implementation pending at migration time | `3ab5181d-71ad-8132-85cb-d3154108c4a5` |
 | ADR-122 | Sources Workspace Intake, Duplicate, URL and Lifecycle Boundary                 | Accepted / Product implementation merged                    | Git ADR; no Legacy Notion owner        |
 | ADR-123 | Ask Command, Conversation Persistence and Outcome Recovery Boundary             | Accepted / Increment implementation merged                  | Git ADR; no Legacy Notion owner        |
-| ADR-124 | Frontend Work Item Identity, Scope Amendment, and Completion Authority Boundary | Proposed / Candidate 2026-08-01                             | Git Candidate; no Legacy Notion owner  |
+| ADR-124 | Frontend Work Item Identity, Scope Amendment, and Completion Authority Boundary | Accepted / Governance boundary adopted 2026-08-01           | Git ADR; no Legacy Notion owner        |
 
-ADR-117과 ADR-120은 Frontend 기능 ADR이 아니라 Project 전체 문서 Canonical 운영을 지배한다. ADR-124는 Frontend Work Item과 완료 권위의 Proposed/Candidate 경계를 정의한다.
+ADR-117과 ADR-120은 Frontend 기능 ADR이 아니라 Project 전체 문서 Canonical 운영을 지배한다. ADR-124는 Frontend Work Item과 완료 권위의 Accepted 경계를 정의한다.
 
 ## Git 소유 경계
 

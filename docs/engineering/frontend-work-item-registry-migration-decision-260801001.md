@@ -4,7 +4,7 @@
 - Decision ID: `frontend-canonical-roadmap-migration-260801001`
 - Decision date: 2026-08-01
 - Scope: existing official Frontend Phase, Section, and Increment identities
-- Governing proposal: `docs/architecture/adr/ADR-124-frontend-work-item-identity-scope-amendment-and-completion-authority-boundary.md`
+- Governing ADR: `docs/architecture/adr/ADR-124-frontend-work-item-identity-scope-amendment-and-completion-authority-boundary.md`
 
 ## Decision
 
@@ -21,6 +21,6 @@ Increment must use a separately accepted decision or remain a `CANDIDATE` with
 - `FE-P2-S2` remains `IN_PROGRESS`.
 - Answer Execution, failure and retry, and final Section verification remain
   unresolved Section scope.
-- ADR-124 remains Proposed/Candidate.
+- ADR-124 was Proposed/Candidate when this migration decision was recorded; it is now Accepted by the user on 2026-08-01.
 - No Product code, runtime dependency, database migration, PR readiness, or
   merge authorization is created by this migration.

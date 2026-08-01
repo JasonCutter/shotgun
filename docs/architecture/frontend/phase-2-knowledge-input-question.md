@@ -14,7 +14,7 @@ legacy_source_id: 3a65181d-71ad-8122-bfda-c9be8016ef33
 - Section 1 ADR-122: Accepted
 - Section 1 AC-01~AC-32: PASS
 - Section 1 Migration 020: 승인·구현·검증 완료
-- 관련 ADR: ADR-100, ADR-101, ADR-102, ADR-103, ADR-104, ADR-105, ADR-122, ADR-123, ADR-124 Candidate
+- 관련 ADR: ADR-100, ADR-101, ADR-102, ADR-103, ADR-104, ADR-105, ADR-122, ADR-123, ADR-124 Accepted
 
 <!-- FRONTEND-WORK-ITEM-STATUS:START -->
 

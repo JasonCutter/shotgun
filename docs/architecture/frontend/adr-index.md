@@ -13,31 +13,32 @@ legacy_source_id: 3a65181d-71ad-8182-b0fb-f84d722f98a2
 
 Frontend and Human Interaction Architecture의 횡단 ADR을 식별한다. 이 인덱스는 ADR 본문의 결정과 변경 이력을 대체하지 않으며 ADR 번호와 Accepted 상태를 보존한다.
 
-| ADR     | 제목                                                                            | 상태                                                        | Legacy Notion ID                       |
-| ------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------- | -------------------------------------- |
-| ADR-099 | Local Owner Session·Authentication Adapter Recovery Boundary                    | Accepted                                                    | `3a65181d-71ad-8137-b3ec-e21f484c9f16` |
-| ADR-100 | Active Project·Resource Project·Draft Project Binding                           | Accepted                                                    | `3a65181d-71ad-8182-ab8f-c67e791ebd85` |
-| ADR-101 | Frontend Async Command·Resource Snapshot·Outcome Unknown                        | Accepted                                                    | `3a65181d-71ad-815c-8c23-e6b1cbe8d962` |
-| ADR-102 | Source Library·Ask Exploration·Intake Re-entry Boundary                         | Accepted                                                    | `3a65181d-71ad-81e3-b95e-eae1a0ca61fb` |
-| ADR-103 | Settings as Typed Project Policy Control Plane                                  | Accepted                                                    | `3a65181d-71ad-8176-9f37-e50336c18f0c` |
-| ADR-104 | Global Shell and Server-ranked Action Center Boundary                           | Accepted                                                    | `3a65181d-71ad-81c7-8fb3-c5b70df73304` |
-| ADR-105 | Frontend Policy Context Pinning and Current-policy Revalidation                 | Accepted                                                    | `3a65181d-71ad-81b7-bf83-e54de4d814e6` |
-| ADR-106 | Knowledge Workspace as Projection-based Read Model                              | Accepted                                                    | `3a65181d-71ad-8197-984c-cb1e6e7b7117` |
-| ADR-107 | Knowledge Editor as DraftChangeSet Authoring Boundary                           | Accepted                                                    | `3a65181d-71ad-8159-af15-e1467969ebbf` |
-| ADR-108 | Typed Semantic Graph Projection with Accessible Fallback                        | Accepted                                                    | `3a65181d-71ad-81c9-a864-d74dfbbe01b7` |
-| ADR-109 | Review Center as Item-level Approval Gateway                                    | Accepted                                                    | `3a65181d-71ad-813b-9f5f-c2160415321b` |
-| ADR-110 | External Action Validation·Approval·Preflight·Verify Boundary                   | Accepted                                                    | `3a65181d-71ad-81bd-a332-e17f354c1305` |
-| ADR-111 | Activity Workspace as Job·Attempt·Event Projection                              | Accepted                                                    | `3a65181d-71ad-8111-8e8e-d9f6ce0dd968` |
-| ADR-112 | Immutable History and Reversal ChangeSet Boundary                               | Accepted                                                    | `3a65181d-71ad-81ba-b9a3-d3ed2b38f6ca` |
-| ADR-113 | Five-phase Frontend Responsibility Separation and Design Completion Boundary    | Accepted                                                    | `3a65181d-71ad-818f-818c-c00af7bd77c4` |
-| ADR-114 | Project Administration and Settings Repository Ownership Boundary               | Accepted                                                    | `3a95181d-71ad-81c9-ab5e-f4348be1b08e` |
-| ADR-115 | Global Shell·Action Center Read Projection and Scope Boundary                   | Accepted 2026-07-26 / implementation not started            | `3a95181d-71ad-8155-85d3-ccb0420fb998` |
-| ADR-116 | Zero-project Session·Principal Command·Project Bootstrap Persistence Boundary   | Accepted 2026-07-28                                         | `3ab5181d-71ad-81ff-87c2-d92e7a87a00b` |
-| ADR-118 | Typed Failure Taxonomy and Translation Boundary                                 | Accepted / Product implementation merged                    | `3ab5181d-71ad-81de-8fa2-d52827afed19` |
-| ADR-119 | Frontend Server State, Draft State and Cache Ownership Boundary                 | Accepted / Product implementation pending at migration time | `3ab5181d-71ad-8132-85cb-d3154108c4a5` |
-| ADR-122 | Sources Workspace Intake, Duplicate, URL and Lifecycle Boundary                 | Accepted / Product implementation merged                    | Git ADR; no Legacy Notion owner        |
-| ADR-123 | Ask Command, Conversation Persistence and Outcome Recovery Boundary             | Accepted / Increment implementation merged                  | Git ADR; no Legacy Notion owner        |
-| ADR-124 | Frontend Work Item Identity, Scope Amendment, and Completion Authority Boundary | Accepted / Governance boundary adopted 2026-08-01           | Git ADR; no Legacy Notion owner        |
+| ADR     | 제목                                                                                  | 상태                                                        | Legacy Notion ID                       |
+| ------- | ------------------------------------------------------------------------------------- | ----------------------------------------------------------- | -------------------------------------- |
+| ADR-099 | Local Owner Session·Authentication Adapter Recovery Boundary                          | Accepted                                                    | `3a65181d-71ad-8137-b3ec-e21f484c9f16` |
+| ADR-100 | Active Project·Resource Project·Draft Project Binding                                 | Accepted                                                    | `3a65181d-71ad-8182-ab8f-c67e791ebd85` |
+| ADR-101 | Frontend Async Command·Resource Snapshot·Outcome Unknown                              | Accepted                                                    | `3a65181d-71ad-815c-8c23-e6b1cbe8d962` |
+| ADR-102 | Source Library·Ask Exploration·Intake Re-entry Boundary                               | Accepted                                                    | `3a65181d-71ad-81e3-b95e-eae1a0ca61fb` |
+| ADR-103 | Settings as Typed Project Policy Control Plane                                        | Accepted                                                    | `3a65181d-71ad-8176-9f37-e50336c18f0c` |
+| ADR-104 | Global Shell and Server-ranked Action Center Boundary                                 | Accepted                                                    | `3a65181d-71ad-81c7-8fb3-c5b70df73304` |
+| ADR-105 | Frontend Policy Context Pinning and Current-policy Revalidation                       | Accepted                                                    | `3a65181d-71ad-81b7-bf83-e54de4d814e6` |
+| ADR-106 | Knowledge Workspace as Projection-based Read Model                                    | Accepted                                                    | `3a65181d-71ad-8197-984c-cb1e6e7b7117` |
+| ADR-107 | Knowledge Editor as DraftChangeSet Authoring Boundary                                 | Accepted                                                    | `3a65181d-71ad-8159-af15-e1467969ebbf` |
+| ADR-108 | Typed Semantic Graph Projection with Accessible Fallback                              | Accepted                                                    | `3a65181d-71ad-81c9-a864-d74dfbbe01b7` |
+| ADR-109 | Review Center as Item-level Approval Gateway                                          | Accepted                                                    | `3a65181d-71ad-813b-9f5f-c2160415321b` |
+| ADR-110 | External Action Validation·Approval·Preflight·Verify Boundary                         | Accepted                                                    | `3a65181d-71ad-81bd-a332-e17f354c1305` |
+| ADR-111 | Activity Workspace as Job·Attempt·Event Projection                                    | Accepted                                                    | `3a65181d-71ad-8111-8e8e-d9f6ce0dd968` |
+| ADR-112 | Immutable History and Reversal ChangeSet Boundary                                     | Accepted                                                    | `3a65181d-71ad-81ba-b9a3-d3ed2b38f6ca` |
+| ADR-113 | Five-phase Frontend Responsibility Separation and Design Completion Boundary          | Accepted                                                    | `3a65181d-71ad-818f-818c-c00af7bd77c4` |
+| ADR-114 | Project Administration and Settings Repository Ownership Boundary                     | Accepted                                                    | `3a95181d-71ad-81c9-ab5e-f4348be1b08e` |
+| ADR-115 | Global Shell·Action Center Read Projection and Scope Boundary                         | Accepted 2026-07-26 / implementation not started            | `3a95181d-71ad-8155-85d3-ccb0420fb998` |
+| ADR-116 | Zero-project Session·Principal Command·Project Bootstrap Persistence Boundary         | Accepted 2026-07-28                                         | `3ab5181d-71ad-81ff-87c2-d92e7a87a00b` |
+| ADR-118 | Typed Failure Taxonomy and Translation Boundary                                       | Accepted / Product implementation merged                    | `3ab5181d-71ad-81de-8fa2-d52827afed19` |
+| ADR-119 | Frontend Server State, Draft State and Cache Ownership Boundary                       | Accepted / Product implementation pending at migration time | `3ab5181d-71ad-8132-85cb-d3154108c4a5` |
+| ADR-122 | Sources Workspace Intake, Duplicate, URL and Lifecycle Boundary                       | Accepted / Product implementation merged                    | Git ADR; no Legacy Notion owner        |
+| ADR-123 | Ask Command, Conversation Persistence and Outcome Recovery Boundary                   | Accepted / Increment implementation merged                  | Git ADR; no Legacy Notion owner        |
+| ADR-124 | Frontend Work Item Identity, Scope Amendment, and Completion Authority Boundary       | Accepted / Governance boundary adopted 2026-08-01           | Git ADR; no Legacy Notion owner        |
+| ADR-125 | Knowledge Workspace Multi-Authority Search and Non-Ready Compiled Truth Read Boundary | Proposed / QX-P0 contract freeze only                       | Git ADR; no Legacy Notion owner        |
 
 ADR-117과 ADR-120은 Frontend 기능 ADR이 아니라 Project 전체 문서 Canonical 운영을 지배한다. ADR-124는 Frontend Work Item과 완료 권위의 Accepted 경계를 정의한다.
 

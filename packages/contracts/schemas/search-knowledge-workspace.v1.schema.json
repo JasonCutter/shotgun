@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://shotgun.local/contracts/search-knowledge-workspace.v1.schema.json",
+  "title": "Search Knowledge Workspace v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "query"],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "query": { "type": "string", "minLength": 1, "pattern": "\\S" },
+    "resourceId": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "filters": { "$ref": "#/$defs/filter" },
+    "cursor": { "type": "string", "minLength": 1, "maxLength": 2048 },
+    "pageSize": { "type": "integer", "minimum": 1, "maximum": 100 }
+  },
+  "$defs": {
+    "filter": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "authorities": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": ["CANONICAL", "APPROVED_KNOWLEDGE", "COMPILED_TRUTH", "DERIVED_INFERENCE"]
+          }
+        },
+        "kinds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "CLAIM",
+              "FACT",
+              "ENTITY",
+              "RELATION",
+              "EVENT",
+              "DECISION",
+              "ACTION",
+              "CONFLICT",
+              "KNOWLEDGE_GAP",
+              "DERIVED_INFERENCE"
+            ]
+          }
+        },
+        "temporalStates": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "enum": ["CURRENT", "PAST", "FUTURE", "CONFLICT"] }
+        },
+        "projectionStatuses": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "enum": ["READY", "STALE", "DEGRADED", "NOT_BUILT"] }
+        },
+        "sensitivities": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "enum": ["public", "internal", "private", "restricted"] }
+        }
+      }
+    }
+  }
+}

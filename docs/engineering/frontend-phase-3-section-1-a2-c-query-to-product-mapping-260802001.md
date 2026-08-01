@@ -37,26 +37,26 @@ Query를 조합하는 것만으로는 충족할 수 없다.
 
 | 영역                    | 실제 handler               | 파일                                       | return type                                                                    | Product에 제공하는 값                                                                                                     |
 | ----------------------- | -------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
-| Stage 6 Canonical | `GetCanonicalSnapshot` | `modules/canonical-knowledge/src/index.ts` | `CanonicalSnapshot` | `projectId`, `version`, `digest`, claim의 `claimId`, `text`, `revisionNumber`, `evidenceIds` |
-| Stage 6 Canonical | `GetCanonicalClaim` | `modules/canonical-knowledge/src/index.ts` | `CanonicalClaim` | `claimId`, `projectId`, `claimText`, `sourceVersionId`, `evidenceIds`, `createdFromManifestId`, access scope, sensitivity |
-| Stage 6 Canonical | `ListCanonicalHistory` | `modules/canonical-knowledge/src/index.ts` | `{ items: CanonicalHistoryEvent[] }` | claim별 `commitId`, `manifestId`, `changeSetId`, versions, history event, actor, time |
-| Stage 6 Canonical | `GetCanonicalCommit` | `modules/canonical-knowledge/src/index.ts` | `CanonicalCommitResult` | `revisionId`, commit/manifest/change-set IDs, canonical versions, snapshot digest, commit time |
-| Stage 7 Search | `SearchCanonicalKnowledge` | `modules/projection-search/src/index.ts` | `CanonicalSearchResponse` | query, Canonical search item의 score·match type·claim/revision/commit/sourceVersion/evidence, Search readiness |
-| Stage 7 Search | `GetProjectionReadiness` | `modules/projection-search/src/index.ts` | `ProjectionReadiness` | Search status, canonical/projected version, lag, digest, last commit, reason, updatedAt |
-| Stage 9 Knowledge Model | `GetKnowledgeGroup` | `modules/knowledge-model/src/index.ts` | `{ group: KnowledgeReviewGroup; modelDisagreements: ModelDisagreementView[] }` | typed approved-group identity, revision, sourceVersion, candidate item, evidence, access/sensitivity |
-| Stage 9 Knowledge Model | `ListKnowledgeGroups` | `modules/knowledge-model/src/index.ts` | `{ items: KnowledgeReviewGroup[] }` | access-filtered review groups and typed candidate items |
-| Stage 9 Knowledge Model | `GetKnowledgeImpact` | `modules/knowledge-model/src/index.ts` | `KnowledgeImpactResult` | approved typed edge impact paths; no current Product field consumes this in A2-C |
-| Stage 9 Knowledge Model | `GetKnowledgeGraph` | `modules/knowledge-model/src/index.ts` | `KnowledgeGraphView` | approved typed nodes/edges and list/table fallback; graph UI is outside A2-C |
-| Stage 10 Compiled Truth | `GetCompiledTruth` | `modules/compiled-truth/src/index.ts` | `CompiledTruthProjection` | typed compiled item IDs, labels, temporal state, evidence IDs, canonical version, projection digest and graph |
-| Stage 10 Compiled Truth | `GetCompiledTruthStatus` | `modules/compiled-truth/src/index.ts` | `CompiledTruthProjectionStatus` | `NOT_BUILT`/`READY`/`STALE`/`DEGRADED`, versions, lag, digest, error, updatedAt |
-| Stage 10 Discovery | `ListDerivedInferences` | `modules/compiled-truth/src/index.ts` | `{ items: DerivedInferenceCandidate[] }` | derived candidate ID, question, related node IDs, evidence IDs, source projection digest, reentry phase, createdAt |
+| Stage 6 Canonical       | `GetCanonicalSnapshot`     | `modules/canonical-knowledge/src/index.ts` | `CanonicalSnapshot`                                                            | `projectId`, `version`, `digest`, claim의 `claimId`, `text`, `revisionNumber`, `evidenceIds`                              |
+| Stage 6 Canonical       | `GetCanonicalClaim`        | `modules/canonical-knowledge/src/index.ts` | `CanonicalClaim`                                                               | `claimId`, `projectId`, `claimText`, `sourceVersionId`, `evidenceIds`, `createdFromManifestId`, access scope, sensitivity |
+| Stage 6 Canonical       | `ListCanonicalHistory`     | `modules/canonical-knowledge/src/index.ts` | `{ items: CanonicalHistoryEvent[] }`                                           | claim별 `commitId`, `manifestId`, `changeSetId`, versions, history event, actor, time                                     |
+| Stage 6 Canonical       | `GetCanonicalCommit`       | `modules/canonical-knowledge/src/index.ts` | `CanonicalCommitResult`                                                        | `revisionId`, commit/manifest/change-set IDs, canonical versions, snapshot digest, commit time                            |
+| Stage 7 Search          | `SearchCanonicalKnowledge` | `modules/projection-search/src/index.ts`   | `CanonicalSearchResponse`                                                      | query, Canonical search item의 score·match type·claim/revision/commit/sourceVersion/evidence, Search readiness            |
+| Stage 7 Search          | `GetProjectionReadiness`   | `modules/projection-search/src/index.ts`   | `ProjectionReadiness`                                                          | Search status, canonical/projected version, lag, digest, last commit, reason, updatedAt                                   |
+| Stage 9 Knowledge Model | `GetKnowledgeGroup`        | `modules/knowledge-model/src/index.ts`     | `{ group: KnowledgeReviewGroup; modelDisagreements: ModelDisagreementView[] }` | typed approved-group identity, revision, sourceVersion, candidate item, evidence, access/sensitivity                      |
+| Stage 9 Knowledge Model | `ListKnowledgeGroups`      | `modules/knowledge-model/src/index.ts`     | `{ items: KnowledgeReviewGroup[] }`                                            | access-filtered review groups and typed candidate items                                                                   |
+| Stage 9 Knowledge Model | `GetKnowledgeImpact`       | `modules/knowledge-model/src/index.ts`     | `KnowledgeImpactResult`                                                        | approved typed edge impact paths; no current Product field consumes this in A2-C                                          |
+| Stage 9 Knowledge Model | `GetKnowledgeGraph`        | `modules/knowledge-model/src/index.ts`     | `KnowledgeGraphView`                                                           | approved typed nodes/edges and list/table fallback; graph UI is outside A2-C                                              |
+| Stage 10 Compiled Truth | `GetCompiledTruth`         | `modules/compiled-truth/src/index.ts`      | `CompiledTruthProjection`                                                      | typed compiled item IDs, labels, temporal state, evidence IDs, canonical version, projection digest and graph             |
+| Stage 10 Compiled Truth | `GetCompiledTruthStatus`   | `modules/compiled-truth/src/index.ts`      | `CompiledTruthProjectionStatus`                                                | `NOT_BUILT`/`READY`/`STALE`/`DEGRADED`, versions, lag, digest, error, updatedAt                                           |
+| Stage 10 Discovery      | `ListDerivedInferences`    | `modules/compiled-truth/src/index.ts`      | `{ items: DerivedInferenceCandidate[] }`                                       | derived candidate ID, question, related node IDs, evidence IDs, source projection digest, reentry phase, createdAt        |
 
 Supporting source/evidence Queries are already available and remain Query-only:
 
 | Supporting value                                 | Query                 | File                                  | return type                                               |
 | ------------------------------------------------ | --------------------- | ------------------------------------- | --------------------------------------------------------- |
 | `sourceId` and transformation revision authority | `GetDocumentRevision` | `modules/transformation/src/index.ts` | `TransformationRevision` / `get-document-revision-output` |
-| Evidence span identity and source-version check | `GetEvidenceSpan` | `modules/evidence/src/index.ts` | `EvidenceSpan` |
+| Evidence span identity and source-version check  | `GetEvidenceSpan`     | `modules/evidence/src/index.ts`       | `EvidenceSpan`                                            |
 
 ## 3. Product field mapping within the available boundary
 
@@ -174,11 +174,11 @@ The Adapter is a Shotgun Query-to-Product boundary, not a new Knowledge/Search/
 Graph engine. Existing OSS decisions remain in force:
 
 | Candidate                                                         | Baseline                                   | License          | A2-C decision    | Reason                                                                                       |
-| ----------------------------------------------------------------- | ------------------------------------------ | ---------------- | ---------------- | --------------------------------------------------------------------------------------------- |
-| [garrytan/gbrain](https://github.com/garrytan/gbrain) | `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a` | MIT | `REFERENCE_ONLY` | Query/Graph concepts are reference material; its runtime/DB is not a Shotgun Product source. |
-| [lucasastorian/llmwiki](https://github.com/lucasastorian/llmwiki) | `ad626a3d81be1480e35ef4e94234de8dbb27a61e` | Apache-2.0 | `REFERENCE_ONLY` | No conversion, Evidence, or watcher component is needed in this read Adapter. |
-| [ddsyasas/llm-wiki](https://github.com/ddsyasas/llm-wiki) | `e8dd69ebba0dc7c395c1b8217bb1c30c14e8c84c` | MIT | `REFERENCE_ONLY` | Product workflow patterns do not replace server Query authority. |
-| [Inkeep OpenKnowledge](https://github.com/inkeep/open-knowledge) | `f2834c237639e2cff603817ed88182b33f83cf91` | GPL-3.0-or-later | `REFERENCE_ONLY` | UI/Graph patterns only; no runtime, Markdown/Yjs, or search engine is imported. |
+| ----------------------------------------------------------------- | ------------------------------------------ | ---------------- | ---------------- | -------------------------------------------------------------------------------------------- |
+| [garrytan/gbrain](https://github.com/garrytan/gbrain)             | `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a` | MIT              | `REFERENCE_ONLY` | Query/Graph concepts are reference material; its runtime/DB is not a Shotgun Product source. |
+| [lucasastorian/llmwiki](https://github.com/lucasastorian/llmwiki) | `ad626a3d81be1480e35ef4e94234de8dbb27a61e` | Apache-2.0       | `REFERENCE_ONLY` | No conversion, Evidence, or watcher component is needed in this read Adapter.                |
+| [ddsyasas/llm-wiki](https://github.com/ddsyasas/llm-wiki)         | `e8dd69ebba0dc7c395c1b8217bb1c30c14e8c84c` | MIT              | `REFERENCE_ONLY` | Product workflow patterns do not replace server Query authority.                             |
+| [Inkeep OpenKnowledge](https://github.com/inkeep/open-knowledge)  | `f2834c237639e2cff603817ed88182b33f83cf91` | GPL-3.0-or-later | `REFERENCE_ONLY` | UI/Graph patterns only; no runtime, Markdown/Yjs, or search engine is imported.              |
 
 No new dependency, lockfile change, migration, or OSS runtime is authorized by
 this mapping.

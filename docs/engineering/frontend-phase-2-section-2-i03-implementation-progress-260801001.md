@@ -42,6 +42,12 @@ Implementation approval: 2026-08-01
   persistence;
 - AnswerRun command semantic digests and outcome resolution bound to the
   target AnswerRun precondition, including client-side target-resource checks;
+- same-identity `ACCEPTED` command replay recovery through the original
+  `commandId` and transaction lock, with explicit `OUTCOME_UNKNOWN` resolution
+  instead of a retry conflict;
+- retry/export/feedback/transition-seed command decoders now validate the
+  identity envelope separately from their operation payload, preserving strict
+  schemas without rejecting valid operation fields;
 - bounded worker concurrency with interval recovery/queue scans that do not
   wait for provider completion, in-flight attempt tracking, and attempt-safe
   AbortController cleanup;
@@ -58,9 +64,19 @@ explicit `PROPOSED` seeds only.
 
 - `npm.cmd run typecheck`
 - `npm.cmd run lint`
-- `npm.cmd run test:unit` (37 files, 201 tests)
-- `npm.cmd run test:contract` (25 files, 201 tests)
+- `npm.cmd run test:unit` (38 files, 203 tests)
+- `npx.cmd vitest run tests/unit/frontend-command-gateway.test.ts
+  tests/unit/frontend-product-command-replay.test.ts --maxWorkers=1
+  --fileParallelism=false` (2 files, 7 tests)
+- `npx.cmd vitest run tests/contract/frontend-ask.contract.test.ts
+  tests/contract/frontend-ask-execution.contract.test.ts --maxWorkers=1
+  --fileParallelism=false` (2 files, 12 tests)
+- `npx.cmd vitest run tests/contract --testTimeout=20000
+  --hookTimeout=20000 --maxWorkers=1 --fileParallelism=false` (25 files, 201
+  tests)
 - `npm.cmd run test:integration` (15 files, 52 tests)
+- `npx.cmd vitest run tests/integration/frontend-ask-product-api.test.ts
+  --maxWorkers=1 --fileParallelism=false` (1 test)
 - `npm.cmd run frontend:test` (10 files, 32 tests)
 - `npm.cmd run frontend:build`
 - `npm.cmd run test:architecture`

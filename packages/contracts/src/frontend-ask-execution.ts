@@ -243,7 +243,14 @@ export const decodeAskAnswerRunRetryRequest = (value: unknown): AskAnswerRunRetr
     ['schemaVersion', 'clientRequestId', 'idempotencyKey', 'mode'],
     'retry',
   );
-  const identity = commandIdentity(input, 'retry');
+  const identity = commandIdentity(
+    {
+      schemaVersion: input.schemaVersion,
+      clientRequestId: input.clientRequestId,
+      idempotencyKey: input.idempotencyKey,
+    },
+    'retry',
+  );
   if (input.mode !== 'SAME_CONTEXT' && input.mode !== 'CURRENT_POLICY')
     fail('retry.mode is unsupported.');
   return { ...identity, mode: input.mode as AskAnswerRunRetryMode };
@@ -255,7 +262,14 @@ export const decodeAskAnswerRunExportRequest = (value: unknown): AskAnswerRunExp
     ['schemaVersion', 'clientRequestId', 'idempotencyKey', 'format'],
     'export',
   );
-  const identity = commandIdentity(input, 'export');
+  const identity = commandIdentity(
+    {
+      schemaVersion: input.schemaVersion,
+      clientRequestId: input.clientRequestId,
+      idempotencyKey: input.idempotencyKey,
+    },
+    'export',
+  );
   if (input.format !== 'MARKDOWN' && input.format !== 'JSON') fail('export.format is unsupported.');
   return { ...identity, format: input.format as AskAnswerExportFormat };
 };
@@ -266,7 +280,14 @@ export const decodeAskAnswerRunFeedbackRequest = (value: unknown): AskAnswerRunF
     ['schemaVersion', 'clientRequestId', 'idempotencyKey', 'kind', 'comment'],
     'feedback',
   );
-  const identity = commandIdentity(input, 'feedback');
+  const identity = commandIdentity(
+    {
+      schemaVersion: input.schemaVersion,
+      clientRequestId: input.clientRequestId,
+      idempotencyKey: input.idempotencyKey,
+    },
+    'feedback',
+  );
   if (!['HELPFUL', 'NOT_HELPFUL', 'REPORT_ISSUE'].includes(input.kind as string)) {
     fail('feedback.kind is unsupported.');
   }
@@ -287,7 +308,14 @@ export const decodeAskAnswerRunTransitionSeedRequest = (
     ['schemaVersion', 'clientRequestId', 'idempotencyKey', 'kind'],
     'transitionSeed',
   );
-  const identity = commandIdentity(input, 'transitionSeed');
+  const identity = commandIdentity(
+    {
+      schemaVersion: input.schemaVersion,
+      clientRequestId: input.clientRequestId,
+      idempotencyKey: input.idempotencyKey,
+    },
+    'transitionSeed',
+  );
   if (!['INTAKE_DRAFT', 'DRAFT_CHANGE_SET', 'USER_DIRECTIVE'].includes(input.kind as string)) {
     fail('transitionSeed.kind is unsupported.');
   }

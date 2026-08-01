@@ -235,13 +235,19 @@ export const registerFrontendProductRoutes = (
           operation: 'replay-answer-command',
         });
       }
-      throw new ShotgunError({
-        code: 'CONFLICT',
-        safeMessage: 'The AnswerRun command is already being processed.',
-        module: 'frontend-product-command',
-        operation: 'replay-answer-command',
-        retryable: true,
-      });
+      if (accepted.outcome.outcomeState === 'OUTCOME_UNKNOWN') {
+        throw new ShotgunError({
+          code: 'OUTCOME_UNKNOWN',
+          safeMessage: 'The AnswerRun command outcome must be resolved before retrying.',
+          module: 'frontend-product-command',
+          operation: 'replay-answer-command',
+          retryable: false,
+        });
+      }
+      // An ACCEPTED replay is a recovery signal. Reuse the original commandId and
+      // continue through the transaction path so the command can finish after an
+      // lost acknowledgement or process interruption. The transactional lock below
+      // serializes concurrent replays and lets the loser resolve the completed result.
     }
     try {
       const execution = options?.askAnswerExecution;

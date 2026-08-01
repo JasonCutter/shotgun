@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/JasonCutter/shotgun/docs/project/schemas/frontend-work-item-registry.schema.json",
+  "title": "Frontend Work Item Registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "governingAdr", "statusAuthority", "items"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "governingAdr": { "type": "string", "minLength": 1 },
+    "statusAuthority": { "type": "string", "minLength": 1 },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "type",
+          "title",
+          "parent",
+          "predecessor",
+          "successor",
+          "status",
+          "governingContract",
+          "completionManifest",
+          "approvedAt",
+          "supersedes",
+          "introducedByDecision",
+          "decisionStatus",
+          "decisionApprovedBy",
+          "decisionApprovedAt",
+          "approvedBy"
+        ],
+        "properties": {
+          "id": { "type": "string", "pattern": "^FE-P[1-5](?:-S[1-9][0-9]*(?:-I[0-9]+)?)?$" },
+          "type": { "enum": ["PHASE", "SECTION", "INCREMENT"] },
+          "title": { "type": "string", "minLength": 1 },
+          "parent": { "type": ["string", "null"] },
+          "predecessor": { "type": ["string", "null"] },
+          "successor": { "type": ["string", "null"] },
+          "status": { "enum": ["NOT_STARTED", "IN_PROGRESS", "BLOCKED", "COMPLETE"] },
+          "governingContract": { "type": "string", "minLength": 1 },
+          "completionManifest": { "type": ["string", "null"] },
+          "approvedAt": { "type": ["string", "null"], "format": "date" },
+          "supersedes": { "type": ["string", "null"] },
+          "introducedByDecision": { "type": "string", "minLength": 1 },
+          "decisionStatus": { "enum": ["MIGRATED", "CANDIDATE", "ACCEPTED"] },
+          "decisionApprovedBy": { "type": ["string", "null"] },
+          "decisionApprovedAt": { "type": ["string", "null"], "format": "date" },
+          "approvedBy": { "type": ["string", "null"] }
+        }
+      }
+    }
+  }
+}

@@ -41,7 +41,11 @@
       "target": "docs/architecture/contracts/snapshots",
       "versioned": true,
       "owner": "architecture-contract-governance",
-      "canonicalInputs": ["accepted ADRs", "approved acceptance criteria", "approved contract revisions"],
+      "canonicalInputs": [
+        "accepted ADRs",
+        "approved acceptance criteria",
+        "approved contract revisions"
+      ],
       "generator": "authoring or snapshot tooling followed by explicit review",
       "regenerationTrigger": "new approved revision at a new path; no silent overwrite",
       "authority": "approved contract after user approval and Git merge"
@@ -52,9 +56,7 @@
       "target": "docs/SHOTGUN_KNOWLEDGE_FLOW_BASELINE_v1.0.html",
       "versioned": true,
       "owner": "knowledge-flow-governance",
-      "canonicalInputs": [
-        "docs/architecture/knowledge-flow/knowledge-flow-baseline-v1.0.json"
-      ],
+      "canonicalInputs": ["docs/architecture/knowledge-flow/knowledge-flow-baseline-v1.0.json"],
       "generator": "scripts/render-knowledge-flow-baseline.mjs",
       "regenerationTrigger": "approved structured-source change",
       "authority": "presentation artifact only; JSON source is Canonical"
@@ -65,7 +67,9 @@
       "target": "docs/architecture/knowledge-flow/shotgun-knowledge-flow-detailed-map.md",
       "versioned": true,
       "owner": "knowledge-flow-governance",
-      "canonicalInputs": ["Google Docs document 1HazG-oAeJ8Sgg_mPmBiWpQqeCeeAoDUuWgqVNJR1DCg revision 9"],
+      "canonicalInputs": [
+        "Google Docs document 1HazG-oAeJ8Sgg_mPmBiWpQqeCeeAoDUuWgqVNJR1DCg revision 9"
+      ],
       "generator": "Google Docs Markdown export and reviewed normalization",
       "regenerationTrigger": "approved Git change; external-only edits are Candidate",
       "authority": "Git target is Canonical after migration merge"
@@ -87,10 +91,69 @@
       "target": "docs/architecture/add/README.md",
       "versioned": true,
       "owner": "knowledge-flow-add-governance",
-      "canonicalInputs": ["approved Notion Phase 1-6 ADD hierarchy", "export commit f0d7f7a65a11f28dc9e3bc3a6e47a084b46541eb"],
+      "canonicalInputs": [
+        "approved Notion Phase 1-6 ADD hierarchy",
+        "export commit f0d7f7a65a11f28dc9e3bc3a6e47a084b46541eb"
+      ],
       "generator": "reviewed Markdown export and authority normalization",
       "regenerationTrigger": "approved Git change",
       "authority": "Git ADD hierarchy is Canonical"
+    },
+    {
+      "id": "FRONTEND-STATUS-PROJECTION-ARCHITECTURE-INDEX",
+      "class": "GENERATED_REPRODUCIBLE",
+      "target": "docs/architecture/frontend/README.md",
+      "versioned": true,
+      "owner": "frontend-work-item-governance",
+      "canonicalInputs": [
+        "docs/project/frontend-work-items.json",
+        "docs/project/completions/FE-P2-S2.json"
+      ],
+      "generator": "npm run docs:frontend-projections:write (bounded FRONTEND-WORK-ITEM-STATUS block only)",
+      "regenerationTrigger": "approved Frontend Work Item or completion-manifest status change",
+      "authority": "bounded status projection only; surrounding architecture text remains handwritten"
+    },
+    {
+      "id": "FRONTEND-STATUS-PROJECTION-PHASE-2",
+      "class": "GENERATED_REPRODUCIBLE",
+      "target": "docs/architecture/frontend/phase-2-knowledge-input-question.md",
+      "versioned": true,
+      "owner": "frontend-work-item-governance",
+      "canonicalInputs": [
+        "docs/project/frontend-work-items.json",
+        "docs/project/completions/FE-P2-S2.json"
+      ],
+      "generator": "npm run docs:frontend-projections:write (bounded FRONTEND-WORK-ITEM-STATUS block only)",
+      "regenerationTrigger": "approved Frontend Work Item or completion-manifest status change",
+      "authority": "bounded status projection only; surrounding contract text remains handwritten"
+    },
+    {
+      "id": "FRONTEND-STATUS-PROJECTION-IMPLEMENTATION-PLAN",
+      "class": "GENERATED_REPRODUCIBLE",
+      "target": "docs/implementation/frontend-phase-1-5-plan-v1.0.md",
+      "versioned": true,
+      "owner": "frontend-work-item-governance",
+      "canonicalInputs": [
+        "docs/project/frontend-work-items.json",
+        "docs/project/completions/FE-P2-S2.json"
+      ],
+      "generator": "npm run docs:frontend-projections:write (bounded FRONTEND-WORK-ITEM-STATUS block only)",
+      "regenerationTrigger": "approved Frontend Work Item or completion-manifest status change",
+      "authority": "bounded status projection only; surrounding plan remains handwritten"
+    },
+    {
+      "id": "FRONTEND-STATUS-PROJECTION-ADD-SUMMARY",
+      "class": "GENERATED_REPRODUCIBLE",
+      "target": "docs/architecture/add/README.md",
+      "versioned": true,
+      "owner": "frontend-work-item-governance",
+      "canonicalInputs": [
+        "docs/project/frontend-work-items.json",
+        "docs/project/completions/FE-P2-S2.json"
+      ],
+      "generator": "npm run docs:frontend-projections:write (bounded FRONTEND-WORK-ITEM-STATUS block only)",
+      "regenerationTrigger": "approved Frontend Work Item or completion-manifest status change",
+      "authority": "bounded status projection only; historical ADD and correction text remain handwritten"
     }
   ]
 }

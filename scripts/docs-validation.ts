@@ -1,6 +1,8 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 
+import { runFrontendGovernanceCli } from './frontend-work-item-governance.js';
+
 const root = process.cwd();
 const requestedMode = process.argv[2] ?? 'all';
 const supportedModes = new Set(['all', 'links', 'adr', 'canonical', 'drift']);
@@ -114,14 +116,19 @@ function validateAdrRegistry(): void {
   for (let index = 0; index < sortedRules.length; index += 1) {
     const rule = sortedRules[index];
     if (!rule) continue;
-    if (rule.start > rule.end) errors.push(`ADR owner rule has an invalid range: ${rule.start}-${rule.end}`);
+    if (rule.start > rule.end)
+      errors.push(`ADR owner rule has an invalid range: ${rule.start}-${rule.end}`);
     const previous = sortedRules[index - 1];
     if (previous && rule.start <= previous.end) {
-      errors.push(`ADR owner ranges overlap: ${previous.start}-${previous.end} and ${rule.start}-${rule.end}`);
+      errors.push(
+        `ADR owner ranges overlap: ${previous.start}-${previous.end} and ${rule.start}-${rule.end}`,
+      );
     }
 
     if (rule.kind === 'INDIVIDUAL_FILES') {
-      const files = walk(rule.path).filter((file) => /^ADR-\d{3}-.+\.md$/i.test(path.basename(file)));
+      const files = walk(rule.path).filter((file) =>
+        /^ADR-\d{3}-.+\.md$/i.test(path.basename(file)),
+      );
       for (const file of files) {
         const match = /^ADR-(\d{3})-/i.exec(path.basename(file));
         if (!match) continue;
@@ -134,7 +141,9 @@ function validateAdrRegistry(): void {
       for (const match of text.matchAll(headingPattern)) {
         const id = Number(match[1]);
         if (id < rule.start || id > rule.end) {
-          errors.push(`ADR-${String(id).padStart(3, '0')} is outside registered range for ${rule.path}`);
+          errors.push(
+            `ADR-${String(id).padStart(3, '0')} is outside registered range for ${rule.path}`,
+          );
           continue;
         }
         addOwner(id, rule.path);
@@ -159,7 +168,9 @@ function validateAdrRegistry(): void {
     }
   }
 
-  notes.push(`ADR identifiers evaluated: ${registry.expectedRange.start}-${registry.expectedRange.end}`);
+  notes.push(
+    `ADR identifiers evaluated: ${registry.expectedRange.start}-${registry.expectedRange.end}`,
+  );
 }
 
 type EvidenceRegistry = {
@@ -185,7 +196,10 @@ function validateCanonicalRecords(): void {
   if (!canonical.includes('GitHub repository `JasonCutter/shotgun`, branch `main`')) {
     errors.push('docs/CANONICAL.md does not declare GitHub main as the Canonical authority');
   }
-  if (!manifest.includes('status: active') || !manifest.includes('canonical_authority: github-main')) {
+  if (
+    !manifest.includes('status: active') ||
+    !manifest.includes('canonical_authority: github-main')
+  ) {
     errors.push('docs/canonical-manifest.yaml does not record an active GitHub authority');
   }
 
@@ -198,9 +212,12 @@ function validateCanonicalRecords(): void {
     'docs/engineering/evidence-registry.json',
     'docs/governance/generated-artifact-ownership.md',
     'docs/generated-artifacts.json',
+    'docs/project/frontend-work-items.json',
+    'docs/project/schemas/frontend-completion-manifest.schema.json',
   ];
   for (const requiredPath of requiredCanonicalPaths) {
-    if (!existsSync(absolute(requiredPath))) errors.push(`Missing Canonical governance path: ${requiredPath}`);
+    if (!existsSync(absolute(requiredPath)))
+      errors.push(`Missing Canonical governance path: ${requiredPath}`);
   }
 
   const evidence = readJson<EvidenceRegistry>('docs/engineering/evidence-registry.json');
@@ -209,7 +226,8 @@ function validateCanonicalRecords(): void {
       errors.push(`Invalid evidence registry entry: ${JSON.stringify(record)}`);
       continue;
     }
-    if (!existsSync(absolute(record.path))) errors.push(`Evidence registry path does not exist: ${record.path}`);
+    if (!existsSync(absolute(record.path)))
+      errors.push(`Evidence registry path does not exist: ${record.path}`);
   }
 
   const generated = readJson<GeneratedRegistry>('docs/generated-artifacts.json');
@@ -235,13 +253,15 @@ function validateDrift(): void {
     'export Frontend and Human Interaction Architecture hierarchy',
   ];
   for (const phrase of completedPhrases) {
-    if (manifest.includes(`- ${phrase}`)) errors.push(`Completed migration remains unresolved in manifest: ${phrase}`);
+    if (manifest.includes(`- ${phrase}`))
+      errors.push(`Completed migration remains unresolved in manifest: ${phrase}`);
   }
 
   const targetPattern = /^\s*target_path:\s*([^\n#]+)$/gm;
   for (const match of manifest.matchAll(targetPattern)) {
     const target = match[1]?.trim();
-    if (target && !existsSync(absolute(target))) errors.push(`Manifest target_path does not exist: ${target}`);
+    if (target && !existsSync(absolute(target)))
+      errors.push(`Manifest target_path does not exist: ${target}`);
   }
 
   const addRoot = readText('docs/architecture/add/README.md');
@@ -252,10 +272,24 @@ function validateDrift(): void {
   notes.push('Migration backlog and manifest target drift checked');
 }
 
+function validateFrontendGovernance(): void {
+  for (const mode of ['work-items', 'completion-invariants', 'projections']) {
+    try {
+      runFrontendGovernanceCli([mode], root);
+    } catch (error) {
+      errors.push(
+        `Frontend governance mode ${mode} failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+  notes.push('Frontend Work Item, completion invariant and projection gates checked');
+}
+
 if (requestedMode === 'all' || requestedMode === 'links') validateLinks();
 if (requestedMode === 'all' || requestedMode === 'adr') validateAdrRegistry();
 if (requestedMode === 'all' || requestedMode === 'canonical') validateCanonicalRecords();
 if (requestedMode === 'all' || requestedMode === 'drift') validateDrift();
+if (requestedMode === 'all') validateFrontendGovernance();
 
 for (const note of notes) console.log(`PASS: ${note}`);
 

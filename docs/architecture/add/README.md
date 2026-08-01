@@ -15,14 +15,14 @@ Project Shotgun의 승인된 Phase 1–6 Architecture Design Document(ADD)를 �
 
 ## 완료 상태와 문서 범위
 
-| Phase | 설계 상태 | 범위 | 문서 |
-| --- | --- | --- | --- |
-| Phase 1 | 완료 | Step 1–3, Section 1.1–3.8 | [Phase 1](phase-01-input-and-original-preservation/README.md) |
-| Phase 2 | 완료 | Step 4–7 | [Phase 2](phase-02-transformation-and-grounding/README.md) |
-| Phase 3 | 완료 | Step 8–9 | [Phase 3](phase-03-knowledge-candidate-generation/README.md) |
-| Phase 4 | 완료 | Step 10–14 | [Phase 4](phase-04-comparison-change-approval/README.md) |
-| Phase 5 | 완료 | Step 15–17 | [Phase 5](phase-05-canonical-knowledge-and-discovery/README.md) |
-| Phase 6 | 완료 | Step 18–22, Section 43개 | [Phase 6](phase-06-utilization-results-feedback/README.md) |
+| Phase   | 설계 상태 | 범위                      | 문서                                                            |
+| ------- | --------- | ------------------------- | --------------------------------------------------------------- |
+| Phase 1 | 완료      | Step 1–3, Section 1.1–3.8 | [Phase 1](phase-01-input-and-original-preservation/README.md)   |
+| Phase 2 | 완료      | Step 4–7                  | [Phase 2](phase-02-transformation-and-grounding/README.md)      |
+| Phase 3 | 완료      | Step 8–9                  | [Phase 3](phase-03-knowledge-candidate-generation/README.md)    |
+| Phase 4 | 완료      | Step 10–14                | [Phase 4](phase-04-comparison-change-approval/README.md)        |
+| Phase 5 | 완료      | Step 15–17                | [Phase 5](phase-05-canonical-knowledge-and-discovery/README.md) |
+| Phase 6 | 완료      | Step 18–22, Section 43개  | [Phase 6](phase-06-utilization-results-feedback/README.md)      |
 
 `완료`는 승인된 Architecture 설계 완료를 뜻한다. 코드 구현·제품 검증·배포·운영 완료는 각 Engineering Evidence와 Completion Record에서 별도로 판정한다.
 
@@ -43,68 +43,36 @@ Project Shotgun의 승인된 Phase 1–6 Architecture Design Document(ADD)를 �
 
 Phase 2부터 Phase 6까지의 과거 승인 ADR-018–ADR-075는 Phase별 ADR 문서에 보존한다. 저장소 전역 ADR 번호·중복·Supersession의 현재 상태는 전역 ADR Registry가 별도로 관리한다.
 
-## Frontend Phase 2 Section 2 완료 기록
+## Frontend Product 구현 상태
 
-- 완료일: `2026-08-01`
-- 상태: **COMPLETE**
-- 구현 PR: `#48` — Frontend Phase 2 Section 2: Ask Write, Persistence and Outcome Recovery
-- 검증 Branch Head: `433535a79db9e18f42c1f628640627aae33ba3ba`
-- 검증 CI Run: `30660197226` — Quality, Frontend, Required Gates **SUCCESS**
-- Merge Commit: `9a4fadda51ff686cf762217108fe75ffa5d9a311`
-- governing ADR: [`ADR-123`](../adr/ADR-123-ask-command-conversation-persistence-and-outcome-recovery-boundary.md)
-- Frozen Contract: [`frontend-phase-2-section-2-slices-4-5-frozen-implementation-contract-260801001.md`](../contracts/snapshots/frontend-phase-2-section-2/frontend-phase-2-section-2-slices-4-5-frozen-implementation-contract-260801001.md)
-- Verification Record: [`frontend-phase-2-section-2-slices-4-5-verification-and-completion-record-260801001.md`](../../implementation/frontend-phase-2-section-2-slices-4-5-verification-and-completion-record-260801001.md)
+<!-- FRONTEND-WORK-ITEM-STATUS:START -->
 
-### 확정된 결정
+> 이 블록은 `docs/project/frontend-work-items.json`과 Section Completion Manifest에서 생성됩니다. 블록 내부를 직접 수정하지 않습니다.
 
-1. Submit Question은 보호된 Product API와 기존 Frontend Command Ledger를 통하는 Server-authoritative 명령이다.
-2. `AskCommandCoordinator`, Command Gateway, Conversation Repository와 Read Projection은 서로 분리된 책임이다.
-3. Transaction A에서 명령을 `ACCEPTED`로 영속화하고, Transaction B에서 Conversation aggregate와 Ledger `COMPLETED`를 동일 PostgreSQL transaction으로 Commit한다.
-4. 새 질문은 Server Active Project에 결속하고, Follow-up은 Conversation Resource Project에 결속한다. Follow-up이 Active Project를 변경하지 않는다.
-5. Conversation·Branch·Turn·AnswerRun은 전역 고유 opaque ID와 독립적인 durable revision을 가진다.
-6. Follow-up은 expected Conversation·Branch revision을 요구하며, row lock·optimistic predicate·Branch ordinal uniqueness로 lost update를 차단한다.
-7. 의미 payload 전체와 순서가 보존된 SourceSelections·Evidence IDs를 semantic digest에 포함한다.
-8. Outcome 복구는 별도 Ask outcome table이 아니라 기존 Ledger와 `producedResources`를 사용하고 Principal·target Project 범위로 제한한다.
-9. Source·SourceVersion·Evidence의 존재, 소유 관계, Project 범위와 sensitivity를 aggregate mutation 전에 검증한다.
-10. Production runtime은 PostgreSQL Ask Write·Query·Validation adapter를 사용하며 In-memory adapter는 테스트·명시적 로컬 fixture에 한정한다.
-11. Browser는 `OUTCOME_UNKNOWN`에서 원래 `clientRequestId`, idempotency key와 Draft를 보존하고 mutation을 자동 재제출하지 않는다.
-12. 모델 실행이 구성되지 않은 Slices 4–5 초기 AnswerRun은 `ACTION_REQUIRED / MODEL_EXECUTION_NOT_CONFIGURED`이며 생성된 답변 성공으로 표시하지 않는다.
-13. Ask 결과는 Canonical 지식 또는 Transition Seed를 자동 생성·변경하지 않는다.
+| Work Item                                                      | Status                |
+| -------------------------------------------------------------- | --------------------- |
+| FE-P2 — Knowledge Input and Question                           | `IN_PROGRESS`         |
+| FE-P2-S2 — Ask and Conversations Workspace                     | `IN_PROGRESS`         |
+| FE-P2-S2-I01 — Read Foundation                                 | `COMPLETE` / VERIFIED |
+| FE-P2-S2-I02 — Command and Persistence                         | `COMPLETE` / VERIFIED |
+| FE-P2-S2-I03 — Answer Execution and Remaining Section Contract | `NOT_STARTED`         |
 
-### 미결사항
+- 미충족 필수 기준: `answerExecution, failureAndRetry, finalSectionVerification`
+- Next valid Product Section: `FE-P3-S1 — Knowledge Workspace`
 
-Section 2 Frozen Contract 범위 내 Blocker는 없다.
+<!-- FRONTEND-WORK-ITEM-STATUS:END -->
 
-다음 항목은 의도적으로 다음 Section 또는 별도 승인 범위에 남긴다.
+### 2026-08-01 상태 정정
 
-- Ask 외부 AI provider와 실제 모델 실행
-- Streaming과 partial-event recovery
-- Cancel
-- Domain Retry
-- Export와 Feedback
-- `IntakeDraftSeed`, `DraftChangeSetSeed`, `UserDirectiveProposalSeed`
-- Ask 결과의 명시적 Canonical 전환 UI와 Workflow
+PR #48의 Ask Write·Persistence·Outcome Recovery 구현과 검증은 유효한 Increment 증거로 보존한다. 이후 ADD에 기록된 parent Section 완료 해석은 원 Section Contract의 미구현 필수 범위를 반영하지 못했으므로 현재 상태 권위에서 대체한다.
 
-### 제외한 대안
+- 정정 기록: [`frontend-phase-2-completion-status-reconciliation-260801001.md`](../../engineering/frontend-phase-2-completion-status-reconciliation-260801001.md)
+- Accepted governance ADR: [`ADR-124`](../adr/ADR-124-frontend-work-item-identity-scope-amendment-and-completion-authority-boundary.md)
+- Work Item Registry: [`frontend-work-items.json`](../../project/frontend-work-items.json)
+- Section Completion Manifest: [`FE-P2-S2.json`](../../project/completions/FE-P2-S2.json)
+- 보존된 PR #48 검증 기록: [`frontend-phase-2-section-2-slices-4-5-verification-and-completion-record-260801001.md`](../../implementation/frontend-phase-2-section-2-slices-4-5-verification-and-completion-record-260801001.md)
 
-- Read Projection 내부의 in-memory command·outcome·mutation 소유
-- 기존 Frontend Command Ledger와 병렬인 Ask 전용 command ledger 또는 `submission_outcomes` table
-- aggregate transaction 밖에서 Ledger를 `COMPLETED`로 변경하는 방식
-- Follow-up revision precondition 생략
-- Production에서 array length로 Turn ordinal을 할당하는 방식
-- SourceVersion·Evidence ID의 문자열 형태만 검사하는 방식
-- uncertain response 후 새 idempotency key를 자동 생성하는 방식
-- 모델 실행 없이 `QUEUED`를 실제 진행 상태처럼 노출하는 방식
-- Ask 결과를 자동으로 Canonical에 반영하는 방식
-
-### 영향 범위
-
-- Product API: Submit Question과 outcome resolution이 durable protected operation으로 전환됨.
-- Command infrastructure: 기존 Ledger에 transaction-bound completion 경계가 추가됨.
-- Database: managed `frontend_ask` aggregate schema와 reset·verify lifecycle이 활성화됨.
-- Browser: unresolved command recovery가 명시적이고 fail-closed로 동작함.
-- Canonical knowledge: 자동 변경 없음.
-- Frontend Phase 2 Section 3: 시작하지 않음. Knowledge Flow에 따른 별도 Section 개시와 승인이 필요함.
+이 정정은 Product API, Command infrastructure, Database, Browser, Canonical Knowledge 동작을 변경하지 않는다. 남은 Section 범위의 제거·연기·분할은 별도 승인된 Scope Amendment가 필요하다.
 
 ## 이관 출처
 

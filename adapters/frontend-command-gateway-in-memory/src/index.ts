@@ -12,6 +12,7 @@ import {
   type CompleteFrontendCommandInput,
   type FrontendCommandGatewayPort,
   type RejectFrontendCommandInput,
+  type ResolveFrontendCommandOutcomeUnknownInput,
 } from '../../../modules/frontend-command-gateway/src/index.js';
 
 type LedgerRecord = {
@@ -146,6 +147,28 @@ export class InMemoryFrontendCommandGateway implements FrontendCommandGatewayPor
         recovery: descriptor.recovery,
         retryable: descriptor.retryability === 'SAFE',
         ...(input.correlationId === undefined ? {} : { correlationId: input.correlationId }),
+      },
+      completedAt: input.completedAt,
+      lastUpdatedAt: input.completedAt,
+    };
+    this.replaceOutcome(existing, outcome);
+    return outcome;
+  }
+
+  async markOutcomeUnknown(
+    input: ResolveFrontendCommandOutcomeUnknownInput,
+  ): Promise<AnyFrontendCommandOutcomeView> {
+    const existing = this.requireRecord(input.commandId);
+    if (existing.outcome.outcomeState !== 'ACCEPTED') return existing.outcome;
+    const outcome: AnyFrontendCommandOutcomeView = {
+      ...existing.outcome,
+      commandRevision: String(Number(existing.outcome.commandRevision) + 1),
+      outcomeState: 'OUTCOME_UNKNOWN',
+      completionDisposition: 'PARTIAL',
+      rejection: {
+        code: 'OUTCOME_UNKNOWN',
+        message: input.message,
+        retryable: false,
       },
       completedAt: input.completedAt,
       lastUpdatedAt: input.completedAt,

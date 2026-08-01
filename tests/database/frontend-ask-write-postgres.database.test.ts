@@ -225,6 +225,7 @@ describe('PostgreSQL Ask write and recovery boundary', () => {
       executionRepository,
       new StructuredAskAnswerProviderAdapter(new FakeAIProviderAdapter()),
     );
+    const stopExecutionWorker = await executionService.startWorker(10);
     const executionCoordinator = new AskCommandCoordinator(
       restartedRuntime.gateway,
       restartedRuntime.repository,
@@ -252,6 +253,7 @@ describe('PostgreSQL Ask write and recovery boundary', () => {
       });
     }
     expect(executed.state).toBe('SUCCEEDED');
+    stopExecutionWorker();
     const events = await executionService.events(
       executionScope,
       executionSubmission.answerRun.answerRunId,

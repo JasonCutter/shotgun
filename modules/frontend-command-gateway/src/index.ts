@@ -38,6 +38,12 @@ export type RejectFrontendCommandInput = {
   readonly completedAt: string;
 };
 
+export type ResolveFrontendCommandOutcomeUnknownInput = {
+  readonly commandId: string;
+  readonly message: string;
+  readonly completedAt: string;
+};
+
 export type FrontendCommandGatewayPort = {
   accept(input: AcceptFrontendCommandInput): Promise<AcceptFrontendCommandResult>;
   lockAcceptedForExecution(
@@ -50,6 +56,9 @@ export type FrontendCommandGatewayPort = {
   ): Promise<AnyFrontendCommandOutcomeView>;
   complete(input: CompleteFrontendCommandInput): Promise<AnyFrontendCommandOutcomeView>;
   reject(input: RejectFrontendCommandInput): Promise<AnyFrontendCommandOutcomeView>;
+  markOutcomeUnknown(
+    input: ResolveFrontendCommandOutcomeUnknownInput,
+  ): Promise<AnyFrontendCommandOutcomeView>;
   findByClientRequestId(
     principalId: string,
     clientRequestId: string,

@@ -84,4 +84,24 @@ describe('InMemoryFrontendCommandGateway', () => {
       commandRevision: '2',
     });
   });
+
+  it('resolves an accepted command to outcome unknown without rejecting it', async () => {
+    const gateway = new InMemoryFrontendCommandGateway();
+    await gateway.accept(acceptedInput('digest-1'));
+
+    const outcome = await gateway.markOutcomeUnknown({
+      commandId: 'server-command-1',
+      message: 'Commit acknowledgement was lost.',
+      completedAt: '2026-07-26T00:00:03.000Z',
+    });
+
+    expect(outcome).toMatchObject({
+      outcomeState: 'OUTCOME_UNKNOWN',
+      completionDisposition: 'PARTIAL',
+      commandRevision: '2',
+    });
+    expect((await gateway.findByClientRequestId('principal-1', 'request-1'))?.outcomeState).toBe(
+      'OUTCOME_UNKNOWN',
+    );
+  });
 });

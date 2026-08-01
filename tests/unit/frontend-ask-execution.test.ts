@@ -87,12 +87,26 @@ describe('AskAnswerExecutionService', () => {
     expect(result.statements[0]?.citations[0]?.evidenceId).toBe('evidence-1');
     expect(result.provider?.model).toBe('test-model');
     expect(result.usage?.totalTokens).toBe(15);
-    expect(events.map((event) => event.kind)).toEqual(['STATE', 'STATE', 'PARTIAL', 'COMPLETED']);
+    expect(events.map((event) => event.kind)).toEqual([
+      'STATE',
+      'STATE',
+      'STATE',
+      'PARTIAL',
+      'COMPLETED',
+    ]);
   });
 
   it('fails closed for a citation outside the selected Evidence', async () => {
     const repository = new InMemoryAskAnswerExecutionRepository();
-    repository.register(snapshot(), []);
+    repository.register(snapshot(), [
+      {
+        evidenceId: 'evidence-1',
+        sourceId: 'source-1',
+        sourceVersionId: 'version-1',
+        exactQuote: 'The source quote.',
+        sensitivity: 'internal',
+      },
+    ]);
     const service = new AskAnswerExecutionService(
       repository,
       provider(async () => ({
@@ -109,9 +123,41 @@ describe('AskAnswerExecutionService', () => {
     expect(result.capabilities).toContain('RETRY_SAME_CONTEXT');
   });
 
-  it('keeps outcome unknown explicit and requires a user retry', async () => {
+  it('does not invoke the provider when authoritative context has no supported answer', async () => {
     const repository = new InMemoryAskAnswerExecutionRepository();
     repository.register(snapshot());
+    let calls = 0;
+    const service = new AskAnswerExecutionService(
+      repository,
+      provider(async () => {
+        calls += 1;
+        return {
+          answer: 'This provider call must not happen.',
+          citations: [],
+          provider: { provider: 'test-provider', model: 'test-model' },
+        };
+      }),
+    );
+
+    const result = await service.execute(scope, 'run-1');
+
+    expect(result.state).toBe('SUCCEEDED');
+    expect(result.statements[0]?.text).toContain('No supported answer');
+    expect(result.provider?.provider).toBe('shotgun-context-resolver');
+    expect(calls).toBe(0);
+  });
+
+  it('keeps outcome unknown explicit and requires a user retry', async () => {
+    const repository = new InMemoryAskAnswerExecutionRepository();
+    repository.register(snapshot(), [
+      {
+        evidenceId: 'evidence-1',
+        sourceId: 'source-1',
+        sourceVersionId: 'version-1',
+        exactQuote: 'The source quote.',
+        sensitivity: 'internal',
+      },
+    ]);
     let calls = 0;
     const service = new AskAnswerExecutionService(
       repository,
@@ -138,7 +184,10 @@ describe('AskAnswerExecutionService', () => {
     expect(calls).toBe(1);
 
     const retried = await service.retry(scope, 'run-1', 'SAME_CONTEXT');
-    expect(retried.state).toBe('SUCCEEDED');
+    expect(retried.state).toBe('RUNNING');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const completed = await repository.getRunContext(scope, 'run-1');
+    expect(completed?.snapshot.state).toBe('SUCCEEDED');
     expect(calls).toBe(2);
   });
 

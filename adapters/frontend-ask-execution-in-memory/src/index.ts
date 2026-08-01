@@ -19,7 +19,10 @@ import {
   type AskTransitionSeedKind,
   type AskTransitionSeedPayload,
   type AskTransitionSeedView,
+  sha256Text,
+  stableJson,
 } from '../../../packages/contracts/src/index.js';
+import { highestSensitivity } from '../../../modules/frontend-ask-execution/src/index.js';
 import type {
   AskAnswerExecutionRepositoryPort,
   AskClaimedExecution,
@@ -27,6 +30,7 @@ import type {
   AskExecutionEvidence,
   AskExecutionRunContext,
   AskExecutionScope,
+  AskExecutionTransactionPort,
 } from '../../../modules/frontend-ask-execution/src/index.js';
 
 type RecordValue = {
@@ -34,6 +38,10 @@ type RecordValue = {
   evidence: readonly AskExecutionEvidence[];
   events: AskAnswerRunEventView[];
   attempts: AskExecutionAttempt[];
+  contexts: Map<string, AskExecutionRunContext>;
+  exports: Map<string, AskAnswerRunExportView>;
+  feedback: Map<string, AskAnswerRunFeedbackView>;
+  transitionSeeds: Map<string, AskTransitionSeedView>;
   cancelRequested: boolean;
 };
 
@@ -73,6 +81,10 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
       evidence,
       events,
       attempts: [],
+      contexts: new Map(),
+      exports: new Map(),
+      feedback: new Map(),
+      transitionSeeds: new Map(),
       cancelRequested: false,
     });
   }
@@ -82,7 +94,7 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
     answerRunId: string,
   ): Promise<AskExecutionRunContext | undefined> {
     const record = this.authorized(scope, answerRunId, false);
-    return record ? { snapshot: record.snapshot, evidence: record.evidence } : undefined;
+    return record ? this.contextFor(record, record.evidence) : undefined;
   }
 
   async claimInitial(
@@ -91,12 +103,16 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
   ): Promise<AskClaimedExecution | undefined> {
     const record = this.authorized(scope, answerRunId);
     if (record.snapshot.state !== 'QUEUED') return undefined;
+    const context = this.contextFor(record, record.evidence);
     const attempt: AskExecutionAttempt = {
       attemptId: `attempt-${randomUUID()}`,
       attemptNumber: record.attempts.length + 1,
       kind: 'INITIAL',
       accessRevision: record.snapshot.accessRevision,
       policyContextRevision: record.snapshot.policyContextRevision,
+      resolvedContextDigest: context.resolvedContextDigest,
+      queryPlanRevision: context.queryPlanRevision,
+      resolvedSensitivity: highestSensitivity(context.evidence),
     };
     record.attempts.push(attempt);
     record.cancelRequested = false;
@@ -109,7 +125,9 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
       failure: undefined,
       partialText: undefined,
     });
-    return { attempt, context: { snapshot: record.snapshot, evidence: record.evidence } };
+    const claimed = { attempt, context: { ...context, snapshot: record.snapshot } };
+    record.contexts.set(attempt.attemptId, claimed.context);
+    return claimed;
   }
 
   async retryAndClaim(input: {
@@ -124,6 +142,11 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
         'Only a failed, cancelled, or outcome-unknown AnswerRun can retry.',
       );
     }
+    const previous = record.attempts.at(-1);
+    const context =
+      input.mode === 'SAME_CONTEXT' && previous
+        ? (record.contexts.get(previous.attemptId) ?? this.contextFor(record, record.evidence))
+        : this.contextFor(record, record.evidence);
     const attempt: AskExecutionAttempt = {
       attemptId: `attempt-${randomUUID()}`,
       attemptNumber: record.attempts.length + 1,
@@ -134,6 +157,9 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
         input.mode === 'SAME_CONTEXT'
           ? record.snapshot.policyContextRevision
           : input.scope.policyContextRevision,
+      resolvedContextDigest: context.resolvedContextDigest,
+      queryPlanRevision: context.queryPlanRevision,
+      resolvedSensitivity: highestSensitivity(context.evidence),
     };
     record.attempts.push(attempt);
     record.cancelRequested = false;
@@ -147,7 +173,9 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
       failure: undefined,
       partialText: undefined,
     });
-    return { attempt, context: { snapshot: record.snapshot, evidence: record.evidence } };
+    const claimed = { attempt, context: { ...context, snapshot: record.snapshot } };
+    record.contexts.set(attempt.attemptId, claimed.context);
+    return claimed;
   }
 
   async requestCancel(
@@ -191,15 +219,24 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
   async appendPartial(input: {
     readonly scope: AskExecutionScope;
     readonly answerRunId: string;
+    readonly attemptId: string;
     readonly attemptNumber: number;
     readonly partialText: string;
   }): Promise<void> {
     const record = this.authorized(input.scope, input.answerRunId);
     if (record.snapshot.attemptNumber !== input.attemptNumber || record.cancelRequested) return;
+    if (record.snapshot.state === 'RUNNING') {
+      this.update(record, {
+        state: 'STREAMING',
+        eventRevision: (record.snapshot.eventRevision ?? 0) + 1,
+        attemptId: input.attemptId,
+      });
+    }
     this.update(record, {
       state: 'PARTIAL',
       partialText: input.partialText,
       eventRevision: (record.snapshot.eventRevision ?? 0) + 1,
+      attemptId: input.attemptId,
     });
   }
 
@@ -210,11 +247,26 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
     readonly answer: string;
     readonly citations: readonly AskCitationView[];
     readonly provider: AskAnswerRunProvider;
+    readonly providerResponseId?: string;
+    readonly dataPolicyVersion?: string;
+    readonly resolvedContextDigest?: string;
+    readonly queryPlanRevision?: string;
     readonly usage?: AskAnswerRunUsage;
   }): Promise<AskAnswerRunSnapshot> {
     const record = this.authorized(input.scope, input.answerRunId);
     if (record.snapshot.attemptNumber !== input.attemptNumber || record.cancelRequested) {
       return record.snapshot;
+    }
+    const attempt = record.attempts.at(-1);
+    if (attempt) {
+      Object.assign(attempt, {
+        ...(input.providerResponseId === undefined
+          ? {}
+          : { providerResponseId: input.providerResponseId }),
+        ...(input.dataPolicyVersion === undefined
+          ? {}
+          : { dataPolicyVersion: input.dataPolicyVersion }),
+      });
     }
     this.update(record, {
       state: 'SUCCEEDED',
@@ -235,6 +287,7 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
       usage: input.usage,
       partialText: undefined,
       eventRevision: (record.snapshot.eventRevision ?? 0) + 1,
+      attemptId: record.attempts.at(-1)?.attemptId,
     });
     return record.snapshot;
   }
@@ -283,7 +336,10 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
     readonly requestId: string;
   }): Promise<AskAnswerRunExportView> {
     const record = this.authorized(input.scope, input.answerRunId);
-    return {
+    const key = `${input.scope.principalId}:${input.requestId}`;
+    const existing = record.exports.get(key);
+    if (existing) return existing;
+    const result = {
       schemaVersion: ASK_SCHEMA_VERSION,
       exportId: `export-${randomUUID()}`,
       answerRunId: record.snapshot.answerRunId,
@@ -292,6 +348,8 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
       content: input.content,
       createdAt: now(),
     };
+    record.exports.set(key, result);
+    return result;
   }
 
   async saveFeedback(input: {
@@ -302,7 +360,10 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
     readonly requestId: string;
   }): Promise<AskAnswerRunFeedbackView> {
     const record = this.authorized(input.scope, input.answerRunId);
-    return {
+    const key = `${input.scope.principalId}:${input.requestId}`;
+    const existing = record.feedback.get(key);
+    if (existing) return existing;
+    const result = {
       schemaVersion: ASK_SCHEMA_VERSION,
       feedbackId: `feedback-${randomUUID()}`,
       answerRunId: record.snapshot.answerRunId,
@@ -311,6 +372,8 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
       ...(input.comment === undefined ? {} : { comment: input.comment }),
       createdAt: now(),
     };
+    record.feedback.set(key, result);
+    return result;
   }
 
   async saveTransitionSeed(input: {
@@ -321,16 +384,141 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
     readonly requestId: string;
   }): Promise<AskTransitionSeedView> {
     const record = this.authorized(input.scope, input.answerRunId);
-    return {
+    const key = `${input.scope.principalId}:${input.kind}:${input.requestId}`;
+    const existing = record.transitionSeeds.get(key);
+    if (existing) return existing;
+    const result = {
       schemaVersion: ASK_SCHEMA_VERSION,
       seedId: `seed-${randomUUID()}`,
       answerRunId: record.snapshot.answerRunId,
       projectId: record.snapshot.projectId,
       kind: input.kind,
-      state: 'PROPOSED',
+      state: 'PROPOSED' as const,
       payload: input.payload,
       createdAt: now(),
     };
+    record.transitionSeeds.set(key, result);
+    return result;
+  }
+
+  async findExportByRequestId(input: {
+    readonly scope: AskExecutionScope;
+    readonly answerRunId: string;
+    readonly requestId: string;
+  }): Promise<AskAnswerRunExportView | undefined> {
+    return this.authorized(input.scope, input.answerRunId).exports.get(
+      `${input.scope.principalId}:${input.requestId}`,
+    );
+  }
+
+  async findFeedbackByRequestId(input: {
+    readonly scope: AskExecutionScope;
+    readonly answerRunId: string;
+    readonly requestId: string;
+  }): Promise<AskAnswerRunFeedbackView | undefined> {
+    return this.authorized(input.scope, input.answerRunId).feedback.get(
+      `${input.scope.principalId}:${input.requestId}`,
+    );
+  }
+
+  async findTransitionSeedByRequestId(input: {
+    readonly scope: AskExecutionScope;
+    readonly answerRunId: string;
+    readonly kind: AskTransitionSeedKind;
+    readonly requestId: string;
+  }): Promise<AskTransitionSeedView | undefined> {
+    return this.authorized(input.scope, input.answerRunId).transitionSeeds.get(
+      `${input.scope.principalId}:${input.kind}:${input.requestId}`,
+    );
+  }
+
+  async setAttemptAudit(input: {
+    readonly scope: AskExecutionScope;
+    readonly answerRunId: string;
+    readonly attemptId: string;
+    readonly dataPolicyVersion: string;
+  }): Promise<void> {
+    const record = this.authorized(input.scope, input.answerRunId);
+    const attempt = record.attempts.find((candidate) => candidate.attemptId === input.attemptId);
+    if (attempt) Object.assign(attempt, { dataPolicyVersion: input.dataPolicyVersion });
+  }
+
+  async heartbeatAttempt(input: {
+    readonly scope: AskExecutionScope;
+    readonly answerRunId: string;
+    readonly attemptId: string;
+  }): Promise<boolean> {
+    const record = this.authorized(input.scope, input.answerRunId, false);
+    if (!record) return false;
+    return record.attempts.some((attempt) => attempt.attemptId === input.attemptId);
+  }
+
+  async transaction<T>(
+    action: (transaction: AskExecutionTransactionPort) => Promise<T>,
+  ): Promise<T> {
+    const callbacks: (() => void)[] = [];
+    const transaction: AskExecutionTransactionPort = {
+      rawTransaction: this,
+      afterCommit: (callback) => callbacks.push(callback),
+      getRunContext: (scope, answerRunId) => this.getRunContext(scope, answerRunId),
+      requestCancel: (scope, answerRunId) => this.requestCancel(scope, answerRunId),
+      retryAndClaim: (input) => this.retryAndClaim(input),
+      saveExport: (input) => this.saveExport(input),
+      saveFeedback: (input) => this.saveFeedback(input),
+      saveTransitionSeed: (input) => this.saveTransitionSeed(input),
+    };
+    const result = await action(transaction);
+    callbacks.forEach((callback) => callback());
+    return result;
+  }
+
+  async recoverInterrupted(): Promise<number> {
+    let recovered = 0;
+    for (const record of this.records.values()) {
+      if (['RUNNING', 'STREAMING', 'PARTIAL'].includes(record.snapshot.state)) {
+        await this.fail({
+          scope: this.scopeFor(record.snapshot),
+          answerRunId: record.snapshot.answerRunId,
+          attemptNumber: record.snapshot.attemptNumber ?? 0,
+          state: 'OUTCOME_UNKNOWN',
+          failure: {
+            code: 'OUTCOME_UNKNOWN',
+            message: 'The execution worker stopped before the provider outcome was known.',
+            retryable: false,
+            outcomeUnknown: true,
+          },
+        });
+        recovered += 1;
+      } else if (record.snapshot.state === 'CANCEL_REQUESTED') {
+        await this.fail({
+          scope: this.scopeFor(record.snapshot),
+          answerRunId: record.snapshot.answerRunId,
+          attemptNumber: record.snapshot.attemptNumber ?? 0,
+          state: 'CANCELLED',
+          failure: {
+            code: 'CANCELLED',
+            message: 'The execution was cancelled after worker recovery.',
+            retryable: true,
+            outcomeUnknown: false,
+          },
+        });
+        recovered += 1;
+      }
+    }
+    return recovered;
+  }
+
+  async claimQueuedForWorker(): Promise<
+    readonly { scope: AskExecutionScope; claimed: AskClaimedExecution }[]
+  > {
+    const claimed: { scope: AskExecutionScope; claimed: AskClaimedExecution }[] = [];
+    for (const record of this.records.values()) {
+      if (record.snapshot.state !== 'QUEUED') continue;
+      const scope = this.scopeFor(record.snapshot);
+      const execution = await this.claimInitial(scope, record.snapshot.answerRunId);
+      if (execution) claimed.push({ scope, claimed: execution });
+    }
+    return claimed;
   }
 
   private authorized(scope: AskExecutionScope, answerRunId: string, required = true): RecordValue {
@@ -342,7 +530,10 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
     return record;
   }
 
-  private update(record: RecordValue, patch: Partial<AskAnswerRunSnapshot>): void {
+  private update(
+    record: RecordValue,
+    patch: Partial<AskAnswerRunSnapshot> & { attemptId?: string },
+  ): void {
     const previous = record.snapshot;
     const updated: AskAnswerRunSnapshot = {
       ...previous,
@@ -371,10 +562,44 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
       ordinal: record.events.length,
       kind,
       state: updated.state,
+      ...(patch.attemptId === undefined ? {} : { attemptId: patch.attemptId }),
       ...(updated.partialText === undefined ? {} : { partialText: updated.partialText }),
       answerRevision: updated.answerRevision,
       createdAt: updated.updatedAt,
     });
     this.publish(updated);
+  }
+
+  private contextFor(
+    record: RecordValue,
+    evidence: readonly AskExecutionEvidence[],
+  ): AskExecutionRunContext {
+    return {
+      snapshot: record.snapshot,
+      evidence,
+      contextStatus: evidence.length > 0 ? 'SUPPORTED' : 'NO_SUPPORTED_ANSWER',
+      queryPlanRevision: 'ask-query-plan-v2',
+      resolvedContextDigest: sha256Text(
+        stableJson({
+          mode: record.snapshot.mode,
+          question: record.snapshot.question,
+          evidence: evidence.map((item) => ({
+            evidenceId: item.evidenceId,
+            sourceVersionId: item.sourceVersionId,
+            exactQuote: item.exactQuote,
+          })),
+        }),
+      ),
+    };
+  }
+
+  private scopeFor(snapshot: AskAnswerRunSnapshot): AskExecutionScope {
+    return {
+      principalId: 'ask-worker',
+      projectId: snapshot.projectId,
+      accessRevision: snapshot.accessRevision,
+      policyContextRevision: snapshot.policyContextRevision,
+      sensitivityClearance: 'restricted',
+    };
   }
 }

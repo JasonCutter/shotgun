@@ -85,6 +85,7 @@ export type AskAnswerRunSnapshot = {
   readonly updatedAt: string;
   readonly stale: boolean;
   readonly attemptNumber?: number;
+  readonly attemptId?: string;
   readonly eventRevision?: number;
   readonly partialText?: string;
   readonly failure?: AskAnswerRunFailure;
@@ -356,6 +357,7 @@ export const decodeAskAnswerRunSnapshot = (
       'updatedAt',
       'stale',
       'attemptNumber',
+      'attemptId',
       'eventRevision',
       'partialText',
       'failure',
@@ -381,6 +383,8 @@ export const decodeAskAnswerRunSnapshot = (
     obj.attemptNumber === undefined
       ? undefined
       : nonNegativeInteger(obj.attemptNumber, `${path}.attemptNumber`);
+  const attemptId =
+    obj.attemptId === undefined ? undefined : idString(obj.attemptId, `${path}.attemptId`);
   const eventRevision =
     obj.eventRevision === undefined
       ? undefined
@@ -490,6 +494,7 @@ export const decodeAskAnswerRunSnapshot = (
     updatedAt: timestamp(obj.updatedAt, `${path}.updatedAt`),
     stale: booleanVal(obj.stale, `${path}.stale`),
     ...(attemptNumber === undefined ? {} : { attemptNumber }),
+    ...(attemptId === undefined ? {} : { attemptId }),
     ...(eventRevision === undefined ? {} : { eventRevision }),
     ...(partialText === undefined ? {} : { partialText }),
     ...(failure === undefined ? {} : { failure }),

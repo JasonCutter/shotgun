@@ -114,7 +114,11 @@ const geminiAIProvider = new GeminiAIProviderAdapter({
   apiKey: geminiApiKey,
   model: process.env.GEMINI_MODEL ?? 'gemini-3.5-flash',
 });
-const askAnswerProvider = new StructuredAskAnswerProviderAdapter(geminiAIProvider);
+const askAnswerProvider = new StructuredAskAnswerProviderAdapter(geminiAIProvider, {
+  allowPrivate: process.env.GEMINI_ALLOW_PRIVATE === 'true',
+  allowRestricted: false,
+  dataPolicyVersion: 'gemini-ask-policy-v1',
+});
 const askAnswerExecution = new AskAnswerExecutionService(
   new PostgresAskAnswerExecutionRepository(pool, askWorkspaceProjection),
   askAnswerProvider,
@@ -135,6 +139,8 @@ const frontendProductReadCoordinator = new FrontendProductReadCoordinator(
   new InMemoryRouteGuardProjection(),
   askWorkspaceProjection,
 );
+
+let stopAskAnswerWorker = (): void => {};
 
 const { server } = await createApplication({
   projectAdminRepository: new PostgresProjectAdministrationRepository(pool),
@@ -175,8 +181,13 @@ const { server } = await createApplication({
   },
   closeResources: async () => {
     removeSourcesWriteRuntime();
+    stopAskAnswerWorker();
     await pool.end();
   },
 });
+
+stopAskAnswerWorker = await askAnswerExecution.startWorker(
+  Number.parseInt(process.env.ASK_WORKER_INTERVAL_MS ?? '1000', 10),
+);
 
 await server.listen({ host, port });

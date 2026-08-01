@@ -136,14 +136,18 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     target?.focus?.();
   }, [validatedReturnTargetId]);
 
-  useEffect(() => {
+  const latestAnswerRun = useMemo(() => {
     const selected = workspace?.selectedConversation;
-    const latestTurn = selected?.branches
+    return selected?.branches
       .flatMap((branch) => branch.turns)
-      .sort((left, right) => right.ordinal - left.ordinal)[0];
-    const answerRun = latestTurn?.answerRun;
+      .sort((left, right) => right.ordinal - left.ordinal)[0]?.answerRun;
+  }, [workspace?.selectedConversation]);
+
+  useEffect(() => {
+    const answerRun = latestAnswerRun;
     if (!answerRun || !askClient.getAnswerRun || !askClient.getAnswerRunEvents) return;
     let cancelled = false;
+    let lastOrdinal = -1;
     const terminal = new Set([
       'ACTION_REQUIRED',
       'SUCCEEDED',
@@ -155,23 +159,40 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
       try {
         const [current, events] = await Promise.all([
           askClient.getAnswerRun!(answerRun.answerRunId),
-          askClient.getAnswerRunEvents!(answerRun.answerRunId),
+          askClient.getAnswerRunEvents!(answerRun.answerRunId, lastOrdinal),
         ]);
-        if (cancelled) return;
+        if (cancelled || current.answerRunId !== answerRun.answerRunId) return;
         setRunOverrides((previous) => ({ ...previous, [current.answerRunId]: current }));
-        setRunEvents((previous) => ({ ...previous, [events.answerRunId]: events }));
-        if (terminal.has(current.state)) return;
+        if (events.events.length > 0) {
+          lastOrdinal = Math.max(lastOrdinal, ...events.events.map((event) => event.ordinal));
+          setRunEvents((previous) => {
+            const prior = previous[events.answerRunId];
+            const priorEvents = prior?.events ?? [];
+            const byOrdinal = new Map(priorEvents.map((event) => [event.ordinal, event]));
+            events.events.forEach((event) => byOrdinal.set(event.ordinal, event));
+            return {
+              ...previous,
+              [events.answerRunId]: {
+                ...events,
+                events: [...byOrdinal.values()].sort((a, b) => a.ordinal - b.ordinal),
+              },
+            };
+          });
+        }
+        if (terminal.has(current.state)) {
+          window.clearInterval(timer);
+        }
       } catch {
         // The authoritative workspace remains visible while a transient poll fails.
       }
     };
-    void poll();
     const timer = window.setInterval(() => void poll(), 750);
+    void poll();
     return () => {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [askClient, workspace?.selectedConversation?.conversationId]);
+  }, [askClient, latestAnswerRun?.answerRunId, workspace?.projectId, shell.activeProject?.id]);
 
   if (!shell.activeProject && !conversationId) {
     return <p>Create or select a Project before asking questions.</p>;

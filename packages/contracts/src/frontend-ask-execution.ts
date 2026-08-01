@@ -13,6 +13,7 @@ export type AskAnswerRunEventView = {
   readonly schemaVersion: typeof ASK_SCHEMA_VERSION;
   readonly eventId: string;
   readonly answerRunId: string;
+  readonly attemptId?: string;
   readonly projectId: string;
   readonly ordinal: number;
   readonly kind: AskAnswerRunEventKind;
@@ -178,6 +179,7 @@ export const decodeAskAnswerRunEventView = (
       'schemaVersion',
       'eventId',
       'answerRunId',
+      'attemptId',
       'projectId',
       'ordinal',
       'kind',
@@ -193,6 +195,9 @@ export const decodeAskAnswerRunEventView = (
     schemaVersion: ASK_SCHEMA_VERSION,
     eventId: id(input.eventId, `${path}.eventId`),
     answerRunId: id(input.answerRunId, `${path}.answerRunId`),
+    ...(input.attemptId === undefined
+      ? {}
+      : { attemptId: id(input.attemptId, `${path}.attemptId`) }),
     projectId: id(input.projectId, `${path}.projectId`),
     ordinal: integer(input.ordinal, `${path}.ordinal`, 0),
     kind: eventKind(input.kind, `${path}.kind`),

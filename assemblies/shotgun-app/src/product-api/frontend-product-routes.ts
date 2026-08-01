@@ -8,6 +8,7 @@ import {
   ASK_EXECUTION_COMMAND_TYPES,
   type AskAnswerExecutionService,
   type AskExecutionScope,
+  type AskExecutionTransactionPort,
 } from '../../../../modules/frontend-ask-execution/src/index.js';
 import type { FrontendCommandGatewayPort } from '../../../../modules/frontend-command-gateway/src/index.js';
 import type { ProjectAdministrationRepositoryPort } from '../../../../modules/project-administration/src/index.js';
@@ -25,6 +26,7 @@ import {
   decodeTargetRouteView,
   type AnyFrontendCommandRequest,
   type ErrorCode,
+  type ProducedResourceRef,
 } from '../../../../packages/contracts/src/index.js';
 import type { SecurityHeaders } from '../server.js';
 
@@ -99,6 +101,7 @@ export const registerFrontendProductRoutes = (
       accessibleProjects,
       accessRevision: String(memberships.length),
       policyContextRevision,
+      accessScope: [...new Set(memberships.flatMap((membership) => membership.scopes))],
     };
   };
 
@@ -118,12 +121,23 @@ export const registerFrontendProductRoutes = (
         operation: 'resolve-answer-run-project',
       });
     }
+    const membership = await authRepository.findMembership(scope.principalId, project.id);
+    if (!membership) {
+      throw new ShotgunError({
+        code: 'NOT_FOUND',
+        safeMessage: 'The requested AnswerRun was not found.',
+        module: 'frontend-product-read',
+        operation: 'resolve-answer-run-membership',
+      });
+    }
+    const resourceSettings = await settingsRepository.getSettingsSnapshot(project.id);
     return {
       principalId: scope.principalId,
       projectId: project.id,
       accessRevision: scope.accessRevision,
-      policyContextRevision: scope.policyContextRevision,
+      policyContextRevision: String(resourceSettings.policyContextRevision),
       sensitivityClearance: project.sensitivityClearance,
+      accessScope: membership.scopes,
     };
   };
 
@@ -133,8 +147,9 @@ export const registerFrontendProductRoutes = (
     readonly answerRunId: string;
     readonly commandType: string;
     readonly request: Record<string, unknown>;
-    readonly action: () => Promise<T>;
+    readonly action: (transaction?: AskExecutionTransactionPort) => Promise<T>;
     readonly onReplay?: () => Promise<T>;
+    readonly producedResources?: (result: T) => readonly ProducedResourceRef[];
   }): Promise<T> => {
     const gateway = options?.frontendCommandGateway;
     if (!gateway) return input.action();
@@ -153,7 +168,7 @@ export const registerFrontendProductRoutes = (
       },
       policyBinding: {
         mode: 'CURRENT',
-        observedPolicyContextRevision: input.scope.policyContextRevision,
+        observedPolicyContextRevision: input.executionScope.policyContextRevision,
       },
       preconditions: [
         {
@@ -178,7 +193,7 @@ export const registerFrontendProductRoutes = (
       }),
       acceptedPolicyContext: {
         policyContextId: 'frontend-ask-answer-current-policy',
-        policyContextRevision: input.scope.policyContextRevision,
+        policyContextRevision: input.executionScope.policyContextRevision,
         acceptedAt: now,
       },
       correlationId: `corr-${randomUUID()}`,
@@ -188,7 +203,13 @@ export const registerFrontendProductRoutes = (
     });
     if (accepted.replayed) {
       if (accepted.outcome.outcomeState === 'COMPLETED') {
-        return input.onReplay ? input.onReplay() : input.action();
+        if (input.onReplay) return input.onReplay();
+        throw new ShotgunError({
+          code: 'CONFLICT',
+          safeMessage: 'The completed command has no read-only replay resolver.',
+          module: 'frontend-product-command',
+          operation: 'replay-answer-command',
+        });
       }
       if (accepted.outcome.outcomeState === 'REJECTED') {
         throw new ShotgunError({
@@ -208,14 +229,53 @@ export const registerFrontendProductRoutes = (
       });
     }
     try {
-      const result = await input.action();
-      await gateway.complete({
-        commandId: accepted.outcome.commandId,
-        producedResources: [{ resourceKind: 'ASK_ANSWER_RUN', resourceId: input.answerRunId }],
-        completedAt: new Date().toISOString(),
+      const execution = options?.askAnswerExecution;
+      if (!execution) {
+        const result = await input.action();
+        await gateway.complete({
+          commandId: accepted.outcome.commandId,
+          producedResources: [{ resourceKind: 'ASK_ANSWER_RUN', resourceId: input.answerRunId }],
+          completedAt: new Date().toISOString(),
+        });
+        return result;
+      }
+      return await execution.withCommandTransaction(async (transaction) => {
+        const locked = await gateway.lockAcceptedForExecution(
+          transaction.rawTransaction,
+          accepted.outcome.commandId,
+        );
+        if (locked.outcomeState === 'COMPLETED') {
+          if (input.onReplay) return input.onReplay();
+          throw new ShotgunError({
+            code: 'CONFLICT',
+            safeMessage: 'The command completed concurrently without a replay resolver.',
+            module: 'frontend-product-command',
+            operation: 'concurrent-answer-command',
+          });
+        }
+        const result = await input.action(transaction);
+        await gateway.completeInTransaction(transaction.rawTransaction, {
+          commandId: accepted.outcome.commandId,
+          producedResources: input.producedResources?.(result) ?? [
+            { resourceKind: 'ASK_ANSWER_RUN', resourceId: input.answerRunId },
+          ],
+          completedAt: new Date().toISOString(),
+        });
+        return result;
       });
-      return result;
     } catch (error) {
+      if (error instanceof ShotgunError && error.code === 'OUTCOME_UNKNOWN') {
+        try {
+          await gateway.markOutcomeUnknown({
+            commandId: accepted.outcome.commandId,
+            message: error.message,
+            completedAt: new Date().toISOString(),
+          });
+        } catch {
+          // Preserve the unknown outcome when the resolution write is unavailable.
+        }
+        throw error;
+      }
       const code: ErrorCode = error instanceof ShotgunError ? error.code : 'INTERNAL_UNCLASSIFIED';
       await gateway.reject({
         commandId: accepted.outcome.commandId,
@@ -447,8 +507,14 @@ export const registerFrontendProductRoutes = (
         answerRunId: request.params.answerRunId,
         commandType: ASK_EXECUTION_COMMAND_TYPES.cancel,
         request: decoded,
-        action: () =>
-          options.askAnswerExecution!.cancel(executionScope, request.params.answerRunId),
+        action: (transaction) =>
+          options.askAnswerExecution!.cancel(
+            executionScope,
+            request.params.answerRunId,
+            transaction,
+          ),
+        onReplay: () =>
+          coordinator.getAskAnswerRun({ ...scope.value, answerRunId: request.params.answerRunId }),
       }),
     };
   });
@@ -476,12 +542,19 @@ export const registerFrontendProductRoutes = (
         answerRunId: request.params.answerRunId,
         commandType: ASK_EXECUTION_COMMAND_TYPES.retry,
         request: decoded,
-        action: () =>
+        action: (transaction) =>
           options.askAnswerExecution!.retry(
             executionScope,
             request.params.answerRunId,
             decoded.mode,
+            transaction,
           ),
+        producedResources: (result) => [
+          { resourceKind: 'ASK_ANSWER_RUN', resourceId: result.answerRunId },
+          ...(result.attemptId
+            ? [{ resourceKind: 'ASK_ANSWER_ATTEMPT', resourceId: result.attemptId }]
+            : []),
+        ],
         onReplay: () =>
           coordinator.getAskAnswerRun({ ...scope.value, answerRunId: request.params.answerRunId }),
       }),
@@ -511,13 +584,33 @@ export const registerFrontendProductRoutes = (
         answerRunId: request.params.answerRunId,
         commandType: ASK_EXECUTION_COMMAND_TYPES.export,
         request: decoded,
-        action: () =>
+        action: (transaction) =>
           options.askAnswerExecution!.export(
             executionScope,
             request.params.answerRunId,
             decoded.format,
             decoded.clientRequestId,
+            transaction,
           ),
+        onReplay: async () => {
+          const replay = await options.askAnswerExecution!.findExportByRequestId(
+            executionScope,
+            request.params.answerRunId,
+            decoded.clientRequestId,
+          );
+          if (!replay)
+            throw new ShotgunError({
+              code: 'CONFLICT',
+              safeMessage: 'The completed export command result is unavailable.',
+              module: 'frontend-product-command',
+              operation: 'replay-export-answer-run',
+            });
+          return replay;
+        },
+        producedResources: (result) => [
+          { resourceKind: 'ASK_ANSWER_RUN', resourceId: result.answerRunId },
+          { resourceKind: 'ASK_ANSWER_EXPORT', resourceId: result.exportId },
+        ],
       }),
     };
   });
@@ -545,14 +638,34 @@ export const registerFrontendProductRoutes = (
         answerRunId: request.params.answerRunId,
         commandType: ASK_EXECUTION_COMMAND_TYPES.feedback,
         request: decoded,
-        action: () =>
+        action: (transaction) =>
           options.askAnswerExecution!.feedback(
             executionScope,
             request.params.answerRunId,
             decoded.kind,
             decoded.comment,
             decoded.clientRequestId,
+            transaction,
           ),
+        onReplay: async () => {
+          const replay = await options.askAnswerExecution!.findFeedbackByRequestId(
+            executionScope,
+            request.params.answerRunId,
+            decoded.clientRequestId,
+          );
+          if (!replay)
+            throw new ShotgunError({
+              code: 'CONFLICT',
+              safeMessage: 'The completed feedback command result is unavailable.',
+              module: 'frontend-product-command',
+              operation: 'replay-feedback-answer-run',
+            });
+          return replay;
+        },
+        producedResources: (result) => [
+          { resourceKind: 'ASK_ANSWER_RUN', resourceId: result.answerRunId },
+          { resourceKind: 'ASK_ANSWER_FEEDBACK', resourceId: result.feedbackId },
+        ],
       }),
     };
   });
@@ -580,13 +693,34 @@ export const registerFrontendProductRoutes = (
         answerRunId: request.params.answerRunId,
         commandType: ASK_EXECUTION_COMMAND_TYPES.transitionSeed,
         request: decoded,
-        action: () =>
+        action: (transaction) =>
           options.askAnswerExecution!.transitionSeed(
             executionScope,
             request.params.answerRunId,
             decoded.kind,
             decoded.clientRequestId,
+            transaction,
           ),
+        onReplay: async () => {
+          const replay = await options.askAnswerExecution!.findTransitionSeedByRequestId(
+            executionScope,
+            request.params.answerRunId,
+            decoded.kind,
+            decoded.clientRequestId,
+          );
+          if (!replay)
+            throw new ShotgunError({
+              code: 'CONFLICT',
+              safeMessage: 'The completed transition-seed command result is unavailable.',
+              module: 'frontend-product-command',
+              operation: 'replay-transition-seed',
+            });
+          return replay;
+        },
+        producedResources: (result) => [
+          { resourceKind: 'ASK_ANSWER_RUN', resourceId: result.answerRunId },
+          { resourceKind: 'ASK_TRANSITION_SEED', resourceId: result.seedId },
+        ],
       }),
     };
   });

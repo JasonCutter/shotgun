@@ -14,6 +14,7 @@ import {
   type CompleteFrontendCommandInput,
   type FrontendCommandGatewayPort,
   type RejectFrontendCommandInput,
+  type ResolveFrontendCommandOutcomeUnknownInput,
 } from '../../../modules/frontend-command-gateway/src/index.js';
 
 type CommandLedgerRow = {
@@ -303,6 +304,38 @@ export class PostgresFrontendCommandGateway implements FrontendCommandGatewayPor
     return this.findByCommandId(input.commandId);
   }
 
+  async markOutcomeUnknown(
+    input: ResolveFrontendCommandOutcomeUnknownInput,
+  ): Promise<AnyFrontendCommandOutcomeView> {
+    const descriptor = getFailureDescriptor('OUTCOME_UNKNOWN');
+    const result = await this.pool.query<CommandLedgerRow>(
+      `UPDATE frontend_command.command_ledger
+       SET command_revision = command_revision + 1,
+           outcome_state = 'OUTCOME_UNKNOWN',
+           completion_disposition = 'PARTIAL',
+           rejection = $2::jsonb,
+           completed_at = $3,
+           last_updated_at = $3
+       WHERE command_id = $1
+         AND outcome_state = 'ACCEPTED'
+       RETURNING *`,
+      [
+        input.commandId,
+        JSON.stringify({
+          code: 'OUTCOME_UNKNOWN',
+          message: input.message,
+          category: descriptor.category,
+          retryability: descriptor.retryability,
+          recovery: descriptor.recovery,
+          retryable: false,
+        }),
+        input.completedAt,
+      ],
+    );
+    if (result.rows[0]) return toOutcome(result.rows[0]);
+    return this.findByCommandId(input.commandId);
+  }
+
   async findByClientRequestId(
     principalId: string,
     clientRequestId: string,
@@ -340,7 +373,10 @@ export class PostgresFrontendCommandGateway implements FrontendCommandGatewayPor
       [input.commandId],
     );
     if (!existing.rows[0]) {
-      throw new FrontendContractError('RESOURCE_RETIRED', `Command '${input.commandId}' not found.`);
+      throw new FrontendContractError(
+        'RESOURCE_RETIRED',
+        `Command '${input.commandId}' not found.`,
+      );
     }
     return toOutcome(existing.rows[0]);
   }

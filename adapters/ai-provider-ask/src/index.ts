@@ -9,6 +9,12 @@ import type {
   AskAnswerProviderResult,
 } from '../../../modules/frontend-ask-execution/src/index.js';
 
+export type AskAnswerProviderPolicy = {
+  readonly allowPrivate: boolean;
+  readonly allowRestricted: false;
+  readonly dataPolicyVersion: string;
+};
+
 const answerSchema = {
   type: 'object',
   additionalProperties: false,
@@ -99,20 +105,33 @@ const parseAnswer = (rawText: string): AnswerPayload => {
 export class StructuredAskAnswerProviderAdapter implements AskAnswerProviderPort {
   readonly identity;
 
-  constructor(private readonly adapter: AIProviderAdapterPort) {
+  constructor(
+    private readonly adapter: AIProviderAdapterPort,
+    private readonly policy: AskAnswerProviderPolicy = {
+      allowPrivate: false,
+      allowRestricted: false,
+      dataPolicyVersion: 'ask-provider-policy-v1',
+    },
+  ) {
     this.identity = {
       provider: adapter.identity.provider,
       model: adapter.identity.model,
       adapterVersion: adapter.identity.adapterVersion,
-      dataPolicyVersion: adapter.identity.dataPolicyVersion,
+      dataPolicyVersion: policy.dataPolicyVersion,
     };
   }
 
   async execute(request: AskAnswerProviderRequest): Promise<AskAnswerProviderResult> {
-    if (request.evidence.some((evidence) => evidence.sensitivity === 'restricted')) {
+    if (
+      request.evidence.some(
+        (evidence) =>
+          evidence.sensitivity === 'restricted' ||
+          (evidence.sensitivity === 'private' && !this.policy.allowPrivate),
+      )
+    ) {
       throw new ShotgunError({
         code: 'POLICY_DENIED',
-        safeMessage: 'Restricted Evidence cannot be sent to the configured Ask provider.',
+        safeMessage: 'The configured Ask provider cannot receive this Evidence sensitivity.',
         module: 'ai-provider-ask',
         operation: 'enforce-data-policy',
       });
@@ -136,21 +155,22 @@ export class StructuredAskAnswerProviderAdapter implements AskAnswerProviderPort
       prompt: promptFor(request),
       responseSchema: answerSchema,
     };
-    const response = await this.adapter.generateStructured(generation);
-    const parsed = parseAnswer(response.rawText);
-    const chunkSize = Math.max(1, Math.ceil(parsed.answer.length / 4));
-    for (let offset = chunkSize; offset <= parsed.answer.length; offset += chunkSize) {
-      if (request.signal.aborted) {
-        throw new ShotgunError({
-          code: 'TIMEOUT',
-          safeMessage: 'The Ask provider request was cancelled.',
-          module: 'ai-provider-ask',
-          operation: 'stream-answer',
-          retryable: true,
-        });
-      }
-      await request.onPartial(parsed.answer.slice(0, offset));
+    let response;
+    if (this.adapter.generateStructuredStream) {
+      let streamedText = '';
+      response = await this.adapter.generateStructuredStream(
+        generation,
+        async (text) => {
+          streamedText += text;
+          const partial = partialAnswerFromJson(streamedText);
+          if (partial) await request.onPartial(partial);
+        },
+        request.signal,
+      );
+    } else {
+      response = await this.adapter.generateStructured(generation);
     }
+    const parsed = parseAnswer(response.rawText);
     return {
       answer: parsed.answer,
       citations: parsed.citations,
@@ -168,3 +188,13 @@ export class StructuredAskAnswerProviderAdapter implements AskAnswerProviderPort
     };
   }
 }
+
+const partialAnswerFromJson = (rawText: string): string | undefined => {
+  const match = rawText.match(/"answer"\s*:\s*"((?:\\.|[^"\\])*)/s);
+  if (!match?.[1]) return undefined;
+  try {
+    return JSON.parse(`"${match[1]}"`) as string;
+  } catch {
+    return undefined;
+  }
+};

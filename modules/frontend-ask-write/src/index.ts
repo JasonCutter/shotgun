@@ -42,6 +42,8 @@ export type AskReadScope = {
   readonly accessibleProjects: readonly AskAuthorizedProjectSummary[];
   readonly accessRevision: string;
   readonly policyContextRevision: string;
+  /** Server-derived access scopes persisted with a queued AnswerRun. */
+  readonly accessScope?: readonly string[];
 };
 
 export type AskWorkspaceQueryPort = {
@@ -124,6 +126,8 @@ export type PersistAskQuestionInput = {
   readonly expectedBranchRevision?: string;
   readonly accessRevision: string;
   readonly policyContextRevision: string;
+  readonly accessScope?: readonly string[];
+  readonly sensitivityClearance?: AskAuthorizedProjectSummary['sensitivityClearance'];
   readonly executionEnabled?: boolean;
   readonly createdAt: string;
   readonly generated: {
@@ -154,6 +158,7 @@ export type AskQuestionExecutionTrigger = {
     readonly accessRevision: string;
     readonly policyContextRevision: string;
     readonly sensitivityClearance: AskAuthorizedProjectSummary['sensitivityClearance'];
+    readonly accessScope?: readonly string[];
   }): Promise<void>;
 };
 
@@ -332,6 +337,8 @@ export class AskCommandCoordinator {
             : {}),
           accessRevision: input.accessRevision,
           policyContextRevision: input.policyContextRevision,
+          ...(input.accessScope ? { accessScope: input.accessScope } : {}),
+          sensitivityClearance: authority.sensitivityClearance,
           executionEnabled: this.answerExecution !== undefined,
           createdAt: now,
           generated: {
@@ -413,6 +420,7 @@ export class AskCommandCoordinator {
         accessRevision: input.accessRevision,
         policyContextRevision: input.policyContextRevision,
         sensitivityClearance: authority.sensitivityClearance,
+        ...(input.accessScope ? { accessScope: input.accessScope } : {}),
       });
     }
 

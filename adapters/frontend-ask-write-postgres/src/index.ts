@@ -333,11 +333,11 @@ export class PostgresAskConversationRepository implements AskConversationReposit
       `INSERT INTO frontend_ask.answer_runs (
          answer_run_id, conversation_id, branch_id, turn_id, project_id,
          create_command_id, mode, state, attention_reason, question, capabilities,
-         answer_revision, conversation_revision, access_revision,
-         policy_context_revision, created_at, updated_at
+          answer_revision, conversation_revision, access_revision, access_scope,
+          sensitivity_clearance, policy_context_revision, created_at, updated_at
        ) VALUES (
          $1, $2, $3, $4, $5, $6, $7, $8,
-         $9, $11, $10, $12, $13, $14, $15, $16, $16
+          $9, $11, $10, $12, $13, $14, $15, $16, $17, $18, $18
        )`,
       [
         input.generated.answerRunId,
@@ -354,6 +354,8 @@ export class PostgresAskConversationRepository implements AskConversationReposit
         input.generated.answerRevision,
         input.generated.conversationRevision,
         input.accessRevision,
+        input.accessScope ?? ['owner'],
+        input.sensitivityClearance ?? 'public',
         input.policyContextRevision,
         input.createdAt,
       ],

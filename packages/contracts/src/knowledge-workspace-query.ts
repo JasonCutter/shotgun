@@ -35,6 +35,7 @@ export type KnowledgeWorkspaceQuerySensitivity = 'public' | 'internal' | 'privat
 export type KnowledgeWorkspaceQueryMatchType = 'FULL_TEXT' | 'TRIGRAM' | 'SUBSTRING';
 export type KnowledgeWorkspaceQuerySource =
   'CANONICAL_SEARCH' | 'KNOWLEDGE_MODEL' | 'COMPILED_TRUTH' | 'DERIVED_INFERENCE';
+export type KnowledgeWorkspaceQueryProjectionSource = 'CANONICAL_SEARCH' | 'COMPILED_TRUTH';
 
 export type SearchKnowledgeWorkspaceFilter = {
   readonly authorities?: readonly KnowledgeWorkspaceQueryAuthority[];
@@ -54,15 +55,15 @@ export type SearchKnowledgeWorkspaceRequest = {
 };
 
 export type KnowledgeWorkspaceQueryProjectionStatus = {
-  readonly source: KnowledgeWorkspaceQuerySource;
+  readonly source: KnowledgeWorkspaceQueryProjectionSource;
   readonly status: KnowledgeWorkspaceQueryStatus;
   readonly canonicalVersion: number;
   readonly projectedCanonicalVersion: number;
   readonly lag: number;
-  readonly projectionId?: string;
   readonly canonicalSnapshotDigest?: string;
   readonly projectedSnapshotDigest?: string;
   readonly sourceSnapshotDigest?: string;
+  readonly projectionLogicalDigest?: string;
   readonly reason?: string;
   readonly updatedAt?: string;
 };
@@ -113,7 +114,7 @@ export type KnowledgeWorkspaceCompiledSource = {
   readonly projectId: string;
   readonly resourceId: string;
   readonly resourceRevision: string;
-  readonly projectionId: string;
+  readonly projectionLogicalDigest: string;
   readonly compiledItemId: string;
   readonly canonicalVersion: number;
   readonly sourceSnapshotDigest: string;
@@ -125,7 +126,6 @@ export type KnowledgeWorkspaceDerivedSource = {
   readonly projectId: string;
   readonly resourceId: string;
   readonly resourceRevision: string;
-  readonly projectionId: string;
   readonly inferenceId: string;
   readonly sourceProjectionDigest: string;
   readonly evidenceIds: readonly string[];
@@ -325,9 +325,18 @@ const matchTypeValues: readonly KnowledgeWorkspaceQueryMatchType[] = [
   'TRIGRAM',
   'SUBSTRING',
 ];
-const sourceValues: readonly KnowledgeWorkspaceQuerySource[] = [
+const projectionSourceValues: readonly KnowledgeWorkspaceQueryProjectionSource[] = [
   'CANONICAL_SEARCH',
-  'KNOWLEDGE_MODEL',
+  'COMPILED_TRUTH',
+];
+const matchTypeOrder: readonly KnowledgeWorkspaceQueryMatchType[] = [
+  'FULL_TEXT',
+  'TRIGRAM',
+  'SUBSTRING',
+];
+const authorityOrder: readonly KnowledgeWorkspaceQueryAuthority[] = [
+  'CANONICAL',
+  'APPROVED_KNOWLEDGE',
   'COMPILED_TRUTH',
   'DERIVED_INFERENCE',
 ];
@@ -426,16 +435,21 @@ const decodeProjectionStatus = (
       'canonicalVersion',
       'projectedCanonicalVersion',
       'lag',
-      'projectionId',
       'canonicalSnapshotDigest',
       'projectedSnapshotDigest',
       'sourceSnapshotDigest',
+      'projectionLogicalDigest',
       'reason',
       'updatedAt',
     ],
     path,
   );
-  const source = enumValue(input.source, `${path}.source`, sourceValues, 'source');
+  const source = enumValue(
+    input.source,
+    `${path}.source`,
+    projectionSourceValues,
+    'projection source',
+  );
   const status = enumValue(input.status, `${path}.status`, statusValues, 'status');
   const canonicalVersion = nonNegativeInteger(input.canonicalVersion, `${path}.canonicalVersion`);
   const projectedCanonicalVersion = nonNegativeInteger(
@@ -454,10 +468,14 @@ const decodeProjectionStatus = (
   if (status !== 'READY' && input.reason === undefined) {
     return fail(path, `${status} requires a safe reason.`);
   }
-  if (status === 'NOT_BUILT' && input.projectionId !== undefined) {
-    return fail(path, 'NOT_BUILT must not expose a fabricated projectionId.');
+  if (
+    status === 'NOT_BUILT' &&
+    (input.projectedSnapshotDigest !== undefined ||
+      input.sourceSnapshotDigest !== undefined ||
+      input.projectionLogicalDigest !== undefined)
+  ) {
+    return fail(path, 'NOT_BUILT must not expose projection identity.');
   }
-  const projectionId = optionalText(input.projectionId, `${path}.projectionId`, 256);
   const canonicalSnapshotDigest =
     input.canonicalSnapshotDigest === undefined
       ? undefined
@@ -470,6 +488,13 @@ const decodeProjectionStatus = (
     input.sourceSnapshotDigest === undefined
       ? undefined
       : digest(input.sourceSnapshotDigest, `${path}.sourceSnapshotDigest`);
+  const projectionLogicalDigest =
+    input.projectionLogicalDigest === undefined
+      ? undefined
+      : digest(input.projectionLogicalDigest, `${path}.projectionLogicalDigest`);
+  if (source === 'CANONICAL_SEARCH' && projectionLogicalDigest !== undefined) {
+    return fail(path, 'CANONICAL_SEARCH must not expose Compiled Truth projection identity.');
+  }
   const reason = optionalText(input.reason, `${path}.reason`, 1000);
   const updatedAt =
     input.updatedAt === undefined ? undefined : timestamp(input.updatedAt, `${path}.updatedAt`);
@@ -479,10 +504,10 @@ const decodeProjectionStatus = (
     canonicalVersion,
     projectedCanonicalVersion,
     lag,
-    ...(projectionId === undefined ? {} : { projectionId }),
     ...(canonicalSnapshotDigest === undefined ? {} : { canonicalSnapshotDigest }),
     ...(projectedSnapshotDigest === undefined ? {} : { projectedSnapshotDigest }),
     ...(sourceSnapshotDigest === undefined ? {} : { sourceSnapshotDigest }),
+    ...(projectionLogicalDigest === undefined ? {} : { projectionLogicalDigest }),
     ...(reason === undefined ? {} : { reason }),
     ...(updatedAt === undefined ? {} : { updatedAt }),
   };
@@ -593,7 +618,7 @@ const decodeSearchSource = (value: unknown, path: string): KnowledgeWorkspaceSea
         'projectId',
         'resourceId',
         'resourceRevision',
-        'projectionId',
+        'projectionLogicalDigest',
         'compiledItemId',
         'canonicalVersion',
         'sourceSnapshotDigest',
@@ -604,7 +629,10 @@ const decodeSearchSource = (value: unknown, path: string): KnowledgeWorkspaceSea
     return {
       authority,
       ...base,
-      projectionId: text(allowed.projectionId, `${path}.projectionId`, 256),
+      projectionLogicalDigest: digest(
+        allowed.projectionLogicalDigest,
+        `${path}.projectionLogicalDigest`,
+      ),
       compiledItemId: text(allowed.compiledItemId, `${path}.compiledItemId`, 256),
       canonicalVersion: nonNegativeInteger(allowed.canonicalVersion, `${path}.canonicalVersion`),
       sourceSnapshotDigest: digest(allowed.sourceSnapshotDigest, `${path}.sourceSnapshotDigest`),
@@ -618,7 +646,6 @@ const decodeSearchSource = (value: unknown, path: string): KnowledgeWorkspaceSea
       'projectId',
       'resourceId',
       'resourceRevision',
-      'projectionId',
       'inferenceId',
       'sourceProjectionDigest',
       'evidenceIds',
@@ -628,7 +655,6 @@ const decodeSearchSource = (value: unknown, path: string): KnowledgeWorkspaceSea
   return {
     authority,
     ...base,
-    projectionId: text(allowed.projectionId, `${path}.projectionId`, 256),
     inferenceId: text(allowed.inferenceId, `${path}.inferenceId`, 256),
     sourceProjectionDigest: digest(
       allowed.sourceProjectionDigest,
@@ -653,10 +679,10 @@ const decodeSearchReadiness = (value: unknown): KnowledgeWorkspaceSearchReadines
       "must be 'CANONICAL_SEARCH'.",
     );
   }
-  if (!Array.isArray(input.sourceProjections) || input.sourceProjections.length > 4) {
+  if (!Array.isArray(input.sourceProjections) || input.sourceProjections.length > 1) {
     return fail(
       'searchKnowledgeWorkspaceResult.readiness.sourceProjections',
-      'must contain no more than four sources.',
+      'must contain no more than one authoritative source projection.',
     );
   }
   const sourceProjections = input.sourceProjections.map((item, index) =>
@@ -722,10 +748,45 @@ const decodeSearchMatch = (
   const authority = enumValue(input.authority, `${path}.authority`, authorityValues, 'authority');
   const source = decodeSearchSource(input.source, `${path}.source`);
   if (source.authority !== authority) return fail(path, 'authority must match source.authority.');
+  if (source.projectId !== matchProjectId) {
+    return fail(path, 'source.projectId must remain in the requested Project.');
+  }
   const projectionStatus =
     input.projectionStatus === undefined
       ? undefined
       : decodeProjectionStatus(input.projectionStatus, `${path}.projectionStatus`);
+  if (projectionStatus !== undefined) {
+    if (authority === 'CANONICAL' && projectionStatus.source !== 'CANONICAL_SEARCH') {
+      return fail(path, 'CANONICAL matches may only use CANONICAL_SEARCH status.');
+    }
+    if (authority === 'APPROVED_KNOWLEDGE') {
+      return fail(path, 'APPROVED_KNOWLEDGE matches must not expose projection status.');
+    }
+    if (authority === 'COMPILED_TRUTH') {
+      if (projectionStatus.source !== 'COMPILED_TRUTH') {
+        return fail(path, 'COMPILED_TRUTH matches may only use COMPILED_TRUTH status.');
+      }
+      if (source.authority !== 'COMPILED_TRUTH') {
+        return fail(path, 'COMPILED_TRUTH source lineage is invalid.');
+      }
+      if (
+        projectionStatus.status === 'NOT_BUILT' ||
+        projectionStatus.projectedCanonicalVersion !== source.canonicalVersion ||
+        projectionStatus.sourceSnapshotDigest !== source.sourceSnapshotDigest ||
+        projectionStatus.projectionLogicalDigest !== source.projectionLogicalDigest
+      ) {
+        return fail(path, 'Compiled Truth source and projection status identity differs.');
+      }
+    }
+    if (authority === 'DERIVED_INFERENCE') {
+      return fail(
+        path,
+        'DERIVED_INFERENCE must inherit Compiled Truth status and not synthesize one.',
+      );
+    }
+  } else if (authority === 'COMPILED_TRUTH') {
+    return fail(path, 'COMPILED_TRUTH matches require correlated projection status.');
+  }
   return {
     projectId,
     rank: positiveInteger(input.rank, `${path}.rank`, Number.MAX_SAFE_INTEGER),
@@ -780,6 +841,46 @@ export const decodeSearchKnowledgeWorkspaceResult = (
         'searchKnowledgeWorkspaceResult.matches',
         'score must be non-increasing by rank.',
       );
+    }
+    if (current.score === previous.score) {
+      const previousMatchType = matchTypeOrder.indexOf(previous.matchType);
+      const currentMatchType = matchTypeOrder.indexOf(current.matchType);
+      if (currentMatchType < previousMatchType) {
+        return fail(
+          'searchKnowledgeWorkspaceResult.matches',
+          'equal-score matches must be ordered by matchType FULL_TEXT, TRIGRAM, SUBSTRING.',
+        );
+      }
+      if (currentMatchType === previousMatchType) {
+        const previousAuthority = authorityOrder.indexOf(previous.authority);
+        const currentAuthority = authorityOrder.indexOf(current.authority);
+        if (currentAuthority < previousAuthority) {
+          return fail(
+            'searchKnowledgeWorkspaceResult.matches',
+            'equal-score and equal-matchType matches must be ordered by authority.',
+          );
+        }
+        if (currentAuthority === previousAuthority) {
+          const sourceIdentity = (match: SearchKnowledgeWorkspaceMatch): string => {
+            switch (match.source.authority) {
+              case 'CANONICAL':
+                return match.source.canonicalResourceId;
+              case 'APPROVED_KNOWLEDGE':
+                return match.source.candidateId;
+              case 'COMPILED_TRUTH':
+                return match.source.compiledItemId;
+              case 'DERIVED_INFERENCE':
+                return match.source.inferenceId;
+            }
+          };
+          if (sourceIdentity(current) < sourceIdentity(previous)) {
+            return fail(
+              'searchKnowledgeWorkspaceResult.matches',
+              'equal-score, matchType and authority matches must be ordered by source identity.',
+            );
+          }
+        }
+      }
     }
   }
   const nextCursor = optionalText(

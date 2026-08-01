@@ -15,7 +15,7 @@ import {
   decodeSearchKnowledgeWorkspaceResult,
   type GetCompiledTruthReadSnapshotResult,
   type KnowledgeWorkspaceQueryProjectionStatus,
-  type KnowledgeWorkspaceQuerySource,
+  type KnowledgeWorkspaceQueryProjectionSource,
   type SearchKnowledgeWorkspaceRequest,
   type SearchKnowledgeWorkspaceResult,
 } from '../../packages/contracts/src/index.js';
@@ -24,7 +24,7 @@ const digestA = `sha256:${'a'.repeat(64)}`;
 const digestB = `sha256:${'b'.repeat(64)}`;
 const now = '2026-08-02T12:00:00.000Z';
 
-const readyStatus = <T extends KnowledgeWorkspaceQuerySource>(source: T) =>
+const readyStatus = <T extends KnowledgeWorkspaceQueryProjectionSource>(source: T) =>
   ({
     source,
     status: 'READY' as const,
@@ -33,8 +33,11 @@ const readyStatus = <T extends KnowledgeWorkspaceQuerySource>(source: T) =>
     lag: 0,
     canonicalSnapshotDigest: digestA,
     projectedSnapshotDigest: digestA,
+    ...(source === 'COMPILED_TRUTH'
+      ? { sourceSnapshotDigest: digestA, projectionLogicalDigest: digestB }
+      : {}),
     updatedAt: now,
-  }) satisfies KnowledgeWorkspaceQueryProjectionStatus & { readonly source: T };
+  }) as KnowledgeWorkspaceQueryProjectionStatus & { readonly source: T };
 
 const searchRequest: SearchKnowledgeWorkspaceRequest = {
   schemaVersion: '1.0.0',
@@ -82,7 +85,7 @@ const compiledSource = {
   projectId: 'project-1',
   resourceId: 'resource-2',
   resourceRevision: 'revision-2',
-  projectionId: 'compiled-projection-1',
+  projectionLogicalDigest: digestB,
   compiledItemId: 'compiled-item-1',
   canonicalVersion: 7,
   sourceSnapshotDigest: digestA,
@@ -94,7 +97,6 @@ const derivedSource = {
   projectId: 'project-1',
   resourceId: 'resource-2',
   resourceRevision: 'revision-2',
-  projectionId: 'compiled-projection-1',
   inferenceId: 'inference-1',
   sourceProjectionDigest: digestB,
   evidenceIds: ['evidence-2'],
@@ -155,18 +157,24 @@ const searchResult: SearchKnowledgeWorkspaceResult = {
       temporalState: 'FUTURE',
       label: 'Milo requires another evidence check',
       source: derivedSource,
-      projectionStatus: readyStatus('DERIVED_INFERENCE'),
     },
   ],
   readiness: {
     canonicalSearch: readyStatus(
       'CANONICAL_SEARCH',
     ) as SearchKnowledgeWorkspaceResult['readiness']['canonicalSearch'],
-    sourceProjections: [readyStatus('KNOWLEDGE_MODEL'), readyStatus('COMPILED_TRUTH')],
+    sourceProjections: [readyStatus('COMPILED_TRUTH')],
     partial: false,
   },
   generatedAt: now,
 };
+
+const withSameScore = (
+  matches: readonly SearchKnowledgeWorkspaceResult['matches'][number][],
+): SearchKnowledgeWorkspaceResult => ({
+  ...searchResult,
+  matches: matches.map((match, index) => ({ ...match, rank: index + 1, score: 0.5 })),
+});
 
 const compiledProjection = {
   projectId: 'project-1',
@@ -326,6 +334,141 @@ describe('QX-P0 Knowledge Workspace domain Query contracts', () => {
         },
       }),
     ).toThrow(/STALE requires a safe reason/);
+  });
+
+  it('enforces nested Project lineage, declared tie-break order and status correlations', () => {
+    const sameScoreMatches = withSameScore([
+      { ...searchResult.matches[0]!, matchType: 'FULL_TEXT' },
+      { ...searchResult.matches[1]!, matchType: 'FULL_TEXT' },
+      { ...searchResult.matches[2]!, matchType: 'FULL_TEXT' },
+      { ...searchResult.matches[3]!, matchType: 'FULL_TEXT' },
+    ]);
+    expect(decodeSearchKnowledgeWorkspaceResult(sameScoreMatches)).toEqual(sameScoreMatches);
+
+    expect(() =>
+      decodeSearchKnowledgeWorkspaceResult({
+        ...searchResult,
+        matches: searchResult.matches.map((match, index) =>
+          index === 0
+            ? { ...match, source: { ...canonicalSource, projectId: 'project-2' } }
+            : match,
+        ),
+      }),
+    ).toThrow(/source\.projectId must remain in the requested Project/);
+
+    expect(() =>
+      decodeSearchKnowledgeWorkspaceResult({
+        ...sameScoreMatches,
+        matches: sameScoreMatches.matches.map((match, index) =>
+          index === 1 ? { ...match, matchType: 'SUBSTRING' as const } : match,
+        ),
+      }),
+    ).toThrow(/ordered by matchType/);
+
+    const authorityOrderViolation = withSameScore([
+      { ...searchResult.matches[1]!, matchType: 'FULL_TEXT' },
+      { ...searchResult.matches[0]!, matchType: 'FULL_TEXT' },
+      { ...searchResult.matches[2]!, matchType: 'FULL_TEXT' },
+      { ...searchResult.matches[3]!, matchType: 'FULL_TEXT' },
+    ]);
+    expect(() => decodeSearchKnowledgeWorkspaceResult(authorityOrderViolation)).toThrow(
+      /ordered by authority/,
+    );
+
+    const sourceIdentityOrderViolation = withSameScore([
+      {
+        ...searchResult.matches[0]!,
+        matchType: 'FULL_TEXT',
+        source: { ...canonicalSource, canonicalResourceId: 'canonical-z' },
+      },
+      {
+        ...searchResult.matches[0]!,
+        matchType: 'FULL_TEXT',
+        source: { ...canonicalSource, canonicalResourceId: 'canonical-a' },
+      },
+    ]);
+    expect(() => decodeSearchKnowledgeWorkspaceResult(sourceIdentityOrderViolation)).toThrow(
+      /ordered by source identity/,
+    );
+
+    expect(() =>
+      decodeSearchKnowledgeWorkspaceResult({
+        ...searchResult,
+        readiness: {
+          ...searchResult.readiness,
+          sourceProjections: [{ ...readyStatus('COMPILED_TRUTH'), source: 'KNOWLEDGE_MODEL' }],
+        },
+      } as unknown),
+    ).toThrow(/supported projection source/);
+
+    expect(() =>
+      decodeSearchKnowledgeWorkspaceResult({
+        ...searchResult,
+        matches: searchResult.matches.map((match, index) =>
+          index === 2
+            ? {
+                ...match,
+                projectionStatus: {
+                  ...match.projectionStatus!,
+                  sourceSnapshotDigest: digestB,
+                },
+              }
+            : match,
+        ),
+      }),
+    ).toThrow(/Compiled Truth source and projection status identity differs/);
+
+    expect(() =>
+      decodeSearchKnowledgeWorkspaceResult({
+        ...searchResult,
+        matches: searchResult.matches.map((match, index) =>
+          index === 2
+            ? {
+                ...match,
+                projectionStatus: {
+                  ...match.projectionStatus!,
+                  status: 'STALE' as const,
+                  projectedCanonicalVersion: 6,
+                  lag: 1,
+                  reason: 'Compiled Truth is one revision behind.',
+                },
+              }
+            : match,
+        ),
+      }),
+    ).toThrow(/Compiled Truth source and projection status identity differs/);
+
+    expect(() =>
+      decodeSearchKnowledgeWorkspaceResult({
+        ...searchResult,
+        matches: searchResult.matches.map((match, index) =>
+          index === 3
+            ? {
+                ...match,
+                source: { ...derivedSource, projectionId: 'synthetic-projection' },
+              }
+            : match,
+        ),
+      } as unknown),
+    ).toThrow(/unknown field 'projectionId'/);
+
+    expect(() =>
+      decodeSearchKnowledgeWorkspaceResult({
+        ...searchResult,
+        matches: searchResult.matches.map((match, index) =>
+          index === 0 ? { ...match, projectionStatus: readyStatus('COMPILED_TRUTH') } : match,
+        ),
+      }),
+    ).toThrow(/CANONICAL matches may only use CANONICAL_SEARCH status/);
+
+    expect(() =>
+      decodeSearchKnowledgeWorkspaceResult({
+        ...searchResult,
+        matches: searchResult.matches.map((match, index) =>
+          index === 1 ? { ...match, projectionStatus: readyStatus('CANONICAL_SEARCH') } : match,
+        ),
+      }),
+    ).toThrow(/APPROVED_KNOWLEDGE matches must not expose projection status/);
   });
 
   it('supports READY, STALE, DEGRADED and NOT_BUILT Compiled Truth read meanings', () => {

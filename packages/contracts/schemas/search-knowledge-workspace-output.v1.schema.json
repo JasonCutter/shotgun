@@ -31,16 +31,16 @@
       "required": ["source", "status", "canonicalVersion", "projectedCanonicalVersion", "lag"],
       "properties": {
         "source": {
-          "enum": ["CANONICAL_SEARCH", "KNOWLEDGE_MODEL", "COMPILED_TRUTH", "DERIVED_INFERENCE"]
+          "enum": ["CANONICAL_SEARCH", "COMPILED_TRUTH"]
         },
         "status": { "enum": ["READY", "STALE", "DEGRADED", "NOT_BUILT"] },
         "canonicalVersion": { "type": "integer", "minimum": 0 },
         "projectedCanonicalVersion": { "type": "integer", "minimum": 0 },
         "lag": { "type": "integer", "minimum": 0 },
-        "projectionId": { "type": "string", "minLength": 1, "maxLength": 256 },
         "canonicalSnapshotDigest": { "$ref": "#/$defs/digest" },
         "projectedSnapshotDigest": { "$ref": "#/$defs/digest" },
         "sourceSnapshotDigest": { "$ref": "#/$defs/digest" },
+        "projectionLogicalDigest": { "$ref": "#/$defs/digest" },
         "reason": { "type": "string", "minLength": 1, "maxLength": 1000 },
         "updatedAt": { "type": "string", "minLength": 1 }
       }
@@ -58,7 +58,7 @@
         },
         "sourceProjections": {
           "type": "array",
-          "maxItems": 4,
+          "maxItems": 1,
           "items": { "$ref": "#/$defs/status" }
         },
         "partial": { "type": "boolean" }
@@ -165,7 +165,7 @@
         "projectId",
         "resourceId",
         "resourceRevision",
-        "projectionId",
+        "projectionLogicalDigest",
         "compiledItemId",
         "canonicalVersion",
         "sourceSnapshotDigest",
@@ -176,7 +176,7 @@
         "projectId": { "type": "string", "minLength": 1 },
         "resourceId": { "type": "string", "minLength": 1 },
         "resourceRevision": { "type": "string", "minLength": 1 },
-        "projectionId": { "type": "string", "minLength": 1 },
+        "projectionLogicalDigest": { "$ref": "#/$defs/digest" },
         "compiledItemId": { "type": "string", "minLength": 1 },
         "canonicalVersion": { "type": "integer", "minimum": 0 },
         "sourceSnapshotDigest": { "$ref": "#/$defs/digest" },
@@ -196,7 +196,6 @@
         "projectId",
         "resourceId",
         "resourceRevision",
-        "projectionId",
         "inferenceId",
         "sourceProjectionDigest",
         "evidenceIds"
@@ -206,7 +205,6 @@
         "projectId": { "type": "string", "minLength": 1 },
         "resourceId": { "type": "string", "minLength": 1 },
         "resourceRevision": { "type": "string", "minLength": 1 },
-        "projectionId": { "type": "string", "minLength": 1 },
         "inferenceId": { "type": "string", "minLength": 1 },
         "sourceProjectionDigest": { "$ref": "#/$defs/digest" },
         "evidenceIds": {

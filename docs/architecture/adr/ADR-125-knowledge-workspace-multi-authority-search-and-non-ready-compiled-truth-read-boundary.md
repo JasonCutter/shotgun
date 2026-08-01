@@ -62,11 +62,39 @@ metadata fixes the score normalization and tie-break rule. Stage 6, 9 and 10
 data may be composed only through Query envelopes; the Adapter, Browser and
 In-memory fixture must not rank or synthesize results.
 
+The declared tie-break is executable, not descriptive. For equal scores the
+result array must be ordered by `matchType`
+`FULL_TEXT < TRIGRAM < SUBSTRING`, then by authority
+`CANONICAL < APPROVED_KNOWLEDGE < COMPILED_TRUTH < DERIVED_INFERENCE`, then by
+the authority-specific source key: `canonicalResourceId`, `candidateId`,
+`compiledItemId` or `inferenceId`, respectively. Ranks remain strictly
+increasing, and a nested source is valid only when
+`match.projectId = source.projectId = result.projectId`.
+
 Project, access, sensitivity and typed authority/kind/temporal/projection
 filters are applied before a candidate is returned or ranked. A non-READY
 source projection is represented in readiness metadata and may produce a
 partial result; it is never normalized to `READY` and it does not erase results
 from another authority.
+
+Projection readiness is limited to the existing authoritative projection
+boundaries `CANONICAL_SEARCH` and `COMPILED_TRUTH`. `KNOWLEDGE_MODEL` and
+`DERIVED_INFERENCE` do not receive fabricated canonical-version/lag readiness
+claims in this contract. If their availability becomes a Product requirement,
+it must use a separately named discriminant that does not claim canonical
+projection lag.
+
+Compiled Truth source identity uses the actual Stage 10 logical projection
+digest as `projectionLogicalDigest`; Derived Inference uses the existing
+`sourceProjectionDigest`. The contract does not expose a free-form
+`projectionId`, array-position ID, prefix-derived ID or other synthetic
+projection identity. A Compiled Truth match requires a correlated
+`COMPILED_TRUTH` status whose projected canonical version, source snapshot
+digest and logical projection digest exactly match the source. Canonical matches
+may carry only `CANONICAL_SEARCH` status, Approved Knowledge matches carry no
+projection status, and Derived Inference matches do not synthesize a status;
+their readiness meaning remains the explicitly defined Compiled Truth
+inheritance boundary.
 
 ### 3. QX-02 — `GetCompiledTruthReadSnapshot@1.0.0`
 
@@ -100,8 +128,10 @@ QX-P0 freezes the following repository-owned artifacts:
 - this proposed ADR plus the global ADR registry and Frontend ADR index entry.
 
 The decoder rejects unknown fields, browser authority fields, invalid
-authority/source discriminants, fabricated lineage, invalid score/rank order,
-status/projection identity mismatches and forbidden status/projection pairs.
+authority/source discriminants, fabricated lineage, cross-Project nested
+sources, invalid score/rank/tie-break order, unsupported synthetic readiness,
+free-form projection identities, status/source identity mismatches and
+forbidden status/projection pairs.
 
 ## Not authorized by this proposal
 
@@ -124,9 +154,9 @@ introduced by QX-P0.
 
 ## Migration and rollback
 
-QX-P0 has no database or runtime migration. Rollback is a Git revert of the
-contract and proposed-ADR commit. Existing Query contracts remain available and
-are not rewritten by the rollback.
+QX-P0 and its QX-P0.1 hardening have no database or runtime migration. Rollback
+is a Git revert of the additive contract and proposed-ADR commits. Existing
+Query contracts remain available and are not rewritten by the rollback.
 
 ## Approval boundary
 

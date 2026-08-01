@@ -27,6 +27,7 @@ import {
   decodeAskAnswerRunTransitionSeedRequest,
   decodeSubmitAskQuestionRequest,
   decodeTargetRouteView,
+  buildCommandSemanticDigestInput,
   type AnyFrontendCommandRequest,
   type ErrorCode,
   type ProducedResourceRef,
@@ -204,10 +205,7 @@ export const registerFrontendProductRoutes = (
       commandRevision: '1',
       principalId: input.scope.principalId,
       request: commandRequest,
-      commandSemanticDigest: JSON.stringify({
-        commandType: input.commandType,
-        request: input.request,
-      }),
+      commandSemanticDigest: buildCommandSemanticDigestInput(commandRequest),
       acceptedPolicyContext: {
         policyContextId: 'frontend-ask-answer-current-policy',
         policyContextRevision: input.executionScope.policyContextRevision,
@@ -521,6 +519,11 @@ export const registerFrontendProductRoutes = (
       const outcome = await gateway.findByClientRequestId(
         scope.principalId,
         request.params.clientRequestId,
+        {
+          resourceKind: 'ASK_ANSWER_RUN',
+          resourceId: request.params.answerRunId,
+          commandTypes: Object.values(ASK_EXECUTION_COMMAND_TYPES),
+        },
       );
       const targetProjectId =
         outcome && 'targetProjectId' in outcome.acceptedProjectContext
@@ -541,7 +544,13 @@ export const registerFrontendProductRoutes = (
           operation: 'get-answer-run-command-outcome',
         });
       }
-      return { outcome };
+      return {
+        outcome,
+        targetResource: {
+          resourceKind: 'ASK_ANSWER_RUN',
+          resourceId: request.params.answerRunId,
+        },
+      };
     },
   );
 

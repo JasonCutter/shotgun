@@ -105,6 +105,15 @@ const scope = {
   ],
   accessRevision: '1',
   policyContextRevision: '1',
+  executionAuthorities: {
+    'project-1': {
+      projectId: 'project-1',
+      accessRevision: '1',
+      policyContextRevision: '1',
+      accessScope: ['owner'],
+      sensitivityClearance: 'private' as const,
+    },
+  },
 };
 
 const createCoordinator = () => {
@@ -260,6 +269,9 @@ describe('Frontend Ask contracts', () => {
     });
     expect(loadedWorkspace.projectId).toBe('project-1');
     expect(loadedWorkspace.selectedConversation?.conversationId).toBe('conversation-1');
+    expect(loadedWorkspace.accessRevision).toBe('1');
+    expect(loadedWorkspace.policyContextRevision).toBe('1');
+    expect(loadedWorkspace.projectionRevision).toContain('project-1-1-1');
   });
 
   it('uses the resource Project authority for a follow-up when Active Project differs', async () => {
@@ -353,6 +365,27 @@ describe('Frontend Ask contracts', () => {
       accessScope: ['project-1:read'],
       sensitivityClearance: 'private',
     });
+  });
+
+  it('fails closed when the target Project authority is missing', async () => {
+    const { coordinator, projection } = createCoordinator();
+
+    await expect(
+      coordinator.submitQuestion({
+        ...scope,
+        executionAuthorities: {},
+        request: {
+          schemaVersion: ASK_SCHEMA_VERSION,
+          clientRequestId: 'req-authority-missing',
+          idempotencyKey: 'idem-authority-missing',
+          question: 'This must not persist without authority.',
+          sourceSelections: [],
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+
+    const workspace = await projection.getWorkspace(scope);
+    expect(workspace.conversations).toHaveLength(0);
   });
 
   it('creates an atomic aggregate, replays exact command meaning, and resolves the durable outcome', async () => {

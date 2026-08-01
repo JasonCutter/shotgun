@@ -122,6 +122,9 @@ const askAnswerProvider = new StructuredAskAnswerProviderAdapter(geminiAIProvide
 const askAnswerExecution = new AskAnswerExecutionService(
   new PostgresAskAnswerExecutionRepository(pool, askWorkspaceProjection),
   askAnswerProvider,
+  {
+    maxConcurrency: Number.parseInt(process.env.ASK_WORKER_MAX_CONCURRENCY ?? '4', 10),
+  },
 );
 const askCommandCoordinator = new AskCommandCoordinator(
   commandGateway,
@@ -140,7 +143,7 @@ const frontendProductReadCoordinator = new FrontendProductReadCoordinator(
   askWorkspaceProjection,
 );
 
-let stopAskAnswerWorker = (): void => {};
+let stopAskAnswerWorker = async (): Promise<void> => {};
 
 const { server } = await createApplication({
   projectAdminRepository: new PostgresProjectAdministrationRepository(pool),
@@ -181,7 +184,7 @@ const { server } = await createApplication({
   },
   closeResources: async () => {
     removeSourcesWriteRuntime();
-    stopAskAnswerWorker();
+    await stopAskAnswerWorker();
     await pool.end();
   },
 });

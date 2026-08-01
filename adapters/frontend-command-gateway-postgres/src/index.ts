@@ -12,10 +12,12 @@ import {
   type AcceptFrontendCommandInput,
   type AcceptFrontendCommandResult,
   type CompleteFrontendCommandInput,
+  type FrontendCommandResourceBinding,
   type FrontendCommandGatewayPort,
   type RejectFrontendCommandInput,
   type ResolveFrontendCommandOutcomeUnknownInput,
 } from '../../../modules/frontend-command-gateway/src/index.js';
+import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
 
 type CommandLedgerRow = {
   command_id: string;
@@ -36,6 +38,9 @@ type CommandLedgerRow = {
   accepted_principal_context: AnyFrontendCommandOutcomeView['acceptedPrincipalContext'];
   accepted_project_context: AnyFrontendCommandOutcomeView['acceptedProjectContext'];
   accepted_policy_context: AnyFrontendCommandOutcomeView['acceptedPolicyContext'];
+  preconditions: readonly {
+    readonly subject: { readonly resourceKind: string; readonly resourceId: string };
+  }[];
   produced_resources: AnyFrontendCommandOutcomeView['producedResources'];
   rejection: AnyFrontendCommandOutcomeView['rejection'] | null;
   correlation_id: string;
@@ -98,11 +103,11 @@ export class PostgresFrontendCommandGateway implements FrontendCommandGatewayPor
               input.request.projectContext.scope === 'RESOURCE'
                 ? input.request.projectContext.resourceProjectId
                 : null,
-          };
+    };
     const scopeBindingKey = frontendCommandScopeBindingKey(input.request);
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
+    return withSafePostgresTransaction(
+      this.pool,
+      async (client) => {
       const existing = await client.query<CommandLedgerRow>(
         `SELECT *
          FROM frontend_command.command_ledger
@@ -159,7 +164,6 @@ export class PostgresFrontendCommandGateway implements FrontendCommandGatewayPor
             'Existing frontend command has a different semantic digest.',
           );
         }
-        await client.query('COMMIT');
         return { outcome, replayed: true };
       }
 
@@ -212,14 +216,13 @@ export class PostgresFrontendCommandGateway implements FrontendCommandGatewayPor
           outcome.lastUpdatedAt,
         ],
       );
-      await client.query('COMMIT');
       return { outcome, replayed: false };
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
+      },
+      {
+        module: 'frontend-command-gateway-postgres',
+        operation: 'accept-command',
+      },
+    );
   }
 
   async lockAcceptedForExecution(
@@ -253,18 +256,14 @@ export class PostgresFrontendCommandGateway implements FrontendCommandGatewayPor
   }
 
   async complete(input: CompleteFrontendCommandInput): Promise<AnyFrontendCommandOutcomeView> {
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
-      const outcome = await this.completeWithClient(client, input);
-      await client.query('COMMIT');
-      return outcome;
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
+    return withSafePostgresTransaction(
+      this.pool,
+      (client) => this.completeWithClient(client, input),
+      {
+        module: 'frontend-command-gateway-postgres',
+        operation: 'complete-command',
+      },
+    );
   }
 
   async reject(input: RejectFrontendCommandInput): Promise<AnyFrontendCommandOutcomeView> {
@@ -339,6 +338,7 @@ export class PostgresFrontendCommandGateway implements FrontendCommandGatewayPor
   async findByClientRequestId(
     principalId: string,
     clientRequestId: string,
+    binding?: FrontendCommandResourceBinding,
   ): Promise<AnyFrontendCommandOutcomeView | null> {
     const result = await this.pool.query<CommandLedgerRow>(
       `SELECT *
@@ -346,7 +346,20 @@ export class PostgresFrontendCommandGateway implements FrontendCommandGatewayPor
        WHERE principal_id = $1 AND client_request_id = $2`,
       [principalId, clientRequestId],
     );
-    return result.rows[0] ? toOutcome(result.rows[0]) : null;
+    const row = result.rows[0];
+    if (!row) return null;
+    if (
+      binding &&
+      (binding.commandTypes && !binding.commandTypes.includes(row.command_type) ||
+        !row.preconditions.some(
+          (precondition) =>
+            precondition.subject.resourceKind === binding.resourceKind &&
+            precondition.subject.resourceId === binding.resourceId,
+        ))
+    ) {
+      return null;
+    }
+    return toOutcome(row);
   }
 
   private async completeWithClient(

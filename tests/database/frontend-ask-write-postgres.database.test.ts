@@ -90,6 +90,15 @@ describe('PostgreSQL Ask write and recovery boundary', () => {
       ],
       accessRevision: `ask-db-access-${suffix}`,
       policyContextRevision: `ask-db-policy-${suffix}`,
+      executionAuthorities: {
+        [projectId]: {
+          projectId,
+          accessRevision: `ask-db-access-${suffix}`,
+          policyContextRevision: `ask-db-policy-${suffix}`,
+          accessScope: ['owner'],
+          sensitivityClearance: 'private' as const,
+        },
+      },
     };
 
     const firstRequest = {

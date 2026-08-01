@@ -85,6 +85,35 @@ describe('InMemoryFrontendCommandGateway', () => {
     });
   });
 
+  it('does not resolve a clientRequestId for a different protected resource', async () => {
+    const gateway = new InMemoryFrontendCommandGateway();
+    const boundRequest: FrontendCommandRequest = {
+      ...request,
+      clientRequestId: 'resource-bound-request',
+      commandType: 'ask.answer-run.export.v1',
+      preconditions: [
+        {
+          purpose: 'TARGET',
+          subject: { resourceKind: 'ASK_ANSWER_RUN', resourceId: 'run-a' },
+        },
+      ],
+    };
+    await gateway.accept({
+      ...acceptedInput('digest-resource-bound'),
+      request: boundRequest,
+      commandId: 'command-resource-bound',
+      commandSemanticDigest: 'digest-resource-bound',
+    });
+
+    await expect(
+      gateway.findByClientRequestId('principal-1', 'resource-bound-request', {
+        resourceKind: 'ASK_ANSWER_RUN',
+        resourceId: 'run-b',
+        commandTypes: ['ask.answer-run.export.v1'],
+      }),
+    ).resolves.toBeNull();
+  });
+
   it('resolves an accepted command to outcome unknown without rejecting it', async () => {
     const gateway = new InMemoryFrontendCommandGateway();
     await gateway.accept(acceptedInput('digest-1'));

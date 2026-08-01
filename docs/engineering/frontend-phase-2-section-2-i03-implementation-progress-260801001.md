@@ -34,6 +34,19 @@ Implementation approval: 2026-08-01
 - transactional command mutation plus ledger completion, commit-outcome
   resolution without blind rejection, idempotent read-only replay resolvers,
   and produced-resource links for AnswerRun/attempt/export/feedback/seed;
+- shared PostgreSQL transaction state handling for Question Submit, command
+  ledger, and Answer Execution, including commit/rollback acknowledgement-loss
+  `OUTCOME_UNKNOWN` behavior and post-commit callback isolation;
+- shared SourceSelection contract validation in both in-memory and PostgreSQL
+  validators, with empty/duplicate SOURCE_EXPLORATION pinning rejected before
+  persistence;
+- AnswerRun command semantic digests and outcome resolution bound to the
+  target AnswerRun precondition, including client-side target-resource checks;
+- bounded worker concurrency with interval recovery/queue scans that do not
+  wait for provider completion, in-flight attempt tracking, and attempt-safe
+  AbortController cleanup;
+- resource Conversation Workspace revisions resolved from the resource
+  Project authority, with missing Ask execution authority failing closed;
 - browser polling of durable partial events with AnswerRun-scoped incremental
   ordinals, follow-up restart, stale-response guards, and terminal cleanup;
 - contract, service, and PostgreSQL regression coverage.
@@ -45,10 +58,9 @@ explicit `PROPOSED` seeds only.
 
 - `npm.cmd run typecheck`
 - `npm.cmd run lint`
-- `npm.cmd run test:unit` (35 files, 192 tests)
-- `npm.cmd run test:contract` (25 files, 200 tests)
-- `npm.cmd run test:integration -- --maxWorkers=1 --fileParallelism=false` (15
-  files, 52 tests)
+- `npm.cmd run test:unit` (37 files, 201 tests)
+- `npm.cmd run test:contract` (25 files, 201 tests)
+- `npm.cmd run test:integration` (15 files, 52 tests)
 - `npm.cmd run frontend:test` (10 files, 32 tests)
 - `npm.cmd run frontend:build`
 - `npm.cmd run test:architecture`
@@ -63,11 +75,18 @@ explicit `PROPOSED` seeds only.
 - `node --env-file-if-exists=.env node_modules/vitest/vitest.mjs run tests/database/frontend-ask-write-postgres.database.test.ts --maxWorkers=1 --fileParallelism=false --testTimeout=20000 --hookTimeout=20000`
 - `npx.cmd vitest run tests/unit/frontend-ask-execution.test.ts tests/unit/gemini-provider.test.ts tests/contract/frontend-ask.contract.test.ts tests/contract/frontend-ask-execution.contract.test.ts --maxWorkers=1 --fileParallelism=false` (19 tests)
 - `npx.cmd vitest run tests/integration/frontend-ask-product-api.test.ts --maxWorkers=1 --fileParallelism=false`
+- `node --env-file-if-exists=.env node_modules/vitest/vitest.mjs run
+  tests/unit/frontend-ask-execution.test.ts
+  tests/unit/frontend-ask-write-postgres.test.ts
+  tests/unit/postgres-transaction.test.ts
+  tests/unit/frontend-command-gateway.test.ts
+  tests/contract/frontend-ask.contract.test.ts --maxWorkers=1
+  --fileParallelism=false` (5 files, 29 tests)
 
-The current full database-suite rerun exceeded the 120-second local command
-limit after the executed suites reported success; the focused Ask PostgreSQL
-write/execution test and `db:verify` passed. This remains validation evidence,
-not a completion claim.
+A previous full database-suite rerun exceeded the 120-second local command
+limit after the executed suites reported success. The current focused Ask
+PostgreSQL write/execution test passed. This remains validation evidence, not a
+completion claim.
 
 ## Not yet a completion claim
 

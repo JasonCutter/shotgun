@@ -10,6 +10,7 @@ import {
   type AcceptFrontendCommandInput,
   type AcceptFrontendCommandResult,
   type CompleteFrontendCommandInput,
+  type FrontendCommandResourceBinding,
   type FrontendCommandGatewayPort,
   type RejectFrontendCommandInput,
   type ResolveFrontendCommandOutcomeUnknownInput,
@@ -19,7 +20,20 @@ type LedgerRecord = {
   readonly principalId: string;
   readonly envelopeVersion: '1.0.0' | '2.0.0';
   readonly scopeBindingKey: string;
+  readonly resourceBindings: readonly { readonly resourceKind: string; readonly resourceId: string }[];
   readonly outcome: AnyFrontendCommandOutcomeView;
+};
+
+const matchesResourceBinding = (
+  record: LedgerRecord,
+  binding: FrontendCommandResourceBinding | undefined,
+): boolean => {
+  if (!binding) return true;
+  if (binding.commandTypes && !binding.commandTypes.includes(record.outcome.commandType)) return false;
+  return record.resourceBindings.some(
+    (resource) =>
+      resource.resourceKind === binding.resourceKind && resource.resourceId === binding.resourceId,
+  );
 };
 
 export class InMemoryFrontendCommandGateway implements FrontendCommandGatewayPort {
@@ -79,6 +93,7 @@ export class InMemoryFrontendCommandGateway implements FrontendCommandGatewayPor
       principalId: input.principalId,
       envelopeVersion: input.request.envelopeVersion,
       scopeBindingKey: frontendCommandScopeBindingKey(input.request),
+      resourceBindings: input.request.preconditions.map((precondition) => precondition.subject),
       outcome,
     };
     this.byCommandId.set(outcome.commandId, record);
@@ -180,8 +195,10 @@ export class InMemoryFrontendCommandGateway implements FrontendCommandGatewayPor
   async findByClientRequestId(
     principalId: string,
     clientRequestId: string,
+    binding?: FrontendCommandResourceBinding,
   ): Promise<AnyFrontendCommandOutcomeView | null> {
-    return this.byClientRequestId.get(`${principalId}:${clientRequestId}`)?.outcome ?? null;
+    const record = this.byClientRequestId.get(`${principalId}:${clientRequestId}`);
+    return record && matchesResourceBinding(record, binding) ? record.outcome : null;
   }
 
   private requireRecord(commandId: string): LedgerRecord {

@@ -299,10 +299,28 @@ export const createAskWorkspaceClient = (
         `/product-api/frontend/ask/answer-runs/${encodeURIComponent(answerRunId)}/commands/by-client-request/${encodeURIComponent(clientRequestId)}`,
         { credentials: 'same-origin', signal: requestOptions?.signal },
       );
-      const body = (await assertOk(response)) as { outcome?: unknown };
+      const body = (await assertOk(response)) as {
+        outcome?: unknown;
+        targetResource?: { readonly resourceKind?: unknown; readonly resourceId?: unknown };
+      };
       const outcome = decodeAnyFrontendCommandOutcomeView(body.outcome);
       if (outcome.clientRequestId !== clientRequestId)
         identityMismatch('AnswerRun command outcome identity does not match the request.');
+      if (
+        body.targetResource?.resourceKind !== 'ASK_ANSWER_RUN' ||
+        body.targetResource.resourceId !== answerRunId
+      ) {
+        identityMismatch('AnswerRun command outcome target does not match the request.');
+      }
+      if (
+        outcome.outcomeState === 'COMPLETED' &&
+        !outcome.producedResources.some(
+          (resource) =>
+            resource.resourceKind === 'ASK_ANSWER_RUN' && resource.resourceId === answerRunId,
+        )
+      ) {
+        identityMismatch('AnswerRun command outcome resource does not match the request.');
+      }
       return outcome;
     },
     async cancelAnswerRun(answerRunId, params, requestOptions) {

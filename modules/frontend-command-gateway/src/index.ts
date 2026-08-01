@@ -44,6 +44,12 @@ export type ResolveFrontendCommandOutcomeUnknownInput = {
   readonly completedAt: string;
 };
 
+export type FrontendCommandResourceBinding = {
+  readonly resourceKind: string;
+  readonly resourceId: string;
+  readonly commandTypes?: readonly string[];
+};
+
 export type FrontendCommandGatewayPort = {
   accept(input: AcceptFrontendCommandInput): Promise<AcceptFrontendCommandResult>;
   lockAcceptedForExecution(
@@ -62,6 +68,7 @@ export type FrontendCommandGatewayPort = {
   findByClientRequestId(
     principalId: string,
     clientRequestId: string,
+    binding?: FrontendCommandResourceBinding,
   ): Promise<AnyFrontendCommandOutcomeView | null>;
 };
 

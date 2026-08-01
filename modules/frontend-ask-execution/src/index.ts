@@ -215,7 +215,7 @@ export type AskAnswerExecutionRepositoryPort = {
   }): Promise<AskTransitionSeedView | undefined>;
   transaction<T>(action: (transaction: AskExecutionTransactionPort) => Promise<T>): Promise<T>;
   recoverInterrupted(): Promise<number>;
-  claimQueuedForWorker(workerId?: string): Promise<
+  claimQueuedForWorker(workerId?: string, limit?: number): Promise<
     readonly {
       readonly scope: AskExecutionScope;
       readonly claimed: AskClaimedExecution;
@@ -317,13 +317,21 @@ const markdownFor = (snapshot: AskAnswerRunSnapshot): string => {
 };
 
 export class AskAnswerExecutionService {
-  private readonly active = new Map<string, AbortController>();
+  private readonly active = new Map<
+    string,
+    { readonly attemptId: string; readonly controller: AbortController }
+  >();
+  private readonly inFlight = new Map<string, Promise<AskAnswerRunSnapshot>>();
   private readonly workerId = `ask-worker-${process.pid}-${randomUUID()}`;
+  private readonly maxConcurrency: number;
 
   constructor(
     private readonly repository: AskAnswerExecutionRepositoryPort,
     private readonly provider: AskAnswerProviderPort,
-  ) {}
+    options: { readonly maxConcurrency?: number } = {},
+  ) {
+    this.maxConcurrency = Math.max(1, Math.floor(options.maxConcurrency ?? 4));
+  }
 
   async enqueue(input: AskExecutionScope & { readonly answerRunId: string }): Promise<void> {
     // HTTP enqueue is only a wake hint. The durable worker owns claim and execution.
@@ -337,7 +345,7 @@ export class AskAnswerExecutionService {
       if (!current) throw executionError('NOT_FOUND', 'The AnswerRun was not found.', 'execute');
       return current.snapshot;
     }
-    return this.executeClaimed(scope, claimed);
+    return this.runClaimed(scope, claimed);
   }
 
   async cancel(
@@ -348,8 +356,9 @@ export class AskAnswerExecutionService {
     const snapshot = transaction
       ? await transaction.requestCancel(scope, answerRunId)
       : await this.repository.requestCancel(scope, answerRunId);
-    if (transaction) transaction.afterCommit(() => this.active.get(answerRunId)?.abort());
-    else this.active.get(answerRunId)?.abort();
+    const abortActive = () => this.active.get(answerRunId)?.controller.abort();
+    if (transaction) transaction.afterCommit(abortActive);
+    else abortActive();
     return snapshot;
   }
 
@@ -362,7 +371,7 @@ export class AskAnswerExecutionService {
     const claimed = transaction
       ? await transaction.retryAndClaim({ scope, answerRunId, mode, workerId: this.workerId })
       : await this.repository.retryAndClaim({ scope, answerRunId, mode, workerId: this.workerId });
-    const start = () => void this.executeClaimed(scope, claimed);
+    const start = () => void this.runClaimed(scope, claimed);
     if (transaction) transaction.afterCommit(start);
     else start();
     return { ...claimed.context.snapshot, attemptId: claimed.attempt.attemptId };
@@ -492,16 +501,22 @@ export class AskAnswerExecutionService {
     });
   }
 
-  async startWorker(intervalMs = 1000): Promise<() => void> {
+  async startWorker(intervalMs = 1000): Promise<() => Promise<void>> {
     let activeTick: Promise<void> | undefined;
+    let stopRequested = false;
     const tick = (): Promise<void> => {
+      if (stopRequested) return Promise.resolve();
       if (activeTick) return activeTick;
       activeTick = (async () => {
         await this.repository.recoverInterrupted();
-        const claimed = await this.repository.claimQueuedForWorker(this.workerId);
-        await Promise.all(
-          claimed.map(({ scope, claimed: execution }) => this.executeClaimed(scope, execution)),
-        );
+        if (stopRequested) return;
+        const capacity = this.maxConcurrency - this.inFlight.size;
+        if (capacity <= 0) return;
+        const claimed = await this.repository.claimQueuedForWorker(this.workerId, capacity);
+        for (const { scope, claimed: execution } of claimed) {
+          if (this.inFlight.size >= this.maxConcurrency) break;
+          void this.runClaimed(scope, execution);
+        }
       })().finally(() => {
         activeTick = undefined;
       });
@@ -514,7 +529,35 @@ export class AskAnswerExecutionService {
         console.error('[ask-answer-worker] tick failed', error);
       });
     }, intervalMs);
-    return () => clearInterval(timer);
+    return async () => {
+      stopRequested = true;
+      clearInterval(timer);
+      while (activeTick || this.inFlight.size > 0) {
+        const tickInFlight = activeTick;
+        if (tickInFlight) await Promise.allSettled([tickInFlight]);
+        const executions = [...this.inFlight.values()];
+        if (executions.length > 0) await Promise.allSettled(executions);
+      }
+    };
+  }
+
+  private runClaimed(
+    scope: AskExecutionScope,
+    claimed: AskClaimedExecution,
+  ): Promise<AskAnswerRunSnapshot> {
+    const key = claimed.attempt.attemptId;
+    const existing = this.inFlight.get(key);
+    if (existing) return existing;
+    const execution = this.executeClaimed(scope, claimed);
+    this.inFlight.set(key, execution);
+    void execution
+      .catch((error: unknown) => {
+        console.error('[ask-answer-worker] execution failed', error);
+      })
+      .finally(() => {
+        if (this.inFlight.get(key) === execution) this.inFlight.delete(key);
+      });
+    return execution;
   }
 
   private async executeClaimed(
@@ -524,7 +567,10 @@ export class AskAnswerExecutionService {
     const { attempt, context } = claimed;
     const workerId = attempt.leaseOwner ?? this.workerId;
     const controller = new AbortController();
-    this.active.set(context.snapshot.answerRunId, controller);
+    this.active.set(context.snapshot.answerRunId, {
+      attemptId: attempt.attemptId,
+      controller,
+    });
     let leaseLost = false;
     const heartbeat = setInterval(() => {
       void this.repository
@@ -693,7 +739,10 @@ export class AskAnswerExecutionService {
       });
     } finally {
       clearInterval(heartbeat);
-      this.active.delete(context.snapshot.answerRunId);
+      const current = this.active.get(context.snapshot.answerRunId);
+      if (current?.attemptId === attempt.attemptId) {
+        this.active.delete(context.snapshot.answerRunId);
+      }
     }
   }
 

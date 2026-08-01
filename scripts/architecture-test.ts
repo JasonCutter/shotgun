@@ -53,6 +53,7 @@ const allowedPackageDependencies: Readonly<Record<string, readonly string[]>> = 
   'connector-runtime': ['contracts', 'job-runtime', 'module-sdk', 'observability', 'policy'],
   kernel: ['connector-runtime', 'contracts', 'module-sdk'],
   'shotgun-api-client': ['contracts'],
+  'postgres-transaction': ['contracts'],
 };
 
 export const findArchitectureViolations = async (): Promise<string[]> => {

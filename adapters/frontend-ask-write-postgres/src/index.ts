@@ -13,12 +13,14 @@ import {
   type AskSourceSelectionView,
   type AskWorkspaceView,
 } from '../../../packages/contracts/src/index.js';
+import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
 import type {
   AskCommittedQuestion,
   AskConversationRepositoryPort,
   AskSourceSelectionValidatorPort,
   PersistAskQuestionInput,
 } from '../../../modules/frontend-ask-write/src/index.js';
+import { assertAskSourceSelectionContract } from '../../../modules/frontend-ask-write/src/index.js';
 import type {
   AskWorkspaceProjectionPort,
   FrontendReadScope,
@@ -166,18 +168,14 @@ export class PostgresAskConversationRepository implements AskConversationReposit
   constructor(private readonly pool: Pool) {}
 
   async transaction<T>(action: (transaction: unknown) => Promise<T>): Promise<T> {
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
-      const result = await action(client);
-      await client.query('COMMIT');
-      return result;
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
+    return withSafePostgresTransaction(
+      this.pool,
+      (client) => action(client),
+      {
+        module: 'frontend-ask-write-postgres',
+        operation: 'question-transaction',
+      },
+    );
   }
 
   async persistQuestion(
@@ -439,6 +437,7 @@ export class PostgresAskSourceSelectionValidator implements AskSourceSelectionVa
   constructor(private readonly pool: Pool) {}
 
   async validate(input: Parameters<AskSourceSelectionValidatorPort['validate']>[0]): Promise<void> {
+    assertAskSourceSelectionContract(input);
     for (const selection of input.sourceSelections) {
       const source = await this.pool.query<SourceAuthorityRow>(
         `SELECT
@@ -538,6 +537,13 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
     const selectedConversation = input.conversationId
       ? await this.loadConversation(input.conversationId, projectId)
       : undefined;
+    const resourceAuthority = input.conversationId
+      ? input.executionAuthorities?.[projectId]
+      : undefined;
+    if (input.conversationId && !resourceAuthority) throw notFound('resolve-workspace-authority');
+    const accessRevision = resourceAuthority?.accessRevision ?? input.accessRevision;
+    const policyContextRevision =
+      resourceAuthority?.policyContextRevision ?? input.policyContextRevision;
     const fetchedAt = new Date().toISOString();
     return decodeAskWorkspaceView({
       schemaVersion: ASK_SCHEMA_VERSION,
@@ -559,9 +565,9 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
       })),
       ...(selectedConversation ? { selectedConversation } : {}),
       capabilities: ['SUBMIT_QUESTION'],
-      projectionRevision: `ask-projection-${input.accessRevision}-${input.policyContextRevision}`,
-      accessRevision: input.accessRevision,
-      policyContextRevision: input.policyContextRevision,
+      projectionRevision: `ask-projection-${projectId}-${accessRevision}-${policyContextRevision}`,
+      accessRevision,
+      policyContextRevision,
       fetchedAt,
       stale: false,
     });

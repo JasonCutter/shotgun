@@ -348,6 +348,21 @@ export class InMemoryAskWorkspaceProjection implements AskWorkspaceProjectionPor
       targetProjectId = input.activeProject.id;
     }
 
+    const resourceAuthority = input.conversationId
+      ? input.executionAuthorities?.[targetProjectId]
+      : undefined;
+    if (input.conversationId && !resourceAuthority) {
+      throw new ShotgunError({
+        code: 'NOT_FOUND',
+        safeMessage: 'The requested conversation authority was not found.',
+        module: 'frontend-product-read',
+        operation: 'resolve-ask-workspace-authority',
+      });
+    }
+    const accessRevision = resourceAuthority?.accessRevision ?? input.accessRevision;
+    const policyContextRevision =
+      resourceAuthority?.policyContextRevision ?? input.policyContextRevision;
+
     const projectConversations = Array.from(this.conversations.values()).filter(
       (conversation) => conversation.projectId === targetProjectId,
     );
@@ -379,9 +394,9 @@ export class InMemoryAskWorkspaceProjection implements AskWorkspaceProjectionPor
       }),
       ...(selectedConversation ? { selectedConversation } : {}),
       capabilities: ['SUBMIT_QUESTION'],
-      projectionRevision: `ask-workspace-${targetProjectId}-${input.accessRevision}`,
-      accessRevision: input.accessRevision,
-      policyContextRevision: input.policyContextRevision,
+      projectionRevision: `ask-workspace-${targetProjectId}-${accessRevision}-${policyContextRevision}`,
+      accessRevision,
+      policyContextRevision,
       fetchedAt: now(),
       stale: false,
     });

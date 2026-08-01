@@ -191,6 +191,65 @@ describe('AskAnswerExecutionService', () => {
     expect(calls).toBe(2);
   });
 
+  it('keeps scanning queued work while a bounded provider execution is in flight', async () => {
+    const repository = new InMemoryAskAnswerExecutionRepository();
+    const second = { ...snapshot(), answerRunId: 'run-2', conversationId: 'conversation-2' };
+    const third = { ...snapshot(), answerRunId: 'run-3', conversationId: 'conversation-3' };
+    const evidence = [
+      {
+        evidenceId: 'evidence-1',
+        sourceId: 'source-1',
+        sourceVersionId: 'version-1',
+        exactQuote: 'The source quote.',
+        sensitivity: 'internal' as const,
+      },
+    ];
+    repository.register(snapshot(), evidence);
+    repository.register(second, evidence);
+    repository.register(third, evidence);
+
+    let releaseFirst!: () => void;
+    let signalFirstStarted!: () => void;
+    let thirdStarted = false;
+    const firstStarted = new Promise<void>((resolve) => {
+      signalFirstStarted = resolve;
+    });
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const service = new AskAnswerExecutionService(
+      repository,
+      provider(async (request) => {
+        if (request.answerRunId === 'run-1') {
+          signalFirstStarted();
+          await firstGate;
+        } else if (request.answerRunId === 'run-3') {
+          thirdStarted = true;
+        }
+        return {
+          answer: `Answer for ${request.answerRunId}`,
+          citations: [],
+          provider: { provider: 'test-provider', model: 'test-model' },
+        };
+      }),
+      { maxConcurrency: 2 },
+    );
+
+    const stop = await service.startWorker(10);
+    await firstStarted;
+    for (let attempt = 0; attempt < 30 && !thirdStarted; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(thirdStarted).toBe(true);
+    expect((await repository.getRunContext(scope, 'run-1'))?.snapshot.state).toBe('RUNNING');
+    expect(['RUNNING', 'SUCCEEDED']).toContain(
+      (await repository.getRunContext(scope, 'run-3'))?.snapshot.state,
+    );
+
+    releaseFirst();
+    await stop();
+  });
+
   it('keeps worker ownership and cancellation CAS-safe against stale completion', async () => {
     const repository = new InMemoryAskAnswerExecutionRepository();
     repository.register(snapshot(), [

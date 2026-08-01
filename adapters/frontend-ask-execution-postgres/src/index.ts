@@ -23,6 +23,7 @@ import {
   sha256Text,
   stableJson,
 } from '../../../packages/contracts/src/index.js';
+import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
 import type {
   AskReadScope,
   AskWorkspaceQueryPort,
@@ -1182,11 +1183,12 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
   async transaction<T>(
     action: (transaction: AskExecutionTransactionPort) => Promise<T>,
   ): Promise<T> {
-    const afterCommit: (() => void)[] = [];
-    const result = await this.withPostgresTransaction(async (client) => {
+    return withSafePostgresTransaction(
+      this.pool,
+      async (client, registerAfterCommit) => {
       const transaction: AskExecutionTransactionPort = {
         rawTransaction: client,
-        afterCommit: (callback) => afterCommit.push(callback),
+        afterCommit: registerAfterCommit,
         getRunContext: (scope, answerRunId) => this.getRunContext(scope, answerRunId),
         requestCancel: async (scope, answerRunId) => {
           const context = await this.getRunContext(scope, answerRunId);
@@ -1225,17 +1227,12 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
         saveTransitionSeed: (input) => this.saveTransitionSeedWithClient(client, input),
       };
       return action(transaction);
-    });
-    // A callback is a post-commit wake-up hook, not part of the transaction.
-    // Its failure must never turn a committed mutation into a rejection.
-    for (const callback of afterCommit) {
-      try {
-        callback();
-      } catch (error) {
-        console.error('[frontend-ask-execution] post-commit callback failed', error);
-      }
-    }
-    return result;
+      },
+      {
+        module: 'frontend-ask-execution-postgres',
+        operation: 'command-transaction',
+      },
+    );
   }
 
   async recoverInterrupted(): Promise<number> {
@@ -1349,7 +1346,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     });
   }
 
-  async claimQueuedForWorker(workerId?: string): Promise<
+  async claimQueuedForWorker(workerId?: string, limit = 32): Promise<
     readonly {
       readonly scope: AskExecutionScope;
       readonly claimed: AskClaimedExecution;
@@ -1363,7 +1360,8 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
        FROM frontend_ask.answer_runs
        WHERE state = 'QUEUED'
        ORDER BY created_at, answer_run_id
-       LIMIT 32`,
+       LIMIT $1`,
+      [Math.max(1, Math.floor(limit))],
     );
     const claimed: { scope: AskExecutionScope; claimed: AskClaimedExecution }[] = [];
     for (const row of result.rows) {
@@ -1627,57 +1625,13 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
   }
 
   private async poolTransaction<T>(action: (client: PoolClient) => Promise<T>): Promise<T> {
-    return this.withPostgresTransaction(action);
-  }
-
-  private async withPostgresTransaction<T>(action: (client: PoolClient) => Promise<T>): Promise<T> {
-    const client = await this.pool.connect();
-    let state:
-      | 'BEFORE_COMMIT'
-      | 'COMMIT_ATTEMPTED'
-      | 'COMMITTED'
-      | 'ROLLBACK_ATTEMPTED'
-      | 'ROLLED_BACK'
-      | 'OUTCOME_UNKNOWN' = 'BEFORE_COMMIT';
-    try {
-      await client.query('BEGIN');
-      const result = await action(client);
-      state = 'COMMIT_ATTEMPTED';
-      try {
-        await client.query('COMMIT');
-        state = 'COMMITTED';
-      } catch (error) {
-        state = 'OUTCOME_UNKNOWN';
-        throw new ShotgunError({
-          code: 'OUTCOME_UNKNOWN',
-          safeMessage: 'The AnswerRun command transaction outcome could not be resolved.',
-          module: 'frontend-ask-execution-postgres',
-          operation: 'commit-command-transaction',
-          cause: error,
-        });
-      }
-      return result;
-    } catch (error) {
-      if (state === 'BEFORE_COMMIT') {
-        state = 'ROLLBACK_ATTEMPTED';
-        try {
-          await client.query('ROLLBACK');
-          state = 'ROLLED_BACK';
-        } catch (rollbackError) {
-          state = 'OUTCOME_UNKNOWN';
-          throw new ShotgunError({
-            code: 'OUTCOME_UNKNOWN',
-            safeMessage:
-              'The AnswerRun command transaction rollback outcome could not be resolved.',
-            module: 'frontend-ask-execution-postgres',
-            operation: 'rollback-command-transaction',
-            cause: rollbackError,
-          });
-        }
-      }
-      throw error;
-    } finally {
-      client.release();
-    }
+    return withSafePostgresTransaction(
+      this.pool,
+      (client) => action(client),
+      {
+        module: 'frontend-ask-execution-postgres',
+        operation: 'pool-transaction',
+      },
+    );
   }
 }

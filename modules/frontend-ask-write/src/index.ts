@@ -106,6 +106,11 @@ export type AskFrontendCommandGatewayPort = {
       readonly completedAt: string;
     },
   ): Promise<AnyFrontendCommandOutcomeView>;
+  markOutcomeUnknown(input: {
+    readonly commandId: string;
+    readonly message: string;
+    readonly completedAt: string;
+  }): Promise<AnyFrontendCommandOutcomeView>;
   reject(input: {
     readonly commandId: string;
     readonly code: ErrorCode;
@@ -190,19 +195,62 @@ export type AskSourceSelectionValidatorPort = {
   }): Promise<void>;
 };
 
+export const assertAskSourceSelectionContract = (input: {
+  readonly mode: NonNullable<SubmitAskQuestionRequest['mode']>;
+  readonly sourceSelections: readonly AskSourceSelectionView[];
+}): void => {
+  if (input.mode !== 'SOURCE_EXPLORATION') return;
+  if (input.sourceSelections.length === 0) {
+    throw new ShotgunError({
+      code: 'INVALID_REQUEST',
+      safeMessage: 'SOURCE_EXPLORATION requires at least one pinned SourceVersion.',
+      module: 'frontend-ask-write',
+      operation: 'validate-source-exploration-pinning',
+    });
+  }
+
+  const sourceVersions = new Set<string>();
+  const evidenceIds = new Set<string>();
+  for (const selection of input.sourceSelections) {
+    const sourceVersionId = selection.sourceVersionId.trim();
+    if (!sourceVersionId) {
+      throw new ShotgunError({
+        code: 'INVALID_REQUEST',
+        safeMessage: 'SOURCE_EXPLORATION selections require a SourceVersion.',
+        module: 'frontend-ask-write',
+        operation: 'validate-source-exploration-pinning',
+      });
+    }
+    if (sourceVersions.has(sourceVersionId)) {
+      throw new ShotgunError({
+        code: 'INVALID_REQUEST',
+        safeMessage: 'SOURCE_EXPLORATION cannot repeat a pinned SourceVersion.',
+        module: 'frontend-ask-write',
+        operation: 'validate-source-exploration-pinning',
+      });
+    }
+    sourceVersions.add(sourceVersionId);
+    for (const evidenceId of selection.evidenceIds) {
+      const normalizedEvidenceId = evidenceId.trim();
+      if (!normalizedEvidenceId || evidenceIds.has(normalizedEvidenceId)) {
+        throw new ShotgunError({
+          code: 'INVALID_REQUEST',
+          safeMessage: 'SOURCE_EXPLORATION cannot repeat or omit an EvidenceSpan.',
+          module: 'frontend-ask-write',
+          operation: 'validate-source-exploration-pinning',
+        });
+      }
+      evidenceIds.add(normalizedEvidenceId);
+    }
+  }
+};
+
 export class EmptyOnlyAskSourceSelectionValidator implements AskSourceSelectionValidatorPort {
   async validate(input: {
     readonly mode: NonNullable<SubmitAskQuestionRequest['mode']>;
     readonly sourceSelections: readonly AskSourceSelectionView[];
   }): Promise<void> {
-    if (input.mode === 'SOURCE_EXPLORATION' && input.sourceSelections.length === 0) {
-      throw new ShotgunError({
-        code: 'INVALID_REQUEST',
-        safeMessage: 'SOURCE_EXPLORATION requires at least one pinned SourceVersion.',
-        module: 'frontend-ask-write',
-        operation: 'validate-source-exploration-pinning',
-      });
-    }
+    assertAskSourceSelectionContract(input);
     if (input.sourceSelections.length > 0) {
       throw new ShotgunError({
         code: 'INVALID_REQUEST',
@@ -322,6 +370,15 @@ export class AskCommandCoordinator {
         operation: 'replay-question',
       });
     }
+    if (accepted.outcome.outcomeState === 'OUTCOME_UNKNOWN') {
+      throw new ShotgunError({
+        code: 'OUTCOME_UNKNOWN',
+        safeMessage: 'The previous question command outcome must be resolved before retrying.',
+        module: 'frontend-ask-write',
+        operation: 'resolve-question-command-outcome',
+        retryable: false,
+      });
+    }
 
     const effectiveCommandId = accepted.outcome.commandId;
     let committed: AskCommittedQuestion | undefined;
@@ -407,6 +464,18 @@ export class AskCommandCoordinator {
         });
       });
     } catch (error) {
+      if (error instanceof ShotgunError && error.code === 'OUTCOME_UNKNOWN') {
+        try {
+          await this.commandGateway.markOutcomeUnknown({
+            commandId: effectiveCommandId,
+            message: error.message,
+            completedAt: new Date().toISOString(),
+          });
+        } catch {
+          // Preserve the unknown outcome when the resolution write is unavailable.
+        }
+        throw error;
+      }
       const rejectionCode: ErrorCode =
         error instanceof ShotgunError && error.code === 'REVISION_CONFLICT'
           ? 'REVISION_CONFLICT'
@@ -520,15 +589,8 @@ export class AskCommandCoordinator {
         });
       }
       const authority = input.executionAuthorities?.[input.activeProject.id];
-      return authority
-        ? { ...authority, targetProjectId: authority.projectId }
-        : {
-            targetProjectId: input.activeProject.id,
-            accessRevision: input.accessRevision,
-            policyContextRevision: input.policyContextRevision,
-            accessScope: input.accessScope ?? ['owner'],
-            sensitivityClearance: input.activeProject.sensitivityClearance,
-          };
+      if (!authority) throw this.notFoundOutcome();
+      return { ...authority, targetProjectId: authority.projectId };
     }
 
     if (!input.request.expectedConversationRevision || !input.request.expectedBranchRevision) {
@@ -561,16 +623,8 @@ export class AskCommandCoordinator {
     }
 
     const authority = input.executionAuthorities?.[conversation.projectId];
-    return authority
-      ? { ...authority, targetProjectId: conversation.projectId, branchId }
-      : {
-          targetProjectId: conversation.projectId,
-          branchId,
-          accessRevision: input.accessRevision,
-          policyContextRevision: input.policyContextRevision,
-          accessScope: input.accessScope ?? ['owner'],
-          sensitivityClearance: project.sensitivityClearance,
-        };
+    if (!authority) throw this.notFoundOutcome();
+    return { ...authority, targetProjectId: conversation.projectId, branchId };
   }
 
   private buildPreconditions(request: SubmitAskQuestionRequest): readonly TypedPrecondition[] {

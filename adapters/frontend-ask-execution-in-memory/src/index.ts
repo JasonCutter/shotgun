@@ -566,9 +566,11 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
 
   async claimQueuedForWorker(
     workerId?: string,
+    limit = 32,
   ): Promise<readonly { scope: AskExecutionScope; claimed: AskClaimedExecution }[]> {
     const claimed: { scope: AskExecutionScope; claimed: AskClaimedExecution }[] = [];
     for (const record of this.records.values()) {
+      if (claimed.length >= limit) break;
       if (record.snapshot.state !== 'QUEUED') continue;
       const scope = this.scopeFor(record.snapshot);
       const execution = await this.claimInitial(

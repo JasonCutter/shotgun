@@ -8,15 +8,20 @@ test('Ask navigation enables question submission and clears draft on success', a
   await expect(page.getByRole('heading', { name: 'Question Draft' })).toBeVisible();
 
   const questionInput = page.getByRole('textbox', { name: 'Question', exact: true });
-  await questionInput.fill('How does command gateway handle idempotency?');
+  const question = 'How does command gateway handle idempotency?';
+  await questionInput.fill(question);
   await expect(page.getByRole('button', { name: 'Submit question' })).toBeEnabled();
 
   await page.getByRole('button', { name: 'Submit question' }).click();
   await expect(questionInput).toHaveValue('');
-  await expect(page.getByText('How does command gateway handle idempotency?')).toBeVisible();
+  const submittedTurn = page.getByLabel('Main Branch').getByText(question, { exact: true });
+  await expect(submittedTurn).toHaveCount(1);
+  await expect(submittedTurn).toBeVisible();
 });
 
-test('Ask draft blocks Project switching and is not moved to the next Project', async ({ page }) => {
+test('Ask draft blocks Project switching and is not moved to the next Project', async ({
+  page,
+}) => {
   await page.goto('/ask');
   const questionInput = page.getByRole('textbox', { name: 'Question', exact: true });
   const projectSelector = page.getByRole('combobox', { name: 'Active Project' });

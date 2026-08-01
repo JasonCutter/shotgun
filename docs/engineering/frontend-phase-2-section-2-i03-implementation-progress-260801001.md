@@ -45,6 +45,12 @@ Implementation approval: 2026-08-01
 - same-identity `ACCEPTED` command replay recovery through the original
   `commandId` and transaction lock, with explicit `OUTCOME_UNKNOWN` resolution
   instead of a retry conflict;
+- the Ask browser submission assertion is scoped to the labelled `Main Branch`
+  and requires one exact submitted turn, avoiding conversation-link and heading
+  duplicates;
+- a real PostgreSQL concurrent `ACCEPTED` replay integration test holds
+  `SELECT ... FOR UPDATE` across two transactions and verifies that the first
+  export resource is preserved exactly once;
 - retry/export/feedback/transition-seed command decoders now validate the
   identity envelope separately from their operation payload, preserving strict
   schemas without rejecting valid operation fields;
@@ -89,6 +95,8 @@ explicit `PROPOSED` seeds only.
 - `npm.cmd run docs:completion-invariants`
 - `npx.cmd vitest run tests/unit/frontend-ask-execution.test.ts tests/contract/frontend-ask-execution.contract.test.ts --maxWorkers=1 --fileParallelism=false`
 - `node --env-file-if-exists=.env node_modules/vitest/vitest.mjs run tests/database/frontend-ask-write-postgres.database.test.ts --maxWorkers=1 --fileParallelism=false --testTimeout=20000 --hookTimeout=20000`
+- `node --env-file-if-exists=.env node_modules/playwright/cli.js test tests/browser/frontend-phase-2-section-2.spec.ts --grep "Ask navigation enables question submission"` (1 test)
+- `node --env-file-if-exists=.env node_modules/playwright/cli.js test` (21 tests)
 - `npx.cmd vitest run tests/unit/frontend-ask-execution.test.ts tests/unit/gemini-provider.test.ts tests/contract/frontend-ask.contract.test.ts tests/contract/frontend-ask-execution.contract.test.ts --maxWorkers=1 --fileParallelism=false` (19 tests)
 - `npx.cmd vitest run tests/integration/frontend-ask-product-api.test.ts --maxWorkers=1 --fileParallelism=false`
 - `node --env-file-if-exists=.env node_modules/vitest/vitest.mjs run
@@ -101,8 +109,9 @@ explicit `PROPOSED` seeds only.
 
 A previous full database-suite rerun exceeded the 120-second local command
 limit after the executed suites reported success. The current focused Ask
-PostgreSQL write/execution test passed. This remains validation evidence, not a
-completion claim.
+PostgreSQL write/execution test passed with both tests, including the real
+concurrent replay lock case. This remains validation evidence, not a completion
+claim.
 
 ## Not yet a completion claim
 

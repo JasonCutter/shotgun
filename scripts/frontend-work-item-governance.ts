@@ -21,6 +21,8 @@ export type FrontendWorkItem = {
   supersedes: string | null;
   introducedByDecision: string;
   decisionStatus: 'MIGRATED' | 'CANDIDATE' | 'ACCEPTED';
+  decisionApprovedBy: string | null;
+  decisionApprovedAt: string | null;
   approvedBy: string | null;
 };
 
@@ -70,10 +72,16 @@ export type FrontendCompletionManifest = {
     affectedScopeIds: string[];
   }>;
   evidenceRegistryUpdates: string[];
+  approvedBy: string | null;
   approvedAt: string | null;
 };
 
-type EvidenceRecord = { id: string; path: string };
+type EvidenceRecord = {
+  id: string;
+  path: string;
+  approvedBy?: string;
+  approvedAt?: string;
+};
 
 const registryPath = 'docs/project/frontend-work-items.json';
 const registrySchemaPath = 'docs/project/schemas/frontend-work-item-registry.schema.json';
@@ -149,6 +157,8 @@ function isWorkItem(value: unknown): value is FrontendWorkItem {
     'completionManifest',
     'approvedAt',
     'supersedes',
+    'decisionApprovedBy',
+    'decisionApprovedAt',
     'approvedBy',
   ];
   return (
@@ -218,8 +228,8 @@ export function collectWorkItemErrors(
               `Accepted Work Item ${candidate.id} decision document has no machine-readable approval metadata`,
             );
           } else if (
-            candidate.approvedBy !== approval.approvedBy ||
-            candidate.approvedAt !== approval.approvedAt
+            candidate.decisionApprovedBy !== approval.approvedBy ||
+            candidate.decisionApprovedAt !== approval.approvedAt
           ) {
             errors.push(
               `Accepted Work Item ${candidate.id} approval metadata does not match ${candidate.introducedByDecision}`,
@@ -235,10 +245,16 @@ export function collectWorkItemErrors(
       errors.push(`Candidate Work Item ${candidate.id} must remain NOT_STARTED`);
     }
     if (
-      candidate.decisionStatus === 'ACCEPTED' &&
-      (!candidate.approvedBy || !candidate.approvedAt)
+      ['MIGRATED', 'CANDIDATE'].includes(candidate.decisionStatus) &&
+      (candidate.decisionApprovedBy !== null || candidate.decisionApprovedAt !== null)
     ) {
-      errors.push(`Accepted Work Item ${candidate.id} requires approver and approval date`);
+      errors.push(`Work Item ${candidate.id} cannot have Decision approval metadata before ACCEPTED`);
+    }
+    if (
+      candidate.decisionStatus === 'ACCEPTED' &&
+      (!candidate.decisionApprovedBy || !candidate.decisionApprovedAt)
+    ) {
+      errors.push(`Accepted Work Item ${candidate.id} requires Decision approver and approval date`);
     }
     if (!pathExists(candidate.governingContract)) {
       errors.push(
@@ -307,7 +323,10 @@ export function collectWorkItemErrors(
     }
   }
 
-  const phases = items.filter((item) => item.type === 'PHASE');
+  const canonicalItems = items.filter(
+    (item) => item.decisionStatus === 'MIGRATED' || item.decisionStatus === 'ACCEPTED',
+  );
+  const phases = canonicalItems.filter((item) => item.type === 'PHASE');
   const validateLinearGraph = (graphItems: FrontendWorkItem[], label: string): void => {
     const graphIds = new Set(graphItems.map((item) => item.id));
     const starts = graphItems.filter(
@@ -350,27 +369,27 @@ export function collectWorkItemErrors(
 
   validateLinearGraph(phases, 'Phase');
   validateLinearGraph(
-    items.filter((item) => item.type === 'SECTION'),
+    canonicalItems.filter((item) => item.type === 'SECTION'),
     'Section',
   );
   for (const phase of phases) {
-    const sections = items.filter((item) => item.type === 'SECTION' && item.parent === phase.id);
+    const sections = canonicalItems.filter((item) => item.type === 'SECTION' && item.parent === phase.id);
     validateLinearGraph(sections, `Section group ${phase.id}`);
   }
-  for (const section of items.filter((item) => item.type === 'SECTION')) {
-    const increments = items.filter(
+  for (const section of canonicalItems.filter((item) => item.type === 'SECTION')) {
+    const increments = canonicalItems.filter(
       (item) => item.type === 'INCREMENT' && item.parent === section.id,
     );
     if (increments.length > 0) validateLinearGraph(increments, `Increment group ${section.id}`);
   }
 
-  for (const section of items.filter((item) => item.type === 'SECTION')) {
+  for (const section of canonicalItems.filter((item) => item.type === 'SECTION')) {
     const phaseId = /^FE-P[1-5]-S/.exec(section.id)?.[0]?.replace(/-S$/, '');
     if (phaseId && section.parent !== phaseId) {
       errors.push(`Section ${section.id} parent does not match its Phase ID: ${section.parent}`);
     }
   }
-  for (const increment of items.filter((item) => item.type === 'INCREMENT')) {
+  for (const increment of canonicalItems.filter((item) => item.type === 'INCREMENT')) {
     const sectionId = increment.id.match(/^FE-P[1-5]-S[1-9][0-9]*/)?.[0];
     if (sectionId && increment.parent !== sectionId) {
       errors.push(
@@ -379,7 +398,7 @@ export function collectWorkItemErrors(
     }
   }
 
-  const activeSections = items.filter(
+  const activeSections = canonicalItems.filter(
     (item) => item.type === 'SECTION' && item.status === 'IN_PROGRESS',
   );
   if (activeSections.length > 1) {
@@ -395,7 +414,7 @@ export function collectWorkItemErrors(
     );
   }
   for (const phase of phases) {
-    const children = items.filter((item) => item.type === 'SECTION' && item.parent === phase.id);
+    const children = canonicalItems.filter((item) => item.type === 'SECTION' && item.parent === phase.id);
     if (children.length === 0) continue;
     const allChildrenComplete = children.every((child) => child.status === 'COMPLETE');
     if (allChildrenComplete && phase.status !== 'COMPLETE') {
@@ -419,7 +438,7 @@ export function collectWorkItemErrors(
       }
     }
   }
-  for (const section of items.filter((item) => item.type === 'SECTION')) {
+  for (const section of canonicalItems.filter((item) => item.type === 'SECTION')) {
     if (section.predecessor) {
       const predecessor = byId.get(section.predecessor);
       if (predecessor && predecessor.status !== 'COMPLETE' && section.status !== 'NOT_STARTED') {
@@ -454,11 +473,22 @@ export function collectCompletionInvariantErrors(
 ): string[] {
   const errors: string[] = [];
   const byId = new Map(registry.items.map((item) => [item.id, item]));
+  const canonicalById = new Map(
+    registry.items
+      .filter((item) => item.decisionStatus === 'MIGRATED' || item.decisionStatus === 'ACCEPTED')
+      .map((item) => [item.id, item]),
+  );
   const evidenceById = new Map(evidenceRecords.map((record) => [record.id, record]));
+  const evidenceByPath = new Map(evidenceRecords.map((record) => [record.path, record]));
   const evidencePaths = new Set(evidenceRecords.map((record) => record.path));
 
   for (const item of registry.items.filter((candidate) => candidate.type === 'SECTION')) {
     const manifest = manifests[item.id];
+    const completionEvidence = item.completionManifest
+      ? evidenceByPath.get(item.completionManifest)
+      : undefined;
+    const completionApprovedBy = item.approvedBy ?? completionEvidence?.approvedBy ?? null;
+    const completionApprovedAt = item.approvedAt ?? completionEvidence?.approvedAt ?? null;
 
     if (item.status === 'COMPLETE') {
       if (!item.completionManifest) {
@@ -468,7 +498,8 @@ export function collectCompletionInvariantErrors(
           `COMPLETE Section ${item.id} completion status lacks an Evidence Registry update for ${item.completionManifest}`,
         );
       }
-      if (!item.approvedAt) errors.push(`COMPLETE Section ${item.id} has no approval date`);
+      if (!completionApprovedBy) errors.push(`COMPLETE Section ${item.id} has no completion approver`);
+      if (!completionApprovedAt) errors.push(`COMPLETE Section ${item.id} has no approval date`);
       if (!manifest && !legacyCompletionEvidenceSectionIds.has(item.id)) {
         errors.push(
           `COMPLETE Section ${item.id} requires a JSON completion manifest; legacy evidence is not allowed for new Sections`,
@@ -495,17 +526,17 @@ export function collectCompletionInvariantErrors(
       );
     }
 
-    const amendmentById = new Map(
-      manifest.scopeAmendments.map((amendment) => [amendment.id, amendment]),
-    );
-    const approvedAmendments = new Set(
-      manifest.scopeAmendments
-        .filter(
-          (amendment) =>
-            amendment.status === 'APPROVED' && amendment.approvedAt && amendment.approvedBy,
-        )
-        .map((amendment) => amendment.id),
-    );
+    const duplicateAmendmentIds = new Set<string>();
+    const amendmentById = new Map<string, (typeof manifest.scopeAmendments)[number]>();
+    for (const amendment of manifest.scopeAmendments) {
+      if (amendmentById.has(amendment.id)) {
+        duplicateAmendmentIds.add(amendment.id);
+        errors.push(`Completion manifest ${item.id} has duplicate Scope Amendment ID: ${amendment.id}`);
+      } else {
+        amendmentById.set(amendment.id, amendment);
+      }
+    }
+    const approvedAmendments = new Map<string, (typeof manifest.scopeAmendments)[number]>();
     const criterionIds = new Set(manifest.mandatoryCriteria.map((criterion) => criterion.id));
     const remainingIds = new Set(manifest.remainingScope.map((scope) => scope.id));
     const excludedIds = new Set((manifest.excludedScope ?? []).map((scope) => scope.id));
@@ -524,11 +555,23 @@ export function collectCompletionInvariantErrors(
 
     const usedAmendments = new Set<string>();
     for (const amendment of manifest.scopeAmendments) {
+      let authoritativeApprovedAmendment =
+        amendment.status === 'APPROVED' &&
+        Boolean(amendment.approvedAt) &&
+        Boolean(amendment.approvedBy) &&
+        !duplicateAmendmentIds.has(amendment.id);
       if (!pathExists(amendment.decisionDocument)) {
         errors.push(
           `Scope Amendment ${item.id}/${amendment.id} decision document does not exist: ${amendment.decisionDocument}`,
         );
+        authoritativeApprovedAmendment = false;
       } else if (amendment.status === 'APPROVED') {
+        if (!amendment.approvedAt || !amendment.approvedBy) {
+          errors.push(
+            `Scope Amendment ${item.id}/${amendment.id} is APPROVED but has no approval metadata`,
+          );
+          authoritativeApprovedAmendment = false;
+        }
         const decisionText = readText(amendment.decisionDocument);
         if (
           decisionText !== undefined &&
@@ -539,12 +582,14 @@ export function collectCompletionInvariantErrors(
           errors.push(
             `Scope Amendment ${item.id}/${amendment.id} is APPROVED but its decision document is not approved`,
           );
+          authoritativeApprovedAmendment = false;
         } else if (decisionText !== undefined) {
           const approval = parseDecisionApprovalMetadata(decisionText);
           if (!approval) {
             errors.push(
               `Scope Amendment ${item.id}/${amendment.id} decision document has no machine-readable approval metadata`,
             );
+            authoritativeApprovedAmendment = false;
           } else if (
             amendment.approvedBy !== approval.approvedBy ||
             amendment.approvedAt !== approval.approvedAt
@@ -552,9 +597,11 @@ export function collectCompletionInvariantErrors(
             errors.push(
               `Scope Amendment ${item.id}/${amendment.id} approval metadata does not match its decision document`,
             );
+            authoritativeApprovedAmendment = false;
           }
         }
       }
+      if (authoritativeApprovedAmendment) approvedAmendments.set(amendment.id, amendment);
       for (const criterionId of amendment.affectedCriteria) {
         if (!criterionIds.has(criterionId)) {
           errors.push(
@@ -562,9 +609,14 @@ export function collectCompletionInvariantErrors(
           );
         }
       }
-      if (!byId.has(amendment.newOwner)) {
+      const newOwner = canonicalById.get(amendment.newOwner);
+      if (
+        !newOwner ||
+        newOwner.id === item.id ||
+        newOwner.status === 'COMPLETE'
+      ) {
         errors.push(
-          `Scope Amendment ${item.id}/${amendment.id} has no registered new owner or governed Backlog ID: ${amendment.newOwner}`,
+          `Scope Amendment ${item.id}/${amendment.id} requires a canonical non-complete new owner: ${amendment.newOwner}`,
         );
       }
     }
@@ -606,7 +658,7 @@ export function collectCompletionInvariantErrors(
     }
 
     for (const remaining of manifest.remainingScope) {
-      const trackedByWorkItem = byId.has(remaining.trackingId);
+      const trackedByWorkItem = canonicalById.has(remaining.trackingId);
       if (!trackedByWorkItem) {
         errors.push(
           `Remaining scope ${item.id}/${remaining.id} has no registered Work Item or governed Backlog ID: ${remaining.trackingId}`,
@@ -615,7 +667,7 @@ export function collectCompletionInvariantErrors(
     }
 
     for (const excluded of manifest.excludedScope ?? []) {
-      const trackedByWorkItem = byId.has(excluded.trackingId);
+      const trackedByWorkItem = canonicalById.has(excluded.trackingId);
       if (!trackedByWorkItem) {
         errors.push(
           `Excluded scope ${item.id}/${excluded.id} has no registered Work Item or governed Backlog ID: ${excluded.trackingId}`,
@@ -631,6 +683,11 @@ export function collectCompletionInvariantErrors(
         if (amendment && !amendment.affectedScopeIds.includes(excluded.id)) {
           errors.push(
             `Excluded scope ${item.id}/${excluded.id} is not listed in Scope Amendment ${excluded.scopeAmendment}`,
+          );
+        }
+        if (amendment && amendment.newOwner !== excluded.trackingId) {
+          errors.push(
+            `Excluded scope ${item.id}/${excluded.id} tracking owner must match Scope Amendment ${excluded.scopeAmendment} newOwner`,
           );
         }
       }
@@ -658,14 +715,24 @@ export function collectCompletionInvariantErrors(
         );
       }
     }
-    if (item.status === 'COMPLETE' && !manifest.approvedAt) {
-      errors.push(`COMPLETE manifest ${item.id} has no approval date`);
+    if (item.status === 'COMPLETE') {
+      if (!manifest.approvedBy) errors.push(`COMPLETE manifest ${item.id} has no completion approver`);
+      if (!manifest.approvedAt) errors.push(`COMPLETE manifest ${item.id} has no approval date`);
+      if (manifest.approvedBy !== completionApprovedBy || manifest.approvedAt !== completionApprovedAt) {
+        errors.push(`Registry/completion manifest approval metadata drift for ${item.id}`);
+      }
     }
   }
 
   for (const item of registry.items.filter((candidate) => candidate.type === 'INCREMENT')) {
     if (item.status !== 'COMPLETE') continue;
-    if (!item.approvedAt) errors.push(`COMPLETE Increment ${item.id} has no approval date`);
+    const completionEvidence = item.completionManifest
+      ? evidenceByPath.get(item.completionManifest)
+      : undefined;
+    const completionApprovedBy = item.approvedBy ?? completionEvidence?.approvedBy ?? null;
+    const completionApprovedAt = item.approvedAt ?? completionEvidence?.approvedAt ?? null;
+    if (!completionApprovedBy) errors.push(`COMPLETE Increment ${item.id} has no completion approver`);
+    if (!completionApprovedAt) errors.push(`COMPLETE Increment ${item.id} has no approval date`);
     if (!item.completionManifest) {
       errors.push(`COMPLETE Increment ${item.id} has no completion evidence`);
     } else if (!evidencePaths.has(item.completionManifest)) {

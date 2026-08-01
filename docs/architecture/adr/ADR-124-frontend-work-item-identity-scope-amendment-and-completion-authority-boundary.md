@@ -33,6 +33,13 @@ A Section may be `COMPLETE` only when:
 
 An Increment can be `COMPLETE` while its parent Section remains `IN_PROGRESS`. Child completion never promotes the parent by inference.
 
+Work Item introduction approval and completion approval are separate authorities. An `ACCEPTED`
+Work Item records `decisionApprovedBy` and `decisionApprovedAt` from its introduction Decision
+document. Section and Increment completion records use `approvedBy` and `approvedAt`; the
+introduction approval cannot substitute for completion approval. Candidate Work Items may be
+registered for review, but they remain outside the Canonical graph, status derivation, Projection,
+and completion-scope ownership until accepted.
+
 ### 3. Scope Amendment boundary
 
 Omitted or excluded contract scope must reference a registered Work Item or governed Backlog identifier. It cannot be silently moved to “later” or treated as complete.

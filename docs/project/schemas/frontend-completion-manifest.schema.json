@@ -13,6 +13,7 @@
     "remainingScope",
     "scopeAmendments",
     "evidenceRegistryUpdates",
+    "approvedBy",
     "approvedAt"
   ],
   "properties": {
@@ -113,6 +114,7 @@
       }
     },
     "evidenceRegistryUpdates": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "approvedBy": { "type": ["string", "null"] },
     "approvedAt": { "type": ["string", "null"], "format": "date" }
   }
 }

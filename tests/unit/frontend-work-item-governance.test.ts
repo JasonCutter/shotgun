@@ -17,6 +17,8 @@ function registryFixture(): FrontendWorkItemRegistry {
     supersedes: null,
     introducedByDecision: 'migration',
     decisionStatus: 'MIGRATED' as const,
+    decisionApprovedBy: null,
+    decisionApprovedAt: null,
     approvedBy: null,
   };
   return {
@@ -144,6 +146,7 @@ function manifestFixture(): FrontendCompletionManifest {
     ],
     scopeAmendments: [],
     evidenceRegistryUpdates: ['RECONCILIATION'],
+    approvedBy: null,
     approvedAt: null,
   };
 }
@@ -365,6 +368,8 @@ describe('Frontend Work Item governance', () => {
       Object.assign(phase, {
         introducedByDecision: 'accepted-decision.md',
         decisionStatus: 'ACCEPTED',
+        decisionApprovedBy: 'user-b',
+        decisionApprovedAt: '2026-08-02',
         approvedBy: 'user-b',
         approvedAt: '2026-08-02',
       });
@@ -405,6 +410,97 @@ describe('Frontend Work Item governance', () => {
     if (candidate) Object.assign(candidate, { decisionStatus: 'CANDIDATE' });
     const block = renderFrontendStatusBlock(registry, { 'FE-P2-S2': manifestFixture() });
     expect(block).not.toContain('FE-P3-S1');
+  });
+
+  it('allows an isolated Candidate Work Item outside the canonical graph', () => {
+    const registry = registryFixture();
+    registry.items.push({
+      ...registry.items.find((item) => item.id === 'FE-P3-S1')!,
+      id: 'FE-P3-S2',
+      title: 'Candidate Knowledge Editor',
+      predecessor: null,
+      successor: null,
+      status: 'NOT_STARTED',
+      decisionStatus: 'CANDIDATE',
+    });
+    const errors = collectWorkItemErrors(registry, {}, exists);
+    expect(errors.filter((error) => error.includes('Candidate'))).toEqual([]);
+  });
+
+  it('rejects a Candidate Work Item as a Scope Amendment owner', () => {
+    const registry = registryFixture();
+    registry.items.push({
+      ...registry.items.find((item) => item.id === 'FE-P3-S1')!,
+      id: 'FE-P3-S2',
+      title: 'Candidate Knowledge Editor',
+      predecessor: null,
+      successor: null,
+      status: 'NOT_STARTED',
+      decisionStatus: 'CANDIDATE',
+    });
+    const manifest = manifestFixture();
+    manifest.excludedScope = [
+      {
+        id: 'deferred',
+        description: 'Deferred scope',
+        trackingId: 'FE-P3-S2',
+        scopeAmendment: 'AMEND-1',
+      },
+    ];
+    manifest.scopeAmendments = [
+      {
+        id: 'AMEND-1',
+        status: 'APPROVED',
+        approvedAt: '2026-08-01',
+        approvedBy: 'user',
+        decisionDocument: 'amend.md',
+        affectedCriteria: ['answerExecution'],
+        rationale: 'Split the scope',
+        newOwner: 'FE-P3-S2',
+        impactAndRollback: 'Reassign and revert',
+        affectedScopeIds: ['deferred'],
+      },
+    ];
+    const errors = collectCompletionInvariantErrors(
+      registry,
+      { 'FE-P2-S2': manifest },
+      evidence,
+      exists,
+    );
+    expect(errors.join('\n')).toContain('requires a canonical non-complete new owner');
+  });
+
+  it('requires excluded scope ownership to match the amendment newOwner', () => {
+    const manifest = manifestFixture();
+    manifest.excludedScope = [
+      {
+        id: 'deferred',
+        description: 'Deferred scope',
+        trackingId: 'FE-P2-S2-I02',
+        scopeAmendment: 'AMEND-1',
+      },
+    ];
+    manifest.scopeAmendments = [
+      {
+        id: 'AMEND-1',
+        status: 'APPROVED',
+        approvedAt: '2026-08-01',
+        approvedBy: 'user',
+        decisionDocument: 'amend.md',
+        affectedCriteria: ['answerExecution'],
+        rationale: 'Split the scope',
+        newOwner: 'FE-P2-S2-I03',
+        impactAndRollback: 'Reassign and revert',
+        affectedScopeIds: ['deferred'],
+      },
+    ];
+    const errors = collectCompletionInvariantErrors(
+      registryFixture(),
+      { 'FE-P2-S2': manifest },
+      evidence,
+      exists,
+    );
+    expect(errors.join('\n')).toContain('tracking owner must match Scope Amendment AMEND-1 newOwner');
   });
 
   it('rejects excluded scope without an approved amendment', () => {
@@ -521,6 +617,92 @@ describe('Frontend Work Item governance', () => {
           : undefined,
     );
     expect(errors.join('\n')).toContain('approval metadata does not match its decision document');
+  });
+
+  it('rejects duplicate Scope Amendment IDs instead of mixing their fields', () => {
+    const manifest = manifestFixture();
+    manifest.mandatoryCriteria[1]!.scopeAmendment = 'AMEND-1';
+    const amendment = {
+      id: 'AMEND-1',
+      status: 'APPROVED' as const,
+      approvedAt: '2026-08-01',
+      approvedBy: 'user',
+      decisionDocument: 'amend.md',
+      affectedCriteria: ['answerExecution'],
+      rationale: 'Split the scope',
+      newOwner: 'FE-P2-S2-I03',
+      impactAndRollback: 'Reassign and revert',
+      affectedScopeIds: ['answer-execution'],
+    };
+    manifest.scopeAmendments = [
+      amendment,
+      { ...amendment, status: 'PROPOSED', affectedCriteria: ['failureAndRetry'] },
+    ];
+    const errors = collectCompletionInvariantErrors(
+      registryFixture(),
+      { 'FE-P2-S2': manifest },
+      evidence,
+      exists,
+    );
+    expect(errors.join('\n')).toContain('has duplicate Scope Amendment ID: AMEND-1');
+  });
+
+  it('keeps Work Item decision approval separate from completion approval', () => {
+    const registry = registryFixture();
+    const phase = registry.items.find((item) => item.id === 'FE-P3');
+    if (phase) {
+      Object.assign(phase, {
+        introducedByDecision: 'accepted-decision.md',
+        decisionStatus: 'ACCEPTED',
+        decisionApprovedBy: 'user-a',
+        decisionApprovedAt: '2026-08-01',
+        approvedBy: null,
+        approvedAt: null,
+      });
+    }
+    const errors = collectWorkItemErrors(
+      registry,
+      {},
+      exists,
+      (relativePath) =>
+        relativePath === 'accepted-decision.md'
+          ? 'Decision status: **ACCEPTED**\n- Approved by: user-a\n- Approved at: 2026-08-01'
+          : undefined,
+    );
+    expect(errors).not.toContain('Accepted Work Item FE-P3 requires Decision approver and approval date');
+    expect(errors).not.toContain('approval metadata does not match docs/accepted-decision.md');
+  });
+
+  it('rejects completion approval metadata drift between registry and manifest', () => {
+    const registry = registryFixture();
+    const section = registry.items.find((item) => item.id === 'FE-P2-S2');
+    if (section) {
+      section.status = 'COMPLETE';
+      section.approvedBy = 'user';
+      section.approvedAt = '2026-08-01';
+    }
+    const manifest = manifestFixture();
+    manifest.status = 'COMPLETE';
+    manifest.mandatoryCriteria.forEach((criterion) => (criterion.status = 'PASS'));
+    manifest.remainingScope = [];
+    manifest.approvedBy = 'different-user';
+    manifest.approvedAt = '2026-08-01';
+    const completionEvidence = [
+      ...evidence,
+      {
+        id: 'MANIFEST',
+        path: 'docs/project/completions/FE-P2-S2.json',
+        approvedBy: 'user',
+        approvedAt: '2026-08-01',
+      },
+    ];
+    const errors = collectCompletionInvariantErrors(
+      registry,
+      { 'FE-P2-S2': manifest },
+      completionEvidence,
+      exists,
+    );
+    expect(errors).toContain('Registry/completion manifest approval metadata drift for FE-P2-S2');
   });
 
   it('rejects completed Sections with unresolved remaining scope', () => {

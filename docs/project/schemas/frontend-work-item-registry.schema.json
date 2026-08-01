@@ -29,6 +29,8 @@
           "supersedes",
           "introducedByDecision",
           "decisionStatus",
+          "decisionApprovedBy",
+          "decisionApprovedAt",
           "approvedBy"
         ],
         "properties": {
@@ -45,6 +47,8 @@
           "supersedes": { "type": ["string", "null"] },
           "introducedByDecision": { "type": "string", "minLength": 1 },
           "decisionStatus": { "enum": ["MIGRATED", "CANDIDATE", "ACCEPTED"] },
+          "decisionApprovedBy": { "type": ["string", "null"] },
+          "decisionApprovedAt": { "type": ["string", "null"], "format": "date" },
           "approvedBy": { "type": ["string", "null"] }
         }
       }

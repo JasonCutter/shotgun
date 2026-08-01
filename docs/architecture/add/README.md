@@ -55,7 +55,7 @@ Phase 2부터 Phase 6까지의 과거 승인 ADR-018–ADR-075는 Phase별 ADR �
 | FE-P2-S2 — Ask and Conversations Workspace                     | `IN_PROGRESS`         |
 | FE-P2-S2-I01 — Read Foundation                                 | `COMPLETE` / VERIFIED |
 | FE-P2-S2-I02 — Command and Persistence                         | `COMPLETE` / VERIFIED |
-| FE-P2-S2-I03 — Answer Execution and Remaining Section Contract | `NOT_STARTED`         |
+| FE-P2-S2-I03 — Answer Execution and Remaining Section Contract | `IN_PROGRESS`         |
 
 - 미충족 필수 기준: `answerExecution, failureAndRetry, finalSectionVerification`
 - Next valid Product Section: `FE-P3-S1 — Knowledge Workspace`

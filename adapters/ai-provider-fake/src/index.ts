@@ -44,8 +44,31 @@ export class FakeAIProviderAdapter implements AIProviderAdapterPort {
     }
 
     const parsed = JSON.parse(request.prompt) as {
-      readonly evidence: readonly { readonly evidenceId: string; readonly text: string }[];
+      readonly task?: string;
+      readonly question?: string;
+      readonly evidence: readonly {
+        readonly evidenceId: string;
+        readonly text?: string;
+        readonly exactQuote?: string;
+      }[];
     };
+    if (parsed.task === 'shotgun-ask-answer-v1') {
+      const answer = parsed.evidence.length
+        ? `${parsed.question ?? 'Answer'}\n\n${parsed.evidence
+            .map((item) => item.text ?? item.exactQuote ?? '')
+            .join('\n')}`
+        : `No selected Evidence was available for: ${parsed.question ?? 'the question'}`;
+      return {
+        rawText: JSON.stringify({
+          answer,
+          citations: parsed.evidence.map((item) => ({ evidenceId: item.evidenceId })),
+        }),
+        providerResponseId: `fake-${this.callCount}`,
+        modelVersion: this.identity.model,
+        inputTokens: Math.ceil(request.prompt.length / 4),
+        outputTokens: Math.ceil(answer.length / 4),
+      };
+    }
     if (step && 'claimText' in step) {
       return {
         rawText: JSON.stringify({
@@ -61,7 +84,7 @@ export class FakeAIProviderAdapter implements AIProviderAdapterPort {
     }
     const rawText = JSON.stringify({
       candidates: parsed.evidence.map((item) => ({
-        claimText: item.text,
+        claimText: item.text ?? item.exactQuote ?? '',
         evidenceId: item.evidenceId,
       })),
     });

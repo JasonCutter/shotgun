@@ -4,17 +4,21 @@ import { afterAll, describe, expect, it } from 'vitest';
 import type { Pool } from 'pg';
 
 import { PostgresFrontendCommandGateway } from '../../adapters/frontend-command-gateway-postgres/src/index.js';
+import { FakeAIProviderAdapter } from '../../adapters/ai-provider-fake/src/index.js';
+import { StructuredAskAnswerProviderAdapter } from '../../adapters/ai-provider-ask/src/index.js';
 import {
   PostgresAskConversationRepository,
   PostgresAskSourceSelectionValidator,
   PostgresAskWorkspaceProjection,
 } from '../../adapters/frontend-ask-write-postgres/src/index.js';
+import { PostgresAskAnswerExecutionRepository } from '../../adapters/frontend-ask-execution-postgres/src/index.js';
 import {
   createPostgresPool,
   PostgresProjectAdministrationRepository,
 } from '../../adapters/postgres/src/index.js';
 import { PostgresAuthRepository } from '../../adapters/postgres-auth/src/index.js';
 import { AskCommandCoordinator } from '../../modules/frontend-ask-write/src/index.js';
+import { AskAnswerExecutionService } from '../../modules/frontend-ask-execution/src/index.js';
 import { ASK_SCHEMA_VERSION, ShotgunError } from '../../packages/contracts/src/index.js';
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -29,6 +33,7 @@ const newRuntime = (pool: Pool) => {
     gateway,
     repository,
     projection,
+    validator,
     coordinator: new AskCommandCoordinator(gateway, repository, projection, validator),
   };
 };
@@ -204,5 +209,75 @@ describe('PostgreSQL Ask write and recovery boundary', () => {
       conversationId: concurrentBase.conversationId,
     });
     expect(finalConversation.branches[0]?.turns.map((turn) => turn.ordinal)).toEqual([1, 2, 3]);
+
+    const executionScope = {
+      principalId: scope.principalId,
+      projectId,
+      accessRevision: scope.accessRevision,
+      policyContextRevision: scope.policyContextRevision,
+      sensitivityClearance: 'private' as const,
+    };
+    const executionRepository = new PostgresAskAnswerExecutionRepository(
+      pool,
+      restartedRuntime.projection,
+    );
+    const executionService = new AskAnswerExecutionService(
+      executionRepository,
+      new StructuredAskAnswerProviderAdapter(new FakeAIProviderAdapter()),
+    );
+    const executionCoordinator = new AskCommandCoordinator(
+      restartedRuntime.gateway,
+      restartedRuntime.repository,
+      restartedRuntime.projection,
+      restartedRuntime.validator,
+      executionService,
+    );
+    const executionSubmission = await executionCoordinator.submitQuestion({
+      ...scope,
+      request: {
+        schemaVersion: ASK_SCHEMA_VERSION,
+        clientRequestId: `ask-db-execution-request-${suffix}`,
+        idempotencyKey: `ask-db-execution-idempotency-${suffix}`,
+        question: 'Execute a durable Ask answer.',
+        mode: 'CANONICAL_ONLY',
+        sourceSelections: [],
+      },
+    });
+    let executed = executionSubmission.answerRun;
+    for (let attempt = 0; attempt < 20 && executed.state !== 'SUCCEEDED'; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      executed = await restartedRuntime.projection.getAnswerRun({
+        ...scope,
+        answerRunId: executionSubmission.answerRun.answerRunId,
+      });
+    }
+    expect(executed.state).toBe('SUCCEEDED');
+    const events = await executionService.events(
+      executionScope,
+      executionSubmission.answerRun.answerRunId,
+    );
+    expect(events.map((event) => event.kind)).toContain('COMPLETED');
+    const exported = await executionService.export(
+      executionScope,
+      executionSubmission.answerRun.answerRunId,
+      'JSON',
+      `ask-db-export-${suffix}`,
+    );
+    const feedback = await executionService.feedback(
+      executionScope,
+      executionSubmission.answerRun.answerRunId,
+      'HELPFUL',
+      undefined,
+      `ask-db-feedback-${suffix}`,
+    );
+    const seed = await executionService.transitionSeed(
+      executionScope,
+      executionSubmission.answerRun.answerRunId,
+      'DRAFT_CHANGE_SET',
+      `ask-db-seed-${suffix}`,
+    );
+    expect(exported.answerRunId).toBe(executionSubmission.answerRun.answerRunId);
+    expect(feedback.answerRunId).toBe(executionSubmission.answerRun.answerRunId);
+    expect(seed.state).toBe('PROPOSED');
   });
 });

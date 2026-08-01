@@ -124,6 +124,7 @@ export type PersistAskQuestionInput = {
   readonly expectedBranchRevision?: string;
   readonly accessRevision: string;
   readonly policyContextRevision: string;
+  readonly executionEnabled?: boolean;
   readonly createdAt: string;
   readonly generated: {
     readonly conversationId: string;
@@ -143,6 +144,17 @@ export type AskConversationRepositoryPort = {
     transaction: unknown,
     input: PersistAskQuestionInput,
   ): Promise<AskCommittedQuestion>;
+};
+
+export type AskQuestionExecutionTrigger = {
+  enqueue(input: {
+    readonly principalId: string;
+    readonly projectId: string;
+    readonly answerRunId: string;
+    readonly accessRevision: string;
+    readonly policyContextRevision: string;
+    readonly sensitivityClearance: AskAuthorizedProjectSummary['sensitivityClearance'];
+  }): Promise<void>;
 };
 
 export type AskSourceSelectionValidatorPort = {
@@ -199,8 +211,8 @@ export class AskCommandCoordinator {
     private readonly commandGateway: AskFrontendCommandGatewayPort,
     private readonly repository: AskConversationRepositoryPort,
     private readonly askWorkspace: AskWorkspaceQueryPort,
-    private readonly sourceValidator: AskSourceSelectionValidatorPort =
-      new EmptyOnlyAskSourceSelectionValidator(),
+    private readonly sourceValidator: AskSourceSelectionValidatorPort = new EmptyOnlyAskSourceSelectionValidator(),
+    private readonly answerExecution?: AskQuestionExecutionTrigger,
   ) {}
 
   async submitQuestion(
@@ -222,9 +234,7 @@ export class AskCommandCoordinator {
       projectContext: {
         activeProjectId: input.activeProject?.id ?? authority.targetProjectId,
         targetProjectId: authority.targetProjectId,
-        ...(request.conversationId
-          ? { resourceProjectId: authority.targetProjectId }
-          : {}),
+        ...(request.conversationId ? { resourceProjectId: authority.targetProjectId } : {}),
         observedProjectAccessRevision: input.accessRevision,
       },
       policyBinding: {
@@ -322,6 +332,7 @@ export class AskCommandCoordinator {
             : {}),
           accessRevision: input.accessRevision,
           policyContextRevision: input.policyContextRevision,
+          executionEnabled: this.answerExecution !== undefined,
           createdAt: now,
           generated: {
             conversationId: generatedIdentity('conv'),
@@ -394,6 +405,17 @@ export class AskCommandCoordinator {
       });
     }
 
+    if (this.answerExecution) {
+      await this.answerExecution.enqueue({
+        principalId: input.principalId,
+        projectId: committed.projectId,
+        answerRunId: committed.answerRunId,
+        accessRevision: input.accessRevision,
+        policyContextRevision: input.policyContextRevision,
+        sensitivityClearance: authority.sensitivityClearance,
+      });
+    }
+
     const answerRun = await this.askWorkspace.getAnswerRun({
       ...input,
       answerRunId: committed.answerRunId,
@@ -431,8 +453,7 @@ export class AskCommandCoordinator {
 
     return {
       schemaVersion: ASK_SCHEMA_VERSION,
-      outcomeState:
-        outcome.outcomeState === 'ACCEPTED' ? 'OUTCOME_UNKNOWN' : outcome.outcomeState,
+      outcomeState: outcome.outcomeState === 'ACCEPTED' ? 'OUTCOME_UNKNOWN' : outcome.outcomeState,
       clientRequestId: outcome.clientRequestId,
       idempotencyKey: outcome.idempotencyKey,
       commandId: outcome.commandId,
@@ -467,10 +488,7 @@ export class AskCommandCoordinator {
       };
     }
 
-    if (
-      !input.request.expectedConversationRevision ||
-      !input.request.expectedBranchRevision
-    ) {
+    if (!input.request.expectedConversationRevision || !input.request.expectedBranchRevision) {
       throw new ShotgunError({
         code: 'INVALID_REQUEST',
         safeMessage: 'Follow-up questions require Conversation and Branch revisions.',
@@ -511,7 +529,10 @@ export class AskCommandCoordinator {
     return [
       {
         purpose: 'TARGET',
-        subject: { resourceKind: ASK_RESOURCE_KIND.conversation, resourceId: request.conversationId },
+        subject: {
+          resourceKind: ASK_RESOURCE_KIND.conversation,
+          resourceId: request.conversationId,
+        },
         expectedRevision: request.expectedConversationRevision,
       },
       {

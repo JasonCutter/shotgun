@@ -5,12 +5,14 @@ import 'dotenv/config';
 import { FakeDraftActionConnector } from '../../../adapters/action-connector-fake/src/index.js';
 import { LocalAssetStorage } from '../../../adapters/asset-storage-local/src/index.js';
 import { GeminiAIProviderAdapter } from '../../../adapters/ai-provider-gemini/src/index.js';
+import { StructuredAskAnswerProviderAdapter } from '../../../adapters/ai-provider-ask/src/index.js';
 import { PostgresFrontendCommandGateway } from '../../../adapters/frontend-command-gateway-postgres/src/index.js';
 import {
   PostgresAskConversationRepository,
   PostgresAskSourceSelectionValidator,
   PostgresAskWorkspaceProjection,
 } from '../../../adapters/frontend-ask-write-postgres/src/index.js';
+import { PostgresAskAnswerExecutionRepository } from '../../../adapters/frontend-ask-execution-postgres/src/index.js';
 import {
   InMemoryActionCenterProjection,
   InMemoryBackgroundSummaryProjection,
@@ -54,8 +56,12 @@ import { PostgresSearchProjectionRepository } from '../../../adapters/postgres-s
 import { PostgresKnowledgeModelRepository } from '../../../adapters/postgres-stage9/src/index.js';
 import { PostgresAuthRepository } from '../../../adapters/postgres-auth/src/index.js';
 import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
-import { NodeUrlHopTransport, NodeUrlResolver } from '../../../adapters/url-acquisition-node/src/index.js';
+import {
+  NodeUrlHopTransport,
+  NodeUrlResolver,
+} from '../../../adapters/url-acquisition-node/src/index.js';
 import { AskCommandCoordinator } from '../../../modules/frontend-ask-write/src/index.js';
+import { AskAnswerExecutionService } from '../../../modules/frontend-ask-execution/src/index.js';
 import { FrontendProductReadCoordinator } from '../../../modules/frontend-product-read/src/index.js';
 import { SecureUrlAcquisitionCoordinator } from '../../../modules/url-acquisition/src/index.js';
 import { configureSourcesWriteRuntime } from './product-api/sources-write-runtime.js';
@@ -104,11 +110,21 @@ const canonicalKnowledgeRepository = new PostgresCanonicalKnowledgeRepository(po
 const askConversationRepository = new PostgresAskConversationRepository(pool);
 const askWorkspaceProjection = new PostgresAskWorkspaceProjection(pool);
 const askSourceSelectionValidator = new PostgresAskSourceSelectionValidator(pool);
+const geminiAIProvider = new GeminiAIProviderAdapter({
+  apiKey: geminiApiKey,
+  model: process.env.GEMINI_MODEL ?? 'gemini-3.5-flash',
+});
+const askAnswerProvider = new StructuredAskAnswerProviderAdapter(geminiAIProvider);
+const askAnswerExecution = new AskAnswerExecutionService(
+  new PostgresAskAnswerExecutionRepository(pool, askWorkspaceProjection),
+  askAnswerProvider,
+);
 const askCommandCoordinator = new AskCommandCoordinator(
   commandGateway,
   askConversationRepository,
   askWorkspaceProjection,
   askSourceSelectionValidator,
+  askAnswerExecution,
 );
 const frontendProductReadCoordinator = new FrontendProductReadCoordinator(
   new InMemoryGlobalShellProjection(),
@@ -150,10 +166,8 @@ const { server } = await createApplication({
   textDiff: new JsDiffAdapter(),
   transformer: new PythonDocumentFormatAdapter(),
   evidenceLocator: plainTextAdapter,
-  aiProvider: new GeminiAIProviderAdapter({
-    apiKey: geminiApiKey,
-    model: process.env.GEMINI_MODEL ?? 'gemini-3.5-flash',
-  }),
+  aiProvider: geminiAIProvider,
+  askAnswerExecution,
   aiProviderPolicy: {
     allowPrivate: process.env.GEMINI_ALLOW_PRIVATE === 'true',
     allowRestricted: false,

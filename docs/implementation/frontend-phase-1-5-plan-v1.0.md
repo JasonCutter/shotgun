@@ -59,7 +59,7 @@ Knowledge Flow의 6개 Phase와 Frontend Phase 0~5는 대체 관계가 아니다
 | FE-P2-S2 — Ask and Conversations Workspace                     | `IN_PROGRESS`         |
 | FE-P2-S2-I01 — Read Foundation                                 | `COMPLETE` / VERIFIED |
 | FE-P2-S2-I02 — Command and Persistence                         | `COMPLETE` / VERIFIED |
-| FE-P2-S2-I03 — Answer Execution and Remaining Section Contract | `NOT_STARTED`         |
+| FE-P2-S2-I03 — Answer Execution and Remaining Section Contract | `IN_PROGRESS`         |
 
 - 미충족 필수 기준: `answerExecution, failureAndRetry, finalSectionVerification`
 - Next valid Product Section: `FE-P3-S1 — Knowledge Workspace`

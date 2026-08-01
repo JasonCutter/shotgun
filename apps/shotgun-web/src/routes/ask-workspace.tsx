@@ -5,6 +5,8 @@ import {
   createAskWorkspaceClient,
   decodeAskCitationReturnState,
   type AskCitationReturnState,
+  type AskAnswerRunEventsView,
+  type AskAnswerRunSnapshot,
   type AskMode,
   type AskQuestionSubmissionOutcomeView,
   type AskQuestionSubmissionView,
@@ -42,6 +44,9 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   const [pendingCommand, setPendingCommand] = useState<PendingAskCommand>();
   const [outcomeUnknown, setOutcomeUnknown] = useState(false);
   const [submissionNotice, setSubmissionNotice] = useState<string>();
+  const [runOverrides, setRunOverrides] = useState<Record<string, AskAnswerRunSnapshot>>({});
+  const [runEvents, setRunEvents] = useState<Record<string, AskAnswerRunEventsView>>({});
+  const [exportedContent, setExportedContent] = useState<string>();
   const [error, setError] = useState<unknown>();
   const navigate = useNavigate();
 
@@ -56,6 +61,9 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     setPendingCommand(undefined);
     setOutcomeUnknown(false);
     setSubmissionNotice(undefined);
+    setRunOverrides({});
+    setRunEvents({});
+    setExportedContent(undefined);
     setError(undefined);
     void askClient
       .getWorkspace(conversationId, { signal: controller.signal })
@@ -128,6 +136,43 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     target?.focus?.();
   }, [validatedReturnTargetId]);
 
+  useEffect(() => {
+    const selected = workspace?.selectedConversation;
+    const latestTurn = selected?.branches
+      .flatMap((branch) => branch.turns)
+      .sort((left, right) => right.ordinal - left.ordinal)[0];
+    const answerRun = latestTurn?.answerRun;
+    if (!answerRun || !askClient.getAnswerRun || !askClient.getAnswerRunEvents) return;
+    let cancelled = false;
+    const terminal = new Set([
+      'ACTION_REQUIRED',
+      'SUCCEEDED',
+      'FAILED',
+      'CANCELLED',
+      'OUTCOME_UNKNOWN',
+    ]);
+    const poll = async () => {
+      try {
+        const [current, events] = await Promise.all([
+          askClient.getAnswerRun!(answerRun.answerRunId),
+          askClient.getAnswerRunEvents!(answerRun.answerRunId),
+        ]);
+        if (cancelled) return;
+        setRunOverrides((previous) => ({ ...previous, [current.answerRunId]: current }));
+        setRunEvents((previous) => ({ ...previous, [events.answerRunId]: events }));
+        if (terminal.has(current.state)) return;
+      } catch {
+        // The authoritative workspace remains visible while a transient poll fails.
+      }
+    };
+    void poll();
+    const timer = window.setInterval(() => void poll(), 750);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [askClient, workspace?.selectedConversation?.conversationId]);
+
   if (!shell.activeProject && !conversationId) {
     return <p>Create or select a Project before asking questions.</p>;
   }
@@ -146,8 +191,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   const followUpReady =
     !conversationId ||
     Boolean(conversation && activeBranch?.branchRevision && conversation.conversationRevision);
-  const submissionAvailable =
-    workspace.capabilities.includes('SUBMIT_QUESTION') && followUpReady;
+  const submissionAvailable = workspace.capabilities.includes('SUBMIT_QUESTION') && followUpReady;
 
   const applyVerifiedSubmission = (submission: AskQuestionSubmissionView) => {
     setPendingCommand(undefined);
@@ -165,11 +209,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   const submissionFromOutcome = async (
     outcome: AskQuestionSubmissionOutcomeView,
   ): Promise<AskQuestionSubmissionView | undefined> => {
-    if (
-      outcome.outcomeState !== 'COMPLETED' ||
-      !outcome.answerRun ||
-      !outcome.conversationId
-    ) {
+    if (outcome.outcomeState !== 'COMPLETED' || !outcome.answerRun || !outcome.conversationId) {
       return undefined;
     }
     const recoveredWorkspace = await askClient.getWorkspace(outcome.conversationId);
@@ -286,6 +326,74 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     }
   };
 
+  const commandIdentity = () => ({
+    schemaVersion: '1.0.0' as const,
+    clientRequestId: `ask-run-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    idempotencyKey: `ask-run-idemp-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+  });
+
+  const setRunOverride = (answerRun: AskAnswerRunSnapshot) =>
+    setRunOverrides((previous) => ({ ...previous, [answerRun.answerRunId]: answerRun }));
+
+  const handleCancelAnswerRun = async (answerRunId: string) => {
+    if (!askClient.cancelAnswerRun) return;
+    try {
+      setRunOverride(await askClient.cancelAnswerRun(answerRunId, commandIdentity()));
+    } catch (reason) {
+      setError(reason);
+    }
+  };
+
+  const handleRetryAnswerRun = async (
+    answerRunId: string,
+    retryMode: 'SAME_CONTEXT' | 'CURRENT_POLICY',
+  ) => {
+    if (!askClient.retryAnswerRun) return;
+    try {
+      setRunOverride(
+        await askClient.retryAnswerRun(answerRunId, { ...commandIdentity(), mode: retryMode }),
+      );
+    } catch (reason) {
+      setError(reason);
+    }
+  };
+
+  const handleExportAnswerRun = async (answerRunId: string) => {
+    if (!askClient.exportAnswerRun) return;
+    try {
+      const exported = await askClient.exportAnswerRun(answerRunId, {
+        ...commandIdentity(),
+        format: 'MARKDOWN',
+      });
+      setExportedContent(exported.content);
+    } catch (reason) {
+      setError(reason);
+    }
+  };
+
+  const handleFeedback = async (answerRunId: string, kind: 'HELPFUL' | 'NOT_HELPFUL') => {
+    if (!askClient.submitAnswerFeedback) return;
+    try {
+      await askClient.submitAnswerFeedback(answerRunId, { ...commandIdentity(), kind });
+      setSubmissionNotice('Feedback recorded for this AnswerRun.');
+    } catch (reason) {
+      setError(reason);
+    }
+  };
+
+  const handleTransitionSeed = async (
+    answerRunId: string,
+    kind: 'INTAKE_DRAFT' | 'DRAFT_CHANGE_SET' | 'USER_DIRECTIVE',
+  ) => {
+    if (!askClient.createAnswerTransitionSeed) return;
+    try {
+      await askClient.createAnswerTransitionSeed(answerRunId, { ...commandIdentity(), kind });
+      setSubmissionNotice(`${kind} transition seed proposed. Canonical knowledge was not changed.`);
+    } catch (reason) {
+      setError(reason);
+    }
+  };
+
   return (
     <section className="route-page ask-workspace">
       <p className="eyebrow">Knowledge question</p>
@@ -371,61 +479,173 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
             <h3>{conversation.title}</h3>
             {conversation.branches.map((branch) => (
               <ol key={branch.branchId} id={`branch-${branch.branchId}`} aria-label={branch.label}>
-                {branch.turns.map((turn) => (
-                  <li key={turn.turnId} id={`turn-${turn.turnId}`} tabIndex={-1}>
-                    <p>{turn.userMessage}</p>
-                    <p>Answer run: {turn.answerRun.state}</p>
-                    {turn.answerRun.statements.map((statement) => (
-                      <article
-                        key={statement.statementId}
-                        id={`statement-${statement.statementId}`}
-                      >
-                        <p>{statement.text}</p>
-                        <ul>
-                          {statement.citations.map((citation) => (
-                            <li
-                              key={citation.citationId}
-                              id={`citation-${citation.citationId}`}
-                              tabIndex={-1}
+                {branch.turns.map((turn) => {
+                  const answerRun = runOverrides[turn.answerRun.answerRunId] ?? turn.answerRun;
+                  const events = runEvents[answerRun.answerRunId];
+                  const latestPartial =
+                    answerRun.partialText ??
+                    events?.events
+                      .slice()
+                      .reverse()
+                      .find((event) => event.partialText !== undefined)?.partialText;
+                  return (
+                    <li key={turn.turnId} id={`turn-${turn.turnId}`} tabIndex={-1}>
+                      <p>{turn.userMessage}</p>
+                      <p>
+                        Answer run: <strong>{answerRun.state}</strong>
+                      </p>
+                      {latestPartial ? (
+                        <p aria-live="polite">Partial answer: {latestPartial}</p>
+                      ) : null}
+                      {answerRun.failure ? (
+                        <p role="alert">
+                          {answerRun.failure.message} ({answerRun.failure.code})
+                        </p>
+                      ) : null}
+                      <div className="action-row" aria-label="AnswerRun actions">
+                        {answerRun.capabilities.includes('CANCEL') ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleCancelAnswerRun(answerRun.answerRunId)}
+                          >
+                            Cancel answer
+                          </button>
+                        ) : null}
+                        {answerRun.capabilities.includes('RETRY_SAME_CONTEXT') ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void handleRetryAnswerRun(answerRun.answerRunId, 'SAME_CONTEXT')
+                            }
+                          >
+                            Retry same context
+                          </button>
+                        ) : null}
+                        {answerRun.capabilities.includes('RETRY_CURRENT_POLICY') ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void handleRetryAnswerRun(answerRun.answerRunId, 'CURRENT_POLICY')
+                            }
+                          >
+                            Retry current policy
+                          </button>
+                        ) : null}
+                        {answerRun.capabilities.includes('EXPORT') ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleExportAnswerRun(answerRun.answerRunId)}
+                          >
+                            Export answer
+                          </button>
+                        ) : null}
+                        {answerRun.state === 'SUCCEEDED' ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => void handleFeedback(answerRun.answerRunId, 'HELPFUL')}
                             >
-                              <Link
-                                to={`/sources/${encodeURIComponent(citation.sourceId)}?version=${encodeURIComponent(citation.sourceVersionId)}`}
-                                state={{
-                                  citationReturnTarget: {
-                                    schemaVersion: '1.0.0',
-                                    originRoute: `/ask/conversations/${encodeURIComponent(conversation.conversationId)}`,
-                                    resourceKind: 'conversation',
-                                    resourceId: conversation.conversationId,
-                                    conversationId: conversation.conversationId,
-                                    branchId: branch.branchId,
-                                    turnId: turn.turnId,
-                                    answerRunId: turn.answerRun.answerRunId,
-                                    answerRevision: turn.answerRun.answerRevision,
-                                    resourceRevision: conversation.conversationRevision,
-                                    citationId: citation.citationId,
-                                    sourceId: citation.sourceId,
-                                    sourceVersionId: citation.sourceVersionId,
-                                    evidenceId: citation.evidenceId,
-                                    scrollAnchor: citation.citationId,
-                                    focusTarget: citation.citationId,
-                                    panelId: 'conversations',
-                                  },
-                                }}
+                              Helpful
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void handleFeedback(answerRun.answerRunId, 'NOT_HELPFUL')
+                              }
+                            >
+                              Not helpful
+                            </button>
+                          </>
+                        ) : null}
+                        {answerRun.capabilities.includes('CREATE_INTAKE_DRAFT') ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void handleTransitionSeed(answerRun.answerRunId, 'INTAKE_DRAFT')
+                            }
+                          >
+                            Propose Intake Draft
+                          </button>
+                        ) : null}
+                        {answerRun.capabilities.includes('CREATE_DRAFT_CHANGE_SET') ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void handleTransitionSeed(answerRun.answerRunId, 'DRAFT_CHANGE_SET')
+                            }
+                          >
+                            Propose Draft ChangeSet
+                          </button>
+                        ) : null}
+                        {answerRun.capabilities.includes('PROPOSE_DIRECTIVE') ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void handleTransitionSeed(answerRun.answerRunId, 'USER_DIRECTIVE')
+                            }
+                          >
+                            Propose Directive
+                          </button>
+                        ) : null}
+                      </div>
+                      {answerRun.statements.map((statement) => (
+                        <article
+                          key={statement.statementId}
+                          id={`statement-${statement.statementId}`}
+                        >
+                          <p>{statement.text}</p>
+                          <ul>
+                            {statement.citations.map((citation) => (
+                              <li
+                                key={citation.citationId}
+                                id={`citation-${citation.citationId}`}
+                                tabIndex={-1}
                               >
-                                Open pinned Evidence
-                              </Link>
-                            </li>
-                          ))}
-                        </ul>
-                      </article>
-                    ))}
-                  </li>
-                ))}
+                                <Link
+                                  to={`/sources/${encodeURIComponent(citation.sourceId)}?version=${encodeURIComponent(citation.sourceVersionId)}`}
+                                  state={{
+                                    citationReturnTarget: {
+                                      schemaVersion: '1.0.0',
+                                      originRoute: `/ask/conversations/${encodeURIComponent(conversation.conversationId)}`,
+                                      resourceKind: 'conversation',
+                                      resourceId: conversation.conversationId,
+                                      conversationId: conversation.conversationId,
+                                      branchId: branch.branchId,
+                                      turnId: turn.turnId,
+                                      answerRunId: turn.answerRun.answerRunId,
+                                      answerRevision: turn.answerRun.answerRevision,
+                                      resourceRevision: conversation.conversationRevision,
+                                      citationId: citation.citationId,
+                                      sourceId: citation.sourceId,
+                                      sourceVersionId: citation.sourceVersionId,
+                                      evidenceId: citation.evidenceId,
+                                      scrollAnchor: citation.citationId,
+                                      focusTarget: citation.citationId,
+                                      panelId: 'conversations',
+                                    },
+                                  }}
+                                >
+                                  Open pinned Evidence
+                                </Link>
+                              </li>
+                            ))}
+                          </ul>
+                        </article>
+                      ))}
+                    </li>
+                  );
+                })}
               </ol>
             ))}
           </section>
         ) : null}
       </section>
+      {exportedContent ? (
+        <section className="action-card" aria-labelledby="ask-export-heading">
+          <h2 id="ask-export-heading">Answer export</h2>
+          <pre>{exportedContent}</pre>
+        </section>
+      ) : null}
     </section>
   );
 };

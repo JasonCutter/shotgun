@@ -39,6 +39,26 @@ export type AskCitationView = {
   readonly exactQuote?: string;
 };
 
+export type AskAnswerRunFailure = {
+  readonly code: string;
+  readonly message: string;
+  readonly retryable: boolean;
+  readonly outcomeUnknown: boolean;
+};
+
+export type AskAnswerRunProvider = {
+  readonly provider: string;
+  readonly model: string;
+  readonly adapterVersion?: string;
+};
+
+export type AskAnswerRunUsage = {
+  readonly inputTokens?: number;
+  readonly outputTokens?: number;
+  readonly totalTokens?: number;
+  readonly costMicros?: number;
+};
+
 export type AskAnswerRunSnapshot = {
   readonly schemaVersion: typeof ASK_SCHEMA_VERSION;
   readonly answerRunId: string;
@@ -64,6 +84,12 @@ export type AskAnswerRunSnapshot = {
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly stale: boolean;
+  readonly attemptNumber?: number;
+  readonly eventRevision?: number;
+  readonly partialText?: string;
+  readonly failure?: AskAnswerRunFailure;
+  readonly provider?: AskAnswerRunProvider;
+  readonly usage?: AskAnswerRunUsage;
 };
 
 export type AskBranchView = {
@@ -329,6 +355,12 @@ export const decodeAskAnswerRunSnapshot = (
       'createdAt',
       'updatedAt',
       'stale',
+      'attemptNumber',
+      'eventRevision',
+      'partialText',
+      'failure',
+      'provider',
+      'usage',
     ],
     path,
   );
@@ -339,6 +371,86 @@ export const decodeAskAnswerRunSnapshot = (
       : obj.attentionReason === 'MODEL_EXECUTION_NOT_CONFIGURED'
         ? 'MODEL_EXECUTION_NOT_CONFIGURED'
         : fail(`${path}.attentionReason is unsupported.`);
+  const nonNegativeInteger = (value: unknown, fieldPath: string): number => {
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+      fail(`${fieldPath} must be a non-negative integer.`);
+    }
+    return value as number;
+  };
+  const attemptNumber =
+    obj.attemptNumber === undefined
+      ? undefined
+      : nonNegativeInteger(obj.attemptNumber, `${path}.attemptNumber`);
+  const eventRevision =
+    obj.eventRevision === undefined
+      ? undefined
+      : nonNegativeInteger(obj.eventRevision, `${path}.eventRevision`);
+  const partialText =
+    obj.partialText === undefined
+      ? undefined
+      : text(obj.partialText, `${path}.partialText`, 0, 20000);
+  const failure =
+    obj.failure === undefined
+      ? undefined
+      : (() => {
+          const failureObj = strictObject(
+            obj.failure,
+            ['code', 'message', 'retryable', 'outcomeUnknown'],
+            `${path}.failure`,
+          );
+          return {
+            code: idString(failureObj.code, `${path}.failure.code`),
+            message: text(failureObj.message, `${path}.failure.message`, 1, 1000),
+            retryable: booleanVal(failureObj.retryable, `${path}.failure.retryable`),
+            outcomeUnknown: booleanVal(failureObj.outcomeUnknown, `${path}.failure.outcomeUnknown`),
+          };
+        })();
+  const provider =
+    obj.provider === undefined
+      ? undefined
+      : (() => {
+          const providerObj = strictObject(
+            obj.provider,
+            ['provider', 'model', 'adapterVersion'],
+            `${path}.provider`,
+          );
+          return {
+            provider: idString(providerObj.provider, `${path}.provider.provider`),
+            model: idString(providerObj.model, `${path}.provider.model`),
+            ...(providerObj.adapterVersion === undefined
+              ? {}
+              : {
+                  adapterVersion: idString(
+                    providerObj.adapterVersion,
+                    `${path}.provider.adapterVersion`,
+                  ),
+                }),
+          };
+        })();
+  const usage =
+    obj.usage === undefined
+      ? undefined
+      : (() => {
+          const usageObj = strictObject(
+            obj.usage,
+            ['inputTokens', 'outputTokens', 'totalTokens', 'costMicros'],
+            `${path}.usage`,
+          );
+          const decodeOptional = (key: string): number | undefined =>
+            usageObj[key] === undefined
+              ? undefined
+              : nonNegativeInteger(usageObj[key], `${path}.usage.${key}`);
+          const inputTokens = decodeOptional('inputTokens');
+          const outputTokens = decodeOptional('outputTokens');
+          const totalTokens = decodeOptional('totalTokens');
+          const costMicros = decodeOptional('costMicros');
+          return {
+            ...(inputTokens === undefined ? {} : { inputTokens }),
+            ...(outputTokens === undefined ? {} : { outputTokens }),
+            ...(totalTokens === undefined ? {} : { totalTokens }),
+            ...(costMicros === undefined ? {} : { costMicros }),
+          };
+        })();
   return {
     schemaVersion: ASK_SCHEMA_VERSION,
     answerRunId: idString(obj.answerRunId, `${path}.answerRunId`),
@@ -377,6 +489,12 @@ export const decodeAskAnswerRunSnapshot = (
     createdAt: timestamp(obj.createdAt, `${path}.createdAt`),
     updatedAt: timestamp(obj.updatedAt, `${path}.updatedAt`),
     stale: booleanVal(obj.stale, `${path}.stale`),
+    ...(attemptNumber === undefined ? {} : { attemptNumber }),
+    ...(eventRevision === undefined ? {} : { eventRevision }),
+    ...(partialText === undefined ? {} : { partialText }),
+    ...(failure === undefined ? {} : { failure }),
+    ...(provider === undefined ? {} : { provider }),
+    ...(usage === undefined ? {} : { usage }),
   };
 };
 
@@ -610,7 +728,9 @@ export const decodeSubmitAskQuestionRequest = (value: unknown): SubmitAskQuestio
     (input.conversationId !== undefined || input.branchId !== undefined) &&
     (input.expectedConversationRevision === undefined || input.expectedBranchRevision === undefined)
   ) {
-    fail('expectedConversationRevision and expectedBranchRevision are required for follow-up commands.');
+    fail(
+      'expectedConversationRevision and expectedBranchRevision are required for follow-up commands.',
+    );
   }
 
   return {

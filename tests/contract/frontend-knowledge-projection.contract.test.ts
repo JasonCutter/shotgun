@@ -12,6 +12,7 @@ import {
   type KnowledgeDetailView,
   type KnowledgePageListView,
   type KnowledgePageSummaryView,
+  type KnowledgePageView,
   type KnowledgeProjectionStatusView,
   type KnowledgeSearchResultView,
   type KnowledgeWorkspaceView,

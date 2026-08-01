@@ -19,6 +19,11 @@ export type AuthorizedProjectSummary = {
   readonly sensitivityClearance: 'public' | 'internal' | 'private' | 'restricted';
 };
 
+export type FrontendProjectAuthorityRevision = {
+  readonly accessRevision: string;
+  readonly policyContextRevision: string;
+};
+
 export type FrontendReadScope = {
   readonly principalId: string;
   readonly sessionId: string;
@@ -26,6 +31,8 @@ export type FrontendReadScope = {
   readonly accessibleProjects: readonly AuthorizedProjectSummary[];
   readonly accessRevision: string;
   readonly policyContextRevision: string;
+  /** Resource-scoped revisions; never substitute the active Project revision. */
+  readonly executionAuthorities?: Readonly<Record<string, FrontendProjectAuthorityRevision>>;
 };
 
 export type BackgroundSummaryView = GlobalShellView['background'];

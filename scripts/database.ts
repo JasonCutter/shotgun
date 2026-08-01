@@ -158,6 +158,12 @@ const requiredTables = [
   'frontend_ask.source_selection_evidence',
   'frontend_ask.statements',
   'frontend_ask.citations',
+  'frontend_ask.answer_run_attempts',
+  'frontend_ask.answer_attempt_evidence',
+  'frontend_ask.answer_run_events',
+  'frontend_ask.answer_exports',
+  'frontend_ask.answer_feedback',
+  'frontend_ask.transition_seeds',
 ] as const;
 
 const verify = async (): Promise<void> => {

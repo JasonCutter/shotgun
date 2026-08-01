@@ -123,6 +123,8 @@ const evidenceKey = (candidate: EvidenceCandidate) =>
 export class InMemoryEvidenceRepository implements EvidenceRepositoryPort {
   private readonly evidence = new Map<string, EvidenceSpan>();
 
+  constructor(private readonly evidenceIdFactory: () => string = randomUUID) {}
+
   async index(candidates: readonly EvidenceCandidate[]) {
     const items: EvidenceSpan[] = [];
     let reusedCount = 0;
@@ -146,7 +148,7 @@ export class InMemoryEvidenceRepository implements EvidenceRepositoryPort {
         continue;
       }
       const item: EvidenceSpan = {
-        evidenceId: randomUUID(),
+        evidenceId: this.evidenceIdFactory(),
         ...candidate,
       };
       this.evidence.set(key, item);

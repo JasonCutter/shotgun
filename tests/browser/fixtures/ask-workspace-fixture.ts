@@ -11,6 +11,7 @@ export const ASK_FIXTURE = {
   citationId: 'ask-citation-1',
   sourceId: 'ask-source-project-b',
   sourceVersionId: 'ask-source-version-project-b-v1',
+  evidenceId: 'ask-evidence-project-b-1',
   evidencePointer: '/blocks/0',
   sourceText: 'Shotgun Canonical knowledge is derived from approved records.',
   conversationTitle: 'Project B Canonical Architecture',

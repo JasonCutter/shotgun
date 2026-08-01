@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, Outlet, RouterProvider } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
@@ -184,6 +184,64 @@ const createRuntime = (): AppRuntime => {
   };
 };
 
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+};
+
+const renderCitationDetail = (runtime: AppRuntime) => {
+  const router = createMemoryRouter(
+    [
+      {
+        path: '/',
+        element: <ShellOutlet />,
+        children: [
+          { path: 'sources/:sourceId', element: <SourceDetailWorkspace /> },
+          { path: 'ask/conversations/:conversationId', element: <p>Conversation restored</p> },
+        ],
+      },
+    ],
+    {
+      initialEntries: [
+        {
+          pathname: '/sources/source-1',
+          search: '?version=version-2',
+          state: {
+            citationReturnTarget: {
+              schemaVersion: '1.0.0',
+              originRoute: '/ask/conversations/conversation-1',
+              resourceKind: 'conversation',
+              resourceId: 'conversation-1',
+              conversationId: 'conversation-1',
+              branchId: 'branch-1',
+              turnId: 'turn-1',
+              answerRunId: 'answer-run-1',
+              answerRevision: 'answer-revision-1',
+              resourceRevision: 'conversation-7',
+              citationId: 'citation-1',
+              sourceId: 'source-1',
+              sourceVersionId: 'version-2',
+              evidenceId: 'evidence-1',
+              scrollAnchor: 'citation-1',
+              focusTarget: 'citation-1',
+              panelId: 'evidence-panel',
+            },
+          },
+        },
+      ],
+    },
+  );
+  render(
+    <AppProviders runtime={runtime}>
+      <RouterProvider router={router} />
+    </AppProviders>,
+  );
+  return router;
+};
+
 const ShellOutlet = () => {
   const { getLeaveState } = useLeaveGuard();
   return (
@@ -318,52 +376,7 @@ describe('Sources Workspace', () => {
 
   it('focuses pinned Evidence and preserves typed Citation return identity', async () => {
     const runtime = createRuntime();
-    const router = createMemoryRouter(
-      [
-        {
-          path: '/',
-          element: <ShellOutlet />,
-          children: [
-            { path: 'sources/:sourceId', element: <SourceDetailWorkspace /> },
-            { path: 'ask/conversations/:conversationId', element: <p>Conversation restored</p> },
-          ],
-        },
-      ],
-      {
-        initialEntries: [
-          {
-            pathname: '/sources/source-1',
-            search: '?version=version-2',
-            state: {
-              citationReturnTarget: {
-                schemaVersion: '1.0.0',
-                originRoute: '/ask/conversations/conversation-1',
-                resourceKind: 'conversation',
-                resourceId: 'conversation-1',
-                conversationId: 'conversation-1',
-                branchId: 'branch-1',
-                turnId: 'turn-1',
-                answerRunId: 'answer-run-1',
-                answerRevision: 'answer-revision-1',
-                resourceRevision: 'conversation-7',
-                citationId: 'citation-1',
-                sourceId: 'source-1',
-                sourceVersionId: 'version-2',
-                evidenceId: 'evidence-1',
-                scrollAnchor: 'citation-1',
-                focusTarget: 'citation-1',
-                panelId: 'evidence-panel',
-              },
-            },
-          },
-        ],
-      },
-    );
-    render(
-      <AppProviders runtime={runtime}>
-        <RouterProvider router={router} />
-      </AppProviders>,
-    );
+    const router = renderCitationDetail(runtime);
 
     const evidenceItem = await screen.findByText('Original evidence', { selector: 'strong' });
     expect(evidenceItem.parentElement).toBe(document.activeElement);
@@ -379,5 +392,52 @@ describe('Sources Workspace', () => {
         citationId: 'citation-1',
       },
     });
+  });
+
+  it('focuses the exact citation Evidence when Evidence resolves before detail', async () => {
+    const runtime = createRuntime();
+    const detailRequest = deferred<SourceDetailView>();
+    const evidenceRequest = deferred<EvidenceListView>();
+    runtime.apiClient.getSourceDetail = vi.fn(async () => detailRequest.promise);
+    runtime.apiClient.getSourceEvidence = vi.fn(async () => evidenceRequest.promise);
+    renderCitationDetail(runtime);
+
+    await act(async () => {
+      evidenceRequest.resolve(evidence);
+      await evidenceRequest.promise;
+    });
+    expect(screen.queryByRole('listitem', { name: /Original evidence/ })).toBeNull();
+
+    await act(async () => {
+      detailRequest.resolve(detail);
+      await detailRequest.promise;
+    });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(document.getElementById('evidence-evidence-1')),
+    );
+  });
+
+  it('focuses the exact citation Evidence when detail resolves before Evidence', async () => {
+    const runtime = createRuntime();
+    const detailRequest = deferred<SourceDetailView>();
+    const evidenceRequest = deferred<EvidenceListView>();
+    runtime.apiClient.getSourceDetail = vi.fn(async () => detailRequest.promise);
+    runtime.apiClient.getSourceEvidence = vi.fn(async () => evidenceRequest.promise);
+    renderCitationDetail(runtime);
+
+    await act(async () => {
+      detailRequest.resolve(detail);
+      await detailRequest.promise;
+    });
+    expect(await screen.findByRole('heading', { name: 'Evidence notes', level: 1 })).toBeTruthy();
+    expect(document.getElementById('evidence-evidence-1')).toBeNull();
+
+    await act(async () => {
+      evidenceRequest.resolve(evidence);
+      await evidenceRequest.promise;
+    });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(document.getElementById('evidence-evidence-1')),
+    );
   });
 });

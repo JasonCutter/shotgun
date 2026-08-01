@@ -62,6 +62,7 @@ import {
 } from '../../../adapters/frontend-product-read-in-memory/src/index.js';
 import { FrontendProductReadCoordinator } from '../../../modules/frontend-product-read/src/index.js';
 import { AskCommandCoordinator } from '../../../modules/frontend-ask-write/src/index.js';
+import type { AskAnswerExecutionService } from '../../../modules/frontend-ask-execution/src/index.js';
 import {
   FrontendSourcesReadCoordinator,
   type SourcesProjectionRepositoryPort,
@@ -417,6 +418,7 @@ export type ApplicationOptions = {
   readonly frontendCommandGateway?: FrontendCommandGatewayPort;
   readonly frontendProductReadCoordinator?: FrontendProductReadCoordinator;
   readonly askCommandCoordinator?: AskCommandCoordinator;
+  readonly askAnswerExecution?: AskAnswerExecutionService;
   readonly sourcesProjectionRepository?: SourcesProjectionRepositoryPort;
   readonly host?: string;
   readonly production?: boolean;
@@ -1149,12 +1151,14 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       new InMemoryRouteGuardProjection(),
       inMemoryAskWorkspace,
     );
-  const askCommandCoordinator = 
+  const askCommandCoordinator =
     options.askCommandCoordinator ??
     new AskCommandCoordinator(
       frontendCommandGateway,
       new InMemoryAskConversationRepository(),
       inMemoryAskWorkspace,
+      undefined,
+      options.askAnswerExecution,
     );
   const sourcesProjectionRepository =
     options.sourcesProjectionRepository ??
@@ -1837,7 +1841,11 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     projectAdminRepository,
     settingsRepository,
     requirePrincipalBrowserSession,
-    { askCommandCoordinator: options.askCommandCoordinator },
+    {
+      askCommandCoordinator: options.askCommandCoordinator,
+      askAnswerExecution: options.askAnswerExecution,
+      frontendCommandGateway,
+    },
   );
   registerSourcesRoutes(
     server,

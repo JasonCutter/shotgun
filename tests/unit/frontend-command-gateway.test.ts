@@ -84,4 +84,100 @@ describe('InMemoryFrontendCommandGateway', () => {
       commandRevision: '2',
     });
   });
+
+  it('does not resolve a clientRequestId for a different protected resource', async () => {
+    const gateway = new InMemoryFrontendCommandGateway();
+    const boundRequest: FrontendCommandRequest = {
+      ...request,
+      clientRequestId: 'resource-bound-request',
+      commandType: 'ask.answer-run.export.v1',
+      preconditions: [
+        {
+          purpose: 'TARGET',
+          subject: { resourceKind: 'ASK_ANSWER_RUN', resourceId: 'run-a' },
+        },
+      ],
+    };
+    await gateway.accept({
+      ...acceptedInput('digest-resource-bound'),
+      request: boundRequest,
+      commandId: 'command-resource-bound',
+      commandSemanticDigest: 'digest-resource-bound',
+    });
+
+    await expect(
+      gateway.findByClientRequestId('principal-1', 'resource-bound-request', {
+        resourceKind: 'ASK_ANSWER_RUN',
+        resourceId: 'run-b',
+        commandTypes: ['ask.answer-run.export.v1'],
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it('resolves an accepted command to outcome unknown without rejecting it', async () => {
+    const gateway = new InMemoryFrontendCommandGateway();
+    await gateway.accept(acceptedInput('digest-1'));
+
+    const outcome = await gateway.markOutcomeUnknown({
+      commandId: 'server-command-1',
+      message: 'Commit acknowledgement was lost.',
+      completedAt: '2026-07-26T00:00:03.000Z',
+    });
+
+    expect(outcome).toMatchObject({
+      outcomeState: 'OUTCOME_UNKNOWN',
+      completionDisposition: 'PARTIAL',
+      commandRevision: '2',
+    });
+    expect((await gateway.findByClientRequestId('principal-1', 'request-1'))?.outcomeState).toBe(
+      'OUTCOME_UNKNOWN',
+    );
+  });
+
+  it('resumes an accepted replay and completes it exactly once', async () => {
+    const gateway = new InMemoryFrontendCommandGateway();
+    const first = await gateway.accept(acceptedInput('digest-1'));
+    const replay = await gateway.accept({
+      ...acceptedInput('digest-1'),
+      commandId: 'server-command-retry',
+    });
+
+    expect(replay).toMatchObject({
+      replayed: true,
+      outcome: { commandId: first.outcome.commandId, outcomeState: 'ACCEPTED' },
+    });
+
+    const locked = await gateway.lockAcceptedForExecution(
+      { kind: 'test-transaction' },
+      replay.outcome.commandId,
+    );
+    expect(locked.outcomeState).toBe('ACCEPTED');
+    await gateway.complete({
+      commandId: replay.outcome.commandId,
+      producedResources: [{ resourceKind: 'ASK_ANSWER_EXPORT', resourceId: 'export-1' }],
+      completedAt: '2026-07-26T00:00:04.000Z',
+    });
+
+    const concurrentReplay = await gateway.accept({
+      ...acceptedInput('digest-1'),
+      commandId: 'server-command-concurrent-retry',
+    });
+    const completedLock = await gateway.lockAcceptedForExecution(
+      { kind: 'test-transaction' },
+      concurrentReplay.outcome.commandId,
+    );
+    const completedAgain = await gateway.complete({
+      commandId: concurrentReplay.outcome.commandId,
+      producedResources: [{ resourceKind: 'ASK_ANSWER_EXPORT', resourceId: 'duplicate' }],
+      completedAt: '2026-07-26T00:00:05.000Z',
+    });
+
+    expect(concurrentReplay.replayed).toBe(true);
+    expect(completedLock.outcomeState).toBe('COMPLETED');
+    expect(completedAgain).toMatchObject({
+      outcomeState: 'COMPLETED',
+      producedResources: [{ resourceKind: 'ASK_ANSWER_EXPORT', resourceId: 'export-1' }],
+    });
+    expect(completedAgain.commandRevision).toBe('2');
+  });
 });

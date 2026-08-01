@@ -348,6 +348,21 @@ export class InMemoryAskWorkspaceProjection implements AskWorkspaceProjectionPor
       targetProjectId = input.activeProject.id;
     }
 
+    const resourceAuthority = input.conversationId
+      ? input.executionAuthorities?.[targetProjectId]
+      : undefined;
+    if (input.conversationId && !resourceAuthority) {
+      throw new ShotgunError({
+        code: 'NOT_FOUND',
+        safeMessage: 'The requested conversation authority was not found.',
+        module: 'frontend-product-read',
+        operation: 'resolve-ask-workspace-authority',
+      });
+    }
+    const accessRevision = resourceAuthority?.accessRevision ?? input.accessRevision;
+    const policyContextRevision =
+      resourceAuthority?.policyContextRevision ?? input.policyContextRevision;
+
     const projectConversations = Array.from(this.conversations.values()).filter(
       (conversation) => conversation.projectId === targetProjectId,
     );
@@ -358,7 +373,9 @@ export class InMemoryAskWorkspaceProjection implements AskWorkspaceProjectionPor
       sessionId: input.sessionId,
       projectId: targetProjectId,
       defaultAskMode: 'CANONICAL_ONLY',
-      availableAskModes: ['CANONICAL_ONLY', 'SOURCE_EXPLORATION', 'HYBRID'],
+      // SOURCE_EXPLORATION remains hidden until the workspace exposes a
+      // server-backed SourceVersion pinning selector.
+      availableAskModes: ['CANONICAL_ONLY', 'HYBRID'],
       conversations: projectConversations.map((conversation) => {
         const activeBranch = conversation.branches.find(
           (branch) => branch.branchId === conversation.activeBranchId,
@@ -377,9 +394,9 @@ export class InMemoryAskWorkspaceProjection implements AskWorkspaceProjectionPor
       }),
       ...(selectedConversation ? { selectedConversation } : {}),
       capabilities: ['SUBMIT_QUESTION'],
-      projectionRevision: `ask-workspace-${targetProjectId}-${input.accessRevision}`,
-      accessRevision: input.accessRevision,
-      policyContextRevision: input.policyContextRevision,
+      projectionRevision: `ask-workspace-${targetProjectId}-${accessRevision}-${policyContextRevision}`,
+      accessRevision,
+      policyContextRevision,
       fetchedAt: now(),
       stale: false,
     });

@@ -5,6 +5,8 @@ import {
   createAskWorkspaceClient,
   decodeAskCitationReturnState,
   type AskCitationReturnState,
+  type AskAnswerRunEventsView,
+  type AskAnswerRunSnapshot,
   type AskMode,
   type AskQuestionSubmissionOutcomeView,
   type AskQuestionSubmissionView,
@@ -20,6 +22,16 @@ import { useLeaveGuard } from '../session/leave-guard-context.js';
 type PendingAskCommand = {
   readonly clientRequestId: string;
   readonly idempotencyKey: string;
+};
+
+type PendingAnswerRunCommand = {
+  readonly answerRunId: string;
+  readonly clientRequestId: string;
+  readonly idempotencyKey: string;
+  readonly operation: 'CANCEL' | 'RETRY' | 'EXPORT' | 'FEEDBACK' | 'TRANSITION_SEED';
+  readonly retryMode?: 'SAME_CONTEXT' | 'CURRENT_POLICY';
+  readonly feedbackKind?: 'HELPFUL' | 'NOT_HELPFUL';
+  readonly transitionKind?: 'INTAKE_DRAFT' | 'DRAFT_CHANGE_SET' | 'USER_DIRECTIVE';
 };
 
 type OutcomeResolution =
@@ -41,7 +53,14 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pendingCommand, setPendingCommand] = useState<PendingAskCommand>();
   const [outcomeUnknown, setOutcomeUnknown] = useState(false);
+  const [pendingAnswerRunCommand, setPendingAnswerRunCommand] = useState<PendingAnswerRunCommand>();
+  const [answerRunOutcomeUnknown, setAnswerRunOutcomeUnknown] = useState(false);
+  const [answerRunCommandNotice, setAnswerRunCommandNotice] = useState<string>();
+  const [pollingGeneration, setPollingGeneration] = useState(0);
   const [submissionNotice, setSubmissionNotice] = useState<string>();
+  const [runOverrides, setRunOverrides] = useState<Record<string, AskAnswerRunSnapshot>>({});
+  const [runEvents, setRunEvents] = useState<Record<string, AskAnswerRunEventsView>>({});
+  const [exportedContent, setExportedContent] = useState<string>();
   const [error, setError] = useState<unknown>();
   const navigate = useNavigate();
 
@@ -55,7 +74,14 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     setDraftOwnerProjectId(undefined);
     setPendingCommand(undefined);
     setOutcomeUnknown(false);
+    setPendingAnswerRunCommand(undefined);
+    setAnswerRunOutcomeUnknown(false);
+    setAnswerRunCommandNotice(undefined);
+    setPollingGeneration(0);
     setSubmissionNotice(undefined);
+    setRunOverrides({});
+    setRunEvents({});
+    setExportedContent(undefined);
     setError(undefined);
     void askClient
       .getWorkspace(conversationId, { signal: controller.signal })
@@ -73,12 +99,13 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   useEffect(
     () =>
       registerLeaveGuard(() => ({
-        canLeaveCurrentContext: questionRef.current.trim().length === 0 && !outcomeUnknown,
+        canLeaveCurrentContext:
+          questionRef.current.trim().length === 0 && !outcomeUnknown && !answerRunOutcomeUnknown,
         hasUnsavedDraft: questionRef.current.trim().length > 0,
         hasBlockingDialog: false,
-        hasOutcomeUnknownCommand: outcomeUnknown,
+        hasOutcomeUnknownCommand: outcomeUnknown || answerRunOutcomeUnknown,
       })),
-    [outcomeUnknown, question, registerLeaveGuard],
+    [answerRunOutcomeUnknown, outcomeUnknown, question, registerLeaveGuard],
   );
 
   const citationReturn = useMemo<AskCitationReturnState | undefined>(() => {
@@ -128,6 +155,103 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     target?.focus?.();
   }, [validatedReturnTargetId]);
 
+  const latestAnswerRun = useMemo(() => {
+    const selected = workspace?.selectedConversation;
+    const latestTurn = selected?.branches
+      .flatMap((branch) => branch.turns)
+      .sort((left, right) => right.ordinal - left.ordinal)[0];
+    return latestTurn
+      ? (runOverrides[latestTurn.answerRun.answerRunId] ?? latestTurn.answerRun)
+      : undefined;
+  }, [runOverrides, workspace?.selectedConversation]);
+
+  useEffect(() => {
+    const answerRun = latestAnswerRun;
+    if (!answerRun || !askClient.getAnswerRun || !askClient.getAnswerRunEvents) return;
+    let cancelled = false;
+    let lastOrdinal = -1;
+    let polling = false;
+    let shouldContinue = true;
+    let timer: number | undefined;
+    const controller = new AbortController();
+    const terminal = new Set([
+      'ACTION_REQUIRED',
+      'SUCCEEDED',
+      'FAILED',
+      'CANCELLED',
+      'OUTCOME_UNKNOWN',
+    ]);
+    const schedule = () => {
+      if (!cancelled) timer = window.setTimeout(() => void poll(), 750);
+    };
+    const poll = async () => {
+      if (cancelled || polling) return;
+      polling = true;
+      try {
+        const eventsRequest =
+          lastOrdinal < 0
+            ? askClient.getAnswerRunEvents!(answerRun.answerRunId, undefined, {
+                signal: controller.signal,
+              })
+            : askClient.getAnswerRunEvents!(answerRun.answerRunId, lastOrdinal, {
+                signal: controller.signal,
+              });
+        const [current, events] = await Promise.all([
+          askClient.getAnswerRun!(answerRun.answerRunId, { signal: controller.signal }),
+          eventsRequest,
+        ]);
+        if (
+          cancelled ||
+          current.answerRunId !== answerRun.answerRunId ||
+          (answerRun.attemptId !== undefined &&
+            current.attemptId !== undefined &&
+            current.attemptId !== answerRun.attemptId)
+        )
+          return;
+        setRunOverrides((previous) => ({ ...previous, [current.answerRunId]: current }));
+        if (events.events.length > 0) {
+          lastOrdinal = Math.max(lastOrdinal, ...events.events.map((event) => event.ordinal));
+          setRunEvents((previous) => {
+            const prior = previous[events.answerRunId];
+            const priorEvents = prior?.events ?? [];
+            const byOrdinal = new Map(priorEvents.map((event) => [event.ordinal, event]));
+            events.events.forEach((event) => byOrdinal.set(event.ordinal, event));
+            return {
+              ...previous,
+              [events.answerRunId]: {
+                ...events,
+                events: [...byOrdinal.values()].sort((a, b) => a.ordinal - b.ordinal),
+              },
+            };
+          });
+        }
+        if (terminal.has(current.state)) {
+          shouldContinue = false;
+          return;
+        }
+      } catch {
+        // The authoritative workspace remains visible while a transient poll fails.
+      } finally {
+        polling = false;
+        if (shouldContinue) schedule();
+      }
+    };
+    void poll();
+    return () => {
+      cancelled = true;
+      controller.abort();
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [
+    askClient,
+    latestAnswerRun?.answerRunId,
+    latestAnswerRun?.attemptId,
+    latestAnswerRun?.attemptNumber,
+    pollingGeneration,
+    workspace?.projectId,
+    shell.activeProject?.id,
+  ]);
+
   if (!shell.activeProject && !conversationId) {
     return <p>Create or select a Project before asking questions.</p>;
   }
@@ -146,8 +270,8 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   const followUpReady =
     !conversationId ||
     Boolean(conversation && activeBranch?.branchRevision && conversation.conversationRevision);
-  const submissionAvailable =
-    workspace.capabilities.includes('SUBMIT_QUESTION') && followUpReady;
+  const submissionAvailable = workspace.capabilities.includes('SUBMIT_QUESTION') && followUpReady;
+  const answerRunMutationPending = pendingAnswerRunCommand !== undefined;
 
   const applyVerifiedSubmission = (submission: AskQuestionSubmissionView) => {
     setPendingCommand(undefined);
@@ -165,11 +289,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   const submissionFromOutcome = async (
     outcome: AskQuestionSubmissionOutcomeView,
   ): Promise<AskQuestionSubmissionView | undefined> => {
-    if (
-      outcome.outcomeState !== 'COMPLETED' ||
-      !outcome.answerRun ||
-      !outcome.conversationId
-    ) {
+    if (outcome.outcomeState !== 'COMPLETED' || !outcome.answerRun || !outcome.conversationId) {
       return undefined;
     }
     const recoveredWorkspace = await askClient.getWorkspace(outcome.conversationId);
@@ -286,6 +406,239 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     }
   };
 
+  const commandIdentity = () => ({
+    schemaVersion: '1.0.0' as const,
+    clientRequestId: `ask-run-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    idempotencyKey: `ask-run-idemp-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+  });
+
+  const setRunOverride = (answerRun: AskAnswerRunSnapshot) =>
+    setRunOverrides((previous) => ({ ...previous, [answerRun.answerRunId]: answerRun }));
+
+  const beginAnswerRunCommand = (
+    answerRunId: string,
+    operation: PendingAnswerRunCommand['operation'],
+    details: Pick<PendingAnswerRunCommand, 'retryMode' | 'feedbackKind' | 'transitionKind'> = {},
+  ): PendingAnswerRunCommand | undefined => {
+    if (answerRunMutationPending) return undefined;
+    const identity = commandIdentity();
+    const pending: PendingAnswerRunCommand = {
+      answerRunId,
+      clientRequestId: identity.clientRequestId,
+      idempotencyKey: identity.idempotencyKey,
+      operation,
+      ...details,
+    };
+    setPendingAnswerRunCommand(pending);
+    setAnswerRunOutcomeUnknown(false);
+    setAnswerRunCommandNotice(undefined);
+    return pending;
+  };
+
+  const answerRunCommandIdentity = (pending: PendingAnswerRunCommand) => ({
+    schemaVersion: '1.0.0' as const,
+    clientRequestId: pending.clientRequestId,
+    idempotencyKey: pending.idempotencyKey,
+  });
+
+  const resolveAnswerRunCommandOutcome = async (
+    pending: PendingAnswerRunCommand,
+  ): Promise<void> => {
+    if (!askClient.getAnswerRunCommandOutcome) {
+      setAnswerRunOutcomeUnknown(true);
+      setAnswerRunCommandNotice(
+        'The AnswerRun command outcome is unknown. The original command identity is preserved.',
+      );
+      return;
+    }
+
+    let outcome;
+    try {
+      outcome = await askClient.getAnswerRunCommandOutcome(
+        pending.answerRunId,
+        pending.clientRequestId,
+      );
+    } catch {
+      setAnswerRunOutcomeUnknown(true);
+      setAnswerRunCommandNotice(
+        'The AnswerRun command outcome is still unknown. Retry the outcome check without submitting a new command.',
+      );
+      return;
+    }
+
+    if (outcome.outcomeState === 'REJECTED') {
+      setPendingAnswerRunCommand(undefined);
+      setAnswerRunOutcomeUnknown(false);
+      setAnswerRunCommandNotice(
+        outcome.rejection?.message ??
+          'The AnswerRun command was rejected. No new command was sent.',
+      );
+      return;
+    }
+    if (outcome.outcomeState !== 'COMPLETED') {
+      setAnswerRunOutcomeUnknown(true);
+      setAnswerRunCommandNotice(
+        'The AnswerRun command is accepted but not resolved. No automatic retry was started.',
+      );
+      return;
+    }
+
+    try {
+      const identity = answerRunCommandIdentity(pending);
+      switch (pending.operation) {
+        case 'CANCEL':
+          if (!askClient.cancelAnswerRun) throw new Error('Cancel replay is unavailable.');
+          setRunOverride(await askClient.cancelAnswerRun(pending.answerRunId, identity));
+          break;
+        case 'RETRY':
+          if (!askClient.retryAnswerRun || !pending.retryMode)
+            throw new Error('Retry replay is unavailable.');
+          setRunOverride(
+            await askClient.retryAnswerRun(pending.answerRunId, {
+              ...identity,
+              mode: pending.retryMode,
+            }),
+          );
+          setPollingGeneration((generation) => generation + 1);
+          break;
+        case 'EXPORT': {
+          if (!askClient.exportAnswerRun) throw new Error('Export replay is unavailable.');
+          const exported = await askClient.exportAnswerRun(pending.answerRunId, {
+            ...identity,
+            format: 'MARKDOWN',
+          });
+          setExportedContent(exported.content);
+          break;
+        }
+        case 'FEEDBACK':
+          if (!askClient.submitAnswerFeedback || !pending.feedbackKind)
+            throw new Error('Feedback replay is unavailable.');
+          await askClient.submitAnswerFeedback(pending.answerRunId, {
+            ...identity,
+            kind: pending.feedbackKind,
+          });
+          break;
+        case 'TRANSITION_SEED':
+          if (!askClient.createAnswerTransitionSeed || !pending.transitionKind)
+            throw new Error('Transition seed replay is unavailable.');
+          await askClient.createAnswerTransitionSeed(pending.answerRunId, {
+            ...identity,
+            kind: pending.transitionKind,
+          });
+          break;
+      }
+    } catch {
+      setPendingAnswerRunCommand(undefined);
+      setAnswerRunOutcomeUnknown(false);
+      setAnswerRunCommandNotice(
+        'The command is completed, but its resource could not be recovered yet. The original command identity was retained.',
+      );
+      return;
+    }
+
+    setPendingAnswerRunCommand(undefined);
+    setAnswerRunOutcomeUnknown(false);
+    setAnswerRunCommandNotice('The completed AnswerRun command and its resource were recovered.');
+  };
+
+  const handleResolveAnswerRunCommandOutcome = async () => {
+    if (!pendingAnswerRunCommand || !answerRunOutcomeUnknown) return;
+    await resolveAnswerRunCommandOutcome(pendingAnswerRunCommand);
+  };
+
+  const handleCancelAnswerRun = async (answerRunId: string) => {
+    if (!askClient.cancelAnswerRun) return;
+    const pending = beginAnswerRunCommand(answerRunId, 'CANCEL');
+    if (!pending) return;
+    try {
+      setRunOverride(
+        await askClient.cancelAnswerRun(answerRunId, answerRunCommandIdentity(pending)),
+      );
+      setPendingAnswerRunCommand(undefined);
+      setAnswerRunCommandNotice('AnswerRun cancellation requested.');
+    } catch {
+      await resolveAnswerRunCommandOutcome(pending);
+    }
+  };
+
+  const handleRetryAnswerRun = async (
+    answerRunId: string,
+    retryMode: 'SAME_CONTEXT' | 'CURRENT_POLICY',
+  ) => {
+    if (!askClient.retryAnswerRun) return;
+    const pending = beginAnswerRunCommand(answerRunId, 'RETRY', { retryMode });
+    if (!pending) return;
+    try {
+      setRunOverride(
+        await askClient.retryAnswerRun(answerRunId, {
+          ...answerRunCommandIdentity(pending),
+          mode: retryMode,
+        }),
+      );
+      setPollingGeneration((generation) => generation + 1);
+      setPendingAnswerRunCommand(undefined);
+      setAnswerRunCommandNotice('AnswerRun retry accepted with a new attempt.');
+    } catch {
+      await resolveAnswerRunCommandOutcome(pending);
+    }
+  };
+
+  const handleExportAnswerRun = async (answerRunId: string) => {
+    if (!askClient.exportAnswerRun) return;
+    const pending = beginAnswerRunCommand(answerRunId, 'EXPORT');
+    if (!pending) return;
+    try {
+      const exported = await askClient.exportAnswerRun(answerRunId, {
+        ...answerRunCommandIdentity(pending),
+        format: 'MARKDOWN',
+      });
+      setExportedContent(exported.content);
+      setPendingAnswerRunCommand(undefined);
+      setAnswerRunCommandNotice('AnswerRun export completed.');
+    } catch {
+      await resolveAnswerRunCommandOutcome(pending);
+    }
+  };
+
+  const handleFeedback = async (answerRunId: string, kind: 'HELPFUL' | 'NOT_HELPFUL') => {
+    if (!askClient.submitAnswerFeedback) return;
+    const pending = beginAnswerRunCommand(answerRunId, 'FEEDBACK', { feedbackKind: kind });
+    if (!pending) return;
+    try {
+      await askClient.submitAnswerFeedback(answerRunId, {
+        ...answerRunCommandIdentity(pending),
+        kind,
+      });
+      setPendingAnswerRunCommand(undefined);
+      setAnswerRunCommandNotice('Feedback recorded for this AnswerRun.');
+    } catch {
+      await resolveAnswerRunCommandOutcome(pending);
+    }
+  };
+
+  const handleTransitionSeed = async (
+    answerRunId: string,
+    kind: 'INTAKE_DRAFT' | 'DRAFT_CHANGE_SET' | 'USER_DIRECTIVE',
+  ) => {
+    if (!askClient.createAnswerTransitionSeed) return;
+    const pending = beginAnswerRunCommand(answerRunId, 'TRANSITION_SEED', {
+      transitionKind: kind,
+    });
+    if (!pending) return;
+    try {
+      await askClient.createAnswerTransitionSeed(answerRunId, {
+        ...answerRunCommandIdentity(pending),
+        kind,
+      });
+      setPendingAnswerRunCommand(undefined);
+      setAnswerRunCommandNotice(
+        `${kind} transition seed proposed. Canonical knowledge was not changed.`,
+      );
+    } catch {
+      await resolveAnswerRunCommandOutcome(pending);
+    }
+  };
+
   return (
     <section className="route-page ask-workspace">
       <p className="eyebrow">Knowledge question</p>
@@ -347,6 +700,8 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
         ) : null}
       </section>
 
+      {answerRunCommandNotice ? <p role="status">{answerRunCommandNotice}</p> : null}
+
       <section className="action-card" aria-labelledby="conversation-heading">
         <h2 id="conversation-heading">Conversations</h2>
         {workspace.conversations.length === 0 ? <p>No conversations yet.</p> : null}
@@ -371,61 +726,191 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
             <h3>{conversation.title}</h3>
             {conversation.branches.map((branch) => (
               <ol key={branch.branchId} id={`branch-${branch.branchId}`} aria-label={branch.label}>
-                {branch.turns.map((turn) => (
-                  <li key={turn.turnId} id={`turn-${turn.turnId}`} tabIndex={-1}>
-                    <p>{turn.userMessage}</p>
-                    <p>Answer run: {turn.answerRun.state}</p>
-                    {turn.answerRun.statements.map((statement) => (
-                      <article
-                        key={statement.statementId}
-                        id={`statement-${statement.statementId}`}
-                      >
-                        <p>{statement.text}</p>
-                        <ul>
-                          {statement.citations.map((citation) => (
-                            <li
-                              key={citation.citationId}
-                              id={`citation-${citation.citationId}`}
-                              tabIndex={-1}
+                {branch.turns.map((turn) => {
+                  const answerRun = runOverrides[turn.answerRun.answerRunId] ?? turn.answerRun;
+                  const events = runEvents[answerRun.answerRunId];
+                  const latestPartial =
+                    answerRun.partialText ??
+                    events?.events
+                      .slice()
+                      .reverse()
+                      .find((event) => event.partialText !== undefined)?.partialText;
+                  return (
+                    <li key={turn.turnId} id={`turn-${turn.turnId}`} tabIndex={-1}>
+                      <p>{turn.userMessage}</p>
+                      <p>
+                        Answer run: <strong>{answerRun.state}</strong>
+                      </p>
+                      {latestPartial ? (
+                        <p aria-live="polite">Partial answer: {latestPartial}</p>
+                      ) : null}
+                      {answerRun.failure ? (
+                        <p role="alert">
+                          {answerRun.failure.message} ({answerRun.failure.code})
+                        </p>
+                      ) : null}
+                      <div className="action-row" aria-label="AnswerRun actions">
+                        {answerRun.capabilities.includes('CANCEL') ? (
+                          <button
+                            type="button"
+                            disabled={answerRunMutationPending}
+                            onClick={() => void handleCancelAnswerRun(answerRun.answerRunId)}
+                          >
+                            Cancel answer
+                          </button>
+                        ) : null}
+                        {answerRun.capabilities.includes('RETRY_SAME_CONTEXT') ? (
+                          <button
+                            type="button"
+                            disabled={answerRunMutationPending}
+                            onClick={() =>
+                              void handleRetryAnswerRun(answerRun.answerRunId, 'SAME_CONTEXT')
+                            }
+                          >
+                            Retry same context
+                          </button>
+                        ) : null}
+                        {answerRun.capabilities.includes('RETRY_CURRENT_POLICY') ? (
+                          <button
+                            type="button"
+                            disabled={answerRunMutationPending}
+                            onClick={() =>
+                              void handleRetryAnswerRun(answerRun.answerRunId, 'CURRENT_POLICY')
+                            }
+                          >
+                            Retry current policy
+                          </button>
+                        ) : null}
+                        {answerRun.capabilities.includes('EXPORT') ? (
+                          <button
+                            type="button"
+                            disabled={answerRunMutationPending}
+                            onClick={() => void handleExportAnswerRun(answerRun.answerRunId)}
+                          >
+                            Export answer
+                          </button>
+                        ) : null}
+                        {answerRun.state === 'SUCCEEDED' ? (
+                          <>
+                            <button
+                              type="button"
+                              disabled={answerRunMutationPending}
+                              onClick={() => void handleFeedback(answerRun.answerRunId, 'HELPFUL')}
                             >
-                              <Link
-                                to={`/sources/${encodeURIComponent(citation.sourceId)}?version=${encodeURIComponent(citation.sourceVersionId)}`}
-                                state={{
-                                  citationReturnTarget: {
-                                    schemaVersion: '1.0.0',
-                                    originRoute: `/ask/conversations/${encodeURIComponent(conversation.conversationId)}`,
-                                    resourceKind: 'conversation',
-                                    resourceId: conversation.conversationId,
-                                    conversationId: conversation.conversationId,
-                                    branchId: branch.branchId,
-                                    turnId: turn.turnId,
-                                    answerRunId: turn.answerRun.answerRunId,
-                                    answerRevision: turn.answerRun.answerRevision,
-                                    resourceRevision: conversation.conversationRevision,
-                                    citationId: citation.citationId,
-                                    sourceId: citation.sourceId,
-                                    sourceVersionId: citation.sourceVersionId,
-                                    evidenceId: citation.evidenceId,
-                                    scrollAnchor: citation.citationId,
-                                    focusTarget: citation.citationId,
-                                    panelId: 'conversations',
-                                  },
-                                }}
+                              Helpful
+                            </button>
+                            <button
+                              type="button"
+                              disabled={answerRunMutationPending}
+                              onClick={() =>
+                                void handleFeedback(answerRun.answerRunId, 'NOT_HELPFUL')
+                              }
+                            >
+                              Not helpful
+                            </button>
+                          </>
+                        ) : null}
+                        {answerRun.capabilities.includes('CREATE_INTAKE_DRAFT') ? (
+                          <button
+                            type="button"
+                            disabled={answerRunMutationPending}
+                            onClick={() =>
+                              void handleTransitionSeed(answerRun.answerRunId, 'INTAKE_DRAFT')
+                            }
+                          >
+                            Propose Intake Draft
+                          </button>
+                        ) : null}
+                        {answerRun.capabilities.includes('CREATE_DRAFT_CHANGE_SET') ? (
+                          <button
+                            type="button"
+                            disabled={answerRunMutationPending}
+                            onClick={() =>
+                              void handleTransitionSeed(answerRun.answerRunId, 'DRAFT_CHANGE_SET')
+                            }
+                          >
+                            Propose Draft ChangeSet
+                          </button>
+                        ) : null}
+                        {answerRun.capabilities.includes('PROPOSE_DIRECTIVE') ? (
+                          <button
+                            type="button"
+                            disabled={answerRunMutationPending}
+                            onClick={() =>
+                              void handleTransitionSeed(answerRun.answerRunId, 'USER_DIRECTIVE')
+                            }
+                          >
+                            Propose Directive
+                          </button>
+                        ) : null}
+                        {answerRunOutcomeUnknown &&
+                        pendingAnswerRunCommand?.answerRunId === answerRun.answerRunId ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleResolveAnswerRunCommandOutcome()}
+                          >
+                            Check existing command outcome
+                          </button>
+                        ) : null}
+                      </div>
+                      {answerRun.statements.map((statement) => (
+                        <article
+                          key={statement.statementId}
+                          id={`statement-${statement.statementId}`}
+                        >
+                          <p>{statement.text}</p>
+                          <ul>
+                            {statement.citations.map((citation) => (
+                              <li
+                                key={citation.citationId}
+                                id={`citation-${citation.citationId}`}
+                                tabIndex={-1}
                               >
-                                Open pinned Evidence
-                              </Link>
-                            </li>
-                          ))}
-                        </ul>
-                      </article>
-                    ))}
-                  </li>
-                ))}
+                                <Link
+                                  to={`/sources/${encodeURIComponent(citation.sourceId)}?version=${encodeURIComponent(citation.sourceVersionId)}`}
+                                  state={{
+                                    citationReturnTarget: {
+                                      schemaVersion: '1.0.0',
+                                      originRoute: `/ask/conversations/${encodeURIComponent(conversation.conversationId)}`,
+                                      resourceKind: 'conversation',
+                                      resourceId: conversation.conversationId,
+                                      conversationId: conversation.conversationId,
+                                      branchId: branch.branchId,
+                                      turnId: turn.turnId,
+                                      answerRunId: turn.answerRun.answerRunId,
+                                      answerRevision: turn.answerRun.answerRevision,
+                                      resourceRevision: conversation.conversationRevision,
+                                      citationId: citation.citationId,
+                                      sourceId: citation.sourceId,
+                                      sourceVersionId: citation.sourceVersionId,
+                                      evidenceId: citation.evidenceId,
+                                      scrollAnchor: citation.citationId,
+                                      focusTarget: citation.citationId,
+                                      panelId: 'conversations',
+                                    },
+                                  }}
+                                >
+                                  Open pinned Evidence
+                                </Link>
+                              </li>
+                            ))}
+                          </ul>
+                        </article>
+                      ))}
+                    </li>
+                  );
+                })}
               </ol>
             ))}
           </section>
         ) : null}
       </section>
+      {exportedContent ? (
+        <section className="action-card" aria-labelledby="ask-export-heading">
+          <h2 id="ask-export-heading">Answer export</h2>
+          <pre>{exportedContent}</pre>
+        </section>
+      ) : null}
     </section>
   );
 };

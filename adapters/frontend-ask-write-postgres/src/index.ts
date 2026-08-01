@@ -13,12 +13,14 @@ import {
   type AskSourceSelectionView,
   type AskWorkspaceView,
 } from '../../../packages/contracts/src/index.js';
+import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
 import type {
   AskCommittedQuestion,
   AskConversationRepositoryPort,
   AskSourceSelectionValidatorPort,
   PersistAskQuestionInput,
 } from '../../../modules/frontend-ask-write/src/index.js';
+import { assertAskSourceSelectionContract } from '../../../modules/frontend-ask-write/src/index.js';
 import type {
   AskWorkspaceProjectionPort,
   FrontendReadScope,
@@ -69,6 +71,20 @@ type AnswerRunRow = QueryResultRow & {
   readonly conversation_revision: string;
   readonly access_revision: string;
   readonly policy_context_revision: string;
+  readonly failure_code: string | null;
+  readonly failure_message: string | null;
+  readonly failure_retryable: boolean | null;
+  readonly failure_outcome_unknown: boolean | null;
+  readonly partial_text: string | null;
+  readonly provider_name: string | null;
+  readonly provider_model: string | null;
+  readonly provider_adapter_version: string | null;
+  readonly input_tokens: number | null;
+  readonly output_tokens: number | null;
+  readonly total_tokens: number | null;
+  readonly cost_micros: number | string | null;
+  readonly attempt_number: number;
+  readonly event_revision: number;
   readonly created_at: Date;
   readonly updated_at: Date;
 };
@@ -152,18 +168,14 @@ export class PostgresAskConversationRepository implements AskConversationReposit
   constructor(private readonly pool: Pool) {}
 
   async transaction<T>(action: (transaction: unknown) => Promise<T>): Promise<T> {
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
-      const result = await action(client);
-      await client.query('COMMIT');
-      return result;
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
+    return withSafePostgresTransaction(
+      this.pool,
+      (client) => action(client),
+      {
+        module: 'frontend-ask-write-postgres',
+        operation: 'question-transaction',
+      },
+    );
   }
 
   async persistQuestion(
@@ -278,12 +290,7 @@ export class PostgresAskConversationRepository implements AskConversationReposit
       `UPDATE frontend_ask.branches
        SET branch_revision = $3, updated_at = $4
        WHERE branch_id = $1 AND branch_revision = $2`,
-      [
-        branchId,
-        input.expectedBranchRevision,
-        input.generated.branchRevision,
-        input.createdAt,
-      ],
+      [branchId, input.expectedBranchRevision, input.generated.branchRevision, input.createdAt],
     );
     if ((branchUpdate.rowCount ?? 0) !== 1) throw revisionConflict('Branch');
 
@@ -324,11 +331,11 @@ export class PostgresAskConversationRepository implements AskConversationReposit
       `INSERT INTO frontend_ask.answer_runs (
          answer_run_id, conversation_id, branch_id, turn_id, project_id,
          create_command_id, mode, state, attention_reason, question, capabilities,
-         answer_revision, conversation_revision, access_revision,
-         policy_context_revision, created_at, updated_at
+          answer_revision, conversation_revision, access_revision, access_scope,
+          sensitivity_clearance, policy_context_revision, created_at, updated_at
        ) VALUES (
-         $1, $2, $3, $4, $5, $6, $7, 'ACTION_REQUIRED',
-         'MODEL_EXECUTION_NOT_CONFIGURED', $8, '{}', $9, $10, $11, $12, $13, $13
+         $1, $2, $3, $4, $5, $6, $7, $8,
+          $9, $11, $10, $12, $13, $14, $15, $16, $17, $18, $18
        )`,
       [
         input.generated.answerRunId,
@@ -338,16 +345,41 @@ export class PostgresAskConversationRepository implements AskConversationReposit
         input.projectId,
         input.commandId,
         input.mode,
+        input.executionEnabled ? 'QUEUED' : 'ACTION_REQUIRED',
+        input.executionEnabled ? null : 'MODEL_EXECUTION_NOT_CONFIGURED',
+        input.executionEnabled ? ['CANCEL'] : [],
         input.question,
         input.generated.answerRevision,
         input.generated.conversationRevision,
         input.accessRevision,
+        input.accessScope ?? ['owner'],
+        input.sensitivityClearance ?? 'public',
         input.policyContextRevision,
         input.createdAt,
       ],
     );
 
-    for (let selectionOrdinal = 0; selectionOrdinal < input.sourceSelections.length; selectionOrdinal += 1) {
+    if (input.executionEnabled) {
+      await client.query(
+        `INSERT INTO frontend_ask.answer_run_events (
+           event_id, answer_run_id, project_id, ordinal, kind, state,
+           answer_revision, created_at
+         ) VALUES ($1, $2, $3, 0, 'STATE', 'QUEUED', $4, $5)`,
+        [
+          `event-${input.generated.answerRunId}-queued`,
+          input.generated.answerRunId,
+          input.projectId,
+          input.generated.answerRevision,
+          input.createdAt,
+        ],
+      );
+    }
+
+    for (
+      let selectionOrdinal = 0;
+      selectionOrdinal < input.sourceSelections.length;
+      selectionOrdinal += 1
+    ) {
       const selection = input.sourceSelections[selectionOrdinal];
       if (!selection) continue;
       const selectionId = `selection-${input.generated.answerRunId}-${selectionOrdinal}`;
@@ -365,7 +397,11 @@ export class PostgresAskConversationRepository implements AskConversationReposit
           selectionOrdinal,
         ],
       );
-      for (let evidenceOrdinal = 0; evidenceOrdinal < selection.evidenceIds.length; evidenceOrdinal += 1) {
+      for (
+        let evidenceOrdinal = 0;
+        evidenceOrdinal < selection.evidenceIds.length;
+        evidenceOrdinal += 1
+      ) {
         const evidenceId = selection.evidenceIds[evidenceOrdinal];
         if (!evidenceId) continue;
         await client.query(
@@ -401,6 +437,7 @@ export class PostgresAskSourceSelectionValidator implements AskSourceSelectionVa
   constructor(private readonly pool: Pool) {}
 
   async validate(input: Parameters<AskSourceSelectionValidatorPort['validate']>[0]): Promise<void> {
+    assertAskSourceSelectionContract(input);
     for (const selection of input.sourceSelections) {
       const source = await this.pool.query<SourceAuthorityRow>(
         `SELECT
@@ -417,7 +454,10 @@ export class PostgresAskSourceSelectionValidator implements AskSourceSelectionVa
         [input.projectId, selection.sourceId, selection.sourceVersionId],
       );
       const authoritative = source.rows[0];
-      if (!authoritative || !this.allowedSensitivity(authoritative.sensitivity, input.sensitivityClearance)) {
+      if (
+        !authoritative ||
+        !this.allowedSensitivity(authoritative.sensitivity, input.sensitivityClearance)
+      ) {
         throw notFound('validate-source-selection');
       }
 
@@ -497,6 +537,13 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
     const selectedConversation = input.conversationId
       ? await this.loadConversation(input.conversationId, projectId)
       : undefined;
+    const resourceAuthority = input.conversationId
+      ? input.executionAuthorities?.[projectId]
+      : undefined;
+    if (input.conversationId && !resourceAuthority) throw notFound('resolve-workspace-authority');
+    const accessRevision = resourceAuthority?.accessRevision ?? input.accessRevision;
+    const policyContextRevision =
+      resourceAuthority?.policyContextRevision ?? input.policyContextRevision;
     const fetchedAt = new Date().toISOString();
     return decodeAskWorkspaceView({
       schemaVersion: ASK_SCHEMA_VERSION,
@@ -504,7 +551,9 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
       sessionId: input.sessionId,
       projectId,
       defaultAskMode: 'CANONICAL_ONLY',
-      availableAskModes: ['CANONICAL_ONLY', 'SOURCE_EXPLORATION', 'HYBRID'],
+      // SOURCE_EXPLORATION is not advertised until the product UI can pin a
+      // server-authorized SourceVersion for the draft.
+      availableAskModes: ['CANONICAL_ONLY', 'HYBRID'],
       conversations: summaries.rows.map((row) => ({
         conversationId: row.conversation_id,
         projectId: row.project_id,
@@ -516,9 +565,9 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
       })),
       ...(selectedConversation ? { selectedConversation } : {}),
       capabilities: ['SUBMIT_QUESTION'],
-      projectionRevision: `ask-projection-${input.accessRevision}-${input.policyContextRevision}`,
-      accessRevision: input.accessRevision,
-      policyContextRevision: input.policyContextRevision,
+      projectionRevision: `ask-projection-${projectId}-${accessRevision}-${policyContextRevision}`,
+      accessRevision,
+      policyContextRevision,
       fetchedAt,
       stale: false,
     });
@@ -536,9 +585,7 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
     input: FrontendReadScope & { readonly conversationId: string; readonly branchId: string },
   ): Promise<AskBranchView> {
     const conversation = await this.getConversation(input);
-    const branch = conversation.branches.find(
-      (candidate) => candidate.branchId === input.branchId,
-    );
+    const branch = conversation.branches.find((candidate) => candidate.branchId === input.branchId);
     if (!branch) throw notFound('get-branch');
     return branch;
   }
@@ -586,32 +633,39 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
     conversationId: string,
     projectId: string,
   ): Promise<AskConversationView> {
-    const [conversationResult, branchesResult, turnsResult, runsResult, selectionsResult, statementsResult, citationsResult] =
-      await Promise.all([
-        this.pool.query<ConversationRow>(
-          `SELECT * FROM frontend_ask.conversations
+    const [
+      conversationResult,
+      branchesResult,
+      turnsResult,
+      runsResult,
+      selectionsResult,
+      statementsResult,
+      citationsResult,
+    ] = await Promise.all([
+      this.pool.query<ConversationRow>(
+        `SELECT * FROM frontend_ask.conversations
            WHERE conversation_id = $1 AND project_id = $2`,
-          [conversationId, projectId],
-        ),
-        this.pool.query<BranchRow>(
-          `SELECT * FROM frontend_ask.branches
+        [conversationId, projectId],
+      ),
+      this.pool.query<BranchRow>(
+        `SELECT * FROM frontend_ask.branches
            WHERE conversation_id = $1
            ORDER BY created_at, branch_id`,
-          [conversationId],
-        ),
-        this.pool.query<TurnRow>(
-          `SELECT * FROM frontend_ask.turns
+        [conversationId],
+      ),
+      this.pool.query<TurnRow>(
+        `SELECT * FROM frontend_ask.turns
            WHERE conversation_id = $1
            ORDER BY branch_id, ordinal, turn_id`,
-          [conversationId],
-        ),
-        this.pool.query<AnswerRunRow>(
-          `SELECT * FROM frontend_ask.answer_runs
+        [conversationId],
+      ),
+      this.pool.query<AnswerRunRow>(
+        `SELECT * FROM frontend_ask.answer_runs
            WHERE conversation_id = $1`,
-          [conversationId],
-        ),
-        this.pool.query<SelectionRow>(
-          `SELECT
+        [conversationId],
+      ),
+      this.pool.query<SelectionRow>(
+        `SELECT
              selection.selection_id,
              selection.answer_run_id,
              selection.selection_ordinal,
@@ -626,19 +680,19 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
              ON run.answer_run_id = selection.answer_run_id
            WHERE run.conversation_id = $1
            ORDER BY selection.answer_run_id, selection.selection_ordinal, evidence.evidence_ordinal`,
-          [conversationId],
-        ),
-        this.pool.query<StatementRow>(
-          `SELECT statement_id, answer_run_id, ordinal, text
+        [conversationId],
+      ),
+      this.pool.query<StatementRow>(
+        `SELECT statement_id, answer_run_id, ordinal, text
            FROM frontend_ask.statements
            WHERE answer_run_id IN (
              SELECT answer_run_id FROM frontend_ask.answer_runs WHERE conversation_id = $1
            )
            ORDER BY answer_run_id, ordinal`,
-          [conversationId],
-        ),
-        this.pool.query<CitationRow>(
-          `SELECT
+        [conversationId],
+      ),
+      this.pool.query<CitationRow>(
+        `SELECT
              citation.citation_id,
              citation.statement_id,
              citation.citation_ordinal,
@@ -653,9 +707,9 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
              ON run.answer_run_id = statement.answer_run_id
            WHERE run.conversation_id = $1
            ORDER BY citation.statement_id, citation.citation_ordinal`,
-          [conversationId],
-        ),
-      ]);
+        [conversationId],
+      ),
+    ]);
 
     const conversationRow = conversationResult.rows[0];
     if (!conversationRow) throw notFound('load-conversation');
@@ -693,7 +747,11 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
     }
     const statementsByRun = new Map<
       string,
-      { readonly statementId: string; readonly text: string; readonly citations: readonly AskCitationView[] }[]
+      {
+        readonly statementId: string;
+        readonly text: string;
+        readonly citations: readonly AskCitationView[];
+      }[]
     >();
     for (const row of statementsResult.rows) {
       const statements = statementsByRun.get(row.answer_run_id) ?? [];
@@ -707,6 +765,23 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
 
     const runByTurn = new Map<string, AskAnswerRunSnapshot>();
     for (const row of runsResult.rows) {
+      const hasFailure =
+        row.failure_code !== null &&
+        row.failure_message !== null &&
+        row.failure_retryable !== null &&
+        row.failure_outcome_unknown !== null;
+      const hasProvider = row.provider_name !== null && row.provider_model !== null;
+      const usage = {
+        ...(row.input_tokens === null ? {} : { inputTokens: row.input_tokens }),
+        ...(row.output_tokens === null ? {} : { outputTokens: row.output_tokens }),
+        ...(row.total_tokens === null ? {} : { totalTokens: row.total_tokens }),
+        ...(row.cost_micros === null
+          ? {}
+          : {
+              costMicros:
+                typeof row.cost_micros === 'string' ? Number(row.cost_micros) : row.cost_micros,
+            }),
+      };
       runByTurn.set(
         row.turn_id,
         decodeAskAnswerRunSnapshot({
@@ -730,6 +805,31 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
           createdAt: row.created_at.toISOString(),
           updatedAt: row.updated_at.toISOString(),
           stale: false,
+          ...(row.attempt_number > 0 ? { attemptNumber: row.attempt_number } : {}),
+          ...(row.event_revision > 0 ? { eventRevision: row.event_revision } : {}),
+          ...(row.partial_text === null ? {} : { partialText: row.partial_text }),
+          ...(hasFailure
+            ? {
+                failure: {
+                  code: row.failure_code!,
+                  message: row.failure_message!,
+                  retryable: row.failure_retryable!,
+                  outcomeUnknown: row.failure_outcome_unknown!,
+                },
+              }
+            : {}),
+          ...(hasProvider
+            ? {
+                provider: {
+                  provider: row.provider_name!,
+                  model: row.provider_model!,
+                  ...(row.provider_adapter_version === null
+                    ? {}
+                    : { adapterVersion: row.provider_adapter_version }),
+                },
+              }
+            : {}),
+          ...(Object.keys(usage).length > 0 ? { usage } : {}),
         }),
       );
     }

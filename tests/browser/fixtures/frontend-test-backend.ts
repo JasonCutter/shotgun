@@ -92,7 +92,7 @@ export async function startFrontendTestBackend() {
   });
 
   const assetStorage = new InMemoryAssetStorage();
-  const evidenceRepository = new InMemoryEvidenceRepository();
+  const evidenceRepository = new InMemoryEvidenceRepository(() => ASK_FIXTURE.evidenceId);
   const sourceBytes = new TextEncoder().encode(ASK_FIXTURE.sourceText);
   const sourceContentHash = sha256Bytes(sourceBytes);
   const sourceStorageKey = await assetStorage.put(sourceContentHash, sourceBytes);
@@ -262,11 +262,7 @@ export async function startFrontendTestBackend() {
   const askGateway = new InMemoryFrontendCommandGateway();
   const askRepository = new InMemoryAskConversationRepository();
   askRepository.onSave = (aggregate) => askProjection.addConversation(aggregate.conversation);
-  const askCommandCoordinator = new AskCommandCoordinator(
-    askGateway,
-    askRepository,
-    askProjection,
-  );
+  const askCommandCoordinator = new AskCommandCoordinator(askGateway, askRepository, askProjection);
   const staging = new SealedSourcesStagingService(
     assetStorage,
     'browser-fixture-sources-staging-secret-32-characters',

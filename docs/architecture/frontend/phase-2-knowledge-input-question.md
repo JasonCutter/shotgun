@@ -18,18 +18,7 @@ legacy_source_id: 3a65181d-71ad-8122-bfda-c9be8016ef33
 
 <!-- FRONTEND-WORK-ITEM-STATUS:START -->
 
-> 이 블록은 `docs/project/frontend-work-items.json`과 Section Completion Manifest에서 생성됩니다. 블록 내부를 직접 수정하지 않습니다.
-
-| Work Item                                                      | Status                |
-| -------------------------------------------------------------- | --------------------- |
-| FE-P2 — Knowledge Input and Question                           | `IN_PROGRESS`         |
-| FE-P2-S2 — Ask and Conversations Workspace                     | `IN_PROGRESS`         |
-| FE-P2-S2-I01 — Read Foundation                                 | `COMPLETE` / VERIFIED |
-| FE-P2-S2-I02 — Command and Persistence                         | `COMPLETE` / VERIFIED |
-| FE-P2-S2-I03 — Answer Execution and Remaining Section Contract | `NOT_STARTED`         |
-
-- 미충족 필수 기준: `answerExecution, failureAndRetry, finalSectionVerification`
-- Next valid Product Section: `FE-P3-S1 — Knowledge Workspace`
+> Frontend Work Item status is complete; no active Section remains.
 
 <!-- FRONTEND-WORK-ITEM-STATUS:END -->
 

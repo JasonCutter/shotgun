@@ -36,9 +36,7 @@ export class InMemoryAskConversationRepository implements AskConversationReposit
     _transaction: unknown,
     input: PersistAskQuestionInput,
   ): Promise<AskCommittedQuestion> {
-    return input.conversationId
-      ? this.appendFollowUp(input)
-      : this.createConversation(input);
+    return input.conversationId ? this.appendFollowUp(input) : this.createConversation(input);
   }
 
   private createConversation(input: PersistAskQuestionInput): AskCommittedQuestion {
@@ -143,6 +141,7 @@ export class InMemoryAskConversationRepository implements AskConversationReposit
     input: PersistAskQuestionInput,
     identity: { readonly conversationId: string; readonly branchId: string },
   ): AskAnswerRunSnapshot {
+    const executionEnabled = input.executionEnabled === true;
     return {
       schemaVersion: ASK_SCHEMA_VERSION,
       answerRunId: input.generated.answerRunId,
@@ -151,12 +150,12 @@ export class InMemoryAskConversationRepository implements AskConversationReposit
       turnId: input.generated.turnId,
       projectId: input.projectId,
       mode: input.mode,
-      state: 'ACTION_REQUIRED',
-      attentionReason: 'MODEL_EXECUTION_NOT_CONFIGURED',
+      state: executionEnabled ? 'QUEUED' : 'ACTION_REQUIRED',
+      ...(executionEnabled ? {} : { attentionReason: 'MODEL_EXECUTION_NOT_CONFIGURED' as const }),
       question: input.question,
       statements: [],
       sourceSelections: input.sourceSelections,
-      capabilities: [],
+      capabilities: executionEnabled ? ['CANCEL'] : [],
       answerRevision: input.generated.answerRevision,
       conversationRevision: input.generated.conversationRevision,
       accessRevision: input.accessRevision,

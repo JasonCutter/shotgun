@@ -8,15 +8,20 @@ test('Ask navigation enables question submission and clears draft on success', a
   await expect(page.getByRole('heading', { name: 'Question Draft' })).toBeVisible();
 
   const questionInput = page.getByRole('textbox', { name: 'Question', exact: true });
-  await questionInput.fill('How does command gateway handle idempotency?');
+  const question = 'How does command gateway handle idempotency?';
+  await questionInput.fill(question);
   await expect(page.getByRole('button', { name: 'Submit question' })).toBeEnabled();
 
   await page.getByRole('button', { name: 'Submit question' }).click();
   await expect(questionInput).toHaveValue('');
-  await expect(page.getByText('How does command gateway handle idempotency?')).toBeVisible();
+  const submittedTurn = page.getByLabel('Main Branch').getByText(question, { exact: true });
+  await expect(submittedTurn).toHaveCount(1);
+  await expect(submittedTurn).toBeVisible();
 });
 
-test('Ask draft blocks Project switching and is not moved to the next Project', async ({ page }) => {
+test('Ask draft blocks Project switching and is not moved to the next Project', async ({
+  page,
+}) => {
   await page.goto('/ask');
   const questionInput = page.getByRole('textbox', { name: 'Question', exact: true });
   const projectSelector = page.getByRole('combobox', { name: 'Active Project' });
@@ -79,7 +84,9 @@ test('Ask citation keeps SourceVersion pinned and restores exact conversation co
   );
   await expect(page.getByText(ASK_FIXTURE.sourceVersionId)).toBeVisible();
   await expect(page.locator('pre.source-preview')).toContainText(ASK_FIXTURE.sourceText);
-  await expect(page.locator('.source-evidence-list li:focus')).toHaveCount(1);
+  const evidenceTarget = page.locator(`#evidence-${ASK_FIXTURE.evidenceId}`);
+  await expect(evidenceTarget).toBeVisible();
+  await expect(evidenceTarget).toBeFocused();
 
   await page.getByRole('link', { name: 'Return to cited resource' }).click();
   await expect(page).toHaveURL(`/ask/conversations/${ASK_FIXTURE.conversationId}`);

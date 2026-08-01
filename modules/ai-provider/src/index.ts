@@ -44,6 +44,17 @@ export type AIProviderAdapterPort = {
     readonly dataPolicyVersion: AIProviderCall['dataPolicyVersion'];
   };
   generateStructured(request: StructuredGenerationRequest): Promise<StructuredGenerationResponse>;
+  /**
+   * Optional live transport used by interactive Answer execution. Providers
+   * that do not expose a streaming API may continue to implement the durable
+   * structured path above, but must not pretend that a final response is a
+   * live stream.
+   */
+  generateStructuredStream?(
+    request: StructuredGenerationRequest,
+    onText: (text: string) => Promise<void>,
+    signal: AbortSignal,
+  ): Promise<StructuredGenerationResponse>;
 };
 
 export type AIProviderExecutionRecord = {

@@ -1,18 +1,24 @@
+import { randomUUID } from 'node:crypto';
+
 import { expect, test } from '@playwright/test';
 
 test('Sources stages and submits Direct Text, then releases Project switching after success', async ({
   page,
 }) => {
+  const uniqueToken = randomUUID();
+  const draftLabel = `E2E draft ${uniqueToken}`;
+  const draftText = `Transient browser-only evidence ${uniqueToken}`;
+
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/sources');
 
   await expect(page.getByRole('heading', { name: 'Sources', level: 1 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Source Library' })).toBeVisible();
-  await page.getByLabel('Label').fill('E2E draft');
-  await page.getByLabel('Direct Text').fill('Transient browser-only evidence');
+  await page.getByLabel('Label').fill(draftLabel);
+  await page.getByLabel('Direct Text').fill(draftText);
   await page.getByRole('button', { name: 'Add intake draft' }).click();
 
-  await expect(page.getByRole('list', { name: 'Intake drafts' })).toContainText('E2E draft');
+  await expect(page.getByRole('list', { name: 'Intake drafts' })).toContainText(draftLabel);
   await expect(page.getByRole('button', { name: 'Submit drafts' })).toBeEnabled();
   await expect(
     page.getByText('Client preflight passed. The Server will validate again.'),
@@ -22,7 +28,7 @@ test('Sources stages and submits Direct Text, then releases Project switching af
     .poll(() =>
       page.evaluate(() => `${JSON.stringify(localStorage)}${JSON.stringify(sessionStorage)}`),
     )
-    .not.toContain('Transient browser-only evidence');
+    .not.toContain(draftText);
 
   await page.getByRole('button', { name: 'Submit drafts' }).click();
   await expect(page.getByRole('heading', { name: 'Submission SUCCEEDED' })).toBeVisible();

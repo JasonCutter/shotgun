@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { Link, useLocation, useOutletContext, useParams, useSearchParams } from 'react-router';
 
 import {
@@ -64,16 +64,11 @@ export const SourceDetailWorkspace = () => {
     }
   }, [citationReturnTarget]);
 
-  useEffect(() => {
-    if (!citationReturnTarget || !evidence.data) return;
-    const evidenceExists = evidence.data.items.some(
-      (item) => item.evidenceId === citationReturnTarget.evidenceId,
-    );
-    if (!evidenceExists) return;
-    const target = document.getElementById(`evidence-${citationReturnTarget.evidenceId}`);
-    target?.scrollIntoView?.({ block: 'center' });
-    target?.focus();
-  }, [citationReturnTarget, evidence.data]);
+  const focusCitationEvidence = useCallback((node: HTMLLIElement | null) => {
+    if (!node) return;
+    node.scrollIntoView?.({ block: 'center' });
+    node.focus();
+  }, []);
 
   if (detail.isPending) return <LoadingState message="Loading Source…" />;
   if (detail.error) return <ErrorState error={detail.error} />;
@@ -183,15 +178,23 @@ export const SourceDetailWorkspace = () => {
         {evidence.data?.items.length === 0 ? <p>No Evidence is indexed yet.</p> : null}
         {evidence.data && evidence.data.items.length > 0 ? (
           <ul className="source-evidence-list">
-            {evidence.data.items.map((item) => (
-              <li key={item.evidenceId} id={`evidence-${item.evidenceId}`} tabIndex={-1}>
-                <strong>{item.label}</strong>
-                <p>{item.exactText}</p>
-                <small>
-                  {item.origin} · {item.evidenceId}
-                </small>
-              </li>
-            ))}
+            {evidence.data.items.map((item) => {
+              const isCitationTarget = item.evidenceId === citationReturnTarget?.evidenceId;
+              return (
+                <li
+                  key={item.evidenceId}
+                  id={`evidence-${item.evidenceId}`}
+                  tabIndex={-1}
+                  ref={isCitationTarget ? focusCitationEvidence : undefined}
+                >
+                  <strong>{item.label}</strong>
+                  <p>{item.exactText}</p>
+                  <small>
+                    {item.origin} · {item.evidenceId}
+                  </small>
+                </li>
+              );
+            })}
           </ul>
         ) : null}
       </section>

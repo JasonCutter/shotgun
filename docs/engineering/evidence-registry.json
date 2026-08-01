@@ -225,7 +225,7 @@
     {
       "id": "FRONTEND-PHASE-2-SECTION-2-CITATION-FOCUS-REGRESSION-260801001",
       "path": "docs/engineering/frontend-phase-2-section-2-citation-focus-regression-260801001.md",
-      "class": "REGRESSION_REPORT",
+      "class": "AUDIT_REPORT",
       "scope": "frontend-phase-2-section-2-citation-focus",
       "statusAuthority": "SECTION_REOPENING_EVIDENCE",
       "discoveredAt": "2026-08-01",
@@ -234,6 +234,20 @@
       "pullRequest": "https://github.com/JasonCutter/shotgun/pull/51",
       "mergeStatus": "OPEN_DRAFT_NOT_MERGED",
       "impact": "FINAL_SECTION_VERIFICATION_REOPENED"
+    },
+    {
+      "id": "FRONTEND-PHASE-2-SECTION-2-FOCUS-REMEDIATION-VERIFICATION-260801001",
+      "path": "docs/engineering/frontend-phase-2-section-2-focus-remediation-verification-260801001.md",
+      "class": "IMPLEMENTATION_VERIFICATION",
+      "scope": "frontend-phase-2-section-2-focus-remediation",
+      "statusAuthority": "SECTION_REMEDIATION_COMPLETION_EVIDENCE",
+      "approvedBy": "user",
+      "approvedAt": "2026-08-01",
+      "testedContentHead": "0367a4ba307992ea74098b88a7c55690a1f1dc15",
+      "githubActionsRun": "30703477569",
+      "pullRequest": "https://github.com/JasonCutter/shotgun/pull/51",
+      "mergeStatus": "OPEN_DRAFT_NOT_MERGED",
+      "acceptance": "FOCUS_REMEDIATION_AND_FRONTEND_GATES_PASS"
     }
   ],
   "rules": {

@@ -83,6 +83,13 @@ retry, timeout, skip, or product duplicate-contract bypass was added.
 These are local validation results. Exact-head CI Quality, Frontend, and
 Required Gates remain the publication gate for this remediation.
 
+## Evidence registry taxonomy history
+
+The Evidence Registry class for this record was normalized from
+`REGRESSION_REPORT` to `AUDIT_REPORT` to match the existing class vocabulary.
+The regression/reopening meaning of this document and its
+`SECTION_REOPENING_EVIDENCE` authority are unchanged.
+
 ## Reopened status
 
 - `answerExecution`: PASS remains unchanged.

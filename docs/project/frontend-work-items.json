@@ -82,16 +82,16 @@
       "parent": null,
       "predecessor": "FE-P1",
       "successor": "FE-P3",
-      "status": "IN_PROGRESS",
+      "status": "COMPLETE",
       "governingContract": "docs/architecture/frontend/phase-2-knowledge-input-question.md",
       "completionManifest": null,
-      "approvedAt": null,
+      "approvedAt": "2026-08-01",
       "supersedes": null,
       "introducedByDecision": "docs/engineering/frontend-work-item-registry-migration-decision-260801001.md",
       "decisionStatus": "MIGRATED",
       "decisionApprovedBy": null,
       "decisionApprovedAt": null,
-      "approvedBy": null
+      "approvedBy": "user"
     },
     {
       "id": "FE-P2-S1",
@@ -118,16 +118,16 @@
       "parent": "FE-P2",
       "predecessor": "FE-P2-S1",
       "successor": "FE-P3-S1",
-      "status": "IN_PROGRESS",
+      "status": "COMPLETE",
       "governingContract": "docs/architecture/contracts/snapshots/frontend-phase-2-section-2/frontend-phase-2-section-2-contract-snapshot-260731001.md",
       "completionManifest": "docs/project/completions/FE-P2-S2.json",
-      "approvedAt": null,
+      "approvedAt": "2026-08-01",
       "supersedes": null,
       "introducedByDecision": "docs/engineering/frontend-work-item-registry-migration-decision-260801001.md",
       "decisionStatus": "MIGRATED",
       "decisionApprovedBy": null,
       "decisionApprovedAt": null,
-      "approvedBy": null
+      "approvedBy": "user"
     },
     {
       "id": "FE-P2-S2-I01",
@@ -172,16 +172,16 @@
       "parent": "FE-P2-S2",
       "predecessor": "FE-P2-S2-I02",
       "successor": null,
-      "status": "IN_PROGRESS",
+      "status": "COMPLETE",
       "governingContract": "docs/architecture/contracts/snapshots/frontend-phase-2-section-2/frontend-phase-2-section-2-contract-snapshot-260731001.md",
       "completionManifest": "docs/engineering/frontend-phase-2-section-2-i03-verification-260801001.md",
-      "approvedAt": null,
+      "approvedAt": "2026-08-01",
       "supersedes": null,
       "introducedByDecision": "docs/engineering/frontend-work-item-registry-migration-decision-260801001.md",
       "decisionStatus": "MIGRATED",
       "decisionApprovedBy": null,
       "decisionApprovedAt": null,
-      "approvedBy": null
+      "approvedBy": "user"
     },
     {
       "id": "FE-P3",

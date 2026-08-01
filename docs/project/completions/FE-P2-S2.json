@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "workItemId": "FE-P2-S2",
-  "status": "COMPLETE",
+  "status": "IN_PROGRESS",
   "governingContract": "docs/architecture/contracts/snapshots/frontend-phase-2-section-2/frontend-phase-2-section-2-contract-snapshot-260731001.md",
   "mandatoryCriteria": [
     {
@@ -48,22 +48,30 @@
       "id": "finalSectionVerification",
       "title": "Final Section Verification",
       "mandatory": true,
-      "status": "PASS",
+      "status": "FAIL",
       "evidence": [
         "docs/engineering/frontend-phase-2-section-2-i03-verification-260801001.md",
         "docs/engineering/frontend-phase-2-section-2-slices-1-3-verification-260731001.md",
-        "docs/implementation/frontend-phase-2-section-2-slices-4-5-verification-and-completion-record-260801001.md"
+        "docs/implementation/frontend-phase-2-section-2-slices-4-5-verification-and-completion-record-260801001.md",
+        "docs/engineering/frontend-phase-2-section-2-citation-focus-regression-260801001.md"
       ],
       "scopeAmendment": null
     }
   ],
-  "remainingScope": [],
+  "remainingScope": [
+    {
+      "id": "citationFocusRemediation",
+      "description": "Citation and modal focus arbitration plus repeat-safe Frontend E2E fixture remediation",
+      "trackingId": "FE-P2-S2-I03"
+    }
+  ],
   "scopeAmendments": [],
   "evidenceRegistryUpdates": [
     "FRONTEND-PHASE-2-STATUS-RECONCILIATION-260801001",
     "FRONTEND-PHASE-2-SECTION-2-I03-VERIFICATION-260801001",
-    "FRONTEND-PHASE-2-SECTION-2-COMPLETION-260801001"
+    "FRONTEND-PHASE-2-SECTION-2-COMPLETION-260801001",
+    "FRONTEND-PHASE-2-SECTION-2-CITATION-FOCUS-REGRESSION-260801001"
   ],
-  "approvedBy": "user",
-  "approvedAt": "2026-08-01"
+  "approvedBy": null,
+  "approvedAt": null
 }

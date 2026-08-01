@@ -221,6 +221,19 @@
       ],
       "pullRequest": "https://github.com/JasonCutter/shotgun/pull/51",
       "mergeStatus": "OPEN_DRAFT_NOT_MERGED"
+    },
+    {
+      "id": "FRONTEND-PHASE-2-SECTION-2-CITATION-FOCUS-REGRESSION-260801001",
+      "path": "docs/engineering/frontend-phase-2-section-2-citation-focus-regression-260801001.md",
+      "class": "REGRESSION_REPORT",
+      "scope": "frontend-phase-2-section-2-citation-focus",
+      "statusAuthority": "SECTION_REOPENING_EVIDENCE",
+      "discoveredAt": "2026-08-01",
+      "discoveryHead": "919eb96962606f1cc577f3aee1cc45e2182d4703",
+      "githubActionsRun": "30701758565",
+      "pullRequest": "https://github.com/JasonCutter/shotgun/pull/51",
+      "mergeStatus": "OPEN_DRAFT_NOT_MERGED",
+      "impact": "FINAL_SECTION_VERIFICATION_REOPENED"
     }
   ],
   "rules": {

@@ -217,7 +217,8 @@
       "evidence": [
         "docs/engineering/frontend-phase-2-section-2-slices-1-3-verification-260731001.md",
         "docs/implementation/frontend-phase-2-section-2-slices-4-5-verification-and-completion-record-260801001.md",
-        "docs/engineering/frontend-phase-2-section-2-i03-verification-260801001.md"
+        "docs/engineering/frontend-phase-2-section-2-i03-verification-260801001.md",
+        "docs/engineering/frontend-phase-2-section-2-focus-remediation-verification-260801001.md"
       ],
       "pullRequest": "https://github.com/JasonCutter/shotgun/pull/51",
       "mergeStatus": "OPEN_DRAFT_NOT_MERGED"

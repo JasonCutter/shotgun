@@ -1,5 +1,7 @@
 # Frontend Phase 2 Section 2 — Slices 4–5 Verification and Completion Record
 
+> **Correction note — 2026-08-01:** 이 기록의 Slices 4–5 구현·검증 증거는 유효하다. Parent Section `COMPLETE` 해석과 존재하지 않는 `FE-P2-S3` 경로는 [`Frontend Phase 2 Completion Status Reconciliation`](../engineering/frontend-phase-2-completion-status-reconciliation-260801001.md)에 의해 현재 상태 권위에서 대체된다. 원문과 Git 이력은 보존하며, 현재 Section 상태는 `docs/project/frontend-work-items.json`과 `docs/project/completions/FE-P2-S2.json`을 따른다.
+
 - Record ID: `frontend-phase-2-section-2-slices-4-5-verification-and-completion-record-260801001`
 - Date: 2026-08-01
 - Repository: `JasonCutter/shotgun`

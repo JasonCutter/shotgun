@@ -70,6 +70,11 @@ Initial registered classes include:
 - Compiled Truth as a runtime derived projection;
 - approved architecture contract snapshots;
 - migrated Knowledge Flow, Frontend Architecture and Phase ADD documents.
+- bounded Frontend status projection blocks generated from the Frontend Work Item Registry and Section completion manifests.
+
+## Bounded Markdown projection boundary
+
+The Frontend status generator owns only text between matching `FRONTEND-WORK-ITEM-STATUS` markers in registered Markdown targets. It must not regenerate, normalize, or overwrite the surrounding architecture decisions, implementation plan, historical ADD text, correction notes, or evidence records. The source registry and completion manifests remain the status authority; the Markdown blocks are reproducible views checked for drift in CI.
 
 ## Compiled Truth boundary
 

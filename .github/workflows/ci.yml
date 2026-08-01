@@ -60,6 +60,11 @@ jobs:
         run: npm run docs:knowledge-flow:check
       - name: Validate documentation governance
         run: npm run docs:validate
+      - name: Validate Frontend Work Item governance
+        run: |
+          npm run docs:frontend-work-items
+          npm run docs:completion-invariants
+          npm run docs:frontend-projections:check
       - name: Check formatting
         run: npm run format:check 2>&1 | tee format-check.log
       - name: Upload formatting diagnostics

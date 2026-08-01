@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/JasonCutter/shotgun/docs/project/schemas/frontend-completion-manifest.schema.json",
+  "title": "Frontend Completion Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "workItemId",
+    "status",
+    "governingContract",
+    "mandatoryCriteria",
+    "excludedScope",
+    "scopeAmendments",
+    "evidenceRegistryUpdates",
+    "approvedAt"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "workItemId": {
+      "type": "string",
+      "pattern": "^FE-P[1-5]-S[1-9][0-9]*$"
+    },
+    "status": { "enum": ["NOT_STARTED", "IN_PROGRESS", "BLOCKED", "COMPLETE"] },
+    "governingContract": { "type": "string", "minLength": 1 },
+    "mandatoryCriteria": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title", "mandatory", "status", "evidence"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "title": { "type": "string", "minLength": 1 },
+          "mandatory": { "type": "boolean" },
+          "status": { "enum": ["PASS", "FAIL", "BLOCKED", "PARTIAL", "NOT_RUN"] },
+          "evidence": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+          "scopeAmendment": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "excludedScope": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "description", "trackingId", "scopeAmendment"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "description": { "type": "string", "minLength": 1 },
+          "trackingId": {
+            "type": "string",
+            "pattern": "^(FE-P[1-5]-S[1-9][0-9]*(?:-I[0-9]+)?|BACKLOG-[A-Z0-9-]+)$"
+          },
+          "scopeAmendment": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "scopeAmendments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "status", "approvedAt", "approvedBy"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["PROPOSED", "APPROVED", "REJECTED"] },
+          "approvedAt": { "type": ["string", "null"], "format": "date" },
+          "approvedBy": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "evidenceRegistryUpdates": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "approvedAt": { "type": ["string", "null"], "format": "date" }
+  }
+}

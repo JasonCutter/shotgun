@@ -14,24 +14,24 @@ This directory and the registered consolidated ADR documents form the global ADR
 
 ## Authoritative ownership layout
 
-| Range | Classification or owner |
-| --- | --- |
-| ADR-001–ADR-017 | Reserved Legacy Gaps — no Git owner identified |
-| ADR-018–ADR-026 | Phase 2 consolidated ADR record |
-| ADR-027–ADR-036 | Phase 3 consolidated ADR record |
-| ADR-037–ADR-048 | Phase 4 consolidated ADR record |
-| ADR-049–ADR-060 | Phase 5 consolidated ADR record |
-| ADR-061–ADR-075 | Phase 6 consolidated ADR record |
-| ADR-076–ADR-078 | Reserved Legacy Gaps |
-| ADR-079–ADR-094 | Individual files in this directory |
-| ADR-095 | Reserved Legacy Gap |
-| ADR-096–ADR-099 | Individual files in this directory |
+| Range           | Classification or owner                                                        |
+| --------------- | ------------------------------------------------------------------------------ |
+| ADR-001–ADR-017 | Reserved Legacy Gaps — no Git owner identified                                 |
+| ADR-018–ADR-026 | Phase 2 consolidated ADR record                                                |
+| ADR-027–ADR-036 | Phase 3 consolidated ADR record                                                |
+| ADR-037–ADR-048 | Phase 4 consolidated ADR record                                                |
+| ADR-049–ADR-060 | Phase 5 consolidated ADR record                                                |
+| ADR-061–ADR-075 | Phase 6 consolidated ADR record                                                |
+| ADR-076–ADR-078 | Reserved Legacy Gaps                                                           |
+| ADR-079–ADR-094 | Individual files in this directory                                             |
+| ADR-095         | Reserved Legacy Gap                                                            |
+| ADR-096–ADR-099 | Individual files in this directory                                             |
 | ADR-100–ADR-113 | [Frontend consolidated record](../frontend/adr-100-113-consolidated-record.md) |
-| ADR-114–ADR-123 | Individual files in this directory |
+| ADR-114–ADR-124 | Individual files in this directory                                             |
 
 The Phase records under `docs/architecture/add/` retain their approved 2026-07-16 decision text. ADR-100–113 preserve the accepted Frontend decisions and later Contract Normalization outcomes in one Git owner record while the individual Notion pages remain Legacy References.
 
-The current latest individual decision is [ADR-123 — Ask Command, Conversation Aggregate, Persistence and Outcome Recovery Boundary](ADR-123-ask-command-conversation-persistence-and-outcome-recovery-boundary.md).
+The current latest individual decision is [ADR-124 — Frontend Work Item Identity, Scope Amendment, and Completion Authority Boundary](ADR-124-frontend-work-item-identity-scope-amendment-and-completion-authority-boundary.md), currently Proposed/Candidate.
 
 ## Reserved-gap rule
 

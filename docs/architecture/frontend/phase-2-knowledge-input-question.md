@@ -1,7 +1,7 @@
 ---
 id: FRONTEND-PHASE-2-KNOWLEDGE-INPUT-QUESTION
 classification: CANONICAL
-status: section_1_complete_section_2_design_confirmed_not_started
+status: frontend_work_item_registry_governed
 approved_by: user
 approved_at: 2026-07-30
 legacy_source_id: 3a65181d-71ad-8122-bfda-c9be8016ef33
@@ -11,13 +11,28 @@ legacy_source_id: 3a65181d-71ad-8122-bfda-c9be8016ef33
 
 ## 상태
 
-- Section 1 Sources Workspace: **COMPLETE / USER APPROVED AFTER PR #46 MERGE**
 - Section 1 ADR-122: Accepted
 - Section 1 AC-01~AC-32: PASS
 - Section 1 Migration 020: 승인·구현·검증 완료
-- Section 2 Ask·Conversations: 설계·공통 Contract 정규화 완료 / Product 구현 미착수
-- Frontend Phase 2: IN PROGRESS
-- 관련 ADR: ADR-100, ADR-101, ADR-102, ADR-103, ADR-104, ADR-105, ADR-122
+- 관련 ADR: ADR-100, ADR-101, ADR-102, ADR-103, ADR-104, ADR-105, ADR-122, ADR-123, ADR-124 Candidate
+
+<!-- FRONTEND-WORK-ITEM-STATUS:START -->
+
+> 이 블록은 `docs/project/frontend-work-items.json`과 Section Completion Manifest에서 생성됩니다. 블록 내부를 직접 수정하지 않습니다.
+
+| Work Item                                                      | Status                |
+| -------------------------------------------------------------- | --------------------- |
+| Frontend Phase 2 — Knowledge Input and Question                | `IN_PROGRESS`         |
+| FE-P2-S1 — Sources Workspace                                   | `COMPLETE`            |
+| FE-P2-S2 — Ask and Conversations Workspace                     | `IN_PROGRESS`         |
+| FE-P2-S2-I01 — Read Foundation                                 | `COMPLETE` / VERIFIED |
+| FE-P2-S2-I02 — Command and Persistence                         | `COMPLETE` / VERIFIED |
+| FE-P2-S2-I03 — Answer Execution and Remaining Section Contract | `NOT_STARTED`         |
+
+- 미충족 필수 기준: `answerExecution, failureAndRetry, finalSectionVerification`
+- Section 2 완료 후 다음 유효 Product Section: `FE-P3-S1 — Knowledge Workspace`
+
+<!-- FRONTEND-WORK-ITEM-STATUS:END -->
 
 ## Section 1 — Sources Workspace
 
@@ -71,7 +86,7 @@ Legacy 하위 결정문과 과거 `미착수`, `BLOCKED`, `NOT_RUN` 문구는 �
 
 ## Section 2 — Ask·Conversations Workspace
 
-현재 상태: **DESIGN CONFIRMED / PRODUCT IMPLEMENTATION NOT STARTED**
+Read Foundation과 Command·Persistence Increment는 구현·검증됐다. Section 전체 완료는 아래 원 계약의 남은 필수 범위와 최종 Section 검증을 요구한다.
 
 범위:
 
@@ -94,7 +109,7 @@ Legacy 하위 결정문과 과거 `미착수`, `BLOCKED`, `NOT_RUN` 문구는 �
 - `OUTCOME_UNKNOWN`에서는 같은 질문·Command를 새 Key로 자동 재제출하지 않는다.
 - Citation 복귀는 원래 Conversation·Branch·Turn·Result Revision·Scroll·Focus를 복원하고 최신 결과로 자동 이동하지 않는다.
 
-Section 1 완료는 Section 2 착수의 선행조건을 충족하지만, Section 2 Product 구현을 자동 승인하지 않는다. 별도 구현 요청과 사용자 착수 승인이 필요하다.
+남은 범위의 제거·연기·분할은 ADR-124에 따른 명시적 Scope Amendment가 필요하다. 이 문서 갱신은 남은 Product 구현이나 Scope Amendment를 승인하지 않는다.
 
 ## Phase 2 완료 조건
 
@@ -108,4 +123,4 @@ Section 1 완료는 Section 2 착수의 선행조건을 충족하지만, Section
 → 후속 Knowledge 작업으로 전환
 ```
 
-Section 1은 위 흐름의 자료 입력부터 SourceVersion·Evidence 복귀 경계까지 완료했다. Section 2가 미착수이므로 Frontend Phase 2 전체는 아직 완료가 아니다.
+Section 1은 위 흐름의 자료 입력부터 SourceVersion·Evidence 복귀 경계까지 완료했다. Section 2의 필수 기준 일부가 아직 `NOT_RUN`이므로 Phase 2 완료 조건은 충족되지 않았다.

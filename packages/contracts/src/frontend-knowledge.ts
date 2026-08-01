@@ -1139,6 +1139,10 @@ export const decodeKnowledgeSearchResultView = (
     return decoded;
   });
   const nextCursor = optionalText(input.nextCursor, `${path}.nextCursor`, 1, 2048);
+  const projection = decodeKnowledgeProjectionStatusView(input.projection, `${path}.projection`);
+  if (projection.projectionKind !== 'CANONICAL_SEARCH') {
+    fail(`${path}.projection must describe CANONICAL_SEARCH readiness.`);
+  }
   return {
     schemaVersion: KNOWLEDGE_WORKSPACE_SCHEMA_VERSION,
     projectId,
@@ -1147,7 +1151,7 @@ export const decodeKnowledgeSearchResultView = (
     query: text(input.query, `${path}.query`, 1, 1000),
     matches,
     ...(nextCursor === undefined ? {} : { nextCursor }),
-    projection: decodeKnowledgeProjectionStatusView(input.projection, `${path}.projection`),
+    projection,
     fetchedAt: timestamp(input.fetchedAt, `${path}.fetchedAt`),
   };
 };

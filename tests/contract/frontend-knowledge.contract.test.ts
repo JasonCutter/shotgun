@@ -244,6 +244,20 @@ describe('Frontend Knowledge Product contracts', () => {
         principalId: 'browser-principal',
       }),
     ).toThrow(FrontendContractError);
+    expect(() =>
+      decodeKnowledgeSearchRequest({
+        schemaVersion: KNOWLEDGE_WORKSPACE_SCHEMA_VERSION,
+        query: 'authority boundary',
+        accessRevision: 'browser-access-revision',
+      }),
+    ).toThrow(FrontendContractError);
+    expect(() =>
+      decodeKnowledgeSearchRequest({
+        schemaVersion: KNOWLEDGE_WORKSPACE_SCHEMA_VERSION,
+        query: 'authority boundary',
+        policyContextRevision: 'browser-policy-revision',
+      }),
+    ).toThrow(FrontendContractError);
   });
 
   it('preserves the four authority classes, typed kinds, lineage, and pinned Evidence return targets', () => {
@@ -313,7 +327,7 @@ describe('Frontend Knowledge Product contracts', () => {
           snippet: 'Compiled Truth claim',
         },
       ],
-      projection: readyProjection,
+      projection: canonicalSearchProjection,
       fetchedAt: now,
     };
     const detail = {
@@ -390,6 +404,23 @@ describe('Frontend Knowledge Product contracts', () => {
         reason: 'Projection adapter degraded.',
       }),
     ).toMatchObject({ status: 'DEGRADED' });
+    expect(
+      decodeKnowledgeProjectionStatusView({
+        projectionKind: 'CANONICAL_SEARCH',
+        status: 'NOT_BUILT',
+        canonicalVersion: 7,
+        projectedCanonicalVersion: 0,
+        lag: 7,
+        reason: 'Canonical search projection has not been built.',
+      }),
+    ).toEqual({
+      projectionKind: 'CANONICAL_SEARCH',
+      status: 'NOT_BUILT',
+      canonicalVersion: 7,
+      projectedCanonicalVersion: 0,
+      lag: 7,
+      reason: 'Canonical search projection has not been built.',
+    });
 
     expect(() =>
       decodeKnowledgeProjectionStatusView({
@@ -497,6 +528,12 @@ describe('Frontend Knowledge Product contracts', () => {
       decodeKnowledgeEvidenceReturnTarget({
         ...canonicalItem.evidenceTargets[0],
         sourceVersionId: undefined,
+      }),
+    ).toThrow(FrontendContractError);
+    expect(() =>
+      decodeKnowledgeEvidenceReturnTarget({
+        ...canonicalItem.evidenceTargets[0],
+        sourceId: undefined,
       }),
     ).toThrow(FrontendContractError);
     expect(() =>

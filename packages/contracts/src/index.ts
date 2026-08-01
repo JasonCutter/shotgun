@@ -21,3 +21,4 @@ export * from './frontend-ask.js';
 export * from './frontend-ask-execution.js';
 export * from './frontend-ask-invariants.js';
 export * from './frontend-ask-citation-return.js';
+export * from './frontend-knowledge.js';

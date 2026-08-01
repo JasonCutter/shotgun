@@ -358,7 +358,9 @@ export class InMemoryAskWorkspaceProjection implements AskWorkspaceProjectionPor
       sessionId: input.sessionId,
       projectId: targetProjectId,
       defaultAskMode: 'CANONICAL_ONLY',
-      availableAskModes: ['CANONICAL_ONLY', 'SOURCE_EXPLORATION', 'HYBRID'],
+      // SOURCE_EXPLORATION remains hidden until the workspace exposes a
+      // server-backed SourceVersion pinning selector.
+      availableAskModes: ['CANONICAL_ONLY', 'HYBRID'],
       conversations: projectConversations.map((conversation) => {
         const activeBranch = conversation.branches.find(
           (branch) => branch.branchId === conversation.activeBranchId,

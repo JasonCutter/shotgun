@@ -24,6 +24,16 @@ type PendingAskCommand = {
   readonly idempotencyKey: string;
 };
 
+type PendingAnswerRunCommand = {
+  readonly answerRunId: string;
+  readonly clientRequestId: string;
+  readonly idempotencyKey: string;
+  readonly operation: 'CANCEL' | 'RETRY' | 'EXPORT' | 'FEEDBACK' | 'TRANSITION_SEED';
+  readonly retryMode?: 'SAME_CONTEXT' | 'CURRENT_POLICY';
+  readonly feedbackKind?: 'HELPFUL' | 'NOT_HELPFUL';
+  readonly transitionKind?: 'INTAKE_DRAFT' | 'DRAFT_CHANGE_SET' | 'USER_DIRECTIVE';
+};
+
 type OutcomeResolution =
   | { readonly kind: 'COMPLETED'; readonly submission: AskQuestionSubmissionView }
   | { readonly kind: 'REJECTED'; readonly message: string }
@@ -43,6 +53,10 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pendingCommand, setPendingCommand] = useState<PendingAskCommand>();
   const [outcomeUnknown, setOutcomeUnknown] = useState(false);
+  const [pendingAnswerRunCommand, setPendingAnswerRunCommand] = useState<PendingAnswerRunCommand>();
+  const [answerRunOutcomeUnknown, setAnswerRunOutcomeUnknown] = useState(false);
+  const [answerRunCommandNotice, setAnswerRunCommandNotice] = useState<string>();
+  const [pollingGeneration, setPollingGeneration] = useState(0);
   const [submissionNotice, setSubmissionNotice] = useState<string>();
   const [runOverrides, setRunOverrides] = useState<Record<string, AskAnswerRunSnapshot>>({});
   const [runEvents, setRunEvents] = useState<Record<string, AskAnswerRunEventsView>>({});
@@ -60,6 +74,10 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     setDraftOwnerProjectId(undefined);
     setPendingCommand(undefined);
     setOutcomeUnknown(false);
+    setPendingAnswerRunCommand(undefined);
+    setAnswerRunOutcomeUnknown(false);
+    setAnswerRunCommandNotice(undefined);
+    setPollingGeneration(0);
     setSubmissionNotice(undefined);
     setRunOverrides({});
     setRunEvents({});
@@ -81,12 +99,13 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   useEffect(
     () =>
       registerLeaveGuard(() => ({
-        canLeaveCurrentContext: questionRef.current.trim().length === 0 && !outcomeUnknown,
+        canLeaveCurrentContext:
+          questionRef.current.trim().length === 0 && !outcomeUnknown && !answerRunOutcomeUnknown,
         hasUnsavedDraft: questionRef.current.trim().length > 0,
         hasBlockingDialog: false,
-        hasOutcomeUnknownCommand: outcomeUnknown,
+        hasOutcomeUnknownCommand: outcomeUnknown || answerRunOutcomeUnknown,
       })),
-    [outcomeUnknown, question, registerLeaveGuard],
+    [answerRunOutcomeUnknown, outcomeUnknown, question, registerLeaveGuard],
   );
 
   const citationReturn = useMemo<AskCitationReturnState | undefined>(() => {
@@ -138,16 +157,23 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
 
   const latestAnswerRun = useMemo(() => {
     const selected = workspace?.selectedConversation;
-    return selected?.branches
+    const latestTurn = selected?.branches
       .flatMap((branch) => branch.turns)
-      .sort((left, right) => right.ordinal - left.ordinal)[0]?.answerRun;
-  }, [workspace?.selectedConversation]);
+      .sort((left, right) => right.ordinal - left.ordinal)[0];
+    return latestTurn
+      ? (runOverrides[latestTurn.answerRun.answerRunId] ?? latestTurn.answerRun)
+      : undefined;
+  }, [runOverrides, workspace?.selectedConversation]);
 
   useEffect(() => {
     const answerRun = latestAnswerRun;
     if (!answerRun || !askClient.getAnswerRun || !askClient.getAnswerRunEvents) return;
     let cancelled = false;
     let lastOrdinal = -1;
+    let polling = false;
+    let shouldContinue = true;
+    let timer: number | undefined;
+    const controller = new AbortController();
     const terminal = new Set([
       'ACTION_REQUIRED',
       'SUCCEEDED',
@@ -155,13 +181,33 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
       'CANCELLED',
       'OUTCOME_UNKNOWN',
     ]);
+    const schedule = () => {
+      if (!cancelled) timer = window.setTimeout(() => void poll(), 750);
+    };
     const poll = async () => {
+      if (cancelled || polling) return;
+      polling = true;
       try {
+        const eventsRequest =
+          lastOrdinal < 0
+            ? askClient.getAnswerRunEvents!(answerRun.answerRunId, undefined, {
+                signal: controller.signal,
+              })
+            : askClient.getAnswerRunEvents!(answerRun.answerRunId, lastOrdinal, {
+                signal: controller.signal,
+              });
         const [current, events] = await Promise.all([
-          askClient.getAnswerRun!(answerRun.answerRunId),
-          askClient.getAnswerRunEvents!(answerRun.answerRunId, lastOrdinal),
+          askClient.getAnswerRun!(answerRun.answerRunId, { signal: controller.signal }),
+          eventsRequest,
         ]);
-        if (cancelled || current.answerRunId !== answerRun.answerRunId) return;
+        if (
+          cancelled ||
+          current.answerRunId !== answerRun.answerRunId ||
+          (answerRun.attemptId !== undefined &&
+            current.attemptId !== undefined &&
+            current.attemptId !== answerRun.attemptId)
+        )
+          return;
         setRunOverrides((previous) => ({ ...previous, [current.answerRunId]: current }));
         if (events.events.length > 0) {
           lastOrdinal = Math.max(lastOrdinal, ...events.events.map((event) => event.ordinal));
@@ -180,19 +226,31 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
           });
         }
         if (terminal.has(current.state)) {
-          window.clearInterval(timer);
+          shouldContinue = false;
+          return;
         }
       } catch {
         // The authoritative workspace remains visible while a transient poll fails.
+      } finally {
+        polling = false;
+        if (shouldContinue) schedule();
       }
     };
-    const timer = window.setInterval(() => void poll(), 750);
     void poll();
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
+      controller.abort();
+      if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [askClient, latestAnswerRun?.answerRunId, workspace?.projectId, shell.activeProject?.id]);
+  }, [
+    askClient,
+    latestAnswerRun?.answerRunId,
+    latestAnswerRun?.attemptId,
+    latestAnswerRun?.attemptNumber,
+    pollingGeneration,
+    workspace?.projectId,
+    shell.activeProject?.id,
+  ]);
 
   if (!shell.activeProject && !conversationId) {
     return <p>Create or select a Project before asking questions.</p>;
@@ -213,6 +271,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     !conversationId ||
     Boolean(conversation && activeBranch?.branchRevision && conversation.conversationRevision);
   const submissionAvailable = workspace.capabilities.includes('SUBMIT_QUESTION') && followUpReady;
+  const answerRunMutationPending = pendingAnswerRunCommand !== undefined;
 
   const applyVerifiedSubmission = (submission: AskQuestionSubmissionView) => {
     setPendingCommand(undefined);
@@ -356,12 +415,149 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   const setRunOverride = (answerRun: AskAnswerRunSnapshot) =>
     setRunOverrides((previous) => ({ ...previous, [answerRun.answerRunId]: answerRun }));
 
+  const beginAnswerRunCommand = (
+    answerRunId: string,
+    operation: PendingAnswerRunCommand['operation'],
+    details: Pick<PendingAnswerRunCommand, 'retryMode' | 'feedbackKind' | 'transitionKind'> = {},
+  ): PendingAnswerRunCommand | undefined => {
+    if (answerRunMutationPending) return undefined;
+    const identity = commandIdentity();
+    const pending: PendingAnswerRunCommand = {
+      answerRunId,
+      clientRequestId: identity.clientRequestId,
+      idempotencyKey: identity.idempotencyKey,
+      operation,
+      ...details,
+    };
+    setPendingAnswerRunCommand(pending);
+    setAnswerRunOutcomeUnknown(false);
+    setAnswerRunCommandNotice(undefined);
+    return pending;
+  };
+
+  const answerRunCommandIdentity = (pending: PendingAnswerRunCommand) => ({
+    schemaVersion: '1.0.0' as const,
+    clientRequestId: pending.clientRequestId,
+    idempotencyKey: pending.idempotencyKey,
+  });
+
+  const resolveAnswerRunCommandOutcome = async (
+    pending: PendingAnswerRunCommand,
+  ): Promise<void> => {
+    if (!askClient.getAnswerRunCommandOutcome) {
+      setAnswerRunOutcomeUnknown(true);
+      setAnswerRunCommandNotice(
+        'The AnswerRun command outcome is unknown. The original command identity is preserved.',
+      );
+      return;
+    }
+
+    let outcome;
+    try {
+      outcome = await askClient.getAnswerRunCommandOutcome(
+        pending.answerRunId,
+        pending.clientRequestId,
+      );
+    } catch {
+      setAnswerRunOutcomeUnknown(true);
+      setAnswerRunCommandNotice(
+        'The AnswerRun command outcome is still unknown. Retry the outcome check without submitting a new command.',
+      );
+      return;
+    }
+
+    if (outcome.outcomeState === 'REJECTED') {
+      setPendingAnswerRunCommand(undefined);
+      setAnswerRunOutcomeUnknown(false);
+      setAnswerRunCommandNotice(
+        outcome.rejection?.message ??
+          'The AnswerRun command was rejected. No new command was sent.',
+      );
+      return;
+    }
+    if (outcome.outcomeState !== 'COMPLETED') {
+      setAnswerRunOutcomeUnknown(true);
+      setAnswerRunCommandNotice(
+        'The AnswerRun command is accepted but not resolved. No automatic retry was started.',
+      );
+      return;
+    }
+
+    try {
+      const identity = answerRunCommandIdentity(pending);
+      switch (pending.operation) {
+        case 'CANCEL':
+          if (!askClient.cancelAnswerRun) throw new Error('Cancel replay is unavailable.');
+          setRunOverride(await askClient.cancelAnswerRun(pending.answerRunId, identity));
+          break;
+        case 'RETRY':
+          if (!askClient.retryAnswerRun || !pending.retryMode)
+            throw new Error('Retry replay is unavailable.');
+          setRunOverride(
+            await askClient.retryAnswerRun(pending.answerRunId, {
+              ...identity,
+              mode: pending.retryMode,
+            }),
+          );
+          setPollingGeneration((generation) => generation + 1);
+          break;
+        case 'EXPORT': {
+          if (!askClient.exportAnswerRun) throw new Error('Export replay is unavailable.');
+          const exported = await askClient.exportAnswerRun(pending.answerRunId, {
+            ...identity,
+            format: 'MARKDOWN',
+          });
+          setExportedContent(exported.content);
+          break;
+        }
+        case 'FEEDBACK':
+          if (!askClient.submitAnswerFeedback || !pending.feedbackKind)
+            throw new Error('Feedback replay is unavailable.');
+          await askClient.submitAnswerFeedback(pending.answerRunId, {
+            ...identity,
+            kind: pending.feedbackKind,
+          });
+          break;
+        case 'TRANSITION_SEED':
+          if (!askClient.createAnswerTransitionSeed || !pending.transitionKind)
+            throw new Error('Transition seed replay is unavailable.');
+          await askClient.createAnswerTransitionSeed(pending.answerRunId, {
+            ...identity,
+            kind: pending.transitionKind,
+          });
+          break;
+      }
+    } catch {
+      setPendingAnswerRunCommand(undefined);
+      setAnswerRunOutcomeUnknown(false);
+      setAnswerRunCommandNotice(
+        'The command is completed, but its resource could not be recovered yet. The original command identity was retained.',
+      );
+      return;
+    }
+
+    setPendingAnswerRunCommand(undefined);
+    setAnswerRunOutcomeUnknown(false);
+    setAnswerRunCommandNotice('The completed AnswerRun command and its resource were recovered.');
+  };
+
+  const handleResolveAnswerRunCommandOutcome = async () => {
+    if (!pendingAnswerRunCommand || !answerRunOutcomeUnknown) return;
+    await resolveAnswerRunCommandOutcome(pendingAnswerRunCommand);
+  };
+
   const handleCancelAnswerRun = async (answerRunId: string) => {
     if (!askClient.cancelAnswerRun) return;
+    const pending = beginAnswerRunCommand(answerRunId, 'CANCEL');
+    if (!pending) return;
     try {
-      setRunOverride(await askClient.cancelAnswerRun(answerRunId, commandIdentity()));
-    } catch (reason) {
-      setError(reason);
+      setRunOverride(
+        await askClient.cancelAnswerRun(answerRunId, answerRunCommandIdentity(pending)),
+      );
+      setPendingAnswerRunCommand(undefined);
+      setAnswerRunCommandNotice('AnswerRun cancellation requested.');
+    } catch {
+      await resolveAnswerRunCommandOutcome(pending);
     }
   };
 
@@ -370,35 +566,53 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     retryMode: 'SAME_CONTEXT' | 'CURRENT_POLICY',
   ) => {
     if (!askClient.retryAnswerRun) return;
+    const pending = beginAnswerRunCommand(answerRunId, 'RETRY', { retryMode });
+    if (!pending) return;
     try {
       setRunOverride(
-        await askClient.retryAnswerRun(answerRunId, { ...commandIdentity(), mode: retryMode }),
+        await askClient.retryAnswerRun(answerRunId, {
+          ...answerRunCommandIdentity(pending),
+          mode: retryMode,
+        }),
       );
-    } catch (reason) {
-      setError(reason);
+      setPollingGeneration((generation) => generation + 1);
+      setPendingAnswerRunCommand(undefined);
+      setAnswerRunCommandNotice('AnswerRun retry accepted with a new attempt.');
+    } catch {
+      await resolveAnswerRunCommandOutcome(pending);
     }
   };
 
   const handleExportAnswerRun = async (answerRunId: string) => {
     if (!askClient.exportAnswerRun) return;
+    const pending = beginAnswerRunCommand(answerRunId, 'EXPORT');
+    if (!pending) return;
     try {
       const exported = await askClient.exportAnswerRun(answerRunId, {
-        ...commandIdentity(),
+        ...answerRunCommandIdentity(pending),
         format: 'MARKDOWN',
       });
       setExportedContent(exported.content);
-    } catch (reason) {
-      setError(reason);
+      setPendingAnswerRunCommand(undefined);
+      setAnswerRunCommandNotice('AnswerRun export completed.');
+    } catch {
+      await resolveAnswerRunCommandOutcome(pending);
     }
   };
 
   const handleFeedback = async (answerRunId: string, kind: 'HELPFUL' | 'NOT_HELPFUL') => {
     if (!askClient.submitAnswerFeedback) return;
+    const pending = beginAnswerRunCommand(answerRunId, 'FEEDBACK', { feedbackKind: kind });
+    if (!pending) return;
     try {
-      await askClient.submitAnswerFeedback(answerRunId, { ...commandIdentity(), kind });
-      setSubmissionNotice('Feedback recorded for this AnswerRun.');
-    } catch (reason) {
-      setError(reason);
+      await askClient.submitAnswerFeedback(answerRunId, {
+        ...answerRunCommandIdentity(pending),
+        kind,
+      });
+      setPendingAnswerRunCommand(undefined);
+      setAnswerRunCommandNotice('Feedback recorded for this AnswerRun.');
+    } catch {
+      await resolveAnswerRunCommandOutcome(pending);
     }
   };
 
@@ -407,11 +621,21 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     kind: 'INTAKE_DRAFT' | 'DRAFT_CHANGE_SET' | 'USER_DIRECTIVE',
   ) => {
     if (!askClient.createAnswerTransitionSeed) return;
+    const pending = beginAnswerRunCommand(answerRunId, 'TRANSITION_SEED', {
+      transitionKind: kind,
+    });
+    if (!pending) return;
     try {
-      await askClient.createAnswerTransitionSeed(answerRunId, { ...commandIdentity(), kind });
-      setSubmissionNotice(`${kind} transition seed proposed. Canonical knowledge was not changed.`);
-    } catch (reason) {
-      setError(reason);
+      await askClient.createAnswerTransitionSeed(answerRunId, {
+        ...answerRunCommandIdentity(pending),
+        kind,
+      });
+      setPendingAnswerRunCommand(undefined);
+      setAnswerRunCommandNotice(
+        `${kind} transition seed proposed. Canonical knowledge was not changed.`,
+      );
+    } catch {
+      await resolveAnswerRunCommandOutcome(pending);
     }
   };
 
@@ -476,6 +700,8 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
         ) : null}
       </section>
 
+      {answerRunCommandNotice ? <p role="status">{answerRunCommandNotice}</p> : null}
+
       <section className="action-card" aria-labelledby="conversation-heading">
         <h2 id="conversation-heading">Conversations</h2>
         {workspace.conversations.length === 0 ? <p>No conversations yet.</p> : null}
@@ -527,6 +753,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                         {answerRun.capabilities.includes('CANCEL') ? (
                           <button
                             type="button"
+                            disabled={answerRunMutationPending}
                             onClick={() => void handleCancelAnswerRun(answerRun.answerRunId)}
                           >
                             Cancel answer
@@ -535,6 +762,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                         {answerRun.capabilities.includes('RETRY_SAME_CONTEXT') ? (
                           <button
                             type="button"
+                            disabled={answerRunMutationPending}
                             onClick={() =>
                               void handleRetryAnswerRun(answerRun.answerRunId, 'SAME_CONTEXT')
                             }
@@ -545,6 +773,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                         {answerRun.capabilities.includes('RETRY_CURRENT_POLICY') ? (
                           <button
                             type="button"
+                            disabled={answerRunMutationPending}
                             onClick={() =>
                               void handleRetryAnswerRun(answerRun.answerRunId, 'CURRENT_POLICY')
                             }
@@ -555,6 +784,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                         {answerRun.capabilities.includes('EXPORT') ? (
                           <button
                             type="button"
+                            disabled={answerRunMutationPending}
                             onClick={() => void handleExportAnswerRun(answerRun.answerRunId)}
                           >
                             Export answer
@@ -564,12 +794,14 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                           <>
                             <button
                               type="button"
+                              disabled={answerRunMutationPending}
                               onClick={() => void handleFeedback(answerRun.answerRunId, 'HELPFUL')}
                             >
                               Helpful
                             </button>
                             <button
                               type="button"
+                              disabled={answerRunMutationPending}
                               onClick={() =>
                                 void handleFeedback(answerRun.answerRunId, 'NOT_HELPFUL')
                               }
@@ -581,6 +813,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                         {answerRun.capabilities.includes('CREATE_INTAKE_DRAFT') ? (
                           <button
                             type="button"
+                            disabled={answerRunMutationPending}
                             onClick={() =>
                               void handleTransitionSeed(answerRun.answerRunId, 'INTAKE_DRAFT')
                             }
@@ -591,6 +824,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                         {answerRun.capabilities.includes('CREATE_DRAFT_CHANGE_SET') ? (
                           <button
                             type="button"
+                            disabled={answerRunMutationPending}
                             onClick={() =>
                               void handleTransitionSeed(answerRun.answerRunId, 'DRAFT_CHANGE_SET')
                             }
@@ -601,11 +835,21 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                         {answerRun.capabilities.includes('PROPOSE_DIRECTIVE') ? (
                           <button
                             type="button"
+                            disabled={answerRunMutationPending}
                             onClick={() =>
                               void handleTransitionSeed(answerRun.answerRunId, 'USER_DIRECTIVE')
                             }
                           >
                             Propose Directive
+                          </button>
+                        ) : null}
+                        {answerRunOutcomeUnknown &&
+                        pendingAnswerRunCommand?.answerRunId === answerRun.answerRunId ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleResolveAnswerRunCommandOutcome()}
+                          >
+                            Check existing command outcome
                           </button>
                         ) : null}
                       </div>

@@ -191,6 +191,60 @@ describe('AskAnswerExecutionService', () => {
     expect(calls).toBe(2);
   });
 
+  it('keeps worker ownership and cancellation CAS-safe against stale completion', async () => {
+    const repository = new InMemoryAskAnswerExecutionRepository();
+    repository.register(snapshot(), [
+      {
+        evidenceId: 'evidence-1',
+        sourceId: 'source-1',
+        sourceVersionId: 'version-1',
+        exactQuote: 'The source quote.',
+        sensitivity: 'internal',
+      },
+    ]);
+
+    const claimed = await repository.claimInitial(scope, 'run-1', 'worker-a');
+    expect(claimed?.attempt.leaseOwner).toBe('worker-a');
+    expect(await repository.claimQueuedForWorker('worker-b')).toHaveLength(0);
+
+    const requested = await repository.requestCancel(scope, 'run-1');
+    expect(requested.state).toBe('CANCEL_REQUESTED');
+    expect(
+      await repository.heartbeatAttempt({
+        scope,
+        answerRunId: 'run-1',
+        attemptId: claimed!.attempt.attemptId,
+        workerId: 'worker-a',
+      }),
+    ).toBe('CANCEL_REQUESTED');
+
+    const staleCompletion = await repository.complete({
+      scope,
+      answerRunId: 'run-1',
+      attemptNumber: claimed!.attempt.attemptNumber,
+      answer: 'A stale worker answer',
+      citations: [],
+      provider: { provider: 'test-provider', model: 'test-model' },
+      workerId: 'worker-a',
+    });
+    expect(staleCompletion.state).toBe('CANCEL_REQUESTED');
+
+    const cancelled = await repository.fail({
+      scope,
+      answerRunId: 'run-1',
+      attemptNumber: claimed!.attempt.attemptNumber,
+      state: 'CANCELLED',
+      failure: {
+        code: 'CANCELLED',
+        message: 'Cancelled by the user.',
+        retryable: true,
+        outcomeUnknown: false,
+      },
+      workerId: 'worker-a',
+    });
+    expect(cancelled.state).toBe('CANCELLED');
+  });
+
   it('creates export, feedback, and proposed transition seeds without Canonical writes', async () => {
     const repository = new InMemoryAskAnswerExecutionRepository();
     repository.register(snapshot());

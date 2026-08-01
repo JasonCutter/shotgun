@@ -137,7 +137,14 @@ describe('AskWorkspace', () => {
       getWorkspace: vi.fn().mockResolvedValue(mockWorkspace),
       getConversation: vi.fn().mockResolvedValue(mockWorkspace.selectedConversation!),
       getBranch: vi.fn(),
-      getAnswerRun: vi.fn(),
+      getAnswerRun: vi
+        .fn()
+        .mockResolvedValue(mockWorkspace.selectedConversation!.branches[0]!.turns[0]!.answerRun),
+      getAnswerRunEvents: vi.fn().mockResolvedValue({
+        schemaVersion: '1.0.0',
+        answerRunId: 'run-1',
+        events: [],
+      }),
       submitQuestion: vi.fn(),
       getQuestionSubmissionByClientRequestId: vi.fn(),
     };
@@ -180,6 +187,12 @@ describe('AskWorkspace', () => {
     expect(screen.getByText('Canonical knowledge is authoritative.')).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Open pinned Evidence' }).getAttribute('href')).toBe(
       '/sources/src-1?version=ver-1',
+    );
+    await waitFor(() => expect(mockClient.getAnswerRunEvents).toHaveBeenCalled());
+    expect(mockClient.getAnswerRunEvents).toHaveBeenCalledWith(
+      'run-1',
+      undefined,
+      expect.objectContaining({ signal: expect.any(Object) }),
     );
   });
 

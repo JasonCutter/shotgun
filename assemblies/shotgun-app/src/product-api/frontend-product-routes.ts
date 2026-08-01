@@ -3,7 +3,10 @@ import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 
 import type { FrontendProductReadCoordinator } from '../../../../modules/frontend-product-read/src/index.js';
-import type { AskCommandCoordinator } from '../../../../modules/frontend-ask-write/src/index.js';
+import type {
+  AskCommandCoordinator,
+  AskProjectExecutionAuthority,
+} from '../../../../modules/frontend-ask-write/src/index.js';
 import {
   ASK_EXECUTION_COMMAND_TYPES,
   type AskAnswerExecutionService,
@@ -89,19 +92,33 @@ export const registerFrontendProductRoutes = (
         operation: 'build-read-scope',
       });
     }
-    const policyContextRevision = activeProject
-      ? String(
-          (await settingsRepository.getSettingsSnapshot(activeProject.id)).policyContextRevision,
-        )
-      : '0';
+    const executionAuthorities = Object.fromEntries(
+      await Promise.all(
+        accessibleProjects.map(async (project) => {
+          const membership = memberships.find((candidate) => candidate.projectId === project.id);
+          if (!membership) return [] as const;
+          const settings = await settingsRepository.getSettingsSnapshot(project.id);
+          const authority: AskProjectExecutionAuthority = {
+            projectId: project.id,
+            accessRevision: `${project.id}:${membership.scopes.slice().sort().join(',')}`,
+            policyContextRevision: String(settings.policyContextRevision),
+            accessScope: [...membership.scopes].sort(),
+            sensitivityClearance: membership.sensitivityClearance,
+          };
+          return [project.id, authority] as const;
+        }),
+      ),
+    ) as Readonly<Record<string, AskProjectExecutionAuthority>>;
+    const activeAuthority = activeProject ? executionAuthorities[activeProject.id] : undefined;
     return {
       principalId: current.principalContext.principalId,
       sessionId: current.session.sessionId,
       activeProject,
       accessibleProjects,
-      accessRevision: String(memberships.length),
-      policyContextRevision,
-      accessScope: [...new Set(memberships.flatMap((membership) => membership.scopes))],
+      accessRevision: activeAuthority?.accessRevision ?? 'no-active-project',
+      policyContextRevision: activeAuthority?.policyContextRevision ?? 'no-active-project',
+      accessScope: activeAuthority?.accessScope ?? [],
+      executionAuthorities,
     };
   };
 
@@ -134,10 +151,10 @@ export const registerFrontendProductRoutes = (
     return {
       principalId: scope.principalId,
       projectId: project.id,
-      accessRevision: scope.accessRevision,
+      accessRevision: `${project.id}:${membership.scopes.slice().sort().join(',')}`,
       policyContextRevision: String(resourceSettings.policyContextRevision),
       sensitivityClearance: project.sensitivityClearance,
-      accessScope: membership.scopes,
+      accessScope: membership.scopes.slice().sort(),
     };
   };
 
@@ -164,7 +181,7 @@ export const registerFrontendProductRoutes = (
         activeProjectId: input.scope.activeProject?.id ?? input.executionScope.projectId,
         targetProjectId: input.executionScope.projectId,
         resourceProjectId: input.executionScope.projectId,
-        observedProjectAccessRevision: input.scope.accessRevision,
+        observedProjectAccessRevision: input.executionScope.accessRevision,
       },
       policyBinding: {
         mode: 'CURRENT',
@@ -483,6 +500,50 @@ export const registerFrontendProductRoutes = (
       },
     };
   });
+
+  server.get<{
+    Params: { answerRunId: string; clientRequestId: string };
+    Headers: SecurityHeaders;
+  }>(
+    '/product-api/frontend/ask/answer-runs/:answerRunId/commands/by-client-request/:clientRequestId',
+    async (request) => {
+      const scope = await buildScope(request.headers);
+      const gateway = options?.frontendCommandGateway;
+      if (!gateway) {
+        throw new ShotgunError({
+          code: 'NOT_FOUND',
+          safeMessage: 'AnswerRun command outcome resolution is not configured.',
+          module: 'frontend-product-read',
+          operation: 'get-answer-run-command-outcome',
+        });
+      }
+      const executionScope = await executionScopeFor(scope, request.params.answerRunId);
+      const outcome = await gateway.findByClientRequestId(
+        scope.principalId,
+        request.params.clientRequestId,
+      );
+      const targetProjectId =
+        outcome && 'targetProjectId' in outcome.acceptedProjectContext
+          ? outcome.acceptedProjectContext.targetProjectId
+          : undefined;
+      if (
+        !outcome ||
+        outcome.clientRequestId !== request.params.clientRequestId ||
+        targetProjectId !== executionScope.projectId ||
+        !(Object.values(ASK_EXECUTION_COMMAND_TYPES) as readonly string[]).includes(
+          outcome.commandType,
+        )
+      ) {
+        throw new ShotgunError({
+          code: 'NOT_FOUND',
+          safeMessage: 'AnswerRun command outcome not found.',
+          module: 'frontend-product-read',
+          operation: 'get-answer-run-command-outcome',
+        });
+      }
+      return { outcome };
+    },
+  );
 
   server.post<{
     Params: { answerRunId: string };

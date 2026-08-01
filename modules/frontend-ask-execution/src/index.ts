@@ -90,7 +90,10 @@ export type AskExecutionAttempt = {
   readonly resolvedSensitivity: AskExecutionScope['sensitivityClearance'];
   readonly dataPolicyVersion?: string;
   readonly providerResponseId?: string;
+  readonly leaseOwner?: string;
 };
+
+export type AskWorkerLeaseState = 'OWNED' | 'CANCEL_REQUESTED' | 'LEASE_LOST' | 'TERMINAL';
 
 export type AskExecutionContextStatus = 'SUPPORTED' | 'NO_SUPPORTED_ANSWER';
 
@@ -115,11 +118,13 @@ export type AskAnswerExecutionRepositoryPort = {
   claimInitial(
     scope: AskExecutionScope,
     answerRunId: string,
+    workerId?: string,
   ): Promise<AskClaimedExecution | undefined>;
   retryAndClaim(input: {
     readonly scope: AskExecutionScope;
     readonly answerRunId: string;
     readonly mode: AskAnswerRunRetryMode;
+    readonly workerId?: string;
   }): Promise<AskClaimedExecution>;
   requestCancel(scope: AskExecutionScope, answerRunId: string): Promise<AskAnswerRunSnapshot>;
   isCancelRequested(scope: AskExecutionScope, answerRunId: string): Promise<boolean>;
@@ -129,6 +134,7 @@ export type AskAnswerExecutionRepositoryPort = {
     readonly attemptId: string;
     readonly attemptNumber: number;
     readonly partialText: string;
+    readonly workerId: string;
   }): Promise<void>;
   complete(input: {
     readonly scope: AskExecutionScope;
@@ -142,6 +148,7 @@ export type AskAnswerExecutionRepositoryPort = {
     readonly resolvedContextDigest?: string;
     readonly queryPlanRevision?: string;
     readonly usage?: AskAnswerRunUsage;
+    readonly workerId: string;
   }): Promise<AskAnswerRunSnapshot>;
   fail(input: {
     readonly scope: AskExecutionScope;
@@ -149,6 +156,7 @@ export type AskAnswerExecutionRepositoryPort = {
     readonly attemptNumber: number;
     readonly failure: AskAnswerRunFailure;
     readonly state: Extract<AskAnswerRunState, 'FAILED' | 'OUTCOME_UNKNOWN' | 'CANCELLED'>;
+    readonly workerId: string;
   }): Promise<AskAnswerRunSnapshot>;
   getEvents(
     scope: AskExecutionScope,
@@ -160,12 +168,14 @@ export type AskAnswerExecutionRepositoryPort = {
     readonly answerRunId: string;
     readonly attemptId: string;
     readonly dataPolicyVersion: string;
+    readonly workerId: string;
   }): Promise<void>;
   heartbeatAttempt(input: {
     readonly scope: AskExecutionScope;
     readonly answerRunId: string;
     readonly attemptId: string;
-  }): Promise<boolean>;
+    readonly workerId: string;
+  }): Promise<AskWorkerLeaseState>;
   saveExport(input: {
     readonly scope: AskExecutionScope;
     readonly answerRunId: string;
@@ -205,7 +215,7 @@ export type AskAnswerExecutionRepositoryPort = {
   }): Promise<AskTransitionSeedView | undefined>;
   transaction<T>(action: (transaction: AskExecutionTransactionPort) => Promise<T>): Promise<T>;
   recoverInterrupted(): Promise<number>;
-  claimQueuedForWorker(): Promise<
+  claimQueuedForWorker(workerId?: string): Promise<
     readonly {
       readonly scope: AskExecutionScope;
       readonly claimed: AskClaimedExecution;
@@ -225,6 +235,7 @@ export type AskExecutionTransactionPort = {
     readonly scope: AskExecutionScope;
     readonly answerRunId: string;
     readonly mode: AskAnswerRunRetryMode;
+    readonly workerId?: string;
   }): Promise<AskClaimedExecution>;
   saveExport(input: {
     readonly scope: AskExecutionScope;
@@ -307,6 +318,7 @@ const markdownFor = (snapshot: AskAnswerRunSnapshot): string => {
 
 export class AskAnswerExecutionService {
   private readonly active = new Map<string, AbortController>();
+  private readonly workerId = `ask-worker-${process.pid}-${randomUUID()}`;
 
   constructor(
     private readonly repository: AskAnswerExecutionRepositoryPort,
@@ -319,7 +331,7 @@ export class AskAnswerExecutionService {
   }
 
   async execute(scope: AskExecutionScope, answerRunId: string): Promise<AskAnswerRunSnapshot> {
-    const claimed = await this.repository.claimInitial(scope, answerRunId);
+    const claimed = await this.repository.claimInitial(scope, answerRunId, this.workerId);
     if (!claimed) {
       const current = await this.repository.getRunContext(scope, answerRunId);
       if (!current) throw executionError('NOT_FOUND', 'The AnswerRun was not found.', 'execute');
@@ -348,8 +360,8 @@ export class AskAnswerExecutionService {
     transaction?: AskExecutionTransactionPort,
   ): Promise<AskAnswerRunSnapshot> {
     const claimed = transaction
-      ? await transaction.retryAndClaim({ scope, answerRunId, mode })
-      : await this.repository.retryAndClaim({ scope, answerRunId, mode });
+      ? await transaction.retryAndClaim({ scope, answerRunId, mode, workerId: this.workerId })
+      : await this.repository.retryAndClaim({ scope, answerRunId, mode, workerId: this.workerId });
     const start = () => void this.executeClaimed(scope, claimed);
     if (transaction) transaction.afterCommit(start);
     else start();
@@ -481,12 +493,19 @@ export class AskAnswerExecutionService {
   }
 
   async startWorker(intervalMs = 1000): Promise<() => void> {
-    await this.repository.recoverInterrupted();
-    const tick = async () => {
-      const claimed = await this.repository.claimQueuedForWorker();
-      await Promise.all(
-        claimed.map(({ scope, claimed: execution }) => this.executeClaimed(scope, execution)),
-      );
+    let activeTick: Promise<void> | undefined;
+    const tick = (): Promise<void> => {
+      if (activeTick) return activeTick;
+      activeTick = (async () => {
+        await this.repository.recoverInterrupted();
+        const claimed = await this.repository.claimQueuedForWorker(this.workerId);
+        await Promise.all(
+          claimed.map(({ scope, claimed: execution }) => this.executeClaimed(scope, execution)),
+        );
+      })().finally(() => {
+        activeTick = undefined;
+      });
+      return activeTick;
     };
     await tick();
     const timer = setInterval(() => {
@@ -503,6 +522,7 @@ export class AskAnswerExecutionService {
     claimed: AskClaimedExecution,
   ): Promise<AskAnswerRunSnapshot> {
     const { attempt, context } = claimed;
+    const workerId = attempt.leaseOwner ?? this.workerId;
     const controller = new AbortController();
     this.active.set(context.snapshot.answerRunId, controller);
     let leaseLost = false;
@@ -512,9 +532,12 @@ export class AskAnswerExecutionService {
           scope,
           answerRunId: context.snapshot.answerRunId,
           attemptId: attempt.attemptId,
+          workerId,
         })
-        .then((owned) => {
-          if (!owned) {
+        .then((state) => {
+          if (state === 'CANCEL_REQUESTED') {
+            controller.abort();
+          } else if (state === 'LEASE_LOST' || state === 'TERMINAL') {
             leaseLost = true;
             controller.abort();
           }
@@ -530,6 +553,7 @@ export class AskAnswerExecutionService {
         answerRunId: context.snapshot.answerRunId,
         attemptId: attempt.attemptId,
         dataPolicyVersion: this.provider.identity.dataPolicyVersion,
+        workerId,
       });
       if (context.contextStatus === 'NO_SUPPORTED_ANSWER') {
         return this.repository.complete({
@@ -546,6 +570,7 @@ export class AskAnswerExecutionService {
           dataPolicyVersion: 'context-resolver-v1',
           resolvedContextDigest: context.resolvedContextDigest,
           queryPlanRevision: context.queryPlanRevision,
+          workerId,
         });
       }
       const result = await this.provider.execute({
@@ -565,6 +590,7 @@ export class AskAnswerExecutionService {
             attemptId: attempt.attemptId,
             attemptNumber: attempt.attemptNumber,
             partialText,
+            workerId,
           });
         },
       });
@@ -585,6 +611,7 @@ export class AskAnswerExecutionService {
             retryable: false,
             outcomeUnknown: true,
           },
+          workerId,
         });
       }
       if (cancellation.requested) {
@@ -599,6 +626,7 @@ export class AskAnswerExecutionService {
             retryable: true,
             outcomeUnknown: false,
           },
+          workerId,
         });
       }
       const citations = this.validateCitations(context, result.citations);
@@ -616,6 +644,7 @@ export class AskAnswerExecutionService {
         resolvedContextDigest: context.resolvedContextDigest,
         queryPlanRevision: context.queryPlanRevision,
         ...(result.usage === undefined ? {} : { usage: result.usage }),
+        workerId,
       });
     } catch (error) {
       const cancellation = await this.cancellationStatus(
@@ -635,6 +664,7 @@ export class AskAnswerExecutionService {
             retryable: false,
             outcomeUnknown: true,
           },
+          workerId,
         });
       }
       if (cancellation.requested) {
@@ -649,6 +679,7 @@ export class AskAnswerExecutionService {
             retryable: true,
             outcomeUnknown: false,
           },
+          workerId,
         });
       }
       const failure = this.failureFrom(error);
@@ -658,6 +689,7 @@ export class AskAnswerExecutionService {
         attemptNumber: attempt.attemptNumber,
         state: failure.outcomeUnknown ? 'OUTCOME_UNKNOWN' : 'FAILED',
         failure,
+        workerId,
       });
     } finally {
       clearInterval(heartbeat);

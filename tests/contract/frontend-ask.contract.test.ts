@@ -146,9 +146,7 @@ describe('Frontend Ask contracts', () => {
         clientRequestId: 'request-1',
         idempotencyKey: 'idem-1',
         question: 'Use this source.',
-        sourceSelections: [
-          { sourceId: 'source-1', sourceVersionId: 'version-2', evidenceIds: [] },
-        ],
+        sourceSelections: [{ sourceId: 'source-1', sourceVersionId: 'version-2', evidenceIds: [] }],
       }),
     ).toMatchObject({ sourceSelections: [{ sourceVersionId: 'version-2' }] });
 
@@ -262,6 +260,99 @@ describe('Frontend Ask contracts', () => {
     });
     expect(loadedWorkspace.projectId).toBe('project-1');
     expect(loadedWorkspace.selectedConversation?.conversationId).toBe('conversation-1');
+  });
+
+  it('uses the resource Project authority for a follow-up when Active Project differs', async () => {
+    const { projection, commandGateway, repository } = createCoordinator();
+    const enqueued: Array<Record<string, unknown>> = [];
+    const executionAuthorities = {
+      'project-1': {
+        projectId: 'project-1',
+        accessRevision: 'access-project-1',
+        policyContextRevision: 'policy-project-1',
+        accessScope: ['project-1:read'],
+        sensitivityClearance: 'private' as const,
+      },
+      'project-2': {
+        projectId: 'project-2',
+        accessRevision: 'access-project-2',
+        policyContextRevision: 'policy-project-2',
+        accessScope: ['project-2:read'],
+        sensitivityClearance: 'public' as const,
+      },
+    };
+    const coordinator = new AskCommandCoordinator(
+      commandGateway,
+      repository,
+      projection,
+      undefined,
+      {
+        enqueue: async (input) => {
+          enqueued.push(input);
+        },
+      },
+    );
+
+    const first = await coordinator.submitQuestion({
+      ...scope,
+      executionAuthorities,
+      request: {
+        schemaVersion: ASK_SCHEMA_VERSION,
+        clientRequestId: 'req-resource-project-seed',
+        idempotencyKey: 'idem-resource-project-seed',
+        question: 'Seed the resource project conversation.',
+        sourceSelections: [],
+      },
+    });
+    const firstConversation = first.workspace.selectedConversation!;
+    const firstBranch = firstConversation.branches[0]!;
+    const input = {
+      ...scope,
+      activeProject: {
+        id: 'project-2',
+        label: 'Project Two',
+        isOwner: false,
+        sensitivityClearance: 'public' as const,
+      },
+      accessibleProjects: [
+        ...scope.accessibleProjects,
+        {
+          id: 'project-2',
+          label: 'Project Two',
+          isOwner: false,
+          sensitivityClearance: 'public' as const,
+        },
+      ],
+      executionAuthorities,
+    };
+
+    const followUp = await coordinator.submitQuestion({
+      ...input,
+      request: {
+        schemaVersion: ASK_SCHEMA_VERSION,
+        clientRequestId: 'req-resource-project-authority',
+        idempotencyKey: 'idem-resource-project-authority',
+        conversationId: firstConversation.conversationId,
+        branchId: firstBranch.branchId,
+        expectedConversationRevision: firstConversation.conversationRevision,
+        expectedBranchRevision: firstBranch.branchRevision!,
+        question: 'Use the resource project authority.',
+        sourceSelections: [],
+      },
+    });
+
+    expect(followUp.answerRun).toMatchObject({
+      projectId: 'project-1',
+      accessRevision: 'access-project-1',
+      policyContextRevision: 'policy-project-1',
+    });
+    expect(enqueued.at(-1)).toMatchObject({
+      projectId: 'project-1',
+      accessRevision: 'access-project-1',
+      policyContextRevision: 'policy-project-1',
+      accessScope: ['project-1:read'],
+      sensitivityClearance: 'private',
+    });
   });
 
   it('creates an atomic aggregate, replays exact command meaning, and resolves the durable outcome', async () => {

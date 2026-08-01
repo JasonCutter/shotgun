@@ -1,5 +1,6 @@
 import {
   FrontendContractError,
+  decodeAnyFrontendCommandOutcomeView,
   decodeAskAnswerRunSnapshot,
   decodeAskAnswerRunEventsView,
   decodeAskAnswerRunExportView,
@@ -24,6 +25,7 @@ import {
   type AskQuestionSubmissionOutcomeView,
   type AskQuestionSubmissionView,
   type AskWorkspaceView,
+  type AnyFrontendCommandOutcomeView,
   type SubmitAskQuestionRequest,
 } from '../../contracts/src/index.js';
 import { decodeProductApiErrorBody } from './decode.js';
@@ -55,6 +57,11 @@ export type AskWorkspaceClient = {
     clientRequestId: string,
     options?: { readonly signal?: AbortSignal },
   ): Promise<AskQuestionSubmissionOutcomeView>;
+  getAnswerRunCommandOutcome?(
+    answerRunId: string,
+    clientRequestId: string,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<AnyFrontendCommandOutcomeView>;
   getAnswerRunEvents?(
     answerRunId: string,
     afterOrdinal?: number,
@@ -286,6 +293,17 @@ export const createAskWorkspaceClient = (
       if (events.answerRunId !== answerRunId)
         identityMismatch('Ask events identity does not match the request.');
       return events;
+    },
+    async getAnswerRunCommandOutcome(answerRunId, clientRequestId, requestOptions) {
+      const response = await request(
+        `/product-api/frontend/ask/answer-runs/${encodeURIComponent(answerRunId)}/commands/by-client-request/${encodeURIComponent(clientRequestId)}`,
+        { credentials: 'same-origin', signal: requestOptions?.signal },
+      );
+      const body = (await assertOk(response)) as { outcome?: unknown };
+      const outcome = decodeAnyFrontendCommandOutcomeView(body.outcome);
+      if (outcome.clientRequestId !== clientRequestId)
+        identityMismatch('AnswerRun command outcome identity does not match the request.');
+      return outcome;
     },
     async cancelAnswerRun(answerRunId, params, requestOptions) {
       const response = await mutate(

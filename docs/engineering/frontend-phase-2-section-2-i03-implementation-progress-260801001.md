@@ -20,6 +20,17 @@ Implementation approval: 2026-08-01
   interaction streaming with AbortSignal propagation, and durable attempt audit;
 - PostgreSQL worker claim/lease/heartbeat/restart recovery; HTTP enqueue is only
   a wake hint;
+- per-resource Project authority resolution for active-project questions versus
+  Conversation-resource follow-ups, with the authority revision/scope persisted
+  into the command, AnswerRun, and execution attempt;
+- fail-closed SourceVersion pinning and pinned-version question search for
+  Source Exploration, which remains hidden from the product UI until a
+  server-backed selector is available;
+- transaction commit/rollback outcome states, lease-owner CAS for heartbeat and
+  terminal writes, periodic expired-lease recovery, and UUID worker identity;
+- Gemini stream completion requires `interaction.completed`; the browser keeps
+  AnswerRun attempt-aware polling and preserves command identity while resolving
+  `COMPLETED`, `REJECTED`, or `OUTCOME_UNKNOWN` mutation outcomes;
 - transactional command mutation plus ledger completion, commit-outcome
   resolution without blind rejection, idempotent read-only replay resolvers,
   and produced-resource links for AnswerRun/attempt/export/feedback/seed;
@@ -34,8 +45,8 @@ explicit `PROPOSED` seeds only.
 
 - `npm.cmd run typecheck`
 - `npm.cmd run lint`
-- `npm.cmd run test:unit` (34 files, 189 tests)
-- `npm.cmd run test:contract` (25 files, 199 tests)
+- `npm.cmd run test:unit` (35 files, 192 tests)
+- `npm.cmd run test:contract` (25 files, 200 tests)
 - `npm.cmd run test:integration -- --maxWorkers=1 --fileParallelism=false` (15
   files, 52 tests)
 - `npm.cmd run frontend:test` (10 files, 32 tests)
@@ -50,6 +61,13 @@ explicit `PROPOSED` seeds only.
 - `npm.cmd run docs:completion-invariants`
 - `npx.cmd vitest run tests/unit/frontend-ask-execution.test.ts tests/contract/frontend-ask-execution.contract.test.ts --maxWorkers=1 --fileParallelism=false`
 - `node --env-file-if-exists=.env node_modules/vitest/vitest.mjs run tests/database/frontend-ask-write-postgres.database.test.ts --maxWorkers=1 --fileParallelism=false --testTimeout=20000 --hookTimeout=20000`
+- `npx.cmd vitest run tests/unit/frontend-ask-execution.test.ts tests/unit/gemini-provider.test.ts tests/contract/frontend-ask.contract.test.ts tests/contract/frontend-ask-execution.contract.test.ts --maxWorkers=1 --fileParallelism=false` (19 tests)
+- `npx.cmd vitest run tests/integration/frontend-ask-product-api.test.ts --maxWorkers=1 --fileParallelism=false`
+
+The current full database-suite rerun exceeded the 120-second local command
+limit after the executed suites reported success; the focused Ask PostgreSQL
+write/execution test and `db:verify` passed. This remains validation evidence,
+not a completion claim.
 
 ## Not yet a completion claim
 

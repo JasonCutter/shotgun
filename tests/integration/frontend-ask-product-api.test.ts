@@ -47,7 +47,7 @@ describe('Frontend Ask Product API Integration', () => {
       schemaVersion: ASK_SCHEMA_VERSION,
       projectId: 'shotgun',
       defaultAskMode: 'CANONICAL_ONLY',
-      availableAskModes: ['CANONICAL_ONLY', 'SOURCE_EXPLORATION', 'HYBRID'],
+      availableAskModes: ['CANONICAL_ONLY', 'HYBRID'],
       capabilities: ['SUBMIT_QUESTION'],
     });
 

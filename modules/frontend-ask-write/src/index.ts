@@ -35,6 +35,21 @@ export type AskAuthorizedProjectSummary = {
   readonly sensitivityClearance: 'public' | 'internal' | 'private' | 'restricted';
 };
 
+/**
+ * Server-derived authority for one concrete Project resource.
+ *
+ * This is intentionally Project-scoped.  A browser's active Project and the
+ * Project that owns a Conversation are allowed to differ, but their policy,
+ * access, and sensitivity decisions must never be merged.
+ */
+export type AskProjectExecutionAuthority = {
+  readonly projectId: string;
+  readonly accessRevision: string;
+  readonly policyContextRevision: string;
+  readonly accessScope: readonly string[];
+  readonly sensitivityClearance: AskAuthorizedProjectSummary['sensitivityClearance'];
+};
+
 export type AskReadScope = {
   readonly principalId: string;
   readonly sessionId: string;
@@ -44,6 +59,8 @@ export type AskReadScope = {
   readonly policyContextRevision: string;
   /** Server-derived access scopes persisted with a queued AnswerRun. */
   readonly accessScope?: readonly string[];
+  /** Server-derived authority keyed by the Project that owns the resource. */
+  readonly executionAuthorities?: Readonly<Record<string, AskProjectExecutionAuthority>>;
 };
 
 export type AskWorkspaceQueryPort = {
@@ -175,8 +192,17 @@ export type AskSourceSelectionValidatorPort = {
 
 export class EmptyOnlyAskSourceSelectionValidator implements AskSourceSelectionValidatorPort {
   async validate(input: {
+    readonly mode: NonNullable<SubmitAskQuestionRequest['mode']>;
     readonly sourceSelections: readonly AskSourceSelectionView[];
   }): Promise<void> {
+    if (input.mode === 'SOURCE_EXPLORATION' && input.sourceSelections.length === 0) {
+      throw new ShotgunError({
+        code: 'INVALID_REQUEST',
+        safeMessage: 'SOURCE_EXPLORATION requires at least one pinned SourceVersion.',
+        module: 'frontend-ask-write',
+        operation: 'validate-source-exploration-pinning',
+      });
+    }
     if (input.sourceSelections.length > 0) {
       throw new ShotgunError({
         code: 'INVALID_REQUEST',
@@ -240,11 +266,11 @@ export class AskCommandCoordinator {
         activeProjectId: input.activeProject?.id ?? authority.targetProjectId,
         targetProjectId: authority.targetProjectId,
         ...(request.conversationId ? { resourceProjectId: authority.targetProjectId } : {}),
-        observedProjectAccessRevision: input.accessRevision,
+        observedProjectAccessRevision: authority.accessRevision,
       },
       policyBinding: {
         mode: 'CURRENT',
-        observedPolicyContextRevision: input.policyContextRevision,
+        observedPolicyContextRevision: authority.policyContextRevision,
       },
       preconditions,
       clientIssuedAt: now,
@@ -261,7 +287,7 @@ export class AskCommandCoordinator {
         commandSemanticDigest: semanticDigest,
         acceptedPolicyContext: {
           policyContextId: 'frontend-ask-current-policy',
-          policyContextRevision: input.policyContextRevision,
+          policyContextRevision: authority.policyContextRevision,
           acceptedAt: now,
         },
         correlationId: generatedIdentity('corr'),
@@ -307,7 +333,7 @@ export class AskCommandCoordinator {
         projectId: authority.targetProjectId,
         sensitivityClearance: authority.sensitivityClearance,
         mode,
-        policyContextRevision: input.policyContextRevision,
+        policyContextRevision: authority.policyContextRevision,
         sourceSelections: request.sourceSelections,
       });
 
@@ -335,9 +361,9 @@ export class AskCommandCoordinator {
           ...(request.expectedBranchRevision
             ? { expectedBranchRevision: request.expectedBranchRevision }
             : {}),
-          accessRevision: input.accessRevision,
-          policyContextRevision: input.policyContextRevision,
-          ...(input.accessScope ? { accessScope: input.accessScope } : {}),
+          accessRevision: authority.accessRevision,
+          policyContextRevision: authority.policyContextRevision,
+          accessScope: authority.accessScope,
           sensitivityClearance: authority.sensitivityClearance,
           executionEnabled: this.answerExecution !== undefined,
           createdAt: now,
@@ -417,10 +443,10 @@ export class AskCommandCoordinator {
         principalId: input.principalId,
         projectId: committed.projectId,
         answerRunId: committed.answerRunId,
-        accessRevision: input.accessRevision,
-        policyContextRevision: input.policyContextRevision,
+        accessRevision: authority.accessRevision,
+        policyContextRevision: authority.policyContextRevision,
         sensitivityClearance: authority.sensitivityClearance,
-        ...(input.accessScope ? { accessScope: input.accessScope } : {}),
+        accessScope: authority.accessScope,
       });
     }
 
@@ -479,6 +505,9 @@ export class AskCommandCoordinator {
   ): Promise<{
     readonly targetProjectId: string;
     readonly branchId?: string;
+    readonly accessRevision: string;
+    readonly policyContextRevision: string;
+    readonly accessScope: readonly string[];
     readonly sensitivityClearance: AskAuthorizedProjectSummary['sensitivityClearance'];
   }> {
     if (!input.request.conversationId) {
@@ -490,10 +519,16 @@ export class AskCommandCoordinator {
           operation: 'resolve-question-project',
         });
       }
-      return {
-        targetProjectId: input.activeProject.id,
-        sensitivityClearance: input.activeProject.sensitivityClearance,
-      };
+      const authority = input.executionAuthorities?.[input.activeProject.id];
+      return authority
+        ? { ...authority, targetProjectId: authority.projectId }
+        : {
+            targetProjectId: input.activeProject.id,
+            accessRevision: input.accessRevision,
+            policyContextRevision: input.policyContextRevision,
+            accessScope: input.accessScope ?? ['owner'],
+            sensitivityClearance: input.activeProject.sensitivityClearance,
+          };
     }
 
     if (!input.request.expectedConversationRevision || !input.request.expectedBranchRevision) {
@@ -525,11 +560,17 @@ export class AskCommandCoordinator {
       });
     }
 
-    return {
-      targetProjectId: conversation.projectId,
-      branchId,
-      sensitivityClearance: project.sensitivityClearance,
-    };
+    const authority = input.executionAuthorities?.[conversation.projectId];
+    return authority
+      ? { ...authority, targetProjectId: conversation.projectId, branchId }
+      : {
+          targetProjectId: conversation.projectId,
+          branchId,
+          accessRevision: input.accessRevision,
+          policyContextRevision: input.policyContextRevision,
+          accessScope: input.accessScope ?? ['owner'],
+          sensitivityClearance: project.sensitivityClearance,
+        };
   }
 
   private buildPreconditions(request: SubmitAskQuestionRequest): readonly TypedPrecondition[] {

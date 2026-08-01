@@ -31,6 +31,7 @@ import type {
   AskExecutionRunContext,
   AskExecutionScope,
   AskExecutionTransactionPort,
+  AskWorkerLeaseState,
 } from '../../../modules/frontend-ask-execution/src/index.js';
 
 type RecordValue = {
@@ -42,6 +43,7 @@ type RecordValue = {
   exports: Map<string, AskAnswerRunExportView>;
   feedback: Map<string, AskAnswerRunFeedbackView>;
   transitionSeeds: Map<string, AskTransitionSeedView>;
+  leaseExpiresAt: Map<string, number>;
   cancelRequested: boolean;
 };
 
@@ -85,6 +87,7 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
       exports: new Map(),
       feedback: new Map(),
       transitionSeeds: new Map(),
+      leaseExpiresAt: new Map(),
       cancelRequested: false,
     });
   }
@@ -100,6 +103,7 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
   async claimInitial(
     scope: AskExecutionScope,
     answerRunId: string,
+    workerId = `ask-worker-in-memory-${randomUUID()}`,
   ): Promise<AskClaimedExecution | undefined> {
     const record = this.authorized(scope, answerRunId);
     if (record.snapshot.state !== 'QUEUED') return undefined;
@@ -113,8 +117,10 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
       resolvedContextDigest: context.resolvedContextDigest,
       queryPlanRevision: context.queryPlanRevision,
       resolvedSensitivity: highestSensitivity(context.evidence),
+      leaseOwner: workerId,
     };
     record.attempts.push(attempt);
+    record.leaseExpiresAt.set(attempt.attemptId, Date.now() + 30_000);
     record.cancelRequested = false;
     this.update(record, {
       state: 'RUNNING',
@@ -134,6 +140,7 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
     readonly scope: AskExecutionScope;
     readonly answerRunId: string;
     readonly mode: AskAnswerRunRetryMode;
+    readonly workerId?: string;
   }): Promise<AskClaimedExecution> {
     const record = this.authorized(input.scope, input.answerRunId);
     if (!['FAILED', 'CANCELLED', 'OUTCOME_UNKNOWN'].includes(record.snapshot.state)) {
@@ -160,8 +167,10 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
       resolvedContextDigest: context.resolvedContextDigest,
       queryPlanRevision: context.queryPlanRevision,
       resolvedSensitivity: highestSensitivity(context.evidence),
+      leaseOwner: input.workerId ?? `ask-worker-in-memory-${randomUUID()}`,
     };
     record.attempts.push(attempt);
+    record.leaseExpiresAt.set(attempt.attemptId, Date.now() + 30_000);
     record.cancelRequested = false;
     this.update(record, {
       state: 'RUNNING',
@@ -222,9 +231,15 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
     readonly attemptId: string;
     readonly attemptNumber: number;
     readonly partialText: string;
+    readonly workerId: string;
   }): Promise<void> {
     const record = this.authorized(input.scope, input.answerRunId);
-    if (record.snapshot.attemptNumber !== input.attemptNumber || record.cancelRequested) return;
+    if (
+      record.snapshot.attemptNumber !== input.attemptNumber ||
+      !this.ownsLiveAttempt(record, input.attemptId, input.attemptNumber, input.workerId) ||
+      record.cancelRequested
+    )
+      return;
     if (record.snapshot.state === 'RUNNING') {
       this.update(record, {
         state: 'STREAMING',
@@ -252,22 +267,26 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
     readonly resolvedContextDigest?: string;
     readonly queryPlanRevision?: string;
     readonly usage?: AskAnswerRunUsage;
+    readonly workerId: string;
   }): Promise<AskAnswerRunSnapshot> {
     const record = this.authorized(input.scope, input.answerRunId);
-    if (record.snapshot.attemptNumber !== input.attemptNumber || record.cancelRequested) {
+    const attempt = record.attempts.at(-1);
+    if (
+      record.snapshot.attemptNumber !== input.attemptNumber ||
+      record.cancelRequested ||
+      !attempt ||
+      !this.ownsLiveAttempt(record, attempt.attemptId, input.attemptNumber, input.workerId)
+    ) {
       return record.snapshot;
     }
-    const attempt = record.attempts.at(-1);
-    if (attempt) {
-      Object.assign(attempt, {
-        ...(input.providerResponseId === undefined
-          ? {}
-          : { providerResponseId: input.providerResponseId }),
-        ...(input.dataPolicyVersion === undefined
-          ? {}
-          : { dataPolicyVersion: input.dataPolicyVersion }),
-      });
-    }
+    Object.assign(attempt, {
+      ...(input.providerResponseId === undefined
+        ? {}
+        : { providerResponseId: input.providerResponseId }),
+      ...(input.dataPolicyVersion === undefined
+        ? {}
+        : { dataPolicyVersion: input.dataPolicyVersion }),
+    });
     this.update(record, {
       state: 'SUCCEEDED',
       capabilities: [
@@ -298,11 +317,19 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
     readonly attemptNumber: number;
     readonly failure: AskAnswerRunFailure;
     readonly state: Extract<AskAnswerRunState, 'FAILED' | 'OUTCOME_UNKNOWN' | 'CANCELLED'>;
+    readonly workerId: string;
   }): Promise<AskAnswerRunSnapshot> {
     const record = this.authorized(input.scope, input.answerRunId);
     if (
-      record.snapshot.attemptNumber !== input.attemptNumber &&
-      record.snapshot.state !== 'CANCEL_REQUESTED'
+      (record.snapshot.attemptNumber !== input.attemptNumber &&
+        record.snapshot.state !== 'CANCEL_REQUESTED') ||
+      !this.ownsLiveAttempt(
+        record,
+        record.attempts.at(-1)?.attemptId ?? '',
+        input.attemptNumber,
+        input.workerId,
+        input.state === 'CANCELLED',
+      )
     ) {
       return record.snapshot;
     }
@@ -437,20 +464,32 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
     readonly answerRunId: string;
     readonly attemptId: string;
     readonly dataPolicyVersion: string;
+    readonly workerId: string;
   }): Promise<void> {
     const record = this.authorized(input.scope, input.answerRunId);
     const attempt = record.attempts.find((candidate) => candidate.attemptId === input.attemptId);
-    if (attempt) Object.assign(attempt, { dataPolicyVersion: input.dataPolicyVersion });
+    if (attempt && attempt.leaseOwner === input.workerId) {
+      Object.assign(attempt, { dataPolicyVersion: input.dataPolicyVersion });
+    }
   }
 
   async heartbeatAttempt(input: {
     readonly scope: AskExecutionScope;
     readonly answerRunId: string;
     readonly attemptId: string;
-  }): Promise<boolean> {
+    readonly workerId: string;
+  }): Promise<AskWorkerLeaseState> {
     const record = this.authorized(input.scope, input.answerRunId, false);
-    if (!record) return false;
-    return record.attempts.some((attempt) => attempt.attemptId === input.attemptId);
+    if (!record) return 'TERMINAL';
+    if (record.snapshot.state === 'CANCEL_REQUESTED') return 'CANCEL_REQUESTED';
+    if (['CANCELLED', 'SUCCEEDED', 'FAILED', 'OUTCOME_UNKNOWN'].includes(record.snapshot.state))
+      return 'TERMINAL';
+    const attempt = record.attempts.find((candidate) => candidate.attemptId === input.attemptId);
+    if (!attempt || attempt.leaseOwner !== input.workerId) return 'LEASE_LOST';
+    const leaseExpiresAt = record.leaseExpiresAt.get(input.attemptId) ?? 0;
+    if (leaseExpiresAt < Date.now()) return 'LEASE_LOST';
+    record.leaseExpiresAt.set(input.attemptId, Date.now() + 30_000);
+    return 'OWNED';
   }
 
   async transaction<T>(
@@ -468,14 +507,28 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
       saveTransitionSeed: (input) => this.saveTransitionSeed(input),
     };
     const result = await action(transaction);
-    callbacks.forEach((callback) => callback());
+    for (const callback of callbacks) {
+      try {
+        callback();
+      } catch (error) {
+        console.error('[frontend-ask-execution-in-memory] post-commit callback failed', error);
+      }
+    }
     return result;
   }
 
   async recoverInterrupted(): Promise<number> {
     let recovered = 0;
     for (const record of this.records.values()) {
-      if (['RUNNING', 'STREAMING', 'PARTIAL'].includes(record.snapshot.state)) {
+      const attempt = record.attempts.at(-1);
+      const leaseExpired =
+        attempt !== undefined && (record.leaseExpiresAt.get(attempt.attemptId) ?? 0) < Date.now();
+      if (
+        attempt &&
+        leaseExpired &&
+        ['RUNNING', 'STREAMING', 'PARTIAL'].includes(record.snapshot.state)
+      ) {
+        record.leaseExpiresAt.set(attempt.attemptId, Date.now() + 1_000);
         await this.fail({
           scope: this.scopeFor(record.snapshot),
           answerRunId: record.snapshot.answerRunId,
@@ -487,9 +540,11 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
             retryable: false,
             outcomeUnknown: true,
           },
+          workerId: attempt.leaseOwner ?? 'ask-worker-recovery',
         });
         recovered += 1;
-      } else if (record.snapshot.state === 'CANCEL_REQUESTED') {
+      } else if (attempt && leaseExpired && record.snapshot.state === 'CANCEL_REQUESTED') {
+        record.leaseExpiresAt.set(attempt.attemptId, Date.now() + 1_000);
         await this.fail({
           scope: this.scopeFor(record.snapshot),
           answerRunId: record.snapshot.answerRunId,
@@ -501,6 +556,7 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
             retryable: true,
             outcomeUnknown: false,
           },
+          workerId: attempt.leaseOwner ?? 'ask-worker-recovery',
         });
         recovered += 1;
       }
@@ -508,14 +564,18 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
     return recovered;
   }
 
-  async claimQueuedForWorker(): Promise<
-    readonly { scope: AskExecutionScope; claimed: AskClaimedExecution }[]
-  > {
+  async claimQueuedForWorker(
+    workerId?: string,
+  ): Promise<readonly { scope: AskExecutionScope; claimed: AskClaimedExecution }[]> {
     const claimed: { scope: AskExecutionScope; claimed: AskClaimedExecution }[] = [];
     for (const record of this.records.values()) {
       if (record.snapshot.state !== 'QUEUED') continue;
       const scope = this.scopeFor(record.snapshot);
-      const execution = await this.claimInitial(scope, record.snapshot.answerRunId);
+      const execution = await this.claimInitial(
+        scope,
+        record.snapshot.answerRunId,
+        workerId ?? `ask-worker-in-memory-${randomUUID()}`,
+      );
       if (execution) claimed.push({ scope, claimed: execution });
     }
     return claimed;
@@ -528,6 +588,28 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
       throw failure('NOT_FOUND', 'The requested AnswerRun was not found.');
     }
     return record;
+  }
+
+  private ownsLiveAttempt(
+    record: RecordValue,
+    attemptId: string,
+    attemptNumber: number,
+    workerId: string,
+    allowCancelRequested = false,
+  ): boolean {
+    const runState = record.snapshot.state;
+    if (
+      !['RUNNING', 'STREAMING', 'PARTIAL'].includes(runState) &&
+      !(allowCancelRequested && runState === 'CANCEL_REQUESTED')
+    )
+      return false;
+    const attempt = record.attempts.find((candidate) => candidate.attemptId === attemptId);
+    return Boolean(
+      attempt &&
+      attempt.attemptNumber === attemptNumber &&
+      attempt.leaseOwner === workerId &&
+      (record.leaseExpiresAt.get(attemptId) ?? 0) >= Date.now(),
+    );
   }
 
   private update(

@@ -137,6 +137,7 @@ export class GeminiAIProviderAdapter implements AIProviderAdapterPort {
       );
       let rawText = '';
       let providerResponseId: string | undefined;
+      let completed = false;
       let usage:
         | {
             readonly inputTokens?: number;
@@ -148,6 +149,48 @@ export class GeminiAIProviderAdapter implements AIProviderAdapterPort {
         const value = event as unknown as Record<string, unknown>;
         const interaction = value.interaction as Record<string, unknown> | undefined;
         if (interaction && typeof interaction.id === 'string') providerResponseId = interaction.id;
+        if (value.event_type === 'interaction.completed') {
+          completed = true;
+          const completedStatus =
+            typeof interaction?.status === 'string'
+              ? interaction.status
+              : typeof value.status === 'string'
+                ? value.status
+                : undefined;
+          if (
+            completedStatus === 'failed' ||
+            completedStatus === 'cancelled' ||
+            completedStatus === 'incomplete'
+          ) {
+            throw new ShotgunError({
+              code: signal.aborted ? 'TIMEOUT' : 'OUTCOME_UNKNOWN',
+              safeMessage: signal.aborted
+                ? 'Gemini streaming request was cancelled.'
+                : 'Gemini interaction completed without a successful result.',
+              module: 'gemini-ai-provider',
+              operation: 'stream-structured',
+              retryable: signal.aborted,
+            });
+          }
+          const completedUsage = (interaction?.usage ?? value.usage) as
+            Record<string, unknown> | undefined;
+          if (completedUsage) {
+            usage = {
+              inputTokens:
+                typeof completedUsage.input_tokens === 'number'
+                  ? completedUsage.input_tokens
+                  : undefined,
+              outputTokens:
+                typeof completedUsage.output_tokens === 'number'
+                  ? completedUsage.output_tokens
+                  : undefined,
+              totalTokens:
+                typeof completedUsage.total_tokens === 'number'
+                  ? completedUsage.total_tokens
+                  : undefined,
+            };
+          }
+        }
         if (value.event_type === 'interaction.status_update') {
           const status = value.status;
           if (status === 'failed' || status === 'cancelled' || status === 'incomplete') {
@@ -194,6 +237,17 @@ export class GeminiAIProviderAdapter implements AIProviderAdapterPort {
             };
           }
         }
+      }
+      if (!completed) {
+        throw new ShotgunError({
+          code: signal.aborted ? 'TIMEOUT' : 'OUTCOME_UNKNOWN',
+          safeMessage: signal.aborted
+            ? 'Gemini streaming request was cancelled.'
+            : 'Gemini stream ended before interaction.completed was received.',
+          module: 'gemini-ai-provider',
+          operation: 'stream-structured-completion',
+          retryable: signal.aborted,
+        });
       }
       if (!rawText.trim()) {
         throw new ShotgunError({

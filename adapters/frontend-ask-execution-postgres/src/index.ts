@@ -35,6 +35,7 @@ import type {
   AskExecutionRunContext,
   AskExecutionScope,
   AskExecutionTransactionPort,
+  AskWorkerLeaseState,
 } from '../../../modules/frontend-ask-execution/src/index.js';
 
 type RunRow = QueryResultRow & {
@@ -190,26 +191,56 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
       [snapshot.answerRunId, scope.projectId],
     );
     const sourceVersionIds = [...new Set(selections.rows.map((row) => row.source_version_id))];
+    if (snapshot.mode === 'SOURCE_EXPLORATION' && sourceVersionIds.length === 0) {
+      throw invalid('SOURCE_EXPLORATION requires at least one pinned SourceVersion.');
+    }
     const selectedEvidenceIds = selections.rows.flatMap((row) =>
       row.evidence_id ? [row.evidence_id] : [],
     );
-    const sourceEvidenceIds =
-      selectedEvidenceIds.length > 0
-        ? selectedEvidenceIds
-        : sourceVersionIds.length > 0
-          ? (
-              await this.pool.query<{ readonly evidence_id: string }>(
-                `SELECT evidence_id::text
-                 FROM evidence.spans
-                  WHERE project_id = $1
-                    AND source_version_id::text = ANY($2::text[])
-                    AND access_scope <@ $3::text[]
-                  ORDER BY source_version_id, (position ->> 'start')::integer, evidence_id
-                  LIMIT 100`,
-                [scope.projectId, sourceVersionIds, scope.accessScope ?? []],
-              )
-            ).rows.map((row) => row.evidence_id)
-          : [];
+    const implicitSourceVersionIds = [
+      ...new Set(
+        selections.rows
+          .filter((row) => row.evidence_id === null)
+          .map((row) => row.source_version_id),
+      ),
+    ];
+    const implicitSourceEvidenceIds =
+      implicitSourceVersionIds.length > 0
+        ? (
+            await this.pool.query<{ readonly evidence_id: string }>(
+              `SELECT evidence_id
+               FROM (
+                 SELECT evidence_id,
+                        MAX(
+                          ts_rank(
+                            document.search_vector,
+                            websearch_to_tsquery('simple', $3)
+                          )
+                        ) AS relevance
+                 FROM projection.search_documents AS document,
+                      unnest(document.evidence_ids) AS evidence_id
+                 WHERE document.project_id = $1
+                   AND document.source_version_id::text = ANY($2::text[])
+                   AND document.access_scope <@ $4::text[]
+                   AND (
+                     document.search_vector @@ websearch_to_tsquery('simple', $3)
+                     OR document.claim_text % $3
+                     OR document.claim_text ILIKE '%' || $3 || '%'
+                   )
+                 GROUP BY evidence_id
+               ) AS ranked
+               ORDER BY relevance DESC NULLS LAST, evidence_id
+               LIMIT 100`,
+              [
+                scope.projectId,
+                implicitSourceVersionIds,
+                snapshot.question,
+                scope.accessScope ?? [],
+              ],
+            )
+          ).rows.map((row) => row.evidence_id)
+        : [];
+    const sourceEvidenceIds = [...new Set([...selectedEvidenceIds, ...implicitSourceEvidenceIds])];
     const canonicalEvidenceIds =
       snapshot.mode === 'SOURCE_EXPLORATION'
         ? []
@@ -253,6 +284,16 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
               ORDER BY array_position($2::text[], spans.evidence_id::text)`,
             [scope.projectId, evidenceIds, scope.accessScope ?? []],
           );
+    const evidenceById = new Map(evidenceResult.rows.map((row) => [row.evidence_id, row]));
+    for (const selection of selections.rows) {
+      if (!selection.evidence_id) continue;
+      const evidence = evidenceById.get(selection.evidence_id);
+      if (!evidence || evidence.source_version_id !== selection.source_version_id) {
+        throw invalid(
+          'An explicitly selected EvidenceSpan is no longer valid for this SourceVersion.',
+        );
+      }
+    }
     const evidence = evidenceResult.rows.map((row) => {
       if (sensitivityRank[row.sensitivity] > sensitivityRank[scope.sensitivityClearance]) {
         throw invalid('The AnswerRun contains Evidence outside the current sensitivity clearance.');
@@ -289,13 +330,21 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
   async claimInitial(
     scope: AskExecutionScope,
     answerRunId: string,
+    workerId?: string,
   ): Promise<AskClaimedExecution | undefined> {
     const context = await this.getRunContext(scope, answerRunId);
     if (!context || context.snapshot.state !== 'QUEUED') return undefined;
     const claimed = await this.poolTransaction(async (client) => {
       const row = await this.lockRun(client, scope, answerRunId);
       if (!row || row.state !== 'QUEUED') return undefined;
-      return this.claimLocked(client, row, context, scope, 'INITIAL');
+      return this.claimLocked(
+        client,
+        row,
+        context,
+        scope,
+        'INITIAL',
+        workerId ?? `ask-worker-${process.pid}-${randomUUID()}`,
+      );
     });
     return claimed;
   }
@@ -304,6 +353,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     readonly scope: AskExecutionScope;
     readonly answerRunId: string;
     readonly mode: AskAnswerRunRetryMode;
+    readonly workerId?: string;
   }): Promise<AskClaimedExecution> {
     const current = await this.getRunContext(input.scope, input.answerRunId);
     const context =
@@ -371,6 +421,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
       readonly scope: AskExecutionScope;
       readonly answerRunId: string;
       readonly mode: AskAnswerRunRetryMode;
+      readonly workerId?: string;
     },
     context: AskExecutionRunContext,
   ): Promise<AskClaimedExecution> {
@@ -385,6 +436,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
       context,
       input.scope,
       input.mode === 'SAME_CONTEXT' ? 'RETRY_SAME_CONTEXT' : 'RETRY_CURRENT_POLICY',
+      input.workerId ?? `ask-worker-${process.pid}-${randomUUID()}`,
     );
   }
 
@@ -457,30 +509,99 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     return result.rows[0].state === 'CANCEL_REQUESTED' || result.rows[0].state === 'CANCELLED';
   }
 
+  private async attemptIdFor(
+    client: PoolClient,
+    input: {
+      readonly scope: AskExecutionScope;
+      readonly answerRunId: string;
+      readonly attemptNumber: number;
+    },
+  ): Promise<string> {
+    const result = await client.query<{ readonly attempt_id: string }>(
+      `SELECT attempt_id
+       FROM frontend_ask.answer_run_attempts
+       WHERE answer_run_id = $1 AND project_id = $2 AND attempt_number = $3`,
+      [input.answerRunId, input.scope.projectId, input.attemptNumber],
+    );
+    return result.rows[0]?.attempt_id ?? '';
+  }
+
+  private async ownsLiveAttempt(
+    client: PoolClient,
+    input: {
+      readonly scope: AskExecutionScope;
+      readonly answerRunId: string;
+      readonly attemptId: string;
+      readonly attemptNumber: number;
+      readonly workerId: string;
+      readonly runState: AskAnswerRunState;
+      readonly allowCancelRequested?: boolean;
+    },
+  ): Promise<boolean> {
+    if (
+      !['RUNNING', 'STREAMING', 'PARTIAL'].includes(input.runState) &&
+      !(input.allowCancelRequested && input.runState === 'CANCEL_REQUESTED')
+    ) {
+      return false;
+    }
+    const result = await client.query<{
+      readonly state: string;
+      readonly lease_owner: string | null;
+      readonly lease_expires_at: Date | null;
+      readonly attempt_number: number;
+    }>(
+      `SELECT state, lease_owner, lease_expires_at, attempt_number
+       FROM frontend_ask.answer_run_attempts
+       WHERE attempt_id = $1 AND answer_run_id = $2 AND project_id = $3
+       FOR UPDATE`,
+      [input.attemptId, input.answerRunId, input.scope.projectId],
+    );
+    const attempt = result.rows[0];
+    return Boolean(
+      attempt &&
+      attempt.attempt_number === input.attemptNumber &&
+      attempt.state === 'RUNNING' &&
+      attempt.lease_owner === input.workerId &&
+      attempt.lease_expires_at &&
+      attempt.lease_expires_at.getTime() >= Date.now(),
+    );
+  }
+
   async appendPartial(input: {
     readonly scope: AskExecutionScope;
     readonly answerRunId: string;
     readonly attemptId: string;
     readonly attemptNumber: number;
     readonly partialText: string;
+    readonly workerId: string;
   }): Promise<void> {
     await this.poolTransaction(async (client) => {
       const row = await this.lockRun(client, input.scope, input.answerRunId);
-      if (!row || row.attempt_number !== input.attemptNumber || row.state === 'CANCEL_REQUESTED')
+      if (
+        !row ||
+        !(await this.ownsLiveAttempt(client, {
+          ...input,
+          runState: row.state,
+        }))
+      )
         return;
-      await client.query(
+      const heartbeatAt = new Date().toISOString();
+      const leaseExpiresAt = new Date(Date.now() + 30_000).toISOString();
+      const refreshed = await client.query(
         `UPDATE frontend_ask.answer_run_attempts
          SET heartbeat_at = $4, lease_expires_at = $5, updated_at = $4
          WHERE attempt_id = $1 AND answer_run_id = $2 AND project_id = $3
-           AND state = 'RUNNING'`,
+            AND state = 'RUNNING' AND lease_owner = $6 AND lease_expires_at >= now()`,
         [
           input.attemptId,
           input.answerRunId,
           input.scope.projectId,
-          new Date().toISOString(),
-          new Date(Date.now() + 30_000).toISOString(),
+          heartbeatAt,
+          leaseExpiresAt,
+          input.workerId,
         ],
       );
+      if ((refreshed.rowCount ?? 0) !== 1) return;
       let eventRevision = Number(row.event_revision);
       if (row.state === 'RUNNING') {
         eventRevision += 1;
@@ -530,11 +651,49 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     readonly resolvedContextDigest?: string;
     readonly queryPlanRevision?: string;
     readonly usage?: AskAnswerRunUsage;
+    readonly workerId: string;
   }): Promise<AskAnswerRunSnapshot> {
     await this.poolTransaction(async (client) => {
       const row = await this.lockRun(client, input.scope, input.answerRunId);
-      if (!row || row.attempt_number !== input.attemptNumber || row.state === 'CANCEL_REQUESTED')
+      if (!row) return;
+      const attemptId = await this.attemptIdFor(client, input);
+      if (
+        !(await this.ownsLiveAttempt(client, {
+          scope: input.scope,
+          answerRunId: input.answerRunId,
+          attemptId,
+          attemptNumber: input.attemptNumber,
+          workerId: input.workerId,
+          runState: row.state,
+        }))
+      )
         return;
+      const completedAt = new Date().toISOString();
+      const attemptUpdate = await client.query(
+        `UPDATE frontend_ask.answer_run_attempts
+            SET state = 'SUCCEEDED', provider_name = $3, provider_model = $4,
+                provider_adapter_version = $5, provider_response_id = $6,
+                data_policy_version = $7, resolved_context_digest = $8,
+                query_plan_revision = $9, lease_owner = NULL, lease_expires_at = NULL,
+                heartbeat_at = $10, updated_at = $10, completed_at = $10
+            WHERE answer_run_id = $1 AND project_id = $2 AND attempt_number = $11
+              AND state = 'RUNNING' AND lease_owner = $12 AND lease_expires_at >= now()`,
+        [
+          input.answerRunId,
+          input.scope.projectId,
+          input.provider.provider,
+          input.provider.model,
+          input.provider.adapterVersion ?? null,
+          input.providerResponseId ?? null,
+          input.dataPolicyVersion ?? null,
+          input.resolvedContextDigest ?? null,
+          input.queryPlanRevision ?? null,
+          completedAt,
+          input.attemptNumber,
+          input.workerId,
+        ],
+      );
+      if ((attemptUpdate.rowCount ?? 0) !== 1) return;
       const statementId = `statement-${randomUUID()}`;
       await client.query(
         `INSERT INTO frontend_ask.statements (
@@ -576,28 +735,6 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
         usage: input.usage,
         eventRevision,
       });
-      await client.query(
-        `UPDATE frontend_ask.answer_run_attempts
-            SET state = 'SUCCEEDED', provider_name = $3, provider_model = $4,
-                provider_adapter_version = $5, provider_response_id = $6,
-                data_policy_version = $7, resolved_context_digest = $8,
-                query_plan_revision = $9, lease_owner = NULL, lease_expires_at = NULL,
-                heartbeat_at = $10, updated_at = $10, completed_at = $10
-           WHERE answer_run_id = $1 AND project_id = $2 AND attempt_number = $11`,
-        [
-          input.answerRunId,
-          input.scope.projectId,
-          input.provider.provider,
-          input.provider.model,
-          input.provider.adapterVersion ?? null,
-          input.providerResponseId ?? null,
-          input.dataPolicyVersion ?? null,
-          input.resolvedContextDigest ?? null,
-          input.queryPlanRevision ?? null,
-          new Date().toISOString(),
-          input.attemptNumber,
-        ],
-      );
       await this.appendEvent(
         client,
         input.scope,
@@ -606,15 +743,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
         'SUCCEEDED',
         eventRevision,
         undefined,
-        input.attemptNumber > 0
-          ? (
-              await client.query<{ readonly attempt_id: string }>(
-                `SELECT attempt_id FROM frontend_ask.answer_run_attempts
-                 WHERE answer_run_id = $1 AND project_id = $2 AND attempt_number = $3`,
-                [input.answerRunId, input.scope.projectId, input.attemptNumber],
-              )
-            ).rows[0]?.attempt_id
-          : undefined,
+        attemptId,
       );
     });
     const current = await this.getRunContext(input.scope, input.answerRunId);
@@ -628,11 +757,48 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     readonly attemptNumber: number;
     readonly failure: AskAnswerRunFailure;
     readonly state: Extract<AskAnswerRunState, 'FAILED' | 'OUTCOME_UNKNOWN' | 'CANCELLED'>;
+    readonly workerId: string;
   }): Promise<AskAnswerRunSnapshot> {
     await this.poolTransaction(async (client) => {
       const row = await this.lockRun(client, input.scope, input.answerRunId);
-      if (!row || (row.attempt_number !== input.attemptNumber && row.state !== 'CANCEL_REQUESTED'))
+      if (!row) return;
+      const attemptState = input.state === 'CANCELLED' ? 'CANCELLED' : input.state;
+      const attemptId = await this.attemptIdFor(client, input);
+      if (
+        !(await this.ownsLiveAttempt(client, {
+          scope: input.scope,
+          answerRunId: input.answerRunId,
+          attemptId,
+          attemptNumber: input.attemptNumber,
+          workerId: input.workerId,
+          runState: row.state,
+          allowCancelRequested: input.state === 'CANCELLED',
+        }))
+      )
         return;
+      const failedAt = new Date().toISOString();
+      const attemptUpdate = await client.query(
+        `UPDATE frontend_ask.answer_run_attempts
+           SET state = $4, failure_code = $5, failure_message = $6,
+               failure_retryable = $7, failure_outcome_unknown = $8,
+              lease_owner = NULL, lease_expires_at = NULL,
+              heartbeat_at = $3, updated_at = $3, completed_at = $3
+          WHERE answer_run_id = $1 AND project_id = $2 AND attempt_number = $9
+            AND state = 'RUNNING' AND lease_owner = $10 AND lease_expires_at >= now()`,
+        [
+          input.answerRunId,
+          input.scope.projectId,
+          failedAt,
+          attemptState,
+          input.failure.code,
+          input.failure.message,
+          input.failure.retryable,
+          input.failure.outcomeUnknown,
+          input.attemptNumber,
+          input.workerId,
+        ],
+      );
+      if ((attemptUpdate.rowCount ?? 0) !== 1) return;
       const eventRevision = Number(row.event_revision) + 1;
       await this.updateRun(client, input.scope, input.answerRunId, {
         state: input.state,
@@ -640,26 +806,6 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
         failure: input.failure,
         eventRevision,
       });
-      const attemptState = input.state === 'CANCELLED' ? 'CANCELLED' : input.state;
-      await client.query(
-        `UPDATE frontend_ask.answer_run_attempts
-           SET state = $4, failure_code = $5, failure_message = $6,
-               failure_retryable = $7, failure_outcome_unknown = $8,
-              lease_owner = NULL, lease_expires_at = NULL,
-              heartbeat_at = $3, updated_at = $3, completed_at = $3
-         WHERE answer_run_id = $1 AND project_id = $2 AND attempt_number = $9`,
-        [
-          input.answerRunId,
-          input.scope.projectId,
-          new Date().toISOString(),
-          attemptState,
-          input.failure.code,
-          input.failure.message,
-          input.failure.retryable,
-          input.failure.outcomeUnknown,
-          input.attemptNumber,
-        ],
-      );
       await this.appendEvent(
         client,
         input.scope,
@@ -667,6 +813,8 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
         input.state === 'CANCELLED' ? 'CANCELLED' : 'FAILED',
         input.state,
         eventRevision,
+        undefined,
+        attemptId,
       );
     });
     const current = await this.getRunContext(input.scope, input.answerRunId);
@@ -962,18 +1110,20 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     readonly answerRunId: string;
     readonly attemptId: string;
     readonly dataPolicyVersion: string;
+    readonly workerId: string;
   }): Promise<void> {
     const result = await this.pool.query(
       `UPDATE frontend_ask.answer_run_attempts
        SET data_policy_version = $4, heartbeat_at = $5, updated_at = $5
        WHERE attempt_id = $1 AND answer_run_id = $2 AND project_id = $3
-         AND state = 'RUNNING'`,
+          AND state = 'RUNNING' AND lease_owner = $6 AND lease_expires_at >= now()`,
       [
         input.attemptId,
         input.answerRunId,
         input.scope.projectId,
         input.dataPolicyVersion,
         new Date().toISOString(),
+        input.workerId,
       ],
     );
     if (result.rowCount === 0) throw notFound();
@@ -983,31 +1133,57 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     readonly scope: AskExecutionScope;
     readonly answerRunId: string;
     readonly attemptId: string;
-  }): Promise<boolean> {
+    readonly workerId: string;
+  }): Promise<AskWorkerLeaseState> {
+    const current = await this.pool.query<{
+      readonly attempt_state: string;
+      readonly lease_owner: string | null;
+      readonly lease_expires_at: Date | null;
+      readonly run_state: AskAnswerRunState;
+    }>(
+      `SELECT attempt.state AS attempt_state, attempt.lease_owner, attempt.lease_expires_at,
+              run.state AS run_state
+       FROM frontend_ask.answer_run_attempts AS attempt
+       JOIN frontend_ask.answer_runs AS run
+         ON run.answer_run_id = attempt.answer_run_id AND run.project_id = attempt.project_id
+       WHERE attempt.attempt_id = $1 AND attempt.answer_run_id = $2 AND attempt.project_id = $3`,
+      [input.attemptId, input.answerRunId, input.scope.projectId],
+    );
+    const row = current.rows[0];
+    if (!row) return 'TERMINAL';
+    if (row.run_state === 'CANCEL_REQUESTED') return 'CANCEL_REQUESTED';
+    if (['CANCELLED', 'SUCCEEDED', 'FAILED', 'OUTCOME_UNKNOWN'].includes(row.run_state))
+      return 'TERMINAL';
+    if (
+      row.attempt_state !== 'RUNNING' ||
+      row.lease_owner !== input.workerId ||
+      !row.lease_expires_at ||
+      row.lease_expires_at.getTime() < Date.now()
+    )
+      return 'LEASE_LOST';
     const heartbeatAt = new Date().toISOString();
     const result = await this.pool.query(
       `UPDATE frontend_ask.answer_run_attempts
        SET heartbeat_at = $4, lease_expires_at = $5, updated_at = $4
        WHERE attempt_id = $1 AND answer_run_id = $2 AND project_id = $3
-         AND state = 'RUNNING'`,
+          AND state = 'RUNNING' AND lease_owner = $6 AND lease_expires_at >= now()`,
       [
         input.attemptId,
         input.answerRunId,
         input.scope.projectId,
         heartbeatAt,
         new Date(Date.now() + 30_000).toISOString(),
+        input.workerId,
       ],
     );
-    return (result.rowCount ?? 0) > 0;
+    return (result.rowCount ?? 0) > 0 ? 'OWNED' : 'LEASE_LOST';
   }
 
   async transaction<T>(
     action: (transaction: AskExecutionTransactionPort) => Promise<T>,
   ): Promise<T> {
-    const client = await this.pool.connect();
     const afterCommit: (() => void)[] = [];
-    try {
-      await client.query('BEGIN');
+    const result = await this.withPostgresTransaction(async (client) => {
       const transaction: AskExecutionTransactionPort = {
         rawTransaction: client,
         afterCommit: (callback) => afterCommit.push(callback),
@@ -1048,16 +1224,18 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
         saveFeedback: (input) => this.saveFeedbackWithClient(client, input),
         saveTransitionSeed: (input) => this.saveTransitionSeedWithClient(client, input),
       };
-      const result = await action(transaction);
-      await client.query('COMMIT');
-      afterCommit.forEach((callback) => callback());
-      return result;
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
+      return action(transaction);
+    });
+    // A callback is a post-commit wake-up hook, not part of the transaction.
+    // Its failure must never turn a committed mutation into a rejection.
+    for (const callback of afterCommit) {
+      try {
+        callback();
+      } catch (error) {
+        console.error('[frontend-ask-execution] post-commit callback failed', error);
+      }
     }
+    return result;
   }
 
   async recoverInterrupted(): Promise<number> {
@@ -1077,15 +1255,18 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
           AND run.project_id = attempt.project_id
          WHERE attempt.state = 'RUNNING'
            AND (
-             run.state = 'CANCEL_REQUESTED'
-             OR (
+            (
+              run.state = 'CANCEL_REQUESTED'
+              AND attempt.lease_expires_at IS NOT NULL
+              AND attempt.lease_expires_at < now()
+            ) OR (
                run.state IN ('RUNNING', 'STREAMING', 'PARTIAL')
                AND attempt.lease_expires_at IS NOT NULL
                AND attempt.lease_expires_at < now()
              )
            )
          ORDER BY attempt.created_at, attempt.attempt_id
-         FOR UPDATE OF attempt, run`,
+          FOR UPDATE OF attempt, run SKIP LOCKED`,
       );
       let recovered = 0;
       for (const candidate of candidates.rows) {
@@ -1118,7 +1299,6 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
               retryable: false,
               outcomeUnknown: true,
             };
-        const eventRevision = Number(row.event_revision) + 1;
         const recoveryScope: AskExecutionScope = {
           principalId: 'ask-worker',
           projectId: row.project_id,
@@ -1127,20 +1307,14 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
           sensitivityClearance: row.sensitivity_clearance,
           accessScope: row.access_scope,
         };
-        await this.updateRun(client, recoveryScope, candidate.answer_run_id, {
-          state: nextState,
-          capabilities: ['RETRY_SAME_CONTEXT', 'RETRY_CURRENT_POLICY'],
-          failure,
-          eventRevision,
-        });
         const completedAt = new Date().toISOString();
-        await client.query(
+        const attemptUpdate = await client.query(
           `UPDATE frontend_ask.answer_run_attempts
            SET state = $2, failure_code = $3, failure_message = $4,
                failure_retryable = $5, failure_outcome_unknown = $6,
                lease_owner = NULL, lease_expires_at = NULL,
                heartbeat_at = $7, updated_at = $7, completed_at = $7
-           WHERE attempt_id = $1`,
+            WHERE attempt_id = $1 AND state = 'RUNNING' AND lease_expires_at < now()`,
           [
             candidate.attempt_id,
             nextState,
@@ -1151,6 +1325,14 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
             completedAt,
           ],
         );
+        if ((attemptUpdate.rowCount ?? 0) !== 1) continue;
+        const eventRevision = Number(row.event_revision) + 1;
+        await this.updateRun(client, recoveryScope, candidate.answer_run_id, {
+          state: nextState,
+          capabilities: ['RETRY_SAME_CONTEXT', 'RETRY_CURRENT_POLICY'],
+          failure,
+          eventRevision,
+        });
         await this.appendEvent(
           client,
           recoveryScope,
@@ -1167,12 +1349,13 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     });
   }
 
-  async claimQueuedForWorker(): Promise<
+  async claimQueuedForWorker(workerId?: string): Promise<
     readonly {
       readonly scope: AskExecutionScope;
       readonly claimed: AskClaimedExecution;
     }[]
   > {
+    const owner = workerId ?? `ask-worker-${process.pid}-${randomUUID()}`;
     const result = await this.pool.query<RunRow>(
       `SELECT answer_run_id, project_id, state, attempt_number, event_revision,
               access_scope, sensitivity_clearance, access_revision,
@@ -1192,7 +1375,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
         sensitivityClearance: row.sensitivity_clearance,
         accessScope: row.access_scope,
       };
-      const execution = await this.claimInitial(scope, row.answer_run_id);
+      const execution = await this.claimInitial(scope, row.answer_run_id, owner);
       if (execution) claimed.push({ scope, claimed: execution });
     }
     return claimed;
@@ -1204,6 +1387,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     context: AskExecutionRunContext,
     scope: AskExecutionScope,
     kind: AskExecutionAttempt['kind'],
+    workerId: string,
   ): Promise<AskClaimedExecution> {
     const attemptNumber = Number(row.attempt_number) + 1;
     const accessRevision =
@@ -1235,7 +1419,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
         context.contextStatus === 'SUPPORTED',
         highestSensitivity(context.evidence),
         createdAt,
-        `ask-worker-${process.pid}`,
+        workerId,
         new Date(Date.now() + 30_000).toISOString(),
       ],
     );
@@ -1289,6 +1473,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
         resolvedContextDigest: context.resolvedContextDigest,
         queryPlanRevision: context.queryPlanRevision,
         resolvedSensitivity: highestSensitivity(context.evidence),
+        leaseOwner: workerId,
       },
       context: {
         snapshot: {
@@ -1442,15 +1627,27 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
   }
 
   private async poolTransaction<T>(action: (client: PoolClient) => Promise<T>): Promise<T> {
+    return this.withPostgresTransaction(action);
+  }
+
+  private async withPostgresTransaction<T>(action: (client: PoolClient) => Promise<T>): Promise<T> {
     const client = await this.pool.connect();
-    let commitAttempted = false;
+    let state:
+      | 'BEFORE_COMMIT'
+      | 'COMMIT_ATTEMPTED'
+      | 'COMMITTED'
+      | 'ROLLBACK_ATTEMPTED'
+      | 'ROLLED_BACK'
+      | 'OUTCOME_UNKNOWN' = 'BEFORE_COMMIT';
     try {
       await client.query('BEGIN');
       const result = await action(client);
-      commitAttempted = true;
+      state = 'COMMIT_ATTEMPTED';
       try {
         await client.query('COMMIT');
+        state = 'COMMITTED';
       } catch (error) {
+        state = 'OUTCOME_UNKNOWN';
         throw new ShotgunError({
           code: 'OUTCOME_UNKNOWN',
           safeMessage: 'The AnswerRun command transaction outcome could not be resolved.',
@@ -1461,10 +1658,13 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
       }
       return result;
     } catch (error) {
-      if (!commitAttempted) {
+      if (state === 'BEFORE_COMMIT') {
+        state = 'ROLLBACK_ATTEMPTED';
         try {
           await client.query('ROLLBACK');
+          state = 'ROLLED_BACK';
         } catch (rollbackError) {
+          state = 'OUTCOME_UNKNOWN';
           throw new ShotgunError({
             code: 'OUTCOME_UNKNOWN',
             safeMessage:

@@ -164,6 +164,15 @@ describe('Frontend Work Item governance', () => {
     expect(errors).toContain('Unregistered Frontend Work Item reference in plan.md: FE-P9-S9');
   });
 
+  it('rejects an unregistered Phase reference in an active document', () => {
+    const errors = collectWorkItemErrors(
+      registryFixture(),
+      { 'plan.md': 'Start FE-P9.' },
+      exists,
+    );
+    expect(errors).toContain('Unregistered Frontend Work Item reference in plan.md: FE-P9');
+  });
+
   it('rejects the invalid active Phase 2 Section 3 path', () => {
     const errors = collectWorkItemErrors(
       registryFixture(),
@@ -224,9 +233,33 @@ describe('Frontend Work Item governance', () => {
     expect(errors.join('\n')).toContain('legacy evidence is not allowed for new Sections');
   });
 
+  it('does not allow a future Section to use the legacy completion exception', () => {
+    const registry = registryFixture();
+    const section = registry.items.find((item) => item.id === 'FE-P3-S1');
+    if (section) {
+      section.status = 'COMPLETE';
+      section.completionManifest = 'future-evidence.md';
+      section.approvedAt = '2026-08-01';
+    }
+    const errors = collectCompletionInvariantErrors(registry, {}, evidence, exists);
+    expect(errors.join('\n')).toContain('legacy evidence is not allowed for new Sections');
+  });
+
   it('rejects excluded scope without a registered Work Item or governed Backlog ID', () => {
     const manifest = manifestFixture();
     manifest.remainingScope[0]!.trackingId = 'later';
+    const errors = collectCompletionInvariantErrors(
+      registryFixture(),
+      { 'FE-P2-S2': manifest },
+      evidence,
+      exists,
+    );
+    expect(errors.join('\n')).toContain('has no registered Work Item or governed Backlog ID');
+  });
+
+  it('rejects an unregistered Backlog tracking ID', () => {
+    const manifest = manifestFixture();
+    manifest.remainingScope[0]!.trackingId = 'BACKLOG-UNREGISTERED';
     const errors = collectCompletionInvariantErrors(
       registryFixture(),
       { 'FE-P2-S2': manifest },
@@ -325,6 +358,29 @@ describe('Frontend Work Item governance', () => {
     expect(errors.join('\n')).toContain('decision status does not match');
   });
 
+  it('rejects accepted approval metadata that differs from the decision document', () => {
+    const registry = registryFixture();
+    const phase = registry.items.find((item) => item.id === 'FE-P3');
+    if (phase) {
+      Object.assign(phase, {
+        introducedByDecision: 'accepted-decision.md',
+        decisionStatus: 'ACCEPTED',
+        approvedBy: 'user-b',
+        approvedAt: '2026-08-02',
+      });
+    }
+    const errors = collectWorkItemErrors(
+      registry,
+      {},
+      exists,
+      (relativePath) =>
+        relativePath === 'accepted-decision.md'
+          ? 'Decision status: **ACCEPTED**\n- Approved by: user-a\n- Approved at: 2026-08-01'
+          : undefined,
+    );
+    expect(errors.join('\n')).toContain('approval metadata does not match');
+  });
+
   it('rejects cycles in the Work Item graph', () => {
     const registry = registryFixture();
     const section = registry.items.find((item) => item.id === 'FE-P3-S1');
@@ -332,6 +388,23 @@ describe('Frontend Work Item governance', () => {
     expect(collectWorkItemErrors(registry, {}, exists).join('\n')).toContain(
       'Section graph contains a cycle',
     );
+  });
+
+  it('rejects a Candidate Work Item in the canonical graph', () => {
+    const registry = registryFixture();
+    const candidate = registry.items.find((item) => item.id === 'FE-P3-S1');
+    if (candidate) Object.assign(candidate, { decisionStatus: 'CANDIDATE' });
+    expect(collectWorkItemErrors(registry, {}, exists).join('\n')).toContain(
+      'cannot be a canonical successor',
+    );
+  });
+
+  it('does not project a Candidate successor as the next valid Product Section', () => {
+    const registry = registryFixture();
+    const candidate = registry.items.find((item) => item.id === 'FE-P3-S1');
+    if (candidate) Object.assign(candidate, { decisionStatus: 'CANDIDATE' });
+    const block = renderFrontendStatusBlock(registry, { 'FE-P2-S2': manifestFixture() });
+    expect(block).not.toContain('FE-P3-S1');
   });
 
   it('rejects excluded scope without an approved amendment', () => {
@@ -385,6 +458,69 @@ describe('Frontend Work Item governance', () => {
     );
     expect(errors.join('\n')).toContain('references unknown Criterion');
     expect(errors.join('\n')).toContain('is not listed in Scope Amendment');
+  });
+
+  it('rejects a Criterion that references an unrelated approved Scope Amendment', () => {
+    const manifest = manifestFixture();
+    manifest.mandatoryCriteria[1]!.scopeAmendment = 'AMEND-1';
+    manifest.scopeAmendments = [
+      {
+        id: 'AMEND-1',
+        status: 'APPROVED',
+        approvedAt: '2026-08-01',
+        approvedBy: 'user',
+        decisionDocument: 'amend.md',
+        affectedCriteria: ['readFoundation'],
+        rationale: 'Split the scope',
+        newOwner: 'FE-P2-S2-I03',
+        impactAndRollback: 'Reassign and revert',
+        affectedScopeIds: ['answer-execution'],
+      },
+    ];
+    const errors = collectCompletionInvariantErrors(
+      registryFixture(),
+      { 'FE-P2-S2': manifest },
+      evidence,
+      exists,
+    );
+    expect(errors.join('\n')).toContain('is not listed in Scope Amendment');
+  });
+
+  it('rejects Scope Amendment approval metadata that differs from its decision document', () => {
+    const manifest = manifestFixture();
+    manifest.excludedScope = [
+      {
+        id: 'deferred',
+        description: 'Deferred scope',
+        trackingId: 'FE-P2-S2-I03',
+        scopeAmendment: 'AMEND-1',
+      },
+    ];
+    manifest.scopeAmendments = [
+      {
+        id: 'AMEND-1',
+        status: 'APPROVED',
+        approvedAt: '2026-08-02',
+        approvedBy: 'user-b',
+        decisionDocument: 'amend.md',
+        affectedCriteria: ['answerExecution'],
+        rationale: 'Split the scope',
+        newOwner: 'FE-P2-S2-I03',
+        impactAndRollback: 'Reassign and revert',
+        affectedScopeIds: ['deferred'],
+      },
+    ];
+    const errors = collectCompletionInvariantErrors(
+      registryFixture(),
+      { 'FE-P2-S2': manifest },
+      evidence,
+      exists,
+      (relativePath) =>
+        relativePath === 'amend.md'
+          ? 'Decision status: **APPROVED**\n- Approved by: user-a\n- Approved at: 2026-08-01'
+          : undefined,
+    );
+    expect(errors.join('\n')).toContain('approval metadata does not match its decision document');
   });
 
   it('rejects completed Sections with unresolved remaining scope', () => {

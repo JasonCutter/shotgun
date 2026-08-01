@@ -51,7 +51,7 @@
           "description": { "type": "string", "minLength": 1 },
           "trackingId": {
             "type": "string",
-            "pattern": "^(FE-P[1-5]-S[1-9][0-9]*(?:-I[0-9]+)?|BACKLOG-[A-Z0-9-]+)$"
+            "pattern": "^FE-P[1-5](?:-S[1-9][0-9]*(?:-I[0-9]+)?)?$"
           }
         }
       }
@@ -67,7 +67,7 @@
           "description": { "type": "string", "minLength": 1 },
           "trackingId": {
             "type": "string",
-            "pattern": "^(FE-P[1-5]-S[1-9][0-9]*(?:-I[0-9]+)?|BACKLOG-[A-Z0-9-]+)$"
+            "pattern": "^FE-P[1-5](?:-S[1-9][0-9]*(?:-I[0-9]+)?)?$"
           },
           "scopeAmendment": { "type": "string", "minLength": 1 }
         }

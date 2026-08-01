@@ -170,6 +170,7 @@
       "scope": "frontend-phase-2-work-item-and-completion-status",
       "statusAuthority": "CURRENT_STATUS_RECONCILIATION_CANDIDATE",
       "subjectBase": "5198e31c26113796a9801ec53c83b6dc9a9df09b",
+      "testedContentHead": "4d54e849cbdc961ac297e35b534bc32115c7e6c1",
       "governingAdr": "ADR-124",
       "productCodeImpact": "NONE"
     }

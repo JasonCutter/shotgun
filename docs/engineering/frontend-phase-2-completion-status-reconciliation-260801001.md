@@ -6,6 +6,8 @@
 - Class: `AUDIT_REPORT`
 - Status authority: `CURRENT_STATUS_RECONCILIATION_CANDIDATE`
 - Subject base: `main@5198e31c26113796a9801ec53c83b6dc9a9df09b`
+- Tested content head: `4d54e849cbdc961ac297e35b534bc32115c7e6c1`
+- Local environment: Windows, Node.js `v24.15.0`, npm `11.12.1`, PostgreSQL 16 compose service
 - Governing proposal: `ADR-124`
 - Product code impact: **NONE**
 

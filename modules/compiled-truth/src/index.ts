@@ -290,7 +290,7 @@ const statusFor = async (
       projectedCanonicalVersion: projection?.canonicalVersion ?? 0,
       lag: Math.max(0, canonical.version - (projection?.canonicalVersion ?? 0)),
       lastError: degraded.error,
-      updatedAt: projection?.projectedAt ?? degraded.updatedAt,
+      updatedAt: degraded.updatedAt,
       ...(projection === undefined
         ? {}
         : {

@@ -1176,7 +1176,7 @@ export const decodeGetCompiledTruthReadSnapshotResult = (
         'status/projection digest or build identity differs.',
       );
     }
-    if (status.updatedAt !== projection.projectedAt) {
+    if (status.status !== 'DEGRADED' && status.updatedAt !== projection.projectedAt) {
       return fail('getCompiledTruthReadSnapshotResult', 'status/projection timestamp differs.');
     }
   }

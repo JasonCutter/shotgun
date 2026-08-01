@@ -112,9 +112,14 @@ projection:
 | `NOT_BUILT` | Forbidden; status only                     |
 
 When a projection is present, Project, projector version, canonical version,
-source snapshot digest, logical digest, build mode and projected timestamp must
-match the status. A non-READY projection remains a derived projection and is
-never promoted to Canonical, Approved Knowledge or READY.
+source snapshot digest, logical digest and build mode must match the status. For
+`READY` and `STALE`, `status.updatedAt` is the persisted projection's
+`projectedAt`. For `DEGRADED`, the two timestamps represent different facts:
+`status.updatedAt` is the degradation occurrence time, while
+`projection.projectedAt` is the last persisted projection creation time. The
+decoder therefore keeps identity correlation for `DEGRADED` without requiring
+timestamp equality. A non-READY projection remains a derived projection and
+is never promoted to Canonical, Approved Knowledge or READY.
 
 The existing Build, Discovery and write fail-closed behavior is unchanged.
 
@@ -159,6 +164,13 @@ introduced by QX-P0.
 QX-P0 and its QX-P0.1 hardening have no database or runtime migration. Rollback
 is a Git revert of the additive contract and proposed-ADR commits. Existing
 Query contracts remain available and are not rewritten by the rollback.
+
+## Amendment history
+
+- 2026-08-02: Side-panel review `4836032427` required QX-02.1 limited
+  hardening. The PostgreSQL READY test now runs the real Stage 10 Build handler,
+  a separate persisted STALE path is covered, and DEGRADED timestamp semantics
+  preserve degradation time separately from the last projection time.
 
 ## Approval boundary
 

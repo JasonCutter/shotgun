@@ -264,6 +264,7 @@ describe('Stage 10 Compiled Truth and Discovery contracts', () => {
     const staleProjection: CompiledTruthProjection = {
       ...built,
       sourceSnapshotDigest: `sha256:${'9'.repeat(64)}`,
+      projectedAt: '2026-08-02T10:00:00.000Z',
       logicalDigest: compiledTruthLogicalDigest([visible, scopeHidden, sensitivityHidden], edges),
       items: [visible, scopeHidden, sensitivityHidden],
       graph: {
@@ -294,6 +295,8 @@ describe('Stage 10 Compiled Truth and Discovery contracts', () => {
       )
     ).result.payload;
     expect(degraded.status).toMatchObject({ status: 'DEGRADED', lastError: 'repair-needed' });
+    expect(degraded.status.updatedAt).toBe('2026-08-02T12:30:00.000Z');
+    expect(degraded.projection?.projectedAt).toBe('2026-08-02T10:00:00.000Z');
     expect(degraded.projection?.items.map((item) => item.id)).toEqual(['entity:visible']);
 
     await expect(

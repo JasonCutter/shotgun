@@ -19,6 +19,9 @@ export type FrontendWorkItem = {
   completionManifest: string | null;
   approvedAt: string | null;
   supersedes: string | null;
+  introducedByDecision: string;
+  decisionStatus: 'MIGRATED' | 'CANDIDATE' | 'ACCEPTED';
+  approvedBy: string | null;
 };
 
 export type FrontendWorkItemRegistry = {
@@ -43,17 +46,27 @@ export type FrontendCompletionManifest = {
     evidence: string[];
     scopeAmendment?: string | null;
   }>;
-  excludedScope: Array<{
+  remainingScope: Array<{
     id: string;
     description: string;
     trackingId: string;
-    scopeAmendment: string | null;
+  }>;
+  excludedScope?: Array<{
+    id: string;
+    description: string;
+    trackingId: string;
+    scopeAmendment: string;
   }>;
   scopeAmendments: Array<{
     id: string;
     status: 'PROPOSED' | 'APPROVED' | 'REJECTED';
     approvedAt: string | null;
     approvedBy: string | null;
+    decisionDocument: string;
+    affectedCriteria: string[];
+    rationale: string;
+    newOwner: string;
+    impactAndRollback: string;
   }>;
   evidenceRegistryUpdates: string[];
   approvedAt: string | null;
@@ -62,6 +75,7 @@ export type FrontendCompletionManifest = {
 type EvidenceRecord = { id: string; path: string };
 
 const registryPath = 'docs/project/frontend-work-items.json';
+const registrySchemaPath = 'docs/project/schemas/frontend-work-item-registry.schema.json';
 const schemaPath = 'docs/project/schemas/frontend-completion-manifest.schema.json';
 const completionDirectory = 'docs/project/completions';
 const evidenceRegistryPath = 'docs/engineering/evidence-registry.json';
@@ -79,6 +93,28 @@ export const activeWorkItemDocuments = [...projectionTargets, 'README.md'] as co
 
 const workItemReferencePattern = /\bFE-P\d+-S\d+(?:-I\d+)?\b/g;
 const invalidPhaseTwoSectionPattern = /\b(?:FE-P2-S3|Frontend Phase 2 Section 3)\b/;
+const legacyMigratedWorkItemIds = new Set([
+  'FE-P1',
+  'FE-P1-S1',
+  'FE-P1-S2',
+  'FE-P1-S3',
+  'FE-P2',
+  'FE-P2-S1',
+  'FE-P2-S2',
+  'FE-P2-S2-I01',
+  'FE-P2-S2-I02',
+  'FE-P2-S2-I03',
+  'FE-P3',
+  'FE-P3-S1',
+  'FE-P3-S2',
+  'FE-P3-S3',
+  'FE-P4',
+  'FE-P4-S1',
+  'FE-P4-S2',
+  'FE-P5',
+  'FE-P5-S1',
+  'FE-P5-S2',
+]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -95,8 +131,13 @@ function isWorkItem(value: unknown): value is FrontendWorkItem {
     'completionManifest',
     'approvedAt',
     'supersedes',
+    'approvedBy',
   ];
-  return nullableStrings.every((key) => value[key] === null || typeof value[key] === 'string');
+  return (
+    nullableStrings.every((key) => value[key] === null || typeof value[key] === 'string') &&
+    typeof value.introducedByDecision === 'string' &&
+    ['MIGRATED', 'CANDIDATE', 'ACCEPTED'].includes(String(value.decisionStatus))
+  );
 }
 
 export function collectWorkItemErrors(
@@ -121,6 +162,30 @@ export function collectWorkItemErrors(
     if (!['NOT_STARTED', 'IN_PROGRESS', 'BLOCKED', 'COMPLETE'].includes(candidate.status)) {
       errors.push(`Invalid Work Item status for ${candidate.id}: ${candidate.status}`);
     }
+    const expectedIdPattern =
+      candidate.type === 'PHASE'
+        ? /^FE-P[1-5]$/
+        : candidate.type === 'SECTION'
+          ? /^FE-P[1-5]-S[1-9][0-9]*$/
+          : /^FE-P[1-5]-S[1-9][0-9]*-I[0-9]+$/;
+    if (!expectedIdPattern.test(candidate.id)) {
+      errors.push(`Work Item ID/type mismatch for ${candidate.id}: ${candidate.type}`);
+    }
+    if (!candidate.introducedByDecision) {
+      errors.push(`Work Item ${candidate.id} has no introducing decision`);
+    }
+    if (candidate.decisionStatus === 'MIGRATED' && !legacyMigratedWorkItemIds.has(candidate.id)) {
+      errors.push(`New Work Item ${candidate.id} cannot use MIGRATED decision status`);
+    }
+    if (candidate.decisionStatus === 'CANDIDATE' && candidate.status !== 'NOT_STARTED') {
+      errors.push(`Candidate Work Item ${candidate.id} must remain NOT_STARTED`);
+    }
+    if (
+      candidate.decisionStatus === 'ACCEPTED' &&
+      (!candidate.approvedBy || !candidate.approvedAt)
+    ) {
+      errors.push(`Accepted Work Item ${candidate.id} requires approver and approval date`);
+    }
     if (!pathExists(candidate.governingContract)) {
       errors.push(
         `Governing contract does not exist for ${candidate.id}: ${candidate.governingContract}`,
@@ -136,6 +201,16 @@ export function collectWorkItemErrors(
   for (const item of byId.values()) {
     if (item.parent && !byId.has(item.parent)) {
       errors.push(`Unregistered parent for ${item.id}: ${item.parent}`);
+    }
+    const parent = item.parent ? byId.get(item.parent) : undefined;
+    if (item.type === 'PHASE' && item.parent !== null) {
+      errors.push(`PHASE Work Item ${item.id} must not have a parent`);
+    }
+    if (item.type === 'SECTION' && parent?.type !== 'PHASE') {
+      errors.push(`SECTION Work Item ${item.id} must have a PHASE parent`);
+    }
+    if (item.type === 'INCREMENT' && parent?.type !== 'SECTION') {
+      errors.push(`INCREMENT Work Item ${item.id} must have a SECTION parent`);
     }
     for (const [relationship, relatedId] of [
       ['predecessor', item.predecessor],
@@ -172,6 +247,49 @@ export function collectWorkItemErrors(
     );
   }
 
+  const phases = items.filter((item) => item.type === 'PHASE');
+  const activePhases = phases.filter((item) => item.status === 'IN_PROGRESS');
+  if (activePhases.length > 1) {
+    errors.push(
+      `More than one Frontend Phase is IN_PROGRESS: ${activePhases.map((item) => item.id).join(', ')}`,
+    );
+  }
+  for (const phase of phases) {
+    const children = items.filter((item) => item.type === 'SECTION' && item.parent === phase.id);
+    if (children.length === 0) continue;
+    const allChildrenComplete = children.every((child) => child.status === 'COMPLETE');
+    if (allChildrenComplete && phase.status !== 'COMPLETE') {
+      errors.push(`Phase ${phase.id} must be COMPLETE when all child Sections are COMPLETE`);
+    }
+    if (!allChildrenComplete && phase.status === 'COMPLETE') {
+      errors.push(`Phase ${phase.id} cannot be COMPLETE while a child Section is incomplete`);
+    }
+    if (
+      children.some((child) => child.status === 'IN_PROGRESS') &&
+      phase.status !== 'IN_PROGRESS'
+    ) {
+      errors.push(`Phase ${phase.id} must be IN_PROGRESS while a child Section is IN_PROGRESS`);
+    }
+    if (phase.predecessor) {
+      const predecessor = byId.get(phase.predecessor);
+      if (predecessor && predecessor.status !== 'COMPLETE' && phase.status !== 'NOT_STARTED') {
+        errors.push(
+          `Phase ${phase.id} cannot start before predecessor ${phase.predecessor} is COMPLETE`,
+        );
+      }
+    }
+  }
+  for (const section of items.filter((item) => item.type === 'SECTION')) {
+    if (section.predecessor) {
+      const predecessor = byId.get(section.predecessor);
+      if (predecessor && predecessor.status !== 'COMPLETE' && section.status !== 'NOT_STARTED') {
+        errors.push(
+          `Section ${section.id} cannot start before predecessor ${section.predecessor} is COMPLETE`,
+        );
+      }
+    }
+  }
+
   for (const [documentPath, text] of Object.entries(activeDocuments)) {
     if (invalidPhaseTwoSectionPattern.test(text)) {
       errors.push(`Invalid active Phase 2 Section reference in ${documentPath}`);
@@ -200,9 +318,6 @@ export function collectCompletionInvariantErrors(
 
   for (const item of registry.items.filter((candidate) => candidate.type === 'SECTION')) {
     const manifest = manifests[item.id];
-    const hasIncrementChildren = registry.items.some(
-      (candidate) => candidate.type === 'INCREMENT' && candidate.parent === item.id,
-    );
 
     if (item.status === 'COMPLETE') {
       if (!item.completionManifest) {
@@ -213,9 +328,9 @@ export function collectCompletionInvariantErrors(
         );
       }
       if (!item.approvedAt) errors.push(`COMPLETE Section ${item.id} has no approval date`);
-      if (hasIncrementChildren && !manifest) {
+      if (!manifest && !legacyMigratedWorkItemIds.has(item.id)) {
         errors.push(
-          `COMPLETE Section ${item.id} requires a JSON completion manifest; child increment completion is insufficient`,
+          `COMPLETE Section ${item.id} requires a JSON completion manifest; legacy evidence is not allowed for new Sections`,
         );
       }
     }
@@ -268,7 +383,17 @@ export function collectCompletionInvariantErrors(
       }
     }
 
-    for (const excluded of manifest.excludedScope) {
+    for (const remaining of manifest.remainingScope) {
+      const trackedByWorkItem = byId.has(remaining.trackingId);
+      const trackedByBacklog = /^BACKLOG-[A-Z0-9-]+$/.test(remaining.trackingId);
+      if (!trackedByWorkItem && !trackedByBacklog) {
+        errors.push(
+          `Remaining scope ${item.id}/${remaining.id} has no registered Work Item or governed Backlog ID: ${remaining.trackingId}`,
+        );
+      }
+    }
+
+    for (const excluded of manifest.excludedScope ?? []) {
       const trackedByWorkItem = byId.has(excluded.trackingId);
       const trackedByBacklog = /^BACKLOG-[A-Z0-9-]+$/.test(excluded.trackingId);
       if (!trackedByWorkItem && !trackedByBacklog) {
@@ -276,9 +401,9 @@ export function collectCompletionInvariantErrors(
           `Excluded scope ${item.id}/${excluded.id} has no registered Work Item or governed Backlog ID: ${excluded.trackingId}`,
         );
       }
-      if (excluded.scopeAmendment && !approvedAmendments.has(excluded.scopeAmendment)) {
+      if (!excluded.scopeAmendment || !approvedAmendments.has(excluded.scopeAmendment)) {
         errors.push(
-          `Excluded scope ${item.id}/${excluded.id} references an unapproved Scope Amendment: ${excluded.scopeAmendment}`,
+          `Excluded scope ${item.id}/${excluded.id} requires an approved Scope Amendment: ${excluded.scopeAmendment ?? 'none'}`,
         );
       }
     }
@@ -298,29 +423,57 @@ export function collectCompletionInvariantErrors(
     }
   }
 
-  return errors;
-}
+  for (const item of registry.items.filter((candidate) => candidate.type === 'INCREMENT')) {
+    if (item.status !== 'COMPLETE') continue;
+    if (!item.approvedAt) errors.push(`COMPLETE Increment ${item.id} has no approval date`);
+    if (!item.completionManifest) {
+      errors.push(`COMPLETE Increment ${item.id} has no completion evidence`);
+    } else if (!evidencePaths.has(item.completionManifest)) {
+      errors.push(
+        `COMPLETE Increment ${item.id} completion evidence is not owned by the Evidence Registry: ${item.completionManifest}`,
+      );
+    }
+    const parent = byId.get(item.parent ?? '');
+    if (!parent || parent.type !== 'SECTION') {
+      errors.push(`COMPLETE Increment ${item.id} has no SECTION parent`);
+    } else if (!['COMPLETE', 'IN_PROGRESS'].includes(parent.status)) {
+      errors.push(
+        `COMPLETE Increment ${item.id} has an invalid parent Section status: ${parent.status}`,
+      );
+    }
+  }
 
-function requireItem(registry: FrontendWorkItemRegistry, id: string): FrontendWorkItem {
-  const item = registry.items.find((candidate) => candidate.id === id);
-  if (!item) throw new Error(`Projection requires registered Work Item ${id}`);
-  return item;
+  return errors;
 }
 
 export function renderFrontendStatusBlock(
   registry: FrontendWorkItemRegistry,
   manifests: Record<string, FrontendCompletionManifest>,
 ): string {
-  const phase = requireItem(registry, 'FE-P2');
-  const sectionOne = requireItem(registry, 'FE-P2-S1');
-  const sectionTwo = requireItem(registry, 'FE-P2-S2');
-  const incrementOne = requireItem(registry, 'FE-P2-S2-I01');
-  const incrementTwo = requireItem(registry, 'FE-P2-S2-I02');
-  const incrementThree = requireItem(registry, 'FE-P2-S2-I03');
-  const nextSection = sectionTwo.successor
-    ? requireItem(registry, sectionTwo.successor)
-    : undefined;
-  const manifest = manifests[sectionTwo.id];
+  const byId = new Map(registry.items.map((item) => [item.id, item]));
+  const activeSection = registry.items.find(
+    (item) => item.type === 'SECTION' && item.status === 'IN_PROGRESS',
+  );
+  const phase = activeSection?.parent
+    ? byId.get(activeSection.parent)
+    : registry.items.find((item) => item.type === 'PHASE' && item.status === 'IN_PROGRESS');
+  const section =
+    activeSection ??
+    registry.items.find((item) => item.type === 'SECTION' && item.status !== 'COMPLETE');
+  if (!phase || !section) {
+    return [
+      markerStart,
+      '',
+      '> Frontend Work Item status is complete; no active Section remains.',
+      '',
+      markerEnd,
+    ].join('\n');
+  }
+  const increments = registry.items.filter(
+    (item) => item.type === 'INCREMENT' && item.parent === section.id,
+  );
+  const nextSection = section.successor ? byId.get(section.successor) : undefined;
+  const manifest = manifests[section.id];
   const openCriteria =
     manifest?.mandatoryCriteria
       .filter((criterion) => criterion.mandatory && criterion.status !== 'PASS')
@@ -329,12 +482,15 @@ export function renderFrontendStatusBlock(
 
   const rows = [
     ['Work Item', 'Status'],
-    [`Frontend Phase 2 — ${phase.title}`, `\`${phase.status}\``],
-    [`${sectionOne.id} — ${sectionOne.title}`, `\`${sectionOne.status}\``],
-    [`${sectionTwo.id} — ${sectionTwo.title}`, `\`${sectionTwo.status}\``],
-    [`${incrementOne.id} — ${incrementOne.title}`, `\`${incrementOne.status}\` / VERIFIED`],
-    [`${incrementTwo.id} — ${incrementTwo.title}`, `\`${incrementTwo.status}\` / VERIFIED`],
-    [`${incrementThree.id} — ${incrementThree.title}`, `\`${incrementThree.status}\``],
+    [`${phase.id} — ${phase.title}`, `\`${phase.status}\``],
+    [`${section.id} — ${section.title}`, `\`${section.status}\``],
+    ...increments.map(
+      (increment) =>
+        [
+          `${increment.id} — ${increment.title}`,
+          `\`${increment.status}\`${increment.status === 'COMPLETE' ? ' / VERIFIED' : ''}`,
+        ] as [string, string],
+    ),
   ];
   const firstColumnWidth = Math.max(...rows.map((row) => row[0]?.length ?? 0));
   const secondColumnWidth = Math.max(...rows.map((row) => row[1]?.length ?? 0));
@@ -356,7 +512,7 @@ export function renderFrontendStatusBlock(
     ...table,
     '',
     `- 미충족 필수 기준: \`${openCriteria}\``,
-    `- Section 2 완료 후 다음 유효 Product Section: \`${nextSection?.id ?? 'NONE'} — ${nextSection?.title ?? 'none'}\``,
+    `- Next valid Product Section: \`${nextSection?.id ?? 'NONE'} — ${nextSection?.title ?? 'none'}\``,
     '',
     markerEnd,
   ].join('\n');
@@ -427,6 +583,15 @@ function validateManifestSchemas(
   return errors;
 }
 
+function validateRegistrySchema(root: string, registry: FrontendWorkItemRegistry): string[] {
+  const schema = readJson<Record<string, unknown>>(root, registrySchemaPath);
+  const ajv = new Ajv2020({ allErrors: true, strict: true, validateFormats: false });
+  const validate = ajv.compile(schema);
+  return validate(registry)
+    ? []
+    : [`Frontend Work Item registry schema failure: ${JSON.stringify(validate.errors)}`];
+}
+
 function replaceProjectionBlock(text: string, replacement: string, target: string): string {
   const start = text.indexOf(markerStart);
   const end = text.indexOf(markerEnd);
@@ -455,6 +620,10 @@ export function runFrontendGovernanceCli(args: string[], root = process.cwd()): 
 
   if (mode === 'work-items') {
     const documents = loadDocuments(root, activeWorkItemDocuments);
+    printResult(
+      'Frontend Work Item registry schema validation',
+      validateRegistrySchema(root, registry),
+    );
     printResult(
       'Frontend Work Item registry validation',
       collectWorkItemErrors(registry, documents, pathExists),

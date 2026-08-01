@@ -10,7 +10,7 @@
     "status",
     "governingContract",
     "mandatoryCriteria",
-    "excludedScope",
+    "remainingScope",
     "scopeAmendments",
     "evidenceRegistryUpdates",
     "approvedAt"
@@ -40,6 +40,22 @@
         }
       }
     },
+    "remainingScope": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "description", "trackingId"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "description": { "type": "string", "minLength": 1 },
+          "trackingId": {
+            "type": "string",
+            "pattern": "^(FE-P[1-5]-S[1-9][0-9]*(?:-I[0-9]+)?|BACKLOG-[A-Z0-9-]+)$"
+          }
+        }
+      }
+    },
     "excludedScope": {
       "type": "array",
       "items": {
@@ -53,7 +69,7 @@
             "type": "string",
             "pattern": "^(FE-P[1-5]-S[1-9][0-9]*(?:-I[0-9]+)?|BACKLOG-[A-Z0-9-]+)$"
           },
-          "scopeAmendment": { "type": ["string", "null"] }
+          "scopeAmendment": { "type": "string", "minLength": 1 }
         }
       }
     },
@@ -62,12 +78,31 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "status", "approvedAt", "approvedBy"],
+        "required": [
+          "id",
+          "status",
+          "approvedAt",
+          "approvedBy",
+          "decisionDocument",
+          "affectedCriteria",
+          "rationale",
+          "newOwner",
+          "impactAndRollback"
+        ],
         "properties": {
           "id": { "type": "string", "minLength": 1 },
           "status": { "enum": ["PROPOSED", "APPROVED", "REJECTED"] },
           "approvedAt": { "type": ["string", "null"], "format": "date" },
-          "approvedBy": { "type": ["string", "null"] }
+          "approvedBy": { "type": ["string", "null"] },
+          "decisionDocument": { "type": "string", "minLength": 1 },
+          "affectedCriteria": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "rationale": { "type": "string", "minLength": 1 },
+          "newOwner": { "type": "string", "minLength": 1 },
+          "impactAndRollback": { "type": "string", "minLength": 1 }
         }
       }
     },

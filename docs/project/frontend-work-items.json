@@ -14,7 +14,10 @@
       "governingContract": "docs/architecture/frontend/phase-1-platform-boundary.md",
       "completionManifest": "docs/engineering/frontend-phase-1-completion-review-260730001.md",
       "approvedAt": "2026-07-30",
-      "supersedes": null
+      "supersedes": null,
+      "introducedByDecision": "frontend-canonical-roadmap-migration-260801001",
+      "decisionStatus": "MIGRATED",
+      "approvedBy": null
     },
     {
       "id": "FE-P1-S1",
@@ -27,7 +30,10 @@
       "governingContract": "docs/architecture/frontend/phase-1-platform-boundary.md",
       "completionManifest": "docs/engineering/frontend-phase-1-section-1-verification-260724001.md",
       "approvedAt": "2026-07-25",
-      "supersedes": null
+      "supersedes": null,
+      "introducedByDecision": "frontend-canonical-roadmap-migration-260801001",
+      "decisionStatus": "MIGRATED",
+      "approvedBy": null
     },
     {
       "id": "FE-P1-S2",
@@ -40,7 +46,10 @@
       "governingContract": "docs/architecture/frontend/phase-1-platform-boundary.md",
       "completionManifest": "docs/engineering/frontend-phase-1-section-2-verification-260725001.md",
       "approvedAt": "2026-07-26",
-      "supersedes": null
+      "supersedes": null,
+      "introducedByDecision": "frontend-canonical-roadmap-migration-260801001",
+      "decisionStatus": "MIGRATED",
+      "approvedBy": null
     },
     {
       "id": "FE-P1-S3",
@@ -53,7 +62,10 @@
       "governingContract": "docs/architecture/contracts/snapshots/frontend-phase-1-section-3/frontend-phase-1-section-3-contract-snapshot-260726001.md",
       "completionManifest": "docs/engineering/frontend-phase-1-section-3-final-evidence-260730001.md",
       "approvedAt": "2026-07-30",
-      "supersedes": null
+      "supersedes": null,
+      "introducedByDecision": "frontend-canonical-roadmap-migration-260801001",
+      "decisionStatus": "MIGRATED",
+      "approvedBy": null
     },
     {
       "id": "FE-P2",
@@ -66,7 +78,10 @@
       "governingContract": "docs/architecture/frontend/phase-2-knowledge-input-question.md",
       "completionManifest": null,
       "approvedAt": null,
-      "supersedes": null
+      "supersedes": null,
+      "introducedByDecision": "frontend-canonical-roadmap-migration-260801001",
+      "decisionStatus": "MIGRATED",
+      "approvedBy": null
     },
     {
       "id": "FE-P2-S1",
@@ -79,7 +94,10 @@
       "governingContract": "docs/architecture/contracts/snapshots/frontend-phase-2-section-1/frontend-phase-2-section-1-contract-snapshot-260730001.md",
       "completionManifest": "docs/engineering/frontend-phase-2-section-1-completion-record-260730001.md",
       "approvedAt": "2026-07-30",
-      "supersedes": null
+      "supersedes": null,
+      "introducedByDecision": "frontend-canonical-roadmap-migration-260801001",
+      "decisionStatus": "MIGRATED",
+      "approvedBy": null
     },
     {
       "id": "FE-P2-S2",
@@ -92,7 +110,10 @@
       "governingContract": "docs/architecture/contracts/snapshots/frontend-phase-2-section-2/frontend-phase-2-section-2-contract-snapshot-260731001.md",
       "completionManifest": "docs/project/completions/FE-P2-S2.json",
       "approvedAt": null,
-      "supersedes": null
+      "supersedes": null,
+      "introducedByDecision": "frontend-canonical-roadmap-migration-260801001",
+      "decisionStatus": "MIGRATED",
+      "approvedBy": null
     },
     {
       "id": "FE-P2-S2-I01",
@@ -105,7 +126,10 @@
       "governingContract": "docs/architecture/contracts/snapshots/frontend-phase-2-section-2/frontend-phase-2-section-2-contract-snapshot-260731001.md",
       "completionManifest": "docs/engineering/frontend-phase-2-section-2-slices-1-3-verification-260731001.md",
       "approvedAt": "2026-07-31",
-      "supersedes": null
+      "supersedes": null,
+      "introducedByDecision": "frontend-canonical-roadmap-migration-260801001",
+      "decisionStatus": "MIGRATED",
+      "approvedBy": null
     },
     {
       "id": "FE-P2-S2-I02",
@@ -118,7 +142,10 @@
       "governingContract": "docs/architecture/contracts/snapshots/frontend-phase-2-section-2/frontend-phase-2-section-2-slices-4-5-frozen-implementation-contract-260801001.md",
       "completionManifest": "docs/implementation/frontend-phase-2-section-2-slices-4-5-verification-and-completion-record-260801001.md",
       "approvedAt": "2026-08-01",
-      "supersedes": null
+      "supersedes": null,
+      "introducedByDecision": "frontend-canonical-roadmap-migration-260801001",
+      "decisionStatus": "MIGRATED",
+      "approvedBy": null
     },
     {
       "id": "FE-P2-S2-I03",
@@ -131,7 +158,10 @@
       "governingContract": "docs/architecture/contracts/snapshots/frontend-phase-2-section-2/frontend-phase-2-section-2-contract-snapshot-260731001.md",
       "completionManifest": null,
       "approvedAt": null,
-      "supersedes": null
+      "supersedes": null,
+      "introducedByDecision": "frontend-canonical-roadmap-migration-260801001",
+      "decisionStatus": "MIGRATED",
+      "approvedBy": null
     },
     {
       "id": "FE-P3",
@@ -144,7 +174,10 @@
       "governingContract": "docs/architecture/frontend/phase-3-knowledge-understanding-editing.md",
       "completionManifest": null,
       "approvedAt": null,
-      "supersedes": null
+      "supersedes": null,
+      "introducedByDecision": "frontend-canonical-roadmap-migration-260801001",
+      "decisionStatus": "MIGRATED",
+      "approvedBy": null
     },
     {
       "id": "FE-P3-S1",
@@ -157,7 +190,10 @@
       "governingContract": "docs/architecture/frontend/phase-3-knowledge-understanding-editing.md",
       "completionManifest": null,
       "approvedAt": null,
-      "supersedes": null
+      "supersedes": null,
+      "introducedByDecision": "frontend-canonical-roadmap-migration-260801001",
+      "decisionStatus": "MIGRATED",
+      "approvedBy": null
     },
     {
       "id": "FE-P3-S2",
@@ -170,7 +206,10 @@
       "governingContract": "docs/architecture/frontend/phase-3-knowledge-understanding-editing.md",
       "completionManifest": null,
       "approvedAt": null,
-      "supersedes": null
+      "supersedes": null,
+      "introducedByDecision": "frontend-canonical-roadmap-migration-260801001",
+      "decisionStatus": "MIGRATED",
+      "approvedBy": null
     },
     {
       "id": "FE-P3-S3",
@@ -183,7 +222,10 @@
       "governingContract": "docs/architecture/frontend/phase-3-knowledge-understanding-editing.md",
       "completionManifest": null,
       "approvedAt": null,
-      "supersedes": null
+      "supersedes": null,
+      "introducedByDecision": "frontend-canonical-roadmap-migration-260801001",
+      "decisionStatus": "MIGRATED",
+      "approvedBy": null
     },
     {
       "id": "FE-P4",
@@ -196,7 +238,10 @@
       "governingContract": "docs/architecture/frontend/phase-4-governance-execution.md",
       "completionManifest": null,
       "approvedAt": null,
-      "supersedes": null
+      "supersedes": null,
+      "introducedByDecision": "frontend-canonical-roadmap-migration-260801001",
+      "decisionStatus": "MIGRATED",
+      "approvedBy": null
     },
     {
       "id": "FE-P4-S1",
@@ -209,7 +254,10 @@
       "governingContract": "docs/architecture/frontend/phase-4-governance-execution.md",
       "completionManifest": null,
       "approvedAt": null,
-      "supersedes": null
+      "supersedes": null,
+      "introducedByDecision": "frontend-canonical-roadmap-migration-260801001",
+      "decisionStatus": "MIGRATED",
+      "approvedBy": null
     },
     {
       "id": "FE-P4-S2",
@@ -222,7 +270,10 @@
       "governingContract": "docs/architecture/frontend/phase-4-governance-execution.md",
       "completionManifest": null,
       "approvedAt": null,
-      "supersedes": null
+      "supersedes": null,
+      "introducedByDecision": "frontend-canonical-roadmap-migration-260801001",
+      "decisionStatus": "MIGRATED",
+      "approvedBy": null
     },
     {
       "id": "FE-P5",
@@ -235,7 +286,10 @@
       "governingContract": "docs/architecture/frontend/phase-5-operations-audit.md",
       "completionManifest": null,
       "approvedAt": null,
-      "supersedes": null
+      "supersedes": null,
+      "introducedByDecision": "frontend-canonical-roadmap-migration-260801001",
+      "decisionStatus": "MIGRATED",
+      "approvedBy": null
     },
     {
       "id": "FE-P5-S1",
@@ -248,7 +302,10 @@
       "governingContract": "docs/architecture/frontend/phase-5-operations-audit.md",
       "completionManifest": null,
       "approvedAt": null,
-      "supersedes": null
+      "supersedes": null,
+      "introducedByDecision": "frontend-canonical-roadmap-migration-260801001",
+      "decisionStatus": "MIGRATED",
+      "approvedBy": null
     },
     {
       "id": "FE-P5-S2",
@@ -261,7 +318,10 @@
       "governingContract": "docs/architecture/frontend/phase-5-operations-audit.md",
       "completionManifest": null,
       "approvedAt": null,
-      "supersedes": null
+      "supersedes": null,
+      "introducedByDecision": "frontend-canonical-roadmap-migration-260801001",
+      "decisionStatus": "MIGRATED",
+      "approvedBy": null
     }
   ]
 }

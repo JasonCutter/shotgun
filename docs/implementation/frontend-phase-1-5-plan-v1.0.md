@@ -55,15 +55,14 @@ Knowledge Flow의 6개 Phase와 Frontend Phase 0~5는 대체 관계가 아니다
 
 | Work Item                                                      | Status                |
 | -------------------------------------------------------------- | --------------------- |
-| Frontend Phase 2 — Knowledge Input and Question                | `IN_PROGRESS`         |
-| FE-P2-S1 — Sources Workspace                                   | `COMPLETE`            |
+| FE-P2 — Knowledge Input and Question                           | `IN_PROGRESS`         |
 | FE-P2-S2 — Ask and Conversations Workspace                     | `IN_PROGRESS`         |
 | FE-P2-S2-I01 — Read Foundation                                 | `COMPLETE` / VERIFIED |
 | FE-P2-S2-I02 — Command and Persistence                         | `COMPLETE` / VERIFIED |
 | FE-P2-S2-I03 — Answer Execution and Remaining Section Contract | `NOT_STARTED`         |
 
 - 미충족 필수 기준: `answerExecution, failureAndRetry, finalSectionVerification`
-- Section 2 완료 후 다음 유효 Product Section: `FE-P3-S1 — Knowledge Workspace`
+- Next valid Product Section: `FE-P3-S1 — Knowledge Workspace`
 
 <!-- FRONTEND-WORK-ITEM-STATUS:END -->
 

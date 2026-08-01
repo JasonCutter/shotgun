@@ -49,24 +49,21 @@
       "scopeAmendment": null
     }
   ],
-  "excludedScope": [
+  "remainingScope": [
     {
       "id": "answer-execution",
       "description": "External AI execution, streaming and partial-event recovery",
-      "trackingId": "FE-P2-S2-I03",
-      "scopeAmendment": null
+      "trackingId": "FE-P2-S2-I03"
     },
     {
       "id": "failure-retry",
       "description": "Cancel, domain retry and final failure/recovery verification",
-      "trackingId": "FE-P2-S2-I03",
-      "scopeAmendment": null
+      "trackingId": "FE-P2-S2-I03"
     },
     {
       "id": "export-feedback-transition",
       "description": "Export, feedback and approved knowledge transition seeds",
-      "trackingId": "FE-P2-S2-I03",
-      "scopeAmendment": null
+      "trackingId": "FE-P2-S2-I03"
     }
   ],
   "scopeAmendments": [],

@@ -15,6 +15,9 @@ function registryFixture(): FrontendWorkItemRegistry {
     completionManifest: null,
     approvedAt: null,
     supersedes: null,
+    introducedByDecision: 'migration',
+    decisionStatus: 'MIGRATED' as const,
+    approvedBy: null,
   };
   return {
     schemaVersion: 1,
@@ -132,12 +135,11 @@ function manifestFixture(): FrontendCompletionManifest {
         scopeAmendment: null,
       },
     ],
-    excludedScope: [
+    remainingScope: [
       {
         id: 'answer-execution',
         description: 'Answer execution',
         trackingId: 'FE-P2-S2-I03',
-        scopeAmendment: null,
       },
     ],
     scopeAmendments: [],
@@ -210,19 +212,21 @@ describe('Frontend Work Item governance', () => {
 
   it('does not allow completed child increments alone to complete a parent Section', () => {
     const registry = registryFixture();
-    const section = registry.items.find((item) => item.id === 'FE-P2-S2');
-    if (section) {
-      section.status = 'COMPLETE';
-      section.completionManifest = 'narrow-slice-evidence.md';
-      section.approvedAt = '2026-08-01';
-    }
+    registry.items.push({
+      ...registry.items.find((item) => item.id === 'FE-P2-S2')!,
+      id: 'FE-P2-S3',
+      title: 'Unapproved Section',
+      status: 'COMPLETE',
+      completionManifest: 'narrow-slice-evidence.md',
+      approvedAt: '2026-08-01',
+    });
     const errors = collectCompletionInvariantErrors(registry, {}, evidence, exists);
-    expect(errors.join('\n')).toContain('child increment completion is insufficient');
+    expect(errors.join('\n')).toContain('legacy evidence is not allowed for new Sections');
   });
 
   it('rejects excluded scope without a registered Work Item or governed Backlog ID', () => {
     const manifest = manifestFixture();
-    manifest.excludedScope[0]!.trackingId = 'later';
+    manifest.remainingScope[0]!.trackingId = 'later';
     const errors = collectCompletionInvariantErrors(
       registryFixture(),
       { 'FE-P2-S2': manifest },
@@ -273,6 +277,75 @@ describe('Frontend Work Item governance', () => {
     ]!.replace('`IN_PROGRESS`', '`COMPLETE`');
     expect(collectProjectionErrors(registry, manifests, documents).join('\n')).toContain(
       'Frontend status projection drift',
+    );
+  });
+
+  it('renders the active phase, section and increments from the registry', () => {
+    const registry = registryFixture();
+    const block = renderFrontendStatusBlock(registry, { 'FE-P2-S2': manifestFixture() });
+    expect(block).toContain('FE-P2 — Knowledge Input and Question');
+    expect(block).toContain('FE-P2-S2 — Ask and Conversations Workspace');
+    expect(block).toContain('FE-P2-S2-I03 — Answer Execution');
+    expect(block).not.toContain('Frontend Phase 2 —');
+  });
+
+  it('rejects a phase status that contradicts its child sections', () => {
+    const registry = registryFixture();
+    const phase = registry.items.find((item) => item.id === 'FE-P2');
+    if (phase) phase.status = 'COMPLETE';
+    expect(collectWorkItemErrors(registry, {}, exists).join('\n')).toContain(
+      'cannot be COMPLETE while a child Section is incomplete',
+    );
+  });
+
+  it('rejects a new migrated Work Item without an accepted decision', () => {
+    const registry = registryFixture();
+    registry.items.push({
+      ...registry.items[0]!,
+      id: 'FE-P2-S3',
+      type: 'SECTION',
+      title: 'Unapproved Section',
+      parent: 'FE-P2',
+      predecessor: 'FE-P2-S2',
+      successor: null,
+      status: 'NOT_STARTED',
+    });
+    expect(collectWorkItemErrors(registry, {}, exists).join('\n')).toContain(
+      'cannot use MIGRATED decision status',
+    );
+  });
+
+  it('rejects excluded scope without an approved amendment', () => {
+    const manifest = manifestFixture();
+    manifest.excludedScope = [
+      {
+        id: 'deferred',
+        description: 'Deferred scope',
+        trackingId: 'FE-P2-S2-I03',
+        scopeAmendment: 'AMEND-1',
+      },
+    ];
+    const errors = collectCompletionInvariantErrors(
+      registryFixture(),
+      { 'FE-P2-S2': manifest },
+      evidence,
+      exists,
+    );
+    expect(errors.join('\n')).toContain('requires an approved Scope Amendment');
+  });
+
+  it('requires completion evidence and approval for complete increments', () => {
+    const registry = registryFixture();
+    const increment = registry.items.find((item) => item.id === 'FE-P2-S2-I01');
+    if (increment) {
+      increment.status = 'COMPLETE';
+      increment.approvedAt = null;
+      increment.completionManifest = null;
+    }
+    const errors = collectCompletionInvariantErrors(registry, {}, evidence, exists);
+    expect(errors.join('\n')).toContain('COMPLETE Increment FE-P2-S2-I01 has no approval date');
+    expect(errors.join('\n')).toContain(
+      'COMPLETE Increment FE-P2-S2-I01 has no completion evidence',
     );
   });
 });

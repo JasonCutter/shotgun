@@ -37,7 +37,7 @@ An Increment can be `COMPLETE` while its parent Section remains `IN_PROGRESS`. C
 
 Omitted or excluded contract scope must reference a registered Work Item or governed Backlog identifier. It cannot be silently moved to “later” or treated as complete.
 
-Removing, deferring, splitting, or changing a mandatory Section criterion requires an approved Scope Amendment that records affected criteria, rationale, successor ownership, migration and rollback impact, and approval metadata. A proposed or missing amendment has no completion effect.
+Remaining Section scope is recorded as `remainingScope` and cannot be treated as excluded completion scope. Removing, deferring, splitting, or changing a mandatory Section criterion requires an approved Scope Amendment that records the decision document, affected criteria, rationale, successor ownership, migration and rollback impact, and approval metadata. `excludedScope` is reserved for entries with that approved amendment; a proposed or missing amendment has no completion effect.
 
 ### 4. Projection ownership
 
@@ -69,7 +69,7 @@ npm run docs:completion-invariants
 npm run docs:frontend-projections:check
 ```
 
-The gates validate registration, reciprocal ordering, one active Section, completion-manifest invariants, excluded-scope ownership, Evidence Registry updates, and generated projection drift. Regression tests preserve each failure mode.
+The gates validate the registry schema and decision status, ID/type and parent relationships, reciprocal ordering, one active Phase and Section, phase/section status derivation, completion-manifest invariants, remaining/excluded-scope ownership, Increment Evidence Registry updates, and generated projection drift. Existing official roadmap items are marked by the closed `frontend-canonical-roadmap-migration-260801001` migration decision. Only those migrated items may use the legacy Markdown completion-evidence path; every newly introduced completed Section requires a JSON Completion Manifest. Regression tests preserve each failure mode.
 
 ## OSS integration decision
 

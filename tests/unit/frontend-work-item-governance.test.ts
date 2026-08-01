@@ -315,6 +315,25 @@ describe('Frontend Work Item governance', () => {
     );
   });
 
+  it('rejects a decision status that does not match the introducing document', () => {
+    const errors = collectWorkItemErrors(
+      registryFixture(),
+      {},
+      exists,
+      () => 'Decision status: ACCEPTED',
+    );
+    expect(errors.join('\n')).toContain('decision status does not match');
+  });
+
+  it('rejects cycles in the Work Item graph', () => {
+    const registry = registryFixture();
+    const section = registry.items.find((item) => item.id === 'FE-P3-S1');
+    if (section) section.successor = 'FE-P3-S1';
+    expect(collectWorkItemErrors(registry, {}, exists).join('\n')).toContain(
+      'Section graph contains a cycle',
+    );
+  });
+
   it('rejects excluded scope without an approved amendment', () => {
     const manifest = manifestFixture();
     manifest.excludedScope = [
@@ -332,6 +351,59 @@ describe('Frontend Work Item governance', () => {
       exists,
     );
     expect(errors.join('\n')).toContain('requires an approved Scope Amendment');
+  });
+
+  it('rejects Scope Amendment references that do not match the manifest', () => {
+    const manifest = manifestFixture();
+    manifest.excludedScope = [
+      {
+        id: 'deferred',
+        description: 'Deferred scope',
+        trackingId: 'FE-P2-S2-I03',
+        scopeAmendment: 'AMEND-1',
+      },
+    ];
+    manifest.scopeAmendments = [
+      {
+        id: 'AMEND-1',
+        status: 'APPROVED',
+        approvedAt: '2026-08-01',
+        approvedBy: 'user',
+        decisionDocument: 'amend.md',
+        affectedCriteria: ['missingCriterion'],
+        rationale: 'Split the scope',
+        newOwner: 'FE-P2-S2-I03',
+        impactAndRollback: 'Reassign and revert',
+        affectedScopeIds: ['other-scope'],
+      },
+    ];
+    const errors = collectCompletionInvariantErrors(
+      registryFixture(),
+      { 'FE-P2-S2': manifest },
+      evidence,
+      exists,
+    );
+    expect(errors.join('\n')).toContain('references unknown Criterion');
+    expect(errors.join('\n')).toContain('is not listed in Scope Amendment');
+  });
+
+  it('rejects completed Sections with unresolved remaining scope', () => {
+    const registry = registryFixture();
+    const section = registry.items.find((item) => item.id === 'FE-P2-S2');
+    if (section) {
+      section.status = 'COMPLETE';
+      section.approvedAt = '2026-08-01';
+    }
+    const manifest = manifestFixture();
+    manifest.status = 'COMPLETE';
+    manifest.approvedAt = '2026-08-01';
+    const errors = collectCompletionInvariantErrors(
+      registry,
+      { 'FE-P2-S2': manifest },
+      evidence,
+      exists,
+    );
+    expect(errors.join('\n')).toContain('has unresolved remainingScope');
   });
 
   it('requires completion evidence and approval for complete increments', () => {

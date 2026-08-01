@@ -67,6 +67,7 @@ export type FrontendCompletionManifest = {
     rationale: string;
     newOwner: string;
     impactAndRollback: string;
+    affectedScopeIds: string[];
   }>;
   evidenceRegistryUpdates: string[];
   approvedAt: string | null;
@@ -144,6 +145,7 @@ export function collectWorkItemErrors(
   registry: FrontendWorkItemRegistry,
   activeDocuments: Record<string, string> = {},
   pathExists: (relativePath: string) => boolean = () => true,
+  readText: (relativePath: string) => string | undefined = () => undefined,
 ): string[] {
   const errors: string[] = [];
   const items = Array.isArray(registry.items) ? registry.items : [];
@@ -173,6 +175,26 @@ export function collectWorkItemErrors(
     }
     if (!candidate.introducedByDecision) {
       errors.push(`Work Item ${candidate.id} has no introducing decision`);
+    }
+    if (!pathExists(candidate.introducedByDecision)) {
+      errors.push(
+        `Introducing decision does not exist for ${candidate.id}: ${candidate.introducedByDecision}`,
+      );
+    } else {
+      const decisionText = readText(candidate.introducedByDecision);
+      if (decisionText !== undefined) {
+        const expectedDecisionPattern =
+          candidate.decisionStatus === 'MIGRATED'
+            ? /Decision status:\s*(?:\*\*)?MIGRATED\b/i
+            : candidate.decisionStatus === 'ACCEPTED'
+              ? /(?:Decision status:\s*(?:\*\*)?ACCEPTED\b|Status:\s*\*\*Accepted\*\*)/i
+              : /(?:Decision status:\s*(?:\*\*)?CANDIDATE\b|Status:\s*\*\*(?:Proposed|Candidate))/i;
+        if (!expectedDecisionPattern.test(decisionText)) {
+          errors.push(
+            `Work Item ${candidate.id} decision status does not match ${candidate.introducedByDecision}`,
+          );
+        }
+      }
     }
     if (candidate.decisionStatus === 'MIGRATED' && !legacyMigratedWorkItemIds.has(candidate.id)) {
       errors.push(`New Work Item ${candidate.id} cannot use MIGRATED decision status`);
@@ -230,11 +252,86 @@ export function collectWorkItemErrors(
     }
     if (item.successor) {
       const successor = byId.get(item.successor);
+      if (successor && successor.type !== item.type) {
+        errors.push(`Successor type mismatch: ${item.id} points to ${item.successor}`);
+      }
       if (successor && successor.predecessor !== item.id) {
         errors.push(
           `Successor/predecessor mismatch: ${item.id} points to ${item.successor}, but reciprocal predecessor is ${String(successor.predecessor)}`,
         );
       }
+    }
+  }
+
+  const phases = items.filter((item) => item.type === 'PHASE');
+  const validateLinearGraph = (graphItems: FrontendWorkItem[], label: string): void => {
+    const graphIds = new Set(graphItems.map((item) => item.id));
+    const starts = graphItems.filter(
+      (item) => !item.predecessor || !graphIds.has(item.predecessor),
+    );
+    const ends = graphItems.filter((item) => !item.successor || !graphIds.has(item.successor));
+    if (graphItems.length > 0 && starts.length !== 1) {
+      errors.push(`${label} graph must have exactly one start; found ${starts.length}`);
+    }
+    if (graphItems.length > 0 && ends.length !== 1) {
+      errors.push(`${label} graph must have exactly one end; found ${ends.length}`);
+    }
+    for (const item of graphItems) {
+      const visited = new Set<string>();
+      let current: FrontendWorkItem | undefined = item;
+      while (current?.successor) {
+        if (visited.has(current.id)) {
+          errors.push(`${label} graph contains a cycle at ${current.id}`);
+          break;
+        }
+        visited.add(current.id);
+        if (!graphIds.has(current.successor)) break;
+        current = byId.get(current.successor);
+      }
+    }
+    if (starts.length === 1) {
+      const reached = new Set<string>();
+      let current: FrontendWorkItem | undefined = starts[0];
+      while (current) {
+        if (reached.has(current.id)) break;
+        reached.add(current.id);
+        current = current.successor ? byId.get(current.successor) : undefined;
+      }
+      for (const item of graphItems) {
+        if (!reached.has(item.id))
+          errors.push(`${label} graph has unreachable Work Item: ${item.id}`);
+      }
+    }
+  };
+
+  validateLinearGraph(phases, 'Phase');
+  validateLinearGraph(
+    items.filter((item) => item.type === 'SECTION'),
+    'Section',
+  );
+  for (const phase of phases) {
+    const sections = items.filter((item) => item.type === 'SECTION' && item.parent === phase.id);
+    validateLinearGraph(sections, `Section group ${phase.id}`);
+  }
+  for (const section of items.filter((item) => item.type === 'SECTION')) {
+    const increments = items.filter(
+      (item) => item.type === 'INCREMENT' && item.parent === section.id,
+    );
+    if (increments.length > 0) validateLinearGraph(increments, `Increment group ${section.id}`);
+  }
+
+  for (const section of items.filter((item) => item.type === 'SECTION')) {
+    const phaseId = /^FE-P[1-5]-S/.exec(section.id)?.[0]?.replace(/-S$/, '');
+    if (phaseId && section.parent !== phaseId) {
+      errors.push(`Section ${section.id} parent does not match its Phase ID: ${section.parent}`);
+    }
+  }
+  for (const increment of items.filter((item) => item.type === 'INCREMENT')) {
+    const sectionId = increment.id.match(/^FE-P[1-5]-S[1-9][0-9]*/)?.[0];
+    if (sectionId && increment.parent !== sectionId) {
+      errors.push(
+        `Increment ${increment.id} parent does not match its Section ID: ${increment.parent}`,
+      );
     }
   }
 
@@ -247,7 +344,6 @@ export function collectWorkItemErrors(
     );
   }
 
-  const phases = items.filter((item) => item.type === 'PHASE');
   const activePhases = phases.filter((item) => item.status === 'IN_PROGRESS');
   if (activePhases.length > 1) {
     errors.push(
@@ -310,6 +406,7 @@ export function collectCompletionInvariantErrors(
   manifests: Record<string, FrontendCompletionManifest>,
   evidenceRecords: EvidenceRecord[],
   pathExists: (relativePath: string) => boolean = () => true,
+  readText: (relativePath: string) => string | undefined = () => undefined,
 ): string[] {
   const errors: string[] = [];
   const byId = new Map(registry.items.map((item) => [item.id, item]));
@@ -354,6 +451,9 @@ export function collectCompletionInvariantErrors(
       );
     }
 
+    const amendmentById = new Map(
+      manifest.scopeAmendments.map((amendment) => [amendment.id, amendment]),
+    );
     const approvedAmendments = new Set(
       manifest.scopeAmendments
         .filter(
@@ -362,6 +462,54 @@ export function collectCompletionInvariantErrors(
         )
         .map((amendment) => amendment.id),
     );
+    const criterionIds = new Set(manifest.mandatoryCriteria.map((criterion) => criterion.id));
+    const remainingIds = new Set(manifest.remainingScope.map((scope) => scope.id));
+    const excludedIds = new Set((manifest.excludedScope ?? []).map((scope) => scope.id));
+    const allScopeIds = [...criterionIds, ...remainingIds, ...excludedIds];
+    if (new Set(allScopeIds).size !== allScopeIds.length) {
+      errors.push(`Completion manifest ${item.id} reuses a Criterion or scope ID`);
+    }
+    const remainingTrackingIds = new Set(manifest.remainingScope.map((scope) => scope.trackingId));
+    for (const excluded of manifest.excludedScope ?? []) {
+      if (remainingTrackingIds.has(excluded.trackingId)) {
+        errors.push(
+          `Completion manifest ${item.id} tracks the same scope in remainingScope and excludedScope: ${excluded.trackingId}`,
+        );
+      }
+    }
+
+    const usedAmendments = new Set<string>();
+    for (const amendment of manifest.scopeAmendments) {
+      if (!pathExists(amendment.decisionDocument)) {
+        errors.push(
+          `Scope Amendment ${item.id}/${amendment.id} decision document does not exist: ${amendment.decisionDocument}`,
+        );
+      } else if (amendment.status === 'APPROVED') {
+        const decisionText = readText(amendment.decisionDocument);
+        if (
+          decisionText !== undefined &&
+          !/(?:Decision status:\s*(?:\*\*)?APPROVED\b|Status:\s*\*\*Accepted\*\*)/i.test(
+            decisionText,
+          )
+        ) {
+          errors.push(
+            `Scope Amendment ${item.id}/${amendment.id} is APPROVED but its decision document is not approved`,
+          );
+        }
+      }
+      for (const criterionId of amendment.affectedCriteria) {
+        if (!criterionIds.has(criterionId)) {
+          errors.push(
+            `Scope Amendment ${item.id}/${amendment.id} references unknown Criterion: ${criterionId}`,
+          );
+        }
+      }
+      if (!byId.has(amendment.newOwner) && !/^BACKLOG-[A-Z0-9-]+$/.test(amendment.newOwner)) {
+        errors.push(
+          `Scope Amendment ${item.id}/${amendment.id} has no registered new owner or governed Backlog ID: ${amendment.newOwner}`,
+        );
+      }
+    }
 
     for (const criterion of manifest.mandatoryCriteria) {
       for (const evidencePath of criterion.evidence) {
@@ -405,7 +553,27 @@ export function collectCompletionInvariantErrors(
         errors.push(
           `Excluded scope ${item.id}/${excluded.id} requires an approved Scope Amendment: ${excluded.scopeAmendment ?? 'none'}`,
         );
+      } else {
+        usedAmendments.add(excluded.scopeAmendment);
+        const amendment = amendmentById.get(excluded.scopeAmendment);
+        if (amendment && !amendment.affectedScopeIds.includes(excluded.id)) {
+          errors.push(
+            `Excluded scope ${item.id}/${excluded.id} is not listed in Scope Amendment ${excluded.scopeAmendment}`,
+          );
+        }
       }
+    }
+
+    for (const criterion of manifest.mandatoryCriteria) {
+      if (criterion.scopeAmendment) usedAmendments.add(criterion.scopeAmendment);
+    }
+    for (const amendment of manifest.scopeAmendments) {
+      if (amendment.status === 'APPROVED' && !usedAmendments.has(amendment.id)) {
+        errors.push(`Scope Amendment ${item.id}/${amendment.id} is approved but unused`);
+      }
+    }
+    if (item.status === 'COMPLETE' && manifest.remainingScope.length > 0) {
+      errors.push(`COMPLETE Section ${item.id} has unresolved remainingScope`);
     }
 
     if (manifest.evidenceRegistryUpdates.length === 0) {
@@ -617,6 +785,8 @@ export function runFrontendGovernanceCli(args: string[], root = process.cwd()): 
   const registry = readJson<FrontendWorkItemRegistry>(root, registryPath);
   const manifests = loadManifests(root);
   const pathExists = (relativePath: string): boolean => existsSync(path.join(root, relativePath));
+  const readText = (relativePath: string): string | undefined =>
+    pathExists(relativePath) ? readFileSync(path.join(root, relativePath), 'utf8') : undefined;
 
   if (mode === 'work-items') {
     const documents = loadDocuments(root, activeWorkItemDocuments);
@@ -626,7 +796,7 @@ export function runFrontendGovernanceCli(args: string[], root = process.cwd()): 
     );
     printResult(
       'Frontend Work Item registry validation',
-      collectWorkItemErrors(registry, documents, pathExists),
+      collectWorkItemErrors(registry, documents, pathExists, readText),
     );
     return;
   }
@@ -639,7 +809,7 @@ export function runFrontendGovernanceCli(args: string[], root = process.cwd()): 
     );
     printResult(
       'Frontend completion invariants',
-      collectCompletionInvariantErrors(registry, manifests, evidence.records, pathExists),
+      collectCompletionInvariantErrors(registry, manifests, evidence.records, pathExists, readText),
     );
     return;
   }

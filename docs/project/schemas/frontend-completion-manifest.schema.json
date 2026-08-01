@@ -87,7 +87,8 @@
           "affectedCriteria",
           "rationale",
           "newOwner",
-          "impactAndRollback"
+          "impactAndRollback",
+          "affectedScopeIds"
         ],
         "properties": {
           "id": { "type": "string", "minLength": 1 },
@@ -102,7 +103,12 @@
           },
           "rationale": { "type": "string", "minLength": 1 },
           "newOwner": { "type": "string", "minLength": 1 },
-          "impactAndRollback": { "type": "string", "minLength": 1 }
+          "impactAndRollback": { "type": "string", "minLength": 1 },
+          "affectedScopeIds": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "minLength": 1 }
+          }
         }
       }
     },

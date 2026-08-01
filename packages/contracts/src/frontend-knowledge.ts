@@ -19,6 +19,7 @@ export type KnowledgeKind =
 
 export type KnowledgeTemporalState = 'CURRENT' | 'PAST' | 'FUTURE' | 'CONFLICT';
 export type KnowledgeProjectionStatus = 'READY' | 'STALE' | 'DEGRADED' | 'NOT_BUILT';
+export type KnowledgeProjectionKind = 'CANONICAL_SEARCH' | 'COMPILED_TRUTH';
 export type KnowledgeSearchMatchAuthority = 'CANONICAL' | 'PROJECTION';
 export type KnowledgeSearchMatchType = 'FULL_TEXT' | 'TRIGRAM' | 'SUBSTRING';
 export type KnowledgeDifferenceKind = 'ADDED' | 'REMOVED' | 'CHANGED';
@@ -70,6 +71,7 @@ export type KnowledgeCompareRequest = {
 };
 
 export type KnowledgeProjectionStatusView = {
+  readonly projectionKind: KnowledgeProjectionKind;
   readonly status: KnowledgeProjectionStatus;
   readonly canonicalVersion: number;
   readonly projectedCanonicalVersion: number;
@@ -100,9 +102,9 @@ export type KnowledgeEvidenceReturnTarget = {
   readonly resourceId: string;
   readonly resourceRevision: string;
   readonly focusId: string;
+  readonly sourceId: string;
   readonly sourceVersionId: string;
   readonly evidenceId: string;
-  readonly sourceId?: string;
 };
 
 export type KnowledgeItemView = {
@@ -151,6 +153,8 @@ export type KnowledgeWorkspaceView = {
   readonly principalId: string;
   readonly sessionId: string;
   readonly projectId: string;
+  readonly accessRevision: string;
+  readonly policyContextRevision: string;
   readonly pages: readonly KnowledgePageSummaryView[];
   readonly projection: KnowledgeProjectionStatusView;
   readonly capabilities: readonly KnowledgeReadCapability[];
@@ -160,6 +164,8 @@ export type KnowledgeWorkspaceView = {
 export type KnowledgePageListView = {
   readonly schemaVersion: typeof KNOWLEDGE_WORKSPACE_SCHEMA_VERSION;
   readonly projectId: string;
+  readonly accessRevision: string;
+  readonly policyContextRevision: string;
   readonly pages: readonly KnowledgePageSummaryView[];
   readonly nextCursor?: string;
   readonly projection: KnowledgeProjectionStatusView;
@@ -180,6 +186,8 @@ export type KnowledgeSearchMatchView = {
 export type KnowledgeSearchResultView = {
   readonly schemaVersion: typeof KNOWLEDGE_WORKSPACE_SCHEMA_VERSION;
   readonly projectId: string;
+  readonly accessRevision: string;
+  readonly policyContextRevision: string;
   readonly query: string;
   readonly matches: readonly KnowledgeSearchMatchView[];
   readonly nextCursor?: string;
@@ -191,6 +199,8 @@ export type KnowledgeDetailView = {
   readonly schemaVersion: typeof KNOWLEDGE_WORKSPACE_SCHEMA_VERSION;
   readonly resourceId: string;
   readonly revision: string;
+  readonly accessRevision: string;
+  readonly policyContextRevision: string;
   readonly focusId?: string;
   readonly page: KnowledgePageView;
   readonly fetchedAt: string;
@@ -207,6 +217,8 @@ export type KnowledgeCompareDifferenceView = {
 export type KnowledgeCompareView = {
   readonly schemaVersion: typeof KNOWLEDGE_WORKSPACE_SCHEMA_VERSION;
   readonly projectId: string;
+  readonly accessRevision: string;
+  readonly policyContextRevision: string;
   readonly left: KnowledgePageView;
   readonly right: KnowledgePageView;
   readonly differences: readonly KnowledgeCompareDifferenceView[];
@@ -414,6 +426,10 @@ const projectionStatusValues: readonly KnowledgeProjectionStatus[] = [
   'DEGRADED',
   'NOT_BUILT',
 ];
+const projectionKindValues: readonly KnowledgeProjectionKind[] = [
+  'CANONICAL_SEARCH',
+  'COMPILED_TRUTH',
+];
 const capabilityValues: readonly KnowledgeReadCapability[] = [
   'READ',
   'SEARCH',
@@ -580,6 +596,7 @@ export const decodeKnowledgeProjectionStatusView = (
   const input = strictObject(
     value,
     [
+      'projectionKind',
       'status',
       'canonicalVersion',
       'projectedCanonicalVersion',
@@ -589,6 +606,12 @@ export const decodeKnowledgeProjectionStatusView = (
       'updatedAt',
     ],
     path,
+  );
+  const projectionKind = enumValue(
+    input.projectionKind,
+    `${path}.projectionKind`,
+    projectionKindValues,
+    'KnowledgeProjectionKind',
   );
   const status = enumValue(
     input.status,
@@ -605,6 +628,9 @@ export const decodeKnowledgeProjectionStatusView = (
   if (projectedCanonicalVersion > canonicalVersion) {
     fail(`${path}.projectedCanonicalVersion cannot exceed canonicalVersion.`);
   }
+  if (lag !== canonicalVersion - projectedCanonicalVersion) {
+    fail(`${path}.lag must equal canonicalVersion - projectedCanonicalVersion.`);
+  }
   if (status === 'READY' && (lag !== 0 || projectedCanonicalVersion !== canonicalVersion)) {
     fail(`${path}.READY must have zero lag and equal canonical/projected versions.`);
   }
@@ -616,9 +642,16 @@ export const decodeKnowledgeProjectionStatusView = (
   if (status === 'READY' && reason !== undefined) {
     fail(`${path}.READY must not carry a degradation or staleness reason.`);
   }
+  if (status !== 'READY' && reason === undefined) {
+    fail(`${path}.${status} requires a safe reason.`);
+  }
+  if (status === 'NOT_BUILT' && projectionRevision !== undefined) {
+    fail(`${path}.NOT_BUILT must not carry a fabricated projectionRevision.`);
+  }
   const updatedAt =
     input.updatedAt === undefined ? undefined : timestamp(input.updatedAt, `${path}.updatedAt`);
   return {
+    projectionKind,
     status,
     canonicalVersion,
     projectedCanonicalVersion,
@@ -703,14 +736,14 @@ export const decodeKnowledgeEvidenceReturnTarget = (
     ['resourceId', 'resourceRevision', 'focusId', 'sourceVersionId', 'evidenceId', 'sourceId'],
     path,
   );
-  const sourceId = optionalId(input.sourceId, `${path}.sourceId`);
+  const sourceId = idString(input.sourceId, `${path}.sourceId`);
   return {
     resourceId: idString(input.resourceId, `${path}.resourceId`),
     resourceRevision: idString(input.resourceRevision, `${path}.resourceRevision`),
     focusId: idString(input.focusId, `${path}.focusId`),
     sourceVersionId: idString(input.sourceVersionId, `${path}.sourceVersionId`),
     evidenceId: idString(input.evidenceId, `${path}.evidenceId`),
-    ...(sourceId === undefined ? {} : { sourceId }),
+    sourceId,
   };
 };
 
@@ -765,12 +798,26 @@ export const decodeKnowledgeItemView = (value: unknown, path = 'item'): Knowledg
     if (lineage.canonicalResourceId === undefined) {
       fail(`${path}.CANONICAL item requires canonicalResourceId lineage.`);
     }
-    if (lineage.projection !== undefined) {
-      fail(`${path}.CANONICAL item must not carry Compiled Truth projection lineage.`);
+  }
+  if (
+    (authority === 'CANONICAL' || authority === 'APPROVED_KNOWLEDGE') &&
+    lineage.projection !== undefined
+  ) {
+    fail(`${path}.${authority} item must not carry projection lineage.`);
+  }
+  if (authority === 'COMPILED_TRUTH') {
+    if (lineage.projectionId === undefined) {
+      fail(`${path}.COMPILED_TRUTH item requires stable projectionId and readiness lineage.`);
+    }
+    const compiledProjection =
+      lineage.projection ??
+      fail(`${path}.COMPILED_TRUTH item requires stable projectionId and readiness lineage.`);
+    if (compiledProjection.projectionKind !== 'COMPILED_TRUTH') {
+      fail(`${path}.COMPILED_TRUTH item requires COMPILED_TRUTH projection kind.`);
     }
   }
-  if (authority === 'COMPILED_TRUTH' && lineage.projection === undefined) {
-    fail(`${path}.COMPILED_TRUTH item requires projection readiness lineage.`);
+  if (authority === 'DERIVED_INFERENCE' && lineage.projectionId === undefined) {
+    fail(`${path}.DERIVED_INFERENCE item requires a source projection identifier.`);
   }
   if (authority === 'DERIVED_INFERENCE' && !['KNOWLEDGE_GAP', 'DERIVED_INFERENCE'].includes(kind)) {
     fail(`${path}.DERIVED_INFERENCE item must use a derived knowledge kind.`);
@@ -920,6 +967,8 @@ export const decodeKnowledgeWorkspaceView = (
       'principalId',
       'sessionId',
       'projectId',
+      'accessRevision',
+      'policyContextRevision',
       'pages',
       'projection',
       'capabilities',
@@ -929,6 +978,11 @@ export const decodeKnowledgeWorkspaceView = (
   );
   schema(input, path);
   const projectId = idString(input.projectId, `${path}.projectId`);
+  const accessRevision = idString(input.accessRevision, `${path}.accessRevision`);
+  const policyContextRevision = idString(
+    input.policyContextRevision,
+    `${path}.policyContextRevision`,
+  );
   const pages = array(input.pages, `${path}.pages`, (page, index) => {
     const decoded = decodeKnowledgePageSummaryView(page, `${path}.pages[${index}]`);
     if (decoded.projectId !== projectId) {
@@ -941,6 +995,8 @@ export const decodeKnowledgeWorkspaceView = (
     principalId: idString(input.principalId, `${path}.principalId`),
     sessionId: idString(input.sessionId, `${path}.sessionId`),
     projectId,
+    accessRevision,
+    policyContextRevision,
     pages,
     projection: decodeKnowledgeProjectionStatusView(input.projection, `${path}.projection`),
     capabilities: decodeCapabilities(input.capabilities, `${path}.capabilities`),
@@ -954,11 +1010,25 @@ export const decodeKnowledgePageListView = (
 ): KnowledgePageListView => {
   const input = strictObject(
     value,
-    ['schemaVersion', 'projectId', 'pages', 'nextCursor', 'projection', 'fetchedAt'],
+    [
+      'schemaVersion',
+      'projectId',
+      'accessRevision',
+      'policyContextRevision',
+      'pages',
+      'nextCursor',
+      'projection',
+      'fetchedAt',
+    ],
     path,
   );
   schema(input, path);
   const projectId = idString(input.projectId, `${path}.projectId`);
+  const accessRevision = idString(input.accessRevision, `${path}.accessRevision`);
+  const policyContextRevision = idString(
+    input.policyContextRevision,
+    `${path}.policyContextRevision`,
+  );
   const pages = array(input.pages, `${path}.pages`, (page, index) => {
     const decoded = decodeKnowledgePageSummaryView(page, `${path}.pages[${index}]`);
     if (decoded.projectId !== projectId) {
@@ -970,6 +1040,8 @@ export const decodeKnowledgePageListView = (
   return {
     schemaVersion: KNOWLEDGE_WORKSPACE_SCHEMA_VERSION,
     projectId,
+    accessRevision,
+    policyContextRevision,
     pages,
     ...(nextCursor === undefined ? {} : { nextCursor }),
     projection: decodeKnowledgeProjectionStatusView(input.projection, `${path}.projection`),
@@ -1001,6 +1073,20 @@ export const decodeKnowledgeSearchMatchView = (
   if (item.projectId !== projectId || item.resourceId !== resourceId) {
     fail(`${path}.item must match the search match project and resource.`);
   }
+  const matchAuthority = enumValue(
+    input.matchAuthority,
+    `${path}.matchAuthority`,
+    ['CANONICAL', 'PROJECTION'],
+    'KnowledgeSearchMatchAuthority',
+  );
+  if (
+    (matchAuthority === 'CANONICAL' &&
+      !['CANONICAL', 'APPROVED_KNOWLEDGE'].includes(item.authority)) ||
+    (matchAuthority === 'PROJECTION' &&
+      !['COMPILED_TRUTH', 'DERIVED_INFERENCE'].includes(item.authority))
+  ) {
+    fail(`${path}.matchAuthority must agree with item.authority.`);
+  }
   const snippet = optionalText(input.snippet, `${path}.snippet`, 0, 4000);
   return {
     matchId: idString(input.matchId, `${path}.matchId`),
@@ -1008,12 +1094,7 @@ export const decodeKnowledgeSearchMatchView = (
     resourceId,
     item,
     score: finiteScore(input.score, `${path}.score`),
-    matchAuthority: enumValue(
-      input.matchAuthority,
-      `${path}.matchAuthority`,
-      ['CANONICAL', 'PROJECTION'],
-      'KnowledgeSearchMatchAuthority',
-    ),
+    matchAuthority,
     matchType: enumValue(
       input.matchType,
       `${path}.matchType`,
@@ -1030,11 +1111,26 @@ export const decodeKnowledgeSearchResultView = (
 ): KnowledgeSearchResultView => {
   const input = strictObject(
     value,
-    ['schemaVersion', 'projectId', 'query', 'matches', 'nextCursor', 'projection', 'fetchedAt'],
+    [
+      'schemaVersion',
+      'projectId',
+      'accessRevision',
+      'policyContextRevision',
+      'query',
+      'matches',
+      'nextCursor',
+      'projection',
+      'fetchedAt',
+    ],
     path,
   );
   schema(input, path);
   const projectId = idString(input.projectId, `${path}.projectId`);
+  const accessRevision = idString(input.accessRevision, `${path}.accessRevision`);
+  const policyContextRevision = idString(
+    input.policyContextRevision,
+    `${path}.policyContextRevision`,
+  );
   const matches = array(input.matches, `${path}.matches`, (match, index) => {
     const decoded = decodeKnowledgeSearchMatchView(match, `${path}.matches[${index}]`);
     if (decoded.projectId !== projectId) {
@@ -1046,6 +1142,8 @@ export const decodeKnowledgeSearchResultView = (
   return {
     schemaVersion: KNOWLEDGE_WORKSPACE_SCHEMA_VERSION,
     projectId,
+    accessRevision,
+    policyContextRevision,
     query: text(input.query, `${path}.query`, 1, 1000),
     matches,
     ...(nextCursor === undefined ? {} : { nextCursor }),
@@ -1057,12 +1155,26 @@ export const decodeKnowledgeSearchResultView = (
 export const decodeKnowledgeDetailView = (value: unknown, path = 'detail'): KnowledgeDetailView => {
   const input = strictObject(
     value,
-    ['schemaVersion', 'resourceId', 'revision', 'focusId', 'page', 'fetchedAt'],
+    [
+      'schemaVersion',
+      'resourceId',
+      'revision',
+      'accessRevision',
+      'policyContextRevision',
+      'focusId',
+      'page',
+      'fetchedAt',
+    ],
     path,
   );
   schema(input, path);
   const resourceId = idString(input.resourceId, `${path}.resourceId`);
   const revision = idString(input.revision, `${path}.revision`);
+  const accessRevision = idString(input.accessRevision, `${path}.accessRevision`);
+  const policyContextRevision = idString(
+    input.policyContextRevision,
+    `${path}.policyContextRevision`,
+  );
   const focusId = optionalId(input.focusId, `${path}.focusId`);
   const page = decodeKnowledgePageView(input.page, `${path}.page`);
   if (page.resourceId !== resourceId || page.revision !== revision) {
@@ -1075,6 +1187,8 @@ export const decodeKnowledgeDetailView = (value: unknown, path = 'detail'): Know
     schemaVersion: KNOWLEDGE_WORKSPACE_SCHEMA_VERSION,
     resourceId,
     revision,
+    accessRevision,
+    policyContextRevision,
     ...(focusId === undefined ? {} : { focusId }),
     page,
     fetchedAt: timestamp(input.fetchedAt, `${path}.fetchedAt`),
@@ -1128,6 +1242,8 @@ export const decodeKnowledgeCompareView = (
     [
       'schemaVersion',
       'projectId',
+      'accessRevision',
+      'policyContextRevision',
       'left',
       'right',
       'differences',
@@ -1139,6 +1255,11 @@ export const decodeKnowledgeCompareView = (
   );
   schema(input, path);
   const projectId = idString(input.projectId, `${path}.projectId`);
+  const accessRevision = idString(input.accessRevision, `${path}.accessRevision`);
+  const policyContextRevision = idString(
+    input.policyContextRevision,
+    `${path}.policyContextRevision`,
+  );
   const left = decodeKnowledgePageView(input.left, `${path}.left`);
   const right = decodeKnowledgePageView(input.right, `${path}.right`);
   if (left.projectId !== projectId || right.projectId !== projectId) {
@@ -1150,6 +1271,8 @@ export const decodeKnowledgeCompareView = (
   return {
     schemaVersion: KNOWLEDGE_WORKSPACE_SCHEMA_VERSION,
     projectId,
+    accessRevision,
+    policyContextRevision,
     left,
     right,
     differences: array(input.differences, `${path}.differences`, (difference, index) =>

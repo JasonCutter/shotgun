@@ -22,6 +22,7 @@ import {
 const now = '2026-08-02T08:00:00.000Z';
 
 const readyProjection = {
+  projectionKind: 'COMPILED_TRUTH' as const,
   status: 'READY' as const,
   canonicalVersion: 7,
   projectedCanonicalVersion: 7,
@@ -31,12 +32,18 @@ const readyProjection = {
 };
 
 const staleProjection = {
+  projectionKind: 'COMPILED_TRUTH' as const,
   status: 'STALE' as const,
   canonicalVersion: 7,
   projectedCanonicalVersion: 6,
   lag: 1,
   reason: 'Projection is one canonical revision behind.',
   updatedAt: now,
+};
+
+const canonicalSearchProjection = {
+  ...readyProjection,
+  projectionKind: 'CANONICAL_SEARCH' as const,
 };
 
 const canonicalItem = {
@@ -143,7 +150,7 @@ const pageOne = {
     resourceRevision: 'resource-revision-1',
     canonicalVersion: 7,
   },
-  projection: readyProjection,
+  projection: canonicalSearchProjection,
   capabilities: ['READ', 'EVIDENCE_NAVIGATION'] as const,
   fetchedAt: now,
 };
@@ -177,7 +184,7 @@ const pageOneSummary = {
   title: 'Canonical Knowledge Page',
   primaryAuthority: 'CANONICAL' as const,
   primaryKind: 'CLAIM' as const,
-  projection: readyProjection,
+  projection: canonicalSearchProjection,
 };
 
 describe('Frontend Knowledge Product contracts', () => {
@@ -271,6 +278,8 @@ describe('Frontend Knowledge Product contracts', () => {
       principalId: 'principal-1',
       sessionId: 'session-1',
       projectId: 'project-1',
+      accessRevision: 'access-revision-1',
+      policyContextRevision: 'policy-revision-1',
       pages: [pageOneSummary],
       projection: readyProjection,
       capabilities: ['READ', 'SEARCH', 'FILTER'] as const,
@@ -279,6 +288,8 @@ describe('Frontend Knowledge Product contracts', () => {
     const pageList = {
       schemaVersion: KNOWLEDGE_WORKSPACE_SCHEMA_VERSION,
       projectId: 'project-1',
+      accessRevision: 'access-revision-1',
+      policyContextRevision: 'policy-revision-1',
       pages: [pageOneSummary],
       nextCursor: 'cursor-2',
       projection: readyProjection,
@@ -287,6 +298,8 @@ describe('Frontend Knowledge Product contracts', () => {
     const searchResult = {
       schemaVersion: KNOWLEDGE_WORKSPACE_SCHEMA_VERSION,
       projectId: 'project-1',
+      accessRevision: 'access-revision-1',
+      policyContextRevision: 'policy-revision-1',
       query: 'canonical',
       matches: [
         {
@@ -307,6 +320,8 @@ describe('Frontend Knowledge Product contracts', () => {
       schemaVersion: KNOWLEDGE_WORKSPACE_SCHEMA_VERSION,
       resourceId: 'resource-2',
       revision: 'resource-revision-2',
+      accessRevision: 'access-revision-1',
+      policyContextRevision: 'policy-revision-1',
       focusId: 'item-compiled-1',
       page: pageTwo,
       fetchedAt: now,
@@ -314,6 +329,8 @@ describe('Frontend Knowledge Product contracts', () => {
     const compare = {
       schemaVersion: KNOWLEDGE_WORKSPACE_SCHEMA_VERSION,
       projectId: 'project-1',
+      accessRevision: 'access-revision-1',
+      policyContextRevision: 'policy-revision-1',
       left: pageOne,
       right: pageTwo,
       differences: [
@@ -336,6 +353,28 @@ describe('Frontend Knowledge Product contracts', () => {
     expect(decodeKnowledgePageView(pageTwo)).toEqual(pageTwo);
     expect(decodeKnowledgeDetailView(detail)).toEqual(detail);
     expect(decodeKnowledgeCompareView(compare)).toEqual(compare);
+    expect(() =>
+      decodeKnowledgeSearchResultView({
+        ...searchResult,
+        matches: [{ ...searchResult.matches[0], matchAuthority: 'CANONICAL' }],
+      }),
+    ).toThrow(FrontendContractError);
+    expect(() =>
+      decodeKnowledgeSearchResultView({
+        ...searchResult,
+        matches: [
+          {
+            matchId: 'match-canonical-as-projection',
+            projectId: 'project-1',
+            resourceId: 'resource-1',
+            item: canonicalItem,
+            score: 0.8,
+            matchAuthority: 'PROJECTION',
+            matchType: 'FULL_TEXT',
+          },
+        ],
+      }),
+    ).toThrow(FrontendContractError);
   });
 
   it('keeps projection readiness states authoritative and rejects contradictory READY metadata', () => {
@@ -343,6 +382,7 @@ describe('Frontend Knowledge Product contracts', () => {
     expect(decodeKnowledgeProjectionStatusView(staleProjection)).toEqual(staleProjection);
     expect(
       decodeKnowledgeProjectionStatusView({
+        projectionKind: 'COMPILED_TRUTH',
         status: 'DEGRADED',
         canonicalVersion: 7,
         projectedCanonicalVersion: 6,
@@ -363,6 +403,33 @@ describe('Frontend Knowledge Product contracts', () => {
         status: 'STALE',
       }),
     ).toThrow(FrontendContractError);
+    expect(() =>
+      decodeKnowledgeProjectionStatusView({
+        ...readyProjection,
+        projectedCanonicalVersion: 6,
+        lag: 0,
+        status: 'STALE',
+        reason: 'stale projection',
+      }),
+    ).toThrow(FrontendContractError);
+    expect(() =>
+      decodeKnowledgeProjectionStatusView({
+        ...readyProjection,
+        status: 'DEGRADED',
+        projectedCanonicalVersion: 6,
+        lag: 1,
+        reason: undefined,
+      }),
+    ).toThrow(FrontendContractError);
+    expect(() =>
+      decodeKnowledgeProjectionStatusView({
+        ...readyProjection,
+        status: 'NOT_BUILT',
+        projectedCanonicalVersion: 0,
+        lag: 7,
+        reason: 'Projection has not been built.',
+      }),
+    ).toThrow(FrontendContractError);
   });
 
   it('rejects unknown fields, authority confusion, identity mismatch, unsafe Evidence, and compare writes', () => {
@@ -376,6 +443,33 @@ describe('Frontend Knowledge Product contracts', () => {
       decodeKnowledgeItemView({
         ...compiledItem,
         authority: 'CANONICAL',
+      }),
+    ).toThrow(FrontendContractError);
+    expect(() =>
+      decodeKnowledgeItemView({
+        ...approvedItem,
+        lineage: { ...approvedItem.lineage, projection: readyProjection },
+      }),
+    ).toThrow(FrontendContractError);
+    expect(() =>
+      decodeKnowledgeItemView({
+        ...compiledItem,
+        lineage: {
+          ...compiledItem.lineage,
+          projection: { ...readyProjection, projectionKind: 'CANONICAL_SEARCH' },
+        },
+      }),
+    ).toThrow(FrontendContractError);
+    expect(() =>
+      decodeKnowledgeItemView({
+        ...compiledItem,
+        lineage: { ...compiledItem.lineage, projectionId: undefined },
+      }),
+    ).toThrow(FrontendContractError);
+    expect(() =>
+      decodeKnowledgeItemView({
+        ...derivedItem,
+        lineage: { ...derivedItem.lineage, projectionId: undefined },
       }),
     ).toThrow(FrontendContractError);
     expect(() =>
@@ -416,6 +510,8 @@ describe('Frontend Knowledge Product contracts', () => {
         ...{
           schemaVersion: KNOWLEDGE_WORKSPACE_SCHEMA_VERSION,
           projectId: 'project-1',
+          accessRevision: 'access-revision-1',
+          policyContextRevision: 'policy-revision-1',
           left: pageOne,
           right: pageTwo,
           differences: [],
@@ -442,6 +538,8 @@ describe('Frontend Knowledge Product contracts', () => {
       decodeKnowledgeCompareView({
         schemaVersion: KNOWLEDGE_WORKSPACE_SCHEMA_VERSION,
         projectId: 'project-1',
+        accessRevision: 'access-revision-1',
+        policyContextRevision: 'policy-revision-1',
         left: pageOne,
         right: pageOne,
         differences: [

@@ -83,6 +83,25 @@ type EvidenceRecord = {
   approvedAt?: string;
 };
 
+function validateLegacyCompletionApproval(
+  item: FrontendWorkItem,
+  evidence: EvidenceRecord | undefined,
+  errors: string[],
+): void {
+  if (!evidence?.approvedBy) {
+    errors.push(`Legacy completion Evidence Registry record for ${item.id} has no approver`);
+  }
+  if (!evidence?.approvedAt) {
+    errors.push(`Legacy completion Evidence Registry record for ${item.id} has no approval date`);
+  }
+  if (item.approvedBy !== null && item.approvedBy !== evidence?.approvedBy) {
+    errors.push(`Legacy completion approval metadata drift for ${item.id}: approvedBy`);
+  }
+  if (item.approvedAt !== null && item.approvedAt !== evidence?.approvedAt) {
+    errors.push(`Legacy completion approval metadata drift for ${item.id}: approvedAt`);
+  }
+}
+
 const registryPath = 'docs/project/frontend-work-items.json';
 const registrySchemaPath = 'docs/project/schemas/frontend-work-item-registry.schema.json';
 const schemaPath = 'docs/project/schemas/frontend-completion-manifest.schema.json';
@@ -487,8 +506,12 @@ export function collectCompletionInvariantErrors(
     const completionEvidence = item.completionManifest
       ? evidenceByPath.get(item.completionManifest)
       : undefined;
-    const completionApprovedBy = item.approvedBy ?? completionEvidence?.approvedBy ?? null;
-    const completionApprovedAt = item.approvedAt ?? completionEvidence?.approvedAt ?? null;
+    const completionApprovedBy = manifest
+      ? item.approvedBy ?? completionEvidence?.approvedBy ?? null
+      : completionEvidence?.approvedBy ?? null;
+    const completionApprovedAt = manifest
+      ? item.approvedAt ?? completionEvidence?.approvedAt ?? null
+      : completionEvidence?.approvedAt ?? null;
 
     if (item.status === 'COMPLETE') {
       if (!item.completionManifest) {
@@ -498,6 +521,7 @@ export function collectCompletionInvariantErrors(
           `COMPLETE Section ${item.id} completion status lacks an Evidence Registry update for ${item.completionManifest}`,
         );
       }
+      if (!manifest) validateLegacyCompletionApproval(item, completionEvidence, errors);
       if (!completionApprovedBy) errors.push(`COMPLETE Section ${item.id} has no completion approver`);
       if (!completionApprovedAt) errors.push(`COMPLETE Section ${item.id} has no approval date`);
       if (!manifest && !legacyCompletionEvidenceSectionIds.has(item.id)) {
@@ -729,8 +753,9 @@ export function collectCompletionInvariantErrors(
     const completionEvidence = item.completionManifest
       ? evidenceByPath.get(item.completionManifest)
       : undefined;
-    const completionApprovedBy = item.approvedBy ?? completionEvidence?.approvedBy ?? null;
-    const completionApprovedAt = item.approvedAt ?? completionEvidence?.approvedAt ?? null;
+    const completionApprovedBy = completionEvidence?.approvedBy ?? null;
+    const completionApprovedAt = completionEvidence?.approvedAt ?? null;
+    validateLegacyCompletionApproval(item, completionEvidence, errors);
     if (!completionApprovedBy) errors.push(`COMPLETE Increment ${item.id} has no completion approver`);
     if (!completionApprovedAt) errors.push(`COMPLETE Increment ${item.id} has no approval date`);
     if (!item.completionManifest) {

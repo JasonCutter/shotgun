@@ -152,7 +152,7 @@ function manifestFixture(): FrontendCompletionManifest {
 }
 
 const evidence = [
-  { id: 'S1', path: 's1-evidence.md' },
+  { id: 'S1', path: 's1-evidence.md', approvedBy: 'user', approvedAt: '2026-07-30' },
   { id: 'RECONCILIATION', path: 'reconciliation.md' },
 ];
 const exists = () => true;
@@ -737,5 +737,25 @@ describe('Frontend Work Item governance', () => {
     expect(errors.join('\n')).toContain(
       'COMPLETE Increment FE-P2-S2-I01 has no completion evidence',
     );
+  });
+
+  it('rejects legacy completion approval metadata drift from the Evidence Registry', () => {
+    const registry = registryFixture();
+    const section = registry.items.find((item) => item.id === 'FE-P2-S1');
+    if (section) section.approvedBy = 'different-user';
+    const errors = collectCompletionInvariantErrors(registry, {}, evidence, exists);
+    expect(errors).toContain('Legacy completion approval metadata drift for FE-P2-S1: approvedBy');
+  });
+
+  it('requires legacy completion Evidence Registry approval metadata', () => {
+    const registry = registryFixture();
+    const errors = collectCompletionInvariantErrors(
+      registry,
+      {},
+      [{ id: 'S1', path: 's1-evidence.md' }, ...evidence.filter((record) => record.id !== 'S1')],
+      exists,
+    );
+    expect(errors).toContain('Legacy completion Evidence Registry record for FE-P2-S1 has no approver');
+    expect(errors).toContain('Legacy completion Evidence Registry record for FE-P2-S1 has no approval date');
   });
 });

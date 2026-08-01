@@ -32,25 +32,26 @@ Persistent Knowledge Adapter.
 
 ## Verification results
 
-| Check                          | Result                       | Evidence                                                                                                                   |
-| ------------------------------ | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `npm.cmd run typecheck`        | PASS                         | TypeScript completed with no errors.                                                                                       |
-| `npm.cmd run lint`             | PASS                         | Repository lint completed with no errors.                                                                                  |
-| QX-P0 targeted contract test   | PASS                         | 6 tests passed in `tests/contract/knowledge-workspace-query.contract.test.ts`.                                             |
-| Stage 7/10 targeted regression | PASS                         | cited-search and compiled-truth tests passed; 15 tests total.                                                              |
-| `npm.cmd run test:contract`    | PASS                         | 28 test files and 221 tests passed.                                                                                        |
-| `npm.cmd run docs:adr-index`   | PASS                         | ADR registry evaluated through ADR-125.                                                                                    |
-| `npm.cmd run docs:validate`    | PASS                         | Links, Canonical, ADR, drift and Frontend governance passed.                                                               |
-| Frontend governance gates      | PASS                         | work-items, completion-invariants and projections passed.                                                                  |
-| Changed-file Prettier check    | PASS                         | All QX-P0, ADR, schema and mapping files passed.                                                                           |
-| `git diff --check`             | PASS                         | No whitespace errors.                                                                                                      |
-| `npm.cmd run format:check`     | FAIL / pre-existing baseline | The repository reports 58 pre-existing style-mismatch files. None is a QX-P0 file; no unrelated baseline file was changed. |
+| Check                                       | Result                       | Evidence                                                                                                                   |
+| ------------------------------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `npm.cmd run typecheck`                     | PASS                         | TypeScript completed with no errors.                                                                                       |
+| `npm.cmd run lint`                          | PASS                         | Repository lint completed with no errors.                                                                                  |
+| QX-P0 targeted contract test                | PASS                         | 6 tests passed in `tests/contract/knowledge-workspace-query.contract.test.ts`.                                             |
+| Stage 7/10 targeted regression              | PASS                         | cited-search and compiled-truth tests passed; 15 tests total.                                                              |
+| `npm.cmd run test:contract`                 | PASS                         | 28 test files and 221 tests passed.                                                                                        |
+| `npm.cmd run docs:adr-index`                | PASS                         | ADR registry evaluated through ADR-125.                                                                                    |
+| `npm.cmd run docs:validate`                 | PASS                         | Links, Canonical, ADR, drift and Frontend governance passed.                                                               |
+| Frontend governance gates                   | PASS                         | work-items, completion-invariants and projections passed.                                                                  |
+| Changed-file Prettier check                 | PASS                         | All QX-P0, ADR, schema and mapping files passed.                                                                           |
+| `git diff --check`                          | PASS                         | No whitespace errors.                                                                                                      |
+| `npm.cmd run format:check`                  | FAIL / pre-existing baseline | The repository reports 58 pre-existing style-mismatch files. None is a QX-P0 file; no unrelated baseline file was changed. |
+| Exact-head GitHub Actions run `30719800431` | PASS                         | Head `f6cc531e294700c47e0ac3902b905f6c7dd781f4`; Quality, Frontend, Required Gates and Database all passed.                |
 
 The preceding mapping head `9541d3250ddc06b15347c71c2e11b93126e9d52e8` also has
 remote CI #380 / run `30718661870` with Quality, Frontend, Required Gates and
-Database passing. That remote result is evidence for the mapping head, not a
-substitute for a new exact-head CI run for
-`a185ad5bd7d8e2119ecff1a0d707a44c011a3800`.
+Database passing. The new exact-head run `30719800431` now independently passes
+on evidence head `f6cc531e294700c47e0ac3902b905f6c7dd781f4`, while the QX-P0
+implementation subject remains `a185ad5bd7d8e2119ecff1a0d707a44c011a3800`.
 
 ## OSS and rollback
 
@@ -72,6 +73,6 @@ unauthorized:
 - A3 Product API, Client, Cache and `/knowledge` UI;
 - PR Ready, Merge, Section completion and deployment.
 
-The next evidence gate is a new exact-head remote CI run after this branch is
-published. Handler implementation requires a later explicit approval after the
+The next gate is side-panel review of the QX-P0 evidence and the proposed
+ADR-125. Handler implementation requires a later explicit approval after the
 proposed ADR-125 and contract freeze are reviewed and accepted.

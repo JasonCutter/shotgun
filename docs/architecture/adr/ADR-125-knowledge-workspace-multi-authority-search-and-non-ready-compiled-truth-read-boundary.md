@@ -1,10 +1,10 @@
 # ADR-125 — Knowledge Workspace Multi-Authority Search and Non-Ready Compiled Truth Read Boundary
 
-- Status: **Proposed**
+- Status: **Accepted**
 - Proposal date: 2026-08-02
-- Decision date: pending user approval
-- Approved by: pending
-- Scope: FE-P3-S1 QX-P0 domain Query contract freeze only
+- Decision date: 2026-08-02
+- Approved by: ChatGPT side-panel review `4835947919`
+- Scope: FE-P3-S1 QX-P0 contract freeze and bounded QX-02 Stage 10 read handler
 - Related ADRs: ADR-087, ADR-090, ADR-106, ADR-121
 
 ## Context
@@ -18,9 +18,10 @@ non-READY projections.
 
 The FE-P3-S1 Product read contract needs a bounded domain boundary for four
 authorities and for non-READY Compiled Truth visibility. The boundary must be
-fixed before a Persistent Adapter or Product API can be implemented. QX-P0 is a
-contract-first step; it does not authorize a handler, repository, schema,
-adapter, API, browser or database change.
+fixed before a Persistent Adapter or Product API can be implemented. QX-P0 was a
+contract-first step. The accepted decision authorizes only the bounded QX-02
+Stage 10 read handler described below; it does not authorize QX-01, a
+Persistent Adapter or a Product API.
 
 ## Decision — QX-P0 contract freeze
 
@@ -125,7 +126,7 @@ QX-P0 freezes the following repository-owned artifacts:
   `packages/contracts/src/knowledge-workspace-query.ts`;
 - input/output JSON Schemas in `packages/contracts/schemas/`;
 - contract, negative and compatibility tests; and
-- this proposed ADR plus the global ADR registry and Frontend ADR index entry.
+- this accepted ADR plus the global ADR registry and Frontend ADR index entry.
 
 The decoder rejects unknown fields, browser authority fields, invalid
 authority/source discriminants, fabricated lineage, cross-Project nested
@@ -135,7 +136,8 @@ forbidden status/projection pairs.
 
 ## Not authorized by this proposal
 
-- Stage 7 or Stage 10 handler implementation;
+- QX-01 Stage 7 handler implementation or any Stage 10 handler outside the
+  QX-02 boundary in this ADR;
 - a Persistent Knowledge Adapter or repository/schema/table change;
 - local ranking, Product-result storage or direct SQL/repository access;
 - new index, event fan-out, migration or runtime dependency;
@@ -160,7 +162,9 @@ Query contracts remain available and are not rewritten by the rollback.
 
 ## Approval boundary
 
-This record is a **PROPOSED** ADR candidate. The side-panel review authorized
-QX-P0 contract freeze only. User acceptance is required before ADR-125 becomes
-an Accepted architecture decision and before QX-01 or QX-02 handlers are
-implemented.
+This record is an **ACCEPTED** ADR. Side-panel review `4835947919` accepted the
+decision for implementation and authorized only the QX-02 Stage 10 handler:
+`GetCompiledTruthReadSnapshot@1.0.0`, including its existing status, context,
+access and approved sensitivity filtering boundaries. QX-01 remains HOLD;
+Persistent Adapter, A3 API/Client/Cache, `/knowledge` UI, Ready, Merge and
+deployment remain unauthorized.

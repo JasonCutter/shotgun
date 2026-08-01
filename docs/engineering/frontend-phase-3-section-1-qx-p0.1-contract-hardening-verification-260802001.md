@@ -1,10 +1,10 @@
 ---
 id: FRONTEND-PHASE-3-SECTION-1-QX-P0-1-CONTRACT-HARDENING-VERIFICATION-260802001
 classification: ARCHITECTURE_VERIFICATION
-status: PASS_WITH_LIMITS
+status: PASS
 work_item: FE-P3-S1
 slice: QX-P0.1
-authorization: SIDE_PANEL_REVIEW_4835871087
+authorization: SIDE_PANEL_REVIEW_4835947919
 subject_commit: d1485630d781cb5a372a3ac0c1ca22d5cc495b88
 base_commit: cb2513bc311891ac89f53c7d67d6a401da65a2a8
 branch: codex/frontend-phase-3-section-1-knowledge-workspace
@@ -37,7 +37,9 @@ client, cache, UI, database or deployment change.
   Compiled Truth and Derived Inference, including Compiled Truth version,
   source digest and logical projection digest equality.
 - The JSON Schema, strict decoder, ADR-125 and negative contract coverage were
-  updated together. ADR-125 remains **Proposed** pending user acceptance.
+  updated together. ADR-125 is now **Accepted** by side-panel review
+  `4835947919`; that review separately authorized only the bounded QX-02 Stage 10
+  handler.
 
 ## Verification results
 
@@ -67,13 +69,14 @@ Query contracts remain unchanged.
 
 ## Current limits and next gate
 
-QX-P0.1 verification is complete with limits. The following remain held or
+QX-P0.1 verification is **PASS**. The following remain held or
 unauthorized:
 
-- QX-01 and QX-02 handler implementation;
+- QX-01 Stage 7 handler implementation;
 - Persistent Knowledge Adapter and Query parity fixture;
 - A3 Product API, Client, Cache and `/knowledge` UI;
-- ADR-125 acceptance, PR Ready transition, Merge, FE-P3-S1 completion and deployment.
+- PR Ready transition, Merge, FE-P3-S1 completion and deployment.
 
-The next gate is side-panel review of this QX-P0.1 result. No handler or Product
-implementation is started until a later explicit authorization is received.
+QX-02 Stage 10 handler implementation is authorized under the accepted ADR and
+is tracked by a separate verification record. No Product implementation is
+authorized by this record.

@@ -38,7 +38,7 @@ Frontend and Human Interaction Architecture의 횡단 ADR을 식별한다. 이 �
 | ADR-122 | Sources Workspace Intake, Duplicate, URL and Lifecycle Boundary                       | Accepted / Product implementation merged                    | Git ADR; no Legacy Notion owner        |
 | ADR-123 | Ask Command, Conversation Persistence and Outcome Recovery Boundary                   | Accepted / Increment implementation merged                  | Git ADR; no Legacy Notion owner        |
 | ADR-124 | Frontend Work Item Identity, Scope Amendment, and Completion Authority Boundary       | Accepted / Governance boundary adopted 2026-08-01           | Git ADR; no Legacy Notion owner        |
-| ADR-125 | Knowledge Workspace Multi-Authority Search and Non-Ready Compiled Truth Read Boundary | Proposed / QX-P0 contract freeze only                       | Git ADR; no Legacy Notion owner        |
+| ADR-125 | Knowledge Workspace Multi-Authority Search and Non-Ready Compiled Truth Read Boundary | Accepted 2026-08-02 / QX-02 Stage 10 handler authorized; QX-01 held | Git ADR; no Legacy Notion owner        |
 
 ADR-117과 ADR-120은 Frontend 기능 ADR이 아니라 Project 전체 문서 Canonical 운영을 지배한다. ADR-124는 Frontend Work Item과 완료 권위의 Accepted 경계를 정의한다.
 

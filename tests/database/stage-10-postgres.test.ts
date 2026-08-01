@@ -2,10 +2,15 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
 import { PostgresCompiledTruthRepository } from '../../adapters/postgres-stage10/src/index.js';
+import { createCompiledTruthModule } from '../../modules/compiled-truth/src/index.js';
 import type {
+  CanonicalSnapshot,
   CompiledTruthProjection,
   DerivedInferenceCandidate,
+  QueryResultEnvelope,
 } from '../../packages/contracts/src/index.js';
+import { createQuery } from '../../packages/kernel/src/index.js';
+import type { DispatchQueryInput, HandlerContext } from '../../packages/module-sdk/src/index.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
@@ -90,5 +95,58 @@ describe.runIf(pool)('Stage 10 PostgreSQL projection persistence', () => {
       suppressedFingerprints: [inference.fingerprint],
     });
     expect(await restarted.listInferences('project-stage10')).toEqual([inference]);
+  });
+
+  it('serves the persisted projection through the Stage 10 read snapshot handler', async () => {
+    const repository = new PostgresCompiledTruthRepository(pool!);
+    await repository.synchronize(projection('FULL_REBUILD'));
+    const canonical: CanonicalSnapshot = {
+      snapshotId: 'snapshot-stage10',
+      projectId: 'project-stage10',
+      version: 3,
+      digest: projection('FULL_REBUILD').sourceSnapshotDigest,
+      claims: [],
+      createdAt: '2026-07-17T10:00:00.000Z',
+    };
+    const module = createCompiledTruthModule(repository);
+    const handler = module.handlers.queries.find(
+      (candidate) => candidate.messageType === 'GetCompiledTruthReadSnapshot',
+    );
+    expect(handler).toBeDefined();
+    const context: HandlerContext = {
+      moduleId: module.manifest.id,
+      attemptNumber: 1,
+      publish: async () => undefined,
+      query: async <TPayload, TResult>(input: DispatchQueryInput<TPayload>) => {
+        const payload =
+          input.messageType === 'GetCanonicalSnapshot'
+            ? canonical
+            : input.messageType === 'ListKnowledgeGroups'
+              ? { items: [] }
+              : undefined;
+        if (payload === undefined) throw new Error(`Unexpected query ${input.messageType}`);
+        return { payload } as QueryResultEnvelope<TResult>;
+      },
+    };
+    const query = createQuery({
+      messageType: 'GetCompiledTruthReadSnapshot',
+      schemaVersion: '1.0.0',
+      producerModule: 'stage10-database-test',
+      producerVersion: '1.0.0',
+      projectId: 'project-stage10',
+      actor: { type: 'user', id: 'owner-stage10' },
+      security: {
+        accessScope: ['owner'],
+        sensitivity: 'private',
+        dataClassification: 'personal',
+      },
+      payload: { schemaVersion: '1.0.0' },
+    });
+    const result = await handler!.handle(query, context);
+    expect(result).toMatchObject({
+      projectId: 'project-stage10',
+      status: { status: 'READY', projectedCanonicalVersion: 3 },
+      projection: { projectId: 'project-stage10', items: [{ id: 'entity:isolated' }] },
+    });
   });
 });

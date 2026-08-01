@@ -9,6 +9,7 @@
       { "name": "RunKnowledgeDiscovery", "range": ">=1.0.0 <2.0.0" },
       { "name": "GetCompiledTruth", "range": ">=1.0.0 <2.0.0" },
       { "name": "GetCompiledTruthStatus", "range": ">=1.0.0 <2.0.0" },
+      { "name": "GetCompiledTruthReadSnapshot", "range": ">=1.0.0 <2.0.0" },
       { "name": "ListDerivedInferences", "range": ">=1.0.0 <2.0.0" }
     ]
   },
@@ -30,6 +31,7 @@
     "queries": [
       { "name": "GetCompiledTruth", "range": ">=1.0.0 <2.0.0" },
       { "name": "GetCompiledTruthStatus", "range": ">=1.0.0 <2.0.0" },
+      { "name": "GetCompiledTruthReadSnapshot", "range": ">=1.0.0 <2.0.0" },
       { "name": "ListDerivedInferences", "range": ">=1.0.0 <2.0.0" }
     ],
     "capabilities": [{ "name": "compiled-truth-projector", "priority": 100 }]

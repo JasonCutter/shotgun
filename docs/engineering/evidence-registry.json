@@ -273,7 +273,7 @@
       "class": "ARCHITECTURE_VERIFICATION",
       "scope": "frontend-phase-3-section-1-qx-p0.1-contract-hardening",
       "statusAuthority": "CONTRACT_HARDENING_VERIFICATION",
-      "authorization": "SIDE_PANEL_REVIEW_4835871087",
+      "authorization": "SIDE_PANEL_REVIEW_4835947919",
       "testedHead": "d1485630d781cb5a372a3ac0c1ca22d5cc495b88",
       "evidenceHead": "d1485630d781cb5a372a3ac0c1ca22d5cc495b88",
       "subjectBase": "cb2513bc311891ac89f53c7d67d6a401da65a2a8",
@@ -281,8 +281,8 @@
       "remoteExactHeadCI": "30721027614",
       "remoteExactHeadCIConclusion": "PASS",
       "remoteExactHeadCIGates": ["Quality", "Frontend", "Required Gates", "Database"],
-      "completion": "NOT_AUTHORIZED",
-      "handlerImplementation": "NOT_AUTHORIZED"
+      "completion": "PASS",
+      "handlerImplementation": "QX-02_STAGE10_HANDLER_AUTHORIZED"
     }
   ],
   "rules": {

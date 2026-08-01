@@ -16,12 +16,19 @@ import type {
 } from '../../../packages/contracts/src/index.js';
 import {
   compiledTruthLogicalDigest,
+  decodeGetCompiledTruthReadSnapshotRequest,
+  decodeGetCompiledTruthReadSnapshotResult,
   discoveryFingerprint,
+  GET_COMPILED_TRUTH_READ_SNAPSHOT,
   sha256Text,
   stableJson,
   ShotgunError,
 } from '../../../packages/contracts/src/index.js';
+import getCompiledTruthReadSnapshotSchema from '../../../packages/contracts/schemas/get-compiled-truth-read-snapshot.v1.schema.json';
+import getCompiledTruthReadSnapshotOutputSchema from '../../../packages/contracts/schemas/get-compiled-truth-read-snapshot-output.v1.schema.json';
+import { hasSensitivityClearance } from '../../../packages/authentication/src/index.js';
 import type { HandlerContext, ShotgunModule } from '../../../packages/module-sdk/src/index.js';
+import type { GetCompiledTruthReadSnapshotResult } from '../../../packages/contracts/src/index.js';
 
 export const COMPILED_TRUTH_PROJECTOR_VERSION = '1.0.0';
 const COMPILED_TRUTH_BUILD_FAILED = 'COMPILED_TRUTH_BUILD_FAILED';
@@ -105,6 +112,7 @@ const assertContext = (envelope: CommandEnvelope | QueryEnvelope) => {
   return {
     projectId: envelope.projectId,
     accessScope: envelope.security.accessScope,
+    sensitivity: envelope.security.sensitivity,
   };
 };
 
@@ -244,8 +252,13 @@ const canAccess = (required: readonly string[], actual: readonly string[]): bool
 const visibleProjection = (
   projection: CompiledTruthProjection,
   accessScope: readonly string[],
+  sensitivity: CompiledTruthItem['sensitivity'],
 ): CompiledTruthProjection => {
-  const items = projection.items.filter((item) => canAccess(item.accessScope, accessScope));
+  const items = projection.items.filter(
+    (item) =>
+      canAccess(item.accessScope, accessScope) &&
+      hasSensitivityClearance(sensitivity, item.sensitivity),
+  );
   const visibleIds = new Set(items.map((item) => item.id));
   const edges = projection.graph.edges.filter(
     (edge) => visibleIds.has(edge.from) && visibleIds.has(edge.to),
@@ -277,7 +290,14 @@ const statusFor = async (
       projectedCanonicalVersion: projection?.canonicalVersion ?? 0,
       lag: Math.max(0, canonical.version - (projection?.canonicalVersion ?? 0)),
       lastError: degraded.error,
-      updatedAt: degraded.updatedAt,
+      updatedAt: projection?.projectedAt ?? degraded.updatedAt,
+      ...(projection === undefined
+        ? {}
+        : {
+            sourceSnapshotDigest: projection.sourceSnapshotDigest,
+            logicalDigest: projection.logicalDigest,
+            lastBuildMode: projection.buildMode,
+          }),
     };
   }
   if (!projection) {
@@ -324,6 +344,7 @@ export const createCompiledTruthModule = (
         { name: 'RunKnowledgeDiscovery', range: '>=1.0.0 <2.0.0' },
         { name: 'GetCompiledTruth', range: '>=1.0.0 <2.0.0' },
         { name: 'GetCompiledTruthStatus', range: '>=1.0.0 <2.0.0' },
+        { name: GET_COMPILED_TRUTH_READ_SNAPSHOT, range: '>=1.0.0 <2.0.0' },
         { name: 'ListDerivedInferences', range: '>=1.0.0 <2.0.0' },
       ],
     },
@@ -347,6 +368,7 @@ export const createCompiledTruthModule = (
       queries: [
         { name: 'GetCompiledTruth', range: '>=1.0.0 <2.0.0' },
         { name: 'GetCompiledTruthStatus', range: '>=1.0.0 <2.0.0' },
+        { name: GET_COMPILED_TRUTH_READ_SNAPSHOT, range: '>=1.0.0 <2.0.0' },
         { name: 'ListDerivedInferences', range: '>=1.0.0 <2.0.0' },
       ],
       capabilities: [{ name: 'compiled-truth-projector', priority: 100 }],
@@ -370,6 +392,13 @@ export const createCompiledTruthModule = (
     },
     { name: 'GetCompiledTruth', version: '1.0.0', kind: 'query', inputSchema: emptySchema },
     { name: 'GetCompiledTruthStatus', version: '1.0.0', kind: 'query', inputSchema: emptySchema },
+    {
+      name: GET_COMPILED_TRUTH_READ_SNAPSHOT,
+      version: '1.0.0',
+      kind: 'query',
+      inputSchema: getCompiledTruthReadSnapshotSchema,
+      outputSchema: getCompiledTruthReadSnapshotOutputSchema,
+    },
     {
       name: 'ListDerivedInferences',
       version: '1.0.0',
@@ -423,7 +452,7 @@ export const createCompiledTruthModule = (
         version: '1.0.0',
         requiredAccessScopes: ['owner'],
         async handle(envelope, context): Promise<DiscoveryRunResult> {
-          const { projectId, accessScope } = assertContext(envelope);
+          const { projectId, accessScope, sensitivity } = assertContext(envelope);
           const payload = envelope.payload as {
             mode: 'INCREMENTAL' | 'WEEKLY';
             maxNodes: number;
@@ -440,7 +469,7 @@ export const createCompiledTruthModule = (
             });
           }
           const stored = await repository.findProjection(projectId);
-          const projection = visibleProjection(stored!, accessScope);
+          const projection = visibleProjection(stored!, accessScope, sensitivity);
           const connected = new Set(projection.graph.edges.flatMap((edge) => [edge.from, edge.to]));
           const eligible = projection.graph.nodes
             .filter((node) => node.type === 'ENTITY' && !connected.has(node.id))
@@ -488,7 +517,7 @@ export const createCompiledTruthModule = (
         version: '1.0.0',
         requiredAccessScopes: ['owner'],
         async handle(envelope, context) {
-          const { projectId, accessScope } = assertContext(envelope);
+          const { projectId, accessScope, sensitivity } = assertContext(envelope);
           const source = await sourceSnapshot(context);
           const status = await statusFor(repository, projectId, source.canonical, source.digest);
           if (status.status !== 'READY') {
@@ -500,7 +529,37 @@ export const createCompiledTruthModule = (
             });
           }
           const projection = await repository.findProjection(projectId);
-          return visibleProjection(projection!, accessScope);
+          return visibleProjection(projection!, accessScope, sensitivity);
+        },
+      },
+      {
+        messageType: GET_COMPILED_TRUTH_READ_SNAPSHOT,
+        version: '1.0.0',
+        requiredAccessScopes: ['owner'],
+        async handle(envelope, context): Promise<GetCompiledTruthReadSnapshotResult> {
+          const { projectId, accessScope, sensitivity } = assertContext(envelope);
+          decodeGetCompiledTruthReadSnapshotRequest(envelope.payload);
+          const source = await sourceSnapshot(context);
+          const status = await statusFor(repository, projectId, source.canonical, source.digest);
+          const stored =
+            status.status === 'NOT_BUILT' ? undefined : await repository.findProjection(projectId);
+          if (status.status === 'READY' && !stored) {
+            throw new ShotgunError({
+              code: 'NOT_FOUND',
+              safeMessage: 'Compiled Truth is not ready.',
+              module: 'stage10.compiled-truth',
+              operation: GET_COMPILED_TRUTH_READ_SNAPSHOT,
+            });
+          }
+          const projection = stored
+            ? visibleProjection(stored, accessScope, sensitivity)
+            : undefined;
+          return decodeGetCompiledTruthReadSnapshotResult({
+            schemaVersion: '1.0.0',
+            projectId,
+            status,
+            ...(projection === undefined ? {} : { projection }),
+          });
         },
       },
       {

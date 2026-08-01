@@ -62,6 +62,15 @@ export const compiledTruthStatusQuery = (parent: Parent) =>
     payload: {},
   });
 
+export const compiledTruthReadSnapshotQuery = (parent: Parent) =>
+  createChildQuery(parent, {
+    messageType: 'GetCompiledTruthReadSnapshot',
+    schemaVersion: '1.0.0',
+    producerModule: 'stage10-test',
+    producerVersion: '1.0.0',
+    payload: { schemaVersion: '1.0.0' },
+  });
+
 export const approvedGroup = (group: KnowledgeReviewGroup) => ({
   ...group,
   status: 'APPROVED' as const,

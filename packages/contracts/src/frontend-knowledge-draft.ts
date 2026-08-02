@@ -434,9 +434,6 @@ const text = (value: unknown, path: string): string => {
   return value;
 };
 
-const optionalText = (object: ObjectValue, key: string, path: string): string | undefined =>
-  object[key] === undefined ? undefined : text(object[key], `${path}.${key}`);
-
 const integer = (value: unknown, path: string): number => {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
     return fail(path, 'must be a non-negative safe integer');

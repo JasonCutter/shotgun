@@ -4,7 +4,7 @@
 - Proposal date: 2026-08-02
 - Decision date: 2026-08-02
 - Approved by: ChatGPT side-panel review `4835947919`
-- Scope: FE-P3-S1 QX-P0 contract freeze and bounded QX-02 Stage 10 read handler
+- Scope: FE-P3-S1 QX-P0 contract freeze, QX-01 Stage 7 search handler and bounded QX-02 Stage 10 read handler
 - Related ADRs: ADR-087, ADR-090, ADR-106, ADR-121
 
 ## Context
@@ -19,9 +19,10 @@ non-READY projections.
 The FE-P3-S1 Product read contract needs a bounded domain boundary for four
 authorities and for non-READY Compiled Truth visibility. The boundary must be
 fixed before a Persistent Adapter or Product API can be implemented. QX-P0 was a
-contract-first step. The accepted decision authorizes only the bounded QX-02
-Stage 10 read handler described below; it does not authorize QX-01, a
-Persistent Adapter or a Product API.
+contract-first step. The accepted decision authorizes the bounded QX-02 Stage 10
+read handler described below. The later side-panel review `4836089195` also
+authorizes the additive QX-01 Stage 7 handler under the boundaries in this ADR;
+it does not authorize a Persistent Adapter or a Product API.
 
 ## Decision — QX-P0 contract freeze
 
@@ -141,10 +142,9 @@ forbidden status/projection pairs.
 
 ## Not authorized by this proposal
 
-- QX-01 Stage 7 handler implementation or any Stage 10 handler outside the
-  QX-02 boundary in this ADR;
+- any Stage 10 handler outside the QX-02 boundary in this ADR;
 - a Persistent Knowledge Adapter or repository/schema/table change;
-- local ranking, Product-result storage or direct SQL/repository access;
+- Product-result storage or direct SQL/repository access;
 - new index, event fan-out, migration or runtime dependency;
 - A3 API, Client, Cache or `/knowledge` UI;
 - PR Ready transition, Merge, FE-P3-S1 completion or deployment.
@@ -171,12 +171,19 @@ Query contracts remain available and are not rewritten by the rollback.
   hardening. The PostgreSQL READY test now runs the real Stage 10 Build handler,
   a separate persisted STALE path is covered, and DEGRADED timestamp semantics
   preserve degradation time separately from the last projection time.
+- 2026-08-02: Side-panel review `4836089195` authorized QX-01. The Stage 7
+  handler may compose Canonical repository search, Approved Knowledge Query,
+  Compiled Truth read-snapshot Query and correlated Derived Inference Query.
+  Stage 7 remains the only ranking owner; no new repository port, table, index,
+  migration, runtime dependency or Product API is authorized.
 
 ## Approval boundary
 
 This record is an **ACCEPTED** ADR. Side-panel review `4835947919` accepted the
-decision for implementation and authorized only the QX-02 Stage 10 handler:
+decision and authorized the QX-02 Stage 10 handler:
 `GetCompiledTruthReadSnapshot@1.0.0`, including its existing status, context,
-access and approved sensitivity filtering boundaries. QX-01 remains HOLD;
-Persistent Adapter, A3 API/Client/Cache, `/knowledge` UI, Ready, Merge and
-deployment remain unauthorized.
+access and approved sensitivity filtering boundaries. Side-panel review
+`4836089195` authorized the additive QX-01 Stage 7 handler under the explicit
+composition and ranking boundaries above. Persistent Adapter, A3
+API/Client/Cache, `/knowledge` UI, Ready, Merge and deployment remain
+unauthorized.

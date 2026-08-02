@@ -540,6 +540,15 @@ describe('QX-P0 Knowledge Workspace domain Query contracts', () => {
       version: '1.0.0',
       kind: 'query',
     });
+    const workspaceContracts = createProjectionSearchModule(
+      new InMemorySearchProjectionRepository(),
+    ).contracts.filter((contract) => contract.name === 'SearchKnowledgeWorkspace');
+    expect(workspaceContracts).toHaveLength(1);
+    expect(workspaceContracts[0]).toMatchObject({
+      name: 'SearchKnowledgeWorkspace',
+      version: '1.0.0',
+      kind: 'query',
+    });
 
     const compiledContracts = createCompiledTruthModule(
       new InMemoryCompiledTruthRepository(),

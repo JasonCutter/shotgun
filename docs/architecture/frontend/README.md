@@ -29,7 +29,7 @@ legacy_source_id: 3a15181d-71ad-81e4-bfa4-ee2578e692a0
 | FE-P3 — Knowledge Understanding and Editing | `IN_PROGRESS` |
 | FE-P3-S1 — Knowledge Workspace              | `IN_PROGRESS` |
 
-- 미충족 필수 기준: `finalSectionVerification, completionApprovalAndMergeBoundary`
+- 미충족 필수 기준: `repositoryWideFormatCheck, finalSectionVerification, completionApprovalAndMergeBoundary`
 - Next valid Product Section: `FE-P3-S2 — Knowledge Editor and DraftChangeSet Authoring`
 
 <!-- FRONTEND-WORK-ITEM-STATUS:END -->

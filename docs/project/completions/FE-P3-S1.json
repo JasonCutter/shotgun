@@ -56,6 +56,17 @@
       "scopeAmendment": null
     },
     {
+      "id": "repositoryWideFormatCheck",
+      "title": "Required repository-wide format check",
+      "mandatory": true,
+      "status": "FAIL",
+      "evidence": [
+        "docs/implementation/frontend-phase-3-section-1-knowledge-workspace-ui-verification-260802003.md",
+        "docs/implementation/frontend-phase-3-section-1-knowledge-workspace-completion-candidate-260802002.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
       "id": "completionCandidateGovernance",
       "title": "Completion candidate manifest, evidence and projection governance",
       "mandatory": true,

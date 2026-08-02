@@ -54,7 +54,7 @@ Phase 2부터 Phase 6까지의 과거 승인 ADR-018–ADR-075는 Phase별 ADR �
 | FE-P3 — Knowledge Understanding and Editing | `IN_PROGRESS` |
 | FE-P3-S1 — Knowledge Workspace              | `IN_PROGRESS` |
 
-- 미충족 필수 기준: `finalSectionVerification, completionApprovalAndMergeBoundary`
+- 미충족 필수 기준: `repositoryWideFormatCheck, finalSectionVerification, completionApprovalAndMergeBoundary`
 - Next valid Product Section: `FE-P3-S2 — Knowledge Editor and DraftChangeSet Authoring`
 
 <!-- FRONTEND-WORK-ITEM-STATUS:END -->

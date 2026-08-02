@@ -1,16 +1,22 @@
 ---
 id: FRONTEND-PHASE-3-SECTION-1-KNOWLEDGE-WORKSPACE-COMPLETION-CANDIDATE-260802002
 classification: COMPLETION_RECORD
-status: COMPLETION_CANDIDATE_PENDING_APPROVAL
+status: COMPLETION_CANDIDATE_CHANGES_REQUIRED
 work_item: FE-P3-S1
 registry_status: IN_PROGRESS
 completion_manifest: docs/project/completions/FE-P3-S1.json
 implementation_review_id: 4837811808
 implementation_review_decision: KNOWLEDGE_WORKSPACE_UI_IMPLEMENTATION_PASS
-candidate_exact_head: ac92499253a10331a58c613995e5a480ee0df6c4
-candidate_ci_run: 30740732355
+candidate_exact_head: c47080c4842ef7f00c5149ad4828bf839fe5ed11
+candidate_ci_run: 30740922972
 candidate_ci_conclusion: PASS
 candidate_ci_gates: Quality, Frontend, Required Gates
+completion_review_id: 4837900020
+completion_review_decision: CHANGES_REQUIRED
+completion_review_exact_head: c47080c4842ef7f00c5149ad4828bf839fe5ed11
+completion_review_ci_run: 30740922972
+completion_blocker: REPOSITORY_WIDE_FORMAT_CHECK_58_FILES
+required_resolution: BASELINE_REMEDIATION_OR_APPROVED_SCOPE_AMENDMENT
 completion_approval: NOT_AUTHORIZED
 ready: NOT_AUTHORIZED
 merge: NOT_AUTHORIZED
@@ -37,9 +43,9 @@ evidence only. A separate FE-P3-S1 completion review is still required.
 - Repository: `JasonCutter/shotgun`
 - Base: `main@cb2513bc311891ac89f53c7d67d6a401da65a2a8`
 - Branch: `codex/frontend-phase-3-section-1-knowledge-workspace`
-- Candidate evidence exact head: `58edfffb5e7eabc0f910bd56fafe27fcbab71d96`
+- Candidate evidence exact head: `c47080c4842ef7f00c5149ad4828bf839fe5ed11`
 - PR: [#53](https://github.com/JasonCutter/shotgun/pull/53), `OPEN / DRAFT`
-- Exact-head CI run: `30739868222`
+- Exact-head CI run: `30740922972`
 - Quality: `PASS`
 - Frontend: `PASS`
 - Required Gates: `PASS`
@@ -51,6 +57,34 @@ head by run `30740732355`. Quality, Frontend and Required Gates all passed,
 including Database, Chromium and the remote Stage 12 package substep.
 Any later evidence-publication commit is documentation-only and requires its
 own exact-head CI; it does not change this candidate's implementation scope.
+
+Completion Review `4837900020` evaluated exact head
+`c47080c4842ef7f00c5149ad4828bf839fe5ed11` with the same passing Quality,
+Frontend and Required Gates run `30740922972`.
+
+## Completion review 4837900020
+
+The separate FE-P3-S1 completion review returned `CHANGES_REQUIRED`. Tracking
+Issue #52 treats the unmasked repository-wide `format:check` as a required
+Section verification. The candidate preserves the known failure on 58 existing
+out-of-scope files, while changed-file formatting remains PASS. The remote CI
+format step is not treated as a clean repository-wide result because its
+formatter output is piped through `tee` and the report preserves the warning
+history.
+
+The completion candidate therefore records
+`repositoryWideFormatCheck: FAIL`, `finalSectionVerification: PARTIAL` and
+`completionApprovalAndMergeBoundary: NOT_RUN`. Review `4837900020` requires
+one explicit resolution before resubmission:
+
+1. an independently authorized maintenance scope that fixes the inherited
+   repository-wide baseline and makes unmasked `format:check` pass; or
+2. an approved Scope Amendment that replaces the criterion with changed-file
+   formatting, records the 58-file debt and ownership, and preserves the
+   formatter exit status in CI.
+
+Neither authority has been granted in this candidate. No unrelated file was
+formatted and no Scope Amendment is claimed.
 
 ## Governance state
 
@@ -71,9 +105,12 @@ hand-edited.
 
 ## Known limits retained
 
-- Repository-wide `format:check` remains `FAIL` on the existing 58 files
-  outside this slice. Changed-file formatting remains PASS; those files were
-  not rewritten.
+- Review `4837900020` recorded the repository-wide `format:check` baseline as
+  `FAIL` on 58 existing files outside this slice. The current local diagnostic
+  after normalizing the in-scope evidence registry reports 57 remaining
+  warnings; the repository-wide gate remains `FAIL`, the 58-file review
+  history is retained, and no unrelated file was rewritten. Changed-file
+  formatting remains PASS.
 - Local Windows `test:stage12-package` remains `BLOCKED/NOT_RUN` because the
   isolated npm registry install for `ajv` returned `EACCES`. The corresponding
   remote Quality substep remains PASS.

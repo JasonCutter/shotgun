@@ -2,8 +2,8 @@
 id: FRONTEND-PHASE-3-SECTION-2-IMPLEMENTATION-REQUEST-260802001
 classification: IMPLEMENTATION_REQUEST_CANDIDATE
 status: REVIEW_PENDING
-revision: 2
-review_round: 1
+revision: 3
+review_round: 2
 review_result: CHANGES_REQUIRED
 work_item: FE-P3-S2
 governing_adr: ADR-126
@@ -42,6 +42,13 @@ command but is not required for the initial seven-contract Product API slice.
 Each contract now has mandatory input, typed failures, no automatic mutation
 retry, original-key outcome recovery and explicit compatibility with Ask Seed,
 FE-P3-S1 read and legacy Stage 5.
+
+Revision 3 additionally freezes the Projection identity union, the complete
+typed operation payload union (including Evidence, Temporal, Conflict,
+Knowledge Gap and `NO_OP`), explicit Review Submission artifact/Evidence/Project
+bindings, the existing-versus-new Resource identity rule and the server-derived
+`effectiveProjectId`. These are contract obligations for a later implementation,
+not implementation evidence.
 
 ## Reusable surfaces
 

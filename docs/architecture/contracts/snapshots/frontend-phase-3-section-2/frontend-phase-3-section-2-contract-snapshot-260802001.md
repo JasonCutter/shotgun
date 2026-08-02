@@ -2,8 +2,8 @@
 id: FRONTEND-PHASE-3-SECTION-2-CONTRACT-SNAPSHOT-260802001
 classification: PRODUCT_CONTRACT_SNAPSHOT_PROPOSAL
 status: REVIEW_PENDING
-revision: 2
-review_round: 1
+revision: 3
+review_round: 2
 review_result: CHANGES_REQUIRED
 work_item: FE-P3-S2
 governing_adr: ADR-126
@@ -34,6 +34,69 @@ may not authoritatively create or replace those values.
 
 ## 2. Aggregate and identity
 
+The following reference types are part of this snapshot. They keep the
+Project, Policy, Evidence and artifact bindings visible at the Review handoff
+instead of leaving them only in prose.
+
+```ts
+type DraftArtifactStatusV1 = 'COMPLETE' | 'PARTIAL' | 'FAILED' | 'UNAVAILABLE';
+
+type FrontendKnowledgeProjectPolicyContextV1 = {
+  activeProjectId: string;
+  resourceProjectId: string;
+  draftProjectId: string;
+  effectiveProjectId: string;
+  accessRevision: string;
+  policyContextRevision: string;
+};
+
+type FrontendKnowledgeEvidenceLineageV1 = {
+  sourceId: string;
+  sourceVersionId: string;
+  evidenceSpanId: string;
+};
+
+type DraftValidationArtifactRefV1 = {
+  artifactId: string;
+  artifactRevision: number;
+  digest: string;
+  status: DraftArtifactStatusV1;
+  projectPolicyContext: FrontendKnowledgeProjectPolicyContextV1;
+};
+
+type DraftImpactArtifactRefV1 = {
+  artifactId: string;
+  artifactRevision: number;
+  digest: string;
+  status: DraftArtifactStatusV1;
+  projectPolicyContext: FrontendKnowledgeProjectPolicyContextV1;
+};
+
+type ReviewResourceRefV1 = {
+  reviewResourceId: string;
+  draftId: string;
+  draftRevision: number;
+  resourceProjectId: string;
+  draftProjectId: string;
+  effectiveProjectId: string;
+  policyContextRevision: string;
+  digest: string;
+};
+
+type ReviewSubmissionRefV1 = {
+  reviewSubmissionId: string;
+  draftId: string;
+  draftRevision: number;
+  operationDigest: string;
+  contentDigest: string;
+  validationArtifact: DraftValidationArtifactRefV1;
+  impactArtifact: DraftImpactArtifactRefV1;
+  evidenceLineage: readonly FrontendKnowledgeEvidenceLineageV1[];
+  projectPolicyContext: FrontendKnowledgeProjectPolicyContextV1;
+  reviewResource: ReviewResourceRefV1;
+};
+```
+
 ```ts
 type FrontendKnowledgeDraftChangeSetV1 = {
   schemaVersion: '1.0.0';
@@ -56,20 +119,14 @@ type FrontendKnowledgeDraftChangeSetV1 = {
   activeProjectId: string;
   resourceProjectId: string;
   draftProjectId: string;
+  effectiveProjectId: string;
   resourceId: string;
   base: FrontendKnowledgeDraftBaseV1;
   operations: readonly FrontendKnowledgeOperationV1[];
   validation?: DraftValidationArtifactRefV1;
   impactPreview?: DraftImpactArtifactRefV1;
   reviewResource?: ReviewResourceRefV1;
-  reviewSubmission?: {
-    reviewSubmissionId: string;
-    draftId: string;
-    draftRevision: number;
-    operationDigest: string;
-    validationArtifactRef: string;
-    impactArtifactRef: string;
-  };
+  reviewSubmission?: ReviewSubmissionRefV1;
   contentDigest: string;
   createdAt: string;
   updatedAt: string;
@@ -80,6 +137,11 @@ type FrontendKnowledgeDraftChangeSetV1 = {
 command-envelope authority. They may be represented in an internal binding or
 response metadata, but are not accepted as browser authority.
 
+`resourceId` is a server-resolved Draft target identity, not an alias for
+`canonicalResourceId`. A new-Resource Draft may have a server target identity
+while having no Canonical Resource ID yet. `effectiveProjectId` is a
+server-derived immutable command scope and is never browser-selected.
+
 Repeated materialization of the same Seed and Resource Project returns the
 existing `draftId`. A Seed cannot create two Drafts. A different Resource
 Project is a typed binding conflict.
@@ -87,14 +149,23 @@ Project is a typed binding conflict.
 ## 3. Pinned base
 
 ```ts
-type FrontendKnowledgeDraftBaseV1 = {
+type FrontendKnowledgeProjectionRefV1 = {
+  projectionKind: 'CANONICAL_SEARCH' | 'COMPILED_TRUTH';
+  projectionId: string;
+  projectionIdentity:
+    | { kind: 'REVISION'; revision: string }
+    | { kind: 'VERSION'; version: number };
+  projectionDigest: string;
+  readiness: 'READY' | 'STALE' | 'DEGRADED' | 'NOT_BUILT';
+  projectedCanonicalVersion: number;
+  sourceSnapshotDigest: string;
+};
+
+type FrontendKnowledgeDraftBaseCommonV1 = {
   resourceProjectId: string;
-  canonicalResourceId: string;
   canonicalSnapshotId: string;
-  canonicalRevisionId?: string;
   canonicalVersion: number;
   canonicalSnapshotDigest: string;
-  revisionIdentityKind: 'RESOURCE_REVISION' | 'NEW_RESOURCE_SNAPSHOT';
   accessRevision: string;
   policyContextRevision: string;
   sourceLineage: readonly {
@@ -102,15 +173,21 @@ type FrontendKnowledgeDraftBaseV1 = {
     sourceVersionId: string;
     evidenceSpanIds: readonly string[];
   }[];
-  projection?: {
-    projectionId: string;
-    projectionVersion: string;
-    readiness: 'READY' | 'STALE' | 'DEGRADED' | 'NOT_BUILT';
-    projectedCanonicalVersion: number;
-    sourceSnapshotDigest: string;
-    projectionDigest: string;
-  };
+  projection?: FrontendKnowledgeProjectionRefV1;
 };
+
+type FrontendKnowledgeDraftBaseV1 = FrontendKnowledgeDraftBaseCommonV1 & (
+  {
+    revisionIdentityKind: 'RESOURCE_REVISION';
+    canonicalResourceId: string;
+    canonicalRevisionId: string;
+  } |
+  {
+    revisionIdentityKind: 'NEW_RESOURCE_SNAPSHOT';
+    canonicalResourceId?: never;
+    canonicalRevisionId?: never;
+  }
+);
 ```
 
 The base is immutable after first materialization/start. A Projection is
@@ -118,8 +195,9 @@ reference/compare context and cannot replace the Canonical base.
 
 `canonicalSnapshotId`, `canonicalVersion` and `canonicalSnapshotDigest` are
 always required. For an existing Resource being edited or withdrawn,
-`canonicalResourceId` and `canonicalRevisionId` are mandatory. A new Resource
-may have no `canonicalRevisionId`, but it must use
+`canonicalResourceId` and `canonicalRevisionId` are mandatory together and the
+union uses `revisionIdentityKind: RESOURCE_REVISION`. A new Resource omits both
+Canonical Resource ID and Canonical Revision ID and uses
 `revisionIdentityKind: NEW_RESOURCE_SNAPSHOT` with the pinned Snapshot ID,
 version and digest. An existing Resource without a provable revision ID fails
 closed; `canonicalVersion` is not a per-Resource revision substitute. The
@@ -135,34 +213,88 @@ state.
 Projection becomes mandatory when the Draft starts from a Projection view, when
 an operation `before`, rationale or expected impact references Projection
 content, or when a Projection block is retained as the focus/return target. The
-pinned reference includes kind, ID, revision/version, digest, status, projected
-Canonical version and source snapshot digest.
+pinned reference includes `projectionKind`, ID, a discriminated
+revision/version identity, digest, status, projected Canonical version and
+source snapshot digest.
 
 ## 4. Typed operation contract
 
 ```ts
-type FrontendKnowledgeOperationV1 = {
+type FactValueV1 = {
+  schemaVersion: 'fact.v1';
+  subjectRef: string;
+  predicate: string;
+  value: string | number | boolean;
+  unit?: string;
+};
+type ClaimValueV1 = {
+  schemaVersion: 'claim.v1';
+  statement: string;
+  subjectRef?: string;
+  confidence?: number;
+};
+type EntityValueV1 = {
+  schemaVersion: 'entity.v1';
+  entityType: string;
+  displayName: string;
+  aliases?: readonly string[];
+};
+type RelationValueV1 = {
+  schemaVersion: 'relation.v1';
+  relationType: string;
+  fromEntityRef: string;
+  toEntityRef: string;
+};
+type EventValueV1 = {
+  schemaVersion: 'event.v1';
+  eventType: string;
+  subjectRef: string;
+  occurredAt?: string;
+};
+type DecisionValueV1 = {
+  schemaVersion: 'decision.v1';
+  decisionType: string;
+  decision: string;
+};
+type EvidenceLinkValueV1 = {
+  schemaVersion: 'evidence-link.v1';
+  sourceId: string;
+  sourceVersionId: string;
+  evidenceSpanId: string;
+};
+type TemporalValidityValueV1 = {
+  schemaVersion: 'temporal-validity.v1';
+  validFrom?: string;
+  validTo?: string;
+  status: 'KNOWN' | 'OPEN' | 'UNKNOWN';
+};
+type ConflictProposalValueV1 = {
+  schemaVersion: 'conflict-proposal.v1';
+  conflictType: string;
+  competingTargetIds: readonly string[];
+  summary: string;
+};
+type KnowledgeGapProposalValueV1 = {
+  schemaVersion: 'knowledge-gap-proposal.v1';
+  gapType: string;
+  description: string;
+  requestedEvidence?: string;
+};
+type NoOpReviewResultV1 = {
+  schemaVersion: 'no-op-review-result.v1';
+  result: 'REVIEWED' | 'NO_CHANGE_REQUIRED' | 'REJECTED_BY_AUTHOR';
+  reason: string;
+};
+
+type KnowledgeOperationTargetV1<T extends string> = {
+  targetType: T;
+  targetId?: string;
+  resourceId: string;
+};
+
+type KnowledgeOperationCommonV1 = {
   operationId: string;
-  kind:
-    | 'FACT_ADD' | 'FACT_UPDATE' | 'FACT_REMOVE'
-    | 'CLAIM_ADD' | 'CLAIM_UPDATE' | 'CLAIM_REMOVE'
-    | 'ENTITY_ADD' | 'ENTITY_UPDATE' | 'ENTITY_REFERENCE'
-    | 'RELATION_ADD' | 'RELATION_UPDATE' | 'RELATION_REMOVE'
-    | 'EVENT_ADD' | 'EVENT_UPDATE' | 'EVENT_REMOVE'
-    | 'DECISION_ADD' | 'DECISION_UPDATE' | 'DECISION_REMOVE'
-    | 'EVIDENCE_ATTACH' | 'EVIDENCE_DETACH'
-    | 'TEMPORAL_VALIDITY_CHANGE'
-    | 'CONFLICT_PROPOSAL' | 'KNOWLEDGE_GAP_PROPOSAL'
-    | 'NO_OP';
-  target: {
-    targetType: 'FACT' | 'CLAIM' | 'ENTITY' | 'RELATION' | 'EVENT' |
-      'DECISION' | 'EVIDENCE' | 'TEMPORAL' | 'CONFLICT' | 'KNOWLEDGE_GAP';
-    targetId?: string;
-    resourceId: string;
-  };
   baseRevision: number;
-  before?: unknown;
-  after?: unknown;
   rationale: string;
   evidenceReferences: readonly {
     sourceId: string;
@@ -176,14 +308,68 @@ type FrontendKnowledgeOperationV1 = {
   operationRevision: number;
   contentDigest: string;
 };
+
+type KnowledgeAddOperationV1<K extends string, T extends string, P> =
+  KnowledgeOperationCommonV1 & {
+    kind: K;
+    target: KnowledgeOperationTargetV1<T>;
+    before?: never;
+    after: P;
+  };
+type KnowledgeUpdateOperationV1<K extends string, T extends string, P> =
+  KnowledgeOperationCommonV1 & {
+    kind: K;
+    target: KnowledgeOperationTargetV1<T>;
+    before: P;
+    after: P;
+  };
+type KnowledgeRemoveOperationV1<K extends string, T extends string, P> =
+  KnowledgeOperationCommonV1 & {
+    kind: K;
+    target: KnowledgeOperationTargetV1<T>;
+    before: P;
+    after?: never;
+  };
+
+type FrontendKnowledgeOperationV1 =
+  | KnowledgeAddOperationV1<'FACT_ADD', 'FACT', FactValueV1>
+  | KnowledgeUpdateOperationV1<'FACT_UPDATE', 'FACT', FactValueV1>
+  | KnowledgeRemoveOperationV1<'FACT_REMOVE', 'FACT', FactValueV1>
+  | KnowledgeAddOperationV1<'CLAIM_ADD', 'CLAIM', ClaimValueV1>
+  | KnowledgeUpdateOperationV1<'CLAIM_UPDATE', 'CLAIM', ClaimValueV1>
+  | KnowledgeRemoveOperationV1<'CLAIM_REMOVE', 'CLAIM', ClaimValueV1>
+  | KnowledgeAddOperationV1<'ENTITY_ADD', 'ENTITY', EntityValueV1>
+  | KnowledgeUpdateOperationV1<'ENTITY_UPDATE', 'ENTITY', EntityValueV1>
+  | KnowledgeAddOperationV1<'ENTITY_REFERENCE', 'ENTITY', EntityValueV1>
+  | KnowledgeAddOperationV1<'RELATION_ADD', 'RELATION', RelationValueV1>
+  | KnowledgeUpdateOperationV1<'RELATION_UPDATE', 'RELATION', RelationValueV1>
+  | KnowledgeRemoveOperationV1<'RELATION_REMOVE', 'RELATION', RelationValueV1>
+  | KnowledgeAddOperationV1<'EVENT_ADD', 'EVENT', EventValueV1>
+  | KnowledgeUpdateOperationV1<'EVENT_UPDATE', 'EVENT', EventValueV1>
+  | KnowledgeRemoveOperationV1<'EVENT_REMOVE', 'EVENT', EventValueV1>
+  | KnowledgeAddOperationV1<'DECISION_ADD', 'DECISION', DecisionValueV1>
+  | KnowledgeUpdateOperationV1<'DECISION_UPDATE', 'DECISION', DecisionValueV1>
+  | KnowledgeRemoveOperationV1<'DECISION_REMOVE', 'DECISION', DecisionValueV1>
+  | KnowledgeAddOperationV1<'EVIDENCE_ATTACH', 'EVIDENCE', EvidenceLinkValueV1>
+  | KnowledgeRemoveOperationV1<'EVIDENCE_DETACH', 'EVIDENCE', EvidenceLinkValueV1>
+  | KnowledgeUpdateOperationV1<'TEMPORAL_VALIDITY_CHANGE', 'TEMPORAL', TemporalValidityValueV1>
+  | KnowledgeAddOperationV1<'CONFLICT_PROPOSAL', 'CONFLICT', ConflictProposalValueV1>
+  | KnowledgeUpdateOperationV1<'KNOWLEDGE_GAP_PROPOSAL', 'KNOWLEDGE_GAP', KnowledgeGapProposalValueV1>
+  | (KnowledgeOperationCommonV1 & {
+      kind: 'NO_OP';
+      target: KnowledgeOperationTargetV1<'REVIEW_RESULT'>;
+      before?: never;
+      after: NoOpReviewResultV1;
+    });
 ```
 
-The server strictly decodes the discriminated operation and validates typed
-`before`/`after`, target Project/resource, evidence accessibility, revision and
-digest. `before` is required for update/remove operations; `after` is required
-for add/update operations. `NO_OP` has no Canonical mutation effect and is valid
-only when it records an explicit typed review result; it is not an empty Draft
-placeholder.
+The server strictly decodes this complete discriminated union and rejects an
+unsupported kind, missing payload, wrong payload schemaVersion or mismatched
+target type. It validates typed `before`/`after`, target Project/resource,
+evidence accessibility, revision and digest. `before` is required for
+update/remove operations; `after` is required for add/update operations.
+`NO_OP` has no Canonical mutation effect and is valid only when it records an
+explicit typed review result; it is not an empty Draft placeholder.
 
 User Directive and Action operations are not part of v1.
 
@@ -346,7 +532,7 @@ after this snapshot and the related ADR are accepted.
 | AC-06 | Browser cannot authoritatively set Principal/Project/Revision | negative contract evidence |
 | AC-07 | Active, Resource, Draft and Effective Project are distinct and fixed | domain/API evidence |
 | AC-08 | Canonical and optional Projection snapshot pinning is explicit | contract/persistence evidence |
-| AC-09 | Fact/Claim/Entity/Relation/Event/Decision operations decode strictly | contract tests |
+| AC-09 | Fact/Claim/Entity/Relation/Event/Decision/Evidence/Temporal/Conflict/Knowledge Gap/NO_OP operations decode strictly as the v1 discriminated union | contract tests |
 | AC-10 | Evidence, rationale, before/after and expected impact bind to each operation | contract/domain evidence |
 | AC-11 | Draft revision and semantic digest enforce optimistic concurrency | command evidence |
 | AC-12 | Draft save is separate from validation, preview and submission | API evidence |

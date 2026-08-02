@@ -2,8 +2,8 @@
 id: FRONTEND-PHASE-3-SECTION-2-A1-GAP-RESOLUTION-260802001
 classification: ARCHITECTURE_CONTRACT_PREPARATION
 status: REVIEW_PENDING
-revision: 2
-review_round: 1
+revision: 3
+review_round: 2
 review_result: CHANGES_REQUIRED
 work_item: FE-P3-S2
 governing_adr: ADR-126
@@ -30,7 +30,7 @@ implementation, test evidence, CI evidence, approval, Ready or merge.
 | One Seed to one Draft | `PERSISTENCE_MISSING` | Add materialization identity and a unique Seed-to-Draft boundary | `RESOLVED_BY_ADR` |
 | Knowledge Page seedless start | `PRODUCT_API_MISSING` | Define an explicit server-authoritative Start Seedless Draft command | `RESOLVED_BY_CONTRACT` |
 | Knowledge Editor Draft aggregate | `CONTRACT_MISSING` | Introduce `FrontendKnowledgeDraftChangeSet v1`; do not widen Stage 5 | `RESOLVED_BY_ADR` |
-| Typed Fact/Claim/Entity/Relation/Event/Decision operations | `CONTRACT_MISSING` | Freeze discriminated operation union and common operation fields | `RESOLVED_BY_CONTRACT` |
+| Typed Fact/Claim/Entity/Relation/Event/Decision/Evidence/Temporal/Conflict/Knowledge Gap/NO_OP operations | `CONTRACT_MISSING` | Freeze discriminated operation union, versioned payloads and common operation fields | `RESOLVED_BY_CONTRACT` |
 | Canonical/Projection base pinning | `CONTRACT_MISSING` | Freeze immutable base snapshot and lineage fields | `RESOLVED_BY_CONTRACT` |
 | Active/Resource/Draft/Effective Project binding | `SECURITY_OR_AUTHORITY_GAP` | Reuse ADR-100 and enforce server-derived immutable binding | `RESOLVED_BY_ADR` |
 | Evidence/Rationale/Before/After/Expected Impact | `CONTRACT_MISSING` | Bind fields to every typed operation; server impact remains authoritative | `RESOLVED_BY_CONTRACT` |
@@ -60,6 +60,20 @@ compatibility. Revision 2 fixes them as follows:
 
 The seven Product API contracts now specify mandatory input, typed failure,
 retry and compatibility rules in ADR-126 and the Contract Snapshot.
+
+The second review found contract-expression gaps in the exact document head.
+Revision 3 resolves them without changing the approved architecture:
+
+| Review item | Revision 3 resolution | State |
+|---|---|---|
+| Projection type completeness | Add `projectionKind` and a discriminated `projectionIdentity` for revision versus version, plus digest/readiness/source pinning | `RESOLVED_BY_CONTRACT` |
+| Typed operation union | Replace `unknown` payloads with versioned Fact/Claim/Entity/Relation/Event/Decision/Evidence/Temporal/Conflict/Knowledge Gap/NO_OP payload unions and strict decoder rules | `RESOLVED_BY_CONTRACT` |
+| Review Submission fields | Add explicit artifact-reference, Evidence lineage and Project/Policy context types and bind them to the immutable submission | `RESOLVED_BY_CONTRACT` |
+| Canonical identity wording | Existing Resource requires Resource ID plus Revision ID; new Resource omits both and uses `NEW_RESOURCE_SNAPSHOT` | `RESOLVED_BY_CONTRACT` |
+| Effective Project | Add server-derived immutable `effectiveProjectId` to the aggregate and handoff context; it is never browser authority | `RESOLVED_BY_ADR` |
+
+Revision 3 remains a review candidate; it does not authorize Product code,
+migration, tests, CI, Ready, Merge or the next implementation slice.
 
 The `FE-P3-S2.governingContract` Registry link is a candidate documentation
 projection in this branch. It becomes Canonical only through the accepted exact

@@ -1,7 +1,7 @@
 # ADR-126 — Knowledge Editor Typed DraftChangeSet Materialization, Snapshot Pinning and Review Submission Boundary
 
 - Status: **PROPOSED / REVIEW_PENDING**
-- Revision: 2 after GPT `CHANGES_REQUIRED` review
+- Revision: 3 after GPT `CHANGES_REQUIRED` review
 - Proposal date: 2026-08-02
 - Work item: `FE-P3-S2`
 - Decision owner: pending user and GPT review
@@ -85,6 +85,10 @@ Draft Project       — project fixed when the Draft is materialized/started
 Effective Project   — server-derived command scope, never browser authority
 ```
 
+The aggregate stores this last binding as server-derived `effectiveProjectId`.
+It is fixed with the first Draft materialization/start and is repeated in the
+Review handoff context; it is never accepted from a browser payload.
+
 The first persisted Draft binding is immutable. Active Project changes do not
 move the Draft. A Draft cannot be attached to another Project through a browser
 payload. Access and policy changes cause revalidation or `STALE`/access failure;
@@ -95,8 +99,8 @@ they do not silently rewrite the pinned context.
 Every Draft has an immutable base binding containing at least:
 
 - Resource Project;
-- Canonical Resource ID;
-- Canonical Revision ID or Canonical Version;
+- Canonical Version; and Canonical Resource ID plus Canonical Revision ID for an
+  existing Resource;
 - Canonical Snapshot ID, version and digest;
 - access revision;
 - policy context revision;
@@ -114,11 +118,12 @@ Revision identity is fixed as follows:
   `canonicalSnapshotDigest` are always mandatory;
 - for an existing Canonical Resource being edited or withdrawn,
   `canonicalResourceId` and `canonicalRevisionId` are mandatory;
-- a new Resource may have no `canonicalRevisionId`, but the pinned Snapshot ID,
-  version and digest remain mandatory;
+- a new Resource omits both `canonicalResourceId` and `canonicalRevisionId`,
+  while the pinned Snapshot ID, version and digest remain mandatory;
 - an existing Resource without a provable `canonicalRevisionId` fails closed;
   `canonicalVersion` is not a substitute for a per-Resource revision;
-- the browser may not choose a fallback or fabricate any revision identity;
+- the browser may not choose a fallback, fabricate any identity, or equate the
+  server-resolved Draft target `resourceId` with a Canonical Resource ID;
 - changing any pinned identity produces a new Draft base, never an in-place
   rewrite of an existing Draft.
 
@@ -126,9 +131,10 @@ Projection is optional for the Draft as a whole. It becomes mandatory when the
 Draft starts from a Compiled Truth/Projection view, when an operation's
 `before`, rationale or expected impact references Projection content, or when a
 Projection block is retained as the focus/return target. In those cases the
-Projection kind, ID, revision/version, digest, readiness, projected Canonical
-version and source snapshot digest are all pinned. A non-ready Projection is
-context only and cannot satisfy Review readiness.
+Projection kind, ID, a discriminated revision/version identity, digest,
+readiness, projected Canonical version and source snapshot digest are all
+pinned. A non-ready Projection is context only and cannot satisfy Review
+readiness.
 
 ### 5. Typed operations
 
@@ -148,7 +154,9 @@ The v1 operation union supports bounded authoring for:
 User Directive changes and external Actions are excluded. Graph editing,
 Yjs/CRDT and Review Center decisions are also excluded.
 
-Every operation contains:
+The Contract Snapshot freezes a discriminated union covering Fact, Claim,
+Entity, Relation, Event, Decision, Evidence, Temporal, Conflict, Knowledge
+Gap and `NO_OP`. Each operation contains:
 
 ```text
 operationId
@@ -164,7 +172,9 @@ operationRevision
 contentDigest
 ```
 
-`before` and `after` are server-decoded typed values. `expectedImpact` is the
+`before` and `after` are versioned, operation-kind-specific values; the
+contract does not use `unknown` payloads. The server rejects an unsupported
+kind, payload schema mismatch or target-kind mismatch. `expectedImpact` is the
 author's declared expectation; the authoritative Recursive Impact Preview is a
 separate server-produced artifact.
 
@@ -241,8 +251,12 @@ The server owns:
 - immutable submitted Draft revision creation.
 
 Review submission returns a Review Resource identity bound to the submitted
-Draft revision, operation digest, validation result, impact result, evidence
-lineage, Resource Project and accepted policy context.
+Draft revision, operation/content digest, typed Validation and Impact artifact
+references, evidence lineage, Resource/Draft/Effective Project bindings and
+accepted access/policy context. These fields are frozen in the
+`ReviewSubmissionRefV1`, `DraftValidationArtifactRefV1`,
+`DraftImpactArtifactRefV1` and `ReviewResourceRefV1` types in the Contract
+Snapshot.
 
 Review submission does not:
 

@@ -176,6 +176,13 @@ Query contracts remain available and are not rewritten by the rollback.
   Compiled Truth read-snapshot Query and correlated Derived Inference Query.
   Stage 7 remains the only ranking owner; no new repository port, table, index,
   migration, runtime dependency or Product API is authorized.
+- 2026-08-02: Side-panel review `4836218304` required and authorized the QX-01.1
+  correction. Stage 7 now uses one locale-independent scorer for all
+  authorities, request-bound opaque cursors, decoder-compatible code-point
+  ordering, visible `graph.nodes` Derived correlation and real PostgreSQL
+  handler parity coverage. Existing `SearchCanonicalKnowledge@1.0.0`
+  semantics, Query-only composition and the no-new-persistence/API/UI boundary
+  remain unchanged.
 
 ## Approval boundary
 

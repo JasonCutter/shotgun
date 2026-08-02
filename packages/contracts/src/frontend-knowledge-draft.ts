@@ -307,16 +307,24 @@ export type DraftCommandEnvelopeV1 = {
   readonly semanticDigest?: string;
 };
 
+export type RequiredDraftRevisionEnvelopeV1 = Omit<
+  DraftCommandEnvelopeV1,
+  'expectedDraftRevision'
+> & {
+  readonly expectedDraftRevision: number;
+};
+
 export type MaterializeDraftRequestV1 = DraftCommandEnvelopeV1 & {
   readonly seedId: string;
 };
 
-export type StartSeedlessDraftRequestV1 = DraftCommandEnvelopeV1 & {
-  readonly resourceId?: string;
-  readonly pageId?: string;
-};
+export type StartSeedlessDraftRequestV1 = DraftCommandEnvelopeV1 &
+  (
+    | { readonly resourceId: string; readonly pageId?: never }
+    | { readonly pageId: string; readonly resourceId?: never }
+  );
 
-export type SaveKnowledgeDraftRequestV1 = DraftCommandEnvelopeV1 & {
+export type SaveKnowledgeDraftRequestV1 = RequiredDraftRevisionEnvelopeV1 & {
   readonly draftId: string;
   readonly operations: readonly FrontendKnowledgeOperationV1[];
   readonly expectedBaseRevision: number;
@@ -324,12 +332,12 @@ export type SaveKnowledgeDraftRequestV1 = DraftCommandEnvelopeV1 & {
   readonly contentDigest: string;
 };
 
-export type ValidateKnowledgeDraftRequestV1 = DraftCommandEnvelopeV1 & {
+export type ValidateKnowledgeDraftRequestV1 = RequiredDraftRevisionEnvelopeV1 & {
   readonly draftId: string;
   readonly expectedBaseRevision: number;
 };
 
-export type GenerateKnowledgeDraftImpactRequestV1 = DraftCommandEnvelopeV1 & {
+export type GenerateKnowledgeDraftImpactRequestV1 = RequiredDraftRevisionEnvelopeV1 & {
   readonly draftId: string;
   readonly expectedBaseRevision: number;
   readonly options?: {
@@ -338,7 +346,7 @@ export type GenerateKnowledgeDraftImpactRequestV1 = DraftCommandEnvelopeV1 & {
   };
 };
 
-export type SubmitKnowledgeDraftForReviewRequestV1 = DraftCommandEnvelopeV1 & {
+export type SubmitKnowledgeDraftForReviewRequestV1 = RequiredDraftRevisionEnvelopeV1 & {
   readonly draftId: string;
   readonly expectedBaseRevision: number;
   readonly validationArtifact: DraftValidationArtifactRefV1;
@@ -435,6 +443,10 @@ export type FrontendKnowledgeDraftFailureMapping = {
   readonly retryable: boolean;
 };
 
+export type FrontendKnowledgeDraftApiFailureMapping = FrontendKnowledgeDraftFailureMapping & {
+  readonly normalizedCode: FrontendKnowledgeDraftFailureCode;
+};
+
 export const FRONTEND_KNOWLEDGE_DRAFT_FAILURES: Readonly<
   Record<FrontendKnowledgeDraftFailureCode, FrontendKnowledgeDraftFailureMapping>
 > = {
@@ -451,6 +463,107 @@ export const FRONTEND_KNOWLEDGE_DRAFT_FAILURES: Readonly<
   UNSUPPORTED_OPERATION: { category: 'VALIDATION', httpStatus: 422, retryable: false },
   ARTIFACT_INCOMPLETE: { category: 'DEPENDENCY', httpStatus: 409, retryable: false },
   OUTCOME_UNKNOWN: { category: 'OUTCOME_UNKNOWN', httpStatus: 503, retryable: false },
+};
+
+export const FRONTEND_KNOWLEDGE_DRAFT_API_FAILURES: Readonly<
+  Record<FrontendKnowledgeDraftApiFailureCode, FrontendKnowledgeDraftApiFailureMapping>
+> = {
+  NOT_FOUND: {
+    normalizedCode: 'SEED_NOT_FOUND',
+    category: 'NOT_FOUND',
+    httpStatus: 404,
+    retryable: false,
+  },
+  FORBIDDEN: {
+    normalizedCode: 'ACCESS_DENIED',
+    category: 'AUTHORIZATION',
+    httpStatus: 403,
+    retryable: false,
+  },
+  PROJECT_BINDING_CONFLICT: {
+    normalizedCode: 'PROJECT_BINDING_FAILURE',
+    category: 'CONFLICT',
+    httpStatus: 409,
+    retryable: false,
+  },
+  ACCESS_REVOKED: {
+    normalizedCode: 'ACCESS_DENIED',
+    category: 'AUTHORIZATION',
+    httpStatus: 403,
+    retryable: false,
+  },
+  BASE_UNAVAILABLE: {
+    normalizedCode: 'CANONICAL_SNAPSHOT_MISMATCH',
+    category: 'DEPENDENCY',
+    httpStatus: 503,
+    retryable: false,
+  },
+  DRAFT_NOT_FOUND: {
+    normalizedCode: 'DRAFT_NOT_FOUND',
+    category: 'NOT_FOUND',
+    httpStatus: 404,
+    retryable: false,
+  },
+  DRAFT_REVISION_CONFLICT: {
+    normalizedCode: 'CONFLICT',
+    category: 'CONFLICT',
+    httpStatus: 409,
+    retryable: false,
+  },
+  VALIDATION_FAILED: {
+    normalizedCode: 'INVALID_REQUEST',
+    category: 'VALIDATION',
+    httpStatus: 422,
+    retryable: false,
+  },
+  STALE: {
+    normalizedCode: 'STALE_BASE',
+    category: 'CONFLICT',
+    httpStatus: 409,
+    retryable: false,
+  },
+  IMPACT_PARTIAL: {
+    normalizedCode: 'ARTIFACT_INCOMPLETE',
+    category: 'DEPENDENCY',
+    httpStatus: 409,
+    retryable: false,
+  },
+  ANALYZER_UNAVAILABLE: {
+    normalizedCode: 'ARTIFACT_INCOMPLETE',
+    category: 'DEPENDENCY',
+    httpStatus: 503,
+    retryable: false,
+  },
+  NOT_READY_FOR_REVIEW: {
+    normalizedCode: 'ARTIFACT_INCOMPLETE',
+    category: 'DEPENDENCY',
+    httpStatus: 409,
+    retryable: false,
+  },
+  OUTCOME_NOT_FOUND: {
+    normalizedCode: 'OUTCOME_UNKNOWN',
+    category: 'NOT_FOUND',
+    httpStatus: 404,
+    retryable: false,
+  },
+  DIGEST_MISMATCH: {
+    normalizedCode: 'CONFLICT',
+    category: 'CONFLICT',
+    httpStatus: 409,
+    retryable: false,
+  },
+  COMMAND_SCOPE_MISMATCH: {
+    normalizedCode: 'PROJECT_BINDING_FAILURE',
+    category: 'AUTHORIZATION',
+    httpStatus: 403,
+    retryable: false,
+  },
+  OUTCOME_INDETERMINATE: {
+    normalizedCode: 'OUTCOME_UNKNOWN',
+    category: 'OUTCOME_UNKNOWN',
+    httpStatus: 503,
+    retryable: false,
+  },
 };
 
 const FAILURE_ALIASES: Readonly<Record<string, FrontendKnowledgeDraftFailureCode>> = {
@@ -505,7 +618,7 @@ export const mapFrontendKnowledgeDraftFailure = (
 export type FrontendKnowledgeDraftNormalizedFailure = {
   readonly apiCode: FrontendKnowledgeDraftApiFailureCode;
   readonly normalizedCode: FrontendKnowledgeDraftFailureCode;
-  readonly mapping: FrontendKnowledgeDraftFailureMapping;
+  readonly mapping: FrontendKnowledgeDraftApiFailureMapping;
 };
 
 export type FrontendKnowledgeDraftFailureV1 = {
@@ -530,17 +643,45 @@ export const normalizeFrontendKnowledgeDraftFailure = (
   }
   const normalizedCode = mapFrontendKnowledgeDraftFailure(code);
   if (normalizedCode === undefined) return undefined;
+  const mapping =
+    FRONTEND_KNOWLEDGE_DRAFT_API_FAILURES[code as FrontendKnowledgeDraftApiFailureCode];
   return {
     apiCode: code as FrontendKnowledgeDraftApiFailureCode,
     normalizedCode,
-    mapping: FRONTEND_KNOWLEDGE_DRAFT_FAILURES[normalizedCode],
+    mapping,
   };
 };
+
+export class FrontendKnowledgeDraftCommandError extends Error {
+  readonly apiCode: FrontendKnowledgeDraftApiFailureCode;
+  readonly normalizedCode: FrontendKnowledgeDraftFailureCode;
+  readonly mapping: FrontendKnowledgeDraftApiFailureMapping;
+
+  constructor(apiCode: FrontendKnowledgeDraftApiFailureCode, message: string) {
+    super(message);
+    this.name = 'FrontendKnowledgeDraftCommandError';
+    const normalized = normalizeFrontendKnowledgeDraftFailure(apiCode);
+    if (normalized === undefined) {
+      throw new Error(`No Frontend Knowledge Draft failure mapping for ${apiCode}`);
+    }
+    this.apiCode = apiCode;
+    this.normalizedCode = normalized.normalizedCode;
+    this.mapping = normalized.mapping;
+  }
+}
 
 type ObjectValue = Record<string, unknown>;
 
 const fail = (path: string, message: string, code: ErrorCode = 'INVALID_REQUEST'): never => {
   throw new FrontendContractError(code, `${path}: ${message}`);
+};
+
+const failWithApiCode = (
+  path: string,
+  message: string,
+  code: FrontendKnowledgeDraftApiFailureCode,
+): never => {
+  throw new FrontendKnowledgeDraftCommandError(code, `${path}: ${message}`);
 };
 
 const asObject = (value: unknown, path: string): ObjectValue => {
@@ -1618,11 +1759,8 @@ export const decodeStartSeedlessDraftRequestV1 = (value: unknown): StartSeedless
   if (resourceId !== undefined && pageId !== undefined) {
     return fail('startSeedlessDraft', 'resourceId and pageId are mutually exclusive');
   }
-  return {
-    ...envelope,
-    ...(resourceId === undefined ? {} : { resourceId }),
-    ...(pageId === undefined ? {} : { pageId }),
-  };
+  if (resourceId !== undefined) return { ...envelope, resourceId };
+  return { ...envelope, pageId: pageId as string };
 };
 
 const optionalTextValue = (object: ObjectValue, key: string, path: string): string | undefined =>
@@ -1634,13 +1772,14 @@ export const decodeSaveKnowledgeDraftRequestV1 = (value: unknown): SaveKnowledge
     ['draftId', 'operations', 'expectedBaseRevision', 'operationRevision', 'contentDigest'],
     'saveDraft',
   );
-  requiredExpectedDraftRevision(envelope, 'saveDraft');
+  const expectedDraftRevision = requiredExpectedDraftRevision(envelope, 'saveDraft');
   const operations = arrayValue(
     required(object, 'operations', 'saveDraft'),
     'saveDraft.operations',
   ).map((operation, index) => decodeFrontendKnowledgeOperationV1At(operation, index));
   return {
     ...envelope,
+    expectedDraftRevision,
     draftId: text(required(object, 'draftId', 'saveDraft'), 'saveDraft.draftId'),
     operations,
     expectedBaseRevision: integer(
@@ -1666,9 +1805,10 @@ export const decodeValidateKnowledgeDraftRequestV1 = (
     ['draftId', 'expectedBaseRevision'],
     'validateDraft',
   );
-  requiredExpectedDraftRevision(envelope, 'validateDraft');
+  const expectedDraftRevision = requiredExpectedDraftRevision(envelope, 'validateDraft');
   return {
     ...envelope,
+    expectedDraftRevision,
     draftId: text(required(object, 'draftId', 'validateDraft'), 'validateDraft.draftId'),
     expectedBaseRevision: integer(
       required(object, 'expectedBaseRevision', 'validateDraft'),
@@ -1708,10 +1848,11 @@ export const decodeGenerateKnowledgeDraftImpactRequestV1 = (
     ['draftId', 'expectedBaseRevision', 'options'],
     'generateImpactPreview',
   );
-  requiredExpectedDraftRevision(envelope, 'generateImpactPreview');
+  const expectedDraftRevision = requiredExpectedDraftRevision(envelope, 'generateImpactPreview');
   const options = decodeImpactOptions(object.options, 'generateImpactPreview.options');
   return {
     ...envelope,
+    expectedDraftRevision,
     draftId: text(
       required(object, 'draftId', 'generateImpactPreview'),
       'generateImpactPreview.draftId',
@@ -1732,7 +1873,7 @@ export const decodeSubmitKnowledgeDraftForReviewRequestV1 = (
     ['draftId', 'expectedBaseRevision', 'validationArtifact', 'impactArtifact'],
     'submitDraftForReview',
   );
-  requiredExpectedDraftRevision(envelope, 'submitDraftForReview');
+  const expectedDraftRevision = requiredExpectedDraftRevision(envelope, 'submitDraftForReview');
   const validationArtifact = decodeDraftValidationArtifactRefV1(
     required(object, 'validationArtifact', 'submitDraftForReview'),
   );
@@ -1740,10 +1881,15 @@ export const decodeSubmitKnowledgeDraftForReviewRequestV1 = (
     required(object, 'impactArtifact', 'submitDraftForReview'),
   );
   if (validationArtifact.status !== 'COMPLETE' || impactArtifact.status !== 'COMPLETE') {
-    return fail('submitDraftForReview', 'validation and impact artifacts must be COMPLETE');
+    return failWithApiCode(
+      'submitDraftForReview',
+      'validation and impact artifacts must be COMPLETE',
+      'NOT_READY_FOR_REVIEW',
+    );
   }
   return {
     ...envelope,
+    expectedDraftRevision,
     draftId: text(
       required(object, 'draftId', 'submitDraftForReview'),
       'submitDraftForReview.draftId',

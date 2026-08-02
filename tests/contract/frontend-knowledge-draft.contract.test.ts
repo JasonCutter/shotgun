@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   FrontendContractError,
+  FrontendKnowledgeDraftCommandError,
   decodeDraftCommandEnvelopeV1,
   decodeGenerateKnowledgeDraftImpactRequestV1,
   decodeGenerateKnowledgeDraftImpactResultV1,
@@ -234,6 +235,17 @@ const expectContractError = (action: () => unknown, code?: string) => {
   if (code !== undefined) expect((thrown as FrontendContractError).code).toBe(code);
 };
 
+const expectDraftCommandError = (action: () => unknown, apiCode: string) => {
+  let thrown: unknown;
+  try {
+    action();
+  } catch (error) {
+    thrown = error;
+  }
+  expect(thrown).toBeInstanceOf(FrontendKnowledgeDraftCommandError);
+  expect((thrown as FrontendKnowledgeDraftCommandError).apiCode).toBe(apiCode);
+};
+
 describe('FE-P3-S2 FrontendKnowledgeDraftChangeSet v1 contract', () => {
   it('decodes a complete Draft with pinned base and typed operation', () => {
     const draft = decodeFrontendKnowledgeDraftChangeSetV1(draftFor());
@@ -454,14 +466,16 @@ describe('FE-P3-S2 FrontendKnowledgeDraftChangeSet v1 contract', () => {
       }),
     );
     for (const status of ['PARTIAL', 'FAILED', 'UNAVAILABLE'] as const) {
-      expectContractError(() =>
-        decodeSubmitKnowledgeDraftForReviewRequestV1({
-          ...envelope,
-          draftId: 'draft-1',
-          expectedBaseRevision: 7,
-          validationArtifact: { ...artifact, status },
-          impactArtifact: artifact,
-        }),
+      expectDraftCommandError(
+        () =>
+          decodeSubmitKnowledgeDraftForReviewRequestV1({
+            ...envelope,
+            draftId: 'draft-1',
+            expectedBaseRevision: 7,
+            validationArtifact: { ...artifact, status },
+            impactArtifact: artifact,
+          }),
+        'NOT_READY_FOR_REVIEW',
       );
     }
     expectContractError(() =>
@@ -534,10 +548,38 @@ describe('FE-P3-S2 FrontendKnowledgeDraftChangeSet v1 contract', () => {
       expect(normalized?.apiCode).toBe(alias);
       expect(normalized?.normalizedCode).toBeDefined();
     }
+    const mappingExpectations = {
+      NOT_FOUND: ['SEED_NOT_FOUND', 'NOT_FOUND', 404],
+      FORBIDDEN: ['ACCESS_DENIED', 'AUTHORIZATION', 403],
+      PROJECT_BINDING_CONFLICT: ['PROJECT_BINDING_FAILURE', 'CONFLICT', 409],
+      ACCESS_REVOKED: ['ACCESS_DENIED', 'AUTHORIZATION', 403],
+      BASE_UNAVAILABLE: ['CANONICAL_SNAPSHOT_MISMATCH', 'DEPENDENCY', 503],
+      DRAFT_NOT_FOUND: ['DRAFT_NOT_FOUND', 'NOT_FOUND', 404],
+      DRAFT_REVISION_CONFLICT: ['CONFLICT', 'CONFLICT', 409],
+      VALIDATION_FAILED: ['INVALID_REQUEST', 'VALIDATION', 422],
+      STALE: ['STALE_BASE', 'CONFLICT', 409],
+      IMPACT_PARTIAL: ['ARTIFACT_INCOMPLETE', 'DEPENDENCY', 409],
+      ANALYZER_UNAVAILABLE: ['ARTIFACT_INCOMPLETE', 'DEPENDENCY', 503],
+      NOT_READY_FOR_REVIEW: ['ARTIFACT_INCOMPLETE', 'DEPENDENCY', 409],
+      OUTCOME_NOT_FOUND: ['OUTCOME_UNKNOWN', 'NOT_FOUND', 404],
+      DIGEST_MISMATCH: ['CONFLICT', 'CONFLICT', 409],
+      COMMAND_SCOPE_MISMATCH: ['PROJECT_BINDING_FAILURE', 'AUTHORIZATION', 403],
+      OUTCOME_INDETERMINATE: ['OUTCOME_UNKNOWN', 'OUTCOME_UNKNOWN', 503],
+    } as const;
+    for (const [apiCode, [normalizedCode, category, httpStatus]] of Object.entries(
+      mappingExpectations,
+    )) {
+      const normalized = normalizeFrontendKnowledgeDraftFailure(apiCode);
+      expect(normalized).toMatchObject({
+        apiCode,
+        normalizedCode,
+        mapping: { category, httpStatus, retryable: false },
+      });
+    }
     for (const [code, normalizedCode, category, httpStatus] of [
       ['DRAFT_NOT_FOUND', 'DRAFT_NOT_FOUND', 'NOT_FOUND', 404],
       ['ACCESS_REVOKED', 'ACCESS_DENIED', 'AUTHORIZATION', 403],
-      ['OUTCOME_NOT_FOUND', 'OUTCOME_UNKNOWN', 'OUTCOME_UNKNOWN', 503],
+      ['OUTCOME_NOT_FOUND', 'OUTCOME_UNKNOWN', 'NOT_FOUND', 404],
       ['OUTCOME_INDETERMINATE', 'OUTCOME_UNKNOWN', 'OUTCOME_UNKNOWN', 503],
     ] as const) {
       expect(

@@ -26,6 +26,9 @@ import { AdvancedWorkspace } from '../routes/settings/advanced-workspace.js';
 import { SourcesWorkspace } from '../routes/sources-workspace.js';
 import { SourceDetailWorkspace } from '../routes/source-detail-workspace.js';
 import { AskWorkspace } from '../routes/ask-workspace.js';
+import { KnowledgeWorkspace } from '../routes/knowledge-workspace.js';
+import { KnowledgeDetailWorkspace } from '../routes/knowledge-detail-workspace.js';
+import { KnowledgeCompareWorkspace } from '../routes/knowledge-compare-workspace.js';
 import type { AppRuntime } from './providers.js';
 import { ensureSessionBoundary, sessionBoundaryQueryOptions } from '../session/session-query.js';
 import type { TargetRouteView } from '@shotgun/api-client';
@@ -125,7 +128,23 @@ export const createAppRouter = (runtime: AppRuntime) =>
             routeId: 'knowledge',
             href: '/knowledge',
           }),
-          element: <PlaceholderPage heading="Knowledge" nextSection="후속 Frontend Section" />,
+          element: <KnowledgeWorkspace />,
+        },
+        {
+          path: 'knowledge/compare',
+          loader: guardedRouteLoader(runtime, {
+            routeId: 'knowledge',
+            href: '/knowledge',
+          }),
+          element: <KnowledgeCompareWorkspace />,
+        },
+        {
+          path: 'knowledge/:resourceId',
+          loader: guardedRouteLoader(runtime, {
+            routeId: 'knowledge',
+            href: '/knowledge',
+          }),
+          element: <KnowledgeDetailWorkspace />,
         },
         {
           path: 'review',

@@ -7,6 +7,7 @@
     "contracts": [
       { "name": "CanonicalCommitted", "range": ">=1.0.0 <2.0.0" },
       { "name": "SearchCanonicalKnowledge", "range": ">=1.0.0 <2.0.0" },
+      { "name": "SearchKnowledgeWorkspace", "range": ">=1.0.0 <2.0.0" },
       { "name": "GetProjectionReadiness", "range": ">=1.0.0 <2.0.0" },
       { "name": "RebuildSearchProjection", "range": ">=1.0.0 <2.0.0" },
       { "name": "ProjectionReady", "range": ">=1.0.0 <2.0.0" }
@@ -19,7 +20,11 @@
       "GetCanonicalSnapshot query",
       "GetCanonicalClaim query",
       "GetCanonicalCommit query",
-      "ListCanonicalHistory query"
+      "ListCanonicalHistory query",
+      "GetDocumentRevision query",
+      "ListKnowledgeGroups query",
+      "GetCompiledTruthReadSnapshot query",
+      "ListDerivedInferences query"
     ],
     "directSchemaAccess": false
   },
@@ -33,11 +38,19 @@
   "provides": {
     "queries": [
       { "name": "SearchCanonicalKnowledge", "range": ">=1.0.0 <2.0.0" },
+      { "name": "SearchKnowledgeWorkspace", "range": ">=1.0.0 <2.0.0" },
       { "name": "GetProjectionReadiness", "range": ">=1.0.0 <2.0.0" }
     ],
     "capabilities": [{ "name": "canonical-search-provider", "priority": 100 }]
   },
-  "requires": { "capabilities": ["canonical-knowledge-provider"] },
+  "requires": {
+    "capabilities": [
+      "canonical-knowledge-provider",
+      "document-revision-provider",
+      "rich-knowledge-review-provider",
+      "compiled-truth-projector"
+    ]
+  },
   "security": {
     "requiredContext": ["actor", "project", "access_scope", "sensitivity"],
     "defaultOnMissingContext": "deny"

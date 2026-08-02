@@ -21,6 +21,10 @@ import {
   InMemoryNotificationSummaryProjection,
   InMemoryRouteGuardProjection,
 } from '../../../adapters/frontend-product-read-in-memory/src/index.js';
+import {
+  PostgresKnowledgeWorkspaceProjection,
+  type KnowledgeWorkspaceQueryExecutor,
+} from '../../../adapters/frontend-product-read-postgres/src/index.js';
 import { SealedSourcesStagingService } from '../../../adapters/frontend-sources-staging-sealed/src/index.js';
 import { PostgresSourcesProductService } from '../../../adapters/frontend-sources-write-postgres/src/product-service.js';
 import { LucasAugmentedPlainTextAdapter } from '../../../adapters/plain-text-lucas-augmented/src/index.js';
@@ -133,16 +137,6 @@ const askCommandCoordinator = new AskCommandCoordinator(
   askSourceSelectionValidator,
   askAnswerExecution,
 );
-const frontendProductReadCoordinator = new FrontendProductReadCoordinator(
-  new InMemoryGlobalShellProjection(),
-  new InMemoryActionCenterProjection(),
-  new InMemoryBackgroundSummaryProjection(),
-  new InMemoryNotificationSummaryProjection(),
-  new InMemoryGlobalSearch(),
-  new InMemoryRouteGuardProjection(),
-  askWorkspaceProjection,
-);
-
 let stopAskAnswerWorker = async (): Promise<void> => {};
 
 const { server } = await createApplication({
@@ -151,7 +145,22 @@ const { server } = await createApplication({
   settingsRepository: new PostgresSettingsRepository(pool),
   frontendCommandGateway: commandGateway,
   askCommandCoordinator,
-  frontendProductReadCoordinator,
+  frontendProductReadCoordinatorFactory: (connector) =>
+    new FrontendProductReadCoordinator(
+      new InMemoryGlobalShellProjection(),
+      new InMemoryActionCenterProjection(),
+      new InMemoryBackgroundSummaryProjection(),
+      new InMemoryNotificationSummaryProjection(),
+      new InMemoryGlobalSearch(),
+      new InMemoryRouteGuardProjection(),
+      askWorkspaceProjection,
+      new PostgresKnowledgeWorkspaceProjection({
+        query: async <TResult>({
+          envelope,
+        }: Parameters<KnowledgeWorkspaceQueryExecutor['query']>[0]) =>
+          (await connector.query<TResult>(envelope)).result.payload,
+      }),
+    ),
   intakeRepository: new PostgresIntakeRepository(pool),
   originalAssetRepository: new PostgresOriginalAssetRepository(pool),
   assetStorage,

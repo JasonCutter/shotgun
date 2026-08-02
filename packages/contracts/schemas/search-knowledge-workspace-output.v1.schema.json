@@ -1,0 +1,269 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://shotgun.local/contracts/search-knowledge-workspace-output.v1.schema.json",
+  "title": "Search Knowledge Workspace Output v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "projectId",
+    "query",
+    "ranking",
+    "matches",
+    "readiness",
+    "generatedAt"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "projectId": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "query": { "type": "string", "minLength": 1, "pattern": "\\S" },
+    "ranking": { "$ref": "#/$defs/ranking" },
+    "matches": { "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/match" } },
+    "nextCursor": { "type": "string", "minLength": 1, "maxLength": 2048 },
+    "readiness": { "$ref": "#/$defs/readiness" },
+    "generatedAt": { "type": "string", "minLength": 1 }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "status": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "status", "canonicalVersion", "projectedCanonicalVersion", "lag"],
+      "properties": {
+        "source": {
+          "enum": ["CANONICAL_SEARCH", "COMPILED_TRUTH"]
+        },
+        "status": { "enum": ["READY", "STALE", "DEGRADED", "NOT_BUILT"] },
+        "canonicalVersion": { "type": "integer", "minimum": 0 },
+        "projectedCanonicalVersion": { "type": "integer", "minimum": 0 },
+        "lag": { "type": "integer", "minimum": 0 },
+        "canonicalSnapshotDigest": { "$ref": "#/$defs/digest" },
+        "projectedSnapshotDigest": { "$ref": "#/$defs/digest" },
+        "sourceSnapshotDigest": { "$ref": "#/$defs/digest" },
+        "projectionLogicalDigest": { "$ref": "#/$defs/digest" },
+        "reason": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "updatedAt": { "type": "string", "minLength": 1 }
+      }
+    },
+    "readiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["canonicalSearch", "sourceProjections", "partial"],
+      "properties": {
+        "canonicalSearch": {
+          "allOf": [
+            { "$ref": "#/$defs/status" },
+            { "type": "object", "properties": { "source": { "const": "CANONICAL_SEARCH" } } }
+          ]
+        },
+        "sourceProjections": {
+          "type": "array",
+          "maxItems": 1,
+          "items": { "$ref": "#/$defs/status" }
+        },
+        "partial": { "type": "boolean" }
+      }
+    },
+    "ranking": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["owner", "version", "scoreNormalization", "tieBreak"],
+      "properties": {
+        "owner": { "const": "stage7.projection-search" },
+        "version": { "const": "1.0.0" },
+        "scoreNormalization": { "const": "UNIT_INTERVAL_V1" },
+        "tieBreak": { "const": "SCORE_DESC_MATCH_TYPE_AUTHORITY_SOURCE_ID_ASC" }
+      }
+    },
+    "sourceBase": {
+      "type": "object",
+      "required": ["authority", "projectId", "resourceId", "resourceRevision", "evidenceIds"],
+      "properties": {
+        "authority": {
+          "enum": ["CANONICAL", "APPROVED_KNOWLEDGE", "COMPILED_TRUTH", "DERIVED_INFERENCE"]
+        },
+        "projectId": { "type": "string", "minLength": 1 },
+        "resourceId": { "type": "string", "minLength": 1 },
+        "resourceRevision": { "type": "string", "minLength": 1 },
+        "evidenceIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "canonicalSource": {
+      "allOf": [
+        { "$ref": "#/$defs/sourceBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "authority",
+            "projectId",
+            "resourceId",
+            "resourceRevision",
+            "evidenceIds",
+            "canonicalResourceId",
+            "canonicalRevisionId",
+            "sourceId",
+            "sourceVersionId",
+            "commitId"
+          ],
+          "properties": {
+            "authority": { "const": "CANONICAL" },
+            "projectId": { "type": "string" },
+            "resourceId": { "type": "string" },
+            "resourceRevision": { "type": "string" },
+            "evidenceIds": { "type": "array" },
+            "canonicalResourceId": { "type": "string", "minLength": 1 },
+            "canonicalRevisionId": { "type": "string", "minLength": 1 },
+            "sourceId": { "type": "string", "minLength": 1 },
+            "sourceVersionId": { "type": "string", "minLength": 1 },
+            "commitId": { "type": "string", "minLength": 1 },
+            "manifestId": { "type": "string", "minLength": 1 },
+            "changeSetId": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    },
+    "approvedSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authority",
+        "projectId",
+        "resourceId",
+        "resourceRevision",
+        "knowledgeGroupId",
+        "candidateId",
+        "sourceVersionId",
+        "evidenceIds"
+      ],
+      "properties": {
+        "authority": { "const": "APPROVED_KNOWLEDGE" },
+        "projectId": { "type": "string", "minLength": 1 },
+        "resourceId": { "type": "string", "minLength": 1 },
+        "resourceRevision": { "type": "string", "minLength": 1 },
+        "knowledgeGroupId": { "type": "string", "minLength": 1 },
+        "candidateId": { "type": "string", "minLength": 1 },
+        "sourceVersionId": { "type": "string", "minLength": 1 },
+        "evidenceIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "compiledSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authority",
+        "projectId",
+        "resourceId",
+        "resourceRevision",
+        "projectionLogicalDigest",
+        "compiledItemId",
+        "canonicalVersion",
+        "sourceSnapshotDigest",
+        "evidenceIds"
+      ],
+      "properties": {
+        "authority": { "const": "COMPILED_TRUTH" },
+        "projectId": { "type": "string", "minLength": 1 },
+        "resourceId": { "type": "string", "minLength": 1 },
+        "resourceRevision": { "type": "string", "minLength": 1 },
+        "projectionLogicalDigest": { "$ref": "#/$defs/digest" },
+        "compiledItemId": { "type": "string", "minLength": 1 },
+        "canonicalVersion": { "type": "integer", "minimum": 0 },
+        "sourceSnapshotDigest": { "$ref": "#/$defs/digest" },
+        "evidenceIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "derivedSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authority",
+        "projectId",
+        "resourceId",
+        "resourceRevision",
+        "inferenceId",
+        "sourceProjectionDigest",
+        "evidenceIds"
+      ],
+      "properties": {
+        "authority": { "const": "DERIVED_INFERENCE" },
+        "projectId": { "type": "string", "minLength": 1 },
+        "resourceId": { "type": "string", "minLength": 1 },
+        "resourceRevision": { "type": "string", "minLength": 1 },
+        "inferenceId": { "type": "string", "minLength": 1 },
+        "sourceProjectionDigest": { "$ref": "#/$defs/digest" },
+        "evidenceIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "source": {
+      "oneOf": [
+        { "$ref": "#/$defs/canonicalSource" },
+        { "$ref": "#/$defs/approvedSource" },
+        { "$ref": "#/$defs/compiledSource" },
+        { "$ref": "#/$defs/derivedSource" }
+      ]
+    },
+    "match": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projectId",
+        "rank",
+        "score",
+        "matchType",
+        "authority",
+        "kind",
+        "temporalState",
+        "label",
+        "source"
+      ],
+      "properties": {
+        "projectId": { "type": "string", "minLength": 1 },
+        "rank": { "type": "integer", "minimum": 1 },
+        "score": { "type": "number", "minimum": 0, "maximum": 1 },
+        "matchType": { "enum": ["FULL_TEXT", "TRIGRAM", "SUBSTRING"] },
+        "authority": {
+          "enum": ["CANONICAL", "APPROVED_KNOWLEDGE", "COMPILED_TRUTH", "DERIVED_INFERENCE"]
+        },
+        "kind": {
+          "enum": [
+            "CLAIM",
+            "FACT",
+            "ENTITY",
+            "RELATION",
+            "EVENT",
+            "DECISION",
+            "ACTION",
+            "CONFLICT",
+            "KNOWLEDGE_GAP",
+            "DERIVED_INFERENCE"
+          ]
+        },
+        "temporalState": { "enum": ["CURRENT", "PAST", "FUTURE", "CONFLICT"] },
+        "label": { "type": "string", "minLength": 1 },
+        "source": { "$ref": "#/$defs/source" },
+        "projectionStatus": { "$ref": "#/$defs/status" }
+      }
+    }
+  }
+}

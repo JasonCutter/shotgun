@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import type {
+  CompiledTruthEdge,
   CompiledTruthProjection,
   CompiledTruthProjectionStatus,
   DiscoveryRunResult,
+  GetCompiledTruthReadSnapshotResult,
   KnowledgeCandidate,
   KnowledgeReviewGroup,
 } from '../../packages/contracts/src/index.js';
@@ -18,9 +20,11 @@ import {
 import {
   buildCompiledTruthCommand,
   compiledTruthQuery,
+  compiledTruthReadSnapshotQuery,
   compiledTruthStatusQuery,
   runDiscoveryCommand,
 } from '../helpers/stage-10.js';
+import { compiledTruthLogicalDigest } from '../../packages/contracts/src/index.js';
 
 const stageEvidence = async (app: Awaited<ReturnType<typeof createApplication>>, name: string) => {
   const parent = directTextCommand(name, 'Alpha is related to Beta. Isolated needs context.');
@@ -193,6 +197,111 @@ describe('Stage 10 Compiled Truth and Discovery contracts', () => {
       )
     ).result.payload;
     expect(status).toMatchObject({ status: 'NOT_BUILT', lag: 0, projectedCanonicalVersion: 0 });
+    await app.server.close();
+  });
+
+  it('serves the additive read snapshot with status fallback and security filtering', async () => {
+    const app = await createApplication();
+    const parent = directTextCommand('stage10-read-snapshot', 'Snapshot fixture.');
+
+    const notBuilt = (
+      await app.kernel.connector.query<GetCompiledTruthReadSnapshotResult>(
+        compiledTruthReadSnapshotQuery(parent),
+      )
+    ).result.payload;
+    expect(notBuilt).toMatchObject({
+      projectId: parent.projectId,
+      status: { status: 'NOT_BUILT' },
+    });
+    expect(notBuilt.projection).toBeUndefined();
+
+    const { sourceVersionId, evidenceId } = await stageEvidence(app, 'stage10-read-snapshot');
+    await approve(app, parent, sourceVersionId, [
+      entityCandidate('entity:snapshot', sourceVersionId, evidenceId, 'Snapshot'),
+    ]);
+    const built = (
+      await app.kernel.connector.sendCommand<CompiledTruthProjection>(
+        buildCompiledTruthCommand(parent, 'FULL_REBUILD'),
+      )
+    ).result;
+    const visible = {
+      ...built.items[0]!,
+      id: 'entity:visible',
+      label: 'Visible',
+      accessScope: ['owner'],
+      sensitivity: 'public' as const,
+    };
+    const scopeHidden = {
+      ...visible,
+      id: 'entity:scope-hidden',
+      label: 'Scope hidden',
+      accessScope: ['admin'],
+    };
+    const sensitivityHidden = {
+      ...visible,
+      id: 'entity:sensitivity-hidden',
+      label: 'Sensitivity hidden',
+      sensitivity: 'restricted' as const,
+    };
+    const edges: readonly CompiledTruthEdge[] = [
+      {
+        id: 'edge:scope-hidden',
+        from: visible.id,
+        to: scopeHidden.id,
+        relationType: 'RELATED_TO',
+        direction: 'DIRECTED',
+        source: 'APPROVED_TYPED_EDGE',
+      },
+      {
+        id: 'edge:sensitivity-hidden',
+        from: visible.id,
+        to: sensitivityHidden.id,
+        relationType: 'RELATED_TO',
+        direction: 'DIRECTED',
+        source: 'APPROVED_TYPED_EDGE',
+      },
+    ];
+    const staleProjection: CompiledTruthProjection = {
+      ...built,
+      sourceSnapshotDigest: `sha256:${'9'.repeat(64)}`,
+      projectedAt: '2026-08-02T10:00:00.000Z',
+      logicalDigest: compiledTruthLogicalDigest([visible, scopeHidden, sensitivityHidden], edges),
+      items: [visible, scopeHidden, sensitivityHidden],
+      graph: {
+        ...built.graph,
+        nodes: [visible, scopeHidden, sensitivityHidden],
+        edges,
+      },
+    };
+    await app.repositories.compiledTruth.synchronize(staleProjection);
+
+    const stale = (
+      await app.kernel.connector.query<GetCompiledTruthReadSnapshotResult>(
+        compiledTruthReadSnapshotQuery(parent),
+      )
+    ).result.payload;
+    expect(stale.status).toMatchObject({ status: 'STALE', lag: 0 });
+    expect(stale.projection?.items.map((item) => item.id)).toEqual(['entity:visible']);
+    expect(stale.projection?.graph.edges).toEqual([]);
+
+    await app.repositories.compiledTruth.markDegraded(
+      parent.projectId!,
+      'repair-needed',
+      '2026-08-02T12:30:00.000Z',
+    );
+    const degraded = (
+      await app.kernel.connector.query<GetCompiledTruthReadSnapshotResult>(
+        compiledTruthReadSnapshotQuery(parent),
+      )
+    ).result.payload;
+    expect(degraded.status).toMatchObject({ status: 'DEGRADED', lastError: 'repair-needed' });
+    expect(degraded.status.updatedAt).toBe('2026-08-02T12:30:00.000Z');
+    expect(degraded.projection?.projectedAt).toBe('2026-08-02T10:00:00.000Z');
+    expect(degraded.projection?.items.map((item) => item.id)).toEqual(['entity:visible']);
+
+    await expect(
+      app.kernel.connector.query<CompiledTruthProjection>(compiledTruthQuery(parent)),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
     await app.server.close();
   });
 });

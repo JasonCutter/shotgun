@@ -1,0 +1,142 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://shotgun.local/contracts/get-compiled-truth-read-snapshot-output.v1.schema.json",
+  "title": "Get Compiled Truth Read Snapshot Output v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "projectId", "status"],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "projectId": { "type": "string", "minLength": 1 },
+    "status": { "$ref": "#/$defs/status" },
+    "projection": { "$ref": "#/$defs/projection" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "status": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "projectorVersion",
+        "canonicalVersion",
+        "projectedCanonicalVersion",
+        "lag"
+      ],
+      "properties": {
+        "status": { "enum": ["NOT_BUILT", "READY", "STALE", "DEGRADED"] },
+        "projectorVersion": { "type": "string", "minLength": 1 },
+        "canonicalVersion": { "type": "integer", "minimum": 0 },
+        "projectedCanonicalVersion": { "type": "integer", "minimum": 0 },
+        "lag": { "type": "integer", "minimum": 0 },
+        "sourceSnapshotDigest": { "$ref": "#/$defs/digest" },
+        "logicalDigest": { "$ref": "#/$defs/digest" },
+        "lastBuildMode": { "enum": ["FULL_REBUILD", "INCREMENTAL"] },
+        "updatedAt": { "type": "string", "minLength": 1 },
+        "lastError": { "type": "string", "minLength": 1 }
+      }
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type",
+        "label",
+        "state",
+        "source",
+        "evidenceIds",
+        "accessScope",
+        "sensitivity"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": {
+          "enum": [
+            "CLAIM",
+            "ENTITY",
+            "RELATION",
+            "EVENT",
+            "DECISION",
+            "ACTION",
+            "CONFLICT",
+            "KNOWLEDGE_GAP"
+          ]
+        },
+        "label": { "type": "string", "minLength": 1 },
+        "state": { "enum": ["CURRENT", "PAST", "FUTURE", "CONFLICT"] },
+        "source": { "enum": ["CANONICAL_CLAIM", "APPROVED_KNOWLEDGE"] },
+        "evidenceIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "accessScope": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "sensitivity": { "enum": ["public", "internal", "private", "restricted"] }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "from", "to", "relationType", "direction", "source"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "from": { "type": "string", "minLength": 1 },
+        "to": { "type": "string", "minLength": 1 },
+        "relationType": { "type": "string", "minLength": 1 },
+        "direction": { "enum": ["DIRECTED", "UNDIRECTED"] },
+        "source": { "const": "APPROVED_TYPED_EDGE" }
+      }
+    },
+    "graph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodes", "edges", "fallback"],
+      "properties": {
+        "nodes": { "type": "array", "items": { "$ref": "#/$defs/item" } },
+        "edges": { "type": "array", "items": { "$ref": "#/$defs/edge" } },
+        "fallback": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["available", "modes"],
+          "properties": {
+            "available": { "const": true },
+            "modes": { "const": ["LIST", "TABLE"] }
+          }
+        }
+      }
+    },
+    "projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projectId",
+        "projectorVersion",
+        "sourceSnapshotDigest",
+        "logicalDigest",
+        "canonicalVersion",
+        "items",
+        "graph",
+        "projectedAt",
+        "buildMode"
+      ],
+      "properties": {
+        "projectId": { "type": "string", "minLength": 1 },
+        "projectorVersion": { "type": "string", "minLength": 1 },
+        "sourceSnapshotDigest": { "$ref": "#/$defs/digest" },
+        "logicalDigest": { "$ref": "#/$defs/digest" },
+        "canonicalVersion": { "type": "integer", "minimum": 0 },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/item" } },
+        "graph": { "$ref": "#/$defs/graph" },
+        "projectedAt": { "type": "string", "minLength": 1 },
+        "buildMode": { "enum": ["FULL_REBUILD", "INCREMENTAL"] }
+      }
+    }
+  }
+}

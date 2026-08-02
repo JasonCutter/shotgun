@@ -19,6 +19,10 @@ import {
   sourcePreviewQueryOptions,
   sourceVersionHistoryQueryOptions,
 } from '../sources/sources-queries.js';
+import {
+  decodeKnowledgeEvidenceReturnState,
+  knowledgeEvidenceReturnState,
+} from '../knowledge/knowledge-ui.js';
 
 export const SourceDetailWorkspace = () => {
   const { apiClient } = useAppRuntime();
@@ -63,6 +67,10 @@ export const SourceDetailWorkspace = () => {
       return undefined;
     }
   }, [citationReturnTarget]);
+  const knowledgeReturnTarget = useMemo(
+    () => decodeKnowledgeEvidenceReturnState(location.state, sourceId, selectedVersionId),
+    [location.state, selectedVersionId, sourceId],
+  );
 
   const focusCitationEvidence = useCallback((node: HTMLLIElement | null) => {
     if (!node) return;
@@ -104,6 +112,16 @@ export const SourceDetailWorkspace = () => {
             }}
           >
             Return to cited resource
+          </Link>
+        </p>
+      ) : null}
+      {knowledgeReturnTarget ? (
+        <p>
+          <Link
+            to={knowledgeReturnTarget.originRoute}
+            state={knowledgeEvidenceReturnState(knowledgeReturnTarget)}
+          >
+            Return to Knowledge resource {knowledgeReturnTarget.target.resourceId}
           </Link>
         </p>
       ) : null}
@@ -179,7 +197,9 @@ export const SourceDetailWorkspace = () => {
         {evidence.data && evidence.data.items.length > 0 ? (
           <ul className="source-evidence-list">
             {evidence.data.items.map((item) => {
-              const isCitationTarget = item.evidenceId === citationReturnTarget?.evidenceId;
+              const isCitationTarget =
+                item.evidenceId === citationReturnTarget?.evidenceId ||
+                item.evidenceId === knowledgeReturnTarget?.target.evidenceId;
               return (
                 <li
                   key={item.evidenceId}

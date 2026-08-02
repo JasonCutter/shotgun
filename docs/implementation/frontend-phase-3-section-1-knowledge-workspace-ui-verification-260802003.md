@@ -1,7 +1,7 @@
 ---
 id: FRONTEND-PHASE-3-SECTION-1-KNOWLEDGE-WORKSPACE-UI-VERIFICATION-260802003
 classification: VERIFICATION_REPORT
-status: CORRECTION_PENDING_REMOTE_CI
+status: FINAL_REVIEW_PENDING
 work_item: FE-P3-S1
 sub_slice: KNOWLEDGE_WORKSPACE_UI
 approval_review_id: 4837418169
@@ -16,8 +16,16 @@ branch: codex/frontend-phase-3-section-1-knowledge-workspace
 base_commit: cb2513bc311891ac89f53c7d67d6a401da65a2a8
 tracking_issue: 52
 tracking_pr: 53
-remote_head_at_review: c063d76ac9574858d26910e043b5f35068e6f03b
-remote_ci: PENDING_AFTER_CORRECTION
+remote_head_at_review: 6ff7cde4867101e3dd033ffbff79e977ee8d2be9
+remote_ci: PASS_AT_REMOTE_HEAD
+remote_head_verified: 6ff7cde4867101e3dd033ffbff79e977ee8d2be9
+remote_ci_run: 30738936469
+remote_quality: PASS
+remote_frontend: PASS
+remote_required_gates: PASS
+remote_database: PASS
+remote_chromium: PASS
+remote_stage12_package: PASS
 prior_remote_head_verified: c063d76ac9574858d26910e043b5f35068e6f03b
 prior_remote_ci_run: 30737766844
 prior_remote_quality: PASS
@@ -130,15 +138,18 @@ collection because `DATABASE_URL` was not set; after supplying the required
 local PostgreSQL URL, the full 25-test run passed. The local Windows
 `test:stage12-package` attempt remains
 `BLOCKED/NOT_RUN`: package prepack completed, but the isolated consumer install
-was denied on the npm registry request for `ajv` with `EACCES`. The prior
-exact-head run `30737766844` at
+was denied on the npm registry request for `ajv` with `EACCES`. The correction
+exact head `6ff7cde4867101e3dd033ffbff79e977ee8d2be9` was verified by remote run
+`30738936469`: Quality, Frontend and Required Gates passed, including
+Database, Chromium and the Stage 12 package substep. The prior exact-head run
+`30737766844` at
 `c063d76ac9574858d26910e043b5f35068e6f03b` passed Quality, Frontend, Required
 Gates, Database, Chromium and the `test:stage12-package` substep through
-`stage12:reuse-operations-gate` before the current correction. The remote
-Quality job's formatting command emitted the repository's existing Prettier
-warnings while its `2>&1 | tee format-check.log` pipeline returned a successful
-job status; this is recorded as a workflow masking limitation, not as a clean
-repository-wide format result.
+`stage12:reuse-operations-gate` before the current correction. Both remote
+Quality jobs' formatting commands emitted the repository's existing Prettier
+warnings while their `2>&1 | tee format-check.log` pipelines returned
+successful job statuses; this is recorded as a workflow masking limitation,
+not as a clean repository-wide format result.
 
 ## 6. Local AC status
 
@@ -202,12 +213,13 @@ files, and the subsequent full Chromium run passed 25/25:
 
 ## 8. Exact local history and changed files
 
-At the latest reviewed base, `cb2513bc311891ac89f53c7d67d6a401da65a2a8..HEAD`
-contains 43 commits and the exact diff is 75 files changed, 17,366 additions
+At the correction exact head, `cb2513bc311891ac89f53c7d67d6a401da65a2a8..HEAD`
+contains 44 commits and the exact diff is 75 files changed, 17,464 additions
 and 90 deletions. The earlier `37 files / 7,973 additions / 129 deletions`
 figure was only the local-vs-old-remote comparison and is superseded. The
-compact list below is the 16-commit follow-up slice that was pushed before the
-current correction; the complete base-to-head history is reproducible with
+compact list below is the 16-commit UI/adapter follow-up slice that was pushed
+before the correction commit `6ff7cde4`; the complete base-to-head history is
+reproducible with
 `git log --oneline cb2513bc311891ac89f53c7d67d6a401da65a2a8..HEAD`.
 
 ```text
@@ -242,17 +254,18 @@ and this Knowledge UI; no unrelated files were rewritten.
   values. Form edits remain draft state until Search is submitted.
 - Focused evidence after the correction: Knowledge Workspace UI 5/5 tests,
   frontend Knowledge query unit coverage 3 tests, and frontend typecheck PASS.
-- The current correction changes are not yet on a remote exact head. The next
-  commit must run the full local frontend/Chromium verification and a new
-  remote Quality, Frontend and Required Gates run before review.
+- Correction commit `6ff7cde4867101e3dd033ffbff79e977ee8d2be9` is on the remote
+  exact head. Run `30738936469` returned Quality PASS, Frontend PASS and
+  Required Gates PASS, with Database, Chromium and the Stage 12 package
+  substep passing inside Quality.
 
 ## 10. Completion boundary
 
-This report records local implementation evidence for the approved Knowledge
-Workspace UI slice only. Follow-up Review `4837579603` confirmed the evidence
-gate, and Review `4837647662` then identified the two UI contract defects and
-the obsolete base-to-head scope numbers recorded above. This correction is a
-minimal implementation/test change, not a scope expansion. The correction
-commit and its new exact-head CI must complete before a new review decision.
-FE-P3-S1 completion, Ready, Merge, deployment and production verification
-remain unauthorized or not run.
+This report records local and remote implementation evidence for the approved
+Knowledge Workspace UI slice only. Follow-up Review `4837579603` confirmed the
+evidence gate, and Review `4837647662` then identified the two UI contract
+defects and the obsolete base-to-head scope numbers recorded above. The
+correction is a minimal implementation/test change, not a scope expansion;
+the correction commit and exact-head CI are now complete. A final ChatGPT
+review decision is pending. FE-P3-S1 completion, Ready, Merge, deployment and
+production verification remain unauthorized or not run.

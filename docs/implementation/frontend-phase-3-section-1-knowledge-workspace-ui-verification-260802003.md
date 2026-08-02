@@ -1,14 +1,14 @@
 ---
 id: FRONTEND-PHASE-3-SECTION-1-KNOWLEDGE-WORKSPACE-UI-VERIFICATION-260802003
 classification: VERIFICATION_REPORT
-status: FOLLOW_UP_EVIDENCE_PENDING
+status: FOLLOW_UP_EVIDENCE_READY
 work_item: FE-P3-S1
 sub_slice: KNOWLEDGE_WORKSPACE_UI
 approval_review_id: 4837418169
 approval_decision: APPROVED_FOR_KNOWLEDGE_WORKSPACE_UI
 implementation_authorization: APPROVED_FOR_KNOWLEDGE_WORKSPACE_UI
 implementation_commit: 32fdb0e
-follow_up_report_commit: d5298e0b
+follow_up_report_commit: ad3071ed
 follow_up_review_id: 4837579603
 follow_up_decision: CHANGES_REQUIRED
 branch: codex/frontend-phase-3-section-1-knowledge-workspace
@@ -16,7 +16,15 @@ base_commit: cb2513bc311891ac89f53c7d67d6a401da65a2a8
 tracking_issue: 52
 tracking_pr: 53
 remote_head_at_review: 18f48c4504d1510ad310cd85c00a0a3503ac65e6
-remote_ci: PENDING_REMOTE_EXACT_HEAD
+remote_ci: PASS_AT_REMOTE_HEAD
+remote_head_verified: ad3071edeea06126cdd5559f24e5627fe6880ec4
+remote_ci_run: 30737515686
+remote_quality: PASS
+remote_frontend: PASS
+remote_required_gates: PASS
+remote_database: PASS
+remote_chromium: PASS
+remote_stage12_package: PASS
 ready: NOT_AUTHORIZED
 merge: NOT_AUTHORIZED
 deployment: NOT_STARTED
@@ -111,16 +119,21 @@ this slice adds no new lockfile or adoption decision.
 | Secret scan                                           | PASS                                                                                                                  |
 | OSS gate                                              | PASS -- 68 decisions and 45 baseline references                                                                       |
 
-The repository-wide `format:check` remains `FAIL` because it reports 59
+The repository-wide local `format:check` remains `FAIL` because it reports 59
 existing files outside this slice as not formatted; the changed-file check is
 PASS and those unrelated files were not rewritten. The official
 `npm.cmd run docs:knowledge-flow:render` command was run and
 `npm.cmd run docs:knowledge-flow:check` now PASSes; the generated artifact was
-not manually edited. The Stage12 package gate is still `BLOCKED/NOT_RUN`:
-package prepack completed, but the isolated consumer install was denied on the
-npm registry request for `ajv` with `EACCES`. Remote exact-head CI and the
-remote Chromium/Database/Required Gates evidence remain pending until this
-branch is published to the existing Draft PR.
+not manually edited. The local Windows `test:stage12-package` attempt remains
+`BLOCKED/NOT_RUN`: package prepack completed, but the isolated consumer install
+was denied on the npm registry request for `ajv` with `EACCES`. The remote
+exact-head run `30737515686` at `ad3071edeea06126cdd5559f24e5627fe6880ec4`
+passed Quality, Frontend, Required Gates, Database, Chromium and the
+`test:stage12-package` substep through `stage12:reuse-operations-gate`.
+The remote Quality job's formatting command emitted the repository's existing
+Prettier warnings while its `2>&1 | tee format-check.log` pipeline returned a
+successful job status; this is recorded as a workflow masking limitation, not
+as a clean repository-wide format result.
 
 ## 6. Local AC status
 
@@ -184,10 +197,11 @@ files, and the subsequent full Chromium run passed 25/25:
 
 ## 8. Exact local history and changed files
 
-The local branch is 15 commits ahead of the remote Draft PR branch. The exact
-local commit list is:
+The local branch had 16 commits ahead of the remote Draft PR branch before this
+remote-evidence report update. The exact pushed commit list was:
 
 ```text
+ad3071ed docs(frontend): fix follow-up report history
 d5298e0b docs(frontend): record follow-up knowledge evidence
 e99c337c docs(frontend): record knowledge workspace ui verification
 32fdb0ec feat(frontend): implement knowledge workspace ui
@@ -212,11 +226,12 @@ included in the Draft PR update; no unrelated files were rewritten.
 
 ## 9. Completion boundary
 
-This report records local implementation evidence for the approved Knowledge
-Workspace UI slice only. Follow-up Review `4837579603` returned
-`CHANGES_REQUIRED` because the local A2-C+A3+UI history was not yet present on
-the remote exact head. The limited follow-up is evidence publication and
-verification, not a UI redesign. It does not claim FE-P3-S1 completion, Ready,
-Merge, deployment or production verification. The remote branch, PR body and
-exact-head CI must be updated and rechecked before a new review decision is
-requested.
+This report records local implementation evidence and the completed remote
+evidence update for the approved Knowledge Workspace UI slice only. Follow-up
+Review `4837579603` returned `CHANGES_REQUIRED` because the local A2-C+A3+UI
+history was not yet present on the remote exact head; that limited evidence
+gate is now satisfied at `ad3071ed...`. The follow-up is evidence publication
+and verification, not a UI redesign. This report update itself creates a new
+commit, so its new exact head must receive its own CI run before the next
+review decision. FE-P3-S1 completion, Ready, Merge, deployment and production
+verification remain unauthorized or not run.

@@ -34,20 +34,20 @@ history and is not the approval authority.
 
 ## 3. Confirmed Revision 2 condition matrix
 
-| Condition | Result | Review conclusion |
-|---|---|---|
-| exact Migration number and file | `PASS` | `020_frontend_phase2_sources_product_persistence.sql` only |
-| exact Product schema and seven relations | `PASS` | `source_product` and seven fixed relations |
-| exact columns and PostgreSQL types | `PASS` | Final Candidate plus Normative DDL Appendix removes shorthand |
-| PK/FK/RESTRICT/nullability/unique/check/index | `PASS` | full-context composite keys prevent cross-Item/Project misbinding |
-| state transitions and monotonic revisions | `PASS` | exact Edge matrix and trigger behavior fixed |
-| ADR-116 Command ordering | `PASS` | durable `ACCEPTED`, Domain commit, post-commit `COMPLETED` |
-| Stage 2/Asset ownership linkage | `PASS` | one client-bound Unit of Work, deterministic Item-to-Stage-2 identity |
-| non-fabricating legacy compatibility | `PASS` | Migration 020 historical Product backfill count is zero |
-| URL security/redaction/retention | `PASS` | secret rejection, safe observation set, policy-derived retention |
-| Up-only rollback | `PASS` | Compatibility mode and write deactivation; no normal DDL downgrade |
-| Fresh/upgrade/repeat/concurrency/fault tests | `PASS` | required evidence is explicit |
-| no Runtime Dependency or AC weakening | `PASS` | none proposed; frozen AC meanings retained |
+| Condition                                     | Result | Review conclusion                                                     |
+| --------------------------------------------- | ------ | --------------------------------------------------------------------- |
+| exact Migration number and file               | `PASS` | `020_frontend_phase2_sources_product_persistence.sql` only            |
+| exact Product schema and seven relations      | `PASS` | `source_product` and seven fixed relations                            |
+| exact columns and PostgreSQL types            | `PASS` | Final Candidate plus Normative DDL Appendix removes shorthand         |
+| PK/FK/RESTRICT/nullability/unique/check/index | `PASS` | full-context composite keys prevent cross-Item/Project misbinding     |
+| state transitions and monotonic revisions     | `PASS` | exact Edge matrix and trigger behavior fixed                          |
+| ADR-116 Command ordering                      | `PASS` | durable `ACCEPTED`, Domain commit, post-commit `COMPLETED`            |
+| Stage 2/Asset ownership linkage               | `PASS` | one client-bound Unit of Work, deterministic Item-to-Stage-2 identity |
+| non-fabricating legacy compatibility          | `PASS` | Migration 020 historical Product backfill count is zero               |
+| URL security/redaction/retention              | `PASS` | secret rejection, safe observation set, policy-derived retention      |
+| Up-only rollback                              | `PASS` | Compatibility mode and write deactivation; no normal DDL downgrade    |
+| Fresh/upgrade/repeat/concurrency/fault tests  | `PASS` | required evidence is explicit                                         |
+| no Runtime Dependency or AC weakening         | `PASS` | none proposed; frozen AC meanings retained                            |
 
 ## 4. Review findings resolved during Revision 2
 

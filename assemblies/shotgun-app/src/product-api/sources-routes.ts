@@ -130,21 +130,27 @@ export const registerSourcesRoutes = (
     };
   };
 
-  const acceptCommand = async <TPayload extends SourcesFrontendCommandPayload | SubmitStagedSourcesIntakeCommandPayload>(
+  const acceptCommand = async <
+    TPayload extends SourcesFrontendCommandPayload | SubmitStagedSourcesIntakeCommandPayload,
+  >(
     rawRequest: unknown,
     expectedCommandType: SourcesFrontendCommandType,
     scope: SourcesProductWriteScope,
     stagedSubmit = false,
   ): Promise<{
     readonly request: FrontendCommandRequest<TPayload>;
-    readonly outcome: Awaited<ReturnType<NonNullable<ReturnType<typeof getSourcesWriteRuntime>>['commandGateway']['accept']>>['outcome'];
+    readonly outcome: Awaited<
+      ReturnType<NonNullable<ReturnType<typeof getSourcesWriteRuntime>>['commandGateway']['accept']>
+    >['outcome'];
     readonly replayed: boolean;
   }> => {
     const runtime = getSourcesWriteRuntime();
     if (!runtime) throw writeUnavailable();
-    const request = (stagedSubmit
-      ? validateStagedSourcesFrontendCommandRequest(rawRequest, expectedCommandType)
-      : validateSourcesFrontendCommandRequest(rawRequest, expectedCommandType)) as FrontendCommandRequest<TPayload>;
+    const request = (
+      stagedSubmit
+        ? validateStagedSourcesFrontendCommandRequest(rawRequest, expectedCommandType)
+        : validateSourcesFrontendCommandRequest(rawRequest, expectedCommandType)
+    ) as FrontendCommandRequest<TPayload>;
     if (
       request.projectContext.activeProjectId !== scope.projectId ||
       request.projectContext.targetProjectId !== scope.projectId

@@ -66,20 +66,20 @@ satisfied.
 The frozen AC-27 requires Sections 1, 2, and 3 to be implemented, verified,
 merged, evidenced, and separately approved.
 
-| Condition | Result | Evidence |
-| --- | --- | --- |
-| Section 1 implemented | PASS | PR #19 and Section 1 verification |
-| Section 1 verified | PASS | Run `30150769554` |
-| Section 1 merged | PASS | `ba8995287a43964774fe4b97eb6a791712f56ad4` |
-| Section 2 implemented | PASS | PR #20 and Section 2 verification |
-| Section 2 verified | PASS | Run `30185605553` |
-| Section 2 merged | PASS | `4b5c90a1bccad520c1bdfa2fc5114d8852ed59d2` |
-| Section 3 implemented | PASS | PR #42 Product diff and verification |
-| Section 3 verified | PASS | Runs `30468293220` and `30496773651` |
-| Section 3 performance gate | PASS | 600 runs, 1,133 checks, 0 failures, 0 violations |
-| Section 3 merged | PASS | `3f1aa93c7b5ce6a795b796f44124ed67112716c0` |
-| Separate Phase completion review | PASS | This record |
-| Explicit user completion approval | PASS | User authorization dated 2026-07-30 |
+| Condition                         | Result | Evidence                                         |
+| --------------------------------- | ------ | ------------------------------------------------ |
+| Section 1 implemented             | PASS   | PR #19 and Section 1 verification                |
+| Section 1 verified                | PASS   | Run `30150769554`                                |
+| Section 1 merged                  | PASS   | `ba8995287a43964774fe4b97eb6a791712f56ad4`       |
+| Section 2 implemented             | PASS   | PR #20 and Section 2 verification                |
+| Section 2 verified                | PASS   | Run `30185605553`                                |
+| Section 2 merged                  | PASS   | `4b5c90a1bccad520c1bdfa2fc5114d8852ed59d2`       |
+| Section 3 implemented             | PASS   | PR #42 Product diff and verification             |
+| Section 3 verified                | PASS   | Runs `30468293220` and `30496773651`             |
+| Section 3 performance gate        | PASS   | 600 runs, 1,133 checks, 0 failures, 0 violations |
+| Section 3 merged                  | PASS   | `3f1aa93c7b5ce6a795b796f44124ed67112716c0`       |
+| Separate Phase completion review  | PASS   | This record                                      |
+| Explicit user completion approval | PASS   | User authorization dated 2026-07-30              |
 
 AC-27 is `PASS`.
 

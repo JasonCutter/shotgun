@@ -1186,47 +1186,49 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     return withSafePostgresTransaction(
       this.pool,
       async (client, registerAfterCommit) => {
-      const transaction: AskExecutionTransactionPort = {
-        rawTransaction: client,
-        afterCommit: registerAfterCommit,
-        getRunContext: (scope, answerRunId) => this.getRunContext(scope, answerRunId),
-        requestCancel: async (scope, answerRunId) => {
-          const context = await this.getRunContext(scope, answerRunId);
-          if (!context) throw notFound();
-          const mutation = await this.requestCancelWithClient(client, scope, answerRunId);
-          return {
-            ...context.snapshot,
-            state: mutation.state,
-            eventRevision: mutation.eventRevision,
-            capabilities:
-              mutation.state === 'CANCELLED' ? ['RETRY_SAME_CONTEXT', 'RETRY_CURRENT_POLICY'] : [],
-            ...(mutation.state === 'CANCELLED'
-              ? {
-                  failure: {
-                    code: 'CANCELLED',
-                    message: 'The AnswerRun was cancelled by the user.',
-                    retryable: true,
-                    outcomeUnknown: false,
-                  },
-                }
-              : {}),
-            updatedAt: new Date().toISOString(),
-          };
-        },
-        retryAndClaim: async (input) => {
-          const current = await this.getRunContext(input.scope, input.answerRunId);
-          const context =
-            current && input.mode === 'SAME_CONTEXT'
-              ? ((await this.loadAttemptContext(input.scope, current.snapshot)) ?? current)
-              : current;
-          if (!context) throw notFound();
-          return this.retryAndClaimWithClient(client, input, context);
-        },
-        saveExport: (input) => this.saveExportWithClient(client, input),
-        saveFeedback: (input) => this.saveFeedbackWithClient(client, input),
-        saveTransitionSeed: (input) => this.saveTransitionSeedWithClient(client, input),
-      };
-      return action(transaction);
+        const transaction: AskExecutionTransactionPort = {
+          rawTransaction: client,
+          afterCommit: registerAfterCommit,
+          getRunContext: (scope, answerRunId) => this.getRunContext(scope, answerRunId),
+          requestCancel: async (scope, answerRunId) => {
+            const context = await this.getRunContext(scope, answerRunId);
+            if (!context) throw notFound();
+            const mutation = await this.requestCancelWithClient(client, scope, answerRunId);
+            return {
+              ...context.snapshot,
+              state: mutation.state,
+              eventRevision: mutation.eventRevision,
+              capabilities:
+                mutation.state === 'CANCELLED'
+                  ? ['RETRY_SAME_CONTEXT', 'RETRY_CURRENT_POLICY']
+                  : [],
+              ...(mutation.state === 'CANCELLED'
+                ? {
+                    failure: {
+                      code: 'CANCELLED',
+                      message: 'The AnswerRun was cancelled by the user.',
+                      retryable: true,
+                      outcomeUnknown: false,
+                    },
+                  }
+                : {}),
+              updatedAt: new Date().toISOString(),
+            };
+          },
+          retryAndClaim: async (input) => {
+            const current = await this.getRunContext(input.scope, input.answerRunId);
+            const context =
+              current && input.mode === 'SAME_CONTEXT'
+                ? ((await this.loadAttemptContext(input.scope, current.snapshot)) ?? current)
+                : current;
+            if (!context) throw notFound();
+            return this.retryAndClaimWithClient(client, input, context);
+          },
+          saveExport: (input) => this.saveExportWithClient(client, input),
+          saveFeedback: (input) => this.saveFeedbackWithClient(client, input),
+          saveTransitionSeed: (input) => this.saveTransitionSeedWithClient(client, input),
+        };
+        return action(transaction);
       },
       {
         module: 'frontend-ask-execution-postgres',
@@ -1346,7 +1348,10 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     });
   }
 
-  async claimQueuedForWorker(workerId?: string, limit = 32): Promise<
+  async claimQueuedForWorker(
+    workerId?: string,
+    limit = 32,
+  ): Promise<
     readonly {
       readonly scope: AskExecutionScope;
       readonly claimed: AskClaimedExecution;
@@ -1625,13 +1630,9 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
   }
 
   private async poolTransaction<T>(action: (client: PoolClient) => Promise<T>): Promise<T> {
-    return withSafePostgresTransaction(
-      this.pool,
-      (client) => action(client),
-      {
-        module: 'frontend-ask-execution-postgres',
-        operation: 'pool-transaction',
-      },
-    );
+    return withSafePostgresTransaction(this.pool, (client) => action(client), {
+      module: 'frontend-ask-execution-postgres',
+      operation: 'pool-transaction',
+    });
   }
 }

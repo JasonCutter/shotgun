@@ -63,7 +63,11 @@ describe('secure URL acquisition policy', () => {
   it('returns redacted safe provenance and omits credentials and arbitrary headers', async () => {
     const { service, transport } = coordinator(
       { 'example.com': [['93.184.216.34'], ['93.184.216.34']] },
-      [response({ headers: { 'content-type': 'text/plain', etag: 'safe', 'set-cookie': 'secret' } })],
+      [
+        response({
+          headers: { 'content-type': 'text/plain', etag: 'safe', 'set-cookie': 'secret' },
+        }),
+      ],
     );
     const receipt = await service.acquire({
       requestedUrl: 'https://example.com/doc?lang=ko',
@@ -102,9 +106,9 @@ describe('secure URL acquisition policy', () => {
     '2001:db8::1',
   ])('rejects prohibited address %s before transport', async (address) => {
     const { service, transport } = coordinator({ 'example.com': [[address]] }, []);
-    await expect(
-      service.acquire({ requestedUrl: 'https://example.com/', limits }),
-    ).rejects.toThrow(/prohibited or empty address set/);
+    await expect(service.acquire({ requestedUrl: 'https://example.com/', limits })).rejects.toThrow(
+      /prohibited or empty address set/,
+    );
     expect(transport.requests).toHaveLength(0);
   });
 
@@ -114,7 +118,13 @@ describe('secure URL acquisition policy', () => {
         'example.com': [['93.184.216.34'], ['93.184.216.34']],
         'internal.example': [['10.0.0.2']],
       },
-      [response({ status: 302, redirectLocation: 'http://internal.example/admin', body: new Uint8Array() })],
+      [
+        response({
+          status: 302,
+          redirectLocation: 'http://internal.example/admin',
+          body: new Uint8Array(),
+        }),
+      ],
     );
     await expect(
       service.acquire({ requestedUrl: 'https://example.com/start', limits }),
@@ -122,18 +132,16 @@ describe('secure URL acquisition policy', () => {
   });
 
   it('rejects DNS rebinding and transport address escape', async () => {
-    const rebinding = coordinator(
-      { 'example.com': [['93.184.216.34'], ['93.184.216.35']] },
-      [response()],
-    );
+    const rebinding = coordinator({ 'example.com': [['93.184.216.34'], ['93.184.216.35']] }, [
+      response(),
+    ]);
     await expect(
       rebinding.service.acquire({ requestedUrl: 'https://example.com/', limits }),
     ).rejects.toThrow(/address set changed/);
 
-    const escaped = coordinator(
-      { 'example.com': [['93.184.216.34'], ['93.184.216.34']] },
-      [response({ connectedAddress: '8.8.8.8' })],
-    );
+    const escaped = coordinator({ 'example.com': [['93.184.216.34'], ['93.184.216.34']] }, [
+      response({ connectedAddress: '8.8.8.8' }),
+    ]);
     await expect(
       escaped.service.acquire({ requestedUrl: 'https://example.com/', limits }),
     ).rejects.toThrow(/outside the approved DNS set/);
@@ -151,18 +159,16 @@ describe('secure URL acquisition policy', () => {
       loop.service.acquire({ requestedUrl: 'https://example.com/start', limits }),
     ).rejects.toThrow(/redirect loop/);
 
-    const unsupported = coordinator(
-      { 'example.com': [['93.184.216.34'], ['93.184.216.34']] },
-      [response({ headers: { 'content-type': 'text/html' } })],
-    );
+    const unsupported = coordinator({ 'example.com': [['93.184.216.34'], ['93.184.216.34']] }, [
+      response({ headers: { 'content-type': 'text/html' } }),
+    ]);
     await expect(
       unsupported.service.acquire({ requestedUrl: 'https://example.com/', limits }),
     ).rejects.toThrow(/content type is not supported/);
 
-    const oversized = coordinator(
-      { 'example.com': [['93.184.216.34'], ['93.184.216.34']] },
-      [response({ body: new Uint8Array(2049), compressedBytes: 100 })],
-    );
+    const oversized = coordinator({ 'example.com': [['93.184.216.34'], ['93.184.216.34']] }, [
+      response({ body: new Uint8Array(2049), compressedBytes: 100 }),
+    ]);
     await expect(
       oversized.service.acquire({ requestedUrl: 'https://example.com/', limits }),
     ).rejects.toThrow(/exceeds the approved byte limits/);

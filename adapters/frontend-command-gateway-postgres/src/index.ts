@@ -103,13 +103,13 @@ export class PostgresFrontendCommandGateway implements FrontendCommandGatewayPor
               input.request.projectContext.scope === 'RESOURCE'
                 ? input.request.projectContext.resourceProjectId
                 : null,
-    };
+          };
     const scopeBindingKey = frontendCommandScopeBindingKey(input.request);
     return withSafePostgresTransaction(
       this.pool,
       async (client) => {
-      const existing = await client.query<CommandLedgerRow>(
-        `SELECT *
+        const existing = await client.query<CommandLedgerRow>(
+          `SELECT *
          FROM frontend_command.command_ledger
          WHERE (principal_id = $1 AND client_request_id = $2)
             OR (
@@ -122,54 +122,54 @@ export class PostgresFrontendCommandGateway implements FrontendCommandGatewayPor
               AND idempotency_key = $8
             )
          FOR UPDATE`,
-        [
-          input.principalId,
-          input.request.clientRequestId,
-          scope.envelopeVersion,
-          scope.scopeKind,
-          scopeBindingKey,
-          input.request.commandType,
-          input.request.commandSchemaVersion,
-          input.request.idempotencyKey,
-        ],
-      );
-      if (existing.rows[0]) {
-        const outcome = toOutcome(existing.rows[0]);
-        if (outcome.clientRequestId === input.request.clientRequestId) {
-          if (
-            existing.rows[0].envelope_version !== scope.envelopeVersion ||
-            existing.rows[0].scope_kind !== scope.scopeKind ||
-            existing.rows[0].scope_binding_key !== scopeBindingKey ||
-            outcome.commandType !== input.request.commandType ||
-            outcome.commandSchemaVersion !== input.request.commandSchemaVersion ||
-            outcome.commandSemanticDigest !== input.commandSemanticDigest
-          ) {
+          [
+            input.principalId,
+            input.request.clientRequestId,
+            scope.envelopeVersion,
+            scope.scopeKind,
+            scopeBindingKey,
+            input.request.commandType,
+            input.request.commandSchemaVersion,
+            input.request.idempotencyKey,
+          ],
+        );
+        if (existing.rows[0]) {
+          const outcome = toOutcome(existing.rows[0]);
+          if (outcome.clientRequestId === input.request.clientRequestId) {
+            if (
+              existing.rows[0].envelope_version !== scope.envelopeVersion ||
+              existing.rows[0].scope_kind !== scope.scopeKind ||
+              existing.rows[0].scope_binding_key !== scopeBindingKey ||
+              outcome.commandType !== input.request.commandType ||
+              outcome.commandSchemaVersion !== input.request.commandSchemaVersion ||
+              outcome.commandSemanticDigest !== input.commandSemanticDigest
+            ) {
+              throw new FrontendContractError(
+                input.request.envelopeVersion === '2.0.0'
+                  ? 'CLIENT_REQUEST_MEANING_MISMATCH'
+                  : 'IDEMPOTENCY_KEY_REUSE_MISMATCH',
+                'clientRequestId cannot be rebound to different command meaning.',
+              );
+            }
+          }
+          if (outcome.idempotencyKey !== input.request.idempotencyKey) {
             throw new FrontendContractError(
-              input.request.envelopeVersion === '2.0.0'
-                ? 'CLIENT_REQUEST_MEANING_MISMATCH'
-                : 'IDEMPOTENCY_KEY_REUSE_MISMATCH',
-              'clientRequestId cannot be rebound to different command meaning.',
+              'IDEMPOTENCY_KEY_REUSE_MISMATCH',
+              'clientRequestId cannot be rebound to a different idempotency key.',
             );
           }
+          if (outcome.commandSemanticDigest !== input.commandSemanticDigest) {
+            throw new FrontendContractError(
+              'IDEMPOTENCY_KEY_REUSE_MISMATCH',
+              'Existing frontend command has a different semantic digest.',
+            );
+          }
+          return { outcome, replayed: true };
         }
-        if (outcome.idempotencyKey !== input.request.idempotencyKey) {
-          throw new FrontendContractError(
-            'IDEMPOTENCY_KEY_REUSE_MISMATCH',
-            'clientRequestId cannot be rebound to a different idempotency key.',
-          );
-        }
-        if (outcome.commandSemanticDigest !== input.commandSemanticDigest) {
-          throw new FrontendContractError(
-            'IDEMPOTENCY_KEY_REUSE_MISMATCH',
-            'Existing frontend command has a different semantic digest.',
-          );
-        }
-        return { outcome, replayed: true };
-      }
 
-      const outcome = createAcceptedFrontendCommandOutcome(input);
-      await client.query(
-        `INSERT INTO frontend_command.command_ledger (
+        const outcome = createAcceptedFrontendCommandOutcome(input);
+        await client.query(
+          `INSERT INTO frontend_command.command_ledger (
           command_id, command_revision, client_request_id, idempotency_key,
           principal_id, envelope_version, scope_kind, active_project_id,
           target_project_id, resource_project_id, scope_binding_key, command_type,
@@ -183,40 +183,40 @@ export class PostgresFrontendCommandGateway implements FrontendCommandGatewayPor
           $15::jsonb, $16::jsonb, $17::jsonb, $18::jsonb, $19::jsonb, $20::jsonb,
           $21, $22, $23::jsonb, $24::jsonb, $25, $26, $27, $28, $29, $30
         )`,
-        [
-          outcome.commandId,
-          Number(outcome.commandRevision),
-          outcome.clientRequestId,
-          outcome.idempotencyKey,
-          input.principalId,
-          scope.envelopeVersion,
-          scope.scopeKind,
-          scope.activeProjectId,
-          scope.targetProjectId,
-          scope.resourceProjectId,
-          scopeBindingKey,
-          outcome.commandType,
-          outcome.commandSchemaVersion,
-          outcome.commandSemanticDigest,
-          JSON.stringify(input.request.policyBinding),
-          JSON.stringify(outcome.acceptedPrincipalContext),
-          JSON.stringify(outcome.acceptedProjectContext),
-          JSON.stringify(outcome.acceptedPolicyContext),
-          JSON.stringify(input.request.preconditions),
-          JSON.stringify(input.request.payload),
-          outcome.outcomeState,
-          outcome.completionDisposition ?? null,
-          JSON.stringify(outcome.producedResources),
-          outcome.rejection ? JSON.stringify(outcome.rejection) : null,
-          outcome.correlationId,
-          outcome.traceId,
-          outcome.receivedAt,
-          outcome.acceptedAt ?? null,
-          outcome.completedAt ?? null,
-          outcome.lastUpdatedAt,
-        ],
-      );
-      return { outcome, replayed: false };
+          [
+            outcome.commandId,
+            Number(outcome.commandRevision),
+            outcome.clientRequestId,
+            outcome.idempotencyKey,
+            input.principalId,
+            scope.envelopeVersion,
+            scope.scopeKind,
+            scope.activeProjectId,
+            scope.targetProjectId,
+            scope.resourceProjectId,
+            scopeBindingKey,
+            outcome.commandType,
+            outcome.commandSchemaVersion,
+            outcome.commandSemanticDigest,
+            JSON.stringify(input.request.policyBinding),
+            JSON.stringify(outcome.acceptedPrincipalContext),
+            JSON.stringify(outcome.acceptedProjectContext),
+            JSON.stringify(outcome.acceptedPolicyContext),
+            JSON.stringify(input.request.preconditions),
+            JSON.stringify(input.request.payload),
+            outcome.outcomeState,
+            outcome.completionDisposition ?? null,
+            JSON.stringify(outcome.producedResources),
+            outcome.rejection ? JSON.stringify(outcome.rejection) : null,
+            outcome.correlationId,
+            outcome.traceId,
+            outcome.receivedAt,
+            outcome.acceptedAt ?? null,
+            outcome.completedAt ?? null,
+            outcome.lastUpdatedAt,
+          ],
+        );
+        return { outcome, replayed: false };
       },
       {
         module: 'frontend-command-gateway-postgres',
@@ -350,7 +350,7 @@ export class PostgresFrontendCommandGateway implements FrontendCommandGatewayPor
     if (!row) return null;
     if (
       binding &&
-      (binding.commandTypes && !binding.commandTypes.includes(row.command_type) ||
+      ((binding.commandTypes && !binding.commandTypes.includes(row.command_type)) ||
         !row.preconditions.some(
           (precondition) =>
             precondition.subject.resourceKind === binding.resourceKind &&

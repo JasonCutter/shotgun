@@ -20,11 +20,10 @@ describe('withSafePostgresTransaction', () => {
     });
 
     await expect(
-      withSafePostgresTransaction(
-        pool,
-        async () => 'committed-or-unknown',
-        { module: 'test', operation: 'commit-ack' },
-      ),
+      withSafePostgresTransaction(pool, async () => 'committed-or-unknown', {
+        module: 'test',
+        operation: 'commit-ack',
+      }),
     ).rejects.toMatchObject({ code: 'OUTCOME_UNKNOWN' });
     expect(query.mock.calls.map(([sql]) => sql)).toEqual(['BEGIN', 'COMMIT']);
     expect(client.release).toHaveBeenCalledOnce();

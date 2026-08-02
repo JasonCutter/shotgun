@@ -58,22 +58,14 @@ const strictObject = (
   return object;
 };
 
-const boundedString = (
-  value: unknown,
-  path: string,
-  maximum = 512,
-): string => {
+const boundedString = (value: unknown, path: string, maximum = 512): string => {
   if (typeof value !== 'string' || value.trim().length === 0 || value.length > maximum) {
     fail(`${path} must be a non-empty string with at most ${maximum} characters.`);
   }
   return value as string;
 };
 
-const optionalBoundedString = (
-  value: unknown,
-  path: string,
-  maximum = 512,
-): string | undefined =>
+const optionalBoundedString = (value: unknown, path: string, maximum = 512): string | undefined =>
   value === undefined ? undefined : boundedString(value, path, maximum);
 
 const decodeCommon = (

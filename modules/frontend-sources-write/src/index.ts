@@ -118,7 +118,9 @@ export type ResolveExactDuplicateDecisionInput = {
 };
 
 export type SourcesIntakeUnitOfWorkPort = {
-  createSubmission(input: CreateSourcesIntakeSubmissionInput): Promise<SourcesIntakeSubmissionResult>;
+  createSubmission(
+    input: CreateSourcesIntakeSubmissionInput,
+  ): Promise<SourcesIntakeSubmissionResult>;
   createExactDuplicateDecision(
     input: CreateExactDuplicateDecisionInput,
   ): Promise<ExactDuplicateDecisionResult>;

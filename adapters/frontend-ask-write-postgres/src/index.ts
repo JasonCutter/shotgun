@@ -168,14 +168,10 @@ export class PostgresAskConversationRepository implements AskConversationReposit
   constructor(private readonly pool: Pool) {}
 
   async transaction<T>(action: (transaction: unknown) => Promise<T>): Promise<T> {
-    return withSafePostgresTransaction(
-      this.pool,
-      (client) => action(client),
-      {
-        module: 'frontend-ask-write-postgres',
-        operation: 'question-transaction',
-      },
-    );
+    return withSafePostgresTransaction(this.pool, (client) => action(client), {
+      module: 'frontend-ask-write-postgres',
+      operation: 'question-transaction',
+    });
   }
 
   async persistQuestion(

@@ -153,8 +153,11 @@ const legacyCompletionEvidenceSectionIds = new Set([
 type DecisionApprovalMetadata = { approvedBy: string; approvedAt: string };
 
 function parseDecisionApprovalMetadata(text: string): DecisionApprovalMetadata | undefined {
-  const approvedBy = /^\s*-\s*Approved by:\s*(?:\*\*)?([^*\n]+?)(?:\*\*)?\s*$/im.exec(text)?.[1]?.trim();
-  const approvedAt = /^\s*-\s*Approved at:\s*(?:\*\*)?([0-9]{4}-[0-9]{2}-[0-9]{2})(?:\*\*)?\s*$/im.exec(text)?.[1];
+  const approvedBy = /^\s*-\s*Approved by:\s*(?:\*\*)?([^*\n]+?)(?:\*\*)?\s*$/im
+    .exec(text)?.[1]
+    ?.trim();
+  const approvedAt =
+    /^\s*-\s*Approved at:\s*(?:\*\*)?([0-9]{4}-[0-9]{2}-[0-9]{2})(?:\*\*)?\s*$/im.exec(text)?.[1];
   if (!approvedBy || !approvedAt || /^(?:not yet approved|none|null)$/i.test(approvedBy)) {
     return undefined;
   }
@@ -267,13 +270,17 @@ export function collectWorkItemErrors(
       ['MIGRATED', 'CANDIDATE'].includes(candidate.decisionStatus) &&
       (candidate.decisionApprovedBy !== null || candidate.decisionApprovedAt !== null)
     ) {
-      errors.push(`Work Item ${candidate.id} cannot have Decision approval metadata before ACCEPTED`);
+      errors.push(
+        `Work Item ${candidate.id} cannot have Decision approval metadata before ACCEPTED`,
+      );
     }
     if (
       candidate.decisionStatus === 'ACCEPTED' &&
       (!candidate.decisionApprovedBy || !candidate.decisionApprovedAt)
     ) {
-      errors.push(`Accepted Work Item ${candidate.id} requires Decision approver and approval date`);
+      errors.push(
+        `Accepted Work Item ${candidate.id} requires Decision approver and approval date`,
+      );
     }
     if (!pathExists(candidate.governingContract)) {
       errors.push(
@@ -392,7 +399,9 @@ export function collectWorkItemErrors(
     'Section',
   );
   for (const phase of phases) {
-    const sections = canonicalItems.filter((item) => item.type === 'SECTION' && item.parent === phase.id);
+    const sections = canonicalItems.filter(
+      (item) => item.type === 'SECTION' && item.parent === phase.id,
+    );
     validateLinearGraph(sections, `Section group ${phase.id}`);
   }
   for (const section of canonicalItems.filter((item) => item.type === 'SECTION')) {
@@ -433,7 +442,9 @@ export function collectWorkItemErrors(
     );
   }
   for (const phase of phases) {
-    const children = canonicalItems.filter((item) => item.type === 'SECTION' && item.parent === phase.id);
+    const children = canonicalItems.filter(
+      (item) => item.type === 'SECTION' && item.parent === phase.id,
+    );
     if (children.length === 0) continue;
     const allChildrenComplete = children.every((child) => child.status === 'COMPLETE');
     if (allChildrenComplete && phase.status !== 'COMPLETE') {
@@ -507,11 +518,11 @@ export function collectCompletionInvariantErrors(
       ? evidenceByPath.get(item.completionManifest)
       : undefined;
     const completionApprovedBy = manifest
-      ? item.approvedBy ?? completionEvidence?.approvedBy ?? null
-      : completionEvidence?.approvedBy ?? null;
+      ? (item.approvedBy ?? completionEvidence?.approvedBy ?? null)
+      : (completionEvidence?.approvedBy ?? null);
     const completionApprovedAt = manifest
-      ? item.approvedAt ?? completionEvidence?.approvedAt ?? null
-      : completionEvidence?.approvedAt ?? null;
+      ? (item.approvedAt ?? completionEvidence?.approvedAt ?? null)
+      : (completionEvidence?.approvedAt ?? null);
 
     if (item.status === 'COMPLETE') {
       if (!item.completionManifest) {
@@ -522,7 +533,8 @@ export function collectCompletionInvariantErrors(
         );
       }
       if (!manifest) validateLegacyCompletionApproval(item, completionEvidence, errors);
-      if (!completionApprovedBy) errors.push(`COMPLETE Section ${item.id} has no completion approver`);
+      if (!completionApprovedBy)
+        errors.push(`COMPLETE Section ${item.id} has no completion approver`);
       if (!completionApprovedAt) errors.push(`COMPLETE Section ${item.id} has no approval date`);
       if (!manifest && !legacyCompletionEvidenceSectionIds.has(item.id)) {
         errors.push(
@@ -555,7 +567,9 @@ export function collectCompletionInvariantErrors(
     for (const amendment of manifest.scopeAmendments) {
       if (amendmentById.has(amendment.id)) {
         duplicateAmendmentIds.add(amendment.id);
-        errors.push(`Completion manifest ${item.id} has duplicate Scope Amendment ID: ${amendment.id}`);
+        errors.push(
+          `Completion manifest ${item.id} has duplicate Scope Amendment ID: ${amendment.id}`,
+        );
       } else {
         amendmentById.set(amendment.id, amendment);
       }
@@ -634,11 +648,7 @@ export function collectCompletionInvariantErrors(
         }
       }
       const newOwner = canonicalById.get(amendment.newOwner);
-      if (
-        !newOwner ||
-        newOwner.id === item.id ||
-        newOwner.status === 'COMPLETE'
-      ) {
+      if (!newOwner || newOwner.id === item.id || newOwner.status === 'COMPLETE') {
         errors.push(
           `Scope Amendment ${item.id}/${amendment.id} requires a canonical non-complete new owner: ${amendment.newOwner}`,
         );
@@ -740,9 +750,13 @@ export function collectCompletionInvariantErrors(
       }
     }
     if (item.status === 'COMPLETE') {
-      if (!manifest.approvedBy) errors.push(`COMPLETE manifest ${item.id} has no completion approver`);
+      if (!manifest.approvedBy)
+        errors.push(`COMPLETE manifest ${item.id} has no completion approver`);
       if (!manifest.approvedAt) errors.push(`COMPLETE manifest ${item.id} has no approval date`);
-      if (manifest.approvedBy !== completionApprovedBy || manifest.approvedAt !== completionApprovedAt) {
+      if (
+        manifest.approvedBy !== completionApprovedBy ||
+        manifest.approvedAt !== completionApprovedAt
+      ) {
         errors.push(`Registry/completion manifest approval metadata drift for ${item.id}`);
       }
     }
@@ -756,7 +770,8 @@ export function collectCompletionInvariantErrors(
     const completionApprovedBy = completionEvidence?.approvedBy ?? null;
     const completionApprovedAt = completionEvidence?.approvedAt ?? null;
     validateLegacyCompletionApproval(item, completionEvidence, errors);
-    if (!completionApprovedBy) errors.push(`COMPLETE Increment ${item.id} has no completion approver`);
+    if (!completionApprovedBy)
+      errors.push(`COMPLETE Increment ${item.id} has no completion approver`);
     if (!completionApprovedAt) errors.push(`COMPLETE Increment ${item.id} has no approval date`);
     if (!item.completionManifest) {
       errors.push(`COMPLETE Increment ${item.id} has no completion evidence`);

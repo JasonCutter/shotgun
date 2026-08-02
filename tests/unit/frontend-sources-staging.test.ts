@@ -137,8 +137,8 @@ describe('sealed Sources staging service', () => {
       }),
     ).rejects.toThrow(/expired/);
 
-    await expect(
-      service.stageBytes({ ...base, bytes: new Uint8Array(1_048_577) }),
-    ).rejects.toThrow(/one MiB/);
+    await expect(service.stageBytes({ ...base, bytes: new Uint8Array(1_048_577) })).rejects.toThrow(
+      /one MiB/,
+    );
   });
 });

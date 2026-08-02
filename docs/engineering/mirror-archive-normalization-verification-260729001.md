@@ -8,11 +8,11 @@
 
 ## External updates
 
-| Provider | Item class | Count | Result |
-| --- | --- | ---: | --- |
-| Notion | Mirror or Legacy Reference | 9 | PASS — Canonical status, Git path, revision and synchronization date inserted |
-| Notion | Archived historical preparation hub | 1 | PASS — successor and non-governing status inserted; source retained |
-| Google Drive | Legacy Source Reference | 1 | PASS — Canonical metadata inserted under revision control and re-read |
+| Provider     | Item class                          | Count | Result                                                                        |
+| ------------ | ----------------------------------- | ----: | ----------------------------------------------------------------------------- |
+| Notion       | Mirror or Legacy Reference          |     9 | PASS — Canonical status, Git path, revision and synchronization date inserted |
+| Notion       | Archived historical preparation hub |     1 | PASS — successor and non-governing status inserted; source retained           |
+| Google Drive | Legacy Source Reference             |     1 | PASS — Canonical metadata inserted under revision control and re-read         |
 
 ## High-value records
 
@@ -30,19 +30,19 @@
 
 ## Verification procedures
 
-| Check | Result |
-| --- | --- |
-| Existing external body retained | PASS |
-| Canonical repository displayed | PASS |
-| Canonical Git path displayed | PASS |
-| Canonical revision displayed | PASS |
-| Last synchronized date displayed | PASS |
-| Historical pending/status conflict explained | PASS |
-| Archive successor identified | PASS |
-| External record deleted | PASS — none |
-| Drive concurrent-edit protection used | PASS — required revision supplied |
-| Drive result re-read after write | PASS |
-| Unresolved high-value metadata item | PASS — none |
+| Check                                        | Result                            |
+| -------------------------------------------- | --------------------------------- |
+| Existing external body retained              | PASS                              |
+| Canonical repository displayed               | PASS                              |
+| Canonical Git path displayed                 | PASS                              |
+| Canonical revision displayed                 | PASS                              |
+| Last synchronized date displayed             | PASS                              |
+| Historical pending/status conflict explained | PASS                              |
+| Archive successor identified                 | PASS                              |
+| External record deleted                      | PASS — none                       |
+| Drive concurrent-edit protection used        | PASS — required revision supplied |
+| Drive result re-read after write             | PASS                              |
+| Unresolved high-value metadata item          | PASS — none                       |
 
 ## Conservative resolutions
 

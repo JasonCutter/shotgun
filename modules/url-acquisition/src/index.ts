@@ -63,8 +63,10 @@ export type UrlAcquisitionReceipt = {
   readonly body: Uint8Array;
 };
 
-const sensitiveQueryKey = /^(?:access[_-]?token|api[_-]?key|apikey|auth|authorization|cookie|credential|key|password|passwd|secret|session|sig|signature|token)$/i;
-const credentialValue = /(?:^|[^a-z])(?:bearer|basic|token|secret|password|passwd|api[_-]?key)[=: ]/i;
+const sensitiveQueryKey =
+  /^(?:access[_-]?token|api[_-]?key|apikey|auth|authorization|cookie|credential|key|password|passwd|secret|session|sig|signature|token)$/i;
+const credentialValue =
+  /(?:^|[^a-z])(?:bearer|basic|token|secret|password|passwd|api[_-]?key)[=: ]/i;
 const sha256 = (value: string | Uint8Array): string =>
   `sha256:${createHash('sha256').update(value).digest('hex')}`;
 
@@ -137,8 +139,14 @@ const normalizedAddressSet = (addresses: readonly string[]): readonly string[] =
 
 const assertAddressSet = (addresses: readonly string[]): readonly string[] => {
   const normalized = normalizedAddressSet(addresses);
-  if (normalized.length === 0 || normalized.some((address) => !isPublicAcquisitionAddress(address))) {
-    return fail('URL acquisition resolved to a prohibited or empty address set.', 'validate-address');
+  if (
+    normalized.length === 0 ||
+    normalized.some((address) => !isPublicAcquisitionAddress(address))
+  ) {
+    return fail(
+      'URL acquisition resolved to a prohibited or empty address set.',
+      'validate-address',
+    );
   }
   return normalized;
 };
@@ -162,7 +170,8 @@ const normalize = (value: string): URL => {
   if (parsed.username || parsed.password) {
     return fail('URL userinfo credentials are prohibited.', 'validate-userinfo');
   }
-  if (parsed.hash) return fail('URL fragments are prohibited for acquisition.', 'validate-fragment');
+  if (parsed.hash)
+    return fail('URL fragments are prohibited for acquisition.', 'validate-fragment');
   for (const [key, value] of parsed.searchParams) {
     if (sensitiveQueryKey.test(key) || credentialValue.test(value)) {
       return fail('Credential-shaped URL query parameters are prohibited.', 'validate-query');
@@ -175,7 +184,11 @@ const normalize = (value: string): URL => {
 const contentType = (value: string | undefined): 'text/plain' | 'text/markdown' => {
   const normalized = value?.split(';', 1)[0]?.trim().toLocaleLowerCase();
   if (normalized === 'text/plain' || normalized === 'text/markdown') return normalized;
-  return fail('URL response content type is not supported.', 'validate-content-type', 'VALIDATION_ERROR');
+  return fail(
+    'URL response content type is not supported.',
+    'validate-content-type',
+    'VALIDATION_ERROR',
+  );
 };
 
 export class SecureUrlAcquisitionCoordinator {
@@ -229,14 +242,20 @@ export class SecureUrlAcquisitionCoordinator {
         limits: input.limits,
       });
       if (!approved.includes(response.connectedAddress.toLocaleLowerCase())) {
-        return fail('URL transport connected to an address outside the approved DNS set.', 'dns-pin');
+        return fail(
+          'URL transport connected to an address outside the approved DNS set.',
+          'dns-pin',
+        );
       }
       const after = assertAddressSet(await this.resolver.resolve(current.hostname));
       if (sha256(after.join('\n')) !== addressSetDigest) {
         return fail('URL DNS address set changed during acquisition.', 'dns-rebinding');
       }
 
-      if (response.redirectLocation !== undefined || (response.status >= 300 && response.status < 400)) {
+      if (
+        response.redirectLocation !== undefined ||
+        (response.status >= 300 && response.status < 400)
+      ) {
         if (!response.redirectLocation) {
           return fail('URL redirect response is missing a Location value.', 'redirect-location');
         }
@@ -244,23 +263,40 @@ export class SecureUrlAcquisitionCoordinator {
           return fail('URL acquisition exceeded the redirect limit.', 'redirect-limit');
         }
         const next = normalize(new URL(response.redirectLocation, current).toString());
-        redirects.push({ ordinal, from: redact(current), to: redact(next), status: response.status });
+        redirects.push({
+          ordinal,
+          from: redact(current),
+          to: redact(next),
+          status: response.status,
+        });
         current = next;
         continue;
       }
 
       if (response.status < 200 || response.status >= 300) {
-        return fail('URL response status is not successful.', 'response-status', 'VALIDATION_ERROR');
+        return fail(
+          'URL response status is not successful.',
+          'response-status',
+          'VALIDATION_ERROR',
+        );
       }
       if (
         response.compressedBytes > input.limits.maxCompressedBytes ||
         response.body.byteLength > input.limits.maxDecompressedBytes
       ) {
-        return fail('URL response exceeds the approved byte limits.', 'response-size', 'VALIDATION_ERROR');
+        return fail(
+          'URL response exceeds the approved byte limits.',
+          'response-size',
+          'VALIDATION_ERROR',
+        );
       }
       const declaredLength = Number(response.headers['content-length']);
       if (Number.isFinite(declaredLength) && declaredLength > input.limits.maxCompressedBytes) {
-        return fail('URL response declares an oversized body.', 'content-length', 'VALIDATION_ERROR');
+        return fail(
+          'URL response declares an oversized body.',
+          'content-length',
+          'VALIDATION_ERROR',
+        );
       }
       const mediaType = contentType(response.headers['content-type']);
       const responseMetadata: Record<string, string> = {};

@@ -29,8 +29,7 @@ const routeWithSearchDialog = (content: ReactNode) => (
   </MemoryRouter>
 );
 
-const renderRouteWithSearchDialog = (content: ReactNode) =>
-  render(routeWithSearchDialog(content));
+const renderRouteWithSearchDialog = (content: ReactNode) => render(routeWithSearchDialog(content));
 
 describe('RouteFocus', () => {
   it('focuses the route heading when no specific focus target owns the route', async () => {

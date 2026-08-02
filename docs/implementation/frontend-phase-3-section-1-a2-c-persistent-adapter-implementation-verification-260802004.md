@@ -10,7 +10,7 @@ follow_up_review_id: 4837090953
 follow_up_review_decision: CHANGES_REQUIRED
 follow_up_scope: Persistent shared contract, populated PostgreSQL adapter, full database suite, and verification evidence only
 implementation_authorization: APPROVED_FOR_A2_C_PERSISTENT_ADAPTER
-implementation_commit: 109f570c
+implementation_commit: cf29b502
 branch: codex/frontend-phase-3-section-1-knowledge-workspace
 base_commit: cb2513bc311891ac89f53c7d67d6a401da65a2a8
 tracking_issue: 52

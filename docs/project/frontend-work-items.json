@@ -227,7 +227,7 @@
       "predecessor": "FE-P3-S1",
       "successor": "FE-P3-S3",
       "status": "NOT_STARTED",
-      "governingContract": "docs/architecture/frontend/phase-3-knowledge-understanding-editing.md",
+      "governingContract": "docs/architecture/contracts/snapshots/frontend-phase-3-section-2/frontend-phase-3-section-2-contract-snapshot-260802001.md",
       "completionManifest": null,
       "approvedAt": null,
       "supersedes": null,

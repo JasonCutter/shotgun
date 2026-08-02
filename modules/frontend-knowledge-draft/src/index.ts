@@ -401,6 +401,7 @@ export const assertFrontendKnowledgeDraftMaterializationBinding = (
   draft: FrontendKnowledgeDraftChangeSetV1,
   materialization: DraftMaterializationRecordV1,
 ): void => {
+  assertFrontendKnowledgeDraftMaterializationValues(materialization);
   if (
     draft.draftId !== materialization.draftId ||
     draft.resourceProjectId !== materialization.resourceProjectId ||
@@ -419,6 +420,57 @@ export const assertFrontendKnowledgeDraftMaterializationBinding = (
   }
   if (materialization.target.kind !== 'SEED' && draft.seedId !== undefined) {
     domainFailure('VALIDATION_FAILED', 'Seedless materialization cannot carry a Seed ID.');
+  }
+};
+
+export const assertFrontendKnowledgeDraftMaterializationValues = (
+  materialization: DraftMaterializationRecordV1,
+): void => {
+  requiredText(materialization.materializationId, 'materializationId');
+  requiredText(materialization.draftId, 'materialization.draftId');
+  requiredText(materialization.resourceProjectId, 'materialization.resourceProjectId');
+  requiredText(materialization.draftProjectId, 'materialization.draftProjectId');
+  requiredText(materialization.effectiveProjectId, 'materialization.effectiveProjectId');
+  requiredText(materialization.createdAt, 'materialization.createdAt');
+  requiredText(materialization.commandIdentity.principalId, 'commandIdentity.principalId');
+  requiredText(materialization.commandIdentity.clientRequestId, 'commandIdentity.clientRequestId');
+  requiredText(materialization.commandIdentity.idempotencyKey, 'commandIdentity.idempotencyKey');
+  requiredText(materialization.commandIdentity.semanticDigest, 'commandIdentity.semanticDigest');
+  requiredText(
+    materialization.base.canonicalSnapshotId,
+    'materialization.base.canonicalSnapshotId',
+  );
+  requiredText(
+    materialization.base.canonicalSnapshotDigest,
+    'materialization.base.canonicalSnapshotDigest',
+  );
+  if (materialization.target.kind === 'SEED') {
+    requiredText(materialization.target.seedId, 'materialization.target.seedId');
+    requiredText(materialization.target.resourceId, 'materialization.target.resourceId');
+  } else if (materialization.target.kind === 'RESOURCE') {
+    requiredText(materialization.target.resourceId, 'materialization.target.resourceId');
+  } else {
+    requiredText(materialization.target.pageId, 'materialization.target.pageId');
+    requiredText(materialization.target.resourceId, 'materialization.target.resourceId');
+  }
+};
+
+const assertFrontendKnowledgeDraftReplayBinding = (
+  existing: FrontendKnowledgeDraftChangeSetV1,
+  incoming: FrontendKnowledgeDraftChangeSetV1,
+): void => {
+  if (
+    existing.startMode !== incoming.startMode ||
+    existing.seedId !== incoming.seedId ||
+    existing.answerRunId !== incoming.answerRunId ||
+    existing.activeProjectId !== incoming.activeProjectId ||
+    existing.resourceProjectId !== incoming.resourceProjectId ||
+    existing.draftProjectId !== incoming.draftProjectId ||
+    existing.effectiveProjectId !== incoming.effectiveProjectId ||
+    existing.resourceId !== incoming.resourceId ||
+    stableJson(existing.base) !== stableJson(incoming.base)
+  ) {
+    domainFailure('PROJECT_BINDING_CONFLICT', 'Draft replay binding does not match.');
   }
 };
 
@@ -522,6 +574,7 @@ export const materializeFrontendKnowledgeDraft = async (
         domainFailure('DRAFT_NOT_FOUND', 'Materialization references a missing Draft.');
       }
       const replayedDraft = existingDraft as FrontendKnowledgeDraftChangeSetV1;
+      assertFrontendKnowledgeDraftReplayBinding(replayedDraft, draft);
       return { draft: replayedDraft, materialization: existing, replayed: true };
     }
     const existingDraft = await materializations.findByDraftId(

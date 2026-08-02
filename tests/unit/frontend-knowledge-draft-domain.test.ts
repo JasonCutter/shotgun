@@ -10,6 +10,7 @@ import {
   appendFrontendKnowledgeDraftRevision,
   assertFrontendKnowledgeDraftBaseBinding,
   assertFrontendKnowledgeDraftMaterializationBinding,
+  assertFrontendKnowledgeDraftMaterializationValues,
   assertFrontendKnowledgeDraftProjectBinding,
   createInitialFrontendKnowledgeDraft,
   frontendKnowledgeDraftRevisionDigest,
@@ -422,6 +423,58 @@ describe('FE-P3-S2 Domain/Repository boundary', () => {
     );
   });
 
+  it('rejects empty materialization and command identity values', () => {
+    const seedDraft = draftFor('seed-1');
+    const valid = materializationFor(seedDraft, 'seed-1');
+    const invalidValues = [
+      { ...valid, materializationId: '' },
+      { ...valid, draftId: '' },
+      { ...valid, commandIdentity: { ...valid.commandIdentity, principalId: '' } },
+      { ...valid, commandIdentity: { ...valid.commandIdentity, clientRequestId: '' } },
+      { ...valid, commandIdentity: { ...valid.commandIdentity, idempotencyKey: '' } },
+      { ...valid, commandIdentity: { ...valid.commandIdentity, semanticDigest: '' } },
+      { ...valid, target: { kind: 'SEED' as const, seedId: '', resourceId: 'resource-1' } },
+      { ...valid, target: { kind: 'SEED' as const, seedId: 'seed-1', resourceId: '' } },
+      {
+        ...materializationFor(draftFor(), undefined),
+        target: { kind: 'PAGE' as const, pageId: '', resourceId: 'resource-1' },
+      },
+    ];
+
+    for (const materialization of invalidValues) {
+      expectApiError(
+        () => assertFrontendKnowledgeDraftMaterializationValues(materialization),
+        'VALIDATION_FAILED',
+      );
+    }
+  });
+
+  it('rejects Active Project drift during Seed replay', async () => {
+    const boundary = new FakeDraftBoundary();
+    const firstDraft = draftFor('seed-1');
+    await materializeFrontendKnowledgeDraft(boundary, {
+      draft: firstDraft,
+      materialization: materializationFor(firstDraft, 'seed-1'),
+    });
+    const retryDraft = {
+      ...draftFor('seed-1'),
+      draftId: 'draft-active-project-retry',
+      activeProjectId: 'project-2',
+    };
+
+    await expectApiErrorAsync(
+      () =>
+        materializeFrontendKnowledgeDraft(boundary, {
+          draft: retryDraft,
+          materialization: {
+            ...materializationFor(retryDraft, 'seed-1'),
+            materializationId: 'materialization-active-project-retry',
+          },
+        }),
+      'PROJECT_BINDING_CONFLICT',
+    );
+  });
+
   it('persists a revision through CAS and transaction-scoped repositories', async () => {
     const boundary = new FakeDraftBoundary();
     const firstDraft = draftFor('seed-1', [operation(1)]);
@@ -441,6 +494,37 @@ describe('FE-P3-S2 Domain/Repository boundary', () => {
       status: 'READY_FOR_REVIEW',
       validation,
       impactPreview: { ...validation, artifactId: 'impact-1' },
+      reviewResource: {
+        reviewResourceId: 'review-resource-1',
+        draftId: firstDraft.draftId,
+        draftRevision: 1,
+        resourceProjectId: firstDraft.resourceProjectId,
+        draftProjectId: firstDraft.draftProjectId,
+        effectiveProjectId: firstDraft.effectiveProjectId,
+        policyContextRevision: binding.policyContextRevision,
+        digest: 'sha256:review-resource',
+      },
+      reviewSubmission: {
+        reviewSubmissionId: 'review-submission-1',
+        draftId: firstDraft.draftId,
+        draftRevision: 1,
+        operationDigest: 'sha256:operations',
+        contentDigest: firstDraft.contentDigest,
+        validationArtifact: validation,
+        impactArtifact: { ...validation, artifactId: 'impact-1' },
+        evidenceLineage: [],
+        projectPolicyContext: binding,
+        reviewResource: {
+          reviewResourceId: 'review-resource-1',
+          draftId: firstDraft.draftId,
+          draftRevision: 1,
+          resourceProjectId: firstDraft.resourceProjectId,
+          draftProjectId: firstDraft.draftProjectId,
+          effectiveProjectId: firstDraft.effectiveProjectId,
+          policyContextRevision: binding.policyContextRevision,
+          digest: 'sha256:review-resource',
+        },
+      },
     });
     const operations = [operation(2)];
     const next = await persistFrontendKnowledgeDraftRevision(boundary, {
@@ -463,6 +547,8 @@ describe('FE-P3-S2 Domain/Repository boundary', () => {
     expect(next.status).toBe('DRAFT');
     expect(next.validation).toBeUndefined();
     expect(next.impactPreview).toBeUndefined();
+    expect(next.reviewResource).toBeUndefined();
+    expect(next.reviewSubmission).toBeUndefined();
     expect(boundary.draftStore.get(firstDraft.draftId)?.revision).toBe(2);
     expect(boundary.revisionStore).toHaveLength(2);
     expect(boundary.operationStore).toHaveLength(2);

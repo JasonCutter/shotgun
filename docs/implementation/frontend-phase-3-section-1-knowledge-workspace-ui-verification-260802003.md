@@ -1,25 +1,27 @@
 ---
 id: FRONTEND-PHASE-3-SECTION-1-KNOWLEDGE-WORKSPACE-UI-VERIFICATION-260802003
 classification: VERIFICATION_REPORT
-status: IMPLEMENTATION_PASS
+status: FOLLOW_UP_EVIDENCE_PENDING
 work_item: FE-P3-S1
 sub_slice: KNOWLEDGE_WORKSPACE_UI
 approval_review_id: 4837418169
 approval_decision: APPROVED_FOR_KNOWLEDGE_WORKSPACE_UI
 implementation_authorization: APPROVED_FOR_KNOWLEDGE_WORKSPACE_UI
 implementation_commit: 32fdb0e
-follow_up_review_id: PENDING
-follow_up_decision: PENDING
+follow_up_review_id: 4837579603
+follow_up_decision: CHANGES_REQUIRED
 branch: codex/frontend-phase-3-section-1-knowledge-workspace
 base_commit: cb2513bc311891ac89f53c7d67d6a401da65a2a8
 tracking_issue: 52
 tracking_pr: 53
 remote_head_at_review: 18f48c4504d1510ad310cd85c00a0a3503ac65e6
-remote_ci: NOT_RUN
+remote_ci: PENDING_REMOTE_EXACT_HEAD
 ready: NOT_AUTHORIZED
 merge: NOT_AUTHORIZED
 deployment: NOT_STARTED
 production_verification: NOT_RUN
+knowledge_flow_render: PASS
+knowledge_flow_check: PASS
 ---
 
 # FE-P3-S1 Knowledge Workspace UI Verification
@@ -110,20 +112,109 @@ this slice adds no new lockfile or adoption decision.
 
 The repository-wide `format:check` remains `FAIL` because it reports 59
 existing files outside this slice as not formatted; the changed-file check is
-PASS and those unrelated files were not rewritten. `docs:knowledge-flow:check`
-also reports the pre-existing generated Knowledge Flow baseline as stale; no
-generated baseline was rewritten as part of this UI slice. The Stage12 package
-gate is `BLOCKED/NOT_RUN`: package prepack completed, but the isolated consumer
-install was denied on the npm registry request for `ajv` with `EACCES`.
-These limits prevent a repository-wide completion claim even though the
-Knowledge Workspace implementation and its focused gates pass.
+PASS and those unrelated files were not rewritten. The official
+`npm.cmd run docs:knowledge-flow:render` command was run and
+`npm.cmd run docs:knowledge-flow:check` now PASSes; the generated artifact was
+not manually edited. The Stage12 package gate is still `BLOCKED/NOT_RUN`:
+package prepack completed, but the isolated consumer install was denied on the
+npm registry request for `ajv` with `EACCES`. Remote exact-head CI and the
+remote Chromium/Database/Required Gates evidence remain pending until this
+branch is published to the existing Draft PR.
 
-## 6. Completion boundary
+## 6. Local AC status
 
-This report records `IMPLEMENTATION_PASS` for the approved Knowledge Workspace
-UI slice only. It does not claim FE-P3-S1 completion, Ready, Merge, remote CI,
-deployment or production verification. The remote branch remains stale and
-was not pushed under the existing tenant policy. A separate side-panel review
-is still required; the next decision must be recorded as
-`KNOWLEDGE_WORKSPACE_UI_IMPLEMENTATION_PASS` or `CHANGES_REQUIRED` before any
-follow-up implementation is considered.
+The following is the local implementation evidence status, not a remote CI or
+completion approval. The status is recorded individually as requested by the
+follow-up review.
+
+| AC    | Local status | Evidence                                                                                                              |
+| ----- | ------------ | --------------------------------------------------------------------------------------------------------------------- |
+| AC-01 | PASS         | Protected `/knowledge` renders the Knowledge Workspace.                                                               |
+| AC-02 | PASS         | No-project guard disables Knowledge reads and renders the explicit empty state.                                       |
+| AC-03 | PASS         | Product Read API derives principal/session/project/access/policy context server-side.                                 |
+| AC-04 | PASS         | API/browser boundary tests cover session and authority rejection; inaccessible detail is typed `NOT_FOUND`.           |
+| AC-05 | PASS         | Typed page kind, stable identity, label, temporal state and authority are rendered.                                   |
+| AC-06 | PASS         | Canonical, Approved, Compiled and Derived authority/kind labels are kept distinct.                                    |
+| AC-07 | PASS         | Search preserves score, match type, revision, canonical version and readiness.                                        |
+| AC-08 | PASS         | READY, STALE, DEGRADED, NOT_BUILT and partial states expose status/lag/reason.                                        |
+| AC-09 | PASS         | Non-ready projections are rendered as non-ready; no client promotion or fallback occurs.                              |
+| AC-10 | PASS         | Lineage, Evidence, SourceVersion, Revision, Commit, Manifest and ChangeSet metadata are rendered.                     |
+| AC-11 | PASS         | Pinned SourceVersion Evidence navigation carries a typed Knowledge return envelope.                                   |
+| AC-12 | PASS         | Search and filters are encoded in the server request; browser authority headers are rejected.                         |
+| AC-13 | PASS         | Compare renders server left/right and `differences[]` without write/merge controls.                                   |
+| AC-14 | PASS         | Stable detail request preserves resource, requested revision and focus through the deep link.                         |
+| AC-15 | PASS         | Browser cache harness covers project, access/policy revision isolation and protected-cache purge.                     |
+| AC-16 | PASS         | Workspace capabilities are read/search/filter/compare/evidence only; no write or approval controls exist.             |
+| AC-17 | PASS         | Projection status is displayed as derived state and cannot alter Canonical authority/history.                         |
+| AC-18 | PASS         | Normal, empty, stale, degraded, not-found, no-project and typed-failure UI states are implemented.                    |
+| AC-19 | PASS         | In-memory UI client boundary and persistent Product Read adapter are covered by contract/integration/database suites. |
+| AC-20 | PASS         | Full local Chromium run includes Knowledge, Sources, Ask, Session, Project and Section 3 regression scenarios.        |
+
+## 7. Named local Chromium scenarios
+
+The local `npm.cmd run frontend:test:e2e -- --list` inventory is 25 tests in 7
+files, and the subsequent full Chromium run passed 25/25:
+
+- Knowledge Product API remains body-only and rejects browser authority inputs
+- Knowledge Product API rejects a missing browser session and authority header
+- Knowledge browser harness proves cache isolation, typed failure and retry boundaries
+- Knowledge Workspace renders server pages, stable detail, and non-ready state
+- Sources stages and submits Direct Text, then releases Project switching after success
+- Sources keeps Project switching blocked after a partial delete and releases it after the last delete
+- Sources URL preflight is advisory, transient, responsive, and offline-safe
+- Ask navigation enables question submission and clears draft on success
+- Ask draft blocks Project switching and is not moved to the next Project
+- Ask deep link uses accessible Resource Project without changing Active Project
+- Ask masks inaccessible Conversation as NOT_FOUND
+- Ask citation keeps SourceVersion pinned and restores exact conversation context
+- Frontend Section 1 restores server Project context and protects routes
+- Session revocation removes the protected Shell and reestablishes READY
+- Session recovery failure offers typed reconnect actions
+- protected browser storage does not leak Project cache data
+- Frontend Section 2 Settings & Project Administration End-to-End Flow
+- Section 2 executes Preference and Project lifecycle commands with server command IDs
+- Section 2 resolves a lost Settings response by clientRequestId without resubmission
+- Section 2 fails closed for stale, cross-project, and unavailable policy states
+- Section 3 renders responsive server-authoritative Shell and six-area Home
+- Section 3 Search and Command Palette keep query transient and keyboard-safe
+- Section 3 route guard preserves Active and Resource Project context and masks denial
+- Section 3 blocks unsafe leave state, warns on offline state, and restores online use
+- Section 3 zero-project onboarding sends PRINCIPAL bootstrap without a browser Project ID
+
+## 8. Exact local history and changed files
+
+The local branch is 14 commits ahead of the remote Draft PR branch. The exact
+local commit list is:
+
+```text
+e99c337c docs(frontend): record knowledge workspace ui verification
+32fdb0ec feat(frontend): implement knowledge workspace ui
+c9e698f3 docs(frontend): record A3 implementation pass
+a4712647 docs(frontend): record browser boundary evidence
+f66e106a test(frontend): add knowledge browser boundary harness
+09d290be docs(frontend): record A3 verification evidence
+82a86825 feat(frontend): add knowledge api client cache boundary
+3ae848a6 docs(frontend): record A2-C implementation pass
+a9b8bf92 docs(frontend): record persistent adapter verification
+cf29b502 test(frontend): verify persistent knowledge adapter
+5f3a82db docs(frontend): record A2-C adapter verification
+109f570c feat(frontend): add persistent knowledge product read adapter
+95ca7dc4 docs: record A2-C contract amendment approval
+5a563d06 docs: amend A2-C product contract review scope
+```
+
+The complete local-vs-remote diff contains 37 files and 7,973 additions / 129
+deletions, including the A2-C adapter, A3 API/client/cache boundary and this
+Knowledge UI. The full list is recorded by the exact-head Git diff and will be
+included in the Draft PR update; no unrelated files were rewritten.
+
+## 9. Completion boundary
+
+This report records local implementation evidence for the approved Knowledge
+Workspace UI slice only. Follow-up Review `4837579603` returned
+`CHANGES_REQUIRED` because the local A2-C+A3+UI history was not yet present on
+the remote exact head. The limited follow-up is evidence publication and
+verification, not a UI redesign. It does not claim FE-P3-S1 completion, Ready,
+Merge, deployment or production verification. The remote branch, PR body and
+exact-head CI must be updated and rechecked before a new review decision is
+requested.

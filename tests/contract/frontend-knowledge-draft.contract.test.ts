@@ -22,6 +22,7 @@ import {
   decodeValidateKnowledgeDraftRequestV1,
   decodeValidateKnowledgeDraftResultV1,
   mapFrontendKnowledgeDraftFailure,
+  normalizeFrontendKnowledgeDraftFailure,
 } from '../../packages/contracts/src/index.js';
 
 const now = '2026-08-02T08:00:00.000Z';
@@ -386,6 +387,85 @@ describe('FE-P3-S2 FrontendKnowledgeDraftChangeSet v1 contract', () => {
     ];
     for (const [index, decoder] of decoders.entries()) {
       expectContractError(() => decoder(authorityInjectedRequests[index]));
+    }
+  });
+
+  it('rejects command omissions, invalid revisions/digests, incomplete Submit artifacts and bad outcome identity', () => {
+    const envelope = {
+      schemaVersion: '1.0.0',
+      clientRequestId: 'request-1',
+      idempotencyKey: 'key-1',
+      expectedDraftRevision: 1,
+    };
+    expectContractError(() => decodeMaterializeDraftRequestV1(envelope));
+    expectContractError(() =>
+      decodeSaveKnowledgeDraftRequestV1({
+        ...envelope,
+        draftId: 'draft-1',
+        operations: [operationFor('FACT_ADD')],
+        expectedBaseRevision: -1,
+        operationRevision: 1,
+        contentDigest: 'sha256:draft',
+      }),
+    );
+    expectContractError(() =>
+      decodeValidateKnowledgeDraftRequestV1({
+        schemaVersion: '1.0.0',
+        clientRequestId: 'request-1',
+        idempotencyKey: 'key-1',
+        draftId: 'draft-1',
+        expectedBaseRevision: 7,
+      }),
+    );
+    expectContractError(() =>
+      decodeResolveKnowledgeDraftCommandOutcomeRequestV1({
+        schemaVersion: '1.0.0',
+        clientRequestId: 'request-1',
+        idempotencyKey: 'key-1',
+        semanticDigest: '',
+      }),
+    );
+    expectContractError(() =>
+      decodeSubmitKnowledgeDraftForReviewRequestV1({
+        ...envelope,
+        draftId: 'draft-1',
+        expectedBaseRevision: 7,
+        validationArtifact: { ...artifact, status: 'PARTIAL' },
+        impactArtifact: artifact,
+      }),
+    );
+    expectContractError(() =>
+      decodeResolveKnowledgeDraftCommandOutcomeResultV1({
+        schemaVersion: '1.0.0',
+        outcome: 'COMPLETED',
+        originalClientRequestId: 'request-1',
+        draft: draftFor(),
+      }),
+    );
+  });
+
+  it('preserves every Frozen API failure alias while exposing its normalized boundary', () => {
+    const aliases = [
+      'NOT_FOUND',
+      'FORBIDDEN',
+      'PROJECT_BINDING_CONFLICT',
+      'ACCESS_REVOKED',
+      'BASE_UNAVAILABLE',
+      'DRAFT_NOT_FOUND',
+      'DRAFT_REVISION_CONFLICT',
+      'VALIDATION_FAILED',
+      'STALE',
+      'IMPACT_PARTIAL',
+      'ANALYZER_UNAVAILABLE',
+      'NOT_READY_FOR_REVIEW',
+      'OUTCOME_NOT_FOUND',
+      'DIGEST_MISMATCH',
+      'COMMAND_SCOPE_MISMATCH',
+    ] as const;
+    for (const alias of aliases) {
+      const normalized = normalizeFrontendKnowledgeDraftFailure(alias);
+      expect(normalized?.apiCode).toBe(alias);
+      expect(normalized?.normalizedCode).toBeDefined();
     }
   });
 

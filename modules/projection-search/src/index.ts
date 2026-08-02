@@ -47,7 +47,9 @@ import {
   type SearchKnowledgeWorkspaceMatch,
   type SearchKnowledgeWorkspaceRequest,
   type SearchKnowledgeWorkspaceResult,
+  sha256Text,
   ShotgunError,
+  stableJson,
   type TransformationRevision,
 } from '../../../packages/contracts/src/index.js';
 import type { HandlerContext, ShotgunModule } from '../../../packages/module-sdk/src/index.js';
@@ -85,6 +87,8 @@ const systemClock: ProjectionClockPort = { now: () => new Date().toISOString() }
 const SEARCH_PROJECTION_UPDATE_FAILED = 'SEARCH_PROJECTION_UPDATE_FAILED';
 const SEARCH_WORKSPACE_DEFAULT_PAGE_SIZE = 20;
 const SEARCH_WORKSPACE_MAX_CANDIDATES = 100;
+const SEARCH_WORKSPACE_RANKING_VERSION = '1.0.0' as const;
+const SEARCH_WORKSPACE_CURSOR_VERSION = 1 as const;
 const workspaceMatchTypeOrder: readonly KnowledgeWorkspaceQueryMatchType[] = [
   'FULL_TEXT',
   'TRIGRAM',
@@ -100,9 +104,17 @@ const workspaceAuthorityOrder: readonly KnowledgeWorkspaceQueryAuthority[] = [
 type KnowledgeGroupListResult = { readonly items: readonly KnowledgeReviewGroup[] };
 type DerivedInferenceListResult = { readonly items: readonly DerivedInferenceCandidate[] };
 type WorkspaceCandidate = Omit<SearchKnowledgeWorkspaceMatch, 'rank'>;
+type WorkspaceCursorPayload = {
+  readonly version: typeof SEARCH_WORKSPACE_CURSOR_VERSION;
+  readonly nextOffset: number;
+  readonly rankingVersion: typeof SEARCH_WORKSPACE_RANKING_VERSION;
+  readonly requestDigest: string;
+};
 
-const normalizeSearchText = (value: string): string =>
-  value.normalize('NFKC').toLocaleLowerCase().trim();
+const normalizeSearchText = (value: string): string => value.normalize('NFKC').toLowerCase().trim();
+
+const compareWorkspaceStrings = (left: string, right: string): number =>
+  left < right ? -1 : left > right ? 1 : 0;
 
 const trigrams = (value: string): Set<string> => {
   const padded = `  ${normalizeSearchText(value)} `;
@@ -121,11 +133,10 @@ const trigramSimilarity = (left: string, right: string): number => {
   return (2 * intersection) / (a.size + b.size);
 };
 
-const localTextMatch = (
+const scoreWorkspaceText = (
   label: string,
-  query: string,
+  normalizedQuery: string,
 ): { readonly score: number; readonly matchType: KnowledgeWorkspaceQueryMatchType } | undefined => {
-  const normalizedQuery = normalizeSearchText(query);
   const normalizedLabel = normalizeSearchText(label);
   const queryTokens = normalizedQuery.split(/\s+/u).filter(Boolean);
   if (!normalizedQuery) return undefined;
@@ -234,6 +245,90 @@ const workspaceSourceIdentity = (source: KnowledgeWorkspaceSearchSource): string
       return source.inferenceId;
   }
 };
+
+const workspaceRequestDigest = (request: SearchKnowledgeWorkspaceRequest): string => {
+  const sorted = (values: readonly string[] | undefined): readonly string[] =>
+    values === undefined ? [] : [...values].sort(compareWorkspaceStrings);
+  return sha256Text(
+    stableJson({
+      normalizedQuery: normalizeSearchText(request.query),
+      resourceId: request.resourceId ?? null,
+      authorities: sorted(request.filters?.authorities),
+      kinds: sorted(request.filters?.kinds),
+      temporalStates: sorted(request.filters?.temporalStates),
+      projectionStatuses: sorted(request.filters?.projectionStatuses),
+      sensitivities: sorted(request.filters?.sensitivities),
+    }),
+  );
+};
+
+const cursorValidationError = (correlationId: string, message: string): never => {
+  throw new ShotgunError({
+    code: 'VALIDATION_ERROR',
+    safeMessage: message,
+    module: 'stage7.projection-search',
+    operation: 'SearchKnowledgeWorkspace',
+    correlationId,
+  });
+};
+
+const encodeWorkspaceCursor = (
+  nextOffset: number,
+  request: SearchKnowledgeWorkspaceRequest,
+): string => {
+  const payload: WorkspaceCursorPayload = {
+    version: SEARCH_WORKSPACE_CURSOR_VERSION,
+    nextOffset,
+    rankingVersion: SEARCH_WORKSPACE_RANKING_VERSION,
+    requestDigest: workspaceRequestDigest(request),
+  };
+  return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+};
+
+const decodeWorkspaceCursor = (
+  cursor: string | undefined,
+  request: SearchKnowledgeWorkspaceRequest,
+  correlationId: string,
+): number => {
+  if (cursor === undefined) return 0;
+  try {
+    if (!/^[A-Za-z0-9_-]+$/u.test(cursor)) {
+      return cursorValidationError(correlationId, 'Knowledge Workspace search cursor is invalid.');
+    }
+    const parsed: unknown = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      return cursorValidationError(correlationId, 'Knowledge Workspace search cursor is invalid.');
+    }
+    const payload = parsed as Record<string, unknown>;
+    if (
+      payload.version !== SEARCH_WORKSPACE_CURSOR_VERSION ||
+      payload.rankingVersion !== SEARCH_WORKSPACE_RANKING_VERSION ||
+      payload.requestDigest !== workspaceRequestDigest(request) ||
+      typeof payload.nextOffset !== 'number' ||
+      !Number.isSafeInteger(payload.nextOffset) ||
+      payload.nextOffset < 0 ||
+      payload.nextOffset > SEARCH_WORKSPACE_MAX_CANDIDATES
+    ) {
+      return cursorValidationError(
+        correlationId,
+        'Knowledge Workspace search cursor does not match this request.',
+      );
+    }
+    return payload.nextOffset;
+  } catch (error) {
+    if (error instanceof ShotgunError) throw error;
+    return cursorValidationError(correlationId, 'Knowledge Workspace search cursor is invalid.');
+  }
+};
+
+const scoreWorkspaceCandidates = (
+  candidates: readonly WorkspaceCandidate[],
+  normalizedQuery: string,
+): readonly WorkspaceCandidate[] =>
+  candidates.flatMap((candidate) => {
+    const match = scoreWorkspaceText(candidate.label, normalizedQuery);
+    return match ? [{ ...candidate, ...match }] : [];
+  });
 
 const invalidWorkspaceLineage = (correlationId: string): never => {
   throw new ShotgunError({
@@ -455,8 +550,8 @@ const canonicalWorkspaceCandidate = async (
   return {
     candidate: {
       projectId: item.projectId,
-      score: Math.min(1, Math.max(0, item.score)),
-      matchType: item.matchType,
+      score: 0,
+      matchType: 'TRIGRAM',
       authority: 'CANONICAL',
       kind: 'CLAIM',
       temporalState: 'CURRENT',
@@ -543,9 +638,7 @@ const buildApprovedWorkspaceCandidates = async (
         source,
       };
       if (!matchesWorkspaceFilters(candidate, request, group.sensitivity)) continue;
-      const match = localTextMatch(candidate.label, request.query);
-      if (!match) continue;
-      candidates.push({ ...candidate, ...match });
+      candidates.push(candidate);
     }
   }
   return candidates;
@@ -596,9 +689,7 @@ const buildCompiledWorkspaceCandidates = (
       projectionStatus,
     };
     if (!matchesWorkspaceFilters(candidate, request, item.sensitivity)) continue;
-    const match = localTextMatch(candidate.label, request.query);
-    if (!match) continue;
-    candidates.push({ ...candidate, ...match });
+    candidates.push(candidate);
   }
   return candidates;
 };
@@ -623,12 +714,12 @@ const buildDerivedWorkspaceCandidates = async (
       payload: {},
     })
   ).payload.items;
-  const items = new Map(compiled.projection.items.map((item) => [item.id, item]));
+  const nodes = new Map(compiled.projection.graph.nodes.map((node) => [node.id, node]));
   const inheritedStatus = compiled.status.status;
   const candidates: WorkspaceCandidate[] = [];
   for (const inference of inferences) {
     if (inference.sourceProjectionDigest !== compiled.projection.logicalDigest) continue;
-    const related = inference.relatedNodeIds.map((nodeId) => items.get(nodeId));
+    const related = inference.relatedNodeIds.map((nodeId) => nodes.get(nodeId));
     if (related.some((item) => item === undefined)) continue;
     const visibleRelated = related as CompiledTruthItem[];
     if (
@@ -675,35 +766,9 @@ const buildDerivedWorkspaceCandidates = async (
     ) {
       continue;
     }
-    const match = localTextMatch(candidate.label, request.query);
-    if (!match) continue;
-    candidates.push({ ...candidate, ...match });
+    candidates.push(candidate);
   }
   return candidates;
-};
-
-const decodeWorkspaceOffset = (cursor: string | undefined, correlationId: string): number => {
-  if (cursor === undefined) return 0;
-  if (!/^\d+$/u.test(cursor)) {
-    throw new ShotgunError({
-      code: 'VALIDATION_ERROR',
-      safeMessage: 'Knowledge Workspace search cursor is invalid.',
-      module: 'stage7.projection-search',
-      operation: 'SearchKnowledgeWorkspace',
-      correlationId,
-    });
-  }
-  const offset = Number(cursor);
-  if (!Number.isSafeInteger(offset)) {
-    throw new ShotgunError({
-      code: 'VALIDATION_ERROR',
-      safeMessage: 'Knowledge Workspace search cursor is too large.',
-      module: 'stage7.projection-search',
-      operation: 'SearchKnowledgeWorkspace',
-      correlationId,
-    });
-  }
-  return offset;
 };
 
 const rankWorkspaceCandidates = (
@@ -717,7 +782,10 @@ const rankWorkspaceCandidates = (
           workspaceMatchTypeOrder.indexOf(right.matchType) ||
         workspaceAuthorityOrder.indexOf(left.authority) -
           workspaceAuthorityOrder.indexOf(right.authority) ||
-        workspaceSourceIdentity(left.source).localeCompare(workspaceSourceIdentity(right.source)),
+        compareWorkspaceStrings(
+          workspaceSourceIdentity(left.source),
+          workspaceSourceIdentity(right.source),
+        ),
     )
     .map((candidate, index) => ({ ...candidate, rank: index + 1 }));
 
@@ -1003,6 +1071,7 @@ export const createProjectionSearchModule = (
         async handle(envelope, context): Promise<SearchKnowledgeWorkspaceResult> {
           const { projectId, security } = assertContext(envelope);
           const request = decodeSearchKnowledgeWorkspaceRequest(envelope.payload);
+          const offset = decodeWorkspaceCursor(request.cursor, request, envelope.correlationId);
           const generatedAt = clock.now();
           const canonical = await canonicalSearchFor(
             context,
@@ -1054,8 +1123,9 @@ export const createProjectionSearchModule = (
             ...compiledCandidates,
             ...derived,
           ];
-          const ranked = rankWorkspaceCandidates(candidates);
-          const offset = decodeWorkspaceOffset(request.cursor, envelope.correlationId);
+          const ranked = rankWorkspaceCandidates(
+            scoreWorkspaceCandidates(candidates, normalizeSearchText(request.query)),
+          );
           const pageSize = request.pageSize ?? SEARCH_WORKSPACE_DEFAULT_PAGE_SIZE;
           const matches = ranked.slice(offset, offset + pageSize);
           const canonicalStatus = canonicalWorkspaceStatus(canonical.readiness);
@@ -1066,12 +1136,14 @@ export const createProjectionSearchModule = (
             query: request.query,
             ranking: {
               owner: 'stage7.projection-search',
-              version: '1.0.0',
+              version: SEARCH_WORKSPACE_RANKING_VERSION,
               scoreNormalization: 'UNIT_INTERVAL_V1',
               tieBreak: 'SCORE_DESC_MATCH_TYPE_AUTHORITY_SOURCE_ID_ASC',
             },
             matches,
-            ...(offset + pageSize < ranked.length ? { nextCursor: String(offset + pageSize) } : {}),
+            ...(offset + pageSize < ranked.length
+              ? { nextCursor: encodeWorkspaceCursor(offset + pageSize, request) }
+              : {}),
             readiness: {
               canonicalSearch:
                 canonicalStatus as SearchKnowledgeWorkspaceResult['readiness']['canonicalSearch'],

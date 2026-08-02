@@ -5,6 +5,16 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
 import { PostgresSearchProjectionRepository } from '../../adapters/postgres-stage7/src/index.js';
 import type { SearchProjectionDocument } from '../../packages/contracts/src/index.js';
+import { buildCompiledTruthCommand, runDiscoveryCommand } from '../helpers/stage-10.js';
+import { evidenceListQuery } from '../helpers/stage-3.js';
+import { decisionCommand } from '../helpers/stage-5.js';
+import { createDraft } from '../helpers/stage-6.js';
+import { createStage7Harness, workspaceSearchQuery } from '../helpers/stage-7.js';
+import { entityCandidate, reviewGroupCommand, stageGroupCommand } from '../helpers/stage-9.js';
+import type {
+  KnowledgeReviewGroup,
+  SearchKnowledgeWorkspaceResult,
+} from '../../packages/contracts/src/index.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
@@ -124,5 +134,84 @@ describe.runIf(pool)('Stage 7 PostgreSQL projection and search', () => {
       },
     });
     expect(await healthy.search(projectId, 'Milo', 10, ['owner'])).toHaveLength(1);
+  });
+
+  it('runs the QX-01 handler on PostgreSQL and preserves in-memory ranking parity', async () => {
+    const postgres = await createStage7Harness({
+      projectionRepository: new PostgresSearchProjectionRepository(pool!),
+    });
+    const inMemory = await createStage7Harness();
+
+    const runFixture = async (kernel: typeof postgres.kernel, submissionId: string) => {
+      const { command, draft, intake } = await createDraft(
+        kernel,
+        submissionId,
+        'Milo weighs 5 kg.',
+      );
+      await kernel.connector.sendCommand(
+        decisionCommand(command, draft, 'APPROVE', `${submissionId}-approval`, 'Checked.'),
+      );
+      const evidence = (
+        await kernel.connector.query<{ items: readonly { evidenceId: string }[] }>(
+          evidenceListQuery(command, intake.sourceVersionId),
+        )
+      ).result.payload.items[0]!;
+      const group = (
+        await kernel.connector.sendCommand<KnowledgeReviewGroup>(
+          stageGroupCommand(command, `${submissionId}-group`, intake.sourceVersionId, [
+            entityCandidate(
+              `${submissionId}-candidate`,
+              intake.sourceVersionId,
+              evidence.evidenceId,
+              'Milo',
+            ),
+          ]),
+        )
+      ).result;
+      await kernel.connector.sendCommand(reviewGroupCommand(command, group, 'APPROVE'));
+      await kernel.connector.sendCommand(
+        buildCompiledTruthCommand(command, 'FULL_REBUILD', submissionId),
+      );
+      await kernel.connector.sendCommand(
+        runDiscoveryCommand(command, 'INCREMENTAL', submissionId, 100, 10),
+      );
+      return (
+        await kernel.connector.query<SearchKnowledgeWorkspaceResult>(
+          workspaceSearchQuery(command, {
+            schemaVersion: '1.0.0',
+            query: 'Milo',
+            pageSize: 20,
+          }),
+        )
+      ).result.payload;
+    };
+
+    const postgresResult = await runFixture(postgres.kernel, `qx-01-postgres-${randomUUID()}`);
+    const inMemoryResult = await runFixture(inMemory.kernel, `qx-01-memory-${randomUUID()}`);
+    const sourceIdentity = (match: SearchKnowledgeWorkspaceResult['matches'][number]): string => {
+      switch (match.source.authority) {
+        case 'CANONICAL':
+          return match.source.canonicalResourceId;
+        case 'APPROVED_KNOWLEDGE':
+          return match.source.candidateId;
+        case 'COMPILED_TRUTH':
+          return match.source.compiledItemId;
+        case 'DERIVED_INFERENCE':
+          return match.source.inferenceId;
+      }
+    };
+    const parityTuple = (result: SearchKnowledgeWorkspaceResult) =>
+      result.matches.map((match) => ({
+        authority: match.authority,
+        sourceIdentityPresent: sourceIdentity(match).length > 0,
+        score: match.score,
+        matchType: match.matchType,
+        rank: match.rank,
+        label: match.label,
+      }));
+
+    expect(parityTuple(postgresResult)).toEqual(parityTuple(inMemoryResult));
+    expect(postgresResult.matches).not.toHaveLength(0);
+    expect(postgresResult.matches.every((match) => sourceIdentity(match).length > 0)).toBe(true);
   });
 });

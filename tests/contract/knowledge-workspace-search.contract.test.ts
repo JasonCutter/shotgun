@@ -6,10 +6,13 @@ import { decisionCommand } from '../helpers/stage-5.js';
 import { createDraft } from '../helpers/stage-6.js';
 import { createStage7Harness, workspaceSearchQuery } from '../helpers/stage-7.js';
 import { entityCandidate, reviewGroupCommand, stageGroupCommand } from '../helpers/stage-9.js';
-import type {
-  DiscoveryRunResult,
-  KnowledgeReviewGroup,
-  SearchKnowledgeWorkspaceResult,
+import {
+  sha256Text,
+  type CompiledTruthItem,
+  type DerivedInferenceCandidate,
+  type DiscoveryRunResult,
+  type KnowledgeReviewGroup,
+  type SearchKnowledgeWorkspaceResult,
 } from '../../packages/contracts/src/index.js';
 
 describe('QX-01 SearchKnowledgeWorkspace Stage 7 handler', () => {
@@ -90,14 +93,28 @@ describe('QX-01 SearchKnowledgeWorkspace Stage 7 handler', () => {
         evidenceIds: [evidence.evidenceId],
       },
     });
-    expect(result.nextCursor).toBe('2');
+    expect(result.nextCursor).toEqual(expect.any(String));
+    expect(result.nextCursor).not.toBe('2');
+    const firstCursor = result.nextCursor;
+    if (!firstCursor) throw new Error('Expected first workspace cursor.');
+
+    await expect(
+      kernel.connector.query(
+        workspaceSearchQuery(command, {
+          schemaVersion: '1.0.0',
+          query: 'different request',
+          cursor: firstCursor,
+          pageSize: 2,
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
 
     const nextPage = (
       await kernel.connector.query<SearchKnowledgeWorkspaceResult>(
         workspaceSearchQuery(command, {
           schemaVersion: '1.0.0',
           query: 'Milo',
-          cursor: result.nextCursor,
+          cursor: firstCursor,
           pageSize: 2,
         }),
       )
@@ -107,14 +124,17 @@ describe('QX-01 SearchKnowledgeWorkspace Stage 7 handler', () => {
       'COMPILED_TRUTH',
     ]);
     expect(nextPage.matches.map((match) => match.rank)).toEqual([3, 4]);
-    expect(nextPage.nextCursor).toBe('4');
+    expect(nextPage.nextCursor).toEqual(expect.any(String));
+    expect(nextPage.nextCursor).not.toBe('4');
+    const secondCursor = nextPage.nextCursor;
+    if (!secondCursor) throw new Error('Expected second workspace cursor.');
 
     const lastPage = (
       await kernel.connector.query<SearchKnowledgeWorkspaceResult>(
         workspaceSearchQuery(command, {
           schemaVersion: '1.0.0',
           query: 'Milo',
-          cursor: nextPage.nextCursor,
+          cursor: secondCursor,
           pageSize: 2,
         }),
       )
@@ -181,6 +201,123 @@ describe('QX-01 SearchKnowledgeWorkspace Stage 7 handler', () => {
 
     expect(result.matches).toHaveLength(0);
     expect(result.readiness.partial).toBe(false);
+  });
+
+  it('uses decoder-compatible code-point ordering for equal approved matches', async () => {
+    const { kernel } = await createStage7Harness();
+    const { command, intake } = await createDraft(kernel, 'qx-01-ordering');
+    const evidence = (
+      await kernel.connector.query<{ items: readonly { evidenceId: string }[] }>(
+        evidenceListQuery(command, intake.sourceVersionId),
+      )
+    ).result.payload.items[0]!;
+    const candidateIds = ['candidate:!', 'candidate:A', 'candidate:a'] as const;
+    for (const [index, candidateId] of candidateIds.entries()) {
+      const group = (
+        await kernel.connector.sendCommand<KnowledgeReviewGroup>(
+          stageGroupCommand(command, `group:ordering-${index}`, intake.sourceVersionId, [
+            entityCandidate(candidateId, intake.sourceVersionId, evidence.evidenceId, 'Milo'),
+          ]),
+        )
+      ).result;
+      await kernel.connector.sendCommand(reviewGroupCommand(command, group, 'APPROVE'));
+    }
+
+    const result = (
+      await kernel.connector.query<SearchKnowledgeWorkspaceResult>(
+        workspaceSearchQuery(command, {
+          schemaVersion: '1.0.0',
+          query: 'Milo',
+          filters: { authorities: ['APPROVED_KNOWLEDGE'] },
+        }),
+      )
+    ).result.payload;
+
+    expect(result.matches.map((match) => match.source)).toEqual([
+      expect.objectContaining({ candidateId: 'candidate:!' }),
+      expect.objectContaining({ candidateId: 'candidate:A' }),
+      expect.objectContaining({ candidateId: 'candidate:a' }),
+    ]);
+  });
+
+  it('rejects Derived Inference correlation outside visible graph nodes and evidence', async () => {
+    const { kernel, compiledTruthRepository } = await createStage7Harness();
+    const { command, draft, intake } = await createDraft(kernel, 'qx-01-derived-correlation');
+    await kernel.connector.sendCommand(
+      decisionCommand(command, draft, 'APPROVE', 'qx-01-derived-canonical', 'Checked.'),
+    );
+    const evidence = (
+      await kernel.connector.query<{ items: readonly { evidenceId: string }[] }>(
+        evidenceListQuery(command, intake.sourceVersionId),
+      )
+    ).result.payload.items[0]!;
+    const group = (
+      await kernel.connector.sendCommand<KnowledgeReviewGroup>(
+        stageGroupCommand(command, 'group:derived-correlation', intake.sourceVersionId, [
+          entityCandidate(
+            'candidate:derived-correlation',
+            intake.sourceVersionId,
+            evidence.evidenceId,
+            'Milo',
+          ),
+        ]),
+      )
+    ).result;
+    await kernel.connector.sendCommand(reviewGroupCommand(command, group, 'APPROVE'));
+    await kernel.connector.sendCommand(
+      buildCompiledTruthCommand(command, 'FULL_REBUILD', 'derived-correlation'),
+    );
+    const projectId = command.projectId;
+    if (!projectId) throw new Error('Expected project ID.');
+    const projection = await compiledTruthRepository.findProjection(projectId);
+    if (!projection || !projection.graph.nodes[0]) throw new Error('Expected compiled graph node.');
+    const baseNode = projection.graph.nodes[0];
+    const relationOnlyNode: CompiledTruthItem = {
+      ...baseNode,
+      id: 'relation-only-node',
+      type: 'RELATION',
+      label: 'Milo relation',
+    };
+    await compiledTruthRepository.synchronize({
+      ...projection,
+      items: [...projection.items, relationOnlyNode],
+    });
+    const makeInference = (
+      candidateId: string,
+      relatedNodeIds: readonly string[],
+      evidenceIds: readonly string[],
+      sourceProjectionDigest = projection.logicalDigest,
+    ): DerivedInferenceCandidate => ({
+      candidateId,
+      fingerprint: sha256Text(candidateId),
+      status: 'DERIVED_INFERENCE',
+      candidateType: 'KNOWLEDGE_GAP',
+      question: 'Milo',
+      relatedNodeIds,
+      evidenceIds,
+      sourceProjectionDigest,
+      reentryPhase: 'VALIDATION',
+      createdAt: projection.projectedAt,
+    });
+    await compiledTruthRepository.saveInferences(projectId, [
+      makeInference('inference:missing-node', ['missing-node'], [evidence.evidenceId]),
+      makeInference('inference:relation-only', [relationOnlyNode.id], [evidence.evidenceId]),
+      makeInference(
+        'inference:digest-mismatch',
+        [baseNode.id],
+        [evidence.evidenceId],
+        `sha256:${'d'.repeat(64)}`,
+      ),
+      makeInference('inference:invisible-evidence', [baseNode.id], ['evidence:invisible']),
+    ]);
+
+    const result = (
+      await kernel.connector.query<SearchKnowledgeWorkspaceResult>(
+        workspaceSearchQuery(command, { schemaVersion: '1.0.0', query: 'Milo' }),
+      )
+    ).result.payload;
+
+    expect(result.matches.some((match) => match.authority === 'DERIVED_INFERENCE')).toBe(false);
   });
 
   it('applies caller sensitivity before ranking and rejects malformed cursors', async () => {

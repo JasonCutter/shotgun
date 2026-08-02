@@ -210,7 +210,7 @@
       "successor": "FE-P3-S2",
       "status": "IN_PROGRESS",
       "governingContract": "docs/architecture/frontend/phase-3-knowledge-understanding-editing.md",
-      "completionManifest": null,
+      "completionManifest": "docs/project/completions/FE-P3-S1.json",
       "approvedAt": null,
       "supersedes": null,
       "introducedByDecision": "docs/engineering/frontend-work-item-registry-migration-decision-260801001.md",

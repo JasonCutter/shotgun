@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "workItemId": "FE-P3-S1",
+  "status": "IN_PROGRESS",
+  "governingContract": "docs/architecture/frontend/phase-3-knowledge-understanding-editing.md",
+  "mandatoryCriteria": [
+    {
+      "id": "knowledgeWorkspaceUIImplementation",
+      "title": "Knowledge Workspace UI implementation",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-3-section-1-knowledge-workspace-ui-verification-260802003.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "serverAuthoritativeBoundary",
+      "title": "Server-authoritative read, search and projection boundary",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-3-section-1-knowledge-workspace-ui-verification-260802003.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "contractAndSecurity",
+      "title": "Contract, security and read-only capability verification",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-3-section-1-knowledge-workspace-ui-verification-260802003.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "localVerification",
+      "title": "Local implementation and browser verification",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-3-section-1-knowledge-workspace-ui-verification-260802003.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "remoteExactHeadGates",
+      "title": "Remote exact-head Quality, Frontend and Required Gates",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-3-section-1-knowledge-workspace-ui-verification-260802003.md",
+        "docs/implementation/frontend-phase-3-section-1-knowledge-workspace-completion-candidate-260802002.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "completionCandidateGovernance",
+      "title": "Completion candidate manifest, evidence and projection governance",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-3-section-1-knowledge-workspace-completion-candidate-260802002.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "finalSectionVerification",
+      "title": "Final FE-P3-S1 Section verification",
+      "mandatory": true,
+      "status": "PARTIAL",
+      "evidence": [
+        "docs/implementation/frontend-phase-3-section-1-knowledge-workspace-ui-verification-260802003.md",
+        "docs/implementation/frontend-phase-3-section-1-knowledge-workspace-completion-candidate-260802002.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "completionApprovalAndMergeBoundary",
+      "title": "Completion approval and Git merge boundary",
+      "mandatory": true,
+      "status": "NOT_RUN",
+      "evidence": [
+        "docs/implementation/frontend-phase-3-section-1-knowledge-workspace-completion-candidate-260802002.md"
+      ],
+      "scopeAmendment": null
+    }
+  ],
+  "remainingScope": [],
+  "scopeAmendments": [],
+  "evidenceRegistryUpdates": [
+    "FRONTEND-PHASE-3-SECTION-1-KNOWLEDGE-WORKSPACE-COMPLETION-CANDIDATE-260802002"
+  ],
+  "approvedBy": null,
+  "approvedAt": null
+}

@@ -316,6 +316,29 @@
       "remoteExactHeadCIGates": ["Quality", "Frontend", "Required Gates", "Database"],
       "completion": "NOT_AUTHORIZED",
       "handlerImplementation": "QX-01_STAGE7_HANDLER_QX01_2_PASS_REVIEWED"
+    },
+    {
+      "id": "FRONTEND-PHASE-3-SECTION-1-KNOWLEDGE-WORKSPACE-COMPLETION-CANDIDATE-260802002",
+      "path": "docs/implementation/frontend-phase-3-section-1-knowledge-workspace-completion-candidate-260802002.md",
+      "class": "COMPLETION_RECORD",
+      "scope": "frontend-phase-3-section-1",
+      "statusAuthority": "COMPLETION_CANDIDATE_PENDING_APPROVAL",
+      "implementationReviewId": "4837811808",
+      "implementationReviewDecision": "KNOWLEDGE_WORKSPACE_UI_IMPLEMENTATION_PASS",
+      "testedHead": "58edfffb5e7eabc0f910bd56fafe27fcbab71d96",
+      "subjectBase": "cb2513bc311891ac89f53c7d67d6a401da65a2a8",
+      "pullRequest": "https://github.com/JasonCutter/shotgun/pull/53",
+      "remoteExactHeadCI": "30739868222",
+      "remoteExactHeadCIConclusion": "PASS",
+      "remoteExactHeadCIGates": ["Quality", "Frontend", "Required Gates"],
+      "completion": "PENDING_APPROVAL",
+      "ready": "NOT_AUTHORIZED",
+      "merge": "NOT_AUTHORIZED",
+      "deployment": "NOT_STARTED",
+      "knownLimits": [
+        "Repository-wide format:check has 58 existing out-of-scope file warnings",
+        "Local Windows test:stage12-package is BLOCKED/NOT_RUN by npm registry ajv EACCES"
+      ]
     }
   ],
   "rules": {

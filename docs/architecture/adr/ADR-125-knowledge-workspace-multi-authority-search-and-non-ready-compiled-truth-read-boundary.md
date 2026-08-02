@@ -189,6 +189,13 @@ Query contracts remain available and are not rewritten by the rollback.
   actual source identities and ranking tuples across SUBSTRING, FULL_TEXT,
   TRIGRAM, tie-break, input-order permutation and cursor-mismatch cases. The
   no-new-persistence/API/UI boundary remains unchanged.
+- 2026-08-02: Side-panel review `4836523482` judged QX-01.2 PASS at
+  implementation head `eec1cd61008029f01b58953f9713d0507710bae3` with final
+  evidence head `ed40a93fd0788fecda7303a180359c3cb026db19` and exact-head CI
+  #394 / run `30727558866` passing. The judgment approves the QX-01 Stage 7
+  handler candidate only; it does not authorize the Persistent Adapter, A3
+  API/Client/Cache, `/knowledge` UI, Ready, Merge, deployment or FE-P3-S1
+  completion.
 
 ## Approval boundary
 

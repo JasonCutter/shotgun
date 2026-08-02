@@ -1,16 +1,16 @@
 ---
 id: FRONTEND-PHASE-3-SECTION-1-QX-01-STAGE7-WORKSPACE-SEARCH-VERIFICATION-260802001
 classification: IMPLEMENTATION_VERIFICATION
-status: PENDING_REVIEW
+status: PASS
 work_item: FE-P3-S1
 slice: QX-01
-authorization: SIDE_PANEL_REVIEW_4836399738
+authorization: SIDE_PANEL_REVIEW_4836523482
 subject_commit: eec1cd61008029f01b58953f9713d0507710bae3
 base_commit: cb2513bc311891ac89f53c7d67d6a401da65a2a8
 branch: codex/frontend-phase-3-section-1-knowledge-workspace
 pull_request: https://github.com/JasonCutter/shotgun/pull/53
-remote_exact_head_ci: 30727376455
-remote_exact_head_ci_run: 393
+remote_exact_head_ci: 30727558866
+remote_exact_head_ci_run: 394
 ---
 
 # FE-P3-S1 QX-01 Stage 7 Workspace Search Verification
@@ -20,7 +20,8 @@ remote_exact_head_ci_run: 393
 This record covers the additive `SearchKnowledgeWorkspace@1.0.0` Stage 7
 handler authorized by side-panel review `4836089195`, amended by the QX-01.1
 correction authorization in review `4836218304`, and further amended by the
-QX-01.2 limited correction authorization in review `4836399738`. The implementation keeps
+QX-01.2 limited correction authorization in review `4836399738`. Final PASS
+review `4836523482` confirms the implementation. The implementation keeps
 `stage7.projection-search` as the only matching, normalization, filtering,
 ranking and cursor owner.
 
@@ -117,6 +118,7 @@ the frozen strict request decoder.
 | Changed-file Prettier and `git diff --check`       | PASS                         | QX-01.2 code/test files formatted; no whitespace errors.                                                                                                      |
 | `npm.cmd run format:check`                         | FAIL / pre-existing baseline | 58 repository files remain outside the QX-01.2 changed-file set; no QX-01.2 code/test file appears in the mismatch list. No unrelated formatting was changed. |
 | Exact-head GitHub Actions #393 / run `30727376455` | PASS                         | Subject commit `eec1cd6...`; Frontend, Quality including Database, and Required Gates all succeeded.                                                          |
+| Exact-head GitHub Actions #394 / run `30727558866` | PASS                         | Final evidence head `ed40a93f...`; Frontend including E2E, Quality including Database, and Required Gates all succeeded.                                      |
 
 ## OSS, migration and rollback
 
@@ -140,8 +142,8 @@ FE-P3-S1                         IN PROGRESS
 QX-P0.1                         PASS
 QX-02.1                         PASS
 QX-01.1 correction              AUTHORIZED / IMPLEMENTED
-QX-01.2 correction              AUTHORIZED / IMPLEMENTED / PENDING REVIEW
-QX-01 Stage 7 Handler           IMPLEMENTED / PENDING REVIEW
+QX-01.2 correction              AUTHORIZED / IMPLEMENTED / PASS (4836523482)
+QX-01 Stage 7 Handler           PASS (4836523482)
 Persistent Knowledge Adapter    BLOCKED / NOT AUTHORIZED
 A3 API/Client/Cache             NOT AUTHORIZED
 /knowledge UI                   NOT AUTHORIZED
@@ -153,8 +155,8 @@ Runtime Dependency              NONE
 Deployment                      NOT STARTED
 ```
 
-This is implementation and verification evidence, not a QX-01.2 PASS or
-FE-P3-S1 completion record. The next action is to obtain the side-panel
-judgment for the QX-01.2 correction at implementation head `eec1cd6...`; only
-an explicit correction or approval instruction from that judgment may drive
-the next bounded change.
+This is implementation and verification evidence with the side-panel
+QX-01.2 PASS judgment recorded as review `4836523482`. It is not an
+FE-P3-S1 completion record. The PASS does not authorize the Persistent
+Knowledge Adapter, A3 API/Client/Cache, `/knowledge` UI, Ready, Merge,
+deployment or FE-P3-S1 completion.

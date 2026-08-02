@@ -1,7 +1,7 @@
 # ADR-126 — Knowledge Editor Typed DraftChangeSet Materialization, Snapshot Pinning and Review Submission Boundary
 
 - Status: **PROPOSED / REVIEW_PENDING**
-- Revision: 3 after GPT `CHANGES_REQUIRED` review
+- Revision: 4 after GPT `CHANGES_REQUIRED` review
 - Proposal date: 2026-08-02
 - Work item: `FE-P3-S2`
 - Decision owner: pending user and GPT review

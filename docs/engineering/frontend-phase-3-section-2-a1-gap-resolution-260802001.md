@@ -2,8 +2,8 @@
 id: FRONTEND-PHASE-3-SECTION-2-A1-GAP-RESOLUTION-260802001
 classification: ARCHITECTURE_CONTRACT_PREPARATION
 status: REVIEW_PENDING
-revision: 3
-review_round: 2
+revision: 4
+review_round: 3
 review_result: CHANGES_REQUIRED
 work_item: FE-P3-S2
 governing_adr: ADR-126
@@ -72,8 +72,18 @@ Revision 3 resolves them without changing the approved architecture:
 | Canonical identity wording | Existing Resource requires Resource ID plus Revision ID; new Resource omits both and uses `NEW_RESOURCE_SNAPSHOT` | `RESOLVED_BY_CONTRACT` |
 | Effective Project | Add server-derived immutable `effectiveProjectId` to the aggregate and handoff context; it is never browser authority | `RESOLVED_BY_ADR` |
 
-Revision 3 remains a review candidate; it does not authorize Product code,
+Revision 4 remains a review candidate; it does not authorize Product code,
 migration, tests, CI, Ready, Merge or the next implementation slice.
+
+The third review found one remaining union mismatch: the ADR allowed both add
+and update proposals for Conflict and Knowledge Gap, while the Contract
+Snapshot exposed only one direction for each. Revision 4 names and binds all
+four proposal operations explicitly:
+
+`CONFLICT_PROPOSAL_ADD`, `CONFLICT_PROPOSAL_UPDATE`,
+`KNOWLEDGE_GAP_PROPOSAL_ADD`, and `KNOWLEDGE_GAP_PROPOSAL_UPDATE`.
+
+No new architecture or implementation authority is introduced.
 
 The `FE-P3-S2.governingContract` Registry link is a candidate documentation
 projection in this branch. It becomes Canonical only through the accepted exact

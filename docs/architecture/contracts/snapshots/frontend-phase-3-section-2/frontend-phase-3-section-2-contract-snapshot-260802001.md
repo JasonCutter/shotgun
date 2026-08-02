@@ -2,8 +2,8 @@
 id: FRONTEND-PHASE-3-SECTION-2-CONTRACT-SNAPSHOT-260802001
 classification: PRODUCT_CONTRACT_SNAPSHOT_PROPOSAL
 status: REVIEW_PENDING
-revision: 3
-review_round: 2
+revision: 4
+review_round: 3
 review_result: CHANGES_REQUIRED
 work_item: FE-P3-S2
 governing_adr: ADR-126
@@ -353,8 +353,10 @@ type FrontendKnowledgeOperationV1 =
   | KnowledgeAddOperationV1<'EVIDENCE_ATTACH', 'EVIDENCE', EvidenceLinkValueV1>
   | KnowledgeRemoveOperationV1<'EVIDENCE_DETACH', 'EVIDENCE', EvidenceLinkValueV1>
   | KnowledgeUpdateOperationV1<'TEMPORAL_VALIDITY_CHANGE', 'TEMPORAL', TemporalValidityValueV1>
-  | KnowledgeAddOperationV1<'CONFLICT_PROPOSAL', 'CONFLICT', ConflictProposalValueV1>
-  | KnowledgeUpdateOperationV1<'KNOWLEDGE_GAP_PROPOSAL', 'KNOWLEDGE_GAP', KnowledgeGapProposalValueV1>
+  | KnowledgeAddOperationV1<'CONFLICT_PROPOSAL_ADD', 'CONFLICT', ConflictProposalValueV1>
+  | KnowledgeUpdateOperationV1<'CONFLICT_PROPOSAL_UPDATE', 'CONFLICT', ConflictProposalValueV1>
+  | KnowledgeAddOperationV1<'KNOWLEDGE_GAP_PROPOSAL_ADD', 'KNOWLEDGE_GAP', KnowledgeGapProposalValueV1>
+  | KnowledgeUpdateOperationV1<'KNOWLEDGE_GAP_PROPOSAL_UPDATE', 'KNOWLEDGE_GAP', KnowledgeGapProposalValueV1>
   | (KnowledgeOperationCommonV1 & {
       kind: 'NO_OP';
       target: KnowledgeOperationTargetV1<'REVIEW_RESULT'>;
@@ -362,6 +364,10 @@ type FrontendKnowledgeOperationV1 =
       after: NoOpReviewResultV1;
     });
 ```
+
+Conflict and Knowledge Gap proposals each support both add and update through
+the explicit kinds `CONFLICT_PROPOSAL_ADD`, `CONFLICT_PROPOSAL_UPDATE`,
+`KNOWLEDGE_GAP_PROPOSAL_ADD` and `KNOWLEDGE_GAP_PROPOSAL_UPDATE`.
 
 The server strictly decodes this complete discriminated union and rejects an
 unsupported kind, missing payload, wrong payload schemaVersion or mismatched
@@ -532,7 +538,7 @@ after this snapshot and the related ADR are accepted.
 | AC-06 | Browser cannot authoritatively set Principal/Project/Revision | negative contract evidence |
 | AC-07 | Active, Resource, Draft and Effective Project are distinct and fixed | domain/API evidence |
 | AC-08 | Canonical and optional Projection snapshot pinning is explicit | contract/persistence evidence |
-| AC-09 | Fact/Claim/Entity/Relation/Event/Decision/Evidence/Temporal/Conflict/Knowledge Gap/NO_OP operations decode strictly as the v1 discriminated union | contract tests |
+| AC-09 | Fact/Claim/Entity/Relation/Event/Decision/Evidence/Temporal/Conflict/Knowledge Gap/NO_OP operations, including both add and update proposal kinds, decode strictly as the v1 discriminated union | contract tests |
 | AC-10 | Evidence, rationale, before/after and expected impact bind to each operation | contract/domain evidence |
 | AC-11 | Draft revision and semantic digest enforce optimistic concurrency | command evidence |
 | AC-12 | Draft save is separate from validation, preview and submission | API evidence |

@@ -1,11 +1,15 @@
 ---
 id: FRONTEND-PHASE-3-SECTION-1-A2-C-PERSISTENT-KNOWLEDGE-PRODUCT-READ-ADAPTER-IMPLEMENTATION-REQUEST-260802002
 classification: IMPLEMENTATION_REQUEST
-status: PENDING_REVIEW
+status: CHANGES_REQUIRED
 work_item: FE-P3-S1
 sub_slice: A2-C
 approved_by: null
 approved_at: null
+review_id: 4836723439
+review_decision: CHANGES_REQUIRED
+implementation_authorization: NOT_GRANTED
+follow_up: docs/implementation/frontend-phase-3-section-1-a2-c-product-contract-amendment-and-identity-addendum-260802003.md
 base_commit: ec409b16190f72199556c2c1e01dae513a2387ca
 branch: codex/frontend-phase-3-section-1-knowledge-workspace
 tracking_issue: 52
@@ -37,8 +41,20 @@ The requested decision is therefore:
 
 > Approve or reject the bounded A2-C implementation described in this document.
 
-Until an explicit bounded approval is recorded, the status remains
-`PENDING_REVIEW` and no implementation files are to be created.
+### 1.1 Review outcome and follow-up
+
+Side-panel review `4836723439` returned `CHANGES_REQUIRED`. Implementation
+authorization is `NOT_GRANTED`. The review requires an accepted Product
+contract amendment covering QX-01 readiness preservation, deterministic
+authority-specific Product IDs, and the read-only Compare difference
+algorithm before the adapter can be reconsidered.
+
+The bounded follow-up is documented in
+`docs/implementation/frontend-phase-3-section-1-a2-c-product-contract-amendment-and-identity-addendum-260802003.md`.
+The original approval-request base is `ec409b16190f72199556c2c1e01dae513a2387ca`;
+the approval-request subject is `18f48c4504d1510ad310cd85c00a0a3503ac65e6`.
+Until the addendum is explicitly accepted, this request remains
+`CHANGES_REQUIRED` and no implementation files are to be created.
 
 ## 2. Baseline and governing records
 

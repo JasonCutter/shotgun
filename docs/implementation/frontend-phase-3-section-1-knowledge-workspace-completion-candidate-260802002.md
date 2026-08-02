@@ -7,14 +7,22 @@ registry_status: IN_PROGRESS
 completion_manifest: docs/project/completions/FE-P3-S1.json
 implementation_review_id: 4837811808
 implementation_review_decision: KNOWLEDGE_WORKSPACE_UI_IMPLEMENTATION_PASS
-candidate_exact_head: 7e042091970b9f226d883a5ab1f0206090b050c8
-candidate_ci_run: 30741888126
+candidate_exact_head: ac92499253a10331a58c613995e5a480ee0df6c4
+candidate_ci_run: 30740732355
 candidate_ci_conclusion: PASS
 candidate_ci_gates: Quality, Frontend, Required Gates
 completion_review_id: 4837900020
 completion_review_decision: CHANGES_REQUIRED
-completion_review_exact_head: 7e042091970b9f226d883a5ab1f0206090b050c8
-completion_review_ci_run: 30741888126
+completion_review_exact_head: c47080c4842ef7f00c5149ad4828bf839fe5ed11
+completion_review_ci_run: 30740922972
+latest_completion_review_id: 4837996028
+latest_completion_review_decision: CHANGES_REQUIRED
+review_response_exact_head: 7e042091970b9f226d883a5ab1f0206090b050c8
+review_response_ci_run: 30741888126
+evidence_publication_exact_head: 8cd9cbe6395dd8894d61d72bd3f398aa7f1020c4
+evidence_publication_ci_run: 30742100709
+current_exact_head: 8cd9cbe6395dd8894d61d72bd3f398aa7f1020c4
+current_ci_run: 30742100709
 completion_blocker: REPOSITORY_WIDE_FORMAT_CHECK_58_FILES
 required_resolution: BASELINE_REMEDIATION_OR_APPROVED_SCOPE_AMENDMENT
 completion_approval: NOT_AUTHORIZED
@@ -43,9 +51,9 @@ evidence only. A separate FE-P3-S1 completion review is still required.
 - Repository: `JasonCutter/shotgun`
 - Base: `main@cb2513bc311891ac89f53c7d67d6a401da65a2a8`
 - Branch: `codex/frontend-phase-3-section-1-knowledge-workspace`
-- Candidate evidence exact head: `7e042091970b9f226d883a5ab1f0206090b050c8`
+- Candidate evidence exact head: `ac92499253a10331a58c613995e5a480ee0df6c4`
 - PR: [#53](https://github.com/JasonCutter/shotgun/pull/53), `OPEN / DRAFT`
-- Exact-head CI run: `30741888126`
+- Exact-head CI run: `30740732355`
 - Quality: `PASS`
 - Frontend: `PASS`
 - Required Gates: `PASS`
@@ -58,13 +66,14 @@ including Database, Chromium and the remote Stage 12 package substep.
 Any later evidence-publication commit is documentation-only and requires its
 own exact-head CI; it does not change this candidate's implementation scope.
 
-The prior completion evidence head
-`c47080c4842ef7f00c5149ad4828bf839fe5ed11` was verified by run
-`30740922972`. This governance-only resubmission exact head
+Completion Review `4837900020` originally evaluated exact head
+`c47080c4842ef7f00c5149ad4828bf839fe5ed11` with run `30740922972` and
+returned `CHANGES_REQUIRED`. The review-response head
 `7e042091970b9f226d883a5ab1f0206090b050c8` was verified by run
-`30741888126`, with Quality, Frontend and Required Gates all passing.
-Completion Review `4837900020` remains the governing `CHANGES_REQUIRED`
-decision; the new exact-head evidence does not constitute completion,
+`30741888126`; the evidence-publication/current head
+`8cd9cbe6395dd8894d61d72bd3f398aa7f1020c4` was verified by run
+`30742100709`. Both newer exact-head runs passed Quality, Frontend and
+Required Gates. These newer evidence runs do not constitute completion,
 Ready or Merge approval.
 
 ## Completion review 4837900020
@@ -90,6 +99,23 @@ one explicit resolution before resubmission:
 
 Neither authority has been granted in this candidate. No unrelated file was
 formatted and no Scope Amendment is claimed.
+
+## Completion review 4837996028
+
+The latest FE-P3-S1 completion review returned `CHANGES_REQUIRED` for current
+exact head `8cd9cbe6395dd8894d61d72bd3f398aa7f1020c4` and CI run
+`30742100709`. It confirmed the repository-wide format blocker remains
+unresolved and required historical traceability correction. Review
+`4837900020` continues to point to its original head
+`c47080c4842ef7f00c5149ad4828bf839fe5ed11` and run `30740922972`; the
+review-response head/run, evidence-publication head/run and current exact
+head/run are recorded as separate fields above.
+
+The latest review also identified the actual base as
+`main@cb2513bc311891ac89f53c7d67d6a401da65a2a8`; the resubmission metadata
+uses that value. No baseline remediation or Scope Amendment authority has
+been granted. Completion, Ready, Merge, FE-P3-S2/S3, deployment and
+production verification remain unauthorized.
 
 ## Governance state
 

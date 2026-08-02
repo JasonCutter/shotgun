@@ -41,8 +41,16 @@ completion_manifest: docs/project/completions/FE-P3-S1.json
 completion_candidate_evidence: FRONTEND-PHASE-3-SECTION-1-KNOWLEDGE-WORKSPACE-COMPLETION-CANDIDATE-260802002
 completion_review_id: 4837900020
 completion_review_decision: CHANGES_REQUIRED
-completion_review_exact_head: 7e042091970b9f226d883a5ab1f0206090b050c8
-completion_review_ci_run: 30741888126
+completion_review_exact_head: c47080c4842ef7f00c5149ad4828bf839fe5ed11
+completion_review_ci_run: 30740922972
+latest_completion_review_id: 4837996028
+latest_completion_review_decision: CHANGES_REQUIRED
+review_response_exact_head: 7e042091970b9f226d883a5ab1f0206090b050c8
+review_response_ci_run: 30741888126
+evidence_publication_exact_head: 8cd9cbe6395dd8894d61d72bd3f398aa7f1020c4
+evidence_publication_ci_run: 30742100709
+current_exact_head: 8cd9cbe6395dd8894d61d72bd3f398aa7f1020c4
+current_ci_run: 30742100709
 completion_blocker: REPOSITORY_WIDE_FORMAT_CHECK_58_FILES
 completion_approval: NOT_AUTHORIZED
 ready: NOT_AUTHORIZED
@@ -172,15 +180,18 @@ Database, Chromium and the Stage 12 package substep. Side-panel ChatGPT
 Review `4837811808` then returned
 `KNOWLEDGE_WORKSPACE_UI_IMPLEMENTATION_PASS` for the implementation slice.
 
-The prior completion-candidate evidence head
-`c47080c4842ef7f00c5149ad4828bf839fe5ed11` was verified by remote run
-`30740922972`. The governance-only resubmission exact head
+Completion Review `4837900020` originally evaluated exact head
+`c47080c4842ef7f00c5149ad4828bf839fe5ed11` with remote run `30740922972`.
+The review-response head
 `7e042091970b9f226d883a5ab1f0206090b050c8` was verified by remote run
-`30741888126`: Quality, Frontend and Required Gates passed, including
+`30741888126`, and the evidence-publication/current head
+`8cd9cbe6395dd8894d61d72bd3f398aa7f1020c4` was verified by remote run
+`30742100709`: Quality, Frontend and Required Gates passed, including
 Database, Chromium, Knowledge Flow, Stage 12 reuse/operations and the remote
-Stage 12 package substep. Completion Review `4837900020` remains
-`CHANGES_REQUIRED` because the repository-wide format criterion is
-unresolved; this report therefore does not claim Section completion.
+Stage 12 package substep. Review `4837900020` remains `CHANGES_REQUIRED`
+because the repository-wide format criterion is unresolved. The latest
+Review `4837996028` also returned `CHANGES_REQUIRED` for traceability
+corrections; this report therefore does not claim Section completion.
 
 ## 6. Local AC status
 

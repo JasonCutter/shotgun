@@ -1,10 +1,13 @@
 ---
 id: FRONTEND-PHASE-3-SECTION-2-A1-GAP-RESOLUTION-260802001
 classification: ARCHITECTURE_CONTRACT_PREPARATION
-status: REVIEW_PENDING
+status: APPROVED_PENDING_PUBLICATION
 revision: 4
 review_round: 3
-review_result: CHANGES_REQUIRED
+review_result: APPROVED_FOR_A1_CONTRACT_FREEZE
+approved_by: user
+approved_at: 2026-08-02
+frozen_content_head: b4bb8ce096c883ef1799516bf4ee2b4dacad7a3c
 work_item: FE-P3-S2
 governing_adr: ADR-126
 contract_snapshot: docs/architecture/contracts/snapshots/frontend-phase-3-section-2/frontend-phase-3-section-2-contract-snapshot-260802001.md
@@ -18,9 +21,17 @@ implementation_authorized: false
 
 ## Decision state
 
-This record translates the A0 audit into proposed ADR and Contract Snapshot
-decisions. It is submitted for GPT/user review. It does not claim Product
-implementation, test evidence, CI evidence, approval, Ready or merge.
+This record translates the A0 audit into the approved A1 ADR and Contract
+Snapshot decisions. Canonical publication remains pending until the approved
+content is merged to `main`. It does not claim Product implementation, test
+evidence, CI evidence, Ready or merge.
+
+```text
+A1 Architecture Decision: APPROVED
+A1 Contract Freeze: APPROVED
+Canonical publication: PENDING
+Product implementation: NOT_STARTED
+```
 
 ## A0 gap matrix
 

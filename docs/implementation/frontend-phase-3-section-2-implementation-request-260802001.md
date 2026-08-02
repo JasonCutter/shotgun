@@ -1,10 +1,12 @@
 ---
 id: FRONTEND-PHASE-3-SECTION-2-IMPLEMENTATION-REQUEST-260802001
 classification: IMPLEMENTATION_REQUEST_CANDIDATE
-status: REVIEW_PENDING
+status: IMPLEMENTATION_REQUEST_CANDIDATE
 revision: 4
 review_round: 3
-review_result: CHANGES_REQUIRED
+contract_basis_status: APPROVED_PENDING_PUBLICATION
+a1_review_result: APPROVED_FOR_A1_CONTRACT_FREEZE
+implementation_review_result: NOT_REQUESTED
 work_item: FE-P3-S2
 governing_adr: ADR-126
 contract_snapshot: docs/architecture/contracts/snapshots/frontend-phase-3-section-2/frontend-phase-3-section-2-contract-snapshot-260802001.md
@@ -14,9 +16,10 @@ implementation_authorized: false
 
 # FE-P3-S2 Implementation Request Candidate
 
-This is a candidate request for a later implementation review. It is not an
-authorization to edit Product code, add SQL, add dependencies, run tests or
-start A2.
+A1 contract content is approved, but this Implementation Request has not
+received execution approval. A2 and Product implementation require separate
+user approval. It is not an authorization to edit Product code, add SQL, add
+dependencies, run tests or start A2.
 
 ## Candidate dependency order
 

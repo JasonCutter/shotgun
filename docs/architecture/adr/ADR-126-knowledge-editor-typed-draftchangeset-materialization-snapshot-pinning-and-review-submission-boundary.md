@@ -1,6 +1,11 @@
 # ADR-126 — Knowledge Editor Typed DraftChangeSet Materialization, Snapshot Pinning and Review Submission Boundary
 
-- Status: **PROPOSED / REVIEW_PENDING**
+- Status: **ACCEPTED_PENDING_PUBLICATION**
+- Accepted by: `user`
+- Accepted at: `2026-08-02`
+- Review result: `APPROVED_FOR_A1_CONTRACT_FREEZE`
+- Frozen content head: `b4bb8ce096c883ef1799516bf4ee2b4dacad7a3c`
+- Product implementation: `NOT_STARTED`
 - Revision: 4 after GPT `CHANGES_REQUIRED` review
 - Proposal date: 2026-08-02
 - Work item: `FE-P3-S2`

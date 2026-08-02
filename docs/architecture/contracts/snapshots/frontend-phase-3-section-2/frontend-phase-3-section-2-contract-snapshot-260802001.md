@@ -1,10 +1,13 @@
 ---
 id: FRONTEND-PHASE-3-SECTION-2-CONTRACT-SNAPSHOT-260802001
 classification: PRODUCT_CONTRACT_SNAPSHOT_PROPOSAL
-status: REVIEW_PENDING
+status: ACCEPTED_PENDING_PUBLICATION
 revision: 4
 review_round: 3
-review_result: CHANGES_REQUIRED
+review_result: APPROVED_FOR_A1_CONTRACT_FREEZE
+approved_by: user
+approved_at: 2026-08-02
+frozen_content_head: b4bb8ce096c883ef1799516bf4ee2b4dacad7a3c
 work_item: FE-P3-S2
 governing_adr: ADR-126
 base_commit_requested: cc3f50904f947c8d6d920c28e8ca542cb5d63569

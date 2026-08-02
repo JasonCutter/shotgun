@@ -41,8 +41,8 @@ completion_manifest: docs/project/completions/FE-P3-S1.json
 completion_candidate_evidence: FRONTEND-PHASE-3-SECTION-1-KNOWLEDGE-WORKSPACE-COMPLETION-CANDIDATE-260802002
 completion_review_id: 4837900020
 completion_review_decision: CHANGES_REQUIRED
-completion_review_exact_head: c47080c4842ef7f00c5149ad4828bf839fe5ed11
-completion_review_ci_run: 30740922972
+completion_review_exact_head: 7e042091970b9f226d883a5ab1f0206090b050c8
+completion_review_ci_run: 30741888126
 completion_blocker: REPOSITORY_WIDE_FORMAT_CHECK_58_FILES
 completion_approval: NOT_AUTHORIZED
 ready: NOT_AUTHORIZED
@@ -172,12 +172,14 @@ Database, Chromium and the Stage 12 package substep. Side-panel ChatGPT
 Review `4837811808` then returned
 `KNOWLEDGE_WORKSPACE_UI_IMPLEMENTATION_PASS` for the implementation slice.
 
-The completion-candidate evidence head
+The prior completion-candidate evidence head
 `c47080c4842ef7f00c5149ad4828bf839fe5ed11` was verified by remote run
-`30740922972`: Quality, Frontend and Required Gates passed, including
+`30740922972`. The governance-only resubmission exact head
+`7e042091970b9f226d883a5ab1f0206090b050c8` was verified by remote run
+`30741888126`: Quality, Frontend and Required Gates passed, including
 Database, Chromium, Knowledge Flow, Stage 12 reuse/operations and the remote
-Stage 12 package substep. Completion Review `4837900020` returned
-`CHANGES_REQUIRED` because the repository-wide format criterion remained
+Stage 12 package substep. Completion Review `4837900020` remains
+`CHANGES_REQUIRED` because the repository-wide format criterion is
 unresolved; this report therefore does not claim Section completion.
 
 ## 6. Local AC status

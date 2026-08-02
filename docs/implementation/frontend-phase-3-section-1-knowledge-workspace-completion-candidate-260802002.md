@@ -7,14 +7,14 @@ registry_status: IN_PROGRESS
 completion_manifest: docs/project/completions/FE-P3-S1.json
 implementation_review_id: 4837811808
 implementation_review_decision: KNOWLEDGE_WORKSPACE_UI_IMPLEMENTATION_PASS
-candidate_exact_head: c47080c4842ef7f00c5149ad4828bf839fe5ed11
-candidate_ci_run: 30740922972
+candidate_exact_head: 7e042091970b9f226d883a5ab1f0206090b050c8
+candidate_ci_run: 30741888126
 candidate_ci_conclusion: PASS
 candidate_ci_gates: Quality, Frontend, Required Gates
 completion_review_id: 4837900020
 completion_review_decision: CHANGES_REQUIRED
-completion_review_exact_head: c47080c4842ef7f00c5149ad4828bf839fe5ed11
-completion_review_ci_run: 30740922972
+completion_review_exact_head: 7e042091970b9f226d883a5ab1f0206090b050c8
+completion_review_ci_run: 30741888126
 completion_blocker: REPOSITORY_WIDE_FORMAT_CHECK_58_FILES
 required_resolution: BASELINE_REMEDIATION_OR_APPROVED_SCOPE_AMENDMENT
 completion_approval: NOT_AUTHORIZED
@@ -43,9 +43,9 @@ evidence only. A separate FE-P3-S1 completion review is still required.
 - Repository: `JasonCutter/shotgun`
 - Base: `main@cb2513bc311891ac89f53c7d67d6a401da65a2a8`
 - Branch: `codex/frontend-phase-3-section-1-knowledge-workspace`
-- Candidate evidence exact head: `c47080c4842ef7f00c5149ad4828bf839fe5ed11`
+- Candidate evidence exact head: `7e042091970b9f226d883a5ab1f0206090b050c8`
 - PR: [#53](https://github.com/JasonCutter/shotgun/pull/53), `OPEN / DRAFT`
-- Exact-head CI run: `30740922972`
+- Exact-head CI run: `30741888126`
 - Quality: `PASS`
 - Frontend: `PASS`
 - Required Gates: `PASS`
@@ -58,9 +58,14 @@ including Database, Chromium and the remote Stage 12 package substep.
 Any later evidence-publication commit is documentation-only and requires its
 own exact-head CI; it does not change this candidate's implementation scope.
 
-Completion Review `4837900020` evaluated exact head
-`c47080c4842ef7f00c5149ad4828bf839fe5ed11` with the same passing Quality,
-Frontend and Required Gates run `30740922972`.
+The prior completion evidence head
+`c47080c4842ef7f00c5149ad4828bf839fe5ed11` was verified by run
+`30740922972`. This governance-only resubmission exact head
+`7e042091970b9f226d883a5ab1f0206090b050c8` was verified by run
+`30741888126`, with Quality, Frontend and Required Gates all passing.
+Completion Review `4837900020` remains the governing `CHANGES_REQUIRED`
+decision; the new exact-head evidence does not constitute completion,
+Ready or Merge approval.
 
 ## Completion review 4837900020
 

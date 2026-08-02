@@ -44,6 +44,19 @@ import type {
   SubmitSourcesIntakeCommandPayload,
   CitationReturnTarget,
   IntakeDraftSeed,
+  KnowledgeWorkspaceRequest,
+  KnowledgePageListRequest,
+  KnowledgeSearchRequest,
+  KnowledgeDetailRequest,
+  KnowledgeCompareRequest,
+  KnowledgeWorkspaceView,
+  KnowledgePageListView,
+  KnowledgePageView,
+  KnowledgeProjectionStatusView,
+  KnowledgeSearchResultViewVNext,
+  KnowledgeSearchResultViewAny,
+  KnowledgeDetailView,
+  KnowledgeCompareView,
 } from '../../contracts/src/index.js';
 
 export type ProductSessionView = AnyProductSessionView;
@@ -88,6 +101,19 @@ export type {
   SubmitSourcesIntakeCommandPayload,
   CitationReturnTarget,
   IntakeDraftSeed,
+  KnowledgeWorkspaceRequest,
+  KnowledgePageListRequest,
+  KnowledgeSearchRequest,
+  KnowledgeDetailRequest,
+  KnowledgeCompareRequest,
+  KnowledgeWorkspaceView,
+  KnowledgePageListView,
+  KnowledgePageView,
+  KnowledgeProjectionStatusView,
+  KnowledgeSearchResultViewVNext,
+  KnowledgeSearchResultViewAny,
+  KnowledgeDetailView,
+  KnowledgeCompareView,
   ErrorCode,
   FailureCategory,
   FailureRetryability,
@@ -136,6 +162,26 @@ export type ShotgunApiClient = {
     request: GlobalSearchRequest,
     options?: RequestOptions,
   ): Promise<GlobalSearchResultView>;
+  getKnowledgeWorkspace(
+    request: KnowledgeWorkspaceRequest,
+    options?: RequestOptions,
+  ): Promise<KnowledgeWorkspaceView>;
+  listKnowledgePages(
+    request: KnowledgePageListRequest,
+    options?: RequestOptions,
+  ): Promise<KnowledgePageListView>;
+  searchKnowledge(
+    request: KnowledgeSearchRequest,
+    options?: RequestOptions,
+  ): Promise<KnowledgeSearchResultViewAny>;
+  getKnowledgeDetail(
+    request: KnowledgeDetailRequest,
+    options?: RequestOptions,
+  ): Promise<KnowledgeDetailView>;
+  compareKnowledgePages(
+    request: KnowledgeCompareRequest,
+    options?: RequestOptions,
+  ): Promise<KnowledgeCompareView>;
   getRouteGuardDecision(
     targetRoute: TargetRouteView,
     resourceProjectId?: string,

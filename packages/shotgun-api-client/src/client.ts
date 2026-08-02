@@ -41,6 +41,12 @@ import {
   decodeGlobalShellView,
   decodeHomeActionCenterView,
   decodeRouteGuardDecisionView,
+  decodeKnowledgeWorkspaceView,
+  decodeKnowledgePageListView,
+  decodeKnowledgeSearchResultView,
+  decodeKnowledgeSearchResultViewVNext,
+  decodeKnowledgeDetailView,
+  decodeKnowledgeCompareView,
   decodeSourceLibraryPageView,
   decodeSourceDetailView,
   decodeSourceVersionHistoryView,
@@ -67,6 +73,16 @@ import {
   type GlobalSearchResultView,
   type GlobalShellView,
   type HomeActionCenterView,
+  type KnowledgeWorkspaceRequest,
+  type KnowledgePageListRequest,
+  type KnowledgeSearchRequest,
+  type KnowledgeDetailRequest,
+  type KnowledgeCompareRequest,
+  type KnowledgeWorkspaceView,
+  type KnowledgePageListView,
+  type KnowledgeSearchResultViewAny,
+  type KnowledgeDetailView,
+  type KnowledgeCompareView,
   type RouteGuardDecisionView,
   type TargetRouteView,
   type SourceLibraryQuery,
@@ -199,6 +215,30 @@ export const createShotgunApiClient = (
       }
     });
 
+  const runKnowledgeRead = async <T>(input: {
+    readonly path: string;
+    readonly payload: unknown;
+    readonly responseKey: string;
+    readonly metric: string;
+    readonly decode: (value: unknown) => T;
+    readonly signal?: AbortSignal;
+  }): Promise<T> =>
+    runMutation(input.signal, async (csrfToken) => {
+      const response = await productRequest(input.path, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-csrf-token': csrfToken,
+        },
+        body: JSON.stringify(input.payload),
+        signal: input.signal,
+      });
+      const body = (await assertOk(response)) as Record<string, unknown>;
+      return decodeMeasured(`knowledge-${input.metric}`, () =>
+        input.decode(body[input.responseKey]),
+      );
+    });
+
   return {
     async bootstrapLocalOwner(requestOptions?: RequestOptions): Promise<ProductSessionView> {
       const response = await request('/session/local-bootstrap', {
@@ -258,6 +298,84 @@ export const createShotgunApiClient = (
       });
       const body = (await assertOk(response)) as { home: unknown };
       return decodeMeasured('home', () => decodeHomeActionCenterView(body.home));
+    },
+
+    async getKnowledgeWorkspace(
+      request: KnowledgeWorkspaceRequest,
+      requestOptions?: RequestOptions,
+    ): Promise<KnowledgeWorkspaceView> {
+      return runKnowledgeRead({
+        path: '/knowledge/workspace',
+        payload: request,
+        responseKey: 'workspace',
+        metric: 'workspace',
+        decode: decodeKnowledgeWorkspaceView,
+        signal: requestOptions?.signal,
+      });
+    },
+
+    async listKnowledgePages(
+      request: KnowledgePageListRequest,
+      requestOptions?: RequestOptions,
+    ): Promise<KnowledgePageListView> {
+      return runKnowledgeRead({
+        path: '/knowledge/pages',
+        payload: request,
+        responseKey: 'pages',
+        metric: 'pages',
+        decode: decodeKnowledgePageListView,
+        signal: requestOptions?.signal,
+      });
+    },
+
+    async searchKnowledge(
+      request: KnowledgeSearchRequest,
+      requestOptions?: RequestOptions,
+    ): Promise<KnowledgeSearchResultViewAny> {
+      return runKnowledgeRead({
+        path: '/knowledge/search',
+        payload: request,
+        responseKey: 'result',
+        metric: 'search',
+        decode: (value) => {
+          const schemaVersion =
+            typeof value === 'object' && value !== null && !Array.isArray(value)
+              ? (value as { readonly schemaVersion?: unknown }).schemaVersion
+              : undefined;
+          return schemaVersion === '1.1.0'
+            ? decodeKnowledgeSearchResultViewVNext(value)
+            : decodeKnowledgeSearchResultView(value);
+        },
+        signal: requestOptions?.signal,
+      });
+    },
+
+    async getKnowledgeDetail(
+      request: KnowledgeDetailRequest,
+      requestOptions?: RequestOptions,
+    ): Promise<KnowledgeDetailView> {
+      return runKnowledgeRead({
+        path: '/knowledge/detail',
+        payload: request,
+        responseKey: 'detail',
+        metric: 'detail',
+        decode: decodeKnowledgeDetailView,
+        signal: requestOptions?.signal,
+      });
+    },
+
+    async compareKnowledgePages(
+      request: KnowledgeCompareRequest,
+      requestOptions?: RequestOptions,
+    ): Promise<KnowledgeCompareView> {
+      return runKnowledgeRead({
+        path: '/knowledge/compare',
+        payload: request,
+        responseKey: 'compare',
+        metric: 'compare',
+        decode: decodeKnowledgeCompareView,
+        signal: requestOptions?.signal,
+      });
     },
 
     async searchGlobal(

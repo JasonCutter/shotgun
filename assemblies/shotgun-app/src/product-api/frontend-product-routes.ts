@@ -27,6 +27,12 @@ import {
   decodeAskAnswerRunTransitionSeedRequest,
   decodeSubmitAskQuestionRequest,
   decodeTargetRouteView,
+  decodeKnowledgeWorkspaceRequest,
+  decodeKnowledgePageListRequest,
+  decodeKnowledgeSearchRequest,
+  decodeKnowledgeDetailRequest,
+  decodeKnowledgeCompareRequest,
+  FrontendContractError,
   buildCommandSemanticDigestInput,
   type AnyFrontendCommandRequest,
   type ErrorCode,
@@ -121,6 +127,48 @@ export const registerFrontendProductRoutes = (
       accessScope: activeAuthority?.accessScope ?? [],
       executionAuthorities,
     };
+  };
+
+  type BuiltScope = Awaited<ReturnType<typeof buildScope>>;
+  type KnowledgeScope = BuiltScope & {
+    readonly activeProject: NonNullable<BuiltScope['activeProject']>;
+  };
+  const knowledgeScope = async (
+    headers: SecurityHeaders,
+    operation: string,
+  ): Promise<{ readonly value: KnowledgeScope; readonly durationMs: number }> => {
+    const scope = await timed(() => buildScope(headers));
+    if (!scope.value.activeProject) {
+      throw new ShotgunError({
+        code: 'PROJECT_CONTEXT_REQUIRED',
+        safeMessage: 'Knowledge operations require an active Project.',
+        module: 'frontend-product-read',
+        operation,
+      });
+    }
+    return {
+      ...scope,
+      value: scope.value as KnowledgeScope,
+    };
+  };
+  const decodeKnowledgeRequest = <T>(
+    operation: string,
+    decode: (value: unknown) => T,
+    value: unknown,
+  ): T => {
+    try {
+      return decode(value);
+    } catch (error) {
+      if (error instanceof FrontendContractError) {
+        throw new ShotgunError({
+          code: error.code,
+          safeMessage: 'Knowledge request is invalid.',
+          module: 'frontend-product-read',
+          operation,
+        });
+      }
+      throw error;
+    }
   };
 
   const executionScopeFor = async (
@@ -334,6 +382,91 @@ export const registerFrontendProductRoutes = (
     reply.header('server-timing', serverTiming(scope.durationMs, projection.durationMs));
     return { home: projection.value };
   });
+
+  server.post<{ Body: unknown; Headers: SecurityHeaders }>(
+    '/product-api/frontend/knowledge/workspace',
+    async (request, reply) => {
+      const scope = await knowledgeScope(request.headers, 'get-knowledge-workspace');
+      const decoded = decodeKnowledgeRequest(
+        'decode-knowledge-workspace-request',
+        decodeKnowledgeWorkspaceRequest,
+        request.body,
+      );
+      const projection = await timed(() =>
+        coordinator.getKnowledgeWorkspace({ ...scope.value, request: decoded }),
+      );
+      reply.header('server-timing', serverTiming(scope.durationMs, projection.durationMs));
+      return { workspace: projection.value };
+    },
+  );
+
+  server.post<{ Body: unknown; Headers: SecurityHeaders }>(
+    '/product-api/frontend/knowledge/pages',
+    async (request, reply) => {
+      const scope = await knowledgeScope(request.headers, 'list-knowledge-pages');
+      const decoded = decodeKnowledgeRequest(
+        'decode-knowledge-pages-request',
+        decodeKnowledgePageListRequest,
+        request.body,
+      );
+      const projection = await timed(() =>
+        coordinator.listKnowledgePages({ ...scope.value, request: decoded }),
+      );
+      reply.header('server-timing', serverTiming(scope.durationMs, projection.durationMs));
+      return { pages: projection.value };
+    },
+  );
+
+  server.post<{ Body: unknown; Headers: SecurityHeaders }>(
+    '/product-api/frontend/knowledge/search',
+    async (request, reply) => {
+      const scope = await knowledgeScope(request.headers, 'search-knowledge');
+      const decoded = decodeKnowledgeRequest(
+        'decode-knowledge-search-request',
+        decodeKnowledgeSearchRequest,
+        request.body,
+      );
+      const projection = await timed(() =>
+        coordinator.searchKnowledge({ ...scope.value, request: decoded }),
+      );
+      reply.header('server-timing', serverTiming(scope.durationMs, projection.durationMs));
+      return { result: projection.value };
+    },
+  );
+
+  server.post<{ Body: unknown; Headers: SecurityHeaders }>(
+    '/product-api/frontend/knowledge/detail',
+    async (request, reply) => {
+      const scope = await knowledgeScope(request.headers, 'get-knowledge-detail');
+      const decoded = decodeKnowledgeRequest(
+        'decode-knowledge-detail-request',
+        decodeKnowledgeDetailRequest,
+        request.body,
+      );
+      const projection = await timed(() =>
+        coordinator.getKnowledgeDetail({ ...scope.value, request: decoded }),
+      );
+      reply.header('server-timing', serverTiming(scope.durationMs, projection.durationMs));
+      return { detail: projection.value };
+    },
+  );
+
+  server.post<{ Body: unknown; Headers: SecurityHeaders }>(
+    '/product-api/frontend/knowledge/compare',
+    async (request, reply) => {
+      const scope = await knowledgeScope(request.headers, 'compare-knowledge-pages');
+      const decoded = decodeKnowledgeRequest(
+        'decode-knowledge-compare-request',
+        decodeKnowledgeCompareRequest,
+        request.body,
+      );
+      const projection = await timed(() =>
+        coordinator.compareKnowledgePages({ ...scope.value, request: decoded }),
+      );
+      reply.header('server-timing', serverTiming(scope.durationMs, projection.durationMs));
+      return { compare: projection.value };
+    },
+  );
 
   server.post<{ Body: unknown; Headers: SecurityHeaders }>(
     '/product-api/frontend/search/query',

@@ -1,4 +1,12 @@
 import type { QueryClient } from '@tanstack/react-query';
+import type {
+  GlobalShellView,
+  KnowledgeCompareRequest,
+  KnowledgeDetailRequest,
+  KnowledgePageListRequest,
+  KnowledgeSearchRequest,
+  KnowledgeWorkspaceRequest,
+} from '@shotgun/api-client';
 
 export const productSessionQueryKey = ['product', 'session'] as const;
 export const sessionBoundaryQueryKey = ['session', 'boundary'] as const;
@@ -113,6 +121,72 @@ export const sourceEvidenceQueryKey = (
   sourceVersionId: string,
 ) =>
   [...sourcesScopeKey(scope), 'source', sourceId, 'version', sourceVersionId, 'evidence'] as const;
+
+export type KnowledgeQueryScope = {
+  readonly principalId: string;
+  readonly sessionId: string;
+  readonly activeProjectId: string;
+  readonly resourceProjectId: string;
+  readonly accessRevision: string;
+  readonly policyContextRevision: string;
+  readonly sensitivity: string;
+};
+
+export const knowledgeScopeFromShell = (
+  shell: GlobalShellView | null,
+): KnowledgeQueryScope | null =>
+  shell?.activeProject
+    ? {
+        principalId: shell.principalId,
+        sessionId: shell.sessionId,
+        activeProjectId: shell.activeProject.id,
+        resourceProjectId: shell.activeProject.id,
+        accessRevision: shell.accessRevision,
+        policyContextRevision: shell.policyContextRevision,
+        sensitivity: shell.activeProject.sensitivityClearance,
+      }
+    : null;
+
+const knowledgeScopeKey = (scope: KnowledgeQueryScope) =>
+  [
+    'project',
+    scope.principalId,
+    scope.sessionId,
+    scope.activeProjectId,
+    scope.resourceProjectId,
+    scope.accessRevision,
+    scope.policyContextRevision,
+    scope.sensitivity,
+    'knowledge',
+  ] as const;
+
+export const knowledgeWorkspaceQueryKey = (
+  scope: KnowledgeQueryScope,
+  request: KnowledgeWorkspaceRequest,
+) => [...knowledgeScopeKey(scope), 'workspace', request] as const;
+
+export const knowledgePageListQueryKey = (
+  scope: KnowledgeQueryScope,
+  request: KnowledgePageListRequest,
+) => [...knowledgeScopeKey(scope), 'pages', request] as const;
+
+export const knowledgeSearchQueryKey = (
+  scope: KnowledgeQueryScope,
+  request: KnowledgeSearchRequest,
+) => [...knowledgeScopeKey(scope), 'search', request] as const;
+
+export const knowledgeDetailQueryKey = (
+  scope: KnowledgeQueryScope,
+  request: KnowledgeDetailRequest,
+) => [...knowledgeScopeKey(scope), 'detail', request] as const;
+
+export const knowledgeCompareQueryKey = (
+  scope: KnowledgeQueryScope,
+  request: KnowledgeCompareRequest,
+) => [...knowledgeScopeKey(scope), 'compare', request] as const;
+
+export const knowledgeDisabledQueryKey = (operation: string) =>
+  ['knowledge', 'disabled', operation] as const;
 
 export const clearProjectQueries = async (queryClient: QueryClient): Promise<void> => {
   await queryClient.cancelQueries({ queryKey: ['project'] });

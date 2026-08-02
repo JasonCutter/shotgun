@@ -1,0 +1,471 @@
+import {
+  FrontendKnowledgeDraftCommandError,
+  sha256Text,
+  stableJson,
+  type FrontendKnowledgeDraftBaseV1,
+  type FrontendKnowledgeDraftChangeSetV1,
+  type FrontendKnowledgeOperationV1,
+} from '../../../packages/contracts/src/index.js';
+
+export const FRONTEND_KNOWLEDGE_DRAFT_DOMAIN_VERSION = '1.0.0' as const;
+
+export type DraftCommandIdentityV1 = {
+  readonly principalId: string;
+  readonly clientRequestId: string;
+  readonly idempotencyKey: string;
+  readonly semanticDigest: string;
+};
+
+export type DraftMaterializationTargetV1 =
+  | { readonly kind: 'SEED'; readonly seedId: string; readonly resourceId: string }
+  | { readonly kind: 'RESOURCE'; readonly resourceId: string }
+  | { readonly kind: 'PAGE'; readonly pageId: string; readonly resourceId: string };
+
+export type DraftMaterializationRecordV1 = {
+  readonly materializationId: string;
+  readonly draftId: string;
+  readonly target: DraftMaterializationTargetV1;
+  readonly resourceProjectId: string;
+  readonly draftProjectId: string;
+  readonly effectiveProjectId: string;
+  readonly base: FrontendKnowledgeDraftBaseV1;
+  readonly commandIdentity: DraftCommandIdentityV1;
+  readonly createdAt: string;
+};
+
+export type FrontendKnowledgeDraftRevisionRecordV1 = {
+  readonly draftId: string;
+  readonly revision: number;
+  readonly status: FrontendKnowledgeDraftChangeSetV1['status'];
+  readonly resourceProjectId: string;
+  readonly draftProjectId: string;
+  readonly effectiveProjectId: string;
+  readonly base: FrontendKnowledgeDraftBaseV1;
+  readonly operations: readonly FrontendKnowledgeOperationV1[];
+  readonly contentDigest: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+};
+
+export type FrontendKnowledgeDraftOperationAppendV1 = {
+  readonly projectId: string;
+  readonly draftId: string;
+  readonly revision: number;
+  readonly operations: readonly FrontendKnowledgeOperationV1[];
+};
+
+export type FrontendKnowledgeDraftRepositoryTransactionV1 = unknown;
+
+export type FrontendKnowledgeDraftAggregateRepositoryPort = {
+  findById(
+    projectId: string,
+    draftId: string,
+  ): Promise<FrontendKnowledgeDraftChangeSetV1 | undefined>;
+  insert(
+    transaction: FrontendKnowledgeDraftRepositoryTransactionV1,
+    draft: FrontendKnowledgeDraftChangeSetV1,
+  ): Promise<FrontendKnowledgeDraftChangeSetV1>;
+};
+
+export type FrontendKnowledgeDraftRevisionRepositoryPort = {
+  find(
+    projectId: string,
+    draftId: string,
+    revision: number,
+  ): Promise<FrontendKnowledgeDraftRevisionRecordV1 | undefined>;
+  append(
+    transaction: FrontendKnowledgeDraftRepositoryTransactionV1,
+    revision: FrontendKnowledgeDraftRevisionRecordV1,
+  ): Promise<FrontendKnowledgeDraftRevisionRecordV1>;
+};
+
+export type FrontendKnowledgeDraftOperationRepositoryPort = {
+  append(
+    transaction: FrontendKnowledgeDraftRepositoryTransactionV1,
+    input: FrontendKnowledgeDraftOperationAppendV1,
+  ): Promise<void>;
+  list(
+    projectId: string,
+    draftId: string,
+    revision: number,
+  ): Promise<readonly FrontendKnowledgeOperationV1[]>;
+};
+
+export type FrontendKnowledgeDraftMaterializationRepositoryPort = {
+  findBySeed(seedId: string): Promise<DraftMaterializationRecordV1 | undefined>;
+  findByDraftId(
+    projectId: string,
+    draftId: string,
+  ): Promise<DraftMaterializationRecordV1 | undefined>;
+  findByCommandIdentity(
+    projectId: string,
+    identity: DraftCommandIdentityV1,
+  ): Promise<DraftMaterializationRecordV1 | undefined>;
+  insert(
+    transaction: FrontendKnowledgeDraftRepositoryTransactionV1,
+    materialization: DraftMaterializationRecordV1,
+  ): Promise<DraftMaterializationRecordV1>;
+};
+
+export type FrontendKnowledgeDraftRepositoryBoundaryPort = {
+  transaction<T>(
+    action: (transaction: FrontendKnowledgeDraftRepositoryTransactionV1) => Promise<T>,
+  ): Promise<T>;
+  readonly drafts: FrontendKnowledgeDraftAggregateRepositoryPort;
+  readonly revisions: FrontendKnowledgeDraftRevisionRepositoryPort;
+  readonly operations: FrontendKnowledgeDraftOperationRepositoryPort;
+  readonly materializations: FrontendKnowledgeDraftMaterializationRepositoryPort;
+};
+
+export type FrontendKnowledgeDraftProjectBindingV1 = {
+  readonly activeProjectId: string;
+  readonly resourceProjectId: string;
+  readonly draftProjectId: string;
+  readonly effectiveProjectId: string;
+  readonly accessRevision: string;
+  readonly policyContextRevision: string;
+};
+
+export type CreateFrontendKnowledgeDraftInputV1 = {
+  readonly draftId: string;
+  readonly seedId?: string;
+  readonly answerRunId?: string;
+  readonly startMode: FrontendKnowledgeDraftChangeSetV1['startMode'];
+  readonly binding: FrontendKnowledgeDraftProjectBindingV1;
+  readonly resourceId: string;
+  readonly base: FrontendKnowledgeDraftBaseV1;
+  readonly operations?: readonly FrontendKnowledgeOperationV1[];
+  readonly createdAt: string;
+  readonly updatedAt: string;
+};
+
+export type AppendFrontendKnowledgeDraftRevisionInputV1 = {
+  readonly current: FrontendKnowledgeDraftChangeSetV1;
+  readonly expectedDraftRevision: number;
+  readonly expectedBaseRevision: number;
+  readonly operationRevision: number;
+  readonly operations: readonly FrontendKnowledgeOperationV1[];
+  readonly contentDigest: string;
+  readonly updatedAt: string;
+};
+
+export type MaterializeFrontendKnowledgeDraftInputV1 = {
+  readonly draft: FrontendKnowledgeDraftChangeSetV1;
+  readonly materialization: DraftMaterializationRecordV1;
+};
+
+export type MaterializeFrontendKnowledgeDraftResultV1 = {
+  readonly draft: FrontendKnowledgeDraftChangeSetV1;
+  readonly materialization: DraftMaterializationRecordV1;
+  readonly replayed: boolean;
+};
+
+const requiredText = (value: string, field: string): string => {
+  if (value.trim().length === 0) {
+    throw new FrontendKnowledgeDraftCommandError('VALIDATION_FAILED', `${field} is required.`);
+  }
+  return value;
+};
+
+const domainFailure = (
+  code:
+    | 'DRAFT_NOT_FOUND'
+    | 'DRAFT_REVISION_CONFLICT'
+    | 'DIGEST_MISMATCH'
+    | 'PROJECT_BINDING_CONFLICT'
+    | 'STALE'
+    | 'VALIDATION_FAILED',
+  message: string,
+): never => {
+  throw new FrontendKnowledgeDraftCommandError(code, message);
+};
+
+const projectBinding = (draft: FrontendKnowledgeDraftChangeSetV1) => ({
+  activeProjectId: draft.activeProjectId,
+  resourceProjectId: draft.resourceProjectId,
+  draftProjectId: draft.draftProjectId,
+  effectiveProjectId: draft.effectiveProjectId,
+  accessRevision: draft.base.accessRevision,
+  policyContextRevision: draft.base.policyContextRevision,
+});
+
+const assertBindingValues = (binding: FrontendKnowledgeDraftProjectBindingV1): void => {
+  for (const [field, value] of Object.entries(binding)) requiredText(value, field);
+};
+
+export const assertFrontendKnowledgeDraftProjectBinding = (
+  draft: FrontendKnowledgeDraftChangeSetV1,
+  binding: FrontendKnowledgeDraftProjectBindingV1,
+): void => {
+  assertBindingValues(binding);
+  if (stableJson(projectBinding(draft)) !== stableJson(binding)) {
+    domainFailure('PROJECT_BINDING_CONFLICT', 'Draft Project and policy binding are immutable.');
+  }
+  if (draft.base.resourceProjectId !== binding.resourceProjectId) {
+    domainFailure('PROJECT_BINDING_CONFLICT', 'Draft base is bound to another Resource Project.');
+  }
+};
+
+export const assertFrontendKnowledgeDraftBaseBinding = (
+  current: FrontendKnowledgeDraftChangeSetV1,
+  next: FrontendKnowledgeDraftChangeSetV1,
+): void => {
+  if (
+    current.draftId !== next.draftId ||
+    current.startMode !== next.startMode ||
+    current.resourceId !== next.resourceId ||
+    current.seedId !== next.seedId ||
+    current.answerRunId !== next.answerRunId ||
+    stableJson(current.base) !== stableJson(next.base) ||
+    stableJson(projectBinding(current)) !== stableJson(projectBinding(next))
+  ) {
+    domainFailure('PROJECT_BINDING_CONFLICT', 'Draft identity or pinned base changed.');
+  }
+};
+
+export const frontendKnowledgeDraftRevisionDigest = (input: {
+  readonly draftId: string;
+  readonly revision: number;
+  readonly base: FrontendKnowledgeDraftBaseV1;
+  readonly operations: readonly FrontendKnowledgeOperationV1[];
+}): string =>
+  sha256Text(
+    stableJson({
+      domain: 'frontend-knowledge-draft',
+      version: FRONTEND_KNOWLEDGE_DRAFT_DOMAIN_VERSION,
+      draftId: input.draftId,
+      revision: input.revision,
+      base: input.base,
+      operations: input.operations,
+    }),
+  );
+
+const assertOperationRevision = (
+  operations: readonly FrontendKnowledgeOperationV1[],
+  expectedBaseRevision: number,
+  operationRevision: number,
+): void => {
+  const operationIds = new Set<string>();
+  for (const operation of operations) {
+    if (operationIds.has(operation.operationId)) {
+      domainFailure('VALIDATION_FAILED', 'Operation IDs must be unique in a Draft revision.');
+    }
+    operationIds.add(operation.operationId);
+    if (
+      operation.baseRevision !== expectedBaseRevision ||
+      operation.operationRevision !== operationRevision
+    ) {
+      domainFailure(
+        'DRAFT_REVISION_CONFLICT',
+        'Operation revision is not bound to the Draft base.',
+      );
+    }
+    requiredText(operation.contentDigest, 'operation.contentDigest');
+    requiredText(operation.rationale, 'operation.rationale');
+  }
+};
+
+export const createInitialFrontendKnowledgeDraft = (
+  input: CreateFrontendKnowledgeDraftInputV1,
+): FrontendKnowledgeDraftChangeSetV1 => {
+  requiredText(input.draftId, 'draftId');
+  requiredText(input.resourceId, 'resourceId');
+  requiredText(input.createdAt, 'createdAt');
+  requiredText(input.updatedAt, 'updatedAt');
+  assertBindingValues(input.binding);
+  if (input.base.resourceProjectId !== input.binding.resourceProjectId) {
+    domainFailure('PROJECT_BINDING_CONFLICT', 'Draft base must bind to the Resource Project.');
+  }
+  if (input.startMode === 'SEED_MATERIALIZATION') {
+    requiredText(input.seedId ?? '', 'seedId');
+  } else if (input.seedId !== undefined) {
+    domainFailure('VALIDATION_FAILED', 'Knowledge Page drafts cannot carry a Seed ID.');
+  }
+  const operations = input.operations ?? [];
+  assertOperationRevision(operations, input.base.canonicalVersion, 1);
+  const draft: FrontendKnowledgeDraftChangeSetV1 = {
+    schemaVersion: '1.0.0',
+    draftId: input.draftId,
+    ...(input.seedId === undefined ? {} : { seedId: input.seedId }),
+    ...(input.answerRunId === undefined ? {} : { answerRunId: input.answerRunId }),
+    startMode: input.startMode,
+    status: 'DRAFT',
+    revision: 1,
+    activeProjectId: input.binding.activeProjectId,
+    resourceProjectId: input.binding.resourceProjectId,
+    draftProjectId: input.binding.draftProjectId,
+    effectiveProjectId: input.binding.effectiveProjectId,
+    resourceId: input.resourceId,
+    base: input.base,
+    operations,
+    contentDigest: frontendKnowledgeDraftRevisionDigest({
+      draftId: input.draftId,
+      revision: 1,
+      base: input.base,
+      operations,
+    }),
+    createdAt: input.createdAt,
+    updatedAt: input.updatedAt,
+  };
+  assertFrontendKnowledgeDraftProjectBinding(draft, input.binding);
+  return draft;
+};
+
+export const appendFrontendKnowledgeDraftRevision = (
+  input: AppendFrontendKnowledgeDraftRevisionInputV1,
+): FrontendKnowledgeDraftChangeSetV1 => {
+  const { current } = input;
+  if (current.status === 'ABANDONED') {
+    domainFailure('DRAFT_REVISION_CONFLICT', 'An abandoned Draft cannot receive a new revision.');
+  }
+  if (current.revision !== input.expectedDraftRevision) {
+    domainFailure('DRAFT_REVISION_CONFLICT', 'Draft revision is stale.');
+  }
+  if (current.base.canonicalVersion !== input.expectedBaseRevision) {
+    domainFailure('STALE', 'Draft base revision is stale.');
+  }
+  const nextRevision = current.revision + 1;
+  if (input.operationRevision !== nextRevision) {
+    domainFailure('DRAFT_REVISION_CONFLICT', 'Operation revision must follow Draft revision.');
+  }
+  assertOperationRevision(input.operations, input.expectedBaseRevision, input.operationRevision);
+  const expectedDigest = frontendKnowledgeDraftRevisionDigest({
+    draftId: current.draftId,
+    revision: nextRevision,
+    base: current.base,
+    operations: input.operations,
+  });
+  if (input.contentDigest !== expectedDigest) {
+    domainFailure('VALIDATION_FAILED', 'Draft content digest does not match its revision.');
+  }
+  const next: FrontendKnowledgeDraftChangeSetV1 = {
+    schemaVersion: current.schemaVersion,
+    draftId: current.draftId,
+    ...(current.seedId === undefined ? {} : { seedId: current.seedId }),
+    ...(current.answerRunId === undefined ? {} : { answerRunId: current.answerRunId }),
+    startMode: current.startMode,
+    status: 'DRAFT',
+    revision: nextRevision,
+    activeProjectId: current.activeProjectId,
+    resourceProjectId: current.resourceProjectId,
+    draftProjectId: current.draftProjectId,
+    effectiveProjectId: current.effectiveProjectId,
+    resourceId: current.resourceId,
+    base: current.base,
+    operations: input.operations,
+    contentDigest: input.contentDigest,
+    createdAt: current.createdAt,
+    updatedAt: input.updatedAt,
+  };
+  assertFrontendKnowledgeDraftBaseBinding(current, next);
+  return next;
+};
+
+const revisionRecord = (
+  draft: FrontendKnowledgeDraftChangeSetV1,
+): FrontendKnowledgeDraftRevisionRecordV1 => ({
+  draftId: draft.draftId,
+  revision: draft.revision,
+  status: draft.status,
+  resourceProjectId: draft.resourceProjectId,
+  draftProjectId: draft.draftProjectId,
+  effectiveProjectId: draft.effectiveProjectId,
+  base: draft.base,
+  operations: draft.operations,
+  contentDigest: draft.contentDigest,
+  createdAt: draft.createdAt,
+  updatedAt: draft.updatedAt,
+});
+
+export const assertFrontendKnowledgeDraftMaterializationBinding = (
+  draft: FrontendKnowledgeDraftChangeSetV1,
+  materialization: DraftMaterializationRecordV1,
+): void => {
+  if (
+    draft.draftId !== materialization.draftId ||
+    draft.resourceProjectId !== materialization.resourceProjectId ||
+    draft.draftProjectId !== materialization.draftProjectId ||
+    draft.effectiveProjectId !== materialization.effectiveProjectId ||
+    draft.resourceId !== materialization.target.resourceId ||
+    stableJson(draft.base) !== stableJson(materialization.base)
+  ) {
+    domainFailure('PROJECT_BINDING_CONFLICT', 'Materialization is not bound to the Draft.');
+  }
+  if (materialization.target.kind === 'SEED' && draft.seedId !== materialization.target.seedId) {
+    domainFailure(
+      'PROJECT_BINDING_CONFLICT',
+      'Seed materialization identity does not match Draft.',
+    );
+  }
+  if (materialization.target.kind !== 'SEED' && draft.seedId !== undefined) {
+    domainFailure('VALIDATION_FAILED', 'Seedless materialization cannot carry a Seed ID.');
+  }
+};
+
+export const materializeFrontendKnowledgeDraft = async (
+  boundary: FrontendKnowledgeDraftRepositoryBoundaryPort,
+  input: MaterializeFrontendKnowledgeDraftInputV1,
+): Promise<MaterializeFrontendKnowledgeDraftResultV1> => {
+  const { draft, materialization } = input;
+  assertFrontendKnowledgeDraftMaterializationBinding(draft, materialization);
+  return boundary.transaction(async (transaction) => {
+    const existingBySeed =
+      materialization.target.kind === 'SEED'
+        ? await boundary.materializations.findBySeed(materialization.target.seedId)
+        : undefined;
+    const existingByCommand = await boundary.materializations.findByCommandIdentity(
+      materialization.resourceProjectId,
+      materialization.commandIdentity,
+    );
+    const existing = existingBySeed ?? existingByCommand;
+    if (existing) {
+      if (
+        existingByCommand !== undefined &&
+        existingBySeed === undefined &&
+        stableJson(existing.commandIdentity) !== stableJson(materialization.commandIdentity)
+      ) {
+        domainFailure('DIGEST_MISMATCH', 'Command identity was reused with different semantics.');
+      }
+      if (
+        existing.resourceProjectId !== materialization.resourceProjectId ||
+        existing.draftProjectId !== materialization.draftProjectId ||
+        existing.effectiveProjectId !== materialization.effectiveProjectId
+      ) {
+        domainFailure('PROJECT_BINDING_CONFLICT', 'Materialization belongs to another Project.');
+      }
+      const existingDraft = await boundary.drafts.findById(
+        materialization.resourceProjectId,
+        existing.draftId,
+      );
+      if (!existingDraft) {
+        domainFailure('DRAFT_NOT_FOUND', 'Materialization references a missing Draft.');
+      }
+      const replayedDraft = existingDraft as FrontendKnowledgeDraftChangeSetV1;
+      return { draft: replayedDraft, materialization: existing, replayed: true };
+    }
+    const existingDraft = await boundary.materializations.findByDraftId(
+      materialization.resourceProjectId,
+      draft.draftId,
+    );
+    if (existingDraft) {
+      domainFailure('DRAFT_REVISION_CONFLICT', 'Draft identity is already materialized.');
+    }
+    const storedDraft = await boundary.drafts.insert(transaction, draft);
+    await boundary.revisions.append(transaction, revisionRecord(storedDraft));
+    if (storedDraft.operations.length > 0) {
+      await boundary.operations.append(transaction, {
+        projectId: storedDraft.resourceProjectId,
+        draftId: storedDraft.draftId,
+        revision: storedDraft.revision,
+        operations: storedDraft.operations,
+      });
+    }
+    const storedMaterialization = await boundary.materializations.insert(
+      transaction,
+      materialization,
+    );
+    return { draft: storedDraft, materialization: storedMaterialization, replayed: false };
+  });
+};
+
+export const toFrontendKnowledgeDraftRevisionRecord = revisionRecord;

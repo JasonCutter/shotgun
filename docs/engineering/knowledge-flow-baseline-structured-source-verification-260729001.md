@@ -9,19 +9,19 @@
 
 ## Preserved content checks
 
-| Check | Result |
-| --- | --- |
-| Phase count | PASS — 6 |
-| Step count | PASS — 22 |
-| Step range | PASS — 1 through 22 |
-| Duplicate Step number | PASS — none |
-| Core principles | PASS — 4 |
-| Feedback/rediscovery loops | PASS — 2 |
-| Cross-phase safeguards | PASS — 5 |
-| Claim and Fact distinction | PASS |
-| AI output remains Candidate | PASS |
-| Compiled Truth remains derived Projection | PASS |
-| Provenance requirement retained | PASS |
+| Check                                     | Result              |
+| ----------------------------------------- | ------------------- |
+| Phase count                               | PASS — 6            |
+| Step count                                | PASS — 22           |
+| Step range                                | PASS — 1 through 22 |
+| Duplicate Step number                     | PASS — none         |
+| Core principles                           | PASS — 4            |
+| Feedback/rediscovery loops                | PASS — 2            |
+| Cross-phase safeguards                    | PASS — 5            |
+| Claim and Fact distinction                | PASS                |
+| AI output remains Candidate               | PASS                |
+| Compiled Truth remains derived Projection | PASS                |
+| Provenance requirement retained           | PASS                |
 
 ## Authority conversion
 

@@ -87,7 +87,10 @@ const onlyKeys = (
 const stagingReference = (value: unknown, path: string): string => {
   const decoded = stringValue(value, path, 32_768);
   if (!decoded.startsWith('sources-stage-v1.')) {
-    throw new FrontendContractError('INVALID_REQUEST', `${path} is not a Sources staging reference.`);
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      `${path} is not a Sources staging reference.`,
+    );
   }
   return decoded;
 };
@@ -97,7 +100,11 @@ export const decodeSubmitStagedSourcesIntakePayload = (
 ): SubmitStagedSourcesIntakeCommandPayload => {
   const value = record(input, 'sources.intake.submit.v1.payload');
   onlyKeys(value, ['draftId', 'inputs'], 'sources.intake.submit.v1.payload');
-  if (!Array.isArray(value['inputs']) || value['inputs'].length === 0 || value['inputs'].length > 50) {
+  if (
+    !Array.isArray(value['inputs']) ||
+    value['inputs'].length === 0 ||
+    value['inputs'].length > 50
+  ) {
     throw new FrontendContractError(
       'INVALID_REQUEST',
       'payload.inputs must contain between 1 and 50 staged items.',
@@ -142,7 +149,10 @@ export const decodeSubmitStagedSourcesIntakePayload = (
     throw new FrontendContractError('INVALID_REQUEST', `${path}.kind is unsupported.`);
   });
   if (new Set(inputs.map((item) => item.itemId)).size !== inputs.length) {
-    throw new FrontendContractError('INVALID_REQUEST', 'payload.inputs itemId values must be unique.');
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'payload.inputs itemId values must be unique.',
+    );
   }
   return {
     draftId: stringValue(value['draftId'], 'payload.draftId', 512),
@@ -182,7 +192,10 @@ export const validateStagedSourcesFrontendCommandRequest = (
 export const decodeSourcesStagingReceipt = (input: unknown): SourcesStagingReceipt => {
   const value = record(input, 'SourcesStagingReceipt');
   if (value['schemaVersion'] !== SOURCES_SCHEMA_VERSION) {
-    throw new FrontendContractError('UNSUPPORTED_SCHEMA', 'Unsupported Sources staging receipt version.');
+    throw new FrontendContractError(
+      'UNSUPPORTED_SCHEMA',
+      'Unsupported Sources staging receipt version.',
+    );
   }
   const kind = value['kind'];
   if (kind !== 'DIRECT_TEXT' && kind !== 'FILE' && kind !== 'URL') {
@@ -190,7 +203,10 @@ export const decodeSourcesStagingReceipt = (input: unknown): SourcesStagingRecei
   }
   const mediaType = value['mediaType'];
   if (mediaType !== 'text/plain' && mediaType !== 'text/markdown') {
-    throw new FrontendContractError('UNSUPPORTED_SCHEMA', 'Unsupported Sources staging media type.');
+    throw new FrontendContractError(
+      'UNSUPPORTED_SCHEMA',
+      'Unsupported Sources staging media type.',
+    );
   }
   const sizeBytes = value['sizeBytes'];
   if (!Number.isInteger(sizeBytes) || Number(sizeBytes) <= 0 || Number(sizeBytes) > 1_048_576) {

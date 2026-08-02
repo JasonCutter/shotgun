@@ -44,30 +44,30 @@ ADR-120 later activated GitHub `main` as the sole Canonical documentation author
 
 The original PR #1 export recorded the following checks:
 
-| Check | Result |
-| --- | --- |
-| Markdown document count | `63` |
-| Empty documents | `0` |
-| Notion-only `<page>` tags in exported Markdown | `0` |
-| Broken characters detected by original export review | `0` |
-| README relative-link review | `PASS` |
-| Historical ADR range ADR-018–ADR-075 represented | `PASS` |
-| Original staged whitespace check | `PASS` |
+| Check                                                | Result |
+| ---------------------------------------------------- | ------ |
+| Markdown document count                              | `63`   |
+| Empty documents                                      | `0`    |
+| Notion-only `<page>` tags in exported Markdown       | `0`    |
+| Broken characters detected by original export review | `0`    |
+| README relative-link review                          | `PASS` |
+| Historical ADR range ADR-018–ADR-075 represented     | `PASS` |
+| Original staged whitespace check                     | `PASS` |
 
 Current reconciliation checks:
 
-| Check | Result | Evidence |
-| --- | --- | --- |
-| PR #1 source branch restored from preserved export commit | `PASS` | Branch `docs/shotgun-add-phase-1-6` |
-| Current `main` compared against restored branch | `PASS` | 63 original paths remain additions; no Product path overlap |
-| GitHub three-way mergeability | `PASS` | PR #1 `mergeable: true` after recalculation |
-| ADD root authority normalized | `PASS` | `docs/architecture/add/README.md` |
-| Six Phase entry authorities normalized | `PASS` | Phase README files |
-| Substantive Phase/Step/Section decisions modified | `NO` | authority and provenance text only |
-| Product code, runtime, database, dependency, deployment change | `NO` | documentation-only diff |
-| Documentation-specific validation tooling | `NOT_IMPLEMENTED` | separate authorized follow-up |
-| Remote GitHub Actions | `PENDING` | required on final PR head |
-| Merge and Canonical publication | `PENDING` | after required CI pass |
+| Check                                                          | Result            | Evidence                                                    |
+| -------------------------------------------------------------- | ----------------- | ----------------------------------------------------------- |
+| PR #1 source branch restored from preserved export commit      | `PASS`            | Branch `docs/shotgun-add-phase-1-6`                         |
+| Current `main` compared against restored branch                | `PASS`            | 63 original paths remain additions; no Product path overlap |
+| GitHub three-way mergeability                                  | `PASS`            | PR #1 `mergeable: true` after recalculation                 |
+| ADD root authority normalized                                  | `PASS`            | `docs/architecture/add/README.md`                           |
+| Six Phase entry authorities normalized                         | `PASS`            | Phase README files                                          |
+| Substantive Phase/Step/Section decisions modified              | `NO`              | authority and provenance text only                          |
+| Product code, runtime, database, dependency, deployment change | `NO`              | documentation-only diff                                     |
+| Documentation-specific validation tooling                      | `NOT_IMPLEMENTED` | separate authorized follow-up                               |
+| Remote GitHub Actions                                          | `PENDING`         | required on final PR head                                   |
+| Merge and Canonical publication                                | `PENDING`         | after required CI pass                                      |
 
 ## Status boundary
 

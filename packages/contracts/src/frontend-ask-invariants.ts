@@ -10,9 +10,7 @@ const fail = (message: string): never => {
   throw new FrontendContractError('UNSUPPORTED_SCHEMA', message);
 };
 
-export const assertAskWorkspaceInvariants = (
-  workspace: AskWorkspaceView,
-): AskWorkspaceView => {
+export const assertAskWorkspaceInvariants = (workspace: AskWorkspaceView): AskWorkspaceView => {
   for (const conversation of workspace.conversations) {
     if (conversation.projectId !== workspace.projectId) {
       fail('Ask Workspace Conversation summaries must match workspace.projectId.');
@@ -27,9 +25,8 @@ export const assertAskWorkspaceInvariants = (
   return workspace;
 };
 
-export const decodeAskWorkspaceViewWithInvariants = (
-  input: unknown,
-): AskWorkspaceView => assertAskWorkspaceInvariants(decodeAskWorkspaceView(input));
+export const decodeAskWorkspaceViewWithInvariants = (input: unknown): AskWorkspaceView =>
+  assertAskWorkspaceInvariants(decodeAskWorkspaceView(input));
 
 export const assertAskQuestionSubmissionInvariants = (
   submission: AskQuestionSubmissionView,

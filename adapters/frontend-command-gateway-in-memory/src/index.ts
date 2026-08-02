@@ -20,7 +20,10 @@ type LedgerRecord = {
   readonly principalId: string;
   readonly envelopeVersion: '1.0.0' | '2.0.0';
   readonly scopeBindingKey: string;
-  readonly resourceBindings: readonly { readonly resourceKind: string; readonly resourceId: string }[];
+  readonly resourceBindings: readonly {
+    readonly resourceKind: string;
+    readonly resourceId: string;
+  }[];
   readonly outcome: AnyFrontendCommandOutcomeView;
 };
 
@@ -29,7 +32,8 @@ const matchesResourceBinding = (
   binding: FrontendCommandResourceBinding | undefined,
 ): boolean => {
   if (!binding) return true;
-  if (binding.commandTypes && !binding.commandTypes.includes(record.outcome.commandType)) return false;
+  if (binding.commandTypes && !binding.commandTypes.includes(record.outcome.commandType))
+    return false;
   return record.resourceBindings.some(
     (resource) =>
       resource.resourceKind === binding.resourceKind && resource.resourceId === binding.resourceId,

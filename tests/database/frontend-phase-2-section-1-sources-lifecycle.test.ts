@@ -227,8 +227,18 @@ describe.runIf(pool)('Sources cancel retry and outcome recovery persistence', ()
       ),
     ).toMatchObject({
       rows: [
-        { attempt_number: 1, attempt_kind: 'SUBMIT', state: 'OUTCOME_INDETERMINATE', caused: false },
-        { attempt_number: 2, attempt_kind: 'RETRY_CURRENT_POLICY', state: 'ACCEPTED', caused: true },
+        {
+          attempt_number: 1,
+          attempt_kind: 'SUBMIT',
+          state: 'OUTCOME_INDETERMINATE',
+          caused: false,
+        },
+        {
+          attempt_number: 2,
+          attempt_kind: 'RETRY_CURRENT_POLICY',
+          state: 'ACCEPTED',
+          caused: true,
+        },
         { attempt_number: 3, attempt_kind: 'CANCEL', state: 'SUCCEEDED', caused: true },
       ],
     });

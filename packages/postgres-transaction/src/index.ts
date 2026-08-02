@@ -35,10 +35,7 @@ const outcomeUnknown = (
  */
 export async function withSafePostgresTransaction<T>(
   pool: Pick<Pool, 'connect'>,
-  action: (
-    client: PoolClient,
-    afterCommit: (callback: () => void) => void,
-  ) => Promise<T>,
+  action: (client: PoolClient, afterCommit: (callback: () => void) => void) => Promise<T>,
   options: SafePostgresTransactionOptions,
 ): Promise<T> {
   const client = await pool.connect();

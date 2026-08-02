@@ -263,7 +263,9 @@ describe.runIf(pool)('Frontend Phase 2 Section 1 Sources persistence', () => {
   });
 
   it('persists redacted URL provenance under the url_acquisition channel', async () => {
-    const context = await fixture({ inputs: [{ kind: 'URL', redactedRequestedUrl: 'https://example.com/doc?token=[REDACTED]' }] });
+    const context = await fixture({
+      inputs: [{ kind: 'URL', redactedRequestedUrl: 'https://example.com/doc?token=[REDACTED]' }],
+    });
     const contentHash = hash('url body');
     const input: CreateSourcesIntakeSubmissionInput = {
       ...directSubmission(context),

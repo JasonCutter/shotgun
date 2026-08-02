@@ -13,18 +13,18 @@ This verification covers Project Shotgun governing documents and durable evidenc
 
 ## Procedures and results
 
-| Check | Result | Evidence |
-| --- | --- | --- |
-| Git authority identified | PASS | GitHub `main` remains the sole Canonical authority under ADR-120 |
-| Git inventory boundary defined | PASS | every tracked `docs/**` file plus documentation governance scripts/workflow/package commands |
-| Notion ADD hierarchy root identified | PASS | page `39f5181d-71ad-81a6-a51f-f7f2a3a88ee6` |
-| Notion Frontend hierarchy root identified | PASS | page `3a15181d-71ad-81e4-bfa4-ee2578e692a0` |
-| High-value standalone Notion items classified | PASS | implementation plan, ADR index, Stage 12.1 and ADR-116–119 mirrors registered |
-| Historical Phase 1 preparation hub classified | PASS | Archive Candidate; superseded by approved Phase 1 ADD hierarchy |
-| Google Drive Project Shotgun governing search | PASS | one relevant governing document found: Detailed Map |
-| Detailed Map Git target verified | PASS | `docs/architecture/knowledge-flow/shotgun-knowledge-flow-detailed-map.md` |
-| External Canonical authority remaining | PASS — none | all external governing items are Reference, Mirror or Archive candidates |
-| Unknown high-value external governing item | PASS — none identified | registered roots and searches cover known Project Shotgun scope |
+| Check                                         | Result                 | Evidence                                                                                     |
+| --------------------------------------------- | ---------------------- | -------------------------------------------------------------------------------------------- |
+| Git authority identified                      | PASS                   | GitHub `main` remains the sole Canonical authority under ADR-120                             |
+| Git inventory boundary defined                | PASS                   | every tracked `docs/**` file plus documentation governance scripts/workflow/package commands |
+| Notion ADD hierarchy root identified          | PASS                   | page `39f5181d-71ad-81a6-a51f-f7f2a3a88ee6`                                                  |
+| Notion Frontend hierarchy root identified     | PASS                   | page `3a15181d-71ad-81e4-bfa4-ee2578e692a0`                                                  |
+| High-value standalone Notion items classified | PASS                   | implementation plan, ADR index, Stage 12.1 and ADR-116–119 mirrors registered                |
+| Historical Phase 1 preparation hub classified | PASS                   | Archive Candidate; superseded by approved Phase 1 ADD hierarchy                              |
+| Google Drive Project Shotgun governing search | PASS                   | one relevant governing document found: Detailed Map                                          |
+| Detailed Map Git target verified              | PASS                   | `docs/architecture/knowledge-flow/shotgun-knowledge-flow-detailed-map.md`                    |
+| External Canonical authority remaining        | PASS — none            | all external governing items are Reference, Mirror or Archive candidates                     |
+| Unknown high-value external governing item    | PASS — none identified | registered roots and searches cover known Project Shotgun scope                              |
 
 ## Search evidence boundary
 

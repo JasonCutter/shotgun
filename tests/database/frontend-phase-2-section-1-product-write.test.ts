@@ -166,7 +166,10 @@ describe.runIf(pool)('Frontend Phase 2 Section 1 Product write', () => {
       commandType: 'sources.intake.submit.v1',
       principalId: context.principalId,
       projectId: context.projectId,
-      payload: { draftId: 'draft-1', inputs: [{ kind: 'DIRECT_TEXT', stagingReference: 'sealed' }] },
+      payload: {
+        draftId: 'draft-1',
+        inputs: [{ kind: 'DIRECT_TEXT', stagingReference: 'sealed' }],
+      },
       now: context.now,
     });
     const firstReceipt = await staging.stageBytes({
@@ -206,7 +209,10 @@ describe.runIf(pool)('Frontend Phase 2 Section 1 Product write', () => {
       commandType: 'sources.intake.submit.v1',
       principalId: context.principalId,
       projectId: context.projectId,
-      payload: { draftId: 'draft-2', inputs: [{ kind: 'DIRECT_TEXT', stagingReference: 'sealed' }] },
+      payload: {
+        draftId: 'draft-2',
+        inputs: [{ kind: 'DIRECT_TEXT', stagingReference: 'sealed' }],
+      },
       now: context.now,
     });
     const secondReceipt = await staging.stageBytes({

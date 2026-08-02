@@ -183,6 +183,12 @@ Query contracts remain available and are not rewritten by the rollback.
   handler parity coverage. Existing `SearchCanonicalKnowledge@1.0.0`
   semantics, Query-only composition and the no-new-persistence/API/UI boundary
   remain unchanged.
+- 2026-08-02: Side-panel review `4836399738` required and authorized the QX-01.2
+  limited correction. Canonical retrieval limit and cursor offset validation
+  are now independent, and the PostgreSQL handler parity evidence compares
+  actual source identities and ranking tuples across SUBSTRING, FULL_TEXT,
+  TRIGRAM, tie-break, input-order permutation and cursor-mismatch cases. The
+  no-new-persistence/API/UI boundary remains unchanged.
 
 ## Approval boundary
 

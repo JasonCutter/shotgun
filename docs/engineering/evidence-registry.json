@@ -305,16 +305,16 @@
       "path": "docs/engineering/frontend-phase-3-section-1-qx-01-stage7-workspace-search-verification-260802001.md",
       "class": "IMPLEMENTATION_VERIFICATION",
       "scope": "frontend-phase-3-section-1-qx-01-stage7-workspace-search",
-      "statusAuthority": "QX_01_1_IMPLEMENTATION_PENDING_REVIEW",
-      "authorization": "SIDE_PANEL_REVIEW_4836218304",
-      "testedHead": "e9ab04d0dba3f4019ef27779d93f4be2a97a9c77",
+      "statusAuthority": "QX_01_2_IMPLEMENTATION_PENDING_REVIEW",
+      "authorization": "SIDE_PANEL_REVIEW_4836399738",
+      "testedHead": "eec1cd61008029f01b58953f9713d0507710bae3",
       "subjectBase": "cb2513bc311891ac89f53c7d67d6a401da65a2a8",
       "pullRequest": "https://github.com/JasonCutter/shotgun/pull/53",
-      "remoteExactHeadCI": "30726214870",
+      "remoteExactHeadCI": "30727376455",
       "remoteExactHeadCIConclusion": "PASS",
       "remoteExactHeadCIGates": ["Quality", "Frontend", "Required Gates", "Database"],
       "completion": "NOT_AUTHORIZED",
-      "handlerImplementation": "QX-01_STAGE7_HANDLER_QX01_1_IMPLEMENTED_PENDING_REVIEW"
+      "handlerImplementation": "QX-01_STAGE7_HANDLER_QX01_2_IMPLEMENTED_PENDING_REVIEW"
     }
   ],
   "rules": {

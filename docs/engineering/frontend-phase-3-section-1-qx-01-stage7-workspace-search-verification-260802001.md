@@ -4,13 +4,13 @@ classification: IMPLEMENTATION_VERIFICATION
 status: PENDING_REVIEW
 work_item: FE-P3-S1
 slice: QX-01
-authorization: SIDE_PANEL_REVIEW_4836218304
-subject_commit: e9ab04d0dba3f4019ef27779d93f4be2a97a9c77
+authorization: SIDE_PANEL_REVIEW_4836399738
+subject_commit: eec1cd61008029f01b58953f9713d0507710bae3
 base_commit: cb2513bc311891ac89f53c7d67d6a401da65a2a8
 branch: codex/frontend-phase-3-section-1-knowledge-workspace
 pull_request: https://github.com/JasonCutter/shotgun/pull/53
-remote_exact_head_ci: 30726214870
-remote_exact_head_ci_run: 391
+remote_exact_head_ci: 30727376455
+remote_exact_head_ci_run: 393
 ---
 
 # FE-P3-S1 QX-01 Stage 7 Workspace Search Verification
@@ -18,8 +18,9 @@ remote_exact_head_ci_run: 391
 ## Scope and authority
 
 This record covers the additive `SearchKnowledgeWorkspace@1.0.0` Stage 7
-handler authorized by side-panel review `4836089195` and amended by the
-QX-01.1 correction authorization in review `4836218304`. The implementation keeps
+handler authorized by side-panel review `4836089195`, amended by the QX-01.1
+correction authorization in review `4836218304`, and further amended by the
+QX-01.2 limited correction authorization in review `4836399738`. The implementation keeps
 `stage7.projection-search` as the only matching, normalization, filtering,
 ranking and cursor owner.
 
@@ -60,8 +61,10 @@ Deployment remain unauthorized.
   their visible data.
 - Added stateless opaque, request-bound cursors containing the cursor version,
   next offset, ranking version and digest of normalized query/resource/filter
-  inputs. Malformed, mismatched or unsafe cursors fail closed; no cursor
-  storage was added. Ranks are contiguous and global across pages.
+  inputs. Canonical retrieval is capped independently at 100; cursor offsets
+  accept any non-negative safe integer so handler-issued offsets beyond 100
+  remain usable. Malformed, mismatched or unsafe cursors fail closed; no
+  cursor storage was added. Ranks are contiguous and global across pages.
 - Replaced locale-sensitive matching/order behavior with locale-independent
   lower-casing and a code-point comparator for deterministic source identity
   ties.
@@ -69,7 +72,11 @@ Deployment remain unauthorized.
   logical digest and visible evidence IDs. Relation-only IDs, hidden/missing
   nodes, digest mismatches and invisible evidence are rejected.
 - Added a real PostgreSQL `PostgresSearchProjectionRepository` QX-01 handler
-  parity test covering the same authority fixture as the in-memory contract.
+  parity test using the same deterministic dual-backend fixture. It compares
+  actual authority-specific source identities, score, match type, rank and
+  label across SUBSTRING, FULL_TEXT and TRIGRAM queries; it also covers equal
+  score/source-ID tie-break, reversed repository input order and PostgreSQL
+  cursor mismatch.
 - Preserved non-ready semantics: Canonical results are not synthesized when
   Search Projection is not READY, while visible Compiled Truth status is
   returned as partial and never promoted to READY.
@@ -100,16 +107,16 @@ the frozen strict request decoder.
 | -------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `npm.cmd run typecheck`                            | PASS                         | Implementation subject head `e9ab04d0dba3f4019ef27779d93f4be2a97a9c77`.                                                                                       |
 | `npm.cmd run lint`                                 | PASS                         | Implementation subject head; repository lint completed without errors.                                                                                        |
-| `npm.cmd run test:contract`                        | PASS                         | 29 files / 229 tests, including 6 QX-01 handler tests at `e9ab04d`.                                                                                           |
-| Focused QX-01 contract                             | PASS                         | 1 file / 6 tests: shared scoring, opaque request-bound cursor, code-point ordering and Derived graph/evidence correlation.                                    |
-| `npm.cmd run test:unit`                            | PASS                         | 39 files / 211 tests at `e9ab04d`.                                                                                                                            |
-| `npm.cmd run test:integration`                     | PASS                         | 15 files / 53 tests at `e9ab04d`, executed sequentially after a resource-contention timeout in a prior parallel run.                                          |
-| `npm.cmd run test:database`                        | PASS                         | 23 files / 103 PostgreSQL tests at `e9ab04d`, `.env` database, maxWorkers=1; includes real PostgreSQL QX-01 handler parity.                                   |
+| `npm.cmd run test:contract`                        | PASS                         | 29 files / 230 tests, including 7 QX-01 handler tests at `eec1cd6`.                                                                                           |
+| Focused QX-01 contract                             | PASS                         | 1 file / 7 tests: shared scoring, opaque request-bound cursor including offset >100, code-point ordering and Derived graph/evidence correlation.              |
+| `npm.cmd run test:unit`                            | PASS                         | 39 files / 211 tests at `eec1cd6`.                                                                                                                            |
+| `npm.cmd run test:integration`                     | PASS                         | 15 files / 53 tests at `eec1cd6`, executed sequentially after a resource-contention timeout in a prior parallel run.                                          |
+| `npm.cmd run test:database`                        | PASS                         | 23 files / 103 PostgreSQL tests at `eec1cd6`, `.env` database, maxWorkers=1; includes QX-01.2 PostgreSQL handler parity.                                      |
 | `npm.cmd run test:architecture`                    | PASS                         | Architecture boundaries verified.                                                                                                                             |
 | Documentation and Frontend governance gates        | PASS                         | Existing governance checks passed before this evidence amendment; the same checks are rerun after the documentation patch.                                    |
-| Changed-file Prettier and `git diff --check`       | PASS                         | QX-01.1 code/test files formatted; no whitespace errors.                                                                                                      |
-| `npm.cmd run format:check`                         | FAIL / pre-existing baseline | 58 repository files remain outside the QX-01.1 changed-file set; no QX-01.1 code/test file appears in the mismatch list. No unrelated formatting was changed. |
-| Exact-head GitHub Actions #391 / run `30726214870` | PASS                         | Subject commit `e9ab04d...`; Frontend, Quality including Database, and Required Gates all succeeded.                                                          |
+| Changed-file Prettier and `git diff --check`       | PASS                         | QX-01.2 code/test files formatted; no whitespace errors.                                                                                                      |
+| `npm.cmd run format:check`                         | FAIL / pre-existing baseline | 58 repository files remain outside the QX-01.2 changed-file set; no QX-01.2 code/test file appears in the mismatch list. No unrelated formatting was changed. |
+| Exact-head GitHub Actions #393 / run `30727376455` | PASS                         | Subject commit `eec1cd6...`; Frontend, Quality including Database, and Required Gates all succeeded.                                                          |
 
 ## OSS, migration and rollback
 
@@ -120,7 +127,8 @@ references remain design/reference inputs only; no new OSS version, license,
 lockfile or runtime dependency is introduced by QX-01.
 
 No database migration or data backfill is required. A bounded rollback is a Git
-revert of `e9ab04d0dba3f4019ef27779d93f4be2a97a9c77`, followed by
+revert of `eec1cd61008029f01b58953f9713d0507710bae3`, followed by
+`e9ab04d0dba3f4019ef27779d93f4be2a97a9c77`,
 `b9587d4bf5509e2836c95db706e024b08dd9e9f0` and
 `1f73c5705010bdf321391fbdcec780e38d02510c`; the prior QX-P0/QX-02 contracts
 remain separately recorded.
@@ -131,7 +139,8 @@ remain separately recorded.
 FE-P3-S1                         IN PROGRESS
 QX-P0.1                         PASS
 QX-02.1                         PASS
-QX-01.1 correction              AUTHORIZED / IMPLEMENTED / PENDING REVIEW
+QX-01.1 correction              AUTHORIZED / IMPLEMENTED
+QX-01.2 correction              AUTHORIZED / IMPLEMENTED / PENDING REVIEW
 QX-01 Stage 7 Handler           IMPLEMENTED / PENDING REVIEW
 Persistent Knowledge Adapter    BLOCKED / NOT AUTHORIZED
 A3 API/Client/Cache             NOT AUTHORIZED
@@ -144,8 +153,8 @@ Runtime Dependency              NONE
 Deployment                      NOT STARTED
 ```
 
-This is implementation and verification evidence, not a QX-01.1 PASS or
+This is implementation and verification evidence, not a QX-01.2 PASS or
 FE-P3-S1 completion record. The next action is to obtain the side-panel
-judgment for the QX-01.1 correction at implementation head `e9ab04d...`; only
+judgment for the QX-01.2 correction at implementation head `eec1cd6...`; only
 an explicit correction or approval instruction from that judgment may drive
 the next bounded change.

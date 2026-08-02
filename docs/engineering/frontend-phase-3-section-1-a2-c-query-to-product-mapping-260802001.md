@@ -1,7 +1,7 @@
 ---
 id: FRONTEND-PHASE-3-SECTION-1-A2-C-QUERY-TO-PRODUCT-MAPPING-260802001
 classification: ENGINEERING_MAPPING
-status: BLOCKED_ON_BOUNDED_QUERY_EXTENSION
+status: SUPERSEDED_BY_A2_C_APPROVAL_REQUEST
 work_item: FE-P3-S1
 sub_slice: A2-C
 authorization: PR-53-COMMENT-5153411017
@@ -10,6 +10,11 @@ branch: codex/frontend-phase-3-section-1-knowledge-workspace
 ---
 
 # FE-P3-S1 A2-C Query-to-Product Mapping
+
+> Historical mapping. The former QX-01/QX-02 blocker has been resolved by the
+> reviewed PASS records. The current A2-C implementation scope and approval
+> state are maintained in
+> `docs/implementation/frontend-phase-3-section-1-a2-c-persistent-knowledge-product-read-adapter-implementation-request-260802002.md`.
 
 ## 1. 조사 범위와 판정
 

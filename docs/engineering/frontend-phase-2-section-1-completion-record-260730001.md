@@ -22,21 +22,21 @@ from implementation completion alone.
 
 ## 2. Conditions satisfied
 
-| Condition | Result | Evidence |
-| --- | --- | --- |
-| ADR and frozen contract | PASS | ADR-122 and Contract Snapshot AC-01 through AC-32 |
-| Product implementation | PASS | PR #46 implementation diff |
-| Migration authorization and execution | PASS | Migration 020 records and database suite |
-| Production Staging | PASS | Sealed Staging Adapter, raw-input boundary and security tests |
-| Production URL acquisition | PASS | Node URL Adapter, secure coordinator and adversarial tests |
-| Browser Submit | PASS | Sources Workspace, write client and Chromium E2E |
-| Exact duplicate lifecycle | PASS | PostgreSQL decision/disposition and concurrency tests |
-| Library, Version, Preview and Evidence | PASS | Product API, component and integration suites |
-| Accessibility and responsive behavior | PASS | semantic component tests, containing Shell gates and mobile E2E |
-| Performance boundary | PASS | bounded requests/inputs and measured hosted-runner Sources scenarios |
-| Exact-head remote Gates | PASS | GitHub Actions run `30536214153` |
-| Explicit user completion approval | PASS | User authorization dated 2026-07-30 |
-| Ready and merge authorization | PASS | User authorization dated 2026-07-30 |
+| Condition                              | Result | Evidence                                                             |
+| -------------------------------------- | ------ | -------------------------------------------------------------------- |
+| ADR and frozen contract                | PASS   | ADR-122 and Contract Snapshot AC-01 through AC-32                    |
+| Product implementation                 | PASS   | PR #46 implementation diff                                           |
+| Migration authorization and execution  | PASS   | Migration 020 records and database suite                             |
+| Production Staging                     | PASS   | Sealed Staging Adapter, raw-input boundary and security tests        |
+| Production URL acquisition             | PASS   | Node URL Adapter, secure coordinator and adversarial tests           |
+| Browser Submit                         | PASS   | Sources Workspace, write client and Chromium E2E                     |
+| Exact duplicate lifecycle              | PASS   | PostgreSQL decision/disposition and concurrency tests                |
+| Library, Version, Preview and Evidence | PASS   | Product API, component and integration suites                        |
+| Accessibility and responsive behavior  | PASS   | semantic component tests, containing Shell gates and mobile E2E      |
+| Performance boundary                   | PASS   | bounded requests/inputs and measured hosted-runner Sources scenarios |
+| Exact-head remote Gates                | PASS   | GitHub Actions run `30536214153`                                     |
+| Explicit user completion approval      | PASS   | User authorization dated 2026-07-30                                  |
+| Ready and merge authorization          | PASS   | User authorization dated 2026-07-30                                  |
 
 ## 3. Final state after merge
 

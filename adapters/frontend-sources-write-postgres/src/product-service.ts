@@ -66,7 +66,9 @@ type ProductItemRow = QueryResultRow & {
 const iso = (value: Date | string): string =>
   value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 
-const inputCapabilities = (state: IntakeSubmissionItemView['state']): readonly SourcesCapability[] => {
+const inputCapabilities = (
+  state: IntakeSubmissionItemView['state'],
+): readonly SourcesCapability[] => {
   if (state === 'ACTION_REQUIRED') return ['RESOLVE_DUPLICATE', 'CANCEL'];
   if (state === 'FAILED' || state === 'CANCELLED' || state === 'OUTCOME_INDETERMINATE') {
     return ['RETRY_SAME_CONTEXT', 'RETRY_CURRENT_POLICY'];
@@ -200,14 +202,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
           artifact.contentHash,
         );
         if (duplicate) {
-          await this.createDuplicateDecision(
-            client,
-            input,
-            artifact,
-            itemId,
-            attemptId,
-            duplicate,
-          );
+          await this.createDuplicateDecision(client, input, artifact, itemId, attemptId, duplicate);
           actionRequired += 1;
         } else {
           await this.materialize(
@@ -223,11 +218,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
         }
       }
       const state =
-        actionRequired === 0
-          ? 'SUCCEEDED'
-          : succeeded === 0
-            ? 'ACTION_REQUIRED'
-            : 'PARTIAL';
+        actionRequired === 0 ? 'SUCCEEDED' : succeeded === 0 ? 'ACTION_REQUIRED' : 'PARTIAL';
       await client.query(
         `UPDATE source_product.intake_submissions
          SET state = $2, completed_at = CASE WHEN $2 = 'SUCCEEDED' THEN $3::timestamptz ELSE NULL END
@@ -504,9 +495,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
             attemptId,
             storedItem(
               artifact,
-              input.disposition === 'CREATE_VERSION_CANDIDATE'
-                ? row.existing_source_id
-                : undefined,
+              input.disposition === 'CREATE_VERSION_CANDIDATE' ? row.existing_source_id : undefined,
             ),
             input.createdAt,
             input.disposition === 'CREATE_VERSION_CANDIDATE',
@@ -855,7 +844,14 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
   ): Promise<void> {
     const recovered = await this.recoverExistingStage2(client, scope.projectId, itemId);
     if (recovered) {
-      await this.finishItem(client, itemId, attemptId, recovered.sourceId, recovered.sourceVersionId, createdAt);
+      await this.finishItem(
+        client,
+        itemId,
+        attemptId,
+        recovered.sourceId,
+        recovered.sourceVersionId,
+        createdAt,
+      );
       return;
     }
     await this.insertStage2Submission(client, scope, itemId, item, createdAt);

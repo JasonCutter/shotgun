@@ -218,9 +218,7 @@ export const createSourcesWriteClient = (
           payload: {
             decisionId: input.decisionId,
             disposition: input.disposition,
-            ...(input.targetSourceId === undefined
-              ? {}
-              : { targetSourceId: input.targetSourceId }),
+            ...(input.targetSourceId === undefined ? {} : { targetSourceId: input.targetSourceId }),
           },
         }),
         options?.signal,

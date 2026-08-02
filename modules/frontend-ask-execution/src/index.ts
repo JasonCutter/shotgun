@@ -215,7 +215,10 @@ export type AskAnswerExecutionRepositoryPort = {
   }): Promise<AskTransitionSeedView | undefined>;
   transaction<T>(action: (transaction: AskExecutionTransactionPort) => Promise<T>): Promise<T>;
   recoverInterrupted(): Promise<number>;
-  claimQueuedForWorker(workerId?: string, limit?: number): Promise<
+  claimQueuedForWorker(
+    workerId?: string,
+    limit?: number,
+  ): Promise<
     readonly {
       readonly scope: AskExecutionScope;
       readonly claimed: AskClaimedExecution;

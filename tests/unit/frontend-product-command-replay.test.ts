@@ -81,12 +81,7 @@ describe('Frontend AnswerRun command replay recovery', () => {
         calls.retry += 1;
         return answerRun;
       },
-      export: async (
-        _scope: unknown,
-        answerRunId: string,
-        format: string,
-        requestId: string,
-      ) => {
+      export: async (_scope: unknown, answerRunId: string, format: string, requestId: string) => {
         calls.export += 1;
         const result = {
           answerRunId,
@@ -221,10 +216,14 @@ describe('Frontend AnswerRun command replay recovery', () => {
 
       expect(responses.map((response) => response.statusCode)).toEqual([200, 200]);
       expect(calls[testCase.action]).toBe(1);
-      const outcome = await gateway.findByClientRequestId('principal-1', testCase.payload.clientRequestId, {
-        resourceKind: 'ASK_ANSWER_RUN',
-        resourceId: 'run-1',
-      });
+      const outcome = await gateway.findByClientRequestId(
+        'principal-1',
+        testCase.payload.clientRequestId,
+        {
+          resourceKind: 'ASK_ANSWER_RUN',
+          resourceId: 'run-1',
+        },
+      );
       expect(outcome).toMatchObject({ outcomeState: 'COMPLETED' });
       expect(outcome?.producedResources.length).toBeGreaterThan(0);
     }

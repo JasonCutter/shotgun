@@ -61,38 +61,38 @@ A reserved identifier may be activated only after historical identity and approv
 
 The tested content Head executed `npm run docs:validate` before formatting, lint and typecheck.
 
-| Check | Result | Evidence |
-| --- | --- | --- |
-| Markdown relative links | `PASS` | 275 relative links evaluated by the validation CLI |
-| ADR ownership and explicit gaps | `PASS` | ADR-001–121 evaluated with one owner or registered gap |
-| Canonical governance paths | `PASS` | Canonical policy and Manifest targets present |
-| Engineering Evidence Registry paths | `PASS` | registered records addressable in Git |
-| Generated Artifact ownership metadata | `PASS` | owner, inputs, generator and versioned targets checked |
-| Migration backlog drift | `PASS` | completed ADD and Frontend migration items not left unresolved |
-| Manifest `target_path` existence | `PASS` | registered targets exist |
+| Check                                 | Result | Evidence                                                       |
+| ------------------------------------- | ------ | -------------------------------------------------------------- |
+| Markdown relative links               | `PASS` | 275 relative links evaluated by the validation CLI             |
+| ADR ownership and explicit gaps       | `PASS` | ADR-001–121 evaluated with one owner or registered gap         |
+| Canonical governance paths            | `PASS` | Canonical policy and Manifest targets present                  |
+| Engineering Evidence Registry paths   | `PASS` | registered records addressable in Git                          |
+| Generated Artifact ownership metadata | `PASS` | owner, inputs, generator and versioned targets checked         |
+| Migration backlog drift               | `PASS` | completed ADD and Frontend migration items not left unresolved |
+| Manifest `target_path` existence      | `PASS` | registered targets exist                                       |
 
 ## GitHub Actions results
 
 Run `30419307755` on tested content Head `ee6089c08bc7b44195610c77276d7e6984da4abe`:
 
-| Job or step | Result |
-| --- | --- |
-| Validate documentation governance | `PASS` |
-| Check formatting | `PASS` |
-| Lint | `PASS` |
-| Typecheck | `PASS` |
-| Dependency audit | `PASS` |
+| Job or step                           | Result |
+| ------------------------------------- | ------ |
+| Validate documentation governance     | `PASS` |
+| Check formatting                      | `PASS` |
+| Lint                                  | `PASS` |
+| Typecheck                             | `PASS` |
+| Dependency audit                      | `PASS` |
 | SBOM generation and JSON verification | `PASS` |
-| Stage 12 reuse and operations Gate | `PASS` |
-| CI test suite | `PASS` |
-| Database tests | `PASS` |
-| Frontend typecheck | `PASS` |
-| Frontend tests | `PASS` |
-| Frontend build | `PASS` |
-| Frontend E2E | `PASS` |
-| Quality job | `PASS` |
-| Frontend job | `PASS` |
-| Required Gates | `PASS` |
+| Stage 12 reuse and operations Gate    | `PASS` |
+| CI test suite                         | `PASS` |
+| Database tests                        | `PASS` |
+| Frontend typecheck                    | `PASS` |
+| Frontend tests                        | `PASS` |
+| Frontend build                        | `PASS` |
+| Frontend E2E                          | `PASS` |
+| Quality job                           | `PASS` |
+| Frontend job                          | `PASS` |
+| Required Gates                        | `PASS` |
 
 ## Failed-attempt history
 

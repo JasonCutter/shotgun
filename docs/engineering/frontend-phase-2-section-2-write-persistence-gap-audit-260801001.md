@@ -3,7 +3,7 @@
 **Date**: 2026-08-01  
 **Repository**: `JasonCutter/shotgun`  
 **Base Canonical Main SHA**: `e24725eac8c44722c7937eca5cb6a28122a4fef3`  
-**Target Branch**: `codex/frontend-phase-2-section-2-write`  
+**Target Branch**: `codex/frontend-phase-2-section-2-write`
 
 ---
 
@@ -12,6 +12,7 @@
 This audit evaluates the gap for **Slices 4~5 (Submit Question Command & Persistence Foundation)** of Frontend Phase 2 Section 2 (Ask & Conversations Workspace).
 
 ### Included Scope
+
 - **Slice 4 (Submit Question Command & Idempotency Boundary)**:
   - Protected Product API Route `POST /product-api/frontend/ask/questions`
   - Server Authority Derivation (Active Project for new questions, Conversation Resource Project for follow-up questions)
@@ -26,6 +27,7 @@ This audit evaluates the gap for **Slices 4~5 (Submit Question Command & Persist
   - Formal Database Migration Proposal for user approval before DDL creation
 
 ### Excluded Scope (Strict Boundary)
+
 - Zero streaming execution (`STREAMING` state stream consumption)
 - Zero external AI provider SDKs or API keys
 - Zero Cancel or Retry commands (`CANCEL`, `RETRY_SAME_CONTEXT`, `RETRY_CURRENT_POLICY`)
@@ -36,13 +38,13 @@ This audit evaluates the gap for **Slices 4~5 (Submit Question Command & Persist
 
 ## 2. Existing Reusable Assets vs. Mandatory New Components
 
-| Area | Existing Reusable Asset | Mandatory New Component |
-| :--- | :--- | :--- |
-| **Command Gateway** | `018_frontend_command_request_outcome_contract.sql`<br/>`buildPrincipalScopedCommandSemanticDigestInput`<br/>`rejectAcceptedCommand` | `SUBMIT_ASK_QUESTION` frontend command type & contracts |
-| **Product API Routes** | Fastify route pattern in `assemblies/shotgun-app/src/product-api/` | `POST /product-api/frontend/ask/questions`<br/>`GET /product-api/frontend/ask/question-submissions/by-client-request/:clientRequestId` |
-| **Read Projections** | `InMemoryAskWorkspaceProjection` | In-memory write mutation updates for `InMemoryAskWorkspaceProjection` |
-| **Client & UI** | `@shotgun/api-client` Ask client & `AskWorkspaceRoute` | `submitQuestion` API client method & UI Submit button enablement (`capabilities: ['SUBMIT_QUESTION']`) |
-| **Persistence** | PostgreSQL DDL pattern in `020_frontend_phase2_sources_product_persistence.sql` | `InMemoryAskWriteAdapter`<br/>Migration Proposal `frontend-phase-2-section-2-persistence-migration-proposal-260801001.md` |
+| Area                   | Existing Reusable Asset                                                                                                              | Mandatory New Component                                                                                                                |
+| :--------------------- | :----------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------- |
+| **Command Gateway**    | `018_frontend_command_request_outcome_contract.sql`<br/>`buildPrincipalScopedCommandSemanticDigestInput`<br/>`rejectAcceptedCommand` | `SUBMIT_ASK_QUESTION` frontend command type & contracts                                                                                |
+| **Product API Routes** | Fastify route pattern in `assemblies/shotgun-app/src/product-api/`                                                                   | `POST /product-api/frontend/ask/questions`<br/>`GET /product-api/frontend/ask/question-submissions/by-client-request/:clientRequestId` |
+| **Read Projections**   | `InMemoryAskWorkspaceProjection`                                                                                                     | In-memory write mutation updates for `InMemoryAskWorkspaceProjection`                                                                  |
+| **Client & UI**        | `@shotgun/api-client` Ask client & `AskWorkspaceRoute`                                                                               | `submitQuestion` API client method & UI Submit button enablement (`capabilities: ['SUBMIT_QUESTION']`)                                 |
+| **Persistence**        | PostgreSQL DDL pattern in `020_frontend_phase2_sources_product_persistence.sql`                                                      | `InMemoryAskWriteAdapter`<br/>Migration Proposal `frontend-phase-2-section-2-persistence-migration-proposal-260801001.md`              |
 
 ---
 
@@ -77,6 +79,7 @@ This audit evaluates the gap for **Slices 4~5 (Submit Question Command & Persist
 ---
 
 ## 5. Next Steps
+
 1. Create Submit Question command types & decoders in `packages/contracts/src/frontend-ask.ts`.
 2. Implement in-memory Ask Write domain service & persistence adapter.
 3. Add `POST /product-api/frontend/ask/questions` & outcome resolution routes.

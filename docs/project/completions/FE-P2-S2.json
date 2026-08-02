@@ -29,9 +29,7 @@
       "title": "Answer Execution",
       "mandatory": true,
       "status": "PASS",
-      "evidence": [
-        "docs/engineering/frontend-phase-2-section-2-i03-verification-260801001.md"
-      ],
+      "evidence": ["docs/engineering/frontend-phase-2-section-2-i03-verification-260801001.md"],
       "scopeAmendment": null
     },
     {
@@ -39,9 +37,7 @@
       "title": "Failure, Streaming, Cancel and Retry",
       "mandatory": true,
       "status": "PASS",
-      "evidence": [
-        "docs/engineering/frontend-phase-2-section-2-i03-verification-260801001.md"
-      ],
+      "evidence": ["docs/engineering/frontend-phase-2-section-2-i03-verification-260801001.md"],
       "scopeAmendment": null
     },
     {

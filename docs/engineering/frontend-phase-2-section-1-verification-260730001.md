@@ -78,24 +78,24 @@ runtime dependency set was not expanded for this Section.
 GitHub Actions run `30536214153` tested
 `496af3d5a5b5903dbd1dcc6a19af157a6b836214`.
 
-| Gate | Result |
-| --- | --- |
-| Knowledge Flow generated baseline | PASS |
-| Documentation governance | PASS |
-| Formatting | PASS |
-| ESLint | PASS |
-| Root TypeScript | PASS |
-| Dependency audit | PASS |
-| CycloneDX SBOM generation and validation | PASS |
-| Database reset and Migration 020 application | PASS |
-| Stage 12 reuse and operations gate | PASS |
-| Unit, contract, integration, architecture and package suites | PASS |
-| PostgreSQL database suite | PASS |
-| Frontend TypeScript | PASS |
-| Frontend component tests | PASS |
-| Frontend production build | PASS |
-| Chromium E2E, 16 tests | PASS |
-| Required Gates aggregate | PASS |
+| Gate                                                         | Result |
+| ------------------------------------------------------------ | ------ |
+| Knowledge Flow generated baseline                            | PASS   |
+| Documentation governance                                     | PASS   |
+| Formatting                                                   | PASS   |
+| ESLint                                                       | PASS   |
+| Root TypeScript                                              | PASS   |
+| Dependency audit                                             | PASS   |
+| CycloneDX SBOM generation and validation                     | PASS   |
+| Database reset and Migration 020 application                 | PASS   |
+| Stage 12 reuse and operations gate                           | PASS   |
+| Unit, contract, integration, architecture and package suites | PASS   |
+| PostgreSQL database suite                                    | PASS   |
+| Frontend TypeScript                                          | PASS   |
+| Frontend component tests                                     | PASS   |
+| Frontend production build                                    | PASS   |
+| Chromium E2E, 16 tests                                       | PASS   |
+| Required Gates aggregate                                     | PASS   |
 
 The three Sources-specific Chromium scenarios passed in approximately 0.7 to
 1.3 seconds each on the hosted runner. They cover successful Direct Text staging
@@ -164,40 +164,40 @@ boundary and were rerun without regression.
 
 ## 6. AC-01 through AC-32 final traceability
 
-| AC | Result | Final evidence |
-| --- | --- | --- |
-| AC-01 | PASS | Versioned contracts, deep decoders and typed failures |
-| AC-02 | PASS | Protected routes derive authority from authenticated Server context; injection negatives pass |
-| AC-03 | PASS | `/sources` and detail routes run behind Session and Route Guard boundaries |
-| AC-04 | PASS | Project-fixed Draft Queue and Leave Guard component/E2E evidence |
-| AC-05 | PASS | Typed Draft Seed re-enters Sources validation without creating Domain state |
-| AC-06 | PASS | Direct Text, File and URL descriptors and bounded validation results |
-| AC-07 | PASS | Browser advisory validation plus authoritative staging and Product validation |
-| AC-08 | PASS | Immutable File bytes, content hash, progress state and Original Asset persistence |
-| AC-09 | PASS | Replaceable server URL Port, DNS/IP/redirect/timeout/byte security corpus |
-| AC-10 | PASS | Durable redacted URL provenance and failure/success receipt ownership |
-| AC-11 | PASS | Versioned commands, idempotency, semantic digest and replay protection |
-| AC-12 | PASS | Server-authoritative IntakeSubmissionSnapshot lifecycle |
-| AC-13 | PASS | Per-item partial results, capabilities and attention reasons |
-| AC-14 | PASS | Existing clientRequestId outcome resolution; no automatic new-key resubmit |
-| AC-15 | PASS | Capability-controlled cancel and non-rollback semantics |
-| AC-16 | PASS | New linked Attempts for same-context/current-policy retry |
-| AC-17 | PASS | Exact duplicate authority from immutable content hash and accepted context |
-| AC-18 | PASS | Immutable Decision and explicit allowed disposition command |
-| AC-19 | PASS | Stale and concurrent decision tests permit at most one disposition |
-| AC-20 | PASS | Bounded active-Project Source Library projection |
-| AC-21 | PASS | Server search/filter/sort/cursor contract and bounded query |
-| AC-22 | PASS | Library visibility, Preview readiness and Ask state remain independent |
-| AC-23 | PASS | Source detail masks storage keys and private paths |
-| AC-24 | PASS | Ordered Version history and explicit Version pinning |
-| AC-25 | PASS | Original Preview and approved text/page/cell/shape/CSS locators |
-| AC-26 | PASS | Evidence binding, highlight, hash/revision verification and original return |
-| AC-27 | PASS | Typed Citation return preserves resource revision, scroll, focus and panel identity |
-| AC-28 | PASS | Principal/Session/Project/Version/revision/policy cache keys and purge negatives |
-| AC-29 | PASS | Offline blocks write/search/download actions while stale safe reads remain explicit |
-| AC-30 | PASS | CSRF, authority, cross-Project, storage, payload, URL and token negative suites |
-| AC-31 | PASS | Semantic accessibility tests, mobile E2E, containing Shell gates and bounded measured performance |
-| AC-32 | PASS | Exact-head full remote Gates, explicit user approval and authorized merge/completion record |
+| AC    | Result | Final evidence                                                                                    |
+| ----- | ------ | ------------------------------------------------------------------------------------------------- |
+| AC-01 | PASS   | Versioned contracts, deep decoders and typed failures                                             |
+| AC-02 | PASS   | Protected routes derive authority from authenticated Server context; injection negatives pass     |
+| AC-03 | PASS   | `/sources` and detail routes run behind Session and Route Guard boundaries                        |
+| AC-04 | PASS   | Project-fixed Draft Queue and Leave Guard component/E2E evidence                                  |
+| AC-05 | PASS   | Typed Draft Seed re-enters Sources validation without creating Domain state                       |
+| AC-06 | PASS   | Direct Text, File and URL descriptors and bounded validation results                              |
+| AC-07 | PASS   | Browser advisory validation plus authoritative staging and Product validation                     |
+| AC-08 | PASS   | Immutable File bytes, content hash, progress state and Original Asset persistence                 |
+| AC-09 | PASS   | Replaceable server URL Port, DNS/IP/redirect/timeout/byte security corpus                         |
+| AC-10 | PASS   | Durable redacted URL provenance and failure/success receipt ownership                             |
+| AC-11 | PASS   | Versioned commands, idempotency, semantic digest and replay protection                            |
+| AC-12 | PASS   | Server-authoritative IntakeSubmissionSnapshot lifecycle                                           |
+| AC-13 | PASS   | Per-item partial results, capabilities and attention reasons                                      |
+| AC-14 | PASS   | Existing clientRequestId outcome resolution; no automatic new-key resubmit                        |
+| AC-15 | PASS   | Capability-controlled cancel and non-rollback semantics                                           |
+| AC-16 | PASS   | New linked Attempts for same-context/current-policy retry                                         |
+| AC-17 | PASS   | Exact duplicate authority from immutable content hash and accepted context                        |
+| AC-18 | PASS   | Immutable Decision and explicit allowed disposition command                                       |
+| AC-19 | PASS   | Stale and concurrent decision tests permit at most one disposition                                |
+| AC-20 | PASS   | Bounded active-Project Source Library projection                                                  |
+| AC-21 | PASS   | Server search/filter/sort/cursor contract and bounded query                                       |
+| AC-22 | PASS   | Library visibility, Preview readiness and Ask state remain independent                            |
+| AC-23 | PASS   | Source detail masks storage keys and private paths                                                |
+| AC-24 | PASS   | Ordered Version history and explicit Version pinning                                              |
+| AC-25 | PASS   | Original Preview and approved text/page/cell/shape/CSS locators                                   |
+| AC-26 | PASS   | Evidence binding, highlight, hash/revision verification and original return                       |
+| AC-27 | PASS   | Typed Citation return preserves resource revision, scroll, focus and panel identity               |
+| AC-28 | PASS   | Principal/Session/Project/Version/revision/policy cache keys and purge negatives                  |
+| AC-29 | PASS   | Offline blocks write/search/download actions while stale safe reads remain explicit               |
+| AC-30 | PASS   | CSRF, authority, cross-Project, storage, payload, URL and token negative suites                   |
+| AC-31 | PASS   | Semantic accessibility tests, mobile E2E, containing Shell gates and bounded measured performance |
+| AC-32 | PASS   | Exact-head full remote Gates, explicit user approval and authorized merge/completion record       |
 
 Aggregate:
 

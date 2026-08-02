@@ -163,7 +163,7 @@ The Command Ledger stores only registered failure codes.
 The implementation must not persist:
 
 ```ts
-String(error.code)
+String(error.code);
 ```
 
 from an arbitrary object.

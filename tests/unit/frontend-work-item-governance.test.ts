@@ -168,11 +168,7 @@ describe('Frontend Work Item governance', () => {
   });
 
   it('rejects an unregistered Phase reference in an active document', () => {
-    const errors = collectWorkItemErrors(
-      registryFixture(),
-      { 'plan.md': 'Start FE-P9.' },
-      exists,
-    );
+    const errors = collectWorkItemErrors(registryFixture(), { 'plan.md': 'Start FE-P9.' }, exists);
     expect(errors).toContain('Unregistered Frontend Work Item reference in plan.md: FE-P9');
   });
 
@@ -374,14 +370,10 @@ describe('Frontend Work Item governance', () => {
         approvedAt: '2026-08-02',
       });
     }
-    const errors = collectWorkItemErrors(
-      registry,
-      {},
-      exists,
-      (relativePath) =>
-        relativePath === 'accepted-decision.md'
-          ? 'Decision status: **ACCEPTED**\n- Approved by: user-a\n- Approved at: 2026-08-01'
-          : undefined,
+    const errors = collectWorkItemErrors(registry, {}, exists, (relativePath) =>
+      relativePath === 'accepted-decision.md'
+        ? 'Decision status: **ACCEPTED**\n- Approved by: user-a\n- Approved at: 2026-08-01'
+        : undefined,
     );
     expect(errors.join('\n')).toContain('approval metadata does not match');
   });
@@ -500,7 +492,9 @@ describe('Frontend Work Item governance', () => {
       evidence,
       exists,
     );
-    expect(errors.join('\n')).toContain('tracking owner must match Scope Amendment AMEND-1 newOwner');
+    expect(errors.join('\n')).toContain(
+      'tracking owner must match Scope Amendment AMEND-1 newOwner',
+    );
   });
 
   it('rejects excluded scope without an approved amendment', () => {
@@ -660,16 +654,14 @@ describe('Frontend Work Item governance', () => {
         approvedAt: null,
       });
     }
-    const errors = collectWorkItemErrors(
-      registry,
-      {},
-      exists,
-      (relativePath) =>
-        relativePath === 'accepted-decision.md'
-          ? 'Decision status: **ACCEPTED**\n- Approved by: user-a\n- Approved at: 2026-08-01'
-          : undefined,
+    const errors = collectWorkItemErrors(registry, {}, exists, (relativePath) =>
+      relativePath === 'accepted-decision.md'
+        ? 'Decision status: **ACCEPTED**\n- Approved by: user-a\n- Approved at: 2026-08-01'
+        : undefined,
     );
-    expect(errors).not.toContain('Accepted Work Item FE-P3 requires Decision approver and approval date');
+    expect(errors).not.toContain(
+      'Accepted Work Item FE-P3 requires Decision approver and approval date',
+    );
     expect(errors).not.toContain('approval metadata does not match docs/accepted-decision.md');
   });
 
@@ -755,7 +747,11 @@ describe('Frontend Work Item governance', () => {
       [{ id: 'S1', path: 's1-evidence.md' }, ...evidence.filter((record) => record.id !== 'S1')],
       exists,
     );
-    expect(errors).toContain('Legacy completion Evidence Registry record for FE-P2-S1 has no approver');
-    expect(errors).toContain('Legacy completion Evidence Registry record for FE-P2-S1 has no approval date');
+    expect(errors).toContain(
+      'Legacy completion Evidence Registry record for FE-P2-S1 has no approver',
+    );
+    expect(errors).toContain(
+      'Legacy completion Evidence Registry record for FE-P2-S1 has no approval date',
+    );
   });
 });

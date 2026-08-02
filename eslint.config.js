@@ -20,8 +20,7 @@ export default tseslint.config(
       '@typescript-eslint/no-unused-vars': [
         'error',
         {
-          varsIgnorePattern:
-            '^(CreateSourcesIntakeSubmissionInput|SourcesUrlSuccessProvenance)$',
+          varsIgnorePattern: '^(CreateSourcesIntakeSubmissionInput|SourcesUrlSuccessProvenance)$',
         },
       ],
     },

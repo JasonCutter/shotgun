@@ -95,11 +95,7 @@ export class NodeUrlHopTransport implements UrlHopTransportPort {
           operation: `${phase}-timeout`,
           retryable: true,
         });
-      const abortWith = (
-        request: http.ClientRequest,
-        error: ShotgunError,
-        operation: string,
-      ) => {
+      const abortWith = (request: http.ClientRequest, error: ShotgunError, operation: string) => {
         terminalError = error;
         finishError(error, operation);
         request.destroy(error);
@@ -192,9 +188,7 @@ export class NodeUrlHopTransport implements UrlHopTransportPort {
                 : {}),
             });
           });
-          response.once('error', (error) =>
-            finishError(terminalError ?? error, 'response-stream'),
-          );
+          response.once('error', (error) => finishError(terminalError ?? error, 'response-stream'));
         },
       );
 

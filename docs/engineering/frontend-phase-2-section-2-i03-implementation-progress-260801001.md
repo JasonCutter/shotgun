@@ -72,17 +72,17 @@ explicit `PROPOSED` seeds only.
 - `npm.cmd run lint`
 - `npm.cmd run test:unit` (38 files, 203 tests)
 - `npx.cmd vitest run tests/unit/frontend-command-gateway.test.ts
-  tests/unit/frontend-product-command-replay.test.ts --maxWorkers=1
-  --fileParallelism=false` (2 files, 7 tests)
+tests/unit/frontend-product-command-replay.test.ts --maxWorkers=1
+--fileParallelism=false` (2 files, 7 tests)
 - `npx.cmd vitest run tests/contract/frontend-ask.contract.test.ts
-  tests/contract/frontend-ask-execution.contract.test.ts --maxWorkers=1
-  --fileParallelism=false` (2 files, 12 tests)
+tests/contract/frontend-ask-execution.contract.test.ts --maxWorkers=1
+--fileParallelism=false` (2 files, 12 tests)
 - `npx.cmd vitest run tests/contract --testTimeout=20000
-  --hookTimeout=20000 --maxWorkers=1 --fileParallelism=false` (25 files, 201
+--hookTimeout=20000 --maxWorkers=1 --fileParallelism=false` (25 files, 201
   tests)
 - `npm.cmd run test:integration` (15 files, 52 tests)
 - `npx.cmd vitest run tests/integration/frontend-ask-product-api.test.ts
-  --maxWorkers=1 --fileParallelism=false` (1 test)
+--maxWorkers=1 --fileParallelism=false` (1 test)
 - `npm.cmd run frontend:test` (10 files, 32 tests)
 - `npm.cmd run frontend:build`
 - `npm.cmd run test:architecture`
@@ -100,12 +100,12 @@ explicit `PROPOSED` seeds only.
 - `npx.cmd vitest run tests/unit/frontend-ask-execution.test.ts tests/unit/gemini-provider.test.ts tests/contract/frontend-ask.contract.test.ts tests/contract/frontend-ask-execution.contract.test.ts --maxWorkers=1 --fileParallelism=false` (19 tests)
 - `npx.cmd vitest run tests/integration/frontend-ask-product-api.test.ts --maxWorkers=1 --fileParallelism=false`
 - `node --env-file-if-exists=.env node_modules/vitest/vitest.mjs run
-  tests/unit/frontend-ask-execution.test.ts
-  tests/unit/frontend-ask-write-postgres.test.ts
-  tests/unit/postgres-transaction.test.ts
-  tests/unit/frontend-command-gateway.test.ts
-  tests/contract/frontend-ask.contract.test.ts --maxWorkers=1
-  --fileParallelism=false` (5 files, 29 tests)
+tests/unit/frontend-ask-execution.test.ts
+tests/unit/frontend-ask-write-postgres.test.ts
+tests/unit/postgres-transaction.test.ts
+tests/unit/frontend-command-gateway.test.ts
+tests/contract/frontend-ask.contract.test.ts --maxWorkers=1
+--fileParallelism=false` (5 files, 29 tests)
 
 A previous full database-suite rerun exceeded the 120-second local command
 limit after the executed suites reported success. The current focused Ask

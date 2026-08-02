@@ -3,11 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, Outlet, RouterProvider } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
-import type {
-  GlobalShellView,
-  ShotgunApiClient,
-  SourceLibraryPageView,
-} from '@shotgun/api-client';
+import type { GlobalShellView, ShotgunApiClient, SourceLibraryPageView } from '@shotgun/api-client';
 
 import { createFrontendQueryClient } from '../app/query-client.js';
 import { AppProviders, type AppRuntime } from '../app/providers.js';

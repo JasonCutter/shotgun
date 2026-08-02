@@ -6,11 +6,11 @@ Non-ADR files under `docs/architecture/contracts/snapshots/` identified through 
 
 ## Records reviewed
 
-| Record | Source | Result |
-| --- | --- | --- |
+| Record                                                        | Source           | Result                       |
+| ------------------------------------------------------------- | ---------------- | ---------------------------- |
 | Frontend Phase 1 Section 2 State and Cache Ownership Revision | PR #27 / ADR-119 | `ACTIVE_STANDALONE_REVISION` |
-| Frontend Phase 1 Section 3 Contract Snapshot | PR #21 / ADR-115 | `ACTIVE_BASE` |
-| Frontend Phase 1 Section 3 Persistence Contract Revision | PR #23 / ADR-116 | `ACTIVE_ADDITIVE_AMENDMENT` |
+| Frontend Phase 1 Section 3 Contract Snapshot                  | PR #21 / ADR-115 | `ACTIVE_BASE`                |
+| Frontend Phase 1 Section 3 Persistence Contract Revision      | PR #23 / ADR-116 | `ACTIVE_ADDITIVE_AMENDMENT`  |
 
 ## Authority analysis
 
@@ -32,16 +32,16 @@ Recommended and approved resolution:
 
 ## Checks
 
-| Check | Result |
-| --- | --- |
-| Every identified Snapshot has one Registry entry | PASS |
-| Every Registry path exists | pending remote documentation Gate |
-| Duplicate authoritative owner | PASS — none |
-| Whole-record supersession requiring classification | PASS — none |
-| Explicit additive base relationship preserved | PASS |
-| Product implementation status kept separate | PASS |
-| Original immutable Snapshot files modified | PASS — no |
-| Unresolved semantic conflict | PASS — none |
+| Check                                              | Result                            |
+| -------------------------------------------------- | --------------------------------- |
+| Every identified Snapshot has one Registry entry   | PASS                              |
+| Every Registry path exists                         | pending remote documentation Gate |
+| Duplicate authoritative owner                      | PASS — none                       |
+| Whole-record supersession requiring classification | PASS — none                       |
+| Explicit additive base relationship preserved      | PASS                              |
+| Product implementation status kept separate        | PASS                              |
+| Original immutable Snapshot files modified         | PASS — no                         |
+| Unresolved semantic conflict                       | PASS — none                       |
 
 ## Claim supported
 

@@ -52,57 +52,57 @@ The source body's historical line naming Notion as the Canonical record is retai
 
 ## Verification results
 
-| Check | Result | Evidence |
-| --- | --- | --- |
-| Live Google Doc fetched before migration | `PASS` | Document ID, revision `9`, and modified timestamp recorded above |
-| Source version | `PASS` | Title and status identify `v0.3` |
-| Source export integrity | `PASS` | SHA-256 recorded above |
-| Semantic body equivalence | `PASS` | 263 normalized non-empty source lines equal the migrated body after removal of Git metadata and formatting syntax |
-| Phase count and sequence | `PASS` | 6 unique Phases, exactly `1` through `6` |
-| Step count and sequence | `PASS` | 22 unique Steps, exactly `1` through `22` |
-| Section candidate count | `PASS` | 178 Section identifiers |
-| Section identifier uniqueness | `PASS` | 178 unique identifiers; no duplicate candidate number |
-| First and last Section identifiers | `PASS` | `1.1` and `22.9` |
-| v0.1, v0.2, and v0.3 history retained | `PASS` | All three source change-history entries present |
-| Frontend transversal record retained | `PASS` | v0.3 architecture record present at document end |
-| Historical authority wording handled transparently | `PASS` | Source wording retained and supersession note added |
-| Product code, runtime, database, dependency, or deployment change | `N/A` | Documentation migration only |
-| `npm run docs:validate` | `NOT_IMPLEMENTED` | No matching package script at base |
-| `npm run docs:links` | `NOT_IMPLEMENTED` | No matching package script at base |
-| `npm run docs:adr-index` | `NOT_IMPLEMENTED` | No matching package script at base |
-| `npm run docs:canonical` | `NOT_IMPLEMENTED` | No matching package script at base |
-| `npm run docs:drift` | `NOT_IMPLEMENTED` | No matching package script at base |
-| Local repository-wide commands | `NOT_RUN` | Migration performed through connected Drive and GitHub tools without a synchronized local checkout |
-| GitHub Actions run `30411429967` | `PASS` | Tested head `a66814534b8661a4b294c61a792326222e5793f8`; Quality, Frontend, and Required Gates succeeded |
-| Merge | `PENDING` | Requires separate explicit user approval |
-| Canonical publication | `PENDING` | Becomes Canonical only after merge to `main` |
+| Check                                                             | Result            | Evidence                                                                                                          |
+| ----------------------------------------------------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Live Google Doc fetched before migration                          | `PASS`            | Document ID, revision `9`, and modified timestamp recorded above                                                  |
+| Source version                                                    | `PASS`            | Title and status identify `v0.3`                                                                                  |
+| Source export integrity                                           | `PASS`            | SHA-256 recorded above                                                                                            |
+| Semantic body equivalence                                         | `PASS`            | 263 normalized non-empty source lines equal the migrated body after removal of Git metadata and formatting syntax |
+| Phase count and sequence                                          | `PASS`            | 6 unique Phases, exactly `1` through `6`                                                                          |
+| Step count and sequence                                           | `PASS`            | 22 unique Steps, exactly `1` through `22`                                                                         |
+| Section candidate count                                           | `PASS`            | 178 Section identifiers                                                                                           |
+| Section identifier uniqueness                                     | `PASS`            | 178 unique identifiers; no duplicate candidate number                                                             |
+| First and last Section identifiers                                | `PASS`            | `1.1` and `22.9`                                                                                                  |
+| v0.1, v0.2, and v0.3 history retained                             | `PASS`            | All three source change-history entries present                                                                   |
+| Frontend transversal record retained                              | `PASS`            | v0.3 architecture record present at document end                                                                  |
+| Historical authority wording handled transparently                | `PASS`            | Source wording retained and supersession note added                                                               |
+| Product code, runtime, database, dependency, or deployment change | `N/A`             | Documentation migration only                                                                                      |
+| `npm run docs:validate`                                           | `NOT_IMPLEMENTED` | No matching package script at base                                                                                |
+| `npm run docs:links`                                              | `NOT_IMPLEMENTED` | No matching package script at base                                                                                |
+| `npm run docs:adr-index`                                          | `NOT_IMPLEMENTED` | No matching package script at base                                                                                |
+| `npm run docs:canonical`                                          | `NOT_IMPLEMENTED` | No matching package script at base                                                                                |
+| `npm run docs:drift`                                              | `NOT_IMPLEMENTED` | No matching package script at base                                                                                |
+| Local repository-wide commands                                    | `NOT_RUN`         | Migration performed through connected Drive and GitHub tools without a synchronized local checkout                |
+| GitHub Actions run `30411429967`                                  | `PASS`            | Tested head `a66814534b8661a4b294c61a792326222e5793f8`; Quality, Frontend, and Required Gates succeeded           |
+| Merge                                                             | `PENDING`         | Requires separate explicit user approval                                                                          |
+| Canonical publication                                             | `PENDING`         | Becomes Canonical only after merge to `main`                                                                      |
 
 ## Remote CI evidence
 
 GitHub Actions run `30411429967` completed successfully for PR #33 head `a66814534b8661a4b294c61a792326222e5793f8`.
 
-| Job | Result | Evidence |
-| --- | --- | --- |
-| `Quality` | `PASS` | Job `90448162958`; formatting, lint, typecheck, dependency audit, SBOM, Stage 12 Gate, CI suite, and database tests passed |
-| `Frontend` | `PASS` | Job `90448163056`; frontend typecheck, tests, build, and Playwright E2E passed |
-| `Required Gates` | `PASS` | Job `90448459928`; required job aggregation passed |
+| Job              | Result | Evidence                                                                                                                   |
+| ---------------- | ------ | -------------------------------------------------------------------------------------------------------------------------- |
+| `Quality`        | `PASS` | Job `90448162958`; formatting, lint, typecheck, dependency audit, SBOM, Stage 12 Gate, CI suite, and database tests passed |
+| `Frontend`       | `PASS` | Job `90448163056`; frontend typecheck, tests, build, and Playwright E2E passed                                             |
+| `Required Gates` | `PASS` | Job `90448459928`; required job aggregation passed                                                                         |
 
 This evidence applies to the first tested PR head. The evidence-record update that contains these results creates a later head and requires its own final GitHub Actions result before merge.
 
 ## Evidence-state separation
 
-| Evidence class | State | Notes |
-| --- | --- | --- |
-| Source retrieval and revision identity | `PASS` | Live Google Doc revision `9` was used |
-| Structural and semantic migration verification | `PASS` | 6 Phases, 22 Steps, 178 unique Section candidates, normalized body equivalence |
-| Git branch publication | `PASS` | Branch and six-file migration delta published |
-| Draft pull request | `PASS` | PR #33 is open as Draft |
-| First-head remote CI | `PASS` | Run `30411429967` |
-| Final-head remote CI | `PENDING` | Required after this evidence update |
-| User merge approval | `PENDING` | Separate explicit approval required |
-| Merge | `PENDING` | Not performed |
-| Canonical publication | `PENDING` | Effective only after merge to `main` |
-| Deployment/production | `N/A` | Documentation migration only |
+| Evidence class                                 | State     | Notes                                                                          |
+| ---------------------------------------------- | --------- | ------------------------------------------------------------------------------ |
+| Source retrieval and revision identity         | `PASS`    | Live Google Doc revision `9` was used                                          |
+| Structural and semantic migration verification | `PASS`    | 6 Phases, 22 Steps, 178 unique Section candidates, normalized body equivalence |
+| Git branch publication                         | `PASS`    | Branch and six-file migration delta published                                  |
+| Draft pull request                             | `PASS`    | PR #33 is open as Draft                                                        |
+| First-head remote CI                           | `PASS`    | Run `30411429967`                                                              |
+| Final-head remote CI                           | `PENDING` | Required after this evidence update                                            |
+| User merge approval                            | `PENDING` | Separate explicit approval required                                            |
+| Merge                                          | `PENDING` | Not performed                                                                  |
+| Canonical publication                          | `PENDING` | Effective only after merge to `main`                                           |
+| Deployment/production                          | `N/A`     | Documentation migration only                                                   |
 
 ## Manifest and backlog effect
 

@@ -74,8 +74,7 @@ const decodeSeed = (
             ...common,
             kind: 'DIRECT_TEXT',
             text: decoded.input.text,
-            validation:
-              decoded.input.text.trim() && size <= MAX_ACTIVE_BYTES ? 'READY' : 'INVALID',
+            validation: decoded.input.text.trim() && size <= MAX_ACTIVE_BYTES ? 'READY' : 'INVALID',
             message:
               size <= MAX_ACTIVE_BYTES
                 ? 'Seeded Direct Text must be reviewed before submission.'
@@ -143,11 +142,7 @@ export const useSourceIntakeDraftQueue = (activeProjectId: string, seedInput?: u
   const { registerLeaveGuard } = useLeaveGuard();
 
   const updateItems = useCallback(
-    (
-      updater: (
-        current: readonly SourceIntakeDraftItem[],
-      ) => readonly SourceIntakeDraftItem[],
-    ) => {
+    (updater: (current: readonly SourceIntakeDraftItem[]) => readonly SourceIntakeDraftItem[]) => {
       const nextItems = updater(itemsRef.current);
       itemsRef.current = nextItems;
       setItems(nextItems);

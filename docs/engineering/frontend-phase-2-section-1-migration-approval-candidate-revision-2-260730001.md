@@ -31,15 +31,15 @@ PR Ready transition, merge or Section completion.
 
 Existing owners remain authoritative:
 
-| Meaning | Existing owner |
-|---|---|
-| normalized Stage 2 input | `intake.submissions` |
-| immutable original bytes | `asset.original_assets` plus the existing Asset Storage Port |
-| logical Source | `asset.sources` |
-| immutable SourceVersion | `asset.source_versions` |
-| Stage 2 storage result | `asset.storage_receipts` |
-| command acceptance, idempotency and outcome | `frontend_command.command_ledger` |
-| Principal, Session and Project | `auth.principals`, `auth.sessions`, `project_admin.projects` |
+| Meaning                                     | Existing owner                                               |
+| ------------------------------------------- | ------------------------------------------------------------ |
+| normalized Stage 2 input                    | `intake.submissions`                                         |
+| immutable original bytes                    | `asset.original_assets` plus the existing Asset Storage Port |
+| logical Source                              | `asset.sources`                                              |
+| immutable SourceVersion                     | `asset.source_versions`                                      |
+| Stage 2 storage result                      | `asset.storage_receipts`                                     |
+| command acceptance, idempotency and outcome | `frontend_command.command_ledger`                            |
+| Principal, Session and Project              | `auth.principals`, `auth.sessions`, `project_admin.projects` |
 
 The new exact schema is `source_product`. It owns Product lifecycle, attempt,
 duplicate-choice and URL provenance metadata only. It does not create a second
@@ -77,23 +77,23 @@ which remain `text`.
 
 ### 4.1 `source_product.intake_submissions`
 
-| Column | PostgreSQL type | Null | Rule |
-|---|---:|---:|---|
-| `submission_id` | `uuid` | no | primary key, Server-generated |
-| `project_id` | `text` | no | FK `project_admin.projects(id)` `ON DELETE RESTRICT` |
-| `principal_id` | `uuid` | no | FK `auth.principals(principal_id)` `ON DELETE RESTRICT` |
-| `session_id` | `uuid` | no | FK `auth.sessions(session_id)` `ON DELETE RESTRICT` |
-| `create_command_id` | `text` | no | unique FK `frontend_command.command_ledger(command_id)` `ON DELETE RESTRICT` |
-| `state` | `text` | no | Submission state set below |
-| `origin_kind` | `text` | no | `NATIVE` or reserved `LEGACY_COMPATIBILITY`; default `NATIVE` |
-| `accepted_policy_context_id` | `text` | no | non-empty, maximum 512 characters |
-| `accepted_policy_binding` | `jsonb` | no | JSON object, Server-accepted safe binding |
-| `access_revision` | `text` | no | non-empty, maximum 512 characters |
-| `policy_context_revision` | `text` | no | non-empty, maximum 512 characters |
-| `submission_revision` | `bigint` | no | starts at 1, monotonic |
-| `created_at` | `timestamptz` | no | Server time |
-| `updated_at` | `timestamptz` | no | Server time, not before `created_at` |
-| `completed_at` | `timestamptz` | yes | required only for `SUCCEEDED`, `FAILED`, `CANCELLED` |
+| Column                       | PostgreSQL type | Null | Rule                                                                         |
+| ---------------------------- | --------------: | ---: | ---------------------------------------------------------------------------- |
+| `submission_id`              |          `uuid` |   no | primary key, Server-generated                                                |
+| `project_id`                 |          `text` |   no | FK `project_admin.projects(id)` `ON DELETE RESTRICT`                         |
+| `principal_id`               |          `uuid` |   no | FK `auth.principals(principal_id)` `ON DELETE RESTRICT`                      |
+| `session_id`                 |          `uuid` |   no | FK `auth.sessions(session_id)` `ON DELETE RESTRICT`                          |
+| `create_command_id`          |          `text` |   no | unique FK `frontend_command.command_ledger(command_id)` `ON DELETE RESTRICT` |
+| `state`                      |          `text` |   no | Submission state set below                                                   |
+| `origin_kind`                |          `text` |   no | `NATIVE` or reserved `LEGACY_COMPATIBILITY`; default `NATIVE`                |
+| `accepted_policy_context_id` |          `text` |   no | non-empty, maximum 512 characters                                            |
+| `accepted_policy_binding`    |         `jsonb` |   no | JSON object, Server-accepted safe binding                                    |
+| `access_revision`            |          `text` |   no | non-empty, maximum 512 characters                                            |
+| `policy_context_revision`    |          `text` |   no | non-empty, maximum 512 characters                                            |
+| `submission_revision`        |        `bigint` |   no | starts at 1, monotonic                                                       |
+| `created_at`                 |   `timestamptz` |   no | Server time                                                                  |
+| `updated_at`                 |   `timestamptz` |   no | Server time, not before `created_at`                                         |
+| `completed_at`               |   `timestamptz` |  yes | required only for `SUCCEEDED`, `FAILED`, `CANCELLED`                         |
 
 Required unique/index shape:
 
@@ -106,33 +106,33 @@ Required unique/index shape:
 
 `submission_item_id` is authority. `client_item_id` is bounded correlation only.
 
-| Column | PostgreSQL type | Null | Rule |
-|---|---:|---:|---|
-| `submission_item_id` | `uuid` | no | primary key, Server-generated |
-| `project_id` | `text` | no | part of composite Submission FK |
-| `submission_id` | `uuid` | no | composite FK to `intake_submissions(project_id, submission_id)` `RESTRICT` |
-| `client_item_id` | `text` | no | 1–200 characters; unique per Submission |
-| `ordinal` | `integer` | no | zero or greater; unique per Submission |
-| `input_kind` | `text` | no | `DIRECT_TEXT`, `FILE`, `URL` |
-| `label` | `text` | no | trimmed, 1–500 characters |
-| `input_manifest` | `jsonb` | no | safe JSON object; never original bytes |
-| `state` | `text` | no | Item state set below |
-| `validation_results` | `jsonb` | no | JSON array; default `[]` |
-| `content_hash` | `text` | yes | `sha256:` plus 64 lowercase hex characters |
-| `media_type` | `text` | yes | bounded Server-validated value |
-| `size_bytes` | `bigint` | yes | greater than zero |
-| `stage2_submission_id` | `text` | yes | when present equals `submission_item_id::text` |
-| `produced_source_id` | `uuid` | yes | composite Project/Source FK |
-| `produced_source_version_id` | `uuid` | yes | composite Source/Version FK |
-| `active_duplicate_decision_id` | `uuid` | yes | composite Item/Decision FK added after Decision table |
-| `attention_reason` | `text` | yes | maximum 2,000 characters |
-| `safe_failure_code` | `text` | yes | all three failure fields null or present |
-| `safe_failure_message` | `text` | yes | maximum 2,000 characters |
-| `safe_failure_retryable` | `boolean` | yes | all three failure fields null or present |
-| `item_revision` | `bigint` | no | starts at 1, monotonic |
-| `created_at` | `timestamptz` | no | Server time |
-| `updated_at` | `timestamptz` | no | Server time |
-| `completed_at` | `timestamptz` | yes | terminal Item states only |
+| Column                         | PostgreSQL type | Null | Rule                                                                       |
+| ------------------------------ | --------------: | ---: | -------------------------------------------------------------------------- |
+| `submission_item_id`           |          `uuid` |   no | primary key, Server-generated                                              |
+| `project_id`                   |          `text` |   no | part of composite Submission FK                                            |
+| `submission_id`                |          `uuid` |   no | composite FK to `intake_submissions(project_id, submission_id)` `RESTRICT` |
+| `client_item_id`               |          `text` |   no | 1–200 characters; unique per Submission                                    |
+| `ordinal`                      |       `integer` |   no | zero or greater; unique per Submission                                     |
+| `input_kind`                   |          `text` |   no | `DIRECT_TEXT`, `FILE`, `URL`                                               |
+| `label`                        |          `text` |   no | trimmed, 1–500 characters                                                  |
+| `input_manifest`               |         `jsonb` |   no | safe JSON object; never original bytes                                     |
+| `state`                        |          `text` |   no | Item state set below                                                       |
+| `validation_results`           |         `jsonb` |   no | JSON array; default `[]`                                                   |
+| `content_hash`                 |          `text` |  yes | `sha256:` plus 64 lowercase hex characters                                 |
+| `media_type`                   |          `text` |  yes | bounded Server-validated value                                             |
+| `size_bytes`                   |        `bigint` |  yes | greater than zero                                                          |
+| `stage2_submission_id`         |          `text` |  yes | when present equals `submission_item_id::text`                             |
+| `produced_source_id`           |          `uuid` |  yes | composite Project/Source FK                                                |
+| `produced_source_version_id`   |          `uuid` |  yes | composite Source/Version FK                                                |
+| `active_duplicate_decision_id` |          `uuid` |  yes | composite Item/Decision FK added after Decision table                      |
+| `attention_reason`             |          `text` |  yes | maximum 2,000 characters                                                   |
+| `safe_failure_code`            |          `text` |  yes | all three failure fields null or present                                   |
+| `safe_failure_message`         |          `text` |  yes | maximum 2,000 characters                                                   |
+| `safe_failure_retryable`       |       `boolean` |  yes | all three failure fields null or present                                   |
+| `item_revision`                |        `bigint` |   no | starts at 1, monotonic                                                     |
+| `created_at`                   |   `timestamptz` |   no | Server time                                                                |
+| `updated_at`                   |   `timestamptz` |   no | Server time                                                                |
+| `completed_at`                 |   `timestamptz` |  yes | terminal Item states only                                                  |
 
 Required foreign keys and checks:
 
@@ -159,23 +159,23 @@ null.
 
 One accepted submit/retry/cancel command creates one Attempt per targeted Item.
 
-| Column | PostgreSQL type | Null | Rule |
-|---|---:|---:|---|
-| `intake_attempt_id` | `uuid` | no | primary key, Server-generated |
-| `project_id` | `text` | no | composite Item FK |
-| `submission_id` | `uuid` | no | composite Item FK |
-| `submission_item_id` | `uuid` | no | composite Item FK `RESTRICT` |
-| `command_id` | `text` | no | FK Command Ledger `RESTRICT` |
-| `attempt_number` | `integer` | no | greater than zero, unique per Item |
-| `attempt_kind` | `text` | no | `SUBMIT`, `RETRY_SAME_CONTEXT`, `RETRY_CURRENT_POLICY`, `CANCEL` |
-| `state` | `text` | no | Attempt state set below |
-| `correlation_id` | `text` | no | non-empty, maximum 512 characters |
-| `causation_attempt_id` | `uuid` | yes | same-Item composite self-FK `RESTRICT` |
-| `accepted_policy_context_id` | `text` | no | bounded safe ID |
-| `accepted_policy_binding` | `jsonb` | no | JSON object |
-| failure triple | mixed | yes | code/message/retryable all null or all present |
-| `attempt_revision` | `bigint` | no | starts at 1, monotonic |
-| timestamps | `timestamptz` | mixed | terminal completion rule |
+| Column                       | PostgreSQL type |  Null | Rule                                                             |
+| ---------------------------- | --------------: | ----: | ---------------------------------------------------------------- |
+| `intake_attempt_id`          |          `uuid` |    no | primary key, Server-generated                                    |
+| `project_id`                 |          `text` |    no | composite Item FK                                                |
+| `submission_id`              |          `uuid` |    no | composite Item FK                                                |
+| `submission_item_id`         |          `uuid` |    no | composite Item FK `RESTRICT`                                     |
+| `command_id`                 |          `text` |    no | FK Command Ledger `RESTRICT`                                     |
+| `attempt_number`             |       `integer` |    no | greater than zero, unique per Item                               |
+| `attempt_kind`               |          `text` |    no | `SUBMIT`, `RETRY_SAME_CONTEXT`, `RETRY_CURRENT_POLICY`, `CANCEL` |
+| `state`                      |          `text` |    no | Attempt state set below                                          |
+| `correlation_id`             |          `text` |    no | non-empty, maximum 512 characters                                |
+| `causation_attempt_id`       |          `uuid` |   yes | same-Item composite self-FK `RESTRICT`                           |
+| `accepted_policy_context_id` |          `text` |    no | bounded safe ID                                                  |
+| `accepted_policy_binding`    |         `jsonb` |    no | JSON object                                                      |
+| failure triple               |           mixed |   yes | code/message/retryable all null or all present                   |
+| `attempt_revision`           |        `bigint` |    no | starts at 1, monotonic                                           |
+| timestamps                   |   `timestamptz` | mixed | terminal completion rule                                         |
 
 Required uniqueness/indexes:
 
@@ -190,20 +190,20 @@ Required uniqueness/indexes:
 Decision rows are immutable snapshots. A stale context creates a new Decision
 with the next per-Item revision; the prior row is not updated.
 
-| Column | PostgreSQL type | Null | Rule |
-|---|---:|---:|---|
-| `decision_id` | `uuid` | no | primary key, Server-generated |
-| Project/Submission/Item triple | mixed | no | composite Item FK `RESTRICT` |
-| `decision_revision` | `bigint` | no | greater than zero, unique per Item |
-| `content_hash` | `text` | no | composite Item/hash FK |
-| `existing_source_id` | `uuid` | no | composite Project/Source FK |
-| `existing_source_version_id` | `uuid` | no | composite Source/Version FK |
-| `allowed_dispositions` | `text[]` | no | non-empty, no duplicates, approved values only |
-| `observed_source_revision` | `text` | no | bounded revision |
-| `access_revision` | `text` | no | bounded revision |
-| `policy_context_revision` | `text` | no | bounded revision |
-| `supersedes_decision_id` | `uuid` | yes | self-FK `RESTRICT`, not self |
-| `created_at` | `timestamptz` | no | immutable |
+| Column                         | PostgreSQL type | Null | Rule                                           |
+| ------------------------------ | --------------: | ---: | ---------------------------------------------- |
+| `decision_id`                  |          `uuid` |   no | primary key, Server-generated                  |
+| Project/Submission/Item triple |           mixed |   no | composite Item FK `RESTRICT`                   |
+| `decision_revision`            |        `bigint` |   no | greater than zero, unique per Item             |
+| `content_hash`                 |          `text` |   no | composite Item/hash FK                         |
+| `existing_source_id`           |          `uuid` |   no | composite Project/Source FK                    |
+| `existing_source_version_id`   |          `uuid` |   no | composite Source/Version FK                    |
+| `allowed_dispositions`         |        `text[]` |   no | non-empty, no duplicates, approved values only |
+| `observed_source_revision`     |          `text` |   no | bounded revision                               |
+| `access_revision`              |          `text` |   no | bounded revision                               |
+| `policy_context_revision`      |          `text` |   no | bounded revision                               |
+| `supersedes_decision_id`       |          `uuid` |  yes | self-FK `RESTRICT`, not self                   |
+| `created_at`                   |   `timestamptz` |   no | immutable                                      |
 
 Approved disposition values are exactly:
 
@@ -230,16 +230,16 @@ composite `(submission_item_id, active_duplicate_decision_id)` FK to the Decisio
 Disposition rows are immutable. Database uniqueness is the final concurrency
 arbiter.
 
-| Column | PostgreSQL type | Null | Rule |
-|---|---:|---:|---|
-| `disposition_id` | `uuid` | no | primary key |
-| Project/Submission/Item triple | mixed | no | composite Item FK `RESTRICT` |
-| `decision_id` | `uuid` | no | one disposition per Decision |
-| `observed_decision_revision` | `bigint` | no | composite full-context Decision FK |
-| `command_id` | `text` | no | unique Command Ledger FK `RESTRICT` |
-| `disposition` | `text` | no | approved value only |
-| `target_source_id` | `uuid` | yes | required only for `CREATE_VERSION_CANDIDATE` |
-| `created_at` | `timestamptz` | no | immutable |
+| Column                         | PostgreSQL type | Null | Rule                                         |
+| ------------------------------ | --------------: | ---: | -------------------------------------------- |
+| `disposition_id`               |          `uuid` |   no | primary key                                  |
+| Project/Submission/Item triple |           mixed |   no | composite Item FK `RESTRICT`                 |
+| `decision_id`                  |          `uuid` |   no | one disposition per Decision                 |
+| `observed_decision_revision`   |        `bigint` |   no | composite full-context Decision FK           |
+| `command_id`                   |          `text` |   no | unique Command Ledger FK `RESTRICT`          |
+| `disposition`                  |          `text` |   no | approved value only                          |
+| `target_source_id`             |          `uuid` |  yes | required only for `CREATE_VERSION_CANDIDATE` |
+| `created_at`                   |   `timestamptz` |   no | immutable                                    |
 
 The full composite FK is:
 
@@ -255,21 +255,21 @@ The full composite FK is:
 
 Only URL Items may own these rows.
 
-| Column | PostgreSQL type | Null | Rule |
-|---|---:|---:|---|
-| `url_acquisition_attempt_id` | `uuid` | no | primary key |
-| Project/Submission/Item triple | mixed | no | composite Item FK `RESTRICT` |
-| `intake_attempt_id` | `uuid` | no | unique same-Item Attempt FK `RESTRICT` |
-| `normalized_requested_url` | `text` | no | 1–8,192 characters, HTTP(S), no fragment, passed secret checks |
-| `redacted_requested_url` | `text` | no | 1–8,192 characters, safe projection form |
-| `state` | `text` | no | URL state set below |
-| limit columns | integer/bigint | no | positive, bounded by accepted policy |
-| policy IDs/revision | `text` | no | accepted Server policy |
-| `retention_class` | `text` | no | non-empty, bounded |
-| `retention_expires_at` | `timestamptz` | yes | not before creation |
-| failure triple | mixed | yes | all null or all present |
-| `acquisition_revision` | `bigint` | no | starts at 1, monotonic |
-| timestamps | `timestamptz` | mixed | terminal completion rule |
+| Column                         | PostgreSQL type |  Null | Rule                                                           |
+| ------------------------------ | --------------: | ----: | -------------------------------------------------------------- |
+| `url_acquisition_attempt_id`   |          `uuid` |    no | primary key                                                    |
+| Project/Submission/Item triple |           mixed |    no | composite Item FK `RESTRICT`                                   |
+| `intake_attempt_id`            |          `uuid` |    no | unique same-Item Attempt FK `RESTRICT`                         |
+| `normalized_requested_url`     |          `text` |    no | 1–8,192 characters, HTTP(S), no fragment, passed secret checks |
+| `redacted_requested_url`       |          `text` |    no | 1–8,192 characters, safe projection form                       |
+| `state`                        |          `text` |    no | URL state set below                                            |
+| limit columns                  |  integer/bigint |    no | positive, bounded by accepted policy                           |
+| policy IDs/revision            |          `text` |    no | accepted Server policy                                         |
+| `retention_class`              |          `text` |    no | non-empty, bounded                                             |
+| `retention_expires_at`         |   `timestamptz` |   yes | not before creation                                            |
+| failure triple                 |           mixed |   yes | all null or all present                                        |
+| `acquisition_revision`         |        `bigint` |    no | starts at 1, monotonic                                         |
+| timestamps                     |   `timestamptz` | mixed | terminal completion rule                                       |
 
 Mandatory limits:
 
@@ -289,24 +289,24 @@ Required unique shape for receipt linkage:
 Each terminal URL Acquisition Attempt creates exactly one immutable Receipt,
 including a safe Receipt for failure or cancellation.
 
-| Column | PostgreSQL type | Null | Rule |
-|---|---:|---:|---|
-| `url_provenance_receipt_id` | `uuid` | no | primary key |
-| Project/Submission/Item triple | mixed | no | composite Item FK `RESTRICT` |
-| `url_acquisition_attempt_id` | `uuid` | no | unique full-context Attempt FK `RESTRICT` |
-| `receipt_revision` | `bigint` | no | exactly 1; retry creates a new Attempt and Receipt |
-| `outcome` | `text` | no | `SUCCEEDED`, `FAILED`, `CANCELLED` |
-| redacted URL fields | `text` | mixed | safe forms only |
-| `redirect_chain_digest` | `text` | no | SHA-256 form |
-| `redirect_observations` | `jsonb` | no | bounded JSON array |
-| `dns_observations` | `jsonb` | no | bounded safe JSON array |
-| response metadata fields | mixed | yes | allowlisted only |
-| `content_hash` | `text` | yes | required for success |
-| `original_asset_id` | `uuid` | yes | success-only |
-| `source_version_id` | `uuid` | yes | success-only |
-| `failure_code` | `text` | yes | required for failure |
-| retention fields | mixed | mixed | accepted policy |
-| timestamps | `timestamptz` | mixed | retrieval and creation evidence |
+| Column                         | PostgreSQL type |  Null | Rule                                               |
+| ------------------------------ | --------------: | ----: | -------------------------------------------------- |
+| `url_provenance_receipt_id`    |          `uuid` |    no | primary key                                        |
+| Project/Submission/Item triple |           mixed |    no | composite Item FK `RESTRICT`                       |
+| `url_acquisition_attempt_id`   |          `uuid` |    no | unique full-context Attempt FK `RESTRICT`          |
+| `receipt_revision`             |        `bigint` |    no | exactly 1; retry creates a new Attempt and Receipt |
+| `outcome`                      |          `text` |    no | `SUCCEEDED`, `FAILED`, `CANCELLED`                 |
+| redacted URL fields            |          `text` | mixed | safe forms only                                    |
+| `redirect_chain_digest`        |          `text` |    no | SHA-256 form                                       |
+| `redirect_observations`        |         `jsonb` |    no | bounded JSON array                                 |
+| `dns_observations`             |         `jsonb` |    no | bounded safe JSON array                            |
+| response metadata fields       |           mixed |   yes | allowlisted only                                   |
+| `content_hash`                 |          `text` |   yes | required for success                               |
+| `original_asset_id`            |          `uuid` |   yes | success-only                                       |
+| `source_version_id`            |          `uuid` |   yes | success-only                                       |
+| `failure_code`                 |          `text` |   yes | required for failure                               |
+| retention fields               |           mixed | mixed | accepted policy                                    |
+| timestamps                     |   `timestamptz` | mixed | retrieval and creation evidence                    |
 
 The full Attempt FK is:
 

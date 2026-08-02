@@ -16,6 +16,11 @@ export type DraftCommandIdentityV1 = {
   readonly semanticDigest: string;
 };
 
+export type FrontendKnowledgeDraftCommandReplayKeyV1 = Pick<
+  DraftCommandIdentityV1,
+  'principalId' | 'clientRequestId' | 'idempotencyKey'
+>;
+
 export type DraftMaterializationTargetV1 =
   | { readonly kind: 'SEED'; readonly seedId: string; readonly resourceId: string }
   | { readonly kind: 'RESOURCE'; readonly resourceId: string }
@@ -54,17 +59,17 @@ export type FrontendKnowledgeDraftOperationAppendV1 = {
   readonly operations: readonly FrontendKnowledgeOperationV1[];
 };
 
-export type FrontendKnowledgeDraftRepositoryTransactionV1 = unknown;
-
 export type FrontendKnowledgeDraftAggregateRepositoryPort = {
   findById(
     projectId: string,
     draftId: string,
   ): Promise<FrontendKnowledgeDraftChangeSetV1 | undefined>;
-  insert(
-    transaction: FrontendKnowledgeDraftRepositoryTransactionV1,
-    draft: FrontendKnowledgeDraftChangeSetV1,
-  ): Promise<FrontendKnowledgeDraftChangeSetV1>;
+  insert(draft: FrontendKnowledgeDraftChangeSetV1): Promise<FrontendKnowledgeDraftChangeSetV1>;
+  replaceIfRevision(input: {
+    readonly projectId: string;
+    readonly draft: FrontendKnowledgeDraftChangeSetV1;
+    readonly expectedRevision: number;
+  }): Promise<'UPDATED' | 'REVISION_CONFLICT' | 'NOT_FOUND'>;
 };
 
 export type FrontendKnowledgeDraftRevisionRepositoryPort = {
@@ -74,16 +79,12 @@ export type FrontendKnowledgeDraftRevisionRepositoryPort = {
     revision: number,
   ): Promise<FrontendKnowledgeDraftRevisionRecordV1 | undefined>;
   append(
-    transaction: FrontendKnowledgeDraftRepositoryTransactionV1,
     revision: FrontendKnowledgeDraftRevisionRecordV1,
   ): Promise<FrontendKnowledgeDraftRevisionRecordV1>;
 };
 
 export type FrontendKnowledgeDraftOperationRepositoryPort = {
-  append(
-    transaction: FrontendKnowledgeDraftRepositoryTransactionV1,
-    input: FrontendKnowledgeDraftOperationAppendV1,
-  ): Promise<void>;
+  append(input: FrontendKnowledgeDraftOperationAppendV1): Promise<void>;
   list(
     projectId: string,
     draftId: string,
@@ -97,24 +98,24 @@ export type FrontendKnowledgeDraftMaterializationRepositoryPort = {
     projectId: string,
     draftId: string,
   ): Promise<DraftMaterializationRecordV1 | undefined>;
-  findByCommandIdentity(
+  findByCommandReplayKey(
     projectId: string,
-    identity: DraftCommandIdentityV1,
+    replayKey: FrontendKnowledgeDraftCommandReplayKeyV1,
   ): Promise<DraftMaterializationRecordV1 | undefined>;
-  insert(
-    transaction: FrontendKnowledgeDraftRepositoryTransactionV1,
-    materialization: DraftMaterializationRecordV1,
-  ): Promise<DraftMaterializationRecordV1>;
+  insert(materialization: DraftMaterializationRecordV1): Promise<DraftMaterializationRecordV1>;
 };
 
-export type FrontendKnowledgeDraftRepositoryBoundaryPort = {
-  transaction<T>(
-    action: (transaction: FrontendKnowledgeDraftRepositoryTransactionV1) => Promise<T>,
-  ): Promise<T>;
+export type FrontendKnowledgeDraftTransactionRepositoriesV1 = {
   readonly drafts: FrontendKnowledgeDraftAggregateRepositoryPort;
   readonly revisions: FrontendKnowledgeDraftRevisionRepositoryPort;
   readonly operations: FrontendKnowledgeDraftOperationRepositoryPort;
   readonly materializations: FrontendKnowledgeDraftMaterializationRepositoryPort;
+};
+
+export type FrontendKnowledgeDraftRepositoryBoundaryPort = {
+  transaction<T>(
+    action: (repositories: FrontendKnowledgeDraftTransactionRepositoriesV1) => Promise<T>,
+  ): Promise<T>;
 };
 
 export type FrontendKnowledgeDraftProjectBindingV1 = {
@@ -158,6 +159,17 @@ export type MaterializeFrontendKnowledgeDraftResultV1 = {
   readonly draft: FrontendKnowledgeDraftChangeSetV1;
   readonly materialization: DraftMaterializationRecordV1;
   readonly replayed: boolean;
+};
+
+export type PersistFrontendKnowledgeDraftRevisionInputV1 = {
+  readonly projectId: string;
+  readonly draftId: string;
+  readonly expectedDraftRevision: number;
+  readonly expectedBaseRevision: number;
+  readonly operationRevision: number;
+  readonly operations: readonly FrontendKnowledgeOperationV1[];
+  readonly contentDigest: string;
+  readonly updatedAt: string;
 };
 
 const requiredText = (value: string, field: string): string => {
@@ -264,6 +276,14 @@ const assertOperationRevision = (
     requiredText(operation.rationale, 'operation.rationale');
   }
 };
+
+const commandReplayKey = (
+  identity: DraftCommandIdentityV1,
+): FrontendKnowledgeDraftCommandReplayKeyV1 => ({
+  principalId: identity.principalId,
+  clientRequestId: identity.clientRequestId,
+  idempotencyKey: identity.idempotencyKey,
+});
 
 export const createInitialFrontendKnowledgeDraft = (
   input: CreateFrontendKnowledgeDraftInputV1,
@@ -402,38 +422,99 @@ export const assertFrontendKnowledgeDraftMaterializationBinding = (
   }
 };
 
+const assertMaterializationReplayIdentity = (
+  existing: DraftMaterializationRecordV1,
+  incoming: DraftMaterializationRecordV1,
+): void => {
+  if (
+    stableJson(existing.target) !== stableJson(incoming.target) ||
+    existing.resourceProjectId !== incoming.resourceProjectId ||
+    existing.draftProjectId !== incoming.draftProjectId ||
+    existing.effectiveProjectId !== incoming.effectiveProjectId ||
+    stableJson(existing.base) !== stableJson(incoming.base) ||
+    stableJson(existing.commandIdentity) !== stableJson(incoming.commandIdentity)
+  ) {
+    domainFailure('PROJECT_BINDING_CONFLICT', 'Materialization replay identity does not match.');
+  }
+};
+
+export const persistFrontendKnowledgeDraftRevision = async (
+  boundary: FrontendKnowledgeDraftRepositoryBoundaryPort,
+  input: PersistFrontendKnowledgeDraftRevisionInputV1,
+): Promise<FrontendKnowledgeDraftChangeSetV1> =>
+  boundary.transaction(async ({ drafts, revisions, operations }) => {
+    const current = await drafts.findById(input.projectId, input.draftId);
+    if (!current) {
+      domainFailure('DRAFT_NOT_FOUND', 'Draft was not found.');
+    }
+    const next = appendFrontendKnowledgeDraftRevision({
+      current: current as FrontendKnowledgeDraftChangeSetV1,
+      expectedDraftRevision: input.expectedDraftRevision,
+      expectedBaseRevision: input.expectedBaseRevision,
+      operationRevision: input.operationRevision,
+      operations: input.operations,
+      contentDigest: input.contentDigest,
+      updatedAt: input.updatedAt,
+    });
+    const result = await drafts.replaceIfRevision({
+      projectId: input.projectId,
+      draft: next,
+      expectedRevision: input.expectedDraftRevision,
+    });
+    if (result === 'NOT_FOUND') {
+      domainFailure('DRAFT_NOT_FOUND', 'Draft was not found.');
+    }
+    if (result === 'REVISION_CONFLICT') {
+      domainFailure('DRAFT_REVISION_CONFLICT', 'Draft revision is stale.');
+    }
+    await revisions.append(revisionRecord(next));
+    if (next.operations.length > 0) {
+      await operations.append({
+        projectId: next.resourceProjectId,
+        draftId: next.draftId,
+        revision: next.revision,
+        operations: next.operations,
+      });
+    }
+    return next;
+  });
+
 export const materializeFrontendKnowledgeDraft = async (
   boundary: FrontendKnowledgeDraftRepositoryBoundaryPort,
   input: MaterializeFrontendKnowledgeDraftInputV1,
 ): Promise<MaterializeFrontendKnowledgeDraftResultV1> => {
   const { draft, materialization } = input;
   assertFrontendKnowledgeDraftMaterializationBinding(draft, materialization);
-  return boundary.transaction(async (transaction) => {
+  return boundary.transaction(async (repositories) => {
+    const { drafts, materializations, revisions, operations } = repositories;
     const existingBySeed =
       materialization.target.kind === 'SEED'
-        ? await boundary.materializations.findBySeed(materialization.target.seedId)
+        ? await materializations.findBySeed(materialization.target.seedId)
         : undefined;
-    const existingByCommand = await boundary.materializations.findByCommandIdentity(
+    const existingByCommand = await materializations.findByCommandReplayKey(
       materialization.resourceProjectId,
-      materialization.commandIdentity,
+      commandReplayKey(materialization.commandIdentity),
     );
+    if (
+      existingByCommand !== undefined &&
+      stableJson(existingByCommand.commandIdentity) !== stableJson(materialization.commandIdentity)
+    ) {
+      domainFailure('DIGEST_MISMATCH', 'Command identity was reused with different semantics.');
+    }
+    if (
+      existingBySeed !== undefined &&
+      existingByCommand !== undefined &&
+      existingBySeed.materializationId !== existingByCommand.materializationId
+    ) {
+      domainFailure(
+        'DRAFT_REVISION_CONFLICT',
+        'Replay keys refer to conflicting materializations.',
+      );
+    }
     const existing = existingBySeed ?? existingByCommand;
     if (existing) {
-      if (
-        existingByCommand !== undefined &&
-        existingBySeed === undefined &&
-        stableJson(existing.commandIdentity) !== stableJson(materialization.commandIdentity)
-      ) {
-        domainFailure('DIGEST_MISMATCH', 'Command identity was reused with different semantics.');
-      }
-      if (
-        existing.resourceProjectId !== materialization.resourceProjectId ||
-        existing.draftProjectId !== materialization.draftProjectId ||
-        existing.effectiveProjectId !== materialization.effectiveProjectId
-      ) {
-        domainFailure('PROJECT_BINDING_CONFLICT', 'Materialization belongs to another Project.');
-      }
-      const existingDraft = await boundary.drafts.findById(
+      assertMaterializationReplayIdentity(existing, materialization);
+      const existingDraft = await drafts.findById(
         materialization.resourceProjectId,
         existing.draftId,
       );
@@ -443,27 +524,24 @@ export const materializeFrontendKnowledgeDraft = async (
       const replayedDraft = existingDraft as FrontendKnowledgeDraftChangeSetV1;
       return { draft: replayedDraft, materialization: existing, replayed: true };
     }
-    const existingDraft = await boundary.materializations.findByDraftId(
+    const existingDraft = await materializations.findByDraftId(
       materialization.resourceProjectId,
       draft.draftId,
     );
     if (existingDraft) {
       domainFailure('DRAFT_REVISION_CONFLICT', 'Draft identity is already materialized.');
     }
-    const storedDraft = await boundary.drafts.insert(transaction, draft);
-    await boundary.revisions.append(transaction, revisionRecord(storedDraft));
+    const storedDraft = await drafts.insert(draft);
+    await revisions.append(revisionRecord(storedDraft));
     if (storedDraft.operations.length > 0) {
-      await boundary.operations.append(transaction, {
+      await operations.append({
         projectId: storedDraft.resourceProjectId,
         draftId: storedDraft.draftId,
         revision: storedDraft.revision,
         operations: storedDraft.operations,
       });
     }
-    const storedMaterialization = await boundary.materializations.insert(
-      transaction,
-      materialization,
-    );
+    const storedMaterialization = await materializations.insert(materialization);
     return { draft: storedDraft, materialization: storedMaterialization, replayed: false };
   });
 };

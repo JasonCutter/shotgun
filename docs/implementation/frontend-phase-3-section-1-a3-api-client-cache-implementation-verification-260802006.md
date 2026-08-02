@@ -8,6 +8,9 @@ approval_review_id: 4837251717
 approval_decision: APPROVED_FOR_A3_API_CLIENT_CACHE
 implementation_authorization: APPROVED_FOR_A3_API_CLIENT_CACHE
 implementation_commit: 82a86825
+follow_up_review_id: 4837345716
+follow_up_decision: CHANGES_REQUIRED
+follow_up_implementation_commit: PENDING_LOCAL_COMMIT
 branch: codex/frontend-phase-3-section-1-knowledge-workspace
 base_commit: cb2513bc311891ac89f53c7d67d6a401da65a2a8
 tracking_issue: 52
@@ -47,7 +50,8 @@ in the URL.
   request identity.
 - React Query options with zero-Project disabled state, existing Project purge
   compatibility, and retry decisions derived only from typed `SAFE` failures.
-- Contract, unit, HTTP integration and browser-context API tests.
+- Contract, unit, HTTP integration and browser-context API tests, including a
+  test-only React Query/browser harness for negative and cache-boundary cases.
 
 ## 3. Explicit exclusions
 
@@ -89,7 +93,9 @@ replace those tests.
 | Full Unit suite                                 | PASS -- 43 files, 224 tests                              |
 | Full Contract suite                             | PASS -- 30 files, 238 tests                              |
 | Full Integration suite                          | PASS -- 16 files, 56 tests                               |
-| Browser-context API test                        | PASS -- Chromium, 1 test                                 |
+| Browser-context body-only API test              | PASS -- Chromium, 1 test                                 |
+| Browser-context session/authority negative test | PASS -- Chromium, 1 test                                 |
+| Browser-context cache/failure/retry harness     | PASS -- Chromium, 1 test                                 |
 | `npm.cmd run typecheck`                         | PASS                                                     |
 | `npm.cmd run lint`                              | PASS                                                     |
 | `npm.cmd run test:architecture`                 | PASS                                                     |
@@ -103,6 +109,13 @@ The HTTP integration test uses a typed fake `KnowledgeWorkspaceProjectionPort`
 at the existing Coordinator boundary. The A2-C populated PostgreSQL adapter and
 multi-authority evidence remain separate prerequisite evidence and are not
 replaced by this transport test.
+
+Review `4837345716` requested explicit browser evidence for session rejection,
+server-derived authority, Project switch and logout purge, access/policy
+revision cache identity, typed Product failure propagation, safe-only retry,
+and separation of Domain `STALE` from React Query cache state. The follow-up
+test-only harness and negative browser test cover those cases without adding
+production UI or a new API surface.
 
 No A3 implementation PASS, FE-P3-S1 completion, Ready, Merge or deployment is
 claimed by this draft report until the side-panel review is complete.

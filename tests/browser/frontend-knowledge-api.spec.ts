@@ -83,3 +83,119 @@ test('Knowledge Product API remains body-only and rejects browser authority inpu
     query: 'canonical',
   });
 });
+
+test('Knowledge Product API rejects a missing browser session and authority header', async ({
+  page,
+}) => {
+  await page.goto('/');
+
+  await page.context().clearCookies();
+  const withoutSession = await page.evaluate(async () => {
+    const response = await fetch('/product-api/frontend/knowledge/search', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'content-type': 'application/json',
+        'x-csrf-token': 'browser-csrf-without-session',
+      },
+      body: JSON.stringify({ schemaVersion: '1.0.0', query: 'without-session' }),
+    });
+    return { status: response.status, body: await response.json() };
+  });
+
+  expect(withoutSession.status).toBe(401);
+  expect(withoutSession.body.code).toBe('AUTHENTICATION_REQUIRED');
+
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
+  const csrf = await page.evaluate(async () => {
+    const response = await fetch('/api/v1/security/csrf');
+    return (await response.json()) as { csrfToken: string };
+  });
+  const forgedAuthority = await page.evaluate(async (csrfToken) => {
+    const response = await fetch('/product-api/frontend/knowledge/search', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'content-type': 'application/json',
+        'x-csrf-token': csrfToken,
+        'x-project-id': 'forged-project',
+      },
+      body: JSON.stringify({ schemaVersion: '1.0.0', query: 'forged-authority' }),
+    });
+    return { status: response.status, body: await response.json() };
+  }, csrf.csrfToken);
+
+  expect(forgedAuthority.status).toBe(400);
+  expect(forgedAuthority.body.code).toBe('LEGACY_SECURITY_HEADER_FORBIDDEN');
+});
+
+test('Knowledge browser harness proves cache isolation, typed failure and retry boundaries', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
+
+  await page.route('**/api/v1/security/csrf', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ csrfToken: 'browser-harness-csrf' }),
+    });
+  });
+  await page.route('**/product-api/frontend/knowledge/search', async (route) => {
+    await route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        schemaVersion: '1.0.0',
+        code: 'RETRYABLE_DEPENDENCY',
+        category: 'DEPENDENCY',
+        retryability: 'SAFE',
+        recovery: 'RETRY',
+        message: 'Browser harness dependency failure.',
+      }),
+    });
+  });
+
+  const result = await page.evaluate(async () => {
+    const harnessUrl = new URL(
+      '/src/knowledge/knowledge-browser-test-harness.ts',
+      window.location.origin,
+    ).href;
+    const harness = await import(harnessUrl);
+    return {
+      cache: await harness.runKnowledgeBrowserCacheHarness(),
+      failure: await harness.readKnowledgeBrowserApiFailure(),
+    };
+  });
+
+  expect(result.cache.projectSwitchIsolation).toBe(true);
+  expect(result.cache.authorityRevisionIsolation).toBe(true);
+  expect(result.cache.projectPurgeRemovesKnowledge).toBe(true);
+  expect(result.cache.logoutPurgeRemovesKnowledge).toBe(true);
+  expect(result.cache.zeroProjectDisabled).toBe(true);
+  expect(result.cache.domainProjectionStalePreserved).toBe(true);
+  expect(result.cache.typedFailure).toMatchObject({
+    instanceofShotgunApiError: true,
+    code: 'RETRYABLE_DEPENDENCY',
+    retryability: 'SAFE',
+    recovery: 'RETRY',
+    envelopeCode: 'RETRYABLE_DEPENDENCY',
+  });
+  expect(result.cache.retryPolicy).toEqual({
+    safeAtZero: true,
+    safeAtOne: true,
+    safeAtTwo: false,
+    never: false,
+    raw: false,
+  });
+  expect(result.failure).toMatchObject({
+    kind: 'TYPED_FAILURE',
+    instanceofShotgunApiError: true,
+    code: 'RETRYABLE_DEPENDENCY',
+    retryability: 'SAFE',
+    recovery: 'RETRY',
+    envelopeCode: 'RETRYABLE_DEPENDENCY',
+  });
+});

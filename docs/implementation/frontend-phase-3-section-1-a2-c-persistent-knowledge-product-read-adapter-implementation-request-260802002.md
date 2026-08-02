@@ -1,17 +1,17 @@
 ---
 id: FRONTEND-PHASE-3-SECTION-1-A2-C-PERSISTENT-KNOWLEDGE-PRODUCT-READ-ADAPTER-IMPLEMENTATION-REQUEST-260802002
 classification: IMPLEMENTATION_REQUEST
-status: PENDING_REVIEW
+status: IN_PROGRESS
 work_item: FE-P3-S1
 sub_slice: A2-C
-approved_by: null
-approved_at: null
-review_id: 4836723439
-review_decision: APPROVED_FOR_A2_C_CONTRACT_AMENDMENT
-implementation_authorization: NOT_GRANTED
+approved_by: side-panel ChatGPT review
+approved_at: 2026-08-02
+review_id: 4836838966
+review_decision: APPROVED_FOR_A2_C_PERSISTENT_ADAPTER
+implementation_authorization: APPROVED_FOR_A2_C_PERSISTENT_ADAPTER
 follow_up: docs/implementation/frontend-phase-3-section-1-a2-c-product-contract-amendment-and-identity-addendum-260802003.md
 accepted_contract: docs/implementation/frontend-phase-3-section-1-a2-c-product-contract-amendment-and-identity-addendum-260802003.md
-next_decision: APPROVED_FOR_A2_C_PERSISTENT_ADAPTER
+next_decision: IMPLEMENTATION_PASS_REVIEW
 base_commit: ec409b16190f72199556c2c1e01dae513a2387ca
 branch: codex/frontend-phase-3-section-1-knowledge-workspace
 tracking_issue: 52
@@ -23,8 +23,9 @@ supersedes: docs/engineering/frontend-phase-3-section-1-a2-c-query-to-product-ma
 
 ## 1. Decision state
 
-This is an implementation-scope and approval request. It is not an approval
-record and it does not authorize code changes yet.
+This record fixes the implementation scope and records the explicit
+implementation authorization. It does not authorize API/UI work, PR Ready,
+Merge, deployment, or Phase 3 completion.
 
 The side-panel review confirms that QX-01 `SearchKnowledgeWorkspace` and QX-02
 `GetCompiledTruthReadSnapshot` are PASS and available for reuse:
@@ -35,31 +36,29 @@ The side-panel review confirms that QX-01 `SearchKnowledgeWorkspace` and QX-02
   `4836032427`, and exact-head database/CI evidence recorded in the QX-02
   verification report.
 
-Those judgments close the bounded Query-extension blocker. They do not approve
-the Persistent Product Adapter, Product API, browser client/cache, `/knowledge`
-UI, Ready transition, Merge, deployment, or Phase 3 completion.
-
-The requested decision is therefore:
-
-> Approve or reject the bounded A2-C implementation described in this document.
+Those judgments close the bounded Query-extension blocker. The separate
+Persistent Product Adapter implementation authorization is recorded below;
+Product API, browser client/cache, `/knowledge` UI, Ready transition, Merge,
+deployment, and Phase 3 completion remain outside the authorization.
 
 ### 1.1 Review outcome and follow-up
 
 Side-panel review `4836723439` first returned `CHANGES_REQUIRED`. The follow-up
 review accepted the bounded Product contract amendment as
 `APPROVED_FOR_A2_C_CONTRACT_AMENDMENT`, based on the contract content submitted
-in the review message. It did not independently verify the local amendment file
-or local commit because those were not available through the connected review
-surface. Implementation authorization remains `NOT_GRANTED`.
+in the review message. A subsequent side-panel review returned
+`APPROVED_FOR_A2_C_PERSISTENT_ADAPTER` under review ID `4836838966`, authorizing
+the bounded implementation described here. That implementation review was
+scope-based and did not independently verify a pushed exact head.
 
 The bounded follow-up is documented in
 `docs/implementation/frontend-phase-3-section-1-a2-c-product-contract-amendment-and-identity-addendum-260802003.md`.
 The original approval-request base is `ec409b16190f72199556c2c1e01dae513a2387ca`;
 the approval-request subject is `18f48c4504d1510ad310cd85c00a0a3503ac65e6`.
-The next requested decision is a separate
-`APPROVED_FOR_A2_C_PERSISTENT_ADAPTER` implementation authorization. Until
-that decision is explicit, no Product Search `1.1.0` code, adapter code, API,
-client/cache, or UI implementation files are to be created.
+The implementation authorization is limited to the accepted Product Search
+`1.1.0` contract, the five-method adapter, assembly wiring, and applicable
+local validation. API, client/cache, UI, Ready, Merge, deployment, and
+production work remain outside the authorization.
 
 ### 1.2 Accepted contract and implementation boundary
 
@@ -261,8 +260,8 @@ FE-P3-S1                         IN PROGRESS
 QX-01 Stage 7 Handler            PASS / reviewed
 QX-02 Stage 10 Handler           PASS / reviewed
 A2-C Contract Amendment           APPROVED / review 4836723439
-A2-C Persistent Adapter          PENDING EXPLICIT IMPLEMENTATION APPROVAL
-Product Search 1.1.0 Code        NOT AUTHORIZED
+A2-C Persistent Adapter          IN PROGRESS / review 4836838966
+Product Search 1.1.0 Code        IMPLEMENTED LOCALLY / UNDER VALIDATION
 A3 API/Client/Cache              NOT AUTHORIZED
 /knowledge UI                    NOT AUTHORIZED
 PR #53                           OPEN / DRAFT
@@ -272,16 +271,16 @@ Runtime Dependency               NOT AUTHORIZED
 Deployment                       NOT STARTED
 ```
 
-## 8. Approval requested
+## 8. Current review state
 
-Please issue one of the following decisions in the review thread:
+The explicit implementation decision has been received:
 
-- `APPROVED_FOR_A2_C_PERSISTENT_ADAPTER`: authorize only the accepted Product
-  contract implementation, the bounded adapter in Sections 3-4, and the
-  applicable validation in Section 5,
-  subject to the validation and control boundaries in this document; or
-- `CHANGES_REQUIRED`: identify the required scope or contract correction;
-  implementation remains stopped until the correction is reviewed.
+```text
+Review 4836838966                 APPROVED_FOR_A2_C_PERSISTENT_ADAPTER
+Implementation authorization      APPROVED_FOR_A2_C_PERSISTENT_ADAPTER
+Implementation pass               PENDING LOCAL/REVIEW VALIDATION
+Ready / Merge                     NOT AUTHORIZED
+```
 
-No code implementation, API/UI work, PR Ready transition, or Merge is
-authorized by the existence of this request alone.
+Implementation and validation evidence is recorded separately in
+`docs/implementation/frontend-phase-3-section-1-a2-c-persistent-adapter-implementation-verification-260802004.md`.

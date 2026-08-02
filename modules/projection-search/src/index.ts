@@ -111,7 +111,8 @@ type WorkspaceCursorPayload = {
   readonly requestDigest: string;
 };
 
-const normalizeSearchText = (value: string): string => value.normalize('NFKC').toLowerCase().trim();
+export const normalizeSearchText = (value: string): string =>
+  value.normalize('NFKC').toLowerCase().trim();
 
 const compareWorkspaceStrings = (left: string, right: string): number =>
   left < right ? -1 : left > right ? 1 : 0;

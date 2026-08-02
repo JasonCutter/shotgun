@@ -1,6 +1,8 @@
+import { stableJson } from './document-evidence.js';
 import { FrontendContractError } from './frontend-foundation.js';
 
 export const KNOWLEDGE_WORKSPACE_SCHEMA_VERSION = '1.0.0' as const;
+export const KNOWLEDGE_SEARCH_RESULT_SCHEMA_VERSION = '1.1.0' as const;
 
 export type KnowledgeAuthority =
   'CANONICAL' | 'APPROVED_KNOWLEDGE' | 'COMPILED_TRUTH' | 'DERIVED_INFERENCE';
@@ -77,6 +79,10 @@ export type KnowledgeProjectionStatusView = {
   readonly projectedCanonicalVersion: number;
   readonly lag: number;
   readonly projectionRevision?: string;
+  readonly canonicalSnapshotDigest?: string;
+  readonly projectedSnapshotDigest?: string;
+  readonly sourceSnapshotDigest?: string;
+  readonly projectionLogicalDigest?: string;
   readonly reason?: string;
   readonly updatedAt?: string;
 };
@@ -92,6 +98,13 @@ export type KnowledgeLineageView = {
   readonly sourceId?: string;
   readonly sourceVersionId?: string;
   readonly evidenceIds?: readonly string[];
+  readonly knowledgeGroupId?: string;
+  readonly candidateId?: string;
+  readonly projectionLogicalDigest?: string;
+  readonly compiledItemId?: string;
+  readonly sourceSnapshotDigest?: string;
+  readonly inferenceId?: string;
+  readonly sourceProjectionDigest?: string;
   readonly commitId?: string;
   readonly manifestId?: string;
   readonly changeSetId?: string;
@@ -195,6 +208,28 @@ export type KnowledgeSearchResultView = {
   readonly fetchedAt: string;
 };
 
+export type KnowledgeSearchReadinessView = {
+  readonly canonicalSearch: KnowledgeProjectionStatusView & {
+    readonly projectionKind: 'CANONICAL_SEARCH';
+  };
+  readonly sourceProjections: readonly KnowledgeProjectionStatusView[];
+  readonly partial: boolean;
+};
+
+export type KnowledgeSearchResultViewVNext = Omit<
+  KnowledgeSearchResultView,
+  'schemaVersion' | 'projection'
+> & {
+  readonly schemaVersion: typeof KNOWLEDGE_SEARCH_RESULT_SCHEMA_VERSION;
+  readonly projection: KnowledgeProjectionStatusView & {
+    readonly projectionKind: 'CANONICAL_SEARCH';
+  };
+  readonly readiness: KnowledgeSearchReadinessView;
+};
+
+export type KnowledgeSearchResultViewAny =
+  KnowledgeSearchResultView | KnowledgeSearchResultViewVNext;
+
 export type KnowledgeDetailView = {
   readonly schemaVersion: typeof KNOWLEDGE_WORKSPACE_SCHEMA_VERSION;
   readonly resourceId: string;
@@ -272,6 +307,15 @@ const optionalText = (
   minLen = 0,
   maxLen = 10000,
 ): string | undefined => (value === undefined ? undefined : text(value, path, minLen, maxLen));
+
+const optionalDigest = (value: unknown, path: string): string | undefined => {
+  if (value === undefined) return undefined;
+  const result = text(value, path, 1, 80);
+  if (!/^sha256:[a-f0-9]{64}$/.test(result)) {
+    fail(`${path} must be a SHA-256 digest.`);
+  }
+  return result;
+};
 
 const timestamp = (value: unknown, path: string): string => {
   const val = text(value, path, 1, 100);
@@ -602,6 +646,10 @@ export const decodeKnowledgeProjectionStatusView = (
       'projectedCanonicalVersion',
       'lag',
       'projectionRevision',
+      'canonicalSnapshotDigest',
+      'projectedSnapshotDigest',
+      'sourceSnapshotDigest',
+      'projectionLogicalDigest',
       'reason',
       'updatedAt',
     ],
@@ -638,6 +686,22 @@ export const decodeKnowledgeProjectionStatusView = (
     fail(`${path}.STALE cannot describe a zero-lag projection.`);
   }
   const projectionRevision = optionalId(input.projectionRevision, `${path}.projectionRevision`);
+  const canonicalSnapshotDigest = optionalDigest(
+    input.canonicalSnapshotDigest,
+    `${path}.canonicalSnapshotDigest`,
+  );
+  const projectedSnapshotDigest = optionalDigest(
+    input.projectedSnapshotDigest,
+    `${path}.projectedSnapshotDigest`,
+  );
+  const sourceSnapshotDigest = optionalDigest(
+    input.sourceSnapshotDigest,
+    `${path}.sourceSnapshotDigest`,
+  );
+  const projectionLogicalDigest = optionalDigest(
+    input.projectionLogicalDigest,
+    `${path}.projectionLogicalDigest`,
+  );
   const reason = optionalText(input.reason, `${path}.reason`, 1, 1000);
   if (status === 'READY' && reason !== undefined) {
     fail(`${path}.READY must not carry a degradation or staleness reason.`);
@@ -657,6 +721,10 @@ export const decodeKnowledgeProjectionStatusView = (
     projectedCanonicalVersion,
     lag,
     ...(projectionRevision === undefined ? {} : { projectionRevision }),
+    ...(canonicalSnapshotDigest === undefined ? {} : { canonicalSnapshotDigest }),
+    ...(projectedSnapshotDigest === undefined ? {} : { projectedSnapshotDigest }),
+    ...(sourceSnapshotDigest === undefined ? {} : { sourceSnapshotDigest }),
+    ...(projectionLogicalDigest === undefined ? {} : { projectionLogicalDigest }),
     ...(reason === undefined ? {} : { reason }),
     ...(updatedAt === undefined ? {} : { updatedAt }),
   };
@@ -679,6 +747,13 @@ export const decodeKnowledgeLineageView = (
       'sourceId',
       'sourceVersionId',
       'evidenceIds',
+      'knowledgeGroupId',
+      'candidateId',
+      'projectionLogicalDigest',
+      'compiledItemId',
+      'sourceSnapshotDigest',
+      'inferenceId',
+      'sourceProjectionDigest',
       'commitId',
       'manifestId',
       'changeSetId',
@@ -702,6 +777,22 @@ export const decodeKnowledgeLineageView = (
   if (evidenceIds !== undefined && sourceVersionId === undefined) {
     fail(`${path}.evidenceIds requires a pinned sourceVersionId.`);
   }
+  const knowledgeGroupId = optionalId(input.knowledgeGroupId, `${path}.knowledgeGroupId`);
+  const candidateId = optionalId(input.candidateId, `${path}.candidateId`);
+  const projectionLogicalDigest = optionalDigest(
+    input.projectionLogicalDigest,
+    `${path}.projectionLogicalDigest`,
+  );
+  const compiledItemId = optionalId(input.compiledItemId, `${path}.compiledItemId`);
+  const sourceSnapshotDigest = optionalDigest(
+    input.sourceSnapshotDigest,
+    `${path}.sourceSnapshotDigest`,
+  );
+  const inferenceId = optionalId(input.inferenceId, `${path}.inferenceId`);
+  const sourceProjectionDigest = optionalDigest(
+    input.sourceProjectionDigest,
+    `${path}.sourceProjectionDigest`,
+  );
   const commitId = optionalId(input.commitId, `${path}.commitId`);
   const manifestId = optionalId(input.manifestId, `${path}.manifestId`);
   const changeSetId = optionalId(input.changeSetId, `${path}.changeSetId`);
@@ -720,6 +811,13 @@ export const decodeKnowledgeLineageView = (
     ...(sourceId === undefined ? {} : { sourceId }),
     ...(sourceVersionId === undefined ? {} : { sourceVersionId }),
     ...(evidenceIds === undefined ? {} : { evidenceIds }),
+    ...(knowledgeGroupId === undefined ? {} : { knowledgeGroupId }),
+    ...(candidateId === undefined ? {} : { candidateId }),
+    ...(projectionLogicalDigest === undefined ? {} : { projectionLogicalDigest }),
+    ...(compiledItemId === undefined ? {} : { compiledItemId }),
+    ...(sourceSnapshotDigest === undefined ? {} : { sourceSnapshotDigest }),
+    ...(inferenceId === undefined ? {} : { inferenceId }),
+    ...(sourceProjectionDigest === undefined ? {} : { sourceProjectionDigest }),
     ...(commitId === undefined ? {} : { commitId }),
     ...(manifestId === undefined ? {} : { manifestId }),
     ...(changeSetId === undefined ? {} : { changeSetId }),
@@ -750,7 +848,11 @@ export const decodeKnowledgeEvidenceReturnTarget = (
 const decodeCapabilities = (value: unknown, path: string): readonly KnowledgeReadCapability[] =>
   enumArray(value, path, capabilityValues, 'KnowledgeReadCapability', capabilityValues.length);
 
-export const decodeKnowledgeItemView = (value: unknown, path = 'item'): KnowledgeItemView => {
+export const decodeKnowledgeItemView = (
+  value: unknown,
+  path = 'item',
+  options?: { readonly allowCanonicalSearchProjection?: boolean },
+): KnowledgeItemView => {
   const input = strictObject(
     value,
     [
@@ -801,7 +903,12 @@ export const decodeKnowledgeItemView = (value: unknown, path = 'item'): Knowledg
   }
   if (
     (authority === 'CANONICAL' || authority === 'APPROVED_KNOWLEDGE') &&
-    lineage.projection !== undefined
+    lineage.projection !== undefined &&
+    !(
+      authority === 'CANONICAL' &&
+      options?.allowCanonicalSearchProjection === true &&
+      lineage.projection.projectionKind === 'CANONICAL_SEARCH'
+    )
   ) {
     fail(`${path}.${authority} item must not carry projection lineage.`);
   }
@@ -1052,6 +1159,7 @@ export const decodeKnowledgePageListView = (
 export const decodeKnowledgeSearchMatchView = (
   value: unknown,
   path = 'match',
+  options?: { readonly allowCanonicalSearchProjection?: boolean },
 ): KnowledgeSearchMatchView => {
   const input = strictObject(
     value,
@@ -1069,7 +1177,7 @@ export const decodeKnowledgeSearchMatchView = (
   );
   const projectId = idString(input.projectId, `${path}.projectId`);
   const resourceId = idString(input.resourceId, `${path}.resourceId`);
-  const item = decodeKnowledgeItemView(input.item, `${path}.item`);
+  const item = decodeKnowledgeItemView(input.item, `${path}.item`, options);
   if (item.projectId !== projectId || item.resourceId !== resourceId) {
     fail(`${path}.item must match the search match project and resource.`);
   }
@@ -1152,6 +1260,105 @@ export const decodeKnowledgeSearchResultView = (
     matches,
     ...(nextCursor === undefined ? {} : { nextCursor }),
     projection,
+    fetchedAt: timestamp(input.fetchedAt, `${path}.fetchedAt`),
+  };
+};
+
+const decodeKnowledgeSearchReadinessView = (
+  value: unknown,
+  path: string,
+): KnowledgeSearchReadinessView => {
+  const input = strictObject(value, ['canonicalSearch', 'sourceProjections', 'partial'], path);
+  const canonicalSearch = decodeKnowledgeProjectionStatusView(
+    input.canonicalSearch,
+    `${path}.canonicalSearch`,
+  );
+  if (canonicalSearch.projectionKind !== 'CANONICAL_SEARCH') {
+    fail(`${path}.canonicalSearch must describe CANONICAL_SEARCH.`);
+  }
+  const sourceProjections = array(
+    input.sourceProjections,
+    `${path}.sourceProjections`,
+    (item, index) =>
+      decodeKnowledgeProjectionStatusView(item, `${path}.sourceProjections[${index}]`),
+    1,
+  );
+  if (sourceProjections.some((status) => status.projectionKind === 'CANONICAL_SEARCH')) {
+    fail(`${path}.sourceProjections must not duplicate canonicalSearch.`);
+  }
+  if (typeof input.partial !== 'boolean') {
+    fail(`${path}.partial must be a boolean.`);
+  }
+  const partial =
+    canonicalSearch.status !== 'READY' ||
+    sourceProjections.some((status) => status.status !== 'READY');
+  if (input.partial !== partial) {
+    fail(`${path}.partial must match the authoritative readiness statuses.`);
+  }
+  return {
+    canonicalSearch: canonicalSearch as KnowledgeSearchReadinessView['canonicalSearch'],
+    sourceProjections,
+    partial,
+  };
+};
+
+export const decodeKnowledgeSearchResultViewVNext = (
+  value: unknown,
+  path = 'searchResult',
+): KnowledgeSearchResultViewVNext => {
+  const input = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'projectId',
+      'accessRevision',
+      'policyContextRevision',
+      'query',
+      'matches',
+      'nextCursor',
+      'projection',
+      'readiness',
+      'fetchedAt',
+    ],
+    path,
+  );
+  if (input.schemaVersion !== KNOWLEDGE_SEARCH_RESULT_SCHEMA_VERSION) {
+    fail(`${path}.schemaVersion is unsupported.`);
+  }
+  const projectId = idString(input.projectId, `${path}.projectId`);
+  const accessRevision = idString(input.accessRevision, `${path}.accessRevision`);
+  const policyContextRevision = idString(
+    input.policyContextRevision,
+    `${path}.policyContextRevision`,
+  );
+  const matches = array(input.matches, `${path}.matches`, (match, index) => {
+    const decoded = decodeKnowledgeSearchMatchView(match, `${path}.matches[${index}]`, {
+      allowCanonicalSearchProjection: true,
+    });
+    if (decoded.projectId !== projectId) {
+      fail(`${path}.matches[${index}].projectId must match searchResult.projectId.`);
+    }
+    return decoded;
+  });
+  const nextCursor = optionalText(input.nextCursor, `${path}.nextCursor`, 1, 2048);
+  const projection = decodeKnowledgeProjectionStatusView(input.projection, `${path}.projection`);
+  if (projection.projectionKind !== 'CANONICAL_SEARCH') {
+    fail(`${path}.projection must describe CANONICAL_SEARCH.`);
+  }
+  const readiness = decodeKnowledgeSearchReadinessView(input.readiness, `${path}.readiness`);
+  if (stableJson(projection) !== stableJson(readiness.canonicalSearch)) {
+    fail(`${path}.projection must equal readiness.canonicalSearch.`);
+  }
+  return {
+    schemaVersion: KNOWLEDGE_SEARCH_RESULT_SCHEMA_VERSION,
+    projectId,
+    accessRevision,
+    policyContextRevision,
+    query: text(input.query, `${path}.query`, 1, 1000),
+    matches,
+    ...(nextCursor === undefined ? {} : { nextCursor }),
+    projection: projection as KnowledgeSearchResultViewVNext['projection'],
+    readiness,
     fetchedAt: timestamp(input.fetchedAt, `${path}.fetchedAt`),
   };
 };

@@ -417,6 +417,9 @@ export type ApplicationOptions = {
   readonly settingsRepository?: SettingsRepositoryPort;
   readonly frontendCommandGateway?: FrontendCommandGatewayPort;
   readonly frontendProductReadCoordinator?: FrontendProductReadCoordinator;
+  readonly frontendProductReadCoordinatorFactory?: (
+    connector: ShotgunKernel['connector'],
+  ) => FrontendProductReadCoordinator;
   readonly askCommandCoordinator?: AskCommandCoordinator;
   readonly askAnswerExecution?: AskAnswerExecutionService;
   readonly sourcesProjectionRepository?: SourcesProjectionRepositoryPort;
@@ -1140,17 +1143,6 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   const frontendCommandGateway =
     options.frontendCommandGateway ?? new InMemoryFrontendCommandGateway();
   const inMemoryAskWorkspace = new InMemoryAskWorkspaceProjection();
-  const frontendProductReadCoordinator =
-    options.frontendProductReadCoordinator ??
-    new FrontendProductReadCoordinator(
-      new InMemoryGlobalShellProjection(),
-      new InMemoryActionCenterProjection(),
-      new InMemoryBackgroundSummaryProjection(),
-      new InMemoryNotificationSummaryProjection(),
-      new InMemoryGlobalSearch(),
-      new InMemoryRouteGuardProjection(),
-      inMemoryAskWorkspace,
-    );
   const askCommandCoordinator =
     options.askCommandCoordinator ??
     new AskCommandCoordinator(
@@ -1386,6 +1378,18 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     actionExecution,
   );
   await kernel.start();
+  const frontendProductReadCoordinator =
+    options.frontendProductReadCoordinator ??
+    options.frontendProductReadCoordinatorFactory?.(kernel.connector) ??
+    new FrontendProductReadCoordinator(
+      new InMemoryGlobalShellProjection(),
+      new InMemoryActionCenterProjection(),
+      new InMemoryBackgroundSummaryProjection(),
+      new InMemoryNotificationSummaryProjection(),
+      new InMemoryGlobalSearch(),
+      new InMemoryRouteGuardProjection(),
+      inMemoryAskWorkspace,
+    );
   await runAIDurableMaterializationRecovery(aiProviderRepository, kernel.connector);
   await runCanonicalProjectionRecoveryWithReport(
     canonicalKnowledgeRepository,

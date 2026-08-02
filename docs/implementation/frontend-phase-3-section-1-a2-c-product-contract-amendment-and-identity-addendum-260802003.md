@@ -1,12 +1,13 @@
 ---
 id: FRONTEND-PHASE-3-SECTION-1-A2-C-PRODUCT-CONTRACT-AMENDMENT-AND-IDENTITY-ADDENDUM-260802003
 classification: CONTRACT_AMENDMENT_PROPOSAL
-status: APPROVED_FOR_A2_C_CONTRACT_AMENDMENT
+status: APPROVED_FOR_A2_C_PERSISTENT_ADAPTER
 work_item: FE-P3-S1
 sub_slice: A2-C
 review_id: 4836723439
 review_decision: APPROVED_FOR_A2_C_CONTRACT_AMENDMENT
-implementation_authorization: NOT_GRANTED
+implementation_authorization: APPROVED_FOR_A2_C_PERSISTENT_ADAPTER
+implementation_review_id: 4836838966
 decision_basis: USER_SUBMITTED_CONTRACT_SUMMARY
 base_commit: ec409b16190f72199556c2c1e01dae513a2387ca
 subject_commit: 18f48c4504d1510ad310cd85c00a0a3503ac65e6
@@ -21,8 +22,9 @@ supersedes: docs/implementation/frontend-phase-3-section-1-a2-c-persistent-knowl
 Side-panel review `4836723439` first returned `CHANGES_REQUIRED` for the A2-C
 Persistent Knowledge Product Read Adapter request. The follow-up review
 returned `APPROVED_FOR_A2_C_CONTRACT_AMENDMENT` for the bounded amendment
-content submitted in the review message. Implementation authorization for the
-Product Search `1.1.0` code and Persistent Adapter remains `NOT_GRANTED`.
+content submitted in the review message. A subsequent side-panel review
+`4836838966` returned `APPROVED_FOR_A2_C_PERSISTENT_ADAPTER`, authorizing the
+Product Search `1.1.0` code and Persistent Adapter within this accepted scope.
 
 The review explicitly recorded that the local amendment commit and file were
 not independently available through the connected review surface. This
@@ -39,10 +41,11 @@ fixed before the adapter could be reconsidered:
 3. Define the authority and deterministic algorithm for read-only Compare
    differences.
 
-This addendum is now an accepted bounded contract amendment. It does not by
-itself authorize TypeScript, schemas, tests, the Product Port, API, UI,
-database, or PR state changes. Those changes remain blocked until a separate
-`APPROVED_FOR_A2_C_PERSISTENT_ADAPTER` implementation decision.
+This addendum is the accepted bounded contract amendment underlying review
+`4836838966`. The implementation decision authorizes only the TypeScript,
+schema, test, Product Port adapter, assembly wiring, and applicable validation
+described by the accepted scope. API, UI, database migration, PR Ready, Merge,
+deployment, and production verification remain unauthorized.
 
 ## 2. QX-01 readiness Product mapping
 
@@ -352,14 +355,15 @@ return an explicit decision before the Persistent Adapter is implemented.
 
 ```text
 Review 4836723439                 APPROVED_FOR_A2_C_CONTRACT_AMENDMENT
-Implementation authorization      NOT GRANTED
+Implementation review 4836838966  APPROVED_FOR_A2_C_PERSISTENT_ADAPTER
+Implementation authorization      APPROVED_FOR_A2_C_PERSISTENT_ADAPTER
 Approval-request base             ec409b16190f72199556c2c1e01dae513a2387ca
 Approval-request subject          18f48c4504d1510ad310cd85c00a0a3503ac65e6
 QX-01 Stage 7 Handler             PASS / reviewed
 QX-02 Stage 10 Handler             PASS / reviewed
 A2-C Contract Amendment           APPROVED / submitted-content basis
-A2-C Persistent Adapter           PENDING_EXPLICIT_IMPLEMENTATION_APPROVAL
-Product Search 1.1.0 Code         NOT AUTHORIZED
+A2-C Persistent Adapter           IN PROGRESS
+Product Search 1.1.0 Code         IMPLEMENTED LOCALLY / UNDER VALIDATION
 A3 API/Client/Cache               NOT AUTHORIZED
 /knowledge UI                     NOT AUTHORIZED
 PR #53                            OPEN / DRAFT
@@ -368,6 +372,5 @@ DB Migration / Dependency        NONE AUTHORIZED
 Deployment                        NOT STARTED
 ```
 
-The next required judgment is the separate
-`APPROVED_FOR_A2_C_PERSISTENT_ADAPTER` implementation decision. This
-amendment approval must not be treated as that authorization.
+The implementation pass review remains pending. This authorization does not
+permit PR Ready, Merge, deployment, or Phase 3 completion.

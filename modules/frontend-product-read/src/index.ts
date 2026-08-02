@@ -4,6 +4,7 @@ import {
   decodeKnowledgeDetailView,
   decodeKnowledgePageListView,
   decodeKnowledgeSearchResultView,
+  decodeKnowledgeSearchResultViewVNext,
   decodeKnowledgeWorkspaceView,
 } from '../../../packages/contracts/src/index.js';
 import type {
@@ -22,7 +23,7 @@ import type {
   KnowledgePageListRequest,
   KnowledgePageListView,
   KnowledgeSearchRequest,
-  KnowledgeSearchResultView,
+  KnowledgeSearchResultViewAny,
   KnowledgeWorkspaceRequest,
   KnowledgeWorkspaceView,
   RouteGuardDecisionView,
@@ -48,6 +49,8 @@ export type FrontendReadScope = {
   readonly accessibleProjects: readonly AuthorizedProjectSummary[];
   readonly accessRevision: string;
   readonly policyContextRevision: string;
+  /** Server-resolved membership scopes; browser-supplied authority is never accepted. */
+  readonly accessScope?: readonly string[];
   /** Resource-scoped revisions; never substitute the active Project revision. */
   readonly executionAuthorities?: Readonly<Record<string, FrontendProjectAuthorityRevision>>;
 };
@@ -123,7 +126,7 @@ export type KnowledgeWorkspaceProjectionPort = {
     input: KnowledgePortInput<KnowledgeWorkspaceRequest>,
   ): Promise<KnowledgeWorkspaceView>;
   listPages(input: KnowledgePortInput<KnowledgePageListRequest>): Promise<KnowledgePageListView>;
-  search(input: KnowledgePortInput<KnowledgeSearchRequest>): Promise<KnowledgeSearchResultView>;
+  search(input: KnowledgePortInput<KnowledgeSearchRequest>): Promise<KnowledgeSearchResultViewAny>;
   getDetail(input: KnowledgePortInput<KnowledgeDetailRequest>): Promise<KnowledgeDetailView>;
   compare(input: KnowledgePortInput<KnowledgeCompareRequest>): Promise<KnowledgeCompareView>;
 };
@@ -233,9 +236,13 @@ export class FrontendProductReadCoordinator {
 
   async searchKnowledge(
     input: KnowledgePortInput<KnowledgeSearchRequest>,
-  ): Promise<KnowledgeSearchResultView> {
+  ): Promise<KnowledgeSearchResultViewAny> {
     const readInput = requireKnowledgeActiveProject(input);
-    const view = decodeKnowledgeSearchResultView(await this.getKnowledgePort().search(readInput));
+    const raw = await this.getKnowledgePort().search(readInput);
+    const view =
+      raw.schemaVersion === '1.1.0'
+        ? decodeKnowledgeSearchResultViewVNext(raw)
+        : decodeKnowledgeSearchResultView(raw);
     assertKnowledgeScope(view, readInput);
     if (view.query !== readInput.request.query) {
       rejectKnowledgeResponse('search query does not match the request.');

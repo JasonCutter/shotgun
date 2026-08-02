@@ -472,6 +472,7 @@ const buildCanonicalWorkspaceCandidates = async (
   context: HandlerContext,
   response: CanonicalSearchResponse,
   request: SearchKnowledgeWorkspaceRequest,
+  sensitivity: KnowledgeWorkspaceQuerySensitivity,
   correlationId: string,
 ): Promise<readonly WorkspaceCandidate[]> => {
   const projectionStatus = canonicalWorkspaceStatus(response.readiness);
@@ -481,8 +482,10 @@ const buildCanonicalWorkspaceCandidates = async (
     ),
   );
   return resolved
-    .filter(({ candidate, sensitivity }) =>
-      matchesWorkspaceFilters(candidate, request, sensitivity),
+    .filter(
+      ({ candidate, sensitivity: candidateSensitivity }) =>
+        hasSensitivityClearance(sensitivity, candidateSensitivity) &&
+        matchesWorkspaceFilters(candidate, request, candidateSensitivity),
     )
     .map(({ candidate }) => candidate);
 };
@@ -1044,6 +1047,7 @@ export const createProjectionSearchModule = (
               context,
               canonical,
               request,
+              security.sensitivity,
               envelope.correlationId,
             )),
             ...approved,

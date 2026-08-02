@@ -183,6 +183,42 @@ describe('QX-01 SearchKnowledgeWorkspace Stage 7 handler', () => {
     expect(result.readiness.partial).toBe(false);
   });
 
+  it('applies caller sensitivity before ranking and rejects malformed cursors', async () => {
+    const { kernel } = await createStage7Harness();
+    const { command, draft } = await createDraft(kernel, 'qx-01-negative-filters');
+    await kernel.connector.sendCommand(
+      decisionCommand(command, draft, 'APPROVE', 'qx-01-negative-approval', 'Checked.'),
+    );
+
+    const publicQuery = {
+      ...workspaceSearchQuery(command, { schemaVersion: '1.0.0', query: 'Milo' }),
+      security: { ...command.security!, sensitivity: 'public' as const },
+    };
+    const filtered = (await kernel.connector.query<SearchKnowledgeWorkspaceResult>(publicQuery))
+      .result.payload;
+    expect(filtered.matches).toEqual([]);
+    expect(filtered.readiness.canonicalSearch.status).toBe('READY');
+
+    await expect(
+      kernel.connector.query(
+        workspaceSearchQuery(command, {
+          schemaVersion: '1.0.0',
+          query: 'Milo',
+          cursor: 'not-a-stateless-offset',
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    await expect(
+      kernel.connector.query(
+        workspaceSearchQuery(command, {
+          schemaVersion: '1.0.0',
+          query: 'Milo',
+          cursor: '9007199254740992',
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+  });
+
   it('keeps non-ready Compiled Truth status explicit without hiding Canonical results', async () => {
     const { kernel } = await createStage7Harness();
     const first = await createDraft(kernel, 'qx-01-not-built', 'Milo weighs 5 kg.');

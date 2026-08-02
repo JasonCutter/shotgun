@@ -8,6 +8,7 @@ approval_review_id: 4837418169
 approval_decision: APPROVED_FOR_KNOWLEDGE_WORKSPACE_UI
 implementation_authorization: APPROVED_FOR_KNOWLEDGE_WORKSPACE_UI
 implementation_commit: 32fdb0e
+follow_up_report_commit: d5298e0b
 follow_up_review_id: 4837579603
 follow_up_decision: CHANGES_REQUIRED
 branch: codex/frontend-phase-3-section-1-knowledge-workspace
@@ -183,10 +184,11 @@ files, and the subsequent full Chromium run passed 25/25:
 
 ## 8. Exact local history and changed files
 
-The local branch is 14 commits ahead of the remote Draft PR branch. The exact
+The local branch is 15 commits ahead of the remote Draft PR branch. The exact
 local commit list is:
 
 ```text
+d5298e0b docs(frontend): record follow-up knowledge evidence
 e99c337c docs(frontend): record knowledge workspace ui verification
 32fdb0ec feat(frontend): implement knowledge workspace ui
 c9e698f3 docs(frontend): record A3 implementation pass

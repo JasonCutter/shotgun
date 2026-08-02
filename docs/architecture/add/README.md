@@ -52,7 +52,7 @@ Phase 2부터 Phase 6까지의 과거 승인 ADR-018–ADR-075는 Phase별 ADR �
 | Work Item                                                | Status        |
 | -------------------------------------------------------- | ------------- |
 | FE-P3 — Knowledge Understanding and Editing              | `IN_PROGRESS` |
-| FE-P3-S2 — Knowledge Editor and DraftChangeSet Authoring | `NOT_STARTED` |
+| FE-P3-S2 — Knowledge Editor and DraftChangeSet Authoring | `IN_PROGRESS` |
 
 - 미충족 필수 기준: `manifest unavailable`
 - Next valid Product Section: `FE-P3-S3 — Semantic Graph and Relationship Exploration`

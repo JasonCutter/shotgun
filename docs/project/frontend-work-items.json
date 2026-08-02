@@ -226,7 +226,7 @@
       "parent": "FE-P3",
       "predecessor": "FE-P3-S1",
       "successor": "FE-P3-S3",
-      "status": "NOT_STARTED",
+      "status": "IN_PROGRESS",
       "governingContract": "docs/architecture/contracts/snapshots/frontend-phase-3-section-2/frontend-phase-3-section-2-contract-snapshot-260802001.md",
       "completionManifest": null,
       "approvedAt": null,

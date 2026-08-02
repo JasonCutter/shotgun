@@ -17,6 +17,7 @@ import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
 import {
   knowledgePageListQueryOptions,
+  knowledgeCanManuallyRetry,
   knowledgeSearchQueryOptions,
   knowledgeWorkspaceQueryOptions,
 } from '../knowledge/knowledge-queries.js';
@@ -76,10 +77,10 @@ export const KnowledgeWorkspace = () => {
 
   const searchRequest = useMemo<KnowledgeSearchRequest>(() => {
     const filters = {
-      ...(authority ? { authorities: [authority] } : {}),
-      ...(kind ? { kinds: [kind] } : {}),
-      ...(temporalState ? { temporalStates: [temporalState] } : {}),
-      ...(projectionStatus ? { projectionStatuses: [projectionStatus] } : {}),
+      ...(urlAuthority ? { authorities: [urlAuthority] } : {}),
+      ...(urlKind ? { kinds: [urlKind] } : {}),
+      ...(urlTemporalState ? { temporalStates: [urlTemporalState] } : {}),
+      ...(urlProjectionStatus ? { projectionStatuses: [urlProjectionStatus] } : {}),
     };
     return {
       schemaVersion: '1.0.0',
@@ -87,7 +88,7 @@ export const KnowledgeWorkspace = () => {
       ...(Object.keys(filters).length > 0 ? { filters } : {}),
       pageSize,
     };
-  }, [authority, kind, projectionStatus, temporalState, urlQuery]);
+  }, [urlAuthority, urlKind, urlProjectionStatus, urlTemporalState, urlQuery]);
 
   const workspace = useQuery(
     knowledgeWorkspaceQueryOptions(apiClient, shell, {
@@ -247,9 +248,19 @@ export const KnowledgeWorkspace = () => {
       ) : null}
 
       {workspace.error ? (
-        <ErrorState error={workspace.error} onRetry={() => void workspace.refetch()} />
+        <ErrorState
+          error={workspace.error}
+          onRetry={
+            knowledgeCanManuallyRetry(workspace.error) ? () => void workspace.refetch() : undefined
+          }
+        />
       ) : null}
-      {pages.error ? <ErrorState error={pages.error} onRetry={() => void pages.refetch()} /> : null}
+      {pages.error ? (
+        <ErrorState
+          error={pages.error}
+          onRetry={knowledgeCanManuallyRetry(pages.error) ? () => void pages.refetch() : undefined}
+        />
+      ) : null}
       {workspace.isPending || pages.isPending ? (
         <LoadingState message="Loading Knowledge Workspace" />
       ) : null}
@@ -296,7 +307,12 @@ export const KnowledgeWorkspace = () => {
           <h2 id="knowledge-results-heading">Search results</h2>
           {search.isPending ? <LoadingState message="Searching server Knowledge" /> : null}
           {search.error ? (
-            <ErrorState error={search.error} onRetry={() => void search.refetch()} />
+            <ErrorState
+              error={search.error}
+              onRetry={
+                knowledgeCanManuallyRetry(search.error) ? () => void search.refetch() : undefined
+              }
+            />
           ) : null}
           {searchReadiness?.partial ? (
             <p className="stale-state" role="status">

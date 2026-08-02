@@ -1,7 +1,7 @@
 ---
 id: FRONTEND-PHASE-3-SECTION-1-KNOWLEDGE-WORKSPACE-UI-VERIFICATION-260802003
 classification: VERIFICATION_REPORT
-status: FOLLOW_UP_EVIDENCE_READY
+status: CORRECTION_PENDING_REMOTE_CI
 work_item: FE-P3-S1
 sub_slice: KNOWLEDGE_WORKSPACE_UI
 approval_review_id: 4837418169
@@ -9,22 +9,23 @@ approval_decision: APPROVED_FOR_KNOWLEDGE_WORKSPACE_UI
 implementation_authorization: APPROVED_FOR_KNOWLEDGE_WORKSPACE_UI
 implementation_commit: 32fdb0e
 follow_up_report_commit: ad3071ed
-follow_up_review_id: 4837579603
+previous_follow_up_review_id: 4837579603
+follow_up_review_id: 4837647662
 follow_up_decision: CHANGES_REQUIRED
 branch: codex/frontend-phase-3-section-1-knowledge-workspace
 base_commit: cb2513bc311891ac89f53c7d67d6a401da65a2a8
 tracking_issue: 52
 tracking_pr: 53
-remote_head_at_review: 18f48c4504d1510ad310cd85c00a0a3503ac65e6
-remote_ci: PASS_AT_REMOTE_HEAD
-remote_head_verified: ad3071edeea06126cdd5559f24e5627fe6880ec4
-remote_ci_run: 30737515686
-remote_quality: PASS
-remote_frontend: PASS
-remote_required_gates: PASS
-remote_database: PASS
-remote_chromium: PASS
-remote_stage12_package: PASS
+remote_head_at_review: c063d76ac9574858d26910e043b5f35068e6f03b
+remote_ci: PENDING_AFTER_CORRECTION
+prior_remote_head_verified: c063d76ac9574858d26910e043b5f35068e6f03b
+prior_remote_ci_run: 30737766844
+prior_remote_quality: PASS
+prior_remote_frontend: PASS
+prior_remote_required_gates: PASS
+prior_remote_database: PASS
+prior_remote_chromium: PASS
+prior_remote_stage12_package: PASS
 ready: NOT_AUTHORIZED
 merge: NOT_AUTHORIZED
 deployment: NOT_STARTED
@@ -100,40 +101,44 @@ this slice adds no new lockfile or adoption decision.
 
 ## 5. Verification evidence
 
-| Gate or scenario                                      | Result                                                                                                                |
-| ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| Frontend typecheck                                    | PASS -- `npm.cmd run frontend:typecheck`                                                                              |
-| Root typecheck                                        | PASS -- `npm.cmd run typecheck`                                                                                       |
-| Frontend unit/component tests                         | PASS -- 12 files, 41 tests                                                                                            |
-| New Knowledge UI tests                                | PASS -- 3 tests for Workspace search/filter, detail/Evidence return state and server compare                          |
-| Frontend build                                        | PASS -- Vite build; existing `node:crypto` externalization and chunk-size warnings remain non-blocking warnings       |
-| Full Chromium Frontend E2E                            | PASS -- 25 tests, including the new Knowledge Workspace scenario and existing Sources/Ask/Session/Project regressions |
-| Root unit suite                                       | PASS -- 43 files, 224 tests                                                                                           |
-| Root contract suite                                   | PASS -- 30 files, 238 tests; single worker with 20-second test/hook timeout to avoid host parallel timeout            |
-| Root integration suite                                | PASS -- 16 files, 56 tests; single worker with 20-second test/hook timeout to avoid host parallel timeout             |
-| PostgreSQL database suite                             | PASS -- 24 files, 105 tests                                                                                           |
-| Architecture test                                     | PASS                                                                                                                  |
-| Lint                                                  | PASS -- `npm.cmd run lint`                                                                                            |
-| Changed-file Prettier check                           | PASS                                                                                                                  |
-| Documentation validation and Frontend work-item gates | PASS                                                                                                                  |
-| Secret scan                                           | PASS                                                                                                                  |
-| OSS gate                                              | PASS -- 68 decisions and 45 baseline references                                                                       |
+| Gate or scenario                                      | Result                                                                                                                                                                 |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Frontend typecheck                                    | PASS -- `npm.cmd run frontend:typecheck`                                                                                                                               |
+| Root typecheck                                        | PASS -- `npm.cmd run typecheck`                                                                                                                                        |
+| Frontend unit/component tests                         | PASS -- 12 files, 43 tests                                                                                                                                             |
+| New Knowledge UI tests                                | PASS -- 5 tests for Workspace search/filter, committed-filter boundary, safe retry boundary, detail/Evidence return state and server compare                           |
+| Frontend build                                        | PASS -- Vite build; existing `node:crypto` externalization and chunk-size warnings remain non-blocking warnings                                                        |
+| Full Chromium Frontend E2E                            | PASS -- 25 tests after supplying the required local PostgreSQL URL; includes the new Knowledge Workspace scenario and existing Sources/Ask/Session/Project regressions |
+| Root unit suite                                       | PASS -- 43 files, 224 tests                                                                                                                                            |
+| Root contract suite                                   | PASS -- 30 files, 238 tests; single worker with 20-second test/hook timeout to avoid host parallel timeout                                                             |
+| Root integration suite                                | PASS -- 16 files, 56 tests; single worker with 20-second test/hook timeout to avoid host parallel timeout                                                              |
+| PostgreSQL database suite                             | PASS -- 24 files, 105 tests                                                                                                                                            |
+| Architecture test                                     | PASS                                                                                                                                                                   |
+| Lint                                                  | PASS -- `npm.cmd run lint`                                                                                                                                             |
+| Changed-file Prettier check                           | PASS                                                                                                                                                                   |
+| Documentation validation and Frontend work-item gates | PASS                                                                                                                                                                   |
+| Secret scan                                           | PASS                                                                                                                                                                   |
+| OSS gate                                              | PASS -- 68 decisions and 45 baseline references                                                                                                                        |
 
-The repository-wide local `format:check` remains `FAIL` because it reports 59
+The repository-wide local `format:check` remains `FAIL` because it reports 58
 existing files outside this slice as not formatted; the changed-file check is
 PASS and those unrelated files were not rewritten. The official
 `npm.cmd run docs:knowledge-flow:render` command was run and
 `npm.cmd run docs:knowledge-flow:check` now PASSes; the generated artifact was
-not manually edited. The local Windows `test:stage12-package` attempt remains
+not manually edited. The first local Chromium command stopped before test
+collection because `DATABASE_URL` was not set; after supplying the required
+local PostgreSQL URL, the full 25-test run passed. The local Windows
+`test:stage12-package` attempt remains
 `BLOCKED/NOT_RUN`: package prepack completed, but the isolated consumer install
-was denied on the npm registry request for `ajv` with `EACCES`. The remote
-exact-head run `30737515686` at `ad3071edeea06126cdd5559f24e5627fe6880ec4`
-passed Quality, Frontend, Required Gates, Database, Chromium and the
-`test:stage12-package` substep through `stage12:reuse-operations-gate`.
-The remote Quality job's formatting command emitted the repository's existing
-Prettier warnings while its `2>&1 | tee format-check.log` pipeline returned a
-successful job status; this is recorded as a workflow masking limitation, not
-as a clean repository-wide format result.
+was denied on the npm registry request for `ajv` with `EACCES`. The prior
+exact-head run `30737766844` at
+`c063d76ac9574858d26910e043b5f35068e6f03b` passed Quality, Frontend, Required
+Gates, Database, Chromium and the `test:stage12-package` substep through
+`stage12:reuse-operations-gate` before the current correction. The remote
+Quality job's formatting command emitted the repository's existing Prettier
+warnings while its `2>&1 | tee format-check.log` pipeline returned a successful
+job status; this is recorded as a workflow masking limitation, not as a clean
+repository-wide format result.
 
 ## 6. Local AC status
 
@@ -197,8 +202,13 @@ files, and the subsequent full Chromium run passed 25/25:
 
 ## 8. Exact local history and changed files
 
-The local branch had 16 commits ahead of the remote Draft PR branch before this
-remote-evidence report update. The exact pushed commit list was:
+At the latest reviewed base, `cb2513bc311891ac89f53c7d67d6a401da65a2a8..HEAD`
+contains 43 commits and the exact diff is 75 files changed, 17,366 additions
+and 90 deletions. The earlier `37 files / 7,973 additions / 129 deletions`
+figure was only the local-vs-old-remote comparison and is superseded. The
+compact list below is the 16-commit follow-up slice that was pushed before the
+current correction; the complete base-to-head history is reproducible with
+`git log --oneline cb2513bc311891ac89f53c7d67d6a401da65a2a8..HEAD`.
 
 ```text
 ad3071ed docs(frontend): fix follow-up report history
@@ -219,19 +229,30 @@ cf29b502 test(frontend): verify persistent knowledge adapter
 5a563d06 docs: amend A2-C product contract review scope
 ```
 
-The complete local-vs-remote diff contains 37 files and 7,973 additions / 129
-deletions, including the A2-C adapter, A3 API/client/cache boundary and this
-Knowledge UI. The full list is recorded by the exact-head Git diff and will be
-included in the Draft PR update; no unrelated files were rewritten.
+The base-to-head diff includes the A2-C adapter, A3 API/client/cache boundary
+and this Knowledge UI; no unrelated files were rewritten.
 
-## 9. Completion boundary
+## 9. Correction requested by Review 4837647662
 
-This report records local implementation evidence and the completed remote
-evidence update for the approved Knowledge Workspace UI slice only. Follow-up
-Review `4837579603` returned `CHANGES_REQUIRED` because the local A2-C+A3+UI
-history was not yet present on the remote exact head; that limited evidence
-gate is now satisfied at `ad3071ed...`. The follow-up is evidence publication
-and verification, not a UI redesign. This report update itself creates a new
-commit, so its new exact head must receive its own CI run before the next
-review decision. FE-P3-S1 completion, Ready, Merge, deployment and production
-verification remain unauthorized or not run.
+- Manual Retry is now exposed only when the typed Knowledge read error is a
+  `ShotgunApiError` with `retryability === 'SAFE'`. `NEVER`, `UNKNOWN`,
+  authentication, authorization and validation failures render no Retry
+  button.
+- Search requests and React Query keys now use only committed URL query/filter
+  values. Form edits remain draft state until Search is submitted.
+- Focused evidence after the correction: Knowledge Workspace UI 5/5 tests,
+  frontend Knowledge query unit coverage 3 tests, and frontend typecheck PASS.
+- The current correction changes are not yet on a remote exact head. The next
+  commit must run the full local frontend/Chromium verification and a new
+  remote Quality, Frontend and Required Gates run before review.
+
+## 10. Completion boundary
+
+This report records local implementation evidence for the approved Knowledge
+Workspace UI slice only. Follow-up Review `4837579603` confirmed the evidence
+gate, and Review `4837647662` then identified the two UI contract defects and
+the obsolete base-to-head scope numbers recorded above. This correction is a
+minimal implementation/test change, not a scope expansion. The correction
+commit and its new exact-head CI must complete before a new review decision.
+FE-P3-S1 completion, Ready, Merge, deployment and production verification
+remain unauthorized or not run.

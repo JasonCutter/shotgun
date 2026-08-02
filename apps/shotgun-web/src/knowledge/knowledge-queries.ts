@@ -21,8 +21,11 @@ import {
   knowledgeWorkspaceQueryKey,
 } from '../app/query-keys.js';
 
+export const knowledgeCanManuallyRetry = (error: unknown): error is ShotgunApiError =>
+  error instanceof ShotgunApiError && error.retryability === 'SAFE';
+
 export const knowledgeQueryRetry = (failureCount: number, error: unknown): boolean =>
-  error instanceof ShotgunApiError && error.retryability === 'SAFE' && failureCount < 2;
+  knowledgeCanManuallyRetry(error) && failureCount < 2;
 
 export const knowledgeWorkspaceQueryOptions = (
   apiClient: ShotgunApiClient,

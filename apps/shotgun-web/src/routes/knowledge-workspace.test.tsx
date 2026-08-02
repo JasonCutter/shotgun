@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, Outlet, RouterProvider } from 'react-router';
 import type { ReactElement } from 'react';
@@ -15,6 +15,7 @@ import type {
   KnowledgeWorkspaceView,
   ShotgunApiClient,
 } from '@shotgun/api-client';
+import { ShotgunApiError } from '@shotgun/api-client';
 
 import { createFrontendQueryClient } from '../app/query-client.js';
 import { AppProviders, type AppRuntime } from '../app/providers.js';
@@ -352,6 +353,59 @@ describe('Knowledge Workspace UI', () => {
       },
       expect.any(Object),
     );
+  });
+
+  it('keeps draft filters out of the committed search request until submit', async () => {
+    const runtime = createRuntime();
+    const router = renderRoute(
+      runtime,
+      [{ path: 'knowledge', element: <KnowledgeWorkspace /> }],
+      ['/knowledge?q=canonical&authority=CANONICAL'],
+    );
+
+    expect(await screen.findByText('The server-provided snippet.')).toBeTruthy();
+    const searchKnowledgeMock = vi.mocked(runtime.apiClient.searchKnowledge);
+    const committedCallCount = searchKnowledgeMock.mock.calls.length;
+
+    await userEvent.selectOptions(screen.getByLabelText('Authority'), 'COMPILED_TRUTH');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(router.state.location.search).toBe('?q=canonical&authority=CANONICAL');
+    expect(searchKnowledgeMock).toHaveBeenCalledTimes(committedCallCount);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Search Knowledge' }));
+    await waitFor(() =>
+      expect(router.state.location.search).toBe('?q=canonical&authority=COMPILED_TRUTH'),
+    );
+    await waitFor(() =>
+      expect(searchKnowledgeMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          filters: { authorities: ['COMPILED_TRUTH'] },
+        }),
+        expect.any(Object),
+      ),
+    );
+  });
+
+  it('does not expose manual retry for non-safe Knowledge read failures', async () => {
+    const runtime = createRuntime();
+    vi.spyOn(runtime.apiClient, 'searchKnowledge').mockRejectedValue(
+      new ShotgunApiError({
+        status: 400,
+        code: 'INVALID_REQUEST',
+        message: 'The Knowledge request is invalid.',
+      }),
+    );
+    renderRoute(
+      runtime,
+      [{ path: 'knowledge', element: <KnowledgeWorkspace /> }],
+      ['/knowledge?q=canonical'],
+    );
+
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'The Knowledge request is invalid.',
+    );
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
   });
 
   it('renders the server compare response in left/right order without client diff or write controls', async () => {

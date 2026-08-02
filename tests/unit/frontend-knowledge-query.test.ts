@@ -16,6 +16,7 @@ import {
   purgeProjectScopedCaches,
 } from '../../apps/shotgun-web/src/app/query-keys.js';
 import {
+  knowledgeCanManuallyRetry,
   knowledgeQueryRetry,
   knowledgeSearchQueryOptions,
   knowledgeWorkspaceQueryOptions,
@@ -90,6 +91,9 @@ describe('Frontend Knowledge Query ownership', () => {
     expect(knowledgeQueryRetry(2, safe)).toBe(false);
     expect(knowledgeQueryRetry(0, never)).toBe(false);
     expect(knowledgeQueryRetry(0, new Error('unknown'))).toBe(false);
+    expect(knowledgeCanManuallyRetry(safe)).toBe(true);
+    expect(knowledgeCanManuallyRetry(never)).toBe(false);
+    expect(knowledgeCanManuallyRetry(new Error('unknown'))).toBe(false);
 
     const options = knowledgeSearchQueryOptions(apiClient, shell, searchRequest);
     expect(options.enabled).toBe(true);

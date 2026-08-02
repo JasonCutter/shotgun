@@ -86,7 +86,7 @@ export type ProjectionClockPort = { now(): string };
 const systemClock: ProjectionClockPort = { now: () => new Date().toISOString() };
 const SEARCH_PROJECTION_UPDATE_FAILED = 'SEARCH_PROJECTION_UPDATE_FAILED';
 const SEARCH_WORKSPACE_DEFAULT_PAGE_SIZE = 20;
-const SEARCH_WORKSPACE_MAX_CANDIDATES = 100;
+const SEARCH_WORKSPACE_CANONICAL_RETRIEVAL_LIMIT = 100;
 const SEARCH_WORKSPACE_RANKING_VERSION = '1.0.0' as const;
 const SEARCH_WORKSPACE_CURSOR_VERSION = 1 as const;
 const workspaceMatchTypeOrder: readonly KnowledgeWorkspaceQueryMatchType[] = [
@@ -306,8 +306,7 @@ const decodeWorkspaceCursor = (
       payload.requestDigest !== workspaceRequestDigest(request) ||
       typeof payload.nextOffset !== 'number' ||
       !Number.isSafeInteger(payload.nextOffset) ||
-      payload.nextOffset < 0 ||
-      payload.nextOffset > SEARCH_WORKSPACE_MAX_CANDIDATES
+      payload.nextOffset < 0
     ) {
       return cursorValidationError(
         correlationId,
@@ -1078,7 +1077,7 @@ export const createProjectionSearchModule = (
             repository,
             projectId,
             request.query,
-            SEARCH_WORKSPACE_MAX_CANDIDATES,
+            SEARCH_WORKSPACE_CANONICAL_RETRIEVAL_LIMIT,
             security.accessScope,
           );
           const [approved, compiled] = await Promise.all([

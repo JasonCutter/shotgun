@@ -203,6 +203,59 @@ describe('QX-01 SearchKnowledgeWorkspace Stage 7 handler', () => {
     expect(result.readiness.partial).toBe(false);
   });
 
+  it('allows handler-issued cursor offsets beyond the Canonical retrieval limit', async () => {
+    const { kernel } = await createStage7Harness();
+    const { command, intake } = await createDraft(kernel, 'qx-01-cursor-over-100');
+    const evidence = (
+      await kernel.connector.query<{ items: readonly { evidenceId: string }[] }>(
+        evidenceListQuery(command, intake.sourceVersionId),
+      )
+    ).result.payload.items[0]!;
+    const candidates = Array.from({ length: 101 }, (_, index) =>
+      entityCandidate(
+        `candidate:cursor-${String(index).padStart(3, '0')}`,
+        intake.sourceVersionId,
+        evidence.evidenceId,
+        'Milo',
+      ),
+    );
+    const group = (
+      await kernel.connector.sendCommand<KnowledgeReviewGroup>(
+        stageGroupCommand(command, 'group:cursor-over-100', intake.sourceVersionId, candidates),
+      )
+    ).result;
+    await kernel.connector.sendCommand(reviewGroupCommand(command, group, 'APPROVE'));
+
+    const firstPage = (
+      await kernel.connector.query<SearchKnowledgeWorkspaceResult>(
+        workspaceSearchQuery(command, {
+          schemaVersion: '1.0.0',
+          query: 'Milo',
+          pageSize: 100,
+          filters: { authorities: ['APPROVED_KNOWLEDGE'] },
+        }),
+      )
+    ).result.payload;
+    expect(firstPage.matches).toHaveLength(100);
+    expect(firstPage.nextCursor).toEqual(expect.any(String));
+    if (!firstPage.nextCursor) throw new Error('Expected cursor after offset 100.');
+
+    const secondPage = (
+      await kernel.connector.query<SearchKnowledgeWorkspaceResult>(
+        workspaceSearchQuery(command, {
+          schemaVersion: '1.0.0',
+          query: 'Milo',
+          cursor: firstPage.nextCursor,
+          pageSize: 20,
+          filters: { authorities: ['APPROVED_KNOWLEDGE'] },
+        }),
+      )
+    ).result.payload;
+    expect(secondPage.matches).toHaveLength(1);
+    expect(secondPage.matches[0]).toMatchObject({ rank: 101, authority: 'APPROVED_KNOWLEDGE' });
+    expect(secondPage.nextCursor).toBeUndefined();
+  }, 15_000);
+
   it('uses decoder-compatible code-point ordering for equal approved matches', async () => {
     const { kernel } = await createStage7Harness();
     const { command, intake } = await createDraft(kernel, 'qx-01-ordering');

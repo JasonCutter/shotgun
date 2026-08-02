@@ -125,6 +125,8 @@ const id = (value: string, field: string): string => {
 const shortLabel = (value: string): string =>
   value.length <= 256 ? value : `${value.slice(0, 253)}...`;
 
+const productFocusId = (pointer: string): string => (pointer.length === 0 ? '/' : pointer);
+
 const objectKey = (projectId: string, resourceId: string, revision: string): string =>
   stableJson({ projectId, resourceId, revision });
 
@@ -783,7 +785,7 @@ export class PostgresKnowledgeWorkspaceProjection implements KnowledgeWorkspaceP
     return evidence.map((item) => ({
       resourceId: source.resourceId,
       resourceRevision: source.resourceRevision,
-      focusId: item.pointer,
+      focusId: productFocusId(item.pointer),
       sourceId: item.sourceId,
       sourceVersionId: item.sourceVersionId,
       evidenceId: item.evidenceId,
@@ -867,7 +869,7 @@ export class PostgresKnowledgeWorkspaceProjection implements KnowledgeWorkspaceP
       return resolved.map((evidence) => ({
         resourceId,
         resourceRevision,
-        focusId: evidence.pointer,
+        focusId: productFocusId(evidence.pointer),
         sourceId: evidence.sourceId,
         sourceVersionId: evidence.sourceVersionId,
         evidenceId: evidence.evidenceId,
@@ -942,7 +944,6 @@ export class PostgresKnowledgeWorkspaceProjection implements KnowledgeWorkspaceP
           commitId: commit.commitId,
           manifestId: commit.manifestId,
           changeSetId: commit.changeSetId,
-          projection: canonicalProjection,
         },
         ...(evidenceTargets.length === 0 ? {} : { evidenceTargets }),
       });
@@ -1142,7 +1143,7 @@ export class PostgresKnowledgeWorkspaceProjection implements KnowledgeWorkspaceP
       revision: first.revision,
       title: shortLabel(first.resourceId),
       items,
-      lineage: { ...first.lineage, productId: first.productId },
+      lineage: { ...first.lineage, productId: pageId },
       projection,
       capabilities: PRODUCT_CAPABILITIES,
       fetchedAt: this.clock(),

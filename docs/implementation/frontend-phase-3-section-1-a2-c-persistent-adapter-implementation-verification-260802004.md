@@ -6,6 +6,9 @@ work_item: FE-P3-S1
 sub_slice: A2-C
 review_id: 4836838966
 review_decision: APPROVED_FOR_A2_C_PERSISTENT_ADAPTER
+follow_up_review_id: 4837090953
+follow_up_review_decision: CHANGES_REQUIRED
+follow_up_scope: Persistent shared contract, populated PostgreSQL adapter, full database suite, and verification evidence only
 implementation_authorization: APPROVED_FOR_A2_C_PERSISTENT_ADAPTER
 implementation_commit: 109f570c
 branch: codex/frontend-phase-3-section-1-knowledge-workspace
@@ -17,6 +20,35 @@ ready: NOT_AUTHORIZED
 merge: NOT_AUTHORIZED
 deployment: NOT_STARTED
 ---
+
+## Required follow-up verification — Review 4837090953
+
+The side-panel review required three checks before an implementation-pass decision:
+
+1. Run the existing shared `defineFrontendKnowledgeProjectionContract` suite directly against a Persistent Product Read Adapter fixture.
+2. Exercise populated PostgreSQL Stage 6/7/9/10 Query handlers for Canonical-only, Approved Knowledge, Compiled Truth, Derived Inference, NOT_BUILT, STALE, DEGRADED, inaccessible-resource masking, and ordered two-page Compare.
+3. Run the complete `npm.cmd run test:database` command to normal exit code `0`.
+
+Follow-up evidence:
+
+| Verification | Result |
+| --- | --- |
+| Persistent PostgreSQL Query-backed shared Product contract | PASS — 8 tests |
+| Existing In-memory shared Product contract | PASS — 9 tests |
+| Populated PostgreSQL Product Read adapter | PASS — 2 tests |
+| Full `npm.cmd run test:database` | PASS — 24 files, 105 tests, exit code 0, 168.82 seconds |
+| Full contract suite (serialized, 20-second test/hook timeout) | PASS — 30 files, 238 tests, exit code 0 |
+| `npm.cmd run test:unit` | PASS — 41 files, 219 tests |
+| `npm.cmd run typecheck` | PASS |
+| `npm.cmd run lint` | PASS |
+| `npm.cmd run test:architecture` | PASS |
+| Documentation validation and projection checks | PASS |
+
+The populated contract run found and corrected three existing Product boundary defects: page lineage now uses the stable page ID, Canonical detail/Compare items no longer carry Search-only projection lineage, and an empty source-root Evidence pointer is represented as `/` at the Product Read boundary while the stored Evidence remains unchanged.
+
+No Product feature, API, UI, migration, dependency, Ready transition, Merge, push, deployment, or production verification was authorized or performed by this follow-up. Remote exact-head CI remains `NOT_RUN` because tenant policy blocks the repository push path.
+
+This follow-up section supersedes the earlier 120-second timeout and empty-only notes below. The database exercise used existing Stage command and repository paths with ephemeral test rows; no migration or schema change was made.
 
 # FE-P3-S1 A2-C Persistent Adapter Implementation Verification
 

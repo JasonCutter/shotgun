@@ -307,6 +307,90 @@ export type DraftCommandEnvelopeV1 = {
   readonly semanticDigest?: string;
 };
 
+export type MaterializeDraftRequestV1 = DraftCommandEnvelopeV1 & {
+  readonly seedId: string;
+};
+
+export type StartSeedlessDraftRequestV1 = DraftCommandEnvelopeV1 & {
+  readonly resourceId?: string;
+  readonly pageId?: string;
+};
+
+export type SaveKnowledgeDraftRequestV1 = DraftCommandEnvelopeV1 & {
+  readonly draftId: string;
+  readonly operations: readonly FrontendKnowledgeOperationV1[];
+  readonly expectedBaseRevision: number;
+  readonly operationRevision: number;
+  readonly contentDigest: string;
+};
+
+export type ValidateKnowledgeDraftRequestV1 = DraftCommandEnvelopeV1 & {
+  readonly draftId: string;
+  readonly expectedBaseRevision: number;
+};
+
+export type GenerateKnowledgeDraftImpactRequestV1 = DraftCommandEnvelopeV1 & {
+  readonly draftId: string;
+  readonly expectedBaseRevision: number;
+  readonly options?: {
+    readonly maxDepth?: number;
+    readonly maxNodes?: number;
+  };
+};
+
+export type SubmitKnowledgeDraftForReviewRequestV1 = DraftCommandEnvelopeV1 & {
+  readonly draftId: string;
+  readonly expectedBaseRevision: number;
+  readonly validationArtifact: DraftValidationArtifactRefV1;
+  readonly impactArtifact: DraftImpactArtifactRefV1;
+};
+
+export type ResolveKnowledgeDraftCommandOutcomeRequestV1 = {
+  readonly schemaVersion: '1.0.0';
+  readonly clientRequestId: string;
+  readonly idempotencyKey: string;
+  readonly semanticDigest: string;
+};
+
+export type FrontendKnowledgeDraftCommandResultBaseV1 = {
+  readonly schemaVersion: '1.0.0';
+  readonly outcome: FrontendKnowledgeDraftCommandOutcomeV1;
+  readonly clientRequestId: string;
+  readonly idempotencyKey: string;
+};
+
+export type MaterializeDraftResultV1 = FrontendKnowledgeDraftCommandResultBaseV1 & {
+  readonly draft: FrontendKnowledgeDraftChangeSetV1;
+};
+
+export type StartSeedlessDraftResultV1 = MaterializeDraftResultV1;
+
+export type SaveKnowledgeDraftResultV1 = MaterializeDraftResultV1;
+
+export type ValidateKnowledgeDraftResultV1 = FrontendKnowledgeDraftCommandResultBaseV1 & {
+  readonly draftStatus: FrontendKnowledgeDraftLifecycleV1;
+  readonly validation: DraftValidationArtifactRefV1;
+};
+
+export type GenerateKnowledgeDraftImpactResultV1 = FrontendKnowledgeDraftCommandResultBaseV1 & {
+  readonly draftStatus: FrontendKnowledgeDraftLifecycleV1;
+  readonly impactPreview: DraftImpactArtifactRefV1;
+};
+
+export type SubmitKnowledgeDraftForReviewResultV1 = FrontendKnowledgeDraftCommandResultBaseV1 & {
+  readonly reviewSubmission: ReviewSubmissionRefV1;
+};
+
+export type ResolveKnowledgeDraftCommandOutcomeResultV1 = {
+  readonly schemaVersion: '1.0.0';
+  readonly outcome: FrontendKnowledgeDraftCommandOutcomeV1;
+  readonly originalClientRequestId: string;
+  readonly originalIdempotencyKey: string;
+  readonly draft?: FrontendKnowledgeDraftChangeSetV1;
+  readonly reviewResource?: ReviewResourceRefV1;
+  readonly reviewSubmission?: ReviewSubmissionRefV1;
+};
+
 export type FrontendKnowledgeDraftFailureCode =
   | 'INVALID_REQUEST'
   | 'PROJECT_BINDING_FAILURE'
@@ -349,6 +433,9 @@ const FAILURE_ALIASES: Readonly<Record<string, FrontendKnowledgeDraftFailureCode
   INVALID_REQUEST: 'INVALID_REQUEST',
   VALIDATION_ERROR: 'INVALID_REQUEST',
   UNSUPPORTED_SCHEMA: 'INVALID_REQUEST',
+  NOT_FOUND: 'SEED_NOT_FOUND',
+  FORBIDDEN: 'ACCESS_DENIED',
+  PROJECT_BINDING_CONFLICT: 'PROJECT_BINDING_FAILURE',
   PROJECT_CONTEXT_REQUIRED: 'PROJECT_BINDING_FAILURE',
   RESOURCE_PROJECT_MISMATCH: 'PROJECT_BINDING_FAILURE',
   PROJECT_ACCESS_REVISION_CONFLICT: 'PROJECT_BINDING_FAILURE',
@@ -362,18 +449,27 @@ const FAILURE_ALIASES: Readonly<Record<string, FrontendKnowledgeDraftFailureCode
   SEED_NOT_FOUND: 'SEED_NOT_FOUND',
   SEED_ALREADY_MATERIALIZED: 'SEED_ALREADY_MATERIALIZED',
   CANONICAL_SNAPSHOT_MISMATCH: 'CANONICAL_SNAPSHOT_MISMATCH',
+  BASE_UNAVAILABLE: 'CANONICAL_SNAPSHOT_MISMATCH',
   RESOURCE_REVISION_MISSING: 'RESOURCE_REVISION_MISSING',
   STALE_BASE: 'STALE_BASE',
   BASE_REVISION_STALE: 'STALE_BASE',
   STALE_VERSION: 'STALE_BASE',
   STALE_ACTION_SNAPSHOT: 'STALE_BASE',
+  STALE: 'STALE_BASE',
   CONFLICT: 'CONFLICT',
   REVISION_CONFLICT: 'CONFLICT',
+  DRAFT_REVISION_CONFLICT: 'CONFLICT',
+  DIGEST_MISMATCH: 'CONFLICT',
   UNSUPPORTED_OPERATION: 'UNSUPPORTED_OPERATION',
+  VALIDATION_FAILED: 'INVALID_REQUEST',
   ARTIFACT_INCOMPLETE: 'ARTIFACT_INCOMPLETE',
   IMPACT_PARTIAL: 'ARTIFACT_INCOMPLETE',
+  ANALYZER_UNAVAILABLE: 'ARTIFACT_INCOMPLETE',
+  NOT_READY_FOR_REVIEW: 'ARTIFACT_INCOMPLETE',
   OUTCOME_UNKNOWN: 'OUTCOME_UNKNOWN',
   OUTCOME_INDETERMINATE: 'OUTCOME_UNKNOWN',
+  OUTCOME_NOT_FOUND: 'OUTCOME_UNKNOWN',
+  COMMAND_SCOPE_MISMATCH: 'PROJECT_BINDING_FAILURE',
 };
 
 export const mapFrontendKnowledgeDraftFailure = (
@@ -411,6 +507,15 @@ const strictObject = (
         'policyContext',
         'commandId',
         'effectiveProjectId',
+        'activeProjectId',
+        'resourceProjectId',
+        'draftProjectId',
+        'accessRevision',
+        'policyContextRevision',
+        'canonicalSnapshotId',
+        'canonicalVersion',
+        'canonicalResourceId',
+        'canonicalRevisionId',
       ].includes(key),
     );
     return fail(
@@ -1385,5 +1490,400 @@ export const decodeDraftCommandEnvelopeV1 = (value: unknown): DraftCommandEnvelo
     ...(object.semanticDigest === undefined
       ? {}
       : { semanticDigest: digest(object.semanticDigest, `${path}.semanticDigest`) }),
+  };
+};
+
+const COMMAND_ENVELOPE_KEYS = [
+  'schemaVersion',
+  'clientRequestId',
+  'idempotencyKey',
+  'expectedDraftRevision',
+  'expectedCanonicalVersion',
+  'semanticDigest',
+] as const;
+
+const decodeCommandRequestObject = (
+  value: unknown,
+  commandKeys: readonly string[],
+  path: string,
+): { readonly object: ObjectValue; readonly envelope: DraftCommandEnvelopeV1 } => {
+  const object = strictObject(value, [...COMMAND_ENVELOPE_KEYS, ...commandKeys], path);
+  const envelopeObject = Object.fromEntries(
+    COMMAND_ENVELOPE_KEYS.filter((key) => object[key] !== undefined).map((key) => [
+      key,
+      object[key],
+    ]),
+  );
+  return { object, envelope: decodeDraftCommandEnvelopeV1(envelopeObject) };
+};
+
+const requiredExpectedDraftRevision = (envelope: DraftCommandEnvelopeV1, path: string): number => {
+  if (envelope.expectedDraftRevision === undefined) {
+    return fail(path, 'expectedDraftRevision is required');
+  }
+  return envelope.expectedDraftRevision;
+};
+
+const positiveInteger = (value: unknown, path: string): number => {
+  const result = integer(value, path);
+  if (result < 1) return fail(path, 'must be a positive safe integer');
+  return result;
+};
+
+export const decodeMaterializeDraftRequestV1 = (value: unknown): MaterializeDraftRequestV1 => {
+  const { object, envelope } = decodeCommandRequestObject(value, ['seedId'], 'materializeDraft');
+  return {
+    ...envelope,
+    seedId: text(required(object, 'seedId', 'materializeDraft'), 'materializeDraft.seedId'),
+  };
+};
+
+export const decodeStartSeedlessDraftRequestV1 = (value: unknown): StartSeedlessDraftRequestV1 => {
+  const { object, envelope } = decodeCommandRequestObject(
+    value,
+    ['resourceId', 'pageId'],
+    'startSeedlessDraft',
+  );
+  const resourceId = optionalTextValue(object, 'resourceId', 'startSeedlessDraft');
+  const pageId = optionalTextValue(object, 'pageId', 'startSeedlessDraft');
+  if (resourceId === undefined && pageId === undefined) {
+    return fail('startSeedlessDraft', 'resourceId or pageId is required');
+  }
+  if (resourceId !== undefined && pageId !== undefined) {
+    return fail('startSeedlessDraft', 'resourceId and pageId are mutually exclusive');
+  }
+  return {
+    ...envelope,
+    ...(resourceId === undefined ? {} : { resourceId }),
+    ...(pageId === undefined ? {} : { pageId }),
+  };
+};
+
+const optionalTextValue = (object: ObjectValue, key: string, path: string): string | undefined =>
+  object[key] === undefined ? undefined : text(object[key], `${path}.${key}`);
+
+export const decodeSaveKnowledgeDraftRequestV1 = (value: unknown): SaveKnowledgeDraftRequestV1 => {
+  const { object, envelope } = decodeCommandRequestObject(
+    value,
+    ['draftId', 'operations', 'expectedBaseRevision', 'operationRevision', 'contentDigest'],
+    'saveDraft',
+  );
+  requiredExpectedDraftRevision(envelope, 'saveDraft');
+  const operations = arrayValue(
+    required(object, 'operations', 'saveDraft'),
+    'saveDraft.operations',
+  ).map((operation, index) => decodeFrontendKnowledgeOperationV1At(operation, index));
+  return {
+    ...envelope,
+    draftId: text(required(object, 'draftId', 'saveDraft'), 'saveDraft.draftId'),
+    operations,
+    expectedBaseRevision: integer(
+      required(object, 'expectedBaseRevision', 'saveDraft'),
+      'saveDraft.expectedBaseRevision',
+    ),
+    operationRevision: integer(
+      required(object, 'operationRevision', 'saveDraft'),
+      'saveDraft.operationRevision',
+    ),
+    contentDigest: digest(
+      required(object, 'contentDigest', 'saveDraft'),
+      'saveDraft.contentDigest',
+    ),
+  };
+};
+
+export const decodeValidateKnowledgeDraftRequestV1 = (
+  value: unknown,
+): ValidateKnowledgeDraftRequestV1 => {
+  const { object, envelope } = decodeCommandRequestObject(
+    value,
+    ['draftId', 'expectedBaseRevision'],
+    'validateDraft',
+  );
+  requiredExpectedDraftRevision(envelope, 'validateDraft');
+  return {
+    ...envelope,
+    draftId: text(required(object, 'draftId', 'validateDraft'), 'validateDraft.draftId'),
+    expectedBaseRevision: integer(
+      required(object, 'expectedBaseRevision', 'validateDraft'),
+      'validateDraft.expectedBaseRevision',
+    ),
+  };
+};
+
+const decodeImpactOptions = (
+  value: unknown,
+  path: string,
+): GenerateKnowledgeDraftImpactRequestV1['options'] => {
+  if (value === undefined) return undefined;
+  const object = strictObject(value, ['maxDepth', 'maxNodes'], path);
+  const maxDepth =
+    object.maxDepth === undefined
+      ? undefined
+      : positiveInteger(object.maxDepth, `${path}.maxDepth`);
+  const maxNodes =
+    object.maxNodes === undefined
+      ? undefined
+      : positiveInteger(object.maxNodes, `${path}.maxNodes`);
+  if (maxDepth === undefined && maxNodes === undefined) {
+    return fail(path, 'maxDepth or maxNodes is required when options is provided');
+  }
+  return {
+    ...(maxDepth === undefined ? {} : { maxDepth }),
+    ...(maxNodes === undefined ? {} : { maxNodes }),
+  };
+};
+
+export const decodeGenerateKnowledgeDraftImpactRequestV1 = (
+  value: unknown,
+): GenerateKnowledgeDraftImpactRequestV1 => {
+  const { object, envelope } = decodeCommandRequestObject(
+    value,
+    ['draftId', 'expectedBaseRevision', 'options'],
+    'generateImpactPreview',
+  );
+  requiredExpectedDraftRevision(envelope, 'generateImpactPreview');
+  const options = decodeImpactOptions(object.options, 'generateImpactPreview.options');
+  return {
+    ...envelope,
+    draftId: text(
+      required(object, 'draftId', 'generateImpactPreview'),
+      'generateImpactPreview.draftId',
+    ),
+    expectedBaseRevision: integer(
+      required(object, 'expectedBaseRevision', 'generateImpactPreview'),
+      'generateImpactPreview.expectedBaseRevision',
+    ),
+    ...(options === undefined ? {} : { options }),
+  };
+};
+
+export const decodeSubmitKnowledgeDraftForReviewRequestV1 = (
+  value: unknown,
+): SubmitKnowledgeDraftForReviewRequestV1 => {
+  const { object, envelope } = decodeCommandRequestObject(
+    value,
+    ['draftId', 'expectedBaseRevision', 'validationArtifact', 'impactArtifact'],
+    'submitDraftForReview',
+  );
+  requiredExpectedDraftRevision(envelope, 'submitDraftForReview');
+  return {
+    ...envelope,
+    draftId: text(
+      required(object, 'draftId', 'submitDraftForReview'),
+      'submitDraftForReview.draftId',
+    ),
+    expectedBaseRevision: integer(
+      required(object, 'expectedBaseRevision', 'submitDraftForReview'),
+      'submitDraftForReview.expectedBaseRevision',
+    ),
+    validationArtifact: decodeDraftValidationArtifactRefV1(
+      required(object, 'validationArtifact', 'submitDraftForReview'),
+    ),
+    impactArtifact: decodeDraftImpactArtifactRefV1(
+      required(object, 'impactArtifact', 'submitDraftForReview'),
+    ),
+  };
+};
+
+export const decodeResolveKnowledgeDraftCommandOutcomeRequestV1 = (
+  value: unknown,
+): ResolveKnowledgeDraftCommandOutcomeRequestV1 => {
+  const object = strictObject(
+    value,
+    ['schemaVersion', 'clientRequestId', 'idempotencyKey', 'semanticDigest'],
+    'resolveCommandOutcome',
+  );
+  const envelope = decodeDraftCommandEnvelopeV1(object);
+  return {
+    schemaVersion: envelope.schemaVersion,
+    clientRequestId: envelope.clientRequestId,
+    idempotencyKey: envelope.idempotencyKey,
+    semanticDigest: digest(
+      required(object, 'semanticDigest', 'resolveCommandOutcome'),
+      'resolveCommandOutcome.semanticDigest',
+    ),
+  };
+};
+
+const decodeCommandResultBase = (
+  value: unknown,
+  resultKeys: readonly string[],
+  path: string,
+): { readonly object: ObjectValue; readonly base: FrontendKnowledgeDraftCommandResultBaseV1 } => {
+  const object = strictObject(
+    value,
+    ['schemaVersion', 'outcome', 'clientRequestId', 'idempotencyKey', ...resultKeys],
+    path,
+  );
+  if (required(object, 'schemaVersion', path) !== '1.0.0') {
+    return fail(`${path}.schemaVersion`, "must be '1.0.0'");
+  }
+  return {
+    object,
+    base: {
+      schemaVersion: '1.0.0',
+      outcome: decodeFrontendKnowledgeDraftCommandOutcomeV1(
+        required(object, 'outcome', path),
+        `${path}.outcome`,
+      ),
+      clientRequestId: text(required(object, 'clientRequestId', path), `${path}.clientRequestId`),
+      idempotencyKey: text(required(object, 'idempotencyKey', path), `${path}.idempotencyKey`),
+    },
+  };
+};
+
+export const decodeMaterializeDraftResultV1 = (value: unknown): MaterializeDraftResultV1 => {
+  const { object, base } = decodeCommandResultBase(value, ['draft'], 'materializeDraftResult');
+  return {
+    ...base,
+    draft: decodeFrontendKnowledgeDraftChangeSetV1(
+      required(object, 'draft', 'materializeDraftResult'),
+    ),
+  };
+};
+
+export const decodeStartSeedlessDraftResultV1 = (value: unknown): StartSeedlessDraftResultV1 =>
+  decodeMaterializeDraftResultV1(value);
+
+export const decodeSaveKnowledgeDraftResultV1 = (value: unknown): SaveKnowledgeDraftResultV1 =>
+  decodeMaterializeDraftResultV1(value);
+
+export const decodeValidateKnowledgeDraftResultV1 = (
+  value: unknown,
+): ValidateKnowledgeDraftResultV1 => {
+  const { object, base } = decodeCommandResultBase(
+    value,
+    ['draftStatus', 'validation'],
+    'validateDraftResult',
+  );
+  return {
+    ...base,
+    draftStatus: enumValue(
+      required(object, 'draftStatus', 'validateDraftResult'),
+      [
+        'DRAFT',
+        'VALIDATING',
+        'VALID',
+        'INVALID',
+        'STALE',
+        'CONFLICT',
+        'READY_FOR_REVIEW',
+        'SUBMITTING',
+        'SUBMITTED',
+        'ABANDONED',
+      ] as const,
+      'validateDraftResult.draftStatus',
+    ),
+    validation: decodeDraftValidationArtifactRefV1(
+      required(object, 'validation', 'validateDraftResult'),
+    ),
+  };
+};
+
+export const decodeGenerateKnowledgeDraftImpactResultV1 = (
+  value: unknown,
+): GenerateKnowledgeDraftImpactResultV1 => {
+  const { object, base } = decodeCommandResultBase(
+    value,
+    ['draftStatus', 'impactPreview'],
+    'generateImpactPreviewResult',
+  );
+  return {
+    ...base,
+    draftStatus: enumValue(
+      required(object, 'draftStatus', 'generateImpactPreviewResult'),
+      [
+        'DRAFT',
+        'VALIDATING',
+        'VALID',
+        'INVALID',
+        'STALE',
+        'CONFLICT',
+        'READY_FOR_REVIEW',
+        'SUBMITTING',
+        'SUBMITTED',
+        'ABANDONED',
+      ] as const,
+      'generateImpactPreviewResult.draftStatus',
+    ),
+    impactPreview: decodeDraftImpactArtifactRefV1(
+      required(object, 'impactPreview', 'generateImpactPreviewResult'),
+    ),
+  };
+};
+
+export const decodeSubmitKnowledgeDraftForReviewResultV1 = (
+  value: unknown,
+): SubmitKnowledgeDraftForReviewResultV1 => {
+  const { object, base } = decodeCommandResultBase(
+    value,
+    ['reviewSubmission'],
+    'submitDraftForReviewResult',
+  );
+  return {
+    ...base,
+    reviewSubmission: decodeReviewSubmissionRefV1(
+      required(object, 'reviewSubmission', 'submitDraftForReviewResult'),
+    ),
+  };
+};
+
+export const decodeResolveKnowledgeDraftCommandOutcomeResultV1 = (
+  value: unknown,
+): ResolveKnowledgeDraftCommandOutcomeResultV1 => {
+  const path = 'resolveCommandOutcomeResult';
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'outcome',
+      'originalClientRequestId',
+      'originalIdempotencyKey',
+      'draft',
+      'reviewResource',
+      'reviewSubmission',
+    ],
+    path,
+  );
+  if (required(object, 'schemaVersion', path) !== '1.0.0') {
+    return fail(`${path}.schemaVersion`, "must be '1.0.0'");
+  }
+  const outcome = decodeFrontendKnowledgeDraftCommandOutcomeV1(
+    required(object, 'outcome', path),
+    `${path}.outcome`,
+  );
+  const draft =
+    object.draft === undefined ? undefined : decodeFrontendKnowledgeDraftChangeSetV1(object.draft);
+  const reviewResource =
+    object.reviewResource === undefined
+      ? undefined
+      : decodeReviewResourceRefV1(object.reviewResource);
+  const reviewSubmission =
+    object.reviewSubmission === undefined
+      ? undefined
+      : decodeReviewSubmissionRefV1(object.reviewSubmission);
+  if (
+    outcome === 'COMPLETED' &&
+    draft === undefined &&
+    reviewResource === undefined &&
+    reviewSubmission === undefined
+  ) {
+    return fail(path, 'COMPLETED outcome requires an existing resource');
+  }
+  return {
+    schemaVersion: '1.0.0',
+    outcome,
+    originalClientRequestId: text(
+      required(object, 'originalClientRequestId', path),
+      `${path}.originalClientRequestId`,
+    ),
+    originalIdempotencyKey: text(
+      required(object, 'originalIdempotencyKey', path),
+      `${path}.originalIdempotencyKey`,
+    ),
+    ...(draft === undefined ? {} : { draft }),
+    ...(reviewResource === undefined ? {} : { reviewResource }),
+    ...(reviewSubmission === undefined ? {} : { reviewSubmission }),
   };
 };

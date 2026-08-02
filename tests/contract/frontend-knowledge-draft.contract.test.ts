@@ -3,10 +3,24 @@ import { describe, expect, it } from 'vitest';
 import {
   FrontendContractError,
   decodeDraftCommandEnvelopeV1,
+  decodeGenerateKnowledgeDraftImpactRequestV1,
+  decodeGenerateKnowledgeDraftImpactResultV1,
+  decodeMaterializeDraftRequestV1,
+  decodeMaterializeDraftResultV1,
   decodeFrontendKnowledgeDraftBaseV1,
   decodeFrontendKnowledgeDraftChangeSetV1,
   decodeFrontendKnowledgeDraftCommandOutcomeV1,
   decodeFrontendKnowledgeOperationV1,
+  decodeResolveKnowledgeDraftCommandOutcomeRequestV1,
+  decodeResolveKnowledgeDraftCommandOutcomeResultV1,
+  decodeSaveKnowledgeDraftRequestV1,
+  decodeSaveKnowledgeDraftResultV1,
+  decodeStartSeedlessDraftRequestV1,
+  decodeStartSeedlessDraftResultV1,
+  decodeSubmitKnowledgeDraftForReviewRequestV1,
+  decodeSubmitKnowledgeDraftForReviewResultV1,
+  decodeValidateKnowledgeDraftRequestV1,
+  decodeValidateKnowledgeDraftResultV1,
   mapFrontendKnowledgeDraftFailure,
 } from '../../packages/contracts/src/index.js';
 
@@ -181,6 +195,32 @@ const draftFor = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+const reviewResource = {
+  reviewResourceId: 'review-resource-1',
+  draftId: 'draft-1',
+  draftRevision: 1,
+  resourceProjectId: 'project-1',
+  draftProjectId: 'project-1',
+  effectiveProjectId: 'project-1',
+  policyContextRevision: 'policy-7',
+  digest: 'sha256:review-resource',
+};
+
+const reviewSubmission = {
+  reviewSubmissionId: 'review-submission-1',
+  draftId: 'draft-1',
+  draftRevision: 1,
+  operationDigest: 'sha256:operations',
+  contentDigest: 'sha256:draft',
+  validationArtifact: artifact,
+  impactArtifact: artifact,
+  evidenceLineage: [
+    { sourceId: 'source-1', sourceVersionId: 'source-version-1', evidenceSpanId: 'span-1' },
+  ],
+  projectPolicyContext: policyContext,
+  reviewResource,
+};
+
 const expectContractError = (action: () => unknown, code?: string) => {
   let thrown: unknown;
   try {
@@ -231,6 +271,122 @@ describe('FE-P3-S2 FrontendKnowledgeDraftChangeSet v1 contract', () => {
     ];
     for (const kind of kinds)
       expect(decodeFrontendKnowledgeOperationV1(operationFor(kind)).kind).toBe(kind);
+  });
+
+  it('decodes all seven frozen command request and result contracts', () => {
+    const envelope = {
+      schemaVersion: '1.0.0',
+      clientRequestId: 'request-1',
+      idempotencyKey: 'key-1',
+      expectedDraftRevision: 1,
+      expectedCanonicalVersion: 7,
+      semanticDigest: 'sha256:semantic',
+    };
+    const materializeRequest = { ...envelope, seedId: 'seed-1' };
+    const seedlessRequest = {
+      schemaVersion: '1.0.0',
+      clientRequestId: 'request-2',
+      idempotencyKey: 'key-2',
+      resourceId: 'resource-1',
+    };
+    const saveRequest = {
+      ...envelope,
+      draftId: 'draft-1',
+      operations: [operationFor('FACT_ADD')],
+      expectedBaseRevision: 7,
+      operationRevision: 1,
+      contentDigest: 'sha256:draft',
+    };
+    const validateRequest = { ...envelope, draftId: 'draft-1', expectedBaseRevision: 7 };
+    const impactRequest = {
+      ...validateRequest,
+      options: { maxDepth: 3, maxNodes: 50 },
+    };
+    const submitRequest = {
+      ...validateRequest,
+      validationArtifact: artifact,
+      impactArtifact: artifact,
+    };
+    const resolveRequest = {
+      schemaVersion: '1.0.0',
+      clientRequestId: 'request-1',
+      idempotencyKey: 'key-1',
+      semanticDigest: 'sha256:semantic',
+    };
+
+    expect(decodeMaterializeDraftRequestV1(materializeRequest).seedId).toBe('seed-1');
+    expect(decodeStartSeedlessDraftRequestV1(seedlessRequest).resourceId).toBe('resource-1');
+    expect(decodeSaveKnowledgeDraftRequestV1(saveRequest).draftId).toBe('draft-1');
+    expect(decodeValidateKnowledgeDraftRequestV1(validateRequest).expectedBaseRevision).toBe(7);
+    expect(decodeGenerateKnowledgeDraftImpactRequestV1(impactRequest).options?.maxNodes).toBe(50);
+    expect(decodeSubmitKnowledgeDraftForReviewRequestV1(submitRequest).draftId).toBe('draft-1');
+    expect(decodeResolveKnowledgeDraftCommandOutcomeRequestV1(resolveRequest).semanticDigest).toBe(
+      'sha256:semantic',
+    );
+
+    const draft = draftFor();
+    const resultBase = {
+      schemaVersion: '1.0.0',
+      outcome: 'COMPLETED',
+      clientRequestId: 'request-1',
+      idempotencyKey: 'key-1',
+    };
+    expect(decodeMaterializeDraftResultV1({ ...resultBase, draft }).draft.draftId).toBe('draft-1');
+    expect(decodeStartSeedlessDraftResultV1({ ...resultBase, draft }).draft.draftId).toBe(
+      'draft-1',
+    );
+    expect(decodeSaveKnowledgeDraftResultV1({ ...resultBase, draft }).draft.draftId).toBe(
+      'draft-1',
+    );
+    expect(
+      decodeValidateKnowledgeDraftResultV1({
+        ...resultBase,
+        draftStatus: 'VALID',
+        validation: artifact,
+      }).validation.status,
+    ).toBe('COMPLETE');
+    expect(
+      decodeGenerateKnowledgeDraftImpactResultV1({
+        ...resultBase,
+        draftStatus: 'VALID',
+        impactPreview: artifact,
+      }).impactPreview.status,
+    ).toBe('COMPLETE');
+    expect(
+      decodeSubmitKnowledgeDraftForReviewResultV1({ ...resultBase, reviewSubmission })
+        .reviewSubmission.draftId,
+    ).toBe('draft-1');
+    expect(
+      decodeResolveKnowledgeDraftCommandOutcomeResultV1({
+        schemaVersion: '1.0.0',
+        outcome: 'COMPLETED',
+        originalClientRequestId: 'request-1',
+        originalIdempotencyKey: 'key-1',
+        draft,
+      }).draft?.draftId,
+    ).toBe('draft-1');
+
+    const authorityInjectedRequests = [
+      materializeRequest,
+      seedlessRequest,
+      saveRequest,
+      validateRequest,
+      impactRequest,
+      submitRequest,
+      resolveRequest,
+    ].map((request) => ({ ...request, activeProjectId: 'browser-project' }));
+    const decoders = [
+      decodeMaterializeDraftRequestV1,
+      decodeStartSeedlessDraftRequestV1,
+      decodeSaveKnowledgeDraftRequestV1,
+      decodeValidateKnowledgeDraftRequestV1,
+      decodeGenerateKnowledgeDraftImpactRequestV1,
+      decodeSubmitKnowledgeDraftForReviewRequestV1,
+      decodeResolveKnowledgeDraftCommandOutcomeRequestV1,
+    ];
+    for (const [index, decoder] of decoders.entries()) {
+      expectContractError(() => decoder(authorityInjectedRequests[index]));
+    }
   });
 
   it('rejects unknown fields and invalid discriminants', () => {

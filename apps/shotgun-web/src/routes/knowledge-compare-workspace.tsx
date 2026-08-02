@@ -8,7 +8,10 @@ import { useAppRuntime } from '../app/providers.js';
 import { EmptyState } from '../components/empty-state.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
-import { knowledgeCompareQueryOptions } from '../knowledge/knowledge-queries.js';
+import {
+  knowledgeCanManuallyRetry,
+  knowledgeCompareQueryOptions,
+} from '../knowledge/knowledge-queries.js';
 import { LineageMetadata, ProjectionStatus } from '../knowledge/knowledge-ui.js';
 
 export const KnowledgeCompareWorkspace = () => {
@@ -61,7 +64,14 @@ export const KnowledgeCompareWorkspace = () => {
   }
   if (comparison.isPending) return <LoadingState message="Loading typed Knowledge comparison" />;
   if (comparison.error) {
-    return <ErrorState error={comparison.error} onRetry={() => void comparison.refetch()} />;
+    return (
+      <ErrorState
+        error={comparison.error}
+        onRetry={
+          knowledgeCanManuallyRetry(comparison.error) ? () => void comparison.refetch() : undefined
+        }
+      />
+    );
   }
   if (!comparison.data) return null;
 

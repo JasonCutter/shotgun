@@ -8,7 +8,10 @@ import { useAppRuntime } from '../app/providers.js';
 import { EmptyState } from '../components/empty-state.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
-import { knowledgeDetailQueryOptions } from '../knowledge/knowledge-queries.js';
+import {
+  knowledgeCanManuallyRetry,
+  knowledgeDetailQueryOptions,
+} from '../knowledge/knowledge-queries.js';
 import {
   decodeKnowledgeResourceReturnState,
   KnowledgeItemCard,
@@ -79,8 +82,14 @@ export const KnowledgeDetailWorkspace = () => {
     );
   }
   if (detail.isPending) return <LoadingState message="Loading Knowledge detail" />;
-  if (detail.error)
-    return <ErrorState error={detail.error} onRetry={() => void detail.refetch()} />;
+  if (detail.error) {
+    return (
+      <ErrorState
+        error={detail.error}
+        onRetry={knowledgeCanManuallyRetry(detail.error) ? () => void detail.refetch() : undefined}
+      />
+    );
+  }
   if (!detail.data) return null;
 
   const page = detail.data.page;

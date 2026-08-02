@@ -355,6 +355,54 @@ describe('Knowledge Workspace UI', () => {
     );
   });
 
+  it('does not expose manual retry for non-safe detail failures', async () => {
+    const runtime = createRuntime();
+    vi.spyOn(runtime.apiClient, 'getKnowledgeDetail').mockRejectedValue(
+      new ShotgunApiError({
+        status: 400,
+        code: 'INVALID_REQUEST',
+        message: 'The Knowledge detail request is invalid.',
+      }),
+    );
+    renderRoute(
+      runtime,
+      [{ path: 'knowledge/:resourceId', element: <KnowledgeDetailWorkspace /> }],
+      ['/knowledge/resource-1'],
+    );
+
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'The Knowledge detail request is invalid.',
+    );
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+  });
+
+  it('refetches only the detail Read after a safe failure', async () => {
+    const runtime = createRuntime();
+    const safeError = () =>
+      new ShotgunApiError({
+        status: 503,
+        code: 'LOCAL_SERVER_UNAVAILABLE',
+        message: 'The Knowledge service is temporarily unavailable.',
+      });
+    const getKnowledgeDetailMock = vi
+      .spyOn(runtime.apiClient, 'getKnowledgeDetail')
+      .mockRejectedValueOnce(safeError())
+      .mockRejectedValueOnce(safeError())
+      .mockRejectedValueOnce(safeError())
+      .mockResolvedValue(detail);
+    renderRoute(
+      runtime,
+      [{ path: 'knowledge/:resourceId', element: <KnowledgeDetailWorkspace /> }],
+      ['/knowledge/resource-1'],
+    );
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Try again' }, { timeout: 5_000 }),
+    );
+    expect(await screen.findByRole('heading', { name: 'Knowledge Detail', level: 1 })).toBeTruthy();
+    expect(getKnowledgeDetailMock).toHaveBeenCalledTimes(4);
+  });
+
   it('keeps draft filters out of the committed search request until submit', async () => {
     const runtime = createRuntime();
     const router = renderRoute(
@@ -429,5 +477,53 @@ describe('Knowledge Workspace UI', () => {
       },
       expect.any(Object),
     );
+  });
+
+  it('does not expose manual retry for non-safe compare failures', async () => {
+    const runtime = createRuntime();
+    vi.spyOn(runtime.apiClient, 'compareKnowledgePages').mockRejectedValue(
+      new ShotgunApiError({
+        status: 403,
+        code: 'PROJECT_ACCESS_DENIED',
+        message: 'The Knowledge comparison is not authorized.',
+      }),
+    );
+    renderRoute(
+      runtime,
+      [{ path: 'knowledge/compare', element: <KnowledgeCompareWorkspace /> }],
+      ['/knowledge/compare?left=page-left&right=page-right'],
+    );
+
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'You do not have access to this Project.',
+    );
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+  });
+
+  it('refetches only the compare Read after a safe failure', async () => {
+    const runtime = createRuntime();
+    const safeError = () =>
+      new ShotgunApiError({
+        status: 503,
+        code: 'LOCAL_SERVER_UNAVAILABLE',
+        message: 'The Knowledge service is temporarily unavailable.',
+      });
+    const compareKnowledgePagesMock = vi
+      .spyOn(runtime.apiClient, 'compareKnowledgePages')
+      .mockRejectedValueOnce(safeError())
+      .mockRejectedValueOnce(safeError())
+      .mockRejectedValueOnce(safeError())
+      .mockResolvedValue(comparison);
+    renderRoute(
+      runtime,
+      [{ path: 'knowledge/compare', element: <KnowledgeCompareWorkspace /> }],
+      ['/knowledge/compare?left=page-left&right=page-right'],
+    );
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Try again' }, { timeout: 5_000 }),
+    );
+    expect(await screen.findByRole('heading', { name: 'Left Page', level: 2 })).toBeTruthy();
+    expect(compareKnowledgePagesMock).toHaveBeenCalledTimes(4);
   });
 });

@@ -43,12 +43,12 @@ The implementation is bounded to existing server-authoritative sources and
 Product Read composition. The relevant reusable surfaces identified at
 kickoff are:
 
-| Existing surface | Intended FE-P3-S1 use |
-| --- | --- |
-| Stage 6 Canonical Knowledge Query and repository boundaries | Read the canonical knowledge source, snapshots, claims, and history without exposing repository internals to the frontend. |
-| Stage 7 `SearchCanonicalKnowledge` and projection/readiness surfaces | Supply server-ranked read/search results and readiness information. |
-| Stage 9 `GetKnowledgeGroup`, `ListKnowledgeGroups`, `GetKnowledgeImpact`, and `GetKnowledgeGraph` | Reuse bounded knowledge grouping, impact, and exploration queries where their contracts provide the required evidence. |
-| Stage 10 `GetCompiledTruth` and `GetCompiledTruthStatus` | Expose Compiled Truth only as a versioned derived projection with status and lag/reason metadata. |
+| Existing surface                                                                                        | Intended FE-P3-S1 use                                                                                                                                        |
+| ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Stage 6 Canonical Knowledge Query and repository boundaries                                             | Read the canonical knowledge source, snapshots, claims, and history without exposing repository internals to the frontend.                                   |
+| Stage 7 `SearchCanonicalKnowledge` and projection/readiness surfaces                                    | Supply server-ranked read/search results and readiness information.                                                                                          |
+| Stage 9 `GetKnowledgeGroup`, `ListKnowledgeGroups`, `GetKnowledgeImpact`, and `GetKnowledgeGraph`       | Reuse bounded knowledge grouping, impact, and exploration queries where their contracts provide the required evidence.                                       |
+| Stage 10 `GetCompiledTruth` and `GetCompiledTruthStatus`                                                | Expose Compiled Truth only as a versioned derived projection with status and lag/reason metadata.                                                            |
 | `FrontendProductReadCoordinator`, `buildScope`, and existing `ShotgunApiClient` decoding/error patterns | Preserve server-derived Principal, Session, project, access revision, policy revision, and sensitivity scope across Product Read and browser API boundaries. |
 
 The product layer continues to own stable Product View identity, Canonical
@@ -84,12 +84,12 @@ are the bounded implementation targets:
 
 ## Dependency and migration impact
 
-| Area | Kickoff impact | Constraint |
-| --- | --- | --- |
-| Database migration | `NONE` | Do not add tables, columns, fixtures, or migrations for this slice. |
-| Runtime dependency | `NONE` | Reuse existing packages and adapters; any new dependency is a stop condition. |
-| Existing Server Query layer | `REUSE` | Use existing Stage 6/7/9/10 boundaries; do not expose direct SQL or repositories. |
-| Browser authority | `UNCHANGED` | Browser requests cannot authoritatively set Principal, access, sensitivity, Canonical version, or policy values. |
+| Area                        | Kickoff impact | Constraint                                                                                                       |
+| --------------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Database migration          | `NONE`         | Do not add tables, columns, fixtures, or migrations for this slice.                                              |
+| Runtime dependency          | `NONE`         | Reuse existing packages and adapters; any new dependency is a stop condition.                                    |
+| Existing Server Query layer | `REUSE`        | Use existing Stage 6/7/9/10 boundaries; do not expose direct SQL or repositories.                                |
+| Browser authority           | `UNCHANGED`    | Browser requests cannot authoritatively set Principal, access, sensitivity, Canonical version, or policy values. |
 
 If a required Query surface cannot satisfy the Product contract, or if the
 implementation requires a new architecture decision, migration, direct SQL,
@@ -104,8 +104,8 @@ The successful initial CI run validates the repository baseline and governance
 change only; it does not convert any Knowledge Workspace acceptance criterion
 to `PASS`.
 
-| Acceptance criteria | Status | Reason |
-| --- | --- | --- |
+| Acceptance criteria | Status    | Reason                                                                                          |
+| ------------------- | --------- | ----------------------------------------------------------------------------------------------- |
 | AC-01 through AC-20 | `NOT_RUN` | Product Read contracts, adapters, API, and UI behavior are not implemented in the initial head. |
 
 ## Next bounded slice

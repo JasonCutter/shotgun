@@ -1,16 +1,16 @@
 ---
 id: FRONTEND-PHASE-3-SECTION-1-KNOWLEDGE-WORKSPACE-COMPLETION-CANDIDATE-260802002
 classification: COMPLETION_RECORD
-status: COMPLETION_CANDIDATE_CHANGES_REQUIRED
+status: COMPLETION_CANDIDATE_PENDING_REVIEW
 work_item: FE-P3-S1
 registry_status: IN_PROGRESS
 completion_manifest: docs/project/completions/FE-P3-S1.json
 implementation_review_id: 4837811808
 implementation_review_decision: KNOWLEDGE_WORKSPACE_UI_IMPLEMENTATION_PASS
-candidate_exact_head: ac92499253a10331a58c613995e5a480ee0df6c4
-candidate_ci_run: 30740732355
-candidate_ci_conclusion: PASS
-candidate_ci_gates: Quality, Frontend, Required Gates
+implementation_candidate_exact_head: ac92499253a10331a58c613995e5a480ee0df6c4
+implementation_candidate_ci_run: 30740732355
+implementation_candidate_ci_conclusion: PASS
+implementation_candidate_ci_gates: Quality, Frontend, Required Gates
 completion_review_id: 4837900020
 completion_review_decision: CHANGES_REQUIRED
 completion_review_exact_head: c47080c4842ef7f00c5149ad4828bf839fe5ed11
@@ -21,10 +21,18 @@ review_response_exact_head: 7e042091970b9f226d883a5ab1f0206090b050c8
 review_response_ci_run: 30741888126
 evidence_publication_exact_head: 8cd9cbe6395dd8894d61d72bd3f398aa7f1020c4
 evidence_publication_ci_run: 30742100709
-current_exact_head: 8cd9cbe6395dd8894d61d72bd3f398aa7f1020c4
-current_ci_run: 30742100709
-completion_blocker: REPOSITORY_WIDE_FORMAT_CHECK_58_FILES
-required_resolution: BASELINE_REMEDIATION_OR_APPROVED_SCOPE_AMENDMENT
+historical_evidence_publication_exact_head: 8cd9cbe6395dd8894d61d72bd3f398aa7f1020c4
+historical_evidence_publication_ci_run: 30742100709
+baseline_remediation_pr: https://github.com/JasonCutter/shotgun/pull/54
+baseline_remediation_commit: 745c6ae5acefccd9b30850aab9435624b9c46494
+baseline_remediation_merge_commit: c6976f513a68c3ac2e6f37b920f4c992036304da
+baseline_remediation_ci_run: 30744025737
+baseline_remediation_ci_conclusion: PASS
+baseline_remediation_ci_gates: Quality, Frontend, Required Gates
+synchronized_main: c6976f513a68c3ac2e6f37b920f4c992036304da
+pr53_synchronization_merge_head: b768636b901700966ba5ce008c41e97401748a14
+completion_blocker: NONE_AFTER_BASELINE_REMEDIATION
+required_resolution: FRESH_FE_P3_S1_COMPLETION_REVIEW
 completion_approval: NOT_AUTHORIZED
 ready: NOT_AUTHORIZED
 merge: NOT_AUTHORIZED
@@ -49,15 +57,27 @@ evidence only. A separate FE-P3-S1 completion review is still required.
 ## Exact-head and CI evidence
 
 - Repository: `JasonCutter/shotgun`
-- Base: `main@cb2513bc311891ac89f53c7d67d6a401da65a2a8`
+- Historical implementation base: `main@cb2513bc311891ac89f53c7d67d6a401da65a2a8`
+- Synchronized base: `main@c6976f513a68c3ac2e6f37b920f4c992036304da`
 - Branch: `codex/frontend-phase-3-section-1-knowledge-workspace`
-- Candidate evidence exact head: `ac92499253a10331a58c613995e5a480ee0df6c4`
 - PR: [#53](https://github.com/JasonCutter/shotgun/pull/53), `OPEN / DRAFT`
-- Exact-head CI run: `30740732355`
+- Implementation candidate exact head: `ac92499253a10331a58c613995e5a480ee0df6c4`
+- Implementation candidate CI run: `30740732355`
 - Quality: `PASS`
 - Frontend: `PASS`
 - Required Gates: `PASS`
 - Database, Chromium and the Stage 12 package substep: `PASS` remotely
+
+The repository baseline remediation was completed in a separate maintenance
+PR, preserving the FE-P3-S1 implementation scope:
+
+- Maintenance PR: [#54](https://github.com/JasonCutter/shotgun/pull/54)
+- Maintenance commit: `745c6ae5acefccd9b30850aab9435624b9c46494`
+- Merge commit: `c6976f513a68c3ac2e6f37b920f4c992036304da`
+- Post-merge `main` CI: `30744025737` — `PASS`
+- Post-merge gates: Quality, Frontend, Required Gates
+- PR #53 synchronization merge head before this governance publication:
+  `b768636b901700966ba5ce008c41e97401748a14`
 
 The governance-only candidate commit
 `ac92499253a10331a58c613995e5a480ee0df6c4` was validated at its own exact
@@ -79,50 +99,47 @@ Ready or Merge approval.
 ## Completion review 4837900020
 
 The separate FE-P3-S1 completion review returned `CHANGES_REQUIRED`. Tracking
-Issue #52 treats the unmasked repository-wide `format:check` as a required
-Section verification. The candidate preserves the known failure on 58 existing
-out-of-scope files, while changed-file formatting remains PASS. The remote CI
-format step is not treated as a clean repository-wide result because its
-formatter output is piped through `tee` and the report preserves the warning
-history.
+Issue #52 treated the unmasked repository-wide `format:check` as a required
+Section verification. That historical blocker is retained below, but it was
+resolved through the separately authorized maintenance PR #54 rather than by
+changing the FE-P3-S1 scope.
 
-The completion candidate therefore records
-`repositoryWideFormatCheck: FAIL`, `finalSectionVerification: PARTIAL` and
-`completionApprovalAndMergeBoundary: NOT_RUN`. Review `4837900020` requires
-one explicit resolution before resubmission:
+The maintenance PR normalized the inherited formatting baseline, preserved the
+formatter exit code in CI with `set -o pipefail`, and passed the unmasked
+repository-wide check in its exact-head Quality job. The synchronized FE-P3-S1
+candidate therefore records `repositoryWideFormatCheck: PASS` and
+`finalSectionVerification: PASS` as candidate evidence while
+`completionApprovalAndMergeBoundary: NOT_RUN` remains unchanged. A fresh
+FE-P3-S1 completion review is still required:
 
-1. an independently authorized maintenance scope that fixes the inherited
-   repository-wide baseline and makes unmasked `format:check` pass; or
-2. an approved Scope Amendment that replaces the criterion with changed-file
-   formatting, records the 58-file debt and ownership, and preserves the
-   formatter exit status in CI.
+1. review the baseline remediation evidence and synchronized PR #53 exact head;
+2. confirm all FE-P3-S1 completion criteria and the unchanged approval boundary.
 
-Neither authority has been granted in this candidate. No unrelated file was
-formatted and no Scope Amendment is claimed.
+No Scope Amendment was used. No unrelated Product behavior, DB migration,
+runtime dependency or deployment action was introduced by the maintenance PR.
 
 ## Completion review 4837996028
 
-The latest FE-P3-S1 completion review returned `CHANGES_REQUIRED` for current
-exact head `8cd9cbe6395dd8894d61d72bd3f398aa7f1020c4` and CI run
-`30742100709`. It confirmed the repository-wide format blocker remains
-unresolved and required historical traceability correction. Review
+The latest FE-P3-S1 completion review returned `CHANGES_REQUIRED` for the
+historical exact head `8cd9cbe6395dd8894d61d72bd3f398aa7f1020c4` and CI run
+`30742100709`. It confirmed the repository-wide format blocker and required
+historical traceability correction. Review
 `4837900020` continues to point to its original head
 `c47080c4842ef7f00c5149ad4828bf839fe5ed11` and run `30740922972`; the
 review-response head/run, evidence-publication head/run and current exact
 head/run are recorded as separate fields above.
 
-The latest review also identified the actual base as
-`main@cb2513bc311891ac89f53c7d67d6a401da65a2a8`; the resubmission metadata
-uses that value. No baseline remediation or Scope Amendment authority has
-been granted. Completion, Ready, Merge, FE-P3-S2/S3, deployment and
-production verification remain unauthorized.
+The synchronized base is now `main@c6976f513a68c3ac2e6f37b920f4c992036304da`.
+Baseline remediation authority was used only in PR #54; no Scope Amendment
+was used. Completion, Ready, Merge, FE-P3-S2/S3, deployment and production
+verification remain unauthorized.
 
 ## Governance state
 
 - Registry `FE-P3-S1`: `IN_PROGRESS`
 - Completion Manifest status: `IN_PROGRESS`
 - Product implementation criteria: `PASS`
-- Final Section verification: `PARTIAL`
+- Final Section verification: `PASS` candidate
 - Completion approval and merge boundary: `NOT_RUN`
 - `ready`: `NOT_AUTHORIZED`
 - `merge`: `NOT_AUTHORIZED`
@@ -130,21 +147,23 @@ production verification remain unauthorized.
 - `FE-P3-S2`: `NOT_STARTED`
 - `FE-P3-S3`: `NOT_STARTED`
 
-The Registry-based status Projection is regenerated only by
-`scripts/frontend-work-item-governance.ts`; no generated status block is
-hand-edited.
+The Registry-based status Projection was regenerated by
+`scripts/frontend-work-item-governance.ts projections --write`; the generator
+reported four blocks and produced no additional diff. No generated status block
+was hand-edited.
 
 ## Known limits retained
 
 - Review `4837900020` recorded the repository-wide `format:check` baseline as
-  `FAIL` on 58 existing files outside this slice. The current local diagnostic
-  after normalizing the in-scope evidence registry reports 57 remaining
-  warnings; the repository-wide gate remains `FAIL`, the 58-file review
-  history is retained, and no unrelated file was rewritten. Changed-file
-  formatting remains PASS.
+  `FAIL` on 58 existing files outside this slice. That history is retained.
+  Maintenance PR #54 normalized the inherited baseline on a separate branch,
+  and its exact-head unmasked remote `format:check` passed. No Scope Amendment
+  was used.
 - Local Windows `test:stage12-package` remains `BLOCKED/NOT_RUN` because the
   isolated npm registry install for `ajv` returned `EACCES`. The corresponding
   remote Quality substep remains PASS.
+- Local `npm audit` could not reach the advisory endpoint in this environment;
+  the corresponding remote Quality audit remains PASS.
 - The first local Chromium invocation lacked `DATABASE_URL`; the corrected
   invocation passed 25/25. This history is retained in the UI verification
   report.

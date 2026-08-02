@@ -350,15 +350,15 @@ Mutation automatic retry remains disabled. A repeated request with the original
 idempotency key may replay an existing result; a new key is never generated for
 an unknown outcome.
 
-| API contract | Mandatory input | Typed failures | Retry and compatibility |
-|---|---|---|---|
-| Materialize Draft | `seedId`, command envelope | `NOT_FOUND`, `FORBIDDEN`, `PROJECT_BINDING_CONFLICT`, `OUTCOME_INDETERMINATE` | no automatic retry; original key resolves; Ask Seed schema unchanged |
-| Start Seedless Draft | server-resolved Resource/page target, command envelope | `NOT_FOUND`, `FORBIDDEN`, `ACCESS_REVOKED`, `BASE_UNAVAILABLE` | no automatic retry; additive endpoint; Knowledge read contracts unchanged |
-| Save Draft | `draftId`, full operation revision, expected Draft/base revisions, semantic digest | `DRAFT_NOT_FOUND`, `DRAFT_REVISION_CONFLICT`, `BASE_REVISION_STALE`, `VALIDATION_FAILED` | no automatic mutation retry; same key replays; legacy Stage 5 unchanged |
-| Validate Draft | `draftId`, expected Draft/base revisions | `DRAFT_NOT_FOUND`, `STALE`, `CONFLICT`, `VALIDATION_FAILED`, `ACCESS_REVOKED` | resolves existing outcome only; no Draft mutation on retry |
-| Generate Impact Preview | `draftId`, expected Draft revision, bounded preview options | `DRAFT_NOT_FOUND`, `STALE`, `CONFLICT`, `IMPACT_PARTIAL`, `ANALYZER_UNAVAILABLE` | artifact replay by command identity; partial remains visible |
-| Submit Draft for Review | immutable Draft revision, validation and impact references, expected revisions | `NOT_READY_FOR_REVIEW`, `STALE`, `CONFLICT`, `ACCESS_REVOKED`, `OUTCOME_INDETERMINATE` | no automatic retry; original key resolves Review Resource or outcome |
-| Resolve Command Outcome | original `clientRequestId`, idempotency key and semantic digest | `OUTCOME_NOT_FOUND`, `DIGEST_MISMATCH`, `COMMAND_SCOPE_MISMATCH` | resolution only; never creates a new command key |
+| API contract            | Mandatory input                                                                    | Typed failures                                                                           | Retry and compatibility                                                   |
+| ----------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Materialize Draft       | `seedId`, command envelope                                                         | `NOT_FOUND`, `FORBIDDEN`, `PROJECT_BINDING_CONFLICT`, `OUTCOME_INDETERMINATE`            | no automatic retry; original key resolves; Ask Seed schema unchanged      |
+| Start Seedless Draft    | server-resolved Resource/page target, command envelope                             | `NOT_FOUND`, `FORBIDDEN`, `ACCESS_REVOKED`, `BASE_UNAVAILABLE`                           | no automatic retry; additive endpoint; Knowledge read contracts unchanged |
+| Save Draft              | `draftId`, full operation revision, expected Draft/base revisions, semantic digest | `DRAFT_NOT_FOUND`, `DRAFT_REVISION_CONFLICT`, `BASE_REVISION_STALE`, `VALIDATION_FAILED` | no automatic mutation retry; same key replays; legacy Stage 5 unchanged   |
+| Validate Draft          | `draftId`, expected Draft/base revisions                                           | `DRAFT_NOT_FOUND`, `STALE`, `CONFLICT`, `VALIDATION_FAILED`, `ACCESS_REVOKED`            | resolves existing outcome only; no Draft mutation on retry                |
+| Generate Impact Preview | `draftId`, expected Draft revision, bounded preview options                        | `DRAFT_NOT_FOUND`, `STALE`, `CONFLICT`, `IMPACT_PARTIAL`, `ANALYZER_UNAVAILABLE`         | artifact replay by command identity; partial remains visible              |
+| Submit Draft for Review | immutable Draft revision, validation and impact references, expected revisions     | `NOT_READY_FOR_REVIEW`, `STALE`, `CONFLICT`, `ACCESS_REVOKED`, `OUTCOME_INDETERMINATE`   | no automatic retry; original key resolves Review Resource or outcome      |
+| Resolve Command Outcome | original `clientRequestId`, idempotency key and semantic digest                    | `OUTCOME_NOT_FOUND`, `DIGEST_MISMATCH`, `COMMAND_SCOPE_MISMATCH`                         | resolution only; never creates a new command key                          |
 
 Abandon remains a separate lifecycle command but is not required for the first
 seven-contract Product API freeze. If implemented, it must use the same command

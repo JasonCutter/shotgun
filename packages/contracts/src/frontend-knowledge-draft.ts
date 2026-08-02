@@ -422,6 +422,7 @@ export const FRONTEND_KNOWLEDGE_DRAFT_API_FAILURE_CODES = [
   'OUTCOME_NOT_FOUND',
   'DIGEST_MISMATCH',
   'COMMAND_SCOPE_MISMATCH',
+  'OUTCOME_INDETERMINATE',
 ] as const;
 
 export type FrontendKnowledgeDraftApiFailureCode =
@@ -505,6 +506,16 @@ export type FrontendKnowledgeDraftNormalizedFailure = {
   readonly apiCode: FrontendKnowledgeDraftApiFailureCode;
   readonly normalizedCode: FrontendKnowledgeDraftFailureCode;
   readonly mapping: FrontendKnowledgeDraftFailureMapping;
+};
+
+export type FrontendKnowledgeDraftFailureV1 = {
+  readonly schemaVersion: '1.0.0';
+  readonly code: FrontendKnowledgeDraftApiFailureCode;
+  readonly normalizedCode: FrontendKnowledgeDraftFailureCode;
+  readonly category: FrontendKnowledgeDraftFailureMapping['category'];
+  readonly httpStatus: number;
+  readonly retryable: boolean;
+  readonly message: string;
 };
 
 export const normalizeFrontendKnowledgeDraftFailure = (
@@ -598,6 +609,11 @@ const integer = (value: unknown, path: string): number => {
 
 const finiteNumber = (value: unknown, path: string): number => {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fail(path, 'must be finite');
+  return value;
+};
+
+const booleanValue = (value: unknown, path: string): boolean => {
+  if (typeof value !== 'boolean') return fail(path, 'must be a boolean');
   return value;
 };
 
@@ -1940,5 +1956,60 @@ export const decodeResolveKnowledgeDraftCommandOutcomeResultV1 = (
     ...(draft === undefined ? {} : { draft }),
     ...(reviewResource === undefined ? {} : { reviewResource }),
     ...(reviewSubmission === undefined ? {} : { reviewSubmission }),
+  };
+};
+
+export const decodeFrontendKnowledgeDraftFailureV1 = (
+  value: unknown,
+): FrontendKnowledgeDraftFailureV1 => {
+  const path = 'draftFailure';
+  const object = strictObject(
+    value,
+    ['schemaVersion', 'code', 'normalizedCode', 'category', 'httpStatus', 'retryable', 'message'],
+    path,
+  );
+  if (required(object, 'schemaVersion', path) !== '1.0.0') {
+    return fail(`${path}.schemaVersion`, "must be '1.0.0'");
+  }
+  const code = enumValue(
+    required(object, 'code', path),
+    FRONTEND_KNOWLEDGE_DRAFT_API_FAILURE_CODES,
+    `${path}.code`,
+  );
+  const normalized = normalizeFrontendKnowledgeDraftFailure(code);
+  if (normalized === undefined) return fail(`${path}.code`, 'has no typed mapping');
+  const normalizedCode = text(required(object, 'normalizedCode', path), `${path}.normalizedCode`);
+  if (normalizedCode !== normalized.normalizedCode) {
+    return fail(`${path}.normalizedCode`, 'does not match the external failure code mapping');
+  }
+  const category = enumValue(
+    required(object, 'category', path),
+    [
+      'VALIDATION',
+      'AUTHORIZATION',
+      'NOT_FOUND',
+      'CONFLICT',
+      'DEPENDENCY',
+      'OUTCOME_UNKNOWN',
+    ] as const,
+    `${path}.category`,
+  );
+  const httpStatus = integer(required(object, 'httpStatus', path), `${path}.httpStatus`);
+  const retryable = booleanValue(required(object, 'retryable', path), `${path}.retryable`);
+  if (
+    category !== normalized.mapping.category ||
+    httpStatus !== normalized.mapping.httpStatus ||
+    retryable !== normalized.mapping.retryable
+  ) {
+    return fail(path, 'failure mapping metadata does not match the typed code');
+  }
+  return {
+    schemaVersion: '1.0.0',
+    code,
+    normalizedCode: normalized.normalizedCode,
+    category,
+    httpStatus,
+    retryable,
+    message: text(required(object, 'message', path), `${path}.message`),
   };
 };

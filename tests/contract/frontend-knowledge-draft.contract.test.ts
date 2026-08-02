@@ -5,6 +5,7 @@ import {
   decodeDraftCommandEnvelopeV1,
   decodeGenerateKnowledgeDraftImpactRequestV1,
   decodeGenerateKnowledgeDraftImpactResultV1,
+  decodeFrontendKnowledgeDraftFailureV1,
   decodeMaterializeDraftRequestV1,
   decodeMaterializeDraftResultV1,
   decodeFrontendKnowledgeDraftBaseV1,
@@ -397,7 +398,29 @@ describe('FE-P3-S2 FrontendKnowledgeDraftChangeSet v1 contract', () => {
       idempotencyKey: 'key-1',
       expectedDraftRevision: 1,
     };
+    const withoutExpectedDraftRevision = {
+      schemaVersion: '1.0.0',
+      clientRequestId: 'request-1',
+      idempotencyKey: 'key-1',
+    };
     expectContractError(() => decodeMaterializeDraftRequestV1(envelope));
+    expectContractError(() =>
+      decodeStartSeedlessDraftRequestV1({
+        ...withoutExpectedDraftRevision,
+        resourceId: 'resource-1',
+        pageId: 'page-1',
+      }),
+    );
+    expectContractError(() =>
+      decodeSaveKnowledgeDraftRequestV1({
+        ...withoutExpectedDraftRevision,
+        draftId: 'draft-1',
+        operations: [operationFor('FACT_ADD')],
+        expectedBaseRevision: 7,
+        operationRevision: 1,
+        contentDigest: 'sha256:draft',
+      }),
+    );
     expectContractError(() =>
       decodeSaveKnowledgeDraftRequestV1({
         ...envelope,
@@ -410,9 +433,14 @@ describe('FE-P3-S2 FrontendKnowledgeDraftChangeSet v1 contract', () => {
     );
     expectContractError(() =>
       decodeValidateKnowledgeDraftRequestV1({
-        schemaVersion: '1.0.0',
-        clientRequestId: 'request-1',
-        idempotencyKey: 'key-1',
+        ...withoutExpectedDraftRevision,
+        draftId: 'draft-1',
+        expectedBaseRevision: 7,
+      }),
+    );
+    expectContractError(() =>
+      decodeGenerateKnowledgeDraftImpactRequestV1({
+        ...withoutExpectedDraftRevision,
         draftId: 'draft-1',
         expectedBaseRevision: 7,
       }),
@@ -425,12 +453,23 @@ describe('FE-P3-S2 FrontendKnowledgeDraftChangeSet v1 contract', () => {
         semanticDigest: '',
       }),
     );
+    for (const status of ['PARTIAL', 'FAILED', 'UNAVAILABLE'] as const) {
+      expectContractError(() =>
+        decodeSubmitKnowledgeDraftForReviewRequestV1({
+          ...envelope,
+          draftId: 'draft-1',
+          expectedBaseRevision: 7,
+          validationArtifact: { ...artifact, status },
+          impactArtifact: artifact,
+        }),
+      );
+    }
     expectContractError(() =>
       decodeSubmitKnowledgeDraftForReviewRequestV1({
-        ...envelope,
+        ...withoutExpectedDraftRevision,
         draftId: 'draft-1',
         expectedBaseRevision: 7,
-        validationArtifact: { ...artifact, status: 'PARTIAL' },
+        validationArtifact: artifact,
         impactArtifact: artifact,
       }),
     );
@@ -442,6 +481,33 @@ describe('FE-P3-S2 FrontendKnowledgeDraftChangeSet v1 contract', () => {
         draft: draftFor(),
       }),
     );
+
+    const serverAuthorityFields = [
+      'principalId',
+      'sessionId',
+      'activeProjectId',
+      'resourceProjectId',
+      'draftProjectId',
+      'effectiveProjectId',
+      'accessRevision',
+      'policyContextRevision',
+      'canonicalSnapshotId',
+      'canonicalVersion',
+      'canonicalResourceId',
+      'canonicalRevisionId',
+      'capability',
+      'capabilities',
+      'commandId',
+    ] as const;
+    for (const field of serverAuthorityFields) {
+      expectContractError(() =>
+        decodeMaterializeDraftRequestV1({
+          ...envelope,
+          seedId: 'seed-1',
+          [field]: 'browser-value',
+        }),
+      );
+    }
   });
 
   it('preserves every Frozen API failure alias while exposing its normalized boundary', () => {
@@ -461,12 +527,42 @@ describe('FE-P3-S2 FrontendKnowledgeDraftChangeSet v1 contract', () => {
       'OUTCOME_NOT_FOUND',
       'DIGEST_MISMATCH',
       'COMMAND_SCOPE_MISMATCH',
+      'OUTCOME_INDETERMINATE',
     ] as const;
     for (const alias of aliases) {
       const normalized = normalizeFrontendKnowledgeDraftFailure(alias);
       expect(normalized?.apiCode).toBe(alias);
       expect(normalized?.normalizedCode).toBeDefined();
     }
+    for (const [code, normalizedCode, category, httpStatus] of [
+      ['DRAFT_NOT_FOUND', 'DRAFT_NOT_FOUND', 'NOT_FOUND', 404],
+      ['ACCESS_REVOKED', 'ACCESS_DENIED', 'AUTHORIZATION', 403],
+      ['OUTCOME_NOT_FOUND', 'OUTCOME_UNKNOWN', 'OUTCOME_UNKNOWN', 503],
+      ['OUTCOME_INDETERMINATE', 'OUTCOME_UNKNOWN', 'OUTCOME_UNKNOWN', 503],
+    ] as const) {
+      expect(
+        decodeFrontendKnowledgeDraftFailureV1({
+          schemaVersion: '1.0.0',
+          code,
+          normalizedCode,
+          category,
+          httpStatus,
+          retryable: false,
+          message: `${code} is preserved.`,
+        }).code,
+      ).toBe(code);
+    }
+    expectContractError(() =>
+      decodeFrontendKnowledgeDraftFailureV1({
+        schemaVersion: '1.0.0',
+        code: 'ACCESS_REVOKED',
+        normalizedCode: 'CONFLICT',
+        category: 'AUTHORIZATION',
+        httpStatus: 403,
+        retryable: false,
+        message: 'Access was revoked.',
+      }),
+    );
   });
 
   it('rejects unknown fields and invalid discriminants', () => {

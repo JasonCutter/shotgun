@@ -7,8 +7,8 @@ registry_status: IN_PROGRESS
 completion_manifest: docs/project/completions/FE-P3-S1.json
 implementation_review_id: 4837811808
 implementation_review_decision: KNOWLEDGE_WORKSPACE_UI_IMPLEMENTATION_PASS
-candidate_exact_head: 58edfffb5e7eabc0f910bd56fafe27fcbab71d96
-candidate_ci_run: 30739868222
+candidate_exact_head: ac92499253a10331a58c613995e5a480ee0df6c4
+candidate_ci_run: 30740732355
 candidate_ci_conclusion: PASS
 candidate_ci_gates: Quality, Frontend, Required Gates
 completion_approval: NOT_AUTHORIZED
@@ -45,9 +45,12 @@ evidence only. A separate FE-P3-S1 completion review is still required.
 - Required Gates: `PASS`
 - Database, Chromium and the Stage 12 package substep: `PASS` remotely
 
-The next governance candidate commit must be validated again at its own exact
-head. The exact candidate publication head and its CI run will be appended to
-this evidence record after that new remote run completes.
+The governance-only candidate commit
+`ac92499253a10331a58c613995e5a480ee0df6c4` was validated at its own exact
+head by run `30740732355`. Quality, Frontend and Required Gates all passed,
+including Database, Chromium and the remote Stage 12 package substep.
+Any later evidence-publication commit is documentation-only and requires its
+own exact-head CI; it does not change this candidate's implementation scope.
 
 ## Governance state
 

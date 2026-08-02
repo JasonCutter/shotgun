@@ -1,15 +1,17 @@
 ---
 id: FRONTEND-PHASE-3-SECTION-1-A2-C-PERSISTENT-KNOWLEDGE-PRODUCT-READ-ADAPTER-IMPLEMENTATION-REQUEST-260802002
 classification: IMPLEMENTATION_REQUEST
-status: CHANGES_REQUIRED
+status: PENDING_REVIEW
 work_item: FE-P3-S1
 sub_slice: A2-C
 approved_by: null
 approved_at: null
 review_id: 4836723439
-review_decision: CHANGES_REQUIRED
+review_decision: APPROVED_FOR_A2_C_CONTRACT_AMENDMENT
 implementation_authorization: NOT_GRANTED
 follow_up: docs/implementation/frontend-phase-3-section-1-a2-c-product-contract-amendment-and-identity-addendum-260802003.md
+accepted_contract: docs/implementation/frontend-phase-3-section-1-a2-c-product-contract-amendment-and-identity-addendum-260802003.md
+next_decision: APPROVED_FOR_A2_C_PERSISTENT_ADAPTER
 base_commit: ec409b16190f72199556c2c1e01dae513a2387ca
 branch: codex/frontend-phase-3-section-1-knowledge-workspace
 tracking_issue: 52
@@ -43,18 +45,44 @@ The requested decision is therefore:
 
 ### 1.1 Review outcome and follow-up
 
-Side-panel review `4836723439` returned `CHANGES_REQUIRED`. Implementation
-authorization is `NOT_GRANTED`. The review requires an accepted Product
-contract amendment covering QX-01 readiness preservation, deterministic
-authority-specific Product IDs, and the read-only Compare difference
-algorithm before the adapter can be reconsidered.
+Side-panel review `4836723439` first returned `CHANGES_REQUIRED`. The follow-up
+review accepted the bounded Product contract amendment as
+`APPROVED_FOR_A2_C_CONTRACT_AMENDMENT`, based on the contract content submitted
+in the review message. It did not independently verify the local amendment file
+or local commit because those were not available through the connected review
+surface. Implementation authorization remains `NOT_GRANTED`.
 
 The bounded follow-up is documented in
 `docs/implementation/frontend-phase-3-section-1-a2-c-product-contract-amendment-and-identity-addendum-260802003.md`.
 The original approval-request base is `ec409b16190f72199556c2c1e01dae513a2387ca`;
 the approval-request subject is `18f48c4504d1510ad310cd85c00a0a3503ac65e6`.
-Until the addendum is explicitly accepted, this request remains
-`CHANGES_REQUIRED` and no implementation files are to be created.
+The next requested decision is a separate
+`APPROVED_FOR_A2_C_PERSISTENT_ADAPTER` implementation authorization. Until
+that decision is explicit, no Product Search `1.1.0` code, adapter code, API,
+client/cache, or UI implementation files are to be created.
+
+### 1.2 Accepted contract and implementation boundary
+
+The accepted amendment fixes these implementation inputs:
+
+- Search Product response `1.1.0` preserves QX-01 `canonicalSearch`,
+  `sourceProjections[]`, and `partial`; the existing `1.0.0` decoder remains
+  strict and a separate `1.1.0` decoder/schema/negative-test path is required.
+- `pageId`, `productId`, and `matchId` use the approved namespaced stable JSON
+  SHA-256 rules over complete authority-specific source tuples. Missing source
+  identity fails closed; no UUID, array position, counter, timestamp,
+  placeholder, fallback, or Product identity storage is allowed.
+- Compare is a deterministic, read-only Product projection over both pages
+  fetched through the same server-authoritative Query path, with the approved
+  field set, JSON Pointer paths, value serialization, ordering, and
+  `differenceId` rules. It emits no Domain Fact, Command, Event, write
+  proposal, Canonical mutation, or cross-authority identity.
+
+The implementation decision requested next covers only the accepted Product
+contract code, the persistent adapter for the existing five-method Product
+Port, its contract/negative/integration/database tests, and the validation
+evidence listed in Sections 3-5. It does not authorize API/client/cache/UI,
+migrations, dependencies, Ready, Merge, deployment, or Phase 3 completion.
 
 ## 2. Baseline and governing records
 
@@ -120,20 +148,22 @@ must not become a new domain repository Port or a second persistence contract.
 
 The following Query ownership is fixed for implementation review:
 
-| Product operation               | Authoritative Query boundary                                                                                                | Required rule                                                                                                                                        |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Workspace/list pages            | Existing Stage 6/7/9/10 read Queries, including QX-02 for Compiled Truth status/segment                                     | Compose source results; do not persist Product rows or fabricate page identities.                                                                    |
-| Search                          | QX-01 `SearchKnowledgeWorkspace@1.0.0`                                                                                      | Use server score, rank, match type, authority, source identity and readiness exactly; no local ranking or concatenation of independent result lists. |
-| Canonical detail                | Existing Stage 6 Canonical Query plus existing History/Commit, Transformation and Evidence Queries where lineage is present | Missing lineage remains absent; no claim, revision, commit, manifest, ChangeSet, source or evidence identity is inferred.                            |
-| Approved Knowledge detail       | Existing Stage 9 Knowledge Model and Evidence Queries                                                                       | Only `APPROVED` source groups map to `APPROVED_KNOWLEDGE`; candidate/group identities remain source-owned.                                           |
-| Compiled Truth detail/readiness | QX-02 `GetCompiledTruthReadSnapshot@1.0.0` and existing Stage 10 status boundary                                            | Non-ready status remains visible; non-ready data is never promoted to Canonical or Approved Knowledge.                                               |
-| Derived detail                  | Existing Stage 10 `ListDerivedInferences`/source projection identity                                                        | Derived inference remains `DERIVED_INFERENCE`; no Canonical or Approved Knowledge identity is synthesized.                                           |
-| Compare                         | The same persistent read path for both requested pages                                                                      | Compare is read-only and must preserve left/right request order, revision and project identity.                                                      |
+| Product operation               | Authoritative Query boundary                                                                                                | Required rule                                                                                                                                                                                                                                                                |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Workspace/list pages            | Existing Stage 6/7/9/10 read Queries, including QX-02 for Compiled Truth status/segment                                     | Compose source results; do not persist Product rows or fabricate page identities.                                                                                                                                                                                            |
+| Search                          | QX-01 `SearchKnowledgeWorkspace@1.0.0`                                                                                      | Use server score, rank, match type, authority, source identity and readiness exactly; map the accepted readiness shape into Product Search `1.1.0` with the strict versioned decoder and compatibility alias; no local ranking or concatenation of independent result lists. |
+| Canonical detail                | Existing Stage 6 Canonical Query plus existing History/Commit, Transformation and Evidence Queries where lineage is present | Missing lineage remains absent; no claim, revision, commit, manifest, ChangeSet, source or evidence identity is inferred.                                                                                                                                                    |
+| Approved Knowledge detail       | Existing Stage 9 Knowledge Model and Evidence Queries                                                                       | Only `APPROVED` source groups map to `APPROVED_KNOWLEDGE`; candidate/group identities remain source-owned.                                                                                                                                                                   |
+| Compiled Truth detail/readiness | QX-02 `GetCompiledTruthReadSnapshot@1.0.0` and existing Stage 10 status boundary                                            | Non-ready status remains visible; non-ready data is never promoted to Canonical or Approved Knowledge.                                                                                                                                                                       |
+| Derived detail                  | Existing Stage 10 `ListDerivedInferences`/source projection identity                                                        | Derived inference remains `DERIVED_INFERENCE`; no Canonical or Approved Knowledge identity is synthesized.                                                                                                                                                                   |
+| Compare                         | The same persistent read path for both requested pages                                                                      | Compare is read-only and must preserve left/right request order, revision and project identity.                                                                                                                                                                              |
 
 The Product coordinator remains the final response boundary. The adapter must
 not bypass `FrontendProductReadCoordinator` decoders or weaken its checks for
 Project, access revision, policy revision, query echo, detail identity, compare
-ordering, or `CANONICAL_SEARCH` projection kind.
+ordering, or `CANONICAL_SEARCH` projection kind. The amended Search `1.1.0`
+decoder must additionally enforce readiness alias equality, source-projection
+preservation, partial-state visibility, and strict unknown-field rejection.
 
 ## 5. Required validation before any completion claim
 
@@ -142,6 +172,17 @@ have evidence. A local pass cannot substitute for exact-head remote CI.
 
 ### Contract and negative tests
 
+- Add and validate the accepted Search Product `1.1.0` schema and strict
+  decoder without weakening the existing `1.0.0` decoder.
+- Verify QX-01 readiness mapping for all four states, zero/one source
+  projections, optional digests/reasons, `partial: true` with empty matches,
+  non-ready source projections, unknown fields, and alias equality.
+- Verify the approved page/product/match identity tuples, namespaces,
+  Project/resource/revision binding, collision failure, source-ID separation,
+  and rejection of UUID/index/counter/random/timestamp/storage identities.
+- Verify the approved Compare field set, JSON Pointer escaping, stable value
+  serialization, deterministic ordering, one-sided values, reversed sides,
+  difference IDs, and absence of write/domain capabilities.
 - Run the unchanged `defineFrontendKnowledgeProjectionContract` suite against
   both the existing In-memory adapter and the new persistent adapter.
 - Verify all five Product Port methods, cursor/page-size behavior, filters,
@@ -219,7 +260,9 @@ Current control:
 FE-P3-S1                         IN PROGRESS
 QX-01 Stage 7 Handler            PASS / reviewed
 QX-02 Stage 10 Handler           PASS / reviewed
+A2-C Contract Amendment           APPROVED / review 4836723439
 A2-C Persistent Adapter          PENDING EXPLICIT IMPLEMENTATION APPROVAL
+Product Search 1.1.0 Code        NOT AUTHORIZED
 A3 API/Client/Cache              NOT AUTHORIZED
 /knowledge UI                    NOT AUTHORIZED
 PR #53                           OPEN / DRAFT
@@ -233,7 +276,9 @@ Deployment                       NOT STARTED
 
 Please issue one of the following decisions in the review thread:
 
-- `APPROVED_FOR_A2_C_PERSISTENT_ADAPTER`: authorize only Sections 3–6,
+- `APPROVED_FOR_A2_C_PERSISTENT_ADAPTER`: authorize only the accepted Product
+  contract implementation, the bounded adapter in Sections 3-4, and the
+  applicable validation in Section 5,
   subject to the validation and control boundaries in this document; or
 - `CHANGES_REQUIRED`: identify the required scope or contract correction;
   implementation remains stopped until the correction is reviewed.

@@ -1,12 +1,13 @@
 ---
 id: FRONTEND-PHASE-3-SECTION-1-A2-C-PRODUCT-CONTRACT-AMENDMENT-AND-IDENTITY-ADDENDUM-260802003
 classification: CONTRACT_AMENDMENT_PROPOSAL
-status: PENDING_REVIEW
+status: APPROVED_FOR_A2_C_CONTRACT_AMENDMENT
 work_item: FE-P3-S1
 sub_slice: A2-C
 review_id: 4836723439
-review_decision: CHANGES_REQUIRED
+review_decision: APPROVED_FOR_A2_C_CONTRACT_AMENDMENT
 implementation_authorization: NOT_GRANTED
+decision_basis: USER_SUBMITTED_CONTRACT_SUMMARY
 base_commit: ec409b16190f72199556c2c1e01dae513a2387ca
 subject_commit: 18f48c4504d1510ad310cd85c00a0a3503ac65e6
 branch: codex/frontend-phase-3-section-1-knowledge-workspace
@@ -17,13 +18,20 @@ supersedes: docs/implementation/frontend-phase-3-section-1-a2-c-persistent-knowl
 
 ## 1. Decision state
 
-Side-panel review `4836723439` returned `CHANGES_REQUIRED` for the A2-C
-Persistent Knowledge Product Read Adapter request. Implementation authorization
-remains `NOT_GRANTED`.
+Side-panel review `4836723439` first returned `CHANGES_REQUIRED` for the A2-C
+Persistent Knowledge Product Read Adapter request. The follow-up review
+returned `APPROVED_FOR_A2_C_CONTRACT_AMENDMENT` for the bounded amendment
+content submitted in the review message. Implementation authorization for the
+Product Search `1.1.0` code and Persistent Adapter remains `NOT_GRANTED`.
 
-The review accepted the document-only preparation commit and the QX-01/QX-02
-reuse and security boundaries. It requires these contracts to be fixed before
-the adapter can be reconsidered:
+The review explicitly recorded that the local amendment commit and file were
+not independently available through the connected review surface. This
+approval therefore records acceptance of the submitted contract content and
+does not claim remote exact-head or local-file verification.
+
+The initial review accepted the document-only preparation commit and the
+QX-01/QX-02 reuse and security boundaries, but required these contracts to be
+fixed before the adapter could be reconsidered:
 
 1. Preserve all QX-01 readiness fields in the Product response.
 2. Define deterministic Product identity rules without fabricated or
@@ -31,9 +39,10 @@ the adapter can be reconsidered:
 3. Define the authority and deterministic algorithm for read-only Compare
    differences.
 
-This addendum is a bounded contract amendment proposal. It does not change
-TypeScript, schemas, tests, the Product Port, API, UI, database, or PR state.
-Those changes remain blocked until this addendum is explicitly accepted.
+This addendum is now an accepted bounded contract amendment. It does not by
+itself authorize TypeScript, schemas, tests, the Product Port, API, UI,
+database, or PR state changes. Those changes remain blocked until a separate
+`APPROVED_FOR_A2_C_PERSISTENT_ADAPTER` implementation decision.
 
 ## 2. QX-01 readiness Product mapping
 
@@ -328,8 +337,7 @@ The amendment tests must prove:
 Before A2-C implementation can be reconsidered, the following must be
 submitted and reviewed:
 
-1. An accepted additive Product contract amendment (or an explicitly accepted
-   equivalent versioned contract) covering Sections 2–4.
+1. An accepted additive Product contract amendment covering Sections 2-4.
 2. Strict decoder/schema updates and shared contract tests for readiness,
    identity and Compare.
 3. Updated A2-C implementation request mapping every proposed adapter output
@@ -340,16 +348,18 @@ submitted and reviewed:
 This addendum does not authorize those code changes. The next review must
 return an explicit decision before the Persistent Adapter is implemented.
 
-## 6. Control state after `CHANGES_REQUIRED`
+## 6. Control state after `APPROVED_FOR_A2_C_CONTRACT_AMENDMENT`
 
 ```text
-Review 4836723439                 CHANGES_REQUIRED
+Review 4836723439                 APPROVED_FOR_A2_C_CONTRACT_AMENDMENT
 Implementation authorization      NOT GRANTED
 Approval-request base             ec409b16190f72199556c2c1e01dae513a2387ca
 Approval-request subject          18f48c4504d1510ad310cd85c00a0a3503ac65e6
 QX-01 Stage 7 Handler             PASS / reviewed
 QX-02 Stage 10 Handler             PASS / reviewed
-A2-C Persistent Adapter           BLOCKED_PENDING_CONTRACT_AMENDMENT
+A2-C Contract Amendment           APPROVED / submitted-content basis
+A2-C Persistent Adapter           PENDING_EXPLICIT_IMPLEMENTATION_APPROVAL
+Product Search 1.1.0 Code         NOT AUTHORIZED
 A3 API/Client/Cache               NOT AUTHORIZED
 /knowledge UI                     NOT AUTHORIZED
 PR #53                            OPEN / DRAFT
@@ -357,3 +367,7 @@ Ready / Merge                     NOT AUTHORIZED
 DB Migration / Dependency        NONE AUTHORIZED
 Deployment                        NOT STARTED
 ```
+
+The next required judgment is the separate
+`APPROVED_FOR_A2_C_PERSISTENT_ADAPTER` implementation decision. This
+amendment approval must not be treated as that authorization.

@@ -242,7 +242,9 @@ test('AC-23: AbortController cancels an in-flight snapshot fetch on navigation',
   });
 
   await page.goto('/knowledge/graph');
-  await page.waitForTimeout(250); // let the snapshot fetch start
+  // Wait until the snapshot request is actually in flight (the delayed route
+  // is now pending its 4000ms timer) before navigating away.
+  await page.waitForRequest((request) => request.url().includes('/knowledge/graph/snapshot'));
   // Navigate away while the snapshot request is still in flight.
   await page.goto('/knowledge');
   await expect(page.getByRole('heading', { name: 'Knowledge', level: 1 })).toBeVisible();

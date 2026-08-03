@@ -34,6 +34,7 @@ const migrationFiles = async (): Promise<string[]> =>
 const managedSchemas = [
   'frontend_ask',
   'frontend_knowledge_draft',
+  'frontend_knowledge_graph',
   'source_product',
   'frontend_command',
   'settings',

@@ -92,10 +92,12 @@ refresh, restore).
 - Frontend: 14 files / 56 tests PASS; frontend typecheck PASS.
 - Browser E2E graph: 5/5 PASS.
 - Root `npm run check` exit code: `0`; `git diff --check`: PASS.
-- CI at exact head `58641b369`: run `#457` (`30842933740`) in progress;
-  Quality and Frontend check runs started. (Prior run `#456` at WP1 head
-  failed only at Lint — the unused-import lint errors were fixed locally and
-  the final gate now passes.)
+- CI at exact head `58641b369`: run `#457` (`30842933740`) — Frontend `PASS`;
+  Quality `FAIL` only at the pre-existing external "Audit dependencies" step
+  (`brace-expansion` high, `postcss` moderate in the existing lockfile; not
+  introduced by FE-P3-S3 and identical to the docs-only approval-sync head);
+  Required Gates `FAIL` (cascade). Evidence-publication head `f53ce5b8` run
+  `#458` (`30843211639`) is expected to show the same audit-only result.
 
 ## 6. Working-tree status and exclusions
 

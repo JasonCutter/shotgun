@@ -25,12 +25,14 @@ export const GraphListView = ({
   edges,
   selectedRef,
   onSelect,
+  onCorrect,
   ariaLabel,
 }: {
   readonly nodes: readonly GraphNodeV1[];
   readonly edges: readonly GraphEdgeV1[];
   readonly selectedRef: GraphNodeReferenceV1 | null;
   readonly onSelect: (ref: GraphNodeReferenceV1) => void;
+  readonly onCorrect: (ref: GraphNodeReferenceV1) => void;
   readonly ariaLabel: string;
 }) => {
   const tuples = graphAccessibleTuples(nodes, edges);
@@ -62,9 +64,14 @@ export const GraphListView = ({
               <span className="graph-item-base-view">{tuple.baseViewMembership}</span>
               <span className="graph-item-overlays">{tuple.overlayMemberships.join(', ')}</span>
               {nodeRef ? (
-                <button type="button" onClick={() => onSelect(nodeRef)}>
-                  Select
-                </button>
+                <span className="graph-item-actions">
+                  <button type="button" onClick={() => onSelect(nodeRef)}>
+                    Select
+                  </button>
+                  <button type="button" onClick={() => onCorrect(nodeRef)}>
+                    보정
+                  </button>
+                </span>
               ) : null}
             </li>
           );

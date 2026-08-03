@@ -3,6 +3,11 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useOutletContext, useSearchParams } from 'react-router';
 
 import {
+  GRAPH_CORRECTION_QUERY_KEY,
+  decodeGraphCorrectionSeed,
+} from '../knowledge/graph-correction.js';
+
+import {
   createFrontendKnowledgeDraftClient,
   type GlobalShellView,
   type KnowledgeAuthority,
@@ -109,6 +114,14 @@ export const KnowledgeWorkspace = () => {
     ...knowledgeSearchQueryOptions(apiClient, shell, searchRequest),
     enabled: Boolean(shell.activeProject && searchRequest.query),
   });
+
+  // AC-25: a graph correction seed carried in the URL is decoded strictly and
+  // surfaced as the editor's correction target. A malformed seed is ignored;
+  // the seed is a read proposal and never writes Canonical data.
+  const correctionSeed = useMemo(
+    () => decodeGraphCorrectionSeed(searchParameters.get(GRAPH_CORRECTION_QUERY_KEY)),
+    [parameterString, searchParameters],
+  );
 
   if (!shell.activeProject) {
     return (
@@ -237,6 +250,21 @@ export const KnowledgeWorkspace = () => {
       </section>
 
       {projection ? <ProjectionStatus projection={projection} /> : null}
+      {correctionSeed ? (
+        <section className="action-card" aria-labelledby="graph-correction-heading">
+          <h2 id="graph-correction-heading">그래프 보정 대상</h2>
+          <p className="status-message" role="status" aria-live="polite">
+            {correctionSeed.targetKind === 'EDGE' ? '엣지' : '노드'} 보정{' '}
+            <code>
+              {correctionSeed.stableResourceRef.resourceKind}:
+              {correctionSeed.stableResourceRef.resourceId}
+            </code>
+            {correctionSeed.masked ? ' (마스킹된 자원)' : ''} · 스냅샷{' '}
+            <code>{correctionSeed.snapshotId}</code> · 보정 의도{' '}
+            <code>{correctionSeed.suggestedChangeIntent}</code>
+          </p>
+        </section>
+      ) : null}
       <KnowledgeDraftEditor
         draft={null}
         activeProjectId={shell.activeProject?.id}

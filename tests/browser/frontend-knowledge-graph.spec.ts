@@ -574,8 +574,42 @@ test('AC-15: non-success health/completeness states render their frozen announce
     await expect(page.getByRole('heading', { name: 'Semantic Graph', level: 1 })).toBeVisible();
     // Multiple live regions exist (visually-hidden live region, loading
     // state, notes); scope to the status element carrying the announcement.
-    await expect(
-      page.getByRole('status').filter({ hasText: state.announcement }),
-    ).toBeVisible();
+    await expect(page.getByRole('status').filter({ hasText: state.announcement })).toBeVisible();
   }
+});
+
+test('AC-25: a correction action on a graph node navigates to the Knowledge Editor with a typed seed and issues no write', async ({
+  page,
+}) => {
+  const writeRequests: string[] = [];
+  await page.route('**/*', async (route) => {
+    const url = route.request().url();
+    const method = route.request().method();
+    if (
+      method !== 'GET' &&
+      /(canonical|approval|action|commit|changeset|write|review)/i.test(url)
+    ) {
+      writeRequests.push(`${method} ${url}`);
+    }
+    await route.continue();
+  });
+  await stubSessionAndShell(page);
+  await page.goto('/knowledge/graph');
+  await expect(page.getByRole('heading', { name: 'Semantic Graph', level: 1 })).toBeVisible();
+
+  await page.keyboard.press('Alt+l');
+  await page
+    .getByRole('region', { name: 'Semantic graph list' })
+    .getByRole('button', { name: '보정' })
+    .first()
+    .click();
+
+  // Navigated to the Knowledge Editor (/knowledge) with the typed seed.
+  await expect(page.getByRole('heading', { name: 'Knowledge', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '그래프 보정 대상' })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: '노드 보정' })).toContainText('entity-1');
+  await expect(page.getByRole('status').filter({ hasText: '노드 보정' })).toContainText(
+    'CORRECT_KNOWLEDGE',
+  );
+  expect(writeRequests).toEqual([]);
 });

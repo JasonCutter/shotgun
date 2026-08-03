@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { useOutletContext, useSearchParams } from 'react-router';
+import { useNavigate, useOutletContext, useSearchParams } from 'react-router';
 
 import {
   createFrontendKnowledgeGraphClient,
@@ -16,6 +16,10 @@ import { EmptyState } from '../components/empty-state.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
 import { GraphCanvas } from '../knowledge/graph-canvas.js';
+import {
+  buildGraphNodeCorrectionSeed,
+  graphCorrectionEditorHref,
+} from '../knowledge/graph-correction.js';
 import { graphSnapshotIsReady, graphSnapshotQueryOptions } from '../knowledge/graph-queries.js';
 import { GraphListView } from '../knowledge/graph-list-view.js';
 import { GraphPathView } from '../knowledge/graph-path-view.js';
@@ -70,6 +74,7 @@ const viewLabel: Record<GraphViewKind, string> = {
 export const GraphWorkspace = () => {
   const { shell } = useOutletContext<{ readonly shell: GlobalShellView }>();
   const graphClient = useMemo(() => createFrontendKnowledgeGraphClient(), []);
+  const navigate = useNavigate();
   const [searchParameters] = useSearchParams();
   const [state, dispatch] = useReducer(
     reduceGraphWorkspaceState,
@@ -190,6 +195,23 @@ export const GraphWorkspace = () => {
     dispatch({ type: 'SELECT_NODE', ref });
     if (node) announce(GRAPH_ANNOUNCEMENTS.SELECTION(node.label));
   };
+
+  // AC-25: a correction action on a graph node builds a typed seed carrying
+  // the same stable resource ref and navigates to the Knowledge Editor. The
+  // seed is a read proposal only: no Canonical write, no Approval, no Action.
+  // A HIDDEN node yields no seed (it is filtered from every view anyway).
+  const correctNode = useCallback(
+    (ref: GraphNodeReferenceV1) => {
+      if (!currentSnapshot) return;
+      const node = currentSnapshot.nodes.find((n) => n.resourceRef.resourceId === ref.resourceId);
+      if (!node) return;
+      const seed = buildGraphNodeCorrectionSeed(currentSnapshot, node);
+      if (!seed) return;
+      announce(GRAPH_ANNOUNCEMENTS.RECOVERY);
+      navigate(graphCorrectionEditorHref(seed));
+    },
+    [currentSnapshot, navigate, announce],
+  );
 
   // Deep-link restoration: focus the selected node once the snapshot is ready.
   useEffect(() => {
@@ -423,6 +445,7 @@ export const GraphWorkspace = () => {
           edges={edges}
           selectedRef={state.selectedRef}
           onSelect={selectNode}
+          onCorrect={correctNode}
           ariaLabel="Semantic graph list"
         />
       ) : state.viewKind === 'table' ? (
@@ -431,6 +454,7 @@ export const GraphWorkspace = () => {
           edges={edges}
           selectedRef={state.selectedRef}
           onSelect={selectNode}
+          onCorrect={correctNode}
           ariaLabel="Semantic graph table"
         />
       ) : (

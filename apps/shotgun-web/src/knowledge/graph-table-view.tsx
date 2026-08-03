@@ -19,12 +19,14 @@ export const GraphTableView = ({
   edges,
   selectedRef,
   onSelect,
+  onCorrect,
   ariaLabel,
 }: {
   readonly nodes: readonly GraphNodeV1[];
   readonly edges: readonly GraphEdgeV1[];
   readonly selectedRef: GraphNodeReferenceV1 | null;
   readonly onSelect: (ref: GraphNodeReferenceV1) => void;
+  readonly onCorrect: (ref: GraphNodeReferenceV1) => void;
   readonly ariaLabel: string;
 }) => {
   const tuples = graphAccessibleTuples(nodes, edges);

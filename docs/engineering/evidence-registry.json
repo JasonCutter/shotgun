@@ -520,7 +520,7 @@
       "finalCheckExitCode": 0,
       "gitDiffCheck": "PASS",
       "focusedTests": "30/30",
-      "frontendTests": "56/56",
+      "frontendTests": "54/54",
       "browserE2EGraph": "5/5",
       "acceptanceCriteria": "FE-P3-S3-AC-01_THROUGH_FE-P3-S3-AC-31_RECORDED",
       "completionApproval": "NOT_AUTHORIZED",

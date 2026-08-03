@@ -89,7 +89,7 @@ refresh, restore).
 
 - Contract 15/15; client unit 3/3; product-api integration 4/4; negative 8/8;
   postgres parity 2/2 (combined 30 focused tests PASS).
-- Frontend: 14 files / 56 tests PASS; frontend typecheck PASS.
+- Frontend: 14 files / 54 tests PASS; frontend typecheck PASS.
 - Browser E2E graph: 5/5 PASS.
 - Root `npm run check` exit code: `0`; `git diff --check`: PASS.
 - CI at exact head `58641b369`: run `#457` (`30842933740`) — Frontend `PASS`;

@@ -45,7 +45,7 @@ separate user authorization.
   `npx vitest run tests/integration/frontend-knowledge-graph-product-api.test.ts tests/database/frontend-knowledge-graph-postgres-parity.test.ts` — `6/6 PASS`.
 - Negative matrix (implementation request section 7):
   `tests/integration/frontend-knowledge-graph-negative.test.ts` — `8/8 PASS`.
-- WP3 (React workspace, Cytoscape, fallback): `npm run frontend:test` — `14 files / 56 tests PASS` (includes graph workspace `4/4` and graph query keys `3/3`); `npm run frontend:typecheck` PASS.
+- WP3 (React workspace, Cytoscape, fallback): `npm run frontend:test` — `14 files / 54 tests PASS` (includes graph workspace `4/4` and graph query keys `3/3`); `npm run frontend:typecheck` PASS.
 - Browser E2E: `npx playwright test tests/browser/frontend-knowledge-graph.spec.ts` — `5/5 PASS`.
 - Root `npm run typecheck`: PASS.
 - Final root `npm run check`: exit code `0` (docs governance, lint, format, typecheck, unit, contract, integration, architecture, stage12, secret scan, OSS verify all PASS).

@@ -1,3 +1,4 @@
+import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
 const routeGuard = {
@@ -435,4 +436,22 @@ test('AC-22: list/table/path remain fully operable at 200% zoom', async ({ page,
 
   await page.keyboard.press('Alt+p');
   await expect(page.getByRole('region', { name: 'Semantic graph path' })).toBeVisible();
+});
+
+test('AC-21: axe scan finds zero critical violations across canvas, list, table and path', async ({
+  page,
+}) => {
+  await stubSessionAndShell(page);
+  await page.goto('/knowledge/graph');
+  await expect(page.getByRole('heading', { name: 'Semantic Graph', level: 1 })).toBeVisible();
+
+  const views = ['canvas', 'list', 'table', 'path'] as const;
+  for (const view of views) {
+    await page.keyboard.press(`Alt+${view === 'canvas' ? 'v' : view[0]}`);
+    const region = page.getByRole('region', { name: `Semantic graph ${view}` });
+    await expect(region).toBeAttached();
+    const results = await new AxeBuilder({ page }).analyze();
+    const critical = results.violations.filter((violation) => violation.impact === 'critical');
+    expect(critical, `${view} critical violations`).toHaveLength(0);
+  }
 });

@@ -6,6 +6,22 @@ import type { GraphEdgeV1, GraphNodeReferenceV1, GraphNodeV1 } from '@shotgun/ap
 type CytoscapeCore = ReturnType<typeof cytoscape>;
 
 /**
+ * Test-only lifecycle counter (AC-23). The E2E performance suite asserts that
+ * cytoscape `destroy` runs exactly once per mount and that no instance
+ * accumulates across repeated mount/unmount cycles. The counter is exposed on
+ * `window` so Playwright can read it without touching cytoscape internals.
+ */
+declare global {
+  interface Window {
+    __shotgunGraphPerf?: {
+      mounted: number;
+      destroyed: number;
+      active: number;
+    };
+  }
+}
+
+/**
  * Cytoscape presentation adapter (AC-18/AC-22).
  *
  * Canvas rendering and layout only. Coordinates, zoom and pan are presentation
@@ -173,6 +189,18 @@ export const GraphCanvas = ({
     });
     cyRef.current = core;
 
+    const perf = (window.__shotgunGraphPerf ??= { mounted: 0, destroyed: 0, active: 0 });
+    perf.mounted += 1;
+    perf.active += 1;
+
+    core.on('layoutstop', () => {
+      // Marks the moment the initial layout has actually finished running
+      // (cytoscape fires `layoutstop` after the layout animation completes),
+      // which lets E2E performance tests time layout completion instead of
+      // merely React mount.
+      container.dataset.layoutComplete = 'true';
+    });
+
     core.on('tap', 'node', (event) => {
       const resourceId = String(event.target.data('resourceId'));
       const resourceKind = String(
@@ -186,6 +214,8 @@ export const GraphCanvas = ({
       // `removeListener` separately can throw in StrictMode double-mounting.
       core.destroy();
       cyRef.current = null;
+      perf.destroyed += 1;
+      perf.active -= 1;
     };
     // Rebuild only when the component mounts; node/edge content changes flow
     // through the parent re-render and the selection effect below.

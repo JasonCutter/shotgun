@@ -80,6 +80,17 @@ import { registerSettingsRoutes } from './product-api/settings-routes.js';
 import { registerSourcesRoutes } from './product-api/sources-routes.js';
 import { registerFrontendKnowledgeDraftRoutes } from './product-api/frontend-knowledge-draft-routes.js';
 import {
+  registerFrontendKnowledgeGraphRoutes,
+  type GraphScopeResolver,
+} from './product-api/frontend-knowledge-graph-routes.js';
+import type { GraphReadDomain } from '../../../modules/frontend-knowledge-graph/src/index.js';
+import { createGraphReadDomain } from '../../../modules/frontend-knowledge-graph/src/index.js';
+import {
+  createInMemoryHealthStore,
+  createInMemorySnapshotContextStore,
+} from '../../../adapters/frontend-knowledge-graph-in-memory/src/index.js';
+import { Stage9GraphReadAdapter } from '../../../adapters/stage9-graph-read/src/index.js';
+import {
   FrontendKnowledgeDraftProductCoordinator,
   type FrontendKnowledgeDraftTargetResolverPort,
 } from '../../../modules/frontend-knowledge-draft/src/product-api.js';
@@ -427,6 +438,8 @@ export type ApplicationOptions = {
   readonly frontendKnowledgeDraftRepository?: FrontendKnowledgeDraftRepositoryBoundaryPort;
   readonly frontendKnowledgeDraftTargetResolver?: FrontendKnowledgeDraftTargetResolverPort;
   readonly frontendKnowledgeDraftCoordinator?: FrontendKnowledgeDraftProductCoordinator;
+  readonly graphReadDomain?: GraphReadDomain;
+  readonly graphScopeResolver?: GraphScopeResolver;
   readonly frontendProductReadCoordinator?: FrontendProductReadCoordinator;
   readonly frontendProductReadCoordinatorFactory?: (
     connector: ShotgunKernel['connector'],
@@ -1165,6 +1178,14 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       frontendCommandGateway,
       frontendKnowledgeDraftTargetResolver,
     );
+  const graphReadDomain =
+    options.graphReadDomain ??
+    createGraphReadDomain({
+      readPort: new Stage9GraphReadAdapter([], []),
+      impactPort: new Stage9GraphReadAdapter([], []),
+      snapshotContextStore: createInMemorySnapshotContextStore(),
+      healthStore: createInMemoryHealthStore(),
+    });
   const inMemoryAskWorkspace = new InMemoryAskWorkspaceProjection();
   const askCommandCoordinator =
     options.askCommandCoordinator ??
@@ -1895,6 +1916,43 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     authRepository,
     settingsRepository,
     requirePrincipalBrowserSession,
+  );
+  registerFrontendKnowledgeGraphRoutes(
+    server,
+    graphReadDomain,
+    options.graphScopeResolver ??
+      (async (headers) => {
+        const current = await requirePrincipalBrowserSession(headers);
+        const activeProjectId = current.session.activeProjectId;
+        if (!activeProjectId) {
+          throw new ShotgunError({
+            code: 'PROJECT_CONTEXT_REQUIRED',
+            safeMessage: 'Graph reads require an active Project.',
+            module: 'frontend-knowledge-graph-api',
+            operation: 'graph-scope',
+          });
+        }
+        const membership = await authRepository.findMembership(
+          current.principalContext.principalId,
+          activeProjectId,
+        );
+        if (!membership) {
+          throw new ShotgunError({
+            code: 'PRECONDITION_ACCESS_DENIED',
+            safeMessage: 'Principal is not a member of the active Project.',
+            module: 'frontend-knowledge-graph-api',
+            operation: 'graph-scope',
+          });
+        }
+        return {
+          principalId: current.principalContext.principalId,
+          sessionId: current.session.sessionId,
+          activeProjectId,
+          accessRevision: `access:${activeProjectId}`,
+          policyContextRevision: `policy:${activeProjectId}`,
+          accessScope: membership.scopes,
+        };
+      }),
   );
 
   server.post<{ Body: { accountId: string; password: string; projectId: string } }>(

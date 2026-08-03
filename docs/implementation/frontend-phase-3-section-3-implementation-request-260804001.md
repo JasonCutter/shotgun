@@ -2,11 +2,11 @@
 id: FRONTEND-PHASE-3-SECTION-3-IMPLEMENTATION-REQUEST-260804001
 classification: IMPLEMENTATION_REQUEST_PROPOSAL
 status: PENDING_USER_APPROVAL
-revision: 4
-review_round: 3
+revision: 5
+review_round: 4
 contract_basis_status: CONTRACT_SNAPSHOT_PROPOSED
 contract_basis_commit: 69cd0f0ccc03ba487b954b8f8f53fb1f54d2e9ab
-contract_snapshot_revision: 4
+contract_snapshot_revision: 5
 work_item: FE-P3-S3
 governing_adr: ADR-108
 proposed_adr: ADR-127
@@ -24,7 +24,7 @@ Graph and Relationship Exploration. It is **not yet approved** and must not be
 executed. After user approval it is intended to run as **one large
 implementation round**.
 
-The request is bounded by the frozen Contract Snapshot revision 3
+The request is bounded by the frozen Contract Snapshot revision 5
 (`docs/architecture/contracts/snapshots/frontend-phase-3-section-3/frontend-phase-3-section-3-contract-snapshot-260804001.md`),
 ADR-108, proposed ADR-127, and the Gap Audit
 (`docs/engineering/frontend-phase-3-section-3-semantic-graph-gap-audit-260804001.md`).
@@ -121,6 +121,9 @@ Create exact V1 contracts and strict decoders in:
   operations (snapshotId → descriptor → identical computation, using the
   stored normalized filters); unknown or expired descriptors return
   `SNAPSHOT_STALE`/`DEEP_LINK_TARGET_UNAVAILABLE`.
+- Snapshot refresh is descriptor-based: the client sends only `snapshotId` +
+  held `projectionRevision` + `expectedSnapshotRevision`; the server recomputes
+  and issues a new snapshot context (new `snapshotId`) and `projectionRevision`.
 - In-memory and PostgreSQL adapters must pass the parity suite for the four
   storage adapters (snapshot-context, projection health, overlay health,
   continuation) over the defined scenario set (AC-27).

@@ -2,8 +2,8 @@
 id: FRONTEND-PHASE-3-SECTION-3-CONTRACT-SNAPSHOT-260804001
 classification: PRODUCT_CONTRACT_SNAPSHOT_PROPOSAL
 status: PROPOSED_PENDING_USER_REVIEW
-revision: 4
-review_round: 3
+revision: 5
+review_round: 4
 review_result: PENDING_REVIEW
 approved_by: null
 approved_at: null
@@ -20,17 +20,17 @@ implementation_authorized: false
 ## 0. Status
 
 This snapshot freezes the proposed Product contract for the FE-P3-S3 Semantic
-Graph and Relationship Exploration Workspace. Revision 4 (second focused
-correction round after `CHANGES_REQUIRED` review) resolves the remaining
-internal contradictions: path segments are frozen as `ORIGIN`/`TRAVERSAL`
-discriminated unions; continuation semantics are exact (snapshot issues only;
-neighborhood and recursive-impact accept; all others reject); every response
-carries `projectionRevision` (path description and overlay result added);
-deep-link restore does not resend the root (the snapshot context owns it); and
-the snapshot-context descriptor stores the normalized `GraphFilterSetV1`
-(plus `filtersDigest` for validation) so identical computations are
-restorable. Revision 3 resolved the authority axis, exact operation contracts,
-base-view unification and `ACTION_CANDIDATE` exclusion.
+Graph and Relationship Exploration Workspace. Revision 5 (third focused
+correction round after `CHANGES_REQUIRED` review) unifies the snapshot refresh
+operation with the persistence model: `GraphSnapshotRefreshRequestV1` is now
+descriptor-based (`snapshotId` + held `projectionRevision` + required
+`expectedSnapshotRevision`) and never resends the full request; refresh resolves
+the snapshot context, recomputes, and issues a new snapshot context (new
+`snapshotId`) and `projectionRevision`. Revision 4 resolved the path segment
+`ORIGIN`/`TRAVERSAL` unions, exact continuation semantics, `projectionRevision`
+coverage, deep-link root ownership, and normalized-filter storage in the
+snapshot-context descriptor. Revision 3 resolved the authority axis, exact
+operation contracts, base-view unification and `ACTION_CANDIDATE` exclusion.
 
 It is a **preparation proposal**. It is not approved, does not authorize
 implementation, and no Acceptance Criterion in this document is marked passed.
@@ -825,10 +825,16 @@ type GraphEvidenceDetailResultV1 = {
   accessMasking: GraphAccessMaskingStateV1; // 'MASKED' returns no evidence entries
 };
 
-// 9. Snapshot refresh
-type GraphSnapshotRefreshRequestV1 = GraphSnapshotRequestV1 & {
+// 9. Snapshot refresh — descriptor-based, consistent with E (snapshotId →
+// descriptor → identical computation). It never resends the full request; the
+// server resolves the snapshot context, recomputes, and issues a NEW snapshot
+// context (new snapshotId) and new projectionRevision in the response.
+type GraphSnapshotRefreshRequestV1 = {
   schemaVersion: '1.0.0';
-  expectedSnapshotRevision: string; // required, non-empty
+  snapshotId: string; // the snapshot context to refresh
+  projectionRevision: string; // the revision the browser currently holds
+  expectedSnapshotRevision: string; // required, non-empty; must match the
+  // current server projectionRevision, otherwise SNAPSHOT_STALE
 };
 
 // 10. Deep-link restoration
@@ -925,10 +931,13 @@ invariants in D.2:
 8. **Evidence and provenance detail** — request: `snapshotId`,
    `projectionRevision`, `nodeRef` or `edgeRef`, optional `evidenceRef`.
    Response: provenance/evidence summaries, lineage, `accessMasking`.
-9. **Snapshot refresh** — request: `GraphSnapshotRefreshRequestV1` (snapshot
-   request + required `expectedSnapshotRevision`). Response:
-   `GraphSnapshotResultV1` with new revision or explicit `STALE`/`REBUILDING`
-   health.
+9. **Snapshot refresh** — request: `GraphSnapshotRefreshRequestV1`
+   (`snapshotId` + held `projectionRevision` + required
+   `expectedSnapshotRevision`); the full request is **not** resent — the server
+   resolves the snapshot context (section E), recomputes the identical
+   computation, and issues a **new snapshot context (new `snapshotId`) and new
+   `projectionRevision`**. Response: `GraphSnapshotResultV1` with the new
+   identity or explicit `STALE`/`REBUILDING` health.
 10. **Deep-link restoration** — request: `snapshotId`, `projectionRevision`,
     view kind, overlays, selected node refs, optional
     `expectedSnapshotRevision`. The root/root-set is **not** resent: the

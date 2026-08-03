@@ -2,10 +2,10 @@
 
 - Record ID: `frontend-phase-3-section-3-contract-preparation-verification-260804001`
 - Record class: `ARCHITECTURE_VERIFICATION`
-- Date: 2026-08-04 (revision 4 — second focused correction after `CHANGES_REQUIRED` review)
+- Date: 2026-08-04 (revision 5 — third focused correction after `CHANGES_REQUIRED` review)
 - Repository: `JasonCutter/shotgun`
 - Scope: Frontend Phase 3 Section 3 — Semantic Graph and Relationship Exploration
-- Result: **GAP AUDIT / EXACT CONTRACT SNAPSHOT (V1) / AC / ADR-127 PROPOSED / EXECUTABLE IMPLEMENTATION REQUEST COMPLETE — REVISION 4 CORRECTIONS APPLIED**
+- Result: **GAP AUDIT / EXACT CONTRACT SNAPSHOT (V1) / AC / ADR-127 PROPOSED / EXECUTABLE IMPLEMENTATION REQUEST COMPLETE — REVISION 5 CORRECTIONS APPLIED**
 - Product implementation: **NOT STARTED**
 - Canonical authority: GitHub `main`
 
@@ -161,6 +161,20 @@ Implementation Request revision 4:
    actually reconstructible; `SnapshotContextStorePort` and its in-memory/
    PostgreSQL adapter responsibilities are explicit in the Implementation
    Request.
+
+## 6c. Revision 5 focused corrections
+
+The third `CHANGES_REQUIRED` review identified two remaining items. Both are
+resolved:
+
+1. **Snapshot refresh consistency**: `GraphSnapshotRefreshRequestV1` is now
+   descriptor-based (`snapshotId` + held `projectionRevision` + required
+   `expectedSnapshotRevision`); the full request is never resent. Refresh
+   resolves the snapshot context, recomputes the identical computation, and
+   issues a new snapshot context (new `snapshotId`) and `projectionRevision`.
+   This removes the conflicting "full request resend" model.
+2. **Revision document linkage**: the Implementation Request body and ADR-127
+   now reference the current Contract Snapshot revision 5.
 
 ## 7. Governance status
 

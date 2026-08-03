@@ -1,14 +1,15 @@
 # ADR-127 — Semantic Graph Projection Read Persistence, Health and Continuation Boundary
 
 - Status: **PROPOSED** (not accepted)
-- Proposed by: FE-P3-S3 contract preparation (2026-08-04; revision 3 — the
-  snapshot-context descriptor stores the normalized filter set, and the exact
-  continuation/restoration semantics are frozen in the contract snapshot)
+- Proposed by: FE-P3-S3 contract preparation (2026-08-04; revision 4 — the
+  snapshot-context descriptor stores the normalized filter set, snapshot refresh
+  is descriptor-based, and the exact continuation/restoration semantics are
+  frozen in the contract snapshot)
 - Work item: `FE-P3-S3`
 - Related ADRs: ADR-106, ADR-107, ADR-108, ADR-119, ADR-124, ADR-125
 - Contract snapshot:
   `docs/architecture/contracts/snapshots/frontend-phase-3-section-3/frontend-phase-3-section-3-contract-snapshot-260804001.md`
-  (revision 3)
+  (revision 5)
 - Product implementation: `NOT_AUTHORIZED`
 - Decision owner: pending user review
 

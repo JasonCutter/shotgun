@@ -455,3 +455,48 @@ test('AC-21: axe scan finds zero critical violations across canvas, list, table 
     expect(critical, `${view} critical violations`).toHaveLength(0);
   }
 });
+
+test('AC-24: a failed snapshot read renders the non-success announcement, retries safely, and issues no write', async ({
+  page,
+}) => {
+  const writeRequests: string[] = [];
+  await page.route('**/*', async (route) => {
+    const url = route.request().url();
+    const method = route.request().method();
+    if (
+      method !== 'GET' &&
+      /(canonical|approval|action|commit|changeset|write|review)/i.test(url)
+    ) {
+      writeRequests.push(`${method} ${url}`);
+    }
+    await route.continue();
+  });
+  await stubSessionAndShell(page);
+  // Override the snapshot route: a typed SAFE dependency failure so the
+  // snapshot read errors and the workspace enters the FAILED phase.
+  await page.route('**/product-api/frontend/knowledge/graph/snapshot', async (route) => {
+    await route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        schemaVersion: '1.0.0',
+        code: 'RETRYABLE_DEPENDENCY',
+        category: 'DEPENDENCY',
+        retryability: 'SAFE',
+        recovery: 'RETRY',
+        message: 'The graph projection is currently unavailable.',
+      }),
+    });
+  });
+
+  await page.goto('/knowledge/graph');
+  await expect(page.getByRole('heading', { name: 'Semantic Graph', level: 1 })).toBeVisible();
+  // Non-success announcement for the failed read (AC-24/AC-15). The FAILED
+  // phase renders its own alert before the error-state alert, so scope to the
+  // first alert (the frozen failure announcement).
+  await expect(page.getByRole('alert').first()).toContainText('그래프를 사용할 수 없습니다.');
+  // Recovery is read-only: retrying re-issues the read; no write is issued.
+  await page.getByRole('button', { name: 'Try again' }).click();
+  await expect(page.getByRole('alert').first()).toContainText('그래프를 사용할 수 없습니다.');
+  expect(writeRequests).toEqual([]);
+});

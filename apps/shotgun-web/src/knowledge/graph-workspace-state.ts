@@ -120,6 +120,24 @@ export const completenessAnnouncement = (completeness: GraphResultCompletenessV1
   return '';
 };
 
+/**
+ * AC-24/AC-21: per-reason non-success announcement. Every
+ * `GraphUnavailableReasonV1` maps to a frozen announcement string; the four
+ * discriminative reasons use their dedicated strings and the remaining
+ * unavailable reasons fall back to `UNAVAILABLE`. The mapping is pure so the
+ * data-driven failure tests can assert all thirteen reasons.
+ */
+export const failureAnnouncement = (reason: GraphUnavailableReasonV1): string => {
+  if (reason === 'ACCESS_CHANGED') {
+    return GRAPH_ANNOUNCEMENTS.ACCESS_RESTRICTED;
+  }
+  if (reason === 'SNAPSHOT_STALE') return GRAPH_ANNOUNCEMENTS.STALE;
+  if (reason === 'PROJECTION_REBUILDING') return GRAPH_ANNOUNCEMENTS.REBUILDING;
+  if (reason === 'DEEP_LINK_TARGET_UNAVAILABLE') return '딥링크 대상을 사용할 수 없습니다.';
+  if (reason === 'CONTINUATION_EXPIRED') return '연속 토큰이 만료되었습니다.';
+  return GRAPH_ANNOUNCEMENTS.UNAVAILABLE;
+};
+
 export const reduceGraphWorkspaceState = (
   state: GraphWorkspaceState,
   action: GraphWorkspaceAction,

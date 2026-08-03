@@ -25,6 +25,7 @@ import {
   GRAPH_BASE_VIEWS,
   GRAPH_OVERLAY_KINDS,
   createInitialGraphWorkspaceState,
+  failureAnnouncement,
   reduceGraphWorkspaceState,
   type GraphViewKind,
 } from '../knowledge/graph-workspace-state.js';
@@ -62,17 +63,6 @@ const viewLabel: Record<GraphViewKind, string> = {
   list: 'List',
   table: 'Table',
   path: 'Path',
-};
-
-const failureAnnouncement = (reason: GraphUnavailableReasonV1): string => {
-  if (reason === 'ACCESS_CHANGED') {
-    return GRAPH_ANNOUNCEMENTS.ACCESS_RESTRICTED;
-  }
-  if (reason === 'SNAPSHOT_STALE') return GRAPH_ANNOUNCEMENTS.STALE;
-  if (reason === 'PROJECTION_REBUILDING') return GRAPH_ANNOUNCEMENTS.REBUILDING;
-  if (reason === 'DEEP_LINK_TARGET_UNAVAILABLE') return '딥링크 대상을 사용할 수 없습니다.';
-  if (reason === 'CONTINUATION_EXPIRED') return '연속 토큰이 만료되었습니다.';
-  return GRAPH_ANNOUNCEMENTS.UNAVAILABLE;
 };
 
 export const GraphWorkspace = () => {

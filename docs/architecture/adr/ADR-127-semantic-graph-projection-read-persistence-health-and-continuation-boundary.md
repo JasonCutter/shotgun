@@ -1,9 +1,9 @@
 # ADR-127 — Semantic Graph Projection Read Persistence, Health and Continuation Boundary
 
 - Status: **PROPOSED** (not accepted)
-- Proposed by: FE-P3-S3 contract preparation (2026-08-04; revision 2 — resolves
-  the ephemeral-snapshot restoration gap with an immutable snapshot-context
-  descriptor)
+- Proposed by: FE-P3-S3 contract preparation (2026-08-04; revision 3 — the
+  snapshot-context descriptor stores the normalized filter set, and the exact
+  continuation/restoration semantics are frozen in the contract snapshot)
 - Work item: `FE-P3-S3`
 - Related ADRs: ADR-106, ADR-107, ADR-108, ADR-119, ADR-124, ADR-125
 - Contract snapshot:
@@ -41,14 +41,17 @@ descriptor:
    No full graph snapshot rows are persisted.
 2. **Immutable Snapshot Context descriptor**: for every issued snapshot, an
    immutable descriptor row is persisted (no graph items): `snapshotId`,
-   `projectId`, `viewKind`, `overlayKinds`, `rootRefs`, `filtersDigest`,
-   `limits`, `accessRevision`, `policyContextRevision`, `projectionRevision`,
-   `generatedAt`, `expiresAt`. Subsequent operations (neighborhood, path, path
-   description, evidence detail, refresh, deep-link restore) resolve
-   `snapshotId` → descriptor and reconstruct the identical computation; an
-   unknown or expired `snapshotId` returns `SNAPSHOT_STALE` /
-   `DEEP_LINK_TARGET_UNAVAILABLE`. This closes the ephemeral-restoration gap:
-   no full snapshot is stored, but every snapshot's meaning is restorable.
+   `projectId`, `viewKind`, `overlayKinds`, `rootRefs`,
+   `normalizedFilters` (the actual normalized `GraphFilterSetV1`), `filtersDigest`
+   (for validation), `limits`, `accessRevision`, `policyContextRevision`,
+   `projectionRevision`, `generatedAt`, `expiresAt`. Subsequent operations
+   (neighborhood, path, path description, evidence detail, refresh, deep-link
+   restore) resolve `snapshotId` → descriptor and reconstruct the identical
+   computation; an unknown or expired `snapshotId` returns `SNAPSHOT_STALE` /
+   `DEEP_LINK_TARGET_UNAVAILABLE`. Storing the normalized filter set (not only
+   its digest) is required so the identical computation is actually restorable.
+   This closes the ephemeral-restoration gap: no full snapshot is stored, but
+   every snapshot's meaning is restorable.
 3. A **materialized projection-health registry** is persisted per Project
    (`projectId`, `viewKind`, `projectionRevision`, `status`, `generatedAt`,
    `lag`, `rebuildState`, `accessRevision`, `policyContextRevision`).
@@ -61,8 +64,9 @@ descriptor:
    server-side, bound to Principal/Session, Project, access and policy
    revisions, snapshot, root and filters, view and overlay, and traversal
    limits.
-6. Migration **026** creates `frontend_knowledge_graph_snapshot_context`,
-   `frontend_knowledge_graph_projection_health`,
+6. Migration **026** creates `frontend_knowledge_graph_snapshot_context`
+   (immutable descriptor storing the normalized `GraphFilterSetV1` plus
+   `filtersDigest`), `frontend_knowledge_graph_projection_health`,
    `frontend_knowledge_graph_overlay_health` and
    `frontend_knowledge_graph_continuation`.
 7. In-memory and PostgreSQL adapters cover the snapshot-context, health and

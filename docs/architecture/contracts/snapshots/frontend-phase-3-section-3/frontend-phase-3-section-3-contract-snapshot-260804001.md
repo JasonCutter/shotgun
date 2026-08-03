@@ -2,8 +2,8 @@
 id: FRONTEND-PHASE-3-SECTION-3-CONTRACT-SNAPSHOT-260804001
 classification: PRODUCT_CONTRACT_SNAPSHOT_PROPOSAL
 status: PROPOSED_PENDING_USER_REVIEW
-revision: 3
-review_round: 2
+revision: 4
+review_round: 3
 review_result: PENDING_REVIEW
 approved_by: null
 approved_at: null
@@ -20,15 +20,17 @@ implementation_authorized: false
 ## 0. Status
 
 This snapshot freezes the proposed Product contract for the FE-P3-S3 Semantic
-Graph and Relationship Exploration Workspace. Revision 3 (focused correction
-round after `CHANGES_REQUIRED` review) resolves: the authority axis reduced to
-pure authority/provenance lineage; exact V1 request/response/failure contracts
-for all ten operations with cross-field invariants; the immutable snapshot-context
-descriptor that restores ephemeral snapshots for subsequent operations; base-view
-terminology unified on `GraphBaseViewKindV1`; and `ACTION_CANDIDATE` fully
-excluded from FE-P3-S3. Revision 2 previously replaced all illustrative or
-implementation-defined types with exact `v1` contracts and normalized the
-semantic axes.
+Graph and Relationship Exploration Workspace. Revision 4 (second focused
+correction round after `CHANGES_REQUIRED` review) resolves the remaining
+internal contradictions: path segments are frozen as `ORIGIN`/`TRAVERSAL`
+discriminated unions; continuation semantics are exact (snapshot issues only;
+neighborhood and recursive-impact accept; all others reject); every response
+carries `projectionRevision` (path description and overlay result added);
+deep-link restore does not resend the root (the snapshot context owns it); and
+the snapshot-context descriptor stores the normalized `GraphFilterSetV1`
+(plus `filtersDigest` for validation) so identical computations are
+restorable. Revision 3 resolved the authority axis, exact operation contracts,
+base-view unification and `ACTION_CANDIDATE` exclusion.
 
 It is a **preparation proposal**. It is not approved, does not authorize
 implementation, and no Acceptance Criterion in this document is marked passed.
@@ -378,13 +380,22 @@ type GraphNeighborhoodResultV1 = {
   truncation?: GraphTruncationStateV1;
 };
 
-type GraphPathSegmentV1 = {
-  schemaVersion: '1.0.0';
-  step: number;
-  nodeRef: GraphNodeReferenceV1;
-  edgeRef: GraphEdgeReferenceV1; // edge that leads to this node
-  direction: GraphTraversalDirectionV1;
-};
+type GraphPathSegmentV1 =
+  | {
+      schemaVersion: '1.0.0';
+      kind: 'ORIGIN';
+      step: 0;
+      nodeRef: GraphNodeReferenceV1;
+      direction: GraphTraversalDirectionV1;
+    }
+  | {
+      schemaVersion: '1.0.0';
+      kind: 'TRAVERSAL';
+      step: number; // integer >= 1
+      nodeRef: GraphNodeReferenceV1;
+      edgeRef: GraphEdgeReferenceV1; // edge that leads to this node; required
+      direction: GraphTraversalDirectionV1;
+    };
 
 type GraphPathResultV1 = {
   schemaVersion: '1.0.0';
@@ -398,16 +409,27 @@ type GraphPathResultV1 = {
   truncation?: GraphTruncationStateV1;
 };
 
-type GraphPathDescriptionSegmentV1 = {
-  schemaVersion: '1.0.0';
-  step: number;
-  narration: string; // accessible path narration text
-  nodeRef: GraphNodeReferenceV1;
-  edgeRef?: GraphEdgeReferenceV1;
-};
+type GraphPathDescriptionSegmentV1 =
+  | {
+      schemaVersion: '1.0.0';
+      kind: 'ORIGIN';
+      step: 0;
+      narration: string; // accessible path narration text
+      nodeRef: GraphNodeReferenceV1;
+    }
+  | {
+      schemaVersion: '1.0.0';
+      kind: 'TRAVERSAL';
+      step: number; // integer >= 1
+      narration: string; // accessible path narration text
+      nodeRef: GraphNodeReferenceV1;
+      edgeRef: GraphEdgeReferenceV1; // required
+    };
 
 type GraphPathDescriptionV1 = {
   schemaVersion: '1.0.0';
+  snapshotId: string;
+  projectionRevision: string;
   pathId: string;
   segments: readonly GraphPathDescriptionSegmentV1[];
   summary: string;
@@ -667,7 +689,8 @@ type GraphFilterSetV1 = {
   evidenceFilters?: { sourceId?: string; evidenceSpanId?: string };
 };
 
-// 1. Initial semantic snapshot
+// 1. Initial semantic snapshot (always a fresh computation; issues but never
+// accepts a continuation token — see continuation invariant in D.2)
 type GraphSnapshotRequestV1 = {
   schemaVersion: '1.0.0';
   rootRefs?: readonly GraphNodeReferenceV1[]; // empty = project-wide root set
@@ -722,21 +745,46 @@ type GraphPathDescribeRequestV1 = {
   pathId: string; // non-empty
 };
 
-// 5/6/7. Overlay reads (shared request; response per overlay)
-type GraphOverlayRequestV1 = {
+// 5. Conflict overlay (route-specific request type)
+type GraphConflictOverlayRequestV1 = {
   schemaVersion: '1.0.0';
   snapshotId: string; // base snapshot
   projectionRevision: string;
-  overlayKind: GraphOverlayKindV1; // 'CONFLICT' | 'KNOWLEDGE_GAP' | 'RECURSIVE_IMPACT'
+  overlayKind: 'CONFLICT';
   filters?: GraphFilterSetV1;
   limits?: GraphTraversalLimitsV1;
   expectedOverlayRevision?: string;
-  continuationToken?: string; // allowed only for RECURSIVE_IMPACT
+  // no continuationToken
+};
+
+// 6. Knowledge-gap overlay (route-specific request type)
+type GraphKnowledgeGapOverlayRequestV1 = {
+  schemaVersion: '1.0.0';
+  snapshotId: string; // base snapshot
+  projectionRevision: string;
+  overlayKind: 'KNOWLEDGE_GAP';
+  filters?: GraphFilterSetV1;
+  limits?: GraphTraversalLimitsV1;
+  expectedOverlayRevision?: string;
+  // no continuationToken
+};
+
+// 7. Recursive-impact overlay (route-specific request type; accepts continuation)
+type GraphRecursiveImpactOverlayRequestV1 = {
+  schemaVersion: '1.0.0';
+  snapshotId: string; // base snapshot
+  projectionRevision: string;
+  overlayKind: 'RECURSIVE_IMPACT';
+  filters?: GraphFilterSetV1;
+  limits?: GraphTraversalLimitsV1;
+  expectedOverlayRevision?: string;
+  continuationToken?: string; // allowed; see continuation invariant
 };
 
 type GraphOverlayResultV1 = {
   schemaVersion: '1.0.0';
   baseSnapshotId: string;
+  projectionRevision: string; // base snapshot projection revision
   identity: GraphOverlayIdentityV1;
   health: GraphProjectionHealthV1;
   completeness: GraphResultCompletenessV1;
@@ -744,7 +792,7 @@ type GraphOverlayResultV1 = {
   edges: readonly GraphEdgeV1[];
   appliedLimits: GraphAppliedLimitsV1;
   truncation?: GraphTruncationStateV1; // required when completeness === 'TRUNCATED'
-  continuation?: GraphContinuationTokenV1; // only when overlayKind === 'RECURSIVE_IMPACT'
+  continuation?: GraphContinuationTokenV1; // only for RECURSIVE_IMPACT overlays
 };
 
 // 8. Evidence and provenance detail
@@ -813,9 +861,13 @@ The following invariants are frozen and enforced by the decoders:
 - **Truncation binding**: `completeness === 'TRUNCATED'` requires
   `truncation: GraphTruncationStateV1` present; `completeness === 'COMPLETE'` or
   `'PARTIAL'` forbids the `truncation` field.
-- **Path edge binding**: `GraphPathSegmentV1.segments[0].edgeRef` is optional
-  (origin node has no incoming edge); for every `step > 0`, `edgeRef` is
-  required and must resolve within the snapshot.
+- **Path edge binding**: `GraphPathSegmentV1` and
+  `GraphPathDescriptionSegmentV1` are discriminated unions. The first segment is
+  always `kind: 'ORIGIN'` with `step: 0` and no `edgeRef`; every subsequent
+  segment is `kind: 'TRAVERSAL'` with `step >= 1` and a required `edgeRef` that
+  must resolve within the snapshot. The decoder rejects an `ORIGIN` segment with
+  an `edgeRef`, a `TRAVERSAL` segment without one, a non-zero `ORIGIN` step, or
+  a zero `TRAVERSAL` step.
 - **Node kind binding**: for every `GraphNodeV1`,
   `nodeKind === resourceRef.resourceKind`; the decoder rejects a mismatch.
 - **Masking payload binding**: `accessMasking === 'VISIBLE'` requires the
@@ -827,13 +879,19 @@ The following invariants are frozen and enforced by the decoders:
   neighborhood, path and overlay results; path-description and evidence-detail
   results do not perform traversal and therefore omit `appliedLimits`; refresh
   and restore return a `GraphSnapshotResultV1` (which includes it).
-- **Continuation request union**: only operations 1 (snapshot), 2 (neighborhood)
-  and 7 (recursive-impact overlay) may issue or accept a continuation token.
-  Their request types are the exact union that accepts `continuationToken`;
-  operations 3–6, 8, 9 and 10 reject a `continuationToken` field as unknown.
+- **Continuation request union (exact)**: operation 1 (snapshot) **issues but
+  never accepts** a continuation token — `GraphSnapshotRequestV1` has no
+  `continuationToken` field, and its result may carry `continuation`; operation
+  2 (neighborhood) and operation 7 (recursive-impact overlay) accept a
+  `continuationToken` in their route-specific request types and may issue one;
+  operations 3–6, 8, 9 and 10 reject a `continuationToken` field as unknown
+  (their request types do not declare it).
 - **Revision binding**: every response carries `projectionRevision`
-  (+ `overlayRevision` for overlays); mismatch with `expectedSnapshotRevision` /
-  `expectedOverlayRevision` yields `SNAPSHOT_STALE` or the typed failure.
+  (including `GraphPathDescriptionV1` and `GraphOverlayResultV1`, which carry
+  the base snapshot's `projectionRevision`; overlays additionally carry
+  `overlayRevision` inside `GraphOverlayIdentityV1`); mismatch with
+  `expectedSnapshotRevision` / `expectedOverlayRevision` yields
+  `SNAPSHOT_STALE` or the typed failure.
 
 ## 6.3 D.3 — Operation contract summary (exact types above)
 
@@ -853,21 +911,29 @@ invariants in D.2:
    `GraphPathResultV1`.
 4. **Typed path description** — request: `snapshotId`, `projectionRevision`,
    `pathId`. Response: `GraphPathDescriptionV1`.
-5. **Conflict overlay** — request: base `snapshotId`, `projectionRevision`,
-   overlay kind `CONFLICT`, filters, limits, optional `expectedOverlayRevision`.
-   Response: overlay identity + `CONFLICT` nodes/edges + health.
-6. **Knowledge-gap overlay** — same shape with overlay kind `KNOWLEDGE_GAP`.
-7. **Recursive-impact overlay** — same shape with overlay kind `RECURSIVE_IMPACT`;
-   backed by the impact analyzer behind the FE-P3-S3 impact port.
+5. **Conflict overlay** — request: `GraphConflictOverlayRequestV1` (base
+   `snapshotId`, `projectionRevision`, `overlayKind: 'CONFLICT'`, filters,
+   limits, optional `expectedOverlayRevision`; no continuation). Response:
+   `GraphOverlayResultV1` with `CONFLICT` nodes/edges + health.
+6. **Knowledge-gap overlay** — request: `GraphKnowledgeGapOverlayRequestV1`
+   (`overlayKind: 'KNOWLEDGE_GAP'`; no continuation). Response:
+   `GraphOverlayResultV1` with `KNOWLEDGE_GAP` nodes/edges + health.
+7. **Recursive-impact overlay** — request:
+   `GraphRecursiveImpactOverlayRequestV1` (`overlayKind: 'RECURSIVE_IMPACT'`;
+   accepts continuation); backed by the impact analyzer behind the FE-P3-S3
+   impact port. Response: `GraphOverlayResultV1`.
 8. **Evidence and provenance detail** — request: `snapshotId`,
    `projectionRevision`, `nodeRef` or `edgeRef`, optional `evidenceRef`.
    Response: provenance/evidence summaries, lineage, `accessMasking`.
-9. **Snapshot refresh** — request: same as snapshot + `expectedSnapshotRevision`.
-   Response: `GraphSnapshotResultV1` with new revision or explicit
-   `STALE`/`REBUILDING` health.
+9. **Snapshot refresh** — request: `GraphSnapshotRefreshRequestV1` (snapshot
+   request + required `expectedSnapshotRevision`). Response:
+   `GraphSnapshotResultV1` with new revision or explicit `STALE`/`REBUILDING`
+   health.
 10. **Deep-link restoration** — request: `snapshotId`, `projectionRevision`,
-    root/root-set, view kind, overlays, selected node refs,
-    `expectedSnapshotRevision`. Response: snapshot + focus/selection refs.
+    view kind, overlays, selected node refs, optional
+    `expectedSnapshotRevision`. The root/root-set is **not** resent: the
+    snapshot-context descriptor already owns it (section E). Response:
+    `GraphRestoreResultV1` (snapshot + focus/selection refs).
 
 Common contract obligations for every operation:
 
@@ -903,13 +969,17 @@ Decision: **explicit hybrid** with an immutable snapshot-context descriptor.
   **No graph node/edge rows are persisted.**
 - **Immutable Snapshot Context descriptor**: for every issued snapshot, an
   immutable descriptor row is persisted (no graph items): `snapshotId`,
-  `projectId`, `viewKind`, `overlayKinds`, `rootRefs`, `filtersDigest`,
+  `projectId`, `viewKind`, `overlayKinds`, `rootRefs`,
+  `normalizedFilters: GraphFilterSetV1`, `filtersDigest` (digest of the
+  normalized filters, view and overlay selection — for validation),
   `limits`, `accessRevision`, `policyContextRevision`, `projectionRevision`,
-  `generatedAt`, `expiresAt`. Subsequent operations (neighborhood, path, path
-  description, evidence detail, refresh, deep-link restore) resolve
-  `snapshotId` → descriptor and reconstruct the identical computation; an
-  unknown or expired `snapshotId` returns `SNAPSHOT_STALE` /
-  `DEEP_LINK_TARGET_UNAVAILABLE`.
+  `generatedAt`, `expiresAt`. The descriptor stores the **actual normalized
+  filter set** (not only its digest) so the server can reconstruct the
+  identical computation; `filtersDigest` is retained for integrity
+  verification. Subsequent operations (neighborhood, path, path description,
+  evidence detail, refresh, deep-link restore) resolve `snapshotId` →
+  descriptor and reconstruct the identical computation; an unknown or expired
+  `snapshotId` returns `SNAPSHOT_STALE` / `DEEP_LINK_TARGET_UNAVAILABLE`.
 - A **materialized projection-health registry** is persisted per Project:
   `(projectId, viewKind, projectionRevision, status, generatedAt, lag,
 rebuildState, accessRevision, policyContextRevision)`.
@@ -933,7 +1003,8 @@ generatedAt, completeness, truncation, unavailableReason`.
   return `STALE` health or the typed `PROJECTION_REBUILDING` state; no automatic
   browser retry loop.
 - **PostgreSQL structures and migration**: migration **026** creates
-  `frontend_knowledge_graph_snapshot_context` (immutable descriptor),
+  `frontend_knowledge_graph_snapshot_context` (immutable descriptor storing the
+  normalized `GraphFilterSetV1` payload plus `filtersDigest`),
   `frontend_knowledge_graph_projection_health`,
   `frontend_knowledge_graph_overlay_health` and
   `frontend_knowledge_graph_continuation`. No migration is executed in this

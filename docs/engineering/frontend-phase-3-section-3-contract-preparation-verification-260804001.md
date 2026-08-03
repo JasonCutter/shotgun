@@ -2,10 +2,10 @@
 
 - Record ID: `frontend-phase-3-section-3-contract-preparation-verification-260804001`
 - Record class: `ARCHITECTURE_VERIFICATION`
-- Date: 2026-08-04 (revision 3 — focused correction after `CHANGES_REQUIRED` review)
+- Date: 2026-08-04 (revision 4 — second focused correction after `CHANGES_REQUIRED` review)
 - Repository: `JasonCutter/shotgun`
 - Scope: Frontend Phase 3 Section 3 — Semantic Graph and Relationship Exploration
-- Result: **GAP AUDIT / EXACT CONTRACT SNAPSHOT (V1) / AC / ADR-127 PROPOSED / EXECUTABLE IMPLEMENTATION REQUEST COMPLETE — REVISION 3 CORRECTIONS APPLIED**
+- Result: **GAP AUDIT / EXACT CONTRACT SNAPSHOT (V1) / AC / ADR-127 PROPOSED / EXECUTABLE IMPLEMENTATION REQUEST COMPLETE — REVISION 4 CORRECTIONS APPLIED**
 - Product implementation: **NOT STARTED**
 - Canonical authority: GitHub `main`
 
@@ -140,6 +140,27 @@ Implementation Request revision 3:
    removed; D2 no longer calls governance/operational base views "overlays".
 5. **`ACTION_CANDIDATE` fully excluded** from FE-P3-S3 (no resource kind,
    payload or authority value); rendering deferred to FE-P4.
+
+## 6b. Revision 4 focused corrections
+
+The second `CHANGES_REQUIRED` review identified two remaining blockers. Both are
+resolved in the Contract Snapshot revision 4, ADR-127 revision 3 and
+Implementation Request revision 4:
+
+1. **Exact operation contract internal consistency**: path segments are frozen
+   as `ORIGIN`/`TRAVERSAL` discriminated unions (origin has no `edgeRef`;
+   traversal requires `edgeRef`); continuation semantics are exact (snapshot
+   issues only and never accepts; neighborhood and recursive-impact accept;
+   conflict/gap/path/path-description/evidence/refresh/restore reject); every
+   response carries `projectionRevision` (added to path description and overlay
+   result); deep-link restore no longer resends the root (the snapshot context
+   owns it).
+2. **Snapshot restoration completeness**: the snapshot-context descriptor now
+   stores the normalized `GraphFilterSetV1` (plus `filtersDigest` for
+   validation) so `snapshotId → descriptor → identical computation` is
+   actually reconstructible; `SnapshotContextStorePort` and its in-memory/
+   PostgreSQL adapter responsibilities are explicit in the Implementation
+   Request.
 
 ## 7. Governance status
 

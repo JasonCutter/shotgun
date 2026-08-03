@@ -2,11 +2,11 @@
 id: FRONTEND-PHASE-3-SECTION-3-IMPLEMENTATION-REQUEST-260804001
 classification: IMPLEMENTATION_REQUEST_PROPOSAL
 status: PENDING_USER_APPROVAL
-revision: 3
-review_round: 2
+revision: 4
+review_round: 3
 contract_basis_status: CONTRACT_SNAPSHOT_PROPOSED
 contract_basis_commit: 69cd0f0ccc03ba487b954b8f8f53fb1f54d2e9ab
-contract_snapshot_revision: 3
+contract_snapshot_revision: 4
 work_item: FE-P3-S3
 governing_adr: ADR-108
 proposed_adr: ADR-127
@@ -73,13 +73,17 @@ Create exact V1 contracts and strict decoders in:
 - `modules/frontend-knowledge-graph/src/graph-read-port.ts` — `GraphReadPort`
   (snapshot, neighborhood, path, evidence detail) and `GraphImpactPort`
   (recursive impact). Server-derived `FrontendReadScope` is the input authority.
+- `modules/frontend-knowledge-graph/src/snapshot-context-store-port.ts` —
+  `SnapshotContextStorePort`: write the immutable snapshot-context descriptor
+  (including the normalized `GraphFilterSetV1` and `filtersDigest`), resolve
+  `snapshotId` → descriptor, and enforce `expiresAt` TTL.
 - `modules/frontend-knowledge-graph/src/health-store-port.ts` — projection
   health, overlay health, continuation store ports.
 - Adapters:
-  - `adapters/frontend-knowledge-graph-in-memory/` — in-memory health/overlay/
-    continuation store.
-  - `adapters/frontend-knowledge-graph-postgres/` — PostgreSQL health/overlay/
-    continuation store (migration 026).
+  - `adapters/frontend-knowledge-graph-in-memory/` — in-memory snapshot-context
+    store, health/overlay/continuation stores.
+  - `adapters/frontend-knowledge-graph-postgres/` — PostgreSQL snapshot-context
+    store, health/overlay/continuation stores (migration 026).
   - `adapters/stage9-graph-read/` — adapts Stage 9 `GetKnowledgeGraph`/
     `GetKnowledgeImpact` behind `GraphReadPort`/`GraphImpactPort`.
   - `adapters/networkx-impact-oracle/` — reuse behind `GraphImpactPort` (no
@@ -107,14 +111,16 @@ Create exact V1 contracts and strict decoders in:
 
 - Migration `db/migrations/026_frontend_knowledge_graph_projection.sql`:
   `frontend_knowledge_graph_snapshot_context` (immutable descriptor — no graph
-  items), `frontend_knowledge_graph_projection_health`,
+  items — storing the normalized `GraphFilterSetV1` payload plus
+  `filtersDigest`), `frontend_knowledge_graph_projection_health`,
   `frontend_knowledge_graph_overlay_health`,
   `frontend_knowledge_graph_continuation` (Project-scoped, revision-bound,
   TTL-expiring continuation rows, immutability rules per snapshot-context and
   health row).
 - The snapshot-context store is the restoration mechanism for subsequent
-  operations (snapshotId → descriptor → identical computation); unknown or
-  expired descriptors return `SNAPSHOT_STALE`/`DEEP_LINK_TARGET_UNAVAILABLE`.
+  operations (snapshotId → descriptor → identical computation, using the
+  stored normalized filters); unknown or expired descriptors return
+  `SNAPSHOT_STALE`/`DEEP_LINK_TARGET_UNAVAILABLE`.
 - In-memory and PostgreSQL adapters must pass the parity suite for the four
   storage adapters (snapshot-context, projection health, overlay health,
   continuation) over the defined scenario set (AC-27).

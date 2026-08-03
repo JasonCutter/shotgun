@@ -1,6 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 import type {
   GlobalShellView,
+  GraphSnapshotRequestV1,
   KnowledgeCompareRequest,
   KnowledgeDetailRequest,
   KnowledgePageListRequest,
@@ -187,6 +188,55 @@ export const knowledgeCompareQueryKey = (
 
 export const knowledgeDisabledQueryKey = (operation: string) =>
   ['knowledge', 'disabled', operation] as const;
+
+export type GraphQueryScope = {
+  readonly principalId: string;
+  readonly sessionId: string;
+  readonly activeProjectId: string;
+  readonly resourceProjectId: string;
+  readonly accessRevision: string;
+  readonly policyContextRevision: string;
+  readonly sensitivity: string;
+  readonly projectionRevision: string;
+};
+
+const graphScopeKey = (scope: GraphQueryScope) =>
+  [
+    'project',
+    scope.principalId,
+    scope.sessionId,
+    scope.activeProjectId,
+    scope.resourceProjectId,
+    scope.accessRevision,
+    scope.policyContextRevision,
+    scope.sensitivity,
+    scope.projectionRevision,
+    'graph',
+  ] as const;
+
+/**
+ * Scope-phase key: an initial snapshot request bound to the server scope.
+ * The full request (base view, overlay kinds, filters) is part of the key so
+ * two requests never reuse each other's cached result (AC-16).
+ */
+export const graphScopeQueryKey = (scope: GraphQueryScope, request: GraphSnapshotRequestV1) =>
+  [...graphScopeKey(scope), 'scope', request] as const;
+
+/**
+ * Snapshot-phase key: any operation bound to a server-issued snapshot
+ * identity (snapshotId + projectionRevision). Distinct from the scope-phase
+ * key, so cache isolation holds across projects, policy/access revisions and
+ * snapshot/overlay revisions.
+ */
+export const graphSnapshotPhaseQueryKey = (
+  scope: GraphQueryScope,
+  snapshotId: string,
+  projectionRevision: string,
+  operation: readonly unknown[],
+) => [...graphScopeKey(scope), 'snapshot', snapshotId, projectionRevision, ...operation] as const;
+
+export const graphDisabledQueryKey = (operation: string) =>
+  ['graph', 'disabled', operation] as const;
 
 export const clearProjectQueries = async (queryClient: QueryClient): Promise<void> => {
   await queryClient.cancelQueries({ queryKey: ['project'] });

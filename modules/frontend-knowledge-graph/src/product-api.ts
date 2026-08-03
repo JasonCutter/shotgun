@@ -288,6 +288,12 @@ export const createGraphReadDomain = (input: GraphReadDomainInput): GraphReadDom
     scope: GraphReadScopeV1,
     token: string,
     snapshotId: string,
+    context: {
+      filtersDigest: string;
+      viewKind: GraphBaseViewKindV1;
+      overlayKinds: readonly GraphOverlayKindV1[];
+      limits: GraphTraversalLimitsV1;
+    },
   ): Promise<void> => {
     const record = await healthStore.findContinuation(token);
     if (!record)
@@ -315,6 +321,33 @@ export const createGraphReadDomain = (input: GraphReadDomainInput): GraphReadDom
         'PRECONDITION_ACCESS_DENIED',
         'continuation revision mismatch',
       );
+    }
+    if (record.filtersDigest !== context.filtersDigest) {
+      throw new FrontendContractError(
+        'PRECONDITION_ACCESS_DENIED',
+        'continuation filters mismatch',
+      );
+    }
+    if (record.viewKind !== context.viewKind) {
+      throw new FrontendContractError('PRECONDITION_ACCESS_DENIED', 'continuation view mismatch');
+    }
+    if (
+      record.overlayKinds.length !== context.overlayKinds.length ||
+      [...record.overlayKinds].sort().join(',') !== [...context.overlayKinds].sort().join(',')
+    ) {
+      throw new FrontendContractError(
+        'PRECONDITION_ACCESS_DENIED',
+        'continuation overlay mismatch',
+      );
+    }
+    if (
+      record.limits.maxDepth !== context.limits.maxDepth ||
+      record.limits.maxNodes !== context.limits.maxNodes ||
+      record.limits.maxEdges !== context.limits.maxEdges ||
+      record.limits.traversalBudget !== context.limits.traversalBudget ||
+      record.limits.serverTimeoutBudgetMs !== context.limits.serverTimeoutBudgetMs
+    ) {
+      throw new FrontendContractError('PRECONDITION_ACCESS_DENIED', 'continuation limits mismatch');
     }
   };
 
@@ -405,11 +438,32 @@ export const createGraphReadDomain = (input: GraphReadDomainInput): GraphReadDom
 
     async neighborhood(scope, request) {
       const descriptor = await descriptorFor(scope, request.snapshotId, request.projectionRevision);
-      if (request.continuationToken)
-        await assertContinuation(scope, request.continuationToken, request.snapshotId);
       const { limits, applied } = clampLimits(request.limits ?? descriptor.limits, caps);
+      if (request.continuationToken) {
+        await assertContinuation(scope, request.continuationToken, request.snapshotId, {
+          filtersDigest: graphFiltersDigest(request.filters ?? descriptor.normalizedFilters),
+          viewKind: descriptor.viewKind,
+          overlayKinds: descriptor.overlayKinds,
+          limits,
+        });
+      }
       const result = await readPort.neighborhood(scope, { ...request, limits });
-      return { ...result, appliedLimits: applied };
+      const neighborhoodResult: GraphNeighborhoodResultV1 = { ...result, appliedLimits: applied };
+      if (result.completeness === 'PARTIAL') {
+        // AC-05: a PARTIAL neighborhood issues a fresh continuation bound to
+        // the same snapshot context, center, filters, view, overlays and
+        // limits so the next page can be requested.
+        neighborhoodResult.continuation = await nextContinuation(
+          scope,
+          request.snapshotId,
+          request.centerRef,
+          request.filters ?? descriptor.normalizedFilters,
+          descriptor.viewKind,
+          descriptor.overlayKinds,
+          limits,
+        );
+      }
+      return neighborhoodResult;
     },
 
     async path(scope, request) {
@@ -474,9 +528,15 @@ export const createGraphReadDomain = (input: GraphReadDomainInput): GraphReadDom
 
     async impactOverlay(scope, request) {
       const descriptor = await descriptorFor(scope, request.snapshotId, request.projectionRevision);
-      if (request.continuationToken)
-        await assertContinuation(scope, request.continuationToken, request.snapshotId);
       const { limits, applied } = clampLimits(request.limits ?? descriptor.limits, caps);
+      if (request.continuationToken) {
+        await assertContinuation(scope, request.continuationToken, request.snapshotId, {
+          filtersDigest: graphFiltersDigest(request.filters ?? descriptor.normalizedFilters),
+          viewKind: descriptor.viewKind,
+          overlayKinds: descriptor.overlayKinds,
+          limits,
+        });
+      }
       void (await readPort.snapshot(scope, {
         schemaVersion: '1.0.0',
         viewKind: descriptor.viewKind,

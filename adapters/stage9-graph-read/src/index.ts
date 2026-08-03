@@ -6,6 +6,7 @@ import {
   type GraphEvidenceDetailResultV1,
   type GraphFilterSetV1,
   type GraphNeighborhoodResultV1,
+  type GraphNodeReferenceV1,
   type GraphNodeV1,
   type GraphOverlayResultV1,
   type GraphPathDescriptionV1,
@@ -63,9 +64,18 @@ const matchEdgeFilters = (edge: GraphEdgeV1, filters?: GraphFilterSetV1): boolea
   return true;
 };
 
+type StoredPath = {
+  readonly pathId: string;
+  readonly fromRef: GraphNodeReferenceV1;
+  readonly toRef: GraphNodeReferenceV1;
+  readonly steps: readonly { nodeId: string; edgeId?: string }[];
+};
+
 export class Stage9GraphReadAdapter implements GraphReadPort, GraphImpactPort {
   private readonly contexts = new Map<string, SnapshotContextCache>();
   private readonly resourceMap = new Map<string, GraphNodeV1>();
+  private readonly edgeMap = new Map<string, GraphEdgeV1>();
+  private readonly paths = new Map<string, StoredPath>();
 
   constructor(
     private readonly nodes: readonly GraphNodeV1[],
@@ -73,6 +83,12 @@ export class Stage9GraphReadAdapter implements GraphReadPort, GraphImpactPort {
     private readonly projectionRevision: () => string = () => 'proj-1',
   ) {
     for (const node of nodes) this.resourceMap.set(node.resourceRef.resourceId, node);
+    for (const edge of edges) this.edgeMap.set(edge.edgeId, edge);
+  }
+
+  private accessibleLabel(node: GraphNodeV1): string {
+    if (node.accessMasking === 'MASKED') return '마스킹된 자원';
+    return node.label;
   }
 
   private boundedSnapshot(
@@ -99,10 +115,14 @@ export class Stage9GraphReadAdapter implements GraphReadPort, GraphImpactPort {
       .filter((node) => matchFilters(node, request.filters));
     const omittedNodeCount = Math.max(0, filtered.length - request.limits.maxNodes);
     const nodes = filtered.slice(0, request.limits.maxNodes);
-    const nodeIds = new Set(nodes.map((node) => node.nodeId));
+    // Edges reference resourceIds, not nodeIds; build a resourceId set so
+    // edges whose endpoints are both in the snapshot are included.
+    const resourceIds = new Set(nodes.map((node) => node.resourceRef.resourceId));
     const matchingEdges = this.edges
       .filter((edge) => edge.accessMasking !== 'HIDDEN')
-      .filter((edge) => nodeIds.has(edge.from.resourceId) && nodeIds.has(edge.to.resourceId))
+      .filter(
+        (edge) => resourceIds.has(edge.from.resourceId) && resourceIds.has(edge.to.resourceId),
+      )
       .filter((edge) => matchEdgeFilters(edge, request.filters));
     const omittedEdgeCount = Math.max(0, matchingEdges.length - request.limits.maxEdges);
     const edges = matchingEdges.slice(0, request.limits.maxEdges);
@@ -285,13 +305,20 @@ export class Stage9GraphReadAdapter implements GraphReadPort, GraphImpactPort {
       };
       return traversal;
     });
+    const pathId = 'path-1';
+    this.paths.set(`${request.snapshotId}:${pathId}`, {
+      pathId,
+      fromRef: request.fromRef,
+      toRef: request.toRef,
+      steps: found,
+    });
     return {
       schemaVersion: '1.0.0',
       snapshotId: request.snapshotId,
       projectionRevision: request.projectionRevision,
       fromRef: request.fromRef,
       toRef: request.toRef,
-      paths: [{ pathId: 'path-1', segments }],
+      paths: [{ pathId, segments }],
       completeness: 'COMPLETE',
       appliedLimits: this.applied(request.limits ?? this.appliedLimitsDefault()),
     };
@@ -301,13 +328,52 @@ export class Stage9GraphReadAdapter implements GraphReadPort, GraphImpactPort {
     scope: GraphReadScopeV1,
     request: Parameters<GraphReadPort['pathDescription']>[1],
   ): Promise<GraphPathDescriptionV1> {
+    void scope;
+    const stored = this.paths.get(`${request.snapshotId}:${request.pathId}`);
+    if (!stored) {
+      throw new FrontendContractError('NOT_FOUND', `path ${request.pathId} is unknown`);
+    }
+    const fromNode = this.resourceMap.get(stored.fromRef.resourceId);
+    const segments: GraphPathDescriptionV1['segments'] = stored.steps.map((step, index) => {
+      if (index === 0) {
+        return {
+          schemaVersion: '1.0.0',
+          kind: 'ORIGIN',
+          step: 0,
+          narration: `시작: ${fromNode ? this.accessibleLabel(fromNode) : stored.fromRef.resourceId}`,
+          nodeRef: stored.fromRef,
+        };
+      }
+      const edge = step.edgeId ? this.edgeMap.get(step.edgeId) : undefined;
+      const toNode = this.resourceMap.get(step.nodeId);
+      const startLabel = this.accessibleLabel(
+        this.resourceMap.get(edge?.from.resourceId ?? '') ?? fromNode ?? this.nodes[0]!,
+      );
+      const endLabel = toNode ? this.accessibleLabel(toNode) : step.nodeId;
+      return {
+        schemaVersion: '1.0.0',
+        kind: 'TRAVERSAL',
+        step: index,
+        narration: `${startLabel} → ${edge?.edgeSemanticKind ?? '연결'} → ${endLabel}`,
+        nodeRef: { ...stored.toRef, resourceId: step.nodeId },
+        edgeRef: {
+          schemaVersion: '1.0.0',
+          edgeId: step.edgeId ?? '',
+          from: stored.fromRef,
+          to: stored.toRef,
+        },
+      };
+    });
+    const toNode = this.resourceMap.get(stored.toRef.resourceId);
     return {
       schemaVersion: '1.0.0',
       snapshotId: request.snapshotId,
       projectionRevision: request.projectionRevision,
       pathId: request.pathId,
-      segments: [],
-      summary: 'Path description requires a computed path in this adapter.',
+      segments,
+      summary: `${fromNode ? this.accessibleLabel(fromNode) : stored.fromRef.resourceId}에서 ${
+        toNode ? this.accessibleLabel(toNode) : stored.toRef.resourceId
+      }까지의 경로 (${segments.length - 1}단계)`,
     };
   }
 

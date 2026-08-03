@@ -4,6 +4,7 @@ import {
   type GraphBaseViewKindV1,
   type GraphEdgeV1,
   type GraphEvidenceDetailResultV1,
+  type GraphEvidenceEntryV1,
   type GraphFilterSetV1,
   type GraphNeighborhoodResultV1,
   type GraphNodeReferenceV1,
@@ -81,6 +82,7 @@ export class Stage9GraphReadAdapter implements GraphReadPort, GraphImpactPort {
     private readonly nodes: readonly GraphNodeV1[],
     private readonly edges: readonly GraphEdgeV1[],
     private readonly projectionRevision: () => string = () => 'proj-1',
+    private readonly evidenceEntries: readonly GraphEvidenceEntryV1[] = [],
   ) {
     for (const node of nodes) this.resourceMap.set(node.resourceRef.resourceId, node);
     for (const edge of edges) this.edgeMap.set(edge.edgeId, edge);
@@ -109,6 +111,15 @@ export class Stage9GraphReadAdapter implements GraphReadPort, GraphImpactPort {
       rootIds.length === 0
         ? this.nodes
         : this.nodes.filter((node) => rootIds.includes(node.resourceRef.resourceId));
+    // Cross-Project deep-link denial: a requested root that does not exist in
+    // the active Project's dataset is never silently switched to another
+    // Project; it returns a typed access failure instead.
+    if (rootIds.length > 0 && allowed.length === 0) {
+      throw new FrontendContractError(
+        'PRECONDITION_ACCESS_DENIED',
+        'root resource is outside the active project',
+      );
+    }
     // HIDDEN resources never appear in any graph read (contract masking rule).
     const filtered = allowed
       .filter((node) => node.accessMasking !== 'HIDDEN')
@@ -381,19 +392,46 @@ export class Stage9GraphReadAdapter implements GraphReadPort, GraphImpactPort {
     scope: GraphReadScopeV1,
     request: Parameters<GraphReadPort['evidenceDetail']>[1],
   ): Promise<GraphEvidenceDetailResultV1> {
-    const target = this.resourceMap.get(
+    void scope;
+    const targetNode =
       request.target.kind === 'NODE'
-        ? request.target.nodeRef.resourceId
-        : request.target.edgeRef.edgeId,
-    );
-    void target;
+        ? this.resourceMap.get(request.target.nodeRef.resourceId)
+        : this.resourceMap.get(
+            this.edgeMap.get(request.target.edgeRef.edgeId)?.to.resourceId ?? '',
+          );
+    const targetEdge =
+      request.target.kind === 'EDGE' ? this.edgeMap.get(request.target.edgeRef.edgeId) : undefined;
+    if (targetNode && targetNode.accessMasking === 'HIDDEN') {
+      throw new FrontendContractError('NOT_FOUND', 'evidence target is not accessible');
+    }
+    // MASKED targets never leak evidence payloads or snippets (contract rule).
+    const masked = targetNode?.accessMasking === 'MASKED';
+    const summary = targetNode?.evidence;
+    const requestedRef = request.evidenceRef;
+    const resolved = masked
+      ? []
+      : this.evidenceEntries.filter((entry) => {
+          if (requestedRef) {
+            return (
+              entry.sourceId === requestedRef.sourceId &&
+              entry.evidenceSpanId === requestedRef.evidenceSpanId
+            );
+          }
+          if (targetNode) {
+            return (
+              summary?.sourceIds.includes(entry.sourceId) &&
+              summary?.evidenceSpanIds.includes(entry.evidenceSpanId)
+            );
+          }
+          return targetEdge?.evidence?.sourceIds.includes(entry.sourceId) ?? false;
+        });
     return {
       schemaVersion: '1.0.0',
       snapshotId: request.snapshotId,
       projectionRevision: request.projectionRevision,
       targetRef: request.target.kind === 'NODE' ? request.target.nodeRef : request.target.edgeRef,
-      evidence: [],
-      accessMasking: 'VISIBLE',
+      evidence: resolved,
+      accessMasking: targetNode?.accessMasking ?? 'VISIBLE',
     };
   }
 

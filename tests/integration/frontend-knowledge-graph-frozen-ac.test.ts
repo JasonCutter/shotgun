@@ -10,7 +10,11 @@ import {
   type GraphReadDomain,
   type GraphReadScopeV1,
 } from '../../modules/frontend-knowledge-graph/src/index.js';
-import type { GraphEdgeV1, GraphNodeV1 } from '../../packages/contracts/src/index.js';
+import type {
+  GraphEdgeV1,
+  GraphEvidenceEntryV1,
+  GraphNodeV1,
+} from '../../packages/contracts/src/index.js';
 
 const PROJECT_ID = 'shotgun';
 const ACCESS = `access:${PROJECT_ID}`;
@@ -90,8 +94,9 @@ const scope = (): GraphReadScopeV1 => ({
 const buildDomain = (
   nodes: readonly GraphNodeV1[],
   edges: readonly GraphEdgeV1[] = [],
+  evidence?: readonly GraphEvidenceEntryV1[],
 ): GraphReadDomain => {
-  const adapter = new Stage9GraphReadAdapter(nodes, edges);
+  const adapter = new Stage9GraphReadAdapter(nodes, edges, () => 'proj-1', evidence ?? []);
   return createGraphReadDomain({
     readPort: adapter,
     impactPort: adapter,
@@ -251,5 +256,137 @@ describe('FE-P3-S3 frozen-AC integration scenarios', () => {
     // Impact nodes/edges are bounded and never exceed the fixture size.
     expect(overlay.nodes.length).toBeLessThanOrEqual(impactNodes.length);
     expect(overlay.edges.length).toBeLessThanOrEqual(impactEdges.length);
+  });
+
+  it('AC-07: evidence detail resolves sourceIds/evidenceSpanIds to real records and never leaks masked content', async () => {
+    const evidencedNode: GraphNodeV1 = {
+      ...entity('entity-1', 'Entity One'),
+      evidence: {
+        schemaVersion: '1.0.0',
+        evidenceCount: 1,
+        sourceIds: ['source-1'],
+        evidenceSpanIds: ['span-1'],
+      },
+    };
+    const maskedNode: GraphNodeV1 = {
+      ...entity('entity-2', 'Entity Two'),
+      accessMasking: 'MASKED',
+      payload: undefined,
+    };
+    const evidenceEntries: readonly GraphEvidenceEntryV1[] = [
+      {
+        schemaVersion: '1.0.0',
+        sourceId: 'source-1',
+        sourceVersionId: 'source-version-1',
+        evidenceSpanId: 'span-1',
+        snippet: 'The snippet lives inside the allowed span.',
+      },
+    ];
+    const domain = buildDomain([evidencedNode, maskedNode], [], evidenceEntries);
+    const readScope = scope();
+    const snapshot = await domain.snapshot(readScope, {
+      schemaVersion: '1.0.0',
+      viewKind: 'KNOWLEDGE_SEMANTIC',
+      overlayKinds: [],
+      limits: defaultLimits,
+    });
+    const snapshotId = snapshot.identity.snapshotId;
+    const projectionRevision = snapshot.identity.projectionRevision;
+
+    const visible = await domain.evidenceDetail(readScope, {
+      schemaVersion: '1.0.0',
+      snapshotId,
+      projectionRevision,
+      target: {
+        kind: 'NODE',
+        nodeRef: { schemaVersion: '1.0.0', resourceKind: 'ENTITY', resourceId: 'entity-1' },
+      },
+    });
+    expect(visible.evidence.length).toBe(1);
+    expect(visible.evidence[0]?.sourceId).toBe('source-1');
+    expect(visible.evidence[0]?.sourceVersionId).toBe('source-version-1');
+    expect(visible.evidence[0]?.evidenceSpanId).toBe('span-1');
+    expect(visible.evidence[0]?.snippet).toContain('allowed span');
+
+    // MASKED targets never return evidence payloads.
+    const masked = await domain.evidenceDetail(readScope, {
+      schemaVersion: '1.0.0',
+      snapshotId,
+      projectionRevision,
+      target: {
+        kind: 'NODE',
+        nodeRef: { schemaVersion: '1.0.0', resourceKind: 'ENTITY', resourceId: 'entity-2' },
+      },
+    });
+    expect(masked.evidence).toEqual([]);
+    expect(masked.accessMasking).toBe('MASKED');
+
+    // Nonexistent evidence references resolve to no entries.
+    const missing = await domain.evidenceDetail(readScope, {
+      schemaVersion: '1.0.0',
+      snapshotId,
+      projectionRevision,
+      target: {
+        kind: 'NODE',
+        nodeRef: { schemaVersion: '1.0.0', resourceKind: 'ENTITY', resourceId: 'entity-1' },
+      },
+      evidenceRef: { sourceId: 'source-999', evidenceSpanId: 'span-999' },
+    });
+    expect(missing.evidence).toEqual([]);
+  });
+
+  it('AC-29: a deep link to a root outside the active Project is denied without switching projects', async () => {
+    const domain = buildDomain([entity('entity-1', 'Entity One')], []);
+    const readScope = scope();
+    await expect(
+      domain.snapshot(readScope, {
+        schemaVersion: '1.0.0',
+        viewKind: 'KNOWLEDGE_SEMANTIC',
+        overlayKinds: [],
+        rootRefs: [
+          {
+            schemaVersion: '1.0.0',
+            resourceKind: 'ENTITY',
+            resourceId: 'project-b-root',
+          },
+        ],
+        limits: defaultLimits,
+      }),
+    ).rejects.toThrow(/outside the active project/);
+    // The active project is never silently switched.
+    expect(readScope.activeProjectId).toBe(PROJECT_ID);
+  });
+
+  it('AC-29: masked resources expose a placeholder only and hidden resources are fully excluded', async () => {
+    const maskedNode: GraphNodeV1 = {
+      ...entity('entity-masked', 'Sensitive Entity'),
+      accessMasking: 'MASKED',
+      label: '마스킹된 자원',
+      payload: undefined,
+    };
+    const hiddenNode: GraphNodeV1 = {
+      ...entity('entity-hidden', 'Hidden Entity'),
+      accessMasking: 'HIDDEN',
+    };
+    const domain = buildDomain([entity('entity-1', 'Entity One'), maskedNode, hiddenNode], []);
+    const readScope = scope();
+    const snapshot = await domain.snapshot(readScope, {
+      schemaVersion: '1.0.0',
+      viewKind: 'KNOWLEDGE_SEMANTIC',
+      overlayKinds: [],
+      limits: defaultLimits,
+    });
+
+    const ids = snapshot.nodes.map((entry) => entry.resourceRef.resourceId);
+    expect(ids).toContain('entity-1');
+    expect(ids).toContain('entity-masked');
+    expect(ids).not.toContain('entity-hidden');
+
+    const masked = snapshot.nodes.find((entry) => entry.resourceRef.resourceId === 'entity-masked');
+    expect(masked?.accessMasking).toBe('MASKED');
+    expect(masked?.payload).toBeUndefined();
+    expect(masked?.provenance).toBeUndefined();
+    expect(masked?.evidence).toBeUndefined();
+    expect(masked?.temporalValidity).toBeUndefined();
   });
 });

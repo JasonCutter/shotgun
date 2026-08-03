@@ -244,7 +244,7 @@
       "parent": "FE-P3",
       "predecessor": "FE-P3-S2",
       "successor": "FE-P4-S1",
-      "status": "NOT_STARTED",
+      "status": "IN_PROGRESS",
       "governingContract": "docs/architecture/frontend/phase-3-knowledge-understanding-editing.md",
       "completionManifest": null,
       "approvedAt": null,

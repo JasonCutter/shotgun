@@ -27,7 +27,7 @@ legacy_source_id: 3a15181d-71ad-81e4-bfa4-ee2578e692a0
 | Work Item                                              | Status        |
 | ------------------------------------------------------ | ------------- |
 | FE-P3 — Knowledge Understanding and Editing            | `IN_PROGRESS` |
-| FE-P3-S3 — Semantic Graph and Relationship Exploration | `NOT_STARTED` |
+| FE-P3-S3 — Semantic Graph and Relationship Exploration | `IN_PROGRESS` |
 
 - 미충족 필수 기준: `manifest unavailable`
 - Next valid Product Section: `FE-P4-S1 — Review Center`

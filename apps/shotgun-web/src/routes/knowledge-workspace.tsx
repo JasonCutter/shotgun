@@ -2,13 +2,14 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useOutletContext, useSearchParams } from 'react-router';
 
-import type {
-  GlobalShellView,
-  KnowledgeAuthority,
-  KnowledgeKind,
-  KnowledgeProjectionStatus,
-  KnowledgeSearchRequest,
-  KnowledgeTemporalState,
+import {
+  createFrontendKnowledgeDraftClient,
+  type GlobalShellView,
+  type KnowledgeAuthority,
+  type KnowledgeKind,
+  type KnowledgeProjectionStatus,
+  type KnowledgeSearchRequest,
+  type KnowledgeTemporalState,
 } from '@shotgun/api-client';
 
 import { useAppRuntime } from '../app/providers.js';
@@ -67,6 +68,7 @@ export const KnowledgeWorkspace = () => {
     urlProjectionStatus ?? '',
   );
   const [selectedPageIds, setSelectedPageIds] = useState<readonly string[]>([]);
+  const knowledgeDraftClient = useMemo(() => createFrontendKnowledgeDraftClient(), []);
 
   useEffect(() => {
     setSearchInput(urlQuery);
@@ -238,8 +240,8 @@ export const KnowledgeWorkspace = () => {
       <KnowledgeDraftEditor
         draft={null}
         activeProjectId={shell.activeProject?.id}
-        sessionId={shell.session?.id}
-        client={apiClient}
+        sessionId={shell.sessionId}
+        client={knowledgeDraftClient}
       />
       {workspace.data ? (
         <section className="action-card" aria-labelledby="knowledge-capabilities-heading">

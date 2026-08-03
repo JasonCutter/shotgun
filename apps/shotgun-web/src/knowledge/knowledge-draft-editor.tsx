@@ -3,6 +3,7 @@ import { useKnowledgeDraft } from './knowledge-draft-controller.js';
 import type {
   FrontendKnowledgeDraftChangeSetV1,
   FrontendKnowledgeDraftClient,
+  FrontendKnowledgeOperationV1,
 } from '@shotgun/api-client';
 
 export type KnowledgeDraftEditorProps = {
@@ -12,9 +13,38 @@ export type KnowledgeDraftEditorProps = {
   readonly client: Pick<FrontendKnowledgeDraftClient, 'saveDraft'>;
 };
 
+const operationText = (operation: FrontendKnowledgeOperationV1): string => {
+  if (!('after' in operation) || !operation.after) return '';
+  const after = operation.after;
+  switch (after.schemaVersion) {
+    case 'claim.v1':
+      return after.statement;
+    case 'fact.v1':
+      return String(after.value);
+    case 'entity.v1':
+      return after.displayName;
+    case 'relation.v1':
+      return `${after.relationType}: ${after.fromEntityRef} -> ${after.toEntityRef}`;
+    case 'event.v1':
+      return after.eventType;
+    case 'decision.v1':
+      return after.decision;
+    case 'evidence-link.v1':
+      return `${after.sourceId}#${after.evidenceSpanId}`;
+    case 'temporal-validity.v1':
+      return after.status;
+    case 'conflict-proposal.v1':
+      return after.summary;
+    case 'knowledge-gap-proposal.v1':
+      return after.description;
+    case 'no-op-review-result.v1':
+      return after.reason;
+  }
+};
+
 const initialEditorText = (draft: FrontendKnowledgeDraftChangeSetV1 | null | undefined) => {
   if (!draft) return '';
-  return draft.operations.map((operation) => operation.after?.statement ?? '').join('\n');
+  return draft.operations.map(operationText).join('\n');
 };
 
 export const KnowledgeDraftEditor = ({

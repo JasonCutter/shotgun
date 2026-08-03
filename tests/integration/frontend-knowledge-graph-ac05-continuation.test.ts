@@ -190,15 +190,18 @@ class PaginatedFixtureReadPort implements GraphReadPort, GraphImpactPort {
     throw new Error('not used');
   }
   async recursiveImpact(
-    _scope: GraphReadScopeV1,
-    _request: GraphRecursiveImpactOverlayRequestV1,
-    _baseSnapshotId: string,
+    scope: GraphReadScopeV1,
+    request: GraphRecursiveImpactOverlayRequestV1,
+    baseSnapshotId: string,
   ): Promise<GraphOverlayResultV1> {
+    void scope;
+    void request;
+    void baseSnapshotId;
     throw new Error('not used');
   }
 }
 
-const buildDomain = (nodeCount: number, maxNodes = PAGE_SIZE): GraphReadDomain => {
+const buildDomain = (nodeCount: number): GraphReadDomain => {
   const fixture = new PaginatedFixtureReadPort(
     Array.from({ length: nodeCount }, (_, i) => node(i + 1)),
   );
@@ -212,7 +215,7 @@ const buildDomain = (nodeCount: number, maxNodes = PAGE_SIZE): GraphReadDomain =
 
 describe('FE-P3-S3 AC-05 — positive PARTIAL continuation round-trip', () => {
   it('pages a 12-node fixture through PARTIAL + continuation to COMPLETE with no duplicates', async () => {
-    const domain = buildDomain(12, 5);
+    const domain = buildDomain(12);
     const readScope = scope();
     const snapshot = await domain.snapshot(readScope, {
       schemaVersion: '1.0.0',
@@ -255,7 +258,7 @@ describe('FE-P3-S3 AC-05 — positive PARTIAL continuation round-trip', () => {
   });
 
   it('rejects continuation token reuse with a different limits binding', async () => {
-    const domain = buildDomain(12, 5);
+    const domain = buildDomain(12);
     const readScope = scope();
     const snapshot = await domain.snapshot(readScope, {
       schemaVersion: '1.0.0',
@@ -279,7 +282,7 @@ describe('FE-P3-S3 AC-05 — positive PARTIAL continuation round-trip', () => {
   });
 
   it('rejects continuation token reuse with a different filters binding', async () => {
-    const domain = buildDomain(12, 5);
+    const domain = buildDomain(12);
     const readScope = scope();
     const snapshot = await domain.snapshot(readScope, {
       schemaVersion: '1.0.0',

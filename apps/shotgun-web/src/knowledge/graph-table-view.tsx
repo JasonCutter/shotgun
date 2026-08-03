@@ -71,9 +71,14 @@ export const GraphTableView = ({
                 <td>{tuple.overlayMemberships.join(', ')}</td>
                 <td>
                   {nodeRef ? (
-                    <button type="button" onClick={() => onSelect(nodeRef)}>
-                      Select
-                    </button>
+                    <span className="graph-item-actions">
+                      <button type="button" onClick={() => onSelect(nodeRef)}>
+                        Select
+                      </button>
+                      <button type="button" onClick={() => onCorrect(nodeRef)}>
+                        보정
+                      </button>
+                    </span>
                   ) : null}
                 </td>
               </tr>

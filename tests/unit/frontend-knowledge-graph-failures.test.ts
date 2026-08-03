@@ -160,7 +160,7 @@ describe('AC-24: graph read failure mapping is complete and typed', () => {
 describe('AC-24: SAFE/UNSAFE retry classification per reason', () => {
   it.each(FAILURE_CASES)(
     'classifies $reason as $retryable (SAFE=retry, UNSAFE=never retry)',
-    ({ reason, normalizedCode, httpStatus, retryable }) => {
+    ({ reason, retryable }) => {
       const mapping = graphFailureForReason(reason);
       const error = shotGunApiErrorFor(mapping);
       const classifiedSafe = error.retryability === 'SAFE' && graphCanManuallyRetry(error);

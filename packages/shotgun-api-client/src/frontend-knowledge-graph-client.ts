@@ -146,7 +146,11 @@ export const createFrontendKnowledgeGraphClient = (
   return {
     async getGraphSnapshot(params, requestOptions) {
       return decodeGraphSnapshotResultV1(
-        await post('/product-api/frontend/knowledge/graph/snapshot', decodeGraphSnapshotRequestV1(params), requestOptions?.signal),
+        await post(
+          '/product-api/frontend/knowledge/graph/snapshot',
+          decodeGraphSnapshotRequestV1(params),
+          requestOptions?.signal,
+        ),
         'result',
       );
     },
@@ -162,7 +166,11 @@ export const createFrontendKnowledgeGraphClient = (
     },
     async findGraphPath(params, requestOptions) {
       return decodeGraphPathResultV1(
-        await post('/product-api/frontend/knowledge/graph/path', decodeGraphPathRequestV1(params), requestOptions?.signal),
+        await post(
+          '/product-api/frontend/knowledge/graph/path',
+          decodeGraphPathRequestV1(params),
+          requestOptions?.signal,
+        ),
         'result',
       );
     },

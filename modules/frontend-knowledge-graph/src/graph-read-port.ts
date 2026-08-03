@@ -30,7 +30,10 @@ export type GraphReadScopeV1 = {
 };
 
 export type GraphReadPort = {
-  snapshot(scope: GraphReadScopeV1, request: GraphSnapshotRequestV1): Promise<GraphSnapshotResultV1>;
+  snapshot(
+    scope: GraphReadScopeV1,
+    request: GraphSnapshotRequestV1,
+  ): Promise<GraphSnapshotResultV1>;
   neighborhood(
     scope: GraphReadScopeV1,
     request: GraphNeighborhoodRequestV1,
@@ -44,7 +47,10 @@ export type GraphReadPort = {
     scope: GraphReadScopeV1,
     request: GraphEvidenceDetailRequestV1,
   ): Promise<GraphEvidenceDetailResultV1>;
-  refresh(scope: GraphReadScopeV1, request: GraphSnapshotRefreshRequestV1): Promise<GraphSnapshotResultV1>;
+  refresh(
+    scope: GraphReadScopeV1,
+    request: GraphSnapshotRefreshRequestV1,
+  ): Promise<GraphSnapshotResultV1>;
   restore(scope: GraphReadScopeV1, request: GraphRestoreRequestV1): Promise<GraphRestoreResultV1>;
 };
 

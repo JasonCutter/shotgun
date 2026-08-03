@@ -7,10 +7,7 @@ export {
   type GraphReadDomain,
   type GraphReadDomainInput,
 } from './product-api.js';
-export {
-  GRAPH_AUTHORITY_CLASSIFICATIONS_ALL,
-  GRAPH_RESOURCE_KINDS_ALL,
-} from './product-api.js';
+export { GRAPH_AUTHORITY_CLASSIFICATIONS_ALL, GRAPH_RESOURCE_KINDS_ALL } from './product-api.js';
 export type {
   GraphSnapshotContextDescriptorV1,
   SnapshotContextStorePort,

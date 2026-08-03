@@ -8,7 +8,6 @@ import type {
   EvidenceLinkValueV1,
   FactValueV1,
   KnowledgeGapProposalValueV1,
-  RelationValueV1,
 } from './frontend-knowledge-draft.js';
 
 /**
@@ -1688,11 +1687,7 @@ export const decodeGraphPathDescriptionSegmentV1 = (
   const narration = text(required(object, 'narration', path), `${path}.narration`);
   const nodeRef = decodeGraphNodeReferenceV1(required(object, 'nodeRef', path), `${path}.nodeRef`);
   if (kind === 'ORIGIN') {
-    const so = strictObject(
-      object,
-      ['schemaVersion', 'kind', 'step', 'narration', 'nodeRef'],
-      path,
-    );
+    strictObject(object, ['schemaVersion', 'kind', 'step', 'narration', 'nodeRef'], path);
     if (step !== 0) return fail(`${path}.step`, 'ORIGIN step must be 0');
     return { schemaVersion: '1.0.0', kind: 'ORIGIN', step: 0, narration, nodeRef };
   }

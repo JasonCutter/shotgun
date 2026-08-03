@@ -1,6 +1,8 @@
 import {
   FrontendContractError,
+  type GraphEdgeV1,
   type GraphNodeReferenceV1,
+  type GraphNodeV1,
 } from '../../../packages/contracts/src/index.js';
 import type {
   GraphSnapshotContextDescriptorV1,
@@ -23,7 +25,10 @@ export const createInMemorySnapshotContextStore = (): SnapshotContextStorePort =
   return {
     async write(context) {
       if (contexts.has(context.snapshotId)) {
-        throw new FrontendContractError('CONFLICT', `snapshot context ${context.snapshotId} already exists`);
+        throw new FrontendContractError(
+          'CONFLICT',
+          `snapshot context ${context.snapshotId} already exists`,
+        );
       }
       contexts.set(context.snapshotId, context);
     },
@@ -54,7 +59,10 @@ export const createInMemoryHealthStore = (): HealthStorePort => {
       return projectionHealth.get(`${projectId}:${viewKind}`);
     },
     async upsertOverlayHealth(record) {
-      overlayHealth.set(`${record.projectId}:${record.baseSnapshotId}:${record.overlayKind}`, record);
+      overlayHealth.set(
+        `${record.projectId}:${record.baseSnapshotId}:${record.overlayKind}`,
+        record,
+      );
     },
     async getOverlayHealth(projectId, baseSnapshotId, overlayKind) {
       return overlayHealth.get(`${projectId}:${baseSnapshotId}:${overlayKind}`);
@@ -113,8 +121,8 @@ export const createFixtureGraphReadPort = (
   edges: readonly FixtureGraphEdge[],
 ): {
   snapshot: () => {
-    nodes: import('../../../packages/contracts/src/index.js').GraphNodeV1[];
-    edges: import('../../../packages/contracts/src/index.js').GraphEdgeV1[];
+    nodes: GraphNodeV1[];
+    edges: GraphEdgeV1[];
   };
 } => {
   const revisionBinding = {

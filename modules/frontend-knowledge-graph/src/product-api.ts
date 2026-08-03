@@ -33,8 +33,6 @@ import {
   type GraphSnapshotRequestV1,
   type GraphSnapshotResultV1,
   type GraphTraversalLimitsV1,
-  type GraphTruncationStateV1,
-  type GraphUnavailableReasonV1,
 } from '../../../packages/contracts/src/index.js';
 import type { GraphReadPort, GraphReadScopeV1, GraphImpactPort } from './graph-read-port.js';
 import type { HealthStorePort, GraphOverlayHealthRecordV1 } from './health-store-port.js';
@@ -97,7 +95,10 @@ const clampLimits = (
 };
 
 export type GraphReadDomain = {
-  snapshot(scope: GraphReadScopeV1, request: GraphSnapshotRequestV1): Promise<GraphSnapshotResultV1>;
+  snapshot(
+    scope: GraphReadScopeV1,
+    request: GraphSnapshotRequestV1,
+  ): Promise<GraphSnapshotResultV1>;
   neighborhood(
     scope: GraphReadScopeV1,
     request: GraphNeighborhoodRequestV1,
@@ -123,7 +124,10 @@ export type GraphReadDomain = {
     scope: GraphReadScopeV1,
     request: GraphEvidenceDetailRequestV1,
   ): Promise<GraphEvidenceDetailResultV1>;
-  refresh(scope: GraphReadScopeV1, request: GraphSnapshotRefreshRequestV1): Promise<GraphSnapshotResultV1>;
+  refresh(
+    scope: GraphReadScopeV1,
+    request: GraphSnapshotRefreshRequestV1,
+  ): Promise<GraphSnapshotResultV1>;
   restore(scope: GraphReadScopeV1, request: GraphRestoreRequestV1): Promise<GraphRestoreResultV1>;
 };
 
@@ -160,10 +164,16 @@ export const createGraphReadDomain = (input: GraphReadDomainInput): GraphReadDom
     revisionBinding: { accessRevision: string; policyContextRevision: string },
   ): void => {
     if (scope.accessRevision !== revisionBinding.accessRevision) {
-      throw new FrontendContractError('PRECONDITION_ACCESS_DENIED', 'graph read access revision mismatch');
+      throw new FrontendContractError(
+        'PRECONDITION_ACCESS_DENIED',
+        'graph read access revision mismatch',
+      );
     }
     if (scope.policyContextRevision !== revisionBinding.policyContextRevision) {
-      throw new FrontendContractError('PRECONDITION_ACCESS_DENIED', 'graph read policy revision mismatch');
+      throw new FrontendContractError(
+        'PRECONDITION_ACCESS_DENIED',
+        'graph read policy revision mismatch',
+      );
     }
   };
 
@@ -173,9 +183,13 @@ export const createGraphReadDomain = (input: GraphReadDomainInput): GraphReadDom
     projectionRevision: string,
   ): Promise<GraphSnapshotContextDescriptorV1> => {
     const descriptor = await snapshotContextStore.resolve(scope.activeProjectId, snapshotId);
-    if (!descriptor) throw new FrontendContractError('NOT_FOUND', `unknown snapshot context ${snapshotId}`);
+    if (!descriptor)
+      throw new FrontendContractError('NOT_FOUND', `unknown snapshot context ${snapshotId}`);
     if (descriptor.projectionRevision !== projectionRevision) {
-      throw new FrontendContractError('PRECONDITION_ACCESS_DENIED', 'snapshot projection revision mismatch');
+      throw new FrontendContractError(
+        'PRECONDITION_ACCESS_DENIED',
+        'snapshot projection revision mismatch',
+      );
     }
     assertScopeMatch(scope, descriptor);
     return descriptor;
@@ -200,7 +214,9 @@ export const createGraphReadDomain = (input: GraphReadDomainInput): GraphReadDom
       policyContextRevision: scope.policyContextRevision,
       projectionRevision: identity.projectionRevision,
       generatedAt: identity.generatedAt,
-      expiresAt: new Date(Date.parse(identity.generatedAt) + GRAPH_SNAPSHOT_CONTEXT_TTL_MS).toISOString(),
+      expiresAt: new Date(
+        Date.parse(identity.generatedAt) + GRAPH_SNAPSHOT_CONTEXT_TTL_MS,
+      ).toISOString(),
     };
     await snapshotContextStore.write(descriptor);
   };
@@ -274,21 +290,31 @@ export const createGraphReadDomain = (input: GraphReadDomainInput): GraphReadDom
     snapshotId: string,
   ): Promise<void> => {
     const record = await healthStore.findContinuation(token);
-    if (!record) throw new FrontendContractError('NOT_FOUND', 'continuation token is unknown or expired');
+    if (!record)
+      throw new FrontendContractError('NOT_FOUND', 'continuation token is unknown or expired');
     if (Date.parse(record.expiresAt) <= Date.parse(nowIso())) {
       throw new FrontendContractError('NOT_FOUND', 'continuation token expired');
     }
     if (record.principalId !== scope.principalId || record.sessionId !== scope.sessionId) {
-      throw new FrontendContractError('PRECONDITION_ACCESS_DENIED', 'continuation principal/session mismatch');
+      throw new FrontendContractError(
+        'PRECONDITION_ACCESS_DENIED',
+        'continuation principal/session mismatch',
+      );
     }
     if (record.projectId !== scope.activeProjectId || record.snapshotId !== snapshotId) {
-      throw new FrontendContractError('PRECONDITION_ACCESS_DENIED', 'continuation project/snapshot mismatch');
+      throw new FrontendContractError(
+        'PRECONDITION_ACCESS_DENIED',
+        'continuation project/snapshot mismatch',
+      );
     }
     if (
       record.accessRevision !== scope.accessRevision ||
       record.policyContextRevision !== scope.policyContextRevision
     ) {
-      throw new FrontendContractError('PRECONDITION_ACCESS_DENIED', 'continuation revision mismatch');
+      throw new FrontendContractError(
+        'PRECONDITION_ACCESS_DENIED',
+        'continuation revision mismatch',
+      );
     }
   };
 
@@ -311,7 +337,8 @@ export const createGraphReadDomain = (input: GraphReadDomainInput): GraphReadDom
       overlayKind,
       overlaySnapshotId: freshId(`overlay-${overlayKind.toLowerCase()}`),
       overlayRevision: freshId('overlay-rev'),
-      analyzerRevision: overlayKind === 'RECURSIVE_IMPACT' ? freshId('analyzer') : freshId('registry'),
+      analyzerRevision:
+        overlayKind === 'RECURSIVE_IMPACT' ? freshId('analyzer') : freshId('registry'),
       policyContextRevision: scope.policyContextRevision,
       generatedAt,
       completeness,
@@ -354,7 +381,13 @@ export const createGraphReadDomain = (input: GraphReadDomainInput): GraphReadDom
         capabilities: capabilities(request.overlayKinds),
       };
       await writeSnapshotContext(scope, result.identity, request, limits);
-      await writeProjectionHealth(scope, result.identity.viewKind, result.identity.projectionRevision, result.health, result.identity.generatedAt);
+      await writeProjectionHealth(
+        scope,
+        result.identity.viewKind,
+        result.identity.projectionRevision,
+        result.health,
+        result.identity.generatedAt,
+      );
       if (result.completeness === 'PARTIAL') {
         const rootRef = request.rootRefs?.[0];
         snapshotResult.continuation = await nextContinuation(
@@ -372,7 +405,8 @@ export const createGraphReadDomain = (input: GraphReadDomainInput): GraphReadDom
 
     async neighborhood(scope, request) {
       const descriptor = await descriptorFor(scope, request.snapshotId, request.projectionRevision);
-      if (request.continuationToken) await assertContinuation(scope, request.continuationToken, request.snapshotId);
+      if (request.continuationToken)
+        await assertContinuation(scope, request.continuationToken, request.snapshotId);
       const { limits, applied } = clampLimits(request.limits ?? descriptor.limits, caps);
       const result = await readPort.neighborhood(scope, { ...request, limits });
       return { ...result, appliedLimits: applied };
@@ -440,17 +474,22 @@ export const createGraphReadDomain = (input: GraphReadDomainInput): GraphReadDom
 
     async impactOverlay(scope, request) {
       const descriptor = await descriptorFor(scope, request.snapshotId, request.projectionRevision);
-      if (request.continuationToken) await assertContinuation(scope, request.continuationToken, request.snapshotId);
+      if (request.continuationToken)
+        await assertContinuation(scope, request.continuationToken, request.snapshotId);
       const { limits, applied } = clampLimits(request.limits ?? descriptor.limits, caps);
-      const base = await readPort.snapshot(scope, {
+      void (await readPort.snapshot(scope, {
         schemaVersion: '1.0.0',
         viewKind: descriptor.viewKind,
         overlayKinds: ['RECURSIVE_IMPACT'],
         rootRefs: descriptor.rootRefs,
         filters: request.filters,
         limits,
-      });
-      const result = await impactPort.recursiveImpact(scope, { ...request, limits }, request.snapshotId);
+      }));
+      const result = await impactPort.recursiveImpact(
+        scope,
+        { ...request, limits },
+        request.snapshotId,
+      );
       return { ...result, projectionRevision: request.projectionRevision, appliedLimits: applied };
     },
 
@@ -462,7 +501,10 @@ export const createGraphReadDomain = (input: GraphReadDomainInput): GraphReadDom
     async refresh(scope, request) {
       const descriptor = await descriptorFor(scope, request.snapshotId, request.projectionRevision);
       if (descriptor.projectionRevision !== request.expectedSnapshotRevision) {
-        throw new FrontendContractError('PRECONDITION_ACCESS_DENIED', 'expected snapshot revision mismatch');
+        throw new FrontendContractError(
+          'PRECONDITION_ACCESS_DENIED',
+          'expected snapshot revision mismatch',
+        );
       }
       const { limits, applied } = clampLimits(descriptor.limits, caps);
       const result = await readPort.refresh(scope, request);
@@ -485,7 +527,13 @@ export const createGraphReadDomain = (input: GraphReadDomainInput): GraphReadDom
         },
         limits,
       );
-      await writeProjectionHealth(scope, result.identity.viewKind, result.identity.projectionRevision, result.health, result.identity.generatedAt);
+      await writeProjectionHealth(
+        scope,
+        result.identity.viewKind,
+        result.identity.projectionRevision,
+        result.health,
+        result.identity.generatedAt,
+      );
       return snapshotResult;
     },
 

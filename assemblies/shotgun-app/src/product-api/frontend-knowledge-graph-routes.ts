@@ -19,9 +19,7 @@ import {
 import type { GraphReadDomain } from '../../../../modules/frontend-knowledge-graph/src/index.js';
 import type { GraphReadScopeV1 } from '../../../../modules/frontend-knowledge-graph/src/index.js';
 
-export type GraphScopeResolver = (
-  headers: SecurityHeaders,
-) => Promise<GraphReadScopeV1>;
+export type GraphScopeResolver = (headers: SecurityHeaders) => Promise<GraphReadScopeV1>;
 
 const toGraphError = (error: unknown, operation: string): never => {
   if (error instanceof ShotgunError) throw error;

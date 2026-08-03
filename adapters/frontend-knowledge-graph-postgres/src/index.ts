@@ -24,7 +24,9 @@ const isUniqueViolation = (error: unknown): boolean =>
   'code' in error &&
   (error as { code?: unknown }).code === '23505';
 
-export class PostgresFrontendKnowledgeGraphStores implements SnapshotContextStorePort, HealthStorePort {
+export class PostgresFrontendKnowledgeGraphStores
+  implements SnapshotContextStorePort, HealthStorePort
+{
   constructor(private readonly pool: Pool) {}
 
   async write(context: GraphSnapshotContextDescriptorV1): Promise<void> {
@@ -53,7 +55,10 @@ export class PostgresFrontendKnowledgeGraphStores implements SnapshotContextStor
       );
     } catch (error) {
       if (isUniqueViolation(error)) {
-        throw new FrontendContractError('CONFLICT', `snapshot context ${context.snapshotId} already exists`);
+        throw new FrontendContractError(
+          'CONFLICT',
+          `snapshot context ${context.snapshotId} already exists`,
+        );
       }
       throw error;
     }
@@ -77,9 +82,13 @@ export class PostgresFrontendKnowledgeGraphStores implements SnapshotContextStor
       snapshotId: row['snapshot_id'] as string,
       projectId: row['project_id'] as string,
       viewKind: row['view_kind'] as GraphSnapshotContextDescriptorV1['viewKind'],
-      overlayKinds: PARSE(row['overlay_kinds']) as readonly GraphSnapshotContextDescriptorV1['overlayKinds'][number][],
+      overlayKinds: PARSE(
+        row['overlay_kinds'],
+      ) as readonly GraphSnapshotContextDescriptorV1['overlayKinds'][number][],
       rootRefs: PARSE(row['root_refs']) as GraphSnapshotContextDescriptorV1['rootRefs'],
-      normalizedFilters: PARSE(row['normalized_filters']) as GraphSnapshotContextDescriptorV1['normalizedFilters'],
+      normalizedFilters: PARSE(
+        row['normalized_filters'],
+      ) as GraphSnapshotContextDescriptorV1['normalizedFilters'],
       filtersDigest: row['filters_digest'] as string,
       limits: PARSE(row['limits']) as GraphSnapshotContextDescriptorV1['limits'],
       accessRevision: row['access_revision'] as string,
@@ -206,8 +215,12 @@ export class PostgresFrontendKnowledgeGraphStores implements SnapshotContextStor
       generatedAt: (row['generated_at'] as Date).toISOString(),
       completeness: row['completeness'] as GraphOverlayHealthRecordV1['completeness'],
       truncation:
-        row['truncation'] === null ? undefined : (PARSE(row['truncation']) as GraphOverlayHealthRecordV1['truncation']),
-      unavailableReason: (row['unavailable_reason'] as GraphOverlayHealthRecordV1['unavailableReason'] | null) ?? undefined,
+        row['truncation'] === null
+          ? undefined
+          : (PARSE(row['truncation']) as GraphOverlayHealthRecordV1['truncation']),
+      unavailableReason:
+        (row['unavailable_reason'] as GraphOverlayHealthRecordV1['unavailableReason'] | null) ??
+        undefined,
     };
   }
 
@@ -258,13 +271,17 @@ export class PostgresFrontendKnowledgeGraphStores implements SnapshotContextStor
       rootRef: row['root_ref'] === null ? undefined : PARSE(row['root_ref']),
       filtersDigest: row['filters_digest'] as string,
       viewKind: row['view_kind'] as GraphContinuationRecordV1['viewKind'],
-      overlayKinds: PARSE(row['overlay_kinds']) as readonly GraphContinuationRecordV1['overlayKinds'][number][],
+      overlayKinds: PARSE(
+        row['overlay_kinds'],
+      ) as readonly GraphContinuationRecordV1['overlayKinds'][number][],
       limits: PARSE(row['limits']) as GraphContinuationRecordV1['limits'],
     };
   }
 
   async deleteContinuation(token: string): Promise<void> {
-    await this.pool.query(`DELETE FROM frontend_knowledge_graph.continuation WHERE token = $1`, [token]);
+    await this.pool.query(`DELETE FROM frontend_knowledge_graph.continuation WHERE token = $1`, [
+      token,
+    ]);
   }
 }
 

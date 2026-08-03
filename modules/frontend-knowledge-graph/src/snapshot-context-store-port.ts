@@ -31,7 +31,10 @@ export type SnapshotContextStorePort = {
   /** Writes an immutable descriptor; a duplicate snapshotId is rejected. */
   write(context: GraphSnapshotContextDescriptorV1): Promise<void>;
   /** Resolves snapshotId -> descriptor for a Project; undefined when unknown/expired. */
-  resolve(projectId: string, snapshotId: string): Promise<GraphSnapshotContextDescriptorV1 | undefined>;
+  resolve(
+    projectId: string,
+    snapshotId: string,
+  ): Promise<GraphSnapshotContextDescriptorV1 | undefined>;
   /** Removes expired descriptors (bounded retention). */
   pruneExpired(nowIso: string): Promise<void>;
 };

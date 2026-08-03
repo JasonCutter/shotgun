@@ -65,6 +65,12 @@ import type {
   KnowledgeSearchResultViewAny,
   KnowledgeDetailView,
   KnowledgeCompareView,
+  FrontendKnowledgeDraftChangeSetV1,
+  FrontendKnowledgeDraftCommandOutcomeV1,
+  FrontendKnowledgeOperationV1,
+  MaterializeDraftResultV1,
+  ResolveKnowledgeDraftCommandOutcomeResultV1,
+  SaveKnowledgeDraftResultV1,
 } from '../../contracts/src/index.js';
 
 export type ProductSessionView = AnyProductSessionView;
@@ -130,6 +136,12 @@ export type {
   KnowledgeSearchResultViewAny,
   KnowledgeDetailView,
   KnowledgeCompareView,
+  FrontendKnowledgeDraftChangeSetV1,
+  FrontendKnowledgeDraftCommandOutcomeV1,
+  FrontendKnowledgeOperationV1,
+  MaterializeDraftResultV1,
+  ResolveKnowledgeDraftCommandOutcomeResultV1,
+  SaveKnowledgeDraftResultV1,
   ErrorCode,
   FailureCategory,
   FailureRetryability,

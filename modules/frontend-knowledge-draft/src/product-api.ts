@@ -4,8 +4,10 @@ import {
   FrontendContractError,
   FrontendKnowledgeDraftCommandError,
   FRONTEND_KNOWLEDGE_DRAFT_COMMAND_TYPES,
-  sha256Text,
-  stableJson,
+  frontendKnowledgeDraftAbandonDigest,
+  frontendKnowledgeDraftMaterializeDigest,
+  frontendKnowledgeDraftSaveDigest,
+  frontendKnowledgeDraftStartSeedlessDigest,
   type AbandonKnowledgeDraftRequestV1,
   type AcceptedPolicyContext,
   type AnyFrontendCommandOutcomeView,
@@ -188,49 +190,16 @@ const draftPrecondition = (draftId: string, expectedRevision: number): TypedPrec
   expectedRevision: String(expectedRevision),
 });
 
-/**
- * Per-command semantic digests. The request identity fields (clientRequestId,
- * idempotencyKey) are intentionally excluded so the same idempotency key with
- * the same command meaning is recognised as the same command even when the
- * clientRequestId differs.
- */
-export const frontendKnowledgeDraftMaterializeDigest = (
-  request: MaterializeDraftRequestV1,
-): string => sha256Text(stableJson({ seedId: request.seedId }));
-
-export const frontendKnowledgeDraftStartSeedlessDigest = (
-  request: StartSeedlessDraftRequestV1,
-): string =>
-  sha256Text(
-    stableJson(
-      request.resourceId !== undefined
-        ? { resourceId: request.resourceId }
-        : { pageId: request.pageId },
-    ),
-  );
-
-export const frontendKnowledgeDraftSaveDigest = (request: SaveKnowledgeDraftRequestV1): string =>
-  sha256Text(
-    stableJson({
-      draftId: request.draftId,
-      expectedDraftRevision: request.expectedDraftRevision,
-      expectedBaseRevision: request.expectedBaseRevision,
-      operationRevision: request.operationRevision,
-      operations: request.operations,
-      contentDigest: request.contentDigest,
-    }),
-  );
-
-export const frontendKnowledgeDraftAbandonDigest = (
-  request: AbandonKnowledgeDraftRequestV1,
-): string =>
-  sha256Text(
-    stableJson({
-      draftId: request.draftId,
-      expectedDraftRevision: request.expectedDraftRevision,
-      expectedBaseRevision: request.expectedBaseRevision,
-    }),
-  );
+// Per-command semantic digests live in the shared contracts package so the
+// server coordinator and the browser client compute identical values (the
+// request identity fields are intentionally excluded). Re-exported here for
+// coordinator consumers that import from the product API module.
+export {
+  frontendKnowledgeDraftAbandonDigest,
+  frontendKnowledgeDraftMaterializeDigest,
+  frontendKnowledgeDraftSaveDigest,
+  frontendKnowledgeDraftStartSeedlessDigest,
+};
 
 type DraftApiCode =
   | 'NOT_FOUND'

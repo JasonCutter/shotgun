@@ -1,13 +1,16 @@
 import {
   FrontendKnowledgeDraftCommandError,
-  sha256Text,
+  FRONTEND_KNOWLEDGE_DRAFT_DOMAIN_VERSION,
+  frontendKnowledgeDraftRevisionDigest,
   stableJson,
   type FrontendKnowledgeDraftBaseV1,
   type FrontendKnowledgeDraftChangeSetV1,
   type FrontendKnowledgeOperationV1,
 } from '../../../packages/contracts/src/index.js';
 
-export const FRONTEND_KNOWLEDGE_DRAFT_DOMAIN_VERSION = '1.0.0' as const;
+// Shared digest surface: the browser client and the server domain compute
+// identical digests from the single contracts implementation.
+export { FRONTEND_KNOWLEDGE_DRAFT_DOMAIN_VERSION, frontendKnowledgeDraftRevisionDigest };
 
 export type DraftCommandIdentityV1 = {
   readonly principalId: string;
@@ -249,23 +252,6 @@ export const assertFrontendKnowledgeDraftBaseBinding = (
     domainFailure('PROJECT_BINDING_CONFLICT', 'Draft identity or pinned base changed.');
   }
 };
-
-export const frontendKnowledgeDraftRevisionDigest = (input: {
-  readonly draftId: string;
-  readonly revision: number;
-  readonly base: FrontendKnowledgeDraftBaseV1;
-  readonly operations: readonly FrontendKnowledgeOperationV1[];
-}): string =>
-  sha256Text(
-    stableJson({
-      domain: 'frontend-knowledge-draft',
-      version: FRONTEND_KNOWLEDGE_DRAFT_DOMAIN_VERSION,
-      draftId: input.draftId,
-      revision: input.revision,
-      base: input.base,
-      operations: input.operations,
-    }),
-  );
 
 const assertOperationRevision = (
   operations: readonly FrontendKnowledgeOperationV1[],

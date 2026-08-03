@@ -1,5 +1,6 @@
 import type { ErrorCode } from './errors.js';
 import { FrontendContractError } from './frontend-foundation.js';
+import { sha256Text, stableJson } from './document-evidence.js';
 
 export type DraftArtifactStatusV1 = 'COMPLETE' | 'PARTIAL' | 'FAILED' | 'UNAVAILABLE';
 
@@ -28,6 +29,80 @@ export const FRONTEND_KNOWLEDGE_DRAFT_COMMAND_TYPES = {
 
 export type FrontendKnowledgeDraftCommandType =
   (typeof FRONTEND_KNOWLEDGE_DRAFT_COMMAND_TYPES)[keyof typeof FRONTEND_KNOWLEDGE_DRAFT_COMMAND_TYPES];
+
+/**
+ * Version tag included in the Draft revision content digest. Shared by the
+ * server domain and the browser client so both compute identical digests.
+ */
+export const FRONTEND_KNOWLEDGE_DRAFT_DOMAIN_VERSION = '1.0.0' as const;
+
+/**
+ * Content digest of a full Draft revision. The browser computes this for the
+ * Save request; the server re-computes it and rejects any mismatch with
+ * VALIDATION_FAILED.
+ */
+export const frontendKnowledgeDraftRevisionDigest = (input: {
+  readonly draftId: string;
+  readonly revision: number;
+  readonly base: FrontendKnowledgeDraftBaseV1;
+  readonly operations: readonly FrontendKnowledgeOperationV1[];
+}): string =>
+  sha256Text(
+    stableJson({
+      domain: 'frontend-knowledge-draft',
+      version: FRONTEND_KNOWLEDGE_DRAFT_DOMAIN_VERSION,
+      draftId: input.draftId,
+      revision: input.revision,
+      base: input.base,
+      operations: input.operations,
+    }),
+  );
+
+/**
+ * Per-command semantic digests. The request identity fields
+ * (clientRequestId, idempotencyKey) are intentionally excluded so the same
+ * idempotency key with the same command meaning is recognised as the same
+ * command even when the clientRequestId differs. The browser computes these
+ * for Resolve-Outcome; the server coordinator computes the same values when
+ * it accepts the command.
+ */
+export const frontendKnowledgeDraftMaterializeDigest = (
+  request: MaterializeDraftRequestV1,
+): string => sha256Text(stableJson({ seedId: request.seedId }));
+
+export const frontendKnowledgeDraftStartSeedlessDigest = (
+  request: StartSeedlessDraftRequestV1,
+): string =>
+  sha256Text(
+    stableJson(
+      request.resourceId !== undefined
+        ? { resourceId: request.resourceId }
+        : { pageId: request.pageId },
+    ),
+  );
+
+export const frontendKnowledgeDraftSaveDigest = (request: SaveKnowledgeDraftRequestV1): string =>
+  sha256Text(
+    stableJson({
+      draftId: request.draftId,
+      expectedDraftRevision: request.expectedDraftRevision,
+      expectedBaseRevision: request.expectedBaseRevision,
+      operationRevision: request.operationRevision,
+      operations: request.operations,
+      contentDigest: request.contentDigest,
+    }),
+  );
+
+export const frontendKnowledgeDraftAbandonDigest = (
+  request: AbandonKnowledgeDraftRequestV1,
+): string =>
+  sha256Text(
+    stableJson({
+      draftId: request.draftId,
+      expectedDraftRevision: request.expectedDraftRevision,
+      expectedBaseRevision: request.expectedBaseRevision,
+    }),
+  );
 
 export type FrontendKnowledgeProjectPolicyContextV1 = {
   readonly activeProjectId: string;

@@ -298,4 +298,74 @@ describe('FE-P3-S2 Browser Draft State Machine (pure reducer)', () => {
     expect(state.draft?.draftId).toBe('draft-seed-1');
     expect(state.state).toBe('CLEAN');
   });
+
+  it('ignores EDIT while SAVING / STALE / CONFLICT / OUTCOME_UNKNOWN', () => {
+    const protectedStates: Array<
+      Exclude<
+        Parameters<typeof knowledgeDraftReducer>[0]['state'],
+        'CLEAN' | 'DIRTY' | 'SAVE_FAILED'
+      >
+    > = ['SAVING', 'STALE', 'CONFLICT', 'OUTCOME_UNKNOWN'];
+
+    for (const protectedState of protectedStates) {
+      const pinnedContext = liveOf(draftV1());
+      const before = {
+        ...createKnowledgeDraftState(draftV1()),
+        state: protectedState,
+        isDirty: true,
+        localOperations: [pOperation(2)],
+        pinnedContext,
+        commandIdentity: identity,
+        failure: null,
+        errorMessage: `blocked in ${protectedState}`,
+      };
+      const after = knowledgeDraftReducer(before, {
+        type: 'EDIT',
+        operations: [pOperation(3)],
+        liveContext: liveOf(draftV1()),
+      });
+
+      // The existing state, local operations, pinned context and command
+      // identity are preserved exactly.
+      expect(after).toBe(before);
+      expect(after.state).toBe(protectedState);
+      expect(after.localOperations).toEqual([pOperation(2)]);
+      expect(after.pinnedContext).toEqual(pinnedContext);
+      expect(after.commandIdentity).toEqual(identity);
+    }
+  });
+
+  it('EDIT is allowed from CLEAN / DIRTY / SAVE_FAILED', () => {
+    let state = knowledgeDraftReducer(createKnowledgeDraftState(draftV1()), {
+      type: 'EDIT',
+      operations: [pOperation(2)],
+      liveContext: liveOf(draftV1()),
+    });
+    expect(state.state).toBe('DIRTY');
+
+    state = knowledgeDraftReducer(
+      { ...state, state: 'SAVE_FAILED', failure: null, errorMessage: 'previous failure' },
+      {
+        type: 'EDIT',
+        operations: [pOperation(3)],
+        liveContext: liveOf(draftV1()),
+      },
+    );
+    expect(state.state).toBe('DIRTY');
+    expect(state.localOperations).toHaveLength(2);
+    expect(state.errorMessage).toBeNull();
+  });
+
+  it('restores a pending OUTCOME_UNKNOWN command identity without resubmitting', () => {
+    let state = createKnowledgeDraftState(draftV1());
+    state = knowledgeDraftReducer(state, {
+      type: 'RESTORE_PENDING_COMMAND',
+      identity,
+    });
+
+    expect(state.state).toBe('OUTCOME_UNKNOWN');
+    expect(state.commandIdentity).toEqual(identity);
+    expect(state.localOperations).toHaveLength(0);
+    expect(state.errorMessage).toContain('unresolved');
+  });
 });

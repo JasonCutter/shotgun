@@ -19,6 +19,12 @@ import {
   type KnowledgeDraftBrowserStateSnapshot,
   type KnowledgeDraftPinnedContextV1,
 } from './knowledge-draft-state-machine.js';
+import {
+  clearPendingKnowledgeDraftCommandIdentity,
+  readPendingKnowledgeDraftCommandIdentity,
+  writePendingKnowledgeDraftCommandIdentity,
+  type PendingCommandStorage,
+} from './pending-draft-command-storage.js';
 
 const typedFailureFrom = (error: unknown): TypedFrontendFailure | null =>
   error instanceof ShotgunApiError && error.failure
@@ -27,6 +33,15 @@ const typedFailureFrom = (error: unknown): TypedFrontendFailure | null =>
 
 const freshRequestId = (prefix: string): string =>
   `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+/** sessionStorage is best-effort: unavailable storage never breaks editing. */
+const getSessionStorage = (): PendingCommandStorage | null => {
+  try {
+    return globalThis.sessionStorage ?? null;
+  } catch {
+    return null;
+  }
+};
 
 export type KnowledgeDraftSaveClient = Pick<FrontendKnowledgeDraftClient, 'saveDraft'>;
 export type KnowledgeDraftResolveClient = Pick<
@@ -62,6 +77,7 @@ export type KnowledgeDraftController = {
 export const useKnowledgeDraft = (
   serverDraft: FrontendKnowledgeDraftChangeSetV1 | null | undefined,
   sessionActiveProjectId?: string,
+  sessionId?: string,
 ): KnowledgeDraftController => {
   const liveContext = useMemo<KnowledgeDraftPinnedContextV1 | null>(() => {
     if (!serverDraft) return null;
@@ -97,25 +113,72 @@ export const useKnowledgeDraft = (
     }
   }, [liveContext]);
 
-  // Leave guard: block navigation while a Draft is dirty / saving / stale /
-  // conflicted / unresolved.
+  // Leave guard: block navigation while there are unsaved edits (isDirty —
+  // DIRTY / SAVING / SAVE_FAILED) or the Draft is stale / conflicted /
+  // unresolved.
   useEffect(() => {
     const current = draftStateRef.current;
-    const state = current.state;
+    const hasUnsavedDraft = current.isDirty;
     const blocks =
-      state === 'DIRTY' ||
-      state === 'SAVING' ||
-      state === 'STALE' ||
-      state === 'CONFLICT' ||
-      state === 'OUTCOME_UNKNOWN';
+      hasUnsavedDraft ||
+      current.state === 'STALE' ||
+      current.state === 'CONFLICT' ||
+      current.state === 'OUTCOME_UNKNOWN';
 
     return registerLeaveGuard(() => ({
       canLeaveCurrentContext: !blocks,
-      hasUnsavedDraft: state === 'DIRTY' || state === 'SAVING',
+      hasUnsavedDraft,
       hasBlockingDialog: false,
-      hasOutcomeUnknownCommand: state === 'OUTCOME_UNKNOWN',
+      hasOutcomeUnknownCommand: current.state === 'OUTCOME_UNKNOWN',
     }));
   }, [registerLeaveGuard, draftState.state, draftState.isDirty]);
+
+  const projectId = draftState.draft?.activeProjectId ?? null;
+  const draftId = draftState.draft?.draftId ?? null;
+
+  // Restore a pending OUTCOME_UNKNOWN command identity after a page reload.
+  // The identity is scoped to this Session / Project / Draft; recovery only
+  // resolves the original command and never resubmits a Save.
+  useEffect(() => {
+    const storage = getSessionStorage();
+    if (!storage || !sessionId || !projectId || !draftId) return;
+    const current = draftStateRef.current;
+    if (current.state === 'OUTCOME_UNKNOWN' && current.commandIdentity) return;
+    const pending = readPendingKnowledgeDraftCommandIdentity(
+      storage,
+      sessionId,
+      projectId,
+      draftId,
+    );
+    if (!pending) return;
+    dispatch({
+      type: 'RESTORE_PENDING_COMMAND',
+      identity: {
+        clientRequestId: pending.clientRequestId,
+        idempotencyKey: pending.idempotencyKey,
+        semanticDigest: pending.semanticDigest,
+      },
+    });
+  }, [sessionId, projectId, draftId]);
+
+  // Persist the pending identity only while OUTCOME_UNKNOWN; clear it on
+  // COMPLETED, REJECTED, reset or any terminal state.
+  useEffect(() => {
+    const storage = getSessionStorage();
+    if (!storage || !sessionId || !projectId || !draftId) return;
+    if (draftState.state === 'OUTCOME_UNKNOWN' && draftState.commandIdentity) {
+      writePendingKnowledgeDraftCommandIdentity(storage, {
+        clientRequestId: draftState.commandIdentity.clientRequestId,
+        idempotencyKey: draftState.commandIdentity.idempotencyKey,
+        semanticDigest: draftState.commandIdentity.semanticDigest,
+        sessionId,
+        projectId,
+        draftId,
+      });
+      return;
+    }
+    clearPendingKnowledgeDraftCommandIdentity(storage, sessionId, projectId, draftId);
+  }, [draftState.state, draftState.commandIdentity, sessionId, projectId, draftId]);
 
   const editOperations = useCallback((operations: readonly FrontendKnowledgeOperationV1[]) => {
     const live = liveContextRef.current;

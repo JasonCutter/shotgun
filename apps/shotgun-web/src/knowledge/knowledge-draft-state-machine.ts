@@ -117,6 +117,7 @@ export type KnowledgeDraftAction =
     }
   | { readonly type: 'DETECT_DRIFT'; readonly liveContext: KnowledgeDraftPinnedContextV1 }
   | { readonly type: 'MARK_STALE'; readonly message: string }
+  | { readonly type: 'RESTORE_PENDING_COMMAND'; readonly identity: KnowledgeDraftCommandIdentityV1 }
   | { readonly type: 'RESET' }
   | { readonly type: 'RECOVER_START' }
   | {
@@ -210,6 +211,17 @@ export const knowledgeDraftReducer = (
       };
     }
     case 'EDIT': {
+      // Edit protection: while a command is in flight or the Draft is stale /
+      // conflicted / unresolved, edits are ignored and the existing state,
+      // local operations, pinned context and command identity are preserved.
+      if (
+        state.state === 'SAVING' ||
+        state.state === 'STALE' ||
+        state.state === 'CONFLICT' ||
+        state.state === 'OUTCOME_UNKNOWN'
+      ) {
+        return state;
+      }
       if (!state.draft) {
         return { ...state, errorMessage: 'No Knowledge Draft is open for editing.' };
       }
@@ -290,6 +302,18 @@ export const knowledgeDraftReducer = (
         state: 'STALE',
         failure: null,
         errorMessage: action.message,
+      };
+    }
+    case 'RESTORE_PENDING_COMMAND': {
+      // Restores an OUTCOME_UNKNOWN command identity persisted in
+      // sessionStorage after a page reload. Only the original identity is
+      // restored; the command is recovered by resolve, never resubmitted.
+      return {
+        ...state,
+        state: 'OUTCOME_UNKNOWN',
+        commandIdentity: action.identity,
+        failure: null,
+        errorMessage: 'The previous command outcome is unresolved; recover it before continuing.',
       };
     }
     case 'RESET': {

@@ -11,10 +11,20 @@ import { useAppRuntime } from '../app/providers.js';
 import { productSessionQueryKey } from '../app/query-keys.js';
 import { safeErrorMessage } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
+import { clearAllPendingKnowledgeDraftCommandIdentities } from '../knowledge/pending-draft-command-storage.js';
 
 export const LogoutButton = () => {
   const { apiClient, queryClient } = useAppRuntime();
   const resetSession = async () => {
+    // Logout discards every pending FE-P3-S2 Draft command identity: a
+    // command identity is scoped to its Session and must never survive it.
+    try {
+      if (globalThis.sessionStorage) {
+        clearAllPendingKnowledgeDraftCommandIdentities(globalThis.sessionStorage);
+      }
+    } catch {
+      // sessionStorage is best-effort; the session reset below still runs.
+    }
     await queryClient.cancelQueries();
     await queryClient.resetQueries({ queryKey: productSessionQueryKey });
   };

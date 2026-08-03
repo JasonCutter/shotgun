@@ -8,11 +8,14 @@ import { PostgresFrontendKnowledgeDraftTargetResolver } from '../../adapters/fro
 import { InMemoryAuthRepository } from '../../packages/authentication/src/index.js';
 import { createApplication } from '../../assemblies/shotgun-app/src/server.js';
 import {
+  createFrontendKnowledgeDraftClient,
+  frontendKnowledgeDraftRevisionDigest,
+} from '../../packages/shotgun-api-client/src/index.js';
+import {
   FrontendKnowledgeDraftProductCoordinator,
   frontendKnowledgeDraftMaterializeDigest,
   frontendKnowledgeDraftSaveDigest,
 } from '../../modules/frontend-knowledge-draft/src/product-api.js';
-import { frontendKnowledgeDraftRevisionDigest } from '../../modules/frontend-knowledge-draft/src/index.js';
 import type { FrontendKnowledgeOperationV1 } from '../../packages/contracts/src/index.js';
 import { pBase, pOperation } from '../helpers/frontend-knowledge-draft-parity.js';
 
@@ -288,6 +291,101 @@ describe.runIf(pool)('FE-P3-S2 Product API coordinator on PostgreSQL persistence
     expect(body.draft.resourceId).toBe(claimId);
     expect(body.draft.base.revisionIdentityKind).toBe('RESOURCE_REVISION');
     expect(body.draft.base.canonicalResourceId).toBe(claimId);
+    await application.server.close();
+  });
+
+  it('validates the typed client Save digest through the real route and PostgreSQL coordinator', async () => {
+    const auth = new InMemoryAuthRepository();
+    await auth.bootstrapOwner({
+      accountId: 'draft-api-owner',
+      projectId: PROJECT_ID,
+      scopes: ['owner'],
+      sensitivityClearance: 'private',
+    });
+    const principal = await auth.findPrincipalByAccountId('draft-api-owner');
+    if (!principal) throw new Error('Draft API fixture Principal was not created.');
+    const session = await auth.createSession(
+      principal.principalId,
+      PROJECT_ID,
+      new Date(Date.now() + 60_000).toISOString(),
+    );
+    const cookie = `shotgun_session=${session.sessionToken}`;
+
+    const resolver = new InMemoryFrontendKnowledgeDraftTargetResolver();
+    resolver.registerSeed('seed-1', {
+      resourceId: 'resource-1',
+      resourceProjectId: PROJECT_ID,
+      draftProjectId: PROJECT_ID,
+      effectiveProjectId: PROJECT_ID,
+      base: pBase,
+    });
+    const application = await createApplication({
+      authRepository: auth,
+      frontendCommandGateway: new PostgresFrontendCommandGateway(pool!),
+      frontendKnowledgeDraftRepository: new PostgresFrontendKnowledgeDraftRepository(pool!),
+      frontendKnowledgeDraftTargetResolver: resolver,
+    });
+
+    // The typed Draft client talks to the real Product routes through the
+    // Fastify inject server, carrying the session cookie on every request.
+    const injectFetch = async (url: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const href = String(url);
+      const headers = { ...((init?.headers as Record<string, string>) ?? {}), cookie };
+      const response = await application.server.inject({
+        method: (init?.method as 'GET' | 'POST' | undefined) ?? 'GET',
+        url: href,
+        headers,
+        ...(init?.body === undefined ? {} : { payload: JSON.parse(String(init.body)) }),
+      });
+      return new Response(response.body, {
+        status: response.statusCode,
+        headers: { 'content-type': 'application/json' },
+      });
+    };
+    const client = createFrontendKnowledgeDraftClient({ fetch: injectFetch });
+
+    // Materialize through the client -> route -> PostgreSQL coordinator.
+    const materialized = await client.materializeDraft({
+      schemaVersion: '1.0.0',
+      clientRequestId: 'materialize-req-1',
+      idempotencyKey: 'materialize-idem-1',
+      seedId: 'seed-1',
+    });
+    expect(materialized.outcome).toBe('COMPLETED');
+    expect(materialized.draft.revision).toBe(1);
+    const draft = materialized.draft;
+
+    // Build the Save exactly like the browser controller does: real typed
+    // operations and the real contracts revision digest (no fake digests).
+    const operations: readonly FrontendKnowledgeOperationV1[] = [pOperation(2)];
+    const contentDigest = frontendKnowledgeDraftRevisionDigest({
+      draftId: draft.draftId,
+      revision: 2,
+      base: draft.base,
+      operations,
+    });
+    const saved = await client.saveDraft({
+      schemaVersion: '1.0.0',
+      clientRequestId: 'save-req-1',
+      idempotencyKey: 'save-idem-1',
+      draftId: draft.draftId,
+      expectedDraftRevision: 1,
+      expectedBaseRevision: draft.base.canonicalVersion,
+      operationRevision: 2,
+      operations,
+      contentDigest,
+    });
+
+    // The PostgreSQL coordinator recomputed the digest with the same contracts
+    // implementation and accepted the revision.
+    expect(saved.outcome).toBe('COMPLETED');
+    expect(saved.draft.revision).toBe(2);
+    expect(saved.draft.contentDigest).toBe(contentDigest);
+    const ledger = await pool!.query<{ outcome_state: string }>(
+      `SELECT outcome_state FROM frontend_command.command_ledger WHERE client_request_id = $1`,
+      ['save-req-1'],
+    );
+    expect(ledger.rows[0]?.outcome_state).toBe('COMPLETED');
     await application.server.close();
   });
 });

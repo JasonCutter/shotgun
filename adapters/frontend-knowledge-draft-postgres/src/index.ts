@@ -10,6 +10,7 @@ import type {
   DraftMaterializationRecordV1,
   FrontendKnowledgeDraftRepositoryBoundaryPort,
   FrontendKnowledgeDraftRevisionRecordV1,
+  FrontendKnowledgeDraftTransactionHandleV1,
   FrontendKnowledgeDraftTransactionRepositoriesV1,
 } from '../../../modules/frontend-knowledge-draft/src/index.js';
 
@@ -54,6 +55,16 @@ export class PostgresFrontendKnowledgeDraftRepository implements FrontendKnowled
     return withSafePostgresTransaction(
       this.pool,
       async (client) => action(this.repositories(client)),
+      { module: 'frontend-knowledge-draft-postgres', operation: 'draft-transaction' },
+    );
+  }
+
+  async transactionWithHandle<T>(
+    action: (handle: FrontendKnowledgeDraftTransactionHandleV1) => Promise<T>,
+  ): Promise<T> {
+    return withSafePostgresTransaction(
+      this.pool,
+      async (client) => action({ repositories: this.repositories(client), raw: client }),
       { module: 'frontend-knowledge-draft-postgres', operation: 'draft-transaction' },
     );
   }

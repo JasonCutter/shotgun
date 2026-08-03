@@ -4,14 +4,23 @@ import { InMemoryFrontendKnowledgeDraftRepository } from '../../adapters/fronten
 import { InMemoryFrontendKnowledgeDraftTargetResolver } from '../../adapters/frontend-knowledge-draft-api-in-memory/src/index.js';
 import { InMemoryFrontendCommandGateway } from '../../adapters/frontend-command-gateway-in-memory/src/index.js';
 import { createApplication } from '../../assemblies/shotgun-app/src/server.js';
-import { FrontendKnowledgeDraftProductCoordinator } from '../../modules/frontend-knowledge-draft/src/product-api.js';
+import {
+  FrontendKnowledgeDraftProductCoordinator,
+  frontendKnowledgeDraftMaterializeDigest,
+  frontendKnowledgeDraftSaveDigest,
+} from '../../modules/frontend-knowledge-draft/src/product-api.js';
 import { frontendKnowledgeDraftRevisionDigest } from '../../modules/frontend-knowledge-draft/src/index.js';
+import type {
+  AcceptFrontendCommandInput,
+  CompleteFrontendCommandInput,
+} from '../../modules/frontend-command-gateway/src/index.js';
 import { InMemoryAuthRepository } from '../../packages/authentication/src/index.js';
 import {
-  sha256Text,
-  stableJson,
+  FRONTEND_KNOWLEDGE_DRAFT_COMMAND_TYPES,
   type FrontendKnowledgeDraftBaseV1,
   type FrontendKnowledgeOperationV1,
+  type MaterializeDraftRequestV1,
+  type SaveKnowledgeDraftRequestV1,
 } from '../../packages/contracts/src/index.js';
 import { pBase, pOperation } from '../helpers/frontend-knowledge-draft-parity.js';
 
@@ -22,7 +31,23 @@ const base = (
 ): FrontendKnowledgeDraftBaseV1 =>
   ({ ...pBase, resourceProjectId: PROJECT_ID, ...overrides }) as FrontendKnowledgeDraftBaseV1;
 
-const digestOf = (value: unknown): string => sha256Text(stableJson(value));
+class CountingTargetResolver extends InMemoryFrontendKnowledgeDraftTargetResolver {
+  resolveSeedCalls = 0;
+  override async resolveSeed(
+    input: Parameters<InMemoryFrontendKnowledgeDraftTargetResolver['resolveSeed']>[0],
+  ) {
+    this.resolveSeedCalls += 1;
+    return super.resolveSeed(input);
+  }
+}
+
+class FailingCompleteGateway extends InMemoryFrontendCommandGateway {
+  failComplete = false;
+  override async completeInTransaction(transaction: unknown, input: CompleteFrontendCommandInput) {
+    if (this.failComplete) throw new Error('simulated Ledger COMPLETED failure');
+    return super.completeInTransaction(transaction, input);
+  }
+}
 
 describe('FE-P3-S2 Knowledge Draft Product API foundation', () => {
   let auth: InMemoryAuthRepository;
@@ -85,11 +110,56 @@ describe('FE-P3-S2 Knowledge Draft Product API foundation', () => {
   };
 
   const envelope = (clientRequestId: string, extra: Record<string, unknown> = {}) => ({
-    schemaVersion: '1.0.0',
+    schemaVersion: '1.0.0' as const,
     clientRequestId,
     idempotencyKey: `key-${clientRequestId}`,
     ...extra,
   });
+
+  const registerAccepted = async (input: {
+    readonly gateway: InMemoryFrontendCommandGateway;
+    readonly principalId: string;
+    readonly commandType: string;
+    readonly clientRequestId: string;
+    readonly idempotencyKey: string;
+    readonly commandSemanticDigest: string;
+    readonly payload: object;
+  }) => {
+    const now = new Date().toISOString();
+    const acceptInput: AcceptFrontendCommandInput = {
+      commandId: `cmd-registered-${input.clientRequestId}`,
+      commandRevision: '1',
+      principalId: input.principalId,
+      request: {
+        envelopeVersion: '1.0.0',
+        commandType: input.commandType,
+        commandSchemaVersion: '1.0.0',
+        clientRequestId: input.clientRequestId,
+        idempotencyKey: input.idempotencyKey,
+        projectContext: {
+          activeProjectId: PROJECT_ID,
+          targetProjectId: PROJECT_ID,
+          resourceProjectId: PROJECT_ID,
+          observedProjectAccessRevision: 'access-7',
+        },
+        policyBinding: { mode: 'CURRENT', observedPolicyContextRevision: '7' },
+        preconditions: [],
+        clientIssuedAt: now,
+        payload: input.payload,
+      },
+      commandSemanticDigest: input.commandSemanticDigest,
+      acceptedPolicyContext: {
+        policyContextId: 'frontend-knowledge-draft-current-policy',
+        policyContextRevision: '7',
+        acceptedAt: now,
+      },
+      correlationId: 'corr-test',
+      traceId: 'trace-test',
+      receivedAt: now,
+      acceptedAt: now,
+    };
+    await input.gateway.accept(acceptInput);
+  };
 
   it('materializes a Seed into a server-authoritative Draft and replays idempotently', async () => {
     const resolver = new InMemoryFrontendKnowledgeDraftTargetResolver();
@@ -265,7 +335,9 @@ describe('FE-P3-S2 Knowledge Draft Product API foundation', () => {
         schemaVersion: '1.0.0',
         clientRequestId: 'request-3',
         idempotencyKey: 'key-request-3',
-        semanticDigest: digestOf(stalePayload),
+        semanticDigest: frontendKnowledgeDraftSaveDigest(
+          stalePayload as unknown as SaveKnowledgeDraftRequestV1,
+        ),
       },
     );
     expect(resolved.statusCode).toBe(200);
@@ -351,7 +423,9 @@ describe('FE-P3-S2 Knowledge Draft Product API foundation', () => {
         schemaVersion: '1.0.0',
         clientRequestId: 'request-1',
         idempotencyKey: 'key-request-1',
-        semanticDigest: digestOf(materializePayload),
+        semanticDigest: frontendKnowledgeDraftMaterializeDigest(
+          materializePayload as unknown as MaterializeDraftRequestV1,
+        ),
       },
     );
     expect(resolved.statusCode).toBe(200);
@@ -434,6 +508,252 @@ describe('FE-P3-S2 Knowledge Draft Product API foundation', () => {
     );
     expect(authorityInjected.statusCode).toBe(403);
     expect(authorityInjected.json<{ code: string }>().code).toBe('PRECONDITION_ACCESS_DENIED');
+    await application.server.close();
+  });
+
+  it('keeps the Draft and Ledger consistent when the COMPLETED transition fails', async () => {
+    const resolver = new InMemoryFrontendKnowledgeDraftTargetResolver();
+    resolver.registerSeed('seed-1', {
+      resourceId: 'resource-1',
+      resourceProjectId: PROJECT_ID,
+      draftProjectId: PROJECT_ID,
+      effectiveProjectId: PROJECT_ID,
+      base: base(),
+    });
+    const repository = new InMemoryFrontendKnowledgeDraftRepository();
+    const gateway = new FailingCompleteGateway();
+    const coordinator = new FrontendKnowledgeDraftProductCoordinator(repository, gateway, resolver);
+    const application = await createApplication({
+      authRepository: auth,
+      frontendKnowledgeDraftCoordinator: coordinator,
+    });
+    const cookie = await projectSession();
+
+    const materialized = await inject(
+      application,
+      cookie,
+      '/product-api/frontend/knowledge/drafts/materialize',
+      envelope('request-1', { seedId: 'seed-1' }),
+    );
+    expect(materialized.statusCode).toBe(200);
+    const draft = materialized.json<{
+      draft: { draftId: string; base: FrontendKnowledgeDraftBaseV1 };
+    }>().draft;
+
+    // The Draft write succeeds inside the transaction, then the Ledger
+    // COMPLETED transition fails. The whole transaction must roll back.
+    gateway.failComplete = true;
+    const savePayload = envelope('request-2', {
+      draftId: draft.draftId,
+      expectedDraftRevision: 1,
+      expectedBaseRevision: draft.base.canonicalVersion,
+      operationRevision: 2,
+      operations: [pOperation(2)],
+      contentDigest: frontendKnowledgeDraftRevisionDigest({
+        draftId: draft.draftId,
+        revision: 2,
+        base: draft.base,
+        operations: [pOperation(2)],
+      }),
+    });
+    const failed = await inject(
+      application,
+      cookie,
+      '/product-api/frontend/knowledge/drafts/save',
+      savePayload,
+    );
+    expect(failed.statusCode).toBeGreaterThanOrEqual(500);
+
+    // The Draft revision was NOT committed (rolled back to revision 1).
+    const after = await inject(
+      application,
+      cookie,
+      '/product-api/frontend/knowledge/drafts/resolve-outcome',
+      {
+        schemaVersion: '1.0.0',
+        clientRequestId: 'request-1',
+        idempotencyKey: 'key-request-1',
+        semanticDigest: frontendKnowledgeDraftMaterializeDigest(
+          envelope('request-1', { seedId: 'seed-1' }) as unknown as MaterializeDraftRequestV1,
+        ),
+      },
+    );
+    expect(after.statusCode).toBe(200);
+    expect(after.json<{ draft: { revision: number } }>().draft.revision).toBe(1);
+
+    // The uncertain command is OUTCOME_UNKNOWN, never a misleading
+    // REJECTED or COMPLETED.
+    const resolved = await inject(
+      application,
+      cookie,
+      '/product-api/frontend/knowledge/drafts/resolve-outcome',
+      {
+        schemaVersion: '1.0.0',
+        clientRequestId: 'request-2',
+        idempotencyKey: 'key-request-2',
+        semanticDigest: frontendKnowledgeDraftSaveDigest(
+          savePayload as unknown as SaveKnowledgeDraftRequestV1,
+        ),
+      },
+    );
+    expect(resolved.statusCode).toBe(200);
+    expect(resolved.json<{ outcome: string }>().outcome).toBe('OUTCOME_UNKNOWN');
+    await application.server.close();
+  });
+
+  it('never re-runs the action for a replayed ACCEPTED command', async () => {
+    const resolver = new CountingTargetResolver();
+    resolver.registerSeed('seed-1', {
+      resourceId: 'resource-1',
+      resourceProjectId: PROJECT_ID,
+      draftProjectId: PROJECT_ID,
+      effectiveProjectId: PROJECT_ID,
+      base: base(),
+    });
+    const repository = new InMemoryFrontendKnowledgeDraftRepository();
+    const gateway = new InMemoryFrontendCommandGateway();
+    const coordinator = new FrontendKnowledgeDraftProductCoordinator(repository, gateway, resolver);
+    const application = await createApplication({
+      authRepository: auth,
+      frontendKnowledgeDraftCoordinator: coordinator,
+    });
+    const cookie = await projectSession();
+    const principal = await auth.findPrincipalByAccountId('draft-api-owner');
+    if (!principal) throw new Error('Draft API fixture Principal was not created.');
+
+    const materializeEnvelope = envelope('request-1', { seedId: 'seed-1' });
+    // Pre-register an in-flight ACCEPTED command with the same identity, as
+    // if a previous executor accepted but never completed it.
+    await registerAccepted({
+      gateway,
+      principalId: principal.principalId,
+      commandType: FRONTEND_KNOWLEDGE_DRAFT_COMMAND_TYPES.materialize,
+      clientRequestId: 'request-1',
+      idempotencyKey: 'key-request-1',
+      commandSemanticDigest: frontendKnowledgeDraftMaterializeDigest(
+        materializeEnvelope as unknown as MaterializeDraftRequestV1,
+      ),
+      payload: materializeEnvelope,
+    });
+
+    const response = await inject(
+      application,
+      cookie,
+      '/product-api/frontend/knowledge/drafts/materialize',
+      materializeEnvelope,
+    );
+    // An unresolved in-flight command is OUTCOME_INDETERMINATE (503): it is
+    // never auto re-executed and never mislabelled as a conflict.
+    expect(response.statusCode).toBe(503);
+    expect(response.json<{ code: string }>().code).toBe('OUTCOME_INDETERMINATE');
+    // The action (which would call resolveSeed) was never executed.
+    expect(resolver.resolveSeedCalls).toBe(0);
+    await application.server.close();
+  });
+
+  it('returns the existing result for the same idempotency key and meaning with a new clientRequestId', async () => {
+    const resolver = new InMemoryFrontendKnowledgeDraftTargetResolver();
+    resolver.registerSeed('seed-1', {
+      resourceId: 'resource-1',
+      resourceProjectId: PROJECT_ID,
+      draftProjectId: PROJECT_ID,
+      effectiveProjectId: PROJECT_ID,
+      base: base(),
+    });
+    const application = await buildApplication(resolver);
+    const cookie = await projectSession();
+
+    const first = await inject(
+      application,
+      cookie,
+      '/product-api/frontend/knowledge/drafts/materialize',
+      envelope('request-1', { seedId: 'seed-1' }),
+    );
+    expect(first.statusCode).toBe(200);
+    const firstDraftId = first.json<{ draft: { draftId: string } }>().draft.draftId;
+
+    // Same idempotency key + same command meaning, but a NEW clientRequestId.
+    const second = await inject(
+      application,
+      cookie,
+      '/product-api/frontend/knowledge/drafts/materialize',
+      envelope('request-2', { seedId: 'seed-1', idempotencyKey: 'key-request-1' }),
+    );
+    expect(second.statusCode).toBe(200);
+    const secondBody = second.json<{
+      clientRequestId: string;
+      draft: { draftId: string };
+    }>();
+    expect(secondBody.clientRequestId).toBe('request-2');
+    expect(secondBody.draft.draftId).toBe(firstDraftId);
+    await application.server.close();
+  });
+
+  it('rejects resolve when the idempotency key or command type does not match', async () => {
+    const resolver = new InMemoryFrontendKnowledgeDraftTargetResolver();
+    resolver.registerSeed('seed-1', {
+      resourceId: 'resource-1',
+      resourceProjectId: PROJECT_ID,
+      draftProjectId: PROJECT_ID,
+      effectiveProjectId: PROJECT_ID,
+      base: base(),
+    });
+    const repository = new InMemoryFrontendKnowledgeDraftRepository();
+    const gateway = new InMemoryFrontendCommandGateway();
+    const coordinator = new FrontendKnowledgeDraftProductCoordinator(repository, gateway, resolver);
+    const application = await createApplication({
+      authRepository: auth,
+      frontendKnowledgeDraftCoordinator: coordinator,
+    });
+    const cookie = await projectSession();
+    const principal = await auth.findPrincipalByAccountId('draft-api-owner');
+    if (!principal) throw new Error('Draft API fixture Principal was not created.');
+
+    const materializeEnvelope = envelope('request-1', { seedId: 'seed-1' });
+    const digest = frontendKnowledgeDraftMaterializeDigest(
+      materializeEnvelope as unknown as MaterializeDraftRequestV1,
+    );
+    // Register an outcome whose commandType is NOT in the FE-P3-S2 family
+    // under the same client identity.
+    await registerAccepted({
+      gateway,
+      principalId: principal.principalId,
+      commandType: 'other.command.v1',
+      clientRequestId: 'request-1',
+      idempotencyKey: 'key-request-1',
+      commandSemanticDigest: digest,
+      payload: materializeEnvelope,
+    });
+
+    // Wrong idempotency key: identity does not match -> OUTCOME_NOT_FOUND.
+    const wrongKey = await inject(
+      application,
+      cookie,
+      '/product-api/frontend/knowledge/drafts/resolve-outcome',
+      {
+        schemaVersion: '1.0.0',
+        clientRequestId: 'request-1',
+        idempotencyKey: 'key-wrong',
+        semanticDigest: digest,
+      },
+    );
+    expect(wrongKey.statusCode).toBe(404);
+    expect(wrongKey.json<{ code: string }>().code).toBe('OUTCOME_NOT_FOUND');
+
+    // Correct idempotency key but non-Draft command type -> OUTCOME_NOT_FOUND.
+    const wrongType = await inject(
+      application,
+      cookie,
+      '/product-api/frontend/knowledge/drafts/resolve-outcome',
+      {
+        schemaVersion: '1.0.0',
+        clientRequestId: 'request-1',
+        idempotencyKey: 'key-request-1',
+        semanticDigest: digest,
+      },
+    );
+    expect(wrongType.statusCode).toBe(404);
+    expect(wrongType.json<{ code: string }>().code).toBe('OUTCOME_NOT_FOUND');
     await application.server.close();
   });
 });

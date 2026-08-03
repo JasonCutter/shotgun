@@ -4,20 +4,21 @@ import { createPostgresPool } from '../../adapters/postgres/src/index.js';
 import { PostgresFrontendKnowledgeDraftRepository } from '../../adapters/frontend-knowledge-draft-postgres/src/index.js';
 import { PostgresFrontendCommandGateway } from '../../adapters/frontend-command-gateway-postgres/src/index.js';
 import { InMemoryFrontendKnowledgeDraftTargetResolver } from '../../adapters/frontend-knowledge-draft-api-in-memory/src/index.js';
-import { FrontendKnowledgeDraftProductCoordinator } from '../../modules/frontend-knowledge-draft/src/product-api.js';
-import { frontendKnowledgeDraftRevisionDigest } from '../../modules/frontend-knowledge-draft/src/index.js';
+import { PostgresFrontendKnowledgeDraftTargetResolver } from '../../adapters/frontend-knowledge-draft-api-postgres/src/index.js';
+import { InMemoryAuthRepository } from '../../packages/authentication/src/index.js';
+import { createApplication } from '../../assemblies/shotgun-app/src/server.js';
 import {
-  sha256Text,
-  stableJson,
-  type FrontendKnowledgeOperationV1,
-} from '../../packages/contracts/src/index.js';
+  FrontendKnowledgeDraftProductCoordinator,
+  frontendKnowledgeDraftMaterializeDigest,
+  frontendKnowledgeDraftSaveDigest,
+} from '../../modules/frontend-knowledge-draft/src/product-api.js';
+import { frontendKnowledgeDraftRevisionDigest } from '../../modules/frontend-knowledge-draft/src/index.js';
+import type { FrontendKnowledgeOperationV1 } from '../../packages/contracts/src/index.js';
 import { pBase, pOperation } from '../helpers/frontend-knowledge-draft-parity.js';
 
 const PROJECT_ID = 'project-1';
 const databaseUrl = process.env.DATABASE_URL;
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
-
-const digestOf = (value: unknown): string => sha256Text(stableJson(value));
 
 describe.runIf(pool)('FE-P3-S2 Product API coordinator on PostgreSQL persistence', () => {
   beforeEach(async () => {
@@ -27,7 +28,16 @@ describe.runIf(pool)('FE-P3-S2 Product API coordinator on PostgreSQL persistence
                 frontend_knowledge_draft.operations,
                 frontend_knowledge_draft.materializations,
                 frontend_knowledge_draft.artifact_refs,
-                frontend_command.command_ledger
+                frontend_command.command_ledger,
+                canonical.outbox,
+                canonical.history_events,
+                canonical.revisions,
+                canonical.commits,
+                canonical.claims,
+                canonical.project_state,
+                asset.source_versions,
+                asset.sources,
+                asset.original_assets
        CASCADE`,
     );
   });
@@ -91,7 +101,7 @@ describe.runIf(pool)('FE-P3-S2 Product API coordinator on PostgreSQL persistence
       schemaVersion: '1.0.0',
       clientRequestId: 'request-1',
       idempotencyKey: 'key-request-1',
-      semanticDigest: digestOf(request),
+      semanticDigest: frontendKnowledgeDraftMaterializeDigest(request),
     });
     expect(outcome.outcome).toBe('COMPLETED');
     expect(outcome.draft?.draftId).toBe(result.draft.draftId);
@@ -142,8 +152,142 @@ describe.runIf(pool)('FE-P3-S2 Product API coordinator on PostgreSQL persistence
       schemaVersion: '1.0.0',
       clientRequestId: 'request-2',
       idempotencyKey: 'key-request-2',
-      semanticDigest: digestOf(savePayload),
+      semanticDigest: frontendKnowledgeDraftSaveDigest(savePayload),
     });
     expect(resolved.outcome).toBe('REJECTED');
+  });
+
+  it('resolves a Knowledge Resource through the production assembly with the real Postgres resolver', async () => {
+    // Seed real canonical + asset rows exactly as the Stage 2/6 runtime writes
+    // them, then resolve the Resource through the Postgres resolver wired into
+    // the production application assembly (mirroring main.ts).
+    const now = new Date().toISOString();
+    const snapshotDigest = `sha256:${'a'.repeat(64)}`;
+    const claimId = 'claim-resource-1';
+    const sourceVersionId = '11111111-1111-4111-8111-111111111111';
+    const sourceId = '22222222-2222-4222-8222-222222222222';
+    const assetId = '33333333-3333-4333-8333-333333333333';
+    const commitId = '44444444-4444-4444-8444-444444444444';
+    const manifestId = '55555555-5555-4555-8555-555555555555';
+    const changeSetId = '66666666-6666-4666-8666-666666666666';
+    const revisionId = 'revision-resource-1';
+    await pool!.query(
+      `INSERT INTO asset.original_assets (asset_id, content_hash, size_bytes, storage_key, created_at)
+       VALUES ($1, $2, 1024, 'storage-key-1', $3)`,
+      [assetId, snapshotDigest, now],
+    );
+    await pool!.query(
+      `INSERT INTO asset.sources (source_id, project_id, created_by_actor_id, created_at)
+       VALUES ($1, $2, 'owner', $3)`,
+      [sourceId, PROJECT_ID, now],
+    );
+    await pool!.query(
+      `INSERT INTO asset.source_versions (
+         source_version_id, source_id, version_number, original_asset_id,
+         media_type, access_scope, sensitivity, created_at
+       ) VALUES ($1, $2, 1, $3, 'text/plain', ARRAY['owner'], 'private', $4)`,
+      [sourceVersionId, sourceId, assetId, now],
+    );
+    await pool!.query(
+      `INSERT INTO canonical.project_state (project_id, version, snapshot_digest, updated_at)
+       VALUES ($1, 1, $2, $3)`,
+      [PROJECT_ID, snapshotDigest, now],
+    );
+    await pool!.query(
+      `INSERT INTO canonical.claims (
+         claim_id, project_id, source_version_id, manifest_id, claim_json, created_at
+       ) VALUES ($1, $2, $3, $4, $5::jsonb, $6)`,
+      [
+        claimId,
+        PROJECT_ID,
+        sourceVersionId,
+        manifestId,
+        JSON.stringify({
+          claimId,
+          projectId: PROJECT_ID,
+          revisionNumber: 1,
+          claimText: 'Shotgun preserves visual knowledge.',
+          sourceVersionId,
+          evidenceIds: ['evidence-1'],
+          createdFromManifestId: manifestId,
+          accessScope: ['owner'],
+          sensitivity: 'private',
+          createdAt: now,
+        }),
+        now,
+      ],
+    );
+    await pool!.query(
+      `INSERT INTO canonical.commits (
+         commit_id, project_id, manifest_id, manifest_digest, change_set_id,
+         result_json, committed_at
+       ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)`,
+      [commitId, PROJECT_ID, manifestId, snapshotDigest, changeSetId, JSON.stringify({}), now],
+    );
+    await pool!.query(
+      `INSERT INTO canonical.revisions (
+         revision_id, project_id, commit_id, revision_json, created_at
+       ) VALUES ($1, $2, $3, $4::jsonb, $5)`,
+      [
+        revisionId,
+        PROJECT_ID,
+        commitId,
+        JSON.stringify({ revisionId, projectId: PROJECT_ID, claimId }),
+        now,
+      ],
+    );
+
+    const auth = new InMemoryAuthRepository();
+    await auth.bootstrapOwner({
+      accountId: 'draft-api-owner',
+      projectId: PROJECT_ID,
+      scopes: ['owner'],
+      sensitivityClearance: 'private',
+    });
+    const principal = await auth.findPrincipalByAccountId('draft-api-owner');
+    if (!principal) throw new Error('Draft API fixture Principal was not created.');
+    const session = await auth.createSession(
+      principal.principalId,
+      PROJECT_ID,
+      new Date(Date.now() + 60_000).toISOString(),
+    );
+    const cookie = `shotgun_session=${session.sessionToken}`;
+
+    const resolver = new PostgresFrontendKnowledgeDraftTargetResolver(pool!);
+    const application = await createApplication({
+      authRepository: auth,
+      frontendCommandGateway: new PostgresFrontendCommandGateway(pool!),
+      frontendKnowledgeDraftRepository: new PostgresFrontendKnowledgeDraftRepository(pool!),
+      frontendKnowledgeDraftTargetResolver: resolver,
+    });
+    const csrf = (
+      await application.server.inject({
+        method: 'GET',
+        url: '/api/v1/security/csrf',
+        headers: { cookie },
+      })
+    ).json<{ csrfToken: string }>().csrfToken;
+    const started = await application.server.inject({
+      method: 'POST',
+      url: '/product-api/frontend/knowledge/drafts/start-seedless',
+      headers: { cookie, 'x-csrf-token': csrf },
+      payload: {
+        schemaVersion: '1.0.0',
+        clientRequestId: 'request-1',
+        idempotencyKey: 'key-request-1',
+        resourceId: claimId,
+      },
+    });
+    expect(started.statusCode).toBe(200);
+    const body = started.json<{
+      draft: {
+        resourceId: string;
+        base: { revisionIdentityKind: string; canonicalResourceId: string };
+      };
+    }>();
+    expect(body.draft.resourceId).toBe(claimId);
+    expect(body.draft.base.revisionIdentityKind).toBe('RESOURCE_REVISION');
+    expect(body.draft.base.canonicalResourceId).toBe(claimId);
+    await application.server.close();
   });
 });

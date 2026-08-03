@@ -8,6 +8,7 @@ import type {
   FrontendKnowledgeDraftOperationAppendV1,
   FrontendKnowledgeDraftRepositoryBoundaryPort,
   FrontendKnowledgeDraftRevisionRecordV1,
+  FrontendKnowledgeDraftTransactionHandleV1,
   FrontendKnowledgeDraftTransactionRepositoriesV1,
 } from '../../../modules/frontend-knowledge-draft/src/index.js';
 
@@ -77,6 +78,42 @@ export class InMemoryFrontendKnowledgeDraftRepository implements FrontendKnowled
       () => undefined,
     );
     return run;
+  }
+
+  async transactionWithHandle<T>(
+    action: (handle: FrontendKnowledgeDraftTransactionHandleV1) => Promise<T>,
+  ): Promise<T> {
+    const run = this.tail.then(
+      () => this.executeHandle(action),
+      () => this.executeHandle(action),
+    );
+    this.tail = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
+  /** Executes one handle transaction with the same snapshot rollback semantics. */
+  private async executeHandle<T>(
+    action: (handle: FrontendKnowledgeDraftTransactionHandleV1) => Promise<T>,
+  ): Promise<T> {
+    const drafts = new Map(this.drafts);
+    const revisions = [...this.revisions];
+    const operations = [...this.operations];
+    const materializations = [...this.materializations];
+    const artifactRefs = [...this.artifactRefs];
+    try {
+      return await action({ repositories: this.repositories(), raw: undefined });
+    } catch (error) {
+      this.drafts.clear();
+      for (const [key, value] of drafts) this.drafts.set(key, value);
+      this.revisions.splice(0, this.revisions.length, ...revisions);
+      this.operations.splice(0, this.operations.length, ...operations);
+      this.materializations.splice(0, this.materializations.length, ...materializations);
+      this.artifactRefs.splice(0, this.artifactRefs.length, ...artifactRefs);
+      throw error;
+    }
   }
 
   /** Executes one transaction against the shared state with snapshot rollback. */

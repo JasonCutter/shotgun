@@ -28,13 +28,14 @@ import {
 } from '../../../packages/contracts/src/index.js';
 import {
   createInitialFrontendKnowledgeDraft,
-  materializeFrontendKnowledgeDraft,
-  persistFrontendKnowledgeDraftRevision,
-  persistFrontendKnowledgeDraftTransition,
+  materializeFrontendKnowledgeDraftOn,
+  persistFrontendKnowledgeDraftRevisionOn,
+  persistFrontendKnowledgeDraftTransitionOn,
   transitionFrontendKnowledgeDraftStatus,
   type DraftMaterializationRecordV1,
   type DraftMaterializationTargetV1,
   type FrontendKnowledgeDraftRepositoryBoundaryPort,
+  type FrontendKnowledgeDraftTransactionRepositoriesV1,
 } from './index.js';
 
 export const FRONTEND_KNOWLEDGE_DRAFT_API_VERSION = '1.0.0' as const;
@@ -43,6 +44,16 @@ export const FRONTEND_KNOWLEDGE_DRAFT_RESOURCE_KIND = {
   draft: 'FRONTEND_KNOWLEDGE_DRAFT',
   materialization: 'FRONTEND_KNOWLEDGE_DRAFT_MATERIALIZATION',
 } as const;
+
+const DRAFT_COMMAND_FAMILY: readonly string[] = [
+  FRONTEND_KNOWLEDGE_DRAFT_COMMAND_TYPES.materialize,
+  FRONTEND_KNOWLEDGE_DRAFT_COMMAND_TYPES.startSeedless,
+  FRONTEND_KNOWLEDGE_DRAFT_COMMAND_TYPES.save,
+  FRONTEND_KNOWLEDGE_DRAFT_COMMAND_TYPES.abandon,
+];
+
+const isDraftCommandType = (commandType: string): boolean =>
+  DRAFT_COMMAND_FAMILY.includes(commandType);
 
 export type FrontendKnowledgeDraftSensitivityClearance =
   'public' | 'internal' | 'private' | 'restricted';
@@ -111,11 +122,18 @@ export type FrontendKnowledgeDraftCommandGatewayPort = {
     readonly receivedAt: string;
     readonly acceptedAt: string;
   }): Promise<{ readonly outcome: AnyFrontendCommandOutcomeView; readonly replayed: boolean }>;
-  complete(input: {
-    readonly commandId: string;
-    readonly producedResources: readonly ProducedResourceRef[];
-    readonly completedAt: string;
-  }): Promise<AnyFrontendCommandOutcomeView>;
+  lockAcceptedForExecution(
+    transaction: unknown,
+    commandId: string,
+  ): Promise<AnyFrontendCommandOutcomeView>;
+  completeInTransaction(
+    transaction: unknown,
+    input: {
+      readonly commandId: string;
+      readonly producedResources: readonly ProducedResourceRef[];
+      readonly completedAt: string;
+    },
+  ): Promise<AnyFrontendCommandOutcomeView>;
   reject(input: {
     readonly commandId: string;
     readonly code: ErrorCode;
@@ -170,13 +188,117 @@ const draftPrecondition = (draftId: string, expectedRevision: number): TypedPrec
   expectedRevision: String(expectedRevision),
 });
 
+/**
+ * Per-command semantic digests. The request identity fields (clientRequestId,
+ * idempotencyKey) are intentionally excluded so the same idempotency key with
+ * the same command meaning is recognised as the same command even when the
+ * clientRequestId differs.
+ */
+export const frontendKnowledgeDraftMaterializeDigest = (
+  request: MaterializeDraftRequestV1,
+): string => sha256Text(stableJson({ seedId: request.seedId }));
+
+export const frontendKnowledgeDraftStartSeedlessDigest = (
+  request: StartSeedlessDraftRequestV1,
+): string =>
+  sha256Text(
+    stableJson(
+      request.resourceId !== undefined
+        ? { resourceId: request.resourceId }
+        : { pageId: request.pageId },
+    ),
+  );
+
+export const frontendKnowledgeDraftSaveDigest = (request: SaveKnowledgeDraftRequestV1): string =>
+  sha256Text(
+    stableJson({
+      draftId: request.draftId,
+      expectedDraftRevision: request.expectedDraftRevision,
+      expectedBaseRevision: request.expectedBaseRevision,
+      operationRevision: request.operationRevision,
+      operations: request.operations,
+      contentDigest: request.contentDigest,
+    }),
+  );
+
+export const frontendKnowledgeDraftAbandonDigest = (
+  request: AbandonKnowledgeDraftRequestV1,
+): string =>
+  sha256Text(
+    stableJson({
+      draftId: request.draftId,
+      expectedDraftRevision: request.expectedDraftRevision,
+      expectedBaseRevision: request.expectedBaseRevision,
+    }),
+  );
+
+type DraftApiCode =
+  | 'NOT_FOUND'
+  | 'FORBIDDEN'
+  | 'PROJECT_BINDING_CONFLICT'
+  | 'ACCESS_REVOKED'
+  | 'BASE_UNAVAILABLE'
+  | 'DRAFT_NOT_FOUND'
+  | 'DRAFT_REVISION_CONFLICT'
+  | 'VALIDATION_FAILED'
+  | 'STALE'
+  | 'IMPACT_PARTIAL'
+  | 'ANALYZER_UNAVAILABLE'
+  | 'NOT_READY_FOR_REVIEW'
+  | 'OUTCOME_NOT_FOUND'
+  | 'DIGEST_MISMATCH'
+  | 'COMMAND_SCOPE_MISMATCH'
+  | 'OUTCOME_INDETERMINATE';
+
+/** Maps a Ledger ErrorCode back to the FE-P3-S2 API failure code. */
+const fromLedgerCode = (code: ErrorCode): DraftApiCode => {
+  switch (code) {
+    case 'NOT_FOUND':
+    case 'SEED_NOT_FOUND':
+    case 'DRAFT_NOT_FOUND':
+      return 'NOT_FOUND';
+    case 'FORBIDDEN':
+    case 'PROJECT_ACCESS_DENIED':
+    case 'RESOURCE_ACCESS_REVOKED':
+      return 'FORBIDDEN';
+    case 'ACCESS_REVOKED':
+      return 'ACCESS_REVOKED';
+    case 'DIGEST_MISMATCH':
+      return 'DIGEST_MISMATCH';
+    case 'REVISION_CONFLICT':
+    case 'DRAFT_REVISION_CONFLICT':
+    case 'SEED_ALREADY_MATERIALIZED':
+      return 'DRAFT_REVISION_CONFLICT';
+    case 'STALE_VERSION':
+    case 'STALE_BASE':
+    case 'STALE':
+      return 'STALE';
+    case 'VALIDATION_ERROR':
+    case 'VALIDATION_FAILED':
+    case 'RESOURCE_REVISION_MISSING':
+      return 'VALIDATION_FAILED';
+    case 'RESOURCE_PROJECT_MISMATCH':
+    case 'PROJECT_BINDING_CONFLICT':
+    case 'COMMAND_SCOPE_MISMATCH':
+      return 'PROJECT_BINDING_CONFLICT';
+    case 'OUTCOME_UNKNOWN':
+    case 'OUTCOME_INDETERMINATE':
+      return 'OUTCOME_INDETERMINATE';
+    default:
+      return 'DRAFT_REVISION_CONFLICT';
+  }
+};
+
 export type FrontendKnowledgeDraftRunCommandInput<T> = {
   readonly scope: FrontendKnowledgeDraftCommandScopeV1;
   readonly commandType: FrontendKnowledgeDraftCommandType;
   readonly request: { readonly clientRequestId: string; readonly idempotencyKey: string };
+  readonly commandSemanticDigest: string;
   readonly resourceProjectId: string;
   readonly preconditions?: readonly TypedPrecondition[];
-  readonly action: () => Promise<T>;
+  readonly actionOnRepositories: (
+    repositories: FrontendKnowledgeDraftTransactionRepositoriesV1,
+  ) => Promise<T>;
   readonly onReplay?: () => Promise<T>;
   readonly producedResources: (result: T) => readonly ProducedResourceRef[];
 };
@@ -192,16 +314,16 @@ export class FrontendKnowledgeDraftProductCoordinator {
     scope: FrontendKnowledgeDraftCommandScopeV1,
     request: MaterializeDraftRequestV1,
   ): Promise<MaterializeDraftResultV1> {
+    const commandSemanticDigest = frontendKnowledgeDraftMaterializeDigest(request);
     return this.runCommand<MaterializeDraftResultV1>({
       scope,
       commandType: FRONTEND_KNOWLEDGE_DRAFT_COMMAND_TYPES.materialize,
       request,
+      commandSemanticDigest,
       resourceProjectId: scope.activeProjectId,
-      action: async () => {
-        // A Seed produces at most one Draft: repeated materialization returns
-        // the existing Draft identity under the same Resource Project.
-        const existingDraft = await this.draftFromSeed(scope.activeProjectId, request.seedId);
-        if (existingDraft) return this.materializeResult(request, existingDraft);
+      actionOnRepositories: async (repositories) => {
+        // A Seed produces at most one Draft: the domain materialize replays the
+        // existing Draft identity under the same Resource Project.
         const resolution = await this.targetResolver.resolveSeed({
           seedId: request.seedId,
           scope,
@@ -246,11 +368,11 @@ export class FrontendKnowledgeDraftProductCoordinator {
             principalId: scope.principalId,
             clientRequestId: request.clientRequestId,
             idempotencyKey: request.idempotencyKey,
-            semanticDigest: this.semanticDigest(request),
+            semanticDigest: commandSemanticDigest,
           },
           createdAt: now,
         };
-        const result = await materializeFrontendKnowledgeDraft(this.boundary, {
+        const result = await materializeFrontendKnowledgeDraftOn(repositories, {
           draft,
           materialization,
         });
@@ -277,12 +399,14 @@ export class FrontendKnowledgeDraftProductCoordinator {
     scope: FrontendKnowledgeDraftCommandScopeV1,
     request: StartSeedlessDraftRequestV1,
   ): Promise<StartSeedlessDraftResultV1> {
+    const commandSemanticDigest = frontendKnowledgeDraftStartSeedlessDigest(request);
     return this.runCommand<StartSeedlessDraftResultV1>({
       scope,
       commandType: FRONTEND_KNOWLEDGE_DRAFT_COMMAND_TYPES.startSeedless,
       request,
+      commandSemanticDigest,
       resourceProjectId: scope.activeProjectId,
-      action: async () => {
+      actionOnRepositories: async (repositories) => {
         const resolution =
           request.resourceId !== undefined
             ? await this.targetResolver.resolveResource({ resourceId: request.resourceId, scope })
@@ -329,11 +453,11 @@ export class FrontendKnowledgeDraftProductCoordinator {
             principalId: scope.principalId,
             clientRequestId: request.clientRequestId,
             idempotencyKey: request.idempotencyKey,
-            semanticDigest: this.semanticDigest(request),
+            semanticDigest: commandSemanticDigest,
           },
           createdAt: now,
         };
-        const result = await materializeFrontendKnowledgeDraft(this.boundary, {
+        const result = await materializeFrontendKnowledgeDraftOn(repositories, {
           draft,
           materialization,
         });
@@ -364,14 +488,16 @@ export class FrontendKnowledgeDraftProductCoordinator {
     scope: FrontendKnowledgeDraftCommandScopeV1,
     request: SaveKnowledgeDraftRequestV1,
   ): Promise<SaveKnowledgeDraftResultV1> {
+    const commandSemanticDigest = frontendKnowledgeDraftSaveDigest(request);
     return this.runCommand<SaveKnowledgeDraftResultV1>({
       scope,
       commandType: FRONTEND_KNOWLEDGE_DRAFT_COMMAND_TYPES.save,
       request,
+      commandSemanticDigest,
       resourceProjectId: scope.activeProjectId,
       preconditions: [draftPrecondition(request.draftId, request.expectedDraftRevision)],
-      action: async () => {
-        const draft = await persistFrontendKnowledgeDraftRevision(this.boundary, {
+      actionOnRepositories: async (repositories) => {
+        const draft = await persistFrontendKnowledgeDraftRevisionOn(repositories, {
           projectId: scope.activeProjectId,
           draftId: request.draftId,
           expectedDraftRevision: request.expectedDraftRevision,
@@ -404,14 +530,16 @@ export class FrontendKnowledgeDraftProductCoordinator {
     scope: FrontendKnowledgeDraftCommandScopeV1,
     request: AbandonKnowledgeDraftRequestV1,
   ): Promise<MaterializeDraftResultV1> {
+    const commandSemanticDigest = frontendKnowledgeDraftAbandonDigest(request);
     return this.runCommand<MaterializeDraftResultV1>({
       scope,
       commandType: FRONTEND_KNOWLEDGE_DRAFT_COMMAND_TYPES.abandon,
       request,
+      commandSemanticDigest,
       resourceProjectId: scope.activeProjectId,
       preconditions: [draftPrecondition(request.draftId, request.expectedDraftRevision)],
-      action: async () => {
-        const current = await this.draftById(scope.activeProjectId, request.draftId);
+      actionOnRepositories: async (repositories) => {
+        const current = await repositories.drafts.findById(scope.activeProjectId, request.draftId);
         if (!current) {
           draftFailure('DRAFT_NOT_FOUND', 'The Draft was not found.');
         }
@@ -428,7 +556,7 @@ export class FrontendKnowledgeDraftProductCoordinator {
           nextStatus: 'ABANDONED',
           updatedAt: new Date().toISOString(),
         });
-        await persistFrontendKnowledgeDraftTransition(this.boundary, {
+        await persistFrontendKnowledgeDraftTransitionOn(repositories, {
           projectId: scope.activeProjectId,
           draft: next,
           expectedRevision: request.expectedDraftRevision,
@@ -463,6 +591,15 @@ export class FrontendKnowledgeDraftProductCoordinator {
       draftFailure(
         'OUTCOME_NOT_FOUND',
         'No command outcome matches the original request identity.',
+      );
+    }
+    if (!isDraftCommandType(outcome.commandType)) {
+      draftFailure('OUTCOME_NOT_FOUND', 'The command outcome is not a Knowledge Draft command.');
+    }
+    if (outcome.idempotencyKey !== request.idempotencyKey) {
+      draftFailure(
+        'OUTCOME_NOT_FOUND',
+        'The command outcome does not match the requested idempotency key.',
       );
     }
     if (outcome.commandSemanticDigest !== request.semanticDigest) {
@@ -539,10 +676,6 @@ export class FrontendKnowledgeDraftProductCoordinator {
     draftFailure('COMMAND_SCOPE_MISMATCH', 'The command outcome is missing its Project binding.');
   }
 
-  private semanticDigest(request: object): string {
-    return sha256Text(stableJson(request));
-  }
-
   private materializeResult(
     request: { readonly clientRequestId: string; readonly idempotencyKey: string },
     draft: FrontendKnowledgeDraftChangeSetV1,
@@ -556,6 +689,14 @@ export class FrontendKnowledgeDraftProductCoordinator {
     };
   }
 
+  /**
+   * Runs the command lifecycle. The Draft write and the Ledger COMPLETED
+   * transition happen inside ONE repository transaction (via
+   * `transactionWithHandle` + `lockAcceptedForExecution` +
+   * `completeInTransaction`), mirroring the Ask coordinator, so a failed
+   * Ledger completion can never leave a committed Draft behind. An uncertain
+   * outcome is recorded as OUTCOME_UNKNOWN, never a misleading REJECTED.
+   */
   private async runCommand<T>(input: FrontendKnowledgeDraftRunCommandInput<T>): Promise<T> {
     const now = new Date().toISOString();
     const commandRequest: AnyFrontendCommandRequest = {
@@ -578,7 +719,6 @@ export class FrontendKnowledgeDraftProductCoordinator {
       clientIssuedAt: now,
       payload: input.request,
     };
-    const commandSemanticDigest = this.semanticDigest(input.request);
     const commandId = generatedIdentity('cmd');
     let accepted;
     try {
@@ -587,7 +727,7 @@ export class FrontendKnowledgeDraftProductCoordinator {
         commandRevision: '1',
         principalId: input.scope.principalId,
         request: commandRequest,
-        commandSemanticDigest,
+        commandSemanticDigest: input.commandSemanticDigest,
         acceptedPolicyContext: {
           policyContextId: 'frontend-knowledge-draft-current-policy',
           policyContextRevision: input.scope.policyContextRevision,
@@ -614,6 +754,7 @@ export class FrontendKnowledgeDraftProductCoordinator {
 
     const outcome = accepted.outcome;
     if (accepted.replayed) {
+      // A replayed command is never automatically re-executed.
       if (outcome.outcomeState === 'COMPLETED') {
         if (input.onReplay) return input.onReplay();
         draftFailure(
@@ -622,37 +763,62 @@ export class FrontendKnowledgeDraftProductCoordinator {
         );
       }
       if (outcome.outcomeState === 'REJECTED') {
-        draftFailure(
-          'DRAFT_REVISION_CONFLICT',
+        // Preserve the originally recorded failure code.
+        throw new FrontendKnowledgeDraftCommandError(
+          fromLedgerCode(outcome.rejection?.code ?? 'REVISION_CONFLICT'),
           outcome.rejection?.message ?? 'The Draft command was rejected.',
         );
       }
-      if (outcome.outcomeState === 'OUTCOME_UNKNOWN') {
-        draftFailure(
-          'OUTCOME_INDETERMINATE',
-          'The previous command outcome must be resolved before retrying.',
-        );
-      }
+      // ACCEPTED or OUTCOME_UNKNOWN: resolve through the original identity.
+      draftFailure(
+        'OUTCOME_INDETERMINATE',
+        'The previous command outcome is unresolved; resolve it through the original command identity before retrying.',
+      );
     }
 
     try {
-      const value = await input.action();
-      await this.commandGateway.complete({
-        commandId: outcome.commandId,
-        producedResources: input.producedResources(value),
-        completedAt: new Date().toISOString(),
-      });
-      return value;
-    } catch (error) {
-      try {
-        await this.commandGateway.reject({
+      return await this.boundary.transactionWithHandle(async (handle) => {
+        const locked = await this.commandGateway.lockAcceptedForExecution(
+          handle.raw,
+          outcome.commandId,
+        );
+        if (locked.outcomeState === 'COMPLETED') {
+          // Completed concurrently by another executor: return the replay result.
+          if (input.onReplay) return input.onReplay();
+          draftFailure(
+            'OUTCOME_INDETERMINATE',
+            'The command completed concurrently but its outcome is unavailable.',
+          );
+        }
+        const written = await input.actionOnRepositories(handle.repositories);
+        await this.commandGateway.completeInTransaction(handle.raw, {
           commandId: outcome.commandId,
-          code: this.errorCode(error),
-          message: error instanceof Error ? error.message : 'Draft command failed.',
+          producedResources: input.producedResources(written),
           completedAt: new Date().toISOString(),
         });
+        return written;
+      });
+    } catch (error) {
+      try {
+        if (error instanceof FrontendKnowledgeDraftCommandError) {
+          // Deterministic domain failure: the transaction rolled back cleanly.
+          await this.commandGateway.reject({
+            commandId: outcome.commandId,
+            code: this.errorCode(error),
+            message: error.message,
+            completedAt: new Date().toISOString(),
+          });
+        } else {
+          // Uncertain outcome: never claim REJECTED.
+          await this.commandGateway.markOutcomeUnknown({
+            commandId: outcome.commandId,
+            message:
+              error instanceof Error ? error.message : 'Draft command outcome is unresolved.',
+            completedAt: new Date().toISOString(),
+          });
+        }
       } catch {
-        // Preserve the original error when the rejection write is unavailable.
+        // Preserve the original error when the ledger write is unavailable.
       }
       throw error;
     }

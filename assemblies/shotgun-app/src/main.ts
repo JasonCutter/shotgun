@@ -8,6 +8,7 @@ import { GeminiAIProviderAdapter } from '../../../adapters/ai-provider-gemini/sr
 import { StructuredAskAnswerProviderAdapter } from '../../../adapters/ai-provider-ask/src/index.js';
 import { PostgresFrontendCommandGateway } from '../../../adapters/frontend-command-gateway-postgres/src/index.js';
 import { PostgresFrontendKnowledgeDraftRepository } from '../../../adapters/frontend-knowledge-draft-postgres/src/index.js';
+import { PostgresFrontendKnowledgeDraftTargetResolver } from '../../../adapters/frontend-knowledge-draft-api-postgres/src/index.js';
 import {
   PostgresAskConversationRepository,
   PostgresAskSourceSelectionValidator,
@@ -146,6 +147,7 @@ const { server } = await createApplication({
   settingsRepository: new PostgresSettingsRepository(pool),
   frontendCommandGateway: commandGateway,
   frontendKnowledgeDraftRepository: new PostgresFrontendKnowledgeDraftRepository(pool),
+  frontendKnowledgeDraftTargetResolver: new PostgresFrontendKnowledgeDraftTargetResolver(pool),
   askCommandCoordinator,
   frontendProductReadCoordinatorFactory: (connector) =>
     new FrontendProductReadCoordinator(

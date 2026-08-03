@@ -21,6 +21,7 @@ import {
   type FrontendKnowledgeDraftProjectBindingV1,
   type FrontendKnowledgeDraftRevisionRecordV1,
   type FrontendKnowledgeDraftRepositoryBoundaryPort,
+  type FrontendKnowledgeDraftTransactionHandleV1,
   type FrontendKnowledgeDraftTransactionRepositoriesV1,
 } from '../../modules/frontend-knowledge-draft/src/index.js';
 
@@ -188,6 +189,29 @@ class FakeDraftBoundary implements FrontendKnowledgeDraftRepositoryBoundaryPort 
     const operationSnapshot = [...this.operationStore];
     try {
       return await action(this.repositories());
+    } catch (error) {
+      this.draftStore.clear();
+      for (const [draftId, draft] of draftSnapshot) this.draftStore.set(draftId, draft);
+      this.materializationStore.splice(
+        0,
+        this.materializationStore.length,
+        ...materializationSnapshot,
+      );
+      this.revisionStore.splice(0, this.revisionStore.length, ...revisionSnapshot);
+      this.operationStore.splice(0, this.operationStore.length, ...operationSnapshot);
+      throw error;
+    }
+  }
+
+  async transactionWithHandle<T>(
+    action: (handle: FrontendKnowledgeDraftTransactionHandleV1) => Promise<T>,
+  ): Promise<T> {
+    const draftSnapshot = new Map(this.draftStore);
+    const materializationSnapshot = [...this.materializationStore];
+    const revisionSnapshot = [...this.revisionStore];
+    const operationSnapshot = [...this.operationStore];
+    try {
+      return await action({ repositories: this.repositories(), raw: undefined });
     } catch (error) {
       this.draftStore.clear();
       for (const [draftId, draft] of draftSnapshot) this.draftStore.set(draftId, draft);

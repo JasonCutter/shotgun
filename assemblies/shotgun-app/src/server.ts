@@ -79,7 +79,10 @@ import { registerFrontendProductRoutes } from './product-api/frontend-product-ro
 import { registerSettingsRoutes } from './product-api/settings-routes.js';
 import { registerSourcesRoutes } from './product-api/sources-routes.js';
 import { registerFrontendKnowledgeDraftRoutes } from './product-api/frontend-knowledge-draft-routes.js';
-import { FrontendKnowledgeDraftProductCoordinator } from '../../../modules/frontend-knowledge-draft/src/product-api.js';
+import {
+  FrontendKnowledgeDraftProductCoordinator,
+  type FrontendKnowledgeDraftTargetResolverPort,
+} from '../../../modules/frontend-knowledge-draft/src/product-api.js';
 import type { FrontendKnowledgeDraftRepositoryBoundaryPort } from '../../../modules/frontend-knowledge-draft/src/index.js';
 import { InMemoryFrontendKnowledgeDraftRepository } from '../../../adapters/frontend-knowledge-draft-in-memory/src/index.js';
 import { InMemoryFrontendKnowledgeDraftTargetResolver } from '../../../adapters/frontend-knowledge-draft-api-in-memory/src/index.js';
@@ -422,6 +425,7 @@ export type ApplicationOptions = {
   readonly settingsRepository?: SettingsRepositoryPort;
   readonly frontendCommandGateway?: FrontendCommandGatewayPort;
   readonly frontendKnowledgeDraftRepository?: FrontendKnowledgeDraftRepositoryBoundaryPort;
+  readonly frontendKnowledgeDraftTargetResolver?: FrontendKnowledgeDraftTargetResolverPort;
   readonly frontendKnowledgeDraftCoordinator?: FrontendKnowledgeDraftProductCoordinator;
   readonly frontendProductReadCoordinator?: FrontendProductReadCoordinator;
   readonly frontendProductReadCoordinatorFactory?: (
@@ -1151,12 +1155,15 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     options.frontendCommandGateway ?? new InMemoryFrontendCommandGateway();
   const frontendKnowledgeDraftRepository =
     options.frontendKnowledgeDraftRepository ?? new InMemoryFrontendKnowledgeDraftRepository();
+  const frontendKnowledgeDraftTargetResolver =
+    options.frontendKnowledgeDraftTargetResolver ??
+    new InMemoryFrontendKnowledgeDraftTargetResolver();
   const frontendKnowledgeDraftCoordinator =
     options.frontendKnowledgeDraftCoordinator ??
     new FrontendKnowledgeDraftProductCoordinator(
       frontendKnowledgeDraftRepository,
       frontendCommandGateway,
-      new InMemoryFrontendKnowledgeDraftTargetResolver(),
+      frontendKnowledgeDraftTargetResolver,
     );
   const inMemoryAskWorkspace = new InMemoryAskWorkspaceProjection();
   const askCommandCoordinator =

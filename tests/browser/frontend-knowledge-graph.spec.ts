@@ -66,6 +66,27 @@ const graphSnapshot = {
         claim: { schemaVersion: 'claim.v1', statement: 'Claim One' },
       },
     },
+    {
+      schemaVersion: '1.0.0',
+      nodeId: 'node-3',
+      resourceRef: { schemaVersion: '1.0.0', resourceKind: 'ENTITY', resourceId: 'entity-3' },
+      label: 'Candidate Three',
+      nodeKind: 'ENTITY',
+      authority: 'DISCOVERY_CANDIDATE',
+      baseViewMembership: 'KNOWLEDGE_SEMANTIC',
+      overlayMemberships: [],
+      revisionBinding,
+      accessMasking: 'VISIBLE',
+      payload: {
+        schemaVersion: '1.0.0',
+        nodeKind: 'ENTITY',
+        entity: {
+          schemaVersion: 'entity.v1',
+          entityType: 'PERSON',
+          displayName: 'Candidate Three',
+        },
+      },
+    },
   ],
   edges: [
     {
@@ -97,6 +118,63 @@ const graphSnapshot = {
   capabilities: { schemaVersion: '1.0.0', capabilities: ['SNAPSHOT'] },
 };
 
+const refreshedSnapshot = {
+  schemaVersion: '1.0.0',
+  identity: {
+    schemaVersion: '1.0.0',
+    snapshotId: 'snapshot-2',
+    projectId: 'server-project-1',
+    viewKind: 'KNOWLEDGE_SEMANTIC',
+    projectionRevision: 'proj-2',
+    generatedAt: '2026-08-04T08:01:00.000Z',
+  },
+  health: 'COMPLETE',
+  completeness: 'COMPLETE',
+  nodes: graphSnapshot.nodes.map(
+    (entry: { resourceRef: { resourceId: string }; label: string }) => ({
+      ...entry,
+      revisionBinding: { ...revisionBinding, projectionRevision: 'proj-2' },
+    }),
+  ),
+  edges: graphSnapshot.edges.map((entry: Record<string, unknown>) => ({
+    ...entry,
+    revisionBinding: { ...revisionBinding, projectionRevision: 'proj-2' },
+  })),
+  appliedLimits: graphSnapshot.appliedLimits,
+  overlays: [],
+  capabilities: { schemaVersion: '1.0.0', capabilities: ['SNAPSHOT'] },
+};
+
+const pathDescription = {
+  schemaVersion: '1.0.0',
+  snapshotId: 'snapshot-1',
+  projectionRevision: 'proj-1',
+  pathId: 'path-1',
+  segments: [
+    {
+      schemaVersion: '1.0.0',
+      kind: 'ORIGIN',
+      step: 0,
+      narration: '시작: Entity One',
+      nodeRef: { schemaVersion: '1.0.0', resourceKind: 'ENTITY', resourceId: 'entity-1' },
+    },
+    {
+      schemaVersion: '1.0.0',
+      kind: 'TRAVERSAL',
+      step: 1,
+      narration: 'Entity One → CANONICAL_RELATION → Claim One',
+      nodeRef: { schemaVersion: '1.0.0', resourceKind: 'CLAIM', resourceId: 'claim-1' },
+      edgeRef: {
+        schemaVersion: '1.0.0',
+        edgeId: 'edge-1',
+        from: { schemaVersion: '1.0.0', resourceKind: 'ENTITY', resourceId: 'entity-1' },
+        to: { schemaVersion: '1.0.0', resourceKind: 'CLAIM', resourceId: 'claim-1' },
+      },
+    },
+  ],
+  summary: 'Entity One에서 Claim One까지의 경로 (1단계)',
+};
+
 // The browser fixture backend serves the real session and global shell for
 // the bootstrapped local owner. We only stub the route guard (ALLOW), the
 // graph snapshot (a controlled rich fixture) and the CSRF token; the graph
@@ -118,6 +196,18 @@ const stubSessionAndShell = async (page: Page) => {
     await route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify(graphSnapshot),
+    });
+  });
+  await page.route('**/product-api/frontend/knowledge/graph/snapshot/refresh', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify(refreshedSnapshot),
+    });
+  });
+  await page.route('**/product-api/frontend/knowledge/graph/path/describe', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify(pathDescription),
     });
   });
 };
@@ -158,7 +248,7 @@ test('Graph Workspace renders the snapshot with information-equivalent list and 
   const tableKeys = await tupleKey(page, '.graph-table tbody tr');
 
   expect(tableKeys).toEqual(listKeys);
-  expect(tableKeys).toHaveLength(3); // two nodes + one edge
+  expect(tableKeys).toHaveLength(4); // three nodes + one edge
 });
 
 test('Graph Workspace exposes no Canonical/Approval/Action write endpoint during interaction', async ({
@@ -231,4 +321,118 @@ test('Graph Workspace restores deep-link focus to the selected node', async ({ p
   await expect(page.getByRole('heading', { name: 'Semantic Graph', level: 1 })).toBeVisible();
   // The deep-link selection announces the focused node once the snapshot resolves.
   await expect(page.getByRole('status')).toContainText('선택됨: Entity One');
+});
+
+test('AC-08: the three authorities are visually and accessibly distinct', async ({ page }) => {
+  await stubSessionAndShell(page);
+  await page.goto('/knowledge/graph');
+  await expect(page.getByRole('heading', { name: 'Semantic Graph', level: 1 })).toBeVisible();
+  await page.keyboard.press('Alt+l');
+
+  const listItems = page.locator('.graph-list-view .graph-item');
+  await expect(listItems).toHaveCount(4); // three nodes + one edge
+  const authorities = await listItems.evaluateAll((elements) =>
+    elements.map((element) => element.getAttribute('data-graph-authority')),
+  );
+  expect(authorities).toContain('CANONICAL');
+  expect(authorities).toContain('DERIVED_INFERENCE');
+  expect(authorities).toContain('DISCOVERY_CANDIDATE');
+  // Distinct accessible authority labels.
+  await expect(listItems.filter({ hasText: 'Candidate Three' })).toContainText('Discovery');
+  await expect(listItems.filter({ hasText: 'Claim One' })).toContainText('Derived');
+});
+
+test('AC-17: refresh issues a new snapshot identity and keeps the selected resource focused', async ({
+  page,
+}) => {
+  await stubSessionAndShell(page);
+  await page.goto('/knowledge/graph');
+  await expect(page.getByRole('heading', { name: 'Semantic Graph', level: 1 })).toBeVisible();
+  await expect(page.getByText(/Snapshot: snapshot-1/)).toBeVisible();
+
+  await page.keyboard.press('Alt+l');
+  await page
+    .getByRole('region', { name: 'Semantic graph list' })
+    .getByRole('button', { name: 'Select' })
+    .first()
+    .click();
+  await expect(page.getByRole('status')).toContainText('선택됨: Entity One');
+
+  await page.getByRole('button', { name: '새로 고침' }).click();
+
+  await expect(page.getByText(/Snapshot: snapshot-2/)).toBeVisible();
+  await expect(page.getByText(/Revision: proj-2/)).toBeVisible();
+  await expect(page.getByRole('status')).toContainText('선택됨: Entity One');
+});
+
+test('AC-19: path view exposes the same accessible tuple set as the list view', async ({
+  page,
+}) => {
+  await stubSessionAndShell(page);
+  await page.goto('/knowledge/graph');
+  await expect(page.getByRole('heading', { name: 'Semantic Graph', level: 1 })).toBeVisible();
+
+  await page.keyboard.press('Alt+l');
+  const listKeys = await tupleKey(page, '.graph-list-view .graph-item');
+
+  await page.keyboard.press('Alt+p');
+  const pathRegion = page.getByRole('region', { name: 'Semantic graph path' });
+  await expect(pathRegion).toBeVisible();
+  const pathKeys = await tupleKey(page, '.graph-path-view .graph-item');
+
+  expect(pathKeys).toEqual(listKeys);
+});
+
+test('AC-20: full keyboard matrix moves focus, activates and escapes', async ({ page }) => {
+  await stubSessionAndShell(page);
+  await page.goto('/knowledge/graph');
+  await expect(page.getByRole('heading', { name: 'Semantic Graph', level: 1 })).toBeVisible();
+
+  // Base views.
+  await page.keyboard.press('Alt+1');
+  await expect(page.getByRole('radio', { name: /KNOWLEDGE_SEMANTIC/ })).toBeChecked();
+  await page.keyboard.press('Alt+3');
+  await expect(page.getByRole('radio', { name: /OPERATIONAL_DEPENDENCY/ })).toBeChecked();
+  await page.keyboard.press('Alt+1');
+
+  // Overlays.
+  await page.keyboard.press('Alt+Shift+2');
+  await expect(page.getByRole('checkbox', { name: /KNOWLEDGE_GAP/ })).toBeChecked();
+  await page.keyboard.press('Alt+Shift+3');
+  await expect(page.getByRole('checkbox', { name: /RECURSIVE_IMPACT/ })).toBeChecked();
+
+  // Arrow + Enter activation within the list region.
+  await page.keyboard.press('Alt+l');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('status')).toContainText(/선택됨/);
+
+  // Escape from the path view returns to the canvas overview.
+  await page.keyboard.press('Alt+p');
+  await expect(page.getByRole('region', { name: 'Semantic graph path' })).toBeAttached();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('region', { name: 'Semantic graph canvas' })).toBeAttached();
+});
+
+test('AC-22: list/table/path remain fully operable at 200% zoom', async ({ page, context }) => {
+  const session = await context.newCDPSession(page);
+  await session.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 });
+  await stubSessionAndShell(page);
+  await page.goto('/knowledge/graph');
+  await expect(page.getByRole('heading', { name: 'Semantic Graph', level: 1 })).toBeVisible();
+
+  await page.keyboard.press('Alt+l');
+  await page
+    .getByRole('region', { name: 'Semantic graph list' })
+    .getByRole('button', { name: 'Select' })
+    .first()
+    .click();
+  await expect(page.getByRole('status')).toContainText('선택됨: Entity One');
+
+  await page.keyboard.press('Alt+t');
+  await expect(page.getByRole('region', { name: 'Semantic graph table' })).toBeVisible();
+
+  await page.keyboard.press('Alt+p');
+  await expect(page.getByRole('region', { name: 'Semantic graph path' })).toBeVisible();
 });

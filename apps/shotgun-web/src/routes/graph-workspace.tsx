@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useOutletContext, useSearchParams } from 'react-router';
 
 import {
@@ -85,6 +85,7 @@ export const GraphWorkspace = () => {
     createInitialGraphWorkspaceState,
   );
   const liveRegionRef = useRef<HTMLParagraphElement | null>(null);
+  const [manualSnapshot, setManualSnapshot] = useState<GraphSnapshotResultV1 | null>(null);
 
   const deepLinkSnapshotId = searchParameters.get('snapshot');
   const deepLinkFocus = searchParameters.get('focus');
@@ -110,6 +111,7 @@ export const GraphWorkspace = () => {
   );
 
   const snapshot = useQuery(graphSnapshotQueryOptions(graphClient, shell, snapshotRequest));
+  const currentSnapshot = manualSnapshot ?? snapshot.data;
 
   useEffect(() => {
     if (snapshot.isPending) {
@@ -139,8 +141,60 @@ export const GraphWorkspace = () => {
     if (liveRegionRef.current) liveRegionRef.current.textContent = message;
   };
 
+  // AC-17: descriptor-based refresh issues a new snapshot identity and keeps
+  // the selected resource focused (or restores an explicit fallback).
+  const refresh = useCallback(async () => {
+    if (!state.snapshotId || !state.projectionRevision) return;
+    dispatch({ type: 'RECOVERY_STARTED' });
+    try {
+      const refreshed = await graphClient.refreshGraphSnapshot({
+        schemaVersion: '1.0.0',
+        snapshotId: state.snapshotId,
+        projectionRevision: state.projectionRevision,
+        expectedSnapshotRevision: state.projectionRevision,
+      });
+      setManualSnapshot(refreshed);
+      dispatch({
+        type: 'SNAPSHOT_RESOLVED',
+        snapshotId: refreshed.identity.snapshotId,
+        projectionRevision: refreshed.identity.projectionRevision,
+      });
+      if (state.selectedRef) {
+        const target = refreshed.nodes.find(
+          (node) => node.resourceRef.resourceId === state.selectedRef?.resourceId,
+        );
+        if (target) {
+          dispatch({ type: 'SELECT_NODE', ref: target.resourceRef });
+          announce(`${GRAPH_ANNOUNCEMENTS.REFRESH} ${GRAPH_ANNOUNCEMENTS.SELECTION(target.label)}`);
+        } else {
+          announce(
+            `${GRAPH_ANNOUNCEMENTS.REFRESH} ${GRAPH_ANNOUNCEMENTS.DESELECTION(state.selectedRef.resourceId)}`,
+          );
+        }
+      } else {
+        announce(GRAPH_ANNOUNCEMENTS.REFRESH);
+      }
+    } catch (error) {
+      dispatch({
+        type: 'FAILED',
+        reason: 'NETWORK_FAILURE',
+        message: error instanceof Error ? error.message : 'Graph refresh failed.',
+        retryable: true,
+      });
+    } finally {
+      dispatch({ type: 'RECOVERY_FINISHED' });
+    }
+  }, [
+    state.snapshotId,
+    state.projectionRevision,
+    state.selectedRef,
+    graphClient,
+    dispatch,
+    announce,
+  ]);
+
   const selectNode = (ref: GraphNodeReferenceV1) => {
-    const node = snapshot.data?.nodes.find((n) => n.resourceRef.resourceId === ref.resourceId);
+    const node = currentSnapshot?.nodes.find((n) => n.resourceRef.resourceId === ref.resourceId);
     dispatch({ type: 'SELECT_NODE', ref });
     if (node) announce(GRAPH_ANNOUNCEMENTS.SELECTION(node.label));
   };
@@ -162,10 +216,10 @@ export const GraphWorkspace = () => {
 
   const orderedNodeRefs = useMemo(
     () =>
-      snapshot.data?.nodes
+      currentSnapshot?.nodes
         .filter((node) => node.accessMasking !== 'HIDDEN')
         .map((node) => node.resourceRef) ?? [],
-    [snapshot.data],
+    [currentSnapshot],
   );
 
   const onKeyDown = useCallback(
@@ -198,6 +252,9 @@ export const GraphWorkspace = () => {
         if (state.pathId) {
           event.preventDefault();
           dispatch({ type: 'CLEAR_PATH' });
+        } else if (state.viewKind !== 'canvas') {
+          event.preventDefault();
+          dispatch({ type: 'SET_VIEW', view: 'canvas' });
         }
         return;
       }
@@ -220,7 +277,7 @@ export const GraphWorkspace = () => {
         }
       }
     },
-    [state.focusedRef, state.pathId, orderedNodeRefs, selectNode, announce],
+    [state.focusedRef, state.pathId, state.viewKind, orderedNodeRefs, selectNode, announce],
   );
 
   const onKeyDownRef = useRef(onKeyDown);
@@ -231,8 +288,8 @@ export const GraphWorkspace = () => {
     return () => document.removeEventListener('keydown', handler);
   }, []);
 
-  const nodes = snapshot.data?.nodes ?? [];
-  const edges = snapshot.data?.edges ?? [];
+  const nodes = currentSnapshot?.nodes ?? [];
+  const edges = currentSnapshot?.edges ?? [];
 
   if (!shell.activeProject) {
     return (
@@ -264,7 +321,7 @@ export const GraphWorkspace = () => {
     );
   }
 
-  if (snapshot.isPending || !graphSnapshotIsReady(snapshot.data)) {
+  if (snapshot.isPending || !graphSnapshotIsReady(currentSnapshot)) {
     return (
       <section className="route-page graph-workspace">
         <p className="eyebrow">Graph Workspace</p>
@@ -274,7 +331,7 @@ export const GraphWorkspace = () => {
     );
   }
 
-  const result: GraphSnapshotResultV1 = snapshot.data!;
+  const result: GraphSnapshotResultV1 = currentSnapshot!;
 
   return (
     <section className="route-page graph-workspace" aria-labelledby="graph-workspace-heading">
@@ -336,14 +393,7 @@ export const GraphWorkspace = () => {
         </div>
 
         <div className="graph-actions" role="group" aria-label="Graph actions">
-          <button
-            type="button"
-            onClick={() => {
-              if (!state.snapshotId || !state.projectionRevision) return;
-              dispatch({ type: 'RECOVERY_STARTED' });
-              void snapshot.refetch().finally(() => dispatch({ type: 'RECOVERY_FINISHED' }));
-            }}
-          >
+          <button type="button" onClick={() => void refresh()}>
             새로 고침
           </button>
         </div>

@@ -1,17 +1,17 @@
 # ADR-127 — Semantic Graph Projection Read Persistence, Health and Continuation Boundary
 
-- Status: **PROPOSED** (not accepted)
-- Proposed by: FE-P3-S3 contract preparation (2026-08-04; revision 4 — the
-  snapshot-context descriptor stores the normalized filter set, snapshot refresh
-  is descriptor-based, and the exact continuation/restoration semantics are
-  frozen in the contract snapshot)
+- Status: **ACCEPTED**
+- Accepted by: `USER`
+- Accepted at: `2026-08-04`
+- Revision: 4
+- Proposed by: FE-P3-S3 contract preparation (2026-08-04)
 - Work item: `FE-P3-S3`
 - Related ADRs: ADR-106, ADR-107, ADR-108, ADR-119, ADR-124, ADR-125
 - Contract snapshot:
   `docs/architecture/contracts/snapshots/frontend-phase-3-section-3/frontend-phase-3-section-3-contract-snapshot-260804001.md`
-  (revision 5)
-- Product implementation: `NOT_AUTHORIZED`
-- Decision owner: pending user review
+  (revision 5, APPROVED)
+- Product implementation: `AUTHORIZED` (2026-08-04)
+- Decision owner: `USER` (approved 2026-08-04)
 
 ## Context
 
@@ -32,10 +32,11 @@ Compiled Truth (Stage 10) is a materialized projection, but its persistence
 decision does not transfer automatically to the graph read surface, which
 combines ephemeral traversal with health and overlay bookkeeping.
 
-## Decision (proposed)
+## Decision (accepted)
 
 Adopt an **explicit hybrid** model with an immutable snapshot-context
-descriptor:
+descriptor. The user approved this decision on 2026-08-04 (approval evidence
+exact head `b0dc85199a9949015946dc3c08e40336afa40825`):
 
 1. **Base-view snapshots** are ephemeral computations at read time over
    Canonical / Stage 9 / Compiled Truth read sources, bounded by server limits.
@@ -77,22 +78,38 @@ descriptor:
    adapted behind the FE-P3-S3 `GraphReadPort`/`GraphImpactPort`; their
    identifiers are never exposed as FE-P3-S3 Canonical IDs.
 
-## User decision required
+## Approval record and history
 
-Approve or reject ADR-127. Approval accepts the hybrid persistence model,
-migration 026 requirement, overlay health persistence and server-side
-continuation-token storage for FE-P3-S3. Rejection requires a replacement model
-(ephemeral-only, fully materialized, or immutable persisted snapshots) to be
-frozen before FE-P3-S3 implementation.
+- Previous status: **PROPOSED** (revisions 1–3), never accepted before 2026-08-04.
+- Reason for change to `ACCEPTED`: the user approved the FE-P3-S3 Product
+  implementation on 2026-08-04 at exact head
+  `b0dc85199a9949015946dc3c08e40336afa40825`; the hybrid persistence model was
+  reviewed across three `CHANGES_REQUIRED` rounds (authority normalization,
+  exact operation contracts, path segment unions, continuation semantics,
+  normalized-filter snapshot context, descriptor-based refresh) and was found
+  internally consistent, so no further architectural decision is required.
+- What the approval adopts, precisely:
+  1. Base graph payload is **ephemeral computation** at read time; no base
+     graph node/edge rows are persisted.
+  2. **Immutable Snapshot Context descriptor** is stored (no graph items).
+  3. The Snapshot Context stores **both** the normalized `GraphFilterSetV1`
+     and `filtersDigest` (digest for integrity validation).
+  4. **Projection health, overlay health and continuation state** are stored.
+  5. **Migration 026** is required (four tables:
+     `frontend_knowledge_graph_snapshot_context`,
+     `frontend_knowledge_graph_projection_health`,
+     `frontend_knowledge_graph_overlay_health`,
+     `frontend_knowledge_graph_continuation`).
+  6. **In-memory/PostgreSQL parity boundary** is the four storage adapters.
+- This ADR remains the authoritative record; prior PROPOSED history is
+  preserved in the Git history and the Preparation Verification record
+  (revisions 3–5).
 
-## Blocked Acceptance Criteria
+## Blocked Acceptance Criteria (lifted)
 
-Until ADR-127 is accepted, these FE-P3-S3 Acceptance Criteria remain blocked:
-
-- FE-P3-S3-AC-13 (overlay isolation and persistence)
-- FE-P3-S3-AC-16 (cache isolation)
-- FE-P3-S3-AC-27 (in-memory/PostgreSQL parity)
-- FE-P3-S3-AC-31 (formal completion governance)
+The architecture-decision block on FE-P3-S3-AC-13, AC-16, AC-27 and AC-31 is
+**lifted** by this acceptance. Those criteria still require implementation and
+verification evidence before they can be marked `PASS`.
 
 ## Consequences
 

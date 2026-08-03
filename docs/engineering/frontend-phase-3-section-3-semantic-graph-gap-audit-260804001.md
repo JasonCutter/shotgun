@@ -13,7 +13,7 @@
 - Draft PR: [#59](https://github.com/JasonCutter/shotgun/pull/59)
 - Governing contract: `docs/architecture/frontend/phase-3-knowledge-understanding-editing.md`
 - Governing ADR: ADR-108 (Typed Semantic Graph Projection with Accessible Fallback)
-- Proposed ADR: ADR-127 (Semantic Graph Projection Read Persistence, Health and Continuation Boundary) — PROPOSED, not accepted
+- ADR-127 (Semantic Graph Projection Read Persistence, Health and Continuation Boundary) — **ACCEPTED 2026-08-04**
 - Contract snapshot revision: 5 (exact V1 contracts; normalized semantic axes; base-view/overlay separation; frozen read operations with exact request/response/failure contracts and invariants; descriptor-based snapshot refresh; hybrid persistence decision with immutable snapshot-context descriptor storing normalized filters; `ACTION_CANDIDATE` fully excluded)
 - Status: `PREPARATION_ONLY` — this audit does not claim Product implementation or acceptance.
 
@@ -259,6 +259,7 @@ graph Product contracts, a hybrid projection-health/continuation persistence
 boundary (migration 026), protected routes, a typed client, a React Graph
 Workspace with Cytoscape presentation adapter, and an information-equivalent
 accessible fallback. Existing Canonical/Stage 9 impact and knowledge-model graph
-assets are reusable behind new ports. The persistence decision requires proposed
-**ADR-127** (not yet accepted; blocked AC-13, AC-16, AC-27, AC-31). No Product
-implementation exists today; this audit records the gap, not completion.
+assets are reusable behind new ports. The persistence decision is governed by
+**ADR-127**, accepted by the user on 2026-08-04 (architecture block lifted on
+AC-13, AC-16, AC-27, AC-31). Product implementation is now authorized but was
+not started at this head; this audit records the gap, not completion.

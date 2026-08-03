@@ -5,8 +5,8 @@
 - Date: 2026-08-04 (revision 5 — third focused correction after `CHANGES_REQUIRED` review)
 - Repository: `JasonCutter/shotgun`
 - Scope: Frontend Phase 3 Section 3 — Semantic Graph and Relationship Exploration
-- Result: **GAP AUDIT / EXACT CONTRACT SNAPSHOT (V1) / AC / ADR-127 PROPOSED / EXECUTABLE IMPLEMENTATION REQUEST COMPLETE — REVISION 5 CORRECTIONS APPLIED**
-- Product implementation: **NOT STARTED**
+- Result: **PREPARATION COMPLETE — APPROVED 2026-08-04 / ADR-127 ACCEPTED / CONTRACT SNAPSHOT revision 5 APPROVED / IMPLEMENTATION REQUEST revision 5 APPROVED / PRODUCT IMPLEMENTATION AUTHORIZED**
+- Product implementation: **AUTHORIZED** (2026-08-04); implementation not yet started at preparation head
 - Canonical authority: GitHub `main`
 
 ## 1. Approved work boundary
@@ -180,8 +180,13 @@ resolved:
 
 - Tracking issue: [#58](https://github.com/JasonCutter/shotgun/issues/58)
 - Draft PR: [#59](https://github.com/JasonCutter/shotgun/pull/59) — OPEN and DRAFT.
-- Proposed ADR: ADR-127 — PROPOSED, not accepted; blocked AC-13, AC-16, AC-27, AC-31.
+- ADR-127: **ACCEPTED 2026-08-04** by user at exact head
+  `b0dc85199a9949015946dc3c08e40336afa40825`; architecture block lifted on
+  AC-13, AC-16, AC-27, AC-31.
+- Contract Snapshot revision 5: **APPROVED 2026-08-04**.
+- Implementation Request revision 5: **APPROVED 2026-08-04**; Product
+  implementation **AUTHORIZED**.
 - `FE-P3-S3` is `IN_PROGRESS`; `FE-P3` remains `IN_PROGRESS`.
 - `FE-P3-S3` is **not** marked `COMPLETE`.
-- All Product ACs remain `NOT_RUN`.
-- No Ready, Merge, deployment, FE-P4 or Product implementation work was started.
+- All Product ACs remain `NOT_RUN` until implementation evidence exists.
+- No Ready, Merge, deployment, FE-P4 or Product implementation work was started at this head.

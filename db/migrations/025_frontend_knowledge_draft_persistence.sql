@@ -147,9 +147,12 @@ CREATE TRIGGER frontend_knowledge_draft_materializations_immutable
   FOR EACH ROW EXECUTE FUNCTION frontend_knowledge_draft.block_materialization_mutation();
 
 -- Validation/Impact artifact references derived from the Draft aggregate.
--- One row per (draft_id, draft_revision, artifact_kind, artifact_id) so the
--- artifact history of every revision is retained; the current aggregate's
--- references may be removed by authoring without deleting past revisions.
+-- One authoritative reference per (draft_id, draft_revision, artifact_kind);
+-- the artifact history of every revision is retained, and the current
+-- aggregate's references may be removed by authoring without deleting past
+-- revisions. Any write for an existing (draft_id, draft_revision,
+-- artifact_kind) must match every immutable field or fail closed
+-- (DIGEST_MISMATCH / DRAFT_REVISION_CONFLICT) instead of silently diverging.
 CREATE TABLE frontend_knowledge_draft.artifact_refs (
   artifact_id text NOT NULL,
   artifact_kind text NOT NULL CHECK (artifact_kind IN ('VALIDATION', 'IMPACT')),
@@ -160,7 +163,7 @@ CREATE TABLE frontend_knowledge_draft.artifact_refs (
   status text NOT NULL,
   resource_project_id text NOT NULL,
   project_policy_context jsonb NOT NULL,
-  PRIMARY KEY (draft_id, draft_revision, artifact_kind, artifact_id)
+  PRIMARY KEY (draft_id, draft_revision, artifact_kind)
 );
 
 CREATE INDEX frontend_knowledge_draft_artifact_refs_project_idx

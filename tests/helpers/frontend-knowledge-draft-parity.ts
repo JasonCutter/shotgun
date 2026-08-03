@@ -153,8 +153,11 @@ export type ParitySnapshot = {
     readonly kind: string;
     readonly draftId: string;
     readonly draftRevision: number;
-    readonly projectId: string;
+    readonly artifactRevision: number;
+    readonly digest: string;
     readonly status: string;
+    readonly projectId: string;
+    readonly projectPolicyContext: unknown;
   }[];
 };
 
@@ -182,7 +185,11 @@ export const capture = async (boundary: ParityBoundary): Promise<ParitySnapshot>
       .map((row) => ({ ...row, seedId: row.seedId ?? null }))
       .sort((a, b) => a.draftId.localeCompare(b.draftId)),
     artifacts: [...snap.artifacts].sort(
-      (a, b) => a.artifactId.localeCompare(b.artifactId) || a.kind.localeCompare(b.kind),
+      (a, b) =>
+        a.draftId.localeCompare(b.draftId) ||
+        a.draftRevision - b.draftRevision ||
+        a.kind.localeCompare(b.kind) ||
+        a.artifactId.localeCompare(b.artifactId),
     ),
   };
 };
@@ -729,6 +736,465 @@ export const scenarioArtifactRetention = async (boundary: ParityBoundary) => {
         draftRevision: row.draftRevision,
       }))
       .sort((a, b) => a.artifactId.localeCompare(b.artifactId)),
+  };
+};
+
+export const scenarioDirtyReadBlocked = async (boundary: ParityBoundary) => {
+  // Txn A changes the Draft rev1 -> rev2 and pauses before commit. Txn B must
+  // never observe A's uncommitted rev2; after A completes, B reads the
+  // authoritative committed state (rev2).
+  const seedDraft = pDraft('seed-dirty', []);
+  await materializeFrontendKnowledgeDraft(boundary, {
+    draft: seedDraft,
+    materialization: pMaterialization(seedDraft, 'seed-dirty'),
+  });
+  let releaseA!: () => void;
+  const gateA = new Promise<void>((resolve) => {
+    releaseA = resolve;
+  });
+  let aInProgress = false;
+  let aCommitted = false;
+  const aTxn = (async () => {
+    await boundary.transaction(async (repos) => {
+      const current = await repos.drafts.findById('project-1', seedDraft.draftId);
+      if (!current) return;
+      await repos.drafts.replaceIfRevision({
+        projectId: 'project-1',
+        draft: {
+          ...current,
+          revision: 2,
+          contentDigest: 'sha256:rev2',
+          updatedAt: '2026-08-03T00:01:00.000Z',
+        },
+        expectedRevision: 1,
+      });
+      aInProgress = true;
+      await gateA;
+    });
+    aCommitted = true;
+  })();
+  while (!aInProgress) {
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  }
+  let bObservedRevision: number | null = null;
+  let bSettled = false;
+  const bTxn = (async () => {
+    const value = await boundary.transaction((repos) =>
+      repos.drafts.findById('project-1', seedDraft.draftId),
+    );
+    bSettled = true;
+    bObservedRevision = value?.revision ?? null;
+    return bObservedRevision;
+  })();
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  const bSettledWhileAUncommitted = bSettled && !aCommitted;
+  const bSawUncommittedRev2 = bSettledWhileAUncommitted && bObservedRevision === 2;
+  releaseA();
+  await aTxn;
+  await bTxn;
+  const committed = await capture(boundary);
+  return {
+    bSawUncommittedRev2,
+    committedRevisionAfterA:
+      committed.drafts.find((row) => row.draftId === seedDraft.draftId)?.revision ?? null,
+  };
+};
+
+export const scenarioSameDraftRollbackIsolation = async (boundary: ParityBoundary) => {
+  // Two transactions on the same Draft: A commits rev2; B (same draft) fails
+  // at its operation append. A's committed result must remain the final state.
+  const seedDraft = pDraft('seed-isol', [pOperation(1)]);
+  await materializeFrontendKnowledgeDraft(boundary, {
+    draft: seedDraft,
+    materialization: pMaterialization(seedDraft, 'seed-isol'),
+  });
+  const current = await boundary.transaction((repos) =>
+    repos.drafts.findById(seedDraft.resourceProjectId, seedDraft.draftId),
+  );
+  if (!current) {
+    return {
+      aCommitted: false,
+      bRejected: false,
+      bError: null,
+      finalRevision: null,
+      revisionRows: [],
+      operationCount: 0,
+    };
+  }
+  const appended = await persistNext(boundary, current as FrontendKnowledgeDraftChangeSetV1, [
+    pOperation(2),
+  ]);
+  const original = boundary.failOperationAppend;
+  boundary.failOperationAppend = true;
+  let bRejected = false;
+  let bError: string | null = null;
+  try {
+    await persistNext(boundary, appended, [pOperation(3)]);
+  } catch (caught) {
+    bRejected = true;
+    bError = caught instanceof Error ? caught.message : 'UNKNOWN';
+  }
+  boundary.failOperationAppend = original;
+  const snap = await capture(boundary);
+  return {
+    aCommitted: appended.revision === 2,
+    bRejected,
+    bError,
+    finalRevision: snap.drafts.find((row) => row.draftId === seedDraft.draftId)?.revision ?? null,
+    revisionRows: snap.revisions
+      .filter((row) => row.draftId === seedDraft.draftId)
+      .map((row) => row.revision)
+      .sort(),
+    operationCount: snap.operations.filter((row) => row.draftId === seedDraft.draftId).length,
+  };
+};
+
+export const scenarioInterleavedRollback = async (boundary: ParityBoundary) => {
+  // Two transactions submitted concurrently against the same Draft revision,
+  // each storing a revision + operation. Exactly one commits; the loser is
+  // rolled back. The winner's revision and operation rows are the only new
+  // rows (no interleaved row is ever deleted or leaked).
+  const seedDraft = pDraft('seed-inter', [pOperation(1)]);
+  await materializeFrontendKnowledgeDraft(boundary, {
+    draft: seedDraft,
+    materialization: pMaterialization(seedDraft, 'seed-inter'),
+  });
+  const current = await boundary.transaction((repos) =>
+    repos.drafts.findById(seedDraft.resourceProjectId, seedDraft.draftId),
+  );
+  if (!current) {
+    return {
+      successCount: 0,
+      conflictCount: 0,
+      finalRevision: null,
+      revisionRows: [],
+      operationCount: 0,
+    };
+  }
+  const base = (current as FrontendKnowledgeDraftChangeSetV1).base;
+  const draftId = seedDraft.draftId;
+  const digestFor = (operations: readonly FrontendKnowledgeOperationV1[]): string =>
+    frontendKnowledgeDraftRevisionDigest({
+      draftId,
+      revision: 2,
+      base,
+      operations,
+    });
+  const save = (operations: readonly FrontendKnowledgeOperationV1[]): Promise<unknown> =>
+    persistFrontendKnowledgeDraftRevision(boundary, {
+      projectId: 'project-1',
+      draftId,
+      expectedDraftRevision: 1,
+      expectedBaseRevision: base.canonicalVersion,
+      operationRevision: 2,
+      operations,
+      contentDigest: digestFor(operations),
+      updatedAt: '2026-08-03T00:01:00.000Z',
+    });
+  const opA = pOperation(2);
+  const opB: FrontendKnowledgeOperationV1 = {
+    ...pOperation(2),
+    operationId: 'operation-2-b',
+    contentDigest: 'sha256:operation-2-b',
+  };
+  const results = await Promise.allSettled([save([opA]), save([opB])]);
+  const snap = await capture(boundary);
+  return {
+    successCount: results.filter((result) => result.status === 'fulfilled').length,
+    conflictCount: results.filter(
+      (result) =>
+        result.status === 'rejected' && errorCode(result.reason) === 'DRAFT_REVISION_CONFLICT',
+    ).length,
+    finalRevision: snap.drafts.find((row) => row.draftId === draftId)?.revision ?? null,
+    revisionRows: snap.revisions
+      .filter((row) => row.draftId === draftId)
+      .map((row) => row.revision)
+      .sort(),
+    operationCount: snap.operations.filter((row) => row.draftId === draftId).length,
+  };
+};
+
+export const scenarioTwoFailingTransactions = async (boundary: ParityBoundary) => {
+  // Two transactions both fail mid-write (operation append failpoint). No
+  // residual rows may remain, and the FIFO queue must be released so a
+  // subsequent transaction executes normally.
+  const original = boundary.failOperationAppend;
+  boundary.failOperationAppend = true;
+  const aDraft = pDraft('seed-twofail-a', [pOperation(1)]);
+  const bDraft = pDraft('seed-twofail-b', [pOperation(1)]);
+  const results = await Promise.allSettled([
+    materializeFrontendKnowledgeDraft(boundary, {
+      draft: aDraft,
+      materialization: pMaterialization(aDraft, 'seed-twofail-a'),
+    }),
+    materializeFrontendKnowledgeDraft(boundary, {
+      draft: bDraft,
+      materialization: pMaterialization(bDraft, 'seed-twofail-b'),
+    }),
+  ]);
+  boundary.failOperationAppend = original;
+  const snap = await capture(boundary);
+  let subsequentTxnSucceeded = false;
+  try {
+    const cDraft = pDraft('seed-twofail-c', []);
+    await materializeFrontendKnowledgeDraft(boundary, {
+      draft: cDraft,
+      materialization: pMaterialization(cDraft, 'seed-twofail-c'),
+    });
+    subsequentTxnSucceeded = true;
+  } catch {
+    subsequentTxnSucceeded = false;
+  }
+  const snap2 = await capture(boundary);
+  return {
+    bothRejected: results.every((result) => result.status === 'rejected'),
+    draftCount: snap.drafts.length,
+    revisionCount: snap.revisions.length,
+    operationCount: snap.operations.length,
+    materializationCount: snap.materializations.length,
+    artifactCount: snap.artifacts.length,
+    subsequentTxnSucceeded,
+    finalDraftCount: snap2.drafts.length,
+  };
+};
+
+type ArtifactPolicyContextInput = {
+  readonly activeProjectId: string;
+  readonly resourceProjectId: string;
+  readonly draftProjectId: string;
+  readonly effectiveProjectId: string;
+  readonly accessRevision: string;
+  readonly policyContextRevision: string;
+};
+
+type ArtifactRefInput = {
+  readonly artifactId?: string;
+  readonly artifactRevision?: number;
+  readonly digest?: string;
+  readonly status?: 'COMPLETE' | 'PARTIAL' | 'FAILED' | 'UNAVAILABLE';
+  readonly projectPolicyContext?: ArtifactPolicyContextInput;
+};
+
+const pPolicyContext = (
+  overrides: Partial<ArtifactPolicyContextInput> = {},
+): ArtifactPolicyContextInput => ({
+  activeProjectId: 'project-1',
+  resourceProjectId: 'project-1',
+  draftProjectId: 'project-1',
+  effectiveProjectId: 'project-1',
+  accessRevision: 'access-7',
+  policyContextRevision: 'policy-7',
+  ...overrides,
+});
+
+const pValidation = (
+  overrides: ArtifactRefInput = {},
+): NonNullable<FrontendKnowledgeDraftChangeSetV1['validation']> => ({
+  artifactId: 'validation-art',
+  artifactRevision: 1,
+  digest: 'sha256:validation-art',
+  status: 'COMPLETE',
+  projectPolicyContext: pPolicyContext(),
+  ...overrides,
+});
+
+const pImpact = (
+  overrides: ArtifactRefInput = {},
+): NonNullable<FrontendKnowledgeDraftChangeSetV1['impactPreview']> => ({
+  artifactId: 'impact-art',
+  artifactRevision: 1,
+  digest: 'sha256:impact-art',
+  status: 'COMPLETE',
+  projectPolicyContext: pPolicyContext(),
+  ...overrides,
+});
+
+const artifactFixture = (seedId = 'seed-art'): FrontendKnowledgeDraftChangeSetV1 => ({
+  ...pDraft(seedId, []),
+  validation: pValidation(),
+  impactPreview: pImpact(),
+});
+
+const artifactDriftScenario = async (
+  boundary: ParityBoundary,
+  mutate: (draft: FrontendKnowledgeDraftChangeSetV1) => FrontendKnowledgeDraftChangeSetV1,
+  retainedField: 'digest' | 'status' | 'artifactRevision' | 'policyRevision',
+): Promise<{
+  readonly error: string | null;
+  readonly artifactCount: number;
+  readonly retained: string | number | null;
+  readonly draftField: string | number | null;
+}> => {
+  const seedDraft = artifactFixture();
+  await materializeFrontendKnowledgeDraft(boundary, {
+    draft: seedDraft,
+    materialization: pMaterialization(seedDraft, 'seed-art'),
+  });
+  const drifted = mutate(seedDraft);
+  let error: string | null = null;
+  try {
+    await boundary.transaction((repos) =>
+      repos.drafts.replaceIfRevision({
+        projectId: 'project-1',
+        draft: drifted,
+        expectedRevision: 1,
+      }),
+    );
+  } catch (caught) {
+    error = errorCode(caught);
+  }
+  const snap = await capture(boundary);
+  const row = snap.artifacts.find(
+    (entry) => entry.draftId === seedDraft.draftId && entry.kind === 'VALIDATION',
+  );
+  const draftState = await boundary.transaction((repos) =>
+    repos.drafts.findById('project-1', seedDraft.draftId),
+  );
+  const retained =
+    retainedField === 'digest'
+      ? (row?.digest ?? null)
+      : retainedField === 'status'
+        ? (row?.status ?? null)
+        : retainedField === 'artifactRevision'
+          ? (row?.artifactRevision ?? null)
+          : row
+            ? ((row.projectPolicyContext as { accessRevision?: string }).accessRevision ?? null)
+            : null;
+  const draftField =
+    retainedField === 'digest'
+      ? (draftState?.validation?.digest ?? null)
+      : retainedField === 'status'
+        ? (draftState?.validation?.status ?? null)
+        : retainedField === 'artifactRevision'
+          ? (draftState?.validation?.artifactRevision ?? null)
+          : (draftState?.validation?.projectPolicyContext.accessRevision ?? null);
+  return {
+    error,
+    artifactCount: snap.artifacts.filter((entry) => entry.draftId === seedDraft.draftId).length,
+    retained,
+    draftField,
+  };
+};
+
+export const scenarioArtifactExactReplay = async (boundary: ParityBoundary) => {
+  const seedDraft = artifactFixture('seed-art-exact');
+  await materializeFrontendKnowledgeDraft(boundary, {
+    draft: seedDraft,
+    materialization: pMaterialization(seedDraft, 'seed-art-exact'),
+  });
+  const replayOutcome = await boundary.transaction((repos) =>
+    repos.drafts.replaceIfRevision({
+      projectId: 'project-1',
+      draft: seedDraft,
+      expectedRevision: 1,
+    }),
+  );
+  const snap = await capture(boundary);
+  const row = snap.artifacts.find(
+    (entry) => entry.draftId === seedDraft.draftId && entry.kind === 'VALIDATION',
+  );
+  return {
+    replayOutcome,
+    artifactCount: snap.artifacts.filter((entry) => entry.draftId === seedDraft.draftId).length,
+    artifact: row
+      ? {
+          artifactId: row.artifactId,
+          artifactRevision: row.artifactRevision,
+          digest: row.digest,
+          status: row.status,
+          projectId: row.projectId,
+          projectPolicyContext: row.projectPolicyContext,
+        }
+      : null,
+  };
+};
+
+export const scenarioArtifactDigestDrift = (boundary: ParityBoundary) =>
+  artifactDriftScenario(
+    boundary,
+    (draft) => ({ ...draft, validation: pValidation({ digest: 'sha256:drifted' }) }),
+    'digest',
+  );
+
+export const scenarioArtifactStatusDrift = (boundary: ParityBoundary) =>
+  artifactDriftScenario(
+    boundary,
+    (draft) => ({ ...draft, validation: pValidation({ status: 'FAILED' }) }),
+    'status',
+  );
+
+export const scenarioArtifactRevisionDrift = (boundary: ParityBoundary) =>
+  artifactDriftScenario(
+    boundary,
+    (draft) => ({ ...draft, validation: pValidation({ artifactRevision: 2 }) }),
+    'artifactRevision',
+  );
+
+export const scenarioArtifactPolicyDrift = (boundary: ParityBoundary) =>
+  artifactDriftScenario(
+    boundary,
+    (draft) => ({
+      ...draft,
+      validation: pValidation({
+        projectPolicyContext: pPolicyContext({ accessRevision: 'access-8' }),
+      }),
+    }),
+    'policyRevision',
+  );
+
+export const scenarioArtifactConflictRollback = async (boundary: ParityBoundary) => {
+  // The artifact conflict is discovered AFTER other writes (revision and
+  // operation rows) inside the same transaction. The entire transaction must
+  // roll back: no draft revision bump, no leaked revision/operation rows, and
+  // the existing artifact row is unchanged.
+  const seedDraft = artifactFixture('seed-art-rollback');
+  await materializeFrontendKnowledgeDraft(boundary, {
+    draft: seedDraft,
+    materialization: pMaterialization(seedDraft, 'seed-art-rollback'),
+  });
+  const drifted = { ...seedDraft, validation: pValidation({ digest: 'sha256:drifted' }) };
+  let error: string | null = null;
+  try {
+    await boundary.transaction(async (repos) => {
+      await repos.revisions.append({
+        draftId: seedDraft.draftId,
+        revision: 99,
+        status: 'DRAFT',
+        resourceProjectId: 'project-1',
+        draftProjectId: 'project-1',
+        effectiveProjectId: 'project-1',
+        base: seedDraft.base,
+        operations: [],
+        contentDigest: 'sha256:leak',
+        createdAt: '2026-08-03T00:00:00.000Z',
+        updatedAt: '2026-08-03T00:00:00.000Z',
+      });
+      await repos.operations.append({
+        projectId: 'project-1',
+        draftId: seedDraft.draftId,
+        revision: 99,
+        operations: [pOperation(99)],
+      });
+      await repos.drafts.replaceIfRevision({
+        projectId: 'project-1',
+        draft: drifted,
+        expectedRevision: 1,
+      });
+    });
+  } catch (caught) {
+    error = errorCode(caught);
+  }
+  const snap = await capture(boundary);
+  const draftState = await boundary.transaction((repos) =>
+    repos.drafts.findById('project-1', seedDraft.draftId),
+  );
+  return {
+    error,
+    draftRevision: draftState?.revision ?? null,
+    draftDigest: draftState?.validation?.digest ?? null,
+    revisionCount: snap.revisions.filter((row) => row.draftId === seedDraft.draftId).length,
+    operationCount: snap.operations.filter((row) => row.draftId === seedDraft.draftId).length,
+    artifactCount: snap.artifacts.filter((row) => row.draftId === seedDraft.draftId).length,
   };
 };
 

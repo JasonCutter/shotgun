@@ -5,19 +5,29 @@ import {
   capture,
   scenarioAbandonment,
   scenarioAppendOnly,
+  scenarioArtifactConflictRollback,
+  scenarioArtifactDigestDrift,
+  scenarioArtifactExactReplay,
+  scenarioArtifactPolicyDrift,
   scenarioArtifactRefs,
   scenarioArtifactRetention,
+  scenarioArtifactRevisionDrift,
+  scenarioArtifactStatusDrift,
   scenarioCas,
   scenarioConcurrentCas,
   scenarioConcurrentReplay,
   scenarioConcurrentReplayDigestMismatch,
   scenarioDigestMismatch,
+  scenarioDirtyReadBlocked,
   scenarioDriftRejection,
+  scenarioInterleavedRollback,
   scenarioOperationOrdering,
   scenarioRollback,
   scenarioRollbackIsolation,
+  scenarioSameDraftRollbackIsolation,
   scenarioSeedReplay,
   scenarioSeedless,
+  scenarioTwoFailingTransactions,
   type ParityBoundary,
 } from '../helpers/frontend-knowledge-draft-parity.js';
 
@@ -146,6 +156,83 @@ describe('FE-P3-S2 in-memory Draft adapter parity scenarios', () => {
     expect(result.finalRevision).toBe(2);
     expect(result.revisionRows).toEqual([1, 2]);
     expect(result.operationCount).toBe(1);
+  });
+
+  it('blocks a concurrent read from observing an uncommitted revision (no dirty read)', async () => {
+    const result = await scenarioDirtyReadBlocked(freshBoundary());
+    expect(result.bSawUncommittedRev2).toBe(false);
+    expect(result.committedRevisionAfterA).toBe(2);
+  });
+
+  it('keeps a committed same-Draft transaction when another transaction rolls back', async () => {
+    const result = await scenarioSameDraftRollbackIsolation(freshBoundary());
+    expect(result.aCommitted).toBe(true);
+    expect(result.bRejected).toBe(true);
+    expect(result.bError).toBe('operation append failpoint');
+    expect(result.finalRevision).toBe(2);
+    expect(result.revisionRows).toEqual([1, 2]);
+    expect(result.operationCount).toBe(2);
+  });
+
+  it('preserves only the winner revision/operation rows across interleaved transactions', async () => {
+    const result = await scenarioInterleavedRollback(freshBoundary());
+    expect(result.successCount).toBe(1);
+    expect(result.conflictCount).toBe(1);
+    expect(result.finalRevision).toBe(2);
+    expect(result.revisionRows).toEqual([1, 2]);
+    expect(result.operationCount).toBe(2);
+  });
+
+  it('leaves no residual rows after two failing transactions and releases the queue', async () => {
+    const result = await scenarioTwoFailingTransactions(freshBoundary());
+    expect(result.bothRejected).toBe(true);
+    expect(result.draftCount).toBe(0);
+    expect(result.revisionCount).toBe(0);
+    expect(result.operationCount).toBe(0);
+    expect(result.materializationCount).toBe(0);
+    expect(result.artifactCount).toBe(0);
+    expect(result.subsequentTxnSucceeded).toBe(true);
+    expect(result.finalDraftCount).toBe(1);
+  });
+
+  it('treats an exact artifact reference re-save as an idempotent no-op', async () => {
+    const result = await scenarioArtifactExactReplay(freshBoundary());
+    expect(result.replayOutcome).toBe('UPDATED');
+    expect(result.artifactCount).toBe(2);
+    expect(result.artifact?.digest).toBe('sha256:validation-art');
+  });
+
+  it('fails closed with DIGEST_MISMATCH when an artifact digest drifts', async () => {
+    const result = await scenarioArtifactDigestDrift(freshBoundary());
+    expect(result.error).toBe('DIGEST_MISMATCH');
+    expect(result.artifactCount).toBe(2);
+    expect(result.retained).toBe('sha256:validation-art');
+    expect(result.draftField).toBe('sha256:validation-art');
+  });
+
+  it.each([
+    ['status', scenarioArtifactStatusDrift, 'COMPLETE'],
+    ['artifactRevision', scenarioArtifactRevisionDrift, 1],
+    ['policyContext', scenarioArtifactPolicyDrift, 'access-7'],
+  ])(
+    'fails closed with DRAFT_REVISION_CONFLICT on %s drift and preserves the row',
+    async (_label, scenario, retained) => {
+      const result = await scenario(freshBoundary());
+      expect(result.error).toBe('DRAFT_REVISION_CONFLICT');
+      expect(result.artifactCount).toBe(2);
+      expect(result.retained).toBe(retained);
+      expect(result.draftField).toBe(retained);
+    },
+  );
+
+  it('rolls back the whole transaction when an artifact conflict is discovered', async () => {
+    const result = await scenarioArtifactConflictRollback(freshBoundary());
+    expect(result.error).toBe('DIGEST_MISMATCH');
+    expect(result.draftRevision).toBe(1);
+    expect(result.draftDigest).toBe('sha256:validation-art');
+    expect(result.revisionCount).toBe(1);
+    expect(result.operationCount).toBe(0);
+    expect(result.artifactCount).toBe(2);
   });
 
   it('leaves the adapter store empty across fresh boundaries (no cross-contamination)', async () => {

@@ -1,6 +1,9 @@
 import type { Pool, PoolClient } from 'pg';
 
-import { FrontendKnowledgeDraftCommandError } from '../../../packages/contracts/src/index.js';
+import {
+  FrontendKnowledgeDraftCommandError,
+  stableJson,
+} from '../../../packages/contracts/src/index.js';
 import type { FrontendKnowledgeDraftChangeSetV1 } from '../../../packages/contracts/src/index.js';
 import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
 import type {
@@ -90,35 +93,75 @@ export class PostgresFrontendKnowledgeDraftRepository implements FrontendKnowled
   }
 
   /**
-   * Appends the current aggregate's Validation/Impact references for the
-   * current revision. References are never deleted: past revision references
-   * are retained, and re-saving the same artifact within the same revision is
-   * idempotent (INSERT ... ON CONFLICT DO NOTHING). The append-only trigger on
-   * `artifact_refs` rejects any UPDATE/DELETE.
+   * Reconciles the current aggregate's Validation/Impact references for the
+   * current revision. One authoritative reference per (draft_id,
+   * draft_revision, artifact_kind) is allowed; past revision references are
+   * never deleted. For an existing reference, every immutable field is
+   * compared: an exact match is an idempotent no-op, a digest change fails
+   * closed with DIGEST_MISMATCH, and any other immutable field change fails
+   * closed with DRAFT_REVISION_CONFLICT. A transaction-scoped advisory lock on
+   * the artifact identity makes the read-compare-insert atomic under
+   * concurrency. The append-only trigger on `artifact_refs` rejects any
+   * UPDATE/DELETE.
    */
   private async replaceArtifactRefs(
     client: PoolClient,
     draft: FrontendKnowledgeDraftChangeSetV1,
   ): Promise<void> {
     for (const ref of this.artifactQueryValues(draft)) {
-      await client.query(
-        `INSERT INTO frontend_knowledge_draft.artifact_refs
-           (artifact_id, artifact_kind, draft_id, draft_revision, artifact_revision,
-            digest, status, resource_project_id, project_policy_context)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-         ON CONFLICT (draft_id, draft_revision, artifact_kind, artifact_id) DO NOTHING`,
-        [
-          ref.artifactId,
-          ref.kind,
-          ref.draftId,
-          ref.draftRevision,
-          ref.artifactRevision,
-          ref.digest,
-          ref.status,
-          ref.projectId,
-          JSONB_SNAPSHOT(ref.policyContext),
-        ],
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1)::bigint)', [
+        `artifact:${draft.draftId}:${draft.revision}:${ref.kind}`,
+      ]);
+      const existing = await client.query<{
+        artifact_id: string;
+        artifact_revision: number;
+        digest: string;
+        status: string;
+        resource_project_id: string;
+        project_policy_context: unknown;
+      }>(
+        `SELECT artifact_id, artifact_revision, digest, status,
+                resource_project_id, project_policy_context
+         FROM frontend_knowledge_draft.artifact_refs
+         WHERE draft_id = $1 AND draft_revision = $2 AND artifact_kind = $3`,
+        [draft.draftId, draft.revision, ref.kind],
       );
+      const row = existing.rows[0];
+      if (row === undefined) {
+        await client.query(
+          `INSERT INTO frontend_knowledge_draft.artifact_refs
+             (artifact_id, artifact_kind, draft_id, draft_revision, artifact_revision,
+              digest, status, resource_project_id, project_policy_context)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [
+            ref.artifactId,
+            ref.kind,
+            ref.draftId,
+            ref.draftRevision,
+            ref.artifactRevision,
+            ref.digest,
+            ref.status,
+            ref.projectId,
+            JSONB_SNAPSHOT(ref.policyContext),
+          ],
+        );
+        continue;
+      }
+      if (
+        row.artifact_id !== ref.artifactId ||
+        row.artifact_revision !== ref.artifactRevision ||
+        row.status !== ref.status ||
+        row.resource_project_id !== ref.projectId ||
+        stableJson(PARSE(row.project_policy_context)) !== stableJson(ref.policyContext)
+      ) {
+        conflict('Artifact reference immutable fields differ for the same Draft revision.');
+      }
+      if (row.digest !== ref.digest) {
+        throw new FrontendKnowledgeDraftCommandError(
+          'DIGEST_MISMATCH',
+          'Artifact reference digest differs for the same Draft revision.',
+        );
+      }
     }
   }
   private repositories(client: PoolClient): FrontendKnowledgeDraftTransactionRepositoriesV1 {
@@ -430,11 +473,15 @@ export class PostgresFrontendKnowledgeDraftRepository implements FrontendKnowled
       kind: string;
       draft_id: string;
       draft_revision: number;
-      project_id: string;
+      artifact_revision: number;
+      digest: string;
       status: string;
+      project_id: string;
+      project_policy_context: unknown;
     }>(
       `SELECT artifact_id, artifact_kind AS kind, draft_id, draft_revision,
-              resource_project_id AS project_id, status
+              artifact_revision, digest, status,
+              resource_project_id AS project_id, project_policy_context
        FROM frontend_knowledge_draft.artifact_refs ORDER BY artifact_id, artifact_kind`,
     );
     return {
@@ -471,8 +518,11 @@ export class PostgresFrontendKnowledgeDraftRepository implements FrontendKnowled
         kind: row.kind,
         draftId: row.draft_id,
         draftRevision: row.draft_revision,
-        projectId: row.project_id,
+        artifactRevision: row.artifact_revision,
+        digest: row.digest,
         status: row.status,
+        projectId: row.project_id,
+        projectPolicyContext: PARSE(row.project_policy_context),
       })),
     };
   }

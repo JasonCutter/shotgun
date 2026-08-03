@@ -53,13 +53,13 @@ Knowledge Flow의 6개 Phase와 Frontend Phase 0~5는 대체 관계가 아니다
 
 > 이 블록은 `docs/project/frontend-work-items.json`과 Section Completion Manifest에서 생성됩니다. 블록 내부를 직접 수정하지 않습니다.
 
-| Work Item                                                | Status        |
-| -------------------------------------------------------- | ------------- |
-| FE-P3 — Knowledge Understanding and Editing              | `IN_PROGRESS` |
-| FE-P3-S2 — Knowledge Editor and DraftChangeSet Authoring | `IN_PROGRESS` |
+| Work Item                                              | Status        |
+| ------------------------------------------------------ | ------------- |
+| FE-P3 — Knowledge Understanding and Editing            | `IN_PROGRESS` |
+| FE-P3-S3 — Semantic Graph and Relationship Exploration | `NOT_STARTED` |
 
 - 미충족 필수 기준: `manifest unavailable`
-- Next valid Product Section: `FE-P3-S3 — Semantic Graph and Relationship Exploration`
+- Next valid Product Section: `FE-P4-S1 — Review Center`
 
 <!-- FRONTEND-WORK-ITEM-STATUS:END -->
 
@@ -223,8 +223,8 @@ Section 1개
 
 ## 다음 구현 경계
 
-현재 활성 Section 내부의 미착수 Increment는 `FE-P2-S2-I03`이다. 해당 범위를 그대로 구현할지, 분할·연기할지는 별도 승인된 Scope Amendment 또는 구현 요청 전에는 결정되지 않는다.
+현재 활성 Section은 `FE-P3-S3 — Semantic Graph and Relationship Exploration`이다. 해당 Section은 별도 사용자 승인과 구현 요청 전에는 시작하지 않는다.
 
-Section 2가 모든 완료 조건을 충족한 뒤의 다음 유효 Product Section은 `FE-P3-S1 — Knowledge Workspace`다. 이 계획 갱신은 남은 Section 2 구현, Scope Amendment, Section 완료 또는 Phase 3 착수를 승인하지 않는다.
+FE-P3-S3가 모든 완료 조건을 충족한 뒤의 다음 유효 Product Section은 `FE-P4-S1 — Review Center`다. 이 계획 갱신은 FE-P3-S3 구현, Ready, Merge, 배포 또는 production verification을 승인하지 않는다.
 
 Route-level Lazy Loading·Code Splitting은 Section 3 성능 증거에서 권장된 비차단 횡단 후속 작업이다. 별도 범위와 검증으로 관리한다.

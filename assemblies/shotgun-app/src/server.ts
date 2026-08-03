@@ -78,6 +78,14 @@ import { registerProjectRoutes } from './product-api/project-routes.js';
 import { registerFrontendProductRoutes } from './product-api/frontend-product-routes.js';
 import { registerSettingsRoutes } from './product-api/settings-routes.js';
 import { registerSourcesRoutes } from './product-api/sources-routes.js';
+import { registerFrontendKnowledgeDraftRoutes } from './product-api/frontend-knowledge-draft-routes.js';
+import {
+  FrontendKnowledgeDraftProductCoordinator,
+  type FrontendKnowledgeDraftTargetResolverPort,
+} from '../../../modules/frontend-knowledge-draft/src/product-api.js';
+import type { FrontendKnowledgeDraftRepositoryBoundaryPort } from '../../../modules/frontend-knowledge-draft/src/index.js';
+import { InMemoryFrontendKnowledgeDraftRepository } from '../../../adapters/frontend-knowledge-draft-in-memory/src/index.js';
+import { InMemoryFrontendKnowledgeDraftTargetResolver } from '../../../adapters/frontend-knowledge-draft-api-in-memory/src/index.js';
 import { FakeDraftActionConnector } from '../../../adapters/action-connector-fake/src/index.js';
 import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
 import { InProcessTransport } from '../../../adapters/transport-in-process/src/index.js';
@@ -416,6 +424,9 @@ export type ApplicationOptions = {
   readonly projectBootstrapUnitOfWork?: ProjectBootstrapUnitOfWorkPort;
   readonly settingsRepository?: SettingsRepositoryPort;
   readonly frontendCommandGateway?: FrontendCommandGatewayPort;
+  readonly frontendKnowledgeDraftRepository?: FrontendKnowledgeDraftRepositoryBoundaryPort;
+  readonly frontendKnowledgeDraftTargetResolver?: FrontendKnowledgeDraftTargetResolverPort;
+  readonly frontendKnowledgeDraftCoordinator?: FrontendKnowledgeDraftProductCoordinator;
   readonly frontendProductReadCoordinator?: FrontendProductReadCoordinator;
   readonly frontendProductReadCoordinatorFactory?: (
     connector: ShotgunKernel['connector'],
@@ -1142,6 +1153,18 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   const settingsRepository = options.settingsRepository ?? new InMemorySettingsRepository();
   const frontendCommandGateway =
     options.frontendCommandGateway ?? new InMemoryFrontendCommandGateway();
+  const frontendKnowledgeDraftRepository =
+    options.frontendKnowledgeDraftRepository ?? new InMemoryFrontendKnowledgeDraftRepository();
+  const frontendKnowledgeDraftTargetResolver =
+    options.frontendKnowledgeDraftTargetResolver ??
+    new InMemoryFrontendKnowledgeDraftTargetResolver();
+  const frontendKnowledgeDraftCoordinator =
+    options.frontendKnowledgeDraftCoordinator ??
+    new FrontendKnowledgeDraftProductCoordinator(
+      frontendKnowledgeDraftRepository,
+      frontendCommandGateway,
+      frontendKnowledgeDraftTargetResolver,
+    );
   const inMemoryAskWorkspace = new InMemoryAskWorkspaceProjection();
   const askCommandCoordinator =
     options.askCommandCoordinator ??
@@ -1865,6 +1888,13 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     authRepository,
     projectAdminRepository,
     requireBrowserSession,
+  );
+  registerFrontendKnowledgeDraftRoutes(
+    server,
+    frontendKnowledgeDraftCoordinator,
+    authRepository,
+    settingsRepository,
+    requirePrincipalBrowserSession,
   );
 
   server.post<{ Body: { accountId: string; password: string; projectId: string } }>(

@@ -1,27 +1,32 @@
 ---
 id: FRONTEND-PHASE-3-SECTION-2-IMPLEMENTATION-REQUEST-260802001
-classification: IMPLEMENTATION_REQUEST_CANDIDATE
-status: IMPLEMENTATION_REQUEST_CANDIDATE
+classification: IMPLEMENTATION_REQUEST
+status: APPROVED_FOR_IMPLEMENTATION
 revision: 4
 review_round: 3
-contract_basis_status: APPROVED_PENDING_PUBLICATION
+contract_basis_status: CANONICAL_PUBLISHED
+contract_basis_commit: 587f46caeca53fe479e887ea8c1ddd38ae2dbd52
 a1_review_result: APPROVED_FOR_A1_CONTRACT_FREEZE
-implementation_review_result: NOT_REQUESTED
+implementation_review_result: APPROVED_FOR_A2_IMPLEMENTATION_START
 work_item: FE-P3-S2
 governing_adr: ADR-126
 contract_snapshot: docs/architecture/contracts/snapshots/frontend-phase-3-section-2/frontend-phase-3-section-2-contract-snapshot-260802001.md
-branch: codex/frontend-phase-3-section-2-contract
-implementation_authorized: false
+implementation_authorized: true
+approved_by: user
+approved_at: 2026-08-02
+base_commit: 587f46caeca53fe479e887ea8c1ddd38ae2dbd52
+branch: codex/frontend-phase-3-section-2-implementation
 ---
 
-# FE-P3-S2 Implementation Request Candidate
+# FE-P3-S2 Implementation Request
 
-A1 contract content is approved, but this Implementation Request has not
-received execution approval. A2 and Product implementation require separate
-user approval. It is not an authorization to edit Product code, add SQL, add
-dependencies, run tests or start A2.
+A1 contract content and Canonical publication are complete. The user approved
+FE-P3-S2 A2 implementation execution on 2026-08-02. This Implementation
+Request authorizes implementation within the frozen ADR-126 and Contract
+Snapshot boundary. It does not authorize scope expansion, Approval, Canonical
+Commit, FE-P3-S3 or Deployment.
 
-## Candidate dependency order
+## Authorized dependency order
 
 1. Contract and decoder package: versioned Draft aggregate, typed operations,
    strict schemas and failure mapping.
@@ -51,8 +56,8 @@ typed operation payload union (including Evidence, Temporal, Conflict,
 Knowledge Gap and `NO_OP`), explicit Review Submission artifact/Evidence/Project
 bindings, the existing-versus-new Resource identity rule and the server-derived
 `effectiveProjectId`, including both add and update proposal kinds for Conflict
-and Knowledge Gap. These are contract obligations for a later implementation,
-not implementation evidence.
+and Knowledge Gap. These are contract obligations for the implementation, not
+implementation evidence.
 
 ## Reusable surfaces
 
@@ -75,7 +80,7 @@ not implementation evidence.
   Draft authority;
 - no external OSS runtime, Yjs/CRDT, graph editor or new dependency is added.
 
-## OSS integration decision for the candidate
+## OSS integration decision for the implementation
 
 `REFERENCE_ONLY` applies to previously reviewed UI/workflow patterns from
 gbrain, lucasastorian/llmwiki, ddsyasas/llm-wiki and Inkeep OpenKnowledge.
@@ -86,9 +91,9 @@ boundary. No external package is adopted by this request. Any later
 license, security, maintenance, adapter boundary, replacement test and
 rollback evidence before implementation.
 
-## Future implementation gates
+## Implementation gates
 
-The future implementation request must include:
+The implementation must include:
 
 - strict contract and negative tests;
 - materialization replay/idempotency tests;

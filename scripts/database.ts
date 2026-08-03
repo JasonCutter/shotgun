@@ -33,6 +33,7 @@ const migrationFiles = async (): Promise<string[]> =>
 
 const managedSchemas = [
   'frontend_ask',
+  'frontend_knowledge_draft',
   'source_product',
   'frontend_command',
   'settings',
@@ -164,6 +165,11 @@ const requiredTables = [
   'frontend_ask.answer_exports',
   'frontend_ask.answer_feedback',
   'frontend_ask.transition_seeds',
+  'frontend_knowledge_draft.drafts',
+  'frontend_knowledge_draft.revisions',
+  'frontend_knowledge_draft.operations',
+  'frontend_knowledge_draft.materializations',
+  'frontend_knowledge_draft.artifact_refs',
 ] as const;
 
 const verify = async (): Promise<void> => {

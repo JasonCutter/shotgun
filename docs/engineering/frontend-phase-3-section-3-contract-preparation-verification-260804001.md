@@ -2,10 +2,10 @@
 
 - Record ID: `frontend-phase-3-section-3-contract-preparation-verification-260804001`
 - Record class: `ARCHITECTURE_VERIFICATION`
-- Date: 2026-08-04
+- Date: 2026-08-04 (revision 2)
 - Repository: `JasonCutter/shotgun`
 - Scope: Frontend Phase 3 Section 3 — Semantic Graph and Relationship Exploration
-- Result: **GAP AUDIT / CONTRACT SNAPSHOT / AC / ADR BOUNDARY / IMPLEMENTATION REQUEST COMPLETE**
+- Result: **GAP AUDIT / EXACT CONTRACT SNAPSHOT (V1) / AC / ADR-127 PROPOSED / EXECUTABLE IMPLEMENTATION REQUEST COMPLETE**
 - Product implementation: **NOT STARTED**
 - Canonical authority: GitHub `main`
 
@@ -15,12 +15,14 @@ The user requested completion through:
 
 ```text
 Start FE-P3-S3 (branch, tracking issue, Draft PR, registry IN_PROGRESS, projections)
-→ Audit existing assets (A–H preparation only)
+→ Audit existing assets (preparation only)
 → Gap Audit
-→ Contract Snapshot freeze (D1–D13)
-→ Acceptance Criteria freeze (FE-P3-S3-AC-01 …)
-→ ADR boundary decision
-→ Implementation Request preparation
+→ Contract precision (exact V1 typed graph model, normalized semantic axes,
+   base-view/overlay separation, every read operation frozen)
+→ Projection/persistence decision (hybrid) + ADR re-evaluation
+→ Security/scope hardening
+→ Objective Acceptance Criteria (FE-P3-S3-AC-01 …)
+→ Executable Implementation Request
 → Evidence, verification and publication
 ```
 
@@ -46,42 +48,52 @@ verification.
   `docs/implementation/frontend-phase-1-5-plan-v1.0.md`,
   `docs/architecture/add/README.md`.
 
-## 3. ADR boundary decision
+## 3. ADR boundary decision (revision 2)
 
-Decision: **NO_NEW_ADR_REQUIRED**.
+Decision: **NEW_PROPOSED_ADR_REQUIRED — ADR-127**.
 
-ADR-108 (Typed Semantic Graph Projection with Accessible Fallback) plus the
-accepted cross-phase ADRs (ADR-106, ADR-107, ADR-119 UI/cache ownership,
-ADR-124 work-item authority) fully cover the FE-P3-S3 implementation surface.
-The Gap Audit found no genuinely new architectural decision that cannot be
-resolved by the existing accepted contracts. No ADR was created to restate
-ADR-108. No Acceptance Criteria or implementation tasks are blocked by an
-unresolved architectural decision.
+ADR-108 (Typed Semantic Graph Projection with Accessible Fallback) governs the
+typed read surface and accessible fallback. The selected **explicit hybrid**
+persistence model (ephemeral base-view snapshots + materialized
+projection-health registry + persisted overlay health/identity + server-side
+expiring continuation tokens, migration 026) is a genuinely new server-side
+architecture decision not covered by ADR-106/ADR-107/ADR-119/ADR-124.
 
-## 4. Contract snapshot status
+ADR-127 (`Semantic Graph Projection Read Persistence, Health and Continuation
+Boundary`) is created as **PROPOSED** (not accepted) and records the exact user
+decision required. Blocked Acceptance Criteria until acceptance: AC-13, AC-16,
+AC-27, AC-31.
 
-The Contract Snapshot is a `PROPOSED_PENDING_USER_REVIEW` proposal. It preserves
-ADR-108 and freezes D1–D13:
+## 4. Contract snapshot status (revision 2)
 
-- D1 Product responsibility (read/exploration only);
-- D2 view kinds (`KNOWLEDGE_SEMANTIC` default; governance/operational overlays);
-- D3 typed graph model (distinct edge kinds, authority classification);
-- D4 authority and identity (server authority, stable typed references,
-  `POSSIBLY_SAME` non-merge);
-- D5 Project/policy/access scope;
-- D6 snapshot and traversal (server-enforced limits, completeness states);
-- D7 exploration operations;
-- D8 overlay isolation;
-- D9 accessible equivalent views;
-- D10 UI and layout ownership;
-- D11 write and navigation boundaries;
-- D12 failure and recovery;
-- D13 performance boundary.
+The Contract Snapshot is a `PROPOSED_PENDING_USER_REVIEW` proposal, revision 2.
+It preserves ADR-108 and freezes:
 
-Acceptance Criteria are frozen as `FE-P3-S3-AC-01` through `FE-P3-S3-AC-31`.
+- **A — Exact V1 typed graph model**: snapshot identity/response, node/edge
+  references and payloads, provenance/evidence/temporal/revision/access,
+  projection health, result completeness, traversal and applied limits,
+  continuation identity, overlay identity, neighborhood/path results,
+  capabilities and unavailable reasons, with strict-decoder rules
+  (`schemaVersion: '1.0.0'`, unknown-field rejection, non-empty IDs, exhaustive
+  unions, no `any`).
+- **B — Normalized semantic axes**: nine orthogonal axes and the projection
+  mapping; Relation as edges + optional reified RELATION nodes with stable
+  `relationId`+`qualifier` identity.
+- **C — Base views and overlays**: `KNOWLEDGE_SEMANTIC`/`GOVERNANCE_IMPACT`/
+  `OPERATIONAL_DEPENDENCY` base views; `CONFLICT`/`KNOWLEDGE_GAP`/
+  `RECURSIVE_IMPACT` overlays; composition, revision ownership, cache identity,
+  removal, `ACTION_CANDIDATE` exclusion.
+- **D — Ten read operations** frozen with routes, client methods, scope,
+  revisions, limits, continuation, cancellation, failures.
+- **E — Projection/persistence**: explicit hybrid + migration 026 + ADR-127.
+- **F — Security/scope hardening**: `DISCLOSABLE_MASKED` vs `FULLY_HIDDEN`,
+  cross-Project deep links, two-phase cache keys.
+- **G — Objective Acceptance Criteria**: `FE-P3-S3-AC-01` through
+  `FE-P3-S3-AC-31` with exact measurable evidence; ambiguous wording removed.
+
 None are marked passed; Product implementation remains `NOT_AUTHORIZED`.
 
-## 5. Gap audit result
+## 5. Gap audit result (revision 2)
 
 The audit confirms existing reusable assets (Canonical knowledge, Stage 9 graph
 and impact queries, NetworkX oracle, Compiled Truth status, `FrontendReadScope`,
@@ -89,8 +101,9 @@ protected routes, typed clients, scope-aware cache keys, accessibility
 primitives, Knowledge UI components, test infrastructure) and documents the
 missing Product surface (graph snapshot/overlay contracts, `/knowledge/graph`
 route, Cytoscape integration, graph projection reads, accessible fallback,
-security/performance controls). See the Gap Audit for the full reuse/classification
-inventory and the 15 risk evaluations.
+security/performance controls), now normalized into nine semantic axes and a
+hybrid persistence decision requiring ADR-127. See the Gap Audit for the full
+reuse/classification inventory and the 15 risk evaluations.
 
 ## 6. Focused checks
 
@@ -110,6 +123,8 @@ report; the redirected log is not committed.
 
 - Tracking issue: [#58](https://github.com/JasonCutter/shotgun/issues/58)
 - Draft PR: [#59](https://github.com/JasonCutter/shotgun/pull/59) — OPEN and DRAFT.
+- Proposed ADR: ADR-127 — PROPOSED, not accepted; blocked AC-13, AC-16, AC-27, AC-31.
 - `FE-P3-S3` is `IN_PROGRESS`; `FE-P3` remains `IN_PROGRESS`.
 - `FE-P3-S3` is **not** marked `COMPLETE`.
+- All Product ACs remain `NOT_RUN`.
 - No Ready, Merge, deployment, FE-P4 or Product implementation work was started.

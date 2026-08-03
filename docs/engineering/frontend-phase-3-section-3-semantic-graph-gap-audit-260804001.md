@@ -13,6 +13,8 @@
 - Draft PR: [#59](https://github.com/JasonCutter/shotgun/pull/59)
 - Governing contract: `docs/architecture/frontend/phase-3-knowledge-understanding-editing.md`
 - Governing ADR: ADR-108 (Typed Semantic Graph Projection with Accessible Fallback)
+- Proposed ADR: ADR-127 (Semantic Graph Projection Read Persistence, Health and Continuation Boundary) — PROPOSED, not accepted
+- Contract snapshot revision: 2 (exact V1 contracts; normalized semantic axes; base-view/overlay separation; frozen read operations; hybrid persistence decision)
 - Status: `PREPARATION_ONLY` — this audit does not claim Product implementation or acceptance.
 
 The presence of Cytoscape, Impact Analysis, Stage 9 knowledge-model graph queries,
@@ -106,28 +108,49 @@ Classification legend:
 - No React Graph Workspace, canvas adapter, or accessible list/table/path fallback.
 - No deep-link restoration for a selected graph snapshot/root/overlay.
 
-## 4. Missing contracts
+## 4. Missing contracts (now frozen in snapshot revision 2)
 
-- Graph snapshot identity, node, edge, node/edge reference, node kind, edge kind.
-- Authority classification (Canonical relation, Canonical statement association,
-  Derived inference, Discovery candidate, `POSSIBLY_SAME`, Evidence linkage,
-  Conflict, Knowledge gap, Temporal relationship, Governance impact,
-  Operational dependency).
-- Provenance and Evidence summary, temporal validity, revision binding,
-  projection health, access/masking state, overlay identity and revision,
-  traversal budget/truncation, path result, neighborhood result, conflict/gap/
-  impact overlays, capability and unavailable-reason views.
-- Request contracts for root/root set, view kind, direction, filters, depth,
-  node/edge/budget limits, continuation token, overlay, expected revisions.
-- Strict decoders and typed failure mapping (parallel to FE-P3-S1/S2 practice).
+The gap was the absence of any FE-P3-S3 graph Product contract. Revision 2 of
+`frontend-phase-3-section-3-contract-snapshot-260804001.md` now freezes exact
+`v1` contracts (no illustrative types):
 
-## 5. Missing persistence or projection infrastructure
+- Graph snapshot identity/response; node and edge references and payloads;
+  provenance/Evidence/temporal/revision/access shapes; projection health;
+  result completeness; traversal and applied limits; continuation identity;
+  overlay identity; neighborhood/path results; capabilities and unavailable
+  reasons.
+- Decoder rules: `schemaVersion: '1.0.0'`, unknown-field rejection, non-empty-ID
+  validation, exhaustive unions, no `any`.
+- Request contracts for root/root set, base view kind, overlays, direction,
+  filters, depth, node/edge/budget limits, continuation token, expected
+  revisions, and typed failures.
 
-- No FE-P3-S3 graph projection read table or health registry; no migration.
-- No overlay artifact persistence (conflict/gap/impact overlays have no graph
-  overlay store; impact artifact refs exist only for Drafts).
+## 4a. Semantic normalization gap (now frozen in snapshot section 4)
+
+The audit found no existing FE-P3-S3 semantic-axis separation. Revision 2
+freezes nine orthogonal axes (resource/node kind; edge semantic kind; authority
+classification; base-view membership; overlay membership; projection health;
+result completeness; access/masking state; traversal-relative direction) and the
+projection mapping for Entity, Fact, Claim, Relation, Event, Decision, Evidence,
+Source, Conflict and Knowledge Gap. Relation resources are a typed combination:
+edges with `relationRef` plus optional reified `RELATION` nodes for qualified or
+n-ary relations, preserving stable `relationId`+`qualifier` identity.
+
+## 5. Missing persistence or projection infrastructure (decision in snapshot section 7)
+
+- No FE-P3-S3 graph projection health registry; no migration.
+- No overlay health/identity persistence; impact artifact refs exist only for
+  Drafts.
 - No PostgreSQL read path that projects Canonical/Stage 9 edges into a
   versioned, Project-scoped graph snapshot with access masking.
+
+Revision 2 fixes the implementation model as an **explicit hybrid**: ephemeral
+base-view snapshots, a materialized projection-health registry, persisted
+overlay health/identity, and server-side expiring continuation tokens, with
+migration **026** required (`frontend_knowledge_graph_projection_health`,
+`frontend_knowledge_graph_overlay_health`,
+`frontend_knowledge_graph_continuation`). This persistence decision is not
+covered by an accepted ADR and therefore requires proposed **ADR-127**.
 
 ## 6. Missing UI behavior
 
@@ -138,7 +161,7 @@ Classification legend:
 - No overlay picker or explicit view-kind selection.
 - No return-focus or deep-link focus restoration for graph views.
 
-## 7. Missing security and access controls
+## 7. Missing security and access controls (now frozen in snapshot section 8)
 
 - No server validation that graph roots, neighborhoods, paths, and overlays are
   Project/access-scope checked with masking of hidden resources.
@@ -147,6 +170,13 @@ Classification legend:
 - No cache isolation across Project, policy, snapshot or overlay revisions for
   graph reads.
 - No protection against cross-Project deep links resolving into another scope.
+
+Revision 2 hardens this with: `DISCLOSABLE_MASKED` versus `FULLY_HIDDEN`
+categories; hidden resources excluded before counting and truncation; paths and
+neighborhoods never referencing hidden items; cross-Project deep links never
+silently replacing the Active Project; and two-phase cache keys (scope-phase for
+initial fetch, snapshot-phase after the first response) that never require an
+unknown response revision.
 
 ## 8. Missing accessibility behavior
 
@@ -224,9 +254,11 @@ Classification legend:
 
 ## 13. Conclusion
 
-FE-P3-S3 requires a new server-authoritative typed graph read surface, new graph
-Product contracts, a graph projection read/health boundary, protected routes, a
-typed client, a React Graph Workspace with Cytoscape presentation adapter, and
-an information-equivalent accessible fallback. Existing Canonical/Stage 9 impact
-and knowledge-model graph assets are reusable behind new ports. No Product
+FE-P3-S3 requires a new server-authoritative typed graph read surface, exact V1
+graph Product contracts, a hybrid projection-health/continuation persistence
+boundary (migration 026), protected routes, a typed client, a React Graph
+Workspace with Cytoscape presentation adapter, and an information-equivalent
+accessible fallback. Existing Canonical/Stage 9 impact and knowledge-model graph
+assets are reusable behind new ports. The persistence decision requires proposed
+**ADR-127** (not yet accepted; blocked AC-13, AC-16, AC-27, AC-31). No Product
 implementation exists today; this audit records the gap, not completion.

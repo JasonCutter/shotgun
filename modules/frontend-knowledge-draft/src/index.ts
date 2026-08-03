@@ -599,4 +599,113 @@ export const materializeFrontendKnowledgeDraft = async (
   });
 };
 
+export type TransitionFrontendKnowledgeDraftStatusInputV1 = {
+  readonly current: FrontendKnowledgeDraftChangeSetV1;
+  readonly expectedDraftRevision: number;
+  readonly expectedBaseRevision: number;
+  readonly nextStatus: FrontendKnowledgeDraftChangeSetV1['status'];
+  readonly updatedAt: string;
+};
+
+const LEGAL_DRAFT_TRANSITIONS: Readonly<
+  Record<
+    FrontendKnowledgeDraftChangeSetV1['status'],
+    readonly FrontendKnowledgeDraftChangeSetV1['status'][]
+  >
+> = {
+  DRAFT: ['VALID', 'INVALID', 'READY_FOR_REVIEW', 'ABANDONED'],
+  VALIDATING: ['VALID', 'INVALID', 'READY_FOR_REVIEW', 'ABANDONED'],
+  VALID: ['VALID', 'INVALID', 'READY_FOR_REVIEW', 'ABANDONED'],
+  INVALID: ['VALID', 'INVALID', 'READY_FOR_REVIEW', 'ABANDONED'],
+  STALE: ['VALID', 'INVALID', 'ABANDONED'],
+  CONFLICT: ['VALID', 'INVALID', 'ABANDONED'],
+  READY_FOR_REVIEW: ['SUBMITTED', 'VALID', 'INVALID', 'ABANDONED'],
+  SUBMITTING: ['SUBMITTED'],
+  SUBMITTED: [],
+  ABANDONED: [],
+};
+
+/**
+ * Transitions the Draft lifecycle in place (the aggregate revision is the
+ * authoring revision; lifecycle status is aggregate state). The pinned base,
+ * identity and Project binding are immutable. A submitted or abandoned Draft
+ * is terminal.
+ */
+export const transitionFrontendKnowledgeDraftStatus = (
+  input: TransitionFrontendKnowledgeDraftStatusInputV1,
+): FrontendKnowledgeDraftChangeSetV1 => {
+  const { current, nextStatus } = input;
+  if (current.status === 'ABANDONED') {
+    domainFailure('DRAFT_REVISION_CONFLICT', 'An abandoned Draft is terminal.');
+  }
+  if (current.status === 'SUBMITTED') {
+    domainFailure('DRAFT_REVISION_CONFLICT', 'A submitted Draft revision is immutable.');
+  }
+  if (current.revision !== input.expectedDraftRevision) {
+    domainFailure('DRAFT_REVISION_CONFLICT', 'Draft revision is stale.');
+  }
+  if (current.base.canonicalVersion !== input.expectedBaseRevision) {
+    domainFailure('STALE', 'Draft base revision is stale.');
+  }
+  const legal = LEGAL_DRAFT_TRANSITIONS[current.status] ?? [];
+  if (!legal.includes(nextStatus)) {
+    domainFailure(
+      'DRAFT_REVISION_CONFLICT',
+      `Draft status transition ${current.status} -> ${nextStatus} is not allowed.`,
+    );
+  }
+  const next: FrontendKnowledgeDraftChangeSetV1 = {
+    schemaVersion: current.schemaVersion,
+    draftId: current.draftId,
+    ...(current.seedId === undefined ? {} : { seedId: current.seedId }),
+    ...(current.answerRunId === undefined ? {} : { answerRunId: current.answerRunId }),
+    startMode: current.startMode,
+    status: nextStatus,
+    revision: current.revision,
+    activeProjectId: current.activeProjectId,
+    resourceProjectId: current.resourceProjectId,
+    draftProjectId: current.draftProjectId,
+    effectiveProjectId: current.effectiveProjectId,
+    resourceId: current.resourceId,
+    base: current.base,
+    operations: current.operations,
+    ...(current.validation === undefined ? {} : { validation: current.validation }),
+    ...(current.impactPreview === undefined ? {} : { impactPreview: current.impactPreview }),
+    ...(current.reviewResource === undefined ? {} : { reviewResource: current.reviewResource }),
+    ...(current.reviewSubmission === undefined
+      ? {}
+      : { reviewSubmission: current.reviewSubmission }),
+    contentDigest: current.contentDigest,
+    createdAt: current.createdAt,
+    updatedAt: input.updatedAt,
+  };
+  assertFrontendKnowledgeDraftBaseBinding(current, next);
+  return next;
+};
+
+export type PersistFrontendKnowledgeDraftTransitionInputV1 = {
+  readonly projectId: string;
+  readonly draft: FrontendKnowledgeDraftChangeSetV1;
+  readonly expectedRevision: number;
+};
+
+export const persistFrontendKnowledgeDraftTransition = async (
+  boundary: FrontendKnowledgeDraftRepositoryBoundaryPort,
+  input: PersistFrontendKnowledgeDraftTransitionInputV1,
+): Promise<FrontendKnowledgeDraftChangeSetV1> =>
+  boundary.transaction(async ({ drafts }) => {
+    const result = await drafts.replaceIfRevision({
+      projectId: input.projectId,
+      draft: input.draft,
+      expectedRevision: input.expectedRevision,
+    });
+    if (result === 'NOT_FOUND') {
+      domainFailure('DRAFT_NOT_FOUND', 'Draft was not found.');
+    }
+    if (result === 'REVISION_CONFLICT') {
+      domainFailure('DRAFT_REVISION_CONFLICT', 'Draft revision is stale.');
+    }
+    return input.draft;
+  });
+
 export const toFrontendKnowledgeDraftRevisionRecord = revisionRecord;

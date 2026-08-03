@@ -18,6 +18,17 @@ export type FrontendKnowledgeDraftLifecycleV1 =
 export type FrontendKnowledgeDraftCommandOutcomeV1 =
   'ACCEPTED' | 'COMPLETED' | 'REJECTED' | 'OUTCOME_UNKNOWN';
 
+export const FRONTEND_KNOWLEDGE_DRAFT_COMMAND_TYPES = {
+  materialize: 'knowledge.draft.materialize.v1',
+  startSeedless: 'knowledge.draft.start-seedless.v1',
+  save: 'knowledge.draft.save.v1',
+  abandon: 'knowledge.draft.abandon.v1',
+  resolveOutcome: 'knowledge.draft.resolve-outcome.v1',
+} as const;
+
+export type FrontendKnowledgeDraftCommandType =
+  (typeof FRONTEND_KNOWLEDGE_DRAFT_COMMAND_TYPES)[keyof typeof FRONTEND_KNOWLEDGE_DRAFT_COMMAND_TYPES];
+
 export type FrontendKnowledgeProjectPolicyContextV1 = {
   readonly activeProjectId: string;
   readonly resourceProjectId: string;
@@ -351,6 +362,11 @@ export type SubmitKnowledgeDraftForReviewRequestV1 = RequiredDraftRevisionEnvelo
   readonly expectedBaseRevision: number;
   readonly validationArtifact: DraftValidationArtifactRefV1;
   readonly impactArtifact: DraftImpactArtifactRefV1;
+};
+
+export type AbandonKnowledgeDraftRequestV1 = RequiredDraftRevisionEnvelopeV1 & {
+  readonly draftId: string;
+  readonly expectedBaseRevision: number;
 };
 
 export type ResolveKnowledgeDraftCommandOutcomeRequestV1 = {
@@ -1900,6 +1916,26 @@ export const decodeSubmitKnowledgeDraftForReviewRequestV1 = (
     ),
     validationArtifact,
     impactArtifact,
+  };
+};
+
+export const decodeAbandonKnowledgeDraftRequestV1 = (
+  value: unknown,
+): AbandonKnowledgeDraftRequestV1 => {
+  const { object, envelope } = decodeCommandRequestObject(
+    value,
+    ['draftId', 'expectedBaseRevision'],
+    'abandonDraft',
+  );
+  const expectedDraftRevision = requiredExpectedDraftRevision(envelope, 'abandonDraft');
+  return {
+    ...envelope,
+    expectedDraftRevision,
+    draftId: text(required(object, 'draftId', 'abandonDraft'), 'abandonDraft.draftId'),
+    expectedBaseRevision: integer(
+      required(object, 'expectedBaseRevision', 'abandonDraft'),
+      'abandonDraft.expectedBaseRevision',
+    ),
   };
 };
 

@@ -123,7 +123,7 @@ const shotGunApiErrorFor = (mapping: {
 }): ShotgunApiError =>
   new ShotgunApiError({
     status: mapping.httpStatus,
-    code: mapping.normalizedCode,
+    code: mapping.normalizedCode as ShotgunApiError['code'],
     category: mapping.retryable ? 'DEPENDENCY' : 'AUTHORIZATION',
     retryability: mapping.retryable ? 'SAFE' : 'NEVER',
     recovery: mapping.retryable ? 'RETRY' : 'REQUEST_ACCESS',

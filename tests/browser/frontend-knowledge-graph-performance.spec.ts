@@ -150,7 +150,9 @@ const openGraph = async (page: Page) => {
 const median = (values: number[]) => {
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  const left = sorted[mid - 1] ?? 0;
+  const right = sorted[mid] ?? 0;
+  return sorted.length % 2 === 0 ? (left + right) / 2 : right;
 };
 
 test('AC-23: initial layout completes within 2000ms (median of 3 samples after warm-up)', async ({
@@ -277,7 +279,14 @@ test('AC-23: cytoscape destroy runs exactly once per unmount and no instance acc
   await page.keyboard.press('Alt+l');
   await expect(page.locator('[data-testid="graph-canvas"]')).toHaveCount(0);
 
-  const perf = await page.evaluate(() => window.__shotgunGraphPerf);
+  const perf = await page.evaluate(
+    () =>
+      (
+        window as Window & {
+          __shotgunGraphPerf?: { mounted: number; destroyed: number; active: number };
+        }
+      ).__shotgunGraphPerf,
+  );
   expect(perf).toBeDefined();
   // StrictMode double-invokes effects in the dev build, so each logical mount
   // contributes two raw setups. The AC-23 lifecycle invariants are what

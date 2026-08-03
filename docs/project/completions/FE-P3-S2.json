@@ -9,9 +9,7 @@
       "title": "Authoritative Seed and Seedless Draft lifecycle, read, reload and persistence",
       "mandatory": true,
       "status": "PASS",
-      "evidence": [
-        "docs/implementation/frontend-phase-3-section-2-completion-record-260803001.md"
-      ],
+      "evidence": ["docs/implementation/frontend-phase-3-section-2-completion-record-260803001.md"],
       "scopeAmendment": null
     },
     {
@@ -19,9 +17,7 @@
       "title": "Frozen typed operation union, strict decoding, revision and digest enforcement",
       "mandatory": true,
       "status": "PASS",
-      "evidence": [
-        "docs/implementation/frontend-phase-3-section-2-completion-record-260803001.md"
-      ],
+      "evidence": ["docs/implementation/frontend-phase-3-section-2-completion-record-260803001.md"],
       "scopeAmendment": null
     },
     {
@@ -29,9 +25,7 @@
       "title": "Server-authoritative Principal, Project, access, policy, Evidence and base-revision boundaries",
       "mandatory": true,
       "status": "PASS",
-      "evidence": [
-        "docs/implementation/frontend-phase-3-section-2-completion-record-260803001.md"
-      ],
+      "evidence": ["docs/implementation/frontend-phase-3-section-2-completion-record-260803001.md"],
       "scopeAmendment": null
     },
     {
@@ -39,9 +33,7 @@
       "title": "Validation, comparison and bounded recursive Impact artifacts",
       "mandatory": true,
       "status": "PASS",
-      "evidence": [
-        "docs/implementation/frontend-phase-3-section-2-completion-record-260803001.md"
-      ],
+      "evidence": ["docs/implementation/frontend-phase-3-section-2-completion-record-260803001.md"],
       "scopeAmendment": null
     },
     {
@@ -49,9 +41,7 @@
       "title": "Immutable Review Submission, replay, revision uniqueness and Review Resource-only handoff",
       "mandatory": true,
       "status": "PASS",
-      "evidence": [
-        "docs/implementation/frontend-phase-3-section-2-completion-record-260803001.md"
-      ],
+      "evidence": ["docs/implementation/frontend-phase-3-section-2-completion-record-260803001.md"],
       "scopeAmendment": null
     },
     {
@@ -59,9 +49,7 @@
       "title": "Browser Draft State Machine, dirty protection, drift, leave guard and original-identity recovery",
       "mandatory": true,
       "status": "PASS",
-      "evidence": [
-        "docs/implementation/frontend-phase-3-section-2-completion-record-260803001.md"
-      ],
+      "evidence": ["docs/implementation/frontend-phase-3-section-2-completion-record-260803001.md"],
       "scopeAmendment": null
     },
     {
@@ -69,9 +57,7 @@
       "title": "React Knowledge Editor authoring flow and keyboard accessibility",
       "mandatory": true,
       "status": "PASS",
-      "evidence": [
-        "docs/implementation/frontend-phase-3-section-2-completion-record-260803001.md"
-      ],
+      "evidence": ["docs/implementation/frontend-phase-3-section-2-completion-record-260803001.md"],
       "scopeAmendment": null
     },
     {
@@ -79,9 +65,7 @@
       "title": "In-memory/PostgreSQL parity and legacy Stage 5 compatibility",
       "mandatory": true,
       "status": "PASS",
-      "evidence": [
-        "docs/implementation/frontend-phase-3-section-2-completion-record-260803001.md"
-      ],
+      "evidence": ["docs/implementation/frontend-phase-3-section-2-completion-record-260803001.md"],
       "scopeAmendment": null
     },
     {
@@ -89,9 +73,7 @@
       "title": "Remote exact-head Quality, Frontend and Required Gates",
       "mandatory": true,
       "status": "PASS",
-      "evidence": [
-        "docs/implementation/frontend-phase-3-section-2-completion-record-260803001.md"
-      ],
+      "evidence": ["docs/implementation/frontend-phase-3-section-2-completion-record-260803001.md"],
       "scopeAmendment": null
     },
     {
@@ -99,9 +81,7 @@
       "title": "Formal completion approval and separately authorized Ready/Merge boundary",
       "mandatory": true,
       "status": "PASS",
-      "evidence": [
-        "docs/implementation/frontend-phase-3-section-2-completion-record-260803001.md"
-      ],
+      "evidence": ["docs/implementation/frontend-phase-3-section-2-completion-record-260803001.md"],
       "scopeAmendment": null
     }
   ],

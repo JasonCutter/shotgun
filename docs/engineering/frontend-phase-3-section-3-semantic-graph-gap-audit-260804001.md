@@ -14,7 +14,7 @@
 - Governing contract: `docs/architecture/frontend/phase-3-knowledge-understanding-editing.md`
 - Governing ADR: ADR-108 (Typed Semantic Graph Projection with Accessible Fallback)
 - Proposed ADR: ADR-127 (Semantic Graph Projection Read Persistence, Health and Continuation Boundary) — PROPOSED, not accepted
-- Contract snapshot revision: 2 (exact V1 contracts; normalized semantic axes; base-view/overlay separation; frozen read operations; hybrid persistence decision)
+- Contract snapshot revision: 3 (exact V1 contracts; normalized semantic axes; base-view/overlay separation; frozen read operations with exact request/response/failure contracts; hybrid persistence decision with immutable snapshot-context descriptor; `ACTION_CANDIDATE` fully excluded)
 - Status: `PREPARATION_ONLY` — this audit does not claim Product implementation or acceptance.
 
 The presence of Cytoscape, Impact Analysis, Stage 9 knowledge-model graph queries,

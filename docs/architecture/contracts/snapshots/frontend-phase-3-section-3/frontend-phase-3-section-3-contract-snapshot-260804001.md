@@ -2,8 +2,8 @@
 id: FRONTEND-PHASE-3-SECTION-3-CONTRACT-SNAPSHOT-260804001
 classification: PRODUCT_CONTRACT_SNAPSHOT_PROPOSAL
 status: PROPOSED_PENDING_USER_REVIEW
-revision: 2
-review_round: 1
+revision: 3
+review_round: 2
 review_result: PENDING_REVIEW
 approved_by: null
 approved_at: null
@@ -20,11 +20,15 @@ implementation_authorized: false
 ## 0. Status
 
 This snapshot freezes the proposed Product contract for the FE-P3-S3 Semantic
-Graph and Relationship Exploration Workspace. Revision 2 replaces all
-illustrative or implementation-defined types with exact `v1` contracts,
-normalizes the semantic axes, separates base views from overlays, freezes every
-read operation, and fixes the projection/persistence architecture behind
-proposed ADR-127.
+Graph and Relationship Exploration Workspace. Revision 3 (focused correction
+round after `CHANGES_REQUIRED` review) resolves: the authority axis reduced to
+pure authority/provenance lineage; exact V1 request/response/failure contracts
+for all ten operations with cross-field invariants; the immutable snapshot-context
+descriptor that restores ephemeral snapshots for subsequent operations; base-view
+terminology unified on `GraphBaseViewKindV1`; and `ACTION_CANDIDATE` fully
+excluded from FE-P3-S3. Revision 2 previously replaced all illustrative or
+implementation-defined types with exact `v1` contracts and normalized the
+semantic axes.
 
 It is a **preparation proposal**. It is not approved, does not authorize
 implementation, and no Acceptance Criterion in this document is marked passed.
@@ -49,21 +53,23 @@ The Graph Workspace reads server-issued projections only. Any knowledge
 correction routes to the Knowledge Editor with a typed DraftChangeSet seed
 (D11).
 
-## 2. D2 — View kinds
+## 2. D2 — Base view kinds
 
-Three separate typed view kinds are defined:
+Exactly one base view kind exists per snapshot. `GraphViewKindV1` is **not**
+defined; the only view-kind type is `GraphBaseViewKindV1` (axis 4, section 4):
 
 ```ts
-type GraphViewKindV1 = 'KNOWLEDGE_SEMANTIC' | 'GOVERNANCE_IMPACT' | 'OPERATIONAL_DEPENDENCY';
+type GraphBaseViewKindV1 = 'KNOWLEDGE_SEMANTIC' | 'GOVERNANCE_IMPACT' | 'OPERATIONAL_DEPENDENCY';
 ```
 
 - The default `/knowledge/graph` experience is `KNOWLEDGE_SEMANTIC`.
-- `GOVERNANCE_IMPACT` and `OPERATIONAL_DEPENDENCY` are explicit overlays or
-  explicitly selected views. They must never silently alter the default
+- `GOVERNANCE_IMPACT` and `OPERATIONAL_DEPENDENCY` are explicitly selected
+  **base views**, never overlays. They must never silently alter the default
   semantic graph.
-- Selecting an overlay changes the requested view; returning to the default view
-  must restore the `KNOWLEDGE_SEMANTIC` projection without residue from overlay
-  content.
+- Overlays are only `CONFLICT`, `KNOWLEDGE_GAP` and `RECURSIVE_IMPACT` (defined
+  in section 5, C). Selecting an overlay never changes the base view; returning
+  to the default view restores the `KNOWLEDGE_SEMANTIC` projection without
+  residue from overlay content.
 
 ## 3. A — Exact typed graph model (V1)
 
@@ -477,20 +483,11 @@ type GraphEdgeSemanticKindV1 =
   | 'GOVERNANCE_IMPACT'
   | 'OPERATIONAL_DEPENDENCY';
 
-// Axis 3 — authority / provenance classification (how content was established)
-type GraphAuthorityClassificationV1 =
-  | 'CANONICAL'
-  | 'CANONICAL_STATEMENT_ASSOCIATION'
-  | 'DERIVED_INFERENCE'
-  | 'DISCOVERY_CANDIDATE'
-  | 'POSSIBLY_SAME'
-  | 'EVIDENCE_LINKAGE'
-  | 'CONFLICT'
-  | 'KNOWLEDGE_GAP'
-  | 'TEMPORAL_RELATIONSHIP'
-  | 'GOVERNANCE_IMPACT'
-  | 'OPERATIONAL_DEPENDENCY'
-  | 'ACTION_CANDIDATE';
+// Axis 3 — authority / provenance-lineage classification (how content was
+// established). Reduced to authority lineage only. Edge semantic kinds,
+// resource/candidate types, conflict/gap types and overlay membership are
+// expressed on their own axes, never here.
+type GraphAuthorityClassificationV1 = 'CANONICAL' | 'DERIVED_INFERENCE' | 'DISCOVERY_CANDIDATE';
 
 // Axis 4 — base-view membership
 type GraphBaseViewKindV1 = 'KNOWLEDGE_SEMANTIC' | 'GOVERNANCE_IMPACT' | 'OPERATIONAL_DEPENDENCY';
@@ -521,10 +518,18 @@ type GraphTraversalDirectionV1 = 'OUTGOING_FROM_ROOT' | 'INCOMING_TO_ROOT';
 
 Rules:
 
-- Axis 3 (authority) is independent of axis 2 (edge semantic kind). A node is
-  never classified by an edge semantic kind; a node's authority says how the
-  node content was established (e.g. `CANONICAL`, `DERIVED_INFERENCE`,
-  `DISCOVERY_CANDIDATE`, `POSSIBLY_SAME`, `CONFLICT`, `KNOWLEDGE_GAP`).
+- Axis 3 (authority) is independent of axis 2 (edge semantic kind) and axis 1
+  (resource kind). It contains only authority/provenance lineage:
+  `CANONICAL` (approved Canonical meaning), `DERIVED_INFERENCE` (derived from
+  approved knowledge), `DISCOVERY_CANDIDATE` (not yet approved). Edge semantic
+  kinds (`CANONICAL_STATEMENT_ASSOCIATION`, `EVIDENCE_LINKAGE`,
+  `TEMPORAL_RELATIONSHIP`, `GOVERNANCE_IMPACT`, `OPERATIONAL_DEPENDENCY`,
+  `CONFLICT`, `KNOWLEDGE_GAP`, `POSSIBLY_SAME`) and resource states
+  (conflict/gap proposals) live on axis 2 / axis 1, never on axis 3.
+- **`ACTION_CANDIDATE` is not part of FE-P3-S3.** There is no `ACTION_CANDIDATE`
+  resource kind, node payload, or authority value. ActionCandidate rendering is
+  deferred to FE-P4 (governance/execution); FE-P3-S3 never renders an Action
+  Candidate (see also C and AC-14).
 - Axis 9 is never persisted as an intrinsic edge field; it is derived from the
   snapshot root and the edge `from`/`to` only when a root is defined.
 
@@ -581,9 +586,12 @@ Composition rules:
   (`GraphOverlayIdentityV1`) and is combined with the base snapshot in the
   response; each overlay item carries `overlayMemberships`.
 - Overlay results are never persisted as Canonical graph edges.
-- `ACTION_CANDIDATE` authority appears only in `GOVERNANCE_IMPACT` or
-  `OPERATIONAL_DEPENDENCY` base views or in the `RECURSIVE_IMPACT` overlay; it is
-  never a `KNOWLEDGE_SEMANTIC` node or edge.
+- **`ACTION_CANDIDATE` is fully excluded from FE-P3-S3.** The contract defines
+  no `ACTION_CANDIDATE` resource kind, payload or authority value. Governance
+  impact and operational dependency content in FE-P3-S3 is expressed with the
+  typed `GOVERNANCE_IMPACT` / `OPERATIONAL_DEPENDENCY` edge semantic kinds and
+  the reduced authority axis only. ActionCandidate rendering is deferred to
+  FE-P4 (see B and AC-14).
 
 Snapshot and revision ownership:
 
@@ -602,8 +610,9 @@ Forbidden combinations:
 
 - overlay without base view;
 - duplicate overlay kind in one request;
-- `ACTION_CANDIDATE` in `KNOWLEDGE_SEMANTIC`;
-- mixing two base view kinds in one snapshot.
+- mixing two base view kinds in one snapshot;
+- any `ACTION_CANDIDATE` content (no such resource kind, payload or authority
+  value exists in FE-P3-S3).
 
 ## 6. D — Read operations
 
@@ -627,8 +636,209 @@ server-derived `FrontendReadScope`, strict request/response decoders, and
 | 9   | Snapshot refresh               | `/product-api/frontend/knowledge/graph/snapshot/refresh` | `refreshGraphSnapshot(request)`      |
 | 10  | Deep-link restoration          | `/product-api/frontend/knowledge/graph/restore`          | `restoreGraphDeepLink(request)`      |
 
-Operation contract summary (each is fully specified in the implementation
-request contract file list):
+### 6.1 D.1 — Exact request, response and failure contracts
+
+The exact `v1` request, response and failure contracts are frozen here. No
+operation type is left to implementation-time definition.
+
+```ts
+type GraphSnapshotIdentityV1 = {
+  schemaVersion: '1.0.0';
+  snapshotId: string; // non-empty
+  projectId: string; // non-empty
+  viewKind: GraphBaseViewKindV1;
+  projectionRevision: string; // non-empty
+  generatedAt: string; // ISO-8601
+};
+
+type GraphOperationFailureV1 = {
+  schemaVersion: '1.0.0';
+  reason: GraphUnavailableReasonV1;
+  message: string;
+  retryable: boolean; // true only for idempotent snapshot/overlay reads
+};
+
+type GraphFilterSetV1 = {
+  schemaVersion: '1.0.0';
+  nodeKindFilters?: readonly GraphResourceKindV1[];
+  edgeSemanticKindFilters?: readonly GraphEdgeSemanticKindV1[];
+  authorityFilters?: readonly GraphAuthorityClassificationV1[];
+  temporalFilters?: GraphTemporalValidityV1;
+  evidenceFilters?: { sourceId?: string; evidenceSpanId?: string };
+};
+
+// 1. Initial semantic snapshot
+type GraphSnapshotRequestV1 = {
+  schemaVersion: '1.0.0';
+  rootRefs?: readonly GraphNodeReferenceV1[]; // empty = project-wide root set
+  viewKind: GraphBaseViewKindV1; // exactly one base view
+  overlayKinds: readonly GraphOverlayKindV1[]; // each kind at most once
+  filters?: GraphFilterSetV1;
+  limits?: GraphTraversalLimitsV1; // requested; server clamps
+  expectedSnapshotRevision?: string;
+};
+
+type GraphSnapshotResultV1 = {
+  schemaVersion: '1.0.0';
+  identity: GraphSnapshotIdentityV1;
+  health: GraphProjectionHealthV1;
+  completeness: GraphResultCompletenessV1;
+  nodes: readonly GraphNodeV1[];
+  edges: readonly GraphEdgeV1[];
+  appliedLimits: GraphAppliedLimitsV1;
+  truncation?: GraphTruncationStateV1; // required when completeness === 'TRUNCATED'
+  overlays: readonly GraphOverlayIdentityV1[];
+  capabilities: GraphCapabilitiesViewV1;
+  continuation?: GraphContinuationTokenV1; // allowed; see continuation invariant
+};
+
+// 2. Neighborhood expansion
+type GraphNeighborhoodRequestV1 = {
+  schemaVersion: '1.0.0';
+  snapshotId: string;
+  projectionRevision: string;
+  centerRef: GraphNodeReferenceV1;
+  filters?: GraphFilterSetV1;
+  limits?: GraphTraversalLimitsV1;
+  continuationToken?: string; // allowed; see continuation invariant
+};
+
+// 3. Supported or shortest path
+type GraphPathRequestV1 = {
+  schemaVersion: '1.0.0';
+  snapshotId: string;
+  projectionRevision: string;
+  fromRef: GraphNodeReferenceV1;
+  toRef: GraphNodeReferenceV1;
+  edgeSemanticKinds?: readonly GraphEdgeSemanticKindV1[];
+  limits?: GraphTraversalLimitsV1;
+};
+
+// 4. Typed path description
+type GraphPathDescribeRequestV1 = {
+  schemaVersion: '1.0.0';
+  snapshotId: string;
+  projectionRevision: string;
+  pathId: string; // non-empty
+};
+
+// 5/6/7. Overlay reads (shared request; response per overlay)
+type GraphOverlayRequestV1 = {
+  schemaVersion: '1.0.0';
+  snapshotId: string; // base snapshot
+  projectionRevision: string;
+  overlayKind: GraphOverlayKindV1; // 'CONFLICT' | 'KNOWLEDGE_GAP' | 'RECURSIVE_IMPACT'
+  filters?: GraphFilterSetV1;
+  limits?: GraphTraversalLimitsV1;
+  expectedOverlayRevision?: string;
+  continuationToken?: string; // allowed only for RECURSIVE_IMPACT
+};
+
+type GraphOverlayResultV1 = {
+  schemaVersion: '1.0.0';
+  baseSnapshotId: string;
+  identity: GraphOverlayIdentityV1;
+  health: GraphProjectionHealthV1;
+  completeness: GraphResultCompletenessV1;
+  nodes: readonly GraphNodeV1[];
+  edges: readonly GraphEdgeV1[];
+  appliedLimits: GraphAppliedLimitsV1;
+  truncation?: GraphTruncationStateV1; // required when completeness === 'TRUNCATED'
+  continuation?: GraphContinuationTokenV1; // only when overlayKind === 'RECURSIVE_IMPACT'
+};
+
+// 8. Evidence and provenance detail
+type GraphEvidenceTargetV1 =
+  { kind: 'NODE'; nodeRef: GraphNodeReferenceV1 } | { kind: 'EDGE'; edgeRef: GraphEdgeReferenceV1 };
+
+type GraphEvidenceDetailRequestV1 = {
+  schemaVersion: '1.0.0';
+  snapshotId: string;
+  projectionRevision: string;
+  target: GraphEvidenceTargetV1;
+  evidenceRef?: { sourceId: string; evidenceSpanId: string };
+};
+
+type GraphEvidenceEntryV1 = {
+  schemaVersion: '1.0.0';
+  sourceId: string;
+  sourceVersionId: string;
+  evidenceSpanId: string;
+  snippet: string;
+};
+
+type GraphEvidenceDetailResultV1 = {
+  schemaVersion: '1.0.0';
+  snapshotId: string;
+  projectionRevision: string;
+  targetRef: GraphNodeReferenceV1 | GraphEdgeReferenceV1;
+  provenance?: GraphProvenanceSummaryV1;
+  evidence: readonly GraphEvidenceEntryV1[];
+  accessMasking: GraphAccessMaskingStateV1; // 'MASKED' returns no evidence entries
+};
+
+// 9. Snapshot refresh
+type GraphSnapshotRefreshRequestV1 = GraphSnapshotRequestV1 & {
+  schemaVersion: '1.0.0';
+  expectedSnapshotRevision: string; // required, non-empty
+};
+
+// 10. Deep-link restoration
+type GraphRestoreRequestV1 = {
+  schemaVersion: '1.0.0';
+  snapshotId: string;
+  projectionRevision: string;
+  viewKind: GraphBaseViewKindV1;
+  overlayKinds: readonly GraphOverlayKindV1[];
+  selectedNodeRefs: readonly GraphNodeReferenceV1[];
+  expectedSnapshotRevision?: string;
+};
+
+type GraphRestoreResultV1 = {
+  schemaVersion: '1.0.0';
+  snapshot: GraphSnapshotResultV1;
+  focusRefs: readonly GraphNodeReferenceV1[]; // selection/focus restoration targets
+};
+```
+
+### 6.2 D.2 — Cross-field invariants
+
+The following invariants are frozen and enforced by the decoders:
+
+- **Numeric rules**: `maxDepth` is an integer in `1..10`; `maxNodes` integer in
+  `1..500`; `maxEdges` integer in `1..1000`; `traversalBudget` and
+  `serverTimeoutBudgetMs` are non-negative integers (`serverTimeoutBudgetMs` in
+  `1000..30000`). Values outside these ranges are rejected or clamped, and
+  `clamped: true` is set when clamped.
+- **Truncation binding**: `completeness === 'TRUNCATED'` requires
+  `truncation: GraphTruncationStateV1` present; `completeness === 'COMPLETE'` or
+  `'PARTIAL'` forbids the `truncation` field.
+- **Path edge binding**: `GraphPathSegmentV1.segments[0].edgeRef` is optional
+  (origin node has no incoming edge); for every `step > 0`, `edgeRef` is
+  required and must resolve within the snapshot.
+- **Node kind binding**: for every `GraphNodeV1`,
+  `nodeKind === resourceRef.resourceKind`; the decoder rejects a mismatch.
+- **Masking payload binding**: `accessMasking === 'VISIBLE'` requires the
+  `payload` for the declared `nodeKind` and allows provenance/evidence/temporal;
+  `accessMasking === 'MASKED'` requires a masked placeholder `label` and forbids
+  `payload`, `provenance`, `evidence` and `temporalValidity`; `HIDDEN` items
+  never appear in any response.
+- **Applied-limits binding**: `GraphAppliedLimitsV1` is required in snapshot,
+  neighborhood, path and overlay results; path-description and evidence-detail
+  results do not perform traversal and therefore omit `appliedLimits`; refresh
+  and restore return a `GraphSnapshotResultV1` (which includes it).
+- **Continuation request union**: only operations 1 (snapshot), 2 (neighborhood)
+  and 7 (recursive-impact overlay) may issue or accept a continuation token.
+  Their request types are the exact union that accepts `continuationToken`;
+  operations 3–6, 8, 9 and 10 reject a `continuationToken` field as unknown.
+- **Revision binding**: every response carries `projectionRevision`
+  (+ `overlayRevision` for overlays); mismatch with `expectedSnapshotRevision` /
+  `expectedOverlayRevision` yields `SNAPSHOT_STALE` or the typed failure.
+
+## 6.3 D.3 — Operation contract summary (exact types above)
+
+The ten operations use the exact request/response/failure types in D.1 with the
+invariants in D.2:
 
 1. **Initial semantic snapshot** — request: root/root-set, base view kind,
    overlays, filters (node kind, edge semantic kind, authority, temporal,
@@ -665,12 +875,14 @@ Common contract obligations for every operation:
   Project, access revision, policy context revision; browser never overrides.
 - **Revision identity**: responses bind to `projectionRevision`
   (+ `overlayRevision` for overlays); mismatch with `expected*Revision` yields
-  `SNAPSHOT_STALE` or a typed failure.
-- **Applied limits**: every response returns `GraphAppliedLimitsV1`; truncation
-  is explicit via `GraphTruncationStateV1`.
-- **Continuation**: only operations 1, 2 and 7 may return a continuation token;
-  tokens are opaque, expiring, and bound per A.7. Expiry yields
-  `CONTINUATION_EXPIRED`; the browser re-issues the initial request.
+  `SNAPSHOT_STALE` or a typed failure (D.2).
+- **Applied limits**: snapshot, neighborhood, path and overlay responses return
+  `GraphAppliedLimitsV1`; path-description and evidence-detail responses omit it
+  (D.2). Truncation is explicit via `GraphTruncationStateV1`.
+- **Continuation**: only operations 1, 2 and 7 may return or accept a
+  continuation token (exact request union in D.2); tokens are opaque, expiring,
+  and bound per A.7. Expiry yields `CONTINUATION_EXPIRED`; the browser re-issues
+  the initial request.
 - **Cancellation**: every client method accepts `AbortSignal`.
 - **Deterministic and retryable failures**: snapshot and overlay reads are
   idempotent and may be retried safely; typed failures use
@@ -683,12 +895,21 @@ Common contract obligations for every operation:
 
 ### 7.1 E.1 — Authoritative implementation model
 
-Decision: **explicit hybrid**.
+Decision: **explicit hybrid** with an immutable snapshot-context descriptor.
 
 - **Base-view snapshots** (`KNOWLEDGE_SEMANTIC`, `GOVERNANCE_IMPACT`,
   `OPERATIONAL_DEPENDENCY`) are **ephemeral computations** at read time over
   Canonical / Stage 9 / Compiled Truth read sources, bounded by server limits.
-  No full graph snapshot rows are persisted.
+  **No graph node/edge rows are persisted.**
+- **Immutable Snapshot Context descriptor**: for every issued snapshot, an
+  immutable descriptor row is persisted (no graph items): `snapshotId`,
+  `projectId`, `viewKind`, `overlayKinds`, `rootRefs`, `filtersDigest`,
+  `limits`, `accessRevision`, `policyContextRevision`, `projectionRevision`,
+  `generatedAt`, `expiresAt`. Subsequent operations (neighborhood, path, path
+  description, evidence detail, refresh, deep-link restore) resolve
+  `snapshotId` → descriptor and reconstruct the identical computation; an
+  unknown or expired `snapshotId` returns `SNAPSHOT_STALE` /
+  `DEEP_LINK_TARGET_UNAVAILABLE`.
 - A **materialized projection-health registry** is persisted per Project:
   `(projectId, viewKind, projectionRevision, status, generatedAt, lag,
 rebuildState, accessRevision, policyContextRevision)`.
@@ -712,21 +933,27 @@ generatedAt, completeness, truncation, unavailableReason`.
   return `STALE` health or the typed `PROJECTION_REBUILDING` state; no automatic
   browser retry loop.
 - **PostgreSQL structures and migration**: migration **026** creates
+  `frontend_knowledge_graph_snapshot_context` (immutable descriptor),
   `frontend_knowledge_graph_projection_health`,
   `frontend_knowledge_graph_overlay_health` and
   `frontend_knowledge_graph_continuation`. No migration is executed in this
   preparation round.
+- **Snapshot-context lifecycle**: a snapshot descriptor is immutable once
+  written; it expires by `expiresAt` TTL and is pruned with the health window.
+  Overlay operations and deep-link restore resolve only current, unexpired
+  descriptors.
 - **Overlay artifact storage**: overlay results are ephemeral; only overlay
   health/identity rows are persisted. Overlay items are never persisted as
   Canonical graph edges.
-- **Retention and cleanup**: health rows are retained per Project with a bounded
-  window; overlay health rows are pruned when the base snapshot is invalidated;
-  continuation tokens expire via TTL and are purged.
+- **Retention and cleanup**: health and snapshot-context rows are retained per
+  Project with a bounded window; overlay health rows are pruned when the base
+  snapshot is invalidated; continuation tokens expire via TTL and are purged.
 - **Continuation-token stability**: tokens remain valid only while their binding
   (A.7) is unchanged; any revision or scope change invalidates them.
-- **In-memory/PostgreSQL parity boundary**: the health registry, overlay health
-  and continuation stores are the parity boundary; ephemeral computation is
-  shared code, so parity tests cover the two storage adapters only.
+- **In-memory/PostgreSQL parity boundary**: the snapshot-context store, health
+  registry, overlay health and continuation stores are the parity boundary;
+  ephemeral computation is shared code, so parity tests cover the four storage
+  adapters over the defined scenario set.
 - **Stage 9 and NetworkX adaptation boundary**: Stage 9
   `GetKnowledgeGraph`/`GetKnowledgeImpact` and the NetworkX oracle are adapted
   behind the FE-P3-S3 `GraphReadPort` and `GraphImpactPort`; their identifiers
@@ -886,7 +1113,7 @@ wording has been replaced with the exact measurable meanings below.
 | FE-P3-S3-AC-11 | Knowledge-gap overlay returns `KNOWLEDGE_GAP` items with overlay identity and no Canonical edge writes.                                                                                                                                                                                                                                                                                                                                                            | Integration test as AC-10 for gap.                                                                                                                |
 | FE-P3-S3-AC-12 | Recursive-impact overlay returns bounded impact paths through the FE-P3-S3 impact port with truncation state when limits are reached.                                                                                                                                                                                                                                                                                                                              | Integration test with limits and truncation assertions.                                                                                           |
 | FE-P3-S3-AC-13 | Overlay isolation and persistence: each overlay carries its own identity; overlay items are never persisted as Canonical edges; overlay health rows are the only persisted overlay state.                                                                                                                                                                                                                                                                          | Integration + database tests asserting the health store and absence of Canonical edge writes.                                                     |
-| FE-P3-S3-AC-14 | `ACTION_CANDIDATE` appears only in `GOVERNANCE_IMPACT`/`OPERATIONAL_DEPENDENCY` base views or `RECURSIVE_IMPACT` overlay; a `KNOWLEDGE_SEMANTIC` snapshot contains zero `ACTION_CANDIDATE` items.                                                                                                                                                                                                                                                                  | Contract/browser tests scanning snapshot items.                                                                                                   |
+| FE-P3-S3-AC-14 | FE-P3-S3 contains zero `ACTION_CANDIDATE` content: the contract defines no `ACTION_CANDIDATE` resource kind, node payload or authority value; every snapshot and overlay response contains zero such items; ActionCandidate rendering is deferred to FE-P4.                                                                                                                                                                                                        | Contract + browser tests scanning every snapshot/overlay response for absent ActionCandidate discriminator.                                       |
 | FE-P3-S3-AC-15 | `STALE`, `PARTIAL`, `TRUNCATED`, `FAILED`, `UNAVAILABLE` and `ACCESS_RESTRICTED` responses carry the exact health/completeness discriminant and render a non-success announcement.                                                                                                                                                                                                                                                                                 | Unit + browser tests per state.                                                                                                                   |
 | FE-P3-S3-AC-16 | Cache isolation: two Projects, two policy revisions, two snapshot revisions and two overlay revisions never reuse each other's cached result; the scope-phase and snapshot-phase keys are distinct.                                                                                                                                                                                                                                                                | Browser tests asserting distinct query keys and purge behavior.                                                                                   |
 | FE-P3-S3-AC-17 | Deep-link restoration restores the snapshot and moves focus to the selected node by `resourceId`; after a refresh the same `resourceId` retains focus.                                                                                                                                                                                                                                                                                                             | Browser E2E asserting focus target after restore and after refresh.                                                                               |
@@ -899,7 +1126,7 @@ wording has been replaced with the exact measurable meanings below.
 | FE-P3-S3-AC-24 | Error recovery: each `GraphUnavailableReasonV1` maps to a typed client failure; snapshot and overlay reads retry safely; no write is issued during recovery.                                                                                                                                                                                                                                                                                                       | Unit + browser tests per reason.                                                                                                                  |
 | FE-P3-S3-AC-25 | A correction action on a graph node/edge navigates to the Knowledge Editor with a typed DraftChangeSet seed carrying the same stable resource refs.                                                                                                                                                                                                                                                                                                                | Integration/browser test asserting the seed payload.                                                                                              |
 | FE-P3-S3-AC-26 | Zero direct Canonical, Approval or Action writes: the Graph Workspace exposes no write method for Canonical, Approval or Action; negative tests assert no such endpoint is reachable.                                                                                                                                                                                                                                                                              | Negative contract + route tests.                                                                                                                  |
-| FE-P3-S3-AC-27 | In-memory/PostgreSQL parity for the two storage adapters (projection health, overlay health, continuation stores) with identical behavior on an identical scenario set.                                                                                                                                                                                                                                                                                            | Parity test suite comparing both adapters over the defined scenario set.                                                                          |
+| FE-P3-S3-AC-27 | In-memory/PostgreSQL parity for the four storage adapters (snapshot-context descriptor, projection health, overlay health, continuation stores) with identical behavior on an identical scenario set.                                                                                                                                                                                                                                                              | Parity test suite comparing both adapters over the defined scenario set.                                                                          |
 | FE-P3-S3-AC-28 | Product API contract tests cover all ten read operations with strict decoding and typed failures.                                                                                                                                                                                                                                                                                                                                                                  | Contract test suite (one suite per operation).                                                                                                    |
 | FE-P3-S3-AC-29 | Required integration, database and browser scenarios: (a) snapshot with truncation; (b) neighborhood continuation round-trip; (c) path + path description; (d) conflict and gap overlays; (e) recursive-impact overlay; (f) cross-Project deep link denied; (g) masked vs hidden resource; (h) cache isolation; (i) refresh stale→new; (j) keyboard and screen-reader E2E; (k) performance E2E; (l) migration 026 apply/rollback.                                  | Each scenario in the corresponding integration/database/browser suite.                                                                            |
 | FE-P3-S3-AC-30 | Exact-head remote gates green: Quality, Frontend and Required Gates all `success` on the final implementation head.                                                                                                                                                                                                                                                                                                                                                | CI run evidence at the exact head.                                                                                                                |

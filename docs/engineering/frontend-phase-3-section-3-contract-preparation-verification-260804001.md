@@ -2,10 +2,10 @@
 
 - Record ID: `frontend-phase-3-section-3-contract-preparation-verification-260804001`
 - Record class: `ARCHITECTURE_VERIFICATION`
-- Date: 2026-08-04 (revision 2)
+- Date: 2026-08-04 (revision 3 — focused correction after `CHANGES_REQUIRED` review)
 - Repository: `JasonCutter/shotgun`
 - Scope: Frontend Phase 3 Section 3 — Semantic Graph and Relationship Exploration
-- Result: **GAP AUDIT / EXACT CONTRACT SNAPSHOT (V1) / AC / ADR-127 PROPOSED / EXECUTABLE IMPLEMENTATION REQUEST COMPLETE**
+- Result: **GAP AUDIT / EXACT CONTRACT SNAPSHOT (V1) / AC / ADR-127 PROPOSED / EXECUTABLE IMPLEMENTATION REQUEST COMPLETE — REVISION 3 CORRECTIONS APPLIED**
 - Product implementation: **NOT STARTED**
 - Canonical authority: GitHub `main`
 
@@ -118,6 +118,28 @@ Run while editing (results in the PR body and this record):
 
 Full gate: `npm run check` — exit code reported in the PR body and the final
 report; the redirected log is not committed.
+
+## 6a. Revision 3 focused corrections
+
+The `CHANGES_REQUIRED` review identified five blocking items. All five are
+resolved in the Contract Snapshot revision 3, ADR-127 revision 2 and
+Implementation Request revision 3:
+
+1. **Authority axis** reduced to pure authority/provenance lineage
+   (`CANONICAL | DERIVED_INFERENCE | DISCOVERY_CANDIDATE`); edge semantic,
+   resource, conflict/gap and overlay meanings stay on their own axes.
+2. **Exact request/response/failure contracts** for all ten operations frozen in
+   snapshot D.1, with cross-field invariants in D.2 (numeric ranges, truncation
+   binding, path edge binding, node-kind binding, masking payload binding,
+   applied-limits binding, continuation request union, revision binding).
+3. **Snapshot restoration** resolved with an immutable snapshot-context
+   descriptor store (migration 026 adds
+   `frontend_knowledge_graph_snapshot_context`); subsequent operations resolve
+   `snapshotId` → descriptor and reconstruct the identical computation.
+4. **Base-view terminology** unified on `GraphBaseViewKindV1`; `GraphViewKindV1`
+   removed; D2 no longer calls governance/operational base views "overlays".
+5. **`ACTION_CANDIDATE` fully excluded** from FE-P3-S3 (no resource kind,
+   payload or authority value); rendering deferred to FE-P4.
 
 ## 7. Governance status
 

@@ -2,11 +2,11 @@
 id: FRONTEND-PHASE-3-SECTION-3-IMPLEMENTATION-REQUEST-260804001
 classification: IMPLEMENTATION_REQUEST_PROPOSAL
 status: PENDING_USER_APPROVAL
-revision: 2
-review_round: 1
+revision: 3
+review_round: 2
 contract_basis_status: CONTRACT_SNAPSHOT_PROPOSED
 contract_basis_commit: 69cd0f0ccc03ba487b954b8f8f53fb1f54d2e9ab
-contract_snapshot_revision: 2
+contract_snapshot_revision: 3
 work_item: FE-P3-S3
 governing_adr: ADR-108
 proposed_adr: ADR-127
@@ -24,12 +24,13 @@ Graph and Relationship Exploration. It is **not yet approved** and must not be
 executed. After user approval it is intended to run as **one large
 implementation round**.
 
-The request is bounded by the frozen Contract Snapshot revision 2
+The request is bounded by the frozen Contract Snapshot revision 3
 (`docs/architecture/contracts/snapshots/frontend-phase-3-section-3/frontend-phase-3-section-3-contract-snapshot-260804001.md`),
 ADR-108, proposed ADR-127, and the Gap Audit
 (`docs/engineering/frontend-phase-3-section-3-semantic-graph-gap-audit-260804001.md`).
 Implementation must not make architectural choices that belong in the frozen
-contract.
+contract; every request/response/failure type is already frozen in snapshot
+sections D.1/D.2 and must be implemented as written.
 
 ## 0. Branch and base assumptions
 
@@ -48,15 +49,19 @@ contract.
 Create exact V1 contracts and strict decoders in:
 
 - `packages/contracts/src/frontend-knowledge-graph.ts` — every shape frozen in
-  Contract Snapshot section 3 (`GraphSnapshotIdentityV1`, `GraphNodeV1`,
+  Contract Snapshot sections 3 and D.1 (`GraphSnapshotIdentityV1`, `GraphNodeV1`,
   `GraphEdgeV1`, references, payloads, provenance, evidence, temporal, revision
   binding, access/masking, projection health, result completeness, traversal and
   applied limits, continuation identity, overlay identity, neighborhood/path
-  results, capabilities, unavailable reasons, and all ten request/response
-  contracts).
+  results, capabilities, unavailable reasons, `GraphOperationFailureV1`, and the
+  exact ten request/response contract pairs and their cross-field invariants
+  from D.2).
 - Decoder rules: `schemaVersion: '1.0.0'`, unknown-field rejection, non-empty-ID
-  validation, exhaustive unions, no `any`. Negative decode tests accompany every
-  shape.
+  validation, exhaustive unions, no `any`, plus every cross-field invariant in
+  D.2 (numeric ranges, truncation binding, path edge binding, node-kind
+  binding, masking payload binding, applied-limits binding, continuation request
+  union, revision binding). Negative decode tests accompany every shape and
+  invariant.
 - `packages/contracts/src/frontend-knowledge-graph-failures.ts` — typed failure
   mapping for every `GraphUnavailableReasonV1` using the shared typed-failure
   taxonomy.
@@ -101,12 +106,18 @@ Create exact V1 contracts and strict decoders in:
 ## 4. Migration and persistence work
 
 - Migration `db/migrations/026_frontend_knowledge_graph_projection.sql`:
-  `frontend_knowledge_graph_projection_health`,
+  `frontend_knowledge_graph_snapshot_context` (immutable descriptor — no graph
+  items), `frontend_knowledge_graph_projection_health`,
   `frontend_knowledge_graph_overlay_health`,
   `frontend_knowledge_graph_continuation` (Project-scoped, revision-bound,
-  TTL-expiring continuation rows, immutability rules per health row).
-- In-memory and PostgreSQL adapters must pass the parity suite over the defined
-  scenario set (AC-27).
+  TTL-expiring continuation rows, immutability rules per snapshot-context and
+  health row).
+- The snapshot-context store is the restoration mechanism for subsequent
+  operations (snapshotId → descriptor → identical computation); unknown or
+  expired descriptors return `SNAPSHOT_STALE`/`DEEP_LINK_TARGET_UNAVAILABLE`.
+- In-memory and PostgreSQL adapters must pass the parity suite for the four
+  storage adapters (snapshot-context, projection health, overlay health,
+  continuation) over the defined scenario set (AC-27).
 - Overlay items are never persisted as Canonical edges.
 
 ## 5. React and Cytoscape boundaries
@@ -133,17 +144,17 @@ overlayMemberships)` tuples from the same snapshot response.
 
 ## 7. Negative-test matrix
 
-| Area                    | Negative test                                                                                                            |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| Decoders                | unknown field, empty ID, unknown discriminant, missing `schemaVersion`                                                   |
-| Scope                   | forged Project/policy/access/revision values rejected                                                                    |
-| Traversal               | over-cap limits clamped (`clamped: true`) and truncation explicit                                                        |
-| Continuation            | expired/mismatched binding token → `CONTINUATION_EXPIRED`                                                                |
-| Hidden resources        | hidden nodes/edges absent from counts, paths, neighborhoods, truncation                                                  |
-| Cross-Project deep link | root outside Active Project → `ACCESS_RESTRICTED`, no silent switch                                                      |
-| Overlay                 | `ACTION_CANDIDATE` in `KNOWLEDGE_SEMANTIC` rejected; overlay without base view rejected; duplicate overlay kind rejected |
-| Writes                  | no Canonical/Approval/Action write endpoint reachable from the Graph Workspace                                           |
-| Recovery                | no write issued during any graph-read recovery                                                                           |
+| Area                    | Negative test                                                                                                                                                       |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Decoders                | unknown field, empty ID, unknown discriminant, missing `schemaVersion`                                                                                              |
+| Scope                   | forged Project/policy/access/revision values rejected                                                                                                               |
+| Traversal               | over-cap limits clamped (`clamped: true`) and truncation explicit                                                                                                   |
+| Continuation            | expired/mismatched binding token → `CONTINUATION_EXPIRED`                                                                                                           |
+| Hidden resources        | hidden nodes/edges absent from counts, paths, neighborhoods, truncation                                                                                             |
+| Cross-Project deep link | root outside Active Project → `ACCESS_RESTRICTED`, no silent switch                                                                                                 |
+| Overlay                 | any `ACTION_CANDIDATE` discriminator rejected (no such resource kind/payload/authority exists); overlay without base view rejected; duplicate overlay kind rejected |
+| Writes                  | no Canonical/Approval/Action write endpoint reachable from the Graph Workspace                                                                                      |
+| Recovery                | no write issued during any graph-read recovery                                                                                                                      |
 
 ## 8. Focused-test commands by work package
 
@@ -182,9 +193,10 @@ overlayMemberships)` tuples from the same snapshot response.
 
 - Canonical graph writes; graph-based relation editing; automatic Entity merge;
   Review decisions; Approval; Canonical Commit; User Directive Proposal
-  implementation; external Action execution; `ACTION_CANDIDATE` in the default
-  Knowledge graph; FE-P4; Yjs/CRDT; new runtime dependencies (Cytoscape already
-  declared); deployment; production verification.
+  implementation; external Action execution; `ACTION_CANDIDATE` in FE-P3-S3
+  (fully excluded; no resource kind, payload or authority value exists); FE-P4;
+  Yjs/CRDT; new runtime dependencies (Cytoscape already declared); deployment;
+  production verification.
 - No Ready or Merge without separate user authorization.
 
 ## Do not execute

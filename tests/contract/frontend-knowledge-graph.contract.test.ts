@@ -116,10 +116,12 @@ describe('FE-P3-S3 frontend-knowledge-graph contracts', () => {
   });
 
   it('rejects an unknown resource kind discriminant and an empty edge id', () => {
-    expect(() => decodeGraphNodeReferenceV1({ ...nodeRef, resourceKind: 'ACTION_CANDIDATE' })).toThrow(
+    expect(() =>
+      decodeGraphNodeReferenceV1({ ...nodeRef, resourceKind: 'ACTION_CANDIDATE' }),
+    ).toThrow(FrontendContractError);
+    expect(() => decodeGraphEdgeReferenceV1({ ...edgeRef, edgeId: '' })).toThrow(
       FrontendContractError,
     );
-    expect(() => decodeGraphEdgeReferenceV1({ ...edgeRef, edgeId: '' })).toThrow(FrontendContractError);
   });
 
   it('enforces node kind and resource ref kind consistency', () => {
@@ -172,9 +174,9 @@ describe('FE-P3-S3 frontend-knowledge-graph contracts', () => {
       },
     };
     expect(decodeGraphSnapshotResultV1(truncated).truncation?.reason).toBe('MAX_NODES');
-    expect(() => decodeGraphSnapshotResultV1({ ...base, completeness: 'TRUNCATED' as const })).toThrow(
-      FrontendContractError,
-    );
+    expect(() =>
+      decodeGraphSnapshotResultV1({ ...base, completeness: 'TRUNCATED' as const }),
+    ).toThrow(FrontendContractError);
     expect(() =>
       decodeGraphSnapshotResultV1({
         ...base,
@@ -284,7 +286,13 @@ describe('FE-P3-S3 frontend-knowledge-graph contracts', () => {
       projectionRevision: 'proj-1',
       pathId: 'path-1',
       segments: [
-        { schemaVersion: '1.0.0' as const, kind: 'ORIGIN' as const, step: 0, narration: 'Start at Entity One', nodeRef },
+        {
+          schemaVersion: '1.0.0' as const,
+          kind: 'ORIGIN' as const,
+          step: 0,
+          narration: 'Start at Entity One',
+          nodeRef,
+        },
         {
           schemaVersion: '1.0.0' as const,
           kind: 'TRAVERSAL' as const,
@@ -308,12 +316,16 @@ describe('FE-P3-S3 frontend-knowledge-graph contracts', () => {
       limits: undefined,
       expectedOverlayRevision: undefined,
     };
-    expect(decodeGraphConflictOverlayRequestV1({ ...base, overlayKind: 'CONFLICT' as const }).overlayKind).toBe('CONFLICT');
-    expect(() => decodeGraphConflictOverlayRequestV1({ ...base, overlayKind: 'RECURSIVE_IMPACT' as const })).toThrow(
-      FrontendContractError,
-    );
     expect(
-      decodeGraphKnowledgeGapOverlayRequestV1({ ...base, overlayKind: 'KNOWLEDGE_GAP' as const }).overlayKind,
+      decodeGraphConflictOverlayRequestV1({ ...base, overlayKind: 'CONFLICT' as const })
+        .overlayKind,
+    ).toBe('CONFLICT');
+    expect(() =>
+      decodeGraphConflictOverlayRequestV1({ ...base, overlayKind: 'RECURSIVE_IMPACT' as const }),
+    ).toThrow(FrontendContractError);
+    expect(
+      decodeGraphKnowledgeGapOverlayRequestV1({ ...base, overlayKind: 'KNOWLEDGE_GAP' as const })
+        .overlayKind,
     ).toBe('KNOWLEDGE_GAP');
     const impact = decodeGraphRecursiveImpactOverlayRequestV1({
       ...base,
@@ -323,7 +335,11 @@ describe('FE-P3-S3 frontend-knowledge-graph contracts', () => {
     expect(impact.continuationToken).toBe('tok');
     // conflict request rejects unknown continuationToken field
     expect(() =>
-      decodeGraphConflictOverlayRequestV1({ ...base, overlayKind: 'CONFLICT' as const, continuationToken: 'tok' }),
+      decodeGraphConflictOverlayRequestV1({
+        ...base,
+        overlayKind: 'CONFLICT' as const,
+        continuationToken: 'tok',
+      }),
     ).toThrow(FrontendContractError);
   });
 
@@ -336,9 +352,9 @@ describe('FE-P3-S3 frontend-knowledge-graph contracts', () => {
     };
     expect(decodeGraphSnapshotRefreshRequestV1(refresh).snapshotId).toBe('snapshot-1');
     // full resend fields are rejected as unknown
-    expect(() => decodeGraphSnapshotRefreshRequestV1({ ...refresh, viewKind: 'KNOWLEDGE_SEMANTIC' as const })).toThrow(
-      FrontendContractError,
-    );
+    expect(() =>
+      decodeGraphSnapshotRefreshRequestV1({ ...refresh, viewKind: 'KNOWLEDGE_SEMANTIC' as const }),
+    ).toThrow(FrontendContractError);
   });
 
   it('decodes evidence detail and enforces masked empty-evidence rule', () => {

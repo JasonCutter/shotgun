@@ -130,4 +130,5 @@ export const graphFailureApiCode = (reason: GraphUnavailableReasonV1): string =>
   graphFailureForReason(reason).normalizedCode;
 
 export const isGraphUnavailableReason = (value: unknown): value is GraphUnavailableReasonV1 =>
-  typeof value === 'string' && GRAPH_UNAVAILABLE_REASONS.includes(value as GraphUnavailableReasonV1);
+  typeof value === 'string' &&
+  GRAPH_UNAVAILABLE_REASONS.includes(value as GraphUnavailableReasonV1);

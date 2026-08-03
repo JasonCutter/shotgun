@@ -52,12 +52,11 @@ export type GraphEdgeSemanticKindV1 =
 // Axis 3 — authority / provenance-lineage classification (reduced; never edge
 // semantic kinds, resource states, overlay kinds or ACTION_CANDIDATE)
 export type GraphAuthorityClassificationV1 =
-  | 'CANONICAL'
-  | 'DERIVED_INFERENCE'
-  | 'DISCOVERY_CANDIDATE';
+  'CANONICAL' | 'DERIVED_INFERENCE' | 'DISCOVERY_CANDIDATE';
 
 // Axis 4 — base view membership
-export type GraphBaseViewKindV1 = 'KNOWLEDGE_SEMANTIC' | 'GOVERNANCE_IMPACT' | 'OPERATIONAL_DEPENDENCY';
+export type GraphBaseViewKindV1 =
+  'KNOWLEDGE_SEMANTIC' | 'GOVERNANCE_IMPACT' | 'OPERATIONAL_DEPENDENCY';
 
 // Axis 5 — overlay membership
 export type GraphOverlayKindV1 = 'CONFLICT' | 'KNOWLEDGE_GAP' | 'RECURSIVE_IMPACT';
@@ -127,7 +126,11 @@ export type GraphNodePayloadV1 =
   | { schemaVersion: '1.0.0'; nodeKind: 'EVIDENCE'; evidence: EvidenceLinkValueV1 }
   | { schemaVersion: '1.0.0'; nodeKind: 'SOURCE'; source: GraphSourcePayloadV1 }
   | { schemaVersion: '1.0.0'; nodeKind: 'CONFLICT'; conflict: ConflictProposalValueV1 }
-  | { schemaVersion: '1.0.0'; nodeKind: 'KNOWLEDGE_GAP'; knowledgeGap: KnowledgeGapProposalValueV1 };
+  | {
+      schemaVersion: '1.0.0';
+      nodeKind: 'KNOWLEDGE_GAP';
+      knowledgeGap: KnowledgeGapProposalValueV1;
+    };
 
 export type GraphProvenanceSummaryV1 = {
   schemaVersion: '1.0.0';
@@ -485,8 +488,7 @@ export type GraphOverlayResultV1 = {
 };
 
 export type GraphEvidenceTargetV1 =
-  | { kind: 'NODE'; nodeRef: GraphNodeReferenceV1 }
-  | { kind: 'EDGE'; edgeRef: GraphEdgeReferenceV1 };
+  { kind: 'NODE'; nodeRef: GraphNodeReferenceV1 } | { kind: 'EDGE'; edgeRef: GraphEdgeReferenceV1 };
 
 export type GraphEvidenceDetailRequestV1 = {
   schemaVersion: '1.0.0';
@@ -554,7 +556,11 @@ const asObject = (value: unknown, path: string): ObjectValue => {
   return value as ObjectValue;
 };
 
-const strictObject = (value: unknown, allowedKeys: readonly string[], path: string): ObjectValue => {
+const strictObject = (
+  value: unknown,
+  allowedKeys: readonly string[],
+  path: string,
+): ObjectValue => {
   const object = asObject(value, path);
   const unexpected = Object.keys(object).filter((key) => !allowedKeys.includes(key));
   if (unexpected.length > 0) {
@@ -712,7 +718,10 @@ export const GRAPH_UNAVAILABLE_REASONS: readonly GraphUnavailableReasonV1[] = [
   'NETWORK_FAILURE',
 ];
 
-export const decodeGraphNodeReferenceV1 = (value: unknown, path = 'nodeRef'): GraphNodeReferenceV1 => {
+export const decodeGraphNodeReferenceV1 = (
+  value: unknown,
+  path = 'nodeRef',
+): GraphNodeReferenceV1 => {
   const object = strictObject(value, ['schemaVersion', 'resourceKind', 'resourceId'], path);
   const schemaVersion = text(required(object, 'schemaVersion', path), `${path}.schemaVersion`);
   if (schemaVersion !== '1.0.0') return fail(`${path}.schemaVersion`, 'must be 1.0.0');
@@ -725,12 +734,11 @@ export const decodeGraphNodeReferenceV1 = (value: unknown, path = 'nodeRef'): Gr
   return { schemaVersion: '1.0.0', resourceKind, resourceId };
 };
 
-export const decodeGraphEdgeReferenceV1 = (value: unknown, path = 'edgeRef'): GraphEdgeReferenceV1 => {
-  const object = strictObject(
-    value,
-    ['schemaVersion', 'edgeId', 'from', 'to'],
-    path,
-  );
+export const decodeGraphEdgeReferenceV1 = (
+  value: unknown,
+  path = 'edgeRef',
+): GraphEdgeReferenceV1 => {
+  const object = strictObject(value, ['schemaVersion', 'edgeId', 'from', 'to'], path);
   const schemaVersion = text(required(object, 'schemaVersion', path), `${path}.schemaVersion`);
   if (schemaVersion !== '1.0.0') return fail(`${path}.schemaVersion`, 'must be 1.0.0');
   const edgeId = text(required(object, 'edgeId', path), `${path}.edgeId`);
@@ -809,11 +817,19 @@ export const decodeGraphTemporalValidityV1 = (
   const object = strictObject(value, ['schemaVersion', 'validFrom', 'validTo', 'status'], path);
   const schemaVersion = text(required(object, 'schemaVersion', path), `${path}.schemaVersion`);
   if (schemaVersion !== '1.0.0') return fail(`${path}.schemaVersion`, 'must be 1.0.0');
-  const status = enumValue(required(object, 'status', path), ['KNOWN', 'OPEN', 'UNKNOWN'], `${path}.status`);
+  const status = enumValue(
+    required(object, 'status', path),
+    ['KNOWN', 'OPEN', 'UNKNOWN'],
+    `${path}.status`,
+  );
   return {
     schemaVersion: '1.0.0',
-    validFrom: object.validFrom === undefined ? undefined : isoTimestamp(object.validFrom, `${path}.validFrom`),
-    validTo: object.validTo === undefined ? undefined : isoTimestamp(object.validTo, `${path}.validTo`),
+    validFrom:
+      object.validFrom === undefined
+        ? undefined
+        : isoTimestamp(object.validFrom, `${path}.validFrom`),
+    validTo:
+      object.validTo === undefined ? undefined : isoTimestamp(object.validTo, `${path}.validTo`),
     status,
   };
 };
@@ -831,7 +847,10 @@ export const decodeGraphRevisionBindingV1 = (
   if (schemaVersion !== '1.0.0') return fail(`${path}.schemaVersion`, 'must be 1.0.0');
   return {
     schemaVersion: '1.0.0',
-    projectionRevision: text(required(object, 'projectionRevision', path), `${path}.projectionRevision`),
+    projectionRevision: text(
+      required(object, 'projectionRevision', path),
+      `${path}.projectionRevision`,
+    ),
     policyContextRevision: text(
       required(object, 'policyContextRevision', path),
       `${path}.policyContextRevision`,
@@ -859,10 +878,17 @@ export const decodeGraphFilterSetV1 = (value: unknown, path = 'filters'): GraphF
     object.evidenceFilters === undefined
       ? undefined
       : (() => {
-          const eo = strictObject(object.evidenceFilters, ['sourceId', 'evidenceSpanId'], `${path}.evidenceFilters`);
+          const eo = strictObject(
+            object.evidenceFilters,
+            ['sourceId', 'evidenceSpanId'],
+            `${path}.evidenceFilters`,
+          );
           return {
             sourceId: optionalText(eo.sourceId, `${path}.evidenceFilters.sourceId`),
-            evidenceSpanId: optionalText(eo.evidenceSpanId, `${path}.evidenceFilters.evidenceSpanId`),
+            evidenceSpanId: optionalText(
+              eo.evidenceSpanId,
+              `${path}.evidenceFilters.evidenceSpanId`,
+            ),
           };
         })();
   return {
@@ -876,8 +902,9 @@ export const decodeGraphFilterSetV1 = (value: unknown, path = 'filters'): GraphF
     edgeSemanticKindFilters:
       object.edgeSemanticKindFilters === undefined
         ? undefined
-        : arrayValue(object.edgeSemanticKindFilters, `${path}.edgeSemanticKindFilters`).map((entry) =>
-            enumValue(entry, GRAPH_EDGE_SEMANTIC_KINDS, `${path}.edgeSemanticKindFilters`),
+        : arrayValue(object.edgeSemanticKindFilters, `${path}.edgeSemanticKindFilters`).map(
+            (entry) =>
+              enumValue(entry, GRAPH_EDGE_SEMANTIC_KINDS, `${path}.edgeSemanticKindFilters`),
           ),
     authorityFilters:
       object.authorityFilters === undefined
@@ -899,7 +926,14 @@ export const decodeGraphTraversalLimitsV1 = (
 ): GraphTraversalLimitsV1 => {
   const object = strictObject(
     value,
-    ['schemaVersion', 'maxDepth', 'maxNodes', 'maxEdges', 'traversalBudget', 'serverTimeoutBudgetMs'],
+    [
+      'schemaVersion',
+      'maxDepth',
+      'maxNodes',
+      'maxEdges',
+      'traversalBudget',
+      'serverTimeoutBudgetMs',
+    ],
     path,
   );
   const schemaVersion = text(required(object, 'schemaVersion', path), `${path}.schemaVersion`);
@@ -911,10 +945,15 @@ const decodeTraversalBaseFields = (object: ObjectValue, path: string): GraphTrav
   const maxDepth = integer(required(object, 'maxDepth', path), `${path}.maxDepth`);
   if (maxDepth < 1 || maxDepth > 10) return fail(`${path}.maxDepth`, 'must be an integer in 1..10');
   const maxNodes = integer(required(object, 'maxNodes', path), `${path}.maxNodes`);
-  if (maxNodes < 1 || maxNodes > 500) return fail(`${path}.maxNodes`, 'must be an integer in 1..500');
+  if (maxNodes < 1 || maxNodes > 500)
+    return fail(`${path}.maxNodes`, 'must be an integer in 1..500');
   const maxEdges = integer(required(object, 'maxEdges', path), `${path}.maxEdges`);
-  if (maxEdges < 1 || maxEdges > 1000) return fail(`${path}.maxEdges`, 'must be an integer in 1..1000');
-  const traversalBudget = integer(required(object, 'traversalBudget', path), `${path}.traversalBudget`);
+  if (maxEdges < 1 || maxEdges > 1000)
+    return fail(`${path}.maxEdges`, 'must be an integer in 1..1000');
+  const traversalBudget = integer(
+    required(object, 'traversalBudget', path),
+    `${path}.traversalBudget`,
+  );
   const serverTimeoutBudgetMs = integer(
     required(object, 'serverTimeoutBudgetMs', path),
     `${path}.serverTimeoutBudgetMs`,
@@ -932,7 +971,10 @@ const decodeTraversalBaseFields = (object: ObjectValue, path: string): GraphTrav
   };
 };
 
-export const decodeGraphAppliedLimitsV1 = (value: unknown, path = 'appliedLimits'): GraphAppliedLimitsV1 => {
+export const decodeGraphAppliedLimitsV1 = (
+  value: unknown,
+  path = 'appliedLimits',
+): GraphAppliedLimitsV1 => {
   const object = strictObject(
     value,
     [
@@ -966,7 +1008,10 @@ export const decodeGraphAppliedLimitsV1 = (value: unknown, path = 'appliedLimits
   };
 };
 
-export const decodeGraphTruncationStateV1 = (value: unknown, path = 'truncation'): GraphTruncationStateV1 => {
+export const decodeGraphTruncationStateV1 = (
+  value: unknown,
+  path = 'truncation',
+): GraphTruncationStateV1 => {
   const object = strictObject(
     value,
     ['schemaVersion', 'truncated', 'reason', 'omittedNodeCount', 'omittedEdgeCount'],
@@ -985,8 +1030,14 @@ export const decodeGraphTruncationStateV1 = (value: unknown, path = 'truncation'
     schemaVersion: '1.0.0',
     truncated: true,
     reason,
-    omittedNodeCount: integer(required(object, 'omittedNodeCount', path), `${path}.omittedNodeCount`),
-    omittedEdgeCount: integer(required(object, 'omittedEdgeCount', path), `${path}.omittedEdgeCount`),
+    omittedNodeCount: integer(
+      required(object, 'omittedNodeCount', path),
+      `${path}.omittedNodeCount`,
+    ),
+    omittedEdgeCount: integer(
+      required(object, 'omittedEdgeCount', path),
+      `${path}.omittedEdgeCount`,
+    ),
   };
 };
 
@@ -1004,7 +1055,10 @@ export const decodeGraphContinuationTokenV1 = (
   };
 };
 
-export const decodeGraphOverlayIdentityV1 = (value: unknown, path = 'identity'): GraphOverlayIdentityV1 => {
+export const decodeGraphOverlayIdentityV1 = (
+  value: unknown,
+  path = 'identity',
+): GraphOverlayIdentityV1 => {
   const object = strictObject(
     value,
     [
@@ -1029,16 +1083,32 @@ export const decodeGraphOverlayIdentityV1 = (value: unknown, path = 'identity'):
       ? undefined
       : (() => {
           const so = asObject(object.sourceRef, `${path}.sourceRef`);
-          const kind = enumValue(required(so, 'kind', `${path}.sourceRef`), ['RESOURCE', 'DRAFT_CHANGE_SET'], `${path}.sourceRef.kind`);
+          const kind = enumValue(
+            required(so, 'kind', `${path}.sourceRef`),
+            ['RESOURCE', 'DRAFT_CHANGE_SET'],
+            `${path}.sourceRef.kind`,
+          );
           if (kind === 'RESOURCE') {
             const ro = strictObject(so, ['kind', 'resourceRef'], `${path}.sourceRef`);
-            return { kind: 'RESOURCE' as const, resourceRef: decodeGraphNodeReferenceV1(required(ro, 'resourceRef', `${path}.sourceRef`), `${path}.sourceRef.resourceRef`) };
+            return {
+              kind: 'RESOURCE' as const,
+              resourceRef: decodeGraphNodeReferenceV1(
+                required(ro, 'resourceRef', `${path}.sourceRef`),
+                `${path}.sourceRef.resourceRef`,
+              ),
+            };
           }
           const ro = strictObject(so, ['kind', 'draftId', 'revision'], `${path}.sourceRef`);
           return {
             kind: 'DRAFT_CHANGE_SET' as const,
-            draftId: text(required(ro, 'draftId', `${path}.sourceRef`), `${path}.sourceRef.draftId`),
-            revision: integer(required(ro, 'revision', `${path}.sourceRef`), `${path}.sourceRef.revision`),
+            draftId: text(
+              required(ro, 'draftId', `${path}.sourceRef`),
+              `${path}.sourceRef.draftId`,
+            ),
+            revision: integer(
+              required(ro, 'revision', `${path}.sourceRef`),
+              `${path}.sourceRef.revision`,
+            ),
           };
         })();
   const completeness = enumValue(
@@ -1047,7 +1117,9 @@ export const decodeGraphOverlayIdentityV1 = (value: unknown, path = 'identity'):
     `${path}.completeness`,
   );
   const truncation =
-    object.truncation === undefined ? undefined : decodeGraphTruncationStateV1(object.truncation, `${path}.truncation`);
+    object.truncation === undefined
+      ? undefined
+      : decodeGraphTruncationStateV1(object.truncation, `${path}.truncation`);
   if (completeness === 'TRUNCATED' && truncation === undefined) {
     return fail(`${path}.completeness`, 'TRUNCATED requires truncation');
   }
@@ -1056,8 +1128,15 @@ export const decodeGraphOverlayIdentityV1 = (value: unknown, path = 'identity'):
   }
   return {
     schemaVersion: '1.0.0',
-    overlayKind: enumValue(required(object, 'overlayKind', path), GRAPH_OVERLAY_KINDS, `${path}.overlayKind`),
-    overlaySnapshotId: text(required(object, 'overlaySnapshotId', path), `${path}.overlaySnapshotId`),
+    overlayKind: enumValue(
+      required(object, 'overlayKind', path),
+      GRAPH_OVERLAY_KINDS,
+      `${path}.overlayKind`,
+    ),
+    overlaySnapshotId: text(
+      required(object, 'overlaySnapshotId', path),
+      `${path}.overlaySnapshotId`,
+    ),
     overlayRevision: text(required(object, 'overlayRevision', path), `${path}.overlayRevision`),
     sourceRef,
     analyzerRevision: text(required(object, 'analyzerRevision', path), `${path}.analyzerRevision`),
@@ -1071,7 +1150,11 @@ export const decodeGraphOverlayIdentityV1 = (value: unknown, path = 'identity'):
     unavailableReason:
       object.unavailableReason === undefined
         ? undefined
-        : enumValue(object.unavailableReason, GRAPH_UNAVAILABLE_REASONS, `${path}.unavailableReason`),
+        : enumValue(
+            object.unavailableReason,
+            GRAPH_UNAVAILABLE_REASONS,
+            `${path}.unavailableReason`,
+          ),
   };
 };
 
@@ -1099,26 +1182,43 @@ export const decodeGraphNodeV1 = (value: unknown, path = 'node'): GraphNodeV1 =>
   const schemaVersion = text(required(object, 'schemaVersion', path), `${path}.schemaVersion`);
   if (schemaVersion !== '1.0.0') return fail(`${path}.schemaVersion`, 'must be 1.0.0');
   const nodeId = text(required(object, 'nodeId', path), `${path}.nodeId`);
-  const resourceRef = decodeGraphNodeReferenceV1(required(object, 'resourceRef', path), `${path}.resourceRef`);
-  const nodeKind = enumValue(required(object, 'nodeKind', path), GRAPH_RESOURCE_KINDS, `${path}.nodeKind`);
+  const resourceRef = decodeGraphNodeReferenceV1(
+    required(object, 'resourceRef', path),
+    `${path}.resourceRef`,
+  );
+  const nodeKind = enumValue(
+    required(object, 'nodeKind', path),
+    GRAPH_RESOURCE_KINDS,
+    `${path}.nodeKind`,
+  );
   if (nodeKind !== resourceRef.resourceKind) {
-    return fail(`${path}.nodeKind`, `must match resourceRef.resourceKind (${resourceRef.resourceKind})`);
+    return fail(
+      `${path}.nodeKind`,
+      `must match resourceRef.resourceKind (${resourceRef.resourceKind})`,
+    );
   }
   const accessMasking = enumValue(
     required(object, 'accessMasking', path),
     GRAPH_ACCESS_MASKING_STATES,
     `${path}.accessMasking`,
   );
-  if (accessMasking === 'HIDDEN') return fail(`${path}.accessMasking`, 'HIDDEN items never appear in a response');
+  if (accessMasking === 'HIDDEN')
+    return fail(`${path}.accessMasking`, 'HIDDEN items never appear in a response');
   const label = text(required(object, 'label', path), `${path}.label`);
-  const payload = object.payload === undefined ? undefined : (asObject(object.payload, `${path}.payload`) as GraphNodePayloadV1);
+  const payload =
+    object.payload === undefined
+      ? undefined
+      : (asObject(object.payload, `${path}.payload`) as GraphNodePayloadV1);
   if (accessMasking === 'VISIBLE' && payload === undefined) {
     return fail(`${path}.payload`, 'required when accessMasking is VISIBLE');
   }
   if (accessMasking === 'MASKED') {
-    if (payload !== undefined) return fail(`${path}.payload`, 'forbidden when accessMasking is MASKED');
-    if (object.provenance !== undefined) return fail(`${path}.provenance`, 'forbidden when accessMasking is MASKED');
-    if (object.evidence !== undefined) return fail(`${path}.evidence`, 'forbidden when accessMasking is MASKED');
+    if (payload !== undefined)
+      return fail(`${path}.payload`, 'forbidden when accessMasking is MASKED');
+    if (object.provenance !== undefined)
+      return fail(`${path}.provenance`, 'forbidden when accessMasking is MASKED');
+    if (object.evidence !== undefined)
+      return fail(`${path}.evidence`, 'forbidden when accessMasking is MASKED');
     if (object.temporalValidity !== undefined) {
       return fail(`${path}.temporalValidity`, 'forbidden when accessMasking is MASKED');
     }
@@ -1129,7 +1229,11 @@ export const decodeGraphNodeV1 = (value: unknown, path = 'node'): GraphNodeV1 =>
     resourceRef,
     label,
     nodeKind,
-    authority: enumValue(required(object, 'authority', path), GRAPH_AUTHORITY_CLASSIFICATIONS, `${path}.authority`),
+    authority: enumValue(
+      required(object, 'authority', path),
+      GRAPH_AUTHORITY_CLASSIFICATIONS,
+      `${path}.authority`,
+    ),
     baseViewMembership: enumValue(
       required(object, 'baseViewMembership', path),
       GRAPH_BASE_VIEW_KINDS,
@@ -1140,14 +1244,21 @@ export const decodeGraphNodeV1 = (value: unknown, path = 'node'): GraphNodeV1 =>
       `${path}.overlayMemberships`,
     ).map((entry) => enumValue(entry, GRAPH_OVERLAY_KINDS, `${path}.overlayMemberships`)),
     provenance:
-      object.provenance === undefined ? undefined : decodeGraphProvenanceSummaryV1(object.provenance, `${path}.provenance`),
+      object.provenance === undefined
+        ? undefined
+        : decodeGraphProvenanceSummaryV1(object.provenance, `${path}.provenance`),
     evidence:
-      object.evidence === undefined ? undefined : decodeGraphEvidenceSummaryV1(object.evidence, `${path}.evidence`),
+      object.evidence === undefined
+        ? undefined
+        : decodeGraphEvidenceSummaryV1(object.evidence, `${path}.evidence`),
     temporalValidity:
       object.temporalValidity === undefined
         ? undefined
         : decodeGraphTemporalValidityV1(object.temporalValidity, `${path}.temporalValidity`),
-    revisionBinding: decodeGraphRevisionBindingV1(required(object, 'revisionBinding', path), `${path}.revisionBinding`),
+    revisionBinding: decodeGraphRevisionBindingV1(
+      required(object, 'revisionBinding', path),
+      `${path}.revisionBinding`,
+    ),
     accessMasking,
     payload: payload as GraphNodePayloadV1 | undefined,
   };
@@ -1186,11 +1297,15 @@ export const decodeGraphEdgeV1 = (value: unknown, path = 'edge'): GraphEdgeV1 =>
     GRAPH_ACCESS_MASKING_STATES,
     `${path}.accessMasking`,
   );
-  if (accessMasking === 'HIDDEN') return fail(`${path}.accessMasking`, 'HIDDEN items never appear in a response');
+  if (accessMasking === 'HIDDEN')
+    return fail(`${path}.accessMasking`, 'HIDDEN items never appear in a response');
   if (accessMasking === 'MASKED') {
-    if (object.payload !== undefined) return fail(`${path}.payload`, 'forbidden when accessMasking is MASKED');
-    if (object.provenance !== undefined) return fail(`${path}.provenance`, 'forbidden when accessMasking is MASKED');
-    if (object.evidence !== undefined) return fail(`${path}.evidence`, 'forbidden when accessMasking is MASKED');
+    if (object.payload !== undefined)
+      return fail(`${path}.payload`, 'forbidden when accessMasking is MASKED');
+    if (object.provenance !== undefined)
+      return fail(`${path}.provenance`, 'forbidden when accessMasking is MASKED');
+    if (object.evidence !== undefined)
+      return fail(`${path}.evidence`, 'forbidden when accessMasking is MASKED');
     if (object.temporalValidity !== undefined) {
       return fail(`${path}.temporalValidity`, 'forbidden when accessMasking is MASKED');
     }
@@ -1201,13 +1316,19 @@ export const decodeGraphEdgeV1 = (value: unknown, path = 'edge'): GraphEdgeV1 =>
     from,
     to,
     relationRef:
-      object.relationRef === undefined ? undefined : decodeGraphRelationReferenceV1(object.relationRef, `${path}.relationRef`),
+      object.relationRef === undefined
+        ? undefined
+        : decodeGraphRelationReferenceV1(object.relationRef, `${path}.relationRef`),
     edgeSemanticKind: enumValue(
       required(object, 'edgeSemanticKind', path),
       GRAPH_EDGE_SEMANTIC_KINDS,
       `${path}.edgeSemanticKind`,
     ),
-    authority: enumValue(required(object, 'authority', path), GRAPH_AUTHORITY_CLASSIFICATIONS, `${path}.authority`),
+    authority: enumValue(
+      required(object, 'authority', path),
+      GRAPH_AUTHORITY_CLASSIFICATIONS,
+      `${path}.authority`,
+    ),
     baseViewMembership: enumValue(
       required(object, 'baseViewMembership', path),
       GRAPH_BASE_VIEW_KINDS,
@@ -1218,25 +1339,43 @@ export const decodeGraphEdgeV1 = (value: unknown, path = 'edge'): GraphEdgeV1 =>
       `${path}.overlayMemberships`,
     ).map((entry) => enumValue(entry, GRAPH_OVERLAY_KINDS, `${path}.overlayMemberships`)),
     provenance:
-      object.provenance === undefined ? undefined : decodeGraphProvenanceSummaryV1(object.provenance, `${path}.provenance`),
+      object.provenance === undefined
+        ? undefined
+        : decodeGraphProvenanceSummaryV1(object.provenance, `${path}.provenance`),
     evidence:
-      object.evidence === undefined ? undefined : decodeGraphEvidenceSummaryV1(object.evidence, `${path}.evidence`),
+      object.evidence === undefined
+        ? undefined
+        : decodeGraphEvidenceSummaryV1(object.evidence, `${path}.evidence`),
     temporalValidity:
       object.temporalValidity === undefined
         ? undefined
         : decodeGraphTemporalValidityV1(object.temporalValidity, `${path}.temporalValidity`),
-    revisionBinding: decodeGraphRevisionBindingV1(required(object, 'revisionBinding', path), `${path}.revisionBinding`),
+    revisionBinding: decodeGraphRevisionBindingV1(
+      required(object, 'revisionBinding', path),
+      `${path}.revisionBinding`,
+    ),
     accessMasking,
     traversalDirection:
       object.traversalDirection === undefined
         ? undefined
-        : enumValue(object.traversalDirection, GRAPH_TRAVERSAL_DIRECTIONS, `${path}.traversalDirection`),
+        : enumValue(
+            object.traversalDirection,
+            GRAPH_TRAVERSAL_DIRECTIONS,
+            `${path}.traversalDirection`,
+          ),
     payload:
       object.payload === undefined
         ? undefined
         : (() => {
-            const po = strictObject(object.payload, ['schemaVersion', 'relationType', 'qualifier'], `${path}.payload`);
-            const ps = text(required(po, 'schemaVersion', `${path}.payload`), `${path}.payload.schemaVersion`);
+            const po = strictObject(
+              object.payload,
+              ['schemaVersion', 'relationType', 'qualifier'],
+              `${path}.payload`,
+            );
+            const ps = text(
+              required(po, 'schemaVersion', `${path}.payload`),
+              `${path}.payload.schemaVersion`,
+            );
             if (ps !== '1.0.0') return fail(`${path}.payload.schemaVersion`, 'must be 1.0.0');
             return {
               schemaVersion: '1.0.0' as const,
@@ -1247,7 +1386,10 @@ export const decodeGraphEdgeV1 = (value: unknown, path = 'edge'): GraphEdgeV1 =>
   };
 };
 
-export const decodeGraphSnapshotIdentityV1 = (value: unknown, path = 'identity'): GraphSnapshotIdentityV1 => {
+export const decodeGraphSnapshotIdentityV1 = (
+  value: unknown,
+  path = 'identity',
+): GraphSnapshotIdentityV1 => {
   const object = strictObject(
     value,
     ['schemaVersion', 'snapshotId', 'projectId', 'viewKind', 'projectionRevision', 'generatedAt'],
@@ -1259,20 +1401,30 @@ export const decodeGraphSnapshotIdentityV1 = (value: unknown, path = 'identity')
     schemaVersion: '1.0.0',
     snapshotId: text(required(object, 'snapshotId', path), `${path}.snapshotId`),
     projectId: text(required(object, 'projectId', path), `${path}.projectId`),
-    viewKind: enumValue(required(object, 'viewKind', path), GRAPH_BASE_VIEW_KINDS, `${path}.viewKind`),
-    projectionRevision: text(required(object, 'projectionRevision', path), `${path}.projectionRevision`),
+    viewKind: enumValue(
+      required(object, 'viewKind', path),
+      GRAPH_BASE_VIEW_KINDS,
+      `${path}.viewKind`,
+    ),
+    projectionRevision: text(
+      required(object, 'projectionRevision', path),
+      `${path}.projectionRevision`,
+    ),
     generatedAt: isoTimestamp(required(object, 'generatedAt', path), `${path}.generatedAt`),
   };
 };
 
-export const decodeGraphCapabilitiesViewV1 = (value: unknown, path = 'capabilities'): GraphCapabilitiesViewV1 => {
+export const decodeGraphCapabilitiesViewV1 = (
+  value: unknown,
+  path = 'capabilities',
+): GraphCapabilitiesViewV1 => {
   const object = strictObject(value, ['schemaVersion', 'capabilities', 'unavailable'], path);
   const schemaVersion = text(required(object, 'schemaVersion', path), `${path}.schemaVersion`);
   if (schemaVersion !== '1.0.0') return fail(`${path}.schemaVersion`, 'must be 1.0.0');
   return {
     schemaVersion: '1.0.0',
-    capabilities: arrayValue(required(object, 'capabilities', path), `${path}.capabilities`).map((entry) =>
-      enumValue(entry, GRAPH_CAPABILITIES, `${path}.capabilities`),
+    capabilities: arrayValue(required(object, 'capabilities', path), `${path}.capabilities`).map(
+      (entry) => enumValue(entry, GRAPH_CAPABILITIES, `${path}.capabilities`),
     ),
     unavailable:
       object.unavailable === undefined
@@ -1280,8 +1432,15 @@ export const decodeGraphCapabilitiesViewV1 = (value: unknown, path = 'capabiliti
         : arrayValue(object.unavailable, `${path}.unavailable`).map((entry) => {
             const uo = strictObject(entry, ['reason', 'message'], `${path}.unavailable`);
             return {
-              reason: enumValue(required(uo, 'reason', `${path}.unavailable`), GRAPH_UNAVAILABLE_REASONS, `${path}.unavailable.reason`),
-              message: text(required(uo, 'message', `${path}.unavailable`), `${path}.unavailable.message`),
+              reason: enumValue(
+                required(uo, 'reason', `${path}.unavailable`),
+                GRAPH_UNAVAILABLE_REASONS,
+                `${path}.unavailable.reason`,
+              ),
+              message: text(
+                required(uo, 'message', `${path}.unavailable`),
+                `${path}.unavailable.message`,
+              ),
             };
           }),
   };
@@ -1292,7 +1451,10 @@ const decodeTruncationOptional = (
   completeness: GraphResultCompletenessV1,
   path: string,
 ): GraphTruncationStateV1 | undefined => {
-  const truncation = object.truncation === undefined ? undefined : decodeGraphTruncationStateV1(object.truncation, `${path}.truncation`);
+  const truncation =
+    object.truncation === undefined
+      ? undefined
+      : decodeGraphTruncationStateV1(object.truncation, `${path}.truncation`);
   if (completeness === 'TRUNCATED' && truncation === undefined) {
     return fail(`${path}.completeness`, 'TRUNCATED requires truncation');
   }
@@ -1302,7 +1464,10 @@ const decodeTruncationOptional = (
   return truncation;
 };
 
-export const decodeGraphSnapshotResultV1 = (value: unknown, path = 'result'): GraphSnapshotResultV1 => {
+export const decodeGraphSnapshotResultV1 = (
+  value: unknown,
+  path = 'result',
+): GraphSnapshotResultV1 => {
   const object = strictObject(
     value,
     [
@@ -1339,12 +1504,18 @@ export const decodeGraphSnapshotResultV1 = (value: unknown, path = 'result'): Gr
     edges: arrayValue(required(object, 'edges', path), `${path}.edges`).map((entry) =>
       decodeGraphEdgeV1(entry, `${path}.edges`),
     ),
-    appliedLimits: decodeGraphAppliedLimitsV1(required(object, 'appliedLimits', path), `${path}.appliedLimits`),
+    appliedLimits: decodeGraphAppliedLimitsV1(
+      required(object, 'appliedLimits', path),
+      `${path}.appliedLimits`,
+    ),
     truncation,
     overlays: arrayValue(required(object, 'overlays', path), `${path}.overlays`).map((entry) =>
       decodeGraphOverlayIdentityV1(entry, `${path}.overlays`),
     ),
-    capabilities: decodeGraphCapabilitiesViewV1(required(object, 'capabilities', path), `${path}.capabilities`),
+    capabilities: decodeGraphCapabilitiesViewV1(
+      required(object, 'capabilities', path),
+      `${path}.capabilities`,
+    ),
     continuation:
       object.continuation === undefined
         ? undefined
@@ -1352,7 +1523,10 @@ export const decodeGraphSnapshotResultV1 = (value: unknown, path = 'result'): Gr
   };
 };
 
-export const decodeGraphNeighborhoodResultV1 = (value: unknown, path = 'result'): GraphNeighborhoodResultV1 => {
+export const decodeGraphNeighborhoodResultV1 = (
+  value: unknown,
+  path = 'result',
+): GraphNeighborhoodResultV1 => {
   const object = strictObject(
     value,
     [
@@ -1380,16 +1554,22 @@ export const decodeGraphNeighborhoodResultV1 = (value: unknown, path = 'result')
   return {
     schemaVersion: '1.0.0',
     snapshotId: text(required(object, 'snapshotId', path), `${path}.snapshotId`),
-    projectionRevision: text(required(object, 'projectionRevision', path), `${path}.projectionRevision`),
-    centerRef: decodeGraphNodeReferenceV1(required(object, 'centerRef', path), `${path}.centerRef`),
-    addedNodes: arrayValue(required(object, 'addedNodes', path), `${path}.addedNodes`).map((entry) =>
-      decodeGraphNodeV1(entry, `${path}.addedNodes`),
+    projectionRevision: text(
+      required(object, 'projectionRevision', path),
+      `${path}.projectionRevision`,
     ),
-    addedEdges: arrayValue(required(object, 'addedEdges', path), `${path}.addedEdges`).map((entry) =>
-      decodeGraphEdgeV1(entry, `${path}.addedEdges`),
+    centerRef: decodeGraphNodeReferenceV1(required(object, 'centerRef', path), `${path}.centerRef`),
+    addedNodes: arrayValue(required(object, 'addedNodes', path), `${path}.addedNodes`).map(
+      (entry) => decodeGraphNodeV1(entry, `${path}.addedNodes`),
+    ),
+    addedEdges: arrayValue(required(object, 'addedEdges', path), `${path}.addedEdges`).map(
+      (entry) => decodeGraphEdgeV1(entry, `${path}.addedEdges`),
     ),
     completeness,
-    appliedLimits: decodeGraphAppliedLimitsV1(required(object, 'appliedLimits', path), `${path}.appliedLimits`),
+    appliedLimits: decodeGraphAppliedLimitsV1(
+      required(object, 'appliedLimits', path),
+      `${path}.appliedLimits`,
+    ),
     continuation:
       object.continuation === undefined
         ? undefined
@@ -1406,17 +1586,29 @@ export const decodeGraphPathSegmentV1 = (value: unknown, path = 'segments'): Gra
   const step = integer(required(object, 'step', path), `${path}.step`);
   const nodeRef = decodeGraphNodeReferenceV1(required(object, 'nodeRef', path), `${path}.nodeRef`);
   if (kind === 'ORIGIN') {
-    const so = strictObject(object, ['schemaVersion', 'kind', 'step', 'nodeRef', 'direction'], path);
+    const so = strictObject(
+      object,
+      ['schemaVersion', 'kind', 'step', 'nodeRef', 'direction'],
+      path,
+    );
     if (step !== 0) return fail(`${path}.step`, 'ORIGIN step must be 0');
     return {
       schemaVersion: '1.0.0',
       kind: 'ORIGIN',
       step: 0,
       nodeRef,
-      direction: enumValue(required(so, 'direction', path), GRAPH_TRAVERSAL_DIRECTIONS, `${path}.direction`),
+      direction: enumValue(
+        required(so, 'direction', path),
+        GRAPH_TRAVERSAL_DIRECTIONS,
+        `${path}.direction`,
+      ),
     };
   }
-  const so = strictObject(object, ['schemaVersion', 'kind', 'step', 'nodeRef', 'edgeRef', 'direction'], path);
+  const so = strictObject(
+    object,
+    ['schemaVersion', 'kind', 'step', 'nodeRef', 'edgeRef', 'direction'],
+    path,
+  );
   if (step < 1) return fail(`${path}.step`, 'TRAVERSAL step must be >= 1');
   return {
     schemaVersion: '1.0.0',
@@ -1424,14 +1616,28 @@ export const decodeGraphPathSegmentV1 = (value: unknown, path = 'segments'): Gra
     step,
     nodeRef,
     edgeRef: decodeGraphEdgeReferenceV1(required(so, 'edgeRef', path), `${path}.edgeRef`),
-    direction: enumValue(required(so, 'direction', path), GRAPH_TRAVERSAL_DIRECTIONS, `${path}.direction`),
+    direction: enumValue(
+      required(so, 'direction', path),
+      GRAPH_TRAVERSAL_DIRECTIONS,
+      `${path}.direction`,
+    ),
   };
 };
 
 export const decodeGraphPathResultV1 = (value: unknown, path = 'result'): GraphPathResultV1 => {
   const object = strictObject(
     value,
-    ['schemaVersion', 'snapshotId', 'projectionRevision', 'fromRef', 'toRef', 'paths', 'completeness', 'appliedLimits', 'truncation'],
+    [
+      'schemaVersion',
+      'snapshotId',
+      'projectionRevision',
+      'fromRef',
+      'toRef',
+      'paths',
+      'completeness',
+      'appliedLimits',
+      'truncation',
+    ],
     path,
   );
   const schemaVersion = text(required(object, 'schemaVersion', path), `${path}.schemaVersion`);
@@ -1446,20 +1652,26 @@ export const decodeGraphPathResultV1 = (value: unknown, path = 'result'): GraphP
     const po = strictObject(entry, ['pathId', 'segments'], `${path}.paths`);
     return {
       pathId: text(required(po, 'pathId', `${path}.paths`), `${path}.paths.pathId`),
-      segments: arrayValue(required(po, 'segments', `${path}.paths`), `${path}.paths.segments`).map((segment) =>
-        decodeGraphPathSegmentV1(segment, `${path}.paths.segments`),
+      segments: arrayValue(required(po, 'segments', `${path}.paths`), `${path}.paths.segments`).map(
+        (segment) => decodeGraphPathSegmentV1(segment, `${path}.paths.segments`),
       ),
     };
   });
   return {
     schemaVersion: '1.0.0',
     snapshotId: text(required(object, 'snapshotId', path), `${path}.snapshotId`),
-    projectionRevision: text(required(object, 'projectionRevision', path), `${path}.projectionRevision`),
+    projectionRevision: text(
+      required(object, 'projectionRevision', path),
+      `${path}.projectionRevision`,
+    ),
     fromRef: decodeGraphNodeReferenceV1(required(object, 'fromRef', path), `${path}.fromRef`),
     toRef: decodeGraphNodeReferenceV1(required(object, 'toRef', path), `${path}.toRef`),
     paths,
     completeness,
-    appliedLimits: decodeGraphAppliedLimitsV1(required(object, 'appliedLimits', path), `${path}.appliedLimits`),
+    appliedLimits: decodeGraphAppliedLimitsV1(
+      required(object, 'appliedLimits', path),
+      `${path}.appliedLimits`,
+    ),
     truncation,
   };
 };
@@ -1476,11 +1688,19 @@ export const decodeGraphPathDescriptionSegmentV1 = (
   const narration = text(required(object, 'narration', path), `${path}.narration`);
   const nodeRef = decodeGraphNodeReferenceV1(required(object, 'nodeRef', path), `${path}.nodeRef`);
   if (kind === 'ORIGIN') {
-    const so = strictObject(object, ['schemaVersion', 'kind', 'step', 'narration', 'nodeRef'], path);
+    const so = strictObject(
+      object,
+      ['schemaVersion', 'kind', 'step', 'narration', 'nodeRef'],
+      path,
+    );
     if (step !== 0) return fail(`${path}.step`, 'ORIGIN step must be 0');
     return { schemaVersion: '1.0.0', kind: 'ORIGIN', step: 0, narration, nodeRef };
   }
-  const so = strictObject(object, ['schemaVersion', 'kind', 'step', 'narration', 'nodeRef', 'edgeRef'], path);
+  const so = strictObject(
+    object,
+    ['schemaVersion', 'kind', 'step', 'narration', 'nodeRef', 'edgeRef'],
+    path,
+  );
   if (step < 1) return fail(`${path}.step`, 'TRAVERSAL step must be >= 1');
   return {
     schemaVersion: '1.0.0',
@@ -1492,7 +1712,10 @@ export const decodeGraphPathDescriptionSegmentV1 = (
   };
 };
 
-export const decodeGraphPathDescriptionV1 = (value: unknown, path = 'result'): GraphPathDescriptionV1 => {
+export const decodeGraphPathDescriptionV1 = (
+  value: unknown,
+  path = 'result',
+): GraphPathDescriptionV1 => {
   const object = strictObject(
     value,
     ['schemaVersion', 'snapshotId', 'projectionRevision', 'pathId', 'segments', 'summary'],
@@ -1503,7 +1726,10 @@ export const decodeGraphPathDescriptionV1 = (value: unknown, path = 'result'): G
   return {
     schemaVersion: '1.0.0',
     snapshotId: text(required(object, 'snapshotId', path), `${path}.snapshotId`),
-    projectionRevision: text(required(object, 'projectionRevision', path), `${path}.projectionRevision`),
+    projectionRevision: text(
+      required(object, 'projectionRevision', path),
+      `${path}.projectionRevision`,
+    ),
     pathId: text(required(object, 'pathId', path), `${path}.pathId`),
     segments: arrayValue(required(object, 'segments', path), `${path}.segments`).map((entry) =>
       decodeGraphPathDescriptionSegmentV1(entry, `${path}.segments`),
@@ -1512,7 +1738,10 @@ export const decodeGraphPathDescriptionV1 = (value: unknown, path = 'result'): G
   };
 };
 
-export const decodeGraphOverlayResultV1 = (value: unknown, path = 'result'): GraphOverlayResultV1 => {
+export const decodeGraphOverlayResultV1 = (
+  value: unknown,
+  path = 'result',
+): GraphOverlayResultV1 => {
   const object = strictObject(
     value,
     [
@@ -1538,16 +1767,24 @@ export const decodeGraphOverlayResultV1 = (value: unknown, path = 'result'): Gra
     `${path}.completeness`,
   );
   const truncation = decodeTruncationOptional(object, completeness, path);
-  const identity = decodeGraphOverlayIdentityV1(required(object, 'identity', path), `${path}.identity`);
+  const identity = decodeGraphOverlayIdentityV1(
+    required(object, 'identity', path),
+    `${path}.identity`,
+  );
   const continuation =
-    object.continuation === undefined ? undefined : decodeGraphContinuationTokenV1(object.continuation, `${path}.continuation`);
+    object.continuation === undefined
+      ? undefined
+      : decodeGraphContinuationTokenV1(object.continuation, `${path}.continuation`);
   if (continuation !== undefined && identity.overlayKind !== 'RECURSIVE_IMPACT') {
     return fail(`${path}.continuation`, 'only RECURSIVE_IMPACT overlays may issue continuation');
   }
   return {
     schemaVersion: '1.0.0',
     baseSnapshotId: text(required(object, 'baseSnapshotId', path), `${path}.baseSnapshotId`),
-    projectionRevision: text(required(object, 'projectionRevision', path), `${path}.projectionRevision`),
+    projectionRevision: text(
+      required(object, 'projectionRevision', path),
+      `${path}.projectionRevision`,
+    ),
     identity,
     health: enumValue(required(object, 'health', path), GRAPH_PROJECTION_HEALTHS, `${path}.health`),
     completeness,
@@ -1557,16 +1794,30 @@ export const decodeGraphOverlayResultV1 = (value: unknown, path = 'result'): Gra
     edges: arrayValue(required(object, 'edges', path), `${path}.edges`).map((entry) =>
       decodeGraphEdgeV1(entry, `${path}.edges`),
     ),
-    appliedLimits: decodeGraphAppliedLimitsV1(required(object, 'appliedLimits', path), `${path}.appliedLimits`),
+    appliedLimits: decodeGraphAppliedLimitsV1(
+      required(object, 'appliedLimits', path),
+      `${path}.appliedLimits`,
+    ),
     truncation,
     continuation,
   };
 };
 
-export const decodeGraphEvidenceDetailResultV1 = (value: unknown, path = 'result'): GraphEvidenceDetailResultV1 => {
+export const decodeGraphEvidenceDetailResultV1 = (
+  value: unknown,
+  path = 'result',
+): GraphEvidenceDetailResultV1 => {
   const object = strictObject(
     value,
-    ['schemaVersion', 'snapshotId', 'projectionRevision', 'targetRef', 'provenance', 'evidence', 'accessMasking'],
+    [
+      'schemaVersion',
+      'snapshotId',
+      'projectionRevision',
+      'targetRef',
+      'provenance',
+      'evidence',
+      'accessMasking',
+    ],
     path,
   );
   const schemaVersion = text(required(object, 'schemaVersion', path), `${path}.schemaVersion`);
@@ -1581,34 +1832,57 @@ export const decodeGraphEvidenceDetailResultV1 = (value: unknown, path = 'result
     GRAPH_ACCESS_MASKING_STATES,
     `${path}.accessMasking`,
   );
-  const evidence = arrayValue(required(object, 'evidence', path), `${path}.evidence`).map((entry) => {
-    const eo = strictObject(entry, ['schemaVersion', 'sourceId', 'sourceVersionId', 'evidenceSpanId', 'snippet'], `${path}.evidence`);
-    const es = text(required(eo, 'schemaVersion', `${path}.evidence`), `${path}.evidence.schemaVersion`);
-    if (es !== '1.0.0') return fail(`${path}.evidence.schemaVersion`, 'must be 1.0.0');
-    return {
-      schemaVersion: '1.0.0' as const,
-      sourceId: text(required(eo, 'sourceId', `${path}.evidence`), `${path}.evidence.sourceId`),
-      sourceVersionId: text(required(eo, 'sourceVersionId', `${path}.evidence`), `${path}.evidence.sourceVersionId`),
-      evidenceSpanId: text(required(eo, 'evidenceSpanId', `${path}.evidence`), `${path}.evidence.evidenceSpanId`),
-      snippet: text(required(eo, 'snippet', `${path}.evidence`), `${path}.evidence.snippet`),
-    };
-  });
+  const evidence = arrayValue(required(object, 'evidence', path), `${path}.evidence`).map(
+    (entry) => {
+      const eo = strictObject(
+        entry,
+        ['schemaVersion', 'sourceId', 'sourceVersionId', 'evidenceSpanId', 'snippet'],
+        `${path}.evidence`,
+      );
+      const es = text(
+        required(eo, 'schemaVersion', `${path}.evidence`),
+        `${path}.evidence.schemaVersion`,
+      );
+      if (es !== '1.0.0') return fail(`${path}.evidence.schemaVersion`, 'must be 1.0.0');
+      return {
+        schemaVersion: '1.0.0' as const,
+        sourceId: text(required(eo, 'sourceId', `${path}.evidence`), `${path}.evidence.sourceId`),
+        sourceVersionId: text(
+          required(eo, 'sourceVersionId', `${path}.evidence`),
+          `${path}.evidence.sourceVersionId`,
+        ),
+        evidenceSpanId: text(
+          required(eo, 'evidenceSpanId', `${path}.evidence`),
+          `${path}.evidence.evidenceSpanId`,
+        ),
+        snippet: text(required(eo, 'snippet', `${path}.evidence`), `${path}.evidence.snippet`),
+      };
+    },
+  );
   if (accessMasking === 'MASKED' && evidence.length > 0) {
     return fail(`${path}.evidence`, 'MASKED targets return no evidence entries');
   }
   return {
     schemaVersion: '1.0.0',
     snapshotId: text(required(object, 'snapshotId', path), `${path}.snapshotId`),
-    projectionRevision: text(required(object, 'projectionRevision', path), `${path}.projectionRevision`),
+    projectionRevision: text(
+      required(object, 'projectionRevision', path),
+      `${path}.projectionRevision`,
+    ),
     targetRef: decodedTargetRef,
     provenance:
-      object.provenance === undefined ? undefined : decodeGraphProvenanceSummaryV1(object.provenance, `${path}.provenance`),
+      object.provenance === undefined
+        ? undefined
+        : decodeGraphProvenanceSummaryV1(object.provenance, `${path}.provenance`),
     evidence,
     accessMasking,
   };
 };
 
-export const decodeGraphRestoreResultV1 = (value: unknown, path = 'result'): GraphRestoreResultV1 => {
+export const decodeGraphRestoreResultV1 = (
+  value: unknown,
+  path = 'result',
+): GraphRestoreResultV1 => {
   const object = strictObject(value, ['schemaVersion', 'snapshot', 'focusRefs'], path);
   const schemaVersion = text(required(object, 'schemaVersion', path), `${path}.schemaVersion`);
   if (schemaVersion !== '1.0.0') return fail(`${path}.schemaVersion`, 'must be 1.0.0');
@@ -1623,18 +1897,34 @@ export const decodeGraphRestoreResultV1 = (value: unknown, path = 'result'): Gra
 
 // Request decoders (each enforces its exact shape and continuation union)
 
-export const decodeGraphSnapshotRequestV1 = (value: unknown, path = 'request'): GraphSnapshotRequestV1 => {
+export const decodeGraphSnapshotRequestV1 = (
+  value: unknown,
+  path = 'request',
+): GraphSnapshotRequestV1 => {
   const object = strictObject(
     value,
-    ['schemaVersion', 'rootRefs', 'viewKind', 'overlayKinds', 'filters', 'limits', 'expectedSnapshotRevision'],
+    [
+      'schemaVersion',
+      'rootRefs',
+      'viewKind',
+      'overlayKinds',
+      'filters',
+      'limits',
+      'expectedSnapshotRevision',
+    ],
     path,
   );
   const schemaVersion = text(required(object, 'schemaVersion', path), `${path}.schemaVersion`);
   if (schemaVersion !== '1.0.0') return fail(`${path}.schemaVersion`, 'must be 1.0.0');
-  const viewKind = enumValue(required(object, 'viewKind', path), GRAPH_BASE_VIEW_KINDS, `${path}.viewKind`);
-  const overlayKinds = arrayValue(required(object, 'overlayKinds', path), `${path}.overlayKinds`).map((entry) =>
-    enumValue(entry, GRAPH_OVERLAY_KINDS, `${path}.overlayKinds`),
+  const viewKind = enumValue(
+    required(object, 'viewKind', path),
+    GRAPH_BASE_VIEW_KINDS,
+    `${path}.viewKind`,
   );
+  const overlayKinds = arrayValue(
+    required(object, 'overlayKinds', path),
+    `${path}.overlayKinds`,
+  ).map((entry) => enumValue(entry, GRAPH_OVERLAY_KINDS, `${path}.overlayKinds`));
   if (new Set(overlayKinds).size !== overlayKinds.length) {
     return fail(`${path}.overlayKinds`, 'each overlay kind may appear at most once');
   }
@@ -1648,16 +1938,36 @@ export const decodeGraphSnapshotRequestV1 = (value: unknown, path = 'request'): 
           ),
     viewKind,
     overlayKinds,
-    filters: object.filters === undefined ? undefined : decodeGraphFilterSetV1(object.filters, `${path}.filters`),
-    limits: object.limits === undefined ? undefined : decodeGraphTraversalLimitsV1(object.limits, `${path}.limits`),
-    expectedSnapshotRevision: optionalText(object.expectedSnapshotRevision, `${path}.expectedSnapshotRevision`),
+    filters:
+      object.filters === undefined
+        ? undefined
+        : decodeGraphFilterSetV1(object.filters, `${path}.filters`),
+    limits:
+      object.limits === undefined
+        ? undefined
+        : decodeGraphTraversalLimitsV1(object.limits, `${path}.limits`),
+    expectedSnapshotRevision: optionalText(
+      object.expectedSnapshotRevision,
+      `${path}.expectedSnapshotRevision`,
+    ),
   };
 };
 
-export const decodeGraphNeighborhoodRequestV1 = (value: unknown, path = 'request'): GraphNeighborhoodRequestV1 => {
+export const decodeGraphNeighborhoodRequestV1 = (
+  value: unknown,
+  path = 'request',
+): GraphNeighborhoodRequestV1 => {
   const object = strictObject(
     value,
-    ['schemaVersion', 'snapshotId', 'projectionRevision', 'centerRef', 'filters', 'limits', 'continuationToken'],
+    [
+      'schemaVersion',
+      'snapshotId',
+      'projectionRevision',
+      'centerRef',
+      'filters',
+      'limits',
+      'continuationToken',
+    ],
     path,
   );
   const schemaVersion = text(required(object, 'schemaVersion', path), `${path}.schemaVersion`);
@@ -1665,10 +1975,19 @@ export const decodeGraphNeighborhoodRequestV1 = (value: unknown, path = 'request
   return {
     schemaVersion: '1.0.0',
     snapshotId: text(required(object, 'snapshotId', path), `${path}.snapshotId`),
-    projectionRevision: text(required(object, 'projectionRevision', path), `${path}.projectionRevision`),
+    projectionRevision: text(
+      required(object, 'projectionRevision', path),
+      `${path}.projectionRevision`,
+    ),
     centerRef: decodeGraphNodeReferenceV1(required(object, 'centerRef', path), `${path}.centerRef`),
-    filters: object.filters === undefined ? undefined : decodeGraphFilterSetV1(object.filters, `${path}.filters`),
-    limits: object.limits === undefined ? undefined : decodeGraphTraversalLimitsV1(object.limits, `${path}.limits`),
+    filters:
+      object.filters === undefined
+        ? undefined
+        : decodeGraphFilterSetV1(object.filters, `${path}.filters`),
+    limits:
+      object.limits === undefined
+        ? undefined
+        : decodeGraphTraversalLimitsV1(object.limits, `${path}.limits`),
     continuationToken: optionalText(object.continuationToken, `${path}.continuationToken`),
   };
 };
@@ -1676,7 +1995,15 @@ export const decodeGraphNeighborhoodRequestV1 = (value: unknown, path = 'request
 export const decodeGraphPathRequestV1 = (value: unknown, path = 'request'): GraphPathRequestV1 => {
   const object = strictObject(
     value,
-    ['schemaVersion', 'snapshotId', 'projectionRevision', 'fromRef', 'toRef', 'edgeSemanticKinds', 'limits'],
+    [
+      'schemaVersion',
+      'snapshotId',
+      'projectionRevision',
+      'fromRef',
+      'toRef',
+      'edgeSemanticKinds',
+      'limits',
+    ],
     path,
   );
   const schemaVersion = text(required(object, 'schemaVersion', path), `${path}.schemaVersion`);
@@ -1684,7 +2011,10 @@ export const decodeGraphPathRequestV1 = (value: unknown, path = 'request'): Grap
   return {
     schemaVersion: '1.0.0',
     snapshotId: text(required(object, 'snapshotId', path), `${path}.snapshotId`),
-    projectionRevision: text(required(object, 'projectionRevision', path), `${path}.projectionRevision`),
+    projectionRevision: text(
+      required(object, 'projectionRevision', path),
+      `${path}.projectionRevision`,
+    ),
     fromRef: decodeGraphNodeReferenceV1(required(object, 'fromRef', path), `${path}.fromRef`),
     toRef: decodeGraphNodeReferenceV1(required(object, 'toRef', path), `${path}.toRef`),
     edgeSemanticKinds:
@@ -1693,18 +2023,31 @@ export const decodeGraphPathRequestV1 = (value: unknown, path = 'request'): Grap
         : arrayValue(object.edgeSemanticKinds, `${path}.edgeSemanticKinds`).map((entry) =>
             enumValue(entry, GRAPH_EDGE_SEMANTIC_KINDS, `${path}.edgeSemanticKinds`),
           ),
-    limits: object.limits === undefined ? undefined : decodeGraphTraversalLimitsV1(object.limits, `${path}.limits`),
+    limits:
+      object.limits === undefined
+        ? undefined
+        : decodeGraphTraversalLimitsV1(object.limits, `${path}.limits`),
   };
 };
 
-export const decodeGraphPathDescribeRequestV1 = (value: unknown, path = 'request'): GraphPathDescribeRequestV1 => {
-  const object = strictObject(value, ['schemaVersion', 'snapshotId', 'projectionRevision', 'pathId'], path);
+export const decodeGraphPathDescribeRequestV1 = (
+  value: unknown,
+  path = 'request',
+): GraphPathDescribeRequestV1 => {
+  const object = strictObject(
+    value,
+    ['schemaVersion', 'snapshotId', 'projectionRevision', 'pathId'],
+    path,
+  );
   const schemaVersion = text(required(object, 'schemaVersion', path), `${path}.schemaVersion`);
   if (schemaVersion !== '1.0.0') return fail(`${path}.schemaVersion`, 'must be 1.0.0');
   return {
     schemaVersion: '1.0.0',
     snapshotId: text(required(object, 'snapshotId', path), `${path}.snapshotId`),
-    projectionRevision: text(required(object, 'projectionRevision', path), `${path}.projectionRevision`),
+    projectionRevision: text(
+      required(object, 'projectionRevision', path),
+      `${path}.projectionRevision`,
+    ),
     pathId: text(required(object, 'pathId', path), `${path}.pathId`),
   };
 };
@@ -1720,37 +2063,82 @@ const decodeOverlayCommon = (
   expectedOverlayRevision?: string;
 } => ({
   snapshotId: text(required(object, 'snapshotId', path), `${path}.snapshotId`),
-  projectionRevision: text(required(object, 'projectionRevision', path), `${path}.projectionRevision`),
-  filters: object.filters === undefined ? undefined : decodeGraphFilterSetV1(object.filters, `${path}.filters`),
-  limits: object.limits === undefined ? undefined : decodeGraphTraversalLimitsV1(object.limits, `${path}.limits`),
-  expectedOverlayRevision: optionalText(object.expectedOverlayRevision, `${path}.expectedOverlayRevision`),
+  projectionRevision: text(
+    required(object, 'projectionRevision', path),
+    `${path}.projectionRevision`,
+  ),
+  filters:
+    object.filters === undefined
+      ? undefined
+      : decodeGraphFilterSetV1(object.filters, `${path}.filters`),
+  limits:
+    object.limits === undefined
+      ? undefined
+      : decodeGraphTraversalLimitsV1(object.limits, `${path}.limits`),
+  expectedOverlayRevision: optionalText(
+    object.expectedOverlayRevision,
+    `${path}.expectedOverlayRevision`,
+  ),
 });
 
-export const decodeGraphConflictOverlayRequestV1 = (value: unknown, path = 'request'): GraphConflictOverlayRequestV1 => {
+export const decodeGraphConflictOverlayRequestV1 = (
+  value: unknown,
+  path = 'request',
+): GraphConflictOverlayRequestV1 => {
   const object = strictObject(
     value,
-    ['schemaVersion', 'snapshotId', 'projectionRevision', 'overlayKind', 'filters', 'limits', 'expectedOverlayRevision'],
+    [
+      'schemaVersion',
+      'snapshotId',
+      'projectionRevision',
+      'overlayKind',
+      'filters',
+      'limits',
+      'expectedOverlayRevision',
+    ],
     path,
   );
   const schemaVersion = text(required(object, 'schemaVersion', path), `${path}.schemaVersion`);
   if (schemaVersion !== '1.0.0') return fail(`${path}.schemaVersion`, 'must be 1.0.0');
-  const overlayKind = enumValue(required(object, 'overlayKind', path), ['CONFLICT'], `${path}.overlayKind`);
+  const overlayKind = enumValue(
+    required(object, 'overlayKind', path),
+    ['CONFLICT'],
+    `${path}.overlayKind`,
+  );
   return { ...decodeOverlayCommon(object, path), schemaVersion: '1.0.0', overlayKind };
 };
 
-export const decodeGraphKnowledgeGapOverlayRequestV1 = (value: unknown, path = 'request'): GraphKnowledgeGapOverlayRequestV1 => {
+export const decodeGraphKnowledgeGapOverlayRequestV1 = (
+  value: unknown,
+  path = 'request',
+): GraphKnowledgeGapOverlayRequestV1 => {
   const object = strictObject(
     value,
-    ['schemaVersion', 'snapshotId', 'projectionRevision', 'overlayKind', 'filters', 'limits', 'expectedOverlayRevision'],
+    [
+      'schemaVersion',
+      'snapshotId',
+      'projectionRevision',
+      'overlayKind',
+      'filters',
+      'limits',
+      'expectedOverlayRevision',
+    ],
     path,
   );
   const schemaVersion = text(required(object, 'schemaVersion', path), `${path}.schemaVersion`);
   if (schemaVersion !== '1.0.0') return fail(`${path}.schemaVersion`, 'must be 1.0.0');
-  const overlayKind = enumValue(required(object, 'overlayKind', path), ['KNOWLEDGE_GAP'], `${path}.overlayKind`);
+  const overlayKind = enumValue(
+    required(object, 'overlayKind', path),
+    ['KNOWLEDGE_GAP'],
+    `${path}.overlayKind`,
+  );
   return { ...decodeOverlayCommon(object, path), schemaVersion: '1.0.0', overlayKind };
 };
 
-export const decodeGraphRecursiveImpactOverlayRequestV1 = (value: unknown, path = 'request'): GraphRecursiveImpactOverlayRequestV1 => {
+export const decodeGraphRecursiveImpactOverlayRequestV1 = (
+  value: unknown,
+  path = 'request',
+): GraphRecursiveImpactOverlayRequestV1 => {
   const object = strictObject(
     value,
     [
@@ -1767,7 +2155,11 @@ export const decodeGraphRecursiveImpactOverlayRequestV1 = (value: unknown, path 
   );
   const schemaVersion = text(required(object, 'schemaVersion', path), `${path}.schemaVersion`);
   if (schemaVersion !== '1.0.0') return fail(`${path}.schemaVersion`, 'must be 1.0.0');
-  const overlayKind = enumValue(required(object, 'overlayKind', path), ['RECURSIVE_IMPACT'], `${path}.overlayKind`);
+  const overlayKind = enumValue(
+    required(object, 'overlayKind', path),
+    ['RECURSIVE_IMPACT'],
+    `${path}.overlayKind`,
+  );
   return {
     ...decodeOverlayCommon(object, path),
     schemaVersion: '1.0.0',
@@ -1776,7 +2168,10 @@ export const decodeGraphRecursiveImpactOverlayRequestV1 = (value: unknown, path 
   };
 };
 
-export const decodeGraphEvidenceDetailRequestV1 = (value: unknown, path = 'request'): GraphEvidenceDetailRequestV1 => {
+export const decodeGraphEvidenceDetailRequestV1 = (
+  value: unknown,
+  path = 'request',
+): GraphEvidenceDetailRequestV1 => {
   const object = strictObject(
     value,
     ['schemaVersion', 'snapshotId', 'projectionRevision', 'target', 'evidenceRef'],
@@ -1786,33 +2181,65 @@ export const decodeGraphEvidenceDetailRequestV1 = (value: unknown, path = 'reque
   if (schemaVersion !== '1.0.0') return fail(`${path}.schemaVersion`, 'must be 1.0.0');
   const target = (() => {
     const to = asObject(required(object, 'target', path), `${path}.target`);
-    const kind = enumValue(required(to, 'kind', `${path}.target`), ['NODE', 'EDGE'], `${path}.target.kind`);
+    const kind = enumValue(
+      required(to, 'kind', `${path}.target`),
+      ['NODE', 'EDGE'],
+      `${path}.target.kind`,
+    );
     if (kind === 'NODE') {
       const no = strictObject(to, ['kind', 'nodeRef'], `${path}.target`);
-      return { kind: 'NODE' as const, nodeRef: decodeGraphNodeReferenceV1(required(no, 'nodeRef', `${path}.target`), `${path}.target.nodeRef`) };
+      return {
+        kind: 'NODE' as const,
+        nodeRef: decodeGraphNodeReferenceV1(
+          required(no, 'nodeRef', `${path}.target`),
+          `${path}.target.nodeRef`,
+        ),
+      };
     }
     const eo = strictObject(to, ['kind', 'edgeRef'], `${path}.target`);
-    return { kind: 'EDGE' as const, edgeRef: decodeGraphEdgeReferenceV1(required(eo, 'edgeRef', `${path}.target`), `${path}.target.edgeRef`) };
+    return {
+      kind: 'EDGE' as const,
+      edgeRef: decodeGraphEdgeReferenceV1(
+        required(eo, 'edgeRef', `${path}.target`),
+        `${path}.target.edgeRef`,
+      ),
+    };
   })();
   return {
     schemaVersion: '1.0.0',
     snapshotId: text(required(object, 'snapshotId', path), `${path}.snapshotId`),
-    projectionRevision: text(required(object, 'projectionRevision', path), `${path}.projectionRevision`),
+    projectionRevision: text(
+      required(object, 'projectionRevision', path),
+      `${path}.projectionRevision`,
+    ),
     target,
     evidenceRef:
       object.evidenceRef === undefined
         ? undefined
         : (() => {
-            const eo = strictObject(object.evidenceRef, ['sourceId', 'evidenceSpanId'], `${path}.evidenceRef`);
+            const eo = strictObject(
+              object.evidenceRef,
+              ['sourceId', 'evidenceSpanId'],
+              `${path}.evidenceRef`,
+            );
             return {
-              sourceId: text(required(eo, 'sourceId', `${path}.evidenceRef`), `${path}.evidenceRef.sourceId`),
-              evidenceSpanId: text(required(eo, 'evidenceSpanId', `${path}.evidenceRef`), `${path}.evidenceRef.evidenceSpanId`),
+              sourceId: text(
+                required(eo, 'sourceId', `${path}.evidenceRef`),
+                `${path}.evidenceRef.sourceId`,
+              ),
+              evidenceSpanId: text(
+                required(eo, 'evidenceSpanId', `${path}.evidenceRef`),
+                `${path}.evidenceRef.evidenceSpanId`,
+              ),
             };
           })(),
   };
 };
 
-export const decodeGraphSnapshotRefreshRequestV1 = (value: unknown, path = 'request'): GraphSnapshotRefreshRequestV1 => {
+export const decodeGraphSnapshotRefreshRequestV1 = (
+  value: unknown,
+  path = 'request',
+): GraphSnapshotRefreshRequestV1 => {
   const object = strictObject(
     value,
     ['schemaVersion', 'snapshotId', 'projectionRevision', 'expectedSnapshotRevision'],
@@ -1823,7 +2250,10 @@ export const decodeGraphSnapshotRefreshRequestV1 = (value: unknown, path = 'requ
   return {
     schemaVersion: '1.0.0',
     snapshotId: text(required(object, 'snapshotId', path), `${path}.snapshotId`),
-    projectionRevision: text(required(object, 'projectionRevision', path), `${path}.projectionRevision`),
+    projectionRevision: text(
+      required(object, 'projectionRevision', path),
+      `${path}.projectionRevision`,
+    ),
     expectedSnapshotRevision: text(
       required(object, 'expectedSnapshotRevision', path),
       `${path}.expectedSnapshotRevision`,
@@ -1831,40 +2261,70 @@ export const decodeGraphSnapshotRefreshRequestV1 = (value: unknown, path = 'requ
   };
 };
 
-export const decodeGraphRestoreRequestV1 = (value: unknown, path = 'request'): GraphRestoreRequestV1 => {
+export const decodeGraphRestoreRequestV1 = (
+  value: unknown,
+  path = 'request',
+): GraphRestoreRequestV1 => {
   const object = strictObject(
     value,
-    ['schemaVersion', 'snapshotId', 'projectionRevision', 'viewKind', 'overlayKinds', 'selectedNodeRefs', 'expectedSnapshotRevision'],
+    [
+      'schemaVersion',
+      'snapshotId',
+      'projectionRevision',
+      'viewKind',
+      'overlayKinds',
+      'selectedNodeRefs',
+      'expectedSnapshotRevision',
+    ],
     path,
   );
   const schemaVersion = text(required(object, 'schemaVersion', path), `${path}.schemaVersion`);
   if (schemaVersion !== '1.0.0') return fail(`${path}.schemaVersion`, 'must be 1.0.0');
-  const overlayKinds = arrayValue(required(object, 'overlayKinds', path), `${path}.overlayKinds`).map((entry) =>
-    enumValue(entry, GRAPH_OVERLAY_KINDS, `${path}.overlayKinds`),
-  );
+  const overlayKinds = arrayValue(
+    required(object, 'overlayKinds', path),
+    `${path}.overlayKinds`,
+  ).map((entry) => enumValue(entry, GRAPH_OVERLAY_KINDS, `${path}.overlayKinds`));
   if (new Set(overlayKinds).size !== overlayKinds.length) {
     return fail(`${path}.overlayKinds`, 'each overlay kind may appear at most once');
   }
   return {
     schemaVersion: '1.0.0',
     snapshotId: text(required(object, 'snapshotId', path), `${path}.snapshotId`),
-    projectionRevision: text(required(object, 'projectionRevision', path), `${path}.projectionRevision`),
-    viewKind: enumValue(required(object, 'viewKind', path), GRAPH_BASE_VIEW_KINDS, `${path}.viewKind`),
-    overlayKinds,
-    selectedNodeRefs: arrayValue(required(object, 'selectedNodeRefs', path), `${path}.selectedNodeRefs`).map(
-      (entry) => decodeGraphNodeReferenceV1(entry, `${path}.selectedNodeRefs`),
+    projectionRevision: text(
+      required(object, 'projectionRevision', path),
+      `${path}.projectionRevision`,
     ),
-    expectedSnapshotRevision: optionalText(object.expectedSnapshotRevision, `${path}.expectedSnapshotRevision`),
+    viewKind: enumValue(
+      required(object, 'viewKind', path),
+      GRAPH_BASE_VIEW_KINDS,
+      `${path}.viewKind`,
+    ),
+    overlayKinds,
+    selectedNodeRefs: arrayValue(
+      required(object, 'selectedNodeRefs', path),
+      `${path}.selectedNodeRefs`,
+    ).map((entry) => decodeGraphNodeReferenceV1(entry, `${path}.selectedNodeRefs`)),
+    expectedSnapshotRevision: optionalText(
+      object.expectedSnapshotRevision,
+      `${path}.expectedSnapshotRevision`,
+    ),
   };
 };
 
-export const decodeGraphOperationFailureV1 = (value: unknown, path = 'failure'): GraphOperationFailureV1 => {
+export const decodeGraphOperationFailureV1 = (
+  value: unknown,
+  path = 'failure',
+): GraphOperationFailureV1 => {
   const object = strictObject(value, ['schemaVersion', 'reason', 'message', 'retryable'], path);
   const schemaVersion = text(required(object, 'schemaVersion', path), `${path}.schemaVersion`);
   if (schemaVersion !== '1.0.0') return fail(`${path}.schemaVersion`, 'must be 1.0.0');
   return {
     schemaVersion: '1.0.0',
-    reason: enumValue(required(object, 'reason', path), GRAPH_UNAVAILABLE_REASONS, `${path}.reason`),
+    reason: enumValue(
+      required(object, 'reason', path),
+      GRAPH_UNAVAILABLE_REASONS,
+      `${path}.reason`,
+    ),
     message: text(required(object, 'message', path), `${path}.message`),
     retryable: booleanValue(required(object, 'retryable', path), `${path}.retryable`),
   };

@@ -12,11 +12,16 @@ import {
   scenarioAbandonment,
   scenarioAppendOnly,
   scenarioArtifactRefs,
+  scenarioArtifactRetention,
   scenarioCas,
+  scenarioConcurrentCas,
+  scenarioConcurrentReplay,
+  scenarioConcurrentReplayDigestMismatch,
   scenarioDigestMismatch,
   scenarioDriftRejection,
   scenarioOperationOrdering,
   scenarioRollback,
+  scenarioRollbackIsolation,
   scenarioSeedReplay,
   scenarioSeedless,
   type ParityBoundary,
@@ -74,6 +79,11 @@ describe.runIf(pool)('FE-P3-S2 in-memory vs PostgreSQL Draft adapter parity', ()
     ['rollback', scenarioRollback],
     ['artifact-refs', scenarioArtifactRefs],
     ['abandonment', scenarioAbandonment],
+    ['rollback-isolation', scenarioRollbackIsolation],
+    ['concurrent-replay', scenarioConcurrentReplay],
+    ['concurrent-replay-digest-mismatch', scenarioConcurrentReplayDigestMismatch],
+    ['concurrent-cas', scenarioConcurrentCas],
+    ['artifact-retention', scenarioArtifactRetention],
   ] as const;
 
   for (const [name, scenario] of scenarios) {
@@ -93,6 +103,130 @@ describe.runIf(pool)('FE-P3-S2 in-memory vs PostgreSQL Draft adapter parity', ()
         repos.materializations.insert(matRecord('draft-seed-2', 'seed-db-uq')),
       ),
     ).rejects.toMatchObject({ apiCode: 'DRAFT_REVISION_CONFLICT' });
+  });
+
+  it('enforces a unique command replay identity at the database', async () => {
+    await pgBoundary().transaction((repos) =>
+      repos.materializations.insert({
+        ...matRecord('draft-replay-uq-1', 'seed-replay-a'),
+        commandIdentity: {
+          principalId: 'principal-replay',
+          clientRequestId: 'request-replay',
+          idempotencyKey: 'key-replay',
+          semanticDigest: 'sha256:command',
+        },
+      }),
+    );
+    await expect(
+      pgBoundary().transaction((repos) =>
+        repos.materializations.insert({
+          ...matRecord('draft-replay-uq-2', 'seed-replay-b'),
+          commandIdentity: {
+            principalId: 'principal-replay',
+            clientRequestId: 'request-replay',
+            idempotencyKey: 'key-replay',
+            semanticDigest: 'sha256:command',
+          },
+        }),
+      ),
+    ).rejects.toMatchObject({ apiCode: 'DRAFT_REVISION_CONFLICT' });
+  });
+
+  it('rejects UPDATE and DELETE on operations as append-only', async () => {
+    const boundary = pgBoundary();
+    const draft = pDraft('seed-opimm', [pOperation(1)]);
+    await materializeFrontendKnowledgeDraft(boundary, {
+      draft,
+      materialization: pMaterialization(draft, 'seed-opimm'),
+    });
+    await expect(
+      pool!.query(
+        `UPDATE frontend_knowledge_draft.operations SET operation = $1
+         WHERE draft_id = $2 AND revision = 1`,
+        [JSON.stringify({ corrupted: true }), draft.draftId],
+      ),
+    ).rejects.toThrow(/append-only and immutable/);
+    await expect(
+      pool!.query(
+        `DELETE FROM frontend_knowledge_draft.operations WHERE draft_id = $1 AND revision = 1`,
+        [draft.draftId],
+      ),
+    ).rejects.toThrow(/append-only and immutable/);
+  });
+
+  it('rejects UPDATE and DELETE on materializations as immutable', async () => {
+    const boundary = pgBoundary();
+    const draft = pDraft('seed-matim', []);
+    await materializeFrontendKnowledgeDraft(boundary, {
+      draft,
+      materialization: pMaterialization(draft, 'seed-matim'),
+    });
+    await expect(
+      pool!.query(
+        `UPDATE frontend_knowledge_draft.materializations SET resource_id = $1
+         WHERE draft_id = $2`,
+        ['resource-forged', draft.draftId],
+      ),
+    ).rejects.toThrow(/append-only and immutable/);
+    await expect(
+      pool!.query(`DELETE FROM frontend_knowledge_draft.materializations WHERE draft_id = $1`, [
+        draft.draftId,
+      ]),
+    ).rejects.toThrow(/append-only and immutable/);
+  });
+
+  it('rejects UPDATE and DELETE on preserved artifact references as immutable', async () => {
+    const boundary = pgBoundary();
+    const draft: Parameters<typeof pDraft>[0] = 'seed-artimm';
+    const draftWithRefs = {
+      ...pDraft(draft, []),
+      validation: {
+        artifactId: 'validation-imm',
+        artifactRevision: 1,
+        digest: 'sha256:validation-imm',
+        status: 'COMPLETE' as const,
+        projectPolicyContext: {
+          activeProjectId: 'project-1',
+          resourceProjectId: 'project-1',
+          draftProjectId: 'project-1',
+          effectiveProjectId: 'project-1',
+          accessRevision: 'access-7',
+          policyContextRevision: 'policy-7',
+        },
+      },
+      impactPreview: {
+        artifactId: 'impact-imm',
+        artifactRevision: 1,
+        digest: 'sha256:impact-imm',
+        status: 'COMPLETE' as const,
+        projectPolicyContext: {
+          activeProjectId: 'project-1',
+          resourceProjectId: 'project-1',
+          draftProjectId: 'project-1',
+          effectiveProjectId: 'project-1',
+          accessRevision: 'access-7',
+          policyContextRevision: 'policy-7',
+        },
+      },
+    };
+    await materializeFrontendKnowledgeDraft(boundary, {
+      draft: draftWithRefs,
+      materialization: pMaterialization(draftWithRefs, 'seed-artimm'),
+    });
+    await expect(
+      pool!.query(
+        `UPDATE frontend_knowledge_draft.artifact_refs SET status = $1
+         WHERE draft_id = $2 AND draft_revision = 1`,
+        ['FAILED', draftWithRefs.draftId],
+      ),
+    ).rejects.toThrow(/append-only and immutable/);
+    await expect(
+      pool!.query(
+        `DELETE FROM frontend_knowledge_draft.artifact_refs
+         WHERE draft_id = $1 AND draft_revision = 1`,
+        [draftWithRefs.draftId],
+      ),
+    ).rejects.toThrow(/append-only and immutable/);
   });
 
   it('enforces one materialization per Draft identity at the database', async () => {

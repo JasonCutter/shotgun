@@ -6,11 +6,16 @@ import {
   scenarioAbandonment,
   scenarioAppendOnly,
   scenarioArtifactRefs,
+  scenarioArtifactRetention,
   scenarioCas,
+  scenarioConcurrentCas,
+  scenarioConcurrentReplay,
+  scenarioConcurrentReplayDigestMismatch,
   scenarioDigestMismatch,
   scenarioDriftRejection,
   scenarioOperationOrdering,
   scenarioRollback,
+  scenarioRollbackIsolation,
   scenarioSeedReplay,
   scenarioSeedless,
   type ParityBoundary,
@@ -94,6 +99,53 @@ describe('FE-P3-S2 in-memory Draft adapter parity scenarios', () => {
     expect(result.status).toBe('ABANDONED');
     expect(result.counts).toEqual({ drafts: 1, revisions: 2, operations: 2, materializations: 1 });
     expect(result.appendError).toBe('DRAFT_REVISION_CONFLICT');
+  });
+
+  it('keeps a concurrent committed transaction when another transaction rolls back', async () => {
+    const result = await scenarioRollbackIsolation(freshBoundary());
+    expect(result.aSucceeded).toBe(true);
+    expect(result.bRejected).toBe(true);
+    expect(result.bError).toBe('operation append failpoint');
+    expect(result.survivingDraftCount).toBe(1);
+    expect(result.failedDraftCount).toBe(0);
+    expect(result.survivingMaterializationCount).toBe(1);
+  });
+
+  it('resolves concurrent same-key materializations idempotently to one Draft', async () => {
+    const result = await scenarioConcurrentReplay(freshBoundary());
+    expect(result.bothFulfilled).toBe(true);
+    expect(result.sameDraftReturned).toBe(true);
+    expect(result.draftCount).toBe(1);
+    expect(result.materializationCount).toBe(1);
+    expect(result.replayFlags).toEqual([false, true]);
+  });
+
+  it('fails closed when a concurrent same-key replay uses a different digest', async () => {
+    const result = await scenarioConcurrentReplayDigestMismatch(freshBoundary());
+    expect(result.fulfilledCount).toBe(1);
+    expect(result.digestMismatchCount).toBe(1);
+    expect(result.draftCount).toBe(1);
+    expect(result.materializationCount).toBe(1);
+  });
+
+  it('preserves past revision artifact references after authoring a new revision', async () => {
+    const result = await scenarioArtifactRetention(freshBoundary());
+    expect(result.currentRevision).toBe(2);
+    expect(result.currentHasValidation).toBe(false);
+    expect(result.currentHasImpact).toBe(false);
+    expect(result.retainedArtifacts).toEqual([
+      { artifactId: 'impact-ret', kind: 'IMPACT', draftRevision: 1 },
+      { artifactId: 'validation-ret', kind: 'VALIDATION', draftRevision: 1 },
+    ]);
+  });
+
+  it('races two concurrent saves and allows exactly one CAS winner', async () => {
+    const result = await scenarioConcurrentCas(freshBoundary());
+    expect(result.successCount).toBe(1);
+    expect(result.conflictCount).toBe(1);
+    expect(result.finalRevision).toBe(2);
+    expect(result.revisionRows).toEqual([1, 2]);
+    expect(result.operationCount).toBe(1);
   });
 
   it('leaves the adapter store empty across fresh boundaries (no cross-contamination)', async () => {

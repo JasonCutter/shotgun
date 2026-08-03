@@ -89,19 +89,24 @@ export class PostgresFrontendKnowledgeDraftRepository implements FrontendKnowled
     return result;
   }
 
+  /**
+   * Appends the current aggregate's Validation/Impact references for the
+   * current revision. References are never deleted: past revision references
+   * are retained, and re-saving the same artifact within the same revision is
+   * idempotent (INSERT ... ON CONFLICT DO NOTHING). The append-only trigger on
+   * `artifact_refs` rejects any UPDATE/DELETE.
+   */
   private async replaceArtifactRefs(
     client: PoolClient,
     draft: FrontendKnowledgeDraftChangeSetV1,
   ): Promise<void> {
-    await client.query('DELETE FROM frontend_knowledge_draft.artifact_refs WHERE draft_id = $1', [
-      draft.draftId,
-    ]);
     for (const ref of this.artifactQueryValues(draft)) {
       await client.query(
         `INSERT INTO frontend_knowledge_draft.artifact_refs
            (artifact_id, artifact_kind, draft_id, draft_revision, artifact_revision,
             digest, status, resource_project_id, project_policy_context)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         ON CONFLICT (draft_id, draft_revision, artifact_kind, artifact_id) DO NOTHING`,
         [
           ref.artifactId,
           ref.kind,
@@ -291,7 +296,19 @@ export class PostgresFrontendKnowledgeDraftRepository implements FrontendKnowled
       },
 
       materializations: {
+        /**
+         * Seed and command replay-key lookups take a transaction-scoped
+         * advisory lock before reading. Concurrent materializations of the
+         * same Seed / replay identity therefore serialize: the second
+         * transaction observes the first committed row after the lock is
+         * released at COMMIT/ROLLBACK and resolves via the replay path instead
+         * of racing into a duplicate insert. The unique constraints in
+         * migration 025 remain as a hard safety net.
+         */
         findBySeed: async (seedId) => {
+          await client.query('SELECT pg_advisory_xact_lock(hashtext($1)::bigint)', [
+            `seed:${seedId}`,
+          ]);
           const result = await client.query<{ snapshot: string }>(
             'SELECT snapshot FROM frontend_knowledge_draft.materializations WHERE seed_id = $1',
             [seedId],
@@ -309,6 +326,9 @@ export class PostgresFrontendKnowledgeDraftRepository implements FrontendKnowled
           return row ? (PARSE(row.snapshot) as DraftMaterializationRecordV1) : undefined;
         },
         findByCommandReplayKey: async (projectId, replayKey) => {
+          await client.query('SELECT pg_advisory_xact_lock(hashtext($1)::bigint)', [
+            `replay:${projectId}:${replayKey.principalId}:${replayKey.clientRequestId}:${replayKey.idempotencyKey}`,
+          ]);
           const result = await client.query<{ snapshot: string }>(
             `SELECT snapshot FROM frontend_knowledge_draft.materializations
              WHERE resource_project_id = $1
@@ -351,7 +371,7 @@ export class PostgresFrontendKnowledgeDraftRepository implements FrontendKnowled
             );
           } catch (error) {
             if (isUniqueViolation(error)) {
-              conflict('A Draft or Seed identity is already materialized.');
+              conflict('A Draft, Seed or command replay identity is already materialized.');
             }
             throw error;
           }

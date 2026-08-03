@@ -88,6 +88,17 @@ CREATE TABLE frontend_knowledge_draft.operations (
 CREATE INDEX frontend_knowledge_draft_operations_project_idx
   ON frontend_knowledge_draft.operations (resource_project_id, draft_id, revision);
 
+CREATE OR REPLACE FUNCTION frontend_knowledge_draft.block_operation_mutation()
+RETURNS trigger AS $$
+BEGIN
+  RAISE EXCEPTION 'frontend_knowledge_draft.operations is append-only and immutable';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER frontend_knowledge_draft_operations_immutable
+  BEFORE UPDATE OR DELETE ON frontend_knowledge_draft.operations
+  FOR EACH ROW EXECUTE FUNCTION frontend_knowledge_draft.block_operation_mutation();
+
 -- Materialization: one Seed-to-Draft boundary and one materialization per Draft.
 CREATE TABLE frontend_knowledge_draft.materializations (
   materialization_id text PRIMARY KEY,
@@ -108,7 +119,12 @@ CREATE TABLE frontend_knowledge_draft.materializations (
   snapshot jsonb NOT NULL,
   created_at timestamptz NOT NULL,
   -- unique non-null seed identity (Postgres allows multiple NULL rows)
-  CONSTRAINT frontend_knowledge_draft_materializations_seed_unique UNIQUE (seed_id)
+  CONSTRAINT frontend_knowledge_draft_materializations_seed_unique UNIQUE (seed_id),
+  -- one command replay identity per Resource Project: concurrent same-key
+  -- materializations are resolved atomically instead of creating duplicates
+  CONSTRAINT frontend_knowledge_draft_materializations_replay_unique
+    UNIQUE (resource_project_id, replay_principal_id, replay_client_request_id,
+            replay_idempotency_key)
 );
 
 CREATE INDEX frontend_knowledge_draft_materializations_effective_project_idx
@@ -119,7 +135,21 @@ CREATE INDEX frontend_knowledge_draft_materializations_replay_idx
   ON frontend_knowledge_draft.materializations
     (replay_principal_id, replay_client_request_id, replay_idempotency_key);
 
+CREATE OR REPLACE FUNCTION frontend_knowledge_draft.block_materialization_mutation()
+RETURNS trigger AS $$
+BEGIN
+  RAISE EXCEPTION 'frontend_knowledge_draft.materializations is append-only and immutable';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER frontend_knowledge_draft_materializations_immutable
+  BEFORE UPDATE OR DELETE ON frontend_knowledge_draft.materializations
+  FOR EACH ROW EXECUTE FUNCTION frontend_knowledge_draft.block_materialization_mutation();
+
 -- Validation/Impact artifact references derived from the Draft aggregate.
+-- One row per (draft_id, draft_revision, artifact_kind, artifact_id) so the
+-- artifact history of every revision is retained; the current aggregate's
+-- references may be removed by authoring without deleting past revisions.
 CREATE TABLE frontend_knowledge_draft.artifact_refs (
   artifact_id text NOT NULL,
   artifact_kind text NOT NULL CHECK (artifact_kind IN ('VALIDATION', 'IMPACT')),
@@ -130,8 +160,19 @@ CREATE TABLE frontend_knowledge_draft.artifact_refs (
   status text NOT NULL,
   resource_project_id text NOT NULL,
   project_policy_context jsonb NOT NULL,
-  PRIMARY KEY (artifact_id, artifact_kind)
+  PRIMARY KEY (draft_id, draft_revision, artifact_kind, artifact_id)
 );
 
 CREATE INDEX frontend_knowledge_draft_artifact_refs_project_idx
   ON frontend_knowledge_draft.artifact_refs (resource_project_id, draft_id);
+
+CREATE OR REPLACE FUNCTION frontend_knowledge_draft.block_artifact_mutation()
+RETURNS trigger AS $$
+BEGIN
+  RAISE EXCEPTION 'frontend_knowledge_draft.artifact_refs is append-only and immutable';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER frontend_knowledge_draft_artifact_refs_immutable
+  BEFORE UPDATE OR DELETE ON frontend_knowledge_draft.artifact_refs
+  FOR EACH ROW EXECUTE FUNCTION frontend_knowledge_draft.block_artifact_mutation();

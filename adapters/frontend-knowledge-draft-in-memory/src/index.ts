@@ -25,13 +25,29 @@ const conflict = (message: string): never => {
   throw new FrontendKnowledgeDraftCommandError('DRAFT_REVISION_CONFLICT', message);
 };
 
+/** Undo closure that reverts a single mutation made by the owning transaction. */
+type Undo = () => void;
+
 /**
  * In-memory implementation of the FE-P3-S2 Draft Repository Boundary. It
  * mirrors every PostgreSQL invariant (unique Seed identity, one materialization
  * per Draft, unique draft+revision, unique draft+revision+operationId,
- * transactional rollback on failure) so the two adapters share exact semantics.
- * No domain invariant is reinterpreted: the aggregate is round-tripped and the
- * shared domain module owns all validation.
+ * unique command replay identity, transactional rollback on failure) so the
+ * two adapters share exact semantics. No domain invariant is reinterpreted:
+ * the aggregate is round-tripped and the shared domain module owns all
+ * validation.
+ *
+ * Concurrency model:
+ * - Transactions run concurrently against the shared state. Every mutation
+ *   records an undo closure in a transaction-local journal; a failed
+ *   transaction reverts only its own writes, so a concurrently committed
+ *   transaction is never erased (PostgreSQL-equivalent rollback isolation).
+ * - Draft CAS (`replaceIfRevision`) compares against the live shared revision,
+ *   so concurrent saves race and exactly one winner commits.
+ * - Seed and command replay-key lookups are serialized per key (a fair
+ *   async queue) and the lock is held until the transaction ends. This makes
+ *   concurrent materializations of the same Seed / replay identity resolve
+ *   atomically instead of creating duplicates.
  */
 export class InMemoryFrontendKnowledgeDraftRepository implements FrontendKnowledgeDraftRepositoryBoundaryPort {
   readonly drafts = new Map<string, FrontendKnowledgeDraftChangeSetV1>();
@@ -43,28 +59,49 @@ export class InMemoryFrontendKnowledgeDraftRepository implements FrontendKnowled
   /** Test failpoint: throws when appending operations, verifying atomic rollback. */
   failOperationAppend = false;
 
+  /** Per-key serialization queues for Seed and command replay-key identity. */
+  private readonly keyQueues = new Map<string, Promise<void>>();
+
   async transaction<T>(
     action: (repositories: FrontendKnowledgeDraftTransactionRepositoriesV1) => Promise<T>,
   ): Promise<T> {
-    const drafts = new Map(this.drafts);
-    const revisions = [...this.revisions];
-    const operations = [...this.operations];
-    const materializations = [...this.materializations];
-    const artifactRefs = [...this.artifactRefs];
+    const journal: Undo[] = [];
+    const heldLocks: Array<() => void> = [];
     try {
-      return await action(this.repositories());
+      return await action(this.repositories(journal, heldLocks));
     } catch (error) {
-      this.drafts.clear();
-      for (const [key, value] of drafts) this.drafts.set(key, value);
-      this.revisions.splice(0, this.revisions.length, ...revisions);
-      this.operations.splice(0, this.operations.length, ...operations);
-      this.materializations.splice(0, this.materializations.length, ...materializations);
-      this.artifactRefs.splice(0, this.artifactRefs.length, ...artifactRefs);
+      for (let index = journal.length - 1; index >= 0; index -= 1) {
+        journal[index]?.();
+      }
       throw error;
+    } finally {
+      for (const release of heldLocks) release();
     }
   }
 
-  private repositories(): FrontendKnowledgeDraftTransactionRepositoriesV1 {
+  /**
+   * Acquires a fair per-key lock and returns once every earlier holder has
+   * released it. The release closure is recorded in `heldLocks` so it is
+   * always released when the owning transaction ends (commit or rollback).
+   */
+  private async acquireKey(key: string, heldLocks: Array<() => void>): Promise<void> {
+    const previous = this.keyQueues.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.keyQueues.set(
+      key,
+      previous.then(() => gate),
+    );
+    await previous;
+    heldLocks.push(release);
+  }
+
+  private repositories(
+    journal: Undo[],
+    heldLocks: Array<() => void>,
+  ): FrontendKnowledgeDraftTransactionRepositoriesV1 {
     return {
       drafts: {
         findById: async (projectId: string, draftId: string) => {
@@ -76,7 +113,10 @@ export class InMemoryFrontendKnowledgeDraftRepository implements FrontendKnowled
             conflict('A Draft with this identity already exists.');
           }
           this.drafts.set(draft.draftId, draft);
-          this.replaceArtifactRefs(draft);
+          journal.push(() => {
+            this.drafts.delete(draft.draftId);
+          });
+          this.replaceArtifactRefs(draft, journal);
           return draft;
         },
         replaceIfRevision: async ({ projectId, draft, expectedRevision }) => {
@@ -87,8 +127,12 @@ export class InMemoryFrontendKnowledgeDraftRepository implements FrontendKnowled
           if (current.revision !== expectedRevision) {
             return 'REVISION_CONFLICT';
           }
+          const previous = this.drafts.get(draft.draftId);
           this.drafts.set(draft.draftId, draft);
-          this.replaceArtifactRefs(draft);
+          journal.push(() => {
+            if (previous !== undefined) this.drafts.set(draft.draftId, previous);
+          });
+          this.replaceArtifactRefs(draft, journal);
           return 'UPDATED';
         },
       },
@@ -108,7 +152,11 @@ export class InMemoryFrontendKnowledgeDraftRepository implements FrontendKnowled
           ) {
             conflict('A Draft revision already exists and is immutable.');
           }
+          const index = this.revisions.length;
           this.revisions.push(revision);
+          journal.push(() => {
+            this.revisions.splice(index, 1);
+          });
           return revision;
         },
       },
@@ -117,6 +165,7 @@ export class InMemoryFrontendKnowledgeDraftRepository implements FrontendKnowled
           if (this.failOperationAppend) {
             throw new Error('operation append failpoint');
           }
+          const start = this.operations.length;
           for (const incoming of input.operations) {
             const duplicate = this.operations.some(
               (entry) =>
@@ -131,6 +180,9 @@ export class InMemoryFrontendKnowledgeDraftRepository implements FrontendKnowled
             }
           }
           this.operations.push(input);
+          journal.push(() => {
+            this.operations.splice(start, this.operations.length - start);
+          });
         },
         list: async (projectId, draftId, revision) =>
           this.operations
@@ -143,22 +195,29 @@ export class InMemoryFrontendKnowledgeDraftRepository implements FrontendKnowled
             .flatMap((entry) => entry.operations),
       },
       materializations: {
-        findBySeed: async (seedId) =>
-          this.materializations.find((entry) =>
+        findBySeed: async (seedId) => {
+          await this.acquireKey(`seed:${seedId}`, heldLocks);
+          return this.materializations.find((entry) =>
             entry.target.kind === 'SEED' ? entry.target.seedId === seedId : false,
-          ),
+          );
+        },
         findByDraftId: async (projectId, draftId) =>
           this.materializations.find(
             (entry) => entry.resourceProjectId === projectId && entry.draftId === draftId,
           ),
-        findByCommandReplayKey: async (projectId, replayKey) =>
-          this.materializations.find(
+        findByCommandReplayKey: async (projectId, replayKey) => {
+          await this.acquireKey(
+            `replay:${projectId}:${replayKey.principalId}:${replayKey.clientRequestId}:${replayKey.idempotencyKey}`,
+            heldLocks,
+          );
+          return this.materializations.find(
             (entry) =>
               entry.resourceProjectId === projectId &&
               entry.commandIdentity.principalId === replayKey.principalId &&
               entry.commandIdentity.clientRequestId === replayKey.clientRequestId &&
               entry.commandIdentity.idempotencyKey === replayKey.idempotencyKey,
-          ),
+          );
+        },
         insert: async (materialization: DraftMaterializationRecordV1) => {
           if (this.materializations.some((entry) => entry.draftId === materialization.draftId)) {
             conflict('A Draft identity is already materialized.');
@@ -173,20 +232,50 @@ export class InMemoryFrontendKnowledgeDraftRepository implements FrontendKnowled
               conflict('A Seed identity is already materialized.');
             }
           }
+          const replayDuplicate = this.materializations.some(
+            (entry) =>
+              entry.resourceProjectId === materialization.resourceProjectId &&
+              entry.commandIdentity.principalId === materialization.commandIdentity.principalId &&
+              entry.commandIdentity.clientRequestId ===
+                materialization.commandIdentity.clientRequestId &&
+              entry.commandIdentity.idempotencyKey ===
+                materialization.commandIdentity.idempotencyKey,
+          );
+          if (replayDuplicate) {
+            conflict('A command replay identity is already materialized.');
+          }
+          const index = this.materializations.length;
           this.materializations.push(materialization);
+          journal.push(() => {
+            this.materializations.splice(index, 1);
+          });
           return materialization;
         },
       },
     };
   }
 
-  private replaceArtifactRefs(draft: FrontendKnowledgeDraftChangeSetV1): void {
-    this.artifactRefs = this.artifactRefs.filter((ref) => ref.draftId !== draft.draftId);
+  /**
+   * Appends the current aggregate's Validation/Impact references for the
+   * current revision. References are never deleted: past revision references
+   * are retained, and re-saving the same artifact within the same revision is
+   * idempotent (mirrors PostgreSQL INSERT ... ON CONFLICT DO NOTHING).
+   */
+  private replaceArtifactRefs(draft: FrontendKnowledgeDraftChangeSetV1, journal: Undo[]): void {
     const push = (
       kind: 'VALIDATION' | 'IMPACT',
       ref: FrontendKnowledgeDraftChangeSetV1['validation'] | undefined,
     ): void => {
       if (ref === undefined) return;
+      const existing = this.artifactRefs.some(
+        (row) =>
+          row.draftId === draft.draftId &&
+          row.draftRevision === draft.revision &&
+          row.kind === kind &&
+          row.artifactId === ref.artifactId,
+      );
+      if (existing) return;
+      const index = this.artifactRefs.length;
       this.artifactRefs.push({
         artifactId: ref.artifactId,
         kind,
@@ -196,6 +285,9 @@ export class InMemoryFrontendKnowledgeDraftRepository implements FrontendKnowled
         digest: ref.digest,
         status: ref.status,
         projectId: draft.resourceProjectId,
+      });
+      journal.push(() => {
+        this.artifactRefs.splice(index, 1);
       });
     };
     push('VALIDATION', draft.validation);

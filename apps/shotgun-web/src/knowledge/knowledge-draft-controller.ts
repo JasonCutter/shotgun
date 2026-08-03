@@ -48,7 +48,7 @@ export type KnowledgeDraftResolveClient = Pick<
   FrontendKnowledgeDraftClient,
   'resolveCommandOutcome'
 >;
-export type KnowledgeDraftReloadClient = Pick<FrontendKnowledgeDraftClient, 'materializeDraft'>;
+export type KnowledgeDraftReloadClient = Pick<FrontendKnowledgeDraftClient, 'readDraft'>;
 
 /**
  * Route-scoped FE-P3-S2 Browser Draft State Machine controller hook.
@@ -268,14 +268,23 @@ export const useKnowledgeDraft = (
       if (!identity) return null;
       dispatch({ type: 'RECOVER_START' });
       try {
-        const result = await client.resolveCommandOutcome({
-          schemaVersion: '1.0.0',
-          clientRequestId: identity.clientRequestId,
-          idempotencyKey: identity.idempotencyKey,
-          semanticDigest: identity.semanticDigest,
-        });
-        dispatch({ type: 'RECOVER_SUCCEEDED', result });
-        return result;
+        let lastResult: ResolveKnowledgeDraftCommandOutcomeResultV1 | null = null;
+        for (let attempt = 0; attempt < 4; attempt += 1) {
+          lastResult = await client.resolveCommandOutcome({
+            schemaVersion: '1.0.0',
+            clientRequestId: identity.clientRequestId,
+            idempotencyKey: identity.idempotencyKey,
+            semanticDigest: identity.semanticDigest,
+          });
+          dispatch({ type: 'RECOVER_SUCCEEDED', result: lastResult });
+          if (lastResult.outcome !== 'OUTCOME_UNKNOWN') {
+            return lastResult;
+          }
+          if (attempt < 3) {
+            await new Promise((resolve) => setTimeout(resolve, 250));
+          }
+        }
+        return lastResult;
       } catch (error) {
         dispatch({
           type: 'RECOVER_UNRESOLVED',
@@ -299,16 +308,13 @@ export const useKnowledgeDraft = (
       const current = draftStateRef.current;
       // A dirty Draft is never overwritten by a reload.
       if (!current.draft || current.isDirty) return null;
-      // Only Seed-materialized Drafts can be re-materialized today; seedless
-      // Drafts (Knowledge Pages/Resources) re-sync through their query.
-      if (current.draft.seedId === undefined) return current.draft;
       const clientRequestId = freshRequestId('draft-reload');
       const idempotencyKey = freshRequestId('draft-reload');
-      const result = await client.materializeDraft({
+      const result = await client.readDraft({
         schemaVersion: '1.0.0',
         clientRequestId,
         idempotencyKey,
-        seedId: current.draft.seedId,
+        draftId: current.draft.draftId,
       });
       const fresh = result.draft;
       dispatch({

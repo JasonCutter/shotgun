@@ -5,28 +5,42 @@ import {
   FrontendKnowledgeDraftCommandError,
   FRONTEND_KNOWLEDGE_DRAFT_COMMAND_TYPES,
   frontendKnowledgeDraftAbandonDigest,
+  frontendKnowledgeDraftImpactPreviewDigest,
   frontendKnowledgeDraftMaterializeDigest,
+  frontendKnowledgeDraftReadDigest,
   frontendKnowledgeDraftSaveDigest,
   frontendKnowledgeDraftStartSeedlessDigest,
+  frontendKnowledgeDraftSubmitDraftForReviewDigest,
+  frontendKnowledgeDraftValidateDigest,
   type AbandonKnowledgeDraftRequestV1,
   type AcceptedPolicyContext,
   type AnyFrontendCommandOutcomeView,
   type AnyFrontendCommandRequest,
+  type DraftImpactArtifactRefV1,
+  type DraftValidationArtifactRefV1,
   type ErrorCode,
   type FrontendKnowledgeDraftBaseV1,
   type FrontendKnowledgeDraftChangeSetV1,
   type FrontendKnowledgeDraftCommandOutcomeV1,
   type FrontendKnowledgeDraftCommandType,
+  type GenerateKnowledgeDraftImpactRequestV1,
+  type GenerateKnowledgeDraftImpactResultV1,
   type MaterializeDraftRequestV1,
   type MaterializeDraftResultV1,
   type ProducedResourceRef,
+  type ReadKnowledgeDraftRequestV1,
+  type ReadKnowledgeDraftResultV1,
   type ResolveKnowledgeDraftCommandOutcomeRequestV1,
   type ResolveKnowledgeDraftCommandOutcomeResultV1,
   type SaveKnowledgeDraftRequestV1,
   type SaveKnowledgeDraftResultV1,
   type StartSeedlessDraftRequestV1,
   type StartSeedlessDraftResultV1,
+  type SubmitKnowledgeDraftForReviewRequestV1,
+  type SubmitKnowledgeDraftForReviewResultV1,
   type TypedPrecondition,
+  type ValidateKnowledgeDraftRequestV1,
+  type ValidateKnowledgeDraftResultV1,
 } from '../../../packages/contracts/src/index.js';
 import {
   createInitialFrontendKnowledgeDraft,
@@ -52,6 +66,10 @@ const DRAFT_COMMAND_FAMILY: readonly string[] = [
   FRONTEND_KNOWLEDGE_DRAFT_COMMAND_TYPES.startSeedless,
   FRONTEND_KNOWLEDGE_DRAFT_COMMAND_TYPES.save,
   FRONTEND_KNOWLEDGE_DRAFT_COMMAND_TYPES.abandon,
+  FRONTEND_KNOWLEDGE_DRAFT_COMMAND_TYPES.readDraft,
+  FRONTEND_KNOWLEDGE_DRAFT_COMMAND_TYPES.validateDraft,
+  FRONTEND_KNOWLEDGE_DRAFT_COMMAND_TYPES.generateImpactPreview,
+  FRONTEND_KNOWLEDGE_DRAFT_COMMAND_TYPES.submitDraftForReview,
 ];
 
 const isDraftCommandType = (commandType: string): boolean =>
@@ -196,9 +214,13 @@ const draftPrecondition = (draftId: string, expectedRevision: number): TypedPrec
 // coordinator consumers that import from the product API module.
 export {
   frontendKnowledgeDraftAbandonDigest,
+  frontendKnowledgeDraftImpactPreviewDigest,
   frontendKnowledgeDraftMaterializeDigest,
+  frontendKnowledgeDraftReadDigest,
   frontendKnowledgeDraftSaveDigest,
   frontendKnowledgeDraftStartSeedlessDigest,
+  frontendKnowledgeDraftSubmitDraftForReviewDigest,
+  frontendKnowledgeDraftValidateDigest,
 };
 
 type DraftApiCode =
@@ -490,6 +512,308 @@ export class FrontendKnowledgeDraftProductCoordinator {
           resourceKind: FRONTEND_KNOWLEDGE_DRAFT_RESOURCE_KIND.draft,
           resourceId: result.draft.draftId,
           resourceRevision: String(result.draft.revision),
+        },
+      ],
+    });
+  }
+
+  async readDraft(
+    scope: FrontendKnowledgeDraftCommandScopeV1,
+    request: ReadKnowledgeDraftRequestV1,
+  ): Promise<ReadKnowledgeDraftResultV1> {
+    const commandSemanticDigest = frontendKnowledgeDraftReadDigest(request);
+    return this.runCommand<ReadKnowledgeDraftResultV1>({
+      scope,
+      commandType: FRONTEND_KNOWLEDGE_DRAFT_COMMAND_TYPES.readDraft,
+      request,
+      commandSemanticDigest,
+      resourceProjectId: scope.activeProjectId,
+      actionOnRepositories: async (repositories) => {
+        const draft = await repositories.drafts.findById(scope.activeProjectId, request.draftId);
+        if (!draft) {
+          draftFailure('DRAFT_NOT_FOUND', 'The Draft was not found.');
+        }
+        return this.materializeResult(request, draft);
+      },
+      onReplay: async () => {
+        const draft = await this.draftById(scope.activeProjectId, request.draftId);
+        if (!draft) {
+          draftFailure('DRAFT_NOT_FOUND', 'The Draft was not found.');
+        }
+        return this.materializeResult(request, draft);
+      },
+      producedResources: (result) => [
+        {
+          resourceKind: FRONTEND_KNOWLEDGE_DRAFT_RESOURCE_KIND.draft,
+          resourceId: result.draft.draftId,
+          resourceRevision: String(result.draft.revision),
+        },
+      ],
+    });
+  }
+
+  async validateDraft(
+    scope: FrontendKnowledgeDraftCommandScopeV1,
+    request: ValidateKnowledgeDraftRequestV1,
+  ): Promise<ValidateKnowledgeDraftResultV1> {
+    const commandSemanticDigest = frontendKnowledgeDraftValidateDigest(request);
+    return this.runCommand<ValidateKnowledgeDraftResultV1>({
+      scope,
+      commandType: FRONTEND_KNOWLEDGE_DRAFT_COMMAND_TYPES.validateDraft,
+      request,
+      commandSemanticDigest,
+      resourceProjectId: scope.activeProjectId,
+      preconditions: [draftPrecondition(request.draftId, request.expectedDraftRevision)],
+      actionOnRepositories: async (repositories) => {
+        const current = await repositories.drafts.findById(scope.activeProjectId, request.draftId);
+        if (!current) {
+          draftFailure('DRAFT_NOT_FOUND', 'The Draft was not found.');
+        }
+        const next = transitionFrontendKnowledgeDraftStatus({
+          current,
+          expectedDraftRevision: request.expectedDraftRevision,
+          expectedBaseRevision: request.expectedBaseRevision,
+          nextStatus: 'VALID',
+          updatedAt: new Date().toISOString(),
+        });
+        const validation: DraftValidationArtifactRefV1 = {
+          artifactId: generatedIdentity('validation'),
+          artifactRevision: 1,
+          digest: `${current.contentDigest}:${request.expectedBaseRevision}`,
+          status: 'COMPLETE',
+          projectPolicyContext: {
+            activeProjectId: current.activeProjectId,
+            resourceProjectId: current.resourceProjectId,
+            draftProjectId: current.draftProjectId,
+            effectiveProjectId: current.effectiveProjectId,
+            accessRevision: current.base.accessRevision,
+            policyContextRevision: current.base.policyContextRevision,
+          },
+        };
+        const validatedDraft = {
+          ...next,
+          validation,
+        };
+        await persistFrontendKnowledgeDraftTransitionOn(repositories, {
+          projectId: scope.activeProjectId,
+          draft: validatedDraft,
+          expectedRevision: request.expectedDraftRevision,
+        });
+        return {
+          schemaVersion: FRONTEND_KNOWLEDGE_DRAFT_API_VERSION,
+          outcome: 'COMPLETED',
+          clientRequestId: request.clientRequestId,
+          idempotencyKey: request.idempotencyKey,
+          draftStatus: validatedDraft.status,
+          validation: validatedDraft.validation,
+        };
+      },
+      onReplay: async () => {
+        const draft = await this.draftById(scope.activeProjectId, request.draftId);
+        if (!draft) {
+          draftFailure('DRAFT_NOT_FOUND', 'The Draft was not found.');
+        }
+        if (!draft.validation) {
+          draftFailure('VALIDATION_FAILED', 'The Draft validation artifact is incomplete.');
+        }
+        return {
+          schemaVersion: FRONTEND_KNOWLEDGE_DRAFT_API_VERSION,
+          outcome: 'COMPLETED',
+          clientRequestId: request.clientRequestId,
+          idempotencyKey: request.idempotencyKey,
+          draftStatus: draft.status,
+          validation: draft.validation,
+        };
+      },
+      producedResources: () => [
+        {
+          resourceKind: FRONTEND_KNOWLEDGE_DRAFT_RESOURCE_KIND.draft,
+          resourceId: request.draftId,
+          resourceRevision: String(request.expectedDraftRevision),
+        },
+      ],
+    });
+  }
+
+  async generateImpactPreview(
+    scope: FrontendKnowledgeDraftCommandScopeV1,
+    request: GenerateKnowledgeDraftImpactRequestV1,
+  ): Promise<GenerateKnowledgeDraftImpactResultV1> {
+    const commandSemanticDigest = frontendKnowledgeDraftImpactPreviewDigest(request);
+    return this.runCommand<GenerateKnowledgeDraftImpactResultV1>({
+      scope,
+      commandType: FRONTEND_KNOWLEDGE_DRAFT_COMMAND_TYPES.generateImpactPreview,
+      request,
+      commandSemanticDigest,
+      resourceProjectId: scope.activeProjectId,
+      preconditions: [draftPrecondition(request.draftId, request.expectedDraftRevision)],
+      actionOnRepositories: async (repositories) => {
+        const current = await repositories.drafts.findById(scope.activeProjectId, request.draftId);
+        if (!current) {
+          draftFailure('DRAFT_NOT_FOUND', 'The Draft was not found.');
+        }
+        const next = transitionFrontendKnowledgeDraftStatus({
+          current,
+          expectedDraftRevision: request.expectedDraftRevision,
+          expectedBaseRevision: request.expectedBaseRevision,
+          nextStatus: 'VALID',
+          updatedAt: new Date().toISOString(),
+        });
+        const impactArtifact: DraftImpactArtifactRefV1 = {
+          artifactId: generatedIdentity('impact-preview'),
+          artifactRevision: 1,
+          digest: `${current.contentDigest}:impact:${request.expectedBaseRevision}`,
+          status: 'COMPLETE',
+          projectPolicyContext: {
+            activeProjectId: current.activeProjectId,
+            resourceProjectId: current.resourceProjectId,
+            draftProjectId: current.draftProjectId,
+            effectiveProjectId: current.effectiveProjectId,
+            accessRevision: current.base.accessRevision,
+            policyContextRevision: current.base.policyContextRevision,
+          },
+        };
+        const impactPreview = {
+          ...next,
+          impactPreview: impactArtifact,
+        };
+        await persistFrontendKnowledgeDraftTransitionOn(repositories, {
+          projectId: scope.activeProjectId,
+          draft: impactPreview,
+          expectedRevision: request.expectedDraftRevision,
+        });
+        return {
+          schemaVersion: FRONTEND_KNOWLEDGE_DRAFT_API_VERSION,
+          outcome: 'COMPLETED',
+          clientRequestId: request.clientRequestId,
+          idempotencyKey: request.idempotencyKey,
+          draftStatus: impactPreview.status,
+          impactPreview: impactPreview.impactPreview,
+        };
+      },
+      onReplay: async () => {
+        const draft = await this.draftById(scope.activeProjectId, request.draftId);
+        if (!draft) {
+          draftFailure('DRAFT_NOT_FOUND', 'The Draft was not found.');
+        }
+        if (!draft.impactPreview) {
+          draftFailure('IMPACT_PARTIAL', 'The Draft impact preview is incomplete.');
+        }
+        return {
+          schemaVersion: FRONTEND_KNOWLEDGE_DRAFT_API_VERSION,
+          outcome: 'COMPLETED',
+          clientRequestId: request.clientRequestId,
+          idempotencyKey: request.idempotencyKey,
+          draftStatus: draft.status,
+          impactPreview: draft.impactPreview,
+        };
+      },
+      producedResources: () => [
+        {
+          resourceKind: FRONTEND_KNOWLEDGE_DRAFT_RESOURCE_KIND.draft,
+          resourceId: request.draftId,
+          resourceRevision: String(request.expectedDraftRevision),
+        },
+      ],
+    });
+  }
+
+  async submitDraftForReview(
+    scope: FrontendKnowledgeDraftCommandScopeV1,
+    request: SubmitKnowledgeDraftForReviewRequestV1,
+  ): Promise<SubmitKnowledgeDraftForReviewResultV1> {
+    const commandSemanticDigest = frontendKnowledgeDraftSubmitDraftForReviewDigest(request);
+    return this.runCommand<SubmitKnowledgeDraftForReviewResultV1>({
+      scope,
+      commandType: FRONTEND_KNOWLEDGE_DRAFT_COMMAND_TYPES.submitDraftForReview,
+      request,
+      commandSemanticDigest,
+      resourceProjectId: scope.activeProjectId,
+      preconditions: [draftPrecondition(request.draftId, request.expectedDraftRevision)],
+      actionOnRepositories: async (repositories) => {
+        const current = await repositories.drafts.findById(scope.activeProjectId, request.draftId);
+        if (!current) {
+          draftFailure('DRAFT_NOT_FOUND', 'The Draft was not found.');
+        }
+        if (current.validation === undefined || current.validation.status !== 'COMPLETE') {
+          draftFailure('VALIDATION_FAILED', 'The Draft validation artifact is incomplete.');
+        }
+        if (current.impactPreview === undefined || current.impactPreview.status !== 'COMPLETE') {
+          draftFailure('IMPACT_PARTIAL', 'The Draft impact preview is incomplete.');
+        }
+        const next = transitionFrontendKnowledgeDraftStatus({
+          current,
+          expectedDraftRevision: request.expectedDraftRevision,
+          expectedBaseRevision: request.expectedBaseRevision,
+          nextStatus: 'READY_FOR_REVIEW',
+          updatedAt: new Date().toISOString(),
+        });
+        const submittedDraft: FrontendKnowledgeDraftChangeSetV1 = {
+          ...next,
+          status: 'SUBMITTED',
+          reviewSubmission: {
+            reviewSubmissionId: generatedIdentity('review-submission'),
+            draftId: current.draftId,
+            draftRevision: current.revision,
+            operationDigest: current.contentDigest,
+            contentDigest: current.contentDigest,
+            validationArtifact: current.validation,
+            impactArtifact: current.impactPreview,
+            evidenceLineage: [],
+            projectPolicyContext: {
+              activeProjectId: current.activeProjectId,
+              resourceProjectId: current.resourceProjectId,
+              draftProjectId: current.draftProjectId,
+              effectiveProjectId: current.effectiveProjectId,
+              accessRevision: current.base.accessRevision,
+              policyContextRevision: current.base.policyContextRevision,
+            },
+            reviewResource: {
+              reviewResourceId: generatedIdentity('review-resource'),
+              draftId: current.draftId,
+              draftRevision: current.revision,
+              resourceProjectId: current.resourceProjectId,
+              draftProjectId: current.draftProjectId,
+              effectiveProjectId: current.effectiveProjectId,
+              policyContextRevision: current.base.policyContextRevision,
+              digest: current.contentDigest,
+            },
+          },
+        };
+        await persistFrontendKnowledgeDraftTransitionOn(repositories, {
+          projectId: scope.activeProjectId,
+          draft: submittedDraft,
+          expectedRevision: request.expectedDraftRevision,
+        });
+        return {
+          schemaVersion: FRONTEND_KNOWLEDGE_DRAFT_API_VERSION,
+          outcome: 'COMPLETED',
+          clientRequestId: request.clientRequestId,
+          idempotencyKey: request.idempotencyKey,
+          reviewSubmission: submittedDraft.reviewSubmission!,
+        };
+      },
+      onReplay: async () => {
+        const draft = await this.draftById(scope.activeProjectId, request.draftId);
+        if (!draft) {
+          draftFailure('DRAFT_NOT_FOUND', 'The Draft was not found.');
+        }
+        if (!draft.reviewSubmission) {
+          draftFailure('NOT_READY_FOR_REVIEW', 'The Draft review submission is incomplete.');
+        }
+        return {
+          schemaVersion: FRONTEND_KNOWLEDGE_DRAFT_API_VERSION,
+          outcome: 'COMPLETED',
+          clientRequestId: request.clientRequestId,
+          idempotencyKey: request.idempotencyKey,
+          reviewSubmission: draft.reviewSubmission,
+        };
+      },
+      producedResources: () => [
+        {
+          resourceKind: FRONTEND_KNOWLEDGE_DRAFT_RESOURCE_KIND.draft,
+          resourceId: request.draftId,
+          resourceRevision: String(request.expectedDraftRevision),
         },
       ],
     });

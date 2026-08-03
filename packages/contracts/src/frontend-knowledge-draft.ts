@@ -24,6 +24,10 @@ export const FRONTEND_KNOWLEDGE_DRAFT_COMMAND_TYPES = {
   startSeedless: 'knowledge.draft.start-seedless.v1',
   save: 'knowledge.draft.save.v1',
   abandon: 'knowledge.draft.abandon.v1',
+  readDraft: 'knowledge.draft.read.v1',
+  validateDraft: 'knowledge.draft.validate.v1',
+  generateImpactPreview: 'knowledge.draft.impact-preview.v1',
+  submitDraftForReview: 'knowledge.draft.submit-review.v1',
   resolveOutcome: 'knowledge.draft.resolve-outcome.v1',
 } as const;
 
@@ -101,6 +105,45 @@ export const frontendKnowledgeDraftAbandonDigest = (
       draftId: request.draftId,
       expectedDraftRevision: request.expectedDraftRevision,
       expectedBaseRevision: request.expectedBaseRevision,
+    }),
+  );
+
+export const frontendKnowledgeDraftReadDigest = (request: ReadKnowledgeDraftRequestV1): string =>
+  sha256Text(stableJson({ draftId: request.draftId }));
+
+export const frontendKnowledgeDraftValidateDigest = (
+  request: ValidateKnowledgeDraftRequestV1,
+): string =>
+  sha256Text(
+    stableJson({
+      draftId: request.draftId,
+      expectedDraftRevision: request.expectedDraftRevision,
+      expectedBaseRevision: request.expectedBaseRevision,
+    }),
+  );
+
+export const frontendKnowledgeDraftImpactPreviewDigest = (
+  request: GenerateKnowledgeDraftImpactRequestV1,
+): string =>
+  sha256Text(
+    stableJson({
+      draftId: request.draftId,
+      expectedDraftRevision: request.expectedDraftRevision,
+      expectedBaseRevision: request.expectedBaseRevision,
+      options: request.options,
+    }),
+  );
+
+export const frontendKnowledgeDraftSubmitDraftForReviewDigest = (
+  request: SubmitKnowledgeDraftForReviewRequestV1,
+): string =>
+  sha256Text(
+    stableJson({
+      draftId: request.draftId,
+      expectedDraftRevision: request.expectedDraftRevision,
+      expectedBaseRevision: request.expectedBaseRevision,
+      validationArtifact: request.validationArtifact,
+      impactArtifact: request.impactArtifact,
     }),
   );
 
@@ -439,6 +482,10 @@ export type SubmitKnowledgeDraftForReviewRequestV1 = RequiredDraftRevisionEnvelo
   readonly impactArtifact: DraftImpactArtifactRefV1;
 };
 
+export type ReadKnowledgeDraftRequestV1 = DraftCommandEnvelopeV1 & {
+  readonly draftId: string;
+};
+
 export type AbandonKnowledgeDraftRequestV1 = RequiredDraftRevisionEnvelopeV1 & {
   readonly draftId: string;
   readonly expectedBaseRevision: number;
@@ -461,6 +508,8 @@ export type FrontendKnowledgeDraftCommandResultBaseV1 = {
 export type MaterializeDraftResultV1 = FrontendKnowledgeDraftCommandResultBaseV1 & {
   readonly draft: FrontendKnowledgeDraftChangeSetV1;
 };
+
+export type ReadKnowledgeDraftResultV1 = MaterializeDraftResultV1;
 
 export type StartSeedlessDraftResultV1 = MaterializeDraftResultV1;
 
@@ -1888,6 +1937,22 @@ export const decodeSaveKnowledgeDraftRequestV1 = (value: unknown): SaveKnowledge
   };
 };
 
+export const decodeReadKnowledgeDraftRequestV1 = (value: unknown): ReadKnowledgeDraftRequestV1 => {
+  const { object, envelope } = decodeCommandRequestObject(value, [], 'readDraft');
+  return {
+    schemaVersion: '1.0.0',
+    clientRequestId: text(
+      required(envelope, 'clientRequestId', 'readDraft'),
+      'readDraft.clientRequestId',
+    ),
+    idempotencyKey: text(
+      required(envelope, 'idempotencyKey', 'readDraft'),
+      'readDraft.idempotencyKey',
+    ),
+    draftId: text(required(object, 'draftId', 'readDraft'), 'readDraft.draftId'),
+  };
+};
+
 export const decodeValidateKnowledgeDraftRequestV1 = (
   value: unknown,
 ): ValidateKnowledgeDraftRequestV1 => {
@@ -2076,6 +2141,14 @@ export const decodeStartSeedlessDraftResultV1 = (value: unknown): StartSeedlessD
 
 export const decodeSaveKnowledgeDraftResultV1 = (value: unknown): SaveKnowledgeDraftResultV1 =>
   decodeMaterializeDraftResultV1(value);
+
+export const decodeReadKnowledgeDraftResultV1 = (value: unknown): ReadKnowledgeDraftResultV1 => {
+  const { object, base } = decodeCommandResultBase(value, ['draft'], 'readDraftResult');
+  return {
+    ...base,
+    draft: decodeFrontendKnowledgeDraftChangeSetV1(required(object, 'draft', 'readDraftResult')),
+  };
+};
 
 export const decodeValidateKnowledgeDraftResultV1 = (
   value: unknown,

@@ -6,10 +6,14 @@ import {
   FrontendKnowledgeDraftCommandError,
   ShotgunError,
   decodeAbandonKnowledgeDraftRequestV1,
+  decodeGenerateKnowledgeDraftImpactRequestV1,
   decodeMaterializeDraftRequestV1,
+  decodeReadKnowledgeDraftRequestV1,
   decodeResolveKnowledgeDraftCommandOutcomeRequestV1,
   decodeSaveKnowledgeDraftRequestV1,
   decodeStartSeedlessDraftRequestV1,
+  decodeSubmitKnowledgeDraftForReviewRequestV1,
+  decodeValidateKnowledgeDraftRequestV1,
   type ErrorCode,
 } from '../../../../packages/contracts/src/index.js';
 import type { FrontendKnowledgeDraftProductCoordinator } from '../../../../modules/frontend-knowledge-draft/src/product-api.js';
@@ -140,6 +144,58 @@ export function registerFrontendKnowledgeDraftRoutes(
         return await coordinator.abandonDraft(scope, decoded);
       } catch (error) {
         throw toDraftError(error, 'abandon-draft');
+      }
+    },
+  );
+
+  server.post<{ Body: unknown; Headers: SecurityHeaders }>(
+    '/product-api/frontend/knowledge/drafts/read',
+    async (request) => {
+      const scope = await buildDraftScope(request.headers);
+      try {
+        const decoded = decodeReadKnowledgeDraftRequestV1(request.body);
+        return await coordinator.readDraft(scope, decoded);
+      } catch (error) {
+        throw toDraftError(error, 'read-draft');
+      }
+    },
+  );
+
+  server.post<{ Body: unknown; Headers: SecurityHeaders }>(
+    '/product-api/frontend/knowledge/drafts/validate',
+    async (request) => {
+      const scope = await buildDraftScope(request.headers);
+      try {
+        const decoded = decodeValidateKnowledgeDraftRequestV1(request.body);
+        return await coordinator.validateDraft(scope, decoded);
+      } catch (error) {
+        throw toDraftError(error, 'validate-draft');
+      }
+    },
+  );
+
+  server.post<{ Body: unknown; Headers: SecurityHeaders }>(
+    '/product-api/frontend/knowledge/drafts/impact-preview',
+    async (request) => {
+      const scope = await buildDraftScope(request.headers);
+      try {
+        const decoded = decodeGenerateKnowledgeDraftImpactRequestV1(request.body);
+        return await coordinator.generateImpactPreview(scope, decoded);
+      } catch (error) {
+        throw toDraftError(error, 'impact-preview');
+      }
+    },
+  );
+
+  server.post<{ Body: unknown; Headers: SecurityHeaders }>(
+    '/product-api/frontend/knowledge/drafts/submit-review',
+    async (request) => {
+      const scope = await buildDraftScope(request.headers);
+      try {
+        const decoded = decodeSubmitKnowledgeDraftForReviewRequestV1(request.body);
+        return await coordinator.submitDraftForReview(scope, decoded);
+      } catch (error) {
+        throw toDraftError(error, 'submit-review');
       }
     },
   );

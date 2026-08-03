@@ -274,6 +274,23 @@ describe('FE-P3-S2 Browser Draft State Machine (pure reducer)', () => {
     expect(state.state).toBe('OUTCOME_UNKNOWN');
   });
 
+  it('maps a rejected recovery to SAVE_FAILED when there are no local edits', () => {
+    let state = createKnowledgeDraftState(draftV1());
+    state = knowledgeDraftReducer(state, { type: 'RECOVER_START' });
+    state = knowledgeDraftReducer(state, {
+      type: 'RECOVER_SUCCEEDED',
+      result: {
+        schemaVersion: '1.0.0',
+        outcome: 'REJECTED',
+        originalClientRequestId: 'req-1',
+        originalIdempotencyKey: 'idem-1',
+      },
+    });
+    expect(state.state).toBe('SAVE_FAILED');
+    expect(state.isDirty).toBe(false);
+    expect(state.localOperations).toHaveLength(0);
+  });
+
   it('reset discards local edits, releases the pin, and a later sync re-adopts the server Draft', () => {
     let state = createKnowledgeDraftState(draftV1());
     state = knowledgeDraftReducer(state, {

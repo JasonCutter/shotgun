@@ -1,22 +1,34 @@
 import { FrontendContractError } from '../../contracts/src/index.js';
 import {
+  decodeGenerateKnowledgeDraftImpactResultV1,
   decodeMaterializeDraftResultV1,
+  decodeReadKnowledgeDraftResultV1,
   decodeResolveKnowledgeDraftCommandOutcomeResultV1,
   decodeSaveKnowledgeDraftResultV1,
+  decodeSubmitKnowledgeDraftForReviewResultV1,
+  decodeValidateKnowledgeDraftResultV1,
   frontendKnowledgeDraftAbandonDigest,
   frontendKnowledgeDraftMaterializeDigest,
   frontendKnowledgeDraftRevisionDigest,
   frontendKnowledgeDraftSaveDigest,
   frontendKnowledgeDraftStartSeedlessDigest,
   type AbandonKnowledgeDraftRequestV1,
+  type GenerateKnowledgeDraftImpactRequestV1,
+  type GenerateKnowledgeDraftImpactResultV1,
   type MaterializeDraftRequestV1,
   type MaterializeDraftResultV1,
+  type ReadKnowledgeDraftRequestV1,
+  type ReadKnowledgeDraftResultV1,
   type ResolveKnowledgeDraftCommandOutcomeRequestV1,
   type ResolveKnowledgeDraftCommandOutcomeResultV1,
   type SaveKnowledgeDraftRequestV1,
   type SaveKnowledgeDraftResultV1,
   type StartSeedlessDraftRequestV1,
   type StartSeedlessDraftResultV1,
+  type SubmitKnowledgeDraftForReviewRequestV1,
+  type SubmitKnowledgeDraftForReviewResultV1,
+  type ValidateKnowledgeDraftRequestV1,
+  type ValidateKnowledgeDraftResultV1,
 } from '../../contracts/src/index.js';
 import { decodeProductApiErrorBody } from './decode.js';
 import { productFailureApiError, remoteUnclassifiedProductApiFailure } from './errors.js';
@@ -33,6 +45,10 @@ export {
 };
 
 export type FrontendKnowledgeDraftClient = {
+  readDraft(
+    params: ReadKnowledgeDraftRequestV1,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<ReadKnowledgeDraftResultV1>;
   materializeDraft(
     params: MaterializeDraftRequestV1,
     options?: { readonly signal?: AbortSignal },
@@ -49,6 +65,18 @@ export type FrontendKnowledgeDraftClient = {
     params: AbandonKnowledgeDraftRequestV1,
     options?: { readonly signal?: AbortSignal },
   ): Promise<MaterializeDraftResultV1>;
+  validateDraft(
+    params: ValidateKnowledgeDraftRequestV1,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<ValidateKnowledgeDraftResultV1>;
+  generateImpactPreview(
+    params: GenerateKnowledgeDraftImpactRequestV1,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<GenerateKnowledgeDraftImpactResultV1>;
+  submitDraftForReview(
+    params: SubmitKnowledgeDraftForReviewRequestV1,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<SubmitKnowledgeDraftForReviewResultV1>;
   resolveCommandOutcome(
     params: ResolveKnowledgeDraftCommandOutcomeRequestV1,
     options?: { readonly signal?: AbortSignal },
@@ -119,6 +147,19 @@ export const createFrontendKnowledgeDraftClient = (
   };
 
   return {
+    async readDraft(params, requestOptions) {
+      const response = await mutate(
+        '/product-api/frontend/knowledge/drafts/read',
+        params,
+        requestOptions?.signal,
+      );
+      const body = await assertOk(response);
+      const result = decodeReadKnowledgeDraftResultV1(body);
+      if (result.draft.draftId !== params.draftId) {
+        identityMismatch('Read result does not match the requested Draft.');
+      }
+      return result;
+    },
     async materializeDraft(params, requestOptions) {
       const response = await mutate(
         '/product-api/frontend/knowledge/drafts/materialize',
@@ -170,6 +211,33 @@ export const createFrontendKnowledgeDraftClient = (
         identityMismatch('Abandon result does not match the requested Draft.');
       }
       return result;
+    },
+    async validateDraft(params, requestOptions) {
+      const response = await mutate(
+        '/product-api/frontend/knowledge/drafts/validate',
+        params,
+        requestOptions?.signal,
+      );
+      const body = await assertOk(response);
+      return decodeValidateKnowledgeDraftResultV1(body);
+    },
+    async generateImpactPreview(params, requestOptions) {
+      const response = await mutate(
+        '/product-api/frontend/knowledge/drafts/impact-preview',
+        params,
+        requestOptions?.signal,
+      );
+      const body = await assertOk(response);
+      return decodeGenerateKnowledgeDraftImpactResultV1(body);
+    },
+    async submitDraftForReview(params, requestOptions) {
+      const response = await mutate(
+        '/product-api/frontend/knowledge/drafts/submit-review',
+        params,
+        requestOptions?.signal,
+      );
+      const body = await assertOk(response);
+      return decodeSubmitKnowledgeDraftForReviewResultV1(body);
     },
     async resolveCommandOutcome(params, requestOptions) {
       const response = await mutate(

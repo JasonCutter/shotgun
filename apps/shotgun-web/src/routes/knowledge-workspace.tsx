@@ -29,6 +29,7 @@ import {
   PageSummaryCard,
   ProjectionStatus,
 } from '../knowledge/knowledge-ui.js';
+import { KnowledgeDraftEditor } from '../knowledge/knowledge-draft-editor.js';
 
 const pageSize = 50;
 
@@ -234,6 +235,12 @@ export const KnowledgeWorkspace = () => {
       </section>
 
       {projection ? <ProjectionStatus projection={projection} /> : null}
+      <KnowledgeDraftEditor
+        draft={null}
+        activeProjectId={shell.activeProject?.id}
+        sessionId={shell.session?.id}
+        client={apiClient}
+      />
       {workspace.data ? (
         <section className="action-card" aria-labelledby="knowledge-capabilities-heading">
           <h2 id="knowledge-capabilities-heading">Read capabilities</h2>

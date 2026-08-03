@@ -351,13 +351,15 @@ export const knowledgeDraftReducer = (
         };
       }
       if (action.result.outcome === 'REJECTED') {
-        // The Save was rejected; the edits are preserved for the user.
+        const nextState = state.isDirty ? 'DIRTY' : 'SAVE_FAILED';
         return {
           ...state,
-          state: 'DIRTY',
+          state: nextState,
           commandIdentity: null,
           failure: null,
-          errorMessage: 'The previous Save was rejected by the server; the edits are preserved.',
+          errorMessage: state.isDirty
+            ? 'The previous Save was rejected by the server; the edits are preserved.'
+            : 'The previous Save was rejected by the server.',
           isRecovering: false,
         };
       }

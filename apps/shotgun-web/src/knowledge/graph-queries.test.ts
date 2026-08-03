@@ -64,7 +64,7 @@ describe('FE-P3-S3 graph cache isolation (AC-16)', () => {
       activeProject: {
         id: 'project-1',
         label: 'Project One',
-        sensitivityClearance: 'private',
+        sensitivityClearance: 'private' as const,
       },
       accessibleProjects: [],
       navigation: [],

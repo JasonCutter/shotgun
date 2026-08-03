@@ -75,24 +75,6 @@ export class Stage9GraphReadAdapter implements GraphReadPort, GraphImpactPort {
     for (const node of nodes) this.resourceMap.set(node.resourceRef.resourceId, node);
   }
 
-  private truncationFor(
-    maxNodes: number,
-    maxEdges: number,
-    visited: ReadonlySet<string>,
-    edgeCount: number,
-  ): GraphTruncationStateV1 | undefined {
-    if (visited.size > maxNodes || edgeCount > maxEdges) {
-      return {
-        schemaVersion: '1.0.0',
-        truncated: true,
-        reason: visited.size > maxNodes ? 'MAX_NODES' : 'MAX_EDGES',
-        omittedNodeCount: Math.max(0, visited.size - maxNodes),
-        omittedEdgeCount: Math.max(0, edgeCount - maxEdges),
-      };
-    }
-    return undefined;
-  }
-
   private boundedSnapshot(
     scope: GraphReadScopeV1,
     request: {
@@ -111,20 +93,29 @@ export class Stage9GraphReadAdapter implements GraphReadPort, GraphImpactPort {
       rootIds.length === 0
         ? this.nodes
         : this.nodes.filter((node) => rootIds.includes(node.resourceRef.resourceId));
-    const filtered = allowed.filter((node) => matchFilters(node, request.filters));
+    // HIDDEN resources never appear in any graph read (contract masking rule).
+    const filtered = allowed
+      .filter((node) => node.accessMasking !== 'HIDDEN')
+      .filter((node) => matchFilters(node, request.filters));
+    const omittedNodeCount = Math.max(0, filtered.length - request.limits.maxNodes);
     const nodes = filtered.slice(0, request.limits.maxNodes);
     const nodeIds = new Set(nodes.map((node) => node.nodeId));
-    const edges = this.edges
+    const matchingEdges = this.edges
+      .filter((edge) => edge.accessMasking !== 'HIDDEN')
       .filter((edge) => nodeIds.has(edge.from.resourceId) && nodeIds.has(edge.to.resourceId))
-      .filter((edge) => matchEdgeFilters(edge, request.filters))
-      .slice(0, request.limits.maxEdges);
-    const visited = new Set(nodes.map((node) => node.nodeId));
-    const truncation = this.truncationFor(
-      request.limits.maxNodes,
-      request.limits.maxEdges,
-      visited,
-      edges.length,
-    );
+      .filter((edge) => matchEdgeFilters(edge, request.filters));
+    const omittedEdgeCount = Math.max(0, matchingEdges.length - request.limits.maxEdges);
+    const edges = matchingEdges.slice(0, request.limits.maxEdges);
+    const truncation: GraphTruncationStateV1 | undefined =
+      omittedNodeCount > 0 || omittedEdgeCount > 0
+        ? {
+            schemaVersion: '1.0.0',
+            truncated: true,
+            reason: omittedNodeCount > 0 ? 'MAX_NODES' : 'MAX_EDGES',
+            omittedNodeCount,
+            omittedEdgeCount,
+          }
+        : undefined;
     const completeness: GraphResultCompletenessV1 = truncation ? 'TRUNCATED' : 'COMPLETE';
     const identity: GraphSnapshotIdentityV1 = {
       schemaVersion: '1.0.0',
@@ -184,6 +175,7 @@ export class Stage9GraphReadAdapter implements GraphReadPort, GraphImpactPort {
     const center = this.resourceMap.get(request.centerRef.resourceId);
     if (!center) throw new FrontendContractError('NOT_FOUND', `neighborhood center not found`);
     const neighbors = this.edges
+      .filter((edge) => edge.accessMasking !== 'HIDDEN')
       .filter(
         (edge) =>
           edge.from.resourceId === center.resourceRef.resourceId &&
@@ -193,6 +185,7 @@ export class Stage9GraphReadAdapter implements GraphReadPort, GraphImpactPort {
     const neighborNodes = neighbors
       .map((edge) => this.resourceMap.get(edge.to.resourceId))
       .filter((node): node is GraphNodeV1 => Boolean(node))
+      .filter((node) => node.accessMasking !== 'HIDDEN')
       .slice(0, request.limits?.maxNodes ?? context?.limits.maxNodes ?? 100);
     return {
       schemaVersion: '1.0.0',
@@ -226,6 +219,7 @@ export class Stage9GraphReadAdapter implements GraphReadPort, GraphImpactPort {
     if (!from || !to) throw new FrontendContractError('NOT_FOUND', 'path endpoint not found');
     const adjacency = new Map<string, { edge: GraphEdgeV1 }[]>();
     for (const edge of this.edges) {
+      if (edge.accessMasking === 'HIDDEN') continue;
       const list = adjacency.get(edge.from.resourceId) ?? [];
       list.push({ edge });
       adjacency.set(edge.from.resourceId, list);
@@ -322,7 +316,9 @@ export class Stage9GraphReadAdapter implements GraphReadPort, GraphImpactPort {
     request: Parameters<GraphReadPort['evidenceDetail']>[1],
   ): Promise<GraphEvidenceDetailResultV1> {
     const target = this.resourceMap.get(
-      request.target.kind === 'NODE' ? request.target.nodeRef.resourceId : request.target.edgeRef.edgeId,
+      request.target.kind === 'NODE'
+        ? request.target.nodeRef.resourceId
+        : request.target.edgeRef.edgeId,
     );
     void target;
     return {

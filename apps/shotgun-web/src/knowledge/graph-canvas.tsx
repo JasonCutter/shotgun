@@ -170,7 +170,6 @@ export const GraphCanvas = ({
       },
       minZoom: 0.25,
       maxZoom: 3,
-      wheelSensitivity: 0.2,
     });
     cyRef.current = core;
 
@@ -183,7 +182,8 @@ export const GraphCanvas = ({
     });
 
     return () => {
-      core.removeListener();
+      // `destroy` tears down the instance and its listeners; calling
+      // `removeListener` separately can throw in StrictMode double-mounting.
       core.destroy();
       cyRef.current = null;
     };

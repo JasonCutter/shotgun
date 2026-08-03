@@ -135,6 +135,16 @@ export const GraphWorkspace = () => {
     }
   }, [snapshot.isPending, snapshot.isError, snapshot.data, snapshot.error]);
 
+  const announce = (message: string) => {
+    if (liveRegionRef.current) liveRegionRef.current.textContent = message;
+  };
+
+  const selectNode = (ref: GraphNodeReferenceV1) => {
+    const node = snapshot.data?.nodes.find((n) => n.resourceRef.resourceId === ref.resourceId);
+    dispatch({ type: 'SELECT_NODE', ref });
+    if (node) announce(GRAPH_ANNOUNCEMENTS.SELECTION(node.label));
+  };
+
   // Deep-link restoration: focus the selected node once the snapshot is ready.
   useEffect(() => {
     if (deepLinkFocus && snapshot.data) {
@@ -145,19 +155,10 @@ export const GraphWorkspace = () => {
         dispatch({ type: 'RECOVERY_STARTED', targetRef: target.resourceRef });
         dispatch({ type: 'SELECT_NODE', ref: target.resourceRef });
         dispatch({ type: 'RECOVERY_FINISHED' });
+        announce(GRAPH_ANNOUNCEMENTS.SELECTION(target.label));
       }
     }
   }, [deepLinkFocus, snapshot.data]);
-
-  const announce = (message: string) => {
-    if (liveRegionRef.current) liveRegionRef.current.textContent = message;
-  };
-
-  const selectNode = (ref: GraphNodeReferenceV1) => {
-    const node = snapshot.data?.nodes.find((n) => n.resourceRef.resourceId === ref.resourceId);
-    dispatch({ type: 'SELECT_NODE', ref });
-    if (node) announce(GRAPH_ANNOUNCEMENTS.SELECTION(node.label));
-  };
 
   const orderedNodeRefs = useMemo(
     () =>

@@ -13,11 +13,22 @@ import {
   decodeGraphPathDescriptionV1,
   decodeGraphPathResultV1,
   decodeGraphRecursiveImpactOverlayRequestV1,
+  decodeGraphRestoreRequestV1,
+  decodeGraphRestoreResultV1,
   decodeGraphSnapshotRefreshRequestV1,
   decodeGraphSnapshotRequestV1,
   decodeGraphSnapshotResultV1,
   graphFailureApiCode,
 } from '../../packages/contracts/src/index.js';
+
+/**
+ * AC-28: one contract suite per Product API read operation. The ten read
+ * operations (snapshot, neighborhood, path, path-describe, conflict overlay,
+ * gap overlay, impact overlay, evidence detail, snapshot refresh, deep-link
+ * restore) are each covered by an explicit `describe` with strict decoding
+ * and typed failure assertions. Shared primitives (refs, node/edge decoders)
+ * are covered once in the shared suite.
+ */
 
 const nodeRef = {
   schemaVersion: '1.0.0' as const,
@@ -100,7 +111,19 @@ const appliedLimits = {
   clamped: false,
 };
 
-describe('FE-P3-S3 frontend-knowledge-graph contracts', () => {
+const snapshotBase = {
+  schemaVersion: '1.0.0' as const,
+  identity: snapshotIdentity,
+  health: 'COMPLETE' as const,
+  completeness: 'COMPLETE' as const,
+  nodes: [] as const,
+  edges: [] as const,
+  appliedLimits,
+  overlays: [] as const,
+  capabilities: { schemaVersion: '1.0.0' as const, capabilities: ['SNAPSHOT'] as const },
+};
+
+describe('shared primitives: refs and node/edge strict decoding', () => {
   it('decodes a node reference and rejects unknown fields', () => {
     expect(decodeGraphNodeReferenceV1(nodeRef)).toEqual(nodeRef);
     expect(() => decodeGraphNodeReferenceV1({ ...nodeRef, extra: true })).toThrow(
@@ -144,44 +167,10 @@ describe('FE-P3-S3 frontend-knowledge-graph contracts', () => {
       FrontendContractError,
     );
   });
+});
 
-  it('enforces truncation/completeness binding on a snapshot result', () => {
-    const base = {
-      schemaVersion: '1.0.0' as const,
-      identity: snapshotIdentity,
-      health: 'COMPLETE' as const,
-      completeness: 'COMPLETE' as const,
-      nodes: [] as const,
-      edges: [] as const,
-      appliedLimits,
-      overlays: [] as const,
-      capabilities: { schemaVersion: '1.0.0' as const, capabilities: ['SNAPSHOT'] as const },
-    };
-    expect(decodeGraphSnapshotResultV1(base).completeness).toBe('COMPLETE');
-    const truncated = {
-      ...base,
-      completeness: 'TRUNCATED' as const,
-      truncation: {
-        schemaVersion: '1.0.0' as const,
-        truncated: true,
-        reason: 'MAX_NODES' as const,
-        omittedNodeCount: 5,
-        omittedEdgeCount: 3,
-      },
-    };
-    expect(decodeGraphSnapshotResultV1(truncated).truncation?.reason).toBe('MAX_NODES');
-    expect(() =>
-      decodeGraphSnapshotResultV1({ ...base, completeness: 'TRUNCATED' as const }),
-    ).toThrow(FrontendContractError);
-    expect(() =>
-      decodeGraphSnapshotResultV1({
-        ...base,
-        truncation: truncated.truncation,
-      }),
-    ).toThrow(FrontendContractError);
-  });
-
-  it('enforces traversal limits numeric ranges', () => {
+describe('operation 1: snapshot (request + result)', () => {
+  it('enforces traversal limits numeric ranges on the request', () => {
     const request = {
       schemaVersion: '1.0.0' as const,
       viewKind: 'KNOWLEDGE_SEMANTIC' as const,
@@ -200,14 +189,9 @@ describe('FE-P3-S3 frontend-knowledge-graph contracts', () => {
 
   it('decodes a full snapshot result round-trip', () => {
     const result = {
-      schemaVersion: '1.0.0' as const,
-      identity: snapshotIdentity,
-      health: 'COMPLETE' as const,
-      completeness: 'COMPLETE' as const,
+      ...snapshotBase,
       nodes: [node],
       edges: [edge],
-      appliedLimits,
-      overlays: [] as const,
       capabilities: {
         schemaVersion: '1.0.0' as const,
         capabilities: ['SNAPSHOT', 'NEIGHBORHOOD'] as const,
@@ -216,6 +200,47 @@ describe('FE-P3-S3 frontend-knowledge-graph contracts', () => {
     expect(decodeGraphSnapshotResultV1(result).nodes[0]?.nodeId).toBe('node-1');
   });
 
+  it('enforces truncation/completeness binding on a snapshot result', () => {
+    expect(decodeGraphSnapshotResultV1(snapshotBase).completeness).toBe('COMPLETE');
+    const truncated = {
+      ...snapshotBase,
+      completeness: 'TRUNCATED' as const,
+      truncation: {
+        schemaVersion: '1.0.0' as const,
+        truncated: true,
+        reason: 'MAX_NODES' as const,
+        omittedNodeCount: 5,
+        omittedEdgeCount: 3,
+      },
+    };
+    expect(decodeGraphSnapshotResultV1(truncated).truncation?.reason).toBe('MAX_NODES');
+    expect(() =>
+      decodeGraphSnapshotResultV1({ ...snapshotBase, completeness: 'TRUNCATED' as const }),
+    ).toThrow(FrontendContractError);
+    expect(() =>
+      decodeGraphSnapshotResultV1({ ...snapshotBase, truncation: truncated.truncation }),
+    ).toThrow(FrontendContractError);
+  });
+});
+
+describe('operation 2: neighborhood (result)', () => {
+  it('decodes a neighborhood result with center ref and applied limits', () => {
+    const neighborhood = {
+      schemaVersion: '1.0.0' as const,
+      snapshotId: 'snapshot-1',
+      projectionRevision: 'proj-1',
+      centerRef: nodeRef,
+      addedNodes: [node],
+      addedEdges: [edge],
+      completeness: 'COMPLETE' as const,
+      appliedLimits,
+    };
+    expect(decodeGraphNeighborhoodResultV1(neighborhood).centerRef.resourceId).toBe('entity-1');
+    expect(decodeGraphNeighborhoodResultV1(neighborhood).appliedLimits.maxNodes).toBe(100);
+  });
+});
+
+describe('operation 3: path (request + result)', () => {
   it('decodes path results with ORIGIN/TRAVERSAL union and rejects violations', () => {
     const origin = {
       schemaVersion: '1.0.0' as const,
@@ -274,7 +299,9 @@ describe('FE-P3-S3 frontend-knowledge-graph contracts', () => {
       }),
     ).toThrow(FrontendContractError);
   });
+});
 
+describe('operation 4: path describe (result)', () => {
   it('decodes a path description with the ORIGIN/TRAVERSAL union and revision binding', () => {
     const description = {
       schemaVersion: '1.0.0' as const,
@@ -302,8 +329,10 @@ describe('FE-P3-S3 frontend-knowledge-graph contracts', () => {
     };
     expect(decodeGraphPathDescriptionV1(description).projectionRevision).toBe('proj-1');
   });
+});
 
-  it('enforces route-specific overlay literals and continuation rules', () => {
+describe('operation 5: conflict overlay (request + result)', () => {
+  it('enforces the CONFLICT literal and rejects continuation and unknown fields', () => {
     const base = {
       schemaVersion: '1.0.0' as const,
       snapshotId: 'snapshot-1',
@@ -319,17 +348,6 @@ describe('FE-P3-S3 frontend-knowledge-graph contracts', () => {
     expect(() =>
       decodeGraphConflictOverlayRequestV1({ ...base, overlayKind: 'RECURSIVE_IMPACT' as const }),
     ).toThrow(FrontendContractError);
-    expect(
-      decodeGraphKnowledgeGapOverlayRequestV1({ ...base, overlayKind: 'KNOWLEDGE_GAP' as const })
-        .overlayKind,
-    ).toBe('KNOWLEDGE_GAP');
-    const impact = decodeGraphRecursiveImpactOverlayRequestV1({
-      ...base,
-      overlayKind: 'RECURSIVE_IMPACT' as const,
-      continuationToken: 'tok',
-    });
-    expect(impact.continuationToken).toBe('tok');
-    // conflict request rejects unknown continuationToken field
     expect(() =>
       decodeGraphConflictOverlayRequestV1({
         ...base,
@@ -339,56 +357,7 @@ describe('FE-P3-S3 frontend-knowledge-graph contracts', () => {
     ).toThrow(FrontendContractError);
   });
 
-  it('enforces snapshot refresh descriptor-based shape (no full request resend)', () => {
-    const refresh = {
-      schemaVersion: '1.0.0' as const,
-      snapshotId: 'snapshot-1',
-      projectionRevision: 'proj-1',
-      expectedSnapshotRevision: 'proj-2',
-    };
-    expect(decodeGraphSnapshotRefreshRequestV1(refresh).snapshotId).toBe('snapshot-1');
-    // full resend fields are rejected as unknown
-    expect(() =>
-      decodeGraphSnapshotRefreshRequestV1({ ...refresh, viewKind: 'KNOWLEDGE_SEMANTIC' as const }),
-    ).toThrow(FrontendContractError);
-  });
-
-  it('decodes evidence detail and enforces masked empty-evidence rule', () => {
-    const detail = {
-      schemaVersion: '1.0.0' as const,
-      snapshotId: 'snapshot-1',
-      projectionRevision: 'proj-1',
-      targetRef: nodeRef,
-      evidence: [
-        {
-          schemaVersion: '1.0.0' as const,
-          sourceId: 'source-1',
-          sourceVersionId: 'source-version-1',
-          evidenceSpanId: 'span-1',
-          snippet: '...',
-        },
-      ],
-      accessMasking: 'VISIBLE' as const,
-    };
-    expect(decodeGraphEvidenceDetailResultV1(detail).evidence.length).toBe(1);
-    expect(() =>
-      decodeGraphEvidenceDetailResultV1({ ...detail, accessMasking: 'MASKED' as const }),
-    ).toThrow(FrontendContractError);
-  });
-
-  it('decodes neighborhood, restore and overlay results with applied limits', () => {
-    const neighborhood = {
-      schemaVersion: '1.0.0' as const,
-      snapshotId: 'snapshot-1',
-      projectionRevision: 'proj-1',
-      centerRef: nodeRef,
-      addedNodes: [node],
-      addedEdges: [edge],
-      completeness: 'COMPLETE' as const,
-      appliedLimits,
-    };
-    expect(decodeGraphNeighborhoodResultV1(neighborhood).centerRef.resourceId).toBe('entity-1');
-
+  it('decodes a conflict overlay result with its own identity', () => {
     const overlayResult = {
       schemaVersion: '1.0.0' as const,
       baseSnapshotId: 'snapshot-1',
@@ -411,7 +380,118 @@ describe('FE-P3-S3 frontend-knowledge-graph contracts', () => {
     };
     expect(decodeGraphOverlayResultV1(overlayResult).identity.overlayKind).toBe('CONFLICT');
   });
+});
 
+describe('operation 6: gap overlay (request)', () => {
+  it('enforces the KNOWLEDGE_GAP literal', () => {
+    const base = {
+      schemaVersion: '1.0.0' as const,
+      snapshotId: 'snapshot-1',
+      projectionRevision: 'proj-1',
+      filters: undefined,
+      limits: undefined,
+      expectedOverlayRevision: undefined,
+    };
+    expect(
+      decodeGraphKnowledgeGapOverlayRequestV1({ ...base, overlayKind: 'KNOWLEDGE_GAP' as const })
+        .overlayKind,
+    ).toBe('KNOWLEDGE_GAP');
+    expect(() =>
+      decodeGraphKnowledgeGapOverlayRequestV1({ ...base, overlayKind: 'CONFLICT' as const }),
+    ).toThrow(FrontendContractError);
+  });
+});
+
+describe('operation 7: recursive-impact overlay (request)', () => {
+  it('enforces the RECURSIVE_IMPACT literal and accepts a continuation token', () => {
+    const base = {
+      schemaVersion: '1.0.0' as const,
+      snapshotId: 'snapshot-1',
+      projectionRevision: 'proj-1',
+      filters: undefined,
+      limits: undefined,
+      expectedOverlayRevision: undefined,
+    };
+    const impact = decodeGraphRecursiveImpactOverlayRequestV1({
+      ...base,
+      overlayKind: 'RECURSIVE_IMPACT' as const,
+      continuationToken: 'tok',
+    });
+    expect(impact.overlayKind).toBe('RECURSIVE_IMPACT');
+    expect(impact.continuationToken).toBe('tok');
+  });
+});
+
+describe('operation 8: evidence detail (result)', () => {
+  it('decodes evidence detail and enforces masked empty-evidence rule', () => {
+    const detail = {
+      schemaVersion: '1.0.0' as const,
+      snapshotId: 'snapshot-1',
+      projectionRevision: 'proj-1',
+      targetRef: nodeRef,
+      evidence: [
+        {
+          schemaVersion: '1.0.0' as const,
+          sourceId: 'source-1',
+          sourceVersionId: 'source-version-1',
+          evidenceSpanId: 'span-1',
+          snippet: '...',
+        },
+      ],
+      accessMasking: 'VISIBLE' as const,
+    };
+    expect(decodeGraphEvidenceDetailResultV1(detail).evidence.length).toBe(1);
+    expect(() =>
+      decodeGraphEvidenceDetailResultV1({ ...detail, accessMasking: 'MASKED' as const }),
+    ).toThrow(FrontendContractError);
+  });
+});
+
+describe('operation 9: snapshot refresh (request)', () => {
+  it('enforces descriptor-based shape (no full request resend)', () => {
+    const refresh = {
+      schemaVersion: '1.0.0' as const,
+      snapshotId: 'snapshot-1',
+      projectionRevision: 'proj-1',
+      expectedSnapshotRevision: 'proj-2',
+    };
+    expect(decodeGraphSnapshotRefreshRequestV1(refresh).snapshotId).toBe('snapshot-1');
+    expect(() =>
+      decodeGraphSnapshotRefreshRequestV1({ ...refresh, viewKind: 'KNOWLEDGE_SEMANTIC' as const }),
+    ).toThrow(FrontendContractError);
+  });
+});
+
+describe('operation 10: deep-link restore (request + result)', () => {
+  it('decodes a restore request with selected node refs and strict unknown rejection', () => {
+    const request = {
+      schemaVersion: '1.0.0' as const,
+      snapshotId: 'snapshot-1',
+      projectionRevision: 'proj-1',
+      viewKind: 'KNOWLEDGE_SEMANTIC' as const,
+      overlayKinds: [] as const,
+      selectedNodeRefs: [nodeRef],
+      expectedSnapshotRevision: 'proj-2',
+    };
+    expect(decodeGraphRestoreRequestV1(request).selectedNodeRefs[0]?.resourceId).toBe('entity-1');
+    expect(() => decodeGraphRestoreRequestV1({ ...request, extraField: true })).toThrow(
+      FrontendContractError,
+    );
+  });
+
+  it('decodes a restore result carrying the snapshot and focus refs', () => {
+    const result = {
+      schemaVersion: '1.0.0' as const,
+      snapshot: { ...snapshotBase, nodes: [node] },
+      focusRefs: [nodeRef],
+    };
+    const decoded = decodeGraphRestoreResultV1(result);
+    expect(decoded.focusRefs[0]?.resourceId).toBe('entity-1');
+    expect(decoded.snapshot.nodes[0]?.nodeId).toBe('node-1');
+  });
+});
+
+describe('typed failure mapping across all operations', () => {
   it('maps graph failures to typed normalized codes', () => {
     expect(graphFailureApiCode('CONTINUATION_EXPIRED')).toBe('GRAPH_CONTINUATION_EXPIRED');
     expect(graphFailureApiCode('SNAPSHOT_STALE')).toBe('GRAPH_SNAPSHOT_STALE');

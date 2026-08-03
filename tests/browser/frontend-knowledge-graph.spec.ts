@@ -500,3 +500,82 @@ test('AC-24: a failed snapshot read renders the non-success announcement, retrie
   await expect(page.getByRole('alert').first()).toContainText('그래프를 사용할 수 없습니다.');
   expect(writeRequests).toEqual([]);
 });
+
+test('AC-15: non-success health/completeness states render their frozen announcements', async ({
+  page,
+}) => {
+  const states: ReadonlyArray<{
+    readonly name: string;
+    readonly health: string;
+    readonly completeness: string;
+    readonly truncation?: unknown;
+    readonly announcement: string;
+  }> = [
+    {
+      name: 'stale',
+      health: 'STALE',
+      completeness: 'COMPLETE',
+      announcement: '스냅샷이 오래되었습니다. 새로 고침이 필요합니다.',
+    },
+    {
+      name: 'rebuilding',
+      health: 'REBUILDING',
+      completeness: 'COMPLETE',
+      announcement: '투영이 재구축 중입니다.',
+    },
+    {
+      name: 'partial',
+      health: 'COMPLETE',
+      completeness: 'PARTIAL',
+      announcement: '결과가 부분적입니다.',
+    },
+    {
+      name: 'truncated',
+      health: 'COMPLETE',
+      completeness: 'TRUNCATED',
+      truncation: {
+        schemaVersion: '1.0.0',
+        truncated: true,
+        reason: 'MAX_NODES',
+        omittedNodeCount: 5,
+        omittedEdgeCount: 3,
+      },
+      announcement: '결과가 잘렸습니다: 노드 5개, 엣지 3개 생략',
+    },
+    {
+      name: 'unavailable',
+      health: 'UNAVAILABLE',
+      completeness: 'COMPLETE',
+      announcement: '그래프를 사용할 수 없습니다.',
+    },
+    {
+      name: 'access-restricted',
+      health: 'ACCESS_RESTRICTED',
+      completeness: 'COMPLETE',
+      announcement: '그래프 접근이 제한되었습니다.',
+    },
+  ];
+
+  for (const state of states) {
+    await stubSessionAndShell(page);
+    await page.route('**/product-api/frontend/knowledge/graph/snapshot', async (route) => {
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ...graphSnapshot,
+          health: state.health,
+          completeness: state.completeness,
+          ...(state.truncation ? { truncation: state.truncation } : {}),
+        }),
+      });
+    });
+
+    await page.goto('/knowledge/graph');
+    await expect(page.getByRole('heading', { name: 'Semantic Graph', level: 1 })).toBeVisible();
+    // Multiple live regions exist (visually-hidden live region, loading
+    // state, notes); scope to the status element carrying the announcement.
+    await expect(
+      page.getByRole('status').filter({ hasText: state.announcement }),
+    ).toBeVisible();
+  }
+});

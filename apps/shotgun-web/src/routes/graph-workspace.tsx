@@ -24,8 +24,10 @@ import {
   GRAPH_ANNOUNCEMENTS,
   GRAPH_BASE_VIEWS,
   GRAPH_OVERLAY_KINDS,
+  completenessAnnouncement,
   createInitialGraphWorkspaceState,
   failureAnnouncement,
+  healthAnnouncement,
   reduceGraphWorkspaceState,
   type GraphViewKind,
 } from '../knowledge/graph-workspace-state.js';
@@ -389,19 +391,21 @@ export const GraphWorkspace = () => {
         </div>
       </div>
 
-      {result.health !== 'COMPLETE' ? (
+      {healthAnnouncement(result.health) ? (
         <p role="status" className="graph-health-note">
-          {result.health === 'STALE'
-            ? GRAPH_ANNOUNCEMENTS.STALE
-            : result.health === 'REBUILDING'
-              ? GRAPH_ANNOUNCEMENTS.REBUILDING
-              : `투영 상태: ${result.health}`}
+          {healthAnnouncement(result.health)}
         </p>
       ) : null}
 
       {result.truncation ? (
         <p role="status" className="graph-truncation-note">
           {GRAPH_ANNOUNCEMENTS.TRUNCATION(result.truncation)}
+        </p>
+      ) : null}
+
+      {completenessAnnouncement(result.completeness) ? (
+        <p role="status" className="graph-completeness-note">
+          {completenessAnnouncement(result.completeness)}
         </p>
       ) : null}
 

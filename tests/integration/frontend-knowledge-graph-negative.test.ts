@@ -319,6 +319,9 @@ describe('FE-P3-S3 negative test matrix (implementation request section 7)', () 
       '/product-api/frontend/knowledge/graph/canonical',
       '/product-api/frontend/knowledge/graph/approve',
       '/product-api/frontend/knowledge/graph/action/execute',
+      // AC-09: a merge-like write is equally unreachable — no route exists.
+      '/product-api/frontend/knowledge/graph/merge',
+      '/product-api/frontend/knowledge/graph/nodes/merge',
     ]) {
       const response = await app.server.inject({
         method: 'POST',

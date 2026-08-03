@@ -2,6 +2,7 @@ import type {
   GraphBaseViewKindV1,
   GraphNodeReferenceV1,
   GraphOverlayKindV1,
+  GraphProjectionHealthV1,
   GraphResultCompletenessV1,
   GraphTruncationStateV1,
   GraphUnavailableReasonV1,
@@ -117,6 +118,24 @@ export const GRAPH_ANNOUNCEMENTS = {
 export const completenessAnnouncement = (completeness: GraphResultCompletenessV1): string => {
   if (completeness === 'TRUNCATED') return '결과가 잘렸습니다.';
   if (completeness === 'PARTIAL') return GRAPH_ANNOUNCEMENTS.PARTIAL;
+  return '';
+};
+
+/**
+ * AC-15: exact health discriminant to frozen non-success announcement. Every
+ * `GraphProjectionHealthV1` value (except COMPLETE) maps to the frozen
+ * announcement string so the workspace renders the discriminant, not a
+ * generic fallback.
+ */
+export const healthAnnouncement = (health: GraphProjectionHealthV1): string => {
+  if (health === 'COMPLETE') return '';
+  if (health === 'STALE') return GRAPH_ANNOUNCEMENTS.STALE;
+  if (health === 'REBUILDING') return GRAPH_ANNOUNCEMENTS.REBUILDING;
+  if (health === 'UNAVAILABLE') return GRAPH_ANNOUNCEMENTS.UNAVAILABLE;
+  if (health === 'ACCESS_RESTRICTED') return GRAPH_ANNOUNCEMENTS.ACCESS_RESTRICTED;
+  if (health === 'PARTIAL') return GRAPH_ANNOUNCEMENTS.PARTIAL;
+  if (health === 'TRUNCATED') return '결과가 잘렸습니다.';
+  if (health === 'FAILED') return GRAPH_ANNOUNCEMENTS.UNAVAILABLE;
   return '';
 };
 

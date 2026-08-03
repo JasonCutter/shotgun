@@ -9,13 +9,14 @@ governing_adr: ADR-127
 governing_contract: docs/architecture/contracts/snapshots/frontend-phase-3-section-3/frontend-phase-3-section-3-contract-snapshot-260804001.md
 implementation_request: docs/implementation/frontend-phase-3-section-3-implementation-request-260804001.md
 branch: codex/frontend-phase-3-section-3-implementation
-exact_head: 58641b36962023cdb12c0d51040f4d6b5fdb4f14
+exact_head: 82d43b77221b6e1ce056a2b69ffa64a6a014ca86
 pull_request: https://github.com/JasonCutter/shotgun/pull/60
 tracking_issue: 58
 final_check_exit_code: 0
 git_diff_check: PASS
-ci_run_number: 457
-ci_run_id: 30842933740
+npm_audit_high: 0
+ci_run_number: 464
+ci_run_id: 30862951095
 completion_approval: NOT_AUTHORIZED
 ready: NOT_AUTHORIZED
 merge: NOT_AUTHORIZED
@@ -29,17 +30,20 @@ production_verification: NOT_RUN
 
 This report records the completed Product implementation of FE-P3-S3 on
 branch `codex/frontend-phase-3-section-3-implementation` (Draft PR #60, issue
-#58), under the approved Implementation Request revision 5. Exact head:
-`58641b36962023cdb12c0d51040f4d6b5fdb4f14`. Completion/ready/merge remain
-`NOT_AUTHORIZED`; this is the implementation completion report, not a Section
-completion declaration.
+#58), under the approved Implementation Request revision 5. Verified Product
+head: `82d43b77221b6e1ce056a2b69ffa64a6a014ca86`. The round-2 Frozen-AC
+completion work (audit remediation, managed-schema reset fix, AC-05..AC-29
+objective evidence, migration rollback, performance/lifecycle suites) is
+incorporated. Completion/ready/merge remain `NOT_AUTHORIZED`; this is the
+implementation completion report, not a Section completion declaration.
+AC-31 is `BLOCKED — PENDING_USER_COMPLETION_APPROVAL`.
 
 ## 2. Implementation-request completion status (A–G)
 
 - **A (Contracts)**: COMPLETE — `packages/contracts/src/frontend-knowledge-graph.ts`
   (all frozen V1 shapes + strict decoders),
-  `frontend-knowledge-graph-failures.ts` (13 reasons → typed failures), 15
-  contract tests PASS.
+  `frontend-knowledge-graph-failures.ts` (13 reasons → typed failures), 20
+  contract tests organized as one suite per read operation (AC-28).
 - **B (Routes/client)**: COMPLETE — ten POST routes under
   `/product-api/frontend/knowledge/graph/*` with guard/CSRF/decoder pattern;
   `FrontendKnowledgeGraphClient` with ten typed methods, strict identity
@@ -47,24 +51,29 @@ completion declaration.
 - **C (Migration/persistence)**: COMPLETE — migration `026` creates
   `frontend_knowledge_graph` (snapshot-context immutable, projection/overlay
   health, continuation, `prune_expired`); in-memory and PostgreSQL adapters
-  pass the 4-store parity suite (2/2).
+  pass the 4-store parity suite (2/2); apply/rollback DB test proves reverse
+  DDL (AC-29-l).
 - **D (Domain)**: COMPLETE — `createGraphReadDomain` implements all ten
   operations with server scope enforcement, descriptor-based snapshot context,
-  limits clamping, continuation binding validation, overlay health, and
-  descriptor-based refresh/restore.
+  limits clamping, continuation binding validation (AC-05), overlay health,
+  bounded neighborhood (AC-23), and descriptor-based refresh/restore.
 - **E (React workspace)**: COMPLETE — `/knowledge/graph` guarded route,
   browser state machine (ADR-119), scope-phase/snapshot-phase React Query keys,
   Cytoscape presentation adapter, list/table/path fallback views with
   information-equivalent accessible tuples, deep-link restoration, recovery and
-  failure states.
+  failure states, per-state frozen announcements (AC-15), and the correction
+  action that navigates to the Knowledge Editor with a typed seed (AC-25).
 - **F (Negative matrix)**: COMPLETE — 8/8 negative tests per implementation
   request section 7 (forged scope, over-cap clamp, truncation, continuation
   expiry/mismatch, hidden resources, overlay without base, duplicate overlay
-  kind, no write endpoints).
-- **G (Accessibility/performance/completion)**: PARTIAL — reduced-motion E2E,
-  frozen keyboard/announcement strings, deep-link focus E2E PASS; axe scan,
-  200% zoom, AC-23 performance baseline and remaining per-reason browser tests
-  are `NOT_RUN` (see verification record).
+  kind, no write endpoints including `/merge`).
+- **G (Accessibility/performance/completion)**: COMPLETE — reduced-motion and
+  200% zoom E2E (AC-22), frozen keyboard matrix (AC-20), axe zero-critical scan
+  (AC-21), frozen announcement strings (AC-15/21), deep-link focus restore +
+  refresh focus retention (AC-17), AC-23 performance/lifecycle browser suite
+  (4/4) and incremental expansion clamp (2/2 integration), AC-24 typed failure
+  suite (46/46) and per-reason announcements, AC-09 no-merge negative suite,
+  AC-25 correction navigation, AC-28 per-operation contract suites.
 
 ## 3. Final graph semantic model and decisions
 
@@ -77,33 +86,41 @@ completion declaration.
   on AC-13/16/27/31.
 - OSS boundary: Cytoscape 3.34.0 (already declared) is used as a
   presentation-only adapter behind `graph-canvas.tsx`; Stage 9/NetworkX
-  identifiers are never exposed as FE-P3-S3 Canonical IDs.
+  identifiers are never exposed as FE-P3-S3 Canonical IDs. `@axe-core/playwright`
+  (4.12.1) is used only by the E2E accessibility scan with audit-clean
+  overrides.
 
 ## 4. Operation contract count
 
 10 operations (snapshot, neighborhood, path, path description, conflict
 overlay, gap overlay, recursive-impact overlay, evidence detail, snapshot
-refresh, restore).
+refresh, restore) — each covered by an explicit contract suite (AC-28).
 
 ## 5. Focused-check and final gate results
 
-- Contract 15/15; client unit 3/3; product-api integration 4/4; negative 8/8;
-  postgres parity 2/2 (combined 30 focused tests PASS).
-- Frontend: 14 files / 54 tests PASS; frontend typecheck PASS.
-- Browser E2E graph: 5/5 PASS.
-- Root `npm run check` exit code: `0`; `git diff --check`: PASS.
-- CI at exact head `58641b369`: run `#457` (`30842933740`) — Frontend `PASS`;
-  Quality `FAIL` only at the pre-existing external "Audit dependencies" step
-  (`brace-expansion` high, `postcss` moderate in the existing lockfile; not
-  introduced by FE-P3-S3 and identical to the docs-only approval-sync head);
-  Required Gates `FAIL` (cascade). Evidence-publication head `f53ce5b8` run
-  `#458` (`30843211639`) is expected to show the same audit-only result.
+- Contract 20/20; AC-24 failures 46/46; AC-09 no-merge 4/4; AC-15 states
+  24/24; AC-25 correction 8/8; AC-05 continuation 3/3; AC-23 expansion 2/2;
+  frozen-AC integration 6/6; negative 8/8; migration rollback 1/1.
+- Database suite 28 files / 146 tests PASS; frontend app 54/54 PASS;
+  frontend typecheck PASS.
+- Browser E2E graph 14/14 PASS; performance/lifecycle 4/4 PASS.
+- Root `npm run check`: all steps green (unit 377/377, contract 269/269,
+  integration 89/89, architecture, stage12, secret scan, OSS verify 68
+  decisions). Locally the root suites run serially because parallel workers
+  time out pre-existing heavy tests under machine load; the same suites pass
+  in parallel on CI at the exact head.
+- `npm audit --audit-level=high`: 0 vulnerabilities; `git diff --check`: PASS.
+- CI at verified Product head `82d43b772`: run `#464` (`30862951095`) —
+  Frontend `success`, Quality `success` (audit green), Required Gates
+  `success` (AC-30 PASS).
 
 ## 6. Working-tree status and exclusions
 
 Working tree clean. Exclusions per implementation request section 11:
 Canonical graph writes, relation editing, Entity merge, Review/Approval/Commit,
 User Directive Proposal, external Action execution, `ACTION_CANDIDATE`, FE-P4,
-Yjs/CRDT, new runtime dependencies, deployment, production verification. No
-Ready or Merge without separate user authorization. PR #60 stays OPEN/DRAFT;
-PR #59 stays OPEN/DRAFT.
+Yjs/CRDT, deployment, production verification. Server-side seed registration
+and DraftChangeSet materialization remain governed by FE-P2-S2 Draft
+boundaries (ADR-126) and are outside FE-P3-S3. No Ready or Merge without
+separate user authorization. PR #60 stays OPEN/DRAFT; PR #59 stays OPEN/DRAFT.
+AC-31 remains `BLOCKED` until user completion approval.

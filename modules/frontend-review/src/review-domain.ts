@@ -78,11 +78,20 @@ export const applySensitivityMasking = (
   });
   // A visible Item that depends on hidden content is projected unavailable
   // (masked) without leaking the hidden identity (Contract Snapshot §5).
+  // REQUIRES is directional: from = prerequisite, to = dependent. A visible
+  // dependent (to) whose hidden prerequisite (from) is removed is
+  // unavailable; a hidden dependent over a visible prerequisite does not
+  // make the visible Item unavailable. ATOMIC_WITH / CONFLICTS_WITH are
+  // symmetric, so either hidden endpoint makes the visible endpoint
+  // unavailable.
   const touchesHidden = new Set<string>();
   for (const dependency of context.dependencies) {
     const fromVisible = visible.has(dependency.fromReviewItemId);
     const toVisible = visible.has(dependency.toReviewItemId);
-    if (fromVisible !== toVisible) {
+    if (fromVisible === toVisible) continue;
+    if (dependency.kind === 'REQUIRES') {
+      if (!fromVisible && toVisible) touchesHidden.add(dependency.toReviewItemId);
+    } else {
       if (fromVisible) touchesHidden.add(dependency.fromReviewItemId);
       if (toVisible) touchesHidden.add(dependency.toReviewItemId);
     }

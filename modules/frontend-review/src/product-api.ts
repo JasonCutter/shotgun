@@ -1373,15 +1373,14 @@ export class FrontendReviewProductCoordinator {
         }
         // Exact produced-revision recovery: resolve the immutable Context
         // revision the original command wrote against, never the current one,
-        // so a later revalidate/decision cannot change what is recovered.
-        const revisionNumber =
-          contextRef.resourceRevision === undefined
-            ? undefined
-            : Number(contextRef.resourceRevision);
+        // so a later revalidate/decision cannot change what is recovered. The
+        // produced revision is required recovery evidence; a completed
+        // outcome without a valid positive revision is never recoverable.
+        const revisionNumber = Number(contextRef.resourceRevision);
         const context =
-          revisionNumber === undefined
-            ? (await repositories.contexts.findCurrent(contextRef.resourceId))?.context
-            : await repositories.contexts.findRevision(contextRef.resourceId, revisionNumber);
+          Number.isSafeInteger(revisionNumber) && revisionNumber > 0
+            ? await repositories.contexts.findRevision(contextRef.resourceId, revisionNumber)
+            : undefined;
         if (!context) {
           reviewFailure('OUTCOME_NOT_FOUND', 'The Review context revision is missing.');
         }
@@ -1483,15 +1482,13 @@ export class FrontendReviewProductCoordinator {
         if (!commentRef) {
           reviewFailure('OUTCOME_NOT_FOUND', 'The comment resource is missing from the outcome.');
         }
-        // Exact produced-revision recovery (see recordDecisions path).
-        const revisionNumber =
-          contextRef.resourceRevision === undefined
-            ? undefined
-            : Number(contextRef.resourceRevision);
+        // Exact produced-revision recovery (see recordDecisions path). The
+        // produced revision is required evidence; never fall back to current.
+        const revisionNumber = Number(contextRef.resourceRevision);
         const context =
-          revisionNumber === undefined
-            ? (await repositories.contexts.findCurrent(contextRef.resourceId))?.context
-            : await repositories.contexts.findRevision(contextRef.resourceId, revisionNumber);
+          Number.isSafeInteger(revisionNumber) && revisionNumber > 0
+            ? await repositories.contexts.findRevision(contextRef.resourceId, revisionNumber)
+            : undefined;
         if (!context) {
           reviewFailure('OUTCOME_NOT_FOUND', 'The Review context revision is missing.');
         }
@@ -1532,19 +1529,13 @@ export class FrontendReviewProductCoordinator {
             'The Review context resource is missing from the outcome.',
           );
         }
-        const record = await repositories.contexts.findCurrent(contextRef.resourceId);
-        if (!record) {
-          reviewFailure('OUTCOME_NOT_FOUND', 'The Review context is missing.');
-        }
-        // Exact produced-revision recovery (see recordDecisions path).
-        const revisionNumber =
-          contextRef.resourceRevision === undefined
-            ? undefined
-            : Number(contextRef.resourceRevision);
+        // Exact produced-revision recovery (see recordDecisions path). The
+        // produced revision is required evidence; never fall back to current.
+        const revisionNumber = Number(contextRef.resourceRevision);
         const context =
-          revisionNumber === undefined
-            ? record.context
-            : await repositories.contexts.findRevision(contextRef.resourceId, revisionNumber);
+          Number.isSafeInteger(revisionNumber) && revisionNumber > 0
+            ? await repositories.contexts.findRevision(contextRef.resourceId, revisionNumber)
+            : undefined;
         if (!context) {
           reviewFailure('OUTCOME_NOT_FOUND', 'The Review context revision is missing.');
         }
@@ -1723,9 +1714,13 @@ export class FrontendReviewProductCoordinator {
         );
       }
       if (outcome.outcomeState === 'REJECTED') {
+        // Idempotent replay of a rejected Review command must never re-expose
+        // the stored rejection detail (it may reference content from a scope
+        // that can no longer read it): only the generic code and a fixed safe
+        // message are surfaced (fail-closed).
         throw new ReviewCommandError(
           (outcome.rejection?.code as ErrorCode) ?? 'REVIEW_CONTEXT_STALE',
-          outcome.rejection?.message ?? 'The Review command was rejected.',
+          'The Review command was rejected.',
         );
       }
       reviewFailure(

@@ -722,11 +722,11 @@ describe('FE-P4-S1 Review payload masking, write and recovery fail-closed (AC-21
             {
               schemaVersion: '1.0.0',
               dependencyId: 'dep-1',
-              fromReviewItemId: 'item-1',
-              toReviewItemId: 'item-2',
+              fromReviewItemId: 'item-2',
+              toReviewItemId: 'item-1',
               kind: 'REQUIRES',
               reasonCode: 'OPERATION_ORDER',
-              description: 'Item 2 requires item 1.',
+              description: 'Item 1 requires item 2.',
               availability: 'AVAILABLE',
             },
           ],
@@ -792,11 +792,11 @@ describe('FE-P4-S1 Review payload masking, write and recovery fail-closed (AC-21
             {
               schemaVersion: '1.0.0',
               dependencyId: 'dep-1',
-              fromReviewItemId: 'item-1',
-              toReviewItemId: 'item-2',
+              fromReviewItemId: 'item-2',
+              toReviewItemId: 'item-1',
               kind: 'REQUIRES',
               reasonCode: 'OPERATION_ORDER',
-              description: 'Item 2 requires item 1.',
+              description: 'Item 1 requires item 2.',
               availability: 'AVAILABLE',
             },
           ],
@@ -1161,5 +1161,258 @@ describe('FE-P4-S1 Review payload masking, write and recovery fail-closed (AC-21
     expect(resolved.outcome).toBe('REJECTED');
     expect(resolved.rejection?.code).toBe('REVIEW_CONTEXT_STALE');
     expect(resolved.rejection?.message).toBe('The Review command was rejected.');
+  });
+
+  it('does not re-expose the stored detail when a rejected mutation is replayed', async () => {
+    const store = new InMemoryFrontendReviewStore();
+    const gateway = new InMemoryFrontendCommandGateway();
+    const matchingAdapter: ReviewTargetAdapterPort = {
+      ...makeStubAdapter(),
+      async findSourceTarget() {
+        return {
+          reviewResourceId: 'review-resource-1',
+          targetId: 'draft-1',
+          targetRevision: '3',
+          targetDigest: 'draft-digest',
+          targetLabel: 'Draft 1',
+          resourceProjectId: PROJECT,
+          effectiveProjectId: PROJECT,
+          updatedAt: '2026-08-04T10:00:00.000Z',
+          source: 'FE_P3_S2_SUBMISSION',
+        };
+      },
+      async currentEvidenceDigest() {
+        return undefined;
+      },
+    };
+    const coordinator = new FrontendReviewProductCoordinator(
+      store,
+      gateway,
+      [matchingAdapter],
+      fixedNow,
+    );
+    seedRecord(store, makeRecord(makeContext()));
+    const recordRequest = {
+      schemaVersion: '1.0.0' as const,
+      clientRequestId: 'client-rejected-replay',
+      idempotencyKey: 'idem-rejected-replay',
+      reviewContextId: 'context-1',
+      expectedContextRevision: 2,
+      expectedTargetRevision: '3',
+      expectedTargetDigest: 'draft-digest',
+      itemDecisions: [
+        {
+          schemaVersion: '1.0.0',
+          reviewItemId: 'item-1',
+          intent: 'APPROVE',
+          reason: 'OK.',
+        },
+      ] as const,
+    };
+    await expect(coordinator.recordReviewDecisions(scope, recordRequest)).rejects.toMatchObject({
+      apiCode: 'REVIEW_CONTEXT_STALE',
+    });
+    // Replaying the same rejected request must surface only the fixed safe
+    // message, never the stored detailed rejection.
+    await expect(coordinator.recordReviewDecisions(scope, recordRequest)).rejects.toMatchObject({
+      apiCode: 'REVIEW_CONTEXT_STALE',
+      message: 'The Review command was rejected.',
+    });
+  });
+
+  it('refuses to recover a completed outcome whose Context revision is missing', async () => {
+    const store = new InMemoryFrontendReviewStore();
+    const gateway = new InMemoryFrontendCommandGateway();
+    const matchingAdapter: ReviewTargetAdapterPort = {
+      ...makeStubAdapter(),
+      async findSourceTarget() {
+        return {
+          reviewResourceId: 'review-resource-1',
+          targetId: 'draft-1',
+          targetRevision: '3',
+          targetDigest: 'draft-digest',
+          targetLabel: 'Draft 1',
+          resourceProjectId: PROJECT,
+          effectiveProjectId: PROJECT,
+          updatedAt: '2026-08-04T10:00:00.000Z',
+          source: 'FE_P3_S2_SUBMISSION',
+        };
+      },
+      async currentEvidenceDigest() {
+        return undefined;
+      },
+    };
+    const coordinator = new FrontendReviewProductCoordinator(
+      store,
+      gateway,
+      [matchingAdapter],
+      fixedNow,
+    );
+    seedRecord(store, makeRecord(makeContext()));
+    const recordRequest = {
+      schemaVersion: '1.0.0' as const,
+      clientRequestId: 'client-missing-revision',
+      idempotencyKey: 'idem-missing-revision',
+      reviewContextId: 'context-1',
+      expectedContextRevision: 1,
+      expectedTargetRevision: '3',
+      expectedTargetDigest: 'draft-digest',
+      itemDecisions: [
+        {
+          schemaVersion: '1.0.0',
+          reviewItemId: 'item-1',
+          intent: 'APPROVE',
+          reason: 'OK.',
+        },
+      ] as const,
+    };
+    await coordinator.recordReviewDecisions(scope, recordRequest);
+    // Artificially drop the produced Context revision from the ledger outcome;
+    // exact recovery must then fail closed instead of substituting current.
+    const ledger = gateway as unknown as {
+      byClientRequestId: Map<
+        string,
+        {
+          outcome: {
+            clientRequestId: string;
+            producedResources: {
+              resourceKind: string;
+              resourceId: string;
+              resourceRevision?: string;
+            }[];
+          };
+        }
+      >;
+    };
+    const entry = [...ledger.byClientRequestId.values()].find(
+      (record) => record.outcome.clientRequestId === 'client-missing-revision',
+    );
+    expect(entry).toBeDefined();
+    const contextResource = entry?.outcome.producedResources.find(
+      (resource) => resource.resourceKind === 'frontend.review.context',
+    );
+    expect(contextResource).toBeDefined();
+    if (contextResource) delete contextResource.resourceRevision;
+    await expect(
+      coordinator.resolveCommandOutcome(scope, {
+        schemaVersion: '1.0.0',
+        clientRequestId: 'client-missing-revision',
+        idempotencyKey: 'idem-missing-revision',
+        semanticDigest: frontendReviewRecordDecisionsDigest(recordRequest),
+      }),
+    ).rejects.toMatchObject({ apiCode: 'OUTCOME_NOT_FOUND' });
+  });
+
+  it('keeps a visible REQUIRES prerequisite usable when the hidden Item depends on it', async () => {
+    const store = new InMemoryFrontendReviewStore();
+    const gateway = new InMemoryFrontendCommandGateway();
+    const matchingAdapter: ReviewTargetAdapterPort = {
+      ...makeStubAdapter(),
+      async findSourceTarget() {
+        return {
+          reviewResourceId: 'review-resource-1',
+          targetId: 'draft-1',
+          targetRevision: '3',
+          targetDigest: 'draft-digest',
+          targetLabel: 'Draft 1',
+          resourceProjectId: PROJECT,
+          effectiveProjectId: PROJECT,
+          updatedAt: '2026-08-04T10:00:00.000Z',
+          source: 'FE_P3_S2_SUBMISSION',
+        };
+      },
+      async currentEvidenceDigest() {
+        return undefined;
+      },
+    };
+    const coordinator = new FrontendReviewProductCoordinator(
+      store,
+      gateway,
+      [matchingAdapter],
+      fixedNow,
+    );
+    // REQUIRES from = prerequisite, to = dependent: item-1 (visible) is the
+    // prerequisite of item-2 (hidden). The visible Item is not unavailable.
+    seedRecord(
+      store,
+      makeRecord(
+        makeContext({
+          items: [makeItem(1, 'NORMAL'), makeItem(2, 'RESTRICTED')],
+          dependencies: [
+            {
+              schemaVersion: '1.0.0',
+              dependencyId: 'dep-1',
+              fromReviewItemId: 'item-1',
+              toReviewItemId: 'item-2',
+              kind: 'REQUIRES',
+              reasonCode: 'OPERATION_ORDER',
+              description: 'Item 2 requires item 1.',
+              availability: 'AVAILABLE',
+            },
+          ],
+        }),
+      ),
+    );
+    const lowClearanceScope: FrontendReviewScopeV1 = { ...scope, sensitivityClearance: 'public' };
+    const read = await coordinator.getReviewContext(lowClearanceScope, {
+      schemaVersion: '1.0.0',
+      reviewContextId: 'context-1',
+      contextRevision: 1,
+    });
+    const visibleItem = read.context.items.find((item) => item.reviewItemId === 'item-1');
+    expect(visibleItem?.accessMasking).toBe('VISIBLE');
+    // The visible prerequisite remains approvable.
+    await expect(
+      coordinator.recordReviewDecisions(lowClearanceScope, {
+        schemaVersion: '1.0.0',
+        clientRequestId: 'client-visible-prereq',
+        idempotencyKey: 'idem-visible-prereq',
+        reviewContextId: 'context-1',
+        expectedContextRevision: 1,
+        expectedTargetRevision: '3',
+        expectedTargetDigest: 'draft-digest',
+        itemDecisions: [
+          {
+            schemaVersion: '1.0.0',
+            reviewItemId: 'item-1',
+            intent: 'APPROVE',
+            reason: 'OK.',
+          },
+        ],
+      }),
+    ).resolves.toMatchObject({ outcome: 'COMPLETED' });
+  });
+
+  it('projects a visible ATOMIC_WITH endpoint joined to hidden content as unavailable', async () => {
+    const { store, coordinator } = buildCoordinator();
+    seedRecord(
+      store,
+      makeRecord(
+        makeContext({
+          items: [makeItem(1, 'NORMAL'), makeItem(2, 'RESTRICTED')],
+          dependencies: [
+            {
+              schemaVersion: '1.0.0',
+              dependencyId: 'dep-atomic',
+              fromReviewItemId: 'item-1',
+              toReviewItemId: 'item-2',
+              kind: 'ATOMIC_WITH',
+              reasonCode: 'ATOMICITY',
+              description: 'Item 1 and item 2 are atomic.',
+              availability: 'AVAILABLE',
+            },
+          ],
+        }),
+      ),
+    );
+    const lowClearanceScope: FrontendReviewScopeV1 = { ...scope, sensitivityClearance: 'public' };
+    const read = await coordinator.getReviewContext(lowClearanceScope, {
+      schemaVersion: '1.0.0',
+      reviewContextId: 'context-1',
+      contextRevision: 1,
+    });
+    const visibleItem = read.context.items.find((item) => item.reviewItemId === 'item-1');
+    expect(visibleItem?.accessMasking).toBe('MASKED');
+    expect(read.context.dependencies).toHaveLength(0);
   });
 });

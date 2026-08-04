@@ -460,4 +460,250 @@ describe('FE-P4-S1 Review bounded-contract enforcement (§18, AC-29)', () => {
       coordinator.listReviewQueue(scope, { schemaVersion: '1.0.0', pageSize: 50 }),
     ).rejects.toMatchObject({ apiCode: 'VALIDATION_FAILED' });
   });
+
+  it('rejects reading an already-stored over-limit Context (read-time bound)', async () => {
+    const { store, coordinator } = buildCoordinator();
+    seedRecord(
+      store,
+      makeRecord(
+        makeContext({
+          items: Array.from({ length: 201 }, (_, index) => makeItem(index, 'NORMAL')),
+        }),
+      ),
+    );
+    await expect(
+      coordinator.getReviewContext(scope, {
+        schemaVersion: '1.0.0',
+        reviewContextId: 'context-1',
+        contextRevision: 1,
+      }),
+    ).rejects.toMatchObject({ apiCode: 'VALIDATION_FAILED' });
+  });
+});
+
+describe('FE-P4-S1 Review payload masking, write and recovery fail-closed (AC-21, AC-22)', () => {
+  it('filters decisions and comments referencing hidden Items from a Context read', async () => {
+    const { store, coordinator } = buildCoordinator();
+    const context = makeContext({
+      items: [makeItem(1, 'NORMAL'), makeItem(2, 'RESTRICTED')],
+    });
+    seedRecord(store, makeRecord(context));
+    store.decisions.push(
+      {
+        schemaVersion: '1.0.0',
+        decisionId: 'decision-visible',
+        reviewContextId: 'context-1',
+        contextRevision: 1,
+        reviewItemId: 'item-1',
+        intent: 'APPROVE',
+        reason: 'Visible item approved.',
+        decidedBy: { schemaVersion: '1.0.0', principalId: 'principal-1', actorId: 'principal-1' },
+        decidedAt: '2026-08-04T11:00:00.000Z',
+        terminal: true,
+      },
+      {
+        schemaVersion: '1.0.0',
+        decisionId: 'decision-hidden',
+        reviewContextId: 'context-1',
+        contextRevision: 1,
+        reviewItemId: 'item-2',
+        intent: 'REJECT',
+        reason: 'Hidden item rejected.',
+        decidedBy: { schemaVersion: '1.0.0', principalId: 'principal-1', actorId: 'principal-1' },
+        decidedAt: '2026-08-04T11:05:00.000Z',
+        terminal: true,
+      },
+    );
+    const lowClearanceScope: FrontendReviewScopeV1 = { ...scope, sensitivityClearance: 'public' };
+    const read = await coordinator.getReviewContext(lowClearanceScope, {
+      schemaVersion: '1.0.0',
+      reviewContextId: 'context-1',
+      contextRevision: 1,
+    });
+    expect(read.context.items.map((item) => item.reviewItemId)).toEqual(['item-1']);
+    expect(read.decisions.map((decision) => decision.decisionId)).toEqual(['decision-visible']);
+  });
+
+  it('filters dependencies pointing to hidden Items from Item detail', async () => {
+    const { store, coordinator } = buildCoordinator();
+    seedRecord(
+      store,
+      makeRecord(
+        makeContext({
+          items: [makeItem(1, 'NORMAL'), makeItem(2, 'RESTRICTED')],
+          dependencies: [
+            {
+              schemaVersion: '1.0.0',
+              dependencyId: 'dep-1',
+              fromReviewItemId: 'item-1',
+              toReviewItemId: 'item-2',
+              kind: 'REQUIRES',
+              reasonCode: 'OPERATION_ORDER',
+              description: 'Item 2 requires item 1.',
+              availability: 'AVAILABLE',
+            },
+          ],
+        }),
+      ),
+    );
+    const lowClearanceScope: FrontendReviewScopeV1 = { ...scope, sensitivityClearance: 'public' };
+    const detail = await coordinator.getReviewItemDetail(lowClearanceScope, {
+      schemaVersion: '1.0.0',
+      reviewContextId: 'context-1',
+      contextRevision: 1,
+      reviewItemId: 'item-1',
+    });
+    expect(detail.dependencies).toHaveLength(0);
+  });
+
+  it('rejects a comment write to a hidden Item (fail-closed)', async () => {
+    const { store, coordinator } = buildCoordinator();
+    seedRecord(
+      store,
+      makeRecord(
+        makeContext({
+          items: [makeItem(1, 'RESTRICTED')],
+        }),
+      ),
+    );
+    const lowClearanceScope: FrontendReviewScopeV1 = { ...scope, sensitivityClearance: 'public' };
+    await expect(
+      coordinator.addReviewComment(lowClearanceScope, {
+        schemaVersion: '1.0.0',
+        clientRequestId: 'client-comment-hidden',
+        idempotencyKey: 'idem-comment-hidden',
+        reviewContextId: 'context-1',
+        contextRevision: 1,
+        reviewItemId: 'item-1',
+        comment: 'Hidden item comment.',
+      }),
+    ).rejects.toMatchObject({ apiCode: 'REVIEW_ITEM_NOT_FOUND' });
+  });
+
+  it('rejects a decision write to a hidden Item (fail-closed)', async () => {
+    const store = new InMemoryFrontendReviewStore();
+    const gateway = new InMemoryFrontendCommandGateway();
+    // The source adapter returns a matching target so the decision flow
+    // reaches the item-level sensitivity check.
+    const matchingAdapter: ReviewTargetAdapterPort = {
+      ...makeStubAdapter(),
+      async findSourceTarget() {
+        return {
+          reviewResourceId: 'review-resource-1',
+          targetId: 'draft-1',
+          targetRevision: '3',
+          targetDigest: 'draft-digest',
+          targetLabel: 'Draft 1',
+          resourceProjectId: PROJECT,
+          effectiveProjectId: PROJECT,
+          updatedAt: '2026-08-04T10:00:00.000Z',
+          source: 'FE_P3_S2_SUBMISSION',
+        };
+      },
+      async currentEvidenceDigest() {
+        return undefined;
+      },
+    };
+    const coordinator = new FrontendReviewProductCoordinator(
+      store,
+      gateway,
+      [matchingAdapter],
+      fixedNow,
+    );
+    seedRecord(
+      store,
+      makeRecord(
+        makeContext({
+          items: [makeItem(1, 'RESTRICTED')],
+        }),
+      ),
+    );
+    const lowClearanceScope: FrontendReviewScopeV1 = { ...scope, sensitivityClearance: 'public' };
+    await expect(
+      coordinator.recordReviewDecisions(lowClearanceScope, {
+        schemaVersion: '1.0.0',
+        clientRequestId: 'client-decision-hidden',
+        idempotencyKey: 'idem-decision-hidden',
+        reviewContextId: 'context-1',
+        expectedContextRevision: 1,
+        expectedTargetRevision: '3',
+        expectedTargetDigest: 'draft-digest',
+        itemDecisions: [
+          {
+            schemaVersion: '1.0.0',
+            reviewItemId: 'item-1',
+            intent: 'APPROVE',
+            reason: 'OK.',
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({ apiCode: 'REVIEW_ITEM_NOT_FOUND' });
+  });
+
+  it('revalidates access/policy before resolving an outcome (no read-API bypass)', async () => {
+    const { store, coordinator } = buildCoordinator();
+    seedRecord(store, makeRecord(makeContext()));
+    // Record a comment under the original scope, then attempt to resolve the
+    // same outcome under a changed access scope.
+    const addRequest = {
+      schemaVersion: '1.0.0' as const,
+      clientRequestId: 'client-comment-replay',
+      idempotencyKey: 'idem-comment-replay',
+      reviewContextId: 'context-1',
+      contextRevision: 1,
+      reviewItemId: 'item-1',
+      comment: 'Please add a source.',
+    };
+    const readScope = { ...scope, accessRevision: 'access-1' };
+    await expect(coordinator.addReviewComment(readScope, addRequest)).resolves.toBeDefined();
+    // Replaying with a changed access scope must fail closed instead of
+    // returning the previous result.
+    const changedScope: FrontendReviewScopeV1 = { ...scope, accessRevision: 'access-2' };
+    await expect(coordinator.addReviewComment(changedScope, addRequest)).rejects.toMatchObject({
+      apiCode: 'REVIEW_CONTEXT_NOT_FOUND',
+    });
+  });
+
+  it('derives queue Item capabilities from the scope', async () => {
+    const store = new InMemoryFrontendReviewStore();
+    const gateway = new InMemoryFrontendCommandGateway();
+    const materializingAdapter: ReviewTargetAdapterPort = {
+      ...makeStubAdapter(),
+      async listSourceTargets() {
+        return [
+          {
+            reviewResourceId: 'review-resource-1',
+            targetId: 'draft-1',
+            targetRevision: '3',
+            targetDigest: 'draft-digest',
+            targetLabel: 'Draft 1',
+            resourceProjectId: PROJECT,
+            effectiveProjectId: PROJECT,
+            updatedAt: '2026-08-04T10:00:00.000Z',
+            source: 'FE_P3_S2_SUBMISSION',
+          },
+        ];
+      },
+      async findSourceTarget() {
+        return undefined;
+      },
+      async materializeContext() {
+        return { context: makeContext() };
+      },
+    };
+    const coordinator = new FrontendReviewProductCoordinator(
+      store,
+      gateway,
+      [materializingAdapter],
+      fixedNow,
+    );
+    const noApprovalScope: FrontendReviewScopeV1 = { ...scope, accessScope: ['review'] };
+    const queue = await coordinator.listReviewQueue(noApprovalScope, {
+      schemaVersion: '1.0.0',
+      pageSize: 50,
+    });
+    expect(queue.items[0]?.capabilities).not.toContain('READ_APPROVAL');
+    expect(queue.items[0]?.capabilities).toContain('READ_CONTEXT');
+    expect(queue.items[0]?.capabilities).toContain('RECORD_DECISIONS');
+  });
 });

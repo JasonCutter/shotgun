@@ -280,6 +280,89 @@ export class FrontendReviewProductCoordinator {
     };
   }
 
+  /** Server-side read-time bound assertion for any stored Context (§18). */
+  private assertContextBounds(context: ReviewContextRevisionV1): void {
+    if (context.items.length > REVIEW_CONTEXT_ITEM_MAX) {
+      reviewFailure(
+        'VALIDATION_FAILED',
+        `A Review Context cannot contain more than ${REVIEW_CONTEXT_ITEM_MAX} Items.`,
+      );
+    }
+    if (context.dependencies.length > REVIEW_DEPENDENCY_EDGE_MAX) {
+      reviewFailure(
+        'VALIDATION_FAILED',
+        `A Review Context cannot contain more than ${REVIEW_DEPENDENCY_EDGE_MAX} dependency edges.`,
+      );
+    }
+  }
+
+  /** Fail-closed access/policy revalidation for outcome/replay paths. */
+  private assertContextReadableForScope(
+    context: ReviewContextRevisionV1,
+    scope: FrontendReviewScopeV1,
+  ): void {
+    if (context.resourceProjectId !== scope.activeProjectId) {
+      reviewFailure('REVIEW_CONTEXT_NOT_FOUND', 'The Review Context was not found.');
+    }
+    if (
+      context.accessRevision !== scope.accessRevision ||
+      context.policyContextRevision !== scope.policyContextRevision
+    ) {
+      reviewFailure(
+        'REVIEW_CONTEXT_NOT_FOUND',
+        'The Review Context is not available to the current scope.',
+      );
+    }
+  }
+
+  /** Item IDs visible under the current sensitivity clearance. */
+  private visibleItemIds(
+    context: ReviewContextRevisionV1,
+    scope: FrontendReviewScopeV1,
+  ): ReadonlySet<string> {
+    return new Set(applySensitivityMasking(context, scope).items.map((item) => item.reviewItemId));
+  }
+
+  /** Decision history filtered to the visible Item set (fail-closed). */
+  private filterDecisionsByVisibility(
+    decisions: readonly ReviewDecisionRecordV1[],
+    visible: ReadonlySet<string>,
+  ): ReviewDecisionRecordV1[] {
+    return decisions.filter((decision) => visible.has(decision.reviewItemId));
+  }
+
+  /**
+   * Comment history filtered to the visible Item set. Context-wide comments
+   * (no `reviewItemId`) are treated as potentially referencing hidden content
+   * and are omitted from transmission (fail-closed).
+   */
+  private filterCommentsByVisibility(
+    comments: readonly ReviewCommentRecordV1[],
+    visible: ReadonlySet<string>,
+  ): ReviewCommentRecordV1[] {
+    return comments.filter(
+      (comment) => comment.reviewItemId !== undefined && visible.has(comment.reviewItemId),
+    );
+  }
+
+  /** Fail-closed Approval read revalidation shared by read and outcome paths. */
+  private assertApprovalReadable(approval: ReviewApprovalV1, scope: FrontendReviewScopeV1): void {
+    if (
+      approval.projectId !== scope.activeProjectId ||
+      approval.accessRevision !== scope.accessRevision ||
+      approval.policyContextRevision !== scope.policyContextRevision ||
+      approval.status !== 'ACTIVE'
+    ) {
+      reviewFailure(
+        'REVIEW_APPROVAL_NOT_ISSUED',
+        'No Approval Resource matches the requested identity.',
+      );
+    }
+    if (Date.parse(approval.expiresAt) <= Date.parse(this.nowIso())) {
+      reviewFailure('REVIEW_APPROVAL_EXPIRED', 'The Approval Resource has expired.');
+    }
+  }
+
   private async materializeContext(
     repositories: ReviewTransactionRepositoriesV1,
     adapter: ReviewTargetAdapterPort,
@@ -355,6 +438,7 @@ export class FrontendReviewProductCoordinator {
             );
             await repositories.contexts.insertContext(record);
           }
+          this.assertContextBounds(record.context);
           const decisions = await repositories.decisions.findDecisions(
             record.context.reviewContextId,
           );
@@ -386,7 +470,7 @@ export class FrontendReviewProductCoordinator {
             itemCount: view.context.items.length,
             updatedAt: record.materializedAt,
             attentionReasons: attention,
-            capabilities: record.context.capabilities,
+            capabilities: reviewCapabilitiesForScope(scope),
           });
         }
       }
@@ -464,6 +548,7 @@ export class FrontendReviewProductCoordinator {
       if (record.context.resourceProjectId !== scope.activeProjectId) {
         reviewFailure('REVIEW_CONTEXT_NOT_FOUND', 'The Review Context was not found.');
       }
+      this.assertContextBounds(record.context);
       const decisions = await repositories.decisions.findDecisions(request.reviewContextId);
       const comments = await repositories.decisions.findComments(request.reviewContextId);
       if (record.context.contextRevision !== request.contextRevision) {
@@ -474,6 +559,7 @@ export class FrontendReviewProductCoordinator {
         if (!historical) {
           reviewFailure('REVIEW_CONTEXT_NOT_FOUND', 'The Review Context revision was not found.');
         }
+        this.assertContextBounds(historical);
         // Historical reads are revalidated against the current access/policy
         // scope; a changed scope returns a restricted shell without the
         // protected payload (fail-closed, Contract Snapshot §10/§13).
@@ -491,11 +577,18 @@ export class FrontendReviewProductCoordinator {
             comments: [],
           };
         }
+        const visible = this.visibleItemIds(historical, scope);
         return {
           schemaVersion: '1.0.0',
           context: applySensitivityMasking(historical, scope),
-          decisions: this.decisionsForRevision(decisions, request.contextRevision),
-          comments: this.commentsForRevision(comments, request.contextRevision),
+          decisions: this.filterDecisionsByVisibility(
+            this.decisionsForRevision(decisions, request.contextRevision),
+            visible,
+          ),
+          comments: this.filterCommentsByVisibility(
+            this.commentsForRevision(comments, request.contextRevision),
+            visible,
+          ),
         };
       }
       // Fail closed before touching any source adapter: when the access or
@@ -520,11 +613,12 @@ export class FrontendReviewProductCoordinator {
         record.reviewResourceId,
       );
       const view = deriveContextView({ record, currentSource, scope, decisions });
+      const visible = this.visibleItemIds(view.context, scope);
       return {
         schemaVersion: '1.0.0',
         context: view.context,
-        decisions,
-        comments,
+        decisions: this.filterDecisionsByVisibility(decisions, visible),
+        comments: this.filterCommentsByVisibility(comments, visible),
       };
     });
   }
@@ -539,6 +633,7 @@ export class FrontendReviewProductCoordinator {
       if (!record || record.context.resourceProjectId !== scope.activeProjectId) {
         reviewFailure('REVIEW_CONTEXT_NOT_FOUND', 'The Review Context was not found.');
       }
+      this.assertContextBounds(record.context);
       if (record.context.contextRevision !== request.contextRevision) {
         const historical = await repositories.contexts.findRevision(
           request.reviewContextId,
@@ -547,6 +642,7 @@ export class FrontendReviewProductCoordinator {
         if (!historical) {
           reviewFailure('REVIEW_CONTEXT_NOT_FOUND', 'The Review Context revision was not found.');
         }
+        this.assertContextBounds(historical);
         // Historical Item detail is fail-closed when access/policy changed.
         const scopeChanged =
           historical.accessRevision !== scope.accessRevision ||
@@ -579,6 +675,7 @@ export class FrontendReviewProductCoordinator {
       if (!canReadSensitivity(scope.sensitivityClearance, item.sensitivity)) {
         reviewFailure('REVIEW_ITEM_NOT_FOUND', 'The Review Item was not found.');
       }
+      const visible = this.visibleItemIds(record.context, scope);
       const adapter = this.adapterFor(record.context.targetKind);
       const source = await adapter.findSourceTarget(scope.activeProjectId, record.reviewResourceId);
       const evidence =
@@ -601,10 +698,19 @@ export class FrontendReviewProductCoordinator {
       return {
         schemaVersion: '1.0.0',
         item,
-        dependencies: this.dependenciesForItem(record.context.dependencies, request.reviewItemId),
+        dependencies: this.dependenciesForItem(
+          record.context.dependencies,
+          request.reviewItemId,
+        ).filter(
+          (dependency) =>
+            visible.has(dependency.fromReviewItemId) && visible.has(dependency.toReviewItemId),
+        ),
         ...(evidence === undefined ? {} : { evidence }),
         ...(impact === undefined ? {} : { impact }),
-        decisions: this.decisionsForRevision(decisions, request.contextRevision),
+        decisions: this.filterDecisionsByVisibility(
+          this.decisionsForRevision(decisions, request.contextRevision),
+          visible,
+        ),
       };
     });
   }
@@ -639,7 +745,10 @@ export class FrontendReviewProductCoordinator {
       schemaVersion: '1.0.0',
       item,
       dependencies,
-      decisions: this.decisionsForRevision(decisions, contextRevision),
+      decisions: this.filterDecisionsByVisibility(
+        this.decisionsForRevision(decisions, contextRevision),
+        visible,
+      ),
     };
   }
 
@@ -660,32 +769,16 @@ export class FrontendReviewProductCoordinator {
     this.requireReviewCapability(scope, 'READ_APPROVAL');
     return this.boundary.transaction(async (repositories) => {
       const approval = await repositories.approvals.findById(request.approvalId);
-      if (!approval || approval.projectId !== scope.activeProjectId) {
+      if (!approval) {
         reviewFailure(
           'REVIEW_APPROVAL_NOT_ISSUED',
           'No Approval Resource matches the requested identity.',
         );
       }
       // Fail-closed revalidation: the Approval binds the access and policy
-      // revisions that were current when it was issued (Contract Snapshot §8).
-      if (
-        approval.accessRevision !== scope.accessRevision ||
-        approval.policyContextRevision !== scope.policyContextRevision
-      ) {
-        reviewFailure(
-          'REVIEW_APPROVAL_NOT_ISSUED',
-          'No Approval Resource matches the requested identity.',
-        );
-      }
-      if (approval.status !== 'ACTIVE') {
-        reviewFailure(
-          'REVIEW_APPROVAL_NOT_ISSUED',
-          'No Approval Resource matches the requested identity.',
-        );
-      }
-      if (Date.parse(approval.expiresAt) <= Date.parse(this.nowIso())) {
-        reviewFailure('REVIEW_APPROVAL_EXPIRED', 'The Approval Resource has expired.');
-      }
+      // revisions that were current when it was issued (Contract Snapshot §8),
+      // and remains ACTIVE and unexpired.
+      this.assertApprovalReadable(approval, scope);
       return { schemaVersion: '1.0.0', approval };
     });
   }
@@ -787,6 +880,7 @@ export class FrontendReviewProductCoordinator {
         if (record.context.resourceProjectId !== scope.activeProjectId) {
           reviewFailure('REVIEW_CONTEXT_NOT_FOUND', 'The Review Context was not found.');
         }
+        this.assertContextBounds(record.context);
         // 2. expected context revision validation.
         if (record.context.contextRevision !== request.expectedContextRevision) {
           reviewFailure(
@@ -872,6 +966,9 @@ export class FrontendReviewProductCoordinator {
               'REVIEW_DECISION_NOT_ALLOWED',
               `Decision '${input.intent}' is not allowed for Review Item '${input.reviewItemId}'.`,
             );
+          }
+          if (!canReadSensitivity(scope.sensitivityClearance, item.sensitivity)) {
+            reviewFailure('REVIEW_ITEM_NOT_FOUND', 'The Review Item was not found.');
           }
           const state = deriveItemDecisionState(input.reviewItemId, currentDecisions);
           if (state === 'APPROVED' || state === 'REJECTED' || state === 'REVISION_REQUESTED') {
@@ -1096,17 +1193,23 @@ export class FrontendReviewProductCoordinator {
         if (record.context.resourceProjectId !== scope.activeProjectId) {
           reviewFailure('REVIEW_CONTEXT_NOT_FOUND', 'The Review Context was not found.');
         }
+        this.assertContextBounds(record.context);
         if (record.context.contextRevision !== request.contextRevision) {
           reviewFailure(
             'REVIEW_CONTEXT_STALE',
             `Expected context revision ${request.contextRevision} but the current revision is ${record.context.contextRevision}.`,
           );
         }
-        if (
-          request.reviewItemId !== undefined &&
-          !record.context.items.some((item) => item.reviewItemId === request.reviewItemId)
-        ) {
-          reviewFailure('REVIEW_ITEM_NOT_FOUND', 'The Review Item was not found.');
+        if (request.reviewItemId !== undefined) {
+          const commentItem = record.context.items.find(
+            (item) => item.reviewItemId === request.reviewItemId,
+          );
+          if (!commentItem) {
+            reviewFailure('REVIEW_ITEM_NOT_FOUND', 'The Review Item was not found.');
+          }
+          if (!canReadSensitivity(scope.sensitivityClearance, commentItem.sensitivity)) {
+            reviewFailure('REVIEW_ITEM_NOT_FOUND', 'The Review Item was not found.');
+          }
         }
         const comment: ReviewCommentRecordV1 = {
           schemaVersion: '1.0.0',
@@ -1198,7 +1301,7 @@ export class FrontendReviewProductCoordinator {
       );
     }
     if (outcome.outcomeState === 'COMPLETED') {
-      const completed = await this.completedFromOutcome(outcome);
+      const completed = await this.completedFromOutcome(scope, outcome);
       return {
         schemaVersion: '1.0.0',
         outcome: 'COMPLETED',
@@ -1228,6 +1331,7 @@ export class FrontendReviewProductCoordinator {
   }
 
   private async completedFromOutcome(
+    scope: FrontendReviewScopeV1,
     outcome: Awaited<ReturnType<FrontendReviewCommandGatewayPort['findByClientRequestId']>>,
   ): Promise<NonNullable<ResolveReviewCommandOutcomeResultV1['completed']>> {
     if (!outcome) {
@@ -1246,17 +1350,31 @@ export class FrontendReviewProductCoordinator {
         if (!record) {
           reviewFailure('OUTCOME_NOT_FOUND', 'The Review context is missing.');
         }
+        // Outcome recovery is not a read-API bypass: revalidate the current
+        // access/policy scope and the frozen bounds before reconstructing
+        // protected results (fail-closed).
+        this.assertContextReadableForScope(record.context, scope);
+        this.assertContextBounds(record.context);
         const approvalIds = outcome.producedResources
           .filter((resource) => resource.resourceKind === FRONTEND_REVIEW_RESOURCE_KIND.approval)
           .map((resource) => resource.resourceId);
         const approvals: ReviewApprovalV1[] = [];
         for (const approvalId of approvalIds) {
           const approval = await repositories.approvals.findById(approvalId);
-          if (approval) approvals.push(approval);
+          if (!approval) continue;
+          // Approval lifecycle is revalidated on recovery; an expired or
+          // non-ACTIVE Approval is not surfaced.
+          try {
+            this.assertApprovalReadable(approval, scope);
+            approvals.push(approval);
+          } catch {
+            // skip approvals that are no longer readable
+          }
         }
         const decisions = await repositories.decisions.findDecisions(
           record.context.reviewContextId,
         );
+        const visible = this.visibleItemIds(record.context, scope);
         const aggregateState = computeAggregateState({
           items: record.context.items,
           decisions,
@@ -1276,7 +1394,10 @@ export class FrontendReviewProductCoordinator {
           commandSemanticDigest: outcome.commandSemanticDigest,
           reviewContextId: record.context.reviewContextId,
           contextRevision: record.context.contextRevision,
-          decisions: this.decisionsForRevision(decisions, record.context.contextRevision),
+          decisions: this.filterDecisionsByVisibility(
+            this.decisionsForRevision(decisions, record.context.contextRevision),
+            visible,
+          ),
           aggregateState,
           ...(approvals.length === 0 ? {} : { approvals }),
           ...(acceptedForAuthoring === undefined ? {} : { acceptedForAuthoring }),
@@ -1301,10 +1422,20 @@ export class FrontendReviewProductCoordinator {
         if (!record) {
           reviewFailure('OUTCOME_NOT_FOUND', 'The Review context is missing.');
         }
+        // Outcome recovery is not a read-API bypass: revalidate access/policy
+        // and the frozen bounds before reconstructing protected results.
+        this.assertContextReadableForScope(record.context, scope);
+        this.assertContextBounds(record.context);
         const comments = await repositories.decisions.findComments(contextRef.resourceId);
         const comment = comments.find((candidate) => candidate.commentId === commentRef.resourceId);
         if (!comment) {
           reviewFailure('OUTCOME_NOT_FOUND', 'The comment is missing.');
+        }
+        if (
+          comment.reviewItemId !== undefined &&
+          !this.visibleItemIds(record.context, scope).has(comment.reviewItemId)
+        ) {
+          reviewFailure('OUTCOME_NOT_FOUND', 'The comment is not available to the current scope.');
         }
         return {
           schemaVersion: '1.0.0' as const,
@@ -1330,13 +1461,17 @@ export class FrontendReviewProductCoordinator {
         if (!record) {
           reviewFailure('OUTCOME_NOT_FOUND', 'The Review context is missing.');
         }
+        // Outcome recovery is not a read-API bypass: revalidate access/policy
+        // and the frozen bounds, and mask the returned Context for the scope.
+        this.assertContextReadableForScope(record.context, scope);
+        this.assertContextBounds(record.context);
         return {
           schemaVersion: '1.0.0' as const,
           outcome: 'COMPLETED' as const,
           clientRequestId: outcome.clientRequestId,
           idempotencyKey: outcome.idempotencyKey,
           commandSemanticDigest: outcome.commandSemanticDigest,
-          context: record.context,
+          context: applySensitivityMasking(record.context, scope),
         } satisfies RevalidateReviewContextResultV1;
       });
       return { commandType: FRONTEND_REVIEW_COMMAND_TYPES.revalidateContext, result };
@@ -1360,7 +1495,7 @@ export class FrontendReviewProductCoordinator {
     ) {
       return undefined;
     }
-    const completed = await this.completedFromOutcome(outcome);
+    const completed = await this.completedFromOutcome(scope, outcome);
     if (completed.commandType !== FRONTEND_REVIEW_COMMAND_TYPES.recordDecisions) return undefined;
     const result = completed.result;
     return {
@@ -1394,7 +1529,7 @@ export class FrontendReviewProductCoordinator {
     ) {
       return undefined;
     }
-    const completed = await this.completedFromOutcome(outcome);
+    const completed = await this.completedFromOutcome(scope, outcome);
     if (completed.commandType !== FRONTEND_REVIEW_COMMAND_TYPES.addComment) return undefined;
     return completed.result.comment;
   }
@@ -1408,9 +1543,10 @@ export class FrontendReviewProductCoordinator {
       if (!record) {
         reviewFailure('REVIEW_CONTEXT_NOT_FOUND', 'The Review Context was not found.');
       }
-      if (record.context.resourceProjectId !== scope.activeProjectId) {
-        reviewFailure('REVIEW_CONTEXT_NOT_FOUND', 'The Review Context was not found.');
-      }
+      // Idempotent replay is not a read-API bypass: revalidate the current
+      // access/policy scope and the frozen bounds before returning the record.
+      this.assertContextReadableForScope(record.context, scope);
+      this.assertContextBounds(record.context);
       return record;
     });
   }

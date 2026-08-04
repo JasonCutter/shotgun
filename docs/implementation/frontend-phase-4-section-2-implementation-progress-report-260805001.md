@@ -146,3 +146,85 @@ Commit `36f08e63b82a820b4c92ca40f80d2f62d76864ca` (push after report 1 head `d2a
   AC-14 (budget contract) — contract layer delivered; runtime enforcement follows in WP2/WP4.
 - Not yet run (implementation pending): AC-06, AC-08, AC-10, AC-11, AC-12, AC-15, AC-16, AC-17,
   AC-18, AC-19, AC-20, AC-21, AC-22.
+
+## 9. WP1 remediation — GPT review BLOCKED → resolved (report 3, 2026-08-05)
+
+GPT review (Review ID 4858184783) returned **BLOCKED / CHANGES REQUIRED** with 9 remediation
+items on the WP1 contracts. All 9 items are implemented in this remediation commit:
+
+Commit `d50aff27f39957cc7aad41463a6146fc013c4f04` (push after report 2 head `f6b6da404`).
+
+### Remediation mapping (GPT items → delivered)
+
+1. **Strict decoders for every frozen operation** — added per-operation request decoders
+   (`decodePrepareActionManifestRequestV1`, `decodeApproveExternalActionRequestV1`,
+   `decodePreflightExternalActionRequestV1`, `decodeExecuteExternalActionRequestV1`,
+   `decodeRetryExecutionAttemptRequestV1`, `decodeVerifyExternalActionRequestV1`,
+   `decodeCancelExternalActionRequestV1`, `decodeRollbackExternalActionRequestV1`,
+   `decodePrepareCompensatingActionRequestV1`, `decodeResolveExternalActionOutcomeRequestV1`,
+   `decodeGetExternalActionRequestV1`, `decodeGetExternalActionDetailRequestV1`,
+   `decodeListExternalActionAuditRequestV1`) plus result decoders for all 11 governed commands
+   and all read results (list/get/detail/audit). Unknown-field rejection and `schemaVersion`
+   `1.0.0` validation apply to each operation; operation-organized tests cover every decoder.
+2. **Frozen 12-category audit alignment** — `ExternalActionAuditCategoryV1` is now exactly the
+   frozen Stage 11 12-category set (`EXTERNAL_ACTION_AUDIT_CATEGORIES`); the previous 21-value
+   set was removed, and out-of-set categories are rejected.
+3. **Frozen Project binding rule** — every Product resource (`ActionCandidateV1`,
+   `RiskDecisionV1`, `ActionManifestV1`, `ExternalActionApprovalV1`, `PreflightV1`,
+   `ExecutionV1`, `ExecutionAttemptV1`, `VerificationV1`, `ResultV1`, `ActionAuditEventV1`,
+   `CompensatingActionV1`, `RollbackV1`, `ExternalActionV1`) now binds
+   `resourceProjectId` + `effectiveProjectId`; decoders require them.
+4. **Access-restricted shell (AC-17)** — `ExternalActionV1` is a discriminated restricted shell:
+   when `aggregateState` is `ACCESS_RESTRICTED` or `accessMasking` is `HIDDEN`, `targetRef`,
+   `riskDecisionRef`, `manifestRef`, `approvalRef`, `latestExecutionRef` and
+   `compensationForActionId` must be absent (decoder fails if present); when not restricted they
+   are required/optional as before. Negative AC-17 tests added.
+5. **WP1 cross-field invariants** — manifest `parameterDigest`/`evidenceSetDigest` must match
+   their refs and `manifestDigest` is verified; `createdAt <= expiresAt`; ACTIVE approval
+   requires future expiry; READY Preflight requires all six revalidations and future expiry;
+   execution/attempt terminal statuses require `completedAt` (non-terminal forbids it,
+   `completedAt >= startedAt`); verification `APPLIED`/`MISMATCH` require `observedDigest`,
+   `NOT_APPLIED` forbids it.
+6. **Typed Product resource reference** — non-target refs (risk/manifest/approval/execution/
+   attempt/provider/verification/candidate) now use `ExternalActionResourceRefV1`
+   (`resourceKind` + `resourceId` + optional `resourceRevision`); the target-specific
+   `ExternalActionTargetRefV1` (`targetKind`/`targetId`/`targetRevision`/`externalRevision`) is
+   used only for the target identity.
+7. **Structurally safe audit payload** — `ActionAuditEventV1.eventJson` replaced by typed
+   `eventData: ActionAuditEventDataV1` (`schemaVersion`, `message`, `refs` allowlist); raw or
+   unsupported payload fields are rejected.
+8. **Credential and budget Product views** — `ExternalActionCredentialViewV1` (masked credential
+   only, status `CONFIGURED`/`MISSING`/`REVOKED`/`ROTATION_REQUIRED`, capabilities
+   `TEST`/`ROTATE`/`REVOKE`) and `ExternalActionBudgetViewV1` (OK/WARNING/EXHAUSTED,
+   `softLimit <= hardLimit`) with decoders; capabilities include `READ_CREDENTIAL`/`READ_BUDGET`;
+   AC-13/AC-14 are now delivered at the contract layer.
+9. **Focused test expansion** — `tests/contract/frontend-external-action.contract.test.ts`
+   rewritten: 75 tests, operation-organized, covering every request/result decoder and the
+   blocking negative cases above (restricted-shell identity leak, digest consistency, READY
+   preflight revalidation, approval expiry, terminal timestamps, verification observed-digest,
+   audit safe payload, 12-category set, project binding on all resources, credential/budget
+   views). CI #514 (`30942801924`) on `36f08e6` was cancelled as superseded; the automatic CI on
+   the remediation head is the remote authority.
+
+### Changed files (this remediation)
+
+- `packages/contracts/src/frontend-external-action.ts` — full remediation rewrite.
+- `tests/contract/frontend-external-action.contract.test.ts` — expanded to 75 tests.
+- (unchanged) `frontend-external-action-failures.ts`, `errors.ts`, `failure-contract.ts`,
+  `index.ts` — failure codes/descriptors already matched the frozen reasons.
+
+### Validation
+
+- `npx vitest run tests/contract/frontend-external-action.contract.test.ts` — **75/75 PASS**.
+- `tsc --noEmit` — clean. ESLint — clean. Prettier — clean.
+- Automatic CI on remediation head `d50aff2` — run **#517** (`30944067154`): recorded after the
+  run.
+
+### AC coverage (WP1 after remediation)
+
+- Contract layer delivered: AC-01, AC-02, AC-03, AC-04, AC-05, AC-07, AC-09, AC-13, AC-14,
+  **AC-17** (restricted shell negative tests at the contract layer).
+- Not yet run (implementation pending in WP2/WP4+): AC-06, AC-08, AC-10, AC-11, AC-12, AC-15,
+  AC-16, AC-18, AC-19, AC-20, AC-21, AC-22.
+
+PR #66 remains OPEN / DRAFT. WP2 remains **NOT_AUTHORIZED** pending re-review of this report.

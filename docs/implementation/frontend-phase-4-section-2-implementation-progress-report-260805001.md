@@ -417,3 +417,88 @@ as required; no separate remediation cycle was opened for this metadata-only fix
 
 PR #66 remains OPEN / DRAFT. WP3 Migration 028, Product API/UI, real Connector, Ready and Merge
 remain **NOT_AUTHORIZED** pending re-review of this report.
+
+## 13. WP2 remediation — GPT comprehensive review → resolved (report 7, 2026-08-05)
+
+GPT review (Review ID 4859528704) returned **BLOCKED / REMEDIATION REQUIRED** for WP2. All
+items are handled in one remediation cycle (two commits):
+
+- Commit `360fe1db1d86db9a0e65e168638b8793463a412a` (read/write capability separation,
+  credential/budget store authority).
+- Commit `77e595e1d1d33881c3e866621d8631380daeea9d` (comprehensive WP2 remediation).
+
+### Remediation mapping (GPT items → delivered)
+
+1. **Read scope never grants write capabilities** — `externalActionCapabilitiesForScope` now
+   grants only reads + `RESOLVE_OUTCOME` to read scopes; `VALIDATE_CANDIDATE`/`PREPARE_MANIFEST`
+   require govern, `APPROVE` requires approve, `PREFLIGHT`/`EXECUTE`/`RETRY`/`VERIFY` require
+   execute, `CANCEL`/`ROLLBACK`/`PREPARE_COMPENSATING_ACTION`/`READ_CREDENTIAL`/`READ_BUDGET`
+   require govern. Negative test added.
+2. **Credential/Budget store authority** — `credentialAvailable`/`budgetAvailable` now read the
+   credential/budget repositories (async) instead of a test cache; unavailable/unreadable fails
+   closed; a revoked/rotation-required credential is unusable; budget exhaustion fails closed;
+   budget updates target the actual `scope.activeProjectId`. `setServerOwnedState` removed;
+   tests seed the stores.
+3. **Idempotent replay** — every governed command now replays an already-COMPLETED command
+   through `reconstructReplay` (rebuilds the strict command result from the ledger produced
+   resources) instead of returning `OUTCOME_INDETERMINATE`. Negative: digest/identity mismatch
+   still fails closed.
+4. **Approval · Preflight · Retry revalidation** — `assertApprovalMatchesExecutionContext`
+   enforces exact manifest ID/revision/digest, target ID/revision/digest, external revision and
+   project/access/policy context on preflight, execute and retry (AC-05/AC-06/AC-15). A new
+   manifest revision blocks preflight/execute until re-approval (tested). Domain retry
+   revalidates ACTIVE approval, credential, budget, external revision and deducts the budget.
+5. **Append-only, recoverable attempts** — execute inserts the attempt exactly once in its
+   terminal state (the PENDING attempt is used for the engine call but never double-inserted);
+   execution is also written once. Domain resources always survive for OUTCOME_UNKNOWN recovery.
+6. **Access-restricted Detail** — when access/policy changed, `GetDetail` returns only the
+   restricted shell (no manifest/risk/approval/preflight/execution/attempts/verification/result/
+   rollback/compensation/credential/budget). All individual reads now fail closed on access or
+   policy changes (AC-17).
+7. **Real digests** — manifest `targetDigest` is computed from the exact target identity,
+   `payloadDigest` pins the actual execution payload, the dead parameter-digest tautology was
+   removed, and a stable deterministic evidence fallback is used (never two different random IDs
+   between manifest and its digest). Queue risk level now reads the stored risk decision.
+8. **Verification evidence** — only a `SUCCEEDED` execution can be verified; the requested
+   attempt must belong to the execution; an `APPLIED` verification without an observed target
+   digest is rejected (no fabrication); the Result `externalId` is derived from the connector
+   provider ref, never fabricated (AC-09/AC-20).
+9. **Rollback · Compensation lifecycle** — Rollback is now a governed state reversal with its own
+   manifest, EXTERNAL_ACTION approval, and a rollback execution through the engine port (never
+   immediate; ROLLED_BACK only after the rollback execution succeeds). Compensating Action now
+   stores a real candidate and its own risk decision (never reuses the source decision), so the
+   new governed External Action can proceed through manifest/approval/execute.
+10. **Audit wiring** — `appendAudit` is async and awaited at the frozen transition categories
+    (`ACTION_EXECUTED`/`ACTION_OUTCOME_UNKNOWN`/`ACTION_VERIFIED`/
+    `ACTION_VERIFICATION_FAILED`); sequences are append-only and monotonic.
+
+### Changed files (this remediation)
+
+- `modules/frontend-external-action/src/product-api.ts` — all items above.
+- `tests/integration/frontend-external-action-domain.test.ts` — expanded to **13 tests**:
+  read-scope negative, budget fail-closed, idempotent replay, approval re-binding rejection,
+  restricted Detail shell, append-only audit, full lifecycle, attempt ordering + retry, no-approval
+  rejection, Cancel ≠ Rollback, OUTCOME resolution, VERIFICATION resource, command types.
+
+### AC evidence correction (per Review 4859528704)
+
+Report 6 mislabeled the frozen AC meanings: AC-18 is "no direct execution from Home/Command
+Palette", AC-19 is "Workspace accessibility", AC-20 is "no Connector-success/Cancel/auto-retry
+negative evidence" — these are WP5/UI/negative-evidence concerns, **not** proven by WP2. Corrected
+here: WP2 proves **AC-01, AC-02, AC-03, AC-04, AC-05, AC-06, AC-07, AC-08, AC-09, AC-10, AC-12,
+AC-13, AC-14, AC-15, AC-17** (server-authoritative domain lifecycle, exact re-approval, ordered
+append-only attempts, no auto-retry, verification-not-HTTP-success, credential/budget
+server-owned, restricted shell). AC-11 (rollback as separate governed action) is partially
+delivered (rollback manifest/approval/execution lifecycle); AC-16/AC-21/AC-22 + AC-18/AC-19/AC-20
+evidence remain for WP3–WP6.
+
+### Validation
+
+- `npx vitest run tests/integration/frontend-external-action-domain.test.ts` — **13/13 PASS**.
+- `npx vitest run tests/contract/frontend-external-action.contract.test.ts` — **93/93 PASS**.
+- `tsc --noEmit` — clean. ESLint — clean. Prettier — clean.
+- Automatic CI on this remediation head `77e595e` — run **#525** (`30959155254`): Quality,
+  Frontend, Required Gates **SUCCESS**. (The interim capability fix `360fe1d` ran CI #524.)
+
+PR #66 remains OPEN / DRAFT. WP3 Migration 028 remains **NOT_AUTHORIZED_TO_START** pending
+re-review of this report.

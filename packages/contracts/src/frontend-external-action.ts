@@ -7,7 +7,11 @@ import { sha256Text, stableJson } from './document-evidence.js';
  * Frozen by FE-P4-S2 Contract Snapshot revision 1 (approved 2026-08-05) and
  * ADR-129 (accepted 2026-08-05). Every type carries schemaVersion '1.0.0',
  * decoders reject unknown fields, empty/whitespace-only IDs, unknown
- * discriminants, and never use `any`.
+ * discriminants, and never use `any`. Cross-field invariants are enforced by
+ * the decoders (Project binding, digest consistency, approval expiry/status,
+ * READY preflight revalidation, execution/attempt ordering and terminal
+ * timestamps, verification observed-digest rules, and the access-restricted
+ * shell).
  *
  * External Actions are server-authoritative. The Browser never submits Actor,
  * Project, Capability, Policy, Credential, Budget or risk authority. Governed
@@ -98,6 +102,9 @@ export type ExternalActionApprovalStatusV1 =
 
 export type ExternalActionAccessMaskingStateV1 = 'VISIBLE' | 'MASKED' | 'HIDDEN';
 
+export type ExternalActionAggregateReadinessV1 =
+  'AVAILABLE' | 'STALE' | 'ACCESS_RESTRICTED' | 'UNAVAILABLE';
+
 export type ExternalActionCapabilityV1 =
   | 'LIST_EXTERNAL_ACTIONS'
   | 'READ_EXTERNAL_ACTION'
@@ -110,6 +117,8 @@ export type ExternalActionCapabilityV1 =
   | 'READ_RESULT'
   | 'READ_AUDIT'
   | 'READ_APPROVAL'
+  | 'READ_CREDENTIAL'
+  | 'READ_BUDGET'
   | 'VALIDATE_CANDIDATE'
   | 'PREPARE_MANIFEST'
   | 'APPROVE_EXTERNAL_ACTION'
@@ -122,28 +131,35 @@ export type ExternalActionCapabilityV1 =
   | 'PREPARE_COMPENSATING_ACTION'
   | 'RESOLVE_OUTCOME';
 
+/** Frozen 12-category audit set (Contract Snapshot §2.10, Stage 11 parity). */
 export type ExternalActionAuditCategoryV1 =
   | 'ACTION_CANDIDATE_VALIDATED'
-  | 'RISK_DECIDED'
-  | 'MANIFEST_PREPARED'
-  | 'MANIFEST_CHANGED'
-  | 'APPROVAL_ISSUED'
-  | 'APPROVAL_EXPIRED'
-  | 'PREFLIGHT_PASSED'
-  | 'PREFLIGHT_FAILED'
-  | 'EXECUTION_STARTED'
-  | 'EXECUTION_ATTEMPT_RECORDED'
-  | 'EXECUTION_VERIFIED'
-  | 'EXECUTION_VERIFICATION_FAILED'
-  | 'EXECUTION_FAILED'
-  | 'EXECUTION_OUTCOME_UNKNOWN'
-  | 'ACTION_CANCELLED'
-  | 'ACTION_ROLLED_BACK'
-  | 'COMPENSATION_REQUIRED'
-  | 'COMPENSATION_PREPARED'
-  | 'COMPENSATION_VERIFIED'
-  | 'RESULT_RECORDED'
-  | 'ACCESS_RESTRICTED';
+  | 'ACTION_RISK_DECIDED'
+  | 'ACTION_PREVIEW_READY'
+  | 'ACTION_APPROVED'
+  | 'ACTION_EXECUTION_CLAIMED'
+  | 'ACTION_PREFLIGHT_PASSED'
+  | 'ACTION_PREFLIGHT_FAILED'
+  | 'ACTION_EXECUTED'
+  | 'ACTION_OUTCOME_UNKNOWN'
+  | 'ACTION_FAILED'
+  | 'ACTION_VERIFIED'
+  | 'ACTION_VERIFICATION_FAILED';
+
+export const EXTERNAL_ACTION_AUDIT_CATEGORIES: readonly ExternalActionAuditCategoryV1[] = [
+  'ACTION_CANDIDATE_VALIDATED',
+  'ACTION_RISK_DECIDED',
+  'ACTION_PREVIEW_READY',
+  'ACTION_APPROVED',
+  'ACTION_EXECUTION_CLAIMED',
+  'ACTION_PREFLIGHT_PASSED',
+  'ACTION_PREFLIGHT_FAILED',
+  'ACTION_EXECUTED',
+  'ACTION_OUTCOME_UNKNOWN',
+  'ACTION_FAILED',
+  'ACTION_VERIFIED',
+  'ACTION_VERIFICATION_FAILED',
+];
 
 export type ExternalActionFailureReasonV1 =
   | 'EXTERNAL_ACTION_NOT_FOUND'
@@ -198,12 +214,33 @@ export const EXTERNAL_ACTION_FAILURE_REASONS: readonly ExternalActionFailureReas
 // V1 value objects
 // ---------------------------------------------------------------------------
 
-export type ExternalActionIdentityRefV1 = {
+/** Target identity (the external target the action acts on). */
+export type ExternalActionTargetRefV1 = {
   readonly schemaVersion: '1.0.0';
   readonly targetKind: ExternalActionTargetKindV1;
   readonly targetId: string;
   readonly targetRevision: string;
   readonly externalRevision: string;
+};
+
+/** Typed Product resource reference (resource kind + id + optional revision). */
+export type ExternalActionResourceRefV1 = {
+  readonly schemaVersion: '1.0.0';
+  readonly resourceKind:
+    | 'candidate'
+    | 'riskDecision'
+    | 'manifest'
+    | 'approval'
+    | 'preflight'
+    | 'execution'
+    | 'attempt'
+    | 'verification'
+    | 'result'
+    | 'compensation'
+    | 'rollback'
+    | 'provider';
+  readonly resourceId: string;
+  readonly resourceRevision?: number;
 };
 
 export type ExternalActionParameterRefV1 = {
@@ -229,33 +266,37 @@ export type ExternalActionActorV1 = {
 // V1 resources
 // ---------------------------------------------------------------------------
 
-/** ExternalActionV1 — the `EXTERNAL_ACTION` Operational Resource aggregate. */
+/**
+ * ExternalActionV1 — the `EXTERNAL_ACTION` Operational Resource aggregate.
+ * When `aggregateState` is `ACCESS_RESTRICTED` or `accessMasking` is `HIDDEN`
+ * the protected payload (target identity, revisions, manifest/risk/approval
+ * refs) is absent: this is the discriminated restricted shell (AC-17) and no
+ * hidden identity is carried.
+ */
 export type ExternalActionV1 = {
   readonly schemaVersion: '1.0.0';
   readonly actionId: string;
   readonly actionRevision: number;
-  readonly targetKind: ExternalActionTargetKindV1;
-  readonly targetId: string;
-  readonly targetRevision: string;
-  readonly externalRevision: string;
   readonly operation: ExternalActionOperationV1;
   readonly resourceProjectId: string;
   readonly effectiveProjectId: string;
   readonly accessRevision: string;
   readonly policyContextRevision: string;
-  readonly riskDecisionRef: ExternalActionIdentityRefV1;
-  readonly manifestRef: ExternalActionIdentityRefV1;
-  readonly approvalRef?: ExternalActionIdentityRefV1;
   readonly status: ExternalActionAggregateStatusV1;
-  readonly capabilities: readonly ExternalActionCapabilityV1[];
-  readonly aggregateState: 'AVAILABLE' | 'STALE' | 'ACCESS_RESTRICTED' | 'UNAVAILABLE';
+  readonly aggregateState: ExternalActionAggregateReadinessV1;
   readonly staleReason?: string;
   readonly accessMasking: ExternalActionAccessMaskingStateV1;
   readonly maskedFields: readonly string[];
-  readonly latestExecutionRef?: ExternalActionIdentityRefV1;
-  readonly compensationForActionId?: string;
+  readonly capabilities: readonly ExternalActionCapabilityV1[];
   readonly updatedAt: string;
   readonly createdAt: string;
+  // Protected payload (present only when not restricted/hidden).
+  readonly targetRef?: ExternalActionTargetRefV1;
+  readonly riskDecisionRef?: ExternalActionResourceRefV1;
+  readonly manifestRef?: ExternalActionResourceRefV1;
+  readonly approvalRef?: ExternalActionResourceRefV1;
+  readonly latestExecutionRef?: ExternalActionResourceRefV1;
+  readonly compensationForActionId?: string;
 };
 
 export type ActionCandidateV1 = {
@@ -263,6 +304,8 @@ export type ActionCandidateV1 = {
   readonly candidateId: string;
   readonly candidateRevision: number;
   readonly actionId: string;
+  readonly resourceProjectId: string;
+  readonly effectiveProjectId: string;
   readonly sourceRefs: readonly {
     readonly schemaVersion: '1.0.0';
     readonly sourceKind: string;
@@ -271,12 +314,12 @@ export type ActionCandidateV1 = {
     readonly sourceDigest: string;
   }[];
   readonly operation: ExternalActionOperationV1;
-  readonly targetRef: ExternalActionIdentityRefV1;
+  readonly targetRef: ExternalActionTargetRefV1;
   readonly parameterRef: ExternalActionParameterRefV1;
   readonly evidenceRefs: readonly ExternalActionEvidenceSetRefV1[];
   readonly compensationForActionId?: string;
   readonly candidateDigest: string;
-  readonly riskDecisionRef: ExternalActionIdentityRefV1;
+  readonly riskDecisionRef: ExternalActionResourceRefV1;
   readonly generatedAt: string;
   readonly generatedBy: ExternalActionActorV1;
 };
@@ -285,6 +328,8 @@ export type RiskDecisionV1 = {
   readonly schemaVersion: '1.0.0';
   readonly riskDecisionId: string;
   readonly actionId: string;
+  readonly resourceProjectId: string;
+  readonly effectiveProjectId: string;
   readonly riskLevel: 'R0' | 'R1' | 'R2' | 'R3' | 'R4';
   readonly policyVersion: string;
   readonly requiresUserApproval: boolean;
@@ -297,6 +342,8 @@ export type ActionManifestV1 = {
   readonly manifestId: string;
   readonly manifestRevision: number;
   readonly actionId: string;
+  readonly resourceProjectId: string;
+  readonly effectiveProjectId: string;
   readonly targetId: string;
   readonly targetRevision: string;
   readonly targetDigest: string;
@@ -317,6 +364,8 @@ export type ExternalActionApprovalV1 = {
   readonly approvalId: string;
   readonly purpose: ExternalActionApprovalPurposeV1;
   readonly actionId: string;
+  readonly resourceProjectId: string;
+  readonly effectiveProjectId: string;
   readonly manifestId: string;
   readonly manifestRevision: number;
   readonly manifestDigest: string;
@@ -340,6 +389,8 @@ export type PreflightV1 = {
   readonly preflightId: string;
   readonly concreteKind: 'PREFLIGHT';
   readonly actionId: string;
+  readonly resourceProjectId: string;
+  readonly effectiveProjectId: string;
   readonly manifestRevision: number;
   readonly preflightDigest: string;
   readonly status: PreflightResultStatusV1;
@@ -359,12 +410,14 @@ export type ExecutionV1 = {
   readonly executionId: string;
   readonly concreteKind: 'EXECUTION';
   readonly actionId: string;
+  readonly resourceProjectId: string;
+  readonly effectiveProjectId: string;
   readonly manifestRevision: number;
   readonly status: ExecutionAttemptStatusV1;
   readonly attemptCount: number;
   readonly startedAt: string;
   readonly completedAt?: string;
-  readonly latestAttemptRef?: ExternalActionIdentityRefV1;
+  readonly latestAttemptRef?: ExternalActionResourceRefV1;
 };
 
 export type ExecutionAttemptV1 = {
@@ -373,11 +426,13 @@ export type ExecutionAttemptV1 = {
   readonly attemptNumber: number;
   readonly executionId: string;
   readonly actionId: string;
+  readonly resourceProjectId: string;
+  readonly effectiveProjectId: string;
   readonly idempotencyKey: string;
   readonly status: ExecutionAttemptStatusV1;
   readonly policyContextRevision: string;
   readonly externalRevision: string;
-  readonly providerRef?: ExternalActionIdentityRefV1;
+  readonly providerRef?: ExternalActionResourceRefV1;
   readonly correlationId: string;
   readonly causationId?: string;
   readonly startedAt: string;
@@ -389,6 +444,8 @@ export type VerificationV1 = {
   readonly verificationId: string;
   readonly concreteKind: 'VERIFICATION';
   readonly actionId: string;
+  readonly resourceProjectId: string;
+  readonly effectiveProjectId: string;
   readonly executionId: string;
   readonly attemptId?: string;
   readonly targetRevision: string;
@@ -403,12 +460,14 @@ export type ResultV1 = {
   readonly schemaVersion: '1.0.0';
   readonly resultId: string;
   readonly actionId: string;
+  readonly resourceProjectId: string;
+  readonly effectiveProjectId: string;
   readonly executionId: string;
   readonly attemptId?: string;
   readonly externalId: string;
   readonly observedDigest: string;
   readonly completedAt: string;
-  readonly verificationRef?: ExternalActionIdentityRefV1;
+  readonly verificationRef?: ExternalActionResourceRefV1;
   readonly outputRefs: readonly {
     readonly schemaVersion: '1.0.0';
     readonly outputKind: string;
@@ -417,13 +476,22 @@ export type ResultV1 = {
   }[];
 };
 
+/** Structurally safe audit payload — allowlisted fields only (no raw payload). */
+export type ActionAuditEventDataV1 = {
+  readonly schemaVersion: '1.0.0';
+  readonly message: string;
+  readonly refs: readonly ExternalActionResourceRefV1[];
+};
+
 export type ActionAuditEventV1 = {
   readonly schemaVersion: '1.0.0';
   readonly auditEventId: string;
   readonly actionId: string;
+  readonly resourceProjectId: string;
+  readonly effectiveProjectId: string;
   readonly sequence: number;
   readonly category: ExternalActionAuditCategoryV1;
-  readonly eventJson: string;
+  readonly eventData: ActionAuditEventDataV1;
   readonly occurredAt: string;
 };
 
@@ -431,9 +499,11 @@ export type CompensatingActionV1 = {
   readonly schemaVersion: '1.0.0';
   readonly compensationId: string;
   readonly actionId: string;
+  readonly resourceProjectId: string;
+  readonly effectiveProjectId: string;
   readonly sourceActionId: string;
   readonly sourceExecutionId: string;
-  readonly candidateRef: ExternalActionIdentityRefV1;
+  readonly candidateRef: ExternalActionResourceRefV1;
   readonly status: ExternalActionAggregateStatusV1;
   readonly preparedAt: string;
   readonly preparedBy: ExternalActionActorV1;
@@ -443,6 +513,8 @@ export type RollbackV1 = {
   readonly schemaVersion: '1.0.0';
   readonly rollbackId: string;
   readonly actionId: string;
+  readonly resourceProjectId: string;
+  readonly effectiveProjectId: string;
   readonly status:
     | 'NOT_AVAILABLE'
     | 'PREPARED'
@@ -451,11 +523,35 @@ export type RollbackV1 = {
     | 'ROLLED_BACK'
     | 'FAILED'
     | 'OUTCOME_UNKNOWN';
-  readonly manifestRef?: ExternalActionIdentityRefV1;
-  readonly approvalRef?: ExternalActionIdentityRefV1;
-  readonly executionRef?: ExternalActionIdentityRefV1;
-  readonly verificationRef?: ExternalActionIdentityRefV1;
+  readonly manifestRef?: ExternalActionResourceRefV1;
+  readonly approvalRef?: ExternalActionResourceRefV1;
+  readonly executionRef?: ExternalActionResourceRefV1;
+  readonly verificationRef?: ExternalActionResourceRefV1;
   readonly updatedAt: string;
+};
+
+// ---------------------------------------------------------------------------
+// Credential and budget Product views (AC-13 / AC-14 contract layer)
+// ---------------------------------------------------------------------------
+
+export type ExternalActionCredentialViewV1 = {
+  readonly schemaVersion: '1.0.0';
+  readonly connectorId: string;
+  readonly name: string;
+  readonly status: 'CONFIGURED' | 'MISSING' | 'REVOKED' | 'ROTATION_REQUIRED';
+  readonly maskedCredential?: string;
+  readonly capabilities: readonly ('TEST' | 'ROTATE' | 'REVOKE')[];
+};
+
+export type ExternalActionBudgetViewV1 = {
+  readonly schemaVersion: '1.0.0';
+  readonly projectId: string;
+  readonly status: 'OK' | 'WARNING' | 'EXHAUSTED';
+  readonly usedExecutions: number;
+  readonly remainingExecutions: number;
+  readonly softLimit: number;
+  readonly hardLimit: number;
+  readonly exhausted: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -475,11 +571,10 @@ export type ExternalActionQueueItemV1 = {
   readonly actionId: string;
   readonly actionRevision: number;
   readonly operation: ExternalActionOperationV1;
-  readonly targetId: string;
-  readonly targetRevision: string;
-  readonly externalRevision: string;
+  readonly resourceProjectId: string;
+  readonly effectiveProjectId: string;
   readonly status: ExternalActionAggregateStatusV1;
-  readonly aggregateState: ExternalActionV1['aggregateState'];
+  readonly aggregateState: ExternalActionAggregateReadinessV1;
   readonly capabilities: readonly ExternalActionCapabilityV1[];
   readonly riskLevel: 'R0' | 'R1' | 'R2' | 'R3' | 'R4';
   readonly updatedAt: string;
@@ -520,6 +615,8 @@ export type GetExternalActionDetailResultV1 = {
   readonly result?: ResultV1;
   readonly rollback?: RollbackV1;
   readonly compensation?: CompensatingActionV1;
+  readonly credential?: ExternalActionCredentialViewV1;
+  readonly budget?: ExternalActionBudgetViewV1;
 };
 
 export type ListExternalActionAuditRequestV1 = {
@@ -546,7 +643,7 @@ export type ValidateActionCandidateRequestV1 = {
   readonly actionId: string;
   readonly candidateId: string;
   readonly operation: ExternalActionOperationV1;
-  readonly targetRef: ExternalActionIdentityRefV1;
+  readonly targetRef: ExternalActionTargetRefV1;
   readonly parameterRef: ExternalActionParameterRefV1;
   readonly evidenceRefs: readonly ExternalActionEvidenceSetRefV1[];
   readonly compensationForActionId?: string;
@@ -1026,7 +1123,61 @@ const decodeSchemaVersion = (object: ObjectValue, path: string): void => {
   if (schemaVersion !== '1.0.0') return fail(`${path}.schemaVersion`, 'must be 1.0.0');
 };
 
-const decodeIdentityRef = (value: unknown, path: string): ExternalActionIdentityRefV1 => {
+const assertNotAfter = (earlier: string, later: string, path: string): void => {
+  if (Date.parse(later) < Date.parse(earlier)) {
+    return fail(path, 'timestamp ordering is violated');
+  }
+};
+
+const decodeProjectBinding = (
+  object: ObjectValue,
+  path: string,
+): { resourceProjectId: string; effectiveProjectId: string } => ({
+  resourceProjectId: text(required(object, 'resourceProjectId', path), `${path}.resourceProjectId`),
+  effectiveProjectId: text(
+    required(object, 'effectiveProjectId', path),
+    `${path}.effectiveProjectId`,
+  ),
+});
+
+const EXTERNAL_ACTION_RESOURCE_KINDS = [
+  'candidate',
+  'riskDecision',
+  'manifest',
+  'approval',
+  'preflight',
+  'execution',
+  'attempt',
+  'verification',
+  'result',
+  'compensation',
+  'rollback',
+  'provider',
+] as const;
+
+const decodeResourceRef = (value: unknown, path: string): ExternalActionResourceRefV1 => {
+  const object = strictObject(
+    value,
+    ['schemaVersion', 'resourceKind', 'resourceId', 'resourceRevision'],
+    path,
+  );
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    resourceKind: enumValue(
+      required(object, 'resourceKind', path),
+      EXTERNAL_ACTION_RESOURCE_KINDS,
+      `${path}.resourceKind`,
+    ),
+    resourceId: text(required(object, 'resourceId', path), `${path}.resourceId`),
+    resourceRevision:
+      object.resourceRevision === undefined
+        ? undefined
+        : positiveInteger(object.resourceRevision, `${path}.resourceRevision`),
+  };
+};
+
+const decodeTargetRef = (value: unknown, path: string): ExternalActionTargetRefV1 => {
   const object = strictObject(
     value,
     ['schemaVersion', 'targetKind', 'targetId', 'targetRevision', 'externalRevision'],
@@ -1087,14 +1238,11 @@ const decodeActor = (value: unknown, path: string): ExternalActionActorV1 => {
   };
 };
 
-const decodeOptionalRef = <T>(
+const decodeOptionalResourceRef = (
   value: unknown,
   path: string,
-  decode: (value: unknown, path: string) => T,
-): T | undefined => {
-  if (value === undefined) return undefined;
-  return decode(value, path);
-};
+): ExternalActionResourceRefV1 | undefined =>
+  value === undefined ? undefined : decodeResourceRef(value, path);
 
 const EXTERNAL_ACTION_OPERATIONS: readonly ExternalActionOperationV1[] = [
   'PREVIEW_ONLY',
@@ -1139,6 +1287,8 @@ const EXTERNAL_ACTION_CAPABILITIES: readonly ExternalActionCapabilityV1[] = [
   'READ_RESULT',
   'READ_AUDIT',
   'READ_APPROVAL',
+  'READ_CREDENTIAL',
+  'READ_BUDGET',
   'VALIDATE_CANDIDATE',
   'PREPARE_MANIFEST',
   'APPROVE_EXTERNAL_ACTION',
@@ -1158,6 +1308,12 @@ const EXTERNAL_ACTION_ATTEMPT_STATUSES: readonly ExecutionAttemptStatusV1[] = [
   'SUCCEEDED',
   'FAILED',
   'OUTCOME_UNKNOWN',
+  'CANCELLED',
+];
+
+const TERMINAL_ATTEMPT_STATUSES: readonly ExecutionAttemptStatusV1[] = [
+  'SUCCEEDED',
+  'FAILED',
   'CANCELLED',
 ];
 
@@ -1181,6 +1337,10 @@ const APPROVAL_STATUSES: readonly ExternalActionApprovalStatusV1[] = [
   'INVALIDATED',
 ];
 
+// ---------------------------------------------------------------------------
+// Resource decoders with cross-field invariants
+// ---------------------------------------------------------------------------
+
 export const decodeExternalActionV1 = (
   value: unknown,
   path = 'externalAction',
@@ -1191,107 +1351,110 @@ export const decodeExternalActionV1 = (
       'schemaVersion',
       'actionId',
       'actionRevision',
-      'targetKind',
-      'targetId',
-      'targetRevision',
-      'externalRevision',
       'operation',
       'resourceProjectId',
       'effectiveProjectId',
       'accessRevision',
       'policyContextRevision',
-      'riskDecisionRef',
-      'manifestRef',
-      'approvalRef',
       'status',
-      'capabilities',
       'aggregateState',
       'staleReason',
       'accessMasking',
       'maskedFields',
-      'latestExecutionRef',
-      'compensationForActionId',
+      'capabilities',
       'updatedAt',
       'createdAt',
+      'targetRef',
+      'riskDecisionRef',
+      'manifestRef',
+      'approvalRef',
+      'latestExecutionRef',
+      'compensationForActionId',
     ],
     path,
   );
   decodeSchemaVersion(object, path);
-  return {
-    schemaVersion: '1.0.0',
+  const binding = decodeProjectBinding(object, path);
+  const aggregateState = enumValue(
+    required(object, 'aggregateState', path),
+    ['AVAILABLE', 'STALE', 'ACCESS_RESTRICTED', 'UNAVAILABLE'],
+    `${path}.aggregateState`,
+  );
+  const accessMasking = enumValue(
+    required(object, 'accessMasking', path),
+    ['VISIBLE', 'MASKED', 'HIDDEN'],
+    `${path}.accessMasking`,
+  );
+  const restricted = aggregateState === 'ACCESS_RESTRICTED' || accessMasking === 'HIDDEN';
+  const common = {
+    schemaVersion: '1.0.0' as const,
     actionId: text(required(object, 'actionId', path), `${path}.actionId`),
     actionRevision: positiveInteger(
       required(object, 'actionRevision', path),
       `${path}.actionRevision`,
     ),
-    targetKind: enumValue(
-      required(object, 'targetKind', path),
-      ['KNOWN_TARGET'],
-      `${path}.targetKind`,
-    ),
-    targetId: text(required(object, 'targetId', path), `${path}.targetId`),
-    targetRevision: text(required(object, 'targetRevision', path), `${path}.targetRevision`),
-    externalRevision: text(required(object, 'externalRevision', path), `${path}.externalRevision`),
     operation: enumValue(
       required(object, 'operation', path),
       EXTERNAL_ACTION_OPERATIONS,
       `${path}.operation`,
     ),
-    resourceProjectId: text(
-      required(object, 'resourceProjectId', path),
-      `${path}.resourceProjectId`,
-    ),
-    effectiveProjectId: text(
-      required(object, 'effectiveProjectId', path),
-      `${path}.effectiveProjectId`,
-    ),
+    ...binding,
     accessRevision: text(required(object, 'accessRevision', path), `${path}.accessRevision`),
     policyContextRevision: text(
       required(object, 'policyContextRevision', path),
       `${path}.policyContextRevision`,
-    ),
-    riskDecisionRef: decodeIdentityRef(
-      required(object, 'riskDecisionRef', path),
-      `${path}.riskDecisionRef`,
-    ),
-    manifestRef: decodeIdentityRef(required(object, 'manifestRef', path), `${path}.manifestRef`),
-    approvalRef: decodeOptionalRef(object.approvalRef, `${path}.approvalRef`, (v, p) =>
-      decodeIdentityRef(v, p),
     ),
     status: enumValue(
       required(object, 'status', path),
       EXTERNAL_ACTION_AGGREGATE_STATUSES,
       `${path}.status`,
     ),
+    aggregateState,
+    staleReason: optionalText(object.staleReason, `${path}.staleReason`),
+    accessMasking,
+    maskedFields: arrayValue(required(object, 'maskedFields', path), `${path}.maskedFields`).map(
+      (entry, index) => text(entry, `${path}.maskedFields[${index}]`),
+    ),
     capabilities: arrayValue(required(object, 'capabilities', path), `${path}.capabilities`).map(
       (entry, index) =>
         enumValue(entry, EXTERNAL_ACTION_CAPABILITIES, `${path}.capabilities[${index}]`),
     ),
-    aggregateState: enumValue(
-      required(object, 'aggregateState', path),
-      ['AVAILABLE', 'STALE', 'ACCESS_RESTRICTED', 'UNAVAILABLE'],
-      `${path}.aggregateState`,
+    updatedAt: isoTimestamp(required(object, 'updatedAt', path), `${path}.updatedAt`),
+    createdAt: isoTimestamp(required(object, 'createdAt', path), `${path}.createdAt`),
+  };
+  if (restricted) {
+    // Discriminated restricted shell (AC-17): no protected identity is carried.
+    for (const key of [
+      'targetRef',
+      'riskDecisionRef',
+      'manifestRef',
+      'approvalRef',
+      'latestExecutionRef',
+      'compensationForActionId',
+    ]) {
+      if (object[key] !== undefined) {
+        return fail(`${path}.${key}`, 'must be absent in an access-restricted shell');
+      }
+    }
+    return common;
+  }
+  return {
+    ...common,
+    targetRef: decodeTargetRef(required(object, 'targetRef', path), `${path}.targetRef`),
+    riskDecisionRef: decodeResourceRef(
+      required(object, 'riskDecisionRef', path),
+      `${path}.riskDecisionRef`,
     ),
-    staleReason: optionalText(object.staleReason, `${path}.staleReason`),
-    accessMasking: enumValue(
-      required(object, 'accessMasking', path),
-      ['VISIBLE', 'MASKED', 'HIDDEN'],
-      `${path}.accessMasking`,
-    ),
-    maskedFields: arrayValue(required(object, 'maskedFields', path), `${path}.maskedFields`).map(
-      (entry, index) => text(entry, `${path}.maskedFields[${index}]`),
-    ),
-    latestExecutionRef: decodeOptionalRef(
+    manifestRef: decodeResourceRef(required(object, 'manifestRef', path), `${path}.manifestRef`),
+    approvalRef: decodeOptionalResourceRef(object.approvalRef, `${path}.approvalRef`),
+    latestExecutionRef: decodeOptionalResourceRef(
       object.latestExecutionRef,
       `${path}.latestExecutionRef`,
-      (v, p) => decodeIdentityRef(v, p),
     ),
     compensationForActionId: optionalText(
       object.compensationForActionId,
       `${path}.compensationForActionId`,
     ),
-    updatedAt: isoTimestamp(required(object, 'updatedAt', path), `${path}.updatedAt`),
-    createdAt: isoTimestamp(required(object, 'createdAt', path), `${path}.createdAt`),
   };
 };
 
@@ -1302,6 +1465,8 @@ export const decodeRiskDecisionV1 = (value: unknown, path = 'riskDecision'): Ris
       'schemaVersion',
       'riskDecisionId',
       'actionId',
+      'resourceProjectId',
+      'effectiveProjectId',
       'riskLevel',
       'policyVersion',
       'requiresUserApproval',
@@ -1311,10 +1476,12 @@ export const decodeRiskDecisionV1 = (value: unknown, path = 'riskDecision'): Ris
     path,
   );
   decodeSchemaVersion(object, path);
+  const binding = decodeProjectBinding(object, path);
   return {
     schemaVersion: '1.0.0',
     riskDecisionId: text(required(object, 'riskDecisionId', path), `${path}.riskDecisionId`),
     actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+    ...binding,
     riskLevel: enumValue(
       required(object, 'riskLevel', path),
       ['R0', 'R1', 'R2', 'R3', 'R4'],
@@ -1340,6 +1507,8 @@ export const decodeActionManifestV1 = (value: unknown, path = 'manifest'): Actio
       'manifestId',
       'manifestRevision',
       'actionId',
+      'resourceProjectId',
+      'effectiveProjectId',
       'targetId',
       'targetRevision',
       'targetDigest',
@@ -1357,6 +1526,33 @@ export const decodeActionManifestV1 = (value: unknown, path = 'manifest'): Actio
     path,
   );
   decodeSchemaVersion(object, path);
+  const binding = decodeProjectBinding(object, path);
+  const parameterRef = decodeParameterRef(
+    required(object, 'parameterRef', path),
+    `${path}.parameterRef`,
+  );
+  const parameterDigest = digest(
+    required(object, 'parameterDigest', path),
+    `${path}.parameterDigest`,
+  );
+  const evidenceSetRef = decodeEvidenceSetRef(
+    required(object, 'evidenceSetRef', path),
+    `${path}.evidenceSetRef`,
+  );
+  const evidenceSetDigest = digest(
+    required(object, 'evidenceSetDigest', path),
+    `${path}.evidenceSetDigest`,
+  );
+  const createdAt = isoTimestamp(required(object, 'createdAt', path), `${path}.createdAt`);
+  const expiresAt = isoTimestamp(required(object, 'expiresAt', path), `${path}.expiresAt`);
+  assertNotAfter(createdAt, expiresAt, path);
+  // Cross-field digest consistency.
+  if (parameterDigest !== parameterRef.parameterDigest) {
+    return fail(`${path}.parameterDigest`, 'does not match the parameter reference digest');
+  }
+  if (evidenceSetDigest !== evidenceSetRef.evidenceSetDigest) {
+    return fail(`${path}.evidenceSetDigest`, 'does not match the evidence set reference digest');
+  }
   const manifest: ActionManifestV1 = {
     schemaVersion: '1.0.0',
     manifestId: text(required(object, 'manifestId', path), `${path}.manifestId`),
@@ -1365,27 +1561,19 @@ export const decodeActionManifestV1 = (value: unknown, path = 'manifest'): Actio
       `${path}.manifestRevision`,
     ),
     actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+    ...binding,
     targetId: text(required(object, 'targetId', path), `${path}.targetId`),
     targetRevision: text(required(object, 'targetRevision', path), `${path}.targetRevision`),
     targetDigest: digest(required(object, 'targetDigest', path), `${path}.targetDigest`),
     externalRevision: text(required(object, 'externalRevision', path), `${path}.externalRevision`),
-    parameterRef: decodeParameterRef(
-      required(object, 'parameterRef', path),
-      `${path}.parameterRef`,
-    ),
-    parameterDigest: digest(required(object, 'parameterDigest', path), `${path}.parameterDigest`),
-    evidenceSetRef: decodeEvidenceSetRef(
-      required(object, 'evidenceSetRef', path),
-      `${path}.evidenceSetRef`,
-    ),
-    evidenceSetDigest: digest(
-      required(object, 'evidenceSetDigest', path),
-      `${path}.evidenceSetDigest`,
-    ),
+    parameterRef,
+    parameterDigest,
+    evidenceSetRef,
+    evidenceSetDigest,
     payloadDigest: digest(required(object, 'payloadDigest', path), `${path}.payloadDigest`),
     manifestDigest: digest(required(object, 'manifestDigest', path), `${path}.manifestDigest`),
-    expiresAt: isoTimestamp(required(object, 'expiresAt', path), `${path}.expiresAt`),
-    createdAt: isoTimestamp(required(object, 'createdAt', path), `${path}.createdAt`),
+    expiresAt,
+    createdAt,
     createdBy: decodeActor(required(object, 'createdBy', path), `${path}.createdBy`),
   };
   if (externalActionManifestDigest(manifest) !== manifest.manifestDigest) {
@@ -1405,6 +1593,8 @@ export const decodeExternalActionApprovalV1 = (
       'approvalId',
       'purpose',
       'actionId',
+      'resourceProjectId',
+      'effectiveProjectId',
       'manifestId',
       'manifestRevision',
       'manifestDigest',
@@ -1425,11 +1615,20 @@ export const decodeExternalActionApprovalV1 = (
     path,
   );
   decodeSchemaVersion(object, path);
+  const binding = decodeProjectBinding(object, path);
+  const status = enumValue(required(object, 'status', path), APPROVAL_STATUSES, `${path}.status`);
+  const issuedAt = isoTimestamp(required(object, 'issuedAt', path), `${path}.issuedAt`);
+  const expiresAt = isoTimestamp(required(object, 'expiresAt', path), `${path}.expiresAt`);
+  assertNotAfter(issuedAt, expiresAt, path);
+  if (status === 'ACTIVE' && Date.parse(expiresAt) <= Date.parse(issuedAt)) {
+    return fail(`${path}.expiresAt`, 'an ACTIVE approval must have a future expiry');
+  }
   return {
     schemaVersion: '1.0.0',
     approvalId: text(required(object, 'approvalId', path), `${path}.approvalId`),
     purpose: enumValue(required(object, 'purpose', path), ['EXTERNAL_ACTION'], `${path}.purpose`),
     actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+    ...binding,
     manifestId: text(required(object, 'manifestId', path), `${path}.manifestId`),
     manifestRevision: positiveInteger(
       required(object, 'manifestRevision', path),
@@ -1448,9 +1647,9 @@ export const decodeExternalActionApprovalV1 = (
       `${path}.policyContextRevision`,
     ),
     reason: text(required(object, 'reason', path), `${path}.reason`),
-    issuedAt: isoTimestamp(required(object, 'issuedAt', path), `${path}.issuedAt`),
-    expiresAt: isoTimestamp(required(object, 'expiresAt', path), `${path}.expiresAt`),
-    status: enumValue(required(object, 'status', path), APPROVAL_STATUSES, `${path}.status`),
+    issuedAt,
+    expiresAt,
+    status,
     invalidationReason: optionalText(object.invalidationReason, `${path}.invalidationReason`),
   };
 };
@@ -1463,6 +1662,8 @@ export const decodePreflightV1 = (value: unknown, path = 'preflight'): Preflight
       'preflightId',
       'concreteKind',
       'actionId',
+      'resourceProjectId',
+      'effectiveProjectId',
       'manifestRevision',
       'preflightDigest',
       'status',
@@ -1479,47 +1680,98 @@ export const decodePreflightV1 = (value: unknown, path = 'preflight'): Preflight
     path,
   );
   decodeSchemaVersion(object, path);
+  const binding = decodeProjectBinding(object, path);
+  const status = enumValue(required(object, 'status', path), PREFLIGHT_STATUSES, `${path}.status`);
+  const runAt = isoTimestamp(required(object, 'runAt', path), `${path}.runAt`);
+  const expiresAt = isoTimestamp(required(object, 'expiresAt', path), `${path}.expiresAt`);
+  assertNotAfter(runAt, expiresAt, path);
+  const permissionRevalidated = booleanValue(
+    required(object, 'permissionRevalidated', path),
+    `${path}.permissionRevalidated`,
+  );
+  const credentialRevalidated = booleanValue(
+    required(object, 'credentialRevalidated', path),
+    `${path}.credentialRevalidated`,
+  );
+  const budgetRevalidated = booleanValue(
+    required(object, 'budgetRevalidated', path),
+    `${path}.budgetRevalidated`,
+  );
+  const policyRevalidated = booleanValue(
+    required(object, 'policyRevalidated', path),
+    `${path}.policyRevalidated`,
+  );
+  const targetStateRevalidated = booleanValue(
+    required(object, 'targetStateRevalidated', path),
+    `${path}.targetStateRevalidated`,
+  );
+  const externalRevisionRevalidated = booleanValue(
+    required(object, 'externalRevisionRevalidated', path),
+    `${path}.externalRevisionRevalidated`,
+  );
+  if (
+    status === 'READY' &&
+    !(
+      permissionRevalidated &&
+      credentialRevalidated &&
+      budgetRevalidated &&
+      policyRevalidated &&
+      targetStateRevalidated &&
+      externalRevisionRevalidated
+    )
+  ) {
+    return fail(`${path}.status`, 'a READY Preflight requires all six revalidations to pass');
+  }
+  if (status === 'READY' && Date.parse(expiresAt) <= Date.parse(runAt)) {
+    return fail(`${path}.expiresAt`, 'a READY Preflight must have a future expiry');
+  }
   return {
     schemaVersion: '1.0.0',
     preflightId: text(required(object, 'preflightId', path), `${path}.preflightId`),
     concreteKind: 'PREFLIGHT',
     actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+    ...binding,
     manifestRevision: positiveInteger(
       required(object, 'manifestRevision', path),
       `${path}.manifestRevision`,
     ),
     preflightDigest: digest(required(object, 'preflightDigest', path), `${path}.preflightDigest`),
-    status: enumValue(required(object, 'status', path), PREFLIGHT_STATUSES, `${path}.status`),
+    status,
     reasons: arrayValue(required(object, 'reasons', path), `${path}.reasons`).map((entry, index) =>
       text(entry, `${path}.reasons[${index}]`),
     ),
-    permissionRevalidated: booleanValue(
-      required(object, 'permissionRevalidated', path),
-      `${path}.permissionRevalidated`,
-    ),
-    credentialRevalidated: booleanValue(
-      required(object, 'credentialRevalidated', path),
-      `${path}.credentialRevalidated`,
-    ),
-    budgetRevalidated: booleanValue(
-      required(object, 'budgetRevalidated', path),
-      `${path}.budgetRevalidated`,
-    ),
-    policyRevalidated: booleanValue(
-      required(object, 'policyRevalidated', path),
-      `${path}.policyRevalidated`,
-    ),
-    targetStateRevalidated: booleanValue(
-      required(object, 'targetStateRevalidated', path),
-      `${path}.targetStateRevalidated`,
-    ),
-    externalRevisionRevalidated: booleanValue(
-      required(object, 'externalRevisionRevalidated', path),
-      `${path}.externalRevisionRevalidated`,
-    ),
-    runAt: isoTimestamp(required(object, 'runAt', path), `${path}.runAt`),
-    expiresAt: isoTimestamp(required(object, 'expiresAt', path), `${path}.expiresAt`),
+    permissionRevalidated,
+    credentialRevalidated,
+    budgetRevalidated,
+    policyRevalidated,
+    targetStateRevalidated,
+    externalRevisionRevalidated,
+    runAt,
+    expiresAt,
   };
+};
+
+const decodeAttemptTimestamps = (
+  object: ObjectValue,
+  path: string,
+  status: ExecutionAttemptStatusV1,
+  startedAtValue: unknown,
+  completedAtValue: unknown,
+): { startedAt: string; completedAt?: string } => {
+  const startedAt = isoTimestamp(startedAtValue, `${path}.startedAt`);
+  const completedAt =
+    completedAtValue === undefined
+      ? undefined
+      : isoTimestamp(completedAtValue, `${path}.completedAt`);
+  const terminal = TERMINAL_ATTEMPT_STATUSES.includes(status);
+  if (terminal && completedAt === undefined) {
+    return fail(`${path}.completedAt`, 'a terminal attempt requires a completedAt timestamp');
+  }
+  if (!terminal && completedAt !== undefined) {
+    return fail(`${path}.completedAt`, 'a non-terminal attempt must not have completedAt');
+  }
+  if (completedAt !== undefined) assertNotAfter(startedAt, completedAt, path);
+  return { startedAt, completedAt };
 };
 
 export const decodeExecutionV1 = (value: unknown, path = 'execution'): ExecutionV1 => {
@@ -1530,6 +1782,8 @@ export const decodeExecutionV1 = (value: unknown, path = 'execution'): Execution
       'executionId',
       'concreteKind',
       'actionId',
+      'resourceProjectId',
+      'effectiveProjectId',
       'manifestRevision',
       'status',
       'attemptCount',
@@ -1540,30 +1794,37 @@ export const decodeExecutionV1 = (value: unknown, path = 'execution'): Execution
     path,
   );
   decodeSchemaVersion(object, path);
+  const binding = decodeProjectBinding(object, path);
+  const status = enumValue(
+    required(object, 'status', path),
+    EXTERNAL_ACTION_ATTEMPT_STATUSES,
+    `${path}.status`,
+  );
+  const attemptCount = integer(required(object, 'attemptCount', path), `${path}.attemptCount`);
+  const { startedAt, completedAt } = decodeAttemptTimestamps(
+    object,
+    path,
+    status,
+    required(object, 'startedAt', path),
+    object.completedAt,
+  );
   return {
     schemaVersion: '1.0.0',
     executionId: text(required(object, 'executionId', path), `${path}.executionId`),
     concreteKind: 'EXECUTION',
     actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+    ...binding,
     manifestRevision: positiveInteger(
       required(object, 'manifestRevision', path),
       `${path}.manifestRevision`,
     ),
-    status: enumValue(
-      required(object, 'status', path),
-      EXTERNAL_ACTION_ATTEMPT_STATUSES,
-      `${path}.status`,
-    ),
-    attemptCount: integer(required(object, 'attemptCount', path), `${path}.attemptCount`),
-    startedAt: isoTimestamp(required(object, 'startedAt', path), `${path}.startedAt`),
-    completedAt:
-      object.completedAt === undefined
-        ? undefined
-        : isoTimestamp(object.completedAt, `${path}.completedAt`),
-    latestAttemptRef: decodeOptionalRef(
+    status,
+    attemptCount,
+    startedAt,
+    completedAt,
+    latestAttemptRef: decodeOptionalResourceRef(
       object.latestAttemptRef,
       `${path}.latestAttemptRef`,
-      (v, p) => decodeIdentityRef(v, p),
     ),
   };
 };
@@ -1577,6 +1838,8 @@ export const decodeExecutionAttemptV1 = (value: unknown, path = 'attempt'): Exec
       'attemptNumber',
       'executionId',
       'actionId',
+      'resourceProjectId',
+      'effectiveProjectId',
       'idempotencyKey',
       'status',
       'policyContextRevision',
@@ -1590,36 +1853,42 @@ export const decodeExecutionAttemptV1 = (value: unknown, path = 'attempt'): Exec
     path,
   );
   decodeSchemaVersion(object, path);
+  const binding = decodeProjectBinding(object, path);
+  const status = enumValue(
+    required(object, 'status', path),
+    EXTERNAL_ACTION_ATTEMPT_STATUSES,
+    `${path}.status`,
+  );
+  const attemptNumber = positiveInteger(
+    required(object, 'attemptNumber', path),
+    `${path}.attemptNumber`,
+  );
+  const { startedAt, completedAt } = decodeAttemptTimestamps(
+    object,
+    path,
+    status,
+    required(object, 'startedAt', path),
+    object.completedAt,
+  );
   return {
     schemaVersion: '1.0.0',
     attemptId: text(required(object, 'attemptId', path), `${path}.attemptId`),
-    attemptNumber: positiveInteger(
-      required(object, 'attemptNumber', path),
-      `${path}.attemptNumber`,
-    ),
+    attemptNumber,
     executionId: text(required(object, 'executionId', path), `${path}.executionId`),
     actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+    ...binding,
     idempotencyKey: text(required(object, 'idempotencyKey', path), `${path}.idempotencyKey`),
-    status: enumValue(
-      required(object, 'status', path),
-      EXTERNAL_ACTION_ATTEMPT_STATUSES,
-      `${path}.status`,
-    ),
+    status,
     policyContextRevision: text(
       required(object, 'policyContextRevision', path),
       `${path}.policyContextRevision`,
     ),
     externalRevision: text(required(object, 'externalRevision', path), `${path}.externalRevision`),
-    providerRef: decodeOptionalRef(object.providerRef, `${path}.providerRef`, (v, p) =>
-      decodeIdentityRef(v, p),
-    ),
+    providerRef: decodeOptionalResourceRef(object.providerRef, `${path}.providerRef`),
     correlationId: text(required(object, 'correlationId', path), `${path}.correlationId`),
     causationId: optionalText(object.causationId, `${path}.causationId`),
-    startedAt: isoTimestamp(required(object, 'startedAt', path), `${path}.startedAt`),
-    completedAt:
-      object.completedAt === undefined
-        ? undefined
-        : isoTimestamp(object.completedAt, `${path}.completedAt`),
+    startedAt,
+    completedAt,
   };
 };
 
@@ -1631,6 +1900,8 @@ export const decodeVerificationV1 = (value: unknown, path = 'verification'): Ver
       'verificationId',
       'concreteKind',
       'actionId',
+      'resourceProjectId',
+      'effectiveProjectId',
       'executionId',
       'attemptId',
       'targetRevision',
@@ -1643,21 +1914,36 @@ export const decodeVerificationV1 = (value: unknown, path = 'verification'): Ver
     path,
   );
   decodeSchemaVersion(object, path);
+  const binding = decodeProjectBinding(object, path);
+  const status = enumValue(
+    required(object, 'status', path),
+    VERIFICATION_STATUSES,
+    `${path}.status`,
+  );
+  const observedDigest =
+    object.observedDigest === undefined
+      ? undefined
+      : digest(object.observedDigest, `${path}.observedDigest`);
+  // Verification status ↔ observed-digest rules.
+  if ((status === 'APPLIED' || status === 'MISMATCH') && observedDigest === undefined) {
+    return fail(`${path}.observedDigest`, 'is required for APPLIED or MISMATCH verification');
+  }
+  if (status === 'NOT_APPLIED' && observedDigest !== undefined) {
+    return fail(`${path}.observedDigest`, 'must be absent for NOT_APPLIED verification');
+  }
   return {
     schemaVersion: '1.0.0',
     verificationId: text(required(object, 'verificationId', path), `${path}.verificationId`),
     concreteKind: 'VERIFICATION',
     actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+    ...binding,
     executionId: text(required(object, 'executionId', path), `${path}.executionId`),
     attemptId: optionalText(object.attemptId, `${path}.attemptId`),
     targetRevision: text(required(object, 'targetRevision', path), `${path}.targetRevision`),
     targetDigest: digest(required(object, 'targetDigest', path), `${path}.targetDigest`),
     externalRevision: text(required(object, 'externalRevision', path), `${path}.externalRevision`),
-    status: enumValue(required(object, 'status', path), VERIFICATION_STATUSES, `${path}.status`),
-    observedDigest:
-      object.observedDigest === undefined
-        ? undefined
-        : digest(object.observedDigest, `${path}.observedDigest`),
+    status,
+    observedDigest,
     verifiedAt: isoTimestamp(required(object, 'verifiedAt', path), `${path}.verifiedAt`),
   };
 };
@@ -1669,6 +1955,8 @@ export const decodeResultV1 = (value: unknown, path = 'result'): ResultV1 => {
       'schemaVersion',
       'resultId',
       'actionId',
+      'resourceProjectId',
+      'effectiveProjectId',
       'executionId',
       'attemptId',
       'externalId',
@@ -1680,18 +1968,18 @@ export const decodeResultV1 = (value: unknown, path = 'result'): ResultV1 => {
     path,
   );
   decodeSchemaVersion(object, path);
+  const binding = decodeProjectBinding(object, path);
   return {
     schemaVersion: '1.0.0',
     resultId: text(required(object, 'resultId', path), `${path}.resultId`),
     actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+    ...binding,
     executionId: text(required(object, 'executionId', path), `${path}.executionId`),
     attemptId: optionalText(object.attemptId, `${path}.attemptId`),
     externalId: text(required(object, 'externalId', path), `${path}.externalId`),
     observedDigest: digest(required(object, 'observedDigest', path), `${path}.observedDigest`),
     completedAt: isoTimestamp(required(object, 'completedAt', path), `${path}.completedAt`),
-    verificationRef: decodeOptionalRef(object.verificationRef, `${path}.verificationRef`, (v, p) =>
-      decodeIdentityRef(v, p),
-    ),
+    verificationRef: decodeOptionalResourceRef(object.verificationRef, `${path}.verificationRef`),
     outputRefs: arrayValue(required(object, 'outputRefs', path), `${path}.outputRefs`).map(
       (entry, index) => {
         const output = strictObject(
@@ -1720,6 +2008,18 @@ export const decodeResultV1 = (value: unknown, path = 'result'): ResultV1 => {
   };
 };
 
+const decodeAuditEventData = (value: unknown, path: string): ActionAuditEventDataV1 => {
+  const object = strictObject(value, ['schemaVersion', 'message', 'refs'], path);
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    message: text(required(object, 'message', path), `${path}.message`),
+    refs: arrayValue(required(object, 'refs', path), `${path}.refs`).map((entry, index) =>
+      decodeResourceRef(entry, `${path}.refs[${index}]`),
+    ),
+  };
+};
+
 export const decodeActionAuditEventV1 = (
   value: unknown,
   path = 'auditEvent',
@@ -1730,47 +2030,29 @@ export const decodeActionAuditEventV1 = (
       'schemaVersion',
       'auditEventId',
       'actionId',
+      'resourceProjectId',
+      'effectiveProjectId',
       'sequence',
       'category',
-      'eventJson',
+      'eventData',
       'occurredAt',
     ],
     path,
   );
   decodeSchemaVersion(object, path);
+  const binding = decodeProjectBinding(object, path);
   return {
     schemaVersion: '1.0.0',
     auditEventId: text(required(object, 'auditEventId', path), `${path}.auditEventId`),
     actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+    ...binding,
     sequence: positiveInteger(required(object, 'sequence', path), `${path}.sequence`),
     category: enumValue(
       required(object, 'category', path),
-      [
-        'ACTION_CANDIDATE_VALIDATED',
-        'RISK_DECIDED',
-        'MANIFEST_PREPARED',
-        'MANIFEST_CHANGED',
-        'APPROVAL_ISSUED',
-        'APPROVAL_EXPIRED',
-        'PREFLIGHT_PASSED',
-        'PREFLIGHT_FAILED',
-        'EXECUTION_STARTED',
-        'EXECUTION_ATTEMPT_RECORDED',
-        'EXECUTION_VERIFIED',
-        'EXECUTION_VERIFICATION_FAILED',
-        'EXECUTION_FAILED',
-        'EXECUTION_OUTCOME_UNKNOWN',
-        'ACTION_CANCELLED',
-        'ACTION_ROLLED_BACK',
-        'COMPENSATION_REQUIRED',
-        'COMPENSATION_PREPARED',
-        'COMPENSATION_VERIFIED',
-        'RESULT_RECORDED',
-        'ACCESS_RESTRICTED',
-      ],
+      EXTERNAL_ACTION_AUDIT_CATEGORIES,
       `${path}.category`,
     ),
-    eventJson: text(required(object, 'eventJson', path), `${path}.eventJson`),
+    eventData: decodeAuditEventData(required(object, 'eventData', path), `${path}.eventData`),
     occurredAt: isoTimestamp(required(object, 'occurredAt', path), `${path}.occurredAt`),
   };
 };
@@ -1785,6 +2067,8 @@ export const decodeCompensatingActionV1 = (
       'schemaVersion',
       'compensationId',
       'actionId',
+      'resourceProjectId',
+      'effectiveProjectId',
       'sourceActionId',
       'sourceExecutionId',
       'candidateRef',
@@ -1795,16 +2079,18 @@ export const decodeCompensatingActionV1 = (
     path,
   );
   decodeSchemaVersion(object, path);
+  const binding = decodeProjectBinding(object, path);
   return {
     schemaVersion: '1.0.0',
     compensationId: text(required(object, 'compensationId', path), `${path}.compensationId`),
     actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+    ...binding,
     sourceActionId: text(required(object, 'sourceActionId', path), `${path}.sourceActionId`),
     sourceExecutionId: text(
       required(object, 'sourceExecutionId', path),
       `${path}.sourceExecutionId`,
     ),
-    candidateRef: decodeIdentityRef(required(object, 'candidateRef', path), `${path}.candidateRef`),
+    candidateRef: decodeResourceRef(required(object, 'candidateRef', path), `${path}.candidateRef`),
     status: enumValue(
       required(object, 'status', path),
       EXTERNAL_ACTION_AGGREGATE_STATUSES,
@@ -1822,6 +2108,8 @@ export const decodeRollbackV1 = (value: unknown, path = 'rollback'): RollbackV1 
       'schemaVersion',
       'rollbackId',
       'actionId',
+      'resourceProjectId',
+      'effectiveProjectId',
       'status',
       'manifestRef',
       'approvalRef',
@@ -1832,10 +2120,12 @@ export const decodeRollbackV1 = (value: unknown, path = 'rollback'): RollbackV1 
     path,
   );
   decodeSchemaVersion(object, path);
+  const binding = decodeProjectBinding(object, path);
   return {
     schemaVersion: '1.0.0',
     rollbackId: text(required(object, 'rollbackId', path), `${path}.rollbackId`),
     actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+    ...binding,
     status: enumValue(
       required(object, 'status', path),
       [
@@ -1849,18 +2139,10 @@ export const decodeRollbackV1 = (value: unknown, path = 'rollback'): RollbackV1 
       ],
       `${path}.status`,
     ),
-    manifestRef: decodeOptionalRef(object.manifestRef, `${path}.manifestRef`, (v, p) =>
-      decodeIdentityRef(v, p),
-    ),
-    approvalRef: decodeOptionalRef(object.approvalRef, `${path}.approvalRef`, (v, p) =>
-      decodeIdentityRef(v, p),
-    ),
-    executionRef: decodeOptionalRef(object.executionRef, `${path}.executionRef`, (v, p) =>
-      decodeIdentityRef(v, p),
-    ),
-    verificationRef: decodeOptionalRef(object.verificationRef, `${path}.verificationRef`, (v, p) =>
-      decodeIdentityRef(v, p),
-    ),
+    manifestRef: decodeOptionalResourceRef(object.manifestRef, `${path}.manifestRef`),
+    approvalRef: decodeOptionalResourceRef(object.approvalRef, `${path}.approvalRef`),
+    executionRef: decodeOptionalResourceRef(object.executionRef, `${path}.executionRef`),
+    verificationRef: decodeOptionalResourceRef(object.verificationRef, `${path}.verificationRef`),
     updatedAt: isoTimestamp(required(object, 'updatedAt', path), `${path}.updatedAt`),
   };
 };
@@ -1873,6 +2155,8 @@ export const decodeActionCandidateV1 = (value: unknown, path = 'candidate'): Act
       'candidateId',
       'candidateRevision',
       'actionId',
+      'resourceProjectId',
+      'effectiveProjectId',
       'sourceRefs',
       'operation',
       'targetRef',
@@ -1887,6 +2171,7 @@ export const decodeActionCandidateV1 = (value: unknown, path = 'candidate'): Act
     path,
   );
   decodeSchemaVersion(object, path);
+  const binding = decodeProjectBinding(object, path);
   return {
     schemaVersion: '1.0.0',
     candidateId: text(required(object, 'candidateId', path), `${path}.candidateId`),
@@ -1895,6 +2180,7 @@ export const decodeActionCandidateV1 = (value: unknown, path = 'candidate'): Act
       `${path}.candidateRevision`,
     ),
     actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+    ...binding,
     sourceRefs: arrayValue(required(object, 'sourceRefs', path), `${path}.sourceRefs`).map(
       (entry, index) => {
         const source = strictObject(
@@ -1929,7 +2215,7 @@ export const decodeActionCandidateV1 = (value: unknown, path = 'candidate'): Act
       EXTERNAL_ACTION_OPERATIONS,
       `${path}.operation`,
     ),
-    targetRef: decodeIdentityRef(required(object, 'targetRef', path), `${path}.targetRef`),
+    targetRef: decodeTargetRef(required(object, 'targetRef', path), `${path}.targetRef`),
     parameterRef: decodeParameterRef(
       required(object, 'parameterRef', path),
       `${path}.parameterRef`,
@@ -1942,7 +2228,7 @@ export const decodeActionCandidateV1 = (value: unknown, path = 'candidate'): Act
       `${path}.compensationForActionId`,
     ),
     candidateDigest: digest(required(object, 'candidateDigest', path), `${path}.candidateDigest`),
-    riskDecisionRef: decodeIdentityRef(
+    riskDecisionRef: decodeResourceRef(
       required(object, 'riskDecisionRef', path),
       `${path}.riskDecisionRef`,
     ),
@@ -1950,6 +2236,93 @@ export const decodeActionCandidateV1 = (value: unknown, path = 'candidate'): Act
     generatedBy: decodeActor(required(object, 'generatedBy', path), `${path}.generatedBy`),
   };
 };
+
+export const decodeExternalActionCredentialViewV1 = (
+  value: unknown,
+  path = 'credential',
+): ExternalActionCredentialViewV1 => {
+  const object = strictObject(
+    value,
+    ['schemaVersion', 'connectorId', 'name', 'status', 'maskedCredential', 'capabilities'],
+    path,
+  );
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    connectorId: text(required(object, 'connectorId', path), `${path}.connectorId`),
+    name: text(required(object, 'name', path), `${path}.name`),
+    status: enumValue(
+      required(object, 'status', path),
+      ['CONFIGURED', 'MISSING', 'REVOKED', 'ROTATION_REQUIRED'],
+      `${path}.status`,
+    ),
+    maskedCredential:
+      object.maskedCredential === undefined
+        ? undefined
+        : text(object.maskedCredential, `${path}.maskedCredential`),
+    capabilities: arrayValue(required(object, 'capabilities', path), `${path}.capabilities`).map(
+      (entry, index) =>
+        enumValue(entry, ['TEST', 'ROTATE', 'REVOKE'], `${path}.capabilities[${index}]`),
+    ),
+  };
+};
+
+export const decodeExternalActionBudgetViewV1 = (
+  value: unknown,
+  path = 'budget',
+): ExternalActionBudgetViewV1 => {
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'projectId',
+      'status',
+      'usedExecutions',
+      'remainingExecutions',
+      'softLimit',
+      'hardLimit',
+      'exhausted',
+    ],
+    path,
+  );
+  decodeSchemaVersion(object, path);
+  const used = integer(required(object, 'usedExecutions', path), `${path}.usedExecutions`);
+  const remaining = integer(
+    required(object, 'remainingExecutions', path),
+    `${path}.remainingExecutions`,
+  );
+  const softLimit = integer(required(object, 'softLimit', path), `${path}.softLimit`);
+  const hardLimit = integer(required(object, 'hardLimit', path), `${path}.hardLimit`);
+  if (softLimit > hardLimit) {
+    return fail(`${path}.softLimit`, 'must not exceed hardLimit');
+  }
+  return {
+    schemaVersion: '1.0.0',
+    projectId: text(required(object, 'projectId', path), `${path}.projectId`),
+    status: enumValue(
+      required(object, 'status', path),
+      ['OK', 'WARNING', 'EXHAUSTED'],
+      `${path}.status`,
+    ),
+    usedExecutions: used,
+    remainingExecutions: remaining,
+    softLimit,
+    hardLimit,
+    exhausted: booleanValue(required(object, 'exhausted', path), `${path}.exhausted`),
+  };
+};
+
+// ---------------------------------------------------------------------------
+// Operation request decoders (strict, per operation)
+// ---------------------------------------------------------------------------
+
+const decodeCommandIdentity = (
+  object: ObjectValue,
+  path: string,
+): { clientRequestId: string; idempotencyKey: string } => ({
+  clientRequestId: text(required(object, 'clientRequestId', path), `${path}.clientRequestId`),
+  idempotencyKey: text(required(object, 'idempotencyKey', path), `${path}.idempotencyKey`),
+});
 
 export const decodeListExternalActionsRequestV1 = (
   value: unknown,
@@ -1984,6 +2357,48 @@ export const decodeListExternalActionsRequestV1 = (
   };
 };
 
+export const decodeGetExternalActionRequestV1 = (
+  value: unknown,
+  path = 'request',
+): GetExternalActionRequestV1 => {
+  const object = strictObject(value, ['schemaVersion', 'actionId'], path);
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+  };
+};
+
+export const decodeGetExternalActionDetailRequestV1 = (
+  value: unknown,
+  path = 'request',
+): GetExternalActionDetailRequestV1 => {
+  const object = strictObject(value, ['schemaVersion', 'actionId'], path);
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+  };
+};
+
+export const decodeListExternalActionAuditRequestV1 = (
+  value: unknown,
+  path = 'request',
+): ListExternalActionAuditRequestV1 => {
+  const object = strictObject(value, ['schemaVersion', 'actionId', 'cursor', 'pageSize'], path);
+  decodeSchemaVersion(object, path);
+  const pageSize = integer(required(object, 'pageSize', path), `${path}.pageSize`);
+  if (pageSize > EXTERNAL_ACTION_QUEUE_PAGE_SIZE_CAP) {
+    return fail(`${path}.pageSize`, `must not exceed ${EXTERNAL_ACTION_QUEUE_PAGE_SIZE_CAP}`);
+  }
+  return {
+    schemaVersion: '1.0.0',
+    actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+    cursor: optionalText(object.cursor, `${path}.cursor`),
+    pageSize,
+  };
+};
+
 export const decodeValidateActionCandidateRequestV1 = (
   value: unknown,
   path = 'request',
@@ -2008,8 +2423,7 @@ export const decodeValidateActionCandidateRequestV1 = (
   decodeSchemaVersion(object, path);
   return {
     schemaVersion: '1.0.0',
-    clientRequestId: text(required(object, 'clientRequestId', path), `${path}.clientRequestId`),
-    idempotencyKey: text(required(object, 'idempotencyKey', path), `${path}.idempotencyKey`),
+    ...decodeCommandIdentity(object, path),
     actionId: text(required(object, 'actionId', path), `${path}.actionId`),
     candidateId: text(required(object, 'candidateId', path), `${path}.candidateId`),
     operation: enumValue(
@@ -2017,7 +2431,7 @@ export const decodeValidateActionCandidateRequestV1 = (
       EXTERNAL_ACTION_OPERATIONS,
       `${path}.operation`,
     ),
-    targetRef: decodeIdentityRef(required(object, 'targetRef', path), `${path}.targetRef`),
+    targetRef: decodeTargetRef(required(object, 'targetRef', path), `${path}.targetRef`),
     parameterRef: decodeParameterRef(
       required(object, 'parameterRef', path),
       `${path}.parameterRef`,
@@ -2030,6 +2444,945 @@ export const decodeValidateActionCandidateRequestV1 = (
       `${path}.compensationForActionId`,
     ),
     reason: optionalText(object.reason, `${path}.reason`),
+  };
+};
+
+export const decodePrepareActionManifestRequestV1 = (
+  value: unknown,
+  path = 'request',
+): PrepareActionManifestRequestV1 => {
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'clientRequestId',
+      'idempotencyKey',
+      'actionId',
+      'expectedActionRevision',
+      'reason',
+    ],
+    path,
+  );
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    ...decodeCommandIdentity(object, path),
+    actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+    expectedActionRevision: positiveInteger(
+      required(object, 'expectedActionRevision', path),
+      `${path}.expectedActionRevision`,
+    ),
+    reason: text(required(object, 'reason', path), `${path}.reason`),
+  };
+};
+
+export const decodeApproveExternalActionRequestV1 = (
+  value: unknown,
+  path = 'request',
+): ApproveExternalActionRequestV1 => {
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'clientRequestId',
+      'idempotencyKey',
+      'actionId',
+      'manifestId',
+      'manifestRevision',
+      'expectedTargetRevision',
+      'expectedExternalRevision',
+      'reason',
+    ],
+    path,
+  );
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    ...decodeCommandIdentity(object, path),
+    actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+    manifestId: text(required(object, 'manifestId', path), `${path}.manifestId`),
+    manifestRevision: positiveInteger(
+      required(object, 'manifestRevision', path),
+      `${path}.manifestRevision`,
+    ),
+    expectedTargetRevision: text(
+      required(object, 'expectedTargetRevision', path),
+      `${path}.expectedTargetRevision`,
+    ),
+    expectedExternalRevision: text(
+      required(object, 'expectedExternalRevision', path),
+      `${path}.expectedExternalRevision`,
+    ),
+    reason: text(required(object, 'reason', path), `${path}.reason`),
+  };
+};
+
+export const decodePreflightExternalActionRequestV1 = (
+  value: unknown,
+  path = 'request',
+): PreflightExternalActionRequestV1 => {
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'clientRequestId',
+      'idempotencyKey',
+      'actionId',
+      'expectedActionRevision',
+      'manifestRevision',
+      'expectedExternalRevision',
+      'reason',
+    ],
+    path,
+  );
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    ...decodeCommandIdentity(object, path),
+    actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+    expectedActionRevision: positiveInteger(
+      required(object, 'expectedActionRevision', path),
+      `${path}.expectedActionRevision`,
+    ),
+    manifestRevision: positiveInteger(
+      required(object, 'manifestRevision', path),
+      `${path}.manifestRevision`,
+    ),
+    expectedExternalRevision: text(
+      required(object, 'expectedExternalRevision', path),
+      `${path}.expectedExternalRevision`,
+    ),
+    reason: text(required(object, 'reason', path), `${path}.reason`),
+  };
+};
+
+export const decodeExecuteExternalActionRequestV1 = (
+  value: unknown,
+  path = 'request',
+): ExecuteExternalActionRequestV1 => {
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'clientRequestId',
+      'idempotencyKey',
+      'actionId',
+      'expectedActionRevision',
+      'manifestRevision',
+      'preflightId',
+      'expectedExternalRevision',
+      'reason',
+    ],
+    path,
+  );
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    ...decodeCommandIdentity(object, path),
+    actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+    expectedActionRevision: positiveInteger(
+      required(object, 'expectedActionRevision', path),
+      `${path}.expectedActionRevision`,
+    ),
+    manifestRevision: positiveInteger(
+      required(object, 'manifestRevision', path),
+      `${path}.manifestRevision`,
+    ),
+    preflightId: text(required(object, 'preflightId', path), `${path}.preflightId`),
+    expectedExternalRevision: text(
+      required(object, 'expectedExternalRevision', path),
+      `${path}.expectedExternalRevision`,
+    ),
+    reason: text(required(object, 'reason', path), `${path}.reason`),
+  };
+};
+
+export const decodeRetryExecutionAttemptRequestV1 = (
+  value: unknown,
+  path = 'request',
+): RetryExecutionAttemptRequestV1 => {
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'clientRequestId',
+      'idempotencyKey',
+      'actionId',
+      'executionId',
+      'sourceAttemptId',
+      'causationId',
+      'reason',
+    ],
+    path,
+  );
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    ...decodeCommandIdentity(object, path),
+    actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+    executionId: text(required(object, 'executionId', path), `${path}.executionId`),
+    sourceAttemptId: text(required(object, 'sourceAttemptId', path), `${path}.sourceAttemptId`),
+    causationId: text(required(object, 'causationId', path), `${path}.causationId`),
+    reason: text(required(object, 'reason', path), `${path}.reason`),
+  };
+};
+
+export const decodeVerifyExternalActionRequestV1 = (
+  value: unknown,
+  path = 'request',
+): VerifyExternalActionRequestV1 => {
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'clientRequestId',
+      'idempotencyKey',
+      'actionId',
+      'executionId',
+      'attemptId',
+      'expectedTargetRevision',
+      'expectedExternalRevision',
+      'reason',
+    ],
+    path,
+  );
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    ...decodeCommandIdentity(object, path),
+    actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+    executionId: text(required(object, 'executionId', path), `${path}.executionId`),
+    attemptId: optionalText(object.attemptId, `${path}.attemptId`),
+    expectedTargetRevision: text(
+      required(object, 'expectedTargetRevision', path),
+      `${path}.expectedTargetRevision`,
+    ),
+    expectedExternalRevision: text(
+      required(object, 'expectedExternalRevision', path),
+      `${path}.expectedExternalRevision`,
+    ),
+    reason: text(required(object, 'reason', path), `${path}.reason`),
+  };
+};
+
+export const decodeCancelExternalActionRequestV1 = (
+  value: unknown,
+  path = 'request',
+): CancelExternalActionRequestV1 => {
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'clientRequestId',
+      'idempotencyKey',
+      'actionId',
+      'expectedActionRevision',
+      'reason',
+    ],
+    path,
+  );
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    ...decodeCommandIdentity(object, path),
+    actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+    expectedActionRevision: positiveInteger(
+      required(object, 'expectedActionRevision', path),
+      `${path}.expectedActionRevision`,
+    ),
+    reason: text(required(object, 'reason', path), `${path}.reason`),
+  };
+};
+
+export const decodeRollbackExternalActionRequestV1 = (
+  value: unknown,
+  path = 'request',
+): RollbackExternalActionRequestV1 => {
+  const object = strictObject(
+    value,
+    ['schemaVersion', 'clientRequestId', 'idempotencyKey', 'actionId', 'executionId', 'reason'],
+    path,
+  );
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    ...decodeCommandIdentity(object, path),
+    actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+    executionId: text(required(object, 'executionId', path), `${path}.executionId`),
+    reason: text(required(object, 'reason', path), `${path}.reason`),
+  };
+};
+
+export const decodePrepareCompensatingActionRequestV1 = (
+  value: unknown,
+  path = 'request',
+): PrepareCompensatingActionRequestV1 => {
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'clientRequestId',
+      'idempotencyKey',
+      'sourceActionId',
+      'sourceExecutionId',
+      'reason',
+    ],
+    path,
+  );
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    ...decodeCommandIdentity(object, path),
+    sourceActionId: text(required(object, 'sourceActionId', path), `${path}.sourceActionId`),
+    sourceExecutionId: text(
+      required(object, 'sourceExecutionId', path),
+      `${path}.sourceExecutionId`,
+    ),
+    reason: text(required(object, 'reason', path), `${path}.reason`),
+  };
+};
+
+export const decodeResolveExternalActionOutcomeRequestV1 = (
+  value: unknown,
+  path = 'request',
+): ResolveExternalActionOutcomeRequestV1 => {
+  const object = strictObject(
+    value,
+    ['schemaVersion', 'clientRequestId', 'idempotencyKey', 'semanticDigest'],
+    path,
+  );
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    ...decodeCommandIdentity(object, path),
+    semanticDigest: text(required(object, 'semanticDigest', path), `${path}.semanticDigest`),
+  };
+};
+
+// ---------------------------------------------------------------------------
+// Command result decoders
+// ---------------------------------------------------------------------------
+
+export const decodeValidateActionCandidateResultV1 = (
+  value: unknown,
+  path = 'result',
+): ValidateActionCandidateResultV1 => {
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'outcome',
+      'clientRequestId',
+      'idempotencyKey',
+      'commandSemanticDigest',
+      'actionId',
+      'riskDecision',
+      'candidate',
+    ],
+    path,
+  );
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    outcome: enumValue(required(object, 'outcome', path), ['COMPLETED'], `${path}.outcome`),
+    clientRequestId: text(required(object, 'clientRequestId', path), `${path}.clientRequestId`),
+    idempotencyKey: text(required(object, 'idempotencyKey', path), `${path}.idempotencyKey`),
+    commandSemanticDigest: text(
+      required(object, 'commandSemanticDigest', path),
+      `${path}.commandSemanticDigest`,
+    ),
+    actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+    riskDecision: decodeRiskDecisionV1(
+      required(object, 'riskDecision', path),
+      `${path}.riskDecision`,
+    ),
+    candidate: decodeActionCandidateV1(required(object, 'candidate', path), `${path}.candidate`),
+  };
+};
+
+export const decodePrepareActionManifestResultV1 = (
+  value: unknown,
+  path = 'result',
+): PrepareActionManifestResultV1 => {
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'outcome',
+      'clientRequestId',
+      'idempotencyKey',
+      'commandSemanticDigest',
+      'actionId',
+      'manifest',
+    ],
+    path,
+  );
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    outcome: enumValue(required(object, 'outcome', path), ['COMPLETED'], `${path}.outcome`),
+    clientRequestId: text(required(object, 'clientRequestId', path), `${path}.clientRequestId`),
+    idempotencyKey: text(required(object, 'idempotencyKey', path), `${path}.idempotencyKey`),
+    commandSemanticDigest: text(
+      required(object, 'commandSemanticDigest', path),
+      `${path}.commandSemanticDigest`,
+    ),
+    actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+    manifest: decodeActionManifestV1(required(object, 'manifest', path), `${path}.manifest`),
+  };
+};
+
+export const decodeApproveExternalActionResultV1 = (
+  value: unknown,
+  path = 'result',
+): ApproveExternalActionResultV1 => {
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'outcome',
+      'clientRequestId',
+      'idempotencyKey',
+      'commandSemanticDigest',
+      'actionId',
+      'approval',
+    ],
+    path,
+  );
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    outcome: enumValue(required(object, 'outcome', path), ['COMPLETED'], `${path}.outcome`),
+    clientRequestId: text(required(object, 'clientRequestId', path), `${path}.clientRequestId`),
+    idempotencyKey: text(required(object, 'idempotencyKey', path), `${path}.idempotencyKey`),
+    commandSemanticDigest: text(
+      required(object, 'commandSemanticDigest', path),
+      `${path}.commandSemanticDigest`,
+    ),
+    actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+    approval: decodeExternalActionApprovalV1(
+      required(object, 'approval', path),
+      `${path}.approval`,
+    ),
+  };
+};
+
+export const decodePreflightExternalActionResultV1 = (
+  value: unknown,
+  path = 'result',
+): PreflightExternalActionResultV1 => {
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'outcome',
+      'clientRequestId',
+      'idempotencyKey',
+      'commandSemanticDigest',
+      'actionId',
+      'preflight',
+    ],
+    path,
+  );
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    outcome: enumValue(required(object, 'outcome', path), ['COMPLETED'], `${path}.outcome`),
+    clientRequestId: text(required(object, 'clientRequestId', path), `${path}.clientRequestId`),
+    idempotencyKey: text(required(object, 'idempotencyKey', path), `${path}.idempotencyKey`),
+    commandSemanticDigest: text(
+      required(object, 'commandSemanticDigest', path),
+      `${path}.commandSemanticDigest`,
+    ),
+    actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+    preflight: decodePreflightV1(required(object, 'preflight', path), `${path}.preflight`),
+  };
+};
+
+export const decodeExecuteExternalActionResultV1 = (
+  value: unknown,
+  path = 'result',
+): ExecuteExternalActionResultV1 => {
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'outcome',
+      'clientRequestId',
+      'idempotencyKey',
+      'commandSemanticDigest',
+      'actionId',
+      'execution',
+      'attempt',
+    ],
+    path,
+  );
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    outcome: enumValue(
+      required(object, 'outcome', path),
+      ['COMPLETED', 'OUTCOME_UNKNOWN'],
+      `${path}.outcome`,
+    ),
+    clientRequestId: text(required(object, 'clientRequestId', path), `${path}.clientRequestId`),
+    idempotencyKey: text(required(object, 'idempotencyKey', path), `${path}.idempotencyKey`),
+    commandSemanticDigest: text(
+      required(object, 'commandSemanticDigest', path),
+      `${path}.commandSemanticDigest`,
+    ),
+    actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+    execution: decodeExecutionV1(required(object, 'execution', path), `${path}.execution`),
+    attempt: decodeExecutionAttemptV1(required(object, 'attempt', path), `${path}.attempt`),
+  };
+};
+
+export const decodeRetryExecutionAttemptResultV1 = (
+  value: unknown,
+  path = 'result',
+): RetryExecutionAttemptResultV1 => {
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'outcome',
+      'clientRequestId',
+      'idempotencyKey',
+      'commandSemanticDigest',
+      'actionId',
+      'attempt',
+    ],
+    path,
+  );
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    outcome: enumValue(
+      required(object, 'outcome', path),
+      ['COMPLETED', 'OUTCOME_UNKNOWN'],
+      `${path}.outcome`,
+    ),
+    clientRequestId: text(required(object, 'clientRequestId', path), `${path}.clientRequestId`),
+    idempotencyKey: text(required(object, 'idempotencyKey', path), `${path}.idempotencyKey`),
+    commandSemanticDigest: text(
+      required(object, 'commandSemanticDigest', path),
+      `${path}.commandSemanticDigest`,
+    ),
+    actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+    attempt: decodeExecutionAttemptV1(required(object, 'attempt', path), `${path}.attempt`),
+  };
+};
+
+export const decodeVerifyExternalActionResultV1 = (
+  value: unknown,
+  path = 'result',
+): VerifyExternalActionResultV1 => {
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'outcome',
+      'clientRequestId',
+      'idempotencyKey',
+      'commandSemanticDigest',
+      'actionId',
+      'verification',
+    ],
+    path,
+  );
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    outcome: enumValue(required(object, 'outcome', path), ['COMPLETED'], `${path}.outcome`),
+    clientRequestId: text(required(object, 'clientRequestId', path), `${path}.clientRequestId`),
+    idempotencyKey: text(required(object, 'idempotencyKey', path), `${path}.idempotencyKey`),
+    commandSemanticDigest: text(
+      required(object, 'commandSemanticDigest', path),
+      `${path}.commandSemanticDigest`,
+    ),
+    actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+    verification: decodeVerificationV1(
+      required(object, 'verification', path),
+      `${path}.verification`,
+    ),
+  };
+};
+
+export const decodeCancelExternalActionResultV1 = (
+  value: unknown,
+  path = 'result',
+): CancelExternalActionResultV1 => {
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'outcome',
+      'clientRequestId',
+      'idempotencyKey',
+      'commandSemanticDigest',
+      'actionId',
+      'status',
+    ],
+    path,
+  );
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    outcome: enumValue(required(object, 'outcome', path), ['COMPLETED'], `${path}.outcome`),
+    clientRequestId: text(required(object, 'clientRequestId', path), `${path}.clientRequestId`),
+    idempotencyKey: text(required(object, 'idempotencyKey', path), `${path}.idempotencyKey`),
+    commandSemanticDigest: text(
+      required(object, 'commandSemanticDigest', path),
+      `${path}.commandSemanticDigest`,
+    ),
+    actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+    status: enumValue(
+      required(object, 'status', path),
+      ['CANCELLING', 'CANCELLED'],
+      `${path}.status`,
+    ),
+  };
+};
+
+export const decodeRollbackExternalActionResultV1 = (
+  value: unknown,
+  path = 'result',
+): RollbackExternalActionResultV1 => {
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'outcome',
+      'clientRequestId',
+      'idempotencyKey',
+      'commandSemanticDigest',
+      'actionId',
+      'rollback',
+    ],
+    path,
+  );
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    outcome: enumValue(
+      required(object, 'outcome', path),
+      ['COMPLETED', 'OUTCOME_UNKNOWN'],
+      `${path}.outcome`,
+    ),
+    clientRequestId: text(required(object, 'clientRequestId', path), `${path}.clientRequestId`),
+    idempotencyKey: text(required(object, 'idempotencyKey', path), `${path}.idempotencyKey`),
+    commandSemanticDigest: text(
+      required(object, 'commandSemanticDigest', path),
+      `${path}.commandSemanticDigest`,
+    ),
+    actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+    rollback: decodeRollbackV1(required(object, 'rollback', path), `${path}.rollback`),
+  };
+};
+
+export const decodePrepareCompensatingActionResultV1 = (
+  value: unknown,
+  path = 'result',
+): PrepareCompensatingActionResultV1 => {
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'outcome',
+      'clientRequestId',
+      'idempotencyKey',
+      'commandSemanticDigest',
+      'compensation',
+    ],
+    path,
+  );
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    outcome: enumValue(required(object, 'outcome', path), ['COMPLETED'], `${path}.outcome`),
+    clientRequestId: text(required(object, 'clientRequestId', path), `${path}.clientRequestId`),
+    idempotencyKey: text(required(object, 'idempotencyKey', path), `${path}.idempotencyKey`),
+    commandSemanticDigest: text(
+      required(object, 'commandSemanticDigest', path),
+      `${path}.commandSemanticDigest`,
+    ),
+    compensation: decodeCompensatingActionV1(
+      required(object, 'compensation', path),
+      `${path}.compensation`,
+    ),
+  };
+};
+
+export const decodeResolveExternalActionOutcomeResultV1 = (
+  value: unknown,
+  path = 'result',
+): ResolveExternalActionOutcomeResultV1 => {
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'outcome',
+      'originalClientRequestId',
+      'originalIdempotencyKey',
+      'completed',
+      'rejection',
+    ],
+    path,
+  );
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    outcome: enumValue(
+      required(object, 'outcome', path),
+      ['COMPLETED', 'REJECTED', 'OUTCOME_UNKNOWN'],
+      `${path}.outcome`,
+    ),
+    originalClientRequestId: text(
+      required(object, 'originalClientRequestId', path),
+      `${path}.originalClientRequestId`,
+    ),
+    originalIdempotencyKey: text(
+      required(object, 'originalIdempotencyKey', path),
+      `${path}.originalIdempotencyKey`,
+    ),
+    completed:
+      object.completed === undefined
+        ? undefined
+        : decodeCompletedOutcome(object.completed, `${path}.completed`),
+    rejection:
+      object.rejection === undefined
+        ? undefined
+        : (() => {
+            const rejection = strictObject(
+              object.rejection,
+              ['code', 'message'],
+              `${path}.rejection`,
+            );
+            return {
+              code: text(required(rejection, 'code', path), `${path}.rejection.code`),
+              message: text(required(rejection, 'message', path), `${path}.rejection.message`),
+            };
+          })(),
+  };
+};
+
+const decodeCompletedOutcome = (
+  value: unknown,
+  path: string,
+): { readonly commandType: FrontendExternalActionCommandType; readonly result: unknown } => {
+  const object = strictObject(value, ['commandType', 'result'], path);
+  return {
+    commandType: enumValue(
+      required(object, 'commandType', path),
+      [
+        FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.validateCandidate,
+        FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.prepareManifest,
+        FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.approve,
+        FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.preflight,
+        FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.execute,
+        FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.retryAttempt,
+        FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.verify,
+        FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.cancel,
+        FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.rollback,
+        FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.prepareCompensation,
+        FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.resolveOutcome,
+      ],
+      `${path}.commandType`,
+    ),
+    result: required(object, 'result', path),
+  };
+};
+
+export const decodeListExternalActionsResultV1 = (
+  value: unknown,
+  path = 'result',
+): ListExternalActionsResultV1 => {
+  const object = strictObject(
+    value,
+    ['schemaVersion', 'items', 'nextCursor', 'capabilities'],
+    path,
+  );
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    items: arrayValue(required(object, 'items', path), `${path}.items`).map((entry, index) => {
+      const item = strictObject(
+        entry,
+        [
+          'schemaVersion',
+          'actionId',
+          'actionRevision',
+          'operation',
+          'resourceProjectId',
+          'effectiveProjectId',
+          'status',
+          'aggregateState',
+          'capabilities',
+          'riskLevel',
+          'updatedAt',
+        ],
+        `${path}.items[${index}]`,
+      );
+      decodeSchemaVersion(item, `${path}.items[${index}]`);
+      return {
+        schemaVersion: '1.0.0' as const,
+        actionId: text(required(item, 'actionId', path), `${path}.items[${index}].actionId`),
+        actionRevision: positiveInteger(
+          required(item, 'actionRevision', path),
+          `${path}.items[${index}].actionRevision`,
+        ),
+        operation: enumValue(
+          required(item, 'operation', path),
+          EXTERNAL_ACTION_OPERATIONS,
+          `${path}.items[${index}].operation`,
+        ),
+        resourceProjectId: text(
+          required(item, 'resourceProjectId', path),
+          `${path}.items[${index}].resourceProjectId`,
+        ),
+        effectiveProjectId: text(
+          required(item, 'effectiveProjectId', path),
+          `${path}.items[${index}].effectiveProjectId`,
+        ),
+        status: enumValue(
+          required(item, 'status', path),
+          EXTERNAL_ACTION_AGGREGATE_STATUSES,
+          `${path}.items[${index}].status`,
+        ),
+        aggregateState: enumValue(
+          required(item, 'aggregateState', path),
+          ['AVAILABLE', 'STALE', 'ACCESS_RESTRICTED', 'UNAVAILABLE'],
+          `${path}.items[${index}].aggregateState`,
+        ),
+        capabilities: arrayValue(
+          required(item, 'capabilities', path),
+          `${path}.items[${index}].capabilities`,
+        ).map((cap, capIndex) =>
+          enumValue(
+            cap,
+            EXTERNAL_ACTION_CAPABILITIES,
+            `${path}.items[${index}].capabilities[${capIndex}]`,
+          ),
+        ),
+        riskLevel: enumValue(
+          required(item, 'riskLevel', path),
+          ['R0', 'R1', 'R2', 'R3', 'R4'],
+          `${path}.items[${index}].riskLevel`,
+        ),
+        updatedAt: isoTimestamp(
+          required(item, 'updatedAt', path),
+          `${path}.items[${index}].updatedAt`,
+        ),
+      };
+    }),
+    nextCursor: optionalText(object.nextCursor, `${path}.nextCursor`),
+    capabilities: arrayValue(required(object, 'capabilities', path), `${path}.capabilities`).map(
+      (entry, index) =>
+        enumValue(entry, EXTERNAL_ACTION_CAPABILITIES, `${path}.capabilities[${index}]`),
+    ),
+  };
+};
+
+export const decodeGetExternalActionResultV1 = (
+  value: unknown,
+  path = 'result',
+): GetExternalActionResultV1 => {
+  const object = strictObject(value, ['schemaVersion', 'action'], path);
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    action: decodeExternalActionV1(required(object, 'action', path), `${path}.action`),
+  };
+};
+
+export const decodeListExternalActionAuditResultV1 = (
+  value: unknown,
+  path = 'result',
+): ListExternalActionAuditResultV1 => {
+  const object = strictObject(value, ['schemaVersion', 'events', 'nextCursor'], path);
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    events: arrayValue(required(object, 'events', path), `${path}.events`).map((entry, index) =>
+      decodeActionAuditEventV1(entry, `${path}.events[${index}]`),
+    ),
+    nextCursor: optionalText(object.nextCursor, `${path}.nextCursor`),
+  };
+};
+
+export const decodeGetExternalActionDetailResultV1 = (
+  value: unknown,
+  path = 'result',
+): GetExternalActionDetailResultV1 => {
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'action',
+      'manifest',
+      'riskDecision',
+      'approval',
+      'preflight',
+      'execution',
+      'attempts',
+      'verification',
+      'result',
+      'rollback',
+      'compensation',
+      'credential',
+      'budget',
+    ],
+    path,
+  );
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    action: decodeExternalActionV1(required(object, 'action', path), `${path}.action`),
+    manifest:
+      object.manifest === undefined
+        ? undefined
+        : decodeActionManifestV1(object.manifest, `${path}.manifest`),
+    riskDecision:
+      object.riskDecision === undefined
+        ? undefined
+        : decodeRiskDecisionV1(object.riskDecision, `${path}.riskDecision`),
+    approval:
+      object.approval === undefined
+        ? undefined
+        : decodeExternalActionApprovalV1(object.approval, `${path}.approval`),
+    preflight:
+      object.preflight === undefined
+        ? undefined
+        : decodePreflightV1(object.preflight, `${path}.preflight`),
+    execution:
+      object.execution === undefined
+        ? undefined
+        : decodeExecutionV1(object.execution, `${path}.execution`),
+    attempts: arrayValue(required(object, 'attempts', path), `${path}.attempts`).map(
+      (entry, index) => decodeExecutionAttemptV1(entry, `${path}.attempts[${index}]`),
+    ),
+    verification:
+      object.verification === undefined
+        ? undefined
+        : decodeVerificationV1(object.verification, `${path}.verification`),
+    result:
+      object.result === undefined ? undefined : decodeResultV1(object.result, `${path}.result`),
+    rollback:
+      object.rollback === undefined
+        ? undefined
+        : decodeRollbackV1(object.rollback, `${path}.rollback`),
+    compensation:
+      object.compensation === undefined
+        ? undefined
+        : decodeCompensatingActionV1(object.compensation, `${path}.compensation`),
+    credential:
+      object.credential === undefined
+        ? undefined
+        : decodeExternalActionCredentialViewV1(object.credential, `${path}.credential`),
+    budget:
+      object.budget === undefined
+        ? undefined
+        : decodeExternalActionBudgetViewV1(object.budget, `${path}.budget`),
   };
 };
 

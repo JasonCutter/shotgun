@@ -64,40 +64,40 @@ finalized and before Ready/Merge.
 
 ## 3. Acceptance-criteria evidence (AC-01..AC-32)
 
-| AC    | Evidence                                                                                                | Result             |
-| ----- | ------------------------------------------------------------------------------------------------------- | ------------------ |
-| AC-01 | ADR-128 + Contract Snapshot §1/§8; coordinator separates Approval from Commit                           | PASS               |
-| AC-02 | `ReviewTargetKindV1` + `validateReviewApprovalPurpose` exhaustive; candidate → `ACCEPTED_FOR_AUTHORING` | PASS               |
-| AC-03 | `tests/integration/frontend-review-domain.test.ts` idempotent materialization                           | PASS               |
-| AC-04 | revalidate creates new immutable revision (domain test)                                                 | PASS               |
-| AC-05 | context binds project/access/policy/canonicalBase/artifacts (domain test)                               | PASS               |
-| AC-06 | items preserve source identity/digest/comparison/artifact lineage (contract + draft adapter)            | PASS               |
-| AC-07 | `ReviewDependencyV1` server-owned, strict decoder                                                       | PASS               |
-| AC-08 | decisions `APPROVE/REJECT/REQUEST_REVISION/HOLD` (contract + domain)                                    | PASS               |
-| AC-09 | terminal decisions cannot be replaced (domain test)                                                     | PASS               |
-| AC-10 | `validateProposedApprovalSet` REQUIRES/ATOMIC_WITH/conflicts (domain + negative)                        | PASS               |
-| AC-11 | dangling reference + conflicting set fail closed                                                        | PASS               |
-| AC-12 | candidate accepted-for-authoring, no Approval Resource (domain test)                                    | PASS               |
-| AC-13 | purpose separation `KNOWLEDGE_CANONICAL_CHANGE` / `USER_DIRECTIVE_CHANGE`                               | PASS               |
-| AC-14 | Approval binds actor/target/items/digests/policy/expiry (contract)                                      | PASS               |
-| AC-15 | `tests/integration/frontend-review-negative.test.ts` no Commit/Apply/Execute                            | PASS               |
-| AC-16 | `LegacyChangeSetReviewPort` adapter, legacy preserved                                                   | PASS               |
-| AC-17 | `tests/database/frontend-review-migration-rollback.test.ts`                                             | PASS               |
-| AC-18 | `tests/database/frontend-review-postgres-parity.test.ts`                                                | PASS               |
-| AC-19 | decision + approval in one completion transaction (coordinator `transactionWithHandle`)                 | PASS               |
-| AC-20 | commands flow through existing Command Ledger; replay idempotent (negative test)                        | PASS               |
-| AC-21 | `tests/contract/frontend-review.contract.test.ts` (31) + protected routes                               | PASS               |
-| AC-22 | cross-project/access/hidden leakage fail-closed (negative matrix)                                       | PASS               |
-| AC-23 | `/review` replaced by ReviewWorkspace (router)                                                          | PASS               |
-| AC-24 | ADR-119 state split; `review-workspace-state.test.ts`                                                   | PASS               |
-| AC-25 | `OUTCOME_UNKNOWN` recovery never auto-resubmits (state machine + negative)                              | PASS               |
-| AC-26 | revision-request return target → Knowledge Editor (domain + workspace)                                  | PASS               |
-| AC-27 | `tests/browser/frontend-review.spec.ts` announcements + axe                                             | PASS               |
-| AC-28 | 200% zoom E2E, reduced motion CSS, non-color cues                                                       | PASS               |
-| AC-29 | performance baseline recorded in completion report                                                      | PASS               |
-| AC-30 | negative proof: no commit/apply/execute/cross-purpose route                                             | PASS               |
-| AC-31 | exact-head Quality/Frontend/Required Gates (final head CI)                                              | PENDING final head |
-| AC-32 | verification + completion report + registry recorded; completion approval pending user                  | PASS (evidence)    |
+| AC    | Evidence                                                                                                       | Result          |
+| ----- | -------------------------------------------------------------------------------------------------------------- | --------------- |
+| AC-01 | ADR-128 + Contract Snapshot §1/§8; coordinator separates Approval from Commit                                  | PASS            |
+| AC-02 | `ReviewTargetKindV1` + `validateReviewApprovalPurpose` exhaustive; candidate → `ACCEPTED_FOR_AUTHORING`        | PASS            |
+| AC-03 | `tests/integration/frontend-review-domain.test.ts` idempotent materialization                                  | PASS            |
+| AC-04 | revalidate creates new immutable revision (domain test)                                                        | PASS            |
+| AC-05 | context binds project/access/policy/canonicalBase/artifacts (domain test)                                      | PASS            |
+| AC-06 | items preserve source identity/digest/comparison/artifact lineage (contract + draft adapter)                   | PASS            |
+| AC-07 | `ReviewDependencyV1` server-owned, strict decoder                                                              | PASS            |
+| AC-08 | decisions `APPROVE/REJECT/REQUEST_REVISION/HOLD` (contract + domain)                                           | PASS            |
+| AC-09 | terminal decisions cannot be replaced (domain test)                                                            | PASS            |
+| AC-10 | `validateProposedApprovalSet` REQUIRES/ATOMIC_WITH/conflicts (domain + negative)                               | PASS            |
+| AC-11 | dangling reference + conflicting set fail closed                                                               | PASS            |
+| AC-12 | candidate accepted-for-authoring, no Approval Resource (domain test)                                           | PASS            |
+| AC-13 | purpose separation `KNOWLEDGE_CANONICAL_CHANGE` / `USER_DIRECTIVE_CHANGE`                                      | PASS            |
+| AC-14 | Approval binds actor/target/items/digests/policy/expiry (contract)                                             | PASS            |
+| AC-15 | `tests/integration/frontend-review-negative.test.ts` no Commit/Apply/Execute                                   | PASS            |
+| AC-16 | `LegacyChangeSetReviewPort` adapter, legacy preserved                                                          | PASS            |
+| AC-17 | `tests/database/frontend-review-migration-rollback.test.ts`                                                    | PASS            |
+| AC-18 | `tests/database/frontend-review-postgres-parity.test.ts`                                                       | PASS            |
+| AC-19 | decision + approval in one completion transaction (coordinator `transactionWithHandle`)                        | PASS            |
+| AC-20 | commands flow through existing Command Ledger; replay idempotent (negative test)                               | PASS            |
+| AC-21 | `tests/contract/frontend-review.contract.test.ts` (31) + protected routes                                      | PASS            |
+| AC-22 | cross-project/access/hidden leakage fail-closed (negative matrix)                                              | PASS            |
+| AC-23 | `/review` replaced by ReviewWorkspace (router)                                                                 | PASS            |
+| AC-24 | ADR-119 state split; `review-workspace-state.test.ts`                                                          | PASS            |
+| AC-25 | `OUTCOME_UNKNOWN` recovery never auto-resubmits (state machine + negative)                                     | PASS            |
+| AC-26 | revision-request return target → Knowledge Editor (domain + workspace)                                         | PASS            |
+| AC-27 | `tests/browser/frontend-review.spec.ts` announcements + axe                                                    | PASS            |
+| AC-28 | 200% zoom E2E, reduced motion CSS, non-color cues                                                              | PASS            |
+| AC-29 | performance baseline recorded in completion report                                                             | PASS            |
+| AC-30 | negative proof: no commit/apply/execute/cross-purpose route                                                    | PASS            |
+| AC-31 | exact-head Quality/Frontend/Required Gates CI run #496 / `30915497395` on final head `457554403` — all SUCCESS | PASS            |
+| AC-32 | verification + completion report + registry recorded; completion approval pending user                         | PASS (evidence) |
 
 ## 4. Focused-check results (implementation head)
 

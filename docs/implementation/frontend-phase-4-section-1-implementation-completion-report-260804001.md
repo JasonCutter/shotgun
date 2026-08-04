@@ -23,18 +23,23 @@ The FE-P4-S1 Review Center Product implementation is complete as a
 Migration 027; user approval of Product completion is requested next. Ready,
 Merge, deployment and production verification remain unauthorized.
 
-Corrected exact head `e10ef13203d334ac56b6392705540ab70f0856b0` (round-3
-fix commit `e10ef13`): automatic CI run #502 / `30927914305` — Quality,
-Frontend and Required Gates all **SUCCESS** (see verification record AC-31). This head resolves the GPT PR #63 review blockers (rounds 1-3):
-fail-closed reads + operation-level capability enforcement,
-decision/comment/dependency visibility filtering and hidden-Item write
-rejection, outcome/replay revalidation, the typed `DIRECTIVE_AUTHORING`
-revision return target, the frozen 200-Item / 500-edge Context bounds at
-decoder, materialization, read and outcome/replay paths, and round-3
-Outcome/replay completeness (generic REJECTED detail, hidden-state-free
-recovered aggregate, exact produced-revision recovery with `revisionRequest-
-ReturnTarget` reconstruction, context-wide comment outcome/replay omission,
-and UNAVAILABLE projection for visible Items that depend on hidden content).
+Corrected exact head `daaa62fa7687444cde30d9ab7c82f049fecbf1f2` (round-4
+fix commit `daaa62f`): automatic CI run #504 / `30929919941` — Quality,
+Frontend and Required Gates all **SUCCESS** (see verification record AC-31).
+This head resolves the GPT PR #63 review blockers (rounds 1-4): fail-closed
+reads + operation-level capability enforcement, decision/comment/dependency
+visibility filtering and hidden-Item write rejection, outcome/replay
+revalidation, the typed `DIRECTIVE_AUTHORING` revision return target, the
+frozen 200-Item / 500-edge Context bounds at decoder, materialization, read
+and outcome/replay paths, round-3 Outcome/replay completeness (generic
+REJECTED detail, hidden-state-free recovered aggregate, exact
+produced-revision recovery with `revisionRequestReturnTarget`
+reconstruction, context-wide comment outcome/replay omission, and
+UNAVAILABLE projection for visible Items that depend on hidden content),
+and round-4 boundaries (rejected-mutation replay uses only the fixed safe
+message, missing produced revision fails closed instead of substituting the
+current Context, and `REQUIRES` direction is respected so only a visible
+dependent over a hidden prerequisite is unavailable).
 
 ## 2. Delivered scope
 
@@ -45,7 +50,7 @@ and UNAVAILABLE projection for visible Items that depend on hidden content).
 - Protected Review Product API + `FrontendReviewClient` (WP4).
 - `/review` Review Workspace replacing the placeholder (WP5).
 - Verification: contract 34, domain 14, API 3, negative 5, security fail-closed
-  26, database parity + rollback (149), browser unit 6, frontend app 60,
+  30, database parity + rollback (149), browser unit 6, frontend app 60,
   browser E2E 4, governance evidence (WP6).
 
 ## 3. Exclusions (unchanged from authorization)

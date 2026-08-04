@@ -238,6 +238,22 @@ export const GraphWorkspace = () => {
 
   const onKeyDown = useCallback(
     (event: globalThis.KeyboardEvent) => {
+      // AC-20: never steal keys while the user is editing text in an input,
+      // textarea or contenteditable — arrows and Alt shortcuts must not
+      // conflict with normal text entry. Radio/checkbox/button inputs are not
+      // text editors and must keep the graph shortcuts working.
+      const target = event.target;
+      const isTextEditor =
+        target instanceof HTMLElement &&
+        (target.tagName === 'TEXTAREA' ||
+          target.isContentEditable ||
+          (target.tagName === 'INPUT' &&
+            !['radio', 'checkbox', 'button', 'submit', 'reset', 'range', 'color'].includes(
+              (target as HTMLInputElement).type,
+            )));
+      if (isTextEditor) {
+        return;
+      }
       const alt = event.altKey;
       const shift = event.shiftKey;
       const key = event.key;
@@ -272,12 +288,17 @@ export const GraphWorkspace = () => {
         }
         return;
       }
-      if (key === 'ArrowDown' || key === 'ArrowUp') {
+      if (['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight'].includes(key)) {
+        // AC-20: all four arrow keys move node focus within the active region.
+        // Down/Right advance; Up/Left go back — the linear list maps the two
+        // horizontal keys to the same previous/next semantics as the vertical
+        // keys, and at the boundary focus is never lost to the document body.
         event.preventDefault();
         const index = state.focusedRef
           ? orderedNodeRefs.findIndex((ref) => ref.resourceId === state.focusedRef?.resourceId)
           : -1;
-        const next = key === 'ArrowDown' ? index + 1 : index - 1;
+        const forward = key === 'ArrowDown' || key === 'ArrowRight';
+        const next = forward ? index + 1 : index - 1;
         if (next >= 0 && next < orderedNodeRefs.length) {
           const ref = orderedNodeRefs[next];
           if (ref) dispatch({ type: 'FOCUS_NODE', ref });

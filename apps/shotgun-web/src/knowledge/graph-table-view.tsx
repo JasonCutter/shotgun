@@ -5,6 +5,7 @@ import {
   graphNodeRefById,
   graphSelectedNodeId,
 } from './graph-accessible.js';
+import { authorityVisualClass } from './graph-list-view.js';
 
 /**
  * Table fallback view (AC-19/AC-21). Exposes the identical accessible
@@ -55,7 +56,7 @@ export const GraphTableView = ({
             return (
               <tr
                 key={key}
-                className={selected ? 'graph-row--selected' : undefined}
+                className={`${selected ? 'graph-row--selected' : ''} ${authorityVisualClass(tuple.authority)}`}
                 data-graph-kind={tuple.kind}
                 data-graph-id={key}
                 data-graph-label={tuple.label}

@@ -3,6 +3,8 @@ import cytoscape from 'cytoscape';
 
 import type { GraphEdgeV1, GraphNodeReferenceV1, GraphNodeV1 } from '@shotgun/api-client';
 
+import { graphAccessibleTuples } from './graph-accessible.js';
+
 type CytoscapeCore = ReturnType<typeof cytoscape>;
 
 /**
@@ -54,16 +56,41 @@ const STYLE = [
     },
   },
   {
+    // AC-08: canonical nodes are rounded rectangles with a solid border and
+    // bold label — a non-color cue independent of the fill colour.
     selector: 'node.authority-canonical',
-    style: { 'background-color': '#2f6f4f', shape: 'round-rectangle' },
+    style: {
+      'background-color': '#2f6f4f',
+      shape: 'round-rectangle',
+      'border-width': 2,
+      'border-color': '#ffffff',
+      'border-style': 'solid',
+      'font-weight': 'bold',
+    },
   },
   {
+    // AC-08: inferred nodes are ellipses with a dashed border and italic
+    // label — distinct from canonical without relying on colour.
     selector: 'node.authority-derived',
-    style: { 'background-color': '#8a5cf6', shape: 'ellipse' },
+    style: {
+      'background-color': '#8a5cf6',
+      shape: 'ellipse',
+      'border-width': 2,
+      'border-color': '#ffffff',
+      'border-style': 'dashed',
+      'font-style': 'italic',
+    },
   },
   {
+    // AC-08: discovery candidates are diamonds with a dotted border.
     selector: 'node.authority-discovery',
-    style: { 'background-color': '#d99a26', shape: 'diamond' },
+    style: {
+      'background-color': '#d99a26',
+      shape: 'diamond',
+      'border-width': 2,
+      'border-color': '#ffffff',
+      'border-style': 'dotted',
+    },
   },
   {
     selector: 'node:selected',
@@ -230,13 +257,33 @@ export const GraphCanvas = ({
     }
   }, [selectedRef]);
 
+  const tuples = graphAccessibleTuples(nodes, edges);
   return (
-    <div
-      ref={containerRef}
-      role="region"
-      aria-label={ariaLabel}
-      className="graph-canvas"
-      data-testid="graph-canvas"
-    />
+    <div role="region" aria-label={ariaLabel} className="graph-canvas" data-testid="graph-canvas">
+      {/* The cytoscape presentation surface lives in its own container so the
+          accessible collection below is never touched by the canvas renderer. */}
+      <div ref={containerRef} className="graph-canvas-surface" />
+      {/* AC-19: the pixel-only cytoscape surface cannot be read by assistive
+          technology, so the canvas region exposes the same accessible semantic
+          collection as the list/table/path views, generated from the same
+          snapshot via the shared graph-accessible module. Items are
+          non-interactive and visually hidden: no extra keyboard tab stops, no
+          visual duplication. */}
+      <ul className="visually-hidden" aria-label="Semantic graph accessible items">
+        {tuples.map((tuple) => (
+          <li
+            key={tuple.kind === 'node' ? tuple.nodeId : tuple.edgeId}
+            data-graph-kind={tuple.kind}
+            data-graph-id={tuple.kind === 'node' ? tuple.nodeId : tuple.edgeId}
+            data-graph-label={tuple.label}
+            data-graph-authority={tuple.authority}
+            data-graph-base-view={tuple.baseViewMembership}
+            data-graph-overlays={tuple.overlayMemberships.join(',')}
+          >
+            {tuple.kind === 'node' ? tuple.nodeId : tuple.edgeId} · {tuple.label}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 };

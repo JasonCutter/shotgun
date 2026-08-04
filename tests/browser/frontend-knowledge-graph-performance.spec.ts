@@ -173,6 +173,9 @@ test('AC-23: initial layout completes within 2000ms (median of 3 samples after w
     samples.push(Date.now() - started);
   }
   const layoutMs = median(samples);
+  // Round-3 evidence: the raw samples and median are emitted to the test
+  // output so the verification record can cite the observed values exactly.
+  console.info(JSON.stringify({ metric: 'graph-layout-ms', samples, median: layoutMs }));
   expect(layoutMs, `median layout ${layoutMs}ms`).toBeLessThanOrEqual(2000);
 });
 
@@ -214,6 +217,8 @@ test('AC-23: interaction (select) commits within 100ms (median of 3 samples)', a
     }
   }
   const interactionMs = median(samples);
+  // Round-3 evidence: raw samples and median emitted for the record.
+  console.info(JSON.stringify({ metric: 'graph-interaction-ms', samples, median: interactionMs }));
   expect(interactionMs, `median interaction ${interactionMs}ms`).toBeLessThanOrEqual(100);
 });
 

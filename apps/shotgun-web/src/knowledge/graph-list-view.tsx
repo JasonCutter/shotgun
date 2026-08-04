@@ -20,6 +20,18 @@ const authorityLabel = (authority: GraphAccessibleTuple['authority']): string =>
   return 'Discovery candidate';
 };
 
+/**
+ * AC-08: per-authority non-color visual cue class. The stylesheet gives each
+ * authority a distinct computed signature (border-left-style, font-style,
+ * font-weight, text-decoration) that is independent of color, so Canonical
+ * and inferred items remain distinguishable without relying on hue.
+ */
+export const authorityVisualClass = (authority: GraphAccessibleTuple['authority']): string => {
+  if (authority === 'CANONICAL') return 'graph-item--canonical';
+  if (authority === 'DERIVED_INFERENCE') return 'graph-item--derived';
+  return 'graph-item--discovery';
+};
+
 export const GraphListView = ({
   nodes,
   edges,
@@ -49,7 +61,7 @@ export const GraphListView = ({
           return (
             <li
               key={key}
-              className={selected ? 'graph-item graph-item--selected' : 'graph-item'}
+              className={`graph-item${selected ? ' graph-item--selected' : ''} ${authorityVisualClass(tuple.authority)}`}
               data-graph-kind={tuple.kind}
               data-graph-id={key}
               data-graph-label={tuple.label}

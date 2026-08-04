@@ -324,7 +324,9 @@ test('Graph Workspace restores deep-link focus to the selected node', async ({ p
   await expect(page.getByRole('status')).toContainText('선택됨: Entity One');
 });
 
-test('AC-08: the three authorities are visually and accessibly distinct', async ({ page }) => {
+test('AC-08: the three authorities carry distinct non-color visual signatures and accessible descriptions', async ({
+  page,
+}) => {
   await stubSessionAndShell(page);
   await page.goto('/knowledge/graph');
   await expect(page.getByRole('heading', { name: 'Semantic Graph', level: 1 })).toBeVisible();
@@ -332,15 +334,66 @@ test('AC-08: the three authorities are visually and accessibly distinct', async 
 
   const listItems = page.locator('.graph-list-view .graph-item');
   await expect(listItems).toHaveCount(4); // three nodes + one edge
+
+  // 1. The three authority discriminants are present on the items.
   const authorities = await listItems.evaluateAll((elements) =>
     elements.map((element) => element.getAttribute('data-graph-authority')),
   );
   expect(authorities).toContain('CANONICAL');
   expect(authorities).toContain('DERIVED_INFERENCE');
   expect(authorities).toContain('DISCOVERY_CANDIDATE');
-  // Distinct accessible authority labels.
+
+  // 2. Distinct accessible authority descriptions.
   await expect(listItems.filter({ hasText: 'Candidate Three' })).toContainText('Discovery');
   await expect(listItems.filter({ hasText: 'Claim One' })).toContainText('Derived');
+
+  // 3. Distinct computed-style signatures, including at least one non-color
+  //    cue per authority (border-left-style, font-style, font-weight,
+  //    text-decoration). Color alone must never be the only distinguisher.
+  const signature = (label: string) =>
+    page
+      .locator(`.graph-list-view .graph-item[data-graph-label="${label}"]`)
+      .evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          borderLeftStyle: style.borderLeftStyle,
+          borderLeftWidth: style.borderLeftWidth,
+          fontStyle: style.fontStyle,
+          fontWeight: style.fontWeight,
+          textDecorationLine: style.textDecorationLine,
+          borderLeftColor: style.borderLeftColor,
+        };
+      });
+
+  const canonical = await signature('Entity One');
+  const derived = await signature('Claim One');
+  const discovery = await signature('Candidate Three');
+
+  expect(canonical.borderLeftStyle).toBe('solid');
+  expect(canonical.fontWeight).toBe('600');
+  expect(derived.borderLeftStyle).toBe('dashed');
+  expect(derived.fontStyle).toBe('italic');
+  expect(discovery.borderLeftStyle).toBe('dotted');
+  expect(discovery.textDecorationLine).toContain('underline');
+
+  // The three full signatures (including non-color fields) must differ.
+  expect(JSON.stringify(canonical)).not.toBe(JSON.stringify(derived));
+  expect(JSON.stringify(derived)).not.toBe(JSON.stringify(discovery));
+  expect(JSON.stringify(canonical)).not.toBe(JSON.stringify(discovery));
+  // Canonical and Derived differ even when color fields are ignored.
+  const nonColor = (value: typeof canonical) =>
+    JSON.stringify({
+      borderLeftStyle: value.borderLeftStyle,
+      fontStyle: value.fontStyle,
+      fontWeight: value.fontWeight,
+      textDecorationLine: value.textDecorationLine,
+    });
+  expect(nonColor(canonical)).not.toBe(nonColor(derived));
+
+  // 4. Bounded component visual snapshot (list region only, not the page).
+  const listRegion = page.getByRole('region', { name: 'Semantic graph list' });
+  const snapshot = await listRegion.screenshot({ path: 'test-results/ac08-list-authority.png' });
+  expect(snapshot.length).toBeGreaterThan(0);
 });
 
 test('AC-17: refresh issues a new snapshot identity and keeps the selected resource focused', async ({
@@ -366,63 +419,207 @@ test('AC-17: refresh issues a new snapshot identity and keeps the selected resou
   await expect(page.getByRole('status')).toContainText('선택됨: Entity One');
 });
 
-test('AC-19: path view exposes the same accessible tuple set as the list view', async ({
+test('AC-19: canvas, list, table and path expose the identical accessible tuple set', async ({
   page,
 }) => {
   await stubSessionAndShell(page);
   await page.goto('/knowledge/graph');
   await expect(page.getByRole('heading', { name: 'Semantic Graph', level: 1 })).toBeVisible();
 
+  // Canvas exposes its semantic collection (AC-19) generated from the same
+  // snapshot via the shared graph-accessible module.
+  await expect(page.locator('[data-testid="graph-canvas"]')).toBeAttached();
+  const canvasKeys = await tupleKey(page, '[data-testid="graph-canvas"] [data-graph-kind]');
+
   await page.keyboard.press('Alt+l');
   const listKeys = await tupleKey(page, '.graph-list-view .graph-item');
+
+  await page.keyboard.press('Alt+t');
+  const tableKeys = await tupleKey(page, '.graph-table-view tbody tr');
 
   await page.keyboard.press('Alt+p');
   const pathRegion = page.getByRole('region', { name: 'Semantic graph path' });
   await expect(pathRegion).toBeVisible();
   const pathKeys = await tupleKey(page, '.graph-path-view .graph-item');
 
-  expect(pathKeys).toEqual(listKeys);
+  // Stable tuple-set equality across all four views (order-insensitive).
+  expect(canvasKeys.length).toBeGreaterThan(0);
+  expect(canvasKeys).toEqual(listKeys);
+  expect(canvasKeys).toEqual(tableKeys);
+  expect(canvasKeys).toEqual(pathKeys);
 });
 
-test('AC-20: full keyboard matrix moves focus, activates and escapes', async ({ page }) => {
+test('AC-20: the full frozen keyboard matrix is exercised end to end', async ({ page }) => {
   await stubSessionAndShell(page);
   await page.goto('/knowledge/graph');
   await expect(page.getByRole('heading', { name: 'Semantic Graph', level: 1 })).toBeVisible();
 
-  // Base views.
+  // Tab / Shift+Tab: focus enters the graph toolbar and moves between regions
+  // without being lost to the document body.
+  await page.keyboard.press('Tab');
+  await expect
+    .poll(() => page.evaluate(() => document.activeElement?.tagName ?? 'BODY'))
+    .not.toBe('BODY');
+  await page.keyboard.press('Tab');
+  await expect
+    .poll(() => page.evaluate(() => document.activeElement?.tagName ?? 'BODY'))
+    .not.toBe('BODY');
+  await page.keyboard.press('Shift+Tab');
+  await expect
+    .poll(() => page.evaluate(() => document.activeElement?.tagName ?? 'BODY'))
+    .not.toBe('BODY');
+
+  // Base views Alt+1/2/3.
   await page.keyboard.press('Alt+1');
   await expect(page.getByRole('radio', { name: /KNOWLEDGE_SEMANTIC/ })).toBeChecked();
+  await page.keyboard.press('Alt+2');
+  await expect(page.getByRole('radio', { name: /GOVERNANCE_IMPACT/ })).toBeChecked();
   await page.keyboard.press('Alt+3');
   await expect(page.getByRole('radio', { name: /OPERATIONAL_DEPENDENCY/ })).toBeChecked();
   await page.keyboard.press('Alt+1');
 
-  // Overlays.
+  // Overlays Alt+Shift+1/2/3.
+  await page.keyboard.press('Alt+Shift+1');
+  await expect(page.getByRole('checkbox', { name: /CONFLICT/ })).toBeChecked();
   await page.keyboard.press('Alt+Shift+2');
   await expect(page.getByRole('checkbox', { name: /KNOWLEDGE_GAP/ })).toBeChecked();
   await page.keyboard.press('Alt+Shift+3');
   await expect(page.getByRole('checkbox', { name: /RECURSIVE_IMPACT/ })).toBeChecked();
 
-  // Arrow + Enter activation within the list region.
-  await page.keyboard.press('Alt+l');
-  await page.keyboard.press('ArrowDown');
-  await page.keyboard.press('ArrowDown');
-  await page.keyboard.press('Enter');
-  await expect(page.getByRole('status')).toContainText(/선택됨/);
-
-  // Escape from the path view returns to the canvas overview.
+  // View switching Alt+L/T/P/V.
+  await page.keyboard.press('Alt+t');
+  await expect(page.getByRole('region', { name: 'Semantic graph table' })).toBeAttached();
+  await page.keyboard.press('Alt+v');
+  await expect(page.getByRole('region', { name: 'Semantic graph canvas' })).toBeAttached();
   await page.keyboard.press('Alt+p');
   await expect(page.getByRole('region', { name: 'Semantic graph path' })).toBeAttached();
+  await page.keyboard.press('Alt+l');
+  await expect(page.getByRole('region', { name: 'Semantic graph list' })).toBeAttached();
+
+  // Four-direction arrows move the virtual focus deterministically within the
+  // list (Down/Right advance, Up/Left go back); Enter activates the focused
+  // node and announces the exact selection for each direction. Focus is first
+  // placed on a neutral element (the heading) so the keys never collide with
+  // radio/button default behavior from the toolbar.
+  await page.getByRole('heading', { name: 'Semantic Graph', level: 1 }).focus();
+  const activateAndExpect = async (label: string) => {
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('status')).toContainText(`선택됨: ${label}`);
+  };
+  await page.keyboard.press('ArrowDown'); // focus Entity One
+  await activateAndExpect('Entity One');
+  await page.keyboard.press('ArrowRight'); // next -> Claim One
+  await activateAndExpect('Claim One');
+  await page.keyboard.press('ArrowDown'); // next -> Candidate Three
+  await activateAndExpect('Candidate Three');
+  await page.keyboard.press('ArrowUp'); // previous -> Claim One
+  await activateAndExpect('Claim One');
+  await page.keyboard.press('ArrowLeft'); // previous -> Entity One
+  await activateAndExpect('Entity One');
+
+  // Escape returns from a non-canvas view to the canvas overview.
   await page.keyboard.press('Escape');
   await expect(page.getByRole('region', { name: 'Semantic graph canvas' })).toBeAttached();
 });
 
-test('AC-22: list/table/path remain fully operable at 200% zoom', async ({ page, context }) => {
+test('AC-20: graph shortcuts do not steal keys while a text input is focused', async ({ page }) => {
+  await stubSessionAndShell(page);
+  await page.goto('/knowledge/graph');
+  await expect(page.getByRole('heading', { name: 'Semantic Graph', level: 1 })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Semantic graph canvas' })).toBeAttached();
+
+  // Focus a temporary text input and type normally: Alt+L must not switch
+  // views and plain letters must be entered into the field.
+  await page.evaluate(() => {
+    const input = document.createElement('input');
+    input.setAttribute('aria-label', 'temporary text input');
+    input.id = 'graph-shortcut-guard-input';
+    document.body.appendChild(input);
+    input.focus();
+  });
+  await page.keyboard.press('Alt+l');
+  await page.keyboard.type('hello');
+  const value = await page.inputValue('#graph-shortcut-guard-input');
+  expect(value).toBe('hello');
+  await expect(page.getByRole('region', { name: 'Semantic graph canvas' })).toBeAttached();
+  await page.evaluate(() => document.getElementById('graph-shortcut-guard-input')?.remove());
+});
+
+test('AC-22: at 200% zoom list/table/path lose no primary content and keep focus indicators', async ({
+  page,
+  context,
+}) => {
   const session = await context.newCDPSession(page);
   await session.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 });
   await stubSessionAndShell(page);
   await page.goto('/knowledge/graph');
   await expect(page.getByRole('heading', { name: 'Semantic Graph', level: 1 })).toBeVisible();
 
+  const noGlobalOverflow = () =>
+    page.evaluate(
+      () => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1,
+    );
+
+  const assertNoContentLoss = async (view: 'list' | 'table' | 'path') => {
+    await page.keyboard.press(`Alt+${view[0]}`);
+    const region = page.getByRole('region', { name: `Semantic graph ${view}` });
+    await expect(region).toBeVisible();
+
+    // No document-level horizontal overflow.
+    expect(await noGlobalOverflow(), `${view} global overflow`).toBe(true);
+
+    // Primary content bounding boxes all exist (heading, first item, action
+    // control, view switch, status region).
+    await expect(region.locator('h2').first()).toBeVisible();
+    const firstItem =
+      view === 'table' ? region.locator('tbody tr').first() : region.locator('.graph-item').first();
+    await expect(firstItem).toBeVisible();
+    const actionControl = region.getByRole('button', { name: /Select|보정/ }).first();
+    await expect(actionControl).toBeVisible();
+    await expect(page.getByRole('group', { name: 'View switcher' }).first()).toBeVisible();
+    await expect(page.getByRole('status').first()).toBeAttached();
+
+    // The first item's label is not text-clipped.
+    const labelClip = await firstItem.evaluate((element) => {
+      const label = Array.from(element.querySelectorAll('*')).find((node) =>
+        (node.textContent ?? '').trim().startsWith('Entity'),
+      );
+      const target = (label ?? element) as HTMLElement;
+      return target.scrollWidth <= target.clientWidth + 1;
+    });
+    expect(labelClip, `${view} label not clipped`).toBe(true);
+
+    // The table scrolls inside its own container rather than the document.
+    if (view === 'table') {
+      const scroll = await region.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          overflowX: style.overflowX,
+          scrollable: element.scrollWidth >= element.clientWidth,
+        };
+      });
+      expect(['auto', 'scroll']).toContain(scroll.overflowX);
+      expect(scroll.scrollable).toBe(true);
+    }
+
+    // Focus indicator is visible on the first interactive element.
+    await actionControl.focus();
+    const focusRing = await actionControl.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return (
+        parseFloat(style.outlineWidth) > 0 ||
+        (style.boxShadow !== 'none' && style.boxShadow !== '') ||
+        element.classList.contains('focus-visible')
+      );
+    });
+    expect(focusRing, `${view} focus indicator`).toBe(true);
+  };
+
+  await assertNoContentLoss('list');
+  await assertNoContentLoss('table');
+  await assertNoContentLoss('path');
+
+  // Selection still commits at 200% zoom.
   await page.keyboard.press('Alt+l');
   await page
     .getByRole('region', { name: 'Semantic graph list' })
@@ -430,12 +627,6 @@ test('AC-22: list/table/path remain fully operable at 200% zoom', async ({ page,
     .first()
     .click();
   await expect(page.getByRole('status')).toContainText('선택됨: Entity One');
-
-  await page.keyboard.press('Alt+t');
-  await expect(page.getByRole('region', { name: 'Semantic graph table' })).toBeVisible();
-
-  await page.keyboard.press('Alt+p');
-  await expect(page.getByRole('region', { name: 'Semantic graph path' })).toBeVisible();
 });
 
 test('AC-21: axe scan finds zero critical violations across canvas, list, table and path', async ({

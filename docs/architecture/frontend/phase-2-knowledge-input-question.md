@@ -23,7 +23,7 @@ legacy_source_id: 3a65181d-71ad-8122-bfda-c9be8016ef33
 | Work Item                                           | Status        |
 | --------------------------------------------------- | ------------- |
 | FE-P4 — Governance and Execution                    | `IN_PROGRESS` |
-| FE-P4-S2 — External Action Governance and Execution | `NOT_STARTED` |
+| FE-P4-S2 — External Action Governance and Execution | `IN_PROGRESS` |
 
 - 미충족 필수 기준: `manifest unavailable`
 - Next valid Product Section: `FE-P5-S1 — Agent and Job Activity Workspace`

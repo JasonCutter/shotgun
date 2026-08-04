@@ -298,7 +298,7 @@
       "parent": "FE-P4",
       "predecessor": "FE-P4-S1",
       "successor": "FE-P5-S1",
-      "status": "NOT_STARTED",
+      "status": "IN_PROGRESS",
       "governingContract": "docs/architecture/frontend/phase-4-governance-execution.md",
       "completionManifest": null,
       "approvedAt": null,

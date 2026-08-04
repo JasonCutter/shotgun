@@ -1,23 +1,25 @@
 ---
 id: FRONTEND-PHASE-4-SECTION-1-CONTRACT-SNAPSHOT-260804001
-classification: PRODUCT_CONTRACT_SNAPSHOT_PROPOSAL
-status: PROPOSED
+classification: PRODUCT_CONTRACT_SNAPSHOT
+status: ACCEPTED_PENDING_PUBLICATION
 revision: 1
 review_round: 1
-review_result: NOT_REVIEWED
+review_result: APPROVED_FOR_IMPLEMENTATION
+approved_by: user
+approved_at: 2026-08-04T20:42:00+09:00
 work_item: FE-P4-S1
 governing_adr: ADR-109
-proposed_adr: ADR-128
+accepted_adr: ADR-128
 base_commit_requested: 6ffca675844be445512e06e79bfa5233a71d1b25
 branch: codex/frontend-phase-4-section-1-contract-preparation
-implementation_authorized: false
+implementation_authorized: true
 ---
 
 # FE-P4-S1 Contract Snapshot — Review Center v1
 
 ## 1. Scope
 
-This snapshot proposes the FE-P4-S1 Product contract for Review queue, immutable Review Context,
+This snapshot freezes the FE-P4-S1 Product contract for Review queue, immutable Review Context,
 Item decisions, comments, stale revalidation and purpose-specific Approval issuance.
 
 It excludes Canonical Commit, Directive Apply, External Action approval and execution, FE-P4-S2,
@@ -272,9 +274,9 @@ The V1 failure set includes:
 Failures map through the shared typed Product failure envelope. Inaccessible resources fail closed
 without confirming existence.
 
-## 14. Persistence candidate
+## 14. Persistence
 
-ADR-128 proposes Migration 027 with:
+Migration 027 adds:
 
 - `frontend_review_context_revision`;
 - `frontend_review_item`;
@@ -333,7 +335,7 @@ The Workspace requires:
 ## 18. Performance and bounded behavior
 
 The implementation must freeze and measure numeric budgets after a deterministic baseline. The
-contract already fixes:
+contract fixes:
 
 - queue page size at 50 maximum;
 - Context response at 200 Items maximum;
@@ -346,10 +348,9 @@ contract already fixes:
 Virtualization is not required unless measured DOM, memory or responsiveness evidence crosses an
 approved trigger and accessible equivalence is retained.
 
-## 19. Acceptance Criteria candidate
+## 19. Frozen Acceptance Criteria
 
-- **AC-01**: ADR-109 and proposed ADR-128 boundaries are represented without Approval and Commit
-  conflation.
+- **AC-01**: ADR-109 and ADR-128 boundaries are represented without Approval and Commit conflation.
 - **AC-02**: V1 target kinds and target-specific approval effects are exhaustive.
 - **AC-03**: FE-P3-S2 Review Submission materializes idempotently into an immutable Review Context.
 - **AC-04**: Revalidation creates a new immutable context revision.
@@ -382,8 +383,8 @@ approved trigger and accessible equivalence is retained.
 - **AC-31**: Exact-head Quality, Frontend and Required Gates pass.
 - **AC-32**: Completion evidence, manifest, Registry and user approval are recorded before Ready.
 
-## 20. Approval boundary
+## 20. Authorization boundary
 
-This snapshot is `PROPOSED`. Acceptance Criteria are not frozen and not run. Product
-implementation, Migration 027, Ready, Merge, deployment, production verification and FE-P4-S2
-remain unauthorized.
+This Contract Snapshot revision 1 and AC-01 through AC-32 are approved and frozen. FE-P4-S1 Product
+implementation and Migration 027 are authorized. Ready, Merge, deployment, production
+verification, FE-P4-S2 and FE-P5 remain unauthorized.

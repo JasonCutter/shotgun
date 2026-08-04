@@ -1,7 +1,7 @@
 ---
 id: FRONTEND-PHASE-4-SECTION-1-PRODUCT-IMPLEMENTATION-VERIFICATION-260804001
 classification: IMPLEMENTATION_VERIFICATION
-status: COMPLETION_APPROVED
+status: FINAL_AFTER_MERGE
 work_item: FE-P4-S1
 branch: codex/frontend-phase-4-section-1-contract-preparation
 tracking_issue: 62
@@ -14,8 +14,8 @@ governing_adr: ADR-128
 implementation_request: docs/implementation/frontend-phase-4-section-1-implementation-request-260804001.md
 completion_manifest: docs/project/completions/FE-P4-S1.json
 completion_approval: APPROVED (by user, 2026-08-05)
-ready: NOT_AUTHORIZED
-merge: NOT_AUTHORIZED
+ready: EXECUTED (2026-08-05)
+merge: EXECUTED (2026-08-05)
 deployment: NOT_STARTED
 production_verification: NOT_RUN
 ---
@@ -31,12 +31,14 @@ Snapshot revision 1 / AC-01..AC-32. Implementation continues on branch
 `codex/frontend-phase-4-section-1-contract-preparation`, Draft PR #63, issue
 #62, canonical base `main@6ffca675844be445512e06e79bfa5233a71d1b25`.
 
-Ready, Merge, deployment and production verification remain
-`NOT_AUTHORIZED`. The user approved Product completion on
-`2026-08-05T02:04:25+09:00` (Approved by: `user`); the Completion Manifest
+Ready and Merge were separately authorized by the user and **executed on
+`2026-08-05`**: PR #63 merged (merge commit `b35fc79d68172674de023b38c5b6b1e4266ae5a0`),
+post-merge main CI run #507 / `30934597152` — Quality, Frontend, Required
+Gates all **SUCCESS** at main head `b35fc79d`. The Completion Manifest
 `docs/project/completions/FE-P4-S1.json` and the Evidence Registry entries
-(`FRONTEND-PHASE-4-SECTION-1-COMPLETION-260805001`) are recorded. Ready and
-Merge require separate user authorization.
+(`FRONTEND-PHASE-4-SECTION-1-COMPLETION-260805001` and the final verification
+records) are recorded. Deployment and production verification remain
+`NOT_STARTED` / `NOT_RUN`.
 
 ## 2. Implementation scope (WP1..WP6)
 
@@ -99,8 +101,8 @@ Merge require separate user authorization.
 | AC-28 | 200% zoom E2E, reduced motion CSS, non-color cues                                                                                                                                                                                                                                                                                                                                                                                                            | PASS            |
 | AC-29 | bounded contract enforced: 200 Items / 500 edges at decoder, materialization, read and outcome/replay paths; recovery resolves the exact produced revision (required evidence; missing revision fails closed) (§18)                                                                                                                                                                                                                                          | PASS            |
 | AC-30 | negative proof: no commit/apply/execute/cross-purpose route                                                                                                                                                                                                                                                                                                                                                                                                  | PASS            |
-| AC-31 | exact-head Quality/Frontend/Required Gates CI run #504 / `30929919941` on corrected head `daaa62f` and final docs head #505 / `30930495676` on `ad3ffcc` — all SUCCESS                                                                                                                                                                                                                                                                                       | PASS            |
-| AC-32 | user approved Product completion on `2026-08-05`; completion manifest `docs/project/completions/FE-P4-S1.json` + Evidence Registry entries recorded; Ready/Merge remain NOT_AUTHORIZED                                                                                                                                                                                                                                                                       | PASS (evidence) |
+| AC-31 | exact-head Quality/Frontend/Required Gates CI run #504 / `30929919941` on corrected head `daaa62f`, final docs head #505 / `30930495676` on `ad3ffcc`, and post-merge main #507 / `30934597152` on `b35fc79` — all SUCCESS                                                                                                                                                                                                                                   | PASS            |
+| AC-32 | user approved Product completion on `2026-08-05`; Ready/Merge separately authorized and executed on `2026-08-05` (PR #63 merged, merge commit `b35fc79`); completion manifest `docs/project/completions/FE-P4-S1.json` + Evidence Registry records FINAL_AFTER_MERGE; post-merge main CI SUCCESS                                                                                                                                                             | PASS (evidence) |
 
 ## 4. Focused-check results (implementation head)
 
@@ -134,5 +136,8 @@ Merge require separate user authorization.
 - Product completion: **APPROVED by user on `2026-08-05`**. Completion
   Manifest `docs/project/completions/FE-P4-S1.json` recorded; Evidence
   Registry entry `FRONTEND-PHASE-4-SECTION-1-COMPLETION-260805001` added.
-- Ready / Merge / Deployment / Production Verification: NOT_AUTHORIZED.
+- Ready / Merge: separately authorized by user and **EXECUTED on
+  `2026-08-05`** (PR #63 merged; post-merge main head `b35fc79d` CI #507
+  SUCCESS). Status authority: **FINAL_AFTER_MERGE**.
+- Deployment: NOT_STARTED. Production Verification: NOT_RUN.
 - FE-P4-S2 / FE-P5: NOT_AUTHORIZED.

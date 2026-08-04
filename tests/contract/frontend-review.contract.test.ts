@@ -402,6 +402,8 @@ describe('RevalidateReviewContext', () => {
   it('decodes a revalidate request', () => {
     const decoded = decodeRevalidateReviewContextRequestV1({
       schemaVersion: '1.0.0',
+      clientRequestId: 'client-1',
+      idempotencyKey: 'idem-1',
       reviewContextId: 'context-1',
       contextRevision: 1,
       reason: 'Policy updated',
@@ -412,6 +414,8 @@ describe('RevalidateReviewContext', () => {
   it('computes a stable semantic digest independent of identity fields', () => {
     const base = {
       schemaVersion: '1.0.0' as const,
+      clientRequestId: 'client-1',
+      idempotencyKey: 'idem-1',
       reviewContextId: 'context-1',
       contextRevision: 1,
       reason: 'Policy updated',
@@ -439,6 +443,8 @@ describe('RecordReviewDecisions', () => {
   it('decodes a decisions request and enforces terminal reasons', () => {
     const decoded = decodeRecordReviewDecisionsRequestV1({
       schemaVersion: '1.0.0',
+      clientRequestId: 'client-1',
+      idempotencyKey: 'idem-1',
       reviewContextId: 'context-1',
       expectedContextRevision: 1,
       expectedTargetRevision: '3',
@@ -459,6 +465,8 @@ describe('RecordReviewDecisions', () => {
     expect(() =>
       decodeRecordReviewDecisionsRequestV1({
         schemaVersion: '1.0.0',
+        clientRequestId: 'client-1',
+        idempotencyKey: 'idem-1',
         reviewContextId: 'context-1',
         expectedContextRevision: 1,
         expectedTargetRevision: '3',
@@ -471,6 +479,8 @@ describe('RecordReviewDecisions', () => {
   it('allows HOLD without a reason', () => {
     const decoded = decodeRecordReviewDecisionsRequestV1({
       schemaVersion: '1.0.0',
+      clientRequestId: 'client-1',
+      idempotencyKey: 'idem-1',
       reviewContextId: 'context-1',
       expectedContextRevision: 1,
       expectedTargetRevision: '3',
@@ -484,6 +494,8 @@ describe('RecordReviewDecisions', () => {
     expect(() =>
       decodeRecordReviewDecisionsRequestV1({
         schemaVersion: '1.0.0',
+        clientRequestId: 'client-1',
+        idempotencyKey: 'idem-1',
         reviewContextId: 'context-1',
         expectedContextRevision: 1,
         expectedTargetRevision: '3',
@@ -509,6 +521,8 @@ describe('RecordReviewDecisions', () => {
   it('computes the decisions semantic digest', () => {
     const requestInput = {
       schemaVersion: '1.0.0' as const,
+      clientRequestId: 'client-1',
+      idempotencyKey: 'idem-1',
       reviewContextId: 'context-1',
       expectedContextRevision: 1,
       expectedTargetRevision: '3',
@@ -568,6 +582,8 @@ describe('AddReviewComment', () => {
   it('decodes a comment request', () => {
     const decoded = decodeAddReviewCommentRequestV1({
       schemaVersion: '1.0.0',
+      clientRequestId: 'client-1',
+      idempotencyKey: 'idem-1',
       reviewContextId: 'context-1',
       contextRevision: 1,
       reviewItemId: 'item-1',
@@ -579,6 +595,8 @@ describe('AddReviewComment', () => {
   it('computes the comment semantic digest', () => {
     const requestInput = {
       schemaVersion: '1.0.0' as const,
+      clientRequestId: 'client-1',
+      idempotencyKey: 'idem-1',
       reviewContextId: 'context-1',
       contextRevision: 1,
       reviewItemId: 'item-1',

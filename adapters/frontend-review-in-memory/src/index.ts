@@ -186,6 +186,15 @@ export type ReviewDraftSourceReader = {
   ): Promise<FrontendKnowledgeDraftChangeSetV1 | undefined>;
 };
 
+export const createEmptyReviewDraftSourceReader = (): ReviewDraftSourceReader => ({
+  async listSubmitted() {
+    return [];
+  },
+  async findSubmitted() {
+    return undefined;
+  },
+});
+
 export const createInMemoryReviewDraftSourceReader = (
   repository: InMemoryFrontendKnowledgeDraftRepository,
 ): ReviewDraftSourceReader => ({

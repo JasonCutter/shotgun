@@ -35,6 +35,7 @@ const managedSchemas = [
   'frontend_ask',
   'frontend_knowledge_draft',
   'frontend_knowledge_graph',
+  'frontend_review',
   'source_product',
   'frontend_command',
   'settings',
@@ -171,6 +172,12 @@ const requiredTables = [
   'frontend_knowledge_draft.operations',
   'frontend_knowledge_draft.materializations',
   'frontend_knowledge_draft.artifact_refs',
+  'frontend_review.context_revision',
+  'frontend_review.item',
+  'frontend_review.dependency',
+  'frontend_review.decision',
+  'frontend_review.comment',
+  'frontend_review.approval',
 ] as const;
 
 const verify = async (): Promise<void> => {

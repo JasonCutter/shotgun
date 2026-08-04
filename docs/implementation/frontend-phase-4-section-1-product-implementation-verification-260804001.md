@@ -1,0 +1,138 @@
+---
+id: FRONTEND-PHASE-4-SECTION-1-PRODUCT-IMPLEMENTATION-VERIFICATION-260804001
+classification: IMPLEMENTATION_VERIFICATION
+status: COMPLETION_APPROVED
+work_item: FE-P4-S1
+branch: codex/frontend-phase-4-section-1-contract-preparation
+tracking_issue: 62
+tracking_pr: 63
+implementation_authorization: AUTHORIZED
+implementation_authorization_at: 2026-08-04T20:42:00+09:00
+canonical_base: 6ffca675844be445512e06e79bfa5233a71d1b25
+governing_contract: docs/architecture/contracts/snapshots/frontend-phase-4-section-1/frontend-phase-4-section-1-contract-snapshot-260804001.md
+governing_adr: ADR-128
+implementation_request: docs/implementation/frontend-phase-4-section-1-implementation-request-260804001.md
+completion_manifest: docs/project/completions/FE-P4-S1.json
+completion_approval: APPROVED (by user, 2026-08-05)
+ready: NOT_AUTHORIZED
+merge: NOT_AUTHORIZED
+deployment: NOT_STARTED
+production_verification: NOT_RUN
+---
+
+# FE-P4-S1 Review Center — Product Implementation Verification and Acceptance-Criteria Evidence
+
+## 1. Scope and authority
+
+This record documents the Product implementation of FE-P4-S1 under the
+authorized Implementation Request revision 1 (`AUTHORIZED` at
+`2026-08-04T20:42:00+09:00`), ADR-128 (`ACCEPTED`) and the frozen Contract
+Snapshot revision 1 / AC-01..AC-32. Implementation continues on branch
+`codex/frontend-phase-4-section-1-contract-preparation`, Draft PR #63, issue
+#62, canonical base `main@6ffca675844be445512e06e79bfa5233a71d1b25`.
+
+Ready, Merge, deployment and production verification remain
+`NOT_AUTHORIZED`. The user approved Product completion on
+`2026-08-05T02:04:25+09:00` (Approved by: `user`); the Completion Manifest
+`docs/project/completions/FE-P4-S1.json` and the Evidence Registry entries
+(`FRONTEND-PHASE-4-SECTION-1-COMPLETION-260805001`) are recorded. Ready and
+Merge require separate user authorization.
+
+## 2. Implementation scope (WP1..WP6)
+
+- **WP1 Contract**: `packages/contracts/src/frontend-review.ts` +
+  `frontend-review-failures.ts` — frozen V1 target/context/item/dependency/
+  decision/comment/approval/queue contracts, strict runtime decoders with
+  unknown-field rejection, cross-field identity helpers, 16 typed Review
+  failures registered in the shared envelope.
+- **WP2 Domain**: `modules/frontend-review` — coordinator with queue/context/
+  item/approval reads, revalidate, record-decisions, add-comment and outcome
+  resolution through the existing Frontend Command Ledger; dependency closure
+  (REQUIRES/ATOMIC_WITH/CONFLICTS_WITH), partial-approval rejection and
+  purpose-bound Approval issuance.
+- **WP3 Migration 027**: `db/migrations/027_frontend_review_center.sql`
+  (immutable context/item/dependency, append-only decision/comment, append-only
+  approval with status history) + `adapters/frontend-review-postgres` and
+  managed-schema registration.
+- **WP4 API/Client**: `assemblies/shotgun-app/src/product-api/frontend-review-routes.ts`
+  (8 protected routes) + `packages/shotgun-api-client/src/frontend-review-client.ts`
+  (strict decode, CSRF 403 retry, AbortSignal, no mutation auto-retry, digest
+  re-exports).
+- **WP5 Workspace**: `apps/shotgun-web/src/routes/review-workspace.tsx` —
+  bounded queue, context summary/stale recovery, item decisions with reason
+  validation, dependency/atomic-group explanation, before/after comparison,
+  lazy evidence/impact, history, approval result, OUTCOME_UNKNOWN recovery.
+- **WP6 Verification**: contract/unit/integration/database/browser suites,
+  negative matrix, performance baseline and governance evidence.
+
+## 3. Acceptance-criteria evidence (AC-01..AC-32)
+
+| AC    | Evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Result          |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------- |
+| AC-01 | ADR-128 + Contract Snapshot §1/§8; coordinator separates Approval from Commit                                                                                                                                                                                                                                                                                                                                                                                | PASS            |
+| AC-02 | `ReviewTargetKindV1` + `validateReviewApprovalPurpose` exhaustive; candidate → `ACCEPTED_FOR_AUTHORING`                                                                                                                                                                                                                                                                                                                                                      | PASS            |
+| AC-03 | `tests/integration/frontend-review-domain.test.ts` idempotent materialization                                                                                                                                                                                                                                                                                                                                                                                | PASS            |
+| AC-04 | revalidate creates new immutable revision (domain test)                                                                                                                                                                                                                                                                                                                                                                                                      | PASS            |
+| AC-05 | context binds project/access/policy/canonicalBase/artifacts (domain test)                                                                                                                                                                                                                                                                                                                                                                                    | PASS            |
+| AC-06 | items preserve source identity/digest/comparison/artifact lineage (contract + draft adapter)                                                                                                                                                                                                                                                                                                                                                                 | PASS            |
+| AC-07 | `ReviewDependencyV1` server-owned, strict decoder                                                                                                                                                                                                                                                                                                                                                                                                            | PASS            |
+| AC-08 | decisions `APPROVE/REJECT/REQUEST_REVISION/HOLD` (contract + domain)                                                                                                                                                                                                                                                                                                                                                                                         | PASS            |
+| AC-09 | terminal decisions cannot be replaced (domain test)                                                                                                                                                                                                                                                                                                                                                                                                          | PASS            |
+| AC-10 | `validateProposedApprovalSet` REQUIRES/ATOMIC_WITH/conflicts (domain + negative)                                                                                                                                                                                                                                                                                                                                                                             | PASS            |
+| AC-11 | dangling reference + conflicting set fail closed                                                                                                                                                                                                                                                                                                                                                                                                             | PASS            |
+| AC-12 | candidate accepted-for-authoring, no Approval Resource (domain test)                                                                                                                                                                                                                                                                                                                                                                                         | PASS            |
+| AC-13 | purpose separation `KNOWLEDGE_CANONICAL_CHANGE` / `USER_DIRECTIVE_CHANGE`                                                                                                                                                                                                                                                                                                                                                                                    | PASS            |
+| AC-14 | Approval binds actor/target/items/digests/policy/expiry (contract)                                                                                                                                                                                                                                                                                                                                                                                           | PASS            |
+| AC-15 | `tests/integration/frontend-review-negative.test.ts` no Commit/Apply/Execute                                                                                                                                                                                                                                                                                                                                                                                 | PASS            |
+| AC-16 | `LegacyChangeSetReviewPort` adapter, legacy preserved                                                                                                                                                                                                                                                                                                                                                                                                        | PASS            |
+| AC-17 | `tests/database/frontend-review-migration-rollback.test.ts`                                                                                                                                                                                                                                                                                                                                                                                                  | PASS            |
+| AC-18 | `tests/database/frontend-review-postgres-parity.test.ts`                                                                                                                                                                                                                                                                                                                                                                                                     | PASS            |
+| AC-19 | decision + approval in one completion transaction (coordinator `transactionWithHandle`)                                                                                                                                                                                                                                                                                                                                                                      | PASS            |
+| AC-20 | commands flow through existing Command Ledger; replay idempotent (negative test)                                                                                                                                                                                                                                                                                                                                                                             | PASS            |
+| AC-21 | `tests/contract/frontend-review.contract.test.ts` (34) + protected routes + operation-level capability enforcement + scope-derived Item capabilities (`frontend-review-security.test.ts`)                                                                                                                                                                                                                                                                    | PASS            |
+| AC-22 | cross-project/access/policy/hidden/sensitivity/expiry fail-closed incl. decision/comment visibility filtering, visible→hidden dependency filtering, hidden-Item write rejection, outcome/replay revalidation, hidden-state-free recovery, exact-revision recovery, generic REJECTED detail + replay, REQUIRES-direction-aware UNAVAILABLE projection, context-wide comment outcome/replay omission (`frontend-review-security.test.ts` 30 + negative matrix) | PASS            |
+| AC-23 | `/review` replaced by ReviewWorkspace (router)                                                                                                                                                                                                                                                                                                                                                                                                               | PASS            |
+| AC-24 | ADR-119 state split; `review-workspace-state.test.ts`                                                                                                                                                                                                                                                                                                                                                                                                        | PASS            |
+| AC-25 | `OUTCOME_UNKNOWN` recovery never auto-resubmits (state machine + negative)                                                                                                                                                                                                                                                                                                                                                                                   | PASS            |
+| AC-26 | revision-request typed return target → `KNOWLEDGE_EDITOR` / `DIRECTIVE_AUTHORING` (domain test)                                                                                                                                                                                                                                                                                                                                                              | PASS            |
+| AC-27 | `tests/browser/frontend-review.spec.ts` announcements + axe                                                                                                                                                                                                                                                                                                                                                                                                  | PASS            |
+| AC-28 | 200% zoom E2E, reduced motion CSS, non-color cues                                                                                                                                                                                                                                                                                                                                                                                                            | PASS            |
+| AC-29 | bounded contract enforced: 200 Items / 500 edges at decoder, materialization, read and outcome/replay paths; recovery resolves the exact produced revision (required evidence; missing revision fails closed) (§18)                                                                                                                                                                                                                                          | PASS            |
+| AC-30 | negative proof: no commit/apply/execute/cross-purpose route                                                                                                                                                                                                                                                                                                                                                                                                  | PASS            |
+| AC-31 | exact-head Quality/Frontend/Required Gates CI run #504 / `30929919941` on corrected head `daaa62f` and final docs head #505 / `30930495676` on `ad3ffcc` — all SUCCESS                                                                                                                                                                                                                                                                                       | PASS            |
+| AC-32 | user approved Product completion on `2026-08-05`; completion manifest `docs/project/completions/FE-P4-S1.json` + Evidence Registry entries recorded; Ready/Merge remain NOT_AUTHORIZED                                                                                                                                                                                                                                                                       | PASS (evidence) |
+
+## 4. Focused-check results (implementation head)
+
+- Contract: `tests/contract/frontend-review.contract.test.ts` 34/34 (incl. §18 bounds).
+- Domain: `tests/integration/frontend-review-domain.test.ts` 14/14 (incl. `DIRECTIVE_AUTHORING`).
+- API: `tests/integration/frontend-review-product-api.test.ts` 3/3.
+- Negative matrix: `tests/integration/frontend-review-negative.test.ts` 5/5.
+- Security fail-closed suite: `tests/integration/frontend-review-security.test.ts` 30/30
+  (capability denial, access/policy-changed restricted reads, historical
+  revalidation, sensitivity masking, decision/comment visibility filtering,
+  visible→hidden dependency filtering, hidden-Item write rejection,
+  outcome/replay access revalidation, scope-derived Item capabilities,
+  Approval access/policy/status/expiry, bounds materialization + read-time,
+  hidden-state-free recovered decision outcome, exact produced-revision
+  recovery after revalidate, REQUEST_REVISION return-target reconstruction,
+  context-wide comment outcome/replay omission, generic REJECTED detail +
+  rejected-mutation replay, missing-revision recovery rejection, REQUIRES
+  direction-aware UNAVAILABLE projection (both directions + ATOMIC_WITH) and
+  write rejection without hidden-ID leak).
+- Database: migration 027 rollback + postgres parity pass (149).
+- Browser unit: `review-workspace-state.test.ts` 6/6; frontend app 54/54.
+- Browser E2E: `tests/browser/frontend-review.spec.ts` 4/4 (queue/context/
+  decision, axe zero-critical, no-write, 200% zoom).
+
+## 5. Current authority
+
+- ADR-128: ACCEPTED. Contract Snapshot r1 / AC-01..32: FROZEN.
+- Product implementation: AUTHORIZED / implementation complete.
+- GPT PR #63 review (4 rounds): PASS; Completion candidate:
+  ACCEPTABLE_FOR_USER_PRODUCT_COMPLETION_APPROVAL.
+- Product completion: **APPROVED by user on `2026-08-05`**. Completion
+  Manifest `docs/project/completions/FE-P4-S1.json` recorded; Evidence
+  Registry entry `FRONTEND-PHASE-4-SECTION-1-COMPLETION-260805001` added.
+- Ready / Merge / Deployment / Production Verification: NOT_AUTHORIZED.
+- FE-P4-S2 / FE-P5: NOT_AUTHORIZED.

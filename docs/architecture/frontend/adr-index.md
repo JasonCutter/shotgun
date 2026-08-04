@@ -41,13 +41,15 @@ Frontend and Human Interaction Architecture의 횡단 ADR을 식별한다. 이 �
 | ADR-125 | Knowledge Workspace Multi-Authority Search and Non-Ready Compiled Truth Read Boundary                  | Accepted 2026-08-02 / QX-01 Stage 7 and QX-02 Stage 10 handlers authorized; Adapter held | Git ADR; no Legacy Notion owner        |
 | ADR-126 | Knowledge Editor Typed DraftChangeSet Materialization, Snapshot Pinning and Review Submission Boundary | Accepted 2026-08-02 / publication pending / Product implementation not started           | Git ADR; no Legacy Notion owner        |
 | ADR-127 | Semantic Graph Projection Read Persistence, Health and Continuation Boundary                           | Accepted 2026-08-04 / FE-P3-S3 Product implementation authorized                         | Git ADR; no Legacy Notion owner        |
+| ADR-128 | Review Context Revision, Item Decision and Purpose-bound Approval Boundary                             | Accepted 2026-08-04 / FE-P4-S1 Product implementation authorized                         | Git ADR; no Legacy Notion owner        |
 
-ADR-117과 ADR-120은 Frontend 기능 ADR이 아니라 Project 전체 문서 Canonical 운영을 지배한다. ADR-124는 Frontend Work Item과 완료 권위의 Accepted 경계를 정의한다. ADR-127은 FE-P3-S3 계약 준비 과정에서 제안된 ADR이며 승인 전까지 FE-P3-S3 구현 계약을 제한하지 않는다.
+ADR-117과 ADR-120은 Frontend 기능 ADR이 아니라 Project 전체 문서 Canonical 운영을 지배한다. ADR-124는 Frontend Work Item과 완료 권위의 Accepted 경계를 정의한다. ADR-128은 FE-P4-S1의 immutable Review Context, Item decision, purpose-bound Approval과 Migration 027 경계를 정의하며 Product 구현 착수가 승인됐다.
 
 ## Git 소유 경계
 
 - ADR-099와 ADR-114–119의 권위 본문은 `docs/architecture/adr/`의 개별 Git 파일이다.
 - ADR-100–113의 권위 본문은 [`adr-100-113-consolidated-record.md`](adr-100-113-consolidated-record.md)다.
+- ADR-122–128의 권위 본문은 `docs/architecture/adr/`의 개별 Git 파일이다.
 - 개별 Notion 페이지는 Legacy Reference와 승인 당시의 원문 이력이다.
 - 전역 번호·Gap·Owner 정보는 [`docs/architecture/adr/adr-registry.json`](../adr/adr-registry.json)이 지배한다.
 

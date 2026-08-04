@@ -1,0 +1,335 @@
+{
+  "schemaVersion": 1,
+  "workItemId": "FE-P4-S1",
+  "status": "COMPLETE",
+  "governingContract": "docs/architecture/frontend/phase-4-governance-execution.md",
+  "mandatoryCriteria": [
+    {
+      "id": "ac-01",
+      "title": "ADR-128 + Contract Snapshot §1/§8; coordinator separates Approval from Commit",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-4-section-1-product-implementation-verification-260804001.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-02",
+      "title": "ReviewTargetKindV1 + validateReviewApprovalPurpose exhaustive; candidate -> ACCEPTED_FOR_AUTHORING",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-4-section-1-product-implementation-verification-260804001.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-03",
+      "title": "Idempotent context materialization",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-4-section-1-product-implementation-verification-260804001.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-04",
+      "title": "Revalidate creates a new immutable revision",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-4-section-1-product-implementation-verification-260804001.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-05",
+      "title": "Context binds project/access/policy/canonicalBase/artifacts",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-4-section-1-product-implementation-verification-260804001.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-06",
+      "title": "Items preserve source identity/digest/comparison/artifact lineage",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-4-section-1-product-implementation-verification-260804001.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-07",
+      "title": "ReviewDependencyV1 server-owned, strict decoder",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-4-section-1-product-implementation-verification-260804001.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-08",
+      "title": "Decisions APPROVE/REJECT/REQUEST_REVISION/HOLD",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-4-section-1-product-implementation-verification-260804001.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-09",
+      "title": "Terminal decisions cannot be replaced",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-4-section-1-product-implementation-verification-260804001.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-10",
+      "title": "validateProposedApprovalSet REQUIRES/ATOMIC_WITH/conflicts",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-4-section-1-product-implementation-verification-260804001.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-11",
+      "title": "Dangling reference + conflicting set fail closed",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-4-section-1-product-implementation-verification-260804001.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-12",
+      "title": "Candidate accepted-for-authoring, no Approval Resource",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-4-section-1-product-implementation-verification-260804001.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-13",
+      "title": "Purpose separation KNOWLEDGE_CANONICAL_CHANGE / USER_DIRECTIVE_CHANGE",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-4-section-1-product-implementation-verification-260804001.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-14",
+      "title": "Approval binds actor/target/items/digests/policy/expiry",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-4-section-1-product-implementation-verification-260804001.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-15",
+      "title": "No Commit/Apply/Execute route on the Review API",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-4-section-1-product-implementation-verification-260804001.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-16",
+      "title": "LegacyChangeSetReviewPort adapter, legacy preserved",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-4-section-1-product-implementation-verification-260804001.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-17",
+      "title": "Migration 027 apply/rollback verified",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-4-section-1-product-implementation-verification-260804001.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-18",
+      "title": "PostgreSQL parity for the Review store",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-4-section-1-product-implementation-verification-260804001.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-19",
+      "title": "Decision + Approval in one authoritative completion transaction",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-4-section-1-product-implementation-verification-260804001.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-20",
+      "title": "Commands flow through the Command Ledger; replay idempotent",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-4-section-1-product-implementation-verification-260804001.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-21",
+      "title": "Strict contract decoding, protected routes and operation-level capability enforcement",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-4-section-1-product-implementation-verification-260804001.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-22",
+      "title": "Cross-project/access/policy/hidden/sensitivity/expiry fail-closed incl. visibility filtering, hidden-Item write rejection, outcome/replay revalidation, hidden-state-free exact-revision recovery, REQUIRES-direction-aware UNAVAILABLE projection",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-4-section-1-product-implementation-verification-260804001.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-23",
+      "title": "/review replaced by ReviewWorkspace (router)",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-4-section-1-product-implementation-verification-260804001.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-24",
+      "title": "ADR-119 state split; review-workspace-state tests",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-4-section-1-product-implementation-verification-260804001.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-25",
+      "title": "OUTCOME_UNKNOWN recovery never auto-resubmits",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-4-section-1-product-implementation-verification-260804001.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-26",
+      "title": "Revision-request typed return target -> KNOWLEDGE_EDITOR / DIRECTIVE_AUTHORING",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-4-section-1-product-implementation-verification-260804001.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-27",
+      "title": "Browser E2E announcements + axe zero-critical",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-4-section-1-product-implementation-verification-260804001.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-28",
+      "title": "200% zoom E2E, reduced motion CSS, non-color cues",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-4-section-1-product-implementation-verification-260804001.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-29",
+      "title": "Bounded contract: 200 Items / 500 edges at decoder, materialization, read and outcome/replay paths; exact produced revision required for recovery",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-4-section-1-product-implementation-verification-260804001.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-30",
+      "title": "Negative proof: no commit/apply/execute/cross-purpose route",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-4-section-1-product-implementation-verification-260804001.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-31",
+      "title": "Exact-head Quality/Frontend/Required Gates CI SUCCESS on the corrected head",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-4-section-1-product-implementation-verification-260804001.md"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-32",
+      "title": "Verification + completion report + registry recorded; completion approved by user",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/implementation/frontend-phase-4-section-1-product-implementation-verification-260804001.md",
+        "docs/implementation/frontend-phase-4-section-1-implementation-completion-report-260804001.md",
+        "docs/project/completions/FE-P4-S1.json"
+      ],
+      "scopeAmendment": null
+    }
+  ],
+  "remainingScope": [],
+  "scopeAmendments": [],
+  "evidenceRegistryUpdates": ["FRONTEND-PHASE-4-SECTION-1-COMPLETION-260805001"],
+  "approvedBy": "user",
+  "approvedAt": "2026-08-05"
+}

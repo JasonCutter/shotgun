@@ -25,4 +25,6 @@ export * from './frontend-knowledge.js';
 export * from './frontend-knowledge-draft.js';
 export * from './frontend-knowledge-graph.js';
 export * from './frontend-knowledge-graph-failures.js';
+export * from './frontend-review.js';
+export * from './frontend-review-failures.js';
 export * from './knowledge-workspace-query.js';

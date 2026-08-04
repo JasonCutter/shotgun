@@ -6,7 +6,7 @@ work_item: FE-P4-S2
 canonical_base: 5f7c3b6f7fb1b6114272fe31c2561a7f21cb124f
 tracking_issue: 65
 draft_pr: 66
-prepared_head: <PREPARATION_HEAD>
+prepared_head: 1789456c1e15c7dcbdd5f68f6a23272dabf15d51
 approval_authority: USER
 approved_at: null
 implementation_authorized: false
@@ -79,6 +79,16 @@ preparation.
 - Ready and Merge: NOT_AUTHORIZED.
 - Deployment and Production Verification: NOT_STARTED / NOT_RUN.
 - FE-P5: NOT_AUTHORIZED.
+
+## 6b. Exact-head validation evidence
+
+Preparation exact Head `1789456c1e15c7dcbdd5f68f6a23272dabf15d51` triggered automatic CI #510
+(run `30939040759`).
+
+- Quality: PASS.
+- Frontend: PASS.
+- Required Gates: PASS.
+- No manual duplicate CI was triggered.
 
 ## 7. Next step
 

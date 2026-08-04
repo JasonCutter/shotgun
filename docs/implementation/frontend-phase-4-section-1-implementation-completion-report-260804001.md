@@ -23,12 +23,14 @@ The FE-P4-S1 Review Center Product implementation is complete as a
 Migration 027; user approval of Product completion is requested next. Ready,
 Merge, deployment and production verification remain unauthorized.
 
-Corrected exact head `bdf6280dfbd73c3d619f6269da52e2fe84a8dfd2`: automatic CI
-run #498 / `30921345729` — Quality, Frontend and Required Gates all
-**SUCCESS** (see verification record AC-31). This head also resolves the
-GPT PR #63 review blockers: fail-closed reads + operation-level capability
-enforcement, the typed `DIRECTIVE_AUTHORING` revision return target, and the
-frozen 200-Item / 500-edge Context bounds.
+Corrected exact head `8af5d8b04f175fb444739ba3fc196e99807ff31c`: automatic CI
+run #500 / `30923817172` — Quality, Frontend and Required Gates all
+**SUCCESS** (see verification record AC-31). This head resolves the GPT PR
+#63 review blockers: fail-closed reads + operation-level capability
+enforcement, decision/comment/dependency visibility filtering and hidden-Item
+write rejection, outcome/replay revalidation, the typed `DIRECTIVE_AUTHORING`
+revision return target, and the frozen 200-Item / 500-edge Context bounds at
+decoder, materialization, read and outcome/replay paths.
 
 ## 2. Delivered scope
 
@@ -39,7 +41,7 @@ frozen 200-Item / 500-edge Context bounds.
 - Protected Review Product API + `FrontendReviewClient` (WP4).
 - `/review` Review Workspace replacing the placeholder (WP5).
 - Verification: contract 34, domain 14, API 3, negative 5, security fail-closed
-  12, database parity + rollback (149), browser unit 6, frontend app 54,
+  19, database parity + rollback (149), browser unit 6, frontend app 54,
   browser E2E 4, governance evidence (WP6).
 
 ## 3. Exclusions (unchanged from authorization)
@@ -93,12 +95,18 @@ before FE-P4-S2.
 - reads fail closed or return an `ACCESS_RESTRICTED` shell without the
   protected payload when the access/policy revision changed (current and
   historical);
-- operation-level capability checks deny insufficient Review scope;
+- operation-level capability checks deny insufficient Review scope, and queue
+  Item capabilities are scope-derived;
 - sensitivity masking removes Items whose sensitivity exceeds the current
-  clearance;
+  clearance, and decisions, comments and dependency edges referencing hidden
+  Items are filtered from current, historical and Item-detail reads;
+- decision and comment writes to Items beyond the current sensitivity
+  clearance fail closed;
+- outcome resolution and idempotent replay revalidate access/policy,
+  visibility and Approval status/expiry instead of bypassing the read API;
 - Approval reads revalidate access, policy, status and expiry;
 - the frozen 200-Item / 500-edge Context bounds are enforced by the decoder,
-  materialization and read paths.
+  materialization, read and outcome/replay paths.
 
 ## 7. Completion manifest
 

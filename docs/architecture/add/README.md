@@ -49,13 +49,13 @@ Phase 2부터 Phase 6까지의 과거 승인 ADR-018–ADR-075는 Phase별 ADR �
 
 > 이 블록은 `docs/project/frontend-work-items.json`과 Section Completion Manifest에서 생성됩니다. 블록 내부를 직접 수정하지 않습니다.
 
-| Work Item                        | Status        |
-| -------------------------------- | ------------- |
-| FE-P4 — Governance and Execution | `IN_PROGRESS` |
-| FE-P4-S1 — Review Center         | `IN_PROGRESS` |
+| Work Item                                           | Status        |
+| --------------------------------------------------- | ------------- |
+| FE-P4 — Governance and Execution                    | `IN_PROGRESS` |
+| FE-P4-S2 — External Action Governance and Execution | `NOT_STARTED` |
 
 - 미충족 필수 기준: `manifest unavailable`
-- Next valid Product Section: `FE-P4-S2 — External Action Governance and Execution`
+- Next valid Product Section: `FE-P5-S1 — Agent and Job Activity Workspace`
 
 <!-- FRONTEND-WORK-ITEM-STATUS:END -->
 

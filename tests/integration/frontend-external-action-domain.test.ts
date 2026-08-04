@@ -474,6 +474,115 @@ describe('FE-P4-S2 WP2 External Action Product domain', () => {
     );
   });
 
+  it('replays an already-completed command idempotently (same result, no OUTCOME_INDETERMINATE)', async () => {
+    const { coordinator } = makeCoordinator();
+    const request = {
+      schemaVersion: '1.0.0' as const,
+      clientRequestId: 'client-replay',
+      idempotencyKey: 'idem-replay',
+      actionId: 'action-r',
+      candidateId: 'candidate-r',
+      operation: 'UPDATE_REVERSIBLE' as const,
+      targetRef,
+      parameterRef,
+      evidenceRefs: [evidenceSetRef],
+      reason: 'Validate.',
+    };
+    const first = await coordinator.validateActionCandidate(scope, request);
+    const second = await coordinator.validateActionCandidate(scope, request);
+    expect(second.outcome).toBe('COMPLETED');
+    expect(second.actionId).toBe(first.actionId);
+    expect(second.riskDecision.riskDecisionId).toBe(first.riskDecision.riskDecisionId);
+  });
+
+  it('rejects execution when the approval no longer binds the current manifest', async () => {
+    const { coordinator } = makeCoordinator();
+    await coordinator.validateActionCandidate(scope, {
+      schemaVersion: '1.0.0',
+      clientRequestId: 'client-v8',
+      idempotencyKey: 'idem-v8',
+      actionId: 'action-8',
+      candidateId: 'candidate-8',
+      operation: 'UPDATE_REVERSIBLE',
+      targetRef,
+      parameterRef,
+      evidenceRefs: [evidenceSetRef],
+    });
+    const prepared = await coordinator.prepareActionManifest(scope, {
+      schemaVersion: '1.0.0',
+      clientRequestId: 'client-p8',
+      idempotencyKey: 'idem-p8',
+      actionId: 'action-8',
+      expectedActionRevision: await revisionOf(coordinator, 'action-8'),
+      reason: 'Prepare.',
+    });
+    await coordinator.approveExternalAction(scope, {
+      schemaVersion: '1.0.0',
+      clientRequestId: 'client-a8',
+      idempotencyKey: 'idem-a8',
+      actionId: 'action-8',
+      manifestId: prepared.manifest.manifestId,
+      manifestRevision: prepared.manifest.manifestRevision,
+      expectedTargetRevision: 'rev-3',
+      expectedExternalRevision: 'ext-7',
+      reason: 'Approved.',
+    });
+    // A new manifest revision supersedes the approved one (re-approval rule):
+    // both preflight and execution are blocked until re-approval.
+    const prepared2 = await coordinator.prepareActionManifest(scope, {
+      schemaVersion: '1.0.0',
+      clientRequestId: 'client-p8b',
+      idempotencyKey: 'idem-p8b',
+      actionId: 'action-8',
+      expectedActionRevision: await revisionOf(coordinator, 'action-8'),
+      reason: 'Prepare again.',
+    });
+    await expect(
+      coordinator.preflightExternalAction(scope, {
+        schemaVersion: '1.0.0',
+        clientRequestId: 'client-pf8',
+        idempotencyKey: 'idem-pf8',
+        actionId: 'action-8',
+        expectedActionRevision: await revisionOf(coordinator, 'action-8'),
+        manifestRevision: prepared2.manifest.manifestRevision,
+        expectedExternalRevision: 'ext-7',
+        reason: 'Preflight.',
+      }),
+    ).rejects.toThrow(/approval/i);
+  });
+
+  it('returns only a restricted shell from Detail when the scope changed', async () => {
+    const { coordinator } = makeCoordinator();
+    await runLifecycle(coordinator, 'action-9');
+    const changedScope: FrontendExternalActionScopeV1 = {
+      ...scope,
+      accessRevision: 'access-2',
+    };
+    const detail = await coordinator.getExternalActionDetail(changedScope, {
+      schemaVersion: '1.0.0',
+      actionId: 'action-9',
+    });
+    expect(detail.action.aggregateState).toBe('ACCESS_RESTRICTED');
+    expect(detail.action.targetRef).toBeUndefined();
+    expect(detail.manifest).toBeUndefined();
+    expect(detail.attempts).toEqual([]);
+    expect(detail.credential).toBeUndefined();
+  });
+
+  it('writes append-only audit events through the governed lifecycle', async () => {
+    const { coordinator } = makeCoordinator();
+    await runLifecycle(coordinator, 'action-10');
+    const audit = await coordinator.listExternalActionAudit(scope, {
+      schemaVersion: '1.0.0',
+      actionId: 'action-10',
+      pageSize: 50,
+    });
+    expect(audit.events.length).toBeGreaterThanOrEqual(2);
+    const categories = audit.events.map((event) => event.category);
+    expect(categories).toContain('ACTION_EXECUTED');
+    expect(categories).toContain('ACTION_VERIFIED');
+  });
+
   it('never grants write capabilities from a read-only scope', async () => {
     const { coordinator } = makeCoordinator();
     const readScope: FrontendExternalActionScopeV1 = {

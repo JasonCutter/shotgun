@@ -1,13 +1,15 @@
 # ADR-128 — Review Context Revision, Item Decision and Purpose-bound Approval Boundary
 
-- Status: **PROPOSED**
+- Status: **ACCEPTED**
 - Proposed at: 2026-08-04
+- Accepted at: 2026-08-04T20:42:00+09:00
+- Accepted by: `USER`
 - Work item: `FE-P4-S1`
 - Related ADRs: ADR-101, ADR-105, ADR-107, ADR-109, ADR-118, ADR-119, ADR-124, ADR-126
 - Contract snapshot:
   `docs/architecture/contracts/snapshots/frontend-phase-4-section-1/frontend-phase-4-section-1-contract-snapshot-260804001.md`
 - Decision owner: `USER`
-- Product implementation: `NOT_AUTHORIZED`
+- Product implementation: `AUTHORIZED`
 
 ## Context
 
@@ -25,7 +27,7 @@ Neither source provides immutable Product Review Context revisions, Item depende
 `REQUEST_REVISION`, Candidate acceptance-for-authoring or independent purpose-bound Approval
 Resources.
 
-## Decision candidate
+## Decision
 
 Adopt a durable Review Product model with immutable context revisions and append-only decisions.
 
@@ -172,7 +174,8 @@ without constraining the Product contract to a whole-ChangeSet schema.
 - allow Browser-computed partial approval;
 - delete rejected or held history.
 
-## Approval boundary
+## Authorization boundary
 
-This ADR is a proposal. It does not authorize Migration 027, Product implementation, Ready, Merge,
-deployment, production verification or FE-P4-S2.
+ADR-128 is accepted. FE-P4-S1 Product implementation and Migration 027 are authorized under the
+approved Contract Snapshot revision 1 and frozen AC-01 through AC-32. Ready, Merge, deployment,
+production verification, FE-P4-S2 and FE-P5 remain separately unauthorized.

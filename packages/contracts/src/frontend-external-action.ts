@@ -597,6 +597,83 @@ export type GetExternalActionResultV1 = {
   readonly action: ExternalActionV1;
 };
 
+// Frozen individual Read Operations (Contract Snapshot §9): each approved
+// resource read is its own operation and cannot be replaced by the integrated
+// detail endpoint.
+
+export type GetActionManifestRequestV1 = {
+  readonly schemaVersion: '1.0.0';
+  readonly actionId: string;
+};
+
+export type GetActionManifestResultV1 = {
+  readonly schemaVersion: '1.0.0';
+  readonly manifest: ActionManifestV1;
+};
+
+export type GetRiskDecisionRequestV1 = {
+  readonly schemaVersion: '1.0.0';
+  readonly actionId: string;
+};
+
+export type GetRiskDecisionResultV1 = {
+  readonly schemaVersion: '1.0.0';
+  readonly riskDecision: RiskDecisionV1;
+};
+
+export type GetPreflightRequestV1 = {
+  readonly schemaVersion: '1.0.0';
+  readonly actionId: string;
+};
+
+export type GetPreflightResultV1 = {
+  readonly schemaVersion: '1.0.0';
+  readonly preflight: PreflightV1;
+};
+
+export type GetExecutionRequestV1 = {
+  readonly schemaVersion: '1.0.0';
+  readonly actionId: string;
+};
+
+export type GetExecutionResultV1 = {
+  readonly schemaVersion: '1.0.0';
+  readonly execution: ExecutionV1;
+};
+
+export type GetExecutionAttemptsRequestV1 = {
+  readonly schemaVersion: '1.0.0';
+  readonly actionId: string;
+  readonly cursor?: string;
+  readonly pageSize: number;
+};
+
+export type GetExecutionAttemptsResultV1 = {
+  readonly schemaVersion: '1.0.0';
+  readonly attempts: readonly ExecutionAttemptV1[];
+  readonly nextCursor?: string;
+};
+
+export type GetVerificationRequestV1 = {
+  readonly schemaVersion: '1.0.0';
+  readonly actionId: string;
+};
+
+export type GetVerificationResultV1 = {
+  readonly schemaVersion: '1.0.0';
+  readonly verification: VerificationV1;
+};
+
+export type GetActionResultRequestV1 = {
+  readonly schemaVersion: '1.0.0';
+  readonly actionId: string;
+};
+
+export type GetActionResultResultV1 = {
+  readonly schemaVersion: '1.0.0';
+  readonly result: ResultV1;
+};
+
 export type GetExternalActionDetailRequestV1 = {
   readonly schemaVersion: '1.0.0';
   readonly actionId: string;
@@ -852,15 +929,60 @@ export type ResolveExternalActionOutcomeRequestV1 = {
   readonly semanticDigest: string;
 };
 
+/** Resolved governed-command result, dispatched by commandType through the
+ * corresponding strict result decoder. No raw/unknown payload passes. */
+export type ResolvedCommandResultV1 =
+  | {
+      readonly commandType: 'frontend.external-action.validate-candidate.v1';
+      readonly result: ValidateActionCandidateResultV1;
+    }
+  | {
+      readonly commandType: 'frontend.external-action.prepare-manifest.v1';
+      readonly result: PrepareActionManifestResultV1;
+    }
+  | {
+      readonly commandType: 'frontend.external-action.approve.v1';
+      readonly result: ApproveExternalActionResultV1;
+    }
+  | {
+      readonly commandType: 'frontend.external-action.preflight.v1';
+      readonly result: PreflightExternalActionResultV1;
+    }
+  | {
+      readonly commandType: 'frontend.external-action.execute.v1';
+      readonly result: ExecuteExternalActionResultV1;
+    }
+  | {
+      readonly commandType: 'frontend.external-action.retry-attempt.v1';
+      readonly result: RetryExecutionAttemptResultV1;
+    }
+  | {
+      readonly commandType: 'frontend.external-action.verify.v1';
+      readonly result: VerifyExternalActionResultV1;
+    }
+  | {
+      readonly commandType: 'frontend.external-action.cancel.v1';
+      readonly result: CancelExternalActionResultV1;
+    }
+  | {
+      readonly commandType: 'frontend.external-action.rollback.v1';
+      readonly result: RollbackExternalActionResultV1;
+    }
+  | {
+      readonly commandType: 'frontend.external-action.prepare-compensation.v1';
+      readonly result: PrepareCompensatingActionResultV1;
+    }
+  | {
+      readonly commandType: 'frontend.external-action.resolve-outcome.v1';
+      readonly result: ResolveExternalActionOutcomeResultV1;
+    };
+
 export type ResolveExternalActionOutcomeResultV1 = {
   readonly schemaVersion: '1.0.0';
   readonly outcome: 'COMPLETED' | 'REJECTED' | 'OUTCOME_UNKNOWN';
   readonly originalClientRequestId: string;
   readonly originalIdempotencyKey: string;
-  readonly completed?: {
-    readonly commandType: FrontendExternalActionCommandType;
-    readonly result: unknown;
-  };
+  readonly completed?: ResolvedCommandResultV1;
   readonly rejection?: { readonly code: string; readonly message: string };
 };
 
@@ -2369,6 +2491,96 @@ export const decodeGetExternalActionRequestV1 = (
   };
 };
 
+export const decodeGetActionManifestRequestV1 = (
+  value: unknown,
+  path = 'request',
+): GetActionManifestRequestV1 => {
+  const object = strictObject(value, ['schemaVersion', 'actionId'], path);
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+  };
+};
+
+export const decodeGetRiskDecisionRequestV1 = (
+  value: unknown,
+  path = 'request',
+): GetRiskDecisionRequestV1 => {
+  const object = strictObject(value, ['schemaVersion', 'actionId'], path);
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+  };
+};
+
+export const decodeGetPreflightRequestV1 = (
+  value: unknown,
+  path = 'request',
+): GetPreflightRequestV1 => {
+  const object = strictObject(value, ['schemaVersion', 'actionId'], path);
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+  };
+};
+
+export const decodeGetExecutionRequestV1 = (
+  value: unknown,
+  path = 'request',
+): GetExecutionRequestV1 => {
+  const object = strictObject(value, ['schemaVersion', 'actionId'], path);
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+  };
+};
+
+export const decodeGetExecutionAttemptsRequestV1 = (
+  value: unknown,
+  path = 'request',
+): GetExecutionAttemptsRequestV1 => {
+  const object = strictObject(value, ['schemaVersion', 'actionId', 'cursor', 'pageSize'], path);
+  decodeSchemaVersion(object, path);
+  const pageSize = integer(required(object, 'pageSize', path), `${path}.pageSize`);
+  if (pageSize > EXTERNAL_ACTION_QUEUE_PAGE_SIZE_CAP) {
+    return fail(`${path}.pageSize`, `must not exceed ${EXTERNAL_ACTION_QUEUE_PAGE_SIZE_CAP}`);
+  }
+  return {
+    schemaVersion: '1.0.0',
+    actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+    cursor: optionalText(object.cursor, `${path}.cursor`),
+    pageSize,
+  };
+};
+
+export const decodeGetVerificationRequestV1 = (
+  value: unknown,
+  path = 'request',
+): GetVerificationRequestV1 => {
+  const object = strictObject(value, ['schemaVersion', 'actionId'], path);
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+  };
+};
+
+export const decodeGetActionResultRequestV1 = (
+  value: unknown,
+  path = 'request',
+): GetActionResultRequestV1 => {
+  const object = strictObject(value, ['schemaVersion', 'actionId'], path);
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+  };
+};
+
 export const decodeGetExternalActionDetailRequestV1 = (
   value: unknown,
   path = 'request',
@@ -2899,6 +3111,29 @@ export const decodePreflightExternalActionResultV1 = (
   };
 };
 
+const assertSameAction = (
+  resource: { readonly actionId: string },
+  actionId: string,
+  path: string,
+): void => {
+  if (resource.actionId !== actionId) {
+    return fail(`${path}.actionId`, 'must match the enclosing action');
+  }
+};
+
+const assertSameProjectBinding = (
+  resource: { readonly resourceProjectId: string; readonly effectiveProjectId: string },
+  project: { readonly resourceProjectId: string; readonly effectiveProjectId: string },
+  path: string,
+): void => {
+  if (resource.resourceProjectId !== project.resourceProjectId) {
+    return fail(`${path}.resourceProjectId`, 'must match the enclosing action project binding');
+  }
+  if (resource.effectiveProjectId !== project.effectiveProjectId) {
+    return fail(`${path}.effectiveProjectId`, 'must match the enclosing action project binding');
+  }
+};
+
 export const decodeExecuteExternalActionResultV1 = (
   value: unknown,
   path = 'result',
@@ -2918,6 +3153,17 @@ export const decodeExecuteExternalActionResultV1 = (
     path,
   );
   decodeSchemaVersion(object, path);
+  const actionId = text(required(object, 'actionId', path), `${path}.actionId`);
+  const execution = decodeExecutionV1(required(object, 'execution', path), `${path}.execution`);
+  const attempt = decodeExecutionAttemptV1(required(object, 'attempt', path), `${path}.attempt`);
+  // Nested binding: execution and attempt must belong to the same Action and
+  // Execution with a consistent project binding.
+  assertSameAction(execution, actionId, `${path}.execution`);
+  assertSameAction(attempt, actionId, `${path}.attempt`);
+  if (attempt.executionId !== execution.executionId) {
+    return fail(`${path}.attempt.executionId`, 'must match the execution executionId');
+  }
+  assertSameProjectBinding(attempt, execution, `${path}.attempt`);
   return {
     schemaVersion: '1.0.0',
     outcome: enumValue(
@@ -2931,9 +3177,9 @@ export const decodeExecuteExternalActionResultV1 = (
       required(object, 'commandSemanticDigest', path),
       `${path}.commandSemanticDigest`,
     ),
-    actionId: text(required(object, 'actionId', path), `${path}.actionId`),
-    execution: decodeExecutionV1(required(object, 'execution', path), `${path}.execution`),
-    attempt: decodeExecutionAttemptV1(required(object, 'attempt', path), `${path}.attempt`),
+    actionId,
+    execution,
+    attempt,
   };
 };
 
@@ -2955,6 +3201,9 @@ export const decodeRetryExecutionAttemptResultV1 = (
     path,
   );
   decodeSchemaVersion(object, path);
+  const actionId = text(required(object, 'actionId', path), `${path}.actionId`);
+  const attempt = decodeExecutionAttemptV1(required(object, 'attempt', path), `${path}.attempt`);
+  assertSameAction(attempt, actionId, `${path}.attempt`);
   return {
     schemaVersion: '1.0.0',
     outcome: enumValue(
@@ -2968,8 +3217,8 @@ export const decodeRetryExecutionAttemptResultV1 = (
       required(object, 'commandSemanticDigest', path),
       `${path}.commandSemanticDigest`,
     ),
-    actionId: text(required(object, 'actionId', path), `${path}.actionId`),
-    attempt: decodeExecutionAttemptV1(required(object, 'attempt', path), `${path}.attempt`),
+    actionId,
+    attempt,
   };
 };
 
@@ -3130,13 +3379,48 @@ export const decodeResolveExternalActionOutcomeResultV1 = (
     path,
   );
   decodeSchemaVersion(object, path);
+  const outcome = enumValue(
+    required(object, 'outcome', path),
+    ['COMPLETED', 'REJECTED', 'OUTCOME_UNKNOWN'],
+    `${path}.outcome`,
+  );
+  const completed =
+    object.completed === undefined
+      ? undefined
+      : decodeCompletedOutcome(object.completed, `${path}.completed`);
+  const rejection =
+    object.rejection === undefined
+      ? undefined
+      : (() => {
+          const rejection = strictObject(
+            object.rejection,
+            ['code', 'message'],
+            `${path}.rejection`,
+          );
+          return {
+            code: text(required(rejection, 'code', path), `${path}.rejection.code`),
+            message: text(required(rejection, 'message', path), `${path}.rejection.message`),
+          };
+        })();
+  // Exclusive outcome contract: each outcome carries exactly its own shape.
+  if (outcome === 'COMPLETED' && completed === undefined) {
+    return fail(`${path}.completed`, 'is required when outcome is COMPLETED');
+  }
+  if (outcome === 'COMPLETED' && rejection !== undefined) {
+    return fail(`${path}.rejection`, 'must be absent when outcome is COMPLETED');
+  }
+  if (outcome === 'REJECTED' && rejection === undefined) {
+    return fail(`${path}.rejection`, 'is required when outcome is REJECTED');
+  }
+  if (outcome === 'REJECTED' && completed !== undefined) {
+    return fail(`${path}.completed`, 'must be absent when outcome is REJECTED');
+  }
+  if (outcome === 'OUTCOME_UNKNOWN' && (completed !== undefined || rejection !== undefined)) {
+    return fail(path, 'OUTCOME_UNKNOWN must carry neither completed nor rejection');
+  }
   return {
     schemaVersion: '1.0.0',
-    outcome: enumValue(
-      required(object, 'outcome', path),
-      ['COMPLETED', 'REJECTED', 'OUTCOME_UNKNOWN'],
-      `${path}.outcome`,
-    ),
+    outcome,
     originalClientRequestId: text(
       required(object, 'originalClientRequestId', path),
       `${path}.originalClientRequestId`,
@@ -3145,51 +3429,251 @@ export const decodeResolveExternalActionOutcomeResultV1 = (
       required(object, 'originalIdempotencyKey', path),
       `${path}.originalIdempotencyKey`,
     ),
-    completed:
-      object.completed === undefined
-        ? undefined
-        : decodeCompletedOutcome(object.completed, `${path}.completed`),
-    rejection:
-      object.rejection === undefined
-        ? undefined
-        : (() => {
-            const rejection = strictObject(
-              object.rejection,
-              ['code', 'message'],
-              `${path}.rejection`,
-            );
-            return {
-              code: text(required(rejection, 'code', path), `${path}.rejection.code`),
-              message: text(required(rejection, 'message', path), `${path}.rejection.message`),
-            };
-          })(),
+    completed,
+    rejection,
   };
 };
 
-const decodeCompletedOutcome = (
+const decodeCompletedOutcome = (value: unknown, path: string): ResolvedCommandResultV1 => {
+  const object = strictObject(value, ['commandType', 'result'], path);
+  const commandType = enumValue(
+    required(object, 'commandType', path),
+    [
+      FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.validateCandidate,
+      FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.prepareManifest,
+      FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.approve,
+      FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.preflight,
+      FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.execute,
+      FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.retryAttempt,
+      FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.verify,
+      FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.cancel,
+      FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.rollback,
+      FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.prepareCompensation,
+      FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.resolveOutcome,
+    ],
+    `${path}.commandType`,
+  );
+  const result = required(object, 'result', path);
+  switch (commandType) {
+    case FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.validateCandidate:
+      return {
+        commandType,
+        result: decodeValidateActionCandidateResultV1(result, `${path}.result`),
+      };
+    case FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.prepareManifest:
+      return {
+        commandType,
+        result: decodePrepareActionManifestResultV1(result, `${path}.result`),
+      };
+    case FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.approve:
+      return {
+        commandType,
+        result: decodeApproveExternalActionResultV1(result, `${path}.result`),
+      };
+    case FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.preflight:
+      return {
+        commandType,
+        result: decodePreflightExternalActionResultV1(result, `${path}.result`),
+      };
+    case FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.execute:
+      return {
+        commandType,
+        result: decodeExecuteExternalActionResultV1(result, `${path}.result`),
+      };
+    case FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.retryAttempt:
+      return {
+        commandType,
+        result: decodeRetryExecutionAttemptResultV1(result, `${path}.result`),
+      };
+    case FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.verify:
+      return {
+        commandType,
+        result: decodeVerifyExternalActionResultV1(result, `${path}.result`),
+      };
+    case FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.cancel:
+      return {
+        commandType,
+        result: decodeCancelExternalActionResultV1(result, `${path}.result`),
+      };
+    case FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.rollback:
+      return {
+        commandType,
+        result: decodeRollbackExternalActionResultV1(result, `${path}.result`),
+      };
+    case FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.prepareCompensation:
+      return {
+        commandType,
+        result: decodePrepareCompensatingActionResultV1(result, `${path}.result`),
+      };
+    case FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.resolveOutcome:
+      return {
+        commandType,
+        result: decodeResolveExternalActionOutcomeResultV1(result, `${path}.result`),
+      };
+  }
+};
+
+/**
+ * Ordered, append-only Attempt list (AC-07): bounded (≤50), consecutive
+ * attemptNumber starting at 1, unique attemptId/idempotencyKey, single
+ * Action/Execution, optional project binding, and optional match against
+ * ExecutionV1.attemptCount and latestAttemptRef.
+ */
+const decodeAttemptList = (
   value: unknown,
   path: string,
-): { readonly commandType: FrontendExternalActionCommandType; readonly result: unknown } => {
-  const object = strictObject(value, ['commandType', 'result'], path);
+  context: {
+    readonly actionId?: string;
+    readonly executionId?: string;
+    readonly project?: {
+      readonly resourceProjectId: string;
+      readonly effectiveProjectId: string;
+    };
+    readonly expectedCount?: number;
+    readonly latestAttemptRef?: ExternalActionResourceRefV1;
+  },
+): readonly ExecutionAttemptV1[] => {
+  const raw = arrayValue(value, path);
+  if (raw.length > EXTERNAL_ACTION_ATTEMPT_LIST_CAP) {
+    return fail(path, `must not exceed ${EXTERNAL_ACTION_ATTEMPT_LIST_CAP} attempts`);
+  }
+  const attempts = raw.map((entry, index) => decodeExecutionAttemptV1(entry, `${path}[${index}]`));
+  const seenIds = new Set<string>();
+  const seenKeys = new Set<string>();
+  let sharedExecutionId: string | undefined;
+  attempts.forEach((attempt, index) => {
+    if (context.actionId !== undefined) {
+      assertSameAction(attempt, context.actionId, `${path}[${index}]`);
+    }
+    if (context.executionId !== undefined && attempt.executionId !== context.executionId) {
+      return fail(`${path}[${index}].executionId`, 'must match the enclosing execution');
+    }
+    if (sharedExecutionId === undefined) {
+      sharedExecutionId = attempt.executionId;
+    } else if (attempt.executionId !== sharedExecutionId) {
+      return fail(`${path}[${index}].executionId`, 'must be consistent across attempts');
+    }
+    if (context.project !== undefined) {
+      assertSameProjectBinding(attempt, context.project, `${path}[${index}]`);
+    }
+    if (attempt.attemptNumber !== index + 1) {
+      return fail(`${path}[${index}].attemptNumber`, 'must be consecutive starting at 1');
+    }
+    if (seenIds.has(attempt.attemptId)) {
+      return fail(`${path}[${index}].attemptId`, 'must be unique');
+    }
+    seenIds.add(attempt.attemptId);
+    if (seenKeys.has(attempt.idempotencyKey)) {
+      return fail(`${path}[${index}].idempotencyKey`, 'must be unique');
+    }
+    seenKeys.add(attempt.idempotencyKey);
+  });
+  if (context.expectedCount !== undefined && attempts.length !== context.expectedCount) {
+    return fail(path, 'length must match the execution attemptCount');
+  }
+  if (context.latestAttemptRef !== undefined) {
+    const last = attempts[attempts.length - 1];
+    if (
+      last === undefined ||
+      context.latestAttemptRef.resourceKind !== 'attempt' ||
+      context.latestAttemptRef.resourceId !== last.attemptId ||
+      (context.latestAttemptRef.resourceRevision !== undefined &&
+        context.latestAttemptRef.resourceRevision !== last.attemptNumber)
+    ) {
+      return fail(path, 'latestAttemptRef must reference the last attempt');
+    }
+  }
+  return attempts;
+};
+
+export const decodeGetActionManifestResultV1 = (
+  value: unknown,
+  path = 'result',
+): GetActionManifestResultV1 => {
+  const object = strictObject(value, ['schemaVersion', 'manifest'], path);
+  decodeSchemaVersion(object, path);
   return {
-    commandType: enumValue(
-      required(object, 'commandType', path),
-      [
-        FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.validateCandidate,
-        FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.prepareManifest,
-        FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.approve,
-        FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.preflight,
-        FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.execute,
-        FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.retryAttempt,
-        FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.verify,
-        FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.cancel,
-        FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.rollback,
-        FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.prepareCompensation,
-        FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.resolveOutcome,
-      ],
-      `${path}.commandType`,
+    schemaVersion: '1.0.0',
+    manifest: decodeActionManifestV1(required(object, 'manifest', path), `${path}.manifest`),
+  };
+};
+
+export const decodeGetRiskDecisionResultV1 = (
+  value: unknown,
+  path = 'result',
+): GetRiskDecisionResultV1 => {
+  const object = strictObject(value, ['schemaVersion', 'riskDecision'], path);
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    riskDecision: decodeRiskDecisionV1(
+      required(object, 'riskDecision', path),
+      `${path}.riskDecision`,
     ),
-    result: required(object, 'result', path),
+  };
+};
+
+export const decodeGetPreflightResultV1 = (
+  value: unknown,
+  path = 'result',
+): GetPreflightResultV1 => {
+  const object = strictObject(value, ['schemaVersion', 'preflight'], path);
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    preflight: decodePreflightV1(required(object, 'preflight', path), `${path}.preflight`),
+  };
+};
+
+export const decodeGetExecutionResultV1 = (
+  value: unknown,
+  path = 'result',
+): GetExecutionResultV1 => {
+  const object = strictObject(value, ['schemaVersion', 'execution'], path);
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    execution: decodeExecutionV1(required(object, 'execution', path), `${path}.execution`),
+  };
+};
+
+export const decodeGetExecutionAttemptsResultV1 = (
+  value: unknown,
+  path = 'result',
+): GetExecutionAttemptsResultV1 => {
+  const object = strictObject(value, ['schemaVersion', 'attempts', 'nextCursor'], path);
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    attempts: decodeAttemptList(required(object, 'attempts', path), `${path}.attempts`, {}),
+    nextCursor: optionalText(object.nextCursor, `${path}.nextCursor`),
+  };
+};
+
+export const decodeGetVerificationResultV1 = (
+  value: unknown,
+  path = 'result',
+): GetVerificationResultV1 => {
+  const object = strictObject(value, ['schemaVersion', 'verification'], path);
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    verification: decodeVerificationV1(
+      required(object, 'verification', path),
+      `${path}.verification`,
+    ),
+  };
+};
+
+export const decodeGetActionResultResultV1 = (
+  value: unknown,
+  path = 'result',
+): GetActionResultResultV1 => {
+  const object = strictObject(value, ['schemaVersion', 'result'], path);
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    result: decodeResultV1(required(object, 'result', path), `${path}.result`),
   };
 };
 
@@ -3335,46 +3819,106 @@ export const decodeGetExternalActionDetailResultV1 = (
     path,
   );
   decodeSchemaVersion(object, path);
+  const action = decodeExternalActionV1(required(object, 'action', path), `${path}.action`);
+  const manifest =
+    object.manifest === undefined
+      ? undefined
+      : decodeActionManifestV1(object.manifest, `${path}.manifest`);
+  const riskDecision =
+    object.riskDecision === undefined
+      ? undefined
+      : decodeRiskDecisionV1(object.riskDecision, `${path}.riskDecision`);
+  const approval =
+    object.approval === undefined
+      ? undefined
+      : decodeExternalActionApprovalV1(object.approval, `${path}.approval`);
+  const preflight =
+    object.preflight === undefined
+      ? undefined
+      : decodePreflightV1(object.preflight, `${path}.preflight`);
+  const execution =
+    object.execution === undefined
+      ? undefined
+      : decodeExecutionV1(object.execution, `${path}.execution`);
+  const verification =
+    object.verification === undefined
+      ? undefined
+      : decodeVerificationV1(object.verification, `${path}.verification`);
+  const result =
+    object.result === undefined ? undefined : decodeResultV1(object.result, `${path}.result`);
+  const rollback =
+    object.rollback === undefined
+      ? undefined
+      : decodeRollbackV1(object.rollback, `${path}.rollback`);
+  const compensation =
+    object.compensation === undefined
+      ? undefined
+      : decodeCompensatingActionV1(object.compensation, `${path}.compensation`);
+  // Nested binding: every embedded resource must belong to the same Action and
+  // Project (fail-closed cross-project boundary).
+  if (manifest !== undefined) {
+    assertSameAction(manifest, action.actionId, `${path}.manifest`);
+    assertSameProjectBinding(manifest, action, `${path}.manifest`);
+  }
+  if (riskDecision !== undefined) {
+    assertSameAction(riskDecision, action.actionId, `${path}.riskDecision`);
+    assertSameProjectBinding(riskDecision, action, `${path}.riskDecision`);
+  }
+  if (approval !== undefined) {
+    assertSameAction(approval, action.actionId, `${path}.approval`);
+    assertSameProjectBinding(approval, action, `${path}.approval`);
+  }
+  if (preflight !== undefined) {
+    assertSameAction(preflight, action.actionId, `${path}.preflight`);
+    assertSameProjectBinding(preflight, action, `${path}.preflight`);
+  }
+  if (execution !== undefined) {
+    assertSameAction(execution, action.actionId, `${path}.execution`);
+    assertSameProjectBinding(execution, action, `${path}.execution`);
+  }
+  if (verification !== undefined) {
+    assertSameAction(verification, action.actionId, `${path}.verification`);
+    assertSameProjectBinding(verification, action, `${path}.verification`);
+  }
+  if (result !== undefined) {
+    assertSameAction(result, action.actionId, `${path}.result`);
+    assertSameProjectBinding(result, action, `${path}.result`);
+  }
+  if (rollback !== undefined) {
+    assertSameAction(rollback, action.actionId, `${path}.rollback`);
+    assertSameProjectBinding(rollback, action, `${path}.rollback`);
+  }
+  if (compensation !== undefined) {
+    // The Compensating Action is a new External Action; it binds to the
+    // detailed action through sourceActionId, not its own actionId.
+    if (compensation.sourceActionId !== action.actionId) {
+      return fail(`${path}.compensation.sourceActionId`, 'must match the enclosing action');
+    }
+    assertSameProjectBinding(compensation, action, `${path}.compensation`);
+  }
+  const attempts = decodeAttemptList(required(object, 'attempts', path), `${path}.attempts`, {
+    actionId: action.actionId,
+    executionId: execution?.executionId,
+    project: {
+      resourceProjectId: action.resourceProjectId,
+      effectiveProjectId: action.effectiveProjectId,
+    },
+    expectedCount: execution?.attemptCount,
+    latestAttemptRef: execution?.latestAttemptRef,
+  });
   return {
     schemaVersion: '1.0.0',
-    action: decodeExternalActionV1(required(object, 'action', path), `${path}.action`),
-    manifest:
-      object.manifest === undefined
-        ? undefined
-        : decodeActionManifestV1(object.manifest, `${path}.manifest`),
-    riskDecision:
-      object.riskDecision === undefined
-        ? undefined
-        : decodeRiskDecisionV1(object.riskDecision, `${path}.riskDecision`),
-    approval:
-      object.approval === undefined
-        ? undefined
-        : decodeExternalActionApprovalV1(object.approval, `${path}.approval`),
-    preflight:
-      object.preflight === undefined
-        ? undefined
-        : decodePreflightV1(object.preflight, `${path}.preflight`),
-    execution:
-      object.execution === undefined
-        ? undefined
-        : decodeExecutionV1(object.execution, `${path}.execution`),
-    attempts: arrayValue(required(object, 'attempts', path), `${path}.attempts`).map(
-      (entry, index) => decodeExecutionAttemptV1(entry, `${path}.attempts[${index}]`),
-    ),
-    verification:
-      object.verification === undefined
-        ? undefined
-        : decodeVerificationV1(object.verification, `${path}.verification`),
-    result:
-      object.result === undefined ? undefined : decodeResultV1(object.result, `${path}.result`),
-    rollback:
-      object.rollback === undefined
-        ? undefined
-        : decodeRollbackV1(object.rollback, `${path}.rollback`),
-    compensation:
-      object.compensation === undefined
-        ? undefined
-        : decodeCompensatingActionV1(object.compensation, `${path}.compensation`),
+    action,
+    manifest,
+    riskDecision,
+    approval,
+    preflight,
+    execution,
+    attempts,
+    verification,
+    result,
+    rollback,
+    compensation,
     credential:
       object.credential === undefined
         ? undefined

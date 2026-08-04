@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  EXTERNAL_ACTION_ATTEMPT_LIST_CAP,
   EXTERNAL_ACTION_AUDIT_CATEGORIES,
   EXTERNAL_ACTION_FAILURE_REASONS,
   EXTERNAL_ACTION_QUEUE_PAGE_SIZE_CAP,
@@ -22,10 +23,24 @@ import {
   decodeExternalActionBudgetViewV1,
   decodeExternalActionCredentialViewV1,
   decodeExternalActionV1,
+  decodeGetActionManifestRequestV1,
+  decodeGetActionManifestResultV1,
+  decodeGetActionResultRequestV1,
+  decodeGetActionResultResultV1,
+  decodeGetExecutionAttemptsRequestV1,
+  decodeGetExecutionAttemptsResultV1,
+  decodeGetExecutionRequestV1,
+  decodeGetExecutionResultV1,
   decodeGetExternalActionDetailRequestV1,
   decodeGetExternalActionDetailResultV1,
   decodeGetExternalActionRequestV1,
   decodeGetExternalActionResultV1,
+  decodeGetPreflightRequestV1,
+  decodeGetPreflightResultV1,
+  decodeGetRiskDecisionRequestV1,
+  decodeGetRiskDecisionResultV1,
+  decodeGetVerificationRequestV1,
+  decodeGetVerificationResultV1,
   decodeListExternalActionAuditRequestV1,
   decodeListExternalActionAuditResultV1,
   decodeListExternalActionsRequestV1,
@@ -1002,6 +1017,59 @@ describe('FE-P4-S2 command result decoders', () => {
     expect(decoded.attempt.attemptId).toBe('attempt-1');
   });
 
+  it('rejects an Execute result whose nested resources disagree on Action/Execution/Project', () => {
+    const result = {
+      schemaVersion: '1.0.0' as const,
+      outcome: 'COMPLETED' as const,
+      ...commandIdentity,
+      commandSemanticDigest: `sha256:${'6'.repeat(64)}`,
+      actionId: 'action-1',
+      execution: makeExecution(),
+      attempt: makeAttempt(),
+    };
+    expect(() =>
+      decodeExecuteExternalActionResultV1({
+        ...result,
+        execution: { ...makeExecution(), actionId: 'action-2' },
+      }),
+    ).toThrow(FrontendContractError);
+    expect(() =>
+      decodeExecuteExternalActionResultV1({
+        ...result,
+        attempt: { ...makeAttempt(), actionId: 'action-2' },
+      }),
+    ).toThrow(FrontendContractError);
+    expect(() =>
+      decodeExecuteExternalActionResultV1({
+        ...result,
+        attempt: { ...makeAttempt(), executionId: 'execution-2' },
+      }),
+    ).toThrow(FrontendContractError);
+    expect(() =>
+      decodeExecuteExternalActionResultV1({
+        ...result,
+        attempt: { ...makeAttempt(), resourceProjectId: 'project-2' },
+      }),
+    ).toThrow(FrontendContractError);
+  });
+
+  it('rejects a RetryAttempt result whose attempt belongs to another Action', () => {
+    const result = {
+      schemaVersion: '1.0.0' as const,
+      outcome: 'COMPLETED' as const,
+      ...commandIdentity,
+      commandSemanticDigest: `sha256:${'6'.repeat(64)}`,
+      actionId: 'action-1',
+      attempt: makeAttempt(),
+    };
+    expect(() =>
+      decodeRetryExecutionAttemptResultV1({
+        ...result,
+        attempt: { ...makeAttempt(), actionId: 'action-2' },
+      }),
+    ).toThrow(FrontendContractError);
+  });
+
   it('decodes RetryAttempt result', () => {
     const result = {
       schemaVersion: '1.0.0' as const,
@@ -1063,7 +1131,7 @@ describe('FE-P4-S2 command result decoders', () => {
     );
   });
 
-  it('decodes ResolveOutcome result', () => {
+  it('decodes ResolveOutcome result with a commandType-dispatched strict result', () => {
     const result = {
       schemaVersion: '1.0.0' as const,
       outcome: 'COMPLETED' as const,
@@ -1071,11 +1139,117 @@ describe('FE-P4-S2 command result decoders', () => {
       originalIdempotencyKey: 'idem-1',
       completed: {
         commandType: FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.execute,
-        result: { ok: true },
+        result: {
+          schemaVersion: '1.0.0' as const,
+          outcome: 'COMPLETED' as const,
+          ...commandIdentity,
+          commandSemanticDigest: `sha256:${'6'.repeat(64)}`,
+          actionId: 'action-1',
+          execution: makeExecution(),
+          attempt: makeAttempt(),
+        },
       },
     };
     const decoded = decodeResolveExternalActionOutcomeResultV1(result);
     expect(decoded.completed?.commandType).toBe(FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.execute);
+  });
+
+  it('rejects a ResolveOutcome completed payload that is not a strict command result', () => {
+    expect(() =>
+      decodeResolveExternalActionOutcomeResultV1({
+        schemaVersion: '1.0.0' as const,
+        outcome: 'COMPLETED' as const,
+        originalClientRequestId: 'client-1',
+        originalIdempotencyKey: 'idem-1',
+        completed: {
+          commandType: FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.execute,
+          result: { ok: true },
+        },
+      }),
+    ).toThrow(FrontendContractError);
+    expect(() =>
+      decodeResolveExternalActionOutcomeResultV1({
+        schemaVersion: '1.0.0' as const,
+        outcome: 'COMPLETED' as const,
+        originalClientRequestId: 'client-1',
+        originalIdempotencyKey: 'idem-1',
+        completed: {
+          commandType: FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.execute,
+          result: {
+            schemaVersion: '1.0.0' as const,
+            outcome: 'COMPLETED' as const,
+            ...commandIdentity,
+            commandSemanticDigest: `sha256:${'6'.repeat(64)}`,
+            actionId: 'action-1',
+            status: 'CANCELLING' as const,
+          },
+        },
+      }),
+    ).toThrow(FrontendContractError);
+  });
+
+  it('enforces the ResolveOutcome exclusive outcome contract', () => {
+    const base = {
+      schemaVersion: '1.0.0' as const,
+      originalClientRequestId: 'client-1',
+      originalIdempotencyKey: 'idem-1',
+    };
+    // COMPLETED requires completed and forbids rejection.
+    expect(() =>
+      decodeResolveExternalActionOutcomeResultV1({ ...base, outcome: 'COMPLETED' as const }),
+    ).toThrow(FrontendContractError);
+    expect(() =>
+      decodeResolveExternalActionOutcomeResultV1({
+        ...base,
+        outcome: 'COMPLETED' as const,
+        rejection: { code: 'ACTION_EXECUTION_NOT_ALLOWED', message: 'no' },
+      }),
+    ).toThrow(FrontendContractError);
+    // REJECTED requires rejection and forbids completed.
+    expect(() =>
+      decodeResolveExternalActionOutcomeResultV1({ ...base, outcome: 'REJECTED' as const }),
+    ).toThrow(FrontendContractError);
+    expect(() =>
+      decodeResolveExternalActionOutcomeResultV1({
+        ...base,
+        outcome: 'REJECTED' as const,
+        rejection: { code: 'ACTION_EXECUTION_NOT_ALLOWED', message: 'no' },
+        completed: {
+          commandType: FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.execute,
+          result: {
+            schemaVersion: '1.0.0' as const,
+            outcome: 'COMPLETED' as const,
+            ...commandIdentity,
+            commandSemanticDigest: `sha256:${'6'.repeat(64)}`,
+            actionId: 'action-1',
+            execution: makeExecution(),
+            attempt: makeAttempt(),
+          },
+        },
+      }),
+    ).toThrow(FrontendContractError);
+    // OUTCOME_UNKNOWN forbids both.
+    expect(() =>
+      decodeResolveExternalActionOutcomeResultV1({
+        ...base,
+        outcome: 'OUTCOME_UNKNOWN' as const,
+        rejection: { code: 'ACTION_OUTCOME_UNKNOWN', message: 'unknown' },
+      }),
+    ).toThrow(FrontendContractError);
+    expect(
+      decodeResolveExternalActionOutcomeResultV1({
+        ...base,
+        outcome: 'OUTCOME_UNKNOWN' as const,
+      }).outcome,
+    ).toBe('OUTCOME_UNKNOWN');
+    // REJECTED with only rejection decodes.
+    expect(
+      decodeResolveExternalActionOutcomeResultV1({
+        ...base,
+        outcome: 'REJECTED' as const,
+        rejection: { code: 'ACTION_EXECUTION_NOT_ALLOWED', message: 'no' },
+      }).rejection?.code,
+    ).toBe('ACTION_EXECUTION_NOT_ALLOWED');
   });
 });
 
@@ -1159,6 +1333,229 @@ describe('FE-P4-S2 read result decoders', () => {
     expect(decoded.attempts).toHaveLength(1);
     expect(decoded.credential?.maskedCredential).toBe('a•••••••4');
     expect(decoded.budget?.remainingExecutions).toBe(47);
+  });
+
+  it('decodes every frozen individual Read Operation result', () => {
+    expect(
+      decodeGetActionManifestResultV1({
+        schemaVersion: '1.0.0',
+        manifest: makeManifest(),
+      }).manifest.manifestId,
+    ).toBe('manifest-1');
+    expect(
+      decodeGetRiskDecisionResultV1({
+        schemaVersion: '1.0.0',
+        riskDecision: makeRiskDecision(),
+      }).riskDecision.riskLevel,
+    ).toBe('R3');
+    expect(
+      decodeGetPreflightResultV1({ schemaVersion: '1.0.0', preflight: makePreflight() }).preflight
+        .status,
+    ).toBe('READY');
+    expect(
+      decodeGetExecutionResultV1({ schemaVersion: '1.0.0', execution: makeExecution() }).execution
+        .executionId,
+    ).toBe('execution-1');
+    expect(
+      decodeGetExecutionAttemptsResultV1({
+        schemaVersion: '1.0.0',
+        attempts: [makeAttempt()],
+      }).attempts[0]?.attemptNumber,
+    ).toBe(1);
+    expect(
+      decodeGetVerificationResultV1({
+        schemaVersion: '1.0.0',
+        verification: makeVerification(),
+      }).verification.status,
+    ).toBe('APPLIED');
+    expect(
+      decodeGetActionResultResultV1({ schemaVersion: '1.0.0', result: makeResult() }).result
+        .externalId,
+    ).toBe('external-1');
+  });
+
+  it('decodes every frozen individual Read Operation request', () => {
+    expect(
+      decodeGetActionManifestRequestV1({ schemaVersion: '1.0.0', actionId: 'action-1' }).actionId,
+    ).toBe('action-1');
+    expect(
+      decodeGetRiskDecisionRequestV1({ schemaVersion: '1.0.0', actionId: 'action-1' }).actionId,
+    ).toBe('action-1');
+    expect(
+      decodeGetPreflightRequestV1({ schemaVersion: '1.0.0', actionId: 'action-1' }).actionId,
+    ).toBe('action-1');
+    expect(
+      decodeGetExecutionRequestV1({ schemaVersion: '1.0.0', actionId: 'action-1' }).actionId,
+    ).toBe('action-1');
+    const attemptsReq = decodeGetExecutionAttemptsRequestV1({
+      schemaVersion: '1.0.0',
+      actionId: 'action-1',
+      pageSize: 20,
+    });
+    expect(attemptsReq.pageSize).toBe(20);
+    expect(() =>
+      decodeGetExecutionAttemptsRequestV1({
+        schemaVersion: '1.0.0',
+        actionId: 'action-1',
+        pageSize: EXTERNAL_ACTION_QUEUE_PAGE_SIZE_CAP + 1,
+      }),
+    ).toThrow(FrontendContractError);
+    expect(
+      decodeGetVerificationRequestV1({ schemaVersion: '1.0.0', actionId: 'action-1' }).actionId,
+    ).toBe('action-1');
+    expect(
+      decodeGetActionResultRequestV1({ schemaVersion: '1.0.0', actionId: 'action-1' }).actionId,
+    ).toBe('action-1');
+  });
+});
+
+describe('FE-P4-S2 nested binding and Attempt list invariants', () => {
+  const makeDetail = () => ({
+    schemaVersion: '1.0.0' as const,
+    action: makeExternalAction(),
+    manifest: makeManifest(),
+    execution: makeExecution(),
+    attempts: [makeAttempt()],
+  });
+
+  it('rejects a GetDetail result whose nested resource belongs to another Action', () => {
+    expect(() =>
+      decodeGetExternalActionDetailResultV1({
+        ...makeDetail(),
+        manifest: { ...makeManifest(), actionId: 'action-2' },
+      }),
+    ).toThrow(FrontendContractError);
+  });
+
+  it('rejects a GetDetail result whose nested resource crosses the project boundary', () => {
+    expect(() =>
+      decodeGetExternalActionDetailResultV1({
+        ...makeDetail(),
+        manifest: { ...makeManifest(), resourceProjectId: 'project-2' },
+      }),
+    ).toThrow(FrontendContractError);
+    expect(() =>
+      decodeGetExternalActionDetailResultV1({
+        ...makeDetail(),
+        attempts: [{ ...makeAttempt(), effectiveProjectId: 'project-2' }],
+      }),
+    ).toThrow(FrontendContractError);
+  });
+
+  it('AC-07: rejects an Attempt list above the cap', () => {
+    const attempts = Array.from({ length: EXTERNAL_ACTION_ATTEMPT_LIST_CAP + 1 }, (_, i) => ({
+      ...makeAttempt(),
+      attemptId: `attempt-${i + 1}`,
+      attemptNumber: i + 1,
+      idempotencyKey: `idem-attempt-${i + 1}`,
+    }));
+    expect(() =>
+      decodeGetExecutionAttemptsResultV1({
+        schemaVersion: '1.0.0',
+        attempts,
+      }),
+    ).toThrow(FrontendContractError);
+  });
+
+  it('AC-07: rejects non-consecutive attemptNumber', () => {
+    expect(() =>
+      decodeGetExecutionAttemptsResultV1({
+        schemaVersion: '1.0.0',
+        attempts: [
+          { ...makeAttempt(), attemptNumber: 2 },
+          { ...makeAttempt(), attemptId: 'attempt-2', attemptNumber: 3 },
+        ],
+      }),
+    ).toThrow(FrontendContractError);
+  });
+
+  it('AC-07: rejects duplicate attemptId and duplicate idempotencyKey', () => {
+    expect(() =>
+      decodeGetExecutionAttemptsResultV1({
+        schemaVersion: '1.0.0',
+        attempts: [makeAttempt(), { ...makeAttempt(), attemptId: 'attempt-1', attemptNumber: 2 }],
+      }),
+    ).toThrow(FrontendContractError);
+    expect(() =>
+      decodeGetExecutionAttemptsResultV1({
+        schemaVersion: '1.0.0',
+        attempts: [
+          makeAttempt(),
+          {
+            ...makeAttempt(),
+            attemptId: 'attempt-2',
+            idempotencyKey: 'idem-attempt-1',
+            attemptNumber: 2,
+          },
+        ],
+      }),
+    ).toThrow(FrontendContractError);
+  });
+
+  it('AC-07: rejects attempts across different Executions', () => {
+    expect(() =>
+      decodeGetExecutionAttemptsResultV1({
+        schemaVersion: '1.0.0',
+        attempts: [
+          makeAttempt(),
+          {
+            ...makeAttempt(),
+            attemptId: 'attempt-2',
+            executionId: 'execution-2',
+            attemptNumber: 2,
+          },
+        ],
+      }),
+    ).toThrow(FrontendContractError);
+  });
+
+  it('AC-07: rejects an Attempt list whose length mismatches execution.attemptCount', () => {
+    expect(() =>
+      decodeGetExternalActionDetailResultV1({
+        ...makeDetail(),
+        execution: { ...makeExecution(), attemptCount: 2 },
+      }),
+    ).toThrow(FrontendContractError);
+  });
+
+  it('AC-07: rejects an Attempt list whose latestAttemptRef does not match the last attempt', () => {
+    const second = {
+      ...makeAttempt(),
+      attemptId: 'attempt-2',
+      attemptNumber: 2,
+      idempotencyKey: 'idem-2',
+    };
+    expect(() =>
+      decodeGetExternalActionDetailResultV1({
+        ...makeDetail(),
+        execution: {
+          ...makeExecution(),
+          attemptCount: 2,
+          latestAttemptRef: {
+            schemaVersion: '1.0.0' as const,
+            resourceKind: 'attempt' as const,
+            resourceId: 'attempt-1',
+            resourceRevision: 1,
+          },
+        },
+        attempts: [makeAttempt(), second],
+      }),
+    ).toThrow(FrontendContractError);
+    const decoded = decodeGetExternalActionDetailResultV1({
+      ...makeDetail(),
+      execution: {
+        ...makeExecution(),
+        attemptCount: 2,
+        latestAttemptRef: {
+          schemaVersion: '1.0.0' as const,
+          resourceKind: 'attempt' as const,
+          resourceId: 'attempt-2',
+          resourceRevision: 2,
+        },
+      },
+      attempts: [makeAttempt(), second],
+    });
+    expect(decoded.attempts).toHaveLength(2);
   });
 });
 

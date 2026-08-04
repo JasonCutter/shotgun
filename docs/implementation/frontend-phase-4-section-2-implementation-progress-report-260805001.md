@@ -217,13 +217,79 @@ Commit `d50aff27f39957cc7aad41463a6146fc013c4f04` (push after report 2 head `f6b
 
 - `npx vitest run tests/contract/frontend-external-action.contract.test.ts` — **75/75 PASS**.
 - `tsc --noEmit` — clean. ESLint — clean. Prettier — clean.
-- Automatic CI on remediation head `d50aff2` — run **#517** (`30944067154`): recorded after the
-  run.
+- Automatic CI on remediation head `d50aff2` — run **#516** (`30944067154`), and on the report
+  head `49299da0` — run **#517** (`30944365379`). (Correction: report 3 initially mislabeled
+  `d50aff2` as #517; the authoritative mapping is `d50aff2` → #516, `49299da0` → #517.)
 
 ### AC coverage (WP1 after remediation)
 
 - Contract layer delivered: AC-01, AC-02, AC-03, AC-04, AC-05, AC-07, AC-09, AC-13, AC-14,
   **AC-17** (restricted shell negative tests at the contract layer).
+- Not yet run (implementation pending in WP2/WP4+): AC-06, AC-08, AC-10, AC-11, AC-12, AC-15,
+  AC-16, AC-18, AC-19, AC-20, AC-21, AC-22.
+
+PR #66 remains OPEN / DRAFT. WP2 remains **NOT_AUTHORIZED** pending re-review of this report.
+
+## 10. WP1 second remediation — GPT SECOND review → resolved (report 4, 2026-08-05)
+
+GPT second review (Review ID 4859059633) returned **BLOCKED / SECOND REMEDIATION REQUIRED**.
+The first remediation (9 items) was acknowledged as mostly resolved; 5 narrow items remained.
+All are implemented in this commit:
+
+Commit (this report head) — push after report 3 head `49299da0f`.
+
+### Second remediation mapping (GPT items → delivered)
+
+1. **Frozen individual Read Operations** — added the seven approved single-resource Read
+   operations as first-class contracts with strict request + result decoders:
+   `GET_MANIFEST` (`decodeGetActionManifestRequestV1`/`decodeGetActionManifestResultV1`),
+   `GET_RISK_DECISION`, `GET_PREFLIGHT`, `GET_EXECUTION`, `GET_EXECUTION_ATTEMPTS`,
+   `GET_VERIFICATION`, `GET_RESULT`. They are not replaced by the integrated
+   `GET_EXTERNAL_ACTION_DETAIL`; the detail endpoint remains an additional read.
+2. **Outcome Resolution safe decoding** — `ResolveExternalActionOutcomeResultV1.completed` is
+   now the typed `ResolvedCommandResultV1` union, dispatched by `commandType` through the
+   corresponding strict result decoder (`decodeCompletedOutcome` switch); no raw/unknown payload
+   passes. The exclusive outcome contract is enforced: `COMPLETED` → completed only, `REJECTED`
+   → rejection only, `OUTCOME_UNKNOWN` → neither.
+3. **Nested Resource binding** — `Execute` result verifies `execution.actionId` and
+   `attempt.actionId` equal the result `actionId`, `attempt.executionId` equals
+   `execution.executionId`, and project bindings are consistent; `Retry` result verifies the
+   attempt belongs to the action. `GetDetail` verifies every embedded resource
+   (manifest/riskDecision/approval/preflight/execution/verification/result/rollback) matches the
+   action's `actionId` + project binding; a compensating action binds through `sourceActionId`.
+   Cross-project fail-closed is enforced by the decoders.
+4. **Attempt list invariants (AC-07)** — `decodeAttemptList` enforces: bound ≤50, consecutive
+   `attemptNumber` starting at 1, unique `attemptId` and `idempotencyKey`, single
+   Action/Execution, project consistency, `attemptCount` matches list length, and
+   `latestAttemptRef` matches the last attempt. Applied to `GET_EXECUTION_ATTEMPTS` and to the
+   `GetDetail` attempts list.
+5. **Evidence metadata correction** — report 3 CI mapping corrected (`d50aff2` → #516 /
+   `30944067154`, `49299da0` → #517 / `30944365379`); PR #66 metadata fixed so the historical
+   `PROPOSED` wording no longer conflicts with the current `ACCEPTED`/`APPROVED`/`AUTHORIZED`
+   state.
+
+### Changed files (this second remediation)
+
+- `packages/contracts/src/frontend-external-action.ts` — individual Read contracts + decoders,
+  typed `ResolvedCommandResultV1` outcome dispatch, nested binding assertions, attempt list
+  invariant helper.
+- `tests/contract/frontend-external-action.contract.test.ts` — expanded to **89 tests**.
+- `docs/implementation/frontend-phase-4-section-2-implementation-progress-report-260805001.md`
+  — this section; PR #66 metadata.
+- (unchanged) `frontend-external-action-failures.ts`, `errors.ts`, `failure-contract.ts`,
+  `index.ts`.
+
+### Validation
+
+- `npx vitest run tests/contract/frontend-external-action.contract.test.ts` — **89/89 PASS**.
+- `tsc --noEmit` — clean. ESLint — clean. Prettier — clean.
+- Automatic CI on this head is the remote authority (recorded after the run).
+
+### AC coverage (WP1 after second remediation)
+
+- Contract layer delivered: AC-01, AC-02, AC-03, AC-04, AC-05, **AC-07** (attempt list
+  invariants), AC-09, AC-13, AC-14, **AC-17** (restricted shell), plus the frozen individual
+  Read Operations (§9 of the Contract Snapshot).
 - Not yet run (implementation pending in WP2/WP4+): AC-06, AC-08, AC-10, AC-11, AC-12, AC-15,
   AC-16, AC-18, AC-19, AC-20, AC-21, AC-22.
 

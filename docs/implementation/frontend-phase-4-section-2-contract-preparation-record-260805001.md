@@ -1,15 +1,15 @@
 ---
 id: FRONTEND-PHASE-4-SECTION-2-CONTRACT-PREPARATION-260805001
 classification: IMPLEMENTATION_PREPARATION_RECORD
-status: PREPARATION_COMPLETE_PENDING_USER_REVIEW
+status: APPROVED_FOR_PRODUCT_IMPLEMENTATION
 work_item: FE-P4-S2
 canonical_base: 5f7c3b6f7fb1b6114272fe31c2561a7f21cb124f
 tracking_issue: 65
 draft_pr: 66
 prepared_head: 1789456c1e15c7dcbdd5f68f6a23272dabf15d51
 approval_authority: USER
-approved_at: null
-implementation_authorized: false
+approved_at: 2026-08-05T03:50:22+09:00
+implementation_authorized: true
 ---
 
 # FE-P4-S2 External Action Governance and Execution — Contract Preparation Record
@@ -51,31 +51,28 @@ implementation_authorized: false
 
 ## 3. Frozen Acceptance Criteria
 
-FE-P4-S2-AC-01 through FE-P4-S2-AC-22 are proposed in Contract Snapshot revision 1 and become
-frozen for FE-P4-S2 Product implementation only after user approval. AC-03, AC-06, AC-07, AC-11,
-AC-12, AC-13, AC-14, AC-15, AC-16 are blocked until ADR-129 is accepted.
+FE-P4-S2-AC-01 through FE-P4-S2-AC-22 are approved and frozen for FE-P4-S2 Product implementation
+(2026-08-05). ADR-129 is ACCEPTED; no AC is blocked.
 
 ## 4. ADR decision
 
-A new ADR is required: **ADR-129 proposed** (External Action Product Resource, Attempt, Credential,
-Budget and Compensation Boundary). ADR-110 governs the lifecycle boundary but does not decide the
-durable Product representation. ADR-129 is PROPOSED and awaits user acceptance.
+A new ADR is required: **ADR-129 ACCEPTED** (External Action Product Resource, Attempt, Credential,
+Budget and Compensation Boundary) by user on `2026-08-05T03:50:22+09:00`.
 
 ## 5. Migration decision
 
 A database migration is required for Product implementation: **`028_frontend_external_action_product.sql`**
-(bounded, additive). The existing Stage 11 tables (011/013) lack execution attempts, compensating
-actions and product binding columns. The migration is proposed only and is not implemented during
-preparation.
+(bounded, additive) — **AUTHORIZED within the FE-P4-S2 scope** by user on `2026-08-05`. The
+implementation must not rewrite Stage 11 tables.
 
 ## 6. Current authority
 
-- ADR-110: accepted (governing). ADR-129: proposed, not accepted.
-- Contract Snapshot revision 1: proposed, not approved.
-- FE-P4-S2-AC-01..AC-22: proposed, not frozen.
-- Implementation Request revision 1: proposed, not authorized.
-- FE-P4-S2 Product implementation: NOT_AUTHORIZED.
-- Migration 028: not authorized, not implemented.
+- ADR-129: **ACCEPTED** by user on `2026-08-05T03:50:22+09:00`.
+- Contract Snapshot revision 1: **APPROVED / FROZEN**.
+- FE-P4-S2-AC-01..AC-22: **FROZEN / BINDING**.
+- Implementation Request revision 1: **AUTHORIZED**.
+- FE-P4-S2 Product implementation: **AUTHORIZED**.
+- Migration 028: AUTHORIZED within the FE-P4-S2 scope (bounded additive).
 - Ready and Merge: NOT_AUTHORIZED.
 - Deployment and Production Verification: NOT_STARTED / NOT_RUN.
 - FE-P5: NOT_AUTHORIZED.
@@ -92,6 +89,6 @@ Preparation exact Head `1789456c1e15c7dcbdd5f68f6a23272dabf15d51` triggered auto
 
 ## 7. Next step
 
-The user must decide: accept ADR-129, approve Contract Snapshot revision 1 and the Implementation
-Request, and authorize FE-P4-S2 Product implementation. Until then this branch remains a
-preparation-only Draft PR.
+The user accepted ADR-129, approved Contract Snapshot revision 1 and the Implementation Request,
+and authorized FE-P4-S2 Product implementation and Migration 028 on `2026-08-05T03:50:22+09:00`.
+Product implementation continues on this branch and Draft PR #66.

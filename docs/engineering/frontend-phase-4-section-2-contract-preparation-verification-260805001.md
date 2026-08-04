@@ -2,11 +2,11 @@
 
 - Record ID: `frontend-phase-4-section-2-contract-preparation-verification-260805001`
 - Record class: `ARCHITECTURE_VERIFICATION`
-- Date: 2026-08-05 (revision 1)
+- Date: 2026-08-05 (revision 2 — user approval recorded)
 - Repository: `JasonCutter/shotgun`
 - Scope: Frontend Phase 4 Section 2 — External Action Governance and Execution
-- Result: **PREPARATION COMPLETE — AWAITING USER REVIEW** (ADR-129 PROPOSED / CONTRACT SNAPSHOT revision 1 PROPOSED / IMPLEMENTATION REQUEST revision 1 PROPOSED / PRODUCT IMPLEMENTATION NOT_AUTHORIZED)
-- Product implementation: **NOT_AUTHORIZED**
+- Result: **PREPARATION COMPLETE — APPROVED 2026-08-05 / ADR-129 ACCEPTED / CONTRACT SNAPSHOT revision 1 APPROVED / IMPLEMENTATION REQUEST revision 1 AUTHORIZED / PRODUCT IMPLEMENTATION AUTHORIZED**
+- Product implementation: **AUTHORIZED** (2026-08-05T03:50:22+09:00)
 - Canonical authority: GitHub `main`
 
 ## 1. Approved work boundary
@@ -60,7 +60,7 @@ Deployment or Production Verification.
 
 ## 3. ADR boundary decision
 
-Decision: **NEW_PROPOSED_ADR_REQUIRED — ADR-129**.
+Decision: **NEW_ADR_REQUIRED — ADR-129 ACCEPTED** by user on `2026-08-05T03:50:22+09:00`.
 
 ADR-110 fixes the lifecycle boundary; ADR-091/093/094 fix the Stage 11 internal flow; ADR-101,
 ADR-105, ADR-109 and FE-P4-S1 fix the shared command, policy and approval surface. The FE-P4-S2
@@ -68,23 +68,22 @@ Product resource model (Product `EXTERNAL_ACTION` aggregate with concrete kinds,
 credential and budget boundaries, and the Product separation of Cancel, Rollback and Compensating
 Action) is a genuinely new server-side decision not covered by an existing ADR.
 
-ADR-129 is created as **PROPOSED** (not accepted) and records the exact user decision required.
-Blocked Acceptance Criteria until acceptance: FE-P4-S2-AC-03, AC-06, AC-07, AC-11, AC-12, AC-13,
-AC-14, AC-15, AC-16.
+ADR-129 is **ACCEPTED**; no Acceptance Criterion is blocked.
 
 ## 4. Migration decision
 
-Decision: **MIGRATION_REQUIRED_FOR_PRODUCT_IMPLEMENTATION — `028_frontend_external_action_product.sql`**
-(bounded, additive, not implemented in preparation).
+Decision: **MIGRATION_REQUIRED — `028_frontend_external_action_product.sql` AUTHORIZED within the
+FE-P4-S2 scope** (bounded, additive; Stage 11 tables are not rewritten).
 
 Migrations 011/013 cover candidates, previews, approval records, executions and audit. They lack
-execution attempts, compensating actions and product binding columns required by the proposed
-Product model. The migration is proposed only and is not implemented during preparation.
+execution attempts, compensating actions and product binding columns required by the Product
+model. The migration is authorized for Product implementation and is not implemented during
+preparation.
 
 ## 5. Contract snapshot status
 
-The Contract Snapshot is a `PROPOSED_PENDING_USER_REVIEW` proposal, revision 1. It preserves
-ADR-110 and freezes:
+The Contract Snapshot is **APPROVED / FROZEN**, revision 1 (approved by user on
+`2026-08-05T03:50:22+09:00`). It preserves ADR-110 and freezes:
 
 - the exact typed Product resource model (`ExternalActionV1` aggregate, `ActionCandidateV1`,
   `RiskDecisionV1`, `ActionManifestV1`, `ExternalActionApprovalV1`, `PreflightV1`, `ExecutionV1`,
@@ -117,9 +116,9 @@ the Contract Preparation Record.
 
 ## 7. Current authority
 
-- ADR-129: PROPOSED (not accepted). Contract Snapshot r1: PROPOSED (not approved).
-- FE-P4-S2-AC-01..AC-22: proposed (not frozen). Implementation Request r1: PROPOSED (not authorized).
-- FE-P4-S2 Product implementation: NOT_AUTHORIZED.
-- Migration 028: not authorized, not implemented.
+- ADR-129: **ACCEPTED** (2026-08-05). Contract Snapshot r1: **APPROVED / FROZEN**.
+- FE-P4-S2-AC-01..AC-22: **FROZEN / BINDING**. Implementation Request r1: **AUTHORIZED**.
+- FE-P4-S2 Product implementation: **AUTHORIZED** (2026-08-05T03:50:22+09:00).
+- Migration 028: AUTHORIZED within the FE-P4-S2 scope (bounded additive).
 - Ready / Merge: NOT_AUTHORIZED. Deployment / Production Verification: NOT_STARTED / NOT_RUN.
 - FE-P5: NOT_AUTHORIZED.

@@ -1,13 +1,15 @@
 # ADR-129 — External Action Product Resource, Attempt, Credential, Budget and Compensation Boundary
 
-- Status: **PROPOSED**
+- Status: **ACCEPTED**
 - Proposed at: 2026-08-05
+- Accepted at: 2026-08-05T03:50:22+09:00
+- Accepted by: `USER`
 - Work item: `FE-P4-S2`
 - Related ADRs: ADR-091, ADR-093, ADR-094, ADR-101, ADR-105, ADR-109, ADR-110, ADR-118, ADR-119, ADR-124, ADR-128
 - Contract snapshot:
   `docs/architecture/contracts/snapshots/frontend-phase-4-section-2/frontend-phase-4-section-2-contract-snapshot-260805001.md`
 - Decision owner: `USER`
-- Product implementation: `NOT_AUTHORIZED` (pending acceptance)
+- Product implementation: `AUTHORIZED`
 
 ## Context
 

@@ -1,7 +1,7 @@
 ---
 id: FRONTEND-PHASE-4-SECTION-2-IMPLEMENTATION-REQUEST-260805001
 classification: IMPLEMENTATION_REQUEST
-status: PROPOSED_PENDING_USER_REVIEW
+status: AUTHORIZED
 revision: 1
 work_item: FE-P4-S2
 canonical_base: 5f7c3b6f7fb1b6114272fe31c2561a7f21cb124f
@@ -9,21 +9,20 @@ branch: codex/frontend-phase-4-section-2-contract-preparation
 tracking_issue: 65
 draft_pr: 66
 governing_adr: ADR-110
-accepted_adr: ADR-110
-proposed_adr: ADR-129
+accepted_adr: ADR-129
+proposed_adr: null
 contract_snapshot: docs/architecture/contracts/snapshots/frontend-phase-4-section-2/frontend-phase-4-section-2-contract-snapshot-260805001.md
-implementation_authorized: false
-authorized_by: null
-authorized_at: null
+implementation_authorized: true
+authorized_by: USER
+authorized_at: 2026-08-05T03:50:22+09:00
 ---
 
-# FE-P4-S2 External Action Governance and Execution — Proposed Implementation Request
+# FE-P4-S2 External Action Governance and Execution — Authorized Implementation Request
 
 ## 1. Request status
 
-This Implementation Request is a **proposal**. It becomes executable only after the user accepts
-ADR-129, approves Contract Snapshot revision 1 with FE-P4-S2-AC-01 through FE-P4-S2-AC-22, and
-authorizes FE-P4-S2 Product implementation.
+ADR-129, Contract Snapshot revision 1, AC-01 through AC-22 and this Implementation Request are
+approved by the user. FE-P4-S2 Product implementation and Migration 028 are authorized to start.
 
 Ready, Merge, deployment, production verification, FE-P5 and any real Connector enablement remain
 unauthorized.
@@ -178,6 +177,6 @@ Deployment and production verification remain separate.
 
 ## 9. Authorization
 
-This Request is a proposal. It becomes authorized only when the user accepts ADR-129, approves the
-Contract Snapshot revision 1 (AC-01..AC-22) and this Implementation Request, and authorizes
-FE-P4-S2 Product implementation.
+The user accepted ADR-129, approved Contract Snapshot revision 1 (FE-P4-S2-AC-01 through AC-22),
+this Implementation Request, FE-P4-S2 Product implementation entry and Migration 028 at
+`2026-08-05T03:50:22+09:00`.

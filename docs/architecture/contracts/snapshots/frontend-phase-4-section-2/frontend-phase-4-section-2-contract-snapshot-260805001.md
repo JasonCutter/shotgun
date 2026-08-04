@@ -1,19 +1,19 @@
 ---
 id: FRONTEND-PHASE-4-SECTION-2-CONTRACT-SNAPSHOT-260805001
 classification: PRODUCT_CONTRACT_SNAPSHOT
-status: PROPOSED_PENDING_USER_REVIEW
+status: APPROVED_FROZEN
 revision: 1
 review_round: 1
-review_result: PENDING
-approved_by: null
-approved_at: null
+review_result: APPROVED_FOR_IMPLEMENTATION
+approved_by: user
+approved_at: 2026-08-05T03:50:22+09:00
 work_item: FE-P4-S2
 governing_adr: ADR-110
-accepted_adr: ADR-110
-proposed_adr: ADR-129
+accepted_adr: ADR-129
+proposed_adr: null
 base_commit_requested: 5f7c3b6f7fb1b6114272fe31c2561a7f21cb124f
 branch: codex/frontend-phase-4-section-2-contract-preparation
-implementation_authorized: false
+implementation_authorized: true
 ---
 
 # FE-P4-S2 Contract Snapshot — External Action Governance and Execution v1
@@ -283,8 +283,7 @@ Project/access/policy, and snapshot-based recovery.
 
 ## 16. Frozen Acceptance Criteria
 
-The following Acceptance Criteria are frozen for FE-P4-S2 Product implementation (proposed; they
-become binding when the snapshot is approved):
+The following Acceptance Criteria are frozen and binding for FE-P4-S2 Product implementation:
 
 | ID             | Criterion                                                                                                                                                                                              |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -311,12 +310,14 @@ become binding when the snapshot is approved):
 | FE-P4-S2-AC-21 | In-memory/PostgreSQL parity and migration 028 apply/rollback (implementation phase).                                                                                                                   |
 | FE-P4-S2-AC-22 | Exact-head Quality, Frontend and Required Gates pass at the implementation head (implementation phase).                                                                                                |
 
-Blocked until ADR-129 acceptance: AC-03, AC-06, AC-07, AC-11, AC-12, AC-13, AC-14, AC-15, AC-16.
+Blocked until ADR-129 acceptance: none — ADR-129 is ACCEPTED (2026-08-05); all ACs are active.
 
 ## 17. Authorization boundary
 
-- Product implementation: NOT_AUTHORIZED until the user accepts ADR-129 and approves this snapshot
-  and the Implementation Request.
-- Migration 028: proposed only; not authorized and not implemented.
+- Product implementation: **AUTHORIZED** by user on `2026-08-05T03:50:22+09:00` (ADR-129
+  ACCEPTED; Contract Snapshot revision 1 APPROVED / FROZEN; Implementation Request revision 1
+  AUTHORIZED).
+- Migration 028: AUTHORIZED within the FE-P4-S2 scope (bounded additive; Stage 11 tables are not
+  rewritten).
 - Ready, Merge, Deployment and Production Verification: NOT_AUTHORIZED.
 - FE-P5: NOT_AUTHORIZED.

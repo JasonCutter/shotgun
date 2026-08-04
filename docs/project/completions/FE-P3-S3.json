@@ -9,7 +9,9 @@
       "title": "Frozen typed graph read contract, strict decoding and ten-operation coverage",
       "mandatory": true,
       "status": "PASS",
-      "evidence": ["docs/implementation/frontend-phase-3-section-3-product-implementation-verification-260804002.md"],
+      "evidence": [
+        "docs/implementation/frontend-phase-3-section-3-product-implementation-verification-260804002.md"
+      ],
       "scopeAmendment": null
     },
     {
@@ -17,7 +19,9 @@
       "title": "Server-authoritative snapshot projection, scope, masking, identity and isolation boundaries",
       "mandatory": true,
       "status": "PASS",
-      "evidence": ["docs/implementation/frontend-phase-3-section-3-product-implementation-verification-260804002.md"],
+      "evidence": [
+        "docs/implementation/frontend-phase-3-section-3-product-implementation-verification-260804002.md"
+      ],
       "scopeAmendment": null
     },
     {
@@ -25,7 +29,9 @@
       "title": "Graph read domain with bounded neighborhood, path, overlay health and continuation binding",
       "mandatory": true,
       "status": "PASS",
-      "evidence": ["docs/implementation/frontend-phase-3-section-3-product-implementation-verification-260804002.md"],
+      "evidence": [
+        "docs/implementation/frontend-phase-3-section-3-product-implementation-verification-260804002.md"
+      ],
       "scopeAmendment": null
     },
     {
@@ -33,7 +39,9 @@
       "title": "React graph workspace, state machine, list/table/canvas/path views, refresh restore and correction action",
       "mandatory": true,
       "status": "PASS",
-      "evidence": ["docs/implementation/frontend-phase-3-section-3-product-implementation-verification-260804002.md"],
+      "evidence": [
+        "docs/implementation/frontend-phase-3-section-3-product-implementation-verification-260804002.md"
+      ],
       "scopeAmendment": null
     },
     {
@@ -41,7 +49,9 @@
       "title": "Full keyboard matrix, Tab region traversal, frozen announcements and axe-zero-critical",
       "mandatory": true,
       "status": "PASS",
-      "evidence": ["docs/implementation/frontend-phase-3-section-3-product-implementation-verification-260804002.md"],
+      "evidence": [
+        "docs/implementation/frontend-phase-3-section-3-product-implementation-verification-260804002.md"
+      ],
       "scopeAmendment": null
     },
     {
@@ -49,7 +59,9 @@
       "title": "Non-color visual cues and 200% zoom content preservation",
       "mandatory": true,
       "status": "PASS",
-      "evidence": ["docs/implementation/frontend-phase-3-section-3-product-implementation-verification-260804002.md"],
+      "evidence": [
+        "docs/implementation/frontend-phase-3-section-3-product-implementation-verification-260804002.md"
+      ],
       "scopeAmendment": null
     },
     {
@@ -57,7 +69,9 @@
       "title": "Typed failure mapping and negative matrix with no write endpoints",
       "mandatory": true,
       "status": "PASS",
-      "evidence": ["docs/implementation/frontend-phase-3-section-3-product-implementation-verification-260804002.md"],
+      "evidence": [
+        "docs/implementation/frontend-phase-3-section-3-product-implementation-verification-260804002.md"
+      ],
       "scopeAmendment": null
     },
     {
@@ -65,7 +79,9 @@
       "title": "In-memory/PostgreSQL parity and migration apply/rollback",
       "mandatory": true,
       "status": "PASS",
-      "evidence": ["docs/implementation/frontend-phase-3-section-3-product-implementation-verification-260804002.md"],
+      "evidence": [
+        "docs/implementation/frontend-phase-3-section-3-product-implementation-verification-260804002.md"
+      ],
       "scopeAmendment": null
     },
     {
@@ -73,7 +89,9 @@
       "title": "Remote exact-head Quality, Frontend and Required Gates",
       "mandatory": true,
       "status": "PASS",
-      "evidence": ["docs/implementation/frontend-phase-3-section-3-product-implementation-verification-260804002.md"],
+      "evidence": [
+        "docs/implementation/frontend-phase-3-section-3-product-implementation-verification-260804002.md"
+      ],
       "scopeAmendment": null
     },
     {
@@ -81,7 +99,9 @@
       "title": "Formal completion approval and separately authorized Ready/Merge boundary",
       "mandatory": true,
       "status": "PASS",
-      "evidence": ["docs/implementation/frontend-phase-3-section-3-implementation-completion-report-260804001.md"],
+      "evidence": [
+        "docs/implementation/frontend-phase-3-section-3-implementation-completion-report-260804001.md"
+      ],
       "scopeAmendment": null
     }
   ],

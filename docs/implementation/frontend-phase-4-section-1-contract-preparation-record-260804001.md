@@ -7,6 +7,7 @@ canonical_base: 6ffca675844be445512e06e79bfa5233a71d1b25
 tracking_issue: 62
 draft_pr: 63
 validated_preparation_head: ed52e155a348ca5f8f88af4f9757fb720c896877
+authorization_record_head: 80b958b156dd1894241e5e581aa8dd83390bd99d
 approval_authority: USER
 approved_at: 2026-08-04T20:42:00+09:00
 ---
@@ -52,6 +53,10 @@ Preparation exact Head `ed52e155a348ca5f8f88af4f9757fb720c896877` triggered auto
 - No manual duplicate CI was triggered.
 
 Historical formatting-only failed attempts remain preserved in PR #63 and Issue #62.
+
+Authorization record Head `80b958b156dd1894241e5e581aa8dd83390bd99d` triggered automatic CI #485
+(run `30906315961`). Its result is recorded separately and does not alter the already validated
+preparation decision content.
 
 ## 5. Current authority
 

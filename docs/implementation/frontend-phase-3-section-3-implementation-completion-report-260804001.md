@@ -2,7 +2,7 @@
 id: FRONTEND-PHASE-3-SECTION-3-IMPLEMENTATION-COMPLETION-REPORT-260804001
 classification: COMPLETION_RECORD
 status: COMPLETE
-status_authority: APPROVED_PRE_MERGE
+status_authority: FINAL_AFTER_MERGE
 work_item: FE-P3-S3
 registry_status: COMPLETE
 completion_manifest: docs/project/completions/FE-P3-S3.json
@@ -23,8 +23,16 @@ ci_run_id: 30895600777
 completion_approval: APPROVED
 completion_approved_by: user
 completion_approved_at: 2026-08-04T18:39:00+09:00
-ready: NOT_AUTHORIZED
-merge: NOT_AUTHORIZED
+ready: EXECUTED
+merge: EXECUTED
+merge_method: merge commit
+approved_feature_head: b1270219ff777b0b09acda1a4338bdd2009bab16
+merge_commit: 85ffb2fb378cdf2814702a2a425f44a30e5f0b9c
+post_merge_main_head: 85ffb2fb378cdf2814702a2a425f44a30e5f0b9c
+post_merge_main_ci_run_number: 475
+post_merge_main_ci_run_id: 30900650659
+post_merge_main_ci_conclusion: PASS
+post_merge_main_ci_gates: Quality, Frontend, Required Gates
 deployment: NOT_STARTED
 production_verification: NOT_RUN
 ---
@@ -48,8 +56,11 @@ incorporated.
 The user explicitly approved FE-P3-S3 Product Completion on
 `2026-08-04T18:39:00+09:00` (Approved by: `user`). The work item is COMPLETE
 (Completion Manifest `docs/project/completions/FE-P3-S3.json`) and AC-31 is
-PASS. `ready` and `merge` remain `NOT_AUTHORIZED`; Ready/Merge happen only
-under separate user authorization.
+PASS. On `2026-08-04T19:12:00+09:00` the user approved Ready and Merge; PR
+#60 was merged to `main` via a merge commit (`85ffb2fb`, approved feature
+head `b1270219f`) and the post-merge main CI run `#475` (`30900650659`)
+passed Quality / Frontend / Required Gates. Status authority is now
+`FINAL_AFTER_MERGE`; the earlier `APPROVED_PRE_MERGE` history is preserved.
 
 ## 2. Implementation-request completion status (A–G)
 
@@ -137,7 +148,9 @@ Canonical graph writes, relation editing, Entity merge, Review/Approval/Commit,
 User Directive Proposal, external Action execution, `ACTION_CANDIDATE`, FE-P4,
 Yjs/CRDT, deployment, production verification. Server-side seed registration
 and DraftChangeSet materialization remain governed by FE-P2-S2 Draft
-boundaries (ADR-126) and are outside FE-P3-S3. The user approved FE-P3-S3
-Product Completion on `2026-08-04`; the work item is COMPLETE. No Ready or
-Merge without separate user authorization — `ready` and `merge` remain
-`NOT_AUTHORIZED`. PR #60 stays OPEN/DRAFT; PR #59 stays OPEN/DRAFT.
+boundaries (ADR-126) and are outside FE-P3-S3. PR #60 was merged to `main` via
+merge commit `85ffb2fb` (approved feature head `b1270219f`); post-merge main
+CI run `#475` (`30900650659`) passed Quality / Frontend / Required Gates.
+Status authority is `FINAL_AFTER_MERGE`. PR #59 is CLOSED / NOT_MERGED /
+SUPERSEDED_BY_PR_60. Deployment remains `NOT_STARTED`; production
+verification `NOT_RUN`.

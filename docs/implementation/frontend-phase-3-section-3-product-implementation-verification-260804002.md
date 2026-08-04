@@ -48,7 +48,7 @@ snapshot-identity remount, AC-20 region-traversal Tab evidence).
 implementation evidence only and does not declare Section completion.
 Per AC-31 no Ready/Merge happens without separate user authorization.
 
-## 2. Focused-check results (round-3 verified head)
+## 2. Focused-check results (round-4 verified head)
 
 - Contract suite `tests/contract/frontend-knowledge-graph.contract.test.ts`:
   `20/20 PASS` — one explicit describe per Product API read operation (10
@@ -73,9 +73,10 @@ Per AC-31 no Ready/Merge happens without separate user authorization.
 - Frozen-AC integration `tests/integration/frontend-knowledge-graph-frozen-ac.test.ts`:
   `6/6 PASS` (path narration, evidence resolution + masked, gap overlay,
   impact overlay bounded, cross-Project denial, masked vs hidden).
-- Browser E2E `tests/browser/frontend-knowledge-graph.spec.ts`: `15/15 PASS`
-  (snapshot/list/table/canvas equivalence, no-write, full keyboard matrix
-  AC-08/15/17/19/20/21/22/24/25).
+- Browser E2E `tests/browser/frontend-knowledge-graph.spec.ts`: `16/16 PASS`
+  (snapshot/list/table/canvas equivalence, no-write, full keyboard matrix +
+  Tab region traversal, canvas-refresh rebuild, AC-08/15/17/18/19/20/21/22/
+  24/25).
 - Browser performance/lifecycle `tests/browser/frontend-knowledge-graph-performance.spec.ts`:
   `4/4 PASS` (layout ≤2000ms median, interaction ≤100ms median, AbortController
   cancel, cytoscape destroy-once / no accumulation).

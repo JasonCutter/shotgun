@@ -676,6 +676,13 @@ export class FrontendReviewProductCoordinator {
         reviewFailure('REVIEW_ITEM_NOT_FOUND', 'The Review Item was not found.');
       }
       const visible = this.visibleItemIds(record.context, scope);
+      // Item detail projection: a visible Item that depends on hidden content
+      // is returned as unavailable (MASKED) without leaking the hidden
+      // identity (Contract Snapshot §5).
+      const maskedItem =
+        applySensitivityMasking(record.context, scope).items.find(
+          (candidate) => candidate.reviewItemId === request.reviewItemId,
+        ) ?? item;
       const adapter = this.adapterFor(record.context.targetKind);
       const source = await adapter.findSourceTarget(scope.activeProjectId, record.reviewResourceId);
       const evidence =
@@ -697,7 +704,7 @@ export class FrontendReviewProductCoordinator {
       const decisions = await repositories.decisions.findDecisions(request.reviewContextId);
       return {
         schemaVersion: '1.0.0',
-        item,
+        item: maskedItem,
         dependencies: this.dependenciesForItem(
           record.context.dependencies,
           request.reviewItemId,
@@ -736,6 +743,13 @@ export class FrontendReviewProductCoordinator {
         )
         .map((candidate) => candidate.reviewItemId),
     );
+    // Historical Item detail projection: a visible Item that depends on
+    // hidden content is returned as unavailable (MASKED) without leaking the
+    // hidden identity (Contract Snapshot §5).
+    const maskedItem =
+      applySensitivityMasking(context, scope).items.find(
+        (candidate) => candidate.reviewItemId === reviewItemId,
+      ) ?? item;
     const dependencies = this.dependenciesForItem(context.dependencies, reviewItemId).filter(
       (dependency) =>
         visible.has(dependency.fromReviewItemId) && visible.has(dependency.toReviewItemId),
@@ -743,7 +757,7 @@ export class FrontendReviewProductCoordinator {
     const decisions = await repositories.decisions.findDecisions(context.reviewContextId);
     return {
       schemaVersion: '1.0.0',
-      item,
+      item: maskedItem,
       dependencies,
       decisions: this.filterDecisionsByVisibility(
         this.decisionsForRevision(decisions, contextRevision),
@@ -950,25 +964,30 @@ export class FrontendReviewProductCoordinator {
             .map((item) => item.reviewItemId),
         );
         const now = this.nowIso();
+        // Fail-closed decision eligibility: an Item that is hidden by the
+        // current sensitivity clearance, or that is projected unavailable
+        // (MASKED) because it depends on hidden content, cannot be decided.
+        const maskedWriteView = applySensitivityMasking(record.context, scope);
+        const availableItemIds = new Set(
+          maskedWriteView.items
+            .filter((item) => item.accessMasking === 'VISIBLE')
+            .map((item) => item.reviewItemId),
+        );
         const newDecisions: ReviewDecisionRecordV1[] = [];
         for (const input of request.itemDecisions) {
           const item = record.context.items.find(
             (candidate) => candidate.reviewItemId === input.reviewItemId,
           );
-          if (!item) {
-            reviewFailure(
-              'REVIEW_ITEM_NOT_FOUND',
-              `Review Item '${input.reviewItemId}' was not found.`,
-            );
+          if (!item || !availableItemIds.has(input.reviewItemId)) {
+            // Identity-free: never echo the submitted Item ID (it may be
+            // hidden or projected unavailable).
+            reviewFailure('REVIEW_ITEM_NOT_FOUND', 'The Review Item was not found.');
           }
           if (!item.allowedDecisions.includes(input.intent)) {
             reviewFailure(
               'REVIEW_DECISION_NOT_ALLOWED',
               `Decision '${input.intent}' is not allowed for Review Item '${input.reviewItemId}'.`,
             );
-          }
-          if (!canReadSensitivity(scope.sensitivityClearance, item.sensitivity)) {
-            reviewFailure('REVIEW_ITEM_NOT_FOUND', 'The Review Item was not found.');
           }
           const state = deriveItemDecisionState(input.reviewItemId, currentDecisions);
           if (state === 'APPROVED' || state === 'REJECTED' || state === 'REVISION_REQUESTED') {
@@ -1106,9 +1125,11 @@ export class FrontendReviewProductCoordinator {
                 };
         }
         const allDecisions = [...currentDecisions, ...newDecisions];
+        // Aggregate state is computed from the scope-visible Items and
+        // Decisions only; hidden Item state never shapes the response.
         const aggregateState = computeAggregateState({
-          items: record.context.items,
-          decisions: allDecisions,
+          items: maskedWriteView.items,
+          decisions: allDecisions.filter((decision) => availableItemIds.has(decision.reviewItemId)),
           contextRevision: request.expectedContextRevision,
           targetKind: record.context.targetKind,
         });
@@ -1311,6 +1332,10 @@ export class FrontendReviewProductCoordinator {
       };
     }
     if (outcome.outcomeState === 'REJECTED') {
+      // A REJECTED outcome produced no Context to revalidate access/policy
+      // against, so the stored rejection detail is never transmitted; only
+      // the generic code is exposed (fail-closed). An identity-bearing
+      // message must never reach a scope that can no longer read it.
       return {
         schemaVersion: '1.0.0',
         outcome: 'REJECTED',
@@ -1318,7 +1343,7 @@ export class FrontendReviewProductCoordinator {
         originalIdempotencyKey: outcome.idempotencyKey,
         rejection: {
           code: outcome.rejection?.code ?? 'INTERNAL_UNCLASSIFIED',
-          message: outcome.rejection?.message ?? 'The Review command was rejected.',
+          message: 'The Review command was rejected.',
         },
       };
     }
@@ -1346,15 +1371,25 @@ export class FrontendReviewProductCoordinator {
             'The Review context resource is missing from the outcome.',
           );
         }
-        const record = await repositories.contexts.findCurrent(contextRef.resourceId);
-        if (!record) {
-          reviewFailure('OUTCOME_NOT_FOUND', 'The Review context is missing.');
+        // Exact produced-revision recovery: resolve the immutable Context
+        // revision the original command wrote against, never the current one,
+        // so a later revalidate/decision cannot change what is recovered.
+        const revisionNumber =
+          contextRef.resourceRevision === undefined
+            ? undefined
+            : Number(contextRef.resourceRevision);
+        const context =
+          revisionNumber === undefined
+            ? (await repositories.contexts.findCurrent(contextRef.resourceId))?.context
+            : await repositories.contexts.findRevision(contextRef.resourceId, revisionNumber);
+        if (!context) {
+          reviewFailure('OUTCOME_NOT_FOUND', 'The Review context revision is missing.');
         }
         // Outcome recovery is not a read-API bypass: revalidate the current
         // access/policy scope and the frozen bounds before reconstructing
         // protected results (fail-closed).
-        this.assertContextReadableForScope(record.context, scope);
-        this.assertContextBounds(record.context);
+        this.assertContextReadableForScope(context, scope);
+        this.assertContextBounds(context);
         const approvalIds = outcome.producedResources
           .filter((resource) => resource.resourceKind === FRONTEND_REVIEW_RESOURCE_KIND.approval)
           .map((resource) => resource.resourceId);
@@ -1371,20 +1406,49 @@ export class FrontendReviewProductCoordinator {
             // skip approvals that are no longer readable
           }
         }
-        const decisions = await repositories.decisions.findDecisions(
-          record.context.reviewContextId,
-        );
-        const visible = this.visibleItemIds(record.context, scope);
-        const aggregateState = computeAggregateState({
-          items: record.context.items,
+        const decisions = await repositories.decisions.findDecisions(context.reviewContextId);
+        const visible = this.visibleItemIds(context, scope);
+        const maskedContext = applySensitivityMasking(context, scope);
+        const visibleDecisions = this.decisionsForRevision(
           decisions,
-          contextRevision: record.context.contextRevision,
-          targetKind: record.context.targetKind,
+          context.contextRevision,
+        ).filter((decision) => visible.has(decision.reviewItemId));
+        // Aggregate state and authoring flags are computed from the
+        // scope-visible Items and Decisions only; hidden Item state never
+        // shapes the recovery response.
+        const aggregateState = computeAggregateState({
+          items: maskedContext.items,
+          decisions: visibleDecisions,
+          contextRevision: context.contextRevision,
+          targetKind: context.targetKind,
         });
         const acceptedForAuthoring =
-          record.context.targetKind === 'DISCOVERY_CANDIDATE' &&
+          context.targetKind === 'DISCOVERY_CANDIDATE' &&
           aggregateState === 'ACCEPTED_FOR_AUTHORING'
             ? true
+            : undefined;
+        // Reconstruct the typed revision return target for REQUEST_REVISION
+        // outcomes (Contract Snapshot §11 / AC-26).
+        const revisionRequestReturnTarget: ReviewRevisionReturnTargetV1 | undefined =
+          aggregateState === 'REVISION_REQUESTED'
+            ? context.targetKind === 'USER_DIRECTIVE_PROPOSAL'
+              ? {
+                  schemaVersion: '1.0.0',
+                  workspace: 'DIRECTIVE_AUTHORING',
+                  resourceId: context.targetId,
+                  draftId: context.targetId,
+                  draftRevision: Number(context.targetRevision),
+                  reason:
+                    'Return to Directive authoring to revise the Proposal before resubmission.',
+                }
+              : {
+                  schemaVersion: '1.0.0',
+                  workspace: 'KNOWLEDGE_EDITOR',
+                  resourceId: context.targetId,
+                  draftId: context.targetId,
+                  draftRevision: Number(context.targetRevision),
+                  reason: 'Return to the Knowledge Editor to revise the Draft before resubmission.',
+                }
             : undefined;
         return {
           schemaVersion: '1.0.0' as const,
@@ -1392,15 +1456,16 @@ export class FrontendReviewProductCoordinator {
           clientRequestId: outcome.clientRequestId,
           idempotencyKey: outcome.idempotencyKey,
           commandSemanticDigest: outcome.commandSemanticDigest,
-          reviewContextId: record.context.reviewContextId,
-          contextRevision: record.context.contextRevision,
+          reviewContextId: context.reviewContextId,
+          contextRevision: context.contextRevision,
           decisions: this.filterDecisionsByVisibility(
-            this.decisionsForRevision(decisions, record.context.contextRevision),
+            this.decisionsForRevision(decisions, context.contextRevision),
             visible,
           ),
           aggregateState,
           ...(approvals.length === 0 ? {} : { approvals }),
           ...(acceptedForAuthoring === undefined ? {} : { acceptedForAuthoring }),
+          ...(revisionRequestReturnTarget === undefined ? {} : { revisionRequestReturnTarget }),
         } satisfies RecordReviewDecisionsResultV1;
       });
       return { commandType: FRONTEND_REVIEW_COMMAND_TYPES.recordDecisions, result };
@@ -1418,23 +1483,33 @@ export class FrontendReviewProductCoordinator {
         if (!commentRef) {
           reviewFailure('OUTCOME_NOT_FOUND', 'The comment resource is missing from the outcome.');
         }
-        const record = await repositories.contexts.findCurrent(contextRef.resourceId);
-        if (!record) {
-          reviewFailure('OUTCOME_NOT_FOUND', 'The Review context is missing.');
+        // Exact produced-revision recovery (see recordDecisions path).
+        const revisionNumber =
+          contextRef.resourceRevision === undefined
+            ? undefined
+            : Number(contextRef.resourceRevision);
+        const context =
+          revisionNumber === undefined
+            ? (await repositories.contexts.findCurrent(contextRef.resourceId))?.context
+            : await repositories.contexts.findRevision(contextRef.resourceId, revisionNumber);
+        if (!context) {
+          reviewFailure('OUTCOME_NOT_FOUND', 'The Review context revision is missing.');
         }
         // Outcome recovery is not a read-API bypass: revalidate access/policy
         // and the frozen bounds before reconstructing protected results.
-        this.assertContextReadableForScope(record.context, scope);
-        this.assertContextBounds(record.context);
+        this.assertContextReadableForScope(context, scope);
+        this.assertContextBounds(context);
         const comments = await repositories.decisions.findComments(contextRef.resourceId);
         const comment = comments.find((candidate) => candidate.commentId === commentRef.resourceId);
         if (!comment) {
           reviewFailure('OUTCOME_NOT_FOUND', 'The comment is missing.');
         }
-        if (
-          comment.reviewItemId !== undefined &&
-          !this.visibleItemIds(record.context, scope).has(comment.reviewItemId)
-        ) {
+        if (comment.reviewItemId === undefined) {
+          // Context-wide comments are omitted from History and are likewise
+          // never transmitted through Comment outcome/replay (fail-closed).
+          reviewFailure('OUTCOME_NOT_FOUND', 'The comment is not available to the current scope.');
+        }
+        if (!this.visibleItemIds(context, scope).has(comment.reviewItemId)) {
           reviewFailure('OUTCOME_NOT_FOUND', 'The comment is not available to the current scope.');
         }
         return {
@@ -1461,17 +1536,29 @@ export class FrontendReviewProductCoordinator {
         if (!record) {
           reviewFailure('OUTCOME_NOT_FOUND', 'The Review context is missing.');
         }
+        // Exact produced-revision recovery (see recordDecisions path).
+        const revisionNumber =
+          contextRef.resourceRevision === undefined
+            ? undefined
+            : Number(contextRef.resourceRevision);
+        const context =
+          revisionNumber === undefined
+            ? record.context
+            : await repositories.contexts.findRevision(contextRef.resourceId, revisionNumber);
+        if (!context) {
+          reviewFailure('OUTCOME_NOT_FOUND', 'The Review context revision is missing.');
+        }
         // Outcome recovery is not a read-API bypass: revalidate access/policy
         // and the frozen bounds, and mask the returned Context for the scope.
-        this.assertContextReadableForScope(record.context, scope);
-        this.assertContextBounds(record.context);
+        this.assertContextReadableForScope(context, scope);
+        this.assertContextBounds(context);
         return {
           schemaVersion: '1.0.0' as const,
           outcome: 'COMPLETED' as const,
           clientRequestId: outcome.clientRequestId,
           idempotencyKey: outcome.idempotencyKey,
           commandSemanticDigest: outcome.commandSemanticDigest,
-          context: applySensitivityMasking(record.context, scope),
+          context: applySensitivityMasking(context, scope),
         } satisfies RevalidateReviewContextResultV1;
       });
       return { commandType: FRONTEND_REVIEW_COMMAND_TYPES.revalidateContext, result };

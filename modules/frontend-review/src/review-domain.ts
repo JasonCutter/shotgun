@@ -61,7 +61,9 @@ export const canReadSensitivity = (
  * Fail-closed sensitivity masking. Items whose sensitivity exceeds the
  * current clearance are removed before counts and descriptions are created;
  * a dependency touching a removed Item is removed with it so no hidden
- * identity leaks (Contract Snapshot §4/§5).
+ * identity leaks (Contract Snapshot §4/§5). A visible Item that depends on
+ * hidden content is marked unavailable (`MASKED`) without leaking the hidden
+ * identity.
  */
 export const applySensitivityMasking = (
   context: ReviewContextRevisionV1,
@@ -74,12 +76,35 @@ export const applySensitivityMasking = (
     visible.add(item.reviewItemId);
     return true;
   });
+  // A visible Item that depends on hidden content is projected unavailable
+  // (masked) without leaking the hidden identity (Contract Snapshot §5).
+  const touchesHidden = new Set<string>();
+  for (const dependency of context.dependencies) {
+    const fromVisible = visible.has(dependency.fromReviewItemId);
+    const toVisible = visible.has(dependency.toReviewItemId);
+    if (fromVisible !== toVisible) {
+      if (fromVisible) touchesHidden.add(dependency.fromReviewItemId);
+      if (toVisible) touchesHidden.add(dependency.toReviewItemId);
+    }
+  }
+  const maskedItems = items.map((item) => {
+    if (!touchesHidden.has(item.reviewItemId)) return item;
+    return {
+      ...item,
+      accessMasking: 'MASKED' as const,
+      maskedFields: ['label', 'rationale', 'before', 'after', 'expectedImpact'],
+    };
+  });
   const dependencies = context.dependencies.filter(
     (dependency) =>
       visible.has(dependency.fromReviewItemId) && visible.has(dependency.toReviewItemId),
   );
-  return { ...context, items, dependencies };
+  return { ...context, items: maskedItems, dependencies };
 };
+
+/** True when an Item is not available for decisions in the current scope. */
+export const isItemUnavailable = (item: ReviewItemV1): boolean =>
+  item.accessMasking === 'HIDDEN' || item.accessMasking === 'MASKED';
 
 export const isTerminalDecisionIntent = (intent: ReviewDecisionIntentV1): boolean =>
   intent === 'APPROVE' || intent === 'REJECT' || intent === 'REQUEST_REVISION';
@@ -279,7 +304,7 @@ export const validateProposedApprovalSet = (input: {
   for (const itemId of input.approvedItemIds) {
     const item = input.items.find((candidate) => candidate.reviewItemId === itemId);
     if (!item) {
-      reviewFailure('REVIEW_ITEM_NOT_FOUND', `Review Item '${itemId}' was not found.`);
+      reviewFailure('REVIEW_ITEM_NOT_FOUND', 'The Review Item was not found.');
     }
     if (item?.accessMasking === 'HIDDEN') {
       reviewFailure(
@@ -291,10 +316,9 @@ export const validateProposedApprovalSet = (input: {
 
   for (const dependency of input.dependencies) {
     if (!itemIds.has(dependency.fromReviewItemId) || !itemIds.has(dependency.toReviewItemId)) {
-      reviewFailure(
-        'REVIEW_DANGLING_REFERENCE',
-        `Dependency '${dependency.dependencyId}' references a missing Review Item.`,
-      );
+      // Identity-free: never echo a Dependency or Item ID (a hidden identity
+      // must never be exposed through validation errors, Contract §5).
+      reviewFailure('REVIEW_DANGLING_REFERENCE', 'A dependency references a missing Review Item.');
     }
   }
 
@@ -306,9 +330,11 @@ export const validateProposedApprovalSet = (input: {
       approved.has(dependency.toReviewItemId) &&
       !approved.has(dependency.fromReviewItemId)
     ) {
+      // Identity-free: the unapproved prerequisite may be hidden, so no
+      // Item/Dependency ID is ever echoed (Contract §5).
       reviewFailure(
         'REVIEW_DEPENDENCY_UNSATISFIED',
-        `Item '${dependency.toReviewItemId}' requires '${dependency.fromReviewItemId}' which is not approved.`,
+        'The approval set leaves a required dependency unapproved.',
       );
     }
     if (
@@ -318,7 +344,7 @@ export const validateProposedApprovalSet = (input: {
     ) {
       reviewFailure(
         'REVIEW_CONFLICTING_APPROVAL_SET',
-        `Items '${dependency.fromReviewItemId}' and '${dependency.toReviewItemId}' conflict and cannot both be approved.`,
+        'The approval set contains conflicting Review Items.',
       );
     }
   }
@@ -328,9 +354,10 @@ export const validateProposedApprovalSet = (input: {
     if (hasApprovedNow) {
       const missing = [...component].filter((itemId) => !input.approvedItemIds.has(itemId));
       if (missing.length > 0) {
+        // Identity-free: the missing ATOMIC_WITH peers may be hidden.
         reviewFailure(
           'REVIEW_ATOMIC_GROUP_SPLIT',
-          `ATOMIC_WITH group [${[...component].sort().join(', ')}] cannot be split; missing ${missing.join(', ')}.`,
+          'An ATOMIC_WITH group cannot be partially approved.',
         );
       }
     }

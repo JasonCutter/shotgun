@@ -477,7 +477,7 @@ describe('FE-P4-S1 Review domain — candidate and directive (AC-12, AC-13)', ()
     expect(result.approvals?.[0]?.purpose).toBe('USER_DIRECTIVE_CHANGE');
   });
 
-  it('rejects REQUEST_REVISION for a directive with an unavailable authoring route', async () => {
+  it('returns a DIRECTIVE_AUTHORING return target for a directive revision request (AC-26)', async () => {
     const { coordinator } = buildCoordinator();
     const queue = await coordinator.listReviewQueue(scope, {
       schemaVersion: '1.0.0',
@@ -492,12 +492,13 @@ describe('FE-P4-S1 Review domain — candidate and directive (AC-12, AC-13)', ()
       contextRevision: item!.contextRevision,
     });
     const itemId = read.context.items[0]!.reviewItemId;
-    await expect(
-      coordinator.recordReviewDecisions(
-        scope,
-        decisionRequest(read.context, itemId, 'REQUEST_REVISION', 'Please rework.'),
-      ),
-    ).rejects.toMatchObject({ apiCode: 'REVIEW_REVISION_ROUTE_UNAVAILABLE' });
+    const result = await coordinator.recordReviewDecisions(
+      scope,
+      decisionRequest(read.context, itemId, 'REQUEST_REVISION', 'Please rework.'),
+    );
+    expect(result.revisionRequestReturnTarget?.workspace).toBe('DIRECTIVE_AUTHORING');
+    expect(result.revisionRequestReturnTarget?.resourceId).toBe('directive-1');
+    expect(result.revisionRequestReturnTarget?.draftId).toBe('directive-1');
   });
 });
 

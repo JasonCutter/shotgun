@@ -362,6 +362,52 @@ describe('GetReviewContext', () => {
     });
     expect(decoded.context.canonicalBase).toBeUndefined();
   });
+
+  it('enforces the frozen 200-Item bound in the context decoder (§18)', () => {
+    const manyItems = Array.from({ length: 201 }, (_, index) => ({
+      ...item,
+      reviewItemId: `item-${index}`,
+    }));
+    expect(() =>
+      decodeGetReviewContextResultV1({
+        schemaVersion: '1.0.0',
+        context: { ...context, items: manyItems },
+        decisions: [],
+        comments: [],
+      }),
+    ).toThrow(FrontendContractError);
+  });
+
+  it('accepts exactly 200 Items in the context decoder (§18)', () => {
+    const manyItems = Array.from({ length: 200 }, (_, index) => ({
+      ...item,
+      reviewItemId: `item-${index}`,
+    }));
+    const decoded = decodeGetReviewContextResultV1({
+      schemaVersion: '1.0.0',
+      context: { ...context, items: manyItems },
+      decisions: [],
+      comments: [],
+    });
+    expect(decoded.context.items).toHaveLength(200);
+  });
+
+  it('enforces the frozen 500-dependency-edge bound in the context decoder (§18)', () => {
+    const manyDependencies = Array.from({ length: 501 }, (_, index) => ({
+      ...dependency,
+      dependencyId: `dep-${index}`,
+      fromReviewItemId: `item-${index}`,
+      toReviewItemId: `item-${index + 1}`,
+    }));
+    expect(() =>
+      decodeGetReviewContextResultV1({
+        schemaVersion: '1.0.0',
+        context: { ...context, dependencies: manyDependencies },
+        decisions: [],
+        comments: [],
+      }),
+    ).toThrow(FrontendContractError);
+  });
 });
 
 describe('GetReviewItemDetail', () => {

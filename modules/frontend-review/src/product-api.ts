@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto';
 import {
   FRONTEND_REVIEW_API_VERSION,
   FRONTEND_REVIEW_COMMAND_TYPES,
+  REVIEW_CONTEXT_ITEM_MAX,
+  REVIEW_DEPENDENCY_EDGE_MAX,
   frontendReviewAddCommentDigest,
   frontendReviewRecordDecisionsDigest,
   frontendReviewRevalidateDigest,
@@ -30,6 +32,7 @@ import {
   type ReviewApprovalV1,
   type ReviewCapabilityV1,
   type ReviewCommentRecordV1,
+  type ReviewContextRevisionV1,
   type ReviewDecisionRecordV1,
   type ReviewQueueItemV1,
   type ReviewRevisionReturnTargetV1,
@@ -38,6 +41,8 @@ import {
 } from '../../../packages/contracts/src/index.js';
 import { reviewFailure, ReviewCommandError } from './review-error.js';
 import {
+  applySensitivityMasking,
+  canReadSensitivity,
   computeAggregateState,
   deriveAttentionReasons,
   deriveContextView,
@@ -161,6 +166,46 @@ export const reviewCapabilitiesFor = (
   return capabilities;
 };
 
+/**
+ * Membership scopes that grant Review access. The Browser never submits these;
+ * they come from the server-derived membership `accessScope`. `review` grants
+ * reviewing (queue, context, item, decisions, comments, revalidation and
+ * outcome resolution); Approval-resource reads additionally require an
+ * approval-granting scope (`owner`, `admin` or `action:approve`).
+ */
+export const REVIEW_ACCESS_SCOPES: ReadonlySet<string> = new Set(['owner', 'admin', 'review']);
+export const REVIEW_APPROVAL_SCOPES: ReadonlySet<string> = new Set([
+  'owner',
+  'admin',
+  'action:approve',
+]);
+
+/**
+ * Review capabilities granted by a server-derived scope. Approval reads are
+ * gated by an approval-granting scope and are never advertised otherwise.
+ */
+export const reviewCapabilitiesForScope = (
+  scope: FrontendReviewScopeV1,
+): readonly ReviewCapabilityV1[] => {
+  const granted = scope.accessScope ?? [];
+  const hasReviewAccess = granted.some((entry) => REVIEW_ACCESS_SCOPES.has(entry));
+  if (!hasReviewAccess) return [];
+  const capabilities: ReviewCapabilityV1[] = [
+    'LIST_QUEUE',
+    'READ_CONTEXT',
+    'READ_ITEM',
+    'REVALIDATE',
+    'RECORD_DECISIONS',
+    'ADD_COMMENT',
+    'RESOLVE_OUTCOME',
+  ];
+  const canApprove = granted.some((entry) => REVIEW_APPROVAL_SCOPES.has(entry));
+  if (canApprove) {
+    capabilities.push('READ_APPROVAL');
+  }
+  return capabilities;
+};
+
 type FrontendReviewRunCommandInput<T> = {
   readonly scope: FrontendReviewScopeV1;
   readonly commandType: (typeof FRONTEND_REVIEW_COMMAND_TYPES)[keyof typeof FRONTEND_REVIEW_COMMAND_TYPES];
@@ -200,6 +245,41 @@ export class FrontendReviewProductCoordinator {
     return adapter;
   }
 
+  /**
+   * Operation-level capability enforcement against the server-derived scope.
+   * The Browser never declares its own capability; only membership scopes do.
+   */
+  private requireReviewCapability(
+    scope: FrontendReviewScopeV1,
+    capability: ReviewCapabilityV1,
+  ): void {
+    if (!reviewCapabilitiesForScope(scope).includes(capability)) {
+      reviewFailure(
+        'PROJECT_ACCESS_DENIED',
+        `The current scope does not grant the '${capability}' Review capability.`,
+      );
+    }
+  }
+
+  /**
+   * Fail-closed restricted shell for a Context whose access or policy scope
+   * no longer matches the current scope. The protected payload is never
+   * returned; only the restricted aggregate state is exposed.
+   */
+  private contextRestrictedView(
+    context: ReviewContextRevisionV1,
+    reason: string,
+  ): ReviewContextRevisionV1 {
+    return {
+      ...context,
+      items: [],
+      dependencies: [],
+      capabilities: [],
+      aggregateState: 'ACCESS_RESTRICTED',
+      staleReason: reason,
+    };
+  }
+
   private async materializeContext(
     repositories: ReviewTransactionRepositoriesV1,
     adapter: ReviewTargetAdapterPort,
@@ -216,6 +296,20 @@ export class FrontendReviewProductCoordinator {
       contextRevision,
       generatedAt,
     });
+    // Frozen bounded-contract enforcement (Contract Snapshot §18): an
+    // unbounded Item array or dependency graph must never be materialized.
+    if (materialized.context.items.length > REVIEW_CONTEXT_ITEM_MAX) {
+      reviewFailure(
+        'VALIDATION_FAILED',
+        `A Review Context cannot contain more than ${REVIEW_CONTEXT_ITEM_MAX} Items.`,
+      );
+    }
+    if (materialized.context.dependencies.length > REVIEW_DEPENDENCY_EDGE_MAX) {
+      reviewFailure(
+        'VALIDATION_FAILED',
+        `A Review Context cannot contain more than ${REVIEW_DEPENDENCY_EDGE_MAX} dependency edges.`,
+      );
+    }
     return {
       reviewResourceId: source.reviewResourceId,
       context: materialized.context,
@@ -234,6 +328,7 @@ export class FrontendReviewProductCoordinator {
     scope: FrontendReviewScopeV1,
     request: ListReviewQueueRequestV1,
   ): Promise<ListReviewQueueResultV1> {
+    this.requireReviewCapability(scope, 'LIST_QUEUE');
     return this.boundary.transaction(async (repositories) => {
       const items: ReviewQueueItemV1[] = [];
       let enumerated = 0;
@@ -288,7 +383,7 @@ export class FrontendReviewProductCoordinator {
             targetId: source.targetId,
             targetLabel: source.targetLabel,
             aggregateState: view.aggregateState,
-            itemCount: record.context.items.length,
+            itemCount: view.context.items.length,
             updatedAt: record.materializedAt,
             attentionReasons: attention,
             capabilities: record.context.capabilities,
@@ -316,16 +411,7 @@ export class FrontendReviewProductCoordinator {
         items: page,
         nextCursor: nextOffset < items.length ? this.queueCursor(nextOffset) : undefined,
         totalCountStatus: 'EXACT',
-        capabilities: [
-          'LIST_QUEUE',
-          'READ_CONTEXT',
-          'READ_ITEM',
-          'READ_APPROVAL',
-          'REVALIDATE',
-          'RECORD_DECISIONS',
-          'ADD_COMMENT',
-          'RESOLVE_OUTCOME',
-        ],
+        capabilities: reviewCapabilitiesForScope(scope),
       };
     });
   }
@@ -369,6 +455,7 @@ export class FrontendReviewProductCoordinator {
     scope: FrontendReviewScopeV1,
     request: GetReviewContextRequestV1,
   ): Promise<GetReviewContextResultV1> {
+    this.requireReviewCapability(scope, 'READ_CONTEXT');
     return this.boundary.transaction(async (repositories) => {
       const record = await repositories.contexts.findCurrent(request.reviewContextId);
       if (!record) {
@@ -387,11 +474,44 @@ export class FrontendReviewProductCoordinator {
         if (!historical) {
           reviewFailure('REVIEW_CONTEXT_NOT_FOUND', 'The Review Context revision was not found.');
         }
+        // Historical reads are revalidated against the current access/policy
+        // scope; a changed scope returns a restricted shell without the
+        // protected payload (fail-closed, Contract Snapshot §10/§13).
+        const scopeChanged =
+          historical.accessRevision !== scope.accessRevision ||
+          historical.policyContextRevision !== scope.policyContextRevision;
+        if (scopeChanged) {
+          return {
+            schemaVersion: '1.0.0',
+            context: this.contextRestrictedView(
+              historical,
+              'the access or policy scope changed since this context was generated',
+            ),
+            decisions: [],
+            comments: [],
+          };
+        }
         return {
           schemaVersion: '1.0.0',
-          context: historical,
+          context: applySensitivityMasking(historical, scope),
           decisions: this.decisionsForRevision(decisions, request.contextRevision),
           comments: this.commentsForRevision(comments, request.contextRevision),
+        };
+      }
+      // Fail closed before touching any source adapter: when the access or
+      // policy scope changed, the protected payload is never resolved (§13).
+      const scopeChanged =
+        record.context.accessRevision !== scope.accessRevision ||
+        record.context.policyContextRevision !== scope.policyContextRevision;
+      if (scopeChanged) {
+        return {
+          schemaVersion: '1.0.0',
+          context: this.contextRestrictedView(
+            record.context,
+            'the access or policy scope changed since this context was generated',
+          ),
+          decisions: [],
+          comments: [],
         };
       }
       const adapter = this.adapterFor(record.context.targetKind);
@@ -413,6 +533,7 @@ export class FrontendReviewProductCoordinator {
     scope: FrontendReviewScopeV1,
     request: GetReviewItemDetailRequestV1,
   ): Promise<GetReviewItemDetailResultV1> {
+    this.requireReviewCapability(scope, 'READ_ITEM');
     return this.boundary.transaction(async (repositories) => {
       const record = await repositories.contexts.findCurrent(request.reviewContextId);
       if (!record || record.context.resourceProjectId !== scope.activeProjectId) {
@@ -426,17 +547,36 @@ export class FrontendReviewProductCoordinator {
         if (!historical) {
           reviewFailure('REVIEW_CONTEXT_NOT_FOUND', 'The Review Context revision was not found.');
         }
+        // Historical Item detail is fail-closed when access/policy changed.
+        const scopeChanged =
+          historical.accessRevision !== scope.accessRevision ||
+          historical.policyContextRevision !== scope.policyContextRevision;
+        if (scopeChanged) {
+          reviewFailure('REVIEW_ITEM_NOT_FOUND', 'The Review Item was not found.');
+        }
         return this.itemDetailFromContext(
           repositories,
           historical,
           request.reviewItemId,
           request.contextRevision,
+          scope,
         );
+      }
+      // Item detail is fail-closed when access/policy changed: returning any
+      // Item content would confirm protected resource existence (§13).
+      const scopeChanged =
+        record.context.accessRevision !== scope.accessRevision ||
+        record.context.policyContextRevision !== scope.policyContextRevision;
+      if (scopeChanged) {
+        reviewFailure('REVIEW_ITEM_NOT_FOUND', 'The Review Item was not found.');
       }
       const item = record.context.items.find(
         (candidate) => candidate.reviewItemId === request.reviewItemId,
       );
       if (!item) {
+        reviewFailure('REVIEW_ITEM_NOT_FOUND', 'The Review Item was not found.');
+      }
+      if (!canReadSensitivity(scope.sensitivityClearance, item.sensitivity)) {
         reviewFailure('REVIEW_ITEM_NOT_FOUND', 'The Review Item was not found.');
       }
       const adapter = this.adapterFor(record.context.targetKind);
@@ -474,16 +614,31 @@ export class FrontendReviewProductCoordinator {
     context: ReviewContextRecordV1['context'],
     reviewItemId: string,
     contextRevision: number,
+    scope: FrontendReviewScopeV1,
   ): Promise<GetReviewItemDetailResultV1> {
     const item = context.items.find((candidate) => candidate.reviewItemId === reviewItemId);
     if (!item) {
       reviewFailure('REVIEW_ITEM_NOT_FOUND', 'The Review Item was not found.');
     }
+    if (!canReadSensitivity(scope.sensitivityClearance, item.sensitivity)) {
+      reviewFailure('REVIEW_ITEM_NOT_FOUND', 'The Review Item was not found.');
+    }
+    const visible = new Set(
+      context.items
+        .filter((candidate) =>
+          canReadSensitivity(scope.sensitivityClearance, candidate.sensitivity),
+        )
+        .map((candidate) => candidate.reviewItemId),
+    );
+    const dependencies = this.dependenciesForItem(context.dependencies, reviewItemId).filter(
+      (dependency) =>
+        visible.has(dependency.fromReviewItemId) && visible.has(dependency.toReviewItemId),
+    );
     const decisions = await repositories.decisions.findDecisions(context.reviewContextId);
     return {
       schemaVersion: '1.0.0',
       item,
-      dependencies: this.dependenciesForItem(context.dependencies, reviewItemId),
+      dependencies,
       decisions: this.decisionsForRevision(decisions, contextRevision),
     };
   }
@@ -502,6 +657,7 @@ export class FrontendReviewProductCoordinator {
     scope: FrontendReviewScopeV1,
     request: GetReviewApprovalRequestV1,
   ): Promise<GetReviewApprovalResultV1> {
+    this.requireReviewCapability(scope, 'READ_APPROVAL');
     return this.boundary.transaction(async (repositories) => {
       const approval = await repositories.approvals.findById(request.approvalId);
       if (!approval || approval.projectId !== scope.activeProjectId) {
@@ -509,6 +665,26 @@ export class FrontendReviewProductCoordinator {
           'REVIEW_APPROVAL_NOT_ISSUED',
           'No Approval Resource matches the requested identity.',
         );
+      }
+      // Fail-closed revalidation: the Approval binds the access and policy
+      // revisions that were current when it was issued (Contract Snapshot §8).
+      if (
+        approval.accessRevision !== scope.accessRevision ||
+        approval.policyContextRevision !== scope.policyContextRevision
+      ) {
+        reviewFailure(
+          'REVIEW_APPROVAL_NOT_ISSUED',
+          'No Approval Resource matches the requested identity.',
+        );
+      }
+      if (approval.status !== 'ACTIVE') {
+        reviewFailure(
+          'REVIEW_APPROVAL_NOT_ISSUED',
+          'No Approval Resource matches the requested identity.',
+        );
+      }
+      if (Date.parse(approval.expiresAt) <= Date.parse(this.nowIso())) {
+        reviewFailure('REVIEW_APPROVAL_EXPIRED', 'The Approval Resource has expired.');
       }
       return { schemaVersion: '1.0.0', approval };
     });
@@ -522,6 +698,7 @@ export class FrontendReviewProductCoordinator {
     scope: FrontendReviewScopeV1,
     request: RevalidateReviewContextRequestV1,
   ): Promise<RevalidateReviewContextResultV1> {
+    this.requireReviewCapability(scope, 'REVALIDATE');
     const commandSemanticDigest = frontendReviewRevalidateDigest(request);
     const written = await this.runCommand<ReviewContextRecordV1>({
       scope,
@@ -593,6 +770,7 @@ export class FrontendReviewProductCoordinator {
     scope: FrontendReviewScopeV1,
     request: RecordReviewDecisionsRequestV1,
   ): Promise<RecordReviewDecisionsResultV1> {
+    this.requireReviewCapability(scope, 'RECORD_DECISIONS');
     const commandSemanticDigest = frontendReviewRecordDecisionsDigest(request);
     const written = await this.runCommand<RecordReviewDecisionsWrittenV1>({
       scope,
@@ -807,20 +985,28 @@ export class FrontendReviewProductCoordinator {
           }
         }
         if (request.itemDecisions.some((input) => input.intent === 'REQUEST_REVISION')) {
-          if (record.context.targetKind === 'USER_DIRECTIVE_PROPOSAL') {
-            reviewFailure(
-              'REVIEW_REVISION_ROUTE_UNAVAILABLE',
-              'Directive authoring is not available in FE-P4-S1.',
-            );
-          }
-          revisionRequestReturnTarget = {
-            schemaVersion: '1.0.0',
-            workspace: 'KNOWLEDGE_EDITOR',
-            resourceId: record.context.targetId,
-            draftId: record.context.targetId,
-            draftRevision: Number(record.context.targetRevision),
-            reason: 'Return to the Knowledge Editor to revise the Draft before resubmission.',
-          };
+          // Typed return target per Contract Snapshot §11: Knowledge Draft
+          // revision returns to the Knowledge Editor, User Directive revision
+          // returns to the Directive authoring Workspace (AC-26).
+          revisionRequestReturnTarget =
+            record.context.targetKind === 'USER_DIRECTIVE_PROPOSAL'
+              ? {
+                  schemaVersion: '1.0.0',
+                  workspace: 'DIRECTIVE_AUTHORING',
+                  resourceId: record.context.targetId,
+                  draftId: record.context.targetId,
+                  draftRevision: Number(record.context.targetRevision),
+                  reason:
+                    'Return to Directive authoring to revise the Proposal before resubmission.',
+                }
+              : {
+                  schemaVersion: '1.0.0',
+                  workspace: 'KNOWLEDGE_EDITOR',
+                  resourceId: record.context.targetId,
+                  draftId: record.context.targetId,
+                  draftRevision: Number(record.context.targetRevision),
+                  reason: 'Return to the Knowledge Editor to revise the Draft before resubmission.',
+                };
         }
         const allDecisions = [...currentDecisions, ...newDecisions];
         const aggregateState = computeAggregateState({
@@ -894,6 +1080,7 @@ export class FrontendReviewProductCoordinator {
     scope: FrontendReviewScopeV1,
     request: AddReviewCommentRequestV1,
   ): Promise<AddReviewCommentResultV1> {
+    this.requireReviewCapability(scope, 'ADD_COMMENT');
     const commandSemanticDigest = frontendReviewAddCommentDigest(request);
     const written = await this.runCommand<ReviewCommentRecordV1>({
       scope,
@@ -978,6 +1165,7 @@ export class FrontendReviewProductCoordinator {
     scope: FrontendReviewScopeV1,
     request: ResolveReviewCommandOutcomeRequestV1,
   ): Promise<ResolveReviewCommandOutcomeResultV1> {
+    this.requireReviewCapability(scope, 'RESOLVE_OUTCOME');
     const outcome = await this.commandGateway.findByClientRequestId(
       scope.principalId,
       request.clientRequestId,

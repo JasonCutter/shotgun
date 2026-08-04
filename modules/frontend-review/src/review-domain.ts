@@ -1,5 +1,7 @@
 import {
   FRONTEND_REVIEW_DOMAIN_VERSION,
+  REVIEW_CONTEXT_ITEM_MAX,
+  REVIEW_DEPENDENCY_EDGE_MAX,
   sha256Text,
   stableJson,
   type ApprovalPurposeV1,
@@ -11,6 +13,7 @@ import {
   type ReviewDependencyV1,
   type ReviewItemDecisionStateV1,
   type ReviewItemV1,
+  type ReviewSensitivityV1,
   type ReviewTargetKindV1,
 } from '../../../packages/contracts/src/index.js';
 import { reviewFailure } from './review-error.js';
@@ -27,6 +30,56 @@ export const REVIEW_TERMINAL_INTENTS: readonly ReviewDecisionIntentV1[] = [
   'REJECT',
   'REQUEST_REVISION',
 ];
+
+/** Frozen bounded-contract maxima (Contract Snapshot §18), re-exported. */
+export { REVIEW_CONTEXT_ITEM_MAX, REVIEW_DEPENDENCY_EDGE_MAX };
+
+const SENSITIVITY_RANK: Record<ReviewSensitivityV1, number> = {
+  NORMAL: 0,
+  SENSITIVE: 1,
+  RESTRICTED: 3,
+};
+
+const CLEARANCE_RANK: Record<string, number> = {
+  public: 0,
+  internal: 1,
+  private: 2,
+  restricted: 3,
+  ALL: 4,
+};
+
+/** True when the given sensitivity clearance may read the item sensitivity. */
+export const canReadSensitivity = (
+  clearance: string | undefined,
+  sensitivity: ReviewSensitivityV1,
+): boolean => {
+  const clearanceRank = clearance === undefined ? 0 : (CLEARANCE_RANK[clearance] ?? 0);
+  return clearanceRank >= SENSITIVITY_RANK[sensitivity];
+};
+
+/**
+ * Fail-closed sensitivity masking. Items whose sensitivity exceeds the
+ * current clearance are removed before counts and descriptions are created;
+ * a dependency touching a removed Item is removed with it so no hidden
+ * identity leaks (Contract Snapshot §4/§5).
+ */
+export const applySensitivityMasking = (
+  context: ReviewContextRevisionV1,
+  scope: Pick<FrontendReviewScopeV1, 'sensitivityClearance'>,
+): ReviewContextRevisionV1 => {
+  const visible = new Set<string>();
+  const items = context.items.filter((item) => {
+    const readable = canReadSensitivity(scope.sensitivityClearance, item.sensitivity);
+    if (!readable) return false;
+    visible.add(item.reviewItemId);
+    return true;
+  });
+  const dependencies = context.dependencies.filter(
+    (dependency) =>
+      visible.has(dependency.fromReviewItemId) && visible.has(dependency.toReviewItemId),
+  );
+  return { ...context, items, dependencies };
+};
 
 export const isTerminalDecisionIntent = (intent: ReviewDecisionIntentV1): boolean =>
   intent === 'APPROVE' || intent === 'REJECT' || intent === 'REQUEST_REVISION';
@@ -116,27 +169,48 @@ export const deriveContextView = (input: {
 
   let aggregateState: ReviewAggregateStateV1;
   let staleReason: string | undefined;
+  let readableContext: ReviewContextRevisionV1;
   if (accessChanged || policyChanged) {
+    // Fail-closed read: the protected payload (Items, dependencies,
+    // capabilities) is not returned when access or policy changed. Only the
+    // restricted shell with the ACCESS_RESTRICTED aggregate state is exposed
+    // (Contract Snapshot §7/§13). Decisions/comments are suppressed by the
+    // caller for the same reason.
     aggregateState = 'ACCESS_RESTRICTED';
     staleReason = accessChanged
       ? 'the access scope changed since this context was generated'
       : 'the policy context changed since this context was generated';
-  } else if (targetChanged) {
-    aggregateState = 'STALE';
-    staleReason = 'the reviewed target changed since this context was generated';
+    readableContext = {
+      ...context,
+      items: [],
+      dependencies: [],
+      capabilities: [],
+      aggregateState,
+      staleReason,
+    };
   } else {
-    aggregateState = computeAggregateState({
-      items: context.items,
-      decisions: input.decisions,
-      contextRevision: context.contextRevision,
-      targetKind: context.targetKind,
-    });
-    if (context.items.length === 0) {
-      aggregateState = 'UNAVAILABLE';
-      staleReason = 'this context contains no visible Review Items';
+    readableContext = applySensitivityMasking(context, input.scope);
+    if (targetChanged) {
+      aggregateState = 'STALE';
+      staleReason = 'the reviewed target changed since this context was generated';
+    } else {
+      aggregateState = computeAggregateState({
+        items: readableContext.items,
+        decisions: input.decisions,
+        contextRevision: context.contextRevision,
+        targetKind: context.targetKind,
+      });
+      if (readableContext.items.length === 0) {
+        aggregateState = 'UNAVAILABLE';
+        staleReason = 'this context contains no visible Review Items';
+      }
     }
   }
-  return { context: { ...context, aggregateState, staleReason }, aggregateState, staleReason };
+  return {
+    context: { ...readableContext, aggregateState, staleReason },
+    aggregateState,
+    staleReason,
+  };
 };
 
 export const deriveAttentionReasons = (

@@ -31,6 +31,10 @@ export type FrontendReviewCommandType =
 /** Domain version tag shared by server and browser digest computation. */
 export const FRONTEND_REVIEW_DOMAIN_VERSION = '1.0.0' as const;
 
+/** Frozen bounded-contract maxima (Contract Snapshot §18). */
+export const REVIEW_CONTEXT_ITEM_MAX = 200;
+export const REVIEW_DEPENDENCY_EDGE_MAX = 500;
+
 // ---------------------------------------------------------------------------
 // V1 enums (exact, exhaustive)
 // ---------------------------------------------------------------------------
@@ -1179,12 +1183,28 @@ export const decodeReviewContextRevisionV1 = (
       required(object, 'artifactRefs', path),
       `${path}.artifactRefs`,
     ),
-    items: arrayValue(required(object, 'items', path), `${path}.items`).map((entry) =>
-      decodeReviewItemV1(entry, `${path}.items`),
-    ),
-    dependencies: arrayValue(required(object, 'dependencies', path), `${path}.dependencies`).map(
-      (entry) => decodeReviewDependencyV1(entry, `${path}.dependencies`),
-    ),
+    items: (() => {
+      const items = arrayValue(required(object, 'items', path), `${path}.items`).map((entry) =>
+        decodeReviewItemV1(entry, `${path}.items`),
+      );
+      if (items.length > REVIEW_CONTEXT_ITEM_MAX) {
+        return fail(`${path}.items`, `must contain at most ${REVIEW_CONTEXT_ITEM_MAX} Items`);
+      }
+      return items;
+    })(),
+    dependencies: (() => {
+      const dependencies = arrayValue(
+        required(object, 'dependencies', path),
+        `${path}.dependencies`,
+      ).map((entry) => decodeReviewDependencyV1(entry, `${path}.dependencies`));
+      if (dependencies.length > REVIEW_DEPENDENCY_EDGE_MAX) {
+        return fail(
+          `${path}.dependencies`,
+          `must contain at most ${REVIEW_DEPENDENCY_EDGE_MAX} dependency edges`,
+        );
+      }
+      return dependencies;
+    })(),
     aggregateState: enumValue(
       required(object, 'aggregateState', path),
       REVIEW_AGGREGATE_STATES,

@@ -98,7 +98,11 @@ import {
   preflightIsReady,
   preflightRevalidationFlags,
 } from './external-action-domain.js';
-import type { ExternalActionEnginePort } from './external-action-engine-port.js';
+import type {
+  ExternalActionEnginePort,
+  ExternalActionExecuteOutcomeV1,
+  ExternalActionExecuteRequestV1,
+} from './external-action-engine-port.js';
 import type {
   ExternalActionRepositoryBoundaryPort,
   ExternalActionTransactionRepositoriesV1,
@@ -333,17 +337,12 @@ export class FrontendExternalActionProductCoordinator {
     });
   }
 
-  /** Next audit sequence for an action (deterministic, append-only). */
+  /** Next audit sequence for an action (append-only authority, store-based). */
   private async nextAuditSequence(
     repositories: ExternalActionTransactionRepositoriesV1,
     actionId: string,
   ): Promise<number> {
-    const events = await repositories.audit.listByAction(
-      actionId,
-      EXTERNAL_ACTION_QUEUE_PAGE_SIZE_CAP,
-      0,
-    );
-    return events.length > 0 ? events[events.length - 1]!.sequence + 1 : 1;
+    return repositories.audit.nextSequence(actionId);
   }
 
   /** Deterministic target digest pinning the exact external target state. */
@@ -488,12 +487,22 @@ export class FrontendExternalActionProductCoordinator {
         }
         const now = this.nowIso();
         const existingCandidate = await repositories.candidates.findByActionId(request.actionId);
+        // Risk decision reuse is bound to the candidate semantic digest (which
+        // covers operation/target/parameter/evidence/compensation) and the
+        // policy context. A changed meaning creates a new numbered candidate
+        // revision and a new risk decision (AC-02/ADR-129).
+        const semanticsUnchanged =
+          existingCandidate !== undefined &&
+          existingCandidate.candidateDigest === commandSemanticDigest;
         const riskDecisionId =
-          existingCandidate?.riskDecisionRef.resourceId ?? generatedIdentity('risk');
+          semanticsUnchanged && existingCandidate
+            ? existingCandidate.riskDecisionRef.resourceId
+            : generatedIdentity('risk');
         const candidateId = request.candidateId;
-        const existingRiskDecision = existingCandidate
-          ? await repositories.riskDecisions.find(request.actionId, riskDecisionId)
-          : undefined;
+        const existingRiskDecision =
+          semanticsUnchanged && existingCandidate
+            ? await repositories.riskDecisions.find(request.actionId, riskDecisionId)
+            : undefined;
         const riskDecision: RiskDecisionV1 = existingRiskDecision ?? {
           schemaVersion: '1.0.0',
           riskDecisionId,
@@ -509,7 +518,7 @@ export class FrontendExternalActionProductCoordinator {
         const candidate: ActionCandidateV1 = {
           schemaVersion: '1.0.0',
           candidateId,
-          candidateRevision: 1,
+          candidateRevision: (existingCandidate?.candidateRevision ?? 0) + 1,
           actionId: request.actionId,
           resourceProjectId: scope.activeProjectId,
           effectiveProjectId: scope.activeProjectId,
@@ -556,6 +565,20 @@ export class FrontendExternalActionProductCoordinator {
         } else {
           await repositories.aggregates.insert(action);
         }
+        await this.appendAudit(
+          repositories,
+          action,
+          'ACTION_RISK_DECIDED',
+          'Risk decision bound to the candidate semantic digest.',
+          await this.nextAuditSequence(repositories, action.actionId),
+        );
+        await this.appendAudit(
+          repositories,
+          action,
+          'ACTION_CANDIDATE_VALIDATED',
+          'Candidate validated and staged.',
+          await this.nextAuditSequence(repositories, action.actionId),
+        );
         return {
           schemaVersion: '1.0.0',
           outcome: 'COMPLETED',
@@ -776,6 +799,13 @@ export class FrontendExternalActionProductCoordinator {
           updatedAt: now,
         };
         await repositories.aggregates.update(updated);
+        await this.appendAudit(
+          repositories,
+          updated,
+          'ACTION_APPROVED',
+          'External action approved.',
+          await this.nextAuditSequence(repositories, action.actionId),
+        );
         return {
           schemaVersion: '1.0.0',
           outcome: 'COMPLETED',
@@ -881,14 +911,19 @@ export class FrontendExternalActionProductCoordinator {
           manifest,
           preflight,
         });
-        const status = preflightRevalidationFlags({
-          permissionRevalidated: true,
-          credentialRevalidated: preflight.credentialRevalidated,
-          budgetRevalidated: preflight.budgetRevalidated,
-          policyRevalidated: true,
-          targetStateRevalidated: outcome.targetStateRevalidated,
-          externalRevisionRevalidated: outcome.externalRevisionRevalidated,
-        });
+        // ALREADY_APPLIED is preserved as a Product result (the operation is
+        // already reflected externally; it blocks re-execution).
+        const status =
+          outcome.status === 'ALREADY_APPLIED'
+            ? 'ALREADY_APPLIED'
+            : preflightRevalidationFlags({
+                permissionRevalidated: true,
+                credentialRevalidated: preflight.credentialRevalidated,
+                budgetRevalidated: preflight.budgetRevalidated,
+                policyRevalidated: true,
+                targetStateRevalidated: outcome.targetStateRevalidated,
+                externalRevisionRevalidated: outcome.externalRevisionRevalidated,
+              });
         const finalPreflight: PreflightV1 = {
           ...preflight,
           status,
@@ -904,6 +939,15 @@ export class FrontendExternalActionProductCoordinator {
           updatedAt: now,
         };
         await repositories.aggregates.update(updated);
+        await this.appendAudit(
+          repositories,
+          updated,
+          status === 'READY' ? 'ACTION_PREFLIGHT_PASSED' : 'ACTION_PREFLIGHT_FAILED',
+          status === 'READY'
+            ? 'Preflight passed all six revalidations.'
+            : 'Preflight did not pass all revalidations.',
+          await this.nextAuditSequence(repositories, action.actionId),
+        );
         return {
           schemaVersion: '1.0.0',
           outcome: 'COMPLETED',
@@ -933,13 +977,13 @@ export class FrontendExternalActionProductCoordinator {
   ): Promise<ExecuteExternalActionResultV1> {
     this.requireCapability(scope, 'EXECUTE_EXTERNAL_ACTION');
     const commandSemanticDigest = frontendExternalActionExecuteDigest(request);
-    return this.runCommand<ExecuteExternalActionResultV1>({
+    return this.runConnectorCommand<ExecuteExternalActionResultV1>({
       scope,
       commandType: FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.execute,
       request,
       commandSemanticDigest,
       resourceProjectId: scope.activeProjectId,
-      actionOnRepositories: async (repositories) => {
+      persistStarted: async (repositories) => {
         const action = await this.aggregateFor(repositories, request.actionId);
         this.assertProjectAndPolicy(action, scope);
         this.assertStaleNotBlocking(action);
@@ -968,6 +1012,20 @@ export class FrontendExternalActionProductCoordinator {
           externalActionFailure(
             'ACTION_PREFLIGHT_EXPIRED',
             'A READY preflight with a future expiry is required before execution.',
+          );
+        }
+        if (!preflight) {
+          externalActionFailure('ACTION_PREFLIGHT_EXPIRED', 'The preflight is unavailable.');
+        }
+        // The preflight must belong to this exact action (no cross-action reuse).
+        if (
+          preflight.actionId !== action.actionId ||
+          preflight.resourceProjectId !== action.resourceProjectId ||
+          preflight.effectiveProjectId !== action.effectiveProjectId
+        ) {
+          externalActionFailure(
+            'ACTION_PREFLIGHT_EXPIRED',
+            'The preflight does not belong to this External Action.',
           );
         }
         if (manifest.externalRevision !== request.expectedExternalRevision) {
@@ -1007,7 +1065,7 @@ export class FrontendExternalActionProductCoordinator {
           resourceProjectId: action.resourceProjectId,
           effectiveProjectId: action.effectiveProjectId,
           idempotencyKey: request.idempotencyKey,
-          status: 'PENDING',
+          status: 'IN_PROGRESS',
           policyContextRevision: action.policyContextRevision,
           externalRevision: manifest.externalRevision,
           correlationId: generatedIdentity('corr'),
@@ -1026,23 +1084,60 @@ export class FrontendExternalActionProductCoordinator {
           startedAt: now,
           latestAttemptRef: externalActionResourceRef('attempt', attempt.attemptId, 1),
         };
-        const engineResult = await this.engine.execute({
-          scope: this.engineScope(scope),
-          actionId: action.actionId,
-          actionRevision: action.actionRevision,
-          operation: action.operation,
-          targetRef:
-            action.targetRef ??
-            externalActionFailure(
-              'EXTERNAL_ACTION_NOT_FOUND',
-              'The External Action is access-restricted.',
-            ),
-          manifest,
-          attempt,
-        });
+        // Phase 1 persists the started attempt/execution (recoverable).
+        await repositories.attempts.insert(attempt);
+        await repositories.executions.insert(execution);
+        const executing: ExternalActionV1 = {
+          ...action,
+          actionRevision: action.actionRevision + 1,
+          status: 'EXECUTING',
+          latestExecutionRef: externalActionResourceRef('execution', executionId),
+          updatedAt: now,
+        };
+        await repositories.aggregates.update(executing);
+        return {
+          producedResources: [
+            {
+              resourceKind: FRONTEND_EXTERNAL_ACTION_RESOURCE_KIND.action,
+              resourceId: action.actionId,
+            },
+            {
+              resourceKind: FRONTEND_EXTERNAL_ACTION_RESOURCE_KIND.execution,
+              resourceId: executionId,
+            },
+            {
+              resourceKind: FRONTEND_EXTERNAL_ACTION_RESOURCE_KIND.attempt,
+              resourceId: attempt.attemptId,
+            },
+          ],
+          engineInput: {
+            scope: this.engineScope(scope),
+            actionId: action.actionId,
+            actionRevision: action.actionRevision,
+            operation: action.operation,
+            targetRef:
+              action.targetRef ??
+              externalActionFailure(
+                'EXTERNAL_ACTION_NOT_FOUND',
+                'The External Action is access-restricted.',
+              ),
+            manifest,
+            attempt,
+          },
+        };
+      },
+      finalize: async (repositories, engineResult) => {
+        const action = await repositories.aggregates.findById(request.actionId);
+        if (!action) {
+          externalActionFailure('EXTERNAL_ACTION_NOT_FOUND', 'The External Action was not found.');
+        }
+        const executionId = action.latestExecutionRef?.resourceId ?? '';
+        const attempts = await repositories.attempts.lockByExecution(executionId);
+        const attempt = attempts[0];
+        if (!attempt) {
+          externalActionFailure('ACTION_OUTCOME_NOT_FOUND', 'The execution attempt was not found.');
+        }
         const completedAt = this.nowIso();
-        // Append-only: the attempt is inserted exactly once in its terminal
-        // state, so the domain resource always survives for recovery.
         const finalAttempt: ExecutionAttemptV1 = {
           ...attempt,
           status: engineResult.status,
@@ -1054,13 +1149,17 @@ export class FrontendExternalActionProductCoordinator {
               )
             : undefined,
         };
+        await repositories.attempts.insert(finalAttempt);
+        const execution = await repositories.executions.findById(executionId);
+        if (!execution) {
+          externalActionFailure('ACTION_OUTCOME_NOT_FOUND', 'The execution was not found.');
+        }
         const finalExecution: ExecutionV1 = {
           ...execution,
           status: engineResult.status,
           completedAt,
         };
-        await repositories.attempts.insert(finalAttempt);
-        await repositories.executions.insert(finalExecution);
+        await repositories.executions.update(finalExecution);
         await this.updateBudget(repositories, scope.activeProjectId, 1);
         const updated: ExternalActionV1 = {
           ...action,
@@ -1084,7 +1183,7 @@ export class FrontendExternalActionProductCoordinator {
             : 'External action executed.',
           await this.nextAuditSequence(repositories, action.actionId),
         );
-        return {
+        const result: ExecuteExternalActionResultV1 = {
           schemaVersion: '1.0.0',
           outcome: engineResult.status === 'OUTCOME_UNKNOWN' ? 'OUTCOME_UNKNOWN' : 'COMPLETED',
           clientRequestId: request.clientRequestId,
@@ -1094,21 +1193,8 @@ export class FrontendExternalActionProductCoordinator {
           execution: finalExecution,
           attempt: finalAttempt,
         };
+        return result;
       },
-      producedResources: (result) => [
-        {
-          resourceKind: FRONTEND_EXTERNAL_ACTION_RESOURCE_KIND.action,
-          resourceId: result.actionId,
-        },
-        {
-          resourceKind: FRONTEND_EXTERNAL_ACTION_RESOURCE_KIND.execution,
-          resourceId: result.execution.executionId,
-        },
-        {
-          resourceKind: FRONTEND_EXTERNAL_ACTION_RESOURCE_KIND.attempt,
-          resourceId: result.attempt.attemptId,
-        },
-      ],
     });
   }
 
@@ -1118,13 +1204,13 @@ export class FrontendExternalActionProductCoordinator {
   ): Promise<RetryExecutionAttemptResultV1> {
     this.requireCapability(scope, 'RETRY_EXECUTION_ATTEMPT');
     const commandSemanticDigest = frontendExternalActionRetryDigest(request);
-    return this.runCommand<RetryExecutionAttemptResultV1>({
+    return this.runConnectorCommand<RetryExecutionAttemptResultV1>({
       scope,
       commandType: FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.retryAttempt,
       request,
       commandSemanticDigest,
       resourceProjectId: scope.activeProjectId,
-      actionOnRepositories: async (repositories) => {
+      persistStarted: async (repositories) => {
         const action = await this.aggregateFor(repositories, request.actionId);
         this.assertProjectAndPolicy(action, scope);
         const execution = await repositories.executions.findById(request.executionId);
@@ -1209,20 +1295,114 @@ export class FrontendExternalActionProductCoordinator {
             'The connector credential is not configured.',
           );
         }
-        const engineResult = await this.engine.execute({
+        // Retry runs a NEW target-state preflight before re-executing; the
+        // stored external revision comparison alone is not enough (AC-08).
+        const preflight: PreflightV1 = {
+          schemaVersion: '1.0.0',
+          preflightId: generatedIdentity('preflight'),
+          concreteKind: 'PREFLIGHT',
+          actionId: action.actionId,
+          resourceProjectId: action.resourceProjectId,
+          effectiveProjectId: action.effectiveProjectId,
+          manifestRevision: manifest.manifestRevision,
+          preflightDigest: commandSemanticDigest,
+          status: 'DENIED',
+          reasons: [],
+          permissionRevalidated: true,
+          credentialRevalidated: true,
+          budgetRevalidated: true,
+          policyRevalidated: true,
+          targetStateRevalidated: false,
+          externalRevisionRevalidated: false,
+          runAt: now,
+          expiresAt: new Date(Date.parse(now) + 30 * 60 * 1000).toISOString(),
+        };
+        const retryTargetRef =
+          action.targetRef ??
+          externalActionFailure(
+            'EXTERNAL_ACTION_NOT_FOUND',
+            'The External Action is access-restricted.',
+          );
+        const outcome = await this.engine.preflight({
           scope: this.engineScope(scope),
           actionId: action.actionId,
           actionRevision: action.actionRevision,
           operation: action.operation,
-          targetRef:
-            action.targetRef ??
-            externalActionFailure(
-              'EXTERNAL_ACTION_NOT_FOUND',
-              'The External Action is access-restricted.',
-            ),
+          targetRef: retryTargetRef,
           manifest,
-          attempt,
+          preflight,
         });
+        if (outcome.status === 'ALREADY_APPLIED') {
+          externalActionFailure(
+            'EXTERNAL_TARGET_CHANGED',
+            'The operation is already applied externally; the retry is blocked.',
+          );
+        }
+        if (outcome.status === 'DENIED') {
+          externalActionFailure(
+            'ACTION_PREFLIGHT_FAILED',
+            outcome.reason ?? 'The retry preflight revalidation failed.',
+          );
+        }
+        await repositories.preflights.insert({
+          ...preflight,
+          status: 'READY',
+          targetStateRevalidated: outcome.targetStateRevalidated,
+          externalRevisionRevalidated: outcome.externalRevisionRevalidated,
+        });
+        // Phase 1 persists the started retry attempt/execution (recoverable).
+        await repositories.attempts.insert(attempt);
+        const retryingExecution: ExecutionV1 = {
+          ...execution,
+          status: 'IN_PROGRESS',
+          attemptCount: attemptNumber,
+          latestAttemptRef: externalActionResourceRef('attempt', attempt.attemptId, attemptNumber),
+        };
+        await repositories.executions.update(retryingExecution);
+        const retrying: ExternalActionV1 = {
+          ...action,
+          actionRevision: action.actionRevision + 1,
+          status: 'EXECUTING',
+          updatedAt: now,
+        };
+        await repositories.aggregates.update(retrying);
+        return {
+          producedResources: [
+            {
+              resourceKind: FRONTEND_EXTERNAL_ACTION_RESOURCE_KIND.action,
+              resourceId: action.actionId,
+            },
+            {
+              resourceKind: FRONTEND_EXTERNAL_ACTION_RESOURCE_KIND.execution,
+              resourceId: execution.executionId,
+            },
+            {
+              resourceKind: FRONTEND_EXTERNAL_ACTION_RESOURCE_KIND.attempt,
+              resourceId: attempt.attemptId,
+            },
+          ],
+          engineInput: {
+            scope: this.engineScope(scope),
+            actionId: action.actionId,
+            actionRevision: action.actionRevision,
+            operation: action.operation,
+            targetRef: retryTargetRef,
+            manifest,
+            attempt,
+          },
+        };
+      },
+      finalize: async (repositories, engineResult) => {
+        const action = await repositories.aggregates.findById(request.actionId);
+        if (!action) {
+          externalActionFailure('EXTERNAL_ACTION_NOT_FOUND', 'The External Action was not found.');
+        }
+        const executionId = action.latestExecutionRef?.resourceId ?? request.executionId;
+        const attempts = await repositories.attempts.lockByExecution(executionId);
+        const attempt = attempts[attempts.length - 1];
+        if (!attempt) {
+          externalActionFailure('ACTION_OUTCOME_NOT_FOUND', 'The execution attempt was not found.');
+        }
         const completedAt = this.nowIso();
         const finalAttempt: ExecutionAttemptV1 = {
           ...attempt,
@@ -1236,11 +1416,19 @@ export class FrontendExternalActionProductCoordinator {
             : undefined,
         };
         await repositories.attempts.insert(finalAttempt);
+        const execution = await repositories.executions.findById(executionId);
+        if (!execution) {
+          externalActionFailure('ACTION_OUTCOME_NOT_FOUND', 'The execution was not found.');
+        }
         const finalExecution: ExecutionV1 = {
           ...execution,
           status: engineResult.status,
-          attemptCount: attemptNumber,
-          latestAttemptRef: externalActionResourceRef('attempt', attempt.attemptId, attemptNumber),
+          attemptCount: attempts.length,
+          latestAttemptRef: externalActionResourceRef(
+            'attempt',
+            attempt.attemptId,
+            attempt.attemptNumber,
+          ),
           completedAt,
         };
         await repositories.executions.update(finalExecution);
@@ -1257,6 +1445,15 @@ export class FrontendExternalActionProductCoordinator {
           updatedAt: completedAt,
         };
         await repositories.aggregates.update(updated);
+        await this.appendAudit(
+          repositories,
+          updated,
+          engineResult.status === 'OUTCOME_UNKNOWN' ? 'ACTION_OUTCOME_UNKNOWN' : 'ACTION_EXECUTED',
+          engineResult.status === 'OUTCOME_UNKNOWN'
+            ? 'Retry completed with an unknown outcome.'
+            : 'External action retried.',
+          await this.nextAuditSequence(repositories, action.actionId),
+        );
         return {
           schemaVersion: '1.0.0',
           outcome: engineResult.status === 'OUTCOME_UNKNOWN' ? 'OUTCOME_UNKNOWN' : 'COMPLETED',
@@ -1267,16 +1464,6 @@ export class FrontendExternalActionProductCoordinator {
           attempt: finalAttempt,
         };
       },
-      producedResources: (result) => [
-        {
-          resourceKind: FRONTEND_EXTERNAL_ACTION_RESOURCE_KIND.action,
-          resourceId: result.actionId,
-        },
-        {
-          resourceKind: FRONTEND_EXTERNAL_ACTION_RESOURCE_KIND.attempt,
-          resourceId: result.attempt.attemptId,
-        },
-      ],
     });
   }
 
@@ -1308,12 +1495,33 @@ export class FrontendExternalActionProductCoordinator {
             'Only a SUCCEEDED execution can be verified against the external target state.',
           );
         }
+        // Verification is pinned to the actual SUCCEEDED, latest attempt
+        // (matching latestAttemptRef) with a real provider reference.
+        const attempts = await repositories.attempts.lockByExecution(execution.executionId);
+        const latestAttempt = attempts[attempts.length - 1];
+        const latestAttemptRef = execution.latestAttemptRef;
+        if (
+          !latestAttempt ||
+          latestAttempt.status !== 'SUCCEEDED' ||
+          !latestAttempt.providerRef ||
+          latestAttemptRef === undefined ||
+          latestAttemptRef.resourceId !== latestAttempt.attemptId
+        ) {
+          externalActionFailure(
+            'ACTION_VERIFICATION_REQUIRED',
+            'Verification requires the latest SUCCEEDED attempt with a provider reference.',
+          );
+        }
         if (request.attemptId !== undefined) {
           const attempt = await repositories.attempts.findById(request.attemptId);
-          if (!attempt || attempt.executionId !== execution.executionId) {
+          if (
+            !attempt ||
+            attempt.executionId !== execution.executionId ||
+            attempt.attemptId !== latestAttempt.attemptId
+          ) {
             externalActionFailure(
               'EXTERNAL_ACTION_NOT_FOUND',
-              'The requested attempt does not belong to this execution.',
+              'The requested attempt is not the latest SUCCEEDED attempt of this execution.',
             );
           }
         }
@@ -1360,7 +1568,7 @@ export class FrontendExternalActionProductCoordinator {
           resourceProjectId: action.resourceProjectId,
           effectiveProjectId: action.effectiveProjectId,
           executionId: execution.executionId,
-          attemptId: request.attemptId,
+          attemptId: latestAttempt.attemptId,
           targetRevision: target.targetRevision,
           targetDigest,
           externalRevision: target.externalRevision,
@@ -1370,13 +1578,16 @@ export class FrontendExternalActionProductCoordinator {
         };
         await repositories.verifications.insert(verification);
         if (outcome.status === 'APPLIED') {
-          // Result external identity is derived from the connector execution
-          // (provider ref), never fabricated.
-          const attempts = await repositories.attempts.findByExecution(execution.executionId);
-          const providerAttempt = request.attemptId
-            ? (attempts.find((entry) => entry.attemptId === request.attemptId) ?? attempts[0])
-            : attempts[0];
-          const externalId = providerAttempt?.providerRef?.resourceId ?? execution.executionId;
+          // Result external identity is derived ONLY from the connector
+          // provider ref of the pinned attempt — never fabricated.
+          const providerRef = latestAttempt.providerRef;
+          if (!providerRef) {
+            externalActionFailure(
+              'ACTION_VERIFICATION_MISMATCH',
+              'The verified attempt has no provider reference.',
+            );
+          }
+          const externalId = providerRef.resourceId;
           const result: ResultV1 = {
             schemaVersion: '1.0.0',
             resultId: generatedIdentity('result'),
@@ -1384,7 +1595,7 @@ export class FrontendExternalActionProductCoordinator {
             resourceProjectId: action.resourceProjectId,
             effectiveProjectId: action.effectiveProjectId,
             executionId: execution.executionId,
-            attemptId: providerAttempt?.attemptId,
+            attemptId: latestAttempt.attemptId,
             externalId,
             observedDigest: outcome.observedDigest ?? targetDigest,
             completedAt: now,
@@ -1499,13 +1710,13 @@ export class FrontendExternalActionProductCoordinator {
   ): Promise<RollbackExternalActionResultV1> {
     this.requireCapability(scope, 'ROLLBACK_EXTERNAL_ACTION');
     const commandSemanticDigest = frontendExternalActionRollbackDigest(request);
-    return this.runCommand<RollbackExternalActionResultV1>({
+    return this.runConnectorCommand<RollbackExternalActionResultV1>({
       scope,
       commandType: FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.rollback,
       request,
       commandSemanticDigest,
       resourceProjectId: scope.activeProjectId,
-      actionOnRepositories: async (repositories) => {
+      persistStarted: async (repositories) => {
         const action = await this.aggregateFor(repositories, request.actionId);
         this.assertProjectAndPolicy(action, scope);
         if (!(
@@ -1610,6 +1821,21 @@ export class FrontendExternalActionProductCoordinator {
           status: 'ACTIVE',
         };
         await repositories.approvals.insert(rollbackApproval);
+        // Rollback has its OWN risk decision (rollback semantics), never a
+        // reuse of the forward-operation decision (AC-11/ADR-129).
+        const rollbackRiskDecision: RiskDecisionV1 = {
+          schemaVersion: '1.0.0',
+          riskDecisionId: generatedIdentity('risk'),
+          actionId: action.actionId,
+          resourceProjectId: action.resourceProjectId,
+          effectiveProjectId: action.effectiveProjectId,
+          riskLevel: 'R2',
+          policyVersion: 'stage11.action-risk.v1',
+          requiresUserApproval: true,
+          reasons: ['ROLLBACK', 'REVERSAL'],
+          decidedAt: now,
+        };
+        await repositories.riskDecisions.insert(rollbackRiskDecision);
         const rollbackId = generatedIdentity('rollback');
         const rollback: RollbackV1 = {
           schemaVersion: '1.0.0',
@@ -1628,7 +1854,9 @@ export class FrontendExternalActionProductCoordinator {
           updatedAt: now,
         };
         await repositories.rollbacks.insert(rollback);
-        // Rollback execution (governed, through the engine port).
+        // Rollback execution (governed, through the engine port). The attempt
+        // starts IN_PROGRESS inside transaction 1 so a connector failure is
+        // recoverable through the original command identity.
         const rollbackExecutionId = generatedIdentity('execution');
         const rollbackAttempt: ExecutionAttemptV1 = {
           schemaVersion: '1.0.0',
@@ -1639,7 +1867,7 @@ export class FrontendExternalActionProductCoordinator {
           resourceProjectId: action.resourceProjectId,
           effectiveProjectId: action.effectiveProjectId,
           idempotencyKey: request.idempotencyKey,
-          status: 'PENDING',
+          status: 'IN_PROGRESS',
           policyContextRevision: action.policyContextRevision,
           externalRevision: sourceManifest.externalRevision,
           correlationId: generatedIdentity('corr'),
@@ -1658,25 +1886,127 @@ export class FrontendExternalActionProductCoordinator {
           startedAt: now,
           latestAttemptRef: externalActionResourceRef('attempt', rollbackAttempt.attemptId, 1),
         };
-        const engineResult = await this.engine.execute({
+        const rollbackTargetRef =
+          action.targetRef ??
+          externalActionFailure(
+            'EXTERNAL_ACTION_NOT_FOUND',
+            'The External Action is access-restricted.',
+          );
+        // Rollback runs its OWN target-state preflight (rollback semantics)
+        // before the connector executes the reversal (AC-11/ADR-129).
+        const rollbackPreflight: PreflightV1 = {
+          schemaVersion: '1.0.0',
+          preflightId: generatedIdentity('preflight'),
+          concreteKind: 'PREFLIGHT',
+          actionId: action.actionId,
+          resourceProjectId: action.resourceProjectId,
+          effectiveProjectId: action.effectiveProjectId,
+          manifestRevision: rollbackManifestRevision,
+          preflightDigest: commandSemanticDigest,
+          status: 'DENIED',
+          reasons: [],
+          permissionRevalidated: true,
+          credentialRevalidated: true,
+          budgetRevalidated: true,
+          policyRevalidated: true,
+          targetStateRevalidated: false,
+          externalRevisionRevalidated: false,
+          runAt: now,
+          expiresAt: new Date(Date.parse(now) + 30 * 60 * 1000).toISOString(),
+        };
+        const preflightOutcome = await this.engine.preflight({
           scope: this.engineScope(scope),
           actionId: action.actionId,
           actionRevision: action.actionRevision,
           operation: action.operation,
-          targetRef:
-            action.targetRef ??
-            externalActionFailure(
-              'EXTERNAL_ACTION_NOT_FOUND',
-              'The External Action is access-restricted.',
-            ),
+          targetRef: rollbackTargetRef,
           manifest: rollbackManifest,
-          attempt: rollbackAttempt,
+          preflight: rollbackPreflight,
         });
+        if (preflightOutcome.status === 'ALREADY_APPLIED') {
+          externalActionFailure(
+            'EXTERNAL_TARGET_CHANGED',
+            'The reversal is already applied externally; the rollback is blocked.',
+          );
+        }
+        if (preflightOutcome.status === 'DENIED') {
+          externalActionFailure(
+            'ACTION_PREFLIGHT_FAILED',
+            preflightOutcome.reason ?? 'The rollback preflight revalidation failed.',
+          );
+        }
+        await repositories.preflights.insert({
+          ...rollbackPreflight,
+          status: 'READY',
+          targetStateRevalidated: preflightOutcome.targetStateRevalidated,
+          externalRevisionRevalidated: preflightOutcome.externalRevisionRevalidated,
+        });
+        // Phase 1 persists the started rollback attempt/execution (recoverable).
+        await repositories.attempts.insert(rollbackAttempt);
+        await repositories.executions.insert(rollbackExecution);
+        const rollingBack: ExternalActionV1 = {
+          ...action,
+          actionRevision: action.actionRevision + 1,
+          status: 'EXECUTING',
+          latestExecutionRef: externalActionResourceRef('execution', rollbackExecutionId),
+          updatedAt: now,
+        };
+        await repositories.aggregates.update(rollingBack);
+        return {
+          producedResources: [
+            {
+              resourceKind: FRONTEND_EXTERNAL_ACTION_RESOURCE_KIND.action,
+              resourceId: action.actionId,
+            },
+            {
+              resourceKind: FRONTEND_EXTERNAL_ACTION_RESOURCE_KIND.execution,
+              resourceId: rollbackExecutionId,
+            },
+            {
+              resourceKind: FRONTEND_EXTERNAL_ACTION_RESOURCE_KIND.rollback,
+              resourceId: rollbackId,
+            },
+          ],
+          engineInput: {
+            scope: this.engineScope(scope),
+            actionId: action.actionId,
+            actionRevision: action.actionRevision,
+            operation: action.operation,
+            targetRef: rollbackTargetRef,
+            manifest: rollbackManifest,
+            attempt: rollbackAttempt,
+          },
+        };
+      },
+      finalize: async (repositories, engineResult) => {
+        const action = await repositories.aggregates.findById(request.actionId);
+        if (!action) {
+          externalActionFailure('EXTERNAL_ACTION_NOT_FOUND', 'The External Action was not found.');
+        }
+        const rollbackExecutionId = action.latestExecutionRef?.resourceId ?? '';
+        const attempts = await repositories.attempts.lockByExecution(rollbackExecutionId);
+        const rollbackAttempt = attempts[0];
+        if (!rollbackAttempt) {
+          externalActionFailure('ACTION_OUTCOME_NOT_FOUND', 'The rollback attempt was not found.');
+        }
+        const rollbackExecution = await repositories.executions.findById(rollbackExecutionId);
+        if (!rollbackExecution) {
+          externalActionFailure(
+            'ACTION_OUTCOME_NOT_FOUND',
+            'The rollback execution was not found.',
+          );
+        }
         const rollbackCompletedAt = this.nowIso();
         const finalRollbackAttempt: ExecutionAttemptV1 = {
           ...rollbackAttempt,
           status: engineResult.status,
           completedAt: rollbackCompletedAt,
+          providerRef: engineResult.externalId
+            ? externalActionResourceRef(
+                'provider',
+                `${this.engine.identity.connectorId}:${engineResult.externalId}`,
+              )
+            : undefined,
         };
         const finalRollbackExecution: ExecutionV1 = {
           ...rollbackExecution,
@@ -1685,9 +2015,20 @@ export class FrontendExternalActionProductCoordinator {
         };
         await repositories.attempts.insert(finalRollbackAttempt);
         await repositories.executions.insert(finalRollbackExecution);
+        const existingRollback = await repositories.rollbacks.find(action.actionId);
+        if (!existingRollback) {
+          externalActionFailure('EXTERNAL_ACTION_NOT_FOUND', 'The rollback was not found.');
+        }
+        // Connector success alone never confirms the reversal: ROLLED_BACK is
+        // reached only through a SUCCEEDED rollback execution (AC-11).
         const rolledBack: RollbackV1 = {
-          ...rollback,
-          status: engineResult.status === 'SUCCEEDED' ? 'ROLLED_BACK' : 'FAILED',
+          ...existingRollback,
+          status:
+            engineResult.status === 'SUCCEEDED'
+              ? 'ROLLED_BACK'
+              : engineResult.status === 'OUTCOME_UNKNOWN'
+                ? 'OUTCOME_UNKNOWN'
+                : 'FAILED',
           executionRef: externalActionResourceRef('execution', rollbackExecutionId),
           updatedAt: rollbackCompletedAt,
         };
@@ -1715,16 +2056,6 @@ export class FrontendExternalActionProductCoordinator {
           rollback: rolledBack,
         };
       },
-      producedResources: (result) => [
-        {
-          resourceKind: FRONTEND_EXTERNAL_ACTION_RESOURCE_KIND.action,
-          resourceId: result.actionId,
-        },
-        {
-          resourceKind: FRONTEND_EXTERNAL_ACTION_RESOURCE_KIND.rollback,
-          resourceId: result.rollback.rollbackId,
-        },
-      ],
     });
   }
 
@@ -2401,6 +2732,167 @@ export class FrontendExternalActionProductCoordinator {
   // -------------------------------------------------------------------------
   // Command ledger plumbing (mirrors FE-P4-S1)
   // -------------------------------------------------------------------------
+
+  /**
+   * Two-phase governed command for connector-touching operations (execute,
+   * retry, rollback): the PENDING/IN_PROGRESS attempt and execution are
+   * persisted and the ledger command is COMPLETED inside transaction 1; the
+   * connector call runs OUTSIDE the DB transaction; the terminal state is
+   * committed in transaction 2. A connector crash/timeout therefore leaves the
+   * attempt persisted and recoverable through the original command identity —
+   * the ledger is never the only surviving record (ADR-129).
+   */
+  private async runConnectorCommand<T>(input: {
+    readonly scope: FrontendExternalActionScopeV1;
+    readonly commandType: FrontendExternalActionCommandType;
+    readonly request: { readonly clientRequestId: string; readonly idempotencyKey: string };
+    readonly commandSemanticDigest: string;
+    readonly resourceProjectId: string;
+    readonly persistStarted: (repositories: ExternalActionTransactionRepositoriesV1) => Promise<{
+      readonly producedResources: readonly ProducedResourceRef[];
+      readonly engineInput: ExternalActionExecuteRequestV1;
+    }>;
+    readonly finalize: (
+      repositories: ExternalActionTransactionRepositoriesV1,
+      engineResult: ExternalActionExecuteOutcomeV1,
+    ) => Promise<T>;
+  }): Promise<T> {
+    const now = this.nowIso();
+    const commandId = generatedIdentity('cmd');
+    let accepted;
+    try {
+      accepted = await this.commandGateway.accept({
+        commandId,
+        commandRevision: '1',
+        principalId: input.scope.principalId,
+        request: {
+          envelopeVersion: '1.0.0',
+          commandType: input.commandType,
+          commandSchemaVersion: FRONTEND_EXTERNAL_ACTION_API_VERSION,
+          clientRequestId: input.request.clientRequestId,
+          idempotencyKey: input.request.idempotencyKey,
+          projectContext: {
+            activeProjectId: input.scope.activeProjectId,
+            targetProjectId: input.resourceProjectId,
+            resourceProjectId: input.resourceProjectId,
+            observedProjectAccessRevision: input.scope.accessRevision,
+          },
+          policyBinding: {
+            mode: 'CURRENT',
+            observedPolicyContextRevision: input.scope.policyContextRevision,
+          },
+          preconditions: [],
+          clientIssuedAt: now,
+          payload: input.request,
+        },
+        commandSemanticDigest: input.commandSemanticDigest,
+        acceptedPolicyContext: {
+          policyContextId: 'frontend-external-action-current-policy',
+          policyContextRevision: input.scope.policyContextRevision,
+          acceptedAt: now,
+        },
+        correlationId: generatedIdentity('corr'),
+        traceId: generatedIdentity('trace'),
+        receivedAt: now,
+        acceptedAt: now,
+      });
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        'code' in error &&
+        (error.code === 'IDEMPOTENCY_KEY_REUSE_MISMATCH' ||
+          error.code === 'CLIENT_REQUEST_MEANING_MISMATCH')
+      ) {
+        externalActionFailure(
+          'DIGEST_MISMATCH',
+          'The request identity is already bound to different command meaning.',
+        );
+      }
+      throw error;
+    }
+    const outcome = accepted.outcome;
+    const onReplay = async (): Promise<T> =>
+      this.boundary.transaction(async (repositories) => {
+        const resolved = await this.buildResolvedResult(outcome, repositories);
+        return resolved.result as unknown as T;
+      });
+    if (accepted.replayed) {
+      if (outcome.outcomeState === 'COMPLETED') return onReplay();
+      if (outcome.outcomeState === 'REJECTED') {
+        throw new ExternalActionCommandError(
+          (outcome.rejection?.code as ErrorCode) ?? 'ACTION_EXECUTION_NOT_ALLOWED',
+          'The External Action command was rejected.',
+        );
+      }
+      externalActionFailure(
+        'OUTCOME_INDETERMINATE',
+        'The previous command outcome is unresolved; resolve it through the original command identity before retrying.',
+      );
+    }
+
+    // Phase 1: persist the started attempt/execution and COMPLETE the ledger
+    // (atomic). The connector has not been called yet.
+    const started = await this.boundary.transactionWithHandle(async (handle) => {
+      const locked = await this.commandGateway.lockAcceptedForExecution(
+        handle.raw,
+        outcome.commandId,
+      );
+      if (locked.outcomeState === 'COMPLETED') {
+        return { __replayed: true as const };
+      }
+      const persisted = await input.persistStarted(handle.repositories);
+      await this.commandGateway.completeInTransaction(handle.raw, {
+        commandId: outcome.commandId,
+        producedResources: persisted.producedResources,
+        completedAt: this.nowIso(),
+      });
+      return { __replayed: false as const, ...persisted };
+    });
+    if (started.__replayed) return onReplay();
+
+    // Phase 2: connector call outside the DB transaction.
+    let engineResult: ExternalActionExecuteOutcomeV1;
+    try {
+      engineResult = await this.engine.execute(started.engineInput);
+    } catch {
+      engineResult = {
+        status: 'OUTCOME_UNKNOWN',
+        correlationId: started.engineInput.attempt.correlationId,
+      };
+    }
+
+    // Phase 3: commit the terminal state (recoverable; never loses the domain
+    // resource even if the connector threw).
+    try {
+      const result = await this.boundary.transaction((repositories) =>
+        input.finalize(repositories, engineResult),
+      );
+      return result;
+    } catch (error) {
+      try {
+        if (error instanceof ExternalActionCommandError) {
+          await this.commandGateway.reject({
+            commandId: outcome.commandId,
+            code: error.apiCode,
+            message: error.message,
+            completedAt: this.nowIso(),
+          });
+        } else {
+          await this.commandGateway.markOutcomeUnknown({
+            commandId: outcome.commandId,
+            message:
+              error instanceof Error
+                ? error.message
+                : 'External Action command outcome is unresolved.',
+            completedAt: this.nowIso(),
+          });
+        }
+      } catch {
+        // Preserve the original error when the ledger write is unavailable.
+      }
+      throw error;
+    }
+  }
 
   private async runCommand<T>(input: FrontendExternalActionRunCommandInput<T>): Promise<T> {
     const now = this.nowIso();

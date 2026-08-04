@@ -104,6 +104,8 @@ export type ExternalActionAuditStorePort = {
     limit: number,
     offset: number,
   ): Promise<readonly ActionAuditEventV1[]>;
+  /** Monotonic next sequence for an action (append-only authority). */
+  nextSequence(actionId: string): Promise<number>;
 };
 
 export type ExternalActionCompensationStorePort = {

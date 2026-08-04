@@ -141,7 +141,7 @@ export class InMemoryExternalActionStore implements ExternalActionRepositoryBoun
       attempts: this.attemptsFor(maps),
       verifications: this.verificationsFor(maps),
       results: this.resultsFor(maps),
-      audit: this.auditFor(maps),
+      audit: this.auditsFor(maps),
       compensations: this.compensationsFor(maps),
       rollbacks: this.rollbacksFor(maps),
       credentials: this.credentialsFor(maps),
@@ -176,7 +176,9 @@ export class InMemoryExternalActionStore implements ExternalActionRepositoryBoun
           (candidate) => candidate.actionId === actionId && candidate.candidateId === candidateId,
         ),
       findByActionId: async (actionId) =>
-        [...maps.candidates.values()].find((candidate) => candidate.actionId === actionId),
+        [...maps.candidates.values()]
+          .filter((candidate) => candidate.actionId === actionId)
+          .sort((a, b) => b.candidateRevision - a.candidateRevision)[0],
       insert: async (candidate) => {
         maps.candidates.set(`${candidate.actionId}:${candidate.candidateId}`, candidate);
       },
@@ -217,9 +219,9 @@ export class InMemoryExternalActionStore implements ExternalActionRepositoryBoun
     return {
       findById: async (approvalId) => maps.approvals.get(approvalId),
       findActiveByAction: async (actionId) =>
-        [...maps.approvals.values()].find(
-          (approval) => approval.actionId === actionId && approval.status === 'ACTIVE',
-        ),
+        [...maps.approvals.values()]
+          .filter((approval) => approval.actionId === actionId && approval.status === 'ACTIVE')
+          .sort((a, b) => Date.parse(b.issuedAt) - Date.parse(a.issuedAt))[0],
       insert: async (approval) => {
         maps.approvals.set(approval.approvalId, approval);
       },
@@ -293,7 +295,7 @@ export class InMemoryExternalActionStore implements ExternalActionRepositoryBoun
     };
   }
 
-  private auditFor(maps: MapSnapshot): ExternalActionAuditStorePort {
+  private auditsFor(maps: MapSnapshot): ExternalActionAuditStorePort {
     return {
       append: async (event) => {
         maps.audit.set(event.auditEventId, event);
@@ -303,6 +305,10 @@ export class InMemoryExternalActionStore implements ExternalActionRepositoryBoun
           .filter((event) => event.actionId === actionId)
           .sort((a, b) => a.sequence - b.sequence)
           .slice(offset, offset + Math.min(limit, EXTERNAL_ACTION_QUEUE_PAGE_SIZE_CAP)),
+      nextSequence: async (actionId) => {
+        const events = [...maps.audit.values()].filter((event) => event.actionId === actionId);
+        return events.length === 0 ? 1 : Math.max(...events.map((event) => event.sequence)) + 1;
+      },
     };
   }
 
@@ -401,6 +407,8 @@ export class FakeExternalActionEngine implements ExternalActionEnginePort {
     private readonly behavior: {
       readonly preflightStatus?: 'READY' | 'ALREADY_APPLIED' | 'DENIED';
       readonly executeStatus?: 'SUCCEEDED' | 'FAILED' | 'OUTCOME_UNKNOWN';
+      readonly retryStatus?: 'SUCCEEDED' | 'FAILED' | 'OUTCOME_UNKNOWN';
+      readonly executeThrows?: boolean;
       readonly verifyStatus?: 'APPLIED' | 'NOT_APPLIED' | 'MISMATCH';
     } = {},
   ) {}
@@ -419,7 +427,15 @@ export class FakeExternalActionEngine implements ExternalActionEnginePort {
   }
 
   async execute(request: ExternalActionExecuteRequestV1): Promise<ExternalActionExecuteOutcomeV1> {
-    const status = this.behavior.executeStatus ?? 'SUCCEEDED';
+    if (this.behavior.executeThrows) {
+      throw new Error('fake connector exploded');
+    }
+    // Retries (attemptNumber > 1) use the retry behavior; the first attempt
+    // uses the execute behavior.
+    const status =
+      request.attempt.attemptNumber > 1
+        ? (this.behavior.retryStatus ?? 'SUCCEEDED')
+        : (this.behavior.executeStatus ?? 'SUCCEEDED');
     return {
       status,
       externalId: status === 'SUCCEEDED' ? `external-${request.attempt.attemptId}` : undefined,

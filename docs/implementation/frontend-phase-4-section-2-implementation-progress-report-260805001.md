@@ -283,7 +283,8 @@ Commit (this report head) — push after report 3 head `49299da0f`.
 
 - `npx vitest run tests/contract/frontend-external-action.contract.test.ts` — **89/89 PASS**.
 - `tsc --noEmit` — clean. ESLint — clean. Prettier — clean.
-- Automatic CI on this head is the remote authority (recorded after the run).
+- Automatic CI on this head `94f9f3eb7` — run **#518** (`30952447917`): Quality, Frontend,
+  Required Gates **SUCCESS**.
 
 ### AC coverage (WP1 after second remediation)
 

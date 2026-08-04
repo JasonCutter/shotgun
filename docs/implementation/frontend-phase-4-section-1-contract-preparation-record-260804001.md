@@ -1,28 +1,30 @@
 ---
 id: FRONTEND-PHASE-4-SECTION-1-CONTRACT-PREPARATION-260804001
 classification: IMPLEMENTATION_PREPARATION_RECORD
-status: CANDIDATE_READY_FOR_USER_REVIEW
+status: APPROVED_FOR_PRODUCT_IMPLEMENTATION
 work_item: FE-P4-S1
 canonical_base: 6ffca675844be445512e06e79bfa5233a71d1b25
 tracking_issue: 62
 draft_pr: 63
-preparation_head: TO_BE_RECORDED_AFTER_EXACT_HEAD_VALIDATION
+validated_preparation_head: ed52e155a348ca5f8f88af4f9757fb720c896877
+approval_authority: USER
+approved_at: 2026-08-04T20:42:00+09:00
 ---
 
-# FE-P4-S1 Review Center — Contract Preparation Record
+# FE-P4-S1 Review Center — Contract Preparation and Implementation Authorization Record
 
-## 1. Prepared artifacts
+## 1. Approved artifacts
 
 - Gap Audit:
   `docs/engineering/frontend-phase-4-section-1-review-center-gap-audit-260804001.md`
-- ADR-128 proposal:
+- ADR-128:
   `docs/architecture/adr/ADR-128-review-context-item-decision-and-purpose-bound-approval-boundary.md`
-- Contract Snapshot proposal:
+- Contract Snapshot revision 1:
   `docs/architecture/contracts/snapshots/frontend-phase-4-section-1/frontend-phase-4-section-1-contract-snapshot-260804001.md`
-- Implementation Request candidate:
+- Implementation Request revision 1:
   `docs/implementation/frontend-phase-4-section-1-implementation-request-260804001.md`
 
-## 2. Candidate decisions
+## 2. Approved decisions
 
 1. V1 targets are Knowledge DraftChangeSet, Discovery Candidate and UserDirectiveProposal.
 2. Review Context uses immutable numbered revisions.
@@ -35,38 +37,35 @@ preparation_head: TO_BE_RECORDED_AFTER_EXACT_HEAD_VALIDATION
 9. Migration 027 is additive and uses the existing Frontend Command Ledger.
 10. `/review` becomes a bounded, accessible Product Workspace.
 
-## 3. Acceptance Criteria candidate
+## 3. Frozen Acceptance Criteria
 
-The Contract Snapshot proposes AC-01 through AC-32. They are not frozen and not run.
+Contract Snapshot revision 1 and AC-01 through AC-32 are approved and frozen for FE-P4-S1 Product implementation.
 
-## 4. Known failed attempt
+## 4. Exact-head validation evidence
 
-Initial Gap Audit Head `3b1417b69259fe5e4720b627f8d7c4409a3d6db4` triggered automatic CI #478
-(run `30903013770`).
+Preparation exact Head `ed52e155a348ca5f8f88af4f9757fb720c896877` triggered automatic CI #480
+(run `30904502465`).
 
+- Quality: PASS.
 - Frontend: PASS.
-- Documentation governance and Frontend Work Item governance: PASS.
-- Quality: FAIL at Prettier formatting for the Gap Audit file.
-- Required Gates: FAIL because Quality failed.
-- No Product, database or runtime test failure was observed before the formatting stop.
-- The failed run is preserved and was not manually rerun.
+- Required Gates: PASS.
+- No manual duplicate CI was triggered.
 
-The formatting correction is included with the full preparation candidate rather than creating a
-duplicate retry on the unchanged Head.
+Historical formatting-only failed attempts remain preserved in PR #63 and Issue #62.
 
 ## 5. Current authority
 
-- Design and contract preparation: authorized.
-- ADR-128: proposed, not accepted.
-- Contract Snapshot and AC: proposed, not frozen.
-- Implementation Request: candidate, not authorized.
-- Product implementation: not started and not authorized.
-- Migration 027: not authorized.
+- ADR-128: accepted by user.
+- Contract Snapshot revision 1: approved and frozen.
+- AC-01 through AC-32: approved and frozen; implementation verification not yet run.
+- Implementation Request revision 1: approved.
+- FE-P4-S1 Product implementation: authorized to start.
+- Migration 027: authorized only as part of FE-P4-S1 Product implementation.
+- Runtime dependency addition: not authorized unless separately justified and approved.
 - Ready and Merge: not authorized.
-- Deployment and Production Verification: not started.
+- Deployment and Production Verification: not started and not authorized.
 - FE-P4-S2 and FE-P5: not authorized.
 
-## 6. Review request
+## 6. Implementation continuation
 
-The next user decision is whether to accept ADR-128, freeze Contract Snapshot revision 1 and AC-01
-through AC-32, approve the Implementation Request and authorize FE-P4-S1 Product implementation.
+Implementation continues on branch `codex/frontend-phase-4-section-1-contract-preparation` and Draft PR #63 unless a repository constraint requires an explicitly documented branch change. The implementation must follow the frozen contract and AC without silently changing the approved design.

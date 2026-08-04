@@ -6,8 +6,11 @@ import {
   frontendReviewAddCommentDigest,
   frontendReviewRecordDecisionsDigest,
   frontendReviewRevalidateDigest,
+  type AcceptedPolicyContext,
   type AddReviewCommentRequestV1,
   type AddReviewCommentResultV1,
+  type AnyFrontendCommandOutcomeView,
+  type AnyFrontendCommandRequest,
   type ErrorCode,
   type GetReviewApprovalRequestV1,
   type GetReviewApprovalResultV1,
@@ -17,6 +20,7 @@ import {
   type GetReviewItemDetailResultV1,
   type ListReviewQueueRequestV1,
   type ListReviewQueueResultV1,
+  type ProducedResourceRef,
   type RecordReviewDecisionsRequestV1,
   type RecordReviewDecisionsResultV1,
   type ResolveReviewCommandOutcomeRequestV1,
@@ -32,7 +36,6 @@ import {
   type ReviewTargetKindV1,
   type TypedPrecondition,
 } from '../../../packages/contracts/src/index.js';
-import type { FrontendCommandGatewayPort } from '../../frontend-command-gateway/src/index.js';
 import { reviewFailure, ReviewCommandError } from './review-error.js';
 import {
   computeAggregateState,
@@ -56,6 +59,59 @@ import type {
 } from './review-target-port.js';
 
 const generatedIdentity = (prefix: string): string => `${prefix}-${randomUUID()}`;
+
+/**
+ * Structural subset of the Frontend command gateway used by the Review product.
+ *
+ * Declared locally (mirroring the ask-write module pattern) so that this domain
+ * module does not import another domain module; the concrete gateway is wired at
+ * the assembly boundary and satisfies this shape structurally.
+ */
+export type FrontendReviewCommandGatewayPort = {
+  accept(input: {
+    readonly commandId: string;
+    readonly commandRevision: string;
+    readonly principalId: string;
+    readonly request: AnyFrontendCommandRequest;
+    readonly commandSemanticDigest: string;
+    readonly acceptedPolicyContext: AcceptedPolicyContext;
+    readonly correlationId: string;
+    readonly traceId: string;
+    readonly receivedAt: string;
+    readonly acceptedAt: string;
+  }): Promise<{
+    readonly outcome: AnyFrontendCommandOutcomeView;
+    readonly replayed: boolean;
+  }>;
+  lockAcceptedForExecution(
+    transaction: unknown,
+    commandId: string,
+  ): Promise<AnyFrontendCommandOutcomeView>;
+  completeInTransaction(
+    transaction: unknown,
+    input: {
+      readonly commandId: string;
+      readonly producedResources: readonly ProducedResourceRef[];
+      readonly completedAt: string;
+    },
+  ): Promise<AnyFrontendCommandOutcomeView>;
+  reject(input: {
+    readonly commandId: string;
+    readonly code: ErrorCode;
+    readonly message: string;
+    readonly correlationId?: string;
+    readonly completedAt: string;
+  }): Promise<AnyFrontendCommandOutcomeView>;
+  markOutcomeUnknown(input: {
+    readonly commandId: string;
+    readonly message: string;
+    readonly completedAt: string;
+  }): Promise<AnyFrontendCommandOutcomeView>;
+  findByClientRequestId(
+    principalId: string,
+    clientRequestId: string,
+  ): Promise<AnyFrontendCommandOutcomeView | null>;
+};
 
 export const FRONTEND_REVIEW_RESOURCE_KIND = {
   context: 'frontend.review.context',
@@ -124,7 +180,7 @@ type FrontendReviewRunCommandInput<T> = {
 export class FrontendReviewProductCoordinator {
   constructor(
     private readonly boundary: ReviewRepositoryBoundaryPort,
-    private readonly commandGateway: FrontendCommandGatewayPort,
+    private readonly commandGateway: FrontendReviewCommandGatewayPort,
     private readonly targetAdapters: readonly ReviewTargetAdapterPort[],
     private readonly now?: () => Date,
   ) {}
@@ -984,7 +1040,7 @@ export class FrontendReviewProductCoordinator {
   }
 
   private async completedFromOutcome(
-    outcome: Awaited<ReturnType<FrontendCommandGatewayPort['findByClientRequestId']>>,
+    outcome: Awaited<ReturnType<FrontendReviewCommandGatewayPort['findByClientRequestId']>>,
   ): Promise<NonNullable<ResolveReviewCommandOutcomeResultV1['completed']>> {
     if (!outcome) {
       reviewFailure('OUTCOME_NOT_FOUND', 'The command outcome is unavailable.');
@@ -1313,7 +1369,7 @@ export class FrontendReviewProductCoordinator {
   }
 
   private producedResource(
-    outcome: Awaited<ReturnType<FrontendCommandGatewayPort['findByClientRequestId']>>,
+    outcome: Awaited<ReturnType<FrontendReviewCommandGatewayPort['findByClientRequestId']>>,
     resourceKind: string,
   ): { readonly resourceId: string; readonly resourceRevision?: string } | undefined {
     if (!outcome) return undefined;
@@ -1321,7 +1377,7 @@ export class FrontendReviewProductCoordinator {
   }
 
   private outcomeTargetProjectId(
-    outcome: Awaited<ReturnType<FrontendCommandGatewayPort['findByClientRequestId']>>,
+    outcome: Awaited<ReturnType<FrontendReviewCommandGatewayPort['findByClientRequestId']>>,
   ): string {
     if (!outcome) {
       reviewFailure('COMMAND_SCOPE_MISMATCH', 'The command outcome is missing.');

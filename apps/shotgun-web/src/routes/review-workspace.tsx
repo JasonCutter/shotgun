@@ -210,13 +210,13 @@ export const ReviewWorkspace = () => {
         dispatch({ type: 'SELECT_ITEM', reviewItemId: item.reviewItemId });
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     contextQuery.isPending,
     contextQuery.isError,
     contextQuery.data,
     contextQuery.error,
     contextRequest,
+    state.selectedItemId,
   ]);
 
   const itemScope = contextRequest && state.selectedItemId ? scope : null;

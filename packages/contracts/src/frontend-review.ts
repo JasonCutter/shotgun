@@ -519,6 +519,8 @@ export type GetReviewItemDetailResultV1 = {
 
 export type RevalidateReviewContextRequestV1 = {
   schemaVersion: '1.0.0';
+  clientRequestId: string;
+  idempotencyKey: string;
   reviewContextId: string;
   contextRevision: number;
   reason?: string;
@@ -542,6 +544,8 @@ export type ReviewItemDecisionInputV1 = {
 
 export type RecordReviewDecisionsRequestV1 = {
   schemaVersion: '1.0.0';
+  clientRequestId: string;
+  idempotencyKey: string;
   reviewContextId: string;
   expectedContextRevision: number;
   expectedTargetRevision: string;
@@ -567,6 +571,8 @@ export type RecordReviewDecisionsResultV1 = {
 
 export type AddReviewCommentRequestV1 = {
   schemaVersion: '1.0.0';
+  clientRequestId: string;
+  idempotencyKey: string;
   reviewContextId: string;
   contextRevision: number;
   reviewItemId?: string;
@@ -734,11 +740,6 @@ const isoTimestamp = (value: unknown, path: string): string => {
   const result = text(value, path);
   if (Number.isNaN(Date.parse(result))) return fail(path, 'must be an ISO timestamp');
   return result;
-};
-
-const optionalIsoTimestamp = (value: unknown, path: string): string | undefined => {
-  if (value === undefined) return undefined;
-  return isoTimestamp(value, path);
 };
 
 const decodeReviewSchemaVersion = (object: ObjectValue, path: string): void => {
@@ -1528,12 +1529,21 @@ export const decodeRevalidateReviewContextRequestV1 = (
 ): RevalidateReviewContextRequestV1 => {
   const object = strictObject(
     value,
-    ['schemaVersion', 'reviewContextId', 'contextRevision', 'reason'],
+    [
+      'schemaVersion',
+      'clientRequestId',
+      'idempotencyKey',
+      'reviewContextId',
+      'contextRevision',
+      'reason',
+    ],
     path,
   );
   decodeReviewSchemaVersion(object, path);
   return {
     schemaVersion: '1.0.0',
+    clientRequestId: text(required(object, 'clientRequestId', path), `${path}.clientRequestId`),
+    idempotencyKey: text(required(object, 'idempotencyKey', path), `${path}.idempotencyKey`),
     reviewContextId: text(required(object, 'reviewContextId', path), `${path}.reviewContextId`),
     contextRevision: integer(required(object, 'contextRevision', path), `${path}.contextRevision`),
     reason: optionalText(object.reason, `${path}.reason`),
@@ -1593,6 +1603,8 @@ export const decodeRecordReviewDecisionsRequestV1 = (
     value,
     [
       'schemaVersion',
+      'clientRequestId',
+      'idempotencyKey',
       'reviewContextId',
       'expectedContextRevision',
       'expectedTargetRevision',
@@ -1631,6 +1643,8 @@ export const decodeRecordReviewDecisionsRequestV1 = (
   }
   return {
     schemaVersion: '1.0.0',
+    clientRequestId: text(required(object, 'clientRequestId', path), `${path}.clientRequestId`),
+    idempotencyKey: text(required(object, 'idempotencyKey', path), `${path}.idempotencyKey`),
     reviewContextId: text(required(object, 'reviewContextId', path), `${path}.reviewContextId`),
     expectedContextRevision: integer(
       required(object, 'expectedContextRevision', path),
@@ -1718,12 +1732,22 @@ export const decodeAddReviewCommentRequestV1 = (
 ): AddReviewCommentRequestV1 => {
   const object = strictObject(
     value,
-    ['schemaVersion', 'reviewContextId', 'contextRevision', 'reviewItemId', 'comment'],
+    [
+      'schemaVersion',
+      'clientRequestId',
+      'idempotencyKey',
+      'reviewContextId',
+      'contextRevision',
+      'reviewItemId',
+      'comment',
+    ],
     path,
   );
   decodeReviewSchemaVersion(object, path);
   return {
     schemaVersion: '1.0.0',
+    clientRequestId: text(required(object, 'clientRequestId', path), `${path}.clientRequestId`),
+    idempotencyKey: text(required(object, 'idempotencyKey', path), `${path}.idempotencyKey`),
     reviewContextId: text(required(object, 'reviewContextId', path), `${path}.reviewContextId`),
     contextRevision: integer(required(object, 'contextRevision', path), `${path}.contextRevision`),
     reviewItemId: optionalText(object.reviewItemId, `${path}.reviewItemId`),

@@ -9,16 +9,16 @@ governing_adr: ADR-127
 governing_contract: docs/architecture/contracts/snapshots/frontend-phase-3-section-3/frontend-phase-3-section-3-contract-snapshot-260804001.md
 implementation_request: docs/implementation/frontend-phase-3-section-3-implementation-request-260804001.md
 branch: codex/frontend-phase-3-section-3-implementation
-exact_head: fe29ad786a9625b17f683cba618d1556476ee341
+exact_head: 8ae9d8075561cffcd5735cd3cf336fa153990679
 pull_request: https://github.com/JasonCutter/shotgun/pull/60
 tracking_issue: 58
-local_final_check_exit_code: 1
+final_check_exit_code: 0
 local_component_suites: PASS
 remote_exact_head_ci: PASS
 git_diff_check: PASS
 npm_audit_high: 0
-ci_run_number: 466
-ci_run_id: 30877904906
+ci_run_number: 468
+ci_run_id: 30895600777
 completion_approval: NOT_AUTHORIZED
 ready: NOT_AUTHORIZED
 merge: NOT_AUTHORIZED
@@ -33,12 +33,15 @@ production_verification: NOT_RUN
 This report records the completed Product implementation of FE-P3-S3 on
 branch `codex/frontend-phase-3-section-3-implementation` (Draft PR #60, issue
 #58), under the approved Implementation Request revision 5. Verified Product
-head: `fe29ad786a9625b17f683cba618d1556476ee341`. The round-2 Frozen-AC
+head: `8ae9d8075561cffcd5735cd3cf336fa153990679`. The round-2 Frozen-AC
 completion work (audit remediation, managed-schema reset fix, AC-05..AC-29
-objective evidence, migration rollback, performance/lifecycle suites) and the
+objective evidence, migration rollback, performance/lifecycle suites), the
 round-3 evidence closure (AC-08 non-color visual signatures + screenshot,
 AC-19 four-view tuple equality including canvas, AC-20 full keyboard matrix,
-AC-22 200% content-loss verification, AC-23 raw samples) are incorporated.
+AC-22 200% content-loss verification, AC-23 raw samples) and the round-4
+fixes (AC-18 canvas refresh rebuild on snapshot-identity remount, AC-20
+region-traversal Tab evidence, observed `final_check_exit_code: 0`) are
+incorporated.
 Completion/ready/merge remain `NOT_AUTHORIZED`; this is the implementation
 completion report, not a Section completion declaration. AC-31 is `BLOCKED —
 PENDING_USER_COMPLETION_APPROVAL`.
@@ -108,19 +111,17 @@ refresh, restore) — each covered by an explicit contract suite (AC-28).
   frozen-AC integration 6/6; negative 8/8; migration rollback 1/1.
 - Database suite 28 files / 146 tests PASS; frontend app 54/54 PASS;
   frontend typecheck PASS.
-- Browser E2E graph 15/15 PASS (round-3: AC-08 computed-style + screenshot,
-  AC-19 four-view equality, AC-20 full keyboard matrix + input guard, AC-22
-  200% content-loss); performance/lifecycle 4/4 PASS.
+- Browser E2E graph 16/16 PASS (round-3: AC-08 computed-style + screenshot,
+  AC-19 four-view equality, AC-20 full keyboard matrix + input guard + Tab
+  region traversal, AC-22 200% content-loss; round-4: AC-18 canvas refresh
+  rebuild on snapshot-identity remount); performance/lifecycle 4/4 PASS.
 - Root component suites: unit 377/377, contract 269/269, integration 89/89,
-  architecture, stage12, secret scan, OSS verify 68 decisions — all PASS
-  (`local_component_suites: PASS`). `npm run check` as a single local command
-  exits `1` only because two pre-existing Stage 4/5 contract suites time out
-  under parallel workers on the local Windows runner; the same suites pass in
-  parallel on CI at the exact head (`remote_exact_head_ci: PASS`).
+  architecture, stage12, secret scan, OSS verify 68 decisions — all PASS.
+  The single command `npm run check` exits `0` at the round-4 head (observed).
 - AC-23 raw samples: layout `[300, 298, 313]` median `300 ms`; interaction
   `[0, 0, 0]` median `0 ms` (local reference runner).
 - `npm audit --audit-level=high`: 0 vulnerabilities; `git diff --check`: PASS.
-- CI at verified Product head `fe29ad7`: run `#466` (`30877904906`) —
+- CI at verified Product head `8ae9d80`: run `#468` (`30895600777`) —
   Frontend `success`, Quality `success` (audit green), Required Gates
   `success` (AC-30 PASS).
 

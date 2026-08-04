@@ -104,3 +104,45 @@ Authorization timestamp: `2026-08-05T03:50:22+09:00`.
 
 Each completed work unit is reported to GPT through a docs document (filename shared); GPT review
 comments are incorporated before the next unit. PR #66 remains OPEN / DRAFT.
+
+## 8. WP1 — Product V1 contracts, strict decoders, typed failures (report 2, 2026-08-05)
+
+Commit `36f08e63b82a820b4c92ca40f80d2f62d76864ca` (push after report 1 head `d2a1966e`).
+
+### Delivered
+
+- `packages/contracts/src/frontend-external-action.ts` — exact V1 contracts:
+  - `ExternalActionV1` aggregate (actionId + immutable actionRevision, target/external revision,
+    operation, project/access/policy binding, risk/manifest/approval refs, aggregate status,
+    capabilities, aggregate state, access masking, compensation marker);
+  - `ActionCandidateV1`, `RiskDecisionV1`, `ActionManifestV1` (manifestDigest covers target,
+    parameters, evidence and payload; digest verified by the decoder), `ExternalActionApprovalV1`
+    (purpose `EXTERNAL_ACTION` only), `PreflightV1` (all six revalidation flags),
+    `ExecutionV1` + `ExecutionAttemptV1` (per-attempt idempotency, correlation/causation),
+    `VerificationV1` (APPLIED/NOT_APPLIED/MISMATCH), `ResultV1` (safe output refs only),
+    `ActionAuditEventV1` (frozen categories), `CompensatingActionV1`, `RollbackV1`;
+  - read/write operation contracts (11 governed commands + reads + outcome resolution);
+  - strict decoders (`schemaVersion '1.0.0'`, unknown-field rejection, no `any`), bounded queue
+    (≤50) and attempt list (≤50);
+  - semantic command digests and server manifest digest helper.
+- `packages/contracts/src/frontend-external-action-failures.ts` — 22 typed failure mappings.
+- `packages/contracts/src/errors.ts` + `failure-contract.ts` — FE-P4-S2 failure codes and
+  descriptors registered.
+- `packages/contracts/src/index.ts` — exports added.
+- `tests/contract/frontend-external-action.contract.test.ts` — 25 tests (strict decoding,
+  unknown-field rejection, digest integrity, bounded requests, digest stability, exhaustive
+  failure mapping, command-type registration).
+
+### Validation
+
+- `npx vitest run tests/contract/frontend-external-action.contract.test.ts` — 25/25 PASS.
+- `tsc --noEmit` — clean. ESLint — clean. Prettier — clean.
+- Automatic CI on head `36f08e6` is the remote authority (recorded after the run).
+
+### AC coverage (WP1)
+
+- FE-P4-S2-AC-01, AC-02, AC-03 (manifest digest), AC-04, AC-05 (approval binding), AC-07
+  (attempts contract), AC-09 (verification contract), AC-13 (credential masking contract),
+  AC-14 (budget contract) — contract layer delivered; runtime enforcement follows in WP2/WP4.
+- Not yet run (implementation pending): AC-06, AC-08, AC-10, AC-11, AC-12, AC-15, AC-16, AC-17,
+  AC-18, AC-19, AC-20, AC-21, AC-22.

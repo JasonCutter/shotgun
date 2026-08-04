@@ -338,7 +338,7 @@ Commit (this report head) — push after report 4 head `4b220e17`.
 
 - `npx vitest run tests/contract/frontend-external-action.contract.test.ts` — **93/93 PASS**.
 - `tsc --noEmit` — clean. ESLint — clean. Prettier — clean.
-- Automatic CI on this head `1c5a544f` — run **#519** (`30953228134`): Quality, Frontend,
+- Automatic CI on this head `1c5a544f` — run **#520** (`30953228134`): Quality, Frontend,
   Required Gates **SUCCESS**.
 
 ### AC coverage (WP1 after third remediation)
@@ -350,3 +350,70 @@ Commit (this report head) — push after report 4 head `4b220e17`.
   AC-16, AC-18, AC-19, AC-20, AC-21, AC-22.
 
 PR #66 remains OPEN / DRAFT. WP2 remains **NOT_AUTHORIZED** pending re-review of this report.
+
+## 12. WP2 — External Action Product domain (report 6, 2026-08-05)
+
+GPT review (Review ID 4859244173) approved WP1 and authorized WP2:
+`FE-P4-S2 WP1: APPROVED / COMPLETE` · `FE-P4-S2 WP2: AUTHORIZED`. WP2 is delivered in this
+commit:
+
+Commit `a9a7fa2140af24a16676b4eeb5f8178f6251da9f` (push after report 5 head `16f2acee8`).
+
+### Delivered
+
+- `modules/frontend-external-action/src/product-api.ts` —
+  `FrontendExternalActionProductCoordinator` with all 11 governed commands
+  (validateCandidate, prepareManifest, approve, preflight, execute, retryAttempt, verify,
+  cancel, rollback, prepareCompensation, resolveOutcome) + all reads (list, get, detail, the 7
+  individual reads, audit) + outcome resolution rebuilt from produced resources
+  (`buildResolvedResult`, commandType-dispatched); structural Command Gateway port; scope-based
+  capability derivation; fail-closed restricted shell; the existing Frontend Command Ledger is
+  used for acceptance and outcome resolution (no second ledger).
+- `modules/frontend-external-action/src/external-action-engine-port.ts` — structural port to the
+  Stage 11 engine (preflight/execute/verify) with Product V1 safe views; Stage 11 records and DB
+  IDs never cross the boundary.
+- `modules/frontend-external-action/src/external-action-store-port.ts` — repositories for all
+  Product resources (aggregate, candidate, risk decision, manifest, approval, preflight,
+  execution, attempt, verification, result, audit, compensation, rollback, credential, budget)
+  + transaction boundary.
+- `modules/frontend-external-action/src/external-action-domain.ts` — pure domain helpers
+  (aggregate status transitions, approval expiry/status, six-flag preflight revalidation, READY
+  preflight validity, budget/credential views, masked credentials, terminal status rules).
+- `modules/frontend-external-action/src/external-action-error.ts` — typed error → 22 failure
+  codes.
+- `adapters/frontend-external-action-in-memory/src/index.ts` — `InMemoryExternalActionStore`
+  (copy-on-write + rollback + FIFO serialization) + `FakeExternalActionEngine` (fake connector;
+  success is never verified success).
+- `tests/integration/frontend-external-action-domain.test.ts` — **8 integration tests**: full
+  governed lifecycle to VERIFIED, ordered append-only attempt list + retry, execution blocked
+  without ACTIVE approval, budget fail-closed, Cancel ≠ Rollback, OUTCOME resolution through
+  original identity (digest mismatch fails closed), VERIFICATION resource (Connector success is
+  never verified success), command-type registration.
+
+### CI metadata correction (per GPT Review 4859244173)
+
+Report 5 mislabeled the third-remediation code CI as #519; the authoritative mapping is
+`1c5a544f` → CI **#520** (`30953228134`), `16f2acee` → CI **#521** (`30953497457`). Corrected here
+as required; no separate remediation cycle was opened for this metadata-only fix.
+
+### Validation
+
+- `npx vitest run tests/integration/frontend-external-action-domain.test.ts` — **8/8 PASS**.
+- `npx vitest run tests/contract/frontend-external-action.contract.test.ts` — **93/93 PASS**.
+- `tsc --noEmit` — clean. ESLint — clean. Prettier — clean.
+- Automatic CI on this head `a9a7fa2` — run **#522** (`30956265638`): Quality, Frontend,
+  Required Gates **SUCCESS**.
+
+### AC coverage (WP2)
+
+- Domain delivered: AC-01 (aggregate), AC-02 (immutable revision), AC-03 (manifest digest),
+  AC-04 (approval), AC-05 (purpose-specific approval), AC-06 (re-approval/expiry), AC-07
+  (ordered append-only attempts), AC-08 (no auto retry), AC-09 (verification), AC-10 (no
+  HTTP-success-as-verified), AC-12 (cancel/rollback/compensation separation), AC-17 (restricted
+  shell), AC-18 (command ledger), AC-19 (idempotency), AC-20 (credential/budget server-owned).
+- Contract layer also covered: AC-13, AC-14, AC-15 (server authority).
+- Not yet run (WP3/WP4/WP5/WP6): AC-11, AC-16, AC-21, AC-22 + DB parity, routes, browser
+  workspace, E2E/security/performance evidence.
+
+PR #66 remains OPEN / DRAFT. WP3 Migration 028, Product API/UI, real Connector, Ready and Merge
+remain **NOT_AUTHORIZED** pending re-review of this report.

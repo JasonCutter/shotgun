@@ -1,7 +1,7 @@
 ---
 id: FRONTEND-PHASE-4-SECTION-1-IMPLEMENTATION-REQUEST-260804001
-classification: IMPLEMENTATION_REQUEST_CANDIDATE
-status: NOT_AUTHORIZED
+classification: IMPLEMENTATION_REQUEST
+status: AUTHORIZED
 revision: 1
 work_item: FE-P4-S1
 canonical_base: 6ffca675844be445512e06e79bfa5233a71d1b25
@@ -9,20 +9,21 @@ branch: codex/frontend-phase-4-section-1-contract-preparation
 tracking_issue: 62
 draft_pr: 63
 governing_adr: ADR-109
-proposed_adr: ADR-128
+accepted_adr: ADR-128
 contract_snapshot: docs/architecture/contracts/snapshots/frontend-phase-4-section-1/frontend-phase-4-section-1-contract-snapshot-260804001.md
-implementation_authorized: false
+implementation_authorized: true
+authorized_by: USER
+authorized_at: 2026-08-04T20:42:00+09:00
 ---
 
-# FE-P4-S1 Review Center — Implementation Request Candidate
+# FE-P4-S1 Review Center — Authorized Implementation Request
 
 ## 1. Request status
 
-This document is a candidate implementation request prepared under the user's FE-P4-S1 design and
-contract authorization. It does not authorize Product implementation.
+ADR-128, Contract Snapshot revision 1, AC-01 through AC-32 and this Implementation Request are
+approved by the user. FE-P4-S1 Product implementation and Migration 027 are authorized to start.
 
-Implementation may begin only after explicit approval of ADR-128, the Contract Snapshot,
-Acceptance Criteria and this request.
+Ready, Merge, deployment, production verification, FE-P4-S2 and FE-P5 remain unauthorized.
 
 ## 2. Objective
 
@@ -117,12 +118,12 @@ Implement a server-authoritative Review Center that:
 9. No deletion of rejected, held or revision-requested history.
 10. No hidden resource leakage through counts, edges, descriptions or announcements.
 
-## 5. Expected migration and dependency impact
+## 5. Migration and dependency authority
 
-- Database migration: `027_frontend_review_center.sql` is proposed and separately requires
-  implementation authorization.
-- New runtime dependency: none expected.
-- Lockfile change: none expected.
+- Database migration: `027_frontend_review_center.sql` is authorized as part of FE-P4-S1.
+- New runtime dependency: not authorized unless a later reviewed need is proven and separately
+  approved.
+- Lockfile change: not expected and not authorized without explanation.
 - Canonical knowledge schema change: none.
 - External Connector enablement: none.
 
@@ -159,15 +160,8 @@ Deployment and production verification remain separate.
 - deployment and production verification;
 - Ready and Merge without separate authorization.
 
-## 9. Authorization requested later
+## 9. Authorization
 
-After design review, request explicit approval for:
-
-1. ADR-128 acceptance;
-2. Contract Snapshot revision 1 and AC-01 through AC-32 freeze;
-3. this Implementation Request;
-4. FE-P4-S1 Product implementation entry;
-5. Migration 027;
-6. no new runtime dependency unless a later reviewed need is proven.
-
-Until then, implementation remains `NOT_STARTED / NOT_AUTHORIZED`.
+The user approved ADR-128, Contract Snapshot revision 1, AC-01 through AC-32, this Implementation
+Request, FE-P4-S1 Product implementation entry and Migration 027 at
+`2026-08-04T20:42:00+09:00`.

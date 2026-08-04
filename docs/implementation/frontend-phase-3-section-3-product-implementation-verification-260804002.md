@@ -1,7 +1,7 @@
 ---
 id: FRONTEND-PHASE-3-SECTION-3-PRODUCT-IMPLEMENTATION-VERIFICATION-260804002
 classification: IMPLEMENTATION_VERIFICATION
-status: APPROVED_PRE_MERGE
+status: FINAL_AFTER_MERGE
 work_item: FE-P3-S3
 branch: codex/frontend-phase-3-section-3-implementation
 tracking_issue: 58
@@ -23,8 +23,16 @@ npm_audit_high: 0
 completion_approval: APPROVED
 completion_approved_by: user
 completion_approved_at: 2026-08-04T18:39:00+09:00
-ready: NOT_AUTHORIZED
-merge: NOT_AUTHORIZED
+ready: EXECUTED
+merge: EXECUTED
+merge_method: merge commit
+approved_feature_head: b1270219ff777b0b09acda1a4338bdd2009bab16
+merge_commit: 85ffb2fb378cdf2814702a2a425f44a30e5f0b9c
+post_merge_main_head: 85ffb2fb378cdf2814702a2a425f44a30e5f0b9c
+post_merge_main_ci_run_number: 475
+post_merge_main_ci_run_id: 30900650659
+post_merge_main_ci_conclusion: PASS
+post_merge_main_ci_gates: Quality, Frontend, Required Gates
 deployment: NOT_STARTED
 production_verification: NOT_RUN
 ---
@@ -48,8 +56,12 @@ AC-23 raw samples) and the round-4 fixes (AC-18 canvas refresh rebuild on
 snapshot-identity remount, AC-20 region-traversal Tab evidence).
 The user explicitly approved FE-P3-S3 Product Completion on
 `2026-08-04T18:39:00+09:00`; AC-31 is therefore PASS and the work item is
-COMPLETE. `ready` and `merge` remain `NOT_AUTHORIZED`; Ready/Merge happen
-only under separate user authorization.
+COMPLETE. On `2026-08-04T19:12:00+09:00` the user approved Ready and Merge;
+PR #60 was merged to `main` via a merge commit (`85ffb2fb`, approved feature
+head `b1270219f`) and the post-merge main CI run `#475` (`30900650659`)
+passed Quality / Frontend / Required Gates. Status authority is now
+`FINAL_AFTER_MERGE`; the earlier `APPROVED_PRE_MERGE` approval history is
+preserved.
 
 ## 2. Focused-check results (round-4 verified head)
 
@@ -188,7 +200,7 @@ is recorded without test/browser evidence.
 
 ## 6. Working-tree status
 
-Working tree is clean at the verified head `8ae9d80`. The user approved
-FE-P3-S3 Product Completion on `2026-08-04`; AC-31 is PASS and the work item
-is COMPLETE. No Ready or Merge without separate user authorization — `ready`
-and `merge` remain `NOT_AUTHORIZED`.
+PR #60 was merged to `main` via merge commit `85ffb2fb` (approved feature
+head `b1270219f`); post-merge main CI run `#475` (`30900650659`) passed
+Quality / Frontend / Required Gates. Status authority is `FINAL_AFTER_MERGE`.
+Deployment remains `NOT_STARTED` and production verification `NOT_RUN`.

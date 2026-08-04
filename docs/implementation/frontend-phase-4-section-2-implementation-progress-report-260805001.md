@@ -233,10 +233,11 @@ PR #66 remains OPEN / DRAFT. WP2 remains **NOT_AUTHORIZED** pending re-review of
 ## 10. WP1 second remediation — GPT SECOND review → resolved (report 4, 2026-08-05)
 
 GPT second review (Review ID 4859059633) returned **BLOCKED / SECOND REMEDIATION REQUIRED**.
-The first remediation (9 items) was acknowledged as mostly resolved; 5 narrow items remained.
-All are implemented in this commit:
+The first remediation (9 items) was acknowledged as mostly resolved; **6 items** remained
+(the second review listed 6 — including response-side collection bounds, which report 3 had
+under-counted as 5). All 6 are implemented in this remediation commit:
 
-Commit (this report head) — push after report 3 head `49299da0f`.
+Commit `94f9f3eb783d9b6e038ccef1229851a08542c9ba` (push after report 3 head `49299da0f`).
 
 ### Second remediation mapping (GPT items → delivered)
 
@@ -291,6 +292,59 @@ Commit (this report head) — push after report 3 head `49299da0f`.
 - Contract layer delivered: AC-01, AC-02, AC-03, AC-04, AC-05, **AC-07** (attempt list
   invariants), AC-09, AC-13, AC-14, **AC-17** (restricted shell), plus the frozen individual
   Read Operations (§9 of the Contract Snapshot).
+- Not yet run (implementation pending in WP2/WP4+): AC-06, AC-08, AC-10, AC-11, AC-12, AC-15,
+  AC-16, AC-18, AC-19, AC-20, AC-21, AC-22.
+
+PR #66 remains OPEN / DRAFT. WP2 remains **NOT_AUTHORIZED** pending re-review of this report.
+
+## 11. WP1 third remediation — GPT THIRD review → resolved (report 5, 2026-08-05)
+
+GPT third review returned **BLOCKED / SECOND REMEDIATION REQUIRED (final focused fixes)**.
+The second remediation was acknowledged as delivered (individual Reads, Attempt invariants,
+Detail binding, outcome discrimination, CI #518 SUCCESS); 3 explicit requirements from Review
+ID 4859059633 remained. All are implemented in this commit:
+
+Commit (this report head) — push after report 4 head `4b220e17`.
+
+### Third remediation mapping (GPT items → delivered)
+
+1. **Resolve-outcome recursion removed** — `ResolvedCommandResultV1` and
+   `decodeCompletedOutcome` now accept only `validate / prepare / approve / preflight / execute /
+   retry / verify / cancel / rollback / compensation`; `resolve-outcome.v1` is excluded from the
+   completed-result `commandType`, so a Resolve Outcome result can no longer nest another Resolve
+   Outcome result. A recursion attempt is rejected by the decoder.
+2. **Command Result nested binding completed** — `ValidateActionCandidateResultV1` now verifies
+   outer `actionId === candidate.actionId === riskDecision.actionId`, Candidate/Risk Decision
+   project-binding consistency, and `candidate.riskDecisionRef` → actual `riskDecisionId`.
+   `PrepareManifest`, `Approve`, `Preflight`, `Verify` and `Rollback` results now verify their
+   nested resource `actionId` against the outer `actionId` (matching the earlier Execute/Retry
+   checks), so every Command Result enforces outer/nested binding consistency.
+3. **Server-response collection bounds** — `decodeListExternalActionsResultV1.items` (queue ≤
+   50) and `decodeListExternalActionAuditResultV1.events` (audit bounded ≤ 50) now reject
+   oversized server responses, matching the already-bounded Attempt responses. Oversized
+   response negative tests added for queue and audit.
+
+### Changed files (this third remediation)
+
+- `packages/contracts/src/frontend-external-action.ts` — resolve-outcome recursion removed;
+  ValidateCandidate/Manifest/Approve/Preflight/Verify/Rollback nested binding; queue/audit
+  response bounds.
+- `tests/contract/frontend-external-action.contract.test.ts` — expanded to **93 tests**.
+- `docs/implementation/frontend-phase-4-section-2-implementation-progress-report-260805001.md`
+  — this section; report 4 metadata corrected (2nd review had 6 items, including response-side
+  bounds).
+
+### Validation
+
+- `npx vitest run tests/contract/frontend-external-action.contract.test.ts` — **93/93 PASS**.
+- `tsc --noEmit` — clean. ESLint — clean. Prettier — clean.
+- Automatic CI on this head is the remote authority (recorded after the run).
+
+### AC coverage (WP1 after third remediation)
+
+- Contract layer delivered: AC-01, AC-02, AC-03, AC-04, AC-05, **AC-07** (attempt list
+  invariants + bounded server responses), AC-09, AC-13, AC-14, **AC-17** (restricted shell),
+  plus the frozen individual Read Operations (§9 of the Contract Snapshot).
 - Not yet run (implementation pending in WP2/WP4+): AC-06, AC-08, AC-10, AC-11, AC-12, AC-15,
   AC-16, AC-18, AC-19, AC-20, AC-21, AC-22.
 

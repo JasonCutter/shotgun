@@ -1070,6 +1070,89 @@ describe('FE-P4-S2 command result decoders', () => {
     ).toThrow(FrontendContractError);
   });
 
+  it('rejects a ValidateCandidate result whose nested resources disagree', () => {
+    const result = {
+      schemaVersion: '1.0.0' as const,
+      outcome: 'COMPLETED' as const,
+      ...commandIdentity,
+      commandSemanticDigest: `sha256:${'6'.repeat(64)}`,
+      actionId: 'action-1',
+      riskDecision: makeRiskDecision(),
+      candidate: makeCandidate(),
+    };
+    expect(() =>
+      decodeValidateActionCandidateResultV1({
+        ...result,
+        candidate: { ...makeCandidate(), actionId: 'action-2' },
+      }),
+    ).toThrow(FrontendContractError);
+    expect(() =>
+      decodeValidateActionCandidateResultV1({
+        ...result,
+        riskDecision: { ...makeRiskDecision(), actionId: 'action-2' },
+      }),
+    ).toThrow(FrontendContractError);
+    expect(() =>
+      decodeValidateActionCandidateResultV1({
+        ...result,
+        candidate: { ...makeCandidate(), resourceProjectId: 'project-2' },
+      }),
+    ).toThrow(FrontendContractError);
+    expect(() =>
+      decodeValidateActionCandidateResultV1({
+        ...result,
+        candidate: {
+          ...makeCandidate(),
+          riskDecisionRef: {
+            schemaVersion: '1.0.0' as const,
+            resourceKind: 'riskDecision' as const,
+            resourceId: 'risk-999',
+          },
+        },
+      }),
+    ).toThrow(FrontendContractError);
+  });
+
+  it('rejects nested resources from another Action in Manifest/Approve/Preflight/Verify/Rollback results', () => {
+    const base = {
+      schemaVersion: '1.0.0' as const,
+      outcome: 'COMPLETED' as const,
+      ...commandIdentity,
+      commandSemanticDigest: `sha256:${'6'.repeat(64)}`,
+      actionId: 'action-1',
+    };
+    expect(() =>
+      decodePrepareActionManifestResultV1({
+        ...base,
+        manifest: { ...makeManifest(), actionId: 'action-2' },
+      }),
+    ).toThrow(FrontendContractError);
+    expect(() =>
+      decodeApproveExternalActionResultV1({
+        ...base,
+        approval: { ...makeApproval(), actionId: 'action-2' },
+      }),
+    ).toThrow(FrontendContractError);
+    expect(() =>
+      decodePreflightExternalActionResultV1({
+        ...base,
+        preflight: { ...makePreflight(), actionId: 'action-2' },
+      }),
+    ).toThrow(FrontendContractError);
+    expect(() =>
+      decodeVerifyExternalActionResultV1({
+        ...base,
+        verification: { ...makeVerification(), actionId: 'action-2' },
+      }),
+    ).toThrow(FrontendContractError);
+    expect(() =>
+      decodeRollbackExternalActionResultV1({
+        ...base,
+        rollback: { ...makeRollback(), actionId: 'action-2' },
+      }),
+    ).toThrow(FrontendContractError);
+  });
+
   it('decodes RetryAttempt result', () => {
     const result = {
       schemaVersion: '1.0.0' as const,
@@ -1183,6 +1266,21 @@ describe('FE-P4-S2 command result decoders', () => {
             actionId: 'action-1',
             status: 'CANCELLING' as const,
           },
+        },
+      }),
+    ).toThrow(FrontendContractError);
+  });
+
+  it('forbids resolve-outcome recursion inside a completed outcome', () => {
+    expect(() =>
+      decodeResolveExternalActionOutcomeResultV1({
+        schemaVersion: '1.0.0' as const,
+        outcome: 'COMPLETED' as const,
+        originalClientRequestId: 'client-1',
+        originalIdempotencyKey: 'idem-1',
+        completed: {
+          commandType: FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.resolveOutcome,
+          result: {},
         },
       }),
     ).toThrow(FrontendContractError);
@@ -1333,6 +1431,41 @@ describe('FE-P4-S2 read result decoders', () => {
     expect(decoded.attempts).toHaveLength(1);
     expect(decoded.credential?.maskedCredential).toBe('a•••••••4');
     expect(decoded.budget?.remainingExecutions).toBe(47);
+  });
+
+  it('rejects oversized server responses (queue and audit bounds)', () => {
+    const queueItem = {
+      schemaVersion: '1.0.0' as const,
+      actionId: 'action-1',
+      actionRevision: 3,
+      operation: 'UPDATE_REVERSIBLE' as const,
+      ...projectBinding,
+      status: 'APPROVED' as const,
+      aggregateState: 'AVAILABLE' as const,
+      capabilities: ['READ_EXTERNAL_ACTION'] as const,
+      riskLevel: 'R3' as const,
+      updatedAt: '2026-08-05T00:00:00.000Z',
+    };
+    const oversizedQueue = Array.from(
+      { length: EXTERNAL_ACTION_QUEUE_PAGE_SIZE_CAP + 1 },
+      () => queueItem,
+    );
+    expect(() =>
+      decodeListExternalActionsResultV1({
+        schemaVersion: '1.0.0',
+        items: oversizedQueue,
+        capabilities: ['LIST_EXTERNAL_ACTIONS'],
+      }),
+    ).toThrow(FrontendContractError);
+    const oversizedAudit = Array.from({ length: EXTERNAL_ACTION_QUEUE_PAGE_SIZE_CAP + 1 }, () =>
+      makeAuditEvent(),
+    );
+    expect(() =>
+      decodeListExternalActionAuditResultV1({
+        schemaVersion: '1.0.0',
+        events: oversizedAudit,
+      }),
+    ).toThrow(FrontendContractError);
   });
 
   it('decodes every frozen individual Read Operation result', () => {

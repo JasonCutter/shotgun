@@ -971,10 +971,6 @@ export type ResolvedCommandResultV1 =
   | {
       readonly commandType: 'frontend.external-action.prepare-compensation.v1';
       readonly result: PrepareCompensatingActionResultV1;
-    }
-  | {
-      readonly commandType: 'frontend.external-action.resolve-outcome.v1';
-      readonly result: ResolveExternalActionOutcomeResultV1;
     };
 
 export type ResolveExternalActionOutcomeResultV1 = {
@@ -2994,6 +2990,26 @@ export const decodeValidateActionCandidateResultV1 = (
     path,
   );
   decodeSchemaVersion(object, path);
+  const actionId = text(required(object, 'actionId', path), `${path}.actionId`);
+  const riskDecision = decodeRiskDecisionV1(
+    required(object, 'riskDecision', path),
+    `${path}.riskDecision`,
+  );
+  const candidate = decodeActionCandidateV1(
+    required(object, 'candidate', path),
+    `${path}.candidate`,
+  );
+  // Nested binding: candidate and risk decision belong to the same Action with
+  // a consistent project binding, and the candidate references the decision.
+  assertSameAction(candidate, actionId, `${path}.candidate`);
+  assertSameAction(riskDecision, actionId, `${path}.riskDecision`);
+  assertSameProjectBinding(candidate, riskDecision, `${path}.candidate`);
+  if (candidate.riskDecisionRef.resourceKind !== 'riskDecision') {
+    return fail(`${path}.candidate.riskDecisionRef.resourceKind`, 'must reference a riskDecision');
+  }
+  if (candidate.riskDecisionRef.resourceId !== riskDecision.riskDecisionId) {
+    return fail(`${path}.candidate.riskDecisionRef.resourceId`, 'must match the risk decision');
+  }
   return {
     schemaVersion: '1.0.0',
     outcome: enumValue(required(object, 'outcome', path), ['COMPLETED'], `${path}.outcome`),
@@ -3003,12 +3019,9 @@ export const decodeValidateActionCandidateResultV1 = (
       required(object, 'commandSemanticDigest', path),
       `${path}.commandSemanticDigest`,
     ),
-    actionId: text(required(object, 'actionId', path), `${path}.actionId`),
-    riskDecision: decodeRiskDecisionV1(
-      required(object, 'riskDecision', path),
-      `${path}.riskDecision`,
-    ),
-    candidate: decodeActionCandidateV1(required(object, 'candidate', path), `${path}.candidate`),
+    actionId,
+    riskDecision,
+    candidate,
   };
 };
 
@@ -3030,6 +3043,9 @@ export const decodePrepareActionManifestResultV1 = (
     path,
   );
   decodeSchemaVersion(object, path);
+  const actionId = text(required(object, 'actionId', path), `${path}.actionId`);
+  const manifest = decodeActionManifestV1(required(object, 'manifest', path), `${path}.manifest`);
+  assertSameAction(manifest, actionId, `${path}.manifest`);
   return {
     schemaVersion: '1.0.0',
     outcome: enumValue(required(object, 'outcome', path), ['COMPLETED'], `${path}.outcome`),
@@ -3039,8 +3055,8 @@ export const decodePrepareActionManifestResultV1 = (
       required(object, 'commandSemanticDigest', path),
       `${path}.commandSemanticDigest`,
     ),
-    actionId: text(required(object, 'actionId', path), `${path}.actionId`),
-    manifest: decodeActionManifestV1(required(object, 'manifest', path), `${path}.manifest`),
+    actionId,
+    manifest,
   };
 };
 
@@ -3062,6 +3078,12 @@ export const decodeApproveExternalActionResultV1 = (
     path,
   );
   decodeSchemaVersion(object, path);
+  const actionId = text(required(object, 'actionId', path), `${path}.actionId`);
+  const approval = decodeExternalActionApprovalV1(
+    required(object, 'approval', path),
+    `${path}.approval`,
+  );
+  assertSameAction(approval, actionId, `${path}.approval`);
   return {
     schemaVersion: '1.0.0',
     outcome: enumValue(required(object, 'outcome', path), ['COMPLETED'], `${path}.outcome`),
@@ -3071,11 +3093,8 @@ export const decodeApproveExternalActionResultV1 = (
       required(object, 'commandSemanticDigest', path),
       `${path}.commandSemanticDigest`,
     ),
-    actionId: text(required(object, 'actionId', path), `${path}.actionId`),
-    approval: decodeExternalActionApprovalV1(
-      required(object, 'approval', path),
-      `${path}.approval`,
-    ),
+    actionId,
+    approval,
   };
 };
 
@@ -3097,6 +3116,9 @@ export const decodePreflightExternalActionResultV1 = (
     path,
   );
   decodeSchemaVersion(object, path);
+  const actionId = text(required(object, 'actionId', path), `${path}.actionId`);
+  const preflight = decodePreflightV1(required(object, 'preflight', path), `${path}.preflight`);
+  assertSameAction(preflight, actionId, `${path}.preflight`);
   return {
     schemaVersion: '1.0.0',
     outcome: enumValue(required(object, 'outcome', path), ['COMPLETED'], `${path}.outcome`),
@@ -3106,8 +3128,8 @@ export const decodePreflightExternalActionResultV1 = (
       required(object, 'commandSemanticDigest', path),
       `${path}.commandSemanticDigest`,
     ),
-    actionId: text(required(object, 'actionId', path), `${path}.actionId`),
-    preflight: decodePreflightV1(required(object, 'preflight', path), `${path}.preflight`),
+    actionId,
+    preflight,
   };
 };
 
@@ -3240,6 +3262,12 @@ export const decodeVerifyExternalActionResultV1 = (
     path,
   );
   decodeSchemaVersion(object, path);
+  const actionId = text(required(object, 'actionId', path), `${path}.actionId`);
+  const verification = decodeVerificationV1(
+    required(object, 'verification', path),
+    `${path}.verification`,
+  );
+  assertSameAction(verification, actionId, `${path}.verification`);
   return {
     schemaVersion: '1.0.0',
     outcome: enumValue(required(object, 'outcome', path), ['COMPLETED'], `${path}.outcome`),
@@ -3249,11 +3277,8 @@ export const decodeVerifyExternalActionResultV1 = (
       required(object, 'commandSemanticDigest', path),
       `${path}.commandSemanticDigest`,
     ),
-    actionId: text(required(object, 'actionId', path), `${path}.actionId`),
-    verification: decodeVerificationV1(
-      required(object, 'verification', path),
-      `${path}.verification`,
-    ),
+    actionId,
+    verification,
   };
 };
 
@@ -3311,6 +3336,9 @@ export const decodeRollbackExternalActionResultV1 = (
     path,
   );
   decodeSchemaVersion(object, path);
+  const actionId = text(required(object, 'actionId', path), `${path}.actionId`);
+  const rollback = decodeRollbackV1(required(object, 'rollback', path), `${path}.rollback`);
+  assertSameAction(rollback, actionId, `${path}.rollback`);
   return {
     schemaVersion: '1.0.0',
     outcome: enumValue(
@@ -3324,8 +3352,8 @@ export const decodeRollbackExternalActionResultV1 = (
       required(object, 'commandSemanticDigest', path),
       `${path}.commandSemanticDigest`,
     ),
-    actionId: text(required(object, 'actionId', path), `${path}.actionId`),
-    rollback: decodeRollbackV1(required(object, 'rollback', path), `${path}.rollback`),
+    actionId,
+    rollback,
   };
 };
 
@@ -3505,12 +3533,11 @@ const decodeCompletedOutcome = (value: unknown, path: string): ResolvedCommandRe
         commandType,
         result: decodePrepareCompensatingActionResultV1(result, `${path}.result`),
       };
-    case FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.resolveOutcome:
-      return {
-        commandType,
-        result: decodeResolveExternalActionOutcomeResultV1(result, `${path}.result`),
-      };
   }
+  return fail(
+    `${path}.commandType`,
+    'resolve-outcome is not a resolvable completed command result',
+  );
 };
 
 /**
@@ -3687,9 +3714,16 @@ export const decodeListExternalActionsResultV1 = (
     path,
   );
   decodeSchemaVersion(object, path);
+  const items = arrayValue(required(object, 'items', path), `${path}.items`);
+  if (items.length > EXTERNAL_ACTION_QUEUE_PAGE_SIZE_CAP) {
+    return fail(
+      `${path}.items`,
+      `must not exceed ${EXTERNAL_ACTION_QUEUE_PAGE_SIZE_CAP} queue items`,
+    );
+  }
   return {
     schemaVersion: '1.0.0',
-    items: arrayValue(required(object, 'items', path), `${path}.items`).map((entry, index) => {
+    items: items.map((entry, index) => {
       const item = strictObject(
         entry,
         [
@@ -3785,9 +3819,16 @@ export const decodeListExternalActionAuditResultV1 = (
 ): ListExternalActionAuditResultV1 => {
   const object = strictObject(value, ['schemaVersion', 'events', 'nextCursor'], path);
   decodeSchemaVersion(object, path);
+  const events = arrayValue(required(object, 'events', path), `${path}.events`);
+  if (events.length > EXTERNAL_ACTION_QUEUE_PAGE_SIZE_CAP) {
+    return fail(
+      `${path}.events`,
+      `must not exceed ${EXTERNAL_ACTION_QUEUE_PAGE_SIZE_CAP} audit events`,
+    );
+  }
   return {
     schemaVersion: '1.0.0',
-    events: arrayValue(required(object, 'events', path), `${path}.events`).map((entry, index) =>
+    events: events.map((entry, index) =>
       decodeActionAuditEventV1(entry, `${path}.events[${index}]`),
     ),
     nextCursor: optionalText(object.nextCursor, `${path}.nextCursor`),

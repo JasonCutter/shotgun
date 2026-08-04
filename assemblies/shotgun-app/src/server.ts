@@ -79,6 +79,7 @@ import { registerFrontendProductRoutes } from './product-api/frontend-product-ro
 import { registerSettingsRoutes } from './product-api/settings-routes.js';
 import { registerSourcesRoutes } from './product-api/sources-routes.js';
 import { registerFrontendKnowledgeDraftRoutes } from './product-api/frontend-knowledge-draft-routes.js';
+import { registerFrontendReviewRoutes } from './product-api/frontend-review-routes.js';
 import {
   registerFrontendKnowledgeGraphRoutes,
   type GraphScopeResolver,
@@ -97,6 +98,17 @@ import {
 import type { FrontendKnowledgeDraftRepositoryBoundaryPort } from '../../../modules/frontend-knowledge-draft/src/index.js';
 import { InMemoryFrontendKnowledgeDraftRepository } from '../../../adapters/frontend-knowledge-draft-in-memory/src/index.js';
 import { InMemoryFrontendKnowledgeDraftTargetResolver } from '../../../adapters/frontend-knowledge-draft-api-in-memory/src/index.js';
+import { FrontendReviewProductCoordinator } from '../../../modules/frontend-review/src/index.js';
+import { InMemoryFrontendReviewStore } from '../../../adapters/frontend-review-in-memory/src/index.js';
+import {
+  DraftReviewTargetAdapter,
+  DiscoveryCandidateReviewTargetAdapter,
+  UserDirectiveReviewTargetAdapter,
+  createEmptyReviewDraftSourceReader,
+  createInMemoryReviewDraftSourceReader,
+  createInMemoryReviewDiscoveryCandidateReader,
+  createInMemoryReviewUserDirectiveReader,
+} from '../../../adapters/frontend-review-in-memory/src/index.js';
 import { FakeDraftActionConnector } from '../../../adapters/action-connector-fake/src/index.js';
 import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
 import { InProcessTransport } from '../../../adapters/transport-in-process/src/index.js';
@@ -438,6 +450,7 @@ export type ApplicationOptions = {
   readonly frontendKnowledgeDraftRepository?: FrontendKnowledgeDraftRepositoryBoundaryPort;
   readonly frontendKnowledgeDraftTargetResolver?: FrontendKnowledgeDraftTargetResolverPort;
   readonly frontendKnowledgeDraftCoordinator?: FrontendKnowledgeDraftProductCoordinator;
+  readonly frontendReviewCoordinator?: FrontendReviewProductCoordinator;
   readonly graphReadDomain?: GraphReadDomain;
   readonly graphScopeResolver?: GraphScopeResolver;
   readonly frontendProductReadCoordinator?: FrontendProductReadCoordinator;
@@ -1186,6 +1199,21 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       snapshotContextStore: createInMemorySnapshotContextStore(),
       healthStore: createInMemoryHealthStore(),
     });
+  const frontendReviewCoordinator =
+    options.frontendReviewCoordinator ??
+    new FrontendReviewProductCoordinator(
+      new InMemoryFrontendReviewStore(),
+      frontendCommandGateway,
+      [
+        new DraftReviewTargetAdapter(
+          frontendKnowledgeDraftRepository instanceof InMemoryFrontendKnowledgeDraftRepository
+            ? createInMemoryReviewDraftSourceReader(frontendKnowledgeDraftRepository)
+            : createEmptyReviewDraftSourceReader(),
+        ),
+        new DiscoveryCandidateReviewTargetAdapter(createInMemoryReviewDiscoveryCandidateReader()),
+        new UserDirectiveReviewTargetAdapter(createInMemoryReviewUserDirectiveReader()),
+      ],
+    );
   const inMemoryAskWorkspace = new InMemoryAskWorkspaceProjection();
   const askCommandCoordinator =
     options.askCommandCoordinator ??
@@ -1953,6 +1981,13 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
           accessScope: membership.scopes,
         };
       }),
+  );
+  registerFrontendReviewRoutes(
+    server,
+    frontendReviewCoordinator,
+    authRepository,
+    settingsRepository,
+    requirePrincipalBrowserSession,
   );
 
   server.post<{ Body: { accountId: string; password: string; projectId: string } }>(

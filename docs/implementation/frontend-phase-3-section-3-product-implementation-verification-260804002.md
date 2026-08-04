@@ -9,13 +9,15 @@ tracking_pr: 60
 implementation_authorization: APPROVED
 implementation_authorization_evidence_head: b0dc85199a9949015946dc3c08e40336afa40825
 approval_sync_head: c3e2b95dd308fbd35a49cdb0d89c969c1431a756
-verified_product_head: 82d43b77221b6e1ce056a2b69ffa64a6a014ca86
-verified_product_ci_run_number: 464
-verified_product_ci_run_id: 30862951095
+verified_product_head: fe29ad786a9625b17f683cba618d1556476ee341
+verified_product_ci_run_number: 466
+verified_product_ci_run_id: 30877904906
 governing_contract: docs/architecture/contracts/snapshots/frontend-phase-3-section-3/frontend-phase-3-section-3-contract-snapshot-260804001.md
 governing_adr: ADR-127
 implementation_request: docs/implementation/frontend-phase-3-section-3-implementation-request-260804001.md
-final_check_exit_code: 0
+local_final_check_exit_code: 1
+local_component_suites: PASS
+remote_exact_head_ci: PASS
 git_diff_check: PASS
 npm_audit_high: 0
 completion_approval: NOT_AUTHORIZED
@@ -35,15 +37,15 @@ the approved Implementation Request revision 5 (evidence head
 `codex/frontend-phase-3-section-3-implementation`, Draft PR #60, issue #58.
 
 The verified Product head recorded here is
-`82d43b77221b6e1ce056a2b69ffa64a6a014ca86` (short `82d43b772`). It incorporates
-the round-1 implementation plus the round-2 Frozen-AC completion work: audit
+`fe29ad786a9625b17f683cba618d1556476ee341` (short `fe29ad7`). It incorporates
+the round-1 implementation, the round-2 Frozen-AC completion work (audit
 remediation, managed-schema reset fix, AC-05..AC-09/11/12/15/17/19..25/28/29
 objective evidence, migration apply/rollback, performance and lifecycle
 suites. `completion_approval`, `ready` and `merge` remain `NOT_AUTHORIZED`;
 this is implementation evidence only and does not declare Section completion.
 Per AC-31 no Ready/Merge happens without separate user authorization.
 
-## 2. Focused-check results (round-2 verified head)
+## 2. Focused-check results (round-3 verified head)
 
 - Contract suite `tests/contract/frontend-knowledge-graph.contract.test.ts`:
   `20/20 PASS` — one explicit describe per Product API read operation (10
@@ -68,27 +70,45 @@ Per AC-31 no Ready/Merge happens without separate user authorization.
 - Frozen-AC integration `tests/integration/frontend-knowledge-graph-frozen-ac.test.ts`:
   `6/6 PASS` (path narration, evidence resolution + masked, gap overlay,
   impact overlay bounded, cross-Project denial, masked vs hidden).
-- Browser E2E `tests/browser/frontend-knowledge-graph.spec.ts`: `14/14 PASS`
-  (snapshot/list/table equivalence, no-write, keyboard, reduced-motion,
-  deep-link, AC-08/15/17/19/20/21/22/24/25).
+- Browser E2E `tests/browser/frontend-knowledge-graph.spec.ts`: `15/15 PASS`
+  (snapshot/list/table/canvas equivalence, no-write, full keyboard matrix
+  AC-08/15/17/19/20/21/22/24/25).
 - Browser performance/lifecycle `tests/browser/frontend-knowledge-graph-performance.spec.ts`:
   `4/4 PASS` (layout ≤2000ms median, interaction ≤100ms median, AbortController
   cancel, cytoscape destroy-once / no accumulation).
-- Database suite `npm run test:database`: `28 files / 146 tests PASS`.
+- Database suite `npm run test:database`: `28 files / 146 tests PASS`
+  (unchanged from round-2 exact head; no backend/DB code changed in round-3).
 - Frontend app suite `npm --workspace @shotgun/web run test`: `54/54 PASS`;
   `npm run frontend:typecheck` PASS.
-- Root `npm run check`: all steps green (docs governance, lint, format,
-  typecheck, unit 377/377, contract 269/269, integration 89/89, architecture,
-  stage12 package, secret scan, OSS verify 68 decisions). On the local
-  Windows runner the unit/contract/integration suites are executed serially
-  because parallel workers time out pre-existing heavy tests under machine
-  load; the same suites pass fully in parallel on CI at the exact head.
+- Root component suites (serial on the local Windows runner, parallel on CI):
+  unit `377/377`, contract `269/269`, integration `89/89`, architecture,
+  stage12 package, secret scan, OSS verify 68 decisions — all PASS.
+- AC-23 raw performance samples (local reference runner, emitted by the spec
+  via `console.info`): layout `[300, 298, 313]` median `300 ms`;
+  interaction `[0, 0, 0]` median `0 ms`. CI observes its own values; the
+  thresholds (≤2000ms / ≤100ms) hold on both.
 - `npm audit --audit-level=high`: `0 vulnerabilities` (overrides pin
   `brace-expansion 5.0.9`, `minimatch 10.2.3`, `postcss 8.5.25`,
   `undici 7.29.0`, `fast-uri 4.1.2`).
 - `git diff --check`: PASS.
 - Migration: `026_frontend_knowledge_graph_projection.sql` applied and rolled
   back (managed schema added to `dropSchemas` reset list).
+
+### Final-check evidence (round-3, truthful recording)
+
+Per the round-3 review the evidence is recorded exactly as observed:
+
+- `npm run check` as a single command exits `1` on the local Windows runner
+  because two pre-existing heavy contract suites (`compiled-truth`,
+  `knowledge-model`) time out at the 5000ms per-test budget only when parallel
+  workers contend for CPU; the identical suites pass at `--maxWorkers=1` and
+  pass in parallel on CI at the exact head. Therefore the frontmatter records
+  `local_final_check_exit_code: 1`, `local_component_suites: PASS` and
+  `remote_exact_head_ci: PASS` separately instead of claiming a single
+  `final_check_exit_code: 0` that was not observed.
+- No FE-P3-S3 test is skipped or flaky across runs; the two timing-out suites
+  are unrelated to FE-P3-S3 and are part of the pre-existing Stage 4/5
+  contract corpus.
 
 ## 3. Operation contract coverage (10/10)
 
@@ -114,7 +134,7 @@ is recorded without test/browser evidence.
 | AC-05 | PASS    | AC-05 continuation suite `3/3`: deterministic 12-node fixture pages through `PARTIAL` + continuation to `COMPLETE` with no duplicate IDs; continuation reuse with a different limits binding and a different filters binding is rejected (typed mismatch errors).                                                                                                                                                                                                                                                                       |
 | AC-06 | PASS    | Frozen-AC integration asserts `describeGraphPath` narration with ORIGIN/TRAVERSAL segments and resolvable node/edge refs (`6/6` suite); path refs resolve to the snapshot (resourceId BFS).                                                                                                                                                                                                                                                                                                                                           |
 | AC-07 | PASS    | Frozen-AC integration `resolves evidence to existing Evidence records`, honors `evidenceRef`, returns empty evidence + `accessMasking MASKED` for masked nodes, and a negative `evidenceRef` yields a typed `NOT_FOUND`.                                                                                                                                                                                                                                                                                                               |
-| AC-08 | PASS    | Browser E2E asserts the three authorities render distinct accessible labels/descriptions via `data-graph-authority` (CANONICAL / DERIVED_INFERENCE / DISCOVERY_CANDIDATE) and distinct styling classes.                                                                                                                                                                                                                                                                                                                                 |
+| AC-08 | PASS    | Browser E2E asserts the three authorities (CANONICAL / DERIVED_INFERENCE / DISCOVERY_CANDIDATE) via `data-graph-authority`, distinct accessible descriptions, distinct computed-style signatures including non-color cues per authority (`border-left-style` solid/dashed/dotted, `font-weight 600`, `font-style italic`, `text-decoration underline`) that remain distinguishable when color fields are ignored, and a bounded list-region screenshot (`test-results/ac08-list-authority.png`). Canvas nodes use the same non-color cues (round-rectangle solid / ellipse dashed / diamond dotted).                                                                                                                                                                                                                                                                                                                                 |
 | AC-09 | PASS    | `POSSIBLY_SAME` remains a typed edge; AC-09 suite `4/4` proves a snapshot preserves every distinct node (no merge), no merge surface exists on the domain/client/state machine, and `/merge` + `/nodes/merge` return 404.                                                                                                                                                                                                                                                                                                            |
 | AC-10 | PASS    | Integration conflict overlay asserts `CONFLICT` identity bound to base snapshot; write-absence asserted by negative route test (no Canonical/Approval/Action write endpoint under the graph namespace → 404).                                                                                                                                                                                                                                                                                                                          |
 | AC-11 | PASS    | Frozen-AC integration `gap overlay` returns `KNOWLEDGE_GAP` items with overlay identity; no Canonical edge writes (negative route test).                                                                                                                                                                                                                                                                                                                                                                                              |
@@ -125,30 +145,34 @@ is recorded without test/browser evidence.
 | AC-16 | PASS    | Distinct scope-phase vs snapshot-phase query keys with a dedicated unit test (`graph-queries.test.ts`, 3/3) proving project/access/policy/projection/snapshot isolation. ADR-127 accepted.                                                                                                                                                                                                                                                                                                                                            |
 | AC-17 | PASS    | Browser E2E restores deep-link focus to the selected node and retains focus by `resourceId` after a descriptor-based refresh (`snapshot-2`/`proj-2`, focus retained, combined refresh+selection announcement).                                                                                                                                                                                                                                                                                                                         |
 | AC-18 | PASS    | Browser E2E `exposes no Canonical/Approval/Action write endpoint during interaction` (network assertion over list/select/view-switch/base-view/overlay interactions); canvas is presentation-only.                                                                                                                                                                                                                                                                                                                                    |
-| AC-19 | PASS    | Browser E2E computes the identical accessible `(nodeId, edgeId, label, authority, baseViewMembership, overlayMemberships)` tuple set for list, table AND path views from the same snapshot response (tuple equality asserted).                                                                                                                                                                                                                                                                                                        |
-| AC-20 | PASS    | Browser E2E exercises the full frozen keyboard set: Alt+L/T/P/V view switching, Alt+1/2/3 base view, Alt+Shift+1/2/3 overlays, arrows + Enter activation, Escape path→canvas, selection.                                                                                                                                                                                                                                                                                                                                             |
+| AC-19 | PASS    | Browser E2E extracts the accessible tuple set from all four views — canvas (semantic collection inside the canvas region, generated from the same snapshot via the shared `graph-accessible` module), list, table and path — and asserts `canvas === list === table === path` (order-insensitive). The canvas collection is non-interactive and visually hidden (no duplicate keyboard tab stops).                                                                                                                                                                                                                                                                                                        |
+| AC-20 | PASS    | Browser E2E exercises the full frozen keyboard matrix: Tab / Shift+Tab (focus moves between regions, never lost to the body), Alt+L/T/P/V view switching, Alt+1/2/3 base views, Alt+Shift+1/2/3 overlays, all four arrow keys (Down/Right advance, Up/Left go back with deterministic selection on Enter), Enter activation with exact selection announcement, Escape path→canvas. A dedicated test proves the shortcuts never steal text-editing keys while a text input is focused (radio/checkbox/button inputs still keep the shortcuts).                                                                                                                                                                                                                                                                                                                                             |
 | AC-21 | PASS    | `axe` scan asserts zero critical violations across canvas, list, table and path; frozen announcement strings asserted (selection, refresh, truncation, stale, non-success, correction); accessible names + region landmarks present.                                                                                                                                                                                                                                                                                                     |
-| AC-22 | PASS    | `prefers-reduced-motion: reduce` E2E PASS (no animation runs); 200% viewport zoom (CDP `pageScaleFactor: 2`) E2E asserts list/table/path remain fully operable with no horizontal loss of primary content.                                                                                                                                                                                                                                                                                                                             |
-| AC-23 | PASS    | Performance/lifecycle suite `4/4` on a 500-node / 1000-edge fixture: initial layout ≤2000 ms (median of 3 after warm-up via cytoscape `layoutstop`), interaction ≤100 ms (in-page gesture→commit median), incremental expansion ≤200 added nodes/edges per request (integration `2/2` server clamp), `AbortController` cancels in-flight reads, cytoscape `destroy` runs exactly once per unmount with zero active instances after 3 mount/unmount cycles. Baseline procedure and thresholds recorded in this suite.                        |
+| AC-22 | PASS    | `prefers-reduced-motion: reduce` E2E PASS (no animation runs). At 200% viewport zoom (CDP `pageScaleFactor: 2`) the E2E asserts for list/table/path: no document-level horizontal overflow (`scrollWidth <= clientWidth + 1`), primary-content bounding boxes present (heading, first node, Select/보정 control, view switch, status region), no label text clipping, the table scrolls inside its own container (`overflow-x: auto`), and a visible focus indicator on the first interactive element. Selection still commits at 200%.                                                                                                                                                                                                                                                                                                                             |
+| AC-23 | PASS    | Performance/lifecycle suite `4/4` on a 500-node / 1000-edge fixture: initial layout ≤2000 ms (median of 3 after warm-up via cytoscape `layoutstop`), interaction ≤100 ms (in-page gesture→commit median), incremental expansion ≤200 added nodes/edges per request (integration `2/2` server clamp), `AbortController` cancels in-flight reads, cytoscape `destroy` runs exactly once per unmount with zero active instances after 3 mount/unmount cycles. Raw samples are emitted by the spec: layout `[300, 298, 313]` median `300 ms`, interaction `[0, 0, 0]` median `0 ms` (local reference runner; CI records its own values against the same thresholds).                        |
 | AC-24 | PASS    | AC-24 suite `46/46`: all 13 `GraphUnavailableReasonV1` map to typed client failures (normalized code, HTTP status, retryability, message); SAFE retry policy via `graphQueryRetry`; recovery issues read-only transitions (FAILED/REFRESHING/RESTORING) and never a write; per-reason frozen non-success announcements; browser E2E failed-read renders the announcement, retries safely, no write.                                                                                                                                     |
 | AC-25 | PASS    | Correction action on a graph node/edge builds a typed seed (`sourceWorkspace KNOWLEDGE_GRAPH`, `targetKind NODE/EDGE`, `stableResourceRef`, `snapshotId`, `projectionRevision`, `suggestedChangeIntent CORRECT_KNOWLEDGE`) and navigates to the Knowledge Editor (`/knowledge?correction=...`); masked → minimal ref-only seed, hidden → no action; strict decode rejects malformed seeds; browser E2E asserts navigation + seed content + zero write endpoints.                                                                        |
 | AC-26 | PASS    | Zero Canonical/Approval/Action write endpoint reachable: negative route test returns 404 for `/commit`, `/canonical`, `/approve`, `/action/execute` (plus `/merge`, `/nodes/merge`); browser E2E network assertion.                                                                                                                                                                                                                                                                                                                   |
 | AC-27 | PASS    | In-memory vs PostgreSQL parity `2/2` over the four storage adapters (snapshot-context, projection health, overlay health, continuation). ADR-127 accepted.                                                                                                                                                                                                                                                                                                                                                                            |
 | AC-28 | PASS    | Contract suite organized as one explicit describe per Product API read operation (10 operations) plus shared primitives; `20/20` strict-decoding tests including deep-link restore request/result.                                                                                                                                                                                                                                                                                                                                      |
 | AC-29 | PASS    | All required scenarios: (a) snapshot truncation; (b) continuation round-trip; (c) path + path description; (d) conflict and gap overlays; (e) recursive-impact overlay; (f) cross-Project deep-link denial; (g) masked vs hidden; (h) cache isolation; (i) refresh stale→new; (j) keyboard + screen-reader E2E (axe); (k) performance E2E; (l) migration 026 apply/rollback — each covered by its integration/database/browser suite.                                                                                                          |
-| AC-30 | PASS    | Exact-head remote gates green at `82d43b772`: Frontend `success`, Quality `success` (including `npm audit` 0 high), Required Gates `success`. GitHub Actions run `#464` (`30862951095`).                                                                                                                                                                                                                                                                                                                                              |
+| AC-30 | PASS    | Exact-head remote gates green at the round-3 verified head `fe29ad7` (`fe29ad786a9625b17f683cba618d1556476ee341`): Frontend `success`, Quality `success` (including `npm audit` 0 high), Required Gates `success`. GitHub Actions run `#466` (`30877904906`).                                                                                                                                                                                                                                                                                                                                              |
 | AC-31 | BLOCKED | Governance record exists (this document + Implementation Completion Report + Evidence Registry entries + Draft PR #60 body). `completion_approval`, `ready`, `merge`, `deployment` and `production_verification` remain `NOT_AUTHORIZED`. **BLOCKED — PENDING_USER_COMPLETION_APPROVAL**: no Ready/Merge without separate user authorization.                                                                                                                                                                                           |
 
 ## 5. Known limits and exclusions
 
-- Remote CI at the verified head `82d43b772` is fully green (Quality, Frontend,
-  Required Gates). The round-1 external `npm audit` failure (brace-expansion /
-  postcss) was remediated by pinning overrides; `npm audit --audit-level=high`
-  reports 0 vulnerabilities.
-- On the local Windows runner, the root unit/contract/integration suites are
-  executed serially (`--maxWorkers=1`) because parallel workers time out
-  pre-existing heavy tests under machine load; identical suites pass in
-  parallel on CI. No FE-P3-S3 test is skipped.
+- Remote CI at the round-3 verified head `fe29ad7` is fully green (Quality,
+  Frontend, Required Gates — run `#466` / `30877904906`). The round-1 external
+  `npm audit` failure (brace-expansion / postcss) was remediated by pinning
+  overrides; `npm audit --audit-level=high` reports 0 vulnerabilities.
+- `npm run check` as a single local command exits `1` only because two
+  pre-existing Stage 4/5 contract suites (`compiled-truth`, `knowledge-model`)
+  exceed the 5000ms per-test budget when parallel workers contend on the local
+  Windows runner; every component suite passes (`local_component_suites: PASS`)
+  and the same suites pass in parallel on CI at the exact head
+  (`remote_exact_head_ci: PASS`). This is recorded truthfully in the
+  frontmatter (`local_final_check_exit_code: 1`) rather than reporting an
+  unobserved `final_check_exit_code: 0`. No FE-P3-S3 test is skipped.
 - The graph correction action carries a frontend-local typed seed; server-side
   seed registration and `DraftChangeSet` materialization remain governed by
   the FE-P2-S2 Draft boundaries (ADR-126) and are outside FE-P3-S3.
@@ -159,6 +183,6 @@ is recorded without test/browser evidence.
 
 ## 6. Working-tree status
 
-Working tree is clean at the verified head `82d43b772`. No Ready or Merge
+Working tree is clean at the verified head `fe29ad7`. No Ready or Merge
 without separate user authorization. AC-31 remains `BLOCKED` until user
 completion approval.

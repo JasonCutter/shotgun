@@ -310,7 +310,7 @@ Commit (this report head) — push after report 4 head `4b220e17`.
 
 1. **Resolve-outcome recursion removed** — `ResolvedCommandResultV1` and
    `decodeCompletedOutcome` now accept only `validate / prepare / approve / preflight / execute /
-   retry / verify / cancel / rollback / compensation`; `resolve-outcome.v1` is excluded from the
+retry / verify / cancel / rollback / compensation`; `resolve-outcome.v1` is excluded from the
    completed-result `commandType`, so a Resolve Outcome result can no longer nest another Resolve
    Outcome result. A recursion attempt is rejected by the decoder.
 2. **Command Result nested binding completed** — `ValidateActionCandidateResultV1` now verifies
@@ -319,8 +319,7 @@ Commit (this report head) — push after report 4 head `4b220e17`.
    `PrepareManifest`, `Approve`, `Preflight`, `Verify` and `Rollback` results now verify their
    nested resource `actionId` against the outer `actionId` (matching the earlier Execute/Retry
    checks), so every Command Result enforces outer/nested binding consistency.
-3. **Server-response collection bounds** — `decodeListExternalActionsResultV1.items` (queue ≤
-   50) and `decodeListExternalActionAuditResultV1.events` (audit bounded ≤ 50) now reject
+3. **Server-response collection bounds** — `decodeListExternalActionsResultV1.items` (queue ≤ 50) and `decodeListExternalActionAuditResultV1.events` (audit bounded ≤ 50) now reject
    oversized server responses, matching the already-bounded Attempt responses. Oversized
    response negative tests added for queue and audit.
 
@@ -375,7 +374,7 @@ Commit `a9a7fa2140af24a16676b4eeb5f8178f6251da9f` (push after report 5 head `16f
 - `modules/frontend-external-action/src/external-action-store-port.ts` — repositories for all
   Product resources (aggregate, candidate, risk decision, manifest, approval, preflight,
   execution, attempt, verification, result, audit, compensation, rollback, credential, budget)
-  + transaction boundary.
+  - transaction boundary.
 - `modules/frontend-external-action/src/external-action-domain.ts` — pure domain helpers
   (aggregate status transitions, approval expiry/status, six-flag preflight revalidation, READY
   preflight validity, budget/credential views, masked credentials, terminal status rules).
@@ -499,6 +498,104 @@ evidence remain for WP3–WP6.
 - `tsc --noEmit` — clean. ESLint — clean. Prettier — clean.
 - Automatic CI on this remediation head `77e595e` — run **#525** (`30959155254`): Quality,
   Frontend, Required Gates **SUCCESS**. (The interim capability fix `360fe1d` ran CI #524.)
+
+PR #66 remains OPEN / DRAFT. WP3 Migration 028 remains **NOT_AUTHORIZED_TO_START** pending
+re-review of this report.
+
+## 14. WP2 second remediation — GPT focused review → resolved (report 8, 2026-08-05)
+
+GPT review (Review ID 4859748120) returned **BLOCKED / SECOND REMEDIATION REQUIRED** for WP2
+with six focused items (explicit instruction: the next changes are limited to those six items
+and their negative tests). All are implemented in ONE remediation cycle:
+
+Commit `6349e5ff1fa335e744e8118eed758afdbefebdfd`.
+
+### Second remediation mapping (GPT items → delivered)
+
+1. **Connector exception must not lose the attempt** — `runConnectorCommand` (new two-phase
+   helper for all connector-touching commands) persists the started IN_PROGRESS attempt +
+   execution and COMPLETEs the ledger command inside transaction 1; the connector runs OUTSIDE
+   the DB transaction; the terminal state is committed in transaction 2. A connector throw is
+   mapped to `OUTCOME_UNKNOWN` and the attempt survives as a persisted, recoverable resource —
+   the ledger is never the only surviving record. `executeExternalAction`,
+   `retryExecutionAttempt` and `rollbackExternalAction` all run through it. Negative test: fake
+   connector throws → execute returns OUTCOME_UNKNOWN, attempt/execution/aggregate persisted as
+   OUTCOME_UNKNOWN.
+2. **Retry runs a new target-state preflight** — retry now calls `engine.preflight` (fresh
+   target-state + external-revision revalidation) before re-calling `engine.execute`; the stored
+   external revision comparison alone is not enough. `ALREADY_APPLIED` and `DENIED` outcomes
+   block the retry. (Execute already asserts preflight ownership — `actionId`,
+   `resourceProjectId`, `effectiveProjectId` — so a preflight cannot be reused across actions;
+   `ALREADY_APPLIED` from preflight is preserved as a Product result and blocks execution.)
+3. **Risk decision reuse bound to candidate semantics** — an existing risk decision is reused
+   only when the existing candidate digest equals the new command semantic digest (which covers
+   operation/target/parameter/evidence/compensation). A changed meaning creates a new candidate
+   with `candidateRevision = (existing?.candidateRevision ?? 0) + 1` and a NEW risk decision;
+   the store returns the latest candidate revision. Negative test: unchanged semantics reuse the
+   same risk decision; changed parameter digest ⇒ candidate revision 3 + new risk decision.
+4. **Verification pinned to the actual SUCCEEDED attempt** — verify now requires the execution
+   to be SUCCEEDED and pins the latest attempt that matches `execution.latestAttemptRef` AND is
+   SUCCEEDED AND carries a provider ref. An explicit `attemptId` must be that exact latest
+   SUCCEEDED attempt (earlier/failed attempts are rejected). The Result `externalId` is derived
+   from the provider ref of the pinned attempt ONLY — the executionId fallback is removed.
+   Negative test: verifying the first OUTCOME_UNKNOWN attempt after a SUCCEEDED retry is
+   rejected; omitting `attemptId` pins the latest SUCCEEDED attempt.
+5. **Rollback as a separate governance lifecycle** — rollback creates its OWN risk decision
+   (rollback semantics, never a reuse of the forward decision), its own manifest and
+   EXTERNAL_ACTION approval, then runs its OWN `engine.preflight` (rollback semantics) before the
+   connector executes the reversal through the two-phase helper. Connector success alone never
+   confirms the reversal: `ROLLED_BACK` is reached only when the rollback execution is SUCCEEDED.
+   Negative/lifecycle test: full lifecycle to VERIFIED then rollback → ROLLED_BACK (aggregate and
+   rollback resource).
+6. **Audit store-based monotonic sequence + wiring** — `nextAuditSequence` now reads the
+   append-only authority (`repositories.audit.nextSequence`), so sequences stay strictly
+   monotonic past 50 events (the previous list-with-cap computation could collide). Audit events
+   are now written at ACTION_RISK_DECIDED + ACTION_CANDIDATE_VALIDATED (validate),
+   ACTION_APPROVED (approve), ACTION_PREFLIGHT_PASSED / ACTION_PREFLIGHT_FAILED (preflight),
+   ACTION_EXECUTED / ACTION_OUTCOME_UNKNOWN (execute and retry), ACTION_VERIFIED /
+   ACTION_VERIFICATION_FAILED (verify). Cancel, rollback and compensation have NO frozen
+   12-category audit event (the frozen Stage 11 category set has no such category); their
+   transitions are recorded through the Command Ledger only. Negative test: 30 changed-semantics
+   validations produce 60 events whose sequences are strictly monotonic, unique and continue
+   past 50 (page 2 begins at sequence 51).
+
+### Changed files (this second remediation)
+
+- `modules/frontend-external-action/src/product-api.ts` — `runConnectorCommand` two-phase
+  helper; execute/retry/rollback converted; retry + rollback preflight; candidate revision +
+  semantic risk-decision reuse; verify pinned to latest SUCCEEDED attempt (providerRef-only
+  externalId); audit wiring + store-based `nextAuditSequence`.
+- `modules/frontend-external-action/src/external-action-store-port.ts` — audit port gains
+  `nextSequence(actionId)`.
+- `adapters/frontend-external-action-in-memory/src/index.ts` — audit `nextSequence` =
+  max(sequence)+1 across all events; approvals `findActiveByAction` returns latest by
+  `issuedAt` DESC; candidates `findByActionId` returns latest by `candidateRevision` DESC; fake
+  connector gains `executeThrows` and `retryStatus` behaviors.
+- `tests/integration/frontend-external-action-domain.test.ts` — expanded to **21 tests**:
+  8 new negative/lifecycle tests (connector-throw preservation, re-approval recovery, cross-action
+  preflight rejection, ALREADY_APPLIED blocked execution, candidate semantics change → new risk
+  decision, verify pinned to latest SUCCEEDED attempt, rollback with own preflight, audit
+  monotonic > 50).
+
+### Validation
+
+- `npx vitest run tests/integration/frontend-external-action-domain.test.ts` — **21/21 PASS**.
+- `npx vitest run tests/contract/frontend-external-action.contract.test.ts` — **93/93 PASS**.
+- `tsc --noEmit` — clean. ESLint — clean. Prettier — clean.
+- Automatic CI on this head `6349e5f` — run **#527** (`30961275660`): Quality, Frontend,
+  Required Gates **SUCCESS**.
+
+### AC coverage (WP2 after second remediation)
+
+WP2 now proves **AC-01, AC-02, AC-03, AC-04, AC-05, AC-06, AC-07, AC-08, AC-09, AC-10, AC-12,
+AC-13, AC-14, AC-15, AC-17** (server-authoritative domain lifecycle, exact re-approval, ordered
+append-only attempts, no auto-retry, verification-not-HTTP-success, credential/budget
+server-owned, restricted shell) plus the strengthened **AC-08** (fresh target-state preflight on
+retry), **AC-09/AC-20** (verification pinned to the actual SUCCEEDED attempt, Result identity
+from the provider ref only). **AC-11** (rollback as a separate governed action with its own risk
+decision + preflight) is now substantially delivered; full reversibility confirmation remains
+partially dependent on WP6 verification evidence. AC-16/AC-21/AC-22 + AC-18/AC-19/AC-20
+(negative-evidence) remain for WP3–WP6.
 
 PR #66 remains OPEN / DRAFT. WP3 Migration 028 remains **NOT_AUTHORIZED_TO_START** pending
 re-review of this report.

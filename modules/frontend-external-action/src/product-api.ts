@@ -194,6 +194,8 @@ export const externalActionCapabilitiesForScope = (
   const granted = scope.accessScope ?? [];
   const hasRead = granted.some((entry) => READ_SCOPES.has(entry));
   if (!hasRead) return [];
+  // Read scope grants reads and outcome resolution only — never write
+  // capabilities (server-authoritative; the frozen contract separates them).
   const capabilities: ExternalActionCapabilityV1[] = [
     'LIST_EXTERNAL_ACTIONS',
     'READ_EXTERNAL_ACTION',
@@ -206,8 +208,6 @@ export const externalActionCapabilitiesForScope = (
     'READ_RESULT',
     'READ_AUDIT',
     'READ_APPROVAL',
-    'VALIDATE_CANDIDATE',
-    'PREPARE_MANIFEST',
     'RESOLVE_OUTCOME',
   ];
   const canExecute = granted.some((entry) => EXECUTE_SCOPES.has(entry));
@@ -224,6 +224,8 @@ export const externalActionCapabilitiesForScope = (
   }
   if (canGovern) {
     capabilities.push(
+      'VALIDATE_CANDIDATE',
+      'PREPARE_MANIFEST',
       'CANCEL_EXTERNAL_ACTION',
       'ROLLBACK_EXTERNAL_ACTION',
       'PREPARE_COMPENSATING_ACTION',
@@ -755,8 +757,11 @@ export class FrontendExternalActionProductCoordinator {
           status: 'DENIED',
           reasons: [],
           permissionRevalidated: true,
-          credentialRevalidated: this.credentialAvailable(repositories),
-          budgetRevalidated: this.budgetAvailable(repositories),
+          credentialRevalidated: await this.credentialAvailable(
+            repositories,
+            this.engine.identity.connectorId,
+          ),
+          budgetRevalidated: await this.budgetAvailable(repositories, scope.activeProjectId),
           policyRevalidated: true,
           targetStateRevalidated: false,
           externalRevisionRevalidated: false,
@@ -880,13 +885,13 @@ export class FrontendExternalActionProductCoordinator {
             'An ACTIVE approval is required before execution.',
           );
         }
-        if (!this.budgetAvailable(repositories)) {
+        if (!(await this.budgetAvailable(repositories, scope.activeProjectId))) {
           externalActionFailure(
             'ACTION_BUDGET_EXCEEDED',
             'The project execution budget is exhausted or unreadable.',
           );
         }
-        if (!this.credentialAvailable(repositories)) {
+        if (!(await this.credentialAvailable(repositories, this.engine.identity.connectorId))) {
           externalActionFailure(
             'ACTION_CREDENTIAL_UNAVAILABLE',
             'The connector credential is not configured.',
@@ -957,7 +962,7 @@ export class FrontendExternalActionProductCoordinator {
         };
         await repositories.attempts.insert(finalAttempt);
         await repositories.executions.update(finalExecution);
-        await this.updateBudget(repositories, 1);
+        await this.updateBudget(repositories, scope.activeProjectId, 1);
         const updated: ExternalActionV1 = {
           ...action,
           actionRevision: action.actionRevision + 1,
@@ -2172,39 +2177,33 @@ export class FrontendExternalActionProductCoordinator {
     return operation === 'FINANCIAL_OR_LEGAL' || operation === 'PUBLISH_OR_DELETE';
   }
 
-  private credentialAvailable(repositories: ExternalActionTransactionRepositoriesV1): boolean {
-    void repositories;
+  private async credentialAvailable(
+    repositories: ExternalActionTransactionRepositoriesV1,
+    connectorId: string,
+  ): Promise<boolean> {
     // Server-owned credential boundary: availability is derived from the
     // credential store, never from the browser.
-    return this.credentialStatusFor() !== 'MISSING';
+    const credential = await repositories.credentials.findByConnector(connectorId);
+    return credential !== undefined && credential.status === 'CONFIGURED';
   }
 
-  private credentialStatusFor(): 'CONFIGURED' | 'MISSING' | 'REVOKED' | 'ROTATION_REQUIRED' {
-    // The coordinator reads the stored credential view synchronously through
-    // the repository; the adapter seeds CONFIGURED state in tests.
-    const cached = this.cachedCredentialStatus;
-    return cached ?? 'MISSING';
+  private async budgetAvailable(
+    repositories: ExternalActionTransactionRepositoriesV1,
+    projectId: string,
+  ): Promise<boolean> {
+    // Project execution-budget boundary: exhaustion fails closed; the budget
+    // store is authoritative and the coordinator never infers budget.
+    const budget = await repositories.budgets.findByProject(projectId);
+    if (!budget) return false;
+    return !budget.exhausted && budget.remainingExecutions > 0;
   }
-
-  private cachedCredentialStatus:
-    'CONFIGURED' | 'MISSING' | 'REVOKED' | 'ROTATION_REQUIRED' | undefined;
-
-  private budgetAvailable(repositories: ExternalActionTransactionRepositoriesV1): boolean {
-    void repositories;
-    // Project execution-budget boundary: exhaustion fails closed. The budget
-    // store is authoritative; the coordinator never infers budget.
-    return this.cachedBudgetAvailable ?? true;
-  }
-
-  private cachedBudgetAvailable: boolean | undefined;
 
   private async updateBudget(
     repositories: ExternalActionTransactionRepositoriesV1,
+    projectId: string,
     used: number,
   ): Promise<void> {
-    const current = await repositories.budgets.findByProject(
-      this.cachedBudgetProjectId ?? 'project-1',
-    );
+    const current = await repositories.budgets.findByProject(projectId);
     if (current) {
       const next = budgetViewFrom({
         projectId: current.projectId,
@@ -2215,19 +2214,6 @@ export class FrontendExternalActionProductCoordinator {
       });
       await repositories.budgets.update(next);
     }
-  }
-
-  private cachedBudgetProjectId: string | undefined;
-
-  /** Test/setup hook for the in-memory adapter to expose server-owned state. */
-  setServerOwnedState(input: {
-    readonly credentialStatus?: 'CONFIGURED' | 'MISSING' | 'REVOKED' | 'ROTATION_REQUIRED';
-    readonly budgetAvailable?: boolean;
-    readonly budgetProjectId?: string;
-  }): void {
-    if (input.credentialStatus !== undefined) this.cachedCredentialStatus = input.credentialStatus;
-    if (input.budgetAvailable !== undefined) this.cachedBudgetAvailable = input.budgetAvailable;
-    if (input.budgetProjectId !== undefined) this.cachedBudgetProjectId = input.budgetProjectId;
   }
 
   private async currentManifestRevision(

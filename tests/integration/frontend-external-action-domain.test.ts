@@ -12,6 +12,7 @@ import {
 } from '../../packages/contracts/src/index.js';
 import {
   FrontendExternalActionProductCoordinator,
+  externalActionCapabilitiesForScope,
   type FrontendExternalActionScopeV1,
 } from '../../modules/frontend-external-action/src/index.js';
 
@@ -86,11 +87,6 @@ const makeCoordinator = (
     new InMemoryFrontendCommandGateway(),
     new FakeExternalActionEngine(behavior),
   );
-  coordinator.setServerOwnedState({
-    credentialStatus: 'CONFIGURED',
-    budgetAvailable: true,
-    budgetProjectId: PROJECT_ID,
-  });
   return { store, coordinator };
 };
 
@@ -317,11 +313,17 @@ describe('FE-P4-S2 WP2 External Action Product domain', () => {
   });
 
   it('fails closed when the project execution budget is exhausted', async () => {
-    const { coordinator } = makeCoordinator();
-    coordinator.setServerOwnedState({
-      credentialStatus: 'CONFIGURED',
-      budgetAvailable: false,
-      budgetProjectId: PROJECT_ID,
+    const { coordinator, store } = makeCoordinator();
+    // Server-owned budget store is authoritative: seed an exhausted budget.
+    store.seedBudget({
+      schemaVersion: '1.0.0',
+      projectId: PROJECT_ID,
+      status: 'EXHAUSTED',
+      usedExecutions: 100,
+      remainingExecutions: 0,
+      softLimit: 80,
+      hardLimit: 100,
+      exhausted: true,
     });
     await coordinator.validateActionCandidate(scope, {
       schemaVersion: '1.0.0',
@@ -470,5 +472,34 @@ describe('FE-P4-S2 WP2 External Action Product domain', () => {
     expect(FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.prepareCompensation).toBe(
       'frontend.external-action.prepare-compensation.v1',
     );
+  });
+
+  it('never grants write capabilities from a read-only scope', async () => {
+    const { coordinator } = makeCoordinator();
+    const readScope: FrontendExternalActionScopeV1 = {
+      ...scope,
+      accessScope: ['action:read'],
+    };
+    const capabilities = externalActionCapabilitiesForScope(readScope);
+    expect(capabilities).toContain('READ_EXTERNAL_ACTION');
+    expect(capabilities).toContain('RESOLVE_OUTCOME');
+    expect(capabilities).not.toContain('VALIDATE_CANDIDATE');
+    expect(capabilities).not.toContain('PREPARE_MANIFEST');
+    expect(capabilities).not.toContain('EXECUTE_EXTERNAL_ACTION');
+    expect(capabilities).not.toContain('APPROVE_EXTERNAL_ACTION');
+    // A read-only principal cannot validate a candidate (server authority).
+    await expect(
+      coordinator.validateActionCandidate(readScope, {
+        schemaVersion: '1.0.0',
+        clientRequestId: 'client-readonly',
+        idempotencyKey: 'idem-readonly',
+        actionId: 'action-7',
+        candidateId: 'candidate-7',
+        operation: 'UPDATE_REVERSIBLE',
+        targetRef,
+        parameterRef,
+        evidenceRefs: [evidenceSetRef],
+      }),
+    ).rejects.toThrow();
   });
 });

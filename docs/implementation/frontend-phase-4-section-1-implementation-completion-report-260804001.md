@@ -23,9 +23,12 @@ The FE-P4-S1 Review Center Product implementation is complete as a
 Migration 027; user approval of Product completion is requested next. Ready,
 Merge, deployment and production verification remain unauthorized.
 
-Final exact head `457554403f8bfeb3fb5de1be0e7395378cc3f902`: automatic CI
-run #496 / `30915497395` — Quality, Frontend and Required Gates all
-**SUCCESS** (see verification record AC-31).
+Corrected exact head `bdf6280dfbd73c3d619f6269da52e2fe84a8dfd2`: automatic CI
+run #498 / `30921345729` — Quality, Frontend and Required Gates all
+**SUCCESS** (see verification record AC-31). This head also resolves the
+GPT PR #63 review blockers: fail-closed reads + operation-level capability
+enforcement, the typed `DIRECTIVE_AUTHORING` revision return target, and the
+frozen 200-Item / 500-edge Context bounds.
 
 ## 2. Delivered scope
 
@@ -35,9 +38,9 @@ run #496 / `30915497395` — Quality, Frontend and Required Gates all
 - Migration 027 + PostgreSQL store + parity (WP3).
 - Protected Review Product API + `FrontendReviewClient` (WP4).
 - `/review` Review Workspace replacing the placeholder (WP5).
-- Verification: contract 31, domain 14, API 3, negative 5, database parity +
-  rollback, browser unit 6, frontend app 54, browser E2E 4, governance
-  evidence (WP6).
+- Verification: contract 34, domain 14, API 3, negative 5, security fail-closed
+  12, database parity + rollback (149), browser unit 6, frontend app 54,
+  browser E2E 4, governance evidence (WP6).
 
 ## 3. Exclusions (unchanged from authorization)
 
@@ -77,7 +80,8 @@ before FE-P4-S2.
 
 ## 6. Security negative proof
 
-`tests/integration/frontend-review-negative.test.ts` and
+`tests/integration/frontend-review-negative.test.ts`,
+`tests/integration/frontend-review-security.test.ts` and
 `tests/integration/frontend-review-product-api.test.ts` prove:
 
 - no Review route performs Canonical Commit, Directive Apply or External
@@ -85,7 +89,16 @@ before FE-P4-S2.
 - hidden Items cannot be approved and hidden identities are never echoed;
 - rejected/held history is append-only;
 - decisions outside the allowed set fail closed;
-- Approval issuance performs no side effect beyond Review resources.
+- Approval issuance performs no side effect beyond Review resources;
+- reads fail closed or return an `ACCESS_RESTRICTED` shell without the
+  protected payload when the access/policy revision changed (current and
+  historical);
+- operation-level capability checks deny insufficient Review scope;
+- sensitivity masking removes Items whose sensitivity exceeds the current
+  clearance;
+- Approval reads revalidate access, policy, status and expiry;
+- the frozen 200-Item / 500-edge Context bounds are enforced by the decoder,
+  materialization and read paths.
 
 ## 7. Completion manifest
 

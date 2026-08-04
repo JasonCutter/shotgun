@@ -23,14 +23,18 @@ The FE-P4-S1 Review Center Product implementation is complete as a
 Migration 027; user approval of Product completion is requested next. Ready,
 Merge, deployment and production verification remain unauthorized.
 
-Corrected exact head `8af5d8b04f175fb444739ba3fc196e99807ff31c`: automatic CI
-run #500 / `30923817172` — Quality, Frontend and Required Gates all
-**SUCCESS** (see verification record AC-31). This head resolves the GPT PR
-#63 review blockers: fail-closed reads + operation-level capability
-enforcement, decision/comment/dependency visibility filtering and hidden-Item
-write rejection, outcome/replay revalidation, the typed `DIRECTIVE_AUTHORING`
-revision return target, and the frozen 200-Item / 500-edge Context bounds at
-decoder, materialization, read and outcome/replay paths.
+Corrected exact head `e10ef13203d334ac56b6392705540ab70f0856b0` (round-3
+fix commit `e10ef13`): automatic CI run #502 / `30927914305` — Quality,
+Frontend and Required Gates all **SUCCESS** (see verification record AC-31). This head resolves the GPT PR #63 review blockers (rounds 1-3):
+fail-closed reads + operation-level capability enforcement,
+decision/comment/dependency visibility filtering and hidden-Item write
+rejection, outcome/replay revalidation, the typed `DIRECTIVE_AUTHORING`
+revision return target, the frozen 200-Item / 500-edge Context bounds at
+decoder, materialization, read and outcome/replay paths, and round-3
+Outcome/replay completeness (generic REJECTED detail, hidden-state-free
+recovered aggregate, exact produced-revision recovery with `revisionRequest-
+ReturnTarget` reconstruction, context-wide comment outcome/replay omission,
+and UNAVAILABLE projection for visible Items that depend on hidden content).
 
 ## 2. Delivered scope
 
@@ -41,7 +45,7 @@ decoder, materialization, read and outcome/replay paths.
 - Protected Review Product API + `FrontendReviewClient` (WP4).
 - `/review` Review Workspace replacing the placeholder (WP5).
 - Verification: contract 34, domain 14, API 3, negative 5, security fail-closed
-  19, database parity + rollback (149), browser unit 6, frontend app 54,
+  26, database parity + rollback (149), browser unit 6, frontend app 60,
   browser E2E 4, governance evidence (WP6).
 
 ## 3. Exclusions (unchanged from authorization)
@@ -104,6 +108,14 @@ before FE-P4-S2.
   clearance fail closed;
 - outcome resolution and idempotent replay revalidate access/policy,
   visibility and Approval status/expiry instead of bypassing the read API;
+  REJECTED outcomes return only a generic rejection detail, recovered
+  aggregate state is computed from scope-visible Items/Decisions only, the
+  exact produced Context revision is recovered with the typed revision return
+  target, and context-wide comments are never transmitted through Comment
+  outcome or replay;
+- a visible Item that depends on hidden content is projected unavailable
+  (MASKED), decisions on it fail closed, and dependency/approval validation
+  errors never echo hidden Item or Dependency identities;
 - Approval reads revalidate access, policy, status and expiry;
 - the frozen 200-Item / 500-edge Context bounds are enforced by the decoder,
   materialization, read and outcome/replay paths.

@@ -238,6 +238,75 @@ export const graphSnapshotPhaseQueryKey = (
 export const graphDisabledQueryKey = (operation: string) =>
   ['graph', 'disabled', operation] as const;
 
+export type ReviewQueryScope = {
+  readonly principalId: string;
+  readonly sessionId: string;
+  readonly activeProjectId: string;
+  readonly resourceProjectId: string;
+  readonly accessRevision: string;
+  readonly policyContextRevision: string;
+  readonly sensitivity: string;
+  readonly queueSnapshotRevision: string;
+};
+
+export const reviewScopeFromShell = (shell: GlobalShellView | null): ReviewQueryScope | null =>
+  shell?.activeProject
+    ? {
+        principalId: shell.principalId,
+        sessionId: shell.sessionId,
+        activeProjectId: shell.activeProject.id,
+        resourceProjectId: shell.activeProject.id,
+        accessRevision: shell.accessRevision,
+        policyContextRevision: shell.policyContextRevision,
+        sensitivity: shell.activeProject.sensitivityClearance,
+        queueSnapshotRevision: 'latest',
+      }
+    : null;
+
+const reviewScopeKey = (scope: ReviewQueryScope) =>
+  [
+    'project',
+    scope.principalId,
+    scope.sessionId,
+    scope.activeProjectId,
+    scope.resourceProjectId,
+    scope.accessRevision,
+    scope.policyContextRevision,
+    scope.sensitivity,
+    'review',
+  ] as const;
+
+/**
+ * Queue-phase key: a bounded queue read bound to the server scope. The full
+ * request (filters, page size, cursor) is part of the key so two requests
+ * never reuse each other's cached result.
+ */
+export const reviewQueueQueryKey = (
+  scope: ReviewQueryScope,
+  request: {
+    readonly targetKinds?: readonly string[];
+    readonly aggregateStates?: readonly string[];
+    readonly attentionReasons?: readonly string[];
+    readonly query?: string;
+    readonly pageSize: number;
+    readonly cursor?: string;
+  },
+) => [...reviewScopeKey(scope), 'queue', request] as const;
+
+/**
+ * Context-phase key: a Review Context read bound to the immutable context
+ * revision identity (reviewContextId + contextRevision).
+ */
+export const reviewContextPhaseQueryKey = (
+  scope: ReviewQueryScope,
+  reviewContextId: string,
+  contextRevision: number,
+  operation: readonly unknown[],
+) => [...reviewScopeKey(scope), 'context', reviewContextId, contextRevision, ...operation] as const;
+
+export const reviewDisabledQueryKey = (operation: string) =>
+  ['review', 'disabled', operation] as const;
+
 export const clearProjectQueries = async (queryClient: QueryClient): Promise<void> => {
   await queryClient.cancelQueries({ queryKey: ['project'] });
   queryClient.removeQueries({ queryKey: ['project'] });

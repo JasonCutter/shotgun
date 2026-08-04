@@ -1053,3 +1053,156 @@ tr.graph-item--discovery {
   text-align: left;
   vertical-align: top;
 }
+
+/* FE-P4-S1 Review Center workspace (ADR-128). Non-color cues: aggregate and
+   decision statuses use symbols + text, never color alone. */
+.review-layout {
+  display: grid;
+  grid-template-columns: minmax(16rem, 20rem) 1fr;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.review-queue ul,
+.review-items ul,
+.review-history ul,
+.review-detail-reads ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.review-queue li + li,
+.review-items li + li {
+  margin-top: 0.5rem;
+}
+
+.review-queue button,
+.review-items button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border, #d0d7e2);
+  border-radius: 0.5rem;
+  background: var(--surface, #fff);
+}
+
+.review-queue button.selected,
+.review-items button.selected {
+  outline: 0.25rem solid var(--accent, #4776e6);
+  outline-offset: 0.125rem;
+}
+
+.review-target-label,
+.review-item-label {
+  display: block;
+  font-weight: 600;
+}
+
+.review-status {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 0.375rem;
+  border: 1px solid var(--border, #d0d7e2);
+  font-weight: 600;
+}
+
+/* Non-color cues: prefix symbols per aggregate/decision state. */
+.review-status[data-aggregate='APPROVED_READY']::before,
+.review-status[data-aggregate='ACCEPTED_FOR_AUTHORING']::before,
+.review-item-status[data-decision-state='APPROVED']::before {
+  content: 'O ';
+}
+
+.review-status[data-aggregate='REJECTED']::before,
+.review-status[data-aggregate='ACCESS_RESTRICTED']::before,
+.review-status[data-aggregate='UNAVAILABLE']::before,
+.review-item-status[data-decision-state='REJECTED']::before {
+  content: 'X ';
+}
+
+.review-status[data-aggregate='STALE']::before,
+.review-item-status[data-decision-state='REVISION_REQUESTED']::before {
+  content: '! ';
+}
+
+.review-status[data-aggregate='ON_HOLD']::before,
+.review-status[data-aggregate='REVISION_REQUESTED']::before,
+.review-item-status[data-decision-state='ON_HOLD']::before {
+  content: '- ';
+}
+
+.review-item-status {
+  font-weight: 600;
+}
+
+.review-context-summary,
+.review-items,
+.review-item-detail,
+.review-decision-controls,
+.review-history {
+  border: 1px solid var(--border, #d0d7e2);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.review-comparison {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.review-decision-controls label {
+  display: block;
+  margin-top: 0.75rem;
+}
+
+.review-decision-controls input,
+.review-decision-controls textarea,
+.review-decision-controls select {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 0.25rem;
+  padding: 0.5rem;
+}
+
+.review-intent-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.review-decision-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.review-invalid-hint {
+  color: var(--danger, #9f1d1d);
+  font-weight: 600;
+}
+
+.review-recovery {
+  border: 1px solid var(--warning, #b45309);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.review-stale-reason {
+  font-weight: 600;
+}
+
+@media (max-width: 720px) {
+  .review-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .review-comparison {
+    grid-template-columns: 1fr;
+  }
+}

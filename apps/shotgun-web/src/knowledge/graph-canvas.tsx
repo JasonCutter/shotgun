@@ -201,9 +201,21 @@ export const GraphCanvas = ({
     const reducedMotion =
       typeof window !== 'undefined' &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const elements = elementsFor(nodes, edges);
+    // AC-18: the parent remounts this component with a snapshot-identity key,
+    // so this effect (and the cytoscape instance it builds) is created fresh
+    // for every new snapshot. The dataset markers let E2E assert that the
+    // ACTUAL cytoscape instance received the new node/edge set (not only the
+    // hidden accessible collection).
+    container.dataset.graphNodeCount = String(
+      elements.filter((element) => element.data && 'resourceId' in element.data).length,
+    );
+    container.dataset.graphEdgeCount = String(
+      elements.filter((element) => element.data && 'source' in element.data).length,
+    );
     const core = cytoscape({
       container,
-      elements: elementsFor(nodes, edges),
+      elements,
       style: STYLE,
       layout: {
         name: 'breadthfirst',
@@ -259,7 +271,13 @@ export const GraphCanvas = ({
 
   const tuples = graphAccessibleTuples(nodes, edges);
   return (
-    <div role="region" aria-label={ariaLabel} className="graph-canvas" data-testid="graph-canvas">
+    <div
+      role="region"
+      aria-label={ariaLabel}
+      className="graph-canvas"
+      data-testid="graph-canvas"
+      tabIndex={0}
+    >
       {/* The cytoscape presentation surface lives in its own container so the
           accessible collection below is never touched by the canvas renderer. */}
       <div ref={containerRef} className="graph-canvas-surface" />

@@ -34,7 +34,7 @@ export const GraphTableView = ({
   const nodeRefs = graphNodeRefById(nodes);
   const selectedNodeId = graphSelectedNodeId(nodes, selectedRef);
   return (
-    <section role="region" aria-label={ariaLabel} className="graph-table-view">
+    <section role="region" aria-label={ariaLabel} className="graph-table-view" tabIndex={0}>
       <h2 className="visually-hidden">Graph table</h2>
       <table className="graph-table">
         <thead>

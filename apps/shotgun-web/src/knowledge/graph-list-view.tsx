@@ -51,7 +51,7 @@ export const GraphListView = ({
   const nodeRefs = graphNodeRefById(nodes);
   const selectedNodeId = graphSelectedNodeId(nodes, selectedRef);
   return (
-    <section role="region" aria-label={ariaLabel} className="graph-list-view">
+    <section role="region" aria-label={ariaLabel} className="graph-list-view" tabIndex={0}>
       <h2 className="visually-hidden">Graph list</h2>
       <ul className="graph-list">
         {tuples.map((tuple) => {

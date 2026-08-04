@@ -40,7 +40,7 @@ export const GraphPathView = ({
   const nodeRefs = graphNodeRefById(nodes);
   const selectedNodeId = graphSelectedNodeId(nodes, selectedRef);
   return (
-    <section role="region" aria-label={ariaLabel} className="graph-path-view">
+    <section role="region" aria-label={ariaLabel} className="graph-path-view" tabIndex={0}>
       <h2 className="visually-hidden">Graph path</h2>
       {description ? (
         <div className="graph-path-narration">

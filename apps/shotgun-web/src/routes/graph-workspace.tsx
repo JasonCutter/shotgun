@@ -454,6 +454,7 @@ export const GraphWorkspace = () => {
 
       {state.viewKind === 'canvas' ? (
         <GraphCanvas
+          key={`${result.identity.snapshotId}:${result.identity.projectionRevision}`}
           nodes={nodes}
           edges={edges}
           selectedRef={state.selectedRef}

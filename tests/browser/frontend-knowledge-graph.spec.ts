@@ -131,12 +131,35 @@ const refreshedSnapshot = {
   },
   health: 'COMPLETE',
   completeness: 'COMPLETE',
-  nodes: graphSnapshot.nodes.map(
-    (entry: { resourceRef: { resourceId: string }; label: string }) => ({
+  nodes: [
+    ...graphSnapshot.nodes.map((entry: { resourceRef: { resourceId: string }; label: string }) => ({
       ...entry,
       revisionBinding: { ...revisionBinding, projectionRevision: 'proj-2' },
-    }),
-  ),
+    })),
+    // AC-18: the refreshed snapshot adds a node so a canvas-mount E2E can
+    // assert the actual cytoscape instance picked up the new node set.
+    {
+      schemaVersion: '1.0.0',
+      nodeId: 'node-4',
+      resourceRef: { schemaVersion: '1.0.0', resourceKind: 'ENTITY', resourceId: 'entity-4' },
+      label: 'Entity Four',
+      nodeKind: 'ENTITY',
+      authority: 'DISCOVERY_CANDIDATE',
+      baseViewMembership: 'KNOWLEDGE_SEMANTIC',
+      overlayMemberships: [],
+      revisionBinding: { ...revisionBinding, projectionRevision: 'proj-2' },
+      accessMasking: 'VISIBLE',
+      payload: {
+        schemaVersion: '1.0.0',
+        nodeKind: 'ENTITY',
+        entity: {
+          schemaVersion: 'entity.v1',
+          entityType: 'PERSON',
+          displayName: 'Entity Four',
+        },
+      },
+    },
+  ],
   edges: graphSnapshot.edges.map((entry: Record<string, unknown>) => ({
     ...entry,
     revisionBinding: { ...revisionBinding, projectionRevision: 'proj-2' },
@@ -419,6 +442,64 @@ test('AC-17: refresh issues a new snapshot identity and keeps the selected resou
   await expect(page.getByRole('status')).toContainText('선택됨: Entity One');
 });
 
+test('AC-18: a refresh while the canvas stays mounted rebuilds the actual cytoscape instance with the new snapshot', async ({
+  page,
+}) => {
+  await stubSessionAndShell(page);
+  await page.goto('/knowledge/graph');
+  await expect(page.getByRole('heading', { name: 'Semantic Graph', level: 1 })).toBeVisible();
+  await expect(page.getByText(/Snapshot: snapshot-1/)).toBeVisible();
+
+  // The canvas view is the default and stays mounted across the refresh.
+  const canvasSurface = page.locator('[data-testid="graph-canvas"] .graph-canvas-surface');
+  await expect(canvasSurface).toBeAttached();
+  const before = await canvasSurface.evaluate((element) => ({
+    nodes: element.getAttribute('data-graph-node-count'),
+    edges: element.getAttribute('data-graph-edge-count'),
+  }));
+  expect(before).toEqual({ nodes: '3', edges: '1' });
+  const perfBefore = await page.evaluate(
+    () =>
+      (
+        window as Window & {
+          __shotgunGraphPerf?: { mounted: number; destroyed: number; active: number };
+        }
+      ).__shotgunGraphPerf,
+  );
+
+  await page.getByRole('button', { name: '새로 고침' }).click();
+
+  await expect(page.getByText(/Snapshot: snapshot-2/)).toBeVisible();
+  await expect(page.getByText(/Revision: proj-2/)).toBeVisible();
+
+  // The ACTUAL cytoscape instance was rebuilt with the refreshed node set
+  // (4 nodes now) — not just the hidden accessible collection.
+  const after = await canvasSurface.evaluate((element) => ({
+    nodes: element.getAttribute('data-graph-node-count'),
+    edges: element.getAttribute('data-graph-edge-count'),
+  }));
+  expect(after).toEqual({ nodes: '4', edges: '1' });
+
+  // The old cytoscape instance was destroyed and a new one mounted (the
+  // snapshot-identity key remounts the component).
+  const perfAfter = await page.evaluate(
+    () =>
+      (
+        window as Window & {
+          __shotgunGraphPerf?: { mounted: number; destroyed: number; active: number };
+        }
+      ).__shotgunGraphPerf,
+  );
+  expect(perfAfter!.destroyed).toBeGreaterThan(perfBefore?.destroyed ?? 0);
+  expect(perfAfter!.active).toBeGreaterThan(0);
+
+  // The accessible semantic collection also carries the refreshed node set.
+  const collectionNodes = await page
+    .locator('[data-testid="graph-canvas"] [data-graph-kind="node"]')
+    .count();
+  expect(collectionNodes).toBe(4);
+});
+
 test('AC-19: canvas, list, table and path expose the identical accessible tuple set', async ({
   page,
 }) => {
@@ -454,20 +535,38 @@ test('AC-20: the full frozen keyboard matrix is exercised end to end', async ({ 
   await page.goto('/knowledge/graph');
   await expect(page.getByRole('heading', { name: 'Semantic Graph', level: 1 })).toBeVisible();
 
-  // Tab / Shift+Tab: focus enters the graph toolbar and moves between regions
-  // without being lost to the document body.
+  // Tab / Shift+Tab: focus moves between graph regions (not merely stays off
+  // the body). Record the active region and focus target at each step.
+  const activeFocus = () =>
+    page.evaluate(() => {
+      const element = document.activeElement as HTMLElement | null;
+      const region = element?.closest('[role="region"]');
+      return {
+        tag: element?.tagName ?? 'BODY',
+        region: region?.getAttribute('aria-label') ?? null,
+        id: element?.id ?? null,
+      };
+    });
+
+  // Focus the last toolbar control, then Tab forward into the active view
+  // region (the canvas region root is a natural focus anchor, tabIndex=0).
+  await page.getByRole('button', { name: '새로 고침' }).focus();
+  const toolbarFocus = await activeFocus();
+  expect(toolbarFocus.region).toBe('Graph view controls');
+
   await page.keyboard.press('Tab');
-  await expect
-    .poll(() => page.evaluate(() => document.activeElement?.tagName ?? 'BODY'))
-    .not.toBe('BODY');
-  await page.keyboard.press('Tab');
-  await expect
-    .poll(() => page.evaluate(() => document.activeElement?.tagName ?? 'BODY'))
-    .not.toBe('BODY');
+  const canvasFocus = await activeFocus();
+  expect(canvasFocus.region).toBe('Semantic graph canvas');
+  expect(canvasFocus.tag).not.toBe('BODY');
+  // The active element actually changed (toolbar button -> region root).
+  expect(canvasFocus.tag).not.toBe(toolbarFocus.tag);
+
+  // Shift+Tab moves back in the reverse direction to the toolbar.
   await page.keyboard.press('Shift+Tab');
-  await expect
-    .poll(() => page.evaluate(() => document.activeElement?.tagName ?? 'BODY'))
-    .not.toBe('BODY');
+  const backFocus = await activeFocus();
+  expect(backFocus.region).toBe('Graph view controls');
+  expect(backFocus.tag).not.toBe('BODY');
+  expect(backFocus.tag).not.toBe(canvasFocus.tag);
 
   // Base views Alt+1/2/3.
   await page.keyboard.press('Alt+1');

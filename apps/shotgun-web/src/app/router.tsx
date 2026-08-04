@@ -29,6 +29,7 @@ import { AskWorkspace } from '../routes/ask-workspace.js';
 import { KnowledgeWorkspace } from '../routes/knowledge-workspace.js';
 import { KnowledgeDetailWorkspace } from '../routes/knowledge-detail-workspace.js';
 import { KnowledgeCompareWorkspace } from '../routes/knowledge-compare-workspace.js';
+import { GraphWorkspace } from '../routes/graph-workspace.js';
 import type { AppRuntime } from './providers.js';
 import { ensureSessionBoundary, sessionBoundaryQueryOptions } from '../session/session-query.js';
 import type { TargetRouteView } from '@shotgun/api-client';
@@ -137,6 +138,14 @@ export const createAppRouter = (runtime: AppRuntime) =>
             href: '/knowledge',
           }),
           element: <KnowledgeCompareWorkspace />,
+        },
+        {
+          path: 'knowledge/graph',
+          loader: guardedRouteLoader(runtime, {
+            routeId: 'knowledge',
+            href: '/knowledge',
+          }),
+          element: <GraphWorkspace />,
         },
         {
           path: 'knowledge/:resourceId',

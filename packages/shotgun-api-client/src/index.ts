@@ -10,3 +10,4 @@ export * from './sources-write-types.js';
 export * from './ask-client.js';
 export * from './ask-contract-types.js';
 export * from './frontend-knowledge-draft-client.js';
+export * from './frontend-knowledge-graph-client.js';

@@ -23,4 +23,6 @@ export * from './frontend-ask-invariants.js';
 export * from './frontend-ask-citation-return.js';
 export * from './frontend-knowledge.js';
 export * from './frontend-knowledge-draft.js';
+export * from './frontend-knowledge-graph.js';
+export * from './frontend-knowledge-graph-failures.js';
 export * from './knowledge-workspace-query.js';

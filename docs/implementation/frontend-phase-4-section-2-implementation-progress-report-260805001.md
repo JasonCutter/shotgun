@@ -1325,3 +1325,134 @@ with the same `requirePrincipalBrowserSession` + `authRepository` + `settingsRep
 
 PR #66 remains OPEN / DRAFT. WP5 External Action Governance Workspace and WP6 verification
 evidence remain **NOT_AUTHORIZED** pending re-review of this report.
+
+## 24. WP4 focused remediation — Review 4863146027 (report 18, 2026-08-05)
+
+GPT review **4863146027** returned **BLOCKED / FOCUSED WP4 REMEDIATION REQUIRED** with five
+items, all within the WP4 scope (no new scope). Per the review instruction, CI runs #545/#546
+were **not re-executed**; the only changes on this head are the five WP4 items and their focused
+tests plus the report AC correction. This report records the remediation on head `967d08e`
+(CI **#547**).
+
+### 1. Least-privilege Scope → Capability matrix (Review item 1)
+
+`externalActionCapabilitiesForScope` in `modules/frontend-external-action/src/product-api.ts`
+was replaced with an exact least-privilege matrix against the frozen scopes
+(`action:read`, `action:audit:read`, `action:budget:read`, `action:credential:manage`,
+`action:candidate:stage`, `action:approve`, `action:execute`, `action:verify`,
+`action:cancel`, `action:rollback`, plus broad `owner`/`admin`).
+
+- **Under-privilege fixed**: `action:cancel`, `action:rollback`, `action:verify`,
+  `action:audit:read`, `action:budget:read`, `action:credential:manage`,
+  `action:candidate:stage` were previously unrecognized (only `action:read` / `action:execute`
+  / `action:approve` / `action:govern` were). Each fine-grained scope now independently grants
+  its own family.
+- **Over-privilege fixed**: `action:execute` alone no longer grants `verify`; the former
+  `action:govern` wildcard (validate/prepare/cancel/rollback/compensation/credential/budget) is
+  removed. Each capability maps to exactly one fine-grained scope:
+  - `action:read` → the 11 read capabilities + `RESOLVE_OUTCOME`
+  - `action:audit:read` → `READ_AUDIT`; `action:budget:read` → `READ_BUDGET`;
+    `action:credential:manage` → `READ_CREDENTIAL`
+  - `action:candidate:stage` → `VALIDATE_CANDIDATE`
+  - `action:execute` → `PREPARE_MANIFEST`, `PREFLIGHT_EXTERNAL_ACTION`,
+    `EXECUTE_EXTERNAL_ACTION`, `RETRY_EXECUTION_ATTEMPT`
+  - `action:approve` → `APPROVE_EXTERNAL_ACTION`; `action:verify` →
+    `VERIFY_EXTERNAL_ACTION`; `action:cancel` → `CANCEL_EXTERNAL_ACTION`
+  - `action:rollback` → `ROLLBACK_EXTERNAL_ACTION`, `PREPARE_COMPENSATING_ACTION`
+- Capability denial stays `PROJECT_ACCESS_DENIED` (HTTP 403) and is checked before any resource
+  existence check, so every deny row is deterministic.
+- Tests: `tests/integration/frontend-external-action-product-api.test.ts` adds a table-driven
+  scope matrix suite (`it.each`) covering allow (200), deny (403) and capability-granted-but-
+  resource-missing (404) rows per fine-grained scope.
+
+### 2. Governed mutation is sent exactly once on a general 403 (Review item 2)
+
+`frontend-external-action-client.ts` now separates the transport paths:
+
+- **READ POST** (`read`): a CSRF refresh + single retry on a general 403 is allowed (reads are
+  idempotent and safe; session rotation must not break a plain read).
+- **GOVERNED MUTATION** (`mutate`): sent exactly ONCE. A general 403 (project access denied,
+  capability denied, session loss, policy change) is **never** auto-resent; the typed failure is
+  decoded and surfaced to the caller.
+- Negative test (`tests/unit/frontend-external-action-client.test.ts`): a governed mutation
+  against a general 403 results in exactly **1** POST and a typed failure rejection; a READ POST
+  retries once (2 POSTs) and succeeds.
+
+### 3. Approval read added (Review item 3)
+
+The Implementation Request lists an approvals read; the frozen browser-read list does not name
+`GET_APPROVAL`. Per the review, this was **not silently dropped or silently interpreted** — the
+additive read was implemented and the interpretation is recorded here: IR's `approvals` read is
+provided as `POST /product-api/frontend/external-action/approvals/read`.
+
+- Contracts: `GetExternalActionApprovalRequestV1` / `GetExternalActionApprovalResultV1` +
+  strict decoders (additive; nothing frozen was changed).
+- Coordinator: `getExternalActionApproval(scope, request)` — `READ_APPROVAL` capability,
+  project/policy checks, approval resolved via `action.approvalRef`.
+- Route: `.../approvals/read` registered after `preflights/read`.
+- Client: `getExternalActionApproval` with strict decoding and identity binding
+  (`approval.actionId === params.actionId`).
+- Tests: integration approval-read after the full lifecycle (`actionId`, `status: ACTIVE`);
+  client approval-read success + mismatch rejection.
+
+### 4. Full command identity binding (Review item 4)
+
+`assertCommandIdentity` is a shared fail-closed helper validating
+`clientRequestId` + `idempotencyKey` + `actionId` (whichever the command carries) for every
+governed write; command-specific identities are asserted on top:
+
+- validate / prepare / approve / preflight / cancel — now also check `idempotencyKey`.
+- execute — execution/action identity; retry — attempt execution identity.
+- verify — `verification.executionId` + `idempotencyKey`; rollback — `rollback.actionId` +
+  `idempotencyKey`; compensation — `sourceActionId`/`sourceExecutionId` + `idempotencyKey`.
+- `resolveExternalActionOutcome` — now requires **both** `originalClientRequestId` and
+  `originalIdempotencyKey` to match (frozen §7: resolution is by the ORIGINAL identity).
+- Table-based negative tests (`it.each`) over all 10 governed commands + the outcome-resolution
+  mismatch test assert a tampered identity field is rejected `FrontendContractError`.
+
+### 5. AC record correction (Review item 5)
+
+Report 17 mislabeled frozen AC meanings. Corrected record (this head):
+
+- **AC-18: NOT_DELIVERED — WP5** (Home/Command Palette → Governance Workspace navigation).
+- **AC-19: NOT_DELIVERED — WP5/WP6** (Workspace accessibility).
+- **AC-20: PARTIAL — API boundary exists but the report-17 client resent governed mutations on a
+  general 403; the Review-item-2 fix (mutation sent exactly once, typed failure returned)
+  completes the API-boundary defect. Cancel≠rollback and no HTTP/connector-success verification
+  remain intact.**
+- **AC-22: Current-head CI evidence only** (this head `967d08e`, CI #547; #545/#546 were not
+  re-run per the review).
+
+WP1/WP2/WP3 domain coverage (AC-01..AC-17, AC-21) is unchanged. WP5/WP6 remain
+**NOT_AUTHORIZED**.
+
+### Changed files (this remediation)
+
+- `modules/frontend-external-action/src/product-api.ts` — least-privilege Scope → Capability
+  matrix; `getExternalActionApproval`.
+- `packages/contracts/src/frontend-external-action.ts` — additive approval-read request/result
+  types + decoders.
+- `packages/shotgun-api-client/src/frontend-external-action-client.ts` — read/mutate transport
+  split (no mutation resend on general 403); `assertCommandIdentity` full binding;
+  `getExternalActionApproval`.
+- `assemblies/shotgun-app/src/product-api/frontend-external-action-routes.ts` —
+  `.../approvals/read` route.
+- `tests/unit/frontend-external-action-client.test.ts` — 20 tests (mutation 403 sent-once,
+  read 403 retry-once, 10-command identity table, outcome double-identity, approval read
+  success + mismatch).
+- `tests/integration/frontend-external-action-product-api.test.ts` — 11 tests (approval read,
+  fine-grained scope matrix `it.each`).
+
+### Validation
+
+- `npx vitest run tests/unit/frontend-external-action-client.test.ts` — **20/20 PASS**.
+- `npx vitest run tests/integration/frontend-external-action-product-api.test.ts` — **11/11
+  PASS**.
+- `npx vitest run tests/integration/frontend-external-action-domain.test.ts` — **26/26 PASS**.
+- Full unit+integration+contract suites — **969 PASS** (two pre-existing timing flakes pass in
+  isolation; unrelated to this remediation).
+- Full database suite `npm run test:database` — **166/166 PASS (31 files)**.
+- `tsc --noEmit` — clean. ESLint — clean. Prettier — clean.
+- Automatic CI on this head `967d08e` — run **#547** (`30999676865`): Quality, Frontend,
+  Required Gates **SUCCESS**. (#545/#546 not re-run, per the review instruction.)
+

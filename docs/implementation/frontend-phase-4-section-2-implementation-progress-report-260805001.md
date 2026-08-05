@@ -1476,7 +1476,7 @@ three residual defects plus Section 24 record corrections. Mutation 403 non-rese
 AC-18/AC-19 record correction were confirmed satisfied. Per the review, CI runs #547/#548 were
 **not re-executed**; the only changes on this head are the three WP4 defects, their focused
 negative tests, and the Section 24 corrections. This report records the remediation on code head
-`62813f8` (CI **#549**); the report commit head is `<REPORT_HEAD>` (CI **#550**).
+`62813f8` (CI **#549**) and report head `dc71ae7a` (CI **#550**).
 
 ### 1. Detail exposes credential/budget only under their own least-privilege scopes (item 1)
 

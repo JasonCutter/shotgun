@@ -21,6 +21,7 @@ import {
   externalActionDisabledQueryKey,
   externalActionQueueQueryKey,
   externalActionResourceQueryKey,
+  externalActionSnapshotQueryKey,
   type ExternalActionQueryScope,
 } from '../app/query-keys.js';
 
@@ -80,7 +81,10 @@ export const externalActionDetailQueryOptions = (
           )
         : externalActionDisabledQueryKey('detail'),
     queryFn: ({ signal }) => client.getExternalActionDetail(request, { signal }),
-    enabled: scope !== null && identity !== null,
+    // Gated on a non-empty external revision: a regular resource key NEVER
+    // carries `externalRevision: ''` (Review 4866122577 item 3). The revision
+    // is bootstrapped from the authoritative snapshot before the detail fires.
+    enabled: scope !== null && identity !== null && identity.externalRevision !== '',
     retry: externalActionQueryRetry,
     staleTime: 30_000,
   });
@@ -290,7 +294,12 @@ export const externalActionApprovalQueryOptions = (
   );
 };
 
-/** Single-action aggregate snapshot read used to bind the detail query key. */
+/**
+ * Single-action aggregate snapshot read used to bootstrap the detail identity
+ * (Review 4866122577 item 3). Uses the dedicated BOOTSTRAP key — never a
+ * revision-bound `externalActionResourceQueryKey` — because the snapshot does
+ * not yet know the action/external revision.
+ */
 export const externalActionSnapshotQueryOptions = (
   client: FrontendExternalActionClient,
   scope: ExternalActionQueryScope | null,
@@ -303,7 +312,7 @@ export const externalActionSnapshotQueryOptions = (
   return queryOptions({
     queryKey:
       scope && actionId
-        ? externalActionResourceQueryKey(scope, actionId, -1, '', ['snapshot'])
+        ? externalActionSnapshotQueryKey(scope, actionId)
         : externalActionDisabledQueryKey('snapshot'),
     queryFn: ({ signal }) => client.getExternalAction(request, { signal }),
     enabled: scope !== null && actionId !== null,

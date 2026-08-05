@@ -397,6 +397,17 @@ export const externalActionDisabledQueryKey = (operation: string) =>
 export const externalActionActionQueryKey = (scope: ExternalActionQueryScope, actionId: string) =>
   [...externalActionScopeKey(scope), 'action', actionId] as const;
 
+/**
+ * Dedicated BOOTSTRAP key for the aggregate snapshot read (Review 4866122577
+ * item 3). The snapshot binds ONLY the server scope + actionId and is NEVER a
+ * revision-bound resource key (it does not know the action/external revision
+ * yet) — so no `externalActionResourceQueryKey` entry ever carries the
+ * placeholder `actionRevision: -1` / `externalRevision: ''` used to bootstrap
+ * the detail identity.
+ */
+export const externalActionSnapshotQueryKey = (scope: ExternalActionQueryScope, actionId: string) =>
+  [...externalActionScopeKey(scope), 'snapshot', actionId] as const;
+
 export const clearProjectQueries = async (queryClient: QueryClient): Promise<void> => {
   await queryClient.cancelQueries({ queryKey: ['project'] });
   queryClient.removeQueries({ queryKey: ['project'] });

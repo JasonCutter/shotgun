@@ -15,7 +15,11 @@ import {
 import { EmptyState } from '../components/empty-state.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
-import { externalActionActionQueryKey, externalActionScopeFromShell } from '../app/query-keys.js';
+import {
+  externalActionActionQueryKey,
+  externalActionResourceQueryKey,
+  externalActionScopeFromShell,
+} from '../app/query-keys.js';
 import {
   externalActionApprovalQueryOptions,
   externalActionAttemptsQueryOptions,
@@ -153,10 +157,11 @@ export const ExternalActionWorkspace = () => {
     if (!snapshot.data) return;
     const action = snapshot.data.action;
     if (action.actionId !== deepLinkActionId) return;
-    // The action identity changes only when the URL action/revision changes;
-    // the other five resource identities (manifest/execution/attempt/
-    // verification/focus) are applied on EVERY restore so a deep link that
-    // only changes them still takes effect (Review 4865620679 item 2).
+    // The URL is the single source of truth for resource selection
+    // (Review 4866122577 item 2): on EVERY restore we first clear every
+    // resource selection, then re-apply exactly what the URL carries — so
+    // Back/Forward that removes a parameter also clears the stale selection.
+    const snapshotRevision = action.targetRef?.externalRevision ?? '';
     const selectionChanged =
       state.selectedActionId !== action.actionId || state.actionRevision !== action.actionRevision;
     if (selectionChanged) {
@@ -164,10 +169,15 @@ export const ExternalActionWorkspace = () => {
         type: 'SELECT_ACTION',
         actionId: action.actionId,
         actionRevision: action.actionRevision,
-        externalRevision: action.targetRef?.externalRevision ?? '',
+        externalRevision: snapshotRevision,
       });
       dispatch({ type: 'RECOVERY_STARTED' });
+    } else if (state.externalRevision !== snapshotRevision) {
+      // Bind the detail identity to the authoritative snapshot revision
+      // (Review 4866122577 item 3) without resetting the selection.
+      dispatch({ type: 'SET_EXTERNAL_REVISION', externalRevision: snapshotRevision });
     }
+    dispatch({ type: 'RESET_RESOURCE_SELECTIONS' });
     if (deepLink.manifestId) dispatch({ type: 'SELECT_MANIFEST', manifestId: deepLink.manifestId });
     if (deepLink.executionId) {
       dispatch({ type: 'SELECT_EXECUTION', executionId: deepLink.executionId });
@@ -184,6 +194,7 @@ export const ExternalActionWorkspace = () => {
     snapshot.data,
     state.selectedActionId,
     state.actionRevision,
+    state.externalRevision,
     deepLink.manifestId,
     deepLink.executionId,
     deepLink.attemptId,
@@ -216,23 +227,30 @@ export const ExternalActionWorkspace = () => {
   }, [queue.isPending, queue.isError, queue.data, queue.error, announce]);
 
   // Detail identity from the selected queue item or deep-link snapshot. The
-  // actionRevision binds the detail read; the external revision is learned from
-  // the detail payload and then binds every child read so cache isolation holds
-  // across action revision AND external revision (WP5). Memoized so the phase
-  // effects never observe a fresh object identity (which would re-dispatch and
-  // loop).
+  // actionRevision binds the detail read; the external revision comes from the
+  // authoritative snapshot (`SET_EXTERNAL_REVISION` / deep-link restore) so the
+  // DETAIL query key itself is bound to a real external revision — never an
+  // empty placeholder (Review 4866122577 item 3). Memoized so the phase effects
+  // never observe a fresh object identity (which would re-dispatch and loop).
   const identity = useMemo(
     () =>
       state.selectedActionId && state.actionRevision !== null
         ? {
             actionId: state.selectedActionId,
             actionRevision: state.actionRevision,
-            externalRevision: '',
+            externalRevision: state.externalRevision ?? '',
           }
         : null,
-    [state.selectedActionId, state.actionRevision],
+    [state.selectedActionId, state.actionRevision, state.externalRevision],
   );
 
+  // The detail read is gated on a NON-EMPTY external revision so a regular
+  // resource key never carries `externalRevision: ''`. A restricted action
+  // (whose snapshot carries no target revision) renders the restricted shell
+  // from the snapshot instead (Review 4866122577 item 3).
+  const snapshotRestricted =
+    snapshot.data?.action.aggregateState === 'ACCESS_RESTRICTED' ||
+    snapshot.data?.action.accessMasking === 'HIDDEN';
   const detail = useQuery(externalActionDetailQueryOptions(externalActionClient, scope, identity));
 
   // Child reads are gated until the detail resolves, the action is not
@@ -346,62 +364,63 @@ export const ExternalActionWorkspace = () => {
     [navigate, announce],
   );
 
+  // Each selection PRESERVES the already-selected resource parameters in the
+  // URL (Review 4866122577 item 2) — selecting one resource never drops the
+  // others — and the deep-link restore effect re-applies them from the URL.
+  const selectedResourceParams = useMemo(
+    () => ({
+      actionId: state.selectedActionId ?? undefined,
+      manifestId: state.selectedManifestId ?? undefined,
+      executionId: state.selectedExecutionId ?? undefined,
+      attemptId: state.selectedAttemptId ?? undefined,
+      verificationId: state.selectedVerificationId ?? undefined,
+    }),
+    [
+      state.selectedActionId,
+      state.selectedManifestId,
+      state.selectedExecutionId,
+      state.selectedAttemptId,
+      state.selectedVerificationId,
+    ],
+  );
+
   const selectManifest = useCallback(
     (manifestId: string) => {
       dispatch({ type: 'SELECT_MANIFEST', manifestId });
-      navigate(
-        externalActionDeepLinkHref({
-          actionId: state.selectedActionId ?? undefined,
-          manifestId,
-        }),
-      );
+      navigate(externalActionDeepLinkHref({ ...selectedResourceParams, manifestId }));
     },
-    [navigate, state.selectedActionId],
+    [navigate, selectedResourceParams],
   );
 
   const selectExecution = useCallback(
     (executionId: string) => {
       dispatch({ type: 'SELECT_EXECUTION', executionId });
-      navigate(
-        externalActionDeepLinkHref({
-          actionId: state.selectedActionId ?? undefined,
-          executionId,
-        }),
-      );
+      navigate(externalActionDeepLinkHref({ ...selectedResourceParams, executionId }));
     },
-    [navigate, state.selectedActionId],
+    [navigate, selectedResourceParams],
   );
 
   const selectAttempt = useCallback(
     (attemptId: string) => {
       dispatch({ type: 'SELECT_ATTEMPT', attemptId });
-      navigate(
-        externalActionDeepLinkHref({
-          actionId: state.selectedActionId ?? undefined,
-          attemptId,
-        }),
-      );
+      navigate(externalActionDeepLinkHref({ ...selectedResourceParams, attemptId }));
     },
-    [navigate, state.selectedActionId],
+    [navigate, selectedResourceParams],
   );
 
   const selectVerification = useCallback(
     (verificationId: string) => {
       dispatch({ type: 'SELECT_VERIFICATION', verificationId });
-      navigate(
-        externalActionDeepLinkHref({
-          actionId: state.selectedActionId ?? undefined,
-          verificationId,
-        }),
-      );
+      navigate(externalActionDeepLinkHref({ ...selectedResourceParams, verificationId }));
     },
-    [navigate, state.selectedActionId],
+    [navigate, selectedResourceParams],
   );
 
   // Fail-closed deep-link guard (Review 4865620679 item 2): when the URL names
   // a resource identity that differs from the identity the server actually
-  // returned for this action, the workspace shows a safe unavailable note and
-  // never selects/mirrors the mismatched identity.
+  // returned for this action, the workspace shows a safe unavailable note AND
+  // clears the mismatched identity from state so no governed command can ever
+  // carry it (Review 4866122577 item 2).
   const deepLinkMismatch = useMemo(() => {
     const manifestMismatch =
       deepLink.manifestId !== null &&
@@ -411,6 +430,10 @@ export const ExternalActionWorkspace = () => {
       deepLink.executionId !== null &&
       execution.data !== undefined &&
       execution.data.execution.executionId !== deepLink.executionId;
+    const attemptMismatch =
+      deepLink.attemptId !== null &&
+      attempts.data !== undefined &&
+      attempts.data.attempts.every((attempt) => attempt.attemptId !== deepLink.attemptId);
     const verificationMismatch =
       deepLink.verificationId !== null &&
       verification.data !== undefined &&
@@ -418,15 +441,33 @@ export const ExternalActionWorkspace = () => {
     return {
       manifest: manifestMismatch,
       execution: executionMismatch,
+      attempt: attemptMismatch,
       verification: verificationMismatch,
     };
   }, [
     deepLink.manifestId,
     deepLink.executionId,
+    deepLink.attemptId,
     deepLink.verificationId,
     manifest.data,
     execution.data,
+    attempts.data,
     verification.data,
+  ]);
+
+  // Clear any mismatched resource identity from STATE so Rollback / Compensation
+  // / Verify never prefer a stale deep-link id in the request payload
+  // (Review 4866122577 item 2).
+  useEffect(() => {
+    if (deepLinkMismatch.manifest) dispatch({ type: 'CLEAR_MANIFEST_SELECTION' });
+    if (deepLinkMismatch.execution) dispatch({ type: 'CLEAR_EXECUTION_SELECTION' });
+    if (deepLinkMismatch.attempt) dispatch({ type: 'CLEAR_ATTEMPT_SELECTION' });
+    if (deepLinkMismatch.verification) dispatch({ type: 'CLEAR_VERIFICATION_SELECTION' });
+  }, [
+    deepLinkMismatch.manifest,
+    deepLinkMismatch.execution,
+    deepLinkMismatch.attempt,
+    deepLinkMismatch.verification,
   ]);
 
   const surfaces = detail.data
@@ -627,17 +668,38 @@ export const ExternalActionWorkspace = () => {
         semanticDigest: phase.semanticDigest,
       });
       // Adjudicate the three contract outcomes (Review 4865177355 item 5;
-      // corrected per Review 4865620679 item 5): COMPLETED -> exact query
-      // invalidation; REJECTED -> typed failure with the ACTUAL rejection
+      // corrected per Review 4865620679 item 5 and 4866122577 item 5):
+      // COMPLETED -> keep the recovery lock, refetch the exact action queries,
+      // THEN release; REJECTED -> typed failure with the ACTUAL rejection
       // code; OUTCOME_UNKNOWN -> remain recoverable (never a re-execute).
       if (resolved.outcome === 'COMPLETED') {
-        dispatch({ type: 'RECOVERY_FINISHED' });
         dispatch({ type: 'DETAIL_RESOLVED' });
+        // The recovery lock stays RESTORING while the refetch runs so the old
+        // detail's governed surfaces never re-enable with a new identity.
         if (identity && scope) {
-          await queryClient.invalidateQueries({
+          await queryClient.refetchQueries({
             queryKey: externalActionActionQueryKey(scope, identity.actionId),
+            type: 'active',
           });
+          const detailKey = externalActionResourceQueryKey(
+            scope,
+            identity.actionId,
+            identity.actionRevision,
+            identity.externalRevision,
+            ['detail'],
+          );
+          if (queryClient.getQueryState(detailKey)?.status === 'error') {
+            // Refresh failed: never silently re-enable stale surfaces — show a
+            // safe blocked state (COMPLETED_BUT_REFRESH_REQUIRED).
+            dispatch({
+              type: 'BLOCKED',
+              message: '완료되었으나 상태를 새로고침하지 못했습니다. 새로고침이 필요합니다.',
+            });
+            announce(EXTERNAL_ACTION_ANNOUNCEMENTS.COMMAND_REJECTED);
+            return;
+          }
         }
+        dispatch({ type: 'RECOVERY_FINISHED' });
         announce(EXTERNAL_ACTION_ANNOUNCEMENTS.DETAIL_READY);
       } else if (resolved.outcome === 'REJECTED') {
         dispatch({ type: 'RECOVERY_FINISHED' });
@@ -754,6 +816,20 @@ export const ExternalActionWorkspace = () => {
         />
       ) : null}
 
+      {/* Restricted actions carry no external revision, so the detail read is
+          gated off; the restricted shell is rendered from the authoritative
+          snapshot instead (Review 4866122577 item 3). */}
+      {snapshotRestricted && !detail.data ? (
+        <section aria-labelledby="external-action-detail-heading" className="action-card">
+          <h2 id="external-action-detail-heading" tabIndex={-1}>
+            {snapshot.data?.action.actionId}
+          </h2>
+          <p className="restricted-shell" role="status">
+            {EXTERNAL_ACTION_ANNOUNCEMENTS.ACCESS_RESTRICTED}
+          </p>
+        </section>
+      ) : null}
+
       {detail.data ? (
         <>
           <section aria-labelledby="external-action-detail-heading" className="action-card">
@@ -815,6 +891,12 @@ export const ExternalActionWorkspace = () => {
                     : state.phase.reason,
                 )}
                 <span>{state.phase.message}</span>
+              </p>
+            ) : null}
+
+            {state.phase.kind === 'BLOCKED' ? (
+              <p className="stale-state" role="status">
+                {state.phase.message}
               </p>
             ) : null}
 

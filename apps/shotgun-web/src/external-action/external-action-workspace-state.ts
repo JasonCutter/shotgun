@@ -90,10 +90,17 @@ export type ExternalActionWorkspaceAction =
     }
   | { type: 'DETAIL_STARTED' }
   | { type: 'DETAIL_RESOLVED' }
+  | { type: 'SET_EXTERNAL_REVISION'; externalRevision: string }
   | { type: 'SELECT_MANIFEST'; manifestId: string }
   | { type: 'SELECT_EXECUTION'; executionId: string }
   | { type: 'SELECT_ATTEMPT'; attemptId: string }
   | { type: 'SELECT_VERIFICATION'; verificationId: string }
+  /** The URL is the single source of truth: clear every resource selection. */
+  | { type: 'RESET_RESOURCE_SELECTIONS' }
+  | { type: 'CLEAR_MANIFEST_SELECTION' }
+  | { type: 'CLEAR_EXECUTION_SELECTION' }
+  | { type: 'CLEAR_ATTEMPT_SELECTION' }
+  | { type: 'CLEAR_VERIFICATION_SELECTION' }
   | { type: 'FOCUS'; target: string }
   | { type: 'CLEAR_FOCUS' }
   | { type: 'SET_COMMAND_DRAFT'; reason: string }
@@ -239,6 +246,8 @@ export const reduceExternalActionWorkspaceState = (
       return { ...state, phase: { kind: 'DETAIL_LOADING' } };
     case 'DETAIL_RESOLVED':
       return { ...state, phase: { kind: 'DETAIL_READY' } };
+    case 'SET_EXTERNAL_REVISION':
+      return { ...state, externalRevision: action.externalRevision };
     case 'SELECT_MANIFEST':
       return { ...state, selectedManifestId: action.manifestId };
     case 'SELECT_EXECUTION':
@@ -247,6 +256,22 @@ export const reduceExternalActionWorkspaceState = (
       return { ...state, selectedAttemptId: action.attemptId };
     case 'SELECT_VERIFICATION':
       return { ...state, selectedVerificationId: action.verificationId };
+    case 'RESET_RESOURCE_SELECTIONS':
+      return {
+        ...state,
+        selectedManifestId: null,
+        selectedExecutionId: null,
+        selectedAttemptId: null,
+        selectedVerificationId: null,
+      };
+    case 'CLEAR_MANIFEST_SELECTION':
+      return { ...state, selectedManifestId: null };
+    case 'CLEAR_EXECUTION_SELECTION':
+      return { ...state, selectedExecutionId: null };
+    case 'CLEAR_ATTEMPT_SELECTION':
+      return { ...state, selectedAttemptId: null };
+    case 'CLEAR_VERIFICATION_SELECTION':
+      return { ...state, selectedVerificationId: null };
     case 'FOCUS':
       return { ...state, focusTarget: action.target };
     case 'CLEAR_FOCUS':

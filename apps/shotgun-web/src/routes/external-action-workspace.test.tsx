@@ -310,6 +310,8 @@ type FetchBehavior = {
   readonly detailAfterCommand?: unknown;
   /** Serve the verification read only after a Verify command succeeds. */
   readonly verificationAfterVerify?: boolean;
+  /** Delay the detail response (used to hold the COMPLETED refresh lock open). */
+  readonly detailDelayMs?: number;
 };
 
 const createFetchMock = (behavior: FetchBehavior) => {
@@ -335,6 +337,9 @@ const createFetchMock = (behavior: FetchBehavior) => {
     }
     if (text.includes('/external-action/actions/detail')) {
       detailReads += 1;
+      if (behavior.detailDelayMs) {
+        await new Promise((resolve) => setTimeout(resolve, behavior.detailDelayMs));
+      }
       if (detailReads > 1 && behavior.detailAfterCommand !== undefined) {
         return jsonResponse(200, behavior.detailAfterCommand);
       }
@@ -1022,6 +1027,187 @@ describe('ExternalActionWorkspace (FE-P4-S2 WP5)', () => {
       { timeout: 10000 },
     );
     expect(document.activeElement?.id).toBe('verification-heading');
+    vi.unstubAllGlobals();
+  });
+
+  it('clears every resource selection when Back/Forward removes the parameters from the URL', async () => {
+    const { fetchMock } = createFetchMock({ detail: detailResult, childReads: true });
+    vi.stubGlobal('fetch', fetchMock);
+    const runtime = createRuntime();
+    const router = renderWorkspace(runtime, [
+      '/external-action?action=action-1&manifest=manifest-1&execution=execution-1&attempt=attempt-1&verification=verification-1',
+    ]);
+    await waitFor(
+      () => {
+        expect(document.querySelectorAll('[aria-pressed="true"]').length).toBe(4);
+      },
+      { timeout: 10000 },
+    );
+
+    // Back/Forward removes the resource parameters: the URL is the source of
+    // truth, so the stale selections must be cleared (Review 4866122577 item 2).
+    router.navigate('/external-action?action=action-1');
+    await waitFor(
+      () => {
+        expect(document.querySelectorAll('[aria-pressed="true"]').length).toBe(0);
+      },
+      { timeout: 10000 },
+    );
+    expect(screen.getAllByRole('button', { name: '선택' }).length).toBeGreaterThanOrEqual(2);
+    vi.unstubAllGlobals();
+  });
+
+  it('preserves previously selected resource parameters when selecting another resource', async () => {
+    const { fetchMock } = createFetchMock({ detail: detailResult, childReads: true });
+    vi.stubGlobal('fetch', fetchMock);
+    const runtime = createRuntime();
+    const router = renderWorkspace(runtime);
+
+    await screen.findByText('action-1');
+    await userEvent.click(screen.getByText('action-1'));
+    await waitFor(
+      () => {
+        expect(screen.getAllByRole('button', { name: '선택' }).length).toBeGreaterThanOrEqual(2);
+      },
+      { timeout: 10000 },
+    );
+
+    // Select the manifest (first 선택), then the execution (next 선택): the
+    // manifest parameter must be preserved in the URL (Review 4866122577 item 2).
+    const firstSelect = () => {
+      const buttons = screen.getAllByRole('button', { name: '선택' });
+      expect(buttons[0]).toBeDefined();
+      return buttons[0] as HTMLElement;
+    };
+    await userEvent.click(firstSelect());
+    await waitFor(
+      () => {
+        expect(router.state.location.search).toContain('manifest=manifest-1');
+      },
+      { timeout: 10000 },
+    );
+    await userEvent.click(firstSelect());
+    await waitFor(
+      () => {
+        expect(router.state.location.search).toContain('manifest=manifest-1');
+        expect(router.state.location.search).toContain('execution=execution-1');
+      },
+      { timeout: 10000 },
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it('clears a mismatched deep-link resource from state so governed commands never carry it', async () => {
+    const { fetchMock } = createFetchMock({ detail: detailResult, childReads: true });
+    vi.stubGlobal('fetch', fetchMock);
+    const runtime = createRuntime();
+    renderWorkspace(runtime, ['/external-action?action=action-1&execution=execution-X']);
+
+    await waitFor(
+      () => {
+        screen.getByText('선택한 실행이 현재 액션과 일치하지 않아 표시하지 않습니다.');
+      },
+      { timeout: 10000 },
+    );
+    // The mismatched execution id is NOT selected (no aria-pressed control).
+    expect(document.querySelectorAll('[aria-pressed="true"]').length).toBe(0);
+    vi.unstubAllGlobals();
+  });
+
+  it('uses a dedicated snapshot bootstrap key and never an empty external revision in resource keys', async () => {
+    const { fetchMock } = createFetchMock({ detail: detailResult, childReads: true });
+    vi.stubGlobal('fetch', fetchMock);
+    const runtime = createRuntime();
+    renderWorkspace(runtime, [
+      '/external-action?action=action-1&manifest=manifest-1&execution=execution-1&attempt=attempt-1&verification=verification-1',
+    ]);
+    await waitFor(
+      () => {
+        expect(document.querySelectorAll('[aria-pressed="true"]').length).toBe(4);
+      },
+      { timeout: 10000 },
+    );
+    const keys = runtime.queryClient
+      .getQueryCache()
+      .findAll()
+      .map((query) => query.queryKey);
+    // The snapshot uses a dedicated bootstrap key — NOT a revision-bound
+    // resource key (Review 4866122577 item 3).
+    const snapshotKeys = keys.filter(
+      (key) => key.includes('external-action') && key[key.length - 2] === 'snapshot',
+    );
+    expect(snapshotKeys.length).toBe(1);
+    const snapshotKey = snapshotKeys[0];
+    expect(snapshotKey).toBeDefined();
+    if (snapshotKey) {
+      expect(snapshotKey[snapshotKey.length - 1]).toBe('action-1');
+    }
+    // Every regular resource key (action-phase) carries a NON-empty external
+    // revision — the detail key included.
+    const resourceKeys = keys.filter((key) => {
+      const index = key.indexOf('external-action');
+      return String(key[0]) === 'project' && index >= 0 && key[index + 1] === 'action';
+    });
+    expect(resourceKeys.length).toBeGreaterThan(0);
+    for (const key of resourceKeys) {
+      const index = key.indexOf('external-action');
+      expect(key[index + 2]).toBe('action-1');
+      expect(key[index + 4]).not.toBe('');
+    }
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps the recovery lock during the COMPLETED refresh so no governed command is submitted', async () => {
+    const { fetchMock, calls } = createFetchMock({
+      detail: detailResult,
+      childReads: true,
+      rollbackStatus: 503,
+      resolveOutcome: 'COMPLETED',
+      detailDelayMs: 200,
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const runtime = createRuntime();
+    renderWorkspace(runtime);
+
+    await screen.findByText('action-1');
+    await userEvent.click(screen.getByText('action-1'));
+    await waitFor(
+      () => {
+        screen.getByRole('button', { name: '롤백' });
+      },
+      { timeout: 10000 },
+    );
+    await userEvent.click(screen.getByRole('button', { name: '롤백' }));
+    await waitFor(
+      () => {
+        screen.getByRole('button', { name: '원래 요청으로 복구' });
+      },
+      { timeout: 10000 },
+    );
+    await userEvent.click(screen.getByRole('button', { name: '원래 요청으로 복구' }));
+
+    // While the delayed refetch is in flight the recovery lock holds: the stale
+    // governed surface is disabled and no new command is submitted
+    // (Review 4866122577 item 5).
+    await waitFor(
+      () => {
+        const rollback = screen.getByRole('button', { name: '롤백' });
+        expect((rollback as HTMLButtonElement).disabled).toBe(true);
+      },
+      { timeout: 10000 },
+    );
+    const rollbackPosts = calls.filter((call) => call.includes('/external-action/rollback'));
+    expect(rollbackPosts.length).toBe(1);
+
+    // After the refresh settles the recovery lock releases.
+    await waitFor(
+      () => {
+        const rollback = screen.getByRole('button', { name: '롤백' });
+        expect((rollback as HTMLButtonElement).disabled).toBe(false);
+      },
+      { timeout: 10000 },
+    );
+    expect(screen.queryByRole('button', { name: '원래 요청으로 복구' })).toBeNull();
     vi.unstubAllGlobals();
   });
 });

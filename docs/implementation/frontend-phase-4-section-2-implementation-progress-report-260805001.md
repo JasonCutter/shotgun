@@ -690,3 +690,64 @@ remain for WP3–WP6.
 
 PR #66 remains OPEN / DRAFT. WP3 Migration 028 remains **NOT_AUTHORIZED_TO_START** pending
 re-review of this report.
+
+## 16. WP3 — Migration 028 and PostgreSQL parity (report 10, 2026-08-05)
+
+GPT review (Review ID 4860064906) approved WP2 and authorized WP3:
+`FE-P4-S2 WP2: APPROVED / COMPLETE` · `FE-P4-S2 WP3 Migration 028: AUTHORIZED_TO_START`
+(bounded additive migration only). WP3 is delivered in this commit:
+
+Commit `7689b42f97ebe1e10ec4df8608edda9d55b405f2`.
+
+### Delivered
+
+- `db/migrations/028_frontend_external_action_product.sql` — new `frontend_external_action`
+  schema with **15 additive tables** (bounded additive; no Stage 11 table is rewritten and no
+  existing schema is modified): `aggregates`, `candidates`, `risk_decisions`, `manifests`,
+  `approvals`, `preflights`, `executions`, `attempts`, `verifications`, `results`,
+  `audit_events`, `compensations`, `rollbacks`, `credentials`, `budgets`. Preflight guard
+  requires 027. Append-only `audit_events` carries an append-only trigger + UNIQUE
+  (action_id, sequence) so the monotonic sequence is database-enforced (AC-10/AC-21). Attempts
+  keep UNIQUE (execution_id, attempt_number) for ordered numbering (AC-07) while the attempt row
+  itself is upserted IN_PROGRESS → terminal by the same attemptId (never a second record per
+  attempt — matches the Product write model).
+- `scripts/database.ts` — `frontend_external_action` registered in `managedSchemas` and all 15
+  tables in `requiredTables` (managed-schema apply/rollback authority).
+- `adapters/frontend-external-action-postgres/src/index.ts` — `PostgresExternalActionStore`
+  implements `ExternalActionRepositoryBoundaryPort` (transaction + transactionWithHandle over
+  `withSafePostgresTransaction`). Mirrors the in-memory adapter's observable semantics exactly:
+  jsonb snapshot round-trip, `findActiveByAction` = latest ACTIVE by `issued_at` DESC,
+  `findCurrent` (manifest = latest `manifest_revision` DESC; preflight = latest `run_at` DESC;
+  execution/verification/result/compensation/rollback = first inserted), `nextSequence` = max+1,
+  `listByProject` ordered `updated_at` DESC capped at 50, upsert-by-identity writes, capped
+  attempt/audit listings.
+- `tests/database/frontend-external-action-postgres-parity.test.ts` — **5 database tests**:
+  (1) full governed lifecycle parity (in-memory vs PostgreSQL identical outputs), (2) rollback
+  lifecycle to ROLLED_BACK parity, (3) ordered append-only attempts + unique per-action audit
+  sequence enforced at the database, (4) migration 028 apply → rollback to the pre-028
+  fingerprint → clean re-apply (AC-21), (5) UPDATE/DELETE on append-only audit events rejected
+  by the database trigger.
+
+### Validation
+
+- `node --env-file-if-exists=.env node_modules/vitest/vitest.mjs run tests/database/frontend-external-action-postgres-parity.test.ts` — **5/5 PASS**.
+- Full database suite `npm run test:database` — **154/154 PASS (31 files)**.
+- `npm run db:verify` — PASS (28 migrations recorded, required tables present).
+- `npx vitest run tests/integration/frontend-external-action-domain.test.ts` — **24/24 PASS**.
+- `npx vitest run tests/contract/frontend-external-action.contract.test.ts` — **93/93 PASS**.
+- `npm run test:architecture` — PASS. `npm run test:stage12-package` — PASS.
+- `tsc --noEmit` — clean. ESLint — clean. Prettier — clean.
+- Automatic CI on this head `7689b42` — run **#531** (`30971730119`): Quality, Frontend,
+  Required Gates **SUCCESS**.
+
+### AC coverage (WP3)
+
+- **AC-21** (in-memory/PostgreSQL parity and migration 028 apply/rollback) is now delivered: the
+  Postgres adapter matches the in-memory adapter's observable outputs for the full governed
+  lifecycle and the rollback lifecycle, and the migration applies, rolls back to the pre-028
+  fingerprint and re-applies cleanly with managed-schema registration.
+- WP1/WP2 domain coverage (AC-01..AC-17) is unchanged; AC-18/AC-19 (UI/workspace) and AC-22
+  (exact-head CI gates — reported per head throughout) remain; WP4–WP6 remain **NOT_AUTHORIZED**.
+
+PR #66 remains OPEN / DRAFT. WP4 Protected Product API / `FrontendExternalActionClient` remains
+**NOT_AUTHORIZED** pending re-review of this report.

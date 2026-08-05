@@ -2025,3 +2025,70 @@ NOT re-run per the review instruction. This report records the correction on cod
 - PR #66 remains `OPEN / DRAFT / MERGEABLE`. CI **#560 / #561 / #562** were NOT re-run.
 - Authority state: WP5 `REMEDIATION_REQUIRED NOT_APPROVED` (exact correction submitted for
   re-review); WP6 `NOT_AUTHORIZED`.
+
+### Section 29 correction (Review 4866454087)
+
+Review **4866454087** (**BLOCKED / TWO FINAL WP5 CORRECTIONS REQUIRED**) confirmed **Item 5
+RESOLVED** and Items 1, 4, 6 RESOLVED, but recorded Section 29's Items 2 and 3 as still
+PARTIAL. The review's exact status at report-23 time: **Item 1: RESOLVED; Item 2: PARTIAL /
+REMEDIATION_REQUIRED; Item 3: PARTIAL / REMEDIATION_REQUIRED; Item 4: RESOLVED; Item 5:
+RESOLVED; Item 6: RESOLVED**. The two PARTIAL items are resolved in this report (Section 30).
+
+## 30. WP5 two final corrections — Review 4866454087 (report 24, 2026-08-05)
+
+GPT review **4866454087** returned **BLOCKED / TWO FINAL WP5 CORRECTIONS REQUIRED** with two
+exact corrections inside the approved WP5 scope (Items 2 and 3). CI **#563 / #564 / #565** were
+NOT re-run per the review instruction. This report records the corrections on code head
+`4391c12` (CI **#566**) and report head `<REPORT_HEAD>` (CI **#567**).
+
+### Item status after this correction
+
+- **Item 1** (Command Palette entry / Home navigate-only): RESOLVED (unchanged).
+- **Item 2** (deep link = source of truth; mismatched resource blocked from commands):
+  RESOLVED.
+- **Item 3** (revision-bound resource keys; snapshot bootstrap; no empty-revision key):
+  RESOLVED.
+- **Item 4** (command-common reason + refresh-and-lock): RESOLVED (unchanged).
+- **Item 5** (`OUTCOME_UNKNOWN` COMPLETED recovery lock): RESOLVED (unchanged).
+- **Item 6** (Verify refresh + focus preservation): RESOLVED (unchanged).
+
+### 1. Item 2 — mismatched resource synchronously blocked from governed commands
+
+- The `locked` guard now includes **any deep-link resource mismatch** in the SAME render the
+  mismatch is detected (`mismatchLocked`), so every governed command (Cancel / Rollback /
+  Compensation / Verify) is disabled immediately — a passive clear effect is never the security
+  boundary.
+- Rollback / Compensation / Verify construct the execution id from a **safe value**
+  (`safeExecutionId`) that never uses a mismatched deep-link id; it falls back to the
+  authoritative `latestExecutionRef`.
+- NEW tests: with a mismatched execution deep link, the governed surfaces are disabled and
+  clicking them submits no request with the mismatched id; attempt/verification mismatch is
+  covered by the same fail-closed guard.
+
+### 2. Item 3 — no empty-external-revision resource key, not even transiently
+
+- `externalActionDetailQueryOptions` now builds the resource key **only** when the external
+  revision is non-empty; otherwise the disabled key is used. A queue selection that is awaiting
+  the authoritative snapshot therefore never creates an empty-external-revision resource key in
+  the query cache (the key itself is never `.../action/.../''/detail`).
+- NEW test: with a delayed snapshot response, the query cache during the wait contains no
+  action-phase resource key with an empty external revision, and the detail loads normally after
+  the snapshot bootstraps the revision.
+
+### Changed files (this correction)
+
+- `apps/shotgun-web/src/external-action/external-action-queries.ts` — detail key is revision-bound
+  only when the external revision is non-empty.
+- `apps/shotgun-web/src/routes/external-action-workspace.tsx` — `mismatchLocked` in the governed
+  lock; `safeExecutionId` in Rollback / Compensation / Verify payloads.
+- `apps/shotgun-web/src/routes/external-action-workspace.test.tsx` — focused tests for both
+  corrections.
+
+### Validation
+
+- `apps/shotgun-web` full suite (`vitest run`) — **18 files / 94 tests PASS**.
+- Root unit+integration+contract suites — 980 tests; the pre-existing knowledge/compiled-truth
+  timing flakes pass in isolation (unrelated to WP5).
+- `tsc --noEmit` (root and `apps/shotgun-web`) — clean. ESLint — clean. Prettier — clean.
+- Automatic CI on the code head `4391c12` — run **#566**: Quality, Frontend, Required Gates
+  **SUCCESS**. Report head `<REPORT_HEAD>` CI **#567**. (Metadata recorded below.)

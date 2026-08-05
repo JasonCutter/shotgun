@@ -929,8 +929,94 @@ Commit `9720f9eb7485828bc8c1216ee8b216a14a4b6c3d`.
   deterministic `findCurrent`, immutable/append-only conflict enforcement and Command Ledger
   atomicity (same-transaction completion, ledger rollback on product failure) all proven by
   negative tests. WP1/WP2 domain coverage (AC-01..AC-17) is unchanged. AC-18/AC-19 (UI/
-  workspace) and AC-22 (exact-head CI gates — reported per head) remain; WP4–WP6 remain
-  **NOT_AUTHORIZED**.
+PR #66 remains OPEN / DRAFT. WP4 Protected Product API / `FrontendExternalActionClient` remains
+**NOT_AUTHORIZED** pending re-review of this report.
+
+## 20. WP3 residual focused remediation — GPT focused review → resolved (report 14, 2026-08-05)
+
+GPT review **4861145103** returned a residual 2-item WP3 remediation list. Both items were
+implemented in ONE final WP3 change (head `a228942`, CI **#539**); existing CI #537/#538 were
+NOT re-run per the review instruction.
+
+### 1. Phase 3 pins to the EXACT Phase-1 state (ownership)
+
+The finalizers previously checked only `latestExecutionRef === startedRefs.executionId`, which
+a concurrent governed command could leave unchanged while it modified the aggregate. A new
+`lockStartedActionForFinalize` helper now re-locks the aggregate and requires ALL of:
+
+- `action.status === 'EXECUTING'`
+- `action.actionRevision === expectedActionRevision + 1`
+- `action.latestExecutionRef?.resourceId === startedRefs.executionId`
+- the started execution `status === 'IN_PROGRESS'`
+- the started attempt `status === 'IN_PROGRESS'`
+
+If ANY check fails the finalizer fails closed with `EXTERNAL_ACTION_STALE` instead of
+overwriting a resource a concurrent command has taken ownership of. Applied identically to
+`execute` Finalize, `retry` Finalize and `retry` Denied-Finalize (all three re-lock through the
+same helper).
+
+New **overlapping execution test** (the delayed-connector scenario the review asked for): the
+fake engine gained `executeDelayMs`; while the connector call is in flight (Phase 1 durable,
+aggregate EXECUTING), an overlapping `preflightExternalAction` command (which only checks the
+revision, so it runs during EXECUTING) changes the aggregate to `PREFLIGHT_READY` and bumps the
+revision. The delayed execute's Phase-3 finalize then fails closed with `EXTERNAL_ACTION_STALE`,
+and the overlapping preflight's state is preserved (action stays `PREFLIGHT_READY`, never
+overwritten to `VERIFYING`).
+
+### 2. Preflight transition rule (same-status exact replay, DENIED→READY only)
+
+Both adapters previously guarded only the preflight BINDING (action/projects/manifest/digest/
+runAt); with the same binding the snapshot and status could be swapped arbitrarily. Both
+adapters now enforce:
+
+- same status ⇒ EXACT full-snapshot replay only;
+- status change ⇒ `DENIED → READY` only (binding + start context unchanged, result fields
+  only);
+- everything else fails closed (`READY → DENIED`, same-status with a different snapshot,
+  `ALREADY_APPLIED → READY`).
+
+Because `DENIED → DENIED` with different reasons is now illegal, the retry Denied-Finalize no
+longer rewrites the Phase-1 DENIED preflight; the connector's denial reason is carried by the
+audit event and the ledger REJECTION instead (the Phase-1 preflight remains the durable record).
+
+New **both-adapter transition tests**: `DENIED → READY` succeeds, `READY → DENIED` rejects,
+same-status different-snapshot rejects, and `ALREADY_APPLIED → READY` rejects — executed
+against BOTH the in-memory adapter and PostgreSQL.
+
+### Changed files (this residual WP3 remediation)
+
+- `modules/frontend-external-action/src/product-api.ts` — `lockStartedActionForFinalize`
+  (Phase-3 exact ownership pinning) used by execute finalize, retry finalize and retry
+  denied-finalize; retry denied-finalize no longer rewrites the Phase-1 DENIED preflight.
+- `adapters/frontend-external-action-in-memory/src/index.ts` — preflight transition rule
+  (same-status exact replay, DENIED→READY only); fake engine `executeDelayMs`.
+- `adapters/frontend-external-action-postgres/src/index.ts` — preflight upsert WHERE adds the
+  same-status-exact-replay OR DENIED→READY transition gate.
+- `tests/integration/frontend-external-action-domain.test.ts` — new overlapping-execution
+  Phase-3 pinning test (delayed connector + concurrent preflight → EXTERNAL_ACTION_STALE).
+- `tests/database/frontend-external-action-postgres-parity.test.ts` — new both-adapter
+  preflight transition test.
+
+### Validation
+
+- `npx vitest run tests/integration/frontend-external-action-domain.test.ts` — **25/25 PASS**
+  (new overlapping-execution test included).
+- `npx vitest run tests/contract/frontend-external-action.contract.test.ts` — **93/93 PASS**.
+- `node --env-file-if-exists=.env node_modules/vitest/vitest.mjs run tests/database/frontend-external-action-postgres-parity.test.ts` — **17/17 PASS** (new preflight transition test).
+- Full database suite `npm run test:database` — **166/166 PASS (31 files)**.
+- `tsc --noEmit` — clean. ESLint — clean. Prettier — clean.
+- Automatic CI on this head `a228942` — run **#539** (`30979152764`): Quality, Frontend,
+  Required Gates **SUCCESS**. (CI #537/#538 untouched.)
+
+### AC coverage (WP3 after residual remediation)
+
+- **AC-21** remains fully delivered and hardened for the two residual items: Phase 3 can never
+  finalize a resource it does not own (EXECUTING + exact revision + started execution/attempt
+  still IN_PROGRESS), proven by a delayed-connector overlapping-execution test; preflights are
+  immutable except an exact same-status replay or the DENIED → READY transition in BOTH
+  adapters, proven by negative tests. WP1/WP2 domain coverage (AC-01..AC-17) is unchanged.
+  AC-18/AC-19 (UI/workspace) and AC-22 (exact-head CI gates — reported per head) remain;
+  WP4–WP6 remain **NOT_AUTHORIZED**.
 
 PR #66 remains OPEN / DRAFT. WP4 Protected Product API / `FrontendExternalActionClient` remains
 **NOT_AUTHORIZED** pending re-review of this report.

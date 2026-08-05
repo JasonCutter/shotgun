@@ -2165,14 +2165,14 @@ were NOT re-run per the review instruction. This report records the correction o
   cited-search-ui / stage-8-format-expansion timing flakes pass in isolation (unrelated to WP5).
 - `tsc --noEmit` (root and `apps/shotgun-web`) — clean. ESLint — clean. Prettier — clean.
 - Automatic CI on the code head `f041e52e` — run **#569**: Quality, Frontend, Required Gates
-  **SUCCESS**. Report head `<REPORT_HEAD>` CI **#570** **SUCCESS** (metadata recorded below).
+  **SUCCESS**. Report head `b476a73` CI **#570** **SUCCESS** (metadata recorded below).
 
 ### Final metadata (report 25)
 
 - **WP5 fail-closed correction code head**: `f041e52e7cc64b035e462c0e70ff1f4e527ec551` — CI
   **#569** / `31027053940`: Quality, Frontend, Required Gates **SUCCESS**.
-- **Report 25 head**: `<REPORT_HEAD>` — CI **#570** / `<RUN_ID>`: Quality, Frontend, Required
-  Gates **SUCCESS**.
+- **Report 25 head**: `b476a733d465df4e51d41bbe8374bdef1ea76373` — CI **#570** /
+  `31027465566`: Quality, Frontend, Required Gates **SUCCESS**.
 - PR #66 remains `OPEN / DRAFT / MERGEABLE`. CI **#566 / #567 / #568** were NOT re-run.
 - Authority state: WP5 `REMEDIATION_REQUIRED NOT_APPROVED` (fail-closed correction submitted for
   re-review); WP6 `NOT_AUTHORIZED`.

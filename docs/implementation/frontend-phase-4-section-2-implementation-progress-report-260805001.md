@@ -2102,3 +2102,77 @@ NOT re-run per the review instruction. This report records the corrections on co
 - PR #66 remains `OPEN / DRAFT / MERGEABLE`. CI **#563 / #564 / #565** were NOT re-run.
 - Authority state: WP5 `REMEDIATION_REQUIRED NOT_APPROVED` (two corrections submitted for
   re-review); WP6 `NOT_AUTHORIZED`.
+
+### Section 30 correction (Review 4866654696)
+
+Review **4866654696** (**BLOCKED / ONE EXACT WP5 FAIL-CLOSED CORRECTION REQUIRED**) confirmed
+**Item 3 RESOLVED** and Items 1, 4, 5, 6 RESOLVED, but recorded Section 30's **Item 2** as still
+PARTIAL with a new exact finding: the deep-link execution id was trusted **before** the
+authoritative Execution read settled (pending / 404 / error states), so `mismatchLocked` was not
+active and `safeExecutionId` could carry the unverified id. The review's exact status at
+report-24 time: **Item 1: RESOLVED; Item 2: PARTIAL / REMEDIATION_REQUIRED; Item 3: RESOLVED;
+Item 4: RESOLVED; Item 5: RESOLVED; Item 6: RESOLVED**. The PARTIAL Item 2 is resolved in this
+report (Section 31).
+
+## 31. WP5 fail-closed unverified execution id — Review 4866654696 (report 25, 2026-08-05)
+
+GPT review **4866654696** returned **BLOCKED / ONE EXACT WP5 FAIL-CLOSED CORRECTION REQUIRED**
+with a single exact correction inside the approved WP5 scope (Item 2). CI **#566 / #567 / #568**
+were NOT re-run per the review instruction. This report records the correction on code head
+`f041e52e` (CI **#569**).
+
+### Item status after this correction
+
+- **Item 1** (Command Palette entry / Home navigate-only): RESOLVED (unchanged).
+- **Item 2** (deep link = source of truth; mismatched/unverified resource blocked from
+  commands): RESOLVED.
+- **Item 3** (revision-bound resource keys; snapshot bootstrap; no empty-revision key):
+  RESOLVED (unchanged).
+- **Item 4** (command-common reason + refresh-and-lock): RESOLVED (unchanged).
+- **Item 5** (`OUTCOME_UNKNOWN` COMPLETED recovery lock): RESOLVED (unchanged).
+- **Item 6** (Verify refresh + focus preservation): RESOLVED (unchanged).
+
+### 1. Item 2 — unverified deep-link execution id is fail-closed
+
+- A deep-link execution id is trusted ONLY after the authoritative Execution read CONFIRMS it:
+  `executionValidated = execution.data !== undefined && selectedExecutionId !== null &&
+  execution.data.execution.executionId === selectedExecutionId`.
+- While the Execution read is **pending**, **errored (incl. 404)** or returns a **different** id,
+  the id is UNVERIFIED (`executionUnverified`): every governed command (Cancel / Rollback /
+  Compensation / Verify) is synchronously locked in the SAME render (`mismatchLocked` includes
+  `executionUnverified`) — a passive clear effect is never the security boundary.
+- `submitCommand()` performs the SAME fail-closed check internally and returns without building a
+  payload — the disabled buttons are not the security boundary.
+- `safeExecutionId` uses `selectedExecutionId` ONLY when validated; otherwise Rollback /
+  Compensation / Verify fall back to the authoritative `latestExecutionRef`.
+- NEW tests: with a delayed Execution read, the detail + governed surfaces render first, the
+  commands are disabled while the id is unverified, and no Rollback POST occurs (even after the
+  read settles); with an Execution read 404, the unverified id is never used in a payload.
+
+### Changed files (this correction)
+
+- `apps/shotgun-web/src/routes/external-action-workspace.tsx` — `executionValidated` /
+  `executionUnverified` derivation, `mismatchLocked` includes the unverified state,
+  `submitCommand` internal fail-closed guard, `safeExecutionId` only from the validated id.
+- `apps/shotgun-web/src/routes/external-action-workspace.test.tsx` — focused tests for the
+  pending and 404 fail-closed windows.
+
+### Validation
+
+- `apps/shotgun-web` full suite (`vitest run`) — **18 files / 96 tests PASS** (23 WP5 workspace
+  tests, +2 new fail-closed tests).
+- Root unit+integration+contract suites — 980 tests; the pre-existing compiled-truth /
+  cited-search-ui / stage-8-format-expansion timing flakes pass in isolation (unrelated to WP5).
+- `tsc --noEmit` (root and `apps/shotgun-web`) — clean. ESLint — clean. Prettier — clean.
+- Automatic CI on the code head `f041e52e` — run **#569**: Quality, Frontend, Required Gates
+  **SUCCESS**. Report head `<REPORT_HEAD>` CI **#570** **SUCCESS** (metadata recorded below).
+
+### Final metadata (report 25)
+
+- **WP5 fail-closed correction code head**: `f041e52e7cc64b035e462c0e70ff1f4e527ec551` — CI
+  **#569** / `31027053940`: Quality, Frontend, Required Gates **SUCCESS**.
+- **Report 25 head**: `<REPORT_HEAD>` — CI **#570** / `<RUN_ID>`: Quality, Frontend, Required
+  Gates **SUCCESS**.
+- PR #66 remains `OPEN / DRAFT / MERGEABLE`. CI **#566 / #567 / #568** were NOT re-run.
+- Authority state: WP5 `REMEDIATION_REQUIRED NOT_APPROVED` (fail-closed correction submitted for
+  re-review); WP6 `NOT_AUTHORIZED`.

@@ -128,6 +128,14 @@ export type ExternalActionBudgetStorePort = {
   findByProject(projectId: string): Promise<ExternalActionBudgetViewV1 | undefined>;
   insert(budget: ExternalActionBudgetViewV1): Promise<void>;
   update(budget: ExternalActionBudgetViewV1): Promise<void>;
+  /**
+   * Atomically reserves one execution from the project budget (check +
+   * decrement in a single serialized/transactional step). Returns the
+   * post-reservation view, or undefined when the budget is absent. The caller
+   * fails closed when the result is exhausted/unavailable. Reservation is made
+   * BEFORE the connector call; it is never released after the attempt ran.
+   */
+  reserve(projectId: string): Promise<ExternalActionBudgetViewV1 | undefined>;
 };
 
 export type ExternalActionTransactionRepositoriesV1 = {

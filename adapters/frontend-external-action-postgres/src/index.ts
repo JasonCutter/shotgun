@@ -174,7 +174,8 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
         aggregate(
           (
             await client.query<SnapshotRow>(
-              `SELECT snapshot FROM frontend_external_action.aggregates WHERE action_id = $1`,
+              `SELECT snapshot FROM frontend_external_action.aggregates
+               WHERE action_id = $1 FOR UPDATE`,
               [actionId],
             )
           ).rows[0],
@@ -216,11 +217,12 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
         await client.query(
           `INSERT INTO frontend_external_action.candidates
              (action_id, candidate_id, candidate_revision, resource_project_id,
-              candidate_digest, snapshot, created_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
+              effective_project_id, candidate_digest, snapshot, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
            ON CONFLICT (action_id, candidate_id) DO UPDATE SET
              candidate_revision = EXCLUDED.candidate_revision,
              resource_project_id = EXCLUDED.resource_project_id,
+             effective_project_id = EXCLUDED.effective_project_id,
              candidate_digest = EXCLUDED.candidate_digest,
              snapshot = EXCLUDED.snapshot,
              created_at = EXCLUDED.created_at`,
@@ -229,6 +231,7 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
             candidate.candidateId,
             candidate.candidateRevision,
             candidate.resourceProjectId,
+            candidate.effectiveProjectId,
             candidate.candidateDigest,
             JSONB_SNAPSHOT(candidate),
             candidate.generatedAt,
@@ -249,17 +252,19 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
         return row ? riskDecisionFrom(row) : undefined;
       },
       insert: async (decision) => {
+        // Risk decisions are immutable: a conflicting insert is a no-op and
+        // never modifies an existing snapshot.
         await client.query(
           `INSERT INTO frontend_external_action.risk_decisions
-             (action_id, risk_decision_id, resource_project_id, snapshot, created_at)
-           VALUES ($1, $2, $3, $4, $5)
-           ON CONFLICT (action_id, risk_decision_id) DO UPDATE SET
-             resource_project_id = EXCLUDED.resource_project_id,
-             snapshot = EXCLUDED.snapshot`,
+             (action_id, risk_decision_id, resource_project_id, effective_project_id,
+              snapshot, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6)
+           ON CONFLICT (action_id, risk_decision_id) DO NOTHING`,
           [
             decision.actionId,
             decision.riskDecisionId,
             decision.resourceProjectId,
+            decision.effectiveProjectId,
             JSONB_SNAPSHOT(decision),
             decision.decidedAt,
           ],
@@ -288,21 +293,18 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
         return row ? manifestFrom(row) : undefined;
       },
       insert: async (manifest) => {
+        // Manifests are immutable per revision: a conflicting insert is a no-op.
         await client.query(
           `INSERT INTO frontend_external_action.manifests
-             (manifest_id, action_id, resource_project_id, manifest_revision,
-              manifest_digest, snapshot, created_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
-           ON CONFLICT (manifest_id) DO UPDATE SET
-             action_id = EXCLUDED.action_id,
-             resource_project_id = EXCLUDED.resource_project_id,
-             manifest_revision = EXCLUDED.manifest_revision,
-             manifest_digest = EXCLUDED.manifest_digest,
-             snapshot = EXCLUDED.snapshot`,
+             (manifest_id, action_id, resource_project_id, effective_project_id,
+              manifest_revision, manifest_digest, snapshot, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+           ON CONFLICT (manifest_id) DO NOTHING`,
           [
             manifest.manifestId,
             manifest.actionId,
             manifest.resourceProjectId,
+            manifest.effectiveProjectId,
             manifest.manifestRevision,
             manifest.manifestDigest,
             JSONB_SNAPSHOT(manifest),
@@ -310,7 +312,16 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
           ],
         );
       },
-      lockCurrent: async (actionId) => manifests.findCurrent(actionId),
+      lockCurrent: async (actionId) => {
+        const row = (
+          await client.query<SnapshotRow>(
+            `SELECT snapshot FROM frontend_external_action.manifests
+             WHERE action_id = $1 ORDER BY manifest_revision DESC LIMIT 1 FOR UPDATE`,
+            [actionId],
+          )
+        ).rows[0];
+        return row ? manifestFrom(row) : undefined;
+      },
     };
 
     const approvals: ExternalActionApprovalStorePort = {
@@ -337,11 +348,13 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
       insert: async (approval) => {
         await client.query(
           `INSERT INTO frontend_external_action.approvals
-             (approval_id, action_id, resource_project_id, status, issued_at, snapshot, created_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
+             (approval_id, action_id, resource_project_id, effective_project_id,
+              status, issued_at, snapshot, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
            ON CONFLICT (approval_id) DO UPDATE SET
              action_id = EXCLUDED.action_id,
              resource_project_id = EXCLUDED.resource_project_id,
+             effective_project_id = EXCLUDED.effective_project_id,
              status = EXCLUDED.status,
              issued_at = EXCLUDED.issued_at,
              snapshot = EXCLUDED.snapshot`,
@@ -349,6 +362,7 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
             approval.approvalId,
             approval.actionId,
             approval.resourceProjectId,
+            approval.effectiveProjectId,
             approval.status,
             approval.issuedAt,
             JSONB_SNAPSHOT(approval),
@@ -381,17 +395,20 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
       insert: async (preflight) => {
         await client.query(
           `INSERT INTO frontend_external_action.preflights
-             (preflight_id, action_id, resource_project_id, run_at, snapshot, created_at)
-           VALUES ($1, $2, $3, $4, $5, $6)
+             (preflight_id, action_id, resource_project_id, effective_project_id,
+              run_at, snapshot, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
            ON CONFLICT (preflight_id) DO UPDATE SET
              action_id = EXCLUDED.action_id,
              resource_project_id = EXCLUDED.resource_project_id,
+             effective_project_id = EXCLUDED.effective_project_id,
              run_at = EXCLUDED.run_at,
              snapshot = EXCLUDED.snapshot`,
           [
             preflight.preflightId,
             preflight.actionId,
             preflight.resourceProjectId,
+            preflight.effectiveProjectId,
             preflight.runAt,
             JSONB_SNAPSHOT(preflight),
             preflight.runAt,
@@ -411,10 +428,12 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
         return row ? executionFrom(row) : undefined;
       },
       findCurrent: async (actionId) => {
+        // The LATEST execution (rollback creates a new execution after the
+        // forward one; the current execution is the most recent).
         const row = (
           await client.query<SnapshotRow>(
             `SELECT snapshot FROM frontend_external_action.executions
-             WHERE action_id = $1 ORDER BY created_at ASC LIMIT 1`,
+             WHERE action_id = $1 ORDER BY created_at DESC LIMIT 1`,
             [actionId],
           )
         ).rows[0];
@@ -423,12 +442,13 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
       insert: async (execution) => {
         await client.query(
           `INSERT INTO frontend_external_action.executions
-             (execution_id, action_id, resource_project_id, status,
-              manifest_revision, snapshot, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             (execution_id, action_id, resource_project_id, effective_project_id,
+              status, manifest_revision, snapshot, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
            ON CONFLICT (execution_id) DO UPDATE SET
              action_id = EXCLUDED.action_id,
              resource_project_id = EXCLUDED.resource_project_id,
+             effective_project_id = EXCLUDED.effective_project_id,
              status = EXCLUDED.status,
              manifest_revision = EXCLUDED.manifest_revision,
              snapshot = EXCLUDED.snapshot,
@@ -437,6 +457,7 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
             execution.executionId,
             execution.actionId,
             execution.resourceProjectId,
+            execution.effectiveProjectId,
             execution.status,
             execution.manifestRevision,
             JSONB_SNAPSHOT(execution),
@@ -469,23 +490,29 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
         return row ? attemptFrom(row) : undefined;
       },
       insert: async (attempt) => {
+        // The attempt upsert only allows the legal IN_PROGRESS → terminal
+        // status transition: the identity (execution_id, action_id,
+        // resource_project_id, effective_project_id, attempt_number) must be
+        // unchanged or the conflict update is a no-op (never a rebind).
         await client.query(
           `INSERT INTO frontend_external_action.attempts
              (attempt_id, execution_id, action_id, resource_project_id,
-              attempt_number, status, snapshot, created_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+              effective_project_id, attempt_number, status, snapshot, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
            ON CONFLICT (attempt_id) DO UPDATE SET
-             execution_id = EXCLUDED.execution_id,
-             action_id = EXCLUDED.action_id,
-             resource_project_id = EXCLUDED.resource_project_id,
-             attempt_number = EXCLUDED.attempt_number,
              status = EXCLUDED.status,
-             snapshot = EXCLUDED.snapshot`,
+             snapshot = EXCLUDED.snapshot
+           WHERE frontend_external_action.attempts.execution_id = EXCLUDED.execution_id
+             AND frontend_external_action.attempts.action_id = EXCLUDED.action_id
+             AND frontend_external_action.attempts.resource_project_id = EXCLUDED.resource_project_id
+             AND frontend_external_action.attempts.effective_project_id = EXCLUDED.effective_project_id
+             AND frontend_external_action.attempts.attempt_number = EXCLUDED.attempt_number`,
           [
             attempt.attemptId,
             attempt.executionId,
             attempt.actionId,
             attempt.resourceProjectId,
+            attempt.effectiveProjectId,
             attempt.attemptNumber,
             attempt.status,
             JSONB_SNAPSHOT(attempt),
@@ -494,9 +521,11 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
         );
       },
       lockByExecution: async (executionId) => {
+        // Row lock the attempt list so concurrent commands cannot allocate the
+        // same attempt number.
         const result = await client.query<SnapshotRow>(
           `SELECT snapshot FROM frontend_external_action.attempts
-           WHERE execution_id = $1 ORDER BY attempt_number ASC`,
+           WHERE execution_id = $1 ORDER BY attempt_number ASC FOR UPDATE`,
           [executionId],
         );
         return result.rows.map(attemptFrom);
@@ -514,10 +543,12 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
         return row ? verificationFrom(row) : undefined;
       },
       findCurrent: async (actionId) => {
+        // The LATEST verification (after rollback the current verification is
+        // the rollback verification, not the original forward one).
         const row = (
           await client.query<SnapshotRow>(
             `SELECT snapshot FROM frontend_external_action.verifications
-             WHERE action_id = $1 ORDER BY created_at ASC LIMIT 1`,
+             WHERE action_id = $1 ORDER BY created_at DESC LIMIT 1`,
             [actionId],
           )
         ).rows[0];
@@ -526,16 +557,19 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
       insert: async (verification) => {
         await client.query(
           `INSERT INTO frontend_external_action.verifications
-             (verification_id, action_id, resource_project_id, snapshot, created_at)
-           VALUES ($1, $2, $3, $4, $5)
+             (verification_id, action_id, resource_project_id, effective_project_id,
+              snapshot, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6)
            ON CONFLICT (verification_id) DO UPDATE SET
              action_id = EXCLUDED.action_id,
              resource_project_id = EXCLUDED.resource_project_id,
+             effective_project_id = EXCLUDED.effective_project_id,
              snapshot = EXCLUDED.snapshot`,
           [
             verification.verificationId,
             verification.actionId,
             verification.resourceProjectId,
+            verification.effectiveProjectId,
             JSONB_SNAPSHOT(verification),
             verification.verifiedAt,
           ],
@@ -554,10 +588,11 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
         return row ? resultFrom(row) : undefined;
       },
       findCurrent: async (actionId) => {
+        // The LATEST result.
         const row = (
           await client.query<SnapshotRow>(
             `SELECT snapshot FROM frontend_external_action.results
-             WHERE action_id = $1 ORDER BY created_at ASC LIMIT 1`,
+             WHERE action_id = $1 ORDER BY created_at DESC LIMIT 1`,
             [actionId],
           )
         ).rows[0];
@@ -566,16 +601,19 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
       insert: async (result) => {
         await client.query(
           `INSERT INTO frontend_external_action.results
-             (result_id, action_id, resource_project_id, snapshot, created_at)
-           VALUES ($1, $2, $3, $4, $5)
+             (result_id, action_id, resource_project_id, effective_project_id,
+              snapshot, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6)
            ON CONFLICT (result_id) DO UPDATE SET
              action_id = EXCLUDED.action_id,
              resource_project_id = EXCLUDED.resource_project_id,
+             effective_project_id = EXCLUDED.effective_project_id,
              snapshot = EXCLUDED.snapshot`,
           [
             result.resultId,
             result.actionId,
             result.resourceProjectId,
+            result.effectiveProjectId,
             JSONB_SNAPSHOT(result),
             result.completedAt,
           ],
@@ -585,21 +623,19 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
 
     const audit: ExternalActionAuditStorePort = {
       append: async (event) => {
+        // Audit events are append-only and immutable: a conflicting insert is
+        // a no-op (the DB trigger also rejects any UPDATE/DELETE).
         await client.query(
           `INSERT INTO frontend_external_action.audit_events
-             (audit_event_id, action_id, resource_project_id, sequence, category,
-              snapshot, occurred_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
-           ON CONFLICT (audit_event_id) DO UPDATE SET
-             action_id = EXCLUDED.action_id,
-             resource_project_id = EXCLUDED.resource_project_id,
-             sequence = EXCLUDED.sequence,
-             category = EXCLUDED.category,
-             snapshot = EXCLUDED.snapshot`,
+             (audit_event_id, action_id, resource_project_id, effective_project_id,
+              sequence, category, snapshot, occurred_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+           ON CONFLICT (audit_event_id) DO NOTHING`,
           [
             event.auditEventId,
             event.actionId,
             event.resourceProjectId,
+            event.effectiveProjectId,
             event.sequence,
             event.category,
             JSONB_SNAPSHOT(event),
@@ -617,6 +653,13 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
         return result.rows.map(auditFrom);
       },
       nextSequence: async (actionId) => {
+        // Serialize the per-action audit sequence with an advisory transaction
+        // lock so concurrent commands can never receive the same sequence
+        // (the lock is released at commit/rollback).
+        await client.query(
+          `SELECT pg_advisory_xact_lock(hashtext('frontend_external_action:' || $1))`,
+          [actionId],
+        );
         const result = await client.query<{ readonly next: string | null }>(
           `SELECT max(sequence)::text AS next
            FROM frontend_external_action.audit_events WHERE action_id = $1`,
@@ -641,16 +684,19 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
       insert: async (compensation) => {
         await client.query(
           `INSERT INTO frontend_external_action.compensations
-             (compensation_id, action_id, resource_project_id, snapshot, created_at)
-           VALUES ($1, $2, $3, $4, $5)
+             (compensation_id, action_id, resource_project_id, effective_project_id,
+              snapshot, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6)
            ON CONFLICT (compensation_id) DO UPDATE SET
              action_id = EXCLUDED.action_id,
              resource_project_id = EXCLUDED.resource_project_id,
+             effective_project_id = EXCLUDED.effective_project_id,
              snapshot = EXCLUDED.snapshot`,
           [
             compensation.compensationId,
             compensation.actionId,
             compensation.resourceProjectId,
+            compensation.effectiveProjectId,
             JSONB_SNAPSHOT(compensation),
             compensation.preparedAt,
           ],
@@ -672,11 +718,13 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
       insert: async (rollback) => {
         await client.query(
           `INSERT INTO frontend_external_action.rollbacks
-             (rollback_id, action_id, resource_project_id, status, snapshot, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
+             (rollback_id, action_id, resource_project_id, effective_project_id,
+              status, snapshot, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
            ON CONFLICT (rollback_id) DO UPDATE SET
              action_id = EXCLUDED.action_id,
              resource_project_id = EXCLUDED.resource_project_id,
+             effective_project_id = EXCLUDED.effective_project_id,
              status = EXCLUDED.status,
              snapshot = EXCLUDED.snapshot,
              updated_at = EXCLUDED.updated_at`,
@@ -684,6 +732,7 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
             rollback.rollbackId,
             rollback.actionId,
             rollback.resourceProjectId,
+            rollback.effectiveProjectId,
             rollback.status,
             JSONB_SNAPSHOT(rollback),
             rollback.updatedAt,
@@ -741,6 +790,48 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
       },
       update: async (budget) => {
         await budgets.insert(budget);
+      },
+      reserve: async (projectId) => {
+        // Atomic reservation: the decrement happens in one UPDATE guarded by
+        // remaining_executions > 0, so two concurrent executions can never
+        // both pass with a single remaining execution.
+        const row = (
+          await client.query<SnapshotRow>(
+            `UPDATE frontend_external_action.budgets AS b
+             SET snapshot = CASE
+                   WHEN b.snapshot->>'exhausted' = 'true'
+                     OR (b.snapshot->>'remainingExecutions')::int <= 0 THEN b.snapshot
+                   ELSE jsonb_set(
+                     jsonb_set(
+                       jsonb_set(
+                         jsonb_set(
+                           b.snapshot,
+                           '{remainingExecutions}',
+                           to_jsonb(GREATEST((b.snapshot->>'remainingExecutions')::int - 1, 0))
+                         ),
+                         '{usedExecutions}',
+                         to_jsonb((b.snapshot->>'usedExecutions')::int + 1)
+                       ),
+                       '{status}',
+                       to_jsonb(
+                         CASE
+                           WHEN (b.snapshot->>'remainingExecutions')::int - 1 <= 0 THEN 'EXHAUSTED'
+                           WHEN (b.snapshot->>'remainingExecutions')::int - 1 <= COALESCE((b.snapshot->>'softLimit')::int, 0) THEN 'WARNING'
+                           ELSE 'OK'
+                         END
+                       )
+                     ),
+                     '{exhausted}',
+                     to_jsonb((b.snapshot->>'remainingExecutions')::int - 1 <= 0)
+                   )
+                 END,
+                 updated_at = now()
+             WHERE b.project_id = $1
+             RETURNING snapshot`,
+            [projectId],
+          )
+        ).rows[0];
+        return row ? budgetFrom(row) : undefined;
       },
     };
 

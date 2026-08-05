@@ -244,8 +244,12 @@ export class InMemoryExternalActionStore implements ExternalActionRepositoryBoun
   private executionsFor(maps: MapSnapshot): ExternalActionExecutionStorePort {
     return {
       findById: async (executionId) => maps.executions.get(executionId),
-      findCurrent: async (actionId) =>
-        [...maps.executions.values()].find((execution) => execution.actionId === actionId),
+      findCurrent: async (actionId) => {
+        const all = [...maps.executions.values()].filter(
+          (execution) => execution.actionId === actionId,
+        );
+        return all[all.length - 1];
+      },
       insert: async (execution) => {
         maps.executions.set(execution.executionId, execution);
       },
@@ -276,8 +280,12 @@ export class InMemoryExternalActionStore implements ExternalActionRepositoryBoun
   private verificationsFor(maps: MapSnapshot): ExternalActionVerificationStorePort {
     return {
       findById: async (verificationId) => maps.verifications.get(verificationId),
-      findCurrent: async (actionId) =>
-        [...maps.verifications.values()].find((verification) => verification.actionId === actionId),
+      findCurrent: async (actionId) => {
+        const all = [...maps.verifications.values()].filter(
+          (verification) => verification.actionId === actionId,
+        );
+        return all[all.length - 1];
+      },
       insert: async (verification) => {
         maps.verifications.set(verification.verificationId, verification);
       },
@@ -287,8 +295,10 @@ export class InMemoryExternalActionStore implements ExternalActionRepositoryBoun
   private resultsFor(maps: MapSnapshot): ExternalActionResultStorePort {
     return {
       findById: async (resultId) => maps.results.get(resultId),
-      findCurrent: async (actionId) =>
-        [...maps.results.values()].find((result) => result.actionId === actionId),
+      findCurrent: async (actionId) => {
+        const all = [...maps.results.values()].filter((result) => result.actionId === actionId);
+        return all[all.length - 1];
+      },
       insert: async (result) => {
         maps.results.set(result.resultId, result);
       },
@@ -352,6 +362,24 @@ export class InMemoryExternalActionStore implements ExternalActionRepositoryBoun
       },
       update: async (budget) => {
         maps.budgets.set(budget.projectId, budget);
+      },
+      reserve: async (projectId) => {
+        // Transactions are FIFO-serialized, so check+decrement is atomic.
+        const budget = maps.budgets.get(projectId);
+        if (!budget) return undefined;
+        if (budget.exhausted || budget.remainingExecutions <= 0) {
+          return { ...budget, status: 'EXHAUSTED', exhausted: true, remainingExecutions: 0 };
+        }
+        const remaining = budget.remainingExecutions - 1;
+        const reserved: ExternalActionBudgetViewV1 = {
+          ...budget,
+          remainingExecutions: remaining,
+          usedExecutions: budget.usedExecutions + 1,
+          status: remaining <= budget.softLimit ? 'WARNING' : 'OK',
+          exhausted: remaining <= 0,
+        };
+        maps.budgets.set(projectId, reserved);
+        return reserved;
       },
     };
   }

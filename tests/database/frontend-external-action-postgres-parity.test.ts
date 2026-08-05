@@ -5,12 +5,18 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
+import { PostgresFrontendCommandGateway } from '../../adapters/frontend-command-gateway-postgres/src/index.js';
 import {
   FakeExternalActionEngine,
   InMemoryExternalActionStore,
 } from '../../adapters/frontend-external-action-in-memory/src/index.js';
 import { PostgresExternalActionStore } from '../../adapters/frontend-external-action-postgres/src/index.js';
 import { InMemoryFrontendCommandGateway } from '../../adapters/frontend-command-gateway-in-memory/src/index.js';
+import {
+  FRONTEND_EXTERNAL_ACTION_API_VERSION,
+  FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES,
+  frontendExternalActionExecuteDigest,
+} from '../../packages/contracts/src/index.js';
 import {
   FrontendExternalActionProductCoordinator,
   type FrontendExternalActionScopeV1,
@@ -354,6 +360,12 @@ const scenarioRollbackLifecycle = async (
     rollbackResourceStatus: detail.rollback?.status,
     rollbackHasVerificationRef: detail.rollback?.verificationRef !== undefined,
     aggregateStatus: detail.action.status,
+    // The CURRENT verification/result must be the ROLLBACK's (latest), never
+    // the original forward one (Review 4860735262).
+    currentVerificationIsRollback:
+      detail.verification?.verificationId === rollbackVerified.verification.verificationId,
+    currentResultAttemptIsRollback:
+      detail.result?.attemptId === rollbackVerified.verification.attemptId,
   };
 };
 
@@ -489,6 +501,340 @@ describe.runIf(pool)('FE-P4-S2 in-memory vs PostgreSQL External Action adapter p
   });
 });
 
+const lifecycleToPreflight = async (
+  coordinator: FrontendExternalActionProductCoordinator,
+  actionId: string,
+  prefix: string,
+) => {
+  const revisionOf = async () =>
+    (await coordinator.getExternalAction(scope, { schemaVersion: '1.0.0', actionId })).action
+      .actionRevision;
+  await coordinator.validateActionCandidate(scope, {
+    schemaVersion: '1.0.0',
+    clientRequestId: `${prefix}-validate`,
+    idempotencyKey: `${prefix}-idem-validate`,
+    actionId,
+    candidateId: `candidate-${actionId}`,
+    operation: 'UPDATE_REVERSIBLE',
+    targetRef,
+    parameterRef,
+    evidenceRefs: [evidenceSetRef],
+  });
+  const prepared = await coordinator.prepareActionManifest(scope, {
+    schemaVersion: '1.0.0',
+    clientRequestId: `${prefix}-prepare`,
+    idempotencyKey: `${prefix}-idem-prepare`,
+    actionId,
+    expectedActionRevision: await revisionOf(),
+    reason: 'Prepare.',
+  });
+  await coordinator.approveExternalAction(scope, {
+    schemaVersion: '1.0.0',
+    clientRequestId: `${prefix}-approve`,
+    idempotencyKey: `${prefix}-idem-approve`,
+    actionId,
+    manifestId: prepared.manifest.manifestId,
+    manifestRevision: prepared.manifest.manifestRevision,
+    expectedTargetRevision: 'rev-3',
+    expectedExternalRevision: 'ext-7',
+    reason: 'Approved.',
+  });
+  const preflighted = await coordinator.preflightExternalAction(scope, {
+    schemaVersion: '1.0.0',
+    clientRequestId: `${prefix}-preflight`,
+    idempotencyKey: `${prefix}-idem-preflight`,
+    actionId,
+    expectedActionRevision: await revisionOf(),
+    manifestRevision: prepared.manifest.manifestRevision,
+    expectedExternalRevision: 'ext-7',
+    reason: 'Preflight.',
+  });
+  return { prepared, preflighted, revisionOf };
+};
+
+const acceptConnectorCommand = async (
+  gateway: PostgresFrontendCommandGateway,
+  executeRequest: {
+    readonly clientRequestId: string;
+    readonly idempotencyKey: string;
+    readonly actionId: string;
+    readonly expectedActionRevision: number;
+    readonly manifestRevision: number;
+    readonly preflightId: string;
+    readonly expectedExternalRevision: string;
+  },
+) => {
+  const now = new Date().toISOString();
+  const accepted = await gateway.accept({
+    commandId: `cmd-${executeRequest.clientRequestId}`,
+    commandRevision: '1',
+    principalId: scope.principalId,
+    request: {
+      envelopeVersion: '1.0.0',
+      commandType: FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.execute,
+      commandSchemaVersion: FRONTEND_EXTERNAL_ACTION_API_VERSION,
+      clientRequestId: executeRequest.clientRequestId,
+      idempotencyKey: executeRequest.idempotencyKey,
+      projectContext: {
+        activeProjectId: PROJECT_ID,
+        targetProjectId: PROJECT_ID,
+        resourceProjectId: PROJECT_ID,
+        observedProjectAccessRevision: scope.accessRevision,
+      },
+      policyBinding: {
+        mode: 'CURRENT',
+        observedPolicyContextRevision: scope.policyContextRevision,
+      },
+      preconditions: [],
+      clientIssuedAt: now,
+      payload: { ...executeRequest, schemaVersion: '1.0.0' as const, reason: 'Execute.' },
+    },
+    commandSemanticDigest: frontendExternalActionExecuteDigest({
+      schemaVersion: '1.0.0',
+      ...executeRequest,
+      reason: 'Execute.',
+    }),
+    acceptedPolicyContext: {
+      policyContextId: 'frontend-external-action-current-policy',
+      policyContextRevision: scope.policyContextRevision,
+      acceptedAt: now,
+    },
+    correlationId: `corr-${executeRequest.clientRequestId}`,
+    traceId: `trace-${executeRequest.clientRequestId}`,
+    receivedAt: now,
+    acceptedAt: now,
+  });
+  return accepted;
+};
+
+describe.runIf(pool)(
+  'FE-P4-S2 PostgreSQL concurrency + Command Ledger atomicity (Review 4860735262)',
+  () => {
+    beforeEach(async () => {
+      await truncateAll();
+      await pool!.query('TRUNCATE frontend_command.command_ledger CASCADE');
+    });
+
+    it('serializes concurrent commands on the same action with a real row lock (one wins, one fails stale)', async () => {
+      const store = pgBoundary();
+      await seedServerOwnedState(store);
+      const coordinator = new FrontendExternalActionProductCoordinator(
+        store,
+        new PostgresFrontendCommandGateway(pool!),
+        new FakeExternalActionEngine(),
+      );
+      const actionId = 'action-concurrent';
+      const { prepared, preflighted, revisionOf } = await lifecycleToPreflight(
+        coordinator,
+        actionId,
+        'parity-concurrent',
+      );
+      const revision = await revisionOf!();
+      const buildRequest = (suffix: string) => ({
+        schemaVersion: '1.0.0' as const,
+        clientRequestId: `parity-concurrent-ex-${suffix}`,
+        idempotencyKey: `parity-concurrent-idem-${suffix}`,
+        actionId,
+        expectedActionRevision: revision,
+        manifestRevision: prepared.manifest.manifestRevision,
+        preflightId: preflighted.preflight.preflightId,
+        expectedExternalRevision: 'ext-7',
+        reason: 'Execute.',
+      });
+      const first = buildRequest('1');
+      const second = buildRequest('2');
+      // Both start from the SAME aggregate revision; the FOR UPDATE row lock on
+      // the aggregate serializes them — exactly one succeeds, the other must see
+      // the bumped revision and fail closed with EXTERNAL_ACTION_STALE.
+      const results = await Promise.allSettled([
+        coordinator.executeExternalAction(scope, first),
+        coordinator.executeExternalAction(scope, second),
+      ]);
+      const fulfilled = results.filter((result) => result.status === 'fulfilled');
+      const rejected = results.filter(
+        (result): result is PromiseRejectedResult => result.status === 'rejected',
+      );
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect(String(rejected[0]?.reason)).toMatch(/stale|revision/i);
+    });
+
+    it('reserves the project budget atomically under concurrency (single remaining execution)', async () => {
+      const store = pgBoundary();
+      await store.transaction(async (repositories) => {
+        await repositories.budgets.insert({
+          schemaVersion: '1.0.0',
+          projectId: 'project-budget',
+          status: 'OK',
+          usedExecutions: 0,
+          remainingExecutions: 1,
+          softLimit: 80,
+          hardLimit: 100,
+          exhausted: false,
+        });
+      });
+      await Promise.all([
+        store.transaction((repositories) => repositories.budgets.reserve('project-budget')),
+        store.transaction((repositories) => repositories.budgets.reserve('project-budget')),
+      ]);
+      const final = await store.transaction((repositories) =>
+        repositories.budgets.findByProject('project-budget'),
+      );
+      // Exactly one reservation decremented (used = 1, remaining = 0, exhausted).
+      expect(final?.usedExecutions).toBe(1);
+      expect(final?.remainingExecutions).toBe(0);
+      expect(final?.exhausted).toBe(true);
+    });
+
+    it('commits Product resource and Command Ledger in one transaction and replays terminally (PG gateway)', async () => {
+      const store = pgBoundary();
+      await seedServerOwnedState(store);
+      const gateway = new PostgresFrontendCommandGateway(pool!);
+      const coordinator = new FrontendExternalActionProductCoordinator(
+        store,
+        gateway,
+        new FakeExternalActionEngine(),
+      );
+      const actionId = 'action-pg-ledger';
+      const { prepared, preflighted, revisionOf } = await lifecycleToPreflight(
+        coordinator,
+        actionId,
+        'parity-pg-ledger',
+      );
+      const executeRequest = {
+        schemaVersion: '1.0.0' as const,
+        clientRequestId: 'parity-pg-ledger-execute',
+        idempotencyKey: 'parity-pg-ledger-idem-execute',
+        actionId,
+        expectedActionRevision: await revisionOf!(),
+        manifestRevision: prepared.manifest.manifestRevision,
+        preflightId: preflighted.preflight.preflightId,
+        expectedExternalRevision: 'ext-7',
+        reason: 'Execute.',
+      };
+      const executed = await coordinator.executeExternalAction(scope, executeRequest);
+      expect(executed.execution.status).toBe('SUCCEEDED');
+      // Outcome resolution through the original identity returns the completed
+      // command (ledger + terminal product resource are consistent).
+      const digest = frontendExternalActionExecuteDigest(executeRequest);
+      const resolved = await coordinator.resolveExternalActionOutcome(scope, {
+        schemaVersion: '1.0.0',
+        clientRequestId: executeRequest.clientRequestId,
+        idempotencyKey: executeRequest.idempotencyKey,
+        semanticDigest: digest,
+      });
+      expect(resolved.outcome).toBe('COMPLETED');
+      // Terminal replay is idempotent — same result, no OUTCOME_INDETERMINATE.
+      const replayed = await coordinator.executeExternalAction(scope, executeRequest);
+      expect(replayed.outcome).toBe('COMPLETED');
+      expect(replayed.execution.executionId).toBe(executed.execution.executionId);
+      // The ledger row is COMPLETED in the same database as the terminal attempt.
+      const ledger = await pool!.query<{ outcome_state: string }>(
+        `SELECT outcome_state FROM frontend_command.command_ledger
+       WHERE client_request_id = $1`,
+        [executeRequest.clientRequestId],
+      );
+      expect(ledger.rows[0]?.outcome_state).toBe('COMPLETED');
+    });
+
+    it('rolls back the ledger completion when a Product write fails in the same transaction', async () => {
+      const store = pgBoundary();
+      const gateway = new PostgresFrontendCommandGateway(pool!);
+      const accepted = await acceptConnectorCommand(gateway, {
+        clientRequestId: 'parity-atomic-ex',
+        idempotencyKey: 'parity-atomic-idem',
+        actionId: 'action-atomic',
+        expectedActionRevision: 1,
+        manifestRevision: 1,
+        preflightId: 'preflight-atomic',
+        expectedExternalRevision: 'ext-7',
+      });
+      const commandId = accepted.outcome.commandId;
+      await expect(
+        store.transactionWithHandle(async (handle) => {
+          await gateway.lockAcceptedForExecution(handle.raw, commandId);
+          // First audit append succeeds.
+          await handle.repositories.audit.append({
+            schemaVersion: '1.0.0',
+            auditEventId: 'audit-atomic-1',
+            actionId: 'action-atomic',
+            resourceProjectId: PROJECT_ID,
+            effectiveProjectId: PROJECT_ID,
+            sequence: 1,
+            category: 'ACTION_EXECUTED',
+            eventData: { schemaVersion: '1.0.0', message: 'x', refs: [] },
+            occurredAt: new Date().toISOString(),
+          });
+          // Second append violates UNIQUE(action_id, sequence) → the whole
+          // transaction (including the ledger completion) must roll back.
+          await handle.repositories.audit.append({
+            schemaVersion: '1.0.0',
+            auditEventId: 'audit-atomic-2',
+            actionId: 'action-atomic',
+            resourceProjectId: PROJECT_ID,
+            effectiveProjectId: PROJECT_ID,
+            sequence: 1,
+            category: 'ACTION_VERIFIED',
+            eventData: { schemaVersion: '1.0.0', message: 'y', refs: [] },
+            occurredAt: new Date().toISOString(),
+          });
+          await gateway.completeInTransaction(handle.raw, {
+            commandId,
+            producedResources: [],
+            completedAt: new Date().toISOString(),
+          });
+        }),
+      ).rejects.toThrow();
+      // The ledger command stayed ACCEPTED — the product write failure rolled
+      // back the ledger completion too (real atomicity).
+      const ledger = await pool!.query<{ outcome_state: string }>(
+        `SELECT outcome_state FROM frontend_command.command_ledger WHERE command_id = $1`,
+        [commandId],
+      );
+      expect(ledger.rows[0]?.outcome_state).toBe('ACCEPTED');
+    });
+
+    it('fails closed with OUTCOME_INDETERMINATE for an in-flight (ACCEPTED) connector command (PG gateway)', async () => {
+      const store = pgBoundary();
+      const gateway = new PostgresFrontendCommandGateway(pool!);
+      // Accept + lock the command WITHOUT completing it (in-flight state).
+      const accepted = await acceptConnectorCommand(gateway, {
+        clientRequestId: 'parity-inflight-ex',
+        idempotencyKey: 'parity-inflight-idem',
+        actionId: 'action-inflight',
+        expectedActionRevision: 1,
+        manifestRevision: 1,
+        preflightId: 'preflight-inflight',
+        expectedExternalRevision: 'ext-7',
+      });
+      const commandId = accepted.outcome.commandId;
+      await store.transactionWithHandle(async (handle) => {
+        await gateway.lockAcceptedForExecution(handle.raw, commandId);
+      });
+      // Re-sending the same identity while the ledger is ACCEPTED must NOT
+      // fabricate a COMPLETED result — it fails closed with OUTCOME_INDETERMINATE.
+      const coordinator = new FrontendExternalActionProductCoordinator(
+        store,
+        gateway,
+        new FakeExternalActionEngine(),
+      );
+      await expect(
+        coordinator.executeExternalAction(scope, {
+          schemaVersion: '1.0.0',
+          clientRequestId: 'parity-inflight-ex',
+          idempotencyKey: 'parity-inflight-idem',
+          actionId: 'action-inflight',
+          expectedActionRevision: 1,
+          manifestRevision: 1,
+          preflightId: 'preflight-inflight',
+          expectedExternalRevision: 'ext-7',
+          reason: 'Execute.',
+        }),
+      ).rejects.toThrow(/indeterminate|unresolved/i);
+    });
+  },
+);
+
 const MIGRATION_028 = path.resolve(
   fileURLToPath(new URL('../..', import.meta.url)),
   'db/migrations/028_frontend_external_action_product.sql',
@@ -535,34 +881,51 @@ describe.runIf(pool)('FE-P4-S2 migration 028 apply/rollback + append-only audit 
 
   it('applies 028, rolls it back to the pre-028 fingerprint, and re-applies cleanly', async () => {
     const client = await pool!.connect();
+    const sql = await readFile(MIGRATION_028, 'utf8');
     try {
       await client.query('DROP SCHEMA IF EXISTS frontend_external_action CASCADE');
-      const sql = await readFile(MIGRATION_028, 'utf8');
-
-      await client.query('BEGIN');
+      // Apply.
       await client.query(sql);
       const tables = await client.query(
         `SELECT table_name FROM information_schema.tables
          WHERE table_schema = 'frontend_external_action' ORDER BY table_name`,
       );
-      expect(tables.rows.map((row) => row.table_name)).toEqual(
-        expect.arrayContaining([
-          'aggregates',
-          'candidates',
-          'manifests',
-          'approvals',
-          'preflights',
-          'executions',
-          'attempts',
-          'verifications',
-          'results',
-          'audit_events',
-          'compensations',
-          'rollbacks',
-          'credentials',
-          'budgets',
-        ]),
+      // Exact 15-table list (Review 4860735262 — no arrayContaining, and
+      // risk_decisions is included).
+      expect(tables.rows.map((row) => row.table_name)).toEqual([
+        'aggregates',
+        'approvals',
+        'attempts',
+        'audit_events',
+        'budgets',
+        'candidates',
+        'compensations',
+        'credentials',
+        'executions',
+        'manifests',
+        'preflights',
+        'results',
+        'risk_decisions',
+        'rollbacks',
+        'verifications',
+      ]);
+      // Every ACTION resource carries both resource_project_id and
+      // effective_project_id binding columns (frozen contract; Review
+      // 4860735262). credentials/budgets are server-owned views scoped by
+      // connector/project, not action resources.
+      const bindingColumns = await client.query(
+        `SELECT table_name,
+                bool_or(column_name IN ('resource_project_id')) AS has_resource,
+                bool_or(column_name IN ('effective_project_id')) AS has_effective
+         FROM information_schema.columns
+         WHERE table_schema = 'frontend_external_action'
+           AND table_name NOT IN ('credentials', 'budgets')
+         GROUP BY table_name`,
       );
+      for (const row of bindingColumns.rows) {
+        expect(row.has_resource).toBe(true);
+        expect(row.has_effective).toBe(true);
+      }
       const hasAuditTrigger = await client.query(
         `SELECT COUNT(*)::int AS count FROM pg_trigger
          WHERE tgname = 'frontend_external_action_audit_immutable'`,
@@ -575,7 +938,6 @@ describe.runIf(pool)('FE-P4-S2 migration 028 apply/rollback + append-only audit 
          WHERE schema_name = 'frontend_external_action'`,
       );
       expect(afterReverse.rows[0]?.count).toBe(0);
-      await client.query('COMMIT');
 
       // Re-apply restores the schema for the remaining suite.
       await client.query(sql);
@@ -585,31 +947,43 @@ describe.runIf(pool)('FE-P4-S2 migration 028 apply/rollback + append-only audit 
       );
       expect(restored.rows[0]?.count).toBe(1);
     } finally {
+      // Guarantee the schema exists for the rest of the suite even when an
+      // assertion above fails midway.
+      await client.query(sql).catch(() => undefined);
       client.release();
     }
   });
 
-  it('rejects UPDATE/DELETE on append-only audit events at the database', async () => {
+  it('rejects UPDATE and DELETE on append-only audit events at the database', async () => {
     const client = await pool!.connect();
     try {
       await client.query(
         `INSERT INTO frontend_external_action.audit_events
-           (audit_event_id, action_id, resource_project_id, sequence, category, snapshot, occurred_at)
-         VALUES ('audit-append-only', 'action-ao', 'project-1', 1, 'ACTION_EXECUTED',
-                 '{"auditEventId":"audit-append-only"}', now())`,
+           (audit_event_id, action_id, resource_project_id, effective_project_id,
+            sequence, category, snapshot, occurred_at)
+         VALUES ('audit-append-only', 'action-ao', 'project-1', 'project-1', 1,
+                 'ACTION_EXECUTED', '{"auditEventId":"audit-append-only"}', now())`,
       );
+      // UPDATE is rejected by the append-only trigger (own transaction so the
+      // statement failure does not abort the DELETE check below).
+      await client.query('BEGIN');
       await expect(
         client.query(
           `UPDATE frontend_external_action.audit_events SET category = 'ACTION_VERIFIED'
            WHERE audit_event_id = 'audit-append-only'`,
         ),
       ).rejects.toThrow(/append-only|immutable/i);
-      await client.query(
-        `DELETE FROM frontend_external_action.audit_events WHERE audit_event_id = 'audit-append-only'`,
-      );
-    } catch (error) {
-      // The DELETE is also blocked by the append-only trigger; ignore it.
-      if (error instanceof Error && !/append-only|immutable/i.test(error.message)) throw error;
+      await client.query('ROLLBACK');
+      // DELETE is rejected by the append-only trigger (explicit evidence —
+      // Review 4860735262).
+      await client.query('BEGIN');
+      await expect(
+        client.query(
+          `DELETE FROM frontend_external_action.audit_events
+           WHERE audit_event_id = 'audit-append-only'`,
+        ),
+      ).rejects.toThrow(/append-only|immutable/i);
+      await client.query('ROLLBACK');
     } finally {
       client.release();
     }

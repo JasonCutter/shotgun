@@ -93,7 +93,6 @@ import {
 import { externalActionFailure, ExternalActionCommandError } from './external-action-error.js';
 import {
   approvalIsActive,
-  budgetViewFrom,
   externalActionResourceRef,
   preflightIsReady,
   preflightRevalidationFlags,
@@ -1086,12 +1085,8 @@ export class FrontendExternalActionProductCoordinator {
           );
         }
         this.assertApprovalMatchesExecutionContext(approval, manifest, scope);
-        if (!(await this.budgetAvailable(repositories, scope.activeProjectId))) {
-          externalActionFailure(
-            'ACTION_BUDGET_EXCEEDED',
-            'The project execution budget is exhausted or unreadable.',
-          );
-        }
+        // Atomic reservation BEFORE the connector call (never a plain check).
+        await this.reserveBudget(repositories, scope.activeProjectId);
         if (!(await this.credentialAvailable(repositories, this.engine.identity.connectorId))) {
           externalActionFailure(
             'ACTION_CREDENTIAL_UNAVAILABLE',
@@ -1223,7 +1218,6 @@ export class FrontendExternalActionProductCoordinator {
           completedAt,
         };
         await repositories.executions.update(finalExecution);
-        await this.updateBudget(repositories, scope.activeProjectId, 1);
         const updated: ExternalActionV1 = {
           ...action,
           actionRevision: action.actionRevision + 1,
@@ -1362,12 +1356,8 @@ export class FrontendExternalActionProductCoordinator {
           );
         }
         this.assertApprovalMatchesExecutionContext(approval, manifest, scope);
-        if (!(await this.budgetAvailable(repositories, scope.activeProjectId))) {
-          externalActionFailure(
-            'ACTION_BUDGET_EXCEEDED',
-            'The project execution budget is exhausted or unreadable.',
-          );
-        }
+        // Atomic reservation BEFORE the connector call (never a plain check).
+        await this.reserveBudget(repositories, scope.activeProjectId);
         if (!(await this.credentialAvailable(repositories, this.engine.identity.connectorId))) {
           externalActionFailure(
             'ACTION_CREDENTIAL_UNAVAILABLE',
@@ -1599,7 +1589,6 @@ export class FrontendExternalActionProductCoordinator {
           completedAt,
         };
         await repositories.executions.update(finalExecution);
-        await this.updateBudget(repositories, scope.activeProjectId, 1);
         const updated: ExternalActionV1 = {
           ...action,
           actionRevision: action.actionRevision + 1,
@@ -3153,21 +3142,20 @@ export class FrontendExternalActionProductCoordinator {
     return !budget.exhausted && budget.remainingExecutions > 0;
   }
 
-  private async updateBudget(
+  private async reserveBudget(
     repositories: ExternalActionTransactionRepositoriesV1,
     projectId: string,
-    used: number,
   ): Promise<void> {
-    const current = await repositories.budgets.findByProject(projectId);
-    if (current) {
-      const next = budgetViewFrom({
-        projectId: current.projectId,
-        usedExecutions: current.usedExecutions + used,
-        remainingExecutions: Math.max(0, current.remainingExecutions - used),
-        softLimit: current.softLimit,
-        hardLimit: current.hardLimit,
-      });
-      await repositories.budgets.update(next);
+    // Atomic reservation BEFORE the connector call (never a plain availability
+    // check): the store decrements in one serialized step so two concurrent
+    // executions cannot both pass with a single remaining execution. The
+    // reservation is never released after the attempt ran (Review 4860735262).
+    const reserved = await repositories.budgets.reserve(projectId);
+    if (!reserved || reserved.exhausted || reserved.remainingExecutions <= 0) {
+      externalActionFailure(
+        'ACTION_BUDGET_EXCEEDED',
+        'The project execution budget is exhausted or unreadable.',
+      );
     }
   }
 

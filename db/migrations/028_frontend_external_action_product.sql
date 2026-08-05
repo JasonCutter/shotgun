@@ -47,6 +47,7 @@ CREATE TABLE frontend_external_action.candidates (
   candidate_id text NOT NULL,
   candidate_revision integer NOT NULL CHECK (candidate_revision > 0),
   resource_project_id text NOT NULL,
+  effective_project_id text NOT NULL,
   candidate_digest text NOT NULL,
   snapshot jsonb NOT NULL,
   created_at timestamptz NOT NULL,
@@ -61,6 +62,7 @@ CREATE TABLE frontend_external_action.risk_decisions (
   action_id text NOT NULL,
   risk_decision_id text NOT NULL,
   resource_project_id text NOT NULL,
+  effective_project_id text NOT NULL,
   snapshot jsonb NOT NULL,
   created_at timestamptz NOT NULL,
   PRIMARY KEY (action_id, risk_decision_id)
@@ -71,6 +73,7 @@ CREATE TABLE frontend_external_action.manifests (
   manifest_id text PRIMARY KEY,
   action_id text NOT NULL,
   resource_project_id text NOT NULL,
+  effective_project_id text NOT NULL,
   manifest_revision integer NOT NULL CHECK (manifest_revision > 0),
   manifest_digest text NOT NULL,
   snapshot jsonb NOT NULL,
@@ -86,6 +89,7 @@ CREATE TABLE frontend_external_action.approvals (
   approval_id text PRIMARY KEY,
   action_id text NOT NULL,
   resource_project_id text NOT NULL,
+  effective_project_id text NOT NULL,
   status text NOT NULL,
   issued_at timestamptz NOT NULL,
   snapshot jsonb NOT NULL,
@@ -100,6 +104,7 @@ CREATE TABLE frontend_external_action.preflights (
   preflight_id text PRIMARY KEY,
   action_id text NOT NULL,
   resource_project_id text NOT NULL,
+  effective_project_id text NOT NULL,
   run_at timestamptz NOT NULL,
   snapshot jsonb NOT NULL,
   created_at timestamptz NOT NULL
@@ -113,6 +118,7 @@ CREATE TABLE frontend_external_action.executions (
   execution_id text PRIMARY KEY,
   action_id text NOT NULL,
   resource_project_id text NOT NULL,
+  effective_project_id text NOT NULL,
   status text NOT NULL,
   manifest_revision integer NOT NULL,
   snapshot jsonb NOT NULL,
@@ -132,6 +138,7 @@ CREATE TABLE frontend_external_action.attempts (
   execution_id text NOT NULL,
   action_id text NOT NULL,
   resource_project_id text NOT NULL,
+  effective_project_id text NOT NULL,
   attempt_number integer NOT NULL CHECK (attempt_number > 0),
   status text NOT NULL,
   snapshot jsonb NOT NULL,
@@ -147,6 +154,7 @@ CREATE TABLE frontend_external_action.verifications (
   verification_id text PRIMARY KEY,
   action_id text NOT NULL,
   resource_project_id text NOT NULL,
+  effective_project_id text NOT NULL,
   snapshot jsonb NOT NULL,
   created_at timestamptz NOT NULL
 );
@@ -158,6 +166,7 @@ CREATE TABLE frontend_external_action.results (
   result_id text PRIMARY KEY,
   action_id text NOT NULL,
   resource_project_id text NOT NULL,
+  effective_project_id text NOT NULL,
   snapshot jsonb NOT NULL,
   created_at timestamptz NOT NULL
 );
@@ -170,6 +179,7 @@ CREATE TABLE frontend_external_action.audit_events (
   audit_event_id text PRIMARY KEY,
   action_id text NOT NULL,
   resource_project_id text NOT NULL,
+  effective_project_id text NOT NULL,
   sequence integer NOT NULL CHECK (sequence > 0),
   category text NOT NULL,
   snapshot jsonb NOT NULL,
@@ -196,6 +206,7 @@ CREATE TABLE frontend_external_action.compensations (
   compensation_id text PRIMARY KEY,
   action_id text NOT NULL,
   resource_project_id text NOT NULL,
+  effective_project_id text NOT NULL,
   snapshot jsonb NOT NULL,
   created_at timestamptz NOT NULL
 );
@@ -207,6 +218,7 @@ CREATE TABLE frontend_external_action.rollbacks (
   rollback_id text PRIMARY KEY,
   action_id text NOT NULL,
   resource_project_id text NOT NULL,
+  effective_project_id text NOT NULL,
   status text NOT NULL,
   snapshot jsonb NOT NULL,
   created_at timestamptz NOT NULL,

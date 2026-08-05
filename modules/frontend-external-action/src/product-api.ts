@@ -40,6 +40,8 @@ import {
   type GetExecutionAttemptsResultV1,
   type GetExecutionRequestV1,
   type GetExecutionResultV1,
+  type GetExternalActionApprovalRequestV1,
+  type GetExternalActionApprovalResultV1,
   type GetExternalActionDetailRequestV1,
   type GetExternalActionDetailResultV1,
   type GetExternalActionRequestV1,
@@ -190,55 +192,73 @@ export type FrontendExternalActionScopeV1 = {
   readonly riskClearance?: 'R0' | 'R1' | 'R2' | 'R3' | 'R4';
 };
 
-const READ_SCOPES: ReadonlySet<string> = new Set(['owner', 'admin', 'action:read']);
+const READ_RESOURCE_SCOPES: ReadonlySet<string> = new Set(['owner', 'admin', 'action:read']);
+const AUDIT_READ_SCOPES: ReadonlySet<string> = new Set(['owner', 'admin', 'action:audit:read']);
+const BUDGET_READ_SCOPES: ReadonlySet<string> = new Set(['owner', 'admin', 'action:budget:read']);
+const CREDENTIAL_MANAGE_SCOPES: ReadonlySet<string> = new Set([
+  'owner',
+  'admin',
+  'action:credential:manage',
+]);
+const CANDIDATE_STAGE_SCOPES: ReadonlySet<string> = new Set([
+  'owner',
+  'admin',
+  'action:candidate:stage',
+]);
 const EXECUTE_SCOPES: ReadonlySet<string> = new Set(['owner', 'admin', 'action:execute']);
 const APPROVE_SCOPES: ReadonlySet<string> = new Set(['owner', 'admin', 'action:approve']);
-const GOVERN_SCOPES: ReadonlySet<string> = new Set(['owner', 'admin', 'action:govern']);
+const VERIFY_SCOPES: ReadonlySet<string> = new Set(['owner', 'admin', 'action:verify']);
+const CANCEL_SCOPES: ReadonlySet<string> = new Set(['owner', 'admin', 'action:cancel']);
+const ROLLBACK_SCOPES: ReadonlySet<string> = new Set(['owner', 'admin', 'action:rollback']);
 
+/**
+ * Least-privilege Scope → Capability matrix (Review 4863146027). Each capability
+ * is granted ONLY by its own fine-grained frozen scope (`action:read`,
+ * `action:audit:read`, `action:budget:read`, `action:credential:manage`,
+ * `action:candidate:stage`, `action:approve`, `action:execute`, `action:verify`,
+ * `action:cancel`, `action:rollback`) or by the broad `owner`/`admin` scopes.
+ * Grants are independent per scope — a fine-grained scope alone must grant its
+ * own family without needing `action:read` as a gate. No single scope grants an
+ * unrelated command family.
+ */
 export const externalActionCapabilitiesForScope = (
   scope: FrontendExternalActionScopeV1,
 ): readonly ExternalActionCapabilityV1[] => {
   const granted = scope.accessScope ?? [];
-  const hasRead = granted.some((entry) => READ_SCOPES.has(entry));
-  if (!hasRead) return [];
-  // Read scope grants reads and outcome resolution only — never write
-  // capabilities (server-authoritative; the frozen contract separates them).
-  const capabilities: ExternalActionCapabilityV1[] = [
-    'LIST_EXTERNAL_ACTIONS',
-    'READ_EXTERNAL_ACTION',
-    'READ_MANIFEST',
-    'READ_RISK_DECISION',
-    'READ_PREFLIGHT',
-    'READ_EXECUTION',
-    'READ_EXECUTION_ATTEMPTS',
-    'READ_VERIFICATION',
-    'READ_RESULT',
-    'READ_AUDIT',
-    'READ_APPROVAL',
-    'RESOLVE_OUTCOME',
-  ];
-  const canExecute = granted.some((entry) => EXECUTE_SCOPES.has(entry));
-  const canApprove = granted.some((entry) => APPROVE_SCOPES.has(entry));
-  const canGovern = granted.some((entry) => GOVERN_SCOPES.has(entry));
-  if (canApprove) capabilities.push('APPROVE_EXTERNAL_ACTION');
-  if (canExecute) {
+  const has = (set: ReadonlySet<string>): boolean => granted.some((entry) => set.has(entry));
+  const capabilities: ExternalActionCapabilityV1[] = [];
+  if (has(READ_RESOURCE_SCOPES)) {
     capabilities.push(
+      'LIST_EXTERNAL_ACTIONS',
+      'READ_EXTERNAL_ACTION',
+      'READ_MANIFEST',
+      'READ_RISK_DECISION',
+      'READ_PREFLIGHT',
+      'READ_EXECUTION',
+      'READ_EXECUTION_ATTEMPTS',
+      'READ_VERIFICATION',
+      'READ_RESULT',
+      'READ_APPROVAL',
+      'RESOLVE_OUTCOME',
+    );
+  }
+  if (has(AUDIT_READ_SCOPES)) capabilities.push('READ_AUDIT');
+  if (has(BUDGET_READ_SCOPES)) capabilities.push('READ_BUDGET');
+  if (has(CREDENTIAL_MANAGE_SCOPES)) capabilities.push('READ_CREDENTIAL');
+  if (has(CANDIDATE_STAGE_SCOPES)) capabilities.push('VALIDATE_CANDIDATE');
+  if (has(EXECUTE_SCOPES)) {
+    capabilities.push(
+      'PREPARE_MANIFEST',
       'PREFLIGHT_EXTERNAL_ACTION',
       'EXECUTE_EXTERNAL_ACTION',
       'RETRY_EXECUTION_ATTEMPT',
-      'VERIFY_EXTERNAL_ACTION',
     );
   }
-  if (canGovern) {
-    capabilities.push(
-      'VALIDATE_CANDIDATE',
-      'PREPARE_MANIFEST',
-      'CANCEL_EXTERNAL_ACTION',
-      'ROLLBACK_EXTERNAL_ACTION',
-      'PREPARE_COMPENSATING_ACTION',
-      'READ_CREDENTIAL',
-      'READ_BUDGET',
-    );
+  if (has(APPROVE_SCOPES)) capabilities.push('APPROVE_EXTERNAL_ACTION');
+  if (has(VERIFY_SCOPES)) capabilities.push('VERIFY_EXTERNAL_ACTION');
+  if (has(CANCEL_SCOPES)) capabilities.push('CANCEL_EXTERNAL_ACTION');
+  if (has(ROLLBACK_SCOPES)) {
+    capabilities.push('ROLLBACK_EXTERNAL_ACTION', 'PREPARE_COMPENSATING_ACTION');
   }
   return capabilities;
 };
@@ -2391,6 +2411,37 @@ export class FrontendExternalActionProductCoordinator {
         );
       }
       return { schemaVersion: '1.0.0', manifest };
+    });
+  }
+
+  /**
+   * FE-P4-S2 WP4 approval read (IR "approvals" protected read; Review
+   * 4863146027 resolution: the frozen browser-read list does not name
+   * GET_APPROVAL, but the Implementation Request lists an approvals read, so
+   * this additive read is provided and the interpretation is recorded in the
+   * report — never silently dropped).
+   */
+  async getExternalActionApproval(
+    scope: FrontendExternalActionScopeV1,
+    request: GetExternalActionApprovalRequestV1,
+  ): Promise<GetExternalActionApprovalResultV1> {
+    this.requireCapability(scope, 'READ_APPROVAL');
+    return this.boundary.transaction(async (repositories) => {
+      const action = await repositories.aggregates.findById(request.actionId);
+      if (!action || action.resourceProjectId !== scope.activeProjectId) {
+        externalActionFailure('EXTERNAL_ACTION_NOT_FOUND', 'The External Action was not found.');
+      }
+      this.assertProjectAndPolicy(action, scope);
+      const approval = action.approvalRef
+        ? await repositories.approvals.findById(action.approvalRef.resourceId)
+        : undefined;
+      if (!approval) {
+        externalActionFailure(
+          'EXTERNAL_ACTION_NOT_FOUND',
+          'No approval exists for this External Action.',
+        );
+      }
+      return { schemaVersion: '1.0.0', approval };
     });
   }
 

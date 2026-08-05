@@ -631,6 +631,19 @@ export type GetPreflightResultV1 = {
   readonly preflight: PreflightV1;
 };
 
+// FE-P4-S2 WP4 additive approval read (Implementation Request lists an
+// approvals read under /product-api/frontend/external-action/*; Review
+// 4863146027 resolution recorded in the report).
+export type GetExternalActionApprovalRequestV1 = {
+  readonly schemaVersion: '1.0.0';
+  readonly actionId: string;
+};
+
+export type GetExternalActionApprovalResultV1 = {
+  readonly schemaVersion: '1.0.0';
+  readonly approval: ExternalActionApprovalV1;
+};
+
 export type GetExecutionRequestV1 = {
   readonly schemaVersion: '1.0.0';
   readonly actionId: string;
@@ -2523,6 +2536,18 @@ export const decodeGetPreflightRequestV1 = (
   };
 };
 
+export const decodeGetExternalActionApprovalRequestV1 = (
+  value: unknown,
+  path = 'request',
+): GetExternalActionApprovalRequestV1 => {
+  const object = strictObject(value, ['schemaVersion', 'actionId'], path);
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    actionId: text(required(object, 'actionId', path), `${path}.actionId`),
+  };
+};
+
 export const decodeGetExecutionRequestV1 = (
   value: unknown,
   path = 'request',
@@ -3649,6 +3674,21 @@ export const decodeGetPreflightResultV1 = (
   return {
     schemaVersion: '1.0.0',
     preflight: decodePreflightV1(required(object, 'preflight', path), `${path}.preflight`),
+  };
+};
+
+export const decodeGetExternalActionApprovalResultV1 = (
+  value: unknown,
+  path = 'result',
+): GetExternalActionApprovalResultV1 => {
+  const object = strictObject(value, ['schemaVersion', 'approval'], path);
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    approval: decodeExternalActionApprovalV1(
+      required(object, 'approval', path),
+      `${path}.approval`,
+    ),
   };
 };
 

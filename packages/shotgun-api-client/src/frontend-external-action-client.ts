@@ -7,6 +7,7 @@ import {
   decodeGetActionResultResultV1,
   decodeGetExecutionAttemptsResultV1,
   decodeGetExecutionResultV1,
+  decodeGetExternalActionApprovalResultV1,
   decodeGetExternalActionDetailResultV1,
   decodeGetExternalActionResultV1,
   decodeGetPreflightResultV1,
@@ -46,6 +47,8 @@ import {
   type GetExecutionAttemptsResultV1,
   type GetExecutionRequestV1,
   type GetExecutionResultV1,
+  type GetExternalActionApprovalRequestV1,
+  type GetExternalActionApprovalResultV1,
   type GetExternalActionDetailRequestV1,
   type GetExternalActionDetailResultV1,
   type GetExternalActionRequestV1,
@@ -142,6 +145,10 @@ export type FrontendExternalActionClient = {
     params: ListExternalActionAuditRequestV1,
     options?: { readonly signal?: AbortSignal },
   ): Promise<ListExternalActionAuditResultV1>;
+  getExternalActionApproval(
+    params: GetExternalActionApprovalRequestV1,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<GetExternalActionApprovalResultV1>;
   // Governed writes
   validateActionCandidate(
     params: ValidateActionCandidateRequestV1,
@@ -210,13 +217,49 @@ const identityMismatch = (message: string): never => {
 };
 
 /**
+ * Fail-closed command identity binding (Review 4863146027 item 4). Every
+ * governed result MUST echo the full command identity — `clientRequestId`,
+ * `idempotencyKey` and `actionId` (whichever the command carries) — before the
+ * result is trusted. A mismatch is an integrity failure, never silently
+ * accepted. Command-specific identities (manifest/execution/source ids) are
+ * asserted by the caller on top of this shared check.
+ */
+const assertCommandIdentity = (
+  result: {
+    readonly clientRequestId?: string;
+    readonly idempotencyKey?: string;
+    readonly actionId?: string;
+  },
+  params: {
+    readonly clientRequestId: string;
+    readonly idempotencyKey?: string;
+    readonly actionId?: string;
+  },
+  message: string,
+): void => {
+  const fields: ReadonlyArray<readonly [string, string | undefined, string | undefined]> = [
+    ['clientRequestId', params.clientRequestId, result.clientRequestId],
+    ['idempotencyKey', params.idempotencyKey, result.idempotencyKey],
+    ['actionId', params.actionId, result.actionId],
+  ];
+  for (const [field, expected, actual] of fields) {
+    if (expected !== undefined && actual !== expected) {
+      identityMismatch(`${message}: ${field} does not match the requested command.`);
+    }
+  }
+};
+
+/**
  * Typed FE-P4-S2 WP4 External Action client. Same-origin credentials, cached
- * CSRF token with a single retry on 403 (session refresh), strict decoding of
- * every response, `AbortSignal` support and NO automatic mutation retry
- * (ADR-119). The server is always the authority for Principal, Project,
- * access, policy, capability, credential and budget; this client never derives
- * them itself and never re-executes an OUTCOME_UNKNOWN command — recovery is
- * always `resolveExternalActionOutcome` by the original command identity.
+ * CSRF token with a single retry on 403 (session refresh) for READ POSTs only,
+ * strict decoding of every response, `AbortSignal` support and NO automatic
+ * governed-mutation retry (Review 4863146027 item 2). A governed mutation is
+ * sent exactly ONCE; a general 403 (project access denied, capability denied,
+ * session loss, policy change) returns the typed failure without a resend.
+ * The server is always the authority for Principal, Project, access, policy,
+ * capability, credential and budget; this client never derives them itself and
+ * never re-executes an OUTCOME_UNKNOWN command — recovery is always
+ * `resolveExternalActionOutcome` by the original command identity.
  */
 export const createFrontendExternalActionClient = (
   options: { readonly fetch?: typeof globalThis.fetch } = {},
@@ -238,29 +281,44 @@ export const createFrontendExternalActionClient = (
     return csrfToken;
   };
 
-  const mutate = async (path: string, params: unknown, signal?: AbortSignal): Promise<Response> => {
-    const send = async (token: string): Promise<Response> =>
-      request(path, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-csrf-token': token },
-        credentials: 'same-origin',
-        body: JSON.stringify(params),
-        signal,
-      });
-    let response = await send(await csrf(signal));
+  const post = (
+    path: string,
+    params: unknown,
+    token: string,
+    signal?: AbortSignal,
+  ): Promise<Response> =>
+    request(path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-csrf-token': token },
+      credentials: 'same-origin',
+      body: JSON.stringify(params),
+      signal,
+    });
+
+  // READ POST: idempotent and safe, so a CSRF refresh + single retry on a
+  // general 403 is allowed (session rotation must not break a plain read).
+  const read = async (path: string, params: unknown, signal?: AbortSignal): Promise<Response> => {
+    let response = await post(path, params, await csrf(signal), signal);
     if (response.status === 403) {
       csrfToken = undefined;
-      response = await send(await csrf(signal));
+      response = await post(path, params, await csrf(signal), signal);
     }
     return response;
   };
+
+  // GOVERNED MUTATION: sent exactly once. A general 403 is never auto-retried
+  // — the typed failure is surfaced to the caller instead (Review 4863146027
+  // item 2; AC-20). Only a CSRF rejection explicitly retried by the caller is
+  // ever re-sent, and no mutation is re-sent with a NEW identity.
+  const mutate = async (path: string, params: unknown, signal?: AbortSignal): Promise<Response> =>
+    post(path, params, await csrf(signal), signal);
 
   return {
     // ------------------------------------------------------------------
     // Reads
     // ------------------------------------------------------------------
     async listExternalActions(params, requestOptions) {
-      const response = await mutate(
+      const response = await read(
         '/product-api/frontend/external-action/queue',
         params,
         requestOptions?.signal,
@@ -269,7 +327,7 @@ export const createFrontendExternalActionClient = (
       return decodeListExternalActionsResultV1(body);
     },
     async getExternalAction(params, requestOptions) {
-      const response = await mutate(
+      const response = await read(
         '/product-api/frontend/external-action/actions/read',
         params,
         requestOptions?.signal,
@@ -282,7 +340,7 @@ export const createFrontendExternalActionClient = (
       return result;
     },
     async getExternalActionDetail(params, requestOptions) {
-      const response = await mutate(
+      const response = await read(
         '/product-api/frontend/external-action/actions/detail',
         params,
         requestOptions?.signal,
@@ -295,7 +353,7 @@ export const createFrontendExternalActionClient = (
       return result;
     },
     async getActionManifest(params, requestOptions) {
-      const response = await mutate(
+      const response = await read(
         '/product-api/frontend/external-action/manifests/read',
         params,
         requestOptions?.signal,
@@ -308,7 +366,7 @@ export const createFrontendExternalActionClient = (
       return result;
     },
     async getRiskDecision(params, requestOptions) {
-      const response = await mutate(
+      const response = await read(
         '/product-api/frontend/external-action/risk-decisions/read',
         params,
         requestOptions?.signal,
@@ -321,7 +379,7 @@ export const createFrontendExternalActionClient = (
       return result;
     },
     async getPreflight(params, requestOptions) {
-      const response = await mutate(
+      const response = await read(
         '/product-api/frontend/external-action/preflights/read',
         params,
         requestOptions?.signal,
@@ -334,7 +392,7 @@ export const createFrontendExternalActionClient = (
       return result;
     },
     async getExecution(params, requestOptions) {
-      const response = await mutate(
+      const response = await read(
         '/product-api/frontend/external-action/executions/read',
         params,
         requestOptions?.signal,
@@ -347,7 +405,7 @@ export const createFrontendExternalActionClient = (
       return result;
     },
     async getExecutionAttempts(params, requestOptions) {
-      const response = await mutate(
+      const response = await read(
         '/product-api/frontend/external-action/executions/attempts',
         params,
         requestOptions?.signal,
@@ -360,7 +418,7 @@ export const createFrontendExternalActionClient = (
       return result;
     },
     async getVerification(params, requestOptions) {
-      const response = await mutate(
+      const response = await read(
         '/product-api/frontend/external-action/verifications/read',
         params,
         requestOptions?.signal,
@@ -373,7 +431,7 @@ export const createFrontendExternalActionClient = (
       return result;
     },
     async getActionResult(params, requestOptions) {
-      const response = await mutate(
+      const response = await read(
         '/product-api/frontend/external-action/results/read',
         params,
         requestOptions?.signal,
@@ -386,7 +444,7 @@ export const createFrontendExternalActionClient = (
       return result;
     },
     async listExternalActionAudit(params, requestOptions) {
-      const response = await mutate(
+      const response = await read(
         '/product-api/frontend/external-action/audit',
         params,
         requestOptions?.signal,
@@ -395,6 +453,19 @@ export const createFrontendExternalActionClient = (
       const result = decodeListExternalActionAuditResultV1(body);
       if (result.events.some((event) => event.actionId !== params.actionId)) {
         identityMismatch('Audit list contains an event for a different External Action.');
+      }
+      return result;
+    },
+    async getExternalActionApproval(params, requestOptions) {
+      const response = await read(
+        '/product-api/frontend/external-action/approvals/read',
+        params,
+        requestOptions?.signal,
+      );
+      const body = await assertOk(response);
+      const result = decodeGetExternalActionApprovalResultV1(body);
+      if (result.approval.actionId !== params.actionId) {
+        identityMismatch('Approval read result does not match the requested action.');
       }
       return result;
     },
@@ -410,12 +481,7 @@ export const createFrontendExternalActionClient = (
       );
       const body = await assertOk(response);
       const result = decodeValidateActionCandidateResultV1(body);
-      if (
-        result.clientRequestId !== params.clientRequestId ||
-        result.actionId !== params.actionId
-      ) {
-        identityMismatch('Validate result does not match the requested command.');
-      }
+      assertCommandIdentity(result, params, 'Validate result');
       return result;
     },
     async prepareActionManifest(params, requestOptions) {
@@ -426,11 +492,9 @@ export const createFrontendExternalActionClient = (
       );
       const body = await assertOk(response);
       const result = decodePrepareActionManifestResultV1(body);
-      if (
-        result.clientRequestId !== params.clientRequestId ||
-        result.actionId !== params.actionId
-      ) {
-        identityMismatch('Prepare result does not match the requested command.');
+      assertCommandIdentity(result, params, 'Prepare result');
+      if (result.manifest.actionId !== params.actionId) {
+        identityMismatch('Prepare result manifest does not match the requested action.');
       }
       return result;
     },
@@ -442,11 +506,9 @@ export const createFrontendExternalActionClient = (
       );
       const body = await assertOk(response);
       const result = decodeApproveExternalActionResultV1(body);
-      if (
-        result.clientRequestId !== params.clientRequestId ||
-        result.actionId !== params.actionId
-      ) {
-        identityMismatch('Approve result does not match the requested command.');
+      assertCommandIdentity(result, params, 'Approve result');
+      if (result.approval.actionId !== params.actionId) {
+        identityMismatch('Approve result approval does not match the requested action.');
       }
       return result;
     },
@@ -458,11 +520,9 @@ export const createFrontendExternalActionClient = (
       );
       const body = await assertOk(response);
       const result = decodePreflightExternalActionResultV1(body);
-      if (
-        result.clientRequestId !== params.clientRequestId ||
-        result.actionId !== params.actionId
-      ) {
-        identityMismatch('Preflight result does not match the requested command.');
+      assertCommandIdentity(result, params, 'Preflight result');
+      if (result.preflight.actionId !== params.actionId) {
+        identityMismatch('Preflight result preflight does not match the requested action.');
       }
       return result;
     },
@@ -474,12 +534,9 @@ export const createFrontendExternalActionClient = (
       );
       const body = await assertOk(response);
       const result = decodeExecuteExternalActionResultV1(body);
-      if (
-        result.clientRequestId !== params.clientRequestId ||
-        result.idempotencyKey !== params.idempotencyKey ||
-        result.actionId !== params.actionId
-      ) {
-        identityMismatch('Execute result does not match the requested command.');
+      assertCommandIdentity(result, params, 'Execute result');
+      if (result.execution.actionId !== params.actionId) {
+        identityMismatch('Execute result execution does not match the requested action.');
       }
       return result;
     },
@@ -491,13 +548,9 @@ export const createFrontendExternalActionClient = (
       );
       const body = await assertOk(response);
       const result = decodeRetryExecutionAttemptResultV1(body);
-      if (
-        result.clientRequestId !== params.clientRequestId ||
-        result.idempotencyKey !== params.idempotencyKey ||
-        result.actionId !== params.actionId ||
-        result.attempt.executionId !== params.executionId
-      ) {
-        identityMismatch('Retry result does not match the requested command.');
+      assertCommandIdentity(result, params, 'Retry result');
+      if (result.attempt.executionId !== params.executionId) {
+        identityMismatch('Retry result attempt does not match the requested execution.');
       }
       return result;
     },
@@ -509,12 +562,9 @@ export const createFrontendExternalActionClient = (
       );
       const body = await assertOk(response);
       const result = decodeVerifyExternalActionResultV1(body);
-      if (
-        result.clientRequestId !== params.clientRequestId ||
-        result.actionId !== params.actionId ||
-        result.verification.executionId !== params.executionId
-      ) {
-        identityMismatch('Verify result does not match the requested command.');
+      assertCommandIdentity(result, params, 'Verify result');
+      if (result.verification.executionId !== params.executionId) {
+        identityMismatch('Verify result verification does not match the requested execution.');
       }
       return result;
     },
@@ -526,12 +576,7 @@ export const createFrontendExternalActionClient = (
       );
       const body = await assertOk(response);
       const result = decodeCancelExternalActionResultV1(body);
-      if (
-        result.clientRequestId !== params.clientRequestId ||
-        result.actionId !== params.actionId
-      ) {
-        identityMismatch('Cancel result does not match the requested command.');
-      }
+      assertCommandIdentity(result, params, 'Cancel result');
       return result;
     },
     async rollbackExternalAction(params, requestOptions) {
@@ -542,12 +587,9 @@ export const createFrontendExternalActionClient = (
       );
       const body = await assertOk(response);
       const result = decodeRollbackExternalActionResultV1(body);
-      if (
-        result.clientRequestId !== params.clientRequestId ||
-        result.actionId !== params.actionId ||
-        result.rollback.actionId !== params.actionId
-      ) {
-        identityMismatch('Rollback result does not match the requested command.');
+      assertCommandIdentity(result, params, 'Rollback result');
+      if (result.rollback.actionId !== params.actionId) {
+        identityMismatch('Rollback result rollback does not match the requested action.');
       }
       return result;
     },
@@ -559,12 +601,12 @@ export const createFrontendExternalActionClient = (
       );
       const body = await assertOk(response);
       const result = decodePrepareCompensatingActionResultV1(body);
+      assertCommandIdentity(result, params, 'Compensation result');
       if (
-        result.clientRequestId !== params.clientRequestId ||
         result.compensation.sourceActionId !== params.sourceActionId ||
         result.compensation.sourceExecutionId !== params.sourceExecutionId
       ) {
-        identityMismatch('Compensation result does not match the requested command.');
+        identityMismatch('Compensation result does not match the requested source command.');
       }
       return result;
     },
@@ -581,7 +623,10 @@ export const createFrontendExternalActionClient = (
       );
       const body = await assertOk(response);
       const result = decodeResolveExternalActionOutcomeResultV1(body);
-      if (result.originalClientRequestId !== params.clientRequestId) {
+      if (
+        result.originalClientRequestId !== params.clientRequestId ||
+        result.originalIdempotencyKey !== params.idempotencyKey
+      ) {
         identityMismatch('Outcome result does not match the original External Action command.');
       }
       return result;

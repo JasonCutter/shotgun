@@ -11,6 +11,7 @@ import {
   decodeGetActionResultRequestV1,
   decodeGetExecutionAttemptsRequestV1,
   decodeGetExecutionRequestV1,
+  decodeGetExternalActionApprovalRequestV1,
   decodeGetExternalActionDetailRequestV1,
   decodeGetExternalActionRequestV1,
   decodeGetPreflightRequestV1,
@@ -198,6 +199,19 @@ export function registerFrontendExternalActionRoutes(
         return await coordinator.getPreflight(scope, decoded);
       } catch (error) {
         throw toExternalActionError(error, 'get-preflight');
+      }
+    },
+  );
+
+  server.post<{ Body: unknown; Headers: SecurityHeaders }>(
+    '/product-api/frontend/external-action/approvals/read',
+    async (request) => {
+      const scope = await buildExternalActionScope(request.headers);
+      try {
+        const decoded = decodeGetExternalActionApprovalRequestV1(request.body);
+        return await coordinator.getExternalActionApproval(scope, decoded);
+      } catch (error) {
+        throw toExternalActionError(error, 'get-external-action-approval');
       }
     },
   );

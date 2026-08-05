@@ -33,6 +33,205 @@ const evidenceSetRef = {
   evidenceSetDigest: `sha256:${'b'.repeat(64)}`,
 };
 
+// Contract-valid payloads for the fine-grained scope→capability matrix test.
+// For DENY rows the capability check runs BEFORE any resource existence check,
+// so a 403 is deterministic even though the referenced action does not exist.
+const scopePayloads = {
+  queue: { schemaVersion: '1.0.0', pageSize: 50 },
+  validate: {
+    schemaVersion: '1.0.0',
+    clientRequestId: 'scope-validate',
+    idempotencyKey: 'scope-idem-validate',
+    actionId: 'action-1',
+    candidateId: 'candidate-1',
+    operation: 'UPDATE_REVERSIBLE',
+    targetRef,
+    parameterRef,
+    evidenceRefs: [evidenceSetRef],
+    reason: 'Validate.',
+  },
+  prepare: {
+    schemaVersion: '1.0.0',
+    clientRequestId: 'scope-prepare',
+    idempotencyKey: 'scope-idem-prepare',
+    actionId: 'action-1',
+    expectedActionRevision: 4,
+    reason: 'Prepare.',
+  },
+  approve: {
+    schemaVersion: '1.0.0',
+    clientRequestId: 'scope-approve',
+    idempotencyKey: 'scope-idem-approve',
+    actionId: 'action-1',
+    manifestId: 'manifest-1',
+    manifestRevision: 1,
+    expectedTargetRevision: 'rev-3',
+    expectedExternalRevision: 'ext-7',
+    reason: 'Approved.',
+  },
+  preflight: {
+    schemaVersion: '1.0.0',
+    clientRequestId: 'scope-preflight',
+    idempotencyKey: 'scope-idem-preflight',
+    actionId: 'action-1',
+    expectedActionRevision: 3,
+    manifestRevision: 1,
+    expectedExternalRevision: 'ext-7',
+    reason: 'Preflight.',
+  },
+  execute: {
+    schemaVersion: '1.0.0',
+    clientRequestId: 'scope-execute',
+    idempotencyKey: 'scope-idem-execute',
+    actionId: 'action-1',
+    expectedActionRevision: 4,
+    manifestRevision: 1,
+    preflightId: 'preflight-1',
+    expectedExternalRevision: 'ext-7',
+    reason: 'Execute.',
+  },
+  retry: {
+    schemaVersion: '1.0.0',
+    clientRequestId: 'scope-retry',
+    idempotencyKey: 'scope-idem-retry',
+    actionId: 'action-1',
+    executionId: 'execution-1',
+    sourceAttemptId: 'attempt-1',
+    causationId: 'cause-1',
+    reason: 'Retry.',
+  },
+  verify: {
+    schemaVersion: '1.0.0',
+    clientRequestId: 'scope-verify',
+    idempotencyKey: 'scope-idem-verify',
+    actionId: 'action-1',
+    executionId: 'execution-1',
+    expectedTargetRevision: 'rev-3',
+    expectedExternalRevision: 'ext-7',
+    reason: 'Verify.',
+  },
+  cancel: {
+    schemaVersion: '1.0.0',
+    clientRequestId: 'scope-cancel',
+    idempotencyKey: 'scope-idem-cancel',
+    actionId: 'action-1',
+    expectedActionRevision: 4,
+    reason: 'Cancel.',
+  },
+  rollback: {
+    schemaVersion: '1.0.0',
+    clientRequestId: 'scope-rollback',
+    idempotencyKey: 'scope-idem-rollback',
+    actionId: 'action-1',
+    executionId: 'execution-1',
+    reason: 'Rollback.',
+  },
+  compensation: {
+    schemaVersion: '1.0.0',
+    clientRequestId: 'scope-compensation',
+    idempotencyKey: 'scope-idem-compensation',
+    sourceActionId: 'action-1',
+    sourceExecutionId: 'execution-1',
+    reason: 'Compensate.',
+  },
+  audit: { schemaVersion: '1.0.0', actionId: 'action-1', pageSize: 50 },
+} as const;
+
+const scopeMatrixCases: ReadonlyArray<{
+  readonly name: string;
+  readonly scopes: readonly string[];
+  readonly checks: ReadonlyArray<{
+    readonly url: string;
+    readonly payload: object;
+    // 200 = allowed; 403 = capability denied; 404 = capability granted but the
+    // referenced resource does not exist (also proves the capability passed).
+    readonly expected: 200 | 403 | 404;
+  }>;
+}> = [
+  {
+    name: 'action:read grants reads but denies every governed family',
+    scopes: ['action:read'],
+    checks: [
+      { url: '/queue', payload: scopePayloads.queue, expected: 200 },
+      { url: '/validate', payload: scopePayloads.validate, expected: 403 },
+      { url: '/prepare', payload: scopePayloads.prepare, expected: 403 },
+      { url: '/approve', payload: scopePayloads.approve, expected: 403 },
+      { url: '/preflight', payload: scopePayloads.preflight, expected: 403 },
+      { url: '/execute', payload: scopePayloads.execute, expected: 403 },
+      { url: '/retry', payload: scopePayloads.retry, expected: 403 },
+      { url: '/verify', payload: scopePayloads.verify, expected: 403 },
+      { url: '/cancel', payload: scopePayloads.cancel, expected: 403 },
+      { url: '/rollback', payload: scopePayloads.rollback, expected: 403 },
+      { url: '/compensations/prepare', payload: scopePayloads.compensation, expected: 403 },
+      { url: '/audit', payload: scopePayloads.audit, expected: 403 },
+    ],
+  },
+  {
+    name: 'action:audit:read grants audit read only',
+    scopes: ['action:audit:read'],
+    checks: [
+      // 404 (NOT_FOUND, resource missing) proves READ_AUDIT is granted — a
+      // 403 would mean the capability was denied.
+      { url: '/audit', payload: scopePayloads.audit, expected: 404 },
+      { url: '/queue', payload: scopePayloads.queue, expected: 403 },
+      { url: '/validate', payload: scopePayloads.validate, expected: 403 },
+    ],
+  },
+  {
+    name: 'action:execute grants the execution family but NOT approve/verify/cancel/rollback/govern',
+    scopes: ['action:execute'],
+    checks: [
+      // 404 (NOT_FOUND, resource missing) proves PREFLIGHT/EXECUTE are granted.
+      { url: '/preflight', payload: scopePayloads.preflight, expected: 404 },
+      { url: '/execute', payload: scopePayloads.execute, expected: 404 },
+      { url: '/validate', payload: scopePayloads.validate, expected: 403 },
+      { url: '/approve', payload: scopePayloads.approve, expected: 403 },
+      { url: '/verify', payload: scopePayloads.verify, expected: 403 },
+      { url: '/cancel', payload: scopePayloads.cancel, expected: 403 },
+      { url: '/rollback', payload: scopePayloads.rollback, expected: 403 },
+      { url: '/compensations/prepare', payload: scopePayloads.compensation, expected: 403 },
+      { url: '/audit', payload: scopePayloads.audit, expected: 403 },
+    ],
+  },
+  {
+    name: 'action:verify grants verify but NOT execute/cancel/rollback/audit',
+    scopes: ['action:verify'],
+    checks: [
+      { url: '/execute', payload: scopePayloads.execute, expected: 403 },
+      { url: '/cancel', payload: scopePayloads.cancel, expected: 403 },
+      { url: '/rollback', payload: scopePayloads.rollback, expected: 403 },
+      { url: '/audit', payload: scopePayloads.audit, expected: 403 },
+    ],
+  },
+  {
+    name: 'action:cancel grants cancel but NOT rollback/execute/verify',
+    scopes: ['action:cancel'],
+    checks: [
+      { url: '/rollback', payload: scopePayloads.rollback, expected: 403 },
+      { url: '/execute', payload: scopePayloads.execute, expected: 403 },
+      { url: '/verify', payload: scopePayloads.verify, expected: 403 },
+    ],
+  },
+  {
+    name: 'action:rollback grants rollback but NOT cancel/execute/verify',
+    scopes: ['action:rollback'],
+    checks: [
+      { url: '/cancel', payload: scopePayloads.cancel, expected: 403 },
+      { url: '/execute', payload: scopePayloads.execute, expected: 403 },
+      { url: '/verify', payload: scopePayloads.verify, expected: 403 },
+    ],
+  },
+  {
+    name: 'action:candidate:stage grants validate (allow) but nothing else',
+    scopes: ['action:candidate:stage'],
+    checks: [
+      { url: '/validate', payload: scopePayloads.validate, expected: 200 },
+      { url: '/approve', payload: scopePayloads.approve, expected: 403 },
+      { url: '/execute', payload: scopePayloads.execute, expected: 403 },
+    ],
+  },
+];
+
 describe('FE-P4-S2 WP4 External Action Protected Product API', () => {
   let auth: InMemoryAuthRepository;
 
@@ -314,4 +513,58 @@ describe('FE-P4-S2 WP4 External Action Protected Product API', () => {
     });
     expect(denied.statusCode).toBeGreaterThanOrEqual(400);
   });
+
+  it('reads the approval of an External Action through the protected approvals/read route', async () => {
+    const cookie = await projectSession();
+    const app = await buildApplication();
+    const token = await csrf(app, cookie);
+    const headers = { cookie, 'x-csrf-token': token.csrfToken ?? '' };
+    await runLifecycle(app, headers);
+
+    const response = await app.server.inject({
+      method: 'POST',
+      url: '/product-api/frontend/external-action/approvals/read',
+      headers,
+      payload: { schemaVersion: '1.0.0', actionId: 'action-api-1' },
+    });
+    expect(response.statusCode).toBe(200);
+    const body = response.json<{
+      approval: { approvalId: string; actionId: string; status: string };
+    }>();
+    expect(body.approval.actionId).toBe('action-api-1');
+    expect(body.approval.status).toBe('ACTIVE');
+  });
+
+  it.each(scopeMatrixCases)(
+    'enforces the least-privilege frozen scope→capability matrix: $name',
+    async ({ scopes, checks }) => {
+      await auth.bootstrapOwner({
+        accountId: 'scope-owner',
+        projectId: PROJECT_ID,
+        scopes: [...scopes],
+        sensitivityClearance: 'private',
+      });
+      const principal = await auth.findPrincipalByAccountId('scope-owner');
+      if (!principal) throw new Error('Scope fixture Principal was not created.');
+      const session = await auth.createSession(
+        principal.principalId,
+        PROJECT_ID,
+        new Date(Date.now() + 60_000).toISOString(),
+      );
+      const app = await buildApplication();
+      const cookie = `shotgun_session=${session.sessionToken}`;
+      const token = await csrf(app, cookie);
+      const headers = { cookie, 'x-csrf-token': token.csrfToken ?? '' };
+
+      for (const check of checks) {
+        const response = await app.server.inject({
+          method: 'POST',
+          url: `/product-api/frontend/external-action${check.url}`,
+          headers,
+          payload: check.payload,
+        });
+        expect(response.statusCode, `${scopes.join(',')} -> ${check.url}`).toBe(check.expected);
+      }
+    },
+  );
 });

@@ -33,6 +33,7 @@ import {
   frontendExternalActionRetryDigest,
   frontendExternalActionRollbackDigest,
   frontendExternalActionVerifyDigest,
+  externalActionManifestDigest,
   type ApproveExternalActionRequestV1,
   type ApproveExternalActionResultV1,
   type CancelExternalActionRequestV1,
@@ -97,6 +98,9 @@ export {
   frontendExternalActionRetryDigest,
   frontendExternalActionRollbackDigest,
   frontendExternalActionVerifyDigest,
+  // Manifest payload digest (server-computed shape; re-exported so the browser
+  // verifies a decoded manifest exactly as the server would).
+  externalActionManifestDigest,
 };
 
 export type FrontendExternalActionClient = {

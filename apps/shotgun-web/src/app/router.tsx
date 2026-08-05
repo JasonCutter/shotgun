@@ -31,6 +31,7 @@ import { KnowledgeDetailWorkspace } from '../routes/knowledge-detail-workspace.j
 import { KnowledgeCompareWorkspace } from '../routes/knowledge-compare-workspace.js';
 import { GraphWorkspace } from '../routes/graph-workspace.js';
 import { ReviewWorkspace } from '../routes/review-workspace.js';
+import { ExternalActionWorkspace } from '../routes/external-action-workspace.js';
 import type { AppRuntime } from './providers.js';
 import { ensureSessionBoundary, sessionBoundaryQueryOptions } from '../session/session-query.js';
 import type { TargetRouteView } from '@shotgun/api-client';
@@ -160,6 +161,14 @@ export const createAppRouter = (runtime: AppRuntime) =>
           path: 'review',
           loader: guardedRouteLoader(runtime, { routeId: 'review', href: '/review' }),
           element: <ReviewWorkspace />,
+        },
+        {
+          path: 'external-action',
+          loader: guardedRouteLoader(runtime, {
+            routeId: 'external-action',
+            href: '/external-action',
+          }),
+          element: <ExternalActionWorkspace />,
         },
         {
           path: 'activity',

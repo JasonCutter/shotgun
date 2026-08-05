@@ -64,6 +64,7 @@ const routes = {
   ask: { routeId: 'ask', href: '/ask' },
   knowledge: { routeId: 'knowledge', href: '/knowledge' },
   review: { routeId: 'review', href: '/review' },
+  externalAction: { routeId: 'external-action', href: '/external-action' },
   settings: { routeId: 'settings', href: '/settings' },
   projects: { routeId: 'settings-projects', href: '/settings/projects' },
 } as const satisfies Record<string, TargetRouteView>;
@@ -232,6 +233,14 @@ export class InMemoryActionCenterProjection implements ActionCenterProjectionPor
           availability: 'AVAILABLE',
           targetRoute: routes.ask,
         },
+        // AC-18: high-risk External Actions are never executed from Home; the
+        // entry navigates to the governance workspace only.
+        {
+          id: 'govern-external-action',
+          label: 'External actions',
+          availability: 'AVAILABLE',
+          targetRoute: routes.externalAction,
+        },
         unavailable('explore-knowledge', 'Explore knowledge', routes.knowledge),
         unavailable('review-changes', 'Review changes', routes.review),
       ],
@@ -293,6 +302,7 @@ export class InMemoryRouteGuardProjection implements RouteGuardProjectionPort {
       'ask',
       'settings',
       'settings-projects',
+      'external-action',
     ]).has(input.requestedRoute.routeId);
     return decodeRouteGuardDecisionView({
       schemaVersion: '1.0.0',

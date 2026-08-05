@@ -587,9 +587,23 @@ export type NavigationAvailability =
 
 export type TargetRouteView = {
   readonly routeId:
-    'home' | 'sources' | 'ask' | 'knowledge' | 'review' | 'settings' | 'settings-projects';
+    | 'home'
+    | 'sources'
+    | 'ask'
+    | 'knowledge'
+    | 'review'
+    | 'external-action'
+    | 'settings'
+    | 'settings-projects';
   readonly href:
-    '/' | '/sources' | '/ask' | '/knowledge' | '/review' | '/settings' | '/settings/projects';
+    | '/'
+    | '/sources'
+    | '/ask'
+    | '/knowledge'
+    | '/review'
+    | '/external-action'
+    | '/settings'
+    | '/settings/projects';
 };
 
 const TARGET_ROUTES: Readonly<Record<TargetRouteView['routeId'], TargetRouteView['href']>> = {
@@ -598,6 +612,7 @@ const TARGET_ROUTES: Readonly<Record<TargetRouteView['routeId'], TargetRouteView
   ask: '/ask',
   knowledge: '/knowledge',
   review: '/review',
+  'external-action': '/external-action',
   settings: '/settings',
   'settings-projects': '/settings/projects',
 };

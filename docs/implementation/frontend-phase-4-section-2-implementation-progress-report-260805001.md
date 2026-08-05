@@ -1576,3 +1576,108 @@ different-resource response is rejected.
 - `tsc --noEmit` — clean. ESLint — clean. Prettier — clean.
 - Automatic CI on this head — run **#549**: Quality, Frontend, Required Gates **SUCCESS**.
   (#547/#548 not re-run, per the review instruction.)
+
+## 26. WP5 — External Action Governance Workspace (report 20, 2026-08-05)
+
+GPT review **4864062529** approved **WP4 APPROVED / COMPLETE** and authorized **WP5
+AUTHORIZED_TO_START** with a bounded single-task scope (the IR WP5 list plus the GPT itemized
+nine-point scope). This report records the WP5 implementation on code head `561c426`
+(CI **#553**) and report head `<REPORT_HEAD>` (CI **#554**).
+
+### 1. Route and deep-link contract (WP5 items 2)
+
+- `TargetRouteView` gained `external-action` (`routeId` + `/external-action` href) in
+  `packages/contracts/src/frontend-section3.ts` (additive route registration).
+- `apps/shotgun-web/src/external-action/external-action-route-contract.ts` — the workspace
+  deep-link contract: only resource identities (`action`, `manifest`, `execution`, `attempt`,
+  `verification`) and a `focus` hint may appear in the URL. Command payloads, capabilities,
+  credential/budget views and drafts are never encoded. `parseExternalActionDeepLink` ignores
+  unknown query keys; `externalActionDeepLinkHref` serializes selection only.
+- `apps/shotgun-web/src/app/router.tsx` registers `/external-action` behind the guarded loader
+  (`routeId: 'external-action'`), and `adapters/frontend-product-read-in-memory` added the route
+  to the route-guard `workspaceAvailable` set.
+
+### 2. Query-key factory with Project/access/policy + action revision + external revision (WP5 item 3)
+
+`apps/shotgun-web/src/app/query-keys.ts` gained `ExternalActionQueryScope`
+(`principalId`/`sessionId`/`activeProjectId`/`resourceProjectId`/`accessRevision`/
+`policyContextRevision`/`sensitivity`), `externalActionScopeFromShell`, the bounded
+`externalActionQueueQueryKey` (scope + request) and `externalActionResourceQueryKey` which
+additionally binds `actionId` + `actionRevision` + `externalRevision`. Every External Action
+read uses only these factories (no ad hoc arrays; ADR-119 §4). `external-action-queries.ts`
+provides the queue, detail, manifest, risk-decision, preflight, execution, attempts, verification,
+result, audit and approval query options, with retry derived from ADR-118 descriptors and the
+`FrontendExternalActionClient`.
+
+### 3. Route-scoped Browser Draft State Machine (WP5 item 4; ADR-119)
+
+`apps/shotgun-web/src/external-action/external-action-workspace-state.ts` owns only route
+selection, focus and UNSENT governed-command input (`draft` = command kind + reason). Phases:
+`IDLE` / `QUEUE_LOADING` / `QUEUE_READY` / `DETAIL_LOADING` / `DETAIL_READY` / `FAILED` /
+`OUTCOME_UNKNOWN` (clientRequestId + idempotencyKey + semanticDigest) / `BLOCKED`. Recovery is
+`NONE` / `RESTORING` / `RESOLVING` — `OUTCOME_UNKNOWN` resolves by the ORIGINAL command identity
+and never re-executes (contract §7, §10.3). The `externalActionCommandSurfaces` map decides only
+which non-automatic affordances render — the server remains the capability/policy/state authority.
+
+### 4. Governance Workspace (WP5 items 1, 5, 6, 7, 8)
+
+`apps/shotgun-web/src/routes/external-action-workspace.tsx`:
+
+- Bounded queue (≤ 50) and integrated aggregate detail with **safe masking and access-loss
+  restricted shell** (an `ACCESS_RESTRICTED` action renders the restricted announcement and no
+  protected payload — no counts, edges, manifest, risk, credential or budget leak).
+- Risk decision, manifest, approval, preflight, execution, execution attempts, verification,
+  result and audit read states.
+- **Cancel (abort only)**, **Rollback (separate governed state-reversal)** and **Compensating
+  Action (governed)** surfaces, each explicitly non-automatic (contract §9). Cancel is never
+  rollback; rollback/compensation never auto-run.
+- **`OUTCOME_UNKNOWN` recovery**: a typed recovery state resolves by the original identity
+  (`clientRequestId` + `idempotencyKey` + `semanticDigest`) with a resolve-only action — there is
+  never a re-execute button.
+- **Deep-link restore + focus preservation** (contract §10.5): selection is restored from the URL
+  on load/refresh, and focus is applied to the named target after restore/refresh/cancel/verify.
+- Frozen announcement strings (`EXTERNAL_ACTION_ANNOUNCEMENTS`) and non-color status cues
+  (`externalActionAggregateCue`) for accessibility (contract §10.6; axe/zoom/reduced-motion
+  evidence is WP6).
+
+### 5. Home / Command Palette navigation, never direct execution (WP5 item 1; AC-18)
+
+`InMemoryActionCenterProjection.getHome` adds the primary action `govern-external-action` →
+`/external-action`. `decodeHomeActionCenterView` registers the id and raises the bounded
+primary-action cap to 5. High-risk External Actions are never executed from Home — the entry
+navigates to the governance workspace only. (The `externalActionManifestDigest` payload digest is
+also re-exported from the api-client for manifest verification.)
+
+### Changed files (this WP5 implementation)
+
+- `packages/contracts/src/frontend-section3.ts` — `TargetRouteView` + `external-action` route;
+  `PrimaryActionView` id `govern-external-action`; primary-action cap 5.
+- `packages/shotgun-api-client/src/contracts.ts` — all FE-P4-S2 External Action V1 types
+  re-exported for the browser workspace.
+- `packages/shotgun-api-client/src/frontend-external-action-client.ts` — `externalActionManifestDigest`
+  re-export.
+- `adapters/frontend-product-read-in-memory/src/index.ts` — `externalAction` route in `routes` +
+  route-guard `workspaceAvailable`; Home primary action `govern-external-action` (AC-18).
+- `apps/shotgun-web/src/app/query-keys.ts` — External Action scope + queue/resource key factories.
+- `apps/shotgun-web/src/app/router.tsx` — `/external-action` guarded route.
+- `apps/shotgun-web/src/external-action/external-action-route-contract.ts` — NEW deep-link/route
+  contract.
+- `apps/shotgun-web/src/external-action/external-action-queries.ts` — NEW read query options.
+- `apps/shotgun-web/src/external-action/external-action-workspace-state.ts` — NEW ADR-119 draft
+  state machine + announcements + command surfaces.
+- `apps/shotgun-web/src/routes/external-action-workspace.tsx` — NEW governance workspace.
+- `apps/shotgun-web/src/external-action/external-action-route-contract.test.ts` — NEW (5 tests).
+- `apps/shotgun-web/src/external-action/external-action-workspace-state.test.ts` — NEW (7 tests).
+- `apps/shotgun-web/src/routes/external-action-workspace.test.tsx` — NEW (2 tests: queue→detail,
+  restricted shell).
+
+### Validation
+
+- `apps/shotgun-web` full suite (`vitest run`) — **18 files / 74 tests PASS** (includes 14 new
+  WP5 tests).
+- Root unit+integration+contract suites — **976 PASS** (pre-existing timing flakes pass in
+  isolation; unrelated to WP5).
+- `tsc --noEmit` (root and `apps/shotgun-web`) — clean. ESLint — clean. Prettier — clean.
+- Automatic CI on code head `561c426` — run **#553**: Quality, Frontend, Required Gates
+  **SUCCESS**. (First WP5 head `eef33a6` CI #552 failed on a missing primary-action registration
+  and a test fixture type; both fixed in `561c426`.)

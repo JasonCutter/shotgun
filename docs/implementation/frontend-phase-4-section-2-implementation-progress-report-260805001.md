@@ -1813,3 +1813,111 @@ head `671e063ff` (CI **#558**).
 - PR #66 remains `OPEN / DRAFT / MERGEABLE`. CI **#553 / #554 / #555** were NOT re-run.
 - Authority state: WP5 `REMEDIATION_REQUIRED NOT_APPROVED` (remediation submitted for re-review);
   WP6 `NOT_AUTHORIZED`.
+
+### Section 27 correction (Review 4865620679)
+
+Review **4865620679** (**BLOCKED / FINAL FOCUSED WP5 REMEDIATION REQUIRED**) found that Section 27
+recorded items 2–6 as complete even though five connectivity defects remained. The review's own
+verdict: **Item 1: RESOLVED; Item 2: PARTIAL / REMEDIATION_REQUIRED; Item 3: PARTIAL /
+REMEDIATION_REQUIRED; Item 4: PARTIAL / REMEDIATION_REQUIRED; Item 5: PARTIAL /
+REMEDIATION_REQUIRED; Item 6: PARTIAL / REMEDIATION_REQUIRED**. The defects and their fixes are
+recorded in Section 28; Section 27's items 2–6 are to be read as PARTIAL at report-21 time.
+
+## 28. WP5 final remediation — Review 4865620679 (report 22, 2026-08-05)
+
+GPT review **4865620679** returned **BLOCKED / FINAL FOCUSED WP5 REMEDIATION REQUIRED**. It
+confirmed Item 1 (`shell.navigation` Command Palette entry) as **RESOLVED**, plus the
+restricted-read gating, `SUBMITTING` exactly-once lock, identity-before-call and no-re-execute
+surfaces. It flagged five remaining connectivity defects inside the approved WP5 scope (Items
+2–6 PARTIAL). WP6, Migration, Stage 11, new dependencies and Real Connector stayed out of scope.
+CI **#557 / #558 / #559** were NOT re-run per the review instruction. This report records the
+final remediation on code head `c47245e` (CI **#560**) and report head `<REPORT_HEAD>` (CI
+**#561**).
+
+### Item status after this remediation
+
+- **Item 1** (Command Palette entry / Home navigate-only): RESOLVED (unchanged).
+- **Item 2** (five-resource deep link, URL + state sync, fail-closed): RESOLVED.
+- **Item 3** (External Revision isolation, never empty): RESOLVED.
+- **Item 4** (command-common reason draft + refresh-and-lock): RESOLVED.
+- **Item 5** (`OUTCOME_UNKNOWN` resolve: exact invalidation, typed rejection, recoverable):
+  RESOLVED.
+- **Item 6** (Verify refresh + focus preservation): RESOLVED.
+
+### 1. Item 2 — deep links for all five resources (Review 4865620679 item 2)
+
+- The deep-link restore effect no longer short-circuits when only the action is unchanged: it
+  applies `manifest` / `execution` / `attempt` / `verification` / `focus` on EVERY restore.
+- `selectManifest` / `selectExecution` / `selectAttempt` / `selectVerification` all navigate with
+  the full deep-link href (state + URL stay in sync); the execution section gained a selectable
+  control (`aria-pressed`).
+- **Fail-closed**: when a deep-link resource id differs from the id the server returned for the
+  action, the section renders a safe unavailable note and never mirrors the mismatched identity.
+- NEW tests: a deep link carrying all five identities restores all four `aria-pressed=true`
+  selections and keeps all five query params in the URL; a mismatched manifest id renders the
+  fail-closed note (no `aria-pressed=true`).
+
+### 2. Item 3 — external revision learned from targetRef, never empty (Review 4865620679 item 3)
+
+- `knownExternalRevision` now derives from `detail.action.targetRef.externalRevision` FIRST (the
+  embedded detail `manifest` is OPTIONAL in the contract), then the embedded manifest revision,
+  then the authoritative snapshot revision.
+- `childIdentity` requires a non-empty external revision — a child read never runs with an empty
+  external-revision query key.
+- NEW test: a valid non-restricted detail WITHOUT an embedded manifest still uses the targetRef
+  revision `ext-7` for every child key (queue/detail/snapshot keys are excluded).
+
+### 3. Item 4 — command-common reason draft + refresh-and-lock (Review 4865620679 item 4)
+
+- The reason input is a **command-common** draft (`ExternalActionReasonDraft`): the typed reason
+  is sent with Cancel / Rollback / Compensation / Verify — it is no longer hard-bound to CANCEL.
+- Every governed command success invalidates the **exact** action query prefix
+  (`externalActionActionQueryKey`) and keeps the `SUBMITTING` lock until the refresh settles, so
+  stale command surfaces are removed before the controls re-enable.
+- NEW tests: a typed reason is carried on the rollback POST body; after a successful cancel the
+  stale surface disappears and the detail is refetched (more than one detail read).
+
+### 4. Item 5 — OUTCOME_UNKNOWN resolve (Review 4865620679 item 5)
+
+- `COMPLETED` invalidation now uses `externalActionActionQueryKey` (the REAL key prefix with
+  session/project/access/policy/sensitivity) instead of the non-matching
+  `['project', principalId, 'external-action', 'action', actionId]` array.
+- `REJECTED` stores the **actual** rejection code (mapped to a valid
+  `ExternalActionFailureReasonV1`) and its message — no longer a generic `NETWORK_FAILURE`.
+- A failed resolve read returns to a **recoverable** `OUTCOME_UNKNOWN` keeping the ORIGINAL
+  identity; the resolve-only action re-enables.
+- NEW tests: `COMPLETED` refetches the action queries and finishes recovery; continued
+  `OUTCOME_UNKNOWN` stays recoverable; a resolve network failure keeps the original identity and
+  re-enables resolve with no stale failure state.
+
+### 5. Item 6 — Verify refresh + focus preservation (Review 4865620679 item 6)
+
+- Verify success invalidates the exact action queries (which includes the verification read) and
+  then dispatches focus to `verification-heading`; the focus target persists until the heading
+  mounts (the focus effect re-runs when the child data lands).
+- NEW test: a VERIFYING action with no verification section pre-command mounts the verification
+  heading after Verify succeeds and moves focus to it.
+
+### Changed files (this remediation)
+
+- `apps/shotgun-web/src/app/query-keys.ts` — `externalActionActionQueryKey` (exact action-prefix
+  invalidation key).
+- `apps/shotgun-web/src/external-action/external-action-workspace-state.ts` — command-common
+  reason draft (`ExternalActionReasonDraft`); `SET_COMMAND_DRAFT { reason }`.
+- `apps/shotgun-web/src/external-action/external-action-workspace-state.test.ts` — command-common
+  reason draft test.
+- `apps/shotgun-web/src/routes/external-action-workspace.tsx` — all-resource deep-link restore +
+  URL sync + fail-closed, targetRef external revision, command-common reason, exact invalidation +
+  lock-until-refresh, resolve adjudication fixes, verify refresh + focus.
+- `apps/shotgun-web/src/routes/external-action-workspace.test.tsx` — focused tests for items 2–6
+  (deep-link five resources + fail-closed, external-revision child keys, reason delivery, stale
+  surface removal, resolve COMPLETED / continued-UNKNOWN / failure, verify focus).
+
+### Validation
+
+- `apps/shotgun-web` full suite (`vitest run`) — **18 files / 87 tests PASS**.
+- Root unit+integration+contract suites — 980 tests; the pre-existing knowledge/compiled-truth
+  timing flakes pass in isolation (unrelated to WP5).
+- `tsc --noEmit` (root and `apps/shotgun-web`) — clean. ESLint — clean. Prettier — clean.
+- Automatic CI on the final code head `c47245e` — run **#560**: Quality, Frontend, Required Gates
+  **SUCCESS**. Report head `<REPORT_HEAD>` CI **#561**. (Metadata recorded below.)

@@ -845,3 +845,92 @@ Commit `b903bbdd32bd9bd682ef163fff4687034bd01163`.
 
 PR #66 remains OPEN / DRAFT. WP4 Protected Product API / `FrontendExternalActionClient` remains
 **NOT_AUTHORIZED** pending re-review of this report.
+
+## 18. WP3 second focused remediation — GPT focused review → resolved (report 12, 2026-08-05)
+
+GPT review (Review ID 4860863804) returned **BLOCKED / SECOND FOCUSED WP3 REMEDIATION REQUIRED**
+for WP3 with six items. WP3 status: `REMEDIATION_CANDIDATE / NOT_APPROVED`. All six items are
+implemented in ONE remediation cycle:
+
+Commit `9720f9eb7485828bc8c1216ee8b216a14a4b6c3d`.
+
+### Second WP3 remediation mapping (GPT items → delivered)
+
+1. **The last budget execution must be usable** — `budgets.reserve` now returns `undefined` only
+   when the budget is absent or ALREADY exhausted; a successful reservation that consumes the
+   LAST remaining execution still returns the post-reservation (exhausted) view, and
+   `reserveBudget` fails closed only on `undefined`. Coordinator-level test: a budget with one
+   remaining execution lets the first execution succeed (`used = 1`, `remaining = 0`), and a
+   second execution fails closed.
+2. **Lifecycle serialization across all stages** — `validateActionCandidate` now takes a
+   per-action advisory lock (`aggregates.lockActionId`) and reads the aggregate with the row
+   lock (`FOR UPDATE`) so two concurrent first validations can never both create action
+   revision 1; execute/retry Phase 3 finalizers re-lock the aggregate row (`FOR UPDATE`) before
+   the terminal commit so a concurrent state transition can never be overwritten. Concurrent
+   first-validation test: two different-digest validations serialize to action revision 2 with
+   both risk decisions present.
+3. **Immutable conflict semantics are enforced, not silent** — risk decisions, manifests,
+   approvals, verifications, results and compensating actions accept only an EXACT snapshot
+   replay on identity conflict (a differing snapshot fails closed); audit events re-check the
+   existing snapshot; the attempt upsert allows only an identical replay or the legal
+   IN_PROGRESS → terminal transition (terminal → IN_PROGRESS and terminal → terminal are
+   rejected). The in-memory adapter mirrors the same conflict semantics (parity).
+4. **Project/resource rebinding is forbidden** — every updateable resource
+   (aggregate/candidate/preflight/execution/rollback) has an identity-guarded upsert
+   (`resource_project_id`, `effective_project_id` and the resource's own identity must be
+   unchanged; a rebinding attempt fails closed). Immutable resources cannot be rebound by
+   construction.
+5. **`findCurrent` is deterministic across adapters** — `approvals`, `preflights`, `executions`,
+   `verifications` and `results` gained an `insertion_ordinal` (bigserial) column; PostgreSQL
+   orders `findCurrent`/`findActiveByAction` by `insertion_ordinal DESC` and the in-memory
+   adapter returns the last inserted record, so equal timestamps can never produce different
+   current resources. The rollback parity now explicitly asserts
+   `currentVerificationIsRollback === true` and `currentResultAttemptIsRollback === true`.
+6. **Ledger rollback test proves the claimed order** — the atomicity test now calls
+   `completeInTransaction` FIRST inside the transaction, THEN triggers a Product write failure
+   (duplicate audit sequence), and asserts the whole transaction rolls back: the ledger row
+   stays ACCEPTED and zero partial Product rows survive.
+
+### Changed files (this second WP3 remediation)
+
+- `db/migrations/028_frontend_external_action_product.sql` — `insertion_ordinal bigserial`
+  added to approvals/preflights/executions/verifications/results.
+- `modules/frontend-external-action/src/external-action-store-port.ts` — aggregate port gains
+  `lockActionId` (advisory lock for initial creation).
+- `modules/frontend-external-action/src/product-api.ts` — `reserveBudget` fails only on an
+  unreservable budget; `validateActionCandidate` takes the action-id advisory lock + row lock;
+  execute/retry finalizers re-lock the aggregate row.
+- `adapters/frontend-external-action-in-memory/src/index.ts` — conflict helpers
+  (`replayOrConflict`/`upsertOrConflict`/attempt transition guard), `lockActionId`, insertion-
+  order `findCurrent`/`findActiveByAction`, budget reserve semantics.
+- `adapters/frontend-external-action-postgres/src/index.ts` — exact-replay immutable upserts,
+  identity-guarded upserts with row-count conflict detection, attempt transition guard,
+  `lockActionId` advisory lock, `insertion_ordinal` ordering, budget reserve semantics.
+- `tests/database/frontend-external-action-postgres-parity.test.ts` — expanded to **14 database
+  tests**: last-budget-slot coordinator test, concurrent first-validation serialization,
+  immutable conflict + illegal attempt transition rejection, explicit rollback-current identity
+  assertions, and the reordered ledger-rollback atomicity test.
+
+### Validation
+
+- `node --env-file-if-exists=.env node_modules/vitest/vitest.mjs run tests/database/frontend-external-action-postgres-parity.test.ts` — **14/14 PASS**.
+- Full database suite `npm run test:database` — **163/163 PASS (31 files)**.
+- `npx vitest run tests/integration/frontend-external-action-domain.test.ts` — **24/24 PASS**.
+- `npx vitest run tests/contract/frontend-external-action.contract.test.ts` — **93/93 PASS**.
+- `tsc --noEmit` — clean. ESLint — clean. Prettier — clean.
+- Automatic CI on this head `9720f9e` — run **#535** (`30975084663`): Quality, Frontend,
+  Required Gates **SUCCESS**.
+
+### AC coverage (WP3 after second remediation)
+
+- **AC-21** is fully delivered and hardened: in-memory/PostgreSQL parity (full lifecycle +
+  rollback lifecycle), migration 028 apply/rollback/re-apply, real PostgreSQL concurrency
+  (row locks + advisory locks + atomic budget reservation with correct last-slot semantics),
+  deterministic `findCurrent`, immutable/append-only conflict enforcement and Command Ledger
+  atomicity (same-transaction completion, ledger rollback on product failure) all proven by
+  negative tests. WP1/WP2 domain coverage (AC-01..AC-17) is unchanged. AC-18/AC-19 (UI/
+  workspace) and AC-22 (exact-head CI gates — reported per head) remain; WP4–WP6 remain
+  **NOT_AUTHORIZED**.
+
+PR #66 remains OPEN / DRAFT. WP4 Protected Product API / `FrontendExternalActionClient` remains
+**NOT_AUTHORIZED** pending re-review of this report.

@@ -599,3 +599,94 @@ partially dependent on WP6 verification evidence. AC-16/AC-21/AC-22 + AC-18/AC-1
 
 PR #66 remains OPEN / DRAFT. WP3 Migration 028 remains **NOT_AUTHORIZED_TO_START** pending
 re-review of this report.
+
+## 15. WP2 final domain remediation — GPT focused review → resolved (report 9, 2026-08-05)
+
+GPT review (Review ID 4859910949) returned **BLOCKED / FINAL DOMAIN REMEDIATION REQUIRED** for
+WP2 with five focused items. WP2 status: `SECOND_REMEDIATION_CANDIDATE / NOT_APPROVED`. All five
+items are implemented in ONE remediation cycle:
+
+Commit `953a229dc20872f899881326eff647d351d75da6`.
+
+### Final domain remediation mapping (GPT items → delivered)
+
+1. **The ledger must not be COMPLETED before the connector call** — `runConnectorCommand` no
+   longer completes the ledger inside Phase 1. The started attempt/execution are persisted and
+   the ledger command stays ACCEPTED; the connector work runs OUTSIDE the DB transaction; the
+   terminal domain state and the ledger COMPLETED transition are committed in ONE transaction
+   (Phase 3). A replay of an in-flight (ACCEPTED) command therefore fails closed with
+   `OUTCOME_INDETERMINATE` instead of reconstructing a fabricated COMPLETED result from an
+   IN_PROGRESS resource. Defense-in-depth: `buildResolvedResult` now rejects IN_PROGRESS
+   execution/attempt reconstructions. Negative test: an accepted-but-uncompleted execute command
+   re-sent through the coordinator returns OUTCOME_INDETERMINATE.
+2. **Retry preflight outside the DB transaction, durable resource first** — retry persists the
+   started IN_PROGRESS attempt, the IN_PROGRESS execution, the EXECUTING aggregate AND an initial
+   DENIED preflight record inside Phase 1; then `engine.preflight` + `engine.execute` run outside
+   the DB transaction. A READY preflight is stored as READY only when BOTH revalidation booleans
+   are actually set (otherwise treated as DENIED). A denied/blocked preflight marks the started
+   attempt/execution/aggregate FAILED (resource never lost) and rejects the ledger command.
+   Negative test: denied retry preflight → attempt 2 survives as FAILED, aggregate FAILED.
+   (Rollback no longer performs any engine call inside the rollback command — see item 4 — so
+   the rollback preflight-inside-transaction defect is removed by design.)
+3. **Risk decision reuse must include the policy context** — an existing risk decision is reused
+   only when the candidate semantic digest is equal AND `scope.policyContextRevision` equals the
+   aggregate's stored policy context revision. A changed policy context with the same candidate
+   meaning creates a NEW numbered candidate revision and a NEW risk decision. Negative test:
+   same digest under a changed policy context ⇒ new risk decision, candidate revision 2.
+4. **Rollback is a separate, user-approved lifecycle (never auto-executed)** — `rollbackExternalAction`
+   is now PREPARE-ONLY: it creates the rollback manifest, its OWN risk decision (bound to the
+   aggregate authority via `aggregate.riskDecisionRef`), a `RollbackV1` resource in PREPARED and
+   moves the aggregate to ROLLBACK_AVAILABLE with `manifestRef` = rollback manifest. It never
+   auto-issues approval, never auto-preflights and never auto-executes. The user then explicitly:
+   approves the rollback manifest (`approveExternalAction`, rollback PREPARED → APPROVED),
+   preflights (rollback semantics flagged to the engine), executes (rollback resource → EXECUTING;
+   engine receives `rollback: true`), and verifies (an APPLIED verification is what transitions the
+   aggregate and rollback resource to ROLLED_BACK with `verificationRef`). Connector SUCCEEDED
+   alone never confirms the reversal. Lifecycle test: prepare → approve → preflight → execute →
+   verify → aggregate + rollback ROLLED_BACK.
+5. **Verification external call pinned to the actual attempt** — `engine.verify` now always
+   receives the pinned `latestAttempt.attemptId` (never undefined and never an arbitrary attempt),
+   so the external target-state check and the stored Verification reference the same SUCCEEDED
+   attempt. Rollback verifications are flagged to the engine as rollback semantics.
+
+### Changed files (this final domain remediation)
+
+- `modules/frontend-external-action/src/product-api.ts` — `runConnectorCommand` three-phase
+  restructure (ledger completed atomically with the terminal state); retry preflight moved
+  outside the transaction with durable resource first + revalidation-boolean gate + `finalizeDenied`;
+  risk decision reuse bound to policy context; rollback reworked to PREPARE-ONLY with the full
+  separate lifecycle; execute/verify propagate `rollback` context to the engine; verification
+  passes the pinned attempt to `engine.verify`; `buildResolvedResult` IN_PROGRESS guards.
+- `modules/frontend-external-action/src/external-action-engine-port.ts` — preflight/execute/verify
+  requests carry an optional `rollback` semantic flag (rollback never presented as the forward
+  operation).
+- `adapters/frontend-external-action-in-memory/src/index.ts` — fake connector: `retryPreflightStatus`
+  (preflight call counter) for retry-specific preflight behavior.
+- `tests/integration/frontend-external-action-domain.test.ts` — expanded to **24 tests**: 4 new
+  negative/lifecycle tests (in-flight replay OUTCOME_INDETERMINATE, retry preflight denied →
+  FAILED attempt preserved, policy-context change → new risk decision, rollback full separate
+  lifecycle to ROLLED_BACK).
+
+### Validation
+
+- `npx vitest run tests/integration/frontend-external-action-domain.test.ts` — **24/24 PASS**.
+- `npx vitest run tests/contract/frontend-external-action.contract.test.ts` — **93/93 PASS**.
+- `tsc --noEmit` — clean. ESLint — clean. Prettier — clean.
+- Automatic CI on this head `953a229` — run **#529** (`30963418809`): Quality, Frontend,
+  Required Gates **SUCCESS**.
+
+### AC coverage (WP2 after final domain remediation)
+
+WP2 now proves **AC-01, AC-02, AC-03, AC-04, AC-05, AC-06, AC-07, AC-08, AC-09, AC-10, AC-12,
+AC-13, AC-14, AC-15, AC-17** plus the strengthened **AC-08** (fresh target-state preflight on
+retry, outside the transaction, with revalidation-boolean gating), **AC-09/AC-20** (verification
+pinned to the actual SUCCEEDED attempt — the engine call included — Result identity from the
+provider ref only), **AC-11** (rollback is now a separate governed reversal prepared by its own
+command and executed only through explicit approval → preflight → execute → an APPLIED
+verification; connector success alone never confirms ROLLED_BACK), and **AC-16** (in-flight
+connector commands are never misjudged as completed; resolution goes through the original command
+identity). AC-18/AC-19 (UI/workspace) and AC-21/AC-22 (DB parity / exact-head gates at WP3+)
+remain for WP3–WP6.
+
+PR #66 remains OPEN / DRAFT. WP3 Migration 028 remains **NOT_AUTHORIZED_TO_START** pending
+re-review of this report.

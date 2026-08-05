@@ -1706,7 +1706,7 @@ GPT review **4865177355** returned **BLOCKED / FOCUSED WP5 REMEDIATION REQUIRED*
 connectivity defects inside the approved WP5 scope. WP6, Migration, Stage 11, new dependencies
 and Real Connector stayed out of scope. CI **#553 / #554 / #555** were NOT re-run per the review
 instruction. This report records the remediation on code head `4c98d14` (CI **#557**) and report
-head `<REPORT_HEAD>` (CI **#558**).
+head `671e063ff` (CI **#558**).
 
 ### 1. Item 1 — Command Palette entry (shell.navigation)
 
@@ -1801,4 +1801,15 @@ head `<REPORT_HEAD>` (CI **#558**).
 - `tsc --noEmit` (root and `apps/shotgun-web`) — clean. ESLint — clean. Prettier — clean.
 - Automatic CI on the final code head `4c98d14` — run **#557**: Quality, Frontend, Required Gates
   **SUCCESS**. (The interim remediation head `61ff981` ran CI **#556**; superseded by `4c98d14`
-  which also carries the item-1 navigation tests.) Report head `<REPORT_HEAD>` CI **#558**.
+  which also carries the item-1 navigation tests.) Report head `671e063ff` CI **#558**
+  **SUCCESS** (metadata recorded below).
+
+### Final metadata (report 21)
+
+- **WP5 remediation code head**: `4c98d141c4078bde12bdbfdd786a49075169c0b2` — CI **#557** /
+  `31014844606`: Quality, Frontend, Required Gates **SUCCESS**.
+- **Report 21 head**: `671e063ff932645a1eeb45f6dc579ff1bbdaa830` — CI **#558** / `31015236898`:
+  Quality, Frontend, Required Gates **SUCCESS**.
+- PR #66 remains `OPEN / DRAFT / MERGEABLE`. CI **#553 / #554 / #555** were NOT re-run.
+- Authority state: WP5 `REMEDIATION_REQUIRED NOT_APPROVED` (remediation submitted for re-review);
+  WP6 `NOT_AUTHORIZED`.

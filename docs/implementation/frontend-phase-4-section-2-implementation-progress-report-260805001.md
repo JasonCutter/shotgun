@@ -1582,7 +1582,7 @@ different-resource response is rejected.
 GPT review **4864062529** approved **WP4 APPROVED / COMPLETE** and authorized **WP5
 AUTHORIZED_TO_START** with a bounded single-task scope (the IR WP5 list plus the GPT itemized
 nine-point scope). This report records the WP5 implementation on code head `561c426`
-(CI **#553**) and report head `<REPORT_HEAD>` (CI **#554**).
+(CI **#553**) and report head `5ff2d33` (CI **#554**).
 
 ### 1. Route and deep-link contract (WP5 items 2)
 

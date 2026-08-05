@@ -80,6 +80,7 @@ import { registerSettingsRoutes } from './product-api/settings-routes.js';
 import { registerSourcesRoutes } from './product-api/sources-routes.js';
 import { registerFrontendKnowledgeDraftRoutes } from './product-api/frontend-knowledge-draft-routes.js';
 import { registerFrontendReviewRoutes } from './product-api/frontend-review-routes.js';
+import { registerFrontendExternalActionRoutes } from './product-api/frontend-external-action-routes.js';
 import {
   registerFrontendKnowledgeGraphRoutes,
   type GraphScopeResolver,
@@ -100,6 +101,11 @@ import { InMemoryFrontendKnowledgeDraftRepository } from '../../../adapters/fron
 import { InMemoryFrontendKnowledgeDraftTargetResolver } from '../../../adapters/frontend-knowledge-draft-api-in-memory/src/index.js';
 import { FrontendReviewProductCoordinator } from '../../../modules/frontend-review/src/index.js';
 import { InMemoryFrontendReviewStore } from '../../../adapters/frontend-review-in-memory/src/index.js';
+import { FrontendExternalActionProductCoordinator } from '../../../modules/frontend-external-action/src/index.js';
+import {
+  FakeExternalActionEngine,
+  InMemoryExternalActionStore,
+} from '../../../adapters/frontend-external-action-in-memory/src/index.js';
 import {
   DraftReviewTargetAdapter,
   DiscoveryCandidateReviewTargetAdapter,
@@ -451,6 +457,7 @@ export type ApplicationOptions = {
   readonly frontendKnowledgeDraftTargetResolver?: FrontendKnowledgeDraftTargetResolverPort;
   readonly frontendKnowledgeDraftCoordinator?: FrontendKnowledgeDraftProductCoordinator;
   readonly frontendReviewCoordinator?: FrontendReviewProductCoordinator;
+  readonly frontendExternalActionCoordinator?: FrontendExternalActionProductCoordinator;
   readonly graphReadDomain?: GraphReadDomain;
   readonly graphScopeResolver?: GraphScopeResolver;
   readonly frontendProductReadCoordinator?: FrontendProductReadCoordinator;
@@ -1213,6 +1220,16 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
         new DiscoveryCandidateReviewTargetAdapter(createInMemoryReviewDiscoveryCandidateReader()),
         new UserDirectiveReviewTargetAdapter(createInMemoryReviewUserDirectiveReader()),
       ],
+    );
+  // FE-P4-S2 WP4: External Action governed commands run over the shared Frontend
+  // Command Ledger; the server owns the Product Coordinator (server-derived
+  // scope), the external action store and the connector engine.
+  const frontendExternalActionCoordinator =
+    options.frontendExternalActionCoordinator ??
+    new FrontendExternalActionProductCoordinator(
+      new InMemoryExternalActionStore(),
+      frontendCommandGateway,
+      new FakeExternalActionEngine(),
     );
   const inMemoryAskWorkspace = new InMemoryAskWorkspaceProjection();
   const askCommandCoordinator =
@@ -1985,6 +2002,13 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   registerFrontendReviewRoutes(
     server,
     frontendReviewCoordinator,
+    authRepository,
+    settingsRepository,
+    requirePrincipalBrowserSession,
+  );
+  registerFrontendExternalActionRoutes(
+    server,
+    frontendExternalActionCoordinator,
     authRepository,
     settingsRepository,
     requirePrincipalBrowserSession,

@@ -71,6 +71,41 @@ type MapSnapshot = {
   budgets: Map<string, ExternalActionBudgetViewV1>;
 };
 
+/** Conflict helpers mirroring the PostgreSQL guarded-upsert semantics. */
+const conflict = (message: string): never => {
+  throw new Error(`EXTERNAL_ACTION_CONFLICT: ${message}`);
+};
+
+/** Immutable resource: only an exact replay is accepted; a differing snapshot
+ * with the same identity fails closed. */
+const replayOrConflict = <T>(existing: T | undefined, incoming: T, label: string): void => {
+  if (existing !== undefined && JSON.stringify(existing) !== JSON.stringify(incoming)) {
+    conflict(`${label} identity is immutable; a different snapshot is rejected.`);
+  }
+};
+
+/** Updateable resource: the identity fields must never change on conflict. */
+const upsertOrConflict = <T extends object>(
+  existing: T | undefined,
+  incoming: T,
+  fields: readonly (keyof T)[],
+  label: string,
+): void => {
+  if (existing === undefined) return;
+  for (const field of fields) {
+    if (existing[field] !== incoming[field]) {
+      conflict(`${label} identity field '${String(field)}' cannot be re-bound.`);
+    }
+  }
+};
+
+const TERMINAL_ATTEMPT_STATUSES: ReadonlySet<string> = new Set([
+  'SUCCEEDED',
+  'FAILED',
+  'OUTCOME_UNKNOWN',
+  'CANCELLED',
+]);
+
 const snapshot = (maps: MapSnapshot): MapSnapshot => ({
   aggregates: new Map(maps.aggregates),
   candidates: new Map(maps.candidates),
@@ -154,6 +189,12 @@ export class InMemoryExternalActionStore implements ExternalActionRepositoryBoun
       find: async (actionId) => maps.aggregates.get(actionId),
       findById: async (actionId) => maps.aggregates.get(actionId),
       insert: async (action) => {
+        upsertOrConflict(
+          maps.aggregates.get(action.actionId),
+          action,
+          ['resourceProjectId', 'effectiveProjectId'],
+          'aggregate',
+        );
         maps.aggregates.set(action.actionId, action);
       },
       update: async (action) => {
@@ -166,6 +207,7 @@ export class InMemoryExternalActionStore implements ExternalActionRepositoryBoun
           .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
         return all.slice(offset, offset + Math.min(limit, EXTERNAL_ACTION_QUEUE_PAGE_SIZE_CAP));
       },
+      lockActionId: async () => undefined,
     };
   }
 
@@ -180,6 +222,12 @@ export class InMemoryExternalActionStore implements ExternalActionRepositoryBoun
           .filter((candidate) => candidate.actionId === actionId)
           .sort((a, b) => b.candidateRevision - a.candidateRevision)[0],
       insert: async (candidate) => {
+        upsertOrConflict(
+          maps.candidates.get(`${candidate.actionId}:${candidate.candidateId}`),
+          candidate,
+          ['actionId', 'candidateId', 'resourceProjectId', 'effectiveProjectId'],
+          'candidate',
+        );
         maps.candidates.set(`${candidate.actionId}:${candidate.candidateId}`, candidate);
       },
     };
@@ -193,6 +241,11 @@ export class InMemoryExternalActionStore implements ExternalActionRepositoryBoun
             decision.actionId === actionId && decision.riskDecisionId === riskDecisionId,
         ),
       insert: async (decision) => {
+        replayOrConflict(
+          maps.riskDecisions.get(`${decision.actionId}:${decision.riskDecisionId}`),
+          decision,
+          'risk decision',
+        );
         maps.riskDecisions.set(`${decision.actionId}:${decision.riskDecisionId}`, decision);
       },
     };
@@ -206,6 +259,7 @@ export class InMemoryExternalActionStore implements ExternalActionRepositoryBoun
           .filter((manifest) => manifest.actionId === actionId)
           .sort((a, b) => b.manifestRevision - a.manifestRevision)[0],
       insert: async (manifest) => {
+        replayOrConflict(maps.manifests.get(manifest.manifestId), manifest, 'manifest');
         maps.manifests.set(manifest.manifestId, manifest);
       },
       lockCurrent: async (actionId) =>
@@ -218,11 +272,14 @@ export class InMemoryExternalActionStore implements ExternalActionRepositoryBoun
   private approvalsFor(maps: MapSnapshot): ExternalActionApprovalStorePort {
     return {
       findById: async (approvalId) => maps.approvals.get(approvalId),
-      findActiveByAction: async (actionId) =>
-        [...maps.approvals.values()]
-          .filter((approval) => approval.actionId === actionId && approval.status === 'ACTIVE')
-          .sort((a, b) => Date.parse(b.issuedAt) - Date.parse(a.issuedAt))[0],
+      findActiveByAction: async (actionId) => {
+        const active = [...maps.approvals.values()].filter(
+          (approval) => approval.actionId === actionId && approval.status === 'ACTIVE',
+        );
+        return active[active.length - 1];
+      },
       insert: async (approval) => {
+        replayOrConflict(maps.approvals.get(approval.approvalId), approval, 'approval');
         maps.approvals.set(approval.approvalId, approval);
       },
     };
@@ -231,11 +288,19 @@ export class InMemoryExternalActionStore implements ExternalActionRepositoryBoun
   private preflightsFor(maps: MapSnapshot): ExternalActionPreflightStorePort {
     return {
       findById: async (preflightId) => maps.preflights.get(preflightId),
-      findCurrent: async (actionId) =>
-        [...maps.preflights.values()]
-          .filter((preflight) => preflight.actionId === actionId)
-          .sort((a, b) => Date.parse(b.runAt) - Date.parse(a.runAt))[0],
+      findCurrent: async (actionId) => {
+        const all = [...maps.preflights.values()].filter(
+          (preflight) => preflight.actionId === actionId,
+        );
+        return all[all.length - 1];
+      },
       insert: async (preflight) => {
+        upsertOrConflict(
+          maps.preflights.get(preflight.preflightId),
+          preflight,
+          ['actionId', 'resourceProjectId', 'effectiveProjectId'],
+          'preflight',
+        );
         maps.preflights.set(preflight.preflightId, preflight);
       },
     };
@@ -251,6 +316,12 @@ export class InMemoryExternalActionStore implements ExternalActionRepositoryBoun
         return all[all.length - 1];
       },
       insert: async (execution) => {
+        upsertOrConflict(
+          maps.executions.get(execution.executionId),
+          execution,
+          ['actionId', 'resourceProjectId', 'effectiveProjectId', 'manifestRevision'],
+          'execution',
+        );
         maps.executions.set(execution.executionId, execution);
       },
       update: async (execution) => {
@@ -268,6 +339,30 @@ export class InMemoryExternalActionStore implements ExternalActionRepositoryBoun
           .slice(0, EXTERNAL_ACTION_ATTEMPT_LIST_CAP),
       findById: async (attemptId) => maps.attempts.get(attemptId),
       insert: async (attempt) => {
+        const existing = maps.attempts.get(attempt.attemptId);
+        if (existing) {
+          upsertOrConflict(
+            existing,
+            attempt,
+            [
+              'attemptId',
+              'executionId',
+              'actionId',
+              'resourceProjectId',
+              'effectiveProjectId',
+              'attemptNumber',
+            ],
+            'attempt',
+          );
+          const legal =
+            existing.status === attempt.status ||
+            (existing.status === 'IN_PROGRESS' && TERMINAL_ATTEMPT_STATUSES.has(attempt.status));
+          if (!legal) {
+            conflict(
+              `attempt status transition '${existing.status}' -> '${attempt.status}' is not allowed.`,
+            );
+          }
+        }
         maps.attempts.set(attempt.attemptId, attempt);
       },
       lockByExecution: async (executionId) =>
@@ -287,6 +382,11 @@ export class InMemoryExternalActionStore implements ExternalActionRepositoryBoun
         return all[all.length - 1];
       },
       insert: async (verification) => {
+        replayOrConflict(
+          maps.verifications.get(verification.verificationId),
+          verification,
+          'verification',
+        );
         maps.verifications.set(verification.verificationId, verification);
       },
     };
@@ -300,6 +400,7 @@ export class InMemoryExternalActionStore implements ExternalActionRepositoryBoun
         return all[all.length - 1];
       },
       insert: async (result) => {
+        replayOrConflict(maps.results.get(result.resultId), result, 'result');
         maps.results.set(result.resultId, result);
       },
     };
@@ -308,6 +409,7 @@ export class InMemoryExternalActionStore implements ExternalActionRepositoryBoun
   private auditsFor(maps: MapSnapshot): ExternalActionAuditStorePort {
     return {
       append: async (event) => {
+        replayOrConflict(maps.audit.get(event.auditEventId), event, 'audit event');
         maps.audit.set(event.auditEventId, event);
       },
       listByAction: async (actionId, limit, offset) =>
@@ -327,6 +429,11 @@ export class InMemoryExternalActionStore implements ExternalActionRepositoryBoun
       find: async (actionId) =>
         [...maps.compensations.values()].find((compensation) => compensation.actionId === actionId),
       insert: async (compensation) => {
+        replayOrConflict(
+          maps.compensations.get(compensation.compensationId),
+          compensation,
+          'compensation',
+        );
         maps.compensations.set(compensation.compensationId, compensation);
       },
     };
@@ -337,6 +444,12 @@ export class InMemoryExternalActionStore implements ExternalActionRepositoryBoun
       find: async (actionId) =>
         [...maps.rollbacks.values()].find((rollback) => rollback.actionId === actionId),
       insert: async (rollback) => {
+        upsertOrConflict(
+          maps.rollbacks.get(rollback.rollbackId),
+          rollback,
+          ['actionId', 'resourceProjectId', 'effectiveProjectId'],
+          'rollback',
+        );
         maps.rollbacks.set(rollback.rollbackId, rollback);
       },
       update: async (rollback) => {
@@ -364,12 +477,12 @@ export class InMemoryExternalActionStore implements ExternalActionRepositoryBoun
         maps.budgets.set(budget.projectId, budget);
       },
       reserve: async (projectId) => {
-        // Transactions are FIFO-serialized, so check+decrement is atomic.
+        // Transactions are FIFO-serialized, so check+decrement is atomic. A
+        // budget that is absent or already exhausted cannot be reserved
+        // (undefined); a successful reservation that consumes the LAST
+        // remaining execution still returns the post-reservation view.
         const budget = maps.budgets.get(projectId);
-        if (!budget) return undefined;
-        if (budget.exhausted || budget.remainingExecutions <= 0) {
-          return { ...budget, status: 'EXHAUSTED', exhausted: true, remainingExecutions: 0 };
-        }
+        if (!budget || budget.exhausted || budget.remainingExecutions <= 0) return undefined;
         const remaining = budget.remainingExecutions - 1;
         const reserved: ExternalActionBudgetViewV1 = {
           ...budget,

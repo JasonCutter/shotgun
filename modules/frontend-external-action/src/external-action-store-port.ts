@@ -39,6 +39,12 @@ export type ExternalActionAggregateStorePort = {
     limit: number,
     offset: number,
   ): Promise<readonly ExternalActionV1[]>;
+  /**
+   * Serializes the initial creation of an action identity (advisory lock in
+   * PostgreSQL; no-op in the FIFO-serialized in-memory store) so two
+   * concurrent first validations cannot both create revision 1.
+   */
+  lockActionId(actionId: string): Promise<void>;
 };
 
 export type ExternalActionCandidateStorePort = {

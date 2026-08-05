@@ -93,7 +93,8 @@ CREATE TABLE frontend_external_action.approvals (
   status text NOT NULL,
   issued_at timestamptz NOT NULL,
   snapshot jsonb NOT NULL,
-  created_at timestamptz NOT NULL
+  created_at timestamptz NOT NULL,
+  insertion_ordinal bigserial NOT NULL
 );
 
 CREATE INDEX frontend_external_action_approvals_action_idx
@@ -107,7 +108,8 @@ CREATE TABLE frontend_external_action.preflights (
   effective_project_id text NOT NULL,
   run_at timestamptz NOT NULL,
   snapshot jsonb NOT NULL,
-  created_at timestamptz NOT NULL
+  created_at timestamptz NOT NULL,
+  insertion_ordinal bigserial NOT NULL
 );
 
 CREATE INDEX frontend_external_action_preflights_action_idx
@@ -123,7 +125,8 @@ CREATE TABLE frontend_external_action.executions (
   manifest_revision integer NOT NULL,
   snapshot jsonb NOT NULL,
   created_at timestamptz NOT NULL,
-  updated_at timestamptz NOT NULL
+  updated_at timestamptz NOT NULL,
+  insertion_ordinal bigserial NOT NULL
 );
 
 CREATE INDEX frontend_external_action_executions_action_idx
@@ -156,7 +159,8 @@ CREATE TABLE frontend_external_action.verifications (
   resource_project_id text NOT NULL,
   effective_project_id text NOT NULL,
   snapshot jsonb NOT NULL,
-  created_at timestamptz NOT NULL
+  created_at timestamptz NOT NULL,
+  insertion_ordinal bigserial NOT NULL
 );
 
 CREATE INDEX frontend_external_action_verifications_action_idx
@@ -168,7 +172,8 @@ CREATE TABLE frontend_external_action.results (
   resource_project_id text NOT NULL,
   effective_project_id text NOT NULL,
   snapshot jsonb NOT NULL,
-  created_at timestamptz NOT NULL
+  created_at timestamptz NOT NULL,
+  insertion_ordinal bigserial NOT NULL
 );
 
 CREATE INDEX frontend_external_action_results_action_idx

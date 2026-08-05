@@ -493,7 +493,11 @@ export class FrontendExternalActionProductCoordinator {
       commandSemanticDigest,
       resourceProjectId: scope.activeProjectId,
       actionOnRepositories: async (repositories) => {
-        const existing = await repositories.aggregates.findById(request.actionId);
+        // Serialize the initial action creation (advisory lock) and lock the
+        // aggregate row when it already exists so concurrent first validations
+        // can never both create action revision 1 (Review 4860863804).
+        await repositories.aggregates.lockActionId(request.actionId);
+        const existing = await repositories.aggregates.lock(request.actionId);
         if (
           existing &&
           existing.status !== 'CANDIDATE_VALIDATED' &&
@@ -1185,7 +1189,9 @@ export class FrontendExternalActionProductCoordinator {
       }),
       finalize: async (repositories, outcome) => {
         const engineResult = outcome.execute;
-        const action = await repositories.aggregates.findById(request.actionId);
+        // Re-lock the action row (FOR UPDATE) at the terminal commit so a
+        // concurrent command can never overwrite its state (Review 4860735262).
+        const action = await repositories.aggregates.lock(request.actionId);
         if (!action) {
           externalActionFailure('EXTERNAL_ACTION_NOT_FOUND', 'The External Action was not found.');
         }
@@ -1536,7 +1542,9 @@ export class FrontendExternalActionProductCoordinator {
       },
       finalize: async (repositories, outcome) => {
         const engineResult = outcome.execute;
-        const action = await repositories.aggregates.findById(request.actionId);
+        // Re-lock the action row (FOR UPDATE) at the terminal commit so a
+        // concurrent command can never overwrite its state (Review 4860735262).
+        const action = await repositories.aggregates.lock(request.actionId);
         if (!action) {
           externalActionFailure('EXTERNAL_ACTION_NOT_FOUND', 'The External Action was not found.');
         }
@@ -3149,9 +3157,12 @@ export class FrontendExternalActionProductCoordinator {
     // Atomic reservation BEFORE the connector call (never a plain availability
     // check): the store decrements in one serialized step so two concurrent
     // executions cannot both pass with a single remaining execution. The
-    // reservation is never released after the attempt ran (Review 4860735262).
+    // reservation is never released after the attempt ran. A successful
+    // reservation that consumes the LAST remaining execution still succeeds —
+    // only an unreservable (absent or already-exhausted) budget fails closed
+    // (Review 4860735262).
     const reserved = await repositories.budgets.reserve(projectId);
-    if (!reserved || reserved.exhausted || reserved.remainingExecutions <= 0) {
+    if (reserved === undefined) {
       externalActionFailure(
         'ACTION_BUDGET_EXCEEDED',
         'The project execution budget is exhausted or unreadable.',

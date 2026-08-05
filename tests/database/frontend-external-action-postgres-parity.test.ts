@@ -686,6 +686,198 @@ describe.runIf(pool)(
       expect(final?.exhausted).toBe(true);
     });
 
+    it('lets the LAST execution consume the final budget slot through the coordinator, then fails closed', async () => {
+      const store = pgBoundary();
+      await store.transaction(async (repositories) => {
+        await repositories.credentials.insert(credential);
+        await repositories.budgets.insert({
+          schemaVersion: '1.0.0',
+          projectId: PROJECT_ID,
+          status: 'OK',
+          usedExecutions: 0,
+          remainingExecutions: 1,
+          softLimit: 80,
+          hardLimit: 100,
+          exhausted: false,
+        });
+      });
+      const gateway = new PostgresFrontendCommandGateway(pool!);
+      const coordinator = new FrontendExternalActionProductCoordinator(
+        store,
+        gateway,
+        new FakeExternalActionEngine(),
+      );
+      // First action consumes the single remaining execution.
+      const first = await lifecycleToPreflight(coordinator, 'action-budget-a', 'parity-budget-a');
+      const firstExecuted = await coordinator.executeExternalAction(scope, {
+        schemaVersion: '1.0.0',
+        clientRequestId: 'parity-budget-a-execute',
+        idempotencyKey: 'parity-budget-a-idem-execute',
+        actionId: 'action-budget-a',
+        expectedActionRevision: await first.revisionOf!(),
+        manifestRevision: first.prepared.manifest.manifestRevision,
+        preflightId: first.preflighted.preflight.preflightId,
+        expectedExternalRevision: 'ext-7',
+        reason: 'Execute.',
+      });
+      expect(firstExecuted.execution.status).toBe('SUCCEEDED');
+      const budget = await store.transaction((repositories) =>
+        repositories.budgets.findByProject(PROJECT_ID),
+      );
+      expect(budget?.usedExecutions).toBe(1);
+      expect(budget?.remainingExecutions).toBe(0);
+      expect(budget?.exhausted).toBe(true);
+      // A second action with an exhausted budget fails closed.
+      const second = await lifecycleToPreflight(coordinator, 'action-budget-b', 'parity-budget-b');
+      await expect(
+        coordinator.executeExternalAction(scope, {
+          schemaVersion: '1.0.0',
+          clientRequestId: 'parity-budget-b-execute',
+          idempotencyKey: 'parity-budget-b-idem-execute',
+          actionId: 'action-budget-b',
+          expectedActionRevision: await second.revisionOf!(),
+          manifestRevision: second.prepared.manifest.manifestRevision,
+          preflightId: second.preflighted.preflight.preflightId,
+          expectedExternalRevision: 'ext-7',
+          reason: 'Execute.',
+        }),
+      ).rejects.toThrow(/budget|exhausted|preflight|expiry/i);
+    });
+
+    it('serializes concurrent first validations on the same new action (action-id advisory lock)', async () => {
+      const store = pgBoundary();
+      await seedServerOwnedState(store);
+      const gateway = new PostgresFrontendCommandGateway(pool!);
+      const coordinator = new FrontendExternalActionProductCoordinator(
+        store,
+        gateway,
+        new FakeExternalActionEngine(),
+      );
+      // Two concurrent validations with DIFFERENT semantics on the same new
+      // action must serialize: the aggregate ends at revision 2 and both risk
+      // decisions are present (no lost update, no duplicate revision 1).
+      const changedParam = { ...parameterRef, parameterDigest: `sha256:${'e'.repeat(64)}` };
+      const results = await Promise.allSettled([
+        coordinator.validateActionCandidate(scope, {
+          schemaVersion: '1.0.0',
+          clientRequestId: 'parity-validate-concurrent-1',
+          idempotencyKey: 'parity-validate-idem-1',
+          actionId: 'action-validate-concurrent',
+          candidateId: 'candidate-vc',
+          operation: 'UPDATE_REVERSIBLE',
+          targetRef,
+          parameterRef,
+          evidenceRefs: [evidenceSetRef],
+        }),
+        coordinator.validateActionCandidate(scope, {
+          schemaVersion: '1.0.0',
+          clientRequestId: 'parity-validate-concurrent-2',
+          idempotencyKey: 'parity-validate-idem-2',
+          actionId: 'action-validate-concurrent',
+          candidateId: 'candidate-vc',
+          operation: 'UPDATE_REVERSIBLE',
+          targetRef,
+          parameterRef: changedParam,
+          evidenceRefs: [evidenceSetRef],
+        }),
+      ]);
+      expect(results.every((result) => result.status === 'fulfilled')).toBe(true);
+      const detail = await coordinator.getExternalActionDetail(scope, {
+        schemaVersion: '1.0.0',
+        actionId: 'action-validate-concurrent',
+      });
+      // Two serialized validations ⇒ action revision 2 and candidate revision 2.
+      expect(detail.action.actionRevision).toBe(2);
+      expect(detail.riskDecision).toBeDefined();
+      const decisionIds = await pool!.query<{ risk_decision_id: string }>(
+        `SELECT risk_decision_id FROM frontend_external_action.risk_decisions
+       WHERE action_id = 'action-validate-concurrent'`,
+      );
+      expect(decisionIds.rows).toHaveLength(2);
+    });
+
+    it('rejects a conflicting immutable snapshot and an illegal attempt transition at the database', async () => {
+      const store = pgBoundary();
+      // Risk decision is immutable: same identity with a different snapshot fails.
+      await store.transaction(async (repositories) => {
+        await repositories.riskDecisions.insert({
+          schemaVersion: '1.0.0',
+          riskDecisionId: 'risk-immutable',
+          actionId: 'action-immutable',
+          resourceProjectId: PROJECT_ID,
+          effectiveProjectId: PROJECT_ID,
+          riskLevel: 'R1',
+          policyVersion: 'stage11.action-risk.v1',
+          requiresUserApproval: false,
+          reasons: ['A'],
+          decidedAt: new Date().toISOString(),
+        });
+      });
+      await expect(
+        store.transaction(async (repositories) => {
+          await repositories.riskDecisions.insert({
+            schemaVersion: '1.0.0',
+            riskDecisionId: 'risk-immutable',
+            actionId: 'action-immutable',
+            resourceProjectId: PROJECT_ID,
+            effectiveProjectId: PROJECT_ID,
+            riskLevel: 'R4',
+            policyVersion: 'stage11.action-risk.v1',
+            requiresUserApproval: true,
+            reasons: ['B'],
+            decidedAt: new Date().toISOString(),
+          });
+        }),
+      ).rejects.toThrow(/immutable|conflict/i);
+      // Attempt: terminal → IN_PROGRESS is an illegal transition.
+      await store.transaction(async (repositories) => {
+        await repositories.attempts.insert({
+          schemaVersion: '1.0.0',
+          attemptId: 'attempt-illegal',
+          attemptNumber: 1,
+          executionId: 'execution-illegal',
+          actionId: 'action-illegal',
+          resourceProjectId: PROJECT_ID,
+          effectiveProjectId: PROJECT_ID,
+          idempotencyKey: 'idem-illegal',
+          status: 'SUCCEEDED',
+          policyContextRevision: 'policy-1',
+          externalRevision: 'ext-7',
+          correlationId: 'corr-illegal',
+          startedAt: new Date().toISOString(),
+          completedAt: new Date().toISOString(),
+        });
+      });
+      await expect(
+        store.transaction(async (repositories) => {
+          await repositories.attempts.insert({
+            schemaVersion: '1.0.0',
+            attemptId: 'attempt-illegal',
+            attemptNumber: 1,
+            executionId: 'execution-illegal',
+            actionId: 'action-illegal',
+            resourceProjectId: PROJECT_ID,
+            effectiveProjectId: PROJECT_ID,
+            idempotencyKey: 'idem-illegal',
+            status: 'IN_PROGRESS',
+            policyContextRevision: 'policy-1',
+            externalRevision: 'ext-7',
+            correlationId: 'corr-illegal',
+            startedAt: new Date().toISOString(),
+          });
+        }),
+      ).rejects.toThrow(/transition|conflict/i);
+    });
+
+    it('explicitly confirms the CURRENT verification/result are the rollback lifecycle ones', async () => {
+      const store = pgBoundary();
+      await seedServerOwnedState(store);
+      const result = await scenarioRollbackLifecycle(store);
+      expect(result.currentVerificationIsRollback).toBe(true);
+      expect(result.currentResultAttemptIsRollback).toBe(true);
+      expect(result.aggregateStatus).toBe('ROLLED_BACK');
+    });
+
     it('commits Product resource and Command Ledger in one transaction and replays terminally (PG gateway)', async () => {
       const store = pgBoundary();
       await seedServerOwnedState(store);
@@ -753,7 +945,19 @@ describe.runIf(pool)(
       await expect(
         store.transactionWithHandle(async (handle) => {
           await gateway.lockAcceptedForExecution(handle.raw, commandId);
-          // First audit append succeeds.
+          // FIRST: complete the ledger command in this transaction.
+          await gateway.completeInTransaction(handle.raw, {
+            commandId,
+            producedResources: [
+              {
+                resourceKind: 'frontend.external-action.action',
+                resourceId: 'action-atomic',
+              },
+            ],
+            completedAt: new Date().toISOString(),
+          });
+          // THEN: a Product write fails inside the same transaction (duplicate
+          // audit sequence violates UNIQUE(action_id, sequence)).
           await handle.repositories.audit.append({
             schemaVersion: '1.0.0',
             auditEventId: 'audit-atomic-1',
@@ -765,8 +969,6 @@ describe.runIf(pool)(
             eventData: { schemaVersion: '1.0.0', message: 'x', refs: [] },
             occurredAt: new Date().toISOString(),
           });
-          // Second append violates UNIQUE(action_id, sequence) → the whole
-          // transaction (including the ledger completion) must roll back.
           await handle.repositories.audit.append({
             schemaVersion: '1.0.0',
             auditEventId: 'audit-atomic-2',
@@ -778,20 +980,21 @@ describe.runIf(pool)(
             eventData: { schemaVersion: '1.0.0', message: 'y', refs: [] },
             occurredAt: new Date().toISOString(),
           });
-          await gateway.completeInTransaction(handle.raw, {
-            commandId,
-            producedResources: [],
-            completedAt: new Date().toISOString(),
-          });
         }),
       ).rejects.toThrow();
-      // The ledger command stayed ACCEPTED — the product write failure rolled
-      // back the ledger completion too (real atomicity).
+      // The ledger command stayed ACCEPTED — the ledger completion was rolled
+      // back together with the failing Product write (real atomicity).
       const ledger = await pool!.query<{ outcome_state: string }>(
         `SELECT outcome_state FROM frontend_command.command_ledger WHERE command_id = $1`,
         [commandId],
       );
       expect(ledger.rows[0]?.outcome_state).toBe('ACCEPTED');
+      // No partial Product writes survived the rollback.
+      const auditRows = await pool!.query(
+        `SELECT COUNT(*)::int AS count FROM frontend_external_action.audit_events
+       WHERE action_id = 'action-atomic'`,
+      );
+      expect(auditRows.rows[0]?.count).toBe(0);
     });
 
     it('fails closed with OUTCOME_INDETERMINATE for an in-flight (ACCEPTED) connector command (PG gateway)', async () => {

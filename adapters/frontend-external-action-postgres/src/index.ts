@@ -51,6 +51,12 @@ import type {
  */
 
 const JSONB_SNAPSHOT = (value: unknown): string => JSON.stringify(value);
+
+const conflict = (message: string): never => {
+  throw new Error(`EXTERNAL_ACTION_CONFLICT: ${message}`);
+};
+
+const TERMINAL_ATTEMPT_STATUSES = "'SUCCEEDED','FAILED','OUTCOME_UNKNOWN','CANCELLED'";
 /**
  * node-postgres already deserializes `jsonb` columns into JS objects, so the
  * value may arrive as a parsed object. Only string values need JSON.parse.
@@ -136,7 +142,7 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
           ).rows[0],
         ),
       insert: async (action) => {
-        await client.query(
+        const result = await client.query(
           `INSERT INTO frontend_external_action.aggregates
              (action_id, resource_project_id, effective_project_id, status,
               aggregate_state, action_revision, access_revision, policy_context_revision,
@@ -151,7 +157,9 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
              access_revision = EXCLUDED.access_revision,
              policy_context_revision = EXCLUDED.policy_context_revision,
              snapshot = EXCLUDED.snapshot,
-             updated_at = EXCLUDED.updated_at`,
+             updated_at = EXCLUDED.updated_at
+           WHERE frontend_external_action.aggregates.resource_project_id = EXCLUDED.resource_project_id
+             AND frontend_external_action.aggregates.effective_project_id = EXCLUDED.effective_project_id`,
           [
             action.actionId,
             action.resourceProjectId,
@@ -166,6 +174,9 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
             action.updatedAt,
           ],
         );
+        if (result.rowCount === 0) {
+          conflict('aggregate project binding cannot be re-bound.');
+        }
       },
       update: async (action) => {
         await aggregates.insert(action);
@@ -189,6 +200,13 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
           [resourceProjectId, Math.min(limit, EXTERNAL_ACTION_QUEUE_PAGE_SIZE_CAP), offset],
         );
         return result.rows.map(aggregateFrom);
+      },
+      lockActionId: async (actionId) => {
+        // Serialize the initial action creation per action identity.
+        await client.query(
+          `SELECT pg_advisory_xact_lock(hashtext('frontend_external_action:action:' || $1))`,
+          [actionId],
+        );
       },
     };
 
@@ -214,7 +232,7 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
         return row ? candidateFrom(row) : undefined;
       },
       insert: async (candidate) => {
-        await client.query(
+        const result = await client.query(
           `INSERT INTO frontend_external_action.candidates
              (action_id, candidate_id, candidate_revision, resource_project_id,
               effective_project_id, candidate_digest, snapshot, created_at)
@@ -225,7 +243,9 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
              effective_project_id = EXCLUDED.effective_project_id,
              candidate_digest = EXCLUDED.candidate_digest,
              snapshot = EXCLUDED.snapshot,
-             created_at = EXCLUDED.created_at`,
+             created_at = EXCLUDED.created_at
+           WHERE frontend_external_action.candidates.resource_project_id = EXCLUDED.resource_project_id
+             AND frontend_external_action.candidates.effective_project_id = EXCLUDED.effective_project_id`,
           [
             candidate.actionId,
             candidate.candidateId,
@@ -237,6 +257,9 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
             candidate.generatedAt,
           ],
         );
+        if (result.rowCount === 0) {
+          conflict('candidate project binding cannot be re-bound.');
+        }
       },
     };
 
@@ -252,14 +275,16 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
         return row ? riskDecisionFrom(row) : undefined;
       },
       insert: async (decision) => {
-        // Risk decisions are immutable: a conflicting insert is a no-op and
-        // never modifies an existing snapshot.
-        await client.query(
+        // Risk decisions are immutable: only an exact snapshot replay is
+        // accepted; a conflicting different snapshot fails closed.
+        const result = await client.query(
           `INSERT INTO frontend_external_action.risk_decisions
              (action_id, risk_decision_id, resource_project_id, effective_project_id,
               snapshot, created_at)
            VALUES ($1, $2, $3, $4, $5, $6)
-           ON CONFLICT (action_id, risk_decision_id) DO NOTHING`,
+           ON CONFLICT (action_id, risk_decision_id) DO UPDATE SET
+             snapshot = EXCLUDED.snapshot
+           WHERE frontend_external_action.risk_decisions.snapshot = EXCLUDED.snapshot`,
           [
             decision.actionId,
             decision.riskDecisionId,
@@ -269,6 +294,9 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
             decision.decidedAt,
           ],
         );
+        if (result.rowCount === 0) {
+          conflict('risk decision is immutable; a different snapshot is rejected.');
+        }
       },
     };
 
@@ -293,13 +321,16 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
         return row ? manifestFrom(row) : undefined;
       },
       insert: async (manifest) => {
-        // Manifests are immutable per revision: a conflicting insert is a no-op.
-        await client.query(
+        // Manifests are immutable per revision: only an exact snapshot replay
+        // is accepted; a conflicting different snapshot fails closed.
+        const result = await client.query(
           `INSERT INTO frontend_external_action.manifests
              (manifest_id, action_id, resource_project_id, effective_project_id,
               manifest_revision, manifest_digest, snapshot, created_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-           ON CONFLICT (manifest_id) DO NOTHING`,
+           ON CONFLICT (manifest_id) DO UPDATE SET
+             snapshot = EXCLUDED.snapshot
+           WHERE frontend_external_action.manifests.snapshot = EXCLUDED.snapshot`,
           [
             manifest.manifestId,
             manifest.actionId,
@@ -311,6 +342,9 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
             manifest.createdAt,
           ],
         );
+        if (result.rowCount === 0) {
+          conflict('manifest is immutable; a different snapshot is rejected.');
+        }
       },
       lockCurrent: async (actionId) => {
         const row = (
@@ -339,25 +373,22 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
           await client.query<SnapshotRow>(
             `SELECT snapshot FROM frontend_external_action.approvals
              WHERE action_id = $1 AND status = 'ACTIVE'
-             ORDER BY issued_at DESC LIMIT 1`,
+             ORDER BY insertion_ordinal DESC LIMIT 1`,
             [actionId],
           )
         ).rows[0];
         return row ? approvalFrom(row) : undefined;
       },
       insert: async (approval) => {
-        await client.query(
+        // Approvals are immutable: only an exact snapshot replay is accepted.
+        const result = await client.query(
           `INSERT INTO frontend_external_action.approvals
              (approval_id, action_id, resource_project_id, effective_project_id,
               status, issued_at, snapshot, created_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
            ON CONFLICT (approval_id) DO UPDATE SET
-             action_id = EXCLUDED.action_id,
-             resource_project_id = EXCLUDED.resource_project_id,
-             effective_project_id = EXCLUDED.effective_project_id,
-             status = EXCLUDED.status,
-             issued_at = EXCLUDED.issued_at,
-             snapshot = EXCLUDED.snapshot`,
+             snapshot = EXCLUDED.snapshot
+           WHERE frontend_external_action.approvals.snapshot = EXCLUDED.snapshot`,
           [
             approval.approvalId,
             approval.actionId,
@@ -369,6 +400,9 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
             approval.issuedAt,
           ],
         );
+        if (result.rowCount === 0) {
+          conflict('approval is immutable; a different snapshot is rejected.');
+        }
       },
     };
 
@@ -386,14 +420,14 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
         const row = (
           await client.query<SnapshotRow>(
             `SELECT snapshot FROM frontend_external_action.preflights
-             WHERE action_id = $1 ORDER BY run_at DESC LIMIT 1`,
+             WHERE action_id = $1 ORDER BY insertion_ordinal DESC LIMIT 1`,
             [actionId],
           )
         ).rows[0];
         return row ? preflightFrom(row) : undefined;
       },
       insert: async (preflight) => {
-        await client.query(
+        const result = await client.query(
           `INSERT INTO frontend_external_action.preflights
              (preflight_id, action_id, resource_project_id, effective_project_id,
               run_at, snapshot, created_at)
@@ -403,7 +437,10 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
              resource_project_id = EXCLUDED.resource_project_id,
              effective_project_id = EXCLUDED.effective_project_id,
              run_at = EXCLUDED.run_at,
-             snapshot = EXCLUDED.snapshot`,
+             snapshot = EXCLUDED.snapshot
+           WHERE frontend_external_action.preflights.action_id = EXCLUDED.action_id
+             AND frontend_external_action.preflights.resource_project_id = EXCLUDED.resource_project_id
+             AND frontend_external_action.preflights.effective_project_id = EXCLUDED.effective_project_id`,
           [
             preflight.preflightId,
             preflight.actionId,
@@ -414,6 +451,9 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
             preflight.runAt,
           ],
         );
+        if (result.rowCount === 0) {
+          conflict('preflight identity cannot be re-bound.');
+        }
       },
     };
 
@@ -428,19 +468,20 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
         return row ? executionFrom(row) : undefined;
       },
       findCurrent: async (actionId) => {
-        // The LATEST execution (rollback creates a new execution after the
-        // forward one; the current execution is the most recent).
+        // The LATEST execution by insertion order (rollback creates a new
+        // execution after the forward one; deterministic even with equal
+        // timestamps).
         const row = (
           await client.query<SnapshotRow>(
             `SELECT snapshot FROM frontend_external_action.executions
-             WHERE action_id = $1 ORDER BY created_at DESC LIMIT 1`,
+             WHERE action_id = $1 ORDER BY insertion_ordinal DESC LIMIT 1`,
             [actionId],
           )
         ).rows[0];
         return row ? executionFrom(row) : undefined;
       },
       insert: async (execution) => {
-        await client.query(
+        const result = await client.query(
           `INSERT INTO frontend_external_action.executions
              (execution_id, action_id, resource_project_id, effective_project_id,
               status, manifest_revision, snapshot, created_at, updated_at)
@@ -452,7 +493,11 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
              status = EXCLUDED.status,
              manifest_revision = EXCLUDED.manifest_revision,
              snapshot = EXCLUDED.snapshot,
-             updated_at = EXCLUDED.updated_at`,
+             updated_at = EXCLUDED.updated_at
+           WHERE frontend_external_action.executions.action_id = EXCLUDED.action_id
+             AND frontend_external_action.executions.resource_project_id = EXCLUDED.resource_project_id
+             AND frontend_external_action.executions.effective_project_id = EXCLUDED.effective_project_id
+             AND frontend_external_action.executions.manifest_revision = EXCLUDED.manifest_revision`,
           [
             execution.executionId,
             execution.actionId,
@@ -465,6 +510,9 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
             execution.completedAt ?? execution.startedAt,
           ],
         );
+        if (result.rowCount === 0) {
+          conflict('execution identity cannot be re-bound.');
+        }
       },
       update: async (execution) => {
         await executions.insert(execution);
@@ -490,11 +538,11 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
         return row ? attemptFrom(row) : undefined;
       },
       insert: async (attempt) => {
-        // The attempt upsert only allows the legal IN_PROGRESS → terminal
-        // status transition: the identity (execution_id, action_id,
-        // resource_project_id, effective_project_id, attempt_number) must be
-        // unchanged or the conflict update is a no-op (never a rebind).
-        await client.query(
+        // The attempt upsert allows only an identical replay or the legal
+        // IN_PROGRESS → terminal status transition with an unchanged identity
+        // (never a rebind, never terminal → IN_PROGRESS, never terminal →
+        // another terminal).
+        const result = await client.query(
           `INSERT INTO frontend_external_action.attempts
              (attempt_id, execution_id, action_id, resource_project_id,
               effective_project_id, attempt_number, status, snapshot, created_at)
@@ -506,7 +554,14 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
              AND frontend_external_action.attempts.action_id = EXCLUDED.action_id
              AND frontend_external_action.attempts.resource_project_id = EXCLUDED.resource_project_id
              AND frontend_external_action.attempts.effective_project_id = EXCLUDED.effective_project_id
-             AND frontend_external_action.attempts.attempt_number = EXCLUDED.attempt_number`,
+             AND frontend_external_action.attempts.attempt_number = EXCLUDED.attempt_number
+             AND (
+               frontend_external_action.attempts.status = EXCLUDED.status
+               OR (
+                 frontend_external_action.attempts.status IN ('IN_PROGRESS')
+                 AND EXCLUDED.status IN (${TERMINAL_ATTEMPT_STATUSES})
+               )
+             )`,
           [
             attempt.attemptId,
             attempt.executionId,
@@ -519,6 +574,11 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
             attempt.startedAt,
           ],
         );
+        if (result.rowCount === 0) {
+          conflict(
+            'attempt identity is immutable and only IN_PROGRESS → terminal transitions are allowed.',
+          );
+        }
       },
       lockByExecution: async (executionId) => {
         // Row lock the attempt list so concurrent commands cannot allocate the
@@ -543,28 +603,28 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
         return row ? verificationFrom(row) : undefined;
       },
       findCurrent: async (actionId) => {
-        // The LATEST verification (after rollback the current verification is
-        // the rollback verification, not the original forward one).
+        // The LATEST verification by insertion order (deterministic even with
+        // equal timestamps; after rollback the current verification is the
+        // rollback verification).
         const row = (
           await client.query<SnapshotRow>(
             `SELECT snapshot FROM frontend_external_action.verifications
-             WHERE action_id = $1 ORDER BY created_at DESC LIMIT 1`,
+             WHERE action_id = $1 ORDER BY insertion_ordinal DESC LIMIT 1`,
             [actionId],
           )
         ).rows[0];
         return row ? verificationFrom(row) : undefined;
       },
       insert: async (verification) => {
-        await client.query(
+        // Verifications are immutable: only an exact snapshot replay is accepted.
+        const result = await client.query(
           `INSERT INTO frontend_external_action.verifications
              (verification_id, action_id, resource_project_id, effective_project_id,
               snapshot, created_at)
            VALUES ($1, $2, $3, $4, $5, $6)
            ON CONFLICT (verification_id) DO UPDATE SET
-             action_id = EXCLUDED.action_id,
-             resource_project_id = EXCLUDED.resource_project_id,
-             effective_project_id = EXCLUDED.effective_project_id,
-             snapshot = EXCLUDED.snapshot`,
+             snapshot = EXCLUDED.snapshot
+           WHERE frontend_external_action.verifications.snapshot = EXCLUDED.snapshot`,
           [
             verification.verificationId,
             verification.actionId,
@@ -574,6 +634,9 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
             verification.verifiedAt,
           ],
         );
+        if (result.rowCount === 0) {
+          conflict('verification is immutable; a different snapshot is rejected.');
+        }
       },
     };
 
@@ -588,27 +651,26 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
         return row ? resultFrom(row) : undefined;
       },
       findCurrent: async (actionId) => {
-        // The LATEST result.
+        // The LATEST result by insertion order (deterministic).
         const row = (
           await client.query<SnapshotRow>(
             `SELECT snapshot FROM frontend_external_action.results
-             WHERE action_id = $1 ORDER BY created_at DESC LIMIT 1`,
+             WHERE action_id = $1 ORDER BY insertion_ordinal DESC LIMIT 1`,
             [actionId],
           )
         ).rows[0];
         return row ? resultFrom(row) : undefined;
       },
       insert: async (result) => {
-        await client.query(
+        // Results are immutable: only an exact snapshot replay is accepted.
+        const resultQuery = await client.query(
           `INSERT INTO frontend_external_action.results
              (result_id, action_id, resource_project_id, effective_project_id,
               snapshot, created_at)
            VALUES ($1, $2, $3, $4, $5, $6)
            ON CONFLICT (result_id) DO UPDATE SET
-             action_id = EXCLUDED.action_id,
-             resource_project_id = EXCLUDED.resource_project_id,
-             effective_project_id = EXCLUDED.effective_project_id,
-             snapshot = EXCLUDED.snapshot`,
+             snapshot = EXCLUDED.snapshot
+           WHERE frontend_external_action.results.snapshot = EXCLUDED.snapshot`,
           [
             result.resultId,
             result.actionId,
@@ -618,14 +680,18 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
             result.completedAt,
           ],
         );
+        if (resultQuery.rowCount === 0) {
+          conflict('result is immutable; a different snapshot is rejected.');
+        }
       },
     };
 
     const audit: ExternalActionAuditStorePort = {
       append: async (event) => {
-        // Audit events are append-only and immutable: a conflicting insert is
-        // a no-op (the DB trigger also rejects any UPDATE/DELETE).
-        await client.query(
+        // Audit events are append-only and immutable: only an exact snapshot
+        // replay is accepted; a conflicting different snapshot fails closed
+        // (the DB trigger also rejects any UPDATE/DELETE).
+        const result = await client.query(
           `INSERT INTO frontend_external_action.audit_events
              (audit_event_id, action_id, resource_project_id, effective_project_id,
               sequence, category, snapshot, occurred_at)
@@ -642,6 +708,19 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
             event.occurredAt,
           ],
         );
+        if (result.rowCount === 0) {
+          const existing = await client.query<SnapshotRow>(
+            `SELECT snapshot FROM frontend_external_action.audit_events
+             WHERE audit_event_id = $1`,
+            [event.auditEventId],
+          );
+          if (
+            existing.rows[0] &&
+            JSON.stringify(PARSE(existing.rows[0].snapshot)) !== JSON.stringify(event)
+          ) {
+            conflict('audit event is immutable; a different snapshot is rejected.');
+          }
+        }
       },
       listByAction: async (actionId, limit, offset) => {
         const result = await client.query<SnapshotRow>(
@@ -682,16 +761,16 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
         return row ? compensationFrom(row) : undefined;
       },
       insert: async (compensation) => {
-        await client.query(
+        // Compensating Actions are immutable: only an exact snapshot replay is
+        // accepted.
+        const result = await client.query(
           `INSERT INTO frontend_external_action.compensations
              (compensation_id, action_id, resource_project_id, effective_project_id,
               snapshot, created_at)
            VALUES ($1, $2, $3, $4, $5, $6)
            ON CONFLICT (compensation_id) DO UPDATE SET
-             action_id = EXCLUDED.action_id,
-             resource_project_id = EXCLUDED.resource_project_id,
-             effective_project_id = EXCLUDED.effective_project_id,
-             snapshot = EXCLUDED.snapshot`,
+             snapshot = EXCLUDED.snapshot
+           WHERE frontend_external_action.compensations.snapshot = EXCLUDED.snapshot`,
           [
             compensation.compensationId,
             compensation.actionId,
@@ -701,6 +780,9 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
             compensation.preparedAt,
           ],
         );
+        if (result.rowCount === 0) {
+          conflict('compensating action is immutable; a different snapshot is rejected.');
+        }
       },
     };
 
@@ -716,7 +798,7 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
         return row ? rollbackFrom(row) : undefined;
       },
       insert: async (rollback) => {
-        await client.query(
+        const result = await client.query(
           `INSERT INTO frontend_external_action.rollbacks
              (rollback_id, action_id, resource_project_id, effective_project_id,
               status, snapshot, created_at, updated_at)
@@ -727,7 +809,10 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
              effective_project_id = EXCLUDED.effective_project_id,
              status = EXCLUDED.status,
              snapshot = EXCLUDED.snapshot,
-             updated_at = EXCLUDED.updated_at`,
+             updated_at = EXCLUDED.updated_at
+           WHERE frontend_external_action.rollbacks.action_id = EXCLUDED.action_id
+             AND frontend_external_action.rollbacks.resource_project_id = EXCLUDED.resource_project_id
+             AND frontend_external_action.rollbacks.effective_project_id = EXCLUDED.effective_project_id`,
           [
             rollback.rollbackId,
             rollback.actionId,
@@ -739,6 +824,9 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
             rollback.updatedAt,
           ],
         );
+        if (result.rowCount === 0) {
+          conflict('rollback identity cannot be re-bound.');
+        }
       },
       update: async (rollback) => {
         await rollbacks.insert(rollback);
@@ -792,41 +880,42 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
         await budgets.insert(budget);
       },
       reserve: async (projectId) => {
-        // Atomic reservation: the decrement happens in one UPDATE guarded by
-        // remaining_executions > 0, so two concurrent executions can never
-        // both pass with a single remaining execution.
+        // Atomic reservation: the decrement happens in one guarded UPDATE so
+        // two concurrent executions can never both pass with a single
+        // remaining execution. A budget that is already exhausted (or absent)
+        // cannot be reserved and returns undefined — a successful reservation
+        // that consumes the LAST remaining execution still returns the
+        // post-reservation (exhausted) view so the caller can proceed.
         const row = (
           await client.query<SnapshotRow>(
             `UPDATE frontend_external_action.budgets AS b
-             SET snapshot = CASE
-                   WHEN b.snapshot->>'exhausted' = 'true'
-                     OR (b.snapshot->>'remainingExecutions')::int <= 0 THEN b.snapshot
-                   ELSE jsonb_set(
+             SET snapshot = jsonb_set(
+                   jsonb_set(
                      jsonb_set(
                        jsonb_set(
-                         jsonb_set(
-                           b.snapshot,
-                           '{remainingExecutions}',
-                           to_jsonb(GREATEST((b.snapshot->>'remainingExecutions')::int - 1, 0))
-                         ),
-                         '{usedExecutions}',
-                         to_jsonb((b.snapshot->>'usedExecutions')::int + 1)
+                         b.snapshot,
+                         '{remainingExecutions}',
+                         to_jsonb(GREATEST((b.snapshot->>'remainingExecutions')::int - 1, 0))
                        ),
-                       '{status}',
-                       to_jsonb(
-                         CASE
-                           WHEN (b.snapshot->>'remainingExecutions')::int - 1 <= 0 THEN 'EXHAUSTED'
-                           WHEN (b.snapshot->>'remainingExecutions')::int - 1 <= COALESCE((b.snapshot->>'softLimit')::int, 0) THEN 'WARNING'
-                           ELSE 'OK'
-                         END
-                       )
+                       '{usedExecutions}',
+                       to_jsonb((b.snapshot->>'usedExecutions')::int + 1)
                      ),
-                     '{exhausted}',
-                     to_jsonb((b.snapshot->>'remainingExecutions')::int - 1 <= 0)
-                   )
-                 END,
+                     '{status}',
+                     to_jsonb(
+                       CASE
+                         WHEN (b.snapshot->>'remainingExecutions')::int - 1 <= 0 THEN 'EXHAUSTED'
+                         WHEN (b.snapshot->>'remainingExecutions')::int - 1 <= COALESCE((b.snapshot->>'softLimit')::int, 0) THEN 'WARNING'
+                         ELSE 'OK'
+                       END
+                     )
+                   ),
+                   '{exhausted}',
+                   to_jsonb((b.snapshot->>'remainingExecutions')::int - 1 <= 0)
+                 ),
                  updated_at = now()
              WHERE b.project_id = $1
+               AND b.snapshot->>'exhausted' <> 'true'
+               AND (b.snapshot->>'remainingExecutions')::int > 0
              RETURNING snapshot`,
             [projectId],
           )

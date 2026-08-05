@@ -1930,3 +1930,88 @@ final remediation on code head `c47245e` (CI **#560**) and report head `b68964b`
 - PR #66 remains `OPEN / DRAFT / MERGEABLE`. CI **#557 / #558 / #559** were NOT re-run.
 - Authority state: WP5 `REMEDIATION_REQUIRED NOT_APPROVED` (final remediation submitted for
   re-review); WP6 `NOT_AUTHORIZED`.
+
+### Section 28 correction (Review 4866122577)
+
+Review **4866122577** (**BLOCKED / EXACT FINAL WP5 CORRECTION REQUIRED**) confirmed Items 1, 4 and 6
+as **RESOLVED** and most of Item 3/Item 5 work, but recorded Section 28's Items 2, 3 and 5 as
+overstated. The review's exact status at report-22 time: **Item 1: RESOLVED; Item 2: PARTIAL /
+REMEDIATION_REQUIRED; Item 3: PARTIAL / REMEDIATION_REQUIRED; Item 4: RESOLVED; Item 5: PARTIAL /
+REMEDIATION_REQUIRED; Item 6: RESOLVED**. The three PARTIAL items are resolved in this report
+(Section 29).
+
+## 29. WP5 exact final correction — Review 4866122577 (report 23, 2026-08-05)
+
+GPT review **4866122577** returned **BLOCKED / EXACT FINAL WP5 CORRECTION REQUIRED** with three
+exact corrections inside the approved WP5 scope (Items 2, 3, 5). CI **#560 / #561 / #562** were
+NOT re-run per the review instruction. This report records the correction on code head `c0a2db7`
+(CI **#563**) and report head `<REPORT_HEAD>` (CI **#564**).
+
+### Item status after this correction
+
+- **Item 1** (Command Palette entry / Home navigate-only): RESOLVED (unchanged).
+- **Item 2** (deep link = source of truth for resource selection): RESOLVED.
+- **Item 3** (snapshot bootstrap key + revision-bound detail key): RESOLVED.
+- **Item 4** (command-common reason + refresh-and-lock): RESOLVED (unchanged).
+- **Item 5** (`OUTCOME_UNKNOWN` COMPLETED recovery lock): RESOLVED.
+- **Item 6** (Verify refresh + focus preservation): RESOLVED (unchanged).
+
+### 1. Item 2 — the URL is the single source of truth for resource selection
+
+- The deep-link restore effect now clears EVERY resource selection first
+  (`RESET_RESOURCE_SELECTIONS`) and then re-applies exactly what the URL carries, so Back/Forward
+  that removes a parameter also clears the stale selection.
+- `selectManifest` / `selectExecution` / `selectAttempt` / `selectVerification` preserve ALL
+  already-selected resource parameters — selecting one resource never rebuilds the URL with a
+  single parameter.
+- A mismatched deep-link resource is cleared from **state** (`CLEAR_*_SELECTION`) — not just hidden
+  visually — so Rollback / Compensation / Verify never prefer a stale deep-link id in the request
+  payload. The attempt mismatch case was added to the fail-closed guard.
+- NEW tests: Back/Forward removing the parameters clears all selections; selecting a second
+  resource preserves the first parameter in the URL; a mismatched execution id is not selected.
+
+### 2. Item 3 — snapshot bootstrap key + revision-bound detail key
+
+- The snapshot read uses a dedicated **bootstrap key** (`externalActionSnapshotQueryKey`: scope +
+  `snapshot` + actionId) — it is no longer a revision-bound resource key carrying the `-1` / `''`
+  placeholders.
+- The detail identity is bound to the authoritative snapshot external revision
+  (`SET_EXTERNAL_REVISION`), and the detail read is gated on a **non-empty** external revision — a
+  regular resource key never carries `externalRevision: ''` (the detail key included).
+- Restricted actions (whose snapshot carries no target revision) render the restricted shell from
+  the snapshot instead of forcing an empty-revision detail read.
+- NEW test: the snapshot key is a bootstrap key (not `.../action/...`), and every regular resource
+  key carries a non-empty external revision.
+
+### 3. Item 5 — COMPLETED recovery keeps the lock through the refresh
+
+- `resolveOutcome` COMPLETED now keeps the recovery lock (`RESTORING`) while the exact action
+  queries refetch and releases it only after the latest detail is confirmed.
+- If the refresh fails, the workspace shows a safe **BLOCKED** state
+  (`COMPLETED_BUT_REFRESH_REQUIRED`) instead of silently re-enabling stale surfaces.
+- NEW test: with a delayed detail refetch, no governed command is submitted while the lock is held
+  and the surface re-enables only after the refresh settles.
+
+### Changed files (this correction)
+
+- `apps/shotgun-web/src/app/query-keys.ts` — `externalActionSnapshotQueryKey` (bootstrap key).
+- `apps/shotgun-web/src/external-action/external-action-queries.ts` — snapshot uses the bootstrap
+  key; the detail read is gated on a non-empty external revision.
+- `apps/shotgun-web/src/external-action/external-action-workspace-state.ts` —
+  `SET_EXTERNAL_REVISION`, `RESET_RESOURCE_SELECTIONS`, `CLEAR_MANIFEST/EXECUTION/ATTEMPT/
+  VERIFICATION_SELECTION`.
+- `apps/shotgun-web/src/routes/external-action-workspace.tsx` — URL source-of-truth restore,
+  parameter-preserving selection, mismatch state clearing, detail revision gating + snapshot
+  restricted shell, COMPLETED recovery lock + BLOCKED state.
+- `apps/shotgun-web/src/routes/external-action-workspace.test.tsx` — focused tests for the three
+  corrections (Back/Forward clearing, parameter preservation, mismatch state clearing, bootstrap
+  key + non-empty revision, COMPLETED refresh lock).
+
+### Validation
+
+- `apps/shotgun-web` full suite (`vitest run`) — **18 files / 92 tests PASS**.
+- Root unit+integration+contract suites — 980 tests; the pre-existing knowledge/compiled-truth
+  timing flakes pass in isolation (unrelated to WP5).
+- `tsc --noEmit` (root and `apps/shotgun-web`) — clean. ESLint — clean. Prettier — clean.
+- Automatic CI on the code head `c0a2db7` — run **#563**: Quality, Frontend, Required Gates
+  **SUCCESS**. Report head `<REPORT_HEAD>` CI **#564**. (Metadata recorded below.)

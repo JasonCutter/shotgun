@@ -576,6 +576,25 @@ describe('FE-P4-S2 WP2 External Action Product domain', () => {
     expect(detail.credential).toBeUndefined();
   });
 
+  it('never returns an Approval payload for an access-restricted (Hidden) action', async () => {
+    const { coordinator } = makeCoordinator();
+    await runLifecycle(coordinator, 'action-approval-hidden');
+    const changedScope: FrontendExternalActionScopeV1 = {
+      ...scope,
+      accessRevision: 'access-2',
+    };
+    // The approval read fails closed (like the other protected reads) — no
+    // Manifest/Target/External Revision/Actor/Access/Policy payload is ever
+    // returned for a Hidden / Access-restricted action (Review 4863783684
+    // item 2).
+    await expect(
+      coordinator.getExternalActionApproval(changedScope, {
+        schemaVersion: '1.0.0',
+        actionId: 'action-approval-hidden',
+      }),
+    ).rejects.toThrow(/not available|not found|access-restricted/i);
+  });
+
   it('writes append-only audit events through the governed lifecycle', async () => {
     const { coordinator } = makeCoordinator();
     await runLifecycle(coordinator, 'action-10');

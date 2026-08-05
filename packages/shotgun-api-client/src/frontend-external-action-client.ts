@@ -482,6 +482,9 @@ export const createFrontendExternalActionClient = (
       const body = await assertOk(response);
       const result = decodeValidateActionCandidateResultV1(body);
       assertCommandIdentity(result, params, 'Validate result');
+      if (result.candidate.candidateId !== params.candidateId) {
+        identityMismatch('Validate result candidate does not match the requested candidate.');
+      }
       return result;
     },
     async prepareActionManifest(params, requestOptions) {
@@ -510,6 +513,18 @@ export const createFrontendExternalActionClient = (
       if (result.approval.actionId !== params.actionId) {
         identityMismatch('Approve result approval does not match the requested action.');
       }
+      if (result.approval.manifestId !== params.manifestId) {
+        identityMismatch('Approve result approval does not match the requested manifest.');
+      }
+      if (result.approval.manifestRevision !== params.manifestRevision) {
+        identityMismatch('Approve result approval does not match the requested manifest revision.');
+      }
+      if (result.approval.targetRevision !== params.expectedTargetRevision) {
+        identityMismatch('Approve result approval does not match the requested target revision.');
+      }
+      if (result.approval.externalRevision !== params.expectedExternalRevision) {
+        identityMismatch('Approve result approval does not match the requested external revision.');
+      }
       return result;
     },
     async preflightExternalAction(params, requestOptions) {
@@ -523,6 +538,9 @@ export const createFrontendExternalActionClient = (
       assertCommandIdentity(result, params, 'Preflight result');
       if (result.preflight.actionId !== params.actionId) {
         identityMismatch('Preflight result preflight does not match the requested action.');
+      }
+      if (result.preflight.manifestRevision !== params.manifestRevision) {
+        identityMismatch('Preflight result does not match the requested manifest revision.');
       }
       return result;
     },
@@ -538,6 +556,15 @@ export const createFrontendExternalActionClient = (
       if (result.execution.actionId !== params.actionId) {
         identityMismatch('Execute result execution does not match the requested action.');
       }
+      if (result.execution.manifestRevision !== params.manifestRevision) {
+        identityMismatch('Execute result does not match the requested manifest revision.');
+      }
+      if (result.attempt.idempotencyKey !== params.idempotencyKey) {
+        identityMismatch('Execute result attempt does not match the requested idempotency key.');
+      }
+      if (result.attempt.externalRevision !== params.expectedExternalRevision) {
+        identityMismatch('Execute result attempt does not match the requested external revision.');
+      }
       return result;
     },
     async retryExecutionAttempt(params, requestOptions) {
@@ -552,6 +579,9 @@ export const createFrontendExternalActionClient = (
       if (result.attempt.executionId !== params.executionId) {
         identityMismatch('Retry result attempt does not match the requested execution.');
       }
+      if (result.attempt.causationId !== params.causationId) {
+        identityMismatch('Retry result attempt does not match the requested causation id.');
+      }
       return result;
     },
     async verifyExternalAction(params, requestOptions) {
@@ -565,6 +595,19 @@ export const createFrontendExternalActionClient = (
       assertCommandIdentity(result, params, 'Verify result');
       if (result.verification.executionId !== params.executionId) {
         identityMismatch('Verify result verification does not match the requested execution.');
+      }
+      if (params.attemptId !== undefined && result.verification.attemptId !== params.attemptId) {
+        identityMismatch('Verify result verification does not match the requested attempt.');
+      }
+      if (result.verification.targetRevision !== params.expectedTargetRevision) {
+        identityMismatch(
+          'Verify result verification does not match the requested target revision.',
+        );
+      }
+      if (result.verification.externalRevision !== params.expectedExternalRevision) {
+        identityMismatch(
+          'Verify result verification does not match the requested external revision.',
+        );
       }
       return result;
     },
@@ -590,6 +633,12 @@ export const createFrontendExternalActionClient = (
       assertCommandIdentity(result, params, 'Rollback result');
       if (result.rollback.actionId !== params.actionId) {
         identityMismatch('Rollback result rollback does not match the requested action.');
+      }
+      if (
+        result.rollback.executionRef !== undefined &&
+        result.rollback.executionRef.resourceId !== params.executionId
+      ) {
+        identityMismatch('Rollback result rollback does not match the requested execution.');
       }
       return result;
     },

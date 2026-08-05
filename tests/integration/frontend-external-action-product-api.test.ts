@@ -197,6 +197,8 @@ const scopeMatrixCases: ReadonlyArray<{
     name: 'action:verify grants verify but NOT execute/cancel/rollback/audit',
     scopes: ['action:verify'],
     checks: [
+      // 404 proves VERIFY_EXTERNAL_ACTION is granted (resource missing).
+      { url: '/verify', payload: scopePayloads.verify, expected: 404 },
       { url: '/execute', payload: scopePayloads.execute, expected: 403 },
       { url: '/cancel', payload: scopePayloads.cancel, expected: 403 },
       { url: '/rollback', payload: scopePayloads.rollback, expected: 403 },
@@ -207,6 +209,8 @@ const scopeMatrixCases: ReadonlyArray<{
     name: 'action:cancel grants cancel but NOT rollback/execute/verify',
     scopes: ['action:cancel'],
     checks: [
+      // 404 proves CANCEL_EXTERNAL_ACTION is granted (resource missing).
+      { url: '/cancel', payload: scopePayloads.cancel, expected: 404 },
       { url: '/rollback', payload: scopePayloads.rollback, expected: 403 },
       { url: '/execute', payload: scopePayloads.execute, expected: 403 },
       { url: '/verify', payload: scopePayloads.verify, expected: 403 },
@@ -216,9 +220,22 @@ const scopeMatrixCases: ReadonlyArray<{
     name: 'action:rollback grants rollback but NOT cancel/execute/verify',
     scopes: ['action:rollback'],
     checks: [
+      // 404 proves ROLLBACK_EXTERNAL_ACTION is granted (resource missing).
+      { url: '/rollback', payload: scopePayloads.rollback, expected: 404 },
       { url: '/cancel', payload: scopePayloads.cancel, expected: 403 },
       { url: '/execute', payload: scopePayloads.execute, expected: 403 },
       { url: '/verify', payload: scopePayloads.verify, expected: 403 },
+    ],
+  },
+  {
+    name: 'action:approve grants approve but NOT execute/validate/audit',
+    scopes: ['action:approve'],
+    checks: [
+      // 404 proves APPROVE_EXTERNAL_ACTION is granted (resource missing).
+      { url: '/approve', payload: scopePayloads.approve, expected: 404 },
+      { url: '/execute', payload: scopePayloads.execute, expected: 403 },
+      { url: '/validate', payload: scopePayloads.validate, expected: 403 },
+      { url: '/audit', payload: scopePayloads.audit, expected: 403 },
     ],
   },
   {
@@ -565,6 +582,73 @@ describe('FE-P4-S2 WP4 External Action Protected Product API', () => {
         });
         expect(response.statusCode, `${scopes.join(',')} -> ${check.url}`).toBe(check.expected);
       }
+    },
+  );
+
+  it.each([
+    {
+      name: 'action:read alone exposes neither credential nor budget',
+      scopes: ['action:candidate:stage', 'action:read'],
+      credential: false,
+      budget: false,
+    },
+    {
+      name: 'action:read + action:budget:read exposes budget only',
+      scopes: ['action:candidate:stage', 'action:read', 'action:budget:read'],
+      credential: false,
+      budget: true,
+    },
+    {
+      name: 'action:read + action:credential:manage exposes credential only',
+      scopes: ['action:candidate:stage', 'action:read', 'action:credential:manage'],
+      credential: true,
+      budget: false,
+    },
+    {
+      name: 'owner exposes both credential and budget',
+      scopes: ['owner'],
+      credential: true,
+      budget: true,
+    },
+  ])(
+    'Detail exposes credential/budget only under their own least-privilege scopes: $name',
+    async ({ scopes, credential, budget }) => {
+      await auth.bootstrapOwner({
+        accountId: 'detail-scope-owner',
+        projectId: PROJECT_ID,
+        scopes: [...scopes],
+        sensitivityClearance: 'private',
+      });
+      const principal = await auth.findPrincipalByAccountId('detail-scope-owner');
+      if (!principal) throw new Error('Detail scope fixture Principal was not created.');
+      const session = await auth.createSession(
+        principal.principalId,
+        PROJECT_ID,
+        new Date(Date.now() + 60_000).toISOString(),
+      );
+      const app = await buildApplication();
+      const cookie = `shotgun_session=${session.sessionToken}`;
+      const token = await csrf(app, cookie);
+      const headers = { cookie, 'x-csrf-token': token.csrfToken ?? '' };
+
+      const validated = await app.server.inject({
+        method: 'POST',
+        url: '/product-api/frontend/external-action/validate',
+        headers,
+        payload: scopePayloads.validate,
+      });
+      expect(validated.statusCode).toBe(200);
+
+      const detail = await app.server.inject({
+        method: 'POST',
+        url: '/product-api/frontend/external-action/actions/detail',
+        headers,
+        payload: { schemaVersion: '1.0.0', actionId: 'action-1' },
+      });
+      expect(detail.statusCode).toBe(200);
+      const body = detail.json<{ credential?: unknown; budget?: unknown }>();
+      expect('credential' in body, `${scopes.join(',')} credential`).toBe(credential);
+      expect('budget' in body, `${scopes.join(',')} budget`).toBe(budget);
     },
   );
 });

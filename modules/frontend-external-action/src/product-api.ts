@@ -2352,6 +2352,7 @@ export class FrontendExternalActionProductCoordinator {
       if (restricted.aggregateState === 'ACCESS_RESTRICTED') {
         return { schemaVersion: '1.0.0', action: restricted, attempts: [] };
       }
+      const capabilities = externalActionCapabilitiesForScope(scope);
       const attempts = await repositories.attempts.findByExecution(
         action.latestExecutionRef?.resourceId ?? '',
       );
@@ -2379,10 +2380,16 @@ export class FrontendExternalActionProductCoordinator {
         result: await repositories.results.findCurrent(action.actionId),
         rollback: await repositories.rollbacks.find(action.actionId),
         compensation: await repositories.compensations.find(action.actionId),
-        credential: await repositories.credentials.findByConnector(
-          this.engine.identity.connectorId,
-        ),
-        budget: await repositories.budgets.findByProject(scope.activeProjectId),
+        // Least-privilege (Review 4863783684 item 1): the credential view is
+        // exposed only with READ_CREDENTIAL and the budget view only with
+        // READ_BUDGET — `action:read` alone must NOT receive them. Each
+        // optional field is omitted entirely when the scope does not grant it.
+        credential: capabilities.includes('READ_CREDENTIAL')
+          ? await repositories.credentials.findByConnector(this.engine.identity.connectorId)
+          : undefined,
+        budget: capabilities.includes('READ_BUDGET')
+          ? await repositories.budgets.findByProject(scope.activeProjectId)
+          : undefined,
       };
     });
   }
@@ -2432,6 +2439,13 @@ export class FrontendExternalActionProductCoordinator {
         externalActionFailure('EXTERNAL_ACTION_NOT_FOUND', 'The External Action was not found.');
       }
       this.assertProjectAndPolicy(action, scope);
+      // Approval carries Manifest, Target, External Revision, Actor, Access and
+      // Policy Revision — the same protected payload as the other individual
+      // reads, so a Hidden / Access-restricted action is blocked identically
+      // (Review 4863783684 item 2).
+      if (action.accessMasking === 'HIDDEN' || action.aggregateState === 'ACCESS_RESTRICTED') {
+        externalActionFailure('EXTERNAL_ACTION_STALE', 'The External Action is access-restricted.');
+      }
       const approval = action.approvalRef
         ? await repositories.approvals.findById(action.approvalRef.resourceId)
         : undefined;

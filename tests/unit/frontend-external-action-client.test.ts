@@ -241,6 +241,7 @@ const rollback = {
   resourceProjectId: PROJECT,
   effectiveProjectId: PROJECT,
   status: 'PREPARED' as const,
+  executionRef: resourceRef('execution', 'execution-1'),
   updatedAt: '2026-08-05T00:00:00.000Z',
 };
 
@@ -279,7 +280,7 @@ const identityBindingCases = [
     result: () => validateResult(),
     tamper: (value: ReturnType<typeof validateResult>) => ({
       ...value,
-      idempotencyKey: 'idem-v-OTHER',
+      candidate: { ...value.candidate, candidateId: 'candidate-OTHER' },
     }),
     call: (client: ReturnType<typeof createFrontendExternalActionClient>) =>
       client.validateActionCandidate(identityBindingCases[0].params),
@@ -334,7 +335,7 @@ const identityBindingCases = [
     }),
     tamper: (value: { approval: { actionId: string } }) => ({
       ...value,
-      approval: { ...value.approval, actionId: 'action-OTHER' },
+      approval: { ...value.approval, manifestId: 'manifest-OTHER' },
     }),
     call: (client: FrontendExternalActionClient) =>
       client.approveExternalAction(identityBindingCases[2].params),
@@ -362,7 +363,7 @@ const identityBindingCases = [
     }),
     tamper: (value: { preflight: { actionId: string } }) => ({
       ...value,
-      preflight: { ...value.preflight, actionId: 'action-OTHER' },
+      preflight: { ...value.preflight, manifestRevision: 99 },
     }),
     call: (client: FrontendExternalActionClient) =>
       client.preflightExternalAction(identityBindingCases[3].params),
@@ -390,9 +391,12 @@ const identityBindingCases = [
       execution,
       attempt,
     }),
-    tamper: (value: { execution: { actionId: string } }) => ({
+    tamper: (value: {
+      execution: { actionId: string };
+      attempt: { externalRevision: string };
+    }) => ({
       ...value,
-      execution: { ...value.execution, actionId: 'action-OTHER' },
+      attempt: { ...value.attempt, externalRevision: 'ext-OTHER' },
     }),
     call: (client: FrontendExternalActionClient) =>
       client.executeExternalAction(identityBindingCases[4].params),
@@ -418,9 +422,9 @@ const identityBindingCases = [
       actionId: 'action-1',
       attempt,
     }),
-    tamper: (value: { attempt: { executionId: string } }) => ({
+    tamper: (value: { attempt: { executionId: string; causationId: string } }) => ({
       ...value,
-      attempt: { ...value.attempt, executionId: 'execution-OTHER' },
+      attempt: { ...value.attempt, causationId: 'cause-OTHER' },
     }),
     call: (client: FrontendExternalActionClient) =>
       client.retryExecutionAttempt(identityBindingCases[5].params),
@@ -446,9 +450,9 @@ const identityBindingCases = [
       actionId: 'action-1',
       verification,
     }),
-    tamper: (value: { verification: { executionId: string } }) => ({
+    tamper: (value: { verification: { executionId: string; externalRevision: string } }) => ({
       ...value,
-      verification: { ...value.verification, executionId: 'execution-OTHER' },
+      verification: { ...value.verification, externalRevision: 'ext-OTHER' },
     }),
     call: (client: FrontendExternalActionClient) =>
       client.verifyExternalAction(identityBindingCases[6].params),
@@ -498,9 +502,12 @@ const identityBindingCases = [
       actionId: 'action-1',
       rollback,
     }),
-    tamper: (value: { rollback: { actionId: string } }) => ({
+    tamper: (value: { rollback: { actionId: string; executionRef?: { resourceId: string } } }) => ({
       ...value,
-      rollback: { ...value.rollback, actionId: 'action-OTHER' },
+      rollback: {
+        ...value.rollback,
+        executionRef: { ...value.rollback.executionRef, resourceId: 'execution-OTHER' },
+      },
     }),
     call: (client: FrontendExternalActionClient) =>
       client.rollbackExternalAction(identityBindingCases[8].params),

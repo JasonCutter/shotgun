@@ -1945,7 +1945,7 @@ REMEDIATION_REQUIRED; Item 6: RESOLVED**. The three PARTIAL items are resolved i
 GPT review **4866122577** returned **BLOCKED / EXACT FINAL WP5 CORRECTION REQUIRED** with three
 exact corrections inside the approved WP5 scope (Items 2, 3, 5). CI **#560 / #561 / #562** were
 NOT re-run per the review instruction. This report records the correction on code head `c0a2db7`
-(CI **#563**) and report head `<REPORT_HEAD>` (CI **#564**).
+(CI **#563**) and report head `f39615b` (CI **#564**).
 
 ### Item status after this correction
 
@@ -2014,4 +2014,14 @@ NOT re-run per the review instruction. This report records the correction on cod
   timing flakes pass in isolation (unrelated to WP5).
 - `tsc --noEmit` (root and `apps/shotgun-web`) — clean. ESLint — clean. Prettier — clean.
 - Automatic CI on the code head `c0a2db7` — run **#563**: Quality, Frontend, Required Gates
-  **SUCCESS**. Report head `<REPORT_HEAD>` CI **#564**. (Metadata recorded below.)
+  **SUCCESS**. Report head `f39615b` CI **#564** **SUCCESS** (metadata recorded below).
+
+### Final metadata (report 23)
+
+- **WP5 exact final correction code head**: `c0a2db7751d2da103e817d81786d4930497076e4` — CI
+  **#563** / `31022637736`: Quality, Frontend, Required Gates **SUCCESS**.
+- **Report 23 head**: `f39615b52f5e528d9af9d07bf9d0545b779108fb` — CI **#564** /
+  `31022977623`: Quality, Frontend, Required Gates **SUCCESS**.
+- PR #66 remains `OPEN / DRAFT / MERGEABLE`. CI **#560 / #561 / #562** were NOT re-run.
+- Authority state: WP5 `REMEDIATION_REQUIRED NOT_APPROVED` (exact correction submitted for
+  re-review); WP6 `NOT_AUTHORIZED`.

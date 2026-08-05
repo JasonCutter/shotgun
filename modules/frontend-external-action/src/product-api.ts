@@ -102,6 +102,8 @@ import type {
   ExternalActionEnginePort,
   ExternalActionExecuteOutcomeV1,
   ExternalActionExecuteRequestV1,
+  ExternalActionPreflightOutcomeV1,
+  ExternalActionPreflightRequestV1,
 } from './external-action-engine-port.js';
 import type {
   ExternalActionRepositoryBoundaryPort,
@@ -309,6 +311,27 @@ export class FrontendExternalActionProductCoordinator {
     }
   }
 
+  /**
+   * True when the action's CURRENT manifest is the rollback manifest of a
+   * prepared/approved/executing rollback — i.e. the governed commands are
+   * operating on the rollback (state reversal) lifecycle rather than the
+   * forward operation.
+   */
+  private async rollbackContextFor(
+    repositories: ExternalActionTransactionRepositoriesV1,
+    action: ExternalActionV1,
+  ): Promise<{ readonly active: boolean }> {
+    const rollback = await repositories.rollbacks.find(action.actionId);
+    if (!rollback || !rollback.manifestRef || !action.manifestRef) return { active: false };
+    return {
+      active:
+        rollback.manifestRef.resourceId === action.manifestRef.resourceId &&
+        (rollback.status === 'PREPARED' ||
+          rollback.status === 'APPROVED' ||
+          rollback.status === 'EXECUTING'),
+    };
+  }
+
   private async appendAudit(
     repositories: ExternalActionTransactionRepositoriesV1,
     action: ExternalActionV1,
@@ -488,12 +511,15 @@ export class FrontendExternalActionProductCoordinator {
         const now = this.nowIso();
         const existingCandidate = await repositories.candidates.findByActionId(request.actionId);
         // Risk decision reuse is bound to the candidate semantic digest (which
-        // covers operation/target/parameter/evidence/compensation) and the
-        // policy context. A changed meaning creates a new numbered candidate
-        // revision and a new risk decision (AC-02/ADR-129).
+        // covers operation/target/parameter/evidence/compensation) AND the
+        // policy context: the same candidate meaning under a changed policy
+        // context requires a NEW risk decision (AC-02/ADR-129; Review
+        // 4859910949).
         const semanticsUnchanged =
           existingCandidate !== undefined &&
-          existingCandidate.candidateDigest === commandSemanticDigest;
+          existingCandidate.candidateDigest === commandSemanticDigest &&
+          (existing?.policyContextRevision ?? scope.policyContextRevision) ===
+            scope.policyContextRevision;
         const riskDecisionId =
           semanticsUnchanged && existingCandidate
             ? existingCandidate.riskDecisionRef.resourceId
@@ -799,6 +825,20 @@ export class FrontendExternalActionProductCoordinator {
           updatedAt: now,
         };
         await repositories.aggregates.update(updated);
+        // An explicit approval of the rollback manifest transitions the
+        // rollback resource PREPARED → APPROVED (rollback is never approved
+        // implicitly — the user explicitly approves the reversal).
+        if ((await this.rollbackContextFor(repositories, action)).active) {
+          const rollback = await repositories.rollbacks.find(action.actionId);
+          if (rollback && rollback.status === 'PREPARED') {
+            await repositories.rollbacks.update({
+              ...rollback,
+              status: 'APPROVED',
+              approvalRef: externalActionResourceRef('approval', approval.approvalId),
+              updatedAt: now,
+            });
+          }
+        }
         await this.appendAudit(
           repositories,
           updated,
@@ -896,7 +936,10 @@ export class FrontendExternalActionProductCoordinator {
           runAt: now,
           expiresAt: new Date(Date.parse(now) + 30 * 60 * 1000).toISOString(),
         };
-        // Engine revalidates target state + external revision.
+        // Engine revalidates target state + external revision. A rollback
+        // preflight is flagged to the engine (rollback semantics), never
+        // presented as the forward operation.
+        const rollbackContext = await this.rollbackContextFor(repositories, action);
         const outcome = await this.engine.preflight({
           scope: this.engineScope(scope),
           actionId: action.actionId,
@@ -910,6 +953,7 @@ export class FrontendExternalActionProductCoordinator {
             ),
           manifest,
           preflight,
+          rollback: rollbackContext.active,
         });
         // ALREADY_APPLIED is preserved as a Product result (the operation is
         // already reflected externally; it blocks re-execution).
@@ -1095,6 +1139,20 @@ export class FrontendExternalActionProductCoordinator {
           updatedAt: now,
         };
         await repositories.aggregates.update(executing);
+        // A rollback execution transitions the rollback resource to EXECUTING
+        // and pins its execution ref to the rollback execution.
+        const rollbackContext = await this.rollbackContextFor(repositories, action);
+        if (rollbackContext.active) {
+          const rollback = await repositories.rollbacks.find(action.actionId);
+          if (rollback && (rollback.status === 'PREPARED' || rollback.status === 'APPROVED')) {
+            await repositories.rollbacks.update({
+              ...rollback,
+              status: 'EXECUTING',
+              executionRef: externalActionResourceRef('execution', executionId),
+              updatedAt: now,
+            });
+          }
+        }
         return {
           producedResources: [
             {
@@ -1123,10 +1181,15 @@ export class FrontendExternalActionProductCoordinator {
               ),
             manifest,
             attempt,
+            rollback: rollbackContext.active,
           },
         };
       },
-      finalize: async (repositories, engineResult) => {
+      executeEngine: async ({ engineInput }) => ({
+        execute: await this.engine.execute(engineInput),
+      }),
+      finalize: async (repositories, outcome) => {
+        const engineResult = outcome.execute;
         const action = await repositories.aggregates.findById(request.actionId);
         if (!action) {
           externalActionFailure('EXTERNAL_ACTION_NOT_FOUND', 'The External Action was not found.');
@@ -1174,6 +1237,22 @@ export class FrontendExternalActionProductCoordinator {
           updatedAt: completedAt,
         };
         await repositories.aggregates.update(updated);
+        // A rollback execution reaches ROLLED_BACK only through verification;
+        // a FAILED/OUTCOME_UNKNOWN rollback execution marks the rollback
+        // resource accordingly (connector success alone never confirms the
+        // reversal — AC-11/Review 4859910949).
+        if ((await this.rollbackContextFor(repositories, action)).active) {
+          const rollback = await repositories.rollbacks.find(action.actionId);
+          if (rollback && rollback.status === 'EXECUTING') {
+            if (engineResult.status === 'FAILED' || engineResult.status === 'OUTCOME_UNKNOWN') {
+              await repositories.rollbacks.update({
+                ...rollback,
+                status: engineResult.status === 'FAILED' ? 'FAILED' : 'OUTCOME_UNKNOWN',
+                updatedAt: completedAt,
+              });
+            }
+          }
+        }
         await this.appendAudit(
           repositories,
           updated,
@@ -1296,7 +1375,11 @@ export class FrontendExternalActionProductCoordinator {
           );
         }
         // Retry runs a NEW target-state preflight before re-executing; the
-        // stored external revision comparison alone is not enough (AC-08).
+        // stored external revision comparison alone is not enough (AC-08). The
+        // started attempt/execution/aggregate and an initial DENIED preflight
+        // record are made durable FIRST (Phase 1) so a preflight timeout or
+        // exception can never leave the retry without a recoverable resource
+        // (Review 4859910949).
         const preflight: PreflightV1 = {
           schemaVersion: '1.0.0',
           preflightId: generatedIdentity('preflight'),
@@ -1323,34 +1406,8 @@ export class FrontendExternalActionProductCoordinator {
             'EXTERNAL_ACTION_NOT_FOUND',
             'The External Action is access-restricted.',
           );
-        const outcome = await this.engine.preflight({
-          scope: this.engineScope(scope),
-          actionId: action.actionId,
-          actionRevision: action.actionRevision,
-          operation: action.operation,
-          targetRef: retryTargetRef,
-          manifest,
-          preflight,
-        });
-        if (outcome.status === 'ALREADY_APPLIED') {
-          externalActionFailure(
-            'EXTERNAL_TARGET_CHANGED',
-            'The operation is already applied externally; the retry is blocked.',
-          );
-        }
-        if (outcome.status === 'DENIED') {
-          externalActionFailure(
-            'ACTION_PREFLIGHT_FAILED',
-            outcome.reason ?? 'The retry preflight revalidation failed.',
-          );
-        }
-        await repositories.preflights.insert({
-          ...preflight,
-          status: 'READY',
-          targetStateRevalidated: outcome.targetStateRevalidated,
-          externalRevisionRevalidated: outcome.externalRevisionRevalidated,
-        });
         // Phase 1 persists the started retry attempt/execution (recoverable).
+        await repositories.preflights.insert(preflight);
         await repositories.attempts.insert(attempt);
         const retryingExecution: ExecutionV1 = {
           ...execution,
@@ -1390,12 +1447,122 @@ export class FrontendExternalActionProductCoordinator {
             manifest,
             attempt,
           },
+          preflightInput: {
+            scope: this.engineScope(scope),
+            actionId: action.actionId,
+            actionRevision: action.actionRevision,
+            operation: action.operation,
+            targetRef: retryTargetRef,
+            manifest,
+            preflight,
+          },
         };
       },
-      finalize: async (repositories, engineResult) => {
+      // Retry preflight runs OUTSIDE the DB transaction (durable resources
+      // were already committed). A READY preflight is stored as READY only
+      // when BOTH revalidation flags are actually set.
+      executeEngine: async ({ engineInput, preflightInput }) => {
+        let preflight: ExternalActionPreflightOutcomeV1 | undefined;
+        try {
+          preflight = preflightInput ? await this.engine.preflight(preflightInput) : undefined;
+        } catch {
+          preflight = {
+            status: 'DENIED',
+            reason: 'retry preflight revalidation threw',
+            targetStateRevalidated: false,
+            externalRevisionRevalidated: false,
+          };
+        }
+        if (preflight) {
+          if (preflight.status !== 'READY') return { preflight };
+          if (!preflight.targetStateRevalidated || !preflight.externalRevisionRevalidated) {
+            return {
+              preflight: {
+                ...preflight,
+                status: 'DENIED' as const,
+                reason: 'retry preflight revalidation flags were not set',
+              },
+            };
+          }
+        }
+        let execute: ExternalActionExecuteOutcomeV1;
+        try {
+          execute = await this.engine.execute(engineInput);
+        } catch {
+          execute = {
+            status: 'OUTCOME_UNKNOWN',
+            correlationId: engineInput.attempt.correlationId,
+          };
+        }
+        return { preflight, execute };
+      },
+      finalizeDenied: async (repositories, preflight) => {
         const action = await repositories.aggregates.findById(request.actionId);
         if (!action) {
           externalActionFailure('EXTERNAL_ACTION_NOT_FOUND', 'The External Action was not found.');
+        }
+        const executionId = action.latestExecutionRef?.resourceId ?? request.executionId;
+        const attempts = await repositories.attempts.lockByExecution(executionId);
+        const attempt = attempts[attempts.length - 1];
+        if (attempt) {
+          await repositories.attempts.insert({
+            ...attempt,
+            status: 'FAILED',
+            completedAt: this.nowIso(),
+          });
+        }
+        const execution = await repositories.executions.findById(executionId);
+        if (execution) {
+          await repositories.executions.update({
+            ...execution,
+            status: 'FAILED',
+            completedAt: this.nowIso(),
+          });
+        }
+        const retryPreflight = await repositories.preflights.findCurrent(action.actionId);
+        if (retryPreflight?.preflightDigest === commandSemanticDigest) {
+          await repositories.preflights.insert({
+            ...retryPreflight,
+            status: 'DENIED',
+            reasons: [preflight.reason ?? 'retry preflight revalidation failed'],
+            targetStateRevalidated: preflight.targetStateRevalidated,
+            externalRevisionRevalidated: preflight.externalRevisionRevalidated,
+          });
+        }
+        const failed: ExternalActionV1 = {
+          ...action,
+          actionRevision: action.actionRevision + 1,
+          status: 'FAILED',
+          updatedAt: this.nowIso(),
+        };
+        await repositories.aggregates.update(failed);
+        await this.appendAudit(
+          repositories,
+          failed,
+          'ACTION_FAILED',
+          'Retry blocked by a denied preflight revalidation.',
+          await this.nextAuditSequence(repositories, action.actionId),
+        );
+      },
+      finalize: async (repositories, outcome) => {
+        const engineResult = outcome.execute;
+        const action = await repositories.aggregates.findById(request.actionId);
+        if (!action) {
+          externalActionFailure('EXTERNAL_ACTION_NOT_FOUND', 'The External Action was not found.');
+        }
+        // The READY preflight is persisted only now, with the actual
+        // revalidation flags from the connector (never assumed). The retry's
+        // preflight is identified by its digest (commandSemanticDigest).
+        const retryPreflight = outcome.preflight
+          ? await repositories.preflights.findCurrent(action.actionId)
+          : undefined;
+        if (outcome.preflight && retryPreflight?.preflightDigest === commandSemanticDigest) {
+          await repositories.preflights.insert({
+            ...retryPreflight,
+            status: 'READY',
+            targetStateRevalidated: outcome.preflight.targetStateRevalidated,
+            externalRevisionRevalidated: outcome.preflight.externalRevisionRevalidated,
+          });
         }
         const executionId = action.latestExecutionRef?.resourceId ?? request.executionId;
         const attempts = await repositories.attempts.lockByExecution(executionId);
@@ -1541,6 +1708,7 @@ export class FrontendExternalActionProductCoordinator {
           );
         }
         const now = this.nowIso();
+        const rollbackContext = await this.rollbackContextFor(repositories, action);
         const outcome = await this.engine.verify({
           scope: this.engineScope(scope),
           actionId: action.actionId,
@@ -1549,7 +1717,12 @@ export class FrontendExternalActionProductCoordinator {
           expectedTargetRevision: request.expectedTargetRevision,
           expectedExternalRevision: request.expectedExternalRevision,
           executionId: execution.executionId,
-          attemptId: request.attemptId,
+          // The external verification call is pinned to the ACTUAL latest
+          // SUCCEEDED attempt (never undefined / never an arbitrary attempt).
+          attemptId: latestAttempt.attemptId,
+          // A rollback verification confirms the state reversal (rollback
+          // semantics), never the forward operation.
+          rollback: rollbackContext.active,
         });
         // Target-state verification evidence: an APPLIED verification without a
         // real observed digest is never fabricated (AC-09/AC-20).
@@ -1604,19 +1777,45 @@ export class FrontendExternalActionProductCoordinator {
           };
           await repositories.results.insert(result);
         }
+        const rollbackActive = rollbackContext.active && outcome.status === 'APPLIED';
         const updated: ExternalActionV1 = {
           ...action,
           actionRevision: action.actionRevision + 1,
-          status: outcome.status === 'APPLIED' ? 'VERIFIED' : 'VERIFICATION_FAILED',
+          status:
+            outcome.status === 'APPLIED'
+              ? rollbackActive
+                ? 'ROLLED_BACK'
+                : 'VERIFIED'
+              : 'VERIFICATION_FAILED',
           updatedAt: now,
         };
         await repositories.aggregates.update(updated);
+        // An APPLIED rollback verification is what finally confirms the
+        // reversal: the rollback resource transitions EXECUTING → ROLLED_BACK
+        // with its verification ref (connector success alone never confirms
+        // ROLLED_BACK — AC-11/Review 4859910949).
+        if (rollbackActive) {
+          const rollback = await repositories.rollbacks.find(action.actionId);
+          if (rollback && rollback.status === 'EXECUTING') {
+            await repositories.rollbacks.update({
+              ...rollback,
+              status: 'ROLLED_BACK',
+              verificationRef: externalActionResourceRef(
+                'verification',
+                verification.verificationId,
+              ),
+              updatedAt: now,
+            });
+          }
+        }
         await this.appendAudit(
           repositories,
           updated,
           outcome.status === 'APPLIED' ? 'ACTION_VERIFIED' : 'ACTION_VERIFICATION_FAILED',
           outcome.status === 'APPLIED'
-            ? 'External action verified against the target state.'
+            ? rollbackActive
+              ? 'Rollback verified against the external target state.'
+              : 'External action verified against the target state.'
             : 'External action verification failed against the target state.',
           await this.nextAuditSequence(repositories, action.actionId),
         );
@@ -1710,13 +1909,13 @@ export class FrontendExternalActionProductCoordinator {
   ): Promise<RollbackExternalActionResultV1> {
     this.requireCapability(scope, 'ROLLBACK_EXTERNAL_ACTION');
     const commandSemanticDigest = frontendExternalActionRollbackDigest(request);
-    return this.runConnectorCommand<RollbackExternalActionResultV1>({
+    return this.runCommand<RollbackExternalActionResultV1>({
       scope,
       commandType: FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.rollback,
       request,
       commandSemanticDigest,
       resourceProjectId: scope.activeProjectId,
-      persistStarted: async (repositories) => {
+      actionOnRepositories: async (repositories) => {
         const action = await this.aggregateFor(repositories, request.actionId);
         this.assertProjectAndPolicy(action, scope);
         if (!(
@@ -1748,9 +1947,13 @@ export class FrontendExternalActionProductCoordinator {
           );
         }
         const now = this.nowIso();
-        // A Rollback is a governed state reversal with its own manifest,
-        // approval (EXTERNAL_ACTION purpose) and execution — never assumed
-        // available and never immediate (ADR-129, AC-11/AC-12).
+        // Rollback is a SEPARATE governed state reversal: this command only
+        // PREPARES the reversal (own manifest, own risk decision, PREPARED
+        // rollback resource, ROLLBACK_AVAILABLE aggregate). It never
+        // auto-issues approval, never auto-preflights and never auto-executes
+        // — the user explicitly approves the rollback manifest, then preflights
+        // and executes/verifies it like any other governed action
+        // (AC-11/ADR-129; Review 4859910949).
         const rollbackManifestRevision =
           (await this.currentManifestRevision(repositories, action.actionId)) + 1;
         const rollbackManifestId = generatedIdentity('manifest');
@@ -1797,32 +2000,9 @@ export class FrontendExternalActionProductCoordinator {
           createdBy: scope.actor,
         };
         await repositories.manifests.insert(rollbackManifest);
-        const rollbackApproval: ExternalActionApprovalV1 = {
-          schemaVersion: '1.0.0',
-          approvalId: generatedIdentity('approval'),
-          purpose: 'EXTERNAL_ACTION',
-          actionId: action.actionId,
-          resourceProjectId: action.resourceProjectId,
-          effectiveProjectId: action.effectiveProjectId,
-          manifestId: rollbackManifestId,
-          manifestRevision: rollbackManifestRevision,
-          manifestDigest: rollbackManifest.manifestDigest,
-          targetId: rollbackManifest.targetId,
-          targetRevision: rollbackManifest.targetRevision,
-          targetDigest: rollbackManifest.targetDigest,
-          externalRevision: rollbackManifest.externalRevision,
-          actor: scope.actor,
-          projectId: scope.activeProjectId,
-          accessRevision: scope.accessRevision,
-          policyContextRevision: scope.policyContextRevision,
-          reason: `Rollback of ${action.actionId}`,
-          issuedAt: now,
-          expiresAt: new Date(Date.parse(now) + EXTERNAL_ACTION_APPROVAL_TTL_MS).toISOString(),
-          status: 'ACTIVE',
-        };
-        await repositories.approvals.insert(rollbackApproval);
         // Rollback has its OWN risk decision (rollback semantics), never a
-        // reuse of the forward-operation decision (AC-11/ADR-129).
+        // reuse of the forward-operation decision; it is bound to the
+        // Aggregate authority via the aggregate riskDecisionRef (AC-11).
         const rollbackRiskDecision: RiskDecisionV1 = {
           schemaVersion: '1.0.0',
           riskDecisionId: generatedIdentity('risk'),
@@ -1843,219 +2023,53 @@ export class FrontendExternalActionProductCoordinator {
           actionId: action.actionId,
           resourceProjectId: action.resourceProjectId,
           effectiveProjectId: action.effectiveProjectId,
-          status: 'EXECUTING',
+          status: 'PREPARED',
           manifestRef: externalActionResourceRef(
             'manifest',
             rollbackManifestId,
             rollbackManifestRevision,
           ),
-          approvalRef: externalActionResourceRef('approval', rollbackApproval.approvalId),
           executionRef: externalActionResourceRef('execution', execution.executionId),
           updatedAt: now,
         };
         await repositories.rollbacks.insert(rollback);
-        // Rollback execution (governed, through the engine port). The attempt
-        // starts IN_PROGRESS inside transaction 1 so a connector failure is
-        // recoverable through the original command identity.
-        const rollbackExecutionId = generatedIdentity('execution');
-        const rollbackAttempt: ExecutionAttemptV1 = {
-          schemaVersion: '1.0.0',
-          attemptId: generatedIdentity('attempt'),
-          attemptNumber: 1,
-          executionId: rollbackExecutionId,
-          actionId: action.actionId,
-          resourceProjectId: action.resourceProjectId,
-          effectiveProjectId: action.effectiveProjectId,
-          idempotencyKey: request.idempotencyKey,
-          status: 'IN_PROGRESS',
-          policyContextRevision: action.policyContextRevision,
-          externalRevision: sourceManifest.externalRevision,
-          correlationId: generatedIdentity('corr'),
-          startedAt: now,
-        };
-        const rollbackExecution: ExecutionV1 = {
-          schemaVersion: '1.0.0',
-          executionId: rollbackExecutionId,
-          concreteKind: 'EXECUTION',
-          actionId: action.actionId,
-          resourceProjectId: action.resourceProjectId,
-          effectiveProjectId: action.effectiveProjectId,
-          manifestRevision: rollbackManifestRevision,
-          status: 'IN_PROGRESS',
-          attemptCount: 1,
-          startedAt: now,
-          latestAttemptRef: externalActionResourceRef('attempt', rollbackAttempt.attemptId, 1),
-        };
-        const rollbackTargetRef =
-          action.targetRef ??
-          externalActionFailure(
-            'EXTERNAL_ACTION_NOT_FOUND',
-            'The External Action is access-restricted.',
-          );
-        // Rollback runs its OWN target-state preflight (rollback semantics)
-        // before the connector executes the reversal (AC-11/ADR-129).
-        const rollbackPreflight: PreflightV1 = {
-          schemaVersion: '1.0.0',
-          preflightId: generatedIdentity('preflight'),
-          concreteKind: 'PREFLIGHT',
-          actionId: action.actionId,
-          resourceProjectId: action.resourceProjectId,
-          effectiveProjectId: action.effectiveProjectId,
-          manifestRevision: rollbackManifestRevision,
-          preflightDigest: commandSemanticDigest,
-          status: 'DENIED',
-          reasons: [],
-          permissionRevalidated: true,
-          credentialRevalidated: true,
-          budgetRevalidated: true,
-          policyRevalidated: true,
-          targetStateRevalidated: false,
-          externalRevisionRevalidated: false,
-          runAt: now,
-          expiresAt: new Date(Date.parse(now) + 30 * 60 * 1000).toISOString(),
-        };
-        const preflightOutcome = await this.engine.preflight({
-          scope: this.engineScope(scope),
-          actionId: action.actionId,
-          actionRevision: action.actionRevision,
-          operation: action.operation,
-          targetRef: rollbackTargetRef,
-          manifest: rollbackManifest,
-          preflight: rollbackPreflight,
-        });
-        if (preflightOutcome.status === 'ALREADY_APPLIED') {
-          externalActionFailure(
-            'EXTERNAL_TARGET_CHANGED',
-            'The reversal is already applied externally; the rollback is blocked.',
-          );
-        }
-        if (preflightOutcome.status === 'DENIED') {
-          externalActionFailure(
-            'ACTION_PREFLIGHT_FAILED',
-            preflightOutcome.reason ?? 'The rollback preflight revalidation failed.',
-          );
-        }
-        await repositories.preflights.insert({
-          ...rollbackPreflight,
-          status: 'READY',
-          targetStateRevalidated: preflightOutcome.targetStateRevalidated,
-          externalRevisionRevalidated: preflightOutcome.externalRevisionRevalidated,
-        });
-        // Phase 1 persists the started rollback attempt/execution (recoverable).
-        await repositories.attempts.insert(rollbackAttempt);
-        await repositories.executions.insert(rollbackExecution);
-        const rollingBack: ExternalActionV1 = {
+        const prepared: ExternalActionV1 = {
           ...action,
           actionRevision: action.actionRevision + 1,
-          status: 'EXECUTING',
-          latestExecutionRef: externalActionResourceRef('execution', rollbackExecutionId),
+          status: 'ROLLBACK_AVAILABLE',
+          manifestRef: externalActionResourceRef(
+            'manifest',
+            rollbackManifestId,
+            rollbackManifestRevision,
+          ),
+          riskDecisionRef: externalActionResourceRef(
+            'riskDecision',
+            rollbackRiskDecision.riskDecisionId,
+            1,
+          ),
           updatedAt: now,
         };
-        await repositories.aggregates.update(rollingBack);
-        return {
-          producedResources: [
-            {
-              resourceKind: FRONTEND_EXTERNAL_ACTION_RESOURCE_KIND.action,
-              resourceId: action.actionId,
-            },
-            {
-              resourceKind: FRONTEND_EXTERNAL_ACTION_RESOURCE_KIND.execution,
-              resourceId: rollbackExecutionId,
-            },
-            {
-              resourceKind: FRONTEND_EXTERNAL_ACTION_RESOURCE_KIND.rollback,
-              resourceId: rollbackId,
-            },
-          ],
-          engineInput: {
-            scope: this.engineScope(scope),
-            actionId: action.actionId,
-            actionRevision: action.actionRevision,
-            operation: action.operation,
-            targetRef: rollbackTargetRef,
-            manifest: rollbackManifest,
-            attempt: rollbackAttempt,
-          },
-        };
-      },
-      finalize: async (repositories, engineResult) => {
-        const action = await repositories.aggregates.findById(request.actionId);
-        if (!action) {
-          externalActionFailure('EXTERNAL_ACTION_NOT_FOUND', 'The External Action was not found.');
-        }
-        const rollbackExecutionId = action.latestExecutionRef?.resourceId ?? '';
-        const attempts = await repositories.attempts.lockByExecution(rollbackExecutionId);
-        const rollbackAttempt = attempts[0];
-        if (!rollbackAttempt) {
-          externalActionFailure('ACTION_OUTCOME_NOT_FOUND', 'The rollback attempt was not found.');
-        }
-        const rollbackExecution = await repositories.executions.findById(rollbackExecutionId);
-        if (!rollbackExecution) {
-          externalActionFailure(
-            'ACTION_OUTCOME_NOT_FOUND',
-            'The rollback execution was not found.',
-          );
-        }
-        const rollbackCompletedAt = this.nowIso();
-        const finalRollbackAttempt: ExecutionAttemptV1 = {
-          ...rollbackAttempt,
-          status: engineResult.status,
-          completedAt: rollbackCompletedAt,
-          providerRef: engineResult.externalId
-            ? externalActionResourceRef(
-                'provider',
-                `${this.engine.identity.connectorId}:${engineResult.externalId}`,
-              )
-            : undefined,
-        };
-        const finalRollbackExecution: ExecutionV1 = {
-          ...rollbackExecution,
-          status: engineResult.status,
-          completedAt: rollbackCompletedAt,
-        };
-        await repositories.attempts.insert(finalRollbackAttempt);
-        await repositories.executions.insert(finalRollbackExecution);
-        const existingRollback = await repositories.rollbacks.find(action.actionId);
-        if (!existingRollback) {
-          externalActionFailure('EXTERNAL_ACTION_NOT_FOUND', 'The rollback was not found.');
-        }
-        // Connector success alone never confirms the reversal: ROLLED_BACK is
-        // reached only through a SUCCEEDED rollback execution (AC-11).
-        const rolledBack: RollbackV1 = {
-          ...existingRollback,
-          status:
-            engineResult.status === 'SUCCEEDED'
-              ? 'ROLLED_BACK'
-              : engineResult.status === 'OUTCOME_UNKNOWN'
-                ? 'OUTCOME_UNKNOWN'
-                : 'FAILED',
-          executionRef: externalActionResourceRef('execution', rollbackExecutionId),
-          updatedAt: rollbackCompletedAt,
-        };
-        await repositories.rollbacks.update(rolledBack);
-        const finalAction: ExternalActionV1 = {
-          ...action,
-          actionRevision: action.actionRevision + 1,
-          status:
-            engineResult.status === 'SUCCEEDED'
-              ? 'ROLLED_BACK'
-              : engineResult.status === 'OUTCOME_UNKNOWN'
-                ? 'OUTCOME_UNKNOWN'
-                : 'ROLLBACK_AVAILABLE',
-          latestExecutionRef: externalActionResourceRef('execution', rollbackExecutionId),
-          updatedAt: rollbackCompletedAt,
-        };
-        await repositories.aggregates.update(finalAction);
+        await repositories.aggregates.update(prepared);
         return {
           schemaVersion: '1.0.0',
-          outcome: engineResult.status === 'OUTCOME_UNKNOWN' ? 'OUTCOME_UNKNOWN' : 'COMPLETED',
+          outcome: 'COMPLETED',
           clientRequestId: request.clientRequestId,
           idempotencyKey: request.idempotencyKey,
           commandSemanticDigest,
           actionId: action.actionId,
-          rollback: rolledBack,
+          rollback,
         };
       },
+      producedResources: (result) => [
+        {
+          resourceKind: FRONTEND_EXTERNAL_ACTION_RESOURCE_KIND.action,
+          resourceId: result.actionId,
+        },
+        {
+          resourceKind: FRONTEND_EXTERNAL_ACTION_RESOURCE_KIND.rollback,
+          resourceId: result.rollback.rollbackId,
+        },
+      ],
     });
   }
 
@@ -2629,6 +2643,15 @@ export class FrontendExternalActionProductCoordinator {
             'The completed execution outcome is unavailable.',
           );
         }
+        // An in-flight (non-terminal) execution is never replayed as COMPLETED:
+        // the ledger only reaches COMPLETED with a terminal domain state, but
+        // this guard keeps the reconstruction honest (Review 4859910949).
+        if (execution.status === 'IN_PROGRESS' || attempt.status === 'IN_PROGRESS') {
+          externalActionFailure(
+            'OUTCOME_INDETERMINATE',
+            'The execution is still in progress; resolve it through the original command identity.',
+          );
+        }
         return {
           commandType,
           result: {
@@ -2649,6 +2672,13 @@ export class FrontendExternalActionProductCoordinator {
           externalActionFailure(
             'ACTION_OUTCOME_NOT_FOUND',
             'The completed retry outcome is unavailable.',
+          );
+        }
+        // An in-flight retry attempt is never replayed as COMPLETED.
+        if (attempt.status === 'IN_PROGRESS') {
+          externalActionFailure(
+            'OUTCOME_INDETERMINATE',
+            'The retry attempt is still in progress; resolve it through the original command identity.',
           );
         }
         return {
@@ -2751,11 +2781,26 @@ export class FrontendExternalActionProductCoordinator {
     readonly persistStarted: (repositories: ExternalActionTransactionRepositoriesV1) => Promise<{
       readonly producedResources: readonly ProducedResourceRef[];
       readonly engineInput: ExternalActionExecuteRequestV1;
+      readonly preflightInput?: ExternalActionPreflightRequestV1;
+    }>;
+    readonly executeEngine: (context: {
+      readonly engineInput: ExternalActionExecuteRequestV1;
+      readonly preflightInput?: ExternalActionPreflightRequestV1;
+    }) => Promise<{
+      readonly preflight?: ExternalActionPreflightOutcomeV1;
+      readonly execute?: ExternalActionExecuteOutcomeV1;
     }>;
     readonly finalize: (
       repositories: ExternalActionTransactionRepositoriesV1,
-      engineResult: ExternalActionExecuteOutcomeV1,
+      outcome: {
+        readonly preflight?: ExternalActionPreflightOutcomeV1;
+        readonly execute: ExternalActionExecuteOutcomeV1;
+      },
     ) => Promise<T>;
+    readonly finalizeDenied?: (
+      repositories: ExternalActionTransactionRepositoriesV1,
+      preflight: ExternalActionPreflightOutcomeV1,
+    ) => Promise<void>;
   }): Promise<T> {
     const now = this.nowIso();
     const commandId = generatedIdentity('cmd');
@@ -2830,8 +2875,10 @@ export class FrontendExternalActionProductCoordinator {
       );
     }
 
-    // Phase 1: persist the started attempt/execution and COMPLETE the ledger
-    // (atomic). The connector has not been called yet.
+    // Phase 1: persist the started attempt/execution (recoverable). The ledger
+    // command stays ACCEPTED here — it is completed ONLY after the terminal
+    // domain state is committed (Phase 3), so an in-flight command can never
+    // be misjudged as COMPLETED (ADR-129; Review 4859910949).
     const started = await this.boundary.transactionWithHandle(async (handle) => {
       const locked = await this.commandGateway.lockAcceptedForExecution(
         handle.raw,
@@ -2841,33 +2888,71 @@ export class FrontendExternalActionProductCoordinator {
         return { __replayed: true as const };
       }
       const persisted = await input.persistStarted(handle.repositories);
-      await this.commandGateway.completeInTransaction(handle.raw, {
-        commandId: outcome.commandId,
-        producedResources: persisted.producedResources,
-        completedAt: this.nowIso(),
-      });
       return { __replayed: false as const, ...persisted };
     });
     if (started.__replayed) return onReplay();
 
-    // Phase 2: connector call outside the DB transaction.
-    let engineResult: ExternalActionExecuteOutcomeV1;
+    // Phase 2: connector work (optional preflight + execute) OUTSIDE the DB
+    // transaction. A connector throw is mapped to OUTCOME_UNKNOWN; the started
+    // attempt/execution survive as durable recoverable resources.
+    let outcome2: {
+      preflight?: ExternalActionPreflightOutcomeV1;
+      execute?: ExternalActionExecuteOutcomeV1;
+    };
     try {
-      engineResult = await this.engine.execute(started.engineInput);
+      outcome2 = await input.executeEngine({
+        engineInput: started.engineInput,
+        preflightInput: started.preflightInput,
+      });
     } catch {
-      engineResult = {
-        status: 'OUTCOME_UNKNOWN',
-        correlationId: started.engineInput.attempt.correlationId,
+      outcome2 = {
+        execute: {
+          status: 'OUTCOME_UNKNOWN',
+          correlationId: started.engineInput.attempt.correlationId,
+        },
       };
     }
 
-    // Phase 3: commit the terminal state (recoverable; never loses the domain
-    // resource even if the connector threw).
+    // A preflight that is not READY (DENIED / ALREADY_APPLIED / flags missing)
+    // blocks the connector execution: the started resources are marked FAILED
+    // and the ledger command is REJECTED — the domain resource is never lost.
+    if (started.preflightInput && outcome2.preflight && outcome2.preflight.status !== 'READY') {
+      if (input.finalizeDenied) {
+        await this.boundary.transaction((repositories) =>
+          input.finalizeDenied!(repositories, outcome2.preflight!),
+        );
+      }
+      const reason = outcome2.preflight.reason ?? 'preflight revalidation failed';
+      await this.commandGateway.reject({
+        commandId: outcome.commandId,
+        code: 'ACTION_PREFLIGHT_FAILED',
+        message: reason,
+        completedAt: this.nowIso(),
+      });
+      externalActionFailure('ACTION_PREFLIGHT_FAILED', reason);
+    }
+
+    // Phase 3: commit the terminal state AND complete the ledger command in one
+    // transaction (atomic: the ledger never reports COMPLETED before the
+    // terminal domain state is durable).
+    const executeOutcome = outcome2.execute ?? {
+      status: 'OUTCOME_UNKNOWN' as const,
+      correlationId: started.engineInput.attempt.correlationId,
+    };
+    const finalOutcome: {
+      readonly preflight?: ExternalActionPreflightOutcomeV1;
+      readonly execute: ExternalActionExecuteOutcomeV1;
+    } = { preflight: outcome2.preflight, execute: executeOutcome };
     try {
-      const result = await this.boundary.transaction((repositories) =>
-        input.finalize(repositories, engineResult),
-      );
-      return result;
+      return await this.boundary.transactionWithHandle(async (handle) => {
+        const result = await input.finalize(handle.repositories, finalOutcome);
+        await this.commandGateway.completeInTransaction(handle.raw, {
+          commandId: outcome.commandId,
+          producedResources: started.producedResources,
+          completedAt: this.nowIso(),
+        });
+        return result;
+      });
     } catch (error) {
       try {
         if (error instanceof ExternalActionCommandError) {

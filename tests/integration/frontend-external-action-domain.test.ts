@@ -6,8 +6,10 @@ import {
   InMemoryExternalActionStore,
 } from '../../adapters/frontend-external-action-in-memory/src/index.js';
 import {
+  FRONTEND_EXTERNAL_ACTION_API_VERSION,
   FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES,
   frontendExternalActionCandidateDigest,
+  frontendExternalActionExecuteDigest,
   type ExternalActionCredentialViewV1,
 } from '../../packages/contracts/src/index.js';
 import {
@@ -66,7 +68,9 @@ const credential: ExternalActionCredentialViewV1 = {
 const makeCoordinator = (
   behavior: {
     readonly preflightStatus?: 'READY' | 'ALREADY_APPLIED' | 'DENIED';
+    readonly retryPreflightStatus?: 'READY' | 'ALREADY_APPLIED' | 'DENIED';
     readonly executeStatus?: 'SUCCEEDED' | 'FAILED' | 'OUTCOME_UNKNOWN';
+    readonly retryStatus?: 'SUCCEEDED' | 'FAILED' | 'OUTCOME_UNKNOWN';
     readonly executeThrows?: boolean;
     readonly verifyStatus?: 'APPLIED' | 'NOT_APPLIED' | 'MISMATCH';
   } = {},
@@ -83,12 +87,13 @@ const makeCoordinator = (
     hardLimit: 100,
     exhausted: false,
   });
+  const gateway = new InMemoryFrontendCommandGateway();
   const coordinator = new FrontendExternalActionProductCoordinator(
     store,
-    new InMemoryFrontendCommandGateway(),
+    gateway,
     new FakeExternalActionEngine(behavior),
   );
-  return { store, coordinator };
+  return { store, coordinator, gateway };
 };
 
 const revisionOf = async (
@@ -975,10 +980,11 @@ describe('FE-P4-S2 WP2 External Action Product domain', () => {
     expect(detail.result?.externalId).toContain('external-');
   });
 
-  it('executes rollback through its own governance lifecycle (risk decision + preflight)', async () => {
+  it('executes rollback through its own governed lifecycle (prepare → approve → preflight → execute → verify)', async () => {
     const { coordinator } = makeCoordinator();
     const { executed } = await runLifecycle(coordinator, 'action-rb');
-    const rolledBack = await coordinator.rollbackExternalAction(scope, {
+    // Rollback is PREPARED by a separate governed command — never auto-executed.
+    const preparedRollback = await coordinator.rollbackExternalAction(scope, {
       schemaVersion: '1.0.0',
       clientRequestId: 'client-rb5',
       idempotencyKey: 'idem-rb5',
@@ -986,13 +992,77 @@ describe('FE-P4-S2 WP2 External Action Product domain', () => {
       executionId: executed.execution.executionId,
       reason: 'Rollback.',
     });
-    expect(rolledBack.outcome).toBe('COMPLETED');
-    expect(rolledBack.rollback.status).toBe('ROLLED_BACK');
-    const detail = await coordinator.getExternalActionDetail(scope, {
+    expect(preparedRollback.outcome).toBe('COMPLETED');
+    expect(preparedRollback.rollback.status).toBe('PREPARED');
+    const rollbackManifest = preparedRollback.rollback.manifestRef!;
+    let detail = await coordinator.getExternalActionDetail(scope, {
+      schemaVersion: '1.0.0',
+      actionId: 'action-rb',
+    });
+    expect(detail.action.status).toBe('ROLLBACK_AVAILABLE');
+    // The user explicitly approves the rollback manifest.
+    await coordinator.approveExternalAction(scope, {
+      schemaVersion: '1.0.0',
+      clientRequestId: 'client-rb-approve',
+      idempotencyKey: 'idem-rb-approve',
+      actionId: 'action-rb',
+      manifestId: rollbackManifest.resourceId,
+      manifestRevision: rollbackManifest.resourceRevision!,
+      expectedTargetRevision: 'rev-3',
+      expectedExternalRevision: 'ext-7',
+      reason: 'Approve rollback.',
+    });
+    // Rollback preflight (rollback semantics) runs through the normal command.
+    const rollbackPreflight = await coordinator.preflightExternalAction(scope, {
+      schemaVersion: '1.0.0',
+      clientRequestId: 'client-rb-preflight',
+      idempotencyKey: 'idem-rb-preflight',
+      actionId: 'action-rb',
+      expectedActionRevision: await revisionOf(coordinator, 'action-rb'),
+      manifestRevision: rollbackManifest.resourceRevision!,
+      expectedExternalRevision: 'ext-7',
+      reason: 'Preflight rollback.',
+    });
+    expect(rollbackPreflight.preflight.status).toBe('READY');
+    // Rollback execution through the normal execute command.
+    const rollbackExecuted = await coordinator.executeExternalAction(scope, {
+      schemaVersion: '1.0.0',
+      clientRequestId: 'client-rb-execute',
+      idempotencyKey: 'idem-rb-execute',
+      actionId: 'action-rb',
+      expectedActionRevision: await revisionOf(coordinator, 'action-rb'),
+      manifestRevision: rollbackManifest.resourceRevision!,
+      preflightId: rollbackPreflight.preflight.preflightId,
+      expectedExternalRevision: 'ext-7',
+      reason: 'Execute rollback.',
+    });
+    expect(rollbackExecuted.execution.status).toBe('SUCCEEDED');
+    // Connector success alone never confirms the reversal — ROLLED_BACK is
+    // reached only after an APPLIED rollback verification.
+    detail = await coordinator.getExternalActionDetail(scope, {
+      schemaVersion: '1.0.0',
+      actionId: 'action-rb',
+    });
+    expect(detail.action.status).toBe('VERIFYING');
+    expect(detail.rollback?.status).toBe('EXECUTING');
+    const rollbackVerified = await coordinator.verifyExternalAction(scope, {
+      schemaVersion: '1.0.0',
+      clientRequestId: 'client-rb-verify',
+      idempotencyKey: 'idem-rb-verify',
+      actionId: 'action-rb',
+      executionId: rollbackExecuted.execution.executionId,
+      expectedTargetRevision: 'rev-3',
+      expectedExternalRevision: 'ext-7',
+      reason: 'Verify rollback.',
+    });
+    expect(rollbackVerified.verification.status).toBe('APPLIED');
+    detail = await coordinator.getExternalActionDetail(scope, {
       schemaVersion: '1.0.0',
       actionId: 'action-rb',
     });
     expect(detail.action.status).toBe('ROLLED_BACK');
+    expect(detail.rollback?.status).toBe('ROLLED_BACK');
+    expect(detail.rollback?.verificationRef).toBeDefined();
   });
 
   it('keeps audit sequences strictly monotonic past 50 events (store-based authority)', async () => {
@@ -1032,5 +1102,219 @@ describe('FE-P4-S2 WP2 External Action Product domain', () => {
     expect(Math.max(...sequences)).toBeGreaterThan(50);
     expect(sequences).toEqual([...sequences].sort((a, b) => a - b));
     expect(page2.events[0]?.sequence).toBe(51);
+  });
+
+  it('never treats an in-flight connector command as COMPLETED on replay (OUTCOME_INDETERMINATE)', async () => {
+    const { coordinator, gateway } = makeCoordinator();
+    await coordinator.validateActionCandidate(scope, {
+      schemaVersion: '1.0.0',
+      clientRequestId: 'client-v-inflight',
+      idempotencyKey: 'idem-v-inflight',
+      actionId: 'action-inflight',
+      candidateId: 'candidate-inflight',
+      operation: 'UPDATE_REVERSIBLE',
+      targetRef,
+      parameterRef,
+      evidenceRefs: [evidenceSetRef],
+    });
+    const prepared = await coordinator.prepareActionManifest(scope, {
+      schemaVersion: '1.0.0',
+      clientRequestId: 'client-p-inflight',
+      idempotencyKey: 'idem-p-inflight',
+      actionId: 'action-inflight',
+      expectedActionRevision: await revisionOf(coordinator, 'action-inflight'),
+      reason: 'Prepare.',
+    });
+    await coordinator.approveExternalAction(scope, {
+      schemaVersion: '1.0.0',
+      clientRequestId: 'client-a-inflight',
+      idempotencyKey: 'idem-a-inflight',
+      actionId: 'action-inflight',
+      manifestId: prepared.manifest.manifestId,
+      manifestRevision: prepared.manifest.manifestRevision,
+      expectedTargetRevision: 'rev-3',
+      expectedExternalRevision: 'ext-7',
+      reason: 'Approved.',
+    });
+    const preflighted = await coordinator.preflightExternalAction(scope, {
+      schemaVersion: '1.0.0',
+      clientRequestId: 'client-pf-inflight',
+      idempotencyKey: 'idem-pf-inflight',
+      actionId: 'action-inflight',
+      expectedActionRevision: await revisionOf(coordinator, 'action-inflight'),
+      manifestRevision: prepared.manifest.manifestRevision,
+      expectedExternalRevision: 'ext-7',
+      reason: 'Preflight.',
+    });
+    // Simulate "Phase 1 committed, ledger still ACCEPTED, process interrupted
+    // before the connector call": accept + lock the same execute command
+    // identity through the gateway WITHOUT completing the ledger.
+    const executeRequest = {
+      schemaVersion: '1.0.0' as const,
+      clientRequestId: 'client-ex-inflight',
+      idempotencyKey: 'idem-ex-inflight',
+      actionId: 'action-inflight',
+      expectedActionRevision: await revisionOf(coordinator, 'action-inflight'),
+      manifestRevision: prepared.manifest.manifestRevision,
+      preflightId: preflighted.preflight.preflightId,
+      expectedExternalRevision: 'ext-7',
+      reason: 'Execute.',
+    };
+    const now = new Date().toISOString();
+    await gateway.accept({
+      commandId: 'cmd-inflight',
+      commandRevision: '1',
+      principalId: scope.principalId,
+      request: {
+        envelopeVersion: '1.0.0',
+        commandType: FRONTEND_EXTERNAL_ACTION_COMMAND_TYPES.execute,
+        commandSchemaVersion: FRONTEND_EXTERNAL_ACTION_API_VERSION,
+        clientRequestId: executeRequest.clientRequestId,
+        idempotencyKey: executeRequest.idempotencyKey,
+        projectContext: {
+          activeProjectId: PROJECT_ID,
+          targetProjectId: PROJECT_ID,
+          resourceProjectId: PROJECT_ID,
+          observedProjectAccessRevision: scope.accessRevision,
+        },
+        policyBinding: {
+          mode: 'CURRENT',
+          observedPolicyContextRevision: scope.policyContextRevision,
+        },
+        preconditions: [],
+        clientIssuedAt: now,
+        payload: executeRequest,
+      },
+      commandSemanticDigest: frontendExternalActionExecuteDigest(executeRequest),
+      acceptedPolicyContext: {
+        policyContextId: 'frontend-external-action-current-policy',
+        policyContextRevision: scope.policyContextRevision,
+        acceptedAt: now,
+      },
+      correlationId: 'corr-inflight',
+      traceId: 'trace-inflight',
+      receivedAt: now,
+      acceptedAt: now,
+    });
+    await gateway.lockAcceptedForExecution(undefined, 'cmd-inflight');
+    // Re-sending the same identity while the ledger is ACCEPTED (in-flight)
+    // must NOT produce a fabricated COMPLETED result — it fails closed with
+    // OUTCOME_INDETERMINATE, forcing resolution through the original identity.
+    await expect(coordinator.executeExternalAction(scope, executeRequest)).rejects.toThrow(
+      /indeterminate|unresolved/i,
+    );
+  });
+
+  it('preserves a FAILED retry attempt when the retry preflight is denied', async () => {
+    const { coordinator } = makeCoordinator({
+      executeStatus: 'OUTCOME_UNKNOWN',
+      retryPreflightStatus: 'DENIED',
+    });
+    await coordinator.validateActionCandidate(scope, {
+      schemaVersion: '1.0.0',
+      clientRequestId: 'client-v-rpd',
+      idempotencyKey: 'idem-v-rpd',
+      actionId: 'action-rpd',
+      candidateId: 'candidate-rpd',
+      operation: 'UPDATE_REVERSIBLE',
+      targetRef,
+      parameterRef,
+      evidenceRefs: [evidenceSetRef],
+    });
+    const prepared = await coordinator.prepareActionManifest(scope, {
+      schemaVersion: '1.0.0',
+      clientRequestId: 'client-p-rpd',
+      idempotencyKey: 'idem-p-rpd',
+      actionId: 'action-rpd',
+      expectedActionRevision: await revisionOf(coordinator, 'action-rpd'),
+      reason: 'Prepare.',
+    });
+    await coordinator.approveExternalAction(scope, {
+      schemaVersion: '1.0.0',
+      clientRequestId: 'client-a-rpd',
+      idempotencyKey: 'idem-a-rpd',
+      actionId: 'action-rpd',
+      manifestId: prepared.manifest.manifestId,
+      manifestRevision: prepared.manifest.manifestRevision,
+      expectedTargetRevision: 'rev-3',
+      expectedExternalRevision: 'ext-7',
+      reason: 'Approved.',
+    });
+    const preflighted = await coordinator.preflightExternalAction(scope, {
+      schemaVersion: '1.0.0',
+      clientRequestId: 'client-pf-rpd',
+      idempotencyKey: 'idem-pf-rpd',
+      actionId: 'action-rpd',
+      expectedActionRevision: await revisionOf(coordinator, 'action-rpd'),
+      manifestRevision: prepared.manifest.manifestRevision,
+      expectedExternalRevision: 'ext-7',
+      reason: 'Preflight.',
+    });
+    const executed = await coordinator.executeExternalAction(scope, {
+      schemaVersion: '1.0.0',
+      clientRequestId: 'client-ex-rpd',
+      idempotencyKey: 'idem-ex-rpd',
+      actionId: 'action-rpd',
+      expectedActionRevision: await revisionOf(coordinator, 'action-rpd'),
+      manifestRevision: prepared.manifest.manifestRevision,
+      preflightId: preflighted.preflight.preflightId,
+      expectedExternalRevision: 'ext-7',
+      reason: 'Execute.',
+    });
+    // Retry is blocked by a denied preflight, but the started retry attempt
+    // survives as FAILED (never lost).
+    await expect(
+      coordinator.retryExecutionAttempt(scope, {
+        schemaVersion: '1.0.0',
+        clientRequestId: 'client-retry-rpd',
+        idempotencyKey: 'idem-retry-rpd',
+        actionId: 'action-rpd',
+        executionId: executed.execution.executionId,
+        sourceAttemptId: executed.attempt.attemptId,
+        causationId: 'cause-retry-rpd',
+        reason: 'Retry.',
+      }),
+    ).rejects.toThrow(/preflight|deni/i);
+    const detail = await coordinator.getExternalActionDetail(scope, {
+      schemaVersion: '1.0.0',
+      actionId: 'action-rpd',
+    });
+    expect(detail.attempts).toHaveLength(2);
+    expect(detail.attempts[1]?.status).toBe('FAILED');
+    expect(detail.action.status).toBe('FAILED');
+  });
+
+  it('creates a new risk decision when the policy context changes (same candidate meaning)', async () => {
+    const { coordinator } = makeCoordinator();
+    const first = await coordinator.validateActionCandidate(scope, {
+      schemaVersion: '1.0.0',
+      clientRequestId: 'client-v-pol1',
+      idempotencyKey: 'idem-v-pol1',
+      actionId: 'action-pol',
+      candidateId: 'candidate-pol',
+      operation: 'UPDATE_REVERSIBLE',
+      targetRef,
+      parameterRef,
+      evidenceRefs: [evidenceSetRef],
+    });
+    const changedPolicyScope: FrontendExternalActionScopeV1 = {
+      ...scope,
+      policyContextRevision: 'policy-2',
+    };
+    const second = await coordinator.validateActionCandidate(changedPolicyScope, {
+      schemaVersion: '1.0.0',
+      clientRequestId: 'client-v-pol2',
+      idempotencyKey: 'idem-v-pol2',
+      actionId: 'action-pol',
+      candidateId: 'candidate-pol',
+      operation: 'UPDATE_REVERSIBLE',
+      targetRef,
+      parameterRef,
+      evidenceRefs: [evidenceSetRef],
+    });
+    // Same candidate digest but a changed policy context ⇒ a NEW risk decision.
+    expect(second.candidate.candidateDigest).toBe(first.candidate.candidateDigest);
+    expect(second.riskDecision.riskDecisionId).not.toBe(first.riskDecision.riskDecisionId);
+    expect(second.candidate.candidateRevision).toBe(2);
   });
 });

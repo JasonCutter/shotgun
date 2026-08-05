@@ -406,6 +406,7 @@ export class FakeExternalActionEngine implements ExternalActionEnginePort {
   constructor(
     private readonly behavior: {
       readonly preflightStatus?: 'READY' | 'ALREADY_APPLIED' | 'DENIED';
+      readonly retryPreflightStatus?: 'READY' | 'ALREADY_APPLIED' | 'DENIED';
       readonly executeStatus?: 'SUCCEEDED' | 'FAILED' | 'OUTCOME_UNKNOWN';
       readonly retryStatus?: 'SUCCEEDED' | 'FAILED' | 'OUTCOME_UNKNOWN';
       readonly executeThrows?: boolean;
@@ -413,11 +414,17 @@ export class FakeExternalActionEngine implements ExternalActionEnginePort {
     } = {},
   ) {}
 
+  private preflightCalls = 0;
+
   async preflight(
     request: ExternalActionPreflightRequestV1,
   ): Promise<ExternalActionPreflightOutcomeV1> {
     void request;
-    const status = this.behavior.preflightStatus ?? 'READY';
+    this.preflightCalls += 1;
+    const status =
+      this.preflightCalls > 1
+        ? (this.behavior.retryPreflightStatus ?? this.behavior.preflightStatus ?? 'READY')
+        : (this.behavior.preflightStatus ?? 'READY');
     return {
       status,
       reason: status === 'DENIED' ? 'target state denies the operation' : undefined,

@@ -35,6 +35,8 @@ export type ExternalActionPreflightRequestV1 = {
   readonly targetRef: ExternalActionTargetRefV1;
   readonly manifest: ActionManifestV1;
   readonly preflight: PreflightV1;
+  /** True when the preflight revalidates a rollback (state reversal) target. */
+  readonly rollback?: boolean;
 };
 
 export type ExternalActionPreflightOutcomeV1 = {
@@ -52,6 +54,8 @@ export type ExternalActionExecuteRequestV1 = {
   readonly targetRef: ExternalActionTargetRefV1;
   readonly manifest: ActionManifestV1;
   readonly attempt: ExecutionAttemptV1;
+  /** True when the execution is a rollback (state reversal) execution. */
+  readonly rollback?: boolean;
 };
 
 export type ExternalActionExecuteOutcomeV1 = {
@@ -71,6 +75,8 @@ export type ExternalActionVerifyRequestV1 = {
   readonly executionId: string;
   readonly attemptId?: string;
   readonly observedDigest?: string;
+  /** True when the verification confirms a rollback (state reversal) target. */
+  readonly rollback?: boolean;
 };
 
 export type ExternalActionVerifyOutcomeV1 = {

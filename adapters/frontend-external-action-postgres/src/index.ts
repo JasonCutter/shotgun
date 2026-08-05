@@ -448,6 +448,8 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
            WHERE frontend_external_action.preflights.action_id = EXCLUDED.action_id
              AND frontend_external_action.preflights.resource_project_id = EXCLUDED.resource_project_id
              AND frontend_external_action.preflights.effective_project_id = EXCLUDED.effective_project_id
+             AND frontend_external_action.preflights.snapshot->>'schemaVersion' = EXCLUDED.snapshot->>'schemaVersion'
+             AND frontend_external_action.preflights.snapshot->>'concreteKind' = EXCLUDED.snapshot->>'concreteKind'
              AND frontend_external_action.preflights.snapshot->>'manifestRevision' = EXCLUDED.snapshot->>'manifestRevision'
              AND frontend_external_action.preflights.snapshot->>'preflightDigest' = EXCLUDED.snapshot->>'preflightDigest'
              AND frontend_external_action.preflights.snapshot->>'runAt' = EXCLUDED.snapshot->>'runAt'

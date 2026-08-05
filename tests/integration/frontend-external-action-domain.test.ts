@@ -1435,24 +1435,43 @@ describe('FE-P4-S2 WP2 External Action Product domain', () => {
     // Execute #1 starts: Phase 1 durable (aggregate EXECUTING) and the
     // connector call is delayed (still in flight).
     const first = coordinator.executeExternalAction(scope, executeRequest);
-    // Execute #2 for the SAME action while EXECUTING must fail closed with
-    // ACTION_EXECUTION_NOT_ALLOWED — never a parallel execution.
+    // Prove the exact in-flight state via Product Read: wait until the action
+    // is EXECUTING and capture the CURRENT revision (Review 4861829347).
+    let executingRevision = revBeforeExecute;
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const probe = await coordinator.getExternalActionDetail(scope, {
+        schemaVersion: '1.0.0',
+        actionId,
+      });
+      if (probe.action.status === 'EXECUTING') {
+        executingRevision = probe.action.actionRevision;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(executingRevision).toBe(revBeforeExecute + 1);
+    // Execute #2 for the SAME action while EXECUTING, submitted with the
+    // CURRENT revision, must fail closed with ACTION_EXECUTION_NOT_ALLOWED —
+    // never a parallel execution.
     await expect(
       coordinator.executeExternalAction(scope, {
         ...executeRequest,
         clientRequestId: 'client-ex-reentry-2',
         idempotencyKey: 'idem-ex-reentry-2',
+        expectedActionRevision: executingRevision,
       }),
     ).rejects.toThrow(/already executing|not allowed|parallel/i);
     // Execute #1 completes normally once the delayed connector returns.
     const firstResult = await first;
     expect(firstResult.execution.status).toBe('SUCCEEDED');
-    // Only ONE execution and ONE attempt exist — Execute #2 created nothing.
+    // Exactly ONE execution and ONE attempt exist — Execute #2 created nothing.
     const detail = await coordinator.getExternalActionDetail(scope, {
       schemaVersion: '1.0.0',
       actionId,
     });
+    expect(detail.execution?.executionId).toBe(firstResult.execution.executionId);
     expect(detail.attempts).toHaveLength(1);
+    expect(detail.attempts[0]?.executionId).toBe(firstResult.execution.executionId);
     expect(detail.attempts[0]?.status).toBe('SUCCEEDED');
     expect(detail.action.status).toBe('VERIFYING');
   });

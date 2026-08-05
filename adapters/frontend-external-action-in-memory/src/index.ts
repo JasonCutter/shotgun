@@ -308,6 +308,8 @@ export class InMemoryExternalActionStore implements ExternalActionRepositoryBoun
             existing,
             preflight,
             [
+              'schemaVersion',
+              'concreteKind',
               'actionId',
               'resourceProjectId',
               'effectiveProjectId',

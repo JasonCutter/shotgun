@@ -1072,6 +1072,52 @@ describe.runIf(pool)(
             });
           }),
         ).rejects.toThrow(/immutable|conflict|transition|expiresAt/i);
+        // DENIED → READY with a CHANGED schemaVersion or concreteKind fails
+        // closed: the full immutable set is compared (Review 4861829347).
+        const schemaBase = {
+          ...base,
+          preflightId: `pf-schema-${suffix}`,
+          actionId: `act-schema-${suffix}`,
+        };
+        await store.transaction(async (repositories) => {
+          await repositories.preflights.insert({
+            ...schemaBase,
+            status: 'DENIED',
+          });
+        });
+        await expect(
+          store.transaction(async (repositories) => {
+            await repositories.preflights.insert({
+              ...schemaBase,
+              schemaVersion: '9.9.9' as '1.0.0',
+              status: 'READY',
+              targetStateRevalidated: true,
+              externalRevisionRevalidated: true,
+            });
+          }),
+        ).rejects.toThrow(/immutable|conflict|transition|schemaVersion/i);
+        const kindBase = {
+          ...base,
+          preflightId: `pf-kind-${suffix}`,
+          actionId: `act-kind-${suffix}`,
+        };
+        await store.transaction(async (repositories) => {
+          await repositories.preflights.insert({
+            ...kindBase,
+            status: 'DENIED',
+          });
+        });
+        await expect(
+          store.transaction(async (repositories) => {
+            await repositories.preflights.insert({
+              ...kindBase,
+              concreteKind: 'REVIEW' as 'PREFLIGHT',
+              status: 'READY',
+              targetStateRevalidated: true,
+              externalRevisionRevalidated: true,
+            });
+          }),
+        ).rejects.toThrow(/immutable|conflict|transition|concreteKind/i);
         // READY → DENIED (reverse transition) fails closed.
         await expect(
           store.transaction(async (repositories) => {

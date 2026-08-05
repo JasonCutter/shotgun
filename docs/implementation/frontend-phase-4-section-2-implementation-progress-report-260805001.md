@@ -1234,3 +1234,94 @@ The test now follows the review's exact sequence:
 
 PR #66 remains OPEN / DRAFT. WP4 Protected Product API / `FrontendExternalActionClient` remains
 **NOT_AUTHORIZED** pending re-review of this report.
+
+## 23. WP4 — Protected Product API and `FrontendExternalActionClient` (report 17, 2026-08-05)
+
+WP3 was APPROVED and WP4 **AUTHORIZED_TO_START** by GPT review **4861959404** with a bounded
+WP4 scope (protected routes under `/product-api/frontend/external-action/*`, governed write
+routes, server-derived authority, and `FrontendExternalActionClient`). This report records the
+WP4 implementation on head `98b7feb` (CI **#545**).
+
+### 1. Protected routes (server-derived authority only)
+
+`assemblies/shotgun-app/src/product-api/frontend-external-action-routes.ts` registers 22 routes
+behind `registerFrontendExternalActionRoutes`. Every route builds the scope on the server from
+the authenticated browser session, the Project membership and the settings snapshot — Principal
+(actor = authenticated principal), Resource Project (active project), access revision, policy
+context revision, capability scopes and (via the store adapters) credential/budget. No
+browser-supplied authority reaches the domain.
+
+Protected reads (strict decoders):
+- `POST /product-api/frontend/external-action/queue` — list
+- `.../actions/read`, `.../actions/detail` — aggregate / integrated detail
+- `.../manifests/read`, `.../risk-decisions/read`, `.../preflights/read`
+- `.../executions/read`, `.../executions/attempts`, `.../verifications/read`,
+  `.../results/read`, `.../audit`
+
+Governed writes (Frontend Command Ledger):
+- `.../validate`, `.../prepare`, `.../approve`, `.../preflight`, `.../execute`, `.../retry`,
+  `.../verify`, `.../cancel`, `.../rollback`, `.../compensations/prepare`
+
+Outcome resolution (GET, resolve by the ORIGINAL command identity — never a re-execute):
+- `.../command-outcomes/by-client-request/:clientRequestId`
+
+Errors are normalized to the shared typed failure envelope
+(`ExternalActionCommandError.apiCode` → `ShotgunError`; unknown → `INTERNAL_UNCLASSIFIED`).
+
+### 2. `FrontendExternalActionClient`
+
+`packages/shotgun-api-client/src/frontend-external-action-client.ts` exposes
+`createFrontendExternalActionClient` with all 22 typed methods: same-origin credentials, cached
+CSRF token with a SINGLE retry on 403 (session refresh — never a blind mutation retry),
+`AbortSignal` forwarding, strict decoding of every response, and identity validation
+(actionId / clientRequestId / idempotencyKey / executionId / source identity) that fails closed
+on mismatch. The per-command semantic digests are re-exported so the browser computes exactly
+the digests the server validates for `OUTCOME_UNKNOWN` resolution. Exported from the api-client
+package index.
+
+### 3. Wiring
+
+`server.ts` adds `frontendExternalActionCoordinator?` to `ApplicationOptions` and constructs a
+default coordinator over the shared `frontendCommandGateway` with the in-memory External Action
+store and the fake connector engine (mirroring how Review is wired); the routes are registered
+with the same `requirePrincipalBrowserSession` + `authRepository` + `settingsRepository`.
+
+### Changed files (this WP4 implementation)
+
+- `assemblies/shotgun-app/src/product-api/frontend-external-action-routes.ts` — NEW: 22
+  protected routes + server-derived scope + typed error mapping.
+- `assemblies/shotgun-app/src/server.ts` — coordinator option + default wiring + route
+  registration.
+- `packages/shotgun-api-client/src/frontend-external-action-client.ts` — NEW: typed client
+  (strict decoding, CSRF + 403 refresh, AbortSignal, no mutation auto-retry, identity
+  validation, digest re-exports).
+- `packages/shotgun-api-client/src/index.ts` — client export.
+- `tests/unit/frontend-external-action-client.test.ts` — NEW: 6 client tests (CSRF, strict
+  decoding, identity mismatch rejection, 403 refresh once, no non-CSRF auto-retry, outcome
+  resolution GET, AbortSignal).
+- `tests/integration/frontend-external-action-product-api.test.ts` — NEW: 3 route tests (full
+  governed lifecycle over HTTP, outcome resolution by original identity, CSRF/project-access
+  fail-closed).
+
+### Validation
+
+- `npx vitest run tests/unit/frontend-external-action-client.test.ts` — **6/6 PASS**.
+- `npx vitest run tests/integration/frontend-external-action-product-api.test.ts` — **3/3 PASS**.
+- Full unit+integration+contract suites — **948 PASS** (two pre-existing timing flakes pass in
+  isolation; unrelated to WP4).
+- Full database suite `npm run test:database` — **166/166 PASS (31 files)**.
+- `tsc --noEmit` — clean. ESLint — clean. Prettier — clean.
+- Automatic CI on this head `98b7feb` — run **#545** (`30993215106`): Quality, Frontend,
+  Required Gates **SUCCESS**.
+
+### AC coverage (WP4)
+
+- **AC-18/AC-19** are now delivered: the protected read routes and governed write routes are
+  reachable under `/product-api/frontend/external-action/*` with strict decoding, server-derived
+  authority, CSRF + 403 refresh, `AbortSignal` and no mutation auto-retry, and `OUTCOME_UNKNOWN`
+  is resolved by the original command identity (never a re-execute). WP1/WP2/WP3 domain coverage
+  (AC-01..AC-17, AC-21) is unchanged. AC-20/AC-22 (UI/workspace and exact-head CI gates —
+  reported per head) remain; WP5/WP6 remain **NOT_AUTHORIZED**.
+
+PR #66 remains OPEN / DRAFT. WP5 External Action Governance Workspace and WP6 verification
+evidence remain **NOT_AUTHORIZED** pending re-review of this report.

@@ -2498,4 +2498,7 @@ Ready·Merge가 승인되지 않았다. Review 4869469297은 완료 권위 기�
 
 - **Metadata head**: `1c128928ea18babe7f0b3d58022ee9062c9aadc1` — CI **#580** /
   `31056133173`: Quality, Frontend, Required Gates **SUCCESS**.
+- **교정 commit head**: `7fa538b9b8efc5c465c78859a6ba4c599b1941ca` — CI **#581** /
+  `31056948890`: Quality, Frontend, Required Gates **SUCCESS** (Frontend 2m45s, Quality
+  3m32s, Required Gates 2s).
 - 교정 commit 후 자동 CI만 확인했다. CI **#579 / #580** 및 기존 PASS head는 재실행하지 않았다.

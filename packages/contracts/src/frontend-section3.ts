@@ -695,7 +695,8 @@ export type GlobalShellView = {
 };
 
 export type PrimaryActionView = {
-  readonly id: 'add-source' | 'ask' | 'explore-knowledge' | 'review-changes';
+  readonly id:
+    'add-source' | 'ask' | 'explore-knowledge' | 'review-changes' | 'govern-external-action';
   readonly label: string;
   readonly availability: NavigationAvailability;
   readonly disabledReason?: string;
@@ -1050,7 +1051,9 @@ export const decodeHomeActionCenterView = (input: unknown): HomeActionCenterView
     throw new FrontendContractError('UNSUPPORTED_SCHEMA', 'Unsupported Home version.');
   }
   for (const [key, cap] of [
-    ['primaryActions', 4],
+    // FE-P4-S2 WP5: the External Action governance workspace primary action
+    // was added (AC-18), so the bounded primary-action cap is 5.
+    ['primaryActions', 5],
     ['attention', 50],
     ['continueWorking', 50],
     ['recent', 50],
@@ -1074,6 +1077,7 @@ export const decodeHomeActionCenterView = (input: unknown): HomeActionCenterView
     'ask',
     'explore-knowledge',
     'review-changes',
+    'govern-external-action',
   ]);
   const primaryActions = (value['primaryActions'] as unknown[]).map((entry, index) => {
     const action = requireRecord(entry, `primaryActions[${index}]`);

@@ -4,7 +4,7 @@ import { createMemoryRouter, Outlet, RouterProvider } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { GlobalShellView, ShotgunApiClient } from '@shotgun/api-client';
-import { externalActionManifestDigest } from '@shotgun/api-client';
+import { externalActionManifestDigest, type ActionManifestV1 } from '@shotgun/api-client';
 
 import { createFrontendQueryClient } from '../app/query-client.js';
 import { AppProviders, type AppRuntime } from '../app/providers.js';
@@ -103,7 +103,10 @@ const manifest = {
   },
 };
 
-const validManifest = { ...manifest, manifestDigest: externalActionManifestDigest(manifest) };
+const validManifest = {
+  ...manifest,
+  manifestDigest: externalActionManifestDigest(manifest as ActionManifestV1),
+};
 
 const riskDecision = {
   schemaVersion: '1.0.0',

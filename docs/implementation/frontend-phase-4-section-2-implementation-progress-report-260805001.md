@@ -2348,7 +2348,8 @@ re-selected` 1 test. (기존 PASS head 테스트 재실행 없음.)
 - Browser E2E — external-action 3개 spec **9 tests PASS** (lifecycle 2 + accessibility 5 +
   performance 2); 전체 browser 스위트는 기존 성능 flake 1건(지식 그래프) 제외 53 PASS.
 - `tsc --noEmit` (root + app) — clean. ESLint — clean. Prettier — clean.
-- 자동 CI: 보완 head `<REMEDIATION_HEAD>` — CI **#575** / `<RUN_ID>` (metadata 아래에 기록).
+- 자동 CI: 보완 head `4817b5563210fcc6c7d4b3555ae9cce37297cd33` — CI **#575** /
+  `31051753388`: Quality, Frontend, Required Gates **SUCCESS**.
 
 ### PR 상태·권위
 
@@ -2360,6 +2361,7 @@ re-selected` 1 test. (기존 PASS head 테스트 재실행 없음.)
 
 ### Final metadata (report 27)
 
-- **WP6 보완 code head**: `<REMEDIATION_HEAD>` — CI **#575** / `<RUN_ID>`: Quality, Frontend,
-  Required Gates 결과는 최종 갱신에서 기록한다.
+- **WP6 보완 code head**: `4817b5563210fcc6c7d4b3555ae9cce37297cd33` — CI **#575** /
+  `31051753388`: Quality, Frontend, Required Gates **SUCCESS** (Frontend 3m7s, Quality 3m19s,
+  Required Gates 3s).
 - PR #66 remains `OPEN / DRAFT / MERGEABLE`. CI **#573 / #574** were NOT re-run.

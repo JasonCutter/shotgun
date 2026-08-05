@@ -543,6 +543,7 @@ BLOCKED | COMPLETE`뿐이며 CANDIDATE 상태가 없으므로 임의 상태를 �
 
 ### 11.4 보완 head·CI
 
-- 보완 code head: `<REMEDIATION_HEAD>` — CI **#575** / `<RUN_ID>`: Quality, Frontend, Required
-  Gates 결과는 최종 갱신에서 기록한다.
+- 보완 code head: `4817b5563210fcc6c7d4b3555ae9cce37297cd33` — CI **#575** /
+  `31051753388`: Quality, Frontend, Required Gates **SUCCESS** (Frontend 3m7s, Quality 3m19s,
+  Required Gates 3s).
 - CI **#573 / #574** 및 **#569~#572**는 재실행하지 않았다.

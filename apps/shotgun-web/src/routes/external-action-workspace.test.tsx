@@ -314,6 +314,10 @@ type FetchBehavior = {
   readonly detailDelayMs?: number;
   /** Delay the snapshot response (used to observe the queue-selection bootstrap gap). */
   readonly snapshotDelayMs?: number;
+  /** Delay the execution read (used to hold the deep-link execution id unverified). */
+  readonly executionDelayMs?: number;
+  /** Status for the execution read (e.g. 404 — used to verify fail-closed behavior). */
+  readonly executionStatus?: number;
 };
 
 const createFetchMock = (behavior: FetchBehavior) => {
@@ -503,6 +507,15 @@ const createFetchMock = (behavior: FetchBehavior) => {
         return jsonResponse(200, { schemaVersion: '1.0.0', riskDecision });
       }
       if (text.includes('/external-action/executions/read')) {
+        if (behavior.executionDelayMs) {
+          await new Promise((resolve) => setTimeout(resolve, behavior.executionDelayMs));
+        }
+        if (behavior.executionStatus) {
+          return jsonResponse(behavior.executionStatus, {
+            code: 'EXTERNAL_ACTION_NOT_FOUND',
+            message: 'The External Action execution was not found.',
+          });
+        }
         return jsonResponse(200, { schemaVersion: '1.0.0', execution });
       }
       if (text.includes('/external-action/executions/attempts')) {
@@ -1280,6 +1293,77 @@ describe('ExternalActionWorkspace (FE-P4-S2 WP5)', () => {
       },
       { timeout: 10000 },
     );
+    vi.unstubAllGlobals();
+  });
+
+  it('fails closed while the deep-link execution id is still unverified (execution read pending)', async () => {
+    const { fetchMock, calls } = createFetchMock({
+      detail: detailResult,
+      childReads: true,
+      executionDelayMs: 200,
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const runtime = createRuntime();
+    renderWorkspace(runtime, ['/external-action?action=action-1&execution=execution-1']);
+
+    // Detail + governed command surfaces render BEFORE the execution read
+    // settles (Review 4866654696).
+    await waitFor(
+      () => {
+        screen.getByRole('button', { name: '롤백' });
+      },
+      { timeout: 10000 },
+    );
+    // While the execution read is pending, the deep-link id is UNVERIFIED:
+    // every governed command is disabled in the same render.
+    const rollback = screen.getByRole('button', { name: '롤백' });
+    const compensation = screen.getByRole('button', { name: '보상 액션 준비' });
+    expect((rollback as HTMLButtonElement).disabled).toBe(true);
+    expect((compensation as HTMLButtonElement).disabled).toBe(true);
+    // Clicking a disabled command never submits the unverified id.
+    await userEvent.click(rollback);
+    const rollbackPosts = calls.filter((call) => call.includes('/external-action/rollback'));
+    expect(rollbackPosts.length).toBe(0);
+
+    // The execution read eventually settles with the authoritative id (the
+    // execution section renders), but the rollback click above never produced a
+    // POST during the unverified window (Review 4866654696).
+    await waitFor(
+      () => {
+        screen.getByText(/실행 execution-1/);
+      },
+      { timeout: 10000 },
+    );
+    expect(calls.filter((call) => call.includes('/external-action/rollback')).length).toBe(0);
+    vi.unstubAllGlobals();
+  });
+
+  it('never uses an unverified deep-link execution id when the execution read 404s', async () => {
+    const { fetchMock, calls } = createFetchMock({
+      detail: detailResult,
+      childReads: true,
+      executionStatus: 404,
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const runtime = createRuntime();
+    renderWorkspace(runtime, ['/external-action?action=action-1&execution=execution-1']);
+
+    // The execution read 404'd: the deep-link id stays UNVERIFIED so every
+    // governed command remains locked and no payload carries it
+    // (Review 4866654696).
+    await waitFor(
+      () => {
+        screen.getByRole('button', { name: '롤백' });
+      },
+      { timeout: 10000 },
+    );
+    const rollback = screen.getByRole('button', { name: '롤백' });
+    const compensation = screen.getByRole('button', { name: '보상 액션 준비' });
+    expect((rollback as HTMLButtonElement).disabled).toBe(true);
+    expect((compensation as HTMLButtonElement).disabled).toBe(true);
+    await userEvent.click(rollback);
+    const rollbackPosts = calls.filter((call) => call.includes('/external-action/rollback'));
+    expect(rollbackPosts.length).toBe(0);
     vi.unstubAllGlobals();
   });
 });

@@ -470,6 +470,21 @@ export const ExternalActionWorkspace = () => {
     deepLinkMismatch.verification,
   ]);
 
+  // Fail-closed execution validation (Review 4866654696): a deep-link execution
+  // id is only trusted AFTER the authoritative Execution read CONFIRMS it. While
+  // the read is pending, errored (incl. 404) or returns a different id, the id
+  // is UNVERIFIED: every governed command is synchronously locked in the same
+  // render AND submitCommand refuses to build a payload with it. A UI-selected
+  // execution (no deep-link execution param) is always authoritative because it
+  // is copied from the rendered execution read itself.
+  const executionValidated =
+    execution.data !== undefined &&
+    state.selectedExecutionId !== null &&
+    execution.data.execution.executionId === state.selectedExecutionId;
+  const executionUnverified =
+    deepLink.executionId !== null &&
+    (execution.data === undefined || execution.data.execution.executionId !== deepLink.executionId);
+
   const surfaces = detail.data
     ? externalActionCommandSurfaces(detail.data.action.status)
     : {
@@ -481,26 +496,40 @@ export const ExternalActionWorkspace = () => {
       };
 
   const commandsAvailable = Object.values(surfaces).some(Boolean);
-  // Any resource mismatch synchronously locks every governed command in the
-  // SAME render the mismatch is detected — a passive clear effect is never the
-  // security boundary (Review 4866454087 item 2).
-  const mismatchLocked = Object.values(deepLinkMismatch).some(Boolean);
+  // Any resource mismatch OR an unverified deep-link execution id synchronously
+  // locks every governed command in the SAME render — a passive clear effect is
+  // never the security boundary (Review 4866454087 item 2, 4866654696). While
+  // the Execution read is pending/errored the deep-link id cannot be confirmed,
+  // so commands stay locked until the authoritative read settles.
+  const mismatchLocked = Object.values(deepLinkMismatch).some(Boolean) || executionUnverified;
   const locked = state.submitting !== null || state.recovery.kind !== 'NONE' || mismatchLocked;
 
   const submitCommand = useCallback(
     async (command: ExternalActionCommandKind) => {
       if (!identity || !detail.data) return;
       if (state.submitting !== null) return; // exactly-once guard
+      // Fail-closed: never submit a governed command while the deep-link
+      // execution id is UNVERIFIED (read pending / errored / 404 / mismatch).
+      // The disabled buttons are NOT the security boundary — submitCommand
+      // enforces the same check internally (Review 4866654696).
+      if (
+        deepLink.executionId !== null &&
+        (execution.data === undefined ||
+          execution.data.execution.executionId !== deepLink.executionId)
+      ) {
+        return;
+      }
       const action = detail.data.action;
       const clientRequestId = freshRequestId('external-action');
       const idempotencyKey = freshRequestId('external-action-idem');
       // Command-common reason draft (ADR-119): the single reason input feeds
       // every governed command (Review 4865620679 item 4).
       const reason = state.draft?.reason ?? 'Governed workspace request.';
-      // A mismatched deep-link execution id is NEVER used in a command payload
-      // — the authoritative latest execution ref is used instead
-      // (Review 4866454087 item 2). The mismatch also locks every command.
-      const safeExecutionId = deepLinkMismatch.execution ? null : state.selectedExecutionId;
+      // A deep-link execution id is used in a command payload ONLY after the
+      // authoritative Execution read has CONFIRMED it. While unverified (or
+      // mismatched) the authoritative latest execution ref is used instead
+      // (Review 4866454087 item 2, 4866654696).
+      const safeExecutionId = executionValidated ? state.selectedExecutionId : null;
       try {
         if (command === 'CANCEL') {
           const request = {
@@ -652,6 +681,9 @@ export const ExternalActionWorkspace = () => {
       state.submitting,
       state.draft,
       state.selectedExecutionId,
+      deepLink.executionId,
+      execution.data,
+      executionValidated,
       deepLinkMismatch.execution,
       manifest.data,
       scope,

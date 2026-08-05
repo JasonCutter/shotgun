@@ -307,6 +307,107 @@ export const reviewContextPhaseQueryKey = (
 export const reviewDisabledQueryKey = (operation: string) =>
   ['review', 'disabled', operation] as const;
 
+/**
+ * FE-P4-S2 WP5 External Action workspace query scope. Derived from the shell
+ * exactly like the Review scope; the server derives capability/credential/
+ * budget authority (ADR-129), the browser only names the resource.
+ */
+export type ExternalActionQueryScope = {
+  readonly principalId: string;
+  readonly sessionId: string;
+  readonly activeProjectId: string;
+  readonly resourceProjectId: string;
+  readonly accessRevision: string;
+  readonly policyContextRevision: string;
+  readonly sensitivity: string;
+};
+
+export const externalActionScopeFromShell = (
+  shell: GlobalShellView | null,
+): ExternalActionQueryScope | null =>
+  shell?.activeProject
+    ? {
+        principalId: shell.principalId,
+        sessionId: shell.sessionId,
+        activeProjectId: shell.activeProject.id,
+        resourceProjectId: shell.activeProject.id,
+        accessRevision: shell.accessRevision,
+        policyContextRevision: shell.policyContextRevision,
+        sensitivity: shell.activeProject.sensitivityClearance,
+      }
+    : null;
+
+const externalActionScopeKey = (scope: ExternalActionQueryScope) =>
+  [
+    'project',
+    scope.principalId,
+    scope.sessionId,
+    scope.activeProjectId,
+    scope.resourceProjectId,
+    scope.accessRevision,
+    scope.policyContextRevision,
+    scope.sensitivity,
+    'external-action',
+  ] as const;
+
+/**
+ * Bounded queue-phase key: the queue read is bound to the server scope and the
+ * full request (page size, cursor) so two requests never reuse each other's
+ * cached result.
+ */
+export const externalActionQueueQueryKey = (
+  scope: ExternalActionQueryScope,
+  request: { readonly pageSize: number; readonly cursor?: string },
+) => [...externalActionScopeKey(scope), 'queue', request] as const;
+
+/**
+ * Resource-phase key: any aggregate/manifest/risk/preflight/execution/attempt/
+ * verification/result/audit/approval read is bound to the server scope AND the
+ * immutable action identity (actionId + actionRevision + externalRevision) so
+ * cache isolation holds across Project, access, policy, action revision and
+ * external revision (WP5 scope item 3).
+ */
+export const externalActionResourceQueryKey = (
+  scope: ExternalActionQueryScope,
+  actionId: string,
+  actionRevision: number,
+  externalRevision: string,
+  operation: readonly unknown[],
+) =>
+  [
+    ...externalActionScopeKey(scope),
+    'action',
+    actionId,
+    actionRevision,
+    externalRevision,
+    ...operation,
+  ] as const;
+
+export const externalActionDisabledQueryKey = (operation: string) =>
+  ['external-action', 'disabled', operation] as const;
+
+/**
+ * Action-prefix key used for invalidation after a governed command resolves or
+ * an `OUTCOME_UNKNOWN` completes. It matches the REAL resource keys (scope +
+ * 'action' + actionId) so a single invalidate refreshes the detail and every
+ * child read of that action without ad hoc key arrays (Review 4865620679 item
+ * 5 — the previous `['project', principalId, 'external-action', ...]` prefix
+ * did not match the actual keys).
+ */
+export const externalActionActionQueryKey = (scope: ExternalActionQueryScope, actionId: string) =>
+  [...externalActionScopeKey(scope), 'action', actionId] as const;
+
+/**
+ * Dedicated BOOTSTRAP key for the aggregate snapshot read (Review 4866122577
+ * item 3). The snapshot binds ONLY the server scope + actionId and is NEVER a
+ * revision-bound resource key (it does not know the action/external revision
+ * yet) — so no `externalActionResourceQueryKey` entry ever carries the
+ * placeholder `actionRevision: -1` / `externalRevision: ''` used to bootstrap
+ * the detail identity.
+ */
+export const externalActionSnapshotQueryKey = (scope: ExternalActionQueryScope, actionId: string) =>
+  [...externalActionScopeKey(scope), 'snapshot', actionId] as const;
+
 export const clearProjectQueries = async (queryClient: QueryClient): Promise<void> => {
   await queryClient.cancelQueries({ queryKey: ['project'] });
   queryClient.removeQueries({ queryKey: ['project'] });

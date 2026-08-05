@@ -64,6 +64,7 @@ const routes = {
   ask: { routeId: 'ask', href: '/ask' },
   knowledge: { routeId: 'knowledge', href: '/knowledge' },
   review: { routeId: 'review', href: '/review' },
+  externalAction: { routeId: 'external-action', href: '/external-action' },
   settings: { routeId: 'settings', href: '/settings' },
   projects: { routeId: 'settings-projects', href: '/settings/projects' },
 } as const satisfies Record<string, TargetRouteView>;
@@ -133,6 +134,21 @@ export class InMemoryGlobalShellProjection implements GlobalShellProjectionPort 
               label: 'Ask',
               availability: 'TEMPORARILY_UNAVAILABLE',
               reason: 'Create a Project to open Ask.',
+            },
+        // AC-18: the External Action Governance Workspace is reachable from
+        // BOTH Home and Command Palette navigation — never direct execution.
+        projectReady
+          ? {
+              id: 'external-action',
+              label: 'External actions',
+              availability: 'AVAILABLE',
+              targetRoute: routes.externalAction,
+            }
+          : {
+              id: 'external-action',
+              label: 'External actions',
+              availability: 'TEMPORARILY_UNAVAILABLE',
+              reason: 'Create a Project to open External actions.',
             },
         unavailableWorkspace('knowledge', 'Knowledge'),
         unavailableWorkspace('review', 'Review'),
@@ -232,6 +248,14 @@ export class InMemoryActionCenterProjection implements ActionCenterProjectionPor
           availability: 'AVAILABLE',
           targetRoute: routes.ask,
         },
+        // AC-18: high-risk External Actions are never executed from Home; the
+        // entry navigates to the governance workspace only.
+        {
+          id: 'govern-external-action',
+          label: 'External actions',
+          availability: 'AVAILABLE',
+          targetRoute: routes.externalAction,
+        },
         unavailable('explore-knowledge', 'Explore knowledge', routes.knowledge),
         unavailable('review-changes', 'Review changes', routes.review),
       ],
@@ -293,6 +317,7 @@ export class InMemoryRouteGuardProjection implements RouteGuardProjectionPort {
       'ask',
       'settings',
       'settings-projects',
+      'external-action',
     ]).has(input.requestedRoute.routeId);
     return decodeRouteGuardDecisionView({
       schemaVersion: '1.0.0',

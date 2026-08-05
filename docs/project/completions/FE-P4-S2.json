@@ -1,0 +1,280 @@
+{
+  "schemaVersion": 1,
+  "workItemId": "FE-P4-S2",
+  "status": "COMPLETE",
+  "governingContract": "docs/architecture/frontend/phase-4-governance-execution.md",
+  "mandatoryCriteria": [
+    {
+      "id": "ac-01",
+      "title": "ExternalActionV1 aggregate with stable actionId and immutable numbered actionRevision binds target, external revision, operation, risk decision, manifest, approval, project, access and policy.",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-4-section-2-wp6-verification-and-governance-evidence-260806001.md",
+        "tests/contract/frontend-external-action.contract.test.ts",
+        "tests/integration/frontend-external-action-domain.test.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-02",
+      "title": "ActionCandidateV1 and RiskDecisionV1 are validated and read-only; the browser never computes risk.",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-4-section-2-wp6-verification-and-governance-evidence-260806001.md",
+        "tests/contract/frontend-external-action.contract.test.ts",
+        "tests/integration/frontend-external-action-domain.test.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-03",
+      "title": "ActionManifestV1 is immutable per revision and manifestDigest covers target, parameters, evidence and payload; a new revision supersedes the old.",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-4-section-2-wp6-verification-and-governance-evidence-260806001.md",
+        "tests/contract/frontend-external-action.contract.test.ts",
+        "tests/integration/frontend-external-action-domain.test.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-04",
+      "title": "ExternalActionApprovalV1 has purpose EXTERNAL_ACTION and is never reused for Knowledge or Directive purposes, nor reused across actions.",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-4-section-2-wp6-verification-and-governance-evidence-260806001.md",
+        "tests/contract/frontend-external-action.contract.test.ts",
+        "tests/integration/frontend-external-action-product-api.test.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-05",
+      "title": "Approval binds manifest revision, manifest digest, target revision, target digest, external revision, policy context and expiry; expired or non-active approval blocks execution.",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-4-section-2-wp6-verification-and-governance-evidence-260806001.md",
+        "tests/contract/frontend-external-action.contract.test.ts",
+        "tests/integration/frontend-external-action-domain.test.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-06",
+      "title": "PreflightV1 revalidates permission, credential, budget, policy, target state and external revision after approval; READY is time-boxed.",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-4-section-2-wp6-verification-and-governance-evidence-260806001.md",
+        "tests/contract/frontend-external-action.contract.test.ts",
+        "tests/database/frontend-external-action-postgres-parity.test.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-07",
+      "title": "ExecutionV1 owns an ordered append-only ExecutionAttemptV1 list; each attempt has its own idempotency key and correlation/causation.",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-4-section-2-wp6-verification-and-governance-evidence-260806001.md",
+        "tests/contract/frontend-external-action.contract.test.ts",
+        "tests/integration/frontend-external-action-domain.test.ts",
+        "tests/database/frontend-external-action-postgres-parity.test.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-08",
+      "title": "Transport retry preserves request, key, digest and attempt; domain retry is a new command and attempt; no automatic re-execution on timeout or OUTCOME_UNKNOWN.",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-4-section-2-wp6-verification-and-governance-evidence-260806001.md",
+        "tests/unit/frontend-external-action-client.test.ts",
+        "tests/integration/frontend-external-action-domain.test.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-09",
+      "title": "VERIFIED requires a VerificationV1 confirming external target state; Connector/HTTP success alone never marks verified.",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-4-section-2-wp6-verification-and-governance-evidence-260806001.md",
+        "tests/integration/frontend-external-action-domain.test.ts",
+        "tests/database/frontend-external-action-postgres-parity.test.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-10",
+      "title": "ResultV1 and ActionAuditEventV1 are safe read-only views; raw provider payloads, prompts and secrets are never exposed.",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-4-section-2-wp6-verification-and-governance-evidence-260806001.md",
+        "tests/contract/frontend-external-action.contract.test.ts",
+        "tests/database/frontend-external-action-postgres-parity.test.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-11",
+      "title": "Cancel is an abort request distinct from Rollback; Rollback is a separate governed command never assumed available.",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-4-section-2-wp6-verification-and-governance-evidence-260806001.md",
+        "tests/integration/frontend-external-action-domain.test.ts",
+        "tests/browser/frontend-external-action-lifecycle.spec.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-12",
+      "title": "CompensatingActionV1 is an independent governed External Action referencing compensationForActionId and is never auto-run.",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-4-section-2-wp6-verification-and-governance-evidence-260806001.md",
+        "tests/contract/frontend-external-action.contract.test.ts",
+        "tests/browser/frontend-external-action-lifecycle.spec.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-13",
+      "title": "Credentials are server-owned and only masked views and typed capabilities reach the browser.",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-4-section-2-wp6-verification-and-governance-evidence-260806001.md",
+        "tests/contract/frontend-external-action.contract.test.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-14",
+      "title": "A project-scoped execution budget is server-owned; preflight revalidates it and exhaustion fails closed.",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-4-section-2-wp6-verification-and-governance-evidence-260806001.md",
+        "tests/contract/frontend-external-action.contract.test.ts",
+        "tests/integration/frontend-external-action-domain.test.ts",
+        "tests/database/frontend-external-action-postgres-parity.test.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-15",
+      "title": "Changed manifest, target, protected payload, credential, budget or external revision requires re-approval and blocks stale execution.",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-4-section-2-wp6-verification-and-governance-evidence-260806001.md",
+        "tests/integration/frontend-external-action-domain.test.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-16",
+      "title": "OUTCOME_UNKNOWN resolves by original command identity and never auto-submits a new key.",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-4-section-2-wp6-verification-and-governance-evidence-260806001.md",
+        "tests/unit/frontend-external-action-client.test.ts",
+        "apps/shotgun-web/src/routes/external-action-workspace.test.tsx",
+        "tests/browser/frontend-external-action-lifecycle.spec.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-17",
+      "title": "Hidden or access-restricted actions return a restricted shell without protected payload or identity leak.",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-4-section-2-wp6-verification-and-governance-evidence-260806001.md",
+        "tests/contract/frontend-external-action.contract.test.ts",
+        "tests/integration/frontend-external-action-domain.test.ts",
+        "apps/shotgun-web/src/routes/external-action-workspace.test.tsx"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-18",
+      "title": "High-risk actions are never executed from Home or Command Palette; they navigate to the governance workspace.",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-4-section-2-wp6-verification-and-governance-evidence-260806001.md",
+        "tests/contract/frontend-shell-navigation.contract.test.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-19",
+      "title": "The workspace is accessible: keyboard matrix, frozen announcements, non-color cues, 200% zoom, reduced motion, axe zero-critical.",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-4-section-2-wp6-verification-and-governance-evidence-260806001.md",
+        "tests/browser/frontend-external-action-workspace.spec.ts",
+        "apps/shotgun-web/src/external-action/external-action-workspace-state.test.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-20",
+      "title": "Negative proof: no Connector/HTTP success alone marks verified; no Cancel implies Rollback; no automatic retry after timeout.",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-4-section-2-wp6-verification-and-governance-evidence-260806001.md",
+        "tests/unit/frontend-external-action-client.test.ts",
+        "tests/integration/frontend-external-action-domain.test.ts",
+        "tests/browser/frontend-external-action-lifecycle.spec.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-21",
+      "title": "In-memory/PostgreSQL parity and migration 028 apply/rollback (implementation phase).",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-4-section-2-wp6-verification-and-governance-evidence-260806001.md",
+        "tests/database/frontend-external-action-postgres-parity.test.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-22",
+      "title": "Exact-head Quality, Frontend and Required Gates pass at the implementation head (implementation phase).",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-4-section-2-wp6-verification-and-governance-evidence-260806001.md",
+        "docs/implementation/frontend-phase-4-section-2-implementation-progress-report-260805001.md"
+      ],
+      "scopeAmendment": null
+    }
+  ],
+  "remainingScope": [],
+  "scopeAmendments": [],
+  "evidenceRegistryUpdates": [
+    "FRONTEND-PHASE-4-SECTION-2-WP6-EVIDENCE-260806001",
+    "FRONTEND-PHASE-4-SECTION-2-COMPLETION-260806001"
+  ],
+  "approvedBy": "user",
+  "approvedAt": "2026-08-06"
+}

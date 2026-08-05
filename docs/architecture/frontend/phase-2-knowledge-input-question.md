@@ -18,15 +18,7 @@ legacy_source_id: 3a65181d-71ad-8122-bfda-c9be8016ef33
 
 <!-- FRONTEND-WORK-ITEM-STATUS:START -->
 
-> 이 블록은 `docs/project/frontend-work-items.json`과 Section Completion Manifest에서 생성됩니다. 블록 내부를 직접 수정하지 않습니다.
-
-| Work Item                                           | Status        |
-| --------------------------------------------------- | ------------- |
-| FE-P4 — Governance and Execution                    | `IN_PROGRESS` |
-| FE-P4-S2 — External Action Governance and Execution | `NOT_STARTED` |
-
-- 미충족 필수 기준: `manifest unavailable`
-- Next valid Product Section: `FE-P5-S1 — Agent and Job Activity Workspace`
+> Frontend Work Item status is complete; no active Section remains.
 
 <!-- FRONTEND-WORK-ITEM-STATUS:END -->
 

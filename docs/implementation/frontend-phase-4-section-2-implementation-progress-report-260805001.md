@@ -2425,3 +2425,52 @@ client` 테스트: Approve→Preflight→Execute 각 POST 1회 + 순서 검증. 
   `31053630441`: Quality, Frontend, Required Gates **SUCCESS** (Frontend 3m7s, Quality 3m16s,
   Required Gates 4s).
 - PR #66 remains `OPEN / DRAFT / MERGEABLE`. CI **#575 / #576** were NOT re-run.
+
+## 35. FE-P4-S2 Product Completion Authority Recording (report 29, 2026-08-06)
+
+Review **4869469297** (**Decision: WP6 APPROVED / COMPLETE, FE-P4-S2 PRODUCT COMPLETION
+CANDIDATE ACCEPTED, PRODUCT COMPLETION AUTHORITY RECORDING AUTHORIZED_TO_START**)에 따라, 코드
+변경 없이 승인 결과를 거버넌스 기록에 반영했다. CI **#577 / #578** 및 기존 PASS head는
+재실행하지 않았다.
+
+### 승인 반영 내용
+
+- **Completion Manifest** `docs/project/completions/FE-P4-S2.json`:
+  - `status: COMPLETE`, `approvedBy: "user"`, `approvedAt: "2026-08-06"`.
+  - AC-23 추가: "WP6 verification and completion authority recorded; completion approved
+    (Review 4869469297)" — `PASS`.
+  - `evidenceRegistryUpdates`: `FRONTEND-PHASE-4-SECTION-2-WP6-EVIDENCE-260806001` +
+    `FRONTEND-PHASE-4-SECTION-2-COMPLETION-260806001`.
+- **Evidence Registry** `docs/engineering/evidence-registry.json`:
+  - `FRONTEND-PHASE-4-SECTION-2-WP6-EVIDENCE-260806001` → `statusAuthority:
+COMPLETE_APPROVED`, `completionApproval: APPROVED`, `completionApprovedBy: "user"`,
+    `completionApprovedAt: "2026-08-06"`, `completionReview: "4869469297"`.
+  - 신규 `FRONTEND-PHASE-4-SECTION-2-COMPLETION-260806001` — `COMPLETION_RECORD`, path
+    `docs/project/completions/FE-P4-S2.json`, approval head `e9324d72` CI **#578**
+    (`31053904804`) PASS, `completion: COMPLETE`, `ready: NOT_AUTHORIZED`,
+    `merge: NOT_AUTHORIZED`.
+- **Work Item Registry** `docs/project/frontend-work-items.json`:
+  - FE-P4-S2 → `COMPLETE`, `approvedBy: "user"`, `approvedAt: "2026-08-06"`.
+  - FE-P4 Phase → `COMPLETE` (모든 하위 Section이 COMPLETE이므로).
+- **Projection** 4개 파일 재생성 (`docs:frontend-projections:write`).
+- **Issue #65 / PR #66**: 승인 기록 코멘트 추가.
+
+### 권위 상태 (기록 후)
+
+- WP1~WP5: APPROVED / COMPLETE. **WP6: APPROVED / COMPLETE.**
+- **FE-P4-S2 Product: COMPLETE (completion candidate ACCEPTED, Review 4869469297).**
+- PR #66 remains `OPEN / DRAFT / MERGEABLE`. Ready / Merge: `NOT_AUTHORIZED`.
+- Deployment / Production Verification / FE-P5: `NOT_AUTHORIZED`.
+- Codex는 `Ready`, `Merge`를 선언·실행하지 않는다.
+
+### Validation
+
+- `docs:completion-invariants`, `docs:frontend-work-items`, `docs:frontend-projections:check`,
+  `docs:validate`(canonical·evidence registry 포함) 모두 **PASS**.
+- 자동 CI: 기록 head `<RECORDING_HEAD>` — CI **#579** / `<RUN_ID>` (metadata 아래에 기록).
+
+### Final metadata (report 29)
+
+- **FE-P4-S2 completion recording head**: `<RECORDING_HEAD>` — CI **#579** / `<RUN_ID>`:
+  Quality, Frontend, Required Gates 결과는 최종 갱신에서 기록한다.
+- PR #66 remains `OPEN / DRAFT / MERGEABLE`. CI **#577 / #578** were NOT re-run.

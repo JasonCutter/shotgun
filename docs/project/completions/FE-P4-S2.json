@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "workItemId": "FE-P4-S2",
-  "status": "IN_PROGRESS",
+  "status": "COMPLETE",
   "governingContract": "docs/architecture/frontend/phase-4-governance-execution.md",
   "mandatoryCriteria": [
     {
@@ -267,11 +267,26 @@
         "docs/implementation/frontend-phase-4-section-2-implementation-progress-report-260805001.md"
       ],
       "scopeAmendment": null
+    },
+    {
+      "id": "ac-23",
+      "title": "WP6 verification and completion authority recorded in the Evidence Registry, Completion Manifest, Work Item and Projection; completion approved (Review 4869469297).",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-4-section-2-wp6-verification-and-governance-evidence-260806001.md",
+        "docs/implementation/frontend-phase-4-section-2-implementation-progress-report-260805001.md",
+        "docs/project/completions/FE-P4-S2.json"
+      ],
+      "scopeAmendment": null
     }
   ],
   "remainingScope": [],
   "scopeAmendments": [],
-  "evidenceRegistryUpdates": ["FRONTEND-PHASE-4-SECTION-2-WP6-EVIDENCE-260806001"],
-  "approvedBy": null,
-  "approvedAt": null
+  "evidenceRegistryUpdates": [
+    "FRONTEND-PHASE-4-SECTION-2-WP6-EVIDENCE-260806001",
+    "FRONTEND-PHASE-4-SECTION-2-COMPLETION-260806001"
+  ],
+  "approvedBy": "user",
+  "approvedAt": "2026-08-06"
 }

@@ -2265,8 +2265,8 @@ shell-navigation 3 tests + workspace-state 8 tests + route-contract 5 tests + wo
 ### Code / Evidence Head
 
 - WP6 시작 기준 head: `8a4f2aeb161467edcc5b6ad611bfb848f9e86559` (CI **#572** SUCCESS).
-- WP6 evidence head: `<EVIDENCE_HEAD>` — CI **#573** / `<RUN_ID>`: Quality, Frontend, Required
-  Gates 결과는 아래에 기록한다.
+- WP6 evidence head: `a89fd4888571293bb0bfffa2392c37ce6bd6751a` — CI **#573** /
+  `31045703248`: Quality, Frontend, Required Gates **SUCCESS**.
 
 ### PR 상태·권위
 
@@ -2277,6 +2277,7 @@ shell-navigation 3 tests + workspace-state 8 tests + route-contract 5 tests + wo
 
 ### Final metadata (report 26)
 
-- **WP6 evidence head**: `<EVIDENCE_HEAD>` — CI **#573** / `<RUN_ID>`: Quality, Frontend,
-  Required Gates **SUCCESS** (아래에서 확정).
+- **WP6 evidence head**: `a89fd4888571293bb0bfffa2392c37ce6bd6751a` — CI **#573** /
+  `31045703248`: Quality, Frontend, Required Gates **SUCCESS** (Frontend 2m40s, Quality 2m59s,
+  Required Gates 3s).
 - PR #66 remains `OPEN / DRAFT / MERGEABLE`. CI **#569 / #570 / #571** were NOT re-run.

@@ -411,9 +411,10 @@ execution read 404s`.
 
 ### WP6 자동 CI (새 커밋 push)
 
-- WP6 evidence head `<EVIDENCE_HEAD>` — CI **#573** / `<RUN_ID>`: Quality, Frontend, Required
-  Gates 결과는 이 문서 최종 갱신에서 기록한다.
-- CI **#569 / #570 / #571 / #572**는 재실행하지 않는다.
+- WP6 evidence head: `a89fd4888571293bb0bfffa2392c37ce6bd6751a` — CI **#573** /
+  `31045703248`: Quality, Frontend, Required Gates **SUCCESS** (Frontend 2m40s, Quality 2m59s,
+  Required Gates 3s).
+- CI **#569 / #570 / #571 / #572**는 재실행하지 않았다.
 
 ## 8. 제외 범위
 

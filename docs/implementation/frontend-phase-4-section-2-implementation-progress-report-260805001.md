@@ -751,3 +751,97 @@ Commit `7689b42f97ebe1e10ec4df8608edda9d55b405f2`.
 
 PR #66 remains OPEN / DRAFT. WP4 Protected Product API / `FrontendExternalActionClient` remains
 **NOT_AUTHORIZED** pending re-review of this report.
+
+## 17. WP3 remediation — GPT focused review → resolved (report 11, 2026-08-05)
+
+GPT review (Review ID 4860735262) returned **BLOCKED / WP3 REMEDIATION REQUIRED** for WP3 with
+six PostgreSQL-concurrency and ledger-atomicity items. WP3 status:
+`IMPLEMENTED_CANDIDATE / NOT_APPROVED`. All six items are implemented in ONE remediation cycle:
+
+Commit `b903bbdd32bd9bd682ef163fff4687034bd01163`.
+
+### WP3 remediation mapping (GPT items → delivered)
+
+1. **Real PostgreSQL row locks** — `aggregates.lock`, `manifests.lockCurrent` and
+   `attempts.lockByExecution` now issue `FOR UPDATE` (the coordinator's `aggregateFor` uses the
+   aggregate row lock for every governed command). Negative test: two concurrent executes on the
+   same action serialize on the row lock — exactly one succeeds and the other fails closed with
+   `EXTERNAL_ACTION_STALE`.
+2. **Audit sequence + budget concurrency safety** — `audit.nextSequence` takes a per-action
+   advisory transaction lock (`pg_advisory_xact_lock`) before `MAX(sequence)+1`, so concurrent
+   commands can never receive the same sequence. The project budget is now reserved ATOMICALLY
+   BEFORE the connector call: `ExternalActionBudgetStorePort.reserve(projectId)` decrements in a
+   single guarded UPDATE, and execute/retry call `reserveBudget` in Phase 1 (the finalize-time
+   decrement is removed). Test: two concurrent reservations against a budget with one remaining
+   execution produce exactly one consumed execution (`used = 1`, remaining `0`, exhausted).
+3. **Immutable/append-only resources are no longer updatable by upsert** — risk decisions,
+   manifests and audit events are inserted with `ON CONFLICT DO NOTHING` (a conflicting insert
+   never modifies an existing snapshot); the attempt upsert only allows the legal
+   IN_PROGRESS → terminal status transition with an unchanged identity (execution/action/project/
+   attempt number) — any identity drift is a no-op, never a rebind.
+4. **`findCurrent` returns the LATEST resource** — executions, verifications and results
+   `findCurrent` now return the most recent resource (created_at DESC / last inserted) in both
+   the PostgreSQL and in-memory adapters, so after a rollback lifecycle the Detail and individual
+   reads surface the rollback verification/result (never the original forward one). The rollback
+   parity test now asserts the current verification/result identities are the rollback's.
+5. **Real PostgreSQL Command Ledger atomicity is tested** — the new parity suite wires
+   `PostgresExternalActionStore` together with `PostgresFrontendCommandGateway` and verifies:
+   (a) the Product resource and the ledger COMPLETED transition commit in one transaction;
+   (b) outcome resolution through the original identity returns the completed command;
+   (c) terminal replay is idempotent (same execution, no `OUTCOME_INDETERMINATE`);
+   (d) a Product write failure inside the same transaction rolls back the ledger completion
+   (the ledger row stays ACCEPTED); (e) an in-flight (ACCEPTED) connector command replay fails
+   closed with `OUTCOME_INDETERMINATE`.
+6. **DB binding and migration evidence completed** — every action resource table now carries
+   `effective_project_id NOT NULL` in addition to `resource_project_id` (frozen binding contract;
+   `credentials`/`budgets` are server-owned views scoped by connector/project and are exempt).
+   The migration test now asserts the EXACT 15-table list (including `risk_decisions`, no
+   `arrayContaining`), verifies both binding columns exist on every action table, and explicitly
+   rejects BOTH UPDATE and DELETE on append-only audit events (each in its own transaction).
+   The migration apply/rollback test guarantees the schema is re-applied even when an assertion
+   fails midway.
+
+### Changed files (this WP3 remediation)
+
+- `db/migrations/028_frontend_external_action_product.sql` — `effective_project_id NOT NULL`
+  added to all action resource tables.
+- `modules/frontend-external-action/src/external-action-store-port.ts` — budget port gains
+  atomic `reserve(projectId)`.
+- `modules/frontend-external-action/src/product-api.ts` — `reserveBudget` (atomic reservation
+  before the connector call) replaces the availability-check + finalize-decrement budget flow in
+  execute and retry.
+- `adapters/frontend-external-action-in-memory/src/index.ts` — `budgets.reserve` (atomic within
+  the FIFO-serialized transaction); executions/verifications/results `findCurrent` return the
+  latest.
+- `adapters/frontend-external-action-postgres/src/index.ts` — `FOR UPDATE` row locks; per-action
+  audit advisory lock; atomic budget reservation; immutable `ON CONFLICT DO NOTHING` for risk
+  decision/manifest/audit; guarded attempt upsert; latest `findCurrent`; `effective_project_id`
+  in every insert.
+- `tests/database/frontend-external-action-postgres-parity.test.ts` — expanded to **10 database
+  tests**: 5 new (same-action concurrency row lock, atomic budget reservation, PG store + PG
+  gateway ledger atomicity + outcome resolution + terminal replay, ledger rollback on product
+  write failure, in-flight replay OUTCOME_INDETERMINATE) + hardened migration evidence (exact
+  15-table list, binding columns, UPDATE+DELETE audit rejection) + rollback identity assertions.
+
+### Validation
+
+- `node --env-file-if-exists=.env node_modules/vitest/vitest.mjs run tests/database/frontend-external-action-postgres-parity.test.ts` — **10/10 PASS**.
+- Full database suite `npm run test:database` — **159/159 PASS (31 files)**.
+- `npx vitest run tests/integration/frontend-external-action-domain.test.ts` — **24/24 PASS**.
+- `npx vitest run tests/contract/frontend-external-action.contract.test.ts` — **93/93 PASS**.
+- `tsc --noEmit` — clean. ESLint — clean. Prettier — clean.
+- Automatic CI on this head `b903bbd` — run **#533** (`30973343235`): Quality, Frontend,
+  Required Gates **SUCCESS**.
+
+### AC coverage (WP3 after remediation)
+
+- **AC-21** is fully delivered: in-memory/PostgreSQL parity for the full governed lifecycle and
+  the rollback lifecycle; migration 028 apply → rollback → clean re-apply with managed-schema
+  registration; real PostgreSQL concurrency (row locks, advisory audit sequence, atomic budget
+  reservation) and Command Ledger atomicity (same-transaction completion, ledger rollback on
+  product failure) are now proven by negative tests. WP1/WP2 domain coverage (AC-01..AC-17) is
+  unchanged. AC-18/AC-19 (UI/workspace) and AC-22 (exact-head CI gates — reported per head)
+  remain; WP4–WP6 remain **NOT_AUTHORIZED**.
+
+PR #66 remains OPEN / DRAFT. WP4 Protected Product API / `FrontendExternalActionClient` remains
+**NOT_AUTHORIZED** pending re-review of this report.

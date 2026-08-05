@@ -1373,6 +1373,90 @@ describe('FE-P4-S2 WP2 External Action Product domain', () => {
     expect(detail.action.actionRevision).toBeGreaterThan(revBeforeExecute + 1);
   });
 
+  it('rejects a second execute while the first connector call is in flight (no parallel execution, Review 4861433397)', async () => {
+    const { coordinator } = makeCoordinator({
+      executeStatus: 'SUCCEEDED',
+      executeDelayMs: 250,
+    });
+    const actionId = 'action-reentry';
+    await coordinator.validateActionCandidate(scope, {
+      schemaVersion: '1.0.0',
+      clientRequestId: 'client-v-reentry',
+      idempotencyKey: 'idem-v-reentry',
+      actionId,
+      candidateId: 'candidate-reentry',
+      operation: 'UPDATE_REVERSIBLE',
+      targetRef,
+      parameterRef,
+      evidenceRefs: [evidenceSetRef],
+      reason: 'Validate.',
+    });
+    const prepared = await coordinator.prepareActionManifest(scope, {
+      schemaVersion: '1.0.0',
+      clientRequestId: 'client-p-reentry',
+      idempotencyKey: 'idem-p-reentry',
+      actionId,
+      expectedActionRevision: await revisionOf(coordinator, actionId),
+      reason: 'Prepare.',
+    });
+    await coordinator.approveExternalAction(scope, {
+      schemaVersion: '1.0.0',
+      clientRequestId: 'client-a-reentry',
+      idempotencyKey: 'idem-a-reentry',
+      actionId,
+      manifestId: prepared.manifest.manifestId,
+      manifestRevision: prepared.manifest.manifestRevision,
+      expectedTargetRevision: 'rev-3',
+      expectedExternalRevision: 'ext-7',
+      reason: 'Approved.',
+    });
+    const preflighted = await coordinator.preflightExternalAction(scope, {
+      schemaVersion: '1.0.0',
+      clientRequestId: 'client-pf-reentry',
+      idempotencyKey: 'idem-pf-reentry',
+      actionId,
+      expectedActionRevision: await revisionOf(coordinator, actionId),
+      manifestRevision: prepared.manifest.manifestRevision,
+      expectedExternalRevision: 'ext-7',
+      reason: 'Preflight.',
+    });
+    const revBeforeExecute = await revisionOf(coordinator, actionId);
+    const executeRequest = {
+      schemaVersion: '1.0.0' as const,
+      clientRequestId: 'client-ex-reentry-1',
+      idempotencyKey: 'idem-ex-reentry-1',
+      actionId,
+      expectedActionRevision: revBeforeExecute,
+      manifestRevision: prepared.manifest.manifestRevision,
+      preflightId: preflighted.preflight.preflightId,
+      expectedExternalRevision: 'ext-7',
+      reason: 'Execute.',
+    };
+    // Execute #1 starts: Phase 1 durable (aggregate EXECUTING) and the
+    // connector call is delayed (still in flight).
+    const first = coordinator.executeExternalAction(scope, executeRequest);
+    // Execute #2 for the SAME action while EXECUTING must fail closed with
+    // ACTION_EXECUTION_NOT_ALLOWED — never a parallel execution.
+    await expect(
+      coordinator.executeExternalAction(scope, {
+        ...executeRequest,
+        clientRequestId: 'client-ex-reentry-2',
+        idempotencyKey: 'idem-ex-reentry-2',
+      }),
+    ).rejects.toThrow(/already executing|not allowed|parallel/i);
+    // Execute #1 completes normally once the delayed connector returns.
+    const firstResult = await first;
+    expect(firstResult.execution.status).toBe('SUCCEEDED');
+    // Only ONE execution and ONE attempt exist — Execute #2 created nothing.
+    const detail = await coordinator.getExternalActionDetail(scope, {
+      schemaVersion: '1.0.0',
+      actionId,
+    });
+    expect(detail.attempts).toHaveLength(1);
+    expect(detail.attempts[0]?.status).toBe('SUCCEEDED');
+    expect(detail.action.status).toBe('VERIFYING');
+  });
+
   it('creates a new risk decision when the policy context changes (same candidate meaning)', async () => {
     const { coordinator } = makeCoordinator();
     const first = await coordinator.validateActionCandidate(scope, {

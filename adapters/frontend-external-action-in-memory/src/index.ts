@@ -295,12 +295,13 @@ export class InMemoryExternalActionStore implements ExternalActionRepositoryBoun
         return all[all.length - 1];
       },
       insert: async (preflight) => {
-        // A preflight's initial binding (action, projects, manifest revision,
-        // digest, run context) is immutable. Beyond the binding, only an EXACT
-        // same-status replay or a DENIED → READY transition (binding + start
-        // context unchanged, result fields only) is legal — READY → DENIED,
-        // same-status with a different snapshot, and ALREADY_APPLIED → READY
-        // all fail closed (Review 4861145103).
+        // A preflight's initial binding AND start context (action, projects,
+        // manifest revision, digest, runAt, expiresAt) are immutable. Beyond
+        // the binding, only an EXACT same-status replay or a DENIED → READY
+        // transition (start context unchanged, result fields only) is legal —
+        // READY → DENIED, same-status with a different snapshot, expiresAt
+        // changes, and ALREADY_APPLIED → READY all fail closed
+        // (Reviews 4861145103 / 4861433397).
         const existing = maps.preflights.get(preflight.preflightId);
         if (existing) {
           upsertOrConflict(
@@ -313,6 +314,7 @@ export class InMemoryExternalActionStore implements ExternalActionRepositoryBoun
               'manifestRevision',
               'preflightDigest',
               'runAt',
+              'expiresAt',
             ],
             'preflight',
           );
@@ -322,7 +324,7 @@ export class InMemoryExternalActionStore implements ExternalActionRepositoryBoun
           const deniedToReady = existing.status === 'DENIED' && preflight.status === 'READY';
           if (!sameStatusExactReplay && !deniedToReady) {
             conflict(
-              'preflight is immutable except an exact replay or a DENIED → READY transition with unchanged binding.',
+              'preflight is immutable except an exact replay or a DENIED → READY transition with unchanged binding and start context.',
             );
           }
         }

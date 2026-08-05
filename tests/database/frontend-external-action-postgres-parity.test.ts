@@ -1048,6 +1048,30 @@ describe.runIf(pool)(
             externalRevisionRevalidated: true,
           });
         });
+        // DENIED → READY with a CHANGED start context (expiresAt) fails closed:
+        // only result fields may change (Review 4861433397).
+        const expiryBase = { ...base, expiresAt: '2026-08-05T01:00:00.000Z' };
+        await store.transaction(async (repositories) => {
+          await repositories.preflights.insert({
+            ...expiryBase,
+            preflightId: `preflight-transition-exp-${suffix}`,
+            actionId: `action-transition-exp-${suffix}`,
+            status: 'DENIED',
+          });
+        });
+        await expect(
+          store.transaction(async (repositories) => {
+            await repositories.preflights.insert({
+              ...expiryBase,
+              preflightId: `preflight-transition-exp-${suffix}`,
+              actionId: `action-transition-exp-${suffix}`,
+              status: 'READY',
+              targetStateRevalidated: true,
+              externalRevisionRevalidated: true,
+              expiresAt: '2026-08-05T02:00:00.000Z',
+            });
+          }),
+        ).rejects.toThrow(/immutable|conflict|transition|expiresAt/i);
         // READY → DENIED (reverse transition) fails closed.
         await expect(
           store.transaction(async (repositories) => {

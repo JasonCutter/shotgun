@@ -1,11 +1,13 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
-import { useOutletContext, useSearchParams } from 'react-router';
+import { useNavigate, useOutletContext, useSearchParams } from 'react-router';
 
 import {
   createFrontendExternalActionClient,
+  frontendExternalActionCancelDigest,
   frontendExternalActionCompensationDigest,
   frontendExternalActionRollbackDigest,
+  frontendExternalActionVerifyDigest,
   type ExternalActionFailureReasonV1,
   type GlobalShellView,
 } from '@shotgun/api-client';
@@ -49,10 +51,11 @@ import {
  * Actions are NEVER executed from Home (AC-18). The workspace provides bounded
  * queue, aggregate detail (with safe masking and access-loss restricted shell),
  * risk/manifest/preflight/execution-attempt/verification/result/audit/approval
- * reads, Cancel (abort only), separate Rollback and governed Compensating
- * Action surfaces (explicitly non-automatic), and `OUTCOME_UNKNOWN` recovery by
- * the ORIGINAL command identity (never a re-execute button). Browser owns only
- * selection, focus and unsent command input (ADR-119).
+ * reads, Cancel (abort only), separate Rollback, governed Compensating Action
+ * and Verify surfaces (explicitly non-automatic), and `OUTCOME_UNKNOWN`
+ * recovery by the ORIGINAL command identity (never a re-execute button).
+ * Browser owns only selection, focus and unsent command input (ADR-119);
+ * governed commands enter a SUBMITTING lock so they are sent exactly once.
  */
 
 const freshRequestId = (prefix: string): string =>
@@ -79,7 +82,9 @@ const failureReasonLabel = (reason: ExternalActionFailureReasonV1): string => {
 export const ExternalActionWorkspace = () => {
   const { shell } = useOutletContext<{ readonly shell: GlobalShellView }>();
   const externalActionClient = useMemo(() => createFrontendExternalActionClient(), []);
-  const [searchParameters, setSearchParameters] = useSearchParams();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [searchParameters] = useSearchParams();
   const [state, dispatch] = useReducer(
     reduceExternalActionWorkspaceState,
     undefined,
@@ -130,8 +135,10 @@ export const ExternalActionWorkspace = () => {
       externalRevision: '',
     });
     dispatch({ type: 'RECOVERY_STARTED' });
-    if (deepLink.executionId)
+    if (deepLink.manifestId) dispatch({ type: 'SELECT_MANIFEST', manifestId: deepLink.manifestId });
+    if (deepLink.executionId) {
       dispatch({ type: 'SELECT_EXECUTION', executionId: deepLink.executionId });
+    }
     if (deepLink.attemptId) dispatch({ type: 'SELECT_ATTEMPT', attemptId: deepLink.attemptId });
     if (deepLink.verificationId) {
       dispatch({ type: 'SELECT_VERIFICATION', verificationId: deepLink.verificationId });
@@ -144,6 +151,7 @@ export const ExternalActionWorkspace = () => {
     snapshot.data,
     state.selectedActionId,
     state.actionRevision,
+    deepLink.manifestId,
     deepLink.executionId,
     deepLink.attemptId,
     deepLink.verificationId,
@@ -176,10 +184,10 @@ export const ExternalActionWorkspace = () => {
 
   // Detail identity from the selected queue item or deep-link snapshot. The
   // actionRevision binds the detail read; the external revision is learned from
-  // the detail payload (manifest) and then binds every child read so cache
-  // isolation holds across action revision AND external revision (WP5).
-  // Memoized so the phase effects never observe a fresh object identity (which
-  // would re-dispatch and loop).
+  // the detail payload and then binds every child read so cache isolation holds
+  // across action revision AND external revision (WP5). Memoized so the phase
+  // effects never observe a fresh object identity (which would re-dispatch and
+  // loop).
   const identity = useMemo(
     () =>
       state.selectedActionId && state.actionRevision !== null
@@ -193,18 +201,32 @@ export const ExternalActionWorkspace = () => {
   );
 
   const detail = useQuery(externalActionDetailQueryOptions(externalActionClient, scope, identity));
+
+  // Child reads are gated until the detail resolves AND the action is not
+  // access-restricted (Review 4865177355 item 3): the external revision is
+  // learned from the detail payload before any child read fires, and no
+  // protected resource read is issued for a Hidden/Restricted action.
   const knownExternalRevision =
     detail.data?.manifest?.externalRevision ?? state.externalRevision ?? '';
+  const detailRestricted =
+    detail.data?.action.aggregateState === 'ACCESS_RESTRICTED' ||
+    detail.data?.action.accessMasking === 'HIDDEN';
   const childIdentity = useMemo(
     () =>
-      state.selectedActionId && state.actionRevision !== null
+      detail.data && !detailRestricted && state.selectedActionId && state.actionRevision !== null
         ? {
             actionId: state.selectedActionId,
             actionRevision: state.actionRevision,
             externalRevision: knownExternalRevision,
           }
         : null,
-    [state.selectedActionId, state.actionRevision, knownExternalRevision],
+    [
+      detail.data,
+      detailRestricted,
+      state.selectedActionId,
+      state.actionRevision,
+      knownExternalRevision,
+    ],
   );
 
   const manifest = useQuery(
@@ -256,19 +278,42 @@ export const ExternalActionWorkspace = () => {
     if (detail.data) {
       dispatch({ type: 'DETAIL_RESOLVED' });
       announce(EXTERNAL_ACTION_ANNOUNCEMENTS.DETAIL_READY);
-      if (detail.data.action.aggregateState === 'ACCESS_RESTRICTED') {
+      if (detailRestricted) {
         announce(EXTERNAL_ACTION_ANNOUNCEMENTS.ACCESS_RESTRICTED);
       }
     }
-  }, [identity, detail.isPending, detail.isError, detail.data, detail.error, announce]);
+  }, [
+    identity,
+    detail.isPending,
+    detail.isError,
+    detail.data,
+    detail.error,
+    detailRestricted,
+    announce,
+  ]);
 
   const selectAction = useCallback(
     (actionId: string, actionRevision: number) => {
       dispatch({ type: 'SELECT_ACTION', actionId, actionRevision, externalRevision: '' });
-      setSearchParameters(externalActionDeepLinkHref({ actionId }));
+      // navigate with the full deep-link href — never a raw href handed to
+      // setSearchParameters (Review 4865177355 item 2).
+      navigate(externalActionDeepLinkHref({ actionId }));
       announce(EXTERNAL_ACTION_ANNOUNCEMENTS.ACTION_SELECTED(actionId));
     },
-    [setSearchParameters, announce],
+    [navigate, announce],
+  );
+
+  const selectManifest = useCallback(
+    (manifestId: string) => {
+      dispatch({ type: 'SELECT_MANIFEST', manifestId });
+      navigate(
+        externalActionDeepLinkHref({
+          actionId: state.selectedActionId ?? undefined,
+          manifestId,
+        }),
+      );
+    },
+    [navigate, state.selectedActionId],
   );
 
   const surfaces = detail.data
@@ -279,12 +324,15 @@ export const ExternalActionWorkspace = () => {
         canPrepareCompensation: false,
         canExecute: false,
         canVerify: false,
-        canRetry: false,
       };
+
+  const commandsAvailable = Object.values(surfaces).some(Boolean);
+  const locked = state.submitting !== null || state.recovery.kind !== 'NONE';
 
   const submitCommand = useCallback(
     async (command: ExternalActionCommandKind) => {
       if (!identity || !detail.data) return;
+      if (state.submitting !== null) return; // exactly-once guard
       const action = detail.data.action;
       const clientRequestId = freshRequestId('external-action');
       const idempotencyKey = freshRequestId('external-action-idem');
@@ -300,14 +348,20 @@ export const ExternalActionWorkspace = () => {
             expectedActionRevision: action.actionRevision,
             reason,
           };
-          const resolved = await externalActionClient.cancelExternalAction(request);
-          lastCommandRef.current = { clientRequestId, idempotencyKey, semanticDigest: '' };
-          dispatch({ type: 'COMMAND_STARTED' });
+          // Original identity + exact digest are captured BEFORE the call so
+          // OUTCOME_UNKNOWN recovery always has them (Review 4865177355 item 5).
+          lastCommandRef.current = {
+            clientRequestId,
+            idempotencyKey,
+            semanticDigest: frontendExternalActionCancelDigest(request),
+          };
+          dispatch({ type: 'SUBMITTING_STARTED', command });
+          await externalActionClient.cancelExternalAction(request);
+          dispatch({ type: 'SUBMITTING_FINISHED' });
           dispatch({ type: 'COMMAND_RESOLVED' });
           announce(EXTERNAL_ACTION_ANNOUNCEMENTS.CANCEL_REQUESTED);
-          if (resolved.status === 'CANCELLED') {
-            // Abort only — no external reversal is implied (contract §9).
-          }
+          // Focus preserved after cancel (Review 4865177355 item 6).
+          dispatch({ type: 'FOCUS', target: 'governed-commands-heading' });
         } else if (command === 'ROLLBACK') {
           const executionId =
             state.selectedExecutionId ?? action.latestExecutionRef?.resourceId ?? '';
@@ -319,12 +373,17 @@ export const ExternalActionWorkspace = () => {
             executionId,
             reason,
           };
-          const digest = frontendExternalActionRollbackDigest(request);
-          lastCommandRef.current = { clientRequestId, idempotencyKey, semanticDigest: digest };
-          dispatch({ type: 'COMMAND_STARTED' });
+          lastCommandRef.current = {
+            clientRequestId,
+            idempotencyKey,
+            semanticDigest: frontendExternalActionRollbackDigest(request),
+          };
+          dispatch({ type: 'SUBMITTING_STARTED', command });
           await externalActionClient.rollbackExternalAction(request);
+          dispatch({ type: 'SUBMITTING_FINISHED' });
           dispatch({ type: 'COMMAND_RESOLVED' });
           announce(EXTERNAL_ACTION_ANNOUNCEMENTS.ROLLBACK_REQUESTED);
+          dispatch({ type: 'FOCUS', target: 'governed-commands-heading' });
         } else if (command === 'PREPARE_COMPENSATION') {
           const executionId =
             state.selectedExecutionId ?? action.latestExecutionRef?.resourceId ?? '';
@@ -336,19 +395,45 @@ export const ExternalActionWorkspace = () => {
             sourceExecutionId: executionId,
             reason,
           };
-          const digest = frontendExternalActionCompensationDigest(request);
-          lastCommandRef.current = { clientRequestId, idempotencyKey, semanticDigest: digest };
-          dispatch({ type: 'COMMAND_STARTED' });
+          lastCommandRef.current = {
+            clientRequestId,
+            idempotencyKey,
+            semanticDigest: frontendExternalActionCompensationDigest(request),
+          };
+          dispatch({ type: 'SUBMITTING_STARTED', command });
           await externalActionClient.prepareCompensatingAction(request);
+          dispatch({ type: 'SUBMITTING_FINISHED' });
           dispatch({ type: 'COMMAND_RESOLVED' });
           announce(EXTERNAL_ACTION_ANNOUNCEMENTS.COMPENSATION_REQUESTED);
+          dispatch({ type: 'FOCUS', target: 'governed-commands-heading' });
+        } else if (command === 'VERIFY') {
+          const executionId =
+            state.selectedExecutionId ?? action.latestExecutionRef?.resourceId ?? '';
+          const request = {
+            schemaVersion: '1.0.0' as const,
+            clientRequestId,
+            idempotencyKey,
+            actionId: action.actionId,
+            executionId,
+            expectedTargetRevision: manifest.data?.manifest.targetRevision ?? '',
+            expectedExternalRevision: manifest.data?.manifest.externalRevision ?? '',
+            reason,
+          };
+          lastCommandRef.current = {
+            clientRequestId,
+            idempotencyKey,
+            semanticDigest: frontendExternalActionVerifyDigest(request),
+          };
+          dispatch({ type: 'SUBMITTING_STARTED', command });
+          await externalActionClient.verifyExternalAction(request);
+          dispatch({ type: 'SUBMITTING_FINISHED' });
+          dispatch({ type: 'COMMAND_RESOLVED' });
+          announce(EXTERNAL_ACTION_ANNOUNCEMENTS.VERIFIED);
+          dispatch({ type: 'FOCUS', target: 'verification-heading' });
         }
       } catch (error) {
-        const failure = error as {
-          code?: string;
-          category?: string;
-          message?: string;
-        };
+        dispatch({ type: 'SUBMITTING_FINISHED' });
+        const failure = error as { code?: string; category?: string; message?: string };
         if (
           failure?.category === 'OUTCOME_UNKNOWN' ||
           failure?.code === 'ACTION_OUTCOME_UNKNOWN' ||
@@ -375,7 +460,16 @@ export const ExternalActionWorkspace = () => {
         announce(EXTERNAL_ACTION_ANNOUNCEMENTS.COMMAND_REJECTED);
       }
     },
-    [identity, detail.data, state.draft, state.selectedExecutionId, externalActionClient, announce],
+    [
+      identity,
+      detail.data,
+      state.submitting,
+      state.draft,
+      state.selectedExecutionId,
+      manifest.data,
+      externalActionClient,
+      announce,
+    ],
   );
 
   const resolveOutcome = useCallback(async () => {
@@ -384,15 +478,44 @@ export const ExternalActionWorkspace = () => {
     dispatch({ type: 'RECOVERY_STARTED' });
     announce(EXTERNAL_ACTION_ANNOUNCEMENTS.RECOVERY);
     try {
-      await externalActionClient.resolveExternalActionOutcome({
+      const resolved = await externalActionClient.resolveExternalActionOutcome({
         schemaVersion: '1.0.0',
         clientRequestId: phase.clientRequestId,
         idempotencyKey: phase.idempotencyKey,
         semanticDigest: phase.semanticDigest,
       });
-      dispatch({ type: 'RECOVERY_FINISHED' });
-      dispatch({ type: 'DETAIL_RESOLVED' });
-      announce(EXTERNAL_ACTION_ANNOUNCEMENTS.DETAIL_READY);
+      // Adjudicate the three contract outcomes (Review 4865177355 item 5):
+      // COMPLETED -> refetch; REJECTED -> typed failure; OUTCOME_UNKNOWN ->
+      // remain recoverable (never a re-execute).
+      if (resolved.outcome === 'COMPLETED') {
+        dispatch({ type: 'RECOVERY_FINISHED' });
+        dispatch({ type: 'DETAIL_RESOLVED' });
+        if (identity && scope) {
+          await queryClient.invalidateQueries({
+            queryKey: [
+              'project',
+              scope.principalId,
+              'external-action',
+              'action',
+              identity.actionId,
+            ],
+          });
+        }
+        announce(EXTERNAL_ACTION_ANNOUNCEMENTS.DETAIL_READY);
+      } else if (resolved.outcome === 'REJECTED') {
+        dispatch({ type: 'RECOVERY_FINISHED' });
+        dispatch({
+          type: 'FAILED',
+          reason: 'NETWORK_FAILURE',
+          message: resolved.rejection?.message ?? EXTERNAL_ACTION_ANNOUNCEMENTS.COMMAND_REJECTED,
+          retryable: false,
+        });
+        announce(EXTERNAL_ACTION_ANNOUNCEMENTS.COMMAND_REJECTED);
+      } else {
+        // Still OUTCOME_UNKNOWN — keep the recovery state (original identity).
+        dispatch({ type: 'RECOVERY_FINISHED' });
+        announce(EXTERNAL_ACTION_ANNOUNCEMENTS.OUTCOME_UNKNOWN);
+      }
     } catch (error) {
       dispatch({
         type: 'FAILED',
@@ -401,10 +524,12 @@ export const ExternalActionWorkspace = () => {
         retryable: true,
       });
     }
-  }, [state.phase, externalActionClient, announce]);
+  }, [state.phase, identity, scope, queryClient, externalActionClient, announce]);
 
-  // Focus preservation (contract §10.5): after deep-link restore / refresh /
-  // cancel / verify, focus the named target once.
+  // Focus preservation (contract §10.5): focus the named target once. The
+  // focus target may only be mounted after a child read resolves (e.g. the
+  // manifest heading), so the effect re-runs when the detail subtree's data
+  // lands; it self-terminates via CLEAR_FOCUS once the target is found.
   useEffect(() => {
     if (!state.focusTarget) return;
     const target = document.getElementById(state.focusTarget);
@@ -412,7 +537,19 @@ export const ExternalActionWorkspace = () => {
       (target as HTMLElement).focus();
       dispatch({ type: 'CLEAR_FOCUS' });
     }
-  }, [state.focusTarget, detail.data]);
+  }, [
+    state.focusTarget,
+    detail.data,
+    manifest.data,
+    verification.data,
+    execution.data,
+    attempts.data,
+    approval.data,
+    preflight.data,
+    result.data,
+    riskDecision.data,
+    audit.data,
+  ]);
 
   if (!scope) {
     return (
@@ -447,7 +584,9 @@ export const ExternalActionWorkspace = () => {
           />
         ) : (
           <section aria-labelledby="external-action-queue-heading" className="action-card">
-            <h2 id="external-action-queue-heading">Queue</h2>
+            <h2 id="external-action-queue-heading" tabIndex={-1}>
+              Queue
+            </h2>
             <ul className="external-action-queue">
               {queue.data.items.map((item) => (
                 <li key={item.actionId}>
@@ -482,7 +621,9 @@ export const ExternalActionWorkspace = () => {
       {detail.data ? (
         <>
           <section aria-labelledby="external-action-detail-heading" className="action-card">
-            <h2 id="external-action-detail-heading">{detail.data.action.actionId}</h2>
+            <h2 id="external-action-detail-heading" tabIndex={-1}>
+              {detail.data.action.actionId}
+            </h2>
             <dl className="summary-grid">
               <div>
                 <dt>상태</dt>
@@ -501,11 +642,11 @@ export const ExternalActionWorkspace = () => {
               </div>
               <div>
                 <dt>외부 리비전</dt>
-                <dd>{detail.data.manifest?.externalRevision ?? '—'}</dd>
+                <dd>{knownExternalRevision || '—'}</dd>
               </div>
             </dl>
 
-            {detail.data.action.aggregateState === 'ACCESS_RESTRICTED' ? (
+            {detailRestricted ? (
               <p className="restricted-shell" role="status">
                 {EXTERNAL_ACTION_ANNOUNCEMENTS.ACCESS_RESTRICTED}
               </p>
@@ -513,7 +654,9 @@ export const ExternalActionWorkspace = () => {
 
             {state.phase.kind === 'OUTCOME_UNKNOWN' ? (
               <section aria-labelledby="outcome-recovery-heading" className="recovery-card">
-                <h3 id="outcome-recovery-heading">결과 확인</h3>
+                <h3 id="outcome-recovery-heading" tabIndex={-1}>
+                  결과 확인
+                </h3>
                 <p>
                   외부 액션의 최종 결과를 확인할 수 없습니다. 원래 요청으로만 복구하며 다시 실행하지
                   않습니다.
@@ -539,11 +682,13 @@ export const ExternalActionWorkspace = () => {
               </p>
             ) : null}
 
-            {detail.data.action.aggregateState !== 'ACCESS_RESTRICTED' ? (
+            {!detailRestricted ? (
               <>
                 {riskDecision.data ? (
                   <section aria-labelledby="risk-heading" className="action-card">
-                    <h3 id="risk-heading">위험 결정</h3>
+                    <h3 id="risk-heading" tabIndex={-1}>
+                      위험 결정
+                    </h3>
                     <p>
                       위험 수준 <strong>{riskDecision.data.riskDecision.riskLevel}</strong> ·{' '}
                       {riskDecision.data.riskDecision.requiresUserApproval
@@ -555,17 +700,30 @@ export const ExternalActionWorkspace = () => {
 
                 {manifest.data ? (
                   <section aria-labelledby="manifest-heading" className="action-card">
-                    <h3 id="manifest-heading">매니페스트</h3>
+                    <h3 id="manifest-heading" tabIndex={-1}>
+                      매니페스트
+                    </h3>
                     <p>
                       매니페스트 {manifest.data.manifest.manifestId} · 리비전{' '}
                       {manifest.data.manifest.manifestRevision}
                     </p>
+                    <button
+                      type="button"
+                      onClick={() => selectManifest(manifest.data.manifest.manifestId)}
+                      aria-pressed={state.selectedManifestId === manifest.data.manifest.manifestId}
+                    >
+                      {state.selectedManifestId === manifest.data.manifest.manifestId
+                        ? '선택됨'
+                        : '선택'}
+                    </button>
                   </section>
                 ) : null}
 
                 {approval.data ? (
                   <section aria-labelledby="approval-heading" className="action-card">
-                    <h3 id="approval-heading">승인</h3>
+                    <h3 id="approval-heading" tabIndex={-1}>
+                      승인
+                    </h3>
                     <p>
                       {approval.data.approval.status === 'ACTIVE'
                         ? '활성'
@@ -577,7 +735,9 @@ export const ExternalActionWorkspace = () => {
 
                 {preflight.data ? (
                   <section aria-labelledby="preflight-heading" className="action-card">
-                    <h3 id="preflight-heading">사전 점검</h3>
+                    <h3 id="preflight-heading" tabIndex={-1}>
+                      사전 점검
+                    </h3>
                     <p>
                       {preflight.data.preflight.status === 'READY'
                         ? '준비됨'
@@ -588,7 +748,9 @@ export const ExternalActionWorkspace = () => {
 
                 {execution.data ? (
                   <section aria-labelledby="execution-heading" className="action-card">
-                    <h3 id="execution-heading">실행</h3>
+                    <h3 id="execution-heading" tabIndex={-1}>
+                      실행
+                    </h3>
                     <p>
                       실행 {execution.data.execution.executionId} · 시도{' '}
                       {execution.data.execution.attemptCount}
@@ -598,11 +760,21 @@ export const ExternalActionWorkspace = () => {
 
                 {attempts.data && attempts.data.attempts.length > 0 ? (
                   <section aria-labelledby="attempts-heading" className="action-card">
-                    <h3 id="attempts-heading">실행 시도</h3>
+                    <h3 id="attempts-heading" tabIndex={-1}>
+                      실행 시도
+                    </h3>
                     <ol>
                       {attempts.data.attempts.map((attempt) => (
                         <li key={attempt.attemptId}>
-                          시도 {attempt.attemptNumber} · {attempt.status}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              dispatch({ type: 'SELECT_ATTEMPT', attemptId: attempt.attemptId })
+                            }
+                            aria-pressed={state.selectedAttemptId === attempt.attemptId}
+                          >
+                            시도 {attempt.attemptNumber} · {attempt.status}
+                          </button>
                         </li>
                       ))}
                     </ol>
@@ -611,25 +783,49 @@ export const ExternalActionWorkspace = () => {
 
                 {verification.data ? (
                   <section aria-labelledby="verification-heading" className="action-card">
-                    <h3 id="verification-heading">검증</h3>
+                    <h3 id="verification-heading" tabIndex={-1}>
+                      검증
+                    </h3>
                     <p>
                       {verification.data.verification.status === 'APPLIED'
                         ? '외부 상태가 적용됨'
                         : verification.data.verification.status}
                     </p>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        dispatch({
+                          type: 'SELECT_VERIFICATION',
+                          verificationId: verification.data.verification.verificationId,
+                        })
+                      }
+                      aria-pressed={
+                        state.selectedVerificationId ===
+                        verification.data.verification.verificationId
+                      }
+                    >
+                      {state.selectedVerificationId ===
+                      verification.data.verification.verificationId
+                        ? '선택됨'
+                        : '선택'}
+                    </button>
                   </section>
                 ) : null}
 
                 {result.data ? (
                   <section aria-labelledby="result-heading" className="action-card">
-                    <h3 id="result-heading">결과</h3>
+                    <h3 id="result-heading" tabIndex={-1}>
+                      결과
+                    </h3>
                     <p>결과 {result.data.result.resultId}</p>
                   </section>
                 ) : null}
 
                 {audit.data && audit.data.events.length > 0 ? (
                   <section aria-labelledby="audit-heading" className="action-card">
-                    <h3 id="audit-heading">감사 기록</h3>
+                    <h3 id="audit-heading" tabIndex={-1}>
+                      감사 기록
+                    </h3>
                     <ol>
                       {audit.data.events.slice(0, 20).map((event) => (
                         <li key={event.auditEventId}>
@@ -642,10 +838,10 @@ export const ExternalActionWorkspace = () => {
 
                 {/* Non-automatic governed surfaces (contract §9, §10.3). */}
                 <section aria-labelledby="governed-commands-heading" className="action-card">
-                  <h3 id="governed-commands-heading">거버넌스 명령</h3>
-                  {!surfaces.canCancel &&
-                  !surfaces.canRollback &&
-                  !surfaces.canPrepareCompensation ? (
+                  <h3 id="governed-commands-heading" tabIndex={-1}>
+                    거버넌스 명령
+                  </h3>
+                  {!commandsAvailable ? (
                     <p>현재 상태에서 실행 가능한 거버넌스 명령이 없습니다.</p>
                   ) : null}
                   {surfaces.canCancel ? (
@@ -663,7 +859,7 @@ export const ExternalActionWorkspace = () => {
                       <button
                         type="button"
                         onClick={() => void submitCommand('CANCEL')}
-                        disabled={state.recovery.kind !== 'NONE'}
+                        disabled={locked}
                       >
                         취소 요청
                       </button>
@@ -672,7 +868,7 @@ export const ExternalActionWorkspace = () => {
                       <button
                         type="button"
                         onClick={() => void submitCommand('ROLLBACK')}
-                        disabled={state.recovery.kind !== 'NONE'}
+                        disabled={locked}
                       >
                         롤백
                       </button>
@@ -681,12 +877,37 @@ export const ExternalActionWorkspace = () => {
                       <button
                         type="button"
                         onClick={() => void submitCommand('PREPARE_COMPENSATION')}
-                        disabled={state.recovery.kind !== 'NONE'}
+                        disabled={locked}
                       >
                         보상 액션 준비
                       </button>
                     ) : null}
+                    {surfaces.canVerify ? (
+                      <button
+                        type="button"
+                        onClick={() => void submitCommand('VERIFY')}
+                        disabled={locked}
+                      >
+                        검증 실행
+                      </button>
+                    ) : null}
                   </div>
+                  {/* Route-scoped reason draft (ADR-119): unsent input only. */}
+                  <label className="reason-input">
+                    사유
+                    <input
+                      type="text"
+                      value={state.draft?.reason ?? ''}
+                      onChange={(event) =>
+                        dispatch({
+                          type: 'SET_COMMAND_DRAFT',
+                          command: 'CANCEL',
+                          reason: event.target.value,
+                        })
+                      }
+                      aria-label="거버넌스 명령 사유"
+                    />
+                  </label>
                 </section>
               </>
             ) : null}

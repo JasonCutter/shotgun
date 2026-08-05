@@ -61,6 +61,7 @@ export type ExternalActionWorkspaceState = {
   readonly selectedActionId: string | null;
   readonly actionRevision: number | null;
   readonly externalRevision: string | null;
+  readonly selectedManifestId: string | null;
   readonly selectedExecutionId: string | null;
   readonly selectedAttemptId: string | null;
   readonly selectedVerificationId: string | null;
@@ -68,6 +69,8 @@ export type ExternalActionWorkspaceState = {
   readonly phase: ExternalActionWorkspacePhase;
   /** Route-scoped draft: unsent governed-command input only (ADR-119). */
   readonly draft: ExternalActionCommandDraft | null;
+  /** In-flight governed command (submission in progress) — locks all surfaces. */
+  readonly submitting: ExternalActionCommandKind | null;
   readonly recovery: ExternalActionWorkspaceRecovery;
 };
 
@@ -82,6 +85,7 @@ export type ExternalActionWorkspaceAction =
     }
   | { type: 'DETAIL_STARTED' }
   | { type: 'DETAIL_RESOLVED' }
+  | { type: 'SELECT_MANIFEST'; manifestId: string }
   | { type: 'SELECT_EXECUTION'; executionId: string }
   | { type: 'SELECT_ATTEMPT'; attemptId: string }
   | { type: 'SELECT_VERIFICATION'; verificationId: string }
@@ -89,6 +93,8 @@ export type ExternalActionWorkspaceAction =
   | { type: 'CLEAR_FOCUS' }
   | { type: 'SET_COMMAND_DRAFT'; command: ExternalActionCommandKind; reason: string }
   | { type: 'CLEAR_COMMAND_DRAFT' }
+  | { type: 'SUBMITTING_STARTED'; command: ExternalActionCommandKind }
+  | { type: 'SUBMITTING_FINISHED' }
   | { type: 'COMMAND_STARTED' }
   | { type: 'COMMAND_RESOLVED' }
   | {
@@ -111,12 +117,14 @@ export const createInitialExternalActionWorkspaceState = (): ExternalActionWorks
   selectedActionId: null,
   actionRevision: null,
   externalRevision: null,
+  selectedManifestId: null,
   selectedExecutionId: null,
   selectedAttemptId: null,
   selectedVerificationId: null,
   focusTarget: null,
   phase: { kind: 'IDLE' },
   draft: null,
+  submitting: null,
   recovery: { kind: 'NONE' },
 });
 
@@ -183,7 +191,6 @@ export const externalActionCommandSurfaces = (
   readonly canPrepareCompensation: boolean;
   readonly canExecute: boolean;
   readonly canVerify: boolean;
-  readonly canRetry: boolean;
 }> => {
   const executing = status === 'EXECUTING' || status === 'VERIFYING';
   return {
@@ -196,7 +203,6 @@ export const externalActionCommandSurfaces = (
       status === 'VERIFIED' || status === 'VERIFICATION_FAILED' || status === 'FAILED',
     canExecute: status === 'READY_TO_EXECUTE',
     canVerify: executing || status === 'OUTCOME_UNKNOWN',
-    canRetry: status === 'FAILED' || status === 'OUTCOME_UNKNOWN',
   };
 };
 
@@ -215,10 +221,12 @@ export const reduceExternalActionWorkspaceState = (
         selectedActionId: action.actionId,
         actionRevision: action.actionRevision,
         externalRevision: action.externalRevision,
+        selectedManifestId: null,
         selectedExecutionId: null,
         selectedAttemptId: null,
         selectedVerificationId: null,
         draft: null,
+        submitting: null,
         phase: { kind: 'DETAIL_LOADING' },
         recovery: { kind: 'NONE' },
       };
@@ -226,6 +234,8 @@ export const reduceExternalActionWorkspaceState = (
       return { ...state, phase: { kind: 'DETAIL_LOADING' } };
     case 'DETAIL_RESOLVED':
       return { ...state, phase: { kind: 'DETAIL_READY' } };
+    case 'SELECT_MANIFEST':
+      return { ...state, selectedManifestId: action.manifestId };
     case 'SELECT_EXECUTION':
       return { ...state, selectedExecutionId: action.executionId };
     case 'SELECT_ATTEMPT':
@@ -240,6 +250,10 @@ export const reduceExternalActionWorkspaceState = (
       return { ...state, draft: { command: action.command, reason: action.reason } };
     case 'CLEAR_COMMAND_DRAFT':
       return { ...state, draft: null };
+    case 'SUBMITTING_STARTED':
+      return { ...state, submitting: action.command, draft: null };
+    case 'SUBMITTING_FINISHED':
+      return { ...state, submitting: null };
     case 'COMMAND_STARTED':
       return { ...state, draft: null };
     case 'COMMAND_RESOLVED':

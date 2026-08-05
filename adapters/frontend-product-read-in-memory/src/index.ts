@@ -135,6 +135,21 @@ export class InMemoryGlobalShellProjection implements GlobalShellProjectionPort 
               availability: 'TEMPORARILY_UNAVAILABLE',
               reason: 'Create a Project to open Ask.',
             },
+        // AC-18: the External Action Governance Workspace is reachable from
+        // BOTH Home and Command Palette navigation — never direct execution.
+        projectReady
+          ? {
+              id: 'external-action',
+              label: 'External actions',
+              availability: 'AVAILABLE',
+              targetRoute: routes.externalAction,
+            }
+          : {
+              id: 'external-action',
+              label: 'External actions',
+              availability: 'TEMPORARILY_UNAVAILABLE',
+              reason: 'Create a Project to open External actions.',
+            },
         unavailableWorkspace('knowledge', 'Knowledge'),
         unavailableWorkspace('review', 'Review'),
         {

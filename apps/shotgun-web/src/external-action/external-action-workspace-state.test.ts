@@ -21,7 +21,7 @@ describe('External Action workspace state machine (FE-P4-S2 WP5, ADR-119)', () =
     expect(ready.phase).toEqual({ kind: 'QUEUE_READY' });
   });
 
-  it('selecting an action resets resource selection, draft and recovery', () => {
+  it('selecting an action resets resource selection, draft, submitting and recovery', () => {
     const initial = createInitialExternalActionWorkspaceState();
     const selected = reduceExternalActionWorkspaceState(initial, {
       type: 'SELECT_ACTION',
@@ -31,9 +31,32 @@ describe('External Action workspace state machine (FE-P4-S2 WP5, ADR-119)', () =
     });
     expect(selected.selectedActionId).toBe('action-1');
     expect(selected.actionRevision).toBe(4);
+    expect(selected.selectedManifestId).toBeNull();
     expect(selected.phase).toEqual({ kind: 'DETAIL_LOADING' });
     expect(selected.draft).toBeNull();
+    expect(selected.submitting).toBeNull();
     expect(selected.recovery).toEqual({ kind: 'NONE' });
+  });
+
+  it('tracks the manifest selection and the in-flight submitting lock', () => {
+    const selected = reduceExternalActionWorkspaceState(
+      createInitialExternalActionWorkspaceState(),
+      { type: 'SELECT_ACTION', actionId: 'action-1', actionRevision: 4, externalRevision: '' },
+    );
+    const withManifest = reduceExternalActionWorkspaceState(selected, {
+      type: 'SELECT_MANIFEST',
+      manifestId: 'manifest-1',
+    });
+    expect(withManifest.selectedManifestId).toBe('manifest-1');
+    const submitting = reduceExternalActionWorkspaceState(withManifest, {
+      type: 'SUBMITTING_STARTED',
+      command: 'CANCEL',
+    });
+    expect(submitting.submitting).toBe('CANCEL');
+    expect(submitting.draft).toBeNull();
+    expect(
+      reduceExternalActionWorkspaceState(submitting, { type: 'SUBMITTING_FINISHED' }).submitting,
+    ).toBeNull();
   });
 
   it('keeps an unsent command draft route-scoped until COMMAND_STARTED clears it', () => {

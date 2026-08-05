@@ -929,8 +929,8 @@ Commit `9720f9eb7485828bc8c1216ee8b216a14a4b6c3d`.
   deterministic `findCurrent`, immutable/append-only conflict enforcement and Command Ledger
   atomicity (same-transaction completion, ledger rollback on product failure) all proven by
   negative tests. WP1/WP2 domain coverage (AC-01..AC-17) is unchanged. AC-18/AC-19 (UI/
-PR #66 remains OPEN / DRAFT. WP4 Protected Product API / `FrontendExternalActionClient` remains
-**NOT_AUTHORIZED** pending re-review of this report.
+  PR #66 remains OPEN / DRAFT. WP4 Protected Product API / `FrontendExternalActionClient` remains
+  **NOT_AUTHORIZED** pending re-review of this report.
 
 ## 19. WP3 final focused remediation — GPT focused review → resolved (report 13, 2026-08-05)
 
@@ -942,7 +942,7 @@ were NOT re-run per the review instruction.
 
 - `executeExternalAction.persistStarted` now fails with `ACTION_EXECUTION_NOT_ALLOWED` when the
   aggregate is already `EXECUTING`, and returns `startedRefs: { executionId, attemptId,
-  expectedActionRevision }`.
+expectedActionRevision }`.
 - The connector call is followed by `input.finalize(repositories, outcome, startedRefs)`, which
   re-locks the aggregate and fails with `EXTERNAL_ACTION_STALE` if
   `action.latestExecutionRef?.resourceId !== startedRefs.executionId` — a finalizer can never
@@ -954,7 +954,7 @@ were NOT re-run per the review instruction.
 ### 2. Attempt upsert is EXACT replay (same status) or IN_PROGRESS→terminal with unchanged start metadata
 
 - PostgreSQL `attempts.insert` accepts an existing identity only when (a) `existing.status =
-  EXCLUDED.status AND existing.snapshot = EXCLUDED.snapshot` (exact full-snapshot replay), or
+EXCLUDED.status AND existing.snapshot = EXCLUDED.snapshot` (exact full-snapshot replay), or
   (b) `existing.status = 'IN_PROGRESS'` → terminal with `idempotencyKey`, `policyContextRevision`,
   `externalRevision`, `correlationId`, `causationId` (coalesced) and `startedAt` ALL unchanged.
   Any other conflict fails closed.
@@ -1252,6 +1252,7 @@ context revision, capability scopes and (via the store adapters) credential/budg
 browser-supplied authority reaches the domain.
 
 Protected reads (strict decoders):
+
 - `POST /product-api/frontend/external-action/queue` — list
 - `.../actions/read`, `.../actions/detail` — aggregate / integrated detail
 - `.../manifests/read`, `.../risk-decisions/read`, `.../preflights/read`
@@ -1259,10 +1260,12 @@ Protected reads (strict decoders):
   `.../results/read`, `.../audit`
 
 Governed writes (Frontend Command Ledger):
+
 - `.../validate`, `.../prepare`, `.../approve`, `.../preflight`, `.../execute`, `.../retry`,
   `.../verify`, `.../cancel`, `.../rollback`, `.../compensations/prepare`
 
 Outcome resolution (GET, resolve by the ORIGINAL command identity — never a re-execute):
+
 - `.../command-outcomes/by-client-request/:clientRequestId`
 
 Errors are normalized to the shared typed failure envelope
@@ -1350,7 +1353,12 @@ was replaced with an exact least-privilege matrix against the frozen scopes
 - **Over-privilege fixed**: `action:execute` alone no longer grants `verify`; the former
   `action:govern` wildcard (validate/prepare/cancel/rollback/compensation/credential/budget) is
   removed. Each capability maps to exactly one fine-grained scope:
-  - `action:read` → the 11 read capabilities + `RESOLVE_OUTCOME`
+  - `action:read` → the 10 List/Resource read capabilities (`LIST_EXTERNAL_ACTIONS`,
+    `READ_EXTERNAL_ACTION`, `READ_MANIFEST`, `READ_RISK_DECISION`, `READ_PREFLIGHT`,
+    `READ_EXECUTION`, `READ_EXECUTION_ATTEMPTS`, `READ_VERIFICATION`, `READ_RESULT`,
+    `READ_APPROVAL`) + `RESOLVE_OUTCOME` = 11 capabilities total (report 18 originally
+    miscounted this as "11 read capabilities + RESOLVE_OUTCOME"; corrected per Review
+    4863783684).
   - `action:audit:read` → `READ_AUDIT`; `action:budget:read` → `READ_BUDGET`;
     `action:credential:manage` → `READ_CREDENTIAL`
   - `action:candidate:stage` → `VALIDATE_CANDIDATE`
@@ -1363,7 +1371,12 @@ was replaced with an exact least-privilege matrix against the frozen scopes
   existence check, so every deny row is deterministic.
 - Tests: `tests/integration/frontend-external-action-product-api.test.ts` adds a table-driven
   scope matrix suite (`it.each`) covering allow (200), deny (403) and capability-granted-but-
-  resource-missing (404) rows per fine-grained scope.
+  resource-missing (404) rows per fine-grained scope. (Report 18 claimed positive grant
+  evidence for every fine-grained scope; Review 4863783684 noted the positive grant rows were
+  initially missing for `action:approve`/`action:verify`/`action:cancel`/`action:rollback` and
+  for `action:budget:read`/`action:credential:manage`. Section 25 records the added positive
+  grant evidence: approve/verify/cancel/rollback self-allow rows (404) in the matrix suite and
+  the Detail credential/budget scope-combination suite.)
 
 ### 2. Governed mutation is sent exactly once on a general 403 (Review item 2)
 
@@ -1456,3 +1469,110 @@ WP1/WP2/WP3 domain coverage (AC-01..AC-17, AC-21) is unchanged. WP5/WP6 remain
 - Automatic CI on this head `967d08e` — run **#547** (`30999676865`): Quality, Frontend,
   Required Gates **SUCCESS**. (#545/#546 not re-run, per the review instruction.)
 
+## 25. WP4 final focused remediation — Review 4863783684 (report 19, 2026-08-05)
+
+GPT review **4863783684** returned **BLOCKED / FINAL FOCUSED WP4 REMEDIATION REQUIRED** with
+three residual defects plus Section 24 record corrections. Mutation 403 non-resend and the
+AC-18/AC-19 record correction were confirmed satisfied. Per the review, CI runs #547/#548 were
+**not re-executed**; the only changes on this head are the three WP4 defects, their focused
+negative tests, and the Section 24 corrections. This report records the remediation on code head
+`62813f8` (CI **#549**); the report commit head is `<REPORT_HEAD>` (CI **#550**).
+
+### 1. Detail exposes credential/budget only under their own least-privilege scopes (item 1)
+
+`getExternalActionDetail` previously checked only `READ_EXTERNAL_ACTION` and always included the
+credential and budget views, so a member with only `action:read` received the Credential mask
+and Budget view without the separate frozen scopes. The coordinator now computes
+`externalActionCapabilitiesForScope(scope)` and includes:
+
+- `credential` **only** when the scope grants `READ_CREDENTIAL` (`action:credential:manage` or
+  `owner`/`admin`);
+- `budget` **only** when the scope grants `READ_BUDGET` (`action:budget:read` or `owner`/`admin`);
+- each optional field is omitted entirely (not empty/null) when not granted.
+
+Tests (`tests/integration/frontend-external-action-product-api.test.ts`, Detail scope-combination
+suite, one fresh principal+application per row): `action:read` → no credential/no budget;
+`action:read`+`action:budget:read` → budget only; `action:read`+`action:credential:manage` →
+credential only; `owner` → both.
+
+### 2. Approval read blocks Hidden / Access-restricted actions (item 2)
+
+`getExternalActionApproval` previously checked Project + Access/Policy revisions only and could
+resolve an Approval (Manifest, Target, External Revision, Actor, Access/Policy Revision payload)
+for an access-restricted action. It now applies the same guard as the other individual protected
+reads (`getActionManifest`): `action.accessMasking === 'HIDDEN' || action.aggregateState ===
+'ACCESS_RESTRICTED'` → `EXTERNAL_ACTION_STALE` (access-restricted), before any approval lookup.
+
+Negative test (`tests/integration/frontend-external-action-domain.test.ts`): after the full
+lifecycle, a changed `accessRevision` scope makes the action Hidden/Access-restricted and
+`getExternalActionApproval` rejects with no Approval payload returned.
+
+### 3. Client command-specific resource identity binding completed (item 3)
+
+The shared `assertCommandIdentity` checks `clientRequestId` + `idempotencyKey` + `actionId`; the
+command-specific resource identities are now also bound in
+`packages/shotgun-api-client/src/frontend-external-action-client.ts`:
+
+- **Validate** — `candidate.candidateId === params.candidateId`
+- **Approve** — `approval.manifestId === params.manifestId`,
+  `approval.manifestRevision === params.manifestRevision`,
+  `approval.targetRevision === params.expectedTargetRevision`,
+  `approval.externalRevision === params.expectedExternalRevision`
+- **Preflight** — `preflight.manifestRevision === params.manifestRevision`
+- **Execute** — `execution.manifestRevision === params.manifestRevision`,
+  `attempt.idempotencyKey === params.idempotencyKey`,
+  `attempt.externalRevision === params.expectedExternalRevision`
+- **Retry** — `attempt.executionId === params.executionId`,
+  `attempt.causationId === params.causationId`
+- **Verify** — `verification.executionId === params.executionId`,
+  `verification.attemptId === params.attemptId` (when the request carries one),
+  `verification.targetRevision === params.expectedTargetRevision`,
+  `verification.externalRevision === params.expectedExternalRevision`
+- **Rollback** — when `rollback.executionRef` is present,
+  `rollback.executionRef.resourceId === params.executionId`
+- Cancel (no resource) and Compensation (`sourceActionId`/`sourceExecutionId`, already bound)
+  are unchanged.
+
+The table-based negative tests now tamper the command-specific resource identity field per
+command (e.g. Approve tampers `approval.manifestId`, Execute tampers `attempt.externalRevision`,
+Rollback tampers `rollback.executionRef.resourceId`) — not just `actionId` — so a same-action
+different-resource response is rejected.
+
+### 4. Section 24 record corrections (per the review)
+
+- **`action:read` capability count corrected**: 10 List/Resource read capabilities +
+  `RESOLVE_OUTCOME` = 11 total (report 18 originally miscounted as "11 read capabilities +
+  RESOLVE_OUTCOME").
+- **Positive grant evidence added**: approve/verify/cancel/rollback self-allow rows (404,
+  capability-granted-but-resource-missing) were added to the scope matrix suite, and the
+  Detail credential/budget scope-combination suite provides positive grant evidence for
+  `action:budget:read` and `action:credential:manage`. The Section 24 test note is corrected.
+
+### Changed files (this final remediation)
+
+- `modules/frontend-external-action/src/product-api.ts` — Detail credential/budget
+  least-privilege gating; approval read Hidden/Access-restricted guard.
+- `packages/shotgun-api-client/src/frontend-external-action-client.ts` — command-specific
+  resource identity bindings (validate/approve/preflight/execute/retry/verify/rollback).
+- `tests/integration/frontend-external-action-product-api.test.ts` — scope matrix positive-grant
+  rows (approve/verify/cancel/rollback 404) + Detail credential/budget scope-combination suite
+  (16 tests).
+- `tests/integration/frontend-external-action-domain.test.ts` — Hidden approval read negative
+  (27 tests).
+- `tests/unit/frontend-external-action-client.test.ts` — identity table tampers per-command
+  resource identity fields (20 tests).
+- `docs/implementation/frontend-phase-4-section-2-implementation-progress-report-260805001.md` —
+  Section 24 corrections + this Section 25.
+
+### Validation
+
+- `npx vitest run tests/unit/frontend-external-action-client.test.ts` — **20/20 PASS**.
+- `npx vitest run tests/integration/frontend-external-action-product-api.test.ts` — **16/16
+  PASS**.
+- `npx vitest run tests/integration/frontend-external-action-domain.test.ts` — **27/27 PASS**.
+- Full unit+integration+contract suites — **976 PASS** (one pre-existing timing flake passes in
+  isolation; unrelated to this remediation).
+- Full database suite `npm run test:database` — **166/166 PASS (31 files)** (unchanged scope).
+- `tsc --noEmit` — clean. ESLint — clean. Prettier — clean.
+- Automatic CI on this head — run **#549**: Quality, Frontend, Required Gates **SUCCESS**.
+  (#547/#548 not re-run, per the review instruction.)

@@ -267,18 +267,6 @@
         "docs/implementation/frontend-phase-4-section-2-implementation-progress-report-260805001.md"
       ],
       "scopeAmendment": null
-    },
-    {
-      "id": "ac-23",
-      "title": "WP6 verification and completion authority recorded in the Evidence Registry, Completion Manifest, Work Item and Projection; completion approved (Review 4869469297).",
-      "mandatory": true,
-      "status": "PASS",
-      "evidence": [
-        "docs/engineering/frontend-phase-4-section-2-wp6-verification-and-governance-evidence-260806001.md",
-        "docs/implementation/frontend-phase-4-section-2-implementation-progress-report-260805001.md",
-        "docs/project/completions/FE-P4-S2.json"
-      ],
-      "scopeAmendment": null
     }
   ],
   "remainingScope": [],

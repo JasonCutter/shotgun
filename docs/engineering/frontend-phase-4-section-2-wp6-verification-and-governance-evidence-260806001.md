@@ -598,3 +598,24 @@ CANDIDATE ACCEPTED, PRODUCT COMPLETION AUTHORITY RECORDING AUTHORIZED_TO_START**
 최종 권위 상태: WP1~WP5 APPROVED / COMPLETE, **WP6 APPROVED / COMPLETE**, FE-P4-S2 Product
 `COMPLETE` (completion candidate ACCEPTED). PR #66 `OPEN / DRAFT / MERGEABLE`. Ready / Merge /
 Deployment / Production Verification / FE-P5 `NOT_AUTHORIZED`.
+
+### 12.1 Correction — Contract Set 교정 (Review 4869665922)
+
+Review **4869665922** — **Decision: BLOCKED — ONE EXACT CONTRACT-SET CORRECTION REQUIRED**.
+Completion Manifest에 Frozen Contract Snapshot에 없는 `ac-23`(완료 권위 기록 기준)이 신규 필수
+기준으로 추가되어 Ready·Merge가 승인되지 않았다. Review 4869469297은 완료 권위 기록을 승인했지만
+Contract Snapshot 개정은 승인하지 않았으며 Scope Amendment도 없으므로, Completion Authority는
+Manifest의 `status`/`approvedBy`/`approvedAt`과 Evidence Registry Completion Record로만 표현한다.
+
+수행한 교정 (Frozen Contract·Product 코드·테스트·Migration·Dependency 변경 없음, CI #579/#580
+재실행 없음):
+
+- `docs/project/completions/FE-P4-S2.json`에서 `ac-23` 객체 전체 제거.
+- `status: COMPLETE`, `approvedBy: "user"`, `approvedAt: "2026-08-06"`, AC-01~AC-22 PASS,
+  `evidenceRegistryUpdates` 두 Registry ID 유지.
+- Issue #65·PR #66 코멘트를 `AC-01..AC-22 PASS`로 정정.
+- 교정 commit 후 자동 CI만 확인했다. CI #579 / #580 및 기존 PASS head는 재실행하지 않았다.
+
+최종 권위 상태 (교정 후): WP1~WP6 APPROVED / COMPLETE, FE-P4-S2 Product `COMPLETE` (completion
+candidate ACCEPTED). PR #66 `OPEN / DRAFT / MERGEABLE`. Ready / Merge / Deployment / Production
+Verification / FE-P5 `NOT_AUTHORIZED`.

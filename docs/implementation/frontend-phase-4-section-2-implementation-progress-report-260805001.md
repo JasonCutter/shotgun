@@ -2476,3 +2476,26 @@ COMPLETE_APPROVED`, `completionApproval: APPROVED`, `completionApprovedBy: "user
   **#579** / `31055832493`: Quality, Frontend, Required Gates **SUCCESS** (Frontend 2m41s,
   Quality 3m34s, Required Gates 3s).
 - PR #66 remains `OPEN / DRAFT / MERGEABLE`. CI **#577 / #578** were NOT re-run.
+
+### Correction — Contract Set 교정 (Review 4869665922, report 29)
+
+Review **4869665922** (**Decision: BLOCKED — ONE EXACT CONTRACT-SET CORRECTION REQUIRED**).
+Completion Manifest에 Frozen Contract Snapshot에 없는 `ac-23`이 신규 필수 기준으로 추가되어
+Ready·Merge가 승인되지 않았다. Review 4869469297은 완료 권위 기록만 승인했고 Contract Snapshot
+개정·Scope Amendment는 없으므로, Completion Authority는 Manifest의
+`status`/`approvedBy`/`approvedAt`과 Evidence Registry Completion Record로만 표현한다.
+
+수행한 교정 (Frozen Contract·Product 코드·테스트·Migration·Dependency 변경 없음, CI #579/#580
+재실행 없음):
+
+- `docs/project/completions/FE-P4-S2.json`에서 `ac-23` 객체 전체 제거.
+- `status: COMPLETE`, `approvedBy: "user"`, `approvedAt: "2026-08-06"`, AC-01~AC-22 PASS,
+  `evidenceRegistryUpdates` 두 Registry ID 유지.
+- Issue #65·PR #66 코멘트를 `AC-01..AC-22 PASS`로 정정.
+- Evidence 문서 Section 12.1에 동일 Correction 기록.
+
+### Final metadata after correction (report 29)
+
+- **Metadata head**: `1c128928ea18babe7f0b3d58022ee9062c9aadc1` — CI **#580** /
+  `31056133173`: Quality, Frontend, Required Gates **SUCCESS**.
+- 교정 commit 후 자동 CI만 확인했다. CI **#579 / #580** 및 기존 PASS head는 재실행하지 않았다.

@@ -934,3 +934,83 @@ Commit `9720f9eb7485828bc8c1216ee8b216a14a4b6c3d`.
 
 PR #66 remains OPEN / DRAFT. WP4 Protected Product API / `FrontendExternalActionClient` remains
 **NOT_AUTHORIZED** pending re-review of this report.
+
+## 19. WP3 final focused remediation — GPT focused review → resolved (report 13, 2026-08-05)
+
+GPT review **4861031725** returned a focused 4-item WP3 final remediation list. All four items
+were implemented in ONE final WP3 change (head `476c9789`, CI **#537**); existing CI #535/#536
+were NOT re-run per the review instruction.
+
+### 1. Phase 3 pins to the started execution/attempt/revision (and blocks a second execute)
+
+- `executeExternalAction.persistStarted` now fails with `ACTION_EXECUTION_NOT_ALLOWED` when the
+  aggregate is already `EXECUTING`, and returns `startedRefs: { executionId, attemptId,
+  expectedActionRevision }`.
+- The connector call is followed by `input.finalize(repositories, outcome, startedRefs)`, which
+  re-locks the aggregate and fails with `EXTERNAL_ACTION_STALE` if
+  `action.latestExecutionRef?.resourceId !== startedRefs.executionId` — a finalizer can never
+  settle a DIFFERENT execution/attempt than the one that started.
+- `retryExecutionAttempt` gained the same EXECUTING guard and the same
+  `persistStarted → finalize/finalizeDenied(repositories, …, startedRefs)` pinning for both the
+  forward finalize and the denied-preflight path.
+
+### 2. Attempt upsert is EXACT replay (same status) or IN_PROGRESS→terminal with unchanged start metadata
+
+- PostgreSQL `attempts.insert` accepts an existing identity only when (a) `existing.status =
+  EXCLUDED.status AND existing.snapshot = EXCLUDED.snapshot` (exact full-snapshot replay), or
+  (b) `existing.status = 'IN_PROGRESS'` → terminal with `idempotencyKey`, `policyContextRevision`,
+  `externalRevision`, `correlationId`, `causationId` (coalesced) and `startedAt` ALL unchanged.
+  Any other conflict fails closed.
+- The in-memory adapter implements the same rule (`sameStatusExactReplay` /
+  `startMetadataUnchanged` / `inProgressToTerminal`).
+
+### 3. Preflight binding is immutable on conflict (DENIED→READY allowed only)
+
+- `manifestRevision`, `preflightDigest` and `runAt` were added to the preflight identity-guard
+  on conflict in BOTH adapters, so a preflight can only ever be re-inserted for the same
+  action/projects/manifest/digest/run context, and the only permitted status change is
+  DENIED → READY (via the product path).
+
+### 4. Budget last-slot status parity between adapters
+
+- PostgreSQL already returned `status = EXHAUSTED, remainingExecutions = 0, exhausted = true`
+  when a reservation consumed the final slot; the in-memory adapter returned `WARNING`. The
+  in-memory `budgets.reserve` now computes
+  `remaining <= 0 ? 'EXHAUSTED' : remaining <= softLimit ? 'WARNING' : 'OK'`, matching PG.
+
+### Changed files (this final WP3 remediation)
+
+- `modules/frontend-external-action/src/product-api.ts` — Phase 3 pinning (`startedRefs`),
+  EXECUTING re-entry guard, `finalize`/`finalizeDenied` pinning to the started execution.
+- `adapters/frontend-external-action-in-memory/src/index.ts` — attempt exact-replay + unchanged
+  start metadata; preflight binding guards (`manifestRevision`/`preflightDigest`/`runAt`);
+  budget last-slot `EXHAUSTED` status.
+- `adapters/frontend-external-action-postgres/src/index.ts` — attempt exact-replay /
+  start-metadata-unchanged upsert condition; preflight binding fields in the conflict guard.
+- `tests/database/frontend-external-action-postgres-parity.test.ts` — expanded to **16 database
+  tests**: attempt start-metadata mutation rejection, same-status non-exact-replay rejection,
+  preflight binding-change rejection (all at the database), and an AC-21 last-slot budget parity
+  test asserting both adapters return an IDENTICAL full budget view (`EXHAUSTED`, remaining 0,
+  exhausted true).
+
+### Validation
+
+- `node --env-file-if-exists=.env node_modules/vitest/vitest.mjs run tests/database/frontend-external-action-postgres-parity.test.ts` — **16/16 PASS**.
+- Full database suite `npm run test:database` — **165/165 PASS (31 files)**.
+- `npx vitest run tests/integration/frontend-external-action-domain.test.ts` — **24/24 PASS**.
+- `npx vitest run tests/contract/frontend-external-action.contract.test.ts` — **93/93 PASS**.
+- `tsc --noEmit` — clean. ESLint — clean. Prettier — clean.
+- Automatic CI on this head `476c9789` — run **#537** (`30976306934`): Quality, Frontend,
+  Required Gates **SUCCESS**. (CI #535/#536 untouched.)
+
+### AC coverage (WP3 after final remediation)
+
+- **AC-21** remains fully delivered and is now hardened for the four focused items: Phase 3 can
+  never finalize a resource it did not start, a second execute while EXECUTING fails closed,
+  attempts and preflights are immutable under conflict except the exact legal transitions, and
+  budget last-slot semantics are identical in both adapters. WP1/WP2 domain coverage
+  (AC-01..AC-17) is unchanged. AC-18/AC-19 (UI/workspace) and AC-22 (exact-head CI gates —
+  reported per head) remain; WP4–WP6 remain **NOT_AUTHORIZED**.
+
+PR #66 remains OPEN / DRAFT. WP4 Protected Product API / `FrontendExternalActionClient` remains
+**NOT_AUTHORIZED** pending re-review of this report.

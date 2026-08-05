@@ -1164,3 +1164,73 @@ completes normally → exactly ONE execution and ONE attempt exist (Execute #2 c
 
 PR #66 remains OPEN / DRAFT. WP4 Protected Product API / `FrontendExternalActionClient` remains
 **NOT_AUTHORIZED** pending re-review of this report.
+
+## 22. WP3 exact completion correction — GPT focused review → resolved (report 16, 2026-08-05)
+
+GPT review **4861829347** returned the SAME two items with exact-completion evidence
+requirements (no new scope). Both were completed in ONE final WP3 change (head `974e93a`,
+CI **#543**); existing CI #541/#542 were NOT re-run per the review instruction.
+
+### 1. Preflight immutable set is FULLY compared (schemaVersion + concreteKind added)
+
+The DENIED → READY transition previously compared only
+`actionId/resourceProjectId/effectiveProjectId/manifestRevision/preflightDigest/runAt/expiresAt`
+(plus the `preflightId` conflict key); `schemaVersion` and `concreteKind` could still change in
+the snapshot. Both adapters now compare the COMPLETE immutable set:
+
+`schemaVersion, preflightId, concreteKind, actionId, resourceProjectId, effectiveProjectId,
+manifestRevision, preflightDigest, runAt, expiresAt`
+
+- PostgreSQL upsert `WHERE` adds `snapshot->>'schemaVersion' = EXCLUDED...` and
+  `snapshot->>'concreteKind' = EXCLUDED...`.
+- The in-memory guarded-fields list adds `schemaVersion` and `concreteKind`.
+- Only `status`, `reasons`, and the six revalidation flags remain changeable on
+  `DENIED → READY`.
+
+New negative evidence (BOTH adapters): a `DENIED → READY` attempt that changes `schemaVersion`
+or `concreteKind` fails closed, added to the both-adapter preflight transition test.
+
+### 2. Second-Execute re-entry test proves the exact in-flight state
+
+The test now follows the review's exact sequence:
+
+1. Execute #1 starts (connector delayed).
+2. Product Read polls until the action is actually `EXECUTING`; the CURRENT revision
+   (`expectedActionRevision + 1`) is captured and asserted.
+3. Execute #2 is submitted with THAT current revision → `ACTION_EXECUTION_NOT_ALLOWED`.
+4. Execute #1 completes normally (SUCCEEDED).
+5. Exactly ONE execution and ONE attempt exist — `detail.execution.executionId` equals the
+   first execution and the single attempt belongs to it (Execute #2 created nothing).
+
+### Changed files (this exact completion correction)
+
+- `adapters/frontend-external-action-in-memory/src/index.ts` — `schemaVersion`/`concreteKind`
+  added to the preflight immutable guarded fields.
+- `adapters/frontend-external-action-postgres/src/index.ts` — `schemaVersion`/`concreteKind`
+  added to the preflight upsert `WHERE` immutability clause.
+- `tests/integration/frontend-external-action-domain.test.ts` — re-entry test now polls for
+  EXECUTING, uses the current revision, and proves exactly one execution + one attempt.
+- `tests/database/frontend-external-action-postgres-parity.test.ts` — both-adapter preflight
+  transition test now also rejects `schemaVersion`/`concreteKind` changes on DENIED → READY.
+
+### Validation
+
+- `npx vitest run tests/integration/frontend-external-action-domain.test.ts` — **26/26 PASS**.
+- `npx vitest run tests/contract/frontend-external-action.contract.test.ts` — **93/93 PASS**.
+- `node --env-file-if-exists=.env node_modules/vitest/vitest.mjs run tests/database/frontend-external-action-postgres-parity.test.ts` — **17/17 PASS**.
+- Full database suite `npm run test:database` — **166/166 PASS (31 files)**.
+- `tsc --noEmit` — clean. ESLint — clean. Prettier — clean.
+- Automatic CI on this head `974e93a` — run **#543** (`30984044551`): Quality, Frontend,
+  Required Gates **SUCCESS**. (CI #541/#542 untouched.)
+
+### AC coverage (WP3 after exact completion correction)
+
+- **AC-21** remains fully delivered and hardened: the preflight immutable set is now compared
+  in full (including `schemaVersion`/`concreteKind`) in both adapters with negative tests, and
+  the second-execute re-entry test proves the exact in-flight EXECUTING state with the current
+  revision and confirms exactly one execution + one attempt. WP1/WP2 domain coverage
+  (AC-01..AC-17) is unchanged. AC-18/AC-19 (UI/workspace) and AC-22 (exact-head CI gates —
+  reported per head) remain; WP4–WP6 remain **NOT_AUTHORIZED**.
+
+PR #66 remains OPEN / DRAFT. WP4 Protected Product API / `FrontendExternalActionClient` remains
+**NOT_AUTHORIZED** pending re-review of this report.

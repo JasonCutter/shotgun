@@ -311,6 +311,63 @@ export class FrontendExternalActionProductCoordinator {
   }
 
   /**
+   * Phase 3 ownership pinning (Review 4861145103): after the connector call
+   * the finalizer re-locks the aggregate and verifies the EXACT Phase-1 state
+   * before committing the terminal outcome — the action is still EXECUTING,
+   * its revision is exactly expectedActionRevision + 1, the started execution
+   * is still the latest, and the started execution/attempt are still
+   * IN_PROGRESS. If ANY check fails, the finalizer fails closed instead of
+   * overwriting a resource it does not own.
+   */
+  private async lockStartedActionForFinalize(
+    repositories: ExternalActionTransactionRepositoriesV1,
+    actionId: string,
+    startedRefs: {
+      readonly executionId: string;
+      readonly attemptId: string;
+      readonly expectedActionRevision: number;
+    },
+  ): Promise<{
+    readonly action: ExternalActionV1;
+    readonly executionId: string;
+    readonly execution: ExecutionV1;
+    readonly attempts: readonly ExecutionAttemptV1[];
+    readonly attempt: ExecutionAttemptV1;
+  }> {
+    const action = await repositories.aggregates.lock(actionId);
+    if (!action) {
+      externalActionFailure('EXTERNAL_ACTION_NOT_FOUND', 'The External Action was not found.');
+    }
+    if (
+      action.status !== 'EXECUTING' ||
+      action.actionRevision !== startedRefs.expectedActionRevision + 1 ||
+      action.latestExecutionRef?.resourceId !== startedRefs.executionId
+    ) {
+      externalActionFailure(
+        'EXTERNAL_ACTION_STALE',
+        'The External Action changed while the connector call was in flight.',
+      );
+    }
+    const executionId = startedRefs.executionId;
+    const execution = await repositories.executions.findById(executionId);
+    if (!execution || execution.status !== 'IN_PROGRESS') {
+      externalActionFailure(
+        'EXTERNAL_ACTION_STALE',
+        'The execution changed while the connector call was in flight.',
+      );
+    }
+    const attempts = await repositories.attempts.lockByExecution(executionId);
+    const attempt = attempts.find((entry) => entry.attemptId === startedRefs.attemptId);
+    if (!attempt || attempt.status !== 'IN_PROGRESS') {
+      externalActionFailure(
+        'EXTERNAL_ACTION_STALE',
+        'The execution attempt changed while the connector call was in flight.',
+      );
+    }
+    return { action, executionId, execution, attempts, attempt };
+  }
+
+  /**
    * True when the action's CURRENT manifest is the rollback manifest of a
    * prepared/approved/executing rollback — i.e. the governed commands are
    * operating on the rollback (state reversal) lifecycle rather than the
@@ -1203,26 +1260,17 @@ export class FrontendExternalActionProductCoordinator {
       finalize: async (repositories, outcome, startedRefs) => {
         const engineResult = outcome.execute;
         // Re-lock the action row (FOR UPDATE) at the terminal commit and PIN
-        // the finalize to the execution/attempt THIS command started — never
-        // to whatever is currently the latest (a concurrent command cannot
-        // have replaced it; if it did, fail closed instead of finalizing a
-        // different resource — Review 4861031725).
-        const action = await repositories.aggregates.lock(request.actionId);
-        if (!action) {
-          externalActionFailure('EXTERNAL_ACTION_NOT_FOUND', 'The External Action was not found.');
-        }
-        if (action.latestExecutionRef?.resourceId !== startedRefs.executionId) {
-          externalActionFailure(
-            'EXTERNAL_ACTION_STALE',
-            'The execution changed while the connector call was in flight.',
-          );
-        }
-        const executionId = startedRefs.executionId;
-        const attempts = await repositories.attempts.lockByExecution(executionId);
-        const attempt = attempts.find((entry) => entry.attemptId === startedRefs.attemptId);
-        if (!attempt) {
-          externalActionFailure('ACTION_OUTCOME_NOT_FOUND', 'The execution attempt was not found.');
-        }
+        // the finalize to the EXACT Phase-1 state: action still EXECUTING,
+        // revision exactly expectedActionRevision + 1, latest execution is the
+        // started one, and execution/attempt still IN_PROGRESS. Any deviation
+        // means a concurrent governed command changed the aggregate — fail
+        // closed instead of finalizing a resource we no longer own
+        // (Reviews 4861031725 / 4861145103).
+        const { action, executionId, execution, attempt } = await this.lockStartedActionForFinalize(
+          repositories,
+          request.actionId,
+          startedRefs,
+        );
         const completedAt = this.nowIso();
         const finalAttempt: ExecutionAttemptV1 = {
           ...attempt,
@@ -1236,10 +1284,6 @@ export class FrontendExternalActionProductCoordinator {
             : undefined,
         };
         await repositories.attempts.insert(finalAttempt);
-        const execution = await repositories.executions.findById(executionId);
-        if (!execution) {
-          externalActionFailure('ACTION_OUTCOME_NOT_FOUND', 'The execution was not found.');
-        }
         const finalExecution: ExecutionV1 = {
           ...execution,
           status: engineResult.status,
@@ -1528,44 +1572,29 @@ export class FrontendExternalActionProductCoordinator {
         return { preflight, execute };
       },
       finalizeDenied: async (repositories, preflight, startedRefs) => {
-        const action = await repositories.aggregates.lock(request.actionId);
-        if (!action) {
-          externalActionFailure('EXTERNAL_ACTION_NOT_FOUND', 'The External Action was not found.');
-        }
-        if (action.latestExecutionRef?.resourceId !== startedRefs.executionId) {
-          externalActionFailure(
-            'EXTERNAL_ACTION_STALE',
-            'The execution changed while the retry was in flight.',
-          );
-        }
-        const executionId = startedRefs.executionId;
-        const attempts = await repositories.attempts.lockByExecution(executionId);
-        const attempt = attempts.find((entry) => entry.attemptId === startedRefs.attemptId);
-        if (attempt) {
-          await repositories.attempts.insert({
-            ...attempt,
-            status: 'FAILED',
-            completedAt: this.nowIso(),
-          });
-        }
-        const execution = await repositories.executions.findById(executionId);
-        if (execution) {
-          await repositories.executions.update({
-            ...execution,
-            status: 'FAILED',
-            completedAt: this.nowIso(),
-          });
-        }
-        const retryPreflight = await repositories.preflights.findCurrent(action.actionId);
-        if (retryPreflight?.preflightDigest === commandSemanticDigest) {
-          await repositories.preflights.insert({
-            ...retryPreflight,
-            status: 'DENIED',
-            reasons: [preflight.reason ?? 'retry preflight revalidation failed'],
-            targetStateRevalidated: preflight.targetStateRevalidated,
-            externalRevisionRevalidated: preflight.externalRevisionRevalidated,
-          });
-        }
+        // The same Phase-3 ownership pinning applies to the denied-preflight
+        // path: only the EXACT Phase-1 started aggregate/execution/attempt may
+        // be marked FAILED (Reviews 4861031725 / 4861145103).
+        const { action, execution, attempt } = await this.lockStartedActionForFinalize(
+          repositories,
+          request.actionId,
+          startedRefs,
+        );
+        await repositories.attempts.insert({
+          ...attempt,
+          status: 'FAILED',
+          completedAt: this.nowIso(),
+        });
+        await repositories.executions.update({
+          ...execution,
+          status: 'FAILED',
+          completedAt: this.nowIso(),
+        });
+        // The Phase-1 DENIED preflight is already the durable record of the
+        // retry preflight. Per the preflight immutability rule (same status ⇒
+        // exact replay only, Review 4861145103) it is NOT rewritten with the
+        // connector's denial details — the reason is carried by the audit
+        // event and the ledger REJECTION below.
         const failed: ExternalActionV1 = {
           ...action,
           actionRevision: action.actionRevision + 1,
@@ -1577,25 +1606,22 @@ export class FrontendExternalActionProductCoordinator {
           repositories,
           failed,
           'ACTION_FAILED',
-          'Retry blocked by a denied preflight revalidation.',
+          `Retry blocked by a denied preflight revalidation. ${preflight.reason ?? ''}`.trim(),
           await this.nextAuditSequence(repositories, action.actionId),
         );
       },
       finalize: async (repositories, outcome, startedRefs) => {
         const engineResult = outcome.execute;
         // Re-lock the action row (FOR UPDATE) at the terminal commit and PIN
-        // the finalize to the execution/attempt THIS retry started (Review
-        // 4861031725).
-        const action = await repositories.aggregates.lock(request.actionId);
-        if (!action) {
-          externalActionFailure('EXTERNAL_ACTION_NOT_FOUND', 'The External Action was not found.');
-        }
-        if (action.latestExecutionRef?.resourceId !== startedRefs.executionId) {
-          externalActionFailure(
-            'EXTERNAL_ACTION_STALE',
-            'The execution changed while the retry was in flight.',
-          );
-        }
+        // the finalize to the EXACT Phase-1 state (action EXECUTING, revision
+        // expectedActionRevision + 1, started execution/attempt still
+        // IN_PROGRESS) — never finalize a resource a concurrent command has
+        // taken ownership of (Reviews 4861031725 / 4861145103).
+        const { action, execution, attempts, attempt } = await this.lockStartedActionForFinalize(
+          repositories,
+          request.actionId,
+          startedRefs,
+        );
         // The READY preflight is persisted only now, with the actual
         // revalidation flags from the connector (never assumed). The retry's
         // preflight is identified by its digest (commandSemanticDigest).
@@ -1610,12 +1636,6 @@ export class FrontendExternalActionProductCoordinator {
             externalRevisionRevalidated: outcome.preflight.externalRevisionRevalidated,
           });
         }
-        const executionId = startedRefs.executionId;
-        const attempts = await repositories.attempts.lockByExecution(executionId);
-        const attempt = attempts.find((entry) => entry.attemptId === startedRefs.attemptId);
-        if (!attempt) {
-          externalActionFailure('ACTION_OUTCOME_NOT_FOUND', 'The execution attempt was not found.');
-        }
         const completedAt = this.nowIso();
         const finalAttempt: ExecutionAttemptV1 = {
           ...attempt,
@@ -1629,10 +1649,6 @@ export class FrontendExternalActionProductCoordinator {
             : undefined,
         };
         await repositories.attempts.insert(finalAttempt);
-        const execution = await repositories.executions.findById(executionId);
-        if (!execution) {
-          externalActionFailure('ACTION_OUTCOME_NOT_FOUND', 'The execution was not found.');
-        }
         const finalExecution: ExecutionV1 = {
           ...execution,
           status: engineResult.status,

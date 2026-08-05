@@ -296,20 +296,36 @@ export class InMemoryExternalActionStore implements ExternalActionRepositoryBoun
       },
       insert: async (preflight) => {
         // A preflight's initial binding (action, projects, manifest revision,
-        // digest, run context) is immutable: only DENIED → READY may change.
-        upsertOrConflict(
-          maps.preflights.get(preflight.preflightId),
-          preflight,
-          [
-            'actionId',
-            'resourceProjectId',
-            'effectiveProjectId',
-            'manifestRevision',
-            'preflightDigest',
-            'runAt',
-          ],
-          'preflight',
-        );
+        // digest, run context) is immutable. Beyond the binding, only an EXACT
+        // same-status replay or a DENIED → READY transition (binding + start
+        // context unchanged, result fields only) is legal — READY → DENIED,
+        // same-status with a different snapshot, and ALREADY_APPLIED → READY
+        // all fail closed (Review 4861145103).
+        const existing = maps.preflights.get(preflight.preflightId);
+        if (existing) {
+          upsertOrConflict(
+            existing,
+            preflight,
+            [
+              'actionId',
+              'resourceProjectId',
+              'effectiveProjectId',
+              'manifestRevision',
+              'preflightDigest',
+              'runAt',
+            ],
+            'preflight',
+          );
+          const sameStatusExactReplay =
+            existing.status === preflight.status &&
+            JSON.stringify(existing) === JSON.stringify(preflight);
+          const deniedToReady = existing.status === 'DENIED' && preflight.status === 'READY';
+          if (!sameStatusExactReplay && !deniedToReady) {
+            conflict(
+              'preflight is immutable except an exact replay or a DENIED → READY transition with unchanged binding.',
+            );
+          }
+        }
         maps.preflights.set(preflight.preflightId, preflight);
       },
     };
@@ -584,6 +600,7 @@ export class FakeExternalActionEngine implements ExternalActionEnginePort {
       readonly executeStatus?: 'SUCCEEDED' | 'FAILED' | 'OUTCOME_UNKNOWN';
       readonly retryStatus?: 'SUCCEEDED' | 'FAILED' | 'OUTCOME_UNKNOWN';
       readonly executeThrows?: boolean;
+      readonly executeDelayMs?: number;
       readonly verifyStatus?: 'APPLIED' | 'NOT_APPLIED' | 'MISMATCH';
     } = {},
   ) {}
@@ -608,6 +625,11 @@ export class FakeExternalActionEngine implements ExternalActionEnginePort {
   }
 
   async execute(request: ExternalActionExecuteRequestV1): Promise<ExternalActionExecuteOutcomeV1> {
+    if (this.behavior.executeDelayMs) {
+      // Simulates a slow connector: the Phase-1 state stays durable while the
+      // command is in flight, so an overlapping governed command can run.
+      await new Promise((resolve) => setTimeout(resolve, this.behavior.executeDelayMs));
+    }
     if (this.behavior.executeThrows) {
       throw new Error('fake connector exploded');
     }

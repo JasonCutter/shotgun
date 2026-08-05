@@ -428,8 +428,11 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
       },
       insert: async (preflight) => {
         // A preflight's initial binding (action, projects, manifest revision,
-        // digest, run context) is immutable: only the DENIED → READY status
-        // (and reasons/flags) may change for the SAME preflight identity.
+        // digest, run context) is immutable. Beyond the binding, only an EXACT
+        // same-status snapshot replay or a DENIED → READY transition (binding
+        // + start context unchanged, result fields only) is legal — READY →
+        // DENIED, same-status with a different snapshot, and ALREADY_APPLIED →
+        // READY all fail closed (Review 4861145103).
         const result = await client.query(
           `INSERT INTO frontend_external_action.preflights
              (preflight_id, action_id, resource_project_id, effective_project_id,
@@ -446,7 +449,14 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
              AND frontend_external_action.preflights.effective_project_id = EXCLUDED.effective_project_id
              AND frontend_external_action.preflights.snapshot->>'manifestRevision' = EXCLUDED.snapshot->>'manifestRevision'
              AND frontend_external_action.preflights.snapshot->>'preflightDigest' = EXCLUDED.snapshot->>'preflightDigest'
-             AND frontend_external_action.preflights.snapshot->>'runAt' = EXCLUDED.snapshot->>'runAt'`,
+             AND frontend_external_action.preflights.snapshot->>'runAt' = EXCLUDED.snapshot->>'runAt'
+             AND (
+               (frontend_external_action.preflights.snapshot->>'status' = EXCLUDED.snapshot->>'status'
+                AND frontend_external_action.preflights.snapshot = EXCLUDED.snapshot)
+               OR
+               (frontend_external_action.preflights.snapshot->>'status' = 'DENIED'
+                AND EXCLUDED.snapshot->>'status' = 'READY')
+             )`,
           [
             preflight.preflightId,
             preflight.actionId,

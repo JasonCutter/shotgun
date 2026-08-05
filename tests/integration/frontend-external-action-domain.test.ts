@@ -72,6 +72,7 @@ const makeCoordinator = (
     readonly executeStatus?: 'SUCCEEDED' | 'FAILED' | 'OUTCOME_UNKNOWN';
     readonly retryStatus?: 'SUCCEEDED' | 'FAILED' | 'OUTCOME_UNKNOWN';
     readonly executeThrows?: boolean;
+    readonly executeDelayMs?: number;
     readonly verifyStatus?: 'APPLIED' | 'NOT_APPLIED' | 'MISMATCH';
   } = {},
 ) => {
@@ -1282,6 +1283,94 @@ describe('FE-P4-S2 WP2 External Action Product domain', () => {
     expect(detail.attempts).toHaveLength(2);
     expect(detail.attempts[1]?.status).toBe('FAILED');
     expect(detail.action.status).toBe('FAILED');
+  });
+
+  it('fails closed with EXTERNAL_ACTION_STALE when a governed command overlaps an in-flight connector execute (Phase-3 pinning)', async () => {
+    const { coordinator } = makeCoordinator({
+      executeStatus: 'SUCCEEDED',
+      executeDelayMs: 250,
+    });
+    const actionId = 'action-overlap';
+    await coordinator.validateActionCandidate(scope, {
+      schemaVersion: '1.0.0',
+      clientRequestId: 'client-v-overlap',
+      idempotencyKey: 'idem-v-overlap',
+      actionId,
+      candidateId: 'candidate-overlap',
+      operation: 'UPDATE_REVERSIBLE',
+      targetRef,
+      parameterRef,
+      evidenceRefs: [evidenceSetRef],
+      reason: 'Validate.',
+    });
+    const prepared = await coordinator.prepareActionManifest(scope, {
+      schemaVersion: '1.0.0',
+      clientRequestId: 'client-p-overlap',
+      idempotencyKey: 'idem-p-overlap',
+      actionId,
+      expectedActionRevision: await revisionOf(coordinator, actionId),
+      reason: 'Prepare.',
+    });
+    await coordinator.approveExternalAction(scope, {
+      schemaVersion: '1.0.0',
+      clientRequestId: 'client-a-overlap',
+      idempotencyKey: 'idem-a-overlap',
+      actionId,
+      manifestId: prepared.manifest.manifestId,
+      manifestRevision: prepared.manifest.manifestRevision,
+      expectedTargetRevision: 'rev-3',
+      expectedExternalRevision: 'ext-7',
+      reason: 'Approved.',
+    });
+    const preflighted = await coordinator.preflightExternalAction(scope, {
+      schemaVersion: '1.0.0',
+      clientRequestId: 'client-pf-overlap',
+      idempotencyKey: 'idem-pf-overlap',
+      actionId,
+      expectedActionRevision: await revisionOf(coordinator, actionId),
+      manifestRevision: prepared.manifest.manifestRevision,
+      expectedExternalRevision: 'ext-7',
+      reason: 'Preflight.',
+    });
+    const revBeforeExecute = await revisionOf(coordinator, actionId);
+    const executeRequest = {
+      schemaVersion: '1.0.0' as const,
+      clientRequestId: 'client-ex-overlap',
+      idempotencyKey: 'idem-ex-overlap',
+      actionId,
+      expectedActionRevision: revBeforeExecute,
+      manifestRevision: prepared.manifest.manifestRevision,
+      preflightId: preflighted.preflight.preflightId,
+      expectedExternalRevision: 'ext-7',
+      reason: 'Execute.',
+    };
+    // Start the execute: Phase 1 becomes durable (aggregate EXECUTING, rev+1)
+    // and the connector call is delayed (still in flight).
+    const executing = coordinator.executeExternalAction(scope, executeRequest);
+    // Overlapping governed command while the action is EXECUTING: preflight
+    // only checks the revision, so it runs and changes status + revision.
+    await coordinator.preflightExternalAction(scope, {
+      schemaVersion: '1.0.0',
+      clientRequestId: 'client-pf-overlap-2',
+      idempotencyKey: 'idem-pf-overlap-2',
+      actionId,
+      expectedActionRevision: revBeforeExecute + 1,
+      manifestRevision: prepared.manifest.manifestRevision,
+      expectedExternalRevision: 'ext-7',
+      reason: 'Overlapping preflight.',
+    });
+    // The delayed execute's Phase-3 finalize must fail closed: the aggregate is
+    // no longer EXECUTING at expectedActionRevision + 1, so it cannot settle
+    // the (now owned) resource.
+    await expect(executing).rejects.toThrow(/stale|changed while the connector/i);
+    const detail = await coordinator.getExternalActionDetail(scope, {
+      schemaVersion: '1.0.0',
+      actionId,
+    });
+    // The overlapping preflight's state is preserved — the stale finalize did
+    // NOT overwrite the action to VERIFYING.
+    expect(detail.action.status).toBe('PREFLIGHT_READY');
+    expect(detail.action.actionRevision).toBeGreaterThan(revBeforeExecute + 1);
   });
 
   it('creates a new risk decision when the policy context changes (same candidate meaning)', async () => {

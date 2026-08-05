@@ -1010,6 +1010,96 @@ describe.runIf(pool)(
       ).rejects.toThrow(/immutable|binding|conflict/i);
     });
 
+    it('enforces the preflight transition rule in BOTH adapters (same-status exact replay, DENIED→READY only)', async () => {
+      const assertTransitions = async (
+        store: ExternalActionRepositoryBoundaryPort,
+        suffix: string,
+      ) => {
+        const base = {
+          schemaVersion: '1.0.0' as const,
+          preflightId: `preflight-transition-${suffix}`,
+          concreteKind: 'PREFLIGHT' as const,
+          actionId: `action-transition-${suffix}`,
+          resourceProjectId: PROJECT_ID,
+          effectiveProjectId: PROJECT_ID,
+          manifestRevision: 1,
+          preflightDigest: `sha256:${suffix}`,
+          reasons: [] as string[],
+          permissionRevalidated: true,
+          credentialRevalidated: true,
+          budgetRevalidated: true,
+          policyRevalidated: true,
+          targetStateRevalidated: false,
+          externalRevisionRevalidated: false,
+          runAt: '2026-08-05T00:00:00.000Z',
+          expiresAt: '2026-08-05T00:30:00.000Z',
+        };
+        // Initial DENIED preflight.
+        await store.transaction(async (repositories) => {
+          await repositories.preflights.insert({ ...base, status: 'DENIED' });
+        });
+        // DENIED → READY (same binding, result fields change) is the ONLY legal
+        // status transition.
+        await store.transaction(async (repositories) => {
+          await repositories.preflights.insert({
+            ...base,
+            status: 'READY',
+            targetStateRevalidated: true,
+            externalRevisionRevalidated: true,
+          });
+        });
+        // READY → DENIED (reverse transition) fails closed.
+        await expect(
+          store.transaction(async (repositories) => {
+            await repositories.preflights.insert({
+              ...base,
+              status: 'DENIED',
+              reasons: ['readiness lost'],
+              targetStateRevalidated: false,
+              externalRevisionRevalidated: false,
+            });
+          }),
+        ).rejects.toThrow(/immutable|conflict|transition/i);
+        // Same status with a DIFFERENT snapshot fails closed.
+        await expect(
+          store.transaction(async (repositories) => {
+            await repositories.preflights.insert({
+              ...base,
+              status: 'READY',
+              targetStateRevalidated: true,
+              externalRevisionRevalidated: true,
+              reasons: ['changed'],
+            });
+          }),
+        ).rejects.toThrow(/immutable|conflict|transition/i);
+        // ALREADY_APPLIED → READY fails closed (same binding, illegal transition).
+        await store.transaction(async (repositories) => {
+          await repositories.preflights.insert({
+            ...base,
+            preflightId: `preflight-transition-aa-${suffix}`,
+            actionId: `action-transition-aa-${suffix}`,
+            status: 'ALREADY_APPLIED',
+            targetStateRevalidated: true,
+            externalRevisionRevalidated: true,
+          });
+        });
+        await expect(
+          store.transaction(async (repositories) => {
+            await repositories.preflights.insert({
+              ...base,
+              preflightId: `preflight-transition-aa-${suffix}`,
+              actionId: `action-transition-aa-${suffix}`,
+              status: 'READY',
+              targetStateRevalidated: true,
+              externalRevisionRevalidated: true,
+            });
+          }),
+        ).rejects.toThrow(/immutable|conflict|transition/i);
+      };
+      await assertTransitions(new InMemoryExternalActionStore(), 'mem');
+      await assertTransitions(pgBoundary(), 'pg');
+    });
+
     it('produces an identical last-slot budget view in both adapters (AC-21 parity)', async () => {
       const seedBudget = {
         schemaVersion: '1.0.0' as const,

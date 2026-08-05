@@ -1681,3 +1681,124 @@ also re-exported from the api-client for manifest verification.)
 - Automatic CI on code head `561c426` — run **#553**: Quality, Frontend, Required Gates
   **SUCCESS**. (First WP5 head `eef33a6` CI #552 failed on a missing primary-action registration
   and a test fixture type; both fixed in `561c426`.)
+
+### Section 26 correction (Review 4865177355)
+
+Review **4865177355** (**BLOCKED / FOCUSED WP5 REMEDIATION REQUIRED**) flagged six connectivity
+defects inside the approved WP5 scope and asked for Section 26 corrections. The claims below were
+corrected in this report:
+
+- **Governed surface list**: Section 26 named only Cancel/Rollback/Compensation. The workspace
+  also has a **Verify** surface (`검증 실행`, explicit non-automatic). Corrected in Section 27
+  item 6.
+- **`OUTCOME_UNKNOWN` recovery**: Section 26 claimed recovery "resolves by the original identity",
+  but the original implementation stored the identity only after a successful response and still
+  exposed `canRetry: true`. The remediation captures the original identity + exact semantic digest
+  **before** every call, adjudicates `COMPLETED` / `REJECTED` / continued `OUTCOME_UNKNOWN`, and
+  removes the re-execute surface. Corrected in Section 27 item 5.
+- **Deep-link / focus**: Section 26 claimed deep-link restore + focus preservation, but the
+  manifest identity was not selected, queue selection misused `setSearchParameters`, and focus was
+  not preserved after cancel/verify. Corrected in Section 27 items 2 and 6.
+
+## 27. WP5 focused remediation — Review 4865177355 (report 21, 2026-08-05)
+
+GPT review **4865177355** returned **BLOCKED / FOCUSED WP5 REMEDIATION REQUIRED** with six
+connectivity defects inside the approved WP5 scope. WP6, Migration, Stage 11, new dependencies
+and Real Connector stayed out of scope. CI **#553 / #554 / #555** were NOT re-run per the review
+instruction. This report records the remediation on code head `4c98d14` (CI **#557**) and report
+head `<REPORT_HEAD>` (CI **#558**).
+
+### 1. Item 1 — Command Palette entry (shell.navigation)
+
+- `adapters/frontend-product-read-in-memory` `getShell` now emits the `external-action` navigation
+  item (`label: 'External actions'`), `AVAILABLE` with `routes.externalAction` when a Project is
+  ready and `TEMPORARILY_UNAVAILABLE` otherwise, placed after `ask` and before the
+  knowledge/review `COMING_LATER` entries. The workspace is reachable from **both** Home and
+  Command Palette.
+- Home primary action `govern-external-action` → `/external-action` remains navigation-only
+  (AC-18: never direct execution).
+- NEW `tests/contract/frontend-shell-navigation.contract.test.ts` (3 tests): Command Palette
+  entry `AVAILABLE` + `/external-action` href with a ready Project; `TEMPORARILY_UNAVAILABLE`
+  without a Project; Home primary action carries no command/execution surface.
+
+### 2. Item 2 — Deep-link contract actually drives workspace selection
+
+- `external-action-workspace-state.ts` gained `selectedManifestId` and the `SELECT_MANIFEST`
+  action; `SELECT_ACTION` resets it and the in-flight `submitting` lock.
+- Deep-link restore now dispatches `SELECT_MANIFEST` from `deepLink.manifestId` in addition to the
+  execution/attempt/verification selection.
+- Queue selection navigates with `navigate(externalActionDeepLinkHref({ actionId }))` — the full
+  href — never `setSearchParameters` with a raw path.
+- The manifest section renders a select/selected button (`aria-pressed`); execution attempts and
+  verification are selectable controls, and verification selection feeds the Verify command.
+- NEW test: deep-link restore `['/external-action?action=action-1&focus=manifest-heading']`
+  restores selection, renders the manifest, keeps `manifest-heading` focusable (`tabIndex -1`) and
+  moves focus to it.
+
+### 3. Item 3 — External Revision child-read gating
+
+- `childIdentity` is `null` until the detail payload resolves **and** the action is not restricted
+  (`ACCESS_RESTRICTED` or `HIDDEN`). The external revision is learned from the detail payload and
+  then binds every child read, so no child read runs with an empty external-revision key and no
+  protected read fires for a Hidden/Restricted action.
+- NEW negative test: the restricted-shell test now asserts the protected child-read call list
+  (manifests / risk-decisions / preflights / executions / verifications / results / approvals)
+  is exactly `[]`.
+
+### 4. Item 4 — ADR-119 reason draft + exactly-once submit lock
+
+- The workspace renders a route-scoped reason `<input>` (`aria-label="거버넌스 명령 사유"`) wired
+  to `SET_COMMAND_DRAFT`; the draft reason is sent when the draft's command matches the command.
+- `SUBMITTING_STARTED { command }` / `SUBMITTING_FINISHED` drive a `submitting` lock; every
+  governed control is `disabled` while a command is in flight or a recovery is in progress.
+- NEW test: with a delayed cancel (`cancelDelayMs: 100`), a rapid double-click sends exactly one
+  `/external-action/cancel` POST.
+
+### 5. Item 5 — OUTCOME_UNKNOWN recovery by the ORIGINAL identity, captured before the call
+
+- `lastCommandRef` (`clientRequestId` + `idempotencyKey` + the exact semantic digest via
+  `CancelDigest` / `RollbackDigest` / `CompensationDigest` / `VerifyDigest`) is captured **before**
+  every governed API call.
+- `resolveOutcome` adjudicates the three contract outcomes: `COMPLETED` → recovery finished +
+  detail resolved + exact query invalidation; `REJECTED` → typed failure with the rejection
+  message; continued `OUTCOME_UNKNOWN` → stays recoverable with the original identity.
+- `canRetry` was removed from `externalActionCommandSurfaces` — there is no re-execute surface.
+- NEW workspace–client recovery test: VERIFIED rollback → 503 `ACTION_OUTCOME_UNKNOWN` → recovery
+  shows the resolve-only `원래 요청으로 복구` (no retry/re-execute button) → resolve echoes
+  `REJECTED` → typed `거부되었습니다` failure with exactly one resolve call carrying
+  `idempotencyKey` + `semanticDigest`.
+
+### 6. Item 6 — Verify surface + focus preservation
+
+- Added a VERIFY command branch (using the manifest target/external revision and `VerifyDigest`)
+  and a `검증 실행` button when `canVerify`; focus lands on `verification-heading` after verify.
+- Cancel / rollback / compensation preserve focus on `governed-commands-heading`.
+- All focusable headings carry `tabIndex={-1}`; the focus effect re-runs when the detail subtree
+  data lands (targets that mount after a child read still receive focus) and self-terminates via
+  `CLEAR_FOCUS`.
+
+### Changed files (this remediation)
+
+- `adapters/frontend-product-read-in-memory/src/index.ts` — `shell.navigation` `external-action`
+  item (Command Palette entry).
+- `apps/shotgun-web/src/external-action/external-action-workspace-state.ts` — `selectedManifestId`
+  + `SELECT_MANIFEST`, `submitting` + `SUBMITTING_STARTED/FINISHED`; `canRetry` removed.
+- `apps/shotgun-web/src/external-action/external-action-workspace-state.test.ts` — manifest
+  selection + submitting-lock tests.
+- `apps/shotgun-web/src/routes/external-action-workspace.tsx` — deep-link navigation fix,
+  child-read gating, reason input, exactly-once submit lock, Verify branch, resolve adjudication,
+  focus preservation + `tabIndex={-1}` headings.
+- `apps/shotgun-web/src/routes/external-action-workspace.test.tsx` — rewritten focused tests:
+  queue→detail, restricted child-read-negative, deep-link restore + focus, double-click
+  exactly-once, OUTCOME_UNKNOWN recovery.
+- `tests/contract/frontend-shell-navigation.contract.test.ts` — NEW item-1 navigation tests.
+
+### Validation
+
+- `apps/shotgun-web` full suite (`vitest run`) — **18 files / 78 tests PASS**.
+- Root unit+integration+contract suites — **980 tests** (979 PASS; the single
+  `stage-8-format-expansion` timing flake passes in isolation; unrelated to WP5).
+- `tsc --noEmit` (root and `apps/shotgun-web`) — clean. ESLint — clean. Prettier — clean.
+- Automatic CI on the final code head `4c98d14` — run **#557**: Quality, Frontend, Required Gates
+  **SUCCESS**. (The interim remediation head `61ff981` ran CI **#556**; superseded by `4c98d14`
+  which also carries the item-1 navigation tests.) Report head `<REPORT_HEAD>` CI **#558**.

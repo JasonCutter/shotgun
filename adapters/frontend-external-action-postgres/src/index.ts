@@ -427,6 +427,9 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
         return row ? preflightFrom(row) : undefined;
       },
       insert: async (preflight) => {
+        // A preflight's initial binding (action, projects, manifest revision,
+        // digest, run context) is immutable: only the DENIED → READY status
+        // (and reasons/flags) may change for the SAME preflight identity.
         const result = await client.query(
           `INSERT INTO frontend_external_action.preflights
              (preflight_id, action_id, resource_project_id, effective_project_id,
@@ -440,7 +443,10 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
              snapshot = EXCLUDED.snapshot
            WHERE frontend_external_action.preflights.action_id = EXCLUDED.action_id
              AND frontend_external_action.preflights.resource_project_id = EXCLUDED.resource_project_id
-             AND frontend_external_action.preflights.effective_project_id = EXCLUDED.effective_project_id`,
+             AND frontend_external_action.preflights.effective_project_id = EXCLUDED.effective_project_id
+             AND frontend_external_action.preflights.snapshot->>'manifestRevision' = EXCLUDED.snapshot->>'manifestRevision'
+             AND frontend_external_action.preflights.snapshot->>'preflightDigest' = EXCLUDED.snapshot->>'preflightDigest'
+             AND frontend_external_action.preflights.snapshot->>'runAt' = EXCLUDED.snapshot->>'runAt'`,
           [
             preflight.preflightId,
             preflight.actionId,
@@ -452,7 +458,7 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
           ],
         );
         if (result.rowCount === 0) {
-          conflict('preflight identity cannot be re-bound.');
+          conflict('preflight identity and binding are immutable.');
         }
       },
     };
@@ -538,10 +544,12 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
         return row ? attemptFrom(row) : undefined;
       },
       insert: async (attempt) => {
-        // The attempt upsert allows only an identical replay or the legal
-        // IN_PROGRESS → terminal status transition with an unchanged identity
-        // (never a rebind, never terminal → IN_PROGRESS, never terminal →
-        // another terminal).
+        // The attempt upsert allows only (a) an EXACT same-status replay (the
+        // full snapshot is identical) or (b) the legal IN_PROGRESS → terminal
+        // transition with EVERY start metadata field (idempotencyKey,
+        // policyContextRevision, externalRevision, correlationId, causationId,
+        // startedAt) unchanged — never a rebind, never a start-metadata
+        // mutation, never terminal → anything else (Review 4861031725).
         const result = await client.query(
           `INSERT INTO frontend_external_action.attempts
              (attempt_id, execution_id, action_id, resource_project_id,
@@ -556,10 +564,19 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
              AND frontend_external_action.attempts.effective_project_id = EXCLUDED.effective_project_id
              AND frontend_external_action.attempts.attempt_number = EXCLUDED.attempt_number
              AND (
-               frontend_external_action.attempts.status = EXCLUDED.status
+               (
+                 frontend_external_action.attempts.status = EXCLUDED.status
+                 AND frontend_external_action.attempts.snapshot = EXCLUDED.snapshot
+               )
                OR (
                  frontend_external_action.attempts.status IN ('IN_PROGRESS')
                  AND EXCLUDED.status IN (${TERMINAL_ATTEMPT_STATUSES})
+                 AND frontend_external_action.attempts.snapshot->>'idempotencyKey' = EXCLUDED.snapshot->>'idempotencyKey'
+                 AND frontend_external_action.attempts.snapshot->>'policyContextRevision' = EXCLUDED.snapshot->>'policyContextRevision'
+                 AND frontend_external_action.attempts.snapshot->>'externalRevision' = EXCLUDED.snapshot->>'externalRevision'
+                 AND frontend_external_action.attempts.snapshot->>'correlationId' = EXCLUDED.snapshot->>'correlationId'
+                 AND COALESCE(frontend_external_action.attempts.snapshot->>'causationId', '') = COALESCE(EXCLUDED.snapshot->>'causationId', '')
+                 AND frontend_external_action.attempts.snapshot->>'startedAt' = EXCLUDED.snapshot->>'startedAt'
                )
              )`,
           [
@@ -576,7 +593,7 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
         );
         if (result.rowCount === 0) {
           conflict(
-            'attempt identity is immutable and only IN_PROGRESS → terminal transitions are allowed.',
+            'attempt is immutable except an exact replay or an IN_PROGRESS → terminal transition with unchanged start metadata.',
           );
         }
       },

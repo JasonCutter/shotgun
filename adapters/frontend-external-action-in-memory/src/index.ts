@@ -295,10 +295,19 @@ export class InMemoryExternalActionStore implements ExternalActionRepositoryBoun
         return all[all.length - 1];
       },
       insert: async (preflight) => {
+        // A preflight's initial binding (action, projects, manifest revision,
+        // digest, run context) is immutable: only DENIED → READY may change.
         upsertOrConflict(
           maps.preflights.get(preflight.preflightId),
           preflight,
-          ['actionId', 'resourceProjectId', 'effectiveProjectId'],
+          [
+            'actionId',
+            'resourceProjectId',
+            'effectiveProjectId',
+            'manifestRevision',
+            'preflightDigest',
+            'runAt',
+          ],
           'preflight',
         );
         maps.preflights.set(preflight.preflightId, preflight);
@@ -360,6 +369,30 @@ export class InMemoryExternalActionStore implements ExternalActionRepositoryBoun
           if (!legal) {
             conflict(
               `attempt status transition '${existing.status}' -> '${attempt.status}' is not allowed.`,
+            );
+          }
+          // Beyond the status gate, an attempt is immutable except an EXACT
+          // same-status replay or an IN_PROGRESS → terminal transition whose
+          // start metadata (idempotencyKey, policyContextRevision,
+          // externalRevision, correlationId, causationId, startedAt) is
+          // unchanged (Review 4861031725).
+          const sameStatusExactReplay =
+            existing.status === attempt.status &&
+            JSON.stringify(existing) === JSON.stringify(attempt);
+          const startMetadataUnchanged =
+            existing.idempotencyKey === attempt.idempotencyKey &&
+            existing.policyContextRevision === attempt.policyContextRevision &&
+            existing.externalRevision === attempt.externalRevision &&
+            existing.correlationId === attempt.correlationId &&
+            (existing.causationId ?? '') === (attempt.causationId ?? '') &&
+            existing.startedAt === attempt.startedAt;
+          const inProgressToTerminal =
+            existing.status === 'IN_PROGRESS' &&
+            TERMINAL_ATTEMPT_STATUSES.has(attempt.status) &&
+            startMetadataUnchanged;
+          if (!sameStatusExactReplay && !inProgressToTerminal) {
+            conflict(
+              'attempt is immutable except an exact replay or an IN_PROGRESS → terminal transition with unchanged start metadata.',
             );
           }
         }
@@ -488,7 +521,7 @@ export class InMemoryExternalActionStore implements ExternalActionRepositoryBoun
           ...budget,
           remainingExecutions: remaining,
           usedExecutions: budget.usedExecutions + 1,
-          status: remaining <= budget.softLimit ? 'WARNING' : 'OK',
+          status: remaining <= 0 ? 'EXHAUSTED' : remaining <= budget.softLimit ? 'WARNING' : 'OK',
           exhausted: remaining <= 0,
         };
         maps.budgets.set(projectId, reserved);

@@ -1034,6 +1034,14 @@ export class FrontendExternalActionProductCoordinator {
         const action = await this.aggregateFor(repositories, request.actionId);
         this.assertProjectAndPolicy(action, scope);
         this.assertStaleNotBlocking(action);
+        // A connector command is already in flight for this action: a second
+        // execute must never start a parallel execution (Review 4861031725).
+        if (action.status === 'EXECUTING') {
+          externalActionFailure(
+            'ACTION_EXECUTION_NOT_ALLOWED',
+            'The External Action is already executing.',
+          );
+        }
         if (action.actionRevision !== request.expectedActionRevision) {
           externalActionFailure(
             'EXTERNAL_ACTION_STALE',
@@ -1182,22 +1190,36 @@ export class FrontendExternalActionProductCoordinator {
             attempt,
             rollback: rollbackContext.active,
           },
+          startedRefs: {
+            executionId,
+            attemptId: attempt.attemptId,
+            expectedActionRevision: action.actionRevision,
+          },
         };
       },
       executeEngine: async ({ engineInput }) => ({
         execute: await this.engine.execute(engineInput),
       }),
-      finalize: async (repositories, outcome) => {
+      finalize: async (repositories, outcome, startedRefs) => {
         const engineResult = outcome.execute;
-        // Re-lock the action row (FOR UPDATE) at the terminal commit so a
-        // concurrent command can never overwrite its state (Review 4860735262).
+        // Re-lock the action row (FOR UPDATE) at the terminal commit and PIN
+        // the finalize to the execution/attempt THIS command started — never
+        // to whatever is currently the latest (a concurrent command cannot
+        // have replaced it; if it did, fail closed instead of finalizing a
+        // different resource — Review 4861031725).
         const action = await repositories.aggregates.lock(request.actionId);
         if (!action) {
           externalActionFailure('EXTERNAL_ACTION_NOT_FOUND', 'The External Action was not found.');
         }
-        const executionId = action.latestExecutionRef?.resourceId ?? '';
+        if (action.latestExecutionRef?.resourceId !== startedRefs.executionId) {
+          externalActionFailure(
+            'EXTERNAL_ACTION_STALE',
+            'The execution changed while the connector call was in flight.',
+          );
+        }
+        const executionId = startedRefs.executionId;
         const attempts = await repositories.attempts.lockByExecution(executionId);
-        const attempt = attempts[0];
+        const attempt = attempts.find((entry) => entry.attemptId === startedRefs.attemptId);
         if (!attempt) {
           externalActionFailure('ACTION_OUTCOME_NOT_FOUND', 'The execution attempt was not found.');
         }
@@ -1292,6 +1314,14 @@ export class FrontendExternalActionProductCoordinator {
       persistStarted: async (repositories) => {
         const action = await this.aggregateFor(repositories, request.actionId);
         this.assertProjectAndPolicy(action, scope);
+        // A connector command is already in flight: never start a parallel
+        // retry execution (Review 4861031725).
+        if (action.status === 'EXECUTING') {
+          externalActionFailure(
+            'ACTION_EXECUTION_NOT_ALLOWED',
+            'The External Action is already executing.',
+          );
+        }
         const execution = await repositories.executions.findById(request.executionId);
         if (!execution || execution.actionId !== action.actionId) {
           externalActionFailure(
@@ -1452,6 +1482,11 @@ export class FrontendExternalActionProductCoordinator {
             manifest,
             preflight,
           },
+          startedRefs: {
+            executionId: execution.executionId,
+            attemptId: attempt.attemptId,
+            expectedActionRevision: action.actionRevision,
+          },
         };
       },
       // Retry preflight runs OUTSIDE the DB transaction (durable resources
@@ -1492,14 +1527,20 @@ export class FrontendExternalActionProductCoordinator {
         }
         return { preflight, execute };
       },
-      finalizeDenied: async (repositories, preflight) => {
-        const action = await repositories.aggregates.findById(request.actionId);
+      finalizeDenied: async (repositories, preflight, startedRefs) => {
+        const action = await repositories.aggregates.lock(request.actionId);
         if (!action) {
           externalActionFailure('EXTERNAL_ACTION_NOT_FOUND', 'The External Action was not found.');
         }
-        const executionId = action.latestExecutionRef?.resourceId ?? request.executionId;
+        if (action.latestExecutionRef?.resourceId !== startedRefs.executionId) {
+          externalActionFailure(
+            'EXTERNAL_ACTION_STALE',
+            'The execution changed while the retry was in flight.',
+          );
+        }
+        const executionId = startedRefs.executionId;
         const attempts = await repositories.attempts.lockByExecution(executionId);
-        const attempt = attempts[attempts.length - 1];
+        const attempt = attempts.find((entry) => entry.attemptId === startedRefs.attemptId);
         if (attempt) {
           await repositories.attempts.insert({
             ...attempt,
@@ -1540,13 +1581,20 @@ export class FrontendExternalActionProductCoordinator {
           await this.nextAuditSequence(repositories, action.actionId),
         );
       },
-      finalize: async (repositories, outcome) => {
+      finalize: async (repositories, outcome, startedRefs) => {
         const engineResult = outcome.execute;
-        // Re-lock the action row (FOR UPDATE) at the terminal commit so a
-        // concurrent command can never overwrite its state (Review 4860735262).
+        // Re-lock the action row (FOR UPDATE) at the terminal commit and PIN
+        // the finalize to the execution/attempt THIS retry started (Review
+        // 4861031725).
         const action = await repositories.aggregates.lock(request.actionId);
         if (!action) {
           externalActionFailure('EXTERNAL_ACTION_NOT_FOUND', 'The External Action was not found.');
+        }
+        if (action.latestExecutionRef?.resourceId !== startedRefs.executionId) {
+          externalActionFailure(
+            'EXTERNAL_ACTION_STALE',
+            'The execution changed while the retry was in flight.',
+          );
         }
         // The READY preflight is persisted only now, with the actual
         // revalidation flags from the connector (never assumed). The retry's
@@ -1562,9 +1610,9 @@ export class FrontendExternalActionProductCoordinator {
             externalRevisionRevalidated: outcome.preflight.externalRevisionRevalidated,
           });
         }
-        const executionId = action.latestExecutionRef?.resourceId ?? request.executionId;
+        const executionId = startedRefs.executionId;
         const attempts = await repositories.attempts.lockByExecution(executionId);
-        const attempt = attempts[attempts.length - 1];
+        const attempt = attempts.find((entry) => entry.attemptId === startedRefs.attemptId);
         if (!attempt) {
           externalActionFailure('ACTION_OUTCOME_NOT_FOUND', 'The execution attempt was not found.');
         }
@@ -2779,6 +2827,11 @@ export class FrontendExternalActionProductCoordinator {
       readonly producedResources: readonly ProducedResourceRef[];
       readonly engineInput: ExternalActionExecuteRequestV1;
       readonly preflightInput?: ExternalActionPreflightRequestV1;
+      readonly startedRefs: {
+        readonly executionId: string;
+        readonly attemptId: string;
+        readonly expectedActionRevision: number;
+      };
     }>;
     readonly executeEngine: (context: {
       readonly engineInput: ExternalActionExecuteRequestV1;
@@ -2793,10 +2846,20 @@ export class FrontendExternalActionProductCoordinator {
         readonly preflight?: ExternalActionPreflightOutcomeV1;
         readonly execute: ExternalActionExecuteOutcomeV1;
       },
+      startedRefs: {
+        readonly executionId: string;
+        readonly attemptId: string;
+        readonly expectedActionRevision: number;
+      },
     ) => Promise<T>;
     readonly finalizeDenied?: (
       repositories: ExternalActionTransactionRepositoriesV1,
       preflight: ExternalActionPreflightOutcomeV1,
+      startedRefs: {
+        readonly executionId: string;
+        readonly attemptId: string;
+        readonly expectedActionRevision: number;
+      },
     ) => Promise<void>;
   }): Promise<T> {
     const now = this.nowIso();
@@ -2916,7 +2979,7 @@ export class FrontendExternalActionProductCoordinator {
     if (started.preflightInput && outcome2.preflight && outcome2.preflight.status !== 'READY') {
       if (input.finalizeDenied) {
         await this.boundary.transaction((repositories) =>
-          input.finalizeDenied!(repositories, outcome2.preflight!),
+          input.finalizeDenied!(repositories, outcome2.preflight!, started.startedRefs),
         );
       }
       const reason = outcome2.preflight.reason ?? 'preflight revalidation failed';
@@ -2942,7 +3005,7 @@ export class FrontendExternalActionProductCoordinator {
     } = { preflight: outcome2.preflight, execute: executeOutcome };
     try {
       return await this.boundary.transactionWithHandle(async (handle) => {
-        const result = await input.finalize(handle.repositories, finalOutcome);
+        const result = await input.finalize(handle.repositories, finalOutcome, started.startedRefs);
         await this.commandGateway.completeInTransaction(handle.raw, {
           commandId: outcome.commandId,
           producedResources: started.producedResources,

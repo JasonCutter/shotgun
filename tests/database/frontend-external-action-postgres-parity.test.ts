@@ -878,6 +878,170 @@ describe.runIf(pool)(
       expect(result.aggregateStatus).toBe('ROLLED_BACK');
     });
 
+    it('rejects attempt start-metadata mutation and preflight binding changes at the database', async () => {
+      const store = pgBoundary();
+      // IN_PROGRESS → terminal with a CHANGED start metadata field fails closed
+      // (only exact same-status replays and unchanged start metadata are legal).
+      await store.transaction(async (repositories) => {
+        await repositories.attempts.insert({
+          schemaVersion: '1.0.0',
+          attemptId: 'attempt-meta',
+          attemptNumber: 1,
+          executionId: 'execution-meta',
+          actionId: 'action-meta',
+          resourceProjectId: PROJECT_ID,
+          effectiveProjectId: PROJECT_ID,
+          idempotencyKey: 'idem-meta',
+          status: 'IN_PROGRESS',
+          policyContextRevision: 'policy-1',
+          externalRevision: 'ext-7',
+          correlationId: 'corr-meta',
+          startedAt: '2026-08-05T00:00:00.000Z',
+        });
+      });
+      await expect(
+        store.transaction(async (repositories) => {
+          await repositories.attempts.insert({
+            schemaVersion: '1.0.0',
+            attemptId: 'attempt-meta',
+            attemptNumber: 1,
+            executionId: 'execution-meta',
+            actionId: 'action-meta',
+            resourceProjectId: PROJECT_ID,
+            effectiveProjectId: PROJECT_ID,
+            idempotencyKey: 'idem-meta',
+            status: 'SUCCEEDED',
+            policyContextRevision: 'policy-1',
+            externalRevision: 'ext-7',
+            correlationId: 'corr-meta',
+            startedAt: '2026-08-05T00:00:01.000Z',
+            completedAt: '2026-08-05T00:00:02.000Z',
+          });
+        }),
+      ).rejects.toThrow(/immutable|start metadata|conflict/i);
+      // A same-status attempt with a DIFFERENT snapshot also fails.
+      await store.transaction(async (repositories) => {
+        await repositories.attempts.insert({
+          schemaVersion: '1.0.0',
+          attemptId: 'attempt-meta-2',
+          attemptNumber: 1,
+          executionId: 'execution-meta-2',
+          actionId: 'action-meta-2',
+          resourceProjectId: PROJECT_ID,
+          effectiveProjectId: PROJECT_ID,
+          idempotencyKey: 'idem-meta-2',
+          status: 'SUCCEEDED',
+          policyContextRevision: 'policy-1',
+          externalRevision: 'ext-7',
+          correlationId: 'corr-meta-2',
+          startedAt: '2026-08-05T00:00:00.000Z',
+          completedAt: '2026-08-05T00:00:01.000Z',
+        });
+      });
+      await expect(
+        store.transaction(async (repositories) => {
+          await repositories.attempts.insert({
+            schemaVersion: '1.0.0',
+            attemptId: 'attempt-meta-2',
+            attemptNumber: 1,
+            executionId: 'execution-meta-2',
+            actionId: 'action-meta-2',
+            resourceProjectId: PROJECT_ID,
+            effectiveProjectId: PROJECT_ID,
+            idempotencyKey: 'idem-meta-2',
+            status: 'SUCCEEDED',
+            policyContextRevision: 'policy-1',
+            externalRevision: 'ext-8',
+            correlationId: 'corr-meta-2',
+            startedAt: '2026-08-05T00:00:00.000Z',
+            completedAt: '2026-08-05T00:00:01.000Z',
+          });
+        }),
+      ).rejects.toThrow(/immutable|conflict/i);
+      // A preflight binding (manifestRevision/preflightDigest/runAt) cannot be
+      // changed for the same preflight identity.
+      await store.transaction(async (repositories) => {
+        await repositories.preflights.insert({
+          schemaVersion: '1.0.0',
+          preflightId: 'preflight-binding',
+          concreteKind: 'PREFLIGHT',
+          actionId: 'action-binding',
+          resourceProjectId: PROJECT_ID,
+          effectiveProjectId: PROJECT_ID,
+          manifestRevision: 1,
+          preflightDigest: 'sha256:aaaa',
+          status: 'DENIED',
+          reasons: [],
+          permissionRevalidated: true,
+          credentialRevalidated: true,
+          budgetRevalidated: true,
+          policyRevalidated: true,
+          targetStateRevalidated: false,
+          externalRevisionRevalidated: false,
+          runAt: '2026-08-05T00:00:00.000Z',
+          expiresAt: '2026-08-05T00:30:00.000Z',
+        });
+      });
+      await expect(
+        store.transaction(async (repositories) => {
+          await repositories.preflights.insert({
+            ...({
+              schemaVersion: '1.0.0',
+              preflightId: 'preflight-binding',
+              concreteKind: 'PREFLIGHT',
+              actionId: 'action-binding',
+              resourceProjectId: PROJECT_ID,
+              effectiveProjectId: PROJECT_ID,
+              manifestRevision: 1,
+              preflightDigest: 'sha256:bbbb',
+              status: 'READY',
+              reasons: [],
+              permissionRevalidated: true,
+              credentialRevalidated: true,
+              budgetRevalidated: true,
+              policyRevalidated: true,
+              targetStateRevalidated: true,
+              externalRevisionRevalidated: true,
+              runAt: '2026-08-05T00:00:00.000Z',
+              expiresAt: '2026-08-05T00:30:00.000Z',
+            } as const),
+          });
+        }),
+      ).rejects.toThrow(/immutable|binding|conflict/i);
+    });
+
+    it('produces an identical last-slot budget view in both adapters (AC-21 parity)', async () => {
+      const seedBudget = {
+        schemaVersion: '1.0.0' as const,
+        projectId: 'project-budget-parity',
+        status: 'OK' as const,
+        usedExecutions: 0,
+        remainingExecutions: 1,
+        softLimit: 80,
+        hardLimit: 100,
+        exhausted: false,
+      };
+      // PostgreSQL.
+      const pg = pgBoundary();
+      await pg.transaction(async (repositories) => {
+        await repositories.budgets.insert(seedBudget);
+      });
+      const pgReserved = await pg.transaction(async (repositories) =>
+        repositories.budgets.reserve('project-budget-parity'),
+      );
+      // In-memory.
+      const memory = new InMemoryExternalActionStore();
+      memory.seedBudget(seedBudget);
+      const memoryReserved = await memory.transaction(async (repositories) =>
+        repositories.budgets.reserve('project-budget-parity'),
+      );
+      // The FULL budget view is identical after consuming the last slot.
+      expect(pgReserved).toEqual(memoryReserved);
+      expect(pgReserved?.status).toBe('EXHAUSTED');
+      expect(pgReserved?.remainingExecutions).toBe(0);
+      expect(pgReserved?.exhausted).toBe(true);
+    });
+
     it('commits Product resource and Command Ledger in one transaction and replays terminally (PG gateway)', async () => {
       const store = pgBoundary();
       await seedServerOwnedState(store);

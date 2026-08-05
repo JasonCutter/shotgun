@@ -2176,3 +2176,26 @@ were NOT re-run per the review instruction. This report records the correction o
 - PR #66 remains `OPEN / DRAFT / MERGEABLE`. CI **#566 / #567 / #568** were NOT re-run.
 - Authority state: WP5 `REMEDIATION_REQUIRED NOT_APPROVED` (fail-closed correction submitted for
   re-review); WP6 `NOT_AUTHORIZED`.
+
+### Section 31 approval record (Review 4866886969)
+
+Review **4866886969** (**Decision: WP5 APPROVED / COMPLETE, WP6 AUTHORIZED_TO_START**) confirmed
+the fail-closed correction resolved the last Item 2 blocker. All six Review `4865177355` WP5
+items are now **RESOLVED**: Item 1 (Command Palette/Home navigation-only), Item 2 (deep-link
+source of truth + fail-closed resource identity), Item 3 (revision-bound query keys + snapshot
+bootstrap), Item 4 (route-scoped draft, reason, exactly-once lock, refresh), Item 5
+(original-identity `OUTCOME_UNKNOWN` recovery without re-execution), Item 6 (Cancel/Verify
+refresh + focus preservation). GPT recorded the approval on PR #66 anchored to the current exact
+head `4f167adbdb9defd5ca4b050e145250d78a3ae587` (CI **#571**).
+
+Final authority state:
+
+- WP1: APPROVED / COMPLETE. WP2: APPROVED / COMPLETE. WP3: APPROVED / COMPLETE.
+- WP4: APPROVED / COMPLETE. **WP5: APPROVED / COMPLETE.**
+- **WP6: AUTHORIZED_TO_START** (scope limited to final Verification and Governance Evidence:
+  FE-P4-S2 AC-01..AC-22 exact evidence mapping, accessibility / keyboard / focus / announcement /
+  non-color / zoom / reduced-motion verification, Connector-success versus Verified-success
+  separation, Cancel / Rollback / Compensation and `OUTCOME_UNKNOWN` boundary proofs, completion /
+  evidence records, using only new automatic CI).
+- PR #66 remains `OPEN / DRAFT / MERGEABLE`. Ready / Merge / Deployment / Production
+  Verification / FE-P5 remain `NOT_AUTHORIZED`. CI **#569 / #570 / #571** were NOT re-run.

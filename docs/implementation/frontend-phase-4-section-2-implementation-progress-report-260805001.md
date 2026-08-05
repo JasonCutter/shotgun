@@ -1831,8 +1831,7 @@ restricted-read gating, `SUBMITTING` exactly-once lock, identity-before-call and
 surfaces. It flagged five remaining connectivity defects inside the approved WP5 scope (Items
 2–6 PARTIAL). WP6, Migration, Stage 11, new dependencies and Real Connector stayed out of scope.
 CI **#557 / #558 / #559** were NOT re-run per the review instruction. This report records the
-final remediation on code head `c47245e` (CI **#560**) and report head `<REPORT_HEAD>` (CI
-**#561**).
+final remediation on code head `c47245e` (CI **#560**) and report head `b68964b` (CI **#561**).
 
 ### Item status after this remediation
 
@@ -1920,4 +1919,14 @@ final remediation on code head `c47245e` (CI **#560**) and report head `<REPORT_
   timing flakes pass in isolation (unrelated to WP5).
 - `tsc --noEmit` (root and `apps/shotgun-web`) — clean. ESLint — clean. Prettier — clean.
 - Automatic CI on the final code head `c47245e` — run **#560**: Quality, Frontend, Required Gates
-  **SUCCESS**. Report head `<REPORT_HEAD>` CI **#561**. (Metadata recorded below.)
+  **SUCCESS**. Report head `b68964b` CI **#561** **SUCCESS** (metadata recorded below).
+
+### Final metadata (report 22)
+
+- **WP5 final remediation code head**: `c47245eb0f458f269ccb9affa451e7d620c5aa75` — CI
+  **#560** / `31019543999`: Quality, Frontend, Required Gates **SUCCESS**.
+- **Report 22 head**: `b68964b0fd95b32353f1e2e1f7dda89c64f172d1` — CI **#561** /
+  `31019928726`: Quality, Frontend, Required Gates **SUCCESS**.
+- PR #66 remains `OPEN / DRAFT / MERGEABLE`. CI **#557 / #558 / #559** were NOT re-run.
+- Authority state: WP5 `REMEDIATION_REQUIRED NOT_APPROVED` (final remediation submitted for
+  re-review); WP6 `NOT_AUTHORIZED`.

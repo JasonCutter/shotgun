@@ -1782,7 +1782,7 @@ head `671e063ff` (CI **#558**).
 - `adapters/frontend-product-read-in-memory/src/index.ts` — `shell.navigation` `external-action`
   item (Command Palette entry).
 - `apps/shotgun-web/src/external-action/external-action-workspace-state.ts` — `selectedManifestId`
-  + `SELECT_MANIFEST`, `submitting` + `SUBMITTING_STARTED/FINISHED`; `canRetry` removed.
+  - `SELECT_MANIFEST`, `submitting` + `SUBMITTING_STARTED/FINISHED`; `canRetry` removed.
 - `apps/shotgun-web/src/external-action/external-action-workspace-state.test.ts` — manifest
   selection + submitting-lock tests.
 - `apps/shotgun-web/src/routes/external-action-workspace.tsx` — deep-link navigation fix,
@@ -1999,7 +1999,7 @@ NOT re-run per the review instruction. This report records the correction on cod
   key; the detail read is gated on a non-empty external revision.
 - `apps/shotgun-web/src/external-action/external-action-workspace-state.ts` —
   `SET_EXTERNAL_REVISION`, `RESET_RESOURCE_SELECTIONS`, `CLEAR_MANIFEST/EXECUTION/ATTEMPT/
-  VERIFICATION_SELECTION`.
+VERIFICATION_SELECTION`.
 - `apps/shotgun-web/src/routes/external-action-workspace.tsx` — URL source-of-truth restore,
   parameter-preserving selection, mismatch state clearing, detail revision gating + snapshot
   restricted shell, COMPLETED recovery lock + BLOCKED state.
@@ -2136,7 +2136,7 @@ were NOT re-run per the review instruction. This report records the correction o
 
 - A deep-link execution id is trusted ONLY after the authoritative Execution read CONFIRMS it:
   `executionValidated = execution.data !== undefined && selectedExecutionId !== null &&
-  execution.data.execution.executionId === selectedExecutionId`.
+execution.data.execution.executionId === selectedExecutionId`.
 - While the Execution read is **pending**, **errored (incl. 404)** or returns a **different** id,
   the id is UNVERIFIED (`executionUnverified`): every governed command (Cancel / Rollback /
   Compensation / Verify) is synchronously locked in the SAME render (`mismatchLocked` includes
@@ -2199,3 +2199,84 @@ Final authority state:
   evidence records, using only new automatic CI).
 - PR #66 remains `OPEN / DRAFT / MERGEABLE`. Ready / Merge / Deployment / Production
   Verification / FE-P5 remain `NOT_AUTHORIZED`. CI **#569 / #570 / #571** were NOT re-run.
+
+## 32. WP6 Verification and Governance Evidence (report 26, 2026-08-06)
+
+Review **4866886969**에 따라 **WP6 AUTHORIZED_TO_START** (WP5 APPROVED / COMPLETE) 상태에서
+WP6를 진행했다. WP6는 신규 Product 기능 확장이 아니라 최종 검증·증거 고정 단계이며, Frozen
+Acceptance Criteria `FE-P4-S2-AC-01..AC-22`에 대한 Evidence Matrix와 접근성·안전·복구 경계
+집중 검증을 수행했다.
+
+### WP6 변경 범위
+
+- 신규 Evidence 문서 1건:
+  `docs/engineering/frontend-phase-4-section-2-wp6-verification-and-governance-evidence-260806001.md`
+- 신규 집중 테스트 1개 파일 (AC-19 browser 증거만 최소 추가):
+  `tests/browser/frontend-external-action-workspace.spec.ts` — 5 tests (frozen announcements,
+  keyboard-only + deep-link focus, axe zero-critical, 200% zoom, prefers-reduced-motion).
+- 기존 Product 코드·계약·Migration·Lockfile 변경 없음. 동일 exact head의 PASS 테스트 재실행
+  없음. CI **#569 / #570 / #571** 재실행 없음.
+
+### AC-01~AC-22 최종 판정 요약
+
+모든 AC가 구체적 증거에 매핑되었고 `BLOCKED` AC는 없다 (Evidence 문서 Section 2 참조).
+
+| AC    | 요약                                                     | 판정                         |
+| ----- | -------------------------------------------------------- | ---------------------------- |
+| AC-01 | ExternalActionV1 aggregate + revision 결속               | PASS                         |
+| AC-02 | Candidate·RiskDecision read-only, browser 위험 계산 없음 | PASS                         |
+| AC-03 | Manifest immutable + manifestDigest                      | PASS                         |
+| AC-04 | Approval purpose EXTERNAL_ACTION 재사용 금지             | PASS                         |
+| AC-05 | Approval revision·digest·expiry 결속, expired 차단       | PASS                         |
+| AC-06 | Preflight 재검증 + READY time-box                        | PASS                         |
+| AC-07 | Execution append-only Attempts + idempotency             | PASS                         |
+| AC-08 | Transport/domain retry 구분, 자동 재실행 없음            | PASS                         |
+| AC-09 | VERIFIED는 VerificationV1 필요 (Connector 성공 아님)     | PASS                         |
+| AC-10 | Result·Audit safe read-only, raw 노출 금지               | PASS                         |
+| AC-11 | Cancel ≠ Rollback 분리                                   | PASS                         |
+| AC-12 | Compensating Action 독립·자동 실행 금지                  | PASS                         |
+| AC-13 | Credential server-owned masked view                      | PASS                         |
+| AC-14 | Budget server-owned, 고갈 fail closed                    | PASS                         |
+| AC-15 | 변경 시 재승인, stale 차단                               | PASS                         |
+| AC-16 | OUTCOME_UNKNOWN 원본 identity resolve, 무재실행          | PASS                         |
+| AC-17 | Restricted shell, payload·identity 누출 없음             | PASS                         |
+| AC-18 | Home/CP navigate-only, workspace 이동                    | PASS                         |
+| AC-19 | Keyboard·Announcement·Non-color·Zoom·Reduced Motion·Axe  | PASS (WP6 browser 증거 추가) |
+| AC-20 | Negative proof (verified/Cancel/retry 경계)              | PASS                         |
+| AC-21 | In-memory/PostgreSQL parity + migration 028              | PASS                         |
+| AC-22 | Exact-head Quality·Frontend·Required Gates               | PASS (새 head CI로 확정)     |
+
+### 추가된 집중 테스트
+
+`tests/browser/frontend-external-action-workspace.spec.ts` (5 tests):
+
+1. `renders the queue, detail and governed surfaces with frozen announcements (AC-19)`
+2. `supports keyboard-only selection and restores deep-link focus (AC-19)`
+3. `has zero axe critical violations (AC-19)`
+4. `stays usable at 200% zoom (AC-19)`
+5. `renders under prefers-reduced-motion (AC-19)`
+
+### 재사용한 기존 증거
+
+contract 93 tests + domain 27 tests + product-api 4 tests + client 10 tests + parity 17 tests +
+shell-navigation 3 tests + workspace-state 8 tests + route-contract 5 tests + workspace 23 tests
+= **195 tests**가 AC-01~AC-22를 커버한다. 중복 테스트는 만들지 않았다.
+
+### Code / Evidence Head
+
+- WP6 시작 기준 head: `8a4f2aeb161467edcc5b6ad611bfb848f9e86559` (CI **#572** SUCCESS).
+- WP6 evidence head: `<EVIDENCE_HEAD>` — CI **#573** / `<RUN_ID>`: Quality, Frontend, Required
+  Gates 결과는 아래에 기록한다.
+
+### PR 상태·권위
+
+- PR #66 remains `OPEN / DRAFT / MERGEABLE`.
+- Ready / Merge / Deployment / Production Verification / FE-P5: `NOT_AUTHORIZED`.
+- WP6 판정 후보: `WP6: COMPLETE_CANDIDATE`, `FE-P4-S2 Product: COMPLETE_CANDIDATE`.
+- Codex는 `WP6 APPROVED`, `FE-P4-S2 COMPLETE`, `Ready`, `Merge`를 선언·실행하지 않는다.
+
+### Final metadata (report 26)
+
+- **WP6 evidence head**: `<EVIDENCE_HEAD>` — CI **#573** / `<RUN_ID>`: Quality, Frontend,
+  Required Gates **SUCCESS** (아래에서 확정).
+- PR #66 remains `OPEN / DRAFT / MERGEABLE`. CI **#569 / #570 / #571** were NOT re-run.

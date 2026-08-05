@@ -69,9 +69,15 @@ export const externalActionDetailQueryOptions = (
     schemaVersion: '1.0.0',
     actionId: identity?.actionId ?? 'disabled',
   };
+  const revisionBound = scope !== null && identity !== null && identity.externalRevision !== '';
   return queryOptions({
+    // The resource key is ONLY built when the external revision is non-empty.
+    // Before the authoritative snapshot bootstraps the revision (e.g. right
+    // after a queue selection) the key is the disabled key, so a regular
+    // resource key NEVER carries `externalRevision: ''` — not even transiently
+    // in the cache (Review 4866454087 item 3).
     queryKey:
-      scope && identity
+      revisionBound && scope && identity
         ? externalActionResourceQueryKey(
             scope,
             identity.actionId,
@@ -81,10 +87,7 @@ export const externalActionDetailQueryOptions = (
           )
         : externalActionDisabledQueryKey('detail'),
     queryFn: ({ signal }) => client.getExternalActionDetail(request, { signal }),
-    // Gated on a non-empty external revision: a regular resource key NEVER
-    // carries `externalRevision: ''` (Review 4866122577 item 3). The revision
-    // is bootstrapped from the authoritative snapshot before the detail fires.
-    enabled: scope !== null && identity !== null && identity.externalRevision !== '',
+    enabled: revisionBound,
     retry: externalActionQueryRetry,
     staleTime: 30_000,
   });

@@ -312,6 +312,8 @@ type FetchBehavior = {
   readonly verificationAfterVerify?: boolean;
   /** Delay the detail response (used to hold the COMPLETED refresh lock open). */
   readonly detailDelayMs?: number;
+  /** Delay the snapshot response (used to observe the queue-selection bootstrap gap). */
+  readonly snapshotDelayMs?: number;
 };
 
 const createFetchMock = (behavior: FetchBehavior) => {
@@ -350,6 +352,9 @@ const createFetchMock = (behavior: FetchBehavior) => {
     }
     if (text.includes('/external-action/actions/read')) {
       // Aggregate snapshot read used to bind the deep-link restore identity.
+      if (behavior.snapshotDelayMs) {
+        await new Promise((resolve) => setTimeout(resolve, behavior.snapshotDelayMs));
+      }
       return jsonResponse(200, { schemaVersion: '1.0.0', action: detailResult.action });
     }
     // Governed mutation results must ECHO the request identity
@@ -1208,6 +1213,73 @@ describe('ExternalActionWorkspace (FE-P4-S2 WP5)', () => {
       { timeout: 10000 },
     );
     expect(screen.queryByRole('button', { name: '원래 요청으로 복구' })).toBeNull();
+    vi.unstubAllGlobals();
+  });
+
+  it('locks every governed command synchronously when a deep-link resource is mismatched', async () => {
+    const { fetchMock, calls } = createFetchMock({ detail: detailResult, childReads: true });
+    vi.stubGlobal('fetch', fetchMock);
+    const runtime = createRuntime();
+    renderWorkspace(runtime, ['/external-action?action=action-1&execution=execution-X']);
+
+    await waitFor(
+      () => {
+        screen.getByText('선택한 실행이 현재 액션과 일치하지 않아 표시하지 않습니다.');
+      },
+      { timeout: 10000 },
+    );
+    // The mismatch synchronously locks the governed surfaces (Review 4866454087
+    // item 2) — even before the passive clear effect settles.
+    const rollback = screen.getByRole('button', { name: '롤백' });
+    const compensation = screen.getByRole('button', { name: '보상 액션 준비' });
+    expect((rollback as HTMLButtonElement).disabled).toBe(true);
+    expect((compensation as HTMLButtonElement).disabled).toBe(true);
+    // Clicking a disabled command never submits a request with the mismatched id.
+    await userEvent.click(rollback);
+    const rollbackPosts = calls.filter((call) => call.includes('/external-action/rollback'));
+    expect(rollbackPosts.length).toBe(0);
+    vi.unstubAllGlobals();
+  });
+
+  it('never creates an empty-external-revision resource key while a queue selection awaits the snapshot', async () => {
+    const { fetchMock } = createFetchMock({
+      detail: detailResult,
+      childReads: true,
+      snapshotDelayMs: 150,
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const runtime = createRuntime();
+    renderWorkspace(runtime);
+
+    await screen.findByText('action-1');
+    await userEvent.click(screen.getByText('action-1'));
+
+    // While the snapshot is still in flight, inspect the cache: no regular
+    // resource key (action-phase) carries an empty external revision
+    // (Review 4866454087 item 3).
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const keysDuringWait = runtime.queryClient
+      .getQueryCache()
+      .findAll()
+      .map((query) => query.queryKey);
+    const emptyRevisionResourceKeys = keysDuringWait.filter((key) => {
+      const index = key.indexOf('external-action');
+      return (
+        String(key[0]) === 'project' &&
+        index >= 0 &&
+        key[index + 1] === 'action' &&
+        key[index + 4] === ''
+      );
+    });
+    expect(emptyRevisionResourceKeys).toEqual([]);
+
+    // After the snapshot bootstraps the revision, the detail loads normally.
+    await waitFor(
+      () => {
+        screen.getByText(/manifest-1/);
+      },
+      { timeout: 10000 },
+    );
     vi.unstubAllGlobals();
   });
 });

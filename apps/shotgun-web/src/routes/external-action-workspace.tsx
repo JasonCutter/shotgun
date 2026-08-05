@@ -481,7 +481,11 @@ export const ExternalActionWorkspace = () => {
       };
 
   const commandsAvailable = Object.values(surfaces).some(Boolean);
-  const locked = state.submitting !== null || state.recovery.kind !== 'NONE';
+  // Any resource mismatch synchronously locks every governed command in the
+  // SAME render the mismatch is detected — a passive clear effect is never the
+  // security boundary (Review 4866454087 item 2).
+  const mismatchLocked = Object.values(deepLinkMismatch).some(Boolean);
+  const locked = state.submitting !== null || state.recovery.kind !== 'NONE' || mismatchLocked;
 
   const submitCommand = useCallback(
     async (command: ExternalActionCommandKind) => {
@@ -493,6 +497,10 @@ export const ExternalActionWorkspace = () => {
       // Command-common reason draft (ADR-119): the single reason input feeds
       // every governed command (Review 4865620679 item 4).
       const reason = state.draft?.reason ?? 'Governed workspace request.';
+      // A mismatched deep-link execution id is NEVER used in a command payload
+      // — the authoritative latest execution ref is used instead
+      // (Review 4866454087 item 2). The mismatch also locks every command.
+      const safeExecutionId = deepLinkMismatch.execution ? null : state.selectedExecutionId;
       try {
         if (command === 'CANCEL') {
           const request = {
@@ -526,8 +534,7 @@ export const ExternalActionWorkspace = () => {
           // Focus preserved after cancel (Review 4865177355 item 6).
           dispatch({ type: 'FOCUS', target: 'governed-commands-heading' });
         } else if (command === 'ROLLBACK') {
-          const executionId =
-            state.selectedExecutionId ?? action.latestExecutionRef?.resourceId ?? '';
+          const executionId = safeExecutionId ?? action.latestExecutionRef?.resourceId ?? '';
           const request = {
             schemaVersion: '1.0.0' as const,
             clientRequestId,
@@ -553,8 +560,7 @@ export const ExternalActionWorkspace = () => {
           announce(EXTERNAL_ACTION_ANNOUNCEMENTS.ROLLBACK_REQUESTED);
           dispatch({ type: 'FOCUS', target: 'governed-commands-heading' });
         } else if (command === 'PREPARE_COMPENSATION') {
-          const executionId =
-            state.selectedExecutionId ?? action.latestExecutionRef?.resourceId ?? '';
+          const executionId = safeExecutionId ?? action.latestExecutionRef?.resourceId ?? '';
           const request = {
             schemaVersion: '1.0.0' as const,
             clientRequestId,
@@ -580,8 +586,7 @@ export const ExternalActionWorkspace = () => {
           announce(EXTERNAL_ACTION_ANNOUNCEMENTS.COMPENSATION_REQUESTED);
           dispatch({ type: 'FOCUS', target: 'governed-commands-heading' });
         } else if (command === 'VERIFY') {
-          const executionId =
-            state.selectedExecutionId ?? action.latestExecutionRef?.resourceId ?? '';
+          const executionId = safeExecutionId ?? action.latestExecutionRef?.resourceId ?? '';
           const request = {
             schemaVersion: '1.0.0' as const,
             clientRequestId,
@@ -647,6 +652,7 @@ export const ExternalActionWorkspace = () => {
       state.submitting,
       state.draft,
       state.selectedExecutionId,
+      deepLinkMismatch.execution,
       manifest.data,
       scope,
       queryClient,

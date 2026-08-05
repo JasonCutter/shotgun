@@ -152,18 +152,31 @@ export const ExternalActionWorkspace = () => {
     externalActionSnapshotQueryOptions(externalActionClient, scope, deepLinkActionId),
   );
 
+  // The restore effect must NOT re-run when `state.selectedActionId` changes:
+  // `selectAction` updates the selection state optimistically BEFORE React
+  // Router commits the URL, and in that window the effect would observe a stale
+  // URL/snapshot with the new selection, misfire RECOVERY_STARTED and
+  // permanently lock every governed command (defect found by the WP6 browser
+  // lifecycle E2E, Review 4868951109 blocker 1). The effect therefore reads the
+  // latest state through a ref and only runs when the deep-link or the
+  // authoritative snapshot actually changes.
+  const restoreStateRef = useRef(state);
+  restoreStateRef.current = state;
+
   useEffect(() => {
     if (!deepLinkActionId) return;
     if (!snapshot.data) return;
     const action = snapshot.data.action;
     if (action.actionId !== deepLinkActionId) return;
+    const restoreState = restoreStateRef.current;
     // The URL is the single source of truth for resource selection
     // (Review 4866122577 item 2): on EVERY restore we first clear every
     // resource selection, then re-apply exactly what the URL carries — so
     // Back/Forward that removes a parameter also clears the stale selection.
     const snapshotRevision = action.targetRef?.externalRevision ?? '';
     const selectionChanged =
-      state.selectedActionId !== action.actionId || state.actionRevision !== action.actionRevision;
+      restoreState.selectedActionId !== action.actionId ||
+      restoreState.actionRevision !== action.actionRevision;
     if (selectionChanged) {
       dispatch({
         type: 'SELECT_ACTION',
@@ -172,7 +185,7 @@ export const ExternalActionWorkspace = () => {
         externalRevision: snapshotRevision,
       });
       dispatch({ type: 'RECOVERY_STARTED' });
-    } else if (state.externalRevision !== snapshotRevision) {
+    } else if (restoreState.externalRevision !== snapshotRevision) {
       // Bind the detail identity to the authoritative snapshot revision
       // (Review 4866122577 item 3) without resetting the selection.
       dispatch({ type: 'SET_EXTERNAL_REVISION', externalRevision: snapshotRevision });
@@ -192,9 +205,6 @@ export const ExternalActionWorkspace = () => {
   }, [
     deepLinkActionId,
     snapshot.data,
-    state.selectedActionId,
-    state.actionRevision,
-    state.externalRevision,
     deepLink.manifestId,
     deepLink.executionId,
     deepLink.attemptId,
@@ -355,13 +365,22 @@ export const ExternalActionWorkspace = () => {
 
   const selectAction = useCallback(
     (actionId: string, actionRevision: number) => {
-      dispatch({ type: 'SELECT_ACTION', actionId, actionRevision, externalRevision: '' });
+      // Re-selecting the ALREADY-selected action preserves the authoritative
+      // external revision: resetting it to '' would unmount the detail, and the
+      // deep-link restore effect cannot re-run (URL and snapshot are unchanged),
+      // leaving the workspace without a detail (defect found by the WP6
+      // performance/lifecycle baseline, Review 4868951109 remediation).
+      const externalRevision =
+        state.selectedActionId === actionId && state.actionRevision === actionRevision
+          ? (state.externalRevision ?? '')
+          : '';
+      dispatch({ type: 'SELECT_ACTION', actionId, actionRevision, externalRevision });
       // navigate with the full deep-link href — never a raw href handed to
       // setSearchParameters (Review 4865177355 item 2).
       navigate(externalActionDeepLinkHref({ actionId }));
       announce(EXTERNAL_ACTION_ANNOUNCEMENTS.ACTION_SELECTED(actionId));
     },
-    [navigate, announce],
+    [navigate, announce, state.selectedActionId, state.actionRevision, state.externalRevision],
   );
 
   // Each selection PRESERVES the already-selected resource parameters in the
@@ -828,7 +847,7 @@ export const ExternalActionWorkspace = () => {
                 <li key={item.actionId}>
                   <button
                     type="button"
-                    onClick={() => selectAction(item.actionId, item.actionRevision)}
+                    onClick={() => void selectAction(item.actionId, item.actionRevision)}
                     aria-current={state.selectedActionId === item.actionId ? 'true' : undefined}
                   >
                     <span className="action-cue">{externalActionAggregateCue(item.status)}</span>

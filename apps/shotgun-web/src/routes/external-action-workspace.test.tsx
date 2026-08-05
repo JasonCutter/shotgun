@@ -1075,6 +1075,43 @@ describe('ExternalActionWorkspace (FE-P4-S2 WP5)', () => {
     vi.unstubAllGlobals();
   });
 
+  it('keeps the detail visible when the already-selected queue item is re-selected', async () => {
+    const { fetchMock } = createFetchMock({ detail: detailResult, childReads: true });
+    vi.stubGlobal('fetch', fetchMock);
+    const runtime = createRuntime();
+    renderWorkspace(runtime);
+
+    await screen.findByText('action-1');
+    await userEvent.click(screen.getByText('action-1'));
+    await waitFor(
+      () => {
+        screen.getByText(/manifest-1/);
+      },
+      { timeout: 10000 },
+    );
+    const detailReadsBefore = fetchMock.mock.calls.filter(([url]) =>
+      String(url).includes('/actions/detail'),
+    ).length;
+
+    // Re-selecting the ALREADY-selected action must preserve the authoritative
+    // external revision so the detail stays mounted (defect found by the WP6
+    // performance/lifecycle baseline; Review 4868951109 remediation).
+    await userEvent.click(screen.getByRole('button', { name: /action-1/ }));
+    await waitFor(
+      () => {
+        screen.getByText(/manifest-1/);
+      },
+      { timeout: 10000 },
+    );
+    screen.getByText(/위험 수준/);
+    // No new detail read is required for a same-action re-selection.
+    const detailReadsAfter = fetchMock.mock.calls.filter(([url]) =>
+      String(url).includes('/actions/detail'),
+    ).length;
+    expect(detailReadsAfter).toBe(detailReadsBefore);
+    vi.unstubAllGlobals();
+  });
+
   it('preserves previously selected resource parameters when selecting another resource', async () => {
     const { fetchMock } = createFetchMock({ detail: detailResult, childReads: true });
     vi.stubGlobal('fetch', fetchMock);

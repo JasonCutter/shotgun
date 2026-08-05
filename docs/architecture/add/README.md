@@ -54,7 +54,7 @@ Phase 2부터 Phase 6까지의 과거 승인 ADR-018–ADR-075는 Phase별 ADR �
 | FE-P4 — Governance and Execution                    | `IN_PROGRESS` |
 | FE-P4-S2 — External Action Governance and Execution | `IN_PROGRESS` |
 
-- 미충족 필수 기준: `manifest unavailable`
+- 미충족 필수 기준: ``
 - Next valid Product Section: `FE-P5-S1 — Agent and Job Activity Workspace`
 
 <!-- FRONTEND-WORK-ITEM-STATUS:END -->

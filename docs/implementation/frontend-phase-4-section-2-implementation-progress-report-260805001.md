@@ -2281,3 +2281,85 @@ shell-navigation 3 tests + workspace-state 8 tests + route-contract 5 tests + wo
   `31045703248`: Quality, Frontend, Required Gates **SUCCESS** (Frontend 2m40s, Quality 2m59s,
   Required Gates 3s).
 - PR #66 remains `OPEN / DRAFT / MERGEABLE`. CI **#569 / #570 / #571** were NOT re-run.
+
+### Section 32 correction (Review 4868951109)
+
+Review **4868951109** (**BLOCKED / FOCUSED WP6 COMPLETION EVIDENCE REQUIRED**) recorded that
+Section 32의 `WP6: COMPLETE_CANDIDATE / 미결사항: 없음 / 모든 완료 조건 충족` 주장은 과장이었다.
+Frozen Implementation Request의 WP6 완료 조건 3가지가 빠져 있었다: (1) Browser E2E Lifecycle
+(`Queue → Detail → Verify → Cancel → Rollback → Compensation → Recovery` — 신규 spec이
+Read/접근성 검증에 한정됨), (2) Deterministic performance/lifecycle baseline + Approved numeric
+Gate, (3) Completion Manifest·Evidence Registry 일관성. 정확한 상태: **WP6:
+REMEDIATION_REQUIRED NOT_APPROVED**, **FE-P4-S2 Product: IN_PROGRESS NOT COMPLETE_CANDIDATE**.
+이 Section은 기존 32의 AC 증거를 후보 증거로 유지하고, 3가지 보완을 Section 33에 기록한다.
+
+## 33. WP6 완료 증거 보완 — Review 4868951109 (report 27, 2026-08-06)
+
+Review **4868951109**의 3가지 차단 항목을 보완했다. CI **#573 / #574** 및 **#569~#572**는
+재실행하지 않았다.
+
+### 33.1 Frozen Browser E2E Lifecycle
+
+- 신규 `tests/browser/frontend-external-action-lifecycle.spec.ts` (로컬 Fake Fixture 전용,
+  실제 Connector·외부 Mutation 없음, 하위 계층 불변식 중복 없음):
+  - `full compressed governed lifecycle through the browser: queue → detail → verify → cancel →
+rollback → recovery → compensation` — Queue→Detail→Verify→Cancel→Rollback→`OUTCOME_UNKNOWN`
+    Recovery→Compensation을 browser로 실행, 명령 연결·상태 전환·명령 분리(frozen Announcement +
+    endpoint 분리)·Focus(`verification-heading`) 검증.
+  - `OUTCOME_UNKNOWN recovery issues no new external mutation and re-executes nothing` —
+    재실행 버튼 부재 + 신규 Mutation 금지.
+- browser 검증에서 **workspace route 집중 결함 2건 발견·수정**:
+  1. async navigation 전환 창에서 restore effect가 stale URL/snapshot + 새 selectedActionId를
+     관찰해 `RECOVERY_STARTED` misfire → 모든 governed command 영구 잠금. `selectAction` optimistic
+     dispatch와 restore effect 의존성 분리(`restoreStateRef`)로 수정.
+  2. 이미 선택된 Action 재선택 시 `externalRevision` `''` 초기화로 detail unmount. 동일 Action
+     재선택 시 revision 보존으로 수정 (집중 테스트 1건 추가: `keeps the detail visible when the
+already-selected queue item is re-selected`).
+
+### 33.2 성능·Lifecycle Baseline + Numeric Gate 제안
+
+- 신규 `tests/browser/frontend-external-action-performance.spec.ts` — 결정적 측정
+  (warm-up 1회 제외 + 3회, median, in-page `performance.now()` + rAF polling).
+- 측정 결과 (로컬 fixture): `external-action-queue-to-detail-ms` **median 79ms**
+  (samples [76, 92, 79]); `external-action-command-ms` **median 204ms** (samples [179, 204, 231]).
+- **Numeric Gate 제안 (미승인, USER 승인 대기)**: queue→detail median ≤ 2000ms, command median
+  ≤ 2000ms. Spec은 sanity bound(5000ms)만 단언. (Review 4868951109: Gate 확정은 USER 승인 후.)
+
+### 33.3 Completion Manifest·Evidence Registry
+
+- 신규 `docs/project/completions/FE-P4-S2.json` — Completion Manifest Candidate, status
+  `IN_PROGRESS` (schema enum에 CANDIDATE 없음 → 임의 상태 미생성), 22개 AC `PASS`, evidence
+  경로 연결, `approvedBy`/`approvedAt` null.
+- `docs/project/frontend-work-items.json` FE-P4-S2 `completionManifest` 연결; `docs/engineering/
+evidence-registry.json` `FRONTEND-PHASE-4-SECTION-2-WP6-EVIDENCE-260806001` 등록; projections
+  4개 재생성.
+- `docs:completion-invariants`, `docs:frontend-work-items`, `docs:frontend-projections:check`,
+  `docs:validate` 모두 PASS. `FE-P4-S2 COMPLETE`/`FINAL_AFTER_MERGE` 미기록.
+
+### 추가된 집중 테스트
+
+- `frontend-external-action-lifecycle.spec.ts` 2 tests, `frontend-external-action-performance.
+spec.ts` 2 tests, workspace `keeps the detail visible when the already-selected queue item is
+re-selected` 1 test. (기존 PASS head 테스트 재실행 없음.)
+
+### Validation (보완 후)
+
+- `apps/shotgun-web` 전체 스위트 — **18 files / 97 tests PASS** (workspace 24 tests 포함).
+- Browser E2E — external-action 3개 spec **9 tests PASS** (lifecycle 2 + accessibility 5 +
+  performance 2); 전체 browser 스위트는 기존 성능 flake 1건(지식 그래프) 제외 53 PASS.
+- `tsc --noEmit` (root + app) — clean. ESLint — clean. Prettier — clean.
+- 자동 CI: 보완 head `<REMEDIATION_HEAD>` — CI **#575** / `<RUN_ID>` (metadata 아래에 기록).
+
+### PR 상태·권위
+
+- PR #66 remains `OPEN / DRAFT / MERGEABLE`.
+- Ready / Merge / Deployment / Production Verification / FE-P5: `NOT_AUTHORIZED`.
+- Review 4868951109 기록 상태: WP6 `REMEDIATION_REQUIRED NOT_APPROVED`; FE-P4-S2 Product
+  `IN_PROGRESS`. 보완 제출 후 판정 후보: `WP6: COMPLETE_CANDIDATE`.
+- Codex는 `WP6 APPROVED`, `FE-P4-S2 COMPLETE`, `Ready`, `Merge`를 선언·실행하지 않는다.
+
+### Final metadata (report 27)
+
+- **WP6 보완 code head**: `<REMEDIATION_HEAD>` — CI **#575** / `<RUN_ID>`: Quality, Frontend,
+  Required Gates 결과는 최종 갱신에서 기록한다.
+- PR #66 remains `OPEN / DRAFT / MERGEABLE`. CI **#573 / #574** were NOT re-run.

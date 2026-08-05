@@ -1,10 +1,12 @@
 ---
 id: FRONTEND-PHASE-4-SECTION-2-WP6-VERIFICATION-AND-GOVERNANCE-EVIDENCE
 classification: EVIDENCE
-status: verification_complete_complete_candidate
+status: verification_remediation_submitted_for_review
 work_item: FE-P4-S2
 governing_review: '4866886969'
+remediation_review: '4868951109'
 created_at: '2026-08-06'
+updated_at: '2026-08-06'
 ---
 
 # FE-P4-S2 WP6 — Verification and Governance Evidence
@@ -20,6 +22,8 @@ created_at: '2026-08-06'
   `b476a733d465df4e51d41bbe8374bdef1ea76373` (CI **#570**), 메타데이터
   `4f167adbdb9defd5ca4b050e145250d78a3ae587` (CI **#571**)
 - Governing Review: `4866886969` — **WP5 APPROVED / COMPLETE, WP6 AUTHORIZED_TO_START**
+- WP6 1차 제출 검토: `4868951109` — **BLOCKED / FOCUSED WP6 COMPLETION EVIDENCE REQUIRED**
+  (이 문서는 그 3가지 차단 항목의 보완 결과를 Section 11에 기록한다)
 - Frozen Acceptance Criteria: `FE-P4-S2-AC-01..AC-22`
 - Contract Snapshot: `docs/architecture/contracts/snapshots/frontend-phase-4-section-2/
 frontend-phase-4-section-2-contract-snapshot-260805001.md` (revision 1)
@@ -398,23 +402,38 @@ execution read 404s`.
 
 ## 7. WP6 신규·재사용 증거와 CI
 
-### 신규 추가 (최소 범위, AC-19 browser 증거만)
+### 신규 추가 (Review 4868951109 보완 후)
 
 - `tests/browser/frontend-external-action-workspace.spec.ts` — 5 tests (axe, keyboard, focus,
-  announcements, non-color, 200% zoom, reduced-motion).
+  announcements, non-color, 200% zoom, reduced-motion) — AC-19.
+- `tests/browser/frontend-external-action-lifecycle.spec.ts` — 2 tests (압축된 governed
+  lifecycle E2E: queue→detail→verify→cancel→rollback→recovery→compensation; OUTCOME_UNKNOWN
+  무재실행·신규 Mutation 금지) — Review 4868951109 blocker 1.
+- `tests/browser/frontend-external-action-performance.spec.ts` — 2 tests (결정적
+  queue→detail render + governed command round-trip baseline, median) — Review 4868951109
+  blocker 2.
+- `apps/shotgun-web/src/routes/external-action-workspace.tsx` — browser lifecycle 검증에서
+  발견된 restore race 결함 수정 + 동일 action 재선택 시 detail 유지 결함 수정.
+- `apps/shotgun-web/src/routes/external-action-workspace.test.tsx` — 재선택 detail 유지 집중
+  테스트 1건 추가.
+- `docs/project/completions/FE-P4-S2.json` + `docs/project/frontend-work-items.json` +
+  `docs/engineering/evidence-registry.json` + projections — Completion Manifest Candidate
+  (status `IN_PROGRESS`, schema에 CANDIDATE 상태 없음 — 임의 상태 미생성) + Evidence Registry
+  등록 — Review 4868951109 blocker 3.
 
 ### 재사용한 기존 증거 (중복 테스트 미생성)
 
 - contract 93 tests, domain 27 tests, product-api 4 tests, client 10 tests, parity 17 tests,
-  shell-navigation 3 tests, workspace-state 8 tests, route-contract 5 tests, workspace 23 tests.
-- 합계 195 tests가 AC-01~AC-22를 커버한다.
+  shell-navigation 3 tests, workspace-state 8 tests, route-contract 5 tests, workspace 24 tests.
+- 합계 196 tests가 AC-01~AC-22를 커버한다 (Review 4868951109 보완 후).
 
 ### WP6 자동 CI (새 커밋 push)
 
-- WP6 evidence head: `a89fd4888571293bb0bfffa2392c37ce6bd6751a` — CI **#573** /
-  `31045703248`: Quality, Frontend, Required Gates **SUCCESS** (Frontend 2m40s, Quality 2m59s,
-  Required Gates 3s).
-- CI **#569 / #570 / #571 / #572**는 재실행하지 않았다.
+- 1차 WP6 evidence head: `a89fd4888571293bb0bfffa2392c37ce6bd6751a` — CI **#573** /
+  `31045703248` SUCCESS; metadata `8cf36da30200e21dbfd11ea88f1641dd7af4e073` — CI **#574** /
+  `31046021546` SUCCESS.
+- Review 4868951109 보완 head는 Section 11에서 기록한다.
+- CI **#569 / #570 / #571 / #572 / #573 / #574**는 재실행하지 않았다.
 
 ## 8. 제외 범위
 
@@ -425,22 +444,34 @@ execution read 404s`.
   실제 외부 대상 Mutation 없음.
 - FE-P5, Deployment, Production Verification, PR Ready 전환, PR Merge, Issue #65 종료,
   Governance Closure 없음.
-- 동일 exact head에서 이미 PASS한 테스트 재실행 없음. CI #569·#570·#571 재실행 없음.
+- 동일 exact head에서 이미 PASS한 테스트 재실행 없음. CI #569~#574 재실행 없음.
+- Review 4868951109 보완은 다음으로만 제한: browser lifecycle E2E, 성능·lifecycle baseline
+  - numeric Gate 제안, Completion Manifest·Evidence Registry, Section 32 Correction, 그리고
+    browser 검증에서 발견된 workspace route 집중 결함 2건의 수정.
 
-## 9. 미결사항
+## 9. 미결사항·발견된 결함
 
-- 없음 (BLOCKED AC 없음). browser 성능 baseline artifact는 WP6 범위를 벗어나므로
-  (`frontend-phase-4-section-2` performance 폴더 없음) 미생성. AC-19의 bounded queue(≤50)와
-  bounded attempts는 contract 테스트(`rejects a queue page size above the cap`,
-  `AC-07: rejects an Attempt list above the cap`, `rejects oversized server responses`)와
-  클라이언트 `pageSize: 50`로 이미 증명됨.
+- **Review 4868951109 차단 3건의 보완 결과**는 Section 11 참조.
+- **발견·수정된 결함 (browser 검증, workspace route 집중 수정)**:
+  1. 큐에서 다른 Action을 선택한 직후(React Router async navigation 전환 창) restore
+     effect가 stale URL/snapshot + 새 selectedActionId를 관찰해 `RECOVERY_STARTED`를 misfire,
+     모든 governed command가 영구 잠금. → `selectAction`의 optimistic dispatch와 restore
+     effect 의존성 분리(`restoreStateRef`)로 수정.
+  2. 이미 선택된 Action을 큐에서 재선택하면 `externalRevision`이 `''`로 초기화되어 detail이
+     unmount되고 (URL·snapshot 불변이라 restore 미재실행) detail이 사라짐. → 동일 Action
+     재선택 시 `externalRevision` 보존으로 수정 (집중 테스트 추가).
+- `BLOCKED` AC 없음. 성능 numeric Gate는 아직 **승인되지 않았으며** Section 11에 측정 근거와
+  함께 제안으로만 기록된다. bounded queue(≤50)/attempts는 contract 테스트와 클라이언트
+  `pageSize: 50`로 증명됨.
 
 ## 10. 최종 WP6 판정 후보
 
 AC-01~AC-22 모두 구체적 증거에 매핑되었고 `BLOCKED` AC가 없다. 접근성 필수 항목, Keyboard·
 Focus·Announcement, Non-color Cue·200% Zoom·Reduced Motion·Axe, Restricted/Hidden/Safe Masking,
 Connector vs Verified 분리, Cancel·Rollback·Compensation 분리, `OUTCOME_UNKNOWN` 무재실행,
-Query Identity·Revision 경계가 모두 검증되었다.
+Query Identity·Revision 경계가 모두 검증되었다. Review 4868951109의 3가지 차단 항목
+(browser lifecycle E2E, 성능·lifecycle baseline + numeric Gate 제안, Completion Manifest·
+Evidence Registry)의 보완 결과는 Section 11에 기록한다.
 
 ```
 WP6: COMPLETE_CANDIDATE
@@ -451,3 +482,67 @@ Ready / Merge: NOT_AUTHORIZED
 
 Codex는 `WP6 APPROVED`, `FE-P4-S2 COMPLETE`, `Ready`, `Merge`를 선언하거나 실행하지 않는다.
 WP6 완료 승인은 별도 Review 이후 결정된다.
+
+## 11. Review 4868951109 보완 — 완료 증거 3종
+
+Review **4868951109** (`BLOCKED / FOCUSED WP6 COMPLETION EVIDENCE REQUIRED`)가 요구한
+3가지 완료 증거를 보완했다. CI **#573 / #574**는 재실행하지 않았다.
+
+### 11.1 Frozen Browser E2E Lifecycle (blocker 1)
+
+- 신규 `tests/browser/frontend-external-action-lifecycle.spec.ts` — 로컬 Fake Fixture만 사용
+  (실제 Connector·외부 Mutation 없음), 하위 계층 불변식 중복 없음.
+- `full compressed governed lifecycle through the browser: queue → detail → verify → cancel →
+rollback → recovery → compensation` — Queue→Detail→(Manifest/Approval/Preflight read)→Verify
+  →Cancel→Rollback→`OUTCOME_UNKNOWN` Recovery→Compensation을 browser를 통해 실행, 명령 연결·
+  상태 전환·명령 간 분리(frozen Announcement + endpoint 분리)·Focus(`verification-heading`)
+  검증. Cancel/Rollback/Compensation/Verify 각각 정확히 1회, resolve 1회.
+- `OUTCOME_UNKNOWN recovery issues no new external mutation and re-executes nothing` —
+  Rollback 503 → 원본 identity resolve-only 복구, 재실행 버튼 없음, 신규 Mutation 없음.
+- 검증 중 발견된 workspace route 결함 2건 수정: (1) async navigation 전환 창의
+  `RECOVERY_STARTED` misfire로 인한 모든 governed command 영구 잠금; (2) 동일 Action 재선택 시
+  detail unmount. 두 결함 모두 Section 9에 기록. `external-action-workspace.tsx` 집중 수정 +
+  재선택 집중 테스트 1건 추가.
+- 결과: browser lifecycle 2 tests PASS (9 tests: lifecycle 2 + accessibility 5 + performance 2).
+
+### 11.2 성능·Lifecycle 기준과 Numeric Gate 제안 (blocker 2)
+
+- 신규 `tests/browser/frontend-external-action-performance.spec.ts` — 결정적 반복 측정:
+  - 측정 시나리오: 로컬 Fake Fixture + browser fixture backend session/shell, headless
+    Chromium, single worker. 측정 구간: Queue→Detail render(Queue→Detail lifecycle segment),
+    governed Cancel round-trip(명령 wiring segment).
+  - 반복: 1회 warm-up 제외 후 3회 측정, **median** 채택. 측정은 in-page `performance.now()` +
+    rAF polling (테스트 하네스 오버헤드 제외, 앱 지연만 측정).
+  - 측정 결과 (2026-08-06, 로컬 fixture):
+    - `external-action-queue-to-detail-ms`: samples [76, 92, 79], **median 79ms**.
+    - `external-action-command-ms`: samples [179, 204, 231], **median 204ms**.
+  - Spec은 관대한 determinism/regression sanity bound(5000ms)만 단언한다.
+- **Numeric Gate 제안 (미승인, USER 승인 대기)** — Review 4868951109: "Codex가 임의로
+  Threshold를 확정해서는 안 되며, 제안된 수치와 측정 근거를 제출한 뒤 사용자 승인을 받아야
+  합니다".
+  - `external-action-queue-to-detail-ms` median ≤ **2000ms** (측정 79ms, 여유 25x).
+  - `external-action-command-ms` median ≤ **2000ms** (측정 204ms, 여유 10x).
+  - 실패 조건: CI에서 median이 Gate 초과 시 실패 (Gate 승인 후에만 활성화).
+  - 상태: `PROPOSED` — USER 승인 후 확정.
+
+### 11.3 Completion Manifest·Evidence Registry 일관성 (blocker 3)
+
+- 신규 `docs/project/completions/FE-P4-S2.json` — **Completion Manifest Candidate**: status
+  `IN_PROGRESS` (Completion Manifest Schema `status` enum은 `NOT_STARTED | IN_PROGRESS |
+BLOCKED | COMPLETE`뿐이며 CANDIDATE 상태가 없으므로 임의 상태를 만들지 않고 스키마 유효 값으로
+  기록), 22개 AC 모두 `PASS` + 구체적 evidence 경로, `evidenceRegistryUpdates` 1건,
+  `approvedBy`/`approvedAt` null (COMPLETE 아님).
+- `docs/project/frontend-work-items.json` — FE-P4-S2 `completionManifest` 연결
+  (status는 `IN_PROGRESS` 유지).
+- `docs/engineering/evidence-registry.json` — `FRONTEND-PHASE-4-SECTION-2-WP6-EVIDENCE-260806001`
+  등록 (path = 본 문서).
+- projections 4개 파일 재생성 (`docs:frontend-projections:write`).
+- 검증: `docs:completion-invariants`, `docs:frontend-work-items`, `docs:frontend-projections:check`,
+  `docs:validate`(canonical·evidence registry 포함) 모두 **PASS**.
+- `FE-P4-S2 COMPLETE` 또는 `FINAL_AFTER_MERGE`로 기록하지 않음.
+
+### 11.4 보완 head·CI
+
+- 보완 code head: `<REMEDIATION_HEAD>` — CI **#575** / `<RUN_ID>`: Quality, Frontend, Required
+  Gates 결과는 최종 갱신에서 기록한다.
+- CI **#573 / #574** 및 **#569~#572**는 재실행하지 않았다.

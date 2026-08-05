@@ -300,7 +300,7 @@
       "successor": "FE-P5-S1",
       "status": "IN_PROGRESS",
       "governingContract": "docs/architecture/frontend/phase-4-governance-execution.md",
-      "completionManifest": null,
+      "completionManifest": "docs/project/completions/FE-P4-S2.json",
       "approvedAt": null,
       "supersedes": null,
       "introducedByDecision": "docs/engineering/frontend-work-item-registry-migration-decision-260801001.md",

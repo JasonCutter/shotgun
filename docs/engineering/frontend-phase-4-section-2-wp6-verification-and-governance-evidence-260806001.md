@@ -592,6 +592,8 @@ CANDIDATE ACCEPTED, PRODUCT COMPLETION AUTHORITY RECORDING AUTHORIZED_TO_START**
   `NOT_AUTHORIZED`).
 - Work Item Registry — FE-P4-S2 `COMPLETE`, FE-P4 Phase `COMPLETE`; Projection 재생성.
 - Progress Report Section 35 (report 29), Issue #65·PR #66 코멘트.
+- Completion recording head: `d4e8e3c87fc8b9395accfc8c96b9c3999b0a8f25` — CI **#579** /
+  `31055832493`: Quality, Frontend, Required Gates **SUCCESS**.
 
 최종 권위 상태: WP1~WP5 APPROVED / COMPLETE, **WP6 APPROVED / COMPLETE**, FE-P4-S2 Product
 `COMPLETE` (completion candidate ACCEPTED). PR #66 `OPEN / DRAFT / MERGEABLE`. Ready / Merge /

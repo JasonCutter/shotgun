@@ -2467,10 +2467,12 @@ COMPLETE_APPROVED`, `completionApproval: APPROVED`, `completionApprovedBy: "user
 
 - `docs:completion-invariants`, `docs:frontend-work-items`, `docs:frontend-projections:check`,
   `docs:validate`(canonical·evidence registry 포함) 모두 **PASS**.
-- 자동 CI: 기록 head `<RECORDING_HEAD>` — CI **#579** / `<RUN_ID>` (metadata 아래에 기록).
+- 자동 CI: 기록 head `d4e8e3c87fc8b9395accfc8c96b9c3999b0a8f25` — CI **#579** /
+  `31055832493`: Quality, Frontend, Required Gates **SUCCESS**.
 
 ### Final metadata (report 29)
 
-- **FE-P4-S2 completion recording head**: `<RECORDING_HEAD>` — CI **#579** / `<RUN_ID>`:
-  Quality, Frontend, Required Gates 결과는 최종 갱신에서 기록한다.
+- **FE-P4-S2 completion recording head**: `d4e8e3c87fc8b9395accfc8c96b9c3999b0a8f25` — CI
+  **#579** / `31055832493`: Quality, Frontend, Required Gates **SUCCESS** (Frontend 2m41s,
+  Quality 3m34s, Required Gates 3s).
 - PR #66 remains `OPEN / DRAFT / MERGEABLE`. CI **#577 / #578** were NOT re-run.

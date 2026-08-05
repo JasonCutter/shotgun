@@ -573,6 +573,7 @@ exactly once through the browser client` 테스트 추가 — Approve→Prefligh
 
 ### 11.6 최종 head·CI
 
-- 최종 보완 head: `<FINAL_HEAD>` — CI **#577** / `<RUN_ID>`: Quality, Frontend, Required Gates
-  결과는 최종 갱신에서 기록한다.
+- 최종 보완 head: `d48dc7bd115c5a00028f721ed41fc5911147a7fb` — CI **#577** /
+  `31053630441`: Quality, Frontend, Required Gates **SUCCESS** (Frontend 3m7s, Quality 3m16s,
+  Required Gates 4s).
 - CI **#573~#576** 및 기존 PASS head는 재실행하지 않았다.

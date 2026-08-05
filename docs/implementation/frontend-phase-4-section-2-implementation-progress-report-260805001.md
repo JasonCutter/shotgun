@@ -2407,7 +2407,8 @@ client` 테스트: Approve→Preflight→Execute 각 POST 1회 + 순서 검증. 
 - Browser E2E — external-action 3개 spec **10 tests PASS** (lifecycle 3 + accessibility 5 +
   performance 2, 2000ms gate 포함).
 - `tsc --noEmit` (root + app) — clean. ESLint — clean. Prettier — clean.
-- 자동 CI: 최종 보완 head `<FINAL_HEAD>` — CI **#577** / `<RUN_ID>` (metadata 아래에 기록).
+- 자동 CI: 최종 보완 head `d48dc7bd115c5a00028f721ed41fc5911147a7fb` — CI **#577** /
+  `31053630441`: Quality, Frontend, Required Gates **SUCCESS**.
 
 ### PR 상태·권위
 
@@ -2420,6 +2421,7 @@ client` 테스트: Approve→Preflight→Execute 각 POST 1회 + 순서 검증. 
 
 ### Final metadata (report 28)
 
-- **WP6 최종 보완 head**: `<FINAL_HEAD>` — CI **#577** / `<RUN_ID>`: Quality, Frontend,
-  Required Gates 결과는 최종 갱신에서 기록한다.
+- **WP6 최종 보완 head**: `d48dc7bd115c5a00028f721ed41fc5911147a7fb` — CI **#577** /
+  `31053630441`: Quality, Frontend, Required Gates **SUCCESS** (Frontend 3m7s, Quality 3m16s,
+  Required Gates 4s).
 - PR #66 remains `OPEN / DRAFT / MERGEABLE`. CI **#575 / #576** were NOT re-run.

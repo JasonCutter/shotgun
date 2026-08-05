@@ -160,6 +160,51 @@ const makeAttempts = (actionId: string) => [
   },
 ];
 
+const makeApproval = (actionId: string) => ({
+  schemaVersion: '1.0.0',
+  approvalId: `approval-${actionId}`,
+  purpose: 'EXTERNAL_ACTION',
+  actionId,
+  resourceProjectId: PROJECT,
+  effectiveProjectId: PROJECT,
+  manifestId: `manifest-${actionId}`,
+  manifestRevision: 1,
+  manifestDigest: MANIFEST_DIGESTS[actionId],
+  targetId: 'target-1',
+  targetRevision: 'rev-3',
+  targetDigest: `sha256:${'a'.repeat(64)}`,
+  externalRevision: 'ext-7',
+  actor: { schemaVersion: '1.0.0', principalId: 'principal-1', actorId: 'user-1' },
+  projectId: PROJECT,
+  accessRevision: 'access-1',
+  policyContextRevision: 'policy-1',
+  reason: 'Governed workspace request.',
+  issuedAt: now,
+  expiresAt: '2026-09-01T00:00:00.000Z',
+  status: 'ACTIVE',
+});
+
+const makePreflight = (actionId: string) => ({
+  schemaVersion: '1.0.0',
+  preflightId: `preflight-${actionId}`,
+  concreteKind: 'PREFLIGHT',
+  actionId,
+  resourceProjectId: PROJECT,
+  effectiveProjectId: PROJECT,
+  manifestRevision: 1,
+  preflightDigest: `sha256:${'e'.repeat(64)}`,
+  status: 'READY',
+  reasons: [],
+  permissionRevalidated: true,
+  credentialRevalidated: true,
+  budgetRevalidated: true,
+  policyRevalidated: true,
+  targetStateRevalidated: true,
+  externalRevisionRevalidated: true,
+  runAt: now,
+  expiresAt: '2026-09-01T00:00:00.000Z',
+});
+
 const makeVerification = (actionId: string) => ({
   schemaVersion: '1.0.0',
   verificationId: `verification-${actionId}`,
@@ -305,6 +350,63 @@ const stubLifecycleRoutes = async (page: Page, posts: string[]) => {
   // (clientRequestId / idempotencyKey / actionId) so the strict client's
   // command-identity validation passes. Rollback deliberately returns
   // OUTCOME_UNKNOWN so the browser recovery path is exercised.
+  await page.route('**/product-api/frontend/external-action/approve', async (route) => {
+    const body = requestBody(route);
+    posts.push('POST /approve');
+    const actionId = body.actionId ?? 'action-3';
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        schemaVersion: '1.0.0',
+        outcome: 'COMPLETED',
+        clientRequestId: body.clientRequestId,
+        idempotencyKey: body.idempotencyKey,
+        commandSemanticDigest: DIGEST,
+        actionId,
+        approval: makeApproval(actionId),
+      }),
+    });
+  });
+  await page.route('**/product-api/frontend/external-action/preflight', async (route) => {
+    const body = requestBody(route);
+    posts.push('POST /preflight');
+    const actionId = body.actionId ?? 'action-3';
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        schemaVersion: '1.0.0',
+        outcome: 'COMPLETED',
+        clientRequestId: body.clientRequestId,
+        idempotencyKey: body.idempotencyKey,
+        commandSemanticDigest: DIGEST,
+        actionId,
+        preflight: makePreflight(actionId),
+      }),
+    });
+  });
+  await page.route('**/product-api/frontend/external-action/execute', async (route) => {
+    const body = requestBody(route);
+    posts.push('POST /execute');
+    const actionId = body.actionId ?? 'action-3';
+    // The execution attempt echoes the request idempotency key (the strict
+    // client asserts `attempt.idempotencyKey === params.idempotencyKey`).
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        schemaVersion: '1.0.0',
+        outcome: 'COMPLETED',
+        clientRequestId: body.clientRequestId,
+        idempotencyKey: body.idempotencyKey,
+        commandSemanticDigest: DIGEST,
+        actionId,
+        execution: makeExecution(actionId),
+        attempt: {
+          ...makeAttempts(actionId)[0],
+          idempotencyKey: body.idempotencyKey ?? 'idem-attempt-action-3',
+        },
+      }),
+    });
+  });
   await page.route('**/product-api/frontend/external-action/cancel', async (route) => {
     const body = requestBody(route);
     posts.push('POST /cancel');
@@ -499,6 +601,72 @@ test('full compressed governed lifecycle through the browser: queue → detail �
   expect(posts.filter((entry) => entry === 'POST /rollback').length).toBe(1);
   expect(posts.filter((entry) => entry === 'POST /compensations/prepare').length).toBe(1);
   expect(posts.filter((entry) => entry === 'GET /command-outcomes/resolve').length).toBe(1);
+});
+
+test('full governed lifecycle mutation routes (Approval → Preflight → Execute) fire in order and exactly once through the browser client', async ({
+  page,
+}) => {
+  const posts: string[] = [];
+  await stubLifecycleRoutes(page, posts);
+  await openQueue(page);
+
+  // Drive the pre-execution governed lifecycle through the REAL frontend
+  // client running in the browser page (E2E test bridge — Review 4869347580).
+  // The workspace UI exposes only Verify/Cancel/Rollback/Compensation/Recovery,
+  // so Approval → Preflight → Execute is exercised via the browser client and
+  // each POST is verified to fire exactly once and in the frozen order.
+  await page.evaluate(async () => {
+    const bridge = (
+      window as unknown as {
+        __SHOTGUN_EXTERNAL_ACTION_BRIDGE__?: {
+          createClient(): {
+            approveExternalAction(params: unknown): Promise<unknown>;
+            preflightExternalAction(params: unknown): Promise<unknown>;
+            executeExternalAction(params: unknown): Promise<unknown>;
+          };
+        };
+      }
+    ).__SHOTGUN_EXTERNAL_ACTION_BRIDGE__;
+    if (!bridge) throw new Error('external-action E2E bridge is missing');
+    const client = bridge.createClient();
+    const fresh = (prefix: string) =>
+      `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const base = { schemaVersion: '1.0.0' as const, reason: 'Governed workspace request.' };
+    await client.approveExternalAction({
+      ...base,
+      clientRequestId: fresh('ea-approve'),
+      idempotencyKey: fresh('idem-approve'),
+      actionId: 'action-3',
+      manifestId: 'manifest-action-3',
+      manifestRevision: 1,
+      expectedTargetRevision: 'rev-3',
+      expectedExternalRevision: 'ext-7',
+    });
+    await client.preflightExternalAction({
+      ...base,
+      clientRequestId: fresh('ea-preflight'),
+      idempotencyKey: fresh('idem-preflight'),
+      actionId: 'action-3',
+      expectedActionRevision: 4,
+      manifestRevision: 1,
+      expectedExternalRevision: 'ext-7',
+    });
+    await client.executeExternalAction({
+      ...base,
+      clientRequestId: fresh('ea-execute'),
+      idempotencyKey: fresh('idem-execute'),
+      actionId: 'action-3',
+      expectedActionRevision: 4,
+      manifestRevision: 1,
+      preflightId: 'preflight-action-3',
+      expectedExternalRevision: 'ext-7',
+    });
+  });
+
+  const routeOrder = posts.filter((entry) =>
+    ['POST /approve', 'POST /preflight', 'POST /execute'].includes(entry),
+  );
+  expect(routeOrder).toEqual(['POST /approve', 'POST /preflight', 'POST /execute']);
 });
 
 test('OUTCOME_UNKNOWN recovery issues no new external mutation and re-executes nothing', async ({

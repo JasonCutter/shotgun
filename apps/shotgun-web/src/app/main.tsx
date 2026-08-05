@@ -4,6 +4,7 @@ import { RouterProvider } from 'react-router';
 
 import {
   computeCommandSemanticDigestAsync,
+  createFrontendExternalActionClient,
   createShotgunApiClient,
   webCryptoDigestProvider,
 } from '@shotgun/api-client';
@@ -18,6 +19,21 @@ if (typeof window !== 'undefined' && isE2EBridgeEnabled) {
   ).__SHOTGUN_TEST_DIGEST_ADAPTER__ = {
     webCryptoDigestProvider,
     computeCommandSemanticDigestAsync,
+  };
+  // FE-P4-S2 WP6 browser lifecycle E2E (Review 4869347580): the External Action
+  // workspace exposes only the post-execution governed surfaces (Verify/Cancel/
+  // Rollback/Compensation/Recovery), so the frozen browser lifecycle's
+  // Approval → Preflight → Execute segment is exercised through the REAL
+  // frontend client running in the browser page. The bridge is gated behind the
+  // E2E test flag only and never active in production builds.
+  (
+    window as unknown as {
+      __SHOTGUN_EXTERNAL_ACTION_BRIDGE__?: {
+        createClient(): ReturnType<typeof createFrontendExternalActionClient>;
+      };
+    }
+  ).__SHOTGUN_EXTERNAL_ACTION_BRIDGE__ = {
+    createClient: createFrontendExternalActionClient,
   };
 }
 

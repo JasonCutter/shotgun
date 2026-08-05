@@ -22,12 +22,12 @@ import { expect, test, type Page } from '@playwright/test';
  * - Environment and fixtures are pinned: local fake route fixtures, the browser
  *   fixture backend session/shell, headless Chromium, single worker.
  *
- * GATE POLICY: the numeric gate itself is NOT yet approved (Review 4868951109:
- * "Codex가 임의로 Threshold를 확정해서는 안 되며"). This spec therefore only
- * asserts a generous determinism/regression sanity bound (5000ms), NOT the
- * proposed gate. The proposed gate and its measured basis are recorded in the
- * WP6 Evidence document and submitted for USER approval; once approved, the
- * assertion can be tightened to the approved gate.
+ * GATE: Review 4869347580 APPROVED the numeric gate (external-action-
+ * queue-to-detail-ms median ≤ 2000ms; external-action-command-ms median ≤
+ * 2000ms) and explicitly required this spec to assert the approved gate. The
+ * measurement method (headless Chromium, single worker, local fake fixture,
+ * warm-up 1회 제외, 3회 측정, median, in-page performance.now + rAF) was also
+ * approved. Measured medians are far below the gate (79ms / 204ms).
  */
 
 const routeGuard = {
@@ -229,10 +229,8 @@ test('external-action lifecycle baseline: queue → detail render (median of 3 s
       median: queueToDetailMs,
     }),
   );
-  // Generous determinism/regression sanity bound — NOT the proposed numeric
-  // gate (which is recorded in the WP6 Evidence document awaiting USER
-  // approval per Review 4868951109).
-  expect(queueToDetailMs, `median queue→detail ${queueToDetailMs}ms`).toBeLessThanOrEqual(5000);
+  // Approved numeric gate (Review 4869347580): median ≤ 2000ms.
+  expect(queueToDetailMs, `median queue→detail ${queueToDetailMs}ms`).toBeLessThanOrEqual(2000);
 });
 
 test('external-action lifecycle baseline: governed command round-trip (median of 3 samples after warm-up)', async ({
@@ -267,6 +265,6 @@ test('external-action lifecycle baseline: governed command round-trip (median of
   console.info(
     JSON.stringify({ metric: 'external-action-command-ms', samples, median: commandMs }),
   );
-  // Generous determinism/regression sanity bound — NOT the proposed gate.
-  expect(commandMs, `median command ${commandMs}ms`).toBeLessThanOrEqual(5000);
+  // Approved numeric gate (Review 4869347580): median ≤ 2000ms.
+  expect(commandMs, `median command ${commandMs}ms`).toBeLessThanOrEqual(2000);
 });

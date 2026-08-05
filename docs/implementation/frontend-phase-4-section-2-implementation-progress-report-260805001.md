@@ -2363,5 +2363,63 @@ re-selected` 1 test. (기존 PASS head 테스트 재실행 없음.)
 
 - **WP6 보완 code head**: `4817b5563210fcc6c7d4b3555ae9cce37297cd33` — CI **#575** /
   `31051753388`: Quality, Frontend, Required Gates **SUCCESS** (Frontend 3m7s, Quality 3m19s,
-  Required Gates 3s).
+  Required Gates 3s); metadata `c51d5a23c3608e021ce85341390acc45e83a0ac4` — CI **#576** /
+  `31052393009` SUCCESS.
 - PR #66 remains `OPEN / DRAFT / MERGEABLE`. CI **#573 / #574** were NOT re-run.
+
+### Section 33 correction (Review 4869347580)
+
+Review **4869347580** (**BLOCKED / ONE FINAL WP6 LIFECYCLE + GATE-ACTIVATION CORRECTION
+REQUIRED**)이 다음을 확인했다: (1) workspace restore race 2건 수정·Completion Manifest/Registry·
+Section 32 정정은 적절; (2) **Numeric Gate 승인** — `external-action-queue-to-detail-ms` median
+≤ 2000ms, `external-action-command-ms` median ≤ 2000ms (측정 방법 포함); (3) 그러나 Frozen
+Browser Lifecycle의 `Approval → Preflight → Execute` 구간이 Browser 명령으로 증명되지 않았고,
+Performance Spec이 5000ms sanity bound를 사용. Section 33의 이전 상태를 덮어쓰지 않고 최종
+보완을 Section 34에 기록한다.
+
+## 34. WP6 최종 보완 — Review 4869347580 (report 28, 2026-08-06)
+
+### 34.1 Approval→Preflight→Execute Browser 명령
+
+- `apps/shotgun-web/src/app/main.tsx` — E2E test bridge(`VITE_E2E_TEST_BRIDGE` 게이트)로 실제
+  `FrontendExternalActionClient`를 browser page에 노출 (`__SHOTGUN_EXTERNAL_ACTION_BRIDGE__`).
+  workspace UI는 post-execution surface만 노출하므로 Frozen lifecycle의 pre-execution 구간을
+  실제 client(browser wiring)로 구동한다. production에서는 비활성.
+- `tests/browser/frontend-external-action-lifecycle.spec.ts` — `full governed lifecycle mutation
+routes (Approval → Preflight → Execute) fire in order and exactly once through the browser
+client` 테스트: Approve→Preflight→Execute 각 POST 1회 + 순서 검증. (Verify/Cancel/Rollback/
+  Compensation/Recovery는 기존 UI lifecycle 테스트가 검증.)
+
+### 34.2 Gate 활성화
+
+- `tests/browser/frontend-external-action-performance.spec.ts` — 두 assertion을 승인된
+  **2000ms**로 변경 (sanity bound 5000ms 제거). 보완 후 측정: queue→detail median **141ms**,
+  command median **259ms** (Gate 미만).
+
+### 추가된 집중 테스트
+
+- lifecycle bridge 테스트 1건 (Approval→Preflight→Execute 순서·1회). performance gate 2000ms
+  활성화. 기존 PASS head 테스트 재실행 없음.
+
+### Validation (최종 보완 후)
+
+- `apps/shotgun-web` 전체 스위트 — **18 files / 97 tests PASS**.
+- Browser E2E — external-action 3개 spec **10 tests PASS** (lifecycle 3 + accessibility 5 +
+  performance 2, 2000ms gate 포함).
+- `tsc --noEmit` (root + app) — clean. ESLint — clean. Prettier — clean.
+- 자동 CI: 최종 보완 head `<FINAL_HEAD>` — CI **#577** / `<RUN_ID>` (metadata 아래에 기록).
+
+### PR 상태·권위
+
+- PR #66 remains `OPEN / DRAFT / MERGEABLE`.
+- Ready / Merge / Deployment / Production Verification / FE-P5: `NOT_AUTHORIZED`.
+- Review 4869347580 기록: WP6 `REMEDIATION_REQUIRED NOT_APPROVED`; **Numeric Gate: 2000ms
+  MEDIAN APPROVED, ACTIVATION PENDING** → Section 34에서 활성화. 판정 후보:
+  `WP6: COMPLETE_CANDIDATE`.
+- Codex는 `WP6 APPROVED`, `FE-P4-S2 COMPLETE`, `Ready`, `Merge`를 선언·실행하지 않는다.
+
+### Final metadata (report 28)
+
+- **WP6 최종 보완 head**: `<FINAL_HEAD>` — CI **#577** / `<RUN_ID>`: Quality, Frontend,
+  Required Gates 결과는 최종 갱신에서 기록한다.
+- PR #66 remains `OPEN / DRAFT / MERGEABLE`. CI **#575 / #576** were NOT re-run.

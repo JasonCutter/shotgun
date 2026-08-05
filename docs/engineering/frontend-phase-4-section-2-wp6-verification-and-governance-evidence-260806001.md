@@ -517,13 +517,13 @@ rollback → recovery → compensation` — Queue→Detail→(Manifest/Approval/
     - `external-action-queue-to-detail-ms`: samples [76, 92, 79], **median 79ms**.
     - `external-action-command-ms`: samples [179, 204, 231], **median 204ms**.
   - Spec은 관대한 determinism/regression sanity bound(5000ms)만 단언한다.
-- **Numeric Gate 제안 (미승인, USER 승인 대기)** — Review 4868951109: "Codex가 임의로
-  Threshold를 확정해서는 안 되며, 제안된 수치와 측정 근거를 제출한 뒤 사용자 승인을 받아야
-  합니다".
-  - `external-action-queue-to-detail-ms` median ≤ **2000ms** (측정 79ms, 여유 25x).
-  - `external-action-command-ms` median ≤ **2000ms** (측정 204ms, 여유 10x).
-  - 실패 조건: CI에서 median이 Gate 초과 시 실패 (Gate 승인 후에만 활성화).
-  - 상태: `PROPOSED` — USER 승인 후 확정.
+- **Numeric Gate 승인 (Review 4869347580)**: 측정 방법(headless Chromium, single worker,
+  local fake fixture, warm-up 1회 제외, 3회 측정, median, in-page `performance.now` + rAF)과
+  Gate 값이 **승인**됐다.
+  - `external-action-queue-to-detail-ms` median ≤ **2000ms** (승인).
+  - `external-action-command-ms` median ≤ **2000ms** (승인).
+  - Spec의 assertion을 승인된 2000ms로 활성화했다 (sanity bound 5000ms 제거).
+  - 실패 조건: CI에서 median이 Gate 초과 시 실패.
 
 ### 11.3 Completion Manifest·Evidence Registry 일관성 (blocker 3)
 
@@ -543,7 +543,36 @@ BLOCKED | COMPLETE`뿐이며 CANDIDATE 상태가 없으므로 임의 상태를 �
 
 ### 11.4 보완 head·CI
 
-- 보완 code head: `4817b5563210fcc6c7d4b3555ae9cce37297cd33` — CI **#575** /
+- 1차 보완 code head: `4817b5563210fcc6c7d4b3555ae9cce37297cd33` — CI **#575** /
   `31051753388`: Quality, Frontend, Required Gates **SUCCESS** (Frontend 3m7s, Quality 3m19s,
-  Required Gates 3s).
+  Required Gates 3s); metadata `c51d5a23c3608e021ce85341390acc45e83a0ac4` — CI **#576** /
+  `31052393009` SUCCESS.
 - CI **#573 / #574** 및 **#569~#572**는 재실행하지 않았다.
+
+### Section 11 correction (Review 4869347580)
+
+Review **4869347580** (**BLOCKED / ONE FINAL WP6 LIFECYCLE + GATE-ACTIVATION CORRECTION
+REQUIRED**)이 다음을 확인했다: restore race 2건 수정·Completion Manifest/Registry·Section 32
+정정은 적절, **Numeric Gate는 승인됨**(queue→detail median ≤ 2000ms, command median ≤ 2000ms,
+측정 방법 포함). 단 두 가지 최종 보완이 남았다: (1) Frozen Browser Lifecycle의
+`Approval → Preflight → Execute` 구간을 실제 Browser 명령으로 증명하지 못함, (2) Performance
+Spec이 승인된 2000ms가 아닌 5000ms sanity bound를 사용. 다음 보완으로 해결했다.
+
+### 11.5 최종 보완 (Review 4869347580)
+
+1. **Approval→Preflight→Execute Browser 명령**: workspace UI는 post-execution surface
+   (Verify/Cancel/Rollback/Compensation/Recovery)만 노출하므로, `main.tsx`의 E2E test
+   bridge(`VITE_E2E_TEST_BRIDGE` 게이트, production 비활성)로 실제 `FrontendExternalActionClient`를
+   browser page에서 구동한다. `frontend-external-action-lifecycle.spec.ts`에
+   `full governed lifecycle mutation routes (Approval → Preflight → Execute) fire in order and
+exactly once through the browser client` 테스트 추가 — Approve→Preflight→Execute 각 POST가
+   정확히 1회, 순서대로 발생함을 검증. 하위 계층 불변식 중복 없음(route 순서·1회 실행만 검증).
+2. **Gate 활성화**: `frontend-external-action-performance.spec.ts`의 두 assertion을 승인된
+   2000ms로 변경 (sanity bound 5000ms 제거).
+3. 보완 후 측정: queue→detail median **141ms**, command median **259ms** (Gate 미만).
+
+### 11.6 최종 head·CI
+
+- 최종 보완 head: `<FINAL_HEAD>` — CI **#577** / `<RUN_ID>`: Quality, Frontend, Required Gates
+  결과는 최종 갱신에서 기록한다.
+- CI **#573~#576** 및 기존 PASS head는 재실행하지 않았다.

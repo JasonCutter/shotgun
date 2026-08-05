@@ -386,6 +386,17 @@ export const externalActionResourceQueryKey = (
 export const externalActionDisabledQueryKey = (operation: string) =>
   ['external-action', 'disabled', operation] as const;
 
+/**
+ * Action-prefix key used for invalidation after a governed command resolves or
+ * an `OUTCOME_UNKNOWN` completes. It matches the REAL resource keys (scope +
+ * 'action' + actionId) so a single invalidate refreshes the detail and every
+ * child read of that action without ad hoc key arrays (Review 4865620679 item
+ * 5 — the previous `['project', principalId, 'external-action', ...]` prefix
+ * did not match the actual keys).
+ */
+export const externalActionActionQueryKey = (scope: ExternalActionQueryScope, actionId: string) =>
+  [...externalActionScopeKey(scope), 'action', actionId] as const;
+
 export const clearProjectQueries = async (queryClient: QueryClient): Promise<void> => {
   await queryClient.cancelQueries({ queryKey: ['project'] });
   queryClient.removeQueries({ queryKey: ['project'] });

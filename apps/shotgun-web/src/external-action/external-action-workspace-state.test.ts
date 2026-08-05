@@ -59,7 +59,7 @@ describe('External Action workspace state machine (FE-P4-S2 WP5, ADR-119)', () =
     ).toBeNull();
   });
 
-  it('keeps an unsent command draft route-scoped until COMMAND_STARTED clears it', () => {
+  it('keeps a command-common unsent reason draft route-scoped until COMMAND_STARTED clears it', () => {
     const selected = reduceExternalActionWorkspaceState(
       createInitialExternalActionWorkspaceState(),
       {
@@ -71,10 +71,9 @@ describe('External Action workspace state machine (FE-P4-S2 WP5, ADR-119)', () =
     );
     const withDraft = reduceExternalActionWorkspaceState(selected, {
       type: 'SET_COMMAND_DRAFT',
-      command: 'CANCEL',
       reason: 'Abort requested.',
     });
-    expect(withDraft.draft).toEqual({ command: 'CANCEL', reason: 'Abort requested.' });
+    expect(withDraft.draft).toEqual({ reason: 'Abort requested.' });
     const started = reduceExternalActionWorkspaceState(withDraft, { type: 'COMMAND_STARTED' });
     expect(started.draft).toBeNull();
   });

@@ -49,8 +49,13 @@ export type ExternalActionCommandKind =
   | 'ROLLBACK'
   | 'PREPARE_COMPENSATION';
 
-export type ExternalActionCommandDraft = {
-  readonly command: ExternalActionCommandKind;
+/**
+ * Route-scoped UNSENT governed-command reason (ADR-119). The reason is
+ * command-common: a single input feeds every governed command (Cancel /
+ * Rollback / Compensation / Verify), so a typed reason is never dropped when
+ * the user switches commands (Review 4865620679 item 4).
+ */
+export type ExternalActionReasonDraft = {
   readonly reason: string;
 };
 
@@ -67,8 +72,8 @@ export type ExternalActionWorkspaceState = {
   readonly selectedVerificationId: string | null;
   readonly focusTarget: string | null;
   readonly phase: ExternalActionWorkspacePhase;
-  /** Route-scoped draft: unsent governed-command input only (ADR-119). */
-  readonly draft: ExternalActionCommandDraft | null;
+  /** Route-scoped draft: unsent governed-command reason only (ADR-119). */
+  readonly draft: ExternalActionReasonDraft | null;
   /** In-flight governed command (submission in progress) — locks all surfaces. */
   readonly submitting: ExternalActionCommandKind | null;
   readonly recovery: ExternalActionWorkspaceRecovery;
@@ -91,7 +96,7 @@ export type ExternalActionWorkspaceAction =
   | { type: 'SELECT_VERIFICATION'; verificationId: string }
   | { type: 'FOCUS'; target: string }
   | { type: 'CLEAR_FOCUS' }
-  | { type: 'SET_COMMAND_DRAFT'; command: ExternalActionCommandKind; reason: string }
+  | { type: 'SET_COMMAND_DRAFT'; reason: string }
   | { type: 'CLEAR_COMMAND_DRAFT' }
   | { type: 'SUBMITTING_STARTED'; command: ExternalActionCommandKind }
   | { type: 'SUBMITTING_FINISHED' }
@@ -247,7 +252,7 @@ export const reduceExternalActionWorkspaceState = (
     case 'CLEAR_FOCUS':
       return { ...state, focusTarget: null };
     case 'SET_COMMAND_DRAFT':
-      return { ...state, draft: { command: action.command, reason: action.reason } };
+      return { ...state, draft: { reason: action.reason } };
     case 'CLEAR_COMMAND_DRAFT':
       return { ...state, draft: null };
     case 'SUBMITTING_STARTED':

@@ -96,17 +96,59 @@ Gap:
 
 ## 4. Layer별 Gap Matrix
 
-| Layer | Current | Gap | Candidate decision |
-|---|---|---|---|
-| Domain Contract | Job/Attempt와 개별 실행 상태 존재 | Job/Run/Attempt/Stage/Event 통합 모델 부재 | 새 traceable ADR 및 Contract 필요 |
-| Product API | 개별 Workspace API 존재 | Project-scoped Activity list/detail/refresh API 부재 | typed read API와 bounded commands 필요 |
-| Persistence | Action·Command 등 개별 persistence 존재, Job runtime은 memory | 통합 Activity Projection 및 Attention persistence 부재 | additive DB Migration 필요 |
-| Frontend Client/UI | 개별 Source·Ask·Review·Action UI 존재 | Activity route/list/detail/timeline/filter 부재 | 새 FE-P5-S1 product module 필요 |
-| Security | Principal·Project·Capability guard 재사용 가능 | cross-project existence hiding과 deep-link 재검증 필요 | deny-by-default, project-bound query |
-| Accessibility | 기존 route/table/dialog 패턴 재사용 가능 | live progress, timeline, filters, status semantics의 a11y 계약 부재 | keyboard/table/list alternative와 restrained live region |
-| Recovery | Outcome resolution과 stale handling 패턴 존재 | refresh loss, lag, cursor, restart recovery 계약 부재 | snapshot refetch와 explicit stale/partial state |
-| E2E | Browser lifecycle harness 존재 | multi-attempt, lag, attention, deep-link lifecycle 부재 | bounded browser E2E 필요 |
-| Performance | 기존 route/command gates 존재 | queue/list/detail/timeline latency gate 부재 | list/detail/refresh median gate 필요 |
+### 4.1 Domain Contract
+
+- Current: Job/Attempt와 개별 실행 상태 존재
+- Gap: Job/Run/Attempt/Stage/Event 통합 모델 부재
+- Candidate decision: 새 traceable ADR 및 Contract 필요
+
+### 4.2 Product API
+
+- Current: 개별 Workspace API 존재
+- Gap: Project-scoped Activity list/detail/refresh API 부재
+- Candidate decision: typed read API와 bounded commands 필요
+
+### 4.3 Persistence
+
+- Current: Action·Command 등 개별 persistence 존재, Job runtime은 memory
+- Gap: 통합 Activity Projection 및 Attention persistence 부재
+- Candidate decision: additive DB Migration 필요
+
+### 4.4 Frontend Client/UI
+
+- Current: 개별 Source·Ask·Review·Action UI 존재
+- Gap: Activity route/list/detail/timeline/filter 부재
+- Candidate decision: 새 FE-P5-S1 product module 필요
+
+### 4.5 Security
+
+- Current: Principal·Project·Capability guard 재사용 가능
+- Gap: cross-project existence hiding과 deep-link 재검증 필요
+- Candidate decision: deny-by-default, project-bound query
+
+### 4.6 Accessibility
+
+- Current: 기존 route/table/dialog 패턴 재사용 가능
+- Gap: live progress, timeline, filters, status semantics의 a11y 계약 부재
+- Candidate decision: keyboard/table/list alternative와 restrained live region
+
+### 4.7 Recovery
+
+- Current: Outcome resolution과 stale handling 패턴 존재
+- Gap: refresh loss, lag, cursor, restart recovery 계약 부재
+- Candidate decision: snapshot refetch와 explicit stale/partial state
+
+### 4.8 E2E
+
+- Current: Browser lifecycle harness 존재
+- Gap: multi-attempt, lag, attention, deep-link lifecycle 부재
+- Candidate decision: bounded browser E2E 필요
+
+### 4.9 Performance
+
+- Current: 기존 route/command gates 존재
+- Gap: queue/list/detail/timeline latency gate 부재
+- Candidate decision: list/detail/refresh median gate 필요
 
 ## 5. 결정 판정
 

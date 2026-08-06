@@ -21,10 +21,19 @@ current_evidence_ci_run: 31107258903
 round3_correction_head: 62071a3b3e59254a06d2cc85f8c824451b1151a1
 round3_correction_ci_number: 623
 round3_correction_ci_run: 31110838089
-exact_head: 62071a3b3e59254a06d2cc85f8c824451b1151a1
-ci_number: 623
-ci_run: 31110838089
-ci_conclusion: SUCCESS
+round4_correction_head: b90b97a59fde01ef92a0932e6dd9f3c4e2ae4fa1
+round4_correction_ci_number: 625
+round4_correction_ci_run: 31114640938
+implementation_exact_head: b90b97a59fde01ef92a0932e6dd9f3c4e2ae4fa1
+implementation_ci_number: 625
+implementation_ci_run: 31114640938
+implementation_ci_conclusion: SUCCESS
+evidence_metadata_base_head: 31df6b9f718b63fd08704d62a8e9228cac264308
+evidence_metadata_base_ci_number: 624
+evidence_metadata_base_ci_run: 31111295808
+current_pr_head: b90b97a59fde01ef92a0932e6dd9f3c4e2ae4fa1
+current_pr_ci_number: 625
+current_pr_ci_run: 31114640938
 tracking_issue: https://github.com/JasonCutter/shotgun/issues/71
 contract_pr: https://github.com/JasonCutter/shotgun/pull/70
 product_pr: https://github.com/JasonCutter/shotgun/pull/73
@@ -139,13 +148,19 @@ Focused tests only (no previously-passed head re-run):
   multi-page watermark aggregation),
   `frontend-activity-round3-regression.test.ts` (9 — project/audience isolation A/B, deep-link
   Domain authorization + required sensitivity, Sources event continuation beyond 100/200,
-  in-memory tie ordering).
-- PG parity `tests/database/frontend-activity-postgres-parity.test.ts` — 15 tests (with DB,
-  includes `findByIdentity`, `commitProjectProjection` parity, registry-shrink watermark parity
-  and the Ask sensitivity/access revalidation).
+  in-memory tie ordering),
+  `frontend-activity-round4-regression.test.ts` (10 — audience-safe Queue pagination: empty
+  page without cursor, 50 leading inaccessible + 1 accessible, interleaved multi-page with no
+  gap/duplicate and cursor only on full pages; Sources authoritative revalidation: same
+  Principal + low clearance / stale access / stale policy on Queue/Detail/Stage/Event alike;
+  External Action Detail audit-event gating for READ_AUDIT).
+- PG parity `tests/database/frontend-activity-postgres-parity.test.ts` — 16 tests (with DB,
+  includes `findByIdentity`, `commitProjectProjection` parity, registry-shrink watermark parity,
+  the Ask sensitivity/access revalidation and the Sources sensitivity/access/policy
+  revalidation parity).
 
-WP1 + WP2 + WP3 focused suites: **155 tests PASS — contract 39, unit 16, integration 85,
-PostgreSQL parity 15 (with DB)**. `tsc --noEmit`, ESLint and Prettier clean. Governance gates
+WP1 + WP2 + WP3 focused suites: **166 tests PASS — contract 39, unit 16, integration 95,
+PostgreSQL parity 16 (with DB)**. `tsc --noEmit`, ESLint and Prettier clean. Governance gates
 (`docs:validate`, `docs:frontend-work-items`, `docs:completion-invariants`,
 `docs:frontend-projections:check`) PASS.
 
@@ -153,14 +168,17 @@ PostgreSQL parity 15 (with DB)**. `tsc --noEmit`, ESLint and Prettier clean. Gov
 > "101 tests PASS (contract 39, unit 16, integration 46, parity 11)". That total was
 > miscounted: the parity 11 was listed as a separate category but the 101 total already excluded
 > it. The correct category sum was 39 + 16 + 46 + 11 = **112**. This revision reports the exact
-> per-file counts (155 total across contract 39, unit 16, integration 85, parity 15) and keeps the
-> parity suite as a separate with-DB category, matching the WP1/WP2 convention.
+> per-file counts and keeps the parity suite as a separate with-DB category, matching the
+> WP1/WP2 convention. Round 3 reported 155 (contract 39, unit 16, integration 85, parity 15);
+> round 4 adds 10 integration regression tests and 1 parity test → **166** (contract 39, unit 16,
+> integration 95, parity 16).
 
-Automatic CI on the round-3 correction head `62071a3b3e59254a06d2cc85f8c824451b1151a1`
-(PR #73, draft for auto CI only) — **CI #623 / `31110838089` SUCCESS**. Earlier rounds:
+Automatic CI on the round-4 correction head `b90b97a59fde01ef92a0932e6dd9f3c4e2ae4fa1`
+(PR #73, draft for auto CI only) — **CI #625 / `31114640938` SUCCESS**. Earlier rounds:
 round-1 head `9159f20ee` CI #615; round-2 implementation `66a2ca13a` CI #618 (intermediate
 `8390e3c67` CI #617 was only the evidence-doc Prettier gate); round-2 correction `419db19ad`
-CI #620; evidence heads `f4afc32a3` CI #621 and `b3ee7b3c4` CI #622. No manual or duplicate CI
+CI #620; evidence heads `f4afc32a3` CI #621 and `b3ee7b3c4` CI #622; round-3 correction
+`62071a3b3` CI #623 and evidence-metadata head `31df6b9f7` CI #624. No manual or duplicate CI
 was dispatched and no previously-passed head was re-run.
 
 ## 6.1 Review corrections — CHANGES_REQUIRED round 1 (2026-08-06)
@@ -258,6 +276,51 @@ re-running any previously-passed head:
    id `ASC`, matching PostgreSQL and the keyset cursor predicate; equal-timestamp reverse-insert
    pagination regression test added.
 
+## 6.4 Review corrections — CHANGES_REQUIRED round 4 (2026-08-06)
+
+GPT review of the round-3 correction head (`62071a3b3`, CI #623) and evidence-metadata head
+(`31df6b9f7`, CI #624) returned `CHANGES_REQUIRED` with 3 WP3 Product boundary findings and 1
+Evidence-terminology correction. Each was resolved on the round-4 correction head
+`b90b97a5` (CI #625) without re-running any previously-passed head:
+
+1. **Audience-safe Queue pagination** — the coordinator previously read `limit` raw index rows
+   and returned the raw page cursor even when `canAccess` had filtered the page empty, leaking
+   the existence/count of inaccessible rows and blocking accessible rows that sat behind them.
+   The coordinator now fills the page with accessible rows in raw index order (iterating raw
+   pages as needed) and returns a continuation cursor only when a further accessible row is
+   confirmed behind the last displayed row (keyset resume from the last displayed record). An
+   empty page never carries a cursor; a cursor is present only on a full page. Regression tests:
+   only-inaccessible rows (empty page, no cursor), 50 leading inaccessible rows + 1 accessible
+   (surfaces the accessible row, no leak), and interleaved multi-page data (all accessible rows
+   returned exactly once in order, pages full whenever a cursor is present).
+2. **Sources authoritative access revalidation** — `SourcesActivityReadPort.getSubmission`
+   (PostgreSQL and in-memory) now enforces the full owning-Domain access decision and returns
+   `undefined` (non-disclosing `NOT_FOUND` on Queue/Detail/Stage/Event alike) when: the
+   submission is not found or not Principal-owned (existing), its recorded access/policy
+   revisions no longer match the current binding (stale), or the scope's sensitivity clearance
+   does not dominate the materialized content (most restrictive stage2 item sensitivity;
+   `public` when nothing is materialized). The Sources product read keeps its own
+   stale-marking semantics; the Activity surface never returns a stale row as CURRENT.
+   Regression tests: same Principal + low clearance, stale access revision, stale policy
+   revision; PostgreSQL = in-memory parity scenarios (DB test).
+3. **External Action Detail audit gating** — `readDetail()` required only
+   `READ_EXTERNAL_ACTION` and then included `audit.listByAction` results in `events`, letting a
+   scope without `action:audit:read` bypass the `READ_AUDIT` gate that the separate Event
+   continuation enforces. The Detail now checks `READ_AUDIT` and omits the audit events
+   (`events: []`) when it is not granted — the same non-disclosing gate everywhere. Regression
+   tests: `action:read` only → `detail.events` empty and `readEvents` denied; adding
+   `action:audit:read` → events returned.
+4. **Evidence authority terminology (CORRECTION_REQUIRED)** — the exact-head fields conflated
+   the implementation head with the PR head. The fields are now distinguished: the frontmatter
+   records `implementation_exact_head` / `implementation_ci_number` / `implementation_ci_run`
+   (the round-4 implementation head `b90b97a5`, CI #625), `evidence_metadata_base_head` /
+   `evidence_metadata_base_ci_number` / `evidence_metadata_base_ci_run` (the head at which the
+   previous evidence metadata was recorded, `31df6b9f7`, CI #624) and `current_pr_head` /
+   `current_pr_ci_number` / `current_pr_ci_run` (the PR-confirmed head at authoring time,
+   `b90b97a5`, CI #625). The Evidence Registry uses the matching `implementationExactHead`,
+   `evidenceMetadataBaseHead` and `currentPRHead` fields, and §8 below no longer references a
+   stale "round-2" wording.
+
 ## 7. Preserved boundaries
 
 Not implemented in this Work Package (remain unauthorized):
@@ -270,5 +333,5 @@ Not implemented in this Work Package (remain unauthorized):
 
 ## 8. Next action
 
-Report the round-2 WP3 implementation, verification and evidence. Do not begin WP4 until this
+Report the round-4 WP3 implementation, verification and evidence. Do not begin WP4 until this
 Work Package is reviewed and accepted for progression.

@@ -94,8 +94,8 @@ PASS. `db:reset` and `db:verify` PASS with migration 029 applied.
 Review found four blocking defects and one evidence mismatch, all corrected within WP2 scope:
 
 1. **PostgreSQL keyset pagination** — the cursor predicate did not match `ORDER BY updated_at
-   DESC, domain_kind ASC, activity_id ASC`. Fixed to `updated_at < cursor OR (updated_at =
-   cursor AND (domain_kind, activity_id) > (cursor kind, cursor id))`; added same-updatedAt tie
+DESC, domain_kind ASC, activity_id ASC`. Fixed to `updated_at < cursor OR (updated_at =
+cursor AND (domain_kind, activity_id) > (cursor kind, cursor id))`; added same-updatedAt tie
    pagination tests (in-memory and parity).
 2. **Upsert monotonicity** — a lower `snapshotRevision` could overwrite a newer row. In-memory
    and PostgreSQL upserts now fail with `ACTIVITY_INDEX_STALE_UPSERT` when a newer revision

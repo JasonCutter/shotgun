@@ -835,7 +835,8 @@
       "postMergeMainCIGates": ["Quality", "Frontend", "Required Gates"],
       "ready": "EXECUTED",
       "merge": "EXECUTED",
-      "deployment": "NOT_STARTED"
+      "deployment": "NOT_STARTED",
+      "productionVerification": "NOT_RUN"
     }
   ],
   "rules": {

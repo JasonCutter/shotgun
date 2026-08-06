@@ -2543,3 +2543,24 @@ Contract Snapshot·Dependency 변경 없음, CI #581·#582·#583 재실행 없�
 - Post-merge main CI **#583** / `31057976980` SUCCESS.
 - 최종 권위 상태: WP1~WP6 APPROVED / COMPLETE, **FE-P4-S2 Product COMPLETE / MERGED**,
   FE-P4 `COMPLETE`. Deployment / Production Verification / FE-P5 `NOT_AUTHORIZED`.
+
+### 36.5 Correction — Production Verification Authority State (Review 4869919414)
+
+Review **4869919414** (**Decision: BLOCKED — ONE EXACT AUTHORITY-STATE CORRECTION
+REQUIRED**). Evidence Registry 규칙 `deploymentDoesNotImplyProductionVerification: true`에
+따라 `deployment: NOT_STARTED`만으로 Production Verification이 실행되지 않았다는 사실을
+대신할 수 없다. Completion Record에 `productionVerification: "NOT_RUN"`을 명시해야 한다.
+
+수행한 교정 (Product 코드·테스트·Migration·Contract Snapshot·Dependency 변경 없음, CI
+#584·#581·#582·#583 재실행 없음):
+
+- `FRONTEND-PHASE-4-SECTION-2-COMPLETION-260806001`에 `productionVerification: "NOT_RUN"`
+  추가.
+- 권위 상태 명시: Deployment `NOT_STARTED / NOT_AUTHORIZED`, Production Verification
+  `NOT_RUN / NOT_AUTHORIZED`, FE-P5 `NOT_AUTHORIZED`.
+- 기존 Closure 문구는 수정하지 않고 Review 이력과 함께 별도 Correction으로 기록.
+
+최종 권위 상태 (교정 후): WP1~WP6 APPROVED / COMPLETE, **FE-P4-S2 Product COMPLETE /
+MERGED**, FE-P4 `COMPLETE`, Canonical main `4196cb07178d6c83c5fb78a6b66c4e4354e1560f`.
+Deployment `NOT_STARTED / NOT_AUTHORIZED`, Production Verification `NOT_RUN /
+NOT_AUTHORIZED`, FE-P5 `NOT_AUTHORIZED`.

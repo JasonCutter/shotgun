@@ -1,209 +1,144 @@
 ---
 id: FRONTEND-PHASE-5-SECTION-1-IMPLEMENTATION-REQUEST-260806001
-classification: CANDIDATE
-status: implementation_request_candidate_not_authorized
-revision: 0
+classification: CANONICAL
+status: frozen_product_implementation_not_authorized
+revision: 1
 created_at: 2026-08-06
+approved_at: 2026-08-06T12:28:00+09:00
+approved_by: user
 subject_base: 8c00519d7498ef1783de1a4e4e48da1a2b4bb8bd
-tracking_issue: https://github.com/JasonCutter/shotgun/issues/68
-proposed_adr: ADR-130
+tracking_issue: https://github.com/JasonCutter/shotgun/issues/71
+governing_adr: ADR-130
 contract_snapshot: docs/architecture/contracts/snapshots/frontend-phase-5-section-1/frontend-phase-5-section-1-contract-snapshot-260806001.md
 ---
 
-# FE-P5-S1 — Agent and Job Activity Workspace Implementation Request r0
+# FE-P5-S1 — Agent and Job Activity Workspace Implementation Request r1
 
 ## 1. Authority
 
-**CANDIDATE / NOT AUTHORIZED**
+This request is **FROZEN / NOT AUTHORIZED FOR PRODUCT IMPLEMENTATION**.
 
-이 문서는 구현 요청 후보다. 다음 조건 전에는 Product 코드, DB Migration, Dependency 또는 Work Item 상태를 변경하지 않는다.
-
-1. Gap Audit 사용자 승인
-2. ADR-130 ACCEPTED
-3. AC-01~AC-26 승인 및 Freeze
-4. Contract Snapshot revision 승인
-5. Migration 범위 승인
-6. Implementation Request 명시적 승인
+It defines the implementation boundary to use after a separate authorization. It does not authorize Product code, migration implementation, dependency changes, Ready, merge, deployment, production verification or FE-P5-S2.
 
 ## 2. Objective
 
-Project-scoped Agent·Job Activity Workspace를 구현하여 사용자가 현재 작업의 Job→Run→Attempt→Stage 상태, 실패·재시도·취소, partial failure, projection lag와 attention을 안전하게 관찰하고 정확한 Domain Resource로 이동하게 한다.
+Build a Project-scoped Activity Workspace that observes Sources, Ask and External Action work through a Federated Activity Read Projection while preserving each Domain's execution authority, identity and retry semantics.
 
-## 3. Frozen input candidate
-
-승인 시 다음 문서를 입력으로 사용한다.
+## 3. Frozen inputs
 
 - `docs/architecture/frontend/phase-5-operations-audit.md`
-- `docs/engineering/frontend-phase-5-section-1-agent-job-activity-gap-audit-260806001.md`
 - `docs/architecture/adr/ADR-130-frontend-agent-job-activity-authority-and-retry-boundary.md`
+- `docs/engineering/frontend-phase-5-section-1-agent-job-activity-gap-audit-260806001.md`
 - `docs/architecture/contracts/snapshots/frontend-phase-5-section-1/frontend-phase-5-section-1-contract-snapshot-260806001.md`
-- ADR-124
-- ADR-129
+- ADR-101, ADR-105, ADR-111, ADR-112, ADR-118, ADR-119, ADR-124 and ADR-129
 
-## 4. Proposed work packages
+## 4. Implementation scope after authorization
 
-한 번에 하나의 Work Package만 구현·검증·승인한다.
+### WP1 — Typed contract and adapter ports
 
-### WP1 — Activity Domain Contract and Persistence Foundation
+- Activity root, Run, Domain Attempt, Transport Attempt, Stage, Event and Projection metadata.
+- Sources, Ask and External Action adapter ports.
+- Domain-state mapping and separate projection dimensions.
+- Contract decoders that reject browser-authored authority.
 
-범위:
+### WP2 — Additive read-model persistence
 
-- typed Job/Run/Attempt/Stage/Event/Attention/Projection contracts
-- Project binding, identity hierarchy, status/ordering invariants
-- additive Migration candidate 029
-- persistence repository and restart recovery
-- existing execution resource adapter ports
+- Additive migration using the next verified migration sequence.
+- `frontend_activity.activity_index`.
+- `frontend_activity.projection_watermarks`.
+- Project binding, stable ordering, indexes and deterministic rebuild behavior.
+- No duplicate full Domain execution history.
 
-필수 경계:
+### WP3 — Projection builder and Product API
 
-- existing source/ask/action records remain authoritative
-- no FE-P5-S2 history schema
-- no browser-authored identity or status
+- Adapter projection for Sources, Ask and External Action.
+- Optional limited Connector diagnostics.
+- Project-scoped Queue, Detail, continuation and explicit refresh reads.
+- Cursor bounds, stable ordering, watermark/lag and partial adapter health.
+- Non-disclosing security and safe payload filtering.
 
-### WP2 — Activity Projection Builder and Read Product API
+### WP4 — Activity Workspace
 
-범위:
+- `/activity` Queue, filters, Attention and adapter health.
+- Detail with Job-or-Run root, Runs, Attempts, Stages and bounded Events.
+- Projection Lag, Partial Failure, Outcome Unknown and recovery states.
+- Exact Domain Resource deep links.
+- Polling-based authoritative refresh.
+- Accessible list/table alternatives and deterministic focus behavior.
 
-- adapters for bounded existing execution flows
-- projection revision/freshness/partial state
-- project-scoped list/detail APIs
-- cursor pagination and stable ordering
-- decoder/error/security boundary
+### WP5 — Existing Domain action delegation
 
-필수 경계:
+- Display Retry and Cancel only from server-derived Domain capabilities.
+- Invoke existing Sources, Ask or External Action command routes.
+- Revalidate state and authority at execution time.
+- Preserve Domain Retry causation.
+- Never turn Transport Retry into a Domain Attempt.
+- No generic Activity command endpoint.
 
-- telemetry is reference, not authority
-- inaccessible resource non-disclosure
-- stale lower revision cannot win
+### WP6 — Focused verification and evidence
 
-### WP3 — Activity Workspace Read Experience
+- Contract and adapter mapping tests.
+- Migration/rebuild and revision-ordering tests.
+- Cross-Project non-disclosure and deep-link security tests.
+- Partial adapter failure and authoritative refresh tests.
+- Keyboard/accessibility and browser E2E.
+- Deterministic three-sample median gates for Queue and Queue-to-Detail.
+- AC-01 through AC-16 evidence matrix.
 
-범위:
+Only one Work Package is implemented and reviewed at a time.
 
-- `/activity` list/filters/attention indicators
-- `/activity/jobs/:jobId` detail
-- Run/Attempt/Stage views
-- timeline semantic alternative
-- lag/partial/outcome unknown/recovery states
-- exact resource deep links
+## 5. Migration boundary
 
-필수 경계:
-
-- no retry/cancel writes in this WP
-- no History/Audit/Rollback UI
-
-### WP4 — Bounded Cancel, Domain Retry and Attention Commands
-
-범위:
-
-- cancel request
-- domain retry request
-- attention acknowledgement
-- command gateway accepted→outcome resolution
-- confirmation, idempotency and recovery UI
-
-필수 경계:
-
-- Transport Retry does not create Attempt
-- Domain Retry creates new command/run or attempt with causation
-- outcome unknown never auto retries
-- cancel is not rollback/reversal/compensation
-- acknowledgement is not domain resolution
-
-### WP5 — Security, Accessibility, Recovery and Browser E2E
-
-범위:
-
-- project isolation and deep-link denial
-- sensitivity/redaction
-- keyboard/focus/semantic status/live announcement
-- reconnect/refresh/cursor/stale recovery
-- full FE-P5-S1 browser scenarios
-
-### WP6 — Performance and Completion Evidence
-
-범위:
-
-- list initial response median gate
-- list→detail median gate
-- refresh median gate
-- bounded pagination/polling checks
-- AC-01~AC-26 evidence matrix
-- Product completion candidate recording
-
-Ready, Merge, Deployment and Production Verification remain separate authority decisions.
-
-## 5. Migration candidate
-
-Migration: **REQUIRED / NOT AUTHORIZED**
-
-Expected next sequence: `029`, subject to exact repository verification immediately before authorization.
+Migration is `REQUIRED / IMPLEMENTATION_NOT_AUTHORIZED`.
 
 Allowed:
 
-- new activity projection tables/indexes/FKs
-- additive adapter cursor or revision metadata
-- deterministic test fixtures
+- the two frozen Activity read-model tables;
+- supporting indexes, constraints and deterministic fixtures;
+- additive adapter cursor/revision metadata within the Activity schema.
 
 Forbidden:
 
-- destructive rewrite of existing execution tables
-- migration of FE-P5-S2 retention/history/rollback state
-- implicit deployment
+- destructive changes to Sources, Ask or External Action stores;
+- full duplicate Job/Run/Attempt/Event ledgers;
+- FE-P5-S2 retention, history, rollback or tombstone data;
+- deployment side effects.
 
-## 6. Dependency decision
+## 6. Dependency and transport boundary
 
-New Runtime Dependency: **NOT REQUIRED / NOT AUTHORIZED**
+- New runtime dependency: `NOT_REQUIRED`.
+- Polling: `BASELINE`.
+- SSE: `DEFERRED`.
+- New workflow engine, queue, event store or state library: prohibited without a new approved decision.
 
-Use existing stack and internal packages. Any dependency proposal discovered during implementation invalidates the request and requires separate review before change.
+## 7. Verification discipline
 
-## 7. Verification strategy candidate
+- Do not rerun a previously passed exact head.
+- Run focused checks only for changed contracts and modules during implementation.
+- Use the repository's automatically triggered CI for each new exact head.
+- Do not manually dispatch duplicate CI.
+- Run the final complete Section verification once, immediately before completion review.
 
-No prior PASS exact head is rerun.
+## 8. Frozen Acceptance Criteria
 
-For each new implementation head:
+Implementation must satisfy exactly `FE-P5-S1-AC-01` through `FE-P5-S1-AC-16` from the frozen Contract Snapshot. A new criterion or semantic change requires an explicit amendment before implementation continues.
 
-- focused tests for changed contract/module
-- repository automatic CI only
-- exact-head evidence
-- no manual duplicate workflow dispatch
+## 9. Exclusions
 
-Required final evidence:
-
-- contract tests
-- persistence/restart tests
-- security negative tests
-- accessibility tests
-- browser E2E
-- performance measurement
-- migration verification
-- no cross-project existence leak
-- no outcome unknown auto retry
-
-## 8. Scope exclusions
-
-- FE-P5-S2 History, Audit and Rollback
-- long-term retention, tombstone, legal hold
-- Reversal DraftChangeSet and Compensating Action implementation
-- Cross-Phase Product Verification
-- Deployment
-- Production Verification
-- FE-P4 changes
-- real external provider mutation beyond existing bounded test adapters
-
-## 9. Candidate acceptance binding
-
-Implementation must satisfy exactly **FE-P5-S1-AC-01 through FE-P5-S1-AC-26** after user Freeze.
-
-Before Freeze these ACs remain candidates. Implementation may not add AC-27 or silently alter the set.
+- FE-P5-S2 History, Audit and Rollback.
+- Long-term retention, tombstone and legal hold.
+- Reversal DraftChangeSet and Compensation implementation.
+- Cross-Phase Product Verification.
+- Deployment and Production Verification.
+- FE-P4 changes.
+- Product implementation before separate authorization.
 
 ## 10. Current decision state
 
-- Gap Audit: CANDIDATE
-- ADR-130: PROPOSED / NOT_ACCEPTED
-- Contract Snapshot r0: CANDIDATE / NOT_FROZEN
-- Implementation Request r0: CANDIDATE / NOT_AUTHORIZED
-- Migration: REQUIRED_CANDIDATE / NOT_AUTHORIZED
-- Runtime Dependency: NOT_REQUIRED
-- Product Implementation: NOT_AUTHORIZED
-- FE-P5-S2 / Cross-Phase / Deployment / Production Verification: NOT_AUTHORIZED
+- Gap Audit: `APPROVED`
+- ADR-130: `ACCEPTED`
+- Contract Snapshot r1: `FROZEN`
+- Implementation Request r1: `FROZEN / NOT_AUTHORIZED`
+- Migration: `REQUIRED / IMPLEMENTATION_NOT_AUTHORIZED`
+- Runtime Dependency: `NOT_REQUIRED`
+- Product implementation: `NOT_AUTHORIZED`

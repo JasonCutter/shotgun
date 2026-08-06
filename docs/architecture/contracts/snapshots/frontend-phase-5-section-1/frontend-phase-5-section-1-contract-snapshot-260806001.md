@@ -1,286 +1,262 @@
 ---
 id: FRONTEND-PHASE-5-SECTION-1-CONTRACT-SNAPSHOT-260806001
-classification: CANDIDATE
-status: contract_candidate_not_frozen
-revision: 0
+classification: CANONICAL
+status: frozen_product_implementation_not_authorized
+revision: 1
 created_at: 2026-08-06
+approved_at: 2026-08-06T12:28:00+09:00
+approved_by: user
 subject_base: 8c00519d7498ef1783de1a4e4e48da1a2b4bb8bd
-tracking_issue: https://github.com/JasonCutter/shotgun/issues/68
-proposed_adr: ADR-130
+tracking_issue: https://github.com/JasonCutter/shotgun/issues/71
+governing_adr: ADR-130
 ---
 
-# FE-P5-S1 — Agent and Job Activity Workspace Contract Snapshot r0
+# FE-P5-S1 — Agent and Job Activity Workspace Contract Snapshot r1
 
-## 1. Contract authority
+## 1. Authority
 
-이 Snapshot은 검토 후보이며 아직 Frozen Contract가 아니다.
+This snapshot is **FROZEN** for FE-P5-S1 contract preparation.
 
-- Product 구현: NOT_AUTHORIZED
-- Migration 구현: NOT_AUTHORIZED
-- Dependency 추가: NOT_AUTHORIZED
-- AC status: CANDIDATE / NOT_FROZEN
+- Product implementation: `NOT_AUTHORIZED`
+- Additive migration implementation: `NOT_AUTHORIZED`
+- New runtime dependency: `NOT_REQUIRED`
+- Polling: `BASELINE`
+- SSE: `DEFERRED`
+- Acceptance Criteria: `FE-P5-S1-AC-01` through `FE-P5-S1-AC-16`
+
+Any change to these boundaries requires an explicit amendment. FE-P5-S1 remains `NOT_STARTED` in the Work Item registry until Product implementation is separately authorized.
 
 ## 2. Product boundary
 
-FE-P5-S1은 현재 실행 중이거나 최근 완료된 Domain 작업을 Project 범위에서 관찰하고, 실패·재시도·취소·Attention·Projection Lag를 이해하며 정확한 Resource로 이동하는 Workspace를 제공한다.
+FE-P5-S1 provides a Project-scoped operational workspace for current and recent Sources, Ask and External Action work.
 
-포함:
+Included:
 
-- Activity queue/list
-- Job detail
-- Run/Attempt/Stage hierarchy
-- operational timeline/current transition evidence
-- progress and partial failure
-- attention
-- correlation/causation/trace references
-- explicit refresh and recovery
-- exact resource deep link
+- Activity Queue and Detail.
+- Job-or-Run root, Run, Domain Attempt, Transport Attempt, Stage and Event views.
+- Progress, Failure, Partial Failure, Cancel and Outcome Unknown.
+- User Attention and exact Domain Resource deep links.
+- Correlation, causation and trace references without ID equivalence.
+- Projection watermark, lag, stale state and adapter availability.
+- Polling refresh and authoritative snapshot recovery.
+- Server-derived availability of existing Domain actions.
 
-제외:
+Excluded:
 
-- FE-P5-S2 History·Audit·Rollback·Retention·Tombstone
-- Reversal DraftChangeSet와 Compensating Action 실행
-- Cross-Phase Product Verification
-- Deployment·Production Verification
+- Generic Activity execution authority.
+- FE-P5-S2 History, Audit, Rollback, Retention and Tombstones.
+- Reversal or Compensation implementation.
+- SSE.
+- Cross-Phase Product Verification.
+- Deployment and Production Verification.
 
-## 3. Typed resource contract
+## 3. Federated projection
 
-### 3.1 ActivityJobV1
+```text
+Activity Queue
+  → frontend_activity.activity_index
+  → adapter summaries
 
-필수 필드 후보:
+Activity Detail
+  → adapter lookup
+  → current authoritative Domain Resource Snapshot
+  → bounded operational evidence
+```
 
-- `jobId`
-- `projectId`
-- `kind`
-- `title`
-- `status`
-- `createdAt`, `updatedAt`
-- `activeRunId?`
-- `latestAttemptId?`
-- `progress`
-- `partialFailure`
-- `attentionSummary`
-- `resourceReference`
-- `correlationReference`
-- `projection`
+Adapters:
 
-### 3.2 ActivityRunV1
+- Sources Activity Adapter.
+- Ask Activity Adapter.
+- External Action Activity Adapter.
+- Limited Connector Diagnostics Adapter where safe and useful.
+
+One adapter failure produces a partial result and adapter health metadata; it must not erase accessible results from other adapters.
+
+## 4. Identity contract
+
+### 4.1 ActivityRootReferenceV1
+
+- `rootKind`: `JOB | RUN`
+- `activityId`: projection identity
+- `domainKind`
+- `domainResourceKind`
+- `domainResourceId`
+- `resourceProjectId`
+- `resourceHref`
+- optional `jobId`
+- `runId`
+
+`activityId` never replaces the concrete Domain Resource identity.
+
+### 4.2 ActivityRunViewV1
 
 - `runId`
-- `jobId`
-- `runNumber`
-- `commandId?`
-- `startedAt`, `finishedAt?`
-- `status`
-- `attemptIds`
-- `causedByRunId?`
-- `policyContextReference?`
+- optional `jobId`
+- `sequence`
+- `state`
+- start/update/completion timestamps
+- Domain Attempt references
+- correlation and causation references
 
-### 3.3 ActivityAttemptV1
+### 4.3 ActivityDomainAttemptViewV1
 
 - `attemptId`
 - `runId`
 - `attemptNumber`
-- `startedAt`, `finishedAt?`
-- `status`
-- `errorClassification?`
-- `retryKind`: `NONE | TRANSPORT | DOMAIN`
-- `retryable`
-- `stageIds`
-- `traceId?`
+- `attemptKind`
+- `state`
+- failure and retryability
+- access and Policy Context references
+- start/update/completion timestamps
+- Stage references
 
-Transport Retry는 새 ActivityAttempt resource를 만들지 않는다. `retryKind: TRANSPORT`는 전달 evidence에만 나타날 수 있다.
+### 4.4 ActivityTransportAttemptViewV1
 
-### 3.4 ActivityStageV1
+- transport-specific identity
+- Command or Message reference
+- delivery sequence and result
+- timestamp
+- safe failure classification
 
-- `stageId`
-- `attemptId`
+A Transport Attempt is never returned as a Domain Attempt.
+
+### 4.5 ActivityStageViewV1
+
+- stable `stageId`
 - `stageKey`
-- `label`
-- `sequence`
-- `status`
-- `progress?`
-- `startedAt?`, `finishedAt?`
-- `failure?`
+- label and sequence
+- state and optional bounded progress
+- start/update/completion timestamps
+- optional safe failure
 
-### 3.5 ActivityEventV1
+### 4.6 ActivityEventViewV1
 
 - `eventId`
-- `projectId`
-- `jobId`
-- `runId?`, `attemptId?`, `stageId?`
-- `category`
+- related Run, Attempt or Stage reference
+- category and sequence
 - `occurredAt`
-- `sequence`
-- `safeSummary`
-- `resourceReference?`
+- safe summary
+- optional Domain Resource reference
 
-이 Event는 FE-P5-S1 operational evidence이며 FE-P5-S2 장기 AuditEvent를 대체하지 않는다.
+Activity Event is bounded operational evidence, not the FE-P5-S2 immutable History owner.
 
-### 3.6 UserAttentionV1
+### 4.7 ActivityProjectionMetadataV1
 
-- `attentionId`
-- `projectId`
-- `jobId`
-- `reason`
-- `severity`
-- `requiredAction`
-- `status`
-- `resourceReference`
-- `createdAt`, `updatedAt`, `resolvedAt?`
-
-Notification 상태와 동일시하지 않는다.
-
-### 3.7 ActivityProjectionMetadataV1
-
-- `revision`
+- `snapshotRevision`
 - `generatedAt`
 - `sourceUpdatedAt`
 - `freshness`: `CURRENT | LAGGING | STALE | UNKNOWN`
-- `lagMilliseconds?`
-- `partial`: boolean
-- `nextCursor?`
+- optional `lagMilliseconds`
+- `adapterStatus`: `AVAILABLE | DEGRADED | UNAVAILABLE`
+- `partial`
+- optional cursor
 
-## 4. Status contract
+## 5. Lifecycle contract
 
-Job/Run/Attempt/Stage 상태는 typed enum으로 분리한다. 최소 공통 의미:
+Common lifecycle states:
 
 - `QUEUED`
 - `RUNNING`
+- `WAITING_FOR_USER`
+- `PARTIAL`
 - `SUCCEEDED`
 - `FAILED`
 - `CANCEL_REQUESTED`
 - `CANCELLED`
 - `OUTCOME_UNKNOWN`
 
-상위 상태는 browser가 하위 상태를 임의 집계하지 않고 서버 Projection이 결정한다.
+The server adapter maps Domain state into this view. The browser does not infer authority from child rows.
 
-## 5. Product API candidate
+Separate dimensions:
 
-### Read
+- Progress.
+- Attention.
+- Failure.
+- Retryability.
+- Projection Freshness.
+- Adapter Availability.
 
-- `GET /product-api/frontend/activity/jobs`
-  - project-bound list
-  - cursor pagination
-  - filters: kind, status, attention, time range
-  - stable ordering
-- `GET /product-api/frontend/activity/jobs/:jobId`
-  - Job + Runs + Attempts + Stages + bounded events + attention
-- `GET /product-api/frontend/activity/jobs/:jobId/refresh`
-  - authoritative snapshot refresh 또는 일반 detail GET의 cache-bypass variant
+## 6. Domain mapping
 
-### Bounded commands
+| Domain | Job | Run/root | Domain Attempt | Event |
+| --- | --- | --- | --- | --- |
+| Sources | IntakeSubmission | submission-item processing | IntakeAttempt | processing evidence |
+| Ask | none | AnswerRun | AnswerRunAttempt | AnswerRunEvent |
+| External Action | Action aggregate | Execution | ExecutionAttempt | AuditEvent |
+| Connector Runtime | internal diagnostic Job | none | none; transport attempt only | TraceRecord |
 
-- `POST /product-api/frontend/activity/jobs/:jobId/cancel-requests`
-- `POST /product-api/frontend/activity/jobs/:jobId/retry-requests`
-- `POST /product-api/frontend/activity/attentions/:attentionId/acknowledgements`
+No fake Job is created for Ask.
 
-Retry는 서버가 Transport Retry와 Domain Retry를 결정한다. Browser는 Attempt ID를 생성하지 않는다.
+## 7. Product API boundary
 
-모든 command는 기존 Frontend Command Gateway의 accepted→outcome resolution 패턴을 재사용한다.
+Read endpoints are typed, Project-bound and cursor-bounded. Final paths may follow repository route conventions, but the capabilities are fixed:
 
-## 6. Persistence candidate
+- Activity Queue read with filters and stable ordering.
+- Activity Detail read by projection identity plus concrete Domain reference.
+- Bounded Event/Stage continuation.
+- Explicit authoritative refresh.
 
-Additive migration candidate, expected next sequence 029:
+Retry and Cancel are not generic Activity commands. Activity returns server-derived action references or capabilities, and the client invokes the existing owning Domain command route. The server revalidates current state and authority at execution time.
 
-- `frontend_activity_jobs`
-- `frontend_activity_runs`
-- `frontend_activity_attempts`
-- `frontend_activity_stages`
-- `frontend_activity_events`
-- `frontend_activity_attentions`
-- projection revision/cursor indexes
+## 8. Persistence boundary
 
-규칙:
+Required additive migration:
 
-- 모든 row는 Project binding을 가진다.
-- unique identity와 parent FK를 보존한다.
-- transition ordering/sequence가 단조 증가한다.
-- 기존 Source/Ask/Action 원장은 유지한다.
-- migration rollback은 새 schema 제거 범위이며 Domain rollback과 다르다.
+```text
+frontend_activity.activity_index
+frontend_activity.projection_watermarks
+```
 
-## 7. Security contract
+`activity_index` stores only the Project-scoped searchable current projection summary and concrete Domain identity. `projection_watermarks` stores adapter observation and lag metadata.
 
-- Principal/Project/Capability missing: deny
-- list/detail/deep link는 동일 project guard 사용
-- inaccessible resource: non-disclosing not-found response
-- sensitivity에 따라 safe summary와 error detail redaction
-- browser-supplied project, status, progress, attempt/stage identity 거부
-- raw telemetry payload, connector secret, provider payload 직접 노출 금지
+Forbidden:
 
-## 8. Frontend contract
+- replacing existing Domain execution tables;
+- persisting full duplicate Job/Run/Attempt/Event histories;
+- using Activity as FE-P5-S2 History;
+- destructive modification of Sources, Ask or External Action persistence.
 
-Route candidate:
+## 9. Security, accessibility and recovery
 
-- `/activity`
-- `/activity/jobs/:jobId`
+- Deny by default for missing Principal, Project, Capability or sensitivity authority.
+- Do not reveal inaccessible Resource existence, counts, IDs or failure details.
+- Deep links revalidate the concrete target Resource.
+- Safe allow-listed Event and Failure details only.
+- Keyboard-accessible Queue, filters, Detail and actions.
+- Ordered list/table alternatives for hierarchy and timeline.
+- Text semantics independent of color.
+- Restrained live announcements for meaningful changes only.
+- Project/access/policy revision changes invalidate affected cache.
+- Polling and refresh never let a lower snapshot revision replace a newer one.
+- Adapter failure is surfaced as partial/degraded, not fabricated success.
+- `OUTCOME_UNKNOWN` does not auto-retry.
 
-UI:
+## 10. Frozen Acceptance Criteria
 
-- queue/list with filter and attention indicator
-- detail summary
-- Run/Attempt selector
-- Stage timeline with semantic list/table alternative
-- partial failure/outcome unknown/lag banners
-- exact resource links
-- explicit refresh/recovery
-- cancel/retry confirmation with authority wording
+- **FE-P5-S1-AC-01**: Current-Project Sources, Ask and External Action work is available in one Activity Queue.
+- **FE-P5-S1-AC-02**: Another Project's Activity existence, ID, count and failure information is not disclosed.
+- **FE-P5-S1-AC-03**: Job, Run, Domain Attempt, Transport Attempt, Stage and Event identities are distinguished.
+- **FE-P5-S1-AC-04**: Activity projection identity never replaces concrete Domain Resource identity.
+- **FE-P5-S1-AC-05**: Queue-to-Detail navigation exposes Run, Attempt, Stage and Event lineage.
+- **FE-P5-S1-AC-06**: Domain Retry creates a new Attempt with causation while preserving the earlier Attempt and failure.
+- **FE-P5-S1-AC-07**: Transport Retry is not presented as a new Domain Attempt.
+- **FE-P5-S1-AC-08**: Failure, Partial Failure, Cancel Requested, Cancelled, Outcome Unknown and User Attention are distinct.
+- **FE-P5-S1-AC-09**: Projection Watermark, Lag, Stale and Adapter Unavailable states are visible.
+- **FE-P5-S1-AC-10**: Failure of one adapter still returns accessible results from other adapters as a partial result.
+- **FE-P5-S1-AC-11**: Refresh and polling recover from the latest authoritative Domain Snapshot.
+- **FE-P5-S1-AC-12**: Deep-link access revalidates Project Scope, Capability, sensitivity and Resource access.
+- **FE-P5-S1-AC-13**: Retry and Cancel are shown only when the owning Domain allows them, and the server revalidates state and authority.
+- **FE-P5-S1-AC-14**: Event and Failure payloads contain only approved safe fields.
+- **FE-P5-S1-AC-15**: Queue, Detail and timeline are keyboard navigable and have list/table accessibility representations.
+- **FE-P5-S1-AC-16**: With deterministic fixtures, initial Queue display and Queue-to-Detail transition each have a three-sample median of at most 2,000 ms.
 
-## 9. Accessibility contract
+## 11. Decision summary
 
-- keyboard reachable list/filter/detail/actions
-- focus restoration after dialog and route error
-- status conveyed by text, not color alone
-- progress uses native/semantic value where determinate
-- indeterminate progress labeled explicitly
-- live announcements limited to meaningful state changes
-- timeline has ordered list/table alternative
-- retry/cancel labels distinguish consequences
-
-## 10. Recovery and ordering
-
-- reconnect/refresh always refetches authoritative Snapshot
-- stale response cannot overwrite higher revision
-- cursor invalidation returns explicit recovery state
-- partial source failure does not fabricate success
-- outcome unknown does not auto retry
-- denied deep link returns safe route recovery
-
-## 11. E2E candidate
-
-Required browser scenarios:
-
-1. Project-scoped list and detail
-2. successful Job with stages
-3. failed Attempt followed by Domain Retry with prior evidence preserved
-4. Transport Retry without new Domain Attempt
-5. partial failure and lag state
-6. outcome unknown with no auto retry
-7. attention and acknowledgement without false resolution
-8. cancel distinct from rollback
-9. cross-project deep-link denial
-10. refresh/reconnect recovery and stale-response rejection
-11. keyboard and semantic timeline path
-
-## 12. Performance candidate
-
-- Activity list initial usable response median ≤ 2000ms
-- list→detail median ≤ 2000ms
-- explicit refresh median ≤ 2000ms under test fixture
-- pagination prevents unbounded event/timeline payload
-- frontend avoids unbounded polling and duplicate concurrent refresh
-
-## 13. Acceptance Criteria binding candidate
-
-This Snapshot binds candidate **FE-P5-S1-AC-01 through FE-P5-S1-AC-26** as defined in the Gap Audit.
-
-Status: NOT_FROZEN. Renumbering, addition or removal requires user review before implementation.
-
-## 14. Decision summary
-
-- ADR: ADR-130 REQUIRED / PROPOSED
-- Migration: REQUIRED / NOT_AUTHORIZED
-- Runtime Dependency: NOT_REQUIRED
-- Internal reuse: REQUIRED
-- New OSS: NOT_REQUIRED
-- Product implementation: NOT_AUTHORIZED
+- Architecture: `FEDERATED_ACTIVITY_READ_PROJECTION`
+- ADR-130: `ACCEPTED`
+- Migration: `REQUIRED / IMPLEMENTATION_NOT_AUTHORIZED`
+- Runtime Dependency: `NOT_REQUIRED`
+- Polling: `BASELINE`
+- SSE: `DEFERRED`
+- Contract: `FROZEN`
+- Product implementation: `NOT_AUTHORIZED`

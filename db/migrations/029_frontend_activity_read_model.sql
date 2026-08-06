@@ -38,7 +38,11 @@ CREATE TABLE frontend_activity.activity_index (
   job_id text,
   run_id text NOT NULL,
   summary text NOT NULL,
-  state text NOT NULL,
+  state text NOT NULL
+    CHECK (state IN (
+      'QUEUED', 'RUNNING', 'WAITING_FOR_USER', 'PARTIAL', 'SUCCEEDED',
+      'FAILED', 'CANCEL_REQUESTED', 'CANCELLED', 'OUTCOME_UNKNOWN'
+    )),
   attention text NOT NULL CHECK (attention IN ('NEEDS_ATTENTION', 'RESOLVED', 'NONE')),
   retryability text NOT NULL
     CHECK (retryability IN ('RETRYABLE', 'NOT_RETRYABLE', 'UNKNOWN')),
@@ -49,7 +53,18 @@ CREATE TABLE frontend_activity.activity_index (
   snapshot jsonb NOT NULL,
   projected_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL,
-  PRIMARY KEY (resource_project_id, domain_kind, activity_id)
+  PRIMARY KEY (resource_project_id, domain_kind, activity_id),
+  -- ADR-130 §2 / Contract Snapshot §6: Ask has no durable Job and uses a RUN
+  -- root; Sources, External Action and Connector Runtime use a JOB root.
+  CHECK (
+    (domain_kind = 'ASK' AND root_kind = 'RUN')
+    OR (domain_kind IN ('SOURCES', 'EXTERNAL_ACTION', 'CONNECTOR_DIAGNOSTICS') AND root_kind = 'JOB')
+  ),
+  -- A RUN root never carries a Job identity; a JOB root always does.
+  CHECK (
+    (root_kind = 'RUN' AND job_id IS NULL)
+    OR (root_kind = 'JOB' AND job_id IS NOT NULL)
+  )
 );
 
 -- Project-scoped stable total ordering for the queue: updated_at DESC, then

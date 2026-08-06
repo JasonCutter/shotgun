@@ -115,6 +115,120 @@ const scenarioOrderingAndPagination = async (
   };
 };
 
+/** Same updated_at ties exercise the keyset tie-break (domain_kind, activity_id). */
+const scenarioTiePagination = async (
+  store: ActivityReadModelStorePort,
+): Promise<Record<string, unknown>> => {
+  const { index } = store;
+  const sameTime = '2026-08-06T00:00:00.000Z';
+  await index.upsert(
+    record({ activityId: 'a1', domainKind: 'SOURCES', state: 'QUEUED', updatedAt: sameTime }),
+  );
+  await index.upsert(
+    record({ activityId: 'a2', domainKind: 'ASK', state: 'QUEUED', updatedAt: sameTime }),
+  );
+  await index.upsert(
+    record({
+      activityId: 'a3',
+      domainKind: 'EXTERNAL_ACTION',
+      state: 'QUEUED',
+      updatedAt: sameTime,
+    }),
+  );
+
+  const first = await index.queryProject({ resourceProjectId: 'project-1', limit: 2 });
+  const second = await index.queryProject({
+    resourceProjectId: 'project-1',
+    limit: 2,
+    cursor: first.nextCursor,
+  });
+  return {
+    firstIds: first.records.map((r) => r.activityId),
+    secondIds: second.records.map((r) => r.activityId),
+    all: [...first.records.map((r) => r.activityId), ...second.records.map((r) => r.activityId)],
+  };
+};
+
+const scenarioStaleUpsert = async (
+  store: ActivityReadModelStorePort,
+): Promise<Record<string, unknown>> => {
+  const { index } = store;
+  await index.upsert(
+    record({
+      activityId: 'a1',
+      domainKind: 'SOURCES',
+      state: 'QUEUED',
+      updatedAt: '2026-08-06T00:00:00.000Z',
+      revision: 5,
+    }),
+  );
+  let staleError: string | undefined;
+  try {
+    await index.upsert(
+      record({
+        activityId: 'a1',
+        domainKind: 'SOURCES',
+        state: 'RUNNING',
+        updatedAt: '2026-08-06T00:00:01.000Z',
+        revision: 4,
+      }),
+    );
+  } catch (error) {
+    staleError = error instanceof Error ? error.message.split(':')[0] : undefined;
+  }
+  await index.upsert(
+    record({
+      activityId: 'a1',
+      domainKind: 'SOURCES',
+      state: 'SUCCEEDED',
+      updatedAt: '2026-08-06T00:00:02.000Z',
+      revision: 6,
+    }),
+  );
+  const page = await index.queryProject({ resourceProjectId: 'project-1', limit: 10 });
+  return {
+    staleError,
+    state: page.records[0]?.state,
+    revision: page.records[0]?.snapshotRevision,
+  };
+};
+
+const scenarioRebuildScope = async (
+  store: ActivityReadModelStorePort,
+): Promise<Record<string, unknown>> => {
+  const { index } = store;
+  await index.upsert(
+    record({
+      activityId: 'a1',
+      domainKind: 'SOURCES',
+      state: 'QUEUED',
+      updatedAt: '2026-08-06T00:00:00.000Z',
+      revision: 1,
+    }),
+  );
+  let scopeError: string | undefined;
+  try {
+    await index.rebuildProject({
+      resourceProjectId: 'project-1',
+      snapshotRevision: 2,
+      records: [
+        record({
+          activityId: 'x1',
+          domainKind: 'SOURCES',
+          state: 'QUEUED',
+          updatedAt: '2026-08-06T00:00:00.000Z',
+          revision: 2,
+          projectId: 'project-other',
+        }),
+      ],
+    });
+  } catch (error) {
+    scopeError = error instanceof Error ? error.message.split(':')[0] : undefined;
+  }
+  const page = await index.queryProject({ resourceProjectId: 'project-1', limit: 10 });
+  return { scopeError, survivorIds: page.records.map((r) => r.activityId) };
+};
+
 const scenarioRebuildAndGuard = async (
   store: ActivityReadModelStorePort,
 ): Promise<Record<string, unknown>> => {
@@ -211,6 +325,29 @@ describe.runIf(pool)('FE-P5-S1 in-memory vs PostgreSQL Activity read-model parit
     expect(postgres).toEqual(memory);
   });
 
+  it('matches in-memory same-updatedAt tie pagination (tie-break order)', async () => {
+    const memory = await scenarioTiePagination(createInMemoryActivityReadModelStore());
+    const postgres = await scenarioTiePagination(pgStore());
+    expect(postgres).toEqual(memory);
+    expect(postgres.all).toEqual(['a2', 'a3', 'a1']);
+  });
+
+  it('matches in-memory stale-upsert monotonicity guard', async () => {
+    const memory = await scenarioStaleUpsert(createInMemoryActivityReadModelStore());
+    const postgres = await scenarioStaleUpsert(pgStore());
+    expect(postgres).toEqual(memory);
+    expect(postgres.staleError).toBe('ACTIVITY_INDEX_STALE_UPSERT');
+    expect(postgres.revision).toBe(6);
+  });
+
+  it('matches in-memory rebuild scope validation (validated before delete)', async () => {
+    const memory = await scenarioRebuildScope(createInMemoryActivityReadModelStore());
+    const postgres = await scenarioRebuildScope(pgStore());
+    expect(postgres).toEqual(memory);
+    expect(postgres.scopeError).toBe('ACTIVITY_INDEX_REBUILD_SCOPE');
+    expect(postgres.survivorIds).toEqual(['a1']);
+  });
+
   it('matches in-memory deterministic rebuild and stale-revision guard', async () => {
     const memory = await scenarioRebuildAndGuard(createInMemoryActivityReadModelStore());
     const postgres = await scenarioRebuildAndGuard(pgStore());
@@ -222,5 +359,54 @@ describe.runIf(pool)('FE-P5-S1 in-memory vs PostgreSQL Activity read-model parit
     const memory = await scenarioWatermarks(createInMemoryActivityReadModelStore());
     const postgres = await scenarioWatermarks(pgStore());
     expect(postgres).toEqual(memory);
+  });
+
+  it('rejects an invalid record at both the in-memory boundary and the database CHECK', async () => {
+    // In-memory runtime validation rejects ASK with a JOB root.
+    const invalid: ActivityIndexRecordV1 = {
+      ...record({
+        activityId: 'a1',
+        domainKind: 'ASK',
+        state: 'QUEUED',
+        updatedAt: '2026-08-06T00:00:00.000Z',
+      }),
+      rootKind: 'JOB',
+      jobId: 'job-x',
+    };
+    const memory = createInMemoryActivityReadModelStore();
+    await expect(memory.index.upsert(invalid)).rejects.toThrow(/must use a RUN root/);
+
+    // The database CHECK constraint rejects the same row.
+    await expect(
+      pool!.query(
+        `INSERT INTO frontend_activity.activity_index (
+           resource_project_id, activity_id, domain_kind, root_kind,
+           domain_resource_kind, domain_resource_id, resource_href, job_id,
+           run_id, summary, state, attention, retryability, freshness,
+           adapter_status, snapshot_revision, snapshot, projected_at, updated_at
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+        [
+          'project-1',
+          'a1',
+          'ASK',
+          'JOB',
+          'Resource',
+          'resource-a1',
+          '/activity/a1',
+          'job-x',
+          'run-a1',
+          'summary-a1',
+          'QUEUED',
+          'NONE',
+          'UNKNOWN',
+          'CURRENT',
+          'AVAILABLE',
+          1,
+          JSON.stringify({ activityId: 'a1' }),
+          '2026-08-06T00:00:00.000Z',
+          '2026-08-06T00:00:00.000Z',
+        ],
+      ),
+    ).rejects.toThrow(/check constraint/);
   });
 });

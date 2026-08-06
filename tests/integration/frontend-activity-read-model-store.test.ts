@@ -4,6 +4,7 @@ import { createInMemoryActivityReadModelStore } from '../../adapters/frontend-ac
 import {
   createActivityReadModelStore,
   encodeActivityIndexCursor,
+  validateActivityIndexRecord,
   type ActivityIndexRecordV1,
   type ActivityReadModelStorePort,
   type ActivityWatermarkRecordV1,
@@ -226,6 +227,198 @@ describe('FE-P5-S1 keyset cursor pagination', () => {
     const page = await index.queryProject({ resourceProjectId: 'p1', limit: 10, cursor });
     expect(page.records).toHaveLength(0);
   });
+
+  it('paginates correctly across same updatedAt ties (total order tie-break)', async () => {
+    const { index } = store();
+    const sameTime = '2026-08-06T00:00:00.000Z';
+    // Same updated_at: tie-break by domain_kind ASC then activity_id ASC.
+    await index.upsert(
+      record({
+        projectId: 'p1',
+        activityId: 'a1',
+        domainKind: 'SOURCES',
+        state: 'QUEUED',
+        updatedAt: sameTime,
+      }),
+    );
+    await index.upsert(
+      record({
+        projectId: 'p1',
+        activityId: 'a2',
+        domainKind: 'ASK',
+        state: 'QUEUED',
+        updatedAt: sameTime,
+      }),
+    );
+    await index.upsert(
+      record({
+        projectId: 'p1',
+        activityId: 'a3',
+        domainKind: 'EXTERNAL_ACTION',
+        state: 'QUEUED',
+        updatedAt: sameTime,
+      }),
+    );
+
+    const first = await index.queryProject({ resourceProjectId: 'p1', limit: 2 });
+    // Ordering for the same updated_at: domain_kind ASC (ASK, EXTERNAL_ACTION,
+    // SOURCES alphabetically), then activity_id ASC.
+    expect(first.records.map((r) => r.activityId)).toEqual(['a2', 'a3']);
+    expect(first.nextCursor).toBeDefined();
+
+    const second = await index.queryProject({
+      resourceProjectId: 'p1',
+      limit: 2,
+      cursor: first.nextCursor,
+    });
+    expect(second.records.map((r) => r.activityId)).toEqual(['a1']);
+    expect(second.nextCursor).toBeUndefined();
+
+    const all = [
+      ...first.records.map((r) => r.activityId),
+      ...second.records.map((r) => r.activityId),
+    ];
+    expect(all).toEqual(['a2', 'a3', 'a1']);
+  });
+});
+
+describe('FE-P5-S1 upsert monotonicity', () => {
+  it('rejects a lower snapshot revision on the same identity', async () => {
+    const { index } = store();
+    await index.upsert(
+      record({
+        projectId: 'p1',
+        activityId: 'a1',
+        domainKind: 'SOURCES',
+        state: 'QUEUED',
+        updatedAt: '2026-08-06T00:00:00.000Z',
+        revision: 5,
+      }),
+    );
+    await expect(
+      index.upsert(
+        record({
+          projectId: 'p1',
+          activityId: 'a1',
+          domainKind: 'SOURCES',
+          state: 'RUNNING',
+          updatedAt: '2026-08-06T00:00:01.000Z',
+          revision: 4,
+        }),
+      ),
+    ).rejects.toThrow(/ACTIVITY_INDEX_STALE_UPSERT/);
+    // The newer row survives.
+    const page = await index.queryProject({ resourceProjectId: 'p1', limit: 10 });
+    expect(page.records[0]?.snapshotRevision).toBe(5);
+    expect(page.records[0]?.state).toBe('QUEUED');
+  });
+
+  it('accepts an equal or higher snapshot revision', async () => {
+    const { index } = store();
+    await index.upsert(
+      record({
+        projectId: 'p1',
+        activityId: 'a1',
+        domainKind: 'SOURCES',
+        state: 'QUEUED',
+        updatedAt: '2026-08-06T00:00:00.000Z',
+        revision: 3,
+      }),
+    );
+    await index.upsert(
+      record({
+        projectId: 'p1',
+        activityId: 'a1',
+        domainKind: 'SOURCES',
+        state: 'RUNNING',
+        updatedAt: '2026-08-06T00:00:01.000Z',
+        revision: 3,
+      }),
+    );
+    await index.upsert(
+      record({
+        projectId: 'p1',
+        activityId: 'a1',
+        domainKind: 'SOURCES',
+        state: 'SUCCEEDED',
+        updatedAt: '2026-08-06T00:00:02.000Z',
+        revision: 4,
+      }),
+    );
+    const page = await index.queryProject({ resourceProjectId: 'p1', limit: 10 });
+    expect(page.records[0]?.snapshotRevision).toBe(4);
+    expect(page.records[0]?.state).toBe('SUCCEEDED');
+  });
+});
+
+describe('FE-P5-S1 record invariants', () => {
+  it('rejects ASK with a JOB root at the store boundary', () => {
+    expect(() =>
+      validateActivityIndexRecord(
+        record({
+          projectId: 'p1',
+          activityId: 'a1',
+          domainKind: 'ASK',
+          state: 'QUEUED',
+          updatedAt: '2026-08-06T00:00:00.000Z',
+        }),
+      ),
+    ).not.toThrow();
+    const askWithJob: ActivityIndexRecordV1 = {
+      ...record({
+        projectId: 'p1',
+        activityId: 'a1',
+        domainKind: 'ASK',
+        state: 'QUEUED',
+        updatedAt: '2026-08-06T00:00:00.000Z',
+      }),
+      rootKind: 'JOB',
+      jobId: 'job-x',
+    };
+    expect(() => validateActivityIndexRecord(askWithJob)).toThrow(/must use a RUN root/);
+  });
+
+  it('rejects SOURCES with a RUN root and a RUN root carrying jobId', () => {
+    const sourcesRun: ActivityIndexRecordV1 = {
+      ...record({
+        projectId: 'p1',
+        activityId: 'a1',
+        domainKind: 'SOURCES',
+        state: 'QUEUED',
+        updatedAt: '2026-08-06T00:00:00.000Z',
+      }),
+      rootKind: 'RUN',
+      jobId: undefined,
+    };
+    expect(() => validateActivityIndexRecord(sourcesRun)).toThrow(/must use a JOB root/);
+
+    const runWithJob: ActivityIndexRecordV1 = {
+      ...record({
+        projectId: 'p1',
+        activityId: 'a1',
+        domainKind: 'ASK',
+        state: 'QUEUED',
+        updatedAt: '2026-08-06T00:00:00.000Z',
+      }),
+      jobId: 'job-x',
+    };
+    expect(() => validateActivityIndexRecord(runWithJob)).toThrow(/jobId must be absent/);
+  });
+
+  it('rejects an unsupported lifecycle state', () => {
+    expect(() =>
+      validateActivityIndexRecord({
+        ...record({
+          projectId: 'p1',
+          activityId: 'a1',
+          domainKind: 'SOURCES',
+          state: 'QUEUED',
+          updatedAt: '2026-08-06T00:00:00.000Z',
+        }),
+        state: 'PERSISTED' as ActivityIndexRecordV1['state'],
+      }),
+    ).toThrow(/unsupported lifecycle state/);
+  });
 });
 
 describe('FE-P5-S1 deterministic rebuild', () => {
@@ -278,6 +471,95 @@ describe('FE-P5-S1 deterministic rebuild', () => {
     const page = await index.queryProject({ resourceProjectId: 'p1', limit: 10 });
     expect(page.records).toHaveLength(1);
     expect(page.records[0]?.snapshotRevision).toBe(5);
+  });
+
+  it('rejects a rebuild record bound to another project (validated before delete)', async () => {
+    const { index } = store();
+    await index.upsert(
+      record({
+        projectId: 'p1',
+        activityId: 'a1',
+        domainKind: 'SOURCES',
+        state: 'QUEUED',
+        updatedAt: '2026-08-06T00:00:00.000Z',
+        revision: 1,
+      }),
+    );
+    await expect(
+      index.rebuildProject({
+        resourceProjectId: 'p1',
+        snapshotRevision: 2,
+        records: [
+          record({
+            projectId: 'p2',
+            activityId: 'x1',
+            domainKind: 'SOURCES',
+            state: 'QUEUED',
+            updatedAt: '2026-08-06T00:00:00.000Z',
+            revision: 2,
+          }),
+        ],
+      }),
+    ).rejects.toThrow(/ACTIVITY_INDEX_REBUILD_SCOPE/);
+    // Nothing was deleted: the failed rebuild leaves the project intact.
+    const page = await index.queryProject({ resourceProjectId: 'p1', limit: 10 });
+    expect(page.records.map((r) => r.activityId)).toEqual(['a1']);
+  });
+
+  it('rejects a rebuild record outside the scoped domain', async () => {
+    const { index } = store();
+    await expect(
+      index.rebuildProject({
+        resourceProjectId: 'p1',
+        snapshotRevision: 2,
+        domainKind: 'SOURCES',
+        records: [
+          record({
+            projectId: 'p1',
+            activityId: 'a2',
+            domainKind: 'ASK',
+            state: 'QUEUED',
+            updatedAt: '2026-08-06T00:00:00.000Z',
+            revision: 2,
+          }),
+        ],
+      }),
+    ).rejects.toThrow(/ACTIVITY_INDEX_REBUILD_SCOPE/);
+  });
+
+  it('rejects a rebuild record whose revision differs from the rebuild revision', async () => {
+    const { index } = store();
+    await expect(
+      index.rebuildProject({
+        resourceProjectId: 'p1',
+        snapshotRevision: 2,
+        records: [
+          record({
+            projectId: 'p1',
+            activityId: 'a1',
+            domainKind: 'SOURCES',
+            state: 'QUEUED',
+            updatedAt: '2026-08-06T00:00:00.000Z',
+            revision: 3,
+          }),
+        ],
+      }),
+    ).rejects.toThrow(/ACTIVITY_INDEX_REBUILD_REVISION/);
+  });
+
+  it('rejects duplicate activity identities in a rebuild batch', async () => {
+    const { index } = store();
+    const r = record({
+      projectId: 'p1',
+      activityId: 'a1',
+      domainKind: 'SOURCES',
+      state: 'QUEUED',
+      updatedAt: '2026-08-06T00:00:00.000Z',
+      revision: 2,
+    });
+    await expect(
+      index.rebuildProject({ resourceProjectId: 'p1', snapshotRevision: 2, records: [r, r] }),
+    ).rejects.toThrow(/ACTIVITY_INDEX_REBUILD_DUPLICATE/);
   });
 
   it('rebuilds a single domain without touching other domains', async () => {

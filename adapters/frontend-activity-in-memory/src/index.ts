@@ -3,6 +3,8 @@ import {
   assertRebuildRevisionNotLower,
   decodeActivityIndexCursor,
   encodeActivityIndexCursor,
+  validateActivityIndexRecord,
+  validateRebuildBatch,
   type ActivityIndexPageV1,
   type ActivityIndexQueryV1,
   type ActivityIndexRecordV1,
@@ -37,10 +39,16 @@ export class InMemoryActivityIndexStore implements ActivityIndexStorePort {
   private readonly rows = new Map<string, ActivityIndexRecordV1>();
 
   async upsert(record: ActivityIndexRecordV1): Promise<void> {
-    this.rows.set(
-      projectKey(record.resourceProjectId, record.domainKind, record.activityId),
-      record,
-    );
+    validateActivityIndexRecord(record);
+    const key = projectKey(record.resourceProjectId, record.domainKind, record.activityId);
+    const existing = this.rows.get(key);
+    // A lower snapshot revision never replaces a newer one (Contract Snapshot §9).
+    if (existing !== undefined && existing.snapshotRevision > record.snapshotRevision) {
+      throw new Error(
+        `ACTIVITY_INDEX_STALE_UPSERT: ${key} has snapshot revision ${existing.snapshotRevision} which is newer than ${record.snapshotRevision}`,
+      );
+    }
+    this.rows.set(key, record);
   }
 
   async queryProject(input: ActivityIndexQueryV1): Promise<ActivityIndexPageV1> {
@@ -102,6 +110,8 @@ export class InMemoryActivityIndexStore implements ActivityIndexStorePort {
     readonly domainKind?: ActivityDomainKindV1;
     readonly records: readonly ActivityIndexRecordV1[];
   }): Promise<void> {
+    // Validate the whole batch BEFORE any delete or write.
+    validateRebuildBatch(input);
     const scope = input.domainKind ?? 'ALL';
     const existing = [...this.rows.values()].filter(
       (record) =>

@@ -76,17 +76,37 @@ WP2 covered:
 
 Focused tests only (no previously-passed head re-run):
 
-- `tests/integration/frontend-activity-read-model-store.test.ts` — 11 tests (project binding,
-  stable ordering, filters, keyset pagination, deterministic rebuild, stale-revision guard,
-  watermarks).
-- `tests/database/frontend-activity-postgres-parity.test.ts` — 3 tests (in-memory vs PostgreSQL
-  parity for ordering/pagination, rebuild+guard, watermarks). Requires local Postgres and
-  migration 029 (`db:migrate` + `db:verify` PASS).
+- `tests/integration/frontend-activity-read-model-store.test.ts` — 21 tests (project binding,
+  stable ordering, filters, keyset pagination incl. same-updatedAt ties, deterministic rebuild,
+  stale-revision/upsert guards, rebuild scope validation, record invariants, watermarks).
+- `tests/database/frontend-activity-postgres-parity.test.ts` — 7 tests (in-memory vs PostgreSQL
+  parity for ordering/pagination, tie pagination, stale upsert, rebuild scope, rebuild+guard,
+  watermarks, DB CHECK parity). Requires local Postgres and migration 029 (`db:reset` +
+  `db:verify` PASS).
 
-WP1 + WP2 focused suites: 74 tests PASS (contract 39, unit 16, integration 19, parity 3 — with
+WP1 + WP2 focused suites: 91 tests PASS (contract 39, unit 16, integration 29, parity 7 — with
 DB). `tsc --noEmit`, ESLint and Prettier clean. Governance gates (`docs:validate`,
 `docs:frontend-work-items`, `docs:completion-invariants`, `docs:frontend-projections:check`)
-PASS. `db:migrate` and `db:verify` PASS with migration 029 applied.
+PASS. `db:reset` and `db:verify` PASS with migration 029 applied.
+
+## 5.1 Correction — review findings (CHANGES_REQUIRED)
+
+Review found four blocking defects and one evidence mismatch, all corrected within WP2 scope:
+
+1. **PostgreSQL keyset pagination** — the cursor predicate did not match `ORDER BY updated_at
+   DESC, domain_kind ASC, activity_id ASC`. Fixed to `updated_at < cursor OR (updated_at =
+   cursor AND (domain_kind, activity_id) > (cursor kind, cursor id))`; added same-updatedAt tie
+   pagination tests (in-memory and parity).
+2. **Upsert monotonicity** — a lower `snapshotRevision` could overwrite a newer row. In-memory
+   and PostgreSQL upserts now fail with `ACTIVITY_INDEX_STALE_UPSERT` when a newer revision
+   exists; parity tests added.
+3. **Rebuild scope validation** — the batch is now fully validated BEFORE any delete (project
+   binding, scoped domain, revision equality, duplicate identity), in-memory and PostgreSQL
+   alike; out-of-scope rebuild tests added.
+4. **Persistence invariants** — migration 029 now enforces the state lifecycle CHECK, the
+   domain/root binding CHECK (ASK=RUN, others=JOB) and the root/job CHECK; the in-memory store
+   enforces the same via `validateActivityIndexRecord`, with DB CHECK parity verified.
+5. **Evidence/PR metadata** — test counts and PR #73 body updated to the corrected state.
 
 ## 6. Preserved boundaries
 

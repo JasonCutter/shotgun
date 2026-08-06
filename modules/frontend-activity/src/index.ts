@@ -35,9 +35,18 @@ export type {
   SourcesActivityAdapterPort,
 } from './activity-adapter-port.js';
 export {
+  ACTIVITY_INDEX_ADAPTER_STATUS,
+  ACTIVITY_INDEX_ATTENTION,
+  ACTIVITY_INDEX_DOMAIN_KINDS,
+  ACTIVITY_INDEX_FRESHNESS,
+  ACTIVITY_INDEX_LIFECYCLE_STATES,
+  ACTIVITY_INDEX_RETRYABILITY,
+  ACTIVITY_INDEX_ROOT_KINDS,
   assertRebuildRevisionNotLower,
   decodeActivityIndexCursor,
   encodeActivityIndexCursor,
+  validateActivityIndexRecord,
+  validateRebuildBatch,
 } from './activity-index-store-port.js';
 export type {
   ActivityIndexCursorV1,

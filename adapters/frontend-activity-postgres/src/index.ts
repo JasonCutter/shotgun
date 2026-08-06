@@ -5,6 +5,8 @@ import {
   assertRebuildRevisionNotLower,
   decodeActivityIndexCursor,
   encodeActivityIndexCursor,
+  validateActivityIndexRecord,
+  validateRebuildBatch,
   type ActivityIndexPageV1,
   type ActivityIndexQueryV1,
   type ActivityIndexRecordV1,
@@ -73,7 +75,8 @@ export class PostgresActivityIndexStore implements ActivityIndexStorePort {
   }
 
   async upsert(record: ActivityIndexRecordV1): Promise<void> {
-    await this.pool.query(
+    validateActivityIndexRecord(record);
+    const result = await this.pool.query(
       `INSERT INTO frontend_activity.activity_index (
          resource_project_id, activity_id, domain_kind, root_kind,
          domain_resource_kind, domain_resource_id, domain_resource_revision,
@@ -97,7 +100,8 @@ export class PostgresActivityIndexStore implements ActivityIndexStorePort {
          snapshot_revision = EXCLUDED.snapshot_revision,
          snapshot = EXCLUDED.snapshot,
          projected_at = EXCLUDED.projected_at,
-         updated_at = EXCLUDED.updated_at`,
+         updated_at = EXCLUDED.updated_at
+       WHERE frontend_activity.activity_index.snapshot_revision <= EXCLUDED.snapshot_revision`,
       [
         record.resourceProjectId,
         record.activityId,
@@ -121,6 +125,13 @@ export class PostgresActivityIndexStore implements ActivityIndexStorePort {
         record.updatedAt,
       ],
     );
+    // A conflicting row with a newer snapshot revision is not updated
+    // (rowCount 0) — a lower revision never replaces a newer one.
+    if ((result.rowCount ?? 0) === 0) {
+      throw new Error(
+        `ACTIVITY_INDEX_STALE_UPSERT: ${record.resourceProjectId}/${record.domainKind}/${record.activityId} has a newer snapshot revision than ${record.snapshotRevision}`,
+      );
+    }
   }
 
   async queryProject(input: ActivityIndexQueryV1): Promise<ActivityIndexPageV1> {
@@ -141,8 +152,15 @@ export class PostgresActivityIndexStore implements ActivityIndexStorePort {
     if (input.cursor !== undefined) {
       const cursor = decodeActivityIndexCursor(input.cursor);
       params.push(cursor.updatedAt, cursor.domainKind, cursor.activityId);
+      // Keyset predicate matching ORDER BY updated_at DESC, domain_kind ASC,
+      // activity_id ASC: rows after the cursor have a smaller updated_at, or
+      // the same updated_at with a LARGER (domain_kind, activity_id) tie-break.
+      const updatedParam = params.length - 2;
+      const kindParam = params.length - 1;
+      const idParam = params.length;
       conditions.push(
-        `(updated_at, domain_kind, activity_id) < ($${params.length - 2}, $${params.length - 1}, $${params.length})`,
+        `(updated_at < $${updatedParam}
+          OR (updated_at = $${updatedParam} AND (domain_kind, activity_id) > ($${kindParam}, $${idParam})))`,
       );
     }
     params.push(Math.max(0, input.limit) + 1);
@@ -194,6 +212,8 @@ export class PostgresActivityIndexStore implements ActivityIndexStorePort {
     readonly domainKind?: ActivityDomainKindV1;
     readonly records: readonly ActivityIndexRecordV1[];
   }): Promise<void> {
+    // Validate the whole batch BEFORE any delete or write.
+    validateRebuildBatch(input);
     await this.withClient(async (client) => {
       await client.query('BEGIN');
       try {

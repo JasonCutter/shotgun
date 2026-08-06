@@ -229,6 +229,139 @@ const scenarioRebuildScope = async (
   return { scopeError, survivorIds: page.records.map((r) => r.activityId) };
 };
 
+/** True keyset: the cursor row is deleted after the first page was issued. */
+const scenarioCursorRowDeleted = async (
+  store: ActivityReadModelStorePort,
+): Promise<Record<string, unknown>> => {
+  const { index } = store;
+  await index.upsert(
+    record({
+      activityId: 'a1',
+      domainKind: 'SOURCES',
+      state: 'QUEUED',
+      updatedAt: '2026-08-06T00:00:00.000Z',
+    }),
+  );
+  await index.upsert(
+    record({
+      activityId: 'a2',
+      domainKind: 'SOURCES',
+      state: 'QUEUED',
+      updatedAt: '2026-08-06T00:00:01.000Z',
+    }),
+  );
+  await index.upsert(
+    record({
+      activityId: 'a3',
+      domainKind: 'SOURCES',
+      state: 'QUEUED',
+      updatedAt: '2026-08-06T00:00:02.000Z',
+    }),
+  );
+
+  const first = await index.queryProject({ resourceProjectId: 'project-1', limit: 1 });
+  // Delete the cursor row (a3) and re-add the rest.
+  await index.deleteByProjectAndDomain('project-1', 'SOURCES');
+  await index.upsert(
+    record({
+      activityId: 'a2',
+      domainKind: 'SOURCES',
+      state: 'QUEUED',
+      updatedAt: '2026-08-06T00:00:01.000Z',
+    }),
+  );
+  await index.upsert(
+    record({
+      activityId: 'a1',
+      domainKind: 'SOURCES',
+      state: 'QUEUED',
+      updatedAt: '2026-08-06T00:00:00.000Z',
+    }),
+  );
+  const second = await index.queryProject({
+    resourceProjectId: 'project-1',
+    limit: 10,
+    cursor: first.nextCursor,
+  });
+  return { secondIds: second.records.map((r) => r.activityId) };
+};
+
+/** True keyset: the cursor row's updatedAt changes after the cursor was issued. */
+const scenarioCursorRowUpdated = async (
+  store: ActivityReadModelStorePort,
+): Promise<Record<string, unknown>> => {
+  const { index } = store;
+  await index.upsert(
+    record({
+      activityId: 'a1',
+      domainKind: 'SOURCES',
+      state: 'QUEUED',
+      updatedAt: '2026-08-06T00:00:00.000Z',
+    }),
+  );
+  await index.upsert(
+    record({
+      activityId: 'a2',
+      domainKind: 'SOURCES',
+      state: 'QUEUED',
+      updatedAt: '2026-08-06T00:00:01.000Z',
+    }),
+  );
+  const first = await index.queryProject({ resourceProjectId: 'project-1', limit: 1 });
+  await index.upsert(
+    record({
+      activityId: 'a2',
+      domainKind: 'SOURCES',
+      state: 'RUNNING',
+      updatedAt: '2026-08-06T00:00:05.000Z',
+    }),
+  );
+  const second = await index.queryProject({
+    resourceProjectId: 'project-1',
+    limit: 10,
+    cursor: first.nextCursor,
+  });
+  return { secondIds: second.records.map((r) => r.activityId) };
+};
+
+const scenarioWatermarkStaleUpsert = async (
+  store: ActivityReadModelStorePort,
+): Promise<Record<string, unknown>> => {
+  const { watermarks } = store;
+  await watermarks.upsert({
+    ...watermark({
+      adapterId: 'sources-adapter',
+      domainKind: 'SOURCES',
+      projectedAt: '2026-08-06T00:00:00.000Z',
+    }),
+    snapshotRevision: 5,
+  });
+  let staleError: string | undefined;
+  try {
+    await watermarks.upsert({
+      ...watermark({
+        adapterId: 'sources-adapter',
+        domainKind: 'SOURCES',
+        projectedAt: '2026-08-06T00:00:01.000Z',
+      }),
+      snapshotRevision: 4,
+    });
+  } catch (error) {
+    staleError = error instanceof Error ? error.message.split(':')[0] : undefined;
+  }
+  await watermarks.upsert({
+    ...watermark({
+      adapterId: 'sources-adapter',
+      domainKind: 'SOURCES',
+      projectedAt: '2026-08-06T00:00:02.000Z',
+    }),
+    snapshotRevision: 6,
+    adapterStatus: 'DEGRADED',
+  });
+  const result = await watermarks.readByProjectAndAdapter('project-1', 'sources-adapter');
+  return { staleError, revision: result?.snapshotRevision, status: result?.adapterStatus };
+};
+
 const scenarioRebuildAndGuard = async (
   store: ActivityReadModelStorePort,
 ): Promise<Record<string, unknown>> => {
@@ -330,6 +463,79 @@ describe.runIf(pool)('FE-P5-S1 in-memory vs PostgreSQL Activity read-model parit
     const postgres = await scenarioTiePagination(pgStore());
     expect(postgres).toEqual(memory);
     expect(postgres.all).toEqual(['a2', 'a3', 'a1']);
+  });
+
+  it('matches in-memory true keyset when the cursor row is deleted', async () => {
+    const memory = await scenarioCursorRowDeleted(createInMemoryActivityReadModelStore());
+    const postgres = await scenarioCursorRowDeleted(pgStore());
+    expect(postgres).toEqual(memory);
+    expect(postgres.secondIds).toEqual(['a2', 'a1']);
+  });
+
+  it('matches in-memory true keyset when the cursor row updatedAt changes', async () => {
+    const memory = await scenarioCursorRowUpdated(createInMemoryActivityReadModelStore());
+    const postgres = await scenarioCursorRowUpdated(pgStore());
+    expect(postgres).toEqual(memory);
+    expect(postgres.secondIds).toEqual(['a1']);
+  });
+
+  it('matches in-memory watermark stale-upsert monotonicity guard', async () => {
+    const memory = await scenarioWatermarkStaleUpsert(createInMemoryActivityReadModelStore());
+    const postgres = await scenarioWatermarkStaleUpsert(pgStore());
+    expect(postgres).toEqual(memory);
+    expect(postgres.staleError).toBe('ACTIVITY_WATERMARK_STALE_UPSERT');
+    expect(postgres.revision).toBe(6);
+    expect(postgres.status).toBe('DEGRADED');
+  });
+
+  it('serializes a concurrent upsert and rebuild so a lower revision never wins', async () => {
+    const store = pgStore();
+    const { index } = store;
+    // Seed a revision 1 row, then race a revision-6 upsert against a
+    // revision-5 rebuild. The project advisory lock serializes them; the final
+    // stored revision must never be lower than the newest committed write.
+    await index.upsert(
+      record({
+        activityId: 'a1',
+        domainKind: 'SOURCES',
+        state: 'QUEUED',
+        updatedAt: '2026-08-06T00:00:00.000Z',
+        revision: 1,
+      }),
+    );
+    const results = await Promise.allSettled([
+      index.upsert(
+        record({
+          activityId: 'a1',
+          domainKind: 'SOURCES',
+          state: 'RUNNING',
+          updatedAt: '2026-08-06T00:00:01.000Z',
+          revision: 6,
+        }),
+      ),
+      index.rebuildProject({
+        resourceProjectId: 'project-1',
+        snapshotRevision: 5,
+        records: [
+          record({
+            activityId: 'a1',
+            domainKind: 'SOURCES',
+            state: 'QUEUED',
+            updatedAt: '2026-08-06T00:00:01.000Z',
+            revision: 5,
+          }),
+        ],
+      }),
+    ]);
+    const page = await index.queryProject({ resourceProjectId: 'project-1', limit: 10 });
+    const storedRevision = page.records[0]?.snapshotRevision;
+    // Either the rebuild was rejected as stale (upsert won first) or the
+    // upsert landed after the rebuild; in every interleaving the newest
+    // committed revision is 6.
+    expect(storedRevision).toBe(6);
+    if (results[1]?.status === 'rejected') {
+      expect((results[1] as PromiseRejectedResult).reason).toBeInstanceOf(Error);
+    }
   });
 
   it('matches in-memory stale-upsert monotonicity guard', async () => {

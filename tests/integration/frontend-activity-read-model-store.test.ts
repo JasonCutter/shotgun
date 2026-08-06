@@ -208,7 +208,7 @@ describe('FE-P5-S1 keyset cursor pagination', () => {
     expect(third.nextCursor).toBeUndefined();
   });
 
-  it('returns an empty page for a cursor past the end', async () => {
+  it('returns an empty page for a cursor at the last row (past the end)', async () => {
     const { index } = store();
     await index.upsert(
       record({
@@ -219,8 +219,9 @@ describe('FE-P5-S1 keyset cursor pagination', () => {
         updatedAt: '2026-08-06T00:00:00.000Z',
       }),
     );
+    // The cursor at the only (last) row leaves nothing after it.
     const cursor = encodeActivityIndexCursor({
-      updatedAt: '2026-08-06T00:00:01.000Z',
+      updatedAt: '2026-08-06T00:00:00.000Z',
       domainKind: 'SOURCES',
       activityId: 'a1',
     });
@@ -279,6 +280,115 @@ describe('FE-P5-S1 keyset cursor pagination', () => {
       ...second.records.map((r) => r.activityId),
     ];
     expect(all).toEqual(['a2', 'a3', 'a1']);
+  });
+
+  it('keeps returning rows after the cursor row is deleted (true keyset)', async () => {
+    const { index } = store();
+    await index.upsert(
+      record({
+        projectId: 'p1',
+        activityId: 'a1',
+        domainKind: 'SOURCES',
+        state: 'QUEUED',
+        updatedAt: '2026-08-06T00:00:00.000Z',
+      }),
+    );
+    await index.upsert(
+      record({
+        projectId: 'p1',
+        activityId: 'a2',
+        domainKind: 'SOURCES',
+        state: 'QUEUED',
+        updatedAt: '2026-08-06T00:00:01.000Z',
+      }),
+    );
+    await index.upsert(
+      record({
+        projectId: 'p1',
+        activityId: 'a3',
+        domainKind: 'SOURCES',
+        state: 'QUEUED',
+        updatedAt: '2026-08-06T00:00:02.000Z',
+      }),
+    );
+
+    const first = await index.queryProject({ resourceProjectId: 'p1', limit: 1 });
+    expect(first.records.map((r) => r.activityId)).toEqual(['a3']);
+    expect(first.nextCursor).toBeDefined();
+
+    // The cursor row (a3) is deleted after the first page was issued.
+    await index.deleteByProjectAndDomain('p1', 'SOURCES');
+    await index.upsert(
+      record({
+        projectId: 'p1',
+        activityId: 'a2',
+        domainKind: 'SOURCES',
+        state: 'QUEUED',
+        updatedAt: '2026-08-06T00:00:01.000Z',
+      }),
+    );
+    await index.upsert(
+      record({
+        projectId: 'p1',
+        activityId: 'a1',
+        domainKind: 'SOURCES',
+        state: 'QUEUED',
+        updatedAt: '2026-08-06T00:00:00.000Z',
+      }),
+    );
+
+    const second = await index.queryProject({
+      resourceProjectId: 'p1',
+      limit: 10,
+      cursor: first.nextCursor,
+    });
+    // Rows after the original cursor tuple must still be returned.
+    expect(second.records.map((r) => r.activityId)).toEqual(['a2', 'a1']);
+  });
+
+  it('keeps returning rows when the cursor row updatedAt changes (true keyset)', async () => {
+    const { index } = store();
+    await index.upsert(
+      record({
+        projectId: 'p1',
+        activityId: 'a1',
+        domainKind: 'SOURCES',
+        state: 'QUEUED',
+        updatedAt: '2026-08-06T00:00:00.000Z',
+      }),
+    );
+    await index.upsert(
+      record({
+        projectId: 'p1',
+        activityId: 'a2',
+        domainKind: 'SOURCES',
+        state: 'QUEUED',
+        updatedAt: '2026-08-06T00:00:01.000Z',
+      }),
+    );
+
+    const first = await index.queryProject({ resourceProjectId: 'p1', limit: 1 });
+    expect(first.records.map((r) => r.activityId)).toEqual(['a2']);
+    expect(first.nextCursor).toBeDefined();
+
+    // The cursor row (a2) moves to the newest position after the cursor was issued.
+    await index.upsert(
+      record({
+        projectId: 'p1',
+        activityId: 'a2',
+        domainKind: 'SOURCES',
+        state: 'RUNNING',
+        updatedAt: '2026-08-06T00:00:05.000Z',
+      }),
+    );
+
+    const second = await index.queryProject({
+      resourceProjectId: 'p1',
+      limit: 10,
+      cursor: first.nextCursor,
+    });
+    // Only rows after the ORIGINAL cursor tuple (a2@00:00:01) are returned.
+    expect(second.records.map((r) => r.activityId)).toEqual(['a1']);
   });
 });
 
@@ -696,6 +806,59 @@ describe('FE-P5-S1 projection watermarks', () => {
     });
     const result = await watermarks.readByProjectAndAdapter('p1', 'ask-adapter');
     expect(result?.projectedAt).toBe('2026-08-06T00:00:05.000Z');
+    expect(result?.adapterStatus).toBe('DEGRADED');
+  });
+
+  it('rejects a lower snapshot revision on the same (project, adapter) watermark', async () => {
+    const { watermarks } = store();
+    await watermarks.upsert({
+      ...watermark({
+        projectId: 'p1',
+        adapterId: 'sources-adapter',
+        domainKind: 'SOURCES',
+        projectedAt: '2026-08-06T00:00:00.000Z',
+      }),
+      snapshotRevision: 5,
+    });
+    await expect(
+      watermarks.upsert({
+        ...watermark({
+          projectId: 'p1',
+          adapterId: 'sources-adapter',
+          domainKind: 'SOURCES',
+          projectedAt: '2026-08-06T00:00:01.000Z',
+        }),
+        snapshotRevision: 4,
+      }),
+    ).rejects.toThrow(/ACTIVITY_WATERMARK_STALE_UPSERT/);
+    // The newer watermark survives.
+    const result = await watermarks.readByProjectAndAdapter('p1', 'sources-adapter');
+    expect(result?.snapshotRevision).toBe(5);
+  });
+
+  it('accepts an equal or higher watermark snapshot revision', async () => {
+    const { watermarks } = store();
+    await watermarks.upsert({
+      ...watermark({
+        projectId: 'p1',
+        adapterId: 'sources-adapter',
+        domainKind: 'SOURCES',
+        projectedAt: '2026-08-06T00:00:00.000Z',
+      }),
+      snapshotRevision: 5,
+    });
+    await watermarks.upsert({
+      ...watermark({
+        projectId: 'p1',
+        adapterId: 'sources-adapter',
+        domainKind: 'SOURCES',
+        projectedAt: '2026-08-06T00:00:01.000Z',
+      }),
+      snapshotRevision: 6,
+      adapterStatus: 'DEGRADED',
+    });
+    const result = await watermarks.readByProjectAndAdapter('p1', 'sources-adapter');
+    expect(result?.snapshotRevision).toBe(6);
     expect(result?.adapterStatus).toBe('DEGRADED');
   });
 });

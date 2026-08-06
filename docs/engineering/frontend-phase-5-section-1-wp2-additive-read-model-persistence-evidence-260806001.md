@@ -80,15 +80,16 @@ WP2 covered:
 
 Focused tests only (no previously-passed head re-run):
 
-- `tests/integration/frontend-activity-read-model-store.test.ts` — 21 tests (project binding,
-  stable ordering, filters, keyset pagination incl. same-updatedAt ties, deterministic rebuild,
-  stale-revision/upsert guards, rebuild scope validation, record invariants, watermarks).
-- `tests/database/frontend-activity-postgres-parity.test.ts` — 7 tests (in-memory vs PostgreSQL
-  parity for ordering/pagination, tie pagination, stale upsert, rebuild scope, rebuild+guard,
-  watermarks, DB CHECK parity). Requires local Postgres and migration 029 (`db:reset` +
-  `db:verify` PASS).
+- `tests/integration/frontend-activity-read-model-store.test.ts` — 25 tests (project binding,
+  stable ordering, filters, true keyset pagination incl. same-updatedAt ties, cursor-row
+  deletion/updatedAt-change behavior, deterministic rebuild, stale-revision/upsert guards,
+  rebuild scope validation, record invariants, watermark monotonicity).
+- `tests/database/frontend-activity-postgres-parity.test.ts` — 11 tests (in-memory vs PostgreSQL
+  parity for ordering/pagination, tie pagination, cursor mutation, stale upsert, rebuild scope,
+  rebuild+guard, watermarks, watermark stale upsert, rebuild/upsert concurrency serialization,
+  DB CHECK parity). Requires local Postgres and migration 029 (`db:reset` + `db:verify` PASS).
 
-WP1 + WP2 focused suites: 91 tests PASS (contract 39, unit 16, integration 29, parity 7 — with
+WP1 + WP2 focused suites: 99 tests PASS (contract 39, unit 16, integration 33, parity 11 — with
 DB). `tsc --noEmit`, ESLint and Prettier clean. Governance gates (`docs:validate`,
 `docs:frontend-work-items`, `docs:completion-invariants`, `docs:frontend-projections:check`)
 PASS. `db:reset` and `db:verify` PASS with migration 029 applied.
@@ -111,6 +112,27 @@ cursor AND (domain_kind, activity_id) > (cursor kind, cursor id))`; added same-u
    domain/root binding CHECK (ASK=RUN, others=JOB) and the root/job CHECK; the in-memory store
    enforces the same via `validateActivityIndexRecord`, with DB CHECK parity verified.
 5. **Evidence/PR metadata** — test counts and PR #73 body updated to the corrected state.
+
+## 5.2 Correction — second review round (CHANGES_REQUIRED)
+
+A second review round found four items, all corrected within WP2 scope:
+
+1. **In-memory true keyset semantics** — the in-memory cursor used a positional slice (find the
+   exact cursor row then skip it), which returned an empty page when the cursor row was deleted
+   or its `updatedAt` changed after the cursor was issued. Replaced with the same tuple predicate
+   as PostgreSQL (`updatedAt < cursor OR (updatedAt = cursor AND (domain_kind, activity_id) >
+cursor)`). Added cursor-row deletion and cursor-row updatedAt-change regression tests with
+   in-memory/PostgreSQL parity.
+2. **Watermark revision monotonicity** — `projection_watermarks` also now rejects a lower
+   `snapshotRevision` upsert (`ACTIVITY_WATERMARK_STALE_UPSERT`) in-memory and PostgreSQL;
+   revision 5 → 4 rejected, 6 accepted.
+3. **Rebuild/upsert concurrency serialization** — PostgreSQL index writes (upsert, delete,
+   rebuild) now take a project-scoped `pg_advisory_xact_lock`, so a rebuild's DELETE → INSERT
+   window cannot interleave with a concurrent upsert and end with a lower revision winning.
+   Added a concurrent upsert-vs-rebuild race test asserting the newest committed revision always
+   wins.
+4. **Evidence/PR current authority** — PR #73 title/body updated to WP1+WP2 scope with the
+   corrected heads and CI (#611, #612); this section documents the accurate history.
 
 ## 6. Preserved boundaries
 

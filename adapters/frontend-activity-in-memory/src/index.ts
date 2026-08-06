@@ -54,7 +54,7 @@ export class InMemoryActivityIndexStore implements ActivityIndexStorePort {
   async queryProject(input: ActivityIndexQueryV1): Promise<ActivityIndexPageV1> {
     const domainSet = input.domainKinds ? new Set(input.domainKinds) : undefined;
     const stateSet = input.states ? new Set(input.states) : undefined;
-    const matching = [...this.rows.values()].filter(
+    let matching = [...this.rows.values()].filter(
       (record) =>
         record.resourceProjectId === input.resourceProjectId &&
         (domainSet === undefined || domainSet.has(record.domainKind)) &&
@@ -63,22 +63,25 @@ export class InMemoryActivityIndexStore implements ActivityIndexStorePort {
     );
     matching.sort(compareForOrdering);
 
-    let startIndex = 0;
     if (input.cursor !== undefined) {
       const cursor = decodeActivityIndexCursor(input.cursor);
-      const found = matching.findIndex(
+      // True keyset predicate matching ORDER BY updated_at DESC, domain_kind
+      // ASC, activity_id ASC. Unlike a positional slice, this stays correct
+      // when the cursor row is deleted or its updatedAt changes after the
+      // cursor was issued.
+      matching = matching.filter(
         (record) =>
-          record.updatedAt === cursor.updatedAt &&
-          record.domainKind === cursor.domainKind &&
-          record.activityId === cursor.activityId,
+          record.updatedAt < cursor.updatedAt ||
+          (record.updatedAt === cursor.updatedAt &&
+            (record.domainKind > cursor.domainKind ||
+              (record.domainKind === cursor.domainKind && record.activityId > cursor.activityId))),
       );
-      startIndex = found === -1 ? matching.length : found + 1;
     }
 
-    const page = matching.slice(startIndex, startIndex + Math.max(0, input.limit));
+    const page = matching.slice(0, Math.max(0, input.limit));
     const last = page[page.length - 1];
     const nextCursor =
-      startIndex + page.length < matching.length && last !== undefined
+      matching.length > page.length && last !== undefined
         ? encodeActivityIndexCursor({
             updatedAt: last.updatedAt,
             domainKind: last.domainKind,
@@ -141,7 +144,15 @@ export class InMemoryActivityWatermarkStore implements ActivityWatermarkStorePor
     `${resourceProjectId}\u0000${adapterId}`;
 
   async upsert(record: ActivityWatermarkRecordV1): Promise<void> {
-    this.rows.set(this.key(record.resourceProjectId, record.adapterId), record);
+    const key = this.key(record.resourceProjectId, record.adapterId);
+    const existing = this.rows.get(key);
+    // A lower snapshot revision never replaces a newer watermark observation.
+    if (existing !== undefined && existing.snapshotRevision > record.snapshotRevision) {
+      throw new Error(
+        `ACTIVITY_WATERMARK_STALE_UPSERT: ${key} has snapshot revision ${existing.snapshotRevision} which is newer than ${record.snapshotRevision}`,
+      );
+    }
+    this.rows.set(key, record);
   }
 
   async readByProject(resourceProjectId: string): Promise<readonly ActivityWatermarkRecordV1[]> {

@@ -74,64 +74,93 @@ export class PostgresActivityIndexStore implements ActivityIndexStorePort {
     }
   }
 
+  /**
+   * Serialize all Activity index writes for a Project with a PostgreSQL
+   * advisory transaction lock. Both regular upserts and (full or per-domain)
+   * rebuilds take this project-scoped lock, so a rebuild's DELETE → INSERT
+   * window can never interleave with a concurrent upsert and end with a lower
+   * snapshot revision winning (ADR-130 §6 / Contract Snapshot §9). A single
+   * project-level lock key avoids deadlocks between full and per-domain
+   * rebuilds.
+   */
+  private async withProjectWriteLock<T>(
+    projectId: string,
+    action: (client: PoolClient) => Promise<T>,
+  ): Promise<T> {
+    return this.withClient(async (client) => {
+      await client.query('BEGIN');
+      try {
+        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [projectId]);
+        const result = await action(client);
+        await client.query('COMMIT');
+        return result;
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      }
+    });
+  }
+
   async upsert(record: ActivityIndexRecordV1): Promise<void> {
     validateActivityIndexRecord(record);
-    const result = await this.pool.query(
-      `INSERT INTO frontend_activity.activity_index (
-         resource_project_id, activity_id, domain_kind, root_kind,
-         domain_resource_kind, domain_resource_id, domain_resource_revision,
-         resource_href, job_id, run_id, summary, state, attention, retryability,
-         freshness, adapter_status, snapshot_revision, snapshot, projected_at, updated_at
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
-       ON CONFLICT (resource_project_id, domain_kind, activity_id) DO UPDATE SET
-         root_kind = EXCLUDED.root_kind,
-         domain_resource_kind = EXCLUDED.domain_resource_kind,
-         domain_resource_id = EXCLUDED.domain_resource_id,
-         domain_resource_revision = EXCLUDED.domain_resource_revision,
-         resource_href = EXCLUDED.resource_href,
-         job_id = EXCLUDED.job_id,
-         run_id = EXCLUDED.run_id,
-         summary = EXCLUDED.summary,
-         state = EXCLUDED.state,
-         attention = EXCLUDED.attention,
-         retryability = EXCLUDED.retryability,
-         freshness = EXCLUDED.freshness,
-         adapter_status = EXCLUDED.adapter_status,
-         snapshot_revision = EXCLUDED.snapshot_revision,
-         snapshot = EXCLUDED.snapshot,
-         projected_at = EXCLUDED.projected_at,
-         updated_at = EXCLUDED.updated_at
-       WHERE frontend_activity.activity_index.snapshot_revision <= EXCLUDED.snapshot_revision`,
-      [
-        record.resourceProjectId,
-        record.activityId,
-        record.domainKind,
-        record.rootKind,
-        record.domainResourceKind,
-        record.domainResourceId,
-        record.domainResourceRevision ?? null,
-        record.resourceHref,
-        record.jobId ?? null,
-        record.runId,
-        record.summary,
-        record.state,
-        record.attention,
-        record.retryability,
-        record.freshness,
-        record.adapterStatus,
-        record.snapshotRevision,
-        JSONB_SNAPSHOT(record.snapshot),
-        record.projectedAt,
-        record.updatedAt,
-      ],
-    );
-    // A conflicting row with a newer snapshot revision is not updated
-    // (rowCount 0) — a lower revision never replaces a newer one.
-    if ((result.rowCount ?? 0) === 0) {
-      throw new Error(
-        `ACTIVITY_INDEX_STALE_UPSERT: ${record.resourceProjectId}/${record.domainKind}/${record.activityId} has a newer snapshot revision than ${record.snapshotRevision}`,
+    await this.withProjectWriteLock(record.resourceProjectId, async (client) => {
+      const result = await client.query(
+        `INSERT INTO frontend_activity.activity_index (
+           resource_project_id, activity_id, domain_kind, root_kind,
+           domain_resource_kind, domain_resource_id, domain_resource_revision,
+           resource_href, job_id, run_id, summary, state, attention, retryability,
+           freshness, adapter_status, snapshot_revision, snapshot, projected_at, updated_at
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+         ON CONFLICT (resource_project_id, domain_kind, activity_id) DO UPDATE SET
+           root_kind = EXCLUDED.root_kind,
+           domain_resource_kind = EXCLUDED.domain_resource_kind,
+           domain_resource_id = EXCLUDED.domain_resource_id,
+           domain_resource_revision = EXCLUDED.domain_resource_revision,
+           resource_href = EXCLUDED.resource_href,
+           job_id = EXCLUDED.job_id,
+           run_id = EXCLUDED.run_id,
+           summary = EXCLUDED.summary,
+           state = EXCLUDED.state,
+           attention = EXCLUDED.attention,
+           retryability = EXCLUDED.retryability,
+           freshness = EXCLUDED.freshness,
+           adapter_status = EXCLUDED.adapter_status,
+           snapshot_revision = EXCLUDED.snapshot_revision,
+           snapshot = EXCLUDED.snapshot,
+           projected_at = EXCLUDED.projected_at,
+           updated_at = EXCLUDED.updated_at
+         WHERE frontend_activity.activity_index.snapshot_revision <= EXCLUDED.snapshot_revision`,
+        [
+          record.resourceProjectId,
+          record.activityId,
+          record.domainKind,
+          record.rootKind,
+          record.domainResourceKind,
+          record.domainResourceId,
+          record.domainResourceRevision ?? null,
+          record.resourceHref,
+          record.jobId ?? null,
+          record.runId,
+          record.summary,
+          record.state,
+          record.attention,
+          record.retryability,
+          record.freshness,
+          record.adapterStatus,
+          record.snapshotRevision,
+          JSONB_SNAPSHOT(record.snapshot),
+          record.projectedAt,
+          record.updatedAt,
+        ],
       );
-    }
+      // A conflicting row with a newer snapshot revision is not updated
+      // (rowCount 0) — a lower revision never replaces a newer one.
+      if ((result.rowCount ?? 0) === 0) {
+        throw new Error(
+          `ACTIVITY_INDEX_STALE_UPSERT: ${record.resourceProjectId}/${record.domainKind}/${record.activityId} has a newer snapshot revision than ${record.snapshotRevision}`,
+        );
+      }
+    });
   }
 
   async queryProject(input: ActivityIndexQueryV1): Promise<ActivityIndexPageV1> {
@@ -190,20 +219,24 @@ export class PostgresActivityIndexStore implements ActivityIndexStorePort {
   }
 
   async deleteProject(resourceProjectId: string): Promise<void> {
-    await this.pool.query(
-      'DELETE FROM frontend_activity.activity_index WHERE resource_project_id = $1',
-      [resourceProjectId],
-    );
+    await this.withProjectWriteLock(resourceProjectId, async (client) => {
+      await client.query(
+        'DELETE FROM frontend_activity.activity_index WHERE resource_project_id = $1',
+        [resourceProjectId],
+      );
+    });
   }
 
   async deleteByProjectAndDomain(
     resourceProjectId: string,
     domainKind: ActivityDomainKindV1,
   ): Promise<void> {
-    await this.pool.query(
-      'DELETE FROM frontend_activity.activity_index WHERE resource_project_id = $1 AND domain_kind = $2',
-      [resourceProjectId, domainKind],
-    );
+    await this.withProjectWriteLock(resourceProjectId, async (client) => {
+      await client.query(
+        'DELETE FROM frontend_activity.activity_index WHERE resource_project_id = $1 AND domain_kind = $2',
+        [resourceProjectId, domainKind],
+      );
+    });
   }
 
   async rebuildProject(input: {
@@ -214,65 +247,58 @@ export class PostgresActivityIndexStore implements ActivityIndexStorePort {
   }): Promise<void> {
     // Validate the whole batch BEFORE any delete or write.
     validateRebuildBatch(input);
-    await this.withClient(async (client) => {
-      await client.query('BEGIN');
-      try {
-        const existing = await client.query<{ snapshot_revision: string }>(
-          `SELECT snapshot_revision::text AS snapshot_revision
-           FROM frontend_activity.activity_index
-           WHERE resource_project_id = $1
-             AND ($2::text IS NULL OR domain_kind = $2)`,
-          [input.resourceProjectId, input.domainKind ?? null],
-        );
-        assertRebuildRevisionNotLower(
-          existing.rows.map((row) => ({ snapshotRevision: Number(row.snapshot_revision) })),
-          input.snapshotRevision,
-          `${input.resourceProjectId}/${input.domainKind ?? 'ALL'}`,
-        );
+    await this.withProjectWriteLock(input.resourceProjectId, async (client) => {
+      const existing = await client.query<{ snapshot_revision: string }>(
+        `SELECT snapshot_revision::text AS snapshot_revision
+         FROM frontend_activity.activity_index
+         WHERE resource_project_id = $1
+           AND ($2::text IS NULL OR domain_kind = $2)`,
+        [input.resourceProjectId, input.domainKind ?? null],
+      );
+      assertRebuildRevisionNotLower(
+        existing.rows.map((row) => ({ snapshotRevision: Number(row.snapshot_revision) })),
+        input.snapshotRevision,
+        `${input.resourceProjectId}/${input.domainKind ?? 'ALL'}`,
+      );
+      await client.query(
+        input.domainKind === undefined
+          ? 'DELETE FROM frontend_activity.activity_index WHERE resource_project_id = $1'
+          : 'DELETE FROM frontend_activity.activity_index WHERE resource_project_id = $1 AND domain_kind = $2',
+        input.domainKind === undefined
+          ? [input.resourceProjectId]
+          : [input.resourceProjectId, input.domainKind],
+      );
+      for (const record of input.records) {
         await client.query(
-          input.domainKind === undefined
-            ? 'DELETE FROM frontend_activity.activity_index WHERE resource_project_id = $1'
-            : 'DELETE FROM frontend_activity.activity_index WHERE resource_project_id = $1 AND domain_kind = $2',
-          input.domainKind === undefined
-            ? [input.resourceProjectId]
-            : [input.resourceProjectId, input.domainKind],
+          `INSERT INTO frontend_activity.activity_index (
+             resource_project_id, activity_id, domain_kind, root_kind,
+             domain_resource_kind, domain_resource_id, domain_resource_revision,
+             resource_href, job_id, run_id, summary, state, attention, retryability,
+             freshness, adapter_status, snapshot_revision, snapshot, projected_at, updated_at
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+          [
+            record.resourceProjectId,
+            record.activityId,
+            record.domainKind,
+            record.rootKind,
+            record.domainResourceKind,
+            record.domainResourceId,
+            record.domainResourceRevision ?? null,
+            record.resourceHref,
+            record.jobId ?? null,
+            record.runId,
+            record.summary,
+            record.state,
+            record.attention,
+            record.retryability,
+            record.freshness,
+            record.adapterStatus,
+            record.snapshotRevision,
+            JSONB_SNAPSHOT(record.snapshot),
+            record.projectedAt,
+            record.updatedAt,
+          ],
         );
-        for (const record of input.records) {
-          await client.query(
-            `INSERT INTO frontend_activity.activity_index (
-               resource_project_id, activity_id, domain_kind, root_kind,
-               domain_resource_kind, domain_resource_id, domain_resource_revision,
-               resource_href, job_id, run_id, summary, state, attention, retryability,
-               freshness, adapter_status, snapshot_revision, snapshot, projected_at, updated_at
-             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
-            [
-              record.resourceProjectId,
-              record.activityId,
-              record.domainKind,
-              record.rootKind,
-              record.domainResourceKind,
-              record.domainResourceId,
-              record.domainResourceRevision ?? null,
-              record.resourceHref,
-              record.jobId ?? null,
-              record.runId,
-              record.summary,
-              record.state,
-              record.attention,
-              record.retryability,
-              record.freshness,
-              record.adapterStatus,
-              record.snapshotRevision,
-              JSONB_SNAPSHOT(record.snapshot),
-              record.projectedAt,
-              record.updatedAt,
-            ],
-          );
-        }
-        await client.query('COMMIT');
-      } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
       }
     });
   }
@@ -304,7 +330,7 @@ export class PostgresActivityWatermarkStore implements ActivityWatermarkStorePor
   constructor(private readonly pool: Pool) {}
 
   async upsert(record: ActivityWatermarkRecordV1): Promise<void> {
-    await this.pool.query(
+    const result = await this.pool.query(
       `INSERT INTO frontend_activity.projection_watermarks (
          resource_project_id, adapter_id, domain_kind, source_updated_at,
          projected_at, lag_milliseconds, adapter_status, snapshot_revision,
@@ -318,7 +344,8 @@ export class PostgresActivityWatermarkStore implements ActivityWatermarkStorePor
          adapter_status = EXCLUDED.adapter_status,
          snapshot_revision = EXCLUDED.snapshot_revision,
          cursor = EXCLUDED.cursor,
-         updated_at = EXCLUDED.updated_at`,
+         updated_at = EXCLUDED.updated_at
+       WHERE frontend_activity.projection_watermarks.snapshot_revision <= EXCLUDED.snapshot_revision`,
       [
         record.resourceProjectId,
         record.adapterId,
@@ -332,6 +359,12 @@ export class PostgresActivityWatermarkStore implements ActivityWatermarkStorePor
         record.updatedAt,
       ],
     );
+    // A conflicting row with a newer snapshot revision is not updated.
+    if ((result.rowCount ?? 0) === 0) {
+      throw new Error(
+        `ACTIVITY_WATERMARK_STALE_UPSERT: ${record.resourceProjectId}/${record.adapterId} has a newer snapshot revision than ${record.snapshotRevision}`,
+      );
+    }
   }
 
   async readByProject(resourceProjectId: string): Promise<readonly ActivityWatermarkRecordV1[]> {

@@ -14,6 +14,10 @@ corrected_head: 7814727935c0729e667d95daf8ad0b75dc615d13
 corrected_ci_number: 611
 corrected_ci_run: 31095478566
 corrected_ci_conclusion: SUCCESS
+final_corrected_head: 86bafee6c97e9e87694414a22b0a64353b07d7d3
+final_corrected_ci_number: 613
+final_corrected_ci_run: 31096891481
+final_corrected_ci_conclusion: SUCCESS
 tracking_issue: https://github.com/JasonCutter/shotgun/issues/71
 contract_pr: https://github.com/JasonCutter/shotgun/pull/70
 product_pr: https://github.com/JasonCutter/shotgun/pull/73
@@ -153,6 +157,10 @@ CI was dispatched and no previously-passed head was re-run.
 
 Review-correction head `7814727935c0729e667d95daf8ad0b75dc615d13` (includes the five WP2
 corrections) — **CI #611 / `31095478566`: Quality, Frontend, Required Gates SUCCESS**.
+
+Second-round correction head `86bafee6c97e9e87694414a22b0a64353b07d7d3` (true in-memory
+keyset, watermark monotonicity, rebuild/upsert advisory lock, PR/evidence metadata) — **CI #613 /
+`31096891481`: Quality, Frontend, Required Gates SUCCESS**.
 
 ## 8. Next action
 

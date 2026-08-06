@@ -177,6 +177,28 @@ describe('FE-P5-S1 ActivityRootReferenceV1', () => {
     );
   });
 
+  it('rejects ASK with a JOB root (Ask never invents a Job)', () => {
+    expect(() =>
+      decodeActivityRootReferenceV1({ ...askRunRoot, rootKind: 'JOB', jobId: 'job-2' }),
+    ).toThrow(FrontendContractError);
+  });
+
+  it('rejects SOURCES with a RUN root', () => {
+    const runRoot = { ...sourcesRoot, rootKind: 'RUN' };
+    delete (runRoot as Record<string, unknown>).jobId;
+    expect(() => decodeActivityRootReferenceV1(runRoot)).toThrow(FrontendContractError);
+  });
+
+  it('rejects EXTERNAL_ACTION with a RUN root', () => {
+    expect(() =>
+      decodeActivityRootReferenceV1({
+        ...sourcesRoot,
+        domainKind: 'EXTERNAL_ACTION',
+        rootKind: 'RUN',
+      }),
+    ).toThrow(FrontendContractError);
+  });
+
   it('rejects empty activityId and domainResourceId', () => {
     expect(() => decodeActivityRootReferenceV1({ ...sourcesRoot, activityId: '   ' })).toThrow(
       FrontendContractError,

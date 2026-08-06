@@ -34,3 +34,21 @@ export type {
   ExternalActionActivityAdapterPort,
   SourcesActivityAdapterPort,
 } from './activity-adapter-port.js';
+export {
+  assertRebuildRevisionNotLower,
+  decodeActivityIndexCursor,
+  encodeActivityIndexCursor,
+} from './activity-index-store-port.js';
+export type {
+  ActivityIndexCursorV1,
+  ActivityIndexPageV1,
+  ActivityIndexQueryV1,
+  ActivityIndexRecordV1,
+  ActivityIndexStorePort,
+} from './activity-index-store-port.js';
+export type {
+  ActivityWatermarkRecordV1,
+  ActivityWatermarkStorePort,
+} from './activity-watermark-store-port.js';
+export { createActivityReadModelStore } from './activity-read-model-store-port.js';
+export type { ActivityReadModelStorePort } from './activity-read-model-store-port.js';

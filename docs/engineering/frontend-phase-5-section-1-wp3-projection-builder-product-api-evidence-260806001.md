@@ -1,7 +1,7 @@
 ---
 id: FRONTEND-PHASE-5-SECTION-1-WP3-EVIDENCE-260806001
 classification: CANONICAL
-status: wp3_implemented_pending_review
+status: wp3_accepted
 work_item: FE-P5-S1
 created_at: 2026-08-06
 subject_head: ab0c8749f6db475b16df674250c3b66dc3c63cdb
@@ -320,6 +320,20 @@ Evidence-terminology correction. Each was resolved on the round-4 correction hea
    `b90b97a5`, CI #625). The Evidence Registry uses the matching `implementationExactHead`,
    `evidenceMetadataBaseHead` and `currentPRHead` fields, and §8 below no longer references a
    stale "round-2" wording.
+
+## 6.5 Review verdict — ACCEPTED (2026-08-06)
+
+GPT review (`Make Shotgun - FE-P5-S1 Gap Audit`) of the round-4 correction head
+`b90b97a5` (CI #625) and the final evidence carrier `ca6a72612` (CI #627) returned
+**ACCEPTED**. Rounds 1–4 CHANGES_REQUIRED are all resolved; no blocking defect remains.
+
+- WP1: ACCEPTED; WP2: ACCEPTED; WP3: ACCEPTED; WP4+: NOT_STARTED.
+- PR #73 Ready/Merge, deployment and production verification remain forbidden.
+- WP4 (Activity Workspace UI) progression is permitted as a separate Work Package and is
+  not started automatically.
+- Evidence-head notation confirmed: `implementationExactHead` = `b90b97a5` (CI #625);
+  last evidence-recorded PR head = `67e8fea3e` (CI #626); externally verified current PR
+  head = `ca6a72612` (CI #627). No additional metadata commit is required.
 
 ## 7. Preserved boundaries
 

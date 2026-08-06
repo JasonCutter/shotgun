@@ -31,9 +31,9 @@ implementation_ci_conclusion: SUCCESS
 evidence_metadata_base_head: 31df6b9f718b63fd08704d62a8e9228cac264308
 evidence_metadata_base_ci_number: 624
 evidence_metadata_base_ci_run: 31111295808
-current_pr_head: b90b97a59fde01ef92a0932e6dd9f3c4e2ae4fa1
-current_pr_ci_number: 625
-current_pr_ci_run: 31114640938
+current_pr_head: 67e8fea3e505d7cb73bef8346b1cc1d45b14e8af
+current_pr_ci_number: 626
+current_pr_ci_run: 31115035379
 tracking_issue: https://github.com/JasonCutter/shotgun/issues/71
 contract_pr: https://github.com/JasonCutter/shotgun/pull/70
 product_pr: https://github.com/JasonCutter/shotgun/pull/73

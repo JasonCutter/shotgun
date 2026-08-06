@@ -18,9 +18,12 @@ round2_correction_ci_run: 31106782611
 current_evidence_head: f4afc32a3c79d424e0297d363ecb078c7dd5b106
 current_evidence_ci_number: 621
 current_evidence_ci_run: 31107258903
-exact_head: f4afc32a3c79d424e0297d363ecb078c7dd5b106
-ci_number: 621
-ci_run: 31107258903
+round3_correction_head: 62071a3b3e59254a06d2cc85f8c824451b1151a1
+round3_correction_ci_number: 623
+round3_correction_ci_run: 31110838089
+exact_head: 62071a3b3e59254a06d2cc85f8c824451b1151a1
+ci_number: 623
+ci_run: 31110838089
 ci_conclusion: SUCCESS
 tracking_issue: https://github.com/JasonCutter/shotgun/issues/71
 contract_pr: https://github.com/JasonCutter/shotgun/pull/70
@@ -133,13 +136,16 @@ Focused tests only (no previously-passed head re-run):
   `frontend-activity-domain-adapters.test.ts` (6 — concrete Sources/Ask/External Action mapping),
   `frontend-activity-round2-regression.test.ts` (10 — concrete 101+ queue pagination, empty-
   projection CAS, continuation cursors, Ask attempt identity, sensitivity/access revalidation,
-  multi-page watermark aggregation).
-- PG parity `tests/database/frontend-activity-postgres-parity.test.ts` — 14 tests (with DB,
-  includes `findByIdentity` and `commitProjectProjection` parity and the Ask sensitivity/access
-  revalidation).
+  multi-page watermark aggregation),
+  `frontend-activity-round3-regression.test.ts` (9 — project/audience isolation A/B, deep-link
+  Domain authorization + required sensitivity, Sources event continuation beyond 100/200,
+  in-memory tie ordering).
+- PG parity `tests/database/frontend-activity-postgres-parity.test.ts` — 15 tests (with DB,
+  includes `findByIdentity`, `commitProjectProjection` parity, registry-shrink watermark parity
+  and the Ask sensitivity/access revalidation).
 
-WP1 + WP2 + WP3 focused suites: **145 tests PASS — contract 39, unit 16, integration 76,
-PostgreSQL parity 14 (with DB)**. `tsc --noEmit`, ESLint and Prettier clean. Governance gates
+WP1 + WP2 + WP3 focused suites: **155 tests PASS — contract 39, unit 16, integration 85,
+PostgreSQL parity 15 (with DB)**. `tsc --noEmit`, ESLint and Prettier clean. Governance gates
 (`docs:validate`, `docs:frontend-work-items`, `docs:completion-invariants`,
 `docs:frontend-projections:check`) PASS.
 
@@ -147,15 +153,15 @@ PostgreSQL parity 14 (with DB)**. `tsc --noEmit`, ESLint and Prettier clean. Gov
 > "101 tests PASS (contract 39, unit 16, integration 46, parity 11)". That total was
 > miscounted: the parity 11 was listed as a separate category but the 101 total already excluded
 > it. The correct category sum was 39 + 16 + 46 + 11 = **112**. This revision reports the exact
-> per-file counts (145 total across contract 39, unit 16, integration 76, parity 14) and keeps the
+> per-file counts (155 total across contract 39, unit 16, integration 85, parity 15) and keeps the
 > parity suite as a separate with-DB category, matching the WP1/WP2 convention.
 
-Automatic CI on the round-2 implementation head `66a2ca13aae728990e938dc3e622259c7c9386a3`
-(PR #73, draft for auto CI only) — **CI #618 / `31103054212` SUCCESS** (the intermediate head
-`8390e3c67` CI #617 failed only on the evidence-doc Prettier gate; the formatting fix `66a2ca13a`
-resolved it). Round-2 review-correction head `419db19ad0577e336fea0d6930e34b23e0f40d7b` —
-**CI #620 / `31106782611` SUCCESS**. No manual or duplicate CI was dispatched and no
-previously-passed head was re-run.
+Automatic CI on the round-3 correction head `62071a3b3e59254a06d2cc85f8c824451b1151a1`
+(PR #73, draft for auto CI only) — **CI #623 / `31110838089` SUCCESS**. Earlier rounds:
+round-1 head `9159f20ee` CI #615; round-2 implementation `66a2ca13a` CI #618 (intermediate
+`8390e3c67` CI #617 was only the evidence-doc Prettier gate); round-2 correction `419db19ad`
+CI #620; evidence heads `f4afc32a3` CI #621 and `b3ee7b3c4` CI #622. No manual or duplicate CI
+was dispatched and no previously-passed head was re-run.
 
 ## 6.1 Review corrections — CHANGES_REQUIRED round 1 (2026-08-06)
 
@@ -223,6 +229,34 @@ re-running any previously-passed head:
 7. **Evidence/PR current authority** — separated heads recorded: round-1 head `9159f20ee`
    (CI #615), round-2 implementation head `66a2ca13a` (CI #618), round-2 correction head
    `419db19ad` (CI #620) and the current evidence head (see frontmatter).
+
+## 6.3 Review corrections — CHANGES_REQUIRED round 3 (2026-08-06)
+
+GPT review of the round-2 correction head (`419db19ad`, CI #620) returned `CHANGES_REQUIRED`
+with 5 items. Each was resolved on the round-3 correction head `62071a3b3` (CI #623) without
+re-running any previously-passed head:
+
+1. **Project/audience isolation** — the Sources projection is now Project-shared (the adapter
+   stops filtering by Principal at projection time), so one user's refresh never erases another
+   user's rows. Each queue row is revalidated at response time through the owning adapter's
+   non-disclosing `canAccess` (principal ownership, sensitivity, access/policy revisions), so
+   per-Principal resources are never disclosed. A/B isolation regression tests added (A refresh →
+   B queue hides A-private rows; B refresh does not delete A's shared rows).
+2. **Deep-link Domain authorization** — `sensitivityClearance` is now a required, allow-listed
+   scope value (missing/empty/unknown → `PROJECT_ACCESS_DENIED`). The External Action adapter
+   revalidates access/policy revision, `READ_EXTERNAL_ACTION` (`action:read`) and `READ_AUDIT`
+   (`action:audit:read`) capabilities and access masking — all denials are the same non-disclosing
+   `NOT_FOUND`. Regression tests for capability gates and stale revisions added.
+3. **Sources Event continuation completeness** — a flattened per-submission
+   `listSubmissionAttempts` read with an offset cursor replaces the per-item/total cap; the
+   adapter pages `limit + 1` and never drops 101+ attempts. 150- and 250-attempt regression tests
+   added.
+4. **Watermark store parity** — the PostgreSQL `commitProjectProjection` now deletes all Project
+   watermarks in the same transaction (removed/renamed adapters do not survive), matching the
+   in-memory store. Registry-shrink parity test (3 adapters → 2 adapters) added.
+5. **In-memory tie ordering** — Sources/Ask in-memory queue ordering is now `updatedAt DESC` then
+   id `ASC`, matching PostgreSQL and the keyset cursor predicate; equal-timestamp reverse-insert
+   pagination regression test added.
 
 ## 7. Preserved boundaries
 

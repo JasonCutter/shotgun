@@ -32,6 +32,7 @@ import { KnowledgeCompareWorkspace } from '../routes/knowledge-compare-workspace
 import { GraphWorkspace } from '../routes/graph-workspace.js';
 import { ReviewWorkspace } from '../routes/review-workspace.js';
 import { ExternalActionWorkspace } from '../routes/external-action-workspace.js';
+import { ActivityWorkspace } from '../routes/activity-workspace.js';
 import type { AppRuntime } from './providers.js';
 import { ensureSessionBoundary, sessionBoundaryQueryOptions } from '../session/session-query.js';
 import type { TargetRouteView } from '@shotgun/api-client';
@@ -172,10 +173,8 @@ export const createAppRouter = (runtime: AppRuntime) =>
         },
         {
           path: 'activity',
-          loader: () => {
-            throw new Error('Activity is not a registered Section 3 route.');
-          },
-          element: <PlaceholderPage heading="Activity" nextSection="후속 Frontend Section" />,
+          loader: guardedRouteLoader(runtime, { routeId: 'activity', href: '/activity' }),
+          element: <ActivityWorkspace />,
         },
         {
           path: 'history',

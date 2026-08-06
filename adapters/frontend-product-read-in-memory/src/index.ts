@@ -65,6 +65,7 @@ const routes = {
   knowledge: { routeId: 'knowledge', href: '/knowledge' },
   review: { routeId: 'review', href: '/review' },
   externalAction: { routeId: 'external-action', href: '/external-action' },
+  activity: { routeId: 'activity', href: '/activity' },
   settings: { routeId: 'settings', href: '/settings' },
   projects: { routeId: 'settings-projects', href: '/settings/projects' },
 } as const satisfies Record<string, TargetRouteView>;
@@ -149,6 +150,21 @@ export class InMemoryGlobalShellProjection implements GlobalShellProjectionPort 
               label: 'External actions',
               availability: 'TEMPORARILY_UNAVAILABLE',
               reason: 'Create a Project to open External actions.',
+            },
+        // FE-P5-S1 WP4: the Activity Workspace is reachable from navigation when
+        // a Project is active (Project-scoped operational workspace).
+        projectReady
+          ? {
+              id: 'activity',
+              label: 'Activity',
+              availability: 'AVAILABLE',
+              targetRoute: routes.activity,
+            }
+          : {
+              id: 'activity',
+              label: 'Activity',
+              availability: 'TEMPORARILY_UNAVAILABLE',
+              reason: 'Create a Project to open Activity.',
             },
         unavailableWorkspace('knowledge', 'Knowledge'),
         unavailableWorkspace('review', 'Review'),
@@ -318,6 +334,7 @@ export class InMemoryRouteGuardProjection implements RouteGuardProjectionPort {
       'settings',
       'settings-projects',
       'external-action',
+      'activity',
     ]).has(input.requestedRoute.routeId);
     return decodeRouteGuardDecisionView({
       schemaVersion: '1.0.0',

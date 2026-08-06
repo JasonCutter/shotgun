@@ -88,13 +88,14 @@ concrete Domain Resource identity (`domainResourceId` is required).
 
 Focused tests only (no previously-passed head re-run):
 
-- `tests/contract/frontend-activity.contract.test.ts` — 36 tests (decoders, authority rejection,
-  identity, cross-field invariants, domain/root binding, completedAt ISO validation).
+- `tests/contract/frontend-activity.contract.test.ts` — 39 tests (decoders, authority rejection,
+  identity, cross-field invariants, domain/root binding incl. ASK+JOB / SOURCES+RUN /
+  EXTERNAL_ACTION+RUN rejection, completedAt ISO validation).
 - `tests/unit/frontend-activity-domain-mapping.test.ts` — 16 tests (state mapping, dimensions).
 - `tests/integration/frontend-activity-adapter-ports.test.ts` — 8 tests (typed ports, registry,
   partial failure preservation, server-only scope, non-disclosing error conversion).
 
-Local: 60/60 PASS. `tsc --noEmit`, ESLint and Prettier clean. Governance gates
+Local: 63/63 PASS. `tsc --noEmit`, ESLint and Prettier clean. Governance gates
 (`docs:validate`, `docs:frontend-work-items`, `docs:completion-invariants`,
 `docs:frontend-projections:check`) PASS after the Work Item transition.
 
@@ -119,6 +120,13 @@ Review found three blocking defects and required correction within WP1 scope:
 Corrected head `7615ac30bc28314388c4bc75fd9f911f87839e12` — **CI #602 / `31090038789`:
 Quality, Frontend, Required Gates SUCCESS**. No manual or duplicate CI and no previously-passed
 head re-run.
+
+### 6.2 Correction — binding regression tests (review evidence gap)
+
+Review confirmed the three code fixes were ACCEPTED but flagged that the domain/root binding
+rejection tests (ASK + JOB, SOURCES + RUN, EXTERNAL_ACTION + RUN) were missing from the contract
+suite. Added the three regression tests; contract suite is now 39 tests and the total focused
+suite is 63. Evidence counts and the PR body were updated to match.
 
 ## 7. Work Item transition
 

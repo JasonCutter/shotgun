@@ -15,9 +15,12 @@ round2_implementation_ci_run: 31103054212
 round2_correction_head: 419db19ad0577e336fea0d6930e34b23e0f40d7b
 round2_correction_ci_number: 620
 round2_correction_ci_run: 31106782611
-exact_head: 419db19ad0577e336fea0d6930e34b23e0f40d7b
-ci_number: 620
-ci_run: 31106782611
+current_evidence_head: f4afc32a3c79d424e0297d363ecb078c7dd5b106
+current_evidence_ci_number: 621
+current_evidence_ci_run: 31107258903
+exact_head: f4afc32a3c79d424e0297d363ecb078c7dd5b106
+ci_number: 621
+ci_run: 31107258903
 ci_conclusion: SUCCESS
 tracking_issue: https://github.com/JasonCutter/shotgun/issues/71
 contract_pr: https://github.com/JasonCutter/shotgun/pull/70

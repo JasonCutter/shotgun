@@ -14,6 +14,9 @@ legacy_source_id: 3a65181d-71ad-819b-b4f7-f196a3816fe7
 - Section 설계·구현 Contract 정규화 완료
 - Product 구현·E2E·보안·접근성 완료는 별도 판정
 - 관련 ADR: ADR-111, ADR-112
+- FE-P5-S1 구현 경계 보강 ADR: ADR-130
+- FE-P5-S1 Contract Snapshot r1: 2026-08-06 사용자 승인·Frozen
+- FE-P5-S1 Product 구현: `NOT_AUTHORIZED`
 
 ## Section 1 — Agent·Job Activity Workspace
 
@@ -21,13 +24,33 @@ Activity는 현재 Job·Run·Attempt·Stage·Event의 운영 Projection이다.
 
 확정 경계:
 
-- Domain Resource Snapshot이 권위이며 SSE·Polling·Timeline UI는 갱신·관찰 수단이다.
-- Job, Run, Attempt와 Stage를 구분한다.
-- Retry는 새 Attempt로 기록하고 이전 Attempt, Failure와 Policy Context를 보존한다.
+- Domain Resource Snapshot이 권위이며 Polling·Timeline UI는 갱신·관찰 수단이다.
+- Federated Activity Read Projection을 사용하고, 공통 실행 원장을 새로 만들지 않는다.
+- Activity Root는 실제 Domain 모델에 따라 Job 또는 Run이다. 존재하지 않는 Job ID를 만들지 않는다.
+- Job, Run, Domain Attempt, Transport Attempt와 Stage를 구분한다.
+- Retry는 새 Domain Attempt로 기록하고 이전 Attempt, Failure와 Policy Context를 보존한다.
 - Transport Retry는 동일 Command 전달 재시도이며 새 Domain Attempt를 만들지 않는다.
-- Domain Retry는 새 Command·새 Attempt이며 원래 흐름을 Correlation·Causation으로 연결한다.
-- Frontend `commandId`, 내부 `messageId`, Job ID, Attempt ID와 `traceId`를 동일 ID로 강제하지 않는다.
-- Projection Lag, Partial Failure, User Attention과 정확한 Resource Deep Link를 표시한다.
+- Domain Retry는 기존 Domain Command를 통해 새 Attempt 또는 Run을 만들고 원래 흐름을 Correlation·Causation으로 연결한다.
+- Frontend `commandId`, 내부 `messageId`, Job ID, Run ID, Attempt ID와 `traceId`를 동일 ID로 강제하지 않는다.
+- Projection Lag, Partial Failure, Adapter Availability, User Attention과 정확한 Resource Deep Link를 표시한다.
+- Activity Queue는 additive Activity Index를 사용할 수 있지만 Detail은 권위 있는 Domain Snapshot을 다시 조회한다.
+- Polling이 baseline이며 SSE는 deferred다.
+- Retry와 Cancel은 Activity의 범용 권위가 아니라 기존 소유 Domain Command로 실행한다.
+- 장기 Activity Event 원장은 만들지 않으며 FE-P5-S2 History 경계를 침범하지 않는다.
+
+Frozen authority:
+
+- ADR: `ADR-130 ACCEPTED`
+- Contract:
+  `docs/architecture/contracts/snapshots/frontend-phase-5-section-1/frontend-phase-5-section-1-contract-snapshot-260806001.md`
+- Gap Audit:
+  `docs/engineering/frontend-phase-5-section-1-agent-job-activity-gap-audit-260806001.md`
+- Implementation Request:
+  `docs/implementation/frontend-phase-5-section-1-implementation-request-260806001.md`
+- Acceptance Criteria: `FE-P5-S1-AC-01` through `FE-P5-S1-AC-16`
+- Additive Migration: `REQUIRED / IMPLEMENTATION_NOT_AUTHORIZED`
+- Runtime Dependency: `NOT_REQUIRED`
+- Product implementation: `NOT_AUTHORIZED`
 
 ## Section 2 — History·Audit·Rollback
 
@@ -68,4 +91,4 @@ History
 → 안전한 Reversal 또는 Compensation 시작
 ```
 
-현재 판정은 설계·Contract 완료이며 Product 구현 완료가 아니다.
+현재 판정은 설계·FE-P5-S1 Contract 완료이며 Product 구현 완료가 아니다.

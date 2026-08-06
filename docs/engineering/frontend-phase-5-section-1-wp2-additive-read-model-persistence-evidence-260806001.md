@@ -10,6 +10,10 @@ exact_head: b06a4c37df7586045e3bac79819225008984e247
 ci_number: 608
 ci_run: 31093162869
 ci_conclusion: SUCCESS
+corrected_head: 7814727935c0729e667d95daf8ad0b75dc615d13
+corrected_ci_number: 611
+corrected_ci_run: 31095478566
+corrected_ci_conclusion: SUCCESS
 tracking_issue: https://github.com/JasonCutter/shotgun/issues/71
 contract_pr: https://github.com/JasonCutter/shotgun/pull/70
 product_pr: https://github.com/JasonCutter/shotgun/pull/73
@@ -124,6 +128,9 @@ Not implemented in this Work Package (remain unauthorized):
 WP2 exact head `b06a4c37df7586045e3bac79819225008984e247` (PR #73, draft for auto CI only) —
 **CI #608 / `31093162869`: Quality, Frontend, Required Gates SUCCESS**. No manual or duplicate
 CI was dispatched and no previously-passed head was re-run.
+
+Review-correction head `7814727935c0729e667d95daf8ad0b75dc615d13` (includes the five WP2
+corrections) — **CI #611 / `31095478566`: Quality, Frontend, Required Gates SUCCESS**.
 
 ## 8. Next action
 

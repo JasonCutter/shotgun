@@ -9,9 +9,15 @@ wp2_head: 86bafee6c97e9e87694414a22b0a64353b07d7d3
 round1_head: 9159f20ee6dd09e9e6b0537b23af68987a33da07
 round1_ci_number: 615
 round1_ci_run: 31098837551
-exact_head: 66a2ca13aae728990e938dc3e622259c7c9386a3
-ci_number: 618
-ci_run: 31103054212
+round2_implementation_head: 66a2ca13aae728990e938dc3e622259c7c9386a3
+round2_implementation_ci_number: 618
+round2_implementation_ci_run: 31103054212
+round2_correction_head: 419db19ad0577e336fea0d6930e34b23e0f40d7b
+round2_correction_ci_number: 620
+round2_correction_ci_run: 31106782611
+exact_head: 419db19ad0577e336fea0d6930e34b23e0f40d7b
+ci_number: 620
+ci_run: 31106782611
 ci_conclusion: SUCCESS
 tracking_issue: https://github.com/JasonCutter/shotgun/issues/71
 contract_pr: https://github.com/JasonCutter/shotgun/pull/70
@@ -121,29 +127,34 @@ Focused tests only (no previously-passed head re-run):
   atomicity, cycle detection, failed-adapter watermark across builds, atomic commit CAS/rollback),
   `frontend-activity-product-api-boundaries.test.ts` (8 — 51+ Queue→Detail, identity collision,
   Stage/Event caps, runtime request validation),
-  `frontend-activity-domain-adapters.test.ts` (6 — concrete Sources/Ask/External Action mapping).
-- PG parity `tests/database/frontend-activity-postgres-parity.test.ts` — 13 tests (with DB,
-  includes `findByIdentity` and `commitProjectProjection` parity).
+  `frontend-activity-domain-adapters.test.ts` (6 — concrete Sources/Ask/External Action mapping),
+  `frontend-activity-round2-regression.test.ts` (10 — concrete 101+ queue pagination, empty-
+  projection CAS, continuation cursors, Ask attempt identity, sensitivity/access revalidation,
+  multi-page watermark aggregation).
+- PG parity `tests/database/frontend-activity-postgres-parity.test.ts` — 14 tests (with DB,
+  includes `findByIdentity` and `commitProjectProjection` parity and the Ask sensitivity/access
+  revalidation).
 
-WP1 + WP2 + WP3 focused suites: **134 tests PASS — contract 39, unit 16, integration 66,
-PostgreSQL parity 13 (with DB)**. `tsc --noEmit`, ESLint and Prettier clean. Governance gates
+WP1 + WP2 + WP3 focused suites: **145 tests PASS — contract 39, unit 16, integration 76,
+PostgreSQL parity 14 (with DB)**. `tsc --noEmit`, ESLint and Prettier clean. Governance gates
 (`docs:validate`, `docs:frontend-work-items`, `docs:completion-invariants`,
 `docs:frontend-projections:check`) PASS.
 
-> **Test-count correction (review round 1, §6 item 8):** the round-1 evidence stated
+> **Test-count correction (review round 1, §6.1 item 8):** the round-1 evidence stated
 > "101 tests PASS (contract 39, unit 16, integration 46, parity 11)". That total was
 > miscounted: the parity 11 was listed as a separate category but the 101 total already excluded
 > it. The correct category sum was 39 + 16 + 46 + 11 = **112**. This revision reports the exact
-> per-file counts (134 total across contract 39, unit 16, integration 66, parity 13) and keeps the
+> per-file counts (145 total across contract 39, unit 16, integration 76, parity 14) and keeps the
 > parity suite as a separate with-DB category, matching the WP1/WP2 convention.
 
-Automatic CI on the round-2 WP3 exact head `66a2ca13aae728990e938dc3e622259c7c9386a3`
-(PR #73, draft for auto CI only) — **CI #618 / `31103054212`: Quality, Frontend, Required Gates
-SUCCESS**. No manual or duplicate CI was dispatched and no previously-passed head was re-run.
-(The intermediate head `8390e3c67` CI #617 failed only on the evidence-doc Prettier gate; the
-formatting fix `66a2ca13a` resolved it.)
+Automatic CI on the round-2 implementation head `66a2ca13aae728990e938dc3e622259c7c9386a3`
+(PR #73, draft for auto CI only) — **CI #618 / `31103054212` SUCCESS** (the intermediate head
+`8390e3c67` CI #617 failed only on the evidence-doc Prettier gate; the formatting fix `66a2ca13a`
+resolved it). Round-2 review-correction head `419db19ad0577e336fea0d6930e34b23e0f40d7b` —
+**CI #620 / `31106782611` SUCCESS**. No manual or duplicate CI was dispatched and no
+previously-passed head was re-run.
 
-## 6. Review corrections — CHANGES_REQUIRED round 1 (2026-08-06)
+## 6.1 Review corrections — CHANGES_REQUIRED round 1 (2026-08-06)
 
 GPT review of the round-1 WP3 head (`9159f20ee`, CI #615) returned `CHANGES_REQUIRED` with 8
 items. Each was resolved in this revision without re-running the previously-passed heads:
@@ -173,6 +184,42 @@ items. Each was resolved in this revision without re-running the previously-pass
    non-empty identity, allow-listed enums, authority-field rejection) + deny-by-default scope
    validation; validation regression tests added.
 8. **Evidence test count** — corrected (see §5 note).
+
+## 6.2 Review corrections — CHANGES_REQUIRED round 2 (2026-08-06)
+
+GPT review of the round-2 implementation head (`66a2ca13a`, CI #618) returned `CHANGES_REQUIRED`
+with 7 items. Each was resolved on the round-2 correction head `419db19ad` (CI #620) without
+re-running any previously-passed head:
+
+1. **Sources/Ask concrete queue pagination skipped one row per page** — the adapters requested
+   `limit + 1` from the read port and used the read port's lookahead-row cursor, so the next page
+   started after row 101 and row 101 was skipped. The cursor is now derived from the LAST DISPLAYED
+   row; concrete 101+ pagination tests verify the identity set (no skip, no duplicate) for both
+   Sources and Ask.
+2. **Empty-projection atomic CAS** — `commitProjectProjection` guarded only on `activity_index`
+   rows, so an empty index (all adapters failed) could double-commit the same revision. The CAS
+   now guards on the max revision of BOTH the index and the watermarks; an empty-index
+   same-revision race regression test was added (in-memory + PostgreSQL parity).
+3. **Stage/Event continuation did not page** — concrete adapters ignored the cursor. Typed
+   cursors now drive real pagination: Sources stages/events (offset), Ask events (ordinal),
+   External Action stages (offset); the coordinator slices responses to the resolved requested
+   limit; first→second page no-overlap regression tests added.
+4. **Ask fabricated a Domain Attempt id** — the production read returned only `attempt_number` and
+   the adapter synthesized `attempt-${answerRunId}`. `PostgresAskActivityRead` now joins
+   `answer_run_attempts` for the authoritative `attempt_id`; the adapter never fabricates an id
+   (no attempt → empty attempts) and regression tests cover both cases.
+5. **Sensitivity/access revalidation** — `sensitivityClearance` is now server-derived into the
+   Activity scope and the owning-Domain read ports; `PostgresSourcesActivityRead` passes the real
+   access scopes/sensitivity/revisions into the Sources product service (no synthetic binding) and
+   `PostgresAskActivityRead` revalidates sensitivity clearance plus access/policy revisions with a
+   DB-backed NOT_FOUND regression test.
+6. **Multi-page watermark aggregation** — the builder now aggregates the NEWEST `sourceUpdatedAt`,
+   the WORST `lagMilliseconds` and the worst adapter status across every page (the last page is the
+   oldest slice of a DESC queue); `partial` is true whenever any adapter failed OR the aggregate
+   status is not fully AVAILABLE. Per-page differing source time/lag/status regression test added.
+7. **Evidence/PR current authority** — separated heads recorded: round-1 head `9159f20ee`
+   (CI #615), round-2 implementation head `66a2ca13a` (CI #618), round-2 correction head
+   `419db19ad` (CI #620) and the current evidence head (see frontmatter).
 
 ## 7. Preserved boundaries
 

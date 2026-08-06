@@ -29,6 +29,9 @@ import {
 } from '../../../adapters/frontend-product-read-postgres/src/index.js';
 import { SealedSourcesStagingService } from '../../../adapters/frontend-sources-staging-sealed/src/index.js';
 import { PostgresSourcesProductService } from '../../../adapters/frontend-sources-write-postgres/src/product-service.js';
+import { PostgresSourcesActivityRead } from '../../../adapters/frontend-sources-write-postgres/src/activity-read.js';
+import { PostgresAskActivityRead } from '../../../adapters/frontend-ask-execution-postgres/src/activity-read.js';
+import { createPostgresActivityReadModelStore } from '../../../adapters/frontend-activity-postgres/src/index.js';
 import { LucasAugmentedPlainTextAdapter } from '../../../adapters/plain-text-lucas-augmented/src/index.js';
 import { PythonDocumentFormatAdapter } from '../../../adapters/document-format-python/src/index.js';
 import {
@@ -106,10 +109,11 @@ const urlAcquisition = new SecureUrlAcquisitionCoordinator(
   new NodeUrlHopTransport(),
 );
 const staging = new SealedSourcesStagingService(assetStorage, stagingSecret, urlAcquisition);
+const sourcesProductService = new PostgresSourcesProductService(pool, staging);
 const removeSourcesWriteRuntime = configureSourcesWriteRuntime({
   commandGateway,
   staging,
-  productService: new PostgresSourcesProductService(pool, staging),
+  productService: sourcesProductService,
 });
 const plainTextAdapter = new LucasAugmentedPlainTextAdapter();
 const canonicalKnowledgeRepository = new PostgresCanonicalKnowledgeRepository(pool);
@@ -184,6 +188,9 @@ const { server } = await createApplication({
   actionExecutionRepository: new PostgresActionExecutionRepository(pool),
   authRepository: new PostgresAuthRepository(pool),
   production,
+  activitySourcesRead: new PostgresSourcesActivityRead(pool, sourcesProductService),
+  activityAskRead: new PostgresAskActivityRead(pool),
+  activityReadModelStore: createPostgresActivityReadModelStore(pool),
   actionConnector: new FakeDraftActionConnector(),
   textDiff: new JsDiffAdapter(),
   transformer: new PythonDocumentFormatAdapter(),

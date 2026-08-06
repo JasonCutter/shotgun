@@ -1,6 +1,7 @@
 import {
   FRONTEND_ACTIVITY_API_VERSION,
   FrontendContractError,
+  findBrowserAuthoredAuthorityFields,
   type ActivityAdapterStatusV1,
   type ActivityAttentionStateV1,
   type ActivityDimensionsV1,
@@ -11,6 +12,9 @@ import {
   type ActivityRootReferenceV1,
 } from '../../../packages/contracts/src/index.js';
 import {
+  ACTIVITY_INDEX_ATTENTION,
+  ACTIVITY_INDEX_DOMAIN_KINDS,
+  ACTIVITY_INDEX_LIFECYCLE_STATES,
   combineAdapterAvailability,
   type ActivityAdapterPort,
   type ActivityAdapterRegistryPort,
@@ -101,6 +105,7 @@ export type ListActivityQueueRequestV1 = {
 
 export type GetActivityDetailRequestV1 = {
   readonly schemaVersion: typeof FRONTEND_ACTIVITY_API_VERSION;
+  readonly domainKind: ActivityDomainKindV1;
   readonly activityId: string;
   readonly domainResourceKind: string;
   readonly domainResourceId: string;
@@ -108,14 +113,231 @@ export type GetActivityDetailRequestV1 = {
 
 export type ListActivityContinuationRequestV1 = {
   readonly schemaVersion: typeof FRONTEND_ACTIVITY_API_VERSION;
+  readonly domainKind: ActivityDomainKindV1;
   readonly activityId: string;
   readonly domainResourceKind: string;
   readonly domainResourceId: string;
   readonly cursor?: string;
+  readonly limit?: number;
 };
 
 export type RefreshActivityProjectionRequestV1 = {
   readonly schemaVersion: typeof FRONTEND_ACTIVITY_API_VERSION;
+};
+
+// --- strict runtime request decoders ---------------------------------------
+//
+// Every Activity Product API request is decoded at runtime: schemaVersion is
+// enforced, required identity fields must be non-empty, enums are allow-listed,
+// the page/continuation caps bound the read, and browser-authored authority
+// fields (actor, principalId, activeProjectId, capability, policy, approval,
+// credential, budget) are rejected. TypeScript types do not protect the server
+// from browser input; these decoders do (Contract Snapshot §9, deny-by-default).
+
+const requestFail = (message: string): never => {
+  throw new FrontendContractError('INVALID_REQUEST', message);
+};
+
+const requestObject = (value: unknown, path: string): Record<string, unknown> => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return requestFail(`Activity request ${path} must be a non-null object`);
+  }
+  return value as Record<string, unknown>;
+};
+
+const strictRequestObject = (
+  value: unknown,
+  allowedKeys: readonly string[],
+  path: string,
+): Record<string, unknown> => {
+  const object = requestObject(value, path);
+  const unexpected = Object.keys(object).filter((key) => !allowedKeys.includes(key));
+  if (unexpected.length > 0) {
+    return requestFail(
+      `Activity request ${path} contains unsupported fields: ${unexpected.join(', ')}`,
+    );
+  }
+  const found = findBrowserAuthoredAuthorityFields(value);
+  if (found.length > 0) {
+    return requestFail(
+      `Activity request ${path} must not carry browser-authored authority fields: ${found.join(', ')}`,
+    );
+  }
+  return object;
+};
+
+const requestRequiredString = (object: Record<string, unknown>, key: string): string => {
+  const value = object[key];
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return requestFail(`Activity request field ${key} must be a non-empty string`);
+  }
+  return value;
+};
+
+const requestOptionalString = (
+  object: Record<string, unknown>,
+  key: string,
+): string | undefined => {
+  if (object[key] === undefined) return undefined;
+  return requestRequiredString(object, key);
+};
+
+const requestSchemaVersion = (object: Record<string, unknown>): void => {
+  const schemaVersion = requestRequiredString(object, 'schemaVersion');
+  if (schemaVersion !== FRONTEND_ACTIVITY_API_VERSION) {
+    return requestFail('Activity request schemaVersion must be 1.0.0');
+  }
+};
+
+const requestStringEnum = <T extends string>(
+  object: Record<string, unknown>,
+  key: string,
+  values: readonly T[],
+): T => {
+  const value = requestRequiredString(object, key);
+  if (!values.includes(value as T)) {
+    return requestFail(`Activity request field ${key} must be one of ${values.join(', ')}`);
+  }
+  return value as T;
+};
+
+const requestStringArrayEnum = <T extends string>(
+  object: Record<string, unknown>,
+  key: string,
+  values: readonly T[],
+): readonly T[] | undefined => {
+  if (object[key] === undefined) return undefined;
+  const array = object[key];
+  if (!Array.isArray(array)) {
+    return requestFail(`Activity request field ${key} must be an array`);
+  }
+  return array.map((entry) => {
+    if (typeof entry !== 'string' || entry.trim().length === 0) {
+      return requestFail(`Activity request field ${key} must contain only non-empty strings`);
+    }
+    if (!values.includes(entry as T)) {
+      return requestFail(`Activity request field ${key} must be one of ${values.join(', ')}`);
+    }
+    return entry as T;
+  });
+};
+
+const requestBoundedLimit = (object: Record<string, unknown>, cap: number): number | undefined => {
+  if (object.limit === undefined) return undefined;
+  const value = object.limit;
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) {
+    return requestFail('Activity request field limit must be a positive safe integer');
+  }
+  return Math.min(cap, value);
+};
+
+/** Decode a List Activity Queue request (schema + filters + bounded limit). */
+export const decodeListActivityQueueRequestV1 = (value: unknown): ListActivityQueueRequestV1 => {
+  const object = strictRequestObject(
+    value,
+    ['schemaVersion', 'domainKinds', 'states', 'attention', 'cursor', 'limit'],
+    'listActivityQueue',
+  );
+  requestSchemaVersion(object);
+  const domainKinds = requestStringArrayEnum(object, 'domainKinds', ACTIVITY_INDEX_DOMAIN_KINDS);
+  const states = requestStringArrayEnum(object, 'states', ACTIVITY_INDEX_LIFECYCLE_STATES);
+  const attention =
+    object.attention === undefined
+      ? undefined
+      : requestStringEnum(object, 'attention', ACTIVITY_INDEX_ATTENTION);
+  const cursor = requestOptionalString(object, 'cursor');
+  const limit = requestBoundedLimit(object, ACTIVITY_QUEUE_PAGE_SIZE_CAP);
+  return {
+    schemaVersion: FRONTEND_ACTIVITY_API_VERSION,
+    ...(domainKinds === undefined ? {} : { domainKinds }),
+    ...(states === undefined ? {} : { states }),
+    ...(attention === undefined ? {} : { attention }),
+    ...(cursor === undefined ? {} : { cursor }),
+    ...(limit === undefined ? {} : { limit }),
+  };
+};
+
+const decodeIdentityRequest = (
+  value: unknown,
+  allowedKeys: readonly string[],
+  path: string,
+): {
+  readonly domainKind: ActivityDomainKindV1;
+  readonly activityId: string;
+  readonly domainResourceKind: string;
+  readonly domainResourceId: string;
+  readonly cursor?: string;
+  readonly limit?: number;
+} => {
+  const object = strictRequestObject(value, allowedKeys, path);
+  requestSchemaVersion(object);
+  const domainKind = requestStringEnum(object, 'domainKind', ACTIVITY_INDEX_DOMAIN_KINDS);
+  const activityId = requestRequiredString(object, 'activityId');
+  const domainResourceKind = requestRequiredString(object, 'domainResourceKind');
+  const domainResourceId = requestRequiredString(object, 'domainResourceId');
+  const cursor = requestOptionalString(object, 'cursor');
+  const limit = requestBoundedLimit(object, ACTIVITY_STAGE_LIST_CAP);
+  return {
+    domainKind,
+    activityId,
+    domainResourceKind,
+    domainResourceId,
+    ...(cursor === undefined ? {} : { cursor }),
+    ...(limit === undefined ? {} : { limit }),
+  };
+};
+
+/** Decode a Get Activity Detail request. */
+export const decodeGetActivityDetailRequestV1 = (value: unknown): GetActivityDetailRequestV1 => {
+  const decoded = decodeIdentityRequest(
+    value,
+    ['schemaVersion', 'domainKind', 'activityId', 'domainResourceKind', 'domainResourceId'],
+    'getActivityDetail',
+  );
+  return {
+    schemaVersion: FRONTEND_ACTIVITY_API_VERSION,
+    domainKind: decoded.domainKind,
+    activityId: decoded.activityId,
+    domainResourceKind: decoded.domainResourceKind,
+    domainResourceId: decoded.domainResourceId,
+  };
+};
+
+/** Decode a List Activity Stage/Event continuation request. */
+export const decodeListActivityContinuationRequestV1 = (
+  value: unknown,
+): ListActivityContinuationRequestV1 => {
+  const decoded = decodeIdentityRequest(
+    value,
+    [
+      'schemaVersion',
+      'domainKind',
+      'activityId',
+      'domainResourceKind',
+      'domainResourceId',
+      'cursor',
+      'limit',
+    ],
+    'listActivityContinuation',
+  );
+  return {
+    schemaVersion: FRONTEND_ACTIVITY_API_VERSION,
+    domainKind: decoded.domainKind,
+    activityId: decoded.activityId,
+    domainResourceKind: decoded.domainResourceKind,
+    domainResourceId: decoded.domainResourceId,
+    ...(decoded.cursor === undefined ? {} : { cursor: decoded.cursor }),
+    ...(decoded.limit === undefined ? {} : { limit: decoded.limit }),
+  };
+};
+
+/** Decode a Refresh Activity Projection request. */
+export const decodeRefreshActivityProjectionRequestV1 = (
+  value: unknown,
+): RefreshActivityProjectionRequestV1 => {
+  const object = strictRequestObject(value, ['schemaVersion'], 'refreshActivityProjection');
+  requestSchemaVersion(object);
+  return { schemaVersion: FRONTEND_ACTIVITY_API_VERSION };
 };
 
 // --- helpers ----------------------------------------------------------------
@@ -277,7 +499,30 @@ export class ActivityProductCoordinator {
   }
 
   private requireCapability(scope: ActivityProductScopeV1, capability: ActivityCapabilityV1): void {
+    this.assertValidProductScope(scope);
     if (!activityCapabilitiesForScope(scope).includes(capability)) {
+      projectDenied();
+    }
+  }
+
+  /**
+   * Deny-by-default scope validation: a server-derived Product scope must carry
+   * a Principal, an active Project and both revision bindings. The browser
+   * never authors these; an empty/missing binding is rejected as a denial
+   * (Contract Snapshot §9).
+   */
+  private assertValidProductScope(scope: ActivityProductScopeV1): void {
+    if (
+      typeof scope.principalId !== 'string' ||
+      scope.principalId.trim().length === 0 ||
+      typeof scope.activeProjectId !== 'string' ||
+      scope.activeProjectId.trim().length === 0 ||
+      typeof scope.accessRevision !== 'string' ||
+      scope.accessRevision.trim().length === 0 ||
+      typeof scope.policyContextRevision !== 'string' ||
+      scope.policyContextRevision.trim().length === 0 ||
+      !Array.isArray(scope.accessScope)
+    ) {
       projectDenied();
     }
   }
@@ -285,35 +530,30 @@ export class ActivityProductCoordinator {
   private async lookupIndexRecord(
     scope: ActivityProductScopeV1,
     request: {
+      readonly domainKind: ActivityDomainKindV1;
       readonly activityId: string;
       readonly domainResourceKind: string;
       readonly domainResourceId: string;
     },
   ): Promise<ActivityIndexRecordV1> {
-    // Non-disclosing: a cross-project or missing resource produces the same
-    // NOT_FOUND result and never leaks existence or identity. The lookup is
-    // bounded per owning-Domain adapter within the queue page cap.
-    const domainKinds: readonly ActivityDomainKindV1[] = [
-      'SOURCES',
-      'ASK',
-      'EXTERNAL_ACTION',
-      'CONNECTOR_DIAGNOSTICS',
-    ];
-    for (const domainKind of domainKinds) {
-      const page = await this.store.index.queryProject({
-        resourceProjectId: scope.activeProjectId,
-        domainKinds: [domainKind],
-        limit: ACTIVITY_QUEUE_PAGE_SIZE_CAP,
-      });
-      const record = page.records.find(
-        (candidate) =>
-          candidate.activityId === request.activityId &&
-          candidate.domainResourceKind === request.domainResourceKind &&
-          candidate.domainResourceId === request.domainResourceId,
-      );
-      if (record) return record;
+    // Queue→Detail lineage (AC-05): a direct identity lookup resolves ANY
+    // queue-visible Activity through its concrete Domain reference without a
+    // queue page cap. Non-disclosing: a missing, cross-project or reference-
+    // mismatched resource produces the same NOT_FOUND and never leaks
+    // existence or identity.
+    const record = await this.store.index.findByIdentity({
+      resourceProjectId: scope.activeProjectId,
+      domainKind: request.domainKind,
+      activityId: request.activityId,
+    });
+    if (
+      record === undefined ||
+      record.domainResourceKind !== request.domainResourceKind ||
+      record.domainResourceId !== request.domainResourceId
+    ) {
+      return notFound();
     }
-    return notFound();
+    return record;
   }
 
   /** Project-scoped Activity Queue read with filters and stable ordering. */
@@ -322,13 +562,14 @@ export class ActivityProductCoordinator {
     request: ListActivityQueueRequestV1,
   ): Promise<ActivityQueuePageV1> {
     this.requireCapability(scope, 'LIST_ACTIVITY');
-    const limit = Math.min(ACTIVITY_QUEUE_PAGE_SIZE_CAP, Math.max(1, request.limit ?? 20));
+    const decoded = decodeListActivityQueueRequestV1(request);
+    const limit = Math.min(ACTIVITY_QUEUE_PAGE_SIZE_CAP, Math.max(1, decoded.limit ?? 20));
     const page = await this.store.index.queryProject({
       resourceProjectId: scope.activeProjectId,
-      domainKinds: request.domainKinds,
-      states: request.states,
-      attention: request.attention,
-      cursor: request.cursor,
+      domainKinds: decoded.domainKinds,
+      states: decoded.states,
+      attention: decoded.attention,
+      cursor: decoded.cursor,
       limit,
     });
     const watermarks = await this.store.watermarks.readByProject(scope.activeProjectId);
@@ -355,7 +596,8 @@ export class ActivityProductCoordinator {
     request: GetActivityDetailRequestV1,
   ): Promise<ActivityDetailV1> {
     this.requireCapability(scope, 'READ_ACTIVITY_DETAIL');
-    const record = await this.lookupIndexRecord(scope, request);
+    const decoded = decodeGetActivityDetailRequestV1(request);
+    const record = await this.lookupIndexRecord(scope, decoded);
     const adapter = this.adapterFor(record.domainKind);
     return adapter.readDetail(this.adapterScope(scope), activityRootFromRecord(record));
   }
@@ -366,13 +608,25 @@ export class ActivityProductCoordinator {
     request: ListActivityContinuationRequestV1,
   ): Promise<ActivityStageContinuationV1> {
     this.requireCapability(scope, 'READ_ACTIVITY_STAGES');
-    const record = await this.lookupIndexRecord(scope, request);
+    const decoded = decodeListActivityContinuationRequestV1(request);
+    const record = await this.lookupIndexRecord(scope, decoded);
     const adapter = this.adapterFor(record.domainKind);
-    return adapter.readStages(
+    const limit = Math.min(
+      ACTIVITY_STAGE_LIST_CAP,
+      Math.max(1, decoded.limit ?? ACTIVITY_STAGE_LIST_CAP),
+    );
+    const continuation = await adapter.readStages(
       this.adapterScope(scope),
       activityRootFromRecord(record),
-      request.cursor,
+      decoded.cursor,
+      limit,
     );
+    // The server-enforced cap is authoritative: an adapter can never return
+    // more stages than the frozen Product API bound.
+    return {
+      ...continuation,
+      stages: continuation.stages.slice(0, ACTIVITY_STAGE_LIST_CAP),
+    };
   }
 
   /** Bounded Event continuation (bounded operational evidence, not History). */
@@ -381,13 +635,24 @@ export class ActivityProductCoordinator {
     request: ListActivityContinuationRequestV1,
   ): Promise<ActivityEventContinuationV1> {
     this.requireCapability(scope, 'READ_ACTIVITY_EVENTS');
-    const record = await this.lookupIndexRecord(scope, request);
+    const decoded = decodeListActivityContinuationRequestV1(request);
+    const record = await this.lookupIndexRecord(scope, decoded);
     const adapter = this.adapterFor(record.domainKind);
-    return adapter.readEvents(
+    const limit = Math.min(
+      ACTIVITY_EVENT_LIST_CAP,
+      Math.max(1, decoded.limit ?? ACTIVITY_EVENT_LIST_CAP),
+    );
+    const continuation = await adapter.readEvents(
       this.adapterScope(scope),
       activityRootFromRecord(record),
-      request.cursor,
+      decoded.cursor,
+      limit,
     );
+    // The server-enforced cap is authoritative.
+    return {
+      ...continuation,
+      events: continuation.events.slice(0, ACTIVITY_EVENT_LIST_CAP),
+    };
   }
 
   /** Explicit authoritative refresh through the projection builder. */
@@ -395,9 +660,7 @@ export class ActivityProductCoordinator {
     scope: ActivityProductScopeV1,
     request: RefreshActivityProjectionRequestV1,
   ): Promise<ActivityProjectionBuildResultV1> {
-    if (request.schemaVersion !== FRONTEND_ACTIVITY_API_VERSION) {
-      throw new FrontendContractError('INVALID_REQUEST', 'Unsupported Activity refresh schema.');
-    }
+    decodeRefreshActivityProjectionRequestV1(request);
     this.requireCapability(scope, 'REFRESH_ACTIVITY_PROJECTION');
     return this.builder.buildProjectProjection(this.projectionScope(scope));
   }

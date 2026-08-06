@@ -218,6 +218,19 @@ export class PostgresActivityIndexStore implements ActivityIndexStorePort {
     };
   }
 
+  async findByIdentity(input: {
+    readonly resourceProjectId: string;
+    readonly domainKind: ActivityDomainKindV1;
+    readonly activityId: string;
+  }): Promise<ActivityIndexRecordV1 | undefined> {
+    const result = await this.pool.query<IndexRow>(
+      `SELECT * FROM frontend_activity.activity_index
+       WHERE resource_project_id = $1 AND domain_kind = $2 AND activity_id = $3`,
+      [input.resourceProjectId, input.domainKind, input.activityId],
+    );
+    return result.rows[0] ? indexRecordFrom(result.rows[0]) : undefined;
+  }
+
   async deleteProject(resourceProjectId: string): Promise<void> {
     await this.withProjectWriteLock(resourceProjectId, async (client) => {
       await client.query(
@@ -397,7 +410,132 @@ export class PostgresActivityWatermarkStore implements ActivityWatermarkStorePor
   }
 }
 
-export const createPostgresActivityReadModelStore = (pool: Pool): ActivityReadModelStorePort => ({
-  index: new PostgresActivityIndexStore(pool),
-  watermarks: new PostgresActivityWatermarkStore(pool),
-});
+export const createPostgresActivityReadModelStore = (pool: Pool): ActivityReadModelStorePort => {
+  const index = new PostgresActivityIndexStore(pool);
+  const watermarks = new PostgresActivityWatermarkStore(pool);
+  return {
+    index,
+    watermarks,
+    async commitProjectProjection(input) {
+      // Atomic full-project commit in ONE transaction under the project-scoped
+      // advisory lock: revision CAS check, index replace and every watermark
+      // upsert publish together or not at all. A concurrent refresh either
+      // serializes behind the lock (and then fails the revision guard) or is
+      // fully visible after commit — the index and watermarks never diverge.
+      validateRebuildBatch({
+        resourceProjectId: input.resourceProjectId,
+        snapshotRevision: input.snapshotRevision,
+        records: input.records,
+      });
+      for (const watermark of input.watermarks) {
+        if (watermark.resourceProjectId !== input.resourceProjectId) {
+          throw new Error(
+            `ACTIVITY_WATERMARK_SCOPE: watermark ${watermark.adapterId} is bound to another project`,
+          );
+        }
+        if (watermark.snapshotRevision !== input.snapshotRevision) {
+          throw new Error(
+            `ACTIVITY_WATERMARK_REVISION: watermark ${watermark.adapterId} snapshotRevision ${watermark.snapshotRevision} must equal commit revision ${input.snapshotRevision}`,
+          );
+        }
+      }
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+          input.resourceProjectId,
+        ]);
+        const existing = await client.query<{ snapshot_revision: string }>(
+          `SELECT snapshot_revision::text AS snapshot_revision
+           FROM frontend_activity.activity_index
+           WHERE resource_project_id = $1`,
+          [input.resourceProjectId],
+        );
+        const existingRevisions = existing.rows.map((row) => Number(row.snapshot_revision));
+        assertRebuildRevisionNotLower(
+          existingRevisions.map((snapshotRevision) => ({ snapshotRevision })),
+          input.snapshotRevision,
+          `${input.resourceProjectId}/ALL`,
+        );
+        if (existingRevisions.some((revision) => revision >= input.snapshotRevision)) {
+          throw new Error(
+            `ACTIVITY_INDEX_STALE_REBUILD: ${input.resourceProjectId}/ALL already has snapshot revision >= ${input.snapshotRevision}`,
+          );
+        }
+        await client.query(
+          'DELETE FROM frontend_activity.activity_index WHERE resource_project_id = $1',
+          [input.resourceProjectId],
+        );
+        for (const record of input.records) {
+          await client.query(
+            `INSERT INTO frontend_activity.activity_index (
+               resource_project_id, activity_id, domain_kind, root_kind,
+               domain_resource_kind, domain_resource_id, domain_resource_revision,
+               resource_href, job_id, run_id, summary, state, attention, retryability,
+               freshness, adapter_status, snapshot_revision, snapshot, projected_at, updated_at
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+            [
+              record.resourceProjectId,
+              record.activityId,
+              record.domainKind,
+              record.rootKind,
+              record.domainResourceKind,
+              record.domainResourceId,
+              record.domainResourceRevision ?? null,
+              record.resourceHref,
+              record.jobId ?? null,
+              record.runId,
+              record.summary,
+              record.state,
+              record.attention,
+              record.retryability,
+              record.freshness,
+              record.adapterStatus,
+              record.snapshotRevision,
+              JSONB_SNAPSHOT(record.snapshot),
+              record.projectedAt,
+              record.updatedAt,
+            ],
+          );
+        }
+        for (const watermark of input.watermarks) {
+          await client.query(
+            `INSERT INTO frontend_activity.projection_watermarks (
+               resource_project_id, adapter_id, domain_kind, source_updated_at,
+               projected_at, lag_milliseconds, adapter_status, snapshot_revision,
+               cursor, updated_at
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+             ON CONFLICT (resource_project_id, adapter_id) DO UPDATE SET
+               domain_kind = EXCLUDED.domain_kind,
+               source_updated_at = EXCLUDED.source_updated_at,
+               projected_at = EXCLUDED.projected_at,
+               lag_milliseconds = EXCLUDED.lag_milliseconds,
+               adapter_status = EXCLUDED.adapter_status,
+               snapshot_revision = EXCLUDED.snapshot_revision,
+               cursor = EXCLUDED.cursor,
+               updated_at = EXCLUDED.updated_at
+             WHERE frontend_activity.projection_watermarks.snapshot_revision <= EXCLUDED.snapshot_revision`,
+            [
+              watermark.resourceProjectId,
+              watermark.adapterId,
+              watermark.domainKind,
+              watermark.sourceUpdatedAt ?? null,
+              watermark.projectedAt,
+              watermark.lagMilliseconds ?? null,
+              watermark.adapterStatus,
+              watermark.snapshotRevision,
+              watermark.cursor ?? null,
+              watermark.updatedAt,
+            ],
+          );
+        }
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+  };
+};

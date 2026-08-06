@@ -107,17 +107,22 @@ export type ActivityAdapterPort = {
     scope: ActivityAdapterScopeV1,
     root: ActivityRootReferenceV1,
   ): Promise<ActivityDetailV1>;
-  /** Bounded Stage continuation. */
+  /** Bounded Stage continuation. `limit` is the server-enforced cap (≤ 50). */
   readStages(
     scope: ActivityAdapterScopeV1,
     root: ActivityRootReferenceV1,
     cursor?: string,
+    limit?: number,
   ): Promise<ActivityStageContinuationV1>;
-  /** Bounded Event continuation (operational evidence, not History). */
+  /**
+   * Bounded Event continuation (operational evidence, not History).
+   * `limit` is the server-enforced cap (≤ 50).
+   */
   readEvents(
     scope: ActivityAdapterScopeV1,
     root: ActivityRootReferenceV1,
     cursor?: string,
+    limit?: number,
   ): Promise<ActivityEventContinuationV1>;
   /** Adapter health for the Projection Metadata adapterStatus dimension. */
   health(): ActivityAdapterHealthV1;

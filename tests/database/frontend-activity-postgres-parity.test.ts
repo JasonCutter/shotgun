@@ -615,4 +615,148 @@ describe.runIf(pool)('FE-P5-S1 in-memory vs PostgreSQL Activity read-model parit
       ),
     ).rejects.toThrow(/check constraint/);
   });
+
+  it('matches in-memory direct identity lookup (findByIdentity)', async () => {
+    const scenario = async (
+      store: ActivityReadModelStorePort,
+    ): Promise<Record<string, unknown>> => {
+      await store.index.upsert(
+        record({
+          activityId: 'a1',
+          domainKind: 'SOURCES',
+          state: 'RUNNING',
+          updatedAt: '2026-08-06T00:00:03.000Z',
+        }),
+      );
+      await store.index.upsert(
+        record({
+          activityId: 'a1',
+          domainKind: 'ASK',
+          state: 'SUCCEEDED',
+          updatedAt: '2026-08-06T00:00:01.000Z',
+        }),
+      );
+      const found = await store.index.findByIdentity({
+        resourceProjectId: 'project-1',
+        domainKind: 'SOURCES',
+        activityId: 'a1',
+      });
+      const ask = await store.index.findByIdentity({
+        resourceProjectId: 'project-1',
+        domainKind: 'ASK',
+        activityId: 'a1',
+      });
+      const missing = await store.index.findByIdentity({
+        resourceProjectId: 'project-1',
+        domainKind: 'SOURCES',
+        activityId: 'missing',
+      });
+      return {
+        sourcesActivityId: found?.activityId,
+        sourcesDomainKind: found?.domainKind,
+        askActivityId: ask?.activityId,
+        askDomainKind: ask?.domainKind,
+        missing: missing === undefined,
+      };
+    };
+    const memory = await scenario(createInMemoryActivityReadModelStore());
+    const postgres = await scenario(pgStore());
+    expect(postgres).toEqual(memory);
+    expect(postgres.sourcesActivityId).toBe('a1');
+    expect(postgres.askDomainKind).toBe('ASK');
+    expect(postgres.missing).toBe(true);
+  });
+
+  it('matches in-memory atomic commitProjectProjection (index + watermarks in one CAS)', async () => {
+    const scenario = async (
+      store: ActivityReadModelStorePort,
+    ): Promise<Record<string, unknown>> => {
+      const records = [
+        record({
+          activityId: 'a1',
+          domainKind: 'SOURCES',
+          state: 'RUNNING',
+          updatedAt: '2026-08-06T00:00:03.000Z',
+          revision: 1,
+        }),
+        record({
+          activityId: 'a2',
+          domainKind: 'ASK',
+          state: 'SUCCEEDED',
+          updatedAt: '2026-08-06T00:00:01.000Z',
+          revision: 1,
+        }),
+      ];
+      const watermarks = [
+        {
+          ...watermark({
+            adapterId: 'sources-adapter',
+            domainKind: 'SOURCES',
+            projectedAt: '2026-08-06T00:00:03.000Z',
+          }),
+          snapshotRevision: 1,
+        },
+        {
+          ...watermark({
+            adapterId: 'ask-adapter',
+            domainKind: 'ASK',
+            projectedAt: '2026-08-06T00:00:01.000Z',
+          }),
+          snapshotRevision: 1,
+        },
+      ];
+      await store.commitProjectProjection({
+        resourceProjectId: 'project-1',
+        snapshotRevision: 1,
+        records,
+        watermarks,
+      });
+      const page = await store.index.queryProject({ resourceProjectId: 'project-1', limit: 10 });
+      const storedWatermarks = await store.watermarks.readByProject('project-1');
+      // A concurrent same-revision commit must fail closed (CAS).
+      let staleError: string | undefined;
+      try {
+        await store.commitProjectProjection({
+          resourceProjectId: 'project-1',
+          snapshotRevision: 1,
+          records: [
+            record({
+              activityId: 'a9',
+              domainKind: 'SOURCES',
+              state: 'QUEUED',
+              updatedAt: '2026-08-06T00:00:04.000Z',
+              revision: 1,
+            }),
+          ],
+          watermarks: [
+            {
+              ...watermark({
+                adapterId: 'sources-adapter',
+                domainKind: 'SOURCES',
+                projectedAt: '2026-08-06T00:00:04.000Z',
+              }),
+              snapshotRevision: 1,
+            },
+          ],
+        });
+      } catch (error) {
+        staleError = error instanceof Error ? error.message.split(':')[0] : undefined;
+      }
+      const after = await store.index.queryProject({ resourceProjectId: 'project-1', limit: 10 });
+      return {
+        ids: page.records.map((r) => r.activityId),
+        watermarkAdapterIds: storedWatermarks.map((w) => w.adapterId),
+        staleError,
+        afterIds: after.records.map((r) => r.activityId),
+      };
+    };
+    const memory = await scenario(createInMemoryActivityReadModelStore());
+    const postgres = await scenario(pgStore());
+    expect(postgres).toEqual(memory);
+    expect(postgres.ids).toEqual(['a1', 'a2']);
+    expect(postgres.watermarkAdapterIds).toEqual(['ask-adapter', 'sources-adapter']);
+    expect(postgres.staleError).toBe('ACTIVITY_INDEX_STALE_REBUILD');
+    // The failed same-revision commit published nothing.
+    expect(postgres.afterIds).toEqual(['a1', 'a2']);
+  });
 });

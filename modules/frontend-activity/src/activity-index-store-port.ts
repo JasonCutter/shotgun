@@ -247,6 +247,18 @@ export const decodeActivityIndexCursor = (value: string): ActivityIndexCursorV1 
 export type ActivityIndexStorePort = {
   /** Upsert by (resourceProjectId, domainKind, activityId). */
   readonly upsert: (record: ActivityIndexRecordV1) => Promise<void>;
+  /**
+   * Direct identity lookup by the projection identity plus the owning Domain.
+   * This is the Queue→Detail lineage guarantee (AC-05): any Activity that is
+   * visible on a queue page must resolve through its concrete Domain reference
+   * without depending on a queue page cap. Returns undefined when the identity
+   * is absent (never throws for a missing row).
+   */
+  readonly findByIdentity: (input: {
+    readonly resourceProjectId: string;
+    readonly domainKind: ActivityDomainKindV1;
+    readonly activityId: string;
+  }) => Promise<ActivityIndexRecordV1 | undefined>;
   /** Project-scoped queue read with stable total ordering and keyset cursor. */
   readonly queryProject: (input: ActivityIndexQueryV1) => Promise<ActivityIndexPageV1>;
   /** Remove the whole project index (deterministic full rebuild). */

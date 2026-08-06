@@ -36,7 +36,8 @@ const compareForOrdering = (
 };
 
 export class InMemoryActivityIndexStore implements ActivityIndexStorePort {
-  private readonly rows = new Map<string, ActivityIndexRecordV1>();
+  /** Project-scoped rows keyed by (project, domain, activityId). */
+  readonly rows = new Map<string, ActivityIndexRecordV1>();
 
   async upsert(record: ActivityIndexRecordV1): Promise<void> {
     validateActivityIndexRecord(record);
@@ -91,6 +92,14 @@ export class InMemoryActivityIndexStore implements ActivityIndexStorePort {
     return { records: page, ...(nextCursor === undefined ? {} : { nextCursor }) };
   }
 
+  async findByIdentity(input: {
+    readonly resourceProjectId: string;
+    readonly domainKind: ActivityDomainKindV1;
+    readonly activityId: string;
+  }): Promise<ActivityIndexRecordV1 | undefined> {
+    return this.rows.get(projectKey(input.resourceProjectId, input.domainKind, input.activityId));
+  }
+
   async deleteProject(resourceProjectId: string): Promise<void> {
     for (const key of [...this.rows.keys()]) {
       if (key.startsWith(`${resourceProjectId}\u0000`)) this.rows.delete(key);
@@ -138,7 +147,8 @@ export class InMemoryActivityIndexStore implements ActivityIndexStorePort {
 }
 
 export class InMemoryActivityWatermarkStore implements ActivityWatermarkStorePort {
-  private readonly rows = new Map<string, ActivityWatermarkRecordV1>();
+  /** Project-scoped watermark rows keyed by (project, adapterId). */
+  readonly rows = new Map<string, ActivityWatermarkRecordV1>();
 
   private readonly key = (resourceProjectId: string, adapterId: string): string =>
     `${resourceProjectId}\u0000${adapterId}`;
@@ -181,7 +191,86 @@ export class InMemoryActivityWatermarkStore implements ActivityWatermarkStorePor
   }
 }
 
-export const createInMemoryActivityReadModelStore = (): ActivityReadModelStorePort => ({
-  index: new InMemoryActivityIndexStore(),
-  watermarks: new InMemoryActivityWatermarkStore(),
-});
+export const createInMemoryActivityReadModelStore = (): ActivityReadModelStorePort => {
+  const index = new InMemoryActivityIndexStore();
+  const watermarks = new InMemoryActivityWatermarkStore();
+  return {
+    index,
+    watermarks,
+    async commitProjectProjection(input) {
+      // Atomic, CAS-bounded full-project commit. In-memory execution builds
+      // the complete next index and watermark state FIRST (validating every
+      // revision guard) and only swaps it into the stores after everything
+      // succeeded — so a mid-commit failure (e.g. a watermark write error)
+      // leaves the store untouched: index and watermarks never diverge.
+      validateRebuildBatch({
+        resourceProjectId: input.resourceProjectId,
+        snapshotRevision: input.snapshotRevision,
+        records: input.records,
+      });
+      for (const watermark of input.watermarks) {
+        if (watermark.resourceProjectId !== input.resourceProjectId) {
+          throw new Error(
+            `ACTIVITY_WATERMARK_SCOPE: watermark ${watermark.adapterId} is bound to another project`,
+          );
+        }
+        if (watermark.snapshotRevision !== input.snapshotRevision) {
+          throw new Error(
+            `ACTIVITY_WATERMARK_REVISION: watermark ${watermark.adapterId} snapshotRevision ${watermark.snapshotRevision} must equal commit revision ${input.snapshotRevision}`,
+          );
+        }
+      }
+      const existing = [...index.rows.values()].filter(
+        (record) => record.resourceProjectId === input.resourceProjectId,
+      );
+      assertRebuildRevisionNotLower(
+        existing,
+        input.snapshotRevision,
+        `${input.resourceProjectId}/ALL`,
+      );
+      // Reject a concurrent build that already committed the same revision.
+      if (existing.some((record) => record.snapshotRevision >= input.snapshotRevision)) {
+        throw new Error(
+          `ACTIVITY_INDEX_STALE_REBUILD: ${input.resourceProjectId}/ALL already has snapshot revision >= ${input.snapshotRevision}`,
+        );
+      }
+      // Build the next index state without touching the live store.
+      const nextIndex = new Map(index.rows);
+      const projectPrefix = `${input.resourceProjectId}\u0000`;
+      for (const key of [...nextIndex.keys()]) {
+        if (key.startsWith(projectPrefix)) nextIndex.delete(key);
+      }
+      for (const record of input.records) {
+        validateActivityIndexRecord(record);
+        const key = projectKey(record.resourceProjectId, record.domainKind, record.activityId);
+        const current = nextIndex.get(key);
+        if (current !== undefined && current.snapshotRevision > record.snapshotRevision) {
+          throw new Error(
+            `ACTIVITY_INDEX_STALE_UPSERT: ${key} has snapshot revision ${current.snapshotRevision} which is newer than ${record.snapshotRevision}`,
+          );
+        }
+        nextIndex.set(key, record);
+      }
+      // Build the next watermark state without touching the live store.
+      const nextWatermarks = new Map(watermarks.rows);
+      for (const key of [...nextWatermarks.keys()]) {
+        if (key.startsWith(projectPrefix)) nextWatermarks.delete(key);
+      }
+      for (const watermark of input.watermarks) {
+        const key = `${watermark.resourceProjectId}\u0000${watermark.adapterId}`;
+        const current = nextWatermarks.get(key);
+        if (current !== undefined && current.snapshotRevision > watermark.snapshotRevision) {
+          throw new Error(
+            `ACTIVITY_WATERMARK_STALE_UPSERT: ${key} has snapshot revision ${current.snapshotRevision} which is newer than ${watermark.snapshotRevision}`,
+          );
+        }
+        nextWatermarks.set(key, watermark);
+      }
+      // All-or-nothing swap (single-threaded, no await between check and swap).
+      index.rows.clear();
+      for (const [key, record] of nextIndex) index.rows.set(key, record);
+      watermarks.rows.clear();
+      for (const [key, record] of nextWatermarks) watermarks.rows.set(key, record);
+    },
+  };
+};

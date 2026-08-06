@@ -81,6 +81,21 @@ import { registerSourcesRoutes } from './product-api/sources-routes.js';
 import { registerFrontendKnowledgeDraftRoutes } from './product-api/frontend-knowledge-draft-routes.js';
 import { registerFrontendReviewRoutes } from './product-api/frontend-review-routes.js';
 import { registerFrontendExternalActionRoutes } from './product-api/frontend-external-action-routes.js';
+import { registerActivityRoutes } from './product-api/frontend-activity-routes.js';
+import {
+  ActivityProductCoordinator,
+  ActivityProjectionBuilder,
+  type ActivityReadModelStorePort,
+  type AskActivityReadPort,
+  type SourcesActivityReadPort,
+} from '../../../modules/frontend-activity/src/index.js';
+import { createInMemoryActivityReadModelStore } from '../../../adapters/frontend-activity-in-memory/src/index.js';
+import { SourcesActivityAdapter } from '../../../adapters/frontend-activity-sources/src/index.js';
+import { createInMemorySourcesActivityRead } from '../../../adapters/frontend-activity-sources/src/index.js';
+import { AskActivityAdapter } from '../../../adapters/frontend-activity-ask/src/index.js';
+import { createInMemoryAskActivityRead } from '../../../adapters/frontend-activity-ask/src/index.js';
+import { ExternalActionActivityAdapter } from '../../../adapters/frontend-activity-external-action/src/index.js';
+import type { ExternalActionRepositoryBoundaryPort } from '../../../modules/frontend-external-action/src/external-action-store-port.js';
 import {
   registerFrontendKnowledgeGraphRoutes,
   type GraphScopeResolver,
@@ -467,6 +482,11 @@ export type ApplicationOptions = {
   readonly askCommandCoordinator?: AskCommandCoordinator;
   readonly askAnswerExecution?: AskAnswerExecutionService;
   readonly sourcesProjectionRepository?: SourcesProjectionRepositoryPort;
+  readonly activitySourcesRead?: SourcesActivityReadPort;
+  readonly activityAskRead?: AskActivityReadPort;
+  readonly activityExternalActionBoundary?: ExternalActionRepositoryBoundaryPort;
+  readonly activityReadModelStore?: ActivityReadModelStorePort;
+  readonly activityCoordinator?: ActivityProductCoordinator;
   readonly host?: string;
   readonly production?: boolean;
   readonly canonicalProjectionRecoveryIntervalMs?: number | false;
@@ -1224,10 +1244,12 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   // FE-P4-S2 WP4: External Action governed commands run over the shared Frontend
   // Command Ledger; the server owns the Product Coordinator (server-derived
   // scope), the external action store and the connector engine.
+  const externalActionStore =
+    options.activityExternalActionBoundary ?? new InMemoryExternalActionStore();
   const frontendExternalActionCoordinator =
     options.frontendExternalActionCoordinator ??
     new FrontendExternalActionProductCoordinator(
-      new InMemoryExternalActionStore(),
+      externalActionStore,
       frontendCommandGateway,
       new FakeExternalActionEngine(),
     );
@@ -1261,6 +1283,37 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     assetStorage,
     evidenceRepository,
   );
+  // FE-P5-S1 WP3: the Activity Product API observes the owning Domains through
+  // their concrete Activity adapters (Sources/Ask/External Action) into the
+  // additive read model. The default runtime uses in-memory read ports/stores;
+  // the persistent runtime (main.ts) injects the PostgreSQL ports/store. The
+  // registry is assembled here at the composition boundary; Retry/Cancel are
+  // NOT Activity commands (they stay on the owning-Domain routes).
+  const activityReadModelStore =
+    options.activityReadModelStore ?? createInMemoryActivityReadModelStore();
+  const activitySourcesRead = options.activitySourcesRead ?? createInMemorySourcesActivityRead();
+  const activityAskRead = options.activityAskRead ?? createInMemoryAskActivityRead();
+  const activityCoordinator =
+    options.activityCoordinator ??
+    (() => {
+      const registry = {
+        adapters: [
+          new SourcesActivityAdapter(activitySourcesRead),
+          new AskActivityAdapter(activityAskRead),
+          new ExternalActionActivityAdapter(externalActionStore),
+        ],
+        adapterFor(domainKind: 'SOURCES' | 'ASK' | 'EXTERNAL_ACTION') {
+          return registry.adapters.find((adapter) => adapter.domainKind === domainKind);
+        },
+        healthSummaries() {
+          return Object.fromEntries(
+            registry.adapters.map((adapter) => [adapter.adapterId, adapter.health()]),
+          );
+        },
+      };
+      const builder = new ActivityProjectionBuilder(registry, activityReadModelStore);
+      return new ActivityProductCoordinator(registry, activityReadModelStore, builder);
+    })();
   const projectBootstrapUnitOfWork =
     options.projectBootstrapUnitOfWork ??
     (projectAdminRepository instanceof InMemoryProjectAdministrationRepository &&
@@ -2009,6 +2062,13 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   registerFrontendExternalActionRoutes(
     server,
     frontendExternalActionCoordinator,
+    authRepository,
+    settingsRepository,
+    requirePrincipalBrowserSession,
+  );
+  registerActivityRoutes(
+    server,
+    activityCoordinator,
     authRepository,
     settingsRepository,
     requirePrincipalBrowserSession,

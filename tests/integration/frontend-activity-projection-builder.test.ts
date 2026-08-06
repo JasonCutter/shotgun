@@ -212,9 +212,20 @@ describe('FE-P5-S1 ActivityProjectionBuilder', () => {
     });
     expect(page.records.map((r) => r.activityId)).toEqual(['a1']);
 
+    // Fail closed: the failed adapter still receives a current-revision
+    // UNAVAILABLE watermark (no sourceUpdatedAt/cursor/lag fabricated), so a
+    // stale AVAILABLE observation can never be presented as current.
     const watermarks = await readModel.watermarks.readByProject('project-1');
-    expect(watermarks).toHaveLength(1);
-    expect(watermarks[0]?.adapterStatus).toBe('AVAILABLE');
+    expect(watermarks).toHaveLength(2);
+    const sourcesWatermark = watermarks.find((w) => w.adapterId === 'sources-adapter');
+    const askWatermark = watermarks.find((w) => w.adapterId === 'ask-adapter');
+    expect(sourcesWatermark?.adapterStatus).toBe('UNAVAILABLE');
+    expect(sourcesWatermark?.snapshotRevision).toBe(1);
+    expect(sourcesWatermark?.sourceUpdatedAt).toBeUndefined();
+    expect(sourcesWatermark?.cursor).toBeUndefined();
+    expect(sourcesWatermark?.lagMilliseconds).toBeUndefined();
+    expect(askWatermark?.adapterStatus).toBe('AVAILABLE');
+    expect(askWatermark?.snapshotRevision).toBe(1);
   });
 
   it('uses monotonic snapshot revisions across builds', async () => {

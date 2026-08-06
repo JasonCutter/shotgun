@@ -18,6 +18,21 @@ export {
 } from './activity-domain-mapping.js';
 export type { ActivityFailureInput, ActivityFreshnessInput } from './activity-domain-mapping.js';
 export { activityTraceRef } from './activity-adapter-port.js';
+export {
+  decodeAskActivityCursor,
+  decodeSourcesActivityCursor,
+  encodeAskActivityCursor,
+  encodeSourcesActivityCursor,
+} from './activity-domain-read-ports.js';
+export type {
+  AskActivityAnswerRunRow,
+  AskActivityCursorV1,
+  AskActivityReadPort,
+  SourcesActivityAttemptRow,
+  SourcesActivityCursorV1,
+  SourcesActivityReadPort,
+  SourcesActivitySubmissionRow,
+} from './activity-domain-read-ports.js';
 export type {
   ActivityAdapterHealthV1,
   ActivityAdapterKindV1,
@@ -62,6 +77,7 @@ export type {
 export { createActivityReadModelStore } from './activity-read-model-store-port.js';
 export type { ActivityReadModelStorePort } from './activity-read-model-store-port.js';
 export {
+  ACTIVITY_PROJECTION_PAGE_SIZE,
   activityIndexRecordFromQueueItem,
   activityWatermarkFromAdapter,
   ActivityProjectionBuilder,
@@ -80,6 +96,10 @@ export {
   activityProjectionMetadataFrom,
   activityQueueItemFromRecord,
   activityRootFromRecord,
+  decodeGetActivityDetailRequestV1,
+  decodeListActivityContinuationRequestV1,
+  decodeListActivityQueueRequestV1,
+  decodeRefreshActivityProjectionRequestV1,
 } from './product-api.js';
 export type {
   ActivityCapabilityV1,

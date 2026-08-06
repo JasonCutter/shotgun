@@ -263,6 +263,7 @@ describe('FE-P5-S1 ActivityProductCoordinator detail and continuation', () => {
     const coordinator = await builtCoordinator();
     const detail = await coordinator.getActivityDetail(scope(), {
       schemaVersion: '1.0.0',
+      domainKind: 'SOURCES',
       activityId: 's1',
       domainResourceKind: 'Resource',
       domainResourceId: 'submission-1',
@@ -275,6 +276,7 @@ describe('FE-P5-S1 ActivityProductCoordinator detail and continuation', () => {
     const coordinator = await builtCoordinator();
     const stages = await coordinator.listActivityStages(scope(), {
       schemaVersion: '1.0.0',
+      domainKind: 'SOURCES',
       activityId: 's1',
       domainResourceKind: 'Resource',
       domainResourceId: 'submission-1',
@@ -282,6 +284,7 @@ describe('FE-P5-S1 ActivityProductCoordinator detail and continuation', () => {
     expect(stages.stages).toEqual([]);
     const events = await coordinator.listActivityEvents(scope(), {
       schemaVersion: '1.0.0',
+      domainKind: 'SOURCES',
       activityId: 's1',
       domainResourceKind: 'Resource',
       domainResourceId: 'submission-1',
@@ -294,6 +297,7 @@ describe('FE-P5-S1 ActivityProductCoordinator detail and continuation', () => {
     const missing = () =>
       coordinator.getActivityDetail(scope(), {
         schemaVersion: '1.0.0',
+        domainKind: 'SOURCES',
         activityId: 'missing',
         domainResourceKind: 'Resource',
         domainResourceId: 'missing-resource',
@@ -307,6 +311,7 @@ describe('FE-P5-S1 ActivityProductCoordinator detail and continuation', () => {
     await expect(
       coordinator.getActivityDetail(otherScope, {
         schemaVersion: '1.0.0',
+        domainKind: 'SOURCES',
         activityId: 's1',
         domainResourceKind: 'Resource',
         domainResourceId: 'submission-1',
@@ -325,6 +330,7 @@ describe('FE-P5-S1 ActivityProductCoordinator capabilities', () => {
     await expect(
       coordinator.getActivityDetail(noRead, {
         schemaVersion: '1.0.0',
+        domainKind: 'SOURCES',
         activityId: 's1',
         domainResourceKind: 'Resource',
         domainResourceId: 'submission-1',

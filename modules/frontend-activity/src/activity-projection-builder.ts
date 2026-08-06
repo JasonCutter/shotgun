@@ -16,11 +16,24 @@ import {
  *
  * Combines the owning-Domain adapters (Sources, Ask, External Action) into the
  * additive Activity read model (`activity_index` + `projection_watermarks`)
- * through one deterministic project-scoped rebuild. One adapter failure
- * produces a partial result with adapter health metadata and never erases the
- * accessible results of the other adapters (Contract Snapshot §3, AC-10). A
- * failed adapter contributes no rows for the build (fail closed: stale rows are
- * never presented as current) and its watermark is recorded as UNAVAILABLE.
+ * through one deterministic, ATOMIC project-scoped build (Contract Snapshot
+ * §3, §9; AC-10).
+ *
+ * Correctness properties:
+ * - Multi-page: every adapter is read page by page (nextCursor) until
+ *   exhausted, with cursor cycle detection, so a Domain with more than one
+ *   page is never truncated.
+ * - Per-adapter atomicity: an adapter's rows join the build only when every
+ *   page succeeded; a failure on page 2+ discards that adapter's earlier pages
+ *   too (no partial adapter snapshot is ever presented).
+ * - Fail closed + watermarks for ALL adapters: a failed adapter contributes no
+ *   rows AND still gets a current-revision UNAVAILABLE watermark (no
+ *   sourceUpdatedAt/cursor/lag are fabricated), so a stale AVAILABLE watermark
+ *   can never be presented as current after a failure.
+ * - Atomic commit: index replace + every watermark are published in one
+ *   Project-scoped transaction/CAS boundary (see
+ *   `ActivityReadModelStorePort.commitProjectProjection`); a concurrent refresh
+ *   can never confirm the same revision with a different snapshot.
  *
  * The builder never authors execution authority: it only observes the owning
  * Domains through their read adapters and writes the bounded projection.
@@ -98,6 +111,9 @@ export const activityWatermarkFromAdapter = (input: {
   updatedAt: input.projectedAt,
 });
 
+/** Per-adapter queue read budget used for multi-page iteration. */
+export const ACTIVITY_PROJECTION_PAGE_SIZE = 100;
+
 export class ActivityProjectionBuilder {
   constructor(
     private readonly registry: ActivityAdapterRegistryPort,
@@ -110,10 +126,77 @@ export class ActivityProjectionBuilder {
   }
 
   /**
+   * Observe one adapter across every bounded page. The returned records and
+   * watermark are produced ONLY when every page succeeded (per-adapter
+   * atomicity). `cursor` cycles are detected and rejected as an adapter fault.
+   */
+  private async observeAdapter(
+    adapter: ActivityAdapterPort,
+    scope: ActivityAdapterScopeV1,
+    snapshotRevision: number,
+    projectedAt: string,
+  ): Promise<{
+    readonly records: readonly ActivityIndexRecordV1[];
+    readonly watermark: ActivityWatermarkRecordV1;
+  }> {
+    const records: ActivityIndexRecordV1[] = [];
+    const seenCursors = new Set<string>();
+    let status: ActivityAdapterStatusV1 | undefined;
+    let cursor: string | undefined;
+    let sourceUpdatedAt: string | undefined;
+    let lagMilliseconds: number | undefined;
+
+    const guardCursor = (next: string | undefined, current: string | undefined): void => {
+      if (next === undefined) return;
+      if (seenCursors.has(next)) {
+        throw new Error(
+          `ACTIVITY_ADAPTER_CURSOR_CYCLE: adapter ${adapter.adapterId} returned a repeating cursor`,
+        );
+      }
+      seenCursors.add(next);
+      if (current !== undefined) seenCursors.add(current);
+    };
+
+    for (;;) {
+      const page = await adapter.readQueue(scope, {
+        limit: ACTIVITY_PROJECTION_PAGE_SIZE,
+        ...(cursor === undefined ? {} : { cursor }),
+      });
+      guardCursor(page.nextCursor, cursor);
+      const pageStatus = page.metadata.adapterStatus;
+      status = status === undefined ? pageStatus : combineAdapterAvailability([status, pageStatus]);
+      // The last page's observation drives the freshness/lag/cursor watermark.
+      sourceUpdatedAt = page.metadata.sourceUpdatedAt;
+      lagMilliseconds = page.metadata.lagMilliseconds;
+      cursor = page.metadata.cursor;
+      for (const item of page.items) {
+        records.push(activityIndexRecordFromQueueItem({ item, snapshotRevision, projectedAt }));
+      }
+      if (page.nextCursor === undefined) break;
+      cursor = page.nextCursor;
+    }
+
+    return {
+      records,
+      watermark: activityWatermarkFromAdapter({
+        adapter,
+        resourceProjectId: scope.activeProjectId,
+        snapshotRevision,
+        ...(sourceUpdatedAt === undefined ? {} : { sourceUpdatedAt }),
+        projectedAt,
+        adapterStatus: status ?? 'UNAVAILABLE',
+        ...(lagMilliseconds === undefined ? {} : { lagMilliseconds }),
+        ...(cursor === undefined ? {} : { cursor }),
+      }),
+    };
+  }
+
+  /**
    * Build or refresh the Activity projection for a project by observing every
-   * owning-Domain adapter. Runs one deterministic full-project rebuild with a
-   * monotonic snapshot revision; a failed adapter contributes no rows and is
-   * recorded as UNAVAILABLE.
+   * owning-Domain adapter. Runs one deterministic, atomic build with a
+   * monotonic snapshot revision; a failed adapter contributes no rows, still
+   * receives a current-revision UNAVAILABLE watermark, and is surfaced through
+   * `partial`, `adapterStatus` and `failures`.
    */
   async buildProjectProjection(
     scope: ActivityProjectionBuilderScopeV1,
@@ -133,23 +216,10 @@ export class ActivityProjectionBuilder {
 
     for (const adapter of this.registry.adapters) {
       try {
-        const page = await adapter.readQueue(scope, { limit: 100 });
-        statuses.push(adapter.health().status);
-        for (const item of page.items) {
-          records.push(activityIndexRecordFromQueueItem({ item, snapshotRevision, projectedAt }));
-        }
-        watermarks.push(
-          activityWatermarkFromAdapter({
-            adapter,
-            resourceProjectId: scope.activeProjectId,
-            snapshotRevision,
-            sourceUpdatedAt: page.metadata.sourceUpdatedAt,
-            projectedAt,
-            adapterStatus: page.metadata.adapterStatus,
-            lagMilliseconds: page.metadata.lagMilliseconds,
-            cursor: page.metadata.cursor,
-          }),
-        );
+        const observed = await this.observeAdapter(adapter, scope, snapshotRevision, projectedAt);
+        records.push(...observed.records);
+        watermarks.push(observed.watermark);
+        statuses.push(observed.watermark.adapterStatus);
       } catch (error) {
         const converted = asActivityAdapterError({
           adapterId: adapter.adapterId,
@@ -163,18 +233,28 @@ export class ActivityProjectionBuilder {
           safe: converted.safe,
           message: converted.message,
         });
+        // Fail closed: every registry adapter still receives a current-revision
+        // watermark so a stale AVAILABLE observation is never presented as
+        // current. No sourceUpdatedAt/cursor/lag are fabricated.
+        watermarks.push(
+          activityWatermarkFromAdapter({
+            adapter,
+            resourceProjectId: scope.activeProjectId,
+            snapshotRevision,
+            projectedAt,
+            adapterStatus: 'UNAVAILABLE',
+          }),
+        );
       }
     }
 
-    await this.store.index.rebuildProject({
+    // One atomic Project-scoped commit: index replace + all watermarks together.
+    await this.store.commitProjectProjection({
       resourceProjectId: scope.activeProjectId,
       snapshotRevision,
       records,
+      watermarks,
     });
-
-    for (const watermark of watermarks) {
-      await this.store.watermarks.upsert(watermark);
-    }
 
     const adapterStatus = combineAdapterAvailability(statuses);
     return {

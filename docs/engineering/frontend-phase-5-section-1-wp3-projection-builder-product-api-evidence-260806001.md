@@ -6,6 +6,10 @@ work_item: FE-P5-S1
 created_at: 2026-08-06
 subject_head: ab0c8749f6db475b16df674250c3b66dc3c63cdb
 wp2_head: 86bafee6c97e9e87694414a22b0a64353b07d7d3
+exact_head: 9159f20ee6dd09e9e6b0537b23af68987a33da07
+ci_number: 615
+ci_run: 31098837551
+ci_conclusion: SUCCESS
 tracking_issue: https://github.com/JasonCutter/shotgun/issues/71
 contract_pr: https://github.com/JasonCutter/shotgun/pull/70
 product_pr: https://github.com/JasonCutter/shotgun/pull/73
@@ -83,6 +87,10 @@ WP1 + WP2 + WP3 focused suites: **101 tests PASS** (contract 39, unit 16, integr
 PostgreSQL parity 11 — with DB). `tsc --noEmit`, ESLint and Prettier clean. Governance gates
 (`docs:validate`, `docs:frontend-work-items`, `docs:completion-invariants`,
 `docs:frontend-projections:check`) PASS.
+
+Automatic CI on WP3 exact head `9159f20ee6dd09e9e6b0537b23af68987a33da07` (PR #73, draft
+for auto CI only) — **CI #615 / `31098837551`: Quality, Frontend, Required Gates SUCCESS**.
+No manual or duplicate CI was dispatched and no previously-passed head was re-run.
 
 ## 6. Preserved boundaries
 

@@ -61,3 +61,31 @@ export type {
 } from './activity-watermark-store-port.js';
 export { createActivityReadModelStore } from './activity-read-model-store-port.js';
 export type { ActivityReadModelStorePort } from './activity-read-model-store-port.js';
+export {
+  activityIndexRecordFromQueueItem,
+  activityWatermarkFromAdapter,
+  ActivityProjectionBuilder,
+} from './activity-projection-builder.js';
+export type {
+  ActivityProjectionAdapterFailureV1,
+  ActivityProjectionBuilderScopeV1,
+  ActivityProjectionBuildResultV1,
+} from './activity-projection-builder.js';
+export {
+  ACTIVITY_EVENT_LIST_CAP,
+  ACTIVITY_QUEUE_PAGE_SIZE_CAP,
+  ACTIVITY_STAGE_LIST_CAP,
+  ActivityProductCoordinator,
+  activityCapabilitiesForScope,
+  activityProjectionMetadataFrom,
+  activityQueueItemFromRecord,
+  activityRootFromRecord,
+} from './product-api.js';
+export type {
+  ActivityCapabilityV1,
+  ActivityProductScopeV1,
+  GetActivityDetailRequestV1,
+  ListActivityContinuationRequestV1,
+  ListActivityQueueRequestV1,
+  RefreshActivityProjectionRequestV1,
+} from './product-api.js';

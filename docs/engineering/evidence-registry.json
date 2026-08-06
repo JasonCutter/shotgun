@@ -908,6 +908,28 @@
       "wp3plus": "NOT_STARTED",
       "deployment": "NOT_STARTED",
       "productionVerification": "NOT_RUN"
+    },
+    {
+      "id": "FRONTEND-PHASE-5-SECTION-1-WP3-EVIDENCE-260806001",
+      "path": "docs/engineering/frontend-phase-5-section-1-wp3-projection-builder-product-api-evidence-260806001.md",
+      "class": "IMPLEMENTATION_VERIFICATION",
+      "scope": "frontend-phase-5-section-1-wp3",
+      "statusAuthority": "WP3_IMPLEMENTED_PENDING_REVIEW",
+      "approvedBy": null,
+      "approvedAt": null,
+      "subjectHead": "ab0c8749f6db475b16df674250c3b66dc3c63cdb",
+      "wp2Head": "86bafee6c97e9e87694414a22b0a64353b07d7d3",
+      "trackingIssue": "https://github.com/JasonCutter/shotgun/issues/71",
+      "contractPR": "https://github.com/JasonCutter/shotgun/pull/70",
+      "productPR": "https://github.com/JasonCutter/shotgun/pull/73",
+      "productImplementation": "WP3_IMPLEMENTED",
+      "wp1": "ACCEPTED",
+      "wp2": "ACCEPTED",
+      "wp3": "IMPLEMENTED",
+      "wp4plus": "NOT_STARTED",
+      "migration": "029_APPLIED_IMPLEMENTED",
+      "deployment": "NOT_STARTED",
+      "productionVerification": "NOT_RUN"
     }
   ],
   "rules": {

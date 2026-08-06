@@ -2502,3 +2502,65 @@ Ready·Merge가 승인되지 않았다. Review 4869469297은 완료 권위 기�
   `31056948890`: Quality, Frontend, Required Gates **SUCCESS** (Frontend 2m45s, Quality
   3m32s, Required Gates 2s).
 - 교정 commit 후 자동 CI만 확인했다. CI **#579 / #580** 및 기존 PASS head는 재실행하지 않았다.
+
+## 36. FE-P4-S2 Post-Merge Governance Closure (report 30, 2026-08-06)
+
+### 36.1 Ready Transition (Review 4869753947)
+
+Review **4869753947** — **Decision: PRODUCT COMPLETION AUTHORITY RECORDING APPROVED / COMPLETE,
+PR READY TRANSITION AUTHORIZED_TO_START, MERGE NOT_AUTHORIZED**. PR #66을 새 Commit·CI 재실행
+없이 DRAFT → Ready for Review로 전환하고 동일 exact head와 Mergeability를 확인했다.
+
+- Exact head `b6e0b1651c3cf2c49bfc19701d377847b92ad9ce`, PR #66 `OPEN / READY / MERGEABLE /
+CLEAN`, base `main`. PR에 Ready 전환 기록 코멘트 추가.
+
+### 36.2 Merge and Post-Merge Verification (Review 4869793842)
+
+Review **4869793842** — **Decision: FINAL PRE-MERGE APPROVED, MERGE AUTHORIZED_TO_START**.
+PR #66을 merge commit 방식으로 `main`에 병합했다.
+
+- Merge commit `4196cb07178d6c83c5fb78a6b66c4e4354e1560f` (mergedAt 2026-08-05T23:54:59Z).
+- Issue #65 `CLOSED / COMPLETED` (merge linkage).
+- Post-merge CI on `main` — **#583** / `31057976980`: Quality, Frontend, Required Gates
+  **SUCCESS** (Quality 3m20s, Frontend 2m57s, Required Gates 4s). Feature Head CI #581·#582
+  및 기존 PASS head는 재실행하지 않았다.
+
+### 36.3 Closure — Evidence Registry FINAL_AFTER_MERGE
+
+Post-merge 검증 승인에 따라 문서 전용 Closure를 수행했다 (Product 코드·테스트·Migration·
+Contract Snapshot·Dependency 변경 없음, CI #581·#582·#583 재실행 없음).
+
+- `FRONTEND-PHASE-4-SECTION-2-COMPLETION-260806001` → `statusAuthority: FINAL_AFTER_MERGE`,
+  `prState: CLOSED / MERGED`, `mergeCommit: 4196cb07…`, `postMergeMainHead: 4196cb07…`,
+  `postMergeMainCI: 31057976980` (#583) PASS, `ready: EXECUTED`, `merge: EXECUTED`,
+  `deployment: NOT_STARTED`.
+- Closure 브랜치 `codex/frontend-phase-4-section-2-post-merge-closure` (base `main`)와 Closure
+  PR, Closure commit 자동 CI 확인.
+
+### 36.4 Final metadata (report 30)
+
+- **Canonical main**: `4196cb07178d6c83c5fb78a6b66c4e4354e1560f` (PR #66 merge commit).
+- Post-merge main CI **#583** / `31057976980` SUCCESS.
+- 최종 권위 상태: WP1~WP6 APPROVED / COMPLETE, **FE-P4-S2 Product COMPLETE / MERGED**,
+  FE-P4 `COMPLETE`. Deployment / Production Verification / FE-P5 `NOT_AUTHORIZED`.
+
+### 36.5 Correction — Production Verification Authority State (Review 4869919414)
+
+Review **4869919414** (**Decision: BLOCKED — ONE EXACT AUTHORITY-STATE CORRECTION
+REQUIRED**). Evidence Registry 규칙 `deploymentDoesNotImplyProductionVerification: true`에
+따라 `deployment: NOT_STARTED`만으로 Production Verification이 실행되지 않았다는 사실을
+대신할 수 없다. Completion Record에 `productionVerification: "NOT_RUN"`을 명시해야 한다.
+
+수행한 교정 (Product 코드·테스트·Migration·Contract Snapshot·Dependency 변경 없음, CI
+#584·#581·#582·#583 재실행 없음):
+
+- `FRONTEND-PHASE-4-SECTION-2-COMPLETION-260806001`에 `productionVerification: "NOT_RUN"`
+  추가.
+- 권위 상태 명시: Deployment `NOT_STARTED / NOT_AUTHORIZED`, Production Verification
+  `NOT_RUN / NOT_AUTHORIZED`, FE-P5 `NOT_AUTHORIZED`.
+- 기존 Closure 문구는 수정하지 않고 Review 이력과 함께 별도 Correction으로 기록.
+
+최종 권위 상태 (교정 후): WP1~WP6 APPROVED / COMPLETE, **FE-P4-S2 Product COMPLETE /
+MERGED**, FE-P4 `COMPLETE`, Canonical main `4196cb07178d6c83c5fb78a6b66c4e4354e1560f`.
+Deployment `NOT_STARTED / NOT_AUTHORIZED`, Production Verification `NOT_RUN /
+NOT_AUTHORIZED`, FE-P5 `NOT_AUTHORIZED`.

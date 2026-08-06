@@ -813,7 +813,7 @@
       "path": "docs/project/completions/FE-P4-S2.json",
       "class": "COMPLETION_RECORD",
       "scope": "frontend-phase-4-section-2",
-      "statusAuthority": "COMPLETE_APPROVED",
+      "statusAuthority": "FINAL_AFTER_MERGE",
       "approvedBy": "user",
       "approvedAt": "2026-08-06",
       "approvalExactHead": "e9324d72de85b85da08e0eb106f23b4534571d0b",
@@ -824,8 +824,19 @@
       "completion": "COMPLETE",
       "trackingIssue": "https://github.com/JasonCutter/shotgun/issues/65",
       "pullRequest": "https://github.com/JasonCutter/shotgun/pull/66",
-      "ready": "NOT_AUTHORIZED",
-      "merge": "NOT_AUTHORIZED"
+      "prState": "CLOSED / MERGED",
+      "approvedFeatureHead": "b6e0b1651c3cf2c49bfc19701d377847b92ad9ce",
+      "mergeMethod": "merge commit",
+      "mergeCommit": "4196cb07178d6c83c5fb78a6b66c4e4354e1560f",
+      "postMergeMainHead": "4196cb07178d6c83c5fb78a6b66c4e4354e1560f",
+      "postMergeMainCI": "31057976980",
+      "postMergeMainCIRunNumber": 583,
+      "postMergeMainCIConclusion": "PASS",
+      "postMergeMainCIGates": ["Quality", "Frontend", "Required Gates"],
+      "ready": "EXECUTED",
+      "merge": "EXECUTED",
+      "deployment": "NOT_STARTED",
+      "productionVerification": "NOT_RUN"
     }
   ],
   "rules": {

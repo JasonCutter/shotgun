@@ -3,6 +3,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
 import { createInMemoryActivityReadModelStore } from '../../adapters/frontend-activity-in-memory/src/index.js';
 import { createPostgresActivityReadModelStore } from '../../adapters/frontend-activity-postgres/src/index.js';
+import { PostgresAskActivityRead } from '../../adapters/frontend-ask-execution-postgres/src/activity-read.js';
 import type {
   ActivityIndexRecordV1,
   ActivityReadModelStorePort,
@@ -758,5 +759,126 @@ describe.runIf(pool)('FE-P5-S1 in-memory vs PostgreSQL Activity read-model parit
     expect(postgres.staleError).toBe('ACTIVITY_INDEX_STALE_REBUILD');
     // The failed same-revision commit published nothing.
     expect(postgres.afterIds).toEqual(['a1', 'a2']);
+  });
+
+  it('Ask PostgreSQL read revalidates sensitivity and access/policy binding', async () => {
+    // Clean up any leftover rows from an interrupted previous run (deleting
+    // the conversation cascades its branches and turns).
+    await pool!.query('DELETE FROM frontend_ask.answer_runs WHERE project_id = $1', [
+      'activity-test-project',
+    ]);
+    await pool!.query('DELETE FROM frontend_command.command_ledger WHERE command_id = $1', [
+      'cmd-activity-1',
+    ]);
+    await pool!.query('DELETE FROM frontend_ask.conversations WHERE conversation_id = $1', [
+      'conv-activity-1',
+    ]);
+    await pool!.query('DELETE FROM project_admin.projects WHERE id = $1', [
+      'activity-test-project',
+    ]);
+    // Seed the FK chain (conversation↔branch is a deferred FK) in ONE
+    // transaction: project → conversation → branch → turn → command_ledger →
+    // answer_run (sensitivity restricted, access-1/policy-1).
+    const client = await pool!.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `INSERT INTO project_admin.projects (id, name, active, created_at, updated_at)
+         VALUES ('activity-test-project', 'Activity Test', true, now(), now())`,
+      );
+      await client.query(
+        `INSERT INTO frontend_ask.conversations
+           (conversation_id, project_id, title, active_branch_id, conversation_revision, created_at, updated_at)
+         VALUES ('conv-activity-1', 'activity-test-project', 'conv', 'branch-activity-1', 'c1', now(), now())`,
+      );
+      await client.query(
+        `INSERT INTO frontend_ask.branches
+           (branch_id, conversation_id, label, branch_revision, created_at, updated_at)
+         VALUES ('branch-activity-1', 'conv-activity-1', 'branch', 'b1', now(), now())`,
+      );
+      await client.query(
+        `INSERT INTO frontend_ask.turns
+           (turn_id, conversation_id, branch_id, ordinal, user_message, ask_mode, turn_revision, created_at)
+         VALUES ('turn-activity-1', 'conv-activity-1', 'branch-activity-1', 1, 'q', 'CANONICAL_ONLY', 't1', now())`,
+      );
+      await client.query(
+        `INSERT INTO frontend_command.command_ledger (
+           command_id, command_revision, client_request_id, idempotency_key, principal_id,
+           target_project_id, command_type, command_schema_version, command_semantic_digest,
+           policy_binding, accepted_principal_context, accepted_project_context,
+           accepted_policy_context, preconditions, command_payload, outcome_state,
+           correlation_id, trace_id, received_at, last_updated_at
+         ) VALUES (
+           'cmd-activity-1', 1, 'client-activity-1', 'idem-activity-1', 'principal-1',
+           'activity-test-project', 'ask.run.submit.v1', '1.0.0', 'digest',
+           '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, '[]'::jsonb, '{}'::jsonb,
+           'COMPLETED', 'corr-1', 'trace-1', now(), now()
+         )`,
+      );
+      await client.query(
+        `INSERT INTO frontend_ask.answer_runs (
+           answer_run_id, conversation_id, branch_id, turn_id, project_id, create_command_id,
+           mode, state, question, capabilities, answer_revision, conversation_revision,
+           access_revision, policy_context_revision, created_at, updated_at,
+           sensitivity_clearance, access_scope, attempt_number, event_revision
+         ) VALUES (
+           'run-activity-1', 'conv-activity-1', 'branch-activity-1', 'turn-activity-1',
+           'activity-test-project', 'cmd-activity-1', 'CANONICAL_ONLY', 'RUNNING', 'q',
+           '{}', 'a1', 'c1', 'access-1', 'policy-1', now(), now(),
+           'restricted', ARRAY['owner'], 1, 0
+         )`,
+      );
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      client.release();
+      throw error;
+    }
+    try {
+      const read = new PostgresAskActivityRead(pool!);
+      // Inadequate sensitivity clearance → denied (undefined → adapter NOT_FOUND).
+      const denied = await read.getAnswerRun({
+        projectId: 'activity-test-project',
+        answerRunId: 'run-activity-1',
+        sensitivityClearance: 'public',
+        accessRevision: 'access-1',
+        policyContextRevision: 'policy-1',
+      });
+      // Adequate clearance + matching binding → found.
+      const granted = await read.getAnswerRun({
+        projectId: 'activity-test-project',
+        answerRunId: 'run-activity-1',
+        sensitivityClearance: 'restricted',
+        accessRevision: 'access-1',
+        policyContextRevision: 'policy-1',
+      });
+      // Adequate clearance but stale access revision → denied.
+      const staleAccess = await read.getAnswerRun({
+        projectId: 'activity-test-project',
+        answerRunId: 'run-activity-1',
+        sensitivityClearance: 'restricted',
+        accessRevision: 'access-2',
+        policyContextRevision: 'policy-1',
+      });
+      expect(denied).toBeUndefined();
+      expect(granted?.answerRunId).toBe('run-activity-1');
+      expect(granted?.attemptId).toBeUndefined();
+      expect(staleAccess).toBeUndefined();
+    } finally {
+      client.release();
+      await pool!.query('DELETE FROM frontend_ask.answer_runs WHERE project_id = $1', [
+        'activity-test-project',
+      ]);
+      await pool!.query('DELETE FROM frontend_command.command_ledger WHERE command_id = $1', [
+        'cmd-activity-1',
+      ]);
+      // Deleting the conversation cascades its branches and turns.
+      await pool!.query('DELETE FROM frontend_ask.conversations WHERE conversation_id = $1', [
+        'conv-activity-1',
+      ]);
+      await pool!.query('DELETE FROM project_admin.projects WHERE id = $1', [
+        'activity-test-project',
+      ]);
+    }
   });
 });

@@ -90,6 +90,11 @@ export type SourcesActivityReadPort = {
     readonly projectId: string;
     readonly submissionId: string;
     readonly principalId?: string;
+    /** Server-derived binding for owning-Domain access revalidation. */
+    readonly accessScope?: readonly string[];
+    readonly sensitivity?: string;
+    readonly accessRevision?: string;
+    readonly policyContextRevision?: string;
   }): Promise<IntakeSubmissionSnapshot | undefined>;
   /** Append-ordered intake attempts for one submission item (bounded). */
   listItemAttempts(input: {
@@ -153,6 +158,10 @@ export type AskActivityReadPort = {
   getAnswerRun(input: {
     readonly projectId: string;
     readonly answerRunId: string;
+    /** Server-derived binding for owning-Domain access revalidation. */
+    readonly sensitivityClearance?: string;
+    readonly accessRevision?: string;
+    readonly policyContextRevision?: string;
   }): Promise<AskActivityAnswerRunRow | undefined>;
   /** Ordinal-ordered bounded answer-run events. */
   listAnswerRunEvents(input: {

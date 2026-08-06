@@ -84,6 +84,9 @@ export function registerActivityRoutes(
       accessRevision: `${activeProjectId}:${membership.scopes.slice().sort().join(',')}`,
       policyContextRevision: String(settings.policyContextRevision),
       accessScope: [...membership.scopes].sort(),
+      // Server-derived sensitivity clearance so the owning-Domain adapters can
+      // revalidate concrete Resource access (never browser input).
+      sensitivityClearance: membership.sensitivityClearance,
     };
   };
 

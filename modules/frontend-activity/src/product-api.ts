@@ -53,6 +53,8 @@ export type ActivityProductScopeV1 = {
   readonly accessRevision: string;
   readonly policyContextRevision: string;
   readonly accessScope: readonly string[];
+  /** Server-derived sensitivity clearance for owning-Domain revalidation. */
+  readonly sensitivityClearance?: string;
 };
 
 export type ActivityCapabilityV1 =
@@ -491,6 +493,10 @@ export class ActivityProductCoordinator {
       activeProjectId: scope.activeProjectId,
       accessRevision: scope.accessRevision,
       policyContextRevision: scope.policyContextRevision,
+      ...(scope.sensitivityClearance === undefined
+        ? {}
+        : { sensitivityClearance: scope.sensitivityClearance }),
+      ...(scope.accessScope === undefined ? {} : { accessScope: scope.accessScope }),
     };
   }
 
@@ -622,10 +628,10 @@ export class ActivityProductCoordinator {
       limit,
     );
     // The server-enforced cap is authoritative: an adapter can never return
-    // more stages than the frozen Product API bound.
+    // more stages than the resolved (requested, capped) bound.
     return {
       ...continuation,
-      stages: continuation.stages.slice(0, ACTIVITY_STAGE_LIST_CAP),
+      stages: continuation.stages.slice(0, limit),
     };
   }
 
@@ -651,7 +657,7 @@ export class ActivityProductCoordinator {
     // The server-enforced cap is authoritative.
     return {
       ...continuation,
-      events: continuation.events.slice(0, ACTIVITY_EVENT_LIST_CAP),
+      events: continuation.events.slice(0, limit),
     };
   }
 

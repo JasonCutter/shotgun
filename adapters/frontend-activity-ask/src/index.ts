@@ -29,7 +29,7 @@ import {
 } from '../../../modules/frontend-activity/src/index.js';
 
 /**
- * FE-P5-S1 WP3 — concrete Ask Activity adapter.
+ * FE-P5-S1 WP3 ??concrete Ask Activity adapter.
  *
  * Observes the Ask domain through `AskActivityReadPort` (AnswerRun = RUN root,
  * AnswerRunAttempt = domain attempt, AnswerRunEvent = bounded operational
@@ -40,6 +40,19 @@ import {
 
 const ADAPTER_ID = 'ask-activity-adapter';
 const DETAIL_EVENT_CAP = 50;
+
+/** Parse a typed continuation ordinal like `ask:events:5`. */
+const parseAskEventOrdinal = (cursor: string): number => {
+  const prefix = 'ask:events:';
+  if (!cursor.startsWith(prefix)) {
+    throw new Error('ASK_ACTIVITY_INVALID_CURSOR: ask:events cursor malformed');
+  }
+  const ordinal = Number.parseInt(cursor.slice(prefix.length), 10);
+  if (!Number.isSafeInteger(ordinal) || ordinal < 0) {
+    throw new Error('ASK_ACTIVITY_INVALID_CURSOR: ask:events cursor malformed');
+  }
+  return ordinal;
+};
 
 const notFound = (): never => {
   throw new FrontendContractError('NOT_FOUND', 'The Activity resource was not found.');
@@ -107,6 +120,29 @@ export class AskActivityAdapter implements AskActivityAdapterPort {
     return { status: 'AVAILABLE' };
   }
 
+  private answerRunInput(
+    scope: ActivityAdapterScopeV1,
+    answerRunId: string,
+  ): {
+    readonly projectId: string;
+    readonly answerRunId: string;
+    readonly sensitivityClearance?: string;
+    readonly accessRevision?: string;
+    readonly policyContextRevision?: string;
+  } {
+    return {
+      projectId: scope.activeProjectId,
+      answerRunId,
+      ...(scope.sensitivityClearance === undefined
+        ? {}
+        : { sensitivityClearance: scope.sensitivityClearance }),
+      ...(scope.accessRevision === undefined ? {} : { accessRevision: scope.accessRevision }),
+      ...(scope.policyContextRevision === undefined
+        ? {}
+        : { policyContextRevision: scope.policyContextRevision }),
+    };
+  }
+
   private queueItemFromRun(run: AskActivityAnswerRunRow): ActivityQueueItemV1 {
     return {
       root: runRoot(run),
@@ -128,7 +164,7 @@ export class AskActivityAdapter implements AskActivityAdapterPort {
     filter: ActivityQueueFilterV1,
   ): Promise<ActivityQueuePageV1> {
     const limit = Math.max(1, filter.limit ?? 50);
-    const { runs, nextCursor } = await this.read.listAnswerRuns({
+    const { runs } = await this.read.listAnswerRuns({
       projectId: scope.activeProjectId,
       ...(filter.cursor === undefined ? {} : { cursor: filter.cursor }),
       limit: limit + 1,
@@ -141,21 +177,31 @@ export class AskActivityAdapter implements AskActivityAdapterPort {
         sourceUpdatedAt = run.updatedAt;
       }
     }
+    // Cursor from the LAST DISPLAYED row ??never from a lookahead row ??so
+    // pagination never skips a run.
+    const displayedLast = pageRuns[pageRuns.length - 1];
+    const nextCursor =
+      hasMore && displayedLast !== undefined
+        ? encodeAskActivityCursor({
+            updatedAt: displayedLast.updatedAt,
+            answerRunId: displayedLast.answerRunId,
+          })
+        : undefined;
     return {
       items: pageRuns.map((run) => this.queueItemFromRun(run)),
       metadata: metadataFor({
         sourceUpdatedAt,
         projectedAt: new Date().toISOString(),
-        ...(hasMore && nextCursor !== undefined ? { cursor: nextCursor } : {}),
+        ...(nextCursor === undefined ? {} : { cursor: nextCursor }),
       }),
-      ...(hasMore && nextCursor !== undefined ? { nextCursor } : {}),
+      ...(nextCursor === undefined ? {} : { nextCursor }),
     };
   }
 
   private attemptViewFrom(run: AskActivityAnswerRunRow): ActivityDomainAttemptViewV1 {
     return {
       schemaVersion: '1.0.0',
-      attemptId: run.attemptId ?? `attempt-${run.answerRunId}`,
+      attemptId: run.attemptId ?? '',
       runId: run.answerRunId,
       attemptNumber: run.attemptNumber ?? 1,
       attemptKind: 'ASK_ANSWER',
@@ -203,10 +249,7 @@ export class AskActivityAdapter implements AskActivityAdapterPort {
     scope: ActivityAdapterScopeV1,
     root: ActivityRootReferenceV1,
   ): Promise<ActivityDetailV1> {
-    const run = await this.read.getAnswerRun({
-      projectId: scope.activeProjectId,
-      answerRunId: root.domainResourceId,
-    });
+    const run = await this.read.getAnswerRun(this.answerRunInput(scope, root.domainResourceId));
     if (run === undefined) return notFound();
     const events = await this.read.listAnswerRunEvents({
       projectId: scope.activeProjectId,
@@ -228,7 +271,7 @@ export class AskActivityAdapter implements AskActivityAdapterPort {
         correlationRefs: [],
         causationRefs: [],
       },
-      attempts: [this.attemptViewFrom(run)],
+      attempts: run.attemptId === undefined ? [] : [this.attemptViewFrom(run)],
       stages: [],
       events: events.map((event) => this.eventFromEvent(event)),
       transportAttempts: [],
@@ -249,10 +292,7 @@ export class AskActivityAdapter implements AskActivityAdapterPort {
     _cursor?: string,
     _limit?: number,
   ): Promise<ActivityStageContinuationV1> {
-    const run = await this.read.getAnswerRun({
-      projectId: scope.activeProjectId,
-      answerRunId: root.domainResourceId,
-    });
+    const run = await this.read.getAnswerRun(this.answerRunInput(scope, root.domainResourceId));
     if (run === undefined) return notFound();
     // Ask has no durable stage pipeline in the bounded Activity view.
     void _cursor;
@@ -269,25 +309,31 @@ export class AskActivityAdapter implements AskActivityAdapterPort {
   async readEvents(
     scope: ActivityAdapterScopeV1,
     root: ActivityRootReferenceV1,
-    _cursor?: string,
+    cursor?: string,
     limit?: number,
   ): Promise<ActivityEventContinuationV1> {
-    const run = await this.read.getAnswerRun({
-      projectId: scope.activeProjectId,
-      answerRunId: root.domainResourceId,
-    });
+    const run = await this.read.getAnswerRun(this.answerRunInput(scope, root.domainResourceId));
     if (run === undefined) return notFound();
+    const capped = Math.max(1, limit ?? 50);
+    const afterOrdinal = cursor === undefined ? undefined : parseAskEventOrdinal(cursor);
     const events = await this.read.listAnswerRunEvents({
       projectId: scope.activeProjectId,
       answerRunId: run.answerRunId,
-      limit: Math.max(1, limit ?? 50),
+      ...(afterOrdinal === undefined ? {} : { afterOrdinal }),
+      limit: capped + 1,
     });
+    const hasMore = events.length > capped;
+    const pageEvents = hasMore ? events.slice(0, capped) : events;
+    const lastOrdinal = pageEvents[pageEvents.length - 1]?.ordinal;
+    const nextCursor =
+      hasMore && lastOrdinal !== undefined ? `ask:events:${lastOrdinal}` : undefined;
     return {
-      events: events.map((event) => this.eventFromEvent(event)),
+      events: pageEvents.map((event) => this.eventFromEvent(event)),
       metadata: metadataFor({
         sourceUpdatedAt: run.updatedAt,
         projectedAt: new Date().toISOString(),
       }),
+      ...(nextCursor === undefined ? {} : { nextCursor }),
     };
   }
 }

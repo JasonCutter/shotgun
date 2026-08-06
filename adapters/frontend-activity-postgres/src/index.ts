@@ -451,17 +451,30 @@ export const createPostgresActivityReadModelStore = (pool: Pool): ActivityReadMo
            WHERE resource_project_id = $1`,
           [input.resourceProjectId],
         );
+        const existingWatermarks = await client.query<{ snapshot_revision: string }>(
+          `SELECT snapshot_revision::text AS snapshot_revision
+           FROM frontend_activity.projection_watermarks
+           WHERE resource_project_id = $1`,
+          [input.resourceProjectId],
+        );
         const existingRevisions = existing.rows.map((row) => Number(row.snapshot_revision));
+        const existingWatermarkRevisions = existingWatermarks.rows.map((row) =>
+          Number(row.snapshot_revision),
+        );
+        const committedMax = Math.max(...existingRevisions, ...existingWatermarkRevisions, 0);
+        // CAS against BOTH the index and the watermarks: a concurrent build
+        // that already committed this revision — even with an empty index
+        // (e.g. all adapters failed) — must be rejected.
+        if (committedMax >= input.snapshotRevision) {
+          throw new Error(
+            `ACTIVITY_INDEX_STALE_REBUILD: ${input.resourceProjectId}/ALL already has snapshot revision >= ${input.snapshotRevision}`,
+          );
+        }
         assertRebuildRevisionNotLower(
           existingRevisions.map((snapshotRevision) => ({ snapshotRevision })),
           input.snapshotRevision,
           `${input.resourceProjectId}/ALL`,
         );
-        if (existingRevisions.some((revision) => revision >= input.snapshotRevision)) {
-          throw new Error(
-            `ACTIVITY_INDEX_STALE_REBUILD: ${input.resourceProjectId}/ALL already has snapshot revision >= ${input.snapshotRevision}`,
-          );
-        }
         await client.query(
           'DELETE FROM frontend_activity.activity_index WHERE resource_project_id = $1',
           [input.resourceProjectId],

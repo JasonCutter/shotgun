@@ -32,7 +32,7 @@ import {
 } from '../../../modules/frontend-activity/src/index.js';
 
 /**
- * FE-P5-S1 WP3 — concrete Sources Activity adapter.
+ * FE-P5-S1 WP3 ??concrete Sources Activity adapter.
  *
  * Observes the Sources domain through `SourcesActivityReadPort`
  * (IntakeSubmission = Job root, item processing = stages, IntakeAttempt =
@@ -43,6 +43,19 @@ import {
 
 const ADAPTER_ID = 'sources-activity-adapter';
 const DETAIL_EVENT_CAP = 50;
+
+/** Parse a typed continuation offset like `sources:stages:20`. */
+const parseContinuationOffset = (prefix: string, cursor: string): number => {
+  if (!cursor.startsWith(`${prefix}:`)) {
+    throw new Error(`SOURCES_ACTIVITY_INVALID_CURSOR: ${prefix} cursor malformed`);
+  }
+  const raw = cursor.slice(prefix.length + 1);
+  const offset = Number.parseInt(raw, 10);
+  if (!Number.isSafeInteger(offset) || offset < 0) {
+    throw new Error(`SOURCES_ACTIVITY_INVALID_CURSOR: ${prefix} cursor malformed`);
+  }
+  return offset;
+};
 
 const notFound = (): never => {
   throw new FrontendContractError('NOT_FOUND', 'The Activity resource was not found.');
@@ -150,12 +163,39 @@ export class SourcesActivityAdapter implements SourcesActivityAdapterPort {
     };
   }
 
+  private submissionInput(
+    scope: ActivityAdapterScopeV1,
+    submissionId: string,
+  ): {
+    readonly projectId: string;
+    readonly submissionId: string;
+    readonly principalId: string;
+    readonly accessScope?: readonly string[];
+    readonly sensitivity?: string;
+    readonly accessRevision?: string;
+    readonly policyContextRevision?: string;
+  } {
+    return {
+      projectId: scope.activeProjectId,
+      submissionId,
+      principalId: scope.principalId,
+      ...(scope.accessScope === undefined ? {} : { accessScope: scope.accessScope }),
+      ...(scope.sensitivityClearance === undefined
+        ? {}
+        : { sensitivity: scope.sensitivityClearance }),
+      ...(scope.accessRevision === undefined ? {} : { accessRevision: scope.accessRevision }),
+      ...(scope.policyContextRevision === undefined
+        ? {}
+        : { policyContextRevision: scope.policyContextRevision }),
+    };
+  }
+
   async readQueue(
     scope: ActivityAdapterScopeV1,
     filter: ActivityQueueFilterV1,
   ): Promise<ActivityQueuePageV1> {
     const limit = Math.max(1, filter.limit ?? 50);
-    const { rows, nextCursor } = await this.read.listSubmissions({
+    const { rows } = await this.read.listSubmissions({
       projectId: scope.activeProjectId,
       principalId: scope.principalId,
       ...(filter.cursor === undefined ? {} : { cursor: filter.cursor }),
@@ -169,14 +209,25 @@ export class SourcesActivityAdapter implements SourcesActivityAdapterPort {
         sourceUpdatedAt = row.updatedAt;
       }
     }
+    // The cursor is derived from the LAST DISPLAYED row ??never from a fetched
+    // lookahead row ??so pagination never skips a row (each next page starts
+    // after the last row the client actually saw).
+    const displayedLast = pageRows[pageRows.length - 1];
+    const nextCursor =
+      hasMore && displayedLast !== undefined
+        ? encodeSourcesActivityCursor({
+            updatedAt: displayedLast.updatedAt,
+            submissionId: displayedLast.submissionId,
+          })
+        : undefined;
     return {
       items: pageRows.map((row) => this.queueItemFromRow(row)),
       metadata: metadataFor({
         sourceUpdatedAt,
         projectedAt: new Date().toISOString(),
-        ...(hasMore && nextCursor !== undefined ? { cursor: nextCursor } : {}),
+        ...(nextCursor === undefined ? {} : { cursor: nextCursor }),
       }),
-      ...(hasMore && nextCursor !== undefined ? { nextCursor } : {}),
+      ...(nextCursor === undefined ? {} : { nextCursor }),
     };
   }
 
@@ -288,15 +339,35 @@ export class SourcesActivityAdapter implements SourcesActivityAdapterPort {
     return attempts;
   }
 
+  /** Flat, bounded attempt evidence across all items (for event pagination). */
+  private async collectAllAttempts(
+    scope: ActivityAdapterScopeV1,
+    snapshot: IntakeSubmissionSnapshot,
+    maxTotal: number,
+  ): Promise<readonly SourcesActivityAttemptRow[]> {
+    const attempts: SourcesActivityAttemptRow[] = [];
+    let remaining = maxTotal;
+    for (const item of snapshot.items) {
+      if (remaining <= 0) break;
+      const itemAttempts = await this.read.listItemAttempts({
+        projectId: scope.activeProjectId,
+        submissionId: snapshot.submissionId,
+        submissionItemId: item.itemId,
+        limit: Math.min(remaining, 100),
+      });
+      attempts.push(...itemAttempts);
+      remaining -= itemAttempts.length;
+    }
+    return attempts;
+  }
+
   async readDetail(
     scope: ActivityAdapterScopeV1,
     root: ActivityRootReferenceV1,
   ): Promise<ActivityDetailV1> {
-    const snapshot = await this.read.getSubmission({
-      projectId: scope.activeProjectId,
-      submissionId: root.domainResourceId,
-      principalId: scope.principalId,
-    });
+    const snapshot = await this.read.getSubmission(
+      this.submissionInput(scope, root.domainResourceId),
+    );
     if (snapshot === undefined) return notFound();
     const attempts = await this.collectAttempts(scope, snapshot, DETAIL_EVENT_CAP);
     const projectedAt = new Date().toISOString();
@@ -347,51 +418,59 @@ export class SourcesActivityAdapter implements SourcesActivityAdapterPort {
   async readStages(
     scope: ActivityAdapterScopeV1,
     root: ActivityRootReferenceV1,
-    _cursor?: string,
+    cursor?: string,
     limit?: number,
   ): Promise<ActivityStageContinuationV1> {
-    const snapshot = await this.read.getSubmission({
-      projectId: scope.activeProjectId,
-      submissionId: root.domainResourceId,
-      principalId: scope.principalId,
-    });
+    const snapshot = await this.read.getSubmission(
+      this.submissionInput(scope, root.domainResourceId),
+    );
     if (snapshot === undefined) return notFound();
     const capped = Math.max(1, limit ?? 50);
-    const stages = snapshot.items
-      .slice(0, capped)
-      .map((item, index) => this.stageFromItem(item, index, snapshot));
+    const offset = cursor === undefined ? 0 : parseContinuationOffset('sources:stages', cursor);
+    const slice = snapshot.items.slice(offset, offset + capped + 1);
+    const hasMore = slice.length > capped;
+    const pageItems = hasMore ? slice.slice(0, capped) : slice;
+    const nextOffset = offset + pageItems.length;
+    const nextCursor = hasMore ? `sources:stages:${nextOffset}` : undefined;
     return {
-      stages,
+      stages: pageItems.map((item, index) => this.stageFromItem(item, offset + index, snapshot)),
       metadata: metadataFor({
         sourceUpdatedAt: snapshot.updatedAt,
         projectedAt: new Date().toISOString(),
       }),
-      ...(snapshot.items.length > stages.length
-        ? { nextCursor: `sources:stages:${stages.length}` }
-        : {}),
+      ...(nextCursor === undefined ? {} : { nextCursor }),
     };
   }
 
   async readEvents(
     scope: ActivityAdapterScopeV1,
     root: ActivityRootReferenceV1,
-    _cursor?: string,
+    cursor?: string,
     limit?: number,
   ): Promise<ActivityEventContinuationV1> {
-    const snapshot = await this.read.getSubmission({
-      projectId: scope.activeProjectId,
-      submissionId: root.domainResourceId,
-      principalId: scope.principalId,
-    });
+    const snapshot = await this.read.getSubmission(
+      this.submissionInput(scope, root.domainResourceId),
+    );
     if (snapshot === undefined) return notFound();
     const capped = Math.max(1, limit ?? 50);
-    const attempts = await this.collectAttempts(scope, snapshot, capped);
+    const offset = cursor === undefined ? 0 : parseContinuationOffset('sources:events', cursor);
+    // Collect the flat attempt/event evidence across items (bounded) so the
+    // continuation can page by offset.
+    const allAttempts = await this.collectAllAttempts(scope, snapshot, DETAIL_EVENT_CAP * 4);
+    const slice = allAttempts.slice(offset, offset + capped + 1);
+    const hasMore = slice.length > capped;
+    const pageAttempts = hasMore ? slice.slice(0, capped) : slice;
+    const nextOffset = offset + pageAttempts.length;
+    const nextCursor = hasMore ? `sources:events:${nextOffset}` : undefined;
     return {
-      events: attempts.map((attempt, index) => this.eventFromAttempt(attempt, index + 1)),
+      events: pageAttempts.map((attempt, index) =>
+        this.eventFromAttempt(attempt, offset + index + 1),
+      ),
       metadata: metadataFor({
         sourceUpdatedAt: snapshot.updatedAt,
         projectedAt: new Date().toISOString(),
       }),
+      ...(nextCursor === undefined ? {} : { nextCursor }),
     };
   }
 }

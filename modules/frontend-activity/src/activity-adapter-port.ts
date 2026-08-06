@@ -33,6 +33,10 @@ export type ActivityAdapterScopeV1 = {
   readonly activeProjectId: string;
   readonly accessRevision: string;
   readonly policyContextRevision: string;
+  /** Server-derived sensitivity clearance (owning Domain revalidates access). */
+  readonly sensitivityClearance?: string;
+  /** Server-derived access scopes (owning Domain revalidates capability). */
+  readonly accessScope?: readonly string[];
 };
 
 export type ActivityQueueFilterV1 = {

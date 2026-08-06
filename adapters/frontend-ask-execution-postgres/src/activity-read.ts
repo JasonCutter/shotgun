@@ -32,8 +32,19 @@ type RunRow = QueryResultRow & {
   readonly failure_retryable: boolean | null;
   readonly failure_outcome_unknown: boolean | null;
   readonly attempt_number: number;
+  readonly attempt_id: string | null;
+  readonly access_revision: string;
+  readonly policy_context_revision: string;
+  readonly sensitivity_clearance: string;
   readonly created_at: Date;
   readonly updated_at: Date;
+};
+
+const SENSITIVITY_RANK: Readonly<Record<string, number>> = {
+  public: 0,
+  internal: 1,
+  private: 2,
+  restricted: 3,
 };
 
 type EventRow = QueryResultRow & {
@@ -52,15 +63,53 @@ type EventRow = QueryResultRow & {
 const iso = (value: Date | string): string =>
   value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 
-const RUN_COLUMNS = `answer_run_id, project_id, state, attention_reason,
-       failure_code, failure_message, failure_retryable, failure_outcome_unknown,
-       attempt_number, created_at, updated_at`;
+const RUN_COLUMNS = `r.answer_run_id, r.project_id, r.state, r.attention_reason,
+       r.failure_code, r.failure_message, r.failure_retryable, r.failure_outcome_unknown,
+       r.attempt_number, r.created_at, r.updated_at,
+       r.access_revision, r.policy_context_revision, r.sensitivity_clearance,
+       a.attempt_id`;
+
+const RUN_JOIN = `FROM frontend_ask.answer_runs r
+LEFT JOIN frontend_ask.answer_run_attempts a
+  ON a.answer_run_id = r.answer_run_id AND a.attempt_number = r.attempt_number`;
+
+/**
+ * Own-Domain access revalidation with the server-derived binding: the caller's
+ * sensitivity clearance must dominate the run's sensitivity, and the run's
+ * stored access/policy revisions must match the current binding. Any mismatch
+ * is a denial (returned as NOT_FOUND by the adapter) — never a leak.
+ */
+const isAskRunAccessible = (input: {
+  readonly sensitivityClearance?: string;
+  readonly accessRevision?: string;
+  readonly policyContextRevision?: string;
+  row: RunRow;
+}): boolean => {
+  if (
+    input.sensitivityClearance !== undefined &&
+    (SENSITIVITY_RANK[input.row.sensitivity_clearance] ?? 3) >
+      (SENSITIVITY_RANK[input.sensitivityClearance] ?? -1)
+  ) {
+    return false;
+  }
+  if (input.accessRevision !== undefined && input.row.access_revision !== input.accessRevision) {
+    return false;
+  }
+  if (
+    input.policyContextRevision !== undefined &&
+    input.row.policy_context_revision !== input.policyContextRevision
+  ) {
+    return false;
+  }
+  return true;
+};
 
 const runFromRow = (row: RunRow): AskActivityAnswerRunRow => ({
   answerRunId: row.answer_run_id,
   projectId: row.project_id,
   state: row.state,
   ...(row.attention_reason === null ? {} : { attentionReason: row.attention_reason }),
+  ...(row.attempt_id === null ? {} : { attemptId: row.attempt_id }),
   attemptNumber: row.attempt_number > 0 ? row.attempt_number : undefined,
   ...(row.failure_code === null
     ? {}
@@ -88,23 +137,23 @@ export class PostgresAskActivityRead implements AskActivityReadPort {
     readonly nextCursor?: string;
   }> {
     const params: unknown[] = [input.projectId];
-    const conditions = ['project_id = $1'];
+    const conditions = ['r.project_id = $1'];
     if (input.cursor !== undefined) {
       const cursor = decodeAskActivityCursor(input.cursor);
       params.push(cursor.updatedAt, cursor.answerRunId);
       const updatedParam = params.length - 1;
       const idParam = params.length;
       conditions.push(
-        `(updated_at < $${updatedParam}
-          OR (updated_at = $${updatedParam} AND answer_run_id > $${idParam}))`,
+        `(r.updated_at < $${updatedParam}
+          OR (r.updated_at = $${updatedParam} AND r.answer_run_id > $${idParam}))`,
       );
     }
     params.push(input.limit);
     const result = await this.pool.query<RunRow>(
       `SELECT ${RUN_COLUMNS}
-       FROM frontend_ask.answer_runs
+       ${RUN_JOIN}
        WHERE ${conditions.join(' AND ')}
-       ORDER BY updated_at DESC, answer_run_id ASC
+       ORDER BY r.updated_at DESC, r.answer_run_id ASC
        LIMIT $${params.length}`,
       params,
     );
@@ -126,14 +175,29 @@ export class PostgresAskActivityRead implements AskActivityReadPort {
   async getAnswerRun(input: {
     readonly projectId: string;
     readonly answerRunId: string;
+    readonly sensitivityClearance?: string;
+    readonly accessRevision?: string;
+    readonly policyContextRevision?: string;
   }): Promise<AskActivityAnswerRunRow | undefined> {
     const result = await this.pool.query<RunRow>(
       `SELECT ${RUN_COLUMNS}
-       FROM frontend_ask.answer_runs
-       WHERE project_id = $1 AND answer_run_id = $2`,
+       ${RUN_JOIN}
+       WHERE r.project_id = $1 AND r.answer_run_id = $2`,
       [input.projectId, input.answerRunId],
     );
-    return result.rows[0] ? runFromRow(result.rows[0]) : undefined;
+    const row = result.rows[0];
+    if (row === undefined) return undefined;
+    if (
+      !isAskRunAccessible({
+        sensitivityClearance: input.sensitivityClearance,
+        accessRevision: input.accessRevision,
+        policyContextRevision: input.policyContextRevision,
+        row,
+      })
+    ) {
+      return undefined;
+    }
+    return runFromRow(row);
   }
 
   async listAnswerRunEvents(input: {

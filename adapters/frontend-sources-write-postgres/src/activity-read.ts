@@ -1,6 +1,9 @@
 import type { Pool, QueryResultRow } from 'pg';
 
-import type { IntakeSubmissionSnapshot } from '../../../packages/contracts/src/index.js';
+import type {
+  IntakeSubmissionSnapshot,
+  SourcesSensitivity,
+} from '../../../packages/contracts/src/index.js';
 import {
   decodeSourcesActivityCursor,
   encodeSourcesActivityCursor,
@@ -133,15 +136,23 @@ export class PostgresSourcesActivityRead implements SourcesActivityReadPort {
     readonly projectId: string;
     readonly submissionId: string;
     readonly principalId?: string;
+    readonly accessScope?: readonly string[];
+    readonly sensitivity?: string;
+    readonly accessRevision?: string;
+    readonly policyContextRevision?: string;
   }): Promise<IntakeSubmissionSnapshot | undefined> {
+    // The owning Domain's authoritative read boundary revalidates access with
+    // the server-derived binding (never browser-authored): principal, access
+    // scopes, sensitivity and the current access/policy revisions are passed
+    // through instead of synthetic values.
     const scope: SourcesProductWriteScope = {
       principalId: input.principalId ?? 'activity-read',
       sessionId: 'activity-read',
       projectId: input.projectId,
-      accessScopes: [],
-      sensitivity: 'internal',
-      accessRevision: 'activity-read',
-      policyContextRevision: 'activity-read',
+      accessScopes: input.accessScope ?? [],
+      sensitivity: (input.sensitivity as SourcesSensitivity) ?? 'internal',
+      accessRevision: input.accessRevision ?? 'activity-read',
+      policyContextRevision: input.policyContextRevision ?? 'activity-read',
       acceptedPolicyContextId: 'activity-read',
       acceptedPolicyBinding: {},
     };

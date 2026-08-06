@@ -223,17 +223,27 @@ export const createInMemoryActivityReadModelStore = (): ActivityReadModelStorePo
       const existing = [...index.rows.values()].filter(
         (record) => record.resourceProjectId === input.resourceProjectId,
       );
+      const existingWatermarkRevisions = [...watermarks.rows.values()]
+        .filter((record) => record.resourceProjectId === input.resourceProjectId)
+        .map((record) => record.snapshotRevision);
+      const committedMax = Math.max(
+        ...existing.map((record) => record.snapshotRevision),
+        ...existingWatermarkRevisions,
+        0,
+      );
+      // CAS against BOTH the index and the watermarks: a concurrent build that
+      // already committed this revision (even with an empty index, e.g. all
+      // adapters failed) must be rejected. A stale lower revision never wins.
+      if (committedMax >= input.snapshotRevision) {
+        throw new Error(
+          `ACTIVITY_INDEX_STALE_REBUILD: ${input.resourceProjectId}/ALL already has snapshot revision >= ${input.snapshotRevision}`,
+        );
+      }
       assertRebuildRevisionNotLower(
         existing,
         input.snapshotRevision,
         `${input.resourceProjectId}/ALL`,
       );
-      // Reject a concurrent build that already committed the same revision.
-      if (existing.some((record) => record.snapshotRevision >= input.snapshotRevision)) {
-        throw new Error(
-          `ACTIVITY_INDEX_STALE_REBUILD: ${input.resourceProjectId}/ALL already has snapshot revision >= ${input.snapshotRevision}`,
-        );
-      }
       // Build the next index state without touching the live store.
       const nextIndex = new Map(index.rows);
       const projectPrefix = `${input.resourceProjectId}\u0000`;

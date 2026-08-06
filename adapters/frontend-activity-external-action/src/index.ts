@@ -298,7 +298,7 @@ export class ExternalActionActivityAdapter implements ExternalActionActivityAdap
   async readStages(
     scope: ActivityAdapterScopeV1,
     root: ActivityRootReferenceV1,
-    _cursor?: string,
+    cursor?: string,
     limit?: number,
   ): Promise<ActivityStageContinuationV1> {
     return this.boundary.transaction(async (repositories) => {
@@ -311,18 +311,21 @@ export class ExternalActionActivityAdapter implements ExternalActionActivityAdap
         ? await repositories.attempts.findByExecution(execution.executionId)
         : [];
       const capped = Math.max(1, limit ?? 50);
-      const stages = attempts
-        .slice(0, capped)
-        .map((attempt, index) => this.stageFromAttempt(attempt, index));
+      const offset = cursor === undefined ? 0 : decodeOffsetCursor(cursor);
+      const slice = attempts.slice(offset, offset + capped + 1);
+      const hasMore = slice.length > capped;
+      const pageAttempts = hasMore ? slice.slice(0, capped) : slice;
+      const nextOffset = offset + pageAttempts.length;
+      const nextCursor = hasMore ? encodeOffsetCursor(nextOffset) : undefined;
       return {
-        stages,
+        stages: pageAttempts.map((attempt, index) =>
+          this.stageFromAttempt(attempt, offset + index),
+        ),
         metadata: metadataFor({
           sourceUpdatedAt: action.updatedAt,
           projectedAt: new Date().toISOString(),
         }),
-        ...(attempts.length > stages.length
-          ? { nextCursor: `external-action:stages:${stages.length}` }
-          : {}),
+        ...(nextCursor === undefined ? {} : { nextCursor }),
       };
     });
   }

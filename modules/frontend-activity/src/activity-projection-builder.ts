@@ -165,9 +165,21 @@ export class ActivityProjectionBuilder {
       guardCursor(page.nextCursor, cursor);
       const pageStatus = page.metadata.adapterStatus;
       status = status === undefined ? pageStatus : combineAdapterAvailability([status, pageStatus]);
-      // The last page's observation drives the freshness/lag/cursor watermark.
-      sourceUpdatedAt = page.metadata.sourceUpdatedAt;
-      lagMilliseconds = page.metadata.lagMilliseconds;
+      // Aggregate across EVERY page: the newest source observation, the worst
+      // lag and the worst adapter status (the last page is the oldest slice of
+      // a DESC queue and must never overwrite the newest observation).
+      if (
+        page.metadata.sourceUpdatedAt !== undefined &&
+        (sourceUpdatedAt === undefined || page.metadata.sourceUpdatedAt > sourceUpdatedAt)
+      ) {
+        sourceUpdatedAt = page.metadata.sourceUpdatedAt;
+      }
+      if (
+        page.metadata.lagMilliseconds !== undefined &&
+        (lagMilliseconds === undefined || page.metadata.lagMilliseconds > lagMilliseconds)
+      ) {
+        lagMilliseconds = page.metadata.lagMilliseconds;
+      }
       cursor = page.metadata.cursor;
       for (const item of page.items) {
         records.push(activityIndexRecordFromQueueItem({ item, snapshotRevision, projectedAt }));
@@ -263,7 +275,9 @@ export class ActivityProjectionBuilder {
       indexCount: records.length,
       watermarks,
       adapterStatus,
-      partial: failures.length > 0,
+      // Partial whenever any adapter failed OR the aggregate status is not
+      // fully AVAILABLE (e.g. an adapter reported DEGRADED without throwing).
+      partial: failures.length > 0 || adapterStatus !== 'AVAILABLE',
       failures,
     };
   }

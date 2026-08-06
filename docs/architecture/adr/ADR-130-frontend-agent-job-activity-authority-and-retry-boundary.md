@@ -1,181 +1,158 @@
----
-id: ADR-130
-classification: CANDIDATE
-status: PROPOSED
-created_at: 2026-08-06
-subject_base: 8c00519d7498ef1783de1a4e4e48da1a2b4bb8bd
-tracking_issue: https://github.com/JasonCutter/shotgun/issues/68
----
+# ADR-130 — Frontend Agent·Job Activity Federated Projection, Identity and Retry Boundary
 
-# ADR-130 — Frontend Agent·Job Activity Authority and Retry Boundary
-
-## Status
-
-**PROPOSED — NOT ACCEPTED**
-
-이 ADR은 사용자 승인 전까지 후보이며 Product 구현 권위를 부여하지 않는다.
+- Status: **ACCEPTED**
+- Proposed at: 2026-08-06
+- Accepted at: 2026-08-06T12:28:00+09:00
+- Accepted by: `USER`
+- Work item: `FE-P5-S1`
+- Tracking issue: `#71`
+- Subject base: `main@8c00519d7498ef1783de1a4e4e48da1a2b4bb8bd`
+- Related ADRs: ADR-101, ADR-104, ADR-105, ADR-111, ADR-112, ADR-118, ADR-119, ADR-124, ADR-129
+- Contract snapshot:
+  `docs/architecture/contracts/snapshots/frontend-phase-5-section-1/frontend-phase-5-section-1-contract-snapshot-260806001.md`
+- Decision owner: `USER`
+- Product implementation: `NOT_AUTHORIZED`
 
 ## Context
 
-FE-P5-S1은 Source 처리, Ask Answer Run, Canonical Commit, External Action 등 서로 다른 실행 흐름을 하나의 운영 Activity Workspace에서 관찰해야 한다.
+ADR-111, owned by the consolidated Frontend ADR record, establishes Activity as a Job·Attempt·Event projection. ADR-112 separates immutable History and reversal behavior. FE-P5-S1 now needs an implementation-level boundary that maps heterogeneous Sources, Ask and External Action execution resources into one Project-scoped Activity workspace without inventing a second execution authority.
 
-현재 Repository에는 다음 기반이 있다.
+The repository already contains domain execution records:
 
-- `packages/job-runtime`: in-memory Job·Attempt와 retry policy
-- `packages/observability`: trace/telemetry 기반
-- `modules/action-execution`: External Action 상태 전이·Audit·Outcome Unknown
-- 각 Frontend Product module의 프로젝트·보안·decoder·recovery 패턴
+- Sources: IntakeSubmission, submission-item processing and IntakeAttempt.
+- Ask: AnswerRun, AnswerRunAttempt and AnswerRunEvent.
+- External Action: Action aggregate, Execution, ExecutionAttempt and AuditEvent.
+- Connector Runtime: internal Job/transport-attempt diagnostics.
 
-그러나 현재 기반은 다음을 제공하지 않는다.
-
-- persistent Project-scoped Job→Run→Attempt→Stage Activity Projection
-- Transport Retry와 Domain Retry의 명시적 구분
-- Domain Activity Identity와 telemetry identity의 분리
-- Projection freshness/lag, partial failure, attention, resource deep link
-- FE-P5-S1과 FE-P5-S2 History의 명확한 저장·권위 경계
-
-Phase 5 문서가 언급하는 legacy ADR-111·112는 현재 추적 가능한 독립 ADR 파일로 존재하지 않는다. 새로운 결정은 새 ADR로 남겨야 한다.
+Those resources do not share one durable Job identity or one lifecycle hierarchy. `packages/job-runtime` and observability stores are in-memory and cannot become Product authority.
 
 ## Decision
 
-### 1. Activity authority
+### 1. Federated read projection
 
-FE-P5-S1의 권위는 **Project-scoped persisted Domain Activity Snapshot**이다.
-
-Polling, SSE, browser cache, timeline animation, telemetry와 notification은 관찰·전달 수단이며 Domain Activity Authority가 아니다.
-
-Snapshot은 최소한 다음을 포함한다.
-
-- projection revision
-- generated/updated timestamp
-- freshness 또는 lag 상태
-- Job/Run/Attempt/Stage current state
-- partial failure와 outcome unknown
-- attention summary
-- correlation/causation/resource reference
-
-### 2. Identity hierarchy
-
-다음 Identity를 분리한다.
+FE-P5-S1 adopts a **Federated Activity Read Projection**.
 
 ```text
-Job
-→ 하나의 사용자·시스템 목적
-
-Run
-→ Job의 한 번의 orchestration execution
-
-Attempt
-→ retry policy에 의해 생성되는 실행 시도
-
-Stage
-→ Attempt 내부의 bounded progress unit
-
-Event
-→ 현재 Activity Projection을 설명하는 operational transition evidence
+Activity Workspace
+  → Activity Index and Projection Watermarks
+  → Sources Activity Adapter
+  → Ask Activity Adapter
+  → External Action Activity Adapter
+  → limited Connector Diagnostics Adapter
+  → authoritative Domain Resource Snapshot
 ```
 
-`commandId`, `messageId`, `jobId`, `runId`, `attemptId`, `stageId`, `eventId`, `traceId`는 서로 다른 타입이며 값의 동일성을 강제하지 않는다.
+Activity is not a common execution ledger. Queue/search may use an additive Activity index, but detail reads re-resolve the owning Domain Resource snapshot.
 
-### 3. Retry semantics
+### 2. Root and identity model
 
-- **Transport Retry**: 동일 Command/Message의 전달 재시도다. 새 Domain Attempt를 만들지 않는다.
-- **Domain Retry**: 사용자가 또는 정책이 새 실행을 요청한다. 새 Command, Run 또는 Attempt를 만들고 원 실행을 causation reference로 연결한다.
-- 실패한 이전 Attempt, Error classification, Policy Context, timestamps는 보존한다.
-- `OUTCOME_UNKNOWN`은 자동 Domain Retry 또는 duplicate submission을 유발하지 않는다.
+An Activity root is either `JOB` or `RUN`.
 
-### 4. Persistence
+- A durable Job is shown only when the owning Domain actually has one.
+- A Run may be the root where no durable Job exists; Ask must not receive an invented Job ID.
+- Domain Attempt and Transport Delivery Attempt are distinct types.
+- Stage is a typed logical segment within a Run or Domain Attempt.
+- Event is bounded operational evidence, not FE-P5-S2 long-term History.
 
-Activity Projection은 process restart 후 복구되어야 하므로 additive persistence가 필요하다.
+`commandId`, `messageId`, `jobId`, `runId`, `attemptId`, `stageId`, `eventId` and `traceId` remain separate identities connected through typed references.
 
-기존 Source/Ask/Action 원장을 대체하거나 재작성하지 않는다. Projection builder는 기존 authoritative resource를 참조하고, Activity 전용 identity·current state·attention·freshness를 저장한다.
+Initial mappings:
 
-FE-P5-S2의 장기 History, Audit retention, Tombstone, Legal Hold, Reversal은 이 ADR 범위가 아니다.
+| Domain | Job | Run | Domain Attempt | Event |
+| --- | --- | --- | --- | --- |
+| Sources | IntakeSubmission | Submission-item processing | IntakeAttempt | domain processing evidence |
+| Ask | none | AnswerRun | AnswerRunAttempt | AnswerRunEvent |
+| External Action | Action aggregate | Execution | ExecutionAttempt | AuditEvent |
+| Connector Runtime | internal diagnostic Job | none | transport attempt only | TraceRecord |
 
-### 5. Security and deep link
+### 3. Retry and outcome semantics
 
-모든 list/detail/refresh/deep-link access는 현재 Principal, Project, Capability와 sensitivity를 서버에서 재검증한다.
+- Transport Retry repeats delivery of the same Command or Message and does not create a Domain Attempt.
+- Domain Retry uses the owning Domain command, creates a new Domain Attempt or Run as defined by that Domain, and preserves correlation and causation.
+- Earlier Attempts, failures, timestamps and Policy Context remain visible.
+- `OUTCOME_UNKNOWN` never triggers automatic Domain Retry or duplicate submission.
+- Activity provides no generic retry or cancel authority. It exposes server-derived available actions and delegates execution to existing Domain commands.
 
-다른 Project 또는 접근 불가 Resource의 존재를 count, error detail, timing, deep-link target으로 노출하지 않는다.
+### 4. State and separate dimensions
 
-### 6. Attention
+Common lifecycle states are:
 
-User Attention은 Notification과 분리된 Domain Projection이다.
+```text
+QUEUED
+RUNNING
+WAITING_FOR_USER
+PARTIAL
+SUCCEEDED
+FAILED
+CANCEL_REQUESTED
+CANCELLED
+OUTCOME_UNKNOWN
+```
 
-Attention은 이유, severity, required action, related resource와 resolution state를 가진다. Notification 읽음·삭제는 Attention이나 Domain 문제를 해결하지 않는다.
+Progress, Attention, Failure, Retryability, Projection Freshness and Adapter Availability remain separate dimensions. `STALE` is Projection Freshness, not a Domain lifecycle state.
 
-### 7. Refresh transport
+### 5. Persistence
 
-Contract baseline은 typed HTTP Snapshot fetch와 explicit refresh/polling이다.
+An additive `frontend_activity` read model is required:
 
-SSE는 optional optimization으로 허용하지만:
+- `activity_index`: Project-scoped queue/search index with concrete Domain Resource identity, current summary, source revision and `projected_at`.
+- `projection_watermarks`: Project- and adapter-scoped source observation, projection time, lag and adapter status.
 
-- Snapshot 권위를 대체하지 않는다.
-- reconnect 후 authoritative refetch를 수행한다.
-- 새 Runtime Dependency 도입 근거가 되지 않는다.
-- FE-P5-S1 완료 조건에 필수 transport로 고정하지 않는다.
+The migration must not duplicate full Domain execution histories or create the FE-P5-S2 History ledger. Migration implementation remains separately unauthorized.
 
-### 8. Activity versus History
+### 6. Refresh transport
+
+Typed HTTP snapshot reads and bounded polling are the baseline. SSE is **DEFERRED**.
+
+Polling, SSE, browser cache and timeline presentation are observation mechanisms only. Refresh always converges on an authoritative Domain Resource snapshot, and lower revisions cannot overwrite a newer snapshot.
+
+### 7. Security and deep links
+
+Every queue, detail and deep-link read revalidates current Principal, Project, Capability, sensitivity and Resource access. Inaccessible resources are non-disclosing. Event and failure payloads expose only explicitly allowed safe fields.
+
+### 8. Activity and History boundary
 
 ```text
 Activity
-→ 현재 실행 상태와 bounded operational evidence
+→ current operational projection and bounded evidence
 
 History
-→ 장기 불변 Revision·Decision·Approval·Audit·Canonical/External result
+→ long-term immutable revision, decision, approval, audit and result record
 ```
 
-FE-P5-S1은 Activity를 구현하고 FE-P5-S2 History를 선구현하지 않는다.
+FE-P5-S1 does not pre-implement retention, tombstones, legal hold, reversal or compensation history.
 
 ## Consequences
 
 ### Positive
 
-- 모든 실행 흐름을 동일한 typed Activity 모델로 관찰할 수 있다.
-- retry와 duplicate submission을 구분할 수 있다.
-- telemetry 장애나 browser refresh가 Domain 상태를 바꾸지 않는다.
-- FE-P5-S2의 장기 감사 범위를 침범하지 않는다.
-- 기존 Job Runtime, Observability와 Product API 패턴을 재사용할 수 있다.
+- Heterogeneous Domain work is observable through one Project-scoped workspace.
+- Domain authority, retry meaning and concrete Resource identity are preserved.
+- Projection lag and partial adapter failure become explicit.
+- Existing PostgreSQL, Fastify, React Query and Domain stores are reused without a new runtime dependency.
 
 ### Costs
 
-- additive DB Migration과 projection builder가 필요하다.
-- 기존 실행 흐름마다 adapter가 필요하다.
-- snapshot ordering, lag, partial failure, attention consistency 검증이 필요하다.
+- Each participating Domain requires an adapter.
+- Activity index/watermark rebuilding, ordering and partial-result behavior require focused verification.
+- Detail reads must combine the read model with current Domain authorization.
 
 ## Rejected alternatives
 
-### A. Observability trace를 Activity authority로 사용
+- Observability traces as Activity authority.
+- One universal durable Job for every Domain.
+- Browser-side composition as the authoritative Activity model.
+- Generic Activity retry/cancel commands.
+- A full Activity Event history ledger in FE-P5-S1.
+- SSE-only delivery or a new workflow engine.
 
-거부. Trace는 sampling, retention, redaction과 availability가 Domain Resource와 다르며 사용자 권위 상태를 보장하지 않는다.
+## Accepted authority
 
-### B. External Action execution table을 모든 Job에 재사용
-
-거부. External Action의 승인·위험·connector lifecycle을 Source/Ask/Canonical 실행에 강제하여 의미를 왜곡한다.
-
-### C. Browser에서 여러 API를 조합하여 Activity 생성
-
-거부. Project·security·ordering·partial failure 권위가 browser로 이동하고 일관된 recovery가 불가능하다.
-
-### D. FE-P5-S2 History schema를 동시에 구현
-
-거부. Section 경계를 확대하고 retention·tombstone·rollback 결정을 조용히 선구현한다.
-
-### E. SSE 전용으로 구현
-
-거부. transport 연결 상태가 Domain authority처럼 취급될 위험이 있고 새 dependency와 recovery 복잡성을 만든다.
-
-## Required follow-up before acceptance
-
-1. AC-01~AC-26 검토 및 Freeze
-2. additive Migration schema candidate 검토
-3. Product API resource shape 검토
-4. implementation work package 분할 검토
-5. 사용자 ADR 승인
-
-## Authority
-
-- ADR-130: PROPOSED / NOT_ACCEPTED
-- Migration: REQUIRED_CANDIDATE / NOT_AUTHORIZED
-- Runtime Dependency: NOT_REQUIRED
-- Product Implementation: NOT_AUTHORIZED
+- ADR-130: `ACCEPTED`
+- Contract Snapshot: `FROZEN`
+- Acceptance Criteria: `FE-P5-S1-AC-01` through `FE-P5-S1-AC-16` frozen
+- Additive Migration: `REQUIRED / IMPLEMENTATION_NOT_AUTHORIZED`
+- Runtime Dependency: `NOT_REQUIRED`
+- Polling: `BASELINE`
+- SSE: `DEFERRED`
+- Product implementation: `NOT_AUTHORIZED`

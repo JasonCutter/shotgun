@@ -5,8 +5,13 @@ status: wp1_implemented_pending_review
 work_item: FE-P5-S1
 created_at: 2026-08-06
 subject_head: ab0c8749f6db475b16df674250c3b66dc3c63cdb
+exact_head: d78b234b8a992e72011184cf7721eeee03869f69
+ci_number: 600
+ci_run: 31088763496
+ci_conclusion: SUCCESS
 tracking_issue: https://github.com/JasonCutter/shotgun/issues/71
 contract_pr: https://github.com/JasonCutter/shotgun/pull/70
+product_pr: https://github.com/JasonCutter/shotgun/pull/73
 governing_adr: ADR-130
 contract_snapshot: docs/architecture/contracts/snapshots/frontend-phase-5-section-1/frontend-phase-5-section-1-contract-snapshot-260806001.md
 implementation_request: docs/implementation/frontend-phase-5-section-1-implementation-request-260806001.md
@@ -92,6 +97,11 @@ Focused tests only (no previously-passed head re-run):
 Local: 54/54 PASS. `tsc --noEmit`, ESLint and Prettier clean. Governance gates
 (`docs:validate`, `docs:frontend-work-items`, `docs:completion-invariants`,
 `docs:frontend-projections:check`) PASS after the Work Item transition.
+
+Automatic CI on exact head `d78b234b8a992e72011184cf7721eeee03869f69` (PR #73, draft for
+auto CI only) — **CI #600 / `31088763496`: Quality, Frontend, Required Gates SUCCESS**
+(Quality 3m42s, Frontend 3m9s, Required Gates 2s). No manual or duplicate CI was dispatched
+and no previously-passed head was re-run.
 
 ## 7. Work Item transition
 

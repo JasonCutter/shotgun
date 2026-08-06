@@ -9,6 +9,7 @@ import type {
   ActivityStageViewV1,
   IntakeSubmissionSnapshot,
   IntakeSubmissionState,
+  SourcesSensitivity,
 } from '../../../packages/contracts/src/index.js';
 import {
   activityAttentionFrom,
@@ -45,6 +46,14 @@ import {
 
 const ADAPTER_ID = 'sources-activity-adapter';
 const DETAIL_EVENT_CAP = 50;
+
+/** Sensitivity dominance ordering (higher rank = more restricted). */
+const SENSITIVITY_RANK: Readonly<Record<string, number>> = {
+  public: 0,
+  internal: 1,
+  private: 2,
+  restricted: 3,
+};
 
 /** Parse a typed continuation offset like `sources:stages:20`. */
 const parseContinuationOffset = (prefix: string, cursor: string): number => {
@@ -484,9 +493,15 @@ export class SourcesActivityAdapter implements SourcesActivityAdapterPort {
 export class InMemorySourcesActivityRead implements SourcesActivityReadPort {
   private readonly submissions = new Map<string, IntakeSubmissionSnapshot>();
   private readonly attempts = new Map<string, SourcesActivityAttemptRow>();
+  private readonly sensitivities = new Map<string, SourcesSensitivity>();
 
-  seedSubmission(snapshot: IntakeSubmissionSnapshot): void {
-    this.submissions.set(`${snapshot.projectId}\u0000${snapshot.submissionId}`, snapshot);
+  seedSubmission(
+    snapshot: IntakeSubmissionSnapshot,
+    sensitivity: SourcesSensitivity = 'public',
+  ): void {
+    const key = `${snapshot.projectId}\u0000${snapshot.submissionId}`;
+    this.submissions.set(key, snapshot);
+    this.sensitivities.set(key, sensitivity);
   }
 
   seedAttempt(attempt: SourcesActivityAttemptRow): void {
@@ -556,10 +571,34 @@ export class InMemorySourcesActivityRead implements SourcesActivityReadPort {
     readonly projectId: string;
     readonly submissionId: string;
     readonly principalId?: string;
+    readonly accessScope?: readonly string[];
+    readonly sensitivity?: string;
+    readonly accessRevision?: string;
+    readonly policyContextRevision?: string;
   }): Promise<IntakeSubmissionSnapshot | undefined> {
-    const snapshot = this.submissions.get(`${input.projectId}\u0000${input.submissionId}`);
+    const key = `${input.projectId}\u0000${input.submissionId}`;
+    const snapshot = this.submissions.get(key);
     if (snapshot === undefined) return undefined;
     if (input.principalId !== undefined && snapshot.principalId !== input.principalId) {
+      return undefined;
+    }
+    // Own-Domain Activity revalidation (R4-2): a stale binding (access/policy
+    // revision mismatch) or an insufficient sensitivity clearance is a denial
+    // — the same non-disclosing undefined as a missing/cross-principal row.
+    if (input.accessRevision !== undefined && snapshot.accessRevision !== input.accessRevision) {
+      return undefined;
+    }
+    if (
+      input.policyContextRevision !== undefined &&
+      snapshot.policyContextRevision !== input.policyContextRevision
+    ) {
+      return undefined;
+    }
+    if (
+      input.sensitivity !== undefined &&
+      (SENSITIVITY_RANK[this.sensitivities.get(key) ?? 'public'] ?? 0) >
+        (SENSITIVITY_RANK[input.sensitivity] ?? -1)
+    ) {
       return undefined;
     }
     return snapshot;

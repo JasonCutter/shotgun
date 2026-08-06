@@ -54,6 +54,14 @@ type AttemptRow = QueryResultRow & {
 const iso = (value: Date | string): string =>
   value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 
+/** Sensitivity dominance ordering (higher rank = more restricted). */
+const SENSITIVITY_RANK: Readonly<Record<string, number>> = {
+  public: 0,
+  internal: 1,
+  private: 2,
+  restricted: 3,
+};
+
 export class PostgresSourcesActivityRead implements SourcesActivityReadPort {
   constructor(
     private readonly pool: Pool,
@@ -158,7 +166,56 @@ export class PostgresSourcesActivityRead implements SourcesActivityReadPort {
       acceptedPolicyContextId: 'activity-read',
       acceptedPolicyBinding: {},
     };
-    return this.productService.getSubmission(scope, input.submissionId);
+    const snapshot = await this.productService.getSubmission(scope, input.submissionId);
+    if (snapshot === undefined) return undefined;
+    // Own-Domain Activity revalidation (R4-2): the Activity read treats a
+    // submission as non-readable when its recorded access/policy revisions no
+    // longer match the current binding (stale) or when the scope's sensitivity
+    // clearance does not dominate the materialized content — the same
+    // non-disclosing NOT_FOUND as a missing or cross-principal resource. The
+    // Sources product read keeps its own stale-marking semantics; the Activity
+    // surface never returns a stale row as CURRENT.
+    if (input.accessRevision !== undefined && snapshot.accessRevision !== input.accessRevision) {
+      return undefined;
+    }
+    if (
+      input.policyContextRevision !== undefined &&
+      snapshot.policyContextRevision !== input.policyContextRevision
+    ) {
+      return undefined;
+    }
+    if (
+      input.sensitivity !== undefined &&
+      (SENSITIVITY_RANK[await this.effectiveSensitivity(input.projectId, input.submissionId)] ??
+        0) > (SENSITIVITY_RANK[input.sensitivity] ?? -1)
+    ) {
+      return undefined;
+    }
+    return snapshot;
+  }
+
+  /**
+   * Most restrictive sensitivity among the submission's materialized content
+   * (its stage2 items' recorded sensitivity); `public` when nothing has been
+   * materialized yet. The intake submission itself carries no independent
+   * classification column, so the materialized item sensitivity is the
+   * authoritative bound for the Activity sensitivity revalidation.
+   */
+  private async effectiveSensitivity(projectId: string, submissionId: string): Promise<string> {
+    const result = await this.pool.query<{ sensitivity: string }>(
+      `SELECT s.sensitivity
+       FROM intake.submissions s
+       JOIN source_product.intake_submission_items i
+         ON i.project_id = s.project_id AND i.stage2_submission_id = s.submission_id
+       WHERE s.project_id = $1 AND i.submission_id = $2`,
+      [projectId, submissionId],
+    );
+    let effective: string = 'public';
+    for (const row of result.rows) {
+      const rank = SENSITIVITY_RANK[row.sensitivity] ?? 0;
+      if (rank > (SENSITIVITY_RANK[effective] ?? 0)) effective = row.sensitivity;
+    }
+    return effective;
   }
 
   async listItemAttempts(input: {

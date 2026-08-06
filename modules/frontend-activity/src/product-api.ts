@@ -16,6 +16,7 @@ import {
   ACTIVITY_INDEX_DOMAIN_KINDS,
   ACTIVITY_INDEX_LIFECYCLE_STATES,
   combineAdapterAvailability,
+  encodeActivityIndexCursor,
   type ActivityAdapterPort,
   type ActivityAdapterRegistryPort,
   type ActivityAdapterScopeV1,
@@ -564,6 +565,111 @@ export class ActivityProductCoordinator {
     return record;
   }
 
+  /**
+   * Read one page of QUEUE-ACCESSIBLE records in raw Project index order.
+   *
+   * Audience-safe pagination (R4-1): the page is filled up to `limit` with
+   * rows that pass the owning adapter's non-disclosing `canAccess`
+   * revalidation, and a continuation cursor is returned ONLY when a further
+   * accessible row is confirmed to exist behind the last displayed row. An
+   * empty page never carries a cursor, and a cursor is never issued for a
+   * page that only has inaccessible rows behind it, so the existence or count
+   * of inaccessible rows is never inferable from page density, an empty page
+   * or cursor presence. When a cursor is present the page is full (limit rows).
+   */
+  private async readAccessibleQueuePage(input: {
+    readonly scope: ActivityProductScopeV1;
+    readonly domainKinds?: readonly ActivityDomainKindV1[];
+    readonly states?: readonly ActivityLifecycleStateV1[];
+    readonly attention?: ActivityAttentionStateV1;
+    readonly cursor?: string;
+    readonly limit: number;
+  }): Promise<{ readonly records: ActivityIndexRecordV1[]; readonly nextCursor?: string }> {
+    const adapterScope = this.adapterScope(input.scope);
+    const records: ActivityIndexRecordV1[] = [];
+    let rawCursor: string | undefined = input.cursor;
+    let lastDisplayed: ActivityIndexRecordV1 | undefined;
+
+    // Phase 1 — collect accessible rows in raw index order until the requested
+    // page is full or the raw index is exhausted.
+    while (records.length < input.limit) {
+      const page = await this.store.index.queryProject({
+        resourceProjectId: input.scope.activeProjectId,
+        domainKinds: input.domainKinds,
+        states: input.states,
+        attention: input.attention,
+        cursor: rawCursor,
+        limit: input.limit,
+      });
+      if (page.records.length === 0) break;
+      for (const record of page.records) {
+        const adapter = this.registry.adapterFor(
+          record.domainKind as ActivityAdapterPort['domainKind'],
+        );
+        if (adapter === undefined) continue;
+        if (await adapter.canAccess(adapterScope, activityRootFromRecord(record))) {
+          records.push(record);
+          lastDisplayed = record;
+          if (records.length >= input.limit) break;
+        }
+      }
+      if (page.nextCursor === undefined) break;
+      rawCursor = page.nextCursor;
+    }
+
+    // Phase 2 — a cursor is issued only when the page is full AND a further
+    // accessible row is confirmed behind the last displayed row. The cursor is
+    // the keyset position of the last displayed row, so the next page resumes
+    // exactly after it (no duplicate, no gap) regardless of how many
+    // inaccessible rows sat between raw pages.
+    if (records.length < input.limit || lastDisplayed === undefined) {
+      return { records };
+    }
+    const resumeCursor = encodeActivityIndexCursor({
+      updatedAt: lastDisplayed.updatedAt,
+      domainKind: lastDisplayed.domainKind,
+      activityId: lastDisplayed.activityId,
+    });
+    if (await this.hasAccessibleRecordAfter(input, adapterScope, resumeCursor)) {
+      return { records, nextCursor: resumeCursor };
+    }
+    return { records };
+  }
+
+  /** Confirm an accessible row exists strictly after the given keyset cursor. */
+  private async hasAccessibleRecordAfter(
+    input: {
+      readonly scope: ActivityProductScopeV1;
+      readonly domainKinds?: readonly ActivityDomainKindV1[];
+      readonly states?: readonly ActivityLifecycleStateV1[];
+      readonly attention?: ActivityAttentionStateV1;
+    },
+    adapterScope: ActivityAdapterScopeV1,
+    cursor: string,
+  ): Promise<boolean> {
+    let rawCursor: string | undefined = cursor;
+    for (;;) {
+      const page = await this.store.index.queryProject({
+        resourceProjectId: input.scope.activeProjectId,
+        domainKinds: input.domainKinds,
+        states: input.states,
+        attention: input.attention,
+        cursor: rawCursor,
+        limit: 1,
+      });
+      if (page.records.length === 0) return false;
+      for (const record of page.records) {
+        const adapter = this.registry.adapterFor(
+          record.domainKind as ActivityAdapterPort['domainKind'],
+        );
+        if (adapter === undefined) continue;
+        if (await adapter.canAccess(adapterScope, activityRootFromRecord(record))) return true;
+      }
+      if (page.nextCursor === undefined) return false;
+      rawCursor = page.nextCursor;
+    }
+  }
+
   /** Project-scoped Activity Queue read with filters and stable ordering. */
   async listActivityQueue(
     scope: ActivityProductScopeV1,
@@ -572,29 +678,19 @@ export class ActivityProductCoordinator {
     this.requireCapability(scope, 'LIST_ACTIVITY');
     const decoded = decodeListActivityQueueRequestV1(request);
     const limit = Math.min(ACTIVITY_QUEUE_PAGE_SIZE_CAP, Math.max(1, decoded.limit ?? 20));
-    const page = await this.store.index.queryProject({
-      resourceProjectId: scope.activeProjectId,
+    // Audience isolation: the Projection is Project-shared, so each queue row
+    // is revalidated through the owning adapter's non-disclosing `canAccess`
+    // (principal ownership, sensitivity, access/policy revisions). Pagination
+    // is audience-safe (R4-1): the page is filled with accessible rows and the
+    // cursor never leaks the existence or count of inaccessible rows.
+    const { records: accessibleRecords, nextCursor } = await this.readAccessibleQueuePage({
+      scope,
       domainKinds: decoded.domainKinds,
       states: decoded.states,
       attention: decoded.attention,
       cursor: decoded.cursor,
       limit,
     });
-    // Audience isolation: the Projection is Project-shared, so each queue row
-    // is revalidated through the owning adapter's non-disclosing `canAccess`
-    // (principal ownership, sensitivity, access/policy revisions). Denied rows
-    // are never disclosed — no existence, id or summary leak.
-    const adapterScope = this.adapterScope(scope);
-    const accessibleRecords: ActivityIndexRecordV1[] = [];
-    for (const record of page.records) {
-      const adapter = this.registry.adapterFor(
-        record.domainKind as ActivityAdapterPort['domainKind'],
-      );
-      if (adapter === undefined) continue;
-      if (await adapter.canAccess(adapterScope, activityRootFromRecord(record))) {
-        accessibleRecords.push(record);
-      }
-    }
     const watermarks = await this.store.watermarks.readByProject(scope.activeProjectId);
     const metadata = activityProjectionMetadataFrom({
       records: accessibleRecords,
@@ -605,7 +701,7 @@ export class ActivityProductCoordinator {
     return {
       items: accessibleRecords.map(activityQueueItemFromRecord),
       metadata,
-      ...(page.nextCursor === undefined ? {} : { nextCursor: page.nextCursor }),
+      ...(nextCursor === undefined ? {} : { nextCursor }),
     };
   }
 

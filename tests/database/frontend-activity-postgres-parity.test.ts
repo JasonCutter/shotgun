@@ -1,13 +1,20 @@
+import { createHash, randomUUID } from 'node:crypto';
+
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
 import { createInMemoryActivityReadModelStore } from '../../adapters/frontend-activity-in-memory/src/index.js';
 import { createPostgresActivityReadModelStore } from '../../adapters/frontend-activity-postgres/src/index.js';
 import { PostgresAskActivityRead } from '../../adapters/frontend-ask-execution-postgres/src/activity-read.js';
+import { PostgresSourcesActivityRead } from '../../adapters/frontend-sources-write-postgres/src/activity-read.js';
+import { PostgresSourcesProductService } from '../../adapters/frontend-sources-write-postgres/src/product-service.js';
+import { InMemorySourcesActivityRead } from '../../adapters/frontend-activity-sources/src/index.js';
+import type { SourcesStagingServicePort } from '../../modules/frontend-sources-staging/src/index.js';
 import type {
   ActivityIndexRecordV1,
   ActivityReadModelStorePort,
   ActivityWatermarkRecordV1,
+  SourcesActivityReadPort,
 } from '../../modules/frontend-activity/src/index.js';
 
 /**
@@ -63,6 +70,9 @@ const watermark = (input: {
 
 const databaseUrl = process.env.DATABASE_URL;
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
+
+const hash = (value: string): string =>
+  `sha256:${createHash('sha256').update(value).digest('hex')}`;
 
 const pgStore = (): ActivityReadModelStorePort => createPostgresActivityReadModelStore(pool!);
 
@@ -969,6 +979,232 @@ describe.runIf(pool)('FE-P5-S1 in-memory vs PostgreSQL Activity read-model parit
       await pool!.query('DELETE FROM project_admin.projects WHERE id = $1', [
         'activity-test-project',
       ]);
+    }
+  });
+
+  it('Sources read revalidates sensitivity + access/policy binding (PostgreSQL = in-memory)', async () => {
+    const projectId = `activity-sources-${randomUUID()}`;
+    const principalId = randomUUID();
+    const sessionId = randomUUID();
+    const submissionId = randomUUID();
+    const itemId = randomUUID();
+    // The schema CHECK requires stage2_submission_id = submission_item_id::text.
+    const stage2SubmissionId = itemId;
+    const commandId = randomUUID();
+    const now = new Date().toISOString();
+    const contentHash = `sha256:${'a'.repeat(64)}`;
+
+    await pool!.query(
+      `INSERT INTO auth.principals (
+         principal_id, actor_type, status, account_id, created_at
+       ) VALUES ($1, 'user', 'active', $2, $3)`,
+      [principalId, `owner-${principalId}`, now],
+    );
+    await pool!.query(
+      `INSERT INTO project_admin.projects (
+         id, name, status, active, created_at, updated_at, revision
+       ) VALUES ($1, 'Activity Sources', 'ACTIVE', true, $2, $2, 1)`,
+      [projectId, now],
+    );
+    await pool!.query(
+      `INSERT INTO auth.project_memberships (
+         principal_id, project_id, scopes, sensitivity_clearance, is_owner
+       ) VALUES ($1, $2, '{owner}', 'private', true)`,
+      [principalId, projectId],
+    );
+    await pool!.query(
+      `INSERT INTO auth.sessions (
+         session_id, token_hash, csrf_hash, principal_id, active_project_id,
+         expires_at, created_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        sessionId,
+        hash(`session-${sessionId}`),
+        hash(`csrf-${sessionId}`),
+        principalId,
+        projectId,
+        new Date(Date.now() + 60_000).toISOString(),
+        now,
+      ],
+    );
+    await pool!.query(
+      `INSERT INTO frontend_command.command_ledger (
+         command_id, command_revision, client_request_id, idempotency_key, principal_id,
+         target_project_id, command_type, command_schema_version, command_semantic_digest,
+         policy_binding, accepted_principal_context, accepted_project_context,
+         accepted_policy_context, preconditions, command_payload, outcome_state,
+         correlation_id, trace_id, received_at, last_updated_at
+       ) VALUES (
+         $1, 1, 'client-1', 'idem-1', $2,
+         $3, 'sources.intake.submit.v1', '1.0.0', 'digest',
+         '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, '[]'::jsonb, '{}'::jsonb,
+         'COMPLETED', 'corr-1', 'trace-1', $4, $4
+       )`,
+      [commandId, principalId, projectId, now],
+    );
+    await pool!.query(
+      `INSERT INTO source_product.intake_submissions (
+         submission_id, project_id, principal_id, session_id, create_command_id,
+         state, accepted_policy_context_id, accepted_policy_binding,
+         access_revision, policy_context_revision, created_at, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, 'RUNNING', 'policy/1', '{}'::jsonb,
+                 'access-1', 'policy-1', $6, $6)`,
+      [submissionId, projectId, principalId, sessionId, commandId, now],
+    );
+    // Materialized stage2 item with a RESTRICTED sensitivity (the effective
+    // sensitivity bound the Activity read revalidates against). The stage2
+    // submission FK chain (intake.submissions + asset.storage_receipts) must be
+    // seeded together because the item references both.
+    const stage2Key = randomUUID();
+    const assetId = randomUUID();
+    const sourceId = randomUUID();
+    const sourceVersionId = randomUUID();
+    const receiptId = randomUUID();
+    await pool!.query(
+      `INSERT INTO intake.submissions (
+         submission_key, submission_id, project_id, actor_id, channel,
+         material_kind, media_type, original_file_name, content_hash,
+         size_bytes, access_scope, sensitivity, created_at
+       ) VALUES ($1, $2, $3, $4, 'file_upload', 'plain_text', 'text/plain',
+                 'item.txt', $5, 1, '{owner}', 'restricted', $6)`,
+      [stage2Key, stage2SubmissionId, projectId, principalId, contentHash, now],
+    );
+    await pool!.query(
+      `INSERT INTO asset.original_assets (asset_id, content_hash, size_bytes, storage_key, created_at)
+       VALUES ($1, $2, 1, $3, $4)`,
+      [assetId, contentHash, `storage-${stage2Key}`, now],
+    );
+    await pool!.query(
+      `INSERT INTO asset.sources (source_id, project_id, created_by_actor_id, created_at)
+       VALUES ($1, $2, $3, $4)`,
+      [sourceId, projectId, principalId, now],
+    );
+    await pool!.query(
+      `INSERT INTO asset.source_versions (
+         source_version_id, source_id, version_number, original_asset_id,
+         media_type, access_scope, sensitivity, created_at
+       ) VALUES ($1, $2, 1, $3, 'text/plain', '{owner}', 'restricted', $4)`,
+      [sourceVersionId, sourceId, assetId, now],
+    );
+    await pool!.query(
+      `INSERT INTO asset.storage_receipts (
+         receipt_id, submission_id, project_id, source_version_id, channel,
+         material_kind, original_file_name, asset_reused, version_created, created_at
+       ) VALUES ($1, $2, $3, $4, 'file_upload', 'plain_text', 'item.txt',
+                 false, true, $5)`,
+      [receiptId, stage2SubmissionId, projectId, sourceVersionId, now],
+    );
+    await pool!.query(
+      `INSERT INTO source_product.intake_submission_items (
+         submission_item_id, project_id, submission_id, client_item_id, ordinal,
+         input_kind, label, input_manifest, state, content_hash, media_type,
+         size_bytes, stage2_submission_id, created_at, updated_at
+       ) VALUES ($1, $2, $3, 'item-1', 0, 'DIRECT_TEXT', 'Item', '{}'::jsonb,
+                 'RUNNING', $4, 'text/plain', 1, $5, $6, $6)`,
+      [itemId, projectId, submissionId, contentHash, stage2SubmissionId, now],
+    );
+
+    const fakeStaging: SourcesStagingServicePort = {
+      stageBytes: async () => {
+        throw new Error('unused');
+      },
+      stageUrl: async () => {
+        throw new Error('unused');
+      },
+      resolve: async () => {
+        throw new Error('unused');
+      },
+    };
+    const postgresRead: SourcesActivityReadPort = new PostgresSourcesActivityRead(
+      pool!,
+      new PostgresSourcesProductService(pool!, fakeStaging),
+    );
+    const memoryRead = new InMemorySourcesActivityRead();
+    memoryRead.seedSubmission(
+      {
+        schemaVersion: '1.0.0',
+        submissionId: submissionId,
+        principalId: principalId,
+        sessionId: sessionId,
+        projectId: projectId,
+        state: 'RUNNING',
+        items: [],
+        capabilities: [],
+        acceptedPolicyContextId: 'policy/1',
+        submissionRevision: '1',
+        accessRevision: 'access-1',
+        policyContextRevision: 'policy-1',
+        createdAt: now,
+        updatedAt: now,
+        stale: false,
+      },
+      'restricted',
+    );
+
+    const scenarios = [
+      // Same Principal + low sensitivity clearance → denied.
+      {
+        sensitivity: 'public',
+        accessRevision: 'access-1',
+        policyContextRevision: 'policy-1',
+        expected: undefined,
+      },
+      // Current binding + adequate clearance → found.
+      {
+        sensitivity: 'restricted',
+        accessRevision: 'access-1',
+        policyContextRevision: 'policy-1',
+        expected: submissionId,
+      },
+      // Adequate clearance + stale access revision → denied.
+      {
+        sensitivity: 'restricted',
+        accessRevision: 'access-2',
+        policyContextRevision: 'policy-1',
+        expected: undefined,
+      },
+      // Adequate clearance + stale policy revision → denied.
+      {
+        sensitivity: 'restricted',
+        accessRevision: 'access-1',
+        policyContextRevision: 'policy-2',
+        expected: undefined,
+      },
+    ] as const;
+    try {
+      for (const scenario of scenarios) {
+        const input = {
+          projectId,
+          submissionId: submissionId,
+          principalId,
+          sensitivity: scenario.sensitivity,
+          accessRevision: scenario.accessRevision,
+          policyContextRevision: scenario.policyContextRevision,
+        };
+        const pg = await postgresRead.getSubmission(input);
+        const memory = await memoryRead.getSubmission(input);
+        expect(pg === undefined).toBe(scenario.expected === undefined);
+        expect(memory === undefined).toBe(scenario.expected === undefined);
+        expect(memory === undefined).toBe(pg === undefined);
+      }
+    } finally {
+      await pool!.query(
+        'DELETE FROM source_product.intake_submission_items WHERE project_id = $1',
+        [projectId],
+      );
+      await pool!.query('DELETE FROM intake.submissions WHERE project_id = $1', [projectId]);
+      await pool!.query('DELETE FROM source_product.intake_submissions WHERE project_id = $1', [
+        projectId,
+      ]);
+      await pool!.query('DELETE FROM frontend_command.command_ledger WHERE command_id = $1', [
+        commandId,
+      ]);
+      await pool!.query('DELETE FROM auth.sessions WHERE principal_id = $1', [principalId]);
+      await pool!.query('DELETE FROM auth.project_memberships WHERE principal_id = $1', [
+        principalId,
+      ]);
+      await pool!.query('DELETE FROM project_admin.projects WHERE id = $1', [projectId]);
+      await pool!.query('DELETE FROM auth.principals WHERE principal_id = $1', [principalId]);
     }
   });
 });

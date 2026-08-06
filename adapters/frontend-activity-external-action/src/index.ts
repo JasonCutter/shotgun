@@ -156,32 +156,38 @@ export class ExternalActionActivityAdapter implements ExternalActionActivityAdap
    * External Action Product boundary (project, access/policy revision,
    * capability and access masking). Any mismatch is a non-disclosing NOT_FOUND.
    */
-  private requireActionRead(
+  private grantedActionRead(
     action: ExternalActionV1,
     scope: ActivityAdapterScopeV1,
     capability: 'READ_EXTERNAL_ACTION' | 'READ_AUDIT',
-  ): void {
-    if (action.resourceProjectId !== scope.activeProjectId) return notFound();
-    if (action.accessMasking === 'HIDDEN') return notFound();
+  ): boolean {
+    if (action.resourceProjectId !== scope.activeProjectId) return false;
+    if (action.accessMasking === 'HIDDEN') return false;
     if (scope.accessRevision !== undefined && action.accessRevision !== scope.accessRevision) {
-      return notFound();
+      return false;
     }
     if (
       scope.policyContextRevision !== undefined &&
       action.policyContextRevision !== scope.policyContextRevision
     ) {
-      return notFound();
+      return false;
     }
     // Match the owning-Domain Scope → Capability matrix: broad owner/admin or
     // the fine-grained frozen scope (`action:read` / `action:audit:read`).
     const granted = scope.accessScope ?? [];
     const has = (entry: string): boolean =>
       granted.includes('owner') || granted.includes('admin') || granted.includes(entry);
-    const grantedCapability =
-      capability === 'READ_AUDIT'
-        ? has('action:audit:read')
-        : has('action:read') || has('READ_EXTERNAL_ACTION');
-    if (!grantedCapability) return notFound();
+    return capability === 'READ_AUDIT'
+      ? has('action:audit:read')
+      : has('action:read') || has('READ_EXTERNAL_ACTION');
+  }
+
+  private requireActionRead(
+    action: ExternalActionV1,
+    scope: ActivityAdapterScopeV1,
+    capability: 'READ_EXTERNAL_ACTION' | 'READ_AUDIT',
+  ): void {
+    if (!this.grantedActionRead(action, scope, capability)) return notFound();
   }
 
   /** Non-disclosing access check for Queue response filtering (R3-1). */
@@ -304,7 +310,13 @@ export class ExternalActionActivityAdapter implements ExternalActionActivityAdap
       const attempts = execution
         ? await repositories.attempts.findByExecution(execution.executionId)
         : [];
-      const audit = await repositories.audit.listByAction(action.actionId, DETAIL_EVENT_CAP, 0);
+      // R4-3: Domain Audit Events are gated by READ_AUDIT everywhere. A Detail
+      // read only requires READ_EXTERNAL_ACTION, so the audit events are
+      // omitted (never disclosed) when the scope lacks READ_AUDIT — the same
+      // non-disclosing gate as the separate Event continuation.
+      const audit = this.grantedActionRead(action, scope, 'READ_AUDIT')
+        ? await repositories.audit.listByAction(action.actionId, DETAIL_EVENT_CAP, 0)
+        : [];
       const projectedAt = new Date().toISOString();
       return {
         root: actionRoot(action),

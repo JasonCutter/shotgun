@@ -6,9 +6,12 @@ work_item: FE-P5-S1
 created_at: 2026-08-06
 subject_head: ab0c8749f6db475b16df674250c3b66dc3c63cdb
 wp2_head: 86bafee6c97e9e87694414a22b0a64353b07d7d3
-exact_head: 9159f20ee6dd09e9e6b0537b23af68987a33da07
-ci_number: 615
-ci_run: 31098837551
+round1_head: 9159f20ee6dd09e9e6b0537b23af68987a33da07
+round1_ci_number: 615
+round1_ci_run: 31098837551
+exact_head: 66a2ca13aae728990e938dc3e622259c7c9386a3
+ci_number: 618
+ci_run: 31103054212
 ci_conclusion: SUCCESS
 tracking_issue: https://github.com/JasonCutter/shotgun/issues/71
 contract_pr: https://github.com/JasonCutter/shotgun/pull/70
@@ -133,6 +136,12 @@ PostgreSQL parity 13 (with DB)**. `tsc --noEmit`, ESLint and Prettier clean. Gov
 > it. The correct category sum was 39 + 16 + 46 + 11 = **112**. This revision reports the exact
 > per-file counts (134 total across contract 39, unit 16, integration 66, parity 13) and keeps the
 > parity suite as a separate with-DB category, matching the WP1/WP2 convention.
+
+Automatic CI on the round-2 WP3 exact head `66a2ca13aae728990e938dc3e622259c7c9386a3`
+(PR #73, draft for auto CI only) — **CI #618 / `31103054212`: Quality, Frontend, Required Gates
+SUCCESS**. No manual or duplicate CI was dispatched and no previously-passed head was re-run.
+(The intermediate head `8390e3c67` CI #617 failed only on the evidence-doc Prettier gate; the
+formatting fix `66a2ca13a` resolved it.)
 
 ## 6. Review corrections — CHANGES_REQUIRED round 1 (2026-08-06)
 

@@ -39,6 +39,8 @@ const ADAPTER_SCOPE: ActivityAdapterScopeV1 = {
   activeProjectId: 'project-1',
   accessRevision: 'access-1',
   policyContextRevision: 'policy-1',
+  sensitivityClearance: 'private',
+  accessScope: ['owner', 'activity:read', 'action:read', 'action:audit:read'],
 };
 
 // ---------------------------------------------------------------------------
@@ -503,6 +505,9 @@ describe('R2-6 multi-page watermark aggregation', () => {
       },
       async readEvents() {
         return { events: [], metadata: firstPage.metadata };
+      },
+      async canAccess() {
+        return true;
       },
       health() {
         return { status: 'AVAILABLE' };

@@ -31,6 +31,7 @@ const scope = (overrides: Partial<ActivityProductScopeV1> = {}): ActivityProduct
   accessRevision: 'access-1',
   policyContextRevision: 'policy-1',
   accessScope: ['owner'],
+  sensitivityClearance: 'private',
   ...overrides,
 });
 
@@ -150,6 +151,9 @@ const makeAdapter = (input: {
   },
   async readEvents() {
     return { events: [], metadata: queuePage([]).metadata };
+  },
+  async canAccess() {
+    return true;
   },
   health() {
     return { status: input.fail ? 'UNAVAILABLE' : 'AVAILABLE' };

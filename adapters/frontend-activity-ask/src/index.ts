@@ -120,6 +120,12 @@ export class AskActivityAdapter implements AskActivityAdapterPort {
     return { status: 'AVAILABLE' };
   }
 
+  /** Non-disclosing access check for Queue response filtering (R3-1). */
+  async canAccess(scope: ActivityAdapterScopeV1, root: ActivityRootReferenceV1): Promise<boolean> {
+    const run = await this.read.getAnswerRun(this.answerRunInput(scope, root.domainResourceId));
+    return run !== undefined;
+  }
+
   private answerRunInput(
     scope: ActivityAdapterScopeV1,
     answerRunId: string,
@@ -365,7 +371,14 @@ export class InMemoryAskActivityRead implements AskActivityReadPort {
   }> {
     let runs = [...this.runs.values()]
       .filter((run) => run.projectId === input.projectId)
-      .sort((a, b) => (a.updatedAt === b.updatedAt ? 0 : a.updatedAt < b.updatedAt ? 1 : -1));
+      // Stable total ordering matching PostgreSQL: updated_at DESC, then
+      // answer_run_id ASC — the keyset cursor predicate depends on the id
+      // tie-break for equal timestamps.
+      .sort((a, b) => {
+        if (a.updatedAt !== b.updatedAt) return a.updatedAt < b.updatedAt ? 1 : -1;
+        if (a.answerRunId !== b.answerRunId) return a.answerRunId < b.answerRunId ? -1 : 1;
+        return 0;
+      });
     if (input.cursor !== undefined) {
       const cursor = decodeAskActivityCursor(input.cursor);
       runs = runs.filter(

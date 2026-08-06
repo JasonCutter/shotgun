@@ -761,6 +761,96 @@ describe.runIf(pool)('FE-P5-S1 in-memory vs PostgreSQL Activity read-model parit
     expect(postgres.afterIds).toEqual(['a1', 'a2']);
   });
 
+  it('matches in-memory watermark replacement when an adapter leaves the registry', async () => {
+    const scenario = async (
+      store: ActivityReadModelStorePort,
+    ): Promise<Record<string, unknown>> => {
+      const watermarkAt = (
+        adapterId: string,
+        domainKind: ActivityWatermarkRecordV1['domainKind'],
+        revision: number,
+        projectedAt: string,
+      ): ActivityWatermarkRecordV1 => ({
+        ...watermark({ adapterId, domainKind, projectedAt }),
+        snapshotRevision: revision,
+      });
+      // rev1: three adapters.
+      await store.commitProjectProjection({
+        resourceProjectId: 'project-1',
+        snapshotRevision: 1,
+        records: [
+          record({
+            activityId: 'a1',
+            domainKind: 'SOURCES',
+            state: 'QUEUED',
+            updatedAt: '2026-08-06T00:00:01.000Z',
+            revision: 1,
+          }),
+          record({
+            activityId: 'a2',
+            domainKind: 'ASK',
+            state: 'QUEUED',
+            updatedAt: '2026-08-06T00:00:01.000Z',
+            revision: 1,
+          }),
+          record({
+            activityId: 'a3',
+            domainKind: 'EXTERNAL_ACTION',
+            state: 'QUEUED',
+            updatedAt: '2026-08-06T00:00:01.000Z',
+            revision: 1,
+          }),
+        ],
+        watermarks: [
+          watermarkAt('sources-adapter', 'SOURCES', 1, '2026-08-06T00:00:01.000Z'),
+          watermarkAt('ask-adapter', 'ASK', 1, '2026-08-06T00:00:01.000Z'),
+          watermarkAt('external-action-adapter', 'EXTERNAL_ACTION', 1, '2026-08-06T00:00:01.000Z'),
+        ],
+      });
+      // rev2: external-action left the registry.
+      await store.commitProjectProjection({
+        resourceProjectId: 'project-1',
+        snapshotRevision: 2,
+        records: [
+          record({
+            activityId: 'a1',
+            domainKind: 'SOURCES',
+            state: 'RUNNING',
+            updatedAt: '2026-08-06T00:00:02.000Z',
+            revision: 2,
+          }),
+          record({
+            activityId: 'a2',
+            domainKind: 'ASK',
+            state: 'SUCCEEDED',
+            updatedAt: '2026-08-06T00:00:02.000Z',
+            revision: 2,
+          }),
+        ],
+        watermarks: [
+          watermarkAt('sources-adapter', 'SOURCES', 2, '2026-08-06T00:00:02.000Z'),
+          watermarkAt('ask-adapter', 'ASK', 2, '2026-08-06T00:00:02.000Z'),
+        ],
+      });
+      const watermarks = await store.watermarks.readByProject('project-1');
+      return {
+        adapterIds: watermarks.map((w) => w.adapterId).sort(),
+        revisions: watermarks.map((w) => w.snapshotRevision).sort(),
+        indexIds: (
+          await store.index.queryProject({ resourceProjectId: 'project-1', limit: 10 })
+        ).records.map((r) => r.activityId),
+      };
+    };
+    const memory = await scenario(createInMemoryActivityReadModelStore());
+    const postgres = await scenario(pgStore());
+    expect(postgres).toEqual(memory);
+    // The removed adapter's watermark is gone in both stores.
+    expect(postgres.adapterIds).toEqual(['ask-adapter', 'sources-adapter']);
+    expect(postgres.revisions).toEqual([2, 2]);
+    // Same updatedAt → domain_kind ASC tie-break (ASK before SOURCES).
+    expect(postgres.indexIds).toEqual(['a2', 'a1']);
+  });
+
   it('Ask PostgreSQL read revalidates sensitivity and access/policy binding', async () => {
     // Clean up any leftover rows from an interrupted previous run (deleting
     // the conversation cascades its branches and turns).

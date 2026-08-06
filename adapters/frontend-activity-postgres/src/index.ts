@@ -511,6 +511,14 @@ export const createPostgresActivityReadModelStore = (pool: Pool): ActivityReadMo
             ],
           );
         }
+        // Replace the whole watermark set in the same transaction: watermarks
+        // of adapters that left the registry must not survive (in-memory
+        // parity). Stale watermarks would keep removed adapters visible in
+        // metadata and could drive revision computation forever.
+        await client.query(
+          'DELETE FROM frontend_activity.projection_watermarks WHERE resource_project_id = $1',
+          [input.resourceProjectId],
+        );
         for (const watermark of input.watermarks) {
           await client.query(
             `INSERT INTO frontend_activity.projection_watermarks (

@@ -128,6 +128,9 @@ const makePagedAdapter = (input: {
     async readEvents() {
       return { events: [], metadata: pageMetadata() };
     },
+    async canAccess() {
+      return true;
+    },
     health() {
       return { status: 'AVAILABLE' };
     },
@@ -265,6 +268,9 @@ describe('FE-P5-S1 ActivityProjectionBuilder failed-adapter watermarks', () => {
       },
       async readEvents() {
         return { events: [], metadata: pageMetadata() };
+      },
+      async canAccess() {
+        return true;
       },
       health() {
         return { status: 'AVAILABLE' };

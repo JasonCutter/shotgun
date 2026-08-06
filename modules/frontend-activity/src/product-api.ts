@@ -53,8 +53,11 @@ export type ActivityProductScopeV1 = {
   readonly accessRevision: string;
   readonly policyContextRevision: string;
   readonly accessScope: readonly string[];
-  /** Server-derived sensitivity clearance for owning-Domain revalidation. */
-  readonly sensitivityClearance?: string;
+  /**
+   * Required, allow-listed sensitivity clearance (server-derived). A missing,
+   * empty or unknown value is rejected deny-by-default (Contract Snapshot §9).
+   */
+  readonly sensitivityClearance: 'public' | 'internal' | 'private' | 'restricted';
 };
 
 export type ActivityCapabilityV1 =
@@ -493,10 +496,8 @@ export class ActivityProductCoordinator {
       activeProjectId: scope.activeProjectId,
       accessRevision: scope.accessRevision,
       policyContextRevision: scope.policyContextRevision,
-      ...(scope.sensitivityClearance === undefined
-        ? {}
-        : { sensitivityClearance: scope.sensitivityClearance }),
-      ...(scope.accessScope === undefined ? {} : { accessScope: scope.accessScope }),
+      sensitivityClearance: scope.sensitivityClearance,
+      accessScope: scope.accessScope,
     };
   }
 
@@ -513,9 +514,9 @@ export class ActivityProductCoordinator {
 
   /**
    * Deny-by-default scope validation: a server-derived Product scope must carry
-   * a Principal, an active Project and both revision bindings. The browser
-   * never authors these; an empty/missing binding is rejected as a denial
-   * (Contract Snapshot §9).
+   * a Principal, an active Project, both revision bindings and an allow-listed
+   * sensitivity clearance. The browser never authors these; an empty/missing/
+   * unknown binding is rejected as a denial (Contract Snapshot §9).
    */
   private assertValidProductScope(scope: ActivityProductScopeV1): void {
     if (
@@ -527,7 +528,8 @@ export class ActivityProductCoordinator {
       scope.accessRevision.trim().length === 0 ||
       typeof scope.policyContextRevision !== 'string' ||
       scope.policyContextRevision.trim().length === 0 ||
-      !Array.isArray(scope.accessScope)
+      !Array.isArray(scope.accessScope) ||
+      !['public', 'internal', 'private', 'restricted'].includes(scope.sensitivityClearance)
     ) {
       projectDenied();
     }
@@ -578,15 +580,30 @@ export class ActivityProductCoordinator {
       cursor: decoded.cursor,
       limit,
     });
+    // Audience isolation: the Projection is Project-shared, so each queue row
+    // is revalidated through the owning adapter's non-disclosing `canAccess`
+    // (principal ownership, sensitivity, access/policy revisions). Denied rows
+    // are never disclosed — no existence, id or summary leak.
+    const adapterScope = this.adapterScope(scope);
+    const accessibleRecords: ActivityIndexRecordV1[] = [];
+    for (const record of page.records) {
+      const adapter = this.registry.adapterFor(
+        record.domainKind as ActivityAdapterPort['domainKind'],
+      );
+      if (adapter === undefined) continue;
+      if (await adapter.canAccess(adapterScope, activityRootFromRecord(record))) {
+        accessibleRecords.push(record);
+      }
+    }
     const watermarks = await this.store.watermarks.readByProject(scope.activeProjectId);
     const metadata = activityProjectionMetadataFrom({
-      records: page.records,
+      records: accessibleRecords,
       watermarks,
       now: this.nowIso(),
       expectedAdapterCount: this.registry.adapters.length,
     });
     return {
-      items: page.records.map(activityQueueItemFromRecord),
+      items: accessibleRecords.map(activityQueueItemFromRecord),
       metadata,
       ...(page.nextCursor === undefined ? {} : { nextCursor: page.nextCursor }),
     };

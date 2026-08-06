@@ -15,7 +15,9 @@ import {
   activityRetryabilityFrom,
   activityStateFromSourcesItemState,
   activityStateFromSourcesState,
+  decodeSourcesActivityAttemptCursor,
   decodeSourcesActivityCursor,
+  encodeSourcesActivityAttemptCursor,
   encodeSourcesActivityCursor,
   type ActivityAdapterHealthV1,
   type ActivityAdapterScopeV1,
@@ -146,6 +148,14 @@ export class SourcesActivityAdapter implements SourcesActivityAdapterPort {
     return { status: 'AVAILABLE' };
   }
 
+  /** Non-disclosing access check for Queue response filtering (R3-1). */
+  async canAccess(scope: ActivityAdapterScopeV1, root: ActivityRootReferenceV1): Promise<boolean> {
+    const snapshot = await this.read.getSubmission(
+      this.submissionInput(scope, root.domainResourceId),
+    );
+    return snapshot !== undefined;
+  }
+
   private queueItemFromRow(row: SourcesActivitySubmissionRow): ActivityQueueItemV1 {
     const state = activityStateFromSourcesState(row.state);
     return {
@@ -195,9 +205,13 @@ export class SourcesActivityAdapter implements SourcesActivityAdapterPort {
     filter: ActivityQueueFilterV1,
   ): Promise<ActivityQueuePageV1> {
     const limit = Math.max(1, filter.limit ?? 50);
+    // The Projection is Project-shared: it stores EVERY submission in the
+    // Project (never a Principal's subset), so one user's refresh can never
+    // erase another user's rows and per-Principal resources are not conflated
+    // with Project data. Per-row access (principal ownership, sensitivity,
+    // revisions) is enforced at Queue response time via `canAccess`.
     const { rows } = await this.read.listSubmissions({
       projectId: scope.activeProjectId,
-      principalId: scope.principalId,
       ...(filter.cursor === undefined ? {} : { cursor: filter.cursor }),
       limit: limit + 1,
     });
@@ -339,28 +353,6 @@ export class SourcesActivityAdapter implements SourcesActivityAdapterPort {
     return attempts;
   }
 
-  /** Flat, bounded attempt evidence across all items (for event pagination). */
-  private async collectAllAttempts(
-    scope: ActivityAdapterScopeV1,
-    snapshot: IntakeSubmissionSnapshot,
-    maxTotal: number,
-  ): Promise<readonly SourcesActivityAttemptRow[]> {
-    const attempts: SourcesActivityAttemptRow[] = [];
-    let remaining = maxTotal;
-    for (const item of snapshot.items) {
-      if (remaining <= 0) break;
-      const itemAttempts = await this.read.listItemAttempts({
-        projectId: scope.activeProjectId,
-        submissionId: snapshot.submissionId,
-        submissionItemId: item.itemId,
-        limit: Math.min(remaining, 100),
-      });
-      attempts.push(...itemAttempts);
-      remaining -= itemAttempts.length;
-    }
-    return attempts;
-  }
-
   async readDetail(
     scope: ActivityAdapterScopeV1,
     root: ActivityRootReferenceV1,
@@ -453,15 +445,23 @@ export class SourcesActivityAdapter implements SourcesActivityAdapterPort {
     );
     if (snapshot === undefined) return notFound();
     const capped = Math.max(1, limit ?? 50);
-    const offset = cursor === undefined ? 0 : parseContinuationOffset('sources:events', cursor);
-    // Collect the flat attempt/event evidence across items (bounded) so the
-    // continuation can page by offset.
-    const allAttempts = await this.collectAllAttempts(scope, snapshot, DETAIL_EVENT_CAP * 4);
-    const slice = allAttempts.slice(offset, offset + capped + 1);
-    const hasMore = slice.length > capped;
-    const pageAttempts = hasMore ? slice.slice(0, capped) : slice;
+    const offset = cursor === undefined ? 0 : decodeSourcesActivityAttemptCursor(cursor).offset;
+    // Page-by-page flattened attempt evidence (limit + 1) — never a fixed
+    // per-item or total cap, so 101+ attempts are never dropped. The cursor is
+    // derived from the LAST DISPLAYED row (not the lookahead row) so no event
+    // is skipped between pages.
+    const { attempts } = await this.read.listSubmissionAttempts({
+      projectId: scope.activeProjectId,
+      submissionId: snapshot.submissionId,
+      ...(cursor === undefined ? {} : { cursor }),
+      limit: capped + 1,
+    });
+    const hasMore = attempts.length > capped;
+    const pageAttempts = hasMore ? attempts.slice(0, capped) : attempts;
     const nextOffset = offset + pageAttempts.length;
-    const nextCursor = hasMore ? `sources:events:${nextOffset}` : undefined;
+    const nextCursor = hasMore
+      ? encodeSourcesActivityAttemptCursor({ offset: nextOffset })
+      : undefined;
     return {
       events: pageAttempts.map((attempt, index) =>
         this.eventFromAttempt(attempt, offset + index + 1),
@@ -518,7 +518,14 @@ export class InMemorySourcesActivityRead implements SourcesActivityReadPort {
         attentionReason: snapshot.items.find((item) => item.attentionReason !== undefined)
           ?.attentionReason,
       }))
-      .sort((a, b) => (a.updatedAt === b.updatedAt ? 0 : a.updatedAt < b.updatedAt ? 1 : -1));
+      // Stable total ordering matching PostgreSQL: updated_at DESC, then
+      // submission_id ASC — the keyset cursor predicate depends on the id
+      // tie-break for equal timestamps.
+      .sort((a, b) => {
+        if (a.updatedAt !== b.updatedAt) return a.updatedAt < b.updatedAt ? 1 : -1;
+        if (a.submissionId !== b.submissionId) return a.submissionId < b.submissionId ? -1 : 1;
+        return 0;
+      });
     if (input.principalId !== undefined) {
       rows = rows.filter((row) => row.principalId === input.principalId);
     }
@@ -573,6 +580,49 @@ export class InMemorySourcesActivityRead implements SourcesActivityReadPort {
       )
       .sort((a, b) => a.attemptNumber - b.attemptNumber)
       .slice(0, input.limit);
+  }
+
+  async listSubmissionAttempts(input: {
+    readonly projectId: string;
+    readonly submissionId: string;
+    readonly cursor?: string;
+    readonly limit: number;
+  }): Promise<{
+    readonly attempts: readonly SourcesActivityAttemptRow[];
+    readonly nextCursor?: string;
+  }> {
+    const snapshot = this.submissions.get(`${input.projectId}\u0000${input.submissionId}`);
+    if (snapshot === undefined) return { attempts: [] };
+    // Flatten across items in item-ordinal order, then attempt number.
+    const flattened: Array<{ row: SourcesActivityAttemptRow; itemOrdinal: number }> = [];
+    snapshot.items.forEach((item, index) => {
+      const itemAttempts = [...this.attempts.values()]
+        .filter(
+          (attempt) =>
+            attempt.projectId === input.projectId &&
+            attempt.submissionId === input.submissionId &&
+            attempt.submissionItemId === item.itemId,
+        )
+        .sort((a, b) => a.attemptNumber - b.attemptNumber);
+      for (const attempt of itemAttempts) {
+        flattened.push({ row: attempt, itemOrdinal: index + 1 });
+      }
+    });
+    let filtered = flattened;
+    if (input.cursor !== undefined) {
+      const cursor = decodeSourcesActivityAttemptCursor(input.cursor);
+      filtered = flattened.slice(cursor.offset);
+    }
+    const page = filtered.slice(0, input.limit);
+    const nextOffset =
+      (input.cursor === undefined ? 0 : decodeSourcesActivityAttemptCursor(input.cursor).offset) +
+      page.length;
+    return {
+      attempts: page.map((entry) => entry.row),
+      ...(filtered.length > page.length
+        ? { nextCursor: encodeSourcesActivityAttemptCursor({ offset: nextOffset }) }
+        : {}),
+    };
   }
 }
 

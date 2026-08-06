@@ -73,7 +73,34 @@ export const decodeSourcesActivityCursor = (value: string): SourcesActivityCurso
   return { updatedAt: parsed.updatedAt, submissionId: parsed.submissionId };
 };
 
-/** Read surface the Sources domain exposes to the Activity adapter. */
+export type SourcesActivityAttemptCursorV1 = {
+  /** Position in the flattened submission attempt list (0-based). */
+  readonly offset: number;
+};
+
+export const encodeSourcesActivityAttemptCursor = (
+  cursor: SourcesActivityAttemptCursorV1,
+): string => Buffer.from(JSON.stringify({ offset: cursor.offset }), 'utf8').toString('base64url');
+
+export const decodeSourcesActivityAttemptCursor = (
+  value: string,
+): SourcesActivityAttemptCursorV1 => {
+  const parsed = JSON.parse(
+    Buffer.from(value, 'base64url').toString('utf8'),
+  ) as Partial<SourcesActivityAttemptCursorV1>;
+  if (
+    typeof parsed.offset !== 'number' ||
+    !Number.isSafeInteger(parsed.offset) ||
+    parsed.offset < 0
+  ) {
+    throw new Error('SOURCES_ACTIVITY_INVALID_CURSOR: attempt cursor malformed');
+  }
+  return { offset: parsed.offset };
+};
+
+/**
+ * Read surface the Sources domain exposes to the Activity adapter.
+ */
 export type SourcesActivityReadPort = {
   /** Project-scoped submission queue, stable updatedAt DESC ordering. */
   listSubmissions(input: {
@@ -103,6 +130,21 @@ export type SourcesActivityReadPort = {
     readonly submissionItemId: string;
     readonly limit: number;
   }): Promise<readonly SourcesActivityAttemptRow[]>;
+  /**
+   * Submission-scoped FLATTENED attempt evidence across every item, ordered by
+   * (item ordinal, attempt number) with a keyset cursor. This is the bounded
+   * Event continuation source: an adapter pages `limit + 1` rows at a time and
+   * never depends on a per-item or total cap.
+   */
+  listSubmissionAttempts(input: {
+    readonly projectId: string;
+    readonly submissionId: string;
+    readonly cursor?: string;
+    readonly limit: number;
+  }): Promise<{
+    readonly attempts: readonly SourcesActivityAttemptRow[];
+    readonly nextCursor?: string;
+  }>;
 };
 
 // ---------------------------------------------------------------------------

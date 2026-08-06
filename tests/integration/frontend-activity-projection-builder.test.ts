@@ -104,6 +104,9 @@ const makeAdapter = (input: {
   async readEvents() {
     return { events: [], metadata: queuePage([]).metadata };
   },
+  async canAccess() {
+    return true;
+  },
   health() {
     return { status: input.fail ? 'UNAVAILABLE' : 'AVAILABLE' };
   },

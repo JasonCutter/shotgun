@@ -20,14 +20,17 @@ export type { ActivityFailureInput, ActivityFreshnessInput } from './activity-do
 export { activityTraceRef } from './activity-adapter-port.js';
 export {
   decodeAskActivityCursor,
+  decodeSourcesActivityAttemptCursor,
   decodeSourcesActivityCursor,
   encodeAskActivityCursor,
+  encodeSourcesActivityAttemptCursor,
   encodeSourcesActivityCursor,
 } from './activity-domain-read-ports.js';
 export type {
   AskActivityAnswerRunRow,
   AskActivityCursorV1,
   AskActivityReadPort,
+  SourcesActivityAttemptCursorV1,
   SourcesActivityAttemptRow,
   SourcesActivityCursorV1,
   SourcesActivityReadPort,

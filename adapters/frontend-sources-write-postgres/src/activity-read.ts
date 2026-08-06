@@ -5,7 +5,9 @@ import type {
   SourcesSensitivity,
 } from '../../../packages/contracts/src/index.js';
 import {
+  decodeSourcesActivityAttemptCursor,
   decodeSourcesActivityCursor,
+  encodeSourcesActivityAttemptCursor,
   encodeSourcesActivityCursor,
   type SourcesActivityAttemptRow,
   type SourcesActivityReadPort,
@@ -191,5 +193,54 @@ export class PostgresSourcesActivityRead implements SourcesActivityReadPort {
       updatedAt: iso(row.updated_at),
       ...(row.completed_at === null ? {} : { completedAt: iso(row.completed_at) }),
     }));
+  }
+
+  async listSubmissionAttempts(input: {
+    readonly projectId: string;
+    readonly submissionId: string;
+    readonly cursor?: string;
+    readonly limit: number;
+  }): Promise<{
+    readonly attempts: readonly SourcesActivityAttemptRow[];
+    readonly nextCursor?: string;
+  }> {
+    const offset =
+      input.cursor === undefined ? 0 : decodeSourcesActivityAttemptCursor(input.cursor).offset;
+    const result = await this.pool.query<AttemptRow>(
+      `SELECT a.intake_attempt_id::text, a.project_id, a.submission_id::text,
+              a.submission_item_id::text, a.attempt_number::text, a.attempt_kind, a.state,
+              a.correlation_id, a.causation_attempt_id::text, a.created_at, a.updated_at, a.completed_at
+       FROM source_product.intake_attempts a
+       JOIN source_product.intake_submission_items i
+         ON i.project_id = a.project_id AND i.submission_id = a.submission_id
+        AND i.submission_item_id = a.submission_item_id
+       WHERE a.project_id = $1 AND a.submission_id = $2
+       ORDER BY i.ordinal ASC, a.attempt_number ASC
+       LIMIT $3 OFFSET $4`,
+      [input.projectId, input.submissionId, input.limit, offset],
+    );
+    const attempts = result.rows.map<SourcesActivityAttemptRow>((row) => ({
+      intakeAttemptId: row.intake_attempt_id,
+      projectId: row.project_id,
+      submissionId: row.submission_id,
+      submissionItemId: row.submission_item_id,
+      attemptNumber: Number(row.attempt_number),
+      attemptKind: row.attempt_kind,
+      state: row.state,
+      correlationId: row.correlation_id,
+      ...(row.causation_attempt_id === null
+        ? {}
+        : { causationAttemptId: row.causation_attempt_id }),
+      createdAt: iso(row.created_at),
+      updatedAt: iso(row.updated_at),
+      ...(row.completed_at === null ? {} : { completedAt: iso(row.completed_at) }),
+    }));
+    const nextOffset = offset + attempts.length;
+    return {
+      attempts,
+      ...(attempts.length >= input.limit
+        ? { nextCursor: encodeSourcesActivityAttemptCursor({ offset: nextOffset }) }
+        : {}),
+    };
   }
 }

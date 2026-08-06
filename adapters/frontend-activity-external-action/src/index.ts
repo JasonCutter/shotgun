@@ -151,6 +151,53 @@ export class ExternalActionActivityAdapter implements ExternalActionActivityAdap
     return { status: 'AVAILABLE' };
   }
 
+  /**
+   * Owning-Domain deep-link authorization for a concrete Action: same as the
+   * External Action Product boundary (project, access/policy revision,
+   * capability and access masking). Any mismatch is a non-disclosing NOT_FOUND.
+   */
+  private requireActionRead(
+    action: ExternalActionV1,
+    scope: ActivityAdapterScopeV1,
+    capability: 'READ_EXTERNAL_ACTION' | 'READ_AUDIT',
+  ): void {
+    if (action.resourceProjectId !== scope.activeProjectId) return notFound();
+    if (action.accessMasking === 'HIDDEN') return notFound();
+    if (scope.accessRevision !== undefined && action.accessRevision !== scope.accessRevision) {
+      return notFound();
+    }
+    if (
+      scope.policyContextRevision !== undefined &&
+      action.policyContextRevision !== scope.policyContextRevision
+    ) {
+      return notFound();
+    }
+    // Match the owning-Domain Scope → Capability matrix: broad owner/admin or
+    // the fine-grained frozen scope (`action:read` / `action:audit:read`).
+    const granted = scope.accessScope ?? [];
+    const has = (entry: string): boolean =>
+      granted.includes('owner') || granted.includes('admin') || granted.includes(entry);
+    const grantedCapability =
+      capability === 'READ_AUDIT'
+        ? has('action:audit:read')
+        : has('action:read') || has('READ_EXTERNAL_ACTION');
+    if (!grantedCapability) return notFound();
+  }
+
+  /** Non-disclosing access check for Queue response filtering (R3-1). */
+  async canAccess(scope: ActivityAdapterScopeV1, root: ActivityRootReferenceV1): Promise<boolean> {
+    return this.boundary.transaction(async (repositories) => {
+      const action = await repositories.aggregates.findById(root.domainResourceId);
+      if (action === undefined) return false;
+      try {
+        this.requireActionRead(action, scope, 'READ_EXTERNAL_ACTION');
+        return true;
+      } catch {
+        return false;
+      }
+    });
+  }
+
   private queueItemFromAction(action: ExternalActionV1): ActivityQueueItemV1 {
     return {
       root: actionRoot(action),
@@ -251,9 +298,8 @@ export class ExternalActionActivityAdapter implements ExternalActionActivityAdap
   ): Promise<ActivityDetailV1> {
     return this.boundary.transaction(async (repositories) => {
       const action = await repositories.aggregates.findById(root.domainResourceId);
-      if (action === undefined || action.resourceProjectId !== scope.activeProjectId) {
-        return notFound();
-      }
+      if (action === undefined) return notFound();
+      this.requireActionRead(action, scope, 'READ_EXTERNAL_ACTION');
       const execution = await repositories.executions.findCurrent(action.actionId);
       const attempts = execution
         ? await repositories.attempts.findByExecution(execution.executionId)
@@ -303,9 +349,8 @@ export class ExternalActionActivityAdapter implements ExternalActionActivityAdap
   ): Promise<ActivityStageContinuationV1> {
     return this.boundary.transaction(async (repositories) => {
       const action = await repositories.aggregates.findById(root.domainResourceId);
-      if (action === undefined || action.resourceProjectId !== scope.activeProjectId) {
-        return notFound();
-      }
+      if (action === undefined) return notFound();
+      this.requireActionRead(action, scope, 'READ_EXTERNAL_ACTION');
       const execution = await repositories.executions.findCurrent(action.actionId);
       const attempts = execution
         ? await repositories.attempts.findByExecution(execution.executionId)
@@ -338,9 +383,8 @@ export class ExternalActionActivityAdapter implements ExternalActionActivityAdap
   ): Promise<ActivityEventContinuationV1> {
     return this.boundary.transaction(async (repositories) => {
       const action = await repositories.aggregates.findById(root.domainResourceId);
-      if (action === undefined || action.resourceProjectId !== scope.activeProjectId) {
-        return notFound();
-      }
+      if (action === undefined) return notFound();
+      this.requireActionRead(action, scope, 'READ_AUDIT');
       const capped = Math.max(1, limit ?? 50);
       const offset = cursor === undefined ? 0 : decodeOffsetCursor(cursor);
       const events = await repositories.audit.listByAction(action.actionId, capped + 1, offset);

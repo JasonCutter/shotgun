@@ -146,6 +146,9 @@ const makeSourcesAdapter = (opts: { fail?: boolean } = {}): SourcesActivityAdapt
   async readEvents() {
     return { events: [], metadata: queuePage(sourcesRoot, '').metadata };
   },
+  async canAccess() {
+    return true;
+  },
   health() {
     return { status: opts.fail ? 'UNAVAILABLE' : 'AVAILABLE' };
   },
@@ -206,6 +209,9 @@ const makeAskAdapter = (): AskActivityAdapterPort => ({
   async readEvents() {
     return { events: [], metadata: queuePage(askRoot, '').metadata };
   },
+  async canAccess() {
+    return true;
+  },
   health() {
     return { status: 'AVAILABLE' };
   },
@@ -235,6 +241,9 @@ const makeExternalActionAdapter = (): ExternalActionActivityAdapterPort => ({
   },
   async readEvents() {
     return { events: [], metadata: queuePage(askRoot, '').metadata };
+  },
+  async canAccess() {
+    return true;
   },
   health() {
     return { status: 'UNAVAILABLE' };

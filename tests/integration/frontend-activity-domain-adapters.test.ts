@@ -32,6 +32,8 @@ const ADAPTER_SCOPE = {
   activeProjectId: 'project-1',
   accessRevision: 'access-1',
   policyContextRevision: 'policy-1',
+  sensitivityClearance: 'private',
+  accessScope: ['owner', 'activity:read', 'action:read', 'action:audit:read'],
 };
 
 describe('FE-P5-S1 SourcesActivityAdapter (concrete)', () => {

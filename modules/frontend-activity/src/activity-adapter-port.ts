@@ -128,6 +128,12 @@ export type ActivityAdapterPort = {
     cursor?: string,
     limit?: number,
   ): Promise<ActivityEventContinuationV1>;
+  /**
+   * Non-disclosing access check for a concrete Activity resource. Used to
+   * filter the Project-scoped Queue at response time so a Principal never sees
+   * resources the owning Domain denies (project/principal/sensitivity/access).
+   */
+  canAccess(scope: ActivityAdapterScopeV1, root: ActivityRootReferenceV1): Promise<boolean>;
   /** Adapter health for the Projection Metadata adapterStatus dimension. */
   health(): ActivityAdapterHealthV1;
 };

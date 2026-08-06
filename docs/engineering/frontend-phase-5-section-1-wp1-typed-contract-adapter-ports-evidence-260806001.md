@@ -125,12 +125,22 @@ head re-run.
 
 Review confirmed the three code fixes were ACCEPTED but flagged that the domain/root binding
 rejection tests (ASK + JOB, SOURCES + RUN, EXTERNAL_ACTION + RUN) were missing from the contract
-suite. Added the three regression tests; contract suite is now 39 tests and the total focused
-suite is 63. Evidence counts and the PR body were updated to match.
+suite. The three regression tests were added to `tests/contract/frontend-activity.contract.test.ts`;
+the contract suite is now 39 tests and the total focused suite is 63. Evidence counts and the
+PR body were updated to match.
 
-Final head `334cd6257a621e9087d8cfcf4df6865569255757` — **CI #604 / `31091006104`: Quality,
-Frontend, Required Gates SUCCESS** (PR #73 `OPEN / DRAFT / MERGEABLE / CLEAN`). No manual or
-duplicate CI and no previously-passed head re-run.
+### 6.3 Correction — commit history accuracy (review evidence mismatch)
+
+Review identified that the binding tests existed locally but had not been included in the pushed
+commits. Accurate history:
+
+- `334cd6257a621e9087d8cfcf4df6865569255757` (CI #604) was an **Evidence-document-only** commit;
+  it did NOT include the contract test file.
+- `b57db8b66e5390f19200bb0440befec7d5f0b88c` (CI #605) was also **Evidence-only**.
+- The actual binding regression tests were committed at **`92dccb6f5b98612e0bc4fde38e713e76f13b0171`**
+  (`tests/contract/frontend-activity.contract.test.ts`, +22) — this is the authoritative
+  binding-test head. Auto CI for this new exact head is recorded as the final verification
+  authority.
 
 ## 7. Work Item transition
 

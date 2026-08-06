@@ -20,6 +20,7 @@ export class ActivityAdapterError extends Error {
     readonly adapterId: string;
     readonly domainKind: 'SOURCES' | 'ASK' | 'EXTERNAL_ACTION';
     readonly message: string;
+    /** True only for explicitly allow-listed safe messages (ADR-130 §7). */
     readonly safe?: boolean;
   }) {
     super(input.message);
@@ -27,24 +28,35 @@ export class ActivityAdapterError extends Error {
     this.code = input.code;
     this.adapterId = input.adapterId;
     this.domainKind = input.domainKind;
-    this.safe = input.safe ?? true;
+    // Fails closed: unknown exceptions are never treated as safe by default.
+    this.safe = input.safe ?? false;
   }
 }
 
-/** Convert a caught adapter error into a typed ActivityAdapterError. */
+/** Fixed, non-disclosing message for unrecognized adapter failures. */
+export const ACTIVITY_ADAPTER_GENERIC_FAILURE_MESSAGE =
+  'Activity adapter read failed; details are not disclosed';
+
+/**
+ * Convert a caught adapter error into a typed ActivityAdapterError.
+ *
+ * Recognized `ActivityAdapterError` instances pass through unchanged (their
+ * `safe` flag is set by the allow-list at creation). Any other exception is
+ * replaced by a fixed generic message: raw internals (queries, provider
+ * responses, paths, identifiers, configuration) are never propagated.
+ */
 export const asActivityAdapterError = (input: {
   readonly adapterId: string;
   readonly domainKind: 'SOURCES' | 'ASK' | 'EXTERNAL_ACTION';
   readonly error: unknown;
 }): ActivityAdapterError => {
   if (input.error instanceof ActivityAdapterError) return input.error;
-  const message =
-    input.error instanceof Error ? input.error.message : 'Activity adapter read failed';
   return new ActivityAdapterError({
     code: 'ACTIVITY_ADAPTER_DEGRADED',
     adapterId: input.adapterId,
     domainKind: input.domainKind,
-    message,
+    message: ACTIVITY_ADAPTER_GENERIC_FAILURE_MESSAGE,
+    safe: false,
   });
 };
 

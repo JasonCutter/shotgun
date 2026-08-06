@@ -218,6 +218,12 @@ describe('FE-P5-S1 ActivityRunViewV1', () => {
     ).toThrow(FrontendContractError);
   });
 
+  it('rejects a non-ISO completedAt on a Run', () => {
+    expect(() => decodeActivityRunViewV1({ ...validRun, completedAt: 'not-a-date' })).toThrow(
+      FrontendContractError,
+    );
+  });
+
   it('rejects a zero or negative sequence', () => {
     expect(() => decodeActivityRunViewV1({ ...validRun, sequence: 0 })).toThrow(
       FrontendContractError,
@@ -245,6 +251,12 @@ describe('FE-P5-S1 ActivityDomainAttemptViewV1 and TransportAttemptV1', () => {
   it('rejects an unknown attemptKind', () => {
     expect(() =>
       decodeActivityDomainAttemptViewV1({ ...validAttempt, attemptKind: 'TRANSPORT' }),
+    ).toThrow(FrontendContractError);
+  });
+
+  it('rejects a non-ISO completedAt on a Domain Attempt', () => {
+    expect(() =>
+      decodeActivityDomainAttemptViewV1({ ...validAttempt, completedAt: 'not-a-date' }),
     ).toThrow(FrontendContractError);
   });
 
@@ -282,6 +294,12 @@ describe('FE-P5-S1 ActivityStageViewV1 and bounded progress', () => {
         progress: { schemaVersion: '1.0.0', current: 11, total: 10 },
       }),
     ).toThrow(FrontendContractError);
+  });
+
+  it('rejects a non-ISO completedAt on a Stage', () => {
+    expect(() => decodeActivityStageViewV1({ ...validStage, completedAt: 'not-a-date' })).toThrow(
+      FrontendContractError,
+    );
   });
 });
 

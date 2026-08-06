@@ -312,6 +312,11 @@ const isoTimestamp = (value: unknown, path: string): string => {
   return result;
 };
 
+const optionalIsoTimestamp = (value: unknown, path: string): string | undefined => {
+  if (value === undefined) return undefined;
+  return isoTimestamp(value, path);
+};
+
 const decodeSchemaVersion = (object: ObjectValue, path: string): void => {
   const schemaVersion = text(required(object, 'schemaVersion', path), `${path}.schemaVersion`);
   if (schemaVersion !== '1.0.0') return fail(`${path}.schemaVersion`, 'must be 1.0.0');
@@ -518,11 +523,23 @@ export const decodeActivityRootReferenceV1 = (
   );
   decodeSchemaVersion(object, path);
   assertNoBrowserAuthoredAuthority(value, path);
+  const domainKind = enumValue(
+    required(object, 'domainKind', path),
+    ACTIVITY_DOMAIN_KINDS,
+    `${path}.domainKind`,
+  );
   const rootKind = enumValue(
     required(object, 'rootKind', path),
     ACTIVITY_ROOT_KINDS,
     `${path}.rootKind`,
   );
+  // ADR-130 §2 / Contract Snapshot §6: Ask has no durable Job and must use a
+  // RUN root; Sources and External Action use a JOB root (Connector Runtime
+  // keeps its internal diagnostic Job).
+  const expectedRootKind: ActivityRootKindV1 = domainKind === 'ASK' ? 'RUN' : 'JOB';
+  if (rootKind !== expectedRootKind) {
+    return fail(`${path}.rootKind`, `must be ${expectedRootKind} for domainKind ${domainKind}`);
+  }
   const runId = text(required(object, 'runId', path), `${path}.runId`);
   const jobId = optionalText(object.jobId, `${path}.jobId`);
   if (rootKind === 'JOB' && jobId === undefined) {
@@ -535,11 +552,7 @@ export const decodeActivityRootReferenceV1 = (
     schemaVersion: '1.0.0',
     rootKind,
     activityId: text(required(object, 'activityId', path), `${path}.activityId`),
-    domainKind: enumValue(
-      required(object, 'domainKind', path),
-      ACTIVITY_DOMAIN_KINDS,
-      `${path}.domainKind`,
-    ),
+    domainKind,
     domainResourceKind: text(
       required(object, 'domainResourceKind', path),
       `${path}.domainResourceKind`,
@@ -577,7 +590,7 @@ export const decodeActivityRunViewV1 = (value: unknown, path = 'run'): ActivityR
   assertNoBrowserAuthoredAuthority(value, path);
   const startedAt = isoTimestamp(required(object, 'startedAt', path), `${path}.startedAt`);
   const updatedAt = isoTimestamp(required(object, 'updatedAt', path), `${path}.updatedAt`);
-  const completedAt = optionalText(object.completedAt, `${path}.completedAt`);
+  const completedAt = optionalIsoTimestamp(object.completedAt, `${path}.completedAt`);
   if (completedAt !== undefined) {
     assertNotAfter(startedAt, completedAt, path);
     assertNotAfter(updatedAt, completedAt, path);
@@ -639,7 +652,7 @@ export const decodeActivityDomainAttemptViewV1 = (
   assertNoBrowserAuthoredAuthority(value, path);
   const startedAt = isoTimestamp(required(object, 'startedAt', path), `${path}.startedAt`);
   const updatedAt = isoTimestamp(required(object, 'updatedAt', path), `${path}.updatedAt`);
-  const completedAt = optionalText(object.completedAt, `${path}.completedAt`);
+  const completedAt = optionalIsoTimestamp(object.completedAt, `${path}.completedAt`);
   if (completedAt !== undefined) {
     assertNotAfter(startedAt, completedAt, path);
     assertNotAfter(updatedAt, completedAt, path);
@@ -757,7 +770,7 @@ export const decodeActivityStageViewV1 = (value: unknown, path = 'stage'): Activ
   assertNoBrowserAuthoredAuthority(value, path);
   const startedAt = isoTimestamp(required(object, 'startedAt', path), `${path}.startedAt`);
   const updatedAt = isoTimestamp(required(object, 'updatedAt', path), `${path}.updatedAt`);
-  const completedAt = optionalText(object.completedAt, `${path}.completedAt`);
+  const completedAt = optionalIsoTimestamp(object.completedAt, `${path}.completedAt`);
   if (completedAt !== undefined) {
     assertNotAfter(startedAt, completedAt, path);
     assertNotAfter(updatedAt, completedAt, path);

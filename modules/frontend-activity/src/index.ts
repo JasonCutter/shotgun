@@ -1,4 +1,8 @@
-export { ActivityAdapterError, asActivityAdapterError } from './activity-error.js';
+export {
+  ACTIVITY_ADAPTER_GENERIC_FAILURE_MESSAGE,
+  ActivityAdapterError,
+  asActivityAdapterError,
+} from './activity-error.js';
 export type { ActivityAdapterErrorCode } from './activity-error.js';
 export {
   activityAdapterStatusFrom,

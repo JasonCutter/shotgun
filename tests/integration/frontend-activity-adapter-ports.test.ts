@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import type { ActivityRootReferenceV1 } from '../../packages/contracts/src/index.js';
 import {
+  ACTIVITY_ADAPTER_GENERIC_FAILURE_MESSAGE,
   activityTraceRef,
   ActivityAdapterError,
+  asActivityAdapterError,
   type ActivityAdapterPort,
   type ActivityAdapterRegistryPort,
   type ActivityAdapterScopeV1,
@@ -225,6 +227,7 @@ const makeExternalActionAdapter = (): ExternalActionActivityAdapterPort => ({
       adapterId: 'external-action-activity-adapter',
       domainKind: 'EXTERNAL_ACTION',
       message: 'external action store unavailable',
+      safe: true,
     });
   },
   async readStages() {
@@ -324,5 +327,46 @@ describe('FE-P5-S1 adapter ports', () => {
       domainKind: 'EXTERNAL_ACTION',
       safe: true,
     });
+  });
+
+  it('converts unknown exceptions to a non-disclosing generic message (safe: false)', () => {
+    const converted = asActivityAdapterError({
+      adapterId: 'sources-activity-adapter',
+      domainKind: 'SOURCES',
+      error: new Error('SELECT * FROM secrets -- token=super-secret path=/etc/passwd'),
+    });
+    expect(converted).toBeInstanceOf(ActivityAdapterError);
+    expect(converted.safe).toBe(false);
+    expect(converted.message).toBe(ACTIVITY_ADAPTER_GENERIC_FAILURE_MESSAGE);
+    expect(converted.message).not.toContain('super-secret');
+    expect(converted.message).not.toContain('SELECT');
+    expect(converted.message).not.toContain('/etc/passwd');
+  });
+
+  it('passes recognized allow-listed ActivityAdapterError through unchanged', () => {
+    const typed = new ActivityAdapterError({
+      code: 'ACTIVITY_ADAPTER_DEGRADED',
+      adapterId: 'ask-activity-adapter',
+      domainKind: 'ASK',
+      message: 'ask adapter degraded',
+      safe: true,
+    });
+    const converted = asActivityAdapterError({
+      adapterId: 'ask-activity-adapter',
+      domainKind: 'ASK',
+      error: typed,
+    });
+    expect(converted).toBe(typed);
+    expect(converted.safe).toBe(true);
+  });
+
+  it('defaults unrecognized typed errors to safe: false when no allow-list applies', () => {
+    const typedWithoutSafe = new ActivityAdapterError({
+      code: 'ACTIVITY_ADAPTER_DEGRADED',
+      adapterId: 'ask-activity-adapter',
+      domainKind: 'ASK',
+      message: 'unclassified detail',
+    });
+    expect(typedWithoutSafe.safe).toBe(false);
   });
 });

@@ -43,24 +43,24 @@ WP3 covered:
 
 ## 2. Implemented files (round 2 — concrete adapters, assembly, routes, boundaries)
 
-| File                                                                         | Content                                                                                              |
-| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `modules/frontend-activity/src/activity-projection-builder.ts`               | Federated projection builder: multi-page observation, per-adapter atomicity, UNAVAILABLE watermarks, atomic commit |
-| `modules/frontend-activity/src/product-api.ts`                               | Activity Product coordinator + strict request decoders: Queue/Detail/Stage/Event/refresh, capabilities, non-disclosure, caps |
-| `modules/frontend-activity/src/activity-index-store-port.ts`                 | `findByIdentity` direct lookup (Queue→Detail lineage)                                                |
-| `modules/frontend-activity/src/activity-read-model-store-port.ts`            | `commitProjectProjection` atomic Project-scoped commit boundary                                      |
-| `modules/frontend-activity/src/activity-domain-read-ports.ts`                | Sources/Ask owning-Domain read ports (SPI) + cursor codecs                                           |
-| `modules/frontend-activity/src/activity-adapter-port.ts`                     | `limit` on Stage/Event continuation reads                                                            |
-| `modules/frontend-activity/src/index.ts`                                     | Module exports                                                                                       |
-| `adapters/frontend-activity-sources/src/index.ts`                            | `SourcesActivityAdapter` (Job = IntakeSubmission) + in-memory `SourcesActivityRead`                 |
-| `adapters/frontend-activity-ask/src/index.ts`                                | `AskActivityAdapter` (Run = AnswerRun) + in-memory `AskActivityRead`                                 |
-| `adapters/frontend-activity-external-action/src/index.ts`                    | `ExternalActionActivityAdapter` (Job = Action aggregate) over `ExternalActionRepositoryBoundaryPort` |
-| `adapters/frontend-sources-write-postgres/src/activity-read.ts`              | PostgreSQL `SourcesActivityReadPort` over `source_product`                                           |
-| `adapters/frontend-ask-execution-postgres/src/activity-read.ts`              | PostgreSQL `AskActivityReadPort` over `frontend_ask`                                                 |
-| `adapters/frontend-activity-in-memory/src/index.ts`                          | `findByIdentity` + atomic `commitProjectProjection`                                                  |
-| `adapters/frontend-activity-postgres/src/index.ts`                           | `findByIdentity` + transactional `commitProjectProjection`                                           |
-| `assemblies/shotgun-app/src/product-api/frontend-activity-routes.ts`         | HTTP routes: `/product-api/frontend/activity/{queue,detail,stages,events,refresh}`                   |
-| `assemblies/shotgun-app/src/server.ts` / `src/main.ts`                       | Registry + store + builder + coordinator assembly; PostgreSQL read ports/store injection             |
+| File                                                                 | Content                                                                                                                      |
+| -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `modules/frontend-activity/src/activity-projection-builder.ts`       | Federated projection builder: multi-page observation, per-adapter atomicity, UNAVAILABLE watermarks, atomic commit           |
+| `modules/frontend-activity/src/product-api.ts`                       | Activity Product coordinator + strict request decoders: Queue/Detail/Stage/Event/refresh, capabilities, non-disclosure, caps |
+| `modules/frontend-activity/src/activity-index-store-port.ts`         | `findByIdentity` direct lookup (Queue→Detail lineage)                                                                        |
+| `modules/frontend-activity/src/activity-read-model-store-port.ts`    | `commitProjectProjection` atomic Project-scoped commit boundary                                                              |
+| `modules/frontend-activity/src/activity-domain-read-ports.ts`        | Sources/Ask owning-Domain read ports (SPI) + cursor codecs                                                                   |
+| `modules/frontend-activity/src/activity-adapter-port.ts`             | `limit` on Stage/Event continuation reads                                                                                    |
+| `modules/frontend-activity/src/index.ts`                             | Module exports                                                                                                               |
+| `adapters/frontend-activity-sources/src/index.ts`                    | `SourcesActivityAdapter` (Job = IntakeSubmission) + in-memory `SourcesActivityRead`                                          |
+| `adapters/frontend-activity-ask/src/index.ts`                        | `AskActivityAdapter` (Run = AnswerRun) + in-memory `AskActivityRead`                                                         |
+| `adapters/frontend-activity-external-action/src/index.ts`            | `ExternalActionActivityAdapter` (Job = Action aggregate) over `ExternalActionRepositoryBoundaryPort`                         |
+| `adapters/frontend-sources-write-postgres/src/activity-read.ts`      | PostgreSQL `SourcesActivityReadPort` over `source_product`                                                                   |
+| `adapters/frontend-ask-execution-postgres/src/activity-read.ts`      | PostgreSQL `AskActivityReadPort` over `frontend_ask`                                                                         |
+| `adapters/frontend-activity-in-memory/src/index.ts`                  | `findByIdentity` + atomic `commitProjectProjection`                                                                          |
+| `adapters/frontend-activity-postgres/src/index.ts`                   | `findByIdentity` + transactional `commitProjectProjection`                                                                   |
+| `assemblies/shotgun-app/src/product-api/frontend-activity-routes.ts` | HTTP routes: `/product-api/frontend/activity/{queue,detail,stages,events,refresh}`                                           |
+| `assemblies/shotgun-app/src/server.ts` / `src/main.ts`               | Registry + store + builder + coordinator assembly; PostgreSQL read ports/store injection                                     |
 
 ## 3. Projection builder
 

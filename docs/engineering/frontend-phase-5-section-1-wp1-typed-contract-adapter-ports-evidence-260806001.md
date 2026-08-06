@@ -88,13 +88,13 @@ concrete Domain Resource identity (`domainResourceId` is required).
 
 Focused tests only (no previously-passed head re-run):
 
-- `tests/contract/frontend-activity.contract.test.ts` — 33 tests (decoders, authority rejection,
-  identity and cross-field invariants).
+- `tests/contract/frontend-activity.contract.test.ts` — 36 tests (decoders, authority rejection,
+  identity, cross-field invariants, domain/root binding, completedAt ISO validation).
 - `tests/unit/frontend-activity-domain-mapping.test.ts` — 16 tests (state mapping, dimensions).
-- `tests/integration/frontend-activity-adapter-ports.test.ts` — 5 tests (typed ports, registry,
-  partial failure preservation, server-only scope).
+- `tests/integration/frontend-activity-adapter-ports.test.ts` — 8 tests (typed ports, registry,
+  partial failure preservation, server-only scope, non-disclosing error conversion).
 
-Local: 54/54 PASS. `tsc --noEmit`, ESLint and Prettier clean. Governance gates
+Local: 60/60 PASS. `tsc --noEmit`, ESLint and Prettier clean. Governance gates
 (`docs:validate`, `docs:frontend-work-items`, `docs:completion-invariants`,
 `docs:frontend-projections:check`) PASS after the Work Item transition.
 
@@ -102,6 +102,23 @@ Automatic CI on exact head `d78b234b8a992e72011184cf7721eeee03869f69` (PR #73, d
 auto CI only) — **CI #600 / `31088763496`: Quality, Frontend, Required Gates SUCCESS**
 (Quality 3m42s, Frontend 3m9s, Required Gates 2s). No manual or duplicate CI was dispatched
 and no previously-passed head was re-run.
+
+## 6.1 Correction — review findings (CHANGES_REQUIRED)
+
+Review found three blocking defects and required correction within WP1 scope:
+
+1. **completedAt ISO validation** — `optionalIsoTimestamp()` added and applied to Run, Domain
+   Attempt and Stage `completedAt`; invalid date strings are rejected.
+2. **domainKind/rootKind binding** — ASK must use `rootKind: RUN` without `jobId`; SOURCES,
+   EXTERNAL_ACTION and CONNECTOR_DIAGNOSTICS must use `rootKind: JOB` with `jobId`
+   (ADR-130 §2 / Contract Snapshot §6).
+3. **Safe error classification** — `ActivityAdapterError.safe` fails closed (default `false`);
+   unknown exceptions are converted to a fixed generic message
+   (`ACTIVITY_ADAPTER_GENERIC_FAILURE_MESSAGE`), never propagating raw internals or secrets.
+
+Corrected head `7615ac30bc28314388c4bc75fd9f911f87839e12` — **CI #602 / `31090038789`:
+Quality, Frontend, Required Gates SUCCESS**. No manual or duplicate CI and no previously-passed
+head re-run.
 
 ## 7. Work Item transition
 

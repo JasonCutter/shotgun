@@ -104,11 +104,11 @@ single re-trigger push (`f00de02`) dispatched run #629, which failed on `oss:aud
 dependency fix and an architecture boundary fix were applied, and the final WP4 tree
 (`df65791fa0`, CI **#631**) is verified:
 
-| Run | Head | Result | Cause / fix |
-| --- | --- | --- | --- |
-| #629 | `f00de02` | FAIL | `oss:audit` — new `js-yaml` high CVE-2026-59870 (GHSA-5p4m-2wfm-xmqj), unrelated to WP4 code |
-| #630 | `8a04d07` | FAIL | `test:architecture` — `frontend-activity-client.ts` imported the domain module layer |
-| #631 | `df65791` | **SUCCESS** | Frontend / Quality / Required Gates all green |
+| Run  | Head      | Result      | Cause / fix                                                                                  |
+| ---- | --------- | ----------- | -------------------------------------------------------------------------------------------- |
+| #629 | `f00de02` | FAIL        | `oss:audit` — new `js-yaml` high CVE-2026-59870 (GHSA-5p4m-2wfm-xmqj), unrelated to WP4 code |
+| #630 | `8a04d07` | FAIL        | `test:architecture` — `frontend-activity-client.ts` imported the domain module layer         |
+| #631 | `df65791` | **SUCCESS** | Frontend / Quality / Required Gates all green                                                |
 
 Fixes applied on top of `737ac11`:
 

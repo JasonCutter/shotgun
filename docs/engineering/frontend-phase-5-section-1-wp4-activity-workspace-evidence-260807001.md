@@ -7,8 +7,8 @@ created_at: 2026-08-07
 subject_head: ab0c8749f6db475b16df674250c3b66dc3c63cdb
 wp3_accepted_head: b90b97a59fde01ef92a0932e6dd9f3c4e2ae4fa1
 wp3_accepted_ci_number: 625
-wp4_implementation_head: df65791fa0fd78808bf850e769ef40eab43ac7db
-wp4_implementation_ci_number: 631
+wp4_implementation_head: a645b9e31b00b9e82f2749dc0a9eb2e9dbb9c466
+wp4_implementation_ci_number: 634
 tracking_issue: https://github.com/JasonCutter/shotgun/issues/71
 contract_pr: https://github.com/JasonCutter/shotgun/pull/70
 product_pr: https://github.com/JasonCutter/shotgun/pull/73
@@ -127,6 +127,25 @@ Activity integration/unit tests 111 PASS, ESLint, Prettier, `oss:audit`, `docs:k
 `docs:validate`, `docs:frontend-work-items`, `docs:completion-invariants` and
 `docs:frontend-projections:check` all PASS.
 
+## 4b. Review round 1 corrections (GPT verdict CHANGES_REQUIRED)
+
+GPT review round 1 returned `CHANGES_REQUIRED` with four blocking defects plus one evidence
+defect, all within the fixed WP4 scope. All were corrected on head `a645b9e31`, verified by
+CI **#634** (Frontend / Quality / Required Gates all green).
+
+| #   | Defect (verdict)                                                                                                                           | Correction                                                                                                                                                                                                                                                                                                           |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Exact Domain Resource deep link missing — links used the projection `activityId` or generic workspace routes; `resourceHref` was text only | `domainWorkspaceHref()` now builds every link from the server-verified concrete identity `domainResourceKind` + `domainResourceId`: Sources → `/sources/:id`, Ask → `/ask/conversations/:id`, External Action → `/external-action?action=:id`; the server-returned `resourceHref` is rendered as a real link (AC-04) |
+| 2   | Transport Attempts not rendered in the Detail UI                                                                                           | `detail.transportAttempts` is now displayed in a separate `Transport Attempts` table (transportAttemptId, transportKind, deliverySequence, deliveryResult, deliveredAt, safe failure) distinct from the Domain Attempts table (AC-03/AC-07)                                                                          |
+| 3   | Disabling automatic refresh did not stop Detail polling (Detail always re-read every 30s)                                                  | `activityDetailQueryOptions` now receives `pollingEnabled` and stops the Detail interval when polling is OFF, matching the Queue behaviour (Contract Snapshot §11)                                                                                                                                                   |
+| 4   | No deterministic focus behaviour after selection / deep-link restore                                                                       | Detail heading is `tabIndex={-1}` with a ref; after a queue selection or a valid deep-link restore, focus moves to the Detail heading exactly once when the Detail loads (AC-15)                                                                                                                                     |
+| 5   | Evidence defect — filter test checked only the URL, not the request payload                                                                | The fetch mock now captures `RequestInit.body`; the filter test asserts the exact queue request payload (`domainKinds: ['ASK']`) reaches the server                                                                                                                                                                  |
+
+Focused tests cover the four behaviours above plus the real filter request body; web suite is
+now **112 tests PASS** (20 files). `tsc`, `test:architecture`, ESLint, Prettier and
+`oss:audit` all PASS before push. WP5 remains NOT_STARTED; Ready/Merge/Deployment remain
+unauthorized.
+
 ## 5. Boundaries preserved
 
 - WP5 (Retry/Cancel via owning-Domain routes) — NOT_STARTED.
@@ -136,5 +155,5 @@ Activity integration/unit tests 111 PASS, ESLint, Prettier, `oss:audit`, `docs:k
 
 ## 6. Next action
 
-Report WP4 implementation, verification and evidence to the GPT review gate. Do not begin WP5
-until this Work Package is reviewed and accepted for progression.
+Report the review round 1 corrections (head `a645b9e31`, CI #634) to the GPT review gate and
+request round 2 verdict. Do not begin WP5 until this Work Package is accepted for progression.

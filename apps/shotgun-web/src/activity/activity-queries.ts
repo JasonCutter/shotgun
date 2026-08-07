@@ -102,8 +102,10 @@ export const activityDetailQueryOptions = (
   client: FrontendActivityClient,
   scope: ActivityQueryScope | null,
   identity: ActivityIdentity | null,
+  options: { readonly pollingEnabled?: boolean } = {},
 ) => {
   const enabled = scope !== null && identity !== null;
+  const pollingEnabled = options.pollingEnabled ?? true;
   return queryOptions({
     queryKey:
       scope && identity
@@ -113,8 +115,11 @@ export const activityDetailQueryOptions = (
     enabled,
     retry: activityQueryRetry,
     staleTime: 20_000,
+    // The polling preference applies to the Detail too: when the user disables
+    // automatic refresh, neither the Queue nor the Detail keeps polling; only
+    // the explicit refresh button re-reads (Contract Snapshot §11).
     refetchInterval: (query) =>
-      enabled && query.state.data ? ACTIVITY_DETAIL_POLL_INTERVAL_MS : false,
+      pollingEnabled && enabled && query.state.data ? ACTIVITY_DETAIL_POLL_INTERVAL_MS : false,
   });
 };
 

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, type Ref } from 'react';
 import { Link, useOutletContext, useSearchParams } from 'react-router';
 
 import {
@@ -60,13 +60,22 @@ const identityFromRoot = (root: ActivityRootReferenceV1): ActivityIdentity => ({
   domainResourceId: root.domainResourceId,
 });
 
-/** Exact Domain Resource deep link to the owning-Domain workspace route. */
+/**
+ * Exact Domain Resource deep link to the owning-Domain workspace route.
+ *
+ * Every link is built from the server-verified concrete identity
+ * (`domainResourceKind` + `domainResourceId`), never from the projection
+ * identity `activityId` (AC-04 identity separation). The owning-Domain route
+ * revalidates access on arrival (AC-12); a denied resource resolves to the
+ * same non-disclosing NOT_FOUND as the Activity read.
+ */
 const domainWorkspaceHref = (identity: ActivityIdentity): string => {
+  const resourceId = encodeURIComponent(identity.domainResourceId);
+  if (identity.domainKind === 'SOURCES') return `/sources/${resourceId}`;
+  if (identity.domainKind === 'ASK') return `/ask/conversations/${resourceId}`;
   if (identity.domainKind === 'EXTERNAL_ACTION') {
-    return `/external-action?action=${encodeURIComponent(identity.activityId)}`;
+    return `/external-action?action=${resourceId}`;
   }
-  if (identity.domainKind === 'SOURCES') return '/sources';
-  if (identity.domainKind === 'ASK') return '/ask';
   return '/activity';
 };
 
@@ -253,13 +262,21 @@ const QueueList = ({
 // Detail (Job-or-Run root, Run, Attempts, Stages, bounded Events — AC-03/AC-05)
 // ---------------------------------------------------------------------------
 
-const DetailSection = ({ detail }: { readonly detail: ActivityDetailV1 }) => {
+const DetailSection = ({
+  detail,
+  headingRef,
+}: {
+  readonly detail: ActivityDetailV1;
+  readonly headingRef?: Ref<HTMLHeadingElement>;
+}) => {
   const identity = identityFromRoot(detail.root);
   const resourceHref = detail.root.resourceHref;
   return (
     <section className="activity-detail" aria-label={`활동 세부 정보 ${detail.root.activityId}`}>
       <header className="activity-detail-header">
-        <h2>{detail.root.activityId}</h2>
+        <h2 ref={headingRef} tabIndex={-1}>
+          {detail.root.activityId}
+        </h2>
         <p className="activity-detail-domain">
           {activityDomainKindLabel[identity.domainKind]} ·{' '}
           {detail.root.rootKind === 'RUN' ? 'Run root' : 'Job root'}
@@ -269,7 +286,12 @@ const DetailSection = ({ detail }: { readonly detail: ActivityDetailV1 }) => {
             도메인 워크스페이스에서 열기
           </Link>
         </p>
-        <p className="activity-resource-href">정확한 도메인 리소스: {resourceHref}</p>
+        <p className="activity-resource-href">
+          정확한 도메인 리소스:{' '}
+          <a href={resourceHref} className="activity-domain-link">
+            {resourceHref}
+          </a>
+        </p>
       </header>
 
       <dl className="summary-grid">
@@ -313,6 +335,43 @@ const DetailSection = ({ detail }: { readonly detail: ActivityDetailV1 }) => {
                 <td>{attempt.attemptKind}</td>
                 <td>{activityLifecycleStateLabel[attempt.state]}</td>
                 <td>{attempt.retryability === 'RETRYABLE' ? '예' : '아니오'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      <h3>Transport Attempts</h3>
+      {detail.transportAttempts.length === 0 ? (
+        <EmptyState
+          title="Transport Attempt 없음"
+          description="등록된 Transport Attempt가 없습니다."
+        />
+      ) : (
+        <table className="activity-table" aria-label="Transport Attempts">
+          <thead>
+            <tr>
+              <th scope="col">Transport Attempt</th>
+              <th scope="col">Kind</th>
+              <th scope="col">Delivery</th>
+              <th scope="col">Result</th>
+              <th scope="col">Delivered</th>
+              <th scope="col">Safe Failure</th>
+            </tr>
+          </thead>
+          <tbody>
+            {detail.transportAttempts.map((attempt) => (
+              <tr key={attempt.transportAttemptId}>
+                <th scope="row">{attempt.transportAttemptId}</th>
+                <td>{attempt.transportKind}</td>
+                <td>{attempt.deliverySequence}</td>
+                <td>{attempt.deliveryResult}</td>
+                <td>
+                  <time dateTime={attempt.deliveredAt}>
+                    {new Date(attempt.deliveredAt).toLocaleTimeString()}
+                  </time>
+                </td>
+                <td>{attempt.failure ? attempt.failure.message : '—'}</td>
               </tr>
             ))}
           </tbody>
@@ -380,6 +439,8 @@ export const ActivityWorkspace = () => {
     createInitialActivityWorkspaceState,
   );
   const liveRegionRef = useRef<HTMLParagraphElement | null>(null);
+  const detailHeadingRef = useRef<HTMLHeadingElement | null>(null);
+  const focusedSelectionKey = useRef<string | null>(null);
 
   const scope = activityScopeFromShell(shell);
   const deepLink = useMemo(() => parseActivityDeepLink(searchParameters), [searchParameters]);
@@ -407,7 +468,11 @@ export const ActivityWorkspace = () => {
 
   // Selected identity: restored from the deep link (AC-12 revalidated server-side).
   const selected = state.selected;
-  const detail = useQuery(activityDetailQueryOptions(activityClient, scope, selected));
+  const detail = useQuery(
+    activityDetailQueryOptions(activityClient, scope, selected, {
+      pollingEnabled: state.pollingEnabled,
+    }),
+  );
 
   // Bounded continuation reads for the selected Activity.
   const stages = useQuery(activityStagesQueryOptions(activityClient, scope, selected));
@@ -449,6 +514,17 @@ export const ActivityWorkspace = () => {
   });
 
   const selectedKey = selected ? `${selected.domainKind}:${selected.activityId}` : null;
+
+  // Deterministic focus (AC-15): after a queue selection or a valid deep-link
+  // restore, move focus to the Detail heading once the Detail has loaded. The
+  // heading is programmatically focusable (`tabIndex={-1}`) and focus moves
+  // exactly once per selection.
+  useEffect(() => {
+    if (detail.data && selectedKey && focusedSelectionKey.current !== selectedKey) {
+      focusedSelectionKey.current = selectedKey;
+      detailHeadingRef.current?.focus();
+    }
+  }, [detail.data, selectedKey]);
 
   return (
     <div className="workspace-layout activity-layout">
@@ -523,7 +599,7 @@ export const ActivityWorkspace = () => {
           <ErrorState error={detail.error} onRetry={() => detail.refetch()} />
         ) : detail.data ? (
           <>
-            <DetailSection detail={detail.data} />
+            <DetailSection detail={detail.data} headingRef={detailHeadingRef} />
             <section className="activity-continuations" aria-label="추가 Stage와 Event">
               <h3>추가 Stages</h3>
               {stages.data && stages.data.stages.length > 0 ? (

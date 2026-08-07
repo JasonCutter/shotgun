@@ -7,7 +7,8 @@ created_at: 2026-08-07
 subject_head: ab0c8749f6db475b16df674250c3b66dc3c63cdb
 wp3_accepted_head: b90b97a59fde01ef92a0932e6dd9f3c4e2ae4fa1
 wp3_accepted_ci_number: 625
-wp4_implementation_head: 737ac116dc96fd0f206a3535403cfeb411af2d49
+wp4_implementation_head: df65791fa0fd78808bf850e769ef40eab43ac7db
+wp4_implementation_ci_number: 631
 tracking_issue: https://github.com/JasonCutter/shotgun/issues/71
 contract_pr: https://github.com/JasonCutter/shotgun/pull/70
 product_pr: https://github.com/JasonCutter/shotgun/pull/73
@@ -94,6 +95,37 @@ Web workspace tests (`apps/shotgun-web`, jsdom):
 **107 web tests PASS** across 20 files (including the new 10 Activity tests). `tsc --noEmit`
 (root and `@shotgun/web`), ESLint, Prettier, `vite build`, `docs:validate` and
 `docs:frontend-work-items` all PASS.
+
+## 4a. CI verification
+
+The original WP4 pushes (`737ac11`, `ebb02f8d8`) were pushed during the GitHub Actions global
+incident (githubstatus.com `qcvjkzcs7j74`) and never dispatched auto CI. After mitigation a
+single re-trigger push (`f00de02`) dispatched run #629, which failed on `oss:audit`; the
+dependency fix and an architecture boundary fix were applied, and the final WP4 tree
+(`df65791fa0`, CI **#631**) is verified:
+
+| Run | Head | Result | Cause / fix |
+| --- | --- | --- | --- |
+| #629 | `f00de02` | FAIL | `oss:audit` — new `js-yaml` high CVE-2026-59870 (GHSA-5p4m-2wfm-xmqj), unrelated to WP4 code |
+| #630 | `8a04d07` | FAIL | `test:architecture` — `frontend-activity-client.ts` imported the domain module layer |
+| #631 | `df65791` | **SUCCESS** | Frontend / Quality / Required Gates all green |
+
+Fixes applied on top of `737ac11`:
+
+- **Security**: `js-yaml` 4.3.0 → 4.3.1 (`package-lock.json` only) to close GHSA-5p4m-2wfm-xmqj;
+  `npm run oss:audit` returns 0 vulnerabilities.
+- **Architecture boundary**: the Activity Product API wire types (queue/detail/continuation/
+  refresh requests, `ActivityQueuePageV1`, `ActivityDetailV1`, `ActivityProjectionBuildResultV1`,
+  `ActivityWatermarkRecordV1`, etc.) moved from `modules/frontend-activity` into
+  `packages/contracts/src/frontend-activity.ts`. The module re-exports them from Contracts
+  (single source of truth) and `@shotgun/api-client` imports Contracts only — matching the
+  accepted Review (`frontend-review-client`) and External Action (`frontend-external-action-client`)
+  patterns. `scripts/architecture-test.ts` passes.
+
+Local verification before push: `test:architecture`, root `typecheck`, web tests 107 PASS,
+Activity integration/unit tests 111 PASS, ESLint, Prettier, `oss:audit`, `docs:knowledge-flow:check`,
+`docs:validate`, `docs:frontend-work-items`, `docs:completion-invariants` and
+`docs:frontend-projections:check` all PASS.
 
 ## 5. Boundaries preserved
 

@@ -1,7 +1,7 @@
 ---
 id: FRONTEND-PHASE-5-SECTION-1-WP4-EVIDENCE-260807001
 classification: CANONICAL
-status: wp4_implemented_pending_review
+status: wp4_accepted
 work_item: FE-P5-S1
 created_at: 2026-08-07
 subject_head: ab0c8749f6db475b16df674250c3b66dc3c63cdb
@@ -146,6 +146,21 @@ now **112 tests PASS** (20 files). `tsc`, `test:architecture`, ESLint, Prettier 
 `oss:audit` all PASS before push. WP5 remains NOT_STARTED; Ready/Merge/Deployment remain
 unauthorized.
 
+## 4c. Review verdict — ACCEPTED (2026-08-07)
+
+GPT review round 2 (`Make Shotgun - 상태 업데이트 및 진행사항`) of the round-1 correction head
+`a645b9e31` (CI #634) and the final evidence carrier `2ec28ddb` (CI #635) returned
+**ACCEPTED** (`Status Authority: IMPLEMENTATION_ACCEPTED`). All five round-1 correction items
+(Exact Domain Resource deep link, Transport Attempts, Polling OFF, Deterministic focus,
+Filter request evidence) are PASS; no blocking defect remains within the WP4 scope.
+
+- WP1: ACCEPTED; WP2: ACCEPTED; WP3: ACCEPTED; WP4: ACCEPTED; FE-P5-S1 overall: IN_PROGRESS.
+- PR #73 Ready/Merge, deployment and production verification remain forbidden.
+- WP5 (Existing Domain action delegation — Retry/Cancel via owning-Domain command routes) is
+  the next permitted Work Package after user approval and is not started automatically.
+- Head notation: `wp4ImplementationHead` = `a645b9e31` (CI #634); evidence/PR carrier head =
+  `2ec28ddb` (CI #635).
+
 ## 5. Boundaries preserved
 
 - WP5 (Retry/Cancel via owning-Domain routes) — NOT_STARTED.
@@ -155,5 +170,5 @@ unauthorized.
 
 ## 6. Next action
 
-Report the review round 1 corrections (head `a645b9e31`, CI #634) to the GPT review gate and
-request round 2 verdict. Do not begin WP5 until this Work Package is accepted for progression.
+WP4 is ACCEPTED by the GPT review gate. Do not begin WP5 (Existing Domain action delegation)
+until the user authorizes it; Ready/Merge/Deployment remain unauthorized.

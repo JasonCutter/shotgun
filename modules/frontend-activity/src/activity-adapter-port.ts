@@ -1,15 +1,25 @@
 import type {
+  ActivityAdapterKindV1,
   ActivityCorrelationRefV1,
-  ActivityDimensionsV1,
-  ActivityDomainAttemptViewV1,
+  ActivityDetailV1,
   ActivityDomainKindV1,
-  ActivityEventViewV1,
+  ActivityEventContinuationV1,
   ActivityLifecycleStateV1,
-  ActivityProjectionMetadataV1,
+  ActivityQueuePageV1,
   ActivityRootReferenceV1,
-  ActivityRunViewV1,
-  ActivityStageViewV1,
-  ActivityTransportAttemptViewV1,
+  ActivityStageContinuationV1,
+} from '../../../packages/contracts/src/index.js';
+
+// The browser-facing Activity Product API wire types are owned by Contracts
+// (single source of truth); this module re-exports them so the Activity
+// adapters and the module boundary surface stay stable.
+export type {
+  ActivityAdapterKindV1,
+  ActivityDetailV1,
+  ActivityEventContinuationV1,
+  ActivityQueueItemV1,
+  ActivityQueuePageV1,
+  ActivityStageContinuationV1,
 } from '../../../packages/contracts/src/index.js';
 
 /**
@@ -24,8 +34,6 @@ import type {
  * browser request. The concrete adapters are wired at the assembly boundary
  * and implemented in WP2/WP3 (read-model persistence and projection builder).
  */
-
-export type ActivityAdapterKindV1 = 'SOURCES' | 'ASK' | 'EXTERNAL_ACTION';
 
 /** Server-only scope used by adapter reads (never browser-authored). */
 export type ActivityAdapterScopeV1 = {
@@ -45,45 +53,6 @@ export type ActivityQueueFilterV1 = {
   readonly attention?: 'NEEDS_ATTENTION' | 'RESOLVED' | 'NONE';
   readonly cursor?: string;
   readonly limit?: number;
-};
-
-/** One queue row in the federated Activity Queue. */
-export type ActivityQueueItemV1 = {
-  readonly root: ActivityRootReferenceV1;
-  readonly summary: string;
-  readonly state: ActivityLifecycleStateV1;
-  readonly dimensions: ActivityDimensionsV1;
-  readonly updatedAt: string;
-};
-
-export type ActivityQueuePageV1 = {
-  readonly items: readonly ActivityQueueItemV1[];
-  readonly metadata: ActivityProjectionMetadataV1;
-  readonly nextCursor?: string;
-};
-
-/** Detail combines the read model with the current authoritative snapshot. */
-export type ActivityDetailV1 = {
-  readonly root: ActivityRootReferenceV1;
-  readonly run: ActivityRunViewV1;
-  readonly attempts: readonly ActivityDomainAttemptViewV1[];
-  readonly stages: readonly ActivityStageViewV1[];
-  readonly events: readonly ActivityEventViewV1[];
-  readonly transportAttempts: readonly ActivityTransportAttemptViewV1[];
-  readonly metadata: ActivityProjectionMetadataV1;
-  readonly dimensions: ActivityDimensionsV1;
-};
-
-export type ActivityStageContinuationV1 = {
-  readonly stages: readonly ActivityStageViewV1[];
-  readonly metadata: ActivityProjectionMetadataV1;
-  readonly nextCursor?: string;
-};
-
-export type ActivityEventContinuationV1 = {
-  readonly events: readonly ActivityEventViewV1[];
-  readonly metadata: ActivityProjectionMetadataV1;
-  readonly nextCursor?: string;
 };
 
 export type ActivityAdapterHealthV1 = {

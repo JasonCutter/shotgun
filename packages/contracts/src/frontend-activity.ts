@@ -1034,3 +1034,115 @@ export const decodeActivitySnapshotV1 = (value: unknown, path = 'activity'): Act
     dimensions,
   };
 };
+
+// ---------------------------------------------------------------------------
+// Activity Product API wire types (queue/detail/continuation/refresh)
+// ---------------------------------------------------------------------------
+//
+// These are the browser-facing wire shapes of the Activity Product API. They
+// live in Contracts so the frontend client (`@shotgun/api-client`) never
+// crosses into the domain module layer; the module re-exports them from here.
+
+/** Owning-Domain adapter kind exposed by the federated Activity projection. */
+export type ActivityAdapterKindV1 = 'SOURCES' | 'ASK' | 'EXTERNAL_ACTION';
+
+/** One queue row in the federated Activity Queue. */
+export type ActivityQueueItemV1 = {
+  readonly root: ActivityRootReferenceV1;
+  readonly summary: string;
+  readonly state: ActivityLifecycleStateV1;
+  readonly dimensions: ActivityDimensionsV1;
+  readonly updatedAt: string;
+};
+
+export type ActivityQueuePageV1 = {
+  readonly items: readonly ActivityQueueItemV1[];
+  readonly metadata: ActivityProjectionMetadataV1;
+  readonly nextCursor?: string;
+};
+
+/** Detail combines the read model with the current authoritative snapshot. */
+export type ActivityDetailV1 = {
+  readonly root: ActivityRootReferenceV1;
+  readonly run: ActivityRunViewV1;
+  readonly attempts: readonly ActivityDomainAttemptViewV1[];
+  readonly stages: readonly ActivityStageViewV1[];
+  readonly events: readonly ActivityEventViewV1[];
+  readonly transportAttempts: readonly ActivityTransportAttemptViewV1[];
+  readonly metadata: ActivityProjectionMetadataV1;
+  readonly dimensions: ActivityDimensionsV1;
+};
+
+export type ActivityStageContinuationV1 = {
+  readonly stages: readonly ActivityStageViewV1[];
+  readonly metadata: ActivityProjectionMetadataV1;
+  readonly nextCursor?: string;
+};
+
+export type ActivityEventContinuationV1 = {
+  readonly events: readonly ActivityEventViewV1[];
+  readonly metadata: ActivityProjectionMetadataV1;
+  readonly nextCursor?: string;
+};
+
+export type ActivityProjectionAdapterFailureV1 = {
+  readonly adapterId: string;
+  readonly domainKind: ActivityAdapterKindV1;
+  readonly safe: boolean;
+  readonly message: string;
+};
+
+export type ActivityProjectionBuildResultV1 = {
+  readonly resourceProjectId: string;
+  readonly snapshotRevision: number;
+  readonly indexCount: number;
+  readonly watermarks: readonly ActivityWatermarkRecordV1[];
+  readonly adapterStatus: 'AVAILABLE' | 'DEGRADED' | 'UNAVAILABLE';
+  readonly partial: boolean;
+  readonly failures: readonly ActivityProjectionAdapterFailureV1[];
+};
+
+/** Project-scoped watermark for one owning-Domain adapter (frontend_activity.projection_watermarks). */
+export type ActivityWatermarkRecordV1 = {
+  readonly resourceProjectId: string;
+  readonly adapterId: string;
+  readonly domainKind: ActivityDomainKindV1;
+  readonly sourceUpdatedAt?: string;
+  readonly projectedAt: string;
+  readonly lagMilliseconds?: number;
+  readonly adapterStatus: ActivityAdapterStatusV1;
+  readonly snapshotRevision: number;
+  readonly cursor?: string;
+  readonly updatedAt: string;
+};
+
+export type ListActivityQueueRequestV1 = {
+  readonly schemaVersion: typeof FRONTEND_ACTIVITY_API_VERSION;
+  readonly domainKinds?: readonly ActivityDomainKindV1[];
+  readonly states?: readonly ActivityLifecycleStateV1[];
+  readonly attention?: ActivityAttentionStateV1;
+  readonly cursor?: string;
+  readonly limit?: number;
+};
+
+export type GetActivityDetailRequestV1 = {
+  readonly schemaVersion: typeof FRONTEND_ACTIVITY_API_VERSION;
+  readonly domainKind: ActivityDomainKindV1;
+  readonly activityId: string;
+  readonly domainResourceKind: string;
+  readonly domainResourceId: string;
+};
+
+export type ListActivityContinuationRequestV1 = {
+  readonly schemaVersion: typeof FRONTEND_ACTIVITY_API_VERSION;
+  readonly domainKind: ActivityDomainKindV1;
+  readonly activityId: string;
+  readonly domainResourceKind: string;
+  readonly domainResourceId: string;
+  readonly cursor?: string;
+  readonly limit?: number;
+};
+
+export type RefreshActivityProjectionRequestV1 = {
+  readonly schemaVersion: typeof FRONTEND_ACTIVITY_API_VERSION;
+};

@@ -10,6 +10,20 @@ import {
   type ActivityProjectionFreshnessV1,
   type ActivityProjectionMetadataV1,
   type ActivityRootReferenceV1,
+  type GetActivityDetailRequestV1,
+  type ListActivityContinuationRequestV1,
+  type ListActivityQueueRequestV1,
+  type RefreshActivityProjectionRequestV1,
+} from '../../../packages/contracts/src/index.js';
+
+// The Activity Product API request types are owned by Contracts (single source
+// of truth); this module re-exports them so the coordinator surface stays
+// stable for adapters and the assembly boundary.
+export type {
+  GetActivityDetailRequestV1,
+  ListActivityContinuationRequestV1,
+  ListActivityQueueRequestV1,
+  RefreshActivityProjectionRequestV1,
 } from '../../../packages/contracts/src/index.js';
 import {
   ACTIVITY_INDEX_ATTENTION,
@@ -97,39 +111,6 @@ export const activityCapabilitiesForScope = (
 export const ACTIVITY_QUEUE_PAGE_SIZE_CAP = 50;
 export const ACTIVITY_STAGE_LIST_CAP = 50;
 export const ACTIVITY_EVENT_LIST_CAP = 50;
-
-// --- request types ----------------------------------------------------------
-
-export type ListActivityQueueRequestV1 = {
-  readonly schemaVersion: typeof FRONTEND_ACTIVITY_API_VERSION;
-  readonly domainKinds?: readonly ActivityDomainKindV1[];
-  readonly states?: readonly ActivityLifecycleStateV1[];
-  readonly attention?: ActivityAttentionStateV1;
-  readonly cursor?: string;
-  readonly limit?: number;
-};
-
-export type GetActivityDetailRequestV1 = {
-  readonly schemaVersion: typeof FRONTEND_ACTIVITY_API_VERSION;
-  readonly domainKind: ActivityDomainKindV1;
-  readonly activityId: string;
-  readonly domainResourceKind: string;
-  readonly domainResourceId: string;
-};
-
-export type ListActivityContinuationRequestV1 = {
-  readonly schemaVersion: typeof FRONTEND_ACTIVITY_API_VERSION;
-  readonly domainKind: ActivityDomainKindV1;
-  readonly activityId: string;
-  readonly domainResourceKind: string;
-  readonly domainResourceId: string;
-  readonly cursor?: string;
-  readonly limit?: number;
-};
-
-export type RefreshActivityProjectionRequestV1 = {
-  readonly schemaVersion: typeof FRONTEND_ACTIVITY_API_VERSION;
-};
 
 // --- strict runtime request decoders ---------------------------------------
 //

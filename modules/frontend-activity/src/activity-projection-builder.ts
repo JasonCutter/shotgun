@@ -1,4 +1,8 @@
-import type { ActivityAdapterStatusV1 } from '../../../packages/contracts/src/index.js';
+import type {
+  ActivityAdapterStatusV1,
+  ActivityProjectionAdapterFailureV1,
+  ActivityProjectionBuildResultV1,
+} from '../../../packages/contracts/src/index.js';
 import {
   combineAdapterAvailability,
   type ActivityAdapterPort,
@@ -10,6 +14,12 @@ import {
   type ActivityWatermarkRecordV1,
   asActivityAdapterError,
 } from './index.js';
+
+// The refresh wire types are owned by Contracts (single source of truth).
+export type {
+  ActivityProjectionAdapterFailureV1,
+  ActivityProjectionBuildResultV1,
+} from '../../../packages/contracts/src/index.js';
 
 /**
  * FE-P5-S1 WP3 — Federated Activity Projection Builder.
@@ -40,23 +50,6 @@ import {
  */
 
 export type ActivityProjectionBuilderScopeV1 = ActivityAdapterScopeV1;
-
-export type ActivityProjectionAdapterFailureV1 = {
-  readonly adapterId: string;
-  readonly domainKind: ActivityAdapterPort['domainKind'];
-  readonly safe: boolean;
-  readonly message: string;
-};
-
-export type ActivityProjectionBuildResultV1 = {
-  readonly resourceProjectId: string;
-  readonly snapshotRevision: number;
-  readonly indexCount: number;
-  readonly watermarks: readonly ActivityWatermarkRecordV1[];
-  readonly adapterStatus: 'AVAILABLE' | 'DEGRADED' | 'UNAVAILABLE';
-  readonly partial: boolean;
-  readonly failures: readonly ActivityProjectionAdapterFailureV1[];
-};
 
 /** Convert an adapter queue item into an Activity index record for the build. */
 export const activityIndexRecordFromQueueItem = (input: {

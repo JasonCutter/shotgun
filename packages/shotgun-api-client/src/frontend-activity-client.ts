@@ -24,7 +24,7 @@ import type {
   ListActivityContinuationRequestV1,
   ListActivityQueueRequestV1,
   RefreshActivityProjectionRequestV1,
-} from '../../../modules/frontend-activity/src/index.js';
+} from '../../contracts/src/index.js';
 import { decodeProductApiErrorBody } from './decode.js';
 import { productFailureApiError, remoteUnclassifiedProductApiFailure } from './errors.js';
 
@@ -429,4 +429,4 @@ export type {
   ListActivityContinuationRequestV1,
   ListActivityQueueRequestV1,
   RefreshActivityProjectionRequestV1,
-} from '../../../modules/frontend-activity/src/index.js';
+} from '../../contracts/src/index.js';

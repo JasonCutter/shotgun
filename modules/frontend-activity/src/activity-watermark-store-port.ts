@@ -1,7 +1,7 @@
-import type {
-  ActivityAdapterStatusV1,
-  ActivityDomainKindV1,
-} from '../../../packages/contracts/src/index.js';
+import type { ActivityWatermarkRecordV1 } from '../../../packages/contracts/src/index.js';
+
+// The watermark wire type is owned by Contracts (single source of truth).
+export type { ActivityWatermarkRecordV1 } from '../../../packages/contracts/src/index.js';
 
 /**
  * FE-P5-S1 projection watermark store port.
@@ -11,19 +11,6 @@ import type {
  * snapshot revision and cursor. Watermarks drive the Projection Freshness and
  * Adapter Availability dimensions; they are never Domain lifecycle state.
  */
-
-export type ActivityWatermarkRecordV1 = {
-  readonly resourceProjectId: string;
-  readonly adapterId: string;
-  readonly domainKind: ActivityDomainKindV1;
-  readonly sourceUpdatedAt?: string;
-  readonly projectedAt: string;
-  readonly lagMilliseconds?: number;
-  readonly adapterStatus: ActivityAdapterStatusV1;
-  readonly snapshotRevision: number;
-  readonly cursor?: string;
-  readonly updatedAt: string;
-};
 
 export type ActivityWatermarkStorePort = {
   /** Upsert by (resourceProjectId, adapterId). */

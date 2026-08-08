@@ -38,6 +38,8 @@ const managedSchemas = [
   'frontend_review',
   'frontend_external_action',
   'frontend_activity',
+  'frontend_history',
+  'project_audit',
   'source_product',
   'frontend_command',
   'settings',

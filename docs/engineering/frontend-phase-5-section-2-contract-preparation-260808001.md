@@ -26,7 +26,7 @@ Included (후보):
 - Canonical Revision/Commit, Review Decision/Approval, External Action
   Attempt/Verification/Audit, Source version, Ask history 조회.
 - Event Payload Availability 상태 (`AVAILABLE / REDACTED / PURGED_BY_POLICY /
-  UNAVAILABLE`).
+UNAVAILABLE`).
 - History Retention / Tombstone (Payload redaction, Identity 보존).
 - Canonical Rollback = **Reversal DraftChangeSet** (직접 복원 금지).
 - External Rollback = 기존 **Compensating Action** 재사용.
@@ -45,17 +45,17 @@ Excluded (후보):
 
 ## 2. Proposed resource / view types
 
-| Type | Kind | 근거 |
-|---|---|---|
-| `HistoryWorkspaceViewV1` | federated read model root (project-scoped) | 통합 조회의 루트 |
-| `HistoryEntryV1` | 하나의 통합 이벤트 항목 (source domain + domain event ref + timestamp + identity) | ordering/cursor 규약의 단위 |
-| `HistoryCursorV1` | continuation cursor | activity `ActivityEventContinuationV1` 패턴 재사용 |
-| `PayloadAvailabilityV1` | `AVAILABLE / REDACTED / PURGED_BY_POLICY / UNAVAILABLE` | phase-5 §S2, ADR-112 §9 |
-| `RetentionPolicyViewV1` | History retention 정책 (Log와 분리) | ADR-112 §8 |
-| `TombstoneV1` | Event identity 보존 + payload redaction | ADR-112 §9 |
-| `ReversalDraftChangeSetV1` | Canonical rollback candidate (DraftChangeSet 기반) | ADR-112 §5/§6 |
-| `ProjectTombstoneV1` / `DeletedProjectAuditScopeV1` | 삭제된 Project lineage 보존·접근 경계 | ADR-112 §11/§12 |
-| `CompensatingActionV1` | 기존 재사용 (external rollback) | ADR-129 |
+| Type                                                | Kind                                                                              | 근거                                               |
+| --------------------------------------------------- | --------------------------------------------------------------------------------- | -------------------------------------------------- |
+| `HistoryWorkspaceViewV1`                            | federated read model root (project-scoped)                                        | 통합 조회의 루트                                   |
+| `HistoryEntryV1`                                    | 하나의 통합 이벤트 항목 (source domain + domain event ref + timestamp + identity) | ordering/cursor 규약의 단위                        |
+| `HistoryCursorV1`                                   | continuation cursor                                                               | activity `ActivityEventContinuationV1` 패턴 재사용 |
+| `PayloadAvailabilityV1`                             | `AVAILABLE / REDACTED / PURGED_BY_POLICY / UNAVAILABLE`                           | phase-5 §S2, ADR-112 §9                            |
+| `RetentionPolicyViewV1`                             | History retention 정책 (Log와 분리)                                               | ADR-112 §8                                         |
+| `TombstoneV1`                                       | Event identity 보존 + payload redaction                                           | ADR-112 §9                                         |
+| `ReversalDraftChangeSetV1`                          | Canonical rollback candidate (DraftChangeSet 기반)                                | ADR-112 §5/§6                                      |
+| `ProjectTombstoneV1` / `DeletedProjectAuditScopeV1` | 삭제된 Project lineage 보존·접근 경계                                             | ADR-112 §11/§12                                    |
+| `CompensatingActionV1`                              | 기존 재사용 (external rollback)                                                   | ADR-129                                            |
 
 Identity 규약 (후보): 통합 `HistoryEntryV1`는 domain event identity를 대체하지
 않고 참조만 한다 (`historyEventId`, `auditEventId`, `revisionId`, `decisionId`
@@ -88,24 +88,24 @@ Capability (후보): `history:read`, `history:audit:read`, `action:rollback`,
 
 FE-P5-S1-AC-01~16 형식 참고. 확정은 A1 (Frozen 시 `FE-P5-S2-AC-01` ...).
 
-| AC | 제목 (후보) | 검증 |
-|---|---|---|
-| AC-01 | History Workspace가 기존 Domain History를 federated로 조회 (중앙 원장 미생성) | Contract/unit + read model |
-| AC-02 | HistoryEntry가 domain identity를 대체하지 않고 참조 | Contract |
-| AC-03 | Event identity 삭제·덮어쓰기 금지 | negative test |
-| AC-04 | Payload Availability 상태 노출 (AVAILABLE/REDACTED/PURGED_BY_POLICY/UNAVAILABLE) | Contract + golden |
-| AC-05 | PURGED_BY_POLICY가 Identity가 아닌 payload redaction·tombstone | negative test |
-| AC-06 | History retention이 Log retention과 분리 | Contract + unit |
-| AC-07 | Canonical Rollback이 Reversal DraftChangeSet (직접 복원 금지) | negative test |
-| AC-08 | Reversal이 현재 snapshot·영향·Review·Approval 흐름 준수 | golden + security |
-| AC-09 | External rollback이 별도 Compensating Action 재사용 | reuse test |
-| AC-10 | Deleted Project audit 접근이 ProjectTombstone + DeletedProjectAuditScope + Capability 재검증 | security negative test |
-| AC-11 | 과거 membership만으로 deleted-project audit 접근 불가 | security negative test |
-| AC-12 | Restoration이 explicit recovery lineage 생성 | golden |
-| AC-13 | 조회 시 Capability 재검증 (fail-closed) | security |
-| AC-14 | ordering/cursor/pagination 규약 (tie-breaker 포함) | contract + golden |
-| AC-15 | FE-P5-S2 완료 조건 매핑 (관찰→추적→조회→Reversal/Compensation) | E2E |
-| AC-16 | 성능 기준 (History Workspace 조회 P95 이내) | performance gate |
+| AC    | 제목 (후보)                                                                                  | 검증                       |
+| ----- | -------------------------------------------------------------------------------------------- | -------------------------- |
+| AC-01 | History Workspace가 기존 Domain History를 federated로 조회 (중앙 원장 미생성)                | Contract/unit + read model |
+| AC-02 | HistoryEntry가 domain identity를 대체하지 않고 참조                                          | Contract                   |
+| AC-03 | Event identity 삭제·덮어쓰기 금지                                                            | negative test              |
+| AC-04 | Payload Availability 상태 노출 (AVAILABLE/REDACTED/PURGED_BY_POLICY/UNAVAILABLE)             | Contract + golden          |
+| AC-05 | PURGED_BY_POLICY가 Identity가 아닌 payload redaction·tombstone                               | negative test              |
+| AC-06 | History retention이 Log retention과 분리                                                     | Contract + unit            |
+| AC-07 | Canonical Rollback이 Reversal DraftChangeSet (직접 복원 금지)                                | negative test              |
+| AC-08 | Reversal이 현재 snapshot·영향·Review·Approval 흐름 준수                                      | golden + security          |
+| AC-09 | External rollback이 별도 Compensating Action 재사용                                          | reuse test                 |
+| AC-10 | Deleted Project audit 접근이 ProjectTombstone + DeletedProjectAuditScope + Capability 재검증 | security negative test     |
+| AC-11 | 과거 membership만으로 deleted-project audit 접근 불가                                        | security negative test     |
+| AC-12 | Restoration이 explicit recovery lineage 생성                                                 | golden                     |
+| AC-13 | 조회 시 Capability 재검증 (fail-closed)                                                      | security                   |
+| AC-14 | ordering/cursor/pagination 규약 (tie-breaker 포함)                                           | contract + golden          |
+| AC-15 | FE-P5-S2 완료 조건 매핑 (관찰→추적→조회→Reversal/Compensation)                               | E2E                        |
+| AC-16 | 성능 기준 (History Workspace 조회 P95 이내)                                                  | performance gate           |
 
 ## 5. ADR assessment (Candidate)
 

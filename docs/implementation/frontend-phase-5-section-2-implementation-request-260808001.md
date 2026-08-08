@@ -1,14 +1,22 @@
 ---
 id: FE-P5-S2-IMPLEMENTATION-REQUEST-260808001
-classification: CANDIDATE
-status: user_review_required
-work_item: FE-P5-S2
+classification: CANONICAL
+status: frozen_product_implementation_not_authorized
+revision: 1
 created_at: 2026-08-08
+approved_at: 2026-08-08
+approved_by: user
 authority: FE-P5-S2-A1-COMPLETE-2026-08-08 (A1 FINAL, main@701e0bfa, CI #664 SUCCESS)
 subject_base: 701e0bfac5af60daa48d9155185956b91650ecbd
+governing_adr: ADR-131
+contract_snapshot: docs/architecture/contracts/snapshots/frontend-phase-5-section-2/frontend-phase-5-section-2-contract-snapshot-260808001.md
 ---
 
-# Project Shotgun — FE-P5-S2 History·Audit·Rollback Implementation Request
+# Project Shotgun — FE-P5-S2 History·Audit·Rollback Implementation Request r1
+
+> **IR r1: FROZEN / PRODUCT_IMPLEMENTATION_NOT_AUTHORIZED** (IR Review Round 3
+> ACCEPTED, 2026-08-08). Product implementation requires a separate explicit
+> user approval (A1 step 10).
 
 > IR는 ADR-131/Frozen Contract 내용을 **재선택하거나 변경하지 않는다**. 무엇을
 > 어떤 순서로 구현하고 각 AC를 어떤 증거로 검증할지를 고정한다.
@@ -36,13 +44,14 @@ FE-P5-S2-AC-01 ~ AC-16 — APPROVED/FROZEN
 
 ```text
 FE-P5-S2: NOT_STARTED
-IR: CANDIDATE / USER_REVIEW_REQUIRED
+IR r1: FROZEN / PRODUCT_IMPLEMENTATION_NOT_AUTHORIZED
+Migration: REQUIRED / IMPLEMENTATION_NOT_AUTHORIZED
+Runtime Dependency: NOT_REQUIRED
 Product Implementation: NOT_AUTHORIZED
-Migration Execution: NOT_AUTHORIZED
 ```
 
-IR 작성 자체는 Product 구현 승인이 아니다. 사용자가 IR을 검토한 후 별도로
-Product 구현을 승인해야 한다.
+IR 작성/검토 자체는 Product 구현 승인이 아니다. 사용자가 IR을 검토한 후 별도로
+Product 구현을 승인해야 한다 (A1 step 10).
 
 ## 3. Frozen Implementation Scope
 
@@ -509,8 +518,16 @@ automatic CI로 검증한다.
 ## Next Gate
 
 ```text
-NEXT FE-P5-S2 Implementation Request
-Status: DRAFT / USER_REVIEW_REQUIRED
+IR Review Round 3: ACCEPTED (2026-08-08)
+IR r1: FROZEN / PRODUCT_IMPLEMENTATION_NOT_AUTHORIZED (Canonical Closure)
+PR #79 Merge: NOT_YET_AUTHORIZED
 FE-P5-S2: NOT_STARTED
 Product Implementation: NOT_AUTHORIZED
+WP1: NOT_AUTHORIZED
+
+After IR Closure merge + post-merge main CI:
+Step 10 — 사용자 FE-P5-S2 Product Implementation 명시 승인
+  → FE-P5-S2 IN_PROGRESS
+  → Migration 030~032 AUTHORIZED
+  → WP1 AUTHORIZED
 ```

@@ -109,7 +109,7 @@ destructive migration 없음, 기존 데이터 무변경. migration 파일은 **
 ```text
 Schema: frontend_history (신규)
 Table:  frontend_history.history_projection_index
-Columns (안정 identity/ordering):
+Columns (Frozen identity/ordering tuple 그대로):
   resource_project_id text NOT NULL
   history_entry_id text NOT NULL          -- projection identity only
   domain_kind text NOT NULL
@@ -117,23 +117,32 @@ Columns (안정 identity/ordering):
   domain_resource_id text NOT NULL        -- concrete identity 보존
   source_event_kind text NOT NULL         -- CANONICAL/REVIEW/EXTERNAL_ACTION/POLICY
   source_event_id text NOT NULL           -- historyEventId/auditEventId/decisionId/...
+  source_sequence bigint                  -- per-Domain sequence (audit sequence 등)
   occurred_at timestamptz NOT NULL
   payload_availability text NOT NULL      -- AVAILABLE/REDACTED/PURGED_BY_POLICY/UNAVAILABLE
   payload_snapshot jsonb                  -- bounded safe payload
-  cursor_sequence bigint NOT NULL         -- stable per-project ordering tie-breaker
   projected_at timestamptz NOT NULL
   PRIMARY KEY (resource_project_id, history_entry_id)
   UNIQUE (resource_project_id, domain_kind, source_event_kind, source_event_id)
   -- source Domain identity는 projection identity로 대체하지 않음 (ADR-131 §2)
 Table:  frontend_history.projection_watermarks
   (resource_project_id, adapter_id, source_updated_at, projected_at,
-   last_cursor_sequence, adapter_status, snapshot_revision)
+   last_source_position, adapter_status, snapshot_revision)
   PRIMARY KEY (resource_project_id, adapter_id)
 Indexes:
-  - stable ordering index (resource_project_id, cursor_sequence)
+  - stable ordering index (resource_project_id, occurred_at, domain_kind,
+    source_event_kind, source_event_id, source_sequence)
   - source-domain identity lookup
     (resource_project_id, domain_kind, source_event_kind, source_event_id)
 Authority: NON-AUTHORITATIVE (rebuildable)
+
+Ordering/cursor contract (Frozen tuple 그대로):
+- History ordering key: occurred_at + domain_kind + source_event_kind +
+  source_event_id + source_sequence
+- Cursor token: same frozen tuple
+- cursor_sequence: REMOVE — 또는 projection-internal optimization으로만 사용,
+  authoritative cursor identity가 아님. Projection이 새로운 global chronology
+  authority를 만들지 않음.
 ```
 
 ### Scope B — Deleted Project (`031_frontend_deleted_project_audit.sql`)
@@ -154,10 +163,29 @@ Owner: project-administration / security
 ### Scope C — Payload Availability / Retention (`032_frontend_payload_policy_history.sql`)
 
 ```text
-Owning Domain augment (각 authoritative Domain store에 additive state 추가):
-  - payload availability state 컬럼/테이블 (AVAILABLE/REDACTED/PURGED_BY_POLICY/UNAVAILABLE)
-  - tombstone metadata (identity 보존, payload만 redact)
-  - purge AuditEvent append (identity 삭제 금지, ADR-112 §9)
+Scope C decision: Existing authoritative Event rows are NEVER ALTERED for
+availability state (Canonical/Review/External Action history는 이미
+append-only/immutable). Mutable PayloadAvailability는 owner-side sidecar
+persistence로 고정 (기존 event row에 컬럼 추가하지 않음).
+
+Owner-side sidecar tables (필요한 mandatory family만):
+- canonical.history_payload_state
+- frontend_review.history_payload_state
+- frontend_external_action.history_payload_state
+- settings.history_payload_state
+
+Each sidecar row:
+- source event identity
+- payload_availability (AVAILABLE/REDACTED/PURGED_BY_POLICY/UNAVAILABLE)
+- tombstone metadata (identity 보존, payload만 redact)
+- changed_at / reason / policy revision
+
+Purge:
+- source event identity remains
+- payload/tombstone sidecar updated
+- purge AuditEvent appended (ADR-112 §9)
+
+Event row UPDATE/DELETE: FORBIDDEN
 Constraint: Event identity 삭제·덮어쓰기 금지
 Retention policy authority: settings-policy
 ```
@@ -176,6 +204,12 @@ Authoritative source (settings-policy):
 
 History adapter는 이 authoritative source를 읽는다. 별도 settings.policy_change_history
 중복 테이블을 만들지 않는다.
+
+Scope D migration effect:
+- no new authoritative Policy History table
+- existing settings persistence reused
+- 032 may add only required index/immutability guard if needed (DDL 변화 없으면
+  그 사실을 명시)
 ```
 
 ### History Projection Rebuild / Recovery
@@ -188,13 +222,26 @@ Authoritative rebuild sources:
 - Policy Change History (settings audit/revisions)
 Projection authority: NON-AUTHORITATIVE
 Rebuild scope: Project-scoped
-Rebuild 방식 (선택): project-scoped clear→replay (project rows 삭제 후
-  authoritative source에서 deterministic replay)
+Rebuild 방식: project-scoped atomic rebuild transaction
+
+Rebuild transaction boundary:
+  BEGIN project-scoped rebuild transaction
+    clear project projection rows
+    replay all mandatory adapters deterministically
+    write projection rows
+    advance all successful project watermarks
+  COMMIT
+  Failure/interruption: ROLLBACK
+  Visible state after failure: previous complete committed projection
+  Resume: restart/replay from last previously committed authoritative source
+    positions
+  Partial rebuilt projection exposure: FORBIDDEN
+
 Rules:
 1. History projection rows/index는 삭제·재생성 가능
 2. Source Domain History는 rebuild 과정에서 수정/삭제 금지
 3. source Domain identity는 동일하게 보존
-4. Frozen ordering/tie-breaker 규칙으로 deterministic rebuild
+4. Frozen ordering/tie-breaker tuple로 deterministic rebuild
 5. projection write와 해당 watermark advance는 atomic
 6. 실패한 adapter는 watermark를 전진시키지 않음
 7. interruption 후 last committed watermark/source position부터 idempotent

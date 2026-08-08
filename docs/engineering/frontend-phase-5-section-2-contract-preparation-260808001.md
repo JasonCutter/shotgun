@@ -1,10 +1,12 @@
 ---
 id: FRONTEND-PHASE-5-SECTION-2-CONTRACT-PREPARATION-260808001
-classification: CANDIDATE
-status: user_review_required
+classification: CANONICAL
+status: a0_accepted_contract_frozen_not_authorized
 work_item: FE-P5-S2-A0
 created_at: 2026-08-08
 authority: FE-P5-S2-A0-REQUEST-260808001 (user A0 authorization 2026-08-08)
+approved_by: gpt_review_gate
+approved_at: 2026-08-08
 subject_base: 8cc93c0aa798ca98adaeba863eb5a6145b62bff1
 gap_audit: docs/engineering/frontend-phase-5-section-2-gap-audit-260808001.md
 ---
@@ -184,5 +186,7 @@ FE-P5-S1-AC-01~16 형식 참고. 확정은 A1 (Frozen 시 `FE-P5-S2-AC-01` ...).
   §8 수정 반영 (NEW_DOMAIN_RESOURCE_REQUIRED→AUTHORITATIVE_CAPABILITY_REQUIRED,
   hardening ADR 1건, Migration CONDITIONAL/UNRESOLVED, Policy History 추가 +
   Ask/Source OPTIONAL 재분류, OperationalResourceKindRegistry 반영).
+- **A0 Review Round 2 (2026-08-08): ACCEPTED** — `A0_ACCEPTED`. 추가
+  Architecture blocker 없음. Contract Frozen은 A1에서만 (사용자 승인 후).
 - 이 §10은 검토 이력/provenance 기록이며 ADR/Contract 결정 권위로 사용하지
   않는다.

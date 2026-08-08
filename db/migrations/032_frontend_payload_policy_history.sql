@@ -27,52 +27,90 @@ $$;
 -- ---- Scope C: owner-side PayloadAvailability / Retention sidecars --------
 
 CREATE TABLE IF NOT EXISTS canonical.history_payload_state (
-  source_event_id text PRIMARY KEY,
   resource_project_id text NOT NULL,
+  source_event_kind text NOT NULL,
+  source_event_id text NOT NULL,
   payload_availability text NOT NULL
     CHECK (payload_availability IN ('AVAILABLE', 'REDACTED', 'PURGED_BY_POLICY', 'UNAVAILABLE')),
   tombstone_metadata jsonb,
   changed_at timestamptz NOT NULL,
   reason text NOT NULL,
-  policy_revision text
+  policy_revision text,
+  PRIMARY KEY (resource_project_id, source_event_kind, source_event_id)
 );
 
 CREATE TABLE IF NOT EXISTS frontend_review.history_payload_state (
-  source_event_id text PRIMARY KEY,
   resource_project_id text NOT NULL,
+  source_event_kind text NOT NULL,
+  source_event_id text NOT NULL,
   payload_availability text NOT NULL
     CHECK (payload_availability IN ('AVAILABLE', 'REDACTED', 'PURGED_BY_POLICY', 'UNAVAILABLE')),
   tombstone_metadata jsonb,
   changed_at timestamptz NOT NULL,
   reason text NOT NULL,
-  policy_revision text
+  policy_revision text,
+  PRIMARY KEY (resource_project_id, source_event_kind, source_event_id)
 );
 
 CREATE TABLE IF NOT EXISTS frontend_external_action.history_payload_state (
-  source_event_id text PRIMARY KEY,
   resource_project_id text NOT NULL,
+  source_event_kind text NOT NULL,
+  source_event_id text NOT NULL,
   payload_availability text NOT NULL
     CHECK (payload_availability IN ('AVAILABLE', 'REDACTED', 'PURGED_BY_POLICY', 'UNAVAILABLE')),
   tombstone_metadata jsonb,
   changed_at timestamptz NOT NULL,
   reason text NOT NULL,
-  policy_revision text
+  policy_revision text,
+  PRIMARY KEY (resource_project_id, source_event_kind, source_event_id)
 );
 
 CREATE TABLE IF NOT EXISTS settings.history_payload_state (
-  source_event_id text PRIMARY KEY,
   resource_project_id text NOT NULL,
+  source_event_kind text NOT NULL,
+  source_event_id text NOT NULL,
   payload_availability text NOT NULL
     CHECK (payload_availability IN ('AVAILABLE', 'REDACTED', 'PURGED_BY_POLICY', 'UNAVAILABLE')),
   tombstone_metadata jsonb,
   changed_at timestamptz NOT NULL,
   reason text NOT NULL,
-  policy_revision text
+  policy_revision text,
+  PRIMARY KEY (resource_project_id, source_event_kind, source_event_id)
 );
 
--- ---- Scope D: Policy History reuse guard --------------------------------
+-- ---- Scope D: Policy History reuse + immutability guard ------------------
 
 -- Ensure settings audit events are queryable by project/actor for the History
 -- adapter (append-only authoritative source).
 CREATE INDEX IF NOT EXISTS settings_audit_events_project_idx
   ON settings.settings_audit_events (project_id, timestamp);
+
+-- Policy History is an append-only authoritative capability owned by
+-- settings-policy (ADR-131 §7). The reused settings historical sources must
+-- be immutable at the DB level: UPDATE/DELETE is rejected, INSERT is allowed.
+
+CREATE OR REPLACE FUNCTION settings.reject_history_mutation()
+RETURNS trigger AS $$
+BEGIN
+  RAISE EXCEPTION 'settings history is append-only: % mutation is forbidden', TG_TABLE_NAME
+    USING ERRCODE = '55000';
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS settings_revisions_no_update_delete
+  ON settings.settings_revisions;
+CREATE TRIGGER settings_revisions_no_update_delete
+  BEFORE UPDATE OR DELETE ON settings.settings_revisions
+  FOR EACH ROW EXECUTE FUNCTION settings.reject_history_mutation();
+
+DROP TRIGGER IF EXISTS policy_context_revisions_no_update_delete
+  ON settings.policy_context_revisions;
+CREATE TRIGGER policy_context_revisions_no_update_delete
+  BEFORE UPDATE OR DELETE ON settings.policy_context_revisions
+  FOR EACH ROW EXECUTE FUNCTION settings.reject_history_mutation();
+
+DROP TRIGGER IF EXISTS settings_audit_events_no_update_delete
+  ON settings.settings_audit_events;
+CREATE TRIGGER settings_audit_events_no_update_delete
+  BEFORE UPDATE OR DELETE ON settings.settings_audit_events
+  FOR EACH ROW EXECUTE FUNCTION settings.reject_history_mutation();

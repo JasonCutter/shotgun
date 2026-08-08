@@ -217,6 +217,31 @@ const requireOptionalUnknown = (
   return value;
 };
 
+/**
+ * Exact-key object gate: rejects any field not in `allowedKeys` (fail-closed).
+ * This is what makes the decoders "strict" — browser-authored authority fields
+ * (Actor, Approval, Capability, Policy, ...) can never pass through unknown
+ * fields.
+ */
+const strictObject = (
+  value: unknown,
+  allowedKeys: readonly string[],
+  path: string,
+): Record<string, unknown> => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new FrontendContractError('INVALID_REQUEST', `${path} must be an object`);
+  }
+  const object = value as Record<string, unknown>;
+  const unexpected = Object.keys(object).filter((key) => !allowedKeys.includes(key));
+  if (unexpected.length > 0) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      `${path} contains unsupported fields: ${unexpected.join(', ')}`,
+    );
+  }
+  return object;
+};
+
 // ---- decoders ---------------------------------------------------------------
 
 const HISTORY_DOMAINS: readonly string[] = ['CANONICAL', 'REVIEW', 'EXTERNAL_ACTION', 'POLICY'];
@@ -238,10 +263,18 @@ export const decodePayloadAvailabilityV1 = (
 };
 
 export const decodeHistoryCursorV1 = (value: unknown, path: string): HistoryCursorV1 => {
-  if (typeof value !== 'object' || value === null) {
-    throw new FrontendContractError('INVALID_REQUEST', `${path} must be an object`);
-  }
-  const object = value as Record<string, unknown>;
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'occurredAt',
+      'domainKind',
+      'sourceEventKind',
+      'sourceEventId',
+      'sourceSequence',
+    ],
+    path,
+  );
   if (object.schemaVersion !== '1.0.0') {
     throw new FrontendContractError('INVALID_REQUEST', `${path}.schemaVersion must be 1.0.0`);
   }
@@ -267,10 +300,25 @@ export const decodeHistoryCursorV1 = (value: unknown, path: string): HistoryCurs
 };
 
 export const decodeHistoryEntryV1 = (value: unknown, path: string): HistoryEntryV1 => {
-  if (typeof value !== 'object' || value === null) {
-    throw new FrontendContractError('INVALID_REQUEST', `${path} must be an object`);
-  }
-  const object = value as Record<string, unknown>;
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'historyEntryId',
+      'resourceProjectId',
+      'domainKind',
+      'domainResourceKind',
+      'domainResourceId',
+      'sourceEventKind',
+      'sourceEventId',
+      'sourceSequence',
+      'occurredAt',
+      'payloadAvailability',
+      'payloadSnapshot',
+      'projectedAt',
+    ],
+    path,
+  );
   if (object.schemaVersion !== '1.0.0') {
     throw new FrontendContractError('INVALID_REQUEST', `${path}.schemaVersion must be 1.0.0`);
   }
@@ -313,10 +361,19 @@ export const decodeHistoryEntryV1 = (value: unknown, path: string): HistoryEntry
 };
 
 export const decodeProjectTombstoneV1 = (value: unknown, path: string): ProjectTombstoneV1 => {
-  if (typeof value !== 'object' || value === null) {
-    throw new FrontendContractError('INVALID_REQUEST', `${path} must be an object`);
-  }
-  const object = value as Record<string, unknown>;
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'projectId',
+      'deletedAt',
+      'deletedBy',
+      'reason',
+      'retentionClass',
+      'lineageDigest',
+    ],
+    path,
+  );
   if (object.schemaVersion !== '1.0.0') {
     throw new FrontendContractError('INVALID_REQUEST', `${path}.schemaVersion must be 1.0.0`);
   }
@@ -335,10 +392,19 @@ export const decodeDeletedProjectAuditScopeV1 = (
   value: unknown,
   path: string,
 ): DeletedProjectAuditScopeV1 => {
-  if (typeof value !== 'object' || value === null) {
-    throw new FrontendContractError('INVALID_REQUEST', `${path} must be an object`);
-  }
-  const object = value as Record<string, unknown>;
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'scopeId',
+      'projectId',
+      'grantedPrincipalIds',
+      'grantedAt',
+      'grantedBy',
+      'revokedAt',
+    ],
+    path,
+  );
   if (object.schemaVersion !== '1.0.0') {
     throw new FrontendContractError('INVALID_REQUEST', `${path}.schemaVersion must be 1.0.0`);
   }
@@ -377,10 +443,21 @@ export const decodeReversalDraftChangeSetV1 = (
   value: unknown,
   path: string,
 ): ReversalDraftChangeSetV1 => {
-  if (typeof value !== 'object' || value === null) {
-    throw new FrontendContractError('INVALID_REQUEST', `${path} must be an object`);
-  }
-  const object = value as Record<string, unknown>;
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'reversalId',
+      'resourceProjectId',
+      'sourceRevisionId',
+      'sourceCommitId',
+      'historicalApprovalRef',
+      'status',
+      'createdAt',
+      'createdBy',
+    ],
+    path,
+  );
   if (object.schemaVersion !== '1.0.0') {
     throw new FrontendContractError('INVALID_REQUEST', `${path}.schemaVersion must be 1.0.0`);
   }
@@ -408,10 +485,11 @@ export const decodeReversalEligibilityV1 = (
   value: unknown,
   path: string,
 ): ReversalEligibilityV1 => {
-  if (typeof value !== 'object' || value === null) {
-    throw new FrontendContractError('INVALID_REQUEST', `${path} must be an object`);
-  }
-  const object = value as Record<string, unknown>;
+  const object = strictObject(
+    value,
+    ['schemaVersion', 'sourceRevisionId', 'eligible', 'reasons'],
+    path,
+  );
   if (object.schemaVersion !== '1.0.0') {
     throw new FrontendContractError('INVALID_REQUEST', `${path}.schemaVersion must be 1.0.0`);
   }
@@ -430,5 +508,91 @@ export const decodeReversalEligibilityV1 = (
     sourceRevisionId: requireString(object, path, 'sourceRevisionId'),
     eligible: object.eligible,
     reasons: reasons as readonly string[],
+  };
+};
+
+// ---- API request decoders (fail-closed: browser-authored authority fields
+// ---- such as Actor, Approval, Capability, Policy are rejected via exact-key
+// ---- gate). -----------------------------------------------------------------
+
+export const decodeListHistoryWorkspaceRequestV1 = (
+  value: unknown,
+  path: string,
+): ListHistoryWorkspaceRequestV1 => {
+  const object = strictObject(
+    value,
+    ['schemaVersion', 'resourceProjectId', 'cursor', 'limit', 'domainKinds'],
+    path,
+  );
+  if (object.schemaVersion !== '1.0.0') {
+    throw new FrontendContractError('INVALID_REQUEST', `${path}.schemaVersion must be 1.0.0`);
+  }
+  const resourceProjectId = requireString(object, path, 'resourceProjectId');
+  if (typeof object.limit !== 'number' || !Number.isInteger(object.limit) || object.limit <= 0) {
+    throw new FrontendContractError('INVALID_REQUEST', `${path}.limit must be a positive integer`);
+  }
+  const domainKinds = object.domainKinds;
+  if (domainKinds !== undefined) {
+    if (
+      !Array.isArray(domainKinds) ||
+      domainKinds.some((kind) => typeof kind !== 'string' || !HISTORY_DOMAINS.includes(kind))
+    ) {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        `${path}.domainKinds must be an array of HistorySourceDomainKindV1`,
+      );
+    }
+  }
+  return {
+    schemaVersion: '1.0.0',
+    resourceProjectId,
+    cursor:
+      object.cursor === undefined
+        ? undefined
+        : decodeHistoryCursorV1(object.cursor, `${path}.cursor`),
+    limit: object.limit,
+    domainKinds:
+      domainKinds === undefined ? undefined : (domainKinds as readonly HistorySourceDomainKindV1[]),
+  };
+};
+
+export const decodeGetHistoryEntryRequestV1 = (
+  value: unknown,
+  path: string,
+): GetHistoryEntryRequestV1 => {
+  const object = strictObject(
+    value,
+    ['schemaVersion', 'resourceProjectId', 'historyEntryId'],
+    path,
+  );
+  if (object.schemaVersion !== '1.0.0') {
+    throw new FrontendContractError('INVALID_REQUEST', `${path}.schemaVersion must be 1.0.0`);
+  }
+  return {
+    schemaVersion: '1.0.0',
+    resourceProjectId: requireString(object, path, 'resourceProjectId'),
+    historyEntryId: requireString(object, path, 'historyEntryId'),
+  };
+};
+
+export const decodeCreateReversalDraftChangeSetRequestV1 = (
+  value: unknown,
+  path: string,
+): CreateReversalDraftChangeSetRequestV1 => {
+  // Fail-closed exact-key gate: browser may never submit Actor/Approval/
+  // Capability/Policy authority through this request.
+  const object = strictObject(
+    value,
+    ['schemaVersion', 'resourceProjectId', 'sourceRevisionId', 'reason'],
+    path,
+  );
+  if (object.schemaVersion !== '1.0.0') {
+    throw new FrontendContractError('INVALID_REQUEST', `${path}.schemaVersion must be 1.0.0`);
+  }
+  return {
+    schemaVersion: '1.0.0',
+    resourceProjectId: requireString(object, path, 'resourceProjectId'),
+    sourceRevisionId: requireString(object, path, 'sourceRevisionId'),
+    reason: requireString(object, path, 'reason'),
   };
 };

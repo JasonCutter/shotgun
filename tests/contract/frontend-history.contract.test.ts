@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import { FrontendContractError } from '../../packages/contracts/src/index.js';
 import {
+  decodeCreateReversalDraftChangeSetRequestV1,
   decodeDeletedProjectAuditScopeV1,
+  decodeGetHistoryEntryRequestV1,
   decodeHistoryCursorV1,
   decodeHistoryEntryV1,
+  decodeListHistoryWorkspaceRequestV1,
   decodePayloadAvailabilityV1,
   decodeProjectTombstoneV1,
   decodeReversalDraftChangeSetV1,
@@ -162,5 +165,108 @@ describe('FE-P5-S2 WP1 contract decoders', () => {
 
   it('rejects malformed payload availability type', () => {
     expect(() => decodePayloadAvailabilityV1(123, 'availability')).toThrow(FrontendContractError);
+  });
+
+  // ---- Round 1: strict unknown-field rejection ---------------------------
+
+  it('rejects unknown top-level fields (exact-key gate)', () => {
+    expect(() =>
+      decodeHistoryEntryV1({ ...validEntry, unexpectedAuthorityField: 'anything' }, 'entry'),
+    ).toThrow(FrontendContractError);
+    expect(() =>
+      decodeHistoryCursorV1(
+        {
+          schemaVersion: '1.0.0',
+          occurredAt: '2026-08-08T00:00:00.000Z',
+          domainKind: 'REVIEW',
+          sourceEventKind: 'DECISION',
+          sourceEventId: 'decision:1',
+          extra: 'x',
+        },
+        'cursor',
+      ),
+    ).toThrow(FrontendContractError);
+    expect(() =>
+      decodeReversalEligibilityV1(
+        {
+          schemaVersion: '1.0.0',
+          sourceRevisionId: 'revision:1',
+          eligible: true,
+          reasons: [],
+          approval: 'authority',
+        },
+        'eligibility',
+      ),
+    ).toThrow(FrontendContractError);
+  });
+
+  it('rejects unknown nested cursor fields', () => {
+    expect(() =>
+      decodeListHistoryWorkspaceRequestV1(
+        {
+          schemaVersion: '1.0.0',
+          resourceProjectId: 'project:1',
+          limit: 10,
+          cursor: {
+            schemaVersion: '1.0.0',
+            occurredAt: '2026-08-08T00:00:00.000Z',
+            domainKind: 'CANONICAL',
+            sourceEventKind: 'CLAIM',
+            sourceEventId: 'evt:1',
+            authority: 'x',
+          },
+        },
+        'request',
+      ),
+    ).toThrow(FrontendContractError);
+  });
+
+  it('rejects browser-authored approval/capability fields on Reversal request (fail-closed)', () => {
+    expect(() =>
+      decodeCreateReversalDraftChangeSetRequestV1(
+        {
+          schemaVersion: '1.0.0',
+          resourceProjectId: 'project:1',
+          sourceRevisionId: 'revision:1',
+          reason: 'rollback',
+          actorId: 'browser-forged',
+        },
+        'request',
+      ),
+    ).toThrow(FrontendContractError);
+    expect(() =>
+      decodeCreateReversalDraftChangeSetRequestV1(
+        {
+          schemaVersion: '1.0.0',
+          resourceProjectId: 'project:1',
+          sourceRevisionId: 'revision:1',
+          reason: 'rollback',
+        },
+        'request',
+      ),
+    ).not.toThrow(FrontendContractError);
+  });
+
+  it('decodes valid API requests', () => {
+    const list = decodeListHistoryWorkspaceRequestV1(
+      {
+        schemaVersion: '1.0.0',
+        resourceProjectId: 'project:1',
+        limit: 25,
+        domainKinds: ['CANONICAL', 'REVIEW'],
+      },
+      'request',
+    );
+    expect(list.limit).toBe(25);
+
+    const get = decodeGetHistoryEntryRequestV1(
+      {
+        schemaVersion: '1.0.0',
+        resourceProjectId: 'project:1',
+        historyEntryId: 'history:entry:1',
+      },
+      'request',
+    );
+    expect(get.historyEntryId).toBe('history:entry:1');
   });
 });

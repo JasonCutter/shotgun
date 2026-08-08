@@ -1,7 +1,7 @@
 ---
 id: FRONTEND-PHASE-5-SECTION-1-WP6-EVIDENCE-260808001
 classification: CANONICAL
-status: wp6_accepted
+status: final_after_merge
 work_item: FE-P5-S1
 created_at: 2026-08-08
 subject_base: 8c00519d7498ef1783de1a4e4e48da1a2b4bb8bd
@@ -298,12 +298,19 @@ The user transitioned PR #73 to **Ready for review** (`draft: false`) on 2026-08
 final head `0520451577268c80fa1dabc66ca680e7fae39268` passed CI #647 (Frontend / Quality /
 Required Gates all green) and the PR was squash-merged into `main` as commit
 `90a38ab402cc28e291f6dc8f673acc67597cc670` (2026-08-08T10:26:53Z). PR #73 is now
-**MERGED / CLOSED**.
+**MERGED / CLOSED**. The post-merge closure record was merged as PR #74 into `main` as commit
+`d835395ed7d32108abefe30352711f241f186bf1` (2026-08-08T10:36:18Z, CI #649 SUCCESS).
+
+**Final after merge — COMPLETE (2026-08-08).** The post-merge auto CI on
+`main@d835395ed...` (run **#650**) returned **SUCCESS** (Frontend / Quality / Required Gates all
+green). FE-P5-S1 is confirmed **COMPLETE / FINAL_AFTER_MERGE**.
 
 ```
-FE-P5-S1: IMPLEMENTATION GOVERNANCE CLOSURE COMPLETE
+FE-P5-S1: COMPLETE / FINAL_AFTER_MERGE
 WP1–WP6: ACCEPTED
 PR #73: MERGED (squash) → main 90a38ab40
+PR #74: MERGED (post-merge closure) → main d835395ed
+Post-merge main CI: #650 SUCCESS
 Deployment: NOT_AUTHORIZED
 FE-P5-S2: NOT_AUTHORIZED
 Production Verification: NOT_RUN

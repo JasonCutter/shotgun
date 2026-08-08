@@ -86,30 +86,122 @@ Excluded:
 - Deployment: NOT AUTHORIZED
 ```
 
-## 4. Migration 구현 범위
+## 4. Migration 구현 범위 (실제 구현 계획 고정)
 
 `Migration: REQUIRED / ADDITIVE` (A1에서 확정 — 재판단하지 않음).
 
-4개 persistence scope를 각각 구현 항목으로 고정:
+**Migration Sequence** (현재 latest = `029_frontend_activity_read_model.sql`):
 
 ```text
-A. History Projection
-   - rebuildable history projection index
-   - watermark/checkpoint
-   - authority = NON-AUTHORITATIVE
-B. Deleted Project
-   - ProjectTombstone persistence
-   - DeletedProjectAuditScope / authorization binding
-C. Payload Availability / Retention
-   - payload availability/tombstone state
-   - purge AuditEvent
-D. Policy History
-   - append-only policy-change history
+Proposed FE-P5-S2 migrations:
+030_frontend_history_projection.sql        → Scope A
+031_frontend_deleted_project_audit.sql     → Scope B
+032_frontend_payload_policy_history.sql    → Scope C + D
 ```
 
-IR에서 처음으로 실제 **migration number table / index constraint /
-rollback-rebuild strategy**를 제안한다. 단, IR 승인 전 migration 파일을 실제
-생성하거나 실행하지 않는다. 기존 데이터 무변경, destructive migration 없음.
+각 migration은 029 패턴을 따른다: preflight(직전 migration 존재 확인) +
+additive `CREATE SCHEMA/TABLE/INDEX` + constraint. 기존 Domain 테이블 수정 없음,
+destructive migration 없음, 기존 데이터 무변경. migration 파일은 **IR 승인 전
+생성·실행 금지**.
+
+### Scope A — History Projection (`030_frontend_history_projection.sql`)
+
+```text
+Schema: frontend_history (신규)
+Table:  frontend_history.history_projection_index
+Columns (안정 identity/ordering):
+  resource_project_id text NOT NULL
+  history_entry_id text NOT NULL          -- projection identity only
+  domain_kind text NOT NULL
+  domain_resource_kind text NOT NULL      -- shared OperationalResourceKindRegistry
+  domain_resource_id text NOT NULL        -- concrete identity 보존
+  source_event_kind text NOT NULL         -- CANONICAL/REVIEW/EXTERNAL_ACTION/POLICY
+  source_event_id text NOT NULL           -- historyEventId/auditEventId/decisionId/...
+  occurred_at timestamptz NOT NULL
+  payload_availability text NOT NULL      -- AVAILABLE/REDACTED/PURGED_BY_POLICY/UNAVAILABLE
+  payload_snapshot jsonb                  -- bounded safe payload
+  cursor_sequence bigint NOT NULL         -- stable per-project ordering tie-breaker
+  projected_at timestamptz NOT NULL
+  PRIMARY KEY (resource_project_id, history_entry_id)
+  UNIQUE (resource_project_id, domain_kind, source_event_kind, source_event_id)
+  -- source Domain identity는 projection identity로 대체하지 않음 (ADR-131 §2)
+Table:  frontend_history.projection_watermarks
+  (resource_project_id, adapter_id, source_updated_at, projected_at,
+   last_cursor_sequence, adapter_status, snapshot_revision)
+  PRIMARY KEY (resource_project_id, adapter_id)
+Indexes:
+  - stable ordering index (resource_project_id, cursor_sequence)
+  - source-domain identity lookup
+    (resource_project_id, domain_kind, source_event_kind, source_event_id)
+Authority: NON-AUTHORITATIVE (rebuildable)
+```
+
+### Scope B — Deleted Project (`031_frontend_deleted_project_audit.sql`)
+
+```text
+Schema: project_audit (신규)
+Table:  project_audit.project_tombstones
+  (project_id text PRIMARY KEY, deleted_at, deleted_by, reason,
+   retention_class text, lineage_digest text)
+Table:  project_audit.deleted_project_audit_scopes
+  (scope_id text PRIMARY KEY, project_id text REFERENCES tombstone,
+   granted_principal_ids jsonb, granted_at, granted_by, revoked_at)
+Constraint: deleted-project audit read는 scope binding + 현재 Capability 재검증
+  (ADR-112 §11/§12)
+Owner: project-administration / security
+```
+
+### Scope C — Payload Availability / Retention (`032_frontend_payload_policy_history.sql`)
+
+```text
+Owning Domain augment (각 authoritative Domain store에 additive state 추가):
+  - payload availability state 컬럼/테이블 (AVAILABLE/REDACTED/PURGED_BY_POLICY/UNAVAILABLE)
+  - tombstone metadata (identity 보존, payload만 redact)
+  - purge AuditEvent append (identity 삭제 금지, ADR-112 §9)
+Constraint: Event identity 삭제·덮어쓰기 금지
+Retention policy authority: settings-policy
+```
+
+### Scope D — Policy History (`032_frontend_payload_policy_history.sql`)
+
+```text
+Decision: Option A — 기존 settings.settings_audit_events를 Policy Change
+History의 authoritative persistence로 REUSE/AUGMENT (중복 authoritative Policy
+History ledger 금지, ADR-131 §7).
+
+Authoritative source (settings-policy):
+  - settings.settings_revisions (snapshot history)
+  - settings.policy_context_revisions (policy binding history)
+  - settings.settings_audit_events (append-only audit — REUSE/AUGMENT)
+
+History adapter는 이 authoritative source를 읽는다. 별도 settings.policy_change_history
+중복 테이블을 만들지 않는다.
+```
+
+### History Projection Rebuild / Recovery
+
+```text
+Authoritative rebuild sources:
+- Canonical Revision / Commit
+- Review Decision / Approval
+- External Action Result / Audit
+- Policy Change History (settings audit/revisions)
+Projection authority: NON-AUTHORITATIVE
+Rebuild scope: Project-scoped
+Rebuild 방식 (선택): project-scoped clear→replay (project rows 삭제 후
+  authoritative source에서 deterministic replay)
+Rules:
+1. History projection rows/index는 삭제·재생성 가능
+2. Source Domain History는 rebuild 과정에서 수정/삭제 금지
+3. source Domain identity는 동일하게 보존
+4. Frozen ordering/tie-breaker 규칙으로 deterministic rebuild
+5. projection write와 해당 watermark advance는 atomic
+6. 실패한 adapter는 watermark를 전진시키지 않음
+7. interruption 후 last committed watermark/source position부터 idempotent
+   replay/resume 가능
+8. rebuild failure가 authoritative History 손상으로 이어져서는 안 됨
+9. rebuild/repair는 central authoritative History ledger를 만들지 않음
+```
 
 ## 5. Work Package 분해
 
@@ -131,6 +223,24 @@ WP6 — Integrated Verification + Security + Performance
   Implementation Request explicitly authorizes sequential continuation.
 - A blocking Contract/Architecture conflict stops implementation and requires
   amendment; it must not be silently resolved in Product code.
+```
+
+### WP Review Authority
+
+```text
+WP Review Authority: GPT Implementation Review Gate
+WP ACCEPTED: focused implementation evidence acceptance only
+It does NOT:
+- change FE-P5-S2 completion status
+- authorize merge
+- authorize Contract/ADR changes
+If sequential continuation was explicitly authorized by the user, WPn ACCEPTED
+permits entry to WPn+1 under this IR.
+User approval remains required for:
+- Architecture/Contract amendment
+- AC-16 numeric threshold
+- Section completion
+- Ready/Merge
 ```
 
 운용 순서: `WP1 구현 → focused verification → WP1 review → ACCEPTED → WP2 ...`

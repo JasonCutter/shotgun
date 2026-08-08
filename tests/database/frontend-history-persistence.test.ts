@@ -8,27 +8,30 @@ const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
 
 describe.runIf(pool)('FE-P5-S2 WP1 persistence (migrations 030-032)', () => {
   it('accepts same source_event_id with different source_event_kind in payload sidecars', async () => {
+    // Uses canonical.history_payload_state (migration 032 sidecar) which is not
+    // dropped by per-schema rollback tests that only touch frontend_review /
+    // frontend_knowledge_graph / frontend_external_action.
     const project = `pg-hist-${randomUUID().slice(0, 8)}`;
     await pool!.query(
-      `INSERT INTO frontend_review.history_payload_state
+      `INSERT INTO canonical.history_payload_state
          (resource_project_id, source_event_kind, source_event_id, payload_availability, changed_at, reason)
        VALUES ($1, 'DECISION', 'event:same', 'AVAILABLE', now(), 'test')`,
       [project],
     );
     await pool!.query(
-      `INSERT INTO frontend_review.history_payload_state
+      `INSERT INTO canonical.history_payload_state
          (resource_project_id, source_event_kind, source_event_id, payload_availability, changed_at, reason)
        VALUES ($1, 'APPROVAL', 'event:same', 'AVAILABLE', now(), 'test')`,
       [project],
     );
     const { rows } = await pool!.query(
-      `SELECT count(*)::int AS count FROM frontend_review.history_payload_state
+      `SELECT count(*)::int AS count FROM canonical.history_payload_state
         WHERE resource_project_id = $1 AND source_event_id = 'event:same'`,
       [project],
     );
     expect(rows[0].count).toBe(2);
     await pool!.query(
-      `DELETE FROM frontend_review.history_payload_state WHERE resource_project_id = $1`,
+      `DELETE FROM canonical.history_payload_state WHERE resource_project_id = $1`,
       [project],
     );
   });

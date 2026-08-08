@@ -45,15 +45,18 @@ Frontend and Human Interaction Architecture의 횡단 ADR을 식별한다. 이 �
 | ADR-128 | Review Context Revision, Item Decision and Purpose-bound Approval Boundary                             | Accepted 2026-08-04 / FE-P4-S1 Product implementation authorized                         | Git ADR; no Legacy Notion owner        |
 | ADR-129 | External Action Product Resource, Attempt, Credential, Budget and Compensation Boundary                | Accepted 2026-08-05 / FE-P4-S2 Product implementation complete                           | Git ADR; no Legacy Notion owner        |
 | ADR-130 | Frontend Agent·Job Activity Federated Projection, Identity and Retry Boundary                          | Accepted 2026-08-06 / FE-P5-S1 Contract frozen / Product implementation not authorized   | Git ADR; no Legacy Notion owner        |
+| ADR-131 | History Workspace Federated Projection, Identity, Retention and Reversal Boundary                      | Accepted 2026-08-08 / FE-P5-S2 Contract frozen / Product implementation not authorized   | Git ADR; no Legacy Notion owner        |
 
 ADR-117과 ADR-120은 Frontend 기능 ADR이 아니라 Project 전체 문서 Canonical 운영을 지배한다. ADR-124는 Frontend Work
 Item과 완료 권위의 Accepted 경계를 정의한다. ADR-129는 FE-P4-S2의 Product 실행·Attempt·Credential·Budget·Compensation
 경계를 정의한다. ADR-130은 ADR-111의 Activity 설계를 federated read projection, Domain identity mapping, retry
-semantics, additive read model과 polling baseline으로 구체화하며 ADR-112의 History 경계를 보존한다.
+semantics, additive read model과 polling baseline으로 구체화하며 ADR-112의 History 경계를 보존한다. ADR-131은
+ADR-112의 History 경계를 federated History read projection, identity/ordering/cursor, payload availability/retention/
+tombstone, Reversal ownership과 current approval semantics, DeletedProjectAuditScope로 구체화한다.
 
 ## Git 소유 경계
 
-- ADR-099와 ADR-114–130의 권위 본문은 `docs/architecture/adr/`의 개별 Git 파일이다.
+- ADR-099와 ADR-114–131의 권위 본문은 `docs/architecture/adr/`의 개별 Git 파일이다.
 - ADR-100–113의 권위 본문은 [`adr-100-113-consolidated-record.md`](adr-100-113-consolidated-record.md)다.
 - 개별 Notion 페이지는 Legacy Reference와 승인 당시의 원문 이력이다.
 - 전역 번호·Gap·Owner 정보는 [`docs/architecture/adr/adr-registry.json`](../adr/adr-registry.json)이 지배한다.

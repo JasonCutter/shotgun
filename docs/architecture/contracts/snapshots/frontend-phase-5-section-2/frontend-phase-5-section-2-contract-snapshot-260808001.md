@@ -1,30 +1,35 @@
 ---
 id: FRONTEND-PHASE-5-SECTION-2-CONTRACT-SNAPSHOT-260808001
-classification: CANDIDATE
-status: candidate_awaiting_architecture_contract_approval
+classification: CANONICAL
+status: frozen_product_implementation_not_authorized
 revision: 1
 created_at: 2026-08-08
+approved_at: 2026-08-08
+approved_by: user
 work_item: FE-P5-S2-A1
 subject_base: 3a1ea4f2e65da3b67b79b654c69d64f62120c654
-governing_adr: ADR-131 (CANDIDATE)
+governing_adr: ADR-131 (ACCEPTED)
 gap_audit: docs/engineering/frontend-phase-5-section-2-gap-audit-260808001.md
 contract_preparation: docs/engineering/frontend-phase-5-section-2-contract-preparation-260808001.md
 ---
 
-# FE-P5-S2 — History·Audit·Rollback Contract Snapshot r1 (A1 Candidate)
+# FE-P5-S2 — History·Audit·Rollback Contract Snapshot r1 (FROZEN)
 
-> **Candidate only.** This becomes FROZEN only after the user
-> Architecture/Contract approval (A1 step 7). A1 execution authorization alone
-> does not freeze this contract or its AC.
+> **FROZEN by USER on 2026-08-08** (A1 Architecture/Contract explicit user
+> approval). Product implementation: NOT_AUTHORIZED. Additive migration
+> implementation: NOT_AUTHORIZED (Implementation Request required).
 
 ## 1. Authority
 
 - A0 COMPLETE / A0_ACCEPTED (`main@3a1ea4f2`, CI #659 SUCCESS).
-- A1 EXECUTION: user-approved 2026-08-08 (Candidate writing only).
-- Governing ADR: **ADR-131 (CANDIDATE)** — accepted only after user approval.
+- A1 EXECUTION: user-approved 2026-08-08.
+- **A1 Architecture/Contract: user-approved 2026-08-08 — this snapshot is
+  FROZEN.**
+- Governing ADR: **ADR-131 (ACCEPTED)**.
 - Product implementation: `NOT_AUTHORIZED` / Additive migration:
   `NOT_AUTHORIZED` / New runtime dependency: `NOT_REQUIRED`.
-- Acceptance Criteria: `FE-P5-S2-AC-01` through `FE-P5-S2-AC-16` (Candidate).
+- Acceptance Criteria: `FE-P5-S2-AC-01` through `FE-P5-S2-AC-16` (FROZEN;
+  AC-16 numeric threshold = DEFERRED_PARAMETER).
 
 ## 2. Product boundary
 

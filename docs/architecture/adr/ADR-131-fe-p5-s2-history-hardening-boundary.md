@@ -1,8 +1,9 @@
 # ADR-131 — FE-P5-S2 History Workspace Federated Projection, Identity, Retention and Reversal Boundary
 
-- Status: **CANDIDATE** (A1)
+- Status: **ACCEPTED**
 - Proposed at: 2026-08-08
-- Proposed by: `A1` (FE-P5-S2 A1 Architecture Decision + Contract Finalization)
+- Accepted at: 2026-08-08
+- Accepted by: `USER`
 - Work item: `FE-P5-S2`
 - Subject base: `main@3a1ea4f2e65da3b67b79b654c69d64f62120c654`
 - Related ADRs: ADR-111, ADR-112, ADR-113, ADR-118, ADR-119, ADR-124, ADR-126, ADR-128, ADR-129, ADR-130
@@ -10,9 +11,9 @@
   `docs/engineering/frontend-phase-5-section-2-gap-audit-260808001.md`
 - Contract preparation:
   `docs/engineering/frontend-phase-5-section-2-contract-preparation-260808001.md`
-- Contract snapshot (Candidate):
+- Contract snapshot:
   `docs/architecture/contracts/snapshots/frontend-phase-5-section-2/frontend-phase-5-section-2-contract-snapshot-260808001.md`
-- Decision owner: `USER` (Candidate → ACCEPTED requires user approval)
+- Decision owner: `USER`
 - Product implementation: `NOT_AUTHORIZED`
 
 > A1 execution authorization alone does NOT make this ADR ACCEPTED. This is a
@@ -161,5 +162,5 @@ second ledger.
 
 ## Acceptance
 
-Candidate → **ACCEPTED** requires user Architecture/Contract approval (A1 step 7).
-Frozen Contract and AC live in the Contract snapshot Candidate.
+- **ACCEPTED by USER on 2026-08-08** (A1 Architecture/Contract explicit user
+  approval). Frozen Contract and AC live in the Contract snapshot.

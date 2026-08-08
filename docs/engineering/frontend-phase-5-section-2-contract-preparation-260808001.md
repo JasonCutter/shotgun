@@ -24,7 +24,13 @@ Included (후보):
 
 - 통합 History Workspace (federated read projection of existing Domain History).
 - Canonical Revision/Commit, Review Decision/Approval, External Action
-  Attempt/Verification/Audit, Source version, Ask history 조회.
+  Attempt/Verification/Audit 조회 (Canonical Implementation Plan §2 필수 범위:
+  Append-only History, Revision, Decision, Approval, Canonical Commit, External
+  Result, Retention/Tombstone, Reversal DraftChangeSet, Compensating Action).
+- Source version, Ask history — `REUSE_AVAILABLE / OPTIONAL_HISTORY_FAMILY`
+  (필수 scope 여부는 A1에서 결정, 범위 확대 방지).
+- Settings/Policy Change History — `REUSE / ADAPTER / NEW READ CAPABILITY`
+  판정 필요 (NEEDS_EXACT_AUDIT, ADR-112 Context의 "Policy history" 재현 요구).
 - Event Payload Availability 상태 (`AVAILABLE / REDACTED / PURGED_BY_POLICY /
 UNAVAILABLE`).
 - History Retention / Tombstone (Payload redaction, Identity 보존).
@@ -61,6 +67,12 @@ Identity 규약 (후보): 통합 `HistoryEntryV1`는 domain event identity를 �
 않고 참조만 한다 (`historyEventId`, `auditEventId`, `revisionId`, `decisionId`
 등 각 Domain의 stable identity를 유지). 삭제·덮어쓰기 금지 (ADR-112 §2/§3).
 
+**OperationalResourceKindRegistry (ADR-113, 후보 반영)**: HistoryEntry는 공유
+`OperationalResourceKindRegistry`를 사용하고, Aggregate Resource Kind와
+Concrete Resource Kind를 구분한다. `domainResourceId`/concrete identity를
+보존하며 History projection identity가 source Domain identity를 대체하지
+않는다.
+
 ## 3. Proposed API boundary
 
 Read (federated read model — authoritative 아님):
@@ -88,43 +100,47 @@ Capability (후보): `history:read`, `history:audit:read`, `action:rollback`,
 
 FE-P5-S1-AC-01~16 형식 참고. 확정은 A1 (Frozen 시 `FE-P5-S2-AC-01` ...).
 
-| AC    | 제목 (후보)                                                                                  | 검증                       |
-| ----- | -------------------------------------------------------------------------------------------- | -------------------------- |
-| AC-01 | History Workspace가 기존 Domain History를 federated로 조회 (중앙 원장 미생성)                | Contract/unit + read model |
-| AC-02 | HistoryEntry가 domain identity를 대체하지 않고 참조                                          | Contract                   |
-| AC-03 | Event identity 삭제·덮어쓰기 금지                                                            | negative test              |
-| AC-04 | Payload Availability 상태 노출 (AVAILABLE/REDACTED/PURGED_BY_POLICY/UNAVAILABLE)             | Contract + golden          |
-| AC-05 | PURGED_BY_POLICY가 Identity가 아닌 payload redaction·tombstone                               | negative test              |
-| AC-06 | History retention이 Log retention과 분리                                                     | Contract + unit            |
-| AC-07 | Canonical Rollback이 Reversal DraftChangeSet (직접 복원 금지)                                | negative test              |
-| AC-08 | Reversal이 현재 snapshot·영향·Review·Approval 흐름 준수                                      | golden + security          |
-| AC-09 | External rollback이 별도 Compensating Action 재사용                                          | reuse test                 |
-| AC-10 | Deleted Project audit 접근이 ProjectTombstone + DeletedProjectAuditScope + Capability 재검증 | security negative test     |
-| AC-11 | 과거 membership만으로 deleted-project audit 접근 불가                                        | security negative test     |
-| AC-12 | Restoration이 explicit recovery lineage 생성                                                 | golden                     |
-| AC-13 | 조회 시 Capability 재검증 (fail-closed)                                                      | security                   |
-| AC-14 | ordering/cursor/pagination 규약 (tie-breaker 포함)                                           | contract + golden          |
-| AC-15 | FE-P5-S2 완료 조건 매핑 (관찰→추적→조회→Reversal/Compensation)                               | E2E                        |
-| AC-16 | 성능 기준 (History Workspace 조회 P95 이내)                                                  | performance gate           |
+| AC    | 제목 (후보)                                                                                                                               | 검증                       |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| AC-01 | History Workspace가 기존 Domain History를 federated로 조회 (중앙 원장 미생성)                                                             | Contract/unit + read model |
+| AC-02 | HistoryEntry가 domain identity를 대체하지 않고 참조 (공유 OperationalResourceKindRegistry 사용, Aggregate vs Concrete Resource Kind 구분) | Contract                   |
+| AC-03 | Event identity 삭제·덮어쓰기 금지                                                                                                         | negative test              |
+| AC-04 | Payload Availability 상태 노출 (AVAILABLE/REDACTED/PURGED_BY_POLICY/UNAVAILABLE)                                                          | Contract + golden          |
+| AC-05 | PURGED_BY_POLICY가 Identity가 아닌 payload redaction·tombstone                                                                            | negative test              |
+| AC-06 | History retention이 Log retention과 분리                                                                                                  | Contract + unit            |
+| AC-07 | Canonical Rollback이 Reversal DraftChangeSet (직접 복원 금지)                                                                             | negative test              |
+| AC-08 | Reversal이 현재 snapshot·영향·Review·Approval 흐름 준수                                                                                   | golden + security          |
+| AC-09 | External rollback이 별도 Compensating Action 재사용                                                                                       | reuse test                 |
+| AC-10 | Deleted Project audit 접근이 ProjectTombstone + DeletedProjectAuditScope + Capability 재검증                                              | security negative test     |
+| AC-11 | 과거 membership만으로 deleted-project audit 접근 불가                                                                                     | security negative test     |
+| AC-12 | Restoration이 explicit recovery lineage 생성                                                                                              | golden                     |
+| AC-13 | 조회 시 Capability 재검증 (fail-closed)                                                                                                   | security                   |
+| AC-14 | ordering/cursor/pagination 규약 (tie-breaker 포함)                                                                                        | contract + golden          |
+| AC-15 | FE-P5-S2 완료 조건 매핑 (관찰→추적→조회→Reversal/Compensation)                                                                            | E2E                        |
+| AC-16 | 성능 Gate (숫자 없이 Frozen 금지): baseline 측정 → 숫자 budget 제안 → 사용자 승인 → Frozen numeric threshold                              | performance gate (A1 절차) |
 
 ## 5. ADR assessment (Candidate)
 
 - ADR-111: **SUFFICIENT_AS_IS** (Activity projection 경계 유지).
-- ADR-112: **SUFFICIENT_AS_IS** (설계 경계). 단 다음은 **NEW_ADR_REQUIRED 후보**:
-  1. History Workspace federated read model identity/ordering/cursor 규약.
-  2. Payload Availability + History retention/tombstone 적용 범위.
-  3. Reversal DraftChangeSet Product surface (eligibility, approval 재사용,
-     superseded/dependent 처리).
-  4. DeletedProjectAuditScope 접근 경계와 Capability.
-- A1에서 Amendment vs new ADR 최종 판정 (이 문서의 결정 권위 아님).
+- ADR-112: **SUFFICIENT_AS_BASELINE** (retention·tombstone·reversal·
+  deleted-project audit을 하나의 일관된 History 경계로 이미 묶음).
+- **추가 후보: ONE FE-P5-S2 Section-specific hardening ADR (CANDIDATE)** —
+  FE-P5-S1이 ADR-130 하나로 구현 경계를 구체화한 패턴. 하나의 ADR이 federated
+  History read projection / identity·ordering·cursor / payload availability·
+  retention·tombstone / Reversal ownership·eligibility / DeletedProject audit
+  scope를 함께 커버. A1에서 독립 owner·lifecycle 근거가 있을 때만 분리.
+- A1에서 hardening ADR 1건 확정 (이 문서의 결정 권위 아님).
 
 ## 6. Migration assessment (Candidate)
 
-- **REQUIRED (additive) 후보**: History Workspace read model/인덱스 추가.
-  기존 append-only 데이터 무변경 (canonical/review/external audit은 이미
-  append-only).
+- **CONDITIONAL / UNRESOLVED** (동시 확정 금지):
+  - on-read federated aggregation만 채택 → History read-model migration은
+    `NONE`일 수 있음.
+  - persistent projection index 채택 → **additive migration REQUIRED**.
+  - ProjectTombstone / retention state에 새 persistence 필요 → 해당 범위
+    **additive migration REQUIRED**.
 - 삭제·재작성 migration 없음. Rollback: read model 재구축으로 원상 복구 가능.
-- A1에서 확정.
+- A1에서 read model 선택과 함께 확정.
 
 ## 7. Dependency assessment (Candidate)
 
@@ -142,13 +158,31 @@ FE-P5-S1-AC-01~16 형식 참고. 확정은 A1 (Frozen 시 `FE-P5-S2-AC-01` ...).
 4. 통합 ordering tie-breaker (domain별 timestamp/sequence 상이).
 5. History retention 정책 owner (`privacy.retentionDays` 적용 범위).
 6. History Workspace가 새 read model 인덱스(DB)를 추가할지, 기존 API
-   aggregation으로 충분한지.
+   aggregation으로 충분한지 (→ Migration CONDITIONAL/UNRESOLVED).
+7. Settings/Policy Change History의 장기 조회 능력 (REUSE/ADAPTER/NEW READ
+   CAPABILITY) — `ListPolicyHistory` 부재 확인.
+8. Ask/Source History를 History Workspace 필수 event family로 포함할지
+   (OPTIONAL_HISTORY_FAMILY).
+9. OperationalResourceKindRegistry (ADR-113) 적용 범위 — HistoryEntry 공유
+   Registry 사용, Aggregate vs Concrete Resource Kind 구분.
 
 ## 9. A0 판정 요약
 
-- History Ownership: **FEDERATED_READ_PROJECTION** + 신규 authoritative
-  capability 4건 후보.
-- ADR-111/112: SUFFICIENT_AS_IS, new ADR 후보 4건 (A1 확정).
-- Migration: REQUIRED(additive) 후보. Dependency: NOT_REQUIRED 후보.
-- **A1 진입: CONDITIONAL_PROCEED** (Frozen Contract + AC + ADR/Amendment 확정 후).
+- History Ownership: **FEDERATED_READ_PROJECTION** (ACCEPTED) +
+  `AUTHORITATIVE_CAPABILITY_REQUIRED` / `OWNERSHIP_UNRESOLVED` 3건 (소유권 A1
+  결정, likely AUGMENT).
+- ADR-111: SUFFICIENT_AS_IS / ADR-112: SUFFICIENT_AS_BASELINE + hardening ADR
+  1건 후보 (A1 확정).
+- Migration: **CONDITIONAL / UNRESOLVED**. Dependency: NOT_REQUIRED 후보.
+- **A1 진입: NOT_YET_APPROVED** — A0 Review Round 2 ACCEPTED 이후에만 (Frozen
+  Contract + AC + hardening ADR 확정).
 - FE-P5-S2: `NOT_STARTED` 유지.
+
+## 10. GPT Review Gate 검토 결과 기록
+
+- **A0 Review Round 1 (2026-08-08): CHANGES_REQUIRED** — 상기 §1/§2/§4/§5/§6/
+  §8 수정 반영 (NEW_DOMAIN_RESOURCE_REQUIRED→AUTHORITATIVE_CAPABILITY_REQUIRED,
+  hardening ADR 1건, Migration CONDITIONAL/UNRESOLVED, Policy History 추가 +
+  Ask/Source OPTIONAL 재분류, OperationalResourceKindRegistry 반영).
+- 이 §10은 검토 이력/provenance 기록이며 ADR/Contract 결정 권위로 사용하지
+  않는다.

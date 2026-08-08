@@ -28,37 +28,39 @@ subject_base: 8cc93c0aa798ca98adaeba863eb5a6145b62bff1
 
 ## 3. Existing capability inventory (기존 보유 능력)
 
-| #   | History/Audit 대상                         | authoritative Domain                 | persistence                                     | Product API                                                                                     | UI                                                  | 근거                                                  |
-| --- | ------------------------------------------ | ------------------------------------ | ----------------------------------------------- | ----------------------------------------------------------------------------------------------- | --------------------------------------------------- | ----------------------------------------------------- |
-| 1   | Source Version History                     | frontend-sources-product             | source version store                            | `getSourceVersionHistory`, `SourceVersionHistoryView`                                           | source-detail-workspace.tsx "Version history"       | ADR-122, contracts                                    |
-| 2   | Ask/Conversation history                   | frontend-ask-execution, cited-answer | ask store                                       | Ask read 계열                                                                                   | Ask workspace                                       | module 존재                                           |
-| 3   | Canonical Revision/Commit history          | canonical-knowledge                  | canonical commit/history store                  | `ListCanonicalHistory`, `CanonicalHistoryEvent`                                                 | (전용 UI 없음)                                      | ADR-086; canonical-knowledge + projection-search 모듈 |
-| 4   | DraftChangeSet history                     | change-set-review                    | draft change set store                          | `ListDraftChangeSets`, `getDraftChangeSet`                                                      | review UI                                           | change-set-review module                              |
-| 5   | Review/Decision/Approval history           | frontend-review                      | decisions/comments append-only                  | review read                                                                                     | review-workspace.tsx `ReviewHistory`                | frontend-review module                                |
-| 6   | External Action Attempt/Verification/Audit | frontend-external-action             | audit append-only (`repositories.audit`)        | `ListActionAudit`, `ActionAuditEventV1`                                                         | external-action-workspace.tsx audit                 | ADR-129; frontend-external-action                     |
-| 7   | Activity-derived operational references    | frontend-activity                    | `frontend_activity.activity_index` (projection) | Activity read                                                                                   | Activity Workspace                                  | FE-P5-S1; ADR-130                                     |
-| 8   | Project lifecycle/deletion                 | project-administration               | project store                                   | `requestDeleteProject`                                                                          | (전용 UI 확인 필요)                                 | project-administration module                         |
-| 9   | Reversal (Canonical rollback)              | **없음**                             | **없음**                                        | **없음**                                                                                        | **없음**                                            | contracts에 `Reversal` 미존재                         |
-| 10  | Compensation (External rollback)           | frontend-external-action             | rollbacks/compensations store                   | `RollbackV1`, `CompensatingActionV1`, `PREPARE_COMPENSATING_ACTION`, `ROLLBACK_EXTERNAL_ACTION` | external-action-workspace.tsx rollback/compensation | ADR-129; frontend-external-action                     |
+| #   | History/Audit 대상                         | authoritative Domain                 | persistence                                                 | Product API                                                                                     | UI                                                  | 근거                                                                                                           |
+| --- | ------------------------------------------ | ------------------------------------ | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| 1   | Source Version History                     | frontend-sources-product             | source version store                                        | `getSourceVersionHistory`, `SourceVersionHistoryView`                                           | source-detail-workspace.tsx "Version history"       | ADR-122, contracts                                                                                             |
+| 2   | Ask/Conversation history                   | frontend-ask-execution, cited-answer | ask store                                                   | Ask read 계열                                                                                   | Ask workspace                                       | module 존재. **Canonical Implementation Plan §2 필수 범위 아님 → `REUSE_AVAILABLE / OPTIONAL_HISTORY_FAMILY`** |
+| 3   | Canonical Revision/Commit history          | canonical-knowledge                  | canonical commit/history store                              | `ListCanonicalHistory`, `CanonicalHistoryEvent`                                                 | (전용 UI 없음)                                      | ADR-086; canonical-knowledge + projection-search 모듈                                                          |
+| 4   | DraftChangeSet history                     | change-set-review                    | draft change set store                                      | `ListDraftChangeSets`, `getDraftChangeSet`                                                      | review UI                                           | change-set-review module                                                                                       |
+| 5   | Review/Decision/Approval history           | frontend-review                      | decisions/comments append-only                              | review read                                                                                     | review-workspace.tsx `ReviewHistory`                | frontend-review module                                                                                         |
+| 6   | External Action Attempt/Verification/Audit | frontend-external-action             | audit append-only (`repositories.audit`)                    | `ListActionAudit`, `ActionAuditEventV1`                                                         | external-action-workspace.tsx audit                 | ADR-129; frontend-external-action                                                                              |
+| 7   | Activity-derived operational references    | frontend-activity                    | `frontend_activity.activity_index` (projection)             | Activity read                                                                                   | Activity Workspace                                  | FE-P5-S1; ADR-130                                                                                              |
+| 8   | Project lifecycle/deletion                 | project-administration               | project store                                               | `requestDeleteProject`                                                                          | (전용 UI 확인 필요)                                 | project-administration module                                                                                  |
+| 9   | Reversal (Canonical rollback)              | **없음**                             | **없음**                                                    | **없음**                                                                                        | **없음**                                            | contracts에 `Reversal` 미존재                                                                                  |
+| 10  | Compensation (External rollback)           | frontend-external-action             | rollbacks/compensations store                               | `RollbackV1`, `CompensatingActionV1`, `PREPARE_COMPENSATING_ACTION`, `ROLLBACK_EXTERNAL_ACTION` | external-action-workspace.tsx rollback/compensation | ADR-129; frontend-external-action                                                                              |
+| 11  | Settings/Policy Change History             | settings-policy                      | Settings snapshot/revision/command status/Privacy Retention | 장기 `ListPolicyHistory` 같은 query **미확인**                                                  | ❌                                                  | ADR-112 Context의 "Policy history" 재현 요구. `NEEDS_EXACT_AUDIT`                                              |
 
 ## 4. Existing Authority / Reuse Matrix
 
 각 History 대상의 FE-P5-S2 ownership 판정 (evidence 기반, 기본 가정 없음).
 
-| History 대상                                             | Existing authoritative Domain              | Existing persistence | Existing Product API | Existing UI                 | Missing capability                                     | FE-P5-S2 ownership                    |
-| -------------------------------------------------------- | ------------------------------------------ | -------------------- | -------------------- | --------------------------- | ------------------------------------------------------ | ------------------------------------- |
-| Source Version History                                   | ✅ frontend-sources-product                | ✅                   | ✅                   | ✅                          | 없음                                                   | `REUSE_DIRECT`                        |
-| Ask/Conversation history                                 | ✅ frontend-ask-execution                  | ✅                   | ✅                   | ✅                          | 없음                                                   | `REUSE_DIRECT`                        |
-| Canonical Revision/Commit history                        | ✅ canonical-knowledge                     | ✅                   | ✅                   | ❌ (전용 UI 없음)           | History Workspace에서 조회 UI                          | `FEDERATED_READ_PROJECTION`           |
-| DraftChangeSet history                                   | ✅ change-set-review                       | ✅                   | ✅                   | ✅                          | 없음                                                   | `REUSE_DIRECT`                        |
-| Review/Decision/Approval history                         | ✅ frontend-review                         | ✅                   | ✅                   | ✅                          | 없음                                                   | `REUSE_DIRECT`                        |
-| External Action Attempt/Verification/Audit               | ✅ frontend-external-action                | ✅                   | ✅                   | ✅                          | 없음                                                   | `REUSE_DIRECT`                        |
-| Activity-derived operational references                  | ✅ frontend-activity                       | ✅                   | ✅                   | ✅                          | 없음                                                   | `REUSE_DIRECT`                        |
-| Project lifecycle/deletion                               | ✅ project-administration                  | ✅ (삭제 요청)       | ✅                   | ❌                          | Tombstone·deleted-project audit scope                  | `NEW_DOMAIN_RESOURCE_REQUIRED` (후보) |
-| Reversal (Canonical rollback)                            | ❌ 없음                                    | ❌ 없음              | ❌ 없음              | ❌ 없음                     | Reversal DraftChangeSet semantics                      | `NEW_DOMAIN_RESOURCE_REQUIRED` (후보) |
-| Compensation (External rollback)                         | ✅ frontend-external-action                | ✅                   | ✅                   | ✅                          | 없음                                                   | `REUSE_DIRECT`                        |
-| History Event Payload Availability / Retention·Tombstone | ❌ (부분: idempotency `RETENTION_EXPIRED`) | ❌                   | ❌                   | ❌                          | Payload Availability 상태, History retention/tombstone | `NEW_DOMAIN_RESOURCE_REQUIRED` (후보) |
-| 통합 History Workspace                                   | ❌ 없음                                    | ❌ 없음              | ❌ 없음              | ❌ (`/history` placeholder) | federated read projection UI                           | `NEW_READ_MODEL_REQUIRED` (후보)      |
+| History 대상                                             | Existing authoritative Domain              | Existing persistence                              | Existing Product API                            | Existing UI                 | Missing capability                                     | FE-P5-S2 ownership                                                                                                         |
+| -------------------------------------------------------- | ------------------------------------------ | ------------------------------------------------- | ----------------------------------------------- | --------------------------- | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| Source Version History                                   | ✅ frontend-sources-product                | ✅                                                | ✅                                              | ✅                          | 없음                                                   | `REUSE_AVAILABLE / OPTIONAL_HISTORY_FAMILY` (필수 scope 여부 A1 결정)                                                      |
+| Ask/Conversation history                                 | ✅ frontend-ask-execution                  | ✅                                                | ✅                                              | ✅                          | 없음                                                   | `REUSE_AVAILABLE / OPTIONAL_HISTORY_FAMILY` (필수 scope 여부 A1 결정)                                                      |
+| Canonical Revision/Commit history                        | ✅ canonical-knowledge                     | ✅                                                | ✅                                              | ❌ (전용 UI 없음)           | History Workspace에서 조회 UI                          | `FEDERATED_READ_PROJECTION`                                                                                                |
+| DraftChangeSet history                                   | ✅ change-set-review                       | ✅                                                | ✅                                              | ✅                          | 없음                                                   | `REUSE_DIRECT`                                                                                                             |
+| Review/Decision/Approval history                         | ✅ frontend-review                         | ✅                                                | ✅                                              | ✅                          | 없음                                                   | `REUSE_DIRECT`                                                                                                             |
+| External Action Attempt/Verification/Audit               | ✅ frontend-external-action                | ✅                                                | ✅                                              | ✅                          | 없음                                                   | `REUSE_DIRECT`                                                                                                             |
+| Activity-derived operational references                  | ✅ frontend-activity                       | ✅                                                | ✅                                              | ✅                          | 없음                                                   | `REUSE_DIRECT`                                                                                                             |
+| Project lifecycle/deletion                               | ✅ project-administration                  | ✅ (DELETE_REQUESTED 상태까지)                    | ✅                                              | ❌                          | Tombstone·deleted-project audit scope                  | `AUTHORITATIVE_CAPABILITY_REQUIRED` / `OWNERSHIP_UNRESOLVED` (likely `AUGMENT` project-administration/security)            |
+| Reversal (Canonical rollback)                            | ❌ 없음                                    | ❌ 없음                                           | ❌ 없음                                         | ❌ 없음                     | Reversal DraftChangeSet semantics                      | `AUTHORITATIVE_CAPABILITY_REQUIRED` / `OWNERSHIP_UNRESOLVED` (likely `AUGMENT` change-set-review)                          |
+| Compensation (External rollback)                         | ✅ frontend-external-action                | ✅                                                | ✅                                              | ✅                          | 없음                                                   | `REUSE_DIRECT`                                                                                                             |
+| History Event Payload Availability / Retention·Tombstone | ❌ (부분: idempotency `RETENTION_EXPIRED`) | ❌                                                | ❌                                              | ❌                          | Payload Availability 상태, History retention/tombstone | `AUTHORITATIVE_CAPABILITY_REQUIRED` / `OWNERSHIP_UNRESOLVED` (likely shared History contract + policy/domain augmentation) |
+| Settings/Policy Change History                           | ✅ settings-policy (현재 상태)             | ✅ (Settings snapshot/revision/Privacy Retention) | ❌ (`ListPolicyHistory` 같은 장기 query 미확인) | ❌                          | 장기 Policy revision history 조회 능력                 | `REUSE / ADAPTER / NEW READ CAPABILITY` → **A0에서 판정 필요 (NEEDS_EXACT_AUDIT)**                                         |
+| 통합 History Workspace                                   | ❌ 없음                                    | ❌ 없음                                           | ❌ 없음                                         | ❌ (`/history` placeholder) | federated read projection UI                           | `NEW_READ_MODEL_REQUIRED` (후보)                                                                                           |
 
 ## 5. History Ownership 판정 (핵심 질문)
 
@@ -85,8 +87,12 @@ subject_base: 8cc93c0aa798ca98adaeba863eb5a6145b62bff1
 **단, History Workspace 자체는 `NEW_READ_MODEL_REQUIRED`** — 기존 Domain History를
 federated로 모아 읽는 read model/UI가 필요하며, 이는 canonical authority가
 아니다. **Reversal·Payload Availability·Retention/Tombstone·DeletedProject
-Audit Scope는 기존 Domain에 없으므로 신규 authoritative capability 후보**이며,
-기존 Domain 확장(AUGMENT) 또는 신규 Domain resource로 FE-P5-S2 A1에서 결정.
+Audit Scope는 기존 Domain에 구현이 없으므로 `AUTHORITATIVE_CAPABILITY_REQUIRED`
+(신규 authoritative capability 필요)이며, `OWNERSHIP_UNRESOLVED`** — 소유 Domain은
+`NEW_DOMAIN_RESOURCE_REQUIRED`가 아니라 기존 Domain 확장(`AUGMENT`)이 likely
+candidate (change-set-review, shared History contract + policy/domain
+augmentation, project-administration/security). 소유권·신규 Domain 여부는
+**A1에서 결정**한다.
 
 ## 6. 조사·판정 항목 (1~15)
 
@@ -102,7 +108,7 @@ Audit Scope는 기존 Domain에 없으므로 신규 authoritative capability 후
 | 8   | 권한 재검증                                              | External: `AUDIT_READ_SCOPES`/`ROLLBACK_SCOPES`. Review: fail-closed visibility                                                                                | 통합 History 조회 Capability 경계 **MISSING**                                                                         |
 | 9   | 통합 History Workspace(UI)                               | `/history` placeholder (router.tsx). 각 Domain UI 존재                                                                                                         | **MISSING** — federated read projection UI                                                                            |
 | 10  | FE-P5-S2 완료 조건 매핑                                  | 관찰(Activity)✅ → 실패·재시도 추적(Activity+External audit)✅ → 과거 조회(canonical/review/audit 각각)✅ → Reversal/Compensation (Compensation✅, Reversal❌) | Reversal이 완료 조건의 마지막 링크                                                                                    |
-| 11  | History Ownership Model                                  | §5 판정                                                                                                                                                        | FEDERATED_READ_PROJECTION + 신규 authoritative capability 후보                                                        |
+| 11  | History Ownership Model                                  | §5 판정                                                                                                                                                        | FEDERATED_READ_PROJECTION + AUTHORITATIVE_CAPABILITY_REQUIRED (소유권 A1 결정)                                        |
 | 12  | Ordering/Cursor/Pagination                               | Activity: `ActivityEventContinuationV1` cursor 존재. audit: `sequence`. Canonical: 배열                                                                        | 통합 ordering/cursor 규약 **MISSING** (domain별로 상이)                                                               |
 | 13  | Rebuildability/Persistence                               | Activity index rebuildable projection. Canonical/Review/External은 authoritative store                                                                         | 통합 rebuildability 구분 없음. additive migration 여부는 A1 판정                                                      |
 | 14  | Security/Non-disclosure                                  | External audit: allowlist payload (`ActionAuditEventDataV1`). Review: visibility filter                                                                        | cross-project masking / deleted-project audit / sensitivity downgrade 후 payload **MISSING** (ADR-112 §10~§12 경계만) |
@@ -112,21 +118,31 @@ Audit Scope는 기존 Domain에 없으므로 신규 authoritative capability 후
 
 - ADR-111 (Activity projection) — **SUFFICIENT_AS_IS**: FE-P5-S2가 Activity
   원장을 만들지 않고 federated History projection을 쓰는 한 충돌 없음.
-- ADR-112 (Immutable History + Reversal ChangeSet Boundary) — **SUFFICIENT_AS_IS**
-  (설계 경계). 단, 다음은 기존 결정으로 충분하지 않아 **NEW_ADR_REQUIRED 후보**:
-  1. History Workspace federated read model의 identity/ordering/cursor 규약
-  2. Payload Availability 상태 모델 + History retention/tombstone 적용 범위
-  3. Reversal DraftChangeSet의 Product surface (elibility, approval 재사용,
-     superseded 처리)
-  4. DeletedProjectAuditScope 접근 경계와 Capability
-- 결론: ADR-111/112를 STALE로 추정하지 않는다. A1에서 Amendment/new ADR
-  필요성을 확정 판정.
+- ADR-112 (Immutable History + Reversal ChangeSet Boundary) —
+  **SUFFICIENT_AS_BASELINE**: ADR-112가 retention·tombstone·reversal·
+  deleted-project audit을 하나의 일관된 History 경계로 이미 묶고 있음.
+- **추가 Architecture Decision 후보: ONE FE-P5-S2 SECTION-SPECIFIC HARDENING
+  ADR (CANDIDATE)** — FE-P5-S1이 ADR-130 하나로 구현 경계를 구체화한 패턴을
+  따른다. 이 하나의 hardening ADR이 다음을 함께 커버한다:
+  1. federated History read projection
+  2. identity / ordering / cursor
+  3. payload availability / retention / tombstone
+  4. Reversal ownership and eligibility
+  5. DeletedProject audit scope
+- A1에서 조사 결과 정말 독립적인 owner와 lifecycle이 필요한 경우에만 여러 ADR로
+  분리한다. 현재 A0 증거로 4개의 독립 ADR이 필요하다고 말할 근거는 부족.
+- 결론: ADR-111/112를 STALE로 추정하지 않는다. Round 2 ACCEPTED 후 A1에서
+  hardening ADR 1건 확정 판정.
 
 ## 8. Migration / Dependency 판정 (Candidate)
 
-- Migration: Canonical·Review·External history는 이미 append-only 저장.
-  History Workspace는 새 read model/인덱스가 필요할 수 있어 **additive
-  migration REQUIRED 후보** (기존 데이터 무변경). A1에서 확정.
+- Migration: **CONDITIONAL / UNRESOLVED** (동시 확정 금지):
+  - on-read federated aggregation만 채택 → History read-model migration은
+    `NONE`일 수 있음.
+  - persistent projection index 채택 → **additive migration REQUIRED**.
+  - ProjectTombstone / retention state에 새 persistence 필요 → 해당 범위
+    **additive migration REQUIRED**.
+  - A1에서 read model 선택과 함께 확정.
 - Runtime dependency: **NOT_REQUIRED 후보** — 기존 Domain API·store만 사용,
   신규 OSS 런타임 없음. (A0 요청문 §12 Not authorized: dependency 변경 없음)
 
@@ -144,18 +160,18 @@ Audit Scope는 기존 Domain에 없으므로 신규 authoritative capability 후
 
 ## 10. A0_EXIT_CRITERIA 체크
 
-| #   | 기준                                  | 상태                                                     |
-| --- | ------------------------------------- | -------------------------------------------------------- |
-| 1   | Existing vs Missing capability 분리   | ✅ §3/§4                                                 |
-| 2   | History ownership model 제안          | ✅ §5 (FEDERATED_READ_PROJECTION + 신규 capability 후보) |
-| 3   | ADR-111/112 충돌 여부 판정            | ✅ §7 (SUFFICIENT_AS_IS, new ADR 후보 4건)               |
-| 4   | New ADR / Amendment 필요 여부 판정    | 🔶 후보 제시, 확정은 A1                                  |
-| 5   | Migration 필요 여부 판정              | 🔶 REQUIRED 후보 (additive), 확정은 A1                   |
-| 6   | Runtime dependency 필요 여부 판정     | ✅ NOT_REQUIRED 후보                                     |
-| 7   | Product Contract candidate 작성       | ✅ Contract Preparation 문서                             |
-| 8   | AC candidate 작성                     | ✅ Contract Preparation 문서                             |
-| 9   | unresolved architecture blockers 명시 | ✅ §11                                                   |
-| 10  | A1 진입 가능/불가 판정                | ✅ §12 (CONDITIONAL_PROCEED)                             |
+| #   | 기준                                  | 상태                                                         |
+| --- | ------------------------------------- | ------------------------------------------------------------ |
+| 1   | Existing vs Missing capability 분리   | ✅ §3/§4                                                     |
+| 2   | History ownership model 제안          | ✅ §5 (FEDERATED_READ_PROJECTION + 신규 capability 후보)     |
+| 3   | ADR-111/112 충돌 여부 판정            | ✅ §7 (SUFFICIENT_AS_IS/AS_BASELINE, hardening ADR 후보 1건) |
+| 4   | New ADR / Amendment 필요 여부 판정    | 🔶 hardening ADR 1건 후보, 확정은 A1                         |
+| 5   | Migration 필요 여부 판정              | 🔶 CONDITIONAL / UNRESOLVED, 확정은 A1                       |
+| 6   | Runtime dependency 필요 여부 판정     | ✅ NOT_REQUIRED 후보                                         |
+| 7   | Product Contract candidate 작성       | ✅ Contract Preparation 문서                                 |
+| 8   | AC candidate 작성                     | ✅ Contract Preparation 문서                                 |
+| 9   | unresolved architecture blockers 명시 | ✅ §11                                                       |
+| 10  | A1 진입 가능/불가 판정                | ✅ §12 (CONDITIONAL_PROCEED)                                 |
 
 ## 11. Unresolved architecture blockers / Open questions
 
@@ -169,19 +185,60 @@ Audit Scope는 기존 Domain에 없으므로 신규 authoritative capability 후
    canonical/audit은 sequence/timestamp 상이).
 5. History retention 정책의 owner — settings-policy `privacy.retentionDays`가
    History retention에 적용되는지 범위 판정 필요.
+6. **Settings/Policy Change History** — `ListPolicyHistory` 같은 장기 policy
+   history query가 없음 (SettingsRepositoryPort는 현재 snapshot/revision/command
+   status/Privacy Retention 보유). REUSE/ADAPTER/NEW READ CAPABILITY 판정 필요.
+7. **OperationalResourceKindRegistry (ADR-113)** — HistoryEntry가 공유 Resource
+   Kind Registry를 사용하는지, Aggregate vs Concrete Resource Kind 구분과
+   concrete identity 보존을 Contract/AC에 반영할지.
 
 ## 12. A1 진입 판정
 
-**CONDITIONAL_PROCEED** — A0_EXIT_CRITERIA 1~10 중 1·2·3·6은 충족, 4·5·7·8은
-Candidate 문서로 충족(확정은 A1), 9·10은 명시 완료.
+**A1 진입: NOT_YET_APPROVED** — A0 Review Round 1 `CHANGES_REQUIRED` 수정 반영 후
+**Review Round 2 → ACCEPTED**가 되어야만 A1 진입 가능 (GPT Review Gate 2026-08-08).
+현재 Candidate 상태에서 A1 착수 금지.
 
 A1 진입 조건 (Gap Audit 기준):
 
-- History Ownership(FEDERATED_READ_PROJECTION) + 신규 capability 4건
-  (Payload Availability, Retention/Tombstone, Reversal, DeletedProjectAuditScope)
-  에 대한 Architecture Decision 확정.
-- New ADR/Amendment 필요 여부 확정 (후보 4건).
-- Frozen Contract Snapshot + AC 확정 (사용자 승인).
-- Migration·Dependency 판정 확정.
+- History Ownership(FEDERATED_READ_PROJECTION) + `AUTHORITATIVE_CAPABILITY_REQUIRED`
+  capability 3건 (Payload Availability, Retention/Tombstone, Reversal,
+  DeletedProjectAuditScope)의 **소유권(OWNERSHIP)** 확정 — likely `AUGMENT`
+  (change-set-review, shared History contract + policy/domain augmentation,
+  project-administration/security). 신규 Domain 여부는 A1 evidence로 판정.
+- **ONE FE-P5-S2 Section-specific hardening ADR** 확정 (독립 owner/lifecycle
+  근거가 있을 때만 분리).
+- Settings/Policy Change History의 REUSE/ADAPTER/NEW READ CAPABILITY 판정
+  (NEEDS_EXACT_AUDIT).
+- Ask/Source History의 OPTIONAL_HISTORY_FAMILY 포함 여부 결정.
+- Frozen Contract Snapshot + AC 확정 (사용자 승인, ADR-113
+  OperationalResourceKindRegistry 경계 포함).
+- Migration(CONDITIONAL/UNRESOLVED)·Dependency 판정 확정.
 
 FE-P5-S2 상태: **NOT_STARTED 유지** (A0는 구현 전 준비 조사).
+
+## 13. GPT Review Gate 검토 결과 기록
+
+- **A0 Review Round 1 (2026-08-08): CHANGES_REQUIRED**
+  - Verdict: `FE-P5-S2 A0 — Review Round 1 Verdict: CHANGES_REQUIRED`
+  - Core Architecture Direction: **VALID** — History Ownership
+    `FEDERATED_READ_PROJECTION` **ACCEPTED**
+  - A1 Entry: `NOT_YET_APPROVED` / PR #77: `KEEP DRAFT / DO NOT MERGE` /
+    FE-P5-S2: `NOT_STARTED / NOT_AUTHORIZED`
+  - Required corrections 5건 (모두 반영):
+    1. `NEW_DOMAIN_RESOURCE_REQUIRED` → `AUTHORITATIVE_CAPABILITY_REQUIRED` /
+       `OWNERSHIP_UNRESOLVED` (3건: Reversal, Payload Availability/Retention/
+       Tombstone, DeletedProjectAuditScope)
+    2. New ADR 후보 4건 → **ONE Section-specific hardening ADR candidate**
+       (ADR-111: SUFFICIENT_AS_IS, ADR-112: SUFFICIENT_AS_BASELINE)
+    3. Migration `REQUIRED 후보` → **CONDITIONAL / UNRESOLVED**
+    4. **Policy History를 Reuse Matrix에 추가** (Settings/Policy Change
+       History, NEEDS_EXACT_AUDIT) + Ask/Source History를
+       `REUSE_AVAILABLE / OPTIONAL_HISTORY_FAMILY`로 재분류
+    5. **OperationalResourceKindRegistry (ADR-113)** 경계를 Contract/AC
+       후보에 반영
+  - Preserve: FEDERATED_READ_PROJECTION / ADR-111/112 Accepted baseline /
+    Compensation reuse / Reversal DraftChangeSet boundary / Payload identity
+    preservation / Deleted-project capability revalidation / Runtime
+    dependency NOT_REQUIRED candidate
+  - 이 §13은 검토 이력/provenance 기록이며 ADR/Contract 결정 권위로 사용하지
+    않는다.

@@ -35,9 +35,13 @@ The repository already contains authoritative per-Domain History:
 - Settings/Policy: current snapshot/revision; no long-term `ListPolicyHistory`.
 
 A0 (gap audit) confirmed: no central ledger exists, no central ledger should be
-created, and four authoritative capabilities are absent (Reversal,
-Payload Availability/Retention/Tombstone, DeletedProjectAuditScope, and a
-federated History read model).
+created, and the following gaps remain:
+
+- **Three authoritative capability gaps:**
+  1. Reversal
+  2. Payload Availability / Retention / Tombstone
+  3. DeletedProjectAuditScope
+- **One non-authoritative product/read-model gap:** 4. Federated History Read Projection (read model, not authority)
 
 ## Decision
 
@@ -112,9 +116,22 @@ External Action rollback reuses the existing `Rollback` / `PREPARE_COMPENSATING_
 ### 7. Policy History
 
 - Settings/Policy Change History: current snapshot/revision is preserved.
-  A long-term `ListPolicyHistory` read capability is evaluated with
-  `REUSE / ADAPTER / NEW READ CAPABILITY` — A1 final recommendation records the
-  outcome (see Contract snapshot).
+  Long-term authoritative policy-change record is **MISSING**; a **NEW
+  APPEND-ONLY POLICY CHANGE HISTORY CAPABILITY owned by `settings-policy`** is
+  adopted. History Workspace reads it through an adapter. No new standalone
+  Policy History Domain.
+
+### 7a. Additive migration persistence scopes
+
+- A. History Projection: rebuildable history projection index + watermark/
+  checkpoint — NON-AUTHORITATIVE READ MODEL.
+- B. Deleted Project: ProjectTombstone + DeletedProjectAuditScope/authorization
+  binding — project-administration/security.
+- C. Payload Availability/Retention: authoritative payload availability/
+  tombstone state + purge AuditEvent — each owning Domain; retention policy
+  authority settings-policy.
+- D. Policy History: append-only policy-change history — settings-policy.
+- No destructive migration; no existing event/history rewrite.
 
 ### 8. History Family Scope
 

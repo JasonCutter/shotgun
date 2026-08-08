@@ -94,9 +94,28 @@ cursor fragile.
 
 ### 4.3 Migration / Dependency
 
-- Migration: **REQUIRED (additive)** — History read model index + watermarks
-  (+ ProjectTombstone/retention state where adopted). No existing data
-  modification, no destructive migration.
+- Migration: **REQUIRED / ADDITIVE**. Required persistence scopes:
+  ```
+  A. History Projection
+     - rebuildable history projection index
+     - projection watermark/checkpoint
+     Authority: NON-AUTHORITATIVE READ MODEL
+  B. Deleted Project
+     - ProjectTombstone persistence
+     - DeletedProjectAuditScope / authorization binding persistence
+     Authority: project-administration / security
+  C. Payload Availability / Retention
+     - authoritative payload availability/tombstone state
+     - purge AuditEvent persistence
+     Authority: each owning Domain
+     Retention policy authority: settings-policy
+  D. Policy History
+     - append-only policy-change history persistence
+     Authority: settings-policy
+  No destructive migration. No existing event/history rewrite.
+  ```
+- Actual table/column/migration numbers are deferred to the Product
+  Implementation Request (implementation detail).
 - Runtime dependency: **NOT_REQUIRED**.
 
 ### 4.4 Performance
@@ -182,10 +201,18 @@ Capabilities (server-derived): `history:read`, `history:audit:read`,
 - Current state: `SettingsRepositoryPort.getSettingsSnapshot`,
   `getPrincipalPreferenceRevision`, `getPrivacyRetention` — snapshot/revision/
   command status exist; no long-term `ListPolicyHistory`.
-- Recommendation (Candidate): **AUGMENT `settings-policy` with an append-only
-  policy-change audit read** (REUSE existing revision + ADAPTER or NEW READ
-  CAPABILITY). Final read capability shape is confirmed in A1 candidate work
-  before user approval; only the decision record is frozen.
+- **Decision (final recommendation):**
+  ```
+  Policy History
+  Current authoritative state: settings-policy current snapshot/revision
+  Long-term authoritative policy-change record: MISSING
+  Decision: NEW APPEND-ONLY POLICY CHANGE HISTORY CAPABILITY owned by settings-policy
+  History Workspace: reads it through an adapter
+  Therefore: Authority = settings-policy / Read integration = History adapter
+  No new standalone Policy History Domain
+  ```
+- 미결 표현(`ADAPTER or NEW READ CAPABILITY`)은 제거됨 — authority와 read
+  integration을 분리해 확정.
 
 ## 9. Proposed AC matrix (Candidate)
 

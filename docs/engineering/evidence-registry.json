@@ -1031,7 +1031,8 @@
       "wp5AcceptedCIRunNumber": 639,
       "wp5AcceptedPRHead": "73bbafc7aaebd75036ba74da6579a3ff655cace2",
       "wp5AcceptedPRCIRunNumber": 640,
-      "wp6plus": "NOT_STARTED",
+      "wp6plus": "WP6_AUTHORIZED_VERIFICATION_IN_PROGRESS",
+      "wp6AuthorizedAt": "2026-08-08",
       "migration": "029_APPLIED_IMPLEMENTED",
       "deployment": "NOT_STARTED",
       "productionVerification": "NOT_RUN"

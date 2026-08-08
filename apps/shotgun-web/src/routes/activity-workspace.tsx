@@ -205,6 +205,7 @@ const QueueFilters = ({
       <legend>Attention</legend>
       <label>
         <select
+          aria-label="Attention 필터"
           value={attention}
           onChange={(event) => onSetAttention(event.target.value as ActivityAttentionFilter)}
         >

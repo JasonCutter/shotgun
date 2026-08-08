@@ -247,17 +247,26 @@ const median = (values: number[]) => {
 
 // Measures app latency from the /activity navigation to the committed Queue
 // list heading (initial Queue display segment).
+//
+// The reference point is the navigation itself: `performance.now()` is elapsed
+// since this document's `performance.timeOrigin` (the navigation start), so
+// the value captured when the Queue is committed is the FULL navigation →
+// committed Queue latency. `page.goto` completion is NOT the reference — the
+// measurement includes the document load + client-side routing + Queue render
+// that precede the commit, exactly what AC-16's "initial Queue display"
+// requires.
 const measureQueueDisplay = (page: Page) =>
   page.evaluate(async () => {
-    const start = performance.now();
     const button = () =>
       Array.from(document.querySelectorAll('button')).find((entry) =>
         (entry.textContent ?? '').includes('submission-1'),
       );
-    while (performance.now() - start < 10000 && !button()) {
+    // performance.now() is the elapsed ms since this document's navigation
+    // start (performance.timeOrigin). Guard against a missing commit.
+    while (performance.now() < 10000 && !button()) {
       await new Promise((resolve) => requestAnimationFrame(resolve));
     }
-    return Math.round(performance.now() - start);
+    return Math.round(performance.now());
   });
 
 // Measures app latency from the queue selection gesture to the committed

@@ -108,8 +108,22 @@ regression.test.ts` — "B reads the queue: A-private submission is NOT disclose
 ### AC-06 — Domain Retry creates a new Attempt with causation while preserving the earlier Attempt and failure
 
 - **구현**: delegation to owning-Domain retry commands (WP5); Activity never fabricates Attempts.
-- **테스트**: `tests/integration/frontend-activity-domain-adapters.test.ts` (WP5),
-  `tests/contract/frontend-activity.contract.test.ts`.
+- **테스트** (owning-Domain retry → new Attempt behaviour, exactly the AC-06 action):
+  - External Action — `tests/integration/frontend-external-action-domain.test.ts` — "persists an
+    ordered append-only attempt list with per-attempt idempotency": after
+    `retryExecutionAttempt` the new attempt has `attemptNumber = 2`, holds the requested
+    `causationId`, and the attempt list is `[1, 2]` (earlier Attempt preserved).
+  - Sources — `tests/database/frontend-phase-2-section-1-sources-lifecycle.test.ts` — "preserves
+    Attempt history through outcome-indeterminate, retry and cancellation": after
+    `retryItems` the item state is `QUEUED` with `attemptCount = 2` and the new row is
+    bound to the previous attempt via `causation_attempt_id`.
+  - Ask — `tests/unit/frontend-ask-execution.test.ts` — "keeps outcome unknown explicit and
+    requires a user retry": `service.retry(..., 'SAME_CONTEXT')` starts a new execution
+    (`RUNNING`) that completes successfully (provider called again), preserving the earlier
+    `OUTCOME_UNKNOWN` snapshot.
+  - Activity boundary — `tests/integration/frontend-activity-domain-adapters.test.ts` +
+    `tests/contract/frontend-activity.contract.test.ts` (delegation descriptors; no generic
+    Activity Retry).
 - **판정**: PASS
 
 ### AC-07 — Transport Retry is not presented as a new Domain Attempt
@@ -225,17 +239,42 @@ three measured samples, the spec measures:
 - `activity-queue-to-detail-ms` — from the queue selection gesture to the committed Detail
   heading (Queue → Detail transition).
 
+- `activity-queue-display-ms` — from the `/activity` navigation start
+  (`performance.timeOrigin`) to the committed Queue list (initial Queue display).
+- `activity-queue-to-detail-ms` — from the queue selection gesture to the committed Detail
+  heading (Queue → Detail transition).
+
+The Queue display reference point is the navigation itself, not `page.goto` completion:
+`performance.now()` is elapsed since the document's `performance.timeOrigin`, so the value
+captured when the Queue commits is the FULL navigation → committed Queue latency (document
+load + client routing + Queue render included).
+
 Time is measured inside the page (user gesture → committed state, polled with
 `requestAnimationFrame`), so Playwright actionability overhead is excluded. Each metric is
 reported as the median of three samples and asserted against the frozen AC-16 gate
 `median ≤ 2000 ms`.
 
-Observed on the WP6 verification run (headless Chromium, single worker, local fake fixtures):
+Observed on the WP6 round-1-correction verification run (headless Chromium, single worker,
+local fake fixtures):
 
-| Metric                     | Samples (ms)    | Median (ms) | Gate (ms) | Verdict |
-| -------------------------- | --------------- | ----------- | --------- | ------- |
-| `activity-queue-display`   | 312 / 189 / 186 | **189**     | ≤ 2000    | PASS    |
-| `activity-queue-to-detail` | 89 / 94 / 82    | **89**      | ≤ 2000    | PASS    |
+| Metric                     | Samples (ms)     | Median (ms) | Gate (ms) | Verdict |
+| -------------------------- | ---------------- | ----------- | --------- | ------- |
+| `activity-queue-display`   | 801 / 769 / 1577 | **801**     | ≤ 2000    | PASS    |
+| `activity-queue-to-detail` | 270 / 64 / 69    | **69**      | ≤ 2000    | PASS    |
+
+## 2a. Review round 1 corrections (GPT verdict CHANGES_REQUIRED)
+
+GPT review round 1 returned `CHANGES_REQUIRED` with one blocker and one evidence correction.
+Both were corrected on head (CI #643/round-1-fix), verified by CI (Frontend / Quality / Required
+Gates all green).
+
+| #   | Defect (verdict)                                                                                                              | Correction                                                                                                                                                                                                                               |
+| --- | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | AC-16 `initial Queue display` measurement started after `page.goto` completed, so navigation→Queue latency was under-reported | `measureQueueDisplay` now references the document navigation start (`performance.timeOrigin`); the returned value is the FULL navigation → committed Queue latency (see Section 6). Queue→Detail was already correct and unchanged       |
+| 2   | AC-06 matrix cited projection/descriptor tests only, not the actual Retry→new Attempt behaviour                               | AC-06 now cites the owning-Domain retry tests that prove it directly: External Action (`attemptNumber = 2`, `causationId`, attempts `[1, 2]`), Sources (`attemptCount = 2`, `causation_attempt_id`), Ask (`service.retry` new execution) |
+
+No previously-passed head was re-run; only the new WP6 browser/performance specs and the
+evidence document changed.
 
 ## 7. Next action
 

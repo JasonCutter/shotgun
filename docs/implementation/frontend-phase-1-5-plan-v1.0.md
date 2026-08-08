@@ -53,13 +53,13 @@ Knowledge Flow의 6개 Phase와 Frontend Phase 0~5는 대체 관계가 아니다
 
 > 이 블록은 `docs/project/frontend-work-items.json`과 Section Completion Manifest에서 생성됩니다. 블록 내부를 직접 수정하지 않습니다.
 
-| Work Item                                   | Status        |
-| ------------------------------------------- | ------------- |
-| FE-P5 — Operations and Audit                | `IN_PROGRESS` |
-| FE-P5-S1 — Agent and Job Activity Workspace | `IN_PROGRESS` |
+| Work Item                              | Status        |
+| -------------------------------------- | ------------- |
+| FE-P5 — Operations and Audit           | `IN_PROGRESS` |
+| FE-P5-S2 — History, Audit and Rollback | `NOT_STARTED` |
 
 - 미충족 필수 기준: `manifest unavailable`
-- Next valid Product Section: `FE-P5-S2 — History, Audit and Rollback`
+- Next valid Product Section: `NONE — none`
 
 <!-- FRONTEND-WORK-ITEM-STATUS:END -->
 

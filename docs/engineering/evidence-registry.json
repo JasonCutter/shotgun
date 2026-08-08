@@ -1050,6 +1050,8 @@
       "wp5AcceptedCIRunNumber": 639,
       "wp6ImplementationHead": "cc65b2888a54b4be1c527538c6fdf1e8903942b0",
       "wp6ImplementationCIRunNumber": 642,
+      "wp6CorrectionHead": "e6b98d83aaaaf938fece37d54142c36bf37aee99",
+      "wp6CorrectionCIRunNumber": 644,
       "trackingIssue": "https://github.com/JasonCutter/shotgun/issues/71",
       "contractPR": "https://github.com/JasonCutter/shotgun/pull/70",
       "productPR": "https://github.com/JasonCutter/shotgun/pull/73",

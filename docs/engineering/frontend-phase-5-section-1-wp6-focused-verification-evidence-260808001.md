@@ -9,6 +9,8 @@ wp5_accepted_head: 3a8f892ba512f7f2c845d86dfe2639d17a6f9e51
 wp5_accepted_ci_number: 639
 wp6_implementation_head: cc65b2888a54b4be1c527538c6fdf1e8903942b0
 wp6_implementation_ci_number: 642
+wp6_correction_head: e6b98d83aaaaf938fece37d54142c36bf37aee99
+wp6_correction_ci_number: 644
 tracking_issue: https://github.com/JasonCutter/shotgun/issues/71
 contract_pr: https://github.com/JasonCutter/shotgun/pull/70
 product_pr: https://github.com/JasonCutter/shotgun/pull/73

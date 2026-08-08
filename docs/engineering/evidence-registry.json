@@ -1071,6 +1071,12 @@
       "wp6AcceptedPRHead": "7c5cbbd7c29261c1a8d83e8260671c0110963006",
       "wp6AcceptedPRCIRunNumber": 645,
       "wp7plus": "NOT_STARTED",
+      "governanceClosure": "COMPLETE",
+      "governanceClosureAt": "2026-08-08",
+      "pr73ReadyAt": "2026-08-08",
+      "pr73State": "OPEN_READY_MERGEABLE_NOT_MERGED",
+      "pr73ReadyHead": "0520451577268c80fa1dabc66ca680e7fae39268",
+      "merge": "NOT_AUTHORIZED",
       "migration": "029_APPLIED_IMPLEMENTED",
       "deployment": "NOT_STARTED",
       "productionVerification": "NOT_RUN"

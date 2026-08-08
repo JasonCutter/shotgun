@@ -120,9 +120,11 @@ cursor fragile.
 
 ### 4.4 Performance
 
-- No arbitrary numeric threshold at A1. Procedure only:
-  `baseline measurement → proposed budget → user approval → frozen numeric
-threshold` (per AC-16).
+- **FE-P5-S2-AC-16 Performance procedure: FROZEN**
+- **Numeric threshold: DEFERRED_PARAMETER**
+- Before FE-P5-S2 completion acceptance: baseline measurement → proposed
+  numeric budget → explicit user approval → numeric threshold freeze.
+- **Silent threshold selection: FORBIDDEN** (no arbitrary number at A1).
 
 ## 5. Identity contract
 
@@ -216,24 +218,24 @@ Capabilities (server-derived): `history:read`, `history:audit:read`,
 
 ## 9. Proposed AC matrix (Candidate)
 
-| AC    | Title                                                                                                                                                                                                        | Verification               |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------- |
-| AC-01 | History Workspace reads existing Domain History federated (no central ledger)                                                                                                                                | Contract/unit + read model |
-| AC-02 | HistoryEntry references source Domain identity (shared OperationalResourceKindRegistry; Aggregate vs Concrete Resource Kind; domainResourceId preserved; projection identity never replaces source identity) | Contract                   |
-| AC-03 | Event identity never edited/deleted                                                                                                                                                                          | negative test              |
-| AC-04 | Payload Availability states exposed (AVAILABLE/REDACTED/PURGED_BY_POLICY/UNAVAILABLE)                                                                                                                        | Contract + golden          |
-| AC-05 | PURGED_BY_POLICY = payload redaction/tombstone, not identity deletion; tombstone + purge AuditEvent remain                                                                                                   | negative test              |
-| AC-06 | History retention separated from Log retention; cache retention cannot remove Approval/Audit/Canonical history                                                                                               | Contract + unit            |
-| AC-07 | Canonical Rollback = Reversal DraftChangeSet (direct restore forbidden)                                                                                                                                      | negative test              |
-| AC-08 | Reversal uses current Snapshot impact + current Review + current Approval; historical approval reuse forbidden                                                                                               | golden + security          |
-| AC-09 | External rollback reuses Compensating Action                                                                                                                                                                 | reuse test                 |
-| AC-10 | Deleted Project audit access requires ProjectTombstone + DeletedProjectAuditScope + Capability revalidation                                                                                                  | security negative test     |
-| AC-11 | Past membership alone never grants deleted-project audit access                                                                                                                                              | security negative test     |
-| AC-12 | Restoration creates explicit recovery lineage                                                                                                                                                                | golden                     |
-| AC-13 | Read-time Capability revalidation (fail-closed)                                                                                                                                                              | security                   |
-| AC-14 | Ordering/cursor/pagination contract (stable tie-breaker)                                                                                                                                                     | contract + golden          |
-| AC-15 | FE-P5-S2 completion mapping (observe→trace→query→Reversal/Compensation)                                                                                                                                      | E2E                        |
-| AC-16 | Performance gate: baseline measurement → proposed budget → user approval → frozen numeric threshold (no arbitrary number)                                                                                    | performance procedure      |
+| AC    | Title                                                                                                                                                                                                                                                   | Verification               |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| AC-01 | History Workspace reads existing Domain History federated (no central ledger)                                                                                                                                                                           | Contract/unit + read model |
+| AC-02 | HistoryEntry references source Domain identity (shared OperationalResourceKindRegistry; Aggregate vs Concrete Resource Kind; domainResourceId preserved; projection identity never replaces source identity)                                            | Contract                   |
+| AC-03 | Event identity never edited/deleted                                                                                                                                                                                                                     | negative test              |
+| AC-04 | Payload Availability states exposed (AVAILABLE/REDACTED/PURGED_BY_POLICY/UNAVAILABLE)                                                                                                                                                                   | Contract + golden          |
+| AC-05 | PURGED_BY_POLICY = payload redaction/tombstone, not identity deletion; tombstone + purge AuditEvent remain                                                                                                                                              | negative test              |
+| AC-06 | History retention separated from Log retention; cache retention cannot remove Approval/Audit/Canonical history                                                                                                                                          | Contract + unit            |
+| AC-07 | Canonical Rollback = Reversal DraftChangeSet (direct restore forbidden)                                                                                                                                                                                 | negative test              |
+| AC-08 | Reversal uses current Snapshot impact + current Review + current Approval; historical approval reuse forbidden                                                                                                                                          | golden + security          |
+| AC-09 | External rollback reuses Compensating Action                                                                                                                                                                                                            | reuse test                 |
+| AC-10 | Deleted Project audit access requires ProjectTombstone + DeletedProjectAuditScope + Capability revalidation                                                                                                                                             | security negative test     |
+| AC-11 | Past membership alone never grants deleted-project audit access                                                                                                                                                                                         | security negative test     |
+| AC-12 | Restoration creates explicit recovery lineage                                                                                                                                                                                                           | golden                     |
+| AC-13 | Read-time Capability revalidation (fail-closed)                                                                                                                                                                                                         | security                   |
+| AC-14 | Ordering/cursor/pagination contract (stable tie-breaker)                                                                                                                                                                                                | contract + golden          |
+| AC-15 | FE-P5-S2 completion mapping (observe→trace→query→Reversal/Compensation)                                                                                                                                                                                 | E2E                        |
+| AC-16 | Performance gate: **procedure FROZEN**; **Numeric threshold = DEFERRED_PARAMETER** — before completion acceptance: baseline measurement → proposed numeric budget → explicit user approval → threshold freeze; **silent threshold selection FORBIDDEN** | performance procedure      |
 
 ## 10. FE-P5-S2 status
 

@@ -37,6 +37,7 @@ const managedSchemas = [
   'frontend_knowledge_graph',
   'frontend_review',
   'frontend_external_action',
+  'frontend_activity',
   'source_product',
   'frontend_command',
   'settings',
@@ -194,6 +195,8 @@ const requiredTables = [
   'frontend_review.decision',
   'frontend_review.comment',
   'frontend_review.approval',
+  'frontend_activity.activity_index',
+  'frontend_activity.projection_watermarks',
 ] as const;
 
 const verify = async (): Promise<void> => {

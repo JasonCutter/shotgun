@@ -13,3 +13,4 @@ export * from './frontend-knowledge-draft-client.js';
 export * from './frontend-knowledge-graph-client.js';
 export * from './frontend-review-client.js';
 export * from './frontend-external-action-client.js';
+export * from './frontend-activity-client.js';

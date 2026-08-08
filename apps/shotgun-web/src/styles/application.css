@@ -1206,3 +1206,248 @@ tr.graph-item--discovery {
     grid-template-columns: 1fr;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* FE-P5-S1 WP4 ? Activity Workspace                                  */
+/* ------------------------------------------------------------------ */
+
+.activity-layout {
+  display: grid;
+  grid-template-columns: minmax(20rem, 26rem) 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+.activity-queue {
+  border: 1px solid var(--border, #d9d9d9);
+  border-radius: 0.75rem;
+  padding: 1rem;
+}
+
+.activity-queue-header h1 {
+  margin: 0 0 0.5rem;
+}
+
+.activity-queue-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.activity-polling-toggle {
+  display: inline-flex;
+  gap: 0.375rem;
+  align-items: center;
+  font-size: 0.875rem;
+}
+
+.activity-polling-note {
+  color: var(--muted, #6b7280);
+  font-size: 0.8125rem;
+}
+
+.activity-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.activity-filters fieldset {
+  border: 1px solid var(--border, #d9d9d9);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  margin: 0;
+}
+
+.activity-filters legend {
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.activity-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.875rem;
+  align-items: center;
+}
+
+.activity-filter-row label {
+  display: inline-flex;
+  gap: 0.25rem;
+  align-items: center;
+  font-size: 0.875rem;
+}
+
+.activity-metadata {
+  border: 1px solid var(--border, #d9d9d9);
+  border-radius: 0.5rem;
+  padding: 0.625rem 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.activity-partial-note {
+  margin: 0.375rem 0 0;
+  color: var(--warning, #b45309);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.activity-queue-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.activity-queue-item {
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--border, #d9d9d9);
+  border-radius: 0.5rem;
+  background: var(--surface, #ffffff);
+  padding: 0.625rem 0.75rem;
+  cursor: pointer;
+}
+
+.activity-queue-item[aria-current='true'] {
+  border-color: var(--accent, #1d4ed8);
+  box-shadow: 0 0 0 1px var(--accent, #1d4ed8);
+}
+
+.activity-queue-item:focus-visible {
+  outline: 2px solid var(--accent, #1d4ed8);
+  outline-offset: 2px;
+}
+
+.activity-item-summary {
+  display: block;
+  font-weight: 600;
+}
+
+.activity-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--muted, #6b7280);
+  margin-top: 0.25rem;
+}
+
+.activity-item-state[data-state='FAILED'],
+.activity-item-state[data-state='CANCELLED'],
+.activity-event-category[data-category='FAILED'],
+.activity-event-category[data-category='CANCELLED'] {
+  color: var(--danger, #9f1d1d);
+}
+
+.activity-item-state[data-state='RUNNING'],
+.activity-event-category[data-category='STARTED'] {
+  color: var(--accent, #1d4ed8);
+}
+
+.activity-item-state[data-state='OUTCOME_UNKNOWN'],
+.activity-event-category[data-category='OUTCOME_UNKNOWN'] {
+  color: var(--warning, #b45309);
+}
+
+.activity-item-attention[data-attention='NEEDS_ATTENTION'] {
+  font-weight: 600;
+  color: var(--warning, #b45309);
+}
+
+.activity-detail-header h2 {
+  margin: 0 0 0.25rem;
+}
+
+.activity-detail-domain {
+  color: var(--muted, #6b7280);
+  margin: 0 0 0.375rem;
+}
+
+.activity-domain-link {
+  display: inline-block;
+  margin-bottom: 0.375rem;
+}
+
+/* WP5 — server-derived Retry/Cancel actions (AC-13) */
+.activity-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0 0 1rem;
+}
+
+.activity-actions button,
+.activity-action-link {
+  font: inherit;
+  padding: 0.375rem 0.75rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.activity-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.activity-action-link {
+  display: inline-block;
+  text-decoration: none;
+}
+
+.activity-action-error {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--danger, #b91c1c);
+  font-size: 0.875rem;
+}
+
+.activity-resource-href {
+  font-size: 0.75rem;
+  color: var(--muted, #6b7280);
+  overflow-wrap: anywhere;
+}
+
+.activity-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1rem;
+}
+
+.activity-table th,
+.activity-table td {
+  border: 1px solid var(--border, #d9d9d9);
+  padding: 0.375rem 0.5rem;
+  text-align: left;
+  font-size: 0.875rem;
+}
+
+.activity-events {
+  padding-left: 1.25rem;
+  margin: 0 0 1rem;
+}
+
+.activity-events li {
+  margin-bottom: 0.25rem;
+  font-size: 0.875rem;
+}
+
+.activity-event-category {
+  font-weight: 600;
+}
+
+.activity-continuations {
+  margin-top: 1rem;
+}
+
+@media (max-width: 720px) {
+  .activity-layout {
+    grid-template-columns: 1fr;
+  }
+}

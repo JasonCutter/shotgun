@@ -11,7 +11,8 @@ legacy_source_id: 3a65181d-71ad-8182-b0fb-f84d722f98a2
 
 ## 범위
 
-Frontend and Human Interaction Architecture의 횡단 ADR을 식별한다. 이 인덱스는 ADR 본문의 결정과 변경 이력을 대체하지 않으며 ADR 번호와 Accepted 상태를 보존한다.
+Frontend and Human Interaction Architecture의 횡단 ADR을 식별한다. 이 인덱스는 ADR 본문의 결정과 변경 이력을 대체하지 않으며 ADR
+번호와 Accepted 상태를 보존한다.
 
 | ADR     | 제목                                                                                                   | 상태                                                                                     | Legacy Notion ID                       |
 | ------- | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- | -------------------------------------- |
@@ -42,14 +43,18 @@ Frontend and Human Interaction Architecture의 횡단 ADR을 식별한다. 이 �
 | ADR-126 | Knowledge Editor Typed DraftChangeSet Materialization, Snapshot Pinning and Review Submission Boundary | Accepted 2026-08-02 / publication pending / Product implementation not started           | Git ADR; no Legacy Notion owner        |
 | ADR-127 | Semantic Graph Projection Read Persistence, Health and Continuation Boundary                           | Accepted 2026-08-04 / FE-P3-S3 Product implementation authorized                         | Git ADR; no Legacy Notion owner        |
 | ADR-128 | Review Context Revision, Item Decision and Purpose-bound Approval Boundary                             | Accepted 2026-08-04 / FE-P4-S1 Product implementation authorized                         | Git ADR; no Legacy Notion owner        |
+| ADR-129 | External Action Product Resource, Attempt, Credential, Budget and Compensation Boundary                | Accepted 2026-08-05 / FE-P4-S2 Product implementation complete                           | Git ADR; no Legacy Notion owner        |
+| ADR-130 | Frontend Agent·Job Activity Federated Projection, Identity and Retry Boundary                          | Accepted 2026-08-06 / FE-P5-S1 Contract frozen / Product implementation not authorized   | Git ADR; no Legacy Notion owner        |
 
-ADR-117과 ADR-120은 Frontend 기능 ADR이 아니라 Project 전체 문서 Canonical 운영을 지배한다. ADR-124는 Frontend Work Item과 완료 권위의 Accepted 경계를 정의한다. ADR-128은 FE-P4-S1의 immutable Review Context, Item decision, purpose-bound Approval과 Migration 027 경계를 정의하며 Product 구현 착수가 승인됐다.
+ADR-117과 ADR-120은 Frontend 기능 ADR이 아니라 Project 전체 문서 Canonical 운영을 지배한다. ADR-124는 Frontend Work
+Item과 완료 권위의 Accepted 경계를 정의한다. ADR-129는 FE-P4-S2의 Product 실행·Attempt·Credential·Budget·Compensation
+경계를 정의한다. ADR-130은 ADR-111의 Activity 설계를 federated read projection, Domain identity mapping, retry
+semantics, additive read model과 polling baseline으로 구체화하며 ADR-112의 History 경계를 보존한다.
 
 ## Git 소유 경계
 
-- ADR-099와 ADR-114–119의 권위 본문은 `docs/architecture/adr/`의 개별 Git 파일이다.
+- ADR-099와 ADR-114–130의 권위 본문은 `docs/architecture/adr/`의 개별 Git 파일이다.
 - ADR-100–113의 권위 본문은 [`adr-100-113-consolidated-record.md`](adr-100-113-consolidated-record.md)다.
-- ADR-122–128의 권위 본문은 `docs/architecture/adr/`의 개별 Git 파일이다.
 - 개별 Notion 페이지는 Legacy Reference와 승인 당시의 원문 이력이다.
 - 전역 번호·Gap·Owner 정보는 [`docs/architecture/adr/adr-registry.json`](../adr/adr-registry.json)이 지배한다.
 
@@ -68,6 +73,7 @@ ADR-117과 ADR-120은 Frontend 기능 ADR이 아니라 Project 전체 문서 Can
 - 이후 PR #20과 Phase 1 상위 결정문이 Section 2 구현·검증·병합 완료를 확정했다.
 - 따라서 현재 상태 표시는 이후 승인·병합 기록을 따른다. 초기 기록은 당시 Fact로 보존하며 삭제하지 않는다.
 - ADR-119의 설계 문서 병합과 Product 구현 완료는 별개다.
+- ADR-130의 Contract 승인과 FE-P5-S1 Product 구현 완료는 별개다.
 
 ## 2026-07-29 전역 정리 결과
 

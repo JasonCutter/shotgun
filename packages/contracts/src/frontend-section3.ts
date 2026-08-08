@@ -593,6 +593,7 @@ export type TargetRouteView = {
     | 'knowledge'
     | 'review'
     | 'external-action'
+    | 'activity'
     | 'settings'
     | 'settings-projects';
   readonly href:
@@ -602,6 +603,7 @@ export type TargetRouteView = {
     | '/knowledge'
     | '/review'
     | '/external-action'
+    | '/activity'
     | '/settings'
     | '/settings/projects';
 };
@@ -613,6 +615,7 @@ const TARGET_ROUTES: Readonly<Record<TargetRouteView['routeId'], TargetRouteView
   knowledge: '/knowledge',
   review: '/review',
   'external-action': '/external-action',
+  activity: '/activity',
   settings: '/settings',
   'settings-projects': '/settings/projects',
 };

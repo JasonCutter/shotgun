@@ -308,6 +308,94 @@ export const reviewDisabledQueryKey = (operation: string) =>
   ['review', 'disabled', operation] as const;
 
 /**
+ * FE-P5-S1 WP4 Activity Workspace query scope. Derived from the shell like the
+ * Review/External Action scopes; the server derives Principal, Project, access,
+ * policy, capability and sensitivity authority — the browser only names the
+ * resource and its filters (ADR-130).
+ */
+export type ActivityQueryScope = {
+  readonly principalId: string;
+  readonly sessionId: string;
+  readonly activeProjectId: string;
+  readonly resourceProjectId: string;
+  readonly accessRevision: string;
+  readonly policyContextRevision: string;
+  readonly sensitivity: string;
+};
+
+export const activityScopeFromShell = (shell: GlobalShellView | null): ActivityQueryScope | null =>
+  shell?.activeProject
+    ? {
+        principalId: shell.principalId,
+        sessionId: shell.sessionId,
+        activeProjectId: shell.activeProject.id,
+        resourceProjectId: shell.activeProject.id,
+        accessRevision: shell.accessRevision,
+        policyContextRevision: shell.policyContextRevision,
+        sensitivity: shell.activeProject.sensitivityClearance,
+      }
+    : null;
+
+const activityScopeKey = (scope: ActivityQueryScope) =>
+  [
+    'project',
+    scope.principalId,
+    scope.sessionId,
+    scope.activeProjectId,
+    scope.resourceProjectId,
+    scope.accessRevision,
+    scope.policyContextRevision,
+    scope.sensitivity,
+    'activity',
+  ] as const;
+
+/**
+ * Activity scope prefix used for invalidation after an explicit refresh — it
+ * matches the REAL queue/resource/refresh keys of the scope (no ad hoc arrays).
+ */
+export const activityScopePrefix = (scope: ActivityQueryScope) =>
+  [...activityScopeKey(scope)] as const;
+
+/**
+ * Queue-phase key: a bounded queue read bound to the server scope AND the full
+ * request (filters, limit, cursor) so two requests never reuse each other's
+ * cached result and polling does not overwrite a filtered page.
+ */
+export const activityQueueQueryKey = (
+  scope: ActivityQueryScope,
+  request: {
+    readonly domainKinds?: readonly string[];
+    readonly states?: readonly string[];
+    readonly attention?: 'NEEDS_ATTENTION' | 'RESOLVED' | 'NONE';
+    readonly cursor?: string;
+    readonly limit?: number;
+  },
+) => [...activityScopeKey(scope), 'queue', request] as const;
+
+/**
+ * Resource-phase key: any Detail/Stage/Event read is bound to the server scope
+ * AND the concrete Activity identity (projection + Domain reference), so cache
+ * isolation holds across Project, access, policy and Activity identity.
+ */
+export const activityResourceQueryKey = (
+  scope: ActivityQueryScope,
+  identity: {
+    readonly domainKind: string;
+    readonly activityId: string;
+    readonly domainResourceKind: string;
+    readonly domainResourceId: string;
+  },
+  operation: readonly unknown[],
+) => [...activityScopeKey(scope), 'resource', identity, ...operation] as const;
+
+export const activityDisabledQueryKey = (operation: string) =>
+  ['activity', 'disabled', operation] as const;
+
+/** Refresh-phase key used to invalidate after an explicit refresh. */
+export const activityRefreshQueryKey = (scope: ActivityQueryScope) =>
+  [...activityScopeKey(scope), 'refresh'] as const;
+
+/**
  * FE-P4-S2 WP5 External Action workspace query scope. Derived from the shell
  * exactly like the Review scope; the server derives capability/credential/
  * budget authority (ADR-129), the browser only names the resource.

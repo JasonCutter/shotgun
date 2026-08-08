@@ -56,15 +56,93 @@ export type ActivityFailureKindV1 = 'TRANSIENT' | 'PERMANENT' | 'OUTCOME_UNKNOWN
 export type ActivityRetryabilityV1 = 'RETRYABLE' | 'NOT_RETRYABLE' | 'UNKNOWN';
 
 /**
- * Server-derived available action kinds (WP5 — Existing Domain action
- * delegation). Activity never owns generic Retry/Cancel commands: the server
- * derives availability from the owning-Domain capabilities and the client
- * delegates execution to the existing owning-Domain command route (ADR-130 §3,
- * Contract Snapshot §7). `CANCEL` appears before `RETRY` when both are shown.
+ * Owning-Domain retry mode. Sources and Ask distinguish `RETRY_SAME_CONTEXT`
+ * (re-run in the original context) from `RETRY_CURRENT_POLICY` (re-run under
+ * the current policy). The server preserves this mode end-to-end so the
+ * browser never arbitrarily picks a mode (WP5 Round 1 review).
  */
-export type ActivityActionKindV1 = 'RETRY' | 'CANCEL';
+export type ActivityRetryModeV1 = 'SAME_CONTEXT' | 'CURRENT_POLICY';
 
-export const ACTIVITY_ACTION_KINDS: readonly ActivityActionKindV1[] = ['CANCEL', 'RETRY'] as const;
+export const ACTIVITY_RETRY_MODES: readonly ActivityRetryModeV1[] = [
+  'SAME_CONTEXT',
+  'CURRENT_POLICY',
+] as const;
+
+/**
+ * Server-derived available action descriptor (WP5 — Existing Domain action
+ * delegation). Activity never owns generic Retry/Cancel commands: the server
+ * derives each executable action from the owning-Domain capabilities and
+ * carries the command context the client needs to invoke the existing
+ * owning-Domain command route (ADR-130 §3, Contract Snapshot §7, AC-13).
+ *
+ * - `CANCEL` (Sources/Ask) — plain cancel of the concrete Domain resource.
+ * - `CANCEL` with `actionRevision` (External Action) — cancel needs the
+ *   expected Action aggregate revision.
+ * - `RETRY` with `retryMode` (Sources/Ask) — retry in the given mode.
+ * - `RETRY` with `executionId`/`sourceAttemptId`/`causationId` (External
+ *   Action) — retry of the source Execution Attempt with the causation link.
+ */
+export type ActivityAvailableActionV1 = {
+  readonly schemaVersion: FrontendActivitySchemaVersion;
+  readonly kind: 'CANCEL' | 'RETRY';
+  /** Sources/Ask retry mode — present when the Domain distinguishes modes. */
+  readonly retryMode?: ActivityRetryModeV1;
+  /** External Action cancel command context (expected action revision). */
+  readonly actionRevision?: number;
+  /** External Action retry command context. */
+  readonly executionId?: string;
+  readonly sourceAttemptId?: string;
+  readonly causationId?: string;
+};
+
+export const decodeActivityAvailableActionV1 = (
+  value: unknown,
+  path = 'availableAction',
+): ActivityAvailableActionV1 => {
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'kind',
+      'retryMode',
+      'actionRevision',
+      'executionId',
+      'sourceAttemptId',
+      'causationId',
+    ],
+    path,
+  );
+  decodeSchemaVersion(object, path);
+  const kind = enumValue(required(object, 'kind', path), ['CANCEL', 'RETRY'], `${path}.kind`);
+  return {
+    schemaVersion: '1.0.0',
+    kind,
+    ...(object.retryMode === undefined
+      ? {}
+      : {
+          retryMode: enumValue(object.retryMode, ACTIVITY_RETRY_MODES, `${path}.retryMode`),
+        }),
+    ...(object.actionRevision === undefined
+      ? {}
+      : {
+          actionRevision: positiveInteger(object.actionRevision, `${path}.actionRevision`),
+        }),
+    ...(object.executionId === undefined
+      ? {}
+      : { executionId: text(required(object, 'executionId', path), `${path}.executionId`) }),
+    ...(object.sourceAttemptId === undefined
+      ? {}
+      : {
+          sourceAttemptId: text(
+            required(object, 'sourceAttemptId', path),
+            `${path}.sourceAttemptId`,
+          ),
+        }),
+    ...(object.causationId === undefined
+      ? {}
+      : { causationId: text(required(object, 'causationId', path), `${path}.causationId`) }),
+  };
+};
 
 export type ActivityAttentionStateV1 = 'NEEDS_ATTENTION' | 'RESOLVED' | 'NONE';
 
@@ -974,12 +1052,12 @@ export type ActivitySnapshotV1 = {
   readonly metadata: ActivityProjectionMetadataV1;
   readonly dimensions: ActivityDimensionsV1;
   /**
-   * Server-derived available actions (WP5). Empty when the owning Domain does
-   * not allow Retry/Cancel for this Activity. The browser never authors these;
-   * it only renders what the server returns and delegates execution to the
-   * existing owning-Domain command route (FE-P5-S1-AC-13).
+   * Server-derived available action descriptors (WP5). Empty when the owning
+   * Domain does not allow Retry/Cancel for this Activity. The browser never
+   * authors these; it only renders what the server returns and delegates
+   * execution to the existing owning-Domain command route (FE-P5-S1-AC-13).
    */
-  readonly availableActions: readonly ActivityActionKindV1[];
+  readonly availableActions: readonly ActivityAvailableActionV1[];
 };
 
 /**
@@ -1045,7 +1123,7 @@ export const decodeActivitySnapshotV1 = (value: unknown, path = 'activity'): Act
     required(object, 'availableActions', path),
     `${path}.availableActions`,
   ).map((entry, index) =>
-    enumValue(entry, ACTIVITY_ACTION_KINDS, `${path}.availableActions[${index}]`),
+    decodeActivityAvailableActionV1(entry, `${path}.availableActions[${index}]`),
   );
   return {
     schemaVersion: '1.0.0',
@@ -1098,11 +1176,12 @@ export type ActivityDetailV1 = {
   readonly metadata: ActivityProjectionMetadataV1;
   readonly dimensions: ActivityDimensionsV1;
   /**
-   * Server-derived available actions (WP5). Empty when the owning Domain does
-   * not allow Retry/Cancel for this Activity; the client only renders what the
-   * server returns and delegates execution to the owning-Domain command route.
+   * Server-derived available action descriptors (WP5). Empty when the owning
+   * Domain does not allow Retry/Cancel for this Activity; the client only
+   * renders what the server returns and delegates execution to the
+   * owning-Domain command route.
    */
-  readonly availableActions: readonly ActivityActionKindV1[];
+  readonly availableActions: readonly ActivityAvailableActionV1[];
 };
 
 export type ActivityStageContinuationV1 = {

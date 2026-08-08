@@ -154,7 +154,10 @@ const validSnapshot = {
   transportAttempts: [validTransportAttempt],
   metadata: validMetadata,
   dimensions: validDimensions,
-  availableActions: ['CANCEL', 'RETRY'],
+  availableActions: [
+    { schemaVersion: '1.0.0', kind: 'CANCEL' },
+    { schemaVersion: '1.0.0', kind: 'RETRY', retryMode: 'SAME_CONTEXT' },
+  ],
 };
 
 describe('FE-P5-S1 ActivityRootReferenceV1', () => {
@@ -401,16 +404,40 @@ describe('FE-P5-S1 ActivitySnapshotV1 composite', () => {
     ).toThrow(FrontendContractError);
   });
 
-  it('decodes server-derived available actions in deterministic order', () => {
-    const decoded = decodeActivitySnapshotV1({ ...validSnapshot, availableActions: ['CANCEL'] });
-    expect(decoded.availableActions).toEqual(['CANCEL']);
+  it('decodes server-derived available action descriptors preserving retry mode', () => {
+    const decoded = decodeActivitySnapshotV1({
+      ...validSnapshot,
+      availableActions: [{ schemaVersion: '1.0.0', kind: 'RETRY', retryMode: 'CURRENT_POLICY' }],
+    });
+    expect(decoded.availableActions).toEqual([
+      { schemaVersion: '1.0.0', kind: 'RETRY', retryMode: 'CURRENT_POLICY' },
+    ]);
+  });
+
+  it('decodes an External Action cancel descriptor with the action revision', () => {
+    const decoded = decodeActivitySnapshotV1({
+      ...validSnapshot,
+      availableActions: [{ schemaVersion: '1.0.0', kind: 'CANCEL', actionRevision: 3 }],
+    });
+    expect(decoded.availableActions).toEqual([
+      { schemaVersion: '1.0.0', kind: 'CANCEL', actionRevision: 3 },
+    ]);
   });
 
   it('rejects an unknown available action kind (allow-list)', () => {
     expect(() =>
       decodeActivitySnapshotV1({
         ...validSnapshot,
-        availableActions: ['RETRY', 'EXECUTE'],
+        availableActions: [{ schemaVersion: '1.0.0', kind: 'EXECUTE' }],
+      }),
+    ).toThrow(FrontendContractError);
+  });
+
+  it('rejects an unknown retry mode (allow-list)', () => {
+    expect(() =>
+      decodeActivitySnapshotV1({
+        ...validSnapshot,
+        availableActions: [{ schemaVersion: '1.0.0', kind: 'RETRY', retryMode: 'CUSTOM' }],
       }),
     ).toThrow(FrontendContractError);
   });

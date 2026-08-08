@@ -137,7 +137,7 @@ describe('FE-P5-S1 SourcesActivityAdapter (concrete)', () => {
     expect(detail.events).toHaveLength(1);
     expect(detail.events[0]?.category).toBe('SUCCEEDED');
     // WP5 — server-derived available actions from owning-Domain capabilities.
-    expect(detail.availableActions).toEqual(['CANCEL']);
+    expect(detail.availableActions).toEqual([{ schemaVersion: '1.0.0', kind: 'CANCEL' }]);
   });
 
   it('derives RETRY from Sources retry capabilities and omits actions deny-by-default', async () => {
@@ -163,7 +163,7 @@ describe('FE-P5-S1 SourcesActivityAdapter (concrete)', () => {
       runId: 'submission-1',
     };
     expect((await adapter.readDetail(ADAPTER_SCOPE, retryRoot)).availableActions).toEqual([
-      'RETRY',
+      { schemaVersion: '1.0.0', kind: 'RETRY', retryMode: 'CURRENT_POLICY' },
     ]);
     // Deny-by-default: no capabilities → no actions.
     const noActionsRead = new InMemorySourcesActivityRead();
@@ -348,5 +348,80 @@ describe('FE-P5-S1 ExternalActionActivityAdapter (concrete)', () => {
     expect(detail.availableActions).toEqual([]);
     const stages = await adapter.readStages(ADAPTER_SCOPE, page.items[0]!.root);
     expect(stages.stages).toHaveLength(1);
+  });
+
+  it('carries the External Action command context in the available action descriptors', async () => {
+    const store = new InMemoryExternalActionStore();
+    const action = {
+      schemaVersion: '1.0.0' as const,
+      actionId: 'action-1',
+      actionRevision: 4,
+      operation: 'UPDATE_REVERSIBLE' as const,
+      resourceProjectId: 'project-1',
+      effectiveProjectId: 'project-1',
+      accessRevision: 'access-1',
+      policyContextRevision: 'policy-1',
+      status: 'FAILED' as const,
+      aggregateState: 'AVAILABLE' as const,
+      accessMasking: 'VISIBLE' as const,
+      maskedFields: [],
+      capabilities: [
+        'READ_EXTERNAL_ACTION' as const,
+        'CANCEL_EXTERNAL_ACTION' as const,
+        'RETRY_EXECUTION_ATTEMPT' as const,
+      ],
+      updatedAt: '2026-08-06T00:00:02.000Z',
+      createdAt: '2026-08-06T00:00:00.000Z',
+      latestExecutionRef: {
+        schemaVersion: '1.0.0' as const,
+        resourceKind: 'execution' as const,
+        resourceId: 'execution-1',
+      },
+    };
+    const execution = {
+      schemaVersion: '1.0.0' as const,
+      executionId: 'execution-1',
+      concreteKind: 'EXECUTION' as const,
+      actionId: 'action-1',
+      resourceProjectId: 'project-1',
+      effectiveProjectId: 'project-1',
+      manifestRevision: 1,
+      status: 'FAILED' as const,
+      attemptCount: 1,
+      startedAt: '2026-08-06T00:00:01.000Z',
+    };
+    const failedAttempt = {
+      schemaVersion: '1.0.0' as const,
+      attemptId: 'attempt-1',
+      attemptNumber: 1,
+      executionId: 'execution-1',
+      actionId: 'action-1',
+      resourceProjectId: 'project-1',
+      effectiveProjectId: 'project-1',
+      idempotencyKey: 'idem-1',
+      status: 'FAILED' as const,
+      policyContextRevision: 'policy-1',
+      externalRevision: 'ext-1',
+      correlationId: 'corr-1',
+      startedAt: '2026-08-06T00:00:01.000Z',
+    };
+    await store.transaction(async (repos) => {
+      await repos.aggregates.insert(action);
+      await repos.executions.insert(execution);
+      await repos.attempts.insert(failedAttempt);
+    });
+    const adapter = new ExternalActionActivityAdapter(store);
+    const page = await adapter.readQueue(ADAPTER_SCOPE, { limit: 10 });
+    const detail = await adapter.readDetail(ADAPTER_SCOPE, page.items[0]!.root);
+    expect(detail.availableActions).toEqual([
+      { schemaVersion: '1.0.0', kind: 'CANCEL', actionRevision: 4 },
+      {
+        schemaVersion: '1.0.0',
+        kind: 'RETRY',
+        executionId: 'execution-1',
+        sourceAttemptId: 'attempt-1',
+        causationId: 'corr-1',
+      },
+    ]);
   });
 });

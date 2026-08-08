@@ -11,7 +11,8 @@ import type {
 } from '../../../packages/contracts/src/index.js';
 import {
   activityAttentionFrom,
-  activityAvailableActionsFrom,
+  activityCancelAction,
+  activityRetryAction,
   activityRetryabilityFrom,
   activityStateFromAskState,
   decodeAskActivityCursor,
@@ -290,12 +291,15 @@ export class AskActivityAdapter implements AskActivityAdapterPort {
         freshness: 'CURRENT',
         adapterStatus: 'AVAILABLE',
       },
-      availableActions: activityAvailableActionsFrom({
-        cancel: run.capabilities.includes('CANCEL'),
-        retry:
-          run.capabilities.includes('RETRY_SAME_CONTEXT') ||
-          run.capabilities.includes('RETRY_CURRENT_POLICY'),
-      }),
+      availableActions: [
+        ...(run.capabilities.includes('CANCEL') ? [activityCancelAction()] : []),
+        ...(run.capabilities.includes('RETRY_SAME_CONTEXT')
+          ? [activityRetryAction('SAME_CONTEXT')]
+          : []),
+        ...(run.capabilities.includes('RETRY_CURRENT_POLICY')
+          ? [activityRetryAction('CURRENT_POLICY')]
+          : []),
+      ],
     };
   }
 

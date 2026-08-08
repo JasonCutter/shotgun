@@ -13,7 +13,8 @@ import type {
   ExternalActionV1,
 } from '../../../packages/contracts/src/index.js';
 import {
-  activityAvailableActionsFrom,
+  activityCancelActionForRevision,
+  activityExecutionRetryAction,
   activityRetryabilityFrom,
   activityStateFromExternalActionState,
   type ActivityAdapterHealthV1,
@@ -319,6 +320,12 @@ export class ExternalActionActivityAdapter implements ExternalActionActivityAdap
         ? await repositories.audit.listByAction(action.actionId, DETAIL_EVENT_CAP, 0)
         : [];
       const projectedAt = new Date().toISOString();
+      const retryableAttempt = attempts.find(
+        (attempt) =>
+          attempt.status === 'FAILED' ||
+          attempt.status === 'OUTCOME_UNKNOWN' ||
+          attempt.status === 'CANCELLED',
+      );
       return {
         root: actionRoot(action),
         run: {
@@ -350,10 +357,22 @@ export class ExternalActionActivityAdapter implements ExternalActionActivityAdap
           freshness: 'CURRENT',
           adapterStatus: 'AVAILABLE',
         },
-        availableActions: activityAvailableActionsFrom({
-          cancel: action.capabilities.includes('CANCEL_EXTERNAL_ACTION'),
-          retry: action.capabilities.includes('RETRY_EXECUTION_ATTEMPT'),
-        }),
+        availableActions: [
+          ...(action.capabilities.includes('CANCEL_EXTERNAL_ACTION')
+            ? [activityCancelActionForRevision(action.actionRevision)]
+            : []),
+          ...(action.capabilities.includes('RETRY_EXECUTION_ATTEMPT') &&
+          execution !== undefined &&
+          retryableAttempt !== undefined
+            ? [
+                activityExecutionRetryAction({
+                  executionId: execution.executionId,
+                  sourceAttemptId: retryableAttempt.attemptId,
+                  causationId: retryableAttempt.correlationId,
+                }),
+              ]
+            : []),
+        ],
       };
     });
   }

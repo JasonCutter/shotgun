@@ -1,10 +1,11 @@
 import type {
-  ActivityActionKindV1,
   ActivityAdapterStatusV1,
   ActivityAttentionStateV1,
+  ActivityAvailableActionV1,
   ActivityFailureKindV1,
   ActivityLifecycleStateV1,
   ActivityProjectionFreshnessV1,
+  ActivityRetryModeV1,
   ActivityRetryabilityV1,
   AskAnswerRunState,
   ExternalActionAggregateStatusV1,
@@ -109,22 +110,50 @@ export const activityRetryabilityFrom = (retryable: boolean | undefined): Activi
   retryable === undefined ? 'UNKNOWN' : retryable ? 'RETRYABLE' : 'NOT_RETRYABLE';
 
 /**
- * Server-derived available actions (WP5 — Existing Domain action delegation).
+ * Server-derived available action constructors (WP5 — Existing Domain action
+ * delegation).
  *
- * The owning Domain's capability flags decide which of Cancel/Retry may be
- * shown for an Activity; Activity never authors generic Retry/Cancel commands
- * (ADR-130 §3, Contract Snapshot §7, FE-P5-S1-AC-13). Deterministic order:
- * `CANCEL` before `RETRY`.
+ * Each owning-Domain adapter composes the executable descriptors from its
+ * capability flags; Activity never authors generic Retry/Cancel commands
+ * (ADR-130 §3, Contract Snapshot §7, FE-P5-S1-AC-13). Retry mode and the
+ * External Action command context are preserved end-to-end so the browser
+ * never invents a mode or a command payload.
  */
-export const activityAvailableActionsFrom = (input: {
-  readonly cancel: boolean;
-  readonly retry: boolean;
-}): readonly ActivityActionKindV1[] => {
-  const actions: ActivityActionKindV1[] = [];
-  if (input.cancel) actions.push('CANCEL');
-  if (input.retry) actions.push('RETRY');
-  return actions;
-};
+
+/** Plain Cancel descriptor (Sources/Ask). */
+export const activityCancelAction = (): ActivityAvailableActionV1 => ({
+  schemaVersion: '1.0.0',
+  kind: 'CANCEL',
+});
+
+/** External Action Cancel descriptor carrying the expected Action revision. */
+export const activityCancelActionForRevision = (
+  actionRevision: number,
+): ActivityAvailableActionV1 => ({
+  schemaVersion: '1.0.0',
+  kind: 'CANCEL',
+  actionRevision,
+});
+
+/** Retry descriptor with the owning-Domain retry mode (Sources/Ask). */
+export const activityRetryAction = (mode: ActivityRetryModeV1): ActivityAvailableActionV1 => ({
+  schemaVersion: '1.0.0',
+  kind: 'RETRY',
+  retryMode: mode,
+});
+
+/** External Action Retry descriptor with the full retry command context. */
+export const activityExecutionRetryAction = (input: {
+  readonly executionId: string;
+  readonly sourceAttemptId: string;
+  readonly causationId: string;
+}): ActivityAvailableActionV1 => ({
+  schemaVersion: '1.0.0',
+  kind: 'RETRY',
+  executionId: input.executionId,
+  sourceAttemptId: input.sourceAttemptId,
+  causationId: input.causationId,
+});
 
 /** Attention dimension from an owning-Domain attention reason. */
 export const activityAttentionFrom = (

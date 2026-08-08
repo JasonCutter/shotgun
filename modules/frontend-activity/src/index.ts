@@ -7,9 +7,12 @@ export type { ActivityAdapterErrorCode } from './activity-error.js';
 export {
   activityAdapterStatusFrom,
   activityAttentionFrom,
-  activityAvailableActionsFrom,
+  activityCancelAction,
+  activityCancelActionForRevision,
+  activityExecutionRetryAction,
   activityFailureKindFrom,
   activityFreshnessFrom,
+  activityRetryAction,
   activityRetryabilityFrom,
   activityStateFromAskState,
   activityStateFromExternalActionState,

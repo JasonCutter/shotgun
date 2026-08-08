@@ -1,7 +1,7 @@
 ---
 id: FRONTEND-PHASE-5-SECTION-1-WP6-EVIDENCE-260808001
 classification: CANONICAL
-status: wp6_in_progress
+status: wp6_accepted
 work_item: FE-P5-S1
 created_at: 2026-08-08
 subject_base: 8c00519d7498ef1783de1a4e4e48da1a2b4bb8bd
@@ -56,6 +56,34 @@ builder.test.ts`).
 
 Not included (preserved boundaries): WP7+, Connector Diagnostics, SSE, additional migrations,
 new runtime dependency, FE-P5-S2, Ready/Merge, deployment and production verification.
+
+## 2a. Review round 1 corrections (GPT verdict CHANGES_REQUIRED)
+
+GPT review round 1 returned `CHANGES_REQUIRED` with one blocker and one evidence correction.
+Both were corrected on head `e6b98d83` (CI #644), verified by CI (Frontend / Quality / Required
+Gates all green).
+
+| #   | Defect (verdict)                                                                                                              | Correction                                                                                                                                                                                                                               |
+| --- | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | AC-16 `initial Queue display` measurement started after `page.goto` completed, so navigation→Queue latency was under-reported | `measureQueueDisplay` now references the document navigation start (`performance.timeOrigin`); the returned value is the FULL navigation → committed Queue latency (see Section 6). Queue→Detail was already correct and unchanged       |
+| 2   | AC-06 matrix cited projection/descriptor tests only, not the actual Retry→new Attempt behaviour                               | AC-06 now cites the owning-Domain retry tests that prove it directly: External Action (`attemptNumber = 2`, `causationId`, attempts `[1, 2]`), Sources (`attemptCount = 2`, `causation_attempt_id`), Ask (`service.retry` new execution) |
+
+No previously-passed head was re-run; only the new WP6 browser/performance specs and the
+evidence document changed.
+
+## 2b. Review verdict — ACCEPTED (2026-08-08)
+
+GPT review round 2 (`Make Shotgun - 상태 업데이트 및 진행사항`) of the round-1 correction head
+`e6b98d83` (CI #644) and the final evidence carrier `7c5cbbd` (CI #645) returned **ACCEPTED**
+(`Status Authority: IMPLEMENTATION_ACCEPTED`). All round-1 items (AC-16 Queue measurement
+reference, AC-06 owning-Domain Retry evidence) are PASS; no blocking defect remains within the
+WP6 scope.
+
+- WP1: ACCEPTED; WP2: ACCEPTED; WP3: ACCEPTED; WP4: ACCEPTED; WP5: ACCEPTED; WP6: ACCEPTED;
+  FE-P5-S1 Product Work Packages: ALL ACCEPTED; FE-P5-S1 overall: GOVERNANCE CLOSURE PENDING.
+- PR #73 Ready/Merge, deployment and production verification remain forbidden.
+- Head notation: `wp6CorrectionHead` = `e6b98d83` (CI #644); evidence/PR carrier head =
+  `7c5cbbd` (CI #645).
 
 ## 3. AC-01..AC-16 evidence matrix
 
@@ -236,11 +264,6 @@ Added in WP6: `tests/browser/frontend-activity-performance.spec.ts`. With determ
 fake route fixtures, headless Chromium, a single worker, one warm-up navigation excluded and
 three measured samples, the spec measures:
 
-- `activity-queue-display-ms` — from the `/activity` navigation to the committed Queue list
-  (initial Queue display).
-- `activity-queue-to-detail-ms` — from the queue selection gesture to the committed Detail
-  heading (Queue → Detail transition).
-
 - `activity-queue-display-ms` — from the `/activity` navigation start
   (`performance.timeOrigin`) to the committed Queue list (initial Queue display).
 - `activity-queue-to-detail-ms` — from the queue selection gesture to the committed Detail
@@ -264,21 +287,9 @@ local fake fixtures):
 | `activity-queue-display`   | 801 / 769 / 1577 | **801**     | ≤ 2000    | PASS    |
 | `activity-queue-to-detail` | 270 / 64 / 69    | **69**      | ≤ 2000    | PASS    |
 
-## 2a. Review round 1 corrections (GPT verdict CHANGES_REQUIRED)
-
-GPT review round 1 returned `CHANGES_REQUIRED` with one blocker and one evidence correction.
-Both were corrected on head (CI #643/round-1-fix), verified by CI (Frontend / Quality / Required
-Gates all green).
-
-| #   | Defect (verdict)                                                                                                              | Correction                                                                                                                                                                                                                               |
-| --- | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | AC-16 `initial Queue display` measurement started after `page.goto` completed, so navigation→Queue latency was under-reported | `measureQueueDisplay` now references the document navigation start (`performance.timeOrigin`); the returned value is the FULL navigation → committed Queue latency (see Section 6). Queue→Detail was already correct and unchanged       |
-| 2   | AC-06 matrix cited projection/descriptor tests only, not the actual Retry→new Attempt behaviour                               | AC-06 now cites the owning-Domain retry tests that prove it directly: External Action (`attemptNumber = 2`, `causationId`, attempts `[1, 2]`), Sources (`attemptCount = 2`, `causation_attempt_id`), Ask (`service.retry` new execution) |
-
-No previously-passed head was re-run; only the new WP6 browser/performance specs and the
-evidence document changed.
-
 ## 7. Next action
 
-Report WP6 verification and evidence to the GPT review gate. Do not begin WP7+ until this Work
-Package is reviewed and accepted; Ready/Merge/Deployment remain unauthorized.
+WP6 is ACCEPTED by the GPT review gate (round 2, `Status Authority: IMPLEMENTATION_ACCEPTED`,
+2026-08-08). FE-P5-S1 Product Work Packages are ALL ACCEPTED; the remaining permitted action is
+the governance closure record (this document + registry). WP7+ and FE-P5-S2 are NOT_STARTED and
+require user authorization; Ready/Merge/Deployment remain unauthorized.

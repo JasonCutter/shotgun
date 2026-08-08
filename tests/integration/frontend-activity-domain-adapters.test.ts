@@ -136,6 +136,42 @@ describe('FE-P5-S1 SourcesActivityAdapter (concrete)', () => {
     expect(detail.attempts[0]?.state).toBe('SUCCEEDED');
     expect(detail.events).toHaveLength(1);
     expect(detail.events[0]?.category).toBe('SUCCEEDED');
+    // WP5 — server-derived available actions from owning-Domain capabilities.
+    expect(detail.availableActions).toEqual(['CANCEL']);
+  });
+
+  it('derives RETRY from Sources retry capabilities and omits actions deny-by-default', async () => {
+    const retryable = {
+      ...submission,
+      state: 'FAILED' as const,
+      capabilities: ['RETRY_CURRENT_POLICY' as const],
+    };
+    const noActions = { ...submission, capabilities: [] };
+    const read = new InMemorySourcesActivityRead();
+    read.seedSubmission(retryable);
+    const adapter = new SourcesActivityAdapter(read);
+    const retryRoot = {
+      schemaVersion: '1.0.0' as const,
+      rootKind: 'JOB' as const,
+      activityId: 'submission-1',
+      domainKind: 'SOURCES' as const,
+      domainResourceKind: 'IntakeSubmission' as const,
+      domainResourceId: 'submission-1',
+      resourceProjectId: 'project-1',
+      resourceHref: '/submission-1',
+      jobId: 'submission-1',
+      runId: 'submission-1',
+    };
+    expect((await adapter.readDetail(ADAPTER_SCOPE, retryRoot)).availableActions).toEqual([
+      'RETRY',
+    ]);
+    // Deny-by-default: no capabilities → no actions.
+    const noActionsRead = new InMemorySourcesActivityRead();
+    noActionsRead.seedSubmission(noActions);
+    const noActionsAdapter = new SourcesActivityAdapter(noActionsRead);
+    expect((await noActionsAdapter.readDetail(ADAPTER_SCOPE, retryRoot)).availableActions).toEqual(
+      [],
+    );
   });
 });
 
@@ -204,6 +240,8 @@ describe('FE-P5-S1 AskActivityAdapter (concrete)', () => {
     expect(detail.attempts[0]?.attemptKind).toBe('ASK_ANSWER');
     expect(detail.events).toHaveLength(1);
     expect(detail.events[0]?.sequence).toBe(1);
+    // WP5 — Ask run exposes no capabilities → no available actions.
+    expect(detail.availableActions).toEqual([]);
     const events = await adapter.readEvents(ADAPTER_SCOPE, page.items[0]!.root);
     expect(events.events).toHaveLength(1);
   });
@@ -306,6 +344,8 @@ describe('FE-P5-S1 ExternalActionActivityAdapter (concrete)', () => {
     expect(detail.attempts[0]?.attemptKind).toBe('EXTERNAL_ACTION_EXECUTION');
     expect(detail.events).toHaveLength(1);
     expect(detail.events[0]?.category).toBe('SUCCEEDED');
+    // WP5 — only READ capability → no available actions (deny by default).
+    expect(detail.availableActions).toEqual([]);
     const stages = await adapter.readStages(ADAPTER_SCOPE, page.items[0]!.root);
     expect(stages.stages).toHaveLength(1);
   });

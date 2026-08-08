@@ -138,6 +138,7 @@ const makeSourcesAdapter = (opts: { fail?: boolean } = {}): SourcesActivityAdapt
         freshness: 'CURRENT',
         adapterStatus: 'AVAILABLE',
       },
+      availableActions: [],
     };
   },
   async readStages() {
@@ -201,6 +202,7 @@ const makeAskAdapter = (): AskActivityAdapterPort => ({
         freshness: 'CURRENT',
         adapterStatus: 'AVAILABLE',
       },
+      availableActions: [],
     };
   },
   async readStages() {

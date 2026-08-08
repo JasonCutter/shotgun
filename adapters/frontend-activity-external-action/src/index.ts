@@ -13,6 +13,7 @@ import type {
   ExternalActionV1,
 } from '../../../packages/contracts/src/index.js';
 import {
+  activityAvailableActionsFrom,
   activityRetryabilityFrom,
   activityStateFromExternalActionState,
   type ActivityAdapterHealthV1,
@@ -349,6 +350,10 @@ export class ExternalActionActivityAdapter implements ExternalActionActivityAdap
           freshness: 'CURRENT',
           adapterStatus: 'AVAILABLE',
         },
+        availableActions: activityAvailableActionsFrom({
+          cancel: action.capabilities.includes('CANCEL_EXTERNAL_ACTION'),
+          retry: action.capabilities.includes('RETRY_EXECUTION_ATTEMPT'),
+        }),
       };
     });
   }

@@ -121,4 +121,6 @@ export const ACTIVITY_ANNOUNCEMENTS = {
   SELECTED: '활동 세부 정보를 표시합니다.',
   CLEARED: '활동 선택을 해제했습니다.',
   FILTER_CHANGED: '활동 필터를 변경했습니다.',
+  CANCELLED: '취소 명령이 owning-Domain으로 전달되었습니다.',
+  RETRY_SENT: '재시도 명령이 owning-Domain으로 전달되었습니다.',
 } as const;

@@ -55,6 +55,17 @@ export type ActivityFailureKindV1 = 'TRANSIENT' | 'PERMANENT' | 'OUTCOME_UNKNOWN
 
 export type ActivityRetryabilityV1 = 'RETRYABLE' | 'NOT_RETRYABLE' | 'UNKNOWN';
 
+/**
+ * Server-derived available action kinds (WP5 — Existing Domain action
+ * delegation). Activity never owns generic Retry/Cancel commands: the server
+ * derives availability from the owning-Domain capabilities and the client
+ * delegates execution to the existing owning-Domain command route (ADR-130 §3,
+ * Contract Snapshot §7). `CANCEL` appears before `RETRY` when both are shown.
+ */
+export type ActivityActionKindV1 = 'RETRY' | 'CANCEL';
+
+export const ACTIVITY_ACTION_KINDS: readonly ActivityActionKindV1[] = ['CANCEL', 'RETRY'] as const;
+
 export type ActivityAttentionStateV1 = 'NEEDS_ATTENTION' | 'RESOLVED' | 'NONE';
 
 /** Domain Attempt kinds by owning Domain (ADR-130 §2 mapping). */
@@ -962,6 +973,13 @@ export type ActivitySnapshotV1 = {
   readonly transportAttempts: readonly ActivityTransportAttemptViewV1[];
   readonly metadata: ActivityProjectionMetadataV1;
   readonly dimensions: ActivityDimensionsV1;
+  /**
+   * Server-derived available actions (WP5). Empty when the owning Domain does
+   * not allow Retry/Cancel for this Activity. The browser never authors these;
+   * it only renders what the server returns and delegates execution to the
+   * existing owning-Domain command route (FE-P5-S1-AC-13).
+   */
+  readonly availableActions: readonly ActivityActionKindV1[];
 };
 
 /**
@@ -981,6 +999,7 @@ export const decodeActivitySnapshotV1 = (value: unknown, path = 'activity'): Act
       'transportAttempts',
       'metadata',
       'dimensions',
+      'availableActions',
     ],
     path,
   );
@@ -1022,6 +1041,12 @@ export const decodeActivitySnapshotV1 = (value: unknown, path = 'activity'): Act
     required(object, 'dimensions', path),
     `${path}.dimensions`,
   );
+  const availableActions = arrayValue(
+    required(object, 'availableActions', path),
+    `${path}.availableActions`,
+  ).map((entry, index) =>
+    enumValue(entry, ACTIVITY_ACTION_KINDS, `${path}.availableActions[${index}]`),
+  );
   return {
     schemaVersion: '1.0.0',
     root,
@@ -1032,6 +1057,7 @@ export const decodeActivitySnapshotV1 = (value: unknown, path = 'activity'): Act
     transportAttempts,
     metadata,
     dimensions,
+    availableActions,
   };
 };
 
@@ -1071,6 +1097,12 @@ export type ActivityDetailV1 = {
   readonly transportAttempts: readonly ActivityTransportAttemptViewV1[];
   readonly metadata: ActivityProjectionMetadataV1;
   readonly dimensions: ActivityDimensionsV1;
+  /**
+   * Server-derived available actions (WP5). Empty when the owning Domain does
+   * not allow Retry/Cancel for this Activity; the client only renders what the
+   * server returns and delegates execution to the owning-Domain command route.
+   */
+  readonly availableActions: readonly ActivityActionKindV1[];
 };
 
 export type ActivityStageContinuationV1 = {

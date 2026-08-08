@@ -419,6 +419,7 @@ export type {
   ActivityRootReferenceV1,
 } from '../../contracts/src/index.js';
 export type {
+  ActivityActionKindV1,
   ActivityDetailV1,
   ActivityEventContinuationV1,
   ActivityProjectionBuildResultV1,

@@ -1,4 +1,5 @@
 import type {
+  ActivityActionKindV1,
   ActivityAdapterStatusV1,
   ActivityAttentionStateV1,
   ActivityFailureKindV1,
@@ -106,6 +107,24 @@ export const activityStateFromExternalActionState = (
 /** Retryability dimension from an owning-Domain retryable flag. */
 export const activityRetryabilityFrom = (retryable: boolean | undefined): ActivityRetryabilityV1 =>
   retryable === undefined ? 'UNKNOWN' : retryable ? 'RETRYABLE' : 'NOT_RETRYABLE';
+
+/**
+ * Server-derived available actions (WP5 — Existing Domain action delegation).
+ *
+ * The owning Domain's capability flags decide which of Cancel/Retry may be
+ * shown for an Activity; Activity never authors generic Retry/Cancel commands
+ * (ADR-130 §3, Contract Snapshot §7, FE-P5-S1-AC-13). Deterministic order:
+ * `CANCEL` before `RETRY`.
+ */
+export const activityAvailableActionsFrom = (input: {
+  readonly cancel: boolean;
+  readonly retry: boolean;
+}): readonly ActivityActionKindV1[] => {
+  const actions: ActivityActionKindV1[] = [];
+  if (input.cancel) actions.push('CANCEL');
+  if (input.retry) actions.push('RETRY');
+  return actions;
+};
 
 /** Attention dimension from an owning-Domain attention reason. */
 export const activityAttentionFrom = (

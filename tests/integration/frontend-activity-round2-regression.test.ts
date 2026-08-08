@@ -409,6 +409,7 @@ describe('R2-5 sensitivity/access revalidation (adapter deny)', () => {
           state: 'RUNNING',
           attemptId: 'attempt-1',
           attemptNumber: 1,
+          capabilities: [],
           createdAt: '2026-08-06T00:00:00.000Z',
           updatedAt: '2026-08-06T00:00:01.000Z',
         };

@@ -234,6 +234,7 @@ const detailResult = {
   ],
   metadata,
   dimensions,
+  availableActions: ['CANCEL', 'RETRY'],
 };
 
 const askDetailResult = {
@@ -256,6 +257,7 @@ const askDetailResult = {
   transportAttempts: [],
   metadata,
   dimensions,
+  availableActions: ['CANCEL'],
 };
 
 const externalActionDetailResult = {
@@ -279,6 +281,7 @@ const externalActionDetailResult = {
   transportAttempts: [],
   metadata,
   dimensions,
+  availableActions: ['CANCEL', 'RETRY'],
 };
 
 const stagesResult = {
@@ -701,6 +704,130 @@ describe('ActivityWorkspace (FE-P5-S1 WP4)', () => {
     expect(detailCountAfter).toBeGreaterThan(detailCountBefore);
 
     vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  // -------------------------------------------------------------------------
+  // WP5 — Existing Domain action delegation (AC-13)
+  // -------------------------------------------------------------------------
+
+  it('shows Retry/Cancel only from server-derived availableActions and delegates Sources commands to the owning-Domain routes (AC-13)', async () => {
+    const { fetchMock, calls } = createFetchMock();
+    vi.stubGlobal('fetch', fetchMock);
+    const runtime = createRuntime();
+    renderWorkspace(runtime);
+
+    await screen.findByText('Sources intake submission submission-1');
+    await userEvent.click(screen.getByText('Sources intake submission submission-1'));
+    await waitFor(() => screen.getByRole('button', { name: '취소' }), { timeout: 10000 });
+
+    // The Sources submission capabilities (CANCEL + RETRY) surface as actions.
+    screen.getByRole('button', { name: '재시도' });
+
+    await userEvent.click(screen.getByRole('button', { name: '취소' }));
+    await waitFor(
+      () => {
+        expect(calls.some((call) => call.url.includes('/sources/submissions/cancel'))).toBe(true);
+      },
+      { timeout: 10000 },
+    );
+    const cancelBody = calls.find((call) => call.url.includes('/sources/submissions/cancel'));
+    expect(
+      (cancelBody?.body as { payload?: { submissionId?: string } } | undefined)?.payload
+        ?.submissionId,
+    ).toBe('submission-1');
+
+    await userEvent.click(screen.getByRole('button', { name: '재시도' }));
+    await waitFor(
+      () => {
+        expect(calls.some((call) => call.url.includes('/sources/submissions/retry'))).toBe(true);
+      },
+      { timeout: 10000 },
+    );
+    const retryBody = calls.find((call) => call.url.includes('/sources/submissions/retry'));
+    expect(
+      (retryBody?.body as { payload?: { submissionId?: string } } | undefined)?.payload
+        ?.submissionId,
+    ).toBe('submission-1');
+    vi.unstubAllGlobals();
+  });
+
+  it('delegates Ask Cancel to the owning-Domain command route (AC-13)', async () => {
+    const { fetchMock, calls } = createFetchMock();
+    vi.stubGlobal('fetch', fetchMock);
+    const runtime = createRuntime();
+    renderWorkspace(runtime);
+
+    await screen.findByText('Ask answer run answer-run-1');
+    await userEvent.click(screen.getByText('Ask answer run answer-run-1'));
+    await waitFor(() => screen.getByRole('button', { name: '취소' }), { timeout: 10000 });
+
+    // Ask run capabilities expose only CANCEL (no RETRY in this fixture).
+    expect(screen.queryByRole('button', { name: '재시도' })).toBeNull();
+
+    await userEvent.click(screen.getByRole('button', { name: '취소' }));
+    await waitFor(
+      () => {
+        expect(
+          calls.some((call) =>
+            call.url.includes('/product-api/frontend/ask/answer-runs/answer-run-1/cancel'),
+          ),
+        ).toBe(true);
+      },
+      { timeout: 10000 },
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it('delegates External Action Retry/Cancel to the owning-Domain command surface deep links (AC-13)', async () => {
+    const { fetchMock } = createFetchMock();
+    vi.stubGlobal('fetch', fetchMock);
+    const runtime = createRuntime();
+    renderWorkspace(runtime);
+
+    await screen.findByText('External Action action-ea-1');
+    await userEvent.click(screen.getByText('External Action action-ea-1'));
+    await waitFor(() => screen.getByRole('link', { name: 'Cancel (owning Domain surface)' }), {
+      timeout: 10000,
+    });
+
+    const cancelLink = screen.getByRole('link', { name: 'Cancel (owning Domain surface)' });
+    const retryLink = screen.getByRole('link', { name: 'Retry (owning Domain surface)' });
+    // The projection cannot assemble External Action governance fields, so both
+    // actions delegate to the existing owning-Domain command surface.
+    expect(cancelLink.getAttribute('href')).toBe('/external-action?action=action-ea-1');
+    expect(retryLink.getAttribute('href')).toBe('/external-action?action=action-ea-1');
+    vi.unstubAllGlobals();
+  });
+
+  it('renders no actions when the server-derived availableActions is empty', async () => {
+    const { fetchMock } = createFetchMock();
+    fetchMock.mockImplementation(async (url: RequestInfo | URL) => {
+      const text = String(url);
+      if (text.endsWith('/api/v1/security/csrf')) {
+        return jsonResponse(200, { csrfToken: 'csrf-activity' });
+      }
+      if (text.includes('/activity/queue')) return jsonResponse(200, queueResult);
+      if (text.includes('/activity/detail')) {
+        // Sources submission without Retry/Cancel capability.
+        return jsonResponse(200, { ...detailResult, availableActions: [] });
+      }
+      if (text.includes('/activity/stages')) return jsonResponse(200, stagesResult);
+      if (text.includes('/activity/events')) return jsonResponse(200, eventsResult);
+      return jsonResponse(404, { code: 'NOT_FOUND', message: 'not found' });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const runtime = createRuntime();
+    renderWorkspace(runtime);
+
+    await screen.findByText('Sources intake submission submission-1');
+    await userEvent.click(screen.getByText('Sources intake submission submission-1'));
+    await waitFor(() => screen.getByText(/Domain Attempts/), { timeout: 10000 });
+
+    expect(screen.queryByRole('button', { name: '취소' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '재시도' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Cancel (owning Domain surface)' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Retry (owning Domain surface)' })).toBeNull();
     vi.unstubAllGlobals();
   });
 });

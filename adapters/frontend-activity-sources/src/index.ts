@@ -13,6 +13,7 @@ import type {
 } from '../../../packages/contracts/src/index.js';
 import {
   activityAttentionFrom,
+  activityAvailableActionsFrom,
   activityRetryabilityFrom,
   activityStateFromSourcesItemState,
   activityStateFromSourcesState,
@@ -413,6 +414,12 @@ export class SourcesActivityAdapter implements SourcesActivityAdapterPort {
         freshness: 'CURRENT',
         adapterStatus: 'AVAILABLE',
       },
+      availableActions: activityAvailableActionsFrom({
+        cancel: snapshot.capabilities.includes('CANCEL'),
+        retry:
+          snapshot.capabilities.includes('RETRY_SAME_CONTEXT') ||
+          snapshot.capabilities.includes('RETRY_CURRENT_POLICY'),
+      }),
     };
   }
 

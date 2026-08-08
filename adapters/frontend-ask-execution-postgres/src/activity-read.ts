@@ -5,6 +5,7 @@ import {
   type AskAnswerRunEventKind,
   type AskAnswerRunEventView,
   type AskAnswerRunState,
+  type AskCapability,
 } from '../../../packages/contracts/src/index.js';
 import {
   decodeAskActivityCursor,
@@ -33,6 +34,7 @@ type RunRow = QueryResultRow & {
   readonly failure_outcome_unknown: boolean | null;
   readonly attempt_number: number;
   readonly attempt_id: string | null;
+  readonly capabilities: readonly AskCapability[];
   readonly access_revision: string;
   readonly policy_context_revision: string;
   readonly sensitivity_clearance: string;
@@ -65,7 +67,7 @@ const iso = (value: Date | string): string =>
 
 const RUN_COLUMNS = `r.answer_run_id, r.project_id, r.state, r.attention_reason,
        r.failure_code, r.failure_message, r.failure_retryable, r.failure_outcome_unknown,
-       r.attempt_number, r.created_at, r.updated_at,
+       r.attempt_number, r.capabilities, r.created_at, r.updated_at,
        r.access_revision, r.policy_context_revision, r.sensitivity_clearance,
        a.attempt_id`;
 
@@ -121,6 +123,7 @@ const runFromRow = (row: RunRow): AskActivityAnswerRunRow => ({
           outcomeUnknown: row.failure_outcome_unknown ?? false,
         },
       }),
+  capabilities: row.capabilities,
   createdAt: iso(row.created_at),
   updatedAt: iso(row.updated_at),
 });

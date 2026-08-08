@@ -1,6 +1,7 @@
 import type {
   AskAnswerRunEventView,
   AskAnswerRunState,
+  AskCapability,
   IntakeSubmissionSnapshot,
   IntakeSubmissionState,
 } from '../../../packages/contracts/src/index.js';
@@ -181,6 +182,8 @@ export type AskActivityAnswerRunRow = {
   readonly attemptId?: string;
   readonly attemptNumber?: number;
   readonly failure?: { code: string; message: string; retryable: boolean; outcomeUnknown: boolean };
+  /** Owning-Domain server-derived capabilities (drives WP5 available actions). */
+  readonly capabilities: readonly AskCapability[];
   readonly createdAt: string;
   readonly updatedAt: string;
 };

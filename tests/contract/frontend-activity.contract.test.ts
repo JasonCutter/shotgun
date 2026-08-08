@@ -154,6 +154,7 @@ const validSnapshot = {
   transportAttempts: [validTransportAttempt],
   metadata: validMetadata,
   dimensions: validDimensions,
+  availableActions: ['CANCEL', 'RETRY'],
 };
 
 describe('FE-P5-S1 ActivityRootReferenceV1', () => {
@@ -398,6 +399,26 @@ describe('FE-P5-S1 ActivitySnapshotV1 composite', () => {
     expect(() =>
       decodeActivitySnapshotV1({ ...validSnapshot, actor: { principalId: 'p' } }),
     ).toThrow(FrontendContractError);
+  });
+
+  it('decodes server-derived available actions in deterministic order', () => {
+    const decoded = decodeActivitySnapshotV1({ ...validSnapshot, availableActions: ['CANCEL'] });
+    expect(decoded.availableActions).toEqual(['CANCEL']);
+  });
+
+  it('rejects an unknown available action kind (allow-list)', () => {
+    expect(() =>
+      decodeActivitySnapshotV1({
+        ...validSnapshot,
+        availableActions: ['RETRY', 'EXECUTE'],
+      }),
+    ).toThrow(FrontendContractError);
+  });
+
+  it('rejects a snapshot without availableActions (server always sends it)', () => {
+    const withoutActions = { ...validSnapshot };
+    delete (withoutActions as Record<string, unknown>).availableActions;
+    expect(() => decodeActivitySnapshotV1(withoutActions)).toThrow(FrontendContractError);
   });
 });
 

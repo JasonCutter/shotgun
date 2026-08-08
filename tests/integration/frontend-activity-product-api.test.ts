@@ -121,6 +121,7 @@ const makeDetail = (r: ActivityRootReferenceV1): ActivityDetailV1 => {
       freshness: 'CURRENT',
       adapterStatus: 'AVAILABLE',
     },
+    availableActions: [],
   };
 };
 

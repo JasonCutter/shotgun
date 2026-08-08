@@ -130,6 +130,7 @@ const makeAdapter = (input: {
           freshness: 'CURRENT',
           adapterStatus: 'AVAILABLE',
         },
+        availableActions: [],
       };
     },
     async readStages(): Promise<ActivityStageContinuationV1> {

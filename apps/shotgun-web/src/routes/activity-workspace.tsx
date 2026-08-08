@@ -1,9 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useReducer, useRef, type Ref } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type Ref } from 'react';
 import { Link, useOutletContext, useSearchParams } from 'react-router';
 
 import {
+  createAskWorkspaceClient,
   createFrontendActivityClient,
+  createSourcesWriteClient,
+  type ActivityActionKindV1,
   type ActivityDetailV1,
   type ActivityProjectionMetadataV1,
   type ActivityQueueItemV1,
@@ -52,6 +55,10 @@ import {
 
 const POLL_DISABLED_REASON =
   '활동 큐 자동 새로고침이 꺼져 있습니다. 새로고침 버튼으로 수동 갱신할 수 있습니다.';
+
+/** Fresh command identity for an owning-Domain delegated command (WP5). */
+const freshCommandId = (prefix: string): string =>
+  `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 const identityFromRoot = (root: ActivityRootReferenceV1): ActivityIdentity => ({
   domainKind: root.domainKind,
@@ -265,12 +272,22 @@ const QueueList = ({
 const DetailSection = ({
   detail,
   headingRef,
+  onRetry,
+  onCancel,
+  actionPending,
+  actionError,
 }: {
   readonly detail: ActivityDetailV1;
   readonly headingRef?: Ref<HTMLHeadingElement>;
+  readonly onRetry?: () => void;
+  readonly onCancel?: () => void;
+  readonly actionPending: ActivityActionKindV1 | null;
+  readonly actionError: string | null;
 }) => {
   const identity = identityFromRoot(detail.root);
   const resourceHref = detail.root.resourceHref;
+  const actions = detail.availableActions;
+  const externalActionDelegation = identity.domainKind === 'EXTERNAL_ACTION';
   return (
     <section className="activity-detail" aria-label={`활동 세부 정보 ${detail.root.activityId}`}>
       <header className="activity-detail-header">
@@ -293,6 +310,44 @@ const DetailSection = ({
           </a>
         </p>
       </header>
+
+      {actions.length === 0 ? null : (
+        <div className="activity-actions" aria-label="활동 명령">
+          {actions.includes('CANCEL') &&
+            (externalActionDelegation ? (
+              <Link
+                to={domainWorkspaceHref(identity)}
+                className="activity-action-link"
+                aria-label="Cancel (owning Domain surface)"
+              >
+                취소
+              </Link>
+            ) : (
+              <button type="button" onClick={onCancel} disabled={actionPending !== null}>
+                {actionPending === 'CANCEL' ? '취소 중…' : '취소'}
+              </button>
+            ))}
+          {actions.includes('RETRY') &&
+            (externalActionDelegation ? (
+              <Link
+                to={domainWorkspaceHref(identity)}
+                className="activity-action-link"
+                aria-label="Retry (owning Domain surface)"
+              >
+                재시도
+              </Link>
+            ) : (
+              <button type="button" onClick={onRetry} disabled={actionPending !== null}>
+                {actionPending === 'RETRY' ? '재시도 중…' : '재시도'}
+              </button>
+            ))}
+          {actionError === null ? null : (
+            <p className="activity-action-error" role="alert">
+              {actionError}
+            </p>
+          )}
+        </div>
+      )}
 
       <dl className="summary-grid">
         <div>
@@ -513,6 +568,103 @@ export const ActivityWorkspace = () => {
     },
   });
 
+  // -------------------------------------------------------------------------
+  // WP5 — Existing Domain action delegation (AC-13)
+  //
+  // Retry/Cancel are shown ONLY from the server-derived `availableActions`;
+  // Activity owns no generic command endpoint. Sources and Ask execute through
+  // their existing owning-Domain command clients (the server revalidates state
+  // and authority at execution time and preserves Domain Retry causation).
+  // External Action cannot be assembled from the projection (it needs
+  // governance fields such as action revision and attempt/causation ids), so
+  // its actions delegate to the owning-Domain command surface deep link.
+  // -------------------------------------------------------------------------
+  const sourcesWriteClient = useMemo(() => createSourcesWriteClient(), []);
+  const askClient = useMemo(() => createAskWorkspaceClient(), []);
+  const [pendingAction, setPendingAction] = useState<ActivityActionKindV1 | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const refreshAfterDomainCommand = useCallback(() => {
+    if (scope) queryClient.invalidateQueries({ queryKey: activityScopePrefix(scope) });
+    void detail.refetch();
+  }, [queryClient, scope, detail]);
+
+  const runDomainCancel = useCallback(async () => {
+    if (!selected || !scope) return;
+    setPendingAction('CANCEL');
+    setActionError(null);
+    const resourceId = selected.domainResourceId;
+    try {
+      if (selected.domainKind === 'SOURCES') {
+        await sourcesWriteClient.cancel({
+          activeProjectId: scope.activeProjectId,
+          targetProjectId: scope.activeProjectId,
+          clientRequestId: freshCommandId('activity-sources-cancel-request'),
+          idempotencyKey: freshCommandId('activity-sources-cancel-idempotency'),
+          submissionId: resourceId,
+        });
+      } else if (selected.domainKind === 'ASK') {
+        if (!askClient.cancelAnswerRun) throw new Error('Ask Cancel is unavailable.');
+        await askClient.cancelAnswerRun(resourceId, {
+          schemaVersion: '1.0.0',
+          clientRequestId: freshCommandId('activity-ask-cancel-request'),
+          idempotencyKey: freshCommandId('activity-ask-cancel-idempotency'),
+        });
+      }
+      refreshAfterDomainCommand();
+      announce(ACTIVITY_ANNOUNCEMENTS.CANCELLED);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Cancel failed.');
+    } finally {
+      setPendingAction(null);
+    }
+  }, [selected, scope, sourcesWriteClient, askClient, refreshAfterDomainCommand, announce]);
+
+  const runDomainRetry = useCallback(async () => {
+    if (!selected || !scope) return;
+    setPendingAction('RETRY');
+    setActionError(null);
+    const resourceId = selected.domainResourceId;
+    try {
+      if (selected.domainKind === 'SOURCES') {
+        const failedItemIds = (detail.data?.stages ?? [])
+          .filter((stage) => stage.state === 'FAILED')
+          .map((stage) => stage.stageId);
+        await sourcesWriteClient.retry({
+          activeProjectId: scope.activeProjectId,
+          targetProjectId: scope.activeProjectId,
+          clientRequestId: freshCommandId('activity-sources-retry-request'),
+          idempotencyKey: freshCommandId('activity-sources-retry-idempotency'),
+          submissionId: resourceId,
+          itemIds: failedItemIds,
+          mode: 'SAME_CONTEXT',
+        });
+      } else if (selected.domainKind === 'ASK') {
+        if (!askClient.retryAnswerRun) throw new Error('Ask Retry is unavailable.');
+        await askClient.retryAnswerRun(resourceId, {
+          schemaVersion: '1.0.0',
+          clientRequestId: freshCommandId('activity-ask-retry-request'),
+          idempotencyKey: freshCommandId('activity-ask-retry-idempotency'),
+          mode: 'SAME_CONTEXT',
+        });
+      }
+      refreshAfterDomainCommand();
+      announce(ACTIVITY_ANNOUNCEMENTS.RETRY_SENT);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Retry failed.');
+    } finally {
+      setPendingAction(null);
+    }
+  }, [
+    selected,
+    scope,
+    detail.data,
+    sourcesWriteClient,
+    askClient,
+    refreshAfterDomainCommand,
+    announce,
+  ]);
+
   const selectedKey = selected ? `${selected.domainKind}:${selected.activityId}` : null;
 
   // Deterministic focus (AC-15): after a queue selection or a valid deep-link
@@ -599,7 +751,14 @@ export const ActivityWorkspace = () => {
           <ErrorState error={detail.error} onRetry={() => detail.refetch()} />
         ) : detail.data ? (
           <>
-            <DetailSection detail={detail.data} headingRef={detailHeadingRef} />
+            <DetailSection
+              detail={detail.data}
+              headingRef={detailHeadingRef}
+              onRetry={() => void runDomainRetry()}
+              onCancel={() => void runDomainCancel()}
+              actionPending={pendingAction}
+              actionError={actionError}
+            />
             <section className="activity-continuations" aria-label="추가 Stage와 Event">
               <h3>추가 Stages</h3>
               {stages.data && stages.data.stages.length > 0 ? (

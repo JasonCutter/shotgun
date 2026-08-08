@@ -11,6 +11,7 @@ import type {
 } from '../../../packages/contracts/src/index.js';
 import {
   activityAttentionFrom,
+  activityAvailableActionsFrom,
   activityRetryabilityFrom,
   activityStateFromAskState,
   decodeAskActivityCursor,
@@ -289,6 +290,12 @@ export class AskActivityAdapter implements AskActivityAdapterPort {
         freshness: 'CURRENT',
         adapterStatus: 'AVAILABLE',
       },
+      availableActions: activityAvailableActionsFrom({
+        cancel: run.capabilities.includes('CANCEL'),
+        retry:
+          run.capabilities.includes('RETRY_SAME_CONTEXT') ||
+          run.capabilities.includes('RETRY_CURRENT_POLICY'),
+      }),
     };
   }
 
@@ -398,6 +405,7 @@ export class InMemoryAskActivityRead implements AskActivityReadPort {
         ...(run.attemptId === undefined ? {} : { attemptId: run.attemptId }),
         ...(run.attemptNumber === undefined ? {} : { attemptNumber: run.attemptNumber }),
         ...(run.failure === undefined ? {} : { failure: run.failure }),
+        capabilities: run.capabilities,
         createdAt: run.createdAt,
         updatedAt: run.updatedAt,
       })),
@@ -426,6 +434,7 @@ export class InMemoryAskActivityRead implements AskActivityReadPort {
       ...(run.attemptId === undefined ? {} : { attemptId: run.attemptId }),
       ...(run.attemptNumber === undefined ? {} : { attemptNumber: run.attemptNumber }),
       ...(run.failure === undefined ? {} : { failure: run.failure }),
+      capabilities: run.capabilities,
       createdAt: run.createdAt,
       updatedAt: run.updatedAt,
     };

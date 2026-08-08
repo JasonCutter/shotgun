@@ -1,7 +1,7 @@
 ---
 id: FRONTEND-PHASE-5-SECTION-1-WP5-EVIDENCE-260808001
 classification: CANONICAL
-status: wp5_implemented_pending_review
+status: wp5_accepted
 work_item: FE-P5-S1
 created_at: 2026-08-08
 subject_base: 8c00519d7498ef1783de1a4e4e48da1a2b4bb8bd
@@ -77,6 +77,22 @@ Focused tests were extended: contract tests for descriptor decode (retry mode, a
 allow-lists), adapter tests for per-mode and External Action command context, and web tests for
 mode-preserving retry and External Action command invocation with the server-derived context.
 
+## 2b. Review verdict — ACCEPTED (2026-08-08)
+
+GPT review round 2 (`Make Shotgun - 상태 업데이트 및 진행사항`) of the round-1 correction head
+`3a8f892ba` (CI #639) and the final evidence carrier `73bbafc` (CI #640) returned **ACCEPTED**
+(`Status Authority: IMPLEMENTATION_ACCEPTED`). All three round-1 items (Retry mode lost,
+External Action not delegating, evidence head mismatch) are PASS; no blocking defect remains
+within the WP5 scope.
+
+- WP1: ACCEPTED; WP2: ACCEPTED; WP3: ACCEPTED; WP4: ACCEPTED; WP5: ACCEPTED; FE-P5-S1 overall:
+  IN_PROGRESS.
+- PR #73 Ready/Merge, deployment and production verification remain forbidden.
+- WP6 (Focused verification and evidence) is the next permitted Work Package after user approval
+  and is not started automatically.
+- Head notation: `wp5ImplementationHead` = `3a8f892ba` (CI #639); evidence/PR carrier head =
+  `73bbafc` (CI #640).
+
 ## 3. Acceptance criteria coverage
 
 - **FE-P5-S1-AC-06** (Domain Retry creates a new Attempt with causation): preserved — Retry is
@@ -130,5 +146,6 @@ mode-preserving retry and External Action command invocation with the server-der
 
 ## 7. Next action
 
-Report WP5 implementation, verification and evidence to the GPT review gate. Do not begin WP6
-until this Work Package is reviewed and accepted for progression.
+WP5 is ACCEPTED by the GPT review gate (round 2, `Status Authority: IMPLEMENTATION_ACCEPTED`,
+2026-08-08). Do not begin WP6 until the user authorizes it; Ready/Merge/Deployment remain
+unauthorized.

@@ -1,0 +1,206 @@
+{
+  "schemaVersion": 1,
+  "workItemId": "FE-P5-S1",
+  "status": "COMPLETE",
+  "governingContract": "docs/architecture/frontend/phase-5-operations-audit.md",
+  "mandatoryCriteria": [
+    {
+      "id": "ac-01",
+      "title": "Current-Project Sources, Ask and External Action work is available in one Activity Queue.",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-5-section-1-wp6-focused-verification-evidence-260808001.md",
+        "tests/contract/frontend-activity.contract.test.ts",
+        "tests/integration/frontend-activity-product-api.test.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-02",
+      "title": "Another Project's Activity existence, ID, count and failure information is not disclosed.",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-5-section-1-wp6-focused-verification-evidence-260808001.md",
+        "tests/integration/frontend-activity-product-api.test.ts",
+        "tests/integration/frontend-activity-round3-regression.test.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-03",
+      "title": "Job, Run, Domain Attempt, Transport Attempt, Stage and Event identities are distinguished.",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-5-section-1-wp6-focused-verification-evidence-260808001.md",
+        "tests/contract/frontend-activity.contract.test.ts",
+        "tests/integration/frontend-activity-projection-builder.test.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-04",
+      "title": "Activity projection identity never replaces concrete Domain Resource identity.",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-5-section-1-wp6-focused-verification-evidence-260808001.md",
+        "apps/shotgun-web/src/routes/activity-workspace.test.tsx"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-05",
+      "title": "Queue-to-Detail navigation exposes Run, Attempt, Stage and Event lineage.",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-5-section-1-wp6-focused-verification-evidence-260808001.md",
+        "apps/shotgun-web/src/routes/activity-workspace.test.tsx",
+        "tests/browser/frontend-activity-workspace.spec.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-06",
+      "title": "Domain Retry creates a new Attempt with causation while preserving the earlier Attempt and failure.",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-5-section-1-wp6-focused-verification-evidence-260808001.md",
+        "tests/integration/frontend-external-action-domain.test.ts",
+        "tests/database/frontend-phase-2-section-1-sources-lifecycle.test.ts",
+        "tests/unit/frontend-ask-execution.test.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-07",
+      "title": "Transport Retry is not presented as a new Domain Attempt.",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-5-section-1-wp6-focused-verification-evidence-260808001.md",
+        "tests/contract/frontend-activity.contract.test.ts",
+        "tests/integration/frontend-activity-projection-builder.test.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-08",
+      "title": "Failure, Partial Failure, Cancel Requested, Cancelled, Outcome Unknown and User Attention are distinct.",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-5-section-1-wp6-focused-verification-evidence-260808001.md",
+        "tests/contract/frontend-activity.contract.test.ts",
+        "tests/unit/frontend-activity-domain-mapping.test.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-09",
+      "title": "Projection Watermark, Lag, Stale and Adapter Unavailable states are visible.",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-5-section-1-wp6-focused-verification-evidence-260808001.md",
+        "tests/contract/frontend-activity.contract.test.ts",
+        "apps/shotgun-web/src/routes/activity-workspace.test.tsx"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-10",
+      "title": "Failure of one adapter still returns accessible results from other adapters as a partial result.",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-5-section-1-wp6-focused-verification-evidence-260808001.md",
+        "tests/integration/frontend-activity-adapter-ports.test.ts",
+        "tests/integration/frontend-activity-projection-builder.test.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-11",
+      "title": "Refresh and polling recover from the latest authoritative Domain Snapshot.",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-5-section-1-wp6-focused-verification-evidence-260808001.md",
+        "tests/integration/frontend-activity-product-api.test.ts",
+        "apps/shotgun-web/src/routes/activity-workspace.test.tsx"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-12",
+      "title": "Deep-link access revalidates Project Scope, Capability, sensitivity and Resource access.",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-5-section-1-wp6-focused-verification-evidence-260808001.md",
+        "tests/integration/frontend-activity-product-api-boundaries.test.ts",
+        "tests/integration/frontend-activity-round3-regression.test.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-13",
+      "title": "Retry and Cancel are shown only when the owning Domain allows them, and the server revalidates state and authority.",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-5-section-1-wp6-focused-verification-evidence-260808001.md",
+        "tests/integration/frontend-activity-domain-adapters.test.ts",
+        "apps/shotgun-web/src/routes/activity-workspace.test.tsx"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-14",
+      "title": "Event and Failure payloads contain only approved safe fields.",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-5-section-1-wp6-focused-verification-evidence-260808001.md",
+        "tests/contract/frontend-activity.contract.test.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-15",
+      "title": "Queue, Detail and timeline are keyboard navigable and have list/table accessibility representations.",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-5-section-1-wp6-focused-verification-evidence-260808001.md",
+        "tests/browser/frontend-activity-workspace.spec.ts",
+        "apps/shotgun-web/src/routes/activity-workspace.test.tsx"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-16",
+      "title": "With deterministic fixtures, initial Queue display and Queue-to-Detail transition each have a three-sample median of at most 2,000 ms.",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-5-section-1-wp6-focused-verification-evidence-260808001.md",
+        "tests/browser/frontend-activity-performance.spec.ts"
+      ],
+      "scopeAmendment": null
+    }
+  ],
+  "remainingScope": [],
+  "scopeAmendments": [],
+  "evidenceRegistryUpdates": [
+    "FRONTEND-PHASE-5-SECTION-1-WP6-EVIDENCE-260808001",
+    "FRONTEND-PHASE-5-SECTION-1-COMPLETION-260808001"
+  ],
+  "approvedBy": "user",
+  "approvedAt": "2026-08-08"
+}

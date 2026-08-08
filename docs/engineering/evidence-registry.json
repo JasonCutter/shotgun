@@ -1013,6 +1013,8 @@
       "subjectBase": "8c00519d7498ef1783de1a4e4e48da1a2b4bb8bd",
       "wp4AcceptedHead": "a645b9e31b00b9e82f2749dc0a9eb2e9dbb9c466",
       "wp4AcceptedCIRunNumber": 634,
+      "wp5ImplementationHead": "3a8f892ba512f7f2c845d86dfe2639d17a6f9e51",
+      "wp5ImplementationCIRunNumber": 639,
       "trackingIssue": "https://github.com/JasonCutter/shotgun/issues/71",
       "contractPR": "https://github.com/JasonCutter/shotgun/pull/70",
       "productPR": "https://github.com/JasonCutter/shotgun/pull/73",

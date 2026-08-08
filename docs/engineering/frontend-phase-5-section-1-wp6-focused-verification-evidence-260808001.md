@@ -287,22 +287,27 @@ local fake fixtures):
 | `activity-queue-display`   | 801 / 769 / 1577 | **801**     | ≤ 2000    | PASS    |
 | `activity-queue-to-detail` | 270 / 64 / 69    | **69**      | ≤ 2000    | PASS    |
 
-## 7. Governance closure and next action
+## 7. Governance closure and merge
 
 **Governance closure — COMPLETE (2026-08-08).** WP6 is ACCEPTED by the GPT review gate (round 2,
 `Status Authority: IMPLEMENTATION_ACCEPTED`); FE-P5-S1 Product Work Packages (WP1..WP6) are ALL
 ACCEPTED; the implementation governance closure record (this document + registry) is complete.
-The user transitioned PR #73 to **Ready for review** (`draft: false`) on 2026-08-08. GitHub
-state: **OPEN / READY / MERGEABLE / NOT_MERGED**, head `0520451577268c80fa1dabc66ca680e7fae39268`.
+The user transitioned PR #73 to **Ready for review** (`draft: false`) on 2026-08-08.
+
+**Merge — AUTHORIZED and COMPLETED (2026-08-08).** The user authorized the PR #73 Merge; the
+final head `0520451577268c80fa1dabc66ca680e7fae39268` passed CI #647 (Frontend / Quality /
+Required Gates all green) and the PR was squash-merged into `main` as commit
+`90a38ab402cc28e291f6dc8f673acc67597cc670` (2026-08-08T10:26:53Z). PR #73 is now
+**MERGED / CLOSED**.
 
 ```
 FE-P5-S1: IMPLEMENTATION GOVERNANCE CLOSURE COMPLETE
 WP1–WP6: ACCEPTED
-PR #73: OPEN / READY FOR REVIEW / MERGEABLE / NOT_MERGED
-Merge: NOT_AUTHORIZED
+PR #73: MERGED (squash) → main 90a38ab40
 Deployment: NOT_AUTHORIZED
 FE-P5-S2: NOT_AUTHORIZED
+Production Verification: NOT_RUN
 ```
 
-Next gate: **PR #73 Merge approval** — Merge, Deployment and FE-P5-S2 remain unauthorized until a
-separate user/GPT approval.
+Next gate: **Deployment / production verification** — Deployment, Production Verification and
+FE-P5-S2 remain unauthorized until a separate user/GPT approval.

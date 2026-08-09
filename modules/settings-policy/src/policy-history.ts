@@ -19,9 +19,7 @@
 
 /** Discriminated source kind over the three authoritative Policy History sources. */
 export type PolicyHistorySourceKind =
-  | 'SETTINGS_REVISION'
-  | 'POLICY_CONTEXT_REVISION'
-  | 'SETTINGS_AUDIT_EVENT';
+  'SETTINGS_REVISION' | 'POLICY_CONTEXT_REVISION' | 'SETTINGS_AUDIT_EVENT';
 
 /**
  * One authoritative Policy change entry (project-scoped). The stable source

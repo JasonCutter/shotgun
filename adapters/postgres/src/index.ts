@@ -1862,11 +1862,7 @@ export class PostgresPolicyHistoryReadAdapter implements PolicyHistoryReadPort {
     const params: (string | number)[] = [input.projectId];
     let cursorPredicate = '';
     if (input.cursor) {
-      params.push(
-        input.cursor.timestamp,
-        input.cursor.sourceKind,
-        input.cursor.sourceId,
-      );
+      params.push(input.cursor.timestamp, input.cursor.sourceKind, input.cursor.sourceId);
       cursorPredicate = `
         AND (
           (s.timestamp, s.source_kind, s.source_id) > ($2, $3, $4)

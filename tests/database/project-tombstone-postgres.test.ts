@@ -69,9 +69,9 @@ describe.runIf(pool)('FE-P5-S2 WP2-C ProjectTombstone (PostgreSQL)', () => {
       }),
     ).toBe(false);
     // past membership alone never grants
-    expect(
-      isDeletedProjectAuditReadPermitted(granted, auditContext(project, 'past-member')),
-    ).toBe(false);
+    expect(isDeletedProjectAuditReadPermitted(granted, auditContext(project, 'past-member'))).toBe(
+      false,
+    );
 
     const revoked = await store.revokeAuditScope({
       scopeId,

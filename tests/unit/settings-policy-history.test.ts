@@ -81,7 +81,11 @@ describe('settings-policy WP2-A Policy History read capability', () => {
 
     it('paginates with a next cursor and resumes on later timestamps across sources', () => {
       const entries = [
-        entry({ sourceKind: 'SETTINGS_REVISION', sourceId: '1', timestamp: '2026-08-08T00:00:00.000Z' }),
+        entry({
+          sourceKind: 'SETTINGS_REVISION',
+          sourceId: '1',
+          timestamp: '2026-08-08T00:00:00.000Z',
+        }),
         entry({
           sourceKind: 'SETTINGS_AUDIT_EVENT',
           sourceId: 'e-2',
@@ -138,7 +142,9 @@ describe('settings-policy WP2-A Policy History read capability', () => {
           riskLevel: 'LOW',
         }),
       );
-      adapter.appendEntry(entry({ sourceKind: 'SETTINGS_REVISION', sourceId: '1', projectId: 'p2' }));
+      adapter.appendEntry(
+        entry({ sourceKind: 'SETTINGS_REVISION', sourceId: '1', projectId: 'p2' }),
+      );
 
       const result = await adapter.listPolicyHistory({ projectId: 'p1', limit: 10 });
       expect(result.entries.map((e) => `${e.sourceKind}:${e.sourceId}`)).toEqual([

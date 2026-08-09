@@ -107,9 +107,9 @@ describe('frontend-history WP2-B Payload Availability / Retention / Tombstone', 
     // No purge audit was appended
     expect(store.listPurgeAudit()).toHaveLength(0);
     // State remains AVAILABLE
-    expect(
-      (await store.getPayloadState('p1', 'DECISION', 'event:1'))?.payloadAvailability,
-    ).toBe('AVAILABLE');
+    expect((await store.getPayloadState('p1', 'DECISION', 'event:1'))?.payloadAvailability).toBe(
+      'AVAILABLE',
+    );
   });
 
   it('rejects resurrection after purge (PURGED_BY_POLICY -> AVAILABLE/REDACTED)', async () => {

@@ -2,7 +2,7 @@
 id: FRONTEND-CROSS-PHASE-PRODUCT-VERIFICATION-IR-260809001
 classification: CANDIDATE
 status: draft_pending_review
-work_item: FE-P5-XP
+verification_gate: FRONTEND-CROSS-PHASE-PRODUCT-VERIFICATION
 created_at: 2026-08-09
 subject_base: 07990d6e68878d630a6fc0e472c660e5cab69f91
 precedent: FE-P5-S2 COMPLETE / FINAL_AFTER_MERGE (2026-08-09)
@@ -18,16 +18,19 @@ tracking_issue: https://github.com/JasonCutter/shotgun/issues/71
 - FE-P1 ~ FE-P5 (12 Sections): **COMPLETE** — `main@07990d6e` (2026-08-09,
   FE-P5-S2 FINAL_AFTER_MERGE).
 - GPT review gate (2026-08-09): FE-P5-S2 Section Completion confirmed; next
-  ordered stage is **Cross-Phase Product Verification** followed by Local
-  Launch / Serving Usability, Backup / Restore Owner Workflow and Final Local
-  Acceptance.
+  ordered stage is **Cross-Phase Product Verification** (a Verification Gate
+  after FE-P1~P5, NOT a Section of FE-P5), followed by Local Launch / Serving
+  Usability, Backup / Restore Owner Workflow and Final Local Acceptance.
 - GPT guidance: Cross-Phase verification must **not** re-verify every Section;
-  it verifies the **core user flows that connect FE-P1~P5** on one backend and
-  reuses existing evidence. Deployment / Production Verification remain
-  separate and NOT_AUTHORIZED.
-- This document is a **verification-only** Implementation Request (no new
-  Product feature, no new runtime dependency, no Contract/ADR semantic change).
-  It authorizes the Cross-Phase verification evidence work described below.
+  it verifies the **core user flows that connect FE-P1~P5** on the actual
+  Product composition and reuses existing evidence. Deployment / Production
+  Verification remain separate and NOT_AUTHORIZED.
+- This document is a **verification-only CANDIDATE** Implementation Request
+  (no new Product feature, no new runtime dependency, no Contract/ADR semantic
+  change). **It does NOT authorize execution.** Execution requires, in order:
+  `IR r0 CANDIDATE → GPT IR REVIEW ACCEPTED → USER explicit approval →
+  IR r1 FROZEN / EXECUTION_AUTHORIZED → WP-XP1`. GPT review acceptance does
+  not replace user approval.
 
 ## 2. Scope
 
@@ -36,17 +39,23 @@ tracking_issue: https://github.com/JasonCutter/shotgun/issues/71
 1. Extend the browser E2E fixture backend (`tests/browser/fixtures/frontend-test-backend.ts`)
    so a **single application instance** serves all Phase product APIs
    statefully (Sources, Ask, Knowledge/Draft, Review, External Action,
-   Activity, History/Tombstone/Reversal) with shared in-memory adapters and
-   coordinators, mirroring the persistent runtime composition in
-   `assemblies/shotgun-app/src/main.ts`.
+   Activity, History/Tombstone/Reversal) **with production-composition parity**
+   (see §5 WP-XP1): PostgreSQL adapters where `main.ts` owns the domain
+   authority (Ask, Knowledge Draft, Review/Approval, Canonical, External
+   Action, Activity, History), the same InMemory implementations that `main.ts`
+   itself uses for projections, and deterministic fakes ONLY for external side
+   effects (`AIProviderPort`, `ActionConnectorPort`). No test-specific
+   authority composition.
 2. One **cross-phase journey browser spec** that drives the 12 required
    end-to-end flows through the real product APIs (not stubbed endpoints),
-   chaining FE-P1~P5 in one user journey.
-3. Cross-phase **negative boundary tests** for the 10 required negatives where
-   the journey/browser boundary is the subject (server revalidation while
-   chaining phases).
-4. Cross-phase evidence document recording AC→evidence mapping, reusing
-   existing per-Section evidence and adding only the journey-level evidence.
+   chaining FE-P1~P5 in one user journey and asserting the Cross-Phase lineage
+   invariants (XP-I01~XP-I07).
+3. Cross-phase **negative delta tests** only where a phase-crossing journey
+   adds new risk (CP-NEG classified as `REUSE_ONLY` vs `NEW_CROSS_PHASE_DELTA`,
+   see §4).
+4. Cross-phase evidence document recording AC→evidence mapping (incl. the
+   production-vs-test adapter parity table), reusing existing per-Section
+   evidence and adding only the journey-level evidence.
 
 ### Excluded
 
@@ -76,43 +85,76 @@ multiple ACs, and adjacent-phase wiring may be verified in the same spec):
 | CP-AC-09 | External Action Preflight·Execute·Verify                 | browser `frontend-external-action-lifecycle.spec.ts`; external-action domain suites                                                  | Governed action flow in journey        |
 | CP-AC-10 | Activity                                                 | browser `frontend-activity-workspace.spec.ts`; activity suites                                                                        | Activity reflects journey events       |
 | CP-AC-11 | History·Audit                                            | browser `frontend-history-workspace.spec.ts`; history suites                                                                          | History reflects journey decisions     |
-| CP-AC-12 | Reversal·Compensation                                    | browser `frontend-history-workspace.spec.ts`; reversal/carrier suites                                                                 | Reversal → Review in journey           |
+| CP-AC-12 | Reversal·Compensation                                    | browser `frontend-history-workspace.spec.ts`; reversal/carrier suites; external-action rollback/compensation suites                    | BOTH branches in journey: Canonical branch (Historical Revision → Reversal Draft → Review entry) AND External Action branch (Executed Action → Compensation initiation/link → original action lineage preserved) |
 
-## 4. Required negative tests — CP-NEG mapping
+### Cross-Phase lineage invariants (XP-I01 ~ XP-I07)
 
-| NEG     | Negative (frontend-phase-1-5-plan §Cross-Phase)                  | Existing evidence (reuse)                                                                    | Journey-level proof (new)                          |
-| ------- | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| CP-NEG-01 | Frontend의 Principal·Project 권위 생성 금지                      | `stage12-p0-1-security.test.ts`, `product-settings-api.test.ts`, browser forbidden-header specs | Journey browser requests carry no authority fields |
-| CP-NEG-02 | 다른 Project Cache 재사용 금지                                   | `frontend-project-cache.test.ts`, `frontend-query-keys.test.ts`, browser `frontend-knowledge-api.spec.ts` | Project switch in journey isolates reads           |
-| CP-NEG-03 | 민감 Resource 존재 노출 금지                                     | review/knowledge/activity/history non-disclosure suites                                         | Journey cross-project read non-disclosing          |
-| CP-NEG-04 | Candidate 자동 Canonical 반영 금지                               | `canonical-knowledge.contract.test.ts`, `review-ui.test.ts`, browser `frontend-review.spec.ts`   | Journey: unapproved draft absent from canonical    |
-| CP-NEG-05 | Approval 우회 금지                                               | `frontend-external-action-domain.test.ts`, `action-execution-api.test.ts`                        | Journey: execute requires ACTIVE approval          |
-| CP-NEG-06 | Approval과 Commit·Execute 혼합 금지                              | `frontend-review-negative.test.ts`, browser `frontend-external-action-lifecycle.spec.ts`          | Journey: approve ≠ commit ≠ execute (separate)     |
-| CP-NEG-07 | Outcome Unknown 자동 재제출 금지                                 | `frontend-external-action-lifecycle.spec.ts`, connector reliability suites                         | Journey: OUTCOME_UNKNOWN no auto resubmit          |
-| CP-NEG-08 | Cancel을 Rollback으로 표시하지 않음                              | `frontend-external-action-domain.test.ts`, browser lifecycle spec                                  | Journey: Cancel ≠ Rollback display                 |
-| CP-NEG-09 | 삭제 Project Audit 범위 확대 금지                                | `frontend-history-deleted-project-audit.test.ts`, `project-tombstone.test.ts`                      | Journey: deleted-project audit requires scope      |
-| CP-NEG-10 | Retention Purge로 Event Identity 삭제 금지                       | `frontend-history-payload-state*.test.ts`, `frontend-history-persistence.test.ts`                  | Journey: purge keeps identity, redacts payload     |
+The journey must assert that the chain
+`Project → Resource → Revision → Evidence → Draft → Review → Approval → Commit
+→ Action → Activity → History → Reversal/Compensation` is connected by the
+SAME authority and identity chain (not just that screens render):
+
+| Invariant | Requirement                                                                                                        |
+| --------- | ------------------------------------------------------------------------------------------------------------------ |
+| XP-I01    | Project Binding: an existing Resource stays on its Resource Project after an Active Project switch; no rebinding.   |
+| XP-I02    | Evidence Lineage: SourceVersion/Evidence/Citation identity is preserved across Ask → Draft/Knowledge transition.   |
+| XP-I03    | Draft/Review Binding: Draft base revision + target identity → Review Context → Approval Resource point to the same change. |
+| XP-I04    | Approval/Commit Separation: creating an Approval causes no Canonical change; only the approved exact ChangeSet commits. |
+| XP-I05    | Action Authority: External Action Manifest/Preflight/Approval/Execute share the same resource/revision/policy binding. |
+| XP-I06    | Operations Lineage: Activity and History reference the journey's actual Domain IDs and correlation/causation/source identities. |
+| XP-I07    | Rollback Branching: Canonical change → Reversal; External change → Compensation; the two never substitute for each other. |
+
+## 4. Required negative tests — CP-NEG classification
+
+All 10 Canonical negatives must be CLOSED, but each is classified as either
+`REUSE_ONLY` (existing per-Section evidence already closes it; no new test
+because the journey adds no new risk) or `NEW_CROSS_PHASE_DELTA` (a new
+delta test IS required because the phase-crossing journey adds new risk).
+
+| NEG     | Negative (frontend-phase-1-5-plan §Cross-Phase)                  | Existing evidence (reuse)                                                                      | Disposition                             |
+| ------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | --------------------------------------- |
+| CP-NEG-01 | Frontend의 Principal·Project 권위 생성 금지                      | `stage12-p0-1-security.test.ts`, `product-settings-api.test.ts`, browser forbidden-header specs   | `NEW_CROSS_PHASE_DELTA` — journey browser requests carry no authority fields across all phase routes |
+| CP-NEG-02 | 다른 Project Cache 재사용 금지                                   | `frontend-project-cache.test.ts`, `frontend-query-keys.test.ts`, browser `frontend-knowledge-api.spec.ts` | `NEW_CROSS_PHASE_DELTA` — journey Project switch isolates reads across phases |
+| CP-NEG-03 | 민감 Resource 존재 노출 금지                                     | review/knowledge/activity/history non-disclosure suites                                         | `NEW_CROSS_PHASE_DELTA` — journey cross-project read non-disclosing |
+| CP-NEG-04 | Candidate 자동 Canonical 반영 금지                               | `canonical-knowledge.contract.test.ts`, `review-ui.test.ts`, browser `frontend-review.spec.ts`   | `NEW_CROSS_PHASE_DELTA` — journey: unapproved draft absent from Canonical after commit of another change |
+| CP-NEG-05 | Approval 우회 금지                                               | `frontend-external-action-domain.test.ts`, `action-execution-api.test.ts`                        | `NEW_CROSS_PHASE_DELTA` — journey: Execute requires ACTIVE approval bound to the same manifest |
+| CP-NEG-06 | Approval과 Commit·Execute 혼합 금지                              | `frontend-review-negative.test.ts`, browser `frontend-external-action-lifecycle.spec.ts`          | `NEW_CROSS_PHASE_DELTA` — journey: Approval ≠ Commit ≠ Execute (separate, distinct resources) |
+| CP-NEG-07 | Outcome Unknown 자동 재제출 금지                                 | `frontend-external-action-lifecycle.spec.ts`, connector reliability suites                         | `REUSE_ONLY` — journey adds no new risk |
+| CP-NEG-08 | Cancel을 Rollback으로 표시하지 않음                              | `frontend-external-action-domain.test.ts`, browser lifecycle spec                                  | `REUSE_ONLY` — journey adds no new risk |
+| CP-NEG-09 | 삭제 Project Audit 범위 확대 금지                                | `frontend-history-deleted-project-audit.test.ts`, `project-tombstone.test.ts`                      | `REUSE_ONLY` — journey adds no new risk |
+| CP-NEG-10 | Retention Purge로 Event Identity 삭제 금지                       | `frontend-history-payload-state*.test.ts`, `frontend-history-persistence.test.ts`                  | `REUSE_ONLY` — journey adds no new risk |
 
 ## 5. Work package plan
 
-- **WP-XP1 — Fixture backend composition**: extend `frontend-test-backend.ts`
-  to construct shared in-memory adapters/coordinators (knowledge draft,
-  review, external action, activity, history, tombstone, payload state,
-  policy history) and pass them through `createApplication` options so all
-  Phase product APIs are stateful on one backend instance. Follow the
-  persistent composition in `main.ts` and the in-memory default composition
-  in `server.ts`. No production code change.
-- **WP-XP2 — Cross-phase journey E2E**: new `tests/browser/frontend-cross-phase-journey.spec.ts`
-  driving the 12-flow journey through real product APIs (project create →
-  source → ask → draft → review → approve → canonical commit → external
-  action → activity → history → reversal), with E2E bridge for external
-  connector and answer execution stubbing where the external side effect is
-  the only stubbed part.
-- **WP-XP3 — Cross-phase negatives + evidence**: journey-level negative
-  coverage for CP-NEG-01~10 that is not already proven at the journey
-  boundary, plus the cross-phase evidence document
+- **WP-XP1 — Fixture backend composition with production parity**: extend
+  `frontend-test-backend.ts` so a single application instance serves all Phase
+  product APIs with **production-composition-equivalent adapters**:
+  - PostgreSQL adapters for every Domain whose authority is PostgreSQL-backed
+    in `main.ts` (Ask write/execution, Knowledge Draft persistence, Review /
+    Approval persistence, Canonical repository, External Action store,
+    Activity read model, History read model / payload state / tombstone,
+    Project/Auth authority).
+  - The SAME InMemory implementations `main.ts` itself uses for read
+    projections.
+  - Deterministic fake/stub ONLY at external side-effect boundaries
+    (`AIProviderPort`, `ActionConnectorPort`).
+  - Record a **production-vs-test adapter parity table** in the IR evidence
+    (single occurrence). No production code change; no test-specific
+    authority composition.
+- **WP-XP2 — Cross-phase journey E2E + lineage invariants**: new
+  `tests/browser/frontend-cross-phase-journey.spec.ts` driving the 12-flow
+  journey through real product APIs (project create → source → ask → draft →
+  review → approve → canonical commit → external action → activity → history
+  → reversal AND compensation), asserting XP-I01~XP-I07 lineage invariants.
+  External side effects are the only stubbed part (deterministic fakes via
+  the E2E bridge).
+- **WP-XP3 — Negative deltas + evidence closure**: only the
+  `NEW_CROSS_PHASE_DELTA` negatives (CP-NEG-01~06) get new journey-level
+  tests; `REUSE_ONLY` negatives (CP-NEG-07~10) are closed by citation. Plus
+  the cross-phase evidence document
   (`docs/engineering/frontend-cross-phase-product-verification-evidence-260809001.md`)
-  recording CP-AC/CP-NEG closure with existing-evidence reuse.
+  recording CP-AC/CP-NEG closure, XP-I invariants and the adapter parity
+  table, reusing existing per-Section evidence.
 
 ## 6. Test policy
 
@@ -120,26 +162,43 @@ multiple ACs, and adjacent-phase wiring may be verified in the same spec):
 - Only the delta needed for the journey (fixture extension + new specs) is
   executed; normal-push automatic CI is the authoritative CI evidence.
 - Do not duplicate per-Section tests inside the journey spec.
+- **CI metadata chase prevention (FROZEN rules):**
+  - no re-run of the same exact-head that already PASSed;
+  - no manual duplicate CI;
+  - no empty/docs-only commit whose only purpose is to record a CI number
+    (metadata chase);
+  - the Product verification head's automatic CI is recorded as the evidence
+    subject;
+  - no commit is made to re-record a CI number produced by a recording commit.
 - OSS review: verification stage — no new OSS candidates; existing verified
-  adapters (in-memory fixtures) are reused. `NO_RELEVANT_OSS` for new
-  verification tooling beyond the existing Playwright/Vitest stack.
+  adapters are reused. `NO_RELEVANT_OSS` for new verification tooling beyond
+  the existing Playwright/Vitest stack.
 
 ## 7. Completion criteria / gates
 
-1. Fixture backend serves all Phase product APIs statefully on one instance
-   (single exact-head CI PASS).
-2. Cross-phase journey spec passes (12 flows covered through real APIs).
-3. CP-NEG-01~10 closure recorded (existing evidence + journey delta).
-4. Cross-phase evidence document updated with evidence head + CI.
-5. GPT review gate ACCEPTED; then user approval for Ready/Merge/closure.
+1. WP-XP1 fixture parity passes (single exact-head CI PASS; adapter parity
+   table recorded).
+2. WP-XP2 cross-phase journey spec passes (12 flows + XP-I01~XP-I07 through
+   real APIs).
+3. WP-XP3 CP-NEG closure: NEW_CROSS_PHASE_DELTA (01~06) tests pass;
+   REUSE_ONLY (07~10) closed by citation.
+4. Cross-phase evidence document updated (evidence head + automatic CI as
+   evidence subject; no metadata-chase commits).
+5. GPT review gate ACCEPTED; then USER Cross-Phase Verification Completion
+   approval for Ready/Merge/closure.
 
 ## 8. Next gate
 
 ```text
-IR r0: DRAFT (candidate for GPT review)
-→ GPT review → IR r1 FROZEN
-→ WP-XP1 → WP-XP2 → WP-XP3 (one at a time, exact-head CI)
-→ Evidence → GPT review → ACCEPTED
-→ 사용자 Section Completion 승인 → Ready/Merge → Closure
+IR r0: CANDIDATE (this document)
+→ GPT IR REVIEW ACCEPTED
+→ USER explicit approval
+→ IR r1 FROZEN / EXECUTION_AUTHORIZED
+→ WP-XP1 (parity, GPT review ACCEPTED)
+→ WP-XP2 (journey + invariants, GPT review ACCEPTED)
+→ WP-XP3 (negative deltas + evidence, GPT final review)
+→ GPT ACCEPTED → 사용자 Cross-Phase Verification Completion 승인
+→ Ready/Merge → Governance Closure
 Deployment / Production Verification: NOT_AUTHORIZED
+Local Launch / Backup / Final Local Acceptance: separate later stages
 ```

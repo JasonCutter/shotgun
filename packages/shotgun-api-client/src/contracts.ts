@@ -252,6 +252,13 @@ import type {
   ResolveExternalActionOutcomeRequestV1,
   ResolvedCommandResultV1,
   ResolveExternalActionOutcomeResultV1,
+  HistoryCursorV1,
+  HistoryEntryV1,
+  HistorySourceDomainKindV1,
+  ListHistoryWorkspaceRequestV1,
+  ListHistoryWorkspaceResultV1,
+  GetHistoryEntryRequestV1,
+  GetHistoryEntryResultV1,
 } from '../../contracts/src/index.js';
 
 export type ProductSessionView = AnyProductSessionView;
@@ -511,6 +518,13 @@ export type {
   ResolveExternalActionOutcomeRequestV1,
   ResolvedCommandResultV1,
   ResolveExternalActionOutcomeResultV1,
+  HistoryCursorV1,
+  HistoryEntryV1,
+  HistorySourceDomainKindV1,
+  ListHistoryWorkspaceRequestV1,
+  ListHistoryWorkspaceResultV1,
+  GetHistoryEntryRequestV1,
+  GetHistoryEntryResultV1,
 };
 
 export {

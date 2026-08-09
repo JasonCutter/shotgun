@@ -1,4 +1,8 @@
-import type { HistorySourceDomainKindV1, PayloadAvailabilityV1 } from '@shotgun/api-client';
+import type {
+  HistoryCursorV1,
+  HistorySourceDomainKindV1,
+  PayloadAvailabilityV1,
+} from '@shotgun/api-client';
 
 /**
  * FE-P5-S2 WP5 — History Workspace UI state.
@@ -46,7 +50,7 @@ export type HistoryWorkspaceState = {
   readonly availability: HistoryAvailabilityFilter;
   readonly selectedEntryId: string | null;
   /** Frozen-tuple keyset cursor (object) or null on the first page. */
-  readonly pageCursor: unknown;
+  readonly pageCursor: HistoryCursorV1 | null;
 };
 
 export type HistoryWorkspaceAction =
@@ -54,7 +58,7 @@ export type HistoryWorkspaceAction =
   | { readonly type: 'SET_AVAILABILITY'; readonly availability: HistoryAvailabilityFilter }
   | { readonly type: 'SELECT_ENTRY'; readonly historyEntryId: string }
   | { readonly type: 'CLEAR_SELECTION' }
-  | { readonly type: 'SET_PAGE_CURSOR'; readonly cursor: unknown };
+  | { readonly type: 'SET_PAGE_CURSOR'; readonly cursor: HistoryCursorV1 | null };
 
 export const createInitialHistoryWorkspaceState = (): HistoryWorkspaceState => ({
   domainKinds: [],

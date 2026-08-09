@@ -4,6 +4,7 @@ import {
   ShotgunApiError,
   type FrontendHistoryClient,
   type GetHistoryEntryRequestV1,
+  type HistoryCursorV1,
   type HistorySourceDomainKindV1,
   type ListHistoryWorkspaceRequestV1,
 } from '@shotgun/api-client';
@@ -36,7 +37,7 @@ export const historyQueryRetry = (failureCount: number, error: unknown): boolean
 
 export type HistoryListRequest = {
   readonly domainKinds?: readonly HistorySourceDomainKindV1[];
-  readonly cursor?: unknown;
+  readonly cursor?: HistoryCursorV1;
   readonly limit?: number;
 };
 
@@ -48,7 +49,7 @@ const listRequestV1 = (
   resourceProjectId,
   ...(request.domainKinds === undefined ? {} : { domainKinds: request.domainKinds }),
   ...(request.cursor === undefined ? {} : { cursor: request.cursor }),
-  ...(request.limit === undefined ? {} : { limit: request.limit }),
+  limit: request.limit ?? HISTORY_LIST_LIMIT,
 });
 
 export const historyListQueryOptions = (

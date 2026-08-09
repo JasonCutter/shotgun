@@ -46,6 +46,7 @@ import {
   PostgresPolicyHistoryReadAdapter,
   PostgresProjectAdministrationRepository,
   PostgresProjectBootstrapUnitOfWork,
+  PostgresProjectTombstoneStore,
   PostgresSettingsRepository,
 } from '../../../adapters/postgres/src/index.js';
 import {
@@ -154,6 +155,7 @@ let stopAskAnswerWorker = async (): Promise<void> => {};
 const { server } = await createApplication({
   projectAdminRepository: new PostgresProjectAdministrationRepository(pool),
   projectBootstrapUnitOfWork: new PostgresProjectBootstrapUnitOfWork(pool),
+  projectTombstoneStore: new PostgresProjectTombstoneStore(pool),
   settingsRepository: new PostgresSettingsRepository(pool),
   frontendCommandGateway: commandGateway,
   frontendKnowledgeDraftRepository: new PostgresFrontendKnowledgeDraftRepository(pool),

@@ -7,10 +7,13 @@ import type {
 /**
  * FE-P5-S2 WP5 — History Workspace UI state.
  *
- * The browser owns ONLY selection, domain/availability filters and pagination
- * (ADR-131 §2 / IR r1 §5 WP5). Everything else — Principal, Project, access,
- * policy, capability, sensitivity and the audit read capability — is
- * server-derived and never authored here.
+ * The browser owns ONLY selection, domain filters and pagination (ADR-131 §2 /
+ * IR r1 §5 WP5). Everything else — Principal, Project, access, policy,
+ * capability, sensitivity and the audit read capability — is server-derived
+ * and never authored here. Payload availability is a DISPLAY concern only:
+ * the frozen `ListHistoryWorkspaceRequestV1` has no availability filter field
+ * (GPT WP5 Round 1 A), so there is no client-side availability filter — a
+ * page-local filter would produce false-empty pages and skip rows.
  */
 
 export const HISTORY_DOMAIN_KIND_OPTIONS: readonly HistorySourceDomainKindV1[] = [
@@ -18,16 +21,6 @@ export const HISTORY_DOMAIN_KIND_OPTIONS: readonly HistorySourceDomainKindV1[] =
   'REVIEW',
   'EXTERNAL_ACTION',
   'POLICY',
-];
-
-export type HistoryAvailabilityFilter = PayloadAvailabilityV1 | 'ANY';
-
-export const HISTORY_AVAILABILITY_FILTER_OPTIONS: readonly HistoryAvailabilityFilter[] = [
-  'ANY',
-  'AVAILABLE',
-  'REDACTED',
-  'PURGED_BY_POLICY',
-  'UNAVAILABLE',
 ];
 
 /** Text labels independent of color (accessibility). */
@@ -47,7 +40,6 @@ export const historyAvailabilityLabel: Record<PayloadAvailabilityV1, string> = {
 
 export type HistoryWorkspaceState = {
   readonly domainKinds: readonly HistorySourceDomainKindV1[];
-  readonly availability: HistoryAvailabilityFilter;
   readonly selectedEntryId: string | null;
   /** Frozen-tuple keyset cursor (object) or null on the first page. */
   readonly pageCursor: HistoryCursorV1 | null;
@@ -55,14 +47,12 @@ export type HistoryWorkspaceState = {
 
 export type HistoryWorkspaceAction =
   | { readonly type: 'TOGGLE_DOMAIN_KIND'; readonly domainKind: HistorySourceDomainKindV1 }
-  | { readonly type: 'SET_AVAILABILITY'; readonly availability: HistoryAvailabilityFilter }
   | { readonly type: 'SELECT_ENTRY'; readonly historyEntryId: string }
   | { readonly type: 'CLEAR_SELECTION' }
   | { readonly type: 'SET_PAGE_CURSOR'; readonly cursor: HistoryCursorV1 | null };
 
 export const createInitialHistoryWorkspaceState = (): HistoryWorkspaceState => ({
   domainKinds: [],
-  availability: 'ANY',
   selectedEntryId: null,
   pageCursor: null,
 });
@@ -76,9 +66,14 @@ export const reduceHistoryWorkspaceState = (
 ): HistoryWorkspaceState => {
   switch (action.type) {
     case 'TOGGLE_DOMAIN_KIND':
-      return { ...state, domainKinds: toggle(state.domainKinds, action.domainKind) };
-    case 'SET_AVAILABILITY':
-      return { ...state, availability: action.availability };
+      // A domain filter change MUST reset the keyset cursor: continuing from
+      // the previous page would skip the first page of the new filter
+      // (GPT WP5 Round 1 A).
+      return {
+        ...state,
+        domainKinds: toggle(state.domainKinds, action.domainKind),
+        pageCursor: null,
+      };
     case 'SELECT_ENTRY':
       return { ...state, selectedEntryId: action.historyEntryId };
     case 'CLEAR_SELECTION':

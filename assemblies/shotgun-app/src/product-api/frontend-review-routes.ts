@@ -5,6 +5,7 @@ import {
   FrontendContractError,
   ShotgunError,
   decodeAddReviewCommentRequestV1,
+  decodeCreateReversalDraftChangeSetRequestV1,
   decodeGetReviewApprovalRequestV1,
   decodeGetReviewContextRequestV1,
   decodeGetReviewItemDetailRequestV1,
@@ -16,6 +17,7 @@ import {
 } from '../../../../packages/contracts/src/index.js';
 import type { FrontendReviewProductCoordinator } from '../../../../modules/frontend-review/src/product-api.js';
 import { ReviewCommandError } from '../../../../modules/frontend-review/src/index.js';
+import type { ReversalEligibilityPort } from '../../../../modules/change-set-review/src/index.js';
 import type { SettingsRepositoryPort } from '../../../../modules/settings-policy/src/index.js';
 import type { AuthRepositoryPort } from '../../../../packages/authentication/src/index.js';
 
@@ -56,6 +58,7 @@ const toReviewError = (error: unknown, operation: string): never => {
 export function registerFrontendReviewRoutes(
   server: FastifyInstance,
   coordinator: FrontendReviewProductCoordinator,
+  reversalEligibilityPort: ReversalEligibilityPort,
   authRepository: AuthRepositoryPort,
   settingsRepository: SettingsRepositoryPort,
   requirePrincipalBrowserSession: PrincipalSessionResolver,
@@ -204,6 +207,41 @@ export function registerFrontendReviewRoutes(
         return await coordinator.resolveCommandOutcome(scope, decoded);
       } catch (error) {
         throw toReviewError(error, 'resolve-review-command-outcome');
+      }
+    },
+  );
+
+  // FE-P5-S2 WP3/WP5 — Reversal initiation (change-set-review owning route).
+  // The browser only names the historical source revision; the server derives
+  // the current capability (REVERSAL_CURRENT_CAPABILITY) and the principal, and
+  // creates a CANDIDATE Reversal draft for the current Review flow.
+  server.post<{ Body: unknown; Headers: SecurityHeaders }>(
+    '/product-api/frontend/review/reversal-draft',
+    async (request) => {
+      const scope = await buildReviewScope(request.headers);
+      try {
+        const decoded = decodeCreateReversalDraftChangeSetRequestV1(
+          request.body,
+          'createReversalDraftChangeSet',
+        );
+        if (decoded.resourceProjectId !== scope.activeProjectId) {
+          throw new ShotgunError({
+            code: 'PROJECT_ACCESS_DENIED',
+            safeMessage: 'Reversal requires the active Project.',
+            module: 'frontend-review-api',
+            operation: 'create-reversal-draft',
+          });
+        }
+        const result = await reversalEligibilityPort.createReversalDraftChangeSet({
+          resourceProjectId: decoded.resourceProjectId,
+          sourceRevisionId: decoded.sourceRevisionId,
+          reason: decoded.reason,
+          createdBy: scope.principalId,
+          createdAt: new Date().toISOString(),
+        });
+        return result;
+      } catch (error) {
+        throw toReviewError(error, 'create-reversal-draft');
       }
     },
   );

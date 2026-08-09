@@ -1,9 +1,10 @@
-import { useQuery } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
-import { Link, useOutletContext, useSearchParams } from 'react-router';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { Link, useNavigate, useOutletContext, useSearchParams } from 'react-router';
 
 import {
   createFrontendHistoryClient,
+  createFrontendReviewClient,
   type GlobalShellView,
   type HistoryEntryV1,
 } from '@shotgun/api-client';
@@ -19,13 +20,11 @@ import {
 } from '../history/history-queries.js';
 import {
   HISTORY_ANNOUNCEMENTS,
-  HISTORY_AVAILABILITY_FILTER_OPTIONS,
   HISTORY_DOMAIN_KIND_OPTIONS,
   createInitialHistoryWorkspaceState,
   historyAvailabilityLabel,
   historyDomainKindLabel,
   reduceHistoryWorkspaceState,
-  type HistoryAvailabilityFilter,
 } from '../history/history-workspace-state.js';
 import {
   HISTORY_REVIEW_HREF,
@@ -37,14 +36,15 @@ import {
  * FE-P5-S2 WP5 — History Workspace (`/history`, guarded).
  *
  * Project-scoped federated History read (ADR-131 §2 / IR r1 §5 WP5): unified
- * list with Domain filters + payload-availability filter + frozen-cursor
- * pagination, and a Detail panel that re-resolves the authoritative source
- * (payload availability display). Audit lineage links EXTERNAL_ACTION rows to
- * the owning-Domain External Action workspace; the Reversal entry point and
- * Compensation link go to the owning-Domain routes (WP3 change-set-review /
- * external action) — History owns no command endpoint. Deleted-project access
- * is non-disclosing (same NOT_FOUND as any missing resource). The browser owns
- * only selection, filters and pagination.
+ * list with Domain filters + frozen-cursor pagination, and a Detail panel that
+ * re-resolves the authoritative source (payload availability display). Audit
+ * lineage links EXTERNAL_ACTION rows to the owning-Domain External Action
+ * workspace; the Reversal entry point and Compensation link go to the
+ * owning-Domain routes (WP3 change-set-review / external action) — History
+ * owns no command endpoint. Payload availability is display-only (the frozen
+ * list request has no availability filter; GPT WP5 Round 1 A). Deleted-project
+ * access is non-disclosing (same NOT_FOUND as any missing resource). The
+ * browser owns only selection, domain filters and pagination.
  */
 
 const payloadAvailabilityClass = (availability: HistoryEntryV1['payloadAvailability']): string =>
@@ -85,14 +85,10 @@ const PayloadAvailabilityBadge = ({ entry }: { readonly entry: HistoryEntryV1 })
 
 const HistoryFilters = ({
   domainKinds,
-  availability,
   onToggleDomainKind,
-  onSetAvailability,
 }: {
   readonly domainKinds: readonly HistoryEntryV1['domainKind'][];
-  readonly availability: HistoryAvailabilityFilter;
   readonly onToggleDomainKind: (kind: HistoryEntryV1['domainKind']) => void;
-  readonly onSetAvailability: (availability: HistoryAvailabilityFilter) => void;
 }) => (
   <section className="history-filters" aria-label="히스토리 필터">
     <fieldset>
@@ -112,24 +108,21 @@ const HistoryFilters = ({
         ))}
       </ul>
     </fieldset>
-    <label className="history-availability-filter">
-      Payload availability
-      <select
-        value={availability}
-        onChange={(event) => onSetAvailability(event.target.value as HistoryAvailabilityFilter)}
-      >
-        {HISTORY_AVAILABILITY_FILTER_OPTIONS.map((option) => (
-          <option key={option} value={option}>
-            {option === 'ANY' ? 'Any' : historyAvailabilityLabel[option]}
-          </option>
-        ))}
-      </select>
-    </label>
   </section>
 );
 
-/** Audit lineage / owning-Domain links for an entry (WP5). */
-const OwningDomainLinks = ({ entry }: { readonly entry: HistoryEntryV1 }) => {
+/** Audit lineage / owning-Domain links + Reversal initiation for an entry. */
+const OwningDomainLinks = ({
+  entry,
+  onStartReversal,
+  reversalPending,
+  reversalError,
+}: {
+  readonly entry: HistoryEntryV1;
+  readonly onStartReversal?: () => void;
+  readonly reversalPending: boolean;
+  readonly reversalError: string | null;
+}) => {
   const links: { readonly label: string; readonly href: string }[] = [];
   if (entry.domainKind === 'EXTERNAL_ACTION') {
     links.push({
@@ -142,13 +135,8 @@ const OwningDomainLinks = ({ entry }: { readonly entry: HistoryEntryV1 }) => {
     });
   }
   if (entry.domainKind === 'REVIEW') {
-    links.push({ label: 'Reversal draft (Review)', href: HISTORY_REVIEW_HREF });
     links.push({ label: 'Review workspace', href: HISTORY_REVIEW_HREF });
   }
-  if (entry.domainKind === 'CANONICAL') {
-    links.push({ label: 'Reversal draft (Review)', href: HISTORY_REVIEW_HREF });
-  }
-  if (links.length === 0) return null;
   return (
     <ul className="history-owning-links" aria-label="소유 도메인 링크">
       {links.map((link) => (
@@ -156,6 +144,23 @@ const OwningDomainLinks = ({ entry }: { readonly entry: HistoryEntryV1 }) => {
           <Link to={link.href}>{link.label}</Link>
         </li>
       ))}
+      {entry.domainKind === 'CANONICAL' && onStartReversal ? (
+        <li>
+          <button
+            type="button"
+            onClick={onStartReversal}
+            disabled={reversalPending}
+            className="history-reversal-button"
+          >
+            {reversalPending ? 'Reversal draft 생성 중…' : 'Reversal draft 생성'}
+          </button>
+          {reversalError ? (
+            <p className="history-reversal-error" role="alert">
+              {reversalError}
+            </p>
+          ) : null}
+        </li>
+      ) : null}
     </ul>
   );
 };
@@ -164,10 +169,16 @@ const HistoryDetail = ({
   entry,
   entryError,
   onClear,
+  onStartReversal,
+  reversalPending,
+  reversalError,
 }: {
   readonly entry: HistoryEntryV1 | undefined;
   readonly entryError: unknown;
   readonly onClear: () => void;
+  readonly onStartReversal?: () => void;
+  readonly reversalPending: boolean;
+  readonly reversalError: string | null;
 }) => {
   if (entryError) {
     // Deleted-project / missing / capability-denied all resolve to the same
@@ -227,7 +238,12 @@ const HistoryDetail = ({
         <h3>Payload</h3>
         <PayloadSnapshotView entry={entry} />
       </section>
-      <OwningDomainLinks entry={entry} />
+      <OwningDomainLinks
+        entry={entry}
+        onStartReversal={entry.domainKind === 'CANONICAL' ? onStartReversal : undefined}
+        reversalPending={reversalPending}
+        reversalError={reversalError}
+      />
     </article>
   );
 };
@@ -235,6 +251,8 @@ const HistoryDetail = ({
 export const HistoryWorkspace = () => {
   const { shell } = useOutletContext<{ readonly shell: GlobalShellView }>();
   const historyClient = useMemo(() => createFrontendHistoryClient(), []);
+  const reviewClient = useMemo(() => createFrontendReviewClient(), []);
+  const navigate = useNavigate();
   const [searchParameters, setSearchParameters] = useSearchParams();
   const [state, dispatch] = useReducer(
     reduceHistoryWorkspaceState,
@@ -242,6 +260,7 @@ export const HistoryWorkspace = () => {
     createInitialHistoryWorkspaceState,
   );
   const liveRegionRef = useRef<HTMLParagraphElement | null>(null);
+  const [reversalError, setReversalError] = useState<string | null>(null);
 
   const scope = historyScopeFromShell(shell);
   const deepLink = useMemo(() => parseHistoryDeepLink(searchParameters), [searchParameters]);
@@ -262,18 +281,49 @@ export const HistoryWorkspace = () => {
 
   const list = useQuery(historyListQueryOptions(historyClient, scope, listRequest));
 
-  // Payload availability filter: applied client-side on the returned page is
-  // NOT safe for cursors, so the browser filters on the displayed page only
-  // when needed; the authoritative list is always the server page.
-  const visibleEntries = useMemo(() => {
-    const entries = list.data?.entries ?? [];
-    if (state.availability === 'ANY') return entries;
-    return entries.filter((entry) => entry.payloadAvailability === state.availability);
-  }, [list.data, state.availability]);
+  // Payload availability is display-only (no server filter field); the list
+  // renders exactly the server page (GPT WP5 Round 1 A — no page-local filter).
+  const visibleEntries = list.data?.entries ?? [];
 
   // Selected entry restored from the deep link (server revalidates on read).
   const selectedEntryId = state.selectedEntryId ?? deepLink.entryId;
   const detail = useQuery(historyEntryQueryOptions(historyClient, scope, selectedEntryId ?? null));
+  const detailEntry = detail.data?.entry;
+
+  // Reversal initiation (GPT WP5 Round 1 B): the selected Canonical History
+  // entry resolves its authoritative source revision; the change-set-review
+  // owning route (WP3) creates the CANDIDATE draft with server-derived current
+  // capability + principal, then the current Review Workspace takes over.
+  const reversalMutation = useMutation({
+    mutationFn: async () => {
+      if (!scope || !detailEntry) throw new Error('Reversal requires a selected History entry.');
+      const snapshot = detailEntry.payloadSnapshot as { afterVersion?: string } | undefined;
+      const sourceRevisionId = snapshot?.afterVersion;
+      if (!sourceRevisionId) {
+        throw new Error('이 항목에는 Reversal 대상 revision이 없습니다.');
+      }
+      return reviewClient.createReversalDraftChangeSet({
+        schemaVersion: '1.0.0',
+        resourceProjectId: scope.resourceProjectId,
+        sourceRevisionId,
+        reason: 'Reversal initiated from the History Workspace.',
+      });
+    },
+    onSuccess: () => {
+      announce('Reversal draft가 생성되었습니다.');
+      navigate(HISTORY_REVIEW_HREF);
+    },
+    onError: (error) => {
+      setReversalError(
+        error instanceof Error ? error.message : 'Reversal draft 생성에 실패했습니다.',
+      );
+    },
+  });
+
+  // Reset the reversal error whenever the selected entry changes.
+  useEffect(() => {
+    setReversalError(null);
+  }, [selectedEntryId]);
 
   // Deep-link restore: the URL is the single source of truth for selection.
   useEffect(() => {
@@ -321,13 +371,8 @@ export const HistoryWorkspace = () => {
 
         <HistoryFilters
           domainKinds={state.domainKinds}
-          availability={state.availability}
           onToggleDomainKind={(kind) => {
             dispatch({ type: 'TOGGLE_DOMAIN_KIND', domainKind: kind });
-            announce(HISTORY_ANNOUNCEMENTS.FILTER_CHANGED);
-          }}
-          onSetAvailability={(availability) => {
-            dispatch({ type: 'SET_AVAILABILITY', availability });
             announce(HISTORY_ANNOUNCEMENTS.FILTER_CHANGED);
           }}
         />
@@ -381,12 +426,21 @@ export const HistoryWorkspace = () => {
         ) : detail.isPending ? (
           <LoadingState message="히스토리 항목을 불러오는 중…" />
         ) : detail.isError ? (
-          <HistoryDetail entry={undefined} entryError={detail.error} onClear={clearSelection} />
+          <HistoryDetail
+            entry={undefined}
+            entryError={detail.error}
+            onClear={clearSelection}
+            reversalPending={reversalMutation.isPending}
+            reversalError={reversalError}
+          />
         ) : (
           <HistoryDetail
             entry={detail.data?.entry}
             entryError={undefined}
             onClear={clearSelection}
+            onStartReversal={() => reversalMutation.mutate()}
+            reversalPending={reversalMutation.isPending}
+            reversalError={reversalError}
           />
         )}
       </main>

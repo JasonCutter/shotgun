@@ -48,6 +48,7 @@ import {
 import {
   InMemoryProjectAdministrationRepository,
   InMemoryProjectBootstrapUnitOfWork,
+  InMemoryProjectTombstoneStore,
   InMemorySettingsRepository,
 } from '../../../adapters/settings-project-admin-in-memory/src/index.js';
 import { InMemoryFrontendCommandGateway } from '../../../adapters/frontend-command-gateway-in-memory/src/index.js';
@@ -71,6 +72,7 @@ import { InMemoryAskConversationRepository } from '../../../adapters/frontend-as
 import type {
   ProjectAdministrationRepositoryPort,
   ProjectBootstrapUnitOfWorkPort,
+  ProjectTombstoneStorePort,
 } from '../../../modules/project-administration/src/index.js';
 import type {
   PayloadStateOwner,
@@ -235,6 +237,7 @@ import {
 } from '../../../modules/comparison/src/index.js';
 import {
   createChangeSetReviewModule,
+  createReversalEligibilityPort,
   type ChangeSetReviewRepositoryPort,
 } from '../../../modules/change-set-review/src/index.js';
 import {
@@ -514,6 +517,7 @@ export type ApplicationOptions = {
   readonly activityCoordinator?: ActivityProductCoordinator;
   readonly historyReadModelStore?: HistoryReadModelStorePort;
   readonly historyCoordinator?: HistoryProductCoordinator;
+  readonly projectTombstoneStore?: ProjectTombstoneStorePort;
   readonly policyHistoryRead?: PolicyHistoryReadPort;
   readonly historyPayloadStates?: Partial<Record<PayloadStateOwner, PayloadStateStorePort>>;
   readonly historyReviewBoundary?: ReviewRepositoryBoundaryPort;
@@ -1220,6 +1224,10 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     },
   };
   const authRepository = options.authRepository ?? new InMemoryAuthRepository();
+  // FE-P5-S2 WP2-C / WP5: ProjectTombstone + DeletedProjectAuditScope store for
+  // authorized deleted-project audit reads.
+  const projectTombstoneStore =
+    options.projectTombstoneStore ?? new InMemoryProjectTombstoneStore();
   const projectAdminRepository =
     options.projectAdminRepository ??
     new InMemoryProjectAdministrationRepository(async ({ principalId, projectId }) => {
@@ -1257,6 +1265,15 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       healthStore: createInMemoryHealthStore(),
     });
   const frontendReviewStore = new InMemoryFrontendReviewStore();
+  // FE-P5-S2 WP3/WP5: Reversal draft creation is a change-set-review owned
+  // capability (server-derived current capability + principal; the browser
+  // only names the historical source revision).
+  const reversalEligibilityPort = createReversalEligibilityPort(canonicalKnowledgeRepository, {
+    currentCapabilitiesResolver: async ({ resourceProjectId, principalId }) => {
+      const membership = await authRepository.findMembership(principalId, resourceProjectId);
+      return membership?.scopes ?? [];
+    },
+  });
   const frontendReviewCoordinator =
     options.frontendReviewCoordinator ??
     new FrontendReviewProductCoordinator(frontendReviewStore, frontendCommandGateway, [
@@ -2111,6 +2128,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   registerFrontendReviewRoutes(
     server,
     frontendReviewCoordinator,
+    reversalEligibilityPort,
     authRepository,
     settingsRepository,
     requirePrincipalBrowserSession,
@@ -2132,6 +2150,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   registerHistoryRoutes(
     server,
     historyCoordinator,
+    projectTombstoneStore,
     authRepository,
     settingsRepository,
     requirePrincipalBrowserSession,

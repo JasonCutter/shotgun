@@ -77,7 +77,10 @@ const entry = (
   ...overrides,
 });
 
-const canonicalEntry = entry({ sourceEventId: 'e-1' });
+const canonicalEntry = entry({
+  sourceEventId: 'e-1',
+  payloadSnapshot: { eventType: 'CANONICAL_CLAIM_ADDED', reason: 'commit', afterVersion: 'rev-2' },
+});
 const reviewEntry = entry({
   sourceEventId: 'r-1',
   domainKind: 'REVIEW',
@@ -139,6 +142,30 @@ const createFetchMock = () => {
       const match = all.find((candidate) => candidate.historyEntryId === body.historyEntryId);
       return jsonResponse(200, { schemaVersion: '1.0.0', entry: match ?? detailEntry });
     }
+    if (url.endsWith('/product-api/frontend/review/reversal-draft')) {
+      const body = init?.body
+        ? (JSON.parse(String(init.body)) as { sourceRevisionId?: string })
+        : {};
+      return jsonResponse(200, {
+        schemaVersion: '1.0.0',
+        reversal: {
+          schemaVersion: '1.0.0',
+          reversalId: 'reversal:1',
+          resourceProjectId: 'project-1',
+          sourceRevisionId: body.sourceRevisionId ?? 'rev-2',
+          sourceCommitId: 'commit-2',
+          status: 'CANDIDATE',
+          createdAt: now,
+          createdBy: 'principal-1',
+        },
+        eligibility: {
+          schemaVersion: '1.0.0',
+          sourceRevisionId: body.sourceRevisionId ?? 'rev-2',
+          eligible: true,
+          reasons: [],
+        },
+      });
+    }
     return jsonResponse(404, { code: 'NOT_FOUND', message: 'not found' });
   });
   return { fetchMock, calls, detailCount: () => detailCount };
@@ -194,9 +221,8 @@ describe('HistoryWorkspace (FE-P5-S2 WP5)', () => {
     );
     expect(screen.getByRole('heading', { name: 'History', level: 1 })).not.toBeNull();
     expect(screen.getAllByText('Canonical').length).toBeGreaterThan(0);
-    // Domain + availability filter controls exist (legend + label).
+    // Domain filter control exists.
     expect(screen.getByText('Domain')).not.toBeNull();
-    expect(screen.getByText('Payload availability')).not.toBeNull();
     // All four entries rendered.
     expect(screen.getAllByRole('listitem').length).toBeGreaterThanOrEqual(4);
     expect(fetchMock).toHaveBeenCalledWith(
@@ -264,15 +290,23 @@ describe('HistoryWorkspace (FE-P5-S2 WP5)', () => {
       () => expect(screen.getAllByRole('button', { name: /Canonical/ }).length).toBeGreaterThan(0),
       { timeout: 5000 },
     );
-    // Select the Canonical entry → Reversal draft link to /review.
+    // Select the Canonical entry → Reversal draft initiation button.
     await user.click(screen.getAllByRole('button', { name: /Canonical/ })[0]!);
     await waitFor(
       () => expect(screen.getByRole('heading', { name: 'History entry', level: 2 })).not.toBeNull(),
       { timeout: 5000 },
     );
-    expect(screen.getByRole('link', { name: /Reversal draft/ }).getAttribute('href')).toBe(
+    expect(screen.getByRole('button', { name: /Reversal draft/ })).not.toBeNull();
+    // Select the REVIEW entry → Review workspace link (no Reversal button).
+    await user.click(screen.getAllByRole('button', { name: /Review/ })[0]!);
+    await waitFor(
+      () => expect(screen.getByRole('heading', { name: 'History entry', level: 2 })).not.toBeNull(),
+      { timeout: 5000 },
+    );
+    expect(screen.getByRole('link', { name: 'Review workspace' }).getAttribute('href')).toBe(
       '/review',
     );
+    expect(screen.queryByRole('button', { name: /Reversal draft/ })).toBeNull();
     vi.unstubAllGlobals();
   });
 
@@ -314,6 +348,61 @@ describe('HistoryWorkspace (FE-P5-S2 WP5)', () => {
     expect(first.getAttribute('disabled')).toBeNull();
     await user.click(first);
     await waitFor(() => expect(first.getAttribute('disabled')).not.toBeNull());
+    vi.unstubAllGlobals();
+  });
+
+  it('resets the keyset cursor when a domain filter changes (GPT WP5 Round 1 A)', async () => {
+    const user = userEvent.setup();
+    const { fetchMock } = createFetchMock();
+    vi.stubGlobal('fetch', fetchMock);
+    renderWorkspace(createRuntime());
+    await waitFor(
+      () => expect(screen.getAllByRole('button', { name: /Canonical/ }).length).toBeGreaterThan(0),
+      { timeout: 5000 },
+    );
+    // Move to page 2 (cursor set → '처음' enabled).
+    await user.click(screen.getByRole('button', { name: '다음' }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '처음' }).getAttribute('disabled')).toBeNull(),
+    );
+    // Toggling a domain filter MUST reset the cursor back to the first page.
+    await user.click(screen.getByLabelText('Review'));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '처음' }).getAttribute('disabled')).not.toBeNull(),
+    );
+    // The subsequent list request is the first page (no cursor).
+    vi.unstubAllGlobals();
+  });
+
+  it('initiates a Reversal draft from a selected Canonical entry and navigates to Review (GPT WP5 Round 1 B)', async () => {
+    const user = userEvent.setup();
+    const { fetchMock } = createFetchMock();
+    vi.stubGlobal('fetch', fetchMock);
+    renderWorkspace(createRuntime());
+    await waitFor(
+      () => expect(screen.getAllByRole('button', { name: /Canonical/ }).length).toBeGreaterThan(0),
+      { timeout: 5000 },
+    );
+    await user.click(screen.getAllByRole('button', { name: /Canonical/ })[0]!);
+    await waitFor(
+      () => expect(screen.getByRole('heading', { name: 'History entry', level: 2 })).not.toBeNull(),
+      { timeout: 5000 },
+    );
+    // The authoritative detail carries the historical revision (afterVersion).
+    const reversalButton = screen.getByRole('button', { name: 'Reversal draft 생성' });
+    await user.click(reversalButton);
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining('/product-api/frontend/review/reversal-draft'),
+        expect.objectContaining({
+          body: expect.stringContaining('"sourceRevisionId":"rev-2"'),
+        }),
+      ),
+    );
+    // On success the current Review Workspace takes over.
+    await waitFor(() => expect(screen.getByText('Review Workspace')).not.toBeNull(), {
+      timeout: 5000,
+    });
     vi.unstubAllGlobals();
   });
 });

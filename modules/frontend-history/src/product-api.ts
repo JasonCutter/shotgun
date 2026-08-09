@@ -50,6 +50,18 @@ export type HistoryProductScopeV1 = {
    * empty or unknown value is rejected deny-by-default (Contract Snapshot §9).
    */
   readonly sensitivityClearance: 'public' | 'internal' | 'private' | 'restricted';
+  /**
+   * Deleted-project audit context (WP2-C tombstone / GPT WP5 Round 1 C): when
+   * present, History reads are scoped to the DELETED project instead of the
+   * active project. The server derives this ONLY after verifying a valid
+   * ProjectTombstone + an active DeletedProjectAuditScope bound to the current
+   * principal + the current `project:deleted-audit:read` capability. Past
+   * membership alone never grants it.
+   */
+  readonly deletedProjectAudit?: {
+    readonly projectId: string;
+    readonly auditScopeId: string;
+  };
 };
 
 export type HistoryCapabilityV1 =
@@ -194,15 +206,22 @@ export class HistoryProductCoordinator {
 
   /**
    * Deny-by-default scope validation: a server-derived Product scope must
-   * carry a Principal, an active Project, both revision bindings and an
-   * allow-listed sensitivity clearance. The browser never authors these.
+   * carry a Principal, a Project (active OR authorized deleted-project audit),
+   * both revision bindings and an allow-listed sensitivity clearance. The
+   * browser never authors these.
    */
   private assertValidProductScope(scope: HistoryProductScopeV1): void {
+    const hasProject =
+      (typeof scope.activeProjectId === 'string' && scope.activeProjectId.trim().length > 0) ||
+      (scope.deletedProjectAudit !== undefined &&
+        typeof scope.deletedProjectAudit.projectId === 'string' &&
+        scope.deletedProjectAudit.projectId.trim().length > 0 &&
+        typeof scope.deletedProjectAudit.auditScopeId === 'string' &&
+        scope.deletedProjectAudit.auditScopeId.trim().length > 0);
     if (
       typeof scope.principalId !== 'string' ||
       scope.principalId.trim().length === 0 ||
-      typeof scope.activeProjectId !== 'string' ||
-      scope.activeProjectId.trim().length === 0 ||
+      !hasProject ||
       typeof scope.accessRevision !== 'string' ||
       scope.accessRevision.trim().length === 0 ||
       typeof scope.policyContextRevision !== 'string' ||
@@ -212,6 +231,11 @@ export class HistoryProductCoordinator {
     ) {
       historyDenied();
     }
+  }
+
+  /** Effective project scope: active project, or the authorized deleted-project audit. */
+  private projectScope(scope: HistoryProductScopeV1): string {
+    return scope.deletedProjectAudit?.projectId ?? scope.activeProjectId;
   }
 
   /**
@@ -237,7 +261,8 @@ export class HistoryProductCoordinator {
   ): Promise<ListHistoryWorkspaceResultV1> {
     this.requireCapability(scope, 'LIST_HISTORY_WORKSPACE');
     const decoded = decodeListHistoryWorkspaceRequestV1(request, 'listHistoryWorkspace');
-    if (decoded.resourceProjectId !== scope.activeProjectId) {
+    const projectId = this.projectScope(scope);
+    if (decoded.resourceProjectId !== projectId) {
       historyDenied();
     }
     const limit = Math.min(HISTORY_PAGE_SIZE_CAP, Math.max(1, decoded.limit));
@@ -250,7 +275,7 @@ export class HistoryProductCoordinator {
     let cursor = decoded.cursor;
     while (visible.length < target) {
       const page = await this.index.queryProject({
-        resourceProjectId: scope.activeProjectId,
+        resourceProjectId: projectId,
         domainKinds: decoded.domainKinds,
         cursor,
         limit: Math.max(target, (target - visible.length) * 3),
@@ -299,11 +324,12 @@ export class HistoryProductCoordinator {
   ): Promise<GetHistoryEntryResultV1> {
     this.requireCapability(scope, 'READ_HISTORY_ENTRY');
     const decoded = decodeGetHistoryEntryRequestV1(request, 'getHistoryEntry');
-    if (decoded.resourceProjectId !== scope.activeProjectId) {
+    const projectId = this.projectScope(scope);
+    if (decoded.resourceProjectId !== projectId) {
       historyNotFound();
     }
     const record = await this.index.findByIdentity({
-      resourceProjectId: scope.activeProjectId,
+      resourceProjectId: projectId,
       historyEntryId: decoded.historyEntryId,
     });
     if (record === undefined) {
@@ -322,7 +348,7 @@ export class HistoryProductCoordinator {
     // Authoritative re-resolution: the owning Domain is the source of truth;
     // the projection only locates it. Fail-closed when unresolved.
     const authoritative = await adapter!.resolveHistoryEntry(
-      scope.activeProjectId,
+      projectId,
       projection.sourceEventKind,
       projection.sourceEventId,
     );

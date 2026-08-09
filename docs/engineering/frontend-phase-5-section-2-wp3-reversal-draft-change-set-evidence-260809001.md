@@ -1,7 +1,7 @@
 ---
 id: FRONTEND-PHASE-5-SECTION-2-WP3-EVIDENCE-260809001
 classification: CANONICAL
-status: wp3_implemented_pending_review
+status: wp3_accepted
 work_item: FE-P5-S2
 created_at: 2026-08-09
 subject_base: 701e0bfac5af60daa48d9155185956b91650ecbd
@@ -15,10 +15,13 @@ wp3_round1_fix_head: 74e203d42e5db4dc6c831feb4db2a53687c93da0
 wp3_round1_fix_ci_number: 692
 wp3_round1_fix_ci_run_id: 31292583810
 wp3_round1_fix_ci_conclusion: SUCCESS
-wp3_round2_fix_head: 3b25f0c25a2adf35e7e153fb009758a7044c0729
+wp3_round2_product_fix_head: 3b25f0c25a2adf35e7e153fb009758a7044c0729
+wp3_round2_ci_validation_head: f728cb7a5b6a2cfb479de9429bf3a5e83205f2c0
 wp3_round2_fix_ci_number: 694
 wp3_round2_fix_ci_run_id: 31293185901
 wp3_round2_fix_ci_conclusion: SUCCESS
+wp3_accepted_head: 661b1b401
+wp3_accepted_by: GPT_IMPLEMENTATION_REVIEW_ACCEPTED (Round 3)
 tracking_issue: https://github.com/JasonCutter/shotgun/issues/71
 contract_pr: https://github.com/JasonCutter/shotgun/pull/70
 product_pr: https://github.com/JasonCutter/shotgun/pull/80
@@ -177,5 +180,11 @@ Not implemented in this Work Package (remain unauthorized):
 
 ## 8. Next action
 
-Report WP3 Round 3 (fixes A' + D' applied) for the GPT Review. Do not begin WP4 until WP3 is
-reviewed and accepted.
+WP3 is ACCEPTED / COMPLETE (GPT_IMPLEMENTATION_REVIEW_ACCEPTED, Round 3). WP4 — Federated
+History Projection + Product API is AUTHORIZED TO IMPLEMENT. PR #80 remains KEEP DRAFT /
+DO NOT MERGE.
+
+CI evidence note (GPT Round 3 correction): CI #694's workflow head is the docs-only commit
+`f728cb7a...` (round2 metadata); the Product fix head is `3b25f0c...`. Product semantics were
+verified at #694; the later docs-only commits (`f728cb7a`, `661b1b401`) only record metadata
+and do not change WP3 acceptance.

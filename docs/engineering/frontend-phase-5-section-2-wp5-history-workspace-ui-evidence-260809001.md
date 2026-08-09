@@ -250,8 +250,8 @@ was flagged as a Frozen IR violation. Required deltas and how each was resolved:
 
 ### Round 3 verification head
 
-- **Product Correction Head**: (recorded after the correction commit)
-- **Automatic CI**: (recorded after the correction commit's CI run)
+- **Product Correction Head**: 14f9e4e48
+- **Automatic CI**: #723 / run 31307563319 / SUCCESS
 
 ## 6. Preserved boundaries
 

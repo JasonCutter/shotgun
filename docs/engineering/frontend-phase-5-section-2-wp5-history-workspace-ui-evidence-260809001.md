@@ -39,26 +39,26 @@ deleted-project audit handling
 
 ## 2. Implemented files
 
-| File                                                         | Content                                                                                                                    |
-| ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
-| `packages/contracts/src/frontend-section3.ts`                | `TargetRouteView` routeId/href `history` added (route registry + decoder)                                                  |
-| `packages/shotgun-api-client/src/frontend-history-client.ts` | `FrontendHistoryClient` + `createFrontendHistoryClient` (listHistoryWorkspace / getHistoryEntry, strict decode, CSRF read) |
-| `packages/shotgun-api-client/src/index.ts` + `contracts.ts`  | History client + view/request type re-exports                                                                              |
-| `adapters/frontend-product-read-in-memory/src/index.ts`      | `/history` route guard + History navigation item (projectReady → AVAILABLE)                                                |
-| `apps/shotgun-web/src/app/query-keys.ts`                     | `HistoryQueryScope` + `historyScopeFromShell` + `historyListQueryKey`/`historyEntryQueryKey`                               |
-| `apps/shotgun-web/src/history/history-queries.ts`            | `historyListQueryOptions` / `historyEntryQueryOptions` (React Query, retry from ADR-118 descriptors)                       |
-| `apps/shotgun-web/src/history/history-workspace-state.ts`    | workspace reducer (domain filters, selection, keyset cursor; availability filter removed — Round 1 A)                              |
-| `apps/shotgun-web/src/history/history-route-contract.ts`     | `/history?entry=` deep link + owning-Domain hrefs (external action / review / reversal)                                         |
-| `apps/shotgun-web/src/routes/history-workspace.tsx`          | `HistoryWorkspace` (`/history` guarded route); Reversal initiation button (Round 1 B)                                            |
-| `apps/shotgun-web/src/app/router.tsx`                        | `/history` route → `HistoryWorkspace` (guarded)                                                                                |
-| `apps/shotgun-web/src/styles/application.css`                | History Workspace styles                                                                                                       |
-| `packages/shotgun-api-client/src/frontend-review-client.ts`  | `createReversalDraftChangeSet` on `FrontendReviewClient` (Round 1 B)                                                           |
-| `assemblies/shotgun-app/src/product-api/frontend-review-routes.ts` | `POST /product-api/frontend/review/reversal-draft` (Round 1 B)                                                            |
-| `assemblies/shotgun-app/src/product-api/frontend-history-routes.ts` | deleted-project audit scope gate on History read routes (Round 1 C)                                                        |
-| `assemblies/shotgun-app/src/server.ts` + `main.ts`           | `projectTombstoneStore` + `reversalEligibilityPort` wiring (Round 1 B/C)                                                       |
-| `modules/frontend-history/src/product-api.ts`                | `HistoryProductScopeV1.deletedProjectAudit` + deleted-project binding (Round 1 C)                                              |
-| `apps/shotgun-web/src/routes/history-workspace.test.tsx`     | 8 tests (list/filters, detail + payload, audit lineage, reversal entry points, reversal initiation, purged, pagination, cursor reset) |
-| `tests/integration/frontend-history-deleted-project-audit.test.ts` | 4 deleted-project audit integration tests (Round 1 C)                                                                    |
+| File                                                                | Content                                                                                                                               |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/contracts/src/frontend-section3.ts`                       | `TargetRouteView` routeId/href `history` added (route registry + decoder)                                                             |
+| `packages/shotgun-api-client/src/frontend-history-client.ts`        | `FrontendHistoryClient` + `createFrontendHistoryClient` (listHistoryWorkspace / getHistoryEntry, strict decode, CSRF read)            |
+| `packages/shotgun-api-client/src/index.ts` + `contracts.ts`         | History client + view/request type re-exports                                                                                         |
+| `adapters/frontend-product-read-in-memory/src/index.ts`             | `/history` route guard + History navigation item (projectReady → AVAILABLE)                                                           |
+| `apps/shotgun-web/src/app/query-keys.ts`                            | `HistoryQueryScope` + `historyScopeFromShell` + `historyListQueryKey`/`historyEntryQueryKey`                                          |
+| `apps/shotgun-web/src/history/history-queries.ts`                   | `historyListQueryOptions` / `historyEntryQueryOptions` (React Query, retry from ADR-118 descriptors)                                  |
+| `apps/shotgun-web/src/history/history-workspace-state.ts`           | workspace reducer (domain filters, selection, keyset cursor; availability filter removed — Round 1 A)                                 |
+| `apps/shotgun-web/src/history/history-route-contract.ts`            | `/history?entry=` deep link + owning-Domain hrefs (external action / review / reversal)                                               |
+| `apps/shotgun-web/src/routes/history-workspace.tsx`                 | `HistoryWorkspace` (`/history` guarded route); Reversal initiation button (Round 1 B)                                                 |
+| `apps/shotgun-web/src/app/router.tsx`                               | `/history` route → `HistoryWorkspace` (guarded)                                                                                       |
+| `apps/shotgun-web/src/styles/application.css`                       | History Workspace styles                                                                                                              |
+| `packages/shotgun-api-client/src/frontend-review-client.ts`         | `createReversalDraftChangeSet` on `FrontendReviewClient` (Round 1 B)                                                                  |
+| `assemblies/shotgun-app/src/product-api/frontend-review-routes.ts`  | `POST /product-api/frontend/review/reversal-draft` (Round 1 B)                                                                        |
+| `assemblies/shotgun-app/src/product-api/frontend-history-routes.ts` | deleted-project audit scope gate on History read routes (Round 1 C)                                                                   |
+| `assemblies/shotgun-app/src/server.ts` + `main.ts`                  | `projectTombstoneStore` + `reversalEligibilityPort` wiring (Round 1 B/C)                                                              |
+| `modules/frontend-history/src/product-api.ts`                       | `HistoryProductScopeV1.deletedProjectAudit` + deleted-project binding (Round 1 C)                                                     |
+| `apps/shotgun-web/src/routes/history-workspace.test.tsx`            | 8 tests (list/filters, detail + payload, audit lineage, reversal entry points, reversal initiation, purged, pagination, cursor reset) |
+| `tests/integration/frontend-history-deleted-project-audit.test.ts`  | 4 deleted-project audit integration tests (Round 1 C)                                                                                 |
 
 ## 3. Workspace behavior
 

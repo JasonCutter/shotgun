@@ -96,8 +96,11 @@ CREATE TABLE IF NOT EXISTS canonical.history_payload_audit_events (
   source_event_id text NOT NULL,
   previous_availability text NOT NULL
     CHECK (previous_availability IN ('AVAILABLE', 'REDACTED', 'PURGED_BY_POLICY', 'UNAVAILABLE')),
+  -- Purge AuditEvent stream: this stream records retention-driven purges only.
+  -- Non-purge availability transitions (REDACTED/AVAILABLE/UNAVAILABLE) are
+  -- not part of this owner-local purge audit stream (ADR-131 §3).
   new_availability text NOT NULL
-    CHECK (new_availability IN ('AVAILABLE', 'REDACTED', 'PURGED_BY_POLICY', 'UNAVAILABLE')),
+    CHECK (new_availability = 'PURGED_BY_POLICY'),
   tombstone_metadata jsonb,
   policy_revision text,
   reason text NOT NULL,
@@ -115,8 +118,11 @@ CREATE TABLE IF NOT EXISTS frontend_review.history_payload_audit_events (
   source_event_id text NOT NULL,
   previous_availability text NOT NULL
     CHECK (previous_availability IN ('AVAILABLE', 'REDACTED', 'PURGED_BY_POLICY', 'UNAVAILABLE')),
+  -- Purge AuditEvent stream: this stream records retention-driven purges only.
+  -- Non-purge availability transitions (REDACTED/AVAILABLE/UNAVAILABLE) are
+  -- not part of this owner-local purge audit stream (ADR-131 §3).
   new_availability text NOT NULL
-    CHECK (new_availability IN ('AVAILABLE', 'REDACTED', 'PURGED_BY_POLICY', 'UNAVAILABLE')),
+    CHECK (new_availability = 'PURGED_BY_POLICY'),
   tombstone_metadata jsonb,
   policy_revision text,
   reason text NOT NULL,

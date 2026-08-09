@@ -86,8 +86,9 @@ export const paginatePolicyHistory = (
   if (!Number.isInteger(input.limit) || input.limit < 1) {
     throw new Error(`ListPolicyHistory limit must be a positive integer, got ${input.limit}`);
   }
-  const after = input.cursor
-    ? sortedEntries.filter((entry) => isPolicyHistoryAfter(entry, input.cursor))
+  const cursor = input.cursor;
+  const after = cursor
+    ? sortedEntries.filter((entry) => isPolicyHistoryAfter(entry, cursor))
     : sortedEntries;
   const page = after.slice(0, input.limit);
   const nextCursor =

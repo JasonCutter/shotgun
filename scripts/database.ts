@@ -199,6 +199,8 @@ const requiredTables = [
   'frontend_review.approval',
   'frontend_activity.activity_index',
   'frontend_activity.projection_watermarks',
+  'frontend_history.history_projection_index',
+  'frontend_history.projection_watermarks',
 ] as const;
 
 const verify = async (): Promise<void> => {

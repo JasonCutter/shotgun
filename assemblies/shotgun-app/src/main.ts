@@ -32,12 +32,18 @@ import { PostgresSourcesProductService } from '../../../adapters/frontend-source
 import { PostgresSourcesActivityRead } from '../../../adapters/frontend-sources-write-postgres/src/activity-read.js';
 import { PostgresAskActivityRead } from '../../../adapters/frontend-ask-execution-postgres/src/activity-read.js';
 import { createPostgresActivityReadModelStore } from '../../../adapters/frontend-activity-postgres/src/index.js';
+import {
+  createPostgresHistoryReadModelStore,
+  PostgresPayloadStateStore,
+} from '../../../adapters/frontend-history-postgres/src/index.js';
+import { PostgresFrontendReviewRepository } from '../../../adapters/frontend-review-postgres/src/index.js';
 import { LucasAugmentedPlainTextAdapter } from '../../../adapters/plain-text-lucas-augmented/src/index.js';
 import { PythonDocumentFormatAdapter } from '../../../adapters/document-format-python/src/index.js';
 import {
   createPostgresPool,
   PostgresIntakeRepository,
   PostgresOriginalAssetRepository,
+  PostgresPolicyHistoryReadAdapter,
   PostgresProjectAdministrationRepository,
   PostgresProjectBootstrapUnitOfWork,
   PostgresSettingsRepository,
@@ -191,6 +197,15 @@ const { server } = await createApplication({
   activitySourcesRead: new PostgresSourcesActivityRead(pool, sourcesProductService),
   activityAskRead: new PostgresAskActivityRead(pool),
   activityReadModelStore: createPostgresActivityReadModelStore(pool),
+  historyReadModelStore: createPostgresHistoryReadModelStore(pool),
+  historyPayloadStates: {
+    CANONICAL: new PostgresPayloadStateStore(pool, 'CANONICAL'),
+    REVIEW: new PostgresPayloadStateStore(pool, 'REVIEW'),
+    EXTERNAL_ACTION: new PostgresPayloadStateStore(pool, 'EXTERNAL_ACTION'),
+    SETTINGS: new PostgresPayloadStateStore(pool, 'SETTINGS'),
+  },
+  historyReviewBoundary: new PostgresFrontendReviewRepository(pool),
+  policyHistoryRead: new PostgresPolicyHistoryReadAdapter(pool),
   actionConnector: new FakeDraftActionConnector(),
   textDiff: new JsDiffAdapter(),
   transformer: new PythonDocumentFormatAdapter(),

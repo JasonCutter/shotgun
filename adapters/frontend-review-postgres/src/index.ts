@@ -547,6 +547,20 @@ export class PostgresFrontendReviewRepository implements ReviewRepositoryBoundar
             throw error;
           }
         },
+        listByProject: async (projectId) => {
+          const result = await client.query<ApprovalRow>(
+            `SELECT DISTINCT ON (approval_id) approval_id, purpose, review_context_id,
+                    context_revision, target_kind, target_id, target_revision, target_digest,
+                    approved_item_ids, approved_manifest_digest, actor, project_id,
+                    access_revision, policy_context_revision, reason, issued_at, expires_at,
+                    status, invalidation_reason
+             FROM frontend_review.approval
+             WHERE project_id = $1
+             ORDER BY approval_id, approval_status_revision DESC`,
+            [projectId],
+          );
+          return result.rows.map((row) => this.toApproval(row));
+        },
       },
     };
   }

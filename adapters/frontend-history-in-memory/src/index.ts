@@ -115,3 +115,10 @@ export class InMemoryPayloadStateStore implements PayloadStateStorePort {
     return record;
   }
 }
+
+// FE-P5-S2 WP4 ? Federated History projection stores.
+export {
+  InMemoryHistoryIndexStore,
+  InMemoryHistoryWatermarkStore,
+  createInMemoryHistoryReadModelStore,
+} from './history-projection-store.js';

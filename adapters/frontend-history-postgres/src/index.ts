@@ -336,3 +336,11 @@ export class PostgresPayloadStateStore implements PayloadStateStorePort {
     }
   }
 }
+
+// FE-P5-S2 WP4 ? Federated History projection stores.
+export {
+  PostgresHistoryIndexStore,
+  PostgresHistoryWatermarkStore,
+  createPostgresHistoryReadModelStore,
+} from './history-projection-store.js';
+export type { HistoryIndexRecordV1, HistoryWatermarkRecordV1 } from './history-projection-store.js';

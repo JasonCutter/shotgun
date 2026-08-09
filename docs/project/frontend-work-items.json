@@ -316,16 +316,16 @@
       "parent": null,
       "predecessor": "FE-P4",
       "successor": null,
-      "status": "IN_PROGRESS",
+      "status": "COMPLETE",
       "governingContract": "docs/architecture/frontend/phase-5-operations-audit.md",
       "completionManifest": null,
-      "approvedAt": null,
+      "approvedAt": "2026-08-09",
       "supersedes": null,
       "introducedByDecision": "docs/engineering/frontend-work-item-registry-migration-decision-260801001.md",
       "decisionStatus": "MIGRATED",
       "decisionApprovedBy": null,
       "decisionApprovedAt": null,
-      "approvedBy": null
+      "approvedBy": "user"
     },
     {
       "id": "FE-P5-S1",
@@ -352,16 +352,16 @@
       "parent": "FE-P5",
       "predecessor": "FE-P5-S1",
       "successor": null,
-      "status": "IN_PROGRESS",
+      "status": "COMPLETE",
       "governingContract": "docs/architecture/contracts/snapshots/frontend-phase-5-section-2/frontend-phase-5-section-2-contract-snapshot-260808001.md",
-      "completionManifest": null,
-      "approvedAt": null,
+      "completionManifest": "docs/project/completions/FE-P5-S2.json",
+      "approvedAt": "2026-08-09",
       "supersedes": null,
       "introducedByDecision": "docs/engineering/frontend-work-item-registry-migration-decision-260801001.md",
       "decisionStatus": "MIGRATED",
       "decisionApprovedBy": null,
       "decisionApprovedAt": null,
-      "approvedBy": null
+      "approvedBy": "user"
     }
   ]
 }

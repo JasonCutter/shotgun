@@ -1,0 +1,203 @@
+{
+  "schemaVersion": 1,
+  "workItemId": "FE-P5-S2",
+  "status": "COMPLETE",
+  "governingContract": "docs/architecture/contracts/snapshots/frontend-phase-5-section-2/frontend-phase-5-section-2-contract-snapshot-260808001.md",
+  "mandatoryCriteria": [
+    {
+      "id": "ac-01",
+      "title": "History Workspace reads existing Domain History federated (no central ledger)",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-5-section-2-wp6-integrated-verification-evidence-260809001.md",
+        "tests/unit/frontend-history-projection.test.ts",
+        "tests/contract/frontend-history.contract.test.ts",
+        "tests/browser/frontend-history-workspace.spec.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-02",
+      "title": "HistoryEntry references source Domain identity (shared OperationalResourceKindRegistry; Aggregate vs Concrete Resource Kind; domainResourceId preserved; projection identity never replaces source identity)",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-5-section-2-wp6-integrated-verification-evidence-260809001.md",
+        "tests/contract/frontend-history.contract.test.ts",
+        "tests/unit/frontend-history-adapters.test.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-03",
+      "title": "Event identity never edited/deleted",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-5-section-2-wp6-integrated-verification-evidence-260809001.md",
+        "tests/database/frontend-history-persistence.test.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-04",
+      "title": "Payload Availability states exposed (AVAILABLE/REDACTED/PURGED_BY_POLICY/UNAVAILABLE)",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-5-section-2-wp6-integrated-verification-evidence-260809001.md",
+        "tests/unit/frontend-history-payload-state.test.ts",
+        "tests/database/frontend-history-payload-state-postgres.test.ts",
+        "tests/browser/frontend-history-workspace.spec.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-05",
+      "title": "PURGED_BY_POLICY = payload redaction/tombstone, not identity deletion; tombstone + purge AuditEvent remain",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-5-section-2-wp6-integrated-verification-evidence-260809001.md",
+        "tests/unit/frontend-history-payload-state.test.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-06",
+      "title": "History retention separated from Log retention; cache retention cannot remove Approval/Audit/Canonical history",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-5-section-2-wp6-integrated-verification-evidence-260809001.md",
+        "tests/unit/frontend-history-payload-state.test.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-07",
+      "title": "Canonical Rollback = Reversal DraftChangeSet (direct restore forbidden)",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-5-section-2-wp6-integrated-verification-evidence-260809001.md",
+        "tests/unit/change-set-review-reversal.test.ts",
+        "tests/browser/frontend-history-workspace.spec.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-08",
+      "title": "Reversal uses current Snapshot impact + current Review + current Approval; historical approval reuse forbidden",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-5-section-2-wp6-integrated-verification-evidence-260809001.md",
+        "tests/unit/change-set-review-reversal.test.ts",
+        "tests/integration/frontend-reversal-review-queue.test.ts",
+        "tests/integration/frontend-reversal-carrier-recovery.test.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-09",
+      "title": "External rollback reuses Compensating Action",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-5-section-2-wp6-integrated-verification-evidence-260809001.md",
+        "tests/browser/frontend-history-workspace.spec.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-10",
+      "title": "Deleted Project audit access requires ProjectTombstone + DeletedProjectAuditScope + Capability revalidation",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-5-section-2-wp6-integrated-verification-evidence-260809001.md",
+        "tests/integration/frontend-history-deleted-project-audit.test.ts",
+        "tests/browser/frontend-history-workspace.spec.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-11",
+      "title": "Past membership alone never grants deleted-project audit access",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-5-section-2-wp6-integrated-verification-evidence-260809001.md",
+        "tests/integration/frontend-history-deleted-project-audit.test.ts",
+        "tests/unit/project-tombstone.test.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-12",
+      "title": "Restoration creates explicit recovery lineage",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-5-section-2-wp6-integrated-verification-evidence-260809001.md",
+        "tests/unit/project-tombstone.test.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-13",
+      "title": "Read-time Capability revalidation (fail-closed)",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-5-section-2-wp6-integrated-verification-evidence-260809001.md",
+        "tests/integration/frontend-history-security-negative.test.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-14",
+      "title": "Ordering/cursor/pagination contract (stable tie-breaker)",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-5-section-2-wp6-integrated-verification-evidence-260809001.md",
+        "tests/database/frontend-history-projection-postgres-parity.test.ts",
+        "tests/browser/frontend-history-workspace.spec.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-15",
+      "title": "FE-P5-S2 completion mapping (observe→trace→query→Reversal/Compensation)",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-5-section-2-wp6-integrated-verification-evidence-260809001.md",
+        "tests/browser/frontend-history-workspace.spec.ts"
+      ],
+      "scopeAmendment": null
+    },
+    {
+      "id": "ac-16",
+      "title": "Performance gate: procedure FROZEN; Numeric threshold = 2000 ms (resolved 2026-08-09 by explicit user approval of the proposed budget; was DEFERRED_PARAMETER at A1) — baseline measured, budget proposed, explicitly approved, threshold frozen",
+      "mandatory": true,
+      "status": "PASS",
+      "evidence": [
+        "docs/engineering/frontend-phase-5-section-2-wp6-integrated-verification-evidence-260809001.md",
+        "tests/browser/frontend-history-performance.spec.ts"
+      ],
+      "scopeAmendment": null
+    }
+  ],
+  "remainingScope": [],
+  "scopeAmendments": [],
+  "evidenceRegistryUpdates": [
+    "FRONTEND-PHASE-5-SECTION-2-WP6-EVIDENCE-260809001",
+    "FRONTEND-PHASE-5-SECTION-2-COMPLETION-260809001"
+  ],
+  "approvedBy": "user",
+  "approvedAt": "2026-08-09"
+}

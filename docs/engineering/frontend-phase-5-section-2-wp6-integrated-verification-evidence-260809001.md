@@ -1,7 +1,7 @@
 ---
 id: FRONTEND-PHASE-5-SECTION-2-WP6-EVIDENCE-260809001
 classification: CANONICAL
-status: wp6_accepted
+status: final_after_merge
 work_item: FE-P5-S2
 created_at: 2026-08-09
 subject_base: 701e0bfac5af60daa48d9155185956b91650ecbd
@@ -13,6 +13,19 @@ wp6_accepted_head: 624de8aef
 wp6_accepted_ci_number: 732
 wp6_accepted_ci_run_id: 31312009201
 wp6_accepted_ci_conclusion: SUCCESS
+wp6_accepted_pr_head: 38cb1d41a
+wp6_accepted_pr_ci_number: 734
+wp6_accepted_pr_ci_run_id: 31312586494
+wp6_accepted_pr_ci_conclusion: SUCCESS
+pr80_ready_at: 2026-08-09
+pr80_merged_at: 2026-08-09T12:27:24Z
+pr80_merge_commit: f3c79af8da388357c669fd885362181916f1ac3c
+pr80_merge_method: squash
+pr80_merge_authorized_by: USER
+post_merge_main_ci_number: 735
+post_merge_main_ci_run_id: 31313329830
+post_merge_main_ci_conclusion: SUCCESS
+final_after_merge_at: 2026-08-09
 tracking_issue: https://github.com/JasonCutter/shotgun/issues/71
 contract_pr: https://github.com/JasonCutter/shotgun/pull/70
 product_pr: https://github.com/JasonCutter/shotgun/pull/80
@@ -177,11 +190,42 @@ silent overwrite of the prior deferred record).
 
 - **WP6 Evidence Head**: 624de8aef
 - **Automatic CI**: #732 / run 31312009201 / SUCCESS
+- **WP6 ACCEPTED final head (docs)**: 38cb1d41a / CI #734 / run 31312586494 / SUCCESS
 
-## 6. Next action
+## 6. Governance closure and merge
 
-WP6 is ACCEPTED / COMPLETE (GPT Round 3 —
-`GPT_IMPLEMENTATION_REVIEW_ACCEPTED`). FE-P5-S2 all work packages are ACCEPTED
-and AC-01~AC-16 are CLOSED. FE-P5-S2 Section Completion is ELIGIBLE FOR USER
-APPROVAL but NOT YET COMPLETE; Ready/Merge remains NOT_AUTHORIZED and PR #80
-stays DRAFT until explicit user approval.
+**Governance closure — COMPLETE (2026-08-09).** WP6 is ACCEPTED by the GPT review gate
+(Round 3, `GPT_IMPLEMENTATION_REVIEW_ACCEPTED`); FE-P5-S2 Product Work Packages (WP1..WP6)
+are ALL ACCEPTED; AC-01~AC-16 are CLOSED; the implementation governance closure record (this
+document + Evidence Registry) is complete. The user approved FE-P5-S2 Section Completion on
+2026-08-09 (`승인한다`).
+
+**Merge — AUTHORIZED and COMPLETED (2026-08-09).** The user authorized the PR #80 Ready/Merge
+under the Section Completion approval (IR r1 §9 completion flow: 구현 → AC evidence → exact-head
+CI PASS → GPT verification → 사용자 completion approval → merge → post-merge main CI → Completion
+Manifest / Governance Closure → FINAL_AFTER_MERGE). PR #80 was transitioned to **Ready for
+review** (`draft: false`) on 2026-08-09; the final head `38cb1d41a` passed CI #734 (Required
+Gates / Frontend / Quality all green) and the PR was squash-merged into `main` as commit
+`f3c79af8da388357c669fd885362181916f1ac3c` (2026-08-09T12:27:24Z). PR #80 is now
+**MERGED / CLOSED**.
+
+**Final after merge — COMPLETE (2026-08-09).** The post-merge auto CI on
+`main@f3c79af8...` (run **#735**) returned **SUCCESS** (Required Gates / Frontend / Quality all
+green). The Completion Manifest (`docs/project/completions/FE-P5-S2.json`) and the Work Item
+Registry (`docs/project/frontend-work-items.json`) are updated to `COMPLETE`. FE-P5-S2 is
+confirmed **COMPLETE / FINAL_AFTER_MERGE**; FE-P5 (Operations and Audit) is confirmed
+**COMPLETE** (all child Sections complete).
+
+```
+FE-P5-S2: COMPLETE / FINAL_AFTER_MERGE
+WP1–WP6: ACCEPTED
+AC-01~AC-16: CLOSED
+PR #80: MERGED (squash) → main f3c79af8
+Post-merge main CI: #735 SUCCESS
+FE-P5: COMPLETE (all child Sections complete)
+Deployment: NOT_AUTHORIZED
+Production Verification: NOT_RUN
+```
+
+Next gate: **Deployment / production verification** — Deployment and Production Verification
+remain unauthorized until a separate user/GPT approval.

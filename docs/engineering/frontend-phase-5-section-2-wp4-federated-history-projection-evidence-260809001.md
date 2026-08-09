@@ -1,7 +1,7 @@
 ---
 id: FRONTEND-PHASE-5-SECTION-2-WP4-EVIDENCE-260809001
 classification: CANONICAL
-status: wp4_implemented_pending_review
+status: wp4_round1_fixes_pending_review
 work_item: FE-P5-S2
 created_at: 2026-08-09
 subject_base: 701e0bfac5af60daa48d9155185956b91650ecbd
@@ -10,6 +10,10 @@ wp4_implementation_head: 03f6fb9c6
 wp4_implementation_ci_number: 698
 wp4_implementation_ci_run_id: 31295374255
 wp4_implementation_ci_conclusion: SUCCESS
+wp4_round1_fix_head: eb1659704
+wp4_round1_fix_ci_number: 700
+wp4_round1_fix_ci_run_id: 31296506420
+wp4_round1_fix_ci_conclusion: SUCCESS
 tracking_issue: https://github.com/JasonCutter/shotgun/issues/71
 contract_pr: https://github.com/JasonCutter/shotgun/pull/70
 product_pr: https://github.com/JasonCutter/shotgun/pull/80
@@ -38,6 +42,28 @@ The projection is NON-AUTHORITATIVE and rebuildable (IR r1 §4): the owning Doma
 histories remain authoritative; the projection index never becomes a second ledger and
 never replaces source Domain identity (`sourceEventId`/`domainResourceId` preserved).
 
+## 1a. GPT Review Round 1 — fixes applied (head `eb1659704`, CI #700 SUCCESS)
+
+GPT Review Round 1 (CHANGES_REQUIRED, 5 items) was resolved as follows:
+
+- **A — Atomic rebuild, fail-closed**: any mandatory adapter failure aborts the entire
+  rebuild with NO commit; the previous complete projection remains; the failed adapter's
+  watermark does NOT advance. (`history-projection-builder.ts`)
+- **B — RESULT + AUDIT_EVENT completeness**: `ExternalActionHistoryAdapter` now projects
+  BOTH result and audit event kinds; the audit 1000-row hard cap was removed and replaced
+  with complete pagination (`listByAction(actionId, limit, offset)`, budget 500/page until
+  exhausted). 1200-row audit test verifies full pagination.
+- **C — Authoritative detail**: `getHistoryEntry` no longer returns projection-only data;
+  it re-resolves from the owning Domain's authoritative source via
+  `registry.adapterFor(domainKind).resolveHistoryEntry(...)` and fails closed (NOT_FOUND)
+  when the source is unresolved.
+- **D — Project binding**: `request.resourceProjectId === scope.activeProjectId` is now
+  validated for both `ListHistoryWorkspace` and `GetHistoryEntry`; cross-project requests
+  are denied (historyDenied / historyNotFound). Negative tests added.
+- **E — Refresh removal**: the browser-exposed `/refresh` route and
+  `REFRESH_HISTORY_PROJECTION` capability were REMOVED (not amended); raw adapter/provider
+  error messages are never surfaced to the browser.
+
 ## 2. Implemented files
 
 | File                                                                  | Content                                                                                                                               |
@@ -47,7 +73,7 @@ never replaces source Domain identity (`sourceEventId`/`domainResourceId` preser
 | `modules/frontend-history/src/history-read-model-store-port.ts`       | `HistoryReadModelStorePort.commitProjectProjection` (atomic project-scoped commit)                                                    |
 | `modules/frontend-history/src/history-adapter-port.ts`                | `HistoryAdapterPort` + `HistoryAdapterRegistryPort` (one adapter per mandatory family)                                                |
 | `modules/frontend-history/src/history-projection-builder.ts`          | `HistoryProjectionBuilder` (deterministic, atomic, fail-closed per adapter)                                                           |
-| `modules/frontend-history/src/product-api.ts`                         | `HistoryProductCoordinator` (`ListHistoryWorkspace` / `GetHistoryEntry` / refresh, capability gate)                                   |
+| `modules/frontend-history/src/product-api.ts`                         | `HistoryProductCoordinator` (`ListHistoryWorkspace` / `GetHistoryEntry`, capability gate, authoritative detail re-resolution)                      |
 | `modules/frontend-history/src/index.ts`                               | module exports                                                                                                                        |
 | `modules/frontend-review/src/review-store-port.ts`                    | `ReviewApprovalStorePort.listByProject` added                                                                                         |
 | `adapters/frontend-review-in-memory/src/index.ts`                     | `listByProject` in-memory                                                                                                             |
@@ -104,28 +130,33 @@ never deleted. `historyEntryId` is projection identity only.
 
 - `listHistoryWorkspace` — project-scoped unified events, `domainKinds` filter, frozen-tuple
   keyset cursor, `limit` is positive integer (Contract); non-disclosing (only the requested
-  project's projection is returned).
-- `getHistoryEntry` — single entry by projection identity; missing/cross-project produces the
-  same NOT_FOUND (no existence leak).
-- `refreshHistoryProjection` — deterministic project-scoped rebuild; returns the build
-  summary (indexCount, adapterStatus, partial, failures, metadata).
+  project's projection is returned). `request.resourceProjectId === scope.activeProjectId`
+  is enforced (Round 1 fix D).
+- `getHistoryEntry` — single entry; requires the requesting project to match the entry's
+  project binding; the owning Domain's authoritative source is re-resolved via
+  `resolveHistoryEntry` and NOT_FOUND is returned when unresolved (fail-closed, Round 1
+  fix C); missing/cross-project produces the same NOT_FOUND (no existence leak).
 
-Capabilities: `history:read` (LIST_HISTORY_WORKSPACE + READ_HISTORY_ENTRY), `history:refresh`
-(REFRESH_HISTORY_PROJECTION). Deny-by-default scope validation; browser never authors
-principal/project/revision/capability. Reversal creation is NOT a History route (WP3 owns it).
+No browser refresh route or refresh capability exists (Round 1 fix E).
+
+Capabilities: `history:read` (LIST_HISTORY_WORKSPACE + READ_HISTORY_ENTRY). Deny-by-default
+scope validation; browser never authors principal/project/revision/capability. Reversal
+creation is NOT a History route (WP3 owns it).
 
 Routes (`registerHistoryRoutes`):
 
 - `POST /product-api/frontend/history/workspace`
 - `POST /product-api/frontend/history/entry`
-- `POST /product-api/frontend/history/refresh`
 
 ## 6. Verification
 
-- WP4 focused suites: unit 16 + DB parity 6 = **22 tests PASS**.
+- WP4 focused suites: unit 22 + DB parity 6 = **28 tests PASS** (Round 1 fixes, head
+  `eb1659704`): projection/cursor 13, adapter identity 5, external-action completeness 4,
+  postgres parity 6.
 - Full `npm run test:database`: **205 tests PASS** (38 files).
 - `tsc --noEmit`, ESLint, Prettier clean.
-- Automatic CI on push (PR #80, Draft).
+- Automatic CI on push (PR #80, Draft): #698 SUCCESS (implementation), #700 SUCCESS
+  (Round 1 fixes).
 
 ## 7. Preserved boundaries
 
@@ -139,5 +170,5 @@ Not implemented in this Work Package (remain unauthorized):
 
 ## 8. Next action
 
-Report WP4 implementation for the GPT Review. Do not begin WP5 until WP4 is reviewed and
-accepted.
+Report WP4 Round 1 fixes (A–E) for the GPT Review Round 2. Do not begin WP5 until WP4 is
+reviewed and accepted.

@@ -216,8 +216,8 @@ resourceProjectId=<deleted-project-id>` names the explicit deleted-audit
 
 ### Round 2 verification head
 
-- **Product Correction Head**: (recorded after the correction commit)
-- **Automatic CI**: (recorded after the correction commit's CI run)
+- **Product Correction Head**: 2ba8892a5
+- **Automatic CI**: #721 / run 31306559284 / SUCCESS
 
 ## 6. Preserved boundaries
 

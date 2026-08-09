@@ -77,4 +77,46 @@ describe.runIf(pool)('FE-P5-S2 WP1 persistence (migrations 030-032)', () => {
     await expect(pool!.query(`TRUNCATE settings.settings_revisions`)).rejects.toThrow();
     await expect(pool!.query(`TRUNCATE settings.policy_context_revisions`)).rejects.toThrow();
   });
+
+  it('keeps owner-local purge audit streams append-only (canonical + frontend_review, 032)', async () => {
+    const project = `pg-audit-${randomUUID().slice(0, 8)}`;
+    const insertAudit = (schema: 'canonical' | 'frontend_review') =>
+      pool!.query(
+        `INSERT INTO ${schema}.history_payload_audit_events
+           (audit_event_id, resource_project_id, source_event_kind, source_event_id,
+            previous_availability, new_availability, reason, actor_id, occurred_at)
+         VALUES ($1, $2, 'DECISION', 'event:1', 'AVAILABLE', 'PURGED_BY_POLICY', 'retention', 'actor:1', now())`,
+        [`audit:${randomUUID().slice(0, 8)}`, project],
+      );
+
+    // INSERT allowed on both owner-local streams
+    await insertAudit('canonical');
+    await insertAudit('frontend_review');
+    for (const schema of ['canonical', 'frontend_review'] as const) {
+      const { rows } = await pool!.query(
+        `SELECT count(*)::int AS count FROM ${schema}.history_payload_audit_events
+          WHERE resource_project_id = $1`,
+        [project],
+      );
+      expect(rows[0].count).toBe(1);
+      // UPDATE rejected
+      await expect(
+        pool!.query(
+          `UPDATE ${schema}.history_payload_audit_events SET reason = 'x' WHERE resource_project_id = $1`,
+          [project],
+        ),
+      ).rejects.toThrow();
+      // DELETE rejected
+      await expect(
+        pool!.query(
+          `DELETE FROM ${schema}.history_payload_audit_events WHERE resource_project_id = $1`,
+          [project],
+        ),
+      ).rejects.toThrow();
+      // TRUNCATE rejected (statement-level guard)
+      await expect(
+        pool!.query(`TRUNCATE ${schema}.history_payload_audit_events`),
+      ).rejects.toThrow();
+    }
+  });
 });

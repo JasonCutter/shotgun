@@ -156,8 +156,8 @@ state; the gate test (`GATE_MS = 2000`) is the FROZEN performance verification.
 
 ## 5. WP6 verification head
 
-- **WP6 Evidence Head**: 5210d83c7
-- **Automatic CI**: #728 / run 31310392486 / SUCCESS
+- **WP6 Evidence Head**: 8251de211
+- **Automatic CI**: #730 / run 31311221451 / SUCCESS
 
 ## 6. Next action
 

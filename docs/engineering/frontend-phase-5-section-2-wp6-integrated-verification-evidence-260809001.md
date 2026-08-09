@@ -25,6 +25,12 @@ pr80_merge_authorized_by: USER
 post_merge_main_ci_number: 735
 post_merge_main_ci_run_id: 31313329830
 post_merge_main_ci_conclusion: SUCCESS
+pr81_merged_at: 2026-08-09T12:37:27Z
+pr81_merge_commit: cc192b75b57bba6e88562cbaf9479f92fa88ffb9
+pr81_merge_method: squash
+final_post_merge_main_ci_number: 737
+final_post_merge_main_ci_run_id: 31313753819
+final_post_merge_main_ci_conclusion: SUCCESS
 final_after_merge_at: 2026-08-09
 tracking_issue: https://github.com/JasonCutter/shotgun/issues/71
 contract_pr: https://github.com/JasonCutter/shotgun/pull/70
@@ -216,12 +222,20 @@ Registry (`docs/project/frontend-work-items.json`) are updated to `COMPLETE`. FE
 confirmed **COMPLETE / FINAL_AFTER_MERGE**; FE-P5 (Operations and Audit) is confirmed
 **COMPLETE** (all child Sections complete).
 
+**Closure merge — COMPLETED (2026-08-09).** The post-merge governance closure (this document's
+`final_after_merge` status, Completion Manifest, Work Item Registry and Evidence Registry
+updates) was merged as PR #81 into `main` as commit `cc192b75b57bba6e88562cbaf9479f92fa88ffb9`
+(2026-08-09T12:37:27Z, CI #736 SUCCESS on the closure head). The final post-merge auto CI on
+`main@cc192b75...` (run **#737**) returned **SUCCESS** (Required Gates / Frontend / Quality all
+green).
+
 ```
 FE-P5-S2: COMPLETE / FINAL_AFTER_MERGE
 WP1–WP6: ACCEPTED
 AC-01~AC-16: CLOSED
 PR #80: MERGED (squash) → main f3c79af8
-Post-merge main CI: #735 SUCCESS
+PR #81: MERGED (closure) → main cc192b75
+Post-merge main CI: #735 SUCCESS (f3c79af8) / #737 SUCCESS (cc192b75)
 FE-P5: COMPLETE (all child Sections complete)
 Deployment: NOT_AUTHORIZED
 Production Verification: NOT_RUN

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
 
@@ -424,5 +424,69 @@ describe.runIf(pool)('FE-P5-S2 WP2-B PayloadState (PostgreSQL)', () => {
     // canonical.history_payload_audit_events is append-only (no DELETE); the
     // purge audit rows left by this test are isolated by the unique project
     // prefix and cannot collide with other tests.
+  });
+
+  it('setPayloadState rolls back the sidecar transition when projection sanitize fails (Round 4 F2-B)', async () => {
+    const { PostgresPayloadStateStore } =
+      await import('../../adapters/frontend-history-postgres/src/index.js');
+    const store = new PostgresPayloadStateStore(pool!, 'CANONICAL');
+    const project = `pg-ps-txn-${randomUUID().slice(0, 8)}`;
+    const kind = 'CANONICAL_CLAIM_ADDED';
+    const eventId = `event:${randomUUID().slice(0, 8)}`;
+    const now = '2026-08-09T00:00:00.000Z';
+
+    // Seed an AVAILABLE sidecar state.
+    await store.setPayloadState({
+      resourceProjectId: project,
+      sourceEventKind: kind,
+      sourceEventId: eventId,
+      payloadAvailability: 'AVAILABLE',
+      reason: 'initial',
+      actorId: 'actor-1',
+      changedAt: now,
+    });
+
+    // Make the projection sanitize fail INSIDE the setPayloadState
+    // transaction: the whole transition must roll back (sidecar included).
+    const originalConnect = pool!.connect.bind(pool!);
+    const connectSpy = vi.spyOn(pool!, 'connect');
+    connectSpy.mockImplementation(async () => {
+      const client = await originalConnect();
+      const originalClientQuery = client.query.bind(client);
+      client.query = ((sql: unknown, ...args: unknown[]) => {
+        if (typeof sql === 'string' && sql.includes('frontend_history.history_projection_index')) {
+          return Promise.reject(new Error('projection sanitize simulated failure'));
+        }
+        return (originalClientQuery as (...a: unknown[]) => Promise<unknown>)(sql, ...args);
+      }) as typeof client.query;
+      return client;
+    });
+
+    try {
+      await expect(
+        store.setPayloadState({
+          resourceProjectId: project,
+          sourceEventKind: kind,
+          sourceEventId: eventId,
+          payloadAvailability: 'REDACTED',
+          reason: 'retention',
+          actorId: 'admin-1',
+          changedAt: now,
+        }),
+      ).rejects.toThrow(/projection sanitize simulated failure/);
+    } finally {
+      connectSpy.mockRestore();
+    }
+
+    // The sidecar transition must NOT have been committed (full rollback):
+    // partial retention state (sidecar REDACTED + projection AVAILABLE) is
+    // impossible.
+    const state = await store.getPayloadState(project, kind, eventId);
+    expect(state?.payloadAvailability).toBe('AVAILABLE');
+
+    await pool!.query(
+      `DELETE FROM canonical.history_payload_state WHERE resource_project_id = $1`,
+      [project],
+    );
   });
 });

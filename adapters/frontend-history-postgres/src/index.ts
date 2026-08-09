@@ -123,61 +123,80 @@ export class PostgresPayloadStateStore implements PayloadStateStorePort {
 
   async setPayloadState(input: SetPayloadStateInput): Promise<PayloadStateRecord> {
     this.validateInput(input.resourceProjectId, input.sourceEventKind, input.sourceEventId);
-    const table = this.sidecarTable();
-    const existing = await this.getPayloadState(
-      input.resourceProjectId,
-      input.sourceEventKind,
-      input.sourceEventId,
-    );
-    // PURGED_BY_POLICY is only ever produced by purgeByPolicy() (the unique
-    // purge transition authority). Direct set is REJECTED.
-    if (input.payloadAvailability === 'PURGED_BY_POLICY') {
-      throw new FrontendContractError(
-        'CONFLICT',
-        `PURGED_BY_POLICY can only be set through purgeByPolicy().`,
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const table = this.sidecarTable();
+      // Current state read INSIDE the transaction with FOR UPDATE, so the
+      // resurrection guard and the projection cache sanitize share the same
+      // atomic boundary (GPT Round 4 F2-B): sidecar transition and projection
+      // sanitize commit together or not at all.
+      const existing = await client.query<{ payload_availability: string }>(
+        `SELECT payload_availability FROM ${table}
+         WHERE resource_project_id = $1 AND source_event_kind = $2 AND source_event_id = $3
+         FOR UPDATE`,
+        [input.resourceProjectId, input.sourceEventKind, input.sourceEventId],
       );
-    }
-    // Resurrection is FORBIDDEN: a purged payload cannot be flipped back to
-    // AVAILABLE/REDACTED/UNAVAILABLE through setPayloadState.
-    if (existing?.payloadAvailability === 'PURGED_BY_POLICY') {
-      throw new FrontendContractError(
-        'CONFLICT',
-        `Payload for ${input.sourceEventKind}:${input.sourceEventId} is PURGED_BY_POLICY and cannot be resurrected.`,
+      const previous = existing.rows[0]?.payload_availability as
+        PayloadStateRecord['payloadAvailability'] | undefined;
+      // PURGED_BY_POLICY is only ever produced by purgeByPolicy() (the unique
+      // purge transition authority). Direct set is REJECTED.
+      if (input.payloadAvailability === 'PURGED_BY_POLICY') {
+        throw new FrontendContractError(
+          'CONFLICT',
+          `PURGED_BY_POLICY can only be set through purgeByPolicy().`,
+        );
+      }
+      // Resurrection is FORBIDDEN: a purged payload cannot be flipped back to
+      // AVAILABLE/REDACTED/UNAVAILABLE through setPayloadState.
+      if (previous === 'PURGED_BY_POLICY') {
+        throw new FrontendContractError(
+          'CONFLICT',
+          `Payload for ${input.sourceEventKind}:${input.sourceEventId} is PURGED_BY_POLICY and cannot be resurrected.`,
+        );
+      }
+      await client.query(
+        `INSERT INTO ${table}
+           (resource_project_id, source_event_kind, source_event_id, payload_availability,
+            tombstone_metadata, changed_at, reason, policy_revision)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         ON CONFLICT (resource_project_id, source_event_kind, source_event_id) DO UPDATE SET
+           payload_availability = EXCLUDED.payload_availability,
+           tombstone_metadata = EXCLUDED.tombstone_metadata,
+           changed_at = EXCLUDED.changed_at,
+           reason = EXCLUDED.reason,
+           policy_revision = EXCLUDED.policy_revision`,
+        [
+          input.resourceProjectId,
+          input.sourceEventKind,
+          input.sourceEventId,
+          input.payloadAvailability,
+          input.tombstoneMetadata ? JSON.stringify(input.tombstoneMetadata) : null,
+          input.changedAt,
+          input.reason,
+          input.policyRevision ?? null,
+        ],
       );
-    }
-    await this.pool.query(
-      `INSERT INTO ${table}
-         (resource_project_id, source_event_kind, source_event_id, payload_availability,
-          tombstone_metadata, changed_at, reason, policy_revision)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       ON CONFLICT (resource_project_id, source_event_kind, source_event_id) DO UPDATE SET
-         payload_availability = EXCLUDED.payload_availability,
-         tombstone_metadata = EXCLUDED.tombstone_metadata,
-         changed_at = EXCLUDED.changed_at,
-         reason = EXCLUDED.reason,
-         policy_revision = EXCLUDED.policy_revision`,
-      [
-        input.resourceProjectId,
-        input.sourceEventKind,
-        input.sourceEventId,
-        input.payloadAvailability,
-        input.tombstoneMetadata ? JSON.stringify(input.tombstoneMetadata) : null,
-        input.changedAt,
-        input.reason,
-        input.policyRevision ?? null,
-      ],
-    );
-    // A transition away from AVAILABLE must also sanitize the persistent
-    // History projection cache (Round 3 F): no raw payload may remain in
-    // frontend_history.history_projection_index after redaction.
-    if (input.payloadAvailability !== 'AVAILABLE') {
-      await this.sanitizeProjectionCache(this.pool, {
-        resourceProjectId: input.resourceProjectId,
-        sourceEventKind: input.sourceEventKind,
-        sourceEventId: input.sourceEventId,
-        payloadAvailability: input.payloadAvailability,
-        tombstoneMetadata: input.tombstoneMetadata,
-      });
+      // A transition away from AVAILABLE must also sanitize the persistent
+      // History projection cache in the SAME transaction (Round 3 F / Round 4
+      // F2-B): no raw payload may remain in
+      // frontend_history.history_projection_index after redaction, and a
+      // sanitize failure rolls back the sidecar transition too.
+      if (input.payloadAvailability !== 'AVAILABLE') {
+        await this.sanitizeProjectionCache(client, {
+          resourceProjectId: input.resourceProjectId,
+          sourceEventKind: input.sourceEventKind,
+          sourceEventId: input.sourceEventId,
+          payloadAvailability: input.payloadAvailability,
+          tombstoneMetadata: input.tombstoneMetadata,
+        });
+      }
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
     }
     const record = await this.getPayloadState(
       input.resourceProjectId,

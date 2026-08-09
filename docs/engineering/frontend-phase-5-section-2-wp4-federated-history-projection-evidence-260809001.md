@@ -15,6 +15,12 @@ wp4_round1_fix_ci_number: 700
 wp4_round1_fix_ci_run_id: 31296506420
 wp4_round1_fix_ci_conclusion: SUCCESS
 wp4_round2_fix_head: 323036595
+wp4_round2_fix_ci_number: 702
+wp4_round2_fix_ci_run_id: 31297344803
+wp4_round2_fix_ci_conclusion: FAILURE_QUALITY_PRETTIER_DOCS_ONLY
+wp4_round2_final_ci_number: 703
+wp4_round2_final_ci_run_id: 31297510534
+wp4_round2_final_ci_conclusion: SUCCESS
 tracking_issue: https://github.com/JasonCutter/shotgun/issues/71
 contract_pr: https://github.com/JasonCutter/shotgun/pull/70
 product_pr: https://github.com/JasonCutter/shotgun/pull/80

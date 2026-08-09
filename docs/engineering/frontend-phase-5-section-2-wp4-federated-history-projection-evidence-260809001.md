@@ -6,7 +6,7 @@ work_item: FE-P5-S2
 created_at: 2026-08-09
 subject_base: 701e0bfac5af60daa48d9155185956b91650ecbd
 wp3_accepted_head: fe5ab21b2
-wp4_implementation_head: PENDING
+wp4_implementation_head: 70d1b6b86f55cb6f0d29cf7d3a0fa736a3ffd5ac
 wp4_implementation_ci_number: PENDING
 wp4_implementation_ci_run_id: PENDING
 wp4_implementation_ci_conclusion: PENDING

@@ -114,3 +114,32 @@ DROP TRIGGER IF EXISTS settings_audit_events_no_update_delete
 CREATE TRIGGER settings_audit_events_no_update_delete
   BEFORE UPDATE OR DELETE ON settings.settings_audit_events
   FOR EACH ROW EXECUTE FUNCTION settings.reject_history_mutation();
+
+-- TRUNCATE is a statement-level operation and is NOT caught by the row-level
+-- BEFORE UPDATE OR DELETE trigger, so an explicit statement-level guard closes
+-- the append-only hole (UPDATE/DELETE/TRUNCATE all forbidden; INSERT allowed).
+CREATE OR REPLACE FUNCTION settings.reject_history_truncate()
+RETURNS trigger AS $$
+BEGIN
+  RAISE EXCEPTION 'settings history is append-only: TRUNCATE on % is forbidden', TG_TABLE_NAME
+    USING ERRCODE = '55000';
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS settings_revisions_no_truncate
+  ON settings.settings_revisions;
+CREATE TRIGGER settings_revisions_no_truncate
+  BEFORE TRUNCATE ON settings.settings_revisions
+  FOR EACH STATEMENT EXECUTE FUNCTION settings.reject_history_truncate();
+
+DROP TRIGGER IF EXISTS policy_context_revisions_no_truncate
+  ON settings.policy_context_revisions;
+CREATE TRIGGER policy_context_revisions_no_truncate
+  BEFORE TRUNCATE ON settings.policy_context_revisions
+  FOR EACH STATEMENT EXECUTE FUNCTION settings.reject_history_truncate();
+
+DROP TRIGGER IF EXISTS settings_audit_events_no_truncate
+  ON settings.settings_audit_events;
+CREATE TRIGGER settings_audit_events_no_truncate
+  BEFORE TRUNCATE ON settings.settings_audit_events
+  FOR EACH STATEMENT EXECUTE FUNCTION settings.reject_history_truncate();

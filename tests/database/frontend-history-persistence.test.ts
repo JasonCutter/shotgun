@@ -71,5 +71,10 @@ describe.runIf(pool)('FE-P5-S2 WP1 persistence (migrations 030-032)', () => {
     await expect(
       pool!.query(`DELETE FROM settings.settings_revisions WHERE project_id = $1`, [project]),
     ).rejects.toThrow();
+
+    // TRUNCATE rejected (statement-level append-only guard, migration 032)
+    await expect(pool!.query(`TRUNCATE settings.settings_audit_events`)).rejects.toThrow();
+    await expect(pool!.query(`TRUNCATE settings.settings_revisions`)).rejects.toThrow();
+    await expect(pool!.query(`TRUNCATE settings.policy_context_revisions`)).rejects.toThrow();
   });
 });

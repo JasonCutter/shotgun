@@ -1,7 +1,7 @@
 ---
 id: FRONTEND-PHASE-5-SECTION-2-WP4-EVIDENCE-260809001
 classification: CANONICAL
-status: wp4_round4_fixes_pending_review
+status: wp4_accepted
 work_item: FE-P5-S2
 created_at: 2026-08-09
 subject_base: 701e0bfac5af60daa48d9155185956b91650ecbd
@@ -29,6 +29,8 @@ wp4_round4_fix_head: 6917452
 wp4_round4_fix_ci_number: 707
 wp4_round4_fix_ci_run_id: 31298917656
 wp4_round4_fix_ci_conclusion: SUCCESS
+wp4_accepted_head: 001f56b43
+wp4_accepted_by: GPT_IMPLEMENTATION_REVIEW_ACCEPTED (Round 5)
 tracking_issue: https://github.com/JasonCutter/shotgun/issues/71
 contract_pr: https://github.com/JasonCutter/shotgun/pull/70
 product_pr: https://github.com/JasonCutter/shotgun/pull/80
@@ -259,5 +261,5 @@ Not implemented in this Work Package (remain unauthorized):
 
 ## 8. Next action
 
-Report WP4 Round 4 fixes (F2-B) for the GPT Review Round 5. Do not begin WP5 until WP4
-is reviewed and accepted.
+WP4 is ACCEPTED (Round 5). WP5 — History Workspace UI is AUTHORIZED to implement.
+WP6 remains NOT_AUTHORIZED. PR #80 stays DRAFT / DO NOT MERGE.

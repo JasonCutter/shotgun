@@ -116,6 +116,14 @@ export type ExternalActionAuditStorePort = {
     limit: number,
     offset: number,
   ): Promise<readonly ActionAuditEventV1[]>;
+  /**
+   * Authoritative single audit event lookup by append-only identity
+   * (FE-P5-S2 WP4 Round 2 B/C): lets the History adapter re-resolve an
+   * AUDIT_EVENT detail row at any position without a capped first-page scan,
+   * so an event past the first 500 is still resolved. The caller must verify
+   * project binding before serving.
+   */
+  findById(auditEventId: string): Promise<ActionAuditEventV1 | undefined>;
   /** Monotonic next sequence for an action (append-only authority). */
   nextSequence(actionId: string): Promise<number>;
 };

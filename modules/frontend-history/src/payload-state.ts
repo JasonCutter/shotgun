@@ -99,3 +99,32 @@ export type PayloadStateOwner = 'CANONICAL' | 'REVIEW' | 'EXTERNAL_ACTION' | 'SE
 export const isPurgeTransitionValid = (
   previousAvailability: PayloadAvailabilityV1 | undefined,
 ): boolean => previousAvailability !== 'PURGED_BY_POLICY';
+
+/**
+ * FE-P5-S2 WP4 Round 2 F — payload redaction invariant.
+ *
+ * Raw payload is ONLY permitted when the authoritative availability is
+ * AVAILABLE. REDACTED / PURGED_BY_POLICY / UNAVAILABLE NEVER carry the raw
+ * payload; the only data permitted on those rows is the non-sensitive
+ * tombstone metadata stored in the owner-side sidecar. This is applied at
+ * projection build time (so the projection cache never stores raw payload for
+ * non-AVAILABLE rows) AND at read time (so a purge that happened after a
+ * cached projection cannot leak the raw payload through List/Detail).
+ */
+export const redactHistoryPayload = (
+  availability: PayloadAvailabilityV1,
+  state: PayloadStateRecord | null,
+  rawPayload: unknown,
+): { payloadAvailability: PayloadAvailabilityV1; payloadSnapshot?: unknown } => {
+  if (availability === 'AVAILABLE') {
+    return {
+      payloadAvailability: availability,
+      ...(rawPayload === undefined ? {} : { payloadSnapshot: rawPayload }),
+    };
+  }
+  // REDACTED / PURGED_BY_POLICY / UNAVAILABLE: raw payload FORBIDDEN.
+  return {
+    payloadAvailability: availability,
+    ...(state?.tombstoneMetadata === undefined ? {} : { payloadSnapshot: state.tombstoneMetadata }),
+  };
+};

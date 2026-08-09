@@ -6,11 +6,14 @@ export type {
   PurgeByPolicyInput,
   SetPayloadStateInput,
 } from './payload-state.js';
-export { isPurgeTransitionValid } from './payload-state.js';
+export { isPurgeTransitionValid, redactHistoryPayload } from './payload-state.js';
 
 // FE-P5-S2 WP4 — Federated History Projection + Product API.
 export type { HistoryAdapterPort, HistoryAdapterRegistryPort } from './history-adapter-port.js';
-export { createHistoryAdapterRegistry } from './history-adapter-port.js';
+export {
+  MANDATORY_HISTORY_ADAPTER_DOMAIN_KINDS,
+  createHistoryAdapterRegistry,
+} from './history-adapter-port.js';
 export type {
   HistoryIndexPageV1,
   HistoryIndexQueryV1,

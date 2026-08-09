@@ -480,6 +480,7 @@ export class InMemoryExternalActionStore implements ExternalActionRepositoryBoun
           .filter((event) => event.actionId === actionId)
           .sort((a, b) => a.sequence - b.sequence)
           .slice(offset, offset + Math.min(limit, 10000)),
+      findById: async (auditEventId) => maps.audit.get(auditEventId),
       nextSequence: async (actionId) => {
         const events = [...maps.audit.values()].filter((event) => event.actionId === actionId);
         return events.length === 0 ? 1 : Math.max(...events.map((event) => event.sequence)) + 1;

@@ -772,6 +772,14 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
         );
         return result.rows.map(auditFrom);
       },
+      findById: async (auditEventId) => {
+        const result = await client.query<SnapshotRow>(
+          `SELECT snapshot FROM frontend_external_action.audit_events
+           WHERE audit_event_id = $1`,
+          [auditEventId],
+        );
+        return result.rows[0] ? auditFrom(result.rows[0]) : undefined;
+      },
       nextSequence: async (actionId) => {
         // Serialize the per-action audit sequence with an advisory transaction
         // lock so concurrent commands can never receive the same sequence

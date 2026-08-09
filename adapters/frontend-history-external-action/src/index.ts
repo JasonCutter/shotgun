@@ -13,7 +13,11 @@
  */
 
 import type { ExternalActionRepositoryBoundaryPort } from '../../../modules/frontend-external-action/src/index.js';
-import type { PayloadStateStorePort } from '../../../modules/frontend-history/src/index.js';
+import type {
+  PayloadStateStorePort,
+  PayloadStateRecord,
+} from '../../../modules/frontend-history/src/index.js';
+import { redactHistoryPayload } from '../../../modules/frontend-history/src/index.js';
 import type { HistoryAdapterPort } from '../../../modules/frontend-history/src/index.js';
 import type {
   ActionAuditEventV1,
@@ -31,14 +35,27 @@ const EXTERNAL_ACTION_PAGE_SIZE = 100;
 /** Per-action audit/result read budget (not a cap: pagination exhausts). */
 const EXTERNAL_ACTION_ROW_BUDGET = 500;
 
-const externalActionAvailability = async (
+const externalActionState = async (
   payloadState: PayloadStateStorePort,
   projectId: string,
   sourceEventKind: string,
   sourceEventId: string,
-): Promise<HistoryEntryV1['payloadAvailability']> => {
-  const state = await payloadState.getPayloadState(projectId, sourceEventKind, sourceEventId);
-  return state?.payloadAvailability ?? 'AVAILABLE';
+): Promise<PayloadStateRecord | null> =>
+  payloadState.getPayloadState(projectId, sourceEventKind, sourceEventId);
+
+/** Read-time redaction for a projection row (GPT Round 2 F). */
+const redactForRead = async (
+  payloadState: PayloadStateStorePort,
+  entry: HistoryEntryV1,
+): Promise<HistoryEntryV1> => {
+  const state = await payloadState.getPayloadState(
+    entry.resourceProjectId,
+    entry.sourceEventKind,
+    entry.sourceEventId,
+  );
+  const availability = state?.payloadAvailability ?? entry.payloadAvailability;
+  const redacted = redactHistoryPayload(availability, state, entry.payloadSnapshot);
+  return { ...entry, ...redacted };
 };
 
 export class ExternalActionHistoryAdapter implements HistoryAdapterPort {
@@ -81,12 +98,12 @@ export class ExternalActionHistoryAdapter implements HistoryAdapterPort {
     return this.externalAction.transaction(async (repositories) => {
       const projectedAt = this.now().toISOString();
       if (sourceEventKind === 'AUDIT_EVENT') {
-        // Locate the owning action via the audit identity, then re-resolve.
-        const found = await this.findActionForAudit(repositories, projectId, sourceEventId);
-        if (found === undefined) return undefined;
-        const audit = await repositories.audit.listByAction(found, EXTERNAL_ACTION_ROW_BUDGET, 0);
-        const event = audit.find((candidate) => candidate.auditEventId === sourceEventId);
-        return event === undefined ? undefined : this.auditEntry(projectId, event, projectedAt);
+        // Authoritative single-event lookup by append-only identity (GPT
+        // Round 2 B/C): an audit event past the first 500 is resolved exactly
+        // the same as the first one — no capped first-page scan.
+        const event = await repositories.audit.findById(sourceEventId);
+        if (event === undefined || event.resourceProjectId !== projectId) return undefined;
+        return this.auditEntry(projectId, event, projectedAt);
       }
       if (sourceEventKind === 'RESULT') {
         const result = await repositories.results.findById(sourceEventId);
@@ -97,31 +114,8 @@ export class ExternalActionHistoryAdapter implements HistoryAdapterPort {
     });
   }
 
-  /** Find the owning action id for an audit event identity (deterministic). */
-  private async findActionForAudit(
-    repositories: Parameters<Parameters<ExternalActionRepositoryBoundaryPort['transaction']>[0]>[0],
-    projectId: string,
-    auditEventId: string,
-  ): Promise<string | undefined> {
-    for (let offset = 0; ; offset += EXTERNAL_ACTION_PAGE_SIZE) {
-      const actions = await repositories.aggregates.listByProject(
-        projectId,
-        EXTERNAL_ACTION_PAGE_SIZE,
-        offset,
-      );
-      for (const action of actions) {
-        const audit = await repositories.audit.listByAction(
-          action.actionId,
-          EXTERNAL_ACTION_ROW_BUDGET,
-          0,
-        );
-        if (audit.some((candidate) => candidate.auditEventId === auditEventId)) {
-          return action.actionId;
-        }
-      }
-      if (actions.length < EXTERNAL_ACTION_PAGE_SIZE) break;
-    }
-    return undefined;
+  async redactEntry(entry: HistoryEntryV1): Promise<HistoryEntryV1> {
+    return redactForRead(this.payloadState, entry);
   }
 
   /** Full audit pagination for one action (no total cap). */
@@ -151,12 +145,19 @@ export class ExternalActionHistoryAdapter implements HistoryAdapterPort {
     event: ActionAuditEventV1,
     projectedAt: string,
   ): Promise<HistoryEntryV1> {
-    const availability = await externalActionAvailability(
+    const state = await externalActionState(
       this.payloadState,
       projectId,
       'AUDIT_EVENT',
       event.auditEventId,
     );
+    const availability = state?.payloadAvailability ?? 'AVAILABLE';
+    const redacted = redactHistoryPayload(availability, state, {
+      actionId: event.actionId,
+      sequence: event.sequence,
+      category: event.category,
+      message: event.eventData.message,
+    });
     return {
       schemaVersion: '1.0.0',
       historyEntryId: `history:${projectId}:audit:${event.auditEventId}`,
@@ -168,13 +169,7 @@ export class ExternalActionHistoryAdapter implements HistoryAdapterPort {
       sourceEventId: event.auditEventId,
       sourceSequence: event.sequence,
       occurredAt: event.occurredAt,
-      payloadAvailability: availability,
-      payloadSnapshot: {
-        actionId: event.actionId,
-        sequence: event.sequence,
-        category: event.category,
-        message: event.eventData.message,
-      },
+      ...redacted,
       projectedAt,
     };
   }
@@ -206,12 +201,19 @@ export class ExternalActionHistoryAdapter implements HistoryAdapterPort {
     result: ResultV1,
     projectedAt: string,
   ): Promise<HistoryEntryV1> {
-    const availability = await externalActionAvailability(
+    const state = await externalActionState(
       this.payloadState,
       projectId,
       'RESULT',
       result.resultId,
     );
+    const availability = state?.payloadAvailability ?? 'AVAILABLE';
+    const redacted = redactHistoryPayload(availability, state, {
+      actionId: result.actionId,
+      executionId: result.executionId,
+      externalId: result.externalId,
+      observedDigest: result.observedDigest,
+    });
     return {
       schemaVersion: '1.0.0',
       historyEntryId: `history:${projectId}:result:${result.resultId}`,
@@ -222,13 +224,7 @@ export class ExternalActionHistoryAdapter implements HistoryAdapterPort {
       sourceEventKind: 'RESULT',
       sourceEventId: result.resultId,
       occurredAt: result.completedAt,
-      payloadAvailability: availability,
-      payloadSnapshot: {
-        actionId: result.actionId,
-        executionId: result.executionId,
-        externalId: result.externalId,
-        observedDigest: result.observedDigest,
-      },
+      ...redacted,
       projectedAt,
     };
   }

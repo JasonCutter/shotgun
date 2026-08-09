@@ -52,9 +52,22 @@ export type HistoryProductScopeV1 = {
   readonly sensitivityClearance: 'public' | 'internal' | 'private' | 'restricted';
 };
 
-export type HistoryCapabilityV1 = 'LIST_HISTORY_WORKSPACE' | 'READ_HISTORY_ENTRY';
+export type HistoryCapabilityV1 =
+  'LIST_HISTORY_WORKSPACE' | 'READ_HISTORY_ENTRY' | 'READ_HISTORY_AUDIT';
 
 const HISTORY_READ_SCOPES: ReadonlySet<string> = new Set(['owner', 'admin', 'history:read']);
+
+/**
+ * Audit read scopes (Contract Snapshot §7 — separate fine-grained capability,
+ * AC-13 read-time revalidation): `history:audit:read` (new) and the owning
+ * Domain's existing `action:audit:read`. `owner`/`admin` always imply it.
+ */
+const HISTORY_AUDIT_READ_SCOPES: ReadonlySet<string> = new Set([
+  'owner',
+  'admin',
+  'history:audit:read',
+  'action:audit:read',
+]);
 
 /** Least-privilege Scope → Capability matrix for History reads. */
 export const historyCapabilitiesForScope = (
@@ -62,10 +75,14 @@ export const historyCapabilitiesForScope = (
 ): readonly HistoryCapabilityV1[] => {
   const granted = scope.accessScope ?? [];
   const has = (set: ReadonlySet<string>): boolean => granted.some((entry) => set.has(entry));
+  const capabilities: HistoryCapabilityV1[] = [];
   if (has(HISTORY_READ_SCOPES)) {
-    return ['LIST_HISTORY_WORKSPACE', 'READ_HISTORY_ENTRY'];
+    capabilities.push('LIST_HISTORY_WORKSPACE', 'READ_HISTORY_ENTRY');
   }
-  return [];
+  if (has(HISTORY_AUDIT_READ_SCOPES)) {
+    capabilities.push('READ_HISTORY_AUDIT');
+  }
+  return capabilities;
 };
 
 export const HISTORY_PAGE_SIZE_CAP = 50;
@@ -143,6 +160,14 @@ const cursorFromRecord = (record: HistoryIndexRecordV1): HistoryCursorV1 => ({
   ...(record.sourceSequence === undefined ? {} : { sourceSequence: record.sourceSequence }),
 });
 
+/**
+ * EXTERNAL_ACTION audit rows are gated behind the separate
+ * `READ_HISTORY_AUDIT` capability (GPT Round 2 G / AC-13). Result rows of the
+ * same Domain stay under `history:read` (as the owning Domain permits).
+ */
+const isAuditRecord = (record: HistoryIndexRecordV1): boolean =>
+  record.domainKind === 'EXTERNAL_ACTION' && record.sourceEventKind === 'AUDIT_EVENT';
+
 /** Decode a strict HistoryCursorV1 from browser input. */
 export const decodeHistoryWorkspaceCursorV1 = (value: unknown, path: string): HistoryCursorV1 =>
   decodeHistoryCursorV1(value, path);
@@ -195,6 +220,16 @@ export class HistoryProductCoordinator {
    * projection rows are ever returned. The request `resourceProjectId` MUST
    * equal the server-derived active project (GPT Round 1 D): a mismatch is a
    * denial, never a silent cross-project read.
+   *
+   * Fine-grained audit revalidation (GPT Round 2 G / AC-13): EXTERNAL_ACTION
+   * AUDIT_EVENT rows require the separate `READ_HISTORY_AUDIT` capability.
+   * Without it those rows are hidden non-disclosingly, and the page is filled
+   * by continuing the keyset walk so pagination never leaks how many rows
+   * were inaccessible nor skips rows the principal IS allowed to see.
+   *
+   * Read-time payload redaction (GPT Round 2 F): each returned row is
+   * re-checked against the owning Domain's current availability so a purge
+   * that happened after the projection was cached cannot leak raw payload.
    */
   async listHistoryWorkspace(
     scope: HistoryProductScopeV1,
@@ -206,26 +241,44 @@ export class HistoryProductCoordinator {
       historyDenied();
     }
     const limit = Math.min(HISTORY_PAGE_SIZE_CAP, Math.max(1, decoded.limit));
-    const page = await this.index.queryProject({
-      resourceProjectId: scope.activeProjectId,
-      domainKinds: decoded.domainKinds,
-      cursor: decoded.cursor,
-      limit: limit + 1,
-    });
-    const hasMore = page.records.length > limit;
-    const records = hasMore ? page.records.slice(0, limit) : page.records;
-    // Projection rows are Project-scoped and non-authoritative; no per-row
-    // access gate is needed beyond the History read capability. The ordering
-    // is the frozen tuple, and a nextCursor is emitted only when more rows
-    // exist after the last displayed record.
+    const canReadAudit = this.capabilities(scope).includes('READ_HISTORY_AUDIT');
+    const target = limit + 1;
+
+    // Keyset over-fetch: read until the visible page is full (or the source
+    // is exhausted) so hidden AUDIT_EVENT rows never shrink or leak pages.
+    const visible: HistoryIndexRecordV1[] = [];
+    let cursor = decoded.cursor;
+    while (visible.length < target) {
+      const page = await this.index.queryProject({
+        resourceProjectId: scope.activeProjectId,
+        domainKinds: decoded.domainKinds,
+        cursor,
+        limit: Math.max(target, (target - visible.length) * 3),
+      });
+      if (page.records.length === 0) break;
+      const candidates = canReadAudit
+        ? page.records
+        : page.records.filter((record) => !isAuditRecord(record));
+      visible.push(...candidates.slice(0, target - visible.length));
+      if (visible.length >= target) break;
+      if (page.nextCursor === undefined) break;
+      cursor = page.nextCursor;
+    }
+
+    const hasMore = visible.length > limit;
+    const records = hasMore ? visible.slice(0, limit) : visible;
     const lastDisplayed = records[records.length - 1];
     let nextCursor: HistoryCursorV1 | undefined;
     if (hasMore && lastDisplayed !== undefined) {
       nextCursor = cursorFromRecord(lastDisplayed);
     }
+    // Read-time payload redaction for every returned row (GPT Round 2 F).
+    const entries = await Promise.all(
+      records.map(async (record) => this.redactForRead(scope, record)),
+    );
     return {
       schemaVersion: '1.0.0',
-      entries: records.map((record) => record),
+      entries,
       ...(nextCursor === undefined ? {} : { nextCursor }),
     };
   }
@@ -237,7 +290,8 @@ export class HistoryProductCoordinator {
    * authoritative payload + availability (GPT Round 1 C). A source that can
    * no longer be resolved fails closed (NOT_FOUND) — the stale projection
    * payload is never trusted. The request `resourceProjectId` MUST equal the
-   * server-derived active project (non-disclosing on mismatch).
+   * server-derived active project (non-disclosing on mismatch). EXTERNAL_ACTION
+   * AUDIT_EVENT rows additionally require `READ_HISTORY_AUDIT` (GPT Round 2 G).
    */
   async getHistoryEntry(
     scope: HistoryProductScopeV1,
@@ -256,6 +310,11 @@ export class HistoryProductCoordinator {
       historyNotFound();
     }
     const projection = record!;
+    // Audit rows are only visible to principals holding the separate audit
+    // read capability; otherwise the same non-disclosing NOT_FOUND (G).
+    if (isAuditRecord(projection) && !this.capabilities(scope).includes('READ_HISTORY_AUDIT')) {
+      historyNotFound();
+    }
     const adapter = this.registry.adapterFor(projection.domainKind);
     if (adapter === undefined) {
       historyNotFound();
@@ -270,7 +329,23 @@ export class HistoryProductCoordinator {
     if (authoritative === undefined) {
       historyNotFound();
     }
-    return { schemaVersion: '1.0.0', entry: authoritative! };
+    // Read-time redaction of the authoritative entry (purge-after-cache safety).
+    return { schemaVersion: '1.0.0', entry: await this.redactForRead(scope, authoritative!) };
+  }
+
+  /** Capabilities for a scope (server-derived; never from the browser). */
+  private capabilities(scope: HistoryProductScopeV1): readonly HistoryCapabilityV1[] {
+    return historyCapabilitiesForScope(scope);
+  }
+
+  /** Read-time payload redaction via the owning adapter (GPT Round 2 F). */
+  private async redactForRead(
+    scope: HistoryProductScopeV1,
+    record: HistoryIndexRecordV1,
+  ): Promise<HistoryIndexRecordV1> {
+    const adapter = this.registry.adapterFor(record.domainKind);
+    if (adapter === undefined) return record;
+    return adapter.redactEntry(record);
   }
 }
 

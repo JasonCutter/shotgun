@@ -133,4 +133,67 @@ describe('FE-P5-S2 WP4 History domain adapters', () => {
     const entries = await adapter.readHistory('p1');
     expect(entries[0]!.payloadAvailability).toBe('REDACTED');
   });
+
+  it('non-AVAILABLE rows never carry the raw payload (GPT Round 2 F)', async () => {
+    const payloadState = new InMemoryPayloadStateStore('CANONICAL');
+    // Tombstone metadata is the ONLY payload permitted on a purged row.
+    await payloadState.purgeByPolicy({
+      resourceProjectId: 'p1',
+      sourceEventKind: 'CANONICAL_CLAIM_ADDED',
+      sourceEventId: 'e-1',
+      reason: 'retention policy',
+      tombstoneMetadata: { digest: 'sha256:redacted' },
+      actorId: 'actor-1',
+      occurredAt: '2026-08-09T01:00:00.000Z',
+    });
+    const adapter = new CanonicalHistoryAdapter(
+      canonicalRepo([
+        canonicalEvent({ historyEventId: 'e-1', createdAt: '2026-08-09T00:00:00.000Z' }),
+      ]),
+      payloadState,
+      () => new Date('2026-08-09T02:00:00.000Z'),
+    );
+    const entries = await adapter.readHistory('p1');
+    const entry = entries[0]!;
+    expect(entry.payloadAvailability).toBe('PURGED_BY_POLICY');
+    // Raw payload (reason/actor/versions) must NOT survive; only tombstone.
+    const snapshot = entry.payloadSnapshot as Record<string, unknown>;
+    expect(snapshot).toEqual({ digest: 'sha256:redacted' });
+    expect(snapshot.reason).toBeUndefined();
+    expect(snapshot.actor).toBeUndefined();
+    expect(snapshot.beforeVersion).toBeUndefined();
+  });
+
+  it('redactEntry re-checks current availability (purge-after-cache safety, GPT Round 2 F)', async () => {
+    const payloadState = new InMemoryPayloadStateStore('CANONICAL');
+    const adapter = new CanonicalHistoryAdapter(
+      canonicalRepo([
+        canonicalEvent({ historyEventId: 'e-1', createdAt: '2026-08-09T00:00:00.000Z' }),
+      ]),
+      payloadState,
+      () => new Date('2026-08-09T02:00:00.000Z'),
+    );
+    // Projected while AVAILABLE (raw payload cached in the projection).
+    const cached = (await adapter.readHistory('p1'))[0]!;
+    expect(cached.payloadAvailability).toBe('AVAILABLE');
+    expect((cached.payloadSnapshot as { reason: string }).reason).toBe('commit');
+    // A purge happens AFTER the projection was cached.
+    await payloadState.purgeByPolicy({
+      resourceProjectId: 'p1',
+      sourceEventKind: 'CANONICAL_CLAIM_ADDED',
+      sourceEventId: 'e-1',
+      reason: 'retention policy',
+      tombstoneMetadata: { digest: 'sha256:redacted' },
+      actorId: 'actor-1',
+      occurredAt: '2026-08-09T03:00:00.000Z',
+    });
+    // Read-time redaction must strip the raw cached payload.
+    const redacted = await adapter.redactEntry(cached);
+    expect(redacted.payloadAvailability).toBe('PURGED_BY_POLICY');
+    expect(redacted.payloadSnapshot).toEqual({ digest: 'sha256:redacted' });
+    // Resolve also fails the raw payload (authoritative detail).
+    const resolved = await adapter.resolveHistoryEntry('p1', 'CANONICAL_CLAIM_ADDED', 'e-1');
+    expect(resolved!.payloadAvailability).toBe('PURGED_BY_POLICY');
+    expect(resolved!.payloadSnapshot).toEqual({ digest: 'sha256:redacted' });
+  });
 });

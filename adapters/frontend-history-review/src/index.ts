@@ -11,7 +11,11 @@
  */
 
 import type { ReviewRepositoryBoundaryPort } from '../../../modules/frontend-review/src/index.js';
-import type { PayloadStateStorePort } from '../../../modules/frontend-history/src/index.js';
+import type {
+  PayloadStateRecord,
+  PayloadStateStorePort,
+} from '../../../modules/frontend-history/src/index.js';
+import { redactHistoryPayload } from '../../../modules/frontend-history/src/index.js';
 import type { HistoryAdapterPort } from '../../../modules/frontend-history/src/index.js';
 import type {
   HistoryEntryV1,
@@ -24,14 +28,27 @@ export const REVIEW_HISTORY_ADAPTER_ID = 'history-review';
 
 const REVIEW_DOMAIN_KIND: HistorySourceDomainKindV1 = 'REVIEW';
 
-const reviewAvailability = async (
+const reviewState = async (
   payloadState: PayloadStateStorePort,
   projectId: string,
   sourceEventKind: string,
   sourceEventId: string,
-): Promise<HistoryEntryV1['payloadAvailability']> => {
-  const state = await payloadState.getPayloadState(projectId, sourceEventKind, sourceEventId);
-  return state?.payloadAvailability ?? 'AVAILABLE';
+): Promise<PayloadStateRecord | null> =>
+  payloadState.getPayloadState(projectId, sourceEventKind, sourceEventId);
+
+/** Read-time redaction for a projection row (GPT Round 2 F). */
+const redactForRead = async (
+  payloadState: PayloadStateStorePort,
+  entry: HistoryEntryV1,
+): Promise<HistoryEntryV1> => {
+  const state = await payloadState.getPayloadState(
+    entry.resourceProjectId,
+    entry.sourceEventKind,
+    entry.sourceEventId,
+  );
+  const availability = state?.payloadAvailability ?? entry.payloadAvailability;
+  const redacted = redactHistoryPayload(availability, state, entry.payloadSnapshot);
+  return { ...entry, ...redacted };
 };
 
 export class ReviewHistoryAdapter implements HistoryAdapterPort {
@@ -81,6 +98,10 @@ export class ReviewHistoryAdapter implements HistoryAdapterPort {
     });
   }
 
+  async redactEntry(entry: HistoryEntryV1): Promise<HistoryEntryV1> {
+    return redactForRead(this.payloadState, entry);
+  }
+
   private async mapAll(projectId: string): Promise<readonly HistoryEntryV1[]> {
     return this.review.transaction(async (repositories) => {
       const projectedAt = this.now().toISOString();
@@ -111,12 +132,16 @@ export class ReviewHistoryAdapter implements HistoryAdapterPort {
     decision: ReviewDecisionRecordV1,
     projectedAt: string,
   ): Promise<HistoryEntryV1> {
-    const availability = await reviewAvailability(
-      this.payloadState,
-      projectId,
-      'DECISION',
-      decision.decisionId,
-    );
+    const state = await reviewState(this.payloadState, projectId, 'DECISION', decision.decisionId);
+    const availability = state?.payloadAvailability ?? 'AVAILABLE';
+    const redacted = redactHistoryPayload(availability, state, {
+      reviewContextId: decision.reviewContextId,
+      contextRevision: decision.contextRevision,
+      reviewItemId: decision.reviewItemId,
+      intent: decision.intent,
+      terminal: decision.terminal,
+      decidedBy: decision.decidedBy.actorId,
+    });
     return {
       schemaVersion: '1.0.0',
       historyEntryId: `history:${projectId}:decision:${decision.decisionId}`,
@@ -127,15 +152,7 @@ export class ReviewHistoryAdapter implements HistoryAdapterPort {
       sourceEventKind: 'DECISION',
       sourceEventId: decision.decisionId,
       occurredAt: decision.decidedAt,
-      payloadAvailability: availability,
-      payloadSnapshot: {
-        reviewContextId: decision.reviewContextId,
-        contextRevision: decision.contextRevision,
-        reviewItemId: decision.reviewItemId,
-        intent: decision.intent,
-        terminal: decision.terminal,
-        decidedBy: decision.decidedBy.actorId,
-      },
+      ...redacted,
       projectedAt,
     };
   }
@@ -145,12 +162,17 @@ export class ReviewHistoryAdapter implements HistoryAdapterPort {
     approval: ReviewApprovalV1,
     projectedAt: string,
   ): Promise<HistoryEntryV1> {
-    const availability = await reviewAvailability(
-      this.payloadState,
-      projectId,
-      'APPROVAL',
-      approval.approvalId,
-    );
+    const state = await reviewState(this.payloadState, projectId, 'APPROVAL', approval.approvalId);
+    const availability = state?.payloadAvailability ?? 'AVAILABLE';
+    const redacted = redactHistoryPayload(availability, state, {
+      reviewContextId: approval.reviewContextId,
+      contextRevision: approval.contextRevision,
+      targetKind: approval.targetKind,
+      targetId: approval.targetId,
+      targetRevision: approval.targetRevision,
+      status: approval.status,
+      actorId: approval.actor.actorId,
+    });
     return {
       schemaVersion: '1.0.0',
       historyEntryId: `history:${projectId}:approval:${approval.approvalId}`,
@@ -161,16 +183,7 @@ export class ReviewHistoryAdapter implements HistoryAdapterPort {
       sourceEventKind: 'APPROVAL',
       sourceEventId: approval.approvalId,
       occurredAt: approval.issuedAt,
-      payloadAvailability: availability,
-      payloadSnapshot: {
-        reviewContextId: approval.reviewContextId,
-        contextRevision: approval.contextRevision,
-        targetKind: approval.targetKind,
-        targetId: approval.targetId,
-        targetRevision: approval.targetRevision,
-        status: approval.status,
-        actorId: approval.actor.actorId,
-      },
+      ...redacted,
       projectedAt,
     };
   }

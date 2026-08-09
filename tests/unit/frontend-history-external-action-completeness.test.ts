@@ -71,6 +71,8 @@ const makeBoundary = (): ExternalActionRepositoryBoundaryPort => {
     audit: {
       listByAction: async (_actionId: string, limit: number, offset: number) =>
         page(audits, limit, offset),
+      findById: async (auditEventId: string) =>
+        audits.find((event) => event.auditEventId === auditEventId),
     },
     results: {
       listByAction: async (_actionId: string, limit: number, offset: number) =>
@@ -130,5 +132,27 @@ describe('FE-P5-S2 WP4 External Action History adapter completeness (GPT Round 1
     // Unresolved identity fails closed.
     const missing = await adapter.resolveHistoryEntry('p1', 'AUDIT_EVENT', 'audit:999999');
     expect(missing).toBeUndefined();
+  });
+
+  it('resolveHistoryEntry resolves AUDIT_EVENT detail past the first 500 (GPT Round 2 B/C)', async () => {
+    const payloadState = new InMemoryPayloadStateStore('EXTERNAL_ACTION');
+    const adapter = new ExternalActionHistoryAdapter(makeBoundary(), payloadState);
+    // 1200 audit events: the 501st+ must resolve exactly like the first ones
+    // (no capped first-page scan in the Detail path).
+    for (const id of ['audit:50', 'audit:750', 'audit:1199']) {
+      const entry = await adapter.resolveHistoryEntry('p1', 'AUDIT_EVENT', id);
+      expect(entry).toBeDefined();
+      expect(entry!.sourceEventId).toBe(id);
+    }
+    // Unknown audit identity fails closed.
+    const missing = await adapter.resolveHistoryEntry('p1', 'AUDIT_EVENT', 'audit:unknown');
+    expect(missing).toBeUndefined();
+    // Cross-project audit identity is rejected (project binding).
+    const crossProject = await adapter.resolveHistoryEntry(
+      'other-project',
+      'AUDIT_EVENT',
+      'audit:50',
+    );
+    expect(crossProject).toBeUndefined();
   });
 });

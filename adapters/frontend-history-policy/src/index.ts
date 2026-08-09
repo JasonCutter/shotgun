@@ -9,7 +9,11 @@
  */
 
 import type { PolicyHistoryReadPort } from '../../../modules/settings-policy/src/index.js';
-import type { PayloadStateStorePort } from '../../../modules/frontend-history/src/index.js';
+import type {
+  PayloadStateRecord,
+  PayloadStateStorePort,
+} from '../../../modules/frontend-history/src/index.js';
+import { redactHistoryPayload } from '../../../modules/frontend-history/src/index.js';
 import type { HistoryAdapterPort } from '../../../modules/frontend-history/src/index.js';
 import type {
   HistoryEntryV1,
@@ -23,14 +27,27 @@ const POLICY_DOMAIN_KIND: HistorySourceDomainKindV1 = 'POLICY';
 /** Policy History adapter pagination budget. */
 const POLICY_PAGE_SIZE = 200;
 
-const policyAvailability = async (
+const policyState = async (
   payloadState: PayloadStateStorePort,
   projectId: string,
   sourceEventKind: string,
   sourceEventId: string,
-): Promise<HistoryEntryV1['payloadAvailability']> => {
-  const state = await payloadState.getPayloadState(projectId, sourceEventKind, sourceEventId);
-  return state?.payloadAvailability ?? 'AVAILABLE';
+): Promise<PayloadStateRecord | null> =>
+  payloadState.getPayloadState(projectId, sourceEventKind, sourceEventId);
+
+/** Read-time redaction for a projection row (GPT Round 2 F). */
+const redactForRead = async (
+  payloadState: PayloadStateStorePort,
+  entry: HistoryEntryV1,
+): Promise<HistoryEntryV1> => {
+  const state = await payloadState.getPayloadState(
+    entry.resourceProjectId,
+    entry.sourceEventKind,
+    entry.sourceEventId,
+  );
+  const availability = state?.payloadAvailability ?? entry.payloadAvailability;
+  const redacted = redactHistoryPayload(availability, state, entry.payloadSnapshot);
+  return { ...entry, ...redacted };
 };
 
 export class PolicyHistoryAdapter implements HistoryAdapterPort {
@@ -60,6 +77,10 @@ export class PolicyHistoryAdapter implements HistoryAdapterPort {
     );
   }
 
+  async redactEntry(entry: HistoryEntryV1): Promise<HistoryEntryV1> {
+    return redactForRead(this.payloadState, entry);
+  }
+
   private async mapAll(projectId: string): Promise<readonly HistoryEntryV1[]> {
     const projectedAt = this.now().toISOString();
     const entries: HistoryEntryV1[] = [];
@@ -71,12 +92,20 @@ export class PolicyHistoryAdapter implements HistoryAdapterPort {
         limit: POLICY_PAGE_SIZE,
       });
       for (const entry of page.entries) {
-        const availability = await policyAvailability(
+        const state = await policyState(
           this.payloadState,
           projectId,
           entry.sourceKind,
           entry.sourceId,
         );
+        const availability = state?.payloadAvailability ?? 'AVAILABLE';
+        const redacted = redactHistoryPayload(availability, state, {
+          sourceKind: entry.sourceKind,
+          actorId: entry.actorId,
+          actionName: entry.actionName,
+          riskLevel: entry.riskLevel,
+          details: entry.details,
+        });
         entries.push({
           schemaVersion: '1.0.0',
           historyEntryId: `history:${projectId}:policy:${entry.sourceId}`,
@@ -87,14 +116,7 @@ export class PolicyHistoryAdapter implements HistoryAdapterPort {
           sourceEventKind: entry.sourceKind,
           sourceEventId: entry.sourceId,
           occurredAt: entry.timestamp,
-          payloadAvailability: availability,
-          payloadSnapshot: {
-            sourceKind: entry.sourceKind,
-            actorId: entry.actorId,
-            actionName: entry.actionName,
-            riskLevel: entry.riskLevel,
-            details: entry.details,
-          },
+          ...redacted,
           projectedAt,
         });
       }

@@ -10,7 +10,11 @@
  */
 
 import type { CanonicalKnowledgeRepositoryPort } from '../../../modules/canonical-knowledge/src/index.js';
-import type { PayloadStateStorePort } from '../../../modules/frontend-history/src/index.js';
+import type {
+  PayloadStateRecord,
+  PayloadStateStorePort,
+} from '../../../modules/frontend-history/src/index.js';
+import { redactHistoryPayload } from '../../../modules/frontend-history/src/index.js';
 import type {
   CanonicalHistoryEvent,
   HistoryEntryV1,
@@ -22,17 +26,26 @@ export const CANONICAL_HISTORY_ADAPTER_ID = 'history-canonical';
 
 const CANONICAL_DOMAIN_KIND: HistorySourceDomainKindV1 = 'CANONICAL';
 
-const canonicalPayloadAvailability = async (
+const canonicalState = async (
   payloadState: PayloadStateStorePort,
   projectId: string,
   event: { eventType: string; historyEventId: string },
-): Promise<HistoryEntryV1['payloadAvailability']> => {
+): Promise<PayloadStateRecord | null> =>
+  payloadState.getPayloadState(projectId, event.eventType, event.historyEventId);
+
+/** Read-time redaction for a projection row (GPT Round 2 F). */
+const redactForRead = async (
+  payloadState: PayloadStateStorePort,
+  entry: HistoryEntryV1,
+): Promise<HistoryEntryV1> => {
   const state = await payloadState.getPayloadState(
-    projectId,
-    event.eventType,
-    event.historyEventId,
+    entry.resourceProjectId,
+    entry.sourceEventKind,
+    entry.sourceEventId,
   );
-  return state?.payloadAvailability ?? 'AVAILABLE';
+  const availability = state?.payloadAvailability ?? entry.payloadAvailability;
+  const redacted = redactHistoryPayload(availability, state, entry.payloadSnapshot);
+  return { ...entry, ...redacted };
 };
 
 export class CanonicalHistoryAdapter implements HistoryAdapterPort {
@@ -67,6 +80,10 @@ export class CanonicalHistoryAdapter implements HistoryAdapterPort {
     return entries[0];
   }
 
+  async redactEntry(entry: HistoryEntryV1): Promise<HistoryEntryV1> {
+    return redactForRead(this.payloadState, entry);
+  }
+
   private async mapEvents(
     projectId: string,
     events: readonly CanonicalHistoryEvent[],
@@ -74,9 +91,18 @@ export class CanonicalHistoryAdapter implements HistoryAdapterPort {
     const projectedAt = this.now().toISOString();
     const entries: HistoryEntryV1[] = [];
     for (const event of events) {
-      const availability = await canonicalPayloadAvailability(this.payloadState, projectId, event);
+      const state = await canonicalState(this.payloadState, projectId, event);
+      const availability = state?.payloadAvailability ?? 'AVAILABLE';
       const domainResourceKind =
         event.eventType === 'CANONICAL_CLAIM_ADDED' ? 'CANONICAL_CLAIM' : 'CANONICAL_CHANGESET';
+      const redacted = redactHistoryPayload(availability, state, {
+        eventType: event.eventType,
+        beforeVersion: event.beforeVersion,
+        afterVersion: event.afterVersion,
+        claimId: event.claimId,
+        reason: event.reason,
+        actor: { type: event.actor.type, id: event.actor.id },
+      });
       entries.push({
         schemaVersion: '1.0.0',
         historyEntryId: `history:${projectId}:${event.historyEventId}`,
@@ -87,15 +113,7 @@ export class CanonicalHistoryAdapter implements HistoryAdapterPort {
         sourceEventKind: event.eventType,
         sourceEventId: event.historyEventId,
         occurredAt: event.createdAt,
-        payloadAvailability: availability,
-        payloadSnapshot: {
-          eventType: event.eventType,
-          beforeVersion: event.beforeVersion,
-          afterVersion: event.afterVersion,
-          claimId: event.claimId,
-          reason: event.reason,
-          actor: { type: event.actor.type, id: event.actor.id },
-        },
+        ...redacted,
         projectedAt,
       });
     }

@@ -83,7 +83,31 @@ const makeAdapter = (
           ...(domainKind === 'CANONICAL' ? {} : { domainKind }),
         });
   },
+  // Default: no-op redaction (test adapter has no payload state).
+  async redactEntry(record) {
+    return record;
+  },
 });
+
+/**
+ * Registry helper: always includes the four mandatory adapter families
+ * (GPT Round 2 A — exact-set validation). Callers pass only the adapters they
+ * want to vary; an empty array or omitted argument falls back to an empty
+ * default adapter for that family.
+ */
+const mandatoryAdapters = (
+  canonical: HistoryAdapterPort[] = [],
+  review: HistoryAdapterPort[] = [],
+  externalAction: HistoryAdapterPort[] = [],
+  policy: HistoryAdapterPort[] = [],
+): HistoryAdapterPort[] => [
+  ...(canonical.length > 0 ? canonical : [makeAdapter('history-canonical', 'CANONICAL', [])]),
+  ...(review.length > 0 ? review : [makeAdapter('history-review', 'REVIEW', [])]),
+  ...(externalAction.length > 0
+    ? externalAction
+    : [makeAdapter('history-external-action', 'EXTERNAL_ACTION', [])]),
+  ...(policy.length > 0 ? policy : [makeAdapter('history-policy', 'POLICY', [])]),
+];
 
 describe('FE-P5-S2 WP4 Federated History projection', () => {
   describe('frozen tuple ordering + cursor', () => {
@@ -178,12 +202,11 @@ describe('FE-P5-S2 WP4 Federated History projection', () => {
 
     it('ANY adapter failure aborts the whole rebuild (no commit, previous projection stays)', async () => {
       const store = createInMemoryHistoryReadModelStore();
-      const healthy = [
+      const healthy = mandatoryAdapters([
         makeAdapter('history-canonical', 'CANONICAL', [
           { id: 'c1', occurredAt: '2026-08-09T01:00:00.000Z' },
         ]),
-        makeAdapter('history-policy', 'POLICY', []),
-      ];
+      ]);
       // First build: complete revision 1 committed.
       const builder1 = new HistoryProjectionBuilder(createHistoryAdapterRegistry(healthy), store);
       const first = await builder1.buildProjectProjection('p1');
@@ -191,12 +214,16 @@ describe('FE-P5-S2 WP4 Federated History projection', () => {
       expect(first.indexCount).toBe(1);
 
       // Second build with one failing adapter: MUST throw and commit nothing.
-      const failing = [
-        makeAdapter('history-canonical', 'CANONICAL', [
-          { id: 'c1', occurredAt: '2026-08-09T01:00:00.000Z' },
-        ]),
-        makeAdapter('history-policy', 'POLICY', [], true),
-      ];
+      const failing = mandatoryAdapters(
+        [
+          makeAdapter('history-canonical', 'CANONICAL', [
+            { id: 'c1', occurredAt: '2026-08-09T01:00:00.000Z' },
+          ]),
+        ],
+        [],
+        [],
+        [makeAdapter('history-policy', 'POLICY', [], true)],
+      );
       const builder2 = new HistoryProjectionBuilder(createHistoryAdapterRegistry(failing), store);
       await expect(builder2.buildProjectProjection('p1')).rejects.toThrow(
         /history-policy source unavailable/,
@@ -208,6 +235,25 @@ describe('FE-P5-S2 WP4 Federated History projection', () => {
       expect(rows.records).toHaveLength(1);
       expect(rows.records[0]!.sourceEventId).toBe('c1');
     });
+
+    it('registry requires the exact mandatory adapter set (GPT Round 2 A)', () => {
+      // Missing mandatory family → fail closed at wiring time.
+      expect(() =>
+        createHistoryAdapterRegistry([makeAdapter('history-canonical', 'CANONICAL', [])]),
+      ).toThrow(/HISTORY_ADAPTER_REGISTRY_MISSING/);
+      // Duplicate mandatory family → fail closed.
+      expect(() =>
+        createHistoryAdapterRegistry([
+          makeAdapter('history-canonical', 'CANONICAL', []),
+          makeAdapter('history-canonical', 'CANONICAL', []),
+          makeAdapter('history-review', 'REVIEW', []),
+          makeAdapter('history-external-action', 'EXTERNAL_ACTION', []),
+          makeAdapter('history-policy', 'POLICY', []),
+        ]),
+      ).toThrow(/HISTORY_ADAPTER_REGISTRY_DUPLICATE/);
+      // Exactly one of each mandatory family → accepted.
+      expect(() => createHistoryAdapterRegistry(mandatoryAdapters())).not.toThrow();
+    });
   });
 
   describe('HistoryProductCoordinator', () => {
@@ -216,7 +262,7 @@ describe('FE-P5-S2 WP4 Federated History projection', () => {
 
     it('denies when the principal lacks history:read', async () => {
       const store = createInMemoryHistoryReadModelStore();
-      const registry = createHistoryAdapterRegistry([canonicalAdapter([])]);
+      const registry = createHistoryAdapterRegistry(mandatoryAdapters([canonicalAdapter([])]));
       const coordinator = new HistoryProductCoordinator(store.index, registry);
       await expect(
         coordinator.listHistoryWorkspace(scope({ accessScope: ['project:read'] }), {
@@ -229,7 +275,7 @@ describe('FE-P5-S2 WP4 Federated History projection', () => {
 
     it('rejects a request whose resourceProjectId does not match the active project', async () => {
       const store = createInMemoryHistoryReadModelStore();
-      const registry = createHistoryAdapterRegistry([canonicalAdapter([])]);
+      const registry = createHistoryAdapterRegistry(mandatoryAdapters([canonicalAdapter([])]));
       const coordinator = new HistoryProductCoordinator(store.index, registry);
       await expect(
         coordinator.listHistoryWorkspace(scope(), {
@@ -256,7 +302,7 @@ describe('FE-P5-S2 WP4 Federated History projection', () => {
           { id: 'c3', occurredAt: '2026-08-09T02:00:00.000Z' },
         ]),
       ];
-      const registry = createHistoryAdapterRegistry(adapters);
+      const registry = createHistoryAdapterRegistry(mandatoryAdapters(adapters));
       const builder = new HistoryProjectionBuilder(registry, store);
       await builder.buildProjectProjection('p1');
       const coordinator = new HistoryProductCoordinator(store.index, registry);
@@ -282,7 +328,7 @@ describe('FE-P5-S2 WP4 Federated History projection', () => {
 
     it('getHistoryEntry is non-disclosing for a missing/cross-project id', async () => {
       const store = createInMemoryHistoryReadModelStore();
-      const registry = createHistoryAdapterRegistry([canonicalAdapter([])]);
+      const registry = createHistoryAdapterRegistry(mandatoryAdapters([canonicalAdapter([])]));
       const coordinator = new HistoryProductCoordinator(store.index, registry);
       await expect(
         coordinator.getHistoryEntry(scope(), {
@@ -296,7 +342,7 @@ describe('FE-P5-S2 WP4 Federated History projection', () => {
     it('getHistoryEntry re-resolves the authoritative Domain source (C)', async () => {
       const store = createInMemoryHistoryReadModelStore();
       const adapters = [canonicalAdapter([{ id: 'c1', occurredAt: '2026-08-09T01:00:00.000Z' }])];
-      const registry = createHistoryAdapterRegistry(adapters);
+      const registry = createHistoryAdapterRegistry(mandatoryAdapters(adapters));
       const builder = new HistoryProjectionBuilder(registry, store);
       await builder.buildProjectProjection('p1');
       const coordinator = new HistoryProductCoordinator(store.index, registry);
@@ -322,9 +368,10 @@ describe('FE-P5-S2 WP4 Federated History projection', () => {
             entry({ sourceEventId: 'c1', occurredAt: '2026-08-09T01:00:00.000Z' }),
           ],
           resolveHistoryEntry: async () => undefined,
+          redactEntry: async (record) => record,
         },
       ];
-      const registry = createHistoryAdapterRegistry(adapters);
+      const registry = createHistoryAdapterRegistry(mandatoryAdapters(adapters));
       const builder = new HistoryProjectionBuilder(registry, store);
       await builder.buildProjectProjection('p1');
       const coordinator = new HistoryProductCoordinator(store.index, registry);
@@ -349,6 +396,121 @@ describe('FE-P5-S2 WP4 Federated History projection', () => {
       );
       // No public refresh capability (GPT Round 1 E).
       expect(historyCapabilitiesForScope(scope({ accessScope: ['history:refresh'] }))).toEqual([]);
+    });
+
+    it('audit capability is separate from history:read (GPT Round 2 G)', () => {
+      expect(historyCapabilitiesForScope(scope({ accessScope: ['history:read'] }))).not.toContain(
+        'READ_HISTORY_AUDIT',
+      );
+      expect(
+        historyCapabilitiesForScope(scope({ accessScope: ['history:read', 'history:audit:read'] })),
+      ).toContain('READ_HISTORY_AUDIT');
+      expect(
+        historyCapabilitiesForScope(scope({ accessScope: ['history:read', 'action:audit:read'] })),
+      ).toContain('READ_HISTORY_AUDIT');
+      expect(historyCapabilitiesForScope(scope({ accessScope: ['owner'] }))).toContain(
+        'READ_HISTORY_AUDIT',
+      );
+    });
+
+    it('List hides EXTERNAL_ACTION AUDIT_EVENT rows without the audit capability (G)', async () => {
+      const store = createInMemoryHistoryReadModelStore();
+      const externalAction = makeAdapter('history-external-action', 'EXTERNAL_ACTION', [
+        { id: 'audit:1', occurredAt: '2026-08-09T03:00:00.000Z', sourceEventKind: 'AUDIT_EVENT' },
+        { id: 'result:1', occurredAt: '2026-08-09T02:00:00.000Z', sourceEventKind: 'RESULT' },
+      ]);
+      const registry = createHistoryAdapterRegistry(
+        mandatoryAdapters(
+          [
+            makeAdapter('history-canonical', 'CANONICAL', [
+              { id: 'c1', occurredAt: '2026-08-09T01:00:00.000Z' },
+            ]),
+          ],
+          [],
+          [externalAction],
+          [],
+        ),
+      );
+      const builder = new HistoryProjectionBuilder(registry, store);
+      await builder.buildProjectProjection('p1');
+      const coordinator = new HistoryProductCoordinator(store.index, registry);
+
+      // history:read only → RESULT visible, AUDIT_EVENT hidden non-disclosingly.
+      const withoutAudit = await coordinator.listHistoryWorkspace(
+        scope({ accessScope: ['history:read'] }),
+        { schemaVersion: '1.0.0', resourceProjectId: 'p1', limit: 20 },
+      );
+      const kinds = withoutAudit.entries.map((e) => `${e.domainKind}:${e.sourceEventKind}`);
+      expect(kinds).toContain('EXTERNAL_ACTION:RESULT');
+      expect(kinds).not.toContain('EXTERNAL_ACTION:AUDIT_EVENT');
+      expect(kinds).toContain('CANONICAL:CANONICAL_CLAIM_ADDED');
+
+      // history:read + audit capability → AUDIT_EVENT visible.
+      const withAudit = await coordinator.listHistoryWorkspace(
+        scope({ accessScope: ['history:read', 'history:audit:read'] }),
+        { schemaVersion: '1.0.0', resourceProjectId: 'p1', limit: 20 },
+      );
+      expect(
+        withAudit.entries.some(
+          (e) => e.domainKind === 'EXTERNAL_ACTION' && e.sourceEventKind === 'AUDIT_EVENT',
+        ),
+      ).toBe(true);
+    });
+
+    it('getHistoryEntry denies AUDIT_EVENT detail without the audit capability (G)', async () => {
+      const store = createInMemoryHistoryReadModelStore();
+      const externalAction = makeAdapter('history-external-action', 'EXTERNAL_ACTION', [
+        { id: 'audit:1', occurredAt: '2026-08-09T03:00:00.000Z', sourceEventKind: 'AUDIT_EVENT' },
+      ]);
+      const registry = createHistoryAdapterRegistry(
+        mandatoryAdapters([], [], [externalAction], []),
+      );
+      const builder = new HistoryProjectionBuilder(registry, store);
+      await builder.buildProjectProjection('p1');
+      const coordinator = new HistoryProductCoordinator(store.index, registry);
+
+      // history:read only → same non-disclosing NOT_FOUND.
+      await expect(
+        coordinator.getHistoryEntry(scope({ accessScope: ['history:read'] }), {
+          schemaVersion: '1.0.0',
+          resourceProjectId: 'p1',
+          historyEntryId: 'history:p1:audit:1',
+        }),
+      ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+      // With the audit capability the authoritative entry resolves.
+      const ok = await coordinator.getHistoryEntry(
+        scope({ accessScope: ['history:read', 'action:audit:read'] }),
+        { schemaVersion: '1.0.0', resourceProjectId: 'p1', historyEntryId: 'history:p1:audit:1' },
+      );
+      expect(ok.entry.sourceEventId).toBe('audit:1');
+    });
+
+    it('List applies read-time payload redaction through the owning adapter (F)', async () => {
+      const store = createInMemoryHistoryReadModelStore();
+      const redactingCanonical: HistoryAdapterPort = {
+        ...makeAdapter('history-canonical', 'CANONICAL', [
+          { id: 'c1', occurredAt: '2026-08-09T01:00:00.000Z' },
+        ]),
+        // Simulate a purge that happened after the projection was cached.
+        async redactEntry(record) {
+          return {
+            ...record,
+            payloadAvailability: 'PURGED_BY_POLICY',
+            payloadSnapshot: { digest: 'sha256:redacted' },
+          };
+        },
+      };
+      const registry = createHistoryAdapterRegistry(mandatoryAdapters([redactingCanonical]));
+      const builder = new HistoryProjectionBuilder(registry, store);
+      await builder.buildProjectProjection('p1');
+      const coordinator = new HistoryProductCoordinator(store.index, registry);
+      const page = await coordinator.listHistoryWorkspace(scope(), {
+        schemaVersion: '1.0.0',
+        resourceProjectId: 'p1',
+        limit: 20,
+      });
+      expect(page.entries[0]!.payloadAvailability).toBe('PURGED_BY_POLICY');
+      expect(page.entries[0]!.payloadSnapshot).toEqual({ digest: 'sha256:redacted' });
     });
   });
 });

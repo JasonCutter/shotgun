@@ -1309,6 +1309,7 @@ tr.graph-item--discovery {
   padding: 0.5rem;
   background: none;
   cursor: pointer;
+  color: var(--text, #1a1a1a);
 }
 
 .history-list-item:hover {
@@ -1318,10 +1319,12 @@ tr.graph-item--discovery {
 .history-list-item[aria-current='true'] {
   border-color: var(--accent, #005fb8);
   background: var(--surface-active, #e8f0fa);
+  color: var(--text, #1a1a1a);
 }
 
 .history-item-domain {
   font-weight: 600;
+  color: var(--text, #1a1a1a);
 }
 
 .history-item-event,
@@ -1394,14 +1397,14 @@ tr.graph-item--discovery {
 
 .history-payload-available {
   background: #e6f4ea;
-  color: #1e7e34;
+  color: #166534;
 }
 
 .history-payload-redacted,
 .history-payload-purged_by_policy,
 .history-payload-unavailable {
   background: #fdf0e6;
-  color: #b4561c;
+  color: #92400e;
 }
 
 .history-owning-links {

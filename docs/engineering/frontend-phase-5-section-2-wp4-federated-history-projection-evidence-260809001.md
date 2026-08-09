@@ -1,7 +1,7 @@
 ---
 id: FRONTEND-PHASE-5-SECTION-2-WP4-EVIDENCE-260809001
 classification: CANONICAL
-status: wp4_round1_fixes_pending_review
+status: wp4_round2_fixes_pending_review
 work_item: FE-P5-S2
 created_at: 2026-08-09
 subject_base: 701e0bfac5af60daa48d9155185956b91650ecbd
@@ -14,6 +14,7 @@ wp4_round1_fix_head: eb1659704
 wp4_round1_fix_ci_number: 700
 wp4_round1_fix_ci_run_id: 31296506420
 wp4_round1_fix_ci_conclusion: SUCCESS
+wp4_round2_fix_head: 323036595
 tracking_issue: https://github.com/JasonCutter/shotgun/issues/71
 contract_pr: https://github.com/JasonCutter/shotgun/pull/70
 product_pr: https://github.com/JasonCutter/shotgun/pull/80
@@ -64,32 +65,61 @@ GPT Review Round 1 (CHANGES_REQUIRED, 5 items) was resolved as follows:
   `REFRESH_HISTORY_PROJECTION` capability were REMOVED (not amended); raw adapter/provider
   error messages are never surfaced to the browser.
 
+## 1b. GPT Review Round 2 — fixes applied
+
+GPT Review Round 2 (CHANGES_REQUIRED: A/B/C partially resolved, D/E resolved, F/G new
+blockers) was resolved as follows (code head recorded in frontmatter):
+
+- **A — Mandatory adapter exact-set**: `createHistoryAdapterRegistry` now enforces the four
+  mandatory families (CANONICAL / REVIEW / EXTERNAL_ACTION / POLICY) exactly once each.
+  Missing / duplicate / unknown adapter kinds fail closed at wiring time, so a wiring
+  mistake can never produce a silently partial build that commits as complete.
+- **B/C — Audit Detail > 500**: `ExternalActionAuditStorePort.findById(auditEventId)` added
+  (in-memory + PostgreSQL); `resolveHistoryEntry(AUDIT_EVENT)` now resolves by append-only
+  identity with project-binding check — an event past the first 500 resolves exactly like
+  the first one. Regression: audit:50 / audit:750 / audit:1199 resolve, unknown fails
+  closed.
+- **F — Payload redaction**: `redactHistoryPayload` (payload-state.ts) enforces the
+  invariant AVAILABLE → bounded payload; REDACTED / PURGED_BY_POLICY / UNAVAILABLE → raw
+  payload FORBIDDEN (tombstone metadata only). Applied at build time (projection cache
+  never stores raw payload for non-AVAILABLE rows) AND at read time
+  (`HistoryAdapterPort.redactEntry` re-checks current availability for every List/Detail
+  row, so a purge after a cached projection cannot leak raw payload — AC-05).
+- **G — Audit capability revalidation**: `READ_HISTORY_AUDIT` is a separate capability
+  (scopes `history:audit:read` / `action:audit:read` / owner / admin, AC-13 read-time
+  revalidation). List hides EXTERNAL_ACTION AUDIT_EVENT rows without it via a keyset
+  over-fetch that keeps pages full (no leak of inaccessible-row counts, no skipped
+  visible rows); Detail returns the same non-disclosing NOT_FOUND.
+
 ## 2. Implemented files
 
-| File                                                                  | Content                                                                                                                               |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `modules/frontend-history/src/history-index-store-port.ts`            | `HistoryIndexRecordV1` + `HistoryIndexStorePort` (upsert/findByIdentity/queryProject/delete/rebuild + frozen-tuple cursor)            |
-| `modules/frontend-history/src/history-watermark-store-port.ts`        | `HistoryWatermarkRecordV1` + `HistoryWatermarkStorePort`                                                                              |
-| `modules/frontend-history/src/history-read-model-store-port.ts`       | `HistoryReadModelStorePort.commitProjectProjection` (atomic project-scoped commit)                                                    |
-| `modules/frontend-history/src/history-adapter-port.ts`                | `HistoryAdapterPort` + `HistoryAdapterRegistryPort` (one adapter per mandatory family)                                                |
-| `modules/frontend-history/src/history-projection-builder.ts`          | `HistoryProjectionBuilder` (deterministic, atomic, fail-closed per adapter)                                                           |
-| `modules/frontend-history/src/product-api.ts`                         | `HistoryProductCoordinator` (`ListHistoryWorkspace` / `GetHistoryEntry`, capability gate, authoritative detail re-resolution)                      |
-| `modules/frontend-history/src/index.ts`                               | module exports                                                                                                                        |
-| `modules/frontend-review/src/review-store-port.ts`                    | `ReviewApprovalStorePort.listByProject` added                                                                                         |
-| `adapters/frontend-review-in-memory/src/index.ts`                     | `listByProject` in-memory                                                                                                             |
-| `adapters/frontend-review-postgres/src/index.ts`                      | `listByProject` PostgreSQL (`DISTINCT ON (approval_id)`)                                                                              |
-| `adapters/frontend-history-canonical/src/index.ts`                    | `CanonicalHistoryAdapter` (Canonical listHistory → HistoryEntryV1)                                                                    |
-| `adapters/frontend-history-review/src/index.ts`                       | `ReviewHistoryAdapter` (contexts + decisions + approvals inside review boundary)                                                      |
-| `adapters/frontend-history-external-action/src/index.ts`              | `ExternalActionHistoryAdapter` (aggregates + audit inside boundary, sourceSequence preserved)                                         |
-| `adapters/frontend-history-policy/src/index.ts`                       | `PolicyHistoryAdapter` (PolicyHistoryReadPort → HistoryEntryV1)                                                                       |
-| `adapters/frontend-history-postgres/src/history-projection-store.ts`  | `PostgresHistoryIndexStore` / `PostgresHistoryWatermarkStore` / `createPostgresHistoryReadModelStore` (advisory lock + watermark CAS) |
-| `adapters/frontend-history-in-memory/src/history-projection-store.ts` | in-memory counterparts                                                                                                                |
-| `assemblies/shotgun-app/src/product-api/frontend-history-routes.ts`   | `/product-api/frontend/history/{workspace,entry,refresh}` routes (server-derived scope)                                               |
-| `assemblies/shotgun-app/src/server.ts` / `src/main.ts`                | wiring (in-memory default + PostgreSQL runtime)                                                                                       |
-| `scripts/database.ts`                                                 | `requiredTables` += frontend_history (db:verify)                                                                                      |
-| `tests/unit/frontend-history-projection.test.ts`                      | 11 tests (ordering/cursor, index store, builder fail-closed, coordinator capability/pagination)                                       |
-| `tests/unit/frontend-history-adapters.test.ts`                        | 5 tests (domain adapters identity/availability mapping)                                                                               |
-| `tests/database/frontend-history-projection-postgres-parity.test.ts`  | 6 tests (in-memory vs PostgreSQL parity on migration 030)                                                                             |
+| File                                                                  | Content                                                                                                                                                     |
+| --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `modules/frontend-history/src/history-index-store-port.ts`            | `HistoryIndexRecordV1` + `HistoryIndexStorePort` (upsert/findByIdentity/queryProject/delete/rebuild + frozen-tuple cursor)                                  |
+| `modules/frontend-history/src/history-watermark-store-port.ts`        | `HistoryWatermarkRecordV1` + `HistoryWatermarkStorePort`                                                                                                    |
+| `modules/frontend-history/src/history-read-model-store-port.ts`       | `HistoryReadModelStorePort.commitProjectProjection` (atomic project-scoped commit)                                                                          |
+| `modules/frontend-history/src/history-adapter-port.ts`                | `HistoryAdapterPort` (+ `redactEntry` read-time redaction) + `HistoryAdapterRegistryPort` (exact-set mandatory registry, Round 2 A)                         |
+| `modules/frontend-history/src/history-projection-builder.ts`          | `HistoryProjectionBuilder` (deterministic, atomic; ANY adapter failure aborts with no commit)                                                               |
+| `modules/frontend-history/src/payload-state.ts`                       | `redactHistoryPayload` (payload redaction invariant, Round 2 F)                                                                                             |
+| `modules/frontend-history/src/product-api.ts`                         | `HistoryProductCoordinator` (`ListHistoryWorkspace` / `GetHistoryEntry`, capability gate + `READ_HISTORY_AUDIT`, authoritative detail, read-time redaction) |
+| `modules/frontend-history/src/index.ts`                               | module exports                                                                                                                                              |
+| `modules/frontend-review/src/review-store-port.ts`                    | `ReviewApprovalStorePort.listByProject` added                                                                                                               |
+| `modules/frontend-review-in-memory                                    | postgres` (adapters)                                                                                                                                        | `listByProject` in-memory + PostgreSQL  |
+| `modules/frontend-external-action/src/external-action-store-port.ts`  | `ExternalActionAuditStorePort.findById` added (Round 2 B/C)                                                                                                 |
+| `adapters/frontend-external-action-in-memory                          | postgres/src/index.ts`                                                                                                                                      | `audit.findById` in-memory + PostgreSQL |
+| `adapters/frontend-history-canonical/src/index.ts`                    | `CanonicalHistoryAdapter` (listHistory → HistoryEntryV1, redaction)                                                                                         |
+| `adapters/frontend-history-review/src/index.ts`                       | `ReviewHistoryAdapter` (contexts + decisions + approvals inside review boundary, redaction)                                                                 |
+| `adapters/frontend-history-external-action/src/index.ts`              | `ExternalActionHistoryAdapter` (RESULT + AUDIT_EVENT both, complete audit pagination, findById detail, redaction)                                           |
+| `adapters/frontend-history-policy/src/index.ts`                       | `PolicyHistoryAdapter` (PolicyHistoryReadPort → HistoryEntryV1, redaction)                                                                                  |
+| `adapters/frontend-history-postgres/src/history-projection-store.ts`  | `PostgresHistoryIndexStore` / `PostgresHistoryWatermarkStore` / `createPostgresHistoryReadModelStore` (advisory lock + watermark CAS)                       |
+| `adapters/frontend-history-in-memory/src/history-projection-store.ts` | in-memory counterparts                                                                                                                                      |
+| `assemblies/shotgun-app/src/product-api/frontend-history-routes.ts`   | `/product-api/frontend/history/{workspace,entry}` routes (server-derived scope)                                                                             |
+| `assemblies/shotgun-app/src/server.ts` / `src/main.ts`                | wiring (in-memory default + PostgreSQL runtime)                                                                                                             |
+| `scripts/database.ts`                                                 | `requiredTables` += frontend_history (db:verify)                                                                                                            |
+| `tests/unit/frontend-history-projection.test.ts`                      | 18 tests (ordering/cursor, index store, builder fail-closed + exact-set registry, coordinator capability/audit-gate/redaction/pagination)                   |
+| `tests/unit/frontend-history-adapters.test.ts`                        | 7 tests (domain adapters identity/availability + payload redaction)                                                                                         |
+| `tests/unit/frontend-history-external-action-completeness.test.ts`    | 5 tests (RESULT+AUDIT both, 1200 audit pagination, findById detail >500, redaction)                                                                         |
+| `tests/database/frontend-history-projection-postgres-parity.test.ts`  | 6 tests (in-memory vs PostgreSQL parity on migration 030)                                                                                                   |
 
 ## 3. Federated History projection (non-authoritative, rebuildable)
 
@@ -105,24 +135,26 @@ project-scoped transaction (IR r1 §4):
 - source Domain History is never modified; source identity is preserved exactly.
 
 `HistoryProjectionBuilder` runs one deterministic build per project: every adapter is read
-in registry order; a failed adapter contributes NO rows AND receives a current-revision
-`UNAVAILABLE` watermark (no stale AVAILABLE observation is ever presented as current).
-`snapshotRevision` is monotonic (newest watermark + 1). Ordering/cursor uses the frozen
-tuple `occurred_at + domain_kind + source_event_kind + source_event_id + source_sequence`
+in registry order; ANY adapter failure aborts the ENTIRE rebuild — NO index write, NO
+watermark advance — and the previous complete committed projection stays visible (Round 1
+A + Round 2 A exact-set registry). `snapshotRevision` is monotonic (newest watermark + 1).
+Ordering/cursor uses the frozen tuple
+`occurred_at + domain_kind + source_event_kind + source_event_id + source_sequence`
 (ADR-131 §2), and the projection never becomes a global chronology authority.
 
 ## 4. Domain adapters (source identity preserved)
 
-| Adapter                      | Authoritative source                                           | Mapping                                                                                         |
-| ---------------------------- | -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| CanonicalHistoryAdapter      | `CanonicalKnowledgeRepositoryPort.listHistory`                 | `domainKind=CANONICAL`, `sourceEventId=historyEventId`, `domainResourceId=claimId\|changeSetId` |
-| ReviewHistoryAdapter         | review boundary transaction (contexts + decisions + approvals) | `sourceEventId=decisionId\|approvalId`, `sourceEventKind=DECISION\|APPROVAL`                    |
-| ExternalActionHistoryAdapter | external action boundary transaction (aggregates + audit)      | `sourceEventKind=AUDIT_EVENT`, `sourceSequence=audit.sequence`                                  |
-| PolicyHistoryAdapter         | `PolicyHistoryReadPort.listPolicyHistory`                      | `sourceEventKind=sourceKind`, `sourceEventId=sourceId`                                          |
+| Adapter                      | Authoritative source                                           | Mapping                                                                                           |
+| ---------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| CanonicalHistoryAdapter      | `CanonicalKnowledgeRepositoryPort.listHistory`                 | `domainKind=CANONICAL`, `sourceEventId=historyEventId`, `domainResourceId=claimId\|changeSetId`   |
+| ReviewHistoryAdapter         | review boundary transaction (contexts + decisions + approvals) | `sourceEventId=decisionId\|approvalId`, `sourceEventKind=DECISION\|APPROVAL`                      |
+| ExternalActionHistoryAdapter | external action boundary transaction (RESULT + AUDIT_EVENT)    | `sourceEventKind=RESULT\|AUDIT_EVENT`, `sourceSequence=audit.sequence`, complete audit pagination |
+| PolicyHistoryAdapter         | `PolicyHistoryReadPort.listPolicyHistory`                      | `sourceEventKind=sourceKind`, `sourceEventId=sourceId`                                            |
 
 Payload availability is resolved through the owner-side `PayloadStateStorePort` sidecar
 (migration 032): `AVAILABLE / REDACTED / PURGED_BY_POLICY / UNAVAILABLE` — event identity is
-never deleted. `historyEntryId` is projection identity only.
+never deleted. Raw payload is FORBIDDEN on non-AVAILABLE rows (Round 2 F): only tombstone
+metadata survives, and the projection cache never stores raw payload for purged rows.
 
 ## 5. History Workspace Product API
 
@@ -139,9 +171,13 @@ never deleted. `historyEntryId` is projection identity only.
 
 No browser refresh route or refresh capability exists (Round 1 fix E).
 
-Capabilities: `history:read` (LIST_HISTORY_WORKSPACE + READ_HISTORY_ENTRY). Deny-by-default
-scope validation; browser never authors principal/project/revision/capability. Reversal
-creation is NOT a History route (WP3 owns it).
+Capabilities: `history:read` (LIST_HISTORY_WORKSPACE + READ_HISTORY_ENTRY) and the separate
+`READ_HISTORY_AUDIT` (scopes `history:audit:read` / `action:audit:read` / owner / admin,
+AC-13 read-time revalidation, Round 2 G). EXTERNAL_ACTION AUDIT_EVENT rows are hidden from
+List and denied (non-disclosing NOT_FOUND) in Detail without the audit capability. Every
+returned row is re-checked for payload redaction through the owning adapter (Round 2 F).
+Deny-by-default scope validation; browser never authors principal/project/revision/
+capability. Reversal creation is NOT a History route (WP3 owns it).
 
 Routes (`registerHistoryRoutes`):
 
@@ -150,13 +186,14 @@ Routes (`registerHistoryRoutes`):
 
 ## 6. Verification
 
-- WP4 focused suites: unit 22 + DB parity 6 = **28 tests PASS** (Round 1 fixes, head
-  `eb1659704`): projection/cursor 13, adapter identity 5, external-action completeness 4,
-  postgres parity 6.
-- Full `npm run test:database`: **205 tests PASS** (38 files).
+- WP4 focused suites: unit 30 + DB parity 6 = **36 tests PASS** (Round 2 fixes):
+  projection/cursor 18 (incl. exact-set registry, audit-gate, redaction), adapter identity
+  7 (incl. redaction + purge-after-cache), external-action completeness 5 (incl. findById
+  detail >500), postgres parity 6.
+- Full unit suite: **479 tests PASS** (64 files).
+- Related DB suites: history parity 6 + external-action/review parity 19 = PASS.
 - `tsc --noEmit`, ESLint, Prettier clean.
-- Automatic CI on push (PR #80, Draft): #698 SUCCESS (implementation), #700 SUCCESS
-  (Round 1 fixes).
+- Automatic CI on push (PR #80, Draft) — latest head recorded in frontmatter.
 
 ## 7. Preserved boundaries
 
@@ -170,5 +207,5 @@ Not implemented in this Work Package (remain unauthorized):
 
 ## 8. Next action
 
-Report WP4 Round 1 fixes (A–E) for the GPT Review Round 2. Do not begin WP5 until WP4 is
+Report WP4 Round 2 fixes (A–G) for the GPT Review Round 3. Do not begin WP5 until WP4 is
 reviewed and accepted.

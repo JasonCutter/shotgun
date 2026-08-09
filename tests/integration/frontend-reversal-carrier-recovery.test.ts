@@ -50,14 +50,21 @@ describe('FE-P5-S2 WP6 Reversal carrier recovery', () => {
     auth = new InMemoryAuthRepository();
   });
 
-  const seedCanonical = async (): Promise<CanonicalKnowledgeRepositoryPort> => {
+  const seedCanonical = async (
+    count: number,
+  ): Promise<{ repo: CanonicalKnowledgeRepositoryPort }> => {
     const { InMemoryCanonicalKnowledgeRepository } =
       await import('../../adapters/stage6-in-memory/src/index.js');
     const { approvedChangeSetManifestDigest, approvalTokenDigest } =
       await import('../../packages/contracts/src/index.js');
     const repo = new InMemoryCanonicalKnowledgeRepository();
     const actor = { type: 'user' as const, id: 'principal-1' };
-    const snapshot0 = canonicalSnapshotDigest(PROJECT_ID, 0, []);
+    const claims: {
+      claimId: string;
+      text: string;
+      revisionNumber: 1;
+      evidenceIds: readonly string[];
+    }[] = [];
     const manifest = (
       manifestId: string,
       changeSetId: string,
@@ -106,26 +113,112 @@ describe('FE-P5-S2 WP6 Reversal carrier recovery', () => {
       };
       return base;
     };
-    const manifest1 = manifest(
-      'manifest-1',
-      'change-set-1',
-      'candidate-1',
-      'Claim A',
-      0,
-      snapshot0,
-      '2026-08-09T01:00:00.000Z',
-    );
+    for (let i = 1; i <= count; i += 1) {
+      const claim = {
+        claimId: `claim-${i}`,
+        text: `Claim ${i}`,
+        revisionNumber: 1 as const,
+        evidenceIds: [] as readonly string[],
+      };
+      claims.push(claim);
+      const snapshotBefore = canonicalSnapshotDigest(
+        PROJECT_ID,
+        i - 1,
+        claims.slice(0, i - 1).map((c) => ({
+          claimId: c.claimId,
+          text: c.text,
+          revisionNumber: c.revisionNumber,
+          evidenceIds: [...c.evidenceIds],
+        })),
+      );
+      const createdAt = `2026-08-09T0${i}:00:00.000Z`;
+      const m = manifest(
+        `manifest-${i}`,
+        `change-set-${i}`,
+        `candidate-${i}`,
+        `Claim ${i}`,
+        i - 1,
+        snapshotBefore,
+        createdAt,
+      );
+      await repo.commit({
+        commitId: `commit-${i}`,
+        revisionId: `revision:${i}`,
+        historyEventId: `e-${i}`,
+        outboxId: `outbox-${i}`,
+        claimId: `claim-${i}`,
+        manifest: { ...m, manifestDigest: approvedChangeSetManifestDigest(m) },
+        actor,
+        committedAt: createdAt,
+      });
+    }
+    return { repo };
+  };
+
+  /** Commits one more Canonical revision on top of the seeded repo (new tip). */
+  const commitNextRevision = async (
+    repo: CanonicalKnowledgeRepositoryPort,
+    revision: number,
+  ): Promise<void> => {
+    const { approvedChangeSetManifestDigest, approvalTokenDigest } =
+      await import('../../packages/contracts/src/index.js');
+    const actor = { type: 'user' as const, id: 'principal-1' };
+    const snapshot = await repo.getSnapshot(PROJECT_ID);
+    const beforeClaims = snapshot.claims.map((c) => ({
+      claimId: c.claimId,
+      text: c.text,
+      revisionNumber: c.revisionNumber,
+      evidenceIds: [...c.evidenceIds],
+    }));
+    const snapshotBefore = canonicalSnapshotDigest(PROJECT_ID, snapshot.version, beforeClaims);
+    const createdAt = `2026-08-09T1${revision}:00:00.000Z`;
+    const approvalTokenInput = {
+      tokenId: `token:commit-${revision}`,
+      changeSetId: `change-set-${revision}`,
+      changeSetRevisionNumber: 1 as const,
+      actorId: 'principal-1',
+      contentDigest: `content:change-set-${revision}`,
+      expectedCanonicalVersion: snapshot.version,
+      snapshotDigest: snapshotBefore,
+      issuedAt: createdAt,
+      expiresAt: '2026-12-31T00:00:00.000Z',
+    };
+    const m = {
+      manifestId: `manifest-${revision}`,
+      changeSetId: `change-set-${revision}`,
+      changeSetRevisionNumber: 1 as const,
+      projectId: PROJECT_ID,
+      sourceVersionId: 'source-1',
+      candidateId: `candidate-${revision}`,
+      candidateRevisionNumber: 1 as const,
+      claimText: `Claim ${revision}`,
+      operation: 'ADD_CLAIM' as const,
+      classification: 'NEW_CLAIM' as const,
+      candidateDigest: `candidate-digest:candidate-${revision}`,
+      evidenceIds: [] as readonly string[],
+      accessScope: ['owner'],
+      sensitivity: 'private' as const,
+      expectedCanonicalVersion: snapshot.version,
+      snapshotDigest: snapshotBefore,
+      diffDigest: `diff:change-set-${revision}`,
+      contentDigest: `content:change-set-${revision}`,
+      approvalToken: {
+        ...approvalTokenInput,
+        tokenDigest: approvalTokenDigest(approvalTokenInput),
+      },
+      reason: 'commit',
+      createdAt,
+    };
     await repo.commit({
-      commitId: 'commit-1',
-      revisionId: 'revision:1',
-      historyEventId: 'e-1',
-      outboxId: 'outbox-1',
-      claimId: 'claim-a',
-      manifest: { ...manifest1, manifestDigest: approvedChangeSetManifestDigest(manifest1) },
+      commitId: `commit-${revision}`,
+      revisionId: `revision:${revision}`,
+      historyEventId: `e-${revision}`,
+      outboxId: `outbox-${revision}`,
+      claimId: `claim-${revision}`,
+      manifest: { ...m, manifestDigest: approvedChangeSetManifestDigest(m) },
       actor,
-      committedAt: '2026-08-09T01:00:00.000Z',
+      committedAt: createdAt,
     });
-    return repo;
   };
 
   const sessionCookie = async (scopes: readonly string[]): Promise<string> => {
@@ -173,7 +266,7 @@ describe('FE-P5-S2 WP6 Reversal carrier recovery', () => {
 
   it('reconciles a missing derived carrier from the authoritative Reversal (same reversalId) into the Review Queue', async () => {
     const cookie = await sessionCookie(['owner', 'project:action:rollback']);
-    const canonical = await seedCanonical();
+    const { repo: canonical } = await seedCanonical(1);
     const draftRepository = new FailOnceDraftRepository();
     const application = await createApplication({
       authRepository: auth,
@@ -248,6 +341,68 @@ describe('FE-P5-S2 WP6 Reversal carrier recovery', () => {
       context: { targetId: string };
     }>();
     expect(contextBody.context.targetId).toBe(reversalId);
+
+    await application.server.close();
+  });
+
+  it('fail-closed: does NOT regenerate a stale/superseded Reversal carrier after a newer Canonical revision (WP6 Round 2)', async () => {
+    const cookie = await sessionCookie(['owner', 'project:action:rollback']);
+    // revision:1 + revision:2 (revision:2 is the current tip).
+    const { repo: canonical } = await seedCanonical(2);
+    const draftRepository = new FailOnceDraftRepository();
+    const application = await createApplication({
+      authRepository: auth,
+      canonicalKnowledgeRepository: canonical,
+      frontendKnowledgeDraftRepository: draftRepository,
+    });
+    const token = await csrfToken(application, cookie);
+
+    // 1) Create a Reversal of the CURRENT tip (revision:2): authoritative save
+    //    succeeds, derived carrier insert is FORCED to fail.
+    const created = await post(
+      application,
+      cookie,
+      token,
+      '/product-api/frontend/review/reversal-draft',
+      {
+        schemaVersion: '1.0.0',
+        resourceProjectId: PROJECT_ID,
+        sourceRevisionId: 'revision:2',
+        reason: 'Reversal with a forced carrier-write failure (later superseded).',
+      },
+    );
+    expect(created.statusCode).toBe(500);
+    const reversals = await application.repositories.reviews.listReversals(PROJECT_ID);
+    expect(reversals.length).toBe(1);
+    const reversalId = reversals[0]!.reversalId;
+    expect(reversals[0]?.sourceRevisionId).toBe('revision:2');
+
+    // 2) A NEW Canonical revision:3 commits (the Reversal source is now
+    //    superseded — a later ADD_CLAIM exists on the current tip).
+    await commitNextRevision(canonical, 3);
+
+    // 3) Queue read triggers reconciliation, but the Reversal's CURRENT
+    //    canonical eligibility is now stale/superseded → fail-closed: the
+    //    SAME reversalId carrier is NOT regenerated and the newer Canonical
+    //    change is never folded into the Reversal impact.
+    const queue = await post(application, cookie, token, '/product-api/frontend/review/queue', {
+      schemaVersion: '1.0.0',
+      pageSize: 50,
+    });
+    expect(queue.statusCode).toBe(200);
+    const queueBody = queue.json<{
+      items: readonly { targetId: string }[];
+    }>();
+    expect(queueBody.items.find((item) => item.targetId === reversalId)).toBeUndefined();
+
+    // 4) The carrier is NOT regenerated, but the authoritative Reversal is
+    //    still durable (never deleted — recovery is not rollback).
+    const carrier = (await draftRepository.transaction(({ drafts }) =>
+      drafts.findById(PROJECT_ID, reversalId),
+    )) as FrontendKnowledgeDraftChangeSetV1 | undefined;
+    expect(carrier).toBeUndefined();
+    const still = await application.repositories.reviews.findReversalById(PROJECT_ID, reversalId);
+    expect(still?.status).toBe('CANDIDATE');
 
     await application.server.close();
   });

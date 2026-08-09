@@ -105,7 +105,17 @@ succeeds; the recovery invariant is:
    record (never a new Reversal id) and inserted.
 3. Review Queue then contains the same Reversal and its Context is readable.
 
-1 focused regression PASS (real HTTP flow + forced failure + recovery).
+**WP6 Round 2 safety (stale/superseded fail-closed):** before regenerating a
+carrier, `reconcileReversalCarriers` re-validates the CURRENT Canonical
+eligibility (`assessReversalEligibility` with the current server-derived
+capability set). A stale / superseded / dependent-revision Reversal is NEVER
+resurrected — its carrier is not regenerated and a newer Canonical change is
+never folded into the Reversal impact. Focused regression (2nd test): create
+Reversal of the current tip → authoritative save + forced carrier failure →
+new Canonical revision commits → queue reconcile → same reversalId carrier NOT
+regenerated, authoritative Reversal still durable (recovery, not rollback).
+
+2 focused regressions PASS (happy-path recovery + stale/superseded fail-closed).
 
 ### 3.4 Performance (AC-16) — `tests/browser/frontend-history-performance.spec.ts`
 
@@ -134,6 +144,10 @@ Authority: explicit AC-16 numeric-threshold approval
 
 Both medians were measured far below the frozen gate on the representative
 state; the gate test (`GATE_MS = 2000`) is the FROZEN performance verification.
+The Contract Snapshot r1 records the resolution history:
+`DEFERRED_PARAMETER` → resolved by explicit user approval (2026-08-09) →
+`history-list-display-ms`/`history-list-to-detail-ms` median ≤ 2000 ms (no
+silent overwrite of the prior deferred record).
 
 ## 4. Verification totals (2026-08-09)
 
@@ -147,7 +161,8 @@ state; the gate test (`GATE_MS = 2000`) is the FROZEN performance verification.
   exceed the gate only under full-suite load; each passes standalone — the
   History performance spec passes with the measured baselines above).
 - New WP6 specs: History E2E 6/6, History performance 2/2 (standalone),
-  History/Reversal HTTP security negatives 5/5, Reversal carrier recovery 1/1.
+  History/Reversal HTTP security negatives 5/5, Reversal carrier recovery 2/2
+  (happy-path + stale/superseded fail-closed).
 - `tsc --noEmit` (root + app), ESLint, Prettier clean.
 - Governance cleanup: WP2 evidence frontmatter corrected to `wp2_accepted`;
   Architecture Amendment approval authority recorded as "Explicit Architecture

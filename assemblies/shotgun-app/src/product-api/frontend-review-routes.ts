@@ -230,24 +230,36 @@ const materializeReversalAsKnowledgeDraft = async (input: {
 };
 
 /**
- * FE-P5-S2 WP6 (Round 1 Blocker B): reconcile the derived Review carrier from
- * the authoritative change-set-review Reversal records.
+ * FE-P5-S2 WP6 (Round 1 Blocker B / Round 2): reconcile the derived Review
+ * carrier from the authoritative change-set-review Reversal records.
  *
  * The authoritative Reversal (review.reversals) and the derived SUBMITTED
- * Knowledge Draft carrier (migration 025) are separate persistence
- * boundaries. If a carrier write fails after the authoritative save succeeds,
- * the Reversal is durable but missing from the Review Queue. This helper
- * deterministically regenerates the carrier for the SAME reversalId (never a
- * new Reversal) from the authoritative record, so the Review Queue is
- * recovered. Returns the number of carriers regenerated.
+ * Knowledge Draft carrier (migration 025) are separate persistence boundaries.
+ * If a carrier write fails after the authoritative save succeeds, the Reversal
+ * is durable but missing from the Review Queue. This helper deterministically
+ * regenerates the carrier for the SAME reversalId (never a new Reversal) from
+ * the authoritative record — but ONLY after re-validating the CURRENT
+ * Canonical eligibility (Round 2 safety): a stale / superseded /
+ * dependent-revision Reversal is NEVER resurrected (fail-closed), so a newer
+ * Canonical change is never absorbed into a Reversal impact. Returns the
+ * number of carriers regenerated.
  */
 const reconcileReversalCarriers = async (input: {
   readonly scope: ReversalDraftScope;
   readonly canonical: CanonicalKnowledgeRepositoryPort;
   readonly draftRepository: FrontendKnowledgeDraftRepositoryBoundaryPort;
   readonly reversalStore: ChangeSetReviewRepositoryPort;
+  readonly reversalEligibilityPort: ReversalEligibilityPort;
+  readonly currentCapabilities: readonly string[];
 }): Promise<number> => {
-  const { scope, canonical, draftRepository, reversalStore } = input;
+  const {
+    scope,
+    canonical,
+    draftRepository,
+    reversalStore,
+    reversalEligibilityPort,
+    currentCapabilities,
+  } = input;
   const reversals = await reversalStore.listReversals(scope.activeProjectId);
   let reconciled = 0;
   for (const reversal of reversals) {
@@ -255,6 +267,16 @@ const reconcileReversalCarriers = async (input: {
       drafts.findById(scope.activeProjectId, reversal.reversalId),
     );
     if (existing) continue;
+    // WP6 Round 2 safety: re-validate the CURRENT Canonical eligibility before
+    // regenerating the carrier. A stale / superseded / dependent-revision
+    // Reversal is fail-closed — its carrier is NOT regenerated and the newer
+    // Canonical change is never folded into the Reversal impact.
+    const eligibility = await reversalEligibilityPort.assessReversalEligibility({
+      resourceProjectId: reversal.resourceProjectId,
+      sourceRevisionId: reversal.sourceRevisionId,
+      currentCapabilities,
+    });
+    if (!eligibility.eligible) continue;
     const draft = await materializeReversalAsKnowledgeDraft({ scope, reversal, canonical });
     await draftRepository.transaction(async ({ drafts }) => {
       await drafts.insert(draft);
@@ -344,6 +366,8 @@ export function registerFrontendReviewRoutes(
             canonical: options.canonicalKnowledgeRepository,
             draftRepository: options.frontendKnowledgeDraftRepository,
             reversalStore: options.changeSetReviewRepository,
+            reversalEligibilityPort,
+            currentCapabilities: scope.accessScope,
           });
         }
         const decoded = decodeListReviewQueueRequestV1(request.body);

@@ -1,7 +1,7 @@
 ---
 id: FRONTEND-PHASE-5-SECTION-2-WP6-EVIDENCE-260809001
 classification: CANONICAL
-status: wp6_implemented_pending_review
+status: wp6_accepted
 work_item: FE-P5-S2
 created_at: 2026-08-09
 subject_base: 701e0bfac5af60daa48d9155185956b91650ecbd
@@ -9,6 +9,10 @@ wp5_accepted_head: 57420668b
 wp5_accepted_ci_number: 725
 wp5_accepted_ci_run_id: 31308301025
 wp5_accepted_ci_conclusion: SUCCESS
+wp6_accepted_head: 624de8aef
+wp6_accepted_ci_number: 732
+wp6_accepted_ci_run_id: 31312009201
+wp6_accepted_ci_conclusion: SUCCESS
 tracking_issue: https://github.com/JasonCutter/shotgun/issues/71
 contract_pr: https://github.com/JasonCutter/shotgun/pull/70
 product_pr: https://github.com/JasonCutter/shotgun/pull/80
@@ -176,5 +180,8 @@ silent overwrite of the prior deferred record).
 
 ## 6. Next action
 
-Report WP6 for the GPT Section-completion review. On acceptance, FE-P5-S2
-Section completion (Ready/Merge) remains user-approval-gated (PR #80 DRAFT).
+WP6 is ACCEPTED / COMPLETE (GPT Round 3 —
+`GPT_IMPLEMENTATION_REVIEW_ACCEPTED`). FE-P5-S2 all work packages are ACCEPTED
+and AC-01~AC-16 are CLOSED. FE-P5-S2 Section Completion is ELIGIBLE FOR USER
+APPROVAL but NOT YET COMPLETE; Ready/Merge remains NOT_AUTHORIZED and PR #80
+stays DRAFT until explicit user approval.

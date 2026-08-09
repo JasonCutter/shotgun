@@ -62,15 +62,24 @@ export type ReversalEligibilityInput = {
 };
 
 /**
- * Browser-authored request for a Reversal DraftChangeSet (Frozen
- * CreateReversalDraftChangeSetRequestV1): project + source revision + reason
- * ONLY. No capability is accepted from the client.
+ * Server command input for a Reversal DraftChangeSet.
+ *
+ * The Frozen browser contract is `CreateReversalDraftChangeSetRequestV1`:
+ * `schemaVersion`, `resourceProjectId`, `sourceRevisionId`, `reason` ONLY —
+ * no capability, no principal, no timestamp from the client.
+ *
+ * `createdBy` and `createdAt` are SERVER-DERIVED command context (the current
+ * principal and wall-clock from the server-side command handler), never
+ * browser-supplied authority. The port uses `createdBy` as the `principalId`
+ * when resolving the current server-derived capability set.
  */
 export type CreateReversalDraftChangeSetInput = {
   readonly resourceProjectId: string;
   readonly sourceRevisionId: string;
   readonly reason: string;
+  /** Server-derived command context: the current principal id. */
   readonly createdBy: string;
+  /** Server-derived command context: the current wall-clock. */
   readonly createdAt: string;
 };
 
@@ -130,17 +139,21 @@ export const sortHistoryEvents = (
  * commitId, then return the events strictly AFTER it (stable tie-break).
  * Timestamp-only comparison is NOT used: the source event is found by
  * identity, so same-timestamp later events are still detected.
+ *
+ * Returns `undefined` when the source revision EXISTS but its matching
+ * authoritative HistoryEvent is missing (lost/truncated lineage): callers
+ * must treat that as fail-closed, never as "current tip".
  */
 export const laterHistoryEvents = (
   sourceRevision: CanonicalRevision,
   history: readonly CanonicalHistoryEvent[],
-): readonly CanonicalHistoryEvent[] => {
+): readonly CanonicalHistoryEvent[] | undefined => {
   const ordered = sortHistoryEvents(history);
   const index = ordered.findIndex(
     (event) =>
       event.projectId === sourceRevision.projectId && event.commitId === sourceRevision.commitId,
   );
-  if (index < 0) return [];
+  if (index < 0) return undefined;
   return ordered.slice(index + 1);
 };
 
@@ -176,6 +189,12 @@ export const assessReversalEligibilityFromHistory = (
     return failureReasons(input.sourceRevisionId, ['REVERSAL_HISTORICAL_APPROVAL_REUSE']);
   }
   const later = laterHistoryEvents(sourceRevision, history);
+  // Fail-closed: the source revision exists but its authoritative HistoryEvent
+  // is missing (lost/truncated lineage). We CANNOT verify it is the current
+  // tip, so we must NOT treat it as eligible. Reuse REVERSAL_SOURCE_NOT_FOUND.
+  if (later === undefined) {
+    return failureReasons(input.sourceRevisionId, ['REVERSAL_SOURCE_NOT_FOUND']);
+  }
   const laterCommits = later.filter((event) => event.eventType === 'CANONICAL_CLAIM_ADDED');
   if (laterCommits.length > 0) {
     return failureReasons(input.sourceRevisionId, [
@@ -189,8 +208,16 @@ export const assessReversalEligibilityFromHistory = (
   return success(input.sourceRevisionId);
 };
 
-/** Injected server-side capability resolver (never trusts the browser). */
-export type CurrentCapabilitiesResolver = () => Promise<readonly string[]>;
+/**
+ * Injected server-side capability resolver. It is called with the current
+ * server-derived command context (resource project + principal id) so a
+ * singleton port can compute the CURRENT capability set for the right
+ * project/principal. `principalId` is server-derived, never browser-supplied.
+ */
+export type CurrentCapabilitiesResolver = (context: {
+  readonly resourceProjectId: string;
+  readonly principalId: string; // server-derived
+}) => Promise<readonly string[]>;
 
 /**
  * Canonical reader: authoritative source revision + history loading.
@@ -232,9 +259,13 @@ export const createReversalEligibilityPort = (
           input.createdAt,
         );
       }
-      // The capability is derived SERVER-SIDE — the browser request never
-      // carries it. A caller without the current capability is rejected.
-      const currentCapabilities = await currentCapabilitiesResolver();
+      // The capability is derived SERVER-SIDE for the current command context
+      // (resource project + principal id). The browser request never carries
+      // any capability or principal; `input.createdBy` is server-derived.
+      const currentCapabilities = await currentCapabilitiesResolver({
+        resourceProjectId: input.resourceProjectId,
+        principalId: input.createdBy,
+      });
       const eligibility = await this.assessReversalEligibility({
         resourceProjectId: input.resourceProjectId,
         sourceRevisionId: input.sourceRevisionId,
@@ -339,7 +370,10 @@ export const computeReversalSnapshotImpact = (
   if (sourceRevision.operation === 'ADD_CLAIM' && sourceRevision.claimId) {
     removedSet.add(sourceRevision.claimId);
   }
-  const later = laterHistoryEvents(sourceRevision, history);
+  // `laterHistoryEvents` is undefined only if the source history event is
+  // missing — but impact is computed for an ELIGIBLE reversal, so lineage is
+  // verified; treat as no later events defensively.
+  const later = laterHistoryEvents(sourceRevision, history) ?? [];
   for (const event of later) {
     if (event.eventType === 'CANONICAL_CLAIM_ADDED' && event.claimId) {
       removedSet.add(event.claimId);

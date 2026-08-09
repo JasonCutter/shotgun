@@ -239,7 +239,40 @@ describe('change-set-review WP3 Reversal DraftChangeSet', () => {
         event({ historyEventId: 'e-3', createdAt: '2026-08-09T00:00:00.000Z' }),
       ];
       const later = laterHistoryEvents(source, history);
-      expect(later.map((e) => e.historyEventId)).toEqual(['e-2', 'e-3']);
+      expect(later).toBeDefined();
+      expect(later!.map((e) => e.historyEventId)).toEqual(['e-2', 'e-3']);
+    });
+
+    it('fail-closed when the source revision exists but its history event is MISSING (lost lineage)', () => {
+      // GPT Round 2 fix D: a revision whose authoritative HistoryEvent cannot
+      // be located must NOT be treated as the current tip. Missing lineage is
+      // a typed reject, reusing REVERSAL_SOURCE_NOT_FOUND.
+      const result = assessReversalEligibilityFromHistory(
+        eligibilityInput('revision:1'),
+        revision({ revisionId: 'revision:1', createdAt: '2026-08-09T00:00:00.000Z' }),
+        [
+          event({
+            historyEventId: 'e-other',
+            createdAt: '2026-08-09T00:00:00.000Z',
+            commitId: 'commit-other',
+          }),
+        ],
+      );
+      expect(result.eligible).toBe(false);
+      expect(result.reasons).toEqual(['REVERSAL_SOURCE_NOT_FOUND']);
+      // laterHistoryEvents also reports the missing lineage as undefined.
+      expect(
+        laterHistoryEvents(
+          revision({ revisionId: 'revision:1', createdAt: '2026-08-09T00:00:00.000Z' }),
+          [
+            event({
+              historyEventId: 'e-other',
+              createdAt: '2026-08-09T00:00:00.000Z',
+              commitId: 'commit-other',
+            }),
+          ],
+        ),
+      ).toBeUndefined();
     });
   });
 
@@ -256,8 +289,8 @@ describe('change-set-review WP3 Reversal DraftChangeSet', () => {
         async findRevision(_projectId, revisionId) {
           return revisions.find((r) => r.revisionId === revisionId);
         },
-        async listHistory() {
-          return [...history];
+        async listHistory(projectId) {
+          return history.filter((h) => h.projectId === projectId);
         },
       };
     };
@@ -324,6 +357,73 @@ describe('change-set-review WP3 Reversal DraftChangeSet', () => {
           createdAt: '2026-08-09T03:00:00.000Z',
         }),
       ).rejects.toMatchObject({ code: 'REVERSAL_SUPERSEDED_TARGET' });
+    });
+
+    it('resolves the current capability per project/principal context (project A allowed, project B rejected)', async () => {
+      // GPT Round 2 fix A: the resolver receives the server-derived command
+      // context so a singleton port computes the CURRENT capability set for
+      // the right project/principal. Same service: project A + current actor
+      // has rollback -> allowed; project B + same actor has no rollback ->
+      // REVERSAL_MISSING_CURRENT_CAPABILITY.
+      const reader = makeReader();
+      reader.revisions.push(
+        revision({
+          revisionId: 'revision:pA',
+          projectId: 'pA',
+          createdAt: '2026-08-09T01:00:00.000Z',
+        }),
+        revision({
+          revisionId: 'revision:pB',
+          projectId: 'pB',
+          createdAt: '2026-08-09T01:00:00.000Z',
+        }),
+      );
+      reader.history.push(
+        event({
+          historyEventId: 'e-a1',
+          projectId: 'pA',
+          createdAt: '2026-08-09T01:00:00.000Z',
+          commitId: 'commit-revision:pA',
+          claimId: 'claim-a',
+        }),
+        event({
+          historyEventId: 'e-b1',
+          projectId: 'pB',
+          createdAt: '2026-08-09T01:00:00.000Z',
+          commitId: 'commit-revision:pB',
+          claimId: 'claim-b',
+        }),
+      );
+      const seenContexts: Array<{ resourceProjectId: string; principalId: string }> = [];
+      const port = createReversalEligibilityPort(reader, {
+        currentCapabilitiesResolver: async (context) => {
+          seenContexts.push({ ...context });
+          // project A grants rollback; project B does not.
+          return context.resourceProjectId === 'pA' ? [REVERSAL_CURRENT_CAPABILITY] : [];
+        },
+      });
+      const { reversal } = await port.createReversalDraftChangeSet({
+        resourceProjectId: 'pA',
+        sourceRevisionId: 'revision:pA',
+        reason: 'rollback',
+        createdBy: 'actor-1',
+        createdAt: '2026-08-09T03:00:00.000Z',
+      });
+      expect(reversal.status).toBe('CANDIDATE');
+      await expect(
+        port.createReversalDraftChangeSet({
+          resourceProjectId: 'pB',
+          sourceRevisionId: 'revision:pB',
+          reason: 'rollback',
+          createdBy: 'actor-1',
+          createdAt: '2026-08-09T03:00:00.000Z',
+        }),
+      ).rejects.toMatchObject({ code: 'REVERSAL_MISSING_CURRENT_CAPABILITY' });
+      // The resolver saw the server-derived context for each create call.
+      expect(seenContexts).toEqual([
+        { resourceProjectId: 'pA', principalId: 'actor-1' },
+        { resourceProjectId: 'pB', principalId: 'actor-1' },
+      ]);
     });
 
     it('rejects create when the server-derived capability set lacks rollback (browser cannot pass capability)', async () => {

@@ -34,6 +34,10 @@ WP3 — Reversal DraftChangeSet (Implementation Request r1 §5 WP3) implemented 
 Round 1 GPT review returned CHANGES_REQUIRED with five fix items (A-E); all five are
 implemented in this document's Round 1 fixes.
 
+Round 2 GPT review returned CHANGES_REQUIRED with two REMAINING items (A' context-aware
+capability resolver, D' fail-closed missing-lineage); both are implemented in this
+document's Round 2 fixes. B/C/E were RESOLVED at Round 2.
+
 Flow implemented (ADR-131 §4 / IR r1 §5 WP3):
 
 ```text
@@ -46,17 +50,17 @@ is evidence/reference only; historical approval authority reuse is FORBIDDEN.
 
 ## 2. Implemented files
 
-| File                                                         | Content                                                                                                                                        |
-| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `modules/change-set-review/src/reversal.ts`                  | `ReversalEligibilityPort`, `ReversalEligibilityV1` gate, `createReversalEligibilityPort`, `computeReversalSnapshotImpact`, typed failure codes |
-| `modules/change-set-review/src/index.ts`                     | module exports (incl. `sortHistoryEvents`, `laterHistoryEvents`, `CurrentCapabilitiesResolver`)                                                |
-| `modules/canonical-knowledge/src/index.ts`                   | `CanonicalKnowledgeRepositoryPort.findRevision` added                                                                                          |
-| `adapters/stage6-in-memory/src/index.ts`                     | `InMemoryCanonicalKnowledgeRepository.findRevision`                                                                                            |
-| `adapters/postgres-stage6/src/index.ts`                      | `PostgresCanonicalKnowledgeRepository.findRevision` (`canonical.revisions`)                                                                    |
-| `packages/contracts/src/errors.ts`                           | FE-P5-S2 Reversal typed ErrorCodes                                                                                                             |
-| `packages/contracts/src/failure-contract.ts`                 | Reversal failure descriptors + detail keys                                                                                                     |
-| `tests/unit/change-set-review-reversal.test.ts`              | 19 tests (incl. server-derived capability, evidence-only approval, same-timestamp tie-break, tip non-zero impact)                              |
-| `tests/database/change-set-review-reversal-postgres.test.ts` | 5 tests on real PostgreSQL (`PostgresCanonicalKnowledgeRepository`)                                                                            |
+| File                                                         | Content                                                                                                                                                                |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `modules/change-set-review/src/reversal.ts`                  | `ReversalEligibilityPort`, `ReversalEligibilityV1` gate, `createReversalEligibilityPort`, `computeReversalSnapshotImpact`, typed failure codes                         |
+| `modules/change-set-review/src/index.ts`                     | module exports (incl. `sortHistoryEvents`, `laterHistoryEvents`, `CurrentCapabilitiesResolver`)                                                                        |
+| `modules/canonical-knowledge/src/index.ts`                   | `CanonicalKnowledgeRepositoryPort.findRevision` added                                                                                                                  |
+| `adapters/stage6-in-memory/src/index.ts`                     | `InMemoryCanonicalKnowledgeRepository.findRevision`                                                                                                                    |
+| `adapters/postgres-stage6/src/index.ts`                      | `PostgresCanonicalKnowledgeRepository.findRevision` (`canonical.revisions`)                                                                                            |
+| `packages/contracts/src/errors.ts`                           | FE-P5-S2 Reversal typed ErrorCodes                                                                                                                                     |
+| `packages/contracts/src/failure-contract.ts`                 | Reversal failure descriptors + detail keys                                                                                                                             |
+| `tests/unit/change-set-review-reversal.test.ts`              | 21 tests (incl. server-derived capability, evidence-only approval, same-timestamp tie-break, tip non-zero impact, context-aware resolver, fail-closed missing lineage) |
+| `tests/database/change-set-review-reversal-postgres.test.ts` | 5 tests on real PostgreSQL (`PostgresCanonicalKnowledgeRepository`)                                                                                                    |
 
 ## 3. Eligibility gate (server-derived, fail-closed)
 
@@ -80,6 +84,16 @@ injected `currentCapabilitiesResolver` and passed into `assessReversalEligibilit
 resolver is configured, create fails closed with `REVERSAL_MISSING_CURRENT_CAPABILITY`.
 Negative test: resolver returns `['project:read']` (no rollback) → create rejected.
 
+**Round 2 fix A' — context-aware capability resolver:** `CurrentCapabilitiesResolver` now
+receives the server-derived command context `{ resourceProjectId, principalId }` so a
+singleton port resolves the CURRENT capability set for the right project/principal.
+`principalId` is server-derived (from `createdBy` command context), never browser-supplied.
+The Frozen browser contract is only `CreateReversalDraftChangeSetRequestV1`
+(`schemaVersion`, `resourceProjectId`, `sourceRevisionId`, `reason`); `createdBy`/`createdAt`
+are SERVER-DERIVED command context, not browser authority. Test: same service, project A +
+current actor has rollback → allowed; project B + same actor has no rollback →
+`REVERSAL_MISSING_CURRENT_CAPABILITY`; resolver saw both contexts.
+
 **Round 1 fix B — historical approval is evidence/reference only:** a successful Reversal
 preserves the historical approval as `historicalApprovalRef` on the Reversal DraftChangeSet
 (evidence). Only an actual authority-reuse attempt rejects with
@@ -92,6 +106,13 @@ by `commitId` inside the stable ordered history (`ORDER BY created_at, history_e
 returns the rows strictly after it. Same-timestamp later events are therefore still detected
 via the `historyEventId` tie-break. Negative test: source e-1 and later e-2 share `createdAt`
 (e-1 < e-2 by tie-break) → source reversal → `REVERSAL_SUPERSEDED_TARGET`.
+
+**Round 2 fix D' — fail-closed missing lineage:** if the source revision EXISTS but its
+matching authoritative HistoryEvent is missing from the reader (lost/truncated lineage),
+`laterHistoryEvents` returns `undefined` and eligibility FAILS CLOSED with
+`REVERSAL_SOURCE_NOT_FOUND` — it is NEVER treated as the current tip. Negative test: revision
+exists, `listHistory` has no event for `sourceRevision.commitId` → `eligible=false`,
+`REVERSAL_SOURCE_NOT_FOUND`, `laterHistoryEvents` returns `undefined`.
 
 `createReversalEligibilityPort` loads the authoritative source through the injected canonical
 reader and produces a `ReversalDraftChangeSetV1` (status `CANDIDATE`) when eligible; otherwise
@@ -112,13 +133,14 @@ Identity is preserved on the source side — no authoritative row is deleted.
 
 ## 5. Required negative cases (IR r1 §5 WP3)
 
-| Case                        | Result                                              |
-| --------------------------- | --------------------------------------------------- |
-| historical approval reuse   | typed reject `REVERSAL_HISTORICAL_APPROVAL_REUSE`   |
-| stale target                | typed reject `REVERSAL_STALE_TARGET`                |
-| superseded target           | typed reject `REVERSAL_SUPERSEDED_TARGET`           |
-| dependent revision conflict | typed reject `REVERSAL_DEPENDENT_REVISION_CONFLICT` |
-| missing current capability  | typed reject `REVERSAL_MISSING_CURRENT_CAPABILITY`  |
+| Case                                        | Result                                                                 |
+| ------------------------------------------- | ---------------------------------------------------------------------- |
+| historical approval reuse                   | typed reject `REVERSAL_HISTORICAL_APPROVAL_REUSE`                      |
+| stale target                                | typed reject `REVERSAL_STALE_TARGET`                                   |
+| superseded target                           | typed reject `REVERSAL_SUPERSEDED_TARGET`                              |
+| dependent revision conflict                 | typed reject `REVERSAL_DEPENDENT_REVISION_CONFLICT`                    |
+| missing current capability                  | typed reject `REVERSAL_MISSING_CURRENT_CAPABILITY`                     |
+| missing source history event (lost lineage) | typed reject `REVERSAL_SOURCE_NOT_FOUND` (fail-closed, Round 2 fix D') |
 
 ## 6. Verification
 
@@ -132,7 +154,7 @@ tables), not a Map-based fake. Cases covered on the real DB:
 - snapshot impact: current-tip reversal removes its own claim (real digest round-trip)
 - same-timestamp tie-break: later event detected by `created_at, history_event_id` order
 
-- WP3 focused suites: unit 19 + DB 5 = **24 tests PASS**.
+- WP3 focused suites: unit 21 + DB 5 = **26 tests PASS**.
 - Full `npm run test:database`: **199 tests PASS** (37 files).
 - `tsc --noEmit`, ESLint, Prettier clean.
 - Automatic CI on push (PR #80, Draft).
@@ -151,5 +173,5 @@ Not implemented in this Work Package (remain unauthorized):
 
 ## 8. Next action
 
-Report WP3 Round 2 (fixes A-E applied) for the GPT Review. Do not begin WP4 until WP3 is
+Report WP3 Round 3 (fixes A' + D' applied) for the GPT Review. Do not begin WP4 until WP3 is
 reviewed and accepted.

@@ -20,10 +20,10 @@ User-approved Contract Delta (2026-08-09, "승인") implemented. Round 1 head
 `ee4147374`; Round 3 (Recovery existing-commit branch, 2026-08-10) head
 `093ea985d`. **GPT Review Round 3: TECHNICALLY ACCEPTED (2026-08-10).**
 Exact-head automatic CI green at `6d00656b2` (Draft PR #83, normal workflow
-entry; no empty commits, no manual CI). Remaining Final-Authority gates:
-user ratification of the `source_version_id uuid→text` bounded migration
-delta (pending). Review against Amendment §3.2 (frozen contract) and scope
-guardrails §4.
+entry; no empty commits, no manual CI). **`source_version_id uuid→text` bounded
+migration delta RATIFIED BY USER (2026-08-10, "승인").** Both Final-Authority
+gates satisfied; Correction B Final Authority pending GPT confirmation.
+Review against Amendment §3.2 (frozen contract) and scope guardrails §4.
 
 ## 1. Implementation scope
 
@@ -255,15 +255,15 @@ GPT verdict: **ACCEPTED** (technical).
 - Forged `approvalBindingDigest` replay → `CONFLICT` DB-level regression: **PASS**.
 - Round 1 blockers: CLOSED. Round 2 blocker: CLOSED.
 
-GPT requires NO further code changes and NO test re-runs. Remaining
-Final-Authority gates (non-code):
+GPT requires NO further code changes and NO test re-runs. The two
+Final-Authority gates (non-code) are now SATISFIED:
 
 1. **User ratification** of the `source_version_id uuid→text` bounded
-   migration delta (Amendment §4.1 — `PENDING USER RATIFICATION`).
-2. **Exact-head automatic CI** — now RUN + GREEN via the normal Draft PR #83
+   migration delta — **RATIFIED BY USER (2026-08-10, "승인")**; recorded in
+   Amendment §4.1 / §6.
+2. **Exact-head automatic CI** — RUN + GREEN via the normal Draft PR #83
    workflow at `6d00656b2` (Frontend / Quality / Required Gates all pass;
    Node.js 20 deprecation warning only).
 
-Correction B Final Authority: PENDING_GOVERNANCE_AND_CI → after user
-ratification, PENDING only on any final exact-head CI confirmation.
-WP-XP2: PAUSED until Correction B Final Authority is granted.
+Correction B Final Authority: both gates satisfied → pending GPT Final
+Authority confirmation. WP-XP2: PAUSED until that confirmation.

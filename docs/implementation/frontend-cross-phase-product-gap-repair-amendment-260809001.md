@@ -187,8 +187,8 @@ keep block-mutation trigger; `findById`/`listByProject` read latest status revis
   versions are free-form text identities (the legacy uuid-typed column rejected them).
   Lossless widening; legacy uuid values coerce implicitly on insert. Not explicitly in the
   original migration 034 description → recorded here as a **bounded migration delta** and
-  **PENDING USER RATIFICATION** (2026-08-10, user "진행해" authorizes implementation;
-  ratification recorded in §6 when confirmed). Code is NOT reverted.
+  **RATIFIED BY USER (2026-08-10, "승인")** — explicit ratification recorded in §6.
+  Code is NOT reverted.
 
 ## 5. Authority gate
 
@@ -254,3 +254,8 @@ Amendment: PROPOSED / PENDING USER APPROVAL
   exact-head automatic CI — RUN + GREEN via normal Draft PR #83 at `6d00656b2`
   (Frontend/Quality/Required Gates pass). WP-XP2 remains PAUSED until
   Correction B Final Authority is granted.
+- 2026-08-10 — **USER explicit ratification ("승인")** of the bounded migration
+  delta `canonical.claims.source_version_id uuid → text` (§4.1). Both
+  Final-Authority gates are now satisfied: migration delta RATIFIED + exact-head
+  automatic CI GREEN (`6d00656b2`, Draft PR #83). Correction B Final Authority
+  can be granted; WP-XP2 resumes on GPT confirmation.

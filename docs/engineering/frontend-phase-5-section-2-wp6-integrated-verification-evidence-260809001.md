@@ -171,8 +171,8 @@ silent overwrite of the prior deferred record).
 
 ## 5. WP6 verification head
 
-- **WP6 Evidence Head**: 8251de211
-- **Automatic CI**: #730 / run 31311221451 / SUCCESS
+- **WP6 Evidence Head**: 624de8aef
+- **Automatic CI**: #732 / run 31312009201 / SUCCESS
 
 ## 6. Next action
 

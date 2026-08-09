@@ -95,7 +95,8 @@ CREATE TABLE IF NOT EXISTS canonical.history_payload_audit_events (
   source_event_kind text NOT NULL,
   source_event_id text NOT NULL,
   previous_availability text NOT NULL
-    CHECK (previous_availability IN ('AVAILABLE', 'REDACTED', 'PURGED_BY_POLICY', 'UNAVAILABLE')),
+    CHECK (previous_availability IN ('AVAILABLE', 'REDACTED', 'PURGED_BY_POLICY', 'UNAVAILABLE')
+           AND previous_availability <> 'PURGED_BY_POLICY'),
   -- Purge AuditEvent stream: this stream records retention-driven purges only.
   -- Non-purge availability transitions (REDACTED/AVAILABLE/UNAVAILABLE) are
   -- not part of this owner-local purge audit stream (ADR-131 §3).
@@ -117,7 +118,8 @@ CREATE TABLE IF NOT EXISTS frontend_review.history_payload_audit_events (
   source_event_kind text NOT NULL,
   source_event_id text NOT NULL,
   previous_availability text NOT NULL
-    CHECK (previous_availability IN ('AVAILABLE', 'REDACTED', 'PURGED_BY_POLICY', 'UNAVAILABLE')),
+    CHECK (previous_availability IN ('AVAILABLE', 'REDACTED', 'PURGED_BY_POLICY', 'UNAVAILABLE')
+           AND previous_availability <> 'PURGED_BY_POLICY'),
   -- Purge AuditEvent stream: this stream records retention-driven purges only.
   -- Non-purge availability transitions (REDACTED/AVAILABLE/UNAVAILABLE) are
   -- not part of this owner-local purge audit stream (ADR-131 §3).

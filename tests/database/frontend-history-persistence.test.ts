@@ -109,6 +109,25 @@ describe.runIf(pool)('FE-P5-S2 WP1 persistence (migrations 030-032)', () => {
           [`audit:${randomUUID().slice(0, 8)}`, project],
         ),
       ).rejects.toThrow(/new_availability/);
+      await expect(
+        pool!.query(
+          `INSERT INTO ${schema}.history_payload_audit_events
+             (audit_event_id, resource_project_id, source_event_kind, source_event_id,
+              previous_availability, new_availability, reason, actor_id, occurred_at)
+           VALUES ($1, $2, 'DECISION', 'event:3', 'AVAILABLE', 'AVAILABLE', 'x', 'actor:1', now())`,
+          [`audit:${randomUUID().slice(0, 8)}`, project],
+        ),
+      ).rejects.toThrow(/new_availability/);
+      // previous_availability must not already be PURGED_BY_POLICY
+      await expect(
+        pool!.query(
+          `INSERT INTO ${schema}.history_payload_audit_events
+             (audit_event_id, resource_project_id, source_event_kind, source_event_id,
+              previous_availability, new_availability, reason, actor_id, occurred_at)
+           VALUES ($1, $2, 'DECISION', 'event:4', 'PURGED_BY_POLICY', 'PURGED_BY_POLICY', 'x', 'actor:1', now())`,
+          [`audit:${randomUUID().slice(0, 8)}`, project],
+        ),
+      ).rejects.toThrow(/previous_availability|new_availability/);
       // UPDATE rejected
       await expect(
         pool!.query(

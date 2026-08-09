@@ -103,7 +103,10 @@ import {
   createHistoryAdapterRegistry,
   type HistoryReadModelStorePort,
 } from '../../../modules/frontend-history/src/index.js';
-import { createInMemoryHistoryReadModelStore, InMemoryPayloadStateStore } from '../../../adapters/frontend-history-in-memory/src/index.js';
+import {
+  createInMemoryHistoryReadModelStore,
+  InMemoryPayloadStateStore,
+} from '../../../adapters/frontend-history-in-memory/src/index.js';
 import { InMemoryPolicyHistoryReadAdapter } from '../../../adapters/settings-project-admin-in-memory/src/index.js';
 import { CanonicalHistoryAdapter } from '../../../adapters/frontend-history-canonical/src/index.js';
 import { ReviewHistoryAdapter } from '../../../adapters/frontend-history-review/src/index.js';
@@ -1257,19 +1260,15 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   const frontendReviewStore = new InMemoryFrontendReviewStore();
   const frontendReviewCoordinator =
     options.frontendReviewCoordinator ??
-    new FrontendReviewProductCoordinator(
-      frontendReviewStore,
-      frontendCommandGateway,
-      [
-        new DraftReviewTargetAdapter(
-          frontendKnowledgeDraftRepository instanceof InMemoryFrontendKnowledgeDraftRepository
-            ? createInMemoryReviewDraftSourceReader(frontendKnowledgeDraftRepository)
-            : createEmptyReviewDraftSourceReader(),
-        ),
-        new DiscoveryCandidateReviewTargetAdapter(createInMemoryReviewDiscoveryCandidateReader()),
-        new UserDirectiveReviewTargetAdapter(createInMemoryReviewUserDirectiveReader()),
-      ],
-    );
+    new FrontendReviewProductCoordinator(frontendReviewStore, frontendCommandGateway, [
+      new DraftReviewTargetAdapter(
+        frontendKnowledgeDraftRepository instanceof InMemoryFrontendKnowledgeDraftRepository
+          ? createInMemoryReviewDraftSourceReader(frontendKnowledgeDraftRepository)
+          : createEmptyReviewDraftSourceReader(),
+      ),
+      new DiscoveryCandidateReviewTargetAdapter(createInMemoryReviewDiscoveryCandidateReader()),
+      new UserDirectiveReviewTargetAdapter(createInMemoryReviewUserDirectiveReader()),
+    ]);
   // FE-P4-S2 WP4: External Action governed commands run over the shared Frontend
   // Command Ledger; the server owns the Product Coordinator (server-derived
   // scope), the external action store and the connector engine.
@@ -1363,8 +1362,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       const settingsPayloadState =
         options.historyPayloadStates?.SETTINGS ?? new InMemoryPayloadStateStore('SETTINGS');
       const policyHistoryRead = options.policyHistoryRead ?? new InMemoryPolicyHistoryReadAdapter();
-      const reviewBoundary =
-        options.historyReviewBoundary ?? new InMemoryFrontendReviewStore();
+      const reviewBoundary = options.historyReviewBoundary ?? new InMemoryFrontendReviewStore();
       const registry = createHistoryAdapterRegistry([
         new CanonicalHistoryAdapter(canonicalKnowledgeRepository, canonicalPayloadState),
         new ReviewHistoryAdapter(reviewBoundary, reviewPayloadState),

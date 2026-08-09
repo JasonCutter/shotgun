@@ -170,9 +170,7 @@ export class InMemoryFrontendReviewStore implements ReviewRepositoryBoundaryPort
           this.approvals.set(approval.approvalId, approval);
         },
         listByProject: async (projectId) =>
-          [...this.approvals.values()].filter(
-            (approval) => approval.projectId === projectId,
-          ),
+          [...this.approvals.values()].filter((approval) => approval.projectId === projectId),
       },
     };
   }

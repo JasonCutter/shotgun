@@ -13,11 +13,21 @@ import {
   decodeRecordReviewDecisionsRequestV1,
   decodeResolveReviewCommandOutcomeRequestV1,
   decodeRevalidateReviewContextRequestV1,
+  sha256Text,
+  stableJson,
   type ErrorCode,
+  type FrontendKnowledgeDraftChangeSetV1,
+  type FrontendKnowledgeOperationV1,
+  type ReversalDraftChangeSetV1,
 } from '../../../../packages/contracts/src/index.js';
 import type { FrontendReviewProductCoordinator } from '../../../../modules/frontend-review/src/product-api.js';
 import { ReviewCommandError } from '../../../../modules/frontend-review/src/index.js';
-import type { ReversalEligibilityPort } from '../../../../modules/change-set-review/src/index.js';
+import {
+  computeReversalSnapshotImpact,
+  type ReversalEligibilityPort,
+} from '../../../../modules/change-set-review/src/index.js';
+import type { FrontendKnowledgeDraftRepositoryBoundaryPort } from '../../../../modules/frontend-knowledge-draft/src/index.js';
+import type { CanonicalKnowledgeRepositoryPort } from '../../../../modules/canonical-knowledge/src/index.js';
 import type { SettingsRepositoryPort } from '../../../../modules/settings-policy/src/index.js';
 import type { AuthRepositoryPort } from '../../../../packages/authentication/src/index.js';
 
@@ -55,6 +65,149 @@ const toReviewError = (error: unknown, operation: string): never => {
   });
 };
 
+type ReversalDraftScope = {
+  readonly activeProjectId: string;
+  readonly accessRevision: string;
+  readonly policyContextRevision: string;
+};
+
+/**
+ * FE-P5-S2 WP5 (Round 3 Blocker 2): materialize a Reversal candidate as a
+ * SUBMITTED Knowledge DraftChangeSet in the approved frontend-knowledge-draft
+ * store (migration 025), so the EXISTING single `KNOWLEDGE_DRAFT_CHANGE_SET`
+ * Review adapter resolves it for Queue / Get Context / Record Decisions /
+ * Approval — no new ReviewTargetKind, no adapter collision, no new migration.
+ * The browser never authors any of these values; all authority is server-derived.
+ */
+const materializeReversalAsKnowledgeDraft = async (input: {
+  readonly scope: ReversalDraftScope;
+  readonly reversal: ReversalDraftChangeSetV1;
+  readonly canonical: CanonicalKnowledgeRepositoryPort;
+}): Promise<FrontendKnowledgeDraftChangeSetV1> => {
+  const { scope, reversal, canonical } = input;
+  const revision = await canonical.findRevision(
+    reversal.resourceProjectId,
+    reversal.sourceRevisionId,
+  );
+  const snapshot = await canonical.getSnapshot(reversal.resourceProjectId);
+  const history = await canonical.listHistory(reversal.resourceProjectId);
+  const impact = revision ? computeReversalSnapshotImpact(revision, snapshot, history) : undefined;
+  const removedClaimIds = impact?.removedClaimIds ?? [];
+  const claimText = (claimId: string): string =>
+    snapshot.claims.find((claim) => claim.claimId === claimId)?.text ?? '';
+  const projectPolicyContext = {
+    activeProjectId: scope.activeProjectId,
+    resourceProjectId: reversal.resourceProjectId,
+    draftProjectId: reversal.resourceProjectId,
+    effectiveProjectId: reversal.resourceProjectId,
+    accessRevision: scope.accessRevision,
+    policyContextRevision: scope.policyContextRevision,
+  };
+  const operations: FrontendKnowledgeOperationV1[] =
+    removedClaimIds.length > 0
+      ? removedClaimIds.map((claimId) => ({
+          operationId: `reversal-remove:${claimId}`,
+          baseRevision: snapshot.version,
+          rationale: `Reversal of ${reversal.sourceRevisionId}`,
+          evidenceReferences: [],
+          expectedImpact: { summary: `Removes claim ${claimId}` },
+          operationRevision: 1,
+          contentDigest: sha256Text(stableJson({ claimId, kind: 'CLAIM_REMOVE' })),
+          kind: 'CLAIM_REMOVE' as const,
+          target: { targetType: 'CLAIM' as const, targetId: claimId, resourceId: claimId },
+          before: { schemaVersion: 'claim.v1' as const, statement: claimText(claimId) },
+        }))
+      : [
+          {
+            operationId: `reversal:${reversal.reversalId}`,
+            baseRevision: snapshot.version,
+            rationale: `Reversal of ${reversal.sourceRevisionId}`,
+            evidenceReferences: [],
+            expectedImpact: { summary: 'Reversal candidate (no claim removal)' },
+            operationRevision: 1,
+            contentDigest: sha256Text(stableJson({ reversalId: reversal.reversalId })),
+            kind: 'NO_OP' as const,
+            target: { targetType: 'REVIEW_RESULT' as const, resourceId: 'reversal' },
+            after: {
+              schemaVersion: 'no-op-review-result.v1' as const,
+              result: 'NO_CHANGE_REQUIRED' as const,
+              reason: 'Reversal with no claim removal',
+            },
+          },
+        ];
+  const base = {
+    resourceProjectId: reversal.resourceProjectId,
+    canonicalSnapshotId: snapshot.snapshotId,
+    canonicalVersion: snapshot.version,
+    canonicalSnapshotDigest: snapshot.digest,
+    accessRevision: scope.accessRevision,
+    policyContextRevision: scope.policyContextRevision,
+    sourceLineage: [],
+    revisionIdentityKind: 'RESOURCE_REVISION' as const,
+    canonicalResourceId: reversal.sourceRevisionId,
+    canonicalRevisionId: reversal.sourceRevisionId,
+  };
+  const contentDigest = sha256Text(
+    stableJson({ draftId: reversal.reversalId, revision: 1, base, operations }),
+  );
+  const validationArtifact = {
+    artifactId: `reversal-validation:${reversal.reversalId}`,
+    artifactRevision: 1,
+    digest: sha256Text(stableJson({ reversalId: reversal.reversalId, kind: 'validation' })),
+    status: 'COMPLETE' as const,
+    projectPolicyContext,
+  };
+  const impactArtifact = {
+    artifactId: `reversal-impact:${reversal.reversalId}`,
+    artifactRevision: 1,
+    digest: impact?.impactedDigest ?? contentDigest,
+    status: 'COMPLETE' as const,
+    projectPolicyContext,
+  };
+  const reviewResource = {
+    reviewResourceId: reversal.reversalId,
+    draftId: reversal.reversalId,
+    draftRevision: 1,
+    resourceProjectId: reversal.resourceProjectId,
+    draftProjectId: reversal.resourceProjectId,
+    effectiveProjectId: reversal.resourceProjectId,
+    policyContextRevision: scope.policyContextRevision,
+    digest: contentDigest,
+  };
+  return {
+    schemaVersion: '1.0.0',
+    draftId: reversal.reversalId,
+    startMode: 'KNOWLEDGE_PAGE',
+    status: 'SUBMITTED',
+    revision: 1,
+    activeProjectId: scope.activeProjectId,
+    resourceProjectId: reversal.resourceProjectId,
+    draftProjectId: reversal.resourceProjectId,
+    effectiveProjectId: reversal.resourceProjectId,
+    resourceId: reversal.sourceRevisionId,
+    base,
+    operations,
+    validation: validationArtifact,
+    impactPreview: impactArtifact,
+    reviewResource,
+    reviewSubmission: {
+      reviewSubmissionId: `review-submission:${reversal.reversalId}`,
+      draftId: reversal.reversalId,
+      draftRevision: 1,
+      operationDigest: contentDigest,
+      contentDigest,
+      validationArtifact,
+      impactArtifact,
+      evidenceLineage: [],
+      projectPolicyContext,
+      reviewResource,
+    },
+    contentDigest,
+    createdAt: reversal.createdAt,
+    updatedAt: reversal.createdAt,
+  };
+};
+
 export function registerFrontendReviewRoutes(
   server: FastifyInstance,
   coordinator: FrontendReviewProductCoordinator,
@@ -62,6 +215,17 @@ export function registerFrontendReviewRoutes(
   authRepository: AuthRepositoryPort,
   settingsRepository: SettingsRepositoryPort,
   requirePrincipalBrowserSession: PrincipalSessionResolver,
+  options?: {
+    /**
+     * FE-P5-S2 WP5 (Round 3 Blocker 2): when a Reversal is created it is
+     * materialized as a SUBMITTED Knowledge DraftChangeSet and persisted to the
+     * approved frontend-knowledge-draft store (migration 025), so the EXISTING
+     * single KNOWLEDGE_DRAFT_CHANGE_SET adapter resolves it for Queue / Get
+     * Context / Record Decisions / Approval without an adapter collision.
+     */
+    readonly frontendKnowledgeDraftRepository?: FrontendKnowledgeDraftRepositoryBoundaryPort;
+    readonly canonicalKnowledgeRepository?: CanonicalKnowledgeRepositoryPort;
+  },
 ): void {
   const buildReviewScope = async (headers: SecurityHeaders) => {
     const current = await requirePrincipalBrowserSession(headers);
@@ -239,6 +403,24 @@ export function registerFrontendReviewRoutes(
           createdBy: scope.principalId,
           createdAt: new Date().toISOString(),
         });
+        // FE-P5-S2 WP5 (Round 3 Blocker 2): persist the Reversal candidate as a
+        // SUBMITTED Knowledge DraftChangeSet in the approved
+        // frontend-knowledge-draft store (migration 025). The existing single
+        // KNOWLEDGE_DRAFT_CHANGE_SET Review adapter then resolves it for
+        // Queue / Get Context / Record Decisions / Approval — no adapter
+        // collision, no new ReviewTargetKind, no new migration.
+        const draftRepository = options?.frontendKnowledgeDraftRepository;
+        const canonical = options?.canonicalKnowledgeRepository;
+        if (draftRepository && canonical) {
+          const draft = await materializeReversalAsKnowledgeDraft({
+            scope,
+            reversal: result.reversal,
+            canonical,
+          });
+          await draftRepository.transaction(async ({ drafts }) => {
+            await drafts.insert(draft);
+          });
+        }
         return {
           schemaVersion: '1.0.0',
           reversal: result.reversal,

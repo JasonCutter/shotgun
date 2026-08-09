@@ -348,13 +348,16 @@ export const HistoryWorkspace = () => {
 
   const selectEntry = useCallback(
     (historyEntryId: string) => {
-      const params = new URLSearchParams();
+      // Round 3 Blocker 3: preserve an explicit deleted-project audit target
+      // (`resourceProjectId`) when selecting an entry — the audit scope must
+      // not be dropped from the URL on selection.
+      const params = new URLSearchParams(searchParameters);
       params.set('entry', historyEntryId);
       setSearchParameters(params);
       dispatch({ type: 'SELECT_ENTRY', historyEntryId });
       announce(HISTORY_ANNOUNCEMENTS.SELECTED);
     },
-    [announce, setSearchParameters],
+    [announce, setSearchParameters, searchParameters],
   );
 
   const nextPage = useCallback(() => {
@@ -369,9 +372,13 @@ export const HistoryWorkspace = () => {
   }, [announce]);
 
   const clearSelection = useCallback(() => {
-    setSearchParameters('');
+    // Round 3 Blocker 3: clear only the selection; keep an explicit
+    // deleted-project audit target (`resourceProjectId`) in the URL.
+    const params = new URLSearchParams(searchParameters);
+    params.delete('entry');
+    setSearchParameters(params);
     dispatch({ type: 'CLEAR_SELECTION' });
-  }, [setSearchParameters]);
+  }, [setSearchParameters, searchParameters]);
 
   return (
     <div className="workspace-layout history-layout">

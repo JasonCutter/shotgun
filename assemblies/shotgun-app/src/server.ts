@@ -151,7 +151,6 @@ import {
 import {
   DraftReviewTargetAdapter,
   DiscoveryCandidateReviewTargetAdapter,
-  ReversalReviewTargetAdapter,
   UserDirectiveReviewTargetAdapter,
   createEmptyReviewDraftSourceReader,
   createInMemoryReviewDraftSourceReader,
@@ -1268,14 +1267,12 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   const frontendReviewStore = new InMemoryFrontendReviewStore();
   // FE-P5-S2 WP3/WP5: Reversal draft creation is a change-set-review owned
   // capability (server-derived current capability + principal; the browser
-  // only names the historical source revision). Round 2 B: every created
-  // candidate is persisted to the owning change-set-review store.
+  // only names the historical source revision).
   const reversalEligibilityPort = createReversalEligibilityPort(canonicalKnowledgeRepository, {
     currentCapabilitiesResolver: async ({ resourceProjectId, principalId }) => {
       const membership = await authRepository.findMembership(principalId, resourceProjectId);
       return membership?.scopes ?? [];
     },
-    reversalStore: changeSetReviewRepository,
   });
   const frontendReviewCoordinator =
     options.frontendReviewCoordinator ??
@@ -1287,9 +1284,6 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       ),
       new DiscoveryCandidateReviewTargetAdapter(createInMemoryReviewDiscoveryCandidateReader()),
       new UserDirectiveReviewTargetAdapter(createInMemoryReviewUserDirectiveReader()),
-      // FE-P5-S2 WP5 (Round 2 B): persisted Reversal DraftChangeSets surface
-      // through the EXISTING KNOWLEDGE_DRAFT_CHANGE_SET Review queue.
-      new ReversalReviewTargetAdapter(changeSetReviewRepository, canonicalKnowledgeRepository),
     ]);
   // FE-P4-S2 WP4: External Action governed commands run over the shared Frontend
   // Command Ledger; the server owns the Product Coordinator (server-derived
@@ -2138,6 +2132,10 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     authRepository,
     settingsRepository,
     requirePrincipalBrowserSession,
+    {
+      frontendKnowledgeDraftRepository,
+      canonicalKnowledgeRepository,
+    },
   );
   registerFrontendExternalActionRoutes(
     server,

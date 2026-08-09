@@ -216,7 +216,9 @@ describe('FE-P5-S2 WP5 Round 2 B Reversal → Review queue', () => {
     const reversalItem = queueBody.items.find((item) => item.targetId === reversalId);
     expect(reversalItem).toBeDefined();
     expect(reversalItem?.targetKind).toBe('KNOWLEDGE_DRAFT_CHANGE_SET');
-    expect(reversalItem?.targetLabel).toContain('revision:2');
+    // The persisted Reversal surfaces through the existing Knowledge Draft
+    // queue (single adapter — no collision).
+    expect(reversalItem?.targetLabel).toContain(reversalId);
 
     // 3) The corresponding Review Context exists (deep-link target).
     const context = await post(
@@ -238,10 +240,57 @@ describe('FE-P5-S2 WP5 Round 2 B Reversal → Review queue', () => {
         targetKind: string;
         targetId: string;
         targetDigest: string;
+        reviewContextId: string;
+        items: readonly { reviewItemId: string }[];
       };
     }>();
     expect(contextBody.context.targetKind).toBe('KNOWLEDGE_DRAFT_CHANGE_SET');
     expect(contextBody.context.targetId).toBe(reversalId);
+
+    // 4) The current Review decision flow works end-to-end (Round 3 Blocker 2):
+    //    Record APPROVE decisions → Approval Resource is issued.
+    const decisions = await post(
+      application,
+      cookie,
+      token,
+      '/product-api/frontend/review/decisions',
+      {
+        schemaVersion: '1.0.0',
+        clientRequestId: 'client-reversal-1',
+        idempotencyKey: 'idem-reversal-1',
+        reviewContextId: contextBody.context.reviewContextId,
+        expectedContextRevision: 1,
+        expectedTargetRevision: '1',
+        expectedTargetDigest: contextBody.context.targetDigest,
+        itemDecisions: contextBody.context.items.map((item) => ({
+          schemaVersion: '1.0.0',
+          reviewItemId: item.reviewItemId,
+          intent: 'APPROVE',
+          reason: 'Reversal approved for the current Review flow.',
+        })),
+      },
+    );
+    expect(decisions.statusCode).toBe(200);
+    const decisionsBody = decisions.json<{
+      aggregateState: string;
+      approvals: readonly { approvalId: string; purpose: string }[];
+    }>();
+    expect(decisionsBody.aggregateState).toBe('APPROVED_READY');
+    expect(decisionsBody.approvals[0]?.purpose).toBe('KNOWLEDGE_CANONICAL_CHANGE');
+
+    const approval = await post(
+      application,
+      cookie,
+      token,
+      '/product-api/frontend/review/approvals/read',
+      {
+        schemaVersion: '1.0.0',
+        approvalId: decisionsBody.approvals[0]!.approvalId,
+      },
+    );
+    expect(approval.statusCode).toBe(200);
+    const approvalBody = approval.json<{ approval: { status: string } }>();
+    expect(approvalBody.approval.status).toBe('ACTIVE');
 
     await application.server.close();
   });

@@ -433,4 +433,46 @@ describe('HistoryWorkspace (FE-P5-S2 WP5)', () => {
     );
     vi.unstubAllGlobals();
   });
+
+  it('preserves the deleted-project audit target when selecting and clearing an entry (GPT WP5 Round 3 C)', async () => {
+    const user = userEvent.setup();
+    const { fetchMock } = createFetchMock();
+    vi.stubGlobal('fetch', fetchMock);
+    const router = renderWorkspace(createRuntime(), ['/history?resourceProjectId=deleted-1']);
+    await waitFor(
+      () =>
+        expect(fetchMock).toHaveBeenCalledWith(
+          expect.stringContaining('/product-api/frontend/history/workspace'),
+          expect.objectContaining({
+            body: expect.stringContaining('"resourceProjectId":"deleted-1"'),
+          }),
+        ),
+      { timeout: 5000 },
+    );
+    // Selecting an entry MUST keep the audit target in the URL and the detail
+    // request must still target the deleted project.
+    await user.click(screen.getAllByRole('button', { name: /Canonical/ })[0]!);
+    await waitFor(
+      () => expect(router.state.location.search).toContain('resourceProjectId=deleted-1'),
+      { timeout: 5000 },
+    );
+    expect(router.state.location.search).toContain('entry=');
+    await waitFor(
+      () =>
+        expect(fetchMock).toHaveBeenCalledWith(
+          expect.stringContaining('/product-api/frontend/history/entry'),
+          expect.objectContaining({
+            body: expect.stringContaining('"resourceProjectId":"deleted-1"'),
+          }),
+        ),
+      { timeout: 5000 },
+    );
+    // Clearing the selection removes only the entry, keeping the audit target.
+    await user.click(screen.getByRole('button', { name: '선택 해제' }));
+    await waitFor(() => expect(router.state.location.search).not.toContain('entry='), {
+      timeout: 5000,
+    });
+    expect(router.state.location.search).toContain('resourceProjectId=deleted-1');
+    vi.unstubAllGlobals();
+  });
 });

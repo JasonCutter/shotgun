@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 
 import { InMemoryProjectTombstoneStore } from '../../adapters/settings-project-admin-in-memory/src/index.js';

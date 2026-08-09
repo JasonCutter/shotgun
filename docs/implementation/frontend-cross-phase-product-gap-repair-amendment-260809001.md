@@ -1,7 +1,11 @@
 ---
 id: FRONTEND-CROSS-PHASE-PRODUCT-GAP-REPAIR-AMENDMENT-260809001
-classification: CANDIDATE
-status: proposed_pending_user_approval
+classification: CANONICAL
+status: approved
+approved_by: USER
+approved_at: 2026-08-09
+approval_authority: Explicit user amendment approval
+approval_head: 337a07162
 verification_gate: FRONTEND-CROSS-PHASE-PRODUCT-VERIFICATION
 created_at: 2026-08-09
 subject_base: 07990d6e68878d630a6fc0e472c660e5cab69f91
@@ -75,7 +79,7 @@ Product contract to repair them. It does NOT authorize anything beyond the bound
    Command Ledger; replay resolves by `clientRequestId`+`idempotencyKey`+`semanticDigest`
    with no duplicate commit.
 
-### 3.2 Minimal Product contract (proposal)
+### 3.2 Minimal Product contract (proposal → GPT-confirmed delta, 2026-08-09)
 
 **Command**: `knowledge.draft.commit.v1` (Frontend governed command, ledger-recorded).
 
@@ -93,42 +97,109 @@ Product contract to repair them. It does NOT authorize anything beyond the bound
      (`canonicalVersion`/`canonicalSnapshotDigest`) else `STALE` fail-closed.
    - map draft operations → only `CLAIM_ADD` and `NO_OP`; any other kind → typed reject
      (no Canonical representation), approval left ACTIVE.
-3. **Execution**: for each mapped `CLAIM_ADD`/`NO_OP`, `canonical.commit({ commitId,
-   revisionId, historyEventId, outboxId, claimId?, manifest, actor, committedAt })`
-   (manifest carries the approved binding; commitId is the replay key). Then
-   `dispatchCanonicalOutbox` and, on success, transition the approval
-   **ACTIVE → CONSUMED** (new bounded store operation + Postgres append-only
-   `approval_status_revision = 2`).
-4. **Outcome**: `completeInTransaction` with produced resource
-   `'stage6.canonical.commit'`; failures → `reject` / `markOutcomeUnknown`; replay resolves
-   by original identity (never a second commit).
-5. **Route**: `POST /product-api/frontend/knowledge/drafts/commit` (guarded; CSRF; body-only).
+3. **Execution (GPT-confirmed, CORRECTED from the r1 draft)**:
+   - The r1 draft said `canonical.commit({ ..., manifest })` — this conflicts with the
+     legacy-coercion prohibition. **Corrected:** the commit consumer builds a
+     **Frontend Canonical Commit Write** (below) and calls **`canonical.commitFrontendDraft(write)`**.
+     No Stage-5 `ApprovedChangeSetManifest` is ever fabricated.
+   - Frozen write shape:
+     ```ts
+     type FrontendCanonicalAuthorityV1 = {
+       kind: 'FRONTEND_REVIEW_APPROVAL';
+       approvalId: string;
+       approvalBindingDigest: string;
+       reviewContextId: string;
+       contextRevision: number;
+       draftId: string;
+       draftRevision: number;
+       draftContentDigest: string;
+       approvedItemIds: readonly string[];
+     };
+     type FrontendCanonicalCommitWrite =
+       | { commitId: string; revisionId: string; historyEventId: string; outboxId: string;
+           projectId: string; operation: 'ADD_CLAIM'; claimId: string; claimText: string;
+           sourceVersionId: string; evidenceIds: readonly string[];
+           accessScope: readonly string[]; sensitivity: string;
+           expectedCanonicalVersion: number; snapshotDigest: string;
+           authority: FrontendCanonicalAuthorityV1; reason: string; actor: Actor;
+           committedAt: string; }
+       | { commitId: string; revisionId: string; historyEventId: string; outboxId: string;
+           projectId: string; operation: 'NO_OP';
+           expectedCanonicalVersion: number; snapshotDigest: string;
+           authority: FrontendCanonicalAuthorityV1; reason: string; actor: Actor;
+           committedAt: string; };
+     ```
+   - The common Canonical persistence core (project_state FOR UPDATE → replay check →
+     stale check → claim → commit → revision → history → outbox → project update) is reused;
+     only the **commit provenance** differs.
+4. **Schema delta (bounded migration; the r1 "no migration" clause is AMENDED)**:
+   - `canonical.commits`: add `authority_kind` (`'LEGACY_STAGE5_MANIFEST'` default /
+     `'FRONTEND_REVIEW_APPROVAL'`), `authority_id`, `authority_digest`; make
+     `manifest_id`/`change_set_id` NULLable; add `UNIQUE(authority_kind, authority_id)`
+     (one Approval → at most one Canonical commit at the DB level).
+   - `canonical.claims`: same authority reference (frontend rows reference the approval;
+     legacy rows keep their manifest provenance) — no fake manifest identity in Claim rows.
+   - Existing Stage-5 rows: `authority_kind = LEGACY_STAGE5_MANIFEST`, manifest/change_set
+     values preserved. **No data rewrite.**
+5. **Order (corrected)**: `Canonical durable commit → Approval CONSUMED → command COMPLETED`;
+   Outbox publication is a separate retry/recovery step (a durable commit never leaves the
+   approval ACTIVE because outbox publication later fails).
+6. **Approval consume semantics**: `consumeApproval(approvalId, canonicalCommitId, consumedAt,
+   consumedBy)` → `ACTIVE → CONSUMED` recording the consuming commit id; idempotent success
+   when the SAME commit already consumed it; reject when a different commit consumed it or
+   the approval is `REVOKED/EXPIRED/INVALIDATED`.
+7. **Outcome**: `completeInTransaction` with produced resource `'stage6.canonical.commit'`;
+   failures → `reject` / `markOutcomeUnknown`; replay resolves by original identity and, on
+   retry after a crash between the durable commit and the consume, looks up the existing
+   commit by approvalId, verifies the authority digest, makes no new commit, corrects the
+   approval to CONSUMED, and completes the original command.
+8. **Route**: `POST /product-api/frontend/knowledge/drafts/commit` (guarded; CSRF; body-only).
 
-**Store delta**: add `consumeApproval(approvalId, consumedAt, consumedBy, revision)` to
-`ReviewApprovalStorePort` + in-memory + Postgres (append-only status revision; keep
-block-mutation trigger; `findById`/`listByProject` read latest status revision).
+**Store delta**: `ReviewApprovalStorePort.consumeApproval(approvalId, canonicalCommitId,
+consumedAt, consumedBy)` + in-memory + Postgres (append-only status revision; the consuming
+canonical commit id is preserved in the approval status history for audit/history lineage;
+keep block-mutation trigger; `findById`/`listByProject` read latest status revision).
 
 ## 4. Scope guardrails (bounded repair only)
 
 - No new Phase, no new Section, no new Work Item.
 - No journey scope reduction; CP-AC-08 stays mandatory.
-- No silent coercion of Frontend approvals into the legacy Stage-5 manifest.
+- No silent coercion of Frontend approvals into the legacy Stage-5 manifest;
+  frontend commits use `commitFrontendDraft(FrontendCanonicalCommitWrite)` only.
 - No auto-commit on Approve (FE-P4-S1 contract preserved: Approval issuance has no Commit
   side effect).
 - Canonical commit remains single-claim `ADD_CLAIM`/`NO_OP`; unmappable draft operations
   fail-closed.
-- No new runtime dependency; no migration beyond the bounded approval status revision
-  extension (027/033 already provide the append-only structure; the Postgres approval table
-  already has `approval_status_revision`).
+- No new runtime dependency. Bounded additive migration (034) only: canonical commit/claim
+  authority provenance + nullable legacy manifest columns + `UNIQUE(authority_kind,
+  authority_id)`; no existing-row rewrite. The r1 "no migration" clause is amended by the
+  GPT-confirmed contract delta (2026-08-09).
 
 ## 5. Authority gate
 
 ```text
-Amendment: PROPOSED / PENDING USER APPROVAL  ← CURRENT GATE
-→ USER explicit approval
-→ Amendment APPROVED / RATIFIED (Correction A ratified, Correction B contract frozen)
-→ Correction B implementation (bounded, one at a time)
+Amendment: PROPOSED / PENDING USER APPROVAL
+→ USER explicit approval (2026-08-09, "승인")  ✅ (r1 contract)
+→ GPT contract delta review (2026-08-09)  ✅ — Correction B contract direction ACCEPTED,
+  commitFrontendDraft APPROVED, legacy coercion FORBIDDEN, canonical provenance schema
+  evolution REQUIRED, "no migration" clause MUST_BE_AMENDED
+→ ★ CONTRACT DELTA (migration 034 + FrontendCanonicalCommitWrite) — PENDING USER APPROVAL
+→ USER approval → Correction B implementation (bounded, one at a time)
 → focused verification + exact-head automatic CI
 → GPT review ACCEPTED
 → WP-XP2 resumes (journey + XP-I01~07)
 ```
+
+## 6. Approval record
+
+- 2026-08-09 — USER explicit approval ("승인") of the r1 Amendment.
+- **Correction A (Draft→Review production wiring): RATIFIED.**
+- **Correction B (Approval→Canonical Commit consumer): r1 CONTRACT APPROVED; GPT contract
+  delta review ACCEPTED (commitFrontendDraft + FrontendCanonicalCommitWrite + migration 034
+  provenance).** Contract delta implementation WAITS for the user contract-delta approval
+  (section 5). GPT review gate follows focused verification.
+- 2026-08-09 — GPT `Correction B — Canonical Commit Contract Review`: Direction APPROVED;
+  `commitFrontendDraft` APPROVED; legacy `ApprovedChangeSetManifest` coercion FORBIDDEN;
+  exact write shape CHANGES_REQUIRED (small normalization → frozen
+  `FrontendCanonicalAuthorityV1`/`FrontendCanonicalCommitWrite`); WP-XP2 PAUSED UNTIL
+  CORRECTION B COMPLETE.

@@ -147,6 +147,16 @@ export const frontendKnowledgeDraftSubmitDraftForReviewDigest = (
     }),
   );
 
+export const frontendKnowledgeDraftCommitDigest = (request: CommitKnowledgeDraftRequestV1): string =>
+  sha256Text(
+    stableJson({
+      draftId: request.draftId,
+      expectedDraftRevision: request.expectedDraftRevision,
+      expectedBaseRevision: request.expectedBaseRevision,
+      approvalId: request.approvalId,
+    }),
+  );
+
 export type FrontendKnowledgeProjectPolicyContextV1 = {
   readonly activeProjectId: string;
   readonly resourceProjectId: string;
@@ -482,6 +492,12 @@ export type SubmitKnowledgeDraftForReviewRequestV1 = RequiredDraftRevisionEnvelo
   readonly impactArtifact: DraftImpactArtifactRefV1;
 };
 
+export type CommitKnowledgeDraftRequestV1 = RequiredDraftRevisionEnvelopeV1 & {
+  readonly draftId: string;
+  readonly expectedBaseRevision: number;
+  readonly approvalId: string;
+};
+
 export type ReadKnowledgeDraftRequestV1 = DraftCommandEnvelopeV1 & {
   readonly draftId: string;
 };
@@ -507,6 +523,12 @@ export type FrontendKnowledgeDraftCommandResultBaseV1 = {
 
 export type MaterializeDraftResultV1 = FrontendKnowledgeDraftCommandResultBaseV1 & {
   readonly draft: FrontendKnowledgeDraftChangeSetV1;
+};
+
+export type CommitKnowledgeDraftResultV1 = FrontendKnowledgeDraftCommandResultBaseV1 & {
+  readonly draftId: string;
+  readonly approvalId: string;
+  readonly commitIds: readonly string[];
 };
 
 export type ReadKnowledgeDraftResultV1 = MaterializeDraftResultV1;
@@ -2056,6 +2078,27 @@ export const decodeSubmitKnowledgeDraftForReviewRequestV1 = (
     ),
     validationArtifact,
     impactArtifact,
+  };
+};
+
+export const decodeCommitKnowledgeDraftRequestV1 = (
+  value: unknown,
+): CommitKnowledgeDraftRequestV1 => {
+  const { object, envelope } = decodeCommandRequestObject(
+    value,
+    ['draftId', 'expectedBaseRevision', 'approvalId'],
+    'commitDraft',
+  );
+  const expectedDraftRevision = requiredExpectedDraftRevision(envelope, 'commitDraft');
+  return {
+    ...envelope,
+    expectedDraftRevision,
+    draftId: text(required(object, 'draftId', 'commitDraft'), 'commitDraft.draftId'),
+    expectedBaseRevision: integer(
+      required(object, 'expectedBaseRevision', 'commitDraft'),
+      'commitDraft.expectedBaseRevision',
+    ),
+    approvalId: text(required(object, 'approvalId', 'commitDraft'), 'commitDraft.approvalId'),
   };
 };
 

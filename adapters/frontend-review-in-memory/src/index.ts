@@ -171,6 +171,35 @@ export class InMemoryFrontendReviewStore implements ReviewRepositoryBoundaryPort
         },
         listByProject: async (projectId) =>
           [...this.approvals.values()].filter((approval) => approval.projectId === projectId),
+        consumeApproval: async (approvalId, canonicalCommitId, consumedAt, consumedBy) => {
+          const current = this.approvals.get(approvalId);
+          if (!current) {
+            throw new FrontendContractError(
+              'CONFLICT',
+              `approval ${approvalId} does not exist`,
+            );
+          }
+          if (current.status === 'CONSUMED') {
+            if ((current.invalidationReason ?? '').includes(canonicalCommitId)) {
+              return;
+            }
+            throw new FrontendContractError(
+              'CONFLICT',
+              `approval ${approvalId} was already consumed by a different commit`,
+            );
+          }
+          if (current.status !== 'ACTIVE') {
+            throw new FrontendContractError(
+              'CONFLICT',
+              `approval ${approvalId} is not ACTIVE`,
+            );
+          }
+          this.approvals.set(approvalId, {
+            ...current,
+            status: 'CONSUMED',
+            invalidationReason: `Consumed by ${consumedBy} via canonical commit ${canonicalCommitId} at ${consumedAt}`,
+          });
+        },
       },
     };
   }

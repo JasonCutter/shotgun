@@ -27,13 +27,27 @@ import type {
   ProjectAdministrationRepositoryPort,
   UpdateProjectInput,
   ProjectLifecycleCommandInput,
+  CreateProjectTombstoneInput,
+  DeletedProjectAuditScopeRecord,
+  GrantDeletedProjectAuditScopeInput,
+  ProjectTombstoneRecord,
+  ProjectTombstoneStorePort,
+  RevokeDeletedProjectAuditScopeInput,
 } from '../../../modules/project-administration/src/index.js';
 import type {
   ApplySettingsCommandInput,
   ApplyPreferenceCommandInput,
+  ListPolicyHistoryInput,
+  ListPolicyHistoryResult,
+  PolicyHistoryEntry,
+  PolicyHistoryReadPort,
   SettingsRepositoryPort,
 } from '../../../modules/settings-policy/src/index.js';
-import { deriveSettingsImpact } from '../../../modules/settings-policy/src/index.js';
+import {
+  comparePolicyHistoryEntries,
+  deriveSettingsImpact,
+  paginatePolicyHistory,
+} from '../../../modules/settings-policy/src/index.js';
 
 export class InMemoryProjectAdministrationRepository implements ProjectAdministrationRepositoryPort {
   private readonly projects = new Map<string, ProjectListItemView>();
@@ -787,5 +801,135 @@ export class InMemorySettingsRepository implements SettingsRepositoryPort {
         backupStatus: 'HEALTHY',
       }),
     });
+  }
+}
+
+/**
+ * In-memory Policy History read adapter (WP2-A). Mirrors the three
+ * authoritative append-only settings sources (settings_revisions,
+ * policy_context_revisions, settings_audit_events). Read-only: entries are
+ * never edited or deleted once appended (append-only safe).
+ */
+export class InMemoryPolicyHistoryReadAdapter implements PolicyHistoryReadPort {
+  private readonly entries: PolicyHistoryEntry[] = [];
+
+  appendEntry(entry: PolicyHistoryEntry): void {
+    if (
+      this.entries.some(
+        (existing) =>
+          existing.projectId === entry.projectId &&
+          existing.sourceKind === entry.sourceKind &&
+          existing.sourceId === entry.sourceId,
+      )
+    ) {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        `Policy history entry ${entry.projectId}:${entry.sourceKind}:${entry.sourceId} already exists (append-only).`,
+      );
+    }
+    this.entries.push(Object.freeze({ ...entry, details: Object.freeze({ ...entry.details }) }));
+  }
+
+  async listPolicyHistory(input: ListPolicyHistoryInput): Promise<ListPolicyHistoryResult> {
+    if (!input.projectId) throw new FrontendContractError('INVALID_REQUEST', 'projectId required');
+    const projectEntries = this.entries
+      .filter((entry) => entry.projectId === input.projectId)
+      .sort(comparePolicyHistoryEntries);
+    return paginatePolicyHistory(projectEntries, input);
+  }
+}
+
+/**
+ * In-memory ProjectTombstone / DeletedProjectAuditScope store (WP2-C).
+ * Mirrors project_audit.project_tombstones + deleted_project_audit_scopes.
+ */
+export class InMemoryProjectTombstoneStore implements ProjectTombstoneStorePort {
+  private readonly tombstones = new Map<string, ProjectTombstoneRecord>();
+  private readonly scopes = new Map<string, DeletedProjectAuditScopeRecord>();
+
+  async createTombstone(input: CreateProjectTombstoneInput): Promise<ProjectTombstoneRecord> {
+    if (!input.projectId) {
+      throw new FrontendContractError('INVALID_REQUEST', 'projectId required');
+    }
+    if (this.tombstones.has(input.projectId)) {
+      throw new FrontendContractError(
+        'CONFLICT',
+        `Project ${input.projectId} already has a tombstone.`,
+      );
+    }
+    const record = Object.freeze({
+      projectId: input.projectId,
+      deletedAt: input.deletedAt,
+      deletedBy: input.deletedBy,
+      reason: input.reason,
+      retentionClass: input.retentionClass,
+      lineageDigest: input.lineageDigest,
+    });
+    this.tombstones.set(input.projectId, record);
+    return record;
+  }
+
+  async getTombstone(projectId: string): Promise<ProjectTombstoneRecord | null> {
+    return this.tombstones.get(projectId) ?? null;
+  }
+
+  async grantAuditScope(
+    input: GrantDeletedProjectAuditScopeInput,
+  ): Promise<DeletedProjectAuditScopeRecord> {
+    if (!input.scopeId || !input.projectId) {
+      throw new FrontendContractError('INVALID_REQUEST', 'scopeId and projectId required');
+    }
+    if (!this.tombstones.has(input.projectId)) {
+      throw new FrontendContractError(
+        'NOT_FOUND',
+        `Project ${input.projectId} has no tombstone; audit scope requires a tombstone.`,
+      );
+    }
+    const existing = this.scopes.get(input.scopeId);
+    if (existing && !existing.revokedAt) {
+      throw new FrontendContractError(
+        'CONFLICT',
+        `Audit scope ${input.scopeId} is already granted.`,
+      );
+    }
+    const record = Object.freeze({
+      scopeId: input.scopeId,
+      projectId: input.projectId,
+      grantedPrincipalIds: Object.freeze([...input.grantedPrincipalIds]),
+      grantedAt: input.grantedAt,
+      grantedBy: input.grantedBy,
+    });
+    this.scopes.set(input.scopeId, record);
+    return record;
+  }
+
+  async revokeAuditScope(
+    input: RevokeDeletedProjectAuditScopeInput,
+  ): Promise<DeletedProjectAuditScopeRecord> {
+    const existing = this.scopes.get(input.scopeId);
+    if (!existing) {
+      throw new FrontendContractError('NOT_FOUND', `Audit scope ${input.scopeId} not found.`);
+    }
+    if (existing.revokedAt) {
+      throw new FrontendContractError(
+        'CONFLICT',
+        `Audit scope ${input.scopeId} is already revoked.`,
+      );
+    }
+    const revoked = Object.freeze({ ...existing, revokedAt: input.revokedAt });
+    this.scopes.set(input.scopeId, revoked);
+    return revoked;
+  }
+
+  async getAuditScope(scopeId: string): Promise<DeletedProjectAuditScopeRecord | null> {
+    return this.scopes.get(scopeId) ?? null;
+  }
+
+  async listAuditScopes(projectId: string): Promise<readonly DeletedProjectAuditScopeRecord[]> {
+    return Object.freeze(
+      Array.from(this.scopes.values())
+        .filter((scope) => scope.projectId === projectId)
+        .sort((a, b) => a.scopeId.localeCompare(b.scopeId)),
+    );
   }
 }

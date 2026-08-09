@@ -23,7 +23,7 @@ legacy_source_id: 3a65181d-71ad-8122-bfda-c9be8016ef33
 | Work Item                              | Status        |
 | -------------------------------------- | ------------- |
 | FE-P5 — Operations and Audit           | `IN_PROGRESS` |
-| FE-P5-S2 — History, Audit and Rollback | `NOT_STARTED` |
+| FE-P5-S2 — History, Audit and Rollback | `IN_PROGRESS` |
 
 - 미충족 필수 기준: `manifest unavailable`
 - Next valid Product Section: `NONE — none`

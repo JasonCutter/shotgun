@@ -39,9 +39,6 @@ describe.runIf(pool)('ADR-116 PostgreSQL bootstrap transaction', () => {
     await pool!.query(`
       TRUNCATE
         frontend_command.command_ledger,
-        settings.settings_audit_events,
-        settings.policy_context_revisions,
-        settings.settings_revisions,
         project_admin.project_command_results,
         project_admin.project_commands,
         project_admin.project_revisions,
@@ -57,8 +54,9 @@ describe.runIf(pool)('ADR-116 PostgreSQL bootstrap transaction', () => {
 
   afterEach(async () => {
     await pool!.query(
-      'ALTER TABLE settings.settings_revisions DROP CONSTRAINT IF EXISTS test_reject_empty_bootstrap',
+      'DROP TRIGGER IF EXISTS test_block_settings_revisions_trigger ON settings.settings_revisions',
     );
+    await pool!.query('DROP FUNCTION IF EXISTS test_block_settings_revisions()');
   });
 
   const zeroProjectFixture = async () => {
@@ -142,10 +140,26 @@ describe.runIf(pool)('ADR-116 PostgreSQL bootstrap transaction', () => {
 
   it('rolls back every bootstrap write when a late settings insert fails', async () => {
     const { principal, session } = await zeroProjectFixture();
+    // settings history is append-only (migration 032): the historical rows must
+    // never be altered or truncated. To force a late settings insert failure
+    // without touching existing rows, install a temporary INSERT-blocking
+    // trigger for this test only (removed in the same test).
     await pool!.query(`
-      ALTER TABLE settings.settings_revisions
-      ADD CONSTRAINT test_reject_empty_bootstrap
-      CHECK (settings_snapshot <> '{}'::jsonb)
+      CREATE OR REPLACE FUNCTION test_block_settings_revisions()
+      RETURNS trigger AS $$
+      BEGIN
+        RAISE EXCEPTION 'test: settings insert blocked';
+      END;
+      $$ LANGUAGE plpgsql
+    `);
+    await pool!.query(`
+      DROP TRIGGER IF EXISTS test_block_settings_revisions_trigger
+        ON settings.settings_revisions
+    `);
+    await pool!.query(`
+      CREATE TRIGGER test_block_settings_revisions_trigger
+        BEFORE INSERT ON settings.settings_revisions
+        FOR EACH ROW EXECUTE FUNCTION test_block_settings_revisions()
     `);
     const unitOfWork = new PostgresProjectBootstrapUnitOfWork(pool!);
     await expect(
@@ -159,6 +173,11 @@ describe.runIf(pool)('ADR-116 PostgreSQL bootstrap transaction', () => {
         payload: { name: 'Rollback Required' },
       }),
     ).rejects.toThrow();
+    await pool!.query(`
+      DROP TRIGGER IF EXISTS test_block_settings_revisions_trigger
+        ON settings.settings_revisions
+    `);
+    await pool!.query(`DROP FUNCTION IF EXISTS test_block_settings_revisions()`);
 
     const counts = await pool!.query<{
       projects: string;

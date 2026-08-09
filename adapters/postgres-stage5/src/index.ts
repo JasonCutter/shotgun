@@ -9,6 +9,7 @@ import {
   type ApprovedChangeSetManifest,
   type ComparisonResult,
   type DraftChangeSet,
+  type ReversalDraftChangeSetV1,
   stableJson,
   ShotgunError,
 } from '../../../packages/contracts/src/index.js';
@@ -26,6 +27,10 @@ type DecisionRow = QueryResultRow & {
   readonly decision_json: ReviewDecisionWrite['decision'];
   readonly change_set_json?: DraftChangeSet;
   readonly manifest_json?: ApprovedChangeSetManifest | null;
+};
+
+type ReversalRow = QueryResultRow & {
+  readonly reversal_json: ReversalDraftChangeSetV1;
 };
 
 const comparisonSelect = `
@@ -413,5 +418,56 @@ export class PostgresChangeSetReviewRepository implements ChangeSetReviewReposit
       [projectId, changeSetId],
     );
     return result.rows[0]?.manifest_json ?? undefined;
+  }
+
+  // FE-P5-S2 WP5 (Round 4 Option 1): owning-Domain Reversal durable authority
+  // (additive `review.reversals` record set, migration 033).
+  async saveReversal(reversal: ReversalDraftChangeSetV1): Promise<ReversalDraftChangeSetV1> {
+    const inserted = await this.pool.query<ReversalRow>(
+      `
+        INSERT INTO review.reversals (reversal_id, project_id, reversal_json, created_at)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (reversal_id) DO UPDATE SET
+          project_id = EXCLUDED.project_id,
+          reversal_json = EXCLUDED.reversal_json,
+          created_at = EXCLUDED.created_at
+        RETURNING reversal_json
+      `,
+      [
+        reversal.reversalId,
+        reversal.resourceProjectId,
+        JSON.stringify(reversal),
+        reversal.createdAt,
+      ],
+    );
+    return inserted.rows[0]?.reversal_json ?? reversal;
+  }
+
+  async findReversalById(
+    projectId: string,
+    reversalId: string,
+  ): Promise<ReversalDraftChangeSetV1 | undefined> {
+    const result = await this.pool.query<ReversalRow>(
+      `
+        SELECT reversal_json
+        FROM review.reversals
+        WHERE project_id = $1 AND reversal_id = $2
+      `,
+      [projectId, reversalId],
+    );
+    return result.rows[0]?.reversal_json;
+  }
+
+  async listReversals(projectId: string): Promise<readonly ReversalDraftChangeSetV1[]> {
+    const result = await this.pool.query<ReversalRow>(
+      `
+        SELECT reversal_json
+        FROM review.reversals
+        WHERE project_id = $1
+        ORDER BY created_at, reversal_id
+      `,
+      [projectId],
+    );
+    return result.rows.map((row) => row.reversal_json);
   }
 }

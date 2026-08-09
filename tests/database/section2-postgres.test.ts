@@ -25,11 +25,12 @@ describe.runIf(pool)('Persistent PostgreSQL Section 2 Settings & Project Adminis
       DELETE FROM frontend_command.command_ledger WHERE target_project_id LIKE 'pg-proj-%';
       DELETE FROM project_admin.project_commands WHERE project_id LIKE 'pg-proj-%';
       DELETE FROM project_admin.project_revisions WHERE project_id LIKE 'pg-proj-%';
-      DELETE FROM settings.settings_audit_events WHERE project_id LIKE 'pg-proj-%';
+      -- settings history sources are append-only and must NOT be truncated or
+      -- deleted (migration 032 immutability guard: UPDATE/DELETE/TRUNCATE all
+      -- forbidden). Each test uses a unique project prefix ('pg-proj-%'), so
+      -- historical rows are isolated and left for the full DB reset boundary.
       DELETE FROM settings.settings_command_results WHERE command_id IN (SELECT command_id FROM settings.settings_commands WHERE project_id LIKE 'pg-proj-%');
       DELETE FROM settings.settings_commands WHERE project_id LIKE 'pg-proj-%';
-      DELETE FROM settings.settings_revisions WHERE project_id LIKE 'pg-proj-%';
-      DELETE FROM settings.policy_context_revisions WHERE project_id LIKE 'pg-proj-%';
       DELETE FROM settings.project_settings WHERE project_id LIKE 'pg-proj-%';
       DELETE FROM auth.project_memberships WHERE project_id LIKE 'pg-proj-%';
       DELETE FROM project_admin.projects WHERE id LIKE 'pg-proj-%';

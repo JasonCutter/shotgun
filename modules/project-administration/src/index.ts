@@ -57,3 +57,17 @@ export type ProjectBootstrapUnitOfWorkPort = {
   bootstrap(input: ProjectBootstrapInput): Promise<ProjectBootstrapResult>;
   findCompleted(commandId: string): Promise<ProjectListItemView | null>;
 };
+
+export type {
+  CreateProjectTombstoneInput,
+  DeletedProjectAuditReadContext,
+  DeletedProjectAuditScopeRecord,
+  GrantDeletedProjectAuditScopeInput,
+  ProjectTombstoneRecord,
+  ProjectTombstoneStorePort,
+  RevokeDeletedProjectAuditScopeInput,
+} from './project-tombstone.js';
+export {
+  DELETED_PROJECT_AUDIT_READ_CAPABILITY,
+  isDeletedProjectAuditReadPermitted,
+} from './project-tombstone.js';

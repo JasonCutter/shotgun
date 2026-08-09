@@ -48,6 +48,7 @@ import {
 import {
   InMemoryProjectAdministrationRepository,
   InMemoryProjectBootstrapUnitOfWork,
+  InMemoryProjectTombstoneStore,
   InMemorySettingsRepository,
 } from '../../../adapters/settings-project-admin-in-memory/src/index.js';
 import { InMemoryFrontendCommandGateway } from '../../../adapters/frontend-command-gateway-in-memory/src/index.js';
@@ -71,8 +72,16 @@ import { InMemoryAskConversationRepository } from '../../../adapters/frontend-as
 import type {
   ProjectAdministrationRepositoryPort,
   ProjectBootstrapUnitOfWorkPort,
+  ProjectTombstoneStorePort,
 } from '../../../modules/project-administration/src/index.js';
-import type { SettingsRepositoryPort } from '../../../modules/settings-policy/src/index.js';
+import type {
+  PayloadStateOwner,
+  PayloadStateStorePort,
+} from '../../../modules/frontend-history/src/index.js';
+import type {
+  PolicyHistoryReadPort,
+  SettingsRepositoryPort,
+} from '../../../modules/settings-policy/src/index.js';
 import type { FrontendCommandGatewayPort } from '../../../modules/frontend-command-gateway/src/index.js';
 import { registerProjectRoutes } from './product-api/project-routes.js';
 import { registerFrontendProductRoutes } from './product-api/frontend-product-routes.js';
@@ -82,6 +91,7 @@ import { registerFrontendKnowledgeDraftRoutes } from './product-api/frontend-kno
 import { registerFrontendReviewRoutes } from './product-api/frontend-review-routes.js';
 import { registerFrontendExternalActionRoutes } from './product-api/frontend-external-action-routes.js';
 import { registerActivityRoutes } from './product-api/frontend-activity-routes.js';
+import { registerHistoryRoutes } from './product-api/frontend-history-routes.js';
 import {
   ActivityProductCoordinator,
   ActivityProjectionBuilder,
@@ -89,6 +99,20 @@ import {
   type AskActivityReadPort,
   type SourcesActivityReadPort,
 } from '../../../modules/frontend-activity/src/index.js';
+import {
+  HistoryProductCoordinator,
+  createHistoryAdapterRegistry,
+  type HistoryReadModelStorePort,
+} from '../../../modules/frontend-history/src/index.js';
+import {
+  createInMemoryHistoryReadModelStore,
+  InMemoryPayloadStateStore,
+} from '../../../adapters/frontend-history-in-memory/src/index.js';
+import { InMemoryPolicyHistoryReadAdapter } from '../../../adapters/settings-project-admin-in-memory/src/index.js';
+import { CanonicalHistoryAdapter } from '../../../adapters/frontend-history-canonical/src/index.js';
+import { ReviewHistoryAdapter } from '../../../adapters/frontend-history-review/src/index.js';
+import { ExternalActionHistoryAdapter } from '../../../adapters/frontend-history-external-action/src/index.js';
+import { PolicyHistoryAdapter } from '../../../adapters/frontend-history-policy/src/index.js';
 import { createInMemoryActivityReadModelStore } from '../../../adapters/frontend-activity-in-memory/src/index.js';
 import { SourcesActivityAdapter } from '../../../adapters/frontend-activity-sources/src/index.js';
 import { createInMemorySourcesActivityRead } from '../../../adapters/frontend-activity-sources/src/index.js';
@@ -114,7 +138,10 @@ import {
 import type { FrontendKnowledgeDraftRepositoryBoundaryPort } from '../../../modules/frontend-knowledge-draft/src/index.js';
 import { InMemoryFrontendKnowledgeDraftRepository } from '../../../adapters/frontend-knowledge-draft-in-memory/src/index.js';
 import { InMemoryFrontendKnowledgeDraftTargetResolver } from '../../../adapters/frontend-knowledge-draft-api-in-memory/src/index.js';
-import { FrontendReviewProductCoordinator } from '../../../modules/frontend-review/src/index.js';
+import {
+  FrontendReviewProductCoordinator,
+  type ReviewRepositoryBoundaryPort,
+} from '../../../modules/frontend-review/src/index.js';
 import { InMemoryFrontendReviewStore } from '../../../adapters/frontend-review-in-memory/src/index.js';
 import { FrontendExternalActionProductCoordinator } from '../../../modules/frontend-external-action/src/index.js';
 import {
@@ -210,6 +237,7 @@ import {
 } from '../../../modules/comparison/src/index.js';
 import {
   createChangeSetReviewModule,
+  createReversalEligibilityPort,
   type ChangeSetReviewRepositoryPort,
 } from '../../../modules/change-set-review/src/index.js';
 import {
@@ -487,6 +515,12 @@ export type ApplicationOptions = {
   readonly activityExternalActionBoundary?: ExternalActionRepositoryBoundaryPort;
   readonly activityReadModelStore?: ActivityReadModelStorePort;
   readonly activityCoordinator?: ActivityProductCoordinator;
+  readonly historyReadModelStore?: HistoryReadModelStorePort;
+  readonly historyCoordinator?: HistoryProductCoordinator;
+  readonly projectTombstoneStore?: ProjectTombstoneStorePort;
+  readonly policyHistoryRead?: PolicyHistoryReadPort;
+  readonly historyPayloadStates?: Partial<Record<PayloadStateOwner, PayloadStateStorePort>>;
+  readonly historyReviewBoundary?: ReviewRepositoryBoundaryPort;
   readonly host?: string;
   readonly production?: boolean;
   readonly canonicalProjectionRecoveryIntervalMs?: number | false;
@@ -1190,6 +1224,10 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     },
   };
   const authRepository = options.authRepository ?? new InMemoryAuthRepository();
+  // FE-P5-S2 WP2-C / WP5: ProjectTombstone + DeletedProjectAuditScope store for
+  // authorized deleted-project audit reads.
+  const projectTombstoneStore =
+    options.projectTombstoneStore ?? new InMemoryProjectTombstoneStore();
   const projectAdminRepository =
     options.projectAdminRepository ??
     new InMemoryProjectAdministrationRepository(async ({ principalId, projectId }) => {
@@ -1226,21 +1264,30 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       snapshotContextStore: createInMemorySnapshotContextStore(),
       healthStore: createInMemoryHealthStore(),
     });
+  const frontendReviewStore = new InMemoryFrontendReviewStore();
+  // FE-P5-S2 WP3/WP5: Reversal draft creation is a change-set-review owned
+  // capability (server-derived current capability + principal; the browser
+  // only names the historical source revision). Round 4 Option 1: every
+  // created candidate is persisted to the owning change-set-review store
+  // (ADR-131 §4 owner = change-set-review; durable Reversal authority).
+  const reversalEligibilityPort = createReversalEligibilityPort(canonicalKnowledgeRepository, {
+    currentCapabilitiesResolver: async ({ resourceProjectId, principalId }) => {
+      const membership = await authRepository.findMembership(principalId, resourceProjectId);
+      return membership?.scopes ?? [];
+    },
+    reversalStore: changeSetReviewRepository,
+  });
   const frontendReviewCoordinator =
     options.frontendReviewCoordinator ??
-    new FrontendReviewProductCoordinator(
-      new InMemoryFrontendReviewStore(),
-      frontendCommandGateway,
-      [
-        new DraftReviewTargetAdapter(
-          frontendKnowledgeDraftRepository instanceof InMemoryFrontendKnowledgeDraftRepository
-            ? createInMemoryReviewDraftSourceReader(frontendKnowledgeDraftRepository)
-            : createEmptyReviewDraftSourceReader(),
-        ),
-        new DiscoveryCandidateReviewTargetAdapter(createInMemoryReviewDiscoveryCandidateReader()),
-        new UserDirectiveReviewTargetAdapter(createInMemoryReviewUserDirectiveReader()),
-      ],
-    );
+    new FrontendReviewProductCoordinator(frontendReviewStore, frontendCommandGateway, [
+      new DraftReviewTargetAdapter(
+        frontendKnowledgeDraftRepository instanceof InMemoryFrontendKnowledgeDraftRepository
+          ? createInMemoryReviewDraftSourceReader(frontendKnowledgeDraftRepository)
+          : createEmptyReviewDraftSourceReader(),
+      ),
+      new DiscoveryCandidateReviewTargetAdapter(createInMemoryReviewDiscoveryCandidateReader()),
+      new UserDirectiveReviewTargetAdapter(createInMemoryReviewUserDirectiveReader()),
+    ]);
   // FE-P4-S2 WP4: External Action governed commands run over the shared Frontend
   // Command Ledger; the server owns the Product Coordinator (server-derived
   // scope), the external action store and the connector engine.
@@ -1313,6 +1360,35 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       };
       const builder = new ActivityProjectionBuilder(registry, activityReadModelStore);
       return new ActivityProductCoordinator(registry, activityReadModelStore, builder);
+    })();
+  // FE-P5-S2 WP4: the History Workspace observes the owning Domains (Canonical,
+  // Review, External Action, Policy) through their History adapters into the
+  // additive federated History read model. Default runtime uses in-memory read
+  // model + concrete read ports; the persistent runtime (main.ts) injects the
+  // PostgreSQL store. Reversal creation is NOT a History route.
+  const historyReadModelStore =
+    options.historyReadModelStore ?? createInMemoryHistoryReadModelStore();
+  const historyCoordinator =
+    options.historyCoordinator ??
+    (() => {
+      const canonicalPayloadState =
+        options.historyPayloadStates?.CANONICAL ?? new InMemoryPayloadStateStore('CANONICAL');
+      const reviewPayloadState =
+        options.historyPayloadStates?.REVIEW ?? new InMemoryPayloadStateStore('REVIEW');
+      const externalActionPayloadState =
+        options.historyPayloadStates?.EXTERNAL_ACTION ??
+        new InMemoryPayloadStateStore('EXTERNAL_ACTION');
+      const settingsPayloadState =
+        options.historyPayloadStates?.SETTINGS ?? new InMemoryPayloadStateStore('SETTINGS');
+      const policyHistoryRead = options.policyHistoryRead ?? new InMemoryPolicyHistoryReadAdapter();
+      const reviewBoundary = options.historyReviewBoundary ?? new InMemoryFrontendReviewStore();
+      const registry = createHistoryAdapterRegistry([
+        new CanonicalHistoryAdapter(canonicalKnowledgeRepository, canonicalPayloadState),
+        new ReviewHistoryAdapter(reviewBoundary, reviewPayloadState),
+        new ExternalActionHistoryAdapter(externalActionStore, externalActionPayloadState),
+        new PolicyHistoryAdapter(policyHistoryRead, settingsPayloadState),
+      ]);
+      return new HistoryProductCoordinator(historyReadModelStore.index, registry);
     })();
   const projectBootstrapUnitOfWork =
     options.projectBootstrapUnitOfWork ??
@@ -2055,9 +2131,15 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   registerFrontendReviewRoutes(
     server,
     frontendReviewCoordinator,
+    reversalEligibilityPort,
     authRepository,
     settingsRepository,
     requirePrincipalBrowserSession,
+    {
+      frontendKnowledgeDraftRepository,
+      canonicalKnowledgeRepository,
+      changeSetReviewRepository,
+    },
   );
   registerFrontendExternalActionRoutes(
     server,
@@ -2069,6 +2151,14 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   registerActivityRoutes(
     server,
     activityCoordinator,
+    authRepository,
+    settingsRepository,
+    requirePrincipalBrowserSession,
+  );
+  registerHistoryRoutes(
+    server,
+    historyCoordinator,
+    projectTombstoneStore,
     authRepository,
     settingsRepository,
     requirePrincipalBrowserSession,

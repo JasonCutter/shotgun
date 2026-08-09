@@ -396,6 +396,79 @@ export const activityRefreshQueryKey = (scope: ActivityQueryScope) =>
   [...activityScopeKey(scope), 'refresh'] as const;
 
 /**
+ * FE-P5-S2 WP5 History Workspace query scope. Derived from the shell like the
+ * Activity scope; the server derives Principal, Project, access, policy,
+ * capability and sensitivity authority — the browser only names the resource
+ * and its filters (ADR-131 §2 / IR r1 §5 WP4).
+ */
+export type HistoryQueryScope = {
+  readonly principalId: string;
+  readonly sessionId: string;
+  readonly activeProjectId: string;
+  readonly resourceProjectId: string;
+  readonly accessRevision: string;
+  readonly policyContextRevision: string;
+  readonly sensitivity: string;
+};
+
+export const historyScopeFromShell = (
+  shell: GlobalShellView | null,
+  resourceProjectIdOverride?: string,
+): HistoryQueryScope | null =>
+  shell?.activeProject
+    ? {
+        principalId: shell.principalId,
+        sessionId: shell.sessionId,
+        activeProjectId: shell.activeProject.id,
+        // Round 2 C: an explicit deleted-project audit target overrides the
+        // resource project while the ACTIVE project stays the live control
+        // project. The server revalidates tombstone + audit scope + current
+        // capability for any non-active resourceProjectId.
+        resourceProjectId: resourceProjectIdOverride ?? shell.activeProject.id,
+        accessRevision: shell.accessRevision,
+        policyContextRevision: shell.policyContextRevision,
+        sensitivity: shell.activeProject.sensitivityClearance,
+      }
+    : null;
+
+const historyScopeKey = (scope: HistoryQueryScope) =>
+  [
+    'project',
+    scope.principalId,
+    scope.sessionId,
+    scope.activeProjectId,
+    scope.resourceProjectId,
+    scope.accessRevision,
+    scope.policyContextRevision,
+    scope.sensitivity,
+    'history',
+  ] as const;
+
+/** History scope prefix used for cache invalidation. */
+export const historyScopePrefix = (scope: HistoryQueryScope) =>
+  [...historyScopeKey(scope)] as const;
+
+/**
+ * History list key: bound to the server scope AND the full request (domain
+ * filter, cursor, limit) so two requests never reuse each other's cached page.
+ */
+export const historyListQueryKey = (
+  scope: HistoryQueryScope,
+  request: {
+    readonly domainKinds?: readonly string[];
+    readonly cursor?: unknown;
+    readonly limit?: number;
+  },
+) => [...historyScopeKey(scope), 'list', request] as const;
+
+/** History entry detail key: bound to the scope AND the projection identity. */
+export const historyEntryQueryKey = (scope: HistoryQueryScope, historyEntryId: string) =>
+  [...historyScopeKey(scope), 'entry', historyEntryId] as const;
+
+export const historyDisabledQueryKey = (operation: string) =>
+  ['history', 'disabled', operation] as const;
+
+/**
  * FE-P4-S2 WP5 External Action workspace query scope. Derived from the shell
  * exactly like the Review scope; the server derives capability/credential/
  * budget authority (ADR-129), the browser only names the resource.

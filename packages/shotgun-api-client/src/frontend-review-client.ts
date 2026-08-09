@@ -1,6 +1,7 @@
 import { FrontendContractError } from '../../contracts/src/index.js';
 import {
   decodeAddReviewCommentResultV1,
+  decodeCreateReversalDraftChangeSetRequestV1,
   decodeGetReviewApprovalResultV1,
   decodeGetReviewContextResultV1,
   decodeGetReviewItemDetailResultV1,
@@ -8,11 +9,15 @@ import {
   decodeRecordReviewDecisionsResultV1,
   decodeResolveReviewCommandOutcomeResultV1,
   decodeRevalidateReviewContextResultV1,
+  decodeReversalDraftChangeSetV1,
+  decodeReversalEligibilityV1,
   frontendReviewAddCommentDigest,
   frontendReviewRecordDecisionsDigest,
   frontendReviewRevalidateDigest,
   type AddReviewCommentRequestV1,
   type AddReviewCommentResultV1,
+  type CreateReversalDraftChangeSetRequestV1,
+  type CreateReversalDraftChangeSetResultV1,
   type GetReviewApprovalRequestV1,
   type GetReviewApprovalResultV1,
   type GetReviewContextRequestV1,
@@ -73,6 +78,16 @@ export type FrontendReviewClient = {
     params: ResolveReviewCommandOutcomeRequestV1,
     options?: { readonly signal?: AbortSignal },
   ): Promise<ResolveReviewCommandOutcomeResultV1>;
+  /**
+   * FE-P5-S2 WP5 B — Reversal initiation (change-set-review owning route, WP3).
+   * The server derives the current capability and principal; the browser only
+   * names the historical revision. Returns the CANDIDATE Reversal draft +
+   * eligibility.
+   */
+  createReversalDraftChangeSet(
+    params: CreateReversalDraftChangeSetRequestV1,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<CreateReversalDraftChangeSetResultV1>;
 };
 
 const readJson = async (response: Response): Promise<unknown> => {
@@ -93,6 +108,23 @@ const assertOk = async (response: Response): Promise<unknown> => {
 
 const identityMismatch = (message: string): never => {
   throw new FrontendContractError('UNSUPPORTED_SCHEMA', message);
+};
+
+const invalidReversalResponse = (message: string): never => {
+  throw new FrontendContractError('UNSUPPORTED_SCHEMA', message);
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const decodeCreateReversalResult = (value: unknown): CreateReversalDraftChangeSetResultV1 => {
+  if (!isRecord(value)) invalidReversalResponse('Reversal result must be an object.');
+  const record = value as Record<string, unknown>;
+  return Object.freeze({
+    schemaVersion: '1.0.0',
+    reversal: decodeReversalDraftChangeSetV1(record['reversal'], 'reversal.reversal'),
+    eligibility: decodeReversalEligibilityV1(record['eligibility'], 'reversal.eligibility'),
+  });
 };
 
 /**
@@ -252,6 +284,22 @@ export const createFrontendReviewClient = (
       const result = decodeResolveReviewCommandOutcomeResultV1(body);
       if (result.originalClientRequestId !== params.clientRequestId) {
         identityMismatch('Outcome result does not match the original Review command.');
+      }
+      return result;
+    },
+    async createReversalDraftChangeSet(params, requestOptions) {
+      // Strict request gate: only the frozen fields are accepted; capability,
+      // principal and timestamp are never browser-supplied.
+      decodeCreateReversalDraftChangeSetRequestV1(params, 'createReversalDraftChangeSet');
+      const response = await mutate(
+        '/product-api/frontend/review/reversal-draft',
+        params,
+        requestOptions?.signal,
+      );
+      const body = await assertOk(response);
+      const result = decodeCreateReversalResult(body);
+      if (result.reversal.sourceRevisionId !== params.sourceRevisionId) {
+        identityMismatch('Reversal result does not match the requested source revision.');
       }
       return result;
     },

@@ -146,9 +146,8 @@ describe.runIf(pool)('Frontend Phase 2 Section 1 Sources persistence', () => {
         asset.original_assets,
         intake.submissions,
         frontend_command.command_ledger,
-        settings.settings_audit_events,
-        settings.policy_context_revisions,
-        settings.settings_revisions,
+        -- settings history sources are append-only (migration 032): never
+        -- truncated; tests isolate via unique project/identity prefix.
         project_admin.project_revisions,
         project_admin.projects,
         auth.audit_events,

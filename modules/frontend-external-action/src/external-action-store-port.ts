@@ -100,6 +100,12 @@ export type ExternalActionVerificationStorePort = {
 export type ExternalActionResultStorePort = {
   findById(resultId: string): Promise<ResultV1 | undefined>;
   findCurrent(actionId: string): Promise<ResultV1 | undefined>;
+  /**
+   * Authoritative Result history enumeration for one action (insertion order).
+   * Used by the FE-P5-S2 WP4 External Action History adapter to project the
+   * complete mandatory RESULT family (GPT Round 1 B).
+   */
+  listByAction(actionId: string, limit: number, offset: number): Promise<readonly ResultV1[]>;
   insert(result: ResultV1): Promise<void>;
 };
 
@@ -110,6 +116,14 @@ export type ExternalActionAuditStorePort = {
     limit: number,
     offset: number,
   ): Promise<readonly ActionAuditEventV1[]>;
+  /**
+   * Authoritative single audit event lookup by append-only identity
+   * (FE-P5-S2 WP4 Round 2 B/C): lets the History adapter re-resolve an
+   * AUDIT_EVENT detail row at any position without a capped first-page scan,
+   * so an event past the first 500 is still resolved. The caller must verify
+   * project binding before serving.
+   */
+  findById(auditEventId: string): Promise<ActionAuditEventV1 | undefined>;
   /** Monotonic next sequence for an action (append-only authority). */
   nextSequence(actionId: string): Promise<number>;
 };

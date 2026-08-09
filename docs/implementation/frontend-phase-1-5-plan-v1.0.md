@@ -56,7 +56,7 @@ Knowledge Flow의 6개 Phase와 Frontend Phase 0~5는 대체 관계가 아니다
 | Work Item                              | Status        |
 | -------------------------------------- | ------------- |
 | FE-P5 — Operations and Audit           | `IN_PROGRESS` |
-| FE-P5-S2 — History, Audit and Rollback | `NOT_STARTED` |
+| FE-P5-S2 — History, Audit and Rollback | `IN_PROGRESS` |
 
 - 미충족 필수 기준: `manifest unavailable`
 - Next valid Product Section: `NONE — none`

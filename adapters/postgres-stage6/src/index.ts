@@ -384,6 +384,19 @@ export class PostgresCanonicalKnowledgeRepository
     return result.rows[0]?.result_json;
   }
 
+  async findRevision(
+    projectId: string,
+    revisionId: string,
+  ): Promise<CanonicalRevision | undefined> {
+    const result = await this.pool.query<{ revision_json: CanonicalRevision }>(
+      `SELECT revision_json
+       FROM canonical.revisions
+       WHERE project_id = $1 AND revision_id = $2`,
+      [projectId, revisionId],
+    );
+    return result.rows[0]?.revision_json;
+  }
+
   async listHistory(projectId: string): Promise<readonly CanonicalHistoryEvent[]> {
     const result = await this.pool.query<HistoryRow>(
       `SELECT event_json

@@ -30,4 +30,5 @@ export * from './frontend-review-failures.js';
 export * from './frontend-external-action.js';
 export * from './frontend-external-action-failures.js';
 export * from './frontend-activity.js';
+export * from './frontend-history.js';
 export * from './knowledge-workspace-query.js';

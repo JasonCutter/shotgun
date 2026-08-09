@@ -52,7 +52,7 @@ Phase 2부터 Phase 6까지의 과거 승인 ADR-018–ADR-075는 Phase별 ADR �
 | Work Item                              | Status        |
 | -------------------------------------- | ------------- |
 | FE-P5 — Operations and Audit           | `IN_PROGRESS` |
-| FE-P5-S2 — History, Audit and Rollback | `NOT_STARTED` |
+| FE-P5-S2 — History, Audit and Rollback | `IN_PROGRESS` |
 
 - 미충족 필수 기준: `manifest unavailable`
 - Next valid Product Section: `NONE — none`

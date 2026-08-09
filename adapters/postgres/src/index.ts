@@ -31,11 +31,21 @@ import type {
   ProjectAdministrationRepositoryPort,
   UpdateProjectInput,
   ProjectLifecycleCommandInput,
+  CreateProjectTombstoneInput,
+  DeletedProjectAuditScopeRecord,
+  GrantDeletedProjectAuditScopeInput,
+  ProjectTombstoneRecord,
+  ProjectTombstoneStorePort,
+  RevokeDeletedProjectAuditScopeInput,
 } from '../../../modules/project-administration/src/index.js';
 import type {
   SettingsRepositoryPort,
   ApplySettingsCommandInput,
   ApplyPreferenceCommandInput,
+  ListPolicyHistoryInput,
+  ListPolicyHistoryResult,
+  PolicyHistoryEntry,
+  PolicyHistoryReadPort,
 } from '../../../modules/settings-policy/src/index.js';
 import { deriveSettingsImpact } from '../../../modules/settings-policy/src/index.js';
 import type {
@@ -1824,5 +1834,255 @@ export class PostgresSettingsRepository implements SettingsRepositoryPort {
       applicationMode: 'UNAVAILABLE',
       disabledReason: 'Diagnostics are not available in this tier.',
     };
+  }
+}
+
+/**
+ * PostgreSQL Policy History read adapter (WP2-A). Reads ALL THREE
+ * authoritative append-only settings sources (IR r1 §4 Scope D):
+ *   - settings.settings_revisions
+ *   - settings.policy_context_revisions
+ *   - settings.settings_audit_events
+ * Read-only: never mutates the sources (migration 032 forbids
+ * UPDATE/DELETE/TRUNCATE). Stable source identity is preserved per row.
+ */
+export class PostgresPolicyHistoryReadAdapter implements PolicyHistoryReadPort {
+  constructor(private readonly pool: Pool) {}
+
+  async listPolicyHistory(input: ListPolicyHistoryInput): Promise<ListPolicyHistoryResult> {
+    if (!input.projectId) {
+      throw new FrontendContractError('INVALID_REQUEST', 'projectId required');
+    }
+    if (!Number.isInteger(input.limit) || input.limit < 1) {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        `ListPolicyHistory limit must be a positive integer, got ${input.limit}`,
+      );
+    }
+    const params: (string | number)[] = [input.projectId];
+    let cursorPredicate = '';
+    if (input.cursor) {
+      params.push(input.cursor.timestamp, input.cursor.sourceKind, input.cursor.sourceId);
+      cursorPredicate = `
+        AND (
+          (s.timestamp, s.source_kind, s.source_id) > ($2, $3, $4)
+        )`;
+    }
+    params.push(input.limit + 1);
+    const res = await this.pool.query<{
+      source_kind: string;
+      project_id: string;
+      source_id: string;
+      actor_id: string | null;
+      action_name: string | null;
+      risk_level: string | null;
+      details: Record<string, unknown>;
+      timestamp: Date;
+    }>(
+      `SELECT s.source_kind, s.project_id, s.source_id, s.actor_id, s.action_name,
+              s.risk_level, s.details, s.timestamp
+       FROM (
+         SELECT 'SETTINGS_REVISION' AS source_kind, project_id,
+                revision::text AS source_id, NULL AS actor_id, NULL AS action_name,
+                NULL AS risk_level, settings_snapshot AS details, created_at AS timestamp
+         FROM settings.settings_revisions
+         UNION ALL
+         SELECT 'POLICY_CONTEXT_REVISION' AS source_kind, project_id,
+                revision::text AS source_id, NULL AS actor_id, NULL AS action_name,
+                NULL AS risk_level, policy_binding AS details, created_at AS timestamp
+         FROM settings.policy_context_revisions
+         UNION ALL
+         SELECT 'SETTINGS_AUDIT_EVENT' AS source_kind, project_id,
+                event_id AS source_id, actor_id, action_name, risk_level,
+                details, timestamp
+         FROM settings.settings_audit_events
+       ) s
+       WHERE s.project_id = $1 ${cursorPredicate}
+       ORDER BY s.timestamp ASC, s.source_kind ASC, s.source_id ASC
+       LIMIT $${params.length}`,
+      params,
+    );
+    const entries = res.rows.map((row) =>
+      Object.freeze({
+        sourceKind: row.source_kind as PolicyHistoryEntry['sourceKind'],
+        projectId: row.project_id,
+        sourceId: row.source_id,
+        actorId: row.actor_id ?? undefined,
+        actionName: row.action_name ?? undefined,
+        riskLevel: row.risk_level ?? undefined,
+        details: row.details,
+        timestamp: row.timestamp.toISOString(),
+      }),
+    );
+    const hasMore = entries.length > input.limit;
+    const page = hasMore ? entries.slice(0, input.limit) : entries;
+    const nextCursor =
+      hasMore && page.length > 0
+        ? {
+            timestamp: page[page.length - 1]!.timestamp,
+            sourceKind: page[page.length - 1]!.sourceKind,
+            sourceId: page[page.length - 1]!.sourceId,
+          }
+        : undefined;
+    return { entries: Object.freeze(page), nextCursor };
+  }
+}
+
+/**
+ * PostgreSQL ProjectTombstone / DeletedProjectAuditScope store (WP2-C).
+ * Reads/writes project_audit.project_tombstones and
+ * project_audit.deleted_project_audit_scopes (migration 031).
+ */
+export class PostgresProjectTombstoneStore implements ProjectTombstoneStorePort {
+  constructor(private readonly pool: Pool) {}
+
+  async createTombstone(input: CreateProjectTombstoneInput): Promise<ProjectTombstoneRecord> {
+    if (!input.projectId) {
+      throw new FrontendContractError('INVALID_REQUEST', 'projectId required');
+    }
+    await this.pool.query(
+      `INSERT INTO project_audit.project_tombstones
+         (project_id, deleted_at, deleted_by, reason, retention_class, lineage_digest)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        input.projectId,
+        input.deletedAt,
+        input.deletedBy,
+        input.reason,
+        input.retentionClass,
+        input.lineageDigest,
+      ],
+    );
+    return this.getTombstone(input.projectId) as Promise<ProjectTombstoneRecord>;
+  }
+
+  async getTombstone(projectId: string): Promise<ProjectTombstoneRecord | null> {
+    if (!projectId) throw new FrontendContractError('INVALID_REQUEST', 'projectId required');
+    const res = await this.pool.query<{
+      project_id: string;
+      deleted_at: Date;
+      deleted_by: string;
+      reason: string;
+      retention_class: string;
+      lineage_digest: string;
+    }>(
+      `SELECT project_id, deleted_at, deleted_by, reason, retention_class, lineage_digest
+       FROM project_audit.project_tombstones WHERE project_id = $1`,
+      [projectId],
+    );
+    const row = res.rows[0];
+    if (!row) return null;
+    return Object.freeze({
+      projectId: row.project_id,
+      deletedAt: row.deleted_at.toISOString(),
+      deletedBy: row.deleted_by,
+      reason: row.reason,
+      retentionClass: row.retention_class,
+      lineageDigest: row.lineage_digest,
+    });
+  }
+
+  async grantAuditScope(
+    input: GrantDeletedProjectAuditScopeInput,
+  ): Promise<DeletedProjectAuditScopeRecord> {
+    if (!input.scopeId || !input.projectId) {
+      throw new FrontendContractError('INVALID_REQUEST', 'scopeId and projectId required');
+    }
+    const tombstone = await this.getTombstone(input.projectId);
+    if (!tombstone) {
+      throw new FrontendContractError(
+        'NOT_FOUND',
+        `Project ${input.projectId} has no tombstone; audit scope requires a tombstone.`,
+      );
+    }
+    await this.pool.query(
+      `INSERT INTO project_audit.deleted_project_audit_scopes
+         (scope_id, project_id, granted_principal_ids, granted_at, granted_by)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [
+        input.scopeId,
+        input.projectId,
+        JSON.stringify(input.grantedPrincipalIds),
+        input.grantedAt,
+        input.grantedBy,
+      ],
+    );
+    return this.getAuditScope(input.scopeId) as Promise<DeletedProjectAuditScopeRecord>;
+  }
+
+  async revokeAuditScope(
+    input: RevokeDeletedProjectAuditScopeInput,
+  ): Promise<DeletedProjectAuditScopeRecord> {
+    const res = await this.pool.query(
+      `UPDATE project_audit.deleted_project_audit_scopes
+       SET revoked_at = $2 WHERE scope_id = $1 AND revoked_at IS NULL`,
+      [input.scopeId, input.revokedAt],
+    );
+    if (res.rowCount === 0) {
+      const existing = await this.getAuditScope(input.scopeId);
+      if (!existing) {
+        throw new FrontendContractError('NOT_FOUND', `Audit scope ${input.scopeId} not found.`);
+      }
+      throw new FrontendContractError(
+        'CONFLICT',
+        `Audit scope ${input.scopeId} is already revoked.`,
+      );
+    }
+    return this.getAuditScope(input.scopeId) as Promise<DeletedProjectAuditScopeRecord>;
+  }
+
+  async getAuditScope(scopeId: string): Promise<DeletedProjectAuditScopeRecord | null> {
+    if (!scopeId) throw new FrontendContractError('INVALID_REQUEST', 'scopeId required');
+    const res = await this.pool.query<{
+      scope_id: string;
+      project_id: string;
+      granted_principal_ids: string[];
+      granted_at: Date;
+      granted_by: string;
+      revoked_at: Date | null;
+    }>(
+      `SELECT scope_id, project_id, granted_principal_ids, granted_at, granted_by, revoked_at
+       FROM project_audit.deleted_project_audit_scopes WHERE scope_id = $1`,
+      [scopeId],
+    );
+    const row = res.rows[0];
+    if (!row) return null;
+    return Object.freeze({
+      scopeId: row.scope_id,
+      projectId: row.project_id,
+      grantedPrincipalIds: Object.freeze(row.granted_principal_ids),
+      grantedAt: row.granted_at.toISOString(),
+      grantedBy: row.granted_by,
+      revokedAt: row.revoked_at ? row.revoked_at.toISOString() : undefined,
+    });
+  }
+
+  async listAuditScopes(projectId: string): Promise<readonly DeletedProjectAuditScopeRecord[]> {
+    if (!projectId) throw new FrontendContractError('INVALID_REQUEST', 'projectId required');
+    const res = await this.pool.query<{
+      scope_id: string;
+      project_id: string;
+      granted_principal_ids: string[];
+      granted_at: Date;
+      granted_by: string;
+      revoked_at: Date | null;
+    }>(
+      `SELECT scope_id, project_id, granted_principal_ids, granted_at, granted_by, revoked_at
+       FROM project_audit.deleted_project_audit_scopes
+       WHERE project_id = $1 ORDER BY scope_id ASC`,
+      [projectId],
+    );
+    return Object.freeze(
+      res.rows.map((row) =>
+        Object.freeze({
+          scopeId: row.scope_id,
+          projectId: row.project_id,
+          grantedPrincipalIds: Object.freeze(row.granted_principal_ids),
+          grantedAt: row.granted_at.toISOString(),
+          grantedBy: row.granted_by,
+          revokedAt: row.revoked_at ? row.revoked_at.toISOString() : undefined,
+        }),
+      ),
+    );
   }
 }

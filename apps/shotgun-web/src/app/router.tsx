@@ -9,7 +9,6 @@ import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
 import { ApplicationShell } from '../shell/application-shell.js';
 import { HomePage } from '../routes/home-page.js';
-import { PlaceholderPage } from '../routes/placeholder-page.js';
 import { SettingsLayout } from '../routes/settings/settings-layout.js';
 import { CategoryIndexView } from '../routes/settings/category-index-view.js';
 import { PreferencesWorkspace } from '../routes/settings/preferences-workspace.js';
@@ -33,6 +32,7 @@ import { GraphWorkspace } from '../routes/graph-workspace.js';
 import { ReviewWorkspace } from '../routes/review-workspace.js';
 import { ExternalActionWorkspace } from '../routes/external-action-workspace.js';
 import { ActivityWorkspace } from '../routes/activity-workspace.js';
+import { HistoryWorkspace } from '../routes/history-workspace.js';
 import type { AppRuntime } from './providers.js';
 import { ensureSessionBoundary, sessionBoundaryQueryOptions } from '../session/session-query.js';
 import type { TargetRouteView } from '@shotgun/api-client';
@@ -178,10 +178,8 @@ export const createAppRouter = (runtime: AppRuntime) =>
         },
         {
           path: 'history',
-          loader: () => {
-            throw new Error('History is not a registered Section 3 route.');
-          },
-          element: <PlaceholderPage heading="History" nextSection="후속 Frontend Section" />,
+          loader: guardedRouteLoader(runtime, { routeId: 'history', href: '/history' }),
+          element: <HistoryWorkspace />,
         },
         {
           path: 'settings',

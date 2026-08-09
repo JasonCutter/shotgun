@@ -1473,6 +1473,24 @@ describe.runIf(pool)('FE-P4-S2 migration 028 apply/rollback + append-only audit 
          WHERE schema_name = 'frontend_external_action'`,
       );
       expect(restored.rows[0]?.count).toBe(1);
+
+      // Migration 032 added the owner-side PayloadAvailability sidecar to this
+      // schema; restore it so the remaining suite (FE-P5-S2 WP2-B) sees the
+      // full post-032 schema even after this rollback test.
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS frontend_external_action.history_payload_state (
+          resource_project_id text NOT NULL,
+          source_event_kind text NOT NULL,
+          source_event_id text NOT NULL,
+          payload_availability text NOT NULL
+            CHECK (payload_availability IN ('AVAILABLE', 'REDACTED', 'PURGED_BY_POLICY', 'UNAVAILABLE')),
+          tombstone_metadata jsonb,
+          changed_at timestamptz NOT NULL,
+          reason text NOT NULL,
+          policy_revision text,
+          PRIMARY KEY (resource_project_id, source_event_kind, source_event_id)
+        )
+      `);
     } finally {
       // Guarantee the schema exists for the rest of the suite even when an
       // assertion above fails midway.

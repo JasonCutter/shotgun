@@ -240,6 +240,14 @@ export class InMemoryCanonicalKnowledgeRepository
     return commit?.projectId === projectId ? clone(commit) : undefined;
   }
 
+  async findRevision(
+    projectId: string,
+    revisionId: string,
+  ): Promise<CanonicalRevision | undefined> {
+    const revision = this.revisions.get(revisionId);
+    return revision?.projectId === projectId ? clone(revision) : undefined;
+  }
+
   async listHistory(projectId: string): Promise<readonly CanonicalHistoryEvent[]> {
     return [...this.history.values()]
       .filter((event) => event.projectId === projectId)

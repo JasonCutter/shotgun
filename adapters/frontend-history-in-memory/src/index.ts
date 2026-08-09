@@ -1,0 +1,124 @@
+import { FrontendContractError } from '../../../packages/contracts/src/index.js';
+import type {
+  PayloadStateOwner,
+  PayloadStateRecord,
+  PayloadStateStorePort,
+  PurgeByPolicyInput,
+  SetPayloadStateInput,
+} from '../../../modules/frontend-history/src/index.js';
+import { isPurgeTransitionValid } from '../../../modules/frontend-history/src/index.js';
+
+type StateKey = `${string}:${string}:${string}`;
+
+const key = (projectId: string, kind: string, eventId: string): StateKey =>
+  `${projectId}:${kind}:${eventId}`;
+
+/**
+ * In-memory PayloadState store (WP2-B). Owner-agnostic: tracks the owning
+ * Domain per record and appends purge audit events atomically (in memory a
+ * single synchronous flip cannot partially fail).
+ */
+export class InMemoryPayloadStateStore implements PayloadStateStorePort {
+  private readonly states = new Map<StateKey, PayloadStateRecord>();
+  private readonly purgeAudit: PurgeByPolicyInput[] = [];
+
+  constructor(private readonly owner: PayloadStateOwner) {}
+
+  listPurgeAudit(): readonly PurgeByPolicyInput[] {
+    return Object.freeze([...this.purgeAudit]);
+  }
+
+  async getPayloadState(
+    resourceProjectId: string,
+    sourceEventKind: string,
+    sourceEventId: string,
+  ): Promise<PayloadStateRecord | null> {
+    return this.states.get(key(resourceProjectId, sourceEventKind, sourceEventId)) ?? null;
+  }
+
+  async setPayloadState(input: SetPayloadStateInput): Promise<PayloadStateRecord> {
+    if (!input.resourceProjectId || !input.sourceEventKind || !input.sourceEventId) {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        'resourceProjectId, sourceEventKind and sourceEventId required',
+      );
+    }
+    const existing = this.states.get(
+      key(input.resourceProjectId, input.sourceEventKind, input.sourceEventId),
+    );
+    // PURGED_BY_POLICY is only ever produced by purgeByPolicy() (the unique
+    // purge transition authority). Direct set is REJECTED.
+    if (input.payloadAvailability === 'PURGED_BY_POLICY') {
+      throw new FrontendContractError(
+        'CONFLICT',
+        `PURGED_BY_POLICY can only be set through purgeByPolicy().`,
+      );
+    }
+    // Resurrection is FORBIDDEN: a purged payload cannot be flipped back to
+    // AVAILABLE/REDACTED/UNAVAILABLE through setPayloadState.
+    if (existing?.payloadAvailability === 'PURGED_BY_POLICY') {
+      throw new FrontendContractError(
+        'CONFLICT',
+        `Payload for ${input.sourceEventKind}:${input.sourceEventId} is PURGED_BY_POLICY and cannot be resurrected.`,
+      );
+    }
+    const record: PayloadStateRecord = Object.freeze({
+      resourceProjectId: input.resourceProjectId,
+      sourceEventKind: input.sourceEventKind,
+      sourceEventId: input.sourceEventId,
+      payloadAvailability: input.payloadAvailability,
+      tombstoneMetadata: input.tombstoneMetadata
+        ? Object.freeze({ ...input.tombstoneMetadata })
+        : undefined,
+      changedAt: input.changedAt,
+      reason: input.reason,
+      policyRevision: input.policyRevision,
+    });
+    this.states.set(
+      key(input.resourceProjectId, input.sourceEventKind, input.sourceEventId),
+      record,
+    );
+    return record;
+  }
+
+  async purgeByPolicy(input: PurgeByPolicyInput): Promise<PayloadStateRecord> {
+    const existing = await this.getPayloadState(
+      input.resourceProjectId,
+      input.sourceEventKind,
+      input.sourceEventId,
+    );
+    if (!isPurgeTransitionValid(existing?.payloadAvailability)) {
+      throw new FrontendContractError(
+        'CONFLICT',
+        `Payload for ${input.sourceEventKind}:${input.sourceEventId} cannot be purged (already PURGED_BY_POLICY or unavailable).`,
+      );
+    }
+    // purgeByPolicy is the unique purge transition authority. It performs the
+    // atomic sidecar flip directly (setPayloadState rejects PURGED_BY_POLICY).
+    const record: PayloadStateRecord = Object.freeze({
+      resourceProjectId: input.resourceProjectId,
+      sourceEventKind: input.sourceEventKind,
+      sourceEventId: input.sourceEventId,
+      payloadAvailability: 'PURGED_BY_POLICY',
+      tombstoneMetadata: input.tombstoneMetadata
+        ? Object.freeze({ ...input.tombstoneMetadata })
+        : undefined,
+      changedAt: input.occurredAt,
+      reason: input.reason,
+      policyRevision: input.policyRevision,
+    });
+    this.states.set(
+      key(input.resourceProjectId, input.sourceEventKind, input.sourceEventId),
+      record,
+    );
+    this.purgeAudit.push(Object.freeze({ ...input }));
+    return record;
+  }
+}
+
+// FE-P5-S2 WP4 ? Federated History projection stores.
+export {
+  InMemoryHistoryIndexStore,
+  InMemoryHistoryWatermarkStore,
+  createInMemoryHistoryReadModelStore,
+} from './history-projection-store.js';

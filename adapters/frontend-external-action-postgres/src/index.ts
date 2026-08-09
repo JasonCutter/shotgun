@@ -692,6 +692,16 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
         ).rows[0];
         return row ? resultFrom(row) : undefined;
       },
+      listByAction: async (actionId, limit, offset) => {
+        const rows = await client.query<SnapshotRow>(
+          `SELECT snapshot FROM frontend_external_action.results
+           WHERE action_id = $1
+           ORDER BY insertion_ordinal ASC
+           LIMIT $2 OFFSET $3`,
+          [actionId, limit, offset],
+        );
+        return rows.rows.map((row) => resultFrom(row));
+      },
       insert: async (result) => {
         // Results are immutable: only an exact snapshot replay is accepted.
         const resultQuery = await client.query(
@@ -761,6 +771,14 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
           [actionId, Math.min(limit, EXTERNAL_ACTION_QUEUE_PAGE_SIZE_CAP), offset],
         );
         return result.rows.map(auditFrom);
+      },
+      findById: async (auditEventId) => {
+        const result = await client.query<SnapshotRow>(
+          `SELECT snapshot FROM frontend_external_action.audit_events
+           WHERE audit_event_id = $1`,
+          [auditEventId],
+        );
+        return result.rows[0] ? auditFrom(result.rows[0]) : undefined;
       },
       nextSequence: async (actionId) => {
         // Serialize the per-action audit sequence with an advisory transaction

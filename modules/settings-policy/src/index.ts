@@ -112,3 +112,17 @@ export type SettingsRepositoryPort = {
   getSchemaPacks(projectId: string): Promise<ProductFeatureView<readonly SchemaPackView[]>>;
   getDiagnostics(projectId: string): Promise<ProductFeatureView<DiagnosticsView>>;
 };
+
+export type {
+  ListPolicyHistoryInput,
+  ListPolicyHistoryResult,
+  PolicyHistoryCursor,
+  PolicyHistoryEntry,
+  PolicyHistoryReadPort,
+  PolicyHistorySourceKind,
+} from './policy-history.js';
+export {
+  comparePolicyHistoryEntries,
+  isPolicyHistoryAfter,
+  paginatePolicyHistory,
+} from './policy-history.js';

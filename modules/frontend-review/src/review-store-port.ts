@@ -63,6 +63,8 @@ export type ReviewDecisionStorePort = {
 export type ReviewApprovalStorePort = {
   findById(approvalId: string): Promise<ReviewApprovalV1 | undefined>;
   insert(approval: ReviewApprovalV1): Promise<void>;
+  /** Project-scoped approval history read (FE-P5-S2 WP4 Review adapter). */
+  listByProject(projectId: string): Promise<readonly ReviewApprovalV1[]>;
 };
 
 export type ReviewTransactionRepositoriesV1 = {

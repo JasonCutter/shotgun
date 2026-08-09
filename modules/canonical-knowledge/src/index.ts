@@ -22,6 +22,7 @@ import {
   type CanonicalCommitResult,
   type CanonicalHistoryEvent,
   type CanonicalOutboxRecord,
+  type CanonicalRevision,
   type CanonicalSnapshot,
   changeSetContentDigest,
   claimCandidateDigest,
@@ -61,6 +62,7 @@ export type CanonicalKnowledgeRepositoryPort = {
   commit(write: CanonicalCommitWrite): Promise<CanonicalCommitResult>;
   findClaim(projectId: string, claimId: string): Promise<CanonicalClaim | undefined>;
   findCommit(projectId: string, commitId: string): Promise<CanonicalCommitResult | undefined>;
+  findRevision(projectId: string, revisionId: string): Promise<CanonicalRevision | undefined>;
   listHistory(projectId: string): Promise<readonly CanonicalHistoryEvent[]>;
   findOutbox(projectId: string, outboxId: string): Promise<CanonicalOutboxRecord | undefined>;
   claimOutbox(

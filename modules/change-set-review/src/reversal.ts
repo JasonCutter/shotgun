@@ -8,14 +8,18 @@
  *     → current Snapshot impact → current Review → current Approval
  *     → Canonical Commit
  *
- * Historical approval is evidence/reference only; historical approval
- * authority reuse is FORBIDDEN. Reversal authorization is a current
- * server-derived capability (project:action:rollback). Typed negative cases:
- *   - historical approval reuse → reject
- *   - stale target → reject
- *   - superseded target → reject
- *   - dependent revision conflict → reject
- *   - missing current capability → reject
+ * Authority boundaries (Frozen ADR-131 / IR r1):
+ * - Reversal authorization is a CURRENT server-derived capability
+ *   (`project:action:rollback`). The browser request NEVER carries a
+ *   capability; the server derives it via an injected resolver.
+ * - Historical approval is evidence/reference only; its EXISTENCE is allowed
+ *   and preserved on the Reversal candidate. Only an attempt to USE a
+ *   historical approval as the current authority is rejected.
+ * - A Reversal reverses the EFFECT of the selected Historical Revision (an
+ *   ADD_CLAIM revision removes that claim), including the current tip — it is
+ *   a new change, never a direct restore of an old snapshot.
+ * - Later-event detection uses the authoritative history position
+ *   (createdAt, historyEventId tie-break), not timestamp-only comparison.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -44,31 +48,32 @@ export type ReversalFailureCode =
   | 'REVERSAL_DEPENDENT_REVISION_CONFLICT'
   | 'REVERSAL_MISSING_CURRENT_CAPABILITY';
 
+/**
+ * Server-derived eligibility input. `currentCapabilities` is the CURRENT
+ * server-derived capability set (from the injected resolver), never a value
+ * the browser supplies. `reuseHistoricalApprovalAttempt` is the caller's
+ * attempt to use a historical approval as authority (default false).
+ */
 export type ReversalEligibilityInput = {
   readonly resourceProjectId: string;
   readonly sourceRevisionId: string;
   readonly currentCapabilities: readonly string[];
+  readonly reuseHistoricalApprovalAttempt?: boolean;
 };
 
+/**
+ * Browser-authored request for a Reversal DraftChangeSet (Frozen
+ * CreateReversalDraftChangeSetRequestV1): project + source revision + reason
+ * ONLY. No capability is accepted from the client.
+ */
 export type CreateReversalDraftChangeSetInput = {
   readonly resourceProjectId: string;
   readonly sourceRevisionId: string;
   readonly reason: string;
   readonly createdBy: string;
   readonly createdAt: string;
-  /** Current server-derived capabilities of the caller (never injected). */
-  readonly currentCapabilities: readonly string[];
 };
 
-/**
- * Server-derived Reversal eligibility gate. Fail-closed; every reason is a
- * typed code. A source revision is eligible for a Reversal ONLY when:
- *   - it exists in this project
- *   - the current capability set includes `project:action:rollback`
- *   - it is not stale (a later canonical revision exists -> superseded /
- *     dependent revision conflict)
- *   - no historical approval is being reused as authority
- */
 export type ReversalEligibilityPort = {
   assessReversalEligibility(input: ReversalEligibilityInput): Promise<ReversalEligibilityV1>;
   createReversalDraftChangeSet(input: CreateReversalDraftChangeSetInput): Promise<{
@@ -110,7 +115,8 @@ const typedError = (
   });
 };
 
-const sortedByCreatedAt = (
+/** Authoritative canonical history ordering: createdAt, then historyEventId. */
+export const sortHistoryEvents = (
   events: readonly CanonicalHistoryEvent[],
 ): readonly CanonicalHistoryEvent[] =>
   [...events].sort(
@@ -120,20 +126,43 @@ const sortedByCreatedAt = (
   );
 
 /**
- * Deterministic eligibility assessment over the canonical history. Pure:
- * no I/O; the caller loads the authoritative source revision and history.
+ * Locate the source revision's position in the authoritative history via its
+ * commitId, then return the events strictly AFTER it (stable tie-break).
+ * Timestamp-only comparison is NOT used: the source event is found by
+ * identity, so same-timestamp later events are still detected.
+ */
+export const laterHistoryEvents = (
+  sourceRevision: CanonicalRevision,
+  history: readonly CanonicalHistoryEvent[],
+): readonly CanonicalHistoryEvent[] => {
+  const ordered = sortHistoryEvents(history);
+  const index = ordered.findIndex(
+    (event) =>
+      event.projectId === sourceRevision.projectId && event.commitId === sourceRevision.commitId,
+  );
+  if (index < 0) return [];
+  return ordered.slice(index + 1);
+};
+
+/**
+ * Deterministic eligibility assessment over the authoritative canonical
+ * history. Pure: no I/O. Later events are detected by history position
+ * (commitId → stable ordered rows after it), so same-timestamp events are
+ * correctly ordered by historyEventId tie-break.
  *
- * `reuseHistoricalApprovalAttempt` is the caller's attempt to use a historical
- * approval as the authority for this Reversal. Such reuse is FORBIDDEN
- * (ADR-131 §4): a historical approval may only ever be an evidence reference,
- * never the authority. The existence of a historical approval alone does NOT
- * block a Reversal — only the reuse attempt does.
+ * Rules:
+ *   - source revision must exist
+ *   - current capability set must include `project:action:rollback`
+ *   - historical approval AUTHORITY REUSE attempt → typed reject
+ *     (the existence of a historical approval is evidence-only and allowed)
+ *   - later CANONICAL_CLAIM_ADDED event(s) → superseded + dependent conflict
+ *   - later events but none is a claim commit (NO_OP only) → stale target
+ *   - no later event at all → the source is the current tip → eligible
  */
 export const assessReversalEligibilityFromHistory = (
   input: ReversalEligibilityInput,
   sourceRevision: CanonicalRevision | undefined,
   history: readonly CanonicalHistoryEvent[],
-  reuseHistoricalApprovalAttempt = false,
 ): ReversalEligibilityV1 => {
   if (!sourceRevision) {
     return failureReasons(input.sourceRevisionId, ['REVERSAL_SOURCE_NOT_FOUND']);
@@ -141,37 +170,30 @@ export const assessReversalEligibilityFromHistory = (
   if (!input.currentCapabilities.includes(REVERSAL_CURRENT_CAPABILITY)) {
     return failureReasons(input.sourceRevisionId, ['REVERSAL_MISSING_CURRENT_CAPABILITY']);
   }
-  // Historical approval authority reuse is FORBIDDEN: a caller that tries to
-  // use a historical approval as the authority is rejected with a typed
-  // failure. The reference itself is evidence-only and does not gate.
-  if (reuseHistoricalApprovalAttempt) {
+  // Historical approval AUTHORITY reuse is FORBIDDEN. The mere existence of a
+  // historical approval reference is evidence-only and does NOT block.
+  if (input.reuseHistoricalApprovalAttempt) {
     return failureReasons(input.sourceRevisionId, ['REVERSAL_HISTORICAL_APPROVAL_REUSE']);
   }
-  const ordered = sortedByCreatedAt(history);
-  const laterEvents = ordered.filter(
-    (event) =>
-      event.projectId === input.resourceProjectId && event.createdAt > sourceRevision.createdAt,
-  );
-  if (laterEvents.length === 0) {
-    // No later canonical event at all: the target is the current tip. A
-    // reversal of the current tip is allowed (it rolls the latest state back).
-    return success(input.sourceRevisionId);
-  }
-  const laterCommits = laterEvents.filter((event) => event.eventType === 'CANONICAL_CLAIM_ADDED');
+  const later = laterHistoryEvents(sourceRevision, history);
+  const laterCommits = later.filter((event) => event.eventType === 'CANONICAL_CLAIM_ADDED');
   if (laterCommits.length > 0) {
     return failureReasons(input.sourceRevisionId, [
       'REVERSAL_SUPERSEDED_TARGET',
       'REVERSAL_DEPENDENT_REVISION_CONFLICT',
     ]);
   }
-  return failureReasons(input.sourceRevisionId, ['REVERSAL_STALE_TARGET']);
+  if (later.length > 0) {
+    return failureReasons(input.sourceRevisionId, ['REVERSAL_STALE_TARGET']);
+  }
+  return success(input.sourceRevisionId);
 };
 
+/** Injected server-side capability resolver (never trusts the browser). */
+export type CurrentCapabilitiesResolver = () => Promise<readonly string[]>;
+
 /**
- * Default in-memory Reversal eligibility adapter: loads the authoritative
- * source revision and history through the injected canonical repository, then
- * runs the deterministic gate. `historicalApprovalResolver` lets an owner
- * supply the historical approval reference (evidence only).
+ * Canonical reader: authoritative source revision + history loading.
  */
 export type ReversalCanonicalReader = {
   findRevision(projectId: string, revisionId: string): Promise<CanonicalRevision | undefined>;
@@ -181,6 +203,9 @@ export type ReversalCanonicalReader = {
 export const createReversalEligibilityPort = (
   canonical: ReversalCanonicalReader,
   options?: {
+    /** Server-derived current capabilities (REQUIRED for create). */
+    readonly currentCapabilitiesResolver?: CurrentCapabilitiesResolver;
+    /** Historical approval evidence reference (allowed, evidence-only). */
     readonly historicalApprovalResolver?: (
       revision: CanonicalRevision,
     ) => Promise<string | undefined>;
@@ -196,16 +221,24 @@ export const createReversalEligibilityPort = (
         return failureReasons(input.sourceRevisionId, ['REVERSAL_SOURCE_NOT_FOUND']);
       }
       const history = await canonical.listHistory(input.resourceProjectId);
-      // The historical approval reference (if any) is evidence-only: it is
-      // passed to the caller for reference, never as authority. Reuse attempt
-      // is rejected by the caller passing reuseHistoricalApprovalAttempt=true.
-      return assessReversalEligibilityFromHistory(input, revision, history, false);
+      return assessReversalEligibilityFromHistory(input, revision, history);
     },
     async createReversalDraftChangeSet(input) {
+      const currentCapabilitiesResolver = options?.currentCapabilitiesResolver;
+      if (!currentCapabilitiesResolver) {
+        return typedError(
+          'REVERSAL_MISSING_CURRENT_CAPABILITY',
+          'No server-derived capability resolver is configured; Reversal creation is not authorized.',
+          input.createdAt,
+        );
+      }
+      // The capability is derived SERVER-SIDE — the browser request never
+      // carries it. A caller without the current capability is rejected.
+      const currentCapabilities = await currentCapabilitiesResolver();
       const eligibility = await this.assessReversalEligibility({
         resourceProjectId: input.resourceProjectId,
         sourceRevisionId: input.sourceRevisionId,
-        currentCapabilities: input.currentCapabilities,
+        currentCapabilities,
       });
       if (!eligibility.eligible) {
         typedError(
@@ -255,11 +288,13 @@ export const toTypedReversalError = (
 /**
  * Current Snapshot impact of a Reversal DraftChangeSet (WP3).
  *
- * A Reversal rolls the current Canonical Snapshot back to the state at the
- * source revision: every claim added by a later CANONICAL_CLAIM_ADDED event is
- * removed from the current snapshot's claim set. Identity is preserved on the
- * source side (no authoritative row is deleted); this impact is a projection
- * of the current snapshot after the Reversal is committed.
+ * A Reversal reverses the EFFECT of the selected Historical Revision: an
+ * ADD_CLAIM revision removes the claim it added (so reversing the current tip
+ * has a real, non-zero impact), and any later ADD_CLAIM events are also
+ * removed. The impact is a projection of the current snapshot after the
+ * Reversal — identity is preserved on the source side (no authoritative row
+ * is deleted). impactedVersion is the source revision's beforeVersion (the
+ * version the reversal returns to), minus the number of later claims removed.
  */
 export type ReversalSnapshotImpact = {
   readonly schemaVersion: '1.0.0';
@@ -288,32 +323,36 @@ const canonicalSnapshotDigestFor = (
 
 /**
  * Compute the current Snapshot impact for a Reversal at `sourceRevisionId`.
- * Pure: no I/O. `removedClaimIds` are the claim identities introduced by
- * later canonical commits (after the source revision), i.e. what the Reversal
- * would remove from the current snapshot.
+ * Pure: no I/O.
+ *
+ * removedClaimIds = the source revision's OWN added claim (if ADD_CLAIM) plus
+ * every claim added by a later CANONICAL_CLAIM_ADDED event. This makes a
+ * current-tip Reversal non-zero: `revision:2 (ADD_CLAIM claim-b)` →
+ * `removedClaimIds=['claim-b']`, `impactedVersion = revision:2.beforeVersion`.
  */
 export const computeReversalSnapshotImpact = (
   sourceRevision: CanonicalRevision,
   currentSnapshot: CanonicalSnapshot,
   history: readonly CanonicalHistoryEvent[],
 ): ReversalSnapshotImpact => {
-  const ordered = sortedByCreatedAt(history);
-  const removedClaimIds = [
-    ...new Set(
-      ordered
-        .filter(
-          (event) =>
-            event.projectId === sourceRevision.projectId &&
-            event.eventType === 'CANONICAL_CLAIM_ADDED' &&
-            event.createdAt > sourceRevision.createdAt &&
-            event.claimId,
-        )
-        .map((event) => event.claimId as string),
-    ),
-  ];
+  const removedSet = new Set<string>();
+  if (sourceRevision.operation === 'ADD_CLAIM' && sourceRevision.claimId) {
+    removedSet.add(sourceRevision.claimId);
+  }
+  const later = laterHistoryEvents(sourceRevision, history);
+  for (const event of later) {
+    if (event.eventType === 'CANONICAL_CLAIM_ADDED' && event.claimId) {
+      removedSet.add(event.claimId);
+    }
+  }
+  const removedClaimIds = [...removedSet];
   const removed = new Set(removedClaimIds);
   const retainedClaims = currentSnapshot.claims.filter((claim) => !removed.has(claim.claimId));
-  const impactedVersion = currentSnapshot.version - removedClaimIds.length;
+  // The Reversal returns the snapshot to the version right BEFORE the source
+  // revision's own effect (its beforeVersion), undoing its own ADD_CLAIM plus
+  // every later claim commit. e.g. reversing the current tip revision:2
+  // (beforeVersion=1, ADD_CLAIM claim-b) -> impactedVersion = 1.
+  const impactedVersion = sourceRevision.beforeVersion;
   return Object.freeze({
     schemaVersion: '1.0.0',
     resourceProjectId: sourceRevision.projectId,

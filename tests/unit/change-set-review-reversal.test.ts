@@ -6,6 +6,7 @@ import {
   computeReversalSnapshotImpact,
   createReversalEligibilityPort,
   failureReasons,
+  laterHistoryEvents,
   type ReversalCanonicalReader,
 } from '../../modules/change-set-review/src/index.js';
 import {
@@ -24,6 +25,7 @@ const revision = (
   operation: 'ADD_CLAIM',
   beforeVersion: 0,
   afterVersion: 1,
+  claimId: overrides.claimId ?? `claim-${overrides.revisionId}`,
   reason: 'original',
   actor: { type: 'user', id: 'actor-1' },
   createdAt: '2026-08-09T00:00:00.000Z',
@@ -40,6 +42,7 @@ const event = (
   eventType: 'CANONICAL_CLAIM_ADDED',
   beforeVersion: 0,
   afterVersion: 1,
+  claimId: `claim-${overrides.historyEventId}`,
   reason: 'later',
   actor: { type: 'user', id: 'actor-2' },
   ...overrides,
@@ -48,10 +51,12 @@ const event = (
 const eligibilityInput = (
   sourceRevisionId: string,
   capabilities: readonly string[] = [REVERSAL_CURRENT_CAPABILITY],
+  reuseHistoricalApprovalAttempt = false,
 ) => ({
   resourceProjectId: 'p1',
   sourceRevisionId,
   currentCapabilities: capabilities,
+  reuseHistoricalApprovalAttempt,
 });
 
 describe('change-set-review WP3 Reversal DraftChangeSet', () => {
@@ -78,10 +83,9 @@ describe('change-set-review WP3 Reversal DraftChangeSet', () => {
 
     it('historical approval reuse ATTEMPT -> typed reject', () => {
       const result = assessReversalEligibilityFromHistory(
-        eligibilityInput('revision:1'),
+        eligibilityInput('revision:1', [REVERSAL_CURRENT_CAPABILITY], true),
         revision({ revisionId: 'revision:1' }),
         [],
-        true,
       );
       expect(result.eligible).toBe(false);
       expect(result.reasons).toEqual(['REVERSAL_HISTORICAL_APPROVAL_REUSE']);
@@ -92,8 +96,13 @@ describe('change-set-review WP3 Reversal DraftChangeSet', () => {
       const result = assessReversalEligibilityFromHistory(
         eligibilityInput('revision:1'),
         revision({ revisionId: 'revision:1', createdAt: '2026-08-09T01:00:00.000Z' }),
-        [event({ historyEventId: 'e-1', createdAt: '2026-08-09T01:00:00.000Z' })],
-        false,
+        [
+          event({
+            historyEventId: 'e-1',
+            createdAt: '2026-08-09T01:00:00.000Z',
+            commitId: 'commit-revision:1',
+          }),
+        ],
       );
       expect(result.eligible).toBe(true);
       expect(result.reasons).toEqual([]);
@@ -103,7 +112,13 @@ describe('change-set-review WP3 Reversal DraftChangeSet', () => {
       const result = assessReversalEligibilityFromHistory(
         eligibilityInput('revision:1'),
         revision({ revisionId: 'revision:1', createdAt: '2026-08-09T01:00:00.000Z' }),
-        [event({ historyEventId: 'e-1', createdAt: '2026-08-09T01:00:00.000Z' })],
+        [
+          event({
+            historyEventId: 'e-1',
+            createdAt: '2026-08-09T01:00:00.000Z',
+            commitId: 'commit-revision:1',
+          }),
+        ],
       );
       expect(result.eligible).toBe(true);
       expect(result.reasons).toEqual([]);
@@ -114,8 +129,17 @@ describe('change-set-review WP3 Reversal DraftChangeSet', () => {
         eligibilityInput('revision:1'),
         revision({ revisionId: 'revision:1', createdAt: '2026-08-09T00:00:00.000Z' }),
         [
-          event({ historyEventId: 'e-1', createdAt: '2026-08-09T00:00:00.000Z' }),
-          event({ historyEventId: 'e-2', createdAt: '2026-08-09T02:00:00.000Z' }),
+          event({
+            historyEventId: 'e-1',
+            createdAt: '2026-08-09T00:00:00.000Z',
+            commitId: 'commit-revision:1',
+            claimId: 'claim-a',
+          }),
+          event({
+            historyEventId: 'e-2',
+            createdAt: '2026-08-09T02:00:00.000Z',
+            claimId: 'claim-b',
+          }),
         ],
       );
       expect(result.eligible).toBe(false);
@@ -125,25 +149,101 @@ describe('change-set-review WP3 Reversal DraftChangeSet', () => {
       ]);
     });
 
-    it('later NO_OP event only -> stale target typed reject (no dependent commit)', () => {
+    it('same-timestamp later event is detected via authoritative history position (tie-break)', () => {
+      // Both events share createdAt; the authoritative ORDER (createdAt,
+      // historyEventId) places e-1 before e-2. The source revision is e-1, so
+      // e-2 is a LATER canonical claim -> superseded. Timestamp-only
+      // comparison would have missed this.
       const result = assessReversalEligibilityFromHistory(
         eligibilityInput('revision:1'),
         revision({ revisionId: 'revision:1', createdAt: '2026-08-09T00:00:00.000Z' }),
         [
-          event({ historyEventId: 'e-1', createdAt: '2026-08-09T00:00:00.000Z' }),
+          event({
+            historyEventId: 'e-1',
+            createdAt: '2026-08-09T00:00:00.000Z',
+            commitId: 'commit-revision:1',
+            claimId: 'claim-a',
+          }),
           event({
             historyEventId: 'e-2',
-            createdAt: '2026-08-09T02:00:00.000Z',
+            createdAt: '2026-08-09T00:00:00.000Z',
+            claimId: 'claim-b',
+          }),
+        ],
+      );
+      expect(result.eligible).toBe(false);
+      expect(result.reasons).toEqual([
+        'REVERSAL_SUPERSEDED_TARGET',
+        'REVERSAL_DEPENDENT_REVISION_CONFLICT',
+      ]);
+    });
+
+    it('same-timestamp NO_OP later event -> stale target (tie-break, no dependent commit)', () => {
+      const result = assessReversalEligibilityFromHistory(
+        eligibilityInput('revision:1'),
+        revision({ revisionId: 'revision:1', createdAt: '2026-08-09T00:00:00.000Z' }),
+        [
+          event({
+            historyEventId: 'e-1',
+            createdAt: '2026-08-09T00:00:00.000Z',
+            commitId: 'commit-revision:1',
+            claimId: 'claim-a',
+          }),
+          event({
+            historyEventId: 'e-2',
+            createdAt: '2026-08-09T00:00:00.000Z',
             eventType: 'CHANGESET_NO_OP',
+            claimId: undefined,
           }),
         ],
       );
       expect(result.eligible).toBe(false);
       expect(result.reasons).toEqual(['REVERSAL_STALE_TARGET']);
     });
+
+    it('later NO_OP event only -> stale target typed reject (no dependent commit)', () => {
+      const result = assessReversalEligibilityFromHistory(
+        eligibilityInput('revision:1'),
+        revision({ revisionId: 'revision:1', createdAt: '2026-08-09T00:00:00.000Z' }),
+        [
+          event({
+            historyEventId: 'e-1',
+            createdAt: '2026-08-09T00:00:00.000Z',
+            commitId: 'commit-revision:1',
+            claimId: 'claim-a',
+          }),
+          event({
+            historyEventId: 'e-2',
+            createdAt: '2026-08-09T02:00:00.000Z',
+            eventType: 'CHANGESET_NO_OP',
+            claimId: undefined,
+          }),
+        ],
+      );
+      expect(result.eligible).toBe(false);
+      expect(result.reasons).toEqual(['REVERSAL_STALE_TARGET']);
+    });
+
+    it('laterHistoryEvents finds later rows by commitId position (not timestamp)', () => {
+      const source = revision({
+        revisionId: 'revision:1',
+        createdAt: '2026-08-09T00:00:00.000Z',
+      });
+      const history = [
+        event({
+          historyEventId: 'e-1',
+          createdAt: '2026-08-09T00:00:00.000Z',
+          commitId: 'commit-revision:1',
+        }),
+        event({ historyEventId: 'e-2', createdAt: '2026-08-09T00:00:00.000Z' }),
+        event({ historyEventId: 'e-3', createdAt: '2026-08-09T00:00:00.000Z' }),
+      ];
+      const later = laterHistoryEvents(source, history);
+      expect(later.map((e) => e.historyEventId)).toEqual(['e-2', 'e-3']);
+    });
   });
 
-  describe('createReversalEligibilityPort (canonical-backed)', () => {
+  describe('createReversalEligibilityPort (canonical-backed, server-derived capability)', () => {
     const makeReader = (): ReversalCanonicalReader & {
       revisions: CanonicalRevision[];
       history: CanonicalHistoryEvent[];
@@ -162,13 +262,22 @@ describe('change-set-review WP3 Reversal DraftChangeSet', () => {
       };
     };
 
-    it('creates a CANDIDATE Reversal DraftChangeSet for an eligible tip revision', async () => {
+    it('creates a CANDIDATE Reversal DraftChangeSet for an eligible tip revision (server-derived capability)', async () => {
       const reader = makeReader();
       reader.revisions.push(
         revision({ revisionId: 'revision:tip', createdAt: '2026-08-09T01:00:00.000Z' }),
       );
-      reader.history.push(event({ historyEventId: 'e-1', createdAt: '2026-08-09T01:00:00.000Z' }));
-      const port = createReversalEligibilityPort(reader);
+      reader.history.push(
+        event({
+          historyEventId: 'e-1',
+          createdAt: '2026-08-09T01:00:00.000Z',
+          commitId: 'commit-revision:tip',
+          claimId: 'claim-a',
+        }),
+      );
+      const port = createReversalEligibilityPort(reader, {
+        currentCapabilitiesResolver: async () => [REVERSAL_CURRENT_CAPABILITY],
+      });
 
       const { reversal, eligibility } = await port.createReversalDraftChangeSet({
         resourceProjectId: 'p1',
@@ -176,7 +285,6 @@ describe('change-set-review WP3 Reversal DraftChangeSet', () => {
         reason: 'rollback the latest claim',
         createdBy: 'actor-1',
         createdAt: '2026-08-09T03:00:00.000Z',
-        currentCapabilities: [REVERSAL_CURRENT_CAPABILITY],
       });
       expect(eligibility.eligible).toBe(true);
       expect(reversal.status).toBe('CANDIDATE');
@@ -192,10 +300,21 @@ describe('change-set-review WP3 Reversal DraftChangeSet', () => {
         revision({ revisionId: 'revision:old', createdAt: '2026-08-09T00:00:00.000Z' }),
       );
       reader.history.push(
-        event({ historyEventId: 'e-1', createdAt: '2026-08-09T00:00:00.000Z' }),
-        event({ historyEventId: 'e-2', createdAt: '2026-08-09T02:00:00.000Z' }),
+        event({
+          historyEventId: 'e-1',
+          createdAt: '2026-08-09T00:00:00.000Z',
+          commitId: 'commit-revision:old',
+          claimId: 'claim-a',
+        }),
+        event({
+          historyEventId: 'e-2',
+          createdAt: '2026-08-09T02:00:00.000Z',
+          claimId: 'claim-b',
+        }),
       );
-      const port = createReversalEligibilityPort(reader);
+      const port = createReversalEligibilityPort(reader, {
+        currentCapabilitiesResolver: async () => [REVERSAL_CURRENT_CAPABILITY],
+      });
       await expect(
         port.createReversalDraftChangeSet({
           resourceProjectId: 'p1',
@@ -203,41 +322,53 @@ describe('change-set-review WP3 Reversal DraftChangeSet', () => {
           reason: 'rollback',
           createdBy: 'actor-1',
           createdAt: '2026-08-09T03:00:00.000Z',
-          currentCapabilities: [REVERSAL_CURRENT_CAPABILITY],
         }),
       ).rejects.toMatchObject({ code: 'REVERSAL_SUPERSEDED_TARGET' });
     });
 
-    it('preserves historical approval as EVIDENCE ONLY on the reversal', async () => {
+    it('rejects create when the server-derived capability set lacks rollback (browser cannot pass capability)', async () => {
       const reader = makeReader();
       reader.revisions.push(
         revision({ revisionId: 'revision:tip', createdAt: '2026-08-09T01:00:00.000Z' }),
       );
-      reader.history.push(event({ historyEventId: 'e-1', createdAt: '2026-08-09T01:00:00.000Z' }));
+      reader.history.push(
+        event({
+          historyEventId: 'e-1',
+          createdAt: '2026-08-09T01:00:00.000Z',
+          commitId: 'commit-revision:tip',
+          claimId: 'claim-a',
+        }),
+      );
+      // Server derives the CURRENT capabilities: the current set does not
+      // include project:action:rollback -> create is rejected, even though the
+      // request body carries no capability at all.
       const port = createReversalEligibilityPort(reader, {
-        historicalApprovalResolver: async () => 'approval:historical',
+        currentCapabilitiesResolver: async () => ['project:read'],
       });
-      const { reversal, eligibility } = await port.createReversalDraftChangeSet({
-        resourceProjectId: 'p1',
-        sourceRevisionId: 'revision:tip',
-        reason: 'rollback',
-        createdBy: 'actor-1',
-        createdAt: '2026-08-09T03:00:00.000Z',
-        currentCapabilities: [REVERSAL_CURRENT_CAPABILITY],
-      });
-      // Evidence-only: the historical approval is referenced, not reused as
-      // authority. Eligibility is still eligible (reuse is NOT attempted).
-      expect(eligibility.eligible).toBe(true);
-      expect(reversal.historicalApprovalRef).toBe('approval:historical');
-      expect(reversal.status).toBe('CANDIDATE');
+      await expect(
+        port.createReversalDraftChangeSet({
+          resourceProjectId: 'p1',
+          sourceRevisionId: 'revision:tip',
+          reason: 'rollback',
+          createdBy: 'actor-1',
+          createdAt: '2026-08-09T03:00:00.000Z',
+        }),
+      ).rejects.toMatchObject({ code: 'REVERSAL_MISSING_CURRENT_CAPABILITY' });
     });
 
-    it('rejects a caller that passes an empty current capability set (no injection)', async () => {
+    it('rejects create when no capability resolver is injected (fail-closed)', async () => {
       const reader = makeReader();
       reader.revisions.push(
         revision({ revisionId: 'revision:tip', createdAt: '2026-08-09T01:00:00.000Z' }),
       );
-      reader.history.push(event({ historyEventId: 'e-1', createdAt: '2026-08-09T01:00:00.000Z' }));
+      reader.history.push(
+        event({
+          historyEventId: 'e-1',
+          createdAt: '2026-08-09T01:00:00.000Z',
+          commitId: 'commit-revision:tip',
+          claimId: 'claim-a',
+        }),
+      );
       const port = createReversalEligibilityPort(reader);
       await expect(
         port.createReversalDraftChangeSet({
@@ -246,9 +377,39 @@ describe('change-set-review WP3 Reversal DraftChangeSet', () => {
           reason: 'rollback',
           createdBy: 'actor-1',
           createdAt: '2026-08-09T03:00:00.000Z',
-          currentCapabilities: [],
         }),
       ).rejects.toMatchObject({ code: 'REVERSAL_MISSING_CURRENT_CAPABILITY' });
+    });
+
+    it('preserves historical approval as EVIDENCE ONLY on the reversal', async () => {
+      const reader = makeReader();
+      reader.revisions.push(
+        revision({ revisionId: 'revision:tip', createdAt: '2026-08-09T01:00:00.000Z' }),
+      );
+      reader.history.push(
+        event({
+          historyEventId: 'e-1',
+          createdAt: '2026-08-09T01:00:00.000Z',
+          commitId: 'commit-revision:tip',
+          claimId: 'claim-a',
+        }),
+      );
+      const port = createReversalEligibilityPort(reader, {
+        currentCapabilitiesResolver: async () => [REVERSAL_CURRENT_CAPABILITY],
+        historicalApprovalResolver: async () => 'approval:historical',
+      });
+      const { reversal, eligibility } = await port.createReversalDraftChangeSet({
+        resourceProjectId: 'p1',
+        sourceRevisionId: 'revision:tip',
+        reason: 'rollback',
+        createdBy: 'actor-1',
+        createdAt: '2026-08-09T03:00:00.000Z',
+      });
+      // Evidence-only: the historical approval is referenced, not reused as
+      // authority. Eligibility is still eligible (reuse is NOT attempted).
+      expect(eligibility.eligible).toBe(true);
+      expect(reversal.historicalApprovalRef).toBe('approval:historical');
+      expect(reversal.status).toBe('CANDIDATE');
     });
 
     it('failureReasons helper produces the frozen eligibility shape', () => {
@@ -280,17 +441,28 @@ describe('change-set-review WP3 Reversal DraftChangeSet', () => {
       };
     };
 
-    it('removes only claims added after the source revision', () => {
+    it('removes the source own ADD_CLAIM claim plus later claims', () => {
+      // GPT fix C: the source revision's OWN ADD_CLAIM effect is reversed, so
+      // reversing revision:1 (which added claim-a) removes claim-a as well as
+      // the later claim-b, returning to revision:1.beforeVersion (0).
       const source = revision({
         revisionId: 'revision:1',
         createdAt: '2026-08-09T00:00:00.000Z',
+        beforeVersion: 0,
+        afterVersion: 1,
+        claimId: 'claim-a',
       });
       const snapshot = currentSnapshot([
         { claimId: 'claim-a', text: 'first' },
         { claimId: 'claim-b', text: 'second' },
       ]);
       const history = [
-        event({ historyEventId: 'e-1', createdAt: '2026-08-09T00:00:00.000Z', claimId: 'claim-a' }),
+        event({
+          historyEventId: 'e-1',
+          createdAt: '2026-08-09T00:00:00.000Z',
+          commitId: 'commit-revision:1',
+          claimId: 'claim-a',
+        }),
         event({
           historyEventId: 'e-2',
           createdAt: '2026-08-09T02:00:00.000Z',
@@ -299,42 +471,85 @@ describe('change-set-review WP3 Reversal DraftChangeSet', () => {
       ];
       const impact = computeReversalSnapshotImpact(source, snapshot, history);
       expect(impact.currentVersion).toBe(2);
-      expect(impact.impactedVersion).toBe(1);
-      expect(impact.removedClaimIds).toEqual(['claim-b']);
-      expect(impact.retainedClaimIds).toEqual(['claim-a']);
+      expect(impact.impactedVersion).toBe(0);
+      expect(impact.removedClaimIds).toEqual(['claim-a', 'claim-b']);
+      expect(impact.retainedClaimIds).toEqual([]);
       expect(impact.currentClaimCount).toBe(2);
-      expect(impact.impactedClaimCount).toBe(1);
+      expect(impact.impactedClaimCount).toBe(0);
       expect(impact.currentDigest).toBe(snapshot.digest);
-      expect(impact.impactedDigest).toBe(
-        canonicalSnapshotDigest(
-          'p1',
-          1,
-          snapshot.claims.filter((c) => c.claimId === 'claim-a'),
-        ),
-      );
+      expect(impact.impactedDigest).toBe(canonicalSnapshotDigest('p1', 0, []));
     });
 
-    it('removes nothing when the source revision is the current tip', () => {
+    it('reverses the source revision own ADD_CLAIM effect (current-tip reversal is non-zero)', () => {
+      // GPT fix C: "revision:2 current tip -> removedClaimIds=['claim-b'] ->
+      // impactedVersion = revision:2.beforeVersion (1)". The source revision's
+      // OWN ADD_CLAIM effect is reversed, so a current-tip reversal has real
+      // impact.
       const source = revision({
         revisionId: 'revision:2',
         createdAt: '2026-08-09T02:00:00.000Z',
+        beforeVersion: 1,
+        afterVersion: 2,
+        claimId: 'claim-b',
       });
       const snapshot = currentSnapshot([
         { claimId: 'claim-a', text: 'first' },
         { claimId: 'claim-b', text: 'second' },
       ]);
       const history = [
-        event({ historyEventId: 'e-1', createdAt: '2026-08-09T00:00:00.000Z', claimId: 'claim-a' }),
+        event({
+          historyEventId: 'e-1',
+          createdAt: '2026-08-09T00:00:00.000Z',
+          claimId: 'claim-a',
+        }),
         event({
           historyEventId: 'e-2',
           createdAt: '2026-08-09T02:00:00.000Z',
+          commitId: 'commit-revision:2',
           claimId: 'claim-b',
         }),
       ];
       const impact = computeReversalSnapshotImpact(source, snapshot, history);
-      expect(impact.removedClaimIds).toEqual([]);
-      expect(impact.impactedVersion).toBe(2);
-      expect(impact.impactedClaimCount).toBe(2);
+      expect(impact.removedClaimIds).toEqual(['claim-b']);
+      expect(impact.retainedClaimIds).toEqual(['claim-a']);
+      expect(impact.impactedVersion).toBe(1);
+      expect(impact.impactedClaimCount).toBe(1);
+    });
+
+    it('removes later claims AND the source own claim when both exist', () => {
+      const source = revision({
+        revisionId: 'revision:1',
+        createdAt: '2026-08-09T00:00:00.000Z',
+        claimId: 'claim-a',
+      });
+      const snapshot = currentSnapshot([
+        { claimId: 'claim-a', text: 'first' },
+        { claimId: 'claim-b', text: 'second' },
+        { claimId: 'claim-c', text: 'third' },
+      ]);
+      const history = [
+        event({
+          historyEventId: 'e-1',
+          createdAt: '2026-08-09T00:00:00.000Z',
+          commitId: 'commit-revision:1',
+          claimId: 'claim-a',
+        }),
+        event({
+          historyEventId: 'e-2',
+          createdAt: '2026-08-09T01:00:00.000Z',
+          claimId: 'claim-b',
+        }),
+        event({
+          historyEventId: 'e-3',
+          createdAt: '2026-08-09T02:00:00.000Z',
+          claimId: 'claim-c',
+        }),
+      ];
+      const impact = computeReversalSnapshotImpact(source, snapshot, history);
+      expect(impact.removedClaimIds).toEqual(['claim-a', 'claim-b', 'claim-c']);
+      expect(impact.retainedClaimIds).toEqual([]);
+      expect(impact.impactedVersion).toBe(0);
+      expect(impact.impactedClaimCount).toBe(0);
     });
   });
 });

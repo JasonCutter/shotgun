@@ -51,6 +51,7 @@ export type ReviewDecisionWrite = {
 
 export type {
   CreateReversalDraftChangeSetInput,
+  CurrentCapabilitiesResolver,
   ReversalCanonicalReader,
   ReversalEligibilityInput,
   ReversalEligibilityPort,
@@ -63,6 +64,8 @@ export {
   computeReversalSnapshotImpact,
   createReversalEligibilityPort,
   failureReasons,
+  laterHistoryEvents,
+  sortHistoryEvents,
   toTypedReversalError,
 } from './reversal.js';
 

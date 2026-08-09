@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 
-import { InMemoryCanonicalKnowledgeRepository } from '../../adapters/stage6-in-memory/src/index.js';
+import { PostgresCanonicalKnowledgeRepository } from '../../adapters/postgres-stage6/src/index.js';
+import { createPostgresPool } from '../../adapters/postgres/src/index.js';
 import {
   REVERSAL_CURRENT_CAPABILITY,
-  assessReversalEligibilityFromHistory,
   computeReversalSnapshotImpact,
   createReversalEligibilityPort,
   type ReversalCanonicalReader,
@@ -12,242 +12,371 @@ import {
 import {
   canonicalSnapshotDigest,
   type CanonicalClaim,
-  type CanonicalCommitResult,
   type CanonicalHistoryEvent,
   type CanonicalRevision,
-  type CanonicalSnapshot,
-  stableJson,
+  type CanonicalSnapshotClaim,
 } from '../../packages/contracts/src/index.js';
 
+const databaseUrl = process.env.DATABASE_URL;
+const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
+
 const makeCanonical = () => {
-  const revisions = new Map<string, CanonicalRevision>();
-  const history = new Map<string, CanonicalHistoryEvent>();
-  const commits = new Map<string, CanonicalCommitResult>();
-  const claims = new Map<string, CanonicalClaim>();
-  const states = new Map<string, { version: number; digest: string; updatedAt: string }>();
-  return {
-    revisions,
-    history,
-    commits,
-    claims,
-    states,
-    async findRevision(projectId: string, revisionId: string) {
-      const r = revisions.get(revisionId);
-      return r?.projectId === projectId ? r : undefined;
+  const canonical: ReversalCanonicalReader = {
+    findRevision: (projectId, revisionId) => {
+      const repo = new PostgresCanonicalKnowledgeRepository(pool!);
+      return repo.findRevision(projectId, revisionId);
     },
-    async listHistory(projectId: string) {
-      return [...history.values()]
-        .filter((h) => h.projectId === projectId)
-        .sort(
-          (a, b) =>
-            a.createdAt.localeCompare(b.createdAt) ||
-            a.historyEventId.localeCompare(b.historyEventId),
-        );
-    },
-    async getSnapshot(projectId: string): Promise<CanonicalSnapshot> {
-      const state = states.get(projectId) ?? {
-        version: 0,
-        digest: canonicalSnapshotDigest(projectId, 0, []),
-        updatedAt: '1970-01-01T00:00:00.000Z',
-      };
-      return {
-        snapshotId: `canonical:${projectId}:${state.version}`,
-        projectId,
-        version: state.version,
-        digest: state.digest,
-        claims: [...claims.values()]
-          .filter((c) => c.projectId === projectId)
-          .sort((a, b) => a.claimId.localeCompare(b.claimId))
-          .map((c) => ({
-            claimId: c.claimId,
-            text: c.claimText,
-            revisionNumber: c.revisionNumber,
-            evidenceIds: c.evidenceIds,
-          })),
-        createdAt: state.updatedAt,
-      };
+    listHistory: (projectId) => {
+      const repo = new PostgresCanonicalKnowledgeRepository(pool!);
+      return repo.listHistory(projectId);
     },
   };
+  return canonical;
 };
 
-const addCommit = (
-  canonical: ReturnType<typeof makeCanonical>,
-  opts: {
-    projectId: string;
-    revisionId: string;
-    eventId: string;
-    createdAt: string;
-    claimId?: string;
-  },
-) => {
-  const beforeVersion = canonical.states.get(opts.projectId)?.version ?? 0;
+const addCommit = async (opts: {
+  projectId: string;
+  revisionId: string;
+  eventId: string;
+  createdAt: string;
+  claimId?: string;
+  beforeVersion: number;
+  afterVersion: number;
+}) => {
+  const { projectId, revisionId, eventId, createdAt, claimId: rawClaimId } = opts;
+  const commitId = randomUUID();
+  const changeSetId = randomUUID();
+  const manifestId = randomUUID();
+  // claim_id is a GLOBAL primary key in canonical.claims, so scope it per
+  // project to keep parallel/serial DB tests isolated.
+  const claimId = rawClaimId === undefined ? undefined : `${projectId}:${rawClaimId}`;
   const claim =
-    opts.claimId === undefined
+    claimId === undefined
       ? undefined
       : {
-          claimId: opts.claimId,
-          projectId: opts.projectId,
-          revisionNumber: 1 as const,
-          claimText: `claim ${opts.claimId}`,
-          sourceVersionId: 'sv-1',
+          claimId,
+          projectId,
+          revisionNumber: opts.afterVersion as number,
+          claimText: `claim ${claimId}`,
+          sourceVersionId: randomUUID(),
           evidenceIds: [] as readonly string[],
-          createdFromManifestId: `manifest-${opts.eventId}`,
+          createdFromManifestId: manifestId,
           accessScope: ['owner'] as readonly string[],
           sensitivity: 'private' as const,
-          createdAt: opts.createdAt,
+          createdAt,
         };
-  const afterVersion = claim ? beforeVersion + 1 : beforeVersion;
-  canonical.revisions.set(opts.revisionId, {
-    revisionId: opts.revisionId,
-    projectId: opts.projectId,
-    commitId: `commit-${opts.eventId}`,
-    manifestId: `manifest-${opts.eventId}`,
+  const revision: CanonicalRevision = {
+    revisionId,
+    projectId,
+    commitId,
+    manifestId,
     operation: claim ? 'ADD_CLAIM' : 'NO_OP',
-    beforeVersion,
-    afterVersion,
+    beforeVersion: opts.beforeVersion,
+    afterVersion: opts.afterVersion,
     claimId: claim?.claimId,
     reason: 'commit',
     actor: { type: 'user', id: 'actor-1' },
-    createdAt: opts.createdAt,
-  });
-  canonical.history.set(opts.eventId, {
-    historyEventId: opts.eventId,
-    projectId: opts.projectId,
-    commitId: `commit-${opts.eventId}`,
-    manifestId: `manifest-${opts.eventId}`,
-    changeSetId: `change-set-${opts.eventId}`,
+    createdAt,
+  };
+  const historyEvent: CanonicalHistoryEvent = {
+    historyEventId: eventId,
+    projectId,
+    commitId,
+    manifestId,
+    changeSetId: changeSetId,
     eventType: claim ? 'CANONICAL_CLAIM_ADDED' : 'CHANGESET_NO_OP',
-    beforeVersion,
-    afterVersion,
+    beforeVersion: opts.beforeVersion,
+    afterVersion: opts.afterVersion,
     claimId: claim?.claimId,
     reason: 'commit',
     actor: { type: 'user', id: 'actor-1' },
-    createdAt: opts.createdAt,
-  });
-  canonical.commits.set(`commit-${opts.eventId}`, {
-    commitId: `commit-${opts.eventId}`,
-    projectId: opts.projectId,
-    manifestId: `manifest-${opts.eventId}`,
-    manifestDigest: 'sha256:manifest',
-    changeSetId: `change-set-${opts.eventId}`,
-    operation: claim ? 'ADD_CLAIM' : 'NO_OP',
-    status: claim ? 'COMMITTED' : 'NO_OP',
-    beforeVersion,
-    afterVersion,
-    snapshotDigest: 'sha256:snapshot',
-    claimId: claim?.claimId,
-    revisionId: opts.revisionId,
-    historyEventId: opts.eventId,
-    outboxId: `outbox-${opts.eventId}`,
-    committedAt: opts.createdAt,
-  });
-  if (claim) canonical.claims.set(claim.claimId, claim);
-  const projectClaims = [...canonical.claims.values()]
-    .filter((c) => c.projectId === opts.projectId)
-    .sort((a, b) => a.claimId.localeCompare(b.claimId))
-    .map((c) => ({
-      claimId: c.claimId,
-      text: c.claimText,
-      revisionNumber: c.revisionNumber,
-      evidenceIds: c.evidenceIds,
-    }));
-  const digest = canonicalSnapshotDigest(opts.projectId, afterVersion, projectClaims);
-  canonical.states.set(opts.projectId, {
-    version: afterVersion,
-    digest,
-    updatedAt: opts.createdAt,
-  });
-  return { version: afterVersion, digest };
+    createdAt,
+  };
+  if (claim) {
+    await pool!.query(
+      `INSERT INTO canonical.claims (
+         claim_id, project_id, source_version_id, manifest_id, claim_json, created_at
+       ) VALUES ($1, $2, $3, $4, $5::jsonb, $6)`,
+      [claimId, projectId, randomUUID(), manifestId, JSON.stringify(claim), createdAt],
+    );
+  }
+  // project_state.snapshot_digest is CHECK-constrained to the real digest of
+  // the project's current claims; compute it from what is now persisted.
+  const { rows: claimRows } = await pool!.query<{ claim_json: CanonicalClaim }>(
+    `SELECT claim_json
+     FROM canonical.claims
+     WHERE project_id = $1
+     ORDER BY claim_id`,
+    [projectId],
+  );
+  const snapshotClaims = claimRows.map((row) => ({
+    claimId: row.claim_json.claimId,
+    text: row.claim_json.claimText,
+    revisionNumber: row.claim_json.revisionNumber,
+    evidenceIds: row.claim_json.evidenceIds,
+  }));
+  const snapshotDigest = canonicalSnapshotDigest(projectId, opts.afterVersion, snapshotClaims);
+  await pool!.query(
+    `INSERT INTO canonical.project_state (project_id, version, snapshot_digest, updated_at)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (project_id) DO UPDATE
+       SET version = EXCLUDED.version,
+           snapshot_digest = EXCLUDED.snapshot_digest,
+           updated_at = EXCLUDED.updated_at`,
+    [projectId, opts.afterVersion, snapshotDigest, createdAt],
+  );
+  await pool!.query(
+    `INSERT INTO canonical.commits (
+       commit_id, project_id, manifest_id, manifest_digest, change_set_id,
+       result_json, committed_at
+     ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)`,
+    [
+      commitId,
+      projectId,
+      manifestId,
+      `sha256:${'1'.repeat(64)}`,
+      changeSetId,
+      JSON.stringify({ commitId }),
+      createdAt,
+    ],
+  );
+  await pool!.query(
+    `INSERT INTO canonical.revisions (
+       revision_id, project_id, commit_id, revision_json, created_at
+     ) VALUES ($1, $2, $3, $4::jsonb, $5)`,
+    [revisionId, projectId, commitId, JSON.stringify(revision), createdAt],
+  );
+  await pool!.query(
+    `INSERT INTO canonical.history_events (
+       history_event_id, project_id, commit_id, event_json, created_at
+     ) VALUES ($1, $2, $3, $4::jsonb, $5)`,
+    [eventId, projectId, commitId, JSON.stringify(historyEvent), createdAt],
+  );
+  return { commitId, claimId };
 };
 
-describe('FE-P5-S2 WP3 Reversal DraftChangeSet (canonical-backed)', () => {
-  it('rejects a superseded target with typed failure', async () => {
-    const canonical = makeCanonical();
-    const project = `p-rev-${randomUUID().slice(0, 8)}`;
-    addCommit(canonical, {
-      projectId: project,
-      revisionId: 'revision:1',
-      eventId: 'e-1',
-      createdAt: '2026-08-09T00:00:00.000Z',
-      claimId: 'claim-a',
-    });
-    addCommit(canonical, {
-      projectId: project,
-      revisionId: 'revision:2',
-      eventId: 'e-2',
-      createdAt: '2026-08-09T02:00:00.000Z',
-      claimId: 'claim-b',
-    });
-    const source = await canonical.findRevision(project, 'revision:1');
-    const history = await canonical.listHistory(project);
-    const eligibility = assessReversalEligibilityFromHistory(
-      {
-        resourceProjectId: project,
-        sourceRevisionId: 'revision:1',
-        currentCapabilities: [REVERSAL_CURRENT_CAPABILITY],
-      },
-      source,
-      history,
-    );
-    expect(eligibility.eligible).toBe(false);
-    expect(eligibility.reasons).toContain('REVERSAL_SUPERSEDED_TARGET');
+const cleanup = async () => {
+  // canonical.claims is append-only (no DELETE), matching the other DB tests
+  // that seed canonical tables: reset the whole canonical schema set.
+  await pool!.query(`
+    TRUNCATE
+      canonical.outbox,
+      canonical.history_events,
+      canonical.revisions,
+      canonical.commits,
+      canonical.claims,
+      canonical.project_state
+    CASCADE
+  `);
+};
+
+describe.runIf(pool)('FE-P5-S2 WP3 Reversal DraftChangeSet (real PostgreSQL)', () => {
+  afterAll(async () => {
+    await pool?.end();
   });
 
-  it('creates a CANDIDATE reversal for the current tip and computes snapshot impact', async () => {
-    const canonical = makeCanonical();
+  it('finds an existing revision + same revisionId under a DIFFERENT project -> not found', async () => {
+    const project = `p-rev-find-${randomUUID().slice(0, 8)}`;
+    const otherProject = `p-rev-other-${randomUUID().slice(0, 8)}`;
+    try {
+      const { commitId } = await addCommit({
+        projectId: project,
+        revisionId: 'revision:1',
+        eventId: 'e-1',
+        createdAt: '2026-08-09T00:00:00.000Z',
+        claimId: 'claim-a',
+        beforeVersion: 0,
+        afterVersion: 1,
+      });
+      const canonical = makeCanonical();
+      // Existing project + existing revisionId -> found.
+      const found = await canonical.findRevision(project, 'revision:1');
+      expect(found).toBeDefined();
+      expect(found!.projectId).toBe(project);
+      expect(found!.revisionId).toBe('revision:1');
+      expect(found!.commitId).toBe(commitId);
+      // Wrong project + same revisionId -> NOT found (project scope guard).
+      const wrong = await canonical.findRevision(otherProject, 'revision:1');
+      expect(wrong).toBeUndefined();
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it('canonical-backed reversal eligibility on the real DB (tip eligible -> CANDIDATE)', async () => {
     const project = `p-rev-tip-${randomUUID().slice(0, 8)}`;
-    addCommit(canonical, {
-      projectId: project,
-      revisionId: 'revision:1',
-      eventId: 'e-1',
-      createdAt: '2026-08-09T00:00:00.000Z',
-      claimId: 'claim-a',
-    });
-    addCommit(canonical, {
-      projectId: project,
-      revisionId: 'revision:2',
-      eventId: 'e-2',
-      createdAt: '2026-08-09T02:00:00.000Z',
-      claimId: 'claim-b',
-    });
+    try {
+      await addCommit({
+        projectId: project,
+        revisionId: 'revision:1',
+        eventId: 'e-1',
+        createdAt: '2026-08-09T00:00:00.000Z',
+        claimId: 'claim-a',
+        beforeVersion: 0,
+        afterVersion: 1,
+      });
+      const { commitId: secondCommitId } = await addCommit({
+        projectId: project,
+        revisionId: 'revision:2',
+        eventId: 'e-2',
+        createdAt: '2026-08-09T02:00:00.000Z',
+        claimId: 'claim-b',
+        beforeVersion: 1,
+        afterVersion: 2,
+      });
+      const canonical = makeCanonical();
+      const port = createReversalEligibilityPort(canonical, {
+        currentCapabilitiesResolver: async () => [REVERSAL_CURRENT_CAPABILITY],
+      });
 
-    // Reversal of revision:1 rolls back claim-b (added later).
-    const source = (await canonical.findRevision(project, 'revision:1'))!;
-    const history = await canonical.listHistory(project);
-    const snapshot = await canonical.getSnapshot(project);
-    const impact = computeReversalSnapshotImpact(source, snapshot, history);
-    expect(impact.removedClaimIds).toEqual(['claim-b']);
-    expect(impact.impactedVersion).toBe(1);
-    expect(impact.retainedClaimIds).toEqual(['claim-a']);
-
-    // Reversal of the current tip (revision:2) is eligible and creates a
-    // CANDIDATE DraftChangeSet.
-    const port = createReversalEligibilityPort(canonical);
-    const { reversal, eligibility } = await port.createReversalDraftChangeSet({
-      resourceProjectId: project,
-      sourceRevisionId: 'revision:2',
-      reason: 'rollback latest',
-      createdBy: 'actor-1',
-      createdAt: '2026-08-09T03:00:00.000Z',
-      currentCapabilities: [REVERSAL_CURRENT_CAPABILITY],
-    });
-    expect(eligibility.eligible).toBe(true);
-    expect(reversal.status).toBe('CANDIDATE');
-    expect(reversal.sourceCommitId).toBe('commit-e-2');
-    expect(reversal.resourceProjectId).toBe(project);
+      // Current tip (revision:2) is eligible; create produces a CANDIDATE.
+      const { reversal, eligibility } = await port.createReversalDraftChangeSet({
+        resourceProjectId: project,
+        sourceRevisionId: 'revision:2',
+        reason: 'rollback latest',
+        createdBy: 'actor-1',
+        createdAt: '2026-08-09T03:00:00.000Z',
+      });
+      expect(eligibility.eligible).toBe(true);
+      expect(reversal.status).toBe('CANDIDATE');
+      expect(reversal.sourceRevisionId).toBe('revision:2');
+      expect(reversal.sourceCommitId).toBe(secondCommitId);
+      expect(reversal.resourceProjectId).toBe(project);
+    } finally {
+      await cleanup();
+    }
   });
 
-  it('loads a real revision through the in-memory adapter (findRevision parity)', async () => {
-    const repo = new InMemoryCanonicalKnowledgeRepository();
-    void repo;
-    // The canonical-backed reader uses the same contract shape as the
-    // in-memory adapter; verify the adapter exposes findRevision.
-    expect(typeof InMemoryCanonicalKnowledgeRepository.prototype.findRevision).toBe('function');
-    const reader: ReversalCanonicalReader = {
-      findRevision: async () => undefined,
-      listHistory: async () => [],
-    };
-    expect(typeof reader.findRevision).toBe('function');
-    void stableJson;
+  it('superseded target on the real DB -> typed eligibility rejection', async () => {
+    const project = `p-rev-sup-${randomUUID().slice(0, 8)}`;
+    try {
+      await addCommit({
+        projectId: project,
+        revisionId: 'revision:1',
+        eventId: 'e-1',
+        createdAt: '2026-08-09T00:00:00.000Z',
+        claimId: 'claim-a',
+        beforeVersion: 0,
+        afterVersion: 1,
+      });
+      await addCommit({
+        projectId: project,
+        revisionId: 'revision:2',
+        eventId: 'e-2',
+        createdAt: '2026-08-09T02:00:00.000Z',
+        claimId: 'claim-b',
+        beforeVersion: 1,
+        afterVersion: 2,
+      });
+      const canonical = makeCanonical();
+      const port = createReversalEligibilityPort(canonical, {
+        currentCapabilitiesResolver: async () => [REVERSAL_CURRENT_CAPABILITY],
+      });
+      // Reversing revision:1 is superseded by the later claim commit.
+      await expect(
+        port.createReversalDraftChangeSet({
+          resourceProjectId: project,
+          sourceRevisionId: 'revision:1',
+          reason: 'rollback old',
+          createdBy: 'actor-1',
+          createdAt: '2026-08-09T03:00:00.000Z',
+        }),
+      ).rejects.toMatchObject({ code: 'REVERSAL_SUPERSEDED_TARGET' });
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it('snapshot impact on the real DB: reversing the current tip removes its own claim', async () => {
+    const project = `p-rev-impact-${randomUUID().slice(0, 8)}`;
+    try {
+      await addCommit({
+        projectId: project,
+        revisionId: 'revision:1',
+        eventId: 'e-1',
+        createdAt: '2026-08-09T00:00:00.000Z',
+        claimId: 'claim-a',
+        beforeVersion: 0,
+        afterVersion: 1,
+      });
+      const { claimId: claimB } = await addCommit({
+        projectId: project,
+        revisionId: 'revision:2',
+        eventId: 'e-2',
+        createdAt: '2026-08-09T02:00:00.000Z',
+        claimId: 'claim-b',
+        beforeVersion: 1,
+        afterVersion: 2,
+      });
+      const canonical = makeCanonical();
+      const source = (await canonical.findRevision(project, 'revision:2'))!;
+      const history = await canonical.listHistory(project);
+      const repo = new PostgresCanonicalKnowledgeRepository(pool!);
+      const snapshot = await repo.getSnapshot(project);
+      const impact = computeReversalSnapshotImpact(source, snapshot, history);
+      // GPT fix C: current-tip reversal removes the source revision's OWN
+      // ADD_CLAIM effect (claim-b), retaining claim-a, impactedVersion=1.
+      expect(impact.removedClaimIds).toEqual([claimB]);
+      expect(impact.impactedVersion).toBe(1);
+      expect(impact.impactedClaimCount).toBe(1);
+      expect(impact.currentClaimCount).toBe(2);
+      // Digest round-trips through the contract digest function.
+      expect(impact.impactedDigest).toBe(
+        canonicalSnapshotDigest(project, 1, [
+          {
+            claimId: snapshot.claims.find((c) => c.claimId !== claimB)!.claimId,
+            text: snapshot.claims.find((c) => c.claimId !== claimB)!.text,
+            revisionNumber: snapshot.claims.find((c) => c.claimId !== claimB)!.revisionNumber,
+            evidenceIds: [],
+          } satisfies CanonicalSnapshotClaim,
+        ]),
+      );
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it('same-timestamp tie-break on the real DB: later event detected by history position', async () => {
+    const project = `p-rev-tie-${randomUUID().slice(0, 8)}`;
+    try {
+      const sameTime = '2026-08-09T00:00:00.000Z';
+      await addCommit({
+        projectId: project,
+        revisionId: 'revision:1',
+        eventId: 'e-1',
+        createdAt: sameTime,
+        claimId: 'claim-a',
+        beforeVersion: 0,
+        afterVersion: 1,
+      });
+      await addCommit({
+        projectId: project,
+        revisionId: 'revision:2',
+        eventId: 'e-2',
+        createdAt: sameTime,
+        claimId: 'claim-b',
+        beforeVersion: 1,
+        afterVersion: 2,
+      });
+      const canonical = makeCanonical();
+      const history = await canonical.listHistory(project);
+      // Both events share createdAt; the DB orders by created_at,
+      // history_event_id (e-1 < e-2), so e-2 is LATER than revision:1's e-1.
+      expect(history.map((e) => e.historyEventId)).toEqual(['e-1', 'e-2']);
+      const port = createReversalEligibilityPort(canonical, {
+        currentCapabilitiesResolver: async () => [REVERSAL_CURRENT_CAPABILITY],
+      });
+      await expect(
+        port.createReversalDraftChangeSet({
+          resourceProjectId: project,
+          sourceRevisionId: 'revision:1',
+          reason: 'rollback',
+          createdBy: 'actor-1',
+          createdAt: '2026-08-09T03:00:00.000Z',
+        }),
+      ).rejects.toMatchObject({ code: 'REVERSAL_SUPERSEDED_TARGET' });
+    } finally {
+      await cleanup();
+    }
   });
 });

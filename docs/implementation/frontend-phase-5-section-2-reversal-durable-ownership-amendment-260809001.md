@@ -1,6 +1,10 @@
 # FE-P5-S2 WP5 — Reversal Durable Ownership Architecture Amendment (ADR-131 §4/§7a)
 
-- Status: **APPROVED (user Product Implementation delegation)**
+- Status: **APPROVED**
+- Approved by: **USER**
+- Approved at: 2026-08-09
+- Authority: **Explicit Architecture Amendment approval** (GPT WP5 Round 5 Review
+  — `Architecture Amendment: APPROVED BY USER`)
 - Proposed at: 2026-08-09
 - Work item: `FE-P5-S2`
 - Governing ADR: `ADR-131` (ACCEPTED)

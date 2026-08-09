@@ -1,7 +1,7 @@
 ---
 id: FRONTEND-PHASE-5-SECTION-2-WP5-EVIDENCE-260809001
 classification: CANONICAL
-status: wp5_round3_fixes_pending_review
+status: wp5_accepted
 work_item: FE-P5-S2
 created_at: 2026-08-09
 subject_base: 701e0bfac5af60daa48d9155185956b91650ecbd
@@ -14,6 +14,14 @@ wp5_round1_fix_head: a427d1538
 wp5_round1_fix_ci_number: 719
 wp5_round1_fix_ci_run_id: 31304991337
 wp5_round1_fix_ci_conclusion: SUCCESS
+wp5_round4_fix_head: 57420668b
+wp5_round4_fix_ci_number: 725
+wp5_round4_fix_ci_run_id: 31308301025
+wp5_round4_fix_ci_conclusion: SUCCESS
+wp5_accepted_head: 57420668b
+wp5_accepted_ci_number: 725
+wp5_accepted_ci_run_id: 31308301025
+wp5_accepted_ci_conclusion: SUCCESS
 tracking_issue: https://github.com/JasonCutter/shotgun/issues/71
 contract_pr: https://github.com/JasonCutter/shotgun/pull/70
 product_pr: https://github.com/JasonCutter/shotgun/pull/80
@@ -296,12 +304,36 @@ Resolution (Option 1 — Frozen owner kept):
 - **Product Correction Head**: 57420668b
 - **Automatic CI**: #725 / run 31308301025 / SUCCESS
 
+## 5e. GPT WP5 Round 5 verdict — ACCEPTED / COMPLETE
+
+GPT WP5 Round 5 verdict: **ACCEPTED** (`GPT_IMPLEMENTATION_REVIEW_ACCEPTED`).
+
+- Reversal authoritative ownership: **PASS** (owner = change-set-review;
+  `review.reversals` authoritative durable record; derived Knowledge Draft
+  carrier is NOT authority).
+- Migration 033: **AUTHORIZED BY AMENDMENT / PASS** (bounded additive
+  `review.reversals`; no existing table/history rewrite).
+- Derived Review carrier: **PASS**.
+- Reversal → Review → Approval: **PASS**.
+- Deleted-project Audit UI: **PASS**.
+- Architecture Amendment: **APPROVED BY USER** — the amendment document's
+  approval authority is recorded as `Status: APPROVED / Approved by: USER /
+Approved at: 2026-08-09 / Authority: Explicit Architecture Amendment
+approval` (GPT Round 5 wording correction; carried in this governance delta,
+  no separate commit/CI).
+
+### Round 5 acceptance head
+
+- **Product Acceptance Head**: 57420668b
+- **Automatic CI**: #725 / run 31308301025 / SUCCESS
+
 ## 6. Preserved boundaries
 
 Not implemented in this Work Package (remain unauthorized):
 
-- WP6 Integrated Verification + Security + Performance (including the final
-  Reversal → Canonical Commit execution, WP6 full-flow verification).
+- WP6 Integrated Verification + Security + Performance (AUTHORIZED TO START;
+  includes the final Reversal → Canonical Commit execution, WP6 full-flow
+  verification).
 - Central authoritative History ledger: FORBIDDEN (projection is NON-AUTHORITATIVE).
 - Reversal durable authority: the owning change-set-review store
   (`review.reversals`, migration 033 — Architecture Amendment approved). The
@@ -312,5 +344,6 @@ Not implemented in this Work Package (remain unauthorized):
 
 ## 7. Next action
 
-Report WP5 Round 4 fixes for the GPT Review Round 5. Do not begin WP6 until WP5 is
-reviewed and accepted.
+WP5 is ACCEPTED / COMPLETE (GPT Round 5). WP6 — Integrated Verification +
+Security + Performance — is AUTHORIZED TO START. Report WP5 acceptance to the
+GPT review thread (evidence filename already provided). Keep PR #80 DRAFT.

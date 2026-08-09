@@ -198,6 +198,19 @@ describe('FE-P5-S2 WP5 Round 2 B Reversal → Review queue', () => {
     const reversalId = createdBody.reversal.reversalId;
     expect(reversalId.startsWith('reversal:')).toBe(true);
 
+    // 1b) The durable authoritative Reversal is persisted in the owning
+    // change-set-review store (ADR-131 §4 owner = change-set-review;
+    // Round 4 Option 1 — the frontend-knowledge-draft record is only a
+    // derived carrier for the current Review flow).
+    const persisted = await application.repositories.reviews.findReversalById(
+      PROJECT_ID,
+      reversalId,
+    );
+    expect(persisted).toBeDefined();
+    expect(persisted?.sourceRevisionId).toBe('revision:2');
+    expect(persisted?.sourceCommitId).toBe('commit-2');
+    expect(persisted?.status).toBe('CANDIDATE');
+
     // 2) The existing KNOWLEDGE_DRAFT_CHANGE_SET Review queue surfaces it.
     const queue = await post(application, cookie, token, '/product-api/frontend/review/queue', {
       schemaVersion: '1.0.0',

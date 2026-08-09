@@ -17,6 +17,7 @@ import {
   stableJson,
   type ErrorCode,
   type FrontendKnowledgeDraftChangeSetV1,
+  type FrontendKnowledgeEvidenceLineageV1,
   type FrontendKnowledgeOperationV1,
   type ReversalDraftChangeSetV1,
 } from '../../../../packages/contracts/src/index.js';
@@ -103,16 +104,30 @@ const materializeReversalAsKnowledgeDraft = async (input: {
     accessRevision: scope.accessRevision,
     policyContextRevision: scope.policyContextRevision,
   };
+  // Round 4 Option 1: the derived carrier preserves the authoritative Reversal
+  // evidence (sourceCommitId + historicalApprovalRef) as EVIDENCE/REFERENCE
+  // ONLY (never authority) so the durable change-set-review record and the
+  // Review carrier stay linked. historicalApprovalRef is preserved per ADR-131
+  // §4 / WP3 (evidence/reference only).
+  const reversalEvidence: FrontendKnowledgeEvidenceLineageV1[] = [
+    {
+      sourceId: reversal.sourceRevisionId,
+      sourceVersionId: reversal.sourceCommitId,
+      evidenceSpanId: reversal.historicalApprovalRef ?? `reversal:${reversal.reversalId}`,
+    },
+  ];
   const operations: FrontendKnowledgeOperationV1[] =
     removedClaimIds.length > 0
       ? removedClaimIds.map((claimId) => ({
           operationId: `reversal-remove:${claimId}`,
           baseRevision: snapshot.version,
           rationale: `Reversal of ${reversal.sourceRevisionId}`,
-          evidenceReferences: [],
+          evidenceReferences: reversalEvidence,
           expectedImpact: { summary: `Removes claim ${claimId}` },
           operationRevision: 1,
-          contentDigest: sha256Text(stableJson({ claimId, kind: 'CLAIM_REMOVE' })),
+          contentDigest: sha256Text(
+            stableJson({ claimId, kind: 'CLAIM_REMOVE', sourceCommitId: reversal.sourceCommitId }),
+          ),
           kind: 'CLAIM_REMOVE' as const,
           target: { targetType: 'CLAIM' as const, targetId: claimId, resourceId: claimId },
           before: { schemaVersion: 'claim.v1' as const, statement: claimText(claimId) },
@@ -122,10 +137,15 @@ const materializeReversalAsKnowledgeDraft = async (input: {
             operationId: `reversal:${reversal.reversalId}`,
             baseRevision: snapshot.version,
             rationale: `Reversal of ${reversal.sourceRevisionId}`,
-            evidenceReferences: [],
+            evidenceReferences: reversalEvidence,
             expectedImpact: { summary: 'Reversal candidate (no claim removal)' },
             operationRevision: 1,
-            contentDigest: sha256Text(stableJson({ reversalId: reversal.reversalId })),
+            contentDigest: sha256Text(
+              stableJson({
+                reversalId: reversal.reversalId,
+                sourceCommitId: reversal.sourceCommitId,
+              }),
+            ),
             kind: 'NO_OP' as const,
             target: { targetType: 'REVIEW_RESULT' as const, resourceId: 'reversal' },
             after: {
@@ -198,7 +218,7 @@ const materializeReversalAsKnowledgeDraft = async (input: {
       contentDigest,
       validationArtifact,
       impactArtifact,
-      evidenceLineage: [],
+      evidenceLineage: reversalEvidence,
       projectPolicyContext,
       reviewResource,
     },

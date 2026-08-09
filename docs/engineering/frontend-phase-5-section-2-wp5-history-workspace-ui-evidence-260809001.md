@@ -43,28 +43,32 @@ deleted-project audit handling
 
 ## 2. Implemented files
 
-| File                                                                | Content                                                                                                                                                                                                                                   |
-| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/contracts/src/frontend-section3.ts`                       | `TargetRouteView` routeId/href `history` added (route registry + decoder)                                                                                                                                                                 |
-| `packages/shotgun-api-client/src/frontend-history-client.ts`        | `FrontendHistoryClient` + `createFrontendHistoryClient` (listHistoryWorkspace / getHistoryEntry, strict decode, CSRF read)                                                                                                                |
-| `packages/shotgun-api-client/src/index.ts` + `contracts.ts`         | History client + view/request type re-exports                                                                                                                                                                                             |
-| `adapters/frontend-product-read-in-memory/src/index.ts`             | `/history` route guard + History navigation item (projectReady → AVAILABLE)                                                                                                                                                               |
-| `apps/shotgun-web/src/app/query-keys.ts`                            | `HistoryQueryScope` + `historyScopeFromShell` + `historyListQueryKey`/`historyEntryQueryKey`                                                                                                                                              |
-| `apps/shotgun-web/src/history/history-queries.ts`                   | `historyListQueryOptions` / `historyEntryQueryOptions` (React Query, retry from ADR-118 descriptors)                                                                                                                                      |
-| `apps/shotgun-web/src/history/history-workspace-state.ts`           | workspace reducer (domain filters, selection, keyset cursor; availability filter removed — Round 1 A)                                                                                                                                     |
-| `apps/shotgun-web/src/history/history-route-contract.ts`            | `/history?entry=` deep link + owning-Domain hrefs (external action / review / reversal)                                                                                                                                                   |
-| `apps/shotgun-web/src/routes/history-workspace.tsx`                 | `HistoryWorkspace` (`/history` guarded route); Reversal initiation button (Round 1 B); deleted-project audit target preserved on selection/clear deep link (Round 3 Blocker 3)                                                            |
-| `apps/shotgun-web/src/app/router.tsx`                               | `/history` route → `HistoryWorkspace` (guarded)                                                                                                                                                                                           |
-| `apps/shotgun-web/src/styles/application.css`                       | History Workspace styles                                                                                                                                                                                                                  |
-| `packages/shotgun-api-client/src/frontend-review-client.ts`         | `createReversalDraftChangeSet` on `FrontendReviewClient` (Round 1 B)                                                                                                                                                                      |
-| `assemblies/shotgun-app/src/product-api/frontend-review-routes.ts`  | `POST /product-api/frontend/review/reversal-draft` (Round 1 B) + Reversal → SUBMITTED Knowledge DraftChangeSet materialize + persist in the approved frontend-knowledge-draft store (Round 3 Blocker 2; migration 025 — NO new migration) |
-| `assemblies/shotgun-app/src/product-api/frontend-history-routes.ts` | deleted-project audit scope gate on History read routes (Round 1 C)                                                                                                                                                                       |
-| `assemblies/shotgun-app/src/server.ts` + `main.ts`                  | `projectTombstoneStore` + `reversalEligibilityPort` wiring + review route options (Round 1 B/C, Round 3 Blocker 2)                                                                                                                        |
-| `modules/frontend-history/src/product-api.ts`                       | `HistoryProductScopeV1.deletedProjectAudit` + deleted-project binding (Round 1 C)                                                                                                                                                         |
-| `apps/shotgun-web/src/routes/history-workspace.test.tsx`            | 10 tests (list/filters, detail + payload, audit lineage, reversal entry points, reversal initiation w/ authoritative revisionId, purged, pagination, cursor reset, deleted-audit deep link + preserved on select/clear)                   |
-| `tests/integration/frontend-history-deleted-project-audit.test.ts`  | 4 deleted-project audit integration tests (Round 1 C)                                                                                                                                                                                     |
-| `adapters/frontend-history-canonical/src/index.ts`                  | authoritative `revisionId` resolve in the Canonical History payload (Round 2 B1)                                                                                                                                                          |
-| `tests/integration/frontend-reversal-review-queue.test.ts`          | 2 integration tests (create → queue → Context → Record APPROVE → Approval issued; numeric afterVersion rejected fail-closed) (Round 2 B1 / Round 3 Blocker 2)                                                                             |
+| File                                                                                               | Content                                                                                                                                                                                                                                   |
+| -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/contracts/src/frontend-section3.ts`                                                      | `TargetRouteView` routeId/href `history` added (route registry + decoder)                                                                                                                                                                 |
+| `packages/shotgun-api-client/src/frontend-history-client.ts`                                       | `FrontendHistoryClient` + `createFrontendHistoryClient` (listHistoryWorkspace / getHistoryEntry, strict decode, CSRF read)                                                                                                                |
+| `packages/shotgun-api-client/src/index.ts` + `contracts.ts`                                        | History client + view/request type re-exports                                                                                                                                                                                             |
+| `adapters/frontend-product-read-in-memory/src/index.ts`                                            | `/history` route guard + History navigation item (projectReady → AVAILABLE)                                                                                                                                                               |
+| `apps/shotgun-web/src/app/query-keys.ts`                                                           | `HistoryQueryScope` + `historyScopeFromShell` + `historyListQueryKey`/`historyEntryQueryKey`                                                                                                                                              |
+| `apps/shotgun-web/src/history/history-queries.ts`                                                  | `historyListQueryOptions` / `historyEntryQueryOptions` (React Query, retry from ADR-118 descriptors)                                                                                                                                      |
+| `apps/shotgun-web/src/history/history-workspace-state.ts`                                          | workspace reducer (domain filters, selection, keyset cursor; availability filter removed — Round 1 A)                                                                                                                                     |
+| `apps/shotgun-web/src/history/history-route-contract.ts`                                           | `/history?entry=` deep link + owning-Domain hrefs (external action / review / reversal)                                                                                                                                                   |
+| `apps/shotgun-web/src/routes/history-workspace.tsx`                                                | `HistoryWorkspace` (`/history` guarded route); Reversal initiation button (Round 1 B); deleted-project audit target preserved on selection/clear deep link (Round 3 Blocker 3)                                                            |
+| `apps/shotgun-web/src/app/router.tsx`                                                              | `/history` route → `HistoryWorkspace` (guarded)                                                                                                                                                                                           |
+| `apps/shotgun-web/src/styles/application.css`                                                      | History Workspace styles                                                                                                                                                                                                                  |
+| `packages/shotgun-api-client/src/frontend-review-client.ts`                                        | `createReversalDraftChangeSet` on `FrontendReviewClient` (Round 1 B)                                                                                                                                                                      |
+| `assemblies/shotgun-app/src/product-api/frontend-review-routes.ts`                                 | `POST /product-api/frontend/review/reversal-draft` (Round 1 B) + Reversal → SUBMITTED Knowledge DraftChangeSet materialize + persist in the approved frontend-knowledge-draft store (Round 3 Blocker 2; migration 025 — NO new migration) |
+| `assemblies/shotgun-app/src/product-api/frontend-history-routes.ts`                                | deleted-project audit scope gate on History read routes (Round 1 C)                                                                                                                                                                       |
+| `assemblies/shotgun-app/src/server.ts` + `main.ts`                                                 | `projectTombstoneStore` + `reversalEligibilityPort` wiring + review route options (Round 1 B/C, Round 3 Blocker 2)                                                                                                                        |
+| `modules/frontend-history/src/product-api.ts`                                                      | `HistoryProductScopeV1.deletedProjectAudit` + deleted-project binding (Round 1 C)                                                                                                                                                         |
+| `apps/shotgun-web/src/routes/history-workspace.test.tsx`                                           | 10 tests (list/filters, detail + payload, audit lineage, reversal entry points, reversal initiation w/ authoritative revisionId, purged, pagination, cursor reset, deleted-audit deep link + preserved on select/clear)                   |
+| `tests/integration/frontend-history-deleted-project-audit.test.ts`                                 | 4 deleted-project audit integration tests (Round 1 C)                                                                                                                                                                                     |
+| `adapters/frontend-history-canonical/src/index.ts`                                                 | authoritative `revisionId` resolve in the Canonical History payload (Round 2 B1)                                                                                                                                                          |
+| `modules/change-set-review/src/index.ts` + `reversal.ts`                                           | owning-Domain Reversal durable persistence — `saveReversal`/`findReversalById`/`listReversals` + `reversalStore` on create (Round 4 Option 1)                                                                                             |
+| `adapters/stage5-in-memory/src/index.ts` + `adapters/postgres-stage5/src/index.ts`                 | owning-Domain Reversal persistence (InMemory + Postgres `review.reversals`, migration 033) (Round 4 Option 1)                                                                                                                             |
+| `db/migrations/033_frontend_review_reversal_persistence.sql`                                       | additive `review.reversals` record set (Architecture Amendment — Round 4 Option 1)                                                                                                                                                        |
+| `docs/implementation/frontend-phase-5-section-2-reversal-durable-ownership-amendment-260809001.md` | Architecture Amendment: Reversal durable owner = change-set-review; Knowledge Draft = derived carrier (Round 4)                                                                                                                           |
+| `tests/integration/frontend-reversal-review-queue.test.ts`                                         | 2 integration tests (create → durable `review.reversals` record + queue → Context → Record APPROVE → Approval issued; numeric afterVersion rejected fail-closed) (Round 2 B1 / 3 Blocker 2 / 4)                                           |
 
 ## 3. Workspace behavior
 
@@ -91,13 +95,18 @@ CanonicalCommitResult.revisionId`) and carried as
   from the numeric `beforeVersion`/`afterVersion` (Round 2 B1 — a numeric
   afterVersion used as the identity fails closed with `REVERSAL_SOURCE_NOT_FOUND`).
   The server derives the current capability (`project:action:rollback`) + the
-  principal, persists the CANDIDATE Reversal to the owning change-set-review
-  store (`review.reversals`, migration 033, Round 2 B), and the EXISTING
-  `KNOWLEDGE_DRAFT_CHANGE_SET` Review queue surfaces it via
-  `ReversalReviewTargetAdapter` → current Review Context → current Review →
-  current Approval path (Round 2 B). On success the workspace navigates to the
-  current Review Workspace (`/review`, WP3). REVIEW rows show a `Review
-workspace` link only — History owns no command endpoint.
+  principal and persists the CANDIDATE Reversal to the owning change-set-review
+  store (`review.reversals`, migration 033, Architecture Amendment
+  frontend-phase-5-section-2-reversal-durable-ownership-amendment-260809001.md —
+  ADR-131 §4 owner = change-set-review; Round 4 Option 1). The route ALSO
+  materializes a SUBMITTED Knowledge DraftChangeSet (migration 025) as a
+  DERIVED carrier preserving the Reversal identity + evidence
+  (`sourceCommitId` / `historicalApprovalRef` as evidence/reference only), so
+  the EXISTING single `KNOWLEDGE_DRAFT_CHANGE_SET` Review queue resolves it →
+  current Review Context → current Review → current Approval path. On success
+  the workspace navigates to the current Review Workspace (`/review`, WP3).
+  REVIEW rows show a `Review workspace` link only — History owns no command
+  endpoint.
 - **Compensation link/action**: EXTERNAL_ACTION rows link to the owning-Domain
   External Action workspace (Compensation lives there, WP4/AC-09).
 - **Deleted-project audit handling (Round 1 C + Round 2 C)**: a History read for
@@ -114,19 +123,20 @@ workspace` link only — History owns no command endpoint.
 
 ## 4. Verification
 
-- Web app full suite: **125 tests PASS** (21 files) — includes 9 History
+- Web app full suite: **126 tests PASS** (21 files) — includes 10 History
   Workspace tests.
-- History Workspace focused: **9 tests PASS** (list+filters, authoritative
+- History Workspace focused: **10 tests PASS** (list+filters, authoritative
   detail + payload snapshot, audit lineage link, reversal entry points
   canonical-button/review-link, reversal draft initiation → Review navigation
   with the authoritative `revisionId` (never numeric afterVersion), PURGED
   display without raw payload, cursor pagination, filter cursor reset,
-  deleted-project audit deep-link target).
-- Reversal → Review queue integration (NEW, Round 2 B / Round 3 Blocker 2):
-  **2 tests PASS** (create with authoritative `revision:2` → Review Queue →
-  Get Context → **Record APPROVE Decision → Approval Resource issued
-  (APPROVED_READY / ACTIVE)**; numeric afterVersion as the identity is rejected
-  fail-closed, non-disclosing).
+  deleted-project audit deep-link target + preserved on select/clear).
+- Reversal → Review flow integration (Round 2 B / 3 Blocker 2 / 4): **2 tests
+  PASS** — create with authoritative `revision:2` → durable `review.reversals`
+  record asserted (`sourceRevisionId`, `sourceCommitId: commit-2`,
+  `status: CANDIDATE`) → Review Queue → Get Context → **Record APPROVE Decision
+  → Approval Resource issued (APPROVED_READY / ACTIVE)**; numeric afterVersion
+  as the identity is rejected fail-closed, non-disclosing.
 - Deleted-project audit integration (Round 1 C): **4 tests PASS** (allow with
   tombstone+scope+capability; deny without audit scope; deny without current
   capability; deny non-tombstoned cross-project).
@@ -218,13 +228,10 @@ was flagged as a Frozen IR violation. Required deltas and how each was resolved:
 
 - **Blocker 1 — Migration 033 Frozen IR violation**: IR r1's Migration Sequence
   is fixed at 030/031/032; adding 033 required an Architecture/Contract
-  Amendment + explicit user approval. → **Option A (revert)**: migration
-  `033_frontend_review_reversal_persistence.sql` is REMOVED and the
-  change-set-review port extensions (`saveReversal`/`findReversalById`/
-  `listReversals`) are REVERTED. Reversal candidates are instead persisted in
-  the APPROVED frontend-knowledge-draft store (migration 025) as SUBMITTED
-  Knowledge DraftChangeSets (`materializeReversalAsKnowledgeDraft` in the
-  reversal-draft route). No migration boundary change — no amendment needed.
+  Amendment + explicit user approval. → Round 3 reverted 033 (Option A) and
+  used the approved frontend-knowledge-draft store (migration 025) only.
+  Round 4 (see 5d) restored the Frozen Reversal owner via an Architecture
+  Amendment and re-added 033 through that approved path.
 - **Blocker 2 — Reversal adapter collision / broken decision flow**: two
   adapters shared `KNOWLEDGE_DRAFT_CHANGE_SET` and the single-target adapter
   resolution picked the first, so Get Context / Record Decisions / Approval
@@ -253,6 +260,42 @@ was flagged as a Frozen IR violation. Required deltas and how each was resolved:
 - **Product Correction Head**: 14f9e4e48
 - **Automatic CI**: #723 / run 31307563319 / SUCCESS
 
+## 5d. GPT WP5 Round 4 review delta (CHANGES_REQUIRED — ARCHITECTURE OWNERSHIP BLOCKER)
+
+GPT WP5 Round 4 verdict was CHANGES_REQUIRED —
+`REVERSAL_AUTHORITATIVE_OWNERSHIP_CONFLICT`. Migration 033 revert, single-adapter
+Queue → Context → Decision → Approval, and deleted-project deep-link preservation
+were all RESOLVED; the remaining blocker is Reversal authoritative ownership.
+Resolution (Option 1 — Frozen owner kept):
+
+- **Architecture Amendment**:
+  `docs/implementation/frontend-phase-5-section-2-reversal-durable-ownership-amendment-260809001.md`
+  — ADR-131 §4 owner = `change-set-review` is kept; the IR r1 migration
+  sequence 030/031/032 is amended to 030/031/032/033 with the bounded additive
+  `review.reversals` record set (frozen `DraftChangeSet` shape cannot represent
+  a Reversal — FK-bound candidate/comparison); `frontend-knowledge-draft` is a
+  DERIVED carrier for the current Review flow, NOT the Reversal authority.
+- **Durable Reversal authority restored**: `createReversalEligibilityPort` again
+  persists the candidate to the owning change-set-review store
+  (`reversalStore`), and `ChangeSetReviewRepositoryPort` again provides
+  `saveReversal`/`findReversalById`/`listReversals` (InMemory + Postgres
+  `review.reversals`, migration 033).
+- **Derived carrier preserves Reversal evidence**: the reversal route still
+  materializes a SUBMITTED Knowledge DraftChangeSet for the existing
+  `KNOWLEDGE_DRAFT_CHANGE_SET` Review flow, but now preserves the authoritative
+  Reversal fields as evidence/reference only — `sourceCommitId` +
+  `historicalApprovalRef` are carried in `evidenceReferences` /
+  `evidenceLineage` (never authority). Focused integration additionally asserts
+  the durable `review.reversals` record (`sourceRevisionId: revision:2`,
+  `sourceCommitId: commit-2`, `status: CANDIDATE`).
+- **D — RESOLVED (carried)**: evidence §3/§2/§5c cleaned to remove the stale
+  Round 2-only wording; no separate docs-only commit for the wording cleanup.
+
+### Round 4 verification head
+
+- **Product Correction Head**: (recorded after the correction commit)
+- **Automatic CI**: (recorded after the correction commit's CI run)
+
 ## 6. Preserved boundaries
 
 Not implemented in this Work Package (remain unauthorized):
@@ -260,13 +303,14 @@ Not implemented in this Work Package (remain unauthorized):
 - WP6 Integrated Verification + Security + Performance (including the final
   Reversal → Canonical Commit execution, WP6 full-flow verification).
 - Central authoritative History ledger: FORBIDDEN (projection is NON-AUTHORITATIVE).
-- Reversal candidate is persisted as a SUBMITTED Knowledge DraftChangeSet in the
-  approved frontend-knowledge-draft store (migration 025) and reaches the
-  current Review flow (Queue → Context → Decision → Approval); no new
-  ReviewTargetKind, no new migration.
+- Reversal durable authority: the owning change-set-review store
+  (`review.reversals`, migration 033 — Architecture Amendment approved). The
+  SUBMITTED Knowledge DraftChangeSet (migration 025) is a DERIVED carrier for
+  the current Review flow (Queue → Context → Decision → Approval) and is NOT
+  the Reversal authority; no new ReviewTargetKind.
 - PR #80 Ready/Merge: user approval required, remains DRAFT.
 
 ## 7. Next action
 
-Report WP5 Round 3 fixes for the GPT Review Round 4. Do not begin WP6 until WP5 is
+Report WP5 Round 4 fixes for the GPT Review Round 5. Do not begin WP6 until WP5 is
 reviewed and accepted.

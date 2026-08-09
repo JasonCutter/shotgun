@@ -236,6 +236,15 @@ export const createReversalEligibilityPort = (
     readonly historicalApprovalResolver?: (
       revision: CanonicalRevision,
     ) => Promise<string | undefined>;
+    /**
+     * FE-P5-S2 WP5 (Round 4 Option 1): owning-Domain durable persistence for
+     * the created Reversal DraftChangeSet (ADR-131 §4 owner = change-set-review).
+     * When provided, every created candidate is persisted to the owning store
+     * before it is returned, so the Reversal authority is durable.
+     */
+    readonly reversalStore?: {
+      saveReversal(reversal: ReversalDraftChangeSetV1): Promise<ReversalDraftChangeSetV1>;
+    };
   },
 ): ReversalEligibilityPort => {
   return {
@@ -300,6 +309,12 @@ export const createReversalEligibilityPort = (
         createdAt: input.createdAt,
         createdBy: input.createdBy,
       });
+      // Round 4 Option 1: persist the authoritative Reversal to the owning
+      // change-set-review store (ADR-131 §4 owner). The current Review flow
+      // later uses a derived carrier; this record is the durable authority.
+      if (options?.reversalStore) {
+        await options.reversalStore.saveReversal(reversal);
+      }
       return { reversal, eligibility };
     },
   };

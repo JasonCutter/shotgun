@@ -1267,12 +1267,15 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   const frontendReviewStore = new InMemoryFrontendReviewStore();
   // FE-P5-S2 WP3/WP5: Reversal draft creation is a change-set-review owned
   // capability (server-derived current capability + principal; the browser
-  // only names the historical source revision).
+  // only names the historical source revision). Round 4 Option 1: every
+  // created candidate is persisted to the owning change-set-review store
+  // (ADR-131 §4 owner = change-set-review; durable Reversal authority).
   const reversalEligibilityPort = createReversalEligibilityPort(canonicalKnowledgeRepository, {
     currentCapabilitiesResolver: async ({ resourceProjectId, principalId }) => {
       const membership = await authRepository.findMembership(principalId, resourceProjectId);
       return membership?.scopes ?? [];
     },
+    reversalStore: changeSetReviewRepository,
   });
   const frontendReviewCoordinator =
     options.frontendReviewCoordinator ??

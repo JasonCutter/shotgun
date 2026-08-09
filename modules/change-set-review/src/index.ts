@@ -32,6 +32,7 @@ import {
   type EventEnvelope,
   type EvidenceSpan,
   type QueryEnvelope,
+  type ReversalDraftChangeSetV1,
   type ReviewDecisionRecord,
   type ReviewDecisionType,
   changeSetContentDigest,
@@ -102,6 +103,23 @@ export type ChangeSetReviewRepositoryPort = {
     projectId: string,
     changeSetId: string,
   ): Promise<ApprovedChangeSetManifest | undefined>;
+  /**
+   * FE-P5-S2 WP5 (Round 4 Option 1): owning-Domain Reversal durable authority.
+   *
+   * ADR-131 §4 fixes the Reversal owner as change-set-review AUGMENT; the
+   * durable authoritative record is a `ReversalDraftChangeSetV1` persisted by
+   * the owning store (Architecture Amendment
+   * frontend-phase-5-section-2-reversal-durable-ownership-amendment-260809001.md,
+   * additive `review.reversals` migration 033). The frozen `DraftChangeSet`
+   * shape cannot represent a Reversal (FK-bound candidate/comparison), so the
+   * record is a dedicated additive set storing the V1 JSON snapshot.
+   */
+  saveReversal(reversal: ReversalDraftChangeSetV1): Promise<ReversalDraftChangeSetV1>;
+  findReversalById(
+    projectId: string,
+    reversalId: string,
+  ): Promise<ReversalDraftChangeSetV1 | undefined>;
+  listReversals(projectId: string): Promise<readonly ReversalDraftChangeSetV1[]>;
 };
 
 type ComparisonCompletedPayload = {

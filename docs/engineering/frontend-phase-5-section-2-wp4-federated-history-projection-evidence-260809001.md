@@ -1,7 +1,7 @@
 ---
 id: FRONTEND-PHASE-5-SECTION-2-WP4-EVIDENCE-260809001
 classification: CANONICAL
-status: wp4_round3_fixes_pending_review
+status: wp4_round4_fixes_pending_review
 work_item: FE-P5-S2
 created_at: 2026-08-09
 subject_base: 701e0bfac5af60daa48d9155185956b91650ecbd
@@ -25,6 +25,10 @@ wp4_round3_fix_head: 64eb60dfc
 wp4_round3_fix_ci_number: 705
 wp4_round3_fix_ci_run_id: 31298313103
 wp4_round3_fix_ci_conclusion: SUCCESS
+wp4_round4_fix_head: 6917452
+wp4_round4_fix_ci_number: 707
+wp4_round4_fix_ci_run_id: 31298917656
+wp4_round4_fix_ci_conclusion: SUCCESS
 tracking_issue: https://github.com/JasonCutter/shotgun/issues/71
 contract_pr: https://github.com/JasonCutter/shotgun/pull/70
 product_pr: https://github.com/JasonCutter/shotgun/pull/80
@@ -124,6 +128,21 @@ GPT Review Round 3 (CHANGES_REQUIRED — ONE retention blocker F) was resolved a
   row → purge without/with tombstone → persistent row sanitized; REDACTED transition
   sanitizes too).
 
+## 1d. GPT Review Round 4 — setPayloadState atomicity fixed
+
+GPT Review Round 4 (CHANGES_REQUIRED — ONE ATOMICITY BLOCKER F2-B) was resolved:
+
+- **F2-B — setPayloadState shares the purge transaction boundary**: `setPayloadState` now
+  runs inside one PostgreSQL transaction exactly like `purgeByPolicy`:
+  `BEGIN → SELECT ... FOR UPDATE (current sidecar state, resurrection guard) → sidecar
+UPSERT → sanitizeProjectionCache (non-AVAILABLE transitions) → COMMIT`, with
+  `ROLLBACK` on failure. A sanitize failure can no longer leave a partial retention state
+  (sidecar REDACTED + projection AVAILABLE + old raw payload) — the sidecar transition
+  and the projection sanitize commit together or not at all.
+- **Focused failure test**: the projection sanitize is forced to fail inside the
+  transaction; `setPayloadState(REDACTED)` rejects and the sidecar stays AVAILABLE
+  (full rollback verified).
+
 ## 2. Implemented files
 
 | File                                                                  | Content                                                                                                                                                     |
@@ -219,10 +238,10 @@ Routes (`registerHistoryRoutes`):
 
 ## 6. Verification
 
-- WP4 focused suites: unit 31 + DB parity 12 = **43 tests PASS** (Round 3 fixes):
-  projection/cursor 18, adapter identity 8 (incl. redaction + purge-without-tombstone),
-  external-action completeness 5, payload-state postgres 6 (incl. projection cache
-  sanitize), history postgres parity 6.
+- WP4 focused suites: unit 31 + DB parity 13 = **44 tests PASS** (Round 4 fixes):
+  projection/cursor 18, adapter identity 8, external-action completeness 5, payload-state
+  postgres 7 (incl. projection cache sanitize + setPayloadState transaction rollback),
+  history postgres parity 6.
 - Full unit suite: **480 tests PASS** (64 files; `stage-8-format-expansion` is a known
   flaky parallel run — 14/14 PASS standalone, unrelated to this delta).
 - `tsc --noEmit`, ESLint, Prettier clean.
@@ -240,5 +259,5 @@ Not implemented in this Work Package (remain unauthorized):
 
 ## 8. Next action
 
-Report WP4 Round 3 fixes (F1/F2) for the GPT Review Round 4. Do not begin WP5 until WP4
+Report WP4 Round 4 fixes (F2-B) for the GPT Review Round 5. Do not begin WP5 until WP4
 is reviewed and accepted.

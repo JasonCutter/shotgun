@@ -16,9 +16,9 @@ wp3_round1_fix_ci_number: 692
 wp3_round1_fix_ci_run_id: 31292583810
 wp3_round1_fix_ci_conclusion: SUCCESS
 wp3_round2_fix_head: 3b25f0c25a2adf35e7e153fb009758a7044c0729
-wp3_round2_fix_ci_number: PENDING
-wp3_round2_fix_ci_run_id: PENDING
-wp3_round2_fix_ci_conclusion: PENDING
+wp3_round2_fix_ci_number: 694
+wp3_round2_fix_ci_run_id: 31293185901
+wp3_round2_fix_ci_conclusion: SUCCESS
 tracking_issue: https://github.com/JasonCutter/shotgun/issues/71
 contract_pr: https://github.com/JasonCutter/shotgun/pull/70
 product_pr: https://github.com/JasonCutter/shotgun/pull/80

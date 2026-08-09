@@ -196,4 +196,38 @@ describe('FE-P5-S2 WP4 History domain adapters', () => {
     expect(resolved!.payloadAvailability).toBe('PURGED_BY_POLICY');
     expect(resolved!.payloadSnapshot).toEqual({ digest: 'sha256:redacted' });
   });
+
+  it('redaction explicitly removes the raw snapshot when tombstone metadata is absent (GPT Round 3 F)', async () => {
+    const payloadState = new InMemoryPayloadStateStore('CANONICAL');
+    const adapter = new CanonicalHistoryAdapter(
+      canonicalRepo([
+        canonicalEvent({ historyEventId: 'e-1', createdAt: '2026-08-09T00:00:00.000Z' }),
+      ]),
+      payloadState,
+      () => new Date('2026-08-09T02:00:00.000Z'),
+    );
+    // Projected while AVAILABLE with raw payload.
+    const cached = (await adapter.readHistory('p1'))[0]!;
+    expect(cached.payloadAvailability).toBe('AVAILABLE');
+    expect(cached.payloadSnapshot).toBeDefined();
+    // Purge WITHOUT tombstone metadata.
+    await payloadState.purgeByPolicy({
+      resourceProjectId: 'p1',
+      sourceEventKind: 'CANONICAL_CLAIM_ADDED',
+      sourceEventId: 'e-1',
+      reason: 'retention policy',
+      actorId: 'actor-1',
+      occurredAt: '2026-08-09T03:00:00.000Z',
+    });
+    // Read-time redaction must OVERWRITE the raw snapshot with nothing
+    // (no tombstone available) — the old raw value must not survive.
+    const redacted = await adapter.redactEntry(cached);
+    expect(redacted.payloadAvailability).toBe('PURGED_BY_POLICY');
+    expect('payloadSnapshot' in redacted && redacted.payloadSnapshot).toBeUndefined();
+    expect((redacted as { payloadSnapshot?: unknown }).payloadSnapshot).toBeUndefined();
+    // Authoritative re-resolution also carries no raw payload.
+    const resolved = await adapter.resolveHistoryEntry('p1', 'CANONICAL_CLAIM_ADDED', 'e-1');
+    expect(resolved!.payloadAvailability).toBe('PURGED_BY_POLICY');
+    expect((resolved as { payloadSnapshot?: unknown }).payloadSnapshot).toBeUndefined();
+  });
 });

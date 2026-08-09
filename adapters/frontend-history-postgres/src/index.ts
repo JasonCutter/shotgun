@@ -19,6 +19,14 @@ const SIDECAR_TABLES: Record<PayloadStateOwner, string> = {
   SETTINGS: 'settings.history_payload_state',
 };
 
+/** Owner → federated History projection domain kind (migration 030 CHECK). */
+const PROJECTION_DOMAIN_KIND: Record<PayloadStateOwner, string> = {
+  CANONICAL: 'CANONICAL',
+  REVIEW: 'REVIEW',
+  EXTERNAL_ACTION: 'EXTERNAL_ACTION',
+  SETTINGS: 'POLICY',
+};
+
 /**
  * PostgreSQL PayloadState store (WP2-B). Reads/writes the owner-side
  * `history_payload_state` sidecar (migration 032). `purgeByPolicy` atomically
@@ -38,6 +46,43 @@ export class PostgresPayloadStateStore implements PayloadStateStorePort {
 
   private sidecarTable(): string {
     return SIDECAR_TABLES[this.owner];
+  }
+
+  /**
+   * FE-P5-S2 WP4 Round 3 F — persistent projection cache sanitize. When an
+   * authoritative payload transitions away from AVAILABLE, the cached
+   * projection row in `frontend_history.history_projection_index` is updated
+   * in the SAME transaction/statement: payload_availability reflects the new
+   * availability and payload_snapshot is replaced by the (nullable) tombstone
+   * metadata. The previous raw payload is never left in persistent storage
+   * after a purge/redaction (AC-05).
+   */
+  private async sanitizeProjectionCache(
+    client: Pool | PoolClient,
+    input: {
+      resourceProjectId: string;
+      sourceEventKind: string;
+      sourceEventId: string;
+      payloadAvailability: PayloadStateRecord['payloadAvailability'];
+      tombstoneMetadata?: Record<string, unknown>;
+    },
+  ): Promise<void> {
+    await client.query(
+      `UPDATE frontend_history.history_projection_index
+       SET payload_availability = $5, payload_snapshot = $6
+       WHERE resource_project_id = $1
+         AND domain_kind = $2
+         AND source_event_kind = $3
+         AND source_event_id = $4`,
+      [
+        input.resourceProjectId,
+        PROJECTION_DOMAIN_KIND[this.owner],
+        input.sourceEventKind,
+        input.sourceEventId,
+        input.payloadAvailability,
+        input.tombstoneMetadata ? JSON.stringify(input.tombstoneMetadata) : null,
+      ],
+    );
   }
 
   async getPayloadState(
@@ -122,6 +167,18 @@ export class PostgresPayloadStateStore implements PayloadStateStorePort {
         input.policyRevision ?? null,
       ],
     );
+    // A transition away from AVAILABLE must also sanitize the persistent
+    // History projection cache (Round 3 F): no raw payload may remain in
+    // frontend_history.history_projection_index after redaction.
+    if (input.payloadAvailability !== 'AVAILABLE') {
+      await this.sanitizeProjectionCache(this.pool, {
+        resourceProjectId: input.resourceProjectId,
+        sourceEventKind: input.sourceEventKind,
+        sourceEventId: input.sourceEventId,
+        payloadAvailability: input.payloadAvailability,
+        tombstoneMetadata: input.tombstoneMetadata,
+      });
+    }
     const record = await this.getPayloadState(
       input.resourceProjectId,
       input.sourceEventKind,
@@ -176,6 +233,17 @@ export class PostgresPayloadStateStore implements PayloadStateStorePort {
 
       // 2. append owner Domain purge AuditEvent (non-sensitive metadata only)
       await this.appendPurgeAuditEvent(client, input, previous ?? 'AVAILABLE');
+
+      // 3. sanitize the persistent History projection cache in the SAME
+      // transaction (Round 3 F / AC-05): the previous raw payload must not
+      // remain in frontend_history.history_projection_index after the purge.
+      await this.sanitizeProjectionCache(client, {
+        resourceProjectId: input.resourceProjectId,
+        sourceEventKind: input.sourceEventKind,
+        sourceEventId: input.sourceEventId,
+        payloadAvailability: 'PURGED_BY_POLICY',
+        tombstoneMetadata: input.tombstoneMetadata,
+      });
 
       await client.query('COMMIT');
     } catch (err) {

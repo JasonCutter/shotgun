@@ -122,9 +122,13 @@ export const redactHistoryPayload = (
       ...(rawPayload === undefined ? {} : { payloadSnapshot: rawPayload }),
     };
   }
-  // REDACTED / PURGED_BY_POLICY / UNAVAILABLE: raw payload FORBIDDEN.
+  // REDACTED / PURGED_BY_POLICY / UNAVAILABLE: raw payload FORBIDDEN. The
+  // returned object ALWAYS carries a payloadSnapshot key (tombstone metadata,
+  // or undefined) so that a caller doing `{ ...entry, ...redacted }`
+  // explicitly OVERWRITES any prior raw snapshot instead of leaving it in
+  // place (GPT Round 3 F — tombstoneMetadata may be absent).
   return {
     payloadAvailability: availability,
-    ...(state?.tombstoneMetadata === undefined ? {} : { payloadSnapshot: state.tombstoneMetadata }),
+    payloadSnapshot: state?.tombstoneMetadata,
   };
 };

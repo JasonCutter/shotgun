@@ -324,4 +324,105 @@ describe.runIf(pool)('FE-P5-S2 WP2-B PayloadState (PostgreSQL)', () => {
       [project],
     );
   });
+
+  it('sanitizes the persistent History projection cache on purge (Round 3 F)', async () => {
+    const { PostgresPayloadStateStore } =
+      await import('../../adapters/frontend-history-postgres/src/index.js');
+    const store = new PostgresPayloadStateStore(pool!, 'CANONICAL');
+    const project = `pg-ps-cache-${randomUUID().slice(0, 8)}`;
+    const kind = 'CANONICAL_CLAIM_ADDED';
+    const now = '2026-08-09T00:00:00.000Z';
+
+    const seedProjectionRow = async (eventId: string) => {
+      await pool!.query(
+        `INSERT INTO frontend_history.history_projection_index
+           (resource_project_id, history_entry_id, domain_kind, domain_resource_kind,
+            domain_resource_id, source_event_kind, source_event_id, occurred_at,
+            payload_availability, payload_snapshot, projected_at)
+         VALUES ($1, $2, 'CANONICAL', 'CANONICAL_CLAIM', $3, $4, $5, $6, 'AVAILABLE', $7, $6)`,
+        [
+          project,
+          `history:${project}:${eventId}`,
+          `claim:${eventId}`,
+          kind,
+          eventId,
+          now,
+          JSON.stringify({ reason: 'secret-payload', actor: 'alice' }),
+        ],
+      );
+    };
+    const readProjectionRow = async (eventId: string) => {
+      const row = await pool!.query<{
+        payload_availability: string;
+        payload_snapshot: Record<string, unknown> | null;
+      }>(
+        `SELECT payload_availability, payload_snapshot
+         FROM frontend_history.history_projection_index
+         WHERE resource_project_id = $1 AND source_event_kind = $2 AND source_event_id = $3`,
+        [project, kind, eventId],
+      );
+      return row.rows[0];
+    };
+
+    // 1. Purge WITHOUT tombstone metadata: the cached raw payload must be
+    //    explicitly removed from persistent storage (the Round 3 F gap — an
+    //    absent tombstone previously left the old raw snapshot in place).
+    const eventA = `event:${randomUUID().slice(0, 8)}`;
+    await seedProjectionRow(eventA);
+    await store.purgeByPolicy({
+      resourceProjectId: project,
+      sourceEventKind: kind,
+      sourceEventId: eventA,
+      reason: 'retention',
+      actorId: 'admin-1',
+      occurredAt: now,
+    });
+    const rowA = await readProjectionRow(eventA);
+    expect(rowA!.payload_availability).toBe('PURGED_BY_POLICY');
+    expect(rowA!.payload_snapshot).toBeNull();
+
+    // 2. Purge WITH tombstone metadata: the tombstone replaces the raw payload.
+    const eventB = `event:${randomUUID().slice(0, 8)}`;
+    await seedProjectionRow(eventB);
+    await store.purgeByPolicy({
+      resourceProjectId: project,
+      sourceEventKind: kind,
+      sourceEventId: eventB,
+      reason: 'retention',
+      tombstoneMetadata: { digest: 'sha256:redacted' },
+      actorId: 'admin-1',
+      occurredAt: now,
+    });
+    const rowB = await readProjectionRow(eventB);
+    expect(rowB!.payload_availability).toBe('PURGED_BY_POLICY');
+    expect(rowB!.payload_snapshot).toEqual({ digest: 'sha256:redacted' });
+
+    // 3. setPayloadState transition to REDACTED also sanitizes the cache.
+    const eventC = `event:${randomUUID().slice(0, 8)}`;
+    await seedProjectionRow(eventC);
+    await store.setPayloadState({
+      resourceProjectId: project,
+      sourceEventKind: kind,
+      sourceEventId: eventC,
+      payloadAvailability: 'REDACTED',
+      reason: 'retention',
+      actorId: 'admin-1',
+      changedAt: now,
+    });
+    const rowC = await readProjectionRow(eventC);
+    expect(rowC!.payload_availability).toBe('REDACTED');
+    expect(rowC!.payload_snapshot).toBeNull();
+
+    await pool!.query(
+      `DELETE FROM frontend_history.history_projection_index WHERE resource_project_id = $1`,
+      [project],
+    );
+    await pool!.query(
+      `DELETE FROM canonical.history_payload_state WHERE resource_project_id = $1`,
+      [project],
+    );
+    // canonical.history_payload_audit_events is append-only (no DELETE); the
+    // purge audit rows left by this test are isolated by the unique project
+    // prefix and cannot collide with other tests.
+  });
 });

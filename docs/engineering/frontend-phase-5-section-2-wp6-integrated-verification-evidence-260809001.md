@@ -130,8 +130,8 @@ procedure.
 
 ## 5. WP6 verification head
 
-- **WP6 Evidence Head**: (recorded after commit)
-- **Automatic CI**: (recorded after the CI run)
+- **WP6 Evidence Head**: 5210d83c7
+- **Automatic CI**: #728 / run 31310392486 / SUCCESS
 
 ## 6. Next action
 

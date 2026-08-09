@@ -148,7 +148,9 @@ export const frontendKnowledgeDraftSubmitDraftForReviewDigest = (
     }),
   );
 
-export const frontendKnowledgeDraftCommitDigest = (request: CommitKnowledgeDraftRequestV1): string =>
+export const frontendKnowledgeDraftCommitDigest = (
+  request: CommitKnowledgeDraftRequestV1,
+): string =>
   sha256Text(
     stableJson({
       draftId: request.draftId,

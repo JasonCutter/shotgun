@@ -1309,8 +1309,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     new FrontendReviewProductCoordinator(frontendReviewStore, frontendCommandGateway, [
       new DraftReviewTargetAdapter(
         options.frontendReviewDraftSourceReader ??
-          (frontendKnowledgeDraftRepository instanceof
-          InMemoryFrontendKnowledgeDraftRepository
+          (frontendKnowledgeDraftRepository instanceof InMemoryFrontendKnowledgeDraftRepository
             ? createInMemoryReviewDraftSourceReader(frontendKnowledgeDraftRepository)
             : createEmptyReviewDraftSourceReader()),
       ),

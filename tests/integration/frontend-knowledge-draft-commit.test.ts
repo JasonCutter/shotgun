@@ -38,7 +38,9 @@ const base = (): FrontendKnowledgeDraftBaseV1 => ({
   canonicalRevisionId: 'canonical-revision-0',
 });
 
-const claimOperation = (overrides: Partial<FrontendKnowledgeOperationV1> = {}): FrontendKnowledgeOperationV1 =>
+const claimOperation = (
+  overrides: Partial<FrontendKnowledgeOperationV1> = {},
+): FrontendKnowledgeOperationV1 =>
   ({
     operationId: 'operation-claim-1',
     kind: 'CLAIM_ADD',
@@ -65,7 +67,11 @@ const noOpOperation = (): FrontendKnowledgeOperationV1 => ({
   expectedImpact: { summary: 'No canonical mutation.' },
   operationRevision: 1,
   contentDigest: 'sha256:operation-noop-1',
-  after: { schemaVersion: 'no-op-review-result.v1', result: 'NO_CHANGE_REQUIRED', reason: 'No change.' },
+  after: {
+    schemaVersion: 'no-op-review-result.v1',
+    result: 'NO_CHANGE_REQUIRED',
+    reason: 'No change.',
+  },
 });
 
 const factOperation = (): FrontendKnowledgeOperationV1 => ({
@@ -230,18 +236,27 @@ describe('FE-P5-XP Correction B: Approval -> Canonical commit consumer', () => {
 
   const approvalPort = (): FrontendKnowledgeDraftCommitDependenciesV1['approvals'] => ({
     findByIdWithRevision: async (approvalId) =>
-      reviewStore.transaction((repositories) => repositories.approvals.findByIdWithRevision(approvalId)),
+      reviewStore.transaction((repositories) =>
+        repositories.approvals.findByIdWithRevision(approvalId),
+      ),
     consumeApproval: async (approvalId, canonicalCommitId, consumedAt, consumedBy) =>
       reviewStore.transaction((repositories) =>
-        repositories.approvals.consumeApproval(approvalId, canonicalCommitId, consumedAt, consumedBy),
+        repositories.approvals.consumeApproval(
+          approvalId,
+          canonicalCommitId,
+          consumedAt,
+          consumedBy,
+        ),
       ),
   });
 
-  const makeCoordinator = (input: {
-    readonly gateway?: InMemoryFrontendCommandGateway;
-    readonly approvals?: FrontendKnowledgeDraftCommitDependenciesV1['approvals'];
-    readonly canonical?: FrontendKnowledgeDraftCommitDependenciesV1['canonical'];
-  } = {}): FrontendKnowledgeDraftProductCoordinator =>
+  const makeCoordinator = (
+    input: {
+      readonly gateway?: InMemoryFrontendCommandGateway;
+      readonly approvals?: FrontendKnowledgeDraftCommitDependenciesV1['approvals'];
+      readonly canonical?: FrontendKnowledgeDraftCommitDependenciesV1['canonical'];
+    } = {},
+  ): FrontendKnowledgeDraftProductCoordinator =>
     new FrontendKnowledgeDraftProductCoordinator(
       draftRepository,
       input.gateway ?? new InMemoryFrontendCommandGateway(),
@@ -362,7 +377,10 @@ describe('FE-P5-XP Correction B: Approval -> Canonical commit consumer', () => {
   it('rejects fail-closed when the Approval covers multiple CLAIM_ADD operations', async () => {
     const draft = submittedDraft([
       claimOperation(),
-      claimOperation({ operationId: 'operation-claim-2', after: { schemaVersion: 'claim.v1', statement: 'Second claim.' } }),
+      claimOperation({
+        operationId: 'operation-claim-2',
+        after: { schemaVersion: 'claim.v1', statement: 'Second claim.' },
+      }),
     ]);
     await seed({ draft, approval: approvalFor({ draft, approvedItemIds: ['item-1', 'item-2'] }) });
     await expect(coordinator.commitFrontendDraft(scope, request())).rejects.toMatchObject({
@@ -563,7 +581,9 @@ describe('FE-P5-XP Correction B: Approval -> Canonical commit consumer', () => {
       getSnapshot: (projectId: string) => canonicalRepository.getSnapshot(projectId),
       findCommit: (projectId: string, commitId: string) =>
         canonicalRepository.findCommit(projectId, commitId),
-      commitFrontendDraft: async (write: Parameters<typeof canonicalRepository.commitFrontendDraft>[0]) => {
+      commitFrontendDraft: async (
+        write: Parameters<typeof canonicalRepository.commitFrontendDraft>[0],
+      ) => {
         if (commitFails) {
           commitFails = false;
           throw new Error('simulated crash before canonical commit');

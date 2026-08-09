@@ -620,7 +620,8 @@ export class PostgresFrontendReviewRepository implements ReviewRepositoryBoundar
                   access_revision, policy_context_revision, reason, issued_at, expires_at,
                   status, invalidation_reason, recorded_at)
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
-                       $15, $16, $17, $18, 'CONSUMED', $19, $20)`, [
+                       $15, $16, $17, $18, 'CONSUMED', $19, $20)`,
+              [
                 approvalId,
                 currentRevision + 1,
                 current.purpose,

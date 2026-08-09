@@ -354,12 +354,13 @@ export type FrontendKnowledgeDraftRunCommandInput<T> = {
 export type FrontendKnowledgeDraftApprovalCommitPort = {
   /** Includes the append-only approval status revision (enforces
    *  expectedApprovalRevision; Round 2, GPT #2). */
-  findByIdWithRevision(
-    approvalId: string,
-  ): Promise<{
-    readonly approval: ReviewApprovalV1;
-    readonly approvalStatusRevision: number;
-  } | undefined>;
+  findByIdWithRevision(approvalId: string): Promise<
+    | {
+        readonly approval: ReviewApprovalV1;
+        readonly approvalStatusRevision: number;
+      }
+    | undefined
+  >;
   consumeApproval(
     approvalId: string,
     canonicalCommitId: string,
@@ -997,10 +998,7 @@ export class FrontendKnowledgeDraftProductCoordinator {
         draftFailure('DRAFT_NOT_FOUND', 'The Draft was not found.');
       }
       if (draft.resourceProjectId !== scope.activeProjectId) {
-        draftFailure(
-          'PROJECT_BINDING_CONFLICT',
-          'The Draft is bound to another Resource Project.',
-        );
+        draftFailure('PROJECT_BINDING_CONFLICT', 'The Draft is bound to another Resource Project.');
       }
       if (draft.status !== 'SUBMITTED') {
         draftFailure(
@@ -1031,10 +1029,7 @@ export class FrontendKnowledgeDraftProductCoordinator {
       }
       const { approval, approvalStatusRevision } = approvalRead;
       if (approval.purpose !== 'KNOWLEDGE_CANONICAL_CHANGE') {
-        draftFailure(
-          'UNSUPPORTED_OPERATION',
-          'The Approval is not a Canonical change approval.',
-        );
+        draftFailure('UNSUPPORTED_OPERATION', 'The Approval is not a Canonical change approval.');
       }
       // Round 2, GPT #2: the request pins the append-only approval status
       // revision (the browser reads the current revision from the Review read
@@ -1067,7 +1062,10 @@ export class FrontendKnowledgeDraftProductCoordinator {
         draftFailure('PROJECT_BINDING_CONFLICT', 'The Approval does not reference this Draft.');
       }
       if (approval.targetRevision !== String(draft.revision)) {
-        draftFailure('DRAFT_REVISION_CONFLICT', 'The Approval references a different Draft revision.');
+        draftFailure(
+          'DRAFT_REVISION_CONFLICT',
+          'The Approval references a different Draft revision.',
+        );
       }
       if (approval.targetDigest !== submission.contentDigest) {
         draftFailure('DIGEST_MISMATCH', 'The Approval references different Draft content.');
@@ -1230,10 +1228,7 @@ export class FrontendKnowledgeDraftProductCoordinator {
         // NEVER silently rebased onto the current Canonical snapshot).
         const dependencies = this.commitDependencies!;
         const now = new Date().toISOString();
-        const current = await repositories.drafts.findById(
-          scope.activeProjectId,
-          request.draftId,
-        );
+        const current = await repositories.drafts.findById(scope.activeProjectId, request.draftId);
         if (!current) {
           draftFailure('DRAFT_NOT_FOUND', 'The Draft was not found.');
         }
@@ -1243,10 +1238,7 @@ export class FrontendKnowledgeDraftProductCoordinator {
         }
         const { approval } = approvalRead;
         const commitId = deterministicCanonicalCommitId(approval.approvalId, current.draftId);
-        const existing = await dependencies.canonical.findCommit(
-          scope.activeProjectId,
-          commitId,
-        );
+        const existing = await dependencies.canonical.findCommit(scope.activeProjectId, commitId);
         if (existing) {
           // Crash after the durable commit: verify the commit's authority
           // (project + approval id + binding digest), then recover the

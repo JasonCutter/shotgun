@@ -57,7 +57,9 @@ const addClaimWrite = (
   } as FrontendCanonicalCommitWrite;
 };
 
-const noOpWrite = (overrides: Partial<FrontendCanonicalCommitWrite> = {}): FrontendCanonicalCommitWrite => {
+const noOpWrite = (
+  overrides: Partial<FrontendCanonicalCommitWrite> = {},
+): FrontendCanonicalCommitWrite => {
   const commitId = randomUUID();
   return {
     ...baseWrite,

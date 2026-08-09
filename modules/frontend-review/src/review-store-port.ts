@@ -66,7 +66,9 @@ export type ReviewApprovalStorePort = {
    *  revision so the commit consumer can enforce expectedApprovalRevision. */
   findByIdWithRevision(
     approvalId: string,
-  ): Promise<{ readonly approval: ReviewApprovalV1; readonly approvalStatusRevision: number } | undefined>;
+  ): Promise<
+    { readonly approval: ReviewApprovalV1; readonly approvalStatusRevision: number } | undefined
+  >;
   insert(approval: ReviewApprovalV1): Promise<void>;
   /** Project-scoped approval history read (FE-P5-S2 WP4 Review adapter). */
   listByProject(projectId: string): Promise<readonly ReviewApprovalV1[]>;

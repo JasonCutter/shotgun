@@ -185,10 +185,7 @@ export class InMemoryFrontendReviewStore implements ReviewRepositoryBoundaryPort
         consumeApproval: async (approvalId, canonicalCommitId, consumedAt, consumedBy) => {
           const current = this.approvals.get(approvalId);
           if (!current) {
-            throw new FrontendContractError(
-              'CONFLICT',
-              `approval ${approvalId} does not exist`,
-            );
+            throw new FrontendContractError('CONFLICT', `approval ${approvalId} does not exist`);
           }
           if (current.status === 'CONSUMED') {
             if ((current.invalidationReason ?? '').includes(canonicalCommitId)) {
@@ -200,10 +197,7 @@ export class InMemoryFrontendReviewStore implements ReviewRepositoryBoundaryPort
             );
           }
           if (current.status !== 'ACTIVE') {
-            throw new FrontendContractError(
-              'CONFLICT',
-              `approval ${approvalId} is not ACTIVE`,
-            );
+            throw new FrontendContractError('CONFLICT', `approval ${approvalId} is not ACTIVE`);
           }
           this.approvals.set(approvalId, {
             ...current,

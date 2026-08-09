@@ -31,9 +31,16 @@ import type {
 import type {
   ApplySettingsCommandInput,
   ApplyPreferenceCommandInput,
+  ListPolicyHistoryInput,
+  ListPolicyHistoryResult,
+  PolicyHistoryEntry,
+  PolicyHistoryReadPort,
   SettingsRepositoryPort,
 } from '../../../modules/settings-policy/src/index.js';
-import { deriveSettingsImpact } from '../../../modules/settings-policy/src/index.js';
+import {
+  deriveSettingsImpact,
+  paginatePolicyHistory,
+} from '../../../modules/settings-policy/src/index.js';
 
 export class InMemoryProjectAdministrationRepository implements ProjectAdministrationRepositoryPort {
   private readonly projects = new Map<string, ProjectListItemView>();
@@ -789,3 +796,38 @@ export class InMemorySettingsRepository implements SettingsRepositoryPort {
     });
   }
 }
+
+/**
+ * In-memory Policy History read adapter (WP2-A). Mirrors the authoritative
+ * append-only `settings.settings_audit_events` source. Read-only: entries are
+ * never edited or deleted once appended (append-only safe).
+ */
+export class InMemoryPolicyHistoryReadAdapter implements PolicyHistoryReadPort {
+  private readonly entries: PolicyHistoryEntry[] = [];
+
+  appendEntry(entry: PolicyHistoryEntry): void {
+    if (this.entries.some((existing) => existing.eventId === entry.eventId)) {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        `Policy history event ${entry.eventId} already exists (append-only).`,
+      );
+    }
+    this.entries.push(Object.freeze({ ...entry }));
+  }
+
+  async listPolicyHistory(input: ListPolicyHistoryInput): Promise<ListPolicyHistoryResult> {
+    if (!input.projectId) throw new FrontendContractError('INVALID_REQUEST', 'projectId required');
+    const projectEntries = this.entries
+      .filter((entry) => entry.projectId === input.projectId)
+      .sort(comparePolicyHistoryEntries);
+    return paginatePolicyHistory(projectEntries, input);
+  }
+}
+
+const comparePolicyHistoryEntries = (a: PolicyHistoryEntry, b: PolicyHistoryEntry): number => {
+  if (a.timestamp < b.timestamp) return -1;
+  if (a.timestamp > b.timestamp) return 1;
+  if (a.eventId < b.eventId) return -1;
+  if (a.eventId > b.eventId) return 1;
+  return 0;
+};

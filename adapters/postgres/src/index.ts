@@ -36,6 +36,9 @@ import type {
   SettingsRepositoryPort,
   ApplySettingsCommandInput,
   ApplyPreferenceCommandInput,
+  ListPolicyHistoryInput,
+  ListPolicyHistoryResult,
+  PolicyHistoryReadPort,
 } from '../../../modules/settings-policy/src/index.js';
 import { deriveSettingsImpact } from '../../../modules/settings-policy/src/index.js';
 import type {
@@ -1824,5 +1827,67 @@ export class PostgresSettingsRepository implements SettingsRepositoryPort {
       applicationMode: 'UNAVAILABLE',
       disabledReason: 'Diagnostics are not available in this tier.',
     };
+  }
+}
+
+/**
+ * PostgreSQL Policy History read adapter (WP2-A). Reads the authoritative
+ * append-only `settings.settings_audit_events` source. Read-only: never
+ * mutates the source (migration 032 forbids UPDATE/DELETE/TRUNCATE).
+ */
+export class PostgresPolicyHistoryReadAdapter implements PolicyHistoryReadPort {
+  constructor(private readonly pool: Pool) {}
+
+  async listPolicyHistory(input: ListPolicyHistoryInput): Promise<ListPolicyHistoryResult> {
+    if (!input.projectId) {
+      throw new FrontendContractError('INVALID_REQUEST', 'projectId required');
+    }
+    if (!Number.isInteger(input.limit) || input.limit < 1) {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        `ListPolicyHistory limit must be a positive integer, got ${input.limit}`,
+      );
+    }
+    const params: (string | number)[] = [input.projectId];
+    let cursorPredicate = '';
+    if (input.cursor) {
+      params.push(input.cursor.timestamp, input.cursor.eventId);
+      cursorPredicate = `AND (timestamp > $2 OR (timestamp = $2 AND event_id > $3))`;
+    }
+    params.push(input.limit + 1);
+    const res = await this.pool.query<{
+      event_id: string;
+      project_id: string;
+      actor_id: string;
+      action_name: string;
+      risk_level: string;
+      details: Record<string, unknown>;
+      timestamp: Date;
+    }>(
+      `SELECT event_id, project_id, actor_id, action_name, risk_level, details, timestamp
+       FROM settings.settings_audit_events
+       WHERE project_id = $1 ${cursorPredicate}
+       ORDER BY timestamp ASC, event_id ASC
+       LIMIT $${params.length}`,
+      params,
+    );
+    const entries = res.rows.map((row) =>
+      Object.freeze({
+        eventId: row.event_id,
+        projectId: row.project_id,
+        actorId: row.actor_id,
+        actionName: row.action_name,
+        riskLevel: row.risk_level,
+        details: row.details,
+        timestamp: row.timestamp.toISOString(),
+      }),
+    );
+    const hasMore = entries.length > input.limit;
+    const page = hasMore ? entries.slice(0, input.limit) : entries;
+    const nextCursor =
+      hasMore && page.length > 0
+        ? { timestamp: page[page.length - 1]!.timestamp, eventId: page[page.length - 1]!.eventId }
+        : undefined;
+    return { entries: Object.freeze(page), nextCursor };
   }
 }

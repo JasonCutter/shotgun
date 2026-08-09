@@ -8,6 +8,7 @@ branch: feat/fe-p5-xp-cross-phase-verification
 round1_head: 2cc5e35f8
 round2_head: ee4147374
 round3_head: 093ea985d
+ci_head: 6d00656b2
 subject_base: 2aa3e0c27
 created_at: 2026-08-09
 ---
@@ -17,7 +18,11 @@ created_at: 2026-08-09
 User-approved Contract Delta (2026-08-09, "승인") implemented. Round 1 head
 `2cc5e35f8`; Round 2 (CHANGES_REQUIRED corrections, 2026-08-10) head
 `ee4147374`; Round 3 (Recovery existing-commit branch, 2026-08-10) head
-`093ea985d`. Review against Amendment §3.2 (frozen contract) and scope
+`093ea985d`. **GPT Review Round 3: TECHNICALLY ACCEPTED (2026-08-10).**
+Exact-head automatic CI green at `6d00656b2` (Draft PR #83, normal workflow
+entry; no empty commits, no manual CI). Remaining Final-Authority gates:
+user ratification of the `source_version_id uuid→text` bounded migration
+delta (pending). Review against Amendment §3.2 (frozen contract) and scope
 guardrails §4.
 
 ## 1. Implementation scope
@@ -233,3 +238,32 @@ Fixed per the GPT algorithm:
    forged `approvalBindingDigest` → `CONFLICT`.
 
 Existing crash A/B tests kept unchanged and still pass.
+
+## 11. GPT Review Round 3 — TECHNICALLY ACCEPTED (2026-08-10)
+
+GPT verdict: **ACCEPTED** (technical).
+
+- Existing-commit-first recovery: **PASS** — `onReplayRecovery` now looks up the
+  deterministic commit id first; existing commit → verify
+  projectId/authorityId/authorityDigest, recover Approval, complete original
+  command; no existing commit → full REVALIDATE (stale Draft is never silently
+  rebased).
+- `authorityDigest` replay guard: **PASS** (PostgreSQL + InMemory use the same
+  rule).
+- No-existing-commit stale recovery: **FAIL-CLOSED / PASS** — the focused
+  regression (`STALE_APPROVAL`, no commit, Approval ACTIVE) passes.
+- Forged `approvalBindingDigest` replay → `CONFLICT` DB-level regression: **PASS**.
+- Round 1 blockers: CLOSED. Round 2 blocker: CLOSED.
+
+GPT requires NO further code changes and NO test re-runs. Remaining
+Final-Authority gates (non-code):
+
+1. **User ratification** of the `source_version_id uuid→text` bounded
+   migration delta (Amendment §4.1 — `PENDING USER RATIFICATION`).
+2. **Exact-head automatic CI** — now RUN + GREEN via the normal Draft PR #83
+   workflow at `6d00656b2` (Frontend / Quality / Required Gates all pass;
+   Node.js 20 deprecation warning only).
+
+Correction B Final Authority: PENDING_GOVERNANCE_AND_CI → after user
+ratification, PENDING only on any final exact-head CI confirmation.
+WP-XP2: PAUSED until Correction B Final Authority is granted.

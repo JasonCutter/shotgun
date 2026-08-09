@@ -925,7 +925,7 @@ export const decodeGlobalShellView = (input: unknown): GlobalShellView => {
       'Global Shell Project list must be bounded.',
     );
   }
-  if (!Array.isArray(value['navigation']) || value['navigation'].length > 8) {
+  if (!Array.isArray(value['navigation']) || value['navigation'].length > 9) {
     throw new FrontendContractError('UNSUPPORTED_SCHEMA', 'Navigation must be bounded.');
   }
   if (!Array.isArray(value['features']) || value['features'].length > 20) {

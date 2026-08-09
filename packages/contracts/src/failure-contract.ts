@@ -248,10 +248,13 @@ export const FAILURE_DESCRIPTORS = {
     'sourceRevisionId',
     'currentCanonicalVersion',
   ]),
-  REVERSAL_DEPENDENT_REVISION_CONFLICT: failure('CONFLICT', 'CONDITIONAL', 'REFRESH_AND_REAPPLY', 409, [
-    'sourceRevisionId',
-    'dependentRevisionCount',
-  ]),
+  REVERSAL_DEPENDENT_REVISION_CONFLICT: failure(
+    'CONFLICT',
+    'CONDITIONAL',
+    'REFRESH_AND_REAPPLY',
+    409,
+    ['sourceRevisionId', 'dependentRevisionCount'],
+  ),
   REVERSAL_MISSING_CURRENT_CAPABILITY: failure('AUTHORIZATION', 'NEVER', 'REQUEST_ACCESS', 403),
 } satisfies Record<ErrorCode, FailureDescriptor>;
 

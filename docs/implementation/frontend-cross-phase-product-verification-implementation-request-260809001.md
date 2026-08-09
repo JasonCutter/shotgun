@@ -1,7 +1,10 @@
 ---
 id: FRONTEND-CROSS-PHASE-PRODUCT-VERIFICATION-IR-260809001
 classification: CANDIDATE
-status: draft_pending_review
+status: gpt_ir_review_accepted
+review_authority: GPT_IR_REVIEW_ACCEPTED
+reviewed_at: 2026-08-09
+review_head: b29852a0a5aa87db7e728aefd166a9b40fa25462
 verification_gate: FRONTEND-CROSS-PHASE-PRODUCT-VERIFICATION
 created_at: 2026-08-09
 subject_base: 07990d6e68878d630a6fc0e472c660e5cab69f91
@@ -191,8 +194,8 @@ delta test IS required because the phase-crossing journey adds new risk).
 
 ```text
 IR r0: CANDIDATE (this document)
-→ GPT IR REVIEW ACCEPTED
-→ USER explicit approval
+→ GPT IR REVIEW ACCEPTED (2026-08-09, r0 rev2)
+→ USER explicit approval  ← CURRENT GATE
 → IR r1 FROZEN / EXECUTION_AUTHORIZED
 → WP-XP1 (parity, GPT review ACCEPTED)
 → WP-XP2 (journey + invariants, GPT review ACCEPTED)
@@ -202,3 +205,16 @@ IR r0: CANDIDATE (this document)
 Deployment / Production Verification: NOT_AUTHORIZED
 Local Launch / Backup / Final Local Acceptance: separate later stages
 ```
+
+## 9. GPT Review Record
+
+- 2026-08-09 — IR r0 rev1 review: **CHANGES_REQUIRED** (A~G).
+  - A. Candidate self-authorization 제거; B. `FE-P5-XP` synthetic Work Item
+    제거 → `verification_gate`; C. production composition parity; D.
+    XP-I01~07 lineage invariants; E. CP-AC-12 Reversal+Compensation 양분기;
+    F. CP-NEG REUSE_ONLY / NEW_CROSS_PHASE_DELTA 분류; G. CI metadata chase
+    금지 규칙.
+- 2026-08-09 — IR r0 rev2 review: **ACCEPTED** (`GPT_IR_REVIEW_ACCEPTED`).
+  - A~G 전 항목 PASS; Work Package 구조(WP-XP1→XP2→XP3) 승인.
+  - Execution: PENDING USER EXPLICIT APPROVAL. IR r1 FROZEN: NOT_YET.
+    WP-XP1: NOT_YET_AUTHORIZED.

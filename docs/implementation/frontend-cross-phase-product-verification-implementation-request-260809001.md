@@ -1,10 +1,14 @@
 ---
 id: FRONTEND-CROSS-PHASE-PRODUCT-VERIFICATION-IR-260809001
 classification: CANDIDATE
-status: gpt_ir_review_accepted
+status: r1_frozen_execution_authorized
 review_authority: GPT_IR_REVIEW_ACCEPTED
 reviewed_at: 2026-08-09
 review_head: b29852a0a5aa87db7e728aefd166a9b40fa25462
+approved_by: USER
+approved_at: 2026-08-09
+approval_authority: Explicit user IR execution approval
+approval_head: 67116b8a0
 verification_gate: FRONTEND-CROSS-PHASE-PRODUCT-VERIFICATION
 created_at: 2026-08-09
 subject_base: 07990d6e68878d630a6fc0e472c660e5cab69f91
@@ -218,3 +222,7 @@ Local Launch / Backup / Final Local Acceptance: separate later stages
   - A~G 전 항목 PASS; Work Package 구조(WP-XP1→XP2→XP3) 승인.
   - Execution: PENDING USER EXPLICIT APPROVAL. IR r1 FROZEN: NOT_YET.
     WP-XP1: NOT_YET_AUTHORIZED.
+- 2026-08-09 — **USER explicit approval** ("승인한다").
+  - IR r1 FROZEN / EXECUTION_AUTHORIZED (approved_by: USER, 2026-08-09).
+  - WP-XP1 AUTHORIZED. WP-XP2/WP-XP3 proceed one at a time under GPT review
+    gates as defined in §5/§8.

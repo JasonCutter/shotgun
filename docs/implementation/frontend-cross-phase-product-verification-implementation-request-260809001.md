@@ -15,6 +15,7 @@ subject_base: 07990d6e68878d630a6fc0e472c660e5cab69f91
 precedent: FE-P5-S2 COMPLETE / FINAL_AFTER_MERGE (2026-08-09)
 governing_contract: docs/architecture/frontend/cross-phase-contract-and-completion-audit.md
 governing_plan: docs/implementation/frontend-phase-1-5-plan-v1.0.md
+gap_repair_amendment: docs/implementation/frontend-cross-phase-product-gap-repair-amendment-260809001.md
 tracking_issue: https://github.com/JasonCutter/shotgun/issues/71
 ---
 
@@ -226,3 +227,17 @@ Local Launch / Backup / Final Local Acceptance: separate later stages
   - IR r1 FROZEN / EXECUTION_AUTHORIZED (approved_by: USER, 2026-08-09).
   - WP-XP1 AUTHORIZED. WP-XP2/WP-XP3 proceed one at a time under GPT review
     gates as defined in §5/§8.
+- 2026-08-09 — **WP-XP1 findings + GPT adjudication.**
+  - WP-XP1 production-parity fixture implemented (head afaa67f0):
+    `tests/browser/fixtures/frontend-cross-phase-backend.ts` (port 3002, all
+    modules health OK); global setup unchanged (journey starts its own
+    backend/Vite); full browser suite 70 passed (2 known performance flakes).
+  - Discovery 1 (Draft→Review production wiring): fixed, PENDING RATIFICATION.
+  - Discovery 2 (Approval→Canonical Commit consumer): **PRODUCT_GAP_CONFIRMED**
+    (GPT verdict), CP-AC-08 BLOCKED, journey scope reduction REJECTED,
+    direction = BOUNDED PRODUCT CORRECTION. WP-XP2: PAUSE.
+  - **Blocking Product Correction Amendment**:
+    `docs/implementation/frontend-cross-phase-product-gap-repair-amendment-260809001.md`
+    (Correction A IMPLEMENTED/PENDING RATIFICATION; Correction B CONFIRMED
+    GAP/PENDING CONTRACT + USER APPROVAL). Current gate: USER amendment
+    approval.

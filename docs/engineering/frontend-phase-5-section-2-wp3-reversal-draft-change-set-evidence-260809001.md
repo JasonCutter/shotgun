@@ -11,9 +11,10 @@ wp3_implementation_head: b2dc8d4e3e4c6d5c395173745f0eb6a2c6f66b5e
 wp3_implementation_ci_number: 688
 wp3_implementation_ci_run_id: 31291149589
 wp3_implementation_ci_conclusion: SUCCESS
-wp3_round1_fix_head: f58b3024c59d5f924e5ebc2a65743064f64ca74a
-wp3_round1_fix_ci_number: PENDING
-wp3_round1_fix_ci_conclusion: PENDING
+wp3_round1_fix_head: 74e203d42e5db4dc6c831feb4db2a53687c93da0
+wp3_round1_fix_ci_number: 692
+wp3_round1_fix_ci_run_id: 31292583810
+wp3_round1_fix_ci_conclusion: SUCCESS
 tracking_issue: https://github.com/JasonCutter/shotgun/issues/71
 contract_pr: https://github.com/JasonCutter/shotgun/pull/70
 product_pr: https://github.com/JasonCutter/shotgun/pull/80

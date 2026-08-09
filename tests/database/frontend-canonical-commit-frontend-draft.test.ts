@@ -7,7 +7,6 @@ import { PostgresCanonicalKnowledgeRepository } from '../../adapters/postgres-st
 import { dropSchemas, migrateUpTo } from '../../scripts/database.js';
 import {
   canonicalSnapshotDigest,
-  type CanonicalCommitResult,
   type FrontendCanonicalCommitWrite,
 } from '../../packages/contracts/src/index.js';
 

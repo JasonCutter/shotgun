@@ -4,7 +4,6 @@ import {
   REVIEW_DEPENDENCY_EDGE_MAX,
   sha256Text,
   stableJson,
-  type ApprovalPurposeV1,
   type ReviewAggregateStateV1,
   type ReviewAttentionReasonV1,
   type ReviewContextRevisionV1,

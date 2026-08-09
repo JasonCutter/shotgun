@@ -1210,7 +1210,6 @@ export class FrontendKnowledgeDraftProductCoordinator {
       onReplay: async () => {
         // Ledger says COMPLETED: resolve the same commit identity without
         // re-executing side effects (the Approval may already be CONSUMED).
-        const dependencies = this.commitDependencies!;
         const now = new Date().toISOString();
         const draft = await this.draftById(scope.activeProjectId, request.draftId);
         if (!draft) {

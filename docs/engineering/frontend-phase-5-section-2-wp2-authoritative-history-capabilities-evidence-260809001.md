@@ -36,14 +36,14 @@ Authoritative read capability over the append-only settings Policy Change Histor
 (`settings.settings_audit_events`, reused per ADR-131 §7 / IR r1 §4 Scope D). No new
 authoritative Policy History table.
 
-| File | Content |
-| --- | --- |
-| `modules/settings-policy/src/policy-history.ts` | `PolicyHistoryEntry`, `PolicyHistoryCursor`, `ListPolicyHistoryInput/Result`, `PolicyHistoryReadPort`, stable ordering + true keyset pagination |
-| `modules/settings-policy/src/index.ts` | module exports |
-| `adapters/settings-project-admin-in-memory/src/index.ts` | `InMemoryPolicyHistoryReadAdapter` (append-only, read-only) |
-| `adapters/postgres/src/index.ts` | `PostgresPolicyHistoryReadAdapter` (project-scoped keyset over `settings.settings_audit_events`) |
-| `tests/unit/settings-policy-history.test.ts` | 5 tests (ordering, keyset, pagination, append-only, invalid input) |
-| `tests/database/settings-policy-history-postgres.test.ts` | 2 tests (project-scoped read, pagination, no mutation, invalid input) |
+| File                                                      | Content                                                                                                                                         |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `modules/settings-policy/src/policy-history.ts`           | `PolicyHistoryEntry`, `PolicyHistoryCursor`, `ListPolicyHistoryInput/Result`, `PolicyHistoryReadPort`, stable ordering + true keyset pagination |
+| `modules/settings-policy/src/index.ts`                    | module exports                                                                                                                                  |
+| `adapters/settings-project-admin-in-memory/src/index.ts`  | `InMemoryPolicyHistoryReadAdapter` (append-only, read-only)                                                                                     |
+| `adapters/postgres/src/index.ts`                          | `PostgresPolicyHistoryReadAdapter` (project-scoped keyset over `settings.settings_audit_events`)                                                |
+| `tests/unit/settings-policy-history.test.ts`              | 5 tests (ordering, keyset, pagination, append-only, invalid input)                                                                              |
+| `tests/database/settings-policy-history-postgres.test.ts` | 2 tests (project-scoped read, pagination, no mutation, invalid input)                                                                           |
 
 ## 3. WP2-B — Payload Availability / Retention / Tombstone (owner: each authoritative Domain)
 
@@ -53,18 +53,19 @@ purge AuditEvent in ONE transaction (ADR-131 §3, ADR-112 §9). Purged payload i
 into an AuditEvent — non-sensitive metadata only.
 
 Purge AuditEvent targets (per GPT design decision 2026-08-09):
+
 - CANONICAL / REVIEW: owner-local purge audit stream (`history_payload_audit_events`, 032)
 - EXTERNAL_ACTION: reused `frontend_external_action.audit_events` (`HISTORY_PAYLOAD_PURGED`)
 - SETTINGS: reused `settings.settings_audit_events` (`HISTORY_PAYLOAD_PURGED`)
 
-| File | Content |
-| --- | --- |
-| `modules/frontend-history/src/payload-state.ts` | `PayloadStateRecord`, `PayloadStateStorePort`, `PurgeByPolicyInput`, `SetPayloadStateInput`, `isPurgeTransitionValid` |
-| `modules/frontend-history/src/index.ts` | module exports |
-| `adapters/frontend-history-in-memory/src/index.ts` | `InMemoryPayloadStateStore` (atomic flip + audit, re-purge conflict) |
-| `adapters/frontend-history-postgres/src/index.ts` | `PostgresPayloadStateStore` (transactional purge: sidecar + owner audit append) |
-| `tests/unit/frontend-history-payload-state.test.ts` | 4 tests (set/read, atomic purge, re-purge conflict, invalid input) |
-| `tests/database/frontend-history-payload-state-postgres.test.ts` | 3 tests (canonical atomic purge + audit, settings reuse, invalid input) |
+| File                                                             | Content                                                                                                               |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `modules/frontend-history/src/payload-state.ts`                  | `PayloadStateRecord`, `PayloadStateStorePort`, `PurgeByPolicyInput`, `SetPayloadStateInput`, `isPurgeTransitionValid` |
+| `modules/frontend-history/src/index.ts`                          | module exports                                                                                                        |
+| `adapters/frontend-history-in-memory/src/index.ts`               | `InMemoryPayloadStateStore` (atomic flip + audit, re-purge conflict)                                                  |
+| `adapters/frontend-history-postgres/src/index.ts`                | `PostgresPayloadStateStore` (transactional purge: sidecar + owner audit append)                                       |
+| `tests/unit/frontend-history-payload-state.test.ts`              | 4 tests (set/read, atomic purge, re-purge conflict, invalid input)                                                    |
+| `tests/database/frontend-history-payload-state-postgres.test.ts` | 3 tests (canonical atomic purge + audit, settings reuse, invalid input)                                               |
 
 ## 4. WP2-C — ProjectTombstone / DeletedProjectAuditScope (owner: project-administration/security)
 
@@ -73,14 +74,14 @@ Authoritative read/write over `project_audit.project_tombstones` +
 grants deleted-project audit access; read-time Capability revalidation is fail-closed
 (ADR-112 §11/§12, ADR-131 §6).
 
-| File | Content |
-| --- | --- |
+| File                                                      | Content                                                                                                                       |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | `modules/project-administration/src/project-tombstone.ts` | `ProjectTombstoneRecord`, `DeletedProjectAuditScopeRecord`, `ProjectTombstoneStorePort`, `isDeletedProjectAuditReadPermitted` |
-| `modules/project-administration/src/index.ts` | module exports |
-| `adapters/settings-project-admin-in-memory/src/index.ts` | `InMemoryProjectTombstoneStore` |
-| `adapters/postgres/src/index.ts` | `PostgresProjectTombstoneStore` |
-| `tests/unit/project-tombstone.test.ts` | 4 tests (tombstone lifecycle, revalidation, scopes, invalid input) |
-| `tests/database/project-tombstone-postgres.test.ts` | 2 tests (full lifecycle + revalidation, invalid input) |
+| `modules/project-administration/src/index.ts`             | module exports                                                                                                                |
+| `adapters/settings-project-admin-in-memory/src/index.ts`  | `InMemoryProjectTombstoneStore`                                                                                               |
+| `adapters/postgres/src/index.ts`                          | `PostgresProjectTombstoneStore`                                                                                               |
+| `tests/unit/project-tombstone.test.ts`                    | 4 tests (tombstone lifecycle, revalidation, scopes, invalid input)                                                            |
+| `tests/database/project-tombstone-postgres.test.ts`       | 2 tests (full lifecycle + revalidation, invalid input)                                                                        |
 
 ## 5. WP1 Foundation Correction (032)
 

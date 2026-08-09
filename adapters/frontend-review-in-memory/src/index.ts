@@ -47,6 +47,8 @@ export class InMemoryFrontendReviewStore implements ReviewRepositoryBoundaryPort
   readonly decisions: ReviewDecisionRecordV1[] = [];
   readonly comments: ReviewCommentRecordV1[] = [];
   readonly approvals = new Map<string, ReviewApprovalV1>();
+  /** Append-only status revision (insert=1; each status transition +1). */
+  readonly approvalRevisions = new Map<string, number>();
 
   /** Fair FIFO queue serializing every transaction. */
   private tail: Promise<unknown> = Promise.resolve();
@@ -160,6 +162,14 @@ export class InMemoryFrontendReviewStore implements ReviewRepositoryBoundaryPort
       },
       approvals: {
         findById: async (approvalId) => this.approvals.get(approvalId),
+        findByIdWithRevision: async (approvalId) => {
+          const approval = this.approvals.get(approvalId);
+          if (!approval) return undefined;
+          return {
+            approval,
+            approvalStatusRevision: this.approvalRevisions.get(approvalId) ?? 1,
+          };
+        },
         insert: async (approval) => {
           if (this.approvals.has(approval.approvalId)) {
             throw new FrontendContractError(
@@ -168,6 +178,7 @@ export class InMemoryFrontendReviewStore implements ReviewRepositoryBoundaryPort
             );
           }
           this.approvals.set(approval.approvalId, approval);
+          this.approvalRevisions.set(approval.approvalId, 1);
         },
         listByProject: async (projectId) =>
           [...this.approvals.values()].filter((approval) => approval.projectId === projectId),
@@ -199,6 +210,7 @@ export class InMemoryFrontendReviewStore implements ReviewRepositoryBoundaryPort
             status: 'CONSUMED',
             invalidationReason: `Consumed by ${consumedBy} via canonical commit ${canonicalCommitId} at ${consumedAt}`,
           });
+          this.approvalRevisions.set(approvalId, (this.approvalRevisions.get(approvalId) ?? 1) + 1);
         },
       },
     };

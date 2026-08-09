@@ -782,18 +782,19 @@ export class FrontendReviewProductCoordinator {
   ): Promise<GetReviewApprovalResultV1> {
     this.requireReviewCapability(scope, 'READ_APPROVAL');
     return this.boundary.transaction(async (repositories) => {
-      const approval = await repositories.approvals.findById(request.approvalId);
-      if (!approval) {
+      const approvalRead = await repositories.approvals.findByIdWithRevision(request.approvalId);
+      if (!approvalRead) {
         reviewFailure(
           'REVIEW_APPROVAL_NOT_ISSUED',
           'No Approval Resource matches the requested identity.',
         );
       }
+      const { approval, approvalStatusRevision } = approvalRead;
       // Fail-closed revalidation: the Approval binds the access and policy
       // revisions that were current when it was issued (Contract Snapshot §8),
       // and remains ACTIVE and unexpired.
       this.assertApprovalReadable(approval, scope);
-      return { schemaVersion: '1.0.0', approval };
+      return { schemaVersion: '1.0.0', approval, approvalStatusRevision };
     });
   }
 

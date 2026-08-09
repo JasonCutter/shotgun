@@ -64,6 +64,12 @@ Product contract to repair them. It does NOT authorize anything beyond the bound
    commitId + manifestDigest → replay; different content → CONFLICT) and a version guard
    (`expectedCanonicalVersion`/`snapshotDigest` mismatch → `STALE_APPROVAL`). Multi-claim
    approved drafts commit as one command with one commit per claim.
+   > **SUPERSEDED (2026-08-10, GPT Review Round 1 #5):** the frozen §3.2 delta fixes a
+   > single-claim `FrontendCanonicalCommitWrite` per Approval plus
+   > `UNIQUE(authority_kind, authority_id)` (one Approval → at most one Canonical commit
+   > at the DB level). An approved set with 2+ `CLAIM_ADD` operations is therefore
+   > **fail-closed** (`UNSUPPORTED_OPERATION`), NOT "one commit per claim". This sentence
+   > is retained only as the pre-delta audit record.
 3. **Approval lifecycle**: `ReviewApprovalStorePort` exposes only
    `findById/insert/listByProject` — no status transition. Postgres schema supports
    append-only `approval_status_revision` (migration 027 block-mutation trigger), but no
@@ -175,6 +181,15 @@ keep block-mutation trigger; `findById`/`listByProject` read latest status revis
   authority_id)`; no existing-row rewrite. The r1 "no migration" clause is amended by the
   GPT-confirmed contract delta (2026-08-09).
 
+### 4.1 Bounded migration delta (2026-08-10, GPT Review Round 1 #5)
+
+- **`canonical.claims.source_version_id uuid → text`**: required because Frontend source
+  versions are free-form text identities (the legacy uuid-typed column rejected them).
+  Lossless widening; legacy uuid values coerce implicitly on insert. Not explicitly in the
+  original migration 034 description → recorded here as a **bounded migration delta** and
+  **PENDING USER RATIFICATION** (2026-08-10, user "진행해" authorizes implementation;
+  ratification recorded in §6 when confirmed). Code is NOT reverted.
+
 ## 5. Authority gate
 
 ```text
@@ -187,6 +202,8 @@ Amendment: PROPOSED / PENDING USER APPROVAL
   (2026-08-09, "승인") ✅
 → Correction B implementation (bounded, one at a time) — IN PROGRESS
 → focused verification + exact-head automatic CI
+→ GPT review ROUND 1 (2026-08-10): CHANGES_REQUIRED — crash recovery / expectedApprovalRevision /
+  sourceVersionId fabrication / history provenance (all fixed as delta-only)
 → GPT review ACCEPTED
 → WP-XP2 resumes (journey + XP-I01~07)
 ```
@@ -207,3 +224,13 @@ Amendment: PROPOSED / PENDING USER APPROVAL
 - 2026-08-09 — **USER explicit approval ("승인") of the GPT-confirmed CONTRACT DELTA**
   (migration 034 + `FrontendCanonicalCommitWrite` + `consumeApproval(canonicalCommitId)`
   semantics). Correction B implementation AUTHORIZED (section 5 ✅).
+- 2026-08-10 — **GPT Review Round 1: CHANGES_REQUIRED** (evidence
+  `frontend-cross-phase-correction-b-implementation-evidence-260809001.md`).
+  Blocking: (1) crash recovery must recover both windows, (2) `expectedApprovalRevision`
+  must be enforced, (3) no fabricated `sourceVersionId`, (4) History provenance/evidence
+  description alignment. Open items: §3.1 "one commit per claim" superseded; NO_OP-only
+  empty `accessScope`; `source_version_id uuid→text` bounded migration delta.
+- 2026-08-10 — **USER "진행해"** authorizes the Round 2 delta-only corrections AND the
+  bounded migration delta (`source_version_id uuid → text`). Ratification of the
+  migration delta: **PENDING** — recorded in §4.1; confirmed by USER approval of the
+  Round 2 evidence (this record is updated when explicit).

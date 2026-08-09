@@ -679,9 +679,11 @@ describe('GetReviewApproval', () => {
     const decoded = decodeGetReviewApprovalResultV1({
       schemaVersion: '1.0.0',
       approval,
+      approvalStatusRevision: 1,
     });
     expect(decoded.approval.status).toBe('ACTIVE');
     expect(decoded.approval.approvedItemIds).toEqual(['item-1']);
+    expect(decoded.approvalStatusRevision).toBe(1);
   });
 });
 

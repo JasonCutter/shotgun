@@ -62,6 +62,11 @@ export type ReviewDecisionStorePort = {
 
 export type ReviewApprovalStorePort = {
   findById(approvalId: string): Promise<ReviewApprovalV1 | undefined>;
+  /** Cross-Phase Correction B (Round 2, GPT #2): expose the append-only status
+   *  revision so the commit consumer can enforce expectedApprovalRevision. */
+  findByIdWithRevision(
+    approvalId: string,
+  ): Promise<{ readonly approval: ReviewApprovalV1; readonly approvalStatusRevision: number } | undefined>;
   insert(approval: ReviewApprovalV1): Promise<void>;
   /** Project-scoped approval history read (FE-P5-S2 WP4 Review adapter). */
   listByProject(projectId: string): Promise<readonly ReviewApprovalV1[]>;

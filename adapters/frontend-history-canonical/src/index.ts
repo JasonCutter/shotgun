@@ -111,6 +111,13 @@ export class CanonicalHistoryAdapter implements HistoryAdapterPort {
           : {
               commitId: event.commitId,
               revisionId: commit.revisionId,
+              // FE-P5-XP Correction B (Round 2, GPT #4): project the Frontend
+              // Review Approval authority so the Cross-Phase Journey can verify
+              // Review Approval ID → Canonical Commit authorityId → History
+              // entry through the real Product API path. Legacy commits carry
+              // null authority.
+              authorityId: commit.authorityId,
+              authorityDigest: commit.authorityDigest,
             }),
         claimId: event.claimId,
         reason: event.reason,

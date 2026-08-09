@@ -5,6 +5,7 @@ import { InMemoryFrontendKnowledgeDraftTargetResolver } from '../../adapters/fro
 import { InMemoryFrontendCommandGateway } from '../../adapters/frontend-command-gateway-in-memory/src/index.js';
 import { InMemoryFrontendReviewStore } from '../../adapters/frontend-review-in-memory/src/index.js';
 import { InMemoryCanonicalKnowledgeRepository } from '../../adapters/stage6-in-memory/src/index.js';
+import type { CompleteFrontendCommandInput } from '../../modules/frontend-command-gateway/src/index.js';
 import {
   FrontendKnowledgeDraftProductCoordinator,
   type FrontendKnowledgeDraftCommitDependenciesV1,
@@ -228,13 +229,27 @@ describe('FE-P5-XP Correction B: Approval -> Canonical commit consumer', () => {
   let coordinator: FrontendKnowledgeDraftProductCoordinator;
 
   const approvalPort = (): FrontendKnowledgeDraftCommitDependenciesV1['approvals'] => ({
-    findById: async (approvalId) =>
-      reviewStore.transaction((repositories) => repositories.approvals.findById(approvalId)),
+    findByIdWithRevision: async (approvalId) =>
+      reviewStore.transaction((repositories) => repositories.approvals.findByIdWithRevision(approvalId)),
     consumeApproval: async (approvalId, canonicalCommitId, consumedAt, consumedBy) =>
       reviewStore.transaction((repositories) =>
         repositories.approvals.consumeApproval(approvalId, canonicalCommitId, consumedAt, consumedBy),
       ),
   });
+
+  const makeCoordinator = (input: {
+    readonly gateway?: InMemoryFrontendCommandGateway;
+    readonly approvals?: FrontendKnowledgeDraftCommitDependenciesV1['approvals'];
+  } = {}): FrontendKnowledgeDraftProductCoordinator =>
+    new FrontendKnowledgeDraftProductCoordinator(
+      draftRepository,
+      input.gateway ?? new InMemoryFrontendCommandGateway(),
+      new InMemoryFrontendKnowledgeDraftTargetResolver(),
+      {
+        approvals: input.approvals ?? approvalPort(),
+        canonical: canonicalRepository,
+      },
+    );
 
   beforeEach(() => {
     draftRepository = new InMemoryFrontendKnowledgeDraftRepository();
@@ -408,5 +423,132 @@ describe('FE-P5-XP Correction B: Approval -> Canonical commit consumer', () => {
     });
     const snapshot = await canonicalRepository.getSnapshot(PROJECT_ID);
     expect(snapshot.version).toBe(0);
+  });
+
+  it('recovers a commit→consume crash without a duplicate commit (GPT Round 2 #1-A)', async () => {
+    const draft = submittedDraft([claimOperation()]);
+    await seed({ draft, approval: approvalFor({ draft, approvedItemIds: ['item-1'] }) });
+    let consumeFails = true;
+    const coordinatorA = makeCoordinator({
+      approvals: {
+        findByIdWithRevision: approvalPort().findByIdWithRevision,
+        consumeApproval: async (approvalId, canonicalCommitId, consumedAt, consumedBy) => {
+          if (consumeFails) {
+            consumeFails = false;
+            throw new Error('simulated crash after durable canonical commit');
+          }
+          return reviewStore.transaction((repositories) =>
+            repositories.approvals.consumeApproval(
+              approvalId,
+              canonicalCommitId,
+              consumedAt,
+              consumedBy,
+            ),
+          );
+        },
+      },
+    });
+    // First attempt: durable commit succeeds, consume crashes.
+    await expect(coordinatorA.commitFrontendDraft(scope, request())).rejects.toThrow();
+    const historyAfterCrash = await canonicalRepository.listHistory(PROJECT_ID);
+    expect(historyAfterCrash).toHaveLength(1);
+    const firstCommitId = historyAfterCrash[0]!.commitId;
+    const approvalAfterCrash = await reviewStore.transaction((repositories) =>
+      repositories.approvals.findById('approval-1'),
+    );
+    expect(approvalAfterCrash?.status).toBe('ACTIVE');
+    // Retry with the SAME request: recovery completes the original command with
+    // the SAME commit only, then consumes the Approval.
+    const recovered = await coordinatorA.commitFrontendDraft(scope, request());
+    expect(recovered.outcome).toBe('COMPLETED');
+    expect(recovered.commitIds).toEqual([firstCommitId]);
+    expect(await canonicalRepository.listHistory(PROJECT_ID)).toHaveLength(1);
+    expect((await canonicalRepository.getSnapshot(PROJECT_ID)).claims).toHaveLength(1);
+    const approval = await reviewStore.transaction((repositories) =>
+      repositories.approvals.findById('approval-1'),
+    );
+    expect(approval?.status).toBe('CONSUMED');
+  });
+
+  it('recovers a consume→ledger-complete crash accepting an already-CONSUMED approval (GPT Round 2 #1-B)', async () => {
+    const draft = submittedDraft([claimOperation()]);
+    await seed({ draft, approval: approvalFor({ draft, approvedItemIds: ['item-1'] }) });
+    class FailingCompleteGateway extends InMemoryFrontendCommandGateway {
+      failOnce = true;
+      override async completeInTransaction(
+        transaction: unknown,
+        input: CompleteFrontendCommandInput,
+      ) {
+        if (this.failOnce) {
+          this.failOnce = false;
+          throw new Error('simulated crash before ledger COMPLETED');
+        }
+        return super.completeInTransaction(transaction, input);
+      }
+    }
+    const coordinatorB = makeCoordinator({ gateway: new FailingCompleteGateway() });
+    // First attempt: commit + consume durable, ledger COMPLETED crashes.
+    await expect(coordinatorB.commitFrontendDraft(scope, request())).rejects.toThrow();
+    const history = await canonicalRepository.listHistory(PROJECT_ID);
+    expect(history).toHaveLength(1);
+    const firstCommitId = history[0]!.commitId;
+    const approvalAfterCrash = await reviewStore.transaction((repositories) =>
+      repositories.approvals.findById('approval-1'),
+    );
+    expect(approvalAfterCrash?.status).toBe('CONSUMED');
+    // Retry: recovery accepts the already-CONSUMED (same commit) approval.
+    const recovered = await coordinatorB.commitFrontendDraft(scope, request());
+    expect(recovered.outcome).toBe('COMPLETED');
+    expect(recovered.commitIds).toEqual([firstCommitId]);
+    expect(await canonicalRepository.listHistory(PROJECT_ID)).toHaveLength(1);
+  });
+
+  it('rejects fail-closed when expectedApprovalRevision does not match the current approval status revision (GPT Round 2 #2)', async () => {
+    const draft = submittedDraft([claimOperation()]);
+    await seed({ draft, approval: approvalFor({ draft, approvedItemIds: ['item-1'] }) });
+    await expect(
+      coordinator.commitFrontendDraft(scope, request({ expectedApprovalRevision: 2 })),
+    ).rejects.toMatchObject({ apiCode: 'STALE' });
+    const snapshot = await canonicalRepository.getSnapshot(PROJECT_ID);
+    expect(snapshot.version).toBe(0);
+    const approval = await reviewStore.transaction((repositories) =>
+      repositories.approvals.findById('approval-1'),
+    );
+    expect(approval?.status).toBe('ACTIVE');
+  });
+
+  it('rejects a CLAIM_ADD without evidence instead of fabricating a sourceVersionId (GPT Round 2 #3)', async () => {
+    const draft = submittedDraft([claimOperation({ evidenceReferences: [] })]);
+    await seed({ draft, approval: approvalFor({ draft, approvedItemIds: ['item-1'] }) });
+    await expect(coordinator.commitFrontendDraft(scope, request())).rejects.toMatchObject({
+      apiCode: 'VALIDATION_FAILED',
+    });
+    const snapshot = await canonicalRepository.getSnapshot(PROJECT_ID);
+    expect(snapshot.version).toBe(0);
+    const approval = await reviewStore.transaction((repositories) =>
+      repositories.approvals.findById('approval-1'),
+    );
+    expect(approval?.status).toBe('ACTIVE');
+  });
+
+  it('rejects multiple evidence source versions in the single-source Canonical model (GPT Round 2 #3)', async () => {
+    const draft = submittedDraft([
+      claimOperation({
+        evidenceReferences: [
+          { sourceId: 'source-1', sourceVersionId: 'source-version-1', evidenceSpanId: 'span-1' },
+          { sourceId: 'source-2', sourceVersionId: 'source-version-2', evidenceSpanId: 'span-2' },
+        ],
+      }),
+    ]);
+    await seed({ draft, approval: approvalFor({ draft, approvedItemIds: ['item-1'] }) });
+    await expect(coordinator.commitFrontendDraft(scope, request())).rejects.toMatchObject({
+      apiCode: 'UNSUPPORTED_OPERATION',
+    });
+    const snapshot = await canonicalRepository.getSnapshot(PROJECT_ID);
+    expect(snapshot.version).toBe(0);
+    const approval = await reviewStore.transaction((repositories) =>
+      repositories.approvals.findById('approval-1'),
+    );
+    expect(approval?.status).toBe('ACTIVE');
   });
 });

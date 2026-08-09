@@ -352,7 +352,14 @@ export type FrontendKnowledgeDraftRunCommandInput<T> = {
  * stays intact; real Review/Cannonical implementations satisfy them.
  */
 export type FrontendKnowledgeDraftApprovalCommitPort = {
-  findById(approvalId: string): Promise<ReviewApprovalV1 | undefined>;
+  /** Includes the append-only approval status revision (enforces
+   *  expectedApprovalRevision; Round 2, GPT #2). */
+  findByIdWithRevision(
+    approvalId: string,
+  ): Promise<{
+    readonly approval: ReviewApprovalV1;
+    readonly approvalStatusRevision: number;
+  } | undefined>;
   consumeApproval(
     approvalId: string,
     canonicalCommitId: string,
@@ -1016,15 +1023,24 @@ export class FrontendKnowledgeDraftProductCoordinator {
           'The Draft content digest does not match its review submission.',
         );
       }
-      const approval = await dependencies.approvals.findById(request.approvalId);
-      if (!approval) {
+      const approvalRead = await dependencies.approvals.findByIdWithRevision(request.approvalId);
+      if (!approvalRead) {
         draftFailure('NOT_FOUND', 'The Review Approval was not found.');
       }
+      const { approval, approvalStatusRevision } = approvalRead;
       if (approval.purpose !== 'KNOWLEDGE_CANONICAL_CHANGE') {
         draftFailure(
           'UNSUPPORTED_OPERATION',
           'The Approval is not a Canonical change approval.',
         );
+      }
+      // Round 2, GPT #2: the request pins the append-only approval status
+      // revision (the browser reads the current revision from the Review read
+      // API); a mismatch means the caller raced a status transition. Replay /
+      // crash recovery (RESOLVE) completes an in-flight or completed command,
+      // so the revision may legitimately have advanced (e.g. CONSUMED).
+      if (input.mode !== 'RESOLVE' && approvalStatusRevision !== request.expectedApprovalRevision) {
+        draftFailure('STALE', 'The Approval status revision changed.');
       }
       // A replayed COMPLETED command may observe the Approval already
       // CONSUMED by this commit; the outcome is resolved, not re-executed.
@@ -1121,7 +1137,26 @@ export class FrontendKnowledgeDraftProductCoordinator {
           ? undefined
           : operationByReviewItemId(input.draft.operations, claimable.claimReviewItemId);
       if (claimOperation?.kind === 'CLAIM_ADD') {
-        const evidence = claimOperation.evidenceReferences[0];
+        // FE-P5-XP Correction B (Round 2, GPT #3): never fabricate a source
+        // version from the resource id. A CLAIM_ADD commit requires at least
+        // one evidence reference, and the single-source Canonical claim model
+        // cannot silently reduce multiple source versions to the first one.
+        if (claimOperation.evidenceReferences.length === 0) {
+          draftFailure(
+            'VALIDATION_FAILED',
+            'A CLAIM_ADD commit requires at least one evidence reference.',
+          );
+        }
+        const sourceVersionIds = new Set(
+          claimOperation.evidenceReferences.map((ref) => ref.sourceVersionId),
+        );
+        if (sourceVersionIds.size > 1) {
+          draftFailure(
+            'UNSUPPORTED_OPERATION',
+            'Multiple evidence source versions cannot be represented in the single-source Canonical claim model.',
+          );
+        }
+        const evidence = claimOperation.evidenceReferences[0]!;
         return {
           ...base,
           commitId,
@@ -1131,7 +1166,7 @@ export class FrontendKnowledgeDraftProductCoordinator {
           operation: 'ADD_CLAIM',
           claimId: claimOperation.target.targetId ?? `claim:${claimOperation.operationId}`,
           claimText: claimOperation.after.statement,
-          sourceVersionId: evidence?.sourceVersionId ?? input.draft.resourceId,
+          sourceVersionId: evidence.sourceVersionId,
           evidenceIds: claimOperation.evidenceReferences.map((ref) => ref.evidenceSpanId),
           accessScope: [...scope.accessScope],
           sensitivity: scope.sensitivityClearance,
@@ -1186,11 +1221,14 @@ export class FrontendKnowledgeDraftProductCoordinator {
         return commitResult({ canonicalCommitId: write.commitId });
       },
       onReplayRecovery: async (originalCommandId, repositories) => {
-        // Crash between the durable commit and the Approval consume: the
-        // retry re-issues the SAME write. commitFrontendDraft is replay-
+        // Crash recovery (GPT Round 2 #1): the retry re-issues the SAME write
+        // with a RESOLVE-mode identity check — the durable commit may already
+        // exist (canonical base may have moved past the draft base) and the
+        // Approval may already be CONSUMED. commitFrontendDraft is replay-
         // idempotent (same commitId + authority → returns the existing commit,
-        // makes no new commit) and consumeApproval is idempotent for the same
-        // canonicalCommitId; the ledger then completes the ORIGINAL command.
+        // makes no new commit, never re-runs the STALE guard) and
+        // consumeApproval is idempotent for the same canonicalCommitId; the
+        // ledger then completes the ORIGINAL command.
         const dependencies = this.commitDependencies!;
         const now = new Date().toISOString();
         const current = await repositories.drafts.findById(
@@ -1200,7 +1238,10 @@ export class FrontendKnowledgeDraftProductCoordinator {
         if (!current) {
           draftFailure('DRAFT_NOT_FOUND', 'The Draft was not found.');
         }
-        const { draft, approval, canonicalSnapshot } = await revalidated({ draft: current });
+        const { draft, approval, canonicalSnapshot } = await revalidated({
+          draft: current,
+          mode: 'RESOLVE',
+        });
         const write = buildWrite({ draft, approval, canonicalSnapshot, now });
         const result = await dependencies.canonical.commitFrontendDraft(write);
         await dependencies.approvals.consumeApproval(

@@ -29,5 +29,19 @@
       "items": { "type": "string", "minLength": 1 }
     },
     "sensitivity": { "enum": ["public", "internal", "private", "restricted"] }
-  }
+  },
+  "allOf": [
+    {
+      "description": "GPT Round 2 #5: only NO_OP payloads may carry an empty accessScope; ADD_CLAIM/COMMITTED keep the non-empty constraint.",
+      "if": {
+        "properties": { "operation": { "const": "ADD_CLAIM" } },
+        "required": ["operation"]
+      },
+      "then": {
+        "properties": {
+          "accessScope": { "type": "array", "minItems": 1 }
+        }
+      }
+    }
+  ]
 }

@@ -5,16 +5,17 @@ verification_gate: FRONTEND-CROSS-PHASE-PRODUCT-VERIFICATION
 governing_amendment: docs/implementation/frontend-cross-phase-product-gap-repair-amendment-260809001.md
 governing_ir: docs/implementation/frontend-cross-phase-product-verification-implementation-request-260809001.md
 branch: feat/fe-p5-xp-cross-phase-verification
-implementation_head: 2cc5e35f8
+round1_head: 2cc5e35f8
+round2_head: (pending push)
 subject_base: 2aa3e0c27
 created_at: 2026-08-09
 ---
 
 # Correction B Implementation — GPT Review Evidence
 
-User-approved Contract Delta (2026-08-09, "승인") implemented at head `2cc5e35f8`.
-This document is the GPT review evidence. Review the delta against Amendment §3.2
-(frozen contract) and the scope guardrails in §4.
+User-approved Contract Delta (2026-08-09, "승인") implemented. Round 1 head
+`2cc5e35f8`; Round 2 (CHANGES_REQUIRED corrections, 2026-08-10) head pending.
+Review against Amendment §3.2 (frozen contract) and scope guardrails §4.
 
 ## 1. Implementation scope
 
@@ -25,8 +26,8 @@ This document is the GPT review evidence. Review the delta against Amendment §3
    (ADD_CLAIM | NO_OP), `CommitKnowledgeDraftRequestV1`
    (`{ schemaVersion, clientRequestId, idempotencyKey, draftId, approvalId,
    expectedApprovalRevision }`), nullable legacy manifest identity +
-   `authorityId`/`authorityDigest` on `CanonicalClaim`/`CanonicalCommitResult`/
-   `CanonicalRevision`/`CanonicalHistoryEvent`/`CanonicalCommittedPayload`.
+   `authorityId`/`authorityDigest` on `CanonicalClaim` and `CanonicalCommitResult`
+   (provenance is projected into History payloads through the commit result).
 3. `CanonicalKnowledgeRepositoryPort.commitFrontendDraft(write)` in
    `postgres-stage6` (reuses the transaction core: project_state FOR UPDATE →
    replay check → STALE check → claim/commit/revision/history/outbox) and
@@ -139,3 +140,62 @@ the original command.
 ## 8. Next gate
 
 GPT review → if ACCEPTED → WP-XP2 resumes (cross-phase journey E2E + XP-I01~07).
+
+## 9. Round 2 — CHANGES_REQUIRED corrections (2026-08-10)
+
+GPT Review Round 1 verdict: **CHANGES_REQUIRED**. All four blocking items fixed
+as delta-only corrections (the normal commit path, migration provenance
+structure and legacy Stage-5 separation were NOT reworked).
+
+### 9.1 Crash recovery now recovers both windows (GPT #1)
+
+`onReplayRecovery` no longer runs the full `REVALIDATE` chain. It re-issues the
+SAME deterministic write under **RESOLVE** identity checks (draft/approval
+identity + binding digest), then `commitFrontendDraft` (replay-idempotent: same
+commitId + authority → returns the existing commit BEFORE the STALE guard) and
+`consumeApproval` (idempotent for the same canonicalCommitId).
+
+- Window A (durable commit → crash before consume): retry returns the same
+  commit, Approval ACTIVE → CONSUMED, original ledger COMPLETED.
+- Window B (commit + consume → crash before ledger COMPLETED): retry accepts
+the already-CONSUMED (same commit) Approval, original ledger COMPLETED.
+- Focused regression: `tests/integration/frontend-knowledge-draft-commit.test.ts`
+  `recovers a commit→consume crash ...` (#1-A) and
+  `recovers a consume→ledger-complete crash ...` (#1-B) — both pass.
+
+### 9.2 expectedApprovalRevision enforced (GPT #2)
+
+- `ReviewApprovalStorePort.findByIdWithRevision` added; in-memory tracks an
+  append-only revision map, Postgres reads the latest `approval_status_revision`.
+- Coordinator `revalidated` verifies
+  `approvalStatusRevision === request.expectedApprovalRevision` (fail-closed
+  `STALE`) on the normal path; skipped in RESOLVE (replay/recovery may observe
+  a legitimately advanced revision).
+- Postgres `consumeApproval` writes `currentRevision + 1` (no hardcoded `2`).
+- Browser can read the revision: `GetReviewApprovalResultV1` now carries
+  `approvalStatusRevision` (additive; decoder + product API + contract test
+  updated).
+- Parity test `tracks append-only approval status revisions ...` covers
+  insert(1)→consume(2)→idempotent(2)→different-commit conflict in both stores.
+
+### 9.3 No fabricated sourceVersionId (GPT #3)
+
+`buildWrite` CLAIM_ADD path now requires `evidenceReferences.length >= 1`
+(fail-closed `VALIDATION_FAILED`) and rejects multiple distinct source versions
+(`UNSUPPORTED_OPERATION`); the `?? resourceId` fallback is removed.
+
+### 9.4 History provenance + evidence description aligned (GPT #4)
+
+- `CanonicalHistoryAdapter` now projects `authorityId`/`authorityDigest` from
+  the authoritative `CanonicalCommitResult` into the History payload.
+- Evidence description corrected: only `CanonicalClaim`/`CanonicalCommitResult`
+  carry authority fields.
+
+### 9.5 Open item resolutions (GPT #5)
+
+- §3.1 "one commit per claim" marked **SUPERSEDED** by the §3.2 delta (one
+  Approval → at most one commit; 2+ CLAIM_ADD fail-closed).
+- `canonical-committed` schema: `accessScope` non-empty constraint restored for
+  `ADD_CLAIM` via `if/then`; only `NO_OP` may carry an empty scope.
+- `source_version_id uuid → text` recorded as a **bounded migration delta** in
+  Amendment §4.1, pending user ratification record (§6).

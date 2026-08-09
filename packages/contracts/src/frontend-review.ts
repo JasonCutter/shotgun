@@ -628,6 +628,9 @@ export type GetReviewApprovalRequestV1 = {
 export type GetReviewApprovalResultV1 = {
   schemaVersion: '1.0.0';
   approval: ReviewApprovalV1;
+  /** Append-only approval status revision (Cross-Phase commit consumer pins
+   *  expectedApprovalRevision against this value). */
+  approvalStatusRevision: number;
 };
 
 export type ResolveReviewCommandOutcomeRequestV1 = {
@@ -1850,11 +1853,15 @@ export const decodeGetReviewApprovalResultV1 = (
   value: unknown,
   path = 'result',
 ): GetReviewApprovalResultV1 => {
-  const object = strictObject(value, ['schemaVersion', 'approval'], path);
+  const object = strictObject(value, ['schemaVersion', 'approval', 'approvalStatusRevision'], path);
   decodeReviewSchemaVersion(object, path);
   return {
     schemaVersion: '1.0.0',
     approval: decodeReviewApprovalV1(required(object, 'approval', path), `${path}.approval`),
+    approvalStatusRevision: integer(
+      required(object, 'approvalStatusRevision', path),
+      `${path}.approvalStatusRevision`,
+    ),
   };
 };
 

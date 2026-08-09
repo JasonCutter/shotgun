@@ -116,6 +116,7 @@ type CommentRow = {
 
 type ApprovalRow = {
   approval_id: string;
+  approval_status_revision: number;
   purpose: string;
   review_context_id: string;
   context_revision: number;
@@ -492,7 +493,7 @@ export class PostgresFrontendReviewRepository implements ReviewRepositoryBoundar
       approvals: {
         findById: async (approvalId) => {
           const result = await client.query<ApprovalRow>(
-            `SELECT approval_id, purpose, review_context_id, context_revision, target_kind,
+            `SELECT approval_id, approval_status_revision, purpose, review_context_id, context_revision, target_kind,
                     target_id, target_revision, target_digest, approved_item_ids,
                     approved_manifest_digest, actor, project_id, access_revision,
                     policy_context_revision, reason, issued_at, expires_at, status,
@@ -505,6 +506,27 @@ export class PostgresFrontendReviewRepository implements ReviewRepositoryBoundar
           );
           const row = result.rows[0];
           return row ? this.toApproval(row) : undefined;
+        },
+        findByIdWithRevision: async (approvalId) => {
+          const result = await client.query<ApprovalRow>(
+            `SELECT approval_id, approval_status_revision, purpose, review_context_id, context_revision, target_kind,
+                    target_id, target_revision, target_digest, approved_item_ids,
+                    approved_manifest_digest, actor, project_id, access_revision,
+                    policy_context_revision, reason, issued_at, expires_at, status,
+                    invalidation_reason
+             FROM frontend_review.approval
+             WHERE approval_id = $1
+             ORDER BY approval_status_revision DESC
+             LIMIT 1`,
+            [approvalId],
+          );
+          const row = result.rows[0];
+          return row
+            ? {
+                approval: this.toApproval(row),
+                approvalStatusRevision: row.approval_status_revision,
+              }
+            : undefined;
         },
         insert: async (approval) => {
           try {
@@ -563,7 +585,7 @@ export class PostgresFrontendReviewRepository implements ReviewRepositoryBoundar
         },
         consumeApproval: async (approvalId, canonicalCommitId, consumedAt, consumedBy) => {
           const currentResult = await client.query<ApprovalRow>(
-            `SELECT approval_id, purpose, review_context_id, context_revision, target_kind,
+            `SELECT approval_id, approval_status_revision, purpose, review_context_id, context_revision, target_kind,
                     target_id, target_revision, target_digest, approved_item_ids,
                     approved_manifest_digest, actor, project_id, access_revision,
                     policy_context_revision, reason, issued_at, expires_at, status,
@@ -588,6 +610,7 @@ export class PostgresFrontendReviewRepository implements ReviewRepositoryBoundar
           if (current.status !== 'ACTIVE') {
             CONFLICT('The Approval Resource is not ACTIVE.');
           }
+          const currentRevision = currentRow!.approval_status_revision;
           try {
             await client.query(
               `INSERT INTO frontend_review.approval
@@ -596,9 +619,10 @@ export class PostgresFrontendReviewRepository implements ReviewRepositoryBoundar
                   approved_item_ids, approved_manifest_digest, actor, project_id,
                   access_revision, policy_context_revision, reason, issued_at, expires_at,
                   status, invalidation_reason, recorded_at)
-               VALUES ($1, 2, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
-                       $15, $16, $17, 'CONSUMED', $18, $19)`, [
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+                       $15, $16, $17, $18, 'CONSUMED', $19, $20)`, [
                 approvalId,
+                currentRevision + 1,
                 current.purpose,
                 current.reviewContextId,
                 current.contextRevision,

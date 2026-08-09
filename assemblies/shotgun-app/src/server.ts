@@ -1267,9 +1267,9 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       frontendKnowledgeDraftTargetResolver,
       {
         approvals: {
-          findById: async (approvalId) =>
+          findByIdWithRevision: async (approvalId) =>
             frontendReviewStore.transaction((repositories) =>
-              repositories.approvals.findById(approvalId),
+              repositories.approvals.findByIdWithRevision(approvalId),
             ),
           consumeApproval: async (approvalId, canonicalCommitId, consumedAt, consumedBy) =>
             frontendReviewStore.transaction((repositories) =>

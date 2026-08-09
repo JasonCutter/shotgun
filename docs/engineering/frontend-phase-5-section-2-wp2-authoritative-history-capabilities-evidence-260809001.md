@@ -102,7 +102,7 @@ purge semantic negatives).
 
 - Focused suites: WP2-A 7 tests, WP2-B 11 tests, WP2-C 6 tests, 032 append-only 3 tests —
   all PASS (27 focused DB/unit tests).
-- Full `npm run test:database`: **192 tests PASS** (36 files).
+- Full `npm run test:database`: **194 tests PASS** (36 files).
 - `tsc --noEmit`, ESLint, Prettier clean.
 - WP2 implementation head `647b580c16171af70a74f824ed5e72b7b91e50d0` automatic CI **#681 /
   run 31287525830: SUCCESS** (Quality, Frontend, Required Gates). No manual/duplicate CI

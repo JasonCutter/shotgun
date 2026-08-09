@@ -49,6 +49,23 @@ export type ReviewDecisionWrite = {
   readonly manifest?: ApprovedChangeSetManifest;
 };
 
+export type {
+  CreateReversalDraftChangeSetInput,
+  ReversalCanonicalReader,
+  ReversalEligibilityInput,
+  ReversalEligibilityPort,
+  ReversalFailureCode,
+  ReversalSnapshotImpact,
+} from './reversal.js';
+export {
+  REVERSAL_CURRENT_CAPABILITY,
+  assessReversalEligibilityFromHistory,
+  computeReversalSnapshotImpact,
+  createReversalEligibilityPort,
+  failureReasons,
+  toTypedReversalError,
+} from './reversal.js';
+
 export type ChangeSetReviewRepositoryPort = {
   save(changeSet: DraftChangeSet): Promise<DraftChangeSet>;
   findById(projectId: string, changeSetId: string): Promise<DraftChangeSet | undefined>;

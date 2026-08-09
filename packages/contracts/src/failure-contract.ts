@@ -32,7 +32,10 @@ export type ProductFailureDetailKey =
   | 'actualDigest'
   | 'resourceKind'
   | 'resourceId'
-  | 'retryAfterSeconds';
+  | 'retryAfterSeconds'
+  | 'sourceRevisionId'
+  | 'currentCanonicalVersion'
+  | 'dependentRevisionCount';
 
 export type ProductFailureDetailValue = string | number | boolean;
 
@@ -234,6 +237,22 @@ export const FAILURE_DESCRIPTORS = {
   ]),
   ACTION_COMPENSATION_REQUIRED: failure('DEPENDENCY', 'NEVER', 'NONE', 409),
   ACTION_BUDGET_NOT_READABLE: failure('AUTHORIZATION', 'NEVER', 'REQUEST_ACCESS', 403),
+  // FE-P5-S2 Reversal (WP3) typed failures.
+  REVERSAL_SOURCE_NOT_FOUND: failure('NOT_FOUND', 'NEVER', 'NONE', 404),
+  REVERSAL_HISTORICAL_APPROVAL_REUSE: failure('CONFLICT', 'NEVER', 'NONE', 409),
+  REVERSAL_STALE_TARGET: failure('CONFLICT', 'CONDITIONAL', 'REFRESH_AND_REAPPLY', 409, [
+    'sourceRevisionId',
+    'currentCanonicalVersion',
+  ]),
+  REVERSAL_SUPERSEDED_TARGET: failure('CONFLICT', 'CONDITIONAL', 'REFRESH_AND_REAPPLY', 409, [
+    'sourceRevisionId',
+    'currentCanonicalVersion',
+  ]),
+  REVERSAL_DEPENDENT_REVISION_CONFLICT: failure('CONFLICT', 'CONDITIONAL', 'REFRESH_AND_REAPPLY', 409, [
+    'sourceRevisionId',
+    'dependentRevisionCount',
+  ]),
+  REVERSAL_MISSING_CURRENT_CAPABILITY: failure('AUTHORIZATION', 'NEVER', 'REQUEST_ACCESS', 403),
 } satisfies Record<ErrorCode, FailureDescriptor>;
 
 export const isErrorCode = (value: unknown): value is ErrorCode =>

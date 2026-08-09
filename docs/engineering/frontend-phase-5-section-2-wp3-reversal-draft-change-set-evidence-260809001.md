@@ -124,6 +124,7 @@ Identity is preserved on the source side — no authoritative row is deleted.
 **Round 1 fix E — verification on real PostgreSQL:** `tests/database/change-set-review-reversal-postgres.test.ts`
 now uses `PostgresCanonicalKnowledgeRepository` + `createPostgresPool` (real `canonical.*`
 tables), not a Map-based fake. Cases covered on the real DB:
+
 - existing project + revision found; wrong project + same revisionId → not found
 - canonical-backed reversal eligibility: current tip → CANDIDATE created
 - superseded target → typed `REVERSAL_SUPERSEDED_TARGET`

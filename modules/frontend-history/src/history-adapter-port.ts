@@ -7,6 +7,12 @@
  * mutate the owning Domain; they only read. Source Domain identity is
  * preserved exactly (ADR-131 §2): `sourceEventId`/`domainResourceId` keep the
  * authoritative identity and `historyEntryId` is projection identity only.
+ *
+ * `resolveHistoryEntry` re-resolves a single authoritative source event
+ * (domainKind + sourceEventKind + sourceEventId) at read time so the Detail
+ * Product API never serves a stale projection row (IR r1 §5 WP4 / GPT Round 1
+ * C): it returns the CURRENT authoritative payload + availability, or
+ * `undefined` (fail-closed) when the source can no longer be resolved.
  */
 
 import type {
@@ -18,13 +24,23 @@ import type {
  * Project-scoped History adapter read. Implementations return the complete
  * authoritative Domain history for a project mapped to projection rows
  * (deterministic order), or throw on an unrecoverable source failure (the
- * builder then marks the adapter UNAVAILABLE and advances no watermark).
+ * builder then aborts the whole rebuild — no partial projection is exposed).
  */
 export type HistoryAdapterPort = {
   readonly adapterId: string;
   readonly domainKind: HistorySourceDomainKindV1;
   /** Project-scoped authoritative history → HistoryEntryV1 rows. */
   readHistory(projectId: string): Promise<readonly HistoryEntryV1[]>;
+  /**
+   * Authoritative detail re-resolution for one source event identity. Returns
+   * `undefined` when the source is no longer authoritatively resolvable
+   * (fail-closed: the projection payload is NOT trusted in that case).
+   */
+  resolveHistoryEntry(
+    projectId: string,
+    sourceEventKind: string,
+    sourceEventId: string,
+  ): Promise<HistoryEntryV1 | undefined>;
 };
 
 /** Federated registry of History adapters (one per mandatory family). */

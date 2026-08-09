@@ -7,14 +7,6 @@ import type {
   HistoryWatermarkRecordV1,
 } from './history-watermark-store-port.js';
 
-/** One adapter failure surfaced safely (never raw provider detail). */
-export type HistoryProjectionAdapterFailureV1 = {
-  readonly adapterId: string;
-  readonly domainKind: HistorySourceDomainKindV1;
-  readonly safe: boolean;
-  readonly message: string;
-};
-
 /** Result of one deterministic project-scoped History projection build. */
 export type HistoryProjectionBuildResultV1 = {
   readonly resourceProjectId: string;
@@ -23,15 +15,12 @@ export type HistoryProjectionBuildResultV1 = {
   readonly watermarks: readonly HistoryWatermarkRecordV1[];
   readonly adapterStatus: HistoryAdapterStatusV1;
   readonly partial: boolean;
-  readonly failures: readonly HistoryProjectionAdapterFailureV1[];
-};
-
-export const combineHistoryAdapterAvailability = (
-  statuses: readonly HistoryAdapterStatusV1[],
-): HistoryAdapterStatusV1 => {
-  if (statuses.some((status) => status === 'UNAVAILABLE')) return 'UNAVAILABLE';
-  if (statuses.some((status) => status === 'DEGRADED')) return 'DEGRADED';
-  return 'AVAILABLE';
+  readonly failures: readonly {
+    readonly adapterId: string;
+    readonly domainKind: HistorySourceDomainKindV1;
+    readonly safe: boolean;
+    readonly message: string;
+  }[];
 };
 
 const historyWatermarkFromAdapter = (input: {
@@ -105,55 +94,33 @@ export class HistoryProjectionBuilder {
 
     const records: HistoryIndexRecordV1[] = [];
     const watermarks: HistoryWatermarkRecordV1[] = [];
-    const failures: HistoryProjectionAdapterFailureV1[] = [];
-    const statuses: HistoryAdapterStatusV1[] = [];
 
+    // IR r1 §4 rebuild atomicity: the rebuild commits ONLY when EVERY
+    // mandatory adapter succeeds. ANY adapter failure → the whole rebuild is
+    // aborted (no index write, no watermark advance) and the previous complete
+    // committed projection stays visible. A partial rebuilt projection must
+    // never be exposed.
     for (const adapter of this.registry.adapters) {
-      try {
-        const entries = await adapter.readHistory(resourceProjectId);
-        const adapterRecords: HistoryIndexRecordV1[] = entries.map((entry) => entry);
-        const sourceUpdatedAt = entries.reduce<string | undefined>(
-          (newest, entry) =>
-            newest === undefined || entry.occurredAt > newest ? entry.occurredAt : newest,
-          undefined,
-        );
-        records.push(...adapterRecords);
-        watermarks.push(
-          historyWatermarkFromAdapter({
-            adapterId: adapter.adapterId,
-            domainKind: adapter.domainKind,
-            resourceProjectId,
-            snapshotRevision,
-            ...(sourceUpdatedAt === undefined ? {} : { sourceUpdatedAt }),
-            projectedAt,
-            adapterStatus: 'AVAILABLE',
-            lastSourcePosition: sourceUpdatedAt,
-          }),
-        );
-        statuses.push('AVAILABLE');
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        statuses.push('UNAVAILABLE');
-        failures.push({
+      const entries = await adapter.readHistory(resourceProjectId);
+      const adapterRecords: HistoryIndexRecordV1[] = entries.map((entry) => entry);
+      const sourceUpdatedAt = entries.reduce<string | undefined>(
+        (newest, entry) =>
+          newest === undefined || entry.occurredAt > newest ? entry.occurredAt : newest,
+        undefined,
+      );
+      records.push(...adapterRecords);
+      watermarks.push(
+        historyWatermarkFromAdapter({
           adapterId: adapter.adapterId,
           domainKind: adapter.domainKind,
-          safe: false,
-          message,
-        });
-        // Fail closed: every registry adapter still receives a current-revision
-        // watermark so a stale AVAILABLE observation is never presented as
-        // current. No sourceUpdatedAt/lastSourcePosition are fabricated.
-        watermarks.push(
-          historyWatermarkFromAdapter({
-            adapterId: adapter.adapterId,
-            domainKind: adapter.domainKind,
-            resourceProjectId,
-            snapshotRevision,
-            projectedAt,
-            adapterStatus: 'UNAVAILABLE',
-          }),
-        );
-      }
+          resourceProjectId,
+          snapshotRevision,
+          ...(sourceUpdatedAt === undefined ? {} : { sourceUpdatedAt }),
+          projectedAt,
+          adapterStatus: 'AVAILABLE',
+          lastSourcePosition: sourceUpdatedAt,
+        }),
+      );
     }
 
     // One atomic Project-scoped commit: index replace + all watermarks together.
@@ -164,15 +131,14 @@ export class HistoryProjectionBuilder {
       watermarks,
     });
 
-    const adapterStatus = combineHistoryAdapterAvailability(statuses);
     return {
       resourceProjectId,
       snapshotRevision,
       indexCount: records.length,
       watermarks,
-      adapterStatus,
-      partial: failures.length > 0 || adapterStatus !== 'AVAILABLE',
-      failures,
+      adapterStatus: 'AVAILABLE',
+      partial: false,
+      failures: [],
     };
   }
 }

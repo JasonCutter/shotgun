@@ -99,7 +99,6 @@ import {
 } from '../../../modules/frontend-activity/src/index.js';
 import {
   HistoryProductCoordinator,
-  HistoryProjectionBuilder,
   createHistoryAdapterRegistry,
   type HistoryReadModelStorePort,
 } from '../../../modules/frontend-history/src/index.js';
@@ -1369,13 +1368,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
         new ExternalActionHistoryAdapter(externalActionStore, externalActionPayloadState),
         new PolicyHistoryAdapter(policyHistoryRead, settingsPayloadState),
       ]);
-      const builder = new HistoryProjectionBuilder(registry, historyReadModelStore);
-      return new HistoryProductCoordinator(
-        historyReadModelStore.index,
-        historyReadModelStore,
-        builder,
-        registry.adapters.length,
-      );
+      return new HistoryProductCoordinator(historyReadModelStore.index, registry);
     })();
   const projectBootstrapUnitOfWork =
     options.projectBootstrapUnitOfWork ??

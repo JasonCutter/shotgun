@@ -16,6 +16,8 @@ import type { HistoryAdapterPort } from '../../../modules/frontend-history/src/i
 import type {
   HistoryEntryV1,
   HistorySourceDomainKindV1,
+  ReviewApprovalV1,
+  ReviewDecisionRecordV1,
 } from '../../../packages/contracts/src/index.js';
 
 export const REVIEW_HISTORY_ADAPTER_ID = 'history-review';
@@ -43,6 +45,43 @@ export class ReviewHistoryAdapter implements HistoryAdapterPort {
   ) {}
 
   async readHistory(projectId: string): Promise<readonly HistoryEntryV1[]> {
+    return this.mapAll(projectId);
+  }
+
+  async resolveHistoryEntry(
+    projectId: string,
+    sourceEventKind: string,
+    sourceEventId: string,
+  ): Promise<HistoryEntryV1 | undefined> {
+    // Fail-closed: the source identity is matched authoritatively inside the
+    // Review boundary; the projection payload is never trusted when unresolved.
+    return this.review.transaction(async (repositories) => {
+      const projectedAt = this.now().toISOString();
+      if (sourceEventKind === 'DECISION') {
+        const contextRecords = await repositories.contexts.listContexts(projectId);
+        for (const contextRecord of contextRecords) {
+          const decisions = await repositories.decisions.findDecisions(
+            contextRecord.reviewResourceId,
+          );
+          const decision = decisions.find((candidate) => candidate.decisionId === sourceEventId);
+          if (decision !== undefined) {
+            return this.decisionEntry(projectId, decision, projectedAt);
+          }
+        }
+        return undefined;
+      }
+      if (sourceEventKind === 'APPROVAL') {
+        const approvals = await repositories.approvals.listByProject(projectId);
+        const approval = approvals.find((candidate) => candidate.approvalId === sourceEventId);
+        return approval === undefined
+          ? undefined
+          : this.approvalEntry(projectId, approval, projectedAt);
+      }
+      return undefined;
+    });
+  }
+
+  private async mapAll(projectId: string): Promise<readonly HistoryEntryV1[]> {
     return this.review.transaction(async (repositories) => {
       const projectedAt = this.now().toISOString();
       const entries: HistoryEntryV1[] = [];
@@ -54,69 +93,85 @@ export class ReviewHistoryAdapter implements HistoryAdapterPort {
           contextRecord.reviewResourceId,
         );
         for (const decision of decisions) {
-          const availability = await reviewAvailability(
-            this.payloadState,
-            projectId,
-            'DECISION',
-            decision.decisionId,
-          );
-          entries.push({
-            schemaVersion: '1.0.0',
-            historyEntryId: `history:${projectId}:decision:${decision.decisionId}`,
-            resourceProjectId: projectId,
-            domainKind: REVIEW_DOMAIN_KIND,
-            domainResourceKind: 'REVIEW_DECISION',
-            domainResourceId: decision.reviewContextId,
-            sourceEventKind: 'DECISION',
-            sourceEventId: decision.decisionId,
-            occurredAt: decision.decidedAt,
-            payloadAvailability: availability,
-            payloadSnapshot: {
-              reviewContextId: decision.reviewContextId,
-              contextRevision: decision.contextRevision,
-              reviewItemId: decision.reviewItemId,
-              intent: decision.intent,
-              terminal: decision.terminal,
-              decidedBy: decision.decidedBy.actorId,
-            },
-            projectedAt,
-          });
+          entries.push(await this.decisionEntry(projectId, decision, projectedAt));
         }
       }
 
       // Approvals (authoritative Review Approval history).
       const approvals = await repositories.approvals.listByProject(projectId);
       for (const approval of approvals) {
-        const availability = await reviewAvailability(
-          this.payloadState,
-          projectId,
-          'APPROVAL',
-          approval.approvalId,
-        );
-        entries.push({
-          schemaVersion: '1.0.0',
-          historyEntryId: `history:${projectId}:approval:${approval.approvalId}`,
-          resourceProjectId: projectId,
-          domainKind: REVIEW_DOMAIN_KIND,
-          domainResourceKind: 'REVIEW_APPROVAL',
-          domainResourceId: approval.reviewContextId,
-          sourceEventKind: 'APPROVAL',
-          sourceEventId: approval.approvalId,
-          occurredAt: approval.issuedAt,
-          payloadAvailability: availability,
-          payloadSnapshot: {
-            reviewContextId: approval.reviewContextId,
-            contextRevision: approval.contextRevision,
-            targetKind: approval.targetKind,
-            targetId: approval.targetId,
-            targetRevision: approval.targetRevision,
-            status: approval.status,
-            actorId: approval.actor.actorId,
-          },
-          projectedAt,
-        });
+        entries.push(await this.approvalEntry(projectId, approval, projectedAt));
       }
       return entries;
     });
+  }
+
+  private async decisionEntry(
+    projectId: string,
+    decision: ReviewDecisionRecordV1,
+    projectedAt: string,
+  ): Promise<HistoryEntryV1> {
+    const availability = await reviewAvailability(
+      this.payloadState,
+      projectId,
+      'DECISION',
+      decision.decisionId,
+    );
+    return {
+      schemaVersion: '1.0.0',
+      historyEntryId: `history:${projectId}:decision:${decision.decisionId}`,
+      resourceProjectId: projectId,
+      domainKind: REVIEW_DOMAIN_KIND,
+      domainResourceKind: 'REVIEW_DECISION',
+      domainResourceId: decision.reviewContextId,
+      sourceEventKind: 'DECISION',
+      sourceEventId: decision.decisionId,
+      occurredAt: decision.decidedAt,
+      payloadAvailability: availability,
+      payloadSnapshot: {
+        reviewContextId: decision.reviewContextId,
+        contextRevision: decision.contextRevision,
+        reviewItemId: decision.reviewItemId,
+        intent: decision.intent,
+        terminal: decision.terminal,
+        decidedBy: decision.decidedBy.actorId,
+      },
+      projectedAt,
+    };
+  }
+
+  private async approvalEntry(
+    projectId: string,
+    approval: ReviewApprovalV1,
+    projectedAt: string,
+  ): Promise<HistoryEntryV1> {
+    const availability = await reviewAvailability(
+      this.payloadState,
+      projectId,
+      'APPROVAL',
+      approval.approvalId,
+    );
+    return {
+      schemaVersion: '1.0.0',
+      historyEntryId: `history:${projectId}:approval:${approval.approvalId}`,
+      resourceProjectId: projectId,
+      domainKind: REVIEW_DOMAIN_KIND,
+      domainResourceKind: 'REVIEW_APPROVAL',
+      domainResourceId: approval.reviewContextId,
+      sourceEventKind: 'APPROVAL',
+      sourceEventId: approval.approvalId,
+      occurredAt: approval.issuedAt,
+      payloadAvailability: availability,
+      payloadSnapshot: {
+        reviewContextId: approval.reviewContextId,
+        contextRevision: approval.contextRevision,
+        targetKind: approval.targetKind,
+        targetId: approval.targetId,
+        targetRevision: approval.targetRevision,
+        status: approval.status,
+        actorId: approval.actor.actorId,
+      },
+      projectedAt,
+    };
   }
 }

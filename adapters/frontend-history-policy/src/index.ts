@@ -44,6 +44,23 @@ export class PolicyHistoryAdapter implements HistoryAdapterPort {
   ) {}
 
   async readHistory(projectId: string): Promise<readonly HistoryEntryV1[]> {
+    return this.mapAll(projectId);
+  }
+
+  async resolveHistoryEntry(
+    projectId: string,
+    sourceEventKind: string,
+    sourceEventId: string,
+  ): Promise<HistoryEntryV1 | undefined> {
+    // Fail-closed: match the authoritative source identity; the projection
+    // payload is never trusted when the source is unresolved.
+    const all = await this.mapAll(projectId);
+    return all.find(
+      (entry) => entry.sourceEventKind === sourceEventKind && entry.sourceEventId === sourceEventId,
+    );
+  }
+
+  private async mapAll(projectId: string): Promise<readonly HistoryEntryV1[]> {
     const projectedAt = this.now().toISOString();
     const entries: HistoryEntryV1[] = [];
     let cursor: Parameters<PolicyHistoryReadPort['listPolicyHistory']>[0]['cursor'];

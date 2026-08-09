@@ -23,14 +23,8 @@ export {
   isHistoryRecordAfter,
   validateHistoryRebuildBatch,
 } from './history-index-store-port.js';
-export type {
-  HistoryProjectionBuildResultV1,
-  HistoryProjectionAdapterFailureV1,
-} from './history-projection-builder.js';
-export {
-  combineHistoryAdapterAvailability,
-  HistoryProjectionBuilder,
-} from './history-projection-builder.js';
+export type { HistoryProjectionBuildResultV1 } from './history-projection-builder.js';
+export { HistoryProjectionBuilder } from './history-projection-builder.js';
 export type { HistoryReadModelStorePort } from './history-read-model-store-port.js';
 export { createHistoryReadModelStore } from './history-read-model-store-port.js';
 export type {
@@ -43,7 +37,6 @@ export type {
   GetHistoryEntryRequestV1,
   HistoryCapabilityV1,
   HistoryProductScopeV1,
-  HistoryProjectionBuildResultView,
   HistoryProjectionMetadataV1,
   ListHistoryWorkspaceRequestV1,
 } from './product-api.js';

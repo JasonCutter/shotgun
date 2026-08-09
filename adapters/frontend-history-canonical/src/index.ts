@@ -12,6 +12,7 @@
 import type { CanonicalKnowledgeRepositoryPort } from '../../../modules/canonical-knowledge/src/index.js';
 import type { PayloadStateStorePort } from '../../../modules/frontend-history/src/index.js';
 import type {
+  CanonicalHistoryEvent,
   HistoryEntryV1,
   HistorySourceDomainKindV1,
 } from '../../../packages/contracts/src/index.js';
@@ -46,6 +47,30 @@ export class CanonicalHistoryAdapter implements HistoryAdapterPort {
 
   async readHistory(projectId: string): Promise<readonly HistoryEntryV1[]> {
     const events = await this.canonical.listHistory(projectId);
+    return this.mapEvents(projectId, events);
+  }
+
+  async resolveHistoryEntry(
+    projectId: string,
+    sourceEventKind: string,
+    sourceEventId: string,
+  ): Promise<HistoryEntryV1 | undefined> {
+    // Fail-closed: the source identity is matched authoritatively; the
+    // projection payload is never trusted when the source is unresolved.
+    const events = await this.canonical.listHistory(projectId);
+    const event = events.find(
+      (candidate) =>
+        candidate.eventType === sourceEventKind && candidate.historyEventId === sourceEventId,
+    );
+    if (event === undefined) return undefined;
+    const entries = await this.mapEvents(projectId, [event]);
+    return entries[0];
+  }
+
+  private async mapEvents(
+    projectId: string,
+    events: readonly CanonicalHistoryEvent[],
+  ): Promise<readonly HistoryEntryV1[]> {
     const projectedAt = this.now().toISOString();
     const entries: HistoryEntryV1[] = [];
     for (const event of events) {

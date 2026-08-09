@@ -452,6 +452,16 @@ export class InMemoryExternalActionStore implements ExternalActionRepositoryBoun
         const all = [...maps.results.values()].filter((result) => result.actionId === actionId);
         return all[all.length - 1];
       },
+      listByAction: async (actionId, limit, offset) =>
+        [...maps.results.values()]
+          .filter((result) => result.actionId === actionId)
+          .sort((a, b) => {
+            // Deterministic insertion order by completedAt, then resultId.
+            const timeCompare = a.completedAt.localeCompare(b.completedAt);
+            if (timeCompare !== 0) return timeCompare;
+            return a.resultId.localeCompare(b.resultId);
+          })
+          .slice(offset, offset + Math.min(limit, 10000)),
       insert: async (result) => {
         replayOrConflict(maps.results.get(result.resultId), result, 'result');
         maps.results.set(result.resultId, result);
@@ -469,7 +479,7 @@ export class InMemoryExternalActionStore implements ExternalActionRepositoryBoun
         [...maps.audit.values()]
           .filter((event) => event.actionId === actionId)
           .sort((a, b) => a.sequence - b.sequence)
-          .slice(offset, offset + Math.min(limit, EXTERNAL_ACTION_QUEUE_PAGE_SIZE_CAP)),
+          .slice(offset, offset + Math.min(limit, 10000)),
       nextSequence: async (actionId) => {
         const events = [...maps.audit.values()].filter((event) => event.actionId === actionId);
         return events.length === 0 ? 1 : Math.max(...events.map((event) => event.sequence)) + 1;

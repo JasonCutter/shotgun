@@ -100,6 +100,12 @@ export type ExternalActionVerificationStorePort = {
 export type ExternalActionResultStorePort = {
   findById(resultId: string): Promise<ResultV1 | undefined>;
   findCurrent(actionId: string): Promise<ResultV1 | undefined>;
+  /**
+   * Authoritative Result history enumeration for one action (insertion order).
+   * Used by the FE-P5-S2 WP4 External Action History adapter to project the
+   * complete mandatory RESULT family (GPT Round 1 B).
+   */
+  listByAction(actionId: string, limit: number, offset: number): Promise<readonly ResultV1[]>;
   insert(result: ResultV1): Promise<void>;
 };
 

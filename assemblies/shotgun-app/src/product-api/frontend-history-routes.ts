@@ -115,16 +115,4 @@ export function registerHistoryRoutes(
       }
     },
   );
-
-  server.post<{ Body: unknown; Headers: SecurityHeaders }>(
-    '/product-api/frontend/history/refresh',
-    async (request) => {
-      const scope = await buildHistoryScope(request.headers);
-      try {
-        return await coordinator.refreshHistoryProjection(scope);
-      } catch (error) {
-        throw toHistoryError(error, 'refresh-history-projection');
-      }
-    },
-  );
 }

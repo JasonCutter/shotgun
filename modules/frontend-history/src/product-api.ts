@@ -6,14 +6,12 @@ import {
   type GetHistoryEntryRequestV1,
   type GetHistoryEntryResultV1,
   type HistoryCursorV1,
-  type HistorySourceDomainKindV1,
   type ListHistoryWorkspaceRequestV1,
   type ListHistoryWorkspaceResultV1,
 } from '../../../packages/contracts/src/index.js';
-import type { HistoryProjectionBuilder } from './history-projection-builder.js';
+import type { HistoryAdapterRegistryPort } from './history-adapter-port.js';
 import type { HistoryIndexRecordV1, HistoryIndexStorePort } from './history-index-store-port.js';
 import { isHistoryRecordAfter } from './history-index-store-port.js';
-import type { HistoryReadModelStorePort } from './history-read-model-store-port.js';
 import type {
   HistoryAdapterStatusV1,
   HistoryWatermarkRecordV1,
@@ -54,11 +52,9 @@ export type HistoryProductScopeV1 = {
   readonly sensitivityClearance: 'public' | 'internal' | 'private' | 'restricted';
 };
 
-export type HistoryCapabilityV1 =
-  'LIST_HISTORY_WORKSPACE' | 'READ_HISTORY_ENTRY' | 'REFRESH_HISTORY_PROJECTION';
+export type HistoryCapabilityV1 = 'LIST_HISTORY_WORKSPACE' | 'READ_HISTORY_ENTRY';
 
 const HISTORY_READ_SCOPES: ReadonlySet<string> = new Set(['owner', 'admin', 'history:read']);
-const HISTORY_REFRESH_SCOPES: ReadonlySet<string> = new Set(['owner', 'admin', 'history:refresh']);
 
 /** Least-privilege Scope → Capability matrix for History reads. */
 export const historyCapabilitiesForScope = (
@@ -66,12 +62,10 @@ export const historyCapabilitiesForScope = (
 ): readonly HistoryCapabilityV1[] => {
   const granted = scope.accessScope ?? [];
   const has = (set: ReadonlySet<string>): boolean => granted.some((entry) => set.has(entry));
-  const capabilities: HistoryCapabilityV1[] = [];
   if (has(HISTORY_READ_SCOPES)) {
-    capabilities.push('LIST_HISTORY_WORKSPACE', 'READ_HISTORY_ENTRY');
+    return ['LIST_HISTORY_WORKSPACE', 'READ_HISTORY_ENTRY'];
   }
-  if (has(HISTORY_REFRESH_SCOPES)) capabilities.push('REFRESH_HISTORY_PROJECTION');
-  return capabilities;
+  return [];
 };
 
 export const HISTORY_PAGE_SIZE_CAP = 50;
@@ -158,9 +152,7 @@ export const decodeHistoryWorkspaceCursorV1 = (value: unknown, path: string): Hi
 export class HistoryProductCoordinator {
   constructor(
     private readonly index: HistoryIndexStorePort,
-    private readonly readModel: HistoryReadModelStorePort,
-    private readonly builder: HistoryProjectionBuilder,
-    private readonly expectedAdapterCount: number,
+    private readonly registry: HistoryAdapterRegistryPort,
     private readonly now?: () => Date,
   ) {}
 
@@ -200,7 +192,9 @@ export class HistoryProductCoordinator {
   /**
    * Project-scoped unified History Workspace read with domain filter and
    * frozen-tuple keyset cursor. Non-disclosing: only the requested project's
-   * projection rows are ever returned.
+   * projection rows are ever returned. The request `resourceProjectId` MUST
+   * equal the server-derived active project (GPT Round 1 D): a mismatch is a
+   * denial, never a silent cross-project read.
    */
   async listHistoryWorkspace(
     scope: HistoryProductScopeV1,
@@ -208,6 +202,9 @@ export class HistoryProductCoordinator {
   ): Promise<ListHistoryWorkspaceResultV1> {
     this.requireCapability(scope, 'LIST_HISTORY_WORKSPACE');
     const decoded = decodeListHistoryWorkspaceRequestV1(request, 'listHistoryWorkspace');
+    if (decoded.resourceProjectId !== scope.activeProjectId) {
+      historyDenied();
+    }
     const limit = Math.min(HISTORY_PAGE_SIZE_CAP, Math.max(1, decoded.limit));
     const page = await this.index.queryProject({
       resourceProjectId: scope.activeProjectId,
@@ -234,8 +231,13 @@ export class HistoryProductCoordinator {
   }
 
   /**
-   * Single History entry by projection identity. Non-disclosing: a missing or
-   * cross-project historyEntryId produces the same NOT_FOUND.
+   * Single History entry by projection identity. The projection row resolves
+   * the authoritative source identity (domainKind + sourceEventKind +
+   * sourceEventId); the owning Domain is then re-queried for the CURRENT
+   * authoritative payload + availability (GPT Round 1 C). A source that can
+   * no longer be resolved fails closed (NOT_FOUND) — the stale projection
+   * payload is never trusted. The request `resourceProjectId` MUST equal the
+   * server-derived active project (non-disclosing on mismatch).
    */
   async getHistoryEntry(
     scope: HistoryProductScopeV1,
@@ -243,6 +245,9 @@ export class HistoryProductCoordinator {
   ): Promise<GetHistoryEntryResultV1> {
     this.requireCapability(scope, 'READ_HISTORY_ENTRY');
     const decoded = decodeGetHistoryEntryRequestV1(request, 'getHistoryEntry');
+    if (decoded.resourceProjectId !== scope.activeProjectId) {
+      historyNotFound();
+    }
     const record = await this.index.findByIdentity({
       resourceProjectId: scope.activeProjectId,
       historyEntryId: decoded.historyEntryId,
@@ -250,52 +255,24 @@ export class HistoryProductCoordinator {
     if (record === undefined) {
       historyNotFound();
     }
-    return { schemaVersion: '1.0.0', entry: record! };
-  }
-
-  /**
-   * Deterministic project-scoped rebuild (server-derived). Runs one atomic
-   * build and returns the build summary; a failed adapter contributes no rows
-   * and receives a current-revision UNAVAILABLE watermark.
-   */
-  async refreshHistoryProjection(
-    scope: HistoryProductScopeV1,
-  ): Promise<HistoryProjectionBuildResultView> {
-    this.requireCapability(scope, 'REFRESH_HISTORY_PROJECTION');
-    const result = await this.builder.buildProjectProjection(scope.activeProjectId);
-    const metadata = historyProjectionMetadataFrom({
-      records: [],
-      watermarks: result.watermarks,
-      now: this.nowIso(),
-      expectedAdapterCount: this.expectedAdapterCount,
-    });
-    return {
-      resourceProjectId: result.resourceProjectId,
-      snapshotRevision: result.snapshotRevision,
-      indexCount: result.indexCount,
-      adapterStatus: result.adapterStatus,
-      partial: result.partial,
-      failures: result.failures,
-      metadata,
-    };
+    const projection = record!;
+    const adapter = this.registry.adapterFor(projection.domainKind);
+    if (adapter === undefined) {
+      historyNotFound();
+    }
+    // Authoritative re-resolution: the owning Domain is the source of truth;
+    // the projection only locates it. Fail-closed when unresolved.
+    const authoritative = await adapter!.resolveHistoryEntry(
+      scope.activeProjectId,
+      projection.sourceEventKind,
+      projection.sourceEventId,
+    );
+    if (authoritative === undefined) {
+      historyNotFound();
+    }
+    return { schemaVersion: '1.0.0', entry: authoritative! };
   }
 }
-
-/** Public view of a projection build (no internal watermark rows leaked raw). */
-export type HistoryProjectionBuildResultView = {
-  readonly resourceProjectId: string;
-  readonly snapshotRevision: number;
-  readonly indexCount: number;
-  readonly adapterStatus: HistoryAdapterStatusV1;
-  readonly partial: boolean;
-  readonly failures: readonly {
-    readonly adapterId: string;
-    readonly domainKind: HistorySourceDomainKindV1;
-    readonly safe: boolean;
-    readonly message: string;
-  }[];
-  readonly metadata: HistoryProjectionMetadataV1;
-};
 
 // Re-exported for tests that need the frozen cursor predicate.
 export { isHistoryRecordAfter };

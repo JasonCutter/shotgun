@@ -5,6 +5,7 @@ import {
   FrontendKnowledgeDraftCommandError,
   FRONTEND_KNOWLEDGE_DRAFT_COMMAND_TYPES,
   frontendKnowledgeDraftAbandonDigest,
+  frontendKnowledgeDraftCommitDigest,
   frontendKnowledgeDraftImpactPreviewDigest,
   frontendKnowledgeDraftMaterializeDigest,
   frontendKnowledgeDraftReadDigest,
@@ -12,17 +13,28 @@ import {
   frontendKnowledgeDraftStartSeedlessDigest,
   frontendKnowledgeDraftSubmitDraftForReviewDigest,
   frontendKnowledgeDraftValidateDigest,
+  reviewApprovalManifestDigest,
+  sha256Text,
   type AbandonKnowledgeDraftRequestV1,
   type AcceptedPolicyContext,
   type AnyFrontendCommandOutcomeView,
   type AnyFrontendCommandRequest,
+  type CanonicalCommitResult,
+  type CanonicalSnapshot,
+  type CommitKnowledgeDraftRequestV1,
+  type CommitKnowledgeDraftResultV1,
   type DraftImpactArtifactRefV1,
   type DraftValidationArtifactRefV1,
   type ErrorCode,
+  type FrontendCanonicalCommitWrite,
+  type FrontendCanonicalAuthorityV1,
   type FrontendKnowledgeDraftBaseV1,
   type FrontendKnowledgeDraftChangeSetV1,
   type FrontendKnowledgeDraftCommandOutcomeV1,
   type FrontendKnowledgeDraftCommandType,
+  type FrontendKnowledgeOperationV1,
+  frontendKnowledgeDraftRevisionDigest,
+  type Actor,
   type GenerateKnowledgeDraftImpactRequestV1,
   type GenerateKnowledgeDraftImpactResultV1,
   type MaterializeDraftRequestV1,
@@ -32,6 +44,7 @@ import {
   type ReadKnowledgeDraftResultV1,
   type ResolveKnowledgeDraftCommandOutcomeRequestV1,
   type ResolveKnowledgeDraftCommandOutcomeResultV1,
+  type ReviewApprovalV1,
   type SaveKnowledgeDraftRequestV1,
   type SaveKnowledgeDraftResultV1,
   type StartSeedlessDraftRequestV1,
@@ -191,13 +204,30 @@ function draftFailure(
     | 'OUTCOME_NOT_FOUND'
     | 'DIGEST_MISMATCH'
     | 'COMMAND_SCOPE_MISMATCH'
-    | 'OUTCOME_INDETERMINATE',
+    | 'OUTCOME_INDETERMINATE'
+    | 'UNSUPPORTED_OPERATION'
+    | 'STALE_APPROVAL'
+    | 'REVIEW_APPROVAL_EXPIRED',
   message: string,
 ): never {
   throw new FrontendKnowledgeDraftCommandError(apiCode, message);
 }
 
 const generatedIdentity = (prefix: string): string => `${prefix}-${randomUUID()}`;
+
+/**
+ * FE-P5-XP Correction B: deterministic canonical commit identity. The commit id
+ * is derived from the Approval + Draft so a replay or crash-recovery rebuilds
+ * the EXACT same write (same commitId + authority) and commitFrontendDraft is
+ * replay-idempotent instead of creating a second commit.
+ */
+const deterministicCanonicalCommitId = (approvalId: string, draftId: string): string => {
+  const hex = sha256Text(`frontend-approval-commit:${approvalId}:${draftId}`).slice(
+    'sha256:'.length,
+    'sha256:'.length + 32,
+  );
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+};
 
 const draftPrecondition = (draftId: string, expectedRevision: number): TypedPrecondition => ({
   purpose: 'TARGET',
@@ -214,6 +244,7 @@ const draftPrecondition = (draftId: string, expectedRevision: number): TypedPrec
 // coordinator consumers that import from the product API module.
 export {
   frontendKnowledgeDraftAbandonDigest,
+  frontendKnowledgeDraftCommitDigest,
   frontendKnowledgeDraftImpactPreviewDigest,
   frontendKnowledgeDraftMaterializeDigest,
   frontendKnowledgeDraftReadDigest,
@@ -239,7 +270,10 @@ type DraftApiCode =
   | 'OUTCOME_NOT_FOUND'
   | 'DIGEST_MISMATCH'
   | 'COMMAND_SCOPE_MISMATCH'
-  | 'OUTCOME_INDETERMINATE';
+  | 'OUTCOME_INDETERMINATE'
+  | 'UNSUPPORTED_OPERATION'
+  | 'STALE_APPROVAL'
+  | 'REVIEW_APPROVAL_EXPIRED';
 
 /** Maps a Ledger ErrorCode back to the FE-P3-S2 API failure code. */
 const fromLedgerCode = (code: ErrorCode): DraftApiCode => {
@@ -275,6 +309,12 @@ const fromLedgerCode = (code: ErrorCode): DraftApiCode => {
     case 'OUTCOME_UNKNOWN':
     case 'OUTCOME_INDETERMINATE':
       return 'OUTCOME_INDETERMINATE';
+    case 'STALE_APPROVAL':
+      return 'STALE_APPROVAL';
+    case 'UNSUPPORTED_OPERATION':
+      return 'UNSUPPORTED_OPERATION';
+    case 'REVIEW_APPROVAL_EXPIRED':
+      return 'REVIEW_APPROVAL_EXPIRED';
     default:
       return 'DRAFT_REVISION_CONFLICT';
   }
@@ -291,7 +331,100 @@ export type FrontendKnowledgeDraftRunCommandInput<T> = {
     repositories: FrontendKnowledgeDraftTransactionRepositoriesV1,
   ) => Promise<T>;
   readonly onReplay?: () => Promise<T>;
+  /**
+   * FE-P5-XP Correction B: invoked when the ledger replayed an ACCEPTED or
+   * OUTCOME_UNKNOWN command (e.g. a crash between the durable Canonical commit
+   * and the Approval consume). Runs inside the draft transaction handle, so it
+   * must read the Draft through `repositories` (never a nested transaction).
+   * Must finish the side effects idempotently; the ledger completes the
+   * ORIGINAL command afterwards (never a new one).
+   */
+  readonly onReplayRecovery?: (
+    originalCommandId: string,
+    repositories: FrontendKnowledgeDraftTransactionRepositoriesV1,
+  ) => Promise<T>;
   readonly producedResources: (result: T) => readonly ProducedResourceRef[];
+};
+
+/**
+ * Cross-Phase Correction B: structural (locally-declared) dependencies for the
+ * Approval→Canonical commit consumer. Declared locally so the module boundary
+ * stays intact; real Review/Cannonical implementations satisfy them.
+ */
+export type FrontendKnowledgeDraftApprovalCommitPort = {
+  findById(approvalId: string): Promise<ReviewApprovalV1 | undefined>;
+  consumeApproval(
+    approvalId: string,
+    canonicalCommitId: string,
+    consumedAt: string,
+    consumedBy: string,
+  ): Promise<void>;
+};
+
+export type FrontendKnowledgeDraftCanonicalCommitPort = {
+  getSnapshot(projectId: string): Promise<CanonicalSnapshot>;
+  commitFrontendDraft(write: FrontendCanonicalCommitWrite): Promise<CanonicalCommitResult>;
+};
+
+export type FrontendKnowledgeDraftCommitDependenciesV1 = {
+  readonly approvals: FrontendKnowledgeDraftApprovalCommitPort;
+  readonly canonical: FrontendKnowledgeDraftCanonicalCommitPort;
+};
+
+/**
+ * FE-P5-XP Correction B: resolves the review Item id (`item-<index>`) back to
+ * the Draft operation it represents. The Review context materializes one Item
+ * per Draft operation in declaration order (`item-1` -> operations[0]).
+ */
+const operationByReviewItemId = (
+  operations: readonly FrontendKnowledgeOperationV1[],
+  reviewItemId: string,
+): FrontendKnowledgeOperationV1 | undefined => {
+  const match = /^item-(\d+)$/.exec(reviewItemId);
+  if (!match) return undefined;
+  const index = Number(match[1]) - 1;
+  return operations[index];
+};
+
+/**
+ * FE-P5-XP Correction B: validates that an approved operation set maps to the
+ * single-claim Canonical model. Only `CLAIM_ADD` (-> ADD_CLAIM) and `NO_OP`
+ * have a Canonical mutation; any other kind is rejected fail-closed with no
+ * Canonical write and the Approval left ACTIVE. Returns the review Item id of
+ * the single claimable operation when exactly one exists.
+ */
+const approvedClaimableOperation = (input: {
+  readonly operations: readonly FrontendKnowledgeOperationV1[];
+  readonly approvedItemIds: readonly string[];
+}): { readonly claimReviewItemId?: string } => {
+  const resolved: { reviewItemId: string; operation: FrontendKnowledgeOperationV1 }[] = [];
+  for (const reviewItemId of input.approvedItemIds) {
+    const operation = operationByReviewItemId(input.operations, reviewItemId);
+    if (!operation) {
+      throw new FrontendKnowledgeDraftCommandError(
+        'UNSUPPORTED_OPERATION',
+        `Approved review item '${reviewItemId}' does not map to a Draft operation.`,
+      );
+    }
+    if (operation.kind !== 'CLAIM_ADD' && operation.kind !== 'NO_OP') {
+      throw new FrontendKnowledgeDraftCommandError(
+        'UNSUPPORTED_OPERATION',
+        `Approved operation '${operation.kind}' has no Canonical representation; the Approval stays ACTIVE.`,
+      );
+    }
+    resolved.push({ reviewItemId, operation });
+  }
+  const claimItems = resolved.filter((entry) => entry.operation.kind === 'CLAIM_ADD');
+  if (claimItems.length > 1) {
+    // The frozen single-claim Canonical commit contract cannot represent
+    // multiple CLAIM_ADD operations under one Approval (one Approval -> at
+    // most one Canonical commit). Fail closed; the Approval stays ACTIVE.
+    throw new FrontendKnowledgeDraftCommandError(
+      'UNSUPPORTED_OPERATION',
+      'The Approval covers multiple CLAIM_ADD operations, which exceed the single-claim Canonical commit contract.',
+    );
+  }
+  return { claimReviewItemId: claimItems[0]?.reviewItemId };
 };
 
 export class FrontendKnowledgeDraftProductCoordinator {
@@ -299,6 +432,7 @@ export class FrontendKnowledgeDraftProductCoordinator {
     private readonly boundary: FrontendKnowledgeDraftRepositoryBoundaryPort,
     private readonly commandGateway: FrontendKnowledgeDraftCommandGatewayPort,
     private readonly targetResolver: FrontendKnowledgeDraftTargetResolverPort,
+    private readonly commitDependencies?: FrontendKnowledgeDraftCommitDependenciesV1,
   ) {}
 
   async materializeDraft(
@@ -819,6 +953,274 @@ export class FrontendKnowledgeDraftProductCoordinator {
     });
   }
 
+  async commitFrontendDraft(
+    scope: FrontendKnowledgeDraftCommandScopeV1,
+    request: CommitKnowledgeDraftRequestV1,
+  ): Promise<CommitKnowledgeDraftResultV1> {
+    const commandSemanticDigest = frontendKnowledgeDraftCommitDigest(request);
+    const commitResult = (input: {
+      readonly canonicalCommitId: string;
+    }): CommitKnowledgeDraftResultV1 => ({
+      schemaVersion: FRONTEND_KNOWLEDGE_DRAFT_API_VERSION,
+      outcome: 'COMPLETED',
+      clientRequestId: request.clientRequestId,
+      idempotencyKey: request.idempotencyKey,
+      draftId: request.draftId,
+      approvalId: request.approvalId,
+      commitIds: [input.canonicalCommitId],
+    });
+    const revalidated = async (input: {
+      readonly draft: FrontendKnowledgeDraftChangeSetV1;
+      /** RESOLVE tolerates a CONSUMED approval (replay of a completed command). */
+      readonly mode?: 'REVALIDATE' | 'RESOLVE';
+    }): Promise<{
+      readonly draft: FrontendKnowledgeDraftChangeSetV1;
+      readonly approval: ReviewApprovalV1;
+      readonly canonicalSnapshot: CanonicalSnapshot;
+    }> => {
+      const dependencies = this.commitDependencies;
+      if (!dependencies) {
+        draftFailure('NOT_READY_FOR_REVIEW', 'The commit consumer is not configured.');
+      }
+      const now = new Date().toISOString();
+      const draft = input.draft;
+      if (!draft) {
+        draftFailure('DRAFT_NOT_FOUND', 'The Draft was not found.');
+      }
+      if (draft.resourceProjectId !== scope.activeProjectId) {
+        draftFailure(
+          'PROJECT_BINDING_CONFLICT',
+          'The Draft is bound to another Resource Project.',
+        );
+      }
+      if (draft.status !== 'SUBMITTED') {
+        draftFailure(
+          'NOT_READY_FOR_REVIEW',
+          'Only a submitted Draft can be committed to Canonical.',
+        );
+      }
+      const submission = draft.reviewSubmission;
+      if (!submission) {
+        draftFailure('NOT_READY_FOR_REVIEW', 'The Draft review submission is incomplete.');
+      }
+      if (
+        frontendKnowledgeDraftRevisionDigest({
+          draftId: draft.draftId,
+          revision: draft.revision,
+          base: draft.base,
+          operations: draft.operations,
+        }) !== submission.contentDigest
+      ) {
+        draftFailure(
+          'DIGEST_MISMATCH',
+          'The Draft content digest does not match its review submission.',
+        );
+      }
+      const approval = await dependencies.approvals.findById(request.approvalId);
+      if (!approval) {
+        draftFailure('NOT_FOUND', 'The Review Approval was not found.');
+      }
+      if (approval.purpose !== 'KNOWLEDGE_CANONICAL_CHANGE') {
+        draftFailure(
+          'UNSUPPORTED_OPERATION',
+          'The Approval is not a Canonical change approval.',
+        );
+      }
+      // A replayed COMPLETED command may observe the Approval already
+      // CONSUMED by this commit; the outcome is resolved, not re-executed.
+      if (input.mode !== 'RESOLVE') {
+        if (approval.status !== 'ACTIVE') {
+          draftFailure('REVIEW_APPROVAL_EXPIRED', 'The Approval is not ACTIVE.');
+        }
+        if (Date.parse(approval.expiresAt) <= Date.parse(now)) {
+          draftFailure('REVIEW_APPROVAL_EXPIRED', 'The Approval has expired.');
+        }
+      }
+      if (approval.projectId !== scope.activeProjectId) {
+        draftFailure('PROJECT_BINDING_CONFLICT', 'The Approval is bound to another Project.');
+      }
+      if (
+        approval.accessRevision !== scope.accessRevision ||
+        approval.policyContextRevision !== scope.policyContextRevision
+      ) {
+        draftFailure('STALE', 'The Approval access or policy revision is stale.');
+      }
+      if (approval.targetId !== draft.draftId) {
+        draftFailure('PROJECT_BINDING_CONFLICT', 'The Approval does not reference this Draft.');
+      }
+      if (approval.targetRevision !== String(draft.revision)) {
+        draftFailure('DRAFT_REVISION_CONFLICT', 'The Approval references a different Draft revision.');
+      }
+      if (approval.targetDigest !== submission.contentDigest) {
+        draftFailure('DIGEST_MISMATCH', 'The Approval references different Draft content.');
+      }
+      if (
+        reviewApprovalManifestDigest({
+          approvedItemIds: approval.approvedItemIds,
+          reviewContextId: approval.reviewContextId,
+          contextRevision: approval.contextRevision,
+          targetRevision: approval.targetRevision,
+          targetDigest: approval.targetDigest,
+          purpose: approval.purpose,
+        }) !== approval.approvedManifestDigest
+      ) {
+        draftFailure('DIGEST_MISMATCH', 'The Approval binding digest is inconsistent.');
+      }
+      const canonicalSnapshot = await dependencies.canonical.getSnapshot(scope.activeProjectId);
+      if (input.mode !== 'RESOLVE') {
+        if (
+          canonicalSnapshot.version !== draft.base.canonicalVersion ||
+          canonicalSnapshot.digest !== draft.base.canonicalSnapshotDigest
+        ) {
+          draftFailure('STALE_APPROVAL', 'The Canonical snapshot changed after approval.');
+        }
+      }
+      return { draft, approval, canonicalSnapshot };
+    };
+    const buildWrite = (input: {
+      readonly draft: FrontendKnowledgeDraftChangeSetV1;
+      readonly approval: ReviewApprovalV1;
+      readonly canonicalSnapshot: CanonicalSnapshot;
+      readonly now: string;
+    }): FrontendCanonicalCommitWrite => {
+      const claimable = approvedClaimableOperation({
+        operations: input.draft.operations,
+        approvedItemIds: input.approval.approvedItemIds,
+      });
+      const authority: FrontendCanonicalAuthorityV1 = {
+        kind: 'FRONTEND_REVIEW_APPROVAL',
+        approvalId: input.approval.approvalId,
+        approvalBindingDigest: input.approval.approvedManifestDigest,
+        reviewContextId: input.approval.reviewContextId,
+        contextRevision: input.approval.contextRevision,
+        draftId: input.draft.draftId,
+        draftRevision: input.draft.revision,
+        draftContentDigest: input.draft.reviewSubmission!.contentDigest,
+        approvedItemIds: [...input.approval.approvedItemIds],
+      };
+      const actor: Actor = { type: 'user', id: scope.principalId };
+      const base = {
+        projectId: scope.activeProjectId,
+        expectedCanonicalVersion: input.canonicalSnapshot.version,
+        snapshotDigest: input.canonicalSnapshot.digest,
+        authority,
+        reason: `Knowledge Draft ${input.draft.draftId} committed via Review Approval ${input.approval.approvalId}.`,
+        actor,
+        committedAt: input.now,
+      };
+      // canonical.commits.commit_id is a uuid column; the derived revision,
+      // history and outbox identities follow the legacy `prefix:<commitId>`
+      // convention (text columns). The commit id is DETERMINISTIC so replay and
+      // crash recovery rebuild the identical write.
+      const commitId = deterministicCanonicalCommitId(
+        input.approval.approvalId,
+        input.draft.draftId,
+      );
+      const claimOperation =
+        claimable.claimReviewItemId === undefined
+          ? undefined
+          : operationByReviewItemId(input.draft.operations, claimable.claimReviewItemId);
+      if (claimOperation?.kind === 'CLAIM_ADD') {
+        const evidence = claimOperation.evidenceReferences[0];
+        return {
+          ...base,
+          commitId,
+          revisionId: `revision:${commitId}`,
+          historyEventId: `history:${commitId}`,
+          outboxId: `outbox:${commitId}`,
+          operation: 'ADD_CLAIM',
+          claimId: claimOperation.target.targetId ?? `claim:${claimOperation.operationId}`,
+          claimText: claimOperation.after.statement,
+          sourceVersionId: evidence?.sourceVersionId ?? input.draft.resourceId,
+          evidenceIds: claimOperation.evidenceReferences.map((ref) => ref.evidenceSpanId),
+          accessScope: [...scope.accessScope],
+          sensitivity: scope.sensitivityClearance,
+        };
+      }
+      return {
+        ...base,
+        commitId,
+        revisionId: `revision:${commitId}`,
+        historyEventId: `history:${commitId}`,
+        outboxId: `outbox:${commitId}`,
+        operation: 'NO_OP',
+      };
+    };
+    return this.runCommand<CommitKnowledgeDraftResultV1>({
+      scope,
+      commandType: FRONTEND_KNOWLEDGE_DRAFT_COMMAND_TYPES.commitFrontendDraft,
+      request,
+      commandSemanticDigest,
+      resourceProjectId: scope.activeProjectId,
+      actionOnRepositories: async (repositories) => {
+        const dependencies = this.commitDependencies!;
+        const now = new Date().toISOString();
+        const current = await repositories.drafts.findById(scope.activeProjectId, request.draftId);
+        if (!current) {
+          draftFailure('DRAFT_NOT_FOUND', 'The Draft was not found.');
+        }
+        const { draft, approval, canonicalSnapshot } = await revalidated({ draft: current });
+        const write = buildWrite({ draft, approval, canonicalSnapshot, now });
+        // Order per §3.2: durable Canonical commit → Approval CONSUMED → the
+        // runCommand envelope completes the ledger command afterwards.
+        const result = await dependencies.canonical.commitFrontendDraft(write);
+        await dependencies.approvals.consumeApproval(
+          approval.approvalId,
+          result.commitId,
+          now,
+          scope.principalId,
+        );
+        return commitResult({ canonicalCommitId: result.commitId });
+      },
+      onReplay: async () => {
+        // Ledger says COMPLETED: resolve the same commit identity without
+        // re-executing side effects (the Approval may already be CONSUMED).
+        const dependencies = this.commitDependencies!;
+        const now = new Date().toISOString();
+        const draft = await this.draftById(scope.activeProjectId, request.draftId);
+        if (!draft) {
+          draftFailure('DRAFT_NOT_FOUND', 'The Draft was not found.');
+        }
+        const { approval, canonicalSnapshot } = await revalidated({ draft, mode: 'RESOLVE' });
+        const write = buildWrite({ draft, approval, canonicalSnapshot, now });
+        return commitResult({ canonicalCommitId: write.commitId });
+      },
+      onReplayRecovery: async (originalCommandId, repositories) => {
+        // Crash between the durable commit and the Approval consume: the
+        // retry re-issues the SAME write. commitFrontendDraft is replay-
+        // idempotent (same commitId + authority → returns the existing commit,
+        // makes no new commit) and consumeApproval is idempotent for the same
+        // canonicalCommitId; the ledger then completes the ORIGINAL command.
+        const dependencies = this.commitDependencies!;
+        const now = new Date().toISOString();
+        const current = await repositories.drafts.findById(
+          scope.activeProjectId,
+          request.draftId,
+        );
+        if (!current) {
+          draftFailure('DRAFT_NOT_FOUND', 'The Draft was not found.');
+        }
+        const { draft, approval, canonicalSnapshot } = await revalidated({ draft: current });
+        const write = buildWrite({ draft, approval, canonicalSnapshot, now });
+        const result = await dependencies.canonical.commitFrontendDraft(write);
+        await dependencies.approvals.consumeApproval(
+          approval.approvalId,
+          result.commitId,
+          now,
+          scope.principalId,
+        );
+        return commitResult({ canonicalCommitId: result.commitId });
+      },
+      producedResources: (result) => [
+        {
+          resourceKind: FRONTEND_KNOWLEDGE_DRAFT_RESOURCE_KIND.draft,
+          resourceId: request.draftId,
+          resourceRevision: String(result.commitIds[0] ?? request.draftId),
+        },
+      ],
+    });
+  }
+
   async abandonDraft(
     scope: FrontendKnowledgeDraftCommandScopeV1,
     request: AbandonKnowledgeDraftRequestV1,
@@ -1061,6 +1463,34 @@ export class FrontendKnowledgeDraftProductCoordinator {
           fromLedgerCode(outcome.rejection?.code ?? 'REVISION_CONFLICT'),
           outcome.rejection?.message ?? 'The Draft command was rejected.',
         );
+      }
+      // ACCEPTED or OUTCOME_UNKNOWN. FE-P5-XP Correction B: a commit command
+      // that was interrupted after its durable side effects may recover
+      // idempotently and complete the ORIGINAL command (no new command).
+      if (input.onReplayRecovery) {
+        try {
+          return await this.boundary.transactionWithHandle(async (handle) => {
+            const recovered = await input.onReplayRecovery!(outcome.commandId, handle.repositories);
+            await this.commandGateway.completeInTransaction(handle.raw, {
+              commandId: outcome.commandId,
+              producedResources: input.producedResources(recovered),
+              completedAt: new Date().toISOString(),
+            });
+            return recovered;
+          });
+        } catch (error) {
+          try {
+            await this.commandGateway.markOutcomeUnknown({
+              commandId: outcome.commandId,
+              message:
+                error instanceof Error ? error.message : 'Draft command recovery is unresolved.',
+              completedAt: new Date().toISOString(),
+            });
+          } catch {
+            // Preserve the original recovery error.
+          }
+          throw error;
+        }
       }
       // ACCEPTED or OUTCOME_UNKNOWN: resolve through the original identity.
       draftFailure(

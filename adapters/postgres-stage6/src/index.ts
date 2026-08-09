@@ -13,6 +13,7 @@ import {
   type CanonicalOutboxRecord,
   type CanonicalRevision,
   type CanonicalSnapshot,
+  type FrontendCanonicalCommitWrite,
   ShotgunError,
 } from '../../../packages/contracts/src/index.js';
 
@@ -191,6 +192,8 @@ export class PostgresCanonicalKnowledgeRepository
           sourceVersionId: write.manifest.sourceVersionId,
           evidenceIds: [...write.manifest.evidenceIds],
           createdFromManifestId: write.manifest.manifestId,
+          authorityId: null,
+          authorityDigest: null,
           accessScope: [...write.manifest.accessScope],
           sensitivity: write.manifest.sensitivity,
           createdAt: write.committedAt,
@@ -224,6 +227,8 @@ export class PostgresCanonicalKnowledgeRepository
         manifestId: write.manifest.manifestId,
         manifestDigest: write.manifest.manifestDigest,
         changeSetId: write.manifest.changeSetId,
+        authorityId: null,
+        authorityDigest: null,
         operation: write.manifest.operation,
         status: claim ? 'COMMITTED' : 'NO_OP',
         beforeVersion: state.version,
@@ -350,6 +355,256 @@ export class PostgresCanonicalKnowledgeRepository
          SET version = $2, snapshot_digest = $3, updated_at = $4
          WHERE project_id = $1`,
         [write.manifest.projectId, afterVersion, afterDigest, write.committedAt],
+      );
+      await client.query('COMMIT');
+      return result;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async commitFrontendDraft(write: FrontendCanonicalCommitWrite): Promise<CanonicalCommitResult> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `INSERT INTO canonical.project_state (project_id, version, snapshot_digest, updated_at)
+         VALUES ($1, 0, $2, '1970-01-01T00:00:00.000Z')
+         ON CONFLICT (project_id) DO NOTHING`,
+        [write.projectId, canonicalSnapshotDigest(write.projectId, 0, [])],
+      );
+      const stateResult = await client.query<StateRow>(
+        `SELECT version, snapshot_digest, updated_at
+         FROM canonical.project_state
+         WHERE project_id = $1
+         FOR UPDATE`,
+        [write.projectId],
+      );
+      const existing = await client.query<CommitRow>(
+        `SELECT result_json
+         FROM canonical.commits
+         WHERE commit_id = $1`,
+        [write.commitId],
+      );
+      if (existing.rows[0]) {
+        const result = existing.rows[0].result_json;
+        if (
+          result.projectId !== write.projectId ||
+          result.authorityId !== write.authority.approvalId
+        ) {
+          throw new ShotgunError({
+            code: 'CONFLICT',
+            safeMessage: 'The Canonical Commit id was reused with different frontend authority.',
+            module: 'postgres-stage6',
+            operation: 'commit-frontend-draft',
+          });
+        }
+        await client.query('COMMIT');
+        return result;
+      }
+
+      // One Frontend Approval -> at most one Canonical commit.
+      const existingByApproval = await client.query<CommitRow>(
+        `SELECT result_json
+         FROM canonical.commits
+         WHERE authority_kind = 'FRONTEND_REVIEW_APPROVAL'
+           AND authority_id = $1
+           AND project_id = $2
+           AND commit_id <> $3`,
+        [write.authority.approvalId, write.projectId, write.commitId],
+      );
+      if (existingByApproval.rows[0]) {
+        throw new ShotgunError({
+          code: 'CONFLICT',
+          safeMessage: 'A Canonical Commit for this approval already exists.',
+          module: 'postgres-stage6',
+          operation: 'commit-frontend-draft',
+        });
+      }
+
+      const state = stateResult.rows[0]!;
+      if (
+        state.version !== write.expectedCanonicalVersion ||
+        state.snapshot_digest !== write.snapshotDigest
+      ) {
+        throw new ShotgunError({
+          code: 'STALE_APPROVAL',
+          safeMessage: 'The Canonical Snapshot changed after approval.',
+          module: 'postgres-stage6',
+          operation: 'commit-frontend-draft',
+        });
+      }
+
+      let claim: CanonicalClaim | undefined;
+      if (write.operation === 'ADD_CLAIM') {
+        claim = {
+          claimId: write.claimId,
+          projectId: write.projectId,
+          revisionNumber: 1,
+          claimText: write.claimText,
+          sourceVersionId: write.sourceVersionId,
+          evidenceIds: [...write.evidenceIds],
+          createdFromManifestId: null,
+          authorityId: write.authority.approvalId,
+          authorityDigest: write.authority.approvalBindingDigest,
+          accessScope: [...write.accessScope],
+          sensitivity: write.sensitivity,
+          createdAt: write.committedAt,
+        };
+        await client.query(
+          `INSERT INTO canonical.claims (
+             claim_id, project_id, source_version_id, manifest_id, claim_json, created_at,
+             authority_id, authority_digest
+           )
+           VALUES ($1, $2, $3, NULL, $4, $5, $6, $7)`,
+          [
+            claim.claimId,
+            claim.projectId,
+            claim.sourceVersionId,
+            JSON.stringify(claim),
+            claim.createdAt,
+            claim.authorityId,
+            claim.authorityDigest,
+          ],
+        );
+      }
+
+      const afterVersion = claim ? state.version + 1 : state.version;
+      const afterClaims = snapshotClaims(await loadClaims(client, write.projectId));
+      const afterDigest = canonicalSnapshotDigest(write.projectId, afterVersion, afterClaims);
+      const result: CanonicalCommitResult = {
+        commitId: write.commitId,
+        projectId: write.projectId,
+        manifestId: null,
+        manifestDigest: null,
+        changeSetId: null,
+        authorityId: write.authority.approvalId,
+        authorityDigest: write.authority.approvalBindingDigest,
+        operation: write.operation,
+        status: claim ? 'COMMITTED' : 'NO_OP',
+        beforeVersion: state.version,
+        afterVersion,
+        snapshotDigest: afterDigest,
+        claimId: claim?.claimId,
+        revisionId: write.revisionId,
+        historyEventId: write.historyEventId,
+        outboxId: write.outboxId,
+        committedAt: write.committedAt,
+      };
+      const revision: CanonicalRevision = {
+        revisionId: write.revisionId,
+        projectId: write.projectId,
+        commitId: write.commitId,
+        manifestId: null,
+        operation: write.operation,
+        beforeVersion: state.version,
+        afterVersion,
+        claimId: claim?.claimId,
+        reason: write.reason,
+        actor: write.actor,
+        createdAt: write.committedAt,
+      };
+      const history: CanonicalHistoryEvent = {
+        historyEventId: write.historyEventId,
+        projectId: write.projectId,
+        commitId: write.commitId,
+        manifestId: null,
+        changeSetId: null,
+        eventType: claim ? 'CANONICAL_CLAIM_ADDED' : 'CHANGESET_NO_OP',
+        beforeVersion: state.version,
+        afterVersion,
+        claimId: claim?.claimId,
+        reason: write.reason,
+        actor: write.actor,
+        createdAt: write.committedAt,
+      };
+      const outbox: CanonicalOutboxRecord = {
+        outboxId: write.outboxId,
+        projectId: write.projectId,
+        aggregateId: write.commitId,
+        eventType: 'CanonicalCommitted',
+        payload: {
+          commitId: write.commitId,
+          manifestId: null,
+          changeSetId: null,
+          operation: write.operation,
+          status: result.status,
+          canonicalVersion: afterVersion,
+          snapshotDigest: afterDigest,
+          claimId: claim?.claimId,
+          actorId: write.actor.id,
+          accessScope: claim ? [...claim.accessScope] : [],
+          sensitivity: claim ? claim.sensitivity : 'public',
+        },
+        status: 'pending',
+        attempts: 0,
+        availableAt: write.committedAt,
+      };
+
+      await client.query(
+        `INSERT INTO canonical.commits (
+           commit_id, project_id, manifest_id, manifest_digest, change_set_id,
+           result_json, committed_at, authority_kind, authority_id, authority_digest
+         )
+         VALUES ($1, $2, NULL, NULL, NULL, $3, $4, 'FRONTEND_REVIEW_APPROVAL', $5, $6)`,
+        [
+          result.commitId,
+          result.projectId,
+          JSON.stringify(result),
+          result.committedAt,
+          result.authorityId,
+          result.authorityDigest,
+        ],
+      );
+      await client.query(
+        `INSERT INTO canonical.revisions (
+           revision_id, project_id, commit_id, revision_json, created_at
+         )
+         VALUES ($1, $2, $3, $4, $5)`,
+        [
+          revision.revisionId,
+          revision.projectId,
+          revision.commitId,
+          JSON.stringify(revision),
+          revision.createdAt,
+        ],
+      );
+      await client.query(
+        `INSERT INTO canonical.history_events (
+           history_event_id, project_id, commit_id, event_json, created_at
+         )
+         VALUES ($1, $2, $3, $4, $5)`,
+        [
+          history.historyEventId,
+          history.projectId,
+          history.commitId,
+          JSON.stringify(history),
+          history.createdAt,
+        ],
+      );
+      await client.query(
+        `INSERT INTO canonical.outbox (
+           outbox_id, project_id, aggregate_id, event_type, payload_json,
+           status, attempts, available_at
+         )
+         VALUES ($1, $2, $3, $4, $5, 'pending', 0, $6)`,
+        [
+          outbox.outboxId,
+          outbox.projectId,
+          outbox.aggregateId,
+          outbox.eventType,
+          JSON.stringify(outbox.payload),
+          outbox.availableAt,
+        ],
+      );
+      await client.query(
+        `UPDATE canonical.project_state
+         SET version = $2, snapshot_digest = $3, updated_at = $4
+         WHERE project_id = $1`,
+        [write.projectId, afterVersion, afterDigest, write.committedAt],
       );
       await client.query('COMMIT');
       return result;

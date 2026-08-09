@@ -1253,12 +1253,36 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   const frontendKnowledgeDraftTargetResolver =
     options.frontendKnowledgeDraftTargetResolver ??
     new InMemoryFrontendKnowledgeDraftTargetResolver();
+  // FE-P5-XP Correction B: the Approval->Canonical commit consumer shares the
+  // Review Approval store that issues KNOWLEDGE_CANONICAL_CHANGE Approvals and
+  // the Canonical repository that owns commitFrontendDraft. The review store
+  // exposes its Approval port transaction-scoped; the commit consumer reads
+  // and consumes through its transaction boundary.
+  const frontendReviewStore = new InMemoryFrontendReviewStore();
   const frontendKnowledgeDraftCoordinator =
     options.frontendKnowledgeDraftCoordinator ??
     new FrontendKnowledgeDraftProductCoordinator(
       frontendKnowledgeDraftRepository,
       frontendCommandGateway,
       frontendKnowledgeDraftTargetResolver,
+      {
+        approvals: {
+          findById: async (approvalId) =>
+            frontendReviewStore.transaction((repositories) =>
+              repositories.approvals.findById(approvalId),
+            ),
+          consumeApproval: async (approvalId, canonicalCommitId, consumedAt, consumedBy) =>
+            frontendReviewStore.transaction((repositories) =>
+              repositories.approvals.consumeApproval(
+                approvalId,
+                canonicalCommitId,
+                consumedAt,
+                consumedBy,
+              ),
+            ),
+        },
+        canonical: canonicalKnowledgeRepository,
+      },
     );
   const graphReadDomain =
     options.graphReadDomain ??
@@ -1268,7 +1292,6 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       snapshotContextStore: createInMemorySnapshotContextStore(),
       healthStore: createInMemoryHealthStore(),
     });
-  const frontendReviewStore = new InMemoryFrontendReviewStore();
   // FE-P5-S2 WP3/WP5: Reversal draft creation is a change-set-review owned
   // capability (server-derived current capability + principal; the browser
   // only names the historical source revision). Round 4 Option 1: every

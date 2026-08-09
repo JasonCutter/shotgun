@@ -122,7 +122,7 @@ export class CanonicalHistoryAdapter implements HistoryAdapterPort {
         resourceProjectId: projectId,
         domainKind: CANONICAL_DOMAIN_KIND,
         domainResourceKind,
-        domainResourceId: event.claimId ?? event.changeSetId,
+        domainResourceId: event.claimId ?? event.changeSetId ?? event.commitId,
         sourceEventKind: event.eventType,
         sourceEventId: event.historyEventId,
         occurredAt: event.createdAt,

@@ -453,7 +453,7 @@ const documentFor = (
 const loadDocument = async (
   context: HandlerContext,
   claimId: string,
-  commitId: string,
+  commitId: string | null,
   canonicalVersion: number,
   projectedAt: string,
 ): Promise<SearchProjectionDocument> => {
@@ -464,13 +464,43 @@ const loadDocument = async (
       payload: { claimId },
     })
   ).payload;
-  const commit = (
-    await context.query<{ commitId: string }, CanonicalCommitResult>({
-      messageType: 'GetCanonicalCommit',
-      schemaVersion: '1.0.0',
-      payload: { commitId },
-    })
-  ).payload;
+  // FE-P5-XP Correction B: legacy claims carry a manifest identity that doubles
+  // as commit id; frontend claims do not (createdFromManifestId is null), so the
+  // commit is resolved through Canonical history by claimId.
+  let commit: CanonicalCommitResult;
+  if (commitId !== null) {
+    commit = (
+      await context.query<{ commitId: string }, CanonicalCommitResult>({
+        messageType: 'GetCanonicalCommit',
+        schemaVersion: '1.0.0',
+        payload: { commitId },
+      })
+    ).payload;
+  } else {
+    const history = (
+      await context.query<Record<string, never>, { items: readonly CanonicalHistoryEvent[] }>({
+        messageType: 'ListCanonicalHistory',
+        schemaVersion: '1.0.0',
+        payload: {},
+      })
+    ).payload.items;
+    const event = history.find((entry) => entry.claimId === claimId);
+    if (!event) {
+      throw new ShotgunError({
+        code: 'NOT_FOUND',
+        safeMessage: 'The Canonical claim has no commit lineage.',
+        module: 'projection-search',
+        operation: 'rebuild-search-projection',
+      });
+    }
+    commit = (
+      await context.query<{ commitId: string }, CanonicalCommitResult>({
+        messageType: 'GetCanonicalCommit',
+        schemaVersion: '1.0.0',
+        payload: { commitId: event.commitId },
+      })
+    ).payload;
+  }
   return documentFor(claim, commit, canonicalVersion, projectedAt);
 };
 
@@ -544,8 +574,8 @@ const canonicalWorkspaceCandidate = async (
     sourceVersionId: item.sourceVersionId,
     evidenceIds: item.evidenceIds,
     commitId: item.commitId,
-    manifestId: commit.manifestId,
-    changeSetId: commit.changeSetId,
+    manifestId: commit.manifestId ?? undefined,
+    changeSetId: commit.changeSetId ?? undefined,
   };
   return {
     candidate: {

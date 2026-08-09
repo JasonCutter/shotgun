@@ -11,6 +11,7 @@ import {
   type CanonicalOutboxRecord,
   type CanonicalRevision,
   type CanonicalSnapshot,
+  type FrontendCanonicalCommitWrite,
   stableJson,
   ShotgunError,
 } from '../../../packages/contracts/src/index.js';
@@ -109,6 +110,8 @@ export class InMemoryCanonicalKnowledgeRepository
             sourceVersionId: write.manifest.sourceVersionId,
             evidenceIds: [...write.manifest.evidenceIds],
             createdFromManifestId: write.manifest.manifestId,
+            authorityId: null,
+            authorityDigest: null,
             accessScope: [...write.manifest.accessScope],
             sensitivity: write.manifest.sensitivity,
             createdAt: write.committedAt,
@@ -137,6 +140,8 @@ export class InMemoryCanonicalKnowledgeRepository
       manifestId: write.manifest.manifestId,
       manifestDigest: write.manifest.manifestDigest,
       changeSetId: write.manifest.changeSetId,
+      authorityId: null,
+      authorityDigest: null,
       operation: write.manifest.operation,
       status: claim ? 'COMMITTED' : 'NO_OP',
       beforeVersion: before.version,
@@ -216,6 +221,181 @@ export class InMemoryCanonicalKnowledgeRepository
       this.claims.set(claim.claimId, clone(claim));
     }
     this.states.set(write.manifest.projectId, {
+      version: afterVersion,
+      digest: afterDigest,
+      updatedAt: write.committedAt,
+    });
+    this.commits.set(write.commitId, clone(result));
+    this.revisions.set(write.revisionId, clone(revision));
+    this.history.set(write.historyEventId, clone(history));
+    this.outbox.set(write.outboxId, clone(outbox));
+    return clone(result);
+  }
+
+  async commitFrontendDraft(write: FrontendCanonicalCommitWrite): Promise<CanonicalCommitResult> {
+    // Replay guard: same commitId must carry the same authority.
+    const existing = this.commits.get(write.commitId);
+    if (existing) {
+      if (
+        existing.projectId !== write.projectId ||
+        existing.authorityId !== write.authority.approvalId
+      ) {
+        throw new ShotgunError({
+          code: 'CONFLICT',
+          safeMessage: 'The Canonical Commit id was reused with different frontend authority.',
+          module: 'stage6-in-memory',
+          operation: 'commit-frontend-draft',
+        });
+      }
+      return clone(existing);
+    }
+
+    // One approval -> at most one canonical commit (in-memory mirror of DB UNIQUE).
+    const existingByApproval = [...this.commits.values()].find(
+      (commit) =>
+        commit.authorityId === write.authority.approvalId &&
+        commit.projectId === write.projectId &&
+        commit.commitId !== write.commitId,
+    );
+    if (existingByApproval) {
+      throw new ShotgunError({
+        code: 'CONFLICT',
+        safeMessage: 'A Canonical Commit for this approval already exists.',
+        module: 'stage6-in-memory',
+        operation: 'commit-frontend-draft',
+      });
+    }
+
+    const before = await this.getSnapshot(write.projectId);
+    if (
+      before.version !== write.expectedCanonicalVersion ||
+      before.digest !== write.snapshotDigest
+    ) {
+      throw new ShotgunError({
+        code: 'STALE_APPROVAL',
+        safeMessage: 'The Canonical Snapshot changed after approval.',
+        module: 'stage6-in-memory',
+        operation: 'commit-frontend-draft',
+      });
+    }
+
+    const claim: CanonicalClaim | undefined =
+      write.operation === 'ADD_CLAIM'
+        ? {
+            claimId: write.claimId,
+            projectId: write.projectId,
+            revisionNumber: 1,
+            claimText: write.claimText,
+            sourceVersionId: write.sourceVersionId,
+            evidenceIds: [...write.evidenceIds],
+            createdFromManifestId: null,
+            authorityId: write.authority.approvalId,
+            authorityDigest: write.authority.approvalBindingDigest,
+            accessScope: [...write.accessScope],
+            sensitivity: write.sensitivity,
+            createdAt: write.committedAt,
+          }
+        : undefined;
+    const afterClaims = claim
+      ? [
+          ...before.claims,
+          {
+            claimId: claim.claimId,
+            text: claim.claimText,
+            revisionNumber: claim.revisionNumber,
+            evidenceIds: claim.evidenceIds,
+          },
+        ]
+      : before.claims;
+    const afterVersion = claim ? before.version + 1 : before.version;
+    const afterDigest = canonicalSnapshotDigest(write.projectId, afterVersion, afterClaims);
+    const result: CanonicalCommitResult = {
+      commitId: write.commitId,
+      projectId: write.projectId,
+      manifestId: null,
+      manifestDigest: null,
+      changeSetId: null,
+      authorityId: write.authority.approvalId,
+      authorityDigest: write.authority.approvalBindingDigest,
+      operation: write.operation,
+      status: claim ? 'COMMITTED' : 'NO_OP',
+      beforeVersion: before.version,
+      afterVersion,
+      snapshotDigest: afterDigest,
+      claimId: claim?.claimId,
+      revisionId: write.revisionId,
+      historyEventId: write.historyEventId,
+      outboxId: write.outboxId,
+      committedAt: write.committedAt,
+    };
+    const revision: CanonicalRevision = {
+      revisionId: write.revisionId,
+      projectId: write.projectId,
+      commitId: write.commitId,
+      manifestId: null,
+      operation: write.operation,
+      beforeVersion: before.version,
+      afterVersion,
+      claimId: claim?.claimId,
+      reason: write.reason,
+      actor: write.actor,
+      createdAt: write.committedAt,
+    };
+    const history: CanonicalHistoryEvent = {
+      historyEventId: write.historyEventId,
+      projectId: write.projectId,
+      commitId: write.commitId,
+      manifestId: null,
+      changeSetId: null,
+      eventType: claim ? 'CANONICAL_CLAIM_ADDED' : 'CHANGESET_NO_OP',
+      beforeVersion: before.version,
+      afterVersion,
+      claimId: claim?.claimId,
+      reason: write.reason,
+      actor: write.actor,
+      createdAt: write.committedAt,
+    };
+    const outbox: CanonicalOutboxRecord = {
+      outboxId: write.outboxId,
+      projectId: write.projectId,
+      aggregateId: write.commitId,
+      eventType: 'CanonicalCommitted',
+      payload: {
+        commitId: write.commitId,
+        manifestId: null,
+        changeSetId: null,
+        operation: write.operation,
+        status: result.status,
+        canonicalVersion: afterVersion,
+        snapshotDigest: afterDigest,
+        claimId: claim?.claimId,
+        actorId: write.actor.id,
+        accessScope: claim ? [...claim.accessScope] : [],
+        sensitivity: claim ? claim.sensitivity : 'public',
+      },
+      status: 'pending',
+      attempts: 0,
+      availableAt: write.committedAt,
+    };
+
+    if (
+      this.revisions.has(write.revisionId) ||
+      this.history.has(write.historyEventId) ||
+      this.outbox.has(write.outboxId) ||
+      (claim && this.claims.has(claim.claimId))
+    ) {
+      throw new ShotgunError({
+        code: 'CONFLICT',
+        safeMessage: 'A Canonical append-only identity already exists.',
+        module: 'stage6-in-memory',
+        operation: 'commit-frontend-draft',
+      });
+    }
+
+    if (claim) {
+      this.claims.set(claim.claimId, clone(claim));
+    }
+    this.states.set(write.projectId, {
       version: afterVersion,
       digest: afterDigest,
       updatedAt: write.committedAt,

@@ -381,6 +381,34 @@ export type ReviewApprovalV1 = {
   invalidationReason?: string;
 };
 
+/**
+ * Shared server-side digest for a Review Approval binding. Cross-Phase
+ * Correction B reuses this digest to revalidate an Approval before a Frontend
+ * Canonical commit (defined in contracts so the Review domain and the
+ * Knowledge Draft commit consumer compute identical values).
+ */
+export const reviewApprovalManifestDigest = (input: {
+  readonly approvedItemIds: readonly string[];
+  readonly reviewContextId: string;
+  readonly contextRevision: number;
+  readonly targetRevision: string;
+  readonly targetDigest: string;
+  readonly purpose: ApprovalPurposeV1;
+}): string =>
+  sha256Text(
+    stableJson({
+      domain: 'frontend-review',
+      version: FRONTEND_REVIEW_DOMAIN_VERSION,
+      kind: 'approval-manifest',
+      approvedItemIds: input.approvedItemIds,
+      reviewContextId: input.reviewContextId,
+      contextRevision: input.contextRevision,
+      targetRevision: input.targetRevision,
+      targetDigest: input.targetDigest,
+      purpose: input.purpose,
+    }),
+  );
+
 // ---------------------------------------------------------------------------
 // Review Context revision
 // ---------------------------------------------------------------------------

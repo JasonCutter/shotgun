@@ -241,3 +241,9 @@ Local Launch / Backup / Final Local Acceptance: separate later stages
     (Correction A IMPLEMENTED/PENDING RATIFICATION; Correction B CONFIRMED
     GAP/PENDING CONTRACT + USER APPROVAL). Current gate: USER amendment
     approval.
+- 2026-08-09 — **USER approval of the GPT-confirmed Contract Delta.**
+  - Amendment §3.2 frozen contract (migration 034 + `FrontendCanonicalCommitWrite`
+    + `consumeApproval(canonicalCommitId)`) explicitly approved by USER ("승인").
+  - Correction B implementation AUTHORIZED: migration 034 + `commitFrontendDraft`
+    (in-memory/Postgres) + `POST /product-api/frontend/knowledge/drafts/commit`
+    + consume + focused tests. WP-XP2 remains PAUSED until Correction B COMPLETE.

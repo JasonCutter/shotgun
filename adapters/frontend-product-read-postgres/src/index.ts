@@ -942,8 +942,8 @@ export class PostgresKnowledgeWorkspaceProjection implements KnowledgeWorkspaceP
           sourceVersionId: claim.sourceVersionId,
           evidenceIds: claim.evidenceIds,
           commitId: commit.commitId,
-          manifestId: commit.manifestId,
-          changeSetId: commit.changeSetId,
+          manifestId: commit.manifestId ?? undefined,
+          changeSetId: commit.changeSetId ?? undefined,
         },
         ...(evidenceTargets.length === 0 ? {} : { evidenceTargets }),
       });

@@ -183,8 +183,9 @@ Amendment: PROPOSED / PENDING USER APPROVAL
 → GPT contract delta review (2026-08-09)  ✅ — Correction B contract direction ACCEPTED,
   commitFrontendDraft APPROVED, legacy coercion FORBIDDEN, canonical provenance schema
   evolution REQUIRED, "no migration" clause MUST_BE_AMENDED
-→ ★ CONTRACT DELTA (migration 034 + FrontendCanonicalCommitWrite) — PENDING USER APPROVAL
-→ USER approval → Correction B implementation (bounded, one at a time)
+→ ★ CONTRACT DELTA (migration 034 + FrontendCanonicalCommitWrite) — APPROVED BY USER
+  (2026-08-09, "승인") ✅
+→ Correction B implementation (bounded, one at a time) — IN PROGRESS
 → focused verification + exact-head automatic CI
 → GPT review ACCEPTED
 → WP-XP2 resumes (journey + XP-I01~07)
@@ -203,3 +204,6 @@ Amendment: PROPOSED / PENDING USER APPROVAL
   exact write shape CHANGES_REQUIRED (small normalization → frozen
   `FrontendCanonicalAuthorityV1`/`FrontendCanonicalCommitWrite`); WP-XP2 PAUSED UNTIL
   CORRECTION B COMPLETE.
+- 2026-08-09 — **USER explicit approval ("승인") of the GPT-confirmed CONTRACT DELTA**
+  (migration 034 + `FrontendCanonicalCommitWrite` + `consumeApproval(canonicalCommitId)`
+  semantics). Correction B implementation AUTHORIZED (section 5 ✅).

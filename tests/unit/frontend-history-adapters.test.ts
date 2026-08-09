@@ -38,6 +38,9 @@ const canonicalRepo = (
   commit: async () => {
     throw new Error('unused');
   },
+  commitFrontendDraft: async () => {
+    throw new Error('unused');
+  },
   findClaim: async () => undefined,
   findCommit: async () => undefined,
   findRevision: async () => undefined,

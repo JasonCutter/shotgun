@@ -28,6 +28,7 @@ import {
   claimCandidateDigest,
   type CommandEnvelope,
   type EventEnvelope,
+  type FrontendCanonicalCommitWrite,
   type QueryEnvelope,
   ShotgunError,
   stableJson,
@@ -60,6 +61,13 @@ export type CanonicalKnowledgeRepositoryPort = {
   listProjectIds(): Promise<readonly string[]>;
   getSnapshot(projectId: string): Promise<CanonicalSnapshot>;
   commit(write: CanonicalCommitWrite): Promise<CanonicalCommitResult>;
+  /**
+   * FE-P5-XP Correction B: commit a Frontend Review Approval into Canonical.
+   * Unlike `commit`, this path carries `FrontendCanonicalAuthorityV1` provenance
+   * (never a fabricated legacy manifest) and is guarded by
+   * UNIQUE(authority_kind='FRONTEND_REVIEW_APPROVAL', authority_id=approvalId).
+   */
+  commitFrontendDraft(write: FrontendCanonicalCommitWrite): Promise<CanonicalCommitResult>;
   findClaim(projectId: string, claimId: string): Promise<CanonicalClaim | undefined>;
   findCommit(projectId: string, commitId: string): Promise<CanonicalCommitResult | undefined>;
   findRevision(projectId: string, revisionId: string): Promise<CanonicalRevision | undefined>;

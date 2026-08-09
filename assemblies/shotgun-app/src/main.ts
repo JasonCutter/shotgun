@@ -37,6 +37,7 @@ import {
   PostgresPayloadStateStore,
 } from '../../../adapters/frontend-history-postgres/src/index.js';
 import { PostgresFrontendReviewRepository } from '../../../adapters/frontend-review-postgres/src/index.js';
+import { createPostgresReviewDraftSourceReader } from '../../../adapters/frontend-review-postgres/src/index.js';
 import { LucasAugmentedPlainTextAdapter } from '../../../adapters/plain-text-lucas-augmented/src/index.js';
 import { PythonDocumentFormatAdapter } from '../../../adapters/document-format-python/src/index.js';
 import {
@@ -160,6 +161,7 @@ const { server } = await createApplication({
   frontendCommandGateway: commandGateway,
   frontendKnowledgeDraftRepository: new PostgresFrontendKnowledgeDraftRepository(pool),
   frontendKnowledgeDraftTargetResolver: new PostgresFrontendKnowledgeDraftTargetResolver(pool),
+  frontendReviewDraftSourceReader: createPostgresReviewDraftSourceReader(pool),
   askCommandCoordinator,
   frontendProductReadCoordinatorFactory: (connector) =>
     new FrontendProductReadCoordinator(

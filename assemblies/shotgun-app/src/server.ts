@@ -156,6 +156,7 @@ import {
   createInMemoryReviewDraftSourceReader,
   createInMemoryReviewDiscoveryCandidateReader,
   createInMemoryReviewUserDirectiveReader,
+  type ReviewDraftSourceReader,
 } from '../../../adapters/frontend-review-in-memory/src/index.js';
 import { FakeDraftActionConnector } from '../../../adapters/action-connector-fake/src/index.js';
 import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
@@ -500,6 +501,9 @@ export type ApplicationOptions = {
   readonly frontendKnowledgeDraftTargetResolver?: FrontendKnowledgeDraftTargetResolverPort;
   readonly frontendKnowledgeDraftCoordinator?: FrontendKnowledgeDraftProductCoordinator;
   readonly frontendReviewCoordinator?: FrontendReviewProductCoordinator;
+  /** Cross-Phase: PostgreSQL-backed Review submission source for the Draft →
+   *  Review queue when the Knowledge Draft repository is not in-memory. */
+  readonly frontendReviewDraftSourceReader?: ReviewDraftSourceReader;
   readonly frontendExternalActionCoordinator?: FrontendExternalActionProductCoordinator;
   readonly graphReadDomain?: GraphReadDomain;
   readonly graphScopeResolver?: GraphScopeResolver;
@@ -1281,9 +1285,11 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     options.frontendReviewCoordinator ??
     new FrontendReviewProductCoordinator(frontendReviewStore, frontendCommandGateway, [
       new DraftReviewTargetAdapter(
-        frontendKnowledgeDraftRepository instanceof InMemoryFrontendKnowledgeDraftRepository
-          ? createInMemoryReviewDraftSourceReader(frontendKnowledgeDraftRepository)
-          : createEmptyReviewDraftSourceReader(),
+        options.frontendReviewDraftSourceReader ??
+          (frontendKnowledgeDraftRepository instanceof
+          InMemoryFrontendKnowledgeDraftRepository
+            ? createInMemoryReviewDraftSourceReader(frontendKnowledgeDraftRepository)
+            : createEmptyReviewDraftSourceReader()),
       ),
       new DiscoveryCandidateReviewTargetAdapter(createInMemoryReviewDiscoveryCandidateReader()),
       new UserDirectiveReviewTargetAdapter(createInMemoryReviewUserDirectiveReader()),

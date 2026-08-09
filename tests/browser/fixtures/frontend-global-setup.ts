@@ -6,7 +6,11 @@ import type { ViteDevServer } from 'vite';
 import { tsImport } from 'tsx/esm/api';
 
 type ViteRuntime = {
-  createServer(options: { configFile: string; root: string }): Promise<ViteDevServer>;
+  createServer(options: {
+    configFile: string;
+    root: string;
+    server?: { port?: number; strictPort?: boolean };
+  }): Promise<ViteDevServer>;
 };
 
 type BackendFixture = {

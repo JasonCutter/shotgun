@@ -32,6 +32,7 @@ import {
   type EventEnvelope,
   type EvidenceSpan,
   type QueryEnvelope,
+  type ReversalDraftChangeSetV1,
   type ReviewDecisionRecord,
   type ReviewDecisionType,
   changeSetContentDigest,
@@ -102,6 +103,21 @@ export type ChangeSetReviewRepositoryPort = {
     projectId: string,
     changeSetId: string,
   ): Promise<ApprovedChangeSetManifest | undefined>;
+  /**
+   * FE-P5-S2 WP5 (Round 2 B): owning-Domain Reversal persistence.
+   *
+   * A Reversal cannot be represented as a frozen `DraftChangeSet` (the shape
+   * requires a Comparison/Candidate that a Reversal does not have), so the
+   * owning change-set-review store persists Reversal DraftChangeSets as a
+   * dedicated additive record set (AGENTS.md §5 direct-implementation
+   * rationale: frozen `DraftChangeSet` shape + FK-bound candidate/comparison).
+   */
+  saveReversal(reversal: ReversalDraftChangeSetV1): Promise<ReversalDraftChangeSetV1>;
+  findReversalById(
+    projectId: string,
+    reversalId: string,
+  ): Promise<ReversalDraftChangeSetV1 | undefined>;
+  listReversals(projectId: string): Promise<readonly ReversalDraftChangeSetV1[]>;
 };
 
 type ComparisonCompletedPayload = {

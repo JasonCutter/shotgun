@@ -13,6 +13,7 @@ import {
   type CanonicalSnapshotClaim,
   type ComparisonResult,
   type DraftChangeSet,
+  type ReversalDraftChangeSetV1,
   stableJson,
   ShotgunError,
 } from '../../../packages/contracts/src/index.js';
@@ -116,6 +117,8 @@ export class InMemoryChangeSetReviewRepository implements ChangeSetReviewReposit
   private readonly changeSets = new Map<string, DraftChangeSet>();
   private readonly comparisons = new Map<string, string>();
   private readonly manifests = new Map<string, ApprovedChangeSetManifest>();
+  // FE-P5-S2 WP5 (Round 2 B): owning-Domain Reversal persistence.
+  private readonly reversals = new Map<string, ReversalDraftChangeSetV1>();
 
   async save(changeSet: DraftChangeSet): Promise<DraftChangeSet> {
     const comparisonKey = `${changeSet.projectId}:${changeSet.comparisonId}`;
@@ -295,6 +298,27 @@ export class InMemoryChangeSetReviewRepository implements ChangeSetReviewReposit
   ): Promise<ApprovedChangeSetManifest | undefined> {
     const manifest = this.manifests.get(changeSetId);
     return manifest?.projectId === projectId ? clone(manifest) : undefined;
+  }
+
+  // FE-P5-S2 WP5 (Round 2 B): owning-Domain Reversal persistence.
+  async saveReversal(reversal: ReversalDraftChangeSetV1): Promise<ReversalDraftChangeSetV1> {
+    this.reversals.set(reversal.reversalId, clone(reversal));
+    return clone(reversal);
+  }
+
+  async findReversalById(
+    projectId: string,
+    reversalId: string,
+  ): Promise<ReversalDraftChangeSetV1 | undefined> {
+    const result = this.reversals.get(reversalId);
+    return result?.resourceProjectId === projectId ? clone(result) : undefined;
+  }
+
+  async listReversals(projectId: string): Promise<readonly ReversalDraftChangeSetV1[]> {
+    return [...this.reversals.values()]
+      .filter((item) => item.resourceProjectId === projectId)
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+      .map(clone);
   }
 
   counts() {

@@ -79,7 +79,15 @@ const entry = (
 
 const canonicalEntry = entry({
   sourceEventId: 'e-1',
-  payloadSnapshot: { eventType: 'CANONICAL_CLAIM_ADDED', reason: 'commit', afterVersion: 'rev-2' },
+  payloadSnapshot: {
+    eventType: 'CANONICAL_CLAIM_ADDED',
+    reason: 'commit',
+    beforeVersion: 1,
+    afterVersion: 2,
+    commitId: 'commit-2',
+    revisionId: 'revision:rev-2',
+    claimId: 'claim:e-1',
+  },
 });
 const reviewEntry = entry({
   sourceEventId: 'r-1',
@@ -388,14 +396,15 @@ describe('HistoryWorkspace (FE-P5-S2 WP5)', () => {
       () => expect(screen.getByRole('heading', { name: 'History entry', level: 2 })).not.toBeNull(),
       { timeout: 5000 },
     );
-    // The authoritative detail carries the historical revision (afterVersion).
+    // The authoritative detail carries the exact historical revision identity
+    // (payloadSnapshot.revisionId — never the numeric afterVersion).
     const reversalButton = screen.getByRole('button', { name: 'Reversal draft 생성' });
     await user.click(reversalButton);
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
         expect.stringContaining('/product-api/frontend/review/reversal-draft'),
         expect.objectContaining({
-          body: expect.stringContaining('"sourceRevisionId":"rev-2"'),
+          body: expect.stringContaining('"sourceRevisionId":"revision:rev-2"'),
         }),
       ),
     );
@@ -403,6 +412,25 @@ describe('HistoryWorkspace (FE-P5-S2 WP5)', () => {
     await waitFor(() => expect(screen.getByText('Review Workspace')).not.toBeNull(), {
       timeout: 5000,
     });
+    vi.unstubAllGlobals();
+  });
+
+  it('passes an explicit deleted-project audit target through the History deep link (GPT WP5 Round 2 C)', async () => {
+    const { fetchMock } = createFetchMock();
+    vi.stubGlobal('fetch', fetchMock);
+    // `/history?resourceProjectId=<deleted-id>` — the browser names the audit
+    // target; the server revalidates tombstone + audit scope + capability.
+    renderWorkspace(createRuntime(), ['/history?resourceProjectId=deleted-1']);
+    await waitFor(
+      () =>
+        expect(fetchMock).toHaveBeenCalledWith(
+          expect.stringContaining('/product-api/frontend/history/workspace'),
+          expect.objectContaining({
+            body: expect.stringContaining('"resourceProjectId":"deleted-1"'),
+          }),
+        ),
+      { timeout: 5000 },
+    );
     vi.unstubAllGlobals();
   });
 });

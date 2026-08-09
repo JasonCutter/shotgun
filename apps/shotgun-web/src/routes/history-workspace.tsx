@@ -262,8 +262,12 @@ export const HistoryWorkspace = () => {
   const liveRegionRef = useRef<HTMLParagraphElement | null>(null);
   const [reversalError, setReversalError] = useState<string | null>(null);
 
-  const scope = historyScopeFromShell(shell);
   const deepLink = useMemo(() => parseHistoryDeepLink(searchParameters), [searchParameters]);
+  // Round 2 C: an explicit deleted-project audit target (`resourceProjectId`)
+  // overrides the resource project for the History read while the ACTIVE
+  // project stays the live control project; the server revalidates tombstone +
+  // audit scope + current capability for any non-active resourceProjectId.
+  const scope = historyScopeFromShell(shell, deepLink.resourceProjectId ?? undefined);
 
   const announce = useCallback((message: string) => {
     if (liveRegionRef.current) liveRegionRef.current.textContent = message;
@@ -290,15 +294,23 @@ export const HistoryWorkspace = () => {
   const detail = useQuery(historyEntryQueryOptions(historyClient, scope, selectedEntryId ?? null));
   const detailEntry = detail.data?.entry;
 
-  // Reversal initiation (GPT WP5 Round 1 B): the selected Canonical History
-  // entry resolves its authoritative source revision; the change-set-review
-  // owning route (WP3) creates the CANDIDATE draft with server-derived current
-  // capability + principal, then the current Review Workspace takes over.
+  // Reversal initiation (GPT WP5 Round 1 B / Round 2 B1): the selected Canonical
+  // History entry resolves its authoritative Canonical revision identity
+  // (`payloadSnapshot.revisionId`, resolved server-side from
+  // HistoryEvent → commitId → CanonicalCommitResult.revisionId). The browser
+  // NEVER infers a revision identity from the numeric beforeVersion/afterVersion.
+  // The change-set-review owning route (WP3) creates the persisted CANDIDATE
+  // draft with server-derived current capability + principal, then the current
+  // Review Workspace takes over.
   const reversalMutation = useMutation({
     mutationFn: async () => {
       if (!scope || !detailEntry) throw new Error('Reversal requires a selected History entry.');
-      const snapshot = detailEntry.payloadSnapshot as { afterVersion?: string } | undefined;
-      const sourceRevisionId = snapshot?.afterVersion;
+      const snapshot = detailEntry.payloadSnapshot as
+        { revisionId?: string; afterVersion?: unknown } | undefined;
+      const sourceRevisionId =
+        typeof snapshot?.revisionId === 'string' && snapshot.revisionId.length > 0
+          ? snapshot.revisionId
+          : undefined;
       if (!sourceRevisionId) {
         throw new Error('이 항목에는 Reversal 대상 revision이 없습니다.');
       }

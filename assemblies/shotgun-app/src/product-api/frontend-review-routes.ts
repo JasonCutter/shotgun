@@ -239,7 +239,11 @@ export function registerFrontendReviewRoutes(
           createdBy: scope.principalId,
           createdAt: new Date().toISOString(),
         });
-        return result;
+        return {
+          schemaVersion: '1.0.0',
+          reversal: result.reversal,
+          eligibility: result.eligibility,
+        };
       } catch (error) {
         throw toReviewError(error, 'create-reversal-draft');
       }

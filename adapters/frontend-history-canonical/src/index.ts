@@ -95,10 +95,23 @@ export class CanonicalHistoryAdapter implements HistoryAdapterPort {
       const availability = state?.payloadAvailability ?? 'AVAILABLE';
       const domainResourceKind =
         event.eventType === 'CANONICAL_CLAIM_ADDED' ? 'CANONICAL_CLAIM' : 'CANONICAL_CHANGESET';
+      // FE-P5-S2 WP5 (Round 2 B1): the authoritative Canonical revision
+      // identity is resolved server-side (HistoryEvent → commitId →
+      // CanonicalCommitResult.revisionId) and carried in the bounded payload.
+      // The browser NEVER infers a revision identity from the numeric
+      // beforeVersion/afterVersion; Reversal initiation uses this
+      // authoritative `revisionId` as `sourceRevisionId`.
+      const commit = await this.canonical.findCommit(projectId, event.commitId);
       const redacted = redactHistoryPayload(availability, state, {
         eventType: event.eventType,
         beforeVersion: event.beforeVersion,
         afterVersion: event.afterVersion,
+        ...(commit === undefined
+          ? {}
+          : {
+              commitId: event.commitId,
+              revisionId: commit.revisionId,
+            }),
         claimId: event.claimId,
         reason: event.reason,
         actor: { type: event.actor.type, id: event.actor.id },

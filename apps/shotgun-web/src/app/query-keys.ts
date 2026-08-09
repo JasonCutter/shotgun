@@ -411,13 +411,20 @@ export type HistoryQueryScope = {
   readonly sensitivity: string;
 };
 
-export const historyScopeFromShell = (shell: GlobalShellView | null): HistoryQueryScope | null =>
+export const historyScopeFromShell = (
+  shell: GlobalShellView | null,
+  resourceProjectIdOverride?: string,
+): HistoryQueryScope | null =>
   shell?.activeProject
     ? {
         principalId: shell.principalId,
         sessionId: shell.sessionId,
         activeProjectId: shell.activeProject.id,
-        resourceProjectId: shell.activeProject.id,
+        // Round 2 C: an explicit deleted-project audit target overrides the
+        // resource project while the ACTIVE project stays the live control
+        // project. The server revalidates tombstone + audit scope + current
+        // capability for any non-active resourceProjectId.
+        resourceProjectId: resourceProjectIdOverride ?? shell.activeProject.id,
         accessRevision: shell.accessRevision,
         policyContextRevision: shell.policyContextRevision,
         sensitivity: shell.activeProject.sensitivityClearance,

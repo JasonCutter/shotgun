@@ -236,6 +236,15 @@ export const createReversalEligibilityPort = (
     readonly historicalApprovalResolver?: (
       revision: CanonicalRevision,
     ) => Promise<string | undefined>;
+    /**
+     * FE-P5-S2 WP5 (Round 2 B): owning-Domain persistence for the created
+     * Reversal DraftChangeSet. When provided, every created candidate is
+     * persisted to the change-set-review store before it is returned, so the
+     * Reversal is durable and reachable by the current Review flow.
+     */
+    readonly reversalStore?: {
+      saveReversal(reversal: ReversalDraftChangeSetV1): Promise<ReversalDraftChangeSetV1>;
+    };
   },
 ): ReversalEligibilityPort => {
   return {
@@ -299,7 +308,12 @@ export const createReversalEligibilityPort = (
         status: 'CANDIDATE',
         createdAt: input.createdAt,
         createdBy: input.createdBy,
-      });
+      }); // FE-P5-S2 WP5 (Round 2 B): persist the candidate to the owning
+      // change-set-review store so it is durable and reachable by the current
+      // Review Context / Review queue (and, later, Review → Approval).
+      if (options?.reversalStore) {
+        await options.reversalStore.saveReversal(reversal);
+      }
       return { reversal, eligibility };
     },
   };

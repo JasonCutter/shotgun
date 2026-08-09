@@ -10,9 +10,9 @@ wp5_implementation_head: 1c363a0
 wp5_implementation_ci_number: 712
 wp5_implementation_ci_run_id: 31302130483
 wp5_implementation_ci_conclusion: SUCCESS
-wp5_round1_fix_head: 68a0288a3
-wp5_round1_fix_ci_number: 717
-wp5_round1_fix_ci_run_id: 31304612404
+wp5_round1_fix_head: d1a9bc836
+wp5_round1_fix_ci_number: 718
+wp5_round1_fix_ci_run_id: 31304787892
 wp5_round1_fix_ci_conclusion: SUCCESS
 tracking_issue: https://github.com/JasonCutter/shotgun/issues/71
 contract_pr: https://github.com/JasonCutter/shotgun/pull/70

@@ -56,6 +56,8 @@ export type CreateReversalDraftChangeSetInput = {
   readonly reason: string;
   readonly createdBy: string;
   readonly createdAt: string;
+  /** Current server-derived capabilities of the caller (never injected). */
+  readonly currentCapabilities: readonly string[];
 };
 
 /**
@@ -120,12 +122,18 @@ const sortedByCreatedAt = (
 /**
  * Deterministic eligibility assessment over the canonical history. Pure:
  * no I/O; the caller loads the authoritative source revision and history.
+ *
+ * `reuseHistoricalApprovalAttempt` is the caller's attempt to use a historical
+ * approval as the authority for this Reversal. Such reuse is FORBIDDEN
+ * (ADR-131 §4): a historical approval may only ever be an evidence reference,
+ * never the authority. The existence of a historical approval alone does NOT
+ * block a Reversal — only the reuse attempt does.
  */
 export const assessReversalEligibilityFromHistory = (
   input: ReversalEligibilityInput,
   sourceRevision: CanonicalRevision | undefined,
   history: readonly CanonicalHistoryEvent[],
-  historicalApprovalRef?: string,
+  reuseHistoricalApprovalAttempt = false,
 ): ReversalEligibilityV1 => {
   if (!sourceRevision) {
     return failureReasons(input.sourceRevisionId, ['REVERSAL_SOURCE_NOT_FOUND']);
@@ -133,9 +141,10 @@ export const assessReversalEligibilityFromHistory = (
   if (!input.currentCapabilities.includes(REVERSAL_CURRENT_CAPABILITY)) {
     return failureReasons(input.sourceRevisionId, ['REVERSAL_MISSING_CURRENT_CAPABILITY']);
   }
-  // Historical approval reuse is FORBIDDEN: the source revision's historical
-  // approval may only ever be an evidence reference, never the authority.
-  if (historicalApprovalRef) {
+  // Historical approval authority reuse is FORBIDDEN: a caller that tries to
+  // use a historical approval as the authority is rejected with a typed
+  // failure. The reference itself is evidence-only and does not gate.
+  if (reuseHistoricalApprovalAttempt) {
     return failureReasons(input.sourceRevisionId, ['REVERSAL_HISTORICAL_APPROVAL_REUSE']);
   }
   const ordered = sortedByCreatedAt(history);
@@ -187,16 +196,16 @@ export const createReversalEligibilityPort = (
         return failureReasons(input.sourceRevisionId, ['REVERSAL_SOURCE_NOT_FOUND']);
       }
       const history = await canonical.listHistory(input.resourceProjectId);
-      const historicalApprovalRef = options?.historicalApprovalResolver
-        ? await options.historicalApprovalResolver(revision)
-        : undefined;
-      return assessReversalEligibilityFromHistory(input, revision, history, historicalApprovalRef);
+      // The historical approval reference (if any) is evidence-only: it is
+      // passed to the caller for reference, never as authority. Reuse attempt
+      // is rejected by the caller passing reuseHistoricalApprovalAttempt=true.
+      return assessReversalEligibilityFromHistory(input, revision, history, false);
     },
     async createReversalDraftChangeSet(input) {
       const eligibility = await this.assessReversalEligibility({
         resourceProjectId: input.resourceProjectId,
         sourceRevisionId: input.sourceRevisionId,
-        currentCapabilities: [REVERSAL_CURRENT_CAPABILITY],
+        currentCapabilities: input.currentCapabilities,
       });
       if (!eligibility.eligible) {
         typedError(
@@ -209,12 +218,20 @@ export const createReversalEligibilityPort = (
         input.resourceProjectId,
         input.sourceRevisionId,
       );
+      // Historical approval (if any) is preserved as EVIDENCE ONLY on the
+      // Reversal DraftChangeSet; it never authorizes the Reversal. Current
+      // Review + current Approval are still required before Canonical Commit.
+      const historicalApprovalRef =
+        options?.historicalApprovalResolver && revision
+          ? await options.historicalApprovalResolver(revision)
+          : undefined;
       const reversal: ReversalDraftChangeSetV1 = Object.freeze({
         schemaVersion: '1.0.0',
         reversalId: `reversal:${randomUUID()}`,
         resourceProjectId: input.resourceProjectId,
         sourceRevisionId: input.sourceRevisionId,
         sourceCommitId: revision?.commitId ?? input.sourceRevisionId,
+        historicalApprovalRef,
         status: 'CANDIDATE',
         createdAt: input.createdAt,
         createdBy: input.createdBy,

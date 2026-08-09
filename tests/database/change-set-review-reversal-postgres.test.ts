@@ -229,6 +229,7 @@ describe('FE-P5-S2 WP3 Reversal DraftChangeSet (canonical-backed)', () => {
       reason: 'rollback latest',
       createdBy: 'actor-1',
       createdAt: '2026-08-09T03:00:00.000Z',
+      currentCapabilities: [REVERSAL_CURRENT_CAPABILITY],
     });
     expect(eligibility.eligible).toBe(true);
     expect(reversal.status).toBe('CANDIDATE');

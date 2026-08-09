@@ -76,15 +76,27 @@ describe('change-set-review WP3 Reversal DraftChangeSet', () => {
       expect(result.reasons).toEqual(['REVERSAL_MISSING_CURRENT_CAPABILITY']);
     });
 
-    it('historical approval reuse -> typed reject', () => {
+    it('historical approval reuse ATTEMPT -> typed reject', () => {
       const result = assessReversalEligibilityFromHistory(
         eligibilityInput('revision:1'),
         revision({ revisionId: 'revision:1' }),
         [],
-        'approval:historical',
+        true,
       );
       expect(result.eligible).toBe(false);
       expect(result.reasons).toEqual(['REVERSAL_HISTORICAL_APPROVAL_REUSE']);
+    });
+
+    it('historical approval existence alone does NOT block (evidence-only)', () => {
+      // A historical approval ref exists, but no reuse attempt: eligible.
+      const result = assessReversalEligibilityFromHistory(
+        eligibilityInput('revision:1'),
+        revision({ revisionId: 'revision:1', createdAt: '2026-08-09T01:00:00.000Z' }),
+        [event({ historyEventId: 'e-1', createdAt: '2026-08-09T01:00:00.000Z' })],
+        false,
+      );
+      expect(result.eligible).toBe(true);
+      expect(result.reasons).toEqual([]);
     });
 
     it('current tip with no later canonical event -> eligible', () => {
@@ -164,6 +176,7 @@ describe('change-set-review WP3 Reversal DraftChangeSet', () => {
         reason: 'rollback the latest claim',
         createdBy: 'actor-1',
         createdAt: '2026-08-09T03:00:00.000Z',
+        currentCapabilities: [REVERSAL_CURRENT_CAPABILITY],
       });
       expect(eligibility.eligible).toBe(true);
       expect(reversal.status).toBe('CANDIDATE');
@@ -190,11 +203,12 @@ describe('change-set-review WP3 Reversal DraftChangeSet', () => {
           reason: 'rollback',
           createdBy: 'actor-1',
           createdAt: '2026-08-09T03:00:00.000Z',
+          currentCapabilities: [REVERSAL_CURRENT_CAPABILITY],
         }),
       ).rejects.toMatchObject({ code: 'REVERSAL_SUPERSEDED_TARGET' });
     });
 
-    it('resolves historical approval via resolver -> reuse typed reject', async () => {
+    it('preserves historical approval as EVIDENCE ONLY on the reversal', async () => {
       const reader = makeReader();
       reader.revisions.push(
         revision({ revisionId: 'revision:tip', createdAt: '2026-08-09T01:00:00.000Z' }),
@@ -203,6 +217,28 @@ describe('change-set-review WP3 Reversal DraftChangeSet', () => {
       const port = createReversalEligibilityPort(reader, {
         historicalApprovalResolver: async () => 'approval:historical',
       });
+      const { reversal, eligibility } = await port.createReversalDraftChangeSet({
+        resourceProjectId: 'p1',
+        sourceRevisionId: 'revision:tip',
+        reason: 'rollback',
+        createdBy: 'actor-1',
+        createdAt: '2026-08-09T03:00:00.000Z',
+        currentCapabilities: [REVERSAL_CURRENT_CAPABILITY],
+      });
+      // Evidence-only: the historical approval is referenced, not reused as
+      // authority. Eligibility is still eligible (reuse is NOT attempted).
+      expect(eligibility.eligible).toBe(true);
+      expect(reversal.historicalApprovalRef).toBe('approval:historical');
+      expect(reversal.status).toBe('CANDIDATE');
+    });
+
+    it('rejects a caller that passes an empty current capability set (no injection)', async () => {
+      const reader = makeReader();
+      reader.revisions.push(
+        revision({ revisionId: 'revision:tip', createdAt: '2026-08-09T01:00:00.000Z' }),
+      );
+      reader.history.push(event({ historyEventId: 'e-1', createdAt: '2026-08-09T01:00:00.000Z' }));
+      const port = createReversalEligibilityPort(reader);
       await expect(
         port.createReversalDraftChangeSet({
           resourceProjectId: 'p1',
@@ -210,8 +246,9 @@ describe('change-set-review WP3 Reversal DraftChangeSet', () => {
           reason: 'rollback',
           createdBy: 'actor-1',
           createdAt: '2026-08-09T03:00:00.000Z',
+          currentCapabilities: [],
         }),
-      ).rejects.toMatchObject({ code: 'REVERSAL_HISTORICAL_APPROVAL_REUSE' });
+      ).rejects.toMatchObject({ code: 'REVERSAL_MISSING_CURRENT_CAPABILITY' });
     });
 
     it('failureReasons helper produces the frozen eligibility shape', () => {

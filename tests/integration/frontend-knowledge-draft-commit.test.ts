@@ -240,6 +240,7 @@ describe('FE-P5-XP Correction B: Approval -> Canonical commit consumer', () => {
   const makeCoordinator = (input: {
     readonly gateway?: InMemoryFrontendCommandGateway;
     readonly approvals?: FrontendKnowledgeDraftCommitDependenciesV1['approvals'];
+    readonly canonical?: FrontendKnowledgeDraftCommitDependenciesV1['canonical'];
   } = {}): FrontendKnowledgeDraftProductCoordinator =>
     new FrontendKnowledgeDraftProductCoordinator(
       draftRepository,
@@ -247,7 +248,7 @@ describe('FE-P5-XP Correction B: Approval -> Canonical commit consumer', () => {
       new InMemoryFrontendKnowledgeDraftTargetResolver(),
       {
         approvals: input.approvals ?? approvalPort(),
-        canonical: canonicalRepository,
+        canonical: input.canonical ?? canonicalRepository,
       },
     );
 
@@ -546,6 +547,71 @@ describe('FE-P5-XP Correction B: Approval -> Canonical commit consumer', () => {
     });
     const snapshot = await canonicalRepository.getSnapshot(PROJECT_ID);
     expect(snapshot.version).toBe(0);
+    const approval = await reviewStore.transaction((repositories) =>
+      repositories.approvals.findById('approval-1'),
+    );
+    expect(approval?.status).toBe('ACTIVE');
+  });
+
+  it('fails closed with STALE_APPROVAL when recovery has NO existing commit and Canonical advanced (GPT Round 3 #1)', async () => {
+    const draft = submittedDraft([claimOperation()]);
+    await seed({ draft, approval: approvalFor({ draft, approvedItemIds: ['item-1'] }) });
+    // Canonical dep whose commitFrontendDraft crashes BEFORE any write: the
+    // ledger command is left ACCEPTED/OUTCOME_UNKNOWN with NO durable commit.
+    let commitFails = true;
+    const crashingCanonical = {
+      getSnapshot: (projectId: string) => canonicalRepository.getSnapshot(projectId),
+      findCommit: (projectId: string, commitId: string) =>
+        canonicalRepository.findCommit(projectId, commitId),
+      commitFrontendDraft: async (write: Parameters<typeof canonicalRepository.commitFrontendDraft>[0]) => {
+        if (commitFails) {
+          commitFails = false;
+          throw new Error('simulated crash before canonical commit');
+        }
+        return canonicalRepository.commitFrontendDraft(write);
+      },
+    };
+    const coordinatorC = makeCoordinator({ canonical: crashingCanonical });
+    await expect(coordinatorC.commitFrontendDraft(scope, request())).rejects.toThrow();
+    // No durable commit for the original approval; Approval still ACTIVE.
+    expect(await canonicalRepository.listHistory(PROJECT_ID)).toHaveLength(0);
+    // Canonical advances independently of the Draft base.
+    await canonicalRepository.commitFrontendDraft({
+      commitId: crypto.randomUUID(),
+      revisionId: `revision:${crypto.randomUUID()}`,
+      historyEventId: `history:${crypto.randomUUID()}`,
+      outboxId: `outbox:${crypto.randomUUID()}`,
+      projectId: PROJECT_ID,
+      operation: 'ADD_CLAIM',
+      claimId: 'claim-independent',
+      claimText: 'An independent canonical claim.',
+      sourceVersionId: 'source-version-independent',
+      evidenceIds: ['evidence-independent'],
+      accessScope: ['owner'],
+      sensitivity: 'private',
+      expectedCanonicalVersion: 0,
+      snapshotDigest: canonicalSnapshotDigest(PROJECT_ID, 0, []),
+      authority: {
+        kind: 'FRONTEND_REVIEW_APPROVAL',
+        approvalId: 'approval-independent',
+        approvalBindingDigest: 'sha256:independent',
+        reviewContextId: 'context-independent',
+        contextRevision: 1,
+        draftId: 'draft-independent',
+        draftRevision: 1,
+        draftContentDigest: 'sha256:independent',
+        approvedItemIds: [],
+      },
+      reason: 'independent change',
+      actor: { type: 'user', id: 'other' },
+      committedAt: '2026-08-10T00:00:00.000Z',
+    });
+    // Retry: recovery finds NO existing commit → full REVALIDATE → the Draft
+    // base is stale → STALE_APPROVAL (never a silent rebase onto current).
+    await expect(coordinatorC.commitFrontendDraft(scope, request())).rejects.toMatchObject({
+      apiCode: 'STALE_APPROVAL',
+    });
+    expect(await canonicalRepository.listHistory(PROJECT_ID)).toHaveLength(1);
     const approval = await reviewStore.transaction((repositories) =>
       repositories.approvals.findById('approval-1'),
     );

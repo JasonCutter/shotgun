@@ -135,6 +135,8 @@ the original command.
 3. **Crash between consume and ledger-complete**: retry fails-closed
    (`REVIEW_APPROVAL_EXPIRED` since the approval is CONSUMED) → ledger
    `markOutcomeUnknown`; the common crash window (commit→consume) recovers.
+   > **SUPERSEDED BY ROUND 2 §9.1** — the consume→ledger-complete window now
+   > recovers idempotently (already-CONSUMED by the same commit is accepted).
 4. **`source_version_id uuid → text`** is a bounded widening required by the
    frontend source-version identity format.
 
@@ -200,3 +202,32 @@ the already-CONSUMED (same commit) Approval, original ledger COMPLETED.
   `ADD_CLAIM` via `if/then`; only `NO_OP` may carry an empty scope.
 - `source_version_id uuid → text` recorded as a **bounded migration delta** in
   Amendment §4.1, pending user ratification record (§6).
+
+## 10. Round 3 — Recovery existing-commit branch (2026-08-10)
+
+GPT Review Round 2 verdict: **CHANGES_REQUIRED** — 3 items closed
+(`expectedApprovalRevision`, sourceVersion lineage, History provenance), one
+Recovery blocker remains: `onReplayRecovery` did NOT first check whether the
+durable commit exists, so a recovery retry could silently rebase a stale Draft
+onto the current Canonical snapshot and commit.
+
+Fixed per the GPT algorithm:
+
+1. **Branch on existing commit first**: `onReplayRecovery` computes the
+   deterministic commit id and calls `canonical.findCommit(projectId, commitId)`.
+   - Existing commit → verify `projectId` + `authorityId` + `authorityDigest`
+     (`=== approval.approvedManifestDigest`), no Canonical stale revalidation,
+     recover the Approval (ACTIVE → CONSUMED, or already CONSUMED by the same
+     commit → idempotent), complete the ORIGINAL ledger command.
+   - No existing commit → full `REVALIDATE` (Approval ACTIVE/expiry/revision,
+     Draft base == current Canonical, binding digests) then normal
+     `commitFrontendDraft` → consume → COMPLETE. A stale Draft is NEVER
+     rebased.
+2. **Repository replay guard now verifies `authorityDigest`** (in addition to
+   `projectId`/`authorityId`) in `postgres-stage6` and `stage6-in-memory`.
+3. **Focused regression** (new): recovery with NO existing commit while
+   Canonical advanced → `STALE_APPROVAL`, no commit for the original Approval,
+   Approval remains ACTIVE. Plus DB-level test: same commitId replay with a
+   forged `approvalBindingDigest` → `CONFLICT`.
+
+Existing crash A/B tests kept unchanged and still pass.

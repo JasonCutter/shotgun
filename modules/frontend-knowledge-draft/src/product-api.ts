@@ -371,6 +371,8 @@ export type FrontendKnowledgeDraftApprovalCommitPort = {
 export type FrontendKnowledgeDraftCanonicalCommitPort = {
   getSnapshot(projectId: string): Promise<CanonicalSnapshot>;
   commitFrontendDraft(write: FrontendCanonicalCommitWrite): Promise<CanonicalCommitResult>;
+  /** Round 3 (GPT #1): recovery branches on whether the durable commit exists. */
+  findCommit(projectId: string, commitId: string): Promise<CanonicalCommitResult | undefined>;
 };
 
 export type FrontendKnowledgeDraftCommitDependenciesV1 = {
@@ -1221,14 +1223,11 @@ export class FrontendKnowledgeDraftProductCoordinator {
         return commitResult({ canonicalCommitId: write.commitId });
       },
       onReplayRecovery: async (originalCommandId, repositories) => {
-        // Crash recovery (GPT Round 2 #1): the retry re-issues the SAME write
-        // with a RESOLVE-mode identity check — the durable commit may already
-        // exist (canonical base may have moved past the draft base) and the
-        // Approval may already be CONSUMED. commitFrontendDraft is replay-
-        // idempotent (same commitId + authority → returns the existing commit,
-        // makes no new commit, never re-runs the STALE guard) and
-        // consumeApproval is idempotent for the same canonicalCommitId; the
-        // ledger then completes the ORIGINAL command.
+        // Crash recovery (GPT Round 2 #1, Round 3): recovery MUST first branch
+        // on whether the durable Canonical commit exists. Only a crash AFTER
+        // the durable commit may skip the fail-closed revalidation; if no
+        // commit exists, the full REVALIDATE chain runs (so a stale Draft is
+        // NEVER silently rebased onto the current Canonical snapshot).
         const dependencies = this.commitDependencies!;
         const now = new Date().toISOString();
         const current = await repositories.drafts.findById(
@@ -1238,14 +1237,61 @@ export class FrontendKnowledgeDraftProductCoordinator {
         if (!current) {
           draftFailure('DRAFT_NOT_FOUND', 'The Draft was not found.');
         }
-        const { draft, approval, canonicalSnapshot } = await revalidated({
+        const approvalRead = await dependencies.approvals.findByIdWithRevision(request.approvalId);
+        if (!approvalRead) {
+          draftFailure('NOT_FOUND', 'The Review Approval was not found.');
+        }
+        const { approval } = approvalRead;
+        const commitId = deterministicCanonicalCommitId(approval.approvalId, current.draftId);
+        const existing = await dependencies.canonical.findCommit(
+          scope.activeProjectId,
+          commitId,
+        );
+        if (existing) {
+          // Crash after the durable commit: verify the commit's authority
+          // (project + approval id + binding digest), then recover the
+          // Approval (ACTIVE → CONSUMED, or already CONSUMED by the same
+          // commit → idempotent) and complete the ORIGINAL ledger command.
+          // No Canonical stale/base revalidation here.
+          if (
+            existing.projectId !== scope.activeProjectId ||
+            existing.authorityId !== approval.approvalId
+          ) {
+            draftFailure(
+              'DRAFT_REVISION_CONFLICT',
+              'The existing Canonical commit does not match the Approval authority.',
+            );
+          }
+          if (existing.authorityDigest !== approval.approvedManifestDigest) {
+            draftFailure(
+              'DIGEST_MISMATCH',
+              'The existing Canonical commit authority digest does not match the Approval binding.',
+            );
+          }
+          await dependencies.approvals.consumeApproval(
+            approval.approvalId,
+            existing.commitId,
+            now,
+            scope.principalId,
+          );
+          return commitResult({ canonicalCommitId: existing.commitId });
+        }
+        // No durable commit: the crash happened before the commit. Run the full
+        // REVALIDATE chain (Approval ACTIVE/expiry/revision + Draft base ==
+        // current Canonical + binding digests) and only then commit normally.
+        const { approval: revalidatedApproval, canonicalSnapshot } = await revalidated({
           draft: current,
-          mode: 'RESOLVE',
+          mode: 'REVALIDATE',
         });
-        const write = buildWrite({ draft, approval, canonicalSnapshot, now });
+        const write = buildWrite({
+          draft: current,
+          approval: revalidatedApproval,
+          canonicalSnapshot,
+          now,
+        });
         const result = await dependencies.canonical.commitFrontendDraft(write);
         await dependencies.approvals.consumeApproval(
-          approval.approvalId,
+          revalidatedApproval.approvalId,
           result.commitId,
           now,
           scope.principalId,

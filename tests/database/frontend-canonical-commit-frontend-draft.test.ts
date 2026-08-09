@@ -123,6 +123,23 @@ describe.runIf(pool)('FE-P5-XP Correction B: commitFrontendDraft (Postgres parit
     expect(snapshot.claims).toHaveLength(1);
   });
 
+  it('rejects a replay whose authorityDigest differs from the stored commit (GPT Round 3 #1)', async () => {
+    await dropSchemas();
+    await migrateUpTo();
+    const repository = new PostgresCanonicalKnowledgeRepository(pool!);
+    const write = addClaimWrite();
+    const first = await repository.commitFrontendDraft(write);
+    expect(first.authorityDigest).toBe('sha256:binding');
+    // Same commit id + same approvalId but a forged binding digest.
+    await expect(
+      repository.commitFrontendDraft(
+        addClaimWrite({
+          authority: { ...authority, approvalBindingDigest: 'sha256:forged' },
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+  });
+
   it('rejects a second commit for the same approval (one approval -> one commit)', async () => {
     await dropSchemas();
     await migrateUpTo();

@@ -203,7 +203,9 @@ Amendment: PROPOSED / PENDING USER APPROVAL
 → Correction B implementation (bounded, one at a time) — IN PROGRESS
 → focused verification + exact-head automatic CI
 → GPT review ROUND 1 (2026-08-10): CHANGES_REQUIRED — crash recovery / expectedApprovalRevision /
-  sourceVersionId fabrication / history provenance (all fixed as delta-only)
+  sourceVersionId fabrication / history provenance (fixed as delta-only, head ee4147374)
+→ GPT review ROUND 2 (2026-08-10): 3 closed, 1 Recovery blocker — recovery must branch on
+  existing commit first + authorityDigest replay guard (fixed as delta-only, Round 3)
 → GPT review ACCEPTED
 → WP-XP2 resumes (journey + XP-I01~07)
 ```
@@ -230,6 +232,17 @@ Amendment: PROPOSED / PENDING USER APPROVAL
   must be enforced, (3) no fabricated `sourceVersionId`, (4) History provenance/evidence
   description alignment. Open items: §3.1 "one commit per claim" superseded; NO_OP-only
   empty `accessScope`; `source_version_id uuid→text` bounded migration delta.
+- 2026-08-10 — **GPT Review Round 2: CHANGES_REQUIRED** (evidence §9). Closed:
+  `expectedApprovalRevision` enforcement, sourceVersion lineage, History
+  provenance. Remaining Recovery blocker: `onReplayRecovery` did not first check
+  whether the durable commit exists, so a stale Draft could be silently rebased
+  onto the current Canonical snapshot; repository replay guard also missed
+  `authorityDigest`. Fix per GPT algorithm: branch on `findCommit` first,
+  existing-commit path verifies project/authorityId/authorityDigest (no stale
+  revalidation), no-existing-commit path runs full REVALIDATE; replay guard adds
+  `authorityDigest`.
+- 2026-08-10 — **USER "진행해"** (cont.) authorizes the Round 3 delta-only
+  correction (recovery existing-commit branch + authorityDigest replay guard).
 - 2026-08-10 — **USER "진행해"** authorizes the Round 2 delta-only corrections AND the
   bounded migration delta (`source_version_id uuid → text`). Ratification of the
   migration delta: **PENDING** — recorded in §4.1; confirmed by USER approval of the

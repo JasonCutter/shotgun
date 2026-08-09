@@ -393,7 +393,8 @@ export class PostgresCanonicalKnowledgeRepository
         const result = existing.rows[0].result_json;
         if (
           result.projectId !== write.projectId ||
-          result.authorityId !== write.authority.approvalId
+          result.authorityId !== write.authority.approvalId ||
+          result.authorityDigest !== write.authority.approvalBindingDigest
         ) {
           throw new ShotgunError({
             code: 'CONFLICT',

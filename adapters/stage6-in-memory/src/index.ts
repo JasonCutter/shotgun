@@ -233,12 +233,14 @@ export class InMemoryCanonicalKnowledgeRepository
   }
 
   async commitFrontendDraft(write: FrontendCanonicalCommitWrite): Promise<CanonicalCommitResult> {
-    // Replay guard: same commitId must carry the same authority.
+    // Replay guard: same commitId must carry the same authority (project +
+    // approval id + binding digest; Round 3 GPT #1).
     const existing = this.commits.get(write.commitId);
     if (existing) {
       if (
         existing.projectId !== write.projectId ||
-        existing.authorityId !== write.authority.approvalId
+        existing.authorityId !== write.authority.approvalId ||
+        existing.authorityDigest !== write.authority.approvalBindingDigest
       ) {
         throw new ShotgunError({
           code: 'CONFLICT',

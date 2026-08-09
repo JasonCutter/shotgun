@@ -119,6 +119,7 @@ export type {
   PolicyHistoryCursor,
   PolicyHistoryEntry,
   PolicyHistoryReadPort,
+  PolicyHistorySourceKind,
 } from './policy-history.js';
 export {
   comparePolicyHistoryEntries,

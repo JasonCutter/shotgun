@@ -60,10 +60,14 @@ export type ProjectBootstrapUnitOfWorkPort = {
 
 export type {
   CreateProjectTombstoneInput,
+  DeletedProjectAuditReadContext,
   DeletedProjectAuditScopeRecord,
   GrantDeletedProjectAuditScopeInput,
   ProjectTombstoneRecord,
   ProjectTombstoneStorePort,
   RevokeDeletedProjectAuditScopeInput,
 } from './project-tombstone.js';
-export { isDeletedProjectAuditReadPermitted } from './project-tombstone.js';
+export {
+  DELETED_PROJECT_AUDIT_READ_CAPABILITY,
+  isDeletedProjectAuditReadPermitted,
+} from './project-tombstone.js';

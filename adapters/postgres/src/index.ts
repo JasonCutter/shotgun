@@ -44,6 +44,7 @@ import type {
   ApplyPreferenceCommandInput,
   ListPolicyHistoryInput,
   ListPolicyHistoryResult,
+  PolicyHistoryEntry,
   PolicyHistoryReadPort,
 } from '../../../modules/settings-policy/src/index.js';
 import { deriveSettingsImpact } from '../../../modules/settings-policy/src/index.js';
@@ -1837,9 +1838,13 @@ export class PostgresSettingsRepository implements SettingsRepositoryPort {
 }
 
 /**
- * PostgreSQL Policy History read adapter (WP2-A). Reads the authoritative
- * append-only `settings.settings_audit_events` source. Read-only: never
- * mutates the source (migration 032 forbids UPDATE/DELETE/TRUNCATE).
+ * PostgreSQL Policy History read adapter (WP2-A). Reads ALL THREE
+ * authoritative append-only settings sources (IR r1 §4 Scope D):
+ *   - settings.settings_revisions
+ *   - settings.policy_context_revisions
+ *   - settings.settings_audit_events
+ * Read-only: never mutates the sources (migration 032 forbids
+ * UPDATE/DELETE/TRUNCATE). Stable source identity is preserved per row.
  */
 export class PostgresPolicyHistoryReadAdapter implements PolicyHistoryReadPort {
   constructor(private readonly pool: Pool) {}
@@ -1857,33 +1862,58 @@ export class PostgresPolicyHistoryReadAdapter implements PolicyHistoryReadPort {
     const params: (string | number)[] = [input.projectId];
     let cursorPredicate = '';
     if (input.cursor) {
-      params.push(input.cursor.timestamp, input.cursor.eventId);
-      cursorPredicate = `AND (timestamp > $2 OR (timestamp = $2 AND event_id > $3))`;
+      params.push(
+        input.cursor.timestamp,
+        input.cursor.sourceKind,
+        input.cursor.sourceId,
+      );
+      cursorPredicate = `
+        AND (
+          (s.timestamp, s.source_kind, s.source_id) > ($2, $3, $4)
+        )`;
     }
     params.push(input.limit + 1);
     const res = await this.pool.query<{
-      event_id: string;
+      source_kind: string;
       project_id: string;
-      actor_id: string;
-      action_name: string;
-      risk_level: string;
+      source_id: string;
+      actor_id: string | null;
+      action_name: string | null;
+      risk_level: string | null;
       details: Record<string, unknown>;
       timestamp: Date;
     }>(
-      `SELECT event_id, project_id, actor_id, action_name, risk_level, details, timestamp
-       FROM settings.settings_audit_events
-       WHERE project_id = $1 ${cursorPredicate}
-       ORDER BY timestamp ASC, event_id ASC
+      `SELECT s.source_kind, s.project_id, s.source_id, s.actor_id, s.action_name,
+              s.risk_level, s.details, s.timestamp
+       FROM (
+         SELECT 'SETTINGS_REVISION' AS source_kind, project_id,
+                revision::text AS source_id, NULL AS actor_id, NULL AS action_name,
+                NULL AS risk_level, settings_snapshot AS details, created_at AS timestamp
+         FROM settings.settings_revisions
+         UNION ALL
+         SELECT 'POLICY_CONTEXT_REVISION' AS source_kind, project_id,
+                revision::text AS source_id, NULL AS actor_id, NULL AS action_name,
+                NULL AS risk_level, policy_binding AS details, created_at AS timestamp
+         FROM settings.policy_context_revisions
+         UNION ALL
+         SELECT 'SETTINGS_AUDIT_EVENT' AS source_kind, project_id,
+                event_id AS source_id, actor_id, action_name, risk_level,
+                details, timestamp
+         FROM settings.settings_audit_events
+       ) s
+       WHERE s.project_id = $1 ${cursorPredicate}
+       ORDER BY s.timestamp ASC, s.source_kind ASC, s.source_id ASC
        LIMIT $${params.length}`,
       params,
     );
     const entries = res.rows.map((row) =>
       Object.freeze({
-        eventId: row.event_id,
+        sourceKind: row.source_kind as PolicyHistoryEntry['sourceKind'],
         projectId: row.project_id,
-        actorId: row.actor_id,
-        actionName: row.action_name,
-        riskLevel: row.risk_level,
+        sourceId: row.source_id,
+        actorId: row.actor_id ?? undefined,
+        actionName: row.action_name ?? undefined,
+        riskLevel: row.risk_level ?? undefined,
         details: row.details,
         timestamp: row.timestamp.toISOString(),
       }),
@@ -1892,7 +1922,11 @@ export class PostgresPolicyHistoryReadAdapter implements PolicyHistoryReadPort {
     const page = hasMore ? entries.slice(0, input.limit) : entries;
     const nextCursor =
       hasMore && page.length > 0
-        ? { timestamp: page[page.length - 1]!.timestamp, eventId: page[page.length - 1]!.eventId }
+        ? {
+            timestamp: page[page.length - 1]!.timestamp,
+            sourceKind: page[page.length - 1]!.sourceKind,
+            sourceId: page[page.length - 1]!.sourceId,
+          }
         : undefined;
     return { entries: Object.freeze(page), nextCursor };
   }

@@ -59,19 +59,37 @@ export type RevokeDeletedProjectAuditScopeInput = {
   readonly revokedAt: string;
 };
 
+/** Server-derived current capabilities for read-time revalidation. */
+export type DeletedProjectAuditReadContext = {
+  readonly projectId: string;
+  readonly principalId: string;
+  readonly currentCapabilities: readonly string[];
+};
+
+/** The capability that must be currently held to read deleted-project audit. */
+export const DELETED_PROJECT_AUDIT_READ_CAPABILITY = 'project:deleted-audit:read';
+
 /**
- * Deleted-project audit read gate. A principal is permitted to read deleted
- * project audit only when BOTH a scope binding exists for the project AND the
- * principal is in the granted set AND the scope is not revoked. This is the
- * read-time Capability revalidation boundary (fail-closed).
+ * Deleted-project audit read gate (fail-closed). A principal is permitted to
+ * read deleted project audit only when ALL of the following hold:
+ *   - a scope binding exists
+ *   - scope.projectId == requested project
+ *   - principal is currently bound by the scope (grantedPrincipalIds)
+ *   - scope is not revoked
+ *   - the CURRENT server-derived capability set includes
+ *     `project:deleted-audit:read` (past membership alone never grants access)
+ * This is the read-time Capability revalidation boundary (ADR-112 §11/§12,
+ * ADR-131 §6).
  */
 export const isDeletedProjectAuditReadPermitted = (
   scope: DeletedProjectAuditScopeRecord | null,
-  principalId: string,
+  context: DeletedProjectAuditReadContext,
 ): boolean => {
   if (!scope) return false;
   if (scope.revokedAt) return false;
-  return scope.grantedPrincipalIds.includes(principalId);
+  if (scope.projectId !== context.projectId) return false;
+  if (!scope.grantedPrincipalIds.includes(context.principalId)) return false;
+  return context.currentCapabilities.includes(DELETED_PROJECT_AUDIT_READ_CAPABILITY);
 };
 
 /**

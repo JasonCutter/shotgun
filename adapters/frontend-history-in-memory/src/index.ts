@@ -43,16 +43,24 @@ export class InMemoryPayloadStateStore implements PayloadStateStorePort {
         'resourceProjectId, sourceEventKind and sourceEventId required',
       );
     }
+    const existing = this.states.get(
+      key(input.resourceProjectId, input.sourceEventKind, input.sourceEventId),
+    );
+    // PURGED_BY_POLICY is only ever produced by purgeByPolicy() (the unique
+    // purge transition authority). Direct set is REJECTED.
     if (input.payloadAvailability === 'PURGED_BY_POLICY') {
-      const existing = this.states.get(
-        key(input.resourceProjectId, input.sourceEventKind, input.sourceEventId),
+      throw new FrontendContractError(
+        'CONFLICT',
+        `PURGED_BY_POLICY can only be set through purgeByPolicy().`,
       );
-      if (!isPurgeTransitionValid(existing?.payloadAvailability)) {
-        throw new FrontendContractError(
-          'CONFLICT',
-          `Payload for ${input.sourceEventKind}:${input.sourceEventId} is already PURGED_BY_POLICY`,
-        );
-      }
+    }
+    // Resurrection is FORBIDDEN: a purged payload cannot be flipped back to
+    // AVAILABLE/REDACTED/UNAVAILABLE through setPayloadState.
+    if (existing?.payloadAvailability === 'PURGED_BY_POLICY') {
+      throw new FrontendContractError(
+        'CONFLICT',
+        `Payload for ${input.sourceEventKind}:${input.sourceEventId} is PURGED_BY_POLICY and cannot be resurrected.`,
+      );
     }
     const record: PayloadStateRecord = Object.freeze({
       resourceProjectId: input.resourceProjectId,
@@ -85,18 +93,24 @@ export class InMemoryPayloadStateStore implements PayloadStateStorePort {
         `Payload for ${input.sourceEventKind}:${input.sourceEventId} cannot be purged (already PURGED_BY_POLICY or unavailable).`,
       );
     }
-    // Atomic: sidecar flip + purge audit append (single in-memory operation).
-    const record = await this.setPayloadState({
+    // purgeByPolicy is the unique purge transition authority. It performs the
+    // atomic sidecar flip directly (setPayloadState rejects PURGED_BY_POLICY).
+    const record: PayloadStateRecord = Object.freeze({
       resourceProjectId: input.resourceProjectId,
       sourceEventKind: input.sourceEventKind,
       sourceEventId: input.sourceEventId,
       payloadAvailability: 'PURGED_BY_POLICY',
-      tombstoneMetadata: input.tombstoneMetadata,
+      tombstoneMetadata: input.tombstoneMetadata
+        ? Object.freeze({ ...input.tombstoneMetadata })
+        : undefined,
+      changedAt: input.occurredAt,
       reason: input.reason,
       policyRevision: input.policyRevision,
-      actorId: input.actorId,
-      changedAt: input.occurredAt,
     });
+    this.states.set(
+      key(input.resourceProjectId, input.sourceEventKind, input.sourceEventId),
+      record,
+    );
     this.purgeAudit.push(Object.freeze({ ...input }));
     return record;
   }

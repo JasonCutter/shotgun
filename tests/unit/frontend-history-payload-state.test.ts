@@ -82,6 +82,79 @@ describe('frontend-history WP2-B Payload Availability / Retention / Tombstone', 
     ).rejects.toMatchObject({ code: 'CONFLICT' });
   });
 
+  it('rejects direct set of PURGED_BY_POLICY (purgeByPolicy is the only purge authority)', async () => {
+    const store = new InMemoryPayloadStateStore('CANONICAL');
+    await store.setPayloadState({
+      resourceProjectId: 'p1',
+      sourceEventKind: 'DECISION',
+      sourceEventId: 'event:1',
+      payloadAvailability: 'AVAILABLE',
+      reason: 'initial',
+      actorId: 'actor-1',
+      changedAt: now,
+    });
+    await expect(
+      store.setPayloadState({
+        resourceProjectId: 'p1',
+        sourceEventKind: 'DECISION',
+        sourceEventId: 'event:1',
+        payloadAvailability: 'PURGED_BY_POLICY',
+        reason: 'bypass',
+        actorId: 'actor-1',
+        changedAt: now,
+      }),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+    // No purge audit was appended
+    expect(store.listPurgeAudit()).toHaveLength(0);
+    // State remains AVAILABLE
+    expect(
+      (await store.getPayloadState('p1', 'DECISION', 'event:1'))?.payloadAvailability,
+    ).toBe('AVAILABLE');
+  });
+
+  it('rejects resurrection after purge (PURGED_BY_POLICY -> AVAILABLE/REDACTED)', async () => {
+    const store = new InMemoryPayloadStateStore('REVIEW');
+    await store.setPayloadState({
+      resourceProjectId: 'p1',
+      sourceEventKind: 'APPROVAL',
+      sourceEventId: 'event:1',
+      payloadAvailability: 'AVAILABLE',
+      reason: 'initial',
+      actorId: 'actor-1',
+      changedAt: now,
+    });
+    await store.purgeByPolicy({
+      resourceProjectId: 'p1',
+      sourceEventKind: 'APPROVAL',
+      sourceEventId: 'event:1',
+      reason: 'purge',
+      actorId: 'admin-1',
+      occurredAt: now,
+    });
+    await expect(
+      store.setPayloadState({
+        resourceProjectId: 'p1',
+        sourceEventKind: 'APPROVAL',
+        sourceEventId: 'event:1',
+        payloadAvailability: 'AVAILABLE',
+        reason: 'resurrect',
+        actorId: 'actor-1',
+        changedAt: now,
+      }),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+    await expect(
+      store.setPayloadState({
+        resourceProjectId: 'p1',
+        sourceEventKind: 'APPROVAL',
+        sourceEventId: 'event:1',
+        payloadAvailability: 'REDACTED',
+        reason: 'resurrect',
+        actorId: 'actor-1',
+        changedAt: now,
+      }),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+  });
+
   it('rejects invalid inputs', async () => {
     const store = new InMemoryPayloadStateStore('SETTINGS');
     await expect(

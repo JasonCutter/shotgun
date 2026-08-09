@@ -44,6 +44,7 @@ import type {
   SettingsRepositoryPort,
 } from '../../../modules/settings-policy/src/index.js';
 import {
+  comparePolicyHistoryEntries,
   deriveSettingsImpact,
   paginatePolicyHistory,
 } from '../../../modules/settings-policy/src/index.js';
@@ -804,21 +805,29 @@ export class InMemorySettingsRepository implements SettingsRepositoryPort {
 }
 
 /**
- * In-memory Policy History read adapter (WP2-A). Mirrors the authoritative
- * append-only `settings.settings_audit_events` source. Read-only: entries are
+ * In-memory Policy History read adapter (WP2-A). Mirrors the three
+ * authoritative append-only settings sources (settings_revisions,
+ * policy_context_revisions, settings_audit_events). Read-only: entries are
  * never edited or deleted once appended (append-only safe).
  */
 export class InMemoryPolicyHistoryReadAdapter implements PolicyHistoryReadPort {
   private readonly entries: PolicyHistoryEntry[] = [];
 
   appendEntry(entry: PolicyHistoryEntry): void {
-    if (this.entries.some((existing) => existing.eventId === entry.eventId)) {
+    if (
+      this.entries.some(
+        (existing) =>
+          existing.projectId === entry.projectId &&
+          existing.sourceKind === entry.sourceKind &&
+          existing.sourceId === entry.sourceId,
+      )
+    ) {
       throw new FrontendContractError(
         'INVALID_REQUEST',
-        `Policy history event ${entry.eventId} already exists (append-only).`,
+        `Policy history entry ${entry.projectId}:${entry.sourceKind}:${entry.sourceId} already exists (append-only).`,
       );
     }
-    this.entries.push(Object.freeze({ ...entry }));
+    this.entries.push(Object.freeze({ ...entry, details: Object.freeze({ ...entry.details }) }));
   }
 
   async listPolicyHistory(input: ListPolicyHistoryInput): Promise<ListPolicyHistoryResult> {
@@ -829,14 +838,6 @@ export class InMemoryPolicyHistoryReadAdapter implements PolicyHistoryReadPort {
     return paginatePolicyHistory(projectEntries, input);
   }
 }
-
-const comparePolicyHistoryEntries = (a: PolicyHistoryEntry, b: PolicyHistoryEntry): number => {
-  if (a.timestamp < b.timestamp) return -1;
-  if (a.timestamp > b.timestamp) return 1;
-  if (a.eventId < b.eventId) return -1;
-  if (a.eventId > b.eventId) return 1;
-  return 0;
-};
 
 /**
  * In-memory ProjectTombstone / DeletedProjectAuditScope store (WP2-C).

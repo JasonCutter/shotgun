@@ -79,6 +79,27 @@ export class PostgresPayloadStateStore implements PayloadStateStorePort {
   async setPayloadState(input: SetPayloadStateInput): Promise<PayloadStateRecord> {
     this.validateInput(input.resourceProjectId, input.sourceEventKind, input.sourceEventId);
     const table = this.sidecarTable();
+    const existing = await this.getPayloadState(
+      input.resourceProjectId,
+      input.sourceEventKind,
+      input.sourceEventId,
+    );
+    // PURGED_BY_POLICY is only ever produced by purgeByPolicy() (the unique
+    // purge transition authority). Direct set is REJECTED.
+    if (input.payloadAvailability === 'PURGED_BY_POLICY') {
+      throw new FrontendContractError(
+        'CONFLICT',
+        `PURGED_BY_POLICY can only be set through purgeByPolicy().`,
+      );
+    }
+    // Resurrection is FORBIDDEN: a purged payload cannot be flipped back to
+    // AVAILABLE/REDACTED/UNAVAILABLE through setPayloadState.
+    if (existing?.payloadAvailability === 'PURGED_BY_POLICY') {
+      throw new FrontendContractError(
+        'CONFLICT',
+        `Payload for ${input.sourceEventKind}:${input.sourceEventId} is PURGED_BY_POLICY and cannot be resurrected.`,
+      );
+    }
     await this.pool.query(
       `INSERT INTO ${table}
          (resource_project_id, source_event_kind, source_event_id, payload_availability,
@@ -204,11 +225,56 @@ export class PostgresPayloadStateStore implements PayloadStateStorePort {
       return;
     }
     if (this.owner === 'EXTERNAL_ACTION') {
+      // sourceEventId == action_id is an IMPLICIT ASSUMPTION and is NOT
+      // allowed: resolve the authoritative source row to its action_id
+      // server-side, then verify the project identity (Frozen mandatory
+      // History family = External Action Result / Audit).
+      let resolvedActionId: string | null = null;
+      if (input.sourceEventKind === 'RESULT') {
+        const res = await client.query<{ action_id: string; resource_project_id: string }>(
+          `SELECT action_id, resource_project_id FROM frontend_external_action.results
+           WHERE result_id = $1`,
+          [input.sourceEventId],
+        );
+        const row = res.rows[0];
+        if (row) {
+          if (row.resource_project_id !== input.resourceProjectId) {
+            throw new FrontendContractError(
+              'RESOURCE_PROJECT_MISMATCH',
+              `Result ${input.sourceEventId} belongs to project ${row.resource_project_id}, not ${input.resourceProjectId}.`,
+            );
+          }
+          resolvedActionId = row.action_id;
+        }
+      } else if (input.sourceEventKind === 'AUDIT_EVENT') {
+        const res = await client.query<{ action_id: string; resource_project_id: string }>(
+          `SELECT action_id, resource_project_id FROM frontend_external_action.audit_events
+           WHERE audit_event_id = $1`,
+          [input.sourceEventId],
+        );
+        const row = res.rows[0];
+        if (row) {
+          if (row.resource_project_id !== input.resourceProjectId) {
+            throw new FrontendContractError(
+              'RESOURCE_PROJECT_MISMATCH',
+              `Audit event ${input.sourceEventId} belongs to project ${row.resource_project_id}, not ${input.resourceProjectId}.`,
+            );
+          }
+          resolvedActionId = row.action_id;
+        }
+      }
+      if (!resolvedActionId) {
+        throw new FrontendContractError(
+          'NOT_FOUND',
+          `External Action source ${input.sourceEventKind}:${input.sourceEventId} not found; cannot resolve action_id.`,
+        );
+      }
+      const actionId = resolvedActionId;
       // Existing generic audit stream: category + snapshot + per-action sequence.
       const seqRes = await client.query<{ sequence: number }>(
         `SELECT COALESCE(MAX(sequence), 0) + 1 AS sequence
          FROM frontend_external_action.audit_events WHERE action_id = $1`,
-        [input.sourceEventId],
+        [actionId],
       );
       await client.query(
         `INSERT INTO frontend_external_action.audit_events
@@ -217,7 +283,7 @@ export class PostgresPayloadStateStore implements PayloadStateStorePort {
          VALUES ($1, $2, $3, $3, $4, 'HISTORY_PAYLOAD_PURGED', $5, $6)`,
         [
           `purge:${randomUUID()}`,
-          input.sourceEventId,
+          actionId,
           input.resourceProjectId,
           seqRes.rows[0]?.sequence ?? 1,
           JSON.stringify({

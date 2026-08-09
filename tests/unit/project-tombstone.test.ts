@@ -1,9 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
 import { InMemoryProjectTombstoneStore } from '../../adapters/settings-project-admin-in-memory/src/index.js';
-import { isDeletedProjectAuditReadPermitted } from '../../modules/project-administration/src/index.js';
+import {
+  DELETED_PROJECT_AUDIT_READ_CAPABILITY,
+  isDeletedProjectAuditReadPermitted,
+} from '../../modules/project-administration/src/index.js';
 
 const now = '2026-08-09T00:00:00.000Z';
+
+const auditContext = (principalId: string, capabilities: readonly string[] = [DELETED_PROJECT_AUDIT_READ_CAPABILITY]) => ({
+  projectId: 'p1',
+  principalId,
+  currentCapabilities: capabilities,
+});
 
 describe('project-administration WP2-C ProjectTombstone / DeletedProjectAuditScope', () => {
   it('creates a tombstone and preserves lineage digest', async () => {
@@ -74,11 +83,29 @@ describe('project-administration WP2-C ProjectTombstone / DeletedProjectAuditSco
     });
     expect(granted.grantedPrincipalIds).toEqual(['auditor-1', 'auditor-2']);
 
-    // Read-time Capability revalidation: past membership alone never grants.
-    expect(isDeletedProjectAuditReadPermitted(granted, 'auditor-1')).toBe(true);
-    expect(isDeletedProjectAuditReadPermitted(granted, 'auditor-2')).toBe(true);
-    expect(isDeletedProjectAuditReadPermitted(granted, 'past-member')).toBe(false);
-    expect(isDeletedProjectAuditReadPermitted(null, 'auditor-1')).toBe(false);
+    // Read-time Capability revalidation: scope binding + CURRENT capability.
+    expect(isDeletedProjectAuditReadPermitted(granted, auditContext('auditor-1'))).toBe(true);
+    expect(isDeletedProjectAuditReadPermitted(granted, auditContext('auditor-2'))).toBe(true);
+    // Negative cases required by review:
+    // - scope grant present but current capability missing -> false
+    expect(
+      isDeletedProjectAuditReadPermitted(granted, auditContext('auditor-1', [])),
+    ).toBe(false);
+    // - principal not in granted set -> false (past membership alone never grants)
+    expect(
+      isDeletedProjectAuditReadPermitted(granted, auditContext('past-member')),
+    ).toBe(false);
+    // - no scope -> false
+    expect(
+      isDeletedProjectAuditReadPermitted(null, auditContext('auditor-1')),
+    ).toBe(false);
+    // - wrong project scope -> false
+    expect(
+      isDeletedProjectAuditReadPermitted(
+        granted,
+        { projectId: 'other-project', principalId: 'auditor-1', currentCapabilities: [DELETED_PROJECT_AUDIT_READ_CAPABILITY] },
+      ),
+    ).toBe(false);
 
     // Duplicate active grant rejected
     await expect(
@@ -96,7 +123,9 @@ describe('project-administration WP2-C ProjectTombstone / DeletedProjectAuditSco
       revokedAt: '2026-08-09T01:00:00.000Z',
     });
     expect(revoked.revokedAt).toBe('2026-08-09T01:00:00.000Z');
-    expect(isDeletedProjectAuditReadPermitted(revoked, 'auditor-1')).toBe(false);
+    expect(
+      isDeletedProjectAuditReadPermitted(revoked, auditContext('auditor-1')),
+    ).toBe(false);
     await expect(
       store.revokeAuditScope({ scopeId: 'scope-1', revokedAt: now }),
     ).rejects.toMatchObject({ code: 'CONFLICT' });

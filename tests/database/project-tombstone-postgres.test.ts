@@ -2,10 +2,19 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
-import { isDeletedProjectAuditReadPermitted } from '../../modules/project-administration/src/index.js';
+import {
+  DELETED_PROJECT_AUDIT_READ_CAPABILITY,
+  isDeletedProjectAuditReadPermitted,
+} from '../../modules/project-administration/src/index.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
+
+const auditContext = (projectId: string, principalId: string) => ({
+  projectId,
+  principalId,
+  currentCapabilities: [DELETED_PROJECT_AUDIT_READ_CAPABILITY],
+});
 
 describe.runIf(pool)('FE-P5-S2 WP2-C ProjectTombstone (PostgreSQL)', () => {
   it('creates a tombstone, grants/revokes an audit scope and enforces read revalidation', async () => {
@@ -47,16 +56,31 @@ describe.runIf(pool)('FE-P5-S2 WP2-C ProjectTombstone (PostgreSQL)', () => {
     });
     expect(granted.grantedPrincipalIds).toEqual(['auditor-1', 'auditor-2']);
 
-    // Read-time capability revalidation (fail-closed)
-    expect(isDeletedProjectAuditReadPermitted(granted, 'auditor-1')).toBe(true);
-    expect(isDeletedProjectAuditReadPermitted(granted, 'past-member')).toBe(false);
+    // Read-time capability revalidation (fail-closed): scope + CURRENT capability
+    expect(isDeletedProjectAuditReadPermitted(granted, auditContext(project, 'auditor-1'))).toBe(
+      true,
+    );
+    // scope present but current capability missing -> false
+    expect(
+      isDeletedProjectAuditReadPermitted(granted, {
+        projectId: project,
+        principalId: 'auditor-1',
+        currentCapabilities: [],
+      }),
+    ).toBe(false);
+    // past membership alone never grants
+    expect(
+      isDeletedProjectAuditReadPermitted(granted, auditContext(project, 'past-member')),
+    ).toBe(false);
 
     const revoked = await store.revokeAuditScope({
       scopeId,
       revokedAt: '2026-08-09T01:00:00.000Z',
     });
     expect(revoked.revokedAt).toBe('2026-08-09T01:00:00.000Z');
-    expect(isDeletedProjectAuditReadPermitted(revoked, 'auditor-1')).toBe(false);
+    expect(isDeletedProjectAuditReadPermitted(revoked, auditContext(project, 'auditor-1'))).toBe(
+      false,
+    );
     await expect(store.revokeAuditScope({ scopeId, revokedAt: now })).rejects.toMatchObject({
       code: 'CONFLICT',
     });

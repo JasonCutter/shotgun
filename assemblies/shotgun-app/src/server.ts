@@ -2138,6 +2138,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     {
       frontendKnowledgeDraftRepository,
       canonicalKnowledgeRepository,
+      changeSetReviewRepository,
     },
   );
   registerFrontendExternalActionRoutes(

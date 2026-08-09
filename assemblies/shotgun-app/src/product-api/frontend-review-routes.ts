@@ -25,6 +25,7 @@ import type { FrontendReviewProductCoordinator } from '../../../../modules/front
 import { ReviewCommandError } from '../../../../modules/frontend-review/src/index.js';
 import {
   computeReversalSnapshotImpact,
+  type ChangeSetReviewRepositoryPort,
   type ReversalEligibilityPort,
 } from '../../../../modules/change-set-review/src/index.js';
 import type { FrontendKnowledgeDraftRepositoryBoundaryPort } from '../../../../modules/frontend-knowledge-draft/src/index.js';
@@ -228,6 +229,41 @@ const materializeReversalAsKnowledgeDraft = async (input: {
   };
 };
 
+/**
+ * FE-P5-S2 WP6 (Round 1 Blocker B): reconcile the derived Review carrier from
+ * the authoritative change-set-review Reversal records.
+ *
+ * The authoritative Reversal (review.reversals) and the derived SUBMITTED
+ * Knowledge Draft carrier (migration 025) are separate persistence
+ * boundaries. If a carrier write fails after the authoritative save succeeds,
+ * the Reversal is durable but missing from the Review Queue. This helper
+ * deterministically regenerates the carrier for the SAME reversalId (never a
+ * new Reversal) from the authoritative record, so the Review Queue is
+ * recovered. Returns the number of carriers regenerated.
+ */
+const reconcileReversalCarriers = async (input: {
+  readonly scope: ReversalDraftScope;
+  readonly canonical: CanonicalKnowledgeRepositoryPort;
+  readonly draftRepository: FrontendKnowledgeDraftRepositoryBoundaryPort;
+  readonly reversalStore: ChangeSetReviewRepositoryPort;
+}): Promise<number> => {
+  const { scope, canonical, draftRepository, reversalStore } = input;
+  const reversals = await reversalStore.listReversals(scope.activeProjectId);
+  let reconciled = 0;
+  for (const reversal of reversals) {
+    const existing = await draftRepository.transaction(({ drafts }) =>
+      drafts.findById(scope.activeProjectId, reversal.reversalId),
+    );
+    if (existing) continue;
+    const draft = await materializeReversalAsKnowledgeDraft({ scope, reversal, canonical });
+    await draftRepository.transaction(async ({ drafts }) => {
+      await drafts.insert(draft);
+    });
+    reconciled += 1;
+  }
+  return reconciled;
+};
+
 export function registerFrontendReviewRoutes(
   server: FastifyInstance,
   coordinator: FrontendReviewProductCoordinator,
@@ -245,6 +281,13 @@ export function registerFrontendReviewRoutes(
      */
     readonly frontendKnowledgeDraftRepository?: FrontendKnowledgeDraftRepositoryBoundaryPort;
     readonly canonicalKnowledgeRepository?: CanonicalKnowledgeRepositoryPort;
+    /**
+     * FE-P5-S2 WP6 (Round 1 Blocker B): the owning change-set-review store
+     * holding the authoritative Reversal records, used to reconcile a missing
+     * derived carrier (same reversalId → deterministic carrier regeneration)
+     * so the Review Queue is recovered after a carrier-write failure.
+     */
+    readonly changeSetReviewRepository?: ChangeSetReviewRepositoryPort;
   },
 ): void {
   const buildReviewScope = async (headers: SecurityHeaders) => {
@@ -287,6 +330,22 @@ export function registerFrontendReviewRoutes(
     async (request) => {
       const scope = await buildReviewScope(request.headers);
       try {
+        // FE-P5-S2 WP6 (Round 1 Blocker B): reconcile any authoritative Reversal
+        // that lost its derived carrier (carrier-write failure after the
+        // authoritative save) — the SAME reversalId carrier is regenerated
+        // deterministically, so the Review Queue is recovered before serving it.
+        if (
+          options?.frontendKnowledgeDraftRepository &&
+          options?.canonicalKnowledgeRepository &&
+          options?.changeSetReviewRepository
+        ) {
+          await reconcileReversalCarriers({
+            scope,
+            canonical: options.canonicalKnowledgeRepository,
+            draftRepository: options.frontendKnowledgeDraftRepository,
+            reversalStore: options.changeSetReviewRepository,
+          });
+        }
         const decoded = decodeListReviewQueueRequestV1(request.body);
         return await coordinator.listReviewQueue(scope, decoded);
       } catch (error) {
@@ -432,14 +491,29 @@ export function registerFrontendReviewRoutes(
         const draftRepository = options?.frontendKnowledgeDraftRepository;
         const canonical = options?.canonicalKnowledgeRepository;
         if (draftRepository && canonical) {
-          const draft = await materializeReversalAsKnowledgeDraft({
-            scope,
-            reversal: result.reversal,
-            canonical,
-          });
-          await draftRepository.transaction(async ({ drafts }) => {
-            await drafts.insert(draft);
-          });
+          try {
+            const draft = await materializeReversalAsKnowledgeDraft({
+              scope,
+              reversal: result.reversal,
+              canonical,
+            });
+            await draftRepository.transaction(async ({ drafts }) => {
+              await drafts.insert(draft);
+            });
+          } catch (error) {
+            // FE-P5-S2 WP6 (Round 1 Blocker B): the authoritative Reversal is
+            // ALREADY durable in change-set-review (createReversalDraftChangeSet
+            // persisted it before returning). Report the derived-carrier write
+            // failure safely; the queue reconciliation regenerates the carrier
+            // for the SAME reversalId deterministically (never a new Reversal).
+            throw new ShotgunError({
+              code: 'INTERNAL_UNCLASSIFIED',
+              safeMessage: 'Reversal created but the Review carrier could not be written.',
+              module: 'frontend-review-api',
+              operation: 'create-reversal-draft',
+              cause: error,
+            });
+          }
         }
         return {
           schemaVersion: '1.0.0',

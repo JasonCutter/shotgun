@@ -1,7 +1,7 @@
 ---
 id: FRONTEND-PHASE-5-SECTION-2-WP4-EVIDENCE-260809001
 classification: CANONICAL
-status: wp4_round2_fixes_pending_review
+status: wp4_round3_fixes_pending_review
 work_item: FE-P5-S2
 created_at: 2026-08-09
 subject_base: 701e0bfac5af60daa48d9155185956b91650ecbd
@@ -21,6 +21,10 @@ wp4_round2_fix_ci_conclusion: FAILURE_QUALITY_PRETTIER_DOCS_ONLY
 wp4_round2_final_ci_number: 703
 wp4_round2_final_ci_run_id: 31297510534
 wp4_round2_final_ci_conclusion: SUCCESS
+wp4_round3_fix_head: 64eb60dfc
+wp4_round3_fix_ci_number: 705
+wp4_round3_fix_ci_run_id: 31298313103
+wp4_round3_fix_ci_conclusion: SUCCESS
 tracking_issue: https://github.com/JasonCutter/shotgun/issues/71
 contract_pr: https://github.com/JasonCutter/shotgun/pull/70
 product_pr: https://github.com/JasonCutter/shotgun/pull/80
@@ -96,6 +100,29 @@ blockers) was resolved as follows (code head recorded in frontmatter):
   revalidation). List hides EXTERNAL_ACTION AUDIT_EVENT rows without it via a keyset
   over-fetch that keeps pages full (no leak of inaccessible-row counts, no skipped
   visible rows); Detail returns the same non-disclosing NOT_FOUND.
+
+## 1c. GPT Review Round 3 — remaining F blocker resolved
+
+GPT Review Round 3 (CHANGES_REQUIRED — ONE retention blocker F) was resolved as follows
+(code head recorded in frontmatter):
+
+- **F1 — explicit snapshot overwrite**: `redactHistoryPayload` now ALWAYS returns a
+  `payloadSnapshot` key on non-AVAILABLE rows (tombstone metadata, or `undefined` when
+  absent) so `{ ...entry, ...redacted }` explicitly OVERWRITES any prior raw snapshot
+  instead of leaving it in place. Previously an absent tombstone meant the key was simply
+  omitted and the cached raw value survived (`payloadAvailability = PURGED_BY_POLICY`
+  with `payloadSnapshot = OLD_RAW_PAYLOAD` was possible).
+- **F2 — persistent projection cache sanitize**: `PostgresPayloadStateStore` now
+  sanitizes `frontend_history.history_projection_index` in the SAME transaction as the
+  availability transition — `purgeByPolicy` and any `setPayloadState` transition away
+  from AVAILABLE update the cached row's `payload_availability` and replace
+  `payload_snapshot` with the (nullable) tombstone metadata. The previous raw payload is
+  never left in persistent storage after a purge/redaction (AC-05 acceptance: no API raw
+  payload exposure AND no prior raw payload in the persistent projection cache).
+- **Focused negative tests**: unit (purge without tombstone → read-time redaction and
+  authoritative detail carry no raw payload) + PostgreSQL (cached AVAILABLE projection
+  row → purge without/with tombstone → persistent row sanitized; REDACTED transition
+  sanitizes too).
 
 ## 2. Implemented files
 
@@ -192,12 +219,12 @@ Routes (`registerHistoryRoutes`):
 
 ## 6. Verification
 
-- WP4 focused suites: unit 30 + DB parity 6 = **36 tests PASS** (Round 2 fixes):
-  projection/cursor 18 (incl. exact-set registry, audit-gate, redaction), adapter identity
-  7 (incl. redaction + purge-after-cache), external-action completeness 5 (incl. findById
-  detail >500), postgres parity 6.
-- Full unit suite: **479 tests PASS** (64 files).
-- Related DB suites: history parity 6 + external-action/review parity 19 = PASS.
+- WP4 focused suites: unit 31 + DB parity 12 = **43 tests PASS** (Round 3 fixes):
+  projection/cursor 18, adapter identity 8 (incl. redaction + purge-without-tombstone),
+  external-action completeness 5, payload-state postgres 6 (incl. projection cache
+  sanitize), history postgres parity 6.
+- Full unit suite: **480 tests PASS** (64 files; `stage-8-format-expansion` is a known
+  flaky parallel run — 14/14 PASS standalone, unrelated to this delta).
 - `tsc --noEmit`, ESLint, Prettier clean.
 - Automatic CI on push (PR #80, Draft) — latest head recorded in frontmatter.
 
@@ -213,5 +240,5 @@ Not implemented in this Work Package (remain unauthorized):
 
 ## 8. Next action
 
-Report WP4 Round 2 fixes (A–G) for the GPT Review Round 3. Do not begin WP5 until WP4 is
-reviewed and accepted.
+Report WP4 Round 3 fixes (F1/F2) for the GPT Review Round 4. Do not begin WP5 until WP4
+is reviewed and accepted.

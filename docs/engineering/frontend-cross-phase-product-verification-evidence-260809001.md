@@ -1,30 +1,51 @@
 ---
 id: FRONTEND-CROSS-PHASE-PRODUCT-VERIFICATION-EVIDENCE-260809001
 classification: CANONICAL
-status: wp_xp3_implemented
+status: COMPLETE
+status_authority: FINAL_AFTER_MERGE
 verification_gate: FRONTEND-CROSS-PHASE-PRODUCT-VERIFICATION
 created_at: 2026-08-09
 subject_base: 07990d6e68878d630a6fc0e472c660e5cab69f91
 governing_ir: docs/implementation/frontend-cross-phase-product-verification-implementation-request-260809001.md
 gap_repair_amendment: docs/implementation/frontend-cross-phase-product-gap-repair-amendment-260809001.md
-wp_xp1_fixture_parity: HEAD afaa67f0 (full browser suite 70 passed; 2 known performance flakes)
+wp_xp1_status: ACCEPTED / COMPLETE
+wp_xp1_parity_head: afaa67f052626f6240fc82f754e6bb1899c3e47a
+wp_xp1_exact_head_ci: NOT_RUN / NO_EXACT_HEAD_WORKFLOW_RUN (no GitHub Actions workflow run exists for this exact head; CI #746 belongs to the WP-XP2 implementation head 1753707c0 — never inferred)
+wp_xp2_status: ACCEPTED / COMPLETE
 wp_xp2_evidence: docs/engineering/frontend-cross-phase-product-verification-wp-xp2-evidence-260810001.md
-wp_xp1_ci_number: 746
-wp_xp1_ci_conclusion: SUCCESS
-wp_xp1_ci_run_id: 31375519252
+wp_xp2_implementation_head: 1753707c0
+wp_xp2_implementation_ci_number: 746
+wp_xp2_implementation_ci_run_id: 31375519252
+wp_xp2_implementation_ci_conclusion: SUCCESS
 wp_xp2_correction_round1_head: 85dbd8f0b
 wp_xp2_correction_round1_ci_number: 748
-wp_xp2_correction_round1_ci_conclusion: SUCCESS
 wp_xp2_correction_round1_ci_run_id: 31379439134
+wp_xp2_correction_round1_ci_conclusion: SUCCESS
 wp_xp2_correction_round2_head: 698c1eb5b
 wp_xp2_correction_round2_ci_number: 750
-wp_xp2_correction_round2_ci_conclusion: SUCCESS
 wp_xp2_correction_round2_ci_run_id: 31381019634
-# WP-XP3 evidence cleanup ships inside the substantive negative-delta commit
-# (GPT governance: no separate docs-only metadata commit; the automatic CI on
-# the exact WP-XP3 head is the final gate).
-wp_xp3_ci_governance: no_docs_only_commit (auto CI on exact WP-XP3 head is final gate)
-gpt_review_gate: PENDING_FINAL (reported for the Cross-Phase final gate)
+wp_xp2_correction_round2_ci_conclusion: SUCCESS
+wp_xp2_correction_round3_terminal_head: 37e67874a
+wp_xp2_correction_round3_ci_number: 751
+wp_xp2_correction_round3_ci_run_id: 31382160274
+wp_xp2_correction_round3_ci_conclusion: SUCCESS
+wp_xp2_correction_c_recovery_rounds: CLOSED
+wp_xp3_status: ACCEPTED / COMPLETE
+wp_xp3_head: c8dd7c461
+wp_xp3_ci_number: 752
+wp_xp3_ci_run_id: 31385927813
+wp_xp3_ci_conclusion: SUCCESS
+cp_ac_closure: CP-AC-01~12 CLOSED
+xp_i_closure: XP-I01~07 CLOSED
+cp_neg_closure: CP-NEG-01~10 CLOSED (01~06 NEW_CROSS_PHASE_DELTA by journey-level verification; 07~10 REUSE_ONLY by citation)
+gpt_final_review: ACCEPTED
+user_completion_approval: APPROVED
+merged_pr: 83
+canonical_main: 774f2fffa7759c9ee25ca98a0e705d245c34ec2a
+post_merge_main_ci_number: 753
+post_merge_main_ci_run_id: 31386938625
+post_merge_main_ci_conclusion: SUCCESS
+governance_closure: docs/engineering/frontend-cross-phase-governance-closure-260810001.md (if created) | normalized here per GPT AUTHORIZED 2026-08-10
 tracking_issue: https://github.com/JasonCutter/shotgun/issues/71
 product_pr: https://github.com/JasonCutter/shotgun/pull/83
 ---
@@ -169,27 +190,45 @@ citation (no new tests — the phase-crossing journey adds no new risk).
 - `npx tsc --noEmit` PASS.
 - `npm run format:check` PASS; `npm run lint` PASS.
 - `npm run docs:validate` PASS.
-- WP-XP1: full browser suite 70 passed (2 known performance flakes), head
-  `afaa67f0`, CI #746 SUCCESS.
+- WP-XP1: fixture production-parity composition; full browser suite 70 passed
+  (2 known performance flakes), parity head `afaa67f0` — exact-head CI
+  **NOT_RUN / NO_EXACT_HEAD_WORKFLOW_RUN** (no GitHub Actions workflow run
+  exists for that exact head; the parity is verified as an integrated
+  descendant of the merged main lineage).
 - WP-XP2: `tests/browser/frontend-cross-phase-journey.spec.ts` **1 passed** on
-  a fresh DB and on the dirty shared DB (re-run resilience); CI #748
-  (`85dbd8f0b`) and #750 (`698c1eb5b`, run 31381019634) SUCCESS; GPT ACCEPTED
-  (Correction C + Recovery Rounds 1~3 CLOSED).
+  a fresh DB and on the dirty shared DB (re-run resilience); evidence chain —
+  implementation `1753707c0` / CI #746 / run 31375519252 / SUCCESS, Correction
+  Round 1 `85dbd8f0b` / CI #748 / SUCCESS, Correction Round 2 `698c1eb5b` /
+  CI #750 / run 31381019634 / SUCCESS, Correction Round 3 terminal accepted
+  head `37e67874a` / CI #751 / run 31382160274 / SUCCESS; Correction C +
+  Recovery Rounds 1~3 CLOSED; GPT ACCEPTED.
 - WP-XP3: `tests/browser/frontend-cross-phase-negative.spec.ts` **1 passed**
-  on the shared DB and on a re-run (dirty) — CP-NEG-01~06; sources DB suite
-  11 + sources product-api integration 3 = 14 tests PASS (recovery regression
-  incl. mixed case); `format:check`/`lint`/`docs:validate` PASS.
-- CI (automatic on push, PR #83): WP-XP1 #746, WP-XP2 Round 1 #748, Round 2
-  #750 — never re-run; the docs-only frontmatter commit's run is NOT used as
-  technical evidence. The WP-XP3 substantive exact-head automatic CI is the
-  final gate (no docs-only metadata commit per GPT governance).
+  on the shared DB and on a re-run (dirty) — CP-NEG-01~~06; CP-NEG-07~~10
+  REUSE_ONLY closed by citation; sources DB suite 11 + sources product-api
+  integration 3 = 14 tests PASS; `format:check`/`lint`/`docs:validate` PASS.
+- CI (automatic on push, never re-run): WP-XP2 implementation #746, Round 1
+  #748, Round 2 #750, Round 3 terminal #751, WP-XP3 #752 (run 31385927813),
+  and post-merge main #753 (run 31386938625) — all SUCCESS. The docs-only
+  frontmatter commit's run is NOT promoted to technical authority. No
+  metadata-chase commits were made.
 
-## 8. Gates / handoff
+## 8. Governance Closure / gates (FINAL_AFTER_MERGE)
 
-- WP-XP1: ACCEPTED / COMPLETE (GPT).
-- WP-XP2: ACCEPTED / COMPLETE (GPT, 2026-08-10).
-- WP-XP3: implemented and reported — pending the Cross-Phase final GPT gate.
-- PR #83 stays Draft; Ready/Merge remain FORBIDDEN until the final GPT gate
-  ACCEPTS and the USER grants Cross-Phase Verification Completion.
-- Deployment / Production Verification / Local Launch / Backup-Restore / Final
-  Local Acceptance: NOT_AUTHORIZED / NOT_RUN (separate later stages).
+- GPT Cross-Phase Final Review: **ACCEPTED** (2026-08-10).
+- USER Cross-Phase Verification Completion: **APPROVED** (2026-08-10).
+- PR #83 merged (`774f2fffa`); canonical `main` points at the merge commit;
+  post-merge main CI #753 / run 31386938625 / SUCCESS.
+- WP-XP1: ACCEPTED / COMPLETE (exact-head CI NOT_RUN — recorded, never
+  inferred).
+- WP-XP2: ACCEPTED / COMPLETE; WP-XP3: ACCEPTED / COMPLETE.
+- CP-AC-01~~12: CLOSED; XP-I01~~07: CLOSED; CP-NEG-01~10: CLOSED.
+- WP-XP1 CI attribution correction: CI #746 / run 31375519252 is the WP-XP2
+  implementation head `1753707c0` run (NOT a WP-XP1 run). Any prior
+  "WP-XP1 CI #746" / "afaa67f0 / #746" phrasing is hereby corrected; no new
+  WP-XP1 CI was created or inferred.
+- Governance Closure is the single docs-only normalization commit (this
+  change). Frozen IR and prior Amendment decisions are NOT rewritten.
+- Local Launch / Serving Usability, Backup/Restore Owner Workflow, Final
+  Local Acceptance: NOT STARTED until this Governance Closure is ACCEPTED by
+  the GPT review gate.
+- Deployment / Production Verification: NOT_AUTHORIZED / NOT_RUN.

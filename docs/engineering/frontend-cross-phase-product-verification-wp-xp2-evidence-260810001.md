@@ -1,16 +1,20 @@
 ---
 id: FRONTEND-CROSS-PHASE-PRODUCT-VERIFICATION-WP-XP2-EVIDENCE-260810001
 classification: CANONICAL
-status: wp_xp2_correction_round3_implemented
+status: ACCEPTED / COMPLETE
+status_authority: FINAL_AFTER_MERGE
 verification_gate: FRONTEND-CROSS-PHASE-PRODUCT-VERIFICATION
 created_at: 2026-08-10
 subject_base: 07990d6e68878d630a6fc0e472c660e5cab69f91
 governing_ir: docs/implementation/frontend-cross-phase-product-verification-implementation-request-260809001.md
 gap_repair_amendment: docs/implementation/frontend-cross-phase-product-gap-repair-amendment-260809001.md
 correction_b_evidence: docs/implementation/frontend-cross-phase-correction-b-implementation-evidence-260809001.md
+final_cross_phase_evidence: docs/engineering/frontend-cross-phase-product-verification-evidence-260809001.md
+# Historical review record — preserved as history (never rewritten).
 gpt_review_20260810: BLOCKED_CORRECTION_AUTHORIZED (Correction C — Source Intake → Transformation/Evidence production wiring; 7 fixed deltas)
 gpt_review_20260810_r2: CHANGES_REQUIRED (Correction Round 2 — no final SUCCEEDED before Stage 3; failure → retryable OUTCOME_INDETERMINATE; same-SourceVersion resume; no duplicates)
 gpt_review_20260810_r3: CHANGES_REQUIRED (Correction Round 3 — mixed PARTIAL submission + Stage 3 failure must also be retryable and resume to PARTIAL; CI #752 report corrected to #750/run 31381019634 on exact head 698c1eb5b)
+gpt_review_20260810_final: ACCEPTED (Correction C + Recovery Rounds 1~3 CLOSED)
 wp_xp2_implementation_head: 1753707c0
 wp_xp2_implementation_ci_number: 746
 wp_xp2_implementation_ci_conclusion: SUCCESS
@@ -23,6 +27,11 @@ wp_xp2_correction_round2_head: 698c1eb5b
 wp_xp2_correction_round2_ci_number: 750
 wp_xp2_correction_round2_ci_conclusion: SUCCESS
 wp_xp2_correction_round2_ci_run_id: 31381019634
+wp_xp2_correction_round3_terminal_head: 37e67874a
+wp_xp2_correction_round3_ci_number: 751
+wp_xp2_correction_round3_ci_conclusion: SUCCESS
+wp_xp2_correction_round3_ci_run_id: 31382160274
+correction_c_recovery_rounds: CLOSED
 # Correction Round 2/3 evidence cleanup ships inside the substantive fix
 # commits (GPT governance: no separate docs-only metadata commit; the
 # automatic CI on the exact head is the final gate — see sections 9/10).
@@ -294,3 +303,18 @@ E2E on fresh DB and on the dirty shared DB (2 passes); `format:check`, `lint`,
 
 Final gate: the automatic CI on this exact Round 3 head (PR #83). No CI
 metadata is appended via a later docs-only commit.
+
+## 11. Closure reference (append-only, 2026-08-10)
+
+Cross-Phase Governance Closure (GPT AUTHORIZED) normalizes the WP-XP2 final
+state after merge — prior CHANGES_REQUIRED review records above are preserved
+as history, never rewritten:
+
+- WP-XP2: **ACCEPTED / COMPLETE** (GPT Final Review ACCEPTED 2026-08-10).
+- Correction C + Recovery Rounds 1~3: **CLOSED**.
+- Correction Round 3 terminal accepted head: `37e67874a` / CI **#751** / run
+  31382160274 / SUCCESS.
+- Merged via PR #83 (`774f2fffa`); canonical `main` at the merge commit;
+  post-merge main CI #753 / run 31386938625 / SUCCESS.
+- Final Cross-Phase authority: `docs/engineering/frontend-cross-phase-product-verification-evidence-260809001.md`
+  (status COMPLETE / FINAL_AFTER_MERGE).

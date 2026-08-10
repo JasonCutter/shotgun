@@ -1,16 +1,24 @@
 # LPA-WP5 A2 Product Implementation — Verification Evidence
 
 - **id**: LPA-WP5-A2-VERIFICATION-260811002
-- **classification**: EVIDENCE
-- **status**: COMPLETE (A2) — Correction Round 3 (AI Durable Recovery isolation / Sources runtime cleanup) 후 GPT 재검토 대기
+- **classification**: CANONICAL
+- **status**: COMPLETE
+- **status_authority**: FINAL_AFTER_MERGE
 - **frozen_ir**: `docs/implementation/backup-restore-owner-workflow-implementation-request-260811001.md` (FROZEN / ACCEPTED)
 - **a1_head**: `6a4b8a60c88ec609de48bb148cb309e39dc1a85c`
-- **pr**: (Product PR — merge 전)
+- **initial_a2_head**: `8e41bd8dea74e6e7dcb7b8aa9a73829c795a8750` (#766 / run 31409090549)
+- **correction_round_1**: `c6f960b2eefbd11404de81f0a0267c103d20820b` (#767 / run 31411242965)
+- **correction_round_2**: `1313e8f63472b610d0a65e10ab1a6fbc44e9d866` (#768 / run 31413863180)
+- **final_accepted_product_head**: `ef34b370e2d718bd90dd97959b7955ee59aeaf3f` (#769 / run 31415684647)
+- **pr**: #87 (MERGED)
+- **product_merge_commit**: `4c739ece47e4d612041ad42ee8c990a8b18e6f68`
+- **canonical_main**: `4c739ece47e4d612041ad42ee8c990a8b18e6f68`
+- **product_post_merge_main_ci**: #770 / run 31416435990 / SUCCESS (event=push, run_attempt 1)
 
-> Exact implementation head와 CI 번호는 이 문서에 기록하지 않고 GPT 완료
-> 보고의 GitHub external evidence로 제출한다 (GPT §22 — self-referential CI
-> metadata chase 방지). Governance Closure 시 정당한 canonical record로
-> 확정한다.
+> Final Product technical authority: `ef34b370e...` + #769 SUCCESS. Final merge
+> authority: `4c739ece...` + #770 SUCCESS. #766~#768은 correction evidence
+> (역사적 역할)로 보존되며 최종 technical authority가 아니다. 이 header
+> 기록은 Governance Closure (docs-only)에서 canonical record로 확정했다.
 
 ## 1. 구현 범위 (LPA-BR-D01 ~ D16 mapping)
 
@@ -301,3 +309,27 @@ targetAssetRoot)`로 시그니처 변경, `runOwnerRestoreSafe`에서
 - 정확한 Correction Round 3 head / CI 번호는 이 문서에 기록하지 않고 GPT
   완료 보고의 external evidence로 제출한다 (§22 메타데이터 chase 방지).
 - 불필요한 test/CI rerun, metadata-chase commit 없음. backup:drill 미실행.
+
+## 11. Governance Closure (2026-08-11)
+
+- GPT Correction Round 3: **ACCEPTED** → D12 / AC-06 **CLOSED**.
+- GPT A2 post-merge: **ACCEPTED** → Governance Closure AUTHORIZED.
+- PR #87: **MERGED** (merge commit `4c739ece47e4d612041ad42ee8c990a8b18e6f68`).
+- 최종 accepted Product head: `ef34b370e2d718bd90dd97959b7955ee59aeaf3f`
+  (#769 / run 31415684647 / SUCCESS).
+- Product post-merge main CI: #770 / run 31416435990 / SUCCESS (event=push,
+  head_branch=main, head_sha=`4c739ece...`, run_attempt 1). Quality / Frontend
+  / Required Gates 모두 SUCCESS.
+- Canonical main after Product merge: `4c739ece47e4d612041ad42ee8c990a8b18e6f68`
+  (approved feature head `ef34b370e...`가 ancestry에 포함).
+- LPA-BR-D01 ~ D16: **CLOSED**
+- LPA-BR-AC-01 ~ AC-10: **CLOSED**
+- unresolved: **NONE**
+- LPA-WP5 status: **COMPLETE**
+- status authority: **FINAL_AFTER_MERGE**
+- 다음 gate: **LPA-WP6** — 이 Governance Closure 자체가 merge되고 canonical
+  main CI가 성공한 뒤에만 AUTHORIZED. Deployment / Production Verification은
+  별개로 NOT_AUTHORIZED 유지.
+- 이 문서는 docs-only Governance Closure에서 CANONICAL / COMPLETE /
+  FINAL_AFTER_MERGE로 정규화되었으며, correction history (§10)는
+  append-only로 보존한다.

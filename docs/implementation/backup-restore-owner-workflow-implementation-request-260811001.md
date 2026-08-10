@@ -11,7 +11,8 @@ a0_head: cd1bdfe76e2808885903338cf43aed3c0f2078af
 a0_verdict: ACCEPTED / COMPLETE (GPT 2026-08-10; Contract Freeze AUTHORIZED)
 a1_head: 6a4b8a60c88ec609de48bb148cb309e39dc1a85c
 a1_verdict: ACCEPTED / FROZEN (GPT 2026-08-11; Product Implementation AUTHORIZED)
-next_gate: LPA-WP5 A2 Product Implementation → GPT A2 review → LPA-WP6
+a2_status: COMPLETE (FINAL_AFTER_MERGE; see closure record below)
+next_gate: LPA-WP6 Final Local Acceptance (after LPA-WP5 Governance Closure is merged and accepted)
 ---
 
 # Shotgun — Backup / Restore Owner Workflow Implementation Request (LPA-WP5, Frozen — ACCEPTED)
@@ -362,3 +363,20 @@ Verification은 계속 시작하지 않는다.
     `FROZEN / ACCEPTED`로 정규화한다. A2 구현은 AUTHORIZED 상태이며,
     LPA-WP6 Final Local Acceptance와 Deployment/Production Verification은
     계속 시작하지 않는다.
+
+## 9. Governance Closure Record (append-only, 2026-08-11)
+
+- A2 final accepted head: `ef34b370e2d718bd90dd97959b7955ee59aeaf3f`
+  (#769 / run 31415684647 / SUCCESS)
+- Product PR: #87 (MERGED)
+- Product merge commit: `4c739ece47e4d612041ad42ee8c990a8b18e6f68`
+- Canonical main after Product merge: `4c739ece47e4d612041ad42ee8c990a8b18e6f68`
+- Product post-merge main CI: #770 / run 31416435990 / SUCCESS (event=push,
+  head_branch=main, head_sha=`4c739ece...`, run_attempt 1)
+- GPT post-merge: **ACCEPTED** (LPA-WP5 Governance Closure AUTHORIZED)
+- LPA-WP5: **COMPLETE / FINAL_AFTER_MERGE candidate**
+- 다음 gate: **LPA-WP6 Final Local Acceptance** — 이 Governance Closure가
+  merge되고 canonical main CI가 성공한 뒤에만 AUTHORIZED.
+- Frozen contract (D01~~D16 / AC01~~10) 및 historical `subject_base`
+  (`a471b2e5...`)는 그대로 보존한다. 이 record는 docs-only Governance
+  Closure에서 추가되었으며 Product/DB/migration/dependency 변경 없음.

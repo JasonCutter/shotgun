@@ -21,6 +21,7 @@
     "dev": "tsx watch assemblies/shotgun-app/src/main.ts",
     "dev:web": "npm --workspace @shotgun/web run dev",
     "start": "tsx assemblies/shotgun-app/src/main.ts",
+    "launch": "tsx scripts/launch-local.ts",
     "lint": "eslint packages modules adapters assemblies apps tests scripts",
     "format:check": "prettier --check package.json tsconfig.json eslint.config.js .prettierrc.json .github/workflows/ci.yml playwright.config.ts packages modules adapters assemblies apps examples tests scripts docs/engineering docs/architecture/adr docs/architecture/stage-12-1/README.md docs/architecture/frontend/README.md docs/architecture/frontend/phase-2-knowledge-input-question.md docs/architecture/frontend/adr-index.md docs/architecture/add/README.md docs/governance/generated-artifact-ownership.md docs/generated-artifacts.json docs/project docs/implementation/frontend-phase-1-5-plan-v1.0.md docs/implementation/oss-source-registry.json docs/implementation/stage-validations",
     "format:write": "prettier --write package.json tsconfig.json eslint.config.js .prettierrc.json .github/workflows/ci.yml playwright.config.ts packages modules adapters assemblies apps examples tests scripts docs/engineering docs/architecture/adr docs/architecture/stage-12-1/README.md docs/architecture/frontend/README.md docs/architecture/frontend/phase-2-knowledge-input-question.md docs/architecture/frontend/adr-index.md docs/architecture/add/README.md docs/governance/generated-artifact-ownership.md docs/generated-artifacts.json docs/project docs/implementation/frontend-phase-1-5-plan-v1.0.md docs/implementation/oss-source-registry.json docs/implementation/stage-validations",
@@ -74,6 +75,7 @@
     "check": "npm run docs:knowledge-flow:check && npm run docs:validate && npm run check:core && npm run test:stage12-package && npm run secret:scan && npm run oss:verify"
   },
   "dependencies": {
+    "@fastify/static": "10.1.2",
     "@google/genai": "2.12.0",
     "ajv": "^8.17.1",
     "cytoscape": "3.34.0",

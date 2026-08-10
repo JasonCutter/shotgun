@@ -108,7 +108,31 @@ npm run dev:web
 - Frontend: `http://127.0.0.1:5173`
 - Backend: `http://127.0.0.1:3000`
 
-Section 1은 Local Loopback Development 전용입니다. Production SPA Serving은 아직 구현되지 않았습니다.
+Section 1은 Local Loopback Development 전용입니다.
+
+### Local Launch (`npm run launch`)
+
+한 명령으로 Shotgun 전체를 로컬 개인 애플리케이션처럼 시작합니다
+(LPA-WP4 — Local Launch / Serving Usability).
+
+```bash
+# SPA build → DB verify → Backend 시작 → readiness → browser 자동 열기
+npm run launch
+
+# 브라우저 자동 열기 없이 (headless/자동화)
+npm run launch -- --no-open
+```
+
+- 시작 후: `http://127.0.0.1:3000` (PORT 변경 가능)
+- Backend와 built SPA가 **같은 origin**(single process)에서 서빙됩니다 —
+  일반 사용에 Vite 개발 서버가 필요하지 않습니다.
+- launch는 DB를 자동 생성/리셋하지 않습니다. DB/schema 문제는
+  `docker compose up -d --wait db`, `npm run db:migrate`, `npm run db:verify`
+  같은 corrective action을 안내합니다.
+- Ctrl+C / SIGTERM은 안전하게 종료됩니다(worker·pool 정리).
+- 개발자는 기존 `npm run dev` / `npm run dev:web` 워크플로를 그대로 사용할 수
+  있습니다.
+- 상세 계약: `docs/implementation/local-launch-serving-usability-implementation-request-260810001.md`
 
 ## MVP 목표
 

@@ -101,19 +101,23 @@ exact-head PASS한 evidence를 재실행하지 않는다 (audit only).
 ## 4. Original Final-Completion Gap Matrix reconciliation (G-01 ~ G-06)
 
 과거 Final Completion gap matrix의 G-01~G-06을 현재 canonical authority와
-대조한다. 원본 matrix는 대화(gpt) 레벨 authority이며 repository 문서로
-저장된 파일은 없다. 이 감사에서는 GPT가 LPA-WP6 A0을 AUTHORIZE하며 인용한
-항목 정의(`scratch/gpt-final-accept-response-wrapped.txt` trace)를 기준으로
-각 항목을 분류한다.
+대조한다. 원본 matrix는 repository artifact가 아니며, GPT가 LPA-WP6 A0을
+AUTHORIZE하며 인용한 대화 레벨 context에서 정의된 항목이다. 이 감사는 해당
+candidate 정의를 GPT authorization context에서 받아 현재 canonical
+repository authority와 reconciliation한다.
 
-| Gap                                                                      | 분류                                              | 근거                                                                                                                                                                                                                                      |
-| ------------------------------------------------------------------------ | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| G-01 Governance drift (FE-P5 governance registry / completion authority) | `CLOSED_BY_CANONICAL_GOVERNANCE`                  | LPA-WP1 repair PR #76 (merge `8cc93c0aa`) + `docs/project/frontend-work-items.json` FE-P5-S1 COMPLETE + `FRONTEND-PHASE-5-SECTION-1-COMPLETION-260808001` FINAL_AFTER_MERGE (CI #652)                                                     |
-| G-02 FE-P5-S2 (History / Audit / Rollback)                               | `CLOSED_BY_CANONICAL_IMPLEMENTATION` + governance | FE-P5-S2 PR #80/#81, `docs/engineering/frontend-phase-5-section-2-wp6-integrated-verification-evidence-260809001.md` (§6 COMPLETE / FINAL_AFTER_MERGE, CI #735/#737), `FRONTEND-PHASE-5-SECTION-2-COMPLETION-260809001` FINAL_AFTER_MERGE |
-| G-03 Cross-Phase Verification                                            | `CLOSED_BY_CANONICAL_GOVERNANCE`                  | `docs/engineering/frontend-cross-phase-product-verification-evidence-260809001.md` COMPLETE / FINAL_AFTER_MERGE, PR #83/#84, CP-AC-01~~12 / XP-I01~~07 / CP-NEG-01~10 CLOSED (CI #753/#755)                                               |
-| G-04 Local Launch                                                        | `CLOSED_BY_CANONICAL_GOVERNANCE`                  | LPA-WP4 PR #85/#86, `local-launch-serving-usability-implementation-verification-260810002.md` LPA-D01~~D14 / AC-01~~10 CLOSED, COMPLETE / FINAL_AFTER_MERGE (CI #762/#764)                                                                |
-| G-05 Backup UX                                                           | `CLOSED_BY_CANONICAL_GOVERNANCE`                  | LPA-WP5 PR #87/#88, `backup-restore-owner-workflow-implementation-verification-260811002.md` D01~~D16 / AC-01~~10 CLOSED, COMPLETE / FINAL_AFTER_MERGE (CI #770/#772)                                                                     |
-| G-06 AI dependency / keyless-offline                                     | `SUPERSEDED_BY_LATER_ACCEPTED_DECISION`           | 아래 §5 참조                                                                                                                                                                                                                              |
+- Original G-01~G-06 gap matrix source: **GPT LPA-WP6 A0 authorization
+  conversation-level context**
+- Repository artifact: **NONE**
+
+| Gap                                                                      | 분류                                    | 근거                                                                                                                                                                                                                                                                             |
+| ------------------------------------------------------------------------ | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| G-01 Governance drift (FE-P5 governance registry / completion authority) | `CLOSED_BY_CANONICAL_GOVERNANCE`        | LPA-WP1 repair PR #76 (merge `8cc93c0aa`) + `docs/project/frontend-work-items.json` FE-P5-S1 COMPLETE + `FRONTEND-PHASE-5-SECTION-1-COMPLETION-260808001` FINAL_AFTER_MERGE (CI #652)                                                                                            |
+| G-02 FE-P5-S2 (History / Audit / Rollback)                               | `CLOSED_BY_CANONICAL_IMPLEMENTATION`    | FE-P5-S2 구현 완료 (PR #80/#81) + 후속 Governance Closure / FINAL_AFTER_MERGE (`docs/engineering/frontend-phase-5-section-2-wp6-integrated-verification-evidence-260809001.md` §6 COMPLETE / FINAL_AFTER_MERGE, CI #735/#737, `FRONTEND-PHASE-5-SECTION-2-COMPLETION-260809001`) |
+| G-03 Cross-Phase Verification                                            | `CLOSED_BY_CANONICAL_GOVERNANCE`        | `docs/engineering/frontend-cross-phase-product-verification-evidence-260809001.md` COMPLETE / FINAL_AFTER_MERGE, PR #83/#84, CP-AC-01~~12 / XP-I01~~07 / CP-NEG-01~10 CLOSED (CI #753/#755)                                                                                      |
+| G-04 Local Launch                                                        | `CLOSED_BY_CANONICAL_GOVERNANCE`        | LPA-WP4 PR #85/#86, `local-launch-serving-usability-implementation-verification-260810002.md` LPA-D01~~D14 / AC-01~~10 CLOSED, COMPLETE / FINAL_AFTER_MERGE (CI #762/#764)                                                                                                       |
+| G-05 Backup UX                                                           | `CLOSED_BY_CANONICAL_GOVERNANCE`        | LPA-WP5 PR #87/#88, `backup-restore-owner-workflow-implementation-verification-260811002.md` D01~~D16 / AC-01~~10 CLOSED, COMPLETE / FINAL_AFTER_MERGE (CI #770/#772)                                                                                                            |
+| G-06 AI dependency / keyless-offline                                     | `SUPERSEDED_BY_LATER_ACCEPTED_DECISION` | 아래 §5 참조                                                                                                                                                                                                                                                                     |
 
 ### 5. G-06 authority reconciliation (AI dependency / keyless-offline)
 
@@ -142,18 +146,18 @@ exact-head PASS한 evidence를 재실행하지 않는다 (audit only).
 
 ## 6. Final Local Acceptance dimensions (FLA-01 ~ FLA-10)
 
-| Dim                                            | 정의                                                                                                                                                       | 상태                       | 근거                                                                                                    |
-| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------- |
-| FLA-01 Canonical Governance Complete           | 계획상 required Phase/Section/WP가 모두 canonical COMPLETE인가                                                                                             | PASS                       | FE-P1~P5, Cross-Phase, LPA-WP4, LPA-WP5 모두 COMPLETE / FINAL_AFTER_MERGE (§3)                          |
-| FLA-02 Product Flow Complete                   | Cross-Phase accepted evidence가 core owner journey를 실제 Product composition에서 증명하는가                                                               | PASS                       | CP-AC-01~~12 journeys / XP-I01~~07 lineage / CP-NEG-01~10 negative — accepted closure 포함 (PR #83/#84) |
-| FLA-03 Owner Launchable                        | owner가 documented canonical command로 Local Product를 시작할 수 있는가                                                                                    | PASS                       | `npm run launch` (LPA-D01), readiness LPA-D10, actionable failures LPA-D12                              |
-| FLA-04 Owner Stoppable / Restartable           | safe shutdown 후 persistent data 유지하며 재시작 가능한 canonical evidence가 있는가                                                                        | PASS                       | LPA-D09 safe shutdown, LPA-D13 persistent-state preservation, LPA-AC-07/08                              |
-| FLA-05 Owner Recoverable                       | verified backup 생성 + safe isolated restore 가능한 canonical evidence가 있는가                                                                            | PASS                       | LPA-WP5 D01~~D16 / AC-01~~10 (backup create/verify, restore-safe, no-cutover, recovery verification)    |
-| FLA-06 Authority / Safety Boundaries Preserved | AI result≠Canonical 자동 반영, Claim/Fact 구분, Approval before Canonical, Compiled Truth derived from Canonical, no automatic destructive restore/cutover | PASS                       | Cross-Phase XP-I lineage/approval binding, LPA-WP5 no-cutover + target ownership (AC-09)                |
-| FLA-07 No Hidden Required Work                 | roadmap/active issues/completion manifests/IR에 Local completion을 막는 REQUIRED item이 남아 있지 않은가                                                   | PASS                       | 조사 결과 REQUIRED 미해결 항목 없음 (다음 gate는 전부 이후 WP/deferred)                                 |
-| FLA-08 Deferred Work Classified                | cloud/production/SaaS/scale-out/desktop wrapper/retention/PITR/cloud backup/connector 확장 등을 Local blocker와 분리                                       | PASS                       | 아래 §8 (Deferred / Future Work) 참조                                                                   |
-| FLA-09 Operational Preconditions Explicit      | PostgreSQL, required secrets/config, supported runtime, bootstrap을 capability gap과 구분                                                                  | PASS                       | `.env.example` + LPA-D12 `ENV_CONFIGURATION_INVALID` — "설정 필요"와 "기능 미완성"을 분리               |
-| FLA-10 Completion Verdict                      | LOCAL_ACCEPTANCE_READY 또는 LOCAL_ACCEPTANCE_BLOCKED                                                                                                       | **LOCAL_ACCEPTANCE_READY** | 아래 §7                                                                                                 |
+| Dim                                            | 정의                                                                                                                                                                                  | 상태                       | 근거                                                                                                    |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------- |
+| FLA-01 Canonical Governance Complete           | 계획상 required Phase/Section/WP가 모두 canonical COMPLETE인가                                                                                                                        | PASS                       | FE-P1~P5, Cross-Phase, LPA-WP4, LPA-WP5 모두 COMPLETE / FINAL_AFTER_MERGE (§3)                          |
+| FLA-02 Product Flow Complete                   | Cross-Phase accepted evidence가 core owner journey를 실제 Product composition에서 증명하는가                                                                                          | PASS                       | CP-AC-01~~12 journeys / XP-I01~~07 lineage / CP-NEG-01~10 negative — accepted closure 포함 (PR #83/#84) |
+| FLA-03 Owner Launchable                        | owner가 documented canonical command로 Local Product를 시작할 수 있는가                                                                                                               | PASS                       | `npm run launch` (LPA-D01), readiness LPA-D10, actionable failures LPA-D12                              |
+| FLA-04 Owner Stoppable / Restartable           | safe shutdown 후 persistent data 유지하며 재시작 가능한 canonical evidence가 있는가                                                                                                   | PASS                       | LPA-D09 safe shutdown, LPA-D13 persistent-state preservation, LPA-AC-07/08                              |
+| FLA-05 Owner Recoverable                       | verified backup 생성 + safe isolated restore 가능한 canonical evidence가 있는가                                                                                                       | PASS                       | LPA-WP5 D01~~D16 / AC-01~~10 (backup create/verify, restore-safe, no-cutover, recovery verification)    |
+| FLA-06 Authority / Safety Boundaries Preserved | AI result≠Canonical 자동 반영, Claim/Fact 구분, Approval before Canonical, Compiled Truth derived from Canonical, no automatic destructive restore/cutover                            | PASS                       | Cross-Phase XP-I lineage/approval binding, LPA-WP5 no-cutover + target ownership (AC-09)                |
+| FLA-07 No Hidden Required Work                 | roadmap/active issues/completion manifests/IR에 Local completion을 막는 REQUIRED item이 남아 있지 않은가 (stale open tracking artifact는 canonical status authority와 reconciliation) | PASS                       | §3 authority inventory + 아래 "FLA-07 tracking artifact reconciliation" 참조                            |
+| FLA-08 Deferred Work Classified                | cloud/production/SaaS/scale-out/desktop wrapper/retention/PITR/cloud backup/connector 확장 등을 Local blocker와 분리                                                                  | PASS                       | 아래 §8 (Deferred / Future Work) 참조                                                                   |
+| FLA-09 Operational Preconditions Explicit      | PostgreSQL, required secrets/config, supported runtime, bootstrap을 capability gap과 구분                                                                                             | PASS                       | `.env.example` + LPA-D12 `ENV_CONFIGURATION_INVALID` — "설정 필요"와 "기능 미완성"을 분리               |
+| FLA-10 Completion Verdict                      | LOCAL_ACCEPTANCE_READY 또는 LOCAL_ACCEPTANCE_BLOCKED                                                                                                                                  | **LOCAL_ACCEPTANCE_READY** | 아래 §7                                                                                                 |
 
 ## 7. Final A0 Verdict
 
@@ -236,5 +240,53 @@ LPA-WP6 A1 Contract Freeze에서 freeze할 후보 scope (A0 기준):
   `docs/implementation/local-launch-serving-usability-implementation-request-260810001.md`
   (LPA-D12).
 - Final main: main `24353223e...`, CI #772 / run 31417982145 / SUCCESS.
-- 원본 gap matrix trace: GPT LPA-WP6 A0 authorization (conversation-level;
-  in-repo trace `scratch/gpt-final-accept-response-wrapped.txt`).
+- 원본 G-01~G-06 gap matrix source: GPT LPA-WP6 A0 authorization
+  conversation-level context. Repository artifact: NONE (A0에서는 해당
+  candidate 정의를 GPT authorization context에서 받아 canonical repository
+  authority와 reconciliation).
+
+## 14. A0 Review History (append-only)
+
+### Initial A0 → GPT **CHANGES_REQUIRED** (2026-08-11)
+
+- Initial A0 head: `19dc090b32ddd1200a91b55ee316f148348f10dd`, PR #89, CI
+  #773 / run 31419496002 / SUCCESS (Quality·Frontend·Required Gates).
+- GPT verdict: **CHANGES_REQUIRED** (docs-only 보정 3건; substantive
+  `LOCAL_ACCEPTANCE_READY` 결론은 뒤집지 않음):
+  1. **C1 — 존재하지 않는 repository evidence 인용**: `scratch/gpt-final-accept-response-wrapped.txt`
+     는 base/main과 A0 branch 어느 쪽에도 repository artifact로 존재하지
+     않음 → §4/§13 인용 제거, provenance를 "GPT conversation-level context;
+     Repository artifact NONE"으로 정확히 기록.
+  2. **C2 — FLA-07 stale open tracking artifact reconciliation 부족**: open
+     Issue #71 (FE-P5-S1 과거 NOT_STARTED body) / Draft PR #72 (FE-P5-S1
+     과거 contract preparation) 등이 존재 → canonical status authority
+     (`docs/project/frontend-work-items.json` / ADR-124)와 reconciliation,
+     stale artifact는 hidden required work가 아니며 cleanup은
+     `OPTIONAL_GOVERNANCE_HOUSEKEEPING`으로 분류.
+  3. **C3 — G-02 분류 taxonomy 정규화**: `CLOSED_BY_CANONICAL_IMPLEMENTATION
+     - governance`복합값 → 단일 enum`CLOSED_BY_CANONICAL_IMPLEMENTATION`
+       (governance closure는 근거 열에 기록).
+- Correction Round 1 AUTHORIZED. A1 Contract Freeze / PR #89 merge / Final
+  Local Acceptance / PROJECT COMPLETE / Deployment / Production은 계속 금지.
+
+### FLA-07 tracking artifact reconciliation (C2)
+
+- 현재 repository에는 과거 시점의 open tracking artifact가 남아 있다:
+
+| Artifact                                                          | 상태                                     | 분류                           |
+| ----------------------------------------------------------------- | ---------------------------------------- | ------------------------------ |
+| Issue #71 — FE-P5-S1 (Agent and Job Activity Workspace)           | OPEN (과거 NOT_STARTED body)             | `SUPERSEDED_TRACKING_ARTIFACT` |
+| Draft PR #72 — docs(fe-p5-s1): contract preparation and gap audit | OPEN / Draft (과거 contract preparation) | `SUPERSEDED_TRACKING_ARTIFACT` |
+
+- 판정 원칙: ① artifact body의 상태가 과거 시점 상태이고, ② 현재 canonical
+  status authority인 `docs/project/frontend-work-items.json`(ADR-124) 및
+  accepted completion / FINAL_AFTER_MERGE closure record가 해당 Work Item을
+  COMPLETE로 확정하며, ③ GitHub Issue open/closed 상태 자체가 completion
+  authority라는 canonical 계약이 없다.
+- canonical status authority = `docs/project/frontend-work-items.json` /
+  ADR-124 + completion manifests / FINAL_AFTER_MERGE closure record.
+- stale GitHub tracking artifact는 hidden required work가 아님. stale
+  Issue/PR cleanup 자체는 Final Local Acceptance blocker가 아님
+  (`OPTIONAL_GOVERNANCE_HOUSEKEEPING`). 이번 correction에서 Issue/PR을
+  닫거나 수정하지 않는다.
+- FLA-07 최종 상태: **PASS** (evidence가 뒷받침).

@@ -11,16 +11,16 @@
 
 ## 1. 구현 범위 (LPA-D01 ~ LPA-D13)
 
-| 파일 | 내용 |
-| --- | --- |
-| `assemblies/shotgun-app/src/server.ts` | SPA static serving (`@fastify/static` 10.1.2 exact pin, `setNotFoundHandler` fallback), onRequest public bypass (GET/HEAD browser path만, API reserved namespace는 절대 bypass 안 함) — LPA-D03~D05 |
-| `assemblies/shotgun-app/src/application.ts` (신규) | canonical composition 추출 `startShotgunApplication()`, idempotent `close()`, SIGINT/SIGTERM shutdown — LPA-D08~D09 |
-| `assemblies/shotgun-app/src/main.ts` | thin entry — `startShotgunApplication()` 호출 |
-| `scripts/launch-local.ts` (신규) | `npm run launch` owner entry — env pre-check, SPA build, DB verify, in-process start, readiness poll, browser open, `LaunchFailure` taxonomy — LPA-D01~D13 |
-| `package.json` | `launch` script + `@fastify/static` 10.1.2 exact pin (lockfile 반영) |
-| `tests/integration/local-launch-serving.test.ts` (신규) | SPA serving + close exactly-once (2 tests) |
-| `README.md` | Local Launch 섹션 추가 |
-| Frozen IR | status `FROZEN_CANDIDATE` → `FROZEN / ACCEPTED`, A1 acceptance record append-only |
+| 파일                                                    | 내용                                                                                                                                                                                                |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `assemblies/shotgun-app/src/server.ts`                  | SPA static serving (`@fastify/static` 10.1.2 exact pin, `setNotFoundHandler` fallback), onRequest public bypass (GET/HEAD browser path만, API reserved namespace는 절대 bypass 안 함) — LPA-D03~D05 |
+| `assemblies/shotgun-app/src/application.ts` (신규)      | canonical composition 추출 `startShotgunApplication()`, idempotent `close()`, SIGINT/SIGTERM shutdown — LPA-D08~D09                                                                                 |
+| `assemblies/shotgun-app/src/main.ts`                    | thin entry — `startShotgunApplication()` 호출                                                                                                                                                       |
+| `scripts/launch-local.ts` (신규)                        | `npm run launch` owner entry — env pre-check, SPA build, DB verify, in-process start, readiness poll, browser open, `LaunchFailure` taxonomy — LPA-D01~D13                                          |
+| `package.json`                                          | `launch` script + `@fastify/static` 10.1.2 exact pin (lockfile 반영)                                                                                                                                |
+| `tests/integration/local-launch-serving.test.ts` (신규) | SPA serving + close exactly-once (2 tests)                                                                                                                                                          |
+| `README.md`                                             | Local Launch 섹션 추가                                                                                                                                                                              |
+| Frozen IR                                               | status `FROZEN_CANDIDATE` → `FROZEN / ACCEPTED`, A1 acceptance record append-only                                                                                                                   |
 
 Product Domain module 변경 / DB schema·migration 변경 없음 (Frozen IR §7 excluded scope 준수).
 

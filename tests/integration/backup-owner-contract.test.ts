@@ -148,20 +148,12 @@ describe('LPA-WP5 A2 — owner backup', () => {
 
   it('supports --root and legacy --output destinations', async () => {
     const { deps } = makeDeps();
-    const rooted = await runOwnerCreate(
-      { root: path.join('E:', 'External Backups') },
-      createEnv(),
-      deps,
-    );
-    expect(rooted.directory).toBe(
-      path.join('E:', 'External Backups', '20260811T004300123Z-a1b2c3'),
-    );
-    const legacy = await runOwnerCreate(
-      { output: path.join('C:', 'specific', 'backup-directory') },
-      createEnv(),
-      deps,
-    );
-    expect(legacy.directory).toBe(path.join('C:', 'specific', 'backup-directory'));
+    const externalRoot = path.join('External', 'Backups');
+    const rooted = await runOwnerCreate({ root: externalRoot }, createEnv(), deps);
+    expect(rooted.directory).toBe(path.resolve(externalRoot, '20260811T004300123Z-a1b2c3'));
+    const legacyOutput = path.join('specific', 'backup-directory');
+    const legacy = await runOwnerCreate({ output: legacyOutput }, createEnv(), deps);
+    expect(legacy.directory).toBe(path.resolve(legacyOutput));
   });
 
   it('runs create → verify ordering and returns summary data', async () => {

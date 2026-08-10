@@ -6,8 +6,8 @@
 - **frozen_ir**: `docs/implementation/local-launch-serving-usability-implementation-request-260810001.md` (FROZEN / ACCEPTED)
 - **a1_head**: `2a2193c0ddaeee0024dc9d1c20c609518f79f019`
 - **implementation_head**: `56a698c24dbfa4ea90681fc1abe8691cd2acfe26`
-- **final_branch_head**: `46fb2040e65f89b244744fc950b247da33c96382`
-- **ci**: #756 SUCCESS (implementation head) · #758 SUCCESS (final branch head, Quality / Frontend / Required Gates)
+- **final_branch_head**: `9ed36fdf5bdfcdf409e2e426a891b8acb72b5b22`
+- **ci**: #756 SUCCESS (implementation head) · #758 SUCCESS · #759 SUCCESS (final branch head, Quality / Frontend / Required Gates)
 - **pr**: #85
 
 ## 1. 구현 범위 (LPA-D01 ~ LPA-D13)
@@ -70,7 +70,8 @@ Product Domain module 변경 / DB schema·migration 변경 없음 (Frozen IR §7
   - Frontend: success
   - Required Gates: success
 - #757 FAILED (intermediate evidence-doc head — prettier format only; 즉시 수정)
-- #758 SUCCESS (final branch head `46fb2040e65f89b244744fc950b247da33c96382`)
+- #758 SUCCESS (intermediate branch head `46fb2040e65f89b244744fc950b247da33c96382`)
+- #759 SUCCESS (final branch head `9ed36fdf5bdfcdf409e2e426a891b8acb72b5b22`)
   - Quality: success / Frontend: success / Required Gates: success
 - 기존 #746~#755 재실행 없음. 동일 exact head CI 재실행 없음.
 

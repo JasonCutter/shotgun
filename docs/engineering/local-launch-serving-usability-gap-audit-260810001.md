@@ -1,15 +1,17 @@
 ---
 id: LOCAL-LAUNCH-SERVING-USABILITY-GAP-AUDIT-260810001
 classification: CANONICAL
-status: lpa_wp4_a0_audit_candidate
+status: ACCEPTED / COMPLETE
+status_authority: GPT_A0_REVIEW_ACCEPTED (2026-08-10; Contract Freeze AUTHORIZED)
 verification_gate: LOCAL-LAUNCH-SERVING-USABILITY
 created_at: 2026-08-10
-subject_base: 07990d6e68878d630a6fc0e472c660e5cab69f91
+subject_base: 53f3d4f63a2d9b97d3d99f6377e367385d52dc2d
 canonical_main: 53f3d4f63a2d9b97d3d99f6377e367385d52dc2d
 governing_stage: LPA-WP4 (Local Launch / Serving Usability) — A0 Gap Audit / Contract Preparation
 preceding_gates: Cross-Phase Verification COMPLETE / Governance Closure COMPLETE (FINAL_AFTER_MERGE)
 post_closure_main_ci: 755 / run 31388793348 / SUCCESS
-next_gate: GPT review of this A0 audit → LPA-WP4 Contract Freeze / Implementation Request
+gpt_a0_review: ACCEPTED / COMPLETE (2026-08-10) — audit head 1d36ee483, docs-only, no product code change
+next_gate: Frozen Implementation Request GPT review (docs/implementation/local-launch-serving-usability-implementation-request-260810001.md)
 ---
 
 # Shotgun — Local Launch / Serving Usability Gap Audit (LPA-WP4 A0)
@@ -224,3 +226,24 @@ A0는 audit/document 작업이다. 다음을 금지한다.
 - 미결 사항: §8.
 - 다음 단계: LPA-WP4 Contract Freeze / Implementation Request — GPT가 이
   A0를 ACCEPTED하면 진행.
+
+## 12. A0 review record (append-only, 2026-08-10)
+
+- GPT review: **LPA-WP4 A0 — ACCEPTED / COMPLETE** (2026-08-10).
+  - Audit head `1d36ee483` (1 commit ahead of canonical main `53f3d4f63`;
+    change = this audit document only; no product code change).
+  - FACT/GAP(G-1~~G-7)과 LPA-AC-01~~10 후보가 현재 main과 일치함을 확인.
+- Contract Freeze / Implementation Request 진행 **AUTHORIZED**.
+- GPT가 Contract Freeze에서 고정한 조정 사항 (A0 후보 대비):
+  - supervisor 후보는 더 얇게 — normal runtime은 built SPA + Backend
+    same-process/same-origin. 장기 Frontend child process·generic
+    multi-process orchestration을 만들지 않는다.
+  - SPA serving은 `@fastify/static` **ADOPT / 10.1.2 exact pin**
+    (2026-07 path-normalization 보안 수정 버전). 수동 static server REJECT.
+  - ADR **NOT_REQUIRED** (bounded usability extension).
+  - 상세는 Frozen IR
+    (`docs/implementation/local-launch-serving-usability-implementation-request-260810001.md`)
+    참조.
+- A0 `status → ACCEPTED / COMPLETE`, `subject_base →
+53f3d4f63a2d9b97d3d99f6377e367385d52dc2d` (Contract Freeze commit에서
+  정규화).

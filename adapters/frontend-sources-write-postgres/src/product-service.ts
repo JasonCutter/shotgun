@@ -19,6 +19,7 @@ import type {
   SourcesProductWriteServicePort,
   SubmitSourcesProductInput,
 } from '../../../modules/frontend-sources-write/src/product-service.js';
+import type { SourcesStage3PipelinePort } from '../../../modules/frontend-sources-write/src/index.js';
 import type {
   CreateSourcesIntakeSubmissionInput,
   SourcesIntakeStoredItemInput,
@@ -138,6 +139,8 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
   constructor(
     private readonly pool: Pool,
     private readonly staging: SourcesStagingServicePort,
+    /** FE-P5-XP Correction C: Source Intake → Stage 3 pipeline (real path). */
+    private readonly stage3Pipeline?: SourcesStage3PipelinePort,
   ) {
     this.lifecycle = new PostgresSourcesIntakeLifecycle(pool);
   }
@@ -146,6 +149,15 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
     const existing = await this.getSubmission(input.scope, input.submissionId);
     if (existing) return existing;
     const client = await this.pool.connect();
+    // Materialized SourceVersions are handed to the Stage 3 pipeline AFTER the
+    // intake transaction commits (real production path, never fixture-side).
+    const materializedForStage3: Array<{
+      readonly sourceId: string;
+      readonly sourceVersionId: string;
+      readonly storageKey: string;
+      readonly mediaType: 'text/plain' | 'text/markdown';
+      readonly contentHash: string;
+    }> = [];
     try {
       await client.query('BEGIN');
       await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
@@ -205,7 +217,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
           await this.createDuplicateDecision(client, input, artifact, itemId, attemptId, duplicate);
           actionRequired += 1;
         } else {
-          await this.materialize(
+          const materialized = await this.materialize(
             client,
             input.scope,
             input.submissionId,
@@ -214,6 +226,13 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
             storedItem(artifact),
             input.createdAt,
           );
+          materializedForStage3.push({
+            sourceId: materialized.sourceId,
+            sourceVersionId: materialized.sourceVersionId,
+            storageKey: artifact.storageKey,
+            mediaType: artifact.mediaType,
+            contentHash: artifact.contentHash,
+          });
           succeeded += 1;
         }
       }
@@ -226,6 +245,23 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
         [input.submissionId, state, input.createdAt],
       );
       await client.query('COMMIT');
+      // FE-P5-XP Correction C: after the intake transaction commits, run the
+      // REAL production Stage 3 pipeline for every materialized SourceVersion
+      // (transform + evidence indexing). The pipeline is idempotent.
+      if (this.stage3Pipeline) {
+        for (const item of materializedForStage3) {
+          await this.stage3Pipeline.runForSourceVersion({
+            projectId: input.scope.projectId,
+            sourceId: item.sourceId,
+            sourceVersionId: item.sourceVersionId,
+            storageKey: item.storageKey,
+            mediaType: item.mediaType,
+            contentHash: item.contentHash,
+            accessScope: [...input.scope.accessScopes],
+            sensitivity: input.scope.sensitivity,
+          });
+        }
+      }
       return (await this.getSubmission(input.scope, input.submissionId))!;
     } catch (error) {
       await client.query('ROLLBACK');
@@ -841,7 +877,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
     item: SourcesIntakeStoredItemInput,
     createdAt: string,
     forceNewVersion = false,
-  ): Promise<void> {
+  ): Promise<{ readonly sourceId: string; readonly sourceVersionId: string }> {
     const recovered = await this.recoverExistingStage2(client, scope.projectId, itemId);
     if (recovered) {
       await this.finishItem(
@@ -852,7 +888,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
         recovered.sourceVersionId,
         createdAt,
       );
-      return;
+      return { sourceId: recovered.sourceId, sourceVersionId: recovered.sourceVersionId };
     }
     await this.insertStage2Submission(client, scope, itemId, item, createdAt);
     const assetInsert = await client.query<{ asset_id: string }>(
@@ -936,6 +972,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
       );
     }
     await this.finishItem(client, itemId, attemptId, sourceId, sourceVersionId, createdAt);
+    return { sourceId, sourceVersionId };
   }
 
   private async reuseExistingVersion(

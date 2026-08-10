@@ -5,13 +5,6 @@ import { tsImport } from 'tsx/esm/api';
 type CrossPhaseBackend = {
   startFrontendCrossPhaseBackend(): Promise<{
     grantRollbackCapability(projectId: string): Promise<void>;
-    bridgeEvidence(input: {
-      projectId: string;
-      sourceId: string;
-      sourceVersionId: string;
-      sourceText: string;
-      mediaType: string;
-    }): Promise<{ revisionId: string; evidenceSpans: number }>;
     computeDraftRevisionDigest(input: {
       draftId: string;
       revision: number;
@@ -41,9 +34,11 @@ type CrossPhaseBackend = {
  * Verified payloads come from `scratch/probe-journey.ts` (deleted before
  * commit): every request below was exercised against the REAL backend.
  *
- * Known product-gap bridges (real adapters, never stubs):
- *  - Evidence bridge: Sources intake does not trigger the Stage 3
- *    Transformation/Evidence pipeline → real Stage 3 adapters run (fixture).
+ * FE-P5-XP Correction C: Source intake flows through the REAL production
+ * Transformation/Evidence pipeline (wired into the Sources product service) —
+ * there is NO fixture-side evidence bridging in this journey.
+ *
+ * Known product-gap / operator steps (real adapters, never stubs):
  *  - History projection rebuild: there is deliberately NO browser History
  *    refresh route (WP4 Round 1 fix E) → operator rebuild with the real
  *    `HistoryProjectionBuilder` + owning-Domain adapters (fixture).
@@ -273,18 +268,11 @@ test('Cross-Phase journey: Project→Source→Ask→Draft→Review→Approval→
       'XP-I01: source back on A',
     ).toBe(true);
 
-    // Evidence bridge (known product gap) — real Stage 3 adapters.
-    const bridged = await backend.bridgeEvidence({
-      projectId: PROJECT_A,
-      sourceId: sourceId!,
-      sourceVersionId: sourceVersionId!,
-      sourceText,
-      mediaType: 'text/plain',
-    });
-    expect(bridged.evidenceSpans).toBeGreaterThan(0);
-
     // ---------------------------------------------------------------------
     // CP-AC-04 — Ask with pinned EvidenceSpans → citations (XP-I02).
+    // FE-P5-XP Correction C: the Source intake already ran the REAL production
+    // Stage 3 pipeline, so the freshly ingested SourceVersion's EvidenceSpans
+    // are indexed by the Product path (no fixture-side bridging).
     // ---------------------------------------------------------------------
     const evidenceList = await get<{ evidence?: { items?: { evidenceId?: string }[] } }>(
       `/product-api/frontend/sources/${sourceId}/versions/${sourceVersionId}/evidence`,
@@ -293,7 +281,10 @@ test('Cross-Phase journey: Project→Source→Ask→Draft→Review→Approval→
     const pinnedEvidenceIds = (evidenceList.body.evidence?.items ?? [])
       .map((item) => item.evidenceId)
       .filter((id): id is string => Boolean(id));
-    expect(pinnedEvidenceIds.length).toBeGreaterThan(0);
+    expect(
+      pinnedEvidenceIds.length,
+      'Correction C: the real production intake must index EvidenceSpans',
+    ).toBeGreaterThan(0);
 
     const ask = await mutate('/product-api/frontend/ask/questions', {
       schemaVersion: '1.0.0',
@@ -417,13 +408,19 @@ test('Cross-Phase journey: Project→Source→Ask→Draft→Review→Approval→
         revision?: number;
         operations?: {
           kind?: string;
-          evidenceReferences?: { sourceVersionId?: string; evidenceSpanId?: string }[];
+          evidenceReferences?: {
+            sourceId?: string;
+            sourceVersionId?: string;
+            evidenceSpanId?: string;
+          }[];
         }[];
       };
     };
     const nextRevision = savedDraft.draft?.revision ?? draftRevision + 1;
-    // XP-I02: the saved CLAIM_ADD carries the SAME evidence lineage.
+    // XP-I02: the saved CLAIM_ADD carries the SAME evidence lineage —
+    // sourceId, sourceVersionId AND evidenceSpanId all match the Ask citation.
     const savedClaimOp = savedDraft.draft?.operations?.find((op) => op.kind === 'CLAIM_ADD');
+    expect(savedClaimOp?.evidenceReferences?.[0]?.sourceId).toBe(sourceId);
     expect(savedClaimOp?.evidenceReferences?.[0]?.sourceVersionId).toBe(sourceVersionId);
     expect(savedClaimOp?.evidenceReferences?.[0]?.evidenceSpanId).toBe(evidenceSpanId);
 
@@ -523,16 +520,63 @@ test('Cross-Phase journey: Project→Source→Ask→Draft→Review→Approval→
       comment: 'Approved in the cross-phase journey.',
     });
     expect(recorded.ok, JSON.stringify(recorded.body)).toBe(true);
-    const approval = (recorded.body as { approvals?: { approvalId?: string; status?: string }[] })
-      .approvals?.[0];
+    const approval = (
+      recorded.body as {
+        approvals?: {
+          approvalId?: string;
+          status?: string;
+          reviewContextId?: string;
+          contextRevision?: number;
+          targetId?: string;
+          targetRevision?: string;
+          targetDigest?: string;
+          approvedItemIds?: string[];
+        }[];
+      }
+    ).approvals?.[0];
     const approvalId = approval?.approvalId;
     expect(approvalId).toBeTruthy();
     expect(approval?.status).toBe('ACTIVE');
+    // XP-I03: the Approval Resource is bound to the SAME Review Context and
+    // Draft change identity (reviewContextId/contextRevision/targetId/
+    // targetRevision/targetDigest/approvedItemIds).
+    expect(approval?.reviewContextId).toBe(reviewContextId);
+    expect(approval?.contextRevision).toBe(contextRevision);
+    expect(approval?.targetId).toBe(journeyDraftId);
+    expect(approval?.targetRevision).toBe(String(nextRevision));
+    expect(approval?.targetDigest).toBe(draftContentDigest);
+    expect([...(approval?.approvedItemIds ?? [])].sort()).toEqual(
+      reviewItems.map((item) => item.reviewItemId).sort(),
+    );
 
     // ---------------------------------------------------------------------
     // CP-AC-08 — Canonical Commit (XP-I04): Approval and Commit are separate;
-    // the commit consumes the Approval.
+    // creating the Approval causes NO Canonical change; only the approved
+    // exact ChangeSet commits.
     // ---------------------------------------------------------------------
+    // XP-I04 (before commit): the Knowledge Workspace projection exposes the
+    // LIVE canonical version/digest (GetProjectionReadiness resolves the
+    // current Canonical snapshot). Creating the Approval must leave Canonical
+    // at the SAME version/digest the Draft was based on (no Canonical change).
+    const workspaceBefore = await mutate('/product-api/frontend/knowledge/workspace', {
+      schemaVersion: '1.0.0',
+    });
+    expect(workspaceBefore.ok, JSON.stringify(workspaceBefore.body)).toBe(true);
+    const workspaceBeforeView = workspaceBefore.body as {
+      workspace?: {
+        projectId?: string;
+        projection?: { canonicalVersion?: number; canonicalSnapshotDigest?: string };
+      };
+    };
+    expect(workspaceBeforeView.workspace?.projectId).toBe(PROJECT_A);
+    const canonicalVersionBefore =
+      workspaceBeforeView.workspace?.projection?.canonicalVersion ?? -1;
+    const canonicalDigestBefore =
+      workspaceBeforeView.workspace?.projection?.canonicalSnapshotDigest;
+    expect(canonicalDigestBefore, 'XP-I04: the Approval alone must not change Canonical').toBe(
+      materializedDraft?.base?.canonicalSnapshotDigest,
+    );
+
     const approvalRead = await mutate('/product-api/frontend/review/approvals/read', {
       schemaVersion: '1.0.0',
       approvalId,
@@ -562,16 +606,29 @@ test('Cross-Phase journey: Project→Source→Ask→Draft→Review→Approval→
     expect(approvalAfter.status).toBe(409);
     expect((approvalAfter.body as { code?: string }).code).toBe('REVIEW_APPROVAL_NOT_ISSUED');
 
-    // CP-AC-05 — Knowledge read reflects the committed Canonical state.
+    // XP-I04 (after commit): the same Workspace projection now reflects the
+    // advanced Canonical version (the commit changed Canonical, the Approval
+    // did not).
     const workspace = await mutate('/product-api/frontend/knowledge/workspace', {
       schemaVersion: '1.0.0',
     });
     expect(workspace.ok, JSON.stringify(workspace.body)).toBe(true);
     const workspaceView = workspace.body as {
-      workspace?: { projectId?: string; pages?: unknown[] };
+      workspace?: {
+        projectId?: string;
+        pages?: unknown[];
+        projection?: { canonicalVersion?: number; canonicalSnapshotDigest?: string };
+      };
     };
     expect(workspaceView.workspace?.projectId).toBe(PROJECT_A);
     expect((workspaceView.workspace?.pages ?? []).length).toBeGreaterThan(0);
+    expect(
+      workspaceView.workspace?.projection?.canonicalVersion,
+      'XP-I04: the Commit must advance Canonical',
+    ).toBeGreaterThan(canonicalVersionBefore);
+    expect(workspaceView.workspace?.projection?.canonicalSnapshotDigest).not.toBe(
+      canonicalDigestBefore,
+    );
 
     // ---------------------------------------------------------------------
     // CP-AC-09 — External Action: validate → prepare → approve → preflight →
@@ -616,21 +673,25 @@ test('Cross-Phase journey: Project→Source→Ask→Draft→Review→Approval→
       reason: 'Prepare the journey action.',
     });
     expect(prepared.ok, JSON.stringify(prepared.body)).toBe(true);
-    const manifest = (
-      prepared.body as {
-        manifest?: {
-          manifestId?: string;
-          manifestRevision?: number;
-          targetRevision?: string;
-          externalRevision?: string;
-        };
-      }
-    ).manifest;
+    const preparedBody = prepared.body as {
+      actionId?: string;
+      manifest?: {
+        actionId?: string;
+        manifestId?: string;
+        manifestRevision?: number;
+        targetRevision?: string;
+        externalRevision?: string;
+      };
+    };
+    expect(preparedBody.actionId).toBe(actionId);
+    const manifest = preparedBody.manifest;
     const manifestId = manifest?.manifestId;
     const manifestRevision = manifest?.manifestRevision ?? 1;
     const manifestTargetRevision = manifest?.targetRevision ?? targetRevision;
     const manifestExternalRevision = manifest?.externalRevision ?? externalRevision;
     expect(manifestId).toBeTruthy();
+    // XP-I05: the Manifest is bound to the SAME action id and revision.
+    expect(manifest?.actionId).toBe(actionId);
 
     const approvedAction = await mutate('/product-api/frontend/external-action/approve', {
       schemaVersion: '1.0.0',
@@ -645,9 +706,30 @@ test('Cross-Phase journey: Project→Source→Ask→Draft→Review→Approval→
     });
     expect(approvedAction.ok, JSON.stringify(approvedAction.body)).toBe(true);
     const actionApproval = (
-      approvedAction.body as { approval?: { approvalId?: string; status?: string } }
+      approvedAction.body as {
+        approval?: {
+          approvalId?: string;
+          status?: string;
+          actionId?: string;
+          manifestId?: string;
+          manifestRevision?: number;
+          resourceProjectId?: string;
+          effectiveProjectId?: string;
+          accessRevision?: string;
+          policyContextRevision?: string;
+        };
+      }
     ).approval;
     expect(actionApproval?.status).toBe('ACTIVE');
+    // XP-I05: the External Action Approval is bound to the same action +
+    // manifest and the server-derived project/policy context.
+    expect(actionApproval?.actionId).toBe(actionId);
+    expect(actionApproval?.manifestId).toBe(manifestId);
+    expect(actionApproval?.manifestRevision).toBe(manifestRevision);
+    expect(actionApproval?.resourceProjectId).toBe(PROJECT_A);
+    expect(actionApproval?.effectiveProjectId).toBe(PROJECT_A);
+    expect(actionApproval?.accessRevision?.length).toBeGreaterThan(0);
+    expect(actionApproval?.policyContextRevision).toBe('1');
 
     const preflighted = await mutate('/product-api/frontend/external-action/preflight', {
       schemaVersion: '1.0.0',
@@ -660,10 +742,26 @@ test('Cross-Phase journey: Project→Source→Ask→Draft→Review→Approval→
       reason: 'Preflight the journey action.',
     });
     expect(preflighted.ok, JSON.stringify(preflighted.body)).toBe(true);
-    const preflightId = (
-      preflighted.body as { preflight?: { preflightId?: string; status?: string } }
-    ).preflight?.preflightId;
+    const preflight = (
+      preflighted.body as {
+        preflight?: {
+          preflightId?: string;
+          status?: string;
+          actionId?: string;
+          manifestRevision?: number;
+          policyRevalidated?: boolean;
+          resourceProjectId?: string;
+        };
+      }
+    ).preflight;
+    const preflightId = preflight?.preflightId;
     expect(preflightId).toBeTruthy();
+    // XP-I05: Preflight revalidates the policy binding against the SAME
+    // action + manifest (policyRevalidated === true).
+    expect(preflight?.actionId).toBe(actionId);
+    expect(preflight?.manifestRevision).toBe(manifestRevision);
+    expect(preflight?.policyRevalidated).toBe(true);
+    expect(preflight?.resourceProjectId).toBe(PROJECT_A);
 
     const executed = await mutate('/product-api/frontend/external-action/execute', {
       schemaVersion: '1.0.0',
@@ -678,12 +776,30 @@ test('Cross-Phase journey: Project→Source→Ask→Draft→Review→Approval→
     });
     expect(executed.ok, JSON.stringify(executed.body)).toBe(true);
     const executionBody = executed.body as {
-      execution?: { executionId?: string; status?: string };
-      attempt?: { attemptId?: string; status?: string };
+      execution?: {
+        executionId?: string;
+        status?: string;
+        actionId?: string;
+        manifestRevision?: number;
+      };
+      attempt?: {
+        attemptId?: string;
+        status?: string;
+        actionId?: string;
+        resourceProjectId?: string;
+        policyContextRevision?: string;
+      };
     };
     const executionId = executionBody.execution?.executionId;
     expect(executionId).toBeTruthy();
     expect(executionBody.attempt?.status).toBe('SUCCEEDED');
+    // XP-I05: the Execution + Attempt continue the same action/manifest/policy
+    // binding.
+    expect(executionBody.execution?.actionId).toBe(actionId);
+    expect(executionBody.execution?.manifestRevision).toBe(manifestRevision);
+    expect(executionBody.attempt?.actionId).toBe(actionId);
+    expect(executionBody.attempt?.resourceProjectId).toBe(PROJECT_A);
+    expect(executionBody.attempt?.policyContextRevision).toBe('1');
 
     // ---------------------------------------------------------------------
     // CP-AC-10 — Activity (XP-I06): explicit refresh (real route) then queue.
@@ -727,7 +843,11 @@ test('Cross-Phase journey: Project→Source→Ask→Draft→Review→Approval→
     const historyEntries =
       (
         history.body as {
-          entries?: { payloadSnapshot?: { commitId?: string; authorityId?: string } }[];
+          entries?: {
+            sourceEventKind?: string;
+            sourceEventId?: string;
+            payloadSnapshot?: { commitId?: string; authorityId?: string };
+          }[];
         }
       ).entries ?? [];
     const canonicalEntry = historyEntries.find(
@@ -735,6 +855,11 @@ test('Cross-Phase journey: Project→Source→Ask→Draft→Review→Approval→
     );
     expect(canonicalEntry, 'XP-I06: history contains the canonical commit').toBeTruthy();
     expect(canonicalEntry!.payloadSnapshot?.authorityId).toBe(approvalId);
+    // XP-I06: History preserves the authoritative SOURCE identity (the
+    // projection identity is never substituted for it) — the canonical entry
+    // carries the frozen sourceEventKind/sourceEventId of the HistoryEvent.
+    expect(canonicalEntry!.sourceEventKind).toBe('CANONICAL_CLAIM_ADDED');
+    expect(canonicalEntry!.sourceEventId).toBe(`history:${canonicalCommitId}`);
 
     // ---------------------------------------------------------------------
     // CP-AC-12 — Reversal + Compensation (XP-I07): Canonical change →
@@ -755,12 +880,46 @@ test('Cross-Phase journey: Project→Source→Ask→Draft→Review→Approval→
         status?: string;
       };
     };
-    expect(reversalView.reversal?.reversalId).toBeTruthy();
+    const reversalId = reversalView.reversal?.reversalId;
+    expect(reversalId).toBeTruthy();
     expect(reversalView.reversal?.sourceCommitId).toBe(canonicalCommitId);
     // XP-I07 Canonical branch: the Reversal references the historical Review
     // Approval (evidence-only) that authorized the source commit.
     expect(reversalView.reversal?.historicalApprovalRef).toBe(approvalId);
     expect(reversalView.reversal?.status).toBe('CANDIDATE');
+
+    // XP-I07 (Frozen IR: Historical Revision → Reversal Draft → Review entry):
+    // the created Reversal is materialized as a SUBMITTED Knowledge Draft
+    // carrier (`draftId = reversalId`) and MUST surface in the real Review
+    // queue/context as a reviewable entry.
+    const reversalQueue = await mutate('/product-api/frontend/review/queue', {
+      schemaVersion: '1.0.0',
+      targetKinds: ['KNOWLEDGE_DRAFT_CHANGE_SET'],
+      pageSize: 20,
+    });
+    expect(reversalQueue.ok, JSON.stringify(reversalQueue.body)).toBe(true);
+    const reversalQueueBody = reversalQueue.body as {
+      items?: { reviewContextId?: string; contextRevision?: number; targetId?: string }[];
+    };
+    const reversalQueueItem = (reversalQueueBody.items ?? []).find(
+      (item) => item.targetId === reversalId,
+    );
+    expect(
+      reversalQueueItem,
+      'XP-I07: the Reversal carrier must appear in the Review queue',
+    ).toBeTruthy();
+    expect(reversalQueueItem!.reviewContextId).toBeTruthy();
+    const reversalContext = await mutate('/product-api/frontend/review/contexts/read', {
+      schemaVersion: '1.0.0',
+      reviewContextId: reversalQueueItem!.reviewContextId,
+      contextRevision: reversalQueueItem!.contextRevision,
+    });
+    expect(reversalContext.ok, JSON.stringify(reversalContext.body)).toBe(true);
+    const reversalContextView = reversalContext.body as {
+      context?: { targetId?: string; items?: { reviewItemId?: string }[] };
+    };
+    expect(reversalContextView.context?.targetId).toBe(reversalId);
+    expect((reversalContextView.context?.items ?? []).length).toBeGreaterThan(0);
 
     const compensation = await mutate(
       '/product-api/frontend/external-action/compensations/prepare',

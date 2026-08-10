@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -46,6 +45,7 @@ import { InMemoryAssetStorage } from '../../../adapters/stage2-in-memory/src/ind
 import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
 import { LucasAugmentedPlainTextAdapter } from '../../../adapters/plain-text-lucas-augmented/src/index.js';
 import { PythonDocumentFormatAdapter } from '../../../adapters/document-format-python/src/index.js';
+import { SourcesStage3Pipeline } from '../../../adapters/sources-stage3-pipeline/src/index.js';
 import {
   createPostgresPool,
   PostgresIntakeRepository,
@@ -85,8 +85,6 @@ import {
   createHistoryAdapterRegistry,
   HistoryProjectionBuilder,
 } from '../../../modules/frontend-history/src/index.js';
-import { buildEvidenceCandidates } from '../../../modules/evidence/src/index.js';
-import type { DocumentTransformationInput } from '../../../modules/transformation/src/index.js';
 import { frontendKnowledgeDraftRevisionDigest } from '../../../packages/contracts/src/index.js';
 import { configureSourcesWriteRuntime } from '../../../assemblies/shotgun-app/src/product-api/sources-write-runtime.js';
 import { createApplication } from '../../../assemblies/shotgun-app/src/server.js';
@@ -159,7 +157,26 @@ export async function startFrontendCrossPhaseBackend() {
     assetStorage,
     'cross-phase-sources-staging-secret-32-characters',
   );
-  const sourcesProductService = new PostgresSourcesProductService(pool, staging);
+  // FE-P5-XP Correction C: Source Intake → Stage 3 Transformation/Evidence
+  // production wiring (real path — the product service runs this pipeline
+  // after a successful intake materializes a SourceVersion). Hoisted before
+  // the sources product service so the real Stage 3 adapters are injected.
+  const transformationRepository = new PostgresTransformationRepository(pool);
+  const evidenceRepository = new PostgresEvidenceRepository(pool);
+  const transformer = new PythonDocumentFormatAdapter();
+  const evidenceLocator = new LucasAugmentedPlainTextAdapter();
+  const sourcesStage3Pipeline = new SourcesStage3Pipeline({
+    storage: assetStorage,
+    transformer,
+    locator: evidenceLocator,
+    transformationRepository,
+    evidenceRepository,
+  });
+  const sourcesProductService = new PostgresSourcesProductService(
+    pool,
+    staging,
+    sourcesStage3Pipeline,
+  );
   const removeSourcesWriteRuntime = configureSourcesWriteRuntime({
     commandGateway,
     staging,
@@ -186,11 +203,6 @@ export async function startFrontendCrossPhaseBackend() {
   );
   const canonicalKnowledgeRepository = new PostgresCanonicalKnowledgeRepository(pool);
   const changeSetReviewRepository = new PostgresChangeSetReviewRepository(pool);
-  // Stage 3 Transformation/Evidence repositories (shared with the Sources
-  // bridge below — the Sources intake does not trigger the Stage 3 pipeline,
-  // a known product gap bridged with the REAL adapters).
-  const transformationRepository = new PostgresTransformationRepository(pool);
-  const evidenceRepository = new PostgresEvidenceRepository(pool);
   // Server-owned External Action boundary. Credential + per-project budget are
   // seeded here exactly as an administrator configures them in production
   // (they are NEVER declared by the browser). Without the seeded credential
@@ -307,8 +319,8 @@ export async function startFrontendCrossPhaseBackend() {
     policyHistoryRead,
     actionConnector: new FakeDraftActionConnector(),
     textDiff: new JsDiffAdapter(),
-    transformer: new PythonDocumentFormatAdapter(),
-    evidenceLocator: new LucasAugmentedPlainTextAdapter(),
+    transformer,
+    evidenceLocator,
     aiProvider: new FakeAIProviderAdapter(),
     askAnswerExecution,
     aiProviderPolicy: { allowPrivate: true, allowRestricted: false, maxAttempts: 2 },
@@ -347,44 +359,6 @@ export async function startFrontendCrossPhaseBackend() {
         scopes: ['owner', 'project:action:rollback'],
         sensitivityClearance: 'private',
       });
-    },
-    /**
-     * Known product-gap bridge (WP-XP2): the Sources intake does not trigger
-     * the Stage 3 Transformation/Evidence pipeline. Run the REAL Stage 3
-     * adapters (same as the legacy kernel pipeline) so Ask can ground on the
-     * freshly ingested SourceVersion's EvidenceSpans.
-     */
-    bridgeEvidence: async (input: {
-      projectId: string;
-      sourceId: string;
-      sourceVersionId: string;
-      sourceText: string;
-      mediaType: DocumentTransformationInput['mediaType'];
-    }) => {
-      const sourceContentHash = `sha256:${createHash('sha256').update(input.sourceText).digest('hex')}`;
-      const transformer = new PythonDocumentFormatAdapter();
-      const locator = new LucasAugmentedPlainTextAdapter();
-      const output = await transformer.transform({
-        sourceId: input.sourceId,
-        sourceVersionId: input.sourceVersionId,
-        sourceContentHash,
-        mediaType: input.mediaType,
-        text: input.sourceText,
-      });
-      const saved = await transformationRepository.save({
-        projectId: input.projectId,
-        sourceId: input.sourceId,
-        sourceVersionId: input.sourceVersionId,
-        sourceContentHash,
-        transformer: transformer.identity,
-        output,
-        accessScope: ['owner'],
-        sensitivity: 'private',
-        createdAt: new Date().toISOString(),
-      });
-      const candidates = buildEvidenceCandidates(saved.revision, locator);
-      const indexed = await evidenceRepository.index(candidates);
-      return { revisionId: saved.revision.revisionId, evidenceSpans: indexed.items.length };
     },
     /**
      * Draft content-digest helper. Exposed from the fixture (loaded through

@@ -2,13 +2,17 @@
 
 - **id**: LPA-WP4-A2-VERIFICATION-260810002
 - **classification**: EVIDENCE
-- **status**: COMPLETE (GPT review pending)
+- **status**: COMPLETE (A2) — Correction Round 1 in progress
 - **frozen_ir**: `docs/implementation/local-launch-serving-usability-implementation-request-260810001.md` (FROZEN / ACCEPTED)
 - **a1_head**: `2a2193c0ddaeee0024dc9d1c20c609518f79f019`
-- **implementation_head**: `56a698c24dbfa4ea90681fc1abe8691cd2acfe26`
-- **final_branch_head**: `9ed36fdf5bdfcdf409e2e426a891b8acb72b5b22`
-- **ci**: #756 SUCCESS (implementation head) · #758 SUCCESS · #759 SUCCESS (final branch head, Quality / Frontend / Required Gates)
+- **implementation_head** (stable technical authority): `56a698c24dbfa4ea90681fc1abe8691cd2acfe26`
+- **ci_authority**: #756 SUCCESS (Quality / Frontend / Required Gates)
 - **pr**: #85
+
+> Self-referential metadata (`final_branch_head` / “final CI”)는 더 이상 authority로
+> 사용하지 않는다 (C5). #757~#760은 evidence-document CI churn이며 기술 authority로
+> 승격하지 않는다. Correction commit 자체의 SHA와 그 CI 번호는 이 문서에 기록하지
+> 않는다 (GPT 보고 시 GitHub 외부 evidence로 제출).
 
 ## 1. 구현 범위 (LPA-D01 ~ LPA-D13)
 
@@ -65,14 +69,10 @@ Product Domain module 변경 / DB schema·migration 변경 없음 (Frozen IR §7
 
 ## 7. CI
 
-- #756 SUCCESS (implementation head `56a698c24dbfa4ea90681fc1abe8691cd2acfe26`, PR #85)
-  - Quality: success
-  - Frontend: success
-  - Required Gates: success
-- #757 FAILED (intermediate evidence-doc head — prettier format only; 즉시 수정)
-- #758 SUCCESS (intermediate branch head `46fb2040e65f89b244744fc950b247da33c96382`)
-- #759 SUCCESS (final branch head `9ed36fdf5bdfcdf409e2e426a891b8acb72b5b22`)
+- **#756 SUCCESS** — implementation head `56a698c24dbfa4ea90681fc1abe8691cd2acfe26` (PR #85)
   - Quality: success / Frontend: success / Required Gates: success
+- evidence-document CI churn (non-authoritative, #757~#760): #757 FAILED(prettier
+  format만, 즉시 수정) · #758~#760 SUCCESS — 기술 authority로 사용하지 않는다.
 - 기존 #746~#755 재실행 없음. 동일 exact head CI 재실행 없음.
 
 ## 8. Excluded scope (Frozen IR §7 그대로)
@@ -88,10 +88,24 @@ Product Domain module 변경 / DB schema·migration 변경 없음 (Frozen IR §7
 
 - **NONE**
 
-## 10. GPT 보고용 요약
+## 10. Review History (append-only)
 
-- Implementation head: `56a698c24dbfa4ea90681fc1abe8691cd2acfe26`
-- CI: #756 SUCCESS
+### GPT A2 Review — 2026-08-10 · **CHANGES_REQUIRED** (PR #85 merge 금지)
+
+- Correction Round 1 authorized. 사유:
+  1. Frozen launch verification incomplete (focused verification 부족)
+  2. browser-open failure detection incomplete (`spawnSync` 반환값 무시)
+  3. startup failure graceful cleanup incomplete (application handle 생성 후
+     `close()` 없이 즉시 종료)
+  4. CI metadata chase governance violation
+- Correction Round 1 범위: C1 launch helper 추출 / C2 startup failure cleanup /
+  C3 frozen focused verification closure / C4 static-serving tests 유지 / C5
+  evidence governance / C6 CI policy / C7 scope 유지.
+
+## 11. GPT 보고용 요약
+
+- Implementation head (authority): `56a698c24dbfa4ea90681fc1abe8691cd2acfe26`
+- CI authority: #756 SUCCESS
 - static serving / launch contract / shutdown 검증 통과
 - docs validation PASS
 - Product code 변경 확인 완료 (Product Domain module, DB schema 변경 없음)

@@ -87,6 +87,7 @@ import { SecureUrlAcquisitionCoordinator } from '../../../modules/url-acquisitio
 import { configureSourcesWriteRuntime } from './product-api/sources-write-runtime.js';
 import { assertRuntimeSecurityConfiguration } from './runtime-security.js';
 import { createApplication } from './server.js';
+import { installSignalShutdown } from './shutdown.js';
 
 export type StartShotgunApplicationOptions = {
   /** Override HOST (defaults to the `HOST` env or `127.0.0.1`). */
@@ -310,10 +311,9 @@ export const startShotgunApplication = async (
   };
   // LPA-WP4 (D09): idempotent SIGINT/SIGTERM shutdown (duplicate signals or a
   // close path overlapping a signal can never double-close resources).
-  const onSignal = (): void => {
-    void close().finally(() => process.exit(0));
-  };
-  process.once('SIGINT', onSignal);
-  process.once('SIGTERM', onSignal);
+  installSignalShutdown({
+    close,
+    exit: (code) => process.exit(code),
+  });
   return handle;
 };

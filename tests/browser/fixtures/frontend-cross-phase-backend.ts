@@ -209,7 +209,14 @@ export async function startFrontendCrossPhaseBackend() {
   // and budget the fake-connector preflight revalidations fail closed and the
   // journey cannot reach READY (Cross-Phase WP-XP2 discovery).
   const externalActionStore = new PostgresExternalActionStore(pool);
-  for (const projectId of ['journey-alpha', 'journey-beta']) {
+  for (const projectId of [
+    'journey-alpha',
+    'journey-beta',
+    // WP-XP3 negative journey projects (CP-NEG-01~06) need the same
+    // operator-seeded credential + budget to reach READY preflights.
+    'neg-alpha',
+    'neg-beta',
+  ]) {
     await externalActionStore.transaction(async (repositories) => {
       await repositories.credentials.insert({
         schemaVersion: '1.0.0',

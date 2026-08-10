@@ -11,7 +11,8 @@ a0_head: 1d36ee483f605a8656737ac37e60c865efd5fcba
 a0_verdict: ACCEPTED / COMPLETE (GPT 2026-08-10; Contract Freeze AUTHORIZED)
 a1_head: 2a2193c0ddaeee0024dc9d1c20c609518f79f019
 a1_verdict: ACCEPTED / FROZEN (GPT 2026-08-10; Product Implementation AUTHORIZED)
-next_gate: LPA-WP4 A2 Product Implementation → GPT A2 review → LPA-WP5
+a2_status: COMPLETE (FINAL_AFTER_MERGE; see closure record)
+next_gate: LPA-WP5 Backup / Restore Owner Workflow (after Governance Closure ACCEPTED / FINAL_AFTER_MERGE)
 ---
 
 # Shotgun — Local Launch / Serving Usability Implementation Request (LPA-WP4, Frozen — ACCEPTED)
@@ -259,3 +260,15 @@ GPT가 이 Frozen IR을 ACCEPTED하기 전에는 Product implementation을
 - Product Domain module 변경 / DB schema·migration 변경(필요 시 STOP →
   Amendment 후보).
 - LPA-WP5 Backup/Restore, LPA-WP6 Final Local Acceptance.
+
+## 9. Closure Record (append-only)
+
+- **2026-08-10 — LPA-WP4 Product Implementation COMPLETE / FINAL_AFTER_MERGE**
+  - LPA-WP4 A2 Correction Round 1 GPT Review: **ACCEPTED**.
+  - PR #85 **MERGED** — merge commit `c4ea36817aeb98823873f9b1c005cf77eea30dd8`
+  - post-merge main CI #762 / run 31399757169 / SUCCESS (event=push)
+  - LPA-D01~D14: **CLOSED** · LPA-AC-01~10: **CLOSED**
+  - canonical main: `c4ea36817aeb98823873f9b1c005cf77eea30dd8`
+  - 상세: `docs/engineering/local-launch-serving-usability-implementation-verification-260810002.md`
+  - 다음 게이트: LPA-WP5 Backup / Restore Owner Workflow (Governance Closure가
+    ACCEPTED / FINAL_AFTER_MERGE가 된 뒤에만 시작).

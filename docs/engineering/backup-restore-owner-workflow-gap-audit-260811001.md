@@ -1,8 +1,8 @@
 ---
 id: BACKUP-RESTORE-OWNER-WORKFLOW-GAP-AUDIT-260811001
 classification: CANONICAL
-status: A0_CANDIDATE (GPT review pending)
-status_authority: PENDING_GPT_A0_REVIEW
+status: ACCEPTED / COMPLETE
+status_authority: GPT_A0_REVIEW_ACCEPTED (2026-08-10; Contract Freeze AUTHORIZED)
 verification_gate: BACKUP-RESTORE-OWNER-WORKFLOW
 created_at: 2026-08-11
 subject_base: a471b2e5b747ff72056ac32d514166b5c9436dbd
@@ -10,8 +10,8 @@ canonical_main: a471b2e5b747ff72056ac32d514166b5c9436dbd
 governing_stage: LPA-WP5 (Backup / Restore Owner Workflow) — A0 Gap Audit / Contract Preparation
 preceding_gates: LPA-WP4 COMPLETE / FINAL_AFTER_MERGE (PR #85/#86 MERGED, post-merge CI #762/#764 SUCCESS)
 post_closure_main_ci: 764 / run 31401072454 / SUCCESS
-gpt_a0_instruction: LPA-WP5 A0 authorized 2026-08-10 — docs/audit only, Product implementation 금지
-next_gate: LPA-WP5 Contract Freeze / Implementation Request (GPT review)
+gpt_a0_review: ACCEPTED / COMPLETE (2026-08-10) — audit head cd1bdfe76, docs-only, no product code change
+next_gate: Frozen Implementation Request GPT review (docs/implementation/backup-restore-owner-workflow-implementation-request-260811001.md)
 ---
 
 # Shotgun — Backup / Restore Owner Workflow Gap Audit (LPA-WP5 A0)
@@ -415,3 +415,19 @@ dependency 추가, scheduler 구현, backup format / restore logic 변경을
 - A0를 GPT가 ACCEPTED하기 전에는 LPA-WP5 Product implementation을 시작하지
   않는다. LPA-WP6 Final Local Acceptance와 Deployment/Production
   Verification은 시작하지 않는다.
+
+## 21. A0 Review Record (append-only)
+
+- **2026-08-10 — GPT ACCEPTED / COMPLETE** (page: Make Shotgun)
+  - A0 exact head: `cd1bdfe76e2808885903338cf43aed3c0f2078af`
+  - A0 verdict: LPA-WP5 A0 승인 — Contract Freeze / Implementation Request
+    진행 AUTHORIZED. 변경은 audit 문서 1개뿐, Product code/DB/scheduler/
+    backup format/restore logic 변경 없음, format:check·docs:validate PASS.
+  - GPT 확정 방향: default backup root는 `.data/backups` 대신
+    **`<USER_HOME>/Shotgun Backups`**로 동결. `.data`는 원본 application
+    data와 너무 가까워 함께 소실 위험. 외장 드라이브 등은 `--root`
+    override로 지원.
+  - 다음 게이트: LPA-WP5 A1 Frozen IR GPT Review
+    (`docs/implementation/backup-restore-owner-workflow-implementation-request-260811001.md`).
+  - Product implementation은 Frozen IR을 GPT가 ACCEPTED하기 전까지 시작하지
+    않는다.

@@ -147,7 +147,23 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
 
   async submit(input: SubmitSourcesProductInput): Promise<IntakeSubmissionSnapshot> {
     const existing = await this.getSubmission(input.scope, input.submissionId);
-    if (existing) return existing;
+    if (existing) {
+      // FE-P5-XP Correction Round 2: a replay of an intake whose SourceVersions
+      // were materialized but whose Stage 3 pipeline did not complete
+      // (OUTCOME_INDETERMINATE) RESUMES the pipeline for the SAME
+      // SourceVersions (idempotent) and then finalizes SUCCEEDED — a transient
+      // Stage 3 failure must never leave a SourceVersion permanently without
+      // Evidence nor falsely report a final SUCCESS.
+      if (existing.state === 'OUTCOME_INDETERMINATE' && this.stage3Pipeline) {
+        const resumeItems = await this.materializedItemsForStage3(
+          input.scope.projectId,
+          input.submissionId,
+        );
+        await this.runStage3AndFinalize(resumeItems, input, input.scope, 0);
+        return (await this.getSubmission(input.scope, input.submissionId))!;
+      }
+      return existing;
+    }
     const client = await this.pool.connect();
     // Materialized SourceVersions are handed to the Stage 3 pipeline AFTER the
     // intake transaction commits (real production path, never fixture-side).
@@ -236,31 +252,27 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
           succeeded += 1;
         }
       }
-      const state =
-        actionRequired === 0 ? 'SUCCEEDED' : succeeded === 0 ? 'ACTION_REQUIRED' : 'PARTIAL';
+      // FE-P5-XP Correction Round 2: the submission is NOT finalized SUCCEEDED
+      // until the Stage 3 pipeline completed. After the (durable) materialization
+      // commit the submission stays RUNNING while the pipeline runs; a Stage 3
+      // failure flips it to OUTCOME_INDETERMINATE (retryable) instead of falsely
+      // reporting SUCCESS without Evidence.
+      const baseState =
+        actionRequired === 0 ? 'RUNNING' : succeeded === 0 ? 'ACTION_REQUIRED' : 'PARTIAL';
       await client.query(
         `UPDATE source_product.intake_submissions
-         SET state = $2, completed_at = CASE WHEN $2 = 'SUCCEEDED' THEN $3::timestamptz ELSE NULL END
+         SET state = $2, completed_at = NULL
          WHERE submission_id = $1`,
-        [input.submissionId, state, input.createdAt],
+        [input.submissionId, baseState],
       );
       await client.query('COMMIT');
       // FE-P5-XP Correction C: after the intake transaction commits, run the
       // REAL production Stage 3 pipeline for every materialized SourceVersion
       // (transform + evidence indexing). The pipeline is idempotent.
-      if (this.stage3Pipeline) {
-        for (const item of materializedForStage3) {
-          await this.stage3Pipeline.runForSourceVersion({
-            projectId: input.scope.projectId,
-            sourceId: item.sourceId,
-            sourceVersionId: item.sourceVersionId,
-            storageKey: item.storageKey,
-            mediaType: item.mediaType,
-            contentHash: item.contentHash,
-            accessScope: [...input.scope.accessScopes],
-            sensitivity: input.scope.sensitivity,
-          });
-        }
+      if (this.stage3Pipeline && materializedForStage3.length > 0) {
+        await this.runStage3AndFinalize(materializedForStage3, input, input.scope, actionRequired);
+      } else if (actionRequired === 0) {
+        await this.finalizeSubmissionState(input.submissionId, 'SUCCEEDED', input.createdAt);
       }
       return (await this.getSubmission(input.scope, input.submissionId))!;
     } catch (error) {
@@ -269,6 +281,157 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
     } finally {
       client.release();
     }
+  }
+
+  /**
+   * FE-P5-XP Correction Round 2 — run the Stage 3 pipeline for materialized
+   * SourceVersions and only THEN finalize the submission SUCCEEDED. On a Stage 3
+   * failure the submission is flipped to OUTCOME_INDETERMINATE (retryable) so a
+   * replay resumes the SAME SourceVersions; a final SUCCESS is never reported
+   * without Evidence.
+   */
+  private async runStage3AndFinalize(
+    items: Array<{
+      readonly sourceId: string;
+      readonly sourceVersionId: string;
+      readonly storageKey: string;
+      readonly mediaType: 'text/plain' | 'text/markdown';
+      readonly contentHash: string;
+    }>,
+    input: SubmitSourcesProductInput,
+    scope: SourcesProductWriteScope,
+    actionRequired: number,
+  ): Promise<void> {
+    if (!this.stage3Pipeline) return;
+    try {
+      for (const item of items) {
+        await this.stage3Pipeline.runForSourceVersion({
+          projectId: scope.projectId,
+          sourceId: item.sourceId,
+          sourceVersionId: item.sourceVersionId,
+          storageKey: item.storageKey,
+          mediaType: item.mediaType,
+          contentHash: item.contentHash,
+          accessScope: [...scope.accessScopes],
+          sensitivity: scope.sensitivity,
+        });
+      }
+    } catch (error) {
+      await this.markSubmissionStage3Incomplete(input.submissionId);
+      throw error;
+    }
+    await this.finalizeSubmissionState(
+      input.submissionId,
+      actionRequired === 0 ? 'SUCCEEDED' : 'PARTIAL',
+      input.createdAt,
+    );
+  }
+
+  /** Flip an intake whose Stage 3 pipeline failed to a retryable state. */
+  private async markSubmissionStage3Incomplete(submissionId: string): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `UPDATE source_product.intake_submissions
+         SET state = 'OUTCOME_INDETERMINATE'
+         WHERE submission_id = $1 AND state = 'RUNNING'`,
+        [submissionId],
+      );
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /** Finalize an intake submission to its terminal state once Stage 3 is done. */
+  private async finalizeSubmissionState(
+    submissionId: string,
+    state: 'SUCCEEDED' | 'PARTIAL',
+    createdAt: string,
+  ): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `UPDATE source_product.intake_submissions
+         SET state = $2,
+             completed_at = CASE WHEN $2 = 'SUCCEEDED' THEN $3::timestamptz ELSE completed_at END
+         WHERE submission_id = $1 AND state IN ('RUNNING', 'OUTCOME_INDETERMINATE')`,
+        [submissionId, state, createdAt],
+      );
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * FE-P5-XP Correction Round 2 — resolve the materialized SourceVersions of an
+   * existing intake (replay/resume) for the Stage 3 pipeline, preserving the
+   * SAME SourceId/SourceVersionId (never re-materialize a duplicate).
+   */
+  private async materializedItemsForStage3(
+    projectId: string,
+    submissionId: string,
+  ): Promise<
+    Array<{
+      readonly sourceId: string;
+      readonly sourceVersionId: string;
+      readonly storageKey: string;
+      readonly mediaType: 'text/plain' | 'text/markdown';
+      readonly contentHash: string;
+    }>
+  > {
+    const result = await this.pool.query<ProductItemRow>(
+      `SELECT item.submission_item_id::text, item.client_item_id, item.input_kind,
+              item.label, item.input_manifest, item.state, item.validation_results,
+              item.content_hash, item.media_type, item.size_bytes::text,
+              item.produced_source_id::text, item.produced_source_version_id::text,
+              item.active_duplicate_decision_id::text, item.attention_reason,
+              item.safe_failure_code, item.safe_failure_message,
+              item.safe_failure_retryable, item.item_revision::text,
+              version.version_number
+       FROM source_product.intake_submission_items AS item
+       LEFT JOIN asset.source_versions AS version
+         ON version.source_version_id = item.produced_source_version_id
+       WHERE item.project_id = $1 AND item.submission_id = $2
+         AND item.produced_source_id IS NOT NULL
+         AND item.produced_source_version_id IS NOT NULL
+       ORDER BY item.ordinal`,
+      [projectId, submissionId],
+    );
+    const items: Array<{
+      readonly sourceId: string;
+      readonly sourceVersionId: string;
+      readonly storageKey: string;
+      readonly mediaType: 'text/plain' | 'text/markdown';
+      readonly contentHash: string;
+    }> = [];
+    for (const row of result.rows) {
+      const contentHash = row.content_hash;
+      if (!contentHash) continue;
+      const storage = await this.pool.query<{ storage_key: string }>(
+        `SELECT storage_key FROM asset.original_assets WHERE content_hash = $1 LIMIT 1`,
+        [contentHash],
+      );
+      const storageKey = storage.rows[0]?.storage_key;
+      if (!storageKey) continue;
+      items.push({
+        sourceId: row.produced_source_id!,
+        sourceVersionId: row.produced_source_version_id!,
+        storageKey,
+        mediaType: (row.media_type as 'text/plain' | 'text/markdown') ?? 'text/plain',
+        contentHash,
+      });
+    }
+    return items;
   }
 
   async getSubmission(

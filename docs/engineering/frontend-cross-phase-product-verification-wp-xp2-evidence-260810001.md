@@ -1,7 +1,7 @@
 ---
 id: FRONTEND-CROSS-PHASE-PRODUCT-VERIFICATION-WP-XP2-EVIDENCE-260810001
 classification: CANONICAL
-status: wp_xp2_correction_round1_implemented
+status: wp_xp2_correction_round2_implemented
 verification_gate: FRONTEND-CROSS-PHASE-PRODUCT-VERIFICATION
 created_at: 2026-08-10
 subject_base: 07990d6e68878d630a6fc0e472c660e5cab69f91
@@ -9,6 +9,7 @@ governing_ir: docs/implementation/frontend-cross-phase-product-verification-impl
 gap_repair_amendment: docs/implementation/frontend-cross-phase-product-gap-repair-amendment-260809001.md
 correction_b_evidence: docs/implementation/frontend-cross-phase-correction-b-implementation-evidence-260809001.md
 gpt_review_20260810: BLOCKED_CORRECTION_AUTHORIZED (Correction C — Source Intake → Transformation/Evidence production wiring; 7 fixed deltas)
+gpt_review_20260810_r2: CHANGES_REQUIRED (Correction Round 2 — no final SUCCEEDED before Stage 3; failure → retryable OUTCOME_INDETERMINATE; same-SourceVersion resume; no duplicates)
 wp_xp2_implementation_head: 1753707c0
 wp_xp2_implementation_ci_number: 746
 wp_xp2_implementation_ci_conclusion: SUCCESS
@@ -17,6 +18,10 @@ wp_xp2_correction_round1_head: 85dbd8f0b
 wp_xp2_correction_round1_ci_number: 748
 wp_xp2_correction_round1_ci_conclusion: SUCCESS
 wp_xp2_correction_round1_ci_run_id: 31379439134
+# Correction Round 2 evidence cleanup ships inside the Stage 3 fix commit
+# (GPT governance: no separate docs-only metadata commit; the automatic CI on
+# this exact head is the final gate — see section 9).
+wp_xp2_correction_round2_ci_governance: no_docs_only_commit (auto CI on exact head is final gate)
 tracking_issue: https://github.com/JasonCutter/shotgun/issues/71
 product_pr: https://github.com/JasonCutter/shotgun/pull/83
 ---
@@ -163,8 +168,12 @@ the only stubbed part of the E2E bridge.
   assertions.
 - CI (automatic on push, PR #83): implementation head `1753707c0` run #746
   SUCCESS; Correction Round 1 head `85dbd8f0b` run #748 SUCCESS (Quality +
-  Frontend + Required Gates) — see frontmatter. CI #746 was never re-run;
-  no duplicate clean/dirty runs (GPT work-rule).
+  Frontend + Required Gates) — see frontmatter. CI #746/#748 were never re-run;
+  run #749 (docs-only frontmatter commit) is NOT used as technical evidence
+  (GPT governance).
+- Correction Round 2 (below) local gates all PASS; the automatic CI on the
+  Round 2 exact head is the final gate (no docs-only metadata commit per GPT
+  governance).
 
 ## 8. Known limits / handoff
 
@@ -175,3 +184,53 @@ the only stubbed part of the E2E bridge.
 - The History projection rebuild remains an operator step (no browser refresh
   route by design); the journey documents it as such.
 - Deployment / Production Verification remain NOT_AUTHORIZED / NOT_RUN.
+
+## 9. Correction Round 2 — Stage 3 post-commit failure recovery
+
+GPT second review (CHANGES_REQUIRED) required that a Source Intake submission
+is never finalized SUCCEEDED before its Stage 3 (Transformation/Evidence)
+pipeline completed, and that a Stage 3 failure leaves the submission in a
+retryable state that resumes the SAME SourceVersions without creating
+duplicates. This evidence cleanup ships inside the Stage 3 fix commit
+(GPT governance: no separate docs-only metadata commit).
+
+### 9.1 Delta (production)
+
+`adapters/frontend-sources-write-postgres/src/product-service.ts`:
+
+- After the (durable) materialization COMMIT the submission is set to
+  `RUNNING` (or `PARTIAL`/`ACTION_REQUIRED` when exact-duplicate items exist),
+  never SUCCEEDED.
+- The real Stage 3 pipeline then runs for every materialized SourceVersion;
+  only on completion the submission is finalized `SUCCEEDED`/`PARTIAL`.
+- A Stage 3 failure flips the submission to `OUTCOME_INDETERMINATE`
+  (`markSubmissionStage3Incomplete`) and rethrows — no false SUCCESS without
+  Evidence.
+- A replay of the same command with an `OUTCOME_INDETERMINATE` submission
+  resumes the SAME materialized SourceVersions
+  (`materializedItemsForStage3` → `runStage3AndFinalize`), so retry completes
+  Transformation/Evidence without creating duplicate Source/SourceVersion.
+
+### 9.2 Focused regression (Sources)
+
+`tests/database/frontend-sources-stage3-recovery.test.ts` — one test with a
+`FailOnceStage3Pipeline` wrapper (first pipeline call throws a transient
+fault, then delegates to the real production pipeline):
+
+1. `submit()` first attempt → throws the Stage 3 fault.
+2. Submission state is `OUTCOME_INDETERMINATE` (no false final SUCCESS) and
+   the durable Source/SourceVersion are already materialized.
+3. `submit()` retry → `SUCCEEDED`, resuming the SAME `sourceId` /
+   `sourceVersionId`.
+4. `asset.source_versions` has exactly 1 row for the pair (no duplicate).
+5. `evidence.spans` has rows for the same `project_id` + `source_version_id`
+   (real pipeline evidence).
+
+Local gates for Round 2 (all PASS): `npx tsc --noEmit`; sources DB suite
+(persistence 5 + lifecycle 2 + duplicate 2 + recovery 1 = 10); sources
+product-api integration (3); cross-phase journey E2E on fresh DB and on the
+dirty shared DB (re-run resilience, 2 passes); `format:check`, `lint`,
+`docs:validate`.
+
+Final gate: the automatic CI on this exact Round 2 head (PR #83). No CI
+metadata is appended via a later docs-only commit.

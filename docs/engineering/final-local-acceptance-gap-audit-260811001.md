@@ -269,24 +269,58 @@ LPA-WP6 A1 Contract Freeze에서 freeze할 후보 scope (A0 기준):
 - Correction Round 1 AUTHORIZED. A1 Contract Freeze / PR #89 merge / Final
   Local Acceptance / PROJECT COMPLETE / Deployment / Production은 계속 금지.
 
-### FLA-07 tracking artifact reconciliation (C2)
+### FLA-07 tracking artifact reconciliation (C2, 완결 — Correction Round 2)
 
-- 현재 repository에는 과거 시점의 open tracking artifact가 남아 있다:
+- 현재 repository의 open Issue / PR 전체 inventory (A0 시점 확인):
 
-| Artifact                                                          | 상태                                     | 분류                           |
-| ----------------------------------------------------------------- | ---------------------------------------- | ------------------------------ |
-| Issue #71 — FE-P5-S1 (Agent and Job Activity Workspace)           | OPEN (과거 NOT_STARTED body)             | `SUPERSEDED_TRACKING_ARTIFACT` |
-| Draft PR #72 — docs(fe-p5-s1): contract preparation and gap audit | OPEN / Draft (과거 contract preparation) | `SUPERSEDED_TRACKING_ARTIFACT` |
+| Artifact                                                                                                             | 상태                                                   | 분류                                                |
+| -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | --------------------------------------------------- |
+| Issue #52 — FE-P3-S1 (Knowledge Workspace Product implementation)                                                    | OPEN (과거 tracker)                                    | `SUPERSEDED_TRACKING_ARTIFACT`                      |
+| Issue #58 — FE-P3-S3 (Semantic Graph and Relationship Exploration)                                                   | OPEN (과거 AUTHORIZED / NOT_STARTED / AC NOT_RUN body) | `SUPERSEDED_TRACKING_ARTIFACT`                      |
+| Issue #68 — FE-P5-S1 (contract preparation)                                                                          | OPEN (과거 contract preparation)                       | `SUPERSEDED_TRACKING_ARTIFACT`                      |
+| Issue #71 — FE-P5-S1 (Agent and Job Activity Workspace)                                                              | OPEN (과거 NOT_STARTED body)                           | `SUPERSEDED_TRACKING_ARTIFACT`                      |
+| Draft PR #70 — FE-P5-S1 contract freeze                                                                              | OPEN / Draft (과거 contract tracker)                   | `SUPERSEDED_TRACKING_ARTIFACT`                      |
+| Draft PR #72 — docs(fe-p5-s1): contract preparation and gap audit                                                    | OPEN / Draft (과거 contract preparation)               | `SUPERSEDED_TRACKING_ARTIFACT`                      |
+| Draft PR #30 — Record planned follow-up architecture work (Durable Knowledge Processing / Hybrid Semantic Retrieval) | OPEN / Draft / unmerged (future candidate)             | `NONCANONICAL_FUTURE_CANDIDATE / NOT_LOCAL_BLOCKER` |
+| PR #89 — LPA-WP6 A0 (현재 작업)                                                                                      | — (분류 제외)                                          | current-work exclusion                              |
 
-- 판정 원칙: ① artifact body의 상태가 과거 시점 상태이고, ② 현재 canonical
-  status authority인 `docs/project/frontend-work-items.json`(ADR-124) 및
-  accepted completion / FINAL_AFTER_MERGE closure record가 해당 Work Item을
-  COMPLETE로 확정하며, ③ GitHub Issue open/closed 상태 자체가 completion
-  authority라는 canonical 계약이 없다.
-- canonical status authority = `docs/project/frontend-work-items.json` /
-  ADR-124 + completion manifests / FINAL_AFTER_MERGE closure record.
-- stale GitHub tracking artifact는 hidden required work가 아님. stale
-  Issue/PR cleanup 자체는 Final Local Acceptance blocker가 아님
-  (`OPTIONAL_GOVERNANCE_HOUSEKEEPING`). 이번 correction에서 Issue/PR을
-  닫거나 수정하지 않는다.
-- FLA-07 최종 상태: **PASS** (evidence가 뒷받침).
+- SUPERSEDED_TRACKING_ARTIFACT 판정 원칙 (#52/#58/#68/#71/#70/#72): ① 해당
+  tracker가 OPEN이고 과거 body 상태를 담고 있으며, ② 해당 Work Item은 현재
+  canonical status authority에서 COMPLETE이고, ③ completion manifest /
+  FINAL_AFTER_MERGE closure record가 후속 authority이며, ④ GitHub
+  Issue open/closed lifecycle은 canonical completion authority가 아니다.
+  → hidden REQUIRED work 아님 / Product blocker 아님 / Final Local
+  Acceptance blocker 아님. cleanup은 `OPTIONAL_GOVERNANCE_HOUSEKEEPING`.
+- PR #30 별도 분류 (#52 등과 동일하게 취급하지 않음): OPEN / Draft /
+  unmerged이며 current canonical main의 authority record가 아니다. Durable
+  Knowledge Processing / Hybrid Semantic Retrieval 같은 follow-up
+  candidate로, 구현 승격에는 별도 Section review / architecture decision이
+  필요한 future work다. current Local completion REQUIRED item으로 승격된
+  canonical authority 없음 → `NONCANONICAL_FUTURE_CANDIDATE /
+NOT_LOCAL_BLOCKER`. (Hybrid Semantic Retrieval은 §8 Deferred/Future의
+  "Semantic Retrieval DEFERRED"와 정합; Durable Knowledge Processing은
+  별도 future candidate로 명시하되 Local blocker 아님.)
+- 이번 correction에서 Issue/PR을 닫거나 수정하지 않는다.
+- FLA-07 최종 reasoning: canonical machine-readable status authority
+  (`docs/project/frontend-work-items.json` / ADR-124) + accepted completion
+  manifests / FINAL_AFTER_MERGE records가 현재 완료 authority. open GitHub
+  tracker lifecycle은 completion authority가 아니다. completed Work Item을
+  과거 상태로 기술하는 open tracker는 SUPERSEDED_TRACKING_ARTIFACT,
+  unmerged future proposal은 NONCANONICAL_FUTURE_CANDIDATE. 현재 open
+  artifact 중 Local completion을 요구하는 새로운 canonical REQUIRED item은
+  없다.
+- FLA-07 최종 상태: **PASS**. unresolved canonical blocker: **NONE**.
+
+### Correction Round 1 → GPT **CHANGES_REQUIRED** (2026-08-11, Round 2 authorized)
+
+- Correction Round 1 head: `a218687f2de69d32fdcbdf393652e5fbcce7c9c4`, PR
+  #89, CI #774 / run 31420474477 / SUCCESS (Quality·Frontend·Required Gates).
+- GPT Correction Round 1 verdict: **CHANGES_REQUIRED** — C1 CLOSED, C3
+  CLOSED. remaining C2: **open artifact inventory 불완전**.
+- 누락 확인: Issue #52, #58, #68, Draft PR #70 (기존 #71/#72 외). Draft PR
+  #30은 completed Work Item의 stale tracker가 아니라 Durable Knowledge
+  Processing / Hybrid Semantic Retrieval을 담은 unmerged future candidate →
+  `NONCANONICAL_FUTURE_CANDIDATE / NOT_LOCAL_BLOCKER`로 별도 분류.
+- substantive `LOCAL_ACCEPTANCE_READY`는 reopen하지 않음.
+- Correction Round 2 AUTHORIZED. A1 Contract Freeze / PR #89 merge / Final
+  Local Acceptance / PROJECT COMPLETE / Deployment / Production은 계속 금지.

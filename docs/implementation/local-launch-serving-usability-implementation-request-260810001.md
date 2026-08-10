@@ -1,7 +1,7 @@
 ---
 id: LOCAL-LAUNCH-SERVING-USABILITY-IR-260810001
 classification: CANONICAL
-status: FROZEN_CANDIDATE
+status: FROZEN / ACCEPTED
 verification_gate: LOCAL-LAUNCH-SERVING-USABILITY
 created_at: 2026-08-10
 subject_base: 53f3d4f63a2d9b97d3d99f6377e367385d52dc2d
@@ -9,10 +9,12 @@ canonical_main: 53f3d4f63a2d9b97d3d99f6377e367385d52dc2d
 a0_audit: docs/engineering/local-launch-serving-usability-gap-audit-260810001.md
 a0_head: 1d36ee483f605a8656737ac37e60c865efd5fcba
 a0_verdict: ACCEPTED / COMPLETE (GPT 2026-08-10; Contract Freeze AUTHORIZED)
-next_gate: GPT review of this Frozen IR → LPA-WP4 implementation request AUTHORIZED
+a1_head: 2a2193c0ddaeee0024dc9d1c20c609518f79f019
+a1_verdict: ACCEPTED / FROZEN (GPT 2026-08-10; Product Implementation AUTHORIZED)
+next_gate: LPA-WP4 A2 Product Implementation → GPT A2 review → LPA-WP5
 ---
 
-# Shotgun — Local Launch / Serving Usability Implementation Request (LPA-WP4, Frozen Candidate)
+# Shotgun — Local Launch / Serving Usability Implementation Request (LPA-WP4, Frozen — ACCEPTED)
 
 ## 0. Authority
 
@@ -21,8 +23,10 @@ next_gate: GPT review of this Frozen IR → LPA-WP4 implementation request AUTHO
 - LPA-WP4 A0 audit head: `1d36ee483f605a8656737ac37e60c865efd5fcba`
 - A0 verdict: **ACCEPTED / COMPLETE** (GPT 2026-08-10) — Contract Freeze /
   Implementation Request 진행 AUTHORIZED
-- 이번 단계는 **Contract Freeze / Implementation Request 작성만** 수행한다.
-  **Product implementation은 아직 시작하지 않는다.**
+- LPA-WP4 A1 frozen head: `2a2193c0ddaeee0024dc9d1c20c609518f79f019`
+- A1 verdict: **ACCEPTED / FROZEN** (GPT 2026-08-10) — LPA-WP4 A2 Product
+  Implementation AUTHORIZED (Appendix A 참조)
+- A2는 이 Frozen IR의 LPA-D01~D14 / LPA-AC-01~10 계약에 따라 구현한다.
 
 ## 1. Goal
 
@@ -232,6 +236,16 @@ Migration이 필요하다고 판단되면 즉시 **STOP**하고 Amendment 후보
 GPT가 이 Frozen IR을 ACCEPTED하기 전에는 Product implementation을
 시작하지 않는다. LPA-WP5 Backup/Restore와 LPA-WP6 Final Local Acceptance는
 계속 시작하지 않는다.
+
+## 8. A1 Acceptance Record (append-only)
+
+- **2026-08-10 — GPT ACCEPTED / FROZEN** (page: Make Shotgun)
+  - A1 head: `2a2193c0ddaeee0024dc9d1c20c609518f79f019`
+  - A1 verdict: LPA-WP4 Contract Freeze 승인 — LPA-D01~D14, LPA-AC-01~10을
+    구현 계약으로 동결.
+  - 다음 게이트: LPA-WP4 A2 Product Implementation AUTHORIZED.
+  - LPA-WP5 Backup/Restore, LPA-WP6 Final Local Acceptance는 A2가
+    ACCEPTED되기 전까지 시작하지 않는다.
 
 ## 7. Excluded scope (고정)
 

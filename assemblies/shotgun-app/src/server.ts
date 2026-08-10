@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import Fastify from 'fastify';
+import staticPlugin from '@fastify/static';
 
 import {
   InMemoryAuthRepository,
@@ -532,6 +533,11 @@ export type ApplicationOptions = {
   readonly historyReviewBoundary?: ReviewRepositoryBoundaryPort;
   readonly host?: string;
   readonly production?: boolean;
+  /** LPA-WP4 (Local Launch / Serving Usability): absolute path to the built
+   *  SPA (`apps/shotgun-web/dist`). When set, the Fastify server serves the
+   *  SPA from the SAME origin (LPA-D02/D04) with a browser-route-only SPA
+   *  fallback; reserved API namespaces are never absorbed (LPA-D05). */
+  readonly spaDirectory?: string;
   readonly canonicalProjectionRecoveryIntervalMs?: number | false;
   readonly canonicalProjectionRecoveryReporter?: CanonicalProjectionRecoveryReporterPort;
   readonly closeResources?: () => Promise<void>;
@@ -1722,6 +1728,25 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     '/api/v1/session/local-bootstrap',
     ...(legacyAuthEnabled ? ['/auth/login'] : []),
   ]);
+  /** LPA-WP4 (D04/D05): in launch mode (`spaDirectory` configured) the built
+   *  SPA and its assets are public GET/HEAD browser routes served from the
+   *  same origin. Reserved API namespaces and /health are NEVER bypassed — all
+   *  authority stays server-derived and unknown API paths keep their existing
+   *  failure semantics (LPA-AC-10). */
+  const isSpaPublicRequest = (method: string, urlPath: string): boolean => {
+    if (!options.spaDirectory) return false;
+    if (method !== 'GET' && method !== 'HEAD') return false;
+    if (
+      urlPath === '/health' ||
+      urlPath === '/api' ||
+      urlPath.startsWith('/api/') ||
+      urlPath === '/product-api' ||
+      urlPath.startsWith('/product-api/')
+    ) {
+      return false;
+    }
+    return true;
+  };
   server.addHook('onRequest', async (request) => {
     const urlPath = request.url.split('?')[0] ?? request.url;
     if (urlPath.startsWith('/auth/') && !legacyAuthEnabled) {
@@ -1733,6 +1758,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       });
     }
     if (publicPaths.has(urlPath)) return;
+    if (isSpaPublicRequest(request.method, urlPath)) return;
     const headers = request.headers as SecurityHeaders;
     for (const name of ['x-project-id', 'x-actor-id', 'x-access-scope', 'x-sensitivity'] as const) {
       if (headers[name] !== undefined) {
@@ -3245,6 +3271,47 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     await kernel.shutdown();
     await options.closeResources?.();
   });
+
+  // LPA-WP4 (D03/D05): same-origin built-SPA serving. @fastify/static
+  // (10.1.2, exact pin) serves real static assets; the not-found handler
+  // provides a browser-route-only SPA fallback. Reserved API namespaces
+  // (/api, /product-api, /health) are NEVER absorbed into index.html and keep
+  // their existing 404 semantics; non-GET/HEAD unknown routes also keep 404.
+  if (options.spaDirectory) {
+    const spaRoot = path.resolve(options.spaDirectory);
+    await server.register(staticPlugin, {
+      root: spaRoot,
+      prefix: '/',
+      wildcard: false,
+      decorateReply: false,
+    });
+    const notFoundJson = (request: { method: string; url: string }) => ({
+      message: `Route ${request.method}:${request.url.split('?')[0] ?? request.url} not found`,
+      error: 'Not Found',
+      statusCode: 404,
+    });
+    server.setNotFoundHandler(async (request, reply) => {
+      const urlPath = request.url.split('?')[0] ?? request.url;
+      const isApiReserved =
+        urlPath === '/health' ||
+        urlPath === '/api' ||
+        urlPath.startsWith('/api/') ||
+        urlPath === '/product-api' ||
+        urlPath.startsWith('/product-api/');
+      if ((request.method !== 'GET' && request.method !== 'HEAD') || isApiReserved) {
+        return reply.code(404).send(notFoundJson(request));
+      }
+      try {
+        const html = await readFile(path.join(spaRoot, 'index.html'), 'utf8');
+        return reply
+          .type('text/html; charset=utf-8')
+          .header('cache-control', 'no-cache')
+          .send(html);
+      } catch {
+        return reply.code(404).send(notFoundJson(request));
+      }
+    });
+  }
 
   return {
     server,

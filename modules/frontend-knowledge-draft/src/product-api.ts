@@ -892,9 +892,20 @@ export class FrontendKnowledgeDraftProductCoordinator {
           nextStatus: 'READY_FOR_REVIEW',
           updatedAt: new Date().toISOString(),
         });
+        const reviewResourceIdValue = generatedIdentity('review-resource');
         const submittedDraft: FrontendKnowledgeDraftChangeSetV1 = {
           ...next,
           status: 'SUBMITTED',
+          reviewResource: {
+            reviewResourceId: reviewResourceIdValue,
+            draftId: current.draftId,
+            draftRevision: current.revision,
+            resourceProjectId: current.resourceProjectId,
+            draftProjectId: current.draftProjectId,
+            effectiveProjectId: current.effectiveProjectId,
+            policyContextRevision: current.base.policyContextRevision,
+            digest: current.contentDigest,
+          },
           reviewSubmission: {
             reviewSubmissionId: generatedIdentity('review-submission'),
             draftId: current.draftId,
@@ -913,7 +924,7 @@ export class FrontendKnowledgeDraftProductCoordinator {
               policyContextRevision: current.base.policyContextRevision,
             },
             reviewResource: {
-              reviewResourceId: generatedIdentity('review-resource'),
+              reviewResourceId: reviewResourceIdValue,
               draftId: current.draftId,
               draftRevision: current.revision,
               resourceProjectId: current.resourceProjectId,

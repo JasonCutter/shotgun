@@ -198,6 +198,7 @@ const { server } = await createApplication({
   actionExecutionRepository: new PostgresActionExecutionRepository(pool),
   authRepository: new PostgresAuthRepository(pool),
   production,
+  frontendReviewStore: new PostgresFrontendReviewRepository(pool),
   activitySourcesRead: new PostgresSourcesActivityRead(pool, sourcesProductService),
   activityAskRead: new PostgresAskActivityRead(pool),
   activityReadModelStore: createPostgresActivityReadModelStore(pool),

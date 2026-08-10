@@ -1,5 +1,6 @@
 import type { Pool } from 'pg';
 
+import { canonicalSnapshotDigest } from '../../../packages/contracts/src/comparison-review.js';
 import type { FrontendKnowledgeDraftBaseV1 } from '../../../packages/contracts/src/index.js';
 import type {
   FrontendKnowledgeDraftCommandScopeV1,
@@ -216,10 +217,15 @@ export class PostgresFrontendKnowledgeDraftTargetResolver implements FrontendKno
     );
     const row = state.rows[0];
     const version = row?.version ?? 0;
+    // The empty-snapshot digest MUST match `PostgresCanonicalKnowledgeRepository`
+    // (`canonicalSnapshotDigest(projectId, 0, [])`), never a placeholder:
+    // commitFrontendDraft revalidates the pinned Draft base against the live
+    // Canonical snapshot and would otherwise fail STALE_APPROVAL on every
+    // fresh Draft (Cross-Phase WP-XP2 discovery).
     return {
       snapshotId: `canonical:${projectId}:${version}`,
       version,
-      snapshotDigest: row?.snapshot_digest ?? `sha256:${'0'.repeat(64)}`,
+      snapshotDigest: row?.snapshot_digest ?? canonicalSnapshotDigest(projectId, 0, []),
     };
   }
 }

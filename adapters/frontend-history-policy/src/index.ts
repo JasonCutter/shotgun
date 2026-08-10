@@ -106,9 +106,14 @@ export class PolicyHistoryAdapter implements HistoryAdapterPort {
           riskLevel: entry.riskLevel,
           details: entry.details,
         });
+        // `historyEntryId` MUST be unique per Project (migration 030 PRIMARY
+        // KEY) and per authoritative source identity. The source id alone is
+        // not unique across kinds (e.g. `POLICY_CONTEXT_REVISION:1` and
+        // `SETTINGS_REVISION:1` both carry sourceId `1`), so the source kind
+        // is part of the projection identity (Cross-Phase WP-XP2 discovery).
         entries.push({
           schemaVersion: '1.0.0',
-          historyEntryId: `history:${projectId}:policy:${entry.sourceId}`,
+          historyEntryId: `history:${projectId}:policy:${entry.sourceKind}:${entry.sourceId}`,
           resourceProjectId: projectId,
           domainKind: POLICY_DOMAIN_KIND,
           domainResourceKind: 'POLICY_CHANGE',

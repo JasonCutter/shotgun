@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -20,6 +21,15 @@ import {
 } from '../../../adapters/frontend-history-postgres/src/index.js';
 import { PostgresFrontendReviewRepository } from '../../../adapters/frontend-review-postgres/src/index.js';
 import { createPostgresReviewDraftSourceReader } from '../../../adapters/frontend-review-postgres/src/index.js';
+import { PostgresExternalActionStore } from '../../../adapters/frontend-external-action-postgres/src/index.js';
+import { CanonicalHistoryAdapter } from '../../../adapters/frontend-history-canonical/src/index.js';
+import { ReviewHistoryAdapter } from '../../../adapters/frontend-history-review/src/index.js';
+import { ExternalActionHistoryAdapter } from '../../../adapters/frontend-history-external-action/src/index.js';
+import { PolicyHistoryAdapter } from '../../../adapters/frontend-history-policy/src/index.js';
+import {
+  PostgresKnowledgeWorkspaceProjection,
+  type KnowledgeWorkspaceQueryExecutor,
+} from '../../../adapters/frontend-product-read-postgres/src/index.js';
 import { PostgresSourcesActivityRead } from '../../../adapters/frontend-sources-write-postgres/src/activity-read.js';
 import { PostgresAskActivityRead } from '../../../adapters/frontend-ask-execution-postgres/src/activity-read.js';
 import {
@@ -71,6 +81,13 @@ import { PostgresAuthRepository } from '../../../adapters/postgres-auth/src/inde
 import { AskCommandCoordinator } from '../../../modules/frontend-ask-write/src/index.js';
 import { AskAnswerExecutionService } from '../../../modules/frontend-ask-execution/src/index.js';
 import { FrontendProductReadCoordinator } from '../../../modules/frontend-product-read/src/index.js';
+import {
+  createHistoryAdapterRegistry,
+  HistoryProjectionBuilder,
+} from '../../../modules/frontend-history/src/index.js';
+import { buildEvidenceCandidates } from '../../../modules/evidence/src/index.js';
+import type { DocumentTransformationInput } from '../../../modules/transformation/src/index.js';
+import { frontendKnowledgeDraftRevisionDigest } from '../../../packages/contracts/src/index.js';
 import { configureSourcesWriteRuntime } from '../../../assemblies/shotgun-app/src/product-api/sources-write-runtime.js';
 import { createApplication } from '../../../assemblies/shotgun-app/src/server.js';
 import {
@@ -169,15 +186,86 @@ export async function startFrontendCrossPhaseBackend() {
   );
   const canonicalKnowledgeRepository = new PostgresCanonicalKnowledgeRepository(pool);
   const changeSetReviewRepository = new PostgresChangeSetReviewRepository(pool);
-  const frontendProductReadCoordinator = new FrontendProductReadCoordinator(
-    new InMemoryGlobalShellProjection(),
-    new InMemoryActionCenterProjection(),
-    new InMemoryBackgroundSummaryProjection(),
-    new InMemoryNotificationSummaryProjection(),
-    new InMemoryGlobalSearch(),
-    new InMemoryRouteGuardProjection(),
-    askWorkspaceProjection,
+  // Stage 3 Transformation/Evidence repositories (shared with the Sources
+  // bridge below — the Sources intake does not trigger the Stage 3 pipeline,
+  // a known product gap bridged with the REAL adapters).
+  const transformationRepository = new PostgresTransformationRepository(pool);
+  const evidenceRepository = new PostgresEvidenceRepository(pool);
+  // Server-owned External Action boundary. Credential + per-project budget are
+  // seeded here exactly as an administrator configures them in production
+  // (they are NEVER declared by the browser). Without the seeded credential
+  // and budget the fake-connector preflight revalidations fail closed and the
+  // journey cannot reach READY (Cross-Phase WP-XP2 discovery).
+  const externalActionStore = new PostgresExternalActionStore(pool);
+  for (const projectId of ['journey-alpha', 'journey-beta']) {
+    await externalActionStore.transaction(async (repositories) => {
+      await repositories.credentials.insert({
+        schemaVersion: '1.0.0',
+        connectorId: 'fake-connector',
+        name: 'Fake Connector',
+        status: 'CONFIGURED',
+        maskedCredential: 'ab••••••••cd',
+        capabilities: ['TEST', 'ROTATE', 'REVOKE'],
+      });
+      await repositories.budgets.insert({
+        schemaVersion: '1.0.0',
+        projectId,
+        status: 'OK',
+        usedExecutions: 0,
+        remainingExecutions: 100,
+        softLimit: 80,
+        hardLimit: 100,
+        exhausted: false,
+      });
+    });
+  }
+  // Shared server-owned boundary instances (hoisted so the History projection
+  // builder observes the SAME stores the Product API reads).
+  const frontendReviewStore = new PostgresFrontendReviewRepository(pool);
+  const policyHistoryRead = new PostgresPolicyHistoryReadAdapter(pool);
+  const historyReadModelStore = createPostgresHistoryReadModelStore(pool);
+  const historyPayloadStates = {
+    CANONICAL: new PostgresPayloadStateStore(pool, 'CANONICAL'),
+    REVIEW: new PostgresPayloadStateStore(pool, 'REVIEW'),
+    EXTERNAL_ACTION: new PostgresPayloadStateStore(pool, 'EXTERNAL_ACTION'),
+    SETTINGS: new PostgresPayloadStateStore(pool, 'SETTINGS'),
+  };
+  // Federated History projection is NON-AUTHORITATIVE and rebuildable (ADR-131
+  // §2, IR r1 §4). There is deliberately NO browser refresh route (WP4 Round 1
+  // fix E); an OPERATOR rebuilds the projection with the same adapters the
+  // Product API reads. The journey performs this operator step with the REAL
+  // HistoryProjectionBuilder + adapters (no stubs), then reads the REAL
+  // History Product API.
+  const historyProjectionBuilder = new HistoryProjectionBuilder(
+    createHistoryAdapterRegistry([
+      new CanonicalHistoryAdapter(canonicalKnowledgeRepository, historyPayloadStates.CANONICAL),
+      new ReviewHistoryAdapter(frontendReviewStore, historyPayloadStates.REVIEW),
+      new ExternalActionHistoryAdapter(externalActionStore, historyPayloadStates.EXTERNAL_ACTION),
+      new PolicyHistoryAdapter(policyHistoryRead, historyPayloadStates.SETTINGS),
+    ]),
+    historyReadModelStore,
   );
+  // Production-parity read coordinator: the Knowledge Workspace projection is
+  // backed by the kernel connector (same as main.ts) so CP-AC-05 Knowledge
+  // reads resolve real Canonical state after the journey commit.
+  const frontendProductReadCoordinatorFactory = (connector: {
+    query<TResult>(envelope: unknown): Promise<{ result: { payload: TResult } }>;
+  }) =>
+    new FrontendProductReadCoordinator(
+      new InMemoryGlobalShellProjection(),
+      new InMemoryActionCenterProjection(),
+      new InMemoryBackgroundSummaryProjection(),
+      new InMemoryNotificationSummaryProjection(),
+      new InMemoryGlobalSearch(),
+      new InMemoryRouteGuardProjection(),
+      askWorkspaceProjection,
+      new PostgresKnowledgeWorkspaceProjection({
+        query: async <TResult>({
+          envelope,
+        }: Parameters<KnowledgeWorkspaceQueryExecutor['query']>[0]) =>
+          (await connector.query<TResult>(envelope)).result.payload,
+      }),
+    );
   const application = await createApplication({
     projectAdminRepository,
     projectBootstrapUnitOfWork: new PostgresProjectBootstrapUnitOfWork(pool),
@@ -187,13 +275,15 @@ export async function startFrontendCrossPhaseBackend() {
     frontendKnowledgeDraftRepository: new PostgresFrontendKnowledgeDraftRepository(pool),
     frontendKnowledgeDraftTargetResolver: new PostgresFrontendKnowledgeDraftTargetResolver(pool),
     frontendReviewDraftSourceReader: createPostgresReviewDraftSourceReader(pool),
+    frontendReviewStore,
     askCommandCoordinator,
-    frontendProductReadCoordinator,
+    frontendProductReadCoordinatorFactory,
+    activityExternalActionBoundary: externalActionStore,
     intakeRepository: new PostgresIntakeRepository(pool),
     originalAssetRepository: new PostgresOriginalAssetRepository(pool),
     assetStorage,
-    transformationRepository: new PostgresTransformationRepository(pool),
-    evidenceRepository: new PostgresEvidenceRepository(pool),
+    transformationRepository: transformationRepository,
+    evidenceRepository: evidenceRepository,
     aiProviderRepository: new PostgresAIProviderCallRepository(pool),
     candidateRepository: new PostgresCandidateRepository(pool),
     validationRepository: new PostgresValidationRepository(pool),
@@ -211,15 +301,10 @@ export async function startFrontendCrossPhaseBackend() {
     activitySourcesRead: new PostgresSourcesActivityRead(pool, sourcesProductService),
     activityAskRead: new PostgresAskActivityRead(pool),
     activityReadModelStore: createPostgresActivityReadModelStore(pool),
-    historyReadModelStore: createPostgresHistoryReadModelStore(pool),
-    historyPayloadStates: {
-      CANONICAL: new PostgresPayloadStateStore(pool, 'CANONICAL'),
-      REVIEW: new PostgresPayloadStateStore(pool, 'REVIEW'),
-      EXTERNAL_ACTION: new PostgresPayloadStateStore(pool, 'EXTERNAL_ACTION'),
-      SETTINGS: new PostgresPayloadStateStore(pool, 'SETTINGS'),
-    },
-    historyReviewBoundary: new PostgresFrontendReviewRepository(pool),
-    policyHistoryRead: new PostgresPolicyHistoryReadAdapter(pool),
+    historyReadModelStore,
+    historyPayloadStates,
+    historyReviewBoundary: frontendReviewStore,
+    policyHistoryRead,
     actionConnector: new FakeDraftActionConnector(),
     textDiff: new JsDiffAdapter(),
     transformer: new PythonDocumentFormatAdapter(),
@@ -242,6 +327,83 @@ export async function startFrontendCrossPhaseBackend() {
 
   let closing = false;
   return {
+    /**
+     * Operator step (WP4 Round 1 fix E — there is intentionally NO browser
+     * History refresh route): rebuild the federated History projection for a
+     * project with the REAL HistoryProjectionBuilder + owning-Domain adapters.
+     */
+    rebuildHistoryProjection: async (resourceProjectId: string) =>
+      historyProjectionBuilder.buildProjectProjection(resourceProjectId),
+    /**
+     * Provisioning step (server-owned auth state): grant the CURRENT
+     * `project:action:rollback` capability to the journey principal on a
+     * project — the same way an administrator provisions a project owner in
+     * production (there is no browser API for membership grants).
+     */
+    grantRollbackCapability: async (projectId: string) => {
+      await authRepository.createProjectOwnerMembership({
+        principalId,
+        projectId,
+        scopes: ['owner', 'project:action:rollback'],
+        sensitivityClearance: 'private',
+      });
+    },
+    /**
+     * Known product-gap bridge (WP-XP2): the Sources intake does not trigger
+     * the Stage 3 Transformation/Evidence pipeline. Run the REAL Stage 3
+     * adapters (same as the legacy kernel pipeline) so Ask can ground on the
+     * freshly ingested SourceVersion's EvidenceSpans.
+     */
+    bridgeEvidence: async (input: {
+      projectId: string;
+      sourceId: string;
+      sourceVersionId: string;
+      sourceText: string;
+      mediaType: DocumentTransformationInput['mediaType'];
+    }) => {
+      const sourceContentHash = `sha256:${createHash('sha256').update(input.sourceText).digest('hex')}`;
+      const transformer = new PythonDocumentFormatAdapter();
+      const locator = new LucasAugmentedPlainTextAdapter();
+      const output = await transformer.transform({
+        sourceId: input.sourceId,
+        sourceVersionId: input.sourceVersionId,
+        sourceContentHash,
+        mediaType: input.mediaType,
+        text: input.sourceText,
+      });
+      const saved = await transformationRepository.save({
+        projectId: input.projectId,
+        sourceId: input.sourceId,
+        sourceVersionId: input.sourceVersionId,
+        sourceContentHash,
+        transformer: transformer.identity,
+        output,
+        accessScope: ['owner'],
+        sensitivity: 'private',
+        createdAt: new Date().toISOString(),
+      });
+      const candidates = buildEvidenceCandidates(saved.revision, locator);
+      const indexed = await evidenceRepository.index(candidates);
+      return { revisionId: saved.revision.revisionId, evidenceSpans: indexed.items.length };
+    },
+    /**
+     * Draft content-digest helper. Exposed from the fixture (loaded through
+     * the tsx ESM loader) so the journey spec never imports the contracts
+     * package directly (Playwright's spec loader does not handle the
+     * contracts JSON-schema import attributes).
+     */
+    computeDraftRevisionDigest: (input: {
+      draftId: string;
+      revision: number;
+      base: unknown;
+      operations: readonly unknown[];
+    }) =>
+      frontendKnowledgeDraftRevisionDigest({
+        draftId: input.draftId,
+        revision: input.revision,
+        base: input.base as never,
+        operations: input.operations as never[],
+      }),
     close: async () => {
       if (closing) return;
       closing = true;

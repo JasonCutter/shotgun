@@ -501,6 +501,11 @@ export type ApplicationOptions = {
   readonly frontendKnowledgeDraftTargetResolver?: FrontendKnowledgeDraftTargetResolverPort;
   readonly frontendKnowledgeDraftCoordinator?: FrontendKnowledgeDraftProductCoordinator;
   readonly frontendReviewCoordinator?: FrontendReviewProductCoordinator;
+  /** Review Authority boundary (contexts/decisions/approvals). Production
+   *  composition must be PostgreSQL-backed so governed Review commands share
+   *  the Command Ledger transaction and Approval persistence survives
+   *  restart (Cross-Phase WP-XP2 discovery). */
+  readonly frontendReviewStore?: ReviewRepositoryBoundaryPort;
   /** Cross-Phase: PostgreSQL-backed Review submission source for the Draft →
    *  Review queue when the Knowledge Draft repository is not in-memory. */
   readonly frontendReviewDraftSourceReader?: ReviewDraftSourceReader;
@@ -1258,7 +1263,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   // the Canonical repository that owns commitFrontendDraft. The review store
   // exposes its Approval port transaction-scoped; the commit consumer reads
   // and consumes through its transaction boundary.
-  const frontendReviewStore = new InMemoryFrontendReviewStore();
+  const frontendReviewStore = options.frontendReviewStore ?? new InMemoryFrontendReviewStore();
   const frontendKnowledgeDraftCoordinator =
     options.frontendKnowledgeDraftCoordinator ??
     new FrontendKnowledgeDraftProductCoordinator(
@@ -1301,6 +1306,19 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     currentCapabilitiesResolver: async ({ resourceProjectId, principalId }) => {
       const membership = await authRepository.findMembership(principalId, resourceProjectId);
       return membership?.scopes ?? [];
+    },
+    // FE-P5-XP (WP-XP2): resolve the historical Review Approval that
+    // authorized the source Canonical commit. Frontend commits carry
+    // `authorityId = ReviewApproval.id` (commitFrontendDraft), so the
+    // Reversal preserves that approval as EVIDENCE-ONLY evidence (never
+    // authority) — the design's `historicalApprovalResolver` was defined but
+    // never wired in the server composition (WP3 Round 1 fix B).
+    historicalApprovalResolver: async (revision) => {
+      const commit = await canonicalKnowledgeRepository.findCommit(
+        revision.projectId,
+        revision.commitId,
+      );
+      return commit?.authorityId ?? undefined;
     },
     reversalStore: changeSetReviewRepository,
   });

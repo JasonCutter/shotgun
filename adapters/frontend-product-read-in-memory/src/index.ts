@@ -23,6 +23,7 @@ import {
   type AskAnswerRunSnapshot,
   type AskBranchView,
   type AskConversationView,
+  type AskMode,
   type AskWorkspaceView,
   type GlobalSearchResultView,
   type GlobalShellView,
@@ -389,6 +390,10 @@ export class InMemoryAskWorkspaceProjection implements AskWorkspaceProjectionPor
   private readonly conversations = new Map<string, AskConversationView>();
   private readonly answerRuns = new Map<string, AskAnswerRunSnapshot>();
 
+  constructor(
+    private readonly availableAskModes: readonly AskMode[] = ['CANONICAL_ONLY', 'HYBRID'],
+  ) {}
+
   addConversation(conversation: AskConversationView): void {
     this.conversations.set(conversation.conversationId, conversation);
     for (const branch of conversation.branches) {
@@ -459,9 +464,7 @@ export class InMemoryAskWorkspaceProjection implements AskWorkspaceProjectionPor
       sessionId: input.sessionId,
       projectId: targetProjectId,
       defaultAskMode: 'CANONICAL_ONLY',
-      // SOURCE_EXPLORATION remains hidden until the workspace exposes a
-      // server-backed SourceVersion pinning selector.
-      availableAskModes: ['CANONICAL_ONLY', 'HYBRID'],
+      availableAskModes: this.availableAskModes,
       conversations: projectConversations.map((conversation) => {
         const activeBranch = conversation.branches.find(
           (branch) => branch.branchId === conversation.activeBranchId,

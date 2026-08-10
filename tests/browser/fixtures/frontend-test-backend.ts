@@ -29,7 +29,11 @@ import { PostgresAuthRepository } from '../../../adapters/postgres-auth/src/inde
 import { InMemorySettingsRepository } from '../../../adapters/settings-project-admin-in-memory/src/index.js';
 import { InMemoryAssetStorage } from '../../../adapters/stage2-in-memory/src/index.js';
 import { InMemoryEvidenceRepository } from '../../../adapters/stage3-in-memory/src/index.js';
-import { AskCommandCoordinator } from '../../../modules/frontend-ask-write/src/index.js';
+import {
+  AskCommandCoordinator,
+  assertAskSourceSelectionContract,
+  type AskSourceSelectionValidatorPort,
+} from '../../../modules/frontend-ask-write/src/index.js';
 import { FrontendProductReadCoordinator } from '../../../modules/frontend-product-read/src/index.js';
 import {
   DEFAULT_PROJECT_ID,
@@ -224,7 +228,11 @@ export async function startFrontendTestBackend() {
     ],
   };
 
-  const askProjection = new InMemoryAskWorkspaceProjection();
+  const askProjection = new InMemoryAskWorkspaceProjection([
+    'CANONICAL_ONLY',
+    'SOURCE_EXPLORATION',
+    'HYBRID',
+  ]);
   askProjection.addConversation(conversation);
   askProjection.addConversation(inaccessibleConversation);
   const frontendProductReadCoordinator = new FrontendProductReadCoordinator(
@@ -238,6 +246,24 @@ export async function startFrontendTestBackend() {
   );
   const sourcesProjectionRepository = {
     async listProjectSourceVersions(projectId: string) {
+      if (projectId === DEFAULT_PROJECT_ID) {
+        return [
+          {
+            projectId: DEFAULT_PROJECT_ID,
+            sourceId: ASK_FIXTURE.selectableSourceId,
+            sourceVersionId: ASK_FIXTURE.selectableSourceVersionId,
+            versionNumber: 1,
+            mediaType: 'text/plain',
+            contentHash: sourceContentHash,
+            sizeBytes: sourceBytes.byteLength,
+            originalFileName: 'ask-exploration-source.txt',
+            storageKey: sourceStorageKey,
+            accessScope: ['owner'],
+            sensitivity: 'private' as const,
+            createdAt: '2026-07-31T10:00:00.000Z',
+          },
+        ];
+      }
       if (projectId !== ASK_FIXTURE.projectBId) return [];
       return [
         {
@@ -262,7 +288,27 @@ export async function startFrontendTestBackend() {
   const askGateway = new InMemoryFrontendCommandGateway();
   const askRepository = new InMemoryAskConversationRepository();
   askRepository.onSave = (aggregate) => askProjection.addConversation(aggregate.conversation);
-  const askCommandCoordinator = new AskCommandCoordinator(askGateway, askRepository, askProjection);
+  const askSourceSelectionValidator: AskSourceSelectionValidatorPort = {
+    async validate(input) {
+      assertAskSourceSelectionContract(input);
+      for (const selection of input.sourceSelections) {
+        if (
+          input.projectId !== DEFAULT_PROJECT_ID ||
+          selection.sourceId !== ASK_FIXTURE.selectableSourceId ||
+          selection.sourceVersionId !== ASK_FIXTURE.selectableSourceVersionId ||
+          selection.evidenceIds.length !== 0
+        ) {
+          throw new Error('The browser fixture received a SourceSelection outside its authority.');
+        }
+      }
+    },
+  };
+  const askCommandCoordinator = new AskCommandCoordinator(
+    askGateway,
+    askRepository,
+    askProjection,
+    askSourceSelectionValidator,
+  );
   const staging = new SealedSourcesStagingService(
     assetStorage,
     'browser-fixture-sources-staging-secret-32-characters',

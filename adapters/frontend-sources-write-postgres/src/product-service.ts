@@ -151,15 +151,18 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
       // FE-P5-XP Correction Round 2: a replay of an intake whose SourceVersions
       // were materialized but whose Stage 3 pipeline did not complete
       // (OUTCOME_INDETERMINATE) RESUMES the pipeline for the SAME
-      // SourceVersions (idempotent) and then finalizes SUCCEEDED — a transient
-      // Stage 3 failure must never leave a SourceVersion permanently without
-      // Evidence nor falsely report a final SUCCESS.
+      // SourceVersions (idempotent) and then finalizes the submission — a
+      // transient Stage 3 failure must never leave a SourceVersion permanently
+      // without Evidence nor falsely report a final SUCCESS.
+      // FE-P5-XP Correction Round 3: the original mixed outcome (duplicate /
+      // action-required items) is preserved, so a mixed submission resumes to
+      // PARTIAL and an all-succeeded one to SUCCEEDED.
       if (existing.state === 'OUTCOME_INDETERMINATE' && this.stage3Pipeline) {
-        const resumeItems = await this.materializedItemsForStage3(
+        const { items: resumeItems, actionRequired } = await this.materializedItemsForStage3(
           input.scope.projectId,
           input.submissionId,
         );
-        await this.runStage3AndFinalize(resumeItems, input, input.scope, 0);
+        await this.runStage3AndFinalize(resumeItems, input, input.scope, actionRequired);
         return (await this.getSubmission(input.scope, input.submissionId))!;
       }
       return existing;
@@ -327,7 +330,12 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
     );
   }
 
-  /** Flip an intake whose Stage 3 pipeline failed to a retryable state. */
+  /**
+   * Flip an intake whose Stage 3 pipeline failed to a retryable state.
+   * FE-P5-XP Correction Round 3: both RUNNING (all-succeeded items) and PARTIAL
+   * (mixed duplicate + materialized items) submissions transition here, so a
+   * mixed submission is also retryable instead of permanently lacking Evidence.
+   */
   private async markSubmissionStage3Incomplete(submissionId: string): Promise<void> {
     const client = await this.pool.connect();
     try {
@@ -335,7 +343,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
       await client.query(
         `UPDATE source_product.intake_submissions
          SET state = 'OUTCOME_INDETERMINATE'
-         WHERE submission_id = $1 AND state = 'RUNNING'`,
+         WHERE submission_id = $1 AND state IN ('RUNNING', 'PARTIAL')`,
         [submissionId],
       );
       await client.query('COMMIT');
@@ -376,19 +384,23 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
    * FE-P5-XP Correction Round 2 — resolve the materialized SourceVersions of an
    * existing intake (replay/resume) for the Stage 3 pipeline, preserving the
    * SAME SourceId/SourceVersionId (never re-materialize a duplicate).
+   * FE-P5-XP Correction Round 3 — also reports how many items of the original
+   * submission are still action-required (duplicate decisions), so a resumed
+   * mixed submission finalizes PARTIAL and an all-succeeded one SUCCEEDED.
    */
   private async materializedItemsForStage3(
     projectId: string,
     submissionId: string,
-  ): Promise<
-    Array<{
+  ): Promise<{
+    readonly items: Array<{
       readonly sourceId: string;
       readonly sourceVersionId: string;
       readonly storageKey: string;
       readonly mediaType: 'text/plain' | 'text/markdown';
       readonly contentHash: string;
-    }>
-  > {
+    }>;
+    readonly actionRequired: number;
+  }> {
     const result = await this.pool.query<ProductItemRow>(
       `SELECT item.submission_item_id::text, item.client_item_id, item.input_kind,
               item.label, item.input_manifest, item.state, item.validation_results,
@@ -405,6 +417,13 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
          AND item.produced_source_id IS NOT NULL
          AND item.produced_source_version_id IS NOT NULL
        ORDER BY item.ordinal`,
+      [projectId, submissionId],
+    );
+    const actionRequired = await this.pool.query<{ count: string }>(
+      `SELECT count(*)::text AS count
+       FROM source_product.intake_submission_items
+       WHERE project_id = $1 AND submission_id = $2
+         AND active_duplicate_decision_id IS NOT NULL`,
       [projectId, submissionId],
     );
     const items: Array<{
@@ -431,7 +450,10 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
         contentHash,
       });
     }
-    return items;
+    return {
+      items,
+      actionRequired: Number(actionRequired.rows[0]?.count ?? 0),
+    };
   }
 
   async getSubmission(

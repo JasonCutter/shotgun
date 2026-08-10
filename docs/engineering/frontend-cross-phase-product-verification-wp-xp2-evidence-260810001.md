@@ -1,7 +1,7 @@
 ---
 id: FRONTEND-CROSS-PHASE-PRODUCT-VERIFICATION-WP-XP2-EVIDENCE-260810001
 classification: CANONICAL
-status: wp_xp2_correction_round2_implemented
+status: wp_xp2_correction_round3_implemented
 verification_gate: FRONTEND-CROSS-PHASE-PRODUCT-VERIFICATION
 created_at: 2026-08-10
 subject_base: 07990d6e68878d630a6fc0e472c660e5cab69f91
@@ -10,6 +10,7 @@ gap_repair_amendment: docs/implementation/frontend-cross-phase-product-gap-repai
 correction_b_evidence: docs/implementation/frontend-cross-phase-correction-b-implementation-evidence-260809001.md
 gpt_review_20260810: BLOCKED_CORRECTION_AUTHORIZED (Correction C — Source Intake → Transformation/Evidence production wiring; 7 fixed deltas)
 gpt_review_20260810_r2: CHANGES_REQUIRED (Correction Round 2 — no final SUCCEEDED before Stage 3; failure → retryable OUTCOME_INDETERMINATE; same-SourceVersion resume; no duplicates)
+gpt_review_20260810_r3: CHANGES_REQUIRED (Correction Round 3 — mixed PARTIAL submission + Stage 3 failure must also be retryable and resume to PARTIAL; CI #752 report corrected to #750/run 31381019634 on exact head 698c1eb5b)
 wp_xp2_implementation_head: 1753707c0
 wp_xp2_implementation_ci_number: 746
 wp_xp2_implementation_ci_conclusion: SUCCESS
@@ -18,10 +19,14 @@ wp_xp2_correction_round1_head: 85dbd8f0b
 wp_xp2_correction_round1_ci_number: 748
 wp_xp2_correction_round1_ci_conclusion: SUCCESS
 wp_xp2_correction_round1_ci_run_id: 31379439134
-# Correction Round 2 evidence cleanup ships inside the Stage 3 fix commit
-# (GPT governance: no separate docs-only metadata commit; the automatic CI on
-# this exact head is the final gate — see section 9).
-wp_xp2_correction_round2_ci_governance: no_docs_only_commit (auto CI on exact head is final gate)
+wp_xp2_correction_round2_head: 698c1eb5b
+wp_xp2_correction_round2_ci_number: 750
+wp_xp2_correction_round2_ci_conclusion: SUCCESS
+wp_xp2_correction_round2_ci_run_id: 31381019634
+# Correction Round 2/3 evidence cleanup ships inside the substantive fix
+# commits (GPT governance: no separate docs-only metadata commit; the
+# automatic CI on the exact head is the final gate — see sections 9/10).
+wp_xp2_correction_round3_ci_governance: no_docs_only_commit (auto CI on exact head is final gate)
 tracking_issue: https://github.com/JasonCutter/shotgun/issues/71
 product_pr: https://github.com/JasonCutter/shotgun/pull/83
 ---
@@ -167,13 +172,14 @@ the only stubbed part of the E2E bridge.
   with Correction C (real production intake pipeline) + hardened invariant
   assertions.
 - CI (automatic on push, PR #83): implementation head `1753707c0` run #746
-  SUCCESS; Correction Round 1 head `85dbd8f0b` run #748 SUCCESS (Quality +
-  Frontend + Required Gates) — see frontmatter. CI #746/#748 were never re-run;
-  run #749 (docs-only frontmatter commit) is NOT used as technical evidence
-  (GPT governance).
-- Correction Round 2 (below) local gates all PASS; the automatic CI on the
-  Round 2 exact head is the final gate (no docs-only metadata commit per GPT
-  governance).
+  SUCCESS; Correction Round 1 head `85dbd8f0b` run #748 SUCCESS; Correction
+  Round 2 exact head `698c1eb5b` run #750 / 31381019634 SUCCESS (Quality +
+  Frontend + Required Gates) — see frontmatter. CI #746/#748/#750 were never
+  re-run; the docs-only frontmatter commit's run is NOT used as technical
+  evidence (GPT governance).
+- Correction Round 2 local gates all PASS (below); Correction Round 3 (below)
+  local gates all PASS; the automatic CI on the Round 3 exact head is the
+  final gate (no docs-only metadata commit per GPT governance).
 
 ## 8. Known limits / handoff
 
@@ -233,4 +239,58 @@ dirty shared DB (re-run resilience, 2 passes); `format:check`, `lint`,
 `docs:validate`.
 
 Final gate: the automatic CI on this exact Round 2 head (PR #83). No CI
+metadata is appended via a later docs-only commit.
+
+Round 2 exact-head CI confirmed by GPT review: **#750 / run 31381019634** on
+`698c1eb5b` (Quality · Frontend · Required Gates all SUCCESS). The interim
+user report called it "#752"; GPT corrected the label to #750 — the run id is
+the authoritative record and it was never re-run.
+
+## 10. Correction Round 3 — mixed PARTIAL submission recovery
+
+GPT third review (CHANGES_REQUIRED, Round 2 primary path CLOSED) found one
+remaining blocker: a submission with BOTH a duplicate/action-required item and
+a newly materialized item commits as `PARTIAL`; when its Stage 3 fails, the
+submission stayed `PARTIAL` forever (no resume trigger) — a materialized
+SourceVersion could remain permanently without Evidence.
+
+### 10.1 Delta (production + schema)
+
+- `adapters/frontend-sources-write-postgres/src/product-service.ts`:
+  - `markSubmissionStage3Incomplete()` now flips `RUNNING` **or** `PARTIAL`
+    to `OUTCOME_INDETERMINATE` (retryable) on a Stage 3 failure — the mixed
+    submission is no longer stuck.
+  - The resume path preserves the original mix: `materializedItemsForStage3()`
+    also returns the count of still action-required (duplicate-decision)
+    items, and `runStage3AndFinalize()` finalizes `PARTIAL` for a mixed
+    submission and `SUCCEEDED` only when no item is action-required.
+- `db/migrations/035_frontend_sources_stage3_recovery.sql`: extends
+  `source_product.enforce_submission_transition()` to allow
+  `PARTIAL → OUTCOME_INDETERMINATE` (append-only migration; `db:reset`
+  re-applies the full set).
+
+### 10.2 Focused regression (mixed case)
+
+`tests/database/frontend-sources-stage3-recovery.test.ts` adds the mixed case
+on the same fail-once pipeline:
+
+1. Anchor Source created by a real-pipeline submit (duplicate content target).
+2. Mixed submission `[duplicate item, new item]` with a fresh fail-once
+   pipeline → Stage 3 throws on first attempt.
+3. State is `OUTCOME_INDETERMINATE` (mixed PARTIAL is retryable, never a
+   false SUCCESS, never a stuck PARTIAL); the new item has a durable
+   Source/SourceVersion; the duplicate item is action-required.
+4. Retry → final state `PARTIAL` (mixed outcome preserved), resuming the SAME
+   `sourceId`/`sourceVersionId`.
+5. `asset.source_versions` has exactly 1 row for the pair (no duplicate);
+   `evidence.spans` has rows for the same `project_id` + `source_version_id`.
+
+### 10.3 Local gates (all PASS)
+
+`npx tsc --noEmit`; sources DB suite (persistence 5 + lifecycle 2 + duplicate
+2 + recovery 2 = 11); sources product-api integration (3); cross-phase journey
+E2E on fresh DB and on the dirty shared DB (2 passes); `format:check`, `lint`,
+`docs:validate`.
+
+Final gate: the automatic CI on this exact Round 3 head (PR #83). No CI
 metadata is appended via a later docs-only commit.

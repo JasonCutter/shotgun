@@ -458,7 +458,7 @@ export const createBackup = async (options: CreateBackupOptions): Promise<Backup
   return manifest;
 };
 
-const readManifest = async (backupDirectory: string): Promise<BackupManifest> => {
+export const readManifest = async (backupDirectory: string): Promise<BackupManifest> => {
   const parsed = JSON.parse(
     await readFile(path.join(path.resolve(backupDirectory), MANIFEST_FILE), 'utf8'),
   ) as BackupManifest;

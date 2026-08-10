@@ -86,3 +86,108 @@ npm run backup:drill
 - logical backup 주기 사이의 Point-in-time recovery는 제공하지 않는다.
 - 외부 Object Storage, 자동 Retention, cross-region 복제와 암호화 Key 운영은 포함하지 않는다.
 - 목표 RPO가 backup 주기보다 짧거나 목표 RTO가 clean restore 시간보다 짧으면 pgBackRest, WAL-G 또는 Barman을 재평가한다.
+
+## 7. Owner Workflow (LPA-WP5)
+
+### 7.1 정상 backup
+
+PostgreSQL 내부 구조를 몰라도 하나의 명령으로 backup을 만들 수 있다. 기본
+위치는 `<USER_HOME>/Shotgun Backups`이고, 생성 직후 자동 integrity 검증과
+요약(`VERIFIED`, backupId, 경로, counts, size)이 출력된다.
+
+```powershell
+npm run backup:create
+```
+
+- 외장 드라이브: `npm run backup:create -- --root "E:\Shotgun Backups"`
+- exact directory (legacy): `npm run backup:create -- --output "C:\specific\backup-directory"`
+
+### 7.2 발견 / 검증
+
+```powershell
+npm run backup:list                  # backup 목록 + metadata
+npm run backup:list -- --verify      # 각 backup을 실제 검증
+npm run backup:verify -- --latest    # 가장 최근 backup 검증
+npm run backup:verify -- --backup <directory>
+```
+
+- `--latest`는 최신 candidate가 손상/읽기 불가면 이전 backup으로 조용히
+  넘어가지 않고 **실패**한다. 이전 backup을 쓰려면 경로를 직접 지정한다.
+- `backup:list`는 기본적으로 manifest discovery만 수행하며 대형 bundle을
+  매번 full hash 검증하지 않는다. `--verify`에서만 `verifyBackup()`을
+  수행한다.
+
+### 7.3 안전 복원 (guided restore-safe)
+
+```powershell
+npm run backup:restore-safe -- --latest
+npm run backup:restore-safe -- --backup <directory>
+```
+
+동작 순서: backup 선택 → full verify → 안전 target 준비 → restore → 권위
+data/asset 검증 → Canonical 기반 bounded recovery 검증 → 요약.
+
+- explicit `RESTORE_DATABASE_URL` + `RESTORE_ASSET_STORAGE_ROOT`가 둘 다
+  설정되어 있으면 그 target에 복원한다 (source와 같으면 거부).
+- 설정이 없으면 새 isolated DB와
+  `<USER_HOME>/Shotgun Restores/<timestamp>/assets`에 복원한다.
+- **복원과 cutover는 분리**되어 있다. `restore-safe`는 `.env`를 바꾸지 않고
+  source DB/Asset을 건드리지 않는다. 복원된 환경으로 전환하려면 owner가
+  직접 `DATABASE_URL`/`ASSET_STORAGE_ROOT`를 복원된 target으로 바꾸고
+  Shotgun을 실행한다.
+- 성공한 restored target은 검토를 위해 보존된다. 실패 시 자동 생성된
+  target만 정리되고 owner-supplied target은 삭제하지 않는다.
+
+### 7.4 정기 backup (OS scheduler)
+
+Shotgun 내부 scheduler를 만들지 않는다. OS scheduler가
+`npm run backup:create`를 호출하도록 등록한다. 이 명령은 Shotgun 프로세스가
+꺼져 있어도 DB와 runtime prerequisites만 있으면 독립 실행된다.
+
+Windows (Task Scheduler / schtasks):
+
+```bat
+schtasks /Create /TN "Shotgun Backup" /SC DAILY /ST 02:00 ^
+  /TR "cmd /c \"cd /d C:\path\to\shotgun && npm run backup:create\""
+```
+
+- 실행 계정의 HOME 경로와 npm 위치, `cmd /c`와 working directory
+  (`cd /d`) 인용을 확인한다.
+
+macOS (launchd plist):
+
+```xml
+<key>ProgramArguments</key>
+<array>
+  <string>/bin/bash</string>
+  <string>-lc</string>
+  <string>cd /path/to/shotgun && npm run backup:create</string>
+</array>
+<key>StartCalendarInterval</key>
+<dict><key>Hour</key><integer>2</integer><key>Minute</key><integer>0</integer></dict>
+```
+
+- WorkingDirectory와 npm executable path(예: `~/.nvm/.../bin`)를 명시한다.
+
+Linux (cron):
+
+```text
+0 2 * * * cd /path/to/shotgun && npm run backup:create
+```
+
+- machine-specific path는 hard-code하지 말고 owner 환경에 맞춘다.
+- systemd timer로도 동일하게 `npm run backup:create`를 실행할 수 있다.
+- Shotgun은 OS scheduler task를 자동 생성/삭제하지 않는다.
+
+### 7.5 Retention / 민감 데이터
+
+- **자동 retention은 없다.** `backup:list`에 backup count와 total storage
+  usage가 표시되고, 정기 backup은 계속 disk를 사용한다는 경고가 나온다.
+  backup 삭제는 owner가 직접 수행한다 (LPA-WP5는 prune/cleanup 명령을
+  제공하지 않는다).
+- Backup Bundle에는 secret이 없지만(`secretsIncluded: false`) private
+  Canonical·Asset 데이터가 있다. **공개 공유 금지**, 외장 disk 접근권한,
+  cloud-sync folder 사용 시 provider privacy/security 확인이 필요하다.
+- `<USER_HOME>/Shotgun Backups`가 source와 같은 physical disk면 hardware
+  loss backup이 아니다. 별도 disk가 필요하면 `--root`로 외장 드라이브를
+  지정한다.

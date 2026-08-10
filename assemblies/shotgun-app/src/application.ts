@@ -6,6 +6,7 @@ import type { FastifyInstance } from 'fastify';
 
 import { FakeDraftActionConnector } from '../../../adapters/action-connector-fake/src/index.js';
 import { LocalAssetStorage } from '../../../adapters/asset-storage-local/src/index.js';
+import { FakeAIProviderAdapter } from '../../../adapters/ai-provider-fake/src/index.js';
 import { GeminiAIProviderAdapter } from '../../../adapters/ai-provider-gemini/src/index.js';
 import { StructuredAskAnswerProviderAdapter } from '../../../adapters/ai-provider-ask/src/index.js';
 import { PostgresFrontendCommandGateway } from '../../../adapters/frontend-command-gateway-postgres/src/index.js';
@@ -96,6 +97,32 @@ export type StartShotgunApplicationOptions = {
   readonly port?: number;
   /** LPA-WP4 (D03/D04): absolute path to the built SPA to serve same-origin. */
   readonly spaDirectory?: string;
+  /** LPA-WP5 (D12 recovery harness): target a different database (defaults to `DATABASE_URL`). */
+  readonly databaseUrl?: string;
+  /** LPA-WP5 (D12 recovery harness): target asset root (defaults to `ASSET_STORAGE_ROOT`). */
+  readonly assetRoot?: string;
+  /** LPA-WP5 (D12 recovery harness): disable the periodic recovery worker. */
+  readonly recoveryIntervalMs?: number | false;
+  /** LPA-WP5 (D12 recovery harness): do not install SIGINT/SIGTERM handlers. */
+  readonly noSignals?: boolean;
+  /** LPA-WP5 (D12 recovery harness): do NOT start the Ask answer background
+   *  worker. Recovery verification must never claim/recover/execute Product
+   *  work or call an AI provider — it only runs the existing STARTUP Canonical
+   *  Projection Recovery. Defaults to `true` whenever a `databaseUrl` override
+   *  is used (recovery harness); the normal launch keeps the Ask worker. */
+  readonly disableAskWorker?: boolean;
+  /** LPA-WP5 (D12 recovery harness / R3-1): when `false`, the startup AI
+   *  Durable Materialization Recovery is NOT run — the recovery harness runs
+   *  ONLY the Canonical Projection Recovery. Defaults to `true` (normal
+   *  Product startup behavior unchanged). */
+  readonly aiDurableMaterializationRecoveryEnabled?: boolean;
+};
+
+export type RecoveryApplicationOptions = {
+  /** The restored target database to verify recovery against. */
+  readonly databaseUrl: string;
+  /** The restored target asset root (may be empty for the harness). */
+  readonly assetRoot: string;
 };
 
 export type ShotgunApplicationHandle = {
@@ -103,6 +130,17 @@ export type ShotgunApplicationHandle = {
   readonly host: string;
   readonly port: number;
   readonly url: string;
+  /** LPA-WP5 (D12): the canonical projection recovery state observed at startup. */
+  readonly recoveryState: Awaited<
+    ReturnType<typeof createApplication>
+  >['state']['canonicalProjectionRecovery'];
+  /** LPA-WP5 (D12 recovery harness): whether the Ask answer background worker
+   *  was started. Recovery verification must observe `false`. */
+  readonly askWorkerStarted: boolean;
+  /** LPA-WP5 (D12 recovery harness): bounded owner-safe read of the restored
+   *  Canonical project ids — a distinct fact (not an alias of the recovery
+   *  report) used for `canonicalReadable`/`productReadable`. */
+  readonly readCanonicalProjectIds: () => Promise<readonly string[]>;
   /** Start listening (idempotent). */
   listen(): Promise<void>;
   /** Idempotent graceful shutdown: stop accepting work, server.close(),
@@ -122,198 +160,287 @@ export type ShotgunApplicationHandle = {
 export const startShotgunApplication = async (
   options: StartShotgunApplicationOptions = {},
 ): Promise<ShotgunApplicationHandle> => {
-  const databaseUrl = process.env.DATABASE_URL;
+  const databaseUrl = options.databaseUrl ?? process.env.DATABASE_URL;
   if (!databaseUrl) {
     throw new Error('DATABASE_URL is required for persistent Stage 2 runtime.');
   }
 
-  const stagingSecret = process.env.SOURCES_STAGING_SECRET;
+  const recoveryHarness = options.databaseUrl !== undefined;
+  const stagingSecret = recoveryHarness
+    ? (process.env.SOURCES_STAGING_SECRET ?? 'x'.repeat(40))
+    : process.env.SOURCES_STAGING_SECRET;
   if (!stagingSecret || stagingSecret.trim().length < 32) {
     throw new Error('SOURCES_STAGING_SECRET with at least 32 characters is required.');
   }
 
   const pool = createPostgresPool(databaseUrl);
-  const geminiApiKey = process.env.GEMINI_API_KEY;
-  if (!geminiApiKey) {
-    throw new Error('GEMINI_API_KEY is required for the persistent Stage 4 runtime.');
-  }
-  const port = options.port ?? Number.parseInt(process.env.PORT ?? '3000', 10);
-  const host = options.host ?? process.env.HOST ?? '127.0.0.1';
-  const production = process.env.NODE_ENV === 'production';
-  assertRuntimeSecurityConfiguration({
-    host,
-    production,
-    allowExternalBind: process.env.ALLOW_EXTERNAL_BIND === 'true',
-    developmentAuthEnabled: process.env.SHOTGUN_DEVELOPMENT_AUTH === 'true',
-  });
-  const storageRoot = path.resolve(process.env.ASSET_STORAGE_ROOT ?? '.data/assets');
-  const assetStorage = new LocalAssetStorage(storageRoot);
-  const commandGateway = new PostgresFrontendCommandGateway(pool);
-  const urlAcquisition = new SecureUrlAcquisitionCoordinator(
-    new NodeUrlResolver(),
-    new NodeUrlHopTransport(),
-  );
-  const staging = new SealedSourcesStagingService(assetStorage, stagingSecret, urlAcquisition);
-  const plainTextAdapter = new LucasAugmentedPlainTextAdapter();
-  // FE-P5-XP Correction C: Source Intake → Stage 3 Transformation/Evidence
-  // production wiring (real path — the product service runs this pipeline after
-  // a successful intake materializes a SourceVersion).
-  const transformationRepository = new PostgresTransformationRepository(pool);
-  const evidenceRepository = new PostgresEvidenceRepository(pool);
-  const transformer = new PythonDocumentFormatAdapter();
-  const sourcesStage3Pipeline = new SourcesStage3Pipeline({
-    storage: assetStorage,
-    transformer,
-    locator: plainTextAdapter,
-    transformationRepository,
-    evidenceRepository,
-  });
-  const sourcesProductService = new PostgresSourcesProductService(
-    pool,
-    staging,
-    sourcesStage3Pipeline,
-  );
-  const removeSourcesWriteRuntime = configureSourcesWriteRuntime({
-    commandGateway,
-    staging,
-    productService: sourcesProductService,
-  });
-  const canonicalKnowledgeRepository = new PostgresCanonicalKnowledgeRepository(pool);
-  const askConversationRepository = new PostgresAskConversationRepository(pool);
-  const askWorkspaceProjection = new PostgresAskWorkspaceProjection(pool);
-  const askSourceSelectionValidator = new PostgresAskSourceSelectionValidator(pool);
-  const geminiAIProvider = new GeminiAIProviderAdapter({
-    apiKey: geminiApiKey,
-    model: process.env.GEMINI_MODEL ?? 'gemini-3.5-flash',
-  });
-  const askAnswerProvider = new StructuredAskAnswerProviderAdapter(geminiAIProvider, {
-    allowPrivate: process.env.GEMINI_ALLOW_PRIVATE === 'true',
-    allowRestricted: false,
-    dataPolicyVersion: 'gemini-ask-policy-v1',
-  });
-  const askAnswerExecution = new AskAnswerExecutionService(
-    new PostgresAskAnswerExecutionRepository(pool, askWorkspaceProjection),
-    askAnswerProvider,
-    {
-      maxConcurrency: Number.parseInt(process.env.ASK_WORKER_MAX_CONCURRENCY ?? '4', 10),
-    },
-  );
-  const askCommandCoordinator = new AskCommandCoordinator(
-    commandGateway,
-    askConversationRepository,
-    askWorkspaceProjection,
-    askSourceSelectionValidator,
-    askAnswerExecution,
-  );
+  // Declared outside the try so the construction-failure catch can release
+  // resources that were already created before an error (R3-4 invariant).
   let stopAskAnswerWorker = async (): Promise<void> => {};
-
-  const { server } = await createApplication({
-    projectAdminRepository: new PostgresProjectAdministrationRepository(pool),
-    projectBootstrapUnitOfWork: new PostgresProjectBootstrapUnitOfWork(pool),
-    projectTombstoneStore: new PostgresProjectTombstoneStore(pool),
-    settingsRepository: new PostgresSettingsRepository(pool),
-    frontendCommandGateway: commandGateway,
-    frontendKnowledgeDraftRepository: new PostgresFrontendKnowledgeDraftRepository(pool),
-    frontendKnowledgeDraftTargetResolver: new PostgresFrontendKnowledgeDraftTargetResolver(pool),
-    frontendReviewDraftSourceReader: createPostgresReviewDraftSourceReader(pool),
-    askCommandCoordinator,
-    frontendProductReadCoordinatorFactory: (connector) =>
-      new FrontendProductReadCoordinator(
-        new InMemoryGlobalShellProjection(),
-        new InMemoryActionCenterProjection(),
-        new InMemoryBackgroundSummaryProjection(),
-        new InMemoryNotificationSummaryProjection(),
-        new InMemoryGlobalSearch(),
-        new InMemoryRouteGuardProjection(),
-        askWorkspaceProjection,
-        new PostgresKnowledgeWorkspaceProjection({
-          query: async <TResult>({
-            envelope,
-          }: Parameters<KnowledgeWorkspaceQueryExecutor['query']>[0]) =>
-            (await connector.query<TResult>(envelope)).result.payload,
-        }),
-      ),
-    intakeRepository: new PostgresIntakeRepository(pool),
-    originalAssetRepository: new PostgresOriginalAssetRepository(pool),
-    assetStorage,
-    transformationRepository,
-    evidenceRepository,
-    aiProviderRepository: new PostgresAIProviderCallRepository(pool),
-    candidateRepository: new PostgresCandidateRepository(pool),
-    validationRepository: new PostgresValidationRepository(pool),
-    comparisonRepository: new PostgresComparisonRepository(pool),
-    changeSetReviewRepository: new PostgresChangeSetReviewRepository(pool),
-    canonicalSnapshot: canonicalKnowledgeRepository,
-    canonicalKnowledgeRepository,
-    searchProjectionRepository: new PostgresSearchProjectionRepository(pool),
-    knowledgeModelRepository: new PostgresKnowledgeModelRepository(pool),
-    compiledTruthRepository: new PostgresCompiledTruthRepository(pool),
-    actionCandidateRepository: new PostgresActionCandidateRepository(pool),
-    actionExecutionRepository: new PostgresActionExecutionRepository(pool),
-    authRepository: new PostgresAuthRepository(pool),
-    production,
-    frontendReviewStore: new PostgresFrontendReviewRepository(pool),
-    activitySourcesRead: new PostgresSourcesActivityRead(pool, sourcesProductService),
-    activityAskRead: new PostgresAskActivityRead(pool),
-    activityReadModelStore: createPostgresActivityReadModelStore(pool),
-    historyReadModelStore: createPostgresHistoryReadModelStore(pool),
-    historyPayloadStates: {
-      CANONICAL: new PostgresPayloadStateStore(pool, 'CANONICAL'),
-      REVIEW: new PostgresPayloadStateStore(pool, 'REVIEW'),
-      EXTERNAL_ACTION: new PostgresPayloadStateStore(pool, 'EXTERNAL_ACTION'),
-      SETTINGS: new PostgresPayloadStateStore(pool, 'SETTINGS'),
-    },
-    historyReviewBoundary: new PostgresFrontendReviewRepository(pool),
-    policyHistoryRead: new PostgresPolicyHistoryReadAdapter(pool),
-    actionConnector: new FakeDraftActionConnector(),
-    textDiff: new JsDiffAdapter(),
-    transformer,
-    evidenceLocator: plainTextAdapter,
-    aiProvider: geminiAIProvider,
-    askAnswerExecution,
-    aiProviderPolicy: {
+  let removeSourcesWriteRuntime = (): void => {};
+  try {
+    if (!recoveryHarness && !process.env.GEMINI_API_KEY) {
+      throw new Error('GEMINI_API_KEY is required for the persistent Stage 4 runtime.');
+    }
+    const port = options.port ?? Number.parseInt(process.env.PORT ?? '3000', 10);
+    const host = options.host ?? process.env.HOST ?? '127.0.0.1';
+    const production = process.env.NODE_ENV === 'production';
+    assertRuntimeSecurityConfiguration({
+      host,
+      production,
+      allowExternalBind: process.env.ALLOW_EXTERNAL_BIND === 'true',
+      developmentAuthEnabled: process.env.SHOTGUN_DEVELOPMENT_AUTH === 'true',
+    });
+    const storageRoot = options.assetRoot
+      ? path.resolve(options.assetRoot)
+      : path.resolve(process.env.ASSET_STORAGE_ROOT ?? '.data/assets');
+    const assetStorage = new LocalAssetStorage(storageRoot);
+    const commandGateway = new PostgresFrontendCommandGateway(pool);
+    const urlAcquisition = new SecureUrlAcquisitionCoordinator(
+      new NodeUrlResolver(),
+      new NodeUrlHopTransport(),
+    );
+    const staging = new SealedSourcesStagingService(assetStorage, stagingSecret, urlAcquisition);
+    const plainTextAdapter = new LucasAugmentedPlainTextAdapter();
+    // FE-P5-XP Correction C: Source Intake → Stage 3 Transformation/Evidence
+    // production wiring (real path — the product service runs this pipeline after
+    // a successful intake materializes a SourceVersion).
+    const transformationRepository = new PostgresTransformationRepository(pool);
+    const evidenceRepository = new PostgresEvidenceRepository(pool);
+    const transformer = new PythonDocumentFormatAdapter();
+    const sourcesStage3Pipeline = new SourcesStage3Pipeline({
+      storage: assetStorage,
+      transformer,
+      locator: plainTextAdapter,
+      transformationRepository,
+      evidenceRepository,
+    });
+    const sourcesProductService = new PostgresSourcesProductService(
+      pool,
+      staging,
+      sourcesStage3Pipeline,
+    );
+    // R3-3: the recovery harness does NOT configure the process-global
+    // Sources write runtime — recovery verification never serves Sources
+    // write requests, so no global registration is created (nothing to leak
+    // on construction failure). The normal Product assembly keeps it.
+    removeSourcesWriteRuntime = recoveryHarness
+      ? () => {}
+      : configureSourcesWriteRuntime({
+          commandGateway,
+          staging,
+          productService: sourcesProductService,
+        });
+    const canonicalKnowledgeRepository = new PostgresCanonicalKnowledgeRepository(pool);
+    const askConversationRepository = new PostgresAskConversationRepository(pool);
+    const askWorkspaceProjection = new PostgresAskWorkspaceProjection(pool);
+    const askSourceSelectionValidator = new PostgresAskSourceSelectionValidator(pool);
+    // LPA-WP5 (D12 recovery harness): recovery-only composition must not
+    // require or depend on a real AI credential and must never reach an
+    // external provider. The existing deterministic FakeAIProviderAdapter
+    // (local, no network) satisfies the same port; with the Ask worker
+    // disabled it is never invoked, so no Provider call is possible. The
+    // normal launch keeps the real Gemini provider and GEMINI_API_KEY
+    // requirement unchanged.
+    const aiProvider = recoveryHarness
+      ? new FakeAIProviderAdapter()
+      : new GeminiAIProviderAdapter({
+          apiKey: process.env.GEMINI_API_KEY as string,
+          model: process.env.GEMINI_MODEL ?? 'gemini-3.5-flash',
+        });
+    const askAnswerProvider = new StructuredAskAnswerProviderAdapter(aiProvider, {
       allowPrivate: process.env.GEMINI_ALLOW_PRIVATE === 'true',
       allowRestricted: false,
-      maxAttempts: 2,
-    },
-    // LPA-WP4 (D03/D04): serve the built SPA from the same origin.
-    ...(options.spaDirectory === undefined ? {} : { spaDirectory: options.spaDirectory }),
-    closeResources: async () => {
+      dataPolicyVersion: 'gemini-ask-policy-v1',
+    });
+    const askAnswerExecution = new AskAnswerExecutionService(
+      new PostgresAskAnswerExecutionRepository(pool, askWorkspaceProjection),
+      askAnswerProvider,
+      {
+        maxConcurrency: Number.parseInt(process.env.ASK_WORKER_MAX_CONCURRENCY ?? '4', 10),
+      },
+    );
+    const askCommandCoordinator = new AskCommandCoordinator(
+      commandGateway,
+      askConversationRepository,
+      askWorkspaceProjection,
+      askSourceSelectionValidator,
+      askAnswerExecution,
+    );
+    const disableAskWorker = options.disableAskWorker ?? recoveryHarness;
+
+    const application = await createApplication({
+      projectAdminRepository: new PostgresProjectAdministrationRepository(pool),
+      projectBootstrapUnitOfWork: new PostgresProjectBootstrapUnitOfWork(pool),
+      projectTombstoneStore: new PostgresProjectTombstoneStore(pool),
+      settingsRepository: new PostgresSettingsRepository(pool),
+      frontendCommandGateway: commandGateway,
+      frontendKnowledgeDraftRepository: new PostgresFrontendKnowledgeDraftRepository(pool),
+      frontendKnowledgeDraftTargetResolver: new PostgresFrontendKnowledgeDraftTargetResolver(pool),
+      frontendReviewDraftSourceReader: createPostgresReviewDraftSourceReader(pool),
+      askCommandCoordinator,
+      frontendProductReadCoordinatorFactory: (connector) =>
+        new FrontendProductReadCoordinator(
+          new InMemoryGlobalShellProjection(),
+          new InMemoryActionCenterProjection(),
+          new InMemoryBackgroundSummaryProjection(),
+          new InMemoryNotificationSummaryProjection(),
+          new InMemoryGlobalSearch(),
+          new InMemoryRouteGuardProjection(),
+          askWorkspaceProjection,
+          new PostgresKnowledgeWorkspaceProjection({
+            query: async <TResult>({
+              envelope,
+            }: Parameters<KnowledgeWorkspaceQueryExecutor['query']>[0]) =>
+              (await connector.query<TResult>(envelope)).result.payload,
+          }),
+        ),
+      intakeRepository: new PostgresIntakeRepository(pool),
+      originalAssetRepository: new PostgresOriginalAssetRepository(pool),
+      assetStorage,
+      transformationRepository,
+      evidenceRepository,
+      aiProviderRepository: new PostgresAIProviderCallRepository(pool),
+      candidateRepository: new PostgresCandidateRepository(pool),
+      validationRepository: new PostgresValidationRepository(pool),
+      comparisonRepository: new PostgresComparisonRepository(pool),
+      changeSetReviewRepository: new PostgresChangeSetReviewRepository(pool),
+      canonicalSnapshot: canonicalKnowledgeRepository,
+      canonicalKnowledgeRepository,
+      searchProjectionRepository: new PostgresSearchProjectionRepository(pool),
+      knowledgeModelRepository: new PostgresKnowledgeModelRepository(pool),
+      compiledTruthRepository: new PostgresCompiledTruthRepository(pool),
+      actionCandidateRepository: new PostgresActionCandidateRepository(pool),
+      actionExecutionRepository: new PostgresActionExecutionRepository(pool),
+      authRepository: new PostgresAuthRepository(pool),
+      production,
+      frontendReviewStore: new PostgresFrontendReviewRepository(pool),
+      activitySourcesRead: new PostgresSourcesActivityRead(pool, sourcesProductService),
+      activityAskRead: new PostgresAskActivityRead(pool),
+      activityReadModelStore: createPostgresActivityReadModelStore(pool),
+      historyReadModelStore: createPostgresHistoryReadModelStore(pool),
+      historyPayloadStates: {
+        CANONICAL: new PostgresPayloadStateStore(pool, 'CANONICAL'),
+        REVIEW: new PostgresPayloadStateStore(pool, 'REVIEW'),
+        EXTERNAL_ACTION: new PostgresPayloadStateStore(pool, 'EXTERNAL_ACTION'),
+        SETTINGS: new PostgresPayloadStateStore(pool, 'SETTINGS'),
+      },
+      historyReviewBoundary: new PostgresFrontendReviewRepository(pool),
+      policyHistoryRead: new PostgresPolicyHistoryReadAdapter(pool),
+      actionConnector: new FakeDraftActionConnector(),
+      textDiff: new JsDiffAdapter(),
+      transformer,
+      evidenceLocator: plainTextAdapter,
+      aiProvider: aiProvider,
+      askAnswerExecution,
+      aiProviderPolicy: {
+        allowPrivate: process.env.GEMINI_ALLOW_PRIVATE === 'true',
+        allowRestricted: false,
+        maxAttempts: 2,
+      },
+      // LPA-WP4 (D03/D04): serve the built SPA from the same origin.
+      ...(options.spaDirectory === undefined ? {} : { spaDirectory: options.spaDirectory }),
+      // LPA-WP5 (D12 recovery harness): optional recovery worker override.
+      ...(options.recoveryIntervalMs === undefined
+        ? {}
+        : { canonicalProjectionRecoveryIntervalMs: options.recoveryIntervalMs }),
+      // R3-1: recovery harness runs ONLY the Canonical Projection Recovery —
+      // the AI Durable Materialization Recovery is disabled for recovery-only
+      // composition. The normal launch keeps it enabled (default true).
+      ...(options.aiDurableMaterializationRecoveryEnabled === undefined
+        ? {}
+        : {
+            aiDurableMaterializationRecoveryEnabled:
+              options.aiDurableMaterializationRecoveryEnabled,
+          }),
+      closeResources: async () => {
+        removeSourcesWriteRuntime();
+        await stopAskAnswerWorker();
+        await pool.end();
+      },
+    });
+    const { server } = application;
+
+    let askWorkerStarted = false;
+    if (!disableAskWorker) {
+      stopAskAnswerWorker = await askAnswerExecution.startWorker(
+        Number.parseInt(process.env.ASK_WORKER_INTERVAL_MS ?? '1000', 10),
+      );
+      askWorkerStarted = true;
+    }
+
+    let closed = false;
+    let listening = false;
+    const close = async (): Promise<void> => {
+      if (closed) return;
+      closed = true;
+      await server.close();
+    };
+    const listen = async (): Promise<void> => {
+      if (listening) return;
+      listening = true;
+      await server.listen({ host, port });
+    };
+    const handle: ShotgunApplicationHandle = {
+      server,
+      host,
+      port,
+      url: `http://${host}:${port}`,
+      recoveryState: application.state.canonicalProjectionRecovery,
+      askWorkerStarted,
+      readCanonicalProjectIds: () => application.repositories.canonical.listProjectIds(),
+      listen,
+      close,
+    };
+    // LPA-WP4 (D09): idempotent SIGINT/SIGTERM shutdown (duplicate signals or a
+    // close path overlapping a signal can never double-close resources).
+    if (!options.noSignals) {
+      installSignalShutdown({
+        close,
+        exit: (code) => process.exit(code),
+      });
+    }
+    return handle;
+  } catch (error) {
+    // R3-4: if application construction throws, release everything already
+    // created (process-global Sources runtime, Ask worker if started, pool)
+    // and preserve the original error so no resource leaks / stale global
+    // registration survives.
+    try {
       removeSourcesWriteRuntime();
+    } catch {
+      // ignore cleanup failure — the original error is preserved below.
+    }
+    try {
       await stopAskAnswerWorker();
+    } catch {
+      // ignore cleanup failure — the original error is preserved below.
+    }
+    try {
       await pool.end();
-    },
-  });
-
-  stopAskAnswerWorker = await askAnswerExecution.startWorker(
-    Number.parseInt(process.env.ASK_WORKER_INTERVAL_MS ?? '1000', 10),
-  );
-
-  let closed = false;
-  let listening = false;
-  const close = async (): Promise<void> => {
-    if (closed) return;
-    closed = true;
-    await server.close();
-  };
-  const listen = async (): Promise<void> => {
-    if (listening) return;
-    listening = true;
-    await server.listen({ host, port });
-  };
-  const handle: ShotgunApplicationHandle = {
-    server,
-    host,
-    port,
-    url: `http://${host}:${port}`,
-    listen,
-    close,
-  };
-  // LPA-WP4 (D09): idempotent SIGINT/SIGTERM shutdown (duplicate signals or a
-  // close path overlapping a signal can never double-close resources).
-  installSignalShutdown({
-    close,
-    exit: (code) => process.exit(code),
-  });
-  return handle;
+    } catch {
+      // ignore cleanup failure — the original error is preserved below.
+    }
+    throw error;
+  }
 };
+
+/**
+ * LPA-WP5 (D12): bounded recovery harness — builds the SAME canonical
+ * composition against a restored target database and runs the existing
+ * STARTUP Canonical Projection Recovery exactly once (periodic worker off, no
+ * signal handlers). The caller must `close()` to release the pool/resources.
+ * No new recovery algorithm is introduced — the existing Stage 12.1 path is
+ * reused (ADR-097).
+ */
+export const startRecoveryApplication = async (
+  options: RecoveryApplicationOptions,
+): Promise<ShotgunApplicationHandle> =>
+  startShotgunApplication({
+    databaseUrl: options.databaseUrl,
+    assetRoot: options.assetRoot,
+    recoveryIntervalMs: false,
+    noSignals: true,
+    disableAskWorker: true,
+    aiDurableMaterializationRecoveryEnabled: false,
+  });

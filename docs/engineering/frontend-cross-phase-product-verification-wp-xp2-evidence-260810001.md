@@ -13,6 +13,10 @@ wp_xp2_implementation_head: 1753707c0
 wp_xp2_implementation_ci_number: 746
 wp_xp2_implementation_ci_conclusion: SUCCESS
 wp_xp2_implementation_ci_run_id: 31375519252
+wp_xp2_correction_round1_head: 85dbd8f0b
+wp_xp2_correction_round1_ci_number: 748
+wp_xp2_correction_round1_ci_conclusion: SUCCESS
+wp_xp2_correction_round1_ci_run_id: 31379439134
 tracking_issue: https://github.com/JasonCutter/shotgun/issues/71
 product_pr: https://github.com/JasonCutter/shotgun/pull/83
 ---
@@ -154,11 +158,13 @@ the only stubbed part of the E2E bridge.
 - Integration: reversal carrier/review-queue, history security-negative /
   deleted-project-audit, external-action product-api/domain = 56 tests PASS.
 - Browser journey: `tests/browser/frontend-cross-phase-journey.spec.ts`
-  **1 passed** on a fresh DB and on the dirty shared DB (re-run resilience).
-- CI (automatic on push, PR #83): run #746 SUCCESS — the implementation head;
-  Correction Round 1 (this delta) gets a NEW exact-head automatic CI run
-  recorded in frontmatter once green (GPT: never re-run #746; no duplicate
-  clean/dirty runs).
+  **1 passed** on a fresh DB and on the dirty shared DB (re-run resilience) —
+  with Correction C (real production intake pipeline) + hardened invariant
+  assertions.
+- CI (automatic on push, PR #83): implementation head `1753707c0` run #746
+  SUCCESS; Correction Round 1 head `85dbd8f0b` run #748 SUCCESS (Quality +
+  Frontend + Required Gates) — see frontmatter. CI #746 was never re-run;
+  no duplicate clean/dirty runs (GPT work-rule).
 
 ## 8. Known limits / handoff
 

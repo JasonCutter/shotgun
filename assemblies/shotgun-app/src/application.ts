@@ -96,6 +96,21 @@ export type StartShotgunApplicationOptions = {
   readonly port?: number;
   /** LPA-WP4 (D03/D04): absolute path to the built SPA to serve same-origin. */
   readonly spaDirectory?: string;
+  /** LPA-WP5 (D12 recovery harness): target a different database (defaults to `DATABASE_URL`). */
+  readonly databaseUrl?: string;
+  /** LPA-WP5 (D12 recovery harness): target asset root (defaults to `ASSET_STORAGE_ROOT`). */
+  readonly assetRoot?: string;
+  /** LPA-WP5 (D12 recovery harness): disable the periodic recovery worker. */
+  readonly recoveryIntervalMs?: number | false;
+  /** LPA-WP5 (D12 recovery harness): do not install SIGINT/SIGTERM handlers. */
+  readonly noSignals?: boolean;
+};
+
+export type RecoveryApplicationOptions = {
+  /** The restored target database to verify recovery against. */
+  readonly databaseUrl: string;
+  /** The restored target asset root (may be empty for the harness). */
+  readonly assetRoot: string;
 };
 
 export type ShotgunApplicationHandle = {
@@ -103,6 +118,10 @@ export type ShotgunApplicationHandle = {
   readonly host: string;
   readonly port: number;
   readonly url: string;
+  /** LPA-WP5 (D12): the canonical projection recovery state observed at startup. */
+  readonly recoveryState: Awaited<
+    ReturnType<typeof createApplication>
+  >['state']['canonicalProjectionRecovery'];
   /** Start listening (idempotent). */
   listen(): Promise<void>;
   /** Idempotent graceful shutdown: stop accepting work, server.close(),
@@ -122,18 +141,23 @@ export type ShotgunApplicationHandle = {
 export const startShotgunApplication = async (
   options: StartShotgunApplicationOptions = {},
 ): Promise<ShotgunApplicationHandle> => {
-  const databaseUrl = process.env.DATABASE_URL;
+  const databaseUrl = options.databaseUrl ?? process.env.DATABASE_URL;
   if (!databaseUrl) {
     throw new Error('DATABASE_URL is required for persistent Stage 2 runtime.');
   }
 
-  const stagingSecret = process.env.SOURCES_STAGING_SECRET;
+  const recoveryHarness = options.databaseUrl !== undefined;
+  const stagingSecret = recoveryHarness
+    ? (process.env.SOURCES_STAGING_SECRET ?? 'x'.repeat(40))
+    : process.env.SOURCES_STAGING_SECRET;
   if (!stagingSecret || stagingSecret.trim().length < 32) {
     throw new Error('SOURCES_STAGING_SECRET with at least 32 characters is required.');
   }
 
   const pool = createPostgresPool(databaseUrl);
-  const geminiApiKey = process.env.GEMINI_API_KEY;
+  const geminiApiKey = recoveryHarness
+    ? (process.env.GEMINI_API_KEY ?? 'recovery-harness-key')
+    : process.env.GEMINI_API_KEY;
   if (!geminiApiKey) {
     throw new Error('GEMINI_API_KEY is required for the persistent Stage 4 runtime.');
   }
@@ -146,7 +170,9 @@ export const startShotgunApplication = async (
     allowExternalBind: process.env.ALLOW_EXTERNAL_BIND === 'true',
     developmentAuthEnabled: process.env.SHOTGUN_DEVELOPMENT_AUTH === 'true',
   });
-  const storageRoot = path.resolve(process.env.ASSET_STORAGE_ROOT ?? '.data/assets');
+  const storageRoot = options.assetRoot
+    ? path.resolve(options.assetRoot)
+    : path.resolve(process.env.ASSET_STORAGE_ROOT ?? '.data/assets');
   const assetStorage = new LocalAssetStorage(storageRoot);
   const commandGateway = new PostgresFrontendCommandGateway(pool);
   const urlAcquisition = new SecureUrlAcquisitionCoordinator(
@@ -207,7 +233,7 @@ export const startShotgunApplication = async (
   );
   let stopAskAnswerWorker = async (): Promise<void> => {};
 
-  const { server } = await createApplication({
+  const application = await createApplication({
     projectAdminRepository: new PostgresProjectAdministrationRepository(pool),
     projectBootstrapUnitOfWork: new PostgresProjectBootstrapUnitOfWork(pool),
     projectTombstoneStore: new PostgresProjectTombstoneStore(pool),
@@ -278,12 +304,17 @@ export const startShotgunApplication = async (
     },
     // LPA-WP4 (D03/D04): serve the built SPA from the same origin.
     ...(options.spaDirectory === undefined ? {} : { spaDirectory: options.spaDirectory }),
+    // LPA-WP5 (D12 recovery harness): optional recovery worker override.
+    ...(options.recoveryIntervalMs === undefined
+      ? {}
+      : { canonicalProjectionRecoveryIntervalMs: options.recoveryIntervalMs }),
     closeResources: async () => {
       removeSourcesWriteRuntime();
       await stopAskAnswerWorker();
       await pool.end();
     },
   });
+  const { server } = application;
 
   stopAskAnswerWorker = await askAnswerExecution.startWorker(
     Number.parseInt(process.env.ASK_WORKER_INTERVAL_MS ?? '1000', 10),
@@ -306,14 +337,35 @@ export const startShotgunApplication = async (
     host,
     port,
     url: `http://${host}:${port}`,
+    recoveryState: application.state.canonicalProjectionRecovery,
     listen,
     close,
   };
   // LPA-WP4 (D09): idempotent SIGINT/SIGTERM shutdown (duplicate signals or a
   // close path overlapping a signal can never double-close resources).
-  installSignalShutdown({
-    close,
-    exit: (code) => process.exit(code),
-  });
+  if (!options.noSignals) {
+    installSignalShutdown({
+      close,
+      exit: (code) => process.exit(code),
+    });
+  }
   return handle;
 };
+
+/**
+ * LPA-WP5 (D12): bounded recovery harness — builds the SAME canonical
+ * composition against a restored target database and runs the existing
+ * STARTUP Canonical Projection Recovery exactly once (periodic worker off, no
+ * signal handlers). The caller must `close()` to release the pool/resources.
+ * No new recovery algorithm is introduced — the existing Stage 12.1 path is
+ * reused (ADR-097).
+ */
+export const startRecoveryApplication = async (
+  options: RecoveryApplicationOptions,
+): Promise<ShotgunApplicationHandle> =>
+  startShotgunApplication({
+    databaseUrl: options.databaseUrl,
+    assetRoot: options.assetRoot,
+    recoveryIntervalMs: false,
+    noSignals: true,
+  });

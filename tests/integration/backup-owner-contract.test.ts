@@ -111,10 +111,15 @@ const makeDeps = (
     remove: async (directory) => {
       calls.push(`remove:${directory}`);
     },
-    queryRows: async (_url, sql) => {
-      calls.push(`query:${sql.slice(0, 40)}`);
-      if (sql.includes('projection.')) return [{ count: '0' }];
-      return [{ count: '1' }];
+    verifyRestoredRecovery: async (databaseUrl) => {
+      calls.push(`recovery:${databaseUrl}`);
+      return {
+        canonicalReadable: true,
+        startupRecoverySucceeded: true,
+        searchReady: true,
+        compiledTruthReady: true,
+        productReadable: true,
+      };
     },
   };
   return { deps: { ...base, ...overrides }, calls, manifestByDir };
@@ -390,6 +395,92 @@ describe('LPA-WP5 A2 — guided restore-safe', () => {
       ),
     );
     expect(caught.code).toBe('RESTORE_TARGET_PREPARATION_FAILED');
+  });
+
+  it('runs STARTUP recovery after restore and reports only verified readiness (D12)', async () => {
+    const seeded = makeDeps();
+    seedBackup(seeded, '20260811T000000000Z-a', 'bk');
+    const result = await runOwnerRestoreSafe(
+      { latest: true },
+      { sourceDatabaseUrl: 'postgres://u:p@h:5432/source', toolMode: 'docker-compose' },
+      seeded.deps,
+    );
+    const restoreIndex = seeded.calls.findIndex((call) => call.startsWith('restore:'));
+    const recoveryIndex = seeded.calls.findIndex((call) => call.startsWith('recovery:'));
+    expect(recoveryIndex).toBeGreaterThan(restoreIndex);
+    expect(result.recovery.startupRecoverySucceeded).toBe(true);
+    expect(result.recovery.searchReady).toBe(true);
+    expect(result.recovery.compiledTruthReady).toBe(true);
+    expect(result.recovery.productReadable).toBe(true);
+  });
+
+  it('fails with RESTORE_VERIFICATION_FAILED when recovery fails and cleans up auto target (D12)', async () => {
+    const seeded = makeDeps({
+      verifyRestoredRecovery: async () => {
+        throw new Error('Projection recovery did not reach READY state.');
+      },
+    });
+    seedBackup(seeded, '20260811T000000000Z-a', 'bk');
+    const caught = await failure(
+      runOwnerRestoreSafe(
+        { latest: true },
+        { sourceDatabaseUrl: 'postgres://u:p@h:5432/source', toolMode: 'docker-compose' },
+        seeded.deps,
+      ),
+    );
+    expect(caught.code).toBe('RESTORE_VERIFICATION_FAILED');
+    expect(seeded.calls.some((call) => call.startsWith('drop:'))).toBe(true);
+    expect(seeded.calls.some((call) => call.startsWith('remove:'))).toBe(true);
+  });
+
+  it('does not delete an owner-supplied target when recovery fails (D12)', async () => {
+    const seeded = makeDeps({
+      verifyRestoredRecovery: async () => {
+        throw new Error('startup recovery failed');
+      },
+    });
+    seedBackup(seeded, '20260811T000000000Z-a', 'bk');
+    const caught = await failure(
+      runOwnerRestoreSafe(
+        { latest: true },
+        {
+          sourceDatabaseUrl: 'postgres://u:p@h:5432/source',
+          toolMode: 'docker-compose',
+          explicitTargetDatabaseUrl: 'postgres://u:p@h:5432/owner-target',
+          explicitTargetAssetRoot: path.join('owner', 'assets'),
+        },
+        seeded.deps,
+      ),
+    );
+    expect(caught.code).toBe('RESTORE_VERIFICATION_FAILED');
+    expect(seeded.calls.some((call) => call.startsWith('drop:'))).toBe(false);
+    expect(seeded.calls.some((call) => call.startsWith('remove:'))).toBe(false);
+  });
+
+  it('does not treat projection-empty alone as success (D12 readiness)', async () => {
+    // The old heuristic (empty projection tables == rebuildable) is removed:
+    // recovery must actually reach READY. A non-READY recovery result must
+    // fail the restore instead of reporting success.
+    const seeded = makeDeps({
+      verifyRestoredRecovery: async () => {
+        return {
+          canonicalReadable: true,
+          startupRecoverySucceeded: false,
+          searchReady: false,
+          compiledTruthReady: false,
+          productReadable: false,
+        };
+      },
+    });
+    seedBackup(seeded, '20260811T000000000Z-a', 'bk');
+    const caught = await failure(
+      runOwnerRestoreSafe(
+        { latest: true },
+        { sourceDatabaseUrl: 'postgres://u:p@h:5432/source', toolMode: 'docker-compose' },
+        seeded.deps,
+      ),
+    );
+    expect(caught.code).toBe('RESTORE_VERIFICATION_FAILED');
   });
 });
 

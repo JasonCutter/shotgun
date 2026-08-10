@@ -137,7 +137,7 @@ const printRestoreSafe = (result: Awaited<ReturnType<typeof runOwnerRestoreSafe>
   console.log(`  restored assets:   ${result.manifest.assets.files.length}`);
   console.log(`  integrity:         matches manifest (authoritative + assets)`);
   console.log(
-    `  recovery:           canonical readable=${result.recovery.canonicalReadable} projectionsRebuildable=${result.recovery.projectionsRebuildable}`,
+    `  recovery:           canonicalReadable=${result.recovery.canonicalReadable} startupRecoverySucceeded=${result.recovery.startupRecoverySucceeded} searchReady=${result.recovery.searchReady} compiledTruthReady=${result.recovery.compiledTruthReady} productReadable=${result.recovery.productReadable}`,
   );
   console.log('  target retained:   the restored target is kept for inspection.');
   console.log(

@@ -103,7 +103,9 @@ export interface OwnerDeps {
   readonly readdir: (directory: string) => Promise<readonly string[]>;
   readonly directorySize: (directory: string) => Promise<number>;
   readonly remove: (directory: string) => Promise<void>;
-  readonly queryRows: (databaseUrl: string, sql: string) => Promise<readonly unknown[]>;
+  readonly verifyRestoredRecovery: (
+    targetDatabaseUrl: string,
+  ) => Promise<RecoveryVerificationResult>;
 }
 
 export const createDefaultOwnerDeps = (): OwnerDeps => ({
@@ -138,15 +140,37 @@ export const createDefaultOwnerDeps = (): OwnerDeps => ({
     const { rm } = await import('node:fs/promises');
     await rm(directory, { recursive: true, force: true });
   },
-  queryRows: async (databaseUrl, sql) => {
-    const { default: pg } = await import('pg');
-    const client = new pg.Client({ connectionString: databaseUrl });
-    await client.connect();
+  verifyRestoredRecovery: async (targetDatabaseUrl) => {
+    const { mkdtemp, rm } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { startRecoveryApplication } =
+      await import('../assemblies/shotgun-app/src/application.js');
+    const assetRoot = await mkdtemp(path.join(await tmpdir(), 'shotgun-recovery-'));
+    const application = await startRecoveryApplication({
+      databaseUrl: targetDatabaseUrl,
+      assetRoot,
+    });
     try {
-      const result = await client.query(sql);
-      return result.rows;
+      const report = application.recoveryState.latest();
+      if (!report) {
+        throw new Error('startup recovery did not produce a report');
+      }
+      if (report.runStatus !== 'COMPLETED' || !report.result) {
+        throw new Error('startup Canonical Projection Recovery failed');
+      }
+      const allProjectsReady =
+        report.result.failed === 0 &&
+        report.result.projects.every((project) => project.status === 'READY');
+      return {
+        canonicalReadable: true,
+        startupRecoverySucceeded: true,
+        searchReady: allProjectsReady,
+        compiledTruthReady: allProjectsReady,
+        productReadable: allProjectsReady,
+      };
     } finally {
-      await client.end();
+      await application.close();
+      await rm(assetRoot, { recursive: true, force: true }).catch(() => {});
     }
   },
 });
@@ -343,7 +367,10 @@ export type RestoreTarget = {
 
 export type RecoveryVerificationResult = {
   readonly canonicalReadable: boolean;
-  readonly projectionsRebuildable: boolean;
+  readonly startupRecoverySucceeded: boolean;
+  readonly searchReady: boolean;
+  readonly compiledTruthReady: boolean;
+  readonly productReadable: boolean;
 };
 
 export type OwnerRestoreSafeResult = {
@@ -353,36 +380,38 @@ export type OwnerRestoreSafeResult = {
   readonly recovery: RecoveryVerificationResult;
 };
 
-const PROJECTION_TABLES = [
-  'projection.discovery_inferences',
-  'projection.compiled_truth',
-  'projection.search_documents',
-  'projection.watermarks',
-] as const;
-
-/** D12 — bounded Product recovery verification on the restored target. */
+/**
+ * D12 — bounded Product recovery verification on the restored target.
+ * Runs the EXISTING STARTUP Canonical Projection Recovery via the recovery
+ * harness (createApplication + canonicalProjectionRecoveryIntervalMs: false)
+ * and only reports READY when the actual derived projections recovered.
+ * Empty canonical (no projects) is a valid normal case (0 projects READY).
+ */
 export const verifyBoundedRecovery = async (
   targetDatabaseUrl: string,
   deps: OwnerDeps,
 ): Promise<RecoveryVerificationResult> => {
+  let result: RecoveryVerificationResult;
   try {
-    await deps.queryRows(
-      targetDatabaseUrl,
-      'SELECT count(*)::text AS count FROM canonical.project_state',
-    );
-    let projectionsRebuildable = true;
-    for (const table of PROJECTION_TABLES) {
-      const rows = await deps.queryRows(
-        targetDatabaseUrl,
-        `SELECT count(*)::text AS count FROM ${table}`,
-      );
-      const count = rows[0] ? Number((rows[0] as { count: string }).count) : -1;
-      if (count !== 0) projectionsRebuildable = false;
-    }
-    return { canonicalReadable: true, projectionsRebuildable };
+    result = await deps.verifyRestoredRecovery(targetDatabaseUrl);
   } catch (error) {
-    throw classifyRestoreError(error);
+    throw classifyRecoveryError(error);
   }
+  if (
+    !result.canonicalReadable ||
+    !result.startupRecoverySucceeded ||
+    !result.searchReady ||
+    !result.compiledTruthReady ||
+    !result.productReadable
+  ) {
+    throw new BackupOwnerFailure(
+      'RESTORE_VERIFICATION_FAILED',
+      `Restored target did not reach READY: canonicalReadable=${result.canonicalReadable} startupRecoverySucceeded=${result.startupRecoverySucceeded} searchReady=${result.searchReady} compiledTruthReady=${result.compiledTruthReady} productReadable=${result.productReadable}.`,
+      'The restored target did not recover its derived projections from Canonical.',
+      'Do not use this restored target; inspect and retry restore-safe with another backup.',
+    );
+  }
+  return result;
 };
 
 export const runOwnerRestoreSafe = async (
@@ -610,6 +639,18 @@ const classifyVerifyError = (error: unknown): BackupOwnerFailure => {
   }
   return classifyCreateError(error);
 };
+
+/** D12 — any startup-recovery failure on the restored target is a restore
+ *  verification failure (never treated as success). */
+const classifyRecoveryError = (error: unknown): BackupOwnerFailure =>
+  error instanceof BackupOwnerFailure
+    ? error
+    : new BackupOwnerFailure(
+        'RESTORE_VERIFICATION_FAILED',
+        `Restored Canonical Projection Recovery failed: ${error instanceof Error ? error.message : String(error)}.`,
+        'The restored target did not recover its derived projections from Canonical.',
+        'Do not use this restored target; inspect and retry restore-safe with another backup.',
+      );
 
 const classifyRestoreError = (error: unknown): BackupOwnerFailure => {
   if (error instanceof BackupOwnerFailure) return error;

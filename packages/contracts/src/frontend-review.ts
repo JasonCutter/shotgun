@@ -381,6 +381,34 @@ export type ReviewApprovalV1 = {
   invalidationReason?: string;
 };
 
+/**
+ * Shared server-side digest for a Review Approval binding. Cross-Phase
+ * Correction B reuses this digest to revalidate an Approval before a Frontend
+ * Canonical commit (defined in contracts so the Review domain and the
+ * Knowledge Draft commit consumer compute identical values).
+ */
+export const reviewApprovalManifestDigest = (input: {
+  readonly approvedItemIds: readonly string[];
+  readonly reviewContextId: string;
+  readonly contextRevision: number;
+  readonly targetRevision: string;
+  readonly targetDigest: string;
+  readonly purpose: ApprovalPurposeV1;
+}): string =>
+  sha256Text(
+    stableJson({
+      domain: 'frontend-review',
+      version: FRONTEND_REVIEW_DOMAIN_VERSION,
+      kind: 'approval-manifest',
+      approvedItemIds: input.approvedItemIds,
+      reviewContextId: input.reviewContextId,
+      contextRevision: input.contextRevision,
+      targetRevision: input.targetRevision,
+      targetDigest: input.targetDigest,
+      purpose: input.purpose,
+    }),
+  );
+
 // ---------------------------------------------------------------------------
 // Review Context revision
 // ---------------------------------------------------------------------------
@@ -600,6 +628,9 @@ export type GetReviewApprovalRequestV1 = {
 export type GetReviewApprovalResultV1 = {
   schemaVersion: '1.0.0';
   approval: ReviewApprovalV1;
+  /** Append-only approval status revision (Cross-Phase commit consumer pins
+   *  expectedApprovalRevision against this value). */
+  approvalStatusRevision: number;
 };
 
 export type ResolveReviewCommandOutcomeRequestV1 = {
@@ -1822,11 +1853,15 @@ export const decodeGetReviewApprovalResultV1 = (
   value: unknown,
   path = 'result',
 ): GetReviewApprovalResultV1 => {
-  const object = strictObject(value, ['schemaVersion', 'approval'], path);
+  const object = strictObject(value, ['schemaVersion', 'approval', 'approvalStatusRevision'], path);
   decodeReviewSchemaVersion(object, path);
   return {
     schemaVersion: '1.0.0',
     approval: decodeReviewApprovalV1(required(object, 'approval', path), `${path}.approval`),
+    approvalStatusRevision: integer(
+      required(object, 'approvalStatusRevision', path),
+      `${path}.approvalStatusRevision`,
+    ),
   };
 };
 

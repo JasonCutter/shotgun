@@ -156,6 +156,7 @@ import {
   createInMemoryReviewDraftSourceReader,
   createInMemoryReviewDiscoveryCandidateReader,
   createInMemoryReviewUserDirectiveReader,
+  type ReviewDraftSourceReader,
 } from '../../../adapters/frontend-review-in-memory/src/index.js';
 import { FakeDraftActionConnector } from '../../../adapters/action-connector-fake/src/index.js';
 import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
@@ -500,6 +501,14 @@ export type ApplicationOptions = {
   readonly frontendKnowledgeDraftTargetResolver?: FrontendKnowledgeDraftTargetResolverPort;
   readonly frontendKnowledgeDraftCoordinator?: FrontendKnowledgeDraftProductCoordinator;
   readonly frontendReviewCoordinator?: FrontendReviewProductCoordinator;
+  /** Review Authority boundary (contexts/decisions/approvals). Production
+   *  composition must be PostgreSQL-backed so governed Review commands share
+   *  the Command Ledger transaction and Approval persistence survives
+   *  restart (Cross-Phase WP-XP2 discovery). */
+  readonly frontendReviewStore?: ReviewRepositoryBoundaryPort;
+  /** Cross-Phase: PostgreSQL-backed Review submission source for the Draft →
+   *  Review queue when the Knowledge Draft repository is not in-memory. */
+  readonly frontendReviewDraftSourceReader?: ReviewDraftSourceReader;
   readonly frontendExternalActionCoordinator?: FrontendExternalActionProductCoordinator;
   readonly graphReadDomain?: GraphReadDomain;
   readonly graphScopeResolver?: GraphScopeResolver;
@@ -1249,12 +1258,36 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   const frontendKnowledgeDraftTargetResolver =
     options.frontendKnowledgeDraftTargetResolver ??
     new InMemoryFrontendKnowledgeDraftTargetResolver();
+  // FE-P5-XP Correction B: the Approval->Canonical commit consumer shares the
+  // Review Approval store that issues KNOWLEDGE_CANONICAL_CHANGE Approvals and
+  // the Canonical repository that owns commitFrontendDraft. The review store
+  // exposes its Approval port transaction-scoped; the commit consumer reads
+  // and consumes through its transaction boundary.
+  const frontendReviewStore = options.frontendReviewStore ?? new InMemoryFrontendReviewStore();
   const frontendKnowledgeDraftCoordinator =
     options.frontendKnowledgeDraftCoordinator ??
     new FrontendKnowledgeDraftProductCoordinator(
       frontendKnowledgeDraftRepository,
       frontendCommandGateway,
       frontendKnowledgeDraftTargetResolver,
+      {
+        approvals: {
+          findByIdWithRevision: async (approvalId) =>
+            frontendReviewStore.transaction((repositories) =>
+              repositories.approvals.findByIdWithRevision(approvalId),
+            ),
+          consumeApproval: async (approvalId, canonicalCommitId, consumedAt, consumedBy) =>
+            frontendReviewStore.transaction((repositories) =>
+              repositories.approvals.consumeApproval(
+                approvalId,
+                canonicalCommitId,
+                consumedAt,
+                consumedBy,
+              ),
+            ),
+        },
+        canonical: canonicalKnowledgeRepository,
+      },
     );
   const graphReadDomain =
     options.graphReadDomain ??
@@ -1264,7 +1297,6 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       snapshotContextStore: createInMemorySnapshotContextStore(),
       healthStore: createInMemoryHealthStore(),
     });
-  const frontendReviewStore = new InMemoryFrontendReviewStore();
   // FE-P5-S2 WP3/WP5: Reversal draft creation is a change-set-review owned
   // capability (server-derived current capability + principal; the browser
   // only names the historical source revision). Round 4 Option 1: every
@@ -1275,15 +1307,29 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       const membership = await authRepository.findMembership(principalId, resourceProjectId);
       return membership?.scopes ?? [];
     },
+    // FE-P5-XP (WP-XP2): resolve the historical Review Approval that
+    // authorized the source Canonical commit. Frontend commits carry
+    // `authorityId = ReviewApproval.id` (commitFrontendDraft), so the
+    // Reversal preserves that approval as EVIDENCE-ONLY evidence (never
+    // authority) — the design's `historicalApprovalResolver` was defined but
+    // never wired in the server composition (WP3 Round 1 fix B).
+    historicalApprovalResolver: async (revision) => {
+      const commit = await canonicalKnowledgeRepository.findCommit(
+        revision.projectId,
+        revision.commitId,
+      );
+      return commit?.authorityId ?? undefined;
+    },
     reversalStore: changeSetReviewRepository,
   });
   const frontendReviewCoordinator =
     options.frontendReviewCoordinator ??
     new FrontendReviewProductCoordinator(frontendReviewStore, frontendCommandGateway, [
       new DraftReviewTargetAdapter(
-        frontendKnowledgeDraftRepository instanceof InMemoryFrontendKnowledgeDraftRepository
-          ? createInMemoryReviewDraftSourceReader(frontendKnowledgeDraftRepository)
-          : createEmptyReviewDraftSourceReader(),
+        options.frontendReviewDraftSourceReader ??
+          (frontendKnowledgeDraftRepository instanceof InMemoryFrontendKnowledgeDraftRepository
+            ? createInMemoryReviewDraftSourceReader(frontendKnowledgeDraftRepository)
+            : createEmptyReviewDraftSourceReader()),
       ),
       new DiscoveryCandidateReviewTargetAdapter(createInMemoryReviewDiscoveryCandidateReader()),
       new UserDirectiveReviewTargetAdapter(createInMemoryReviewUserDirectiveReader()),

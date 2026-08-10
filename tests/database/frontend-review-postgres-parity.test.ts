@@ -240,4 +240,56 @@ describe.runIf(pool)('FE-P4-S1 in-memory vs PostgreSQL review store parity (AC-1
     await expectConflict(new InMemoryFrontendReviewStore());
     await expectConflict(new PostgresFrontendReviewRepository(pool!));
   });
+
+  it('tracks append-only approval status revisions and consumes idempotently in both stores', async () => {
+    const runConsume = async (store: ReviewRepositoryBoundaryPort) => {
+      return store.transaction(async (repositories) => {
+        await repositories.approvals.insert(approval());
+        const initial = await repositories.approvals.findByIdWithRevision('approval-1');
+        await repositories.approvals.consumeApproval(
+          'approval-1',
+          'canonical-commit-1',
+          '2026-08-10T00:00:00.000Z',
+          'principal-1',
+        );
+        const after = await repositories.approvals.findByIdWithRevision('approval-1');
+        // Idempotent for the same consuming commit.
+        await repositories.approvals.consumeApproval(
+          'approval-1',
+          'canonical-commit-1',
+          '2026-08-10T00:00:01.000Z',
+          'principal-1',
+        );
+        const afterIdempotent = await repositories.approvals.findByIdWithRevision('approval-1');
+        // A different consuming commit conflicts.
+        await expect(
+          repositories.approvals.consumeApproval(
+            'approval-1',
+            'canonical-commit-2',
+            '2026-08-10T00:00:02.000Z',
+            'principal-1',
+          ),
+        ).rejects.toThrow();
+        const finalApproval = await repositories.approvals.findById('approval-1');
+        return {
+          initialRevision: initial?.approvalStatusRevision,
+          afterRevision: after?.approvalStatusRevision,
+          afterStatus: after?.approval.status,
+          idempotentRevision: afterIdempotent?.approvalStatusRevision,
+          finalStatus: finalApproval?.status,
+        };
+      });
+    };
+
+    const inMemory = await runConsume(new InMemoryFrontendReviewStore());
+    const postgres = await runConsume(new PostgresFrontendReviewRepository(pool!));
+    expect(postgres).toEqual(inMemory);
+    expect(postgres).toMatchObject({
+      initialRevision: 1,
+      afterRevision: 2,
+      afterStatus: 'CONSUMED',
+      idempotentRevision: 2,
+      finalStatus: 'CONSUMED',
+    });
+  });
 });

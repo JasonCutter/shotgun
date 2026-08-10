@@ -28,6 +28,7 @@ export const FRONTEND_KNOWLEDGE_DRAFT_COMMAND_TYPES = {
   validateDraft: 'knowledge.draft.validate.v1',
   generateImpactPreview: 'knowledge.draft.impact-preview.v1',
   submitDraftForReview: 'knowledge.draft.submit-review.v1',
+  commitFrontendDraft: 'knowledge.draft.commit.v1',
   resolveOutcome: 'knowledge.draft.resolve-outcome.v1',
 } as const;
 
@@ -144,6 +145,17 @@ export const frontendKnowledgeDraftSubmitDraftForReviewDigest = (
       expectedBaseRevision: request.expectedBaseRevision,
       validationArtifact: request.validationArtifact,
       impactArtifact: request.impactArtifact,
+    }),
+  );
+
+export const frontendKnowledgeDraftCommitDigest = (
+  request: CommitKnowledgeDraftRequestV1,
+): string =>
+  sha256Text(
+    stableJson({
+      draftId: request.draftId,
+      approvalId: request.approvalId,
+      expectedApprovalRevision: request.expectedApprovalRevision,
     }),
   );
 
@@ -482,6 +494,18 @@ export type SubmitKnowledgeDraftForReviewRequestV1 = RequiredDraftRevisionEnvelo
   readonly impactArtifact: DraftImpactArtifactRefV1;
 };
 
+/** Cross-Phase Correction B §3.2: server-derived authority; the request never
+ * declares capability/project. The approval revision guards against a stale
+ * approval object between revalidation and execution. */
+export type CommitKnowledgeDraftRequestV1 = {
+  readonly schemaVersion: '1.0.0';
+  readonly clientRequestId: string;
+  readonly idempotencyKey: string;
+  readonly draftId: string;
+  readonly approvalId: string;
+  readonly expectedApprovalRevision: number;
+};
+
 export type ReadKnowledgeDraftRequestV1 = DraftCommandEnvelopeV1 & {
   readonly draftId: string;
 };
@@ -507,6 +531,12 @@ export type FrontendKnowledgeDraftCommandResultBaseV1 = {
 
 export type MaterializeDraftResultV1 = FrontendKnowledgeDraftCommandResultBaseV1 & {
   readonly draft: FrontendKnowledgeDraftChangeSetV1;
+};
+
+export type CommitKnowledgeDraftResultV1 = FrontendKnowledgeDraftCommandResultBaseV1 & {
+  readonly draftId: string;
+  readonly approvalId: string;
+  readonly commitIds: readonly string[];
 };
 
 export type ReadKnowledgeDraftResultV1 = MaterializeDraftResultV1;
@@ -571,6 +601,10 @@ export const FRONTEND_KNOWLEDGE_DRAFT_API_FAILURE_CODES = [
   'DIGEST_MISMATCH',
   'COMMAND_SCOPE_MISMATCH',
   'OUTCOME_INDETERMINATE',
+  // FE-P5-XP Correction B: Approval->Canonical commit typed failures.
+  'UNSUPPORTED_OPERATION',
+  'STALE_APPROVAL',
+  'REVIEW_APPROVAL_EXPIRED',
 ] as const;
 
 export type FrontendKnowledgeDraftApiFailureCode =
@@ -704,6 +738,25 @@ export const FRONTEND_KNOWLEDGE_DRAFT_API_FAILURES: Readonly<
     httpStatus: 503,
     retryable: false,
   },
+  // FE-P5-XP Correction B: Approval->Canonical commit typed failures.
+  UNSUPPORTED_OPERATION: {
+    normalizedCode: 'UNSUPPORTED_OPERATION',
+    category: 'VALIDATION',
+    httpStatus: 422,
+    retryable: false,
+  },
+  STALE_APPROVAL: {
+    normalizedCode: 'STALE_BASE',
+    category: 'CONFLICT',
+    httpStatus: 409,
+    retryable: false,
+  },
+  REVIEW_APPROVAL_EXPIRED: {
+    normalizedCode: 'CONFLICT',
+    category: 'CONFLICT',
+    httpStatus: 409,
+    retryable: false,
+  },
 };
 
 const FAILURE_ALIASES: Readonly<Record<string, FrontendKnowledgeDraftFailureCode>> = {
@@ -749,6 +802,9 @@ const FAILURE_ALIASES: Readonly<Record<string, FrontendKnowledgeDraftFailureCode
   OUTCOME_INDETERMINATE: 'OUTCOME_UNKNOWN',
   OUTCOME_NOT_FOUND: 'OUTCOME_UNKNOWN',
   COMMAND_SCOPE_MISMATCH: 'PROJECT_BINDING_FAILURE',
+  // FE-P5-XP Correction B: Approval->Canonical commit typed failures.
+  STALE_APPROVAL: 'STALE_BASE',
+  REVIEW_APPROVAL_EXPIRED: 'CONFLICT',
 };
 
 export const mapFrontendKnowledgeDraftFailure = (
@@ -2056,6 +2112,27 @@ export const decodeSubmitKnowledgeDraftForReviewRequestV1 = (
     ),
     validationArtifact,
     impactArtifact,
+  };
+};
+
+export const decodeCommitKnowledgeDraftRequestV1 = (
+  value: unknown,
+): CommitKnowledgeDraftRequestV1 => {
+  const { object, envelope } = decodeCommandRequestObject(
+    value,
+    ['draftId', 'approvalId', 'expectedApprovalRevision'],
+    'commitDraft',
+  );
+  return {
+    schemaVersion: envelope.schemaVersion,
+    clientRequestId: envelope.clientRequestId,
+    idempotencyKey: envelope.idempotencyKey,
+    draftId: text(required(object, 'draftId', 'commitDraft'), 'commitDraft.draftId'),
+    approvalId: text(required(object, 'approvalId', 'commitDraft'), 'commitDraft.approvalId'),
+    expectedApprovalRevision: integer(
+      required(object, 'expectedApprovalRevision', 'commitDraft'),
+      'commitDraft.expectedApprovalRevision',
+    ),
   };
 };
 

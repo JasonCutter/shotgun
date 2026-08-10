@@ -6,6 +6,7 @@ import {
   FrontendKnowledgeDraftCommandError,
   ShotgunError,
   decodeAbandonKnowledgeDraftRequestV1,
+  decodeCommitKnowledgeDraftRequestV1,
   decodeGenerateKnowledgeDraftImpactRequestV1,
   decodeMaterializeDraftRequestV1,
   decodeReadKnowledgeDraftRequestV1,
@@ -196,6 +197,21 @@ export function registerFrontendKnowledgeDraftRoutes(
         return await coordinator.submitDraftForReview(scope, decoded);
       } catch (error) {
         throw toDraftError(error, 'submit-review');
+      }
+    },
+  );
+
+  // FE-P5-XP Correction B: Approval -> Canonical commit consumer. Governed
+  // command, ledger-recorded; the browser only names the Draft and Approval.
+  server.post<{ Body: unknown; Headers: SecurityHeaders }>(
+    '/product-api/frontend/knowledge/drafts/commit',
+    async (request) => {
+      const scope = await buildDraftScope(request.headers);
+      try {
+        const decoded = decodeCommitKnowledgeDraftRequestV1(request.body);
+        return await coordinator.commitFrontendDraft(scope, decoded);
+      } catch (error) {
+        throw toDraftError(error, 'commit-draft');
       }
     },
   );

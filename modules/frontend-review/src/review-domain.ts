@@ -4,7 +4,6 @@ import {
   REVIEW_DEPENDENCY_EDGE_MAX,
   sha256Text,
   stableJson,
-  type ApprovalPurposeV1,
   type ReviewAggregateStateV1,
   type ReviewAttentionReasonV1,
   type ReviewContextRevisionV1,
@@ -391,24 +390,4 @@ export const validateProposedApprovalSet = (input: {
   return [...closure].sort();
 };
 
-export const reviewApprovalManifestDigest = (input: {
-  readonly approvedItemIds: readonly string[];
-  readonly reviewContextId: string;
-  readonly contextRevision: number;
-  readonly targetRevision: string;
-  readonly targetDigest: string;
-  readonly purpose: ApprovalPurposeV1;
-}): string =>
-  sha256Text(
-    stableJson({
-      domain: 'frontend-review',
-      version: FRONTEND_REVIEW_DOMAIN_VERSION,
-      kind: 'approval-manifest',
-      approvedItemIds: input.approvedItemIds,
-      reviewContextId: input.reviewContextId,
-      contextRevision: input.contextRevision,
-      targetRevision: input.targetRevision,
-      targetDigest: input.targetDigest,
-      purpose: input.purpose,
-    }),
-  );
+export { reviewApprovalManifestDigest } from '../../../packages/contracts/src/index.js';

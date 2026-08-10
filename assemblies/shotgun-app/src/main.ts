@@ -37,6 +37,7 @@ import {
   PostgresPayloadStateStore,
 } from '../../../adapters/frontend-history-postgres/src/index.js';
 import { PostgresFrontendReviewRepository } from '../../../adapters/frontend-review-postgres/src/index.js';
+import { createPostgresReviewDraftSourceReader } from '../../../adapters/frontend-review-postgres/src/index.js';
 import { LucasAugmentedPlainTextAdapter } from '../../../adapters/plain-text-lucas-augmented/src/index.js';
 import { PythonDocumentFormatAdapter } from '../../../adapters/document-format-python/src/index.js';
 import {
@@ -71,6 +72,7 @@ import { PostgresCanonicalKnowledgeRepository } from '../../../adapters/postgres
 import { PostgresSearchProjectionRepository } from '../../../adapters/postgres-stage7/src/index.js';
 import { PostgresKnowledgeModelRepository } from '../../../adapters/postgres-stage9/src/index.js';
 import { PostgresAuthRepository } from '../../../adapters/postgres-auth/src/index.js';
+import { SourcesStage3Pipeline } from '../../../adapters/sources-stage3-pipeline/src/index.js';
 import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
 import {
   NodeUrlHopTransport,
@@ -116,13 +118,30 @@ const urlAcquisition = new SecureUrlAcquisitionCoordinator(
   new NodeUrlHopTransport(),
 );
 const staging = new SealedSourcesStagingService(assetStorage, stagingSecret, urlAcquisition);
-const sourcesProductService = new PostgresSourcesProductService(pool, staging);
+const plainTextAdapter = new LucasAugmentedPlainTextAdapter();
+// FE-P5-XP Correction C: Source Intake → Stage 3 Transformation/Evidence
+// production wiring (real path — the product service runs this pipeline after
+// a successful intake materializes a SourceVersion).
+const transformationRepository = new PostgresTransformationRepository(pool);
+const evidenceRepository = new PostgresEvidenceRepository(pool);
+const transformer = new PythonDocumentFormatAdapter();
+const sourcesStage3Pipeline = new SourcesStage3Pipeline({
+  storage: assetStorage,
+  transformer,
+  locator: plainTextAdapter,
+  transformationRepository,
+  evidenceRepository,
+});
+const sourcesProductService = new PostgresSourcesProductService(
+  pool,
+  staging,
+  sourcesStage3Pipeline,
+);
 const removeSourcesWriteRuntime = configureSourcesWriteRuntime({
   commandGateway,
   staging,
   productService: sourcesProductService,
 });
-const plainTextAdapter = new LucasAugmentedPlainTextAdapter();
 const canonicalKnowledgeRepository = new PostgresCanonicalKnowledgeRepository(pool);
 const askConversationRepository = new PostgresAskConversationRepository(pool);
 const askWorkspaceProjection = new PostgresAskWorkspaceProjection(pool);
@@ -160,6 +179,7 @@ const { server } = await createApplication({
   frontendCommandGateway: commandGateway,
   frontendKnowledgeDraftRepository: new PostgresFrontendKnowledgeDraftRepository(pool),
   frontendKnowledgeDraftTargetResolver: new PostgresFrontendKnowledgeDraftTargetResolver(pool),
+  frontendReviewDraftSourceReader: createPostgresReviewDraftSourceReader(pool),
   askCommandCoordinator,
   frontendProductReadCoordinatorFactory: (connector) =>
     new FrontendProductReadCoordinator(
@@ -180,8 +200,8 @@ const { server } = await createApplication({
   intakeRepository: new PostgresIntakeRepository(pool),
   originalAssetRepository: new PostgresOriginalAssetRepository(pool),
   assetStorage,
-  transformationRepository: new PostgresTransformationRepository(pool),
-  evidenceRepository: new PostgresEvidenceRepository(pool),
+  transformationRepository,
+  evidenceRepository,
   aiProviderRepository: new PostgresAIProviderCallRepository(pool),
   candidateRepository: new PostgresCandidateRepository(pool),
   validationRepository: new PostgresValidationRepository(pool),
@@ -196,6 +216,7 @@ const { server } = await createApplication({
   actionExecutionRepository: new PostgresActionExecutionRepository(pool),
   authRepository: new PostgresAuthRepository(pool),
   production,
+  frontendReviewStore: new PostgresFrontendReviewRepository(pool),
   activitySourcesRead: new PostgresSourcesActivityRead(pool, sourcesProductService),
   activityAskRead: new PostgresAskActivityRead(pool),
   activityReadModelStore: createPostgresActivityReadModelStore(pool),
@@ -210,7 +231,7 @@ const { server } = await createApplication({
   policyHistoryRead: new PostgresPolicyHistoryReadAdapter(pool),
   actionConnector: new FakeDraftActionConnector(),
   textDiff: new JsDiffAdapter(),
-  transformer: new PythonDocumentFormatAdapter(),
+  transformer,
   evidenceLocator: plainTextAdapter,
   aiProvider: geminiAIProvider,
   askAnswerExecution,

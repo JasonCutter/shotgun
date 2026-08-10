@@ -38,6 +38,9 @@ const canonicalRepo = (
   commit: async () => {
     throw new Error('unused');
   },
+  commitFrontendDraft: async () => {
+    throw new Error('unused');
+  },
   findClaim: async () => undefined,
   findCommit: async () => undefined,
   findRevision: async () => undefined,
@@ -107,9 +110,49 @@ describe('FE-P5-S2 WP4 History domain adapters', () => {
     expect(entry.domainKind).toBe('POLICY');
     expect(entry.sourceEventKind).toBe('SETTINGS_AUDIT_EVENT');
     expect(entry.sourceEventId).toBe('event:1');
-    expect(entry.historyEntryId).toBe('history:p1:policy:event:1');
+    expect(entry.historyEntryId).toBe('history:p1:policy:SETTINGS_AUDIT_EVENT:event:1');
     expect(entry.payloadAvailability).toBe('AVAILABLE');
     expect((entry.payloadSnapshot as { actionName: string }).actionName).toBe('UPDATE_SETTINGS');
+  });
+
+  it('policy adapter keeps projection identity unique when source ids collide across kinds', async () => {
+    // Cross-Phase WP-XP2 discovery: `POLICY_CONTEXT_REVISION:1` and
+    // `SETTINGS_REVISION:1` both carry sourceId `1`. The projection PRIMARY
+    // KEY is (resource_project_id, history_entry_id), so the entry id MUST be
+    // unique per source identity — the source kind is part of it.
+    const payloadState = new InMemoryPayloadStateStore('SETTINGS');
+    const policy = new InMemoryPolicyHistoryReadAdapter();
+    policy.appendEntry({
+      sourceKind: 'POLICY_CONTEXT_REVISION',
+      projectId: 'p1',
+      sourceId: '1',
+      actorId: 'actor-1',
+      actionName: 'UPDATE_POLICY_CONTEXT',
+      riskLevel: 'LOW',
+      details: { key: 'value' },
+      timestamp: '2026-08-09T00:00:00.000Z',
+    });
+    policy.appendEntry({
+      sourceKind: 'SETTINGS_REVISION',
+      projectId: 'p1',
+      sourceId: '1',
+      actorId: 'actor-1',
+      actionName: 'UPDATE_SETTINGS',
+      riskLevel: 'LOW',
+      details: { key: 'value' },
+      timestamp: '2026-08-09T00:00:00.000Z',
+    });
+    const adapter = new PolicyHistoryAdapter(policy, payloadState);
+    const entries = await adapter.readHistory('p1');
+    expect(entries).toHaveLength(2);
+    const entryIds = entries.map((entry) => entry.historyEntryId);
+    expect(new Set(entryIds).size).toBe(2);
+    expect(entryIds).toContain('history:p1:policy:POLICY_CONTEXT_REVISION:1');
+    expect(entryIds).toContain('history:p1:policy:SETTINGS_REVISION:1');
+    const uniqueSourceIdentities = entries.map(
+      (entry) => `${entry.sourceEventKind}:${entry.sourceEventId}`,
+    );
+    expect(new Set(uniqueSourceIdentities).size).toBe(2);
   });
 
   it('payload availability from sidecar is reflected (REDACTED)', async () => {

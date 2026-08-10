@@ -62,9 +62,28 @@ export type ReviewDecisionStorePort = {
 
 export type ReviewApprovalStorePort = {
   findById(approvalId: string): Promise<ReviewApprovalV1 | undefined>;
+  /** Cross-Phase Correction B (Round 2, GPT #2): expose the append-only status
+   *  revision so the commit consumer can enforce expectedApprovalRevision. */
+  findByIdWithRevision(
+    approvalId: string,
+  ): Promise<
+    { readonly approval: ReviewApprovalV1; readonly approvalStatusRevision: number } | undefined
+  >;
   insert(approval: ReviewApprovalV1): Promise<void>;
   /** Project-scoped approval history read (FE-P5-S2 WP4 Review adapter). */
   listByProject(projectId: string): Promise<readonly ReviewApprovalV1[]>;
+  /** Cross-Phase Correction B: transition an ACTIVE Approval to CONSUMED on a
+   *  successful Canonical commit (append-only status history preserved; the
+   *  stored approval is never mutated in place). The consuming canonical
+   *  commit identity is preserved for audit/history lineage. Idempotent when
+   *  the same canonicalCommitId already consumed it; rejected when a different
+   *  commit consumed it or the approval is not ACTIVE. */
+  consumeApproval(
+    approvalId: string,
+    canonicalCommitId: string,
+    consumedAt: string,
+    consumedBy: string,
+  ): Promise<void>;
 };
 
 export type ReviewTransactionRepositoriesV1 = {

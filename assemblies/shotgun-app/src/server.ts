@@ -540,6 +540,12 @@ export type ApplicationOptions = {
   readonly spaDirectory?: string;
   readonly canonicalProjectionRecoveryIntervalMs?: number | false;
   readonly canonicalProjectionRecoveryReporter?: CanonicalProjectionRecoveryReporterPort;
+  /** LPA-WP5 (D12 recovery harness / R3-1): when `false`, the startup AI
+   *  Durable Materialization Recovery is NOT run (no expired-attempt mutation,
+   *  no resume commands). Defaults to `true` — the normal Product startup
+   *  behavior is unchanged. The recovery harness enables only the Canonical
+   *  Projection Recovery. */
+  readonly aiDurableMaterializationRecoveryEnabled?: boolean;
   readonly closeResources?: () => Promise<void>;
 };
 
@@ -1660,7 +1666,14 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       new InMemoryRouteGuardProjection(),
       inMemoryAskWorkspace,
     );
-  await runAIDurableMaterializationRecovery(aiProviderRepository, kernel.connector);
+  // R3-1: the AI Durable Materialization Recovery mutates restored Product AI
+  // durable execution state (markExpiredRunningAttemptsOutcomeUnknown / resume
+  // commands), so the recovery harness must disable it and run ONLY the
+  // Canonical Projection Recovery (ADR-097). The normal Product startup keeps
+  // this recovery enabled (default `true`).
+  if (options.aiDurableMaterializationRecoveryEnabled !== false) {
+    await runAIDurableMaterializationRecovery(aiProviderRepository, kernel.connector);
+  }
   await runCanonicalProjectionRecoveryWithReport(
     canonicalKnowledgeRepository,
     kernel.connector,

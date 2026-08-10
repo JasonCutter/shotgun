@@ -111,6 +111,11 @@ export type StartShotgunApplicationOptions = {
    *  Projection Recovery. Defaults to `true` whenever a `databaseUrl` override
    *  is used (recovery harness); the normal launch keeps the Ask worker. */
   readonly disableAskWorker?: boolean;
+  /** LPA-WP5 (D12 recovery harness / R3-1): when `false`, the startup AI
+   *  Durable Materialization Recovery is NOT run — the recovery harness runs
+   *  ONLY the Canonical Projection Recovery. Defaults to `true` (normal
+   *  Product startup behavior unchanged). */
+  readonly aiDurableMaterializationRecoveryEnabled?: boolean;
 };
 
 export type RecoveryApplicationOptions = {
@@ -169,9 +174,10 @@ export const startShotgunApplication = async (
   }
 
   const pool = createPostgresPool(databaseUrl);
-  // Declared outside the try so the construction-failure catch can stop a
-  // worker that was already started before an error (C2-5 resource safety).
+  // Declared outside the try so the construction-failure catch can release
+  // resources that were already created before an error (R3-4 invariant).
   let stopAskAnswerWorker = async (): Promise<void> => {};
+  let removeSourcesWriteRuntime = (): void => {};
   try {
     if (!recoveryHarness && !process.env.GEMINI_API_KEY) {
       throw new Error('GEMINI_API_KEY is required for the persistent Stage 4 runtime.');
@@ -214,11 +220,17 @@ export const startShotgunApplication = async (
       staging,
       sourcesStage3Pipeline,
     );
-    const removeSourcesWriteRuntime = configureSourcesWriteRuntime({
-      commandGateway,
-      staging,
-      productService: sourcesProductService,
-    });
+    // R3-3: the recovery harness does NOT configure the process-global
+    // Sources write runtime — recovery verification never serves Sources
+    // write requests, so no global registration is created (nothing to leak
+    // on construction failure). The normal Product assembly keeps it.
+    removeSourcesWriteRuntime = recoveryHarness
+      ? () => {}
+      : configureSourcesWriteRuntime({
+          commandGateway,
+          staging,
+          productService: sourcesProductService,
+        });
     const canonicalKnowledgeRepository = new PostgresCanonicalKnowledgeRepository(pool);
     const askConversationRepository = new PostgresAskConversationRepository(pool);
     const askWorkspaceProjection = new PostgresAskWorkspaceProjection(pool);
@@ -332,6 +344,15 @@ export const startShotgunApplication = async (
       ...(options.recoveryIntervalMs === undefined
         ? {}
         : { canonicalProjectionRecoveryIntervalMs: options.recoveryIntervalMs }),
+      // R3-1: recovery harness runs ONLY the Canonical Projection Recovery —
+      // the AI Durable Materialization Recovery is disabled for recovery-only
+      // composition. The normal launch keeps it enabled (default true).
+      ...(options.aiDurableMaterializationRecoveryEnabled === undefined
+        ? {}
+        : {
+            aiDurableMaterializationRecoveryEnabled:
+              options.aiDurableMaterializationRecoveryEnabled,
+          }),
       closeResources: async () => {
         removeSourcesWriteRuntime();
         await stopAskAnswerWorker();
@@ -381,9 +402,15 @@ export const startShotgunApplication = async (
     }
     return handle;
   } catch (error) {
-    // LPA-WP5 (D12 recovery harness / C2-5): if application construction
-    // throws (pool created but server/resources not returned), release the
-    // pool and the Ask worker if it was already started so no resource leaks.
+    // R3-4: if application construction throws, release everything already
+    // created (process-global Sources runtime, Ask worker if started, pool)
+    // and preserve the original error so no resource leaks / stale global
+    // registration survives.
+    try {
+      removeSourcesWriteRuntime();
+    } catch {
+      // ignore cleanup failure — the original error is preserved below.
+    }
     try {
       await stopAskAnswerWorker();
     } catch {
@@ -415,4 +442,5 @@ export const startRecoveryApplication = async (
     recoveryIntervalMs: false,
     noSignals: true,
     disableAskWorker: true,
+    aiDurableMaterializationRecoveryEnabled: false,
   });

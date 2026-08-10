@@ -2,7 +2,7 @@
 
 - **id**: LPA-WP5-A2-VERIFICATION-260811002
 - **classification**: EVIDENCE
-- **status**: COMPLETE (A2) — Correction Round 2 (Recovery Harness Isolation / Resource Safety) 후 GPT 재검토 대기
+- **status**: COMPLETE (A2) — Correction Round 3 (AI Durable Recovery isolation / Sources runtime cleanup) 후 GPT 재검토 대기
 - **frozen_ir**: `docs/implementation/backup-restore-owner-workflow-implementation-request-260811001.md` (FROZEN / ACCEPTED)
 - **a1_head**: `6a4b8a60c88ec609de48bb148cb309e39dc1a85c`
 - **pr**: (Product PR — merge 전)
@@ -234,5 +234,70 @@ targetAssetRoot)`로 시그니처 변경, `runOwnerRestoreSafe`에서
   asset root 사용 → RESTORED_AND_VERIFIED, recovery 5 flag true, target
   retained, NO CUTOVER). Product Domain/DB migration/dependency 변경 없음.
 - 정확한 Correction Round 2 head / CI 번호는 이 문서에 기록하지 않고 GPT
+  완료 보고의 external evidence로 제출한다 (§22 메타데이터 chase 방지).
+- 불필요한 test/CI rerun, metadata-chase commit 없음. backup:drill 미실행.
+
+### Correction Round 2 제출 → GPT **CHANGES_REQUIRED** (2026-08-11)
+
+- 제출 head: `1313e8f63472b610d0a65e10ab1a6fbc44e9d866`, PR #87, 자동 CI
+  #768 / run 31413863180 SUCCESS (Quality·Frontend·Required Gates).
+- GPT 수용: Ask worker suppression ACCEPTED, fake local AI provider for
+  recovery composition ACCEPTED, actual restored Asset Root ACCEPTED,
+  bounded Canonical read ACCEPTED, READY fail-closed ACCEPTED.
+- GPT residual 2건 (모두 Round 2의 recovery isolation / resource safety
+  범위):
+  1. **AI Durable Materialization Recovery가 recovery harness에서도 실행** —
+     `createApplication()` startup이 `runAIDurableMaterializationRecovery()`
+     를 무조건 실행: `markExpiredRunningAttemptsOutcomeUnknown()` /
+     `listRecoverableMaterializations()` / recoverable record에 대한 resume
+     command. Fake provider 여부와 무관하게 restored Product AI durable
+     execution state를 변경할 수 있음.
+  2. **construction failure에서 process-global Sources runtime 누수** —
+     `configureSourcesWriteRuntime()`이 module-global activeRuntime을 설정,
+     성공 경로에서는 closeResources가 해제하지만 construction failure
+     catch는 Ask worker stop과 pool.end만 수행 → stale registration으로
+     "Sources write runtime is already configured" 유발 가능.
+- 남은 scope: 위 2건만. Frozen D01~~D16 / AC01~~10 무변경.
+
+### Correction Round 3 (authorized 2026-08-11)
+
+- 수정 내용:
+  - **R3-1 AI durable recovery isolation**: `createApplication`에
+    `aiDurableMaterializationRecoveryEnabled?: boolean` 추가 (default
+    `true` — normal Product startup 동작 유지). `false`면 startup에서
+    `runAIDurableMaterializationRecovery`를 실행하지 않음 (expired attempt
+    OUTCOME_UNKNOWN 변경, resume command 금지). `startRecoveryApplication`은
+    `aiDurableMaterializationRecoveryEnabled: false` 전달 → recovery
+    harness는 Canonical Projection Recovery만 실행 (R3-2: Canonical
+    authoritative state → outbox dispatch → Search/Compiled Truth
+    recovery/rebuild만 허용).
+  - **R3-3 Sources runtime global registration**: recovery harness는
+    `configureSourcesWriteRuntime`을 호출하지 않음 (process-global
+    registration 자체를 만들지 않음 — recovery는 Sources write capability
+    불필요). normal assembly 동작 유지. construction-failure catch에
+    `removeSourcesWriteRuntime()` 추가 (normal path에서 configure 후 실패 시
+    해제).
+  - **R3-4 construction failure invariant**: 어느 지점에서 실패하든
+    Ask worker stop / Sources global registration 해제 / pool closed /
+    원본 에러 보존. 성공 후 `close()` idempotent 유지.
+- 변경 범위: `assemblies/shotgun-app/src/application.ts`,
+  `assemblies/shotgun-app/src/server.ts`,
+  `tests/integration/recovery-harness-isolation.test.ts`(3 → 6),
+  evidence doc §10. Bundle v1 / `createBackup` / `verifyBackup` /
+  `restoreBackup` / defaults / list / latest / retention / scheduling /
+  no-cutover / restore ownership / failure taxonomy / Product Domain /
+  DB schema / dependency / ADR-097 / NEW ADR NOT_REQUIRED / Architecture
+  Amendment NOT_REQUIRED 무변경 (R3-8).
+- 검증: tsc PASS, ESLint PASS, prettier PASS, docs:validate PASS, contract
+  25 + recovery-harness-isolation 6 = 31 tests PASS (기존 C2 invariants +
+  R3-1: recovery harness에서 AI durable recovery 미실행(expired running
+  attempt 유지), R3-1 regression: 직접 호출 시 normal 동작(outcome_unknown
+  전환) 유지, R3-3: construction failure 후 getSourcesWriteRuntime()
+  undefined + same-process 즉시 재구성 성공). real smoke 1회 (restore-safe
+  → actual restored asset root + STARTUP recovery COMPLETED + AI durable
+  recovery NOT_RUN + Ask worker NOT_STARTED + external AI NOT_CALLED →
+  RESTORED_AND_VERIFIED, target retained, NO CUTOVER). Product Domain/DB
+  migration/dependency 변경 없음.
+- 정확한 Correction Round 3 head / CI 번호는 이 문서에 기록하지 않고 GPT
   완료 보고의 external evidence로 제출한다 (§22 메타데이터 chase 방지).
 - 불필요한 test/CI rerun, metadata-chase commit 없음. backup:drill 미실행.

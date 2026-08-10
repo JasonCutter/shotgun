@@ -105,6 +105,7 @@ export interface OwnerDeps {
   readonly remove: (directory: string) => Promise<void>;
   readonly verifyRestoredRecovery: (
     targetDatabaseUrl: string,
+    targetAssetRoot: string,
   ) => Promise<RecoveryVerificationResult>;
 }
 
@@ -140,15 +141,14 @@ export const createDefaultOwnerDeps = (): OwnerDeps => ({
     const { rm } = await import('node:fs/promises');
     await rm(directory, { recursive: true, force: true });
   },
-  verifyRestoredRecovery: async (targetDatabaseUrl) => {
-    const { mkdtemp, rm } = await import('node:fs/promises');
-    const { tmpdir } = await import('node:os');
+  // C2-3: recovery verification runs against the ACTUAL restored target — the
+  // restored database AND the restored asset root — not a temporary empty root.
+  verifyRestoredRecovery: async (targetDatabaseUrl, targetAssetRoot) => {
     const { startRecoveryApplication } =
       await import('../assemblies/shotgun-app/src/application.js');
-    const assetRoot = await mkdtemp(path.join(await tmpdir(), 'shotgun-recovery-'));
     const application = await startRecoveryApplication({
       databaseUrl: targetDatabaseUrl,
-      assetRoot,
+      assetRoot: targetAssetRoot,
     });
     try {
       const report = application.recoveryState.latest();
@@ -158,19 +158,37 @@ export const createDefaultOwnerDeps = (): OwnerDeps => ({
       if (report.runStatus !== 'COMPLETED' || !report.result) {
         throw new Error('startup Canonical Projection Recovery failed');
       }
+      // A project is READY only after Search and Compiled Truth both reached
+      // READY (runCanonicalProjectionRecovery sets status READY only when
+      // searchStatus and compiledStatus are both READY). So allProjectsReady
+      // is the authority for both searchReady and compiledTruthReady (C2-4).
       const allProjectsReady =
         report.result.failed === 0 &&
         report.result.projects.every((project) => project.status === 'READY');
+      // C2-4: productReadable is a DISTINCT fact — the recovery composition
+      // initialized against the restored target and a bounded owner-safe
+      // Canonical read succeeded — not an alias of allProjectsReady.
+      let canonicalReadable = false;
+      try {
+        await application.readCanonicalProjectIds();
+        canonicalReadable = true;
+      } catch {
+        canonicalReadable = false;
+      }
       return {
-        canonicalReadable: true,
-        startupRecoverySucceeded: true,
+        canonicalReadable,
+        startupRecoverySucceeded: allProjectsReady,
         searchReady: allProjectsReady,
         compiledTruthReady: allProjectsReady,
-        productReadable: allProjectsReady,
+        productReadable: canonicalReadable && allProjectsReady,
       };
     } finally {
+      // C2-5: close exactly once on both success and failure; close() is
+      // idempotent (pool/worker released via Fastify onClose). If
+      // startRecoveryApplication itself threw, application.ts already released
+      // the pool (construction-failure cleanup) and the original error is
+      // preserved.
       await application.close();
-      await rm(assetRoot, { recursive: true, force: true }).catch(() => {});
     }
   },
 });
@@ -383,17 +401,19 @@ export type OwnerRestoreSafeResult = {
 /**
  * D12 — bounded Product recovery verification on the restored target.
  * Runs the EXISTING STARTUP Canonical Projection Recovery via the recovery
- * harness (createApplication + canonicalProjectionRecoveryIntervalMs: false)
- * and only reports READY when the actual derived projections recovered.
+ * harness (createApplication + canonicalProjectionRecoveryIntervalMs: false +
+ * disableAskWorker: true) against the actual restored target (DB + asset
+ * root) and only reports READY when the actual derived projections recovered.
  * Empty canonical (no projects) is a valid normal case (0 projects READY).
  */
 export const verifyBoundedRecovery = async (
   targetDatabaseUrl: string,
+  targetAssetRoot: string,
   deps: OwnerDeps,
 ): Promise<RecoveryVerificationResult> => {
   let result: RecoveryVerificationResult;
   try {
-    result = await deps.verifyRestoredRecovery(targetDatabaseUrl);
+    result = await deps.verifyRestoredRecovery(targetDatabaseUrl, targetAssetRoot);
   } catch (error) {
     throw classifyRecoveryError(error);
   }
@@ -496,7 +516,7 @@ export const runOwnerRestoreSafe = async (
       backupDirectory,
       toolMode: env.toolMode,
     });
-    const recovery = await verifyBoundedRecovery(target.databaseUrl, deps);
+    const recovery = await verifyBoundedRecovery(target.databaseUrl, target.assetRoot, deps);
     return { backupDirectory, manifest, target, recovery };
   } catch (error) {
     const failure = classifyRestoreError(error);

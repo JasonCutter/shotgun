@@ -2,7 +2,7 @@
 
 - **id**: LPA-WP5-A2-VERIFICATION-260811002
 - **classification**: EVIDENCE
-- **status**: COMPLETE (A2) — Correction Round 1 (D12/AC-06 보정) 후 GPT 재검토 대기
+- **status**: COMPLETE (A2) — Correction Round 2 (Recovery Harness Isolation / Resource Safety) 후 GPT 재검토 대기
 - **frozen_ir**: `docs/implementation/backup-restore-owner-workflow-implementation-request-260811001.md` (FROZEN / ACCEPTED)
 - **a1_head**: `6a4b8a60c88ec609de48bb148cb309e39dc1a85c`
 - **pr**: (Product PR — merge 전)
@@ -14,24 +14,24 @@
 
 ## 1. 구현 범위 (LPA-BR-D01 ~ D16 mapping)
 
-| 결정                      | 구현                                                                                                                                                                                                                                                                                                                                                                                                   |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| D01 Core Reuse            | `createBackup`/`verifyBackup`/`restoreBackup`/`createIsolatedRestoreDatabase`/`dropIsolatedRestoreDatabase` 재사용. `backup-restore.ts`는 `readManifest` export만 추가 (semantics 무변경, Bundle format 무변경)                                                                                                                                                                                        |
-| D02 Default Root          | `os.homedir()/Shotgun Backups` (`backup-owner-core.ts` `defaultBackupRoot`) — precedence: `--output`(legacy) / `--root` / no-arg                                                                                                                                                                                                                                                                       |
-| D03 Collision-safe        | `YYYYMMDDThhmmssSSSZ-<6hex>` (UTC sortable, Windows-safe, suffix) — `collisionSafeName`                                                                                                                                                                                                                                                                                                                |
-| D04 Owner Backup          | `npm run backup:create` → resolve → `createBackup()` → `verifyBackup()` → summary (`VERIFIED`/backupId/createdAt/path/version/dump/assets/contracts/tables/size/sensitive warning)                                                                                                                                                                                                                     |
-| D05 Discovery             | `npm run backup:list` (+ `--root`, `--verify`). manifest discovery, newest-first, root count/size, corrupt는 숨기지 않고 error 표시                                                                                                                                                                                                                                                                    |
-| D06 Latest                | `--latest` — newest candidate unreadable/corrupt이면 `BACKUP_INTEGRITY_INVALID` fail closed, silent fallback 없음                                                                                                                                                                                                                                                                                      |
-| D07 Scheduling            | 코드 없음 — README + runbook에 Windows(schtasks)/macOS(launchd)/Linux(cron·systemd) 문서. `backup:create` 자체를 scheduler command로 재사용                                                                                                                                                                                                                                                            |
-| D08 Retention             | 구현 없음 — prune/cleanup/keep-last-N 없음. `backup:list`에 count + total size + growth warning                                                                                                                                                                                                                                                                                                        |
-| D09 Running backup        | 허용 — Shotgun 자동 종료 없음, 기존 fail-closed consistency 신뢰, `BACKUP_CONSISTENCY_CHANGED`로 owner 안내                                                                                                                                                                                                                                                                                            |
-| D10 Guided restore-safe   | `npm run backup:restore-safe` (`--backup`/`--latest`/`--root`) — select→verify→safe target→restore→verify→bounded recovery→summary. explicit `RESTORE_*`(둘 다 필수) 또는 auto isolated target(`<USER_HOME>/Shotgun Restores/<ts>/assets`)                                                                                                                                                             |
-| D11 No cutover            | `.env` 수정/source DB·Asset 삭제/자동 교체 없음. 완료 = restored target safe+verified+recoverable. success target 보존, failed auto-created target만 cleanup                                                                                                                                                                                                                                           |
-| D12 Recovery verification | `verifyBoundedRecovery` — restored target에 기존 **STARTUP Canonical Projection Recovery를 실제 실행** (`startRecoveryApplication`: `createApplication` + `canonicalProjectionRecoveryIntervalMs: false` + `noSignals: true`), recovery report가 COMPLETED이고 전 project READY일 때만 성공. 빈 Canonical(project 0)은 유효한 정상 케이스. fixture 없음, Stage12 drill 복제 없음 (ADR-097 경로 재사용) |
-| D13 Failure taxonomy      | `BackupOwnerFailure` 13종 (code/message/check/action), LaunchFailure 형식, stack-only UX 금지                                                                                                                                                                                                                                                                                                          |
-| D14 Sensitive warning     | `SENSITIVE_DATA_WARNING` — create success/list/restore 출력 + README/runbook 명시. encryption 없음                                                                                                                                                                                                                                                                                                     |
-| D15 Architecture          | NEW ADR NOT_REQUIRED — ADR-097 authority 유지                                                                                                                                                                                                                                                                                                                                                          |
-| D16 OSS                   | NO_NEW_OSS — pg_dump/pg_restore ADOPT 재사용, pgBackRest/WAL-G/Barman DEFER                                                                                                                                                                                                                                                                                                                            |
+| 결정                      | 구현                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| D01 Core Reuse            | `createBackup`/`verifyBackup`/`restoreBackup`/`createIsolatedRestoreDatabase`/`dropIsolatedRestoreDatabase` 재사용. `backup-restore.ts`는 `readManifest` export만 추가 (semantics 무변경, Bundle format 무변경)                                                                                                                                                                                                                                                                                                                                                                |
+| D02 Default Root          | `os.homedir()/Shotgun Backups` (`backup-owner-core.ts` `defaultBackupRoot`) — precedence: `--output`(legacy) / `--root` / no-arg                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| D03 Collision-safe        | `YYYYMMDDThhmmssSSSZ-<6hex>` (UTC sortable, Windows-safe, suffix) — `collisionSafeName`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| D04 Owner Backup          | `npm run backup:create` → resolve → `createBackup()` → `verifyBackup()` → summary (`VERIFIED`/backupId/createdAt/path/version/dump/assets/contracts/tables/size/sensitive warning)                                                                                                                                                                                                                                                                                                                                                                                             |
+| D05 Discovery             | `npm run backup:list` (+ `--root`, `--verify`). manifest discovery, newest-first, root count/size, corrupt는 숨기지 않고 error 표시                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| D06 Latest                | `--latest` — newest candidate unreadable/corrupt이면 `BACKUP_INTEGRITY_INVALID` fail closed, silent fallback 없음                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| D07 Scheduling            | 코드 없음 — README + runbook에 Windows(schtasks)/macOS(launchd)/Linux(cron·systemd) 문서. `backup:create` 자체를 scheduler command로 재사용                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| D08 Retention             | 구현 없음 — prune/cleanup/keep-last-N 없음. `backup:list`에 count + total size + growth warning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| D09 Running backup        | 허용 — Shotgun 자동 종료 없음, 기존 fail-closed consistency 신뢰, `BACKUP_CONSISTENCY_CHANGED`로 owner 안내                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| D10 Guided restore-safe   | `npm run backup:restore-safe` (`--backup`/`--latest`/`--root`) — select→verify→safe target→restore→verify→bounded recovery→summary. explicit `RESTORE_*`(둘 다 필수) 또는 auto isolated target(`<USER_HOME>/Shotgun Restores/<ts>/assets`)                                                                                                                                                                                                                                                                                                                                     |
+| D11 No cutover            | `.env` 수정/source DB·Asset 삭제/자동 교체 없음. 완료 = restored target safe+verified+recoverable. success target 보존, failed auto-created target만 cleanup                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| D12 Recovery verification | `verifyBoundedRecovery` — 복원 타겟 **DB + 실제 복원 Asset Root**를 함께 사용해 기존 **STARTUP Canonical Projection Recovery를 실제 실행** (`startRecoveryApplication`: `createApplication` + `canonicalProjectionRecoveryIntervalMs: false` + `disableAskWorker: true` + `noSignals: true`), recovery report가 COMPLETED이고 전 project READY일 때만 성공. `productReadable`은 bounded owner-safe Canonical read의 별도 사실. Ask worker 미기동(외부 AI 실행 불가). 빈 Canonical(project 0)은 유효한 정상 케이스. fixture 없음, Stage12 drill 복제 없음 (ADR-097 경로 재사용) |
+| D13 Failure taxonomy      | `BackupOwnerFailure` 13종 (code/message/check/action), LaunchFailure 형식, stack-only UX 금지                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| D14 Sensitive warning     | `SENSITIVE_DATA_WARNING` — create success/list/restore 출력 + README/runbook 명시. encryption 없음                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| D15 Architecture          | NEW ADR NOT_REQUIRED — ADR-097 authority 유지                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| D16 OSS                   | NO_NEW_OSS — pg_dump/pg_restore ADOPT 재사용, pgBackRest/WAL-G/Barman DEFER                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 ## 2. LPA-BR-AC-01 ~ AC-10 Evidence mapping
 
@@ -170,3 +170,69 @@ semantics 무변경 확인).
   보고의 external evidence로 제출한다 (§22 메타데이터 chase 방지).
 - smoke: create→list→verify --latest→restore-safe 전부 성공, cutover 없음.
 - Product Domain/DB migration/new dependency 없음.
+
+### Correction Round 1 제출 → GPT **CHANGES_REQUIRED** (2026-08-11)
+
+- 제출 head: `c6f960b2eefbd11404de81f0a0267c103d20820b`, PR #87, 자동 CI
+  #767 / run 31411242965 SUCCESS (Quality·Frontend·Required Gates).
+- GPT 수용: 실제 STARTUP Canonical Projection Recovery 도입 ACCEPTED,
+  projection-empty heuristic 제거 ACCEPTED, READY fail-closed ACCEPTED,
+  target ownership ACCEPTED.
+- GPT 단일 blocking 항목: **Recovery Harness Isolation / Resource Safety** —
+  `startRecoveryApplication()`이 전체 `startShotgunApplication()`을 사용해
+  **Ask background worker**(`askAnswerExecution.startWorker`)까지 기동. Ask
+  worker `startWorker()`는 시작 즉시 `tick()`을 수행해 복원 DB에서
+  `recoverInterrupted()` / `claimQueuedForWorker()` / `runClaimed()`를
+  실행, queued/interrupted Ask가 있으면 Product execution state를 변경하고
+  AI provider 실행(`recovery-harness-key` 가짜 키)까지 시도할 수 있음. 이는
+  Frozen D12의 bounded recovery verification 경계를 넘어섬. 추가로 ①
+  검증이 실제 복원 asset root가 아닌 임시 빈 root를 사용, ② temp root
+  cleanup이 construction 성공 후에만 실행(throw 시 누수).
+- 남은 scope: Recovery Harness Isolation / Resource Safety만. 기존
+  create/list/latest/retention/no-cutover/taxonomy 영역 재수정 없음.
+
+### Correction Round 2 (authorized 2026-08-11)
+
+- 수정 내용:
+  - **C2-1 Ask worker 미기동**: `StartShotgunApplicationOptions.disableAskWorker`
+    추가. `startShotgunApplication`은 `options.disableAskWorker ?? recoveryHarness`
+    로 Ask worker 시작을 건너뜀 (immediate `tick()` 없음 → 복원 DB에서 claim/
+    recover/execute 불가능). `startRecoveryApplication`은 `disableAskWorker:
+true` 명시. 정상 launch의 Ask worker 동작은 그대로.
+  - **C2-2 fake credential 제거**: recovery harness는 기존
+    `FakeAIProviderAdapter`(로컬 결정적, network 없음)를 사용해
+    `GEMINI_API_KEY` 요구/`recovery-harness-key` 주입을 제거. Ask worker
+    off + fake provider → external AI execution 불가능. 정상 app의
+    GEMINI_API_KEY 요구/Ask provider policy 무변경.
+  - **C2-3 실제 restored asset root**: `verifyRestoredRecovery(targetDatabaseUrl,
+targetAssetRoot)`로 시그니처 변경, `runOwnerRestoreSafe`에서
+    `target.databaseUrl` + `target.assetRoot`를 그대로 전달. 임시
+    `shotgun-recovery-*` root 제거.
+  - **C2-4 실제 사실만 표현**: handle에 `readCanonicalProjectIds()`(bounded
+    owner-safe Canonical read) 추가. `productReadable`은 이 read 성공 +
+    allProjectsReady의 별도 사실. `searchReady`/`compiledTruthReady`는
+    project READY가 Search+Compiled Truth READY를 포괄한다는 authority
+    (runCanonicalProjectionRecovery가 둘 다 READY일 때만 status READY)를
+    코드 주석으로 명확화. Empty Canonical(0 projects) 정상 case 유지.
+  - **C2-5 construction failure resource cleanup**: `startShotgunApplication`
+    전체 construction을 try/catch로 감싸 실패 시 `stopAskAnswerWorker()` +
+    `pool.end()` 실행 후 원본 에러 보존 (temp root 없어졌으므로 누수 대상은
+    pool/worker). `close()`는 idempotent(정확히 1회).
+  - handle에 `askWorkerStarted: boolean` 추가 — recovery-only 증거.
+- 변경 범위: `assemblies/shotgun-app/src/application.ts`,
+  `scripts/backup-owner-core.ts`, `tests/integration/backup-owner-contract.test.ts`,
+  `tests/integration/recovery-harness-isolation.test.ts`(신규 3),
+  evidence doc §10. Bundle v1 / `createBackup` / `verifyBackup` /
+  `restoreBackup` / DB schema / Product Domain / defaults / latest /
+  scheduling / retention / target ownership / no-cutover / taxonomy /
+  dependency / NEW ADR NOT_REQUIRED / Architecture Amendment NOT_REQUIRED
+  무변경 (C2-9).
+- 검증: tsc PASS, ESLint PASS, prettier PASS, docs:validate PASS, contract
+  25 + recovery-harness-isolation 3 = 28 tests PASS (Ask worker 미기동,
+  bounded read, close idempotent, construction failure 원본 에러 보존),
+  real smoke 1회 (restore-safe → 실제 STARTUP recovery + 실제 restored
+  asset root 사용 → RESTORED_AND_VERIFIED, recovery 5 flag true, target
+  retained, NO CUTOVER). Product Domain/DB migration/dependency 변경 없음.
+- 정확한 Correction Round 2 head / CI 번호는 이 문서에 기록하지 않고 GPT
+  완료 보고의 external evidence로 제출한다 (§22 메타데이터 chase 방지).
+- 불필요한 test/CI rerun, metadata-chase commit 없음. backup:drill 미실행.

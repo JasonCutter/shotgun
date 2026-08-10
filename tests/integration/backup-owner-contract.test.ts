@@ -111,8 +111,9 @@ const makeDeps = (
     remove: async (directory) => {
       calls.push(`remove:${directory}`);
     },
-    verifyRestoredRecovery: async (databaseUrl) => {
+    verifyRestoredRecovery: async (databaseUrl, targetAssetRoot) => {
       calls.push(`recovery:${databaseUrl}`);
+      calls.push(`recoveryRoot:${targetAssetRoot}`);
       return {
         canonicalReadable: true,
         startupRecoverySucceeded: true,
@@ -412,6 +413,43 @@ describe('LPA-WP5 A2 — guided restore-safe', () => {
     expect(result.recovery.searchReady).toBe(true);
     expect(result.recovery.compiledTruthReady).toBe(true);
     expect(result.recovery.productReadable).toBe(true);
+  });
+
+  it('passes the ACTUAL restored target asset root to recovery verification (C2-3)', async () => {
+    const seeded = makeDeps();
+    seedBackup(seeded, '20260811T000000000Z-a', 'bk');
+    await runOwnerRestoreSafe(
+      { latest: true },
+      { sourceDatabaseUrl: 'postgres://u:p@h:5432/source', toolMode: 'docker-compose' },
+      seeded.deps,
+    );
+    // Auto-created isolated target asset root:
+    // <HOME>/Shotgun Restores/<collisionSafeName(deps)>/assets
+    // now = 2026-08-11T00:43:00.123Z, randomSuffix = a1b2c3 →
+    // 20260811T004300123Z-a1b2c3
+    const expectedRoot = path.join(
+      HOME,
+      'Shotgun Restores',
+      '20260811T004300123Z-a1b2c3',
+      'assets',
+    );
+    expect(seeded.calls.some((call) => call === `recoveryRoot:${expectedRoot}`)).toBe(true);
+    // Owner-supplied target asset root is forwarded unchanged.
+    const owner = makeDeps();
+    seedBackup(owner, '20260811T000000000Z-a', 'bk');
+    await runOwnerRestoreSafe(
+      { latest: true },
+      {
+        sourceDatabaseUrl: 'postgres://u:p@h:5432/source',
+        toolMode: 'docker-compose',
+        explicitTargetDatabaseUrl: 'postgres://u:p@h:5432/owner-target',
+        explicitTargetAssetRoot: path.join('owner', 'assets'),
+      },
+      owner.deps,
+    );
+    expect(
+      owner.calls.some((call) => call === `recoveryRoot:${path.join('owner', 'assets')}`),
+    ).toBe(true);
   });
 
   it('fails with RESTORE_VERIFICATION_FAILED when recovery fails and cleans up auto target (D12)', async () => {

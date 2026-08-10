@@ -134,6 +134,50 @@ npm run launch -- --no-open
   있습니다.
 - 상세 계약: `docs/implementation/local-launch-serving-usability-implementation-request-260810001.md`
 
+### Backup / Restore (Owner)
+
+Backup/Restore는 별도 스크립트 지식 없이 owner 명령만으로 사용할 수 있습니다
+(LPA-WP5 — Backup / Restore Owner Workflow). 기본 backup 위치는
+`<USER_HOME>/Shotgun Backups`입니다.
+
+```bash
+# 1) 백업 생성 (기본 위치, 생성 직후 자동 integrity 검증 + 요약)
+npm run backup:create
+
+# 2) 외장 드라이브 등 다른 root에 백업
+npm run backup:create -- --root "E:\Shotgun Backups"
+
+# 3) 기존 exact-directory 방식 (legacy)
+npm run backup:create -- --output "C:\specific\backup-directory"
+
+# 4) 백업 목록 / metadata 확인
+npm run backup:list
+npm run backup:list -- --verify        # 목록의 각 backup을 실제 검증
+
+# 5) 백업 검증
+npm run backup:verify -- --latest
+npm run backup:verify -- --backup <directory>
+
+# 6) 안전 복원 (isolated/new target에만; active source는 절대 덮어쓰지 않음)
+npm run backup:restore-safe -- --latest
+npm run backup:restore-safe -- --backup <directory>
+```
+
+중요 사항:
+
+- Backup Bundle에는 secret이 포함되지 않습니다 (`secretsIncluded: false`).
+- 그러나 backup에는 private Canonical/Asset 데이터가 있으므로 **공개 공유
+  금지** — public cloud-sync folder 사용 시 provider privacy/security를
+  확인하세요.
+- **자동 retention은 없습니다** — backup은 자동 삭제되지 않으며, 정기 백업을
+  설정하면 계속 disk를 사용합니다.
+- `<USER_HOME>/Shotgun Backups`가 source와 같은 physical disk라면 hardware
+  loss backup이 아닙니다. 별도 disk가 필요하면 `--root`로 외장 드라이브를
+  사용하세요.
+- 정기 백업은 OS scheduler(Windows Task Scheduler / macOS launchd / Linux
+  cron·systemd)가 `npm run backup:create`를 호출하는 방식으로 설정합니다.
+  상세: `docs/engineering/stage-12-1-backup-restore-runbook.md`
+
 ## MVP 목표
 
 1. 지식 원본을 등록합니다.

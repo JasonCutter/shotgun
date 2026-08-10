@@ -1,7 +1,7 @@
 ---
 id: BACKUP-RESTORE-OWNER-WORKFLOW-IR-260811001
 classification: CANONICAL
-status: FROZEN_CANDIDATE
+status: FROZEN / ACCEPTED
 verification_gate: BACKUP-RESTORE-OWNER-WORKFLOW
 created_at: 2026-08-11
 subject_base: a471b2e5b747ff72056ac32d514166b5c9436dbd
@@ -9,10 +9,12 @@ canonical_main: a471b2e5b747ff72056ac32d514166b5c9436dbd
 a0_audit: docs/engineering/backup-restore-owner-workflow-gap-audit-260811001.md
 a0_head: cd1bdfe76e2808885903338cf43aed3c0f2078af
 a0_verdict: ACCEPTED / COMPLETE (GPT 2026-08-10; Contract Freeze AUTHORIZED)
-next_gate: GPT review of this Frozen IR → LPA-WP5 Product implementation AUTHORIZED
+a1_head: 6a4b8a60c88ec609de48bb148cb309e39dc1a85c
+a1_verdict: ACCEPTED / FROZEN (GPT 2026-08-11; Product Implementation AUTHORIZED)
+next_gate: LPA-WP5 A2 Product Implementation → GPT A2 review → LPA-WP6
 ---
 
-# Shotgun — Backup / Restore Owner Workflow Implementation Request (LPA-WP5, Frozen Candidate)
+# Shotgun — Backup / Restore Owner Workflow Implementation Request (LPA-WP5, Frozen — ACCEPTED)
 
 ## 0. Authority
 
@@ -343,3 +345,20 @@ Implementation 단계에서 새 owner workflow delta만 검증한다.
 GPT가 이 Frozen IR을 ACCEPTED하기 전에는 Product implementation을
 시작하지 않는다. LPA-WP6 Final Local Acceptance와 Deployment/Production
 Verification은 계속 시작하지 않는다.
+
+## 8. A1 Acceptance Record (append-only)
+
+- **2026-08-11 — GPT ACCEPTED / FROZEN** (page: Make Shotgun)
+  - A1 head: `6a4b8a60c88ec609de48bb148cb309e39dc1a85c`
+  - A1 verdict: LPA-WP5 Contract Freeze 승인 — LPA-BR-D01~~D16,
+    LPA-BR-AC-01~~10을 구현 계약으로 동결.
+  - default backup root: `<USER_HOME>/Shotgun Backups` (`.data/backups` 아님).
+  - scheduling: 후보 C — OS scheduler가 `npm run backup:create` 호출.
+  - retention: 자동 retention 없음. running backup 허용 (기존 fail-closed
+    consistency 신뢰). guided restore는 isolated target만, cutover 없음.
+  - failure taxonomy 13종 / NEW ADR NOT_REQUIRED / NO_NEW_OSS.
+  - 다음 게이트: LPA-WP5 A2 Product Implementation AUTHORIZED.
+  - 이 record는 첫 substantive A2 commit에 포함되어 status를
+    `FROZEN / ACCEPTED`로 정규화한다. A2 구현은 AUTHORIZED 상태이며,
+    LPA-WP6 Final Local Acceptance와 Deployment/Production Verification은
+    계속 시작하지 않는다.

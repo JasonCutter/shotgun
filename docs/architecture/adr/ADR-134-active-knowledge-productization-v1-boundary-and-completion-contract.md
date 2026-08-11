@@ -1,14 +1,17 @@
 # ADR-134 — Active Knowledge Productization v1 Boundary and Completion Contract
 
-- Status: **PROPOSED**
+- Status: **ACCEPTED**
 - Proposed at: 2026-08-11
+- Decision date: 2026-08-12
+- Accepted at: 2026-08-12
+- Accepted by: `USER`
 - Decision owner: `USER`
 - Work item: `AKP-0 — Program Baseline & Completion Contract`
 - Subject base: `main@f08ae632220ac613ae0e90c04930ceb323aac40b`
 - Related ADRs: ADR-086, ADR-087, ADR-090, ADR-098, ADR-125, ADR-127, ADR-128, ADR-130, ADR-133
 - Product implementation: **NOT_AUTHORIZED**
 
-> This is a whole-design review candidate. It allocates a finite architecture boundary but is not accepted until explicit user approval.
+> The user approved the AKP v1 whole-design candidate on 2026-08-12. This acceptance freezes the program architecture boundary and completion contract. It does not by itself authorize Product implementation, migration, dependency changes, Ready, Merge, Deployment or Production Verification.
 
 ## Context
 
@@ -101,6 +104,6 @@ Rejected because Step 16/17/22 already define the required lifecycle and authori
 
 Rejected because it removes a verifiable completion definition and invites scope drift.
 
-## Acceptance dependency
+## Acceptance record
 
-The full AKP master design and proposed ADR-135 through ADR-142 must be reviewed together before this ADR is accepted.
+The user reviewed and accepted the full AKP master design together with ADR-135 through ADR-142 on 2026-08-12. The architecture is frozen at the accepted whole-design boundary; Product implementation remains separately unauthorized until an explicit implementation authorization.

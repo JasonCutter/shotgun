@@ -214,6 +214,7 @@ describe('AskWorkspace', () => {
     const mockClient: AskWorkspaceClient = {
       getWorkspace: vi.fn().mockResolvedValue(mockWorkspace),
       getConversation: vi.fn().mockResolvedValue(mockWorkspace.selectedConversation!),
+      getConversationSourceContext: vi.fn(),
       getBranch: vi.fn(),
       getAnswerRun: vi
         .fn()
@@ -280,6 +281,7 @@ describe('AskWorkspace', () => {
     const mockClient: AskWorkspaceClient = {
       getWorkspace: vi.fn().mockResolvedValue(mockWorkspace),
       getConversation: vi.fn().mockResolvedValue(mockWorkspace.selectedConversation!),
+      getConversationSourceContext: vi.fn(),
       getBranch: vi.fn(),
       getAnswerRun: vi.fn(),
       submitQuestion: vi.fn(),
@@ -337,6 +339,7 @@ describe('AskWorkspace', () => {
     const mockClient: AskWorkspaceClient = {
       getWorkspace: vi.fn().mockResolvedValue(workspace),
       getConversation: vi.fn().mockResolvedValue(workspace.selectedConversation!),
+      getConversationSourceContext: vi.fn(),
       getBranch: vi.fn(),
       getAnswerRun: vi.fn(),
       submitQuestion,
@@ -383,6 +386,7 @@ describe('AskWorkspace', () => {
     const mockClient: AskWorkspaceClient = {
       getWorkspace: vi.fn().mockResolvedValue(workspace),
       getConversation: vi.fn().mockResolvedValue(workspace.selectedConversation!),
+      getConversationSourceContext: vi.fn(),
       getBranch: vi.fn(),
       getAnswerRun: vi.fn(),
       submitQuestion,

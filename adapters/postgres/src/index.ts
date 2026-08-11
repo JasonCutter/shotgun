@@ -1309,7 +1309,10 @@ export class PostgresProjectBootstrapUnitOfWork implements ProjectBootstrapUnitO
 }
 
 export class PostgresSettingsRepository implements SettingsRepositoryPort {
-  constructor(private readonly pool: Pool) {}
+  constructor(
+    private readonly pool: Pool,
+    private readonly deploymentAllowsPrivateExternalTransfer = false,
+  ) {}
 
   async getPrincipalPreferences(principalId: string): Promise<Record<string, unknown>> {
     const res = await this.pool.query<{ preferences_snapshot: Record<string, unknown> }>(
@@ -1466,6 +1469,13 @@ export class PostgresSettingsRepository implements SettingsRepositoryPort {
 
     const localeVal =
       typeof snapshotJson['general.locale'] === 'string' ? snapshotJson['general.locale'] : 'ko-KR';
+    const externalTransferAllowed = snapshotJson['privacy.externalTransferAllowed'] === true;
+    const pendingPrivacyReview = await this.pool.query<{ count: number }>(
+      `SELECT COUNT(*)::integer AS count
+       FROM settings.settings_review_proposals
+       WHERE project_id = $1 AND directive_type = 'PRIVACY_EXTERNAL_TRANSFER' AND status = 'PROPOSED'`,
+      [projectId],
+    );
 
     return decodeSettingsSnapshot({
       schemaVersion: '1.0.0',
@@ -1497,6 +1507,20 @@ export class PostgresSettingsRepository implements SettingsRepositoryPort {
           capability: { canEdit: true, canReset: false, canProposeReview: false },
           lastModifiedAt: new Date().toISOString(),
         },
+        {
+          categoryId: 'privacy',
+          label: 'Privacy & External AI Transfer',
+          description:
+            'Review Project approval for sending private context to an external AI provider',
+          scope: 'PROJECT',
+          totalSettingsCount: 1,
+          actionRequiredCount: pendingPrivacyReview.rows[0]?.count ?? 0,
+          warningCount:
+            externalTransferAllowed && !this.deploymentAllowsPrivateExternalTransfer ? 1 : 0,
+          applicationMode: 'REVIEW_REQUIRED',
+          capability: { canEdit: true, canReset: false, canProposeReview: true },
+          lastModifiedAt: new Date().toISOString(),
+        },
       ],
       settings: [
         {
@@ -1511,6 +1535,20 @@ export class PostgresSettingsRepository implements SettingsRepositoryPort {
           applicationMode: 'IMMEDIATE',
           riskLevel: 'LOW',
           capability: { canEdit: true, canReset: true, canProposeReview: false },
+        },
+        {
+          key: 'privacy.externalTransferAllowed',
+          label: 'Allow private context with external AI providers',
+          description:
+            'Requires Project Owner review and is effective only when this deployment also permits private external transfer. Restricted context is never allowed.',
+          scope: 'PROJECT',
+          category: 'privacy',
+          valueType: 'boolean',
+          currentValue: externalTransferAllowed,
+          defaultValue: false,
+          applicationMode: 'REVIEW_REQUIRED',
+          riskLevel: 'HIGH',
+          capability: { canEdit: true, canReset: false, canProposeReview: true },
         },
       ],
       fetchedAt: new Date().toISOString(),
@@ -1529,6 +1567,15 @@ export class PostgresSettingsRepository implements SettingsRepositoryPort {
       Number(draft['costs.monthlyHardLimitUsd']) < 0
     ) {
       errors.push({ key: 'costs.monthlyHardLimitUsd', message: 'Hard limit cannot be negative.' });
+    }
+    if (
+      draft['privacy.externalTransferAllowed'] !== undefined &&
+      typeof draft['privacy.externalTransferAllowed'] !== 'boolean'
+    ) {
+      errors.push({
+        key: 'privacy.externalTransferAllowed',
+        message: 'External transfer approval must be a boolean value.',
+      });
     }
 
     return Object.freeze({
@@ -1580,6 +1627,15 @@ export class PostgresSettingsRepository implements SettingsRepositoryPort {
   }
 
   async applySettingsCommand(input: ApplySettingsCommandInput): Promise<SettingsCommandResult> {
+    if (
+      input.settings['privacy.externalTransferAllowed'] !== undefined &&
+      typeof input.settings['privacy.externalTransferAllowed'] !== 'boolean'
+    ) {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        'privacy.externalTransferAllowed must be a boolean value.',
+      );
+    }
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
@@ -1602,7 +1658,11 @@ export class PostgresSettingsRepository implements SettingsRepositoryPort {
       );
       if (existingCmd.rows.length > 0) {
         const row = existingCmd.rows[0]!;
-        const payloadMatch = JSON.stringify(row.command_payload) === JSON.stringify(input.settings);
+        const expectedPayload = input.reviewProposalId
+          ? { settings: input.settings, reviewProposalId: input.reviewProposalId }
+          : input.settings;
+        const payloadMatch =
+          JSON.stringify(row.command_payload) === JSON.stringify(expectedPayload);
         if (
           row.client_request_id !== input.clientRequestId ||
           row.project_id !== input.projectId ||
@@ -1664,6 +1724,99 @@ export class PostgresSettingsRepository implements SettingsRepositoryPort {
         );
       }
 
+      const requiresReview = deriveSettingsImpact(input.settings).requiresReview;
+      if (requiresReview && !input.reviewProposalId) {
+        const proposalId = `settings-review-${randomUUID()}`;
+        const commandPayload = input.settings;
+        await client.query(
+          `INSERT INTO settings.settings_review_proposals
+             (proposal_id, project_id, resource_id, directive_type, description, status, payload, created_at)
+           VALUES ($1, $2, $3, 'PRIVACY_EXTERNAL_TRANSFER', $4, 'PROPOSED', $5, now())`,
+          [
+            proposalId,
+            input.projectId,
+            'setting/privacy.externalTransferAllowed',
+            'Review private Project context transfer to external AI providers.',
+            JSON.stringify({
+              settings: input.settings,
+              expectedSettingsRevision: currentRev,
+              observedPolicyContextRevision: currentPolicyRev,
+            }),
+          ],
+        );
+        await client.query(
+          `INSERT INTO settings.settings_commands
+             (command_id, client_request_id, idempotency_key, project_id, expected_revision, status, command_payload, created_at)
+           VALUES ($1, $2, $3, $4, $5, 'REVIEW_REQUIRED', $6, now())`,
+          [
+            input.commandId,
+            input.clientRequestId,
+            input.idempotencyKey,
+            input.projectId,
+            input.expectedSettingsRevision,
+            JSON.stringify(commandPayload),
+          ],
+        );
+        await client.query(
+          `INSERT INTO settings.settings_command_results
+             (command_id, client_request_id, idempotency_key, status, review_proposal_id, completed_at)
+           VALUES ($1, $2, $3, 'REVIEW_REQUIRED', $4, now())`,
+          [input.commandId, input.clientRequestId, input.idempotencyKey, proposalId],
+        );
+        await client.query(
+          `INSERT INTO settings.settings_audit_events
+             (event_id, project_id, actor_id, action_name, risk_level, details, timestamp)
+           VALUES ($1, $2, $3, 'SETTINGS_REVIEW_PROPOSED', 'HIGH', $4, now())`,
+          [
+            randomUUID(),
+            input.projectId,
+            input.actorId,
+            JSON.stringify({ proposalId, keys: Object.keys(input.settings) }),
+          ],
+        );
+        await client.query('COMMIT');
+        return Object.freeze({
+          commandId: input.commandId,
+          clientRequestId: input.clientRequestId,
+          idempotencyKey: input.idempotencyKey,
+          projectId: input.projectId,
+          status: 'REVIEW_REQUIRED',
+          reviewProposalId: proposalId,
+          completedAt: new Date().toISOString(),
+        });
+      }
+
+      if (input.reviewProposalId) {
+        const proposal = await client.query<{
+          project_id: string;
+          status: string;
+          payload: {
+            settings?: Record<string, unknown>;
+            expectedSettingsRevision?: number;
+            observedPolicyContextRevision?: number;
+          };
+        }>(
+          `SELECT project_id, status, payload
+           FROM settings.settings_review_proposals
+           WHERE proposal_id = $1 FOR UPDATE`,
+          [input.reviewProposalId],
+        );
+        const row = proposal.rows[0];
+        if (
+          !row ||
+          row.project_id !== input.projectId ||
+          row.status !== 'PROPOSED' ||
+          JSON.stringify(row.payload.settings) !== JSON.stringify(input.settings) ||
+          row.payload.expectedSettingsRevision !== currentRev ||
+          row.payload.observedPolicyContextRevision !== currentPolicyRev
+        ) {
+          throw new FrontendContractError(
+            'REVISION_CONFLICT',
+            'The privacy review proposal is stale or does not match this command.',
+          );
+        }
+      }
+
       const nextRev = currentRev + 1;
       const nextPolicyRev = currentPolicyRev + 1; // Bump policy context revision since settings affect policy
 
@@ -1702,7 +1855,11 @@ export class PostgresSettingsRepository implements SettingsRepositoryPort {
           input.idempotencyKey,
           input.projectId,
           input.expectedSettingsRevision,
-          JSON.stringify(input.settings),
+          JSON.stringify(
+            input.reviewProposalId
+              ? { settings: input.settings, reviewProposalId: input.reviewProposalId }
+              : input.settings,
+          ),
         ],
       );
 
@@ -1711,6 +1868,16 @@ export class PostgresSettingsRepository implements SettingsRepositoryPort {
          VALUES ($1, $2, $3, 'APPLIED', $4, now())`,
         [input.commandId, input.clientRequestId, input.idempotencyKey, nextRev],
       );
+
+      if (input.reviewProposalId) {
+        await client.query(
+          `UPDATE settings.settings_review_proposals
+           SET status = CASE WHEN proposal_id = $1 THEN 'APPROVED' ELSE 'REJECTED' END
+           WHERE project_id = $2 AND directive_type = 'PRIVACY_EXTERNAL_TRANSFER'
+             AND status = 'PROPOSED'`,
+          [input.reviewProposalId, input.projectId],
+        );
+      }
 
       // Audit event — use actual schema columns
       await client.query(
@@ -1722,8 +1889,12 @@ export class PostgresSettingsRepository implements SettingsRepositoryPort {
           input.projectId,
           input.actorId,
           'SETTINGS_COMMAND_APPLIED',
-          'LOW',
-          JSON.stringify({ appliedRevision: nextRev, keys: Object.keys(input.settings) }),
+          requiresReview ? 'HIGH' : 'LOW',
+          JSON.stringify({
+            appliedRevision: nextRev,
+            keys: Object.keys(input.settings),
+            ...(input.reviewProposalId ? { reviewProposalId: input.reviewProposalId } : {}),
+          }),
         ],
       );
 
@@ -1802,11 +1973,40 @@ export class PostgresSettingsRepository implements SettingsRepositoryPort {
   }
 
   async getPrivacyRetention(projectId: string): Promise<ProductFeatureView<PrivacyRetentionView>> {
-    void projectId;
+    const snapshot = await this.getSettingsSnapshot(projectId);
+    const setting = snapshot.settings.find(
+      (candidate) => candidate.key === 'privacy.externalTransferAllowed',
+    );
+    const pending = await this.pool.query<{ proposal_id: string }>(
+      `SELECT proposal_id
+       FROM settings.settings_review_proposals
+       WHERE project_id = $1 AND directive_type = 'PRIVACY_EXTERNAL_TRANSFER' AND status = 'PROPOSED'
+       ORDER BY created_at DESC, proposal_id DESC LIMIT 1`,
+      [projectId],
+    );
+    const externalTransferAllowed = setting?.currentValue === true;
     return {
-      availability: 'UNAVAILABLE',
-      applicationMode: 'UNAVAILABLE',
-      disabledReason: 'Privacy controls are not available in this tier.',
+      availability: 'AVAILABLE',
+      data: {
+        targetProjectId: projectId,
+        profileName: externalTransferAllowed ? 'CONTROLLED_EXTERNAL' : 'LOCAL_ONLY',
+        sensitivityLevel: 'SENSITIVE',
+        externalTransferAllowed,
+        connectorAllowed: false,
+        telemetryAllowed: false,
+        exportAllowed: true,
+        retentionSummary: 'Project retention policy is unchanged.',
+        deploymentAllowsPrivateExternalTransfer: this.deploymentAllowsPrivateExternalTransfer,
+        approvalStatus:
+          pending.rows.length > 0
+            ? 'REVIEW_PENDING'
+            : externalTransferAllowed
+              ? 'APPROVED'
+              : 'NOT_APPROVED',
+        approvalRevision: snapshot.policyContextRevision,
+        restrictedExternalTransferAllowed: false,
+        ...(pending.rows[0] ? { pendingReviewProposalId: pending.rows[0].proposal_id } : {}),
+      },
     };
   }
 

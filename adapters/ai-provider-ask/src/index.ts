@@ -138,12 +138,14 @@ export class StructuredAskAnswerProviderAdapter implements AskAnswerProviderPort
       request.context.some(
         (item) =>
           item.sensitivity === 'restricted' ||
-          (item.sensitivity === 'private' && !this.policy.allowPrivate),
+          (item.sensitivity === 'private' &&
+            (!this.policy.allowPrivate || !request.effectiveProviderPolicy.eligible)),
       )
     ) {
       throw new ShotgunError({
         code: 'POLICY_DENIED',
-        safeMessage: 'The configured Ask provider cannot receive this Evidence sensitivity.',
+        safeMessage:
+          'The configured Ask provider is not permitted to receive the selected authoritative context under the current privacy policy.',
         module: 'ai-provider-ask',
         operation: 'enforce-data-policy',
       });

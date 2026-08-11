@@ -241,6 +241,21 @@ export function registerSettingsRoutes(
             operation: 'apply-settings-command',
           });
         }
+        const decodedPayload = decoded.payload as ApplyProjectPolicyCommandPayload;
+        if (
+          Object.prototype.hasOwnProperty.call(
+            decodedPayload.settings,
+            'privacy.externalTransferAllowed',
+          ) &&
+          !(membership.isOwner || membership.scopes.includes('owner'))
+        ) {
+          throw new ShotgunError({
+            code: 'PROJECT_ACCESS_DENIED',
+            safeMessage: 'Only a Project Owner can review external AI transfer approval.',
+            module: 'shotgun-app',
+            operation: 'apply-settings-command',
+          });
+        }
 
         const expectedSettingsRevision = requireRevisionPrecondition(decoded, {
           purpose: 'TARGET',
@@ -274,6 +289,9 @@ export function registerSettingsRoutes(
             expectedSettingsRevision,
             observedPolicyContextRevision: expectedPolicyContextRevision,
             settings: payload.settings,
+            ...(payload.reviewProposalId === undefined
+              ? {}
+              : { reviewProposalId: payload.reviewProposalId }),
             actorId: context.principalId,
           });
           const outcome = await commandGateway.complete({

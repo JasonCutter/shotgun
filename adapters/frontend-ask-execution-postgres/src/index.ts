@@ -842,7 +842,10 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
       const eventRevision = Number(row.event_revision) + 1;
       await this.updateRun(client, input.scope, input.answerRunId, {
         state: input.state,
-        capabilities: ['RETRY_SAME_CONTEXT', 'RETRY_CURRENT_POLICY'],
+        capabilities:
+          input.failure.code === 'POLICY_DENIED'
+            ? []
+            : ['RETRY_SAME_CONTEXT', 'RETRY_CURRENT_POLICY'],
         failure: input.failure,
         eventRevision,
       });

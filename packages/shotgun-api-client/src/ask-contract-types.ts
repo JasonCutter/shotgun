@@ -21,6 +21,8 @@ export type {
   SubmitAskQuestionRequest,
   AskQuestionSubmissionView,
   AskQuestionSubmissionOutcomeView,
+  AskProviderEligibilityRequest,
+  AskProviderEligibilityView,
   AskCitationReturnState,
   ConversationCitationReturnTarget,
 } from '../../contracts/src/index.js';

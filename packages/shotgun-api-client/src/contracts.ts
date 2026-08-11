@@ -681,6 +681,7 @@ export type ShotgunApiClient = {
       expectedSettingsRevision: number;
       observedPolicyContextRevision: number;
       settings: Record<string, unknown>;
+      reviewProposalId?: string;
     },
     options?: RequestOptions,
   ): Promise<FrontendCommandMutationResponse<SettingsCommandResult>>;

@@ -791,6 +791,7 @@ export const createShotgunApiClient = (
         expectedSettingsRevision: number;
         observedPolicyContextRevision: number;
         settings: Record<string, unknown>;
+        reviewProposalId?: string;
       },
       requestOptions?: RequestOptions,
     ): Promise<FrontendCommandMutationResponse<SettingsCommandResult>> {
@@ -824,7 +825,12 @@ export const createShotgunApiClient = (
                     expectedRevision: String(params.observedPolicyContextRevision),
                   },
                 ],
-                payload: { settings: params.settings },
+                payload: {
+                  settings: params.settings,
+                  ...(params.reviewProposalId === undefined
+                    ? {}
+                    : { reviewProposalId: params.reviewProposalId }),
+                },
               }),
             ),
             signal: requestOptions?.signal,

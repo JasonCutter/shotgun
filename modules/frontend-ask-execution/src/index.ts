@@ -18,9 +18,11 @@ import {
   type AskTransitionSeedPayload,
   type AskTransitionSeedView,
   type AskCitationView,
+  type AskCapability,
   sha256Text,
   stableJson,
 } from '../../../packages/contracts/src/index.js';
+import type { AskProviderPolicyResolverPort } from '../../frontend-ask-provider-policy/src/index.js';
 
 export const ASK_EXECUTION_COMMAND_TYPES = {
   cancel: 'ask.answer-run.cancel.v1',
@@ -82,6 +84,10 @@ export type AskAnswerProviderRequest = {
   readonly resolvedContextDigest: string;
   readonly queryPlanRevision: string;
   readonly dataPolicyVersion: string;
+  readonly effectiveProviderPolicy: {
+    readonly eligible: boolean;
+    readonly policyFingerprint: string;
+  };
   readonly signal: AbortSignal;
   readonly onPartial: (partialText: string) => Promise<void>;
 };
@@ -323,6 +329,14 @@ export const highestSensitivity = (
     'public',
   );
 
+export const providerPolicyRetryCapabilities = (
+  snapshot: AskAnswerRunSnapshot,
+  currentEligible: boolean,
+): readonly AskCapability[] => {
+  if (snapshot.failure?.code !== 'POLICY_DENIED') return snapshot.capabilities;
+  return currentEligible ? ['RETRY_CURRENT_POLICY'] : [];
+};
+
 export const askExecutionContextDigest = (input: {
   readonly queryPlanRevision: string;
   readonly projectId: string;
@@ -388,10 +402,16 @@ export class AskAnswerExecutionService {
   constructor(
     private readonly repository: AskAnswerExecutionRepositoryPort,
     private readonly provider: AskAnswerProviderPort,
-    options: { readonly maxConcurrency?: number } = {},
+    options: {
+      readonly maxConcurrency?: number;
+      readonly providerPolicy?: AskProviderPolicyResolverPort;
+    } = {},
   ) {
     this.maxConcurrency = Math.max(1, Math.floor(options.maxConcurrency ?? 4));
+    this.providerPolicy = options.providerPolicy;
   }
+
+  private readonly providerPolicy?: AskProviderPolicyResolverPort;
 
   async enqueue(input: AskExecutionScope & { readonly answerRunId: string }): Promise<void> {
     // HTTP enqueue is only a wake hint. The durable worker owns claim and execution.
@@ -428,6 +448,21 @@ export class AskAnswerExecutionService {
     mode: AskAnswerRunRetryMode,
     transaction?: AskExecutionTransactionPort,
   ): Promise<AskAnswerRunSnapshot> {
+    const current = await this.repository.getRunContext(scope, answerRunId);
+    if (!current) throw executionError('NOT_FOUND', 'The AnswerRun was not found.', 'retry');
+    if (current.snapshot.failure?.code === 'POLICY_DENIED') {
+      if (mode === 'SAME_CONTEXT') {
+        throw executionError(
+          'POLICY_DENIED',
+          'Retrying the same context and privacy policy cannot change this result.',
+          'retry',
+        );
+      }
+      const eligibility = await this.resolveProviderPolicy(scope.projectId, current.context);
+      if (!eligibility.eligible) {
+        throw executionError('POLICY_DENIED', eligibility.message, 'retry');
+      }
+    }
     const claimed = transaction
       ? await transaction.retryAndClaim({ scope, answerRunId, mode, workerId: this.workerId })
       : await this.repository.retryAndClaim({ scope, answerRunId, mode, workerId: this.workerId });
@@ -435,6 +470,18 @@ export class AskAnswerExecutionService {
     if (transaction) transaction.afterCommit(start);
     else start();
     return { ...claimed.context.snapshot, attemptId: claimed.attempt.attemptId };
+  }
+
+  async getAnswerRun(scope: AskExecutionScope, answerRunId: string): Promise<AskAnswerRunSnapshot> {
+    const current = await this.repository.getRunContext(scope, answerRunId);
+    if (!current)
+      throw executionError('NOT_FOUND', 'The AnswerRun was not found.', 'get-answer-run');
+    if (current.snapshot.failure?.code !== 'POLICY_DENIED') return current.snapshot;
+    const eligibility = await this.resolveProviderPolicy(scope.projectId, current.context);
+    return {
+      ...current.snapshot,
+      capabilities: providerPolicyRetryCapabilities(current.snapshot, eligibility.eligible),
+    };
   }
 
   async withCommandTransaction<T>(
@@ -654,11 +701,15 @@ export class AskAnswerExecutionService {
         });
     }, 5_000);
     try {
+      const effectiveProviderPolicy = await this.resolveProviderPolicy(
+        scope.projectId,
+        context.context,
+      );
       await this.repository.setAttemptAudit({
         scope,
         answerRunId: context.snapshot.answerRunId,
         attemptId: attempt.attemptId,
-        dataPolicyVersion: this.provider.identity.dataPolicyVersion,
+        dataPolicyVersion: effectiveProviderPolicy.policyFingerprint,
         workerId,
       });
       if (context.contextStatus === 'NO_SUPPORTED_ANSWER') {
@@ -686,7 +737,11 @@ export class AskAnswerExecutionService {
         context: context.context,
         resolvedContextDigest: context.resolvedContextDigest,
         queryPlanRevision: context.queryPlanRevision,
-        dataPolicyVersion: this.provider.identity.dataPolicyVersion,
+        dataPolicyVersion: effectiveProviderPolicy.policyFingerprint,
+        effectiveProviderPolicy: {
+          eligible: effectiveProviderPolicy.eligible,
+          policyFingerprint: effectiveProviderPolicy.policyFingerprint,
+        },
         signal: controller.signal,
         onPartial: async (partialText) => {
           if (!partialText.trim() || controller.signal.aborted) return;
@@ -746,7 +801,7 @@ export class AskAnswerExecutionService {
         ...(result.providerResponseId === undefined
           ? {}
           : { providerResponseId: result.providerResponseId }),
-        dataPolicyVersion: this.provider.identity.dataPolicyVersion,
+        dataPolicyVersion: effectiveProviderPolicy.policyFingerprint,
         resolvedContextDigest: context.resolvedContextDigest,
         queryPlanRevision: context.queryPlanRevision,
         ...(result.usage === undefined ? {} : { usage: result.usage }),
@@ -804,6 +859,31 @@ export class AskAnswerExecutionService {
         this.active.delete(context.snapshot.answerRunId);
       }
     }
+  }
+
+  private async resolveProviderPolicy(
+    projectId: string,
+    context: readonly AskExecutionContextItem[],
+  ) {
+    if (this.providerPolicy) {
+      return this.providerPolicy.evaluateContext({
+        projectId,
+        sensitivities: context.map((item) => item.sensitivity),
+      });
+    }
+    return {
+      schemaVersion: '1.0.0' as const,
+      eligible: true,
+      reason: 'ELIGIBLE' as const,
+      requiredAction: 'NONE' as const,
+      policyFingerprint: this.provider.identity.dataPolicyVersion,
+      policyContextRevision: 'unbound-test-policy',
+      provider: {
+        displayName: this.provider.identity.provider,
+        model: this.provider.identity.model,
+      },
+      message: 'The selected authoritative context is eligible for the configured AI provider.',
+    };
   }
 
   private async cancellationStatus(

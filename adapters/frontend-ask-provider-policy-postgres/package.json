@@ -1,0 +1,6 @@
+{
+  "name": "@shotgun/frontend-ask-provider-policy-postgres",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module"
+}

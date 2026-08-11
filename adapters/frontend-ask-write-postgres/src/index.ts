@@ -791,7 +791,7 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
           question: row.question,
           statements: statementsByRun.get(row.answer_run_id) ?? [],
           sourceSelections: selectionsByRun.get(row.answer_run_id) ?? [],
-          capabilities: row.capabilities,
+          capabilities: row.failure_code === 'POLICY_DENIED' ? [] : row.capabilities,
           answerRevision: row.answer_revision,
           conversationRevision: row.conversation_revision,
           accessRevision: row.access_revision,

@@ -187,6 +187,39 @@ export type AskQuestionSubmissionView = {
   readonly workspace: AskWorkspaceView;
 };
 
+export type AskProviderEligibilityReason =
+  | 'ELIGIBLE'
+  | 'DEPLOYMENT_POLICY_BLOCKED'
+  | 'PROJECT_APPROVAL_REQUIRED'
+  | 'RESTRICTED_CONTEXT_BLOCKED';
+
+export type AskProviderEligibilityRequiredAction =
+  | 'NONE'
+  | 'CONTACT_DEPLOYMENT_ADMINISTRATOR'
+  | 'REVIEW_PROJECT_PRIVACY_SETTINGS'
+  | 'REMOVE_RESTRICTED_CONTEXT';
+
+export type AskProviderEligibilityRequest = {
+  readonly schemaVersion: typeof ASK_SCHEMA_VERSION;
+  readonly conversationId?: string;
+  readonly mode: AskMode;
+  readonly sourceSelections: readonly AskSourceSelectionView[];
+};
+
+export type AskProviderEligibilityView = {
+  readonly schemaVersion: typeof ASK_SCHEMA_VERSION;
+  readonly eligible: boolean;
+  readonly reason: AskProviderEligibilityReason;
+  readonly requiredAction: AskProviderEligibilityRequiredAction;
+  readonly policyFingerprint: string;
+  readonly policyContextRevision: string;
+  readonly provider: {
+    readonly displayName: string;
+    readonly model: string;
+  };
+  readonly message: string;
+};
+
 const fail = (message: string): never => {
   throw new FrontendContractError('UNSUPPORTED_SCHEMA', message);
 };
@@ -243,6 +276,91 @@ const askMode = (value: unknown, path: string): AskMode => {
   const valid: AskMode[] = ['CANONICAL_ONLY', 'SOURCE_EXPLORATION', 'HYBRID'];
   if (!valid.includes(value as AskMode)) fail(`${path} is unsupported AskMode.`);
   return value as AskMode;
+};
+
+export const decodeAskProviderEligibilityRequest = (
+  value: unknown,
+): AskProviderEligibilityRequest => {
+  const input = strictObject(
+    value,
+    ['schemaVersion', 'conversationId', 'mode', 'sourceSelections'],
+    'request',
+  );
+  schema(input, 'request');
+  return {
+    schemaVersion: ASK_SCHEMA_VERSION,
+    ...(input.conversationId === undefined
+      ? {}
+      : { conversationId: idString(input.conversationId, 'request.conversationId') }),
+    mode: askMode(input.mode, 'request.mode'),
+    sourceSelections: array(
+      input.sourceSelections,
+      'request.sourceSelections',
+      (selection, index) =>
+        decodeAskSourceSelectionView(selection, `request.sourceSelections[${index}]`),
+    ),
+  };
+};
+
+export const decodeAskProviderEligibilityView = (value: unknown): AskProviderEligibilityView => {
+  const input = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'eligible',
+      'reason',
+      'requiredAction',
+      'policyFingerprint',
+      'policyContextRevision',
+      'provider',
+      'message',
+    ],
+    'providerEligibility',
+  );
+  schema(input, 'providerEligibility');
+  const reasons: readonly AskProviderEligibilityReason[] = [
+    'ELIGIBLE',
+    'DEPLOYMENT_POLICY_BLOCKED',
+    'PROJECT_APPROVAL_REQUIRED',
+    'RESTRICTED_CONTEXT_BLOCKED',
+  ];
+  const actions: readonly AskProviderEligibilityRequiredAction[] = [
+    'NONE',
+    'CONTACT_DEPLOYMENT_ADMINISTRATOR',
+    'REVIEW_PROJECT_PRIVACY_SETTINGS',
+    'REMOVE_RESTRICTED_CONTEXT',
+  ];
+  if (!reasons.includes(input.reason as AskProviderEligibilityReason)) {
+    fail('providerEligibility.reason is unsupported.');
+  }
+  if (!actions.includes(input.requiredAction as AskProviderEligibilityRequiredAction)) {
+    fail('providerEligibility.requiredAction is unsupported.');
+  }
+  const provider = strictObject(
+    input.provider,
+    ['displayName', 'model'],
+    'providerEligibility.provider',
+  );
+  const eligible = booleanVal(input.eligible, 'providerEligibility.eligible');
+  if (eligible !== (input.reason === 'ELIGIBLE')) {
+    fail('providerEligibility eligible/reason invariant is invalid.');
+  }
+  return {
+    schemaVersion: ASK_SCHEMA_VERSION,
+    eligible,
+    reason: input.reason as AskProviderEligibilityReason,
+    requiredAction: input.requiredAction as AskProviderEligibilityRequiredAction,
+    policyFingerprint: idString(input.policyFingerprint, 'providerEligibility.policyFingerprint'),
+    policyContextRevision: idString(
+      input.policyContextRevision,
+      'providerEligibility.policyContextRevision',
+    ),
+    provider: {
+      displayName: text(provider.displayName, 'providerEligibility.provider.displayName', 1, 128),
+      model: text(provider.model, 'providerEligibility.provider.model', 1, 128),
+    },
+    message: text(input.message, 'providerEligibility.message', 1, 1000),
+  };
 };
 
 const askAnswerRunState = (value: unknown, path: string): AskAnswerRunState => {

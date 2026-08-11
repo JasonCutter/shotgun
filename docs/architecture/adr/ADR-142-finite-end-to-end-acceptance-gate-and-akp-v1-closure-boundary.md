@@ -1,7 +1,10 @@
 # ADR-142 — Finite End-to-End Acceptance Gate and AKP v1 Closure Boundary
 
-- Status: **PROPOSED**
+- Status: **ACCEPTED**
 - Proposed at: 2026-08-11
+- Decision date: 2026-08-12
+- Accepted at: 2026-08-12
+- Accepted by: `USER`
 - Decision owner: `USER`
 - Work item: `AKP-8 — End-to-End Active Knowledge Acceptance`
 - Subject base: `main@f08ae632220ac613ae0e90c04930ceb323aac40b`

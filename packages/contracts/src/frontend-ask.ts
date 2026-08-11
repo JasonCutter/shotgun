@@ -220,6 +220,19 @@ export type AskProviderEligibilityView = {
   readonly message: string;
 };
 
+export type AskContextSensitivity = 'public' | 'internal' | 'private' | 'restricted';
+
+export type AskProviderPolicyResolverPort = {
+  evaluateSelections(input: {
+    readonly projectId: string;
+    readonly sourceSelections: readonly AskSourceSelectionView[];
+  }): Promise<AskProviderEligibilityView>;
+  evaluateContext(input: {
+    readonly projectId: string;
+    readonly sensitivities: readonly AskContextSensitivity[];
+  }): Promise<AskProviderEligibilityView>;
+};
+
 const fail = (message: string): never => {
   throw new FrontendContractError('UNSUPPORTED_SCHEMA', message);
 };

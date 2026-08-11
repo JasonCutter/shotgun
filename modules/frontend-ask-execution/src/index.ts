@@ -19,10 +19,10 @@ import {
   type AskTransitionSeedView,
   type AskCitationView,
   type AskCapability,
+  type AskProviderPolicyResolverPort,
   sha256Text,
   stableJson,
 } from '../../../packages/contracts/src/index.js';
-import type { AskProviderPolicyResolverPort } from '../../frontend-ask-provider-policy/src/index.js';
 
 export const ASK_EXECUTION_COMMAND_TYPES = {
   cancel: 'ask.answer-run.cancel.v1',

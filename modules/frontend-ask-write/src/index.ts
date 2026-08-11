@@ -16,13 +16,13 @@ import {
   type AskSourceSelectionView,
   type AskProviderEligibilityRequest,
   type AskProviderEligibilityView,
+  type AskProviderPolicyResolverPort,
   type AskWorkspaceView,
   type ErrorCode,
   type ProducedResourceRef,
   type SubmitAskQuestionRequest,
   type TypedPrecondition,
 } from '../../../packages/contracts/src/index.js';
-import type { AskProviderPolicyResolverPort } from '../../frontend-ask-provider-policy/src/index.js';
 
 export const ASK_RESOURCE_KIND = {
   conversation: 'ASK_CONVERSATION',

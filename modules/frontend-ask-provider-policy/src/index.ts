@@ -3,10 +3,12 @@ import {
   sha256Text,
   stableJson,
   type AskProviderEligibilityView,
+  type AskContextSensitivity,
+  type AskProviderPolicyResolverPort,
   type AskSourceSelectionView,
 } from '../../../packages/contracts/src/index.js';
 
-export type AskContextSensitivity = 'public' | 'internal' | 'private' | 'restricted';
+export type { AskContextSensitivity, AskProviderPolicyResolverPort };
 
 export type AskProjectPrivacyPolicy = {
   readonly externalTransferAllowed: boolean;
@@ -20,17 +22,6 @@ export type AskProviderPolicyAuthorityReaderPort = {
     readonly projectId: string;
     readonly sourceSelections: readonly AskSourceSelectionView[];
   }): Promise<readonly AskContextSensitivity[]>;
-};
-
-export type AskProviderPolicyResolverPort = {
-  evaluateSelections(input: {
-    readonly projectId: string;
-    readonly sourceSelections: readonly AskSourceSelectionView[];
-  }): Promise<AskProviderEligibilityView>;
-  evaluateContext(input: {
-    readonly projectId: string;
-    readonly sensitivities: readonly AskContextSensitivity[];
-  }): Promise<AskProviderEligibilityView>;
 };
 
 export type AskProviderPolicyResolverOptions = {

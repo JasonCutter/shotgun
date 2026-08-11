@@ -51,13 +51,19 @@ FAILED_TERMINAL
 CANCELLED
 ```
 
-Stages are typed, e.g. projection wait, signal retrieval, candidate generation, finding quality gate, persistence/re-entry publication. A Domain Retry creates a new Attempt and never erases the prior failure.
+Stages are typed, e.g. projection wait, signal retrieval, candidate generation, finding quality gate, persistence/re-entry publication and finding reconciliation. A Domain Retry creates a new Attempt and never erases the prior failure.
 
-### 5. Projection readiness gating
+### 5. Projection readiness gating has a deadline
 
 An incremental Job triggered by Canonical commit may enter `WAITING_FOR_PROJECTION` until the required Compiled Truth and applicable semantic/graph projections reach the policy-required readiness. It must not read an arbitrary stale projection merely to run quickly.
 
-If semantic capability is unavailable but policy permits deterministic/lexical fallback, the run may continue in an explicitly degraded/partial mode with the effective strategy set recorded. Otherwise it remains waiting/fails according to typed policy.
+Every waiting Job records a bounded projection-wait deadline/policy. It cannot wait silently forever. At expiry the typed policy must choose one of:
+
+- continue with an explicitly permitted degraded deterministic/lexical strategy set and record `PARTIAL`/degraded provenance;
+- transition to `FAILED_RETRYABLE` for later recovery;
+- transition to `FAILED_TERMINAL` when the missing capability/policy makes the run invalid.
+
+If semantic capability is unavailable but policy permits deterministic/lexical fallback before the deadline, the run may continue with the effective strategy set recorded.
 
 ### 6. Lease, retry and restart recovery
 
@@ -69,15 +75,21 @@ No BullMQ, RabbitMQ, Temporal or generalized workflow service is selected solely
 
 Multiple rapid Canonical commits may be coalesced only when the persisted run identity and lineage prove that the later canonical/projection base subsumes the earlier pending work. The latest required canonical version cannot be discarded by debouncing.
 
-### 8. Budget enforcement
+### 8. Canonical-triggered finding reconciliation
+
+A Canonical/projection update must also make existing active findings eligible for bounded reconciliation. If a prior proposal is now Canonical, contradicted by a newer approved state, or based on materially superseded inputs, the runtime updates its derived lifecycle to `RESOLVED`, `STALE` or `SUPERSEDED` according to ADR-136 while preserving the original finding/provenance.
+
+Reconciliation is idempotent and budgeted. It is not a Canonical mutation and does not delete historical findings.
+
+### 9. Budget enforcement
 
 AKP-3 work budgets are persisted with or resolved for the run: scan/candidate/provider/token/cost/deadline/concurrency limits. Retry does not reset an overall Job budget without an explicit policy reason.
 
-### 9. Activity and observations
+### 10. Activity and observations
 
 Discovery runtime emits normalized activity observations consumed by the existing Activity projection. Activity is not authority over the Discovery Job; it presents the domain-owned durable snapshot and events according to ADR-130.
 
-### 10. Manual trigger remains governed
+### 11. Manual trigger remains governed
 
 Manual Discovery is project-scoped, capability-checked and records actor, requested mode/policy and effective bounded limits. The Browser cannot supply project authority, external provider authority or unbounded budgets.
 
@@ -86,13 +98,16 @@ Manual Discovery is project-scoped, capability-checked and records actor, reques
 - Shotgun becomes proactively active after Canonical changes and on a real periodic cadence.
 - Restart/duplicate-delivery behavior becomes testable and observable.
 - AKP gains durable Job tables/fields as needed, but does not require a general queue platform.
-- Incremental Discovery can wait safely for projection readiness rather than racing projections.
+- Incremental Discovery can wait safely for projection readiness without infinite silent waits.
+- Existing findings can be reconciled as Canonical evolves instead of remaining misleadingly fresh.
 
 ## Rejected alternatives
 
 - Run Discovery inside the Canonical transaction.
 - A process-local `setInterval` as the only periodic scheduler.
 - Treat `mode: WEEKLY` as proof that scheduling exists.
+- Leave `WAITING_FOR_PROJECTION` with no deadline or typed terminal/degraded disposition.
 - Create a second Outbox specifically for Discovery triggers.
 - Add a new queue/workflow product before the existing PostgreSQL/Job approach hits measured limits.
 - Blind daily full scans regardless of changes/cost.
+- Leave fulfilled/obsolete findings active until a user manually dismisses them.

@@ -42,6 +42,17 @@ const SOURCE_CONTEXT_QUERY: SourceLibraryQuery = {
   limit: 100,
 };
 
+const ANSWER_RUN_POLLING_COMPLETE_STATES = new Set<AskAnswerRunSnapshot['state']>([
+  'ACTION_REQUIRED',
+  'SUCCEEDED',
+  'FAILED',
+  'CANCELLED',
+  'OUTCOME_UNKNOWN',
+]);
+
+const conversationTurnCountLabel = (turnCount: number): string =>
+  `${turnCount} ${turnCount === 1 ? 'turn' : 'turns'}`;
+
 type SourceLibraryItem = SourceLibraryPageView['items'][number];
 
 type PendingAskCommand = {
@@ -242,13 +253,6 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     let shouldContinue = true;
     let timer: number | undefined;
     const controller = new AbortController();
-    const terminal = new Set([
-      'ACTION_REQUIRED',
-      'SUCCEEDED',
-      'FAILED',
-      'CANCELLED',
-      'OUTCOME_UNKNOWN',
-    ]);
     const schedule = () => {
       if (!cancelled) timer = window.setTimeout(() => void poll(), 750);
     };
@@ -293,7 +297,21 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
             };
           });
         }
-        if (terminal.has(current.state)) {
+        if (ANSWER_RUN_POLLING_COMPLETE_STATES.has(current.state)) {
+          if (!ANSWER_RUN_POLLING_COMPLETE_STATES.has(answerRun.state)) {
+            const refreshedWorkspace = await askClient.getWorkspace(conversationId, {
+              signal: controller.signal,
+            });
+            if (
+              cancelled ||
+              refreshedWorkspace.projectId !== workspace?.projectId ||
+              (conversationId !== undefined &&
+                refreshedWorkspace.selectedConversation?.conversationId !== conversationId)
+            ) {
+              return;
+            }
+            setWorkspace(refreshedWorkspace);
+          }
           shouldContinue = false;
           return;
         }
@@ -917,15 +935,26 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
         <h2 id="conversation-heading">Conversations</h2>
         {workspace.conversations.length === 0 ? <p>No conversations yet.</p> : null}
         {workspace.conversations.length > 0 ? (
-          <ul aria-label="Conversations">
-            {workspace.conversations.map((item) => (
-              <li key={item.conversationId}>
-                <Link to={`/ask/conversations/${encodeURIComponent(item.conversationId)}`}>
-                  <strong>{item.title}</strong>
-                </Link>{' '}
-                · {item.turnCount} turns · {answerRunLabel(item.latestRunState)}
-              </li>
-            ))}
+          <ul className="ask-conversation-list" aria-label="Conversations">
+            {workspace.conversations.map((item) => {
+              const selected = item.conversationId === conversation?.conversationId;
+              return (
+                <li key={item.conversationId}>
+                  {selected ? (
+                    <span className="ask-conversation-current" aria-current="page">
+                      <strong>{item.title}</strong>
+                      <span className="visually-hidden"> (current conversation)</span>
+                    </span>
+                  ) : (
+                    <Link to={`/ask/conversations/${encodeURIComponent(item.conversationId)}`}>
+                      <strong>{item.title}</strong>
+                    </Link>
+                  )}{' '}
+                  · {conversationTurnCountLabel(item.turnCount)} ·{' '}
+                  {answerRunLabel(item.latestRunState)}
+                </li>
+              );
+            })}
           </ul>
         ) : null}
 
@@ -961,7 +990,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                           items={[{ label: 'Failure code', value: answerRun.failure.code }]}
                         />
                       ) : null}
-                      <div className="action-row" aria-label="AnswerRun actions">
+                      <div className="answer-action-row" aria-label="AnswerRun actions">
                         {answerRun.capabilities.includes('CANCEL') ? (
                           <button
                             type="button"

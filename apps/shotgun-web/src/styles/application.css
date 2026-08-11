@@ -802,6 +802,34 @@ main {
   margin: 0;
 }
 
+.ask-conversation-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.ask-conversation-current {
+  display: inline-block;
+  border-left: 0.25rem solid var(--accent);
+  padding: 0.2rem 0.45rem;
+  background: #edf7f1;
+  color: var(--ink);
+}
+
+.answer-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+  max-width: 100%;
+}
+
+.answer-action-row > button {
+  flex: 0 1 auto;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .source-intake-list {
   list-style: none;
   margin: 1rem 0;

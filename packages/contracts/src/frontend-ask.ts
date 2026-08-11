@@ -1,4 +1,10 @@
 import { FrontendContractError } from './frontend-foundation.js';
+import {
+  decodeSourceLibraryPageView,
+  decodeSourceLibraryQuery,
+  type SourceLibraryItemView,
+  type SourceLibraryQuery,
+} from './frontend-sources.js';
 
 export const ASK_SCHEMA_VERSION = '1.0.0' as const;
 export type AskMode = 'CANONICAL_ONLY' | 'SOURCE_EXPLORATION' | 'HYBRID';
@@ -144,6 +150,24 @@ export type AskWorkspaceView = {
   readonly stale: boolean;
 };
 
+export type AskConversationSourceContextQuery = SourceLibraryQuery;
+
+export type AskConversationSourceContextView = {
+  readonly schemaVersion: typeof ASK_SCHEMA_VERSION;
+  readonly principalId: string;
+  readonly sessionId: string;
+  readonly conversationId: string;
+  readonly resourceProjectId: string;
+  readonly items: readonly SourceLibraryItemView[];
+  readonly nextCursor?: string;
+  readonly queryDigest: string;
+  readonly projectionRevision: string;
+  readonly accessRevision: string;
+  readonly policyContextRevision: string;
+  readonly fetchedAt: string;
+  readonly stale: boolean;
+};
+
 export type SubmitAskQuestionRequest = {
   readonly schemaVersion: typeof ASK_SCHEMA_VERSION;
   readonly clientRequestId: string;
@@ -256,6 +280,71 @@ const askCapability = (value: unknown, path: string): AskCapability => {
 
 const schema = (input: Record<string, unknown>, path: string): void => {
   if (input.schemaVersion !== ASK_SCHEMA_VERSION) fail(`${path}.schemaVersion is unsupported.`);
+};
+
+export const decodeAskConversationSourceContextQuery = (
+  value: unknown,
+): AskConversationSourceContextQuery => {
+  const input = strictObject(
+    value,
+    ['schemaVersion', 'query', 'filters', 'sort', 'limit', 'cursor'],
+    'request',
+  );
+  strictObject(
+    input.filters,
+    ['mediaTypes', 'lifecycle', 'askUsageStates', 'attentionOnly'],
+    'request.filters',
+  );
+  return decodeSourceLibraryQuery(input);
+};
+
+export const decodeAskConversationSourceContextView = (
+  value: unknown,
+): AskConversationSourceContextView => {
+  const input = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'principalId',
+      'sessionId',
+      'conversationId',
+      'resourceProjectId',
+      'items',
+      'nextCursor',
+      'queryDigest',
+      'projectionRevision',
+      'accessRevision',
+      'policyContextRevision',
+      'fetchedAt',
+      'stale',
+    ],
+    'sourceContext',
+  );
+  schema(input, 'sourceContext');
+  const conversationId = idString(input.conversationId, 'sourceContext.conversationId');
+  const resourceProjectId = idString(input.resourceProjectId, 'sourceContext.resourceProjectId');
+  const page = decodeSourceLibraryPageView({
+    ...input,
+    projectId: resourceProjectId,
+  });
+  if (page.items.some((item) => item.projectId !== resourceProjectId)) {
+    fail('sourceContext.items must belong to sourceContext.resourceProjectId.');
+  }
+  return {
+    schemaVersion: ASK_SCHEMA_VERSION,
+    principalId: page.principalId,
+    sessionId: page.sessionId,
+    conversationId,
+    resourceProjectId,
+    items: page.items,
+    ...(page.nextCursor === undefined ? {} : { nextCursor: page.nextCursor }),
+    queryDigest: page.queryDigest,
+    projectionRevision: page.projectionRevision,
+    accessRevision: page.accessRevision,
+    policyContextRevision: page.policyContextRevision,
+    fetchedAt: page.fetchedAt,
+    stale: page.stale,
+  };
 };
 
 const array = <T>(

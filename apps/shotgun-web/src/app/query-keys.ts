@@ -91,6 +91,22 @@ const sourcesScopeKey = (scope: SourcesQueryScope) =>
 export const sourcesLibraryQueryKey = (scope: SourcesQueryScope, clientQueryDigest: string) =>
   [...sourcesScopeKey(scope), 'sources-library', clientQueryDigest] as const;
 
+export const askConversationSourceContextQueryKey = (
+  scope: SourcesQueryScope,
+  conversationId: string,
+  accessRevision: string,
+  policyContextRevision: string,
+  clientQueryDigest: string,
+) =>
+  [
+    ...sourcesScopeKey(scope),
+    'ask-conversation-source-context',
+    conversationId,
+    accessRevision,
+    policyContextRevision,
+    clientQueryDigest,
+  ] as const;
+
 export const sourceDetailQueryKey = (scope: SourcesQueryScope, sourceId: string) =>
   [...sourcesScopeKey(scope), 'source', sourceId] as const;
 

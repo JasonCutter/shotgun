@@ -2,6 +2,7 @@ import {
   FrontendContractError,
   decodeAnyFrontendCommandOutcomeView,
   decodeAskAnswerRunSnapshot,
+  decodeAskConversationSourceContextView,
   decodeAskAnswerRunEventsView,
   decodeAskAnswerRunExportView,
   decodeAskAnswerRunFeedbackView,
@@ -22,6 +23,8 @@ import {
   type AskTransitionSeedView,
   type AskBranchView,
   type AskConversationView,
+  type AskConversationSourceContextQuery,
+  type AskConversationSourceContextView,
   type AskQuestionSubmissionOutcomeView,
   type AskQuestionSubmissionView,
   type AskWorkspaceView,
@@ -40,6 +43,11 @@ export type AskWorkspaceClient = {
     conversationId: string,
     options?: { readonly signal?: AbortSignal },
   ): Promise<AskConversationView>;
+  getConversationSourceContext(
+    conversationId: string,
+    query: AskConversationSourceContextQuery,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<AskConversationSourceContextView>;
   getBranch(
     conversationId: string,
     branchId: string,
@@ -213,6 +221,19 @@ export const createAskWorkspaceClient = (
         identityMismatch('Ask Conversation response identity does not match the request.');
       }
       return conversation;
+    },
+    async getConversationSourceContext(conversationId, query, requestOptions) {
+      const response = await mutate(
+        `/product-api/frontend/ask/conversations/${encodeURIComponent(conversationId)}/source-context/query`,
+        query,
+        requestOptions?.signal,
+      );
+      const body = (await assertOk(response)) as { sourceContext?: unknown };
+      const sourceContext = decodeAskConversationSourceContextView(body.sourceContext);
+      if (sourceContext.conversationId !== conversationId) {
+        identityMismatch('Ask Source Context response identity does not match the request.');
+      }
+      return sourceContext;
     },
     async getBranch(conversationId, branchId, requestOptions) {
       const response = await request(

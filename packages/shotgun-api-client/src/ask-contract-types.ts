@@ -14,6 +14,8 @@ export type {
   AskAnswerRunTransitionSeedRequest,
   AskTransitionSeedView,
   AskConversationView,
+  AskConversationSourceContextQuery,
+  AskConversationSourceContextView,
   AskBranchView,
   AskWorkspaceView,
   SubmitAskQuestionRequest,

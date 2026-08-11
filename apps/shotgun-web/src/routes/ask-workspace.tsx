@@ -23,7 +23,10 @@ import { useAppRuntime } from '../app/providers.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
 import { useLeaveGuard } from '../session/leave-guard-context.js';
-import { sourcesLibraryQueryOptions } from '../sources/sources-queries.js';
+import {
+  askConversationSourceContextQueryOptions,
+  sourcesLibraryQueryOptions,
+} from '../sources/sources-queries.js';
 
 const SOURCE_CONTEXT_QUERY: SourceLibraryQuery = {
   schemaVersion: '1.0.0',
@@ -85,7 +88,18 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     enabled:
       mode !== 'CANONICAL_ONLY' &&
       workspace !== undefined &&
+      conversationId === undefined &&
       shell.activeProject?.id === workspace.projectId,
+  });
+  const conversationSourceContext = useQuery({
+    ...askConversationSourceContextQueryOptions(
+      askClient,
+      shell,
+      workspace,
+      conversationId,
+      SOURCE_CONTEXT_QUERY,
+    ),
+    enabled: mode !== 'CANONICAL_ONLY' && workspace !== undefined && conversationId !== undefined,
   });
 
   const questionRef = useRef(question);
@@ -298,12 +312,23 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   const submissionAvailable = workspace.capabilities.includes('SUBMIT_QUESTION') && followUpReady;
   const answerRunMutationPending = pendingAnswerRunCommand !== undefined;
   const sourceLibraryPage = sourceLibrary.data;
-  const sourceContextProjectMatches = sourceLibraryPage?.projectId === workspace.projectId;
-  const sourceOptions =
-    sourceContextProjectMatches && sourceLibraryPage
-      ? sourceLibraryPage.items.filter((source) => source.projectId === workspace.projectId)
-      : [];
-  const sourceContextAvailable = shell.activeProject?.id === workspace.projectId;
+  const conversationSourceContextView = conversationSourceContext.data;
+  const sourceContextProjectMatches = conversationId
+    ? conversationSourceContextView?.resourceProjectId === workspace.projectId
+    : sourceLibraryPage?.projectId === workspace.projectId;
+  const sourceOptions = sourceContextProjectMatches
+    ? (conversationSourceContextView?.items ?? sourceLibraryPage?.items ?? []).filter(
+        (source) => source.projectId === workspace.projectId,
+      )
+    : [];
+  const sourceContextAvailable =
+    conversationId !== undefined || shell.activeProject?.id === workspace.projectId;
+  const sourceContextPending = conversationId
+    ? conversationSourceContext.isPending
+    : sourceLibrary.isPending;
+  const sourceContextError = conversationId
+    ? conversationSourceContext.isError
+    : sourceLibrary.isError;
   const sourceSelectionMissing = mode === 'SOURCE_EXPLORATION' && sourceSelections.length === 0;
 
   const toggleSourceSelection = (source: SourceLibraryItem) => {
@@ -741,9 +766,9 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                     Source selection is unavailable because the Active Project does not match this
                     Conversation Project.
                   </p>
-                ) : sourceLibrary.isPending ? (
+                ) : sourceContextPending ? (
                   <p role="status">Loading server-authorized Sources…</p>
-                ) : sourceLibrary.isError ? (
+                ) : sourceContextError ? (
                   <p role="alert">Server-authorized Sources could not be loaded.</p>
                 ) : !sourceContextProjectMatches ? (
                   <p role="alert">The Source Library Project does not match this Ask resource.</p>

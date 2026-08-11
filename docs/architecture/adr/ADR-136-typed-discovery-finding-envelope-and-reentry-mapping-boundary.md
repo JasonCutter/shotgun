@@ -1,7 +1,10 @@
 # ADR-136 — Typed Discovery Finding Envelope and Re-entry Mapping Boundary
 
-- Status: **PROPOSED**
+- Status: **ACCEPTED**
 - Proposed at: 2026-08-11
+- Decision date: 2026-08-12
+- Accepted at: 2026-08-12
+- Accepted by: `USER`
 - Decision owner: `USER`
 - Work item: `AKP-2 — Discovery Finding Model`
 - Subject base: `main@f08ae632220ac613ae0e90c04930ceb323aac40b`

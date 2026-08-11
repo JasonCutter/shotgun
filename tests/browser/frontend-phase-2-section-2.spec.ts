@@ -128,7 +128,7 @@ test('Ask Conversation current item and Answer actions remain clear on a narrow 
     'Propose Draft ChangeSet',
     'Propose Directive',
   ]) {
-    await expect(actions.getByRole('button', { name: label })).toBeVisible();
+    await expect(actions.getByRole('button', { name: label, exact: true })).toBeVisible();
   }
   const layout = await actions.evaluate((element) => ({
     clientWidth: element.clientWidth,

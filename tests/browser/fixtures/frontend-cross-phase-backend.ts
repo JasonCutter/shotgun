@@ -92,6 +92,7 @@ import {
   DEFAULT_PROJECT_ID,
   LOCAL_OWNER_ACCOUNT_ID,
 } from '../../../packages/authentication/src/index.js';
+import { requireTestDatabaseTarget } from '../../../scripts/database-target-guard.js';
 
 /**
  * WP-XP1 — Cross-Phase production-composition parity fixture.
@@ -112,8 +113,7 @@ import {
  * spec; the existing per-Section browser fixture on 3001 is untouched.
  */
 export async function startFrontendCrossPhaseBackend() {
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) throw new Error('DATABASE_URL is required for the Cross-Phase fixture.');
+  const databaseUrl = await requireTestDatabaseTarget();
   const pool = createPostgresPool(databaseUrl);
   const authRepository = new PostgresAuthRepository(pool);
   const projectAdminRepository = new PostgresProjectAdministrationRepository(pool);
@@ -126,7 +126,7 @@ export async function startFrontendCrossPhaseBackend() {
   // project and the owner membership on the shared database. The Cross-Phase
   // journey creates its own projects through the real Settings/Product API,
   // so the default project creation here is guarded (idempotent across the
-  // two backends sharing DATABASE_URL).
+  // two backends sharing the validated TEST_DATABASE_URL).
   try {
     await projectAdminRepository.createProject({
       commandId: 'cross-phase-default-project',

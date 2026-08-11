@@ -6,7 +6,7 @@ Accepted.
 
 - Approval date: 2026-07-28
 - Approver: User
-- Implementation status: not started
+- Implementation status: implemented; database isolation safety correction added 2026-08-11
 - Classification: developer experience and engineering workflow contract
 
 ## Context
@@ -130,3 +130,22 @@ Transition rules:
 ## Approval boundary
 
 This document accepts the developer workflow contract. It does not authorize implementation, CI changes, PR-ready transition, or merge without the normal implementation and verification process.
+
+## Decision 3 — Dedicated test database and destructive-operation safety
+
+Database-backed tests and normal local use must never share database authority:
+
+- `DATABASE_URL` belongs to `npm run launch`, normal local persistence, migration, and verification.
+- `TEST_DATABASE_URL` belongs only to database-backed tests, browser fixtures, recovery fixtures, performance fixtures, and test database reset/verification.
+- Test code must never fall back from `TEST_DATABASE_URL` to `DATABASE_URL`.
+- `.env` and `.env.test` are separate local configuration files. The repository examples use the persistent `shotgun` database on port 5432 and the dedicated `shotgun_test` database on port 5433.
+- Every database-backed test entrypoint calls the shared `requireTestDatabaseTarget()` guard before creating a pool. Direct execution of one Vitest database file is subject to the same guard.
+- The guard fails before fixture execution when the test URL is missing, invalid, outside the approved `shotgun_test` namespace, or resolves to the same normalized server/database identity as `DATABASE_URL`.
+- A successful URL check is insufficient: the guard connects and verifies `current_database()` before returning the target.
+- `CI=true` never bypasses these checks.
+- `npm run db:test:reset` and `npm run db:test:verify` operate only on a validated `TEST_DATABASE_URL` target.
+- General `npm run db:reset` remains an explicit owner operation. It requires the non-interactive `SHOTGUN_CONFIRM_DATABASE_RESET` value to exactly match the normalized `host:port/database` target and verifies `current_database()` before dropping schemas.
+- CI provisions `shotgun_test`, supplies `TEST_DATABASE_URL`, and preserves the existing clean reset-before-test workflow.
+- `npm run launch` does not read `TEST_DATABASE_URL` and never performs reset implicitly.
+
+These rules are an engineering workflow safety boundary. They do not change Product authority, domain schema, migration history, or recovery policy.

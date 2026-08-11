@@ -26,8 +26,9 @@ import {
   type FrontendCommandRequest,
 } from '../../packages/contracts/src/index.js';
 
-const databaseUrl = process.env.DATABASE_URL;
-if (!databaseUrl) throw new Error('DATABASE_URL is required for Ask PostgreSQL tests.');
+import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
+
+const databaseUrl = await requireTestDatabaseTarget();
 
 const newRuntime = (pool: Pool) => {
   const gateway = new PostgresFrontendCommandGateway(pool);

@@ -17,7 +17,9 @@ import {
   type CanonicalSnapshotClaim,
 } from '../../packages/contracts/src/index.js';
 
-const databaseUrl = process.env.DATABASE_URL;
+import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
+
+const databaseUrl = await requireTestDatabaseTarget();
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
 
 const makeCanonical = () => {

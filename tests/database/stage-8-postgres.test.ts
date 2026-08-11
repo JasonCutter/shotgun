@@ -23,7 +23,9 @@ import { createOriginalAssetModule } from '../../modules/original-asset/src/inde
 import { createTransformationModule } from '../../modules/transformation/src/index.js';
 import { fileCommand } from '../helpers/stage-2.js';
 
-const databaseUrl = process.env.DATABASE_URL;
+import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
+
+const databaseUrl = await requireTestDatabaseTarget();
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
 
 describe.runIf(pool)('Stage 8 PostgreSQL format persistence', () => {

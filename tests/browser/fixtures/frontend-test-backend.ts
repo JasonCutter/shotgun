@@ -44,14 +44,14 @@ import {
   type AskAnswerRunSnapshot,
   type AskConversationView,
 } from '../../../packages/contracts/src/index.js';
+import { requireTestDatabaseTarget } from '../../../scripts/database-target-guard.js';
 import { ASK_FIXTURE } from './ask-workspace-fixture.js';
 
 const sha256Bytes = (bytes: Uint8Array): string =>
   `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
 
 export async function startFrontendTestBackend() {
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) throw new Error('DATABASE_URL is required for the browser fixture.');
+  const databaseUrl = await requireTestDatabaseTarget();
   const pool = createPostgresPool(databaseUrl);
   const authRepository = new PostgresAuthRepository(pool);
   const projectAdminRepository = new PostgresProjectAdministrationRepository(pool);

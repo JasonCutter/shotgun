@@ -15,7 +15,9 @@ import {
 } from '../../packages/authentication/src/index.js';
 import { dropSchemas, migrateUpTo } from '../../scripts/database.js';
 
-const databaseUrl = process.env.DATABASE_URL;
+import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
+
+const databaseUrl = await requireTestDatabaseTarget();
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
 
 describe.runIf(pool)('Stage 12.1 P0-1 PostgreSQL authentication persistence', () => {
@@ -284,15 +286,15 @@ describe.runIf(pool)('Stage 12.1 P0-1 PostgreSQL authentication persistence', ()
 
   describe('Real Migration 014 -> 015 Upgrade Test', () => {
     afterEach(async () => {
-      await dropSchemas();
-      await migrateUpTo();
+      await dropSchemas(databaseUrl);
+      await migrateUpTo(undefined, databaseUrl);
     });
 
     it('upgrades clean schema from migration 014 to 015 with existing data backfill and safety checks', async () => {
       try {
         // 1. Prepare schema up to Migration 014
-        await dropSchemas();
-        await migrateUpTo('014_stage12_1_ai_durable_materialization.sql');
+        await dropSchemas(databaseUrl);
+        await migrateUpTo('014_stage12_1_ai_durable_materialization.sql', databaseUrl);
 
         // 2. Insert existing Password Principal, Credential, Membership, Session into 014 schema
         const principalId = randomUUID();
@@ -370,16 +372,16 @@ describe.runIf(pool)('Stage 12.1 P0-1 PostgreSQL authentication persistence', ()
         expect(localOwnerMembership).toBeDefined();
         expect(localOwnerMembership?.principalId).toBe(localOwnerPrincipalId);
       } finally {
-        await dropSchemas();
-        await migrateUpTo();
+        await dropSchemas(databaseUrl);
+        await migrateUpTo(undefined, databaseUrl);
       }
     });
 
     it('fails Migration 015 explicitly when duplicate account_ids exist in auth.credentials before migration', async () => {
       try {
         // 1. Prepare schema up to Migration 014
-        await dropSchemas();
-        await migrateUpTo('014_stage12_1_ai_durable_materialization.sql');
+        await dropSchemas(databaseUrl);
+        await migrateUpTo('014_stage12_1_ai_durable_materialization.sql', databaseUrl);
 
         // 2. Insert two principals with credentials having the SAME account_id (duplicate)
         await pool!.query(
@@ -407,8 +409,8 @@ describe.runIf(pool)('Stage 12.1 P0-1 PostgreSQL authentication persistence', ()
 
         await expect(pool!.query(migration015Sql)).rejects.toThrow();
       } finally {
-        await dropSchemas();
-        await migrateUpTo();
+        await dropSchemas(databaseUrl);
+        await migrateUpTo(undefined, databaseUrl);
       }
     });
   });

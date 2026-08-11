@@ -9,7 +9,9 @@ import { PostgresFrontendKnowledgeGraphStores } from '../../adapters/frontend-kn
 import type { HealthStorePort } from '../../modules/frontend-knowledge-graph/src/index.js';
 import type { SnapshotContextStorePort } from '../../modules/frontend-knowledge-graph/src/index.js';
 
-const databaseUrl = process.env.DATABASE_URL;
+import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
+
+const databaseUrl = await requireTestDatabaseTarget();
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
 
 const descriptor = (snapshotId: string) => ({

@@ -3,7 +3,9 @@ import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
 import { dropSchemas, migrateUpTo } from '../../scripts/database.js';
 
-const databaseUrl = process.env.DATABASE_URL;
+import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
+
+const databaseUrl = await requireTestDatabaseTarget();
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
 
 afterAll(async () => {
@@ -12,15 +14,15 @@ afterAll(async () => {
 
 describe.runIf(pool)('Migration 019 to 020 compatibility', () => {
   afterEach(async () => {
-    await dropSchemas();
-    await migrateUpTo();
+    await dropSchemas(databaseUrl);
+    await migrateUpTo(undefined, databaseUrl);
   });
 
   it('upgrades from 019, creates no Product history, and repeat apply is a no-op', async () => {
-    await dropSchemas();
-    await migrateUpTo('019_frontend_section3_principal_bootstrap.sql');
-    await migrateUpTo('020_frontend_phase2_sources_product_persistence.sql');
-    await migrateUpTo('020_frontend_phase2_sources_product_persistence.sql');
+    await dropSchemas(databaseUrl);
+    await migrateUpTo('019_frontend_section3_principal_bootstrap.sql', databaseUrl);
+    await migrateUpTo('020_frontend_phase2_sources_product_persistence.sql', databaseUrl);
+    await migrateUpTo('020_frontend_phase2_sources_product_persistence.sql', databaseUrl);
 
     expect(
       await pool!.query(
@@ -42,8 +44,8 @@ describe.runIf(pool)('Migration 019 to 020 compatibility', () => {
   });
 
   it('stops rather than overwriting an unknown Stage 2 channel constraint', async () => {
-    await dropSchemas();
-    await migrateUpTo('019_frontend_section3_principal_bootstrap.sql');
+    await dropSchemas(databaseUrl);
+    await migrateUpTo('019_frontend_section3_principal_bootstrap.sql', databaseUrl);
     await pool!.query(`
       ALTER TABLE intake.submissions DROP CONSTRAINT submissions_channel_check;
       ALTER TABLE intake.submissions ADD CONSTRAINT submissions_channel_check
@@ -51,7 +53,7 @@ describe.runIf(pool)('Migration 019 to 020 compatibility', () => {
     `);
 
     await expect(
-      migrateUpTo('020_frontend_phase2_sources_product_persistence.sql'),
+      migrateUpTo('020_frontend_phase2_sources_product_persistence.sql', databaseUrl),
     ).rejects.toThrow(/channel constraint differs from Migration 002/);
     expect(
       await pool!.query(

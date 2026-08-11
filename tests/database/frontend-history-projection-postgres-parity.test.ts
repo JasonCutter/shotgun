@@ -58,7 +58,9 @@ const watermark = (input: {
   lastSourcePosition: input.projectedAt,
 });
 
-const databaseUrl = process.env.DATABASE_URL;
+import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
+
+const databaseUrl = await requireTestDatabaseTarget();
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
 
 const pgStore = (): HistoryReadModelStorePort => createPostgresHistoryReadModelStore(pool!);

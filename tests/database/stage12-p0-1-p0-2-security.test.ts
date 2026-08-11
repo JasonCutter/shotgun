@@ -43,10 +43,9 @@ import {
   type SentenceEvidenceFixture,
 } from '../helpers/stage-12-evidence.js';
 
-const databaseUrl = process.env.DATABASE_URL;
-if (!databaseUrl) {
-  throw new Error('DATABASE_URL is required for the Stage 12.1 P0-1/P0-2 Security Gate tests.');
-}
+import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
+
+const databaseUrl = await requireTestDatabaseTarget();
 
 const pool = createPostgresPool(databaseUrl);
 const projectId = 'shotgun';

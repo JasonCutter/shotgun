@@ -24,11 +24,10 @@ import {
 } from '../packages/quality-evaluation/src/index.js';
 import type { HandlerContext } from '../packages/module-sdk/src/index.js';
 import { migrateUpTo } from './database.js';
+import { requireTestDatabaseTarget } from './database-target-guard.js';
 import { loadQualityCorpus } from '../tests/helpers/quality-evaluation.js';
 
-const baseDatabaseUrl = process.env.DATABASE_URL;
-if (!baseDatabaseUrl)
-  throw new Error('DATABASE_URL is required for the PostgreSQL search baseline.');
+const baseDatabaseUrl = await requireTestDatabaseTarget();
 
 const outputFile = path.resolve('docs', 'engineering', 'baselines', 'search-baseline.v1.json');
 const applicationCommitSha = (): string =>
@@ -44,16 +43,8 @@ isolatedUrl.pathname = `/${isolatedDatabaseName}`;
 const admin = new Client({ connectionString: baseUrl.toString() });
 let databaseCreated = false;
 
-const applyMigrations = async (connectionString: string): Promise<void> => {
-  const previous = process.env.DATABASE_URL;
-  process.env.DATABASE_URL = connectionString;
-  try {
-    await migrateUpTo();
-  } finally {
-    if (previous === undefined) delete process.env.DATABASE_URL;
-    else process.env.DATABASE_URL = previous;
-  }
-};
+const applyMigrations = async (connectionString: string): Promise<void> =>
+  migrateUpTo(undefined, connectionString);
 
 await admin.connect();
 try {

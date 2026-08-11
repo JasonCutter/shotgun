@@ -5,7 +5,9 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { PostgresSourcesIntakeUnitOfWork } from '../../adapters/frontend-sources-write-postgres/src/index.js';
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
 
-const databaseUrl = process.env.DATABASE_URL;
+import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
+
+const databaseUrl = await requireTestDatabaseTarget();
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
 const digest = (value: string): string =>
   `sha256:${createHash('sha256').update(value).digest('hex')}`;

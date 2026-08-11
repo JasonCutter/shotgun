@@ -28,7 +28,9 @@ import type { ResolvedSourcesStagingArtifact } from '../../modules/frontend-sour
  *   재시도 가능 → 같은 SourceVersion으로 Transformation/Evidence 완료 →
  *   Source/SourceVersion 중복 생성 없음
  */
-const databaseUrl = process.env.DATABASE_URL;
+import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
+
+const databaseUrl = await requireTestDatabaseTarget();
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
 const hash = (value: string): string =>
   `sha256:${createHash('sha256').update(value).digest('hex')}`;

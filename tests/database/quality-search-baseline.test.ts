@@ -20,7 +20,9 @@ import {
 import type { HandlerContext } from '../../packages/module-sdk/src/index.js';
 import { loadQualityCorpus } from '../helpers/quality-evaluation.js';
 
-const databaseUrl = process.env.DATABASE_URL;
+import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
+
+const databaseUrl = await requireTestDatabaseTarget();
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
 
 describe.runIf(pool)('Quality Section 3 PostgreSQL search baseline', () => {

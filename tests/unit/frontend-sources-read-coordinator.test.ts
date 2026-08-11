@@ -15,7 +15,7 @@ const now = '2026-07-30T12:00:00.000Z';
 const scope = {
   principalId: 'principal-1',
   sessionId: 'session-1',
-  activeProjectId: 'project-1',
+  authorizedProjectId: 'project-1',
   accessScopes: ['owner'],
   sensitivityClearance: 'private' as SourcesSensitivity,
   accessRevision: 'access-1',
@@ -196,7 +196,7 @@ describe('FrontendSourcesReadCoordinator', () => {
     ).resolves.toMatchObject({ items: [] });
   });
 
-  it('binds pagination cursor to Project, query digest and projection revision', async () => {
+  it('binds pagination cursor to Project, query, projection and current authority revisions', async () => {
     const repository = new InMemoryOriginalAssetRepository();
     const storage = new InMemoryAssetStorage();
     const evidence = new InMemoryEvidenceRepository();
@@ -211,6 +211,25 @@ describe('FrontendSourcesReadCoordinator', () => {
     };
     const first = await coordinator.list(scope, query);
     expect(first.nextCursor).toBeDefined();
+
+    await expect(
+      coordinator.list(
+        { ...scope, policyContextRevision: 'policy-2' },
+        { ...query, cursor: first.nextCursor },
+      ),
+    ).rejects.toMatchObject({ code: 'STALE_VERSION' });
+    await expect(
+      coordinator.list(
+        { ...scope, accessRevision: 'access-2' },
+        { ...query, cursor: first.nextCursor },
+      ),
+    ).rejects.toMatchObject({ code: 'STALE_VERSION' });
+    await expect(
+      coordinator.list(
+        { ...scope, authorizedProjectId: 'project-2' },
+        { ...query, cursor: first.nextCursor },
+      ),
+    ).rejects.toMatchObject({ code: 'STALE_VERSION' });
 
     await seed(repository, storage, { submissionId: 'submission-3', text: 'Three' });
     await expect(

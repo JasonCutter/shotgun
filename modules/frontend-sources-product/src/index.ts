@@ -45,10 +45,10 @@ export type SourcesEvidenceReaderPort = {
   listBySourceVersion(projectId: string, sourceVersionId: string): Promise<readonly EvidenceSpan[]>;
 };
 
-export type SourcesReadScope = {
+export type ServerAuthorizedProjectSourcesReadScope = {
   readonly principalId: string;
   readonly sessionId: string;
-  readonly activeProjectId: string;
+  readonly authorizedProjectId: string;
   readonly accessScopes: readonly string[];
   readonly sensitivityClearance: SourcesSensitivity;
   readonly accessRevision: string;
@@ -59,6 +59,8 @@ type CursorPayload = {
   readonly projectId: string;
   readonly queryDigest: string;
   readonly projectionRevision: string;
+  readonly accessRevision: string;
+  readonly policyContextRevision: string;
   readonly offset: number;
 };
 
@@ -85,8 +87,11 @@ const projectionRevision = (records: readonly SourcesProjectionRecord[]): string
     ),
   );
 
-const assertAuthorized = (record: SourcesProjectionRecord, scope: SourcesReadScope): boolean => {
-  if (record.projectId !== scope.activeProjectId) return false;
+const assertAuthorized = (
+  record: SourcesProjectionRecord,
+  scope: ServerAuthorizedProjectSourcesReadScope,
+): boolean => {
+  if (record.projectId !== scope.authorizedProjectId) return false;
   if (sensitivityRank[record.sensitivity] > sensitivityRank[scope.sensitivityClearance]) {
     return false;
   }
@@ -135,6 +140,8 @@ const decodeCursor = (value: string): CursorPayload | undefined => {
       typeof (parsed as CursorPayload).projectId !== 'string' ||
       typeof (parsed as CursorPayload).queryDigest !== 'string' ||
       typeof (parsed as CursorPayload).projectionRevision !== 'string' ||
+      typeof (parsed as CursorPayload).accessRevision !== 'string' ||
+      typeof (parsed as CursorPayload).policyContextRevision !== 'string' ||
       !Number.isInteger((parsed as CursorPayload).offset) ||
       (parsed as CursorPayload).offset < 0
     ) {
@@ -166,13 +173,16 @@ export class FrontendSourcesReadCoordinator {
     private readonly evidence: SourcesEvidenceReaderPort,
   ) {}
 
-  private async authorizedRecords(scope: SourcesReadScope) {
-    return (await this.sources.listProjectSourceVersions(scope.activeProjectId)).filter((record) =>
-      assertAuthorized(record, scope),
+  private async authorizedRecords(scope: ServerAuthorizedProjectSourcesReadScope) {
+    return (await this.sources.listProjectSourceVersions(scope.authorizedProjectId)).filter(
+      (record) => assertAuthorized(record, scope),
     );
   }
 
-  async list(scope: SourcesReadScope, query: SourceLibraryQuery): Promise<SourceLibraryPageView> {
+  async list(
+    scope: ServerAuthorizedProjectSourcesReadScope,
+    query: SourceLibraryQuery,
+  ): Promise<SourceLibraryPageView> {
     const records = await this.authorizedRecords(scope);
     const revision = projectionRevision(records);
     const digest = queryDigestFor(query);
@@ -180,9 +190,11 @@ export class FrontendSourcesReadCoordinator {
     if (
       query.cursor !== undefined &&
       (!cursor ||
-        cursor.projectId !== scope.activeProjectId ||
+        cursor.projectId !== scope.authorizedProjectId ||
         cursor.queryDigest !== digest ||
-        cursor.projectionRevision !== revision)
+        cursor.projectionRevision !== revision ||
+        cursor.accessRevision !== scope.accessRevision ||
+        cursor.policyContextRevision !== scope.policyContextRevision)
     ) {
       throw new ShotgunError({
         code: 'STALE_VERSION',
@@ -217,7 +229,7 @@ export class FrontendSourcesReadCoordinator {
       schemaVersion: '1.0.0',
       principalId: scope.principalId,
       sessionId: scope.sessionId,
-      projectId: scope.activeProjectId,
+      projectId: scope.authorizedProjectId,
       items: pageRecords.map((record) => ({
         sourceId: record.sourceId,
         projectId: record.projectId,
@@ -236,9 +248,11 @@ export class FrontendSourcesReadCoordinator {
       ...(nextOffset < sorted.length
         ? {
             nextCursor: encodeCursor({
-              projectId: scope.activeProjectId,
+              projectId: scope.authorizedProjectId,
               queryDigest: digest,
               projectionRevision: revision,
+              accessRevision: scope.accessRevision,
+              policyContextRevision: scope.policyContextRevision,
               offset: nextOffset,
             }),
           }
@@ -252,7 +266,10 @@ export class FrontendSourcesReadCoordinator {
     });
   }
 
-  async detail(scope: SourcesReadScope, sourceId: string): Promise<SourceDetailView | null> {
+  async detail(
+    scope: ServerAuthorizedProjectSourcesReadScope,
+    sourceId: string,
+  ): Promise<SourceDetailView | null> {
     const records = (await this.authorizedRecords(scope)).filter(
       (record) => record.sourceId === sourceId,
     );
@@ -283,7 +300,7 @@ export class FrontendSourcesReadCoordinator {
   }
 
   async history(
-    scope: SourcesReadScope,
+    scope: ServerAuthorizedProjectSourcesReadScope,
     sourceId: string,
     selectedSourceVersionId: string,
   ): Promise<SourceVersionHistoryView | null> {
@@ -309,7 +326,7 @@ export class FrontendSourcesReadCoordinator {
     return decodeSourceVersionHistoryView({
       schemaVersion: '1.0.0',
       sourceId,
-      projectId: scope.activeProjectId,
+      projectId: scope.authorizedProjectId,
       selectedSourceVersionId,
       versions: records.slice(0, 100).map((record) => ({
         sourceVersionId: record.sourceVersionId,
@@ -330,7 +347,7 @@ export class FrontendSourcesReadCoordinator {
   }
 
   async preview(
-    scope: SourcesReadScope,
+    scope: ServerAuthorizedProjectSourcesReadScope,
     sourceId: string,
     sourceVersionId: string,
     mode: 'ORIGINAL' | 'TRANSFORMED',
@@ -369,7 +386,7 @@ export class FrontendSourcesReadCoordinator {
   }
 
   async evidenceList(
-    scope: SourcesReadScope,
+    scope: ServerAuthorizedProjectSourcesReadScope,
     sourceId: string,
     sourceVersionId: string,
   ): Promise<EvidenceListView | null> {

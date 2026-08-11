@@ -4,6 +4,10 @@ import type { FastifyInstance } from 'fastify';
 
 import type { FrontendProductReadCoordinator } from '../../../../modules/frontend-product-read/src/index.js';
 import type {
+  FrontendSourcesReadCoordinator,
+  ServerAuthorizedProjectSourcesReadScope,
+} from '../../../../modules/frontend-sources-product/src/index.js';
+import type {
   AskCommandCoordinator,
   AskProjectExecutionAuthority,
 } from '../../../../modules/frontend-ask-write/src/index.js';
@@ -26,6 +30,8 @@ import {
   decodeAskAnswerRunRetryRequest,
   decodeAskAnswerRunTransitionSeedRequest,
   decodeSubmitAskQuestionRequest,
+  decodeAskConversationSourceContextQuery,
+  decodeAskConversationSourceContextView,
   decodeTargetRouteView,
   decodeKnowledgeWorkspaceRequest,
   decodeKnowledgePageListRequest,
@@ -59,6 +65,7 @@ export const registerFrontendProductRoutes = (
     readonly askCommandCoordinator?: AskCommandCoordinator;
     readonly askAnswerExecution?: AskAnswerExecutionService;
     readonly frontendCommandGateway?: FrontendCommandGatewayPort;
+    readonly frontendSourcesReadCoordinator?: FrontendSourcesReadCoordinator;
   },
 ): void => {
   const timed = async <T>(operation: () => Promise<T>) => {
@@ -165,6 +172,21 @@ export const registerFrontendProductRoutes = (
           safeMessage: 'Knowledge request is invalid.',
           module: 'frontend-product-read',
           operation,
+        });
+      }
+      throw error;
+    }
+  };
+  const decodeConversationSourceContextQuery = (value: unknown) => {
+    try {
+      return decodeAskConversationSourceContextQuery(value);
+    } catch (error) {
+      if (error instanceof FrontendContractError) {
+        throw new ShotgunError({
+          code: 'INVALID_REQUEST',
+          safeMessage: 'The Conversation Source Context query is invalid.',
+          module: 'frontend-product-read',
+          operation: 'decode-conversation-source-context-query',
         });
       }
       throw error;
@@ -563,6 +585,73 @@ export const registerFrontendProductRoutes = (
     reply.header('server-timing', serverTiming(scope.durationMs, projection.durationMs));
     return { conversation: projection.value };
   });
+
+  server.post<{
+    Params: { conversationId: string };
+    Body: unknown;
+    Headers: SecurityHeaders;
+  }>(
+    '/product-api/frontend/ask/conversations/:conversationId/source-context/query',
+    async (request, reply) => {
+      const scope = await timed(() => buildScope(request.headers));
+      const conversationId = request.params.conversationId;
+      const query = decodeConversationSourceContextQuery(request.body);
+      const conversation = await coordinator.getAskConversation({
+        ...scope.value,
+        conversationId,
+      });
+      const membership = await authRepository.findMembership(
+        scope.value.principalId,
+        conversation.projectId,
+      );
+      if (!membership) {
+        throw new ShotgunError({
+          code: 'NOT_FOUND',
+          safeMessage: 'The requested Conversation Source Context was not found.',
+          module: 'frontend-product-read',
+          operation: 'resolve-conversation-source-context-membership',
+        });
+      }
+      const sources = options?.frontendSourcesReadCoordinator;
+      if (!sources) {
+        throw new ShotgunError({
+          code: 'NOT_FOUND',
+          safeMessage: 'The requested Conversation Source Context was not found.',
+          module: 'frontend-product-read',
+          operation: 'resolve-conversation-source-context-sources',
+        });
+      }
+      const settings = await settingsRepository.getSettingsSnapshot(conversation.projectId);
+      const sourceScope: ServerAuthorizedProjectSourcesReadScope = {
+        principalId: scope.value.principalId,
+        sessionId: scope.value.sessionId,
+        authorizedProjectId: conversation.projectId,
+        accessScopes: membership.scopes.slice().sort(),
+        sensitivityClearance: membership.sensitivityClearance,
+        accessRevision: `${conversation.projectId}:${membership.scopes.slice().sort().join(',')}`,
+        policyContextRevision: String(settings.policyContextRevision),
+      };
+      const projection = await timed(() => sources.list(sourceScope, query));
+      const page = projection.value;
+      const sourceContext = decodeAskConversationSourceContextView({
+        schemaVersion: '1.0.0',
+        principalId: page.principalId,
+        sessionId: page.sessionId,
+        conversationId: conversation.conversationId,
+        resourceProjectId: conversation.projectId,
+        items: page.items,
+        ...(page.nextCursor === undefined ? {} : { nextCursor: page.nextCursor }),
+        queryDigest: page.queryDigest,
+        projectionRevision: page.projectionRevision,
+        accessRevision: page.accessRevision,
+        policyContextRevision: page.policyContextRevision,
+        fetchedAt: page.fetchedAt,
+        stale: page.stale,
+      });
+      reply.header('server-timing', serverTiming(scope.durationMs, projection.durationMs));
+      return { sourceContext };
+    },
+  );
 
   server.get<{
     Params: { conversationId: string; branchId: string };

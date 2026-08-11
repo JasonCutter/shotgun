@@ -27,11 +27,18 @@ This directory and the registered consolidated ADR documents form the global ADR
 | ADR-095         | Reserved Legacy Gap                                                            |
 | ADR-096–ADR-099 | Individual files in this directory                                             |
 | ADR-100–ADR-113 | [Frontend consolidated record](../frontend/adr-100-113-consolidated-record.md) |
-| ADR-114–ADR-130 | Individual files in this directory                                             |
+| ADR-114–ADR-132 | Individual files in this directory                                             |
 
 The Phase records under `docs/architecture/add/` retain their approved 2026-07-16 decision text. ADR-100–113 preserve the accepted Frontend decisions and later Contract Normalization outcomes in one Git owner record while the individual Notion pages remain Legacy References.
 
-The current latest individual decision is [ADR-130 — Frontend Agent·Job Activity Federated Projection, Identity and Retry Boundary](ADR-130-frontend-agent-job-activity-authority-and-retry-boundary.md), Accepted on 2026-08-06. Its Product implementation remains separately unauthorized.
+ADR-131 and ADR-132 are authoritative individual files covered by the registered
+`ADR-114–ADR-132` owner range; references to those identifiers elsewhere do not
+create additional owners.
+
+The current latest individual decision is
+[ADR-132 — Conversation-Bound Source Context and Resource-Project Read Authority](ADR-132-conversation-bound-source-context-and-resource-project-read-authority.md),
+Accepted on 2026-08-11. Its Product implementation remains separately
+unauthorized.
 
 ## Reserved-gap rule
 

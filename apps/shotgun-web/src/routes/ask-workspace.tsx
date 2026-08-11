@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useOutletContext } from 'react-router';
 
@@ -10,14 +11,31 @@ import {
   type AskMode,
   type AskQuestionSubmissionOutcomeView,
   type AskQuestionSubmissionView,
+  type AskSourceSelectionView,
   type AskWorkspaceClient,
   type AskWorkspaceView,
   type GlobalShellView,
+  type SourceLibraryPageView,
+  type SourceLibraryQuery,
 } from '@shotgun/api-client';
 
+import { useAppRuntime } from '../app/providers.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
 import { useLeaveGuard } from '../session/leave-guard-context.js';
+import {
+  askConversationSourceContextQueryOptions,
+  sourcesLibraryQueryOptions,
+} from '../sources/sources-queries.js';
+
+const SOURCE_CONTEXT_QUERY: SourceLibraryQuery = {
+  schemaVersion: '1.0.0',
+  filters: {},
+  sort: 'UPDATED_DESC',
+  limit: 100,
+};
+
+type SourceLibraryItem = SourceLibraryPageView['items'][number];
 
 type PendingAskCommand = {
   readonly clientRequestId: string;
@@ -42,6 +60,7 @@ type OutcomeResolution =
 export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient }) => {
   const { conversationId } = useParams<{ readonly conversationId?: string }>();
   const { shell } = useOutletContext<{ readonly shell: GlobalShellView }>();
+  const { apiClient } = useAppRuntime();
   const location = useLocation();
   const ownedClient = useMemo(() => createAskWorkspaceClient(), []);
   const askClient = client ?? ownedClient;
@@ -50,6 +69,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   const [question, setQuestion] = useState('');
   const [draftOwnerProjectId, setDraftOwnerProjectId] = useState<string>();
   const [mode, setMode] = useState<AskMode>('CANONICAL_ONLY');
+  const [sourceSelections, setSourceSelections] = useState<readonly AskSourceSelectionView[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pendingCommand, setPendingCommand] = useState<PendingAskCommand>();
   const [outcomeUnknown, setOutcomeUnknown] = useState(false);
@@ -63,6 +83,24 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   const [exportedContent, setExportedContent] = useState<string>();
   const [error, setError] = useState<unknown>();
   const navigate = useNavigate();
+  const sourceLibrary = useQuery({
+    ...sourcesLibraryQueryOptions(apiClient, shell, SOURCE_CONTEXT_QUERY),
+    enabled:
+      mode !== 'CANONICAL_ONLY' &&
+      workspace !== undefined &&
+      conversationId === undefined &&
+      shell.activeProject?.id === workspace.projectId,
+  });
+  const conversationSourceContext = useQuery({
+    ...askConversationSourceContextQueryOptions(
+      askClient,
+      shell,
+      workspace,
+      conversationId,
+      SOURCE_CONTEXT_QUERY,
+    ),
+    enabled: mode !== 'CANONICAL_ONLY' && workspace !== undefined && conversationId !== undefined,
+  });
 
   const questionRef = useRef(question);
   questionRef.current = question;
@@ -72,6 +110,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     setWorkspace(undefined);
     setQuestion('');
     setDraftOwnerProjectId(undefined);
+    setSourceSelections([]);
     setPendingCommand(undefined);
     setOutcomeUnknown(false);
     setPendingAnswerRunCommand(undefined);
@@ -272,12 +311,49 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     Boolean(conversation && activeBranch?.branchRevision && conversation.conversationRevision);
   const submissionAvailable = workspace.capabilities.includes('SUBMIT_QUESTION') && followUpReady;
   const answerRunMutationPending = pendingAnswerRunCommand !== undefined;
+  const sourceLibraryPage = sourceLibrary.data;
+  const conversationSourceContextView = conversationSourceContext.data;
+  const sourceContextProjectMatches = conversationId
+    ? conversationSourceContextView?.resourceProjectId === workspace.projectId
+    : sourceLibraryPage?.projectId === workspace.projectId;
+  const sourceOptions = sourceContextProjectMatches
+    ? (conversationSourceContextView?.items ?? sourceLibraryPage?.items ?? []).filter(
+        (source) => source.projectId === workspace.projectId,
+      )
+    : [];
+  const sourceContextAvailable =
+    conversationId !== undefined || shell.activeProject?.id === workspace.projectId;
+  const sourceContextPending = conversationId
+    ? conversationSourceContext.isPending
+    : sourceLibrary.isPending;
+  const sourceContextError = conversationId
+    ? conversationSourceContext.isError
+    : sourceLibrary.isError;
+  const sourceSelectionMissing = mode === 'SOURCE_EXPLORATION' && sourceSelections.length === 0;
+
+  const toggleSourceSelection = (source: SourceLibraryItem) => {
+    setSourceSelections((previous) => {
+      const existing = previous.find((selection) => selection.sourceId === source.sourceId);
+      if (existing) {
+        return previous.filter((selection) => selection.sourceId !== source.sourceId);
+      }
+      return [
+        ...previous,
+        {
+          sourceId: source.sourceId,
+          sourceVersionId: source.selectedSourceVersionId,
+          evidenceIds: [],
+        },
+      ];
+    });
+  };
 
   const applyVerifiedSubmission = (submission: AskQuestionSubmissionView) => {
     setPendingCommand(undefined);
     setOutcomeUnknown(false);
     setSubmissionNotice(undefined);
     setQuestion('');
+    setSourceSelections([]);
     questionRef.current = '';
     if (submission.answerRun.conversationId !== conversationId) {
       navigate(`/ask/conversations/${encodeURIComponent(submission.answerRun.conversationId)}`);
@@ -364,6 +440,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
       !draftReady ||
       !submissionAvailable ||
       question.trim().length === 0 ||
+      sourceSelectionMissing ||
       isSubmitting ||
       outcomeUnknown
     ) {
@@ -396,7 +473,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
         ...followUpRequest,
         question: question.trim(),
         mode,
-        sourceSelections: [],
+        sourceSelections: mode === 'CANONICAL_ONLY' ? [] : sourceSelections,
       });
       applyVerifiedSubmission(submission);
     } catch {
@@ -653,51 +730,132 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
           This draft remains browser-only until the protected Ask command boundary is active. It is
           never treated as Canonical knowledge or original Evidence.
         </p>
-        <label htmlFor="ask-mode">Ask mode</label>
-        <select
-          id="ask-mode"
-          value={mode}
-          disabled={!draftReady || outcomeUnknown}
-          onChange={(event) => setMode(event.target.value as AskMode)}
+        <form
+          className="ask-question-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleSubmitQuestion();
+          }}
         >
-          {workspace.availableAskModes.map((availableMode) => (
-            <option key={availableMode} value={availableMode}>
-              {availableMode}
-            </option>
-          ))}
-        </select>
-        <label htmlFor="ask-question">Question</label>
-        <textarea
-          id="ask-question"
-          value={question}
-          maxLength={10_000}
-          disabled={!draftReady || outcomeUnknown}
-          onChange={(event) => setQuestion(event.target.value)}
-        />
-        <button
-          type="button"
-          disabled={
-            !draftReady ||
-            !submissionAvailable ||
-            question.trim().length === 0 ||
-            isSubmitting ||
-            outcomeUnknown
-          }
-          onClick={handleSubmitQuestion}
-        >
-          {isSubmitting ? 'Submitting…' : 'Submit question'}
-        </button>
-        {outcomeUnknown && pendingCommand ? (
-          <button type="button" disabled={isSubmitting} onClick={handleResolveOutcome}>
-            Check submission outcome
-          </button>
-        ) : null}
-        {submissionNotice ? <p role="status">{submissionNotice}</p> : null}
-        {!submissionAvailable ? (
-          <p role="status">
-            Server question submission is not available for this Conversation state.
-          </p>
-        ) : null}
+          <label htmlFor="ask-mode">Ask mode</label>
+          <select
+            id="ask-mode"
+            value={mode}
+            disabled={!draftReady || outcomeUnknown}
+            onChange={(event) => {
+              setMode(event.target.value as AskMode);
+              setSubmissionNotice(undefined);
+            }}
+          >
+            {workspace.availableAskModes.map((availableMode) => (
+              <option key={availableMode} value={availableMode}>
+                {availableMode}
+              </option>
+            ))}
+          </select>
+
+          {mode !== 'CANONICAL_ONLY' ? (
+            <>
+              <span className="ask-form-label" id="ask-source-context-label">
+                Source context
+              </span>
+              <fieldset className="ask-source-context" aria-labelledby="ask-source-context-label">
+                <legend className="visually-hidden">Source context</legend>
+                {!sourceContextAvailable ? (
+                  <p role="status">
+                    Source selection is unavailable because the Active Project does not match this
+                    Conversation Project.
+                  </p>
+                ) : sourceContextPending ? (
+                  <p role="status">Loading server-authorized Sources…</p>
+                ) : sourceContextError ? (
+                  <p role="alert">Server-authorized Sources could not be loaded.</p>
+                ) : !sourceContextProjectMatches ? (
+                  <p role="alert">The Source Library Project does not match this Ask resource.</p>
+                ) : sourceOptions.length === 0 ? (
+                  <p role="status">No Sources are available for Ask in this Project.</p>
+                ) : (
+                  <ul className="ask-source-list">
+                    {sourceOptions.map((source) => {
+                      const pinnedSelection = sourceSelections.find(
+                        (selection) => selection.sourceId === source.sourceId,
+                      );
+                      const selectable = source.capabilities.includes('SELECT_FOR_ASK');
+                      return (
+                        <li key={source.sourceId}>
+                          <label className="ask-source-option">
+                            <input
+                              type="checkbox"
+                              checked={pinnedSelection !== undefined}
+                              disabled={!selectable || !draftReady || outcomeUnknown}
+                              onChange={() => toggleSourceSelection(source)}
+                            />
+                            <span>
+                              <strong>{source.label}</strong>
+                              <span>Source: {source.sourceId}</span>
+                              <span>
+                                Pinned SourceVersion:{' '}
+                                {pinnedSelection?.sourceVersionId ?? source.selectedSourceVersionId}
+                              </span>
+                              <span>
+                                {source.askUsageState}: {source.askUsageExplanation}
+                              </span>
+                            </span>
+                          </label>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </fieldset>
+            </>
+          ) : null}
+
+          <label htmlFor="ask-question">Question</label>
+          <textarea
+            id="ask-question"
+            value={question}
+            maxLength={10_000}
+            disabled={!draftReady || outcomeUnknown}
+            onChange={(event) => setQuestion(event.target.value)}
+          />
+
+          <div className="ask-question-actions">
+            <button
+              type="submit"
+              disabled={
+                !draftReady ||
+                !submissionAvailable ||
+                question.trim().length === 0 ||
+                sourceSelectionMissing ||
+                isSubmitting ||
+                outcomeUnknown
+              }
+            >
+              {isSubmitting ? 'Submitting…' : 'Submit question'}
+            </button>
+            {outcomeUnknown && pendingCommand ? (
+              <button type="button" disabled={isSubmitting} onClick={handleResolveOutcome}>
+                Check submission outcome
+              </button>
+            ) : null}
+          </div>
+          {sourceSelectionMissing ? (
+            <p className="ask-form-status" role="status">
+              Select at least one Source before using SOURCE_EXPLORATION.
+            </p>
+          ) : null}
+          {submissionNotice ? (
+            <p className="ask-form-status" role="status">
+              {submissionNotice}
+            </p>
+          ) : null}
+          {!submissionAvailable ? (
+            <p className="ask-form-status" role="status">
+              Server question submission is not available for this Conversation state.
+            </p>
+          ) : null}
+        </form>
       </section>
 
       {answerRunCommandNotice ? <p role="status">{answerRunCommandNotice}</p> : null}

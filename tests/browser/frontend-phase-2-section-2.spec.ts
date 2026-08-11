@@ -19,6 +19,51 @@ test('Ask navigation enables question submission and clears draft on success', a
   await expect(submittedTurn).toBeVisible();
 });
 
+test('Ask Source Exploration pins a selected SourceVersion into the browser submission', async ({
+  page,
+}) => {
+  await page.goto('/ask');
+  await page.getByRole('combobox', { name: 'Ask mode' }).selectOption('SOURCE_EXPLORATION');
+
+  const source = page.getByRole('checkbox', { name: /ask-exploration-source\.txt/ });
+  await expect(source).toBeVisible();
+  await expect(
+    page.getByText(`Pinned SourceVersion: ${ASK_FIXTURE.selectableSourceVersionId}`),
+  ).toBeVisible();
+
+  const questionInput = page.getByRole('textbox', { name: 'Question', exact: true });
+  await questionInput.fill('What does the selected Source establish?');
+  const submitButton = page.getByRole('button', { name: 'Submit question' });
+  await expect(submitButton).toBeDisabled();
+  await expect(
+    page.getByText('Select at least one Source before using SOURCE_EXPLORATION.'),
+  ).toBeVisible();
+
+  await source.check();
+  await expect(submitButton).toBeEnabled();
+  const submitRequest = page.waitForRequest((request) =>
+    request.url().endsWith('/product-api/frontend/ask/questions'),
+  );
+  await submitButton.click();
+
+  expect((await submitRequest).postDataJSON()).toMatchObject({
+    mode: 'SOURCE_EXPLORATION',
+    sourceSelections: [
+      {
+        sourceId: ASK_FIXTURE.selectableSourceId,
+        sourceVersionId: ASK_FIXTURE.selectableSourceVersionId,
+        evidenceIds: [],
+      },
+    ],
+  });
+  await expect(questionInput).toHaveValue('');
+  await expect(
+    page.getByLabel('Main Branch').getByText('What does the selected Source establish?', {
+      exact: true,
+    }),
+  ).toBeVisible();
+});
+
 test('Ask draft blocks Project switching and is not moved to the next Project', async ({
   page,
 }) => {

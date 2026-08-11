@@ -6,6 +6,7 @@ import {
   homeActionCenterQueryKey,
   projectQueryKey,
   purgeProjectScopedCaches,
+  askConversationSourceContextQueryKey,
   sourceDetailQueryKey,
   sourceEvidenceQueryKey,
   sourcePreviewQueryKey,
@@ -90,6 +91,70 @@ describe('Frontend project query keys', () => {
     expect(sourceEvidenceQueryKey(base, 'source-a', 'version-a')).not.toEqual(
       sourceEvidenceQueryKey(base, 'source-a', 'version-b'),
     );
+  });
+
+  it('binds Ask Source Context caches to Active and Resource Projects plus Conversation authority', () => {
+    const scope = {
+      principalId: 'principal-a',
+      sessionId: 'session-a',
+      activeProjectId: 'project-b',
+      resourceProjectId: 'project-a',
+      projectionRevision: 'shell-projection-1',
+      sensitivity: 'private',
+      policyContextRevision: 'active-policy-1',
+    };
+    const key = askConversationSourceContextQueryKey(
+      scope,
+      'conversation-a',
+      'resource-access-1',
+      'resource-policy-1',
+      'query-digest',
+    );
+    expect(
+      askConversationSourceContextQueryKey(
+        { ...scope, activeProjectId: 'project-c' },
+        'conversation-a',
+        'resource-access-1',
+        'resource-policy-1',
+        'query-digest',
+      ),
+    ).not.toEqual(key);
+    expect(
+      askConversationSourceContextQueryKey(
+        { ...scope, resourceProjectId: 'project-b' },
+        'conversation-a',
+        'resource-access-1',
+        'resource-policy-1',
+        'query-digest',
+      ),
+    ).not.toEqual(key);
+    expect(
+      askConversationSourceContextQueryKey(
+        scope,
+        'conversation-b',
+        'resource-access-1',
+        'resource-policy-1',
+        'query-digest',
+      ),
+    ).not.toEqual(key);
+    expect(
+      askConversationSourceContextQueryKey(
+        scope,
+        'conversation-a',
+        'resource-access-2',
+        'resource-policy-1',
+        'query-digest',
+      ),
+    ).not.toEqual(key);
+    expect(
+      askConversationSourceContextQueryKey(
+        scope,
+        'conversation-a',
+        'resource-access-1',
+        'resource-policy-2',
+        'query-digest',
+      ),
+    ).not.toEqual(key);
   });
 
   it('purges Project, Settings, and Project-bound Shell caches on switch', async () => {

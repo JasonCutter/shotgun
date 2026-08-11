@@ -18,7 +18,10 @@ import {
   type SubmitStagedSourcesIntakeCommandPayload,
 } from '../../../../packages/contracts/src/index.js';
 import type { SettingsRepositoryPort } from '../../../../modules/settings-policy/src/index.js';
-import type { FrontendSourcesReadCoordinator } from '../../../../modules/frontend-sources-product/src/index.js';
+import type {
+  FrontendSourcesReadCoordinator,
+  ServerAuthorizedProjectSourcesReadScope,
+} from '../../../../modules/frontend-sources-product/src/index.js';
 import type { SourcesProductWriteScope } from '../../../../modules/frontend-sources-write/src/product-service.js';
 import type { SecurityHeaders } from '../server.js';
 import { rejectAcceptedCommand, toProductApiCommandError } from './frontend-command-route.js';
@@ -31,16 +34,6 @@ type PrincipalSessionResolver = (
   context?: { principalId: string; projectId: string };
   session: { sessionId: string; activeProjectId: string | null };
 }>;
-
-type SourcesReadScope = {
-  readonly principalId: string;
-  readonly sessionId: string;
-  readonly activeProjectId: string;
-  readonly accessScopes: readonly string[];
-  readonly sensitivityClearance: SourcesSensitivity;
-  readonly accessRevision: string;
-  readonly policyContextRevision: string;
-};
 
 const requireParameter = (value: unknown, name: string, maximum = 256): string => {
   if (typeof value !== 'string' || value.trim().length === 0 || value.length > maximum) {
@@ -87,7 +80,10 @@ export const registerSourcesRoutes = (
 
   const buildScope = async (
     headers: SecurityHeaders,
-  ): Promise<{ read: SourcesReadScope; write: SourcesProductWriteScope }> => {
+  ): Promise<{
+    read: ServerAuthorizedProjectSourcesReadScope;
+    write: SourcesProductWriteScope;
+  }> => {
     const current = await requirePrincipalBrowserSession(headers);
     const activeProjectId = current.session.activeProjectId;
     if (!activeProjectId || !current.context) {
@@ -110,7 +106,7 @@ export const registerSourcesRoutes = (
       read: {
         principalId: current.principalContext.principalId,
         sessionId: current.session.sessionId,
-        activeProjectId,
+        authorizedProjectId: activeProjectId,
         accessScopes: membership.scopes,
         sensitivityClearance: membership.sensitivityClearance as SourcesSensitivity,
         accessRevision,

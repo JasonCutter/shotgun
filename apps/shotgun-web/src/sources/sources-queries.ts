@@ -1,9 +1,16 @@
 import { queryOptions } from '@tanstack/react-query';
 
-import type { GlobalShellView, ShotgunApiClient, SourceLibraryQuery } from '@shotgun/api-client';
+import type {
+  AskWorkspaceClient,
+  AskWorkspaceView,
+  GlobalShellView,
+  ShotgunApiClient,
+  SourceLibraryQuery,
+} from '@shotgun/api-client';
 
 import {
   sourceDetailQueryKey,
+  askConversationSourceContextQueryKey,
   sourceEvidenceQueryKey,
   sourcePreviewQueryKey,
   sourcesLibraryQueryKey,
@@ -31,7 +38,9 @@ export const sourcesScopeFromShell = (
         activeProjectId: shell.activeProject.id,
         resourceProjectId,
         projectionRevision: shell.projectionRevision,
-        sensitivity: shell.activeProject.sensitivityClearance,
+        sensitivity:
+          shell.accessibleProjects.find((project) => project.id === resourceProjectId)
+            ?.sensitivityClearance ?? shell.activeProject.sensitivityClearance,
         policyContextRevision: shell.policyContextRevision,
       }
     : null;
@@ -49,6 +58,34 @@ export const sourcesLibraryQueryOptions = (
       : (['project', 'sources-library', 'no-project'] as const),
     queryFn: ({ signal }) => apiClient.listSources(query, { signal }),
     enabled: scope !== null,
+    retry: false,
+    staleTime: 15_000,
+  });
+};
+
+export const askConversationSourceContextQueryOptions = (
+  client: AskWorkspaceClient,
+  shell: GlobalShellView,
+  workspace: AskWorkspaceView | undefined,
+  conversationId: string | undefined,
+  query: SourceLibraryQuery,
+) => {
+  const scope = workspace ? sourcesScopeFromShell(shell, workspace.projectId) : null;
+  const digest = clientDigest(JSON.stringify(query));
+  return queryOptions({
+    queryKey:
+      scope && workspace && conversationId
+        ? askConversationSourceContextQueryKey(
+            scope,
+            conversationId,
+            workspace.accessRevision,
+            workspace.policyContextRevision,
+            digest,
+          )
+        : (['project', 'ask-conversation-source-context', 'unresolved'] as const),
+    queryFn: ({ signal }) =>
+      client.getConversationSourceContext(conversationId!, query, { signal }),
+    enabled: scope !== null && workspace !== undefined && conversationId !== undefined,
     retry: false,
     staleTime: 15_000,
   });

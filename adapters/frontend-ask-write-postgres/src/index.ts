@@ -547,9 +547,7 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
       sessionId: input.sessionId,
       projectId,
       defaultAskMode: 'CANONICAL_ONLY',
-      // SOURCE_EXPLORATION is not advertised until the product UI can pin a
-      // server-authorized SourceVersion for the draft.
-      availableAskModes: ['CANONICAL_ONLY', 'HYBRID'],
+      availableAskModes: ['CANONICAL_ONLY', 'SOURCE_EXPLORATION', 'HYBRID'],
       conversations: summaries.rows.map((row) => ({
         conversationId: row.conversation_id,
         projectId: row.project_id,

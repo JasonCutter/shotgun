@@ -1,0 +1,83 @@
+import { expect, test } from '@playwright/test';
+
+import { ASK_FIXTURE } from './fixtures/ask-workspace-fixture.js';
+
+test('Active B -> Conversation A uses only A Sources and submits the follow-up to A', async ({
+  page,
+}) => {
+  await page.goto('/ask');
+  const projectSelector = page.getByRole('combobox', { name: 'Active Project' });
+  await expect(projectSelector).toHaveValue(ASK_FIXTURE.projectAId);
+
+  const questionInput = page.getByRole('textbox', { name: 'Question', exact: true });
+  await questionInput.fill('Create the Project A conversation for the cross-project boundary.');
+  await page.getByRole('button', { name: 'Submit question' }).click();
+  await expect(page).toHaveURL(/\/ask\/conversations\/[^/]+$/);
+  const conversationUrl = new URL(page.url()).pathname;
+  const conversationId = conversationUrl.split('/').at(-1)!;
+
+  await projectSelector.selectOption(ASK_FIXTURE.projectBId);
+  await expect(projectSelector).toHaveValue(ASK_FIXTURE.projectBId);
+  await page.goto(conversationUrl);
+  await expect(projectSelector).toHaveValue(ASK_FIXTURE.projectBId);
+  await expect(page.getByText(`Project: ${ASK_FIXTURE.projectAId}`)).toBeVisible();
+
+  const sourceContextRequest = page.waitForRequest((request) =>
+    request
+      .url()
+      .endsWith(`/product-api/frontend/ask/conversations/${conversationId}/source-context/query`),
+  );
+  await page.getByRole('combobox', { name: 'Ask mode' }).selectOption('SOURCE_EXPLORATION');
+  const sourceRequestBody = (await sourceContextRequest).postDataJSON() as Record<string, unknown>;
+  expect(Object.keys(sourceRequestBody).sort()).toEqual([
+    'filters',
+    'limit',
+    'schemaVersion',
+    'sort',
+  ]);
+
+  const projectASource = page.getByRole('checkbox', { name: /ask-exploration-source\.txt/ });
+  await expect(projectASource).toBeVisible();
+  await expect(page.getByText('ask-citation-source.txt')).toHaveCount(0);
+  await expect(
+    page.getByText(`Pinned SourceVersion: ${ASK_FIXTURE.selectableSourceVersionId}`),
+  ).toBeVisible();
+  await projectASource.check();
+
+  const followUp = 'Use the pinned Project A SourceVersion for this follow-up.';
+  await questionInput.fill(followUp);
+  const submitRequest = page.waitForRequest((request) =>
+    request.url().endsWith('/product-api/frontend/ask/questions'),
+  );
+  const submitResponse = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/product-api/frontend/ask/questions') && response.status() === 200,
+  );
+  await page.getByRole('button', { name: 'Submit question' }).click();
+  expect((await submitRequest).postDataJSON()).toMatchObject({
+    conversationId,
+    sourceSelections: [
+      {
+        sourceId: ASK_FIXTURE.selectableSourceId,
+        sourceVersionId: ASK_FIXTURE.selectableSourceVersionId,
+        evidenceIds: [],
+      },
+    ],
+  });
+  expect(await (await submitResponse).json()).toMatchObject({
+    submission: {
+      answerRun: {
+        conversationId,
+        projectId: ASK_FIXTURE.projectAId,
+        sourceSelections: [
+          {
+            sourceId: ASK_FIXTURE.selectableSourceId,
+            sourceVersionId: ASK_FIXTURE.selectableSourceVersionId,
+          },
+        ],
+      },
+    },
+  });
+  await expect(page.getByText(followUp, { exact: true })).toBeVisible();
+  await expect(projectSelector).toHaveValue(ASK_FIXTURE.projectBId);
+});

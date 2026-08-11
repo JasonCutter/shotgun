@@ -2152,6 +2152,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       askCommandCoordinator: options.askCommandCoordinator,
       askAnswerExecution: options.askAnswerExecution,
       frontendCommandGateway,
+      frontendSourcesReadCoordinator,
     },
   );
   registerSourcesRoutes(

@@ -730,6 +730,78 @@ main {
   justify-self: start;
 }
 
+.ask-question-form {
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.35fr) minmax(12rem, 1fr);
+  align-items: start;
+  gap: 0.85rem 1rem;
+  margin-block: 1rem;
+}
+
+.ask-question-form > label,
+.ask-form-label {
+  font-weight: 700;
+  padding-top: 0.7rem;
+}
+
+.ask-question-form > select,
+.ask-question-form > textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid #8e9c93;
+  border-radius: 0.5rem;
+  padding: 0.65rem 0.75rem;
+}
+
+.ask-question-form > textarea {
+  min-height: 8rem;
+  resize: vertical;
+}
+
+.ask-source-context {
+  min-width: 0;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+}
+
+.ask-source-list {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ask-source-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.65rem;
+  align-items: start;
+}
+
+.ask-source-option > span,
+.ask-source-option > span > span {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ask-question-actions {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.ask-form-status {
+  grid-column: 2;
+  margin: 0;
+}
+
 .source-intake-list {
   list-style: none;
   margin: 1rem 0;
@@ -867,7 +939,18 @@ main {
     grid-template-columns: 1fr;
   }
 
-  .source-intake-form button {
+  .ask-question-form {
+    grid-template-columns: 1fr;
+  }
+
+  .ask-question-form > label,
+  .ask-form-label {
+    padding-top: 0;
+  }
+
+  .source-intake-form button,
+  .ask-question-actions,
+  .ask-form-status {
     grid-column: 1;
   }
 

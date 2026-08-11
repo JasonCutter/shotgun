@@ -154,11 +154,11 @@ test('Section 2 executes Preference and Project lifecycle commands with server c
   ).toBeVisible();
 
   await page.getByRole('button', { name: 'Archive Project' }).click();
-  await expect(page.getByText('Current Status: ARCHIVED')).toBeVisible();
+  await expect(page.getByText('Current status: Archived')).toBeVisible();
   await page.getByRole('button', { name: 'Restore Project' }).click();
-  await expect(page.getByText('Current Status: ACTIVE')).toBeVisible();
+  await expect(page.getByText('Current status: Active')).toBeVisible();
   await page.getByRole('button', { name: 'Request Deletion' }).click();
-  await expect(page.getByText('Current Status: DELETE_REQUESTED')).toBeVisible();
+  await expect(page.getByText('Current status: Deletion requested')).toBeVisible();
 });
 
 test('Section 2 resolves a lost Settings response by clientRequestId without resubmission', async ({

@@ -130,14 +130,15 @@ test('Ask citation keeps SourceVersion pinned and restores exact conversation co
       `/sources/${ASK_FIXTURE.sourceId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\?version=${ASK_FIXTURE.sourceVersionId}`,
     ),
   );
-  const sourceDetails = page.locator('details').filter({ hasText: 'SourceVersion ID' }).first();
-  await expect(sourceDetails).not.toHaveAttribute('open', '');
-  await sourceDetails.locator('summary').click();
-  await expect(sourceDetails.getByText(ASK_FIXTURE.sourceVersionId)).toBeVisible();
   await expect(page.locator('pre.source-preview')).toContainText(ASK_FIXTURE.sourceText);
   const evidenceTarget = page.locator(`#evidence-${ASK_FIXTURE.evidenceId}`);
   await expect(evidenceTarget).toBeVisible();
   await expect(evidenceTarget).toBeFocused();
+
+  const sourceDetails = page.locator('details').filter({ hasText: 'SourceVersion ID' }).first();
+  await expect(sourceDetails).not.toHaveAttribute('open', '');
+  await sourceDetails.locator('summary').click();
+  await expect(sourceDetails.getByText(ASK_FIXTURE.sourceVersionId)).toBeVisible();
 
   await page.getByRole('link', { name: 'Return to cited resource' }).click();
   await expect(page).toHaveURL(`/ask/conversations/${ASK_FIXTURE.conversationId}`);

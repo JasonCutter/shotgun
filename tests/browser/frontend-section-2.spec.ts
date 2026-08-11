@@ -115,7 +115,7 @@ test('Section 2 executes Preference and Project lifecycle commands with server c
   await createButton.click();
   const createDialog = page.getByRole('dialog', { name: 'Create Project' });
   await expect(createDialog).toBeVisible();
-  await expect(page.getByLabel('Project ID (Immutable)')).toBeFocused();
+  await expect(page.getByLabel('Project key (cannot be changed)')).toBeFocused();
   await page.keyboard.press('Shift+Tab');
   await expect(page.getByRole('button', { name: 'Create Project', exact: true })).toBeFocused();
   await page.keyboard.press('Escape');
@@ -124,7 +124,7 @@ test('Section 2 executes Preference and Project lifecycle commands with server c
 
   await createButton.click();
   const projectId = `e2e-project-${Date.now()}`;
-  await page.getByLabel('Project ID (Immutable)').fill(projectId);
+  await page.getByLabel('Project key (cannot be changed)').fill(projectId);
   await page.getByLabel('Project Name').fill('E2E Lifecycle Project');
   const createResponsePromise = page.waitForResponse(
     (response) =>

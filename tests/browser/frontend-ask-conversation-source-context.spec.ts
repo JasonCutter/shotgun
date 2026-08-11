@@ -20,7 +20,7 @@ test('Active B -> Conversation A uses only A Sources and submits the follow-up t
   await expect(projectSelector).toHaveValue(ASK_FIXTURE.projectBId);
   await page.goto(conversationUrl);
   await expect(projectSelector).toHaveValue(ASK_FIXTURE.projectBId);
-  await expect(page.getByText(`Project: ${ASK_FIXTURE.projectAId}`)).toBeVisible();
+  await expect(page.getByText('Project: shotgun')).toBeVisible();
 
   const sourceContextRequest = page.waitForRequest((request) =>
     request
@@ -39,9 +39,12 @@ test('Active B -> Conversation A uses only A Sources and submits the follow-up t
   const projectASource = page.getByRole('checkbox', { name: /ask-exploration-source\.txt/ });
   await expect(projectASource).toBeVisible();
   await expect(page.getByText('ask-citation-source.txt')).toHaveCount(0);
-  await expect(
-    page.getByText(`Pinned SourceVersion: ${ASK_FIXTURE.selectableSourceVersionId}`),
-  ).toBeVisible();
+  const projectASourceOption = projectASource.locator('xpath=ancestor::label');
+  await expect(projectASourceOption.getByText('Version 1')).toBeVisible();
+  const technicalDetails = projectASourceOption.locator('details');
+  await expect(technicalDetails).not.toHaveAttribute('open', '');
+  await technicalDetails.locator('summary').click();
+  await expect(technicalDetails.getByText(ASK_FIXTURE.selectableSourceVersionId)).toBeVisible();
   await projectASource.check();
 
   const followUp = 'Use the pinned Project A SourceVersion for this follow-up.';

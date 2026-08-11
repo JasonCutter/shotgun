@@ -27,9 +27,12 @@ test('Ask Source Exploration pins a selected SourceVersion into the browser subm
 
   const source = page.getByRole('checkbox', { name: /ask-exploration-source\.txt/ });
   await expect(source).toBeVisible();
-  await expect(
-    page.getByText(`Pinned SourceVersion: ${ASK_FIXTURE.selectableSourceVersionId}`),
-  ).toBeVisible();
+  const sourceOption = source.locator('xpath=ancestor::label');
+  await expect(sourceOption.getByText('Version 1')).toBeVisible();
+  const technicalDetails = sourceOption.locator('details');
+  await expect(technicalDetails).not.toHaveAttribute('open', '');
+  await technicalDetails.locator('summary').click();
+  await expect(technicalDetails.getByText(ASK_FIXTURE.selectableSourceVersionId)).toBeVisible();
 
   const questionInput = page.getByRole('textbox', { name: 'Question', exact: true });
   await questionInput.fill('What does the selected Source establish?');
@@ -96,7 +99,7 @@ test('Ask deep link uses accessible Resource Project without changing Active Pro
   await expect(page.getByRole('combobox', { name: 'Current project' })).toHaveValue(
     ASK_FIXTURE.projectAId,
   );
-  await expect(page.getByText(`Project: ${ASK_FIXTURE.projectBId}`)).toBeVisible();
+  await expect(page.getByText('Project: Project B')).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Question', exact: true })).toBeEnabled();
 });
 
@@ -127,7 +130,10 @@ test('Ask citation keeps SourceVersion pinned and restores exact conversation co
       `/sources/${ASK_FIXTURE.sourceId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\?version=${ASK_FIXTURE.sourceVersionId}`,
     ),
   );
-  await expect(page.getByText(ASK_FIXTURE.sourceVersionId)).toBeVisible();
+  const sourceDetails = page.locator('details').filter({ hasText: 'SourceVersion ID' }).first();
+  await expect(sourceDetails).not.toHaveAttribute('open', '');
+  await sourceDetails.locator('summary').click();
+  await expect(sourceDetails.getByText(ASK_FIXTURE.sourceVersionId)).toBeVisible();
   await expect(page.locator('pre.source-preview')).toContainText(ASK_FIXTURE.sourceText);
   const evidenceTarget = page.locator(`#evidence-${ASK_FIXTURE.evidenceId}`);
   await expect(evidenceTarget).toBeVisible();

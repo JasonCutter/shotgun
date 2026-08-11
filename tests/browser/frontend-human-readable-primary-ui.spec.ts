@@ -16,7 +16,9 @@ test('Human-readable primary UI smoke', async ({ page }) => {
   await page.getByRole('button', { name: 'Submit drafts' }).click();
 
   await expect(page.getByRole('heading', { name: 'Submission Completed' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: sourceLabel })).toBeVisible();
+  await expect(
+    page.getByRole('list', { name: 'Submission items' }).getByText(sourceLabel, { exact: true }),
+  ).toBeVisible();
 
   const primaryText = await page.locator('body').innerText();
   expect(primaryText).not.toMatch(uuidPattern);

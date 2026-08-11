@@ -1,6 +1,9 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
+const graphTechnicalDetails = (page: Page) =>
+  page.locator('details.technical-details').filter({ hasText: 'Snapshot ID' }).first();
+
 const routeGuard = {
   decision: {
     schemaVersion: '1.0.0',
@@ -259,7 +262,7 @@ test('Graph Workspace renders the snapshot with information-equivalent list and 
   await stubSessionAndShell(page);
   await page.goto('/knowledge/graph');
   await expect(page.getByRole('heading', { name: 'Semantic Graph', level: 1 })).toBeVisible();
-  await expect(page.getByText(/Snapshot: snapshot-1/)).toBeVisible();
+  await expect(graphTechnicalDetails(page)).toContainText('snapshot-1');
 
   await page.keyboard.press('Alt+l');
   const listRegion = page.getByRole('region', { name: 'Semantic graph list' });
@@ -425,7 +428,7 @@ test('AC-17: refresh issues a new snapshot identity and keeps the selected resou
   await stubSessionAndShell(page);
   await page.goto('/knowledge/graph');
   await expect(page.getByRole('heading', { name: 'Semantic Graph', level: 1 })).toBeVisible();
-  await expect(page.getByText(/Snapshot: snapshot-1/)).toBeVisible();
+  await expect(graphTechnicalDetails(page)).toContainText('snapshot-1');
 
   await page.keyboard.press('Alt+l');
   await page
@@ -437,8 +440,8 @@ test('AC-17: refresh issues a new snapshot identity and keeps the selected resou
 
   await page.getByRole('button', { name: '새로 고침' }).click();
 
-  await expect(page.getByText(/Snapshot: snapshot-2/)).toBeVisible();
-  await expect(page.getByText(/Revision: proj-2/)).toBeVisible();
+  await expect(graphTechnicalDetails(page)).toContainText('snapshot-2');
+  await expect(graphTechnicalDetails(page)).toContainText('proj-2');
   await expect(page.getByRole('status')).toContainText('선택됨: Entity One');
 });
 
@@ -448,7 +451,7 @@ test('AC-18: a refresh while the canvas stays mounted rebuilds the actual cytosc
   await stubSessionAndShell(page);
   await page.goto('/knowledge/graph');
   await expect(page.getByRole('heading', { name: 'Semantic Graph', level: 1 })).toBeVisible();
-  await expect(page.getByText(/Snapshot: snapshot-1/)).toBeVisible();
+  await expect(graphTechnicalDetails(page)).toContainText('snapshot-1');
 
   // The canvas view is the default and stays mounted across the refresh.
   const canvasSurface = page.locator('[data-testid="graph-canvas"] .graph-canvas-surface');
@@ -469,8 +472,8 @@ test('AC-18: a refresh while the canvas stays mounted rebuilds the actual cytosc
 
   await page.getByRole('button', { name: '새로 고침' }).click();
 
-  await expect(page.getByText(/Snapshot: snapshot-2/)).toBeVisible();
-  await expect(page.getByText(/Revision: proj-2/)).toBeVisible();
+  await expect(graphTechnicalDetails(page)).toContainText('snapshot-2');
+  await expect(graphTechnicalDetails(page)).toContainText('proj-2');
 
   // The ACTUAL cytoscape instance was rebuilt with the refreshed node set
   // (4 nodes now) — not just the hidden accessible collection.
@@ -574,16 +577,16 @@ test('AC-20: the full frozen keyboard matrix is exercised end to end', async ({ 
   await page.keyboard.press('Alt+2');
   await expect(page.getByRole('radio', { name: /Governance impact/ })).toBeChecked();
   await page.keyboard.press('Alt+3');
-  await expect(page.getByRole('radio', { name: /OPERATIONAL_DEPENDENCY/ })).toBeChecked();
+  await expect(page.getByRole('radio', { name: /Operational dependencies/ })).toBeChecked();
   await page.keyboard.press('Alt+1');
 
   // Overlays Alt+Shift+1/2/3.
   await page.keyboard.press('Alt+Shift+1');
   await expect(page.getByRole('checkbox', { name: /Conflicts/ })).toBeChecked();
   await page.keyboard.press('Alt+Shift+2');
-  await expect(page.getByRole('checkbox', { name: /KNOWLEDGE_GAP/ })).toBeChecked();
+  await expect(page.getByRole('checkbox', { name: /Knowledge gaps/ })).toBeChecked();
   await page.keyboard.press('Alt+Shift+3');
-  await expect(page.getByRole('checkbox', { name: /RECURSIVE_IMPACT/ })).toBeChecked();
+  await expect(page.getByRole('checkbox', { name: /Extended impact/ })).toBeChecked();
 
   // View switching Alt+L/T/P/V.
   await page.keyboard.press('Alt+t');
@@ -897,9 +900,13 @@ test('AC-25: a correction action on a graph node navigates to the Knowledge Edit
   // Navigated to the Knowledge Editor (/knowledge) with the typed seed.
   await expect(page.getByRole('heading', { name: 'Knowledge', level: 1 })).toBeVisible();
   await expect(page.getByRole('heading', { name: '그래프 보정 대상' })).toBeVisible();
-  await expect(page.getByRole('status').filter({ hasText: '노드 보정' })).toContainText('entity-1');
-  await expect(page.getByRole('status').filter({ hasText: '노드 보정' })).toContainText(
-    'CORRECT_KNOWLEDGE',
+  await expect(page.getByRole('status').filter({ hasText: '지식 항목' })).toContainText(
+    '보정할 준비가 되었습니다',
   );
+  const correctionDetails = page.locator('details').filter({ hasText: 'Change intent' }).first();
+  await expect(correctionDetails).not.toHaveAttribute('open', '');
+  await correctionDetails.locator('summary').click();
+  await expect(correctionDetails.getByText(/ENTITY:entity-1/)).toBeVisible();
+  await expect(correctionDetails.getByText('CORRECT_KNOWLEDGE')).toBeVisible();
   expect(writeRequests).toEqual([]);
 });

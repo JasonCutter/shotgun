@@ -206,7 +206,7 @@ test('Section 3 route guard preserves Active and Resource Project context and ma
     page.getByRole('heading', { name: 'Settings & Project Administration' }),
   ).toBeVisible();
   await expect(page.locator('.active-project')).toContainText('shotgun');
-  await expect(page.locator('.resource-project')).toContainText('project-b');
+  await expect(page.locator('.resource-project')).toContainText('Project B');
   await expect(page.getByRole('combobox', { name: 'Current project' })).toHaveValue('shotgun');
 
   await page.goto('/settings/projects/not-accessible');

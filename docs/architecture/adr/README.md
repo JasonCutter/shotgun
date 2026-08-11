@@ -31,19 +31,14 @@ This directory and the registered consolidated ADR documents form the global ADR
 
 The Phase records under `docs/architecture/add/` retain their approved 2026-07-16 decision text. ADR-100–113 preserve the accepted Frontend decisions and later Contract Normalization outcomes in one Git owner record while the individual Notion pages remain Legacy References.
 
-ADR-131, ADR-132 and ADR-133 are authoritative accepted individual files.
-ADR-134 through ADR-142 are registered individual **PROPOSED** AKP v1 whole-design
-candidates. Their identifier ownership does not mean the decisions are accepted,
-and their Product implementation remains unauthorized until explicit user
-approval and normal Section/implementation governance.
+ADR-131 through ADR-142 are authoritative accepted individual files. ADR-134 through ADR-142 were accepted together by the user on 2026-08-12 as the AKP v1 whole-design architecture. Their Product implementation remains separately unauthorized.
 
-The current latest **accepted** individual decision is
-[ADR-133 — Runtime-selectable AI Provider, Model & Credential Authority](ADR-133-runtime-selectable-ai-provider-model-and-credential-authority.md),
-accepted on 2026-08-11. Its Product implementation remains separately
-unauthorized. ADR-134 through ADR-142 are later proposed candidates, not later
-accepted decisions.
+The current latest accepted individual decision is
+[ADR-142 — Finite End-to-End Acceptance Gate and AKP v1 Closure Boundary](ADR-142-finite-end-to-end-acceptance-gate-and-akp-v1-closure-boundary.md),
+accepted on 2026-08-12. The whole-design acceptance state is also recorded in
+[`../akp/AKP-V1-ARCHITECTURE-ACCEPTANCE.md`](../akp/AKP-V1-ARCHITECTURE-ACCEPTANCE.md).
 
-## Proposed AKP v1 candidate range
+## Accepted AKP v1 range
 
 - ADR-134 — Active Knowledge Productization v1 Boundary and Completion Contract
 - ADR-135 — Hybrid Semantic Retrieval as a Rebuildable Derived Projection
@@ -55,8 +50,7 @@ accepted decisions.
 - ADR-141 — Explicit Feedback Separation, Suppression and Non-Epistemic Adaptive Ranking
 - ADR-142 — Finite End-to-End Acceptance Gate and AKP v1 Closure Boundary
 
-The candidate range is reviewed as one architecture system before any of these
-records transitions to ACCEPTED or authorizes Product implementation.
+The range is one accepted architecture system. Acceptance freezes its architecture boundary but does not authorize Product implementation, migrations, dependencies, Ready, Merge, Deployment or Production Verification.
 
 ## Reserved-gap rule
 

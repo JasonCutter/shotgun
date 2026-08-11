@@ -1,7 +1,10 @@
 # ADR-139 — Discovery Re-entry through Derived-Provenance Validation and Existing Review Authority
 
-- Status: **PROPOSED**
+- Status: **ACCEPTED**
 - Proposed at: 2026-08-11
+- Decision date: 2026-08-12
+- Accepted at: 2026-08-12
+- Accepted by: `USER`
 - Decision owner: `USER`
 - Work item: `AKP-5 — Validation Re-entry & Governance`
 - Subject base: `main@f08ae632220ac613ae0e90c04930ceb323aac40b`

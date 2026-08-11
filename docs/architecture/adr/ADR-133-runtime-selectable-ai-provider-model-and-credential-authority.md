@@ -399,4 +399,3 @@ verification. It does not enable private Gemini egress, create Project
 approvals, migrate `GEMINI_API_KEY`, or touch the uncommitted DeepSeek changes
 already present in the worktree. Those changes remain preserved and outside
 this ADR's commit scope.
-

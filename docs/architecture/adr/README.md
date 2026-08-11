@@ -69,4 +69,3 @@ npm run docs:validate
 ```
 
 The validator scans individual ADR filenames and registered consolidated ADR headings. It fails on missing unclassified owners, overlapping ranges, malformed identifiers, duplicate ownership and a reserved gap that unexpectedly acquires an owner.
-

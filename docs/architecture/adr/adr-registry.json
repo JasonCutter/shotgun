@@ -123,4 +123,3 @@
   "supersessionRule": "Supersession keeps both identifiers and requires explicit metadata; identifiers are never reused.",
   "governingAdr": "ADR-121"
 }
-

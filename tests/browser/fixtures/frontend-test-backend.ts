@@ -158,7 +158,7 @@ export async function startFrontendTestBackend() {
         evidenceIds: [evidenceId],
       },
     ],
-    capabilities: [],
+    capabilities: ['EXPORT', 'CREATE_INTAKE_DRAFT', 'CREATE_DRAFT_CHANGE_SET', 'PROPOSE_DIRECTIVE'],
     answerRevision: 'ask-answer-revision-1',
     conversationRevision: 'ask-conversation-revision-1',
     accessRevision: '1',

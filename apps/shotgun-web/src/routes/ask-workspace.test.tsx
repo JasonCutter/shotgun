@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, Outlet, RouterProvider } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
@@ -127,6 +127,54 @@ const mockWorkspace: AskWorkspaceView = {
   policyContextRevision: '1',
   fetchedAt: '2026-07-31T00:00:00.000Z',
   stale: false,
+};
+
+const workspaceWithRunState = (
+  state: AskWorkspaceView['conversations'][number]['latestRunState'],
+): AskWorkspaceView => {
+  const selectedConversation = mockWorkspace.selectedConversation!;
+  return {
+    ...mockWorkspace,
+    conversations: mockWorkspace.conversations.map((conversation) => ({
+      ...conversation,
+      latestRunState: state,
+    })),
+    selectedConversation: {
+      ...selectedConversation,
+      branches: selectedConversation.branches.map((branch) => ({
+        ...branch,
+        turns: branch.turns.map((turn) => ({
+          ...turn,
+          answerRun: {
+            ...turn.answerRun,
+            state,
+            ...(state === 'FAILED'
+              ? {
+                  statements: [],
+                  failure: {
+                    code: 'INTERNAL_UNCLASSIFIED' as const,
+                    message: 'The answer could not be completed.',
+                    retryable: false,
+                    outcomeUnknown: false,
+                  },
+                }
+              : {}),
+          },
+        })),
+      })),
+    },
+  };
+};
+
+const eligibleProvider = {
+  schemaVersion: '1.0.0' as const,
+  eligible: true,
+  reason: 'ELIGIBLE' as const,
+  requiredAction: 'NONE' as const,
+  policyFingerprint: 'test-policy',
+  policyContextRevision: '1',
+  provider: { displayName: 'Test provider', model: 'test-model' },
+  message: 'Eligible.',
 };
 
 const sourceLibraryPage: SourceLibraryPageView = {
@@ -329,6 +377,200 @@ describe('AskWorkspace', () => {
       undefined,
       expect.objectContaining({ signal: expect.any(Object) }),
     );
+  });
+
+  it('uses correct turn grammar and presents the selected Conversation as a current item', async () => {
+    const runtime = createRuntime();
+    const workspace: AskWorkspaceView = {
+      ...mockWorkspace,
+      conversations: [
+        mockWorkspace.conversations[0]!,
+        {
+          ...mockWorkspace.conversations[0]!,
+          conversationId: 'conv-2',
+          title: 'Second Conversation',
+          turnCount: 2,
+        },
+      ],
+    };
+    const mockClient: AskWorkspaceClient = {
+      getProviderEligibility: vi.fn().mockResolvedValue(eligibleProvider),
+      getWorkspace: vi.fn().mockResolvedValue(workspace),
+      getConversation: vi.fn().mockResolvedValue(workspace.selectedConversation!),
+      getConversationSourceContext: vi.fn(),
+      getBranch: vi.fn(),
+      getAnswerRun: vi.fn(),
+      submitQuestion: vi.fn(),
+      getQuestionSubmissionByClientRequestId: vi.fn(),
+    };
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <ShellOutlet />,
+          children: [
+            {
+              path: 'ask/conversations/:conversationId',
+              element: <AskWorkspace client={mockClient} />,
+            },
+          ],
+        },
+      ],
+      { initialEntries: ['/ask/conversations/conv-1'] },
+    );
+
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    const conversations = await screen.findByRole('list', { name: 'Conversations' });
+    const current = within(conversations).getByText('Canonical Architecture Query').closest('span');
+    expect(current?.getAttribute('aria-current')).toBe('page');
+    expect(
+      within(conversations).queryByRole('link', { name: /Canonical Architecture Query/ }),
+    ).toBeNull();
+    expect(within(conversations).getByText(/1 turn · Completed/)).toBeTruthy();
+    expect(within(conversations).getByRole('link', { name: 'Second Conversation' })).toBeTruthy();
+    expect(within(conversations).getByText(/2 turns · Completed/)).toBeTruthy();
+  });
+
+  it.each([
+    ['SUCCEEDED', 'Completed'],
+    ['FAILED', 'Failed'],
+  ] as const)(
+    'refetches one authoritative workspace when polling reaches %s',
+    async (terminalState, expectedLabel) => {
+      const runtime = createRuntime();
+      const queuedWorkspace = workspaceWithRunState('QUEUED');
+      const terminalWorkspace = workspaceWithRunState(terminalState);
+      const getWorkspace = vi
+        .fn()
+        .mockResolvedValueOnce(queuedWorkspace)
+        .mockResolvedValue(terminalWorkspace);
+      const mockClient: AskWorkspaceClient = {
+        getProviderEligibility: vi.fn().mockResolvedValue(eligibleProvider),
+        getWorkspace,
+        getConversation: vi.fn().mockResolvedValue(terminalWorkspace.selectedConversation!),
+        getConversationSourceContext: vi.fn(),
+        getBranch: vi.fn(),
+        getAnswerRun: vi
+          .fn()
+          .mockResolvedValue(
+            terminalWorkspace.selectedConversation!.branches[0]!.turns[0]!.answerRun,
+          ),
+        getAnswerRunEvents: vi.fn().mockResolvedValue({
+          schemaVersion: '1.0.0',
+          answerRunId: 'run-1',
+          events: [],
+        }),
+        submitQuestion: vi.fn(),
+        getQuestionSubmissionByClientRequestId: vi.fn(),
+      };
+      const router = createMemoryRouter(
+        [
+          {
+            path: '/',
+            element: <ShellOutlet />,
+            children: [
+              {
+                path: 'ask/conversations/:conversationId',
+                element: <AskWorkspace client={mockClient} />,
+              },
+            ],
+          },
+        ],
+        { initialEntries: ['/ask/conversations/conv-1'] },
+      );
+
+      render(
+        <AppProviders runtime={runtime}>
+          <RouterProvider router={router} />
+        </AppProviders>,
+      );
+
+      const conversations = await screen.findByRole('list', { name: 'Conversations' });
+      await waitFor(() => {
+        expect(
+          within(conversations).getByText(new RegExp(`1 turn · ${expectedLabel}`)),
+        ).toBeTruthy();
+      });
+      expect(getWorkspace).toHaveBeenCalledTimes(2);
+      expect(getWorkspace).toHaveBeenLastCalledWith(
+        'conv-1',
+        expect.objectContaining({ signal: expect.any(Object) }),
+      );
+      await new Promise((resolve) => window.setTimeout(resolve, 20));
+      expect(getWorkspace).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it('presents each Answer action as an independently wrapping button', async () => {
+    const runtime = createRuntime();
+    const selectedConversation = mockWorkspace.selectedConversation!;
+    const workspace: AskWorkspaceView = {
+      ...mockWorkspace,
+      selectedConversation: {
+        ...selectedConversation,
+        branches: selectedConversation.branches.map((branch) => ({
+          ...branch,
+          turns: branch.turns.map((turn) => ({
+            ...turn,
+            answerRun: {
+              ...turn.answerRun,
+              capabilities: [
+                'EXPORT',
+                'CREATE_INTAKE_DRAFT',
+                'CREATE_DRAFT_CHANGE_SET',
+                'PROPOSE_DIRECTIVE',
+              ],
+            },
+          })),
+        })),
+      },
+    };
+    const mockClient: AskWorkspaceClient = {
+      getProviderEligibility: vi.fn().mockResolvedValue(eligibleProvider),
+      getWorkspace: vi.fn().mockResolvedValue(workspace),
+      getConversation: vi.fn().mockResolvedValue(workspace.selectedConversation!),
+      getConversationSourceContext: vi.fn(),
+      getBranch: vi.fn(),
+      getAnswerRun: vi.fn(),
+      submitQuestion: vi.fn(),
+      getQuestionSubmissionByClientRequestId: vi.fn(),
+    };
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <ShellOutlet />,
+          children: [{ path: 'ask', element: <AskWorkspace client={mockClient} /> }],
+        },
+      ],
+      { initialEntries: ['/ask'] },
+    );
+
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    const actions = await screen.findByLabelText('AnswerRun actions');
+    expect(actions.classList.contains('answer-action-row')).toBe(true);
+    for (const label of [
+      'Export answer',
+      'Helpful',
+      'Not helpful',
+      'Propose Intake Draft',
+      'Propose Draft ChangeSet',
+      'Propose Directive',
+    ]) {
+      expect((within(actions).getByRole('button', { name: label }) as HTMLButtonElement).type).toBe(
+        'button',
+      );
+    }
   });
 
   it('triggers Leave Guard when question text is typed and isolates draft per project owner', async () => {

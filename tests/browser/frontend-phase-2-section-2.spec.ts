@@ -103,6 +103,45 @@ test('Ask deep link uses accessible Resource Project without changing Active Pro
   await expect(page.getByRole('textbox', { name: 'Question', exact: true })).toBeEnabled();
 });
 
+test('Ask Conversation current item and Answer actions remain clear on a narrow viewport', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.goto(`/ask/conversations/${ASK_FIXTURE.conversationId}`);
+
+  const conversations = page.getByRole('list', { name: 'Conversations' });
+  const currentConversation = conversations.getByText(ASK_FIXTURE.conversationTitle, {
+    exact: true,
+  });
+  await expect(currentConversation.locator('xpath=ancestor::a')).toHaveCount(0);
+  await expect(currentConversation.locator('xpath=ancestor::*[@aria-current="page"]')).toHaveCount(
+    1,
+  );
+  await expect(conversations).toContainText('1 turn');
+
+  const actions = page.getByLabel('AnswerRun actions');
+  for (const label of [
+    'Export answer',
+    'Helpful',
+    'Not helpful',
+    'Propose Intake Draft',
+    'Propose Draft ChangeSet',
+    'Propose Directive',
+  ]) {
+    await expect(actions.getByRole('button', { name: label })).toBeVisible();
+  }
+  const layout = await actions.evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+    buttons: [...element.querySelectorAll('button')].map((button) => ({
+      left: button.getBoundingClientRect().left,
+      right: button.getBoundingClientRect().right,
+    })),
+  }));
+  expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth);
+  expect(layout.buttons.every((button) => button.left >= 0 && button.right <= 320)).toBe(true);
+});
+
 test('Ask masks inaccessible Conversation as NOT_FOUND', async ({ page }) => {
   await page.goto(`/ask/conversations/${ASK_FIXTURE.inaccessibleConversationId}`);
   await expect(

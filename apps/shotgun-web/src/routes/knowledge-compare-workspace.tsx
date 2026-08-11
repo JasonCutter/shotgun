@@ -8,11 +8,25 @@ import { useAppRuntime } from '../app/providers.js';
 import { EmptyState } from '../components/empty-state.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
+import { TechnicalDetails } from '../components/technical-details.js';
 import {
   knowledgeCanManuallyRetry,
   knowledgeCompareQueryOptions,
 } from '../knowledge/knowledge-queries.js';
-import { LineageMetadata, ProjectionStatus } from '../knowledge/knowledge-ui.js';
+import {
+  authorityLabel,
+  knowledgeKindLabel,
+  LineageMetadata,
+  ProjectionStatus,
+  temporalStateLabel,
+} from '../knowledge/knowledge-ui.js';
+
+const differenceLabel = (kind: 'ADDED' | 'REMOVED' | 'CHANGED'): string =>
+  ({
+    ADDED: 'Added',
+    REMOVED: 'Removed',
+    CHANGED: 'Changed',
+  })[kind];
 
 export const KnowledgeCompareWorkspace = () => {
   const { apiClient } = useAppRuntime();
@@ -105,24 +119,20 @@ export const KnowledgeCompareWorkspace = () => {
                 Open stable detail
               </Link>
             </p>
-            <dl className="identity-summary">
-              <div>
-                <dt>Resource</dt>
-                <dd>{page.resourceId}</dd>
-              </div>
-              <div>
-                <dt>Revision</dt>
-                <dd>{page.revision}</dd>
-              </div>
-            </dl>
+            <TechnicalDetails
+              items={[
+                { label: 'Resource ID', value: page.resourceId },
+                { label: 'Revision', value: page.revision },
+              ]}
+            />
             <LineageMetadata lineage={page.lineage} />
             <ul className="knowledge-compare-item-list" aria-label={`${heading} items`}>
               {page.items.map((item) => (
                 <li key={`${item.resourceId}:${item.revision}`}>
                   <strong>{item.label}</strong>
-                  <span>{item.authority}</span>
-                  <span>{item.kind}</span>
-                  <span>{item.temporalState}</span>
+                  <span>{authorityLabel(item.authority)}</span>
+                  <span>{knowledgeKindLabel(item.kind)}</span>
+                  <span>{temporalStateLabel(item.temporalState)}</span>
                 </li>
               ))}
             </ul>
@@ -141,8 +151,8 @@ export const KnowledgeCompareWorkspace = () => {
           <ol className="knowledge-difference-list">
             {result.differences.map((difference) => (
               <li key={difference.differenceId}>
-                <strong>{difference.kind}</strong>
-                <code>{difference.path}</code>
+                <strong>{differenceLabel(difference.kind)}</strong>
+                <TechnicalDetails items={[{ label: 'Difference path', value: difference.path }]} />
                 <dl>
                   <div>
                     <dt>Left</dt>

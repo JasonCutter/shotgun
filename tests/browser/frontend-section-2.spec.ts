@@ -115,7 +115,7 @@ test('Section 2 executes Preference and Project lifecycle commands with server c
   await createButton.click();
   const createDialog = page.getByRole('dialog', { name: 'Create Project' });
   await expect(createDialog).toBeVisible();
-  await expect(page.getByLabel('Project ID (Immutable)')).toBeFocused();
+  await expect(page.getByLabel('Project key (cannot be changed)')).toBeFocused();
   await page.keyboard.press('Shift+Tab');
   await expect(page.getByRole('button', { name: 'Create Project', exact: true })).toBeFocused();
   await page.keyboard.press('Escape');
@@ -124,7 +124,7 @@ test('Section 2 executes Preference and Project lifecycle commands with server c
 
   await createButton.click();
   const projectId = `e2e-project-${Date.now()}`;
-  await page.getByLabel('Project ID (Immutable)').fill(projectId);
+  await page.getByLabel('Project key (cannot be changed)').fill(projectId);
   await page.getByLabel('Project Name').fill('E2E Lifecycle Project');
   const createResponsePromise = page.waitForResponse(
     (response) =>
@@ -154,11 +154,11 @@ test('Section 2 executes Preference and Project lifecycle commands with server c
   ).toBeVisible();
 
   await page.getByRole('button', { name: 'Archive Project' }).click();
-  await expect(page.getByText('Current Status: ARCHIVED')).toBeVisible();
+  await expect(page.getByText('Current status: Archived')).toBeVisible();
   await page.getByRole('button', { name: 'Restore Project' }).click();
-  await expect(page.getByText('Current Status: ACTIVE')).toBeVisible();
+  await expect(page.getByText('Current status: Active')).toBeVisible();
   await page.getByRole('button', { name: 'Request Deletion' }).click();
-  await expect(page.getByText('Current Status: DELETE_REQUESTED')).toBeVisible();
+  await expect(page.getByText('Current status: Deletion requested')).toBeVisible();
 });
 
 test('Section 2 resolves a lost Settings response by clientRequestId without resubmission', async ({
@@ -168,8 +168,8 @@ test('Section 2 resolves a lost Settings response by clientRequestId without res
   const modelInput = page.getByLabel('Default Answer Model');
   await modelInput.fill('e2e-model-profile');
   await page.getByRole('button', { name: 'Validate & Preview' }).click();
-  await expect(page.getByText('Draft state: READY_TO_APPLY')).toBeVisible();
-  await expect(page.getByLabel('Settings impact preview')).toContainText('CONFIRM_REQUIRED');
+  await expect(page.getByText('Draft status: Ready to apply')).toBeVisible();
+  await expect(page.getByLabel('Settings impact preview')).toContainText('Confirmation required');
 
   const applyButton = page.getByRole('button', { name: 'Apply Settings' });
   await applyButton.click();
@@ -195,7 +195,7 @@ test('Section 2 resolves a lost Settings response by clientRequestId without res
 
   await applyButton.click();
   await page.getByRole('button', { name: 'Confirm' }).click();
-  await expect(page.getByText('Draft state: OUTCOME_UNKNOWN')).toBeVisible();
+  await expect(page.getByText('Draft status: Checking final outcome')).toBeVisible();
   expect(settingsCommandPosts).toBe(1);
 
   await page.unroute('**/api/v1/settings/commands');
@@ -222,7 +222,7 @@ test('Section 2 resolves a lost Settings response by clientRequestId without res
     'APPLIED',
   );
   await page.getByRole('button', { name: 'Resolve Existing Outcome' }).click();
-  await expect(page.getByText('Draft state: APPLIED')).toBeVisible();
+  await expect(page.getByText('Draft status: Changes applied')).toBeVisible();
   expect(settingsCommandPosts).toBe(1);
 });
 
@@ -232,7 +232,7 @@ test('Section 2 fails closed for stale, cross-project, and unavailable policy st
   await page.goto('/settings/advanced');
   await page.getByLabel('Default Answer Model').fill('stale-browser-draft');
   await page.getByRole('button', { name: 'Validate & Preview' }).click();
-  await expect(page.getByText('Draft state: READY_TO_APPLY')).toBeVisible();
+  await expect(page.getByText('Draft status: Ready to apply')).toBeVisible();
 
   const externalApply = await page.evaluate(async () => {
     const snapshotResponse = await fetch('/api/v1/settings/snapshot?targetProjectId=shotgun');
@@ -282,7 +282,7 @@ test('Section 2 fails closed for stale, cross-project, and unavailable policy st
 
   await page.getByRole('button', { name: 'Apply Settings' }).click();
   await page.getByRole('button', { name: 'Confirm' }).click();
-  await expect(page.getByText('Draft state: STALE')).toBeVisible();
+  await expect(page.getByText('Draft status: Settings changed; refresh required')).toBeVisible();
 
   const crossProject = await page.evaluate(async () => {
     const csrfResponse = await fetch('/api/v1/security/csrf');

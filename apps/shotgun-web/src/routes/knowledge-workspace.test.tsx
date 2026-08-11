@@ -325,7 +325,7 @@ describe('Knowledge Workspace UI', () => {
     expect(await screen.findByRole('heading', { name: 'Knowledge Detail', level: 1 })).toBeTruthy();
     expect(await screen.findByText('The content remains read-only.')).toBeTruthy();
     const evidenceLink = await screen.findByRole('link', {
-      name: /Open pinned SourceVersion and Evidence evidence-1/,
+      name: 'Open source evidence',
     });
     await userEvent.click(evidenceLink);
 

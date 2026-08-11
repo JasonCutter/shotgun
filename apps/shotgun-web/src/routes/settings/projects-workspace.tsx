@@ -11,6 +11,11 @@ import {
 } from '../../app/query-keys.js';
 import { sessionQueryOptions } from '../../session/session-query.js';
 import { useAccessibleDialog } from '../../app/use-accessible-dialog.js';
+import { TechnicalDetails } from '../../components/technical-details.js';
+import {
+  formatProductTimestamp,
+  projectLifecycleLabel,
+} from '../../presentation/product-labels.js';
 
 export const ProjectsWorkspace = () => {
   const { apiClient } = useAppRuntime();
@@ -156,11 +161,9 @@ export const ProjectsWorkspace = () => {
           <tr
             style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left' }}
           >
-            <th style={{ padding: '12px' }}>Project ID</th>
             <th style={{ padding: '12px' }}>Name</th>
             <th style={{ padding: '12px' }}>Status</th>
             <th style={{ padding: '12px' }}>Active</th>
-            <th style={{ padding: '12px' }}>Revision</th>
             <th style={{ padding: '12px' }}>Created</th>
             <th style={{ padding: '12px' }}>Actions</th>
           </tr>
@@ -168,8 +171,15 @@ export const ProjectsWorkspace = () => {
         <tbody>
           {projects?.map((proj) => (
             <tr key={proj.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-              <td style={{ padding: '12px', fontWeight: 600 }}>{proj.id}</td>
-              <td style={{ padding: '12px' }}>{proj.name}</td>
+              <td style={{ padding: '12px', fontWeight: 600 }}>
+                {proj.name}
+                <TechnicalDetails
+                  items={[
+                    { label: 'Project ID', value: proj.id },
+                    { label: 'Revision', value: proj.revision },
+                  ]}
+                />
+              </td>
               <td style={{ padding: '12px' }}>
                 <span
                   style={{
@@ -191,13 +201,12 @@ export const ProjectsWorkspace = () => {
                           : '#991b1b',
                   }}
                 >
-                  {proj.status}
+                  {projectLifecycleLabel(proj.status)}
                 </span>
               </td>
               <td style={{ padding: '12px' }}>{proj.active ? 'Yes' : 'No'}</td>
-              <td style={{ padding: '12px' }}>{proj.revision}</td>
               <td style={{ padding: '12px', fontSize: '13px', color: '#64748b' }}>
-                {new Date(proj.createdAt).toLocaleDateString()}
+                {formatProductTimestamp(proj.createdAt)}
               </td>
               <td style={{ padding: '12px' }}>
                 <Link
@@ -277,14 +286,14 @@ export const ProjectsWorkspace = () => {
                       marginBottom: '4px',
                     }}
                   >
-                    Project ID (Immutable)
+                    Project key (cannot be changed)
                   </label>
                   <input
                     id="new-proj-id"
                     required
                     value={newProjectId}
                     onChange={(e) => setNewProjectId(e.target.value)}
-                    placeholder="e.g., my-new-project"
+                    placeholder="e.g., launch-notes"
                     style={{
                       width: '100%',
                       padding: '8px',

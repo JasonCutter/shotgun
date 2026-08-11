@@ -5,6 +5,12 @@ import {
   graphNodeRefById,
   graphSelectedNodeId,
 } from './graph-accessible.js';
+import {
+  graphBaseViewLabel,
+  graphItemKindLabel,
+  graphOverlayLabel,
+} from '../presentation/product-labels.js';
+import { authorityLabel } from './graph-list-view.js';
 import { authorityVisualClass } from './graph-list-view.js';
 
 /**
@@ -40,7 +46,6 @@ export const GraphTableView = ({
         <thead>
           <tr>
             <th scope="col">Kind</th>
-            <th scope="col">ID</th>
             <th scope="col">Label</th>
             <th scope="col">Authority</th>
             <th scope="col">Base view</th>
@@ -64,12 +69,11 @@ export const GraphTableView = ({
                 data-graph-base-view={tuple.baseViewMembership}
                 data-graph-overlays={tuple.overlayMemberships.join(',')}
               >
-                <td>{tuple.kind}</td>
-                <td>{key}</td>
+                <td>{graphItemKindLabel(tuple.kind)}</td>
                 <td>{tuple.label}</td>
-                <td>{tuple.authority}</td>
-                <td>{tuple.baseViewMembership}</td>
-                <td>{tuple.overlayMemberships.join(', ')}</td>
+                <td>{authorityLabel(tuple.authority)}</td>
+                <td>{graphBaseViewLabel(tuple.baseViewMembership)}</td>
+                <td>{tuple.overlayMemberships.map(graphOverlayLabel).join(', ')}</td>
                 <td>
                   {nodeRef ? (
                     <span className="graph-item-actions">

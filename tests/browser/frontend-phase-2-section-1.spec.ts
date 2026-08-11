@@ -31,10 +31,10 @@ test('Sources stages and submits Direct Text, then releases Project switching af
     .not.toContain(draftText);
 
   await page.getByRole('button', { name: 'Submit drafts' }).click();
-  await expect(page.getByRole('heading', { name: 'Submission SUCCEEDED' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Submission Completed' })).toBeVisible();
   await expect(page.getByText('No route-scoped drafts.')).toBeVisible();
 
-  const selector = page.getByRole('combobox', { name: 'Active Project' });
+  const selector = page.getByRole('combobox', { name: 'Current project' });
   await selector.selectOption('project-b');
   await expect(selector).toHaveValue('project-b');
 });
@@ -52,7 +52,7 @@ test('Sources keeps Project switching blocked after a partial delete and release
   await page.getByLabel('Direct Text').fill('Second transient draft');
   await page.getByRole('button', { name: 'Add intake draft' }).click();
 
-  const selector = page.getByRole('combobox', { name: 'Active Project' });
+  const selector = page.getByRole('combobox', { name: 'Current project' });
   await page.getByRole('button', { name: 'Remove Draft A' }).click();
   await selector.selectOption('project-b');
   await expect(selector).toHaveValue('shotgun');

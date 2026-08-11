@@ -21,6 +21,7 @@ import { useAppRuntime } from '../app/providers.js';
 import { EmptyState } from '../components/empty-state.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
+import { TechnicalDetails } from '../components/technical-details.js';
 import {
   knowledgePageListQueryOptions,
   knowledgeCanManuallyRetry,
@@ -34,6 +35,12 @@ import {
   KNOWLEDGE_TEMPORAL_STATES,
   PageSummaryCard,
   ProjectionStatus,
+  authorityLabel,
+  knowledgeKindLabel,
+  projectionDescription,
+  projectionKindLabel,
+  searchMatchTypeLabel,
+  temporalStateLabel,
 } from '../knowledge/knowledge-ui.js';
 import { KnowledgeDraftEditor } from '../knowledge/knowledge-draft-editor.js';
 
@@ -193,7 +200,7 @@ export const KnowledgeWorkspace = () => {
             <option value="">All authorities</option>
             {KNOWLEDGE_AUTHORITIES.map((value) => (
               <option key={value} value={value}>
-                {value}
+                {authorityLabel(value)}
               </option>
             ))}
           </select>
@@ -206,7 +213,7 @@ export const KnowledgeWorkspace = () => {
             <option value="">All kinds</option>
             {KNOWLEDGE_KINDS.map((value) => (
               <option key={value} value={value}>
-                {value}
+                {knowledgeKindLabel(value)}
               </option>
             ))}
           </select>
@@ -221,7 +228,7 @@ export const KnowledgeWorkspace = () => {
             <option value="">All temporal states</option>
             {KNOWLEDGE_TEMPORAL_STATES.map((value) => (
               <option key={value} value={value}>
-                {value}
+                {temporalStateLabel(value)}
               </option>
             ))}
           </select>
@@ -236,7 +243,7 @@ export const KnowledgeWorkspace = () => {
             <option value="">All projection statuses</option>
             {KNOWLEDGE_PROJECTION_STATUSES.map((value) => (
               <option key={value} value={value}>
-                {value}
+                {projectionDescription(value)}
               </option>
             ))}
           </select>
@@ -244,7 +251,7 @@ export const KnowledgeWorkspace = () => {
         </form>
         {urlQuery ? (
           <p className="status-message" role="status" aria-live="polite">
-            Server query: <code>{urlQuery}</code>
+            Showing results for <strong>{urlQuery}</strong>
           </p>
         ) : null}
       </section>
@@ -254,15 +261,20 @@ export const KnowledgeWorkspace = () => {
         <section className="action-card" aria-labelledby="graph-correction-heading">
           <h2 id="graph-correction-heading">그래프 보정 대상</h2>
           <p className="status-message" role="status" aria-live="polite">
-            {correctionSeed.targetKind === 'EDGE' ? '엣지' : '노드'} 보정{' '}
-            <code>
-              {correctionSeed.stableResourceRef.resourceKind}:
-              {correctionSeed.stableResourceRef.resourceId}
-            </code>
-            {correctionSeed.masked ? ' (마스킹된 자원)' : ''} · 스냅샷{' '}
-            <code>{correctionSeed.snapshotId}</code> · 보정 의도{' '}
-            <code>{correctionSeed.suggestedChangeIntent}</code>
+            {correctionSeed.targetKind === 'EDGE' ? '관계' : '지식 항목'}을 보정할 준비가 되었습니다
+            {correctionSeed.masked ? ' (제한된 항목)' : ''}.
           </p>
+          <TechnicalDetails
+            items={[
+              {
+                label: 'Resource',
+                value: `${correctionSeed.stableResourceRef.resourceKind}:${correctionSeed.stableResourceRef.resourceId}`,
+              },
+              { label: 'Snapshot ID', value: correctionSeed.snapshotId },
+              { label: 'Projection revision', value: correctionSeed.projectionRevision },
+              { label: 'Change intent', value: correctionSeed.suggestedChangeIntent },
+            ]}
+          />
         </section>
       ) : null}
       <KnowledgeDraftEditor
@@ -273,14 +285,8 @@ export const KnowledgeWorkspace = () => {
       />
       {workspace.data ? (
         <section className="action-card" aria-labelledby="knowledge-capabilities-heading">
-          <h2 id="knowledge-capabilities-heading">Read capabilities</h2>
-          <div className="knowledge-tag-row">
-            {workspace.data.capabilities.map((capability) => (
-              <span className="knowledge-tag" key={capability}>
-                {capability}
-              </span>
-            ))}
-          </div>
+          <h2 id="knowledge-capabilities-heading">Available actions</h2>
+          <p>Browse, search, compare, and inspect the knowledge available to this project.</p>
         </section>
       ) : null}
 
@@ -363,13 +369,15 @@ export const KnowledgeWorkspace = () => {
           {searchReadiness ? (
             <div className="knowledge-readiness" aria-label="Search readiness">
               <p>
-                Canonical Search: <strong>{searchReadiness.canonicalSearch.status}</strong>
+                Verified knowledge search:{' '}
+                <strong>{projectionDescription(searchReadiness.canonicalSearch.status)}</strong>
               </p>
               {searchReadiness.sourceProjections.map((sourceProjection) => (
                 <p
                   key={`${sourceProjection.projectionKind}:${sourceProjection.projectionRevision ?? 'unknown'}`}
                 >
-                  {sourceProjection.projectionKind}: <strong>{sourceProjection.status}</strong>
+                  {projectionKindLabel(sourceProjection.projectionKind)}:{' '}
+                  <strong>{projectionDescription(sourceProjection.status)}</strong>
                 </p>
               ))}
             </div>
@@ -395,32 +403,24 @@ export const KnowledgeWorkspace = () => {
                     </p>
                     {match.snippet ? <p>{match.snippet}</p> : null}
                     <p>
-                      <AuthorityLabelText authority={match.item.authority} /> · {match.item.kind} ·{' '}
-                      {match.item.temporalState}
+                      <AuthorityLabelText authority={match.item.authority} /> ·{' '}
+                      {knowledgeKindLabel(match.item.kind)} ·{' '}
+                      {temporalStateLabel(match.item.temporalState)}
                     </p>
                   </div>
-                  <dl className="knowledge-search-metadata">
-                    <div>
-                      <dt>Score</dt>
-                      <dd>{match.score}</dd>
-                    </div>
-                    <div>
-                      <dt>Match</dt>
-                      <dd>{match.matchType}</dd>
-                    </div>
-                    <div>
-                      <dt>Authority source</dt>
-                      <dd>{match.matchAuthority}</dd>
-                    </div>
-                    <div>
-                      <dt>Revision</dt>
-                      <dd>{match.item.revision}</dd>
-                    </div>
-                    <div>
-                      <dt>Canonical version</dt>
-                      <dd>{search.data.projection.canonicalVersion}</dd>
-                    </div>
-                  </dl>
+                  <p>{searchMatchTypeLabel(match.matchType)}</p>
+                  <TechnicalDetails
+                    items={[
+                      { label: 'Score', value: match.score },
+                      { label: 'Match type', value: match.matchType },
+                      { label: 'Authority source', value: match.matchAuthority },
+                      { label: 'Revision', value: match.item.revision },
+                      {
+                        label: 'Canonical version',
+                        value: search.data.projection.canonicalVersion,
+                      },
+                    ]}
+                  />
                 </li>
               ))}
             </ol>

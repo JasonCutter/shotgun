@@ -4,6 +4,12 @@ import { useOutletContext, useSearchParams } from 'react-router';
 import { useAppRuntime } from '../../app/providers.js';
 import { sessionQueryOptions } from '../../session/session-query.js';
 import { useSettingsDraft } from '../../session/settings-draft-controller.js';
+import { TechnicalDetails } from '../../components/technical-details.js';
+import {
+  settingsApplicationModeLabel,
+  settingsDraftStateLabel,
+  settingsRiskLabel,
+} from '../../presentation/product-labels.js';
 
 type SettingsOutletContext = {
   readonly requestConfirmation: (message: string, action: () => void) => void;
@@ -71,25 +77,14 @@ export const AdvancedWorkspace = () => {
         Apply a server-validated Project policy through the versioned command boundary.
       </p>
 
-      <div
-        style={{
-          border: '1px solid #e2e8f0',
-          borderRadius: '8px',
-          padding: '16px',
-          background: '#f8fafc',
-        }}
-      >
-        <h3 style={{ fontSize: '16px', marginBottom: '8px' }}>System Revision & Policy Context</h3>
-        <p style={{ fontSize: '14px', color: '#475569' }}>
-          Target Project: <strong>{snapshot.targetProjectId}</strong>
-        </p>
-        <p style={{ fontSize: '14px', color: '#475569' }}>
-          Settings Revision: <strong>{snapshot.settingsRevision}</strong>
-        </p>
-        <p style={{ fontSize: '14px', color: '#475569' }}>
-          Policy Context Revision: <strong>{snapshot.policyContextRevision}</strong>
-        </p>
-      </div>
+      <TechnicalDetails
+        summary="System and policy details"
+        items={[
+          { label: 'Target project ID', value: snapshot.targetProjectId },
+          { label: 'Settings revision', value: snapshot.settingsRevision },
+          { label: 'Policy context revision', value: snapshot.policyContextRevision },
+        ]}
+      />
 
       {editableSetting ? (
         <div
@@ -143,14 +138,17 @@ export const AdvancedWorkspace = () => {
           </div>
 
           <p role="status" aria-live="polite">
-            Draft state: <strong>{controller.state}</strong>
+            Draft status: <strong>{settingsDraftStateLabel(controller.state)}</strong>
           </p>
           {controller.impactPreview ? (
             <div aria-label="Settings impact preview">
               <p>
-                Application mode: <strong>{controller.impactPreview.applicationMode}</strong>
+                Application mode:{' '}
+                <strong>
+                  {settingsApplicationModeLabel(controller.impactPreview.applicationMode)}
+                </strong>
               </p>
-              <p>Risk: {controller.impactPreview.riskLevel}</p>
+              <p>Risk: {settingsRiskLabel(controller.impactPreview.riskLevel)}</p>
               <p>{controller.impactPreview.retrospectiveEffect}</p>
             </div>
           ) : null}

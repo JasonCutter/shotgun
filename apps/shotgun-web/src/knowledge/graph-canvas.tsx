@@ -298,7 +298,7 @@ export const GraphCanvas = ({
             data-graph-base-view={tuple.baseViewMembership}
             data-graph-overlays={tuple.overlayMemberships.join(',')}
           >
-            {tuple.kind === 'node' ? tuple.nodeId : tuple.edgeId} · {tuple.label}
+            {tuple.label}
           </li>
         ))}
       </ul>

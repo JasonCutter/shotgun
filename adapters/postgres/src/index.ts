@@ -473,6 +473,7 @@ export class PostgresOriginalAssetRepository
       media_type: string;
       content_hash: string;
       size_bytes: string;
+      display_label: string | null;
       original_file_name: string | null;
       storage_key: string;
       access_scope: string[];
@@ -486,6 +487,7 @@ export class PostgresOriginalAssetRepository
               version.media_type,
               original.content_hash,
               original.size_bytes::text,
+              intake_item.label AS display_label,
               receipt.original_file_name,
               original.storage_key,
               version.access_scope,
@@ -494,6 +496,17 @@ export class PostgresOriginalAssetRepository
        FROM asset.source_versions AS version
        JOIN asset.sources AS source ON source.source_id = version.source_id
        JOIN asset.original_assets AS original ON original.asset_id = version.original_asset_id
+       LEFT JOIN LATERAL (
+         SELECT candidate.label
+         FROM source_product.intake_submission_items AS candidate
+         WHERE candidate.project_id = source.project_id
+           AND candidate.produced_source_id = source.source_id
+           AND candidate.produced_source_version_id = version.source_version_id
+         ORDER BY candidate.completed_at DESC NULLS LAST,
+                  candidate.created_at DESC,
+                  candidate.submission_item_id
+         LIMIT 1
+       ) AS intake_item ON true
        LEFT JOIN LATERAL (
          SELECT candidate.original_file_name
          FROM asset.storage_receipts AS candidate
@@ -514,6 +527,7 @@ export class PostgresOriginalAssetRepository
       mediaType: row.media_type,
       contentHash: row.content_hash,
       sizeBytes: Number(row.size_bytes),
+      ...(row.display_label === null ? {} : { displayLabel: row.display_label }),
       ...(row.original_file_name === null ? {} : { originalFileName: row.original_file_name }),
       storageKey: row.storage_key,
       accessScope: row.access_scope,

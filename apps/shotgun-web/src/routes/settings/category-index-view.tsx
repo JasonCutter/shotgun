@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router';
 import { useAppRuntime } from '../../app/providers.js';
 import { settings5DQueryKey } from '../../app/query-keys.js';
 import { sessionQueryOptions } from '../../session/session-query.js';
+import { settingsScopeLabel } from '../../presentation/product-labels.js';
 
 export const CategoryIndexView = () => {
   const { apiClient } = useAppRuntime();
@@ -30,8 +31,7 @@ export const CategoryIndexView = () => {
     <section className="category-index-view">
       <h2 style={{ fontSize: '20px', marginBottom: '16px' }}>Settings Categories Index</h2>
       <p style={{ color: '#64748b', marginBottom: '24px' }}>
-        Select a category below to view and edit settings policy descriptors for project{' '}
-        <strong>{targetProjectId}</strong>.
+        Select a category below to view and edit settings for the selected project.
       </p>
 
       <div
@@ -69,7 +69,7 @@ export const CategoryIndexView = () => {
                     borderRadius: '4px',
                   }}
                 >
-                  {cat.scope}
+                  {settingsScopeLabel(cat.scope)}
                 </span>
               </div>
               <p style={{ fontSize: '13px', color: '#64748b', margin: '8px 0 12px 0' }}>

@@ -6,6 +6,11 @@ import {
   graphSelectedNodeId,
   type GraphAccessibleTuple,
 } from './graph-accessible.js';
+import {
+  graphBaseViewLabel,
+  graphItemKindLabel,
+  graphOverlayLabel,
+} from '../presentation/product-labels.js';
 
 /**
  * List fallback view (AC-19/AC-21). Exposes the identical accessible
@@ -14,7 +19,7 @@ import {
  * the same snapshot response.
  */
 
-const authorityLabel = (authority: GraphAccessibleTuple['authority']): string => {
+export const authorityLabel = (authority: GraphAccessibleTuple['authority']): string => {
   if (authority === 'CANONICAL') return 'Canonical';
   if (authority === 'DERIVED_INFERENCE') return 'Derived inference';
   return 'Discovery candidate';
@@ -69,12 +74,15 @@ export const GraphListView = ({
               data-graph-base-view={tuple.baseViewMembership}
               data-graph-overlays={tuple.overlayMemberships.join(',')}
             >
-              <span className="graph-item-kind">{tuple.kind}</span>
-              <span className="graph-item-id">{key}</span>
+              <span className="graph-item-kind">{graphItemKindLabel(tuple.kind)}</span>
               <span className="graph-item-label">{tuple.label}</span>
               <span className="graph-item-authority">{authorityLabel(tuple.authority)}</span>
-              <span className="graph-item-base-view">{tuple.baseViewMembership}</span>
-              <span className="graph-item-overlays">{tuple.overlayMemberships.join(', ')}</span>
+              <span className="graph-item-base-view">
+                {graphBaseViewLabel(tuple.baseViewMembership)}
+              </span>
+              <span className="graph-item-overlays">
+                {tuple.overlayMemberships.map(graphOverlayLabel).join(', ')}
+              </span>
               {nodeRef ? (
                 <span className="graph-item-actions">
                   <button type="button" onClick={() => onSelect(nodeRef)}>

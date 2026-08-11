@@ -8,6 +8,7 @@ import {
 } from '../../adapters/stage2-in-memory/src/index.js';
 import { InMemoryEvidenceRepository } from '../../adapters/stage3-in-memory/src/index.js';
 import { FrontendSourcesReadCoordinator } from '../../modules/frontend-sources-product/src/index.js';
+import type { SourcesProjectionRecord } from '../../modules/frontend-sources-product/src/index.js';
 import { sha256Text, type SourcesSensitivity } from '../../packages/contracts/src/index.js';
 
 const now = '2026-07-30T12:00:00.000Z';
@@ -61,6 +62,40 @@ const seed = async (
 };
 
 describe('FrontendSourcesReadCoordinator', () => {
+  it('uses the persisted intake label as the human Source identity without an ID fallback', async () => {
+    const record: SourcesProjectionRecord = {
+      projectId: 'project-1',
+      sourceId: '0dfc35ed-c3b9-4e70-a4a7-0e20ee4e4120',
+      sourceVersionId: 'daf9cd45-0b65-4c90-b499-b494097eec18',
+      versionNumber: 1,
+      mediaType: 'text/plain',
+      contentHash: sha256Text('JasonNote content'),
+      sizeBytes: 17,
+      displayLabel: 'JasonNote 첫 메모',
+      storageKey: 'sha256/source-label',
+      accessScope: ['owner'],
+      sensitivity: 'internal',
+      createdAt: now,
+    };
+    const coordinator = new FrontendSourcesReadCoordinator(
+      { listProjectSourceVersions: async () => [record] },
+      { read: async () => undefined },
+      { listBySourceVersion: async () => [] },
+    );
+
+    const page = await coordinator.list(scope, {
+      schemaVersion: '1.0.0',
+      filters: {},
+      sort: 'LABEL_ASC',
+      limit: 20,
+    });
+    expect(page.items[0]?.label).toBe('JasonNote 첫 메모');
+    expect(page.items[0]?.label).not.toContain(record.sourceId.slice(0, 8));
+    await expect(coordinator.detail(scope, record.sourceId)).resolves.toMatchObject({
+      label: 'JasonNote 첫 메모',
+    });
+  });
+
   it('composes bounded project-scoped Library, detail and pinned Version history', async () => {
     const repository = new InMemoryOriginalAssetRepository();
     const storage = new InMemoryAssetStorage();

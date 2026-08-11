@@ -259,7 +259,7 @@ const measureQueueDisplay = (page: Page) =>
   page.evaluate(async () => {
     const button = () =>
       Array.from(document.querySelectorAll('button')).find((entry) =>
-        (entry.textContent ?? '').includes('submission-1'),
+        (entry.textContent ?? '').includes('Source processing'),
       );
     // performance.now() is the elapsed ms since this document's navigation
     // start (performance.timeOrigin). Guard against a missing commit.
@@ -274,13 +274,16 @@ const measureQueueDisplay = (page: Page) =>
 const measureQueueToDetail = (page: Page) =>
   page.evaluate(async () => {
     const button = Array.from(document.querySelectorAll('button')).find((entry) =>
-      (entry.textContent ?? '').includes('submission-1'),
+      (entry.textContent ?? '').includes('Source processing'),
     );
     if (!button) return -1;
     const start = performance.now();
     (button as HTMLButtonElement).click();
     const heading = () => document.querySelector('h2');
-    while (performance.now() - start < 10000 && heading()?.textContent?.trim() !== 'submission-1') {
+    while (
+      performance.now() - start < 10000 &&
+      heading()?.textContent?.trim() !== 'Sources activity'
+    ) {
       await new Promise((resolve) => requestAnimationFrame(resolve));
     }
     return Math.round(performance.now() - start);
@@ -292,7 +295,7 @@ test('activity queue display: three-sample median ≤ 2000 ms (AC-16)', async ({
   // Warm-up navigation (first navigation excluded per measurement discipline).
   await page.goto('/activity');
   await expect(page.getByRole('heading', { name: 'Activity', level: 1 })).toBeVisible();
-  await expect(page.getByRole('button', { name: /submission-1/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Source processing/ })).toBeVisible();
   await measureQueueDisplay(page);
 
   const samples: number[] = [];
@@ -322,9 +325,9 @@ test('activity queue-to-detail: three-sample median ≤ 2000 ms (AC-16)', async 
   // Warm-up navigation (first navigation excluded per measurement discipline).
   await page.goto('/activity');
   await expect(page.getByRole('heading', { name: 'Activity', level: 1 })).toBeVisible();
-  await expect(page.getByRole('button', { name: /submission-1/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Source processing/ })).toBeVisible();
   await measureQueueToDetail(page);
-  await expect(page.getByRole('heading', { name: 'submission-1' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Sources activity' })).toBeVisible();
 
   const samples: number[] = [];
   for (let i = 0; i < 3; i += 1) {
@@ -332,7 +335,7 @@ test('activity queue-to-detail: three-sample median ≤ 2000 ms (AC-16)', async 
     // lifecycle segment.
     await page.goto('/activity');
     await expect(page.getByRole('heading', { name: 'Activity', level: 1 })).toBeVisible();
-    await expect(page.getByRole('button', { name: /submission-1/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Source processing/ })).toBeVisible();
     const sample = await measureQueueToDetail(page);
     console.info(
       JSON.stringify({ metric: 'activity-queue-to-detail-sample', sample, iteration: i }),

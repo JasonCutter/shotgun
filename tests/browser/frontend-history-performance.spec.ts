@@ -160,7 +160,7 @@ const measureListDisplay = (page: Page) =>
     return Math.round(performance.now());
   });
 
-// Measures app latency from the List-row click to the committed Detail heading.
+// Measures app latency from the List-row click to the committed human-readable Detail heading.
 const measureListToDetail = (page: Page) =>
   page.evaluate(async () => {
     // Wait for the committed List first (async load after navigation), then
@@ -177,7 +177,7 @@ const measureListToDetail = (page: Page) =>
     button.click();
     const heading = () =>
       [...document.querySelectorAll('h2')].some(
-        (element) => element.textContent?.trim() === 'History entry',
+        (element) => element.textContent?.trim() === 'Knowledge claim added',
       );
     while (performance.now() - start < 10000 && !heading()) {
       await new Promise((resolve) => requestAnimationFrame(resolve));

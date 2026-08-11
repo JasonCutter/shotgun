@@ -18,6 +18,7 @@ import {
 import { EmptyState } from '../components/empty-state.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
+import { TechnicalDetails } from '../components/technical-details.js';
 import { activityScopeFromShell, activityScopePrefix } from '../app/query-keys.js';
 import {
   activityDetailQueryOptions,
@@ -113,42 +114,50 @@ const freshnessLabel: Record<string, string> = {
   UNKNOWN: '알 수 없음',
 };
 
+const activitySummaryLabel = (item: ActivityQueueItemV1): string => {
+  if (item.root.domainKind === 'SOURCES') return 'Source processing';
+  if (item.root.domainKind === 'ASK') return 'Answering a question';
+  return 'External action';
+};
+
 const ProjectionMetadata = ({ metadata }: { readonly metadata: ActivityProjectionMetadataV1 }) => (
-  <section className="activity-metadata" aria-label="프로젝션 상태">
-    <dl className="summary-grid">
-      <div>
-        <dt>Freshness</dt>
-        <dd>{freshnessLabel[metadata.freshness] ?? metadata.freshness}</dd>
-      </div>
-      <div>
-        <dt>Adapter</dt>
-        <dd>{adapterStatusLabel[metadata.adapterStatus] ?? metadata.adapterStatus}</dd>
-      </div>
-      <div>
-        <dt>Partial</dt>
-        <dd>{metadata.partial ? '부분 결과' : '전체 결과'}</dd>
-      </div>
-      <div>
-        <dt>Snapshot</dt>
-        <dd>rev {metadata.snapshotRevision}</dd>
-      </div>
-      {metadata.lagMilliseconds === undefined ? null : (
+  <TechnicalDetails summary="Activity data details">
+    <section className="activity-metadata" aria-label="Activity data details">
+      <dl className="summary-grid">
         <div>
-          <dt>Lag</dt>
-          <dd>{metadata.lagMilliseconds} ms</dd>
+          <dt>Freshness</dt>
+          <dd>{freshnessLabel[metadata.freshness] ?? metadata.freshness}</dd>
         </div>
-      )}
-      <div>
-        <dt>Source updated</dt>
-        <dd>{new Date(metadata.sourceUpdatedAt).toLocaleTimeString()}</dd>
-      </div>
-    </dl>
-    {metadata.partial ? (
-      <p className="activity-partial-note" role="status">
-        일부 adapter 결과만 반영된 부분 프로젝션입니다.
-      </p>
-    ) : null}
-  </section>
+        <div>
+          <dt>Adapter</dt>
+          <dd>{adapterStatusLabel[metadata.adapterStatus] ?? metadata.adapterStatus}</dd>
+        </div>
+        <div>
+          <dt>Partial</dt>
+          <dd>{metadata.partial ? '부분 결과' : '전체 결과'}</dd>
+        </div>
+        <div>
+          <dt>Snapshot</dt>
+          <dd>rev {metadata.snapshotRevision}</dd>
+        </div>
+        {metadata.lagMilliseconds === undefined ? null : (
+          <div>
+            <dt>Lag</dt>
+            <dd>{metadata.lagMilliseconds} ms</dd>
+          </div>
+        )}
+        <div>
+          <dt>Source updated</dt>
+          <dd>{new Date(metadata.sourceUpdatedAt).toLocaleTimeString()}</dd>
+        </div>
+      </dl>
+      {metadata.partial ? (
+        <p className="activity-partial-note" role="status">
+          일부 adapter 결과만 반영된 부분 프로젝션입니다.
+        </p>
+      ) : null}
+    </section>
+  </TechnicalDetails>
 );
 
 // ---------------------------------------------------------------------------
@@ -245,7 +254,7 @@ const QueueList = ({
             aria-pressed={selectedKey === key}
             onClick={() => onSelect(item)}
           >
-            <span className="activity-item-summary">{item.summary}</span>
+            <span className="activity-item-summary">{activitySummaryLabel(item)}</span>
             <span className="activity-item-meta">
               <span className="activity-item-domain">
                 {activityDomainKindLabel[item.root.domainKind]}
@@ -303,24 +312,20 @@ const DetailSection = ({
   const resourceHref = detail.root.resourceHref;
   const actions = detail.availableActions;
   return (
-    <section className="activity-detail" aria-label={`활동 세부 정보 ${detail.root.activityId}`}>
+    <section className="activity-detail" aria-label="Activity details">
       <header className="activity-detail-header">
         <h2 ref={headingRef} tabIndex={-1}>
-          {detail.root.activityId}
+          {activityDomainKindLabel[identity.domainKind]} activity
         </h2>
-        <p className="activity-detail-domain">
-          {activityDomainKindLabel[identity.domainKind]} ·{' '}
-          {detail.root.rootKind === 'RUN' ? 'Run root' : 'Job root'}
-        </p>
+        <p className="activity-detail-domain">{activityLifecycleStateLabel[detail.run.state]}</p>
         <p>
           <Link to={domainWorkspaceHref(identity)} className="activity-domain-link">
             도메인 워크스페이스에서 열기
           </Link>
         </p>
         <p className="activity-resource-href">
-          정확한 도메인 리소스:{' '}
           <a href={resourceHref} className="activity-domain-link">
-            {resourceHref}
+            Open related resource
           </a>
         </p>
       </header>
@@ -371,126 +376,138 @@ const DetailSection = ({
           <dd>{activityLifecycleStateLabel[detail.run.state]}</dd>
         </div>
         <div>
-          <dt>Run</dt>
-          <dd>{detail.run.runId}</dd>
+          <dt>Started</dt>
+          <dd>{new Date(detail.run.startedAt).toLocaleString()}</dd>
         </div>
         <div>
-          <dt>Sequence</dt>
-          <dd>{detail.run.sequence}</dd>
+          <dt>Completed</dt>
+          <dd>
+            {detail.run.completedAt
+              ? new Date(detail.run.completedAt).toLocaleString()
+              : 'In progress'}
+          </dd>
         </div>
-        {detail.run.jobId === undefined ? null : (
-          <div>
-            <dt>Job</dt>
-            <dd>{detail.run.jobId}</dd>
-          </div>
-        )}
+        <div>
+          <dt>Attention</dt>
+          <dd>{activityAttentionLabel[detail.dimensions.attention]}</dd>
+        </div>
       </dl>
 
-      <h3>Domain Attempts</h3>
-      {detail.attempts.length === 0 ? (
-        <EmptyState title="Attempt 없음" description="등록된 Domain Attempt가 없습니다." />
-      ) : (
-        <table className="activity-table" aria-label="Domain Attempts">
-          <thead>
-            <tr>
-              <th scope="col">Attempt</th>
-              <th scope="col">Kind</th>
-              <th scope="col">State</th>
-              <th scope="col">Retryable</th>
-            </tr>
-          </thead>
-          <tbody>
-            {detail.attempts.map((attempt) => (
-              <tr key={attempt.attemptId}>
-                <th scope="row">{attempt.attemptId}</th>
-                <td>{attempt.attemptKind}</td>
-                <td>{activityLifecycleStateLabel[attempt.state]}</td>
-                <td>{attempt.retryability === 'RETRYABLE' ? '예' : '아니오'}</td>
+      <TechnicalDetails
+        items={[
+          { label: 'Activity ID', value: detail.root.activityId },
+          { label: 'Run ID', value: detail.run.runId },
+          ...(detail.run.jobId === undefined ? [] : [{ label: 'Job ID', value: detail.run.jobId }]),
+          { label: 'Run sequence', value: detail.run.sequence },
+          { label: 'Resource path', value: resourceHref },
+        ]}
+      >
+        <h3>Domain Attempts</h3>
+        {detail.attempts.length === 0 ? (
+          <EmptyState title="Attempt 없음" description="등록된 Domain Attempt가 없습니다." />
+        ) : (
+          <table className="activity-table" aria-label="Domain Attempts">
+            <thead>
+              <tr>
+                <th scope="col">Attempt</th>
+                <th scope="col">Kind</th>
+                <th scope="col">State</th>
+                <th scope="col">Retryable</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+            </thead>
+            <tbody>
+              {detail.attempts.map((attempt) => (
+                <tr key={attempt.attemptId}>
+                  <th scope="row">{attempt.attemptId}</th>
+                  <td>{attempt.attemptKind}</td>
+                  <td>{activityLifecycleStateLabel[attempt.state]}</td>
+                  <td>{attempt.retryability === 'RETRYABLE' ? '예' : '아니오'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
 
-      <h3>Transport Attempts</h3>
-      {detail.transportAttempts.length === 0 ? (
-        <EmptyState
-          title="Transport Attempt 없음"
-          description="등록된 Transport Attempt가 없습니다."
-        />
-      ) : (
-        <table className="activity-table" aria-label="Transport Attempts">
-          <thead>
-            <tr>
-              <th scope="col">Transport Attempt</th>
-              <th scope="col">Kind</th>
-              <th scope="col">Delivery</th>
-              <th scope="col">Result</th>
-              <th scope="col">Delivered</th>
-              <th scope="col">Safe Failure</th>
-            </tr>
-          </thead>
-          <tbody>
-            {detail.transportAttempts.map((attempt) => (
-              <tr key={attempt.transportAttemptId}>
-                <th scope="row">{attempt.transportAttemptId}</th>
-                <td>{attempt.transportKind}</td>
-                <td>{attempt.deliverySequence}</td>
-                <td>{attempt.deliveryResult}</td>
-                <td>
-                  <time dateTime={attempt.deliveredAt}>
-                    {new Date(attempt.deliveredAt).toLocaleTimeString()}
-                  </time>
-                </td>
-                <td>{attempt.failure ? attempt.failure.message : '—'}</td>
+        <h3>Transport Attempts</h3>
+        {detail.transportAttempts.length === 0 ? (
+          <EmptyState
+            title="Transport Attempt 없음"
+            description="등록된 Transport Attempt가 없습니다."
+          />
+        ) : (
+          <table className="activity-table" aria-label="Transport Attempts">
+            <thead>
+              <tr>
+                <th scope="col">Transport Attempt</th>
+                <th scope="col">Kind</th>
+                <th scope="col">Delivery</th>
+                <th scope="col">Result</th>
+                <th scope="col">Delivered</th>
+                <th scope="col">Safe Failure</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+            </thead>
+            <tbody>
+              {detail.transportAttempts.map((attempt) => (
+                <tr key={attempt.transportAttemptId}>
+                  <th scope="row">{attempt.transportAttemptId}</th>
+                  <td>{attempt.transportKind}</td>
+                  <td>{attempt.deliverySequence}</td>
+                  <td>{attempt.deliveryResult}</td>
+                  <td>
+                    <time dateTime={attempt.deliveredAt}>
+                      {new Date(attempt.deliveredAt).toLocaleTimeString()}
+                    </time>
+                  </td>
+                  <td>{attempt.failure ? attempt.failure.message : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
 
-      <h3>Stages</h3>
-      {detail.stages.length === 0 ? (
-        <EmptyState title="Stage 없음" description="등록된 Stage가 없습니다." />
-      ) : (
-        <table className="activity-table" aria-label="Stages">
-          <thead>
-            <tr>
-              <th scope="col">Stage</th>
-              <th scope="col">Label</th>
-              <th scope="col">State</th>
-            </tr>
-          </thead>
-          <tbody>
-            {detail.stages.map((stage) => (
-              <tr key={stage.stageId}>
-                <th scope="row">{stage.stageKey}</th>
-                <td>{stage.label}</td>
-                <td>{stage.state}</td>
+        <h3>Stages</h3>
+        {detail.stages.length === 0 ? (
+          <EmptyState title="Stage 없음" description="등록된 Stage가 없습니다." />
+        ) : (
+          <table className="activity-table" aria-label="Stages">
+            <thead>
+              <tr>
+                <th scope="col">Stage</th>
+                <th scope="col">Label</th>
+                <th scope="col">State</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+            </thead>
+            <tbody>
+              {detail.stages.map((stage) => (
+                <tr key={stage.stageId}>
+                  <th scope="row">{stage.stageKey}</th>
+                  <td>{stage.label}</td>
+                  <td>{stage.state}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
 
-      <h3>Events (bounded operational evidence)</h3>
-      {detail.events.length === 0 ? (
-        <EmptyState title="Event 없음" description="등록된 Event가 없습니다." />
-      ) : (
-        <ol className="activity-events" aria-label="Events">
-          {detail.events.map((event) => (
-            <li key={event.eventId}>
-              <span className="activity-event-category" data-category={event.category}>
-                {event.category}
-              </span>{' '}
-              <span>{event.summary}</span>{' '}
-              <time dateTime={event.occurredAt}>
-                {new Date(event.occurredAt).toLocaleTimeString()}
-              </time>
-            </li>
-          ))}
-        </ol>
-      )}
+        <h3>Events (bounded operational evidence)</h3>
+        {detail.events.length === 0 ? (
+          <EmptyState title="Event 없음" description="등록된 Event가 없습니다." />
+        ) : (
+          <ol className="activity-events" aria-label="Events">
+            {detail.events.map((event) => (
+              <li key={event.eventId}>
+                <span className="activity-event-category" data-category={event.category}>
+                  {event.category}
+                </span>{' '}
+                <span>{event.summary}</span>{' '}
+                <time dateTime={event.occurredAt}>
+                  {new Date(event.occurredAt).toLocaleTimeString()}
+                </time>
+              </li>
+            ))}
+          </ol>
+        )}
+      </TechnicalDetails>
     </section>
   );
 };

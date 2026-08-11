@@ -414,14 +414,16 @@ describe('AskWorkspace', () => {
     const unavailableSource = screen.getByRole('checkbox', { name: /Unavailable source/ });
     expect((unavailableSource as HTMLInputElement).disabled).toBe(true);
     expect(screen.queryByText('Other Project source')).toBeNull();
-    expect(screen.getByText(/Pinned SourceVersion: version-ready-v1/)).toBeTruthy();
+    expect(screen.getAllByText('Version 1')).toHaveLength(2);
+    const technicalVersion = screen.getByText('version-ready-v1').closest('details');
+    expect(technicalVersion?.open).toBe(false);
 
     const questionInput = screen.getByLabelText('Question');
     await user.type(questionInput, 'What does this Source establish?');
     const submitButton = screen.getByRole('button', { name: 'Submit question' });
     expect((submitButton as HTMLButtonElement).disabled).toBe(true);
     expect(
-      screen.getByText('Select at least one Source before using SOURCE_EXPLORATION.'),
+      screen.getByText('Select at least one Source before using selected sources.'),
     ).toBeTruthy();
 
     await user.click(readySource);

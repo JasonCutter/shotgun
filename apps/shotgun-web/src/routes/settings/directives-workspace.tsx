@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router';
 import { useAppRuntime } from '../../app/providers.js';
+import { TechnicalDetails } from '../../components/technical-details.js';
+import { directiveStatusLabel } from '../../presentation/product-labels.js';
 
 export const DirectivesWorkspace = () => {
   const { apiClient } = useAppRuntime();
@@ -46,9 +48,7 @@ export const DirectivesWorkspace = () => {
       </p>
 
       {proposals?.data?.length === 0 ? (
-        <p style={{ color: '#64748b' }}>
-          No directive proposals active for project {targetProjectId}.
-        </p>
+        <p style={{ color: '#64748b' }}>No directive proposals are active for this project.</p>
       ) : (
         <div style={{ display: 'grid', gap: '16px' }}>
           {proposals?.data?.map((p) => (
@@ -61,10 +61,16 @@ export const DirectivesWorkspace = () => {
                 background: '#fff',
               }}
             >
-              <h3>
-                {p.directiveType} ({p.status})
-              </h3>
+              <h3>Directive proposal · {directiveStatusLabel(p.status)}</h3>
               <p>{p.description}</p>
+              <TechnicalDetails
+                items={[
+                  { label: 'Proposal ID', value: p.proposalId },
+                  { label: 'Resource ID', value: p.resourceId },
+                  { label: 'Directive type', value: p.directiveType },
+                  { label: 'Status', value: p.status },
+                ]}
+              />
             </div>
           ))}
         </div>

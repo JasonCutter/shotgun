@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router';
 import { useAppRuntime } from '../../app/providers.js';
+import { connectorStatusLabel } from '../../presentation/product-labels.js';
 
 export const ConnectorsWorkspace = () => {
   const { apiClient } = useAppRuntime();
@@ -46,7 +47,7 @@ export const ConnectorsWorkspace = () => {
       </p>
 
       {connectors?.data?.length === 0 ? (
-        <p style={{ color: '#64748b' }}>No connectors configured for project {targetProjectId}.</p>
+        <p style={{ color: '#64748b' }}>No connectors are configured for this project.</p>
       ) : (
         <div
           style={{
@@ -67,7 +68,7 @@ export const ConnectorsWorkspace = () => {
             >
               <h3>{conn.name}</h3>
               <p>
-                Status: <strong>{conn.status}</strong>
+                Status: <strong>{connectorStatusLabel(conn.status)}</strong>
               </p>
               {conn.maskedCredentials && (
                 <p style={{ fontSize: '13px', color: '#64748b' }}>

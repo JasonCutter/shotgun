@@ -251,7 +251,10 @@ describe('HistoryWorkspace (FE-P5-S2 WP5)', () => {
     );
     await user.click(screen.getAllByRole('button', { name: /Canonical/ })[0]!);
     await waitFor(
-      () => expect(screen.getByRole('heading', { name: 'History entry', level: 2 })).not.toBeNull(),
+      () =>
+        expect(
+          screen.getByRole('heading', { name: 'Knowledge claim added', level: 2 }),
+        ).not.toBeNull(),
       { timeout: 5000 },
     );
     // Authoritative detail: payload snapshot + availability badge.
@@ -277,7 +280,10 @@ describe('HistoryWorkspace (FE-P5-S2 WP5)', () => {
     );
     await user.click(screen.getAllByRole('button', { name: /External actions/ })[0]!);
     await waitFor(
-      () => expect(screen.getByRole('heading', { name: 'History entry', level: 2 })).not.toBeNull(),
+      () =>
+        expect(
+          screen.getByRole('heading', { name: 'External action audit updated', level: 2 }),
+        ).not.toBeNull(),
       { timeout: 5000 },
     );
     expect(screen.getByRole('link', { name: /Audit lineage/ }).getAttribute('href')).toBe(
@@ -301,14 +307,20 @@ describe('HistoryWorkspace (FE-P5-S2 WP5)', () => {
     // Select the Canonical entry → Reversal draft initiation button.
     await user.click(screen.getAllByRole('button', { name: /Canonical/ })[0]!);
     await waitFor(
-      () => expect(screen.getByRole('heading', { name: 'History entry', level: 2 })).not.toBeNull(),
+      () =>
+        expect(
+          screen.getByRole('heading', { name: 'Knowledge claim added', level: 2 }),
+        ).not.toBeNull(),
       { timeout: 5000 },
     );
     expect(screen.getByRole('button', { name: /Reversal draft/ })).not.toBeNull();
     // Select the REVIEW entry → Review workspace link (no Reversal button).
     await user.click(screen.getAllByRole('button', { name: /Review/ })[0]!);
     await waitFor(
-      () => expect(screen.getByRole('heading', { name: 'History entry', level: 2 })).not.toBeNull(),
+      () =>
+        expect(
+          screen.getByRole('heading', { name: 'Review decision recorded', level: 2 }),
+        ).not.toBeNull(),
       { timeout: 5000 },
     );
     expect(screen.getByRole('link', { name: 'Review workspace' }).getAttribute('href')).toBe(
@@ -393,7 +405,10 @@ describe('HistoryWorkspace (FE-P5-S2 WP5)', () => {
     );
     await user.click(screen.getAllByRole('button', { name: /Canonical/ })[0]!);
     await waitFor(
-      () => expect(screen.getByRole('heading', { name: 'History entry', level: 2 })).not.toBeNull(),
+      () =>
+        expect(
+          screen.getByRole('heading', { name: 'Knowledge claim added', level: 2 }),
+        ).not.toBeNull(),
       { timeout: 5000 },
     );
     // The authoritative detail carries the exact historical revision identity

@@ -4,6 +4,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAppRuntime } from '../../app/providers.js';
 import { purgeSettingsScopedCaches } from '../../app/query-keys.js';
 import { sessionQueryOptions } from '../../session/session-query.js';
+import { TechnicalDetails } from '../../components/technical-details.js';
+import { projectLifecycleLabel } from '../../presentation/product-labels.js';
 
 export const ProjectDetailsWorkspace = () => {
   const { projectId } = useParams<{ projectId: string }>();
@@ -100,8 +102,14 @@ export const ProjectDetailsWorkspace = () => {
     <section className="project-details-workspace">
       <h2 style={{ fontSize: '20px', marginBottom: '8px' }}>Project Details: {project.name}</h2>
       <p style={{ color: '#64748b', marginBottom: '16px' }}>
-        Project ID: <code>{project.id}</code> | Revision: {project.revision}
+        Manage this project's name and lifecycle.
       </p>
+      <TechnicalDetails
+        items={[
+          { label: 'Project ID', value: project.id },
+          { label: 'Revision', value: project.revision },
+        ]}
+      />
 
       {message && (
         <div
@@ -131,7 +139,7 @@ export const ProjectDetailsWorkspace = () => {
         <div>
           <h3>Status & Lifecycle</h3>
           <p>
-            Current Status: <strong>{project.status}</strong>
+            Current status: <strong>{projectLifecycleLabel(project.status)}</strong>
           </p>
 
           <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>

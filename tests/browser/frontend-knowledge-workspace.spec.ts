@@ -151,12 +151,12 @@ test('Knowledge Workspace renders server pages, stable detail, and non-ready sta
   await expect(browserPage.getByRole('heading', { name: 'Knowledge', level: 1 })).toBeVisible();
   await expect(browserPage.getByRole('link', { name: 'Fixture Knowledge Page' })).toBeVisible();
   await expect(
-    browserPage.locator('.knowledge-projection').getByText('STALE').first(),
+    browserPage.locator('.knowledge-projection').getByText('Stale; not current').first(),
   ).toBeVisible();
   await browserPage.getByRole('link', { name: 'Fixture Knowledge Page' }).click();
   await expect(
     browserPage.getByRole('heading', { name: 'Fixture Knowledge Page', level: 1 }),
   ).toBeVisible();
   await expect(browserPage.getByText('Server-provided Knowledge content.')).toBeVisible();
-  await expect(browserPage.getByRole('link', { name: /Open pinned SourceVersion/ })).toBeVisible();
+  await expect(browserPage.getByRole('link', { name: 'Open source evidence' })).toBeVisible();
 });

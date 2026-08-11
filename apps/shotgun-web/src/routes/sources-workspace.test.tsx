@@ -365,7 +365,7 @@ describe('Sources Workspace', () => {
 
     expect(await screen.findByRole('heading', { name: 'Evidence notes', level: 1 })).toBeTruthy();
     expect(await screen.findByText('Original evidence', { selector: 'pre' })).toBeTruthy();
-    expect(screen.getByText('EVIDENCE_READY')).toBeTruthy();
+    expect(screen.getByText('Available with indexed evidence')).toBeTruthy();
     expect(runtime.apiClient.getSourcePreview).toHaveBeenCalledWith(
       'source-1',
       'version-2',

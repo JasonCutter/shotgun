@@ -16,6 +16,7 @@ import {
 import { EmptyState } from '../components/empty-state.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
+import { TechnicalDetails } from '../components/technical-details.js';
 import {
   reviewContextQueryOptions,
   reviewItemDetailQueryOptions,
@@ -638,8 +639,7 @@ const ReviewContextDetail = ({
       <div className="review-context-summary" data-aggregate={context.aggregateState}>
         <h2>검토 대상</h2>
         <p>
-          <strong>{TARGET_KIND_LABELS[context.targetKind]}</strong> · {context.targetId} · 리비전{' '}
-          {context.contextRevision}
+          <strong>{TARGET_KIND_LABELS[context.targetKind]}</strong>
         </p>
         <p className="review-status" data-aggregate={context.aggregateState}>
           {statusLabel(context.aggregateState)}
@@ -655,6 +655,13 @@ const ReviewContextDetail = ({
             {restricted ? '접근 제한으로 검토할 수 없습니다.' : '검토 정보를 사용할 수 없습니다.'}
           </p>
         ) : null}
+        <TechnicalDetails
+          items={[
+            { label: 'Review context ID', value: context.reviewContextId },
+            { label: 'Target ID', value: context.targetId },
+            { label: 'Context revision', value: context.contextRevision },
+          ]}
+        />
       </div>
 
       <div className="review-items">
@@ -951,7 +958,11 @@ const ReviewHistory = ({
               <span className="review-item-status" data-decision-state={decision.intent}>
                 {INTENT_LABELS[decision.intent]}
               </span>{' '}
-              · {decision.reviewItemId} · {decision.reason ?? '사유 없음'}
+              ·{' '}
+              {currentContext.context.items.find(
+                (item) => item.reviewItemId === decision.reviewItemId,
+              )?.label ?? 'Review item'}{' '}
+              · {decision.reason ?? '사유 없음'}
             </li>
           ))}
         </ul>

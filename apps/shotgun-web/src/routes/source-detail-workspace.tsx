@@ -13,6 +13,14 @@ import {
 import { useAppRuntime } from '../app/providers.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
+import { TechnicalDetails } from '../components/technical-details.js';
+import {
+  evidenceOriginLabel,
+  mediaTypeLabel,
+  sourceAskUsageLabel,
+  sourcePreviewLabel,
+  transformationStateLabel,
+} from '../presentation/product-labels.js';
 import {
   sourceDetailQueryOptions,
   sourceEvidenceQueryOptions,
@@ -121,28 +129,33 @@ export const SourceDetailWorkspace = () => {
             to={knowledgeReturnTarget.originRoute}
             state={knowledgeEvidenceReturnState(knowledgeReturnTarget)}
           >
-            Return to Knowledge resource {knowledgeReturnTarget.target.resourceId}
+            Return to Knowledge resource
           </Link>
         </p>
       ) : null}
       <dl className="identity-summary">
         <div>
-          <dt>Source</dt>
-          <dd>{detail.data.sourceId}</dd>
+          <dt>Version</dt>
+          <dd>
+            {history.data?.versions.find((version) => version.sourceVersionId === selectedVersionId)
+              ?.versionNumber ?? 'Selected'}
+          </dd>
         </div>
         <div>
-          <dt>Pinned SourceVersion</dt>
-          <dd>{selectedVersionId}</dd>
+          <dt>Preview</dt>
+          <dd>{sourcePreviewLabel(detail.data.previewReadiness)}</dd>
         </div>
         <div>
-          <dt>Preview readiness</dt>
-          <dd>{detail.data.previewReadiness}</dd>
-        </div>
-        <div>
-          <dt>Ask usage</dt>
-          <dd>{detail.data.askUsageState}</dd>
+          <dt>Questions</dt>
+          <dd>{sourceAskUsageLabel(detail.data.askUsageState)}</dd>
         </div>
       </dl>
+      <TechnicalDetails
+        items={[
+          { label: 'Source ID', value: detail.data.sourceId },
+          { label: 'SourceVersion ID', value: selectedVersionId },
+        ]}
+      />
 
       <section className="action-card" aria-labelledby="source-version-heading">
         <h2 id="source-version-heading">Version history</h2>
@@ -162,8 +175,8 @@ export const SourceDetailWorkspace = () => {
                     setSearchParameters({ version: version.sourceVersionId });
                   }}
                 >
-                  Version {version.versionNumber} · {version.mediaType} ·{' '}
-                  {version.transformationState}
+                  Version {version.versionNumber} · {mediaTypeLabel(version.mediaType)} ·{' '}
+                  {transformationStateLabel(version.transformationState)}
                 </button>
               </li>
             ))}
@@ -209,9 +222,13 @@ export const SourceDetailWorkspace = () => {
                 >
                   <strong>{item.label}</strong>
                   <p>{item.exactText}</p>
-                  <small>
-                    {item.origin} · {item.evidenceId}
-                  </small>
+                  <small>{evidenceOriginLabel(item.origin)}</small>
+                  <TechnicalDetails
+                    items={[
+                      { label: 'Evidence ID', value: item.evidenceId },
+                      { label: 'Evidence revision', value: item.revisionId },
+                    ]}
+                  />
                 </li>
               );
             })}

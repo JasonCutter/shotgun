@@ -275,15 +275,15 @@ describe('Graph Workspace UI (FE-P3-S3)', () => {
     await userEvent.keyboard('{Alt>}2{/Alt}');
     await waitFor(() =>
       expect(
-        (screen.getByRole('radio', { name: /GOVERNANCE_IMPACT/ }) as HTMLInputElement).checked,
+        (screen.getByRole('radio', { name: /Governance impact/ }) as HTMLInputElement).checked,
       ).toBe(true),
     );
 
     await userEvent.keyboard('{Alt>}{Shift>}1{/Shift}{/Alt}');
     await waitFor(() =>
-      expect((screen.getByRole('checkbox', { name: /CONFLICT/ }) as HTMLInputElement).checked).toBe(
-        true,
-      ),
+      expect(
+        (screen.getByRole('checkbox', { name: /Conflicts/ }) as HTMLInputElement).checked,
+      ).toBe(true),
     );
   });
 

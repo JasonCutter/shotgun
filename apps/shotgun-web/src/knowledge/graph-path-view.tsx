@@ -11,6 +11,12 @@ import {
   graphNodeRefById,
   graphSelectedNodeId,
 } from './graph-accessible.js';
+import {
+  graphBaseViewLabel,
+  graphItemKindLabel,
+  graphOverlayLabel,
+} from '../presentation/product-labels.js';
+import { authorityLabel } from './graph-list-view.js';
 
 /**
  * Path view (AC-19/AC-21). Narration of the found paths plus the identical
@@ -49,7 +55,7 @@ export const GraphPathView = ({
             {description.segments.map((segment) => (
               <li key={segment.step}>
                 {segment.kind === 'ORIGIN' ? (
-                  <span>시작: {segment.narration}</span>
+                  <span>{segment.narration}</span>
                 ) : (
                   <span>
                     {segment.step}. {segment.narration}
@@ -62,9 +68,7 @@ export const GraphPathView = ({
       ) : path && path.paths.length > 0 ? (
         <ul className="graph-path-list">
           {path.paths.map((found) => (
-            <li key={found.pathId}>
-              <span>{found.pathId}</span> — {found.segments.length} segments
-            </li>
+            <li key={found.pathId}>Path with {found.segments.length} steps</li>
           ))}
         </ul>
       ) : (
@@ -87,12 +91,15 @@ export const GraphPathView = ({
               data-graph-base-view={tuple.baseViewMembership}
               data-graph-overlays={tuple.overlayMemberships.join(',')}
             >
-              <span className="graph-item-kind">{tuple.kind}</span>
-              <span className="graph-item-id">{key}</span>
+              <span className="graph-item-kind">{graphItemKindLabel(tuple.kind)}</span>
               <span className="graph-item-label">{tuple.label}</span>
-              <span className="graph-item-authority">{tuple.authority}</span>
-              <span className="graph-item-base-view">{tuple.baseViewMembership}</span>
-              <span className="graph-item-overlays">{tuple.overlayMemberships.join(', ')}</span>
+              <span className="graph-item-authority">{authorityLabel(tuple.authority)}</span>
+              <span className="graph-item-base-view">
+                {graphBaseViewLabel(tuple.baseViewMembership)}
+              </span>
+              <span className="graph-item-overlays">
+                {tuple.overlayMemberships.map(graphOverlayLabel).join(', ')}
+              </span>
               {nodeRef ? (
                 <button type="button" onClick={() => onSelect(nodeRef)}>
                   Select

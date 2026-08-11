@@ -15,7 +15,7 @@
 
 Current Stage 10 `DerivedInferenceCandidate` is intentionally narrow: status `DERIVED_INFERENCE`, type `KNOWLEDGE_GAP`, a question, related node IDs, evidence IDs, source projection digest and `VALIDATION` re-entry marker. The canonical Knowledge Flow Step 17 is broader: missing/weak knowledge, new relationships/patterns, contradictions, questions/investigations and Action candidates.
 
-Directly adding every Discovery mode to `KnowledgeCandidateType` would mix two different concepts: a derived *finding* produced by Discovery and a typed knowledge/action/conflict *candidate* entering the existing governance pipeline.
+Directly adding every Discovery mode to `KnowledgeCandidateType` would mix two different concepts: a derived _finding_ produced by Discovery and a typed knowledge/action/conflict _candidate_ entering the existing governance pipeline.
 
 ## Decision
 

@@ -1,7 +1,10 @@
 # ADR-138 — Durable Triggered Discovery Runtime over Existing Outbox and Job Foundations
 
-- Status: **PROPOSED**
+- Status: **ACCEPTED**
 - Proposed at: 2026-08-11
+- Decision date: 2026-08-12
+- Accepted at: 2026-08-12
+- Accepted by: `USER`
 - Decision owner: `USER`
 - Work item: `AKP-4 — Trigger, Scheduling & Durable Runtime`
 - Subject base: `main@f08ae632220ac613ae0e90c04930ceb323aac40b`

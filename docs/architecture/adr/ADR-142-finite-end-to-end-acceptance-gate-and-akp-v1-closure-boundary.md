@@ -32,13 +32,16 @@ approved Canonical change
 -> required projections update
 -> incremental Discovery job
 -> persistent Relation Hypothesis finding
+-> automatic derived validation/re-entry
 -> Discovery UI/Graph explanation
--> governed validation/re-entry
+-> Review-ready governed resource
 -> Review/Approval
 -> Canonical relation/change
 -> new projection generation
--> later Discovery observes the new Canonical state
+-> later Discovery observes/reconciles the new Canonical state
 ```
+
+This proves Phase-3 re-entry is automatic governance processing; a user click is not required to make the finding eligible for validation.
 
 #### E2E-B — Periodic full scan
 
@@ -46,7 +49,7 @@ A persistent scheduled full scan executes without an interactive request, record
 
 #### E2E-C — Explicit feedback/suppression
 
-A user dismisses/snoozes/suppresses a finding; the feedback event is preserved and a logically repeated run obeys the exact/similar suppression scope without modifying truth confidence.
+A user dismisses/snoozes/suppresses a finding; the feedback event is preserved and a logically repeated ordinary run obeys the exact/similar suppression scope without modifying truth confidence.
 
 #### E2E-D — Semantic/AI degradation
 
@@ -66,7 +69,7 @@ Canonical/projection state changes after a finding is generated but before Revie
 
 #### E2E-H — Project/access/sensitivity isolation
 
-Cross-project resource existence is not disclosed through semantic search, Discovery, Graph, Review, Activity or feedback APIs. External AI/embedding egress denied by policy fails closed.
+Cross-project resource existence is not disclosed through semantic search, Discovery, Graph, Review, Activity or feedback APIs. A multi-resource finding uses the restrictive common access scope and highest effective sensitivity. External AI/embedding egress denied by policy fails closed.
 
 #### E2E-I — Semantic profile generation switch/rollback
 
@@ -78,29 +81,46 @@ An Action Suggestion can become a governed Action Candidate but never executes e
 
 #### E2E-K — Authority presentation
 
-A derived relation/pattern is never rendered, cited or exported as Canonical merely because it has a high semantic/model score.
+A derived relation/pattern/conflict is never rendered, cited or exported as Canonical merely because it has a high semantic/model score.
 
 #### E2E-L — Feedback routing
 
 Epistemic feedback creates validation/correction work; preference feedback changes ranking/suppression only.
+
+#### E2E-M — Conflict discovery and mandatory-visibility suppression boundary
+
+A newly detected potential contradiction becomes `CONFLICT_HYPOTHESIS`, passes derived validation into the existing Conflict comparison/review path, and remains non-Canonical until governed resolution. A prior ordinary `SUPPRESS_SIMILAR` preference cannot silently remove a materially new high-priority/non-suppressible conflict from the required Review/Attention surface.
+
+#### E2E-N — Semantic invalidation and rebuild equivalence
+
+A Canonical resource becomes superseded/retired/access-ineligible. Incremental semantic projection removes/tombstones it from the active retrievable corpus. A full rebuild at the same base/profile yields logically equivalent membership. Old vector payloads can be pruned without affecting Canonical or audit authority.
+
+#### E2E-O — Query-embedding privacy and AI content isolation
+
+A semantic query and AI-assisted Discovery call both pass ADR-133 provider/credential/egress authority. Restricted transfer fails closed. Knowledge/query content is treated as data; embedded prompt-like instructions cannot alter policy, invoke tools, execute external Actions or expose credentials.
+
+#### E2E-P — Projection-wait timeout and finding reconciliation
+
+A Discovery Job waiting on projections reaches its configured deadline and transitions to an explicitly allowed degraded, retryable or terminal state rather than waiting forever. A later Canonical change reconciles a fulfilled/obsolete prior finding to `RESOLVED`, `STALE` or `SUPERSEDED` while preserving history.
 
 ### 3. Acceptance dimensions
 
 The final evidence matrix covers only risk-bearing deltas across:
 
 - contract/schema compatibility;
-- migration/rebuild/rollback;
-- persistence and restart recovery;
-- trigger idempotency;
-- security/non-disclosure/sensitivity;
+- migration/rebuild/rollback and incremental/full-projection equivalence;
+- persistence, retention, backup/restore and restart recovery;
+- trigger idempotency and projection-wait disposition;
+- security/non-disclosure/sensitivity composition and provider egress;
+- prompt/content isolation for AI-assisted Discovery;
 - semantic retrieval quality benchmark;
-- Discovery precision/duplicate/suppression behavior;
-- re-entry and Review authority;
+- Discovery precision/duplicate/suppression/conflict behavior;
+- automatic re-entry and Review authority;
 - Graph/Activity authority separation;
 - Product accessibility/focus semantics;
 - bounded performance/cost;
 - failure/degraded-state recovery;
-- history/audit/provenance.
+- history/audit/provenance and finding reconciliation.
 
 ### 4. Evidence reuse and test policy
 
@@ -112,21 +132,22 @@ Evidence already PASS at the same exact head is referenced, not rerun. Each impl
 
 1. every frozen AKP Program Acceptance Criterion PASS;
 2. every frozen Section Acceptance Criterion PASS or an explicitly approved non-blocking disposition;
-3. all mandatory E2E scenarios PASS on the final exact Product head;
+3. all mandatory E2E scenarios A-P PASS on the final exact Product head;
 4. zero unresolved Critical/High architecture or security gaps;
 5. every Deferred item assigned outside AKP v1 with impact recorded;
-6. migration/rebuild/rollback evidence complete where applicable;
+6. migration/rebuild/rollback/retention evidence complete where applicable;
 7. required automatic CI on the final exact head successful;
 8. user final completion approval;
 9. normal merge/post-merge governance evidence complete before Canonical completion status is recorded.
 
 ### 6. Completion freezes scope
 
-After the accepted completion declaration, a new capability cannot reopen AKP v1 merely by being described as "more active". It becomes AKP v2 or a separately scoped architecture work item unless it proves the v1 completion evidence was false.
+After the accepted completion declaration, a new capability cannot reopen AKP v1 merely by being described as “more active”. It becomes AKP v2 or a separately scoped architecture work item unless it proves the v1 completion evidence was false.
 
 ## Consequences
 
 - Section-local success cannot hide broken hand-offs.
+- Whole-design risks such as conflict visibility, query egress, semantic tombstones and infinite projection waits are explicitly tested.
 - Program closure is objectively auditable.
 - Test cost remains controlled through exact-head evidence reuse.
 - Future active features receive a new scope rather than silently extending v1.
@@ -135,5 +156,6 @@ After the accepted completion declaration, a new capability cannot reopen AKP v1
 
 - Declare AKP complete when AKP-7 implementation merges without full-loop evidence.
 - Require every historical test suite to be manually rerun after every Section.
-- Use subjective "feels proactive" Product behavior as the completion definition.
+- Treat successful happy-path relation discovery as sufficient while ignoring conflict/security/restart/invalidation cases.
+- Use subjective “feels proactive” Product behavior as the completion definition.
 - Leave future active features attached indefinitely to AKP v1.

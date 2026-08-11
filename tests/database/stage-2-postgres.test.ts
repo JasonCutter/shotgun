@@ -9,7 +9,9 @@ import { InMemoryAssetStorage } from '../../adapters/stage2-in-memory/src/index.
 import { InProcessTransport } from '../../adapters/transport-in-process/src/index.js';
 import { createStage2Harness, directTextCommand, intakeResultQuery } from '../helpers/stage-2.js';
 
-const databaseUrl = process.env.DATABASE_URL;
+import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
+
+const databaseUrl = await requireTestDatabaseTarget();
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
 
 describe.runIf(pool)('Stage 2 PostgreSQL persistence', () => {

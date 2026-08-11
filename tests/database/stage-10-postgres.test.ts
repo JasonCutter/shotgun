@@ -13,7 +13,9 @@ import type {
 import { createCommand, createQuery } from '../../packages/kernel/src/index.js';
 import type { DispatchQueryInput, HandlerContext } from '../../packages/module-sdk/src/index.js';
 
-const databaseUrl = process.env.DATABASE_URL;
+import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
+
+const databaseUrl = await requireTestDatabaseTarget();
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
 
 const projection = (buildMode: 'FULL_REBUILD' | 'INCREMENTAL'): CompiledTruthProjection => ({

@@ -20,7 +20,9 @@ import {
 } from '../helpers/stage-11.js';
 import { actionEvidenceSetDigest } from '../../packages/contracts/src/index.js';
 
-const databaseUrl = process.env.DATABASE_URL;
+import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
+
+const databaseUrl = await requireTestDatabaseTarget();
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
 
 describe.runIf(pool)('Stage 12.1 P0-2 PostgreSQL Action persistence', () => {

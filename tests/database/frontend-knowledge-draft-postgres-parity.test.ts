@@ -37,7 +37,9 @@ import {
   type ParityBoundary,
 } from '../helpers/frontend-knowledge-draft-parity.js';
 
-const databaseUrl = process.env.DATABASE_URL;
+import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
+
+const databaseUrl = await requireTestDatabaseTarget();
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
 
 const pgBoundary = (): ParityBoundary => new PostgresFrontendKnowledgeDraftRepository(pool!);

@@ -11,7 +11,9 @@ import { acceptPrincipalProjectCreateCommand } from '../../assemblies/shotgun-ap
 import { hashSecuritySecret } from '../../packages/authentication/src/index.js';
 import { dropSchemas, migrateUpTo } from '../../scripts/database.js';
 
-const databaseUrl = process.env.DATABASE_URL;
+import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
+
+const databaseUrl = await requireTestDatabaseTarget();
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
 
 afterAll(async () => {
@@ -237,14 +239,14 @@ describe.runIf(pool)('ADR-116 PostgreSQL bootstrap transaction', () => {
 
 describe.runIf(pool)('ADR-116 Migration 018 to 019 compatibility', () => {
   afterEach(async () => {
-    await dropSchemas();
-    await migrateUpTo();
+    await dropSchemas(databaseUrl);
+    await migrateUpTo(undefined, databaseUrl);
   });
 
   it('backfills V1 scope deterministically, preserves data, and is replay-safe', async () => {
     try {
-      await dropSchemas();
-      await migrateUpTo('018_frontend_command_request_outcome_contract.sql');
+      await dropSchemas(databaseUrl);
+      await migrateUpTo('018_frontend_command_request_outcome_contract.sql', databaseUrl);
       const principalId = randomUUID();
       const projectId = `migration-project-${randomUUID()}`;
       const sessionId = randomUUID();
@@ -304,7 +306,7 @@ describe.runIf(pool)('ADR-116 Migration 018 to 019 compatibility', () => {
         ],
       );
 
-      await migrateUpTo('019_frontend_section3_principal_bootstrap.sql');
+      await migrateUpTo('019_frontend_section3_principal_bootstrap.sql', databaseUrl);
       const migrated = await pool!.query<{
         envelope_version: string;
         scope_kind: string;
@@ -382,7 +384,7 @@ describe.runIf(pool)('ADR-116 Migration 018 to 019 compatibility', () => {
         ],
       });
 
-      await migrateUpTo('019_frontend_section3_principal_bootstrap.sql');
+      await migrateUpTo('019_frontend_section3_principal_bootstrap.sql', databaseUrl);
       expect(
         await pool!.query(
           `SELECT count(*)::text AS count
@@ -391,8 +393,8 @@ describe.runIf(pool)('ADR-116 Migration 018 to 019 compatibility', () => {
         ),
       ).toMatchObject({ rows: [{ count: '1' }] });
     } finally {
-      await dropSchemas();
-      await migrateUpTo();
+      await dropSchemas(databaseUrl);
+      await migrateUpTo(undefined, databaseUrl);
     }
   });
 });

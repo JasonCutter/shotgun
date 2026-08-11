@@ -33,7 +33,9 @@ import {
   stageGroupCommand,
 } from '../helpers/stage-9.js';
 
-const databaseUrl = process.env.DATABASE_URL;
+import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
+
+const databaseUrl = await requireTestDatabaseTarget();
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
 
 const createHarness = async (storage: InMemoryAssetStorage) => {

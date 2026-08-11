@@ -13,10 +13,11 @@ import {
 } from '../../assemblies/shotgun-app/src/application.js';
 import { getSourcesWriteRuntime } from '../../assemblies/shotgun-app/src/product-api/sources-write-runtime.js';
 import { runAIDurableMaterializationRecovery } from '../../assemblies/shotgun-app/src/server.js';
+import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
 
 /**
  * LPA-WP5 A2 Correction Round 2/3 — recovery harness isolation, assembly
- * focused tests against the real Postgres (docker, `db:reset` in CI). They
+ * focused tests against the isolated test Postgres (`db:test:reset` in CI). They
  * verify the recovery harness is truly "recovery-only":
  *   - C2-1: the Ask background worker is NOT started (no claim/recover/execute
  *     of Product work, no AI provider execution possible).
@@ -30,8 +31,8 @@ import { runAIDurableMaterializationRecovery } from '../../assemblies/shotgun-ap
  *     construction failure; same-process reconstruction works.
  * Empty canonical (0 projects) is the valid normal case; no Product fixtures.
  */
-const databaseUrl = process.env.DATABASE_URL;
-const hasDb = Boolean(databaseUrl);
+const databaseUrl = await requireTestDatabaseTarget();
+const hasDb = true;
 
 let assetRoot = '';
 

@@ -21,18 +21,18 @@ jobs:
       postgres:
         image: postgres:16.14-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
         env:
-          POSTGRES_DB: shotgun
+          POSTGRES_DB: shotgun_test
           POSTGRES_USER: shotgun
           POSTGRES_PASSWORD: shotgun
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U shotgun -d shotgun"
+          --health-cmd "pg_isready -U shotgun -d shotgun_test"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
     env:
-      DATABASE_URL: postgres://shotgun:shotgun@localhost:5432/shotgun
+      TEST_DATABASE_URL: postgres://shotgun:shotgun@localhost:5432/shotgun_test
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -87,7 +87,7 @@ jobs:
       - name: Verify SBOM JSON
         run: node -e "JSON.parse(require('node:fs').readFileSync('sbom.cdx.json', 'utf8'))"
       - name: Reset test database
-        run: npm run db:reset
+        run: npm run db:test:reset
       - name: Run Stage 12 reuse and operations gate
         run: npm run stage12:reuse-operations-gate
       - name: Run CI test suite
@@ -103,18 +103,18 @@ jobs:
       postgres:
         image: postgres:16.14-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
         env:
-          POSTGRES_DB: shotgun
+          POSTGRES_DB: shotgun_test
           POSTGRES_USER: shotgun
           POSTGRES_PASSWORD: shotgun
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U shotgun -d shotgun"
+          --health-cmd "pg_isready -U shotgun -d shotgun_test"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
     env:
-      DATABASE_URL: postgres://shotgun:shotgun@localhost:5432/shotgun
+      TEST_DATABASE_URL: postgres://shotgun:shotgun@localhost:5432/shotgun_test
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -134,7 +134,7 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Reset frontend test database
-        run: npm run db:reset
+        run: npm run db:test:reset
       - name: Run frontend end-to-end tests
         run: npm run frontend:test:e2e
 

@@ -55,7 +55,9 @@ import {
 } from '../helpers/stage-5.js';
 import { historyQuery, outboxQuery, snapshotQuery } from '../helpers/stage-6.js';
 
-const databaseUrl = process.env.DATABASE_URL;
+import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
+
+const databaseUrl = await requireTestDatabaseTarget();
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
 
 const registerThroughStage5 = (

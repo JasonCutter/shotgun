@@ -10,7 +10,9 @@ import {
   type FrontendCanonicalCommitWrite,
 } from '../../packages/contracts/src/index.js';
 
-const databaseUrl = process.env.DATABASE_URL;
+import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
+
+const databaseUrl = await requireTestDatabaseTarget();
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
 
 const authority = {
@@ -77,8 +79,8 @@ describe.runIf(pool)('FE-P5-XP Correction B: commitFrontendDraft (Postgres parit
   });
 
   it('commits an ADD_CLAIM with FRONTEND_REVIEW_APPROVAL provenance and no legacy manifest', async () => {
-    await dropSchemas();
-    await migrateUpTo();
+    await dropSchemas(databaseUrl);
+    await migrateUpTo(undefined, databaseUrl);
     const repository = new PostgresCanonicalKnowledgeRepository(pool!);
     const write = addClaimWrite();
     const result = await repository.commitFrontendDraft(write);
@@ -112,8 +114,8 @@ describe.runIf(pool)('FE-P5-XP Correction B: commitFrontendDraft (Postgres parit
   });
 
   it('is replay-idempotent for the same commit id + authority', async () => {
-    await dropSchemas();
-    await migrateUpTo();
+    await dropSchemas(databaseUrl);
+    await migrateUpTo(undefined, databaseUrl);
     const repository = new PostgresCanonicalKnowledgeRepository(pool!);
     const write = addClaimWrite();
     const first = await repository.commitFrontendDraft(write);
@@ -125,8 +127,8 @@ describe.runIf(pool)('FE-P5-XP Correction B: commitFrontendDraft (Postgres parit
   });
 
   it('rejects a replay whose authorityDigest differs from the stored commit (GPT Round 3 #1)', async () => {
-    await dropSchemas();
-    await migrateUpTo();
+    await dropSchemas(databaseUrl);
+    await migrateUpTo(undefined, databaseUrl);
     const repository = new PostgresCanonicalKnowledgeRepository(pool!);
     const write = addClaimWrite();
     const first = await repository.commitFrontendDraft(write);
@@ -142,8 +144,8 @@ describe.runIf(pool)('FE-P5-XP Correction B: commitFrontendDraft (Postgres parit
   });
 
   it('rejects a second commit for the same approval (one approval -> one commit)', async () => {
-    await dropSchemas();
-    await migrateUpTo();
+    await dropSchemas(databaseUrl);
+    await migrateUpTo(undefined, databaseUrl);
     const repository = new PostgresCanonicalKnowledgeRepository(pool!);
     await repository.commitFrontendDraft(addClaimWrite());
     await expect(
@@ -162,8 +164,8 @@ describe.runIf(pool)('FE-P5-XP Correction B: commitFrontendDraft (Postgres parit
   });
 
   it('fails closed with STALE_APPROVAL when the canonical snapshot moved', async () => {
-    await dropSchemas();
-    await migrateUpTo();
+    await dropSchemas(databaseUrl);
+    await migrateUpTo(undefined, databaseUrl);
     const repository = new PostgresCanonicalKnowledgeRepository(pool!);
     // Advance the snapshot with a first commit, then try to commit against v0.
     await repository.commitFrontendDraft(
@@ -184,8 +186,8 @@ describe.runIf(pool)('FE-P5-XP Correction B: commitFrontendDraft (Postgres parit
   }, 60_000);
 
   it('commits a NO_OP without claims or a version bump', async () => {
-    await dropSchemas();
-    await migrateUpTo();
+    await dropSchemas(databaseUrl);
+    await migrateUpTo(undefined, databaseUrl);
     const repository = new PostgresCanonicalKnowledgeRepository(pool!);
     const result = await repository.commitFrontendDraft(noOpWrite());
     expect(result.status).toBe('NO_OP');
@@ -198,8 +200,8 @@ describe.runIf(pool)('FE-P5-XP Correction B: commitFrontendDraft (Postgres parit
   });
 
   it('preserves legacy Stage-5 commit rows with LEGACY_STAGE5_MANIFEST authority', async () => {
-    await dropSchemas();
-    await migrateUpTo();
+    await dropSchemas(databaseUrl);
+    await migrateUpTo(undefined, databaseUrl);
     const client = await pool!.connect();
     try {
       // Insert a legacy-shaped commit row directly and verify the authority

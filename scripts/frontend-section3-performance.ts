@@ -802,7 +802,7 @@ const npmVersion = (): string => {
 const main = async (): Promise<void> => {
   const repositoryRoot = process.cwd();
   if (shouldWriteCanonical) {
-    runRequiredCommand('npm.cmd', ['run', 'db:reset']);
+    runRequiredCommand('npm.cmd', ['run', 'db:test:reset']);
   }
   runRequiredCommand('npm.cmd', ['run', 'frontend:build'], {
     ...process.env,

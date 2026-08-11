@@ -35,7 +35,7 @@ const steps: readonly GateStep[] = [
     ],
   },
   npmStep('quality-gate', 'quality:gate'),
-  npmStep('database-verify', 'db:verify'),
+  npmStep('database-verify', 'db:test:verify'),
   npmStep('secret-scan', 'secret:scan'),
   npmStep('oss-gate', 'oss:verify'),
 ];

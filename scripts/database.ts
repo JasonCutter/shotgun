@@ -5,6 +5,11 @@ import { fileURLToPath } from 'node:url';
 import 'dotenv/config';
 import { Client } from 'pg';
 
+import {
+  requireConfirmedDestructiveDatabaseTarget,
+  requireTestDatabaseTarget,
+} from './database-target-guard.js';
+
 const rootDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const migrationDirectory = path.join(rootDirectory, 'db', 'migrations');
 
@@ -18,8 +23,11 @@ const databaseUrl = (): string => {
   return value;
 };
 
-const withClient = async <T>(action: (client: Client) => Promise<T>): Promise<T> => {
-  const client = new Client({ connectionString: databaseUrl() });
+const withClient = async <T>(
+  connectionString: string,
+  action: (client: Client) => Promise<T>,
+): Promise<T> => {
+  const client = new Client({ connectionString });
   await client.connect();
   try {
     return await action(client);
@@ -67,12 +75,15 @@ const dropManagedSchemas = async (client: Client): Promise<void> => {
   }
 };
 
-export const dropSchemas = async (): Promise<void> => {
-  await withClient(dropManagedSchemas);
+export const dropSchemas = async (connectionString: string): Promise<void> => {
+  await withClient(connectionString, dropManagedSchemas);
 };
 
-export const migrateUpTo = async (targetFile?: string): Promise<void> => {
-  await withClient(async (client) => {
+export const migrateUpTo = async (
+  targetFile?: string,
+  connectionString = databaseUrl(),
+): Promise<void> => {
+  await withClient(connectionString, async (client) => {
     await client.query('CREATE SCHEMA IF NOT EXISTS runtime');
     await client.query(`
       CREATE TABLE IF NOT EXISTS runtime.schema_migrations (
@@ -103,14 +114,14 @@ export const migrateUpTo = async (targetFile?: string): Promise<void> => {
   });
 };
 
-const migrate = async (): Promise<void> => {
-  await migrateUpTo();
+const migrate = async (connectionString = databaseUrl()): Promise<void> => {
+  await migrateUpTo(undefined, connectionString);
   console.log('Database migrations applied.');
 };
 
-const reset = async (): Promise<void> => {
-  await withClient(dropManagedSchemas);
-  await migrate();
+const reset = async (connectionString: string): Promise<void> => {
+  await withClient(connectionString, dropManagedSchemas);
+  await migrate(connectionString);
   console.log('Database schema recreated.');
 };
 
@@ -203,9 +214,9 @@ const requiredTables = [
   'frontend_history.projection_watermarks',
 ] as const;
 
-const verify = async (): Promise<void> => {
+const verify = async (connectionString = databaseUrl()): Promise<void> => {
   const expectedMigrationCount = String((await migrationFiles()).length);
-  await withClient(async (client) => {
+  await withClient(connectionString, async (client) => {
     const count = await client.query<{ count: string }>(
       'SELECT count(*)::text AS count FROM runtime.schema_migrations',
     );
@@ -233,10 +244,19 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.a
   if (command === 'migrate') {
     await migrate();
   } else if (command === 'reset') {
-    await reset();
+    const connectionString = databaseUrl();
+    await requireConfirmedDestructiveDatabaseTarget({
+      databaseUrl: connectionString,
+      confirmation: process.env.SHOTGUN_CONFIRM_DATABASE_RESET,
+    });
+    await reset(connectionString);
+  } else if (command === 'test-reset') {
+    await reset(await requireTestDatabaseTarget());
   } else if (command === 'verify') {
     await verify();
+  } else if (command === 'test-verify') {
+    await verify(await requireTestDatabaseTarget());
   } else {
-    throw new Error('Use one of: migrate, reset, verify.');
+    throw new Error('Use one of: migrate, reset, test-reset, verify, test-verify.');
   }
 }

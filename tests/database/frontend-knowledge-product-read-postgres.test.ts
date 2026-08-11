@@ -52,7 +52,9 @@ import { changesQuery, decisionCommand } from '../helpers/stage-5.js';
 import { buildCompiledTruthCommand, runDiscoveryCommand } from '../helpers/stage-10.js';
 import { entityCandidate, reviewGroupCommand, stageGroupCommand } from '../helpers/stage-9.js';
 
-const databaseUrl = process.env.DATABASE_URL;
+import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
+
+const databaseUrl = await requireTestDatabaseTarget();
 
 describe.runIf(databaseUrl)('Frontend Knowledge Product PostgreSQL adapter', () => {
   let pool: ReturnType<typeof createPostgresPool>;

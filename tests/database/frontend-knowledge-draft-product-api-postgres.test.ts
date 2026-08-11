@@ -20,7 +20,9 @@ import type { FrontendKnowledgeOperationV1 } from '../../packages/contracts/src/
 import { pBase, pOperation } from '../helpers/frontend-knowledge-draft-parity.js';
 
 const PROJECT_ID = 'project-1';
-const databaseUrl = process.env.DATABASE_URL;
+import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
+
+const databaseUrl = await requireTestDatabaseTarget();
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
 
 describe.runIf(pool)('FE-P3-S2 Product API coordinator on PostgreSQL persistence', () => {

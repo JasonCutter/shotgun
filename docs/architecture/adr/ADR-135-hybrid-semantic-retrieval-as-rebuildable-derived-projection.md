@@ -75,6 +75,8 @@ Project, access scope and sensitivity eligibility is applied inside/before each 
 
 External embedding egress obeys ADR-133 deployment/project/provider policy. If a sensitivity class cannot use the configured external embedding provider, the operation fails/degrades according to policy; it cannot silently send the text elsewhere.
 
+The same rule applies to **query embedding**. A semantic query may itself contain private or restricted knowledge, so query text cannot bypass provider/privacy approval simply because it is not being indexed. Raw semantic-query text is not placed in global caches or logs. Any query-embedding cache is project/profile/policy scoped and stores no unnecessary plaintext.
+
 ### 9. Citation remains authoritative lineage
 
 Semantic matching only selects a knowledge resource. The returned result must still traverse existing Knowledge -> EvidenceSpan -> SourceVersion lineage. Similarity is never presented as citation or truth confidence.
@@ -83,20 +85,31 @@ Semantic matching only selects a knowledge resource. The returned result must st
 
 Lexical and Semantic projections expose separate health/readiness. If lexical is healthy and semantic is stale/failed/unavailable, Product Search falls back to lexical and exposes degraded semantic capability. Semantic failure must not make healthy Stage 7 lexical search unavailable.
 
-### 11. Build/switch/rollback
+### 11. Incremental invalidation, full-rebuild equivalence and tombstones
+
+Semantic projection eligibility follows the authoritative Canonical/Compiled Truth state. Incremental projection updates must deterministically upsert changed eligible items and remove/tombstone items that become superseded, retired, access-ineligible or otherwise outside the active semantic corpus. An obsolete vector may not remain retrievable merely because a previous generation indexed it.
+
+For the same canonical/projection base, representation version and embedding profile, an incremental projection and a full rebuild must be logically equivalent in active retrievable membership and resource identity.
+
+### 12. Build/switch/rollback and retention
 
 A new embedding profile builds a new semantic generation before activation. Active pointer switch is explicit; prior generation can remain available for bounded rollback. Model/profile changes do not destructively overwrite the currently active index before the new generation is ready.
 
-### 12. Quality gate
+Vector payloads are rebuildable projection assets and inherit the sensitivity of their source material. Retain the active generation and a bounded last-known-good generation according to policy; older vector payloads may be pruned after the rollback window. Minimal build/audit metadata may be retained longer where needed for reproducibility and governance. Canonical data is never deleted as part of semantic-index pruning.
+
+### 13. Quality gate
 
 Reuse the existing quality-evaluation foundation to build Golden Queries covering exact phrase, typo, synonym, paraphrase, Korean/English alias and temporal-language cases. Compare lexical-only, semantic-only and hybrid behavior. Thresholds/rank policy are accepted from evidence, not hard-coded as Fact confidence.
+
+The quality gate also verifies incremental/full-rebuild equivalence and proves that retired/superseded/ineligible resources do not remain retrievable from the active generation.
 
 ## Consequences
 
 - Active Discovery gains semantic neighbors without turning embeddings into knowledge authority.
 - Existing FTS/`pg_trgm` remains useful and independently recoverable.
 - Model changes require projection rebuild planning and storage for generations.
-- External embedding availability depends on ADR-133 Product implementation and data policy.
+- External indexing and query embedding availability depends on ADR-133 Product implementation and data policy.
+- Projection invalidation/tombstone behavior is part of correctness, not merely performance optimization.
 
 ## Rejected alternatives
 
@@ -105,5 +118,8 @@ Reuse the existing quality-evaluation foundation to build Golden Queries coverin
 - Use the active Ask generation model automatically as the embedding model.
 - Use a fixed 0.7/0.85 similarity number as a universal quality/truth threshold.
 - Search all projects first and apply access filtering after Top-K.
+- Send query text to an external embedding provider outside normal egress policy.
+- Leave retired/superseded vectors searchable until a later full rebuild.
+- Retain every historical vector generation indefinitely as if it were audit authority.
 - Vectorize all Raw Sources as part of AKP v1.
 - Adopt an external vector database before PostgreSQL limits are measured.

@@ -261,6 +261,7 @@ export type UpdatePreferenceCommandPayload = {
 
 export type ApplyProjectPolicyCommandPayload = {
   readonly settings: Record<string, unknown>;
+  readonly reviewProposalId?: string;
 };
 
 export type CreateProjectCommandPayload = {
@@ -298,6 +299,13 @@ const assertRecordPayload = (value: unknown, commandType: string): Record<string
   return value as Record<string, unknown>;
 };
 
+const assertNonEmptyString = (value: unknown, path: string): string => {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new FrontendContractError('INVALID_REQUEST', `${path} must be a non-empty string`);
+  }
+  return value;
+};
+
 const assertOnlyPayloadKeys = (
   payload: Record<string, unknown>,
   commandType: string,
@@ -325,9 +333,17 @@ export function decodeSection2CommandPayload(
         preferences: assertRecordPayload(payload['preferences'], `${commandType}.preferences`),
       };
     case SECTION2_FRONTEND_COMMAND_TYPES.applyProjectPolicy:
-      assertOnlyPayloadKeys(payload, commandType, ['settings']);
+      assertOnlyPayloadKeys(payload, commandType, ['settings', 'reviewProposalId']);
       return {
         settings: assertRecordPayload(payload['settings'], `${commandType}.settings`),
+        ...(payload['reviewProposalId'] === undefined
+          ? {}
+          : {
+              reviewProposalId: assertNonEmptyString(
+                payload['reviewProposalId'],
+                `${commandType}.reviewProposalId`,
+              ),
+            }),
       };
     case SECTION2_FRONTEND_COMMAND_TYPES.createProject: {
       assertOnlyPayloadKeys(payload, commandType, [
@@ -2299,6 +2315,11 @@ export type PrivacyRetentionView = {
   readonly telemetryAllowed: boolean;
   readonly exportAllowed: boolean;
   readonly retentionSummary: string;
+  readonly deploymentAllowsPrivateExternalTransfer: boolean;
+  readonly approvalStatus: 'NOT_APPROVED' | 'REVIEW_PENDING' | 'APPROVED';
+  readonly approvalRevision: number;
+  readonly restrictedExternalTransferAllowed: false;
+  readonly pendingReviewProposalId?: string;
 };
 
 export type ConnectorSettingsView = {
@@ -2929,6 +2950,24 @@ export function decodePrivacyRetentionView(val: unknown): PrivacyRetentionView {
   if (!isRecord(val)) {
     throw new FrontendContractError('INVALID_REQUEST', 'PrivacyRetentionView must be an object');
   }
+  const approvalStatus = requireStringField(val, 'approvalStatus', 'PrivacyRetentionView');
+  if (!['NOT_APPROVED', 'REVIEW_PENDING', 'APPROVED'].includes(approvalStatus)) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'PrivacyRetentionView approvalStatus is invalid',
+    );
+  }
+  const restrictedExternalTransferAllowed = requireBooleanField(
+    val,
+    'restrictedExternalTransferAllowed',
+    'PrivacyRetentionView',
+  );
+  if (restrictedExternalTransferAllowed) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'Restricted external transfer must remain disabled',
+    );
+  }
   return Object.freeze({
     targetProjectId: requireStringField(val, 'targetProjectId', 'PrivacyRetentionView'),
     profileName: requireStringField(
@@ -2950,6 +2989,23 @@ export function decodePrivacyRetentionView(val: unknown): PrivacyRetentionView {
     telemetryAllowed: requireBooleanField(val, 'telemetryAllowed', 'PrivacyRetentionView'),
     exportAllowed: requireBooleanField(val, 'exportAllowed', 'PrivacyRetentionView'),
     retentionSummary: requireStringField(val, 'retentionSummary', 'PrivacyRetentionView'),
+    deploymentAllowsPrivateExternalTransfer: requireBooleanField(
+      val,
+      'deploymentAllowsPrivateExternalTransfer',
+      'PrivacyRetentionView',
+    ),
+    approvalStatus: approvalStatus as PrivacyRetentionView['approvalStatus'],
+    approvalRevision: requireNumberField(val, 'approvalRevision', 'PrivacyRetentionView'),
+    restrictedExternalTransferAllowed,
+    ...(typeof val['pendingReviewProposalId'] === 'string'
+      ? {
+          pendingReviewProposalId: requireStringField(
+            val,
+            'pendingReviewProposalId',
+            'PrivacyRetentionView',
+          ),
+        }
+      : {}),
   });
 }
 

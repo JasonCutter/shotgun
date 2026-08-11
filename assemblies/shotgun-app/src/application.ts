@@ -19,6 +19,7 @@ import {
 } from '../../../adapters/frontend-ask-write-postgres/src/index.js';
 import { PostgresAskAnswerExecutionRepository } from '../../../adapters/frontend-ask-execution-postgres/src/index.js';
 import { OriginalAssetAskSourceVersionContextReader } from '../../../adapters/frontend-ask-source-context-original-asset/src/index.js';
+import { PostgresAskProviderPolicyAuthorityReader } from '../../../adapters/frontend-ask-provider-policy-postgres/src/index.js';
 import {
   InMemoryActionCenterProjection,
   InMemoryBackgroundSummaryProjection,
@@ -84,6 +85,7 @@ import {
 } from '../../../adapters/url-acquisition-node/src/index.js';
 import { AskCommandCoordinator } from '../../../modules/frontend-ask-write/src/index.js';
 import { AskAnswerExecutionService } from '../../../modules/frontend-ask-execution/src/index.js';
+import { AskProviderPolicyResolver } from '../../../modules/frontend-ask-provider-policy/src/index.js';
 import { FrontendProductReadCoordinator } from '../../../modules/frontend-product-read/src/index.js';
 import { SecureUrlAcquisitionCoordinator } from '../../../modules/url-acquisition/src/index.js';
 import { configureSourcesWriteRuntime } from './product-api/sources-write-runtime.js';
@@ -237,6 +239,11 @@ export const startShotgunApplication = async (
     const askConversationRepository = new PostgresAskConversationRepository(pool);
     const askWorkspaceProjection = new PostgresAskWorkspaceProjection(pool);
     const askSourceSelectionValidator = new PostgresAskSourceSelectionValidator(pool);
+    const deploymentAllowsPrivateExternalTransfer = process.env.GEMINI_ALLOW_PRIVATE === 'true';
+    const settingsRepository = new PostgresSettingsRepository(
+      pool,
+      deploymentAllowsPrivateExternalTransfer,
+    );
     // LPA-WP5 (D12 recovery harness): recovery-only composition must not
     // require or depend on a real AI credential and must never reach an
     // external provider. The existing deterministic FakeAIProviderAdapter
@@ -253,8 +260,17 @@ export const startShotgunApplication = async (
     const askAnswerProvider = new StructuredAskAnswerProviderAdapter(aiProvider, {
       allowPrivate: process.env.GEMINI_ALLOW_PRIVATE === 'true',
       allowRestricted: false,
-      dataPolicyVersion: 'gemini-ask-policy-v1',
+      dataPolicyVersion: 'gemini-ask-policy-v2',
     });
+    const askProviderPolicy = new AskProviderPolicyResolver(
+      new PostgresAskProviderPolicyAuthorityReader(pool),
+      {
+        deploymentPrivateTransferAllowed: deploymentAllowsPrivateExternalTransfer,
+        providerPolicyIdentity: askAnswerProvider.identity.dataPolicyVersion,
+        providerDisplayName: 'Gemini',
+        providerModel: askAnswerProvider.identity.model,
+      },
+    );
     const askAnswerExecution = new AskAnswerExecutionService(
       new PostgresAskAnswerExecutionRepository(
         pool,
@@ -264,6 +280,7 @@ export const startShotgunApplication = async (
       askAnswerProvider,
       {
         maxConcurrency: Number.parseInt(process.env.ASK_WORKER_MAX_CONCURRENCY ?? '4', 10),
+        providerPolicy: askProviderPolicy,
       },
     );
     const askCommandCoordinator = new AskCommandCoordinator(
@@ -272,6 +289,7 @@ export const startShotgunApplication = async (
       askWorkspaceProjection,
       askSourceSelectionValidator,
       askAnswerExecution,
+      askProviderPolicy,
     );
     const disableAskWorker = options.disableAskWorker ?? recoveryHarness;
 
@@ -279,7 +297,7 @@ export const startShotgunApplication = async (
       projectAdminRepository: new PostgresProjectAdministrationRepository(pool),
       projectBootstrapUnitOfWork: new PostgresProjectBootstrapUnitOfWork(pool),
       projectTombstoneStore: new PostgresProjectTombstoneStore(pool),
-      settingsRepository: new PostgresSettingsRepository(pool),
+      settingsRepository,
       frontendCommandGateway: commandGateway,
       frontendKnowledgeDraftRepository: new PostgresFrontendKnowledgeDraftRepository(pool),
       frontendKnowledgeDraftTargetResolver: new PostgresFrontendKnowledgeDraftTargetResolver(pool),

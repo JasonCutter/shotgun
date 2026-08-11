@@ -132,6 +132,77 @@ describe.runIf(pool)('Persistent PostgreSQL Section 2 Settings & Project Adminis
     expect(projectDetail?.id).toBe(projId);
   });
 
+  it('requires a revision-bound audited review before Project private external transfer approval', async () => {
+    const projId = `pg-proj-${randomUUID().slice(0, 8)}`;
+    const actorId = randomUUID();
+    await pool!.query(
+      'INSERT INTO auth.principals (principal_id, actor_type, status, account_id, created_at) VALUES ($1, $2, $3, $4, now())',
+      [actorId, 'user', 'active', `user-${actorId.slice(0, 8)}`],
+    );
+    await projectAdminRepo.createProject({
+      commandId: randomUUID(),
+      clientRequestId: `req-init-${randomUUID()}`,
+      idempotencyKey: `idem-init-${randomUUID()}`,
+      projectId: projId,
+      actorPrincipalId: actorId,
+      expectedProjectRevision: 0,
+      name: 'Privacy Review Project',
+    });
+    const productionSettings = new PostgresSettingsRepository(pool!, true);
+    const proposed = await productionSettings.applySettingsCommand({
+      commandId: randomUUID(),
+      clientRequestId: `req-review-${randomUUID()}`,
+      idempotencyKey: `idem-review-${randomUUID()}`,
+      projectId: projId,
+      expectedSettingsRevision: 1,
+      observedPolicyContextRevision: 1,
+      settings: { 'privacy.externalTransferAllowed': true },
+      actorId,
+    });
+    expect(proposed).toMatchObject({ status: 'REVIEW_REQUIRED' });
+    expect(proposed.reviewProposalId).toBeTruthy();
+    expect((await productionSettings.getSettingsSnapshot(projId)).settingsRevision).toBe(1);
+    expect(await productionSettings.getPrivacyRetention(projId)).toMatchObject({
+      availability: 'AVAILABLE',
+      data: {
+        externalTransferAllowed: false,
+        approvalStatus: 'REVIEW_PENDING',
+        pendingReviewProposalId: proposed.reviewProposalId,
+      },
+    });
+
+    const approved = await productionSettings.applySettingsCommand({
+      commandId: randomUUID(),
+      clientRequestId: `req-approve-${randomUUID()}`,
+      idempotencyKey: `idem-approve-${randomUUID()}`,
+      projectId: projId,
+      expectedSettingsRevision: 1,
+      observedPolicyContextRevision: 1,
+      settings: { 'privacy.externalTransferAllowed': true },
+      reviewProposalId: proposed.reviewProposalId!,
+      actorId,
+    });
+    expect(approved).toMatchObject({ status: 'APPLIED', appliedRevision: 2 });
+    expect(await productionSettings.getPrivacyRetention(projId)).toMatchObject({
+      availability: 'AVAILABLE',
+      data: {
+        externalTransferAllowed: true,
+        deploymentAllowsPrivateExternalTransfer: true,
+        approvalStatus: 'APPROVED',
+        restrictedExternalTransferAllowed: false,
+      },
+    });
+    const evidence = await pool!.query<{ proposal_status: string; audit_count: number }>(
+      `SELECT proposal.status AS proposal_status,
+              (SELECT COUNT(*)::integer FROM settings.settings_audit_events
+               WHERE project_id = $1 AND action_name IN ('SETTINGS_REVIEW_PROPOSED', 'SETTINGS_COMMAND_APPLIED')) AS audit_count
+       FROM settings.settings_review_proposals AS proposal
+       WHERE proposal.proposal_id = $2`,
+      [projId, proposed.reviewProposalId],
+    );
+    expect(evidence.rows[0]).toEqual({ proposal_status: 'APPROVED', audit_count: 2 });
+  });
+
   it('enforces idempotency key reuse with payload & parameter binding in PostgreSQL', async () => {
     const projId = `pg-proj-${randomUUID().slice(0, 8)}`;
     const actorId = randomUUID();

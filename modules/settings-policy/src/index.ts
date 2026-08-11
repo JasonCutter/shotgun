@@ -69,6 +69,7 @@ export type ApplySettingsCommandInput = {
   readonly expectedSettingsRevision: number;
   readonly observedPolicyContextRevision: number;
   readonly settings: Record<string, unknown>;
+  readonly reviewProposalId?: string;
   readonly actorId: string;
 };
 

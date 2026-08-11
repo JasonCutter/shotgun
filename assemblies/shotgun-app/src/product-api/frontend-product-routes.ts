@@ -32,6 +32,7 @@ import {
   decodeSubmitAskQuestionRequest,
   decodeAskConversationSourceContextQuery,
   decodeAskConversationSourceContextView,
+  decodeAskProviderEligibilityRequest,
   decodeTargetRouteView,
   decodeKnowledgeWorkspaceRequest,
   decodeKnowledgePageListRequest,
@@ -677,12 +678,16 @@ export const registerFrontendProductRoutes = (
     Headers: SecurityHeaders;
   }>('/product-api/frontend/ask/answer-runs/:answerRunId', async (request, reply) => {
     const scope = await timed(() => buildScope(request.headers));
-    const projection = await timed(() =>
-      coordinator.getAskAnswerRun({
-        ...scope.value,
-        answerRunId: request.params.answerRunId,
-      }),
-    );
+    const projection = await timed(async () => {
+      if (!options?.askAnswerExecution) {
+        return coordinator.getAskAnswerRun({
+          ...scope.value,
+          answerRunId: request.params.answerRunId,
+        });
+      }
+      const executionScope = await executionScopeFor(scope.value, request.params.answerRunId);
+      return options.askAnswerExecution.getAnswerRun(executionScope, request.params.answerRunId);
+    });
     reply.header('server-timing', serverTiming(scope.durationMs, projection.durationMs));
     return { answerRun: projection.value };
   });
@@ -1021,6 +1026,30 @@ export const registerFrontendProductRoutes = (
         ],
       }),
     };
+  });
+
+  server.post<{
+    Body: unknown;
+    Headers: SecurityHeaders;
+  }>('/product-api/frontend/ask/provider-eligibility', async (request, reply) => {
+    const scope = await timed(() => buildScope(request.headers));
+    if (!options?.askCommandCoordinator) {
+      throw new ShotgunError({
+        code: 'NOT_FOUND',
+        safeMessage: 'Ask provider eligibility is not configured.',
+        module: 'frontend-product-read',
+        operation: 'provider-eligibility',
+      });
+    }
+    const decoded = decodeAskProviderEligibilityRequest(request.body);
+    const projection = await timed(() =>
+      options.askCommandCoordinator!.getProviderEligibility({
+        ...scope.value,
+        request: decoded,
+      }),
+    );
+    reply.header('server-timing', serverTiming(scope.durationMs, projection.durationMs));
+    return { providerEligibility: projection.value };
   });
 
   server.post<{

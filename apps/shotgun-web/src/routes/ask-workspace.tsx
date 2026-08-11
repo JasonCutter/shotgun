@@ -9,6 +9,7 @@ import {
   type AskAnswerRunEventsView,
   type AskAnswerRunSnapshot,
   type AskMode,
+  type AskProviderEligibilityView,
   type AskQuestionSubmissionOutcomeView,
   type AskQuestionSubmissionView,
   type AskSourceSelectionView,
@@ -110,6 +111,24 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
       SOURCE_CONTEXT_QUERY,
     ),
     enabled: mode !== 'CANONICAL_ONLY' && workspace !== undefined && conversationId !== undefined,
+  });
+  const providerEligibility = useQuery<AskProviderEligibilityView>({
+    queryKey: [
+      'ask',
+      'provider-eligibility',
+      workspace?.projectId,
+      conversationId,
+      mode,
+      sourceSelections,
+    ],
+    queryFn: () =>
+      askClient.getProviderEligibility({
+        schemaVersion: '1.0.0',
+        ...(conversationId ? { conversationId } : {}),
+        mode,
+        sourceSelections: mode === 'CANONICAL_ONLY' ? [] : sourceSelections,
+      }),
+    enabled: workspace !== undefined,
   });
 
   const questionRef = useRef(question);
@@ -319,7 +338,10 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   const followUpReady =
     !conversationId ||
     Boolean(conversation && activeBranch?.branchRevision && conversation.conversationRevision);
-  const submissionAvailable = workspace.capabilities.includes('SUBMIT_QUESTION') && followUpReady;
+  const submissionAvailable =
+    workspace.capabilities.includes('SUBMIT_QUESTION') &&
+    followUpReady &&
+    providerEligibility.data?.eligible === true;
   const answerRunMutationPending = pendingAnswerRunCommand !== undefined;
   const sourceLibraryPage = sourceLibrary.data;
   const conversationSourceContextView = conversationSourceContext.data;
@@ -845,6 +867,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                 !submissionAvailable ||
                 question.trim().length === 0 ||
                 sourceSelectionMissing ||
+                providerEligibility.isPending ||
                 isSubmitting ||
                 outcomeUnknown
               }
@@ -862,12 +885,25 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
               Select at least one Source before using selected sources.
             </p>
           ) : null}
+          {providerEligibility.data && !providerEligibility.data.eligible ? (
+            <div className="ask-form-status" role="status">
+              <strong>Action required:</strong> {providerEligibility.data.message}
+              {providerEligibility.data.requiredAction === 'REVIEW_PROJECT_PRIVACY_SETTINGS' ? (
+                <p>Open Project Privacy settings to request and approve external AI transfer.</p>
+              ) : null}
+            </div>
+          ) : null}
+          {providerEligibility.isError ? (
+            <p className="ask-form-status" role="status">
+              Provider eligibility could not be verified. Submission remains unavailable.
+            </p>
+          ) : null}
           {submissionNotice ? (
             <p className="ask-form-status" role="status">
               {submissionNotice}
             </p>
           ) : null}
-          {!submissionAvailable ? (
+          {!submissionAvailable && providerEligibility.data?.eligible !== false ? (
             <p className="ask-form-status" role="status">
               Server question submission is not available for this Conversation state.
             </p>

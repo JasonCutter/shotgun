@@ -14,6 +14,9 @@ import {
   type AskQuestionSubmissionOutcomeView,
   type AskQuestionSubmissionView,
   type AskSourceSelectionView,
+  type AskProviderEligibilityRequest,
+  type AskProviderEligibilityView,
+  type AskProviderPolicyResolverPort,
   type AskWorkspaceView,
   type ErrorCode,
   type ProducedResourceRef,
@@ -292,7 +295,38 @@ export class AskCommandCoordinator {
     private readonly askWorkspace: AskWorkspaceQueryPort,
     private readonly sourceValidator: AskSourceSelectionValidatorPort = new EmptyOnlyAskSourceSelectionValidator(),
     private readonly answerExecution?: AskQuestionExecutionTrigger,
+    private readonly providerPolicy?: AskProviderPolicyResolverPort,
   ) {}
+
+  async getProviderEligibility(
+    input: AskReadScope & { readonly request: AskProviderEligibilityRequest },
+  ): Promise<AskProviderEligibilityView> {
+    const authority = await this.resolvePreflightAuthority(input);
+    await this.sourceValidator.validate({
+      principalId: input.principalId,
+      projectId: authority.projectId,
+      sensitivityClearance: authority.sensitivityClearance,
+      mode: input.request.mode,
+      policyContextRevision: authority.policyContextRevision,
+      sourceSelections: input.request.sourceSelections,
+    });
+    if (!this.providerPolicy) {
+      return {
+        schemaVersion: ASK_SCHEMA_VERSION,
+        eligible: true,
+        reason: 'ELIGIBLE',
+        requiredAction: 'NONE',
+        policyFingerprint: 'ask-provider-test-policy-v1',
+        policyContextRevision: authority.policyContextRevision,
+        provider: { displayName: 'Configured AI provider', model: 'test' },
+        message: 'The selected authoritative context is eligible for the configured AI provider.',
+      };
+    }
+    return this.providerPolicy.evaluateSelections({
+      projectId: authority.projectId,
+      sourceSelections: input.request.sourceSelections,
+    });
+  }
 
   async submitQuestion(
     input: AskReadScope & { readonly request: SubmitAskQuestionRequest },
@@ -393,6 +427,20 @@ export class AskCommandCoordinator {
         policyContextRevision: authority.policyContextRevision,
         sourceSelections: request.sourceSelections,
       });
+      if (this.providerPolicy) {
+        const eligibility = await this.providerPolicy.evaluateSelections({
+          projectId: authority.targetProjectId,
+          sourceSelections: request.sourceSelections,
+        });
+        if (!eligibility.eligible) {
+          throw new ShotgunError({
+            code: 'POLICY_DENIED',
+            safeMessage: eligibility.message,
+            module: 'frontend-ask-write',
+            operation: 'revalidate-provider-eligibility',
+          });
+        }
+      }
 
       await this.repository.transaction(async (transaction) => {
         const locked = await this.commandGateway.lockAcceptedForExecution(
@@ -479,9 +527,11 @@ export class AskCommandCoordinator {
       const rejectionCode: ErrorCode =
         error instanceof ShotgunError && error.code === 'REVISION_CONFLICT'
           ? 'REVISION_CONFLICT'
-          : error instanceof ShotgunError && error.code === 'INVALID_REQUEST'
-            ? 'INVALID_REQUEST'
-            : 'INTERNAL_UNCLASSIFIED';
+          : error instanceof ShotgunError && error.code === 'POLICY_DENIED'
+            ? 'POLICY_DENIED'
+            : error instanceof ShotgunError && error.code === 'INVALID_REQUEST'
+              ? 'INVALID_REQUEST'
+              : 'INTERNAL_UNCLASSIFIED';
       try {
         await this.commandGateway.reject({
           commandId: effectiveCommandId,
@@ -625,6 +675,24 @@ export class AskCommandCoordinator {
     const authority = input.executionAuthorities?.[conversation.projectId];
     if (!authority) throw this.notFoundOutcome();
     return { ...authority, targetProjectId: conversation.projectId, branchId };
+  }
+
+  private async resolvePreflightAuthority(
+    input: AskReadScope & { readonly request: AskProviderEligibilityRequest },
+  ): Promise<AskProjectExecutionAuthority> {
+    if (!input.request.conversationId) {
+      const projectId = input.activeProject?.id;
+      const authority = projectId ? input.executionAuthorities?.[projectId] : undefined;
+      if (!authority) throw this.notFoundOutcome();
+      return authority;
+    }
+    const conversation = await this.askWorkspace.getConversation({
+      ...input,
+      conversationId: input.request.conversationId,
+    });
+    const authority = input.executionAuthorities?.[conversation.projectId];
+    if (!authority) throw this.notFoundOutcome();
+    return authority;
   }
 
   private buildPreconditions(request: SubmitAskQuestionRequest): readonly TypedPrecondition[] {

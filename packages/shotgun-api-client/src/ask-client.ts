@@ -3,6 +3,7 @@ import {
   decodeAnyFrontendCommandOutcomeView,
   decodeAskAnswerRunSnapshot,
   decodeAskConversationSourceContextView,
+  decodeAskProviderEligibilityView,
   decodeAskAnswerRunEventsView,
   decodeAskAnswerRunExportView,
   decodeAskAnswerRunFeedbackView,
@@ -27,6 +28,8 @@ import {
   type AskConversationSourceContextView,
   type AskQuestionSubmissionOutcomeView,
   type AskQuestionSubmissionView,
+  type AskProviderEligibilityRequest,
+  type AskProviderEligibilityView,
   type AskWorkspaceView,
   type AnyFrontendCommandOutcomeView,
   type SubmitAskQuestionRequest,
@@ -57,6 +60,10 @@ export type AskWorkspaceClient = {
     answerRunId: string,
     options?: { readonly signal?: AbortSignal },
   ): Promise<AskAnswerRunSnapshot>;
+  getProviderEligibility(
+    request: AskProviderEligibilityRequest,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<AskProviderEligibilityView>;
   submitQuestion(
     params: SubmitAskQuestionRequest,
     options?: { readonly signal?: AbortSignal },
@@ -192,6 +199,15 @@ export const createAskWorkspaceClient = (
   };
 
   return {
+    async getProviderEligibility(params, requestOptions) {
+      const response = await mutate(
+        '/product-api/frontend/ask/provider-eligibility',
+        params,
+        requestOptions?.signal,
+      );
+      const body = (await assertOk(response)) as { providerEligibility?: unknown };
+      return decodeAskProviderEligibilityView(body.providerEligibility);
+    },
     async getWorkspace(conversationId, requestOptions) {
       const parameters = new URLSearchParams();
       if (conversationId) parameters.set('conversationId', conversationId);

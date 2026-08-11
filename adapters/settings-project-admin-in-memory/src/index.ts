@@ -719,6 +719,10 @@ export class InMemorySettingsRepository implements SettingsRepositoryPort {
         telemetryAllowed: false,
         exportAllowed: true,
         retentionSummary: 'Assets retained indefinitely in local storage',
+        deploymentAllowsPrivateExternalTransfer: false,
+        approvalStatus: 'NOT_APPROVED',
+        approvalRevision: 1,
+        restrictedExternalTransferAllowed: false,
       }),
     });
   }

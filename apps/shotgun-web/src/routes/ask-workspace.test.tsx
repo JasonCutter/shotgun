@@ -209,9 +209,65 @@ const LeaveGuardStatus = () => {
 const ShellOutlet = () => <Outlet context={{ shell: mockShell }} />;
 
 describe('AskWorkspace', () => {
+  it('shows server-authoritative ACTION_REQUIRED and blocks predictable policy denial', async () => {
+    const runtime = createRuntime();
+    const workspace = { ...mockWorkspace, capabilities: ['SUBMIT_QUESTION'] as const };
+    const mockClient: AskWorkspaceClient = {
+      getProviderEligibility: vi.fn().mockResolvedValue({
+        schemaVersion: '1.0.0',
+        eligible: false,
+        reason: 'PROJECT_APPROVAL_REQUIRED',
+        requiredAction: 'REVIEW_PROJECT_PRIVACY_SETTINGS',
+        policyFingerprint: 'test-policy-denied',
+        policyContextRevision: '2',
+        provider: { displayName: 'Test provider', model: 'test-model' },
+        message: 'A Project Owner must complete the privacy review.',
+      }),
+      getWorkspace: vi.fn().mockResolvedValue(workspace),
+      getConversation: vi.fn().mockResolvedValue(workspace.selectedConversation!),
+      getConversationSourceContext: vi.fn(),
+      getBranch: vi.fn(),
+      getAnswerRun: vi.fn(),
+      submitQuestion: vi.fn(),
+      getQuestionSubmissionByClientRequestId: vi.fn(),
+    };
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <ShellOutlet />,
+          children: [{ path: 'ask', element: <AskWorkspace client={mockClient} /> }],
+        },
+      ],
+      { initialEntries: ['/ask'] },
+    );
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+    expect(
+      await screen.findByText(/A Project Owner must complete the privacy review/),
+    ).toBeTruthy();
+    expect(
+      (screen.getByRole('button', { name: 'Submit question' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(mockClient.submitQuestion).not.toHaveBeenCalled();
+  });
+
   it('renders Ask Workspace server data and conversation tree', async () => {
     const runtime = createRuntime();
     const mockClient: AskWorkspaceClient = {
+      getProviderEligibility: vi.fn().mockResolvedValue({
+        schemaVersion: '1.0.0',
+        eligible: true,
+        reason: 'ELIGIBLE',
+        requiredAction: 'NONE',
+        policyFingerprint: 'test-policy',
+        policyContextRevision: '1',
+        provider: { displayName: 'Test provider', model: 'test-model' },
+        message: 'Eligible.',
+      }),
       getWorkspace: vi.fn().mockResolvedValue(mockWorkspace),
       getConversation: vi.fn().mockResolvedValue(mockWorkspace.selectedConversation!),
       getConversationSourceContext: vi.fn(),
@@ -279,6 +335,16 @@ describe('AskWorkspace', () => {
     const user = userEvent.setup();
     const runtime = createRuntime();
     const mockClient: AskWorkspaceClient = {
+      getProviderEligibility: vi.fn().mockResolvedValue({
+        schemaVersion: '1.0.0',
+        eligible: true,
+        reason: 'ELIGIBLE',
+        requiredAction: 'NONE',
+        policyFingerprint: 'test-policy',
+        policyContextRevision: '1',
+        provider: { displayName: 'Test provider', model: 'test-model' },
+        message: 'Eligible.',
+      }),
       getWorkspace: vi.fn().mockResolvedValue(mockWorkspace),
       getConversation: vi.fn().mockResolvedValue(mockWorkspace.selectedConversation!),
       getConversationSourceContext: vi.fn(),
@@ -337,6 +403,16 @@ describe('AskWorkspace', () => {
     const submitQuestion = vi.fn(() => new Promise<never>(() => undefined));
     const workspace = { ...mockWorkspace, capabilities: ['SUBMIT_QUESTION'] as const };
     const mockClient: AskWorkspaceClient = {
+      getProviderEligibility: vi.fn().mockResolvedValue({
+        schemaVersion: '1.0.0',
+        eligible: true,
+        reason: 'ELIGIBLE',
+        requiredAction: 'NONE',
+        policyFingerprint: 'test-policy',
+        policyContextRevision: '1',
+        provider: { displayName: 'Test provider', model: 'test-model' },
+        message: 'Eligible.',
+      }),
       getWorkspace: vi.fn().mockResolvedValue(workspace),
       getConversation: vi.fn().mockResolvedValue(workspace.selectedConversation!),
       getConversationSourceContext: vi.fn(),
@@ -384,6 +460,16 @@ describe('AskWorkspace', () => {
     const submitQuestion = vi.fn(() => new Promise<never>(() => undefined));
     const workspace = { ...mockWorkspace, capabilities: ['SUBMIT_QUESTION'] as const };
     const mockClient: AskWorkspaceClient = {
+      getProviderEligibility: vi.fn().mockResolvedValue({
+        schemaVersion: '1.0.0',
+        eligible: true,
+        reason: 'ELIGIBLE',
+        requiredAction: 'NONE',
+        policyFingerprint: 'test-policy',
+        policyContextRevision: '1',
+        provider: { displayName: 'Test provider', model: 'test-model' },
+        message: 'Eligible.',
+      }),
       getWorkspace: vi.fn().mockResolvedValue(workspace),
       getConversation: vi.fn().mockResolvedValue(workspace.selectedConversation!),
       getConversationSourceContext: vi.fn(),

@@ -235,6 +235,7 @@ describe('PostgreSQL Ask write and recovery boundary', () => {
     const executionRepository = new PostgresAskAnswerExecutionRepository(
       pool,
       restartedRuntime.projection,
+      { resolve: async () => undefined },
     );
     const executionService = new AskAnswerExecutionService(
       executionRepository,

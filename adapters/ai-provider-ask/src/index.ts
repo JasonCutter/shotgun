@@ -46,12 +46,24 @@ const promptFor = (request: AskAnswerProviderRequest): string =>
   stableJson({
     task: 'shotgun-ask-answer-v1',
     question: request.question,
-    evidence: request.evidence.map((evidence) => ({
-      evidenceId: evidence.evidenceId,
-      sourceId: evidence.sourceId,
-      sourceVersionId: evidence.sourceVersionId,
-      exactQuote: evidence.exactQuote,
-    })),
+    context: request.context.map((item) =>
+      item.kind === 'EVIDENCE'
+        ? {
+            kind: item.kind,
+            evidenceId: item.evidenceId,
+            sourceId: item.sourceId,
+            sourceVersionId: item.sourceVersionId,
+            exactQuote: item.exactQuote,
+          }
+        : {
+            kind: item.kind,
+            sourceId: item.sourceId,
+            sourceVersionId: item.sourceVersionId,
+            contentHash: item.contentHash,
+            mediaType: item.mediaType,
+            text: item.text,
+          },
+    ),
   });
 
 const parseAnswer = (rawText: string): AnswerPayload => {
@@ -123,10 +135,10 @@ export class StructuredAskAnswerProviderAdapter implements AskAnswerProviderPort
 
   async execute(request: AskAnswerProviderRequest): Promise<AskAnswerProviderResult> {
     if (
-      request.evidence.some(
-        (evidence) =>
-          evidence.sensitivity === 'restricted' ||
-          (evidence.sensitivity === 'private' && !this.policy.allowPrivate),
+      request.context.some(
+        (item) =>
+          item.sensitivity === 'restricted' ||
+          (item.sensitivity === 'private' && !this.policy.allowPrivate),
       )
     ) {
       throw new ShotgunError({
@@ -147,10 +159,12 @@ export class StructuredAskAnswerProviderAdapter implements AskAnswerProviderPort
     }
     const generation: StructuredGenerationRequest = {
       systemInstruction: [
-        'Answer only from the supplied Evidence quotes.',
-        'Do not invent facts or citations.',
+        'Answer only from the supplied authoritative context items.',
+        'Evidence items may be cited only with their supplied evidenceId.',
+        'SourceVersion items have no Evidence identity and must never produce a citation.',
+        'Do not invent facts, Evidence, evidence IDs, or citations.',
         'Return JSON with answer and citations.',
-        'Each citation evidenceId must be copied from the supplied Evidence.',
+        'Each citation evidenceId must be copied from a supplied Evidence item.',
       ].join(' '),
       prompt: promptFor(request),
       responseSchema: answerSchema,

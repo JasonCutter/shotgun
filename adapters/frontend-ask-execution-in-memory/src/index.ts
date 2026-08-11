@@ -19,10 +19,11 @@ import {
   type AskTransitionSeedKind,
   type AskTransitionSeedPayload,
   type AskTransitionSeedView,
-  sha256Text,
-  stableJson,
 } from '../../../packages/contracts/src/index.js';
-import { highestSensitivity } from '../../../modules/frontend-ask-execution/src/index.js';
+import {
+  askExecutionContextDigest,
+  highestSensitivity,
+} from '../../../modules/frontend-ask-execution/src/index.js';
 import type {
   AskAnswerExecutionRepositoryPort,
   AskClaimedExecution,
@@ -30,6 +31,7 @@ import type {
   AskExecutionEvidence,
   AskExecutionRunContext,
   AskExecutionScope,
+  AskExecutionSourceVersionContext,
   AskExecutionTransactionPort,
   AskWorkerLeaseState,
 } from '../../../modules/frontend-ask-execution/src/index.js';
@@ -37,6 +39,7 @@ import type {
 type RecordValue = {
   snapshot: AskAnswerRunSnapshot;
   evidence: readonly AskExecutionEvidence[];
+  sourceVersions: readonly AskExecutionSourceVersionContext[];
   events: AskAnswerRunEventView[];
   attempts: AskExecutionAttempt[];
   contexts: Map<string, AskExecutionRunContext>;
@@ -61,7 +64,11 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
 
   constructor(private readonly publish: (snapshot: AskAnswerRunSnapshot) => void = () => {}) {}
 
-  register(snapshot: AskAnswerRunSnapshot, evidence: readonly AskExecutionEvidence[] = []): void {
+  register(
+    snapshot: AskAnswerRunSnapshot,
+    evidence: readonly AskExecutionEvidence[] = [],
+    sourceVersions: readonly AskExecutionSourceVersionContext[] = [],
+  ): void {
     const events: AskAnswerRunEventView[] =
       snapshot.state === 'QUEUED'
         ? [
@@ -81,6 +88,7 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
     this.records.set(snapshot.answerRunId, {
       snapshot,
       evidence,
+      sourceVersions,
       events,
       attempts: [],
       contexts: new Map(),
@@ -116,7 +124,7 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
       policyContextRevision: record.snapshot.policyContextRevision,
       resolvedContextDigest: context.resolvedContextDigest,
       queryPlanRevision: context.queryPlanRevision,
-      resolvedSensitivity: highestSensitivity(context.evidence),
+      resolvedSensitivity: highestSensitivity(context.context),
       leaseOwner: workerId,
     };
     record.attempts.push(attempt);
@@ -166,7 +174,7 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
           : input.scope.policyContextRevision,
       resolvedContextDigest: context.resolvedContextDigest,
       queryPlanRevision: context.queryPlanRevision,
-      resolvedSensitivity: highestSensitivity(context.evidence),
+      resolvedSensitivity: highestSensitivity(context.context),
       leaseOwner: input.workerId ?? `ask-worker-in-memory-${randomUUID()}`,
     };
     record.attempts.push(attempt);
@@ -658,22 +666,24 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
     record: RecordValue,
     evidence: readonly AskExecutionEvidence[],
   ): AskExecutionRunContext {
+    const context = [
+      ...evidence.map((item) => ({ kind: 'EVIDENCE' as const, ...item })),
+      ...record.sourceVersions,
+    ];
+    const queryPlanRevision = 'ask-query-plan-v3';
     return {
       snapshot: record.snapshot,
       evidence,
-      contextStatus: evidence.length > 0 ? 'SUPPORTED' : 'NO_SUPPORTED_ANSWER',
-      queryPlanRevision: 'ask-query-plan-v2',
-      resolvedContextDigest: sha256Text(
-        stableJson({
-          mode: record.snapshot.mode,
-          question: record.snapshot.question,
-          evidence: evidence.map((item) => ({
-            evidenceId: item.evidenceId,
-            sourceVersionId: item.sourceVersionId,
-            exactQuote: item.exactQuote,
-          })),
-        }),
-      ),
+      context,
+      contextStatus: context.length > 0 ? 'SUPPORTED' : 'NO_SUPPORTED_ANSWER',
+      queryPlanRevision,
+      resolvedContextDigest: askExecutionContextDigest({
+        queryPlanRevision,
+        projectId: record.snapshot.projectId,
+        mode: record.snapshot.mode,
+        question: record.snapshot.question,
+        context,
+      }),
     };
   }
 

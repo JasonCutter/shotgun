@@ -11,8 +11,9 @@ const request = (sensitivity: 'public' | 'private' | 'restricted'): AskAnswerPro
   answerRunId: 'run-policy-1',
   question: 'What does the source say?',
   mode: 'SOURCE_EXPLORATION',
-  evidence: [
+  context: [
     {
+      kind: 'EVIDENCE',
       evidenceId: 'evidence-1',
       sourceId: 'source-1',
       sourceVersionId: 'version-1',
@@ -59,6 +60,22 @@ describe('Ask provider policy and stream boundary', () => {
     await expect(adapter.execute(request('restricted'))).rejects.toMatchObject({
       code: 'POLICY_DENIED',
     });
+    await expect(
+      adapter.execute({
+        ...request('public'),
+        context: [
+          {
+            kind: 'SOURCE_VERSION',
+            sourceId: 'source-1',
+            sourceVersionId: 'version-1',
+            contentHash: `sha256:${'1'.repeat(64)}`,
+            mediaType: 'text/plain',
+            text: 'Private SourceVersion content.',
+            sensitivity: 'private',
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({ code: 'POLICY_DENIED' });
     expect(generateStructured).not.toHaveBeenCalled();
     expect(generateStructuredStream).not.toHaveBeenCalled();
   });

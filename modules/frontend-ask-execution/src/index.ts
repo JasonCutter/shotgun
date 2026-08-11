@@ -18,6 +18,7 @@ import {
   type AskTransitionSeedPayload,
   type AskTransitionSeedView,
   type AskCitationView,
+  sha256Text,
   stableJson,
 } from '../../../packages/contracts/src/index.js';
 
@@ -47,6 +48,27 @@ export type AskExecutionEvidence = {
   readonly sensitivity: AskExecutionScope['sensitivityClearance'];
 };
 
+export type AskExecutionSourceVersionContext = {
+  readonly kind: 'SOURCE_VERSION';
+  readonly sourceId: string;
+  readonly sourceVersionId: string;
+  readonly contentHash: string;
+  readonly mediaType: 'text/plain';
+  readonly text: string;
+  readonly sensitivity: AskExecutionScope['sensitivityClearance'];
+};
+
+export type AskExecutionContextItem =
+  ({ readonly kind: 'EVIDENCE' } & AskExecutionEvidence) | AskExecutionSourceVersionContext;
+
+export type AskSourceVersionContextReaderPort = {
+  resolve(input: {
+    readonly scope: AskExecutionScope;
+    readonly sourceId: string;
+    readonly sourceVersionId: string;
+  }): Promise<AskExecutionSourceVersionContext | undefined>;
+};
+
 export type AskAnswerProviderCitation = {
   readonly evidenceId: string;
   readonly exactQuote?: string;
@@ -56,7 +78,7 @@ export type AskAnswerProviderRequest = {
   readonly answerRunId: string;
   readonly question: string;
   readonly mode: AskAnswerRunSnapshot['mode'];
-  readonly evidence: readonly AskExecutionEvidence[];
+  readonly context: readonly AskExecutionContextItem[];
   readonly resolvedContextDigest: string;
   readonly queryPlanRevision: string;
   readonly dataPolicyVersion: string;
@@ -100,6 +122,7 @@ export type AskExecutionContextStatus = 'SUPPORTED' | 'NO_SUPPORTED_ANSWER';
 export type AskExecutionRunContext = {
   readonly snapshot: AskAnswerRunSnapshot;
   readonly evidence: readonly AskExecutionEvidence[];
+  readonly context: readonly AskExecutionContextItem[];
   readonly contextStatus: AskExecutionContextStatus;
   readonly resolvedContextDigest: string;
   readonly queryPlanRevision: string;
@@ -292,12 +315,46 @@ const sensitivityRank = {
 } as const;
 
 export const highestSensitivity = (
-  evidence: readonly AskExecutionEvidence[],
+  context: readonly { readonly sensitivity: AskExecutionScope['sensitivityClearance'] }[],
 ): AskExecutionScope['sensitivityClearance'] =>
-  evidence.reduce<AskExecutionScope['sensitivityClearance']>(
+  context.reduce<AskExecutionScope['sensitivityClearance']>(
     (highest, item) =>
       sensitivityRank[item.sensitivity] > sensitivityRank[highest] ? item.sensitivity : highest,
     'public',
+  );
+
+export const askExecutionContextDigest = (input: {
+  readonly queryPlanRevision: string;
+  readonly projectId: string;
+  readonly mode: AskAnswerRunSnapshot['mode'];
+  readonly question: string;
+  readonly context: readonly AskExecutionContextItem[];
+}): string =>
+  sha256Text(
+    stableJson({
+      queryPlanRevision: input.queryPlanRevision,
+      projectId: input.projectId,
+      mode: input.mode,
+      question: input.question,
+      context: input.context.map((item) =>
+        item.kind === 'EVIDENCE'
+          ? {
+              kind: item.kind,
+              evidenceId: item.evidenceId,
+              sourceId: item.sourceId,
+              sourceVersionId: item.sourceVersionId,
+              exactQuote: item.exactQuote,
+            }
+          : {
+              kind: item.kind,
+              sourceId: item.sourceId,
+              sourceVersionId: item.sourceVersionId,
+              contentHash: item.contentHash,
+              mediaType: item.mediaType,
+              representationDigest: sha256Text(item.text),
+            },
+      ),
+    }),
   );
 
 const buildAnswer = (snapshot: AskAnswerRunSnapshot): string =>
@@ -626,7 +683,7 @@ export class AskAnswerExecutionService {
         answerRunId: context.snapshot.answerRunId,
         question: context.snapshot.question,
         mode: context.snapshot.mode,
-        evidence: context.evidence,
+        context: context.context,
         resolvedContextDigest: context.resolvedContextDigest,
         queryPlanRevision: context.queryPlanRevision,
         dataPolicyVersion: this.provider.identity.dataPolicyVersion,

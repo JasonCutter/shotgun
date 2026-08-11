@@ -28,14 +28,19 @@ import type {
   AskReadScope,
   AskWorkspaceQueryPort,
 } from '../../../modules/frontend-ask-write/src/index.js';
-import { highestSensitivity } from '../../../modules/frontend-ask-execution/src/index.js';
+import {
+  askExecutionContextDigest,
+  highestSensitivity,
+} from '../../../modules/frontend-ask-execution/src/index.js';
 import type {
   AskAnswerExecutionRepositoryPort,
   AskClaimedExecution,
+  AskExecutionContextItem,
   AskExecutionAttempt,
   AskExecutionRunContext,
   AskExecutionScope,
   AskExecutionTransactionPort,
+  AskSourceVersionContextReaderPort,
   AskWorkerLeaseState,
 } from '../../../modules/frontend-ask-execution/src/index.js';
 
@@ -127,6 +132,19 @@ const invalid = (message: string): ShotgunError =>
     operation: 'execution',
   });
 
+const staleContext = (): ShotgunError =>
+  new ShotgunError({
+    code: 'STALE_VERSION',
+    safeMessage:
+      'The pinned SourceVersion context no longer matches the accepted AnswerRun context.',
+    module: 'frontend-ask-execution-postgres',
+    operation: 'verify-same-context-retry',
+  });
+
+export const assertSameContextDigest = (expected: string | null, resolved: string): void => {
+  if (!expected || expected !== resolved) throw staleContext();
+};
+
 const readScope = (scope: AskExecutionScope): AskReadScope => ({
   principalId: scope.principalId,
   sessionId: 'ask-execution',
@@ -153,6 +171,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
   constructor(
     private readonly pool: Pool,
     private readonly workspace: AskWorkspaceQueryPort,
+    private readonly sourceContextReader: AskSourceVersionContextReaderPort,
   ) {}
 
   async getRunContext(
@@ -176,14 +195,17 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
   ): Promise<
     Pick<
       AskExecutionRunContext,
-      'evidence' | 'contextStatus' | 'resolvedContextDigest' | 'queryPlanRevision'
+      'evidence' | 'context' | 'contextStatus' | 'resolvedContextDigest' | 'queryPlanRevision'
     >
   > {
     const selections = await this.pool.query<{
+      readonly selection_id: string;
+      readonly source_id: string;
       readonly source_version_id: string;
       readonly evidence_id: string | null;
     }>(
-      `SELECT selection.source_version_id::text, selected.evidence_id::text
+      `SELECT selection.selection_id::text, selection.source_id::text,
+              selection.source_version_id::text, selected.evidence_id::text
        FROM frontend_ask.source_selections AS selection
        LEFT JOIN frontend_ask.source_selection_evidence AS selected
          ON selected.selection_id = selection.selection_id
@@ -191,57 +213,29 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
        ORDER BY selection.selection_ordinal, selected.evidence_ordinal`,
       [snapshot.answerRunId, scope.projectId],
     );
-    const sourceVersionIds = [...new Set(selections.rows.map((row) => row.source_version_id))];
-    if (snapshot.mode === 'SOURCE_EXPLORATION' && sourceVersionIds.length === 0) {
+    const selectionGroups = new Map<
+      string,
+      {
+        readonly sourceId: string;
+        readonly sourceVersionId: string;
+        readonly evidenceIds: string[];
+      }
+    >();
+    for (const row of selections.rows) {
+      const group = selectionGroups.get(row.selection_id) ?? {
+        sourceId: row.source_id,
+        sourceVersionId: row.source_version_id,
+        evidenceIds: [],
+      };
+      if (row.evidence_id) group.evidenceIds.push(row.evidence_id);
+      selectionGroups.set(row.selection_id, group);
+    }
+    if (snapshot.mode === 'SOURCE_EXPLORATION' && selectionGroups.size === 0) {
       throw invalid('SOURCE_EXPLORATION requires at least one pinned SourceVersion.');
     }
     const selectedEvidenceIds = selections.rows.flatMap((row) =>
       row.evidence_id ? [row.evidence_id] : [],
     );
-    const implicitSourceVersionIds = [
-      ...new Set(
-        selections.rows
-          .filter((row) => row.evidence_id === null)
-          .map((row) => row.source_version_id),
-      ),
-    ];
-    const implicitSourceEvidenceIds =
-      implicitSourceVersionIds.length > 0
-        ? (
-            await this.pool.query<{ readonly evidence_id: string }>(
-              `SELECT evidence_id
-               FROM (
-                 SELECT evidence_id,
-                        MAX(
-                          ts_rank(
-                            document.search_vector,
-                            websearch_to_tsquery('simple', $3)
-                          )
-                        ) AS relevance
-                 FROM projection.search_documents AS document,
-                      unnest(document.evidence_ids) AS evidence_id
-                 WHERE document.project_id = $1
-                   AND document.source_version_id::text = ANY($2::text[])
-                   AND document.access_scope <@ $4::text[]
-                   AND (
-                     document.search_vector @@ websearch_to_tsquery('simple', $3)
-                     OR document.claim_text % $3
-                     OR document.claim_text ILIKE '%' || $3 || '%'
-                   )
-                 GROUP BY evidence_id
-               ) AS ranked
-               ORDER BY relevance DESC NULLS LAST, evidence_id
-               LIMIT 100`,
-              [
-                scope.projectId,
-                implicitSourceVersionIds,
-                snapshot.question,
-                scope.accessScope ?? [],
-              ],
-            )
-          ).rows.map((row) => row.evidence_id)
-        : [];
-    const sourceEvidenceIds = [...new Set([...selectedEvidenceIds, ...implicitSourceEvidenceIds])];
     const canonicalEvidenceIds =
       snapshot.mode === 'SOURCE_EXPLORATION'
         ? []
@@ -266,8 +260,8 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
       snapshot.mode === 'CANONICAL_ONLY'
         ? canonicalEvidenceIds
         : snapshot.mode === 'HYBRID'
-          ? [...new Set([...canonicalEvidenceIds, ...sourceEvidenceIds])]
-          : sourceEvidenceIds;
+          ? [...new Set([...canonicalEvidenceIds, ...selectedEvidenceIds])]
+          : selectedEvidenceIds;
     const evidenceResult =
       evidenceIds.length === 0
         ? { rows: [] as EvidenceRow[] }
@@ -307,24 +301,36 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
         sensitivity: row.sensitivity,
       };
     });
-    const queryPlanRevision = 'ask-query-plan-v2';
+    const sourceVersions = (
+      await Promise.all(
+        [...selectionGroups.values()]
+          .filter((selection) => selection.evidenceIds.length === 0)
+          .map((selection) =>
+            this.sourceContextReader.resolve({
+              scope,
+              sourceId: selection.sourceId,
+              sourceVersionId: selection.sourceVersionId,
+            }),
+          ),
+      )
+    ).filter((item) => item !== undefined);
+    const context: AskExecutionContextItem[] = [
+      ...evidence.map((item) => ({ kind: 'EVIDENCE' as const, ...item })),
+      ...sourceVersions,
+    ];
+    const queryPlanRevision = 'ask-query-plan-v3';
     return {
       evidence,
-      contextStatus: evidence.length > 0 ? 'SUPPORTED' : 'NO_SUPPORTED_ANSWER',
+      context,
+      contextStatus: context.length > 0 ? 'SUPPORTED' : 'NO_SUPPORTED_ANSWER',
       queryPlanRevision,
-      resolvedContextDigest: sha256Text(
-        stableJson({
-          queryPlanRevision,
-          projectId: scope.projectId,
-          mode: snapshot.mode,
-          question: snapshot.question,
-          evidence: evidence.map((item) => ({
-            evidenceId: item.evidenceId,
-            sourceVersionId: item.sourceVersionId,
-            exactQuote: item.exactQuote,
-          })),
-        }),
-      ),
+      resolvedContextDigest: askExecutionContextDigest({
+        queryPlanRevision,
+        projectId: scope.projectId,
+        mode: snapshot.mode,
+        question: snapshot.question,
+        context,
+      }),
     };
   }
 
@@ -398,21 +404,54 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
        ORDER BY evidence_ordinal`,
       [snapshot.answerRunId, scope.projectId, attemptNumber],
     );
+    const mappedEvidence = evidence.rows.map((item) => ({
+      evidenceId: item.evidence_id,
+      sourceId: item.source_id,
+      sourceVersionId: item.source_version_id,
+      exactQuote: item.exact_quote,
+      sensitivity: item.sensitivity,
+    }));
+    const queryPlanRevision = row.query_plan_revision ?? 'ask-query-plan-v2';
+    const sourceVersions =
+      queryPlanRevision === 'ask-query-plan-v3'
+        ? (
+            await Promise.all(
+              snapshot.sourceSelections
+                .filter((selection) => selection.evidenceIds.length === 0)
+                .map((selection) =>
+                  this.sourceContextReader.resolve({
+                    scope,
+                    sourceId: selection.sourceId,
+                    sourceVersionId: selection.sourceVersionId,
+                  }),
+                ),
+            )
+          ).filter((item) => item !== undefined)
+        : [];
+    const context: AskExecutionContextItem[] = [
+      ...mappedEvidence.map((item) => ({ kind: 'EVIDENCE' as const, ...item })),
+      ...sourceVersions,
+    ];
+    if (queryPlanRevision === 'ask-query-plan-v3') {
+      const currentDigest = askExecutionContextDigest({
+        queryPlanRevision,
+        projectId: scope.projectId,
+        mode: snapshot.mode,
+        question: snapshot.question,
+        context,
+      });
+      assertSameContextDigest(row.resolved_context_digest, currentDigest);
+    }
     return {
       snapshot,
-      evidence: evidence.rows.map((item) => ({
-        evidenceId: item.evidence_id,
-        sourceId: item.source_id,
-        sourceVersionId: item.source_version_id,
-        exactQuote: item.exact_quote,
-        sensitivity: item.sensitivity,
-      })),
+      evidence: mappedEvidence,
+      context,
       contextStatus:
-        row.context_supported && evidence.rows.length > 0 ? 'SUPPORTED' : 'NO_SUPPORTED_ANSWER',
+        row.context_supported && context.length > 0 ? 'SUPPORTED' : 'NO_SUPPORTED_ANSWER',
       resolvedContextDigest:
         row.resolved_context_digest ??
         sha256Text(stableJson({ answerRunId: snapshot.answerRunId, attemptNumber })),
-      queryPlanRevision: row.query_plan_revision ?? 'ask-query-plan-v2',
+      queryPlanRevision,
     };
   }
 
@@ -1420,7 +1459,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
         context.resolvedContextDigest,
         context.queryPlanRevision,
         context.contextStatus === 'SUPPORTED',
-        highestSensitivity(context.evidence),
+        highestSensitivity(context.context),
         createdAt,
         workerId,
         new Date(Date.now() + 30_000).toISOString(),
@@ -1475,7 +1514,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
         policyContextRevision,
         resolvedContextDigest: context.resolvedContextDigest,
         queryPlanRevision: context.queryPlanRevision,
-        resolvedSensitivity: highestSensitivity(context.evidence),
+        resolvedSensitivity: highestSensitivity(context.context),
         leaseOwner: workerId,
       },
       context: {
@@ -1491,6 +1530,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
           ...(context.snapshot.attentionReason ? { attentionReason: undefined } : {}),
         },
         evidence: context.evidence,
+        context: context.context,
         contextStatus: context.contextStatus,
         resolvedContextDigest: context.resolvedContextDigest,
         queryPlanRevision: context.queryPlanRevision,

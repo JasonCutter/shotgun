@@ -15,6 +15,8 @@ import {
 import { EmptyState } from '../components/empty-state.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
+import { TechnicalDetails } from '../components/technical-details.js';
+import { graphBaseViewLabel, graphOverlayLabel } from '../presentation/product-labels.js';
 import { GraphCanvas } from '../knowledge/graph-canvas.js';
 import {
   buildGraphNodeCorrectionSeed,
@@ -389,7 +391,7 @@ export const GraphWorkspace = () => {
                 onChange={() => dispatch({ type: 'SET_BASE_VIEW', baseView })}
               />
               <span>
-                {baseView} <kbd>Alt+{index + 1}</kbd>
+                {graphBaseViewLabel(baseView)} <kbd>Alt+{index + 1}</kbd>
               </span>
             </label>
           ))}
@@ -405,7 +407,7 @@ export const GraphWorkspace = () => {
                 onChange={() => dispatch({ type: 'TOGGLE_OVERLAY', overlay })}
               />
               <span>
-                {overlay} <kbd>Alt+Shift+{index + 1}</kbd>
+                {graphOverlayLabel(overlay)} <kbd>Alt+Shift+{index + 1}</kbd>
               </span>
             </label>
           ))}
@@ -490,10 +492,13 @@ export const GraphWorkspace = () => {
           ariaLabel="Semantic graph path"
         />
       )}
-      <p className="graph-scope-note">
-        Project: {shell.activeProject.label} · Snapshot: {result.identity.snapshotId} · Revision:{' '}
-        {result.identity.projectionRevision}
-      </p>
+      <p className="graph-scope-note">Project: {shell.activeProject.label}</p>
+      <TechnicalDetails
+        items={[
+          { label: 'Snapshot ID', value: result.identity.snapshotId },
+          { label: 'Projection revision', value: result.identity.projectionRevision },
+        ]}
+      />
     </section>
   );
 };

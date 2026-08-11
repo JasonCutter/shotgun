@@ -207,13 +207,13 @@ test('Section 3 route guard preserves Active and Resource Project context and ma
   ).toBeVisible();
   await expect(page.locator('.active-project')).toContainText('shotgun');
   await expect(page.locator('.resource-project')).toContainText('project-b');
-  await expect(page.getByRole('combobox', { name: 'Active Project' })).toHaveValue('shotgun');
+  await expect(page.getByRole('combobox', { name: 'Current project' })).toHaveValue('shotgun');
 
   await page.goto('/settings/projects/not-accessible');
   await expect(page.getByRole('heading', { name: 'Request error' })).toBeVisible();
   await expect(page.getByRole('alert')).toContainText('not found');
   await page.goto('/');
-  await expect(page.getByRole('combobox', { name: 'Active Project' })).toHaveValue('shotgun');
+  await expect(page.getByRole('combobox', { name: 'Current project' })).toHaveValue('shotgun');
 });
 
 test('Section 3 blocks unsafe leave state, warns on offline state, and restores online use', async ({
@@ -223,8 +223,8 @@ test('Section 3 blocks unsafe leave state, warns on offline state, and restores 
   await page.goto('/settings/advanced');
   await page.getByLabel('Default Answer Model').fill('unsaved-model');
   await page.getByRole('button', { name: 'Validate & Preview' }).click();
-  await expect(page.getByText('Draft state: READY_TO_APPLY')).toBeVisible();
-  const selector = page.getByRole('combobox', { name: 'Active Project' });
+  await expect(page.getByText('Draft status: Ready to apply')).toBeVisible();
+  const selector = page.getByRole('combobox', { name: 'Current project' });
   await selector.selectOption('project-b');
   await expect(selector).toHaveValue('shotgun');
   await expect(page.getByRole('alert')).toContainText('current Workspace');

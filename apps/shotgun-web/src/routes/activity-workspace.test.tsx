@@ -441,8 +441,8 @@ describe('ActivityWorkspace (FE-P5-S1 WP4)', () => {
     const runtime = createRuntime();
     renderWorkspace(runtime);
 
-    await screen.findByText('Sources intake submission submission-1');
-    screen.getByText('Ask answer run answer-run-1');
+    await screen.findByText('Source processing');
+    screen.getByText('Answering a question');
     screen.getByText(/전체 결과|부분 결과/);
     screen.getByText(/rev 3/);
     screen.getByText(/120 ms/);
@@ -456,8 +456,8 @@ describe('ActivityWorkspace (FE-P5-S1 WP4)', () => {
     const runtime = createRuntime();
     renderWorkspace(runtime);
 
-    await screen.findByText('Sources intake submission submission-1');
-    await userEvent.click(screen.getByText('Sources intake submission submission-1'));
+    await screen.findByText('Source processing');
+    await userEvent.click(screen.getByText('Source processing'));
 
     await waitFor(
       () => {
@@ -471,7 +471,7 @@ describe('ActivityWorkspace (FE-P5-S1 WP4)', () => {
     // The server-returned resourceHref is rendered as a real link.
     expect(
       screen.getByRole('link', {
-        name: '/product-api/frontend/sources/read?submissionId=submission-1',
+        name: 'Open related resource',
       }),
     ).not.toBeNull();
     vi.unstubAllGlobals();
@@ -501,7 +501,7 @@ describe('ActivityWorkspace (FE-P5-S1 WP4)', () => {
     const runtime = createRuntime();
     renderWorkspace(runtime);
 
-    await screen.findByText('Sources intake submission submission-1');
+    await screen.findByText('Source processing');
     await userEvent.click(screen.getByRole('button', { name: '새로고침' }));
 
     await waitFor(
@@ -541,7 +541,7 @@ describe('ActivityWorkspace (FE-P5-S1 WP4)', () => {
     const runtime = createRuntime();
     renderWorkspace(runtime);
 
-    await screen.findByText('Sources intake submission submission-1');
+    await screen.findByText('Source processing');
     await userEvent.click(screen.getByRole('checkbox', { name: 'Ask' }));
 
     await waitFor(
@@ -572,10 +572,10 @@ describe('ActivityWorkspace (FE-P5-S1 WP4)', () => {
     const runtime = createRuntime();
     renderWorkspace(runtime);
 
-    await screen.findByText('Sources intake submission submission-1');
+    await screen.findByText('Source processing');
 
     // Sources → /sources/:domainResourceId
-    await userEvent.click(screen.getByText('Sources intake submission submission-1'));
+    await userEvent.click(screen.getByText('Source processing'));
     await waitFor(() => screen.getByRole('link', { name: '도메인 워크스페이스에서 열기' }), {
       timeout: 10000,
     });
@@ -586,13 +586,13 @@ describe('ActivityWorkspace (FE-P5-S1 WP4)', () => {
     expect(
       screen
         .getByRole('link', {
-          name: '/product-api/frontend/sources/read?submissionId=submission-1',
+          name: 'Open related resource',
         })
         .getAttribute('href'),
     ).toBe('/product-api/frontend/sources/read?submissionId=submission-1');
 
     // Ask → /ask/conversations/:domainResourceId
-    await userEvent.click(screen.getByText('Ask answer run answer-run-1'));
+    await userEvent.click(screen.getByText('Answering a question'));
     await waitFor(() => {
       expect(
         screen.getByRole('link', { name: '도메인 워크스페이스에서 열기' }).getAttribute('href'),
@@ -600,7 +600,7 @@ describe('ActivityWorkspace (FE-P5-S1 WP4)', () => {
     });
 
     // External Action → /external-action?action=:domainResourceId
-    await userEvent.click(screen.getByText('External Action action-ea-1'));
+    await userEvent.click(screen.getByText('External action'));
     await waitFor(() => {
       expect(
         screen.getByRole('link', { name: '도메인 워크스페이스에서 열기' }).getAttribute('href'),
@@ -615,8 +615,8 @@ describe('ActivityWorkspace (FE-P5-S1 WP4)', () => {
     const runtime = createRuntime();
     renderWorkspace(runtime);
 
-    await screen.findByText('Sources intake submission submission-1');
-    await userEvent.click(screen.getByText('Sources intake submission submission-1'));
+    await screen.findByText('Source processing');
+    await userEvent.click(screen.getByText('Source processing'));
     await waitFor(() => screen.getByRole('table', { name: 'Transport Attempts' }), {
       timeout: 10000,
     });
@@ -645,12 +645,12 @@ describe('ActivityWorkspace (FE-P5-S1 WP4)', () => {
     const runtime = createRuntime();
     renderWorkspace(runtime);
 
-    await screen.findByText('Sources intake submission submission-1');
-    await userEvent.click(screen.getByText('Sources intake submission submission-1'));
+    await screen.findByText('Source processing');
+    await userEvent.click(screen.getByText('Source processing'));
 
     await waitFor(
       () => {
-        const heading = screen.getByRole('heading', { level: 2, name: 'submission-1' });
+        const heading = screen.getByRole('heading', { level: 2, name: 'Sources activity' });
         expect(document.activeElement).toBe(heading);
       },
       { timeout: 10000 },
@@ -730,8 +730,8 @@ describe('ActivityWorkspace (FE-P5-S1 WP4)', () => {
     const runtime = createRuntime();
     renderWorkspace(runtime);
 
-    await screen.findByText('Sources intake submission submission-1');
-    await userEvent.click(screen.getByText('Sources intake submission submission-1'));
+    await screen.findByText('Source processing');
+    await userEvent.click(screen.getByText('Source processing'));
     await waitFor(() => screen.getByRole('button', { name: '취소' }), { timeout: 10000 });
 
     // The Sources capabilities (CANCEL + both retry modes) surface as actions;
@@ -773,8 +773,8 @@ describe('ActivityWorkspace (FE-P5-S1 WP4)', () => {
     const runtime = createRuntime();
     renderWorkspace(runtime);
 
-    await screen.findByText('Ask answer run answer-run-1');
-    await userEvent.click(screen.getByText('Ask answer run answer-run-1'));
+    await screen.findByText('Answering a question');
+    await userEvent.click(screen.getByText('Answering a question'));
     await waitFor(() => screen.getByRole('button', { name: '취소' }), { timeout: 10000 });
 
     // Ask run capabilities expose only CANCEL (no RETRY in this fixture).
@@ -800,8 +800,8 @@ describe('ActivityWorkspace (FE-P5-S1 WP4)', () => {
     const runtime = createRuntime();
     renderWorkspace(runtime);
 
-    await screen.findByText('External Action action-ea-1');
-    await userEvent.click(screen.getByText('External Action action-ea-1'));
+    await screen.findByText('External action');
+    await userEvent.click(screen.getByText('External action'));
     await waitFor(() => screen.getByRole('button', { name: '취소' }), { timeout: 10000 });
 
     // Cancel delegates to the owning-Domain cancel route with the server action
@@ -857,8 +857,8 @@ describe('ActivityWorkspace (FE-P5-S1 WP4)', () => {
     const runtime = createRuntime();
     renderWorkspace(runtime);
 
-    await screen.findByText('Sources intake submission submission-1');
-    await userEvent.click(screen.getByText('Sources intake submission submission-1'));
+    await screen.findByText('Source processing');
+    await userEvent.click(screen.getByText('Source processing'));
     await waitFor(() => screen.getByText(/Domain Attempts/), { timeout: 10000 });
 
     expect(screen.queryByRole('button', { name: '취소' })).toBeNull();

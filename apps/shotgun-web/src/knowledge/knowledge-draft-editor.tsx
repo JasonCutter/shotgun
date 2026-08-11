@@ -1,4 +1,4 @@
-import { useMemo, useState, type ChangeEvent } from 'react';
+import { useEffect, useState, type ChangeEvent } from 'react';
 import { useKnowledgeDraft } from './knowledge-draft-controller.js';
 import type {
   FrontendKnowledgeDraftChangeSetV1,
@@ -30,7 +30,7 @@ const operationText = (operation: FrontendKnowledgeOperationV1): string => {
     case 'decision.v1':
       return after.decision;
     case 'evidence-link.v1':
-      return `${after.sourceId}#${after.evidenceSpanId}`;
+      return 'Evidence link';
     case 'temporal-validity.v1':
       return after.status;
     case 'conflict-proposal.v1':
@@ -40,6 +40,17 @@ const operationText = (operation: FrontendKnowledgeOperationV1): string => {
     case 'no-op-review-result.v1':
       return after.reason;
   }
+};
+
+const draftStateLabel = (state: string): string => {
+  const labels: Readonly<Record<string, string>> = {
+    CLEAN: 'Saved',
+    DIRTY: 'Edits preserved',
+    SAVING: 'Saving',
+    SAVE_FAILED: 'Save failed',
+    STALE: 'Draft changed; refresh required',
+  };
+  return labels[state] ?? 'Draft status unavailable';
 };
 
 const initialEditorText = (draft: FrontendKnowledgeDraftChangeSetV1 | null | undefined) => {
@@ -56,7 +67,7 @@ export const KnowledgeDraftEditor = ({
   const controller = useKnowledgeDraft(draft, activeProjectId, sessionId);
   const [editorText, setEditorText] = useState(() => initialEditorText(draft));
 
-  useMemo(() => {
+  useEffect(() => {
     setEditorText(initialEditorText(draft));
   }, [draft?.draftId, draft?.revision]);
 
@@ -113,14 +124,7 @@ export const KnowledgeDraftEditor = ({
         <button type="button" onClick={() => void onSave()}>
           Save draft
         </button>
-        <span className="knowledge-tag">
-          {controller.draftState.state === 'CLEAN'
-            ? 'Saved'
-            : controller.draftState.state === 'DIRTY' &&
-                controller.draftState.localOperations.length > 0
-              ? 'Edits preserved'
-              : controller.draftState.state}
-        </span>
+        <span className="knowledge-tag">{draftStateLabel(controller.draftState.state)}</span>
       </div>
     </section>
   );

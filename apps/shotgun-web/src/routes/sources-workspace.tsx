@@ -15,6 +15,17 @@ import { useAppRuntime } from '../app/providers.js';
 import { EmptyState } from '../components/empty-state.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
+import { TechnicalDetails } from '../components/technical-details.js';
+import {
+  duplicateDispositionLabel,
+  intakeKindLabel,
+  intakeStateLabel,
+  intakeValidationLabel,
+  mediaTypeLabel,
+  sourceAskUsageLabel,
+  sourceLifecycleLabel,
+  sourcePreviewLabel,
+} from '../presentation/product-labels.js';
 import { sourcesLibraryQueryOptions } from '../sources/sources-queries.js';
 import { useSourceIntakeDraftQueue } from '../sources/source-intake-drafts.js';
 import { useConnectivityState } from '../shell/use-connectivity-state.js';
@@ -299,9 +310,7 @@ export const SourcesWorkspace = () => {
           Direct Text, File and URL drafts remain fixed to this Project until you explicitly submit
           or discard them.
         </p>
-        <p>
-          Draft Project: <strong>{draftQueue.draftProjectId}</strong>
-        </p>
+        <p>Drafts stay with the project where they were created until submitted or discarded.</p>
         {draftQueue.activeProjectMismatch ? (
           <p className="warning-state" role="alert">
             The active Project changed. These drafts remain isolated to their original Project and
@@ -392,7 +401,7 @@ export const SourcesWorkspace = () => {
                   <div>
                     <strong>{item.label}</strong>
                     <p>
-                      {item.kind} · {item.validation}
+                      {intakeKindLabel(item.kind)} · {intakeValidationLabel(item.validation)}
                     </p>
                     <small>{item.message}</small>
                   </div>
@@ -415,16 +424,16 @@ export const SourcesWorkspace = () => {
 
         {submission ? (
           <section aria-labelledby="submission-status-heading">
-            <h3 id="submission-status-heading">Submission {submission.state}</h3>
-            <p>
-              Submission ID: <code>{submission.submissionId}</code>
-            </p>
+            <h3 id="submission-status-heading">Submission {intakeStateLabel(submission.state)}</h3>
+            <TechnicalDetails
+              items={[{ label: 'Submission ID', value: submission.submissionId }]}
+            />
             <ul className="source-intake-list" aria-label="Submission items">
               {submission.items.map((item) => (
                 <li key={item.itemId}>
                   <div>
                     <strong>{item.manifest.label}</strong>
-                    <p>{item.state}</p>
+                    <p>{intakeStateLabel(item.state)}</p>
                     {item.attentionReason ? <small>{item.attentionReason}</small> : null}
                   </div>
                   <div className="source-intake-actions">
@@ -479,7 +488,7 @@ export const SourcesWorkspace = () => {
                   onClick={() => void resolveDuplicate(disposition)}
                   disabled={mutationState !== 'IDLE' || connectivity.isOffline}
                 >
-                  {disposition.replaceAll('_', ' ')}
+                  {duplicateDispositionLabel(disposition)}
                 </button>
               ))}
             </div>
@@ -547,13 +556,13 @@ export const SourcesWorkspace = () => {
                 <div>
                   <h3>{source.label}</h3>
                   <p>
-                    {source.mediaType} · {source.lifecycle}
+                    {mediaTypeLabel(source.mediaType)} · {sourceLifecycleLabel(source.lifecycle)}
                   </p>
                   <p>{source.askUsageExplanation}</p>
                 </div>
                 <div className="source-library-status">
-                  <span>{source.previewReadiness}</span>
-                  <span>{source.askUsageState}</span>
+                  <span>{sourcePreviewLabel(source.previewReadiness)}</span>
+                  <span>{sourceAskUsageLabel(source.askUsageState)}</span>
                   <Link
                     className="primary-link"
                     to={`/sources/${encodeURIComponent(source.sourceId)}?version=${encodeURIComponent(source.selectedSourceVersionId)}`}

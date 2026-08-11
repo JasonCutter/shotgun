@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router';
 import { useAppRuntime } from '../../app/providers.js';
+import { modelCapabilityLabel, modelCostLabel } from '../../presentation/product-labels.js';
 
 export const ModelsWorkspace = () => {
   const { apiClient } = useAppRuntime();
@@ -75,12 +76,13 @@ export const ModelsWorkspace = () => {
                     fontWeight: 600,
                   }}
                 >
-                  DEFAULT
+                  Default
                 </span>
               )}
             </div>
             <p style={{ fontSize: '13px', color: '#64748b', margin: '8px 0' }}>
-              Provider: {m.provider} | Cost: {m.costClass}
+              Provider: {m.provider === 'google' ? 'Google' : m.provider} ·{' '}
+              {modelCostLabel(m.costClass)}
             </p>
             <p style={{ fontSize: '13px' }}>Privacy: {m.privacyCharacteristics}</p>
             <div style={{ marginTop: '12px' }}>
@@ -98,7 +100,7 @@ export const ModelsWorkspace = () => {
                       fontSize: '11px',
                     }}
                   >
-                    {cap}
+                    {modelCapabilityLabel(cap)}
                   </span>
                 ))}
               </div>

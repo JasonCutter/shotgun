@@ -6,7 +6,7 @@ test('Active B -> Conversation A uses only A Sources and submits the follow-up t
   page,
 }) => {
   await page.goto('/ask');
-  const projectSelector = page.getByRole('combobox', { name: 'Active Project' });
+  const projectSelector = page.getByRole('combobox', { name: 'Current project' });
   await expect(projectSelector).toHaveValue(ASK_FIXTURE.projectAId);
 
   const questionInput = page.getByRole('textbox', { name: 'Question', exact: true });

@@ -535,12 +535,17 @@ const stubLifecycleRoutes = async (page: Page, posts: string[]) => {
 const openQueue = async (page: Page) => {
   await page.goto('/external-action');
   await expect(page.getByRole('heading', { name: 'External Actions', level: 1 })).toBeVisible();
-  await expect(page.getByRole('button', { name: /action-3/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Verified/ })).toBeVisible();
 };
 
 const selectAction = async (page: Page, actionId: string) => {
-  await page.getByRole('button', { name: new RegExp(actionId) }).click();
-  await expect(page.getByRole('heading', { name: actionId })).toBeVisible();
+  const statusLabel: Record<string, string> = {
+    'action-1': 'Ready to run',
+    'action-2': 'Verifying',
+    'action-3': 'Verified',
+  };
+  await page.getByRole('button', { name: new RegExp(statusLabel[actionId] ?? '') }).click();
+  await expect(page.getByRole('heading', { name: 'Update an external resource' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '거버넌스 명령' })).toBeVisible();
 };
 

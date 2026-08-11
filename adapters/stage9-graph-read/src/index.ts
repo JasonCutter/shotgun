@@ -46,6 +46,23 @@ type SnapshotContextCache = {
 const freshId = (prefix: string): string =>
   `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
+const edgeSemanticKindLabel = (kind: string): string => {
+  const labels: Readonly<Record<string, string>> = {
+    CANONICAL_RELATION: 'Canonical relationship',
+    CANONICAL_STATEMENT_ASSOCIATION: 'Canonical statement association',
+    DERIVED_INFERENCE: 'Derived inference',
+    DISCOVERY_CANDIDATE: 'Discovery candidate',
+    POSSIBLY_SAME: 'Possible match',
+    EVIDENCE_LINKAGE: 'Evidence link',
+    CONFLICT: 'Conflict',
+    KNOWLEDGE_GAP: 'Knowledge gap',
+    TEMPORAL_RELATIONSHIP: 'Time relationship',
+    GOVERNANCE_IMPACT: 'Governance impact',
+    OPERATIONAL_DEPENDENCY: 'Operational dependency',
+  };
+  return labels[kind] ?? 'Relationship';
+};
+
 const matchFilters = (node: GraphNodeV1, filters?: GraphFilterSetV1): boolean => {
   if (!filters) return true;
   if (filters.nodeKindFilters && !filters.nodeKindFilters.includes(node.nodeKind)) return false;
@@ -365,7 +382,7 @@ export class Stage9GraphReadAdapter implements GraphReadPort, GraphImpactPort {
         schemaVersion: '1.0.0',
         kind: 'TRAVERSAL',
         step: index,
-        narration: `${startLabel} → ${edge?.edgeSemanticKind ?? '연결'} → ${endLabel}`,
+        narration: `${startLabel} → ${edge ? edgeSemanticKindLabel(edge.edgeSemanticKind) : 'Relationship'} → ${endLabel}`,
         nodeRef: { ...stored.toRef, resourceId: step.nodeId },
         edgeRef: {
           schemaVersion: '1.0.0',

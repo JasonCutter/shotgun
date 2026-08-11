@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router';
 import { useAppRuntime } from '../../app/providers.js';
+import { readinessLabel } from '../../presentation/product-labels.js';
 
 export const DiagnosticsWorkspace = () => {
   const { apiClient } = useAppRuntime();
@@ -96,7 +97,7 @@ export const DiagnosticsWorkspace = () => {
               color: diagnosticsData.databaseReadiness === 'READY' ? '#166534' : '#dc2626',
             }}
           >
-            {diagnosticsData.databaseReadiness}
+            {readinessLabel(diagnosticsData.databaseReadiness)}
           </p>
         </div>
         <div
@@ -115,7 +116,7 @@ export const DiagnosticsWorkspace = () => {
               color: diagnosticsData.projectionReadiness === 'READY' ? '#166534' : '#dc2626',
             }}
           >
-            {diagnosticsData.projectionReadiness}
+            {readinessLabel(diagnosticsData.projectionReadiness)}
           </p>
         </div>
         <div
@@ -134,7 +135,7 @@ export const DiagnosticsWorkspace = () => {
               color: diagnosticsData.backupStatus === 'HEALTHY' ? '#166534' : '#d97706',
             }}
           >
-            {diagnosticsData.backupStatus}
+            {readinessLabel(diagnosticsData.backupStatus)}
           </p>
         </div>
       </div>

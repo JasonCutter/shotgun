@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   ShotgunApiError,
+  type GlobalShellView,
   type ProductSessionView,
   type ShotgunApiClient,
 } from '@shotgun/api-client';
@@ -30,6 +31,13 @@ const session: ProductSessionView = {
   ],
   session: { expiresAt: null },
 };
+
+const shell = {
+  accessibleProjects: [
+    { id: 'project-a', label: 'Project Alpha', isOwner: true },
+    { id: 'project-b', label: 'Project Beta', isOwner: false },
+  ],
+} as unknown as GlobalShellView;
 
 const renderRoute = (element: React.ReactNode, apiClient: ShotgunApiClient) => {
   const queryClient = createFrontendQueryClient();
@@ -158,10 +166,12 @@ describe('Session controls', () => {
       rejectSwitch = reject;
     });
     renderRoute(
-      <ProjectSelector session={session} />,
+      <ProjectSelector session={session} shell={shell} />,
       api({ switchActiveProject: vi.fn(() => pending) }),
     );
-    const selector = screen.getByRole('combobox', { name: 'Active Project' });
+    const selector = screen.getByRole('combobox', { name: 'Current project' });
+    expect(screen.getByRole('option', { name: 'Project Alpha (Owner)' })).toBeTruthy();
+    expect(screen.queryByText('project-a')).toBeNull();
     expect((selector as HTMLSelectElement).value).toBe('project-a');
 
     await user.selectOptions(selector, 'project-b');

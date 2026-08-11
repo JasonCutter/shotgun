@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router';
 import { useAppRuntime } from '../../app/providers.js';
+import { privacyProfileLabel, sensitivityLabel } from '../../presentation/product-labels.js';
 
 export const PrivacyWorkspace = () => {
   const { apiClient } = useAppRuntime();
@@ -59,10 +60,10 @@ export const PrivacyWorkspace = () => {
         }}
       >
         <p>
-          <strong>Profile Name:</strong> {privacyData.profileName}
+          <strong>Privacy profile:</strong> {privacyProfileLabel(privacyData.profileName)}
         </p>
         <p>
-          <strong>Sensitivity Level:</strong> {privacyData.sensitivityLevel}
+          <strong>Sensitivity:</strong> {sensitivityLabel(privacyData.sensitivityLevel)}
         </p>
         <p>
           <strong>External Transfer Allowed:</strong>{' '}

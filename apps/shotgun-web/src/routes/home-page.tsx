@@ -12,6 +12,7 @@ import {
   decodeRestorableBrowserDrafts,
 } from '../section3/browser-drafts.js';
 import { homeActionCenterQueryOptions } from '../section3/section3-queries.js';
+import { projectLifecycleLabel } from '../presentation/product-labels.js';
 
 const readBrowserDrafts = (shell: GlobalShellView) => {
   if (!shell.activeProject) return [];
@@ -84,7 +85,8 @@ export const HomePage = () => {
       <section aria-labelledby="project-state-heading" className="action-card">
         <h2 id="project-state-heading">Project State</h2>
         <p>
-          <strong>{home.activeProject.label}</strong> · {home.projectState.lifecycle}
+          <strong>{home.activeProject.label}</strong> ·{' '}
+          {projectLifecycleLabel(home.projectState.lifecycle)}
         </p>
         <p>{home.projectState.message}</p>
       </section>

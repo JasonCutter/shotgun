@@ -2,7 +2,7 @@ import { useMutation } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { Link, useRevalidator } from 'react-router';
 
-import type { ProductSessionView, SessionBoundaryView } from '@shotgun/api-client';
+import type { GlobalShellView, ProductSessionView, SessionBoundaryView } from '@shotgun/api-client';
 
 import { useAppRuntime } from '../app/providers.js';
 import {
@@ -15,7 +15,13 @@ import { LoadingState } from '../components/loading-state.js';
 import { useConnectivityState } from '../shell/use-connectivity-state.js';
 import { useLeaveGuard } from './leave-guard-context.js';
 
-export const ProjectSelector = ({ session }: { readonly session: ProductSessionView }) => {
+export const ProjectSelector = ({
+  session,
+  shell,
+}: {
+  readonly session: ProductSessionView;
+  readonly shell: GlobalShellView;
+}) => {
   const { apiClient, queryClient } = useAppRuntime();
   const revalidator = useRevalidator();
   const connectivity = useConnectivityState();
@@ -77,7 +83,7 @@ export const ProjectSelector = ({ session }: { readonly session: ProductSessionV
   if (!session.activeProject || session.accessibleProjects.length === 0) {
     return (
       <div className="project-control">
-        <span>Active Project</span>
+        <span>Current project</span>
         <Link to="/settings/projects">Create your first Project</Link>
       </div>
     );
@@ -85,7 +91,7 @@ export const ProjectSelector = ({ session }: { readonly session: ProductSessionV
 
   return (
     <div className="project-control">
-      <label htmlFor="active-project">Active Project</label>
+      <label htmlFor="active-project">Current project</label>
       <select
         id="active-project"
         ref={selectRef}
@@ -95,7 +101,8 @@ export const ProjectSelector = ({ session }: { readonly session: ProductSessionV
       >
         {session.accessibleProjects.map((project) => (
           <option key={project.id} value={project.id}>
-            {project.id}
+            {shell.accessibleProjects.find((candidate) => candidate.id === project.id)?.label ??
+              'Unnamed project'}
             {project.isOwner ? ' (Owner)' : ''}
           </option>
         ))}

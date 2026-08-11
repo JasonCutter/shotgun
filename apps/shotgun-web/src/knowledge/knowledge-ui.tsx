@@ -12,6 +12,7 @@ import type {
 } from '@shotgun/api-client';
 import { Link } from 'react-router';
 import type { ReactNode } from 'react';
+import { TechnicalDetails } from '../components/technical-details.js';
 
 export const KNOWLEDGE_AUTHORITIES = [
   'CANONICAL',
@@ -140,6 +141,45 @@ export const authorityDescription = (authority: KnowledgeAuthority): string => {
   }
 };
 
+export const authorityLabel = (authority: KnowledgeAuthority): string => {
+  switch (authority) {
+    case 'CANONICAL':
+      return 'Canonical knowledge';
+    case 'APPROVED_KNOWLEDGE':
+      return 'Approved knowledge';
+    case 'COMPILED_TRUTH':
+      return 'Derived view';
+    case 'DERIVED_INFERENCE':
+      return 'Derived inference';
+  }
+};
+
+export const knowledgeKindLabel = (kind: KnowledgeKind): string => {
+  const labels: Readonly<Record<KnowledgeKind, string>> = {
+    CLAIM: 'Claim',
+    FACT: 'Fact',
+    ENTITY: 'Entity',
+    RELATION: 'Relationship',
+    EVENT: 'Event',
+    DECISION: 'Decision',
+    ACTION: 'Action',
+    CONFLICT: 'Conflict',
+    KNOWLEDGE_GAP: 'Knowledge gap',
+    DERIVED_INFERENCE: 'Derived inference',
+  };
+  return labels[kind];
+};
+
+export const temporalStateLabel = (state: KnowledgeTemporalState): string => {
+  const labels: Readonly<Record<KnowledgeTemporalState, string>> = {
+    CURRENT: 'Current',
+    PAST: 'Past',
+    FUTURE: 'Future',
+    CONFLICT: 'Conflicting',
+  };
+  return labels[state];
+};
+
 export const projectionDescription = (status: KnowledgeProjectionStatus): string => {
   switch (status) {
     case 'READY':
@@ -151,6 +191,24 @@ export const projectionDescription = (status: KnowledgeProjectionStatus): string
     case 'NOT_BUILT':
       return 'Not built';
   }
+};
+
+export const projectionKindLabel = (kind: string): string => {
+  const labels: Readonly<Record<string, string>> = {
+    CANONICAL_SEARCH: 'Verified knowledge search',
+    COMPILED_TRUTH: 'Derived knowledge view',
+    APPROVED_KNOWLEDGE: 'Approved knowledge view',
+  };
+  return labels[kind] ?? 'Knowledge view';
+};
+
+export const searchMatchTypeLabel = (matchType: string): string => {
+  const labels: Readonly<Record<string, string>> = {
+    FULL_TEXT: 'Text match',
+    TRIGRAM: 'Similar text',
+    SUBSTRING: 'Phrase match',
+  };
+  return labels[matchType] ?? 'Knowledge match';
 };
 
 export const ProjectionStatus = ({
@@ -168,26 +226,16 @@ export const ProjectionStatus = ({
     >
       <h3 id={`${heading.toLowerCase().replaceAll(' ', '-')}-heading`}>{heading}</h3>
       <p>
-        <strong>{projection.status}</strong> — {projectionDescription(projection.status)}
+        <strong>{projectionDescription(projection.status)}</strong>
       </p>
-      <dl className="knowledge-inline-metadata">
-        <div>
-          <dt>Projection</dt>
-          <dd>{projection.projectionKind}</dd>
-        </div>
-        <div>
-          <dt>Canonical version</dt>
-          <dd>{projection.canonicalVersion}</dd>
-        </div>
-        <div>
-          <dt>Projected version</dt>
-          <dd>{projection.projectedCanonicalVersion}</dd>
-        </div>
-        <div>
-          <dt>Lag</dt>
-          <dd>{projection.lag}</dd>
-        </div>
-      </dl>
+      <TechnicalDetails
+        items={[
+          { label: 'Projection kind', value: projection.projectionKind },
+          { label: 'Canonical version', value: projection.canonicalVersion },
+          { label: 'Projected version', value: projection.projectedCanonicalVersion },
+          { label: 'Projection lag', value: projection.lag },
+        ]}
+      />
       {!isReady ? (
         <p className="stale-state" role="status">
           This projection is not presented as current. {projection.reason ?? 'No reason supplied.'}
@@ -200,7 +248,7 @@ export const ProjectionStatus = ({
 
 export const AuthorityLabel = ({ authority }: { readonly authority: KnowledgeAuthority }) => (
   <span className="knowledge-authority" data-authority={authority}>
-    <strong>{authority}</strong>
+    <strong>{authorityLabel(authority)}</strong>
     <span>{authorityDescription(authority)}</span>
   </span>
 );
@@ -237,25 +285,28 @@ export const LineageMetadata = ({
     ['ChangeSet', lineage.changeSetId],
   ];
   return (
-    <section className="knowledge-lineage" aria-labelledby={`${heading}-heading`}>
-      <h3 id={`${heading}-heading`}>{heading}</h3>
-      <dl className="knowledge-metadata-grid">
-        {fields.map(([label, value]) => (
-          <div key={label}>
-            <dt>{label}</dt>
-            <dd>{displayValue(value)}</dd>
-          </div>
-        ))}
-      </dl>
-      {lineage.evidenceIds && lineage.evidenceIds.length > 0 ? (
-        <p>
-          Evidence IDs: <code>{lineage.evidenceIds.join(', ')}</code>
-        </p>
-      ) : null}
-      {lineage.projection ? (
-        <ProjectionStatus projection={lineage.projection} heading="Lineage projection" />
-      ) : null}
-    </section>
+    <TechnicalDetails summary={heading}>
+      <section className="knowledge-lineage" aria-label={heading}>
+        <dl className="knowledge-metadata-grid">
+          {fields.map(([label, value]) => (
+            <div key={label}>
+              <dt>{label}</dt>
+              <dd>
+                <code>{displayValue(value)}</code>
+              </dd>
+            </div>
+          ))}
+        </dl>
+        {lineage.evidenceIds && lineage.evidenceIds.length > 0 ? (
+          <p>
+            Evidence IDs: <code>{lineage.evidenceIds.join(', ')}</code>
+          </p>
+        ) : null}
+        {lineage.projection ? (
+          <ProjectionStatus projection={lineage.projection} heading="Lineage projection" />
+        ) : null}
+      </section>
+    </TechnicalDetails>
   );
 };
 
@@ -278,7 +329,7 @@ export const EvidenceLinks = ({
                 to={`/sources/${encodeURIComponent(target.sourceId)}?version=${encodeURIComponent(target.sourceVersionId)}`}
                 state={knowledgeEvidenceReturnState(envelope)}
               >
-                Open pinned SourceVersion and Evidence {target.evidenceId}
+                Open source evidence
               </Link>
             </li>
           );
@@ -299,8 +350,8 @@ export const KnowledgeItemCard = ({
       <h3>{item.label}</h3>
       <div className="knowledge-tag-row" aria-label="Knowledge classification">
         <AuthorityLabel authority={item.authority} />
-        <span className="knowledge-tag">Kind: {item.kind}</span>
-        <span className="knowledge-tag">Temporal: {item.temporalState}</span>
+        <span className="knowledge-tag">Kind: {knowledgeKindLabel(item.kind)}</span>
+        <span className="knowledge-tag">Time: {temporalStateLabel(item.temporalState)}</span>
       </div>
     </header>
     {item.summary ? <p>{item.summary}</p> : null}
@@ -328,12 +379,15 @@ export const PageSummaryCard = ({
           {page.title}
         </Link>
       </h3>
-      <p>
-        <code>{page.resourceId}</code> · revision <code>{page.revision}</code>
-      </p>
+      <TechnicalDetails
+        items={[
+          { label: 'Resource ID', value: page.resourceId },
+          { label: 'Revision', value: page.revision },
+        ]}
+      />
       <div className="knowledge-tag-row">
         <AuthorityLabel authority={page.primaryAuthority} />
-        <span className="knowledge-tag">Kind: {page.primaryKind}</span>
+        <span className="knowledge-tag">Kind: {knowledgeKindLabel(page.primaryKind)}</span>
       </div>
       <ProjectionStatus projection={page.projection} heading={`${page.title} projection`} />
     </div>
@@ -361,17 +415,14 @@ export const PagePreview = ({
   <section className="knowledge-page-preview action-card" aria-labelledby={`${heading}-heading`}>
     <h2 id={`${heading}-heading`}>{heading}</h2>
     <h3>{page.title}</h3>
-    <p>
-      Resource <code>{page.resourceId}</code> · revision <code>{page.revision}</code>
-    </p>
+    <TechnicalDetails
+      items={[
+        { label: 'Resource ID', value: page.resourceId },
+        { label: 'Revision', value: page.revision },
+      ]}
+    />
     <ProjectionStatus projection={page.projection} heading={`${heading} projection`} />
-    <div className="knowledge-tag-row" aria-label={`${heading} capabilities`}>
-      {page.capabilities.map((capability) => (
-        <span className="knowledge-tag" key={capability}>
-          {capability}
-        </span>
-      ))}
-    </div>
+    <p>Read and exploration tools are available for this page.</p>
     {children}
   </section>
 );

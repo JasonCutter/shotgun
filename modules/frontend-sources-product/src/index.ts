@@ -26,6 +26,7 @@ export type SourcesProjectionRecord = {
   readonly mediaType: string;
   readonly contentHash: string;
   readonly sizeBytes: number;
+  readonly displayLabel?: string;
   readonly originalFileName?: string;
   readonly storageKey: string;
   readonly accessScope: readonly string[];
@@ -100,10 +101,9 @@ const assertAuthorized = (
 };
 
 const labelFor = (record: SourcesProjectionRecord): string =>
+  record.displayLabel?.trim() ||
   record.originalFileName?.trim() ||
-  (record.mediaType === 'text/plain'
-    ? `Direct text source ${record.sourceId.slice(0, 8)}`
-    : `Source ${record.sourceId.slice(0, 8)}`);
+  (record.mediaType === 'text/plain' ? 'Untitled direct text' : 'Untitled source');
 
 const latestBySource = (
   records: readonly SourcesProjectionRecord[],

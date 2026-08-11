@@ -15,6 +15,13 @@ import {
 import { EmptyState } from '../components/empty-state.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
+import { TechnicalDetails } from '../components/technical-details.js';
+import {
+  externalActionOperationLabel,
+  externalActionStatusLabel,
+  formatProductTimestamp,
+  riskLevelLabel,
+} from '../presentation/product-labels.js';
 import {
   externalActionActionQueryKey,
   externalActionResourceQueryKey,
@@ -851,9 +858,15 @@ export const ExternalActionWorkspace = () => {
                     aria-current={state.selectedActionId === item.actionId ? 'true' : undefined}
                   >
                     <span className="action-cue">{externalActionAggregateCue(item.status)}</span>
-                    <span className="action-id">{item.actionId}</span>
-                    <span className="action-status" aria-label={`상태: ${item.status}`}>
-                      {item.status}
+                    <span className="action-id">
+                      {externalActionOperationLabel(item.operation)}
+                    </span>
+                    <span
+                      className="action-status"
+                      aria-label={`Status: ${externalActionStatusLabel(item.status)}`}
+                    >
+                      {externalActionStatusLabel(item.status)} · {riskLevelLabel(item.riskLevel)} ·{' '}
+                      {formatProductTimestamp(item.updatedAt)}
                     </span>
                   </button>
                 </li>
@@ -879,7 +892,7 @@ export const ExternalActionWorkspace = () => {
       {snapshotRestricted && !detail.data ? (
         <section aria-labelledby="external-action-detail-heading" className="action-card">
           <h2 id="external-action-detail-heading" tabIndex={-1}>
-            {snapshot.data?.action.actionId}
+            Restricted external action
           </h2>
           <p className="restricted-shell" role="status">
             {EXTERNAL_ACTION_ANNOUNCEMENTS.ACCESS_RESTRICTED}
@@ -891,7 +904,7 @@ export const ExternalActionWorkspace = () => {
         <>
           <section aria-labelledby="external-action-detail-heading" className="action-card">
             <h2 id="external-action-detail-heading" tabIndex={-1}>
-              {detail.data.action.actionId}
+              {externalActionOperationLabel(detail.data.action.operation)}
             </h2>
             <dl className="summary-grid">
               <div>
@@ -900,20 +913,34 @@ export const ExternalActionWorkspace = () => {
                   <span className="action-cue">
                     {externalActionAggregateCue(detail.data.action.status)}
                   </span>
-                  <span aria-label={`상태: ${detail.data.action.status}`}>
-                    {detail.data.action.status}
+                  <span
+                    aria-label={`Status: ${externalActionStatusLabel(detail.data.action.status)}`}
+                  >
+                    {externalActionStatusLabel(detail.data.action.status)}
                   </span>
                 </dd>
               </div>
               <div>
-                <dt>리비전</dt>
-                <dd>rev {detail.data.action.actionRevision}</dd>
-              </div>
-              <div>
-                <dt>외부 리비전</dt>
-                <dd>{knownExternalRevision || '—'}</dd>
+                <dt>Updated</dt>
+                <dd>{formatProductTimestamp(detail.data.action.updatedAt)}</dd>
               </div>
             </dl>
+            <TechnicalDetails
+              items={[
+                { label: 'Action ID', value: detail.data.action.actionId },
+                { label: 'Action revision', value: detail.data.action.actionRevision },
+                { label: 'External revision', value: knownExternalRevision || 'Unavailable' },
+                ...(detail.data.action.targetRef
+                  ? [
+                      { label: 'Target ID', value: detail.data.action.targetRef.targetId },
+                      {
+                        label: 'Target revision',
+                        value: detail.data.action.targetRef.targetRevision,
+                      },
+                    ]
+                  : []),
+              ]}
+            />
 
             {detailRestricted ? (
               <p className="restricted-shell" role="status">
@@ -965,7 +992,7 @@ export const ExternalActionWorkspace = () => {
                       위험 결정
                     </h3>
                     <p>
-                      위험 수준 <strong>{riskDecision.data.riskDecision.riskLevel}</strong> ·{' '}
+                      <strong>{riskLevelLabel(riskDecision.data.riskDecision.riskLevel)}</strong> ·{' '}
                       {riskDecision.data.riskDecision.requiresUserApproval
                         ? '사용자 승인 필요'
                         : '자동 승인'}
@@ -978,10 +1005,16 @@ export const ExternalActionWorkspace = () => {
                     <h3 id="manifest-heading" tabIndex={-1}>
                       매니페스트
                     </h3>
-                    <p>
-                      매니페스트 {manifest.data.manifest.manifestId} · 리비전{' '}
-                      {manifest.data.manifest.manifestRevision}
-                    </p>
+                    <p>The exact external change plan is ready for review.</p>
+                    <TechnicalDetails
+                      items={[
+                        { label: 'Manifest ID', value: manifest.data.manifest.manifestId },
+                        {
+                          label: 'Manifest revision',
+                          value: manifest.data.manifest.manifestRevision,
+                        },
+                      ]}
+                    />
                     {deepLinkMismatch.manifest ? (
                       <p className="restricted-shell" role="status">
                         선택한 매니페스트가 현재 액션과 일치하지 않아 표시하지 않습니다.
@@ -1007,12 +1040,10 @@ export const ExternalActionWorkspace = () => {
                     <h3 id="approval-heading" tabIndex={-1}>
                       승인
                     </h3>
-                    <p>
-                      {approval.data.approval.status === 'ACTIVE'
-                        ? '활성'
-                        : approval.data.approval.status}{' '}
-                      · {approval.data.approval.approvalId}
-                    </p>
+                    <p>{externalActionStatusLabel(approval.data.approval.status)}</p>
+                    <TechnicalDetails
+                      items={[{ label: 'Approval ID', value: approval.data.approval.approvalId }]}
+                    />
                   </section>
                 ) : null}
 
@@ -1021,11 +1052,7 @@ export const ExternalActionWorkspace = () => {
                     <h3 id="preflight-heading" tabIndex={-1}>
                       사전 점검
                     </h3>
-                    <p>
-                      {preflight.data.preflight.status === 'READY'
-                        ? '준비됨'
-                        : preflight.data.preflight.status}
-                    </p>
+                    <p>{externalActionStatusLabel(preflight.data.preflight.status)}</p>
                   </section>
                 ) : null}
 
@@ -1035,9 +1062,14 @@ export const ExternalActionWorkspace = () => {
                       실행
                     </h3>
                     <p>
-                      실행 {execution.data.execution.executionId} · 시도{' '}
-                      {execution.data.execution.attemptCount}
+                      {externalActionStatusLabel(execution.data.execution.status)} ·{' '}
+                      {execution.data.execution.attemptCount} attempt(s)
                     </p>
+                    <TechnicalDetails
+                      items={[
+                        { label: 'Execution ID', value: execution.data.execution.executionId },
+                      ]}
+                    />
                     {deepLinkMismatch.execution ? (
                       <p className="restricted-shell" role="status">
                         선택한 실행이 현재 액션과 일치하지 않아 표시하지 않습니다.
@@ -1071,7 +1103,8 @@ export const ExternalActionWorkspace = () => {
                             onClick={() => selectAttempt(attempt.attemptId)}
                             aria-pressed={state.selectedAttemptId === attempt.attemptId}
                           >
-                            시도 {attempt.attemptNumber} · {attempt.status}
+                            Attempt {attempt.attemptNumber} ·{' '}
+                            {externalActionStatusLabel(attempt.status)}
                           </button>
                         </li>
                       ))}
@@ -1092,11 +1125,7 @@ export const ExternalActionWorkspace = () => {
                     <h3 id="verification-heading" tabIndex={-1}>
                       검증
                     </h3>
-                    <p>
-                      {verification.data.verification.status === 'APPLIED'
-                        ? '외부 상태가 적용됨'
-                        : verification.data.verification.status}
-                    </p>
+                    <p>{externalActionStatusLabel(verification.data.verification.status)}</p>
                     {deepLinkMismatch.verification ? (
                       <p className="restricted-shell" role="status">
                         선택한 검증이 현재 액션과 일치하지 않아 표시하지 않습니다.
@@ -1126,7 +1155,10 @@ export const ExternalActionWorkspace = () => {
                     <h3 id="result-heading" tabIndex={-1}>
                       결과
                     </h3>
-                    <p>결과 {result.data.result.resultId}</p>
+                    <p>The external action result is available.</p>
+                    <TechnicalDetails
+                      items={[{ label: 'Result ID', value: result.data.result.resultId }]}
+                    />
                   </section>
                 ) : null}
 

@@ -22,6 +22,12 @@ import {
 import { useAppRuntime } from '../app/providers.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
+import { TechnicalDetails } from '../components/technical-details.js';
+import {
+  answerRunLabel,
+  askModeLabel,
+  sourceAskUsageLabel,
+} from '../presentation/product-labels.js';
 import { useLeaveGuard } from '../session/leave-guard-context.js';
 import {
   askConversationSourceContextQueryOptions,
@@ -91,6 +97,10 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
       conversationId === undefined &&
       shell.activeProject?.id === workspace.projectId,
   });
+  const workspaceProjectLabel = workspace
+    ? (shell.accessibleProjects.find((project) => project.id === workspace.projectId)?.label ??
+      'Conversation project')
+    : 'Project';
   const conversationSourceContext = useQuery({
     ...askConversationSourceContextQueryOptions(
       askClient,
@@ -709,7 +719,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
       });
       setPendingAnswerRunCommand(undefined);
       setAnswerRunCommandNotice(
-        `${kind} transition seed proposed. Canonical knowledge was not changed.`,
+        'A draft transition was proposed. Verified knowledge was not changed.',
       );
     } catch {
       await resolveAnswerRunCommandOutcome(pending);
@@ -721,7 +731,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
       <p className="eyebrow">Knowledge question</p>
       <h1 tabIndex={-1}>Ask</h1>
       <p>
-        Project: <strong>{workspace.projectId}</strong>
+        Project: <strong>{workspaceProjectLabel}</strong>
       </p>
 
       <section className="action-card" aria-labelledby="ask-draft-heading">
@@ -749,7 +759,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
           >
             {workspace.availableAskModes.map((availableMode) => (
               <option key={availableMode} value={availableMode}>
-                {availableMode}
+                {askModeLabel(availableMode)}
               </option>
             ))}
           </select>
@@ -762,10 +772,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
               <fieldset className="ask-source-context" aria-labelledby="ask-source-context-label">
                 <legend className="visually-hidden">Source context</legend>
                 {!sourceContextAvailable ? (
-                  <p role="status">
-                    Source selection is unavailable because the Active Project does not match this
-                    Conversation Project.
-                  </p>
+                  <p role="status">Source selection is unavailable for this question context.</p>
                 ) : sourceContextPending ? (
                   <p role="status">Loading server-authorized Sources…</p>
                 ) : sourceContextError ? (
@@ -792,14 +799,24 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                             />
                             <span>
                               <strong>{source.label}</strong>
-                              <span>Source: {source.sourceId}</span>
                               <span>
-                                Pinned SourceVersion:{' '}
-                                {pinnedSelection?.sourceVersionId ?? source.selectedSourceVersionId}
+                                {pinnedSelection &&
+                                pinnedSelection.sourceVersionId !== source.selectedSourceVersionId
+                                  ? 'Pinned version'
+                                  : `Version ${source.versionCount}`}
                               </span>
-                              <span>
-                                {source.askUsageState}: {source.askUsageExplanation}
-                              </span>
+                              <span>{sourceAskUsageLabel(source.askUsageState)}</span>
+                              <TechnicalDetails
+                                items={[
+                                  { label: 'Source ID', value: source.sourceId },
+                                  {
+                                    label: 'SourceVersion ID',
+                                    value:
+                                      pinnedSelection?.sourceVersionId ??
+                                      source.selectedSourceVersionId,
+                                  },
+                                ]}
+                              />
                             </span>
                           </label>
                         </li>
@@ -842,7 +859,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
           </div>
           {sourceSelectionMissing ? (
             <p className="ask-form-status" role="status">
-              Select at least one Source before using SOURCE_EXPLORATION.
+              Select at least one Source before using selected sources.
             </p>
           ) : null}
           {submissionNotice ? (
@@ -870,7 +887,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                 <Link to={`/ask/conversations/${encodeURIComponent(item.conversationId)}`}>
                   <strong>{item.title}</strong>
                 </Link>{' '}
-                · {item.turnCount} turns · {item.latestRunState}
+                · {item.turnCount} turns · {answerRunLabel(item.latestRunState)}
               </li>
             ))}
           </ul>
@@ -897,15 +914,16 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                     <li key={turn.turnId} id={`turn-${turn.turnId}`} tabIndex={-1}>
                       <p>{turn.userMessage}</p>
                       <p>
-                        Answer run: <strong>{answerRun.state}</strong>
+                        Answer: <strong>{answerRunLabel(answerRun.state)}</strong>
                       </p>
                       {latestPartial ? (
                         <p aria-live="polite">Partial answer: {latestPartial}</p>
                       ) : null}
+                      {answerRun.failure ? <p role="alert">{answerRun.failure.message}</p> : null}
                       {answerRun.failure ? (
-                        <p role="alert">
-                          {answerRun.failure.message} ({answerRun.failure.code})
-                        </p>
+                        <TechnicalDetails
+                          items={[{ label: 'Failure code', value: answerRun.failure.code }]}
+                        />
                       ) : null}
                       <div className="action-row" aria-label="AnswerRun actions">
                         {answerRun.capabilities.includes('CANCEL') ? (

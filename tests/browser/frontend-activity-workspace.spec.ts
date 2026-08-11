@@ -237,7 +237,7 @@ const stubActivityReads = async (page: Page) => {
 const openQueue = async (page: Page) => {
   await page.goto('/activity');
   await expect(page.getByRole('heading', { name: 'Activity', level: 1 })).toBeVisible();
-  await expect(page.getByRole('button', { name: /submission-1/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Source processing/ })).toBeVisible();
 };
 
 test('Activity Workspace has zero critical accessibility violations (axe, AC-15)', async ({
@@ -248,8 +248,9 @@ test('Activity Workspace has zero critical accessibility violations (axe, AC-15)
 
   // Select an item so the full Detail (tables + timeline) is in the DOM, then
   // scan the whole workspace.
-  await page.getByRole('button', { name: /submission-1/ }).click();
-  await expect(page.getByRole('heading', { name: 'submission-1' })).toBeVisible();
+  await page.getByRole('button', { name: /Source processing/ }).click();
+  await expect(page.getByRole('heading', { name: 'Sources activity' })).toBeVisible();
+  await page.getByText('Technical details', { exact: true }).click();
   await expect(page.getByRole('table', { name: 'Domain Attempts' })).toBeVisible();
   await expect(page.getByRole('table', { name: 'Transport Attempts' })).toBeVisible();
 
@@ -271,7 +272,7 @@ test('Activity Workspace queue items are keyboard-navigable and activatable with
 
   // Tab until the queue item is focused (keyboard-only), then activate with
   // Enter — no pointer required.
-  const queueButton = page.getByRole('button', { name: /submission-1/ });
+  const queueButton = page.getByRole('button', { name: /Source processing/ });
   let focused = false;
   for (let i = 0; i < 40 && !focused; i += 1) {
     await page.keyboard.press('Tab');
@@ -282,7 +283,7 @@ test('Activity Workspace queue items are keyboard-navigable and activatable with
 
   // Detail heading becomes visible and receives focus (deterministic focus,
   // AC-15).
-  const detailHeading = page.getByRole('heading', { name: 'submission-1' });
+  const detailHeading = page.getByRole('heading', { name: 'Sources activity' });
   await expect(detailHeading).toBeVisible();
   await expect
     .poll(async () => detailHeading.evaluate((element) => element === document.activeElement))
@@ -300,8 +301,8 @@ test('Activity Workspace delivers the frozen selection announcement to the live 
   await openQueue(page);
 
   const liveRegion = page.locator('p.visually-hidden[aria-live="polite"]');
-  await page.getByRole('button', { name: /submission-1/ }).click();
-  await expect(page.getByRole('heading', { name: 'submission-1' })).toBeVisible();
+  await page.getByRole('button', { name: /Source processing/ }).click();
+  await expect(page.getByRole('heading', { name: 'Sources activity' })).toBeVisible();
   await expect(liveRegion).toContainText('활동 세부 정보를 표시합니다.');
 });
 
@@ -313,12 +314,13 @@ test('Activity Workspace exposes list/table accessibility representations (AC-15
 
   // The Queue is a list representation (aria-label), not a bare div soup.
   await expect(page.getByRole('list', { name: '활동 큐' })).toBeVisible();
-  await expect(page.getByRole('button', { name: /submission-1/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Source processing/ })).toBeVisible();
 
   // Selecting exposes the lineage as labelled tables + lists (Domain Attempts,
   // Transport Attempts, Stages, Events).
-  await page.getByRole('button', { name: /submission-1/ }).click();
-  await expect(page.getByRole('heading', { name: 'submission-1' })).toBeVisible();
+  await page.getByRole('button', { name: /Source processing/ }).click();
+  await expect(page.getByRole('heading', { name: 'Sources activity' })).toBeVisible();
+  await page.getByText('Technical details', { exact: true }).click();
   await expect(page.getByRole('table', { name: 'Domain Attempts' })).toBeVisible();
   await expect(page.getByRole('table', { name: 'Transport Attempts' })).toBeVisible();
   await expect(page.getByRole('table', { name: 'Stages' })).toBeVisible();

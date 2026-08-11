@@ -186,7 +186,7 @@ const pathDescription = {
       schemaVersion: '1.0.0',
       kind: 'TRAVERSAL',
       step: 1,
-      narration: 'Entity One → CANONICAL_RELATION → Claim One',
+      narration: 'Entity One → Canonical relationship → Claim One',
       nodeRef: { schemaVersion: '1.0.0', resourceKind: 'CLAIM', resourceId: 'claim-1' },
       edgeRef: {
         schemaVersion: '1.0.0',
@@ -315,10 +315,10 @@ test('Graph Workspace keyboard set switches base view, toggles overlays and anno
   await expect(page.getByRole('heading', { name: 'Semantic Graph', level: 1 })).toBeVisible();
 
   await page.keyboard.press('Alt+2');
-  await expect(page.getByRole('radio', { name: /GOVERNANCE_IMPACT/ })).toBeChecked();
+  await expect(page.getByRole('radio', { name: /Governance impact/ })).toBeChecked();
 
   await page.keyboard.press('Alt+Shift+1');
-  await expect(page.getByRole('checkbox', { name: /CONFLICT/ })).toBeChecked();
+  await expect(page.getByRole('checkbox', { name: /Conflicts/ })).toBeChecked();
 
   await page.keyboard.press('Alt+l');
   await page
@@ -570,16 +570,16 @@ test('AC-20: the full frozen keyboard matrix is exercised end to end', async ({ 
 
   // Base views Alt+1/2/3.
   await page.keyboard.press('Alt+1');
-  await expect(page.getByRole('radio', { name: /KNOWLEDGE_SEMANTIC/ })).toBeChecked();
+  await expect(page.getByRole('radio', { name: /Knowledge relationships/ })).toBeChecked();
   await page.keyboard.press('Alt+2');
-  await expect(page.getByRole('radio', { name: /GOVERNANCE_IMPACT/ })).toBeChecked();
+  await expect(page.getByRole('radio', { name: /Governance impact/ })).toBeChecked();
   await page.keyboard.press('Alt+3');
   await expect(page.getByRole('radio', { name: /OPERATIONAL_DEPENDENCY/ })).toBeChecked();
   await page.keyboard.press('Alt+1');
 
   // Overlays Alt+Shift+1/2/3.
   await page.keyboard.press('Alt+Shift+1');
-  await expect(page.getByRole('checkbox', { name: /CONFLICT/ })).toBeChecked();
+  await expect(page.getByRole('checkbox', { name: /Conflicts/ })).toBeChecked();
   await page.keyboard.press('Alt+Shift+2');
   await expect(page.getByRole('checkbox', { name: /KNOWLEDGE_GAP/ })).toBeChecked();
   await page.keyboard.press('Alt+Shift+3');

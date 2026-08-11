@@ -569,6 +569,11 @@ const renderWorkspace = (runtime: AppRuntime, initialEntries: string[] = ['/exte
   return router;
 };
 
+const selectQueueAction = async () => {
+  const action = await screen.findByRole('button', { name: /Update an external resource/ });
+  await userEvent.click(action);
+};
+
 describe('ExternalActionWorkspace (FE-P4-S2 WP5)', () => {
   it('renders the bounded queue and loads the aggregate detail on selection', async () => {
     const { fetchMock } = createFetchMock({ detail: detailResult, childReads: true });
@@ -576,8 +581,7 @@ describe('ExternalActionWorkspace (FE-P4-S2 WP5)', () => {
     const runtime = createRuntime();
     renderWorkspace(runtime);
 
-    await screen.findByText('action-1');
-    await userEvent.click(screen.getByText('action-1'));
+    await selectQueueAction();
 
     await waitFor(
       () => {
@@ -585,7 +589,7 @@ describe('ExternalActionWorkspace (FE-P4-S2 WP5)', () => {
       },
       { timeout: 10000 },
     );
-    screen.getByText(/위험 수준/);
+    screen.getByText('Critical risk');
     screen.getByText('ext-7');
     vi.unstubAllGlobals();
   });
@@ -596,8 +600,7 @@ describe('ExternalActionWorkspace (FE-P4-S2 WP5)', () => {
     const runtime = createRuntime();
     renderWorkspace(runtime);
 
-    await screen.findByText('action-1');
-    await userEvent.click(screen.getByText('action-1'));
+    await selectQueueAction();
 
     await waitFor(
       () => {
@@ -652,8 +655,7 @@ describe('ExternalActionWorkspace (FE-P4-S2 WP5)', () => {
     const runtime = createRuntime();
     renderWorkspace(runtime);
 
-    await screen.findByText('action-1');
-    await userEvent.click(screen.getByText('action-1'));
+    await selectQueueAction();
     await waitFor(
       () => {
         screen.getByText(/취소 요청/);
@@ -686,8 +688,7 @@ describe('ExternalActionWorkspace (FE-P4-S2 WP5)', () => {
     const runtime = createRuntime();
     renderWorkspace(runtime);
 
-    await screen.findByText('action-1');
-    await userEvent.click(screen.getByText('action-1'));
+    await selectQueueAction();
     await waitFor(
       () => {
         screen.getByRole('button', { name: '롤백' });
@@ -781,8 +782,7 @@ describe('ExternalActionWorkspace (FE-P4-S2 WP5)', () => {
     const runtime = createRuntime();
     renderWorkspace(runtime);
 
-    await screen.findByText('action-1');
-    await userEvent.click(screen.getByText('action-1'));
+    await selectQueueAction();
     await waitFor(
       () => {
         screen.getByText(/manifest-1/);
@@ -832,8 +832,7 @@ describe('ExternalActionWorkspace (FE-P4-S2 WP5)', () => {
     const runtime = createRuntime();
     renderWorkspace(runtime);
 
-    await screen.findByText('action-1');
-    await userEvent.click(screen.getByText('action-1'));
+    await selectQueueAction();
     await waitFor(
       () => {
         screen.getByRole('button', { name: '롤백' });
@@ -868,8 +867,7 @@ describe('ExternalActionWorkspace (FE-P4-S2 WP5)', () => {
     const runtime = createRuntime();
     renderWorkspace(runtime);
 
-    await screen.findByText('action-1');
-    await userEvent.click(screen.getByText('action-1'));
+    await selectQueueAction();
     await waitFor(
       () => {
         screen.getByRole('button', { name: '취소 요청' });
@@ -902,8 +900,7 @@ describe('ExternalActionWorkspace (FE-P4-S2 WP5)', () => {
     const runtime = createRuntime();
     renderWorkspace(runtime);
 
-    await screen.findByText('action-1');
-    await userEvent.click(screen.getByText('action-1'));
+    await selectQueueAction();
     await waitFor(
       () => {
         screen.getByRole('button', { name: '롤백' });
@@ -944,8 +941,7 @@ describe('ExternalActionWorkspace (FE-P4-S2 WP5)', () => {
     const runtime = createRuntime();
     renderWorkspace(runtime);
 
-    await screen.findByText('action-1');
-    await userEvent.click(screen.getByText('action-1'));
+    await selectQueueAction();
     await waitFor(
       () => {
         screen.getByRole('button', { name: '롤백' });
@@ -983,8 +979,7 @@ describe('ExternalActionWorkspace (FE-P4-S2 WP5)', () => {
     const runtime = createRuntime();
     renderWorkspace(runtime);
 
-    await screen.findByText('action-1');
-    await userEvent.click(screen.getByText('action-1'));
+    await selectQueueAction();
     await waitFor(
       () => {
         screen.getByRole('button', { name: '롤백' });
@@ -1023,8 +1018,7 @@ describe('ExternalActionWorkspace (FE-P4-S2 WP5)', () => {
     const runtime = createRuntime();
     renderWorkspace(runtime);
 
-    await screen.findByText('action-1');
-    await userEvent.click(screen.getByText('action-1'));
+    await selectQueueAction();
     await waitFor(
       () => {
         screen.getByRole('button', { name: '검증 실행' });
@@ -1081,8 +1075,7 @@ describe('ExternalActionWorkspace (FE-P4-S2 WP5)', () => {
     const runtime = createRuntime();
     renderWorkspace(runtime);
 
-    await screen.findByText('action-1');
-    await userEvent.click(screen.getByText('action-1'));
+    await selectQueueAction();
     await waitFor(
       () => {
         screen.getByText(/manifest-1/);
@@ -1096,14 +1089,14 @@ describe('ExternalActionWorkspace (FE-P4-S2 WP5)', () => {
     // Re-selecting the ALREADY-selected action must preserve the authoritative
     // external revision so the detail stays mounted (defect found by the WP6
     // performance/lifecycle baseline; Review 4868951109 remediation).
-    await userEvent.click(screen.getByRole('button', { name: /action-1/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Update an external resource/ }));
     await waitFor(
       () => {
         screen.getByText(/manifest-1/);
       },
       { timeout: 10000 },
     );
-    screen.getByText(/위험 수준/);
+    screen.getByText('Critical risk');
     // No new detail read is required for a same-action re-selection.
     const detailReadsAfter = fetchMock.mock.calls.filter(([url]) =>
       String(url).includes('/actions/detail'),
@@ -1118,8 +1111,7 @@ describe('ExternalActionWorkspace (FE-P4-S2 WP5)', () => {
     const runtime = createRuntime();
     const router = renderWorkspace(runtime);
 
-    await screen.findByText('action-1');
-    await userEvent.click(screen.getByText('action-1'));
+    await selectQueueAction();
     await waitFor(
       () => {
         expect(screen.getAllByRole('button', { name: '선택' }).length).toBeGreaterThanOrEqual(2);
@@ -1224,8 +1216,7 @@ describe('ExternalActionWorkspace (FE-P4-S2 WP5)', () => {
     const runtime = createRuntime();
     renderWorkspace(runtime);
 
-    await screen.findByText('action-1');
-    await userEvent.click(screen.getByText('action-1'));
+    await selectQueueAction();
     await waitFor(
       () => {
         screen.getByRole('button', { name: '롤백' });
@@ -1301,8 +1292,7 @@ describe('ExternalActionWorkspace (FE-P4-S2 WP5)', () => {
     const runtime = createRuntime();
     renderWorkspace(runtime);
 
-    await screen.findByText('action-1');
-    await userEvent.click(screen.getByText('action-1'));
+    await selectQueueAction();
 
     // While the snapshot is still in flight, inspect the cache: no regular
     // resource key (action-phase) carries an empty external revision
@@ -1367,7 +1357,7 @@ describe('ExternalActionWorkspace (FE-P4-S2 WP5)', () => {
     // POST during the unverified window (Review 4866654696).
     await waitFor(
       () => {
-        screen.getByText(/실행 execution-1/);
+        expect(document.getElementById('execution-heading')).not.toBeNull();
       },
       { timeout: 10000 },
     );

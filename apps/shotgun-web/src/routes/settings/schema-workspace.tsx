@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router';
 import { useAppRuntime } from '../../app/providers.js';
+import { schemaCompatibilityLabel } from '../../presentation/product-labels.js';
 
 export const SchemaWorkspace = () => {
   const { apiClient } = useAppRuntime();
@@ -64,7 +65,7 @@ export const SchemaWorkspace = () => {
             {sp.name} (v{sp.version})
           </h3>
           <p>
-            Compatibility: <strong>{sp.compatibilityStatus}</strong>
+            Compatibility: <strong>{schemaCompatibilityLabel(sp.compatibilityStatus)}</strong>
           </p>
         </div>
       ))}

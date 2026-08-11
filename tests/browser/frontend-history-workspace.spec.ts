@@ -232,12 +232,13 @@ test('AC-15: opens an authoritative detail with payload availability display (AV
     .getByRole('button', { name: /Canonical/ })
     .first()
     .click();
-  await expect(page.getByRole('heading', { name: 'History entry', level: 2 })).toBeVisible();
-  // Authoritative detail fields (first() — the same text also appears in the
-  // list row).
-  await expect(page.getByText('CANONICAL_CLAIM_ADDED', { exact: true }).first()).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Knowledge claim added', level: 2 }),
+  ).toBeVisible();
+  await expect(page.getByText('CANONICAL_CLAIM_ADDED', { exact: true })).toBeHidden();
   await expect(page.getByText('Available', { exact: true }).first()).toBeVisible();
-  // Bounded payload snapshot rendered (authoritative revisionId present).
+  await page.getByText('Technical details', { exact: true }).click();
+  await expect(page.getByText('CANONICAL_CLAIM_ADDED', { exact: true }).first()).toBeVisible();
   await expect(page.getByTestId('history-payload-snapshot')).toContainText('revision:rev-2');
 });
 
@@ -250,7 +251,9 @@ test('AC-15: links audit lineage and Compensation to the owning External Action 
     .getByRole('button', { name: /External actions/ })
     .first()
     .click();
-  await expect(page.getByRole('heading', { name: 'History entry', level: 2 })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'External action audit updated', level: 2 }),
+  ).toBeVisible();
   const lineage = page.getByRole('link', { name: 'Audit lineage (External action)' });
   const compensation = page.getByRole('link', { name: 'Compensation (External action)' });
   await expect(lineage).toHaveAttribute('href', '/external-action?actionId=action-1');
@@ -266,7 +269,9 @@ test('AC-07/08/15: initiates a Reversal and navigates to the current Review Work
     .getByRole('button', { name: /Canonical/ })
     .first()
     .click();
-  await expect(page.getByRole('heading', { name: 'History entry', level: 2 })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Knowledge claim added', level: 2 }),
+  ).toBeVisible();
   const reversalRequest = page.waitForRequest((request) =>
     request.url().endsWith('/product-api/frontend/review/reversal-draft'),
   );
@@ -300,7 +305,9 @@ test('AC-10/13/15: keeps the deleted-project audit target in the History deep li
     .first()
     .click();
   await expect(page).toHaveURL(/resourceProjectId=deleted-1/);
-  await expect(page.getByRole('heading', { name: 'History entry', level: 2 })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Knowledge claim added', level: 2 }),
+  ).toBeVisible();
 });
 
 test('AC-15: axe zero-critical + keyboard-only selection on the History Workspace', async ({
@@ -314,7 +321,9 @@ test('AC-15: axe zero-critical + keyboard-only selection on the History Workspac
     .first()
     .focus();
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('heading', { name: 'History entry', level: 2 })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Knowledge claim added', level: 2 }),
+  ).toBeVisible();
   // axe scan: zero critical / serious violations on the workspace (the same
   // bar as the Activity/Review accessibility specs).
   const results = await new AxeBuilder({ page }).analyze();

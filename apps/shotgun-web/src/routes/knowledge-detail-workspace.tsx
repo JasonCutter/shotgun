@@ -8,6 +8,7 @@ import { useAppRuntime } from '../app/providers.js';
 import { EmptyState } from '../components/empty-state.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
+import { TechnicalDetails } from '../components/technical-details.js';
 import {
   knowledgeCanManuallyRetry,
   knowledgeDetailQueryOptions,
@@ -102,28 +103,24 @@ export const KnowledgeDetailWorkspace = () => {
       </p>
       {returnState ? (
         <p className="status-message" role="status" aria-live="polite">
-          Evidence return context restored for <code>{returnState.target.evidenceId}</code>.
+          Returned to the cited knowledge item.
         </p>
       ) : null}
 
       <dl className="identity-summary">
         <div>
           <dt>Project</dt>
-          <dd>{page.projectId}</dd>
-        </div>
-        <div>
-          <dt>Resource</dt>
-          <dd>{page.resourceId}</dd>
-        </div>
-        <div>
-          <dt>Revision</dt>
-          <dd>{page.revision}</dd>
-        </div>
-        <div>
-          <dt>Page</dt>
-          <dd>{page.pageId}</dd>
+          <dd>{shell.activeProject.label}</dd>
         </div>
       </dl>
+      <TechnicalDetails
+        items={[
+          { label: 'Project ID', value: page.projectId },
+          { label: 'Resource ID', value: page.resourceId },
+          { label: 'Revision', value: page.revision },
+          { label: 'Page ID', value: page.pageId },
+        ]}
+      />
 
       <ProjectionStatus projection={page.projection} />
 
@@ -133,13 +130,7 @@ export const KnowledgeDetailWorkspace = () => {
           This page exposes exploration capabilities only. Canonical write, Approval, Commit, and
           external Action controls are intentionally absent.
         </p>
-        <div className="knowledge-tag-row">
-          {page.capabilities.map((capability) => (
-            <span className="knowledge-tag" key={capability}>
-              {capability}
-            </span>
-          ))}
-        </div>
+        <p>Read and exploration tools are available for this page.</p>
       </section>
 
       <LineageMetadata lineage={page.lineage} />

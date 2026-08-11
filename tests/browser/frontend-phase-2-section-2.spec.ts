@@ -36,7 +36,7 @@ test('Ask Source Exploration pins a selected SourceVersion into the browser subm
   const submitButton = page.getByRole('button', { name: 'Submit question' });
   await expect(submitButton).toBeDisabled();
   await expect(
-    page.getByText('Select at least one Source before using SOURCE_EXPLORATION.'),
+    page.getByText('Select at least one Source before using selected sources.'),
   ).toBeVisible();
 
   await source.check();
@@ -69,7 +69,7 @@ test('Ask draft blocks Project switching and is not moved to the next Project', 
 }) => {
   await page.goto('/ask');
   const questionInput = page.getByRole('textbox', { name: 'Question', exact: true });
-  const projectSelector = page.getByRole('combobox', { name: 'Active Project' });
+  const projectSelector = page.getByRole('combobox', { name: 'Current project' });
 
   await questionInput.fill('Transient browser draft question');
   await projectSelector.selectOption(ASK_FIXTURE.projectBId);
@@ -93,7 +93,7 @@ test('Ask deep link uses accessible Resource Project without changing Active Pro
   await expect(
     page.getByRole('heading', { name: ASK_FIXTURE.conversationTitle, level: 3 }),
   ).toBeVisible();
-  await expect(page.getByRole('combobox', { name: 'Active Project' })).toHaveValue(
+  await expect(page.getByRole('combobox', { name: 'Current project' })).toHaveValue(
     ASK_FIXTURE.projectAId,
   );
   await expect(page.getByText(`Project: ${ASK_FIXTURE.projectBId}`)).toBeVisible();
@@ -105,7 +105,7 @@ test('Ask masks inaccessible Conversation as NOT_FOUND', async ({ page }) => {
   await expect(
     page.getByText(/requested conversation was not found|resource was not found/i),
   ).toBeVisible();
-  await expect(page.getByRole('combobox', { name: 'Active Project' })).toHaveValue(
+  await expect(page.getByRole('combobox', { name: 'Current project' })).toHaveValue(
     ASK_FIXTURE.projectAId,
   );
 });
@@ -114,7 +114,7 @@ test('Ask citation keeps SourceVersion pinned and restores exact conversation co
   page,
 }) => {
   await page.goto(`/ask/conversations/${ASK_FIXTURE.conversationId}`);
-  const projectSelector = page.getByRole('combobox', { name: 'Active Project' });
+  const projectSelector = page.getByRole('combobox', { name: 'Current project' });
   await projectSelector.selectOption(ASK_FIXTURE.projectBId);
   await expect(projectSelector).toHaveValue(ASK_FIXTURE.projectBId);
   await expect(

@@ -1717,6 +1717,45 @@ tr.graph-item--discovery {
   margin-top: 1rem;
 }
 
+.technical-details {
+  margin-block: 0.625rem;
+  color: var(--muted, #6b7280);
+  font-size: 0.875rem;
+}
+
+.technical-details > summary {
+  width: fit-content;
+  cursor: pointer;
+  color: var(--link, #1d4ed8);
+}
+
+.technical-details > summary:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+
+.technical-detail-list {
+  display: grid;
+  gap: 0.375rem;
+  margin: 0.625rem 0 0;
+}
+
+.technical-detail-list > div {
+  display: grid;
+  grid-template-columns: minmax(8rem, auto) 1fr;
+  gap: 0.75rem;
+}
+
+.technical-detail-list dt {
+  font-weight: 600;
+}
+
+.technical-detail-list dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 720px) {
   .activity-layout {
     grid-template-columns: 1fr;

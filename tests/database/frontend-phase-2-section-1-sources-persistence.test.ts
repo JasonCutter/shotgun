@@ -3,7 +3,10 @@ import { createHash, randomUUID } from 'node:crypto';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { PostgresSourcesIntakeUnitOfWork } from '../../adapters/frontend-sources-write-postgres/src/index.js';
-import { createPostgresPool } from '../../adapters/postgres/src/index.js';
+import {
+  PostgresOriginalAssetRepository,
+  createPostgresPool,
+} from '../../adapters/postgres/src/index.js';
 import type { CreateSourcesIntakeSubmissionInput } from '../../modules/frontend-sources-write/src/index.js';
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -114,7 +117,7 @@ const directSubmission = (
     {
       clientItemId: 'direct-1',
       inputKind: 'DIRECT_TEXT',
-      label: 'Direct text',
+      label: 'JasonNote 첫 메모',
       inputManifest: {
         kind: 'DIRECT_TEXT',
         contentHash: hash('hello sources'),
@@ -193,8 +196,13 @@ describe.runIf(pool)('Frontend Phase 2 Section 1 Sources persistence', () => {
     const unitOfWork = new PostgresSourcesIntakeUnitOfWork(pool!);
     const created = await unitOfWork.createSubmission(input);
     const replayed = await unitOfWork.createSubmission(input);
+    const projectedSources = await new PostgresOriginalAssetRepository(
+      pool!,
+    ).listProjectSourceVersions(context.projectId);
 
     expect(replayed).toEqual({ ...created, replayed: true });
+    expect(projectedSources).toHaveLength(1);
+    expect(projectedSources[0]?.displayLabel).toBe('JasonNote 첫 메모');
     expect(
       await pool!.query(
         `SELECT

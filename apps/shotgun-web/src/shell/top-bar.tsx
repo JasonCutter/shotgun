@@ -14,13 +14,11 @@ export const TopBar = ({
     <div>
       <p className="product-name">Shotgun</p>
       <p className="project-summary">
-        Principal <strong>{session.principal.id}</strong>
-        {' · '}
-        Active Project <strong>{shell.activeProject?.label ?? 'Not created'}</strong>
+        Current project <strong>{shell.activeProject?.label ?? 'Not created'}</strong>
       </p>
     </div>
     <div className="shell-controls">
-      <ProjectSelector session={session} />
+      <ProjectSelector session={session} shell={shell} />
       <GlobalTools shell={shell} />
     </div>
   </header>

@@ -203,9 +203,9 @@ test('external-action lifecycle baseline: queue → detail render (median of 3 s
   // Warm-up navigation (first navigation excluded per measurement discipline).
   await page.goto('/external-action');
   await expect(page.getByRole('heading', { name: 'External Actions', level: 1 })).toBeVisible();
-  await expect(page.getByRole('button', { name: /action-1/ })).toBeVisible();
-  await measureQueueToDetail(page, 'action-1');
-  await expect(page.getByRole('heading', { name: 'action-1' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Update an external resource/ })).toBeVisible();
+  await measureQueueToDetail(page, 'Update an external resource');
+  await expect(page.getByRole('heading', { name: 'Update an external resource' })).toBeVisible();
 
   const samples: number[] = [];
   for (let i = 0; i < 3; i += 1) {
@@ -215,11 +215,11 @@ test('external-action lifecycle baseline: queue → detail render (median of 3 s
     // queue→detail segment being measured here).
     await page.goto('/external-action');
     await expect(page.getByRole('heading', { name: 'External Actions', level: 1 })).toBeVisible();
-    await expect(page.getByRole('button', { name: /action-1/ })).toBeVisible();
-    const sample = await measureQueueToDetail(page, 'action-1');
+    await expect(page.getByRole('button', { name: /Update an external resource/ })).toBeVisible();
+    const sample = await measureQueueToDetail(page, 'Update an external resource');
     console.info(JSON.stringify({ metric: 'queue-to-detail-sample', sample, iteration: i }));
     samples.push(sample);
-    await expect(page.getByRole('heading', { name: 'action-1' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Update an external resource' })).toBeVisible();
   }
   const queueToDetailMs = median(samples);
   console.info(
@@ -241,7 +241,7 @@ test('external-action lifecycle baseline: governed command round-trip (median of
   // Warm-up: open the workspace, select the action and complete one Cancel.
   await page.goto('/external-action');
   await expect(page.getByRole('heading', { name: 'External Actions', level: 1 })).toBeVisible();
-  await page.getByRole('button', { name: /action-1/ }).click();
+  await page.getByRole('button', { name: /Update an external resource/ }).click();
   await expect(page.getByRole('button', { name: '취소 요청' })).toBeVisible();
   await measureCommand(page, '취소 요청', '취소 요청이 기록되었습니다');
   await expect(page.locator('p.visually-hidden[aria-live="polite"]')).toContainText(

@@ -269,8 +269,8 @@ const stubExternalActionReads = async (page: Page) => {
 const openWorkspace = async (page: Page) => {
   await page.goto('/external-action');
   await expect(page.getByRole('heading', { name: 'External Actions', level: 1 })).toBeVisible();
-  await page.getByRole('button', { name: /action-1/ }).click();
-  await expect(page.getByRole('heading', { name: 'action-1' })).toBeVisible();
+  await page.getByRole('button', { name: /Update an external resource/ }).click();
+  await expect(page.getByRole('heading', { name: 'Update an external resource' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '거버넌스 명령' })).toBeVisible();
   await expect(page.getByRole('button', { name: '롤백' })).toBeVisible();
   await expect(page.getByRole('button', { name: '보상 액션 준비' })).toBeVisible();
@@ -289,10 +289,9 @@ test('External Action Workspace renders the queue, detail and governed surfaces 
   await expect(page.getByRole('heading', { name: '실행 시도' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '검증' })).toBeVisible();
 
-  // Non-color aggregate cue ('완료' for VERIFIED) AND the raw status text are
-  // both present — state is never conveyed by color alone.
+  // Non-color aggregate cue and semantic status text are both present.
   await expect(page.getByText('완료').first()).toBeVisible();
-  await expect(page.getByText('VERIFIED').first()).toBeVisible();
+  await expect(page.getByText('Verified').first()).toBeVisible();
 
   // The frozen announcement is delivered to the polite live region
   // (EXTERNAL_ACTION_ANNOUNCEMENTS.DETAIL_READY).
@@ -309,7 +308,7 @@ test('External Action Workspace supports keyboard-only selection and restores de
 
   // Tab until the queue item is focused (keyboard-only), then activate with
   // Enter — no pointer required.
-  const queueButton = page.getByRole('button', { name: /action-1/ });
+  const queueButton = page.getByRole('button', { name: /Update an external resource/ });
   let focused = false;
   for (let i = 0; i < 30 && !focused; i += 1) {
     await page.keyboard.press('Tab');
@@ -317,7 +316,7 @@ test('External Action Workspace supports keyboard-only selection and restores de
   }
   expect(focused, 'queue item reached by Tab').toBe(true);
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('heading', { name: 'action-1' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Update an external resource' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '거버넌스 명령' })).toBeVisible();
 
   // Deep-link restore preserves focus on the named target (contract §10.5).
@@ -350,7 +349,7 @@ test('External Action Workspace stays usable at 200% zoom (AC-19)', async ({ pag
   expect(hasHorizontalOverflow).toBe(false);
 
   // Primary content is still present and visible.
-  await expect(page.getByRole('heading', { name: 'action-1' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Update an external resource' })).toBeVisible();
   await expect(page.getByRole('button', { name: '롤백' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '거버넌스 명령' })).toBeVisible();
 });
@@ -363,7 +362,7 @@ test('External Action Workspace renders under prefers-reduced-motion (AC-19)', a
   // All essential state is conveyed without animation: the detail, the
   // non-color cue text and the governed surfaces remain present.
   await expect(page.getByText('완료').first()).toBeVisible();
-  await expect(page.getByText('VERIFIED').first()).toBeVisible();
+  await expect(page.getByText('Verified').first()).toBeVisible();
   await expect(page.getByRole('button', { name: '롤백' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '매니페스트' })).toBeVisible();
 });

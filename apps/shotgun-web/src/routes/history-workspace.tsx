@@ -12,6 +12,7 @@ import {
 import { EmptyState } from '../components/empty-state.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
+import { TechnicalDetails } from '../components/technical-details.js';
 import { historyScopeFromShell } from '../app/query-keys.js';
 import {
   HISTORY_LIST_LIMIT,
@@ -53,6 +54,19 @@ const payloadAvailabilityClass = (availability: HistoryEntryV1['payloadAvailabil
 const formatOccurredAt = (occurredAt: string): string => {
   const date = new Date(occurredAt);
   return Number.isNaN(date.getTime()) ? occurredAt : date.toLocaleString();
+};
+
+const historyEventLabel = (kind: string): string => {
+  const labels: Readonly<Record<string, string>> = {
+    CANONICAL_CLAIM_ADDED: 'Knowledge claim added',
+    DECISION: 'Review decision recorded',
+    APPROVAL: 'Approval recorded',
+    RESULT: 'External action result recorded',
+    AUDIT_EVENT: 'External action audit updated',
+    SETTINGS_AUDIT_EVENT: 'Project settings changed',
+    CLAIM: 'Knowledge claim changed',
+  };
+  return labels[kind] ?? 'Project history updated';
 };
 
 /** Permitted bounded payload renderer: raw JSON only when AVAILABLE. */
@@ -201,7 +215,7 @@ const HistoryDetail = ({
   return (
     <article className="history-entry-detail">
       <header className="history-detail-header">
-        <h2>History entry</h2>
+        <h2>{historyEventLabel(entry.sourceEventKind)}</h2>
         <button type="button" onClick={onClear}>
           선택 해제
         </button>
@@ -210,18 +224,6 @@ const HistoryDetail = ({
         <div>
           <dt>Domain</dt>
           <dd>{historyDomainKindLabel[entry.domainKind]}</dd>
-        </div>
-        <div>
-          <dt>Source event</dt>
-          <dd>
-            <code>{entry.sourceEventKind}</code> · <code>{entry.sourceEventId}</code>
-          </dd>
-        </div>
-        <div>
-          <dt>Domain resource</dt>
-          <dd>
-            <code>{entry.domainResourceKind}</code> · <code>{entry.domainResourceId}</code>
-          </dd>
         </div>
         <div>
           <dt>Occurred at</dt>
@@ -234,10 +236,19 @@ const HistoryDetail = ({
           </dd>
         </div>
       </dl>
-      <section className="history-payload-section" aria-label="payload">
-        <h3>Payload</h3>
-        <PayloadSnapshotView entry={entry} />
-      </section>
+      <TechnicalDetails
+        items={[
+          { label: 'Source event kind', value: entry.sourceEventKind },
+          { label: 'Source event ID', value: entry.sourceEventId },
+          { label: 'Resource kind', value: entry.domainResourceKind },
+          { label: 'Resource ID', value: entry.domainResourceId },
+        ]}
+      >
+        <section className="history-payload-section" aria-label="Audit payload">
+          <h3>Audit payload</h3>
+          <PayloadSnapshotView entry={entry} />
+        </section>
+      </TechnicalDetails>
       <OwningDomainLinks
         entry={entry}
         onStartReversal={entry.domainKind === 'CANONICAL' ? onStartReversal : undefined}
@@ -416,7 +427,7 @@ export const HistoryWorkspace = () => {
                     {historyDomainKindLabel[entry.domainKind]}
                   </span>
                   <span className="history-item-event">
-                    <code>{entry.sourceEventKind}</code> · <code>{entry.sourceEventId}</code>
+                    {historyEventLabel(entry.sourceEventKind)}
                   </span>
                   <span className="history-item-time">{formatOccurredAt(entry.occurredAt)}</span>
                   <PayloadAvailabilityBadge entry={entry} />

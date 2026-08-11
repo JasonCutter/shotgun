@@ -161,7 +161,7 @@ describe('FE-P3-S3 frozen-AC integration scenarios', () => {
       expect(traversal.step).toBe(1);
       expect(traversal.edgeRef.edgeId).toBe('edge-1');
       expect(traversal.narration).toContain('Entity One');
-      expect(traversal.narration).toContain('CANONICAL_RELATION');
+      expect(traversal.narration).toContain('Canonical relationship');
       expect(traversal.narration).toContain('Claim One');
       // Refs resolve inside the snapshot.
       expect(

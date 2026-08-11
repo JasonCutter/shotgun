@@ -13,6 +13,7 @@ import {
   PostgresAskWorkspaceProjection,
 } from '../../../adapters/frontend-ask-write-postgres/src/index.js';
 import { PostgresAskAnswerExecutionRepository } from '../../../adapters/frontend-ask-execution-postgres/src/index.js';
+import { OriginalAssetAskSourceVersionContextReader } from '../../../adapters/frontend-ask-source-context-original-asset/src/index.js';
 import { createPostgresActivityReadModelStore } from '../../../adapters/frontend-activity-postgres/src/index.js';
 import {
   createPostgresHistoryReadModelStore,
@@ -184,13 +185,18 @@ export async function startFrontendCrossPhaseBackend() {
   });
 
   const askWorkspaceProjection = new PostgresAskWorkspaceProjection(pool);
+  const originalAssetRepository = new PostgresOriginalAssetRepository(pool);
   const askAnswerProvider = new StructuredAskAnswerProviderAdapter(new FakeAIProviderAdapter(), {
     allowPrivate: true,
     allowRestricted: false,
     dataPolicyVersion: 'cross-phase-ask-policy-v1',
   });
   const askAnswerExecution = new AskAnswerExecutionService(
-    new PostgresAskAnswerExecutionRepository(pool, askWorkspaceProjection),
+    new PostgresAskAnswerExecutionRepository(
+      pool,
+      askWorkspaceProjection,
+      new OriginalAssetAskSourceVersionContextReader(originalAssetRepository, assetStorage),
+    ),
     askAnswerProvider,
     { maxConcurrency: 2 },
   );
@@ -299,7 +305,7 @@ export async function startFrontendCrossPhaseBackend() {
     frontendProductReadCoordinatorFactory,
     activityExternalActionBoundary: externalActionStore,
     intakeRepository: new PostgresIntakeRepository(pool),
-    originalAssetRepository: new PostgresOriginalAssetRepository(pool),
+    originalAssetRepository,
     assetStorage,
     transformationRepository: transformationRepository,
     evidenceRepository: evidenceRepository,

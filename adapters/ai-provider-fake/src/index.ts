@@ -46,22 +46,33 @@ export class FakeAIProviderAdapter implements AIProviderAdapterPort {
     const parsed = JSON.parse(request.prompt) as {
       readonly task?: string;
       readonly question?: string;
-      readonly evidence: readonly {
+      readonly evidence?: readonly {
         readonly evidenceId: string;
         readonly text?: string;
         readonly exactQuote?: string;
       }[];
+      readonly context?: readonly (
+        | {
+            readonly kind: 'EVIDENCE';
+            readonly evidenceId: string;
+            readonly exactQuote: string;
+          }
+        | { readonly kind: 'SOURCE_VERSION'; readonly text: string }
+      )[];
     };
     if (parsed.task === 'shotgun-ask-answer-v1') {
-      const answer = parsed.evidence.length
-        ? `${parsed.question ?? 'Answer'}\n\n${parsed.evidence
-            .map((item) => item.text ?? item.exactQuote ?? '')
+      const context = parsed.context ?? [];
+      const answer = context.length
+        ? `${parsed.question ?? 'Answer'}\n\n${context
+            .map((item) => (item.kind === 'EVIDENCE' ? item.exactQuote : item.text))
             .join('\n')}`
-        : `No selected Evidence was available for: ${parsed.question ?? 'the question'}`;
+        : `No selected authoritative context was available for: ${parsed.question ?? 'the question'}`;
       return {
         rawText: JSON.stringify({
           answer,
-          citations: parsed.evidence.map((item) => ({ evidenceId: item.evidenceId })),
+          citations: context.flatMap((item) =>
+            item.kind === 'EVIDENCE' ? [{ evidenceId: item.evidenceId }] : [],
+          ),
         }),
         providerResponseId: `fake-${this.callCount}`,
         modelVersion: this.identity.model,
@@ -70,20 +81,22 @@ export class FakeAIProviderAdapter implements AIProviderAdapterPort {
       };
     }
     if (step && 'claimText' in step) {
+      const evidence = parsed.evidence ?? [];
       return {
         rawText: JSON.stringify({
           candidates: [
             {
               claimText: step.claimText,
-              evidenceId: parsed.evidence[0]?.evidenceId,
+              evidenceId: evidence[0]?.evidenceId,
             },
           ],
         }),
         providerResponseId: `fake-${this.callCount}`,
       };
     }
+    const evidence = parsed.evidence ?? [];
     const rawText = JSON.stringify({
-      candidates: parsed.evidence.map((item) => ({
+      candidates: evidence.map((item) => ({
         claimText: item.text ?? item.exactQuote ?? '',
         evidenceId: item.evidenceId,
       })),

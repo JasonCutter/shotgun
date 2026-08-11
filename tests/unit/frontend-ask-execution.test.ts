@@ -147,6 +147,56 @@ describe('AskAnswerExecutionService', () => {
     expect(calls).toBe(0);
   });
 
+  it('executes with pinned SourceVersion context without fabricating Evidence citations', async () => {
+    const repository = new InMemoryAskAnswerExecutionRepository();
+    const sourceOnlySnapshot = {
+      ...snapshot(),
+      sourceSelections: [{ sourceId: 'source-1', sourceVersionId: 'version-1', evidenceIds: [] }],
+    };
+    repository.register(
+      sourceOnlySnapshot,
+      [],
+      [
+        {
+          kind: 'SOURCE_VERSION',
+          sourceId: 'source-1',
+          sourceVersionId: 'version-1',
+          contentHash: `sha256:${'1'.repeat(64)}`,
+          mediaType: 'text/plain',
+          text: 'The first project was JasonNote.',
+          sensitivity: 'internal',
+        },
+      ],
+    );
+    let calls = 0;
+    const service = new AskAnswerExecutionService(
+      repository,
+      provider(async (request) => {
+        calls += 1;
+        expect(request.context).toEqual([
+          expect.objectContaining({
+            kind: 'SOURCE_VERSION',
+            sourceVersionId: 'version-1',
+            text: 'The first project was JasonNote.',
+          }),
+        ]);
+        return {
+          answer: 'The first project was JasonNote.',
+          citations: [],
+          provider: { provider: 'test-provider', model: 'test-model' },
+        };
+      }),
+    );
+
+    const result = await service.execute(scope, 'run-1');
+
+    expect(result.state).toBe('SUCCEEDED');
+    expect(result.statements[0]?.text).toContain('JasonNote');
+    expect(result.statements[0]?.citations).toEqual([]);
+    expect(result.sourceSelections[0]?.evidenceIds).toEqual([]);
+    expect(calls).toBe(1);
+  });
+
   it('keeps outcome unknown explicit and requires a user retry', async () => {
     const repository = new InMemoryAskAnswerExecutionRepository();
     repository.register(snapshot(), [

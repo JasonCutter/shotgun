@@ -18,6 +18,7 @@ import {
   PostgresAskWorkspaceProjection,
 } from '../../../adapters/frontend-ask-write-postgres/src/index.js';
 import { PostgresAskAnswerExecutionRepository } from '../../../adapters/frontend-ask-execution-postgres/src/index.js';
+import { OriginalAssetAskSourceVersionContextReader } from '../../../adapters/frontend-ask-source-context-original-asset/src/index.js';
 import {
   InMemoryActionCenterProjection,
   InMemoryBackgroundSummaryProjection,
@@ -195,6 +196,7 @@ export const startShotgunApplication = async (
       ? path.resolve(options.assetRoot)
       : path.resolve(process.env.ASSET_STORAGE_ROOT ?? '.data/assets');
     const assetStorage = new LocalAssetStorage(storageRoot);
+    const originalAssetRepository = new PostgresOriginalAssetRepository(pool);
     const commandGateway = new PostgresFrontendCommandGateway(pool);
     const urlAcquisition = new SecureUrlAcquisitionCoordinator(
       new NodeUrlResolver(),
@@ -254,7 +256,11 @@ export const startShotgunApplication = async (
       dataPolicyVersion: 'gemini-ask-policy-v1',
     });
     const askAnswerExecution = new AskAnswerExecutionService(
-      new PostgresAskAnswerExecutionRepository(pool, askWorkspaceProjection),
+      new PostgresAskAnswerExecutionRepository(
+        pool,
+        askWorkspaceProjection,
+        new OriginalAssetAskSourceVersionContextReader(originalAssetRepository, assetStorage),
+      ),
       askAnswerProvider,
       {
         maxConcurrency: Number.parseInt(process.env.ASK_WORKER_MAX_CONCURRENCY ?? '4', 10),
@@ -296,7 +302,7 @@ export const startShotgunApplication = async (
           }),
         ),
       intakeRepository: new PostgresIntakeRepository(pool),
-      originalAssetRepository: new PostgresOriginalAssetRepository(pool),
+      originalAssetRepository,
       assetStorage,
       transformationRepository,
       evidenceRepository,

@@ -27,18 +27,30 @@ This directory and the registered consolidated ADR documents form the global ADR
 | ADR-095         | Reserved Legacy Gap                                                            |
 | ADR-096–ADR-099 | Individual files in this directory                                             |
 | ADR-100–ADR-113 | [Frontend consolidated record](../frontend/adr-100-113-consolidated-record.md) |
-| ADR-114–ADR-133 | Individual files in this directory                                             |
+| ADR-114–ADR-142 | Individual files in this directory                                             |
 
 The Phase records under `docs/architecture/add/` retain their approved 2026-07-16 decision text. ADR-100–113 preserve the accepted Frontend decisions and later Contract Normalization outcomes in one Git owner record while the individual Notion pages remain Legacy References.
 
-ADR-131, ADR-132 and ADR-133 are authoritative individual files covered by the
-registered `ADR-114–ADR-133` owner range; references to those identifiers
-elsewhere do not create additional owners.
+ADR-131 through ADR-142 are authoritative accepted individual files. ADR-134 through ADR-142 were accepted together by the user on 2026-08-12 as the AKP v1 whole-design architecture. Their Product implementation remains separately unauthorized.
 
-The current latest individual decision is
-[ADR-133 — Runtime-selectable AI Provider, Model & Credential Authority](ADR-133-runtime-selectable-ai-provider-model-and-credential-authority.md),
-accepted on 2026-08-11. Its Product implementation remains separately
-unauthorized. ADR-132 remains the preceding accepted individual decision.
+The current latest accepted individual decision is
+[ADR-142 — Finite End-to-End Acceptance Gate and AKP v1 Closure Boundary](ADR-142-finite-end-to-end-acceptance-gate-and-akp-v1-closure-boundary.md),
+accepted on 2026-08-12. The whole-design acceptance state is also recorded in
+[`../akp/AKP-V1-ARCHITECTURE-ACCEPTANCE.md`](../akp/AKP-V1-ARCHITECTURE-ACCEPTANCE.md).
+
+## Accepted AKP v1 range
+
+- ADR-134 — Active Knowledge Productization v1 Boundary and Completion Contract
+- ADR-135 — Hybrid Semantic Retrieval as a Rebuildable Derived Projection
+- ADR-136 — Typed Discovery Finding Envelope and Re-entry Mapping Boundary
+- ADR-137 — Bounded Multi-Signal Active Discovery Engine Boundary
+- ADR-138 — Durable Triggered Discovery Runtime over Existing Outbox and Job Foundations
+- ADR-139 — Discovery Re-entry through Derived-Provenance Validation and Existing Review Authority
+- ADR-140 — Discovery Workspace, Graph Overlay and Activity Product Boundary
+- ADR-141 — Explicit Feedback Separation, Suppression and Non-Epistemic Adaptive Ranking
+- ADR-142 — Finite End-to-End Acceptance Gate and AKP v1 Closure Boundary
+
+The range is one accepted architecture system. Acceptance freezes its architecture boundary but does not authorize Product implementation, migrations, dependencies, Ready, Merge, Deployment or Production Verification.
 
 ## Reserved-gap rule
 

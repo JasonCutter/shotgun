@@ -12,6 +12,7 @@
 ## 문서
 
 - [ADD](add.md)
+- [AKP v1 승인 보완 — Step 18/20/22 Productization & Closure](akp-v1-accepted-amendment-2026-08-12.md)
 - [Step 18 — 검색·답변·요약·콘텐츠·행동 후보 생성](step-18-generation.md)
 - [Step 19 — 위험도에 따른 자동 제공 또는 사용자 검토](step-19-risk-review.md)
 - [Step 20 — 화면·문서·내보내기·읽기 API 제공](step-20-delivery-and-read-api.md)

@@ -23,10 +23,13 @@ import {
 import {
   askExecutionContextDigest,
   highestSensitivity,
+  sameAIExecutionPin,
+  validateAIExecutionPin,
 } from '../../../modules/frontend-ask-execution/src/index.js';
 import type {
   AskAnswerExecutionRepositoryPort,
   AskClaimedExecution,
+  AIExecutionPin,
   AskExecutionAttempt,
   AskExecutionEvidence,
   AskExecutionRunContext,
@@ -48,9 +51,13 @@ type RecordValue = {
   transitionSeeds: Map<string, AskTransitionSeedView>;
   leaseExpiresAt: Map<string, number>;
   cancelRequested: boolean;
+  executionPin?: AIExecutionPin;
 };
 
-const failure = (code: 'NOT_FOUND' | 'INVALID_REQUEST', message: string): ShotgunError =>
+const failure = (
+  code: 'NOT_FOUND' | 'INVALID_REQUEST' | 'CONFLICT',
+  message: string,
+): ShotgunError =>
   new ShotgunError({
     code,
     safeMessage: message,
@@ -68,6 +75,7 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
     snapshot: AskAnswerRunSnapshot,
     evidence: readonly AskExecutionEvidence[] = [],
     sourceVersions: readonly AskExecutionSourceVersionContext[] = [],
+    executionPin?: AIExecutionPin,
   ): void {
     const events: AskAnswerRunEventView[] =
       snapshot.state === 'QUEUED'
@@ -97,6 +105,14 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
       transitionSeeds: new Map(),
       leaseExpiresAt: new Map(),
       cancelRequested: false,
+      ...(executionPin
+        ? {
+            executionPin: validateAIExecutionPin(executionPin, {
+              projectId: snapshot.projectId,
+              answerRunId: snapshot.answerRunId,
+            }),
+          }
+        : {}),
     });
   }
 
@@ -112,9 +128,20 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
     scope: AskExecutionScope,
     answerRunId: string,
     workerId = `ask-worker-in-memory-${randomUUID()}`,
+    executionPin?: AIExecutionPin,
   ): Promise<AskClaimedExecution | undefined> {
     const record = this.authorized(scope, answerRunId);
     if (record.snapshot.state !== 'QUEUED') return undefined;
+    const pin = executionPin
+      ? validateAIExecutionPin(executionPin, {
+          projectId: scope.projectId,
+          answerRunId,
+        })
+      : record.executionPin;
+    if (record.executionPin && pin && !sameAIExecutionPin(record.executionPin, pin)) {
+      throw failure('CONFLICT', 'The AnswerRun already has a different AI execution identity.');
+    }
+    if (!record.executionPin && pin) record.executionPin = pin;
     const context = this.contextFor(record, record.evidence);
     const attempt: AskExecutionAttempt = {
       attemptId: `attempt-${randomUUID()}`,
@@ -126,6 +153,17 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
       queryPlanRevision: context.queryPlanRevision,
       resolvedSensitivity: highestSensitivity(context.context),
       leaseOwner: workerId,
+      ...(record.executionPin
+        ? {
+            executionPin: record.executionPin,
+            providerId: record.executionPin.providerId,
+            modelId: record.executionPin.modelId,
+            aiConfigurationRevision: record.executionPin.aiConfigurationRevision,
+            credentialId: record.executionPin.credentialId,
+            credentialRevision: record.executionPin.credentialRevision,
+            initialProviderPolicyFingerprint: record.executionPin.initialProviderPolicyFingerprint,
+          }
+        : {}),
     };
     record.attempts.push(attempt);
     record.leaseExpiresAt.set(attempt.attemptId, Date.now() + 30_000);
@@ -176,6 +214,17 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
       queryPlanRevision: context.queryPlanRevision,
       resolvedSensitivity: highestSensitivity(context.context),
       leaseOwner: input.workerId ?? `ask-worker-in-memory-${randomUUID()}`,
+      ...(record.executionPin
+        ? {
+            executionPin: record.executionPin,
+            providerId: record.executionPin.providerId,
+            modelId: record.executionPin.modelId,
+            aiConfigurationRevision: record.executionPin.aiConfigurationRevision,
+            credentialId: record.executionPin.credentialId,
+            credentialRevision: record.executionPin.credentialRevision,
+            initialProviderPolicyFingerprint: record.executionPin.initialProviderPolicyFingerprint,
+          }
+        : {}),
     };
     record.attempts.push(attempt);
     record.leaseExpiresAt.set(attempt.attemptId, Date.now() + 30_000);
@@ -472,13 +521,52 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
     readonly answerRunId: string;
     readonly attemptId: string;
     readonly dataPolicyVersion: string;
+    readonly effectiveProviderPolicyFingerprint?: string;
     readonly workerId: string;
   }): Promise<void> {
     const record = this.authorized(input.scope, input.answerRunId);
     const attempt = record.attempts.find((candidate) => candidate.attemptId === input.attemptId);
     if (attempt && attempt.leaseOwner === input.workerId) {
-      Object.assign(attempt, { dataPolicyVersion: input.dataPolicyVersion });
+      Object.assign(attempt, {
+        dataPolicyVersion: input.dataPolicyVersion,
+        ...(input.effectiveProviderPolicyFingerprint === undefined
+          ? {}
+          : { effectiveProviderPolicyFingerprint: input.effectiveProviderPolicyFingerprint }),
+      });
     }
+  }
+
+  async readExecutionPin(
+    scope: AskExecutionScope,
+    answerRunId: string,
+  ): Promise<AIExecutionPin | undefined> {
+    return this.authorized(scope, answerRunId, false)?.executionPin;
+  }
+
+  async createExecutionPinIfAbsent(input: {
+    readonly scope: AskExecutionScope;
+    readonly answerRunId: string;
+    readonly executionPin: AIExecutionPin;
+  }): Promise<AIExecutionPin> {
+    const record = this.authorized(input.scope, input.answerRunId);
+    const pin = validateAIExecutionPin(input.executionPin, {
+      projectId: input.scope.projectId,
+      answerRunId: input.answerRunId,
+    });
+    if (record.executionPin && !sameAIExecutionPin(record.executionPin, pin)) {
+      throw failure('CONFLICT', 'The AnswerRun already has a different AI execution identity.');
+    }
+    record.executionPin ??= pin;
+    return record.executionPin;
+  }
+
+  async readExactAttemptIdentity(input: {
+    readonly scope: AskExecutionScope;
+    readonly answerRunId: string;
+    readonly attemptId: string;
+  }): Promise<AskExecutionAttempt | undefined> {
+    const record = this.authorized(input.scope, input.answerRunId, false);
+    return record?.attempts.find((attempt) => attempt.attemptId === input.attemptId);
   }
 
   async heartbeatAttempt(input: {
@@ -575,16 +663,24 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
   async claimQueuedForWorker(
     workerId?: string,
     limit = 32,
+    resolveInitialIdentity?: (input: {
+      readonly scope: AskExecutionScope;
+      readonly answerRunId: string;
+    }) => Promise<AIExecutionPin>,
   ): Promise<readonly { scope: AskExecutionScope; claimed: AskClaimedExecution }[]> {
     const claimed: { scope: AskExecutionScope; claimed: AskClaimedExecution }[] = [];
     for (const record of this.records.values()) {
       if (claimed.length >= limit) break;
       if (record.snapshot.state !== 'QUEUED') continue;
       const scope = this.scopeFor(record.snapshot);
+      const executionPin = resolveInitialIdentity
+        ? await resolveInitialIdentity({ scope, answerRunId: record.snapshot.answerRunId })
+        : undefined;
       const execution = await this.claimInitial(
         scope,
         record.snapshot.answerRunId,
         workerId ?? `ask-worker-in-memory-${randomUUID()}`,
+        executionPin,
       );
       if (execution) claimed.push({ scope, claimed: execution });
     }
@@ -684,6 +780,7 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
         question: record.snapshot.question,
         context,
       }),
+      ...(record.executionPin ? { executionPin: record.executionPin } : {}),
     };
   }
 

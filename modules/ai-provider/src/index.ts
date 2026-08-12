@@ -41,9 +41,14 @@ export type AIProviderAdapterPort = {
     readonly provider: string;
     readonly adapterVersion: string;
     readonly model: string;
-    readonly dataPolicyVersion: AIProviderCall['dataPolicyVersion'];
+    readonly dataPolicyVersion: string;
   };
   generateStructured(request: StructuredGenerationRequest): Promise<StructuredGenerationResponse>;
+  /** Optional signal-aware non-streaming path used by request-scoped routing. */
+  generateStructuredWithSignal?(
+    request: StructuredGenerationRequest,
+    signal?: AbortSignal,
+  ): Promise<StructuredGenerationResponse>;
   /**
    * Optional live transport used by interactive Answer execution. Providers
    * that do not expose a streaming API may continue to implement the durable
@@ -546,7 +551,8 @@ export const createAIProviderModule = (
               schemaVersion: '1.0.0' as const,
               promptVersion: 'direct-claim-v1' as const,
               policyVersion: payload.policyVersion,
-              dataPolicyVersion: adapter.identity.dataPolicyVersion,
+              dataPolicyVersion: adapter.identity
+                .dataPolicyVersion as AIProviderCall['dataPolicyVersion'],
               rawText: response.rawText,
               requestDigest: durableRequestDigest,
               inputSnapshotDigest,
@@ -633,7 +639,8 @@ export const createAIProviderModule = (
               modelVersion: draft.modelVersion,
               promptVersion: 'direct-claim-v1',
               policyVersion: payload.policyVersion,
-              dataPolicyVersion: adapter.identity.dataPolicyVersion,
+              dataPolicyVersion: adapter.identity
+                .dataPolicyVersion as AIProviderCall['dataPolicyVersion'],
               dataClassification: payload.dataClassification,
               inputEvidenceIds: record.inputEvidenceIds,
               usage: draft.usage,

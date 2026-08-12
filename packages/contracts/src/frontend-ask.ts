@@ -226,10 +226,13 @@ export type AskProviderPolicyResolverPort = {
   evaluateSelections(input: {
     readonly projectId: string;
     readonly sourceSelections: readonly AskSourceSelectionView[];
+    readonly providerId?: string;
   }): Promise<AskProviderEligibilityView>;
   evaluateContext(input: {
     readonly projectId: string;
     readonly sensitivities: readonly AskContextSensitivity[];
+    readonly providerId?: string;
+    readonly modelId?: string;
   }): Promise<AskProviderEligibilityView>;
 };
 

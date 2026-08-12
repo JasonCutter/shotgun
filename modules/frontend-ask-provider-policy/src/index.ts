@@ -37,10 +37,26 @@ export type AskProviderPolicyAuthorityReaderPort = {
 
 export type AskProviderPolicyResolverOptions = {
   readonly deploymentPrivateTransferAllowed: boolean;
+  readonly deploymentPrivateTransferAllowedForProvider?: (providerId: string) => boolean;
   readonly providerId?: string;
+  readonly providerIdResolver?: (projectId: string) => Promise<string | undefined>;
   readonly providerPolicyIdentity: string;
   readonly providerDisplayName: string;
   readonly providerModel: string;
+  readonly providerDescriptor?: (
+    providerId: string,
+    modelId?: string,
+  ) =>
+    | {
+        readonly policyIdentity: string;
+        readonly displayName: string;
+        readonly model: string;
+      }
+    | undefined;
+  readonly providerModelResolver?: (
+    projectId: string,
+    providerId: string,
+  ) => Promise<string | undefined>;
 };
 
 const policyMessage = (reason: AskProviderEligibilityView['reason']): string => {
@@ -75,9 +91,21 @@ export class AskProviderPolicyResolver implements AskProviderPolicyResolverPort 
   async evaluateContext(input: {
     readonly projectId: string;
     readonly sensitivities: readonly AskContextSensitivity[];
+    readonly providerId?: string;
+    readonly modelId?: string;
   }): Promise<AskProviderEligibilityView> {
     const projectPolicy = await this.reader.readProjectPrivacyPolicy(input.projectId);
-    const selectedProviderId = this.options.providerId ?? 'google-gemini';
+    const selectedProviderId =
+      input.providerId ??
+      (await this.options.providerIdResolver?.(input.projectId)) ??
+      this.options.providerId ??
+      'google-gemini';
+    const selectedModelId =
+      input.modelId ??
+      (await this.options.providerModelResolver?.(input.projectId, selectedProviderId)) ??
+      this.options.providerDescriptor?.(selectedProviderId)?.model ??
+      this.options.providerModel;
+    const descriptor = this.options.providerDescriptor?.(selectedProviderId, selectedModelId);
     const providerApprovalRecord = this.reader.readProviderExternalTransferApproval
       ? await this.reader.readProviderExternalTransferApproval({
           projectId: input.projectId,
@@ -88,6 +116,9 @@ export class AskProviderPolicyResolver implements AskProviderPolicyResolverPort 
       providerApprovalRecord?.providerId === selectedProviderId
         ? providerApprovalRecord
         : undefined;
+    const deploymentPrivateTransferAllowed =
+      this.options.deploymentPrivateTransferAllowedForProvider?.(selectedProviderId) ??
+      this.options.deploymentPrivateTransferAllowed;
     const restricted = input.sensitivities.includes('restricted');
     const privateContext = input.sensitivities.includes('private');
     const projectApproval =
@@ -97,7 +128,7 @@ export class AskProviderPolicyResolver implements AskProviderPolicyResolverPort 
         projectPolicy.externalTransferAllowed);
     const reason: AskProviderEligibilityView['reason'] = restricted
       ? 'RESTRICTED_CONTEXT_BLOCKED'
-      : privateContext && !this.options.deploymentPrivateTransferAllowed
+      : privateContext && !deploymentPrivateTransferAllowed
         ? 'DEPLOYMENT_POLICY_BLOCKED'
         : privateContext && !projectApproval
           ? 'PROJECT_APPROVAL_REQUIRED'
@@ -114,8 +145,8 @@ export class AskProviderPolicyResolver implements AskProviderPolicyResolverPort 
       stableJson({
         schema: 'ask-provider-effective-policy-v2',
         providerId: selectedProviderId,
-        providerPolicyIdentity: this.options.providerPolicyIdentity,
-        deploymentPrivateTransferAllowed: this.options.deploymentPrivateTransferAllowed,
+        providerPolicyIdentity: descriptor?.policyIdentity ?? this.options.providerPolicyIdentity,
+        deploymentPrivateTransferAllowed,
         projectExternalTransferAllowed: projectApproval,
         providerApprovalRevision: providerApproval?.approvalRevision ?? null,
         projectSettingsRevision: projectPolicy.settingsRevision,
@@ -131,8 +162,8 @@ export class AskProviderPolicyResolver implements AskProviderPolicyResolverPort 
       policyFingerprint: `ask-provider-effective-policy-v2:${policyFingerprint}`,
       policyContextRevision: String(projectPolicy.policyContextRevision),
       provider: {
-        displayName: this.options.providerDisplayName,
-        model: this.options.providerModel,
+        displayName: descriptor?.displayName ?? this.options.providerDisplayName,
+        model: selectedModelId,
       },
       message: policyMessage(reason),
     });

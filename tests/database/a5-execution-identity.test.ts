@@ -34,7 +34,7 @@ describe('A5 execution identity PostgreSQL persistence', () => {
 
   it('persists one immutable pin and copies it to retry attempts without secret material', async () => {
     const suffix = randomUUID();
-    const principalId = `a5-principal-${suffix}`;
+    const principalId = randomUUID();
     const projectId = `a5-project-${suffix}`;
     await pool.query(
       `INSERT INTO auth.principals

@@ -8,6 +8,12 @@ import { FakeDraftActionConnector } from '../../../adapters/action-connector-fak
 import { LocalAssetStorage } from '../../../adapters/asset-storage-local/src/index.js';
 import { FakeAIProviderAdapter } from '../../../adapters/ai-provider-fake/src/index.js';
 import { GeminiAIProviderAdapter } from '../../../adapters/ai-provider-gemini/src/index.js';
+import { GeminiConnectivityAdapter } from '../../../adapters/ai-provider-gemini/src/connectivity.js';
+import { OpenAIConnectivityAdapter } from '../../../adapters/ai-provider-openai/src/index.js';
+import { DeepSeekConnectivityAdapter } from '../../../adapters/ai-provider-deepseek/src/index.js';
+import { PostgresCredentialVaultRepository } from '../../../adapters/credential-vault-postgres/src/index.js';
+import { PostgresProjectAIConfigurationRepository } from '../../../adapters/ai-configuration-postgres/src/index.js';
+import { PostgresProviderExternalTransferApprovalRepository } from '../../../adapters/provider-privacy-deployment-postgres/src/index.js';
 import { StructuredAskAnswerProviderAdapter } from '../../../adapters/ai-provider-ask/src/index.js';
 import { PostgresFrontendCommandGateway } from '../../../adapters/frontend-command-gateway-postgres/src/index.js';
 import { PostgresFrontendKnowledgeDraftRepository } from '../../../adapters/frontend-knowledge-draft-postgres/src/index.js';
@@ -87,6 +93,19 @@ import { AskCommandCoordinator } from '../../../modules/frontend-ask-write/src/i
 import { AskAnswerExecutionService } from '../../../modules/frontend-ask-execution/src/index.js';
 import { AskProviderPolicyResolver } from '../../../modules/frontend-ask-provider-policy/src/index.js';
 import { parseProviderDeploymentCeiling } from '../../../modules/provider-privacy-policy/src/index.js';
+import { ProviderExternalTransferApprovalService } from '../../../modules/provider-privacy-policy/src/index.js';
+import {
+  AISettingsBackendService,
+  StaticAIProviderConnectivityRegistry,
+} from '../../../modules/ai-settings-backend/src/index.js';
+import {
+  EnvironmentCredentialMasterKeyAuthority,
+  CredentialVaultService,
+} from '../../../modules/credential-vault/src/index.js';
+import {
+  ProjectAIConfigurationService,
+  initialProviderRegistry,
+} from '../../../modules/ai-configuration/src/index.js';
 import { FrontendProductReadCoordinator } from '../../../modules/frontend-product-read/src/index.js';
 import { SecureUrlAcquisitionCoordinator } from '../../../modules/url-acquisition/src/index.js';
 import { configureSourcesWriteRuntime } from './product-api/sources-write-runtime.js';
@@ -249,6 +268,40 @@ export const startShotgunApplication = async (
       pool,
       deploymentAllowsPrivateExternalTransfer,
     );
+    const aiProviderRegistry = initialProviderRegistry();
+    const credentialVault = new CredentialVaultService(
+      new PostgresCredentialVaultRepository(pool),
+      new EnvironmentCredentialMasterKeyAuthority(),
+    );
+    const aiSettingsBackend = new AISettingsBackendService(
+      aiProviderRegistry,
+      new ProjectAIConfigurationService(
+        aiProviderRegistry,
+        new PostgresProjectAIConfigurationRepository(pool),
+        credentialVault,
+      ),
+      credentialVault,
+      new StaticAIProviderConnectivityRegistry([
+        new OpenAIConnectivityAdapter({ baseUrl: process.env.OPENAI_BASE_URL }),
+        new DeepSeekConnectivityAdapter({ baseUrl: process.env.DEEPSEEK_BASE_URL }),
+        new GeminiConnectivityAdapter(),
+      ]),
+      deploymentCeiling,
+      {
+        getLegacyExternalTransferAllowed: async (projectId) => {
+          const privacy = await settingsRepository.getPrivacyRetention(projectId);
+          return privacy.availability === 'AVAILABLE' && privacy.data.externalTransferAllowed;
+        },
+      },
+      new ProviderExternalTransferApprovalService(
+        new PostgresProviderExternalTransferApprovalRepository(pool),
+        aiProviderRegistry,
+      ),
+      () => new Date().toISOString(),
+      {
+        isGeminiCredentialConfigured: () => Boolean(process.env.GEMINI_API_KEY?.trim()),
+      },
+    );
     // LPA-WP5 (D12 recovery harness): recovery-only composition must not
     // require or depend on a real AI credential and must never reach an
     // external provider. The existing deterministic FakeAIProviderAdapter
@@ -304,6 +357,7 @@ export const startShotgunApplication = async (
       projectBootstrapUnitOfWork: new PostgresProjectBootstrapUnitOfWork(pool),
       projectTombstoneStore: new PostgresProjectTombstoneStore(pool),
       settingsRepository,
+      aiSettingsBackend: recoveryHarness ? undefined : aiSettingsBackend,
       frontendCommandGateway: commandGateway,
       frontendKnowledgeDraftRepository: new PostgresFrontendKnowledgeDraftRepository(pool),
       frontendKnowledgeDraftTargetResolver: new PostgresFrontendKnowledgeDraftTargetResolver(pool),

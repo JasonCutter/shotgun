@@ -84,9 +84,11 @@ import type {
   SettingsRepositoryPort,
 } from '../../../modules/settings-policy/src/index.js';
 import type { FrontendCommandGatewayPort } from '../../../modules/frontend-command-gateway/src/index.js';
+import type { AISettingsBackendPort } from '../../../modules/ai-settings-backend/src/index.js';
 import { registerProjectRoutes } from './product-api/project-routes.js';
 import { registerFrontendProductRoutes } from './product-api/frontend-product-routes.js';
 import { registerSettingsRoutes } from './product-api/settings-routes.js';
+import { registerAISettingsRoutes } from './product-api/ai-settings-routes.js';
 import { registerSourcesRoutes } from './product-api/sources-routes.js';
 import { registerFrontendKnowledgeDraftRoutes } from './product-api/frontend-knowledge-draft-routes.js';
 import { registerFrontendReviewRoutes } from './product-api/frontend-review-routes.js';
@@ -497,6 +499,7 @@ export type ApplicationOptions = {
   readonly projectAdminRepository?: ProjectAdministrationRepositoryPort;
   readonly projectBootstrapUnitOfWork?: ProjectBootstrapUnitOfWorkPort;
   readonly settingsRepository?: SettingsRepositoryPort;
+  readonly aiSettingsBackend?: AISettingsBackendPort;
   readonly frontendCommandGateway?: FrontendCommandGatewayPort;
   readonly frontendKnowledgeDraftRepository?: FrontendKnowledgeDraftRepositoryBoundaryPort;
   readonly frontendKnowledgeDraftTargetResolver?: FrontendKnowledgeDraftTargetResolverPort;
@@ -2170,6 +2173,14 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     projectAdminRepository,
     requireBrowserSession,
   );
+  if (options.aiSettingsBackend) {
+    registerAISettingsRoutes(
+      server,
+      options.aiSettingsBackend,
+      authRepository,
+      requireBrowserSession,
+    );
+  }
   registerFrontendKnowledgeDraftRoutes(
     server,
     frontendKnowledgeDraftCoordinator,

@@ -1,0 +1,42 @@
+{
+  "id": "a6.ai-settings-backend",
+  "version": "1.0.0",
+  "owner": "Shotgun AI Settings Backend",
+  "compatibility": {
+    "runtime": ">=1.0.0 <2.0.0",
+    "contracts": [
+      { "name": "AISettingsBackend", "range": ">=1.0.0 <2.0.0" },
+      { "name": "AIProviderConnectivity", "range": ">=1.0.0 <2.0.0" }
+    ]
+  },
+  "deployment": { "modes": ["in_process", "worker"] },
+  "dataOwnership": {
+    "owns": [],
+    "readsViaPorts": [
+      "CredentialVaultPort",
+      "ProjectAIConfigurationPort",
+      "ProviderExternalTransferApprovalPort"
+    ],
+    "directSchemaAccess": false
+  },
+  "consumes": { "commands": [], "events": [] },
+  "produces": { "events": [] },
+  "provides": {
+    "queries": [{ "name": "AISettingsReadModel", "range": ">=1.0.0 <2.0.0" }],
+    "capabilities": [{ "name": "ai-settings-backend", "priority": 100 }]
+  },
+  "requires": {
+    "capabilities": [
+      { "name": "credential-vault", "range": ">=1.0.0 <2.0.0" },
+      { "name": "project-ai-configuration-authority", "range": ">=1.0.0 <2.0.0" }
+    ]
+  },
+  "security": {
+    "requiredContext": ["project", "provider", "model"],
+    "defaultOnMissingContext": "deny"
+  },
+  "approvalPolicy": {
+    "canWriteCanonical": false,
+    "canExecuteExternalAction": false
+  }
+}

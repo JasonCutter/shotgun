@@ -56,6 +56,7 @@ export type CredentialVaultAvailability =
 export type CredentialVaultRepositoryPort = {
   insertRevision(record: StoredCredentialRevision): Promise<void>;
   findExact(scope: CredentialScope): Promise<StoredCredentialRevision | undefined>;
+  listCurrent(projectId: string): Promise<readonly StoredCredentialRevision[]>;
   advanceRevision(input: {
     readonly projectId: string;
     readonly providerId: string;
@@ -156,6 +157,8 @@ export type CredentialVaultPort = {
   revoke(scope: CredentialScope, now?: string): Promise<CredentialMetadata>;
   remove(scope: CredentialScope, now?: string): Promise<CredentialMetadata>;
   getMetadata(scope: CredentialScope): Promise<CredentialMetadata | undefined>;
+  /** Non-secret current metadata only; encrypted envelopes are never returned. */
+  listMetadata?(projectId: string): Promise<readonly CredentialMetadata[]>;
   getAvailability(): CredentialVaultAvailability;
   withCredential(
     scope: CredentialScope,
@@ -370,6 +373,11 @@ export class CredentialVaultService implements CredentialVaultPort {
   async getMetadata(scope: CredentialScope): Promise<CredentialMetadata | undefined> {
     const stored = await this.repository.findExact(scopeOf(scope));
     return stored ? metadataOf(stored) : undefined;
+  }
+
+  async listMetadata(projectId: string): Promise<readonly CredentialMetadata[]> {
+    const records = await this.repository.listCurrent(projectId);
+    return records.map(metadataOf);
   }
 
   async withCredential(

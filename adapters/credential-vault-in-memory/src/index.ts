@@ -23,6 +23,22 @@ export class InMemoryCredentialVaultRepository implements CredentialVaultReposit
     return record;
   }
 
+  async listCurrent(projectId: string): Promise<readonly StoredCredentialRevision[]> {
+    const latest = new Map<string, StoredCredentialRevision>();
+    for (const record of this.records.values()) {
+      if (record.projectId !== projectId) continue;
+      const current = latest.get(record.credentialId);
+      if (!current || record.credentialRevision > current.credentialRevision) {
+        latest.set(record.credentialId, record);
+      }
+    }
+    return [...latest.values()].sort((left, right) =>
+      `${left.providerId}:${left.credentialId}`.localeCompare(
+        `${right.providerId}:${right.credentialId}`,
+      ),
+    );
+  }
+
   async advanceRevision(input: {
     readonly projectId: string;
     readonly providerId: string;

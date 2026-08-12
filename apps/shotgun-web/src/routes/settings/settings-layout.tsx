@@ -174,6 +174,16 @@ export const SettingsLayout = () => {
             </li>
             <li>
               <NavLink
+                to={`/settings/ai?targetProjectId=${targetProjectId}`}
+                className={({ isActive }: { isActive: boolean }) =>
+                  isActive ? 'nav-tab active' : 'nav-tab'
+                }
+              >
+                AI
+              </NavLink>
+            </li>
+            <li>
+              <NavLink
                 to={`/settings/costs?targetProjectId=${targetProjectId}`}
                 className={({ isActive }: { isActive: boolean }) =>
                   isActive ? 'nav-tab active' : 'nav-tab'

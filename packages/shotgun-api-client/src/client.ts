@@ -1,4 +1,8 @@
 import type {
+  AICredentialMetadata,
+  AISettingsConfiguration,
+  AISettingsReadModel,
+  AITestConnectionResult,
   ProductSessionView,
   RequestOptions,
   ProductFeatureView,
@@ -8,6 +12,10 @@ import type {
 } from './contracts.js';
 import { createCsrfMutationManager } from './csrf-manager.js';
 import {
+  decodeAICredentialMetadataEnvelope,
+  decodeAIConfigurationEnvelope,
+  decodeAISettingsReadModel,
+  decodeAITestConnectionResult,
   decodeCsrfEnvelope,
   decodeLogoutEnvelope,
   decodeProductApiErrorBody,
@@ -865,6 +873,169 @@ export const createShotgunApiClient = (
       });
       const body = (await assertOk(response)) as { result: unknown };
       return decodeSettingsCommandResult(body.result);
+    },
+
+    async getAISettings(
+      targetProjectId?: string,
+      requestOptions?: RequestOptions,
+    ): Promise<AISettingsReadModel> {
+      const query = targetProjectId
+        ? `?targetProjectId=${encodeURIComponent(targetProjectId)}`
+        : '';
+      const response = await request(`/settings/ai${query}`, {
+        signal: requestOptions?.signal,
+      });
+      const body = (await assertOk(response)) as { settings: unknown };
+      return decodeAISettingsReadModel(body.settings);
+    },
+
+    async createAICredential(
+      params: { readonly projectId: string; readonly providerId: string; readonly secret: string },
+      requestOptions?: RequestOptions,
+    ): Promise<AICredentialMetadata> {
+      return runMutation(requestOptions?.signal, async (csrfToken) => {
+        const response = await request('/settings/ai/credentials', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+          body: JSON.stringify(params),
+          signal: requestOptions?.signal,
+        });
+        const body = (await assertOk(response)) as { credential: unknown };
+        return decodeAICredentialMetadataEnvelope(body.credential);
+      });
+    },
+
+    async replaceAICredential(
+      params: {
+        readonly projectId: string;
+        readonly providerId: string;
+        readonly credentialId: string;
+        readonly expectedRevision: number;
+        readonly secret: string;
+      },
+      requestOptions?: RequestOptions,
+    ): Promise<AICredentialMetadata> {
+      return runMutation(requestOptions?.signal, async (csrfToken) => {
+        const response = await request(
+          `/settings/ai/credentials/${encodeURIComponent(params.credentialId)}/replace`,
+          {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+            body: JSON.stringify({
+              projectId: params.projectId,
+              providerId: params.providerId,
+              expectedRevision: params.expectedRevision,
+              secret: params.secret,
+            }),
+            signal: requestOptions?.signal,
+          },
+        );
+        const body = (await assertOk(response)) as { credential: unknown };
+        return decodeAICredentialMetadataEnvelope(body.credential);
+      });
+    },
+
+    async revokeAICredential(
+      params: {
+        readonly projectId: string;
+        readonly providerId: string;
+        readonly credentialId: string;
+        readonly credentialRevision: number;
+      },
+      requestOptions?: RequestOptions,
+    ): Promise<AICredentialMetadata> {
+      return runMutation(requestOptions?.signal, async (csrfToken) => {
+        const response = await request(
+          `/settings/ai/credentials/${encodeURIComponent(params.credentialId)}/revoke`,
+          {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+            body: JSON.stringify({
+              projectId: params.projectId,
+              providerId: params.providerId,
+              credentialRevision: params.credentialRevision,
+            }),
+            signal: requestOptions?.signal,
+          },
+        );
+        const body = (await assertOk(response)) as { credential: unknown };
+        return decodeAICredentialMetadataEnvelope(body.credential);
+      });
+    },
+
+    async removeAICredential(
+      params: {
+        readonly projectId: string;
+        readonly providerId: string;
+        readonly credentialId: string;
+        readonly credentialRevision: number;
+      },
+      requestOptions?: RequestOptions,
+    ): Promise<AICredentialMetadata> {
+      return runMutation(requestOptions?.signal, async (csrfToken) => {
+        const response = await request(
+          `/settings/ai/credentials/${encodeURIComponent(params.credentialId)}/remove`,
+          {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+            body: JSON.stringify({
+              projectId: params.projectId,
+              providerId: params.providerId,
+              credentialRevision: params.credentialRevision,
+            }),
+            signal: requestOptions?.signal,
+          },
+        );
+        const body = (await assertOk(response)) as { credential: unknown };
+        return decodeAICredentialMetadataEnvelope(body.credential);
+      });
+    },
+
+    async saveAIConfiguration(
+      params: {
+        readonly projectId: string;
+        readonly expectedRevision: number;
+        readonly providerId: string;
+        readonly modelId: string;
+        readonly credentialId: string;
+        readonly credentialRevision: number;
+        readonly updatedBy?: string;
+      },
+      requestOptions?: RequestOptions,
+    ): Promise<AISettingsConfiguration> {
+      return runMutation(requestOptions?.signal, async (csrfToken) => {
+        const response = await request('/settings/ai/configuration', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+          body: JSON.stringify(params),
+          signal: requestOptions?.signal,
+        });
+        const body = (await assertOk(response)) as { configuration: unknown };
+        return decodeAIConfigurationEnvelope(body.configuration);
+      });
+    },
+
+    async testAIConnection(
+      params: {
+        readonly projectId: string;
+        readonly providerId: string;
+        readonly modelId: string;
+        readonly credentialId?: string;
+        readonly credentialRevision?: number;
+        readonly draftSecret?: string;
+      },
+      requestOptions?: RequestOptions,
+    ): Promise<AITestConnectionResult> {
+      return runMutation(requestOptions?.signal, async (csrfToken) => {
+        const response = await request('/settings/ai/test-connection', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+          body: JSON.stringify(params),
+          signal: requestOptions?.signal,
+        });
+        const body = (await assertOk(response)) as { result: unknown };
+        return decodeAITestConnectionResult(body.result);
+      });
     },
 
     async getProjects(requestOptions?: RequestOptions): Promise<readonly ProjectListItemView[]> {

@@ -54,10 +54,18 @@ export type CredentialVaultPort = {
   ): Promise<{ readonly status: 'SUCCEEDED' | 'FAILED' }>;
 };
 
-export type AIModelDescriptor = { readonly providerId: string; readonly modelId: string };
+export type AIModelDescriptor = {
+  readonly providerId: string;
+  readonly modelId: string;
+  readonly displayName: string;
+  readonly shotgunUsableCapabilities: readonly string[];
+  readonly capabilityRevision: string;
+};
 export type AIProviderDescriptor = {
   readonly providerId: string;
+  readonly displayName: string;
   readonly status: 'active' | 'disabled';
+  readonly models: readonly AIModelDescriptor[];
 };
 export type ProviderRegistryPort = {
   listProviders(): readonly AIProviderDescriptor[];

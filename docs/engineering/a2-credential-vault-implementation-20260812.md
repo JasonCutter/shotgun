@@ -12,8 +12,9 @@ not run because the environment has `DATABASE_URL` but no `TEST_DATABASE_URL`.
 - Base: `main@83f66f712ea039b7d236a1c4fab10233d57e5f13`
 - The original `codex/deepseek-v4-flash-provider-switch` worktree and its
   uncommitted changes were left untouched.
-- Publication: the implementation is prepared for the scoped feature-branch
-  commit and Draft PR handoff; no Ready, Merge, or Deploy action is included.
+- Publication: Draft PR [#98](https://github.com/JasonCutter/shotgun/pull/98)
+  is open at head `c4eb3775789f97c0e7becdc26aad7e82161c649e`. No Ready, Merge,
+  or Deploy action is included.
 
 ## Implemented scope
 

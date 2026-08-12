@@ -86,6 +86,7 @@ import {
 import { AskCommandCoordinator } from '../../../modules/frontend-ask-write/src/index.js';
 import { AskAnswerExecutionService } from '../../../modules/frontend-ask-execution/src/index.js';
 import { AskProviderPolicyResolver } from '../../../modules/frontend-ask-provider-policy/src/index.js';
+import { parseProviderDeploymentCeiling } from '../../../modules/provider-privacy-policy/src/index.js';
 import { FrontendProductReadCoordinator } from '../../../modules/frontend-product-read/src/index.js';
 import { SecureUrlAcquisitionCoordinator } from '../../../modules/url-acquisition/src/index.js';
 import { configureSourcesWriteRuntime } from './product-api/sources-write-runtime.js';
@@ -239,7 +240,11 @@ export const startShotgunApplication = async (
     const askConversationRepository = new PostgresAskConversationRepository(pool);
     const askWorkspaceProjection = new PostgresAskWorkspaceProjection(pool);
     const askSourceSelectionValidator = new PostgresAskSourceSelectionValidator(pool);
-    const deploymentAllowsPrivateExternalTransfer = process.env.GEMINI_ALLOW_PRIVATE === 'true';
+    const deploymentCeiling = parseProviderDeploymentCeiling({
+      providerAllowlist: process.env.AI_PRIVATE_EGRESS_ALLOWED_PROVIDERS,
+      legacyGeminiAllowed: process.env.GEMINI_ALLOW_PRIVATE === 'true',
+    });
+    const deploymentAllowsPrivateExternalTransfer = deploymentCeiling.allows('google-gemini');
     const settingsRepository = new PostgresSettingsRepository(
       pool,
       deploymentAllowsPrivateExternalTransfer,
@@ -258,13 +263,14 @@ export const startShotgunApplication = async (
           model: process.env.GEMINI_MODEL ?? 'gemini-3.5-flash',
         });
     const askAnswerProvider = new StructuredAskAnswerProviderAdapter(aiProvider, {
-      allowPrivate: process.env.GEMINI_ALLOW_PRIVATE === 'true',
+      allowPrivate: deploymentAllowsPrivateExternalTransfer,
       allowRestricted: false,
       dataPolicyVersion: 'gemini-ask-policy-v2',
     });
     const askProviderPolicy = new AskProviderPolicyResolver(
       new PostgresAskProviderPolicyAuthorityReader(pool),
       {
+        providerId: 'google-gemini',
         deploymentPrivateTransferAllowed: deploymentAllowsPrivateExternalTransfer,
         providerPolicyIdentity: askAnswerProvider.identity.dataPolicyVersion,
         providerDisplayName: 'Gemini',

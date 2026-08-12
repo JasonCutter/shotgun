@@ -39,6 +39,33 @@ export class PostgresAskProviderPolicyAuthorityReader implements AskProviderPoli
     };
   }
 
+  async readProviderExternalTransferApproval(input: {
+    readonly projectId: string;
+    readonly providerId: string;
+  }): Promise<
+    | { readonly providerId: string; readonly approved: boolean; readonly approvalRevision: number }
+    | undefined
+  > {
+    const result = await this.pool.query<{
+      provider_id: string;
+      approved: boolean;
+      approval_revision: number;
+    }>(
+      `SELECT provider_id, approved, approval_revision
+       FROM settings.provider_external_transfer_approvals
+       WHERE project_id = $1 AND provider_id = $2`,
+      [input.projectId, input.providerId],
+    );
+    const row = result.rows[0];
+    return row
+      ? {
+          providerId: row.provider_id,
+          approved: row.approved,
+          approvalRevision: Number(row.approval_revision),
+        }
+      : undefined;
+  }
+
   async readSelectedSensitivities(input: {
     readonly projectId: string;
     readonly sourceSelections: readonly AskSourceSelectionView[];

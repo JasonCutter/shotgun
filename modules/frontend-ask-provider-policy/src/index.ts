@@ -16,8 +16,19 @@ export type AskProjectPrivacyPolicy = {
   readonly policyContextRevision: number;
 };
 
+export type AskProviderExternalTransferApproval = {
+  readonly providerId: string;
+  readonly approved: boolean;
+  readonly approvalRevision: number;
+};
+
 export type AskProviderPolicyAuthorityReaderPort = {
   readProjectPrivacyPolicy(projectId: string): Promise<AskProjectPrivacyPolicy>;
+  /** Optional A4 authority. Missing means no provider-specific record exists. */
+  readProviderExternalTransferApproval?(input: {
+    readonly projectId: string;
+    readonly providerId: string;
+  }): Promise<AskProviderExternalTransferApproval | undefined>;
   readSelectedSensitivities(input: {
     readonly projectId: string;
     readonly sourceSelections: readonly AskSourceSelectionView[];
@@ -26,6 +37,7 @@ export type AskProviderPolicyAuthorityReaderPort = {
 
 export type AskProviderPolicyResolverOptions = {
   readonly deploymentPrivateTransferAllowed: boolean;
+  readonly providerId?: string;
   readonly providerPolicyIdentity: string;
   readonly providerDisplayName: string;
   readonly providerModel: string;
@@ -65,13 +77,29 @@ export class AskProviderPolicyResolver implements AskProviderPolicyResolverPort 
     readonly sensitivities: readonly AskContextSensitivity[];
   }): Promise<AskProviderEligibilityView> {
     const projectPolicy = await this.reader.readProjectPrivacyPolicy(input.projectId);
+    const selectedProviderId = this.options.providerId ?? 'google-gemini';
+    const providerApprovalRecord = this.reader.readProviderExternalTransferApproval
+      ? await this.reader.readProviderExternalTransferApproval({
+          projectId: input.projectId,
+          providerId: selectedProviderId,
+        })
+      : undefined;
+    const providerApproval =
+      providerApprovalRecord?.providerId === selectedProviderId
+        ? providerApprovalRecord
+        : undefined;
     const restricted = input.sensitivities.includes('restricted');
     const privateContext = input.sensitivities.includes('private');
+    const projectApproval =
+      providerApproval?.approved === true ||
+      (providerApproval === undefined &&
+        selectedProviderId === 'google-gemini' &&
+        projectPolicy.externalTransferAllowed);
     const reason: AskProviderEligibilityView['reason'] = restricted
       ? 'RESTRICTED_CONTEXT_BLOCKED'
       : privateContext && !this.options.deploymentPrivateTransferAllowed
         ? 'DEPLOYMENT_POLICY_BLOCKED'
-        : privateContext && !projectPolicy.externalTransferAllowed
+        : privateContext && !projectApproval
           ? 'PROJECT_APPROVAL_REQUIRED'
           : 'ELIGIBLE';
     const requiredAction: AskProviderEligibilityView['requiredAction'] =
@@ -85,9 +113,11 @@ export class AskProviderPolicyResolver implements AskProviderPolicyResolverPort 
     const policyFingerprint = sha256Text(
       stableJson({
         schema: 'ask-provider-effective-policy-v2',
+        providerId: selectedProviderId,
         providerPolicyIdentity: this.options.providerPolicyIdentity,
         deploymentPrivateTransferAllowed: this.options.deploymentPrivateTransferAllowed,
-        projectExternalTransferAllowed: projectPolicy.externalTransferAllowed,
+        projectExternalTransferAllowed: projectApproval,
+        providerApprovalRevision: providerApproval?.approvalRevision ?? null,
         projectSettingsRevision: projectPolicy.settingsRevision,
         projectPolicyContextRevision: projectPolicy.policyContextRevision,
         restrictedExternalTransferAllowed: false,

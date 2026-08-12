@@ -88,6 +88,8 @@ export type AskAnswerProviderRequest = {
     readonly eligible: boolean;
     readonly policyFingerprint: string;
   };
+  /** Immutable server-owned identity captured before the provider call. */
+  readonly executionPin?: AIExecutionPin;
   readonly signal: AbortSignal;
   readonly onPartial: (partialText: string) => Promise<void>;
 };
@@ -107,6 +109,18 @@ export type AskAnswerProviderPort = {
 
 export type AskExecutionAttemptKind = 'INITIAL' | 'RETRY_SAME_CONTEXT' | 'RETRY_CURRENT_POLICY';
 
+export type AIExecutionPin = {
+  readonly answerRunId: string;
+  readonly projectId: string;
+  readonly providerId: string;
+  readonly modelId: string;
+  readonly aiConfigurationRevision: number;
+  readonly credentialId: string;
+  readonly credentialRevision: number;
+  readonly initialProviderPolicyFingerprint: string;
+  readonly createdAt: string;
+};
+
 export type AskExecutionAttempt = {
   readonly attemptId: string;
   readonly attemptNumber: number;
@@ -117,6 +131,14 @@ export type AskExecutionAttempt = {
   readonly queryPlanRevision: string;
   readonly resolvedSensitivity: AskExecutionScope['sensitivityClearance'];
   readonly dataPolicyVersion?: string;
+  readonly effectiveProviderPolicyFingerprint?: string;
+  readonly executionPin?: AIExecutionPin;
+  readonly providerId?: string;
+  readonly modelId?: string;
+  readonly aiConfigurationRevision?: number;
+  readonly credentialId?: string;
+  readonly credentialRevision?: number;
+  readonly initialProviderPolicyFingerprint?: string;
   readonly providerResponseId?: string;
   readonly leaseOwner?: string;
 };
@@ -132,11 +154,88 @@ export type AskExecutionRunContext = {
   readonly contextStatus: AskExecutionContextStatus;
   readonly resolvedContextDigest: string;
   readonly queryPlanRevision: string;
+  readonly executionPin?: AIExecutionPin;
 };
 
 export type AskClaimedExecution = {
   readonly attempt: AskExecutionAttempt;
   readonly context: AskExecutionRunContext;
+};
+
+export type AskExecutionIdentityResolverPort = {
+  resolveInitialAIExecutionIdentity(input: {
+    readonly principalId: string;
+    readonly projectId: string;
+    readonly answerRunId: string;
+    readonly authorizedContext: AskExecutionRunContext;
+  }): Promise<AIExecutionPin>;
+  /** Revalidates this exact credential revision; it must never return a newer revision. */
+  revalidatePinnedCredential(input: {
+    readonly principalId: string;
+    readonly projectId: string;
+    readonly answerRunId: string;
+    readonly executionPin: AIExecutionPin;
+  }): Promise<boolean | { readonly available: boolean }>;
+};
+
+export type AskInitialExecutionIdentityResolver = (input: {
+  readonly scope: AskExecutionScope;
+  readonly answerRunId: string;
+}) => Promise<AIExecutionPin>;
+
+const pinFields = (pin: AIExecutionPin): readonly unknown[] => [
+  pin.answerRunId,
+  pin.projectId,
+  pin.providerId,
+  pin.modelId,
+  pin.aiConfigurationRevision,
+  pin.credentialId,
+  pin.credentialRevision,
+  pin.initialProviderPolicyFingerprint,
+  pin.createdAt,
+];
+
+export const sameAIExecutionPin = (left: AIExecutionPin, right: AIExecutionPin): boolean =>
+  pinFields(left).every((value, index) => value === pinFields(right)[index]);
+
+export const validateAIExecutionPin = (
+  pin: AIExecutionPin,
+  expected: { readonly projectId: string; readonly answerRunId: string },
+): AIExecutionPin => {
+  if (pin.projectId !== expected.projectId || pin.answerRunId !== expected.answerRunId) {
+    throw executionError(
+      'PROJECT_ACCESS_DENIED',
+      'The AI execution identity is bound to a different Project or AnswerRun.',
+      'validate-execution-pin',
+    );
+  }
+  const identifiers = [
+    pin.providerId,
+    pin.modelId,
+    pin.credentialId,
+    pin.initialProviderPolicyFingerprint,
+  ];
+  if (identifiers.some((value) => typeof value !== 'string' || value.trim().length === 0)) {
+    throw executionError(
+      'CONFIGURATION_REQUIRED',
+      'The AI execution identity is incomplete.',
+      'validate-execution-pin',
+    );
+  }
+  if (
+    !Number.isSafeInteger(pin.aiConfigurationRevision) ||
+    pin.aiConfigurationRevision < 1 ||
+    !Number.isSafeInteger(pin.credentialRevision) ||
+    pin.credentialRevision < 1 ||
+    Number.isNaN(Date.parse(pin.createdAt))
+  ) {
+    throw executionError(
+      'CONFIGURATION_REQUIRED',
+      'The AI execution identity contains an invalid revision or timestamp.',
+      'validate-execution-pin',
+    );
+  }
+  return Object.freeze({ ...pin });
 };
 
 export type AskAnswerExecutionRepositoryPort = {
@@ -148,7 +247,22 @@ export type AskAnswerExecutionRepositoryPort = {
     scope: AskExecutionScope,
     answerRunId: string,
     workerId?: string,
+    executionPin?: AIExecutionPin,
   ): Promise<AskClaimedExecution | undefined>;
+  readExecutionPin(
+    scope: AskExecutionScope,
+    answerRunId: string,
+  ): Promise<AIExecutionPin | undefined>;
+  createExecutionPinIfAbsent(input: {
+    readonly scope: AskExecutionScope;
+    readonly answerRunId: string;
+    readonly executionPin: AIExecutionPin;
+  }): Promise<AIExecutionPin>;
+  readExactAttemptIdentity(input: {
+    readonly scope: AskExecutionScope;
+    readonly answerRunId: string;
+    readonly attemptId: string;
+  }): Promise<AskExecutionAttempt | undefined>;
   retryAndClaim(input: {
     readonly scope: AskExecutionScope;
     readonly answerRunId: string;
@@ -197,6 +311,7 @@ export type AskAnswerExecutionRepositoryPort = {
     readonly answerRunId: string;
     readonly attemptId: string;
     readonly dataPolicyVersion: string;
+    readonly effectiveProviderPolicyFingerprint?: string;
     readonly workerId: string;
   }): Promise<void>;
   heartbeatAttempt(input: {
@@ -247,6 +362,7 @@ export type AskAnswerExecutionRepositoryPort = {
   claimQueuedForWorker(
     workerId?: string,
     limit?: number,
+    resolveInitialIdentity?: AskInitialExecutionIdentityResolver,
   ): Promise<
     readonly {
       readonly scope: AskExecutionScope;
@@ -405,13 +521,16 @@ export class AskAnswerExecutionService {
     options: {
       readonly maxConcurrency?: number;
       readonly providerPolicy?: AskProviderPolicyResolverPort;
+      readonly executionIdentityResolver?: AskExecutionIdentityResolverPort;
     } = {},
   ) {
     this.maxConcurrency = Math.max(1, Math.floor(options.maxConcurrency ?? 4));
     this.providerPolicy = options.providerPolicy;
+    this.executionIdentityResolver = options.executionIdentityResolver;
   }
 
   private readonly providerPolicy?: AskProviderPolicyResolverPort;
+  private readonly executionIdentityResolver?: AskExecutionIdentityResolverPort;
 
   async enqueue(input: AskExecutionScope & { readonly answerRunId: string }): Promise<void> {
     // HTTP enqueue is only a wake hint. The durable worker owns claim and execution.
@@ -419,10 +538,19 @@ export class AskAnswerExecutionService {
   }
 
   async execute(scope: AskExecutionScope, answerRunId: string): Promise<AskAnswerRunSnapshot> {
-    const claimed = await this.repository.claimInitial(scope, answerRunId, this.workerId);
+    const current = await this.repository.getRunContext(scope, answerRunId);
+    if (!current) throw executionError('NOT_FOUND', 'The AnswerRun was not found.', 'execute');
+    const executionPin =
+      current.snapshot.state === 'QUEUED' && this.executionIdentityResolver
+        ? await this.resolveInitialExecutionIdentity(scope, answerRunId)
+        : current.executionPin;
+    const claimed = await this.repository.claimInitial(
+      scope,
+      answerRunId,
+      this.workerId,
+      executionPin,
+    );
     if (!claimed) {
-      const current = await this.repository.getRunContext(scope, answerRunId);
-      if (!current) throw executionError('NOT_FOUND', 'The AnswerRun was not found.', 'execute');
       return current.snapshot;
     }
     return this.runClaimed(scope, claimed);
@@ -619,7 +747,14 @@ export class AskAnswerExecutionService {
         if (stopRequested) return;
         const capacity = this.maxConcurrency - this.inFlight.size;
         if (capacity <= 0) return;
-        const claimed = await this.repository.claimQueuedForWorker(this.workerId, capacity);
+        const claimed = await this.repository.claimQueuedForWorker(
+          this.workerId,
+          capacity,
+          this.executionIdentityResolver
+            ? ({ scope: queuedScope, answerRunId: queuedAnswerRunId }) =>
+                this.resolveInitialExecutionIdentity(queuedScope, queuedAnswerRunId)
+            : undefined,
+        );
         for (const { scope, claimed: execution } of claimed) {
           if (this.inFlight.size >= this.maxConcurrency) break;
           void this.runClaimed(scope, execution);
@@ -701,15 +836,30 @@ export class AskAnswerExecutionService {
         });
     }, 5_000);
     try {
-      const effectiveProviderPolicy = await this.resolveProviderPolicy(
+      const executionPin = attempt.executionPin ?? context.executionPin;
+      await this.revalidateExecutionIdentity(scope, context, attempt);
+      if (
+        executionPin &&
+        (this.provider.identity.provider !== executionPin.providerId ||
+          this.provider.identity.model !== executionPin.modelId)
+      ) {
+        throw executionError(
+          'CONFIGURATION_REQUIRED',
+          'The provider invocation does not match the immutable AI execution identity.',
+          'validate-provider-identity',
+        );
+      }
+      const effectiveProviderPolicy = await this.resolveEffectiveProviderPolicy(
         scope.projectId,
         context.context,
+        attempt,
       );
       await this.repository.setAttemptAudit({
         scope,
         answerRunId: context.snapshot.answerRunId,
         attemptId: attempt.attemptId,
         dataPolicyVersion: effectiveProviderPolicy.policyFingerprint,
+        effectiveProviderPolicyFingerprint: effectiveProviderPolicy.policyFingerprint,
         workerId,
       });
       if (context.contextStatus === 'NO_SUPPORTED_ANSWER') {
@@ -742,6 +892,7 @@ export class AskAnswerExecutionService {
           eligible: effectiveProviderPolicy.eligible,
           policyFingerprint: effectiveProviderPolicy.policyFingerprint,
         },
+        ...(executionPin ? { executionPin } : {}),
         signal: controller.signal,
         onPartial: async (partialText) => {
           if (!partialText.trim() || controller.signal.aborted) return;
@@ -755,6 +906,17 @@ export class AskAnswerExecutionService {
           });
         },
       });
+      if (
+        executionPin &&
+        (result.provider.provider !== executionPin.providerId ||
+          result.provider.model !== executionPin.modelId)
+      ) {
+        throw executionError(
+          'CONFIGURATION_REQUIRED',
+          'The provider result does not match the immutable AI execution identity.',
+          'validate-provider-result-identity',
+        );
+      }
       const cancellation = await this.cancellationStatus(
         scope,
         context.snapshot.answerRunId,
@@ -884,6 +1046,87 @@ export class AskAnswerExecutionService {
       },
       message: 'The selected authoritative context is eligible for the configured AI provider.',
     };
+  }
+
+  private async resolveEffectiveProviderPolicy(
+    projectId: string,
+    context: readonly AskExecutionContextItem[],
+    attempt: AskExecutionAttempt,
+  ) {
+    if (attempt.kind === 'RETRY_SAME_CONTEXT' && attempt.executionPin) {
+      return {
+        schemaVersion: '1.0.0' as const,
+        eligible: true,
+        reason: 'ELIGIBLE' as const,
+        requiredAction: 'NONE' as const,
+        policyFingerprint: attempt.executionPin.initialProviderPolicyFingerprint,
+        policyContextRevision: attempt.policyContextRevision,
+        provider: {
+          displayName: this.provider.identity.provider,
+          model: this.provider.identity.model,
+        },
+        message: 'The original pinned provider policy remains in force for this retry.',
+      };
+    }
+    return this.resolveProviderPolicy(projectId, context);
+  }
+
+  private async resolveInitialExecutionIdentity(
+    scope: AskExecutionScope,
+    answerRunId: string,
+  ): Promise<AIExecutionPin> {
+    if (!this.executionIdentityResolver) {
+      throw executionError(
+        'CONFIGURATION_REQUIRED',
+        'No AI execution identity resolver is configured.',
+        'resolve-initial-execution-identity',
+      );
+    }
+    const context = await this.repository.getRunContext(scope, answerRunId);
+    if (!context)
+      throw executionError(
+        'NOT_FOUND',
+        'The AnswerRun was not found.',
+        'resolve-initial-execution-identity',
+      );
+    return validateAIExecutionPin(
+      await this.executionIdentityResolver.resolveInitialAIExecutionIdentity({
+        principalId: scope.principalId,
+        projectId: scope.projectId,
+        answerRunId,
+        authorizedContext: context,
+      }),
+      { projectId: scope.projectId, answerRunId },
+    );
+  }
+
+  private async revalidateExecutionIdentity(
+    scope: AskExecutionScope,
+    context: AskExecutionRunContext,
+    attempt: AskExecutionAttempt,
+  ): Promise<void> {
+    const executionPin = attempt.executionPin ?? context.executionPin;
+    if (!executionPin) return;
+    if (!this.executionIdentityResolver) {
+      throw executionError(
+        'AI_CAPABILITY_UNAVAILABLE',
+        'The pinned credential cannot be revalidated in this execution process.',
+        'revalidate-pinned-credential',
+      );
+    }
+    const result = await this.executionIdentityResolver.revalidatePinnedCredential({
+      principalId: scope.principalId,
+      projectId: scope.projectId,
+      answerRunId: context.snapshot.answerRunId,
+      executionPin,
+    });
+    if (typeof result === 'boolean' ? !result : !result.available) {
+      throw executionError(
+        'AI_CAPABILITY_UNAVAILABLE',
+        'The pinned credential revision is unavailable; no newer credential was substituted.',
+        'revalidate-pinned-credential',
+      );
+    }
   }
 
   private async cancellationStatus(

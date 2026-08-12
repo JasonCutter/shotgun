@@ -31,15 +31,19 @@ import type {
 import {
   askExecutionContextDigest,
   highestSensitivity,
+  sameAIExecutionPin,
+  validateAIExecutionPin,
 } from '../../../modules/frontend-ask-execution/src/index.js';
 import type {
   AskAnswerExecutionRepositoryPort,
   AskClaimedExecution,
+  AIExecutionPin,
   AskExecutionContextItem,
   AskExecutionAttempt,
   AskExecutionRunContext,
   AskExecutionScope,
   AskExecutionTransactionPort,
+  AskInitialExecutionIdentityResolver,
   AskSourceVersionContextReaderPort,
   AskWorkerLeaseState,
 } from '../../../modules/frontend-ask-execution/src/index.js';
@@ -54,6 +58,37 @@ type RunRow = QueryResultRow & {
   readonly sensitivity_clearance: AskExecutionScope['sensitivityClearance'];
   readonly access_revision: string;
   readonly policy_context_revision: string;
+  readonly provider_id: string | null;
+  readonly model_id: string | null;
+  readonly ai_configuration_revision: number | null;
+  readonly credential_id: string | null;
+  readonly credential_revision: number | null;
+  readonly initial_provider_policy_fingerprint: string | null;
+  readonly ai_execution_pin_created_at: Date | null;
+};
+
+type AttemptRow = QueryResultRow & {
+  readonly attempt_id: string;
+  readonly answer_run_id: string;
+  readonly project_id: string;
+  readonly attempt_number: number;
+  readonly attempt_kind: AskExecutionAttempt['kind'];
+  readonly access_revision: string;
+  readonly policy_context_revision: string;
+  readonly resolved_context_digest: string | null;
+  readonly query_plan_revision: string | null;
+  readonly resolved_sensitivity: AskExecutionScope['sensitivityClearance'];
+  readonly provider_id: string | null;
+  readonly model_id: string | null;
+  readonly ai_configuration_revision: number | null;
+  readonly credential_id: string | null;
+  readonly credential_revision: number | null;
+  readonly initial_provider_policy_fingerprint: string | null;
+  readonly ai_execution_pin_created_at: Date | null;
+  readonly effective_provider_policy_fingerprint: string | null;
+  readonly data_policy_version: string | null;
+  readonly provider_response_id: string | null;
+  readonly lease_owner: string | null;
 };
 
 type EvidenceRow = QueryResultRow & {
@@ -145,6 +180,79 @@ export const assertSameContextDigest = (expected: string | null, resolved: strin
   if (!expected || expected !== resolved) throw staleContext();
 };
 
+type ExecutionPinColumns = {
+  readonly answer_run_id: string;
+  readonly project_id: string;
+  readonly provider_id: string | null;
+  readonly model_id: string | null;
+  readonly ai_configuration_revision: number | null;
+  readonly credential_id: string | null;
+  readonly credential_revision: number | null;
+  readonly initial_provider_policy_fingerprint: string | null;
+  readonly ai_execution_pin_created_at: Date | null;
+};
+
+const executionPinFromColumns = (row: ExecutionPinColumns): AIExecutionPin | undefined => {
+  const values = [
+    row.provider_id,
+    row.model_id,
+    row.ai_configuration_revision,
+    row.credential_id,
+    row.credential_revision,
+    row.initial_provider_policy_fingerprint,
+    row.ai_execution_pin_created_at,
+  ];
+  if (values.every((value) => value === null)) return undefined;
+  if (values.some((value) => value === null)) {
+    throw invalid('The persisted AI execution identity is incomplete.');
+  }
+  return validateAIExecutionPin(
+    {
+      answerRunId: row.answer_run_id,
+      projectId: row.project_id,
+      providerId: row.provider_id as string,
+      modelId: row.model_id as string,
+      aiConfigurationRevision: row.ai_configuration_revision as number,
+      credentialId: row.credential_id as string,
+      credentialRevision: row.credential_revision as number,
+      initialProviderPolicyFingerprint: row.initial_provider_policy_fingerprint as string,
+      createdAt: (row.ai_execution_pin_created_at as Date).toISOString(),
+    },
+    { projectId: row.project_id, answerRunId: row.answer_run_id },
+  );
+};
+
+const attemptFromRow = (row: AttemptRow): AskExecutionAttempt => {
+  const pin = executionPinFromColumns(row);
+  return {
+    attemptId: row.attempt_id,
+    attemptNumber: Number(row.attempt_number),
+    kind: row.attempt_kind,
+    accessRevision: row.access_revision,
+    policyContextRevision: row.policy_context_revision,
+    resolvedContextDigest: row.resolved_context_digest ?? '',
+    queryPlanRevision: row.query_plan_revision ?? '',
+    resolvedSensitivity: row.resolved_sensitivity,
+    ...(row.data_policy_version ? { dataPolicyVersion: row.data_policy_version } : {}),
+    ...(row.effective_provider_policy_fingerprint
+      ? { effectiveProviderPolicyFingerprint: row.effective_provider_policy_fingerprint }
+      : {}),
+    ...(row.provider_response_id ? { providerResponseId: row.provider_response_id } : {}),
+    ...(row.lease_owner ? { leaseOwner: row.lease_owner } : {}),
+    ...(pin
+      ? {
+          executionPin: pin,
+          providerId: pin.providerId,
+          modelId: pin.modelId,
+          aiConfigurationRevision: pin.aiConfigurationRevision,
+          credentialId: pin.credentialId,
+          credentialRevision: pin.credentialRevision,
+          initialProviderPolicyFingerprint: pin.initialProviderPolicyFingerprint,
+        }
+      : {}),
+  };
+};
+
 const readScope = (scope: AskExecutionScope): AskReadScope => ({
   principalId: scope.principalId,
   sessionId: 'ask-execution',
@@ -186,7 +294,72 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
       throw error;
     }
     const resolved = await this.resolveContext(scope, snapshot);
-    return { snapshot, ...resolved };
+    const pin = await this.readExecutionPin(scope, answerRunId);
+    return { snapshot, ...resolved, ...(pin ? { executionPin: pin } : {}) };
+  }
+
+  async readExecutionPin(
+    scope: AskExecutionScope,
+    answerRunId: string,
+  ): Promise<AIExecutionPin | undefined> {
+    const result = await this.pool.query<ExecutionPinColumns>(
+      `SELECT answer_run_id, project_id, provider_id, model_id,
+              ai_configuration_revision, credential_id::text, credential_revision,
+              initial_provider_policy_fingerprint, ai_execution_pin_created_at
+       FROM frontend_ask.answer_runs
+       WHERE answer_run_id = $1 AND project_id = $2`,
+      [answerRunId, scope.projectId],
+    );
+    const row = result.rows[0];
+    return row ? executionPinFromColumns(row) : undefined;
+  }
+
+  async createExecutionPinIfAbsent(input: {
+    readonly scope: AskExecutionScope;
+    readonly answerRunId: string;
+    readonly executionPin: AIExecutionPin;
+  }): Promise<AIExecutionPin> {
+    const pin = validateAIExecutionPin(input.executionPin, {
+      projectId: input.scope.projectId,
+      answerRunId: input.answerRunId,
+    });
+    return this.poolTransaction(async (client) => {
+      const row = await this.lockRun(client, input.scope, input.answerRunId);
+      if (!row) throw notFound();
+      const existing = executionPinFromColumns(row);
+      if (existing) {
+        if (!sameAIExecutionPin(existing, pin)) {
+          throw invalid('The AnswerRun already has a different AI execution identity.');
+        }
+        return existing;
+      }
+      await this.updateRun(client, input.scope, input.answerRunId, {
+        executionPin: pin,
+        eventRevision: Number(row.event_revision),
+      });
+      return pin;
+    });
+  }
+
+  async readExactAttemptIdentity(input: {
+    readonly scope: AskExecutionScope;
+    readonly answerRunId: string;
+    readonly attemptId: string;
+  }): Promise<AskExecutionAttempt | undefined> {
+    const result = await this.pool.query<AttemptRow>(
+      `SELECT attempt_id, answer_run_id, project_id, attempt_number, attempt_kind,
+              access_revision, policy_context_revision, resolved_context_digest,
+              query_plan_revision, resolved_sensitivity, provider_id, model_id,
+              ai_configuration_revision, credential_id::text, credential_revision,
+              initial_provider_policy_fingerprint, ai_execution_pin_created_at,
+              effective_provider_policy_fingerprint, data_policy_version,
+              provider_response_id, lease_owner
+       FROM frontend_ask.answer_run_attempts
+       WHERE attempt_id = $1 AND answer_run_id = $2 AND project_id = $3`,
+      [input.attemptId, input.answerRunId, input.scope.projectId],
+    );
+    const row = result.rows[0];
+    return row ? attemptFromRow(row) : undefined;
   }
 
   private async resolveContext(
@@ -338,6 +511,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     scope: AskExecutionScope,
     answerRunId: string,
     workerId?: string,
+    executionPin?: AIExecutionPin,
   ): Promise<AskClaimedExecution | undefined> {
     const context = await this.getRunContext(scope, answerRunId);
     if (!context || context.snapshot.state !== 'QUEUED') return undefined;
@@ -351,6 +525,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
         scope,
         'INITIAL',
         workerId ?? `ask-worker-${process.pid}-${randomUUID()}`,
+        executionPin,
       );
     });
     return claimed;
@@ -368,8 +543,12 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
         ? ((await this.loadAttemptContext(input.scope, current.snapshot)) ?? current)
         : current;
     if (!context) throw notFound();
+    const contextWithPin =
+      current?.executionPin && !context.executionPin
+        ? { ...context, executionPin: current.executionPin }
+        : context;
     const claimed = await this.poolTransaction((client) =>
-      this.retryAndClaimWithClient(client, input, context),
+      this.retryAndClaimWithClient(client, input, contextWithPin),
     );
     if (!claimed) throw notFound();
     return claimed;
@@ -464,6 +643,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
       readonly workerId?: string;
     },
     context: AskExecutionRunContext,
+    executionPin?: AIExecutionPin,
   ): Promise<AskClaimedExecution> {
     const row = await this.lockRun(client, input.scope, input.answerRunId);
     if (!row) throw notFound();
@@ -477,6 +657,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
       input.scope,
       input.mode === 'SAME_CONTEXT' ? 'RETRY_SAME_CONTEXT' : 'RETRY_CURRENT_POLICY',
       input.workerId ?? `ask-worker-${process.pid}-${randomUUID()}`,
+      executionPin,
     );
   }
 
@@ -1153,18 +1334,22 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     readonly answerRunId: string;
     readonly attemptId: string;
     readonly dataPolicyVersion: string;
+    readonly effectiveProviderPolicyFingerprint?: string;
     readonly workerId: string;
   }): Promise<void> {
     const result = await this.pool.query(
       `UPDATE frontend_ask.answer_run_attempts
-       SET data_policy_version = $4, heartbeat_at = $5, updated_at = $5
+       SET data_policy_version = $4,
+           effective_provider_policy_fingerprint = COALESCE($5, effective_provider_policy_fingerprint),
+           heartbeat_at = $6, updated_at = $6
        WHERE attempt_id = $1 AND answer_run_id = $2 AND project_id = $3
-          AND state = 'RUNNING' AND lease_owner = $6 AND lease_expires_at >= now()`,
+          AND state = 'RUNNING' AND lease_owner = $7 AND lease_expires_at >= now()`,
       [
         input.attemptId,
         input.answerRunId,
         input.scope.projectId,
         input.dataPolicyVersion,
+        input.effectiveProviderPolicyFingerprint ?? null,
         new Date().toISOString(),
         input.workerId,
       ],
@@ -1264,7 +1449,11 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
                 ? ((await this.loadAttemptContext(input.scope, current.snapshot)) ?? current)
                 : current;
             if (!context) throw notFound();
-            return this.retryAndClaimWithClient(client, input, context);
+            const contextWithPin =
+              current?.executionPin && !context.executionPin
+                ? { ...context, executionPin: current.executionPin }
+                : context;
+            return this.retryAndClaimWithClient(client, input, contextWithPin);
           },
           saveExport: (input) => this.saveExportWithClient(client, input),
           saveFeedback: (input) => this.saveFeedbackWithClient(client, input),
@@ -1393,6 +1582,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
   async claimQueuedForWorker(
     workerId?: string,
     limit = 32,
+    resolveInitialIdentity?: AskInitialExecutionIdentityResolver,
   ): Promise<
     readonly {
       readonly scope: AskExecutionScope;
@@ -1403,7 +1593,9 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     const result = await this.pool.query<RunRow>(
       `SELECT answer_run_id, project_id, state, attempt_number, event_revision,
               access_scope, sensitivity_clearance, access_revision,
-              policy_context_revision
+              policy_context_revision, provider_id, model_id,
+              ai_configuration_revision, credential_id, credential_revision,
+              initial_provider_policy_fingerprint, ai_execution_pin_created_at
        FROM frontend_ask.answer_runs
        WHERE state = 'QUEUED'
        ORDER BY created_at, answer_run_id
@@ -1420,7 +1612,10 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
         sensitivityClearance: row.sensitivity_clearance,
         accessScope: row.access_scope,
       };
-      const execution = await this.claimInitial(scope, row.answer_run_id, owner);
+      const executionPin = resolveInitialIdentity
+        ? await resolveInitialIdentity({ scope, answerRunId: row.answer_run_id })
+        : undefined;
+      const execution = await this.claimInitial(scope, row.answer_run_id, owner, executionPin);
       if (execution) claimed.push({ scope, claimed: execution });
     }
     return claimed;
@@ -1433,7 +1628,19 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     scope: AskExecutionScope,
     kind: AskExecutionAttempt['kind'],
     workerId: string,
+    executionPin?: AIExecutionPin,
   ): Promise<AskClaimedExecution> {
+    const pin = executionPin ?? context.executionPin;
+    if (pin) {
+      const validated = validateAIExecutionPin(pin, {
+        projectId: scope.projectId,
+        answerRunId: row.answer_run_id,
+      });
+      if (context.executionPin && !sameAIExecutionPin(context.executionPin, validated)) {
+        throw invalid('The execution context contains a divergent AI execution identity.');
+      }
+      await this.persistExecutionPin(client, scope, row, validated);
+    }
     const attemptNumber = Number(row.attempt_number) + 1;
     const accessRevision =
       kind === 'RETRY_SAME_CONTEXT' ? context.snapshot.accessRevision : scope.accessRevision;
@@ -1448,9 +1655,15 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
           attempt_id, answer_run_id, project_id, attempt_number, attempt_kind,
           state, access_revision, policy_context_revision, resolved_context_digest,
            query_plan_revision, context_supported, resolved_sensitivity,
+           provider_id, model_id, ai_configuration_revision, credential_id,
+           credential_revision, initial_provider_policy_fingerprint,
+           effective_provider_policy_fingerprint,
+           ai_execution_pin_created_at,
            created_at, updated_at,
            started_at, heartbeat_at, lease_owner, lease_expires_at
-        ) VALUES ($1, $2, $3, $4, $5, 'RUNNING', $6, $7, $8, $9, $10, $11, $12, $12, $12, $12, $13, $14)`,
+        ) VALUES ($1, $2, $3, $4, $5, 'RUNNING', $6, $7, $8, $9, $10, $11,
+                  $12, $13, $14, $15, $16, $17, $17, $18,
+                  $19, $19, $19, $19, $20, $21)`,
       [
         attemptId,
         row.answer_run_id,
@@ -1463,6 +1676,13 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
         context.queryPlanRevision,
         context.contextStatus === 'SUPPORTED',
         highestSensitivity(context.context),
+        pin?.providerId ?? null,
+        pin?.modelId ?? null,
+        pin?.aiConfigurationRevision ?? null,
+        pin?.credentialId ?? null,
+        pin?.credentialRevision ?? null,
+        pin?.initialProviderPolicyFingerprint ?? null,
+        pin?.createdAt ?? null,
         createdAt,
         workerId,
         new Date(Date.now() + 30_000).toISOString(),
@@ -1518,6 +1738,17 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
         resolvedContextDigest: context.resolvedContextDigest,
         queryPlanRevision: context.queryPlanRevision,
         resolvedSensitivity: highestSensitivity(context.context),
+        ...(pin
+          ? {
+              executionPin: pin,
+              providerId: pin.providerId,
+              modelId: pin.modelId,
+              aiConfigurationRevision: pin.aiConfigurationRevision,
+              credentialId: pin.credentialId,
+              credentialRevision: pin.credentialRevision,
+              initialProviderPolicyFingerprint: pin.initialProviderPolicyFingerprint,
+            }
+          : {}),
         leaseOwner: workerId,
       },
       context: {
@@ -1537,8 +1768,28 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
         contextStatus: context.contextStatus,
         resolvedContextDigest: context.resolvedContextDigest,
         queryPlanRevision: context.queryPlanRevision,
+        ...(pin ? { executionPin: pin } : {}),
       },
     };
+  }
+
+  private async persistExecutionPin(
+    client: PoolClient,
+    scope: AskExecutionScope,
+    row: RunRow,
+    pin: AIExecutionPin,
+  ): Promise<void> {
+    const existing = executionPinFromColumns(row);
+    if (existing) {
+      if (!sameAIExecutionPin(existing, pin)) {
+        throw invalid('The AnswerRun already has a different AI execution identity.');
+      }
+      return;
+    }
+    await this.updateRun(client, scope, row.answer_run_id, {
+      executionPin: pin,
+      eventRevision: Number(row.event_revision),
+    });
   }
 
   private async lockRun(
@@ -1549,7 +1800,9 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     const result = await client.query<RunRow>(
       `SELECT answer_run_id, project_id, state, attempt_number, event_revision,
               access_scope, sensitivity_clearance, access_revision,
-              policy_context_revision
+              policy_context_revision, provider_id, model_id,
+              ai_configuration_revision, credential_id, credential_revision,
+              initial_provider_policy_fingerprint, ai_execution_pin_created_at
        FROM frontend_ask.answer_runs
        WHERE answer_run_id = $1 AND project_id = $2
        FOR UPDATE`,
@@ -1573,6 +1826,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
       readonly eventRevision: number;
       readonly accessRevision?: string;
       readonly policyContextRevision?: string;
+      readonly executionPin?: AIExecutionPin;
     },
   ): Promise<void> {
     const provider = patch.provider;
@@ -1598,7 +1852,14 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
            event_revision = $19,
            access_revision = COALESCE($20, access_revision),
            policy_context_revision = COALESCE($21, policy_context_revision),
-           updated_at = $22
+           provider_id = COALESCE($22, provider_id),
+           model_id = COALESCE($23, model_id),
+           ai_configuration_revision = COALESCE($24, ai_configuration_revision),
+           credential_id = COALESCE($25, credential_id),
+           credential_revision = COALESCE($26, credential_revision),
+           initial_provider_policy_fingerprint = COALESCE($27, initial_provider_policy_fingerprint),
+           ai_execution_pin_created_at = COALESCE($28, ai_execution_pin_created_at),
+           updated_at = $29
        WHERE answer_run_id = $1 AND project_id = $2`,
       [
         answerRunId,
@@ -1622,6 +1883,13 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
         patch.eventRevision,
         patch.accessRevision ?? null,
         patch.policyContextRevision ?? null,
+        patch.executionPin?.providerId ?? null,
+        patch.executionPin?.modelId ?? null,
+        patch.executionPin?.aiConfigurationRevision ?? null,
+        patch.executionPin?.credentialId ?? null,
+        patch.executionPin?.credentialRevision ?? null,
+        patch.executionPin?.initialProviderPolicyFingerprint ?? null,
+        patch.executionPin?.createdAt ?? null,
         new Date().toISOString(),
       ],
     );

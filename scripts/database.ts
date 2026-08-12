@@ -133,6 +133,8 @@ const requiredTables = [
   'evidence.spans',
   'ai.provider_calls',
   'ai.provider_credentials',
+  'ai.project_ai_configurations',
+  'ai.project_ai_configuration_revisions',
   'candidate.claim_candidates',
   'validation.results',
   'comparison.results',

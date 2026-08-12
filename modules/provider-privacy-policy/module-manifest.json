@@ -1,0 +1,39 @@
+{
+  "id": "a4.provider-privacy-deployment-authority",
+  "version": "1.0.0",
+  "owner": "Shotgun Provider Privacy & Deployment Authority",
+  "compatibility": {
+    "runtime": ">=1.0.0 <2.0.0",
+    "contracts": [
+      { "name": "ProviderExternalTransferApproval", "range": ">=1.0.0 <2.0.0" },
+      { "name": "ProviderDeploymentCeiling", "range": ">=1.0.0 <2.0.0" }
+    ]
+  },
+  "deployment": { "modes": ["in_process", "worker"] },
+  "dataOwnership": {
+    "owns": [
+      "settings.provider_external_transfer_approvals",
+      "settings.provider_external_transfer_approval_revisions"
+    ],
+    "readsViaPorts": ["ProviderRegistryAuthorityPort", "ProjectOwnerAuthority"],
+    "directSchemaAccess": false
+  },
+  "consumes": { "commands": [], "events": [] },
+  "produces": { "events": [] },
+  "provides": {
+    "queries": [
+      { "name": "ProviderExternalTransferApproval", "range": ">=1.0.0 <2.0.0" },
+      { "name": "ProviderDeploymentCeiling", "range": ">=1.0.0 <2.0.0" }
+    ],
+    "capabilities": [{ "name": "provider-privacy-deployment-authority", "priority": 100 }]
+  },
+  "requires": { "capabilities": [{ "name": "provider-registry", "range": ">=1.0.0 <2.0.0" }] },
+  "security": {
+    "requiredContext": ["project", "provider", "owner_review", "approval_revision"],
+    "defaultOnMissingContext": "deny"
+  },
+  "approvalPolicy": {
+    "canWriteCanonical": false,
+    "canExecuteExternalAction": false
+  }
+}

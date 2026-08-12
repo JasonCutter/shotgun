@@ -9,7 +9,7 @@
   },
   "expectedRange": {
     "start": 1,
-    "end": 142,
+    "end": 143,
     "allowedGaps": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 76, 77, 78, 95]
   },
   "gapClassifications": [
@@ -120,7 +120,7 @@
     },
     {
       "start": 134,
-      "end": 142,
+      "end": 143,
       "kind": "INDIVIDUAL_FILES",
       "path": "docs/architecture/adr",
       "filenamePattern": "ADR-NNN-*.md"

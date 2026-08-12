@@ -45,7 +45,9 @@ provider SDK was introduced. A3 keeps the replaceable `ProviderRegistryPort`,
 
 The A2 Credential Vault was not changed. The A3 service consumes only its metadata-shaped
 `getMetadata` contract, pins the requested credential revision, and rejects ownership or
-non-active lifecycle mismatches.
+non-active lifecycle mismatches. The A3 tables keep the credential ID and revision as an
+exact server-validated reference without a cross-module database FK, so the A2-owned vault
+can retain its independent append-only lifecycle and database-test isolation.
 
 ## Validation evidence
 

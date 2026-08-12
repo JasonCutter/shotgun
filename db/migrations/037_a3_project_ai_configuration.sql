@@ -13,10 +13,7 @@ CREATE TABLE ai.project_ai_configuration_revisions (
   ai_configuration_revision integer NOT NULL CHECK (ai_configuration_revision > 0),
   updated_by text NOT NULL CHECK (length(updated_by) BETWEEN 1 AND 256),
   updated_at timestamptz NOT NULL,
-  PRIMARY KEY (project_id, ai_configuration_revision),
-  CONSTRAINT project_ai_configuration_revision_credential_fk
-    FOREIGN KEY (credential_id, credential_revision)
-    REFERENCES ai.provider_credentials (credential_id, credential_revision)
+  PRIMARY KEY (project_id, ai_configuration_revision)
 );
 
 CREATE INDEX ai_project_ai_configuration_revisions_project_idx
@@ -45,10 +42,7 @@ CREATE TABLE ai.project_ai_configurations (
   updated_at timestamptz NOT NULL,
   CONSTRAINT project_ai_configuration_current_revision_fk
     FOREIGN KEY (project_id, ai_configuration_revision)
-    REFERENCES ai.project_ai_configuration_revisions (project_id, ai_configuration_revision),
-  CONSTRAINT project_ai_configuration_current_credential_fk
-    FOREIGN KEY (credential_id, credential_revision)
-    REFERENCES ai.provider_credentials (credential_id, credential_revision)
+    REFERENCES ai.project_ai_configuration_revisions (project_id, ai_configuration_revision)
 );
 
 CREATE INDEX ai_project_ai_configurations_provider_model_idx

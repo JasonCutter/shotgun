@@ -1,10 +1,11 @@
 # A2 Credential Vault & Secure Persistence — Implementation Report
 
-Status: `IMPLEMENTED / DATABASE_VERIFICATION_NOT_RUN`
+Status: `IMPLEMENTED / CI_VERIFIED`
 
-This report records the bounded A2 implementation. It is not a claim that A2
-is `COMPLETE`: the PostgreSQL focus suite and final database verification could
-not run because the environment has `DATABASE_URL` but no `TEST_DATABASE_URL`.
+This report records the bounded A2 implementation and its exact-head CI
+verification. Local PostgreSQL focus tests were not run because the environment
+has `DATABASE_URL` but no `TEST_DATABASE_URL`; the CI test database completed
+successfully.
 
 ## Evidence base and worktree
 
@@ -13,8 +14,7 @@ not run because the environment has `DATABASE_URL` but no `TEST_DATABASE_URL`.
 - The original `codex/deepseek-v4-flash-provider-switch` worktree and its
   uncommitted changes were left untouched.
 - Publication: Draft PR [#98](https://github.com/JasonCutter/shotgun/pull/98)
-  is open at head `c4eb3775789f97c0e7becdc26aad7e82161c649e`. No Ready, Merge,
-  or Deploy action is included.
+  is open. No Ready, Merge, or Deploy action is included.
 
 ## Implemented scope
 
@@ -83,12 +83,15 @@ Passed:
 - `npm run secret:scan`
 - `npm run oss:verify` — 68 decisions / 45 baseline references passed
 - `git diff --check`
+- GitHub Actions `CI #835` at head
+  `c7b8309e1d1c2d582c883320a32630aeddb39288`: Frontend, Quality, and Required
+  Gates passed; Quality database tests passed.
 
 Blocked or not run:
 
-- `tests/database/a2-credential-vault.test.ts`: `TEST_DATABASE_URL` is not
-  configured. The repository database guard correctly refuses to fall back to
-  `DATABASE_URL`.
+- Local `tests/database/a2-credential-vault.test.ts`: `TEST_DATABASE_URL` is
+  not configured. The repository database guard correctly refuses to fall back
+  to `DATABASE_URL`; the exact-head CI database tests passed separately.
 - `npm run test:database` and `npm run db:test:verify`: require the same
   separate test database and were not substituted with a production/local
   application database.
@@ -108,29 +111,30 @@ Blocked or not run:
   worktree-local cache retry timed out during package packing. No A2 package
   dependency was changed.
 
-The database migration test must pass before this work can be reported as
-`COMPLETE`. It must verify pre-existing schema survival, encrypted-only
+The exact-head CI database test passed the migration, encrypted-only
 persistence, revision replacement, exact revision rejection after rotation,
 ownership isolation, lifecycle blocking, immutable envelope fields, and
-repeat-safe migration application.
+repeat-safe migration checks. Local database execution remains intentionally
+not run because `TEST_DATABASE_URL` is absent.
 
 ## AC-01~AC-12 assessment
 
 | AC    | Assessment                                                                                                       |
 | ----- | ---------------------------------------------------------------------------------------------------------------- |
 | AC-01 | Implemented Port/service and both persistence boundaries; Product API/runtime wiring remains excluded.           |
-| AC-02 | AES-256-GCM envelope and no-plaintext unit evidence passed; PostgreSQL evidence pending.                         |
+| AC-02 | AES-256-GCM envelope and no-plaintext unit evidence passed; exact-head CI PostgreSQL evidence passed.                |
 | AC-03 | Missing/malformed master-key availability and fail-closed unit evidence passed.                                  |
 | AC-04 | Service construction is non-fatal and capability use is unavailable; application startup wiring is unchanged.    |
-| AC-05 | In-memory lifecycle evidence passed; PostgreSQL lifecycle evidence pending.                                      |
-| AC-06 | Exact revision and no substitution evidence passed in memory; PostgreSQL evidence pending.                       |
-| AC-07 | Project/provider isolation evidence passed in memory; PostgreSQL evidence pending.                               |
+| AC-05 | In-memory and exact-head CI PostgreSQL lifecycle evidence passed.                                               |
+| AC-06 | In-memory and exact-head CI PostgreSQL exact revision/no-substitution evidence passed.                         |
+| AC-07 | In-memory and exact-head CI PostgreSQL project/provider isolation evidence passed.                             |
 | AC-08 | Plaintext is available only in the bounded callback, its buffer is zeroed afterward, and metadata has no secret. |
-| AC-09 | Migration is additive and no destructive reset was run; database application evidence pending.                   |
+| AC-09 | Migration is additive; exact-head CI applied and verified it, and no local destructive reset was run.             |
 | AC-10 | No `GEMINI_API_KEY` migration or DeepSeek change is included.                                                    |
 | AC-11 | Explicitly excluded from this A2 implementation.                                                                 |
 | AC-12 | Architecture boundary test passed; module has no database/provider SDK dependency.                               |
 
-Next gate: provide a separate `TEST_DATABASE_URL` matching the repository test
-database guard, then run the focused PostgreSQL test, `npm run test:database`,
-`npm run db:test:verify`, and the final `npm run check` once on this exact head.
+Remaining authorization gate: Ready, Merge, and Deploy remain separate and
+were not requested. Local PostgreSQL checks can be repeated later with a
+dedicated `TEST_DATABASE_URL`; the required local `npm run check` attempt was
+already made once, while exact-head CI #835 passed its configured gates.

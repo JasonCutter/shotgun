@@ -1,0 +1,30 @@
+{
+  "id": "a2.credential-vault",
+  "version": "1.0.0",
+  "owner": "Shotgun Credential Vault",
+  "compatibility": {
+    "runtime": ">=1.0.0 <2.0.0",
+    "contracts": [{ "name": "CredentialVault", "range": ">=1.0.0 <2.0.0" }]
+  },
+  "deployment": { "modes": ["in_process", "worker"] },
+  "dataOwnership": {
+    "owns": ["ai.provider_credentials"],
+    "readsViaPorts": [],
+    "directSchemaAccess": false
+  },
+  "consumes": { "commands": [], "events": [] },
+  "produces": { "events": [] },
+  "provides": {
+    "queries": [{ "name": "CredentialVault", "range": ">=1.0.0 <2.0.0" }],
+    "capabilities": [{ "name": "credential-vault", "priority": 100 }]
+  },
+  "requires": { "capabilities": [] },
+  "security": {
+    "requiredContext": ["project", "provider", "credential_revision"],
+    "defaultOnMissingContext": "deny"
+  },
+  "approvalPolicy": {
+    "canWriteCanonical": false,
+    "canExecuteExternalAction": false
+  }
+}

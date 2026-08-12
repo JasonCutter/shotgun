@@ -80,6 +80,16 @@ export class PostgresCredentialVaultRepository implements CredentialVaultReposit
     return result.rows[0] ? mapRecord(result.rows[0]) : undefined;
   }
 
+  async listCurrent(projectId: string): Promise<readonly StoredCredentialRevision[]> {
+    const result = await this.pool.query<CredentialRow>(
+      `SELECT DISTINCT ON (credential_id) ${selectColumns}
+       WHERE project_id = $1
+       ORDER BY credential_id, credential_revision DESC`,
+      [projectId],
+    );
+    return result.rows.map(mapRecord);
+  }
+
   async advanceRevision(input: {
     readonly projectId: string;
     readonly providerId: string;

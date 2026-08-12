@@ -555,6 +555,108 @@ export type RequestOptions = {
   readonly signal?: AbortSignal;
 };
 
+export type AISettingsMode = 'LEGACY_GEMINI_COMPATIBILITY' | 'PROJECT_MANAGED' | 'UNCONFIGURED';
+
+export type AISettingsProviderModel = {
+  readonly providerId: string;
+  readonly modelId: string;
+  readonly displayName: string;
+  readonly shotgunUsableCapabilities: readonly string[];
+  readonly capabilityRevision: string;
+};
+
+export type AISettingsProvider = {
+  readonly providerId: string;
+  readonly displayName: string;
+  readonly status: 'active' | 'disabled';
+  readonly models: readonly AISettingsProviderModel[];
+};
+
+export type AISettingsCredentialStatus = {
+  readonly credentialId: string;
+  readonly projectId: string;
+  readonly providerId: string;
+  readonly credentialRevision: number;
+  readonly lifecycleState: 'active' | 'superseded' | 'revoked' | 'removed';
+  readonly createdAt: string;
+  readonly updatedAt: string;
+};
+
+export type AISettingsApproval = {
+  readonly projectId: string;
+  readonly providerId: string;
+  readonly approved: boolean;
+  readonly approvalRevision: number;
+  readonly reviewedBy: string;
+  readonly reviewedAt: string;
+};
+
+export type AISettingsPrivacyStatus = {
+  readonly providerId: string;
+  readonly deploymentAllowed: boolean;
+  readonly approval?: AISettingsApproval;
+  readonly legacyGeminiCompatibility: boolean;
+};
+
+export type AISettingsVaultAvailability =
+  | { readonly state: 'AVAILABLE'; readonly keyVersion: string }
+  | {
+      readonly state: 'UNAVAILABLE';
+      readonly reason:
+        'MISSING_MASTER_KEY' | 'MALFORMED_MASTER_KEY' | 'UNSUPPORTED_MASTER_KEY_VERSION';
+    };
+
+export type AISettingsConfiguration = {
+  readonly projectId: string;
+  readonly activeProviderId: string;
+  readonly activeModelId: string;
+  readonly credentialId: string;
+  readonly credentialRevision: number;
+  readonly aiConfigurationRevision: number;
+  readonly updatedBy: string;
+  readonly updatedAt: string;
+};
+
+export type AISettingsReadModel = {
+  readonly projectId: string;
+  readonly mode: AISettingsMode;
+  readonly defaultProviderId: 'deepseek';
+  readonly currentConfiguration?: AISettingsConfiguration;
+  readonly providers: readonly AISettingsProvider[];
+  readonly credentialStatuses: readonly AISettingsCredentialStatus[];
+  readonly privacy: readonly AISettingsPrivacyStatus[];
+  readonly vaultAvailability: AISettingsVaultAvailability;
+  readonly legacyGeminiCredentialConfigured: boolean;
+};
+
+export type AICredentialMetadata = {
+  readonly credentialId: string;
+  readonly projectId: string;
+  readonly providerId: string;
+  readonly encryptionVersion: string;
+  readonly keyVersion: string;
+  readonly credentialRevision: number;
+  readonly lifecycleState: 'active' | 'superseded' | 'revoked' | 'removed';
+  readonly createdAt: string;
+  readonly updatedAt: string;
+};
+
+export type AITestConnectionResult = {
+  readonly providerId: string;
+  readonly modelId: string;
+  readonly status:
+    | 'CONNECTED'
+    | 'AUTHENTICATION_FAILED'
+    | 'MODEL_UNAVAILABLE'
+    | 'RATE_LIMITED'
+    | 'TEMPORARILY_UNAVAILABLE'
+    | 'FAILED';
+  readonly checkedAt: string;
+  readonly safeMessage: string;
+  readonly errorCode?: string;
+  readonly providerRequestId?: string;
+};
+
 export type ShotgunApiClient = {
   bootstrapLocalOwner(options?: RequestOptions): Promise<ProductSessionView>;
   getSession(options?: RequestOptions): Promise<ProductSessionView>;
@@ -693,6 +795,63 @@ export type ShotgunApiClient = {
     commandId: string,
     options?: RequestOptions,
   ): Promise<SettingsCommandResult>;
+
+  getAISettings(targetProjectId?: string, options?: RequestOptions): Promise<AISettingsReadModel>;
+  createAICredential(
+    params: { readonly projectId: string; readonly providerId: string; readonly secret: string },
+    options?: RequestOptions,
+  ): Promise<AICredentialMetadata>;
+  replaceAICredential(
+    params: {
+      readonly projectId: string;
+      readonly providerId: string;
+      readonly credentialId: string;
+      readonly expectedRevision: number;
+      readonly secret: string;
+    },
+    options?: RequestOptions,
+  ): Promise<AICredentialMetadata>;
+  revokeAICredential(
+    params: {
+      readonly projectId: string;
+      readonly providerId: string;
+      readonly credentialId: string;
+      readonly credentialRevision: number;
+    },
+    options?: RequestOptions,
+  ): Promise<AICredentialMetadata>;
+  removeAICredential(
+    params: {
+      readonly projectId: string;
+      readonly providerId: string;
+      readonly credentialId: string;
+      readonly credentialRevision: number;
+    },
+    options?: RequestOptions,
+  ): Promise<AICredentialMetadata>;
+  saveAIConfiguration(
+    params: {
+      readonly projectId: string;
+      readonly expectedRevision: number;
+      readonly providerId: string;
+      readonly modelId: string;
+      readonly credentialId: string;
+      readonly credentialRevision: number;
+      readonly updatedBy?: string;
+    },
+    options?: RequestOptions,
+  ): Promise<AISettingsConfiguration>;
+  testAIConnection(
+    params: {
+      readonly projectId: string;
+      readonly providerId: string;
+      readonly modelId: string;
+      readonly credentialId?: string;
+      readonly credentialRevision?: number;
+      readonly draftSecret?: string;
+    },
+    options?: RequestOptions,
+  ): Promise<AITestConnectionResult>;
 
   getProjects(options?: RequestOptions): Promise<readonly ProjectListItemView[]>;
   getProjectDetails(projectId: string, options?: RequestOptions): Promise<ProjectListItemView>;

@@ -4,7 +4,20 @@ import {
   decodeProductSessionViewV2,
   decodeSessionBoundaryView as decodeLegacySessionBoundaryView,
 } from '../../contracts/src/index.js';
-import type { ProductApiErrorBody, ProductSessionView, SessionBoundaryView } from './contracts.js';
+import type {
+  AICredentialMetadata,
+  AISettingsApproval,
+  AISettingsConfiguration,
+  AISettingsCredentialStatus,
+  AISettingsPrivacyStatus,
+  AISettingsProvider,
+  AISettingsProviderModel,
+  AISettingsReadModel,
+  AITestConnectionResult,
+  ProductApiErrorBody,
+  ProductSessionView,
+  SessionBoundaryView,
+} from './contracts.js';
 import { invalidProductApiResponse } from './errors.js';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -121,4 +134,200 @@ export const decodeProductApiErrorBody = (value: unknown): ProductApiErrorBody |
 
 export const decodeLogoutEnvelope = (value: unknown): void => {
   if (!isRecord(value) || value.message !== 'Logged out') throw invalidProductApiResponse();
+};
+
+const aiString = (value: unknown): string => {
+  if (!nonEmptyString(value)) throw invalidProductApiResponse();
+  return value;
+};
+
+const aiNumber = (value: unknown): number => {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value)) {
+    throw invalidProductApiResponse();
+  }
+  return value;
+};
+
+const aiBoolean = (value: unknown): boolean => {
+  if (typeof value !== 'boolean') throw invalidProductApiResponse();
+  return value;
+};
+
+const decodeAIConfiguration = (value: unknown): AISettingsConfiguration => {
+  if (!isRecord(value)) throw invalidProductApiResponse();
+  return {
+    projectId: aiString(value.projectId),
+    activeProviderId: aiString(value.activeProviderId),
+    activeModelId: aiString(value.activeModelId),
+    credentialId: aiString(value.credentialId),
+    credentialRevision: aiNumber(value.credentialRevision),
+    aiConfigurationRevision: aiNumber(value.aiConfigurationRevision),
+    updatedBy: aiString(value.updatedBy),
+    updatedAt: aiString(value.updatedAt),
+  };
+};
+
+const decodeAICredentialStatus = (value: unknown): AISettingsCredentialStatus => {
+  if (!isRecord(value)) throw invalidProductApiResponse();
+  const lifecycleState = aiString(value.lifecycleState);
+  if (!['active', 'superseded', 'revoked', 'removed'].includes(lifecycleState)) {
+    throw invalidProductApiResponse();
+  }
+  return {
+    credentialId: aiString(value.credentialId),
+    projectId: aiString(value.projectId),
+    providerId: aiString(value.providerId),
+    credentialRevision: aiNumber(value.credentialRevision),
+    lifecycleState: lifecycleState as AISettingsCredentialStatus['lifecycleState'],
+    createdAt: aiString(value.createdAt),
+    updatedAt: aiString(value.updatedAt),
+  };
+};
+
+const decodeAICredentialMetadata = (value: unknown): AICredentialMetadata => {
+  if (!isRecord(value)) throw invalidProductApiResponse();
+  const lifecycleState = aiString(value.lifecycleState);
+  if (!['active', 'superseded', 'revoked', 'removed'].includes(lifecycleState)) {
+    throw invalidProductApiResponse();
+  }
+  return {
+    credentialId: aiString(value.credentialId),
+    projectId: aiString(value.projectId),
+    providerId: aiString(value.providerId),
+    encryptionVersion: aiString(value.encryptionVersion),
+    keyVersion: aiString(value.keyVersion),
+    credentialRevision: aiNumber(value.credentialRevision),
+    lifecycleState: lifecycleState as AICredentialMetadata['lifecycleState'],
+    createdAt: aiString(value.createdAt),
+    updatedAt: aiString(value.updatedAt),
+  };
+};
+
+const decodeAIProviderModel = (value: unknown): AISettingsProviderModel => {
+  if (!isRecord(value)) throw invalidProductApiResponse();
+  return {
+    providerId: aiString(value.providerId),
+    modelId: aiString(value.modelId),
+    displayName: aiString(value.displayName),
+    shotgunUsableCapabilities: Array.isArray(value.shotgunUsableCapabilities)
+      ? value.shotgunUsableCapabilities.map(aiString)
+      : [],
+    capabilityRevision: aiString(value.capabilityRevision),
+  };
+};
+
+const decodeAIProvider = (value: unknown): AISettingsProvider => {
+  if (!isRecord(value) || !Array.isArray(value.models)) throw invalidProductApiResponse();
+  const status = aiString(value.status);
+  if (status !== 'active' && status !== 'disabled') throw invalidProductApiResponse();
+  return {
+    providerId: aiString(value.providerId),
+    displayName: aiString(value.displayName),
+    status,
+    models: value.models.map(decodeAIProviderModel),
+  };
+};
+
+const decodeAIApproval = (value: unknown): AISettingsApproval => {
+  if (!isRecord(value)) throw invalidProductApiResponse();
+  return {
+    projectId: aiString(value.projectId),
+    providerId: aiString(value.providerId),
+    approved: aiBoolean(value.approved),
+    approvalRevision: aiNumber(value.approvalRevision),
+    reviewedBy: aiString(value.reviewedBy),
+    reviewedAt: aiString(value.reviewedAt),
+  };
+};
+
+const decodeAIPrivacy = (value: unknown): AISettingsPrivacyStatus => {
+  if (!isRecord(value)) throw invalidProductApiResponse();
+  return {
+    providerId: aiString(value.providerId),
+    deploymentAllowed: aiBoolean(value.deploymentAllowed),
+    ...(value.approval === undefined ? {} : { approval: decodeAIApproval(value.approval) }),
+    legacyGeminiCompatibility: aiBoolean(value.legacyGeminiCompatibility),
+  };
+};
+
+export const decodeAISettingsReadModel = (value: unknown): AISettingsReadModel => {
+  if (!isRecord(value) || !Array.isArray(value.providers)) throw invalidProductApiResponse();
+  const mode = aiString(value.mode);
+  if (!['LEGACY_GEMINI_COMPATIBILITY', 'PROJECT_MANAGED', 'UNCONFIGURED'].includes(mode)) {
+    throw invalidProductApiResponse();
+  }
+  if (!Array.isArray(value.credentialStatuses) || !Array.isArray(value.privacy)) {
+    throw invalidProductApiResponse();
+  }
+  if (!isRecord(value.vaultAvailability)) throw invalidProductApiResponse();
+  const vaultState = aiString(value.vaultAvailability.state);
+  if (vaultState === 'AVAILABLE') {
+    aiString(value.vaultAvailability.keyVersion);
+  } else if (vaultState === 'UNAVAILABLE') {
+    const reason = aiString(value.vaultAvailability.reason);
+    if (
+      !['MISSING_MASTER_KEY', 'MALFORMED_MASTER_KEY', 'UNSUPPORTED_MASTER_KEY_VERSION'].includes(
+        reason,
+      )
+    ) {
+      throw invalidProductApiResponse();
+    }
+  } else {
+    throw invalidProductApiResponse();
+  }
+  if (value.defaultProviderId !== 'deepseek') throw invalidProductApiResponse();
+  return {
+    projectId: aiString(value.projectId),
+    mode: mode as AISettingsReadModel['mode'],
+    defaultProviderId: 'deepseek',
+    ...(value.currentConfiguration === undefined
+      ? {}
+      : { currentConfiguration: decodeAIConfiguration(value.currentConfiguration) }),
+    providers: value.providers.map(decodeAIProvider),
+    credentialStatuses: value.credentialStatuses.map(decodeAICredentialStatus),
+    privacy: value.privacy.map(decodeAIPrivacy),
+    vaultAvailability:
+      vaultState === 'AVAILABLE'
+        ? { state: 'AVAILABLE', keyVersion: aiString(value.vaultAvailability.keyVersion) }
+        : {
+            state: 'UNAVAILABLE',
+            reason: aiString(value.vaultAvailability.reason) as
+              'MISSING_MASTER_KEY' | 'MALFORMED_MASTER_KEY' | 'UNSUPPORTED_MASTER_KEY_VERSION',
+          },
+    legacyGeminiCredentialConfigured: aiBoolean(value.legacyGeminiCredentialConfigured),
+  };
+};
+
+export const decodeAICredentialMetadataEnvelope = (value: unknown): AICredentialMetadata =>
+  decodeAICredentialMetadata(value);
+
+export const decodeAIConfigurationEnvelope = (value: unknown): AISettingsConfiguration =>
+  decodeAIConfiguration(value);
+
+export const decodeAITestConnectionResult = (value: unknown): AITestConnectionResult => {
+  if (!isRecord(value)) throw invalidProductApiResponse();
+  const status = aiString(value.status);
+  if (
+    ![
+      'CONNECTED',
+      'AUTHENTICATION_FAILED',
+      'MODEL_UNAVAILABLE',
+      'RATE_LIMITED',
+      'TEMPORARILY_UNAVAILABLE',
+      'FAILED',
+    ].includes(status)
+  ) {
+    throw invalidProductApiResponse();
+  }
+  return {
+    providerId: aiString(value.providerId),
+    modelId: aiString(value.modelId),
+    status: status as AITestConnectionResult['status'],
+    checkedAt: aiString(value.checkedAt),
+    safeMessage: aiString(value.safeMessage),
+    ...(typeof value.errorCode === 'string' ? { errorCode: value.errorCode } : {}),
+    ...(typeof value.providerRequestId === 'string'
+      ? { providerRequestId: value.providerRequestId }
+      : {}),
+  };
 };

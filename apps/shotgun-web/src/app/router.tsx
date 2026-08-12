@@ -15,6 +15,7 @@ import { PreferencesWorkspace } from '../routes/settings/preferences-workspace.j
 import { ProjectsWorkspace } from '../routes/settings/projects-workspace.js';
 import { ProjectDetailsWorkspace } from '../routes/settings/project-details-workspace.js';
 import { ModelsWorkspace } from '../routes/settings/models-workspace.js';
+import { AIWorkspace } from '../routes/settings/ai-workspace.js';
 import { CostsWorkspace } from '../routes/settings/costs-workspace.js';
 import { PrivacyWorkspace } from '../routes/settings/privacy-workspace.js';
 import { ConnectorsWorkspace } from '../routes/settings/connectors-workspace.js';
@@ -205,6 +206,7 @@ export const createAppRouter = (runtime: AppRuntime) =>
               element: <ProjectDetailsWorkspace />,
             },
             { path: 'models', element: <ModelsWorkspace /> },
+            { path: 'ai', element: <AIWorkspace /> },
             { path: 'costs', element: <CostsWorkspace /> },
             { path: 'privacy', element: <PrivacyWorkspace /> },
             { path: 'connectors', element: <ConnectorsWorkspace /> },

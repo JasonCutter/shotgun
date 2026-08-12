@@ -214,6 +214,44 @@ main {
   margin-top: 1rem;
 }
 
+.settings-card,
+.notice-banner {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  padding: 1.25rem;
+}
+
+.notice-banner {
+  border-color: #fbbf24;
+  background: #fffbeb;
+}
+
+.settings-card button,
+.ai-settings-workspace button {
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+  padding: 0.65rem 0.85rem;
+  font-weight: 700;
+}
+
+.settings-card button[type='submit'],
+.ai-settings-workspace button[type='submit'] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.settings-card button:disabled,
+.ai-settings-workspace button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .project-control,
 .logout-control {
   display: grid;

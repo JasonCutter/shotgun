@@ -122,14 +122,14 @@ not run because `TEST_DATABASE_URL` is absent.
 | AC    | Assessment                                                                                                       |
 | ----- | ---------------------------------------------------------------------------------------------------------------- |
 | AC-01 | Implemented Port/service and both persistence boundaries; Product API/runtime wiring remains excluded.           |
-| AC-02 | AES-256-GCM envelope and no-plaintext unit evidence passed; exact-head CI PostgreSQL evidence passed.                |
+| AC-02 | AES-256-GCM envelope and no-plaintext unit evidence passed; exact-head CI PostgreSQL evidence passed.            |
 | AC-03 | Missing/malformed master-key availability and fail-closed unit evidence passed.                                  |
 | AC-04 | Service construction is non-fatal and capability use is unavailable; application startup wiring is unchanged.    |
-| AC-05 | In-memory and exact-head CI PostgreSQL lifecycle evidence passed.                                               |
-| AC-06 | In-memory and exact-head CI PostgreSQL exact revision/no-substitution evidence passed.                         |
-| AC-07 | In-memory and exact-head CI PostgreSQL project/provider isolation evidence passed.                             |
+| AC-05 | In-memory and exact-head CI PostgreSQL lifecycle evidence passed.                                                |
+| AC-06 | In-memory and exact-head CI PostgreSQL exact revision/no-substitution evidence passed.                           |
+| AC-07 | In-memory and exact-head CI PostgreSQL project/provider isolation evidence passed.                               |
 | AC-08 | Plaintext is available only in the bounded callback, its buffer is zeroed afterward, and metadata has no secret. |
-| AC-09 | Migration is additive; exact-head CI applied and verified it, and no local destructive reset was run.             |
+| AC-09 | Migration is additive; exact-head CI applied and verified it, and no local destructive reset was run.            |
 | AC-10 | No `GEMINI_API_KEY` migration or DeepSeek change is included.                                                    |
 | AC-11 | Explicitly excluded from this A2 implementation.                                                                 |
 | AC-12 | Architecture boundary test passed; module has no database/provider SDK dependency.                               |

@@ -132,6 +132,7 @@ const requiredTables = [
   'transformation.revisions',
   'evidence.spans',
   'ai.provider_calls',
+  'ai.provider_credentials',
   'candidate.claim_candidates',
   'validation.results',
   'comparison.results',

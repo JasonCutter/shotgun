@@ -106,6 +106,11 @@ import {
   ProjectAIConfigurationService,
   initialProviderRegistry,
 } from '../../../modules/ai-configuration/src/index.js';
+import {
+  EffectiveAIConfigurationResolver,
+  UnavailableAIProviderAdapter,
+} from '../../../adapters/ai-runtime-resolution/src/index.js';
+import { AIProviderRouter } from '../../../adapters/ai-provider-router/src/index.js';
 import { FrontendProductReadCoordinator } from '../../../modules/frontend-product-read/src/index.js';
 import { SecureUrlAcquisitionCoordinator } from '../../../modules/url-acquisition/src/index.js';
 import { configureSourcesWriteRuntime } from './product-api/sources-write-runtime.js';
@@ -202,9 +207,6 @@ export const startShotgunApplication = async (
   let stopAskAnswerWorker = async (): Promise<void> => {};
   let removeSourcesWriteRuntime = (): void => {};
   try {
-    if (!recoveryHarness && !process.env.GEMINI_API_KEY) {
-      throw new Error('GEMINI_API_KEY is required for the persistent Stage 4 runtime.');
-    }
     const port = options.port ?? Number.parseInt(process.env.PORT ?? '3000', 10);
     const host = options.host ?? process.env.HOST ?? '127.0.0.1';
     const production = process.env.NODE_ENV === 'production';
@@ -273,62 +275,109 @@ export const startShotgunApplication = async (
       new PostgresCredentialVaultRepository(pool),
       new EnvironmentCredentialMasterKeyAuthority(),
     );
+    const projectAIConfiguration = new ProjectAIConfigurationService(
+      aiProviderRegistry,
+      new PostgresProjectAIConfigurationRepository(pool),
+      credentialVault,
+    );
+    const connectivityRegistry = new StaticAIProviderConnectivityRegistry([
+      new OpenAIConnectivityAdapter({ baseUrl: process.env.OPENAI_BASE_URL }),
+      new DeepSeekConnectivityAdapter({ baseUrl: process.env.DEEPSEEK_BASE_URL }),
+      new GeminiConnectivityAdapter(),
+    ]);
+    const providerApprovalService = new ProviderExternalTransferApprovalService(
+      new PostgresProviderExternalTransferApprovalRepository(pool),
+      aiProviderRegistry,
+    );
+    const legacyPrivacy = {
+      getLegacyExternalTransferAllowed: async (projectId: string) => {
+        const privacy = await settingsRepository.getPrivacyRetention(projectId);
+        return privacy.availability === 'AVAILABLE' && privacy.data.externalTransferAllowed;
+      },
+    };
     const aiSettingsBackend = new AISettingsBackendService(
       aiProviderRegistry,
-      new ProjectAIConfigurationService(
-        aiProviderRegistry,
-        new PostgresProjectAIConfigurationRepository(pool),
-        credentialVault,
-      ),
+      projectAIConfiguration,
       credentialVault,
-      new StaticAIProviderConnectivityRegistry([
-        new OpenAIConnectivityAdapter({ baseUrl: process.env.OPENAI_BASE_URL }),
-        new DeepSeekConnectivityAdapter({ baseUrl: process.env.DEEPSEEK_BASE_URL }),
-        new GeminiConnectivityAdapter(),
-      ]),
+      connectivityRegistry,
       deploymentCeiling,
-      {
-        getLegacyExternalTransferAllowed: async (projectId) => {
-          const privacy = await settingsRepository.getPrivacyRetention(projectId);
-          return privacy.availability === 'AVAILABLE' && privacy.data.externalTransferAllowed;
-        },
-      },
-      new ProviderExternalTransferApprovalService(
-        new PostgresProviderExternalTransferApprovalRepository(pool),
-        aiProviderRegistry,
-      ),
+      legacyPrivacy,
+      providerApprovalService,
       () => new Date().toISOString(),
       {
         isGeminiCredentialConfigured: () => Boolean(process.env.GEMINI_API_KEY?.trim()),
       },
     );
-    // LPA-WP5 (D12 recovery harness): recovery-only composition must not
-    // require or depend on a real AI credential and must never reach an
-    // external provider. The existing deterministic FakeAIProviderAdapter
-    // (local, no network) satisfies the same port; with the Ask worker
-    // disabled it is never invoked, so no Provider call is possible. The
-    // normal launch keeps the real Gemini provider and GEMINI_API_KEY
-    // requirement unchanged.
+    // The legacy Gemini adapter remains available only for the older durable
+    // materialization path. Ask itself uses the A8 request-time router below.
     const aiProvider = recoveryHarness
       ? new FakeAIProviderAdapter()
-      : new GeminiAIProviderAdapter({
-          apiKey: process.env.GEMINI_API_KEY as string,
-          model: process.env.GEMINI_MODEL ?? 'gemini-3.5-flash',
-        });
-    const askAnswerProvider = new StructuredAskAnswerProviderAdapter(aiProvider, {
-      allowPrivate: deploymentAllowsPrivateExternalTransfer,
-      allowRestricted: false,
-      dataPolicyVersion: 'gemini-ask-policy-v2',
-    });
+      : process.env.GEMINI_API_KEY?.trim()
+        ? new GeminiAIProviderAdapter({
+            apiKey: process.env.GEMINI_API_KEY,
+            model: process.env.GEMINI_MODEL ?? 'gemini-3.5-flash',
+          })
+        : new UnavailableAIProviderAdapter();
+    const askAnswerProvider = new StructuredAskAnswerProviderAdapter(
+      new UnavailableAIProviderAdapter(),
+      {
+        allowPrivate: true,
+        allowRestricted: false,
+        dataPolicyVersion: 'a8-fallback-provider-policy-v1',
+      },
+    );
     const askProviderPolicy = new AskProviderPolicyResolver(
       new PostgresAskProviderPolicyAuthorityReader(pool),
       {
         providerId: 'google-gemini',
         deploymentPrivateTransferAllowed: deploymentAllowsPrivateExternalTransfer,
+        deploymentPrivateTransferAllowedForProvider: (providerId) =>
+          deploymentCeiling.allows(providerId),
+        providerIdResolver: async (projectId) =>
+          (await projectAIConfiguration.getCurrent(projectId))?.activeProviderId,
+        providerModelResolver: async (projectId, providerId) => {
+          const current = await projectAIConfiguration.getCurrent(projectId);
+          return current?.activeProviderId === providerId ? current.activeModelId : undefined;
+        },
+        providerDescriptor: (providerId, modelId) => {
+          const provider = aiProviderRegistry.getProvider(providerId);
+          const model = aiProviderRegistry.getModel(
+            providerId,
+            modelId ?? provider?.models[0]?.modelId ?? '',
+          );
+          return provider && model
+            ? {
+                policyIdentity: `${provider.providerPolicyId}:${provider.providerPolicyRevision}`,
+                displayName: provider.displayName,
+                model: model.modelId,
+              }
+            : undefined;
+        },
         providerPolicyIdentity: askAnswerProvider.identity.dataPolicyVersion,
         providerDisplayName: 'Gemini',
-        providerModel: askAnswerProvider.identity.model,
+        providerModel: aiProvider.identity.model,
       },
+    );
+    const executionIdentityResolver = new EffectiveAIConfigurationResolver(
+      aiProviderRegistry,
+      projectAIConfiguration,
+      credentialVault,
+      {
+        policy: askProviderPolicy,
+        legacyAuthority: {
+          readLegacyExternalTransferAllowed: legacyPrivacy.getLegacyExternalTransferAllowed,
+          readGeminiApproval: (projectId) =>
+            providerApprovalService.getCurrent(projectId, 'google-gemini'),
+        },
+        legacyCredential: () => process.env.GEMINI_API_KEY,
+        legacyModelId: aiProviderRegistry.getProvider('google-gemini')?.models[0]?.modelId,
+      },
+    );
+    const providerRouter = new AIProviderRouter(
+      aiProviderRegistry,
+      connectivityRegistry,
+      credentialVault,
+      { legacyCredential: () => process.env.GEMINI_API_KEY },
     );
     const askAnswerExecution = new AskAnswerExecutionService(
       new PostgresAskAnswerExecutionRepository(
@@ -340,6 +389,8 @@ export const startShotgunApplication = async (
       {
         maxConcurrency: Number.parseInt(process.env.ASK_WORKER_MAX_CONCURRENCY ?? '4', 10),
         providerPolicy: askProviderPolicy,
+        executionIdentityResolver,
+        providerRouter,
       },
     );
     const askCommandCoordinator = new AskCommandCoordinator(

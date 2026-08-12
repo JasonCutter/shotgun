@@ -183,6 +183,8 @@ export class StructuredAskAnswerProviderAdapter implements AskAnswerProviderPort
         },
         request.signal,
       );
+    } else if (this.adapter.generateStructuredWithSignal) {
+      response = await this.adapter.generateStructuredWithSignal(generation, request.signal);
     } else {
       response = await this.adapter.generateStructured(generation);
     }

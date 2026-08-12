@@ -178,6 +178,17 @@ export type AskExecutionIdentityResolverPort = {
   }): Promise<boolean | { readonly available: boolean }>;
 };
 
+/**
+ * Request-time provider selection. The router is deliberately keyed by the
+ * immutable A5 pin, never by Browser input or startup configuration.
+ */
+export type AskAnswerProviderRouterPort = {
+  resolve(input: {
+    readonly scope: AskExecutionScope;
+    readonly executionPin: AIExecutionPin;
+  }): Promise<AskAnswerProviderPort>;
+};
+
 export type AskInitialExecutionIdentityResolver = (input: {
   readonly scope: AskExecutionScope;
   readonly answerRunId: string;
@@ -522,15 +533,18 @@ export class AskAnswerExecutionService {
       readonly maxConcurrency?: number;
       readonly providerPolicy?: AskProviderPolicyResolverPort;
       readonly executionIdentityResolver?: AskExecutionIdentityResolverPort;
+      readonly providerRouter?: AskAnswerProviderRouterPort;
     } = {},
   ) {
     this.maxConcurrency = Math.max(1, Math.floor(options.maxConcurrency ?? 4));
     this.providerPolicy = options.providerPolicy;
     this.executionIdentityResolver = options.executionIdentityResolver;
+    this.providerRouter = options.providerRouter;
   }
 
   private readonly providerPolicy?: AskProviderPolicyResolverPort;
   private readonly executionIdentityResolver?: AskExecutionIdentityResolverPort;
+  private readonly providerRouter?: AskAnswerProviderRouterPort;
 
   async enqueue(input: AskExecutionScope & { readonly answerRunId: string }): Promise<void> {
     // HTTP enqueue is only a wake hint. The durable worker owns claim and execution.
@@ -586,7 +600,13 @@ export class AskAnswerExecutionService {
           'retry',
         );
       }
-      const eligibility = await this.resolveProviderPolicy(scope.projectId, current.context);
+      const provider = await this.resolveProvider(scope, current.executionPin);
+      const eligibility = await this.resolveProviderPolicy(
+        scope.projectId,
+        current.context,
+        provider,
+        current.executionPin?.providerId,
+      );
       if (!eligibility.eligible) {
         throw executionError('POLICY_DENIED', eligibility.message, 'retry');
       }
@@ -605,7 +625,13 @@ export class AskAnswerExecutionService {
     if (!current)
       throw executionError('NOT_FOUND', 'The AnswerRun was not found.', 'get-answer-run');
     if (current.snapshot.failure?.code !== 'POLICY_DENIED') return current.snapshot;
-    const eligibility = await this.resolveProviderPolicy(scope.projectId, current.context);
+    const provider = await this.resolveProvider(scope, current.executionPin);
+    const eligibility = await this.resolveProviderPolicy(
+      scope.projectId,
+      current.context,
+      provider,
+      current.executionPin?.providerId,
+    );
     return {
       ...current.snapshot,
       capabilities: providerPolicyRetryCapabilities(current.snapshot, eligibility.eligible),
@@ -838,10 +864,11 @@ export class AskAnswerExecutionService {
     try {
       const executionPin = attempt.executionPin ?? context.executionPin;
       await this.revalidateExecutionIdentity(scope, context, attempt);
+      const provider = await this.resolveProvider(scope, executionPin);
       if (
         executionPin &&
-        (this.provider.identity.provider !== executionPin.providerId ||
-          this.provider.identity.model !== executionPin.modelId)
+        (provider.identity.provider !== executionPin.providerId ||
+          provider.identity.model !== executionPin.modelId)
       ) {
         throw executionError(
           'CONFIGURATION_REQUIRED',
@@ -853,6 +880,7 @@ export class AskAnswerExecutionService {
         scope.projectId,
         context.context,
         attempt,
+        provider,
       );
       await this.repository.setAttemptAudit({
         scope,
@@ -880,7 +908,7 @@ export class AskAnswerExecutionService {
           workerId,
         });
       }
-      const result = await this.provider.execute({
+      const result = await provider.execute({
         answerRunId: context.snapshot.answerRunId,
         question: context.snapshot.question,
         mode: context.snapshot.mode,
@@ -1026,11 +1054,14 @@ export class AskAnswerExecutionService {
   private async resolveProviderPolicy(
     projectId: string,
     context: readonly AskExecutionContextItem[],
+    provider: AskAnswerProviderPort = this.provider,
+    providerId?: string,
   ) {
     if (this.providerPolicy) {
       return this.providerPolicy.evaluateContext({
         projectId,
         sensitivities: context.map((item) => item.sensitivity),
+        ...(providerId === undefined ? {} : { providerId }),
       });
     }
     return {
@@ -1038,11 +1069,11 @@ export class AskAnswerExecutionService {
       eligible: true,
       reason: 'ELIGIBLE' as const,
       requiredAction: 'NONE' as const,
-      policyFingerprint: this.provider.identity.dataPolicyVersion,
+      policyFingerprint: provider.identity.dataPolicyVersion,
       policyContextRevision: 'unbound-test-policy',
       provider: {
-        displayName: this.provider.identity.provider,
-        model: this.provider.identity.model,
+        displayName: provider.identity.provider,
+        model: provider.identity.model,
       },
       message: 'The selected authoritative context is eligible for the configured AI provider.',
     };
@@ -1052,6 +1083,7 @@ export class AskAnswerExecutionService {
     projectId: string,
     context: readonly AskExecutionContextItem[],
     attempt: AskExecutionAttempt,
+    provider: AskAnswerProviderPort,
   ) {
     if (attempt.kind === 'RETRY_SAME_CONTEXT' && attempt.executionPin) {
       return {
@@ -1062,13 +1094,26 @@ export class AskAnswerExecutionService {
         policyFingerprint: attempt.executionPin.initialProviderPolicyFingerprint,
         policyContextRevision: attempt.policyContextRevision,
         provider: {
-          displayName: this.provider.identity.provider,
-          model: this.provider.identity.model,
+          displayName: provider.identity.provider,
+          model: provider.identity.model,
         },
         message: 'The original pinned provider policy remains in force for this retry.',
       };
     }
-    return this.resolveProviderPolicy(projectId, context);
+    return this.resolveProviderPolicy(
+      projectId,
+      context,
+      provider,
+      attempt.executionPin?.providerId,
+    );
+  }
+
+  private async resolveProvider(
+    scope: AskExecutionScope,
+    executionPin?: AIExecutionPin,
+  ): Promise<AskAnswerProviderPort> {
+    if (!executionPin || !this.providerRouter) return this.provider;
+    return this.providerRouter.resolve({ scope, executionPin });
   }
 
   private async resolveInitialExecutionIdentity(

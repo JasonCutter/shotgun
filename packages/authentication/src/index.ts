@@ -591,32 +591,41 @@ export type AuthenticationPort = {
 };
 
 export type LocalOwnerProvisioningService = {
-  ensureLocalOwnerIdentity(input?: { readonly defaultProjectId?: string }): Promise<{
+  ensureLocalOwnerIdentity(): Promise<{
     readonly principal: AuthenticatedPrincipal;
     readonly membership?: ProjectMembership;
   }>;
 };
 
+const selectDeterministicOwnerMembership = (
+  memberships: readonly ProjectMembership[],
+): ProjectMembership | undefined => {
+  const activeOwners = memberships.filter(isActiveOwner);
+  // The legacy project is preferred only when it is an actual durable membership;
+  // otherwise an existing UUID-based Project is selected from server authority.
+  return (
+    activeOwners.find((membership) => membership.projectId === DEFAULT_PROJECT_ID) ??
+    activeOwners.sort((left, right) => left.projectId.localeCompare(right.projectId))[0]
+  );
+};
+
 export class DefaultLocalOwnerProvisioningService implements LocalOwnerProvisioningService {
   constructor(private readonly repository: AuthRepositoryPort) {}
 
-  async ensureLocalOwnerIdentity(input?: { readonly defaultProjectId?: string }): Promise<{
+  async ensureLocalOwnerIdentity(): Promise<{
     readonly principal: AuthenticatedPrincipal;
     readonly membership?: ProjectMembership;
   }> {
-    const defaultProjectId = input?.defaultProjectId?.trim() || DEFAULT_PROJECT_ID;
     let principal = await this.repository.findPrincipalByAccountId(LOCAL_OWNER_ACCOUNT_ID);
-    let ownerMembership = await this.repository.findOwnerMembership(
-      LOCAL_OWNER_ACCOUNT_ID,
-      defaultProjectId,
-    );
     if (!principal) {
       principal = await this.repository.bootstrapLocalOwnerPrincipal({
         accountId: LOCAL_OWNER_ACCOUNT_ID,
       });
-      ownerMembership = undefined;
     }
 
+    const ownerMembership = selectDeterministicOwnerMembership(
+      await this.repository.listMemberships(principal.principalId),
+    );
     const resolvedPrincipal = await this.repository.findPrincipal(
       principal.principalId,
       'session',
@@ -726,9 +735,7 @@ export class LocalOwnerAuthenticationAdapter implements AuthenticationPort {
     }
 
     try {
-      const { principal, membership } = await this.provisioningService.ensureLocalOwnerIdentity({
-        defaultProjectId: DEFAULT_PROJECT_ID,
-      });
+      const { principal, membership } = await this.provisioningService.ensureLocalOwnerIdentity();
 
       const session = await this.repository.createSession(
         principal.principalId,

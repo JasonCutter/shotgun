@@ -4,6 +4,7 @@ import { createApplication } from '../../assemblies/shotgun-app/src/server.js';
 import {
   hashPassword,
   InMemoryAuthRepository,
+  LOCAL_OWNER_ACCOUNT_ID,
   type ProjectMembership,
 } from '../../packages/authentication/src/index.js';
 
@@ -103,6 +104,54 @@ describe('Frontend Product Session API', () => {
       'other-project',
     );
     expect(otherProjectOwner).toBeUndefined();
+
+    await app.server.close();
+  });
+
+  it('uses the durable UUID owner membership for an existing Local Owner bootstrap', async () => {
+    const projectId = 'abbde1df-e128-4076-8ed8-cf990942aad4';
+    await authRepository.bootstrapOwner({
+      accountId: LOCAL_OWNER_ACCOUNT_ID,
+      projectId,
+      scopes: ['owner'],
+      sensitivityClearance: 'private',
+    });
+    const before = await authRepository.findOwnerMembership(LOCAL_OWNER_ACCOUNT_ID, projectId);
+    if (!before) throw new Error('Fixture Local Owner membership was not created.');
+    const app = await createApplication({ authRepository, production: false });
+
+    const bootstrap = await app.server.inject({
+      method: 'POST',
+      url: '/api/v1/session/local-bootstrap',
+      payload: { projectId: 'browser-selected-project-must-not-be-authority' },
+      headers: { host: '127.0.0.1' },
+    });
+
+    expect(bootstrap.statusCode).toBe(200);
+    expect(bootstrap.json()).toMatchObject({
+      session: { activeProject: { id: projectId } },
+    });
+    const setCookie = bootstrap.headers['set-cookie'];
+    expect(setCookie).toContain('shotgun_session=');
+    const cookie = (Array.isArray(setCookie) ? setCookie[0] : setCookie)!.split(';')[0]!;
+    const restored = await app.server.inject({
+      method: 'GET',
+      url: '/api/v1/session',
+      headers: { cookie },
+    });
+    expect(restored.statusCode).toBe(200);
+    expect(restored.json()).toMatchObject({
+      session: { activeProject: { id: projectId } },
+    });
+    expect(await authRepository.findOwnerMembership(LOCAL_OWNER_ACCOUNT_ID, projectId)).toEqual(
+      before,
+    );
+    expect(
+      await authRepository.findOwnerMembership(
+        LOCAL_OWNER_ACCOUNT_ID,
+        'browser-selected-project-must-not-be-authority',
+      ),
+    ).toBeUndefined();
 
     await app.server.close();
   });

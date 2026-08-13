@@ -149,6 +149,39 @@ describe.runIf(pool)('Stage 12.1 P0-1 PostgreSQL authentication persistence', ()
       expect(await repository.listMemberships(result.principalContext.principalId)).toEqual([]);
     });
 
+    it('resolves an existing Local Owner UUID Project from durable membership without mutation', async () => {
+      const repository = new PostgresAuthRepository(pool!);
+      const projectId = 'abbde1df-e128-4076-8ed8-cf990942aad4';
+      await repository.bootstrapOwner({
+        accountId: LOCAL_OWNER_ACCOUNT_ID,
+        projectId,
+        scopes: ['owner'],
+        sensitivityClearance: 'private',
+      });
+      const before = await repository.findOwnerMembership(LOCAL_OWNER_ACCOUNT_ID, projectId);
+      if (!before) throw new Error('Fixture Local Owner membership was not created.');
+      const adapter = new LocalOwnerAuthenticationAdapter(repository);
+
+      const result = await adapter.establishSession({
+        isLoopbackBind: true,
+        isRemoteLoopback: true,
+        isSameOrigin: true,
+        localOwnerEnabled: true,
+      });
+
+      expect(result.status).toBe('authenticated');
+      if (result.status !== 'authenticated') return;
+      expect(result.session.activeProjectId).toBe(projectId);
+      expect(result.context?.projectId).toBe(projectId);
+      expect((await repository.findSession(result.session.sessionToken))?.activeProjectId).toBe(
+        projectId,
+      );
+      expect(await repository.findOwnerMembership(LOCAL_OWNER_ACCOUNT_ID, projectId)).toEqual(
+        before,
+      );
+      expect(await repository.listMemberships(before.principalId)).toEqual([before]);
+    });
+
     it('Scenario 5: repeated bootstrap creates no duplicate principal or membership', async () => {
       const repository = new PostgresAuthRepository(pool!);
       const adapter = new LocalOwnerAuthenticationAdapter(repository);

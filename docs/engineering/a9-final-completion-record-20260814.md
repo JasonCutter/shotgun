@@ -4,7 +4,8 @@
 > **Class:** `COMPLETION_RECORD`
 > **Subject canonical main:** `f6f8cddba4a7c6db465228ec5429569a23bf1429`
 > **Status authority:** `Runtime-selectable AI Settings — COMPLETE / FINAL_AFTER_MERGE / ACTUAL_USE_VERIFIED`
-> **Canonicalization boundary:** This completion record is a Candidate while PR #114 is unmerged. It becomes Canonical only when PR #114 is merged to `main`. The subject canonical main above remains the verified Program subject commit; the later completion-record merge commit does not replace that subject identity.
+
+This completion record remains a Candidate while PR #114 is unmerged and becomes Canonical only when PR #114 is merged to `main`. The subject canonical main remains the verified Program subject commit above; the later completion-record merge commit does not replace that subject identity.
 
 ## Completion decision
 
@@ -67,7 +68,7 @@ All live evidence used public/synthetic context only. Neither record contains an
 | P-AC06    | PASS         | E2E-I plus vault/backend evidence prove secret-safe create, replacement, removal, and non-disclosure boundaries.                                                    |
 | P-AC07    | PASS         | Operational provider Test Connection exists; the authorized bounded DeepSeek Test Connection succeeded with public/synthetic-only operational intent.               |
 | P-AC08    | PASS         | E2E-G/E2E-H and A4 authority evidence prove provider-specific privacy and deployment enforcement.                                                                   |
-| P-AC09    | PASS         | E2E-D/E2E-E/E2E-F and E2E-N prove immutable identity, exact credential behavior, retry, and recovery semantics.                                                     |
+| P-AC09    | PASS         | E2E-D/E2E-E2E-F and E2E-N prove immutable identity, exact credential behavior, retry, and recovery semantics.                                                       |
 | P-AC10    | PASS         | E2E-B/E2E-C prove saved provider/model/credential changes affect the next new Ask without restart.                                                                  |
 | P-AC11    | PASS         | E2E-B/E2E-C/E2E-D/E2E-N prove current Settings do not mutate in-flight or durable execution pins.                                                                   |
 | P-AC12    | PASS         | E2E-K proves legacy Gemini compatibility cannot revive after PROJECT_MANAGED transition.                                                                            |
@@ -83,16 +84,16 @@ All live evidence used public/synthetic context only. Neither record contains an
 > **Runtime-selectable AI Settings**
 > **`COMPLETE / FINAL_AFTER_MERGE / ACTUAL_USE_VERIFIED`**
 
-| State                                                                        | Final value                                                                                     |
-| ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| A9 Program completion                                                        | `COMPLETE / FINAL_AFTER_MERGE / ACTUAL_USE_VERIFIED`                                            |
-| Deployment                                                                   | `NOT_STARTED`                                                                                   |
-| Production Verification                                                      | `NOT_STARTED`                                                                                   |
-| Additional paid Ask, Retry, or Test Connection during this completion record | `NOT_EXECUTED`                                                                                  |
-| Product / test / migration change in this completion-record PR               | `NONE`                                                                                          |
-| Completion-record PR creation disposition                                    | Draft; Ready for Review and merge were not authorized at record creation — historical metadata |
+| State                                                                        | Final value                                                           |
+| ---------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| A9 Program completion                                                        | `COMPLETE / FINAL_AFTER_MERGE / ACTUAL_USE_VERIFIED`                  |
+| Deployment                                                                   | `NOT_STARTED`                                                         |
+| Production Verification                                                      | `NOT_STARTED`                                                         |
+| Additional paid Ask, Retry, or Test Connection during this completion record | `NOT_EXECUTED`                                                        |
+| Product / test / migration change in this completion-record PR               | `NONE`                                                                |
+| Completion-record PR disposition                                             | Draft only; Ready for Review and merge require separate authorization |
 
-The `ready` and `merge` values stored for this record in `docs/engineering/evidence-registry.json` describe PR #114 only at completion-record creation time. They are retained as historical creation-state metadata and must not be interpreted as the current PR lifecycle after a later Ready-for-Review or merge transition. The record itself becomes Canonical only after PR #114 merges to `main`.
+The `Completion-record PR disposition` row and the `ready` and `merge` values stored for this record in `docs/engineering/evidence-registry.json` describe PR #114 only at completion-record creation time. They are retained as historical creation-state metadata and must not be interpreted as the current PR lifecycle after a later Ready-for-Review or merge transition. The record itself becomes Canonical only after PR #114 merges to `main`.
 
 ## References
 

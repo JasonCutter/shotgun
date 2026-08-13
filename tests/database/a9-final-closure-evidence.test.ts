@@ -110,7 +110,6 @@ type Fixture = {
   readonly providerCalls: {
     readonly providerId: ProviderId;
     readonly modelId: string;
-    readonly answerRunId: string;
   }[];
   readonly failNext: (providerId: ProviderId) => void;
   readonly legacy: { enabled: boolean };
@@ -269,19 +268,15 @@ const createFixture = async (
     new PostgresProviderExternalTransferApprovalRepository(pool),
     registry,
   );
-  const providerCalls: { providerId: ProviderId; modelId: string; answerRunId: string }[] = [];
+  const providerCalls: { providerId: ProviderId; modelId: string }[] = [];
   const failures = new Set<ProviderId>();
   const adapters: AIProviderConnectivityAdapter[] = (
     ['deepseek', 'openai', 'google-gemini'] as const
   ).map((providerId) => ({
     providerId,
     testConnection: async () => ({ providerRequestId: `deterministic-${providerId}` }),
-    generateStructured: async ({ modelId, request }) => {
-      providerCalls.push({
-        providerId,
-        modelId,
-        answerRunId: request.prompt.match(/AnswerRun: ([^\n]+)/)?.[1] ?? 'unknown',
-      });
+    generateStructured: async ({ modelId }) => {
+      providerCalls.push({ providerId, modelId });
       if (failures.delete(providerId)) {
         throw Object.assign(new Error('Synthetic retryable provider failure.'), {
           code: 'RETRYABLE_DEPENDENCY',
@@ -876,7 +871,6 @@ describe('A9 final closure deterministic cross-boundary evidence', () => {
       {
         providerId: 'deepseek',
         modelId: 'deepseek-v4-flash',
-        answerRunId: queued.answerRunId,
       },
     ]);
     expect(queuedPinA).toMatchObject({

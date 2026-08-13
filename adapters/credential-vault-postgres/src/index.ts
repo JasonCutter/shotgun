@@ -218,8 +218,10 @@ const insertRevision = async (
     `INSERT INTO ai.provider_credentials (
        credential_id, project_id, provider_id, encrypted_secret,
        encryption_version, key_version, credential_revision,
-       lifecycle_state, client_request_id, created_at, updated_at
-     ) VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10,$11)
+       lifecycle_state, client_request_id, client_request_operation,
+       client_request_provider_id, client_request_credential_id,
+       client_request_expected_revision, created_at, updated_at
+     ) VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
      ON CONFLICT DO NOTHING`,
     [
       record.credentialId,
@@ -231,6 +233,10 @@ const insertRevision = async (
       record.credentialRevision,
       record.lifecycleState,
       record.clientRequestId ?? null,
+      record.clientRequestOperation ?? null,
+      record.clientRequestProviderId ?? null,
+      record.clientRequestCredentialId ?? null,
+      record.clientRequestExpectedRevision ?? null,
       record.createdAt,
       record.updatedAt,
     ],

@@ -7,7 +7,7 @@
 - Accepted by: `USER`
 - Decision owner: `USER`
 - Work item: `A9 Blocking Repair #2 — Source Classification Authority`
-- Subject base: `main@e2bdbe85a748db0fb3e9f454c31d4aa50a459f27`
+- Subject base: `main@bf08e0bcc0e3ff98d16f7526c7fc6d3a7ad9ca5f`
 - Related ADRs: ADR-093, ADR-094, ADR-122
 - Product implementation: **AUTHORIZED ONLY FOR THE BOUNDED A9 REPAIR DESCRIBED HERE**
 

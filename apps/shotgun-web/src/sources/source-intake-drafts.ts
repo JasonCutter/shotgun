@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { decodeIntakeDraftSeed, type IntakeDraftSeed } from '@shotgun/api-client';
+import {
+  decodeIntakeDraftSeed,
+  type IntakeDraftSeed,
+  type SourcesSensitivity,
+} from '@shotgun/api-client';
 
 import { useLeaveGuard } from '../session/leave-guard-context.js';
 
@@ -8,6 +12,7 @@ export type SourceIntakeDraftItem =
   | {
       readonly draftItemId: string;
       readonly projectId: string;
+      readonly requestedClassification: SourcesSensitivity;
       readonly kind: 'DIRECT_TEXT';
       readonly label: string;
       readonly text: string;
@@ -17,6 +22,7 @@ export type SourceIntakeDraftItem =
   | {
       readonly draftItemId: string;
       readonly projectId: string;
+      readonly requestedClassification: SourcesSensitivity;
       readonly kind: 'FILE';
       readonly label: string;
       readonly file: File;
@@ -26,6 +32,7 @@ export type SourceIntakeDraftItem =
   | {
       readonly draftItemId: string;
       readonly projectId: string;
+      readonly requestedClassification: SourcesSensitivity;
       readonly kind: 'FILE_METADATA';
       readonly label: string;
       readonly fileName: string;
@@ -37,6 +44,7 @@ export type SourceIntakeDraftItem =
   | {
       readonly draftItemId: string;
       readonly projectId: string;
+      readonly requestedClassification: SourcesSensitivity;
       readonly kind: 'URL';
       readonly label: string;
       readonly requestedUrl: string;
@@ -64,6 +72,9 @@ const decodeSeed = (
       draftItemId: `seed:${decoded.seedId}`,
       projectId: decoded.projectId,
       label: decoded.input.label,
+      // Intake seeds have no classification authority. Omission must remain
+      // server-fail-closed when submitted, so Browser draft state uses private.
+      requestedClassification: 'private' as const,
     };
     if (decoded.input.kind === 'DIRECT_TEXT') {
       const size = new TextEncoder().encode(decoded.input.text).byteLength;
@@ -168,7 +179,11 @@ export const useSourceIntakeDraftQueue = (activeProjectId: string, seedInput?: u
     if (items.length === 0) setDraftProjectId(activeProjectId);
   }, [activeProjectId, items.length]);
 
-  const addDirectText = (label: string, text: string) => {
+  const addDirectText = (
+    label: string,
+    text: string,
+    requestedClassification: SourcesSensitivity,
+  ) => {
     const trimmed = text.trim();
     const sizeValid = new TextEncoder().encode(text).byteLength <= MAX_ACTIVE_BYTES;
     updateItems((current) => [
@@ -176,6 +191,7 @@ export const useSourceIntakeDraftQueue = (activeProjectId: string, seedInput?: u
       {
         draftItemId: createId(),
         projectId: draftProjectId,
+        requestedClassification,
         kind: 'DIRECT_TEXT',
         label: label.trim() || 'Direct Text',
         text,
@@ -190,7 +206,7 @@ export const useSourceIntakeDraftQueue = (activeProjectId: string, seedInput?: u
     ]);
   };
 
-  const addFile = (label: string, file: File) => {
+  const addFile = (label: string, file: File, requestedClassification: SourcesSensitivity) => {
     const supported = supportedFileTypes.has(file.type);
     const sizeValid = file.size > 0 && file.size <= MAX_ACTIVE_BYTES;
     updateItems((current) => [
@@ -198,6 +214,7 @@ export const useSourceIntakeDraftQueue = (activeProjectId: string, seedInput?: u
       {
         draftItemId: createId(),
         projectId: draftProjectId,
+        requestedClassification,
         kind: 'FILE',
         label: label.trim() || file.name,
         file,
@@ -211,7 +228,11 @@ export const useSourceIntakeDraftQueue = (activeProjectId: string, seedInput?: u
     ]);
   };
 
-  const addUrl = (label: string, requestedUrl: string) => {
+  const addUrl = (
+    label: string,
+    requestedUrl: string,
+    requestedClassification: SourcesSensitivity,
+  ) => {
     let valid = false;
     try {
       valid = ['http:', 'https:'].includes(new URL(requestedUrl).protocol);
@@ -223,6 +244,7 @@ export const useSourceIntakeDraftQueue = (activeProjectId: string, seedInput?: u
       {
         draftItemId: createId(),
         projectId: draftProjectId,
+        requestedClassification,
         kind: 'URL',
         label: label.trim() || 'URL',
         requestedUrl,

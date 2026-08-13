@@ -105,8 +105,12 @@ const createContext = async () => {
     principalId,
     sessionId,
     projectId,
-    accessScopes: ['owner'],
-    sensitivity: 'private',
+    principalAccessScopes: ['owner'],
+    sensitivityClearance: 'private',
+    resourceSecurityPolicy: {
+      allowedClassifications: ['public', 'internal', 'private'],
+      resourceAccessScope: ['owner'],
+    },
     accessRevision: `${projectId}:owner`,
     policyContextRevision: '1',
     acceptedPolicyContextId: `project-policy-context/${projectId}`,
@@ -197,7 +201,7 @@ describe.runIf(pool)('Frontend Phase 2 Section 1 Product write', () => {
       correlationId: `correlation-${submitOneCommandId}`,
       draftId: 'draft-1',
       scope: context.scope,
-      items: [firstArtifact],
+      items: [{ ...firstArtifact, requestedClassification: 'public' }],
       createdAt: context.now,
     });
     expect(first.state).toBe('SUCCEEDED');
@@ -240,7 +244,7 @@ describe.runIf(pool)('Frontend Phase 2 Section 1 Product write', () => {
       correlationId: `correlation-${submitTwoCommandId}`,
       draftId: 'draft-2',
       scope: context.scope,
-      items: [secondArtifact],
+      items: [{ ...secondArtifact, requestedClassification: 'public' }],
       createdAt: context.now,
     });
     expect(second.state).toBe('ACTION_REQUIRED');
@@ -281,6 +285,8 @@ describe.runIf(pool)('Frontend Phase 2 Section 1 Product write', () => {
            (SELECT count(*)::text FROM asset.storage_receipts) AS receipts,
            (SELECT count(*)::text FROM source_product.exact_duplicate_decisions) AS decisions,
            (SELECT count(*)::text FROM source_product.exact_duplicate_dispositions) AS dispositions,
+           (SELECT sensitivity FROM asset.source_versions LIMIT 1) AS version_sensitivity,
+           (SELECT sensitivity FROM intake.submissions LIMIT 1) AS intake_sensitivity,
            (SELECT command_payload::text LIKE '%same immutable source bytes%'
               FROM frontend_command.command_ledger
               WHERE command_id = $1) AS raw_in_ledger`,
@@ -294,7 +300,142 @@ describe.runIf(pool)('Frontend Phase 2 Section 1 Product write', () => {
           receipts: '2',
           decisions: '1',
           dispositions: '1',
+          version_sensitivity: 'public',
+          intake_sensitivity: 'public',
           raw_in_ledger: false,
+        },
+      ],
+    });
+  });
+
+  it('does not offer incompatible exact-content Version reuse and materializes a separate Source with pinned security metadata', async () => {
+    const context = await createContext();
+    const storage = new InMemoryAssetStorage();
+    const staging = new SealedSourcesStagingService(
+      storage,
+      'database-product-write-staging-secret-32-characters',
+      undefined,
+      () => new Date(context.now),
+    );
+    const service = new PostgresSourcesProductService(pool!, staging);
+    const bytes = new TextEncoder().encode('same bytes with distinct resource security identity');
+
+    const firstCommandId = randomUUID();
+    await insertAcceptedCommand({
+      commandId: firstCommandId,
+      commandType: 'sources.intake.submit.v1',
+      principalId: context.principalId,
+      projectId: context.projectId,
+      payload: { draftId: 'public-source', inputs: [] },
+      now: context.now,
+    });
+    const firstReceipt = await staging.stageBytes({
+      draftId: 'public-source',
+      itemId: 'public-item',
+      projectId: context.projectId,
+      principalId: context.principalId,
+      kind: 'DIRECT_TEXT',
+      label: 'Public source',
+      mediaType: 'text/plain',
+      bytes,
+    });
+    const firstArtifact = await staging.resolve({
+      stagingReference: firstReceipt.stagingReference,
+      draftId: 'public-source',
+      itemId: 'public-item',
+      projectId: context.projectId,
+      principalId: context.principalId,
+      kind: 'DIRECT_TEXT',
+    });
+    await service.submit({
+      submissionId: firstCommandId,
+      commandId: firstCommandId,
+      correlationId: `correlation-${firstCommandId}`,
+      draftId: 'public-source',
+      scope: context.scope,
+      items: [{ ...firstArtifact, requestedClassification: 'public' }],
+      createdAt: context.now,
+    });
+
+    const secondCommandId = randomUUID();
+    await insertAcceptedCommand({
+      commandId: secondCommandId,
+      commandType: 'sources.intake.submit.v1',
+      principalId: context.principalId,
+      projectId: context.projectId,
+      payload: { draftId: 'private-source', inputs: [] },
+      now: context.now,
+    });
+    const secondReceipt = await staging.stageBytes({
+      draftId: 'private-source',
+      itemId: 'private-item',
+      projectId: context.projectId,
+      principalId: context.principalId,
+      kind: 'DIRECT_TEXT',
+      label: 'Private source',
+      mediaType: 'text/plain',
+      bytes,
+    });
+    const secondArtifact = await staging.resolve({
+      stagingReference: secondReceipt.stagingReference,
+      draftId: 'private-source',
+      itemId: 'private-item',
+      projectId: context.projectId,
+      principalId: context.principalId,
+      kind: 'DIRECT_TEXT',
+    });
+    const second = await service.submit({
+      submissionId: secondCommandId,
+      commandId: secondCommandId,
+      correlationId: `correlation-${secondCommandId}`,
+      draftId: 'private-source',
+      scope: context.scope,
+      items: [secondArtifact],
+      createdAt: context.now,
+    });
+    const decisionId = second.items[0]?.duplicateDecisionId;
+    expect(decisionId).toBeDefined();
+    if (!decisionId) throw new Error('Expected an exact duplicate decision.');
+    const decision = await service.getDuplicateDecision(context.scope, decisionId);
+    expect(decision?.allowedDispositions).toEqual(['CREATE_SEPARATE_SOURCE', 'CANCEL_SUBMISSION']);
+    if (!decision) throw new Error('Expected a persisted exact duplicate decision.');
+
+    const resolveCommandId = randomUUID();
+    await insertAcceptedCommand({
+      commandId: resolveCommandId,
+      commandType: 'sources.duplicate.resolve.v1',
+      principalId: context.principalId,
+      projectId: context.projectId,
+      payload: { decisionId: decision.decisionId, disposition: 'CREATE_SEPARATE_SOURCE' },
+      now: context.now,
+    });
+    const resolved = await service.resolveDuplicate({
+      commandId: resolveCommandId,
+      correlationId: `correlation-${resolveCommandId}`,
+      decisionId: decision.decisionId,
+      observedDecisionRevision: decision.decisionRevision,
+      disposition: 'CREATE_SEPARATE_SOURCE',
+      scope: context.scope,
+      createdAt: context.now,
+    });
+    expect(resolved.state).toBe('SUCCEEDED');
+    expect(
+      await pool!.query(
+        `SELECT
+           (SELECT count(*)::text FROM asset.original_assets) AS assets,
+           (SELECT count(*)::text FROM asset.sources) AS sources,
+           (SELECT count(*)::text FROM asset.source_versions) AS versions,
+           (SELECT count(*)::text FROM asset.source_versions WHERE sensitivity = 'public') AS public_versions,
+           (SELECT count(*)::text FROM asset.source_versions WHERE sensitivity = 'private') AS private_versions`,
+      ),
+    ).toMatchObject({
+      rows: [
+        {
+          assets: '1',
+          sources: '2',
+          versions: '2',
+          public_versions: '1',
+          private_versions: '1',
         },
       ],
     });

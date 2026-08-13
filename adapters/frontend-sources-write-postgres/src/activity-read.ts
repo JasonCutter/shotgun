@@ -159,8 +159,14 @@ export class PostgresSourcesActivityRead implements SourcesActivityReadPort {
       principalId: input.principalId ?? 'activity-read',
       sessionId: 'activity-read',
       projectId: input.projectId,
-      accessScopes: input.accessScope ?? [],
-      sensitivity: (input.sensitivity as SourcesSensitivity) ?? 'internal',
+      principalAccessScopes: input.accessScope ?? [],
+      sensitivityClearance: (input.sensitivity as SourcesSensitivity) ?? 'internal',
+      resourceSecurityPolicy: {
+        allowedClassifications: (input.accessScope ?? []).includes('owner')
+          ? ['public', 'internal', 'private']
+          : [],
+        resourceAccessScope: ['owner'],
+      },
       accessRevision: input.accessRevision ?? 'activity-read',
       policyContextRevision: input.policyContextRevision ?? 'activity-read',
       acceptedPolicyContextId: 'activity-read',

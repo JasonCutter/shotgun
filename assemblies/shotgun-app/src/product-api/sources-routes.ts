@@ -116,8 +116,14 @@ export const registerSourcesRoutes = (
         principalId: current.principalContext.principalId,
         sessionId: current.session.sessionId,
         projectId: activeProjectId,
-        accessScopes: membership.scopes,
-        sensitivity: membership.sensitivityClearance as SourcesSensitivity,
+        principalAccessScopes: membership.scopes,
+        sensitivityClearance: membership.sensitivityClearance as SourcesSensitivity,
+        resourceSecurityPolicy: {
+          // The current Product boundary is single-owner. This is a server-owned
+          // Project policy, not a Browser authority or Principal metadata copy.
+          allowedClassifications: membership.isOwner ? ['public', 'internal', 'private'] : [],
+          resourceAccessScope: ['owner'],
+        },
         accessRevision,
         policyContextRevision,
         acceptedPolicyContextId: `project-policy-context/${activeProjectId}`,
@@ -323,7 +329,13 @@ export const registerSourcesRoutes = (
                 principalId: scope.write.principalId,
                 kind: item.kind,
               });
-              return { ...artifact, stagingReference: item.stagingReference };
+              return {
+                ...artifact,
+                stagingReference: item.stagingReference,
+                ...(item.requestedClassification === undefined
+                  ? {}
+                  : { requestedClassification: item.requestedClassification }),
+              };
             }),
           );
           try {

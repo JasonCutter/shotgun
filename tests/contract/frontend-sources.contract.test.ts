@@ -14,6 +14,7 @@ import {
   decodeSourceVersionHistoryView,
   SOURCES_FRONTEND_COMMAND_TYPES,
   validateSourcesFrontendCommandRequest,
+  validateStagedSourcesFrontendCommandRequest,
 } from '../../packages/contracts/src/index.js';
 
 const now = '2026-07-30T12:00:00.000Z';
@@ -85,6 +86,44 @@ describe('Frontend Phase 2 Section 1 Sources contracts', () => {
     );
 
     expect(request.payload).toMatchObject({ draftId: 'draft-1' });
+  });
+
+  it('accepts an enum-only Source classification request but rejects malformed classification', () => {
+    const request = {
+      envelopeVersion: '1.0.0',
+      commandType: SOURCES_FRONTEND_COMMAND_TYPES.submit,
+      commandSchemaVersion: '1.0.0',
+      clientRequestId: 'request-classification',
+      idempotencyKey: 'idempotency-classification',
+      projectContext: { activeProjectId: 'project-1', targetProjectId: 'project-1' },
+      policyBinding: { mode: 'CURRENT' },
+      preconditions: [],
+      clientIssuedAt: now,
+      payload: {
+        draftId: 'draft-classification',
+        inputs: [
+          {
+            itemId: 'item-classification',
+            kind: 'DIRECT_TEXT',
+            label: 'Synthetic public text',
+            stagingReference: 'sources-stage-v1.sealed',
+            requestedClassification: 'public',
+          },
+        ],
+      },
+    };
+    expect(validateStagedSourcesFrontendCommandRequest(request).payload.inputs[0]).toMatchObject({
+      requestedClassification: 'public',
+    });
+    expect(() =>
+      validateStagedSourcesFrontendCommandRequest({
+        ...request,
+        payload: {
+          ...request.payload,
+          inputs: [{ ...request.payload.inputs[0], requestedClassification: 'unbounded' }],
+        },
+      }),
+    ).toThrow(FrontendContractError);
   });
 
   it('rejects browser-created Source authority and invalid duplicate disposition shape', () => {

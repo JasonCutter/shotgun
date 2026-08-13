@@ -179,14 +179,18 @@ const submitInput = async (
       principalId: context.principalId,
       kind: 'DIRECT_TEXT',
     });
-    items.push(artifact);
+    items.push({ ...artifact, requestedClassification: 'public' });
   }
   const scope: SourcesProductWriteScope = {
     principalId: context.principalId,
     sessionId: context.sessionId,
     projectId: context.projectId,
-    accessScopes: ['owner'],
-    sensitivity: 'private',
+    principalAccessScopes: ['owner'],
+    sensitivityClearance: 'private',
+    resourceSecurityPolicy: {
+      allowedClassifications: ['public', 'internal', 'private'],
+      resourceAccessScope: ['owner'],
+    },
     accessRevision: `${context.projectId}:owner`,
     policyContextRevision: '1',
     acceptedPolicyContextId: `policy/${context.projectId}`,
@@ -259,8 +263,12 @@ describe.runIf(pool)('FE-P5-XP Sources Stage 3 failure recovery', () => {
         principalId: context.principalId,
         sessionId: context.sessionId,
         projectId: context.projectId,
-        accessScopes: ['owner'],
-        sensitivity: 'private',
+        principalAccessScopes: ['owner'],
+        sensitivityClearance: 'private',
+        resourceSecurityPolicy: {
+          allowedClassifications: ['public', 'internal', 'private'],
+          resourceAccessScope: ['owner'],
+        },
         accessRevision: `${context.projectId}:owner`,
         policyContextRevision: '1',
         acceptedPolicyContextId: `policy/${context.projectId}`,
@@ -295,14 +303,42 @@ describe.runIf(pool)('FE-P5-XP Sources Stage 3 failure recovery', () => {
     );
     expect(versions.rows[0]?.count).toBe('1');
 
-    // Evidence exists for the same SourceVersion (real Stage 3 pipeline).
-    const evidence = await pool!.query<{ count: string }>(
-      `SELECT count(*)::text AS count
-       FROM evidence.spans
-       WHERE project_id = $1 AND source_version_id = $2`,
+    // The public SourceVersion pin reaches real Stage 3 Transformation and Evidence rows.
+    const evidence = await pool!.query<{
+      count: string;
+      source_sensitivity: string;
+      transformation_sensitivity: string;
+      source_access_scope: string[];
+      transformation_access_scope: string[];
+    }>(
+      `SELECT count(evidence.evidence_id)::text AS count,
+              source.sensitivity AS source_sensitivity,
+              transformation.sensitivity AS transformation_sensitivity,
+              source.access_scope AS source_access_scope,
+              transformation.access_scope AS transformation_access_scope
+       FROM asset.source_versions AS source
+       JOIN transformation.revisions AS transformation
+         ON transformation.source_version_id = source.source_version_id
+       LEFT JOIN evidence.spans AS evidence
+         ON evidence.revision_id = transformation.revision_id
+       WHERE source.project_id = $1 AND source.source_version_id = $2
+       GROUP BY source.sensitivity, transformation.sensitivity, source.access_scope, transformation.access_scope`,
       [context.projectId, firstSourceVersionId],
     );
     expect(Number(evidence.rows[0]?.count ?? 0)).toBeGreaterThan(0);
+    expect(evidence.rows[0]).toMatchObject({
+      source_sensitivity: 'public',
+      transformation_sensitivity: 'public',
+      source_access_scope: ['owner'],
+      transformation_access_scope: ['owner'],
+    });
+    expect(
+      await pool!.query(
+        `SELECT sensitivity, access_scope FROM evidence.spans
+         WHERE project_id = $1 AND source_version_id = $2`,
+        [context.projectId, firstSourceVersionId],
+      ),
+    ).toMatchObject({ rows: [{ sensitivity: 'public', access_scope: ['owner'] }] });
   });
 
   it('mixed submission (1 duplicate/action-required + 1 new item) Stage3 fail once → retryable → retry → same SourceVersion → Evidence exists → no duplicate → final PARTIAL', async () => {
@@ -367,8 +403,12 @@ describe.runIf(pool)('FE-P5-XP Sources Stage 3 failure recovery', () => {
         principalId: context.principalId,
         sessionId: context.sessionId,
         projectId: context.projectId,
-        accessScopes: ['owner'],
-        sensitivity: 'private',
+        principalAccessScopes: ['owner'],
+        sensitivityClearance: 'private',
+        resourceSecurityPolicy: {
+          allowedClassifications: ['public', 'internal', 'private'],
+          resourceAccessScope: ['owner'],
+        },
         accessRevision: `${context.projectId}:owner`,
         policyContextRevision: '1',
         acceptedPolicyContextId: `policy/${context.projectId}`,

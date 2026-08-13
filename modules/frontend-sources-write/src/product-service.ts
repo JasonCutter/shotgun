@@ -11,6 +11,7 @@ import type {
   SourcesIntakeInputKind,
   SourcesUrlSuccessProvenance,
 } from './index.js';
+import type { SourcesResourceSecurityPolicy } from './resource-security.js';
 
 export type ResolvedSourcesStagingArtifact = {
   readonly draftId: string;
@@ -30,6 +31,7 @@ export type ResolvedSourcesStagingArtifact = {
   readonly urlProvenance?: SourcesUrlSuccessProvenance;
   readonly issuedAt: string;
   readonly expiresAt: string;
+  readonly requestedClassification?: SourcesSensitivity;
 };
 
 export type SourcesStagingServicePort = {
@@ -66,8 +68,9 @@ export type SourcesProductWriteScope = {
   readonly principalId: string;
   readonly sessionId: string;
   readonly projectId: string;
-  readonly accessScopes: readonly string[];
-  readonly sensitivity: SourcesSensitivity;
+  readonly principalAccessScopes: readonly string[];
+  readonly sensitivityClearance: SourcesSensitivity;
+  readonly resourceSecurityPolicy: SourcesResourceSecurityPolicy;
   readonly accessRevision: string;
   readonly policyContextRevision: string;
   readonly acceptedPolicyContextId: string;

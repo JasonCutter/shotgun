@@ -7,6 +7,7 @@ import {
   SOURCES_FRONTEND_COMMAND_TYPES,
   SOURCES_SCHEMA_VERSION,
   type SourcesFrontendCommandType,
+  type SourcesSensitivity,
 } from './frontend-sources.js';
 
 export type SourcesStagingInputKind = 'DIRECT_TEXT' | 'FILE' | 'URL';
@@ -26,27 +27,34 @@ export type SourcesStagingReceipt = {
   readonly expiresAt: string;
 };
 
-export type StagedSourcesIntakeInput =
-  | {
-      readonly itemId: string;
-      readonly kind: 'DIRECT_TEXT';
-      readonly label: string;
-      readonly stagingReference: string;
-    }
-  | {
-      readonly itemId: string;
-      readonly kind: 'FILE';
-      readonly label: string;
-      readonly fileName: string;
-      readonly mediaType: 'text/plain' | 'text/markdown';
-      readonly stagingReference: string;
-    }
-  | {
-      readonly itemId: string;
-      readonly kind: 'URL';
-      readonly label: string;
-      readonly stagingReference: string;
-    };
+type SourceClassificationRequest = {
+  /** Browser request only; the Server resolves the effective Resource classification. */
+  readonly requestedClassification?: SourcesSensitivity;
+};
+
+export type StagedSourcesIntakeInput = SourceClassificationRequest &
+  (
+    | {
+        readonly itemId: string;
+        readonly kind: 'DIRECT_TEXT';
+        readonly label: string;
+        readonly stagingReference: string;
+      }
+    | {
+        readonly itemId: string;
+        readonly kind: 'FILE';
+        readonly label: string;
+        readonly fileName: string;
+        readonly mediaType: 'text/plain' | 'text/markdown';
+        readonly stagingReference: string;
+      }
+    | {
+        readonly itemId: string;
+        readonly kind: 'URL';
+        readonly label: string;
+        readonly stagingReference: string;
+      }
+  );
 
 export type SubmitStagedSourcesIntakeCommandPayload = {
   readonly draftId: string;
@@ -84,6 +92,14 @@ const onlyKeys = (
   }
 };
 
+const requestedClassification = (value: unknown, path: string): SourcesSensitivity | undefined => {
+  if (value === undefined) return undefined;
+  if (value === 'public' || value === 'internal' || value === 'private' || value === 'restricted') {
+    return value;
+  }
+  throw new FrontendContractError('INVALID_REQUEST', `${path} is unsupported.`);
+};
+
 const stagingReference = (value: unknown, path: string): string => {
   const decoded = stringValue(value, path, 32_768);
   if (!decoded.startsWith('sources-stage-v1.')) {
@@ -113,19 +129,36 @@ export const decodeSubmitStagedSourcesIntakePayload = (
   const inputs = value['inputs'].map((entry, index): StagedSourcesIntakeInput => {
     const path = `payload.inputs[${index}]`;
     const item = record(entry, path);
+    const classification = requestedClassification(
+      item['requestedClassification'],
+      `${path}.requestedClassification`,
+    );
     const common = {
       itemId: stringValue(item['itemId'], `${path}.itemId`, 200),
       label: stringValue(item['label'], `${path}.label`, 500),
       stagingReference: stagingReference(item['stagingReference'], `${path}.stagingReference`),
+      ...(classification === undefined ? {} : { requestedClassification: classification }),
     };
     if (item['kind'] === 'DIRECT_TEXT') {
-      onlyKeys(item, ['itemId', 'kind', 'label', 'stagingReference'], path);
+      onlyKeys(
+        item,
+        ['itemId', 'kind', 'label', 'stagingReference', 'requestedClassification'],
+        path,
+      );
       return { kind: 'DIRECT_TEXT', ...common };
     }
     if (item['kind'] === 'FILE') {
       onlyKeys(
         item,
-        ['itemId', 'kind', 'label', 'fileName', 'mediaType', 'stagingReference'],
+        [
+          'itemId',
+          'kind',
+          'label',
+          'fileName',
+          'mediaType',
+          'stagingReference',
+          'requestedClassification',
+        ],
         path,
       );
       const mediaType = item['mediaType'];
@@ -143,7 +176,11 @@ export const decodeSubmitStagedSourcesIntakePayload = (
       };
     }
     if (item['kind'] === 'URL') {
-      onlyKeys(item, ['itemId', 'kind', 'label', 'stagingReference'], path);
+      onlyKeys(
+        item,
+        ['itemId', 'kind', 'label', 'stagingReference', 'requestedClassification'],
+        path,
+      );
       return { kind: 'URL', ...common };
     }
     throw new FrontendContractError('INVALID_REQUEST', `${path}.kind is unsupported.`);

@@ -19,7 +19,13 @@ import type {
   SourcesProductWriteServicePort,
   SubmitSourcesProductInput,
 } from '../../../modules/frontend-sources-write/src/product-service.js';
-import type { SourcesStage3PipelinePort } from '../../../modules/frontend-sources-write/src/index.js';
+import {
+  assertSourcesResourceSecurityContinuation,
+  resolveSourcesResourceSecurity,
+  sourceSecurityMetadataEqual,
+  type SourcesResourceSecurityMetadata,
+  type SourcesStage3PipelinePort,
+} from '../../../modules/frontend-sources-write/src/index.js';
 import type {
   CreateSourcesIntakeSubmissionInput,
   SourcesIntakeStoredItemInput,
@@ -28,18 +34,29 @@ import type {
 import { assertSourcesLedgerManifestSafe } from './index.js';
 import { PostgresSourcesIntakeLifecycle } from './lifecycle.js';
 
-const ALLOWED_DISPOSITIONS = [
+const compatibleDuplicateDispositions = [
   'REUSE_EXISTING_VERSION',
-  'CREATE_VERSION_CANDIDATE',
   'CREATE_SEPARATE_SOURCE',
   'CANCEL_SUBMISSION',
 ] as const;
+
+const incompatibleDuplicateDispositions = ['CREATE_SEPARATE_SOURCE', 'CANCEL_SUBMISSION'] as const;
 
 type DuplicateRecord = {
   readonly sourceId: string;
   readonly sourceVersionId: string;
   readonly versionNumber: number;
   readonly originalAssetId: string;
+  readonly security: SourcesResourceSecurityMetadata;
+};
+
+type MaterializedStage3Item = {
+  readonly sourceId: string;
+  readonly sourceVersionId: string;
+  readonly storageKey: string;
+  readonly mediaType: 'text/plain' | 'text/markdown';
+  readonly contentHash: string;
+  readonly security: SourcesResourceSecurityMetadata;
 };
 
 type ProductItemRow = QueryResultRow & {
@@ -110,7 +127,65 @@ const safeManifest = (
   ...(artifact.redactedRequestedUrl === undefined
     ? {}
     : { requestedUrl: artifact.redactedRequestedUrl }),
+  ...(artifact.requestedClassification === undefined
+    ? {}
+    : { requestedClassification: artifact.requestedClassification }),
 });
+
+const resolveItemSecurity = (
+  scope: SourcesProductWriteScope,
+  artifact: SubmitSourcesProductInput['items'][number],
+): SourcesResourceSecurityMetadata =>
+  resolveSourcesResourceSecurity(
+    {
+      principalId: scope.principalId,
+      sensitivityClearance: scope.sensitivityClearance,
+      policy: scope.resourceSecurityPolicy,
+    },
+    artifact.requestedClassification,
+  );
+
+const pinnedItemSecurity = (
+  row: Pick<ProductItemRow, 'input_manifest'>,
+): SourcesResourceSecurityMetadata => {
+  const value = row.input_manifest['effectiveResourceSecurity'];
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new ShotgunError({
+      code: 'POLICY_DENIED',
+      safeMessage: 'The Source Intake item has no durable resource security classification.',
+      module: 'frontend-sources-write-postgres',
+      operation: 'read-pinned-resource-security',
+    });
+  }
+  const record = value as Record<string, unknown>;
+  const sensitivity = record['sensitivity'];
+  const accessScope = record['accessScope'];
+  if (
+    (sensitivity !== 'public' &&
+      sensitivity !== 'internal' &&
+      sensitivity !== 'private' &&
+      sensitivity !== 'restricted') ||
+    !Array.isArray(accessScope) ||
+    accessScope.length === 0 ||
+    !accessScope.every((entry) => typeof entry === 'string' && entry.length > 0)
+  ) {
+    throw new ShotgunError({
+      code: 'POLICY_DENIED',
+      safeMessage: 'The Source Intake item has invalid durable resource security metadata.',
+      module: 'frontend-sources-write-postgres',
+      operation: 'read-pinned-resource-security',
+    });
+  }
+  return { sensitivity, accessScope };
+};
+
+const allowedDuplicateDispositions = (
+  existing: SourcesResourceSecurityMetadata,
+  requested: SourcesResourceSecurityMetadata,
+): readonly string[] =>
+  sourceSecurityMetadataEqual(existing, requested)
+    ? compatibleDuplicateDispositions
+    : incompatibleDuplicateDispositions;
 
 const storedItem = (
   artifact: SubmitSourcesProductInput['items'][number],
@@ -170,13 +245,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
     const client = await this.pool.connect();
     // Materialized SourceVersions are handed to the Stage 3 pipeline AFTER the
     // intake transaction commits (real production path, never fixture-side).
-    const materializedForStage3: Array<{
-      readonly sourceId: string;
-      readonly sourceVersionId: string;
-      readonly storageKey: string;
-      readonly mediaType: 'text/plain' | 'text/markdown';
-      readonly contentHash: string;
-    }> = [];
+    const materializedForStage3: MaterializedStage3Item[] = [];
     try {
       await client.query('BEGIN');
       await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
@@ -213,9 +282,11 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
       for (const [ordinal, artifact] of input.items.entries()) {
         const itemId = randomUUID();
         const attemptId = randomUUID();
+        const security = resolveItemSecurity(input.scope, artifact);
         const manifest = {
           ...safeManifest(artifact),
           stagingReference: this.referenceForArtifact(artifact),
+          effectiveResourceSecurity: security,
         };
         assertSourcesLedgerManifestSafe(manifest);
         await this.insertItemAndAttempt(
@@ -231,9 +302,18 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
           client,
           input.scope.projectId,
           artifact.contentHash,
+          security,
         );
         if (duplicate) {
-          await this.createDuplicateDecision(client, input, artifact, itemId, attemptId, duplicate);
+          await this.createDuplicateDecision(
+            client,
+            input,
+            artifact,
+            itemId,
+            attemptId,
+            duplicate,
+            security,
+          );
           actionRequired += 1;
         } else {
           const materialized = await this.materialize(
@@ -243,6 +323,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
             itemId,
             attemptId,
             storedItem(artifact),
+            security,
             input.createdAt,
           );
           materializedForStage3.push({
@@ -251,6 +332,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
             storageKey: artifact.storageKey,
             mediaType: artifact.mediaType,
             contentHash: artifact.contentHash,
+            security,
           });
           succeeded += 1;
         }
@@ -294,13 +376,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
    * without Evidence.
    */
   private async runStage3AndFinalize(
-    items: Array<{
-      readonly sourceId: string;
-      readonly sourceVersionId: string;
-      readonly storageKey: string;
-      readonly mediaType: 'text/plain' | 'text/markdown';
-      readonly contentHash: string;
-    }>,
+    items: readonly MaterializedStage3Item[],
     input: SubmitSourcesProductInput,
     scope: SourcesProductWriteScope,
     actionRequired: number,
@@ -315,8 +391,8 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
           storageKey: item.storageKey,
           mediaType: item.mediaType,
           contentHash: item.contentHash,
-          accessScope: [...scope.accessScopes],
-          sensitivity: scope.sensitivity,
+          accessScope: [...item.security.accessScope],
+          sensitivity: item.security.sensitivity,
         });
       }
     } catch (error) {
@@ -392,13 +468,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
     projectId: string,
     submissionId: string,
   ): Promise<{
-    readonly items: Array<{
-      readonly sourceId: string;
-      readonly sourceVersionId: string;
-      readonly storageKey: string;
-      readonly mediaType: 'text/plain' | 'text/markdown';
-      readonly contentHash: string;
-    }>;
+    readonly items: MaterializedStage3Item[];
     readonly actionRequired: number;
   }> {
     const result = await this.pool.query<ProductItemRow>(
@@ -426,13 +496,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
          AND active_duplicate_decision_id IS NOT NULL`,
       [projectId, submissionId],
     );
-    const items: Array<{
-      readonly sourceId: string;
-      readonly sourceVersionId: string;
-      readonly storageKey: string;
-      readonly mediaType: 'text/plain' | 'text/markdown';
-      readonly contentHash: string;
-    }> = [];
+    const items: MaterializedStage3Item[] = [];
     for (const row of result.rows) {
       const contentHash = row.content_hash;
       if (!contentHash) continue;
@@ -448,6 +512,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
         storageKey,
         mediaType: (row.media_type as 'text/plain' | 'text/markdown') ?? 'text/plain',
         contentHash,
+        security: pinnedItemSecurity(row),
       });
     }
     return {
@@ -604,6 +669,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
         input_kind: 'DIRECT_TEXT' | 'FILE' | 'URL';
         client_item_id: string;
         input_manifest: Record<string, unknown>;
+        allowed_dispositions: readonly string[];
         label: string;
         state: string;
       }>(
@@ -611,7 +677,8 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
                 decision.decision_revision::text, decision.access_revision,
                 decision.policy_context_revision, decision.existing_source_id::text,
                 decision.existing_source_version_id::text, decision.content_hash,
-                item.input_kind, item.client_item_id, item.input_manifest, item.label, item.state
+                item.input_kind, item.client_item_id, item.input_manifest,
+                decision.allowed_dispositions, item.label, item.state
          FROM source_product.exact_duplicate_decisions AS decision
          JOIN source_product.intake_submission_items AS item
            ON item.submission_item_id = decision.submission_item_id
@@ -639,6 +706,16 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
         input.scope,
         'sources.duplicate.resolve.v1',
       );
+      if (!row.allowed_dispositions.includes(input.disposition)) {
+        throw new ShotgunError({
+          code: 'POLICY_DENIED',
+          safeMessage:
+            'The requested duplicate disposition is not allowed for this Source security identity.',
+          module: 'frontend-sources-write-postgres',
+          operation: 'resolve-duplicate',
+        });
+      }
+      const security = pinnedItemSecurity(row);
       await client.query(
         `INSERT INTO source_product.exact_duplicate_dispositions (
            disposition_id, project_id, submission_id, submission_item_id,
@@ -703,6 +780,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
             row.submission_item_id,
             attemptId,
             artifact,
+            security,
             row.existing_source_id,
             row.existing_source_version_id,
             input.createdAt,
@@ -714,12 +792,9 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
             row.submission_id,
             row.submission_item_id,
             attemptId,
-            storedItem(
-              artifact,
-              input.disposition === 'CREATE_VERSION_CANDIDATE' ? row.existing_source_id : undefined,
-            ),
+            storedItem(artifact),
+            security,
             input.createdAt,
-            input.disposition === 'CREATE_VERSION_CANDIDATE',
           );
         }
       }
@@ -735,6 +810,9 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
   }
 
   async retry(input: RetrySourcesProductInput): Promise<IntakeSubmissionSnapshot> {
+    if (input.mode === 'CURRENT_POLICY') {
+      await this.assertCurrentPolicyAllowsPinnedItems(input);
+    }
     await this.lifecycle.retryItems({
       projectId: input.scope.projectId,
       submissionId: input.submissionId,
@@ -780,6 +858,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
         );
         const row = item.rows[0];
         if (!row) throw this.notFound();
+        const security = pinnedItemSecurity(row);
         await client.query(
           `UPDATE source_product.intake_attempts SET state = 'RUNNING'
            WHERE intake_attempt_id = $1 AND state = 'ACCEPTED'`,
@@ -802,6 +881,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
           client,
           input.scope.projectId,
           artifact.contentHash,
+          security,
         );
         if (duplicate) {
           await this.createRetryDuplicateDecision(
@@ -811,6 +891,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
             row.submission_item_id,
             row.intake_attempt_id,
             duplicate,
+            security,
           );
         } else {
           await this.materialize(
@@ -820,6 +901,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
             row.submission_item_id,
             row.intake_attempt_id,
             storedItem(artifact),
+            security,
             input.createdAt,
           );
         }
@@ -832,6 +914,29 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
       throw error;
     } finally {
       client.release();
+    }
+  }
+
+  private async assertCurrentPolicyAllowsPinnedItems(
+    input: RetrySourcesProductInput,
+  ): Promise<void> {
+    const rows = await this.pool.query<
+      Pick<ProductItemRow, 'input_manifest' | 'submission_item_id'>
+    >(
+      `SELECT submission_item_id::text, input_manifest
+       FROM source_product.intake_submission_items
+       WHERE project_id = $1 AND submission_id = $2
+         AND submission_item_id = ANY($3::uuid[])`,
+      [input.scope.projectId, input.submissionId, input.itemIds],
+    );
+    if (rows.rowCount !== input.itemIds.length) throw this.notFound();
+    const authority = {
+      principalId: input.scope.principalId,
+      sensitivityClearance: input.scope.sensitivityClearance,
+      policy: input.scope.resourceSecurityPolicy,
+    };
+    for (const row of rows.rows) {
+      assertSourcesResourceSecurityContinuation(authority, pinnedItemSecurity(row));
     }
   }
 
@@ -926,6 +1031,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
     itemId: string,
     attemptId: string,
     duplicate: DuplicateRecord,
+    security: SourcesResourceSecurityMetadata,
   ): Promise<void> {
     const decisionId = randomUUID();
     await client.query(
@@ -944,7 +1050,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
         artifact.contentHash,
         duplicate.sourceId,
         duplicate.sourceVersionId,
-        ALLOWED_DISPOSITIONS,
+        allowedDuplicateDispositions(duplicate.security, security),
         String(duplicate.versionNumber),
         input.scope.accessRevision,
         input.scope.policyContextRevision,
@@ -972,6 +1078,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
     itemId: string,
     attemptId: string,
     duplicate: DuplicateRecord,
+    security: SourcesResourceSecurityMetadata,
   ): Promise<void> {
     const previous = await client.query<{ decision_id: string; decision_revision: string }>(
       `SELECT decision_id::text, decision_revision::text
@@ -999,7 +1106,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
         artifact.contentHash,
         duplicate.sourceId,
         duplicate.sourceVersionId,
-        ALLOWED_DISPOSITIONS,
+        allowedDuplicateDispositions(duplicate.security, security),
         String(duplicate.versionNumber),
         input.scope.accessRevision,
         input.scope.policyContextRevision,
@@ -1025,22 +1132,27 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
     client: PoolClient,
     projectId: string,
     contentHash: string,
+    requestedSecurity: SourcesResourceSecurityMetadata,
   ): Promise<DuplicateRecord | undefined> {
     const result = await client.query<{
       source_id: string;
       source_version_id: string;
       version_number: number;
       original_asset_id: string;
+      access_scope: string[];
+      sensitivity: SourcesResourceSecurityMetadata['sensitivity'];
     }>(
       `SELECT source.source_id::text, version.source_version_id::text,
-              version.version_number, version.original_asset_id::text
+              version.version_number, version.original_asset_id::text,
+              version.access_scope, version.sensitivity
        FROM asset.original_assets AS original
        JOIN asset.source_versions AS version ON version.original_asset_id = original.asset_id
        JOIN asset.sources AS source ON source.source_id = version.source_id
        WHERE source.project_id = $1 AND original.content_hash = $2
-       ORDER BY version.created_at, version.source_version_id
+       ORDER BY (version.sensitivity = $3 AND version.access_scope = $4::text[]) DESC,
+                version.created_at, version.source_version_id
        LIMIT 1`,
-      [projectId, contentHash],
+      [projectId, contentHash, requestedSecurity.sensitivity, requestedSecurity.accessScope],
     );
     const row = result.rows[0];
     return row
@@ -1049,6 +1161,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
           sourceVersionId: row.source_version_id,
           versionNumber: row.version_number,
           originalAssetId: row.original_asset_id,
+          security: { sensitivity: row.sensitivity, accessScope: row.access_scope },
         }
       : undefined;
   }
@@ -1060,6 +1173,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
     itemId: string,
     attemptId: string,
     item: SourcesIntakeStoredItemInput,
+    security: SourcesResourceSecurityMetadata,
     createdAt: string,
     forceNewVersion = false,
   ): Promise<{ readonly sourceId: string; readonly sourceVersionId: string }> {
@@ -1075,7 +1189,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
       );
       return { sourceId: recovered.sourceId, sourceVersionId: recovered.sourceVersionId };
     }
-    await this.insertStage2Submission(client, scope, itemId, item, createdAt);
+    await this.insertStage2Submission(client, scope, itemId, item, security, createdAt);
     const assetInsert = await client.query<{ asset_id: string }>(
       `INSERT INTO asset.original_assets (asset_id, content_hash, size_bytes, storage_key, created_at)
        VALUES ($1, $2, $3, $4, $5)
@@ -1127,8 +1241,8 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
           versionNumber,
           originalAssetId,
           item.mediaType,
-          scope.accessScopes,
-          scope.sensitivity,
+          security.accessScope,
+          security.sensitivity,
           createdAt,
         ],
       );
@@ -1166,18 +1280,37 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
     itemId: string,
     attemptId: string,
     artifact: SubmitSourcesProductInput['items'][number],
+    security: SourcesResourceSecurityMetadata,
     sourceId: string,
     sourceVersionId: string,
     createdAt: string,
   ): Promise<void> {
-    const version = await client.query<{ original_asset_id: string }>(
-      `SELECT original_asset_id::text FROM asset.source_versions
+    const version = await client.query<{
+      original_asset_id: string;
+      access_scope: string[];
+      sensitivity: SourcesResourceSecurityMetadata['sensitivity'];
+    }>(
+      `SELECT original_asset_id::text, access_scope, sensitivity FROM asset.source_versions
        WHERE source_id = $1 AND source_version_id = $2`,
       [sourceId, sourceVersionId],
     );
-    if (!version.rows[0]) throw this.notFound();
+    const existing = version.rows[0];
+    if (!existing) throw this.notFound();
+    if (
+      !sourceSecurityMetadataEqual(
+        { sensitivity: existing.sensitivity, accessScope: existing.access_scope },
+        security,
+      )
+    ) {
+      throw new ShotgunError({
+        code: 'POLICY_DENIED',
+        safeMessage: 'The existing SourceVersion has incompatible security metadata.',
+        module: 'frontend-sources-write-postgres',
+        operation: 'reuse-existing-version',
+      });
+    }
     const item = storedItem(artifact, sourceId);
-    await this.insertStage2Submission(client, scope, itemId, item, createdAt);
+    await this.insertStage2Submission(client, scope, itemId, item, security, createdAt);
     await this.insertStorageReceipt(
       client,
       scope.projectId,
@@ -1196,7 +1329,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
         itemId,
         attemptId,
         item,
-        version.rows[0].original_asset_id,
+        existing.original_asset_id,
         sourceVersionId,
         createdAt,
       );
@@ -1209,6 +1342,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
     scope: SourcesProductWriteScope,
     itemId: string,
     item: SourcesIntakeStoredItemInput,
+    security: SourcesResourceSecurityMetadata,
     createdAt: string,
   ): Promise<void> {
     await client.query(
@@ -1228,8 +1362,8 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
         item.originalFileName ?? null,
         item.contentHash,
         item.sizeBytes,
-        scope.accessScopes,
-        scope.sensitivity,
+        security.accessScope,
+        security.sensitivity,
         createdAt,
       ],
     );

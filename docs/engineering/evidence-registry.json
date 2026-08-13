@@ -1263,6 +1263,30 @@
       "merge": "NOT_AUTHORIZED",
       "deployment": "NOT_STARTED",
       "productionVerification": "NOT_STARTED"
+    },
+    {
+      "id": "A9-FINAL-COMPLETION-RECORD-20260814",
+      "path": "docs/engineering/a9-final-completion-record-20260814.md",
+      "class": "COMPLETION_RECORD",
+      "scope": "a1-a9-runtime-selectable-ai-settings-final-closure",
+      "statusAuthority": "RUNTIME_SELECTABLE_AI_SETTINGS_COMPLETE_FINAL_AFTER_MERGE_ACTUAL_USE_VERIFIED",
+      "subjectCanonicalMain": "f6f8cddba4a7c6db465228ec5429569a23bf1429",
+      "subjectEvidencePullRequest": "https://github.com/JasonCutter/shotgun/pull/112",
+      "subjectEvidenceMergeCommit": "f6f8cddba4a7c6db465228ec5429569a23bf1429",
+      "postMergeMainCIRun": "31733659469",
+      "postMergeMainCIConclusion": "SUCCESS",
+      "postMergeMainCIGates": ["Quality", "Frontend", "Required Gates"],
+      "a9AcceptanceMatrix": "A9_AC01_A9_AC13_ALL_PASS",
+      "programAcceptanceMatrix": "P_AC01_P_AC18_ALL_PASS",
+      "testConnectionEvidence": "A9-DEEPSEEK-TEST-CONNECTION-EVIDENCE-CANDIDATE-20260814",
+      "actualUseEvidence": "A9-DEEPSEEK-ACTUAL-USE-EVIDENCE-CANDIDATE-20260813",
+      "completion": "COMPLETE",
+      "finalAfterMerge": "COMPLETE",
+      "actualUseVerification": "VERIFIED",
+      "deployment": "NOT_STARTED",
+      "productionVerification": "NOT_STARTED",
+      "ready": "NOT_AUTHORIZED",
+      "merge": "NOT_AUTHORIZED"
     }
   ],
   "rules": {

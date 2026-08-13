@@ -41,6 +41,7 @@ import {
 } from '../../modules/credential-vault/src/index.js';
 import {
   AskAnswerExecutionService,
+  type AskExecutionIdentityResolverPort,
   type AskExecutionScope,
 } from '../../modules/frontend-ask-execution/src/index.js';
 import { AskProviderPolicyResolver } from '../../modules/frontend-ask-provider-policy/src/index.js';
@@ -101,6 +102,8 @@ type Fixture = {
   readonly configuration: ProjectAIConfigurationService;
   readonly approval: ProviderExternalTransferApprovalService;
   readonly executionRepository: PostgresAskAnswerExecutionRepository;
+  readonly executionIdentityResolver: AskExecutionIdentityResolverPort;
+  readonly initialIdentityResolutionRunIds: string[];
   readonly execution: AskAnswerExecutionService;
   readonly coordinator: AskCommandCoordinator;
   readonly projection: PostgresAskWorkspaceProjection;
@@ -131,7 +134,7 @@ const waitForTerminal = async (
   throw new Error(`AnswerRun ${answerRunId} did not reach ${expected.join(', ')}`);
 };
 
-const submit = async (fixture: Fixture, question: string): Promise<AskAnswerRunSnapshot> => {
+const enqueue = async (fixture: Fixture, question: string): Promise<AskAnswerRunSnapshot> => {
   const result = await fixture.coordinator.submitQuestion({
     ...fixture.scope,
     request: {
@@ -149,12 +152,13 @@ const submit = async (fixture: Fixture, question: string): Promise<AskAnswerRunS
       ],
     },
   });
-  await fixture.execution.execute(fixture.executionScope, result.answerRun.answerRunId);
-  return waitForTerminal(fixture, result.answerRun.answerRunId, [
-    'SUCCEEDED',
-    'FAILED',
-    'OUTCOME_UNKNOWN',
-  ]);
+  return result.answerRun;
+};
+
+const submit = async (fixture: Fixture, question: string): Promise<AskAnswerRunSnapshot> => {
+  const queued = await enqueue(fixture, question);
+  await fixture.execution.execute(fixture.executionScope, queued.answerRunId);
+  return waitForTerminal(fixture, queued.answerRunId, ['SUCCEEDED', 'FAILED', 'OUTCOME_UNKNOWN']);
 };
 
 const configure = async (fixture: Fixture, providerId: ProviderId, expectedRevision: number) => {
@@ -341,12 +345,26 @@ const createFixture = async (
     readLegacyExternalTransferAllowed: async () => legacy.enabled,
     readGeminiApproval: async (id) => approval.getCurrent(id, 'google-gemini'),
   };
-  const identityResolver = new EffectiveAIConfigurationResolver(registry, configuration, vault, {
-    policy: providerPolicy,
-    legacyAuthority,
-    legacyCredential: () => (legacy.enabled ? 'legacy-gemini-test-secret' : undefined),
-    legacyModelId: registry.getProvider('google-gemini')!.models[0]!.modelId,
-  });
+  const runtimeIdentityResolver = new EffectiveAIConfigurationResolver(
+    registry,
+    configuration,
+    vault,
+    {
+      policy: providerPolicy,
+      legacyAuthority,
+      legacyCredential: () => (legacy.enabled ? 'legacy-gemini-test-secret' : undefined),
+      legacyModelId: registry.getProvider('google-gemini')!.models[0]!.modelId,
+    },
+  );
+  const initialIdentityResolutionRunIds: string[] = [];
+  const identityResolver: AskExecutionIdentityResolverPort = {
+    resolveInitialAIExecutionIdentity: async (input) => {
+      initialIdentityResolutionRunIds.push(input.answerRunId);
+      return runtimeIdentityResolver.resolveInitialAIExecutionIdentity(input);
+    },
+    revalidatePinnedCredential: (input) =>
+      runtimeIdentityResolver.revalidatePinnedCredential(input),
+  };
   const projection = new PostgresAskWorkspaceProjection(pool);
   const sourceText = 'A9 deterministic public source content.';
   const executionRepository = new PostgresAskAnswerExecutionRepository(pool, projection, {
@@ -431,6 +449,8 @@ const createFixture = async (
     configuration,
     approval,
     executionRepository,
+    executionIdentityResolver: identityResolver,
+    initialIdentityResolutionRunIds,
     execution,
     coordinator,
     projection,
@@ -551,12 +571,34 @@ describe('A9 final closure deterministic cross-boundary evidence', () => {
       updatedBy: fixture.principalId,
     });
     const runB = await submit(fixture, 'Run B pins credential revision two.');
-    await fixture.execution.retry(fixture.executionScope, runA.answerRunId, 'SAME_CONTEXT');
-    const retriedA = await waitForTerminal(fixture, runA.answerRunId, ['SUCCEEDED']);
+    const retry = await fixture.execution.retry(
+      fixture.executionScope,
+      runA.answerRunId,
+      'SAME_CONTEXT',
+    );
+    await waitForTerminal(fixture, runA.answerRunId, ['SUCCEEDED', 'FAILED']);
 
-    await expect(
-      fixture.executionRepository.readExecutionPin(fixture.executionScope, retriedA.answerRunId),
-    ).resolves.toMatchObject({ credentialRevision: 1, aiConfigurationRevision: 1 });
+    const retryAttempt = await fixture.executionRepository.readExactAttemptIdentity({
+      scope: fixture.executionScope,
+      answerRunId: runA.answerRunId,
+      attemptId: retry.attemptId ?? '',
+    });
+    const retriedPin = await fixture.executionRepository.readExecutionPin(
+      fixture.executionScope,
+      runA.answerRunId,
+    );
+    expect(retriedPin).toMatchObject({
+      credentialId: first.credential.credentialId,
+      credentialRevision: 1,
+      aiConfigurationRevision: 1,
+    });
+    expect(retriedPin).not.toMatchObject({ credentialRevision: 2, aiConfigurationRevision: 2 });
+    expect(retryAttempt).toMatchObject({
+      kind: 'RETRY_SAME_CONTEXT',
+      credentialId: first.credential.credentialId,
+      credentialRevision: 1,
+      aiConfigurationRevision: 1,
+    });
     await expect(
       fixture.executionRepository.readExecutionPin(fixture.executionScope, runB.answerRunId),
     ).resolves.toMatchObject({ credentialRevision: 2, aiConfigurationRevision: 2 });
@@ -739,81 +781,127 @@ describe('A9 final closure deterministic cross-boundary evidence', () => {
     await expect(
       fixture.execution.execute(fixture.executionScope, legacyContext!.snapshot.answerRunId),
     ).rejects.toMatchObject({ code: 'AI_CAPABILITY_UNAVAILABLE' });
+
+    // The failed pre-claim has intentionally not started a provider call. Mark the
+    // test-owned queued run terminal so a later global worker scan cannot claim it.
+    const cleanupClaim = await fixture.executionRepository.claimInitial(
+      fixture.executionScope,
+      legacyContext!.snapshot.answerRunId,
+      'a9-legacy-cleanup-worker',
+      legacyPin,
+    );
+    await fixture.executionRepository.fail({
+      scope: fixture.executionScope,
+      answerRunId: legacyContext!.snapshot.answerRunId,
+      attemptNumber: cleanupClaim!.attempt.attemptNumber,
+      state: 'FAILED',
+      failure: {
+        code: 'AI_CAPABILITY_UNAVAILABLE',
+        message: 'Legacy compatibility fixture credential is unavailable.',
+        retryable: false,
+        outcomeUnknown: false,
+      },
+      workerId: 'a9-legacy-cleanup-worker',
+    });
   });
 
-  it('E2E-N: recovers an interrupted durable run, changes current Settings, then retries the original pin without re-resolution', async () => {
+  it('E2E-N: preserves durable A for queued worker reclaim and OUTCOME_UNKNOWN for interrupted running A after Settings B', async () => {
     const fixture = await createFixture();
     const first = await configure(fixture, 'deepseek', 0);
-    const submission = await fixture.coordinator.submitQuestion({
-      ...fixture.scope,
-      request: {
-        schemaVersion: ASK_SCHEMA_VERSION,
-        clientRequestId: `a9-recovery-${fixture.suffix}`,
-        idempotencyKey: `a9-recovery-idempotency-${fixture.suffix}`,
-        question: 'Prepare an interrupted deterministic execution.',
-        mode: 'SOURCE_EXPLORATION',
-        sourceSelections: [
-          { sourceId: fixture.sourceId, sourceVersionId: fixture.sourceVersionId, evidenceIds: [] },
-        ],
-      },
-    });
-    const initial = await fixture.executionRepository.claimQueuedForWorker(
-      'a9-interrupted-worker',
-      1,
-      async ({ scope, answerRunId }) => {
-        const context = await fixture.executionRepository.getRunContext(scope, answerRunId);
-        return new EffectiveAIConfigurationResolver(
-          initialProviderRegistry(),
-          fixture.configuration,
-          new CredentialVaultService(
-            new PostgresCredentialVaultRepository(pool),
-            new StaticCredentialMasterKeyAuthority({
-              key: Buffer.alloc(32, 7),
-              keyVersion: 'a9-test',
-            }),
-          ),
-          { legacyCredential: () => undefined },
-        ).resolveInitialAIExecutionIdentity({
-          principalId: fixture.principalId,
-          projectId: fixture.projectId,
-          answerRunId,
-          authorizedContext: context!,
-        });
-      },
-    );
-    expect(initial).toHaveLength(1);
-    const originalPin = await fixture.executionRepository.readExecutionPin(
+
+    // N1: a queued run already has durable A before current Project Settings change to B.
+    const queued = await enqueue(fixture, 'Claim queued durable A through the Product worker.');
+    const queuedContext = await fixture.executionRepository.getRunContext(
       fixture.executionScope,
-      submission.answerRun.answerRunId,
+      queued.answerRunId,
     );
-    expect(originalPin).toMatchObject({
-      credentialId: first.credential.credentialId,
-      credentialRevision: 1,
+    const queuedPinA = await fixture.executionIdentityResolver.resolveInitialAIExecutionIdentity({
+      principalId: fixture.principalId,
+      projectId: fixture.projectId,
+      answerRunId: queued.answerRunId,
+      authorizedContext: queuedContext!,
     });
+    await fixture.executionRepository.createExecutionPinIfAbsent({
+      scope: fixture.executionScope,
+      answerRunId: queued.answerRunId,
+      executionPin: queuedPinA,
+    });
+
+    // N2 is already RUNNING with durable A before Settings change to B.
+    const interrupted = await enqueue(
+      fixture,
+      'Recover interrupted durable A without re-execution.',
+    );
+    const interruptedContext = await fixture.executionRepository.getRunContext(
+      fixture.executionScope,
+      interrupted.answerRunId,
+    );
+    const interruptedPinA =
+      await fixture.executionIdentityResolver.resolveInitialAIExecutionIdentity({
+        principalId: fixture.principalId,
+        projectId: fixture.projectId,
+        answerRunId: interrupted.answerRunId,
+        authorizedContext: interruptedContext!,
+      });
+    const initial = await fixture.executionRepository.claimInitial(
+      fixture.executionScope,
+      interrupted.answerRunId,
+      'a9-interrupted-worker',
+      interruptedPinA,
+    );
+    expect(initial?.attempt.executionPin).toEqual(interruptedPinA);
     await pool.query(
       `UPDATE frontend_ask.answer_run_attempts
        SET lease_expires_at = now() - interval '1 second'
        WHERE answer_run_id = $1`,
-      [submission.answerRun.answerRunId],
+      [interrupted.answerRunId],
     );
 
-    await configure(fixture, 'openai', 1);
-    expect(await fixture.executionRepository.recoverInterrupted()).toBe(1);
-    await fixture.execution.retry(
-      fixture.executionScope,
-      submission.answerRun.answerRunId,
-      'SAME_CONTEXT',
-    );
-    const recovered = await waitForTerminal(fixture, submission.answerRun.answerRunId, [
-      'SUCCEEDED',
-    ]);
-    expect(recovered.state).toBe('SUCCEEDED');
+    fixture.initialIdentityResolutionRunIds.length = 0;
+    const providerCallsBeforeWorker = fixture.providerCalls.length;
+    const second = await configure(fixture, 'openai', 1);
+
+    const stopWorker = await fixture.execution.startWorker(60_000);
+    await stopWorker();
+    const queuedResult = await waitForTerminal(fixture, queued.answerRunId, ['SUCCEEDED']);
+    expect(queuedResult.state).toBe('SUCCEEDED');
+    expect(fixture.initialIdentityResolutionRunIds).not.toContain(queued.answerRunId);
     expect(
       await fixture.executionRepository.readExecutionPin(
         fixture.executionScope,
-        submission.answerRun.answerRunId,
+        queued.answerRunId,
       ),
-    ).toEqual(originalPin);
-    expect(fixture.providerCalls.at(-1)?.providerId).toBe('deepseek');
+    ).toEqual(queuedPinA);
+    expect(fixture.providerCalls.slice(providerCallsBeforeWorker)).toEqual([
+      {
+        providerId: 'deepseek',
+        modelId: 'deepseek-v4-flash',
+        answerRunId: queued.answerRunId,
+      },
+    ]);
+    expect(queuedPinA).toMatchObject({
+      credentialId: first.credential.credentialId,
+      credentialRevision: 1,
+      aiConfigurationRevision: 1,
+    });
+    expect(queuedPinA).not.toMatchObject({
+      credentialId: second.credential.credentialId,
+      credentialRevision: second.credential.credentialRevision,
+    });
+
+    // N2: the worker recovery tick keeps the uncertain A attempt terminal and does not re-execute it.
+    const recovered = await waitForTerminal(fixture, interrupted.answerRunId, ['OUTCOME_UNKNOWN']);
+    expect(recovered).toMatchObject({
+      state: 'OUTCOME_UNKNOWN',
+      failure: { code: 'OUTCOME_UNKNOWN', outcomeUnknown: true },
+    });
+    expect(
+      await fixture.executionRepository.readExecutionPin(
+        fixture.executionScope,
+        interrupted.answerRunId,
+      ),
+    ).toEqual(interruptedPinA);
+    expect(fixture.initialIdentityResolutionRunIds).not.toContain(interrupted.answerRunId);
+    expect(fixture.providerCalls).toHaveLength(providerCallsBeforeWorker + 1);
   });
 });

@@ -197,8 +197,8 @@ describe.runIf(pool)('A2 credential vault PostgreSQL persistence', () => {
       clientRequestProviderId: active.providerId,
       clientRequestCredentialId: active.credentialId,
       clientRequestExpectedRevision: 1,
-      createdAt: '2026-08-12T00:01:00.000Z',
-      updatedAt: '2026-08-12T00:01:00.000Z',
+      createdAt: active.updatedAt,
+      updatedAt: active.updatedAt,
     };
 
     await expect(

@@ -182,7 +182,7 @@ export const useSourceIntakeDraftQueue = (activeProjectId: string, seedInput?: u
   const addDirectText = (
     label: string,
     text: string,
-    requestedClassification: SourcesSensitivity,
+    requestedClassification: SourcesSensitivity = 'private',
   ) => {
     const trimmed = text.trim();
     const sizeValid = new TextEncoder().encode(text).byteLength <= MAX_ACTIVE_BYTES;
@@ -206,7 +206,11 @@ export const useSourceIntakeDraftQueue = (activeProjectId: string, seedInput?: u
     ]);
   };
 
-  const addFile = (label: string, file: File, requestedClassification: SourcesSensitivity) => {
+  const addFile = (
+    label: string,
+    file: File,
+    requestedClassification: SourcesSensitivity = 'private',
+  ) => {
     const supported = supportedFileTypes.has(file.type);
     const sizeValid = file.size > 0 && file.size <= MAX_ACTIVE_BYTES;
     updateItems((current) => [
@@ -231,7 +235,7 @@ export const useSourceIntakeDraftQueue = (activeProjectId: string, seedInput?: u
   const addUrl = (
     label: string,
     requestedUrl: string,
-    requestedClassification: SourcesSensitivity,
+    requestedClassification: SourcesSensitivity = 'private',
   ) => {
     let valid = false;
     try {

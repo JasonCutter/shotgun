@@ -556,7 +556,7 @@ export class AskAnswerExecutionService {
     if (!current) throw executionError('NOT_FOUND', 'The AnswerRun was not found.', 'execute');
     const executionPin =
       current.snapshot.state === 'QUEUED' && this.executionIdentityResolver
-        ? await this.resolveInitialExecutionIdentity(scope, answerRunId)
+        ? await this.resolveExecutionIdentityForClaim(scope, answerRunId)
         : current.executionPin;
     const claimed = await this.repository.claimInitial(
       scope,
@@ -778,7 +778,7 @@ export class AskAnswerExecutionService {
           capacity,
           this.executionIdentityResolver
             ? ({ scope: queuedScope, answerRunId: queuedAnswerRunId }) =>
-                this.resolveInitialExecutionIdentity(queuedScope, queuedAnswerRunId)
+                this.resolveExecutionIdentityForClaim(queuedScope, queuedAnswerRunId)
             : undefined,
         );
         for (const { scope, claimed: execution } of claimed) {
@@ -1116,24 +1116,35 @@ export class AskAnswerExecutionService {
     return this.providerRouter.resolve({ scope, executionPin });
   }
 
-  private async resolveInitialExecutionIdentity(
+  /**
+   * Selects the immutable identity for a queued claim. Recovery and worker
+   * reclaim must reuse a durable pin; current Project Settings may establish
+   * an identity only for a pinless first claim.
+   */
+  private async resolveExecutionIdentityForClaim(
     scope: AskExecutionScope,
     answerRunId: string,
   ): Promise<AIExecutionPin> {
-    if (!this.executionIdentityResolver) {
-      throw executionError(
-        'CONFIGURATION_REQUIRED',
-        'No AI execution identity resolver is configured.',
-        'resolve-initial-execution-identity',
-      );
-    }
     const context = await this.repository.getRunContext(scope, answerRunId);
     if (!context)
       throw executionError(
         'NOT_FOUND',
         'The AnswerRun was not found.',
-        'resolve-initial-execution-identity',
+        'resolve-execution-identity-for-claim',
       );
+    if (context.executionPin) {
+      return validateAIExecutionPin(context.executionPin, {
+        projectId: scope.projectId,
+        answerRunId,
+      });
+    }
+    if (!this.executionIdentityResolver) {
+      throw executionError(
+        'CONFIGURATION_REQUIRED',
+        'No AI execution identity resolver is configured.',
+        'resolve-execution-identity-for-claim',
+      );
+    }
     return validateAIExecutionPin(
       await this.executionIdentityResolver.resolveInitialAIExecutionIdentity({
         principalId: scope.principalId,

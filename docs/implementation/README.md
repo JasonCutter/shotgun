@@ -53,6 +53,7 @@
 | [Testing Strategy](./testing-strategy.md) | Unit·Contract·Integration·E2E·Architecture·Golden Corpus 검증 |
 | [OSS Evaluation Plan](./oss-evaluation-plan.md) | 오픈소스 후보의 평가·채택·고정·교체 절차 |
 | [Release Strategy](./release-strategy.md) | 내부 릴리스, 버전, Migration, Rollback과 운영 준비 |
+| [Windows Desktop Distribution — 구현 예정](./deferred-windows-desktop-distribution.md) | Project Shotgun 최종 단계의 독립 Windows 프로그램 패키징 목표와 활성화 조건 |
 | [Risk Register](./risk-register.md) | 주요 구현 위험, 조기 신호, 완화책과 중단 기준 |
 
 `OSS Integration Roadmap`은 언제 어떤 후보를 검토할지 정하고, `OSS Evaluation Plan`은 후보를 어떤 기준으로 평가할지 정한다.

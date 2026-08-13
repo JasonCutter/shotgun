@@ -4,6 +4,7 @@
 > **Class:** `COMPLETION_RECORD`
 > **Subject canonical main:** `f6f8cddba4a7c6db465228ec5429569a23bf1429`
 > **Status authority:** `Runtime-selectable AI Settings — COMPLETE / FINAL_AFTER_MERGE / ACTUAL_USE_VERIFIED`
+> **Canonicalization boundary:** This completion record is a Candidate while PR #114 is unmerged. It becomes Canonical only when PR #114 is merged to `main`. The subject canonical main above remains the verified Program subject commit; the later completion-record merge commit does not replace that subject identity.
 
 ## Completion decision
 
@@ -82,14 +83,16 @@ All live evidence used public/synthetic context only. Neither record contains an
 > **Runtime-selectable AI Settings**
 > **`COMPLETE / FINAL_AFTER_MERGE / ACTUAL_USE_VERIFIED`**
 
-| State                                                                        | Final value                                                           |
-| ---------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| A9 Program completion                                                        | `COMPLETE / FINAL_AFTER_MERGE / ACTUAL_USE_VERIFIED`                  |
-| Deployment                                                                   | `NOT_STARTED`                                                         |
-| Production Verification                                                      | `NOT_STARTED`                                                         |
-| Additional paid Ask, Retry, or Test Connection during this completion record | `NOT_EXECUTED`                                                        |
-| Product / test / migration change in this completion-record PR               | `NONE`                                                                |
-| Completion-record PR disposition                                             | Draft only; Ready for Review and merge require separate authorization |
+| State                                                                        | Final value                                                                                     |
+| ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| A9 Program completion                                                        | `COMPLETE / FINAL_AFTER_MERGE / ACTUAL_USE_VERIFIED`                                            |
+| Deployment                                                                   | `NOT_STARTED`                                                                                   |
+| Production Verification                                                      | `NOT_STARTED`                                                                                   |
+| Additional paid Ask, Retry, or Test Connection during this completion record | `NOT_EXECUTED`                                                                                  |
+| Product / test / migration change in this completion-record PR               | `NONE`                                                                                          |
+| Completion-record PR creation disposition                                    | Draft; Ready for Review and merge were not authorized at record creation — historical metadata |
+
+The `ready` and `merge` values stored for this record in `docs/engineering/evidence-registry.json` describe PR #114 only at completion-record creation time. They are retained as historical creation-state metadata and must not be interpreted as the current PR lifecycle after a later Ready-for-Review or merge transition. The record itself becomes Canonical only after PR #114 merges to `main`.
 
 ## References
 

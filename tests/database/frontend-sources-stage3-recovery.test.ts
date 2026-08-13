@@ -334,13 +334,20 @@ describe.runIf(pool)('FE-P5-XP Sources Stage 3 failure recovery', () => {
       source_access_scope: ['owner'],
       transformation_access_scope: ['owner'],
     });
+    const evidenceSecurity = await pool!.query<{
+      sensitivity: string;
+      access_scope: string[];
+    }>(
+      `SELECT sensitivity, access_scope FROM evidence.spans
+       WHERE project_id = $1 AND source_version_id = $2`,
+      [context.projectId, firstSourceVersionId],
+    );
+    expect(evidenceSecurity.rows.length).toBeGreaterThan(0);
     expect(
-      await pool!.query(
-        `SELECT sensitivity, access_scope FROM evidence.spans
-         WHERE project_id = $1 AND source_version_id = $2`,
-        [context.projectId, firstSourceVersionId],
+      evidenceSecurity.rows.every(
+        (row) => row.sensitivity === 'public' && row.access_scope.join(',') === 'owner',
       ),
-    ).toMatchObject({ rows: [{ sensitivity: 'public', access_scope: ['owner'] }] });
+    ).toBe(true);
   });
 
   it('mixed submission (1 duplicate/action-required + 1 new item) Stage3 fail once → retryable → retry → same SourceVersion → Evidence exists → no duplicate → final PARTIAL', async () => {

@@ -317,11 +317,13 @@ describe.runIf(pool)('FE-P5-XP Sources Stage 3 failure recovery', () => {
               source.access_scope AS source_access_scope,
               transformation.access_scope AS transformation_access_scope
        FROM asset.source_versions AS source
+       JOIN asset.sources AS source_record
+         ON source_record.source_id = source.source_id
        JOIN transformation.revisions AS transformation
          ON transformation.source_version_id = source.source_version_id
        LEFT JOIN evidence.spans AS evidence
          ON evidence.revision_id = transformation.revision_id
-       WHERE source.project_id = $1 AND source.source_version_id = $2
+       WHERE source_record.project_id = $1 AND source.source_version_id = $2
        GROUP BY source.sensitivity, transformation.sensitivity, source.access_scope, transformation.access_scope`,
       [context.projectId, firstSourceVersionId],
     );

@@ -123,6 +123,32 @@ describe('AskAnswerExecutionService', () => {
     expect(result.capabilities).toContain('RETRY_SAME_CONTEXT');
   });
 
+  it('fails closed when a canonical citation has the wrong exact quote', async () => {
+    const repository = new InMemoryAskAnswerExecutionRepository();
+    repository.register(snapshot(), [
+      {
+        evidenceId: 'evidence-1',
+        sourceId: 'source-1',
+        sourceVersionId: 'version-1',
+        exactQuote: 'The source quote.',
+        sensitivity: 'internal',
+      },
+    ]);
+    const service = new AskAnswerExecutionService(
+      repository,
+      provider(async () => ({
+        answer: 'Wrongly grounded answer',
+        citations: [{ evidenceId: 'evidence-1', exactQuote: 'A different quote.' }],
+        provider: { provider: 'test-provider', model: 'test-model' },
+      })),
+    );
+
+    const result = await service.execute(scope, 'run-1');
+
+    expect(result.state).toBe('FAILED');
+    expect(result.failure).toMatchObject({ code: 'VALIDATION_ERROR' });
+  });
+
   it('does not invoke the provider when authoritative context has no supported answer', async () => {
     const repository = new InMemoryAskAnswerExecutionRepository();
     repository.register(snapshot());

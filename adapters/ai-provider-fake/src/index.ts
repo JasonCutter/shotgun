@@ -54,7 +54,7 @@ export class FakeAIProviderAdapter implements AIProviderAdapterPort {
       readonly context?: readonly (
         | {
             readonly kind: 'EVIDENCE';
-            readonly evidenceId: string;
+            readonly citationRef: string;
             readonly exactQuote: string;
           }
         | { readonly kind: 'SOURCE_VERSION'; readonly text: string }
@@ -71,7 +71,7 @@ export class FakeAIProviderAdapter implements AIProviderAdapterPort {
         rawText: JSON.stringify({
           answer,
           citations: context.flatMap((item) =>
-            item.kind === 'EVIDENCE' ? [{ evidenceId: item.evidenceId }] : [],
+            item.kind === 'EVIDENCE' ? [{ citationRef: item.citationRef }] : [],
           ),
         }),
         providerResponseId: `fake-${this.callCount}`,

@@ -599,10 +599,15 @@ export type LocalOwnerProvisioningService = {
 
 const selectDeterministicOwnerMembership = (
   memberships: readonly ProjectMembership[],
-): ProjectMembership | undefined =>
-  memberships
-    .filter(isActiveOwner)
-    .sort((left, right) => left.projectId.localeCompare(right.projectId))[0];
+): ProjectMembership | undefined => {
+  const activeOwners = memberships.filter(isActiveOwner);
+  // The legacy project is preferred only when it is an actual durable membership;
+  // otherwise an existing UUID-based Project is selected from server authority.
+  return (
+    activeOwners.find((membership) => membership.projectId === DEFAULT_PROJECT_ID) ??
+    activeOwners.sort((left, right) => left.projectId.localeCompare(right.projectId))[0]
+  );
+};
 
 export class DefaultLocalOwnerProvisioningService implements LocalOwnerProvisioningService {
   constructor(private readonly repository: AuthRepositoryPort) {}

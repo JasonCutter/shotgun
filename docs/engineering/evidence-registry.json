@@ -1211,6 +1211,28 @@
       "closureCIConclusion": "SUCCESS",
       "deployment": "NOT_STARTED",
       "productionVerification": "NOT_RUN"
+    },
+    {
+      "id": "A9-DEEPSEEK-TEST-CONNECTION-EVIDENCE-CANDIDATE-20260814",
+      "path": "docs/engineering/a9-deepseek-test-connection-evidence-candidate-20260814.md",
+      "class": "GATE_RECORD",
+      "scope": "a9-ac02-p-ac07-deepseek-test-connection",
+      "statusAuthority": "A9_AC02_PAC07_TEST_CONNECTION_EVIDENCE_CANDIDATE",
+      "authorizedOperation": "EXACTLY_ONE_DEEPSEEK_TEST_CONNECTION",
+      "result": "SUCCESS",
+      "runtimeHead": "bf00d53a62032f59311d99d665694e6a3331b4cb",
+      "canonicalBase": "f07527761c563120a0be41090b6860da0f81dd0c",
+      "testConnectionPathDriftToCanonicalBase": "NONE",
+      "pullRequest": "https://github.com/JasonCutter/shotgun/pull/112",
+      "prState": "OPEN_DRAFT_NOT_MERGED",
+      "precedingDeterministicEvidenceHead": "3c4ca2bb944b9bc599d6c3bd3afae095bc591683",
+      "precedingExactHeadCI": "31728014863",
+      "precedingExactHeadCIConclusion": "SUCCESS",
+      "completion": "NOT_DECLARED",
+      "ready": "NOT_AUTHORIZED",
+      "merge": "NOT_AUTHORIZED",
+      "deployment": "NOT_STARTED",
+      "productionVerification": "NOT_STARTED"
     }
   ],
   "rules": {

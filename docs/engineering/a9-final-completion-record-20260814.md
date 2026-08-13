@@ -68,7 +68,7 @@ All live evidence used public/synthetic context only. Neither record contains an
 | P-AC06    | PASS         | E2E-I plus vault/backend evidence prove secret-safe create, replacement, removal, and non-disclosure boundaries.                                                    |
 | P-AC07    | PASS         | Operational provider Test Connection exists; the authorized bounded DeepSeek Test Connection succeeded with public/synthetic-only operational intent.               |
 | P-AC08    | PASS         | E2E-G/E2E-H and A4 authority evidence prove provider-specific privacy and deployment enforcement.                                                                   |
-| P-AC09    | PASS         | E2E-D/E2E-E2E-F and E2E-N prove immutable identity, exact credential behavior, retry, and recovery semantics.                                                       |
+| P-AC09    | PASS         | E2E-D/E2E-E/E2E-F and E2E-N prove immutable identity, exact credential behavior, retry, and recovery semantics.                                                     |
 | P-AC10    | PASS         | E2E-B/E2E-C prove saved provider/model/credential changes affect the next new Ask without restart.                                                                  |
 | P-AC11    | PASS         | E2E-B/E2E-C/E2E-D/E2E-N prove current Settings do not mutate in-flight or durable execution pins.                                                                   |
 | P-AC12    | PASS         | E2E-K proves legacy Gemini compatibility cannot revive after PROJECT_MANAGED transition.                                                                            |

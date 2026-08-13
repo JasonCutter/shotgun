@@ -25,10 +25,24 @@ export type CredentialMetadata = {
   readonly updatedAt: string;
 };
 
+export type CredentialWriteOperation = 'CREATE' | 'REPLACE';
+
+export type CredentialWriteSemanticBinding = {
+  readonly operation: CredentialWriteOperation;
+  readonly providerId: string;
+  readonly credentialId?: string;
+  readonly expectedRevision?: number;
+};
+
 export type StoredCredentialRevision = CredentialMetadata & {
   readonly encryptedSecret: CredentialEnvelope;
   /** Non-secret client identity for the dedicated credential-write recovery boundary. */
   readonly clientRequestId?: string;
+  /** Immutable non-secret meaning of the write request; secrets never enter this boundary. */
+  readonly clientRequestOperation?: CredentialWriteOperation;
+  readonly clientRequestProviderId?: string;
+  readonly clientRequestCredentialId?: string;
+  readonly clientRequestExpectedRevision?: number;
 };
 
 export type CredentialScope = {
@@ -173,6 +187,7 @@ export type CredentialVaultPort = {
   getWriteOutcome(input: {
     readonly projectId: string;
     readonly clientRequestId: string;
+    readonly binding: CredentialWriteSemanticBinding;
   }): Promise<CredentialMetadata | undefined>;
   /** Non-secret current metadata only; encrypted envelopes are never returned. */
   listMetadata?(projectId: string): Promise<readonly CredentialMetadata[]>;
@@ -204,6 +219,52 @@ const scopeOf = (scope: CredentialScope): CredentialScope => ({
   credentialId: identifier('Credential ID', scope.credentialId),
   credentialRevision: revision(scope.credentialRevision),
 });
+
+const semanticBinding = (input: CredentialWriteSemanticBinding): CredentialWriteSemanticBinding => {
+  const operation = input.operation;
+  if (operation !== 'CREATE' && operation !== 'REPLACE') {
+    throw new CredentialVaultError('INVALID_INPUT', 'Credential write operation is invalid.');
+  }
+  const providerId = identifier('Provider ID', input.providerId);
+  if (operation === 'CREATE') return { operation, providerId };
+  if (!input.credentialId || input.expectedRevision === undefined) {
+    throw new CredentialVaultError('INVALID_INPUT', 'Credential replace target is invalid.');
+  }
+  return {
+    operation,
+    providerId,
+    credentialId: identifier('Credential ID', input.credentialId),
+    expectedRevision: revision(input.expectedRevision),
+  };
+};
+
+const bindingOf = (
+  record: StoredCredentialRevision,
+): CredentialWriteSemanticBinding | undefined => {
+  if (!record.clientRequestOperation || !record.clientRequestProviderId) return undefined;
+  return {
+    operation: record.clientRequestOperation,
+    providerId: record.clientRequestProviderId,
+    ...(record.clientRequestCredentialId ? { credentialId: record.clientRequestCredentialId } : {}),
+    ...(record.clientRequestExpectedRevision !== undefined
+      ? { expectedRevision: record.clientRequestExpectedRevision }
+      : {}),
+  };
+};
+
+const sameBinding = (
+  recovered: StoredCredentialRevision,
+  expected: CredentialWriteSemanticBinding,
+): boolean => {
+  const actual = bindingOf(recovered);
+  return Boolean(
+    actual &&
+    actual.operation === expected.operation &&
+    actual.providerId === expected.providerId &&
+    actual.credentialId === expected.credentialId &&
+    actual.expectedRevision === expected.expectedRevision,
+  );
+};
 
 const secretBytes = (secret: string | Uint8Array): Buffer => {
   const bytes = typeof secret === 'string' ? Buffer.from(secret, 'utf8') : Buffer.from(secret);
@@ -302,13 +363,14 @@ export class CredentialVaultService implements CredentialVaultPort {
 
   async create(input: Parameters<CredentialVaultPort['create']>[0]): Promise<CredentialMetadata> {
     const projectId = identifier('Project ID', input.projectId);
-    const providerId = identifier('Provider ID', input.providerId);
+    const binding = semanticBinding({ operation: 'CREATE', providerId: input.providerId });
+    const providerId = binding.providerId;
     const clientRequestId = input.clientRequestId
       ? identifier('Client request ID', input.clientRequestId)
       : undefined;
     if (clientRequestId) {
-      const recovered = await this.repository.findByClientRequestId({ projectId, clientRequestId });
-      if (recovered) return metadataOf(recovered);
+      const recovered = await this.recoverWriteOutcome(projectId, clientRequestId, binding);
+      if (recovered) return recovered;
     }
     const credentialId = input.credentialId
       ? identifier('Credential ID', input.credentialId)
@@ -332,14 +394,17 @@ export class CredentialVaultService implements CredentialVaultPort {
       await this.repository.insertRevision({
         ...metadata,
         encryptedSecret: encrypt(bytes, key, metadata),
-        ...(clientRequestId ? { clientRequestId } : {}),
+        ...(clientRequestId
+          ? {
+              clientRequestId,
+              clientRequestOperation: binding.operation,
+              clientRequestProviderId: binding.providerId,
+            }
+          : {}),
       });
       if (clientRequestId) {
-        const recovered = await this.repository.findByClientRequestId({
-          projectId,
-          clientRequestId,
-        });
-        if (recovered) return metadataOf(recovered);
+        const recovered = await this.recoverWriteOutcome(projectId, clientRequestId, binding);
+        if (recovered) return recovered;
       }
       return metadata;
     } finally {
@@ -350,15 +415,21 @@ export class CredentialVaultService implements CredentialVaultPort {
 
   async replace(input: Parameters<CredentialVaultPort['replace']>[0]): Promise<CredentialMetadata> {
     const projectId = identifier('Project ID', input.projectId);
-    const providerId = identifier('Provider ID', input.providerId);
-    const credentialId = identifier('Credential ID', input.credentialId);
-    const expectedRevision = revision(input.expectedRevision);
+    const binding = semanticBinding({
+      operation: 'REPLACE',
+      providerId: input.providerId,
+      credentialId: input.credentialId,
+      expectedRevision: input.expectedRevision,
+    });
+    const providerId = binding.providerId;
+    const credentialId = binding.credentialId!;
+    const expectedRevision = binding.expectedRevision!;
     const clientRequestId = input.clientRequestId
       ? identifier('Client request ID', input.clientRequestId)
       : undefined;
     if (clientRequestId) {
-      const recovered = await this.repository.findByClientRequestId({ projectId, clientRequestId });
-      if (recovered) return metadataOf(recovered);
+      const recovered = await this.recoverWriteOutcome(projectId, clientRequestId, binding);
+      if (recovered) return recovered;
     }
     const current = await this.repository.findExact({
       projectId,
@@ -391,7 +462,15 @@ export class CredentialVaultService implements CredentialVaultPort {
         next: {
           ...next,
           encryptedSecret: encrypt(bytes, key, next),
-          ...(clientRequestId ? { clientRequestId } : {}),
+          ...(clientRequestId
+            ? {
+                clientRequestId,
+                clientRequestOperation: binding.operation,
+                clientRequestProviderId: binding.providerId,
+                clientRequestCredentialId: binding.credentialId,
+                clientRequestExpectedRevision: binding.expectedRevision,
+              }
+            : {}),
         },
       });
       if (result === 'NOT_FOUND') {
@@ -399,20 +478,14 @@ export class CredentialVaultService implements CredentialVaultPort {
       }
       if (result === 'CONFLICT') {
         if (clientRequestId) {
-          const recovered = await this.repository.findByClientRequestId({
-            projectId,
-            clientRequestId,
-          });
-          if (recovered) return metadataOf(recovered);
+          const recovered = await this.recoverWriteOutcome(projectId, clientRequestId, binding);
+          if (recovered) return recovered;
         }
         throw new CredentialVaultError('CONFLICT', 'Credential revision changed concurrently.');
       }
       if (clientRequestId) {
-        const recovered = await this.repository.findByClientRequestId({
-          projectId,
-          clientRequestId,
-        });
-        if (recovered) return metadataOf(recovered);
+        const recovered = await this.recoverWriteOutcome(projectId, clientRequestId, binding);
+        if (recovered) return recovered;
       }
       return next;
     } finally {
@@ -437,12 +510,29 @@ export class CredentialVaultService implements CredentialVaultPort {
   async getWriteOutcome(input: {
     readonly projectId: string;
     readonly clientRequestId: string;
+    readonly binding: CredentialWriteSemanticBinding;
   }): Promise<CredentialMetadata | undefined> {
-    const recovered = await this.repository.findByClientRequestId({
-      projectId: identifier('Project ID', input.projectId),
-      clientRequestId: identifier('Client request ID', input.clientRequestId),
-    });
-    return recovered ? metadataOf(recovered) : undefined;
+    return this.recoverWriteOutcome(
+      identifier('Project ID', input.projectId),
+      identifier('Client request ID', input.clientRequestId),
+      semanticBinding(input.binding),
+    );
+  }
+
+  private async recoverWriteOutcome(
+    projectId: string,
+    clientRequestId: string,
+    binding: CredentialWriteSemanticBinding,
+  ): Promise<CredentialMetadata | undefined> {
+    const recovered = await this.repository.findByClientRequestId({ projectId, clientRequestId });
+    if (!recovered) return undefined;
+    if (!sameBinding(recovered, binding)) {
+      throw new CredentialVaultError(
+        'CONFLICT',
+        'Credential write request identity is already bound to a different operation.',
+      );
+    }
+    return metadataOf(recovered);
   }
 
   async listMetadata(projectId: string): Promise<readonly CredentialMetadata[]> {

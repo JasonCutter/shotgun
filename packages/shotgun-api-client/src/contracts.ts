@@ -809,7 +809,21 @@ export type ShotgunApiClient = {
 
   getAISettings(targetProjectId?: string, options?: RequestOptions): Promise<AISettingsReadModel>;
   getAICredentialWriteOutcome(
-    params: { readonly projectId: string; readonly clientRequestId: string },
+    params:
+      | {
+          readonly projectId: string;
+          readonly clientRequestId: string;
+          readonly providerId: string;
+          readonly operation: 'CREATE';
+        }
+      | {
+          readonly projectId: string;
+          readonly clientRequestId: string;
+          readonly providerId: string;
+          readonly operation: 'REPLACE';
+          readonly credentialId: string;
+          readonly expectedRevision: number;
+        },
     options?: RequestOptions,
   ): Promise<AICredentialMetadata>;
   createAICredential(

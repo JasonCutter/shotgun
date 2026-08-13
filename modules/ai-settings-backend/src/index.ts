@@ -18,6 +18,12 @@ export type CredentialScope = {
   readonly credentialId: string;
   readonly credentialRevision: number;
 };
+export type CredentialWriteSemanticBinding = {
+  readonly operation: 'CREATE' | 'REPLACE';
+  readonly providerId: string;
+  readonly credentialId?: string;
+  readonly expectedRevision?: number;
+};
 export type CredentialVaultAvailability =
   | { readonly state: 'AVAILABLE'; readonly keyVersion: string }
   | {
@@ -30,6 +36,7 @@ export type CredentialVaultPort = {
     readonly projectId: string;
     readonly providerId: string;
     readonly secret: string | Uint8Array;
+    readonly clientRequestId?: string;
     readonly now?: string;
   }): Promise<CredentialMetadata>;
   replace(input: {
@@ -38,6 +45,7 @@ export type CredentialVaultPort = {
     readonly credentialId: string;
     readonly expectedRevision: number;
     readonly secret: string | Uint8Array;
+    readonly clientRequestId?: string;
     readonly now?: string;
   }): Promise<CredentialMetadata>;
   revoke(scope: CredentialScope, now?: string): Promise<CredentialMetadata>;
@@ -46,6 +54,7 @@ export type CredentialVaultPort = {
   getWriteOutcome(input: {
     readonly projectId: string;
     readonly clientRequestId: string;
+    readonly binding: CredentialWriteSemanticBinding;
   }): Promise<CredentialMetadata | undefined>;
   listMetadata?(projectId: string): Promise<readonly CredentialMetadata[]>;
   getAvailability(): CredentialVaultAvailability;
@@ -240,6 +249,7 @@ export type AISettingsBackendPort = {
   getCredentialWriteOutcome(input: {
     readonly projectId: string;
     readonly clientRequestId: string;
+    readonly binding: CredentialWriteSemanticBinding;
   }): Promise<CredentialMetadata | undefined>;
   revokeCredential(input: CredentialScope & { readonly now?: string }): Promise<CredentialMetadata>;
   removeCredential(input: CredentialScope & { readonly now?: string }): Promise<CredentialMetadata>;
@@ -416,10 +426,12 @@ export class AISettingsBackendService implements AISettingsBackendPort {
   async getCredentialWriteOutcome(input: {
     readonly projectId: string;
     readonly clientRequestId: string;
+    readonly binding: CredentialWriteSemanticBinding;
   }): Promise<CredentialMetadata | undefined> {
     return this.vault.getWriteOutcome({
       projectId: normalize('Project ID', input.projectId),
       clientRequestId: normalize('Client request ID', input.clientRequestId),
+      binding: input.binding,
     });
   }
 

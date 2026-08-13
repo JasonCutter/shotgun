@@ -92,6 +92,7 @@ describe.runIf(pool)('A2 credential vault PostgreSQL persistence', () => {
       await vault.getWriteOutcome({
         projectId: 'project-a',
         clientRequestId: 'credential-write-create-1',
+        binding: { operation: 'CREATE', providerId: 'openai' },
       }),
     ).toEqual(created);
 
@@ -104,6 +105,56 @@ describe.runIf(pool)('A2 credential vault PostgreSQL persistence', () => {
     expect(persisted.rows[0]?.client_request_id).toBe('credential-write-create-1');
     expect(persisted.rows[0]?.encrypted_secret).not.toContain('write-secret');
     expect(persisted.rows[0]?.encrypted_secret).not.toContain('must-not-be-persisted-or-written');
+  });
+
+  it('fails closed for a recovered request identity with another provider or operation', async () => {
+    const vault = new CredentialVaultService(
+      new PostgresCredentialVaultRepository(pool),
+      authority(),
+    );
+    const created = await vault.create({
+      projectId: 'project-a',
+      providerId: 'deepseek',
+      secret: 'deepseek-secret',
+      clientRequestId: 'semantic-request-id',
+    });
+    await expect(
+      vault.create({
+        projectId: 'project-a',
+        providerId: 'openai',
+        secret: 'openai-secret',
+        clientRequestId: 'semantic-request-id',
+      }),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+    await expect(
+      vault.replace({
+        projectId: 'project-a',
+        providerId: 'deepseek',
+        credentialId: created.credentialId,
+        expectedRevision: created.credentialRevision,
+        secret: 'replace-secret',
+        clientRequestId: 'semantic-request-id',
+      }),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+
+    const replaced = await vault.replace({
+      projectId: 'project-a',
+      providerId: 'deepseek',
+      credentialId: created.credentialId,
+      expectedRevision: created.credentialRevision,
+      secret: 'replace-secret',
+      clientRequestId: 'semantic-replace-id',
+    });
+    await expect(
+      vault.replace({
+        projectId: 'project-a',
+        providerId: 'deepseek',
+        credentialId: created.credentialId,
+        expectedRevision: created.credentialRevision,
+        secret: 'must-not-write-a-second-secret',
+        clientRequestId: 'semantic-replace-id',
+      }),
+    ).resolves.toEqual(replaced);
   });
 
   it('keeps the revision history append-only and allows lifecycle state changes only', async () => {

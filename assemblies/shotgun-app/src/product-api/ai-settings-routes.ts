@@ -207,7 +207,14 @@ export function registerAISettingsRoutes(
   );
 
   server.get<{
-    Querystring: { targetProjectId?: string; clientRequestId?: string };
+    Querystring: {
+      targetProjectId?: string;
+      clientRequestId?: string;
+      providerId?: string;
+      operation?: string;
+      credentialId?: string;
+      expectedRevision?: string;
+    };
     Headers: SecurityHeaders;
   }>('/api/v1/settings/ai/credential-write-outcomes/by-client-request', async (request) => {
     const { context } = await requireBrowserSession(request.headers);
@@ -223,7 +230,38 @@ export function registerAISettingsRoutes(
       });
     }
     try {
-      const credential = await backend.getCredentialWriteOutcome({ projectId, clientRequestId });
+      const providerId = request.query.providerId;
+      const operation = request.query.operation;
+      if (typeof providerId !== 'string' || !providerId.trim()) {
+        throw new ShotgunError({
+          code: 'VALIDATION_ERROR',
+          safeMessage: 'providerId is required.',
+          module: 'ai-settings-api',
+          operation: 'get-credential-write-outcome',
+        });
+      }
+      if (operation !== 'CREATE' && operation !== 'REPLACE') {
+        throw new ShotgunError({
+          code: 'VALIDATION_ERROR',
+          safeMessage: 'operation must be CREATE or REPLACE.',
+          module: 'ai-settings-api',
+          operation: 'get-credential-write-outcome',
+        });
+      }
+      const binding =
+        operation === 'CREATE'
+          ? { operation: 'CREATE' as const, providerId }
+          : {
+              operation: 'REPLACE' as const,
+              providerId,
+              credentialId: request.query.credentialId ?? '',
+              expectedRevision: Number(request.query.expectedRevision),
+            };
+      const credential = await backend.getCredentialWriteOutcome({
+        projectId,
+        clientRequestId,
+        binding,
+      });
       if (!credential) {
         throw new ShotgunError({
           code: 'NOT_FOUND',

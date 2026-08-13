@@ -894,13 +894,35 @@ export const createShotgunApiClient = (
     },
 
     async getAICredentialWriteOutcome(
-      params: { readonly projectId: string; readonly clientRequestId: string },
+      params:
+        | {
+            readonly projectId: string;
+            readonly clientRequestId: string;
+            readonly providerId: string;
+            readonly operation: 'CREATE';
+          }
+        | {
+            readonly projectId: string;
+            readonly clientRequestId: string;
+            readonly providerId: string;
+            readonly operation: 'REPLACE';
+            readonly credentialId: string;
+            readonly expectedRevision: number;
+          },
       requestOptions?: RequestOptions,
     ): Promise<AICredentialMetadata> {
+      const replaceTarget =
+        params.operation === 'REPLACE'
+          ? `&credentialId=${encodeURIComponent(params.credentialId)}&expectedRevision=${encodeURIComponent(
+              String(params.expectedRevision),
+            )}`
+          : '';
       const response = await request(
         `/settings/ai/credential-write-outcomes/by-client-request?targetProjectId=${encodeURIComponent(
           params.projectId,
-        )}&clientRequestId=${encodeURIComponent(params.clientRequestId)}`,
+        )}&clientRequestId=${encodeURIComponent(params.clientRequestId)}&providerId=${encodeURIComponent(
+          params.providerId,
+        )}&operation=${params.operation}${replaceTarget}`,
         { signal: requestOptions?.signal },
       );
       const body = (await assertOk(response)) as { credential: unknown };

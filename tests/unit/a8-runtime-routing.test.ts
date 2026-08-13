@@ -257,6 +257,91 @@ describe('A8 effective runtime resolution and provider routing', () => {
     expect(JSON.stringify(pin)).not.toContain('secret');
   });
 
+  it('keeps legacy Gemini runtime eligible after a Gemini privacy approval until explicit managed configuration exists', async () => {
+    const current: { value: ProjectAIConfiguration | undefined } = { value: undefined };
+    const authority: LegacyGeminiRuntimeAuthority = {
+      readLegacyExternalTransferAllowed: async () => true,
+      readGeminiApproval: async () => ({
+        providerId: 'google-gemini',
+        approved: true,
+        approvalRevision: 1,
+      }),
+    };
+    const context = {
+      snapshot: snapshot('run-a8-legacy'),
+      evidence,
+      context: [{ kind: 'EVIDENCE' as const, ...evidenceItem }],
+      contextStatus: 'SUPPORTED' as const,
+      resolvedContextDigest: 'digest',
+      queryPlanRevision: 'query-plan',
+    } satisfies AskExecutionRunContext;
+    const records = [
+      metadata({
+        providerId: 'deepseek',
+        credentialId: 'credential-managed',
+        credentialRevision: 1,
+      }),
+    ];
+    const resolver = new EffectiveAIConfigurationResolver(
+      new StaticProviderRegistry(),
+      { getCurrent: async () => current.value } as never,
+      vaultFor(records, { providers: [], scopes: [] }),
+      {
+        legacyAuthority: authority,
+        legacyCredential: () => 'legacy-gemini-key',
+        clock: () => '2026-08-12T00:00:00.000Z',
+      },
+    );
+
+    const legacyPin = await resolver.resolveInitialAIExecutionIdentity({
+      principalId: scope.principalId,
+      projectId: scope.projectId,
+      answerRunId: 'run-a8-legacy',
+      authorizedContext: context,
+    });
+    expect(legacyPin).toMatchObject({
+      providerId: 'google-gemini',
+      credentialId: 'legacy-gemini-compatibility',
+    });
+    await expect(
+      resolver.revalidatePinnedCredential({
+        principalId: scope.principalId,
+        projectId: scope.projectId,
+        answerRunId: 'run-a8-legacy',
+        executionPin: legacyPin,
+      }),
+    ).resolves.toBe(true);
+
+    current.value = {
+      projectId: scope.projectId,
+      activeProviderId: 'deepseek',
+      activeModelId: 'deepseek-v4-flash',
+      credentialId: 'credential-managed',
+      credentialRevision: 1,
+      aiConfigurationRevision: 1,
+      updatedBy: 'owner',
+      updatedAt: '2026-08-12T00:00:00.000Z',
+    };
+    await expect(
+      resolver.revalidatePinnedCredential({
+        principalId: scope.principalId,
+        projectId: scope.projectId,
+        answerRunId: 'run-a8-legacy',
+        executionPin: legacyPin,
+      }),
+    ).resolves.toBe(false);
+
+    records[0] = { ...records[0]!, lifecycleState: 'removed' };
+    await expect(
+      resolver.resolveInitialAIExecutionIdentity({
+        principalId: scope.principalId,
+        projectId: scope.projectId,
+        answerRunId: 'run-a8-after-managed-removal',
+        authorizedContext: context,
+      }),
+    ).rejects.toMatchObject({ code: 'AI_CAPABILITY_UNAVAILABLE' });
+  });
+
   it('routes DeepSeek, OpenAI, and Gemini through the registry using bounded credential access', async () => {
     const routeCalls = { providers: [] as string[], secrets: [] as string[] };
     const vaultCalls = { providers: [] as string[], scopes: [] as string[] };

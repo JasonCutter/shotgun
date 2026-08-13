@@ -108,6 +108,7 @@ describe('A6 AI settings backend and multi-provider connectivity', () => {
     const recoveredCreate = await backend.getCredentialWriteOutcome({
       projectId: 'project-a',
       clientRequestId: 'credential-write-create-1',
+      binding: { operation: 'CREATE', providerId: 'openai' },
     });
     const replayedCreate = await backend.createCredential({
       projectId: 'project-a',
@@ -144,6 +145,66 @@ describe('A6 AI settings backend and multi-provider connectivity', () => {
     ]);
     expect(JSON.stringify(await backend.getSettings('project-a'))).not.toContain('first-secret');
     expect(JSON.stringify(await backend.getSettings('project-a'))).not.toContain('second-secret');
+  });
+
+  it('fails closed when a credential write request identity is reused with different semantics', async () => {
+    const { backend } = createBackend({
+      providerId: 'openai',
+      testConnection: async () => ({}),
+      generateStructured: async () => ({ rawText: '{"ok":true}' }),
+    });
+    const created = await backend.createCredential({
+      projectId: 'project-a',
+      providerId: 'deepseek',
+      secret: 'deepseek-secret',
+      clientRequestId: 'semantic-request-id',
+    });
+    await expect(
+      backend.createCredential({
+        projectId: 'project-a',
+        providerId: 'openai',
+        secret: 'openai-secret',
+        clientRequestId: 'semantic-request-id',
+      }),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+    await expect(
+      backend.replaceCredential({
+        projectId: 'project-a',
+        providerId: 'deepseek',
+        credentialId: created.credentialId,
+        expectedRevision: created.credentialRevision,
+        secret: 'replace-secret',
+        clientRequestId: 'semantic-request-id',
+      }),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+
+    const replaceRequestId = 'semantic-replace-id';
+    const replaced = await backend.replaceCredential({
+      projectId: 'project-a',
+      providerId: 'deepseek',
+      credentialId: created.credentialId,
+      expectedRevision: created.credentialRevision,
+      secret: 'replace-secret',
+      clientRequestId: replaceRequestId,
+    });
+    await expect(
+      backend.replaceCredential({
+        projectId: 'project-a',
+        providerId: 'deepseek',
+        credentialId: created.credentialId,
+        expectedRevision: created.credentialRevision,
+        secret: 'must-not-write-a-second-secret',
+        clientRequestId: replaceRequestId,
+      }),
+    ).resolves.toEqual(replaced);
+    await expect(
+      backend.createCredential({
+        projectId: 'project-a',
+        providerId: 'deepseek',
+        secret: 'must-not-cross-recover',
+        clientRequestId: replaceRequestId,
+      }),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
   });
 
   it('uses an exact stored credential revision through the vault callback and zeroes it afterwards', async () => {

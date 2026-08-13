@@ -215,6 +215,14 @@ export const AIWorkspace = () => {
       let credentialWasSaved = false;
       if (draftSecret) {
         const clientRequestId = credentialRequestIdRef.current ?? credentialWriteRequestId();
+        const recoveryBinding = usableCredential
+          ? {
+              operation: 'REPLACE' as const,
+              providerId: selectedProvider.providerId,
+              credentialId: usableCredential.credentialId,
+              expectedRevision: usableCredential.credentialRevision,
+            }
+          : { operation: 'CREATE' as const, providerId: selectedProvider.providerId };
         credentialRequestIdRef.current = clientRequestId;
         try {
           credential = usableCredential
@@ -237,6 +245,7 @@ export const AIWorkspace = () => {
             credential = await apiClient.getAICredentialWriteOutcome({
               projectId: settings.projectId,
               clientRequestId,
+              ...recoveryBinding,
             });
           } catch {
             throw error;

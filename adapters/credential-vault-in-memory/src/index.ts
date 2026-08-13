@@ -12,6 +12,13 @@ export class InMemoryCredentialVaultRepository implements CredentialVaultReposit
   private readonly records = new Map<string, StoredCredentialRevision>();
 
   async insertRevision(record: StoredCredentialRevision): Promise<void> {
+    if (record.clientRequestId) {
+      const existing = await this.findByClientRequestId({
+        projectId: record.projectId,
+        clientRequestId: record.clientRequestId,
+      });
+      if (existing) return;
+    }
     this.records.set(keyOf(record), record);
   }
 
@@ -21,6 +28,21 @@ export class InMemoryCredentialVaultRepository implements CredentialVaultReposit
       return undefined;
     }
     return record;
+  }
+
+  async findByClientRequestId(input: {
+    readonly projectId: string;
+    readonly clientRequestId: string;
+  }): Promise<StoredCredentialRevision | undefined> {
+    for (const record of this.records.values()) {
+      if (
+        record.projectId === input.projectId &&
+        record.clientRequestId === input.clientRequestId
+      ) {
+        return record;
+      }
+    }
+    return undefined;
   }
 
   async listCurrent(projectId: string): Promise<readonly StoredCredentialRevision[]> {

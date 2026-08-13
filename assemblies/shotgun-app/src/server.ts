@@ -85,6 +85,7 @@ import type {
 } from '../../../modules/settings-policy/src/index.js';
 import type { FrontendCommandGatewayPort } from '../../../modules/frontend-command-gateway/src/index.js';
 import type { AISettingsBackendPort } from '../../../modules/ai-settings-backend/src/index.js';
+import type { ProviderExternalTransferApprovalPort } from '../../../modules/provider-privacy-policy/src/index.js';
 import { registerProjectRoutes } from './product-api/project-routes.js';
 import { registerFrontendProductRoutes } from './product-api/frontend-product-routes.js';
 import { registerSettingsRoutes } from './product-api/settings-routes.js';
@@ -500,6 +501,8 @@ export type ApplicationOptions = {
   readonly projectBootstrapUnitOfWork?: ProjectBootstrapUnitOfWorkPort;
   readonly settingsRepository?: SettingsRepositoryPort;
   readonly aiSettingsBackend?: AISettingsBackendPort;
+  /** Existing A4 authority exposed only through provider-scoped review routes. */
+  readonly providerExternalTransferApprovals?: ProviderExternalTransferApprovalPort;
   readonly frontendCommandGateway?: FrontendCommandGatewayPort;
   readonly frontendKnowledgeDraftRepository?: FrontendKnowledgeDraftRepositoryBoundaryPort;
   readonly frontendKnowledgeDraftTargetResolver?: FrontendKnowledgeDraftTargetResolverPort;
@@ -2179,6 +2182,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       options.aiSettingsBackend,
       authRepository,
       requireBrowserSession,
+      options.providerExternalTransferApprovals,
     );
   }
   registerFrontendKnowledgeDraftRoutes(

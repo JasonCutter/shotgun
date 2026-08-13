@@ -6,6 +6,7 @@ import {
 } from '../../contracts/src/index.js';
 import type {
   AICredentialMetadata,
+  AIProviderPrivacyProposal,
   AISettingsApproval,
   AISettingsConfiguration,
   AISettingsCredentialStatus,
@@ -300,6 +301,29 @@ export const decodeAISettingsReadModel = (value: unknown): AISettingsReadModel =
 
 export const decodeAICredentialMetadataEnvelope = (value: unknown): AICredentialMetadata =>
   decodeAICredentialMetadata(value);
+
+export const decodeAISettingsApprovalEnvelope = (value: unknown): AISettingsApproval =>
+  decodeAIApproval(value);
+
+export const decodeAIProviderPrivacyProposalEnvelope = (
+  value: unknown,
+): AIProviderPrivacyProposal => {
+  if (!isRecord(value)) throw invalidProductApiResponse();
+  const status = aiString(value.status);
+  if (!['PROPOSED', 'APPROVED', 'REJECTED'].includes(status)) {
+    throw invalidProductApiResponse();
+  }
+  return {
+    proposalId: aiString(value.proposalId),
+    projectId: aiString(value.projectId),
+    providerId: aiString(value.providerId),
+    approved: aiBoolean(value.approved),
+    expectedApprovalRevision: aiNumber(value.expectedApprovalRevision),
+    proposedBy: aiString(value.proposedBy),
+    status: status as AIProviderPrivacyProposal['status'],
+    createdAt: aiString(value.createdAt),
+  };
+};
 
 export const decodeAIConfigurationEnvelope = (value: unknown): AISettingsConfiguration =>
   decodeAIConfiguration(value);

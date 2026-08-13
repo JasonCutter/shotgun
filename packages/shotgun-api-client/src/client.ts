@@ -1,5 +1,7 @@
 import type {
   AICredentialMetadata,
+  AIProviderPrivacyProposal,
+  AISettingsApproval,
   AISettingsConfiguration,
   AISettingsReadModel,
   AITestConnectionResult,
@@ -14,6 +16,8 @@ import { createCsrfMutationManager } from './csrf-manager.js';
 import {
   decodeAICredentialMetadataEnvelope,
   decodeAIConfigurationEnvelope,
+  decodeAIProviderPrivacyProposalEnvelope,
+  decodeAISettingsApprovalEnvelope,
   decodeAISettingsReadModel,
   decodeAITestConnectionResult,
   decodeCsrfEnvelope,
@@ -889,8 +893,27 @@ export const createShotgunApiClient = (
       return decodeAISettingsReadModel(body.settings);
     },
 
+    async getAICredentialWriteOutcome(
+      params: { readonly projectId: string; readonly clientRequestId: string },
+      requestOptions?: RequestOptions,
+    ): Promise<AICredentialMetadata> {
+      const response = await request(
+        `/settings/ai/credential-write-outcomes/by-client-request?targetProjectId=${encodeURIComponent(
+          params.projectId,
+        )}&clientRequestId=${encodeURIComponent(params.clientRequestId)}`,
+        { signal: requestOptions?.signal },
+      );
+      const body = (await assertOk(response)) as { credential: unknown };
+      return decodeAICredentialMetadataEnvelope(body.credential);
+    },
+
     async createAICredential(
-      params: { readonly projectId: string; readonly providerId: string; readonly secret: string },
+      params: {
+        readonly projectId: string;
+        readonly providerId: string;
+        readonly secret: string;
+        readonly clientRequestId: string;
+      },
       requestOptions?: RequestOptions,
     ): Promise<AICredentialMetadata> {
       return runMutation(requestOptions?.signal, async (csrfToken) => {
@@ -912,6 +935,7 @@ export const createShotgunApiClient = (
         readonly credentialId: string;
         readonly expectedRevision: number;
         readonly secret: string;
+        readonly clientRequestId: string;
       },
       requestOptions?: RequestOptions,
     ): Promise<AICredentialMetadata> {
@@ -926,12 +950,62 @@ export const createShotgunApiClient = (
               providerId: params.providerId,
               expectedRevision: params.expectedRevision,
               secret: params.secret,
+              clientRequestId: params.clientRequestId,
             }),
             signal: requestOptions?.signal,
           },
         );
         const body = (await assertOk(response)) as { credential: unknown };
         return decodeAICredentialMetadataEnvelope(body.credential);
+      });
+    },
+
+    async proposeAIProviderPrivacyApproval(
+      params: {
+        readonly projectId: string;
+        readonly providerId: string;
+        readonly approved: boolean;
+        readonly expectedApprovalRevision: number;
+      },
+      requestOptions?: RequestOptions,
+    ): Promise<AIProviderPrivacyProposal> {
+      return runMutation(requestOptions?.signal, async (csrfToken) => {
+        const response = await request('/settings/ai/provider-privacy/proposals', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+          body: JSON.stringify(params),
+          signal: requestOptions?.signal,
+        });
+        const body = (await assertOk(response)) as { proposal: unknown };
+        return decodeAIProviderPrivacyProposalEnvelope(body.proposal);
+      });
+    },
+
+    async approveAIProviderPrivacyProposal(
+      params: {
+        readonly projectId: string;
+        readonly providerId: string;
+        readonly proposalId: string;
+        readonly expectedApprovalRevision: number;
+      },
+      requestOptions?: RequestOptions,
+    ): Promise<AISettingsApproval> {
+      return runMutation(requestOptions?.signal, async (csrfToken) => {
+        const response = await request(
+          `/settings/ai/provider-privacy/proposals/${encodeURIComponent(params.proposalId)}/approve`,
+          {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+            body: JSON.stringify({
+              projectId: params.projectId,
+              providerId: params.providerId,
+              expectedApprovalRevision: params.expectedApprovalRevision,
+            }),
+            signal: requestOptions?.signal,
+          },
+        );
+        const body = (await assertOk(response)) as { approval: unknown };
+        return decodeAISettingsApprovalEnvelope(body.approval);
       });
     },
 

@@ -20,6 +20,7 @@ import {
   initialProviderRegistry,
 } from '../../modules/ai-configuration/src/index.js';
 import { InMemoryProjectAIConfigurationRepository } from '../../adapters/ai-configuration-in-memory/src/index.js';
+import { ShotgunError } from '../../packages/contracts/src/index.js';
 
 const response = (payload: unknown, status = 200): Response =>
   new Response(JSON.stringify(payload), {
@@ -90,6 +91,59 @@ describe('A6 AI settings backend and multi-provider connectivity', () => {
     expect(
       settings.privacy.find((item) => item.providerId === 'openai')?.legacyGeminiCompatibility,
     ).toBe(false);
+  });
+
+  it('recovers idempotent credential create and replace outcomes without persisting a secret', async () => {
+    const { backend } = createBackend({
+      providerId: 'openai',
+      testConnection: async () => ({}),
+      generateStructured: async () => ({ rawText: '{"ok":true}' }),
+    });
+    const created = await backend.createCredential({
+      projectId: 'project-a',
+      providerId: 'openai',
+      secret: 'first-secret',
+      clientRequestId: 'credential-write-create-1',
+    });
+    const recoveredCreate = await backend.getCredentialWriteOutcome({
+      projectId: 'project-a',
+      clientRequestId: 'credential-write-create-1',
+    });
+    const replayedCreate = await backend.createCredential({
+      projectId: 'project-a',
+      providerId: 'openai',
+      secret: 'must-not-replace-or-persist',
+      clientRequestId: 'credential-write-create-1',
+    });
+    expect(recoveredCreate).toEqual(created);
+    expect(replayedCreate).toEqual(created);
+
+    const replaced = await backend.replaceCredential({
+      projectId: 'project-a',
+      providerId: 'openai',
+      credentialId: created.credentialId,
+      expectedRevision: created.credentialRevision,
+      secret: 'second-secret',
+      clientRequestId: 'credential-write-replace-1',
+    });
+    const replayedReplace = await backend.replaceCredential({
+      projectId: 'project-a',
+      providerId: 'openai',
+      credentialId: created.credentialId,
+      expectedRevision: created.credentialRevision,
+      secret: 'must-not-replace-or-persist',
+      clientRequestId: 'credential-write-replace-1',
+    });
+    expect(replayedReplace).toEqual(replaced);
+    expect((await backend.getSettings('project-a')).credentialStatuses).toEqual([
+      expect.objectContaining({
+        credentialId: created.credentialId,
+        credentialRevision: 2,
+        lifecycleState: 'active',
+      }),
+    ]);
+    expect(JSON.stringify(await backend.getSettings('project-a'))).not.toContain('first-secret');
+    expect(JSON.stringify(await backend.getSettings('project-a'))).not.toContain('second-secret');
   });
 
   it('uses an exact stored credential revision through the vault callback and zeroes it afterwards', async () => {
@@ -240,13 +294,48 @@ describe('A6 AI settings backend and multi-provider connectivity', () => {
     ).rejects.not.toThrow('do-not-leak');
   });
 
+  it('projects a definite provider terminal failure as FAILED rather than Model unavailable', async () => {
+    const { backend } = createBackend({
+      providerId: 'openai',
+      testConnection: async () => {
+        throw new ShotgunError({
+          code: 'TERMINAL_FAILURE',
+          safeMessage: 'OpenAI rejected this probe for a non-model reason.',
+          module: 'test',
+          operation: 'test-connection',
+        });
+      },
+      generateStructured: async () => ({ rawText: '{"ok":true}' }),
+    });
+    await expect(
+      backend.testConnection({
+        projectId: 'project-a',
+        providerId: 'openai',
+        modelId: 'gpt-5.6-luna',
+        draftSecret: 'draft-secret',
+      }),
+    ).resolves.toMatchObject({
+      status: 'FAILED',
+      errorCode: 'TERMINAL_FAILURE',
+    });
+  });
+
   it('uses the official catalog identifiers in provider request payloads', async () => {
     let openaiBody: Record<string, unknown> | undefined;
     let deepseekBody: Record<string, unknown> | undefined;
     const openai = new OpenAIConnectivityAdapter({
       fetch: async (_input, init) => {
         openaiBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
-        return response({ id: 'openai-request', output_text: '{"ready":true}' });
+        return response({
+          id: 'openai-request',
+          output: [
+            {
+              type: 'message',
+              role: 'assistant',
+              content: [{ type: 'output_text', text: '{"ready":true}' }],
+            },
+          ],
+        });
       },
     });
     const deepseek = new DeepSeekConnectivityAdapter({
@@ -264,6 +353,46 @@ describe('A6 AI settings backend and multi-provider connectivity', () => {
     expect(deepseekBody?.model).toBe('deepseek-v4-flash');
     expect(JSON.stringify(openaiBody)).not.toContain('secret');
     expect(JSON.stringify(deepseekBody)).not.toContain('secret');
+  });
+
+  it('extracts structured generation text from an OpenAI Responses output content array', async () => {
+    const openai = new OpenAIConnectivityAdapter({
+      fetch: async () =>
+        response({
+          id: 'openai-generation',
+          model: 'gpt-5.6-luna-2026-08-01',
+          output: [
+            {
+              type: 'message',
+              role: 'assistant',
+              content: [
+                { type: 'refusal', refusal: null },
+                { type: 'output_text', text: '{"answer":"ok"}' },
+              ],
+            },
+          ],
+        }),
+    });
+    await expect(
+      openai.generateStructured({
+        modelId: 'gpt-5.6-luna',
+        apiKey: Buffer.from('secret'),
+        request: {
+          systemInstruction: 'Return JSON only.',
+          prompt: 'Generate a response.',
+          responseSchema: {
+            type: 'object',
+            properties: { answer: { type: 'string' } },
+            required: ['answer'],
+            additionalProperties: false,
+          },
+        },
+      }),
+    ).resolves.toMatchObject({
+      rawText: '{"answer":"ok"}',
+      providerResponseId: 'openai-generation',
+      modelVersion: 'gpt-5.6-luna-2026-08-01',
+    });
   });
 
   it('keeps Gemini on the common connectivity contract with a replaceable SDK boundary', async () => {

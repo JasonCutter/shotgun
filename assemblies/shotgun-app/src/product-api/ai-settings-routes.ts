@@ -5,6 +5,10 @@ import type { AISettingsBackendPort } from '../../../../modules/ai-settings-back
 import { AISettingsBackendError } from '../../../../modules/ai-settings-backend/src/index.js';
 import { AIConfigurationError } from '../../../../modules/ai-configuration/src/index.js';
 import { CredentialVaultError } from '../../../../modules/credential-vault/src/index.js';
+import {
+  ProviderExternalTransferPolicyError,
+  type ProviderExternalTransferApprovalPort,
+} from '../../../../modules/provider-privacy-policy/src/index.js';
 import { ShotgunError } from '../../../../packages/contracts/src/index.js';
 
 type BrowserSession = (headers: Record<string, string | string[] | undefined>) => Promise<{
@@ -49,6 +53,19 @@ const requiredInteger = (body: Record<string, unknown>, name: string): number =>
     });
   }
   return value as number;
+};
+
+const requiredBoolean = (body: Record<string, unknown>, name: string): boolean => {
+  const value = body[name];
+  if (typeof value !== 'boolean') {
+    throw new ShotgunError({
+      code: 'VALIDATION_ERROR',
+      safeMessage: `${name} must be a boolean.`,
+      module: 'ai-settings-api',
+      operation: 'decode-request',
+    });
+  }
+  return value;
 };
 
 const projectFrom = (body: ProjectBody, fallback: string): string => {
@@ -98,6 +115,21 @@ const mapError = (error: unknown, operation: string): ShotgunError => {
       cause: error,
     });
   }
+  if (error instanceof ProviderExternalTransferPolicyError) {
+    const code =
+      error.code === 'PROJECT_OWNER_REQUIRED'
+        ? 'PROJECT_ACCESS_DENIED'
+        : error.code === 'REVISION_CONFLICT' || error.code === 'PROPOSAL_STALE'
+          ? 'CONFLICT'
+          : 'VALIDATION_ERROR';
+    return new ShotgunError({
+      code,
+      safeMessage: error.message,
+      module: 'ai-settings-api',
+      operation,
+      cause: error,
+    });
+  }
   if (error instanceof CredentialVaultError) {
     const code =
       error.code === 'CONFIGURATION_REQUIRED' || error.code === 'AI_CAPABILITY_UNAVAILABLE'
@@ -131,6 +163,7 @@ export function registerAISettingsRoutes(
   backend: AISettingsBackendPort,
   authRepo: AuthRepositoryPort,
   requireBrowserSession: BrowserSession,
+  providerApprovals?: ProviderExternalTransferApprovalPort,
 ): void {
   const access = async (headers: SecurityHeaders, projectId: string, manage: boolean) => {
     const { context } = await requireBrowserSession(headers);
@@ -173,6 +206,38 @@ export function registerAISettingsRoutes(
     },
   );
 
+  server.get<{
+    Querystring: { targetProjectId?: string; clientRequestId?: string };
+    Headers: SecurityHeaders;
+  }>('/api/v1/settings/ai/credential-write-outcomes/by-client-request', async (request) => {
+    const { context } = await requireBrowserSession(request.headers);
+    const projectId = request.query.targetProjectId ?? context.projectId;
+    const clientRequestId = request.query.clientRequestId;
+    await access(request.headers, projectId, true);
+    if (typeof clientRequestId !== 'string' || !clientRequestId.trim()) {
+      throw new ShotgunError({
+        code: 'VALIDATION_ERROR',
+        safeMessage: 'clientRequestId is required.',
+        module: 'ai-settings-api',
+        operation: 'get-credential-write-outcome',
+      });
+    }
+    try {
+      const credential = await backend.getCredentialWriteOutcome({ projectId, clientRequestId });
+      if (!credential) {
+        throw new ShotgunError({
+          code: 'NOT_FOUND',
+          safeMessage: 'Credential write outcome was not found.',
+          module: 'ai-settings-api',
+          operation: 'get-credential-write-outcome',
+        });
+      }
+      return { credential };
+    } catch (error) {
+      throw mapError(error, 'get-credential-write-outcome');
+    }
+  });
+
   server.post<{ Body: unknown; Headers: SecurityHeaders }>(
     '/api/v1/settings/ai/credentials',
     async (request) => {
@@ -186,6 +251,9 @@ export function registerAISettingsRoutes(
             projectId,
             providerId: requiredString(body, 'providerId'),
             secret: requiredString(body, 'secret'),
+            ...(typeof body.clientRequestId === 'string'
+              ? { clientRequestId: requiredString(body, 'clientRequestId') }
+              : {}),
           }),
         };
       } catch (error) {
@@ -209,6 +277,9 @@ export function registerAISettingsRoutes(
             credentialId: request.params.credentialId,
             expectedRevision: requiredInteger(body, 'expectedRevision'),
             secret: requiredString(body, 'secret'),
+            ...(typeof body.clientRequestId === 'string'
+              ? { clientRequestId: requiredString(body, 'clientRequestId') }
+              : {}),
           }),
         };
       } catch (error) {
@@ -216,6 +287,54 @@ export function registerAISettingsRoutes(
       }
     },
   );
+
+  if (providerApprovals) {
+    server.post<{ Body: unknown; Headers: SecurityHeaders }>(
+      '/api/v1/settings/ai/provider-privacy/proposals',
+      async (request) => {
+        const body = objectBody(request.body);
+        const { context } = await requireBrowserSession(request.headers);
+        const projectId = projectFrom(body, context.projectId);
+        await access(request.headers, projectId, true);
+        try {
+          return {
+            proposal: await providerApprovals.propose({
+              projectId,
+              providerId: requiredString(body, 'providerId'),
+              approved: requiredBoolean(body, 'approved'),
+              expectedApprovalRevision: requiredInteger(body, 'expectedApprovalRevision'),
+              proposedBy: context.principalId,
+            }),
+          };
+        } catch (error) {
+          throw mapError(error, 'propose-provider-privacy-approval');
+        }
+      },
+    );
+
+    server.post<{ Params: { proposalId: string }; Body: unknown; Headers: SecurityHeaders }>(
+      '/api/v1/settings/ai/provider-privacy/proposals/:proposalId/approve',
+      async (request) => {
+        const body = objectBody(request.body);
+        const { context } = await requireBrowserSession(request.headers);
+        const projectId = projectFrom(body, context.projectId);
+        await access(request.headers, projectId, true);
+        try {
+          return {
+            approval: await providerApprovals.approve({
+              proposalId: request.params.proposalId,
+              projectId,
+              providerId: requiredString(body, 'providerId'),
+              reviewedBy: context.principalId,
+              expectedApprovalRevision: requiredInteger(body, 'expectedApprovalRevision'),
+            }),
+          };
+        } catch (error) {
+          throw mapError(error, 'approve-provider-privacy-approval');
+        }
+      },
+    );
+  }
 
   for (const action of ['revoke', 'remove'] as const) {
     server.post<{ Params: { credentialId: string }; Body: unknown; Headers: SecurityHeaders }>(

@@ -27,6 +27,8 @@ export type CredentialMetadata = {
 
 export type StoredCredentialRevision = CredentialMetadata & {
   readonly encryptedSecret: CredentialEnvelope;
+  /** Non-secret client identity for the dedicated credential-write recovery boundary. */
+  readonly clientRequestId?: string;
 };
 
 export type CredentialScope = {
@@ -56,6 +58,10 @@ export type CredentialVaultAvailability =
 export type CredentialVaultRepositoryPort = {
   insertRevision(record: StoredCredentialRevision): Promise<void>;
   findExact(scope: CredentialScope): Promise<StoredCredentialRevision | undefined>;
+  findByClientRequestId(input: {
+    readonly projectId: string;
+    readonly clientRequestId: string;
+  }): Promise<StoredCredentialRevision | undefined>;
   listCurrent(projectId: string): Promise<readonly StoredCredentialRevision[]>;
   advanceRevision(input: {
     readonly projectId: string;
@@ -144,6 +150,10 @@ export type CredentialVaultPort = {
     readonly projectId: string;
     readonly providerId: string;
     readonly secret: string | Uint8Array;
+    /** Server-generated identity used only by the secret-safe write recovery boundary. */
+    readonly credentialId?: string;
+    /** Non-secret request identity; never enters generic command/outcome persistence. */
+    readonly clientRequestId?: string;
     readonly now?: string;
   }): Promise<CredentialMetadata>;
   replace(input: {
@@ -152,11 +162,18 @@ export type CredentialVaultPort = {
     readonly credentialId: string;
     readonly expectedRevision: number;
     readonly secret: string | Uint8Array;
+    /** Non-secret request identity; never enters generic command/outcome persistence. */
+    readonly clientRequestId?: string;
     readonly now?: string;
   }): Promise<CredentialMetadata>;
   revoke(scope: CredentialScope, now?: string): Promise<CredentialMetadata>;
   remove(scope: CredentialScope, now?: string): Promise<CredentialMetadata>;
   getMetadata(scope: CredentialScope): Promise<CredentialMetadata | undefined>;
+  /** Returns only non-secret credential metadata for a prior credential write request. */
+  getWriteOutcome(input: {
+    readonly projectId: string;
+    readonly clientRequestId: string;
+  }): Promise<CredentialMetadata | undefined>;
   /** Non-secret current metadata only; encrypted envelopes are never returned. */
   listMetadata?(projectId: string): Promise<readonly CredentialMetadata[]>;
   getAvailability(): CredentialVaultAvailability;
@@ -286,7 +303,16 @@ export class CredentialVaultService implements CredentialVaultPort {
   async create(input: Parameters<CredentialVaultPort['create']>[0]): Promise<CredentialMetadata> {
     const projectId = identifier('Project ID', input.projectId);
     const providerId = identifier('Provider ID', input.providerId);
-    const credentialId = randomUUID();
+    const clientRequestId = input.clientRequestId
+      ? identifier('Client request ID', input.clientRequestId)
+      : undefined;
+    if (clientRequestId) {
+      const recovered = await this.repository.findByClientRequestId({ projectId, clientRequestId });
+      if (recovered) return metadataOf(recovered);
+    }
+    const credentialId = input.credentialId
+      ? identifier('Credential ID', input.credentialId)
+      : randomUUID();
     const createdAt = input.now ?? this.clock();
     const bytes = secretBytes(input.secret);
     let key: CredentialMasterKey | undefined;
@@ -306,7 +332,15 @@ export class CredentialVaultService implements CredentialVaultPort {
       await this.repository.insertRevision({
         ...metadata,
         encryptedSecret: encrypt(bytes, key, metadata),
+        ...(clientRequestId ? { clientRequestId } : {}),
       });
+      if (clientRequestId) {
+        const recovered = await this.repository.findByClientRequestId({
+          projectId,
+          clientRequestId,
+        });
+        if (recovered) return metadataOf(recovered);
+      }
       return metadata;
     } finally {
       bytes.fill(0);
@@ -319,6 +353,13 @@ export class CredentialVaultService implements CredentialVaultPort {
     const providerId = identifier('Provider ID', input.providerId);
     const credentialId = identifier('Credential ID', input.credentialId);
     const expectedRevision = revision(input.expectedRevision);
+    const clientRequestId = input.clientRequestId
+      ? identifier('Client request ID', input.clientRequestId)
+      : undefined;
+    if (clientRequestId) {
+      const recovered = await this.repository.findByClientRequestId({ projectId, clientRequestId });
+      if (recovered) return metadataOf(recovered);
+    }
     const current = await this.repository.findExact({
       projectId,
       providerId,
@@ -347,13 +388,31 @@ export class CredentialVaultService implements CredentialVaultPort {
         providerId,
         credentialId,
         expectedRevision,
-        next: { ...next, encryptedSecret: encrypt(bytes, key, next) },
+        next: {
+          ...next,
+          encryptedSecret: encrypt(bytes, key, next),
+          ...(clientRequestId ? { clientRequestId } : {}),
+        },
       });
       if (result === 'NOT_FOUND') {
         throw new CredentialVaultError('NOT_FOUND', 'Credential revision was not found.');
       }
       if (result === 'CONFLICT') {
+        if (clientRequestId) {
+          const recovered = await this.repository.findByClientRequestId({
+            projectId,
+            clientRequestId,
+          });
+          if (recovered) return metadataOf(recovered);
+        }
         throw new CredentialVaultError('CONFLICT', 'Credential revision changed concurrently.');
+      }
+      if (clientRequestId) {
+        const recovered = await this.repository.findByClientRequestId({
+          projectId,
+          clientRequestId,
+        });
+        if (recovered) return metadataOf(recovered);
       }
       return next;
     } finally {
@@ -373,6 +432,17 @@ export class CredentialVaultService implements CredentialVaultPort {
   async getMetadata(scope: CredentialScope): Promise<CredentialMetadata | undefined> {
     const stored = await this.repository.findExact(scopeOf(scope));
     return stored ? metadataOf(stored) : undefined;
+  }
+
+  async getWriteOutcome(input: {
+    readonly projectId: string;
+    readonly clientRequestId: string;
+  }): Promise<CredentialMetadata | undefined> {
+    const recovered = await this.repository.findByClientRequestId({
+      projectId: identifier('Project ID', input.projectId),
+      clientRequestId: identifier('Client request ID', input.clientRequestId),
+    });
+    return recovered ? metadataOf(recovered) : undefined;
   }
 
   async listMetadata(projectId: string): Promise<readonly CredentialMetadata[]> {

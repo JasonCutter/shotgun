@@ -70,6 +70,42 @@ describe.runIf(pool)('A2 credential vault PostgreSQL persistence', () => {
     ).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
 
+  it('recovers a credential write outcome by non-secret client request identity', async () => {
+    const vault = new CredentialVaultService(
+      new PostgresCredentialVaultRepository(pool),
+      authority(),
+    );
+    const created = await vault.create({
+      projectId: 'project-a',
+      providerId: 'openai',
+      secret: 'write-secret',
+      clientRequestId: 'credential-write-create-1',
+    });
+    const replayed = await vault.create({
+      projectId: 'project-a',
+      providerId: 'openai',
+      secret: 'must-not-be-persisted-or-written',
+      clientRequestId: 'credential-write-create-1',
+    });
+    expect(replayed).toEqual(created);
+    expect(
+      await vault.getWriteOutcome({
+        projectId: 'project-a',
+        clientRequestId: 'credential-write-create-1',
+      }),
+    ).toEqual(created);
+
+    const persisted = await pool.query<{ client_request_id: string; encrypted_secret: string }>(
+      `SELECT client_request_id, encrypted_secret::text
+       FROM ai.provider_credentials
+       WHERE credential_id = $1 AND credential_revision = 1`,
+      [created.credentialId],
+    );
+    expect(persisted.rows[0]?.client_request_id).toBe('credential-write-create-1');
+    expect(persisted.rows[0]?.encrypted_secret).not.toContain('write-secret');
+    expect(persisted.rows[0]?.encrypted_secret).not.toContain('must-not-be-persisted-or-written');
+  });
+
   it('keeps the revision history append-only and allows lifecycle state changes only', async () => {
     const vault = new CredentialVaultService(
       new PostgresCredentialVaultRepository(pool),

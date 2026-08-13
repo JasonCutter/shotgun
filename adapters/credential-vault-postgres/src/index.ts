@@ -170,7 +170,11 @@ export class PostgresCredentialVaultRepository implements CredentialVaultReposit
          WHERE credential_id = $2 AND credential_revision = $3`,
         [input.next.updatedAt, input.credentialId, input.expectedRevision],
       );
-      await insertRevision(client, input.next);
+      const inserted = await insertRevision(client, input.next);
+      if (!inserted) {
+        await client.query('ROLLBACK');
+        return 'CONFLICT';
+      }
       await client.query('COMMIT');
       return 'UPDATED';
     } catch (error) {
@@ -213,8 +217,8 @@ export class PostgresCredentialVaultRepository implements CredentialVaultReposit
 const insertRevision = async (
   client: PoolClient,
   record: StoredCredentialRevision,
-): Promise<void> => {
-  await client.query(
+): Promise<boolean> => {
+  const result = await client.query(
     `INSERT INTO ai.provider_credentials (
        credential_id, project_id, provider_id, encrypted_secret,
        encryption_version, key_version, credential_revision,
@@ -222,7 +226,8 @@ const insertRevision = async (
        client_request_provider_id, client_request_credential_id,
        client_request_expected_revision, created_at, updated_at
      ) VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-     ON CONFLICT DO NOTHING`,
+     ON CONFLICT DO NOTHING
+     RETURNING credential_id`,
     [
       record.credentialId,
       record.projectId,
@@ -241,4 +246,5 @@ const insertRevision = async (
       record.updatedAt,
     ],
   );
+  return result.rowCount === 1;
 };

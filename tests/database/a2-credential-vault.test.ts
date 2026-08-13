@@ -5,6 +5,8 @@ import { createPostgresPool } from '../../adapters/postgres/src/index.js';
 import {
   CredentialVaultService,
   StaticCredentialMasterKeyAuthority,
+  type CredentialEnvelope,
+  type StoredCredentialRevision,
 } from '../../modules/credential-vault/src/index.js';
 import { migrateUpTo } from '../../scripts/database.js';
 
@@ -155,6 +157,65 @@ describe.runIf(pool)('A2 credential vault PostgreSQL persistence', () => {
         clientRequestId: 'semantic-replace-id',
       }),
     ).resolves.toEqual(replaced);
+  });
+
+  it('rolls back replace when the next revision insert loses a request-identity conflict', async () => {
+    const repository = new PostgresCredentialVaultRepository(pool);
+    const vault = new CredentialVaultService(repository, authority());
+    const active = await vault.create({
+      projectId: 'project-a',
+      providerId: 'deepseek',
+      secret: 'active-secret',
+    });
+    const conflicting = await vault.create({
+      projectId: 'project-a',
+      providerId: 'openai',
+      secret: 'conflicting-secret',
+      clientRequestId: 'replace-race-request-id',
+    });
+    const source = await pool.query<{
+      encrypted_secret: CredentialEnvelope;
+      encryption_version: 'aes-256-gcm:v1';
+      key_version: string;
+    }>(
+      `SELECT encrypted_secret, encryption_version, key_version
+       FROM ai.provider_credentials
+       WHERE credential_id = $1 AND credential_revision = 1`,
+      [conflicting.credentialId],
+    );
+    const next: StoredCredentialRevision = {
+      credentialId: active.credentialId,
+      projectId: active.projectId,
+      providerId: active.providerId,
+      encryptedSecret: source.rows[0]!.encrypted_secret,
+      encryptionVersion: source.rows[0]!.encryption_version,
+      keyVersion: source.rows[0]!.key_version,
+      credentialRevision: 2,
+      lifecycleState: 'active',
+      clientRequestId: 'replace-race-request-id',
+      clientRequestOperation: 'REPLACE',
+      clientRequestProviderId: active.providerId,
+      clientRequestCredentialId: active.credentialId,
+      clientRequestExpectedRevision: 1,
+      createdAt: '2026-08-12T00:01:00.000Z',
+      updatedAt: '2026-08-12T00:01:00.000Z',
+    };
+
+    await expect(
+      repository.advanceRevision({
+        projectId: active.projectId,
+        providerId: active.providerId,
+        credentialId: active.credentialId,
+        expectedRevision: 1,
+        next,
+      }),
+    ).resolves.toBe('CONFLICT');
+    await expect(repository.findExact({ ...active })).resolves.toMatchObject({
+      lifecycleState: 'active',
+    });
+    await expect(
+      repository.findExact({ ...active, credentialRevision: 2 }),
+    ).resolves.toBeUndefined();
   });
 
   it('keeps the revision history append-only and allows lifecycle state changes only', async () => {

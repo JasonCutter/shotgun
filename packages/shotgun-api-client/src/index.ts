@@ -7,6 +7,7 @@ export * from './frontend-foundation-client.js';
 export * from './frontend-digest-adapter.js';
 export * from './sources-write-client.js';
 export * from './sources-write-types.js';
+export type { SourcesSensitivity } from '../../contracts/src/frontend-sources.js';
 export * from './ask-client.js';
 export * from './ask-contract-types.js';
 export * from './frontend-knowledge-draft-client.js';

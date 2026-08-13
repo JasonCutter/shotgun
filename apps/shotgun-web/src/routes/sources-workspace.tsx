@@ -8,6 +8,7 @@ import {
   type GlobalShellView,
   type IntakeSubmissionSnapshot,
   type SourceLibraryQuery,
+  type SourcesSensitivity,
   type StagedSourcesIntakeInput,
 } from '@shotgun/api-client';
 
@@ -58,6 +59,8 @@ export const SourcesWorkspace = () => {
   const [appliedQuery, setAppliedQuery] = useState('');
   const [intakeKind, setIntakeKind] = useState<'DIRECT_TEXT' | 'FILE' | 'URL'>('DIRECT_TEXT');
   const [intakeLabel, setIntakeLabel] = useState('');
+  const [requestedClassification, setRequestedClassification] =
+    useState<SourcesSensitivity>('private');
   const [directText, setDirectText] = useState('');
   const [requestedUrl, setRequestedUrl] = useState('');
   const [selectedFile, setSelectedFile] = useState<File>();
@@ -97,13 +100,13 @@ export const SourcesWorkspace = () => {
   const onAddDraft = (event: FormEvent) => {
     event.preventDefault();
     if (intakeKind === 'DIRECT_TEXT') {
-      draftQueue.addDirectText(intakeLabel, directText);
+      draftQueue.addDirectText(intakeLabel, directText, requestedClassification);
       setDirectText('');
     } else if (intakeKind === 'URL') {
-      draftQueue.addUrl(intakeLabel, requestedUrl);
+      draftQueue.addUrl(intakeLabel, requestedUrl, requestedClassification);
       setRequestedUrl('');
     } else if (selectedFile) {
-      draftQueue.addFile(intakeLabel, selectedFile);
+      draftQueue.addFile(intakeLabel, selectedFile, requestedClassification);
       setSelectedFile(undefined);
     }
     setIntakeLabel('');
@@ -156,6 +159,7 @@ export const SourcesWorkspace = () => {
             kind: 'DIRECT_TEXT',
             label: item.label,
             stagingReference: receipt.stagingReference,
+            requestedClassification: item.requestedClassification,
           });
         } else if (item.kind === 'FILE') {
           const receipt = await writeClient.stageBytes({
@@ -174,6 +178,7 @@ export const SourcesWorkspace = () => {
             fileName: item.file.name,
             mediaType: item.file.type as 'text/plain' | 'text/markdown',
             stagingReference: receipt.stagingReference,
+            requestedClassification: item.requestedClassification,
           });
         } else {
           const receipt = await writeClient.stageUrl({
@@ -187,6 +192,7 @@ export const SourcesWorkspace = () => {
             kind: 'URL',
             label: item.label,
             stagingReference: receipt.stagingReference,
+            requestedClassification: item.requestedClassification,
           });
         }
       }
@@ -354,6 +360,22 @@ export const SourcesWorkspace = () => {
             maxLength={200}
             onChange={(event) => setIntakeLabel(event.target.value)}
           />
+          <label htmlFor="source-intake-classification">Source classification</label>
+          <select
+            id="source-intake-classification"
+            value={requestedClassification}
+            onChange={(event) =>
+              setRequestedClassification(event.target.value as SourcesSensitivity)
+            }
+          >
+            <option value="public">Public</option>
+            <option value="internal">Internal</option>
+            <option value="private">Private</option>
+          </select>
+          <p>
+            This is a classification request for this new Source. The Server validates and stores
+            the final classification; it does not change your access clearance.
+          </p>
           {intakeKind === 'DIRECT_TEXT' ? (
             <>
               <label htmlFor="source-intake-text">Direct Text</label>
@@ -401,7 +423,8 @@ export const SourcesWorkspace = () => {
                   <div>
                     <strong>{item.label}</strong>
                     <p>
-                      {intakeKindLabel(item.kind)} · {intakeValidationLabel(item.validation)}
+                      {intakeKindLabel(item.kind)} · {intakeValidationLabel(item.validation)} ·
+                      Requested classification: {item.requestedClassification}
                     </p>
                     <small>{item.message}</small>
                   </div>
@@ -556,7 +579,8 @@ export const SourcesWorkspace = () => {
                 <div>
                   <h3>{source.label}</h3>
                   <p>
-                    {mediaTypeLabel(source.mediaType)} · {sourceLifecycleLabel(source.lifecycle)}
+                    {mediaTypeLabel(source.mediaType)} · {sourceLifecycleLabel(source.lifecycle)} ·
+                    Source classification: {source.sensitivity}
                   </p>
                   <p>{source.askUsageExplanation}</p>
                 </div>

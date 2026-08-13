@@ -1,6 +1,14 @@
 import type { SecurityContext } from '../../../packages/contracts/src/index.js';
 
 export type { SourcesStage3PipelinePort } from './stage3-pipeline.js';
+export {
+  assertSourcesResourceSecurityContinuation,
+  resolveSourcesResourceSecurity,
+  sourceSecurityMetadataEqual,
+  type SourcesResourceSecurityAuthority,
+  type SourcesResourceSecurityMetadata,
+  type SourcesResourceSecurityPolicy,
+} from './resource-security.js';
 
 export type SourcesIntakeChannel = 'direct_text' | 'file_upload' | 'url_acquisition';
 export type SourcesIntakeInputKind = 'DIRECT_TEXT' | 'FILE' | 'URL';

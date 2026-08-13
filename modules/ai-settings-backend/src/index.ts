@@ -18,6 +18,12 @@ export type CredentialScope = {
   readonly credentialId: string;
   readonly credentialRevision: number;
 };
+export type CredentialWriteSemanticBinding = {
+  readonly operation: 'CREATE' | 'REPLACE';
+  readonly providerId: string;
+  readonly credentialId?: string;
+  readonly expectedRevision?: number;
+};
 export type CredentialVaultAvailability =
   | { readonly state: 'AVAILABLE'; readonly keyVersion: string }
   | {
@@ -30,6 +36,7 @@ export type CredentialVaultPort = {
     readonly projectId: string;
     readonly providerId: string;
     readonly secret: string | Uint8Array;
+    readonly clientRequestId?: string;
     readonly now?: string;
   }): Promise<CredentialMetadata>;
   replace(input: {
@@ -38,11 +45,17 @@ export type CredentialVaultPort = {
     readonly credentialId: string;
     readonly expectedRevision: number;
     readonly secret: string | Uint8Array;
+    readonly clientRequestId?: string;
     readonly now?: string;
   }): Promise<CredentialMetadata>;
   revoke(scope: CredentialScope, now?: string): Promise<CredentialMetadata>;
   remove(scope: CredentialScope, now?: string): Promise<CredentialMetadata>;
   getMetadata(scope: CredentialScope): Promise<CredentialMetadata | undefined>;
+  getWriteOutcome(input: {
+    readonly projectId: string;
+    readonly clientRequestId: string;
+    readonly binding: CredentialWriteSemanticBinding;
+  }): Promise<CredentialMetadata | undefined>;
   listMetadata?(projectId: string): Promise<readonly CredentialMetadata[]>;
   getAvailability(): CredentialVaultAvailability;
   withCredential(
@@ -221,6 +234,7 @@ export type AISettingsBackendPort = {
     readonly projectId: string;
     readonly providerId: string;
     readonly secret: string;
+    readonly clientRequestId?: string;
     readonly now?: string;
   }): Promise<CredentialMetadata>;
   replaceCredential(input: {
@@ -229,8 +243,14 @@ export type AISettingsBackendPort = {
     readonly credentialId: string;
     readonly expectedRevision: number;
     readonly secret: string;
+    readonly clientRequestId?: string;
     readonly now?: string;
   }): Promise<CredentialMetadata>;
+  getCredentialWriteOutcome(input: {
+    readonly projectId: string;
+    readonly clientRequestId: string;
+    readonly binding: CredentialWriteSemanticBinding;
+  }): Promise<CredentialMetadata | undefined>;
   revokeCredential(input: CredentialScope & { readonly now?: string }): Promise<CredentialMetadata>;
   removeCredential(input: CredentialScope & { readonly now?: string }): Promise<CredentialMetadata>;
   saveConfiguration(
@@ -309,7 +329,7 @@ const testStatusOf = (code: ErrorCode | undefined): TestConnectionStatus => {
     case 'TIMEOUT':
       return 'TEMPORARILY_UNAVAILABLE';
     case 'TERMINAL_FAILURE':
-      return 'MODEL_UNAVAILABLE';
+      return 'FAILED';
     default:
       return 'FAILED';
   }
@@ -385,6 +405,7 @@ export class AISettingsBackendService implements AISettingsBackendPort {
       projectId,
       providerId: input.providerId,
       secret,
+      ...(input.clientRequestId ? { clientRequestId: input.clientRequestId } : {}),
       ...(input.now ? { now: input.now } : {}),
     });
   }
@@ -397,7 +418,20 @@ export class AISettingsBackendService implements AISettingsBackendPort {
       credentialId: normalize('Credential ID', input.credentialId),
       expectedRevision: optionalRevision(input.expectedRevision),
       secret: secretValue('Credential secret', input.secret),
+      ...(input.clientRequestId ? { clientRequestId: input.clientRequestId } : {}),
       ...(input.now ? { now: input.now } : {}),
+    });
+  }
+
+  async getCredentialWriteOutcome(input: {
+    readonly projectId: string;
+    readonly clientRequestId: string;
+    readonly binding: CredentialWriteSemanticBinding;
+  }): Promise<CredentialMetadata | undefined> {
+    return this.vault.getWriteOutcome({
+      projectId: normalize('Project ID', input.projectId),
+      clientRequestId: normalize('Client request ID', input.clientRequestId),
+      binding: input.binding,
     });
   }
 

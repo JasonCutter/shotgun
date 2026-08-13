@@ -6,7 +6,7 @@ type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
 type OpenAIResponse = {
   readonly id?: unknown;
   readonly model?: unknown;
-  readonly output_text?: unknown;
+  readonly output?: unknown;
   readonly usage?: {
     readonly input_tokens?: unknown;
     readonly output_tokens?: unknown;
@@ -154,10 +154,29 @@ export class OpenAIConnectivityAdapter implements AIProviderConnectivityAdapter 
   }
 
   private outputText(response: OpenAIResponse): string {
-    if (typeof response.output_text !== 'string' || !response.output_text.trim()) {
+    if (!Array.isArray(response.output)) {
       throw errorFor('VALIDATION_ERROR', 'OpenAI returned no structured text.');
     }
-    return response.output_text;
+
+    const parts: string[] = [];
+    for (const item of response.output) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+      const content = (item as { readonly content?: unknown }).content;
+      if (!Array.isArray(content)) continue;
+      for (const part of content) {
+        if (!part || typeof part !== 'object' || Array.isArray(part)) continue;
+        const typedPart = part as { readonly type?: unknown; readonly text?: unknown };
+        if (typedPart.type === 'output_text' && typeof typedPart.text === 'string') {
+          parts.push(typedPart.text);
+        }
+      }
+    }
+
+    const text = parts.join('');
+    if (!text.trim()) {
+      throw errorFor('VALIDATION_ERROR', 'OpenAI returned no structured text.');
+    }
+    return text;
   }
 
   private async request(

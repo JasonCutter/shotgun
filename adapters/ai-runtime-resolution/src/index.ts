@@ -175,15 +175,10 @@ export class EffectiveAIConfigurationResolver implements AskExecutionIdentityRes
     if (this.isLegacyPin(input.executionPin)) {
       if (await this.configuration.getCurrent(input.projectId)) return false;
       if (!this.options.legacyAuthority) return false;
-      const approval = await this.options.legacyAuthority.readGeminiApproval(input.projectId);
       const legacyAllowed = await this.options.legacyAuthority.readLegacyExternalTransferAllowed(
         input.projectId,
       );
-      return (
-        !approval &&
-        legacyAllowed &&
-        this.legacyAvailable(input.projectId, input.executionPin.modelId)
-      );
+      return legacyAllowed && this.legacyAvailable(input.projectId, input.executionPin.modelId);
     }
 
     return sameMetadata(
@@ -263,10 +258,9 @@ export class EffectiveAIConfigurationResolver implements AskExecutionIdentityRes
         'resolve-unconfigured-project',
       );
     }
-    const approval = await this.options.legacyAuthority.readGeminiApproval(projectId);
     const legacyAllowed =
       await this.options.legacyAuthority.readLegacyExternalTransferAllowed(projectId);
-    if (approval || !legacyAllowed || !this.legacyAvailable(projectId, modelId)) {
+    if (!legacyAllowed || !this.legacyAvailable(projectId, modelId)) {
       throw resolutionError(
         'CONFIGURATION_REQUIRED',
         'Project AI configuration is required before Ask can run.',

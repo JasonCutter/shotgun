@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react';
-import { Link, useOutletContext, useSearchParams } from 'react-router';
+import { useOutletContext, useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   AICredentialMetadata,
+  AIProviderPrivacyProposal,
   AITestConnectionResult,
   AISettingsCredentialStatus,
   AISettingsProvider,
@@ -24,30 +25,29 @@ type Feedback = {
 
 const providerLabel = (provider: AISettingsProvider): string => provider.displayName;
 
-const latestCredential = (
+const soleCredential = (
   credentials: readonly AISettingsCredentialStatus[],
   providerId: string,
-): AISettingsCredentialStatus | undefined =>
-  [...credentials]
-    .filter((credential) => credential.providerId === providerId)
-    .sort((left, right) => right.credentialRevision - left.credentialRevision)[0];
+  lifecycleState?: AISettingsCredentialStatus['lifecycleState'],
+): AISettingsCredentialStatus | undefined => {
+  const matches = credentials.filter(
+    (credential) =>
+      credential.providerId === providerId &&
+      (lifecycleState === undefined || credential.lifecycleState === lifecycleState),
+  );
+  return matches.length === 1 ? matches[0] : undefined;
+};
 
-const activeCredential = (
-  credentials: readonly AISettingsCredentialStatus[],
-  providerId: string,
-): AISettingsCredentialStatus | undefined =>
-  [...credentials]
-    .filter(
-      (credential) =>
-        credential.providerId === providerId && credential.lifecycleState === 'active',
-    )
-    .sort((left, right) => right.credentialRevision - left.credentialRevision)[0];
+const credentialWriteRequestId = (): string =>
+  typeof crypto.randomUUID === 'function'
+    ? `ai-credential-write:${crypto.randomUUID()}`
+    : `ai-credential-write:${Date.now()}:${Math.random().toString(16).slice(2)}`;
 
 const privacyLabel = (privacy: AISettingsPrivacyStatus | undefined): string => {
-  if (!privacy) return 'No provider privacy decision returned.';
+  if (!privacy) return 'Review required';
   if (privacy.approval?.approved || privacy.legacyGeminiCompatibility) return 'Approved';
-  if (privacy.approval) return 'Review required';
-  return 'Not approved';
+  if (privacy.approval?.approved === false) return 'Not approved / Rejected';
+  return 'Review required';
 };
 
 const safeErrorMessage = (error: unknown): string =>
@@ -102,6 +102,9 @@ export const AIWorkspace = () => {
   const [initializedProjectId, setInitializedProjectId] = useState('');
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [testResult, setTestResult] = useState<AITestConnectionResult | null>(null);
+  const [pendingPrivacyProposal, setPendingPrivacyProposal] =
+    useState<AIProviderPrivacyProposal | null>(null);
+  const credentialRequestIdRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     if (!settings || initializedProjectId === settings.projectId) return;
@@ -145,10 +148,10 @@ export const AIWorkspace = () => {
       );
       if (exact) return exact;
     }
-    return activeCredential(settings.credentialStatuses, selectedProviderId);
+    return soleCredential(settings.credentialStatuses, selectedProviderId, 'active');
   }, [selectedProviderId, settings]);
-  const latestSelectedCredential = settings
-    ? latestCredential(settings.credentialStatuses, selectedProviderId)
+  const onlySelectedCredential = settings
+    ? soleCredential(settings.credentialStatuses, selectedProviderId)
     : undefined;
   const usableCredential =
     currentCredential?.lifecycleState === 'active' ? currentCredential : undefined;
@@ -211,19 +214,43 @@ export const AIWorkspace = () => {
       let credential: AICredentialMetadata | undefined;
       let credentialWasSaved = false;
       if (draftSecret) {
-        credential = usableCredential
-          ? await apiClient.replaceAICredential({
-              projectId: settings.projectId,
+        const clientRequestId = credentialRequestIdRef.current ?? credentialWriteRequestId();
+        const recoveryBinding = usableCredential
+          ? {
+              operation: 'REPLACE' as const,
               providerId: selectedProvider.providerId,
               credentialId: usableCredential.credentialId,
               expectedRevision: usableCredential.credentialRevision,
-              secret: draftSecret,
-            })
-          : await apiClient.createAICredential({
+            }
+          : { operation: 'CREATE' as const, providerId: selectedProvider.providerId };
+        credentialRequestIdRef.current = clientRequestId;
+        try {
+          credential = usableCredential
+            ? await apiClient.replaceAICredential({
+                projectId: settings.projectId,
+                providerId: selectedProvider.providerId,
+                credentialId: usableCredential.credentialId,
+                expectedRevision: usableCredential.credentialRevision,
+                secret: draftSecret,
+                clientRequestId,
+              })
+            : await apiClient.createAICredential({
+                projectId: settings.projectId,
+                providerId: selectedProvider.providerId,
+                secret: draftSecret,
+                clientRequestId,
+              });
+        } catch (error) {
+          try {
+            credential = await apiClient.getAICredentialWriteOutcome({
               projectId: settings.projectId,
-              providerId: selectedProvider.providerId,
-              secret: draftSecret,
+              clientRequestId,
+              ...recoveryBinding,
             });
+          } catch {
+            throw error;
+          }
+        }
         credentialWasSaved = true;
         setDraftSecret('');
       }
@@ -250,12 +277,13 @@ export const AIWorkspace = () => {
       }
     },
     onSuccess: async () => {
+      credentialRequestIdRef.current = undefined;
       setTestResult(null);
       setFeedback({
         tone: 'success',
         title: 'AI configuration saved',
         detail:
-          'The saved configuration is ready for the next runtime-enabled execution. Ask routing has not changed in A7.',
+          'Saved configuration applies to the next new AI execution. Existing and in-flight AnswerRuns, including retry pins, retain their original execution identity.',
       });
       await invalidateSettings();
     },
@@ -272,6 +300,64 @@ export const AIWorkspace = () => {
       setFeedback({
         tone: 'error',
         title: 'AI configuration was not saved',
+        detail: safeErrorMessage(error),
+      });
+    },
+  });
+
+  const privacyMutation = useMutation({
+    mutationFn: async (action: 'propose-approve' | 'propose-reject' | 'approve') => {
+      if (!settings || !selectedPrivacy || !selectedProvider) {
+        throw new Error('Select a registered provider before requesting privacy review.');
+      }
+      if (action === 'approve') {
+        if (!pendingPrivacyProposal)
+          throw new Error('No provider privacy proposal is awaiting review.');
+        return {
+          kind: 'approval' as const,
+          approval: await apiClient.approveAIProviderPrivacyProposal({
+            projectId: settings.projectId,
+            providerId: selectedProvider.providerId,
+            proposalId: pendingPrivacyProposal.proposalId,
+            expectedApprovalRevision: pendingPrivacyProposal.expectedApprovalRevision,
+          }),
+        };
+      }
+      return {
+        kind: 'proposal' as const,
+        proposal: await apiClient.proposeAIProviderPrivacyApproval({
+          projectId: settings.projectId,
+          providerId: selectedProvider.providerId,
+          approved: action === 'propose-approve',
+          expectedApprovalRevision: selectedPrivacy.approval?.approvalRevision ?? 0,
+        }),
+      };
+    },
+    onSuccess: async (result) => {
+      if (result.kind === 'proposal') {
+        setPendingPrivacyProposal(result.proposal);
+        setFeedback({
+          tone: 'info',
+          title: 'Provider privacy review proposed',
+          detail: 'The proposal remains review-required until an Owner explicitly approves it.',
+        });
+        return;
+      }
+      setPendingPrivacyProposal(null);
+      setFeedback({
+        tone: 'success',
+        title: result.approval.approved
+          ? 'Provider privacy approved'
+          : 'Provider privacy not approved',
+        detail:
+          'The decision applies only to the selected provider and does not change deployment policy.',
+      });
+      await invalidateSettings();
+    },
+    onError: (error) => {
+      setFeedback({
+        tone: 'error',
+        title: 'Provider privacy review failed',
         detail: safeErrorMessage(error),
       });
     },
@@ -325,6 +411,7 @@ export const AIWorkspace = () => {
     setSelectedProviderId(providerId);
     setSelectedModelId(provider?.models[0]?.modelId ?? '');
     setTestResult(null);
+    setPendingPrivacyProposal(null);
     setFeedback(null);
   };
 
@@ -343,7 +430,7 @@ export const AIWorkspace = () => {
     selectedPrivacy?.deploymentAllowed &&
     (selectedPrivacy.approval?.approved || selectedPrivacy.legacyGeminiCompatibility),
   );
-  const latestState = latestSelectedCredential?.lifecycleState;
+  const latestState = onlySelectedCredential?.lifecycleState;
   const currentCredentialReferenced = Boolean(
     settings.currentConfiguration?.credentialId === currentCredential?.credentialId,
   );
@@ -361,7 +448,7 @@ export const AIWorkspace = () => {
         </h2>
         <p style={{ color: '#475569', maxWidth: '760px' }}>
           Choose a registered provider and model, manage a Project credential, and save the next
-          runtime configuration. A7 does not switch Ask routing yet.
+          runtime configuration. Saved configuration applies to the next new AI execution.
         </p>
       </header>
 
@@ -486,6 +573,7 @@ export const AIWorkspace = () => {
             type="password"
             value={draftSecret}
             onChange={(event) => {
+              credentialRequestIdRef.current = undefined;
               setDraftSecret(event.target.value);
               setTestResult(null);
             }}
@@ -558,7 +646,9 @@ export const AIWorkspace = () => {
             <strong>Configuration revision:</strong> {serverRevision}
           </p>
           <p style={{ margin: 0 }}>
-            <strong>Runtime:</strong> Saved settings do not cut Ask over to provider routing in A7.
+            <strong>Runtime:</strong> Saved configuration applies to the next new AI execution.
+            Existing and in-flight AnswerRuns, including retry pins, retain their original execution
+            identity.
           </p>
         </div>
       </form>
@@ -590,14 +680,47 @@ export const AIWorkspace = () => {
           {privateEligible ? 'Eligible' : 'Not eligible'}
         </p>
         <p>Restricted Project data is always blocked from external AI transfer.</p>
-        {selectedPrivacy && !privateEligible ? (
-          <Link to={`/settings/privacy?targetProjectId=${encodeURIComponent(targetProjectId)}`}>
-            Open Owner privacy review
-          </Link>
+        {selectedPrivacy ? (
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {!pendingPrivacyProposal ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => privacyMutation.mutate('propose-approve')}
+                  disabled={privacyMutation.isPending || saveMutation.isPending}
+                >
+                  Request {selectedPrivacy.approval?.approved ? 'updated' : ''} provider approval
+                </button>
+                {selectedPrivacy.approval?.approved ? (
+                  <button
+                    type="button"
+                    onClick={() => privacyMutation.mutate('propose-reject')}
+                    disabled={privacyMutation.isPending || saveMutation.isPending}
+                  >
+                    Request provider rejection
+                  </button>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <span role="status">
+                  Review proposal pending for {pendingPrivacyProposal.providerId}:{' '}
+                  {pendingPrivacyProposal.approved ? 'approval' : 'rejection'}.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => privacyMutation.mutate('approve')}
+                  disabled={privacyMutation.isPending || saveMutation.isPending}
+                >
+                  Approve provider review
+                </button>
+              </>
+            )}
+          </div>
         ) : null}
         <p style={{ color: '#64748b', fontSize: '13px' }}>
-          The UI only presents A4 authority. It cannot approve REVIEW_REQUIRED or raise the
-          deployment ceiling.
+          The UI submits only provider-scoped A4 review commands. Server-owned Owner authority and
+          the deployment ceiling remain authoritative.
         </p>
       </section>
     </section>

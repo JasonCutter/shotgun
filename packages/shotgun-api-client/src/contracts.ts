@@ -629,6 +629,17 @@ export type AISettingsReadModel = {
   readonly legacyGeminiCredentialConfigured: boolean;
 };
 
+export type AIProviderPrivacyProposal = {
+  readonly proposalId: string;
+  readonly projectId: string;
+  readonly providerId: string;
+  readonly approved: boolean;
+  readonly expectedApprovalRevision: number;
+  readonly proposedBy: string;
+  readonly status: 'PROPOSED' | 'APPROVED' | 'REJECTED';
+  readonly createdAt: string;
+};
+
 export type AICredentialMetadata = {
   readonly credentialId: string;
   readonly projectId: string;
@@ -797,8 +808,31 @@ export type ShotgunApiClient = {
   ): Promise<SettingsCommandResult>;
 
   getAISettings(targetProjectId?: string, options?: RequestOptions): Promise<AISettingsReadModel>;
+  getAICredentialWriteOutcome(
+    params:
+      | {
+          readonly projectId: string;
+          readonly clientRequestId: string;
+          readonly providerId: string;
+          readonly operation: 'CREATE';
+        }
+      | {
+          readonly projectId: string;
+          readonly clientRequestId: string;
+          readonly providerId: string;
+          readonly operation: 'REPLACE';
+          readonly credentialId: string;
+          readonly expectedRevision: number;
+        },
+    options?: RequestOptions,
+  ): Promise<AICredentialMetadata>;
   createAICredential(
-    params: { readonly projectId: string; readonly providerId: string; readonly secret: string },
+    params: {
+      readonly projectId: string;
+      readonly providerId: string;
+      readonly secret: string;
+      readonly clientRequestId: string;
+    },
     options?: RequestOptions,
   ): Promise<AICredentialMetadata>;
   replaceAICredential(
@@ -808,9 +842,28 @@ export type ShotgunApiClient = {
       readonly credentialId: string;
       readonly expectedRevision: number;
       readonly secret: string;
+      readonly clientRequestId: string;
     },
     options?: RequestOptions,
   ): Promise<AICredentialMetadata>;
+  proposeAIProviderPrivacyApproval(
+    params: {
+      readonly projectId: string;
+      readonly providerId: string;
+      readonly approved: boolean;
+      readonly expectedApprovalRevision: number;
+    },
+    options?: RequestOptions,
+  ): Promise<AIProviderPrivacyProposal>;
+  approveAIProviderPrivacyProposal(
+    params: {
+      readonly projectId: string;
+      readonly providerId: string;
+      readonly proposalId: string;
+      readonly expectedApprovalRevision: number;
+    },
+    options?: RequestOptions,
+  ): Promise<AISettingsApproval>;
   revokeAICredential(
     params: {
       readonly projectId: string;

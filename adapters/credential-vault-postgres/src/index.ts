@@ -17,6 +17,11 @@ type CredentialRow = QueryResultRow & {
   key_version: string;
   credential_revision: number;
   lifecycle_state: CredentialLifecycleState;
+  client_request_id: string | null;
+  client_request_operation: 'CREATE' | 'REPLACE' | null;
+  client_request_provider_id: string | null;
+  client_request_credential_id: string | null;
+  client_request_expected_revision: number | null;
   created_at: Date;
   updated_at: Date;
 };
@@ -24,7 +29,8 @@ type CredentialRow = QueryResultRow & {
 const selectColumns = `
   credential_id::text, project_id, provider_id, encrypted_secret,
   encryption_version, key_version, credential_revision, lifecycle_state,
-  created_at, updated_at
+  client_request_id, client_request_operation, client_request_provider_id,
+  client_request_credential_id, client_request_expected_revision, created_at, updated_at
   FROM ai.provider_credentials`;
 
 const mapRecord = (row: CredentialRow): StoredCredentialRevision => ({
@@ -36,6 +42,17 @@ const mapRecord = (row: CredentialRow): StoredCredentialRevision => ({
   keyVersion: row.key_version,
   credentialRevision: row.credential_revision,
   lifecycleState: row.lifecycle_state,
+  ...(row.client_request_id ? { clientRequestId: row.client_request_id } : {}),
+  ...(row.client_request_operation ? { clientRequestOperation: row.client_request_operation } : {}),
+  ...(row.client_request_provider_id
+    ? { clientRequestProviderId: row.client_request_provider_id }
+    : {}),
+  ...(row.client_request_credential_id
+    ? { clientRequestCredentialId: row.client_request_credential_id }
+    : {}),
+  ...(row.client_request_expected_revision !== null
+    ? { clientRequestExpectedRevision: row.client_request_expected_revision }
+    : {}),
   createdAt: row.created_at.toISOString(),
   updatedAt: row.updated_at.toISOString(),
 });
@@ -53,8 +70,11 @@ export class PostgresCredentialVaultRepository implements CredentialVaultReposit
       `INSERT INTO ai.provider_credentials (
          credential_id, project_id, provider_id, encrypted_secret,
          encryption_version, key_version, credential_revision,
-         lifecycle_state, created_at, updated_at
-       ) VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10)`,
+         lifecycle_state, client_request_id, client_request_operation,
+         client_request_provider_id, client_request_credential_id,
+         client_request_expected_revision, created_at, updated_at
+       ) VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+       ON CONFLICT DO NOTHING`,
       [
         record.credentialId,
         record.projectId,
@@ -64,6 +84,11 @@ export class PostgresCredentialVaultRepository implements CredentialVaultReposit
         record.keyVersion,
         record.credentialRevision,
         record.lifecycleState,
+        record.clientRequestId ?? null,
+        record.clientRequestOperation ?? null,
+        record.clientRequestProviderId ?? null,
+        record.clientRequestCredentialId ?? null,
+        record.clientRequestExpectedRevision ?? null,
         record.createdAt,
         record.updatedAt,
       ],
@@ -77,6 +102,20 @@ export class PostgresCredentialVaultRepository implements CredentialVaultReposit
       scope.credentialId,
       scope.credentialRevision,
     ]);
+    return result.rows[0] ? mapRecord(result.rows[0]) : undefined;
+  }
+
+  async findByClientRequestId(input: {
+    readonly projectId: string;
+    readonly clientRequestId: string;
+  }): Promise<StoredCredentialRevision | undefined> {
+    const result = await this.pool.query<CredentialRow>(
+      `SELECT ${selectColumns}
+       WHERE project_id = $1 AND client_request_id = $2
+       ORDER BY credential_revision DESC
+       LIMIT 1`,
+      [input.projectId, input.clientRequestId],
+    );
     return result.rows[0] ? mapRecord(result.rows[0]) : undefined;
   }
 
@@ -131,7 +170,11 @@ export class PostgresCredentialVaultRepository implements CredentialVaultReposit
          WHERE credential_id = $2 AND credential_revision = $3`,
         [input.next.updatedAt, input.credentialId, input.expectedRevision],
       );
-      await insertRevision(client, input.next);
+      const inserted = await insertRevision(client, input.next);
+      if (!inserted) {
+        await client.query('ROLLBACK');
+        return 'CONFLICT';
+      }
       await client.query('COMMIT');
       return 'UPDATED';
     } catch (error) {
@@ -174,13 +217,17 @@ export class PostgresCredentialVaultRepository implements CredentialVaultReposit
 const insertRevision = async (
   client: PoolClient,
   record: StoredCredentialRevision,
-): Promise<void> => {
-  await client.query(
+): Promise<boolean> => {
+  const result = await client.query(
     `INSERT INTO ai.provider_credentials (
        credential_id, project_id, provider_id, encrypted_secret,
        encryption_version, key_version, credential_revision,
-       lifecycle_state, created_at, updated_at
-     ) VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10)`,
+       lifecycle_state, client_request_id, client_request_operation,
+       client_request_provider_id, client_request_credential_id,
+       client_request_expected_revision, created_at, updated_at
+     ) VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+     ON CONFLICT DO NOTHING
+     RETURNING credential_id`,
     [
       record.credentialId,
       record.projectId,
@@ -190,8 +237,14 @@ const insertRevision = async (
       record.keyVersion,
       record.credentialRevision,
       record.lifecycleState,
+      record.clientRequestId ?? null,
+      record.clientRequestOperation ?? null,
+      record.clientRequestProviderId ?? null,
+      record.clientRequestCredentialId ?? null,
+      record.clientRequestExpectedRevision ?? null,
       record.createdAt,
       record.updatedAt,
     ],
   );
+  return result.rowCount === 1;
 };

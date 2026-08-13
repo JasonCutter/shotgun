@@ -109,8 +109,27 @@ const renderWorkspace = (apiClient: Partial<ShotgunApiClient>, settings = makeSe
       checkedAt: now,
       safeMessage: 'Provider connection succeeded.',
     }),
+    getAICredentialWriteOutcome: vi.fn().mockRejectedValue(new Error('No prior outcome')),
     createAICredential: vi.fn().mockResolvedValue(credential),
     replaceAICredential: vi.fn().mockResolvedValue(credential),
+    proposeAIProviderPrivacyApproval: vi.fn().mockResolvedValue({
+      proposalId: 'proposal-1',
+      projectId: 'project-1',
+      providerId: 'deepseek',
+      approved: true,
+      expectedApprovalRevision: 0,
+      proposedBy: 'principal-1',
+      status: 'PROPOSED',
+      createdAt: now,
+    }),
+    approveAIProviderPrivacyProposal: vi.fn().mockResolvedValue({
+      projectId: 'project-1',
+      providerId: 'deepseek',
+      approved: true,
+      approvalRevision: 1,
+      reviewedBy: 'principal-1',
+      reviewedAt: now,
+    }),
     saveAIConfiguration: vi.fn().mockResolvedValue({
       projectId: 'project-1',
       activeProviderId: 'deepseek',
@@ -202,11 +221,14 @@ describe('AIWorkspace (A7 Settings → AI)', () => {
     await user.click(screen.getByRole('button', { name: 'Save AI configuration' }));
 
     await screen.findByText('AI configuration saved');
-    expect(api.createAICredential).toHaveBeenCalledWith({
-      projectId: 'project-1',
-      providerId: 'deepseek',
-      secret: 'one-time-key',
-    });
+    expect(api.createAICredential).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: 'project-1',
+        providerId: 'deepseek',
+        secret: 'one-time-key',
+        clientRequestId: expect.stringContaining('ai-credential-write:'),
+      }),
+    );
     expect(api.saveAIConfiguration).toHaveBeenCalledWith({
       projectId: 'project-1',
       expectedRevision: 0,
@@ -232,6 +254,31 @@ describe('AIWorkspace (A7 Settings → AI)', () => {
     expect((key as HTMLInputElement).value).toBe('');
     expect(screen.getByText(/no duplicate credential request/i)).toBeTruthy();
     await waitFor(() => expect(document.activeElement?.getAttribute('role')).toBe('alert'));
+  });
+
+  it('does not select a provider credential by comparing revisions across credential IDs', async () => {
+    const ambiguousSettings = makeSettings({
+      credentialStatuses: [
+        {
+          ...credential,
+          credentialId: 'credential-old-id-high-revision',
+          credentialRevision: 9,
+        },
+        {
+          ...credential,
+          credentialId: 'credential-new-id-low-revision',
+          credentialRevision: 1,
+        },
+      ],
+    });
+    renderWorkspace({}, ambiguousSettings);
+    expect(await screen.findByText('No Project credential configured')).toBeTruthy();
+    expect(
+      (screen.getByRole('button', { name: 'Test Connection' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByRole('button', { name: 'Save AI configuration' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
   });
 
   it('uses the exact stored credential revision for revoke and remove without fallback', async () => {
@@ -308,7 +355,7 @@ describe('AIWorkspace (A7 Settings → AI)', () => {
     await user.selectOptions(provider, 'google-gemini');
     expect(screen.getByText('Approved · historical Gemini compatibility')).toBeTruthy();
     await user.selectOptions(provider, 'openai');
-    expect(screen.getByText('Not approved')).toBeTruthy();
+    expect(screen.getByText('Review required')).toBeTruthy();
   });
 
   it('tests an exact stored credential and exposes privacy review without bypassing approval', async () => {
@@ -352,13 +399,19 @@ describe('AIWorkspace (A7 Settings → AI)', () => {
       credentialId: credential.credentialId,
       credentialRevision: 1,
     });
-    expect(screen.getByText('Review required · revision 2')).toBeTruthy();
+    expect(screen.getByText('Not approved / Rejected · revision 2')).toBeTruthy();
     expect(screen.getByText('Effective private eligibility:').parentElement?.textContent).toContain(
       'Not eligible',
     );
-    expect(
-      screen.getByRole('link', { name: 'Open Owner privacy review' }).getAttribute('href'),
-    ).toBe('/settings/privacy?targetProjectId=project-1');
+    await user.click(screen.getByRole('button', { name: 'Request provider approval' }));
+    await waitFor(() => expect(api.proposeAIProviderPrivacyApproval).toHaveBeenCalledTimes(1));
+    expect(api.proposeAIProviderPrivacyApproval).toHaveBeenCalledWith({
+      projectId: 'project-1',
+      providerId: 'deepseek',
+      approved: true,
+      expectedApprovalRevision: 2,
+    });
+    expect(screen.getByRole('button', { name: 'Approve provider review' })).toBeTruthy();
   });
 
   it('prevents duplicate Test Connection submissions while the command is pending', async () => {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { InMemoryAskAnswerExecutionRepository } from '../../adapters/frontend-ask-execution-in-memory/src/index.js';
 import {
@@ -80,6 +80,10 @@ const resolver = (available: () => boolean = () => true) => ({
     expect(input.executionPin.credentialRevision).toBe(2);
     return available();
   },
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe('A5 AnswerRun execution identity', () => {
@@ -222,4 +226,155 @@ describe('A5 AnswerRun execution identity', () => {
     expect(providerCalls).toBe(1);
     expect(await repository.readExecutionPin(scope, 'run-a5')).toEqual(pin());
   });
+
+  it('claims a queued durable pin through the real worker path without resolving current Settings again', async () => {
+    const repository = new InMemoryAskAnswerExecutionRepository();
+    repository.register(snapshot(), evidence);
+    const durablePin = pin();
+    const currentSettingsPin = pin({
+      providerId: 'openai',
+      modelId: 'gpt-5.6-luna',
+      aiConfigurationRevision: 5,
+      credentialId: 'credential-b',
+      credentialRevision: 1,
+    });
+    await repository.createExecutionPinIfAbsent({
+      scope,
+      answerRunId: 'run-a5',
+      executionPin: durablePin,
+    });
+    let initialResolverCalls = 0;
+    const providerRequests: AIExecutionPin[] = [];
+    const routerPins: AIExecutionPin[] = [];
+    const routedProvider = provider(async (request) => {
+      if (request.executionPin) providerRequests.push(request.executionPin);
+      return {
+        answer: 'Recovered durable identity answer',
+        citations: [{ evidenceId: 'evidence-a5' }],
+        provider: { provider: 'deepseek', model: 'deepseek-v4-flash' },
+      };
+    });
+    const service = new AskAnswerExecutionService(
+      repository,
+      provider(async () => {
+        throw new Error('Durable pinned worker claim must use the provider router.');
+      }),
+      {
+        executionIdentityResolver: {
+          resolveInitialAIExecutionIdentity: async () => {
+            initialResolverCalls += 1;
+            return currentSettingsPin;
+          },
+          revalidatePinnedCredential: async () => true,
+        },
+        providerRouter: {
+          resolve: async ({ executionPin }) => {
+            routerPins.push(executionPin);
+            return routedProvider;
+          },
+        },
+      },
+    );
+
+    const stop = await service.startWorker(60_000);
+    await stop();
+
+    expect(initialResolverCalls).toBe(0);
+    expect((await repository.getRunContext(scope, 'run-a5'))?.snapshot.state).toBe('SUCCEEDED');
+    expect(routerPins).toEqual([durablePin]);
+    expect(providerRequests).toEqual([durablePin]);
+    expect(await repository.readExecutionPin(scope, 'run-a5')).toEqual(durablePin);
+  });
+
+  it('resolves current Settings exactly once for a queued run without a durable pin', async () => {
+    const repository = new InMemoryAskAnswerExecutionRepository();
+    repository.register(snapshot(), evidence);
+    let initialResolverCalls = 0;
+    const service = new AskAnswerExecutionService(
+      repository,
+      provider(async () => ({
+        answer: 'Initial identity answer',
+        citations: [{ evidenceId: 'evidence-a5' }],
+        provider: { provider: 'deepseek', model: 'deepseek-v4-flash' },
+      })),
+      {
+        executionIdentityResolver: {
+          resolveInitialAIExecutionIdentity: async () => {
+            initialResolverCalls += 1;
+            return pin();
+          },
+          revalidatePinnedCredential: async () => true,
+        },
+      },
+    );
+
+    const stop = await service.startWorker(60_000);
+    await stop();
+
+    expect(initialResolverCalls).toBe(1);
+    expect(await repository.readExecutionPin(scope, 'run-a5')).toEqual(pin());
+  });
+
+  it('preserves a durable pin and OUTCOME_UNKNOWN without automatic re-execution after an interrupted running attempt', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-12T00:00:00.000Z'));
+    const repository = new InMemoryAskAnswerExecutionRepository();
+    repository.register(snapshot(), evidence);
+    const durablePin = pin();
+    const first = await repository.claimInitial(scope, 'run-a5', 'interrupted-worker', durablePin);
+    expect(first?.attempt.executionPin).toEqual(durablePin);
+
+    vi.advanceTimersByTime(30_001);
+    expect(await repository.recoverInterrupted()).toBe(1);
+
+    const recovered = await repository.getRunContext(scope, 'run-a5');
+    expect(recovered?.snapshot).toMatchObject({
+      state: 'OUTCOME_UNKNOWN',
+      failure: { code: 'OUTCOME_UNKNOWN', outcomeUnknown: true },
+    });
+    expect(recovered?.executionPin).toEqual(durablePin);
+    expect(await repository.readExecutionPin(scope, 'run-a5')).toEqual(durablePin);
+    expect(await repository.claimQueuedForWorker('recovery-worker', 1)).toEqual([]);
+  });
+
+  it.each([
+    ['another Project', pin({ projectId: 'project-other' })],
+    ['another AnswerRun', pin({ answerRunId: 'run-other' })],
+  ])(
+    'fails closed for a durable pin bound to %s without resolving current Settings',
+    async (_label, malformedPin) => {
+      const repository = new InMemoryAskAnswerExecutionRepository();
+      repository.register(snapshot(), evidence);
+      const unsafeRepository = Object.create(repository) as InMemoryAskAnswerExecutionRepository;
+      unsafeRepository.getRunContext = async (requestedScope, answerRunId) => {
+        const context = await repository.getRunContext(requestedScope, answerRunId);
+        return context ? { ...context, executionPin: malformedPin } : undefined;
+      };
+      let initialResolverCalls = 0;
+      const service = new AskAnswerExecutionService(
+        unsafeRepository,
+        provider(async () => {
+          throw new Error('Provider must not be invoked for malformed durable pin.');
+        }),
+        {
+          executionIdentityResolver: {
+            resolveInitialAIExecutionIdentity: async () => {
+              initialResolverCalls += 1;
+              return pin({
+                providerId: 'openai',
+                modelId: 'gpt-5.6-luna',
+                credentialId: 'credential-b',
+              });
+            },
+            revalidatePinnedCredential: async () => true,
+          },
+        },
+      );
+
+      await expect(service.execute(scope, 'run-a5')).rejects.toMatchObject({
+        code: 'PROJECT_ACCESS_DENIED',
+      });
+      expect(initialResolverCalls).toBe(0);
+    },
+  );
 });

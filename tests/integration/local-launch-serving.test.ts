@@ -55,6 +55,24 @@ describe('LPA-WP4 Local Launch / Serving Usability', () => {
       expect(deep.headers['content-type']).toContain('text/html');
       expect(deep.body).toContain('<div id="root">');
 
+      // Product Ask and conversation deep links are SPA-owned, never legacy Ask HTML.
+      for (const url of ['/ask', '/ask/conversations/conversation-direct-navigation']) {
+        const ask = await server.inject({ method: 'GET', url });
+        expect(ask.statusCode).toBe(200);
+        expect(ask.headers['content-type']).toContain('text/html');
+        expect(ask.body).toContain('<div id="root">');
+        expect(ask.body).not.toContain('<title>Shotgun Ask</title>');
+      }
+
+      // Ask API remains a non-HTML POST boundary; SPA fallback never shadows it.
+      const askApi = await server.inject({
+        method: 'POST',
+        url: '/ask/query',
+        payload: { question: 'Does the Ask API remain registered?' },
+      });
+      expect(askApi.statusCode).toBe(401);
+      expect(askApi.headers['content-type'] ?? '').not.toContain('text/html');
+
       // Unknown /api routes are NEVER absorbed into the SPA fallback.
       const api = await server.inject({ method: 'GET', url: '/api/v1/unknown-route' });
       expect(api.statusCode).toBe(401);

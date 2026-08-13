@@ -2715,9 +2715,13 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     },
   );
 
-  server.get('/ask', async (_request, reply) =>
-    reply.type('text/html; charset=utf-8').send(askPage()),
-  );
+  // The built Product SPA owns /ask in launch mode. Keep the legacy cited-claim
+  // page only for non-SPA integration/diagnostic hosts that do not serve Product routes.
+  if (!options.spaDirectory) {
+    server.get('/ask', async (_request, reply) =>
+      reply.type('text/html; charset=utf-8').send(askPage()),
+    );
+  }
 
   server.get<{ Params: EvidenceRequest; Headers: SecurityHeaders }>(
     '/evidence/:evidenceId',

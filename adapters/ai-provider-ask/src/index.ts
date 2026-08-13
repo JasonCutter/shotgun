@@ -15,42 +15,68 @@ export type AskAnswerProviderPolicy = {
   readonly dataPolicyVersion: string;
 };
 
-const answerSchema = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['answer', 'citations'],
-  properties: {
-    answer: { type: 'string', minLength: 1, maxLength: 20000 },
-    citations: {
-      type: 'array',
-      maxItems: 500,
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['evidenceId'],
-        properties: {
-          evidenceId: { type: 'string', minLength: 1, maxLength: 256 },
-          exactQuote: { type: 'string', minLength: 1, maxLength: 20000 },
+type ProviderCitationBinding = {
+  readonly citationRef: string;
+  readonly evidenceId: string;
+};
+
+const citationBindingsFor = (
+  request: AskAnswerProviderRequest,
+): readonly ProviderCitationBinding[] =>
+  request.context
+    .filter(
+      (item): item is Extract<(typeof request.context)[number], { readonly kind: 'EVIDENCE' }> =>
+        item.kind === 'EVIDENCE',
+    )
+    .map((item, index) => ({ citationRef: `E${index + 1}`, evidenceId: item.evidenceId }));
+
+const answerSchemaFor = (citationBindings: readonly ProviderCitationBinding[]) =>
+  ({
+    type: 'object',
+    additionalProperties: false,
+    required: ['answer', 'citations'],
+    properties: {
+      answer: { type: 'string', minLength: 1, maxLength: 20000 },
+      citations: {
+        type: 'array',
+        maxItems: citationBindings.length === 0 ? 0 : 500,
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['citationRef'],
+          properties: {
+            citationRef:
+              citationBindings.length === 0
+                ? { type: 'string', minLength: 1, maxLength: 256 }
+                : {
+                    type: 'string',
+                    enum: citationBindings.map((binding) => binding.citationRef),
+                  },
+            exactQuote: { type: 'string', minLength: 1, maxLength: 20000 },
+          },
         },
       },
     },
-  },
-} as const;
+  }) as const;
 
 type AnswerPayload = {
   readonly answer: string;
-  readonly citations: readonly { readonly evidenceId: string; readonly exactQuote?: string }[];
+  readonly citations: readonly { readonly citationRef: string; readonly exactQuote?: string }[];
 };
 
-const promptFor = (request: AskAnswerProviderRequest): string =>
-  stableJson({
+const promptFor = (
+  request: AskAnswerProviderRequest,
+  citationBindings: readonly ProviderCitationBinding[],
+): string => {
+  let evidenceIndex = 0;
+  return stableJson({
     task: 'shotgun-ask-answer-v1',
     question: request.question,
     context: request.context.map((item) =>
       item.kind === 'EVIDENCE'
         ? {
             kind: item.kind,
-            evidenceId: item.evidenceId,
+            citationRef: citationBindings[evidenceIndex++]!.citationRef,
             sourceId: item.sourceId,
             sourceVersionId: item.sourceVersionId,
             exactQuote: item.exactQuote,
@@ -65,6 +91,7 @@ const promptFor = (request: AskAnswerProviderRequest): string =>
           },
     ),
   });
+};
 
 const parseAnswer = (rawText: string): AnswerPayload => {
   try {
@@ -87,8 +114,8 @@ const parseAnswer = (rawText: string): AnswerPayload => {
         throw new Error('citation is invalid');
       }
       const item = citation as Record<string, unknown>;
-      if (typeof item.evidenceId !== 'string' || item.evidenceId.trim().length === 0) {
-        throw new Error('citation evidenceId is invalid');
+      if (typeof item.citationRef !== 'string' || item.citationRef.trim().length === 0) {
+        throw new Error('citation reference is invalid');
       }
       if (
         item.exactQuote !== undefined &&
@@ -97,7 +124,7 @@ const parseAnswer = (rawText: string): AnswerPayload => {
         throw new Error('citation exactQuote is invalid');
       }
       return {
-        evidenceId: item.evidenceId,
+        citationRef: item.citationRef,
         ...(item.exactQuote === undefined ? {} : { exactQuote: item.exactQuote }),
       };
     });
@@ -112,6 +139,32 @@ const parseAnswer = (rawText: string): AnswerPayload => {
       cause: error,
     });
   }
+};
+
+const canonicalCitationsFor = (
+  citations: AnswerPayload['citations'],
+  citationBindings: readonly ProviderCitationBinding[],
+): AskAnswerProviderResult['citations'] => {
+  const evidenceIdByCitationRef = new Map(
+    citationBindings.map((binding) => [binding.citationRef, binding.evidenceId]),
+  );
+  return citations.map((citation) => {
+    const evidenceId = evidenceIdByCitationRef.get(citation.citationRef);
+    if (!evidenceId) {
+      throw new ShotgunError({
+        code: 'VALIDATION_ERROR',
+        safeMessage:
+          'The Ask provider returned a citation reference that is not valid for the authorized Evidence context.',
+        module: 'ai-provider-ask',
+        operation: 'bind-citation-reference',
+        retryable: false,
+      });
+    }
+    return {
+      evidenceId,
+      ...(citation.exactQuote === undefined ? {} : { exactQuote: citation.exactQuote }),
+    };
+  });
 };
 
 export class StructuredAskAnswerProviderAdapter implements AskAnswerProviderPort {
@@ -159,17 +212,18 @@ export class StructuredAskAnswerProviderAdapter implements AskAnswerProviderPort
         retryable: true,
       });
     }
+    const citationBindings = citationBindingsFor(request);
     const generation: StructuredGenerationRequest = {
       systemInstruction: [
         'Answer only from the supplied authoritative context items.',
-        'Evidence items may be cited only with their supplied evidenceId.',
+        'Evidence items may be cited only with their supplied citationRef.',
         'SourceVersion items have no Evidence identity and must never produce a citation.',
-        'Do not invent facts, Evidence, evidence IDs, or citations.',
+        'Do not invent facts, Evidence, citation references, or citations.',
         'Return JSON with answer and citations.',
-        'Each citation evidenceId must be copied from a supplied Evidence item.',
+        'Each citation citationRef must be copied exactly from a supplied Evidence item.',
       ].join(' '),
-      prompt: promptFor(request),
-      responseSchema: answerSchema,
+      prompt: promptFor(request, citationBindings),
+      responseSchema: answerSchemaFor(citationBindings),
     };
     let response;
     if (this.adapter.generateStructuredStream) {
@@ -191,7 +245,7 @@ export class StructuredAskAnswerProviderAdapter implements AskAnswerProviderPort
     const parsed = parseAnswer(response.rawText);
     return {
       answer: parsed.answer,
-      citations: parsed.citations,
+      citations: canonicalCitationsFor(parsed.citations, citationBindings),
       providerResponseId: response.providerResponseId,
       provider: {
         provider: this.identity.provider,

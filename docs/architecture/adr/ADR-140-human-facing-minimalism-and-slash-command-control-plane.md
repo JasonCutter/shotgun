@@ -1,7 +1,8 @@
 # ADR-140 — Human-Facing Minimalism and Slash Command Control Plane
 
-- Status: PROPOSED
+- Status: ACCEPTED
 - Date: 2026-08-14
+- Accepted by owner: 2026-08-14
 - Subject base: `main@575b8031b3beccc9fba5541809285c5a29b89d11`
 - Scope: Shotgun Product UI / owner interaction boundary
 

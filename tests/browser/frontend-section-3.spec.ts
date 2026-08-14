@@ -149,7 +149,11 @@ test('Section 3 Search and Command Palette keep query transient and keyboard-saf
   page,
 }) => {
   const searchRequests: { readonly url: string; readonly body: unknown }[] = [];
+  const productPostRequests: string[] = [];
   page.on('request', (request) => {
+    if (request.method() === 'POST' && request.url().includes('/product-api/')) {
+      productPostRequests.push(request.url());
+    }
     if (!request.url().endsWith('/product-api/frontend/search/query')) return;
     searchRequests.push({
       url: request.url(),
@@ -183,6 +187,7 @@ test('Section 3 Search and Command Palette keep query transient and keyboard-saf
     )
     .not.toContain('private transient phrase');
 
+  productPostRequests.length = 0;
   await searchButton.focus();
   await page.keyboard.press('Control+k');
   const palette = page.getByRole('dialog', { name: 'Commands' });
@@ -190,7 +195,9 @@ test('Section 3 Search and Command Palette keep query transient and keyboard-saf
   await expect(palette.getByRole('textbox', { name: 'Command search' })).toBeVisible();
   await expect(palette.getByRole('heading', { name: 'Navigation' })).toBeVisible();
   await expect(palette.getByRole('button', { name: /Open Knowledge/ })).toBeVisible();
-  await expect(palette.getByRole('button', { name: /approve|delete|revoke/i })).toHaveCount(0);
+  await expect(palette.getByRole('button', { name: /Review Privacy/ })).toBeVisible();
+  await expect(palette.getByRole('dialog', { name: 'Configure AI' })).toHaveCount(0);
+  expect(productPostRequests).toHaveLength(0);
   await page.keyboard.press('Escape');
   await expect(palette).toBeHidden();
   await expect(searchButton).toBeFocused();

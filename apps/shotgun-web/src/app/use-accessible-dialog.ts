@@ -21,7 +21,8 @@ export const useAccessibleDialog = (input: {
     if (wasOpenRef.current) {
       wasOpenRef.current = false;
       const activeElement = document.activeElement;
-      if (activeElement === null || activeElement === document.body) {
+      const activeModal = activeElement?.closest('[role="dialog"][aria-modal="true"]');
+      if (!activeModal) {
         invokerRef.current?.focus();
       }
     }

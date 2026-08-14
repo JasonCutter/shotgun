@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 
+import { switchProject } from './helpers/hfm-commands.js';
+
 const sessionView = (created: boolean) => ({
   session: {
     apiVersion: '2.0.0',
@@ -39,34 +41,28 @@ const shellView = (created: boolean) => ({
           },
         ]
       : [],
-    navigation: [
-      ...(created
-        ? [
-            {
-              id: 'home',
-              label: 'Home',
-              availability: 'AVAILABLE',
-              targetRoute: { routeId: 'home', href: '/' },
-            },
-          ]
-        : [
-            {
-              id: 'home',
-              label: 'Home',
-              availability: 'TEMPORARILY_UNAVAILABLE',
-              reason: 'Create a Project to open Home.',
-            },
-          ]),
-      {
-        id: 'settings',
-        label: 'Settings',
-        availability: 'AVAILABLE',
-        targetRoute: {
-          routeId: created ? 'settings' : 'settings-projects',
-          href: created ? '/settings' : '/settings/projects',
-        },
-      },
-    ],
+    navigation: created
+      ? [
+          {
+            id: 'home',
+            label: 'Home',
+            availability: 'AVAILABLE',
+            targetRoute: { routeId: 'home', href: '/' },
+          },
+          {
+            id: 'sources',
+            label: 'Sources',
+            availability: 'AVAILABLE',
+            targetRoute: { routeId: 'sources', href: '/sources' },
+          },
+          {
+            id: 'ask',
+            label: 'Ask',
+            availability: 'AVAILABLE',
+            targetRoute: { routeId: 'ask', href: '/ask' },
+          },
+        ]
+      : [],
     features: [
       {
         id: 'global-search',
@@ -134,8 +130,10 @@ test('Section 3 renders responsive server-authoritative Shell and six-area Home'
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeHidden();
-  await expect(page.getByRole('navigation', { name: 'Mobile navigation' })).toBeVisible();
-  await expect(page.getByText('More', { exact: true })).toBeVisible();
+  const mobileNavigation = page.getByRole('navigation', { name: 'Mobile navigation' });
+  await expect(mobileNavigation).toBeVisible();
+  await expect(mobileNavigation.getByRole('link')).toHaveText(['Home', 'Sources', 'Ask']);
+  await expect(page.getByText('More', { exact: true })).toHaveCount(0);
 
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.evaluate(() => {
@@ -194,47 +192,53 @@ test('Section 3 Search and Command Palette keep query transient and keyboard-saf
   await expect(palette).toBeVisible();
   await expect(palette.getByRole('textbox', { name: 'Command search' })).toBeVisible();
   await expect(palette.getByRole('heading', { name: 'Navigation' })).toBeVisible();
-  await expect(palette.getByRole('button', { name: /Open Knowledge/ })).toBeVisible();
+  for (const command of [
+    /Open Knowledge/,
+    /Open Review/,
+    /Open External Actions/,
+    /Open Activity/,
+    /Open History/,
+  ]) {
+    await expect(palette.getByRole('button', { name: command })).toBeVisible();
+  }
   await expect(palette.getByRole('button', { name: /Review Privacy/ })).toBeVisible();
   await expect(page.getByRole('dialog', { name: 'Review Privacy' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Commands' })).toHaveCount(0);
   expect(productPostRequests).toHaveLength(0);
   await page.keyboard.press('Escape');
   await expect(palette).toBeHidden();
   await expect(searchButton).toBeFocused();
 });
 
-test('Section 3 route guard preserves Active and Resource Project context and masks denial', async ({
+test('Section 3 route guard preserves Active Project context and masks resource denial', async ({
   page,
 }) => {
-  await page.goto(
-    '/settings/projects/project-b?targetProjectId=shotgun&resourceProjectId=project-b',
-  );
-  await expect(
-    page.getByRole('heading', { name: 'Settings & Project Administration' }),
-  ).toBeVisible();
-  await expect(page.locator('.active-project')).toContainText('shotgun');
-  await expect(page.locator('.resource-project')).toContainText('Project B');
-  await expect(page.getByRole('combobox', { name: 'Current project' })).toHaveValue('shotgun');
+  await page.goto('/external-action?resourceProjectId=project-b');
+  await expect(page.getByRole('heading', { name: /External Action/ })).toBeVisible();
+  await expect(page.locator('.project-summary')).toContainText('shotgun');
 
-  await page.goto('/settings/projects/not-accessible');
+  await page.goto('/external-action?resourceProjectId=not-accessible');
   await expect(page.getByRole('heading', { name: 'Request error' })).toBeVisible();
   await expect(page.getByRole('alert')).toContainText('not found');
   await page.goto('/');
-  await expect(page.getByRole('combobox', { name: 'Current project' })).toHaveValue('shotgun');
+  await expect(page.locator('.project-summary')).toContainText('shotgun');
 });
 
 test('Section 3 blocks unsafe leave state, warns on offline state, and restores online use', async ({
   page,
   context,
 }) => {
-  await page.goto('/settings/advanced');
-  await page.getByLabel('Default Answer Model').fill('unsaved-model');
-  await page.getByRole('button', { name: 'Validate & Preview' }).click();
-  await expect(page.getByText('Draft status: Ready to apply')).toBeVisible();
-  const selector = page.getByRole('combobox', { name: 'Current project' });
-  await selector.selectOption('project-b');
-  await expect(selector).toHaveValue('shotgun');
+  await page.goto('/sources');
+  await page.getByLabel('Label').fill('Guarded draft');
+  await page.getByLabel('Direct Text').fill('Transient unsafe-leave evidence');
+  await page.getByRole('button', { name: 'Add intake draft' }).click();
+  await switchProject(page, 'Project B');
+  await expect(page.locator('.project-summary')).toContainText('shotgun');
   await expect(page.getByRole('alert')).toContainText('current Workspace');
+
+  await page.getByRole('button', { name: 'Remove Guarded draft' }).click();
+  await switchProject(page, 'Project B');
+  await expect(page.locator('.project-summary')).toContainText('Project B');
 
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
@@ -396,7 +400,7 @@ test('Section 3 zero-project onboarding sends PRINCIPAL bootstrap without a brow
   await expect(page.getByRole('heading', { name: 'Create your first Project' })).toBeVisible();
   expect(homeRequests).toBe(0);
   await page.getByRole('link', { name: 'Open Project onboarding' }).click();
-  await page.getByRole('button', { name: '+ Create New Project' }).click();
+  await page.getByRole('button', { name: 'Create Project' }).click();
   await expect(page.getByRole('dialog', { name: 'Create your first Project' })).toBeVisible();
   await expect(page.getByLabel('Project ID (Immutable)')).toHaveCount(0);
   await page.getByLabel('Project Name').fill('Server Project');

@@ -1,234 +1,81 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate } from 'react-router';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Navigate, useNavigate } from 'react-router';
+
 import { useAppRuntime } from '../../app/providers.js';
 import {
   productSessionQueryKey,
-  projectAdminQueryKey,
   purgeProtectedSessionCaches,
-  purgeSettingsScopedCaches,
   sessionBoundaryQueryKey,
 } from '../../app/query-keys.js';
-import { sessionQueryOptions } from '../../session/session-query.js';
 import { useAccessibleDialog } from '../../app/use-accessible-dialog.js';
-import { TechnicalDetails } from '../../components/technical-details.js';
-import {
-  formatProductTimestamp,
-  projectLifecycleLabel,
-} from '../../presentation/product-labels.js';
+import { sessionQueryOptions } from '../../session/session-query.js';
 
+/**
+ * Compatibility-only bootstrap route. Project administration after bootstrap
+ * is owned by the shared slash-command registry.
+ */
 export const ProjectsWorkspace = () => {
   const { apiClient } = useAppRuntime();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const { data: session } = useQuery(sessionQueryOptions(apiClient));
-  const principalId = session?.principal.id ?? 'principal-a';
-
-  const {
-    data: projects,
-    isLoading,
-    error,
-  } = useQuery({
-    queryKey: projectAdminQueryKey(principalId),
-    queryFn: () => apiClient.getProjects(),
-  });
-
+  const { data: session, isPending } = useQuery(sessionQueryOptions(apiClient));
   const [createModalOpen, setCreateModalOpen] = useState(false);
-  const [newProjectId, setNewProjectId] = useState('');
   const [newProjectName, setNewProjectName] = useState('');
-  const [newProjectDesc, setNewProjectDesc] = useState('');
+  const [newProjectDescription, setNewProjectDescription] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const closeCreateModal = () => setCreateModalOpen(false);
-  const createDialog = useAccessibleDialog({
-    open: createModalOpen,
-    onClose: closeCreateModal,
-  });
+  const createDialog = useAccessibleDialog({ open: createModalOpen, onClose: closeCreateModal });
 
   const createMutation = useMutation({
-    mutationFn: (params: {
-      id: string;
-      name: string;
-      description?: string;
-      clientRequestId: string;
-      idempotencyKey: string;
-    }) => {
+    mutationFn: () => {
       if (!session) throw new Error('Session is unavailable.');
-      if (!session.activeProject) {
-        return apiClient.createFirstProject({
-          name: params.name,
-          ...(params.description ? { description: params.description } : {}),
-          projectAccessRevision:
-            session.apiVersion === '2.0.0' ? session.projectAccessRevision : '0',
-          clientRequestId: params.clientRequestId,
-          idempotencyKey: params.idempotencyKey,
-        });
-      }
-      const activeProjectId = session.activeProject.id;
-      return apiClient.createProject({
-        ...params,
-        activeProjectId,
-        targetProjectId: activeProjectId,
+      return apiClient.createFirstProject({
+        name: newProjectName,
+        ...(newProjectDescription ? { description: newProjectDescription } : {}),
+        projectAccessRevision: session.apiVersion === '2.0.0' ? session.projectAccessRevision : '0',
+        clientRequestId: crypto.randomUUID(),
+        idempotencyKey: crypto.randomUUID(),
       });
     },
     onSuccess: async () => {
-      if (!session?.activeProject) {
-        const nextSession = await apiClient.getSession();
-        await purgeProtectedSessionCaches(queryClient);
-        queryClient.setQueryData(productSessionQueryKey, nextSession);
-        queryClient.setQueryData(sessionBoundaryQueryKey, (current: unknown) =>
-          typeof current === 'object' && current !== null
-            ? { ...current, session: nextSession }
-            : current,
-        );
-        navigate('/');
-      } else {
-        await purgeSettingsScopedCaches(queryClient);
-      }
+      const nextSession = await apiClient.getSession();
+      await purgeProtectedSessionCaches(queryClient);
+      queryClient.setQueryData(productSessionQueryKey, nextSession);
+      queryClient.setQueryData(sessionBoundaryQueryKey, (current: unknown) =>
+        typeof current === 'object' && current !== null
+          ? { ...current, session: nextSession }
+          : current,
+      );
       setCreateModalOpen(false);
-      setNewProjectId('');
       setNewProjectName('');
-      setNewProjectDesc('');
+      setNewProjectDescription('');
       setErrorMessage(null);
+      navigate('/');
     },
-    onError: (err) => {
-      setErrorMessage(err instanceof Error ? err.message : 'Create project failed.');
+    onError: (error) => {
+      setErrorMessage(error instanceof Error ? error.message : 'Create project failed.');
     },
   });
 
-  const handleCreateSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMessage(null);
-    const idemKey = crypto.randomUUID();
-    createMutation.mutate({
-      id: session?.activeProject ? newProjectId : '',
-      name: newProjectName,
-      description: newProjectDesc,
-      clientRequestId: crypto.randomUUID(),
-      idempotencyKey: idemKey,
-    });
-  };
-
-  if (isLoading) return <div>Loading project administration workspace...</div>;
-  if (error) return <div className="error-banner">Failed to load projects list.</div>;
+  if (isPending || !session) return <div>Loading Project onboarding...</div>;
+  if (session.activeProject) return <Navigate to="/" replace />;
 
   return (
     <section className="projects-workspace">
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '16px',
+      <h1>Create your first Project</h1>
+      <p>Create one Project to unlock Home, Sources, Ask, Search, and slash commands.</p>
+      <button
+        type="button"
+        onClick={(event) => {
+          createDialog.captureInvoker(event.currentTarget);
+          setCreateModalOpen(true);
         }}
       >
-        <div>
-          <h2 style={{ fontSize: '20px', margin: '0 0 4px 0' }}>Project Administration</h2>
-          <p style={{ color: '#64748b', margin: 0 }}>
-            Manage project identity, metadata, and lifecycle status.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={(event) => {
-            createDialog.captureInvoker(event.currentTarget);
-            setCreateModalOpen(true);
-          }}
-          style={{
-            padding: '8px 16px',
-            background: '#16a34a',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontWeight: 600,
-          }}
-        >
-          + Create New Project
-        </button>
-      </div>
+        Create Project
+      </button>
 
-      <table
-        style={{
-          width: '100%',
-          borderCollapse: 'collapse',
-          marginTop: '16px',
-          background: '#fff',
-          border: '1px solid #e2e8f0',
-          borderRadius: '6px',
-        }}
-      >
-        <thead>
-          <tr
-            style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left' }}
-          >
-            <th style={{ padding: '12px' }}>Name</th>
-            <th style={{ padding: '12px' }}>Status</th>
-            <th style={{ padding: '12px' }}>Active</th>
-            <th style={{ padding: '12px' }}>Created</th>
-            <th style={{ padding: '12px' }}>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {projects?.map((proj) => (
-            <tr key={proj.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-              <td style={{ padding: '12px', fontWeight: 600 }}>
-                {proj.name}
-                <TechnicalDetails
-                  items={[
-                    { label: 'Project ID', value: proj.id },
-                    { label: 'Revision', value: proj.revision },
-                  ]}
-                />
-              </td>
-              <td style={{ padding: '12px' }}>
-                <span
-                  style={{
-                    padding: '2px 6px',
-                    borderRadius: '4px',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    background:
-                      proj.status === 'ACTIVE'
-                        ? '#dcfce7'
-                        : proj.status === 'ARCHIVED'
-                          ? '#f1f5f9'
-                          : '#fee2e2',
-                    color:
-                      proj.status === 'ACTIVE'
-                        ? '#166534'
-                        : proj.status === 'ARCHIVED'
-                          ? '#475569'
-                          : '#991b1b',
-                  }}
-                >
-                  {projectLifecycleLabel(proj.status)}
-                </span>
-              </td>
-              <td style={{ padding: '12px' }}>{proj.active ? 'Yes' : 'No'}</td>
-              <td style={{ padding: '12px', fontSize: '13px', color: '#64748b' }}>
-                {formatProductTimestamp(proj.createdAt)}
-              </td>
-              <td style={{ padding: '12px' }}>
-                <Link
-                  to={`/settings/projects/${encodeURIComponent(proj.id)}`}
-                  style={{
-                    padding: '4px 8px',
-                    background: '#2563eb',
-                    color: '#fff',
-                    borderRadius: '4px',
-                    textDecoration: 'none',
-                    fontSize: '12px',
-                  }}
-                >
-                  Details / Policy
-                </Link>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      {createModalOpen && (
+      {createModalOpen ? (
         <div
           role="dialog"
           aria-modal="true"
@@ -236,156 +83,38 @@ export const ProjectsWorkspace = () => {
           ref={createDialog.dialogRef}
           tabIndex={-1}
           onKeyDown={createDialog.onDialogKeyDown}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-          }}
         >
-          <div
-            style={{
-              background: '#fff',
-              padding: '24px',
-              borderRadius: '8px',
-              maxWidth: '480px',
-              width: '100%',
+          <h2 id="create-project-dialog-title">Create your first Project</h2>
+          {errorMessage ? <p role="alert">{errorMessage}</p> : null}
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              setErrorMessage(null);
+              createMutation.mutate();
             }}
           >
-            <h2 id="create-project-dialog-title" style={{ marginTop: 0 }}>
-              {session?.activeProject ? 'Create Project' : 'Create your first Project'}
-            </h2>
-
-            {errorMessage && (
-              <div
-                style={{
-                  padding: '8px',
-                  background: '#fee2e2',
-                  color: '#991b1b',
-                  borderRadius: '4px',
-                  marginBottom: '12px',
-                  fontSize: '13px',
-                }}
-              >
-                {errorMessage}
-              </div>
-            )}
-
-            <form onSubmit={handleCreateSubmit} style={{ display: 'grid', gap: '12px' }}>
-              {session?.activeProject ? (
-                <div>
-                  <label
-                    htmlFor="new-proj-id"
-                    style={{
-                      display: 'block',
-                      fontWeight: 600,
-                      fontSize: '13px',
-                      marginBottom: '4px',
-                    }}
-                  >
-                    Project key (cannot be changed)
-                  </label>
-                  <input
-                    id="new-proj-id"
-                    required
-                    value={newProjectId}
-                    onChange={(e) => setNewProjectId(e.target.value)}
-                    placeholder="e.g., launch-notes"
-                    style={{
-                      width: '100%',
-                      padding: '8px',
-                      borderRadius: '4px',
-                      border: '1px solid #cbd5e1',
-                    }}
-                  />
-                </div>
-              ) : null}
-
-              <div>
-                <label
-                  htmlFor="new-proj-name"
-                  style={{
-                    display: 'block',
-                    fontWeight: 600,
-                    fontSize: '13px',
-                    marginBottom: '4px',
-                  }}
-                >
-                  Project Name
-                </label>
-                <input
-                  id="new-proj-name"
-                  required
-                  value={newProjectName}
-                  onChange={(e) => setNewProjectName(e.target.value)}
-                  placeholder="e.g., My New Project"
-                  style={{
-                    width: '100%',
-                    padding: '8px',
-                    borderRadius: '4px',
-                    border: '1px solid #cbd5e1',
-                  }}
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="new-proj-desc"
-                  style={{
-                    display: 'block',
-                    fontWeight: 600,
-                    fontSize: '13px',
-                    marginBottom: '4px',
-                  }}
-                >
-                  Description (Optional)
-                </label>
-                <textarea
-                  id="new-proj-desc"
-                  value={newProjectDesc}
-                  onChange={(e) => setNewProjectDesc(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '8px',
-                    borderRadius: '4px',
-                    border: '1px solid #cbd5e1',
-                    minHeight: '60px',
-                  }}
-                />
-              </div>
-
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'flex-end',
-                  gap: '8px',
-                  marginTop: '12px',
-                }}
-              >
-                <button type="button" onClick={closeCreateModal}>
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={createMutation.isPending}
-                  style={{
-                    padding: '8px 16px',
-                    background: '#16a34a',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: '4px',
-                  }}
-                >
-                  {createMutation.isPending ? 'Creating...' : 'Create Project'}
-                </button>
-              </div>
-            </form>
-          </div>
+            <label htmlFor="first-project-name">Project Name</label>
+            <input
+              id="first-project-name"
+              required
+              value={newProjectName}
+              onChange={(event) => setNewProjectName(event.target.value)}
+            />
+            <label htmlFor="first-project-description">Description (Optional)</label>
+            <textarea
+              id="first-project-description"
+              value={newProjectDescription}
+              onChange={(event) => setNewProjectDescription(event.target.value)}
+            />
+            <button type="button" onClick={closeCreateModal}>
+              Cancel
+            </button>
+            <button type="submit" disabled={createMutation.isPending}>
+              {createMutation.isPending ? 'Creating...' : 'Create Project'}
+            </button>
+          </form>
         </div>
-      )}
+      ) : null}
     </section>
   );
 };

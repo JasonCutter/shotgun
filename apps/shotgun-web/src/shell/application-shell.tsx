@@ -99,7 +99,7 @@ export const ApplicationShell = () => {
     <TechnicalInspectionProvider>
       <div className="application-shell">
         <SkipLink />
-        <TopBar session={boundary.session} shell={shell} />
+        <TopBar shell={shell} />
         {connectivity.isOffline ? (
           <div className="global-banner global-banner-critical" role="alert">
             Offline. Cached information may be stale; server actions and Search are disabled.

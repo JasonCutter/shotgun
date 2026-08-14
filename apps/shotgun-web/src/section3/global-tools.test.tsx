@@ -94,6 +94,12 @@ const runtime = (apiClient: Partial<ShotgunApiClient>): AppRuntime => ({
   sessionCycleState: createSessionCycleState(),
 });
 
+const openCommandsWithKeyboard = async (user: ReturnType<typeof userEvent.setup>) => {
+  expect(screen.queryByRole('button', { name: 'Commands' })).toBeNull();
+  await user.keyboard('{Control>}k{/Control}');
+  return await screen.findByRole('dialog', { name: 'Commands' });
+};
+
 describe('GlobalTools HFM-S1 preservation', () => {
   it('announces the result count after a successful global search', async () => {
     const user = userEvent.setup();
@@ -129,7 +135,7 @@ describe('GlobalTools HFM-S1 preservation', () => {
       </AppProviders>,
     );
 
-    await user.click(screen.getByRole('button', { name: 'Commands' }));
+    await openCommandsWithKeyboard(user);
     await user.click(screen.getByRole('button', { name: /Switch to Research Project/ }));
 
     expect((await screen.findByRole('alert')).textContent).toContain('Project switch failed');
@@ -145,7 +151,7 @@ describe('GlobalTools HFM-S1 preservation', () => {
       </AppProviders>,
     );
 
-    await user.click(screen.getByRole('button', { name: 'Commands' }));
+    await openCommandsWithKeyboard(user);
     await user.click(await screen.findByRole('button', { name: /^Manage Projects/ }));
 
     expect(await screen.findByRole('dialog', { name: 'Manage Projects' })).toBeTruthy();
@@ -177,7 +183,7 @@ describe('GlobalTools HFM-S1 preservation', () => {
       </AppProviders>,
     );
 
-    await user.click(screen.getByRole('button', { name: 'Commands' }));
+    await openCommandsWithKeyboard(user);
     await user.click(await screen.findByRole('button', { name: /^Set Locale/ }));
 
     expect(await screen.findByRole('dialog', { name: 'Locale Preferences' })).toBeTruthy();
@@ -186,7 +192,7 @@ describe('GlobalTools HFM-S1 preservation', () => {
     );
   });
 
-  it('opens the shared AI surface from Commands without navigating to Settings', async () => {
+  it('opens the shared AI surface from Ctrl/Cmd+K without navigating to Settings', async () => {
     const user = userEvent.setup();
     render(
       <AppProviders
@@ -228,7 +234,7 @@ describe('GlobalTools HFM-S1 preservation', () => {
       </AppProviders>,
     );
 
-    await user.click(screen.getByRole('button', { name: 'Commands' }));
+    await openCommandsWithKeyboard(user);
     await user.click(await screen.findByRole('button', { name: /^Configure AI/ }));
 
     expect(await screen.findByRole('dialog', { name: 'Configure AI' })).toBeTruthy();
@@ -254,7 +260,7 @@ describe('GlobalTools HFM-S1 preservation', () => {
       </AppProviders>,
     );
 
-    await user.click(screen.getByRole('button', { name: 'Commands' }));
+    await openCommandsWithKeyboard(user);
     await user.click(await screen.findByRole('button', { name: /^Technical information/ }));
 
     const dialog = await screen.findByRole('dialog', { name: 'Technical information' });

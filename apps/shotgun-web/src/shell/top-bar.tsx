@@ -1,15 +1,8 @@
-import type { GlobalShellView, ProductSessionView } from '@shotgun/api-client';
+import type { GlobalShellView } from '@shotgun/api-client';
 
-import { ProjectSelector } from '../session/project-selector.js';
 import { GlobalTools } from '../section3/global-tools.js';
 
-export const TopBar = ({
-  session,
-  shell,
-}: {
-  readonly session: ProductSessionView;
-  readonly shell: GlobalShellView;
-}) => (
+export const TopBar = ({ shell }: { readonly shell: GlobalShellView }) => (
   <header className="top-bar">
     <div>
       <p className="product-name">Shotgun</p>
@@ -18,7 +11,6 @@ export const TopBar = ({
       </p>
     </div>
     <div className="shell-controls">
-      <ProjectSelector session={session} shell={shell} />
       <GlobalTools shell={shell} />
     </div>
   </header>

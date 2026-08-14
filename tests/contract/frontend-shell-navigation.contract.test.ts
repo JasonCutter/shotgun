@@ -28,25 +28,39 @@ const scope: FrontendReadScope = {
   policyContextRevision: 'policy-1',
 };
 
-describe('Frontend Shell navigation — External Action Workspace entry (FE-P4-S2 WP5)', () => {
-  it('exposes the external-action Command Palette navigation entry when a Project is ready', async () => {
+describe('Frontend Shell HFM-S3 persistent navigation', () => {
+  it('exposes exactly Home, Sources, and Ask when a Project is ready', async () => {
     const shell = await new InMemoryGlobalShellProjection().getShell(scope);
-    const item = shell.navigation.find((entry) => entry.id === 'external-action');
-    expect(item).toBeDefined();
-    expect(item?.label).toBe('External actions');
-    expect(item?.availability).toBe('AVAILABLE');
-    expect(item?.targetRoute).toEqual({ routeId: 'external-action', href: '/external-action' });
+    expect(shell.navigation).toEqual([
+      {
+        id: 'home',
+        label: 'Home',
+        availability: 'AVAILABLE',
+        targetRoute: { routeId: 'home', href: '/' },
+      },
+      {
+        id: 'sources',
+        label: 'Sources',
+        availability: 'AVAILABLE',
+        targetRoute: { routeId: 'sources', href: '/sources' },
+      },
+      {
+        id: 'ask',
+        label: 'Ask',
+        availability: 'AVAILABLE',
+        targetRoute: { routeId: 'ask', href: '/ask' },
+      },
+    ]);
   });
 
-  it('marks the external-action entry temporarily unavailable without a Project', async () => {
+  it('does not advertise disabled workspace placeholders without a Project', async () => {
     const shell = await new InMemoryGlobalShellProjection().getShell({
       ...scope,
       activeProject: null,
       accessibleProjects: [],
     });
-    const item = shell.navigation.find((entry) => entry.id === 'external-action');
-    expect(item?.availability).toBe('TEMPORARILY_UNAVAILABLE');
-    expect(item?.reason).toContain('Project');
+    expect(shell.navigation).toEqual([]);
+    expect(shell.leadingWarning?.code).toBe('PROJECT_SETUP_REQUIRED');
   });
 
   it('Home primary action navigates to the governance workspace and never executes (AC-18)', async () => {

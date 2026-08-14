@@ -9,20 +9,7 @@ import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
 import { ApplicationShell } from '../shell/application-shell.js';
 import { HomePage } from '../routes/home-page.js';
-import { SettingsLayout } from '../routes/settings/settings-layout.js';
-import { CategoryIndexView } from '../routes/settings/category-index-view.js';
-import { PreferencesWorkspace } from '../routes/settings/preferences-workspace.js';
 import { ProjectsWorkspace } from '../routes/settings/projects-workspace.js';
-import { ProjectDetailsWorkspace } from '../routes/settings/project-details-workspace.js';
-import { ModelsWorkspace } from '../routes/settings/models-workspace.js';
-import { AIWorkspace } from '../routes/settings/ai-workspace.js';
-import { CostsWorkspace } from '../routes/settings/costs-workspace.js';
-import { PrivacyWorkspace } from '../routes/settings/privacy-workspace.js';
-import { ConnectorsWorkspace } from '../routes/settings/connectors-workspace.js';
-import { DirectivesWorkspace } from '../routes/settings/directives-workspace.js';
-import { SchemaWorkspace } from '../routes/settings/schema-workspace.js';
-import { DiagnosticsWorkspace } from '../routes/settings/diagnostics-workspace.js';
-import { AdvancedWorkspace } from '../routes/settings/advanced-workspace.js';
 import { SourcesWorkspace } from '../routes/sources-workspace.js';
 import { SourceDetailWorkspace } from '../routes/source-detail-workspace.js';
 import { AskWorkspace } from '../routes/ask-workspace.js';
@@ -183,38 +170,12 @@ export const createAppRouter = (runtime: AppRuntime) =>
           element: <HistoryWorkspace />,
         },
         {
-          path: 'settings',
-          loader: guardedRouteLoader(runtime, { routeId: 'settings', href: '/settings' }),
-          element: <SettingsLayout />,
-          children: [
-            { index: true, element: <CategoryIndexView /> },
-            { path: 'preferences', element: <PreferencesWorkspace /> },
-            {
-              path: 'projects',
-              loader: guardedRouteLoader(runtime, {
-                routeId: 'settings-projects',
-                href: '/settings/projects',
-              }),
-              element: <ProjectsWorkspace />,
-            },
-            {
-              path: 'projects/:projectId',
-              loader: guardedRouteLoader(runtime, {
-                routeId: 'settings-projects',
-                href: '/settings/projects',
-              }),
-              element: <ProjectDetailsWorkspace />,
-            },
-            { path: 'models', element: <ModelsWorkspace /> },
-            { path: 'ai', element: <AIWorkspace /> },
-            { path: 'costs', element: <CostsWorkspace /> },
-            { path: 'privacy', element: <PrivacyWorkspace /> },
-            { path: 'connectors', element: <ConnectorsWorkspace /> },
-            { path: 'directives', element: <DirectivesWorkspace /> },
-            { path: 'schema', element: <SchemaWorkspace /> },
-            { path: 'diagnostics', element: <DiagnosticsWorkspace /> },
-            { path: 'advanced', element: <AdvancedWorkspace /> },
-          ],
+          path: 'settings/projects',
+          loader: guardedRouteLoader(runtime, {
+            routeId: 'settings-projects',
+            href: '/settings/projects',
+          }),
+          element: <ProjectsWorkspace />,
         },
       ],
     },

@@ -189,16 +189,6 @@ export const GlobalTools = ({ shell }: { readonly shell: GlobalShellView }) => {
       >
         Search
       </button>
-      <button
-        type="button"
-        onClick={(event) => {
-          setPaletteInvoker(event.currentTarget);
-          setPaletteOpen(true);
-        }}
-        aria-keyshortcuts="Control+K Meta+K"
-      >
-        Commands
-      </button>
       <p className="sr-only" aria-live="polite">
         {announcement}
       </p>

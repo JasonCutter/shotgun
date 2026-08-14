@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 
 import { expect, test } from '@playwright/test';
 
+import { switchProject } from './helpers/hfm-commands.js';
+
 test('Sources stages and submits Direct Text, then releases Project switching after success', async ({
   page,
 }) => {
@@ -34,9 +36,8 @@ test('Sources stages and submits Direct Text, then releases Project switching af
   await expect(page.getByRole('heading', { name: 'Submission Completed' })).toBeVisible();
   await expect(page.getByText('No route-scoped drafts.')).toBeVisible();
 
-  const selector = page.getByRole('combobox', { name: 'Current project' });
-  await selector.selectOption('project-b');
-  await expect(selector).toHaveValue('project-b');
+  await switchProject(page, 'Project B');
+  await expect(page.locator('.project-summary')).toContainText('Project B');
 });
 
 test('Sources keeps Project switching blocked after a partial delete and releases it after the last delete', async ({
@@ -52,15 +53,14 @@ test('Sources keeps Project switching blocked after a partial delete and release
   await page.getByLabel('Direct Text').fill('Second transient draft');
   await page.getByRole('button', { name: 'Add intake draft' }).click();
 
-  const selector = page.getByRole('combobox', { name: 'Current project' });
   await page.getByRole('button', { name: 'Remove Draft A' }).click();
-  await selector.selectOption('project-b');
-  await expect(selector).toHaveValue('shotgun');
+  await switchProject(page, 'Project B');
+  await expect(page.locator('.project-summary')).toContainText('shotgun');
   await expect(page.getByRole('alert')).toContainText('current Workspace');
 
   await page.getByRole('button', { name: 'Remove Draft B' }).click();
-  await selector.selectOption('project-b');
-  await expect(selector).toHaveValue('project-b');
+  await switchProject(page, 'Project B');
+  await expect(page.locator('.project-summary')).toContainText('Project B');
 });
 
 test('Sources URL preflight is advisory, transient, responsive, and offline-safe', async ({

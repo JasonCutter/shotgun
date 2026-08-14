@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 
+import { switchProject } from './helpers/hfm-commands.js';
+
 const forbiddenAuthorityHeaders = [
   'x-project-id',
   'x-actor-id',
@@ -24,39 +26,39 @@ test('Frontend Section 1 restores server Project context and protects routes', a
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
   await expect(page.locator('.project-summary')).toContainText('shotgun');
-  await page.getByRole('link', { name: 'Settings' }).click();
-  await expect(page.getByRole('heading', { level: 1, name: /Settings/ })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Settings' })).toHaveCount(0);
+  await expect(page.getByRole('combobox', { name: 'Current project' })).toHaveCount(0);
 
   await page.route('**/api/v1/session/active-project', async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 250));
     await route.continue();
   });
-  const projectSelector = page.getByRole('combobox', {
-    name: 'Current project',
-  });
-  await projectSelector.selectOption('project-b');
+  await switchProject(page, 'Project B');
   await expect(page.locator('.project-summary')).toContainText('Project B');
-  await expect(projectSelector).toHaveValue('project-b');
 
   await page.reload();
-  await expect(page.getByRole('heading', { level: 1, name: /Settings/ })).toBeVisible();
-  await expect(projectSelector).toHaveValue('project-b');
+  await expect(page.getByRole('heading', { level: 1, name: 'Home' })).toBeVisible();
+  await expect(page.locator('.project-summary')).toContainText('Project B');
   await expect(page.locator('.project-summary')).not.toContainText('shotgun');
 
   for (const [link, heading] of [
     ['Home', 'Home'],
     ['Sources', 'Sources'],
     ['Ask', 'Ask'],
-    ['Settings', 'Settings'],
   ] as const) {
     await page.getByRole('link', { name: link }).click();
     await expect(page.getByRole('heading', { level: 1, name: heading })).toBeFocused();
   }
-  for (const unavailable of ['Knowledge', 'Review']) {
-    await expect(page.getByRole('link', { name: unavailable })).toHaveCount(0);
-    await expect(
-      page.locator('.navigation-disabled', { hasText: unavailable }).first(),
-    ).toHaveAttribute('aria-disabled', 'true');
+  for (const removed of [
+    'Knowledge',
+    'Review',
+    'External actions',
+    'Activity',
+    'History',
+    'Settings',
+  ]) {
+    await expect(page.getByRole('link', { name: removed })).toHaveCount(0);
+    await expect(page.locator('.navigation-disabled', { hasText: removed })).toHaveCount(0);
   }
 
   const storage = await page.evaluate(() => ({
@@ -128,7 +130,6 @@ test('Frontend Section 1 restores server Project context and protects routes', a
 
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
-  await page.getByRole('link', { name: 'Settings' }).click();
   await expect(page.getByRole('button', { name: /log out/i })).toHaveCount(0);
 });
 

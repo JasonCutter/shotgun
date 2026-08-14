@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
@@ -60,10 +60,10 @@ const shell: GlobalShellView = {
       targetRoute: { routeId: 'sources', href: '/sources' },
     },
     {
-      id: 'settings',
-      label: 'Settings',
+      id: 'ask',
+      label: 'Ask',
       availability: 'AVAILABLE',
-      targetRoute: { routeId: 'settings', href: '/settings' },
+      targetRoute: { routeId: 'ask', href: '/ask' },
     },
   ],
   features: [
@@ -116,6 +116,7 @@ const runtime = (): AppRuntime => {
     logout: vi.fn(async () => undefined),
     getGlobalShell: vi.fn(async () => shell),
     getHomeActionCenter: vi.fn(async () => home),
+    getProjects: vi.fn(async () => []),
   } as unknown as ShotgunApiClient;
   return { apiClient, queryClient, sessionCycleState };
 };
@@ -151,7 +152,17 @@ describe('ApplicationShell', () => {
     expect(screen.getAllByRole('link', { name: 'Home' })[0]?.getAttribute('aria-current')).toBe(
       'page',
     );
-    expect(screen.getByText('Project A', { selector: 'strong' })).toBeTruthy();
+    expect(screen.getAllByText('Project A', { selector: 'strong' })).toHaveLength(1);
+    for (const name of ['Primary navigation', 'Mobile navigation']) {
+      const navigation = screen.getByRole('navigation', { name });
+      expect(
+        within(navigation)
+          .getAllByRole('link')
+          .map((link) => link.textContent),
+      ).toEqual(['Home', 'Sources', 'Ask']);
+    }
+    expect(screen.queryByText('More', { exact: true })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Settings' })).toBeNull();
   });
 
   it('exposes the implemented Sources workspace as a registered link', async () => {
@@ -159,11 +170,13 @@ describe('ApplicationShell', () => {
     expect((await screen.findAllByRole('link', { name: 'Sources' })).length).toBeGreaterThan(0);
   });
 
-  it('opens the same owner-command registry from the persistent Commands entry', async () => {
+  it('opens the same owner-command registry from Ctrl/Cmd+K without a persistent button', async () => {
     const user = userEvent.setup();
     renderShell();
 
-    await user.click(await screen.findByRole('button', { name: 'Commands' }));
+    await screen.findByRole('button', { name: 'Search' });
+    expect(screen.queryByRole('button', { name: 'Commands' })).toBeNull();
+    await user.keyboard('{Control>}k{/Control}');
     expect(screen.getByRole('dialog', { name: 'Commands' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Navigation' })).toBeTruthy();
     expect(screen.getByRole('button', { name: /Open Knowledge/ })).toBeTruthy();

@@ -39,8 +39,6 @@ export const PrimaryNavigation = ({
   readonly navigation: GlobalShellView['navigation'];
 }) => {
   const visible = navigation.filter((item) => item.availability !== 'HIDDEN');
-  const mobilePrimary = visible.slice(0, 4);
-  const mobileMore = visible.slice(4);
   return (
     <>
       <nav className="primary-navigation" aria-label="Primary navigation">
@@ -50,17 +48,7 @@ export const PrimaryNavigation = ({
       </nav>
       <nav className="mobile-navigation" aria-label="Mobile navigation">
         <ul>
-          <NavigationItems items={mobilePrimary} />
-          {mobileMore.length > 0 ? (
-            <li>
-              <details>
-                <summary>More</summary>
-                <ul>
-                  <NavigationItems items={mobileMore} />
-                </ul>
-              </details>
-            </li>
-          ) : null}
+          <NavigationItems items={visible} />
         </ul>
       </nav>
     </>

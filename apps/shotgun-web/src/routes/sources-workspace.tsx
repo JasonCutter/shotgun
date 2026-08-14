@@ -18,6 +18,7 @@ import { EmptyState } from '../components/empty-state.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
 import { TechnicalDetails } from '../components/technical-details.js';
+import { useProductLocalization } from '../localization/product-localization.js';
 import {
   duplicateDispositionLabel,
   intakeKindLabel,
@@ -76,6 +77,7 @@ export const SourcesWorkspace = () => {
   const { shell } = useOutletContext<{ readonly shell: GlobalShellView }>();
   const location = useLocation();
   const connectivity = useConnectivityState();
+  const { t } = useProductLocalization();
   const writeClient = useMemo(() => createSourcesWriteClient(), []);
   const commandIdentity = useRef<DraftCommandIdentity | undefined>(undefined);
   const [searchInput, setSearchInput] = useState('');
@@ -108,8 +110,8 @@ export const SourcesWorkspace = () => {
   if (!shell.activeProject) {
     return (
       <EmptyState
-        title="Create a Project before adding Sources"
-        description="Create a Project to organize and add Sources."
+        title={t('sources.create_project')}
+        description={t('sources.create_project_help')}
       />
     );
   }
@@ -327,12 +329,12 @@ export const SourcesWorkspace = () => {
 
   return (
     <section className="route-page sources-workspace">
-      <p className="eyebrow">Knowledge input</p>
-      <h1 tabIndex={-1}>Sources</h1>
+      <p className="eyebrow">{t('sources.eyebrow')}</p>
+      <h1 tabIndex={-1}>{t('sources.title')}</h1>
 
       <section className="action-card" aria-labelledby="source-intake-heading">
-        <h2 id="source-intake-heading">Draft Queue</h2>
-        <p>Drafts stay with the project where they were created until submitted or discarded.</p>
+        <h2 id="source-intake-heading">{t('sources.draft_queue')}</h2>
+        <p>{t('sources.draft_help')}</p>
         {draftQueue.activeProjectMismatch ? (
           <p className="warning-state" role="alert">
             The active Project changed. These drafts remain isolated to their original Project and
@@ -428,7 +430,7 @@ export const SourcesWorkspace = () => {
             Add intake draft
           </button>
         </form>
-        {draftQueue.items.length === 0 ? <p>No drafts yet.</p> : null}
+        {draftQueue.items.length === 0 ? <p>{t('sources.no_drafts')}</p> : null}
         {draftQueue.items.length > 0 ? (
           <>
             <ul className="source-intake-list" aria-label="Intake drafts">
@@ -536,10 +538,10 @@ export const SourcesWorkspace = () => {
       <section className="action-card" aria-labelledby="source-library-heading">
         <div className="source-library-heading">
           <div>
-            <h2 id="source-library-heading">Source Library</h2>
+            <h2 id="source-library-heading">{t('sources.library')}</h2>
           </div>
           <form className="source-search" role="search" onSubmit={onSearch}>
-            <label htmlFor="source-search-query">Search Sources</label>
+            <label htmlFor="source-search-query">{t('sources.search')}</label>
             <div>
               <input
                 id="source-search-query"
@@ -549,7 +551,7 @@ export const SourcesWorkspace = () => {
                 maxLength={500}
               />
               <button type="submit" disabled={connectivity.isOffline}>
-                Search
+                {t('sources.search_submit')}
               </button>
             </div>
           </form>
@@ -561,7 +563,7 @@ export const SourcesWorkspace = () => {
             intake actions are blocked.
           </p>
         ) : null}
-        {library.isPending ? <LoadingState message="Loading Source Library…" /> : null}
+        {library.isPending ? <LoadingState message={t('sources.loading_library')} /> : null}
         {library.error ? (
           <ErrorState
             error={library.error}
@@ -577,12 +579,8 @@ export const SourcesWorkspace = () => {
         ) : null}
         {library.data && library.data.items.length === 0 ? (
           <EmptyState
-            title={appliedQuery ? 'No matching Sources' : 'No Sources yet'}
-            description={
-              appliedQuery
-                ? 'Change the Server search query or clear it.'
-                : 'Submitted Sources will appear here after Server processing.'
-            }
+            title={appliedQuery ? t('sources.no_matching') : t('sources.none_yet')}
+            description={appliedQuery ? t('sources.change_search') : t('sources.submitted_appear')}
           />
         ) : null}
         {library.data && library.data.items.length > 0 ? (
@@ -604,7 +602,7 @@ export const SourcesWorkspace = () => {
                       className="primary-link"
                       to={`/sources/${encodeURIComponent(source.sourceId)}?version=${encodeURIComponent(source.selectedSourceVersionId)}`}
                     >
-                      Open source
+                      {t('sources.open')}
                     </Link>
                   </div>
                 </li>

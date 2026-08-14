@@ -125,27 +125,20 @@ test('Ask Conversation current item and Answer actions remain clear on a narrow 
   await expect(conversations).not.toContainText('1 turn');
   await expect(conversations).not.toContainText('Completed');
 
-  const actions = page.getByLabel('Answer actions');
-  for (const label of [
-    'Export answer',
-    'Helpful',
-    'Not helpful',
-    'Propose Intake Draft',
-    'Propose Draft ChangeSet',
-    'Propose Directive',
-  ]) {
-    await expect(actions.getByRole('button', { name: label, exact: true })).toBeVisible();
+  const actions = page.getByRole('button', { name: 'Answer actions', exact: true });
+  await expect(actions).toBeVisible();
+  for (const label of ['Helpful', 'Not helpful', 'Export answer', 'Propose Intake Draft']) {
+    await expect(page.getByRole('button', { name: label, exact: true })).toHaveCount(0);
   }
   const layout = await actions.evaluate((element) => ({
     clientWidth: element.clientWidth,
     scrollWidth: element.scrollWidth,
-    buttons: [...element.querySelectorAll('button')].map((button) => ({
-      left: button.getBoundingClientRect().left,
-      right: button.getBoundingClientRect().right,
-    })),
+    left: element.getBoundingClientRect().left,
+    right: element.getBoundingClientRect().right,
   }));
   expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth);
-  expect(layout.buttons.every((button) => button.left >= 0 && button.right <= 320)).toBe(true);
+  expect(layout.left).toBeGreaterThanOrEqual(0);
+  expect(layout.right).toBeLessThanOrEqual(320);
 });
 
 test('Ask masks inaccessible Conversation as NOT_FOUND', async ({ page }) => {

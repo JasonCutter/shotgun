@@ -549,7 +549,8 @@ describe('AskWorkspace', () => {
     },
   );
 
-  it('presents each Answer action as an independently wrapping button', async () => {
+  it('opens exact per-turn Answer commands after answer content without feedback controls', async () => {
+    const user = userEvent.setup();
     const runtime = createRuntime();
     const selectedConversation = mockWorkspace.selectedConversation!;
     const workspace: AskWorkspaceView = {
@@ -573,6 +574,12 @@ describe('AskWorkspace', () => {
         })),
       },
     };
+    const exportAnswerRun = vi.fn().mockResolvedValue({
+      schemaVersion: '1.0.0',
+      answerRunId: 'run-1',
+      format: 'MARKDOWN',
+      content: 'exported answer',
+    });
     const mockClient: AskWorkspaceClient = {
       getProviderEligibility: vi.fn().mockResolvedValue(eligibleProvider),
       getWorkspace: vi.fn().mockResolvedValue(workspace),
@@ -582,6 +589,7 @@ describe('AskWorkspace', () => {
       getAnswerRun: vi.fn(),
       submitQuestion: vi.fn(),
       getQuestionSubmissionByClientRequestId: vi.fn(),
+      exportAnswerRun,
     };
     const router = createMemoryRouter(
       [
@@ -600,20 +608,119 @@ describe('AskWorkspace', () => {
       </AppProviders>,
     );
 
-    const actions = await screen.findByLabelText('Answer actions');
-    expect(actions.classList.contains('answer-action-row')).toBe(true);
+    const actions = await screen.findByRole('button', { name: 'Answer actions' });
+    const question = screen.getByText('What is canonical?').closest('p');
+    const answer = screen.getByRole('heading', { name: 'Answer' });
+    const evidence = screen.getByRole('link', { name: 'Open pinned Evidence' });
+    expect(question?.compareDocumentPosition(answer)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(answer.compareDocumentPosition(evidence)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(evidence.compareDocumentPosition(actions)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(screen.queryByRole('button', { name: 'Helpful' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Not helpful' })).toBeNull();
     for (const label of [
       'Export answer',
-      'Helpful',
-      'Not helpful',
       'Propose Intake Draft',
       'Propose Draft ChangeSet',
       'Propose Directive',
     ]) {
-      expect((within(actions).getByRole('button', { name: label }) as HTMLButtonElement).type).toBe(
-        'button',
-      );
+      expect(screen.queryByRole('button', { name: label })).toBeNull();
     }
+
+    await user.click(actions);
+    const palette = screen.getByRole('dialog', { name: 'Commands' });
+    await user.click(within(palette).getByRole('button', { name: /^Export answer/ }));
+    const exportDialog = screen.getByRole('dialog', { name: 'Export answer' });
+    await user.click(within(exportDialog).getByRole('button', { name: 'Export answer' }));
+
+    expect(exportAnswerRun).toHaveBeenCalledWith(
+      'run-1',
+      expect.objectContaining({ format: 'MARKDOWN' }),
+    );
+    expect(await screen.findByText('exported answer')).toBeTruthy();
+  });
+
+  it('targets the active-branch latest answer for default Ask slash discovery', async () => {
+    const user = userEvent.setup();
+    const runtime = createRuntime();
+    const selectedConversation = mockWorkspace.selectedConversation!;
+    const activeTurn = {
+      ...selectedConversation.branches[0]!.turns[0]!,
+      answerRun: {
+        ...selectedConversation.branches[0]!.turns[0]!.answerRun,
+        capabilities: ['EXPORT'] as const,
+      },
+    };
+    const inactiveTurn = {
+      ...activeTurn,
+      turnId: 'turn-inactive-latest',
+      ordinal: 99,
+      answerRun: {
+        ...activeTurn.answerRun,
+        answerRunId: 'run-inactive-latest',
+        branchId: 'branch-2',
+        turnId: 'turn-inactive-latest',
+        answerRevision: 'answer-inactive-latest',
+      },
+    };
+    const workspace: AskWorkspaceView = {
+      ...mockWorkspace,
+      selectedConversation: {
+        ...selectedConversation,
+        activeBranchId: 'branch-1',
+        branches: [
+          { ...selectedConversation.branches[0]!, turns: [activeTurn] },
+          { branchId: 'branch-2', label: 'Inactive Branch', turns: [inactiveTurn] },
+        ],
+      },
+    };
+    const exportAnswerRun = vi.fn(async (answerRunId: string) => ({
+      schemaVersion: '1.0.0' as const,
+      exportId: `export-${answerRunId}`,
+      answerRunId,
+      projectId: 'project-1',
+      format: 'MARKDOWN' as const,
+      content: `exported:${answerRunId}`,
+      createdAt: '2026-08-15T00:00:00.000Z',
+    }));
+    const mockClient: AskWorkspaceClient = {
+      getProviderEligibility: vi.fn().mockResolvedValue(eligibleProvider),
+      getWorkspace: vi.fn().mockResolvedValue(workspace),
+      getConversation: vi.fn().mockResolvedValue(workspace.selectedConversation!),
+      getConversationSourceContext: vi.fn(),
+      getBranch: vi.fn(),
+      getAnswerRun: vi.fn(),
+      submitQuestion: vi.fn(),
+      getQuestionSubmissionByClientRequestId: vi.fn(),
+      exportAnswerRun,
+    };
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <ShellOutlet />,
+          children: [{ path: 'ask', element: <AskWorkspace client={mockClient} /> }],
+        },
+      ],
+      { initialEntries: ['/ask'] },
+    );
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    await user.type(await screen.findByLabelText('Question'), '/');
+    const palette = screen.getByRole('dialog', { name: 'Commands' });
+    await user.type(within(palette).getByRole('textbox', { name: 'Command search' }), 'export');
+    await user.click(within(palette).getByRole('button', { name: /^Export answer/ }));
+    const exportDialog = screen.getByRole('dialog', { name: 'Export answer' });
+    await user.click(within(exportDialog).getByRole('button', { name: 'Export answer' }));
+
+    expect(exportAnswerRun).toHaveBeenCalledWith(
+      'run-1',
+      expect.objectContaining({ format: 'MARKDOWN' }),
+    );
+    expect(exportAnswerRun).not.toHaveBeenCalledWith('run-inactive-latest', expect.anything());
   });
 
   it('triggers Leave Guard when question text is typed and isolates draft per project owner', async () => {

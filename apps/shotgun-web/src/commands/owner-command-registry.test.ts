@@ -2,6 +2,7 @@ import type { GlobalShellView, ProjectListItemView } from '@shotgun/api-client';
 import { describe, expect, it } from 'vitest';
 
 import { createOwnerCommandRegistry, filterOwnerCommands } from './owner-command-registry.js';
+import type { AnswerCommandContext } from './answer-command-context.js';
 
 const shell: GlobalShellView = {
   schemaVersion: '1.0.0',
@@ -107,7 +108,49 @@ const projects: readonly ProjectListItemView[] = [
   },
 ];
 
+const answerContext: AnswerCommandContext = {
+  projectId: 'project-1',
+  conversationId: 'conversation-1',
+  branchId: 'branch-1',
+  turnId: 'turn-1',
+  answerRunId: 'answer-run-1',
+  answerRevision: 'answer-revision-1',
+  state: 'SUCCEEDED',
+  capabilities: ['EXPORT', 'RETRY_SAME_CONTEXT', 'CREATE_DRAFT_CHANGE_SET'],
+};
+
 describe('owner command registry', () => {
+  it('discovers frozen Answer commands only for a capability-bearing mounted context', () => {
+    const hidden = createOwnerCommandRegistry({ shell, projects });
+    const available = createOwnerCommandRegistry({ shell, projects, answerContext });
+    const pending = createOwnerCommandRegistry({
+      shell,
+      projects,
+      answerContext,
+      answerCommandPending: true,
+    });
+
+    expect(filterOwnerCommands(hidden, 'answer')).toHaveLength(0);
+    expect(available.find((command) => command.id === 'answer.export')).toMatchObject({
+      category: 'ANSWER',
+      availability: 'AVAILABLE',
+      action: { kind: 'OPEN_ANSWER_FLOW', commandId: 'answer.export' },
+    });
+    expect(available.find((command) => command.id === 'action.retry')?.availability).toBe(
+      'AVAILABLE',
+    );
+    expect(available.find((command) => command.id === 'answer.propose_change')?.availability).toBe(
+      'AVAILABLE',
+    );
+    expect(available.find((command) => command.id === 'answer.propose_intake')?.availability).toBe(
+      'HIDDEN',
+    );
+    expect(pending.find((command) => command.id === 'action.retry')).toMatchObject({
+      availability: 'UNAVAILABLE_WITH_REASON',
+      reason: 'Check the current answer request result before starting another action.',
+    });
+  });
+
   it('keeps stable IDs separate from localized discovery terms', () => {
     const commands = createOwnerCommandRegistry({ shell, projects });
 

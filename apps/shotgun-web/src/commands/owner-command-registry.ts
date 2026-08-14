@@ -1,7 +1,17 @@
 import type { GlobalShellView, ProjectListItemView, TargetRouteView } from '@shotgun/api-client';
 
+import type { AnswerCommandContext } from './answer-command-context.js';
+
 export type OwnerCommandCategory =
-  'HELP' | 'SEARCH' | 'PROJECT' | 'AI' | 'PRIVACY' | 'PREFERENCES' | 'NAVIGATION' | 'INSPECTION';
+  | 'HELP'
+  | 'SEARCH'
+  | 'PROJECT'
+  | 'ANSWER'
+  | 'AI'
+  | 'PRIVACY'
+  | 'PREFERENCES'
+  | 'NAVIGATION'
+  | 'INSPECTION';
 
 export type OwnerCommandAvailability = 'AVAILABLE' | 'UNAVAILABLE_WITH_REASON' | 'HIDDEN';
 
@@ -24,6 +34,13 @@ export type AICommandId = 'ai.configure' | 'ai.test_connection';
 
 export type PrivacyCommandId = 'privacy.open' | 'privacy.review';
 
+export type AnswerCommandId =
+  | 'answer.export'
+  | 'action.retry'
+  | 'answer.propose_intake'
+  | 'answer.propose_change'
+  | 'answer.propose_directive';
+
 export type OwnerCommandAction =
   | { readonly kind: 'NAVIGATE'; readonly targetRoute: TargetRouteView }
   | { readonly kind: 'NAVIGATE_PATH'; readonly href: '/settings/ai' | '/settings/privacy' }
@@ -33,6 +50,7 @@ export type OwnerCommandAction =
   | { readonly kind: 'OPEN_PREFERENCE_FLOW'; readonly commandId: PreferenceCommandId }
   | { readonly kind: 'OPEN_AI_FLOW'; readonly commandId: AICommandId }
   | { readonly kind: 'OPEN_PRIVACY_FLOW'; readonly commandId: PrivacyCommandId }
+  | { readonly kind: 'OPEN_ANSWER_FLOW'; readonly commandId: AnswerCommandId }
   | { readonly kind: 'OPEN_TECHNICAL_FLOW'; readonly commandId: 'technical.current' }
   | { readonly kind: 'SWITCH_PROJECT'; readonly projectId: string };
 
@@ -57,6 +75,8 @@ export type OwnerCommandRegistryOptions = {
   readonly includeProjectSwitch?: boolean;
   readonly includeSearch?: boolean;
   readonly hasTechnicalInspection?: boolean;
+  readonly answerContext?: AnswerCommandContext;
+  readonly answerCommandPending?: boolean;
   readonly projects?: readonly ProjectListItemView[];
 };
 
@@ -73,11 +93,104 @@ const categoryOrder: Record<OwnerCommandCategory, number> = {
   HELP: 0,
   SEARCH: 1,
   PROJECT: 2,
-  AI: 3,
-  PRIVACY: 4,
-  PREFERENCES: 5,
-  NAVIGATION: 6,
-  INSPECTION: 7,
+  ANSWER: 3,
+  AI: 4,
+  PRIVACY: 5,
+  PREFERENCES: 6,
+  NAVIGATION: 7,
+  INSPECTION: 8,
+};
+
+const ANSWER_COMMAND_TEMPLATES: readonly Omit<OwnerCommandDefinition, 'availability' | 'reason'>[] =
+  [
+    {
+      id: 'answer.export',
+      category: 'ANSWER',
+      label: 'Export answer',
+      description: 'Export the selected answer as Markdown',
+      aliases: ['answer export', 'export answer'],
+      keywords: ['answer', 'markdown', 'download'],
+      risk: 'READ',
+      presentation: 'DIALOG',
+      action: { kind: 'OPEN_ANSWER_FLOW', commandId: 'answer.export' },
+    },
+    {
+      id: 'action.retry',
+      category: 'ANSWER',
+      label: 'Retry answer',
+      description: 'Retry the selected answer with an available mode',
+      aliases: ['answer retry', 'retry answer'],
+      keywords: ['answer', 'same context', 'current policy', 'recovery'],
+      risk: 'WRITE',
+      presentation: 'DIALOG',
+      action: { kind: 'OPEN_ANSWER_FLOW', commandId: 'action.retry' },
+    },
+    {
+      id: 'answer.propose_intake',
+      category: 'ANSWER',
+      label: 'Propose Intake Draft',
+      description: 'Create an Intake Draft proposal from the selected answer',
+      aliases: ['answer intake', 'propose intake'],
+      keywords: ['answer', 'draft', 'intake'],
+      risk: 'WRITE',
+      presentation: 'DIALOG',
+      action: { kind: 'OPEN_ANSWER_FLOW', commandId: 'answer.propose_intake' },
+    },
+    {
+      id: 'answer.propose_change',
+      category: 'ANSWER',
+      label: 'Propose Draft ChangeSet',
+      description: 'Create a Draft ChangeSet proposal from the selected answer',
+      aliases: ['answer change', 'propose change'],
+      keywords: ['answer', 'draft', 'change set', 'review'],
+      risk: 'WRITE',
+      presentation: 'DIALOG',
+      action: { kind: 'OPEN_ANSWER_FLOW', commandId: 'answer.propose_change' },
+    },
+    {
+      id: 'answer.propose_directive',
+      category: 'ANSWER',
+      label: 'Propose Directive',
+      description: 'Create a User Directive proposal from the selected answer',
+      aliases: ['answer directive', 'propose directive'],
+      keywords: ['answer', 'directive', 'proposal'],
+      risk: 'WRITE',
+      presentation: 'DIALOG',
+      action: { kind: 'OPEN_ANSWER_FLOW', commandId: 'answer.propose_directive' },
+    },
+  ];
+
+const answerCommandAvailability = (
+  commandId: AnswerCommandId,
+  context: AnswerCommandContext | undefined,
+  isOffline: boolean,
+  commandPending: boolean,
+): Pick<OwnerCommandDefinition, 'availability' | 'reason'> => {
+  if (!context) return { availability: 'HIDDEN' };
+  if (isOffline) {
+    return {
+      availability: 'UNAVAILABLE_WITH_REASON',
+      reason: 'Answer actions are unavailable while offline.',
+    };
+  }
+  if (commandPending) {
+    return {
+      availability: 'UNAVAILABLE_WITH_REASON',
+      reason: 'Check the current answer request result before starting another action.',
+    };
+  }
+  const available =
+    commandId === 'answer.export'
+      ? context.capabilities.includes('EXPORT')
+      : commandId === 'action.retry'
+        ? context.capabilities.includes('RETRY_SAME_CONTEXT') ||
+          context.capabilities.includes('RETRY_CURRENT_POLICY')
+        : commandId === 'answer.propose_intake'
+          ? context.capabilities.includes('CREATE_INTAKE_DRAFT')
+          : commandId === 'answer.propose_change'
+            ? context.capabilities.includes('CREATE_DRAFT_CHANGE_SET')
+            : context.capabilities.includes('PROPOSE_DIRECTIVE');
+  return { availability: available ? 'AVAILABLE' : 'HIDDEN' };
 };
 
 const normalize = (value: string): string => value.trim().toLocaleLowerCase();
@@ -469,6 +582,8 @@ export const createOwnerCommandRegistry = ({
   includeProjectSwitch = true,
   includeSearch = true,
   hasTechnicalInspection = false,
+  answerContext,
+  answerCommandPending = false,
   projects,
 }: OwnerCommandRegistryOptions): readonly OwnerCommandDefinition[] => {
   const templateCommands = HFM_COMMAND_TEMPLATES.filter(
@@ -508,7 +623,17 @@ export const createOwnerCommandRegistry = ({
         }))
     : [];
 
-  return [...templateCommands, ...projectCommands].sort(
+  const answerCommands = ANSWER_COMMAND_TEMPLATES.map((template) => ({
+    ...template,
+    ...answerCommandAvailability(
+      template.id as AnswerCommandId,
+      answerContext,
+      isOffline,
+      answerCommandPending,
+    ),
+  }));
+
+  return [...templateCommands, ...answerCommands, ...projectCommands].sort(
     (left, right) =>
       categoryOrder[left.category] - categoryOrder[right.category] ||
       left.label.localeCompare(right.label) ||

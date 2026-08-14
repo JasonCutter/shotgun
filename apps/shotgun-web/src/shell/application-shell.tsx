@@ -1,13 +1,20 @@
 import { useQuery } from '@tanstack/react-query';
 import { Outlet } from 'react-router';
 
+import type { GlobalShellView } from '@shotgun/api-client';
+
 import { useAppRuntime } from '../app/providers.js';
 import { RouteFocus } from '../app/route-focus.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
 import { SkipLink } from '../components/skip-link.js';
+import { AnswerCommandContextProvider } from '../commands/answer-command-context.js';
 import { TechnicalInspectionProvider } from '../components/technical-inspection-context.js';
 import { globalShellQueryOptions } from '../section3/section3-queries.js';
+import {
+  ProductLocalizationProvider,
+  useProductLocalization,
+} from '../localization/product-localization.js';
 import { SessionBoundaryScreen } from '../session/session-boundary-screen.js';
 import { reconnectSessionBoundary, sessionBoundaryQueryOptions } from '../session/session-query.js';
 import { PrimaryNavigation } from './primary-navigation.js';
@@ -96,33 +103,50 @@ export const ApplicationShell = () => {
   const shell = shellQuery.data;
 
   return (
-    <TechnicalInspectionProvider>
-      <div className="application-shell">
-        <SkipLink />
-        <TopBar shell={shell} />
-        {connectivity.isOffline ? (
-          <div className="global-banner global-banner-critical" role="alert">
-            Offline. Cached information may be stale; server actions and Search are disabled.
+    <ProductLocalizationProvider principalId={shell.principalId}>
+      <LocalizedApplicationShell shell={shell} offline={connectivity.isOffline} />
+    </ProductLocalizationProvider>
+  );
+};
+
+const LocalizedApplicationShell = ({
+  shell,
+  offline,
+}: {
+  readonly shell: GlobalShellView;
+  readonly offline: boolean;
+}) => {
+  const { t } = useProductLocalization();
+  return (
+    <AnswerCommandContextProvider>
+      <TechnicalInspectionProvider>
+        <div className="application-shell">
+          <SkipLink />
+          <TopBar shell={shell} />
+          {offline ? (
+            <div className="global-banner global-banner-critical" role="alert">
+              {t('shell.offline')}
+            </div>
+          ) : shell.leadingWarning ? (
+            <div
+              className={`global-banner global-banner-${shell.leadingWarning.severity.toLowerCase()}`}
+              role={shell.leadingWarning.severity === 'CRITICAL' ? 'alert' : 'status'}
+            >
+              {shell.leadingWarning.message}
+              {shell.leadingWarning.additionalCount > 0
+                ? ` (${shell.leadingWarning.additionalCount} additional states)`
+                : ''}
+            </div>
+          ) : null}
+          <div className="workspace-layout">
+            <PrimaryNavigation navigation={shell.navigation} />
+            <main id="main-content" tabIndex={-1}>
+              <RouteFocus />
+              <Outlet context={{ shell }} />
+            </main>
           </div>
-        ) : shell.leadingWarning ? (
-          <div
-            className={`global-banner global-banner-${shell.leadingWarning.severity.toLowerCase()}`}
-            role={shell.leadingWarning.severity === 'CRITICAL' ? 'alert' : 'status'}
-          >
-            {shell.leadingWarning.message}
-            {shell.leadingWarning.additionalCount > 0
-              ? ` (${shell.leadingWarning.additionalCount} additional states)`
-              : ''}
-          </div>
-        ) : null}
-        <div className="workspace-layout">
-          <PrimaryNavigation navigation={shell.navigation} />
-          <main id="main-content" tabIndex={-1}>
-            <RouteFocus />
-            <Outlet context={{ shell }} />
-          </main>
         </div>
-      </div>
-    </TechnicalInspectionProvider>
+      </TechnicalInspectionProvider>
+    </AnswerCommandContextProvider>
   );
 };

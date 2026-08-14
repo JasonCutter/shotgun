@@ -138,7 +138,9 @@ test('Section 3 renders responsive Shell and a compact Home', async ({ page }) =
     document.documentElement.style.zoom = '200%';
   });
   await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Search' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Search', exact: true })).toHaveCount(0);
+  await page.keyboard.press('Control+k');
+  await expect(page.getByRole('dialog', { name: 'Commands' })).toBeVisible();
 });
 
 test('Section 3 Search and Command Palette keep query transient and keyboard-safe', async ({
@@ -158,8 +160,10 @@ test('Section 3 Search and Command Palette keep query transient and keyboard-saf
   });
 
   await page.goto('/');
-  const searchButton = page.getByRole('button', { name: 'Search' });
-  await searchButton.click();
+  await expect(page.getByRole('button', { name: 'Search', exact: true })).toHaveCount(0);
+  await page.keyboard.press('Control+k');
+  const commands = page.getByRole('dialog', { name: 'Commands' });
+  await commands.getByRole('button', { name: /^Search/ }).click();
   const searchDialog = page.getByRole('dialog', { name: 'Search' });
   await expect(searchDialog).toBeVisible();
   const queryInput = page.getByLabel('Search query');
@@ -244,10 +248,12 @@ test('Section 3 blocks unsafe leave state, warns on offline state, and restores 
   await context.setOffline(true);
   await page.evaluate(() => window.dispatchEvent(new Event('offline')));
   await expect(page.getByRole('alert')).toContainText('Offline');
-  await expect(page.getByRole('button', { name: 'Search' })).toBeDisabled();
+  await page.keyboard.press('Control+k');
+  const commands = page.getByRole('dialog', { name: 'Commands' });
+  await expect(commands.getByRole('button', { name: /^Search/ })).toBeDisabled();
   await context.setOffline(false);
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
-  await expect(page.getByRole('button', { name: 'Search' })).toBeEnabled();
+  await expect(commands.getByRole('button', { name: /^Search/ })).toBeEnabled();
 });
 
 test('Section 3 zero-project onboarding sends PRINCIPAL bootstrap without a browser Project ID', async ({

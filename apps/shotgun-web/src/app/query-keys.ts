@@ -41,6 +41,9 @@ export const settings5DQueryKey = (
 export const projectAdminQueryKey = (principalId: string) =>
   ['project-admin', principalId] as const;
 
+export const principalPreferencesQueryKey = (principalId: string) =>
+  ['settings', 'preferences', principalId] as const;
+
 export const globalShellQueryKey = (
   principalId: string,
   activeProjectId: string | null,

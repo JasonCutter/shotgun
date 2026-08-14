@@ -8,12 +8,15 @@ import {
 import type {
   AuthorizedProjectSummary,
   FrontendReadScope,
+  GlobalSearchPort,
   KnowledgeWorkspaceProjectionPort,
 } from '../../../modules/frontend-product-read/src/index.js';
+import type { FrontendSourcesReadCoordinator } from '../../../modules/frontend-sources-product/src/index.js';
 import {
   createQuery,
   FrontendContractError,
   decodeGetCompiledTruthReadSnapshotResult,
+  decodeGlobalSearchResultView,
   decodeKnowledgeCompareView,
   decodeKnowledgeDetailView,
   decodeKnowledgePageListView,
@@ -29,6 +32,7 @@ import {
   type DerivedInferenceCandidate,
   type EvidenceSpan,
   type GetCompiledTruthReadSnapshotResult,
+  type GlobalSearchResultView,
   type KnowledgeCandidate,
   type KnowledgeCompareRequest,
   type KnowledgeCompareView,
@@ -54,6 +58,74 @@ import {
   type SearchKnowledgeWorkspaceMatch,
   type TransformationRevision,
 } from '../../../packages/kernel/src/index.js';
+
+export class PostgresSourceLibraryGlobalSearch implements GlobalSearchPort {
+  constructor(private readonly sources: Pick<FrontendSourcesReadCoordinator, 'list'>) {}
+
+  async search(input: Parameters<GlobalSearchPort['search']>[0]): Promise<GlobalSearchResultView> {
+    const requestedProjectIds =
+      input.request.scope.kind === 'ACTIVE_PROJECT'
+        ? [input.activeProject.id]
+        : input.request.scope.projectIds;
+    const authorizedProjects = requestedProjectIds.flatMap((projectId) => {
+      const project = input.accessibleProjects.find((candidate) => candidate.id === projectId);
+      return project ? [project] : [];
+    });
+    const normalizedQuery = normalizeSearchText(input.request.query);
+    const pages = await Promise.all(
+      authorizedProjects.map(async (project) => {
+        const authority = input.executionAuthorities?.[project.id];
+        const page = await this.sources.list(
+          {
+            principalId: input.principalId,
+            sessionId: input.sessionId,
+            authorizedProjectId: project.id,
+            accessScopes:
+              authority?.accessScope ??
+              (project.id === input.activeProject.id ? (input.accessScope ?? []) : []),
+            sensitivityClearance: authority?.sensitivityClearance ?? project.sensitivityClearance,
+            accessRevision: authority?.accessRevision ?? input.accessRevision,
+            policyContextRevision: authority?.policyContextRevision ?? input.policyContextRevision,
+          },
+          {
+            schemaVersion: '1.0.0',
+            query: normalizedQuery,
+            filters: {},
+            sort: 'LABEL_ASC',
+            limit: input.request.limit,
+          },
+        );
+        return { page, project };
+      }),
+    );
+    const results = pages
+      .flatMap(({ page, project }) =>
+        page.items.map((source) => ({
+          stableId: `source:${source.sourceId}`,
+          kind: 'SOURCE',
+          label: source.label,
+          projectId: project.id,
+          projectLabel: project.label,
+          targetRoute: { routeId: 'sources' as const, href: '/sources' as const },
+        })),
+      )
+      .sort(
+        (left, right) =>
+          left.label.localeCompare(right.label) ||
+          left.projectLabel.localeCompare(right.projectLabel) ||
+          left.stableId.localeCompare(right.stableId),
+      )
+      .slice(0, input.request.limit);
+
+    return decodeGlobalSearchResultView({
+      schemaVersion: '1.0.0',
+      scope: input.request.scope.kind,
+      results,
+      projectionRevision: `search-${pages.map(({ page }) => page.projectionRevision).join(':') || input.accessRevision}`,
+      fetchedAt: new Date().toISOString(),
+    });
+  }
+}
 
 type ActiveKnowledgeScope = FrontendReadScope & {
   readonly activeProject: NonNullable<FrontendReadScope['activeProject']>;

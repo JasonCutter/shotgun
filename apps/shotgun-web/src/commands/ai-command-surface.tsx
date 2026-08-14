@@ -15,6 +15,7 @@ import type {
 import { useAppRuntime } from '../app/providers.js';
 import { useAccessibleDialog } from '../app/use-accessible-dialog.js';
 import { safeErrorMessage } from '../components/error-state.js';
+import { useProductLocalization } from '../localization/product-localization.js';
 import type { AICommandId } from './owner-command-registry.js';
 
 type Feedback = {
@@ -138,6 +139,7 @@ export const AICommandSurface = ({
   onClose,
 }: AICommandSurfaceProps) => {
   const { apiClient } = useAppRuntime();
+  const { t } = useProductLocalization();
   const queryClient = useQueryClient();
   const titleId = useId();
   const dialog = useAccessibleDialog({ open, onClose });
@@ -594,7 +596,7 @@ export const AICommandSurface = ({
       onKeyDown={dialog.onDialogKeyDown}
     >
       <div className="modal-card ai-command-surface">
-        <h2 id={titleId}>{isConfigure ? 'Configure AI' : 'Test AI Connection'}</h2>
+        <h2 id={titleId}>{isConfigure ? t('ai.configure') : t('ai.test')}</h2>
         {feedback ? (
           <p
             className={`ai-command-message ai-command-message-${feedback.tone}`}
@@ -604,12 +606,12 @@ export const AICommandSurface = ({
             {feedback.detail ? <span>{feedback.detail}</span> : null}
           </p>
         ) : null}
-        {settingsQuery.isLoading ? <p>Loading AI settings...</p> : null}
+        {settingsQuery.isLoading ? <p>{t('ai.loading')}</p> : null}
         {settingsQuery.isError ? <p role="alert">Failed to load AI settings.</p> : null}
         {settings && selectedProvider && selectedModel ? (
           <>
             <form onSubmit={handleSave}>
-              <label htmlFor="ai-command-provider">Provider</label>
+              <label htmlFor="ai-command-provider">{t('ai.provider')}</label>
               <select
                 id="ai-command-provider"
                 value={selectedProviderId}
@@ -627,7 +629,7 @@ export const AICommandSurface = ({
                   </option>
                 ))}
               </select>
-              <label htmlFor="ai-command-model">Model</label>
+              <label htmlFor="ai-command-model">{t('ai.model')}</label>
               <select
                 id="ai-command-model"
                 value={selectedModelId}
@@ -643,7 +645,7 @@ export const AICommandSurface = ({
                   </option>
                 ))}
               </select>
-              <label htmlFor="ai-command-secret">API Key (write-only)</label>
+              <label htmlFor="ai-command-secret">{t('ai.api_key')}</label>
               <input
                 id="ai-command-secret"
                 type="password"
@@ -675,13 +677,13 @@ export const AICommandSurface = ({
               )}
               <div className="dialog-actions">
                 <button type="button" onClick={handleTest} disabled={actionPending || !canTest}>
-                  {testMutation.isPending ? 'Testing...' : 'Test Connection'}
+                  {testMutation.isPending ? t('ai.testing') : t('ai.test_connection')}
                 </button>
                 {isConfigure ? (
                   <button type="submit" disabled={actionPending || !canSave}>
                     {credentialMutation.isPending || configurationMutation.isPending
-                      ? 'Saving...'
-                      : 'Save AI configuration'}
+                      ? t('common.saving')
+                      : t('ai.save_configuration')}
                   </button>
                 ) : null}
               </div>
@@ -692,7 +694,7 @@ export const AICommandSurface = ({
                 onClick={() => void resolveCredentialOutcome()}
                 disabled={mutationPending}
               >
-                Check result
+                {t('common.check_result')}
               </button>
             ) : null}
             {testResult ? (
@@ -702,7 +704,7 @@ export const AICommandSurface = ({
             ) : null}
             {isConfigure ? (
               <section className="ai-command-section" aria-labelledby="ai-privacy-heading">
-                <h3 id="ai-privacy-heading">Provider privacy</h3>
+                <h3 id="ai-privacy-heading">{t('ai.provider_privacy')}</h3>
                 <p>{privacyStateLabel(selectedPrivacy)}</p>
                 {selectedPrivacy?.legacyGeminiCompatibility ? (
                   <p>Historical Gemini compatibility applies only to this provider.</p>
@@ -738,7 +740,7 @@ export const AICommandSurface = ({
             ) : null}
             {isConfigure && usableCredential ? (
               <section className="ai-command-section" aria-labelledby="ai-credential-heading">
-                <h3 id="ai-credential-heading">Credential actions</h3>
+                <h3 id="ai-credential-heading">{t('ai.credential_actions')}</h3>
                 {settings.currentConfiguration?.credentialId === usableCredential.credentialId ? (
                   <p>This credential is used by the current saved configuration.</p>
                 ) : null}
@@ -761,7 +763,7 @@ export const AICommandSurface = ({
                       onClick={() => setDestructiveAction(undefined)}
                       disabled={actionPending}
                     >
-                      Cancel
+                      {t('common.cancel')}
                     </button>
                   </div>
                 ) : (
@@ -790,7 +792,7 @@ export const AICommandSurface = ({
                 onClick={onClose}
                 disabled={credentialMutation.isPending || configurationMutation.isPending}
               >
-                Close
+                {t('common.close')}
               </button>
             </div>
           </>

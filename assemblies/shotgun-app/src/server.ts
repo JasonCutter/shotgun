@@ -57,11 +57,11 @@ import {
   InMemoryActionCenterProjection,
   InMemoryAskWorkspaceProjection,
   InMemoryBackgroundSummaryProjection,
-  InMemoryGlobalSearch,
   InMemoryGlobalShellProjection,
   InMemoryNotificationSummaryProjection,
   InMemoryRouteGuardProjection,
 } from '../../../adapters/frontend-product-read-in-memory/src/index.js';
+import { PostgresSourceLibraryGlobalSearch } from '../../../adapters/frontend-product-read-postgres/src/index.js';
 import {
   FrontendProductReadCoordinator,
   type ActionCenterProjectionPort,
@@ -527,6 +527,7 @@ export type ApplicationOptions = {
   readonly frontendProductReadCoordinatorFactory?: (
     connector: ShotgunKernel['connector'],
     actionCenterProjection: ActionCenterProjectionPort,
+    sources: FrontendSourcesReadCoordinator,
   ) => FrontendProductReadCoordinator;
   readonly askCommandCoordinator?: AskCommandCoordinator;
   readonly askAnswerExecution?: AskAnswerExecutionService;
@@ -1674,13 +1675,17 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   );
   const frontendProductReadCoordinator =
     options.frontendProductReadCoordinator ??
-    options.frontendProductReadCoordinatorFactory?.(kernel.connector, actionCenterProjection) ??
+    options.frontendProductReadCoordinatorFactory?.(
+      kernel.connector,
+      actionCenterProjection,
+      frontendSourcesReadCoordinator,
+    ) ??
     new FrontendProductReadCoordinator(
       new InMemoryGlobalShellProjection(),
       actionCenterProjection,
       new InMemoryBackgroundSummaryProjection(),
       new InMemoryNotificationSummaryProjection(),
-      new InMemoryGlobalSearch(),
+      new PostgresSourceLibraryGlobalSearch(frontendSourcesReadCoordinator),
       new InMemoryRouteGuardProjection(),
       inMemoryAskWorkspace,
     );

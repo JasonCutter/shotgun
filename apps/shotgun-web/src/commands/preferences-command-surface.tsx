@@ -4,8 +4,10 @@ import { useEffect, useId, useState, type FormEvent } from 'react';
 import type { GlobalShellView } from '@shotgun/api-client';
 
 import { useAppRuntime } from '../app/providers.js';
+import { principalPreferencesQueryKey } from '../app/query-keys.js';
 import { useAccessibleDialog } from '../app/use-accessible-dialog.js';
 import { safeErrorMessage } from '../components/error-state.js';
+import { useProductLocalization } from '../localization/product-localization.js';
 import type { PreferenceCommandId } from './owner-command-registry.js';
 
 type CommandIdentity = {
@@ -19,9 +21,6 @@ type PreferenceSubmission = CommandIdentity & {
 };
 
 type OutcomeRecovery = CommandIdentity;
-
-const preferenceQueryKey = (principalId: string) =>
-  ['settings', 'preferences', principalId] as const;
 
 const identity = (): CommandIdentity => ({
   clientRequestId: crypto.randomUUID(),
@@ -54,6 +53,7 @@ export const PreferencesCommandSurface = ({
   onClose,
 }: PreferencesCommandSurfaceProps) => {
   const { apiClient } = useAppRuntime();
+  const { t } = useProductLocalization();
   const queryClient = useQueryClient();
   const titleId = useId();
   const dialog = useAccessibleDialog({ open, onClose });
@@ -68,7 +68,7 @@ export const PreferencesCommandSurface = ({
   const [isResolvingOutcome, setIsResolvingOutcome] = useState(false);
 
   const preferencesQuery = useQuery({
-    queryKey: preferenceQueryKey(shell.principalId),
+    queryKey: principalPreferencesQueryKey(shell.principalId),
     queryFn: () => apiClient.getPrincipalPreferences(),
     enabled: open,
   });
@@ -101,7 +101,9 @@ export const PreferencesCommandSurface = ({
   }, [persistedPreferences]);
 
   const refreshPreferences = async () => {
-    await queryClient.invalidateQueries({ queryKey: preferenceQueryKey(shell.principalId) });
+    await queryClient.invalidateQueries({
+      queryKey: principalPreferencesQueryKey(shell.principalId),
+    });
     await preferencesQuery.refetch();
   };
 
@@ -194,10 +196,10 @@ export const PreferencesCommandSurface = ({
 
   const title =
     commandId === 'preferences.locale'
-      ? 'Locale Preferences'
+      ? t('preferences.locale_title')
       : commandId === 'preferences.timezone'
-        ? 'Timezone Preferences'
-        : 'Display Preferences';
+        ? t('preferences.timezone_title')
+        : t('preferences.display_title');
   const pending = mutation.isPending || isResolvingOutcome || outcomeRecovery !== undefined;
 
   return (
@@ -220,10 +222,10 @@ export const PreferencesCommandSurface = ({
         {errorMessage ? <p role="alert">{errorMessage}</p> : null}
         {outcomeRecovery ? (
           <button type="button" onClick={() => void resolveOutcome()} disabled={isResolvingOutcome}>
-            {isResolvingOutcome ? 'Checking...' : 'Check result'}
+            {isResolvingOutcome ? t('common.checking') : t('common.check_result')}
           </button>
         ) : null}
-        {preferencesQuery.isLoading ? <p>Loading preferences...</p> : null}
+        {preferencesQuery.isLoading ? <p>{t('common.loading_preferences')}</p> : null}
         {preferencesQuery.isError ? (
           <p role="alert">{safeErrorMessage(preferencesQuery.error)}</p>
         ) : null}
@@ -231,7 +233,7 @@ export const PreferencesCommandSurface = ({
           <form onSubmit={handleSave}>
             {commandId === 'preferences.locale' ? (
               <div>
-                <label htmlFor="preferences-command-locale">Locale</label>
+                <label htmlFor="preferences-command-locale">{t('preferences.locale')}</label>
                 <select
                   id="preferences-command-locale"
                   value={locale}
@@ -240,7 +242,7 @@ export const PreferencesCommandSurface = ({
                 >
                   <option value="ko-KR">ko-KR</option>
                   <option value="en-US">en-US</option>
-                  <option value="ja-JP">ja-JP</option>
+                  <option value="ja-JP">ja-JP (English fallback)</option>
                 </select>
               </div>
             ) : null}
@@ -300,10 +302,10 @@ export const PreferencesCommandSurface = ({
             ) : null}
             <div className="dialog-actions">
               <button type="submit" disabled={pending || preferencesQuery.data === undefined}>
-                {mutation.isPending ? 'Saving...' : 'Save'}
+                {mutation.isPending ? t('common.saving') : t('common.save')}
               </button>
               <button type="button" onClick={onClose} disabled={mutation.isPending}>
-                Cancel
+                {t('common.cancel')}
               </button>
             </div>
           </form>

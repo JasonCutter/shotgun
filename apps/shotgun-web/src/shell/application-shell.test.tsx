@@ -117,6 +117,10 @@ const runtime = (): AppRuntime => {
     getGlobalShell: vi.fn(async () => shell),
     getHomeActionCenter: vi.fn(async () => home),
     getProjects: vi.fn(async () => []),
+    getPrincipalPreferences: vi.fn(async () => ({
+      preferences: { locale: 'en-US' },
+      revision: 1,
+    })),
   } as unknown as ShotgunApiClient;
   return { apiClient, queryClient, sessionCycleState };
 };
@@ -174,7 +178,8 @@ describe('ApplicationShell', () => {
     const user = userEvent.setup();
     renderShell();
 
-    await screen.findByRole('button', { name: 'Search' });
+    await screen.findByRole('heading', { name: 'Home' });
+    expect(screen.queryByRole('button', { name: 'Search' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Commands' })).toBeNull();
     await user.keyboard('{Control>}k{/Control}');
     expect(screen.getByRole('dialog', { name: 'Commands' })).toBeTruthy();

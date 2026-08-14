@@ -410,7 +410,16 @@ describe('Sources Workspace', () => {
 
     expect(await screen.findByRole('heading', { name: 'Evidence notes', level: 1 })).toBeTruthy();
     expect(await screen.findByText('Original evidence', { selector: 'pre' })).toBeTruthy();
-    expect(screen.getByText('Available with indexed evidence')).toBeTruthy();
+    expect(screen.queryByText('Available with indexed evidence')).toBeNull();
+    const previewHeading = screen.getByRole('heading', { name: 'Original Preview' });
+    const evidenceHeading = screen.getByRole('heading', { name: 'Evidence' });
+    const historyHeading = screen.getByRole('heading', { name: 'Version history' });
+    expect(previewHeading.compareDocumentPosition(evidenceHeading)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(evidenceHeading.compareDocumentPosition(historyHeading)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
     expect(runtime.apiClient.getSourcePreview).toHaveBeenCalledWith(
       'source-1',
       'version-2',

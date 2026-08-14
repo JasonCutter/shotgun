@@ -6,6 +6,7 @@ import { useAppRuntime } from '../app/providers.js';
 import { projectAdminQueryKey, purgeSettingsScopedCaches } from '../app/query-keys.js';
 import { useAccessibleDialog } from '../app/use-accessible-dialog.js';
 import { safeErrorMessage } from '../components/error-state.js';
+import { useProductLocalization } from '../localization/product-localization.js';
 import { projectLifecycleLabel } from '../presentation/product-labels.js';
 import type { ProjectCommandId } from './owner-command-registry.js';
 
@@ -74,6 +75,7 @@ export const ProjectCommandSurface = ({
   onClose,
 }: ProjectCommandSurfaceProps) => {
   const { apiClient } = useAppRuntime();
+  const { t } = useProductLocalization();
   const queryClient = useQueryClient();
   const titleId = useId();
   const dialog = useAccessibleDialog({ open, onClose });
@@ -345,16 +347,16 @@ export const ProjectCommandSurface = ({
 
   const title =
     commandId === 'project.manage'
-      ? 'Manage Projects'
+      ? t('project.manage')
       : commandId === 'project.create'
-        ? 'Create Project'
+        ? t('project.create')
         : commandId === 'project.rename'
-          ? 'Rename Project'
+          ? t('project.rename')
           : commandId === 'project.restore'
-            ? 'Restore Project'
+            ? t('project.restore')
             : commandId === 'project.archive'
-              ? 'Archive Project'
-              : 'Request Project Deletion';
+              ? t('project.archive')
+              : t('project.delete_request');
 
   const eligibleProjects = useMemo(
     () => (commandId ? projects.filter((project) => isEligible(project, commandId)) : []),
@@ -392,11 +394,11 @@ export const ProjectCommandSurface = ({
               before trying again.
             </p>
             <button type="button" onClick={() => void resolveOutcome()} disabled={pending}>
-              {isResolvingOutcome ? 'Checking result...' : 'Check result'}
+              {isResolvingOutcome ? t('common.checking') : t('common.check_result')}
             </button>
           </div>
         ) : null}
-        {projectsQuery.isLoading ? <p role="status">Loading Projects…</p> : null}
+        {projectsQuery.isLoading ? <p role="status">{t('project.loading')}</p> : null}
         {projectsQuery.error ? (
           <p className="project-command-error" role="alert">
             {safeErrorMessage(projectsQuery.error)}
@@ -412,7 +414,7 @@ export const ProjectCommandSurface = ({
                   <div>
                     <strong>{project.name}</strong>
                     <span>
-                      {project.active ? 'Active Project' : projectLifecycleLabel(project.status)}
+                      {project.active ? t('project.active') : projectLifecycleLabel(project.status)}
                     </span>
                   </div>
                   <div className="project-command-actions">
@@ -421,7 +423,7 @@ export const ProjectCommandSurface = ({
                         type="button"
                         onClick={() => selectProject(project, 'project.rename')}
                       >
-                        Rename
+                        {t('project.rename_action')}
                       </button>
                     ) : null}
                     {project.capability.canArchive ? (
@@ -429,7 +431,7 @@ export const ProjectCommandSurface = ({
                         type="button"
                         onClick={() => selectProject(project, 'project.archive')}
                       >
-                        Archive
+                        {t('project.archive_action')}
                       </button>
                     ) : null}
                     {project.capability.canRestore ? (
@@ -437,7 +439,7 @@ export const ProjectCommandSurface = ({
                         type="button"
                         onClick={() => selectProject(project, 'project.restore')}
                       >
-                        Restore
+                        {t('project.restore_action')}
                       </button>
                     ) : null}
                     {project.capability.canDelete ? (
@@ -445,7 +447,7 @@ export const ProjectCommandSurface = ({
                         type="button"
                         onClick={() => selectProject(project, 'project.delete_request')}
                       >
-                        Request deletion
+                        {t('project.request_deletion')}
                       </button>
                     ) : null}
                   </div>
@@ -460,7 +462,7 @@ export const ProjectCommandSurface = ({
                   setErrorMessage(undefined);
                 }}
               >
-                Create Project
+                {t('project.create')}
               </button>
             ) : null}
           </>
@@ -494,10 +496,10 @@ export const ProjectCommandSurface = ({
             </label>
             <div className="dialog-actions">
               <button type="submit" disabled={pending || outcomeRecovery !== undefined}>
-                {pending ? 'Creating…' : 'Create Project'}
+                {pending ? t('project.creating') : t('project.create')}
               </button>
               <button type="button" onClick={onClose}>
-                Cancel
+                {t('common.cancel')}
               </button>
             </div>
           </form>
@@ -514,7 +516,7 @@ export const ProjectCommandSurface = ({
                 <li key={project.id}>
                   <button type="button" onClick={() => selectProject(project, commandId)}>
                     {project.name} ·{' '}
-                    {project.active ? 'Active Project' : projectLifecycleLabel(project.status)}
+                    {project.active ? t('project.active') : projectLifecycleLabel(project.status)}
                   </button>
                 </li>
               ))}
@@ -541,10 +543,10 @@ export const ProjectCommandSurface = ({
             </label>
             <div className="dialog-actions">
               <button type="submit" disabled={pending || outcomeRecovery !== undefined}>
-                {pending ? 'Saving…' : 'Rename Project'}
+                {pending ? t('common.saving') : t('project.rename')}
               </button>
               <button type="button" onClick={onClose}>
-                Cancel
+                {t('common.cancel')}
               </button>
             </div>
           </form>
@@ -564,10 +566,10 @@ export const ProjectCommandSurface = ({
                 onClick={handleLifecycleSubmit}
                 disabled={pending || outcomeRecovery !== undefined}
               >
-                {pending ? 'Restoring…' : 'Restore Project'}
+                {pending ? t('project.restoring') : t('project.restore')}
               </button>
               <button type="button" onClick={onClose}>
-                Cancel
+                {t('common.cancel')}
               </button>
             </div>
           </>
@@ -598,13 +600,13 @@ export const ProjectCommandSurface = ({
                 disabled={pending || outcomeRecovery !== undefined}
               >
                 {pending
-                  ? 'Submitting…'
+                  ? t('project.submitting')
                   : commandId === 'project.archive'
-                    ? 'Confirm Archive'
-                    : 'Confirm Deletion Request'}
+                    ? t('project.confirm_archive')
+                    : t('project.confirm_deletion')}
               </button>
               <button type="button" onClick={onClose}>
-                Cancel
+                {t('common.cancel')}
               </button>
             </div>
           </>
@@ -613,7 +615,7 @@ export const ProjectCommandSurface = ({
         {step === 'MANAGE' || step === 'SELECT' ? (
           <div className="dialog-actions">
             <button type="button" onClick={onClose}>
-              Close
+              {t('common.close')}
             </button>
           </div>
         ) : null}

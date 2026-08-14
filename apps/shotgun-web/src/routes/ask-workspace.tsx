@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useOutletContext } from 'react-router';
 
 import {
@@ -23,6 +23,11 @@ import {
 import { useAppRuntime } from '../app/providers.js';
 import { projectAdminQueryKey } from '../app/query-keys.js';
 import { OwnerCommandPalette } from '../commands/owner-command-palette.js';
+import {
+  type AnswerCommandContext,
+  useOptionalAnswerCommandContext,
+} from '../commands/answer-command-context.js';
+import { AnswerCommandSurface } from '../commands/answer-command-surface.js';
 import { AICommandSurface } from '../commands/ai-command-surface.js';
 import { PrivacyCommandSurface } from '../commands/privacy-command-surface.js';
 import { PreferencesCommandSurface } from '../commands/preferences-command-surface.js';
@@ -30,6 +35,7 @@ import { ProjectCommandSurface } from '../commands/project-command-surface.js';
 import { TechnicalCommandSurface } from '../commands/technical-command-surface.js';
 import {
   createOwnerCommandRegistry,
+  type AnswerCommandId,
   type AICommandId,
   type OwnerCommandDefinition,
   type PreferenceCommandId,
@@ -40,6 +46,7 @@ import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
 import { TechnicalDetails } from '../components/technical-details.js';
 import { useOptionalTechnicalInspection } from '../components/technical-inspection-context.js';
+import { useProductLocalization } from '../localization/product-localization.js';
 import {
   answerRunLabel,
   askModeLabel,
@@ -79,9 +86,8 @@ type PendingAnswerRunCommand = {
   readonly answerRunId: string;
   readonly clientRequestId: string;
   readonly idempotencyKey: string;
-  readonly operation: 'CANCEL' | 'RETRY' | 'EXPORT' | 'FEEDBACK' | 'TRANSITION_SEED';
+  readonly operation: 'CANCEL' | 'RETRY' | 'EXPORT' | 'TRANSITION_SEED';
   readonly retryMode?: 'SAME_CONTEXT' | 'CURRENT_POLICY';
-  readonly feedbackKind?: 'HELPFUL' | 'NOT_HELPFUL';
   readonly transitionKind?: 'INTAKE_DRAFT' | 'DRAFT_CHANGE_SET' | 'USER_DIRECTIVE';
 };
 
@@ -96,6 +102,9 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   const { apiClient } = useAppRuntime();
   const connectivity = useConnectivityState();
   const technicalInspection = useOptionalTechnicalInspection();
+  const { t } = useProductLocalization();
+  const answerCommandBridge = useOptionalAnswerCommandContext();
+  const registerAnswerCommandContext = answerCommandBridge?.register;
   const technicalBlocks = technicalInspection?.blocks ?? [];
   const location = useLocation();
   const ownedClient = useMemo(() => createAskWorkspaceClient(), []);
@@ -106,6 +115,10 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [commandPaletteInvoker, setCommandPaletteInvoker] = useState<HTMLElement | null>(null);
   const [commandPaletteResetSignal, setCommandPaletteResetSignal] = useState(0);
+  const [paletteAnswerContext, setPaletteAnswerContext] = useState<AnswerCommandContext>();
+  const [answerCommand, setAnswerCommand] = useState<AnswerCommandId | null>(null);
+  const [answerCommandContext, setAnswerCommandContext] = useState<AnswerCommandContext>();
+  const [answerCommandInvoker, setAnswerCommandInvoker] = useState<HTMLElement | null>(null);
   const [projectCommand, setProjectCommand] = useState<ProjectCommandId | null>(null);
   const [projectCommandInvoker, setProjectCommandInvoker] = useState<HTMLElement | null>(null);
   const [preferenceCommand, setPreferenceCommand] = useState<PreferenceCommandId | null>(null);
@@ -177,6 +190,52 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     queryFn: () => apiClient.getProjects(),
   });
 
+  const activeBranchLatestTurn = useMemo(() => {
+    const selected = workspace?.selectedConversation;
+    const branch = selected?.branches.find(
+      (candidate) => candidate.branchId === selected.activeBranchId,
+    );
+    return branch?.turns.slice().sort((left, right) => right.ordinal - left.ordinal)[0];
+  }, [workspace?.selectedConversation]);
+  const latestAnswerRun = activeBranchLatestTurn
+    ? (runOverrides[activeBranchLatestTurn.answerRun.answerRunId] ??
+      activeBranchLatestTurn.answerRun)
+    : undefined;
+  const defaultAnswerContext = useMemo<AnswerCommandContext | undefined>(() => {
+    const selected = workspace?.selectedConversation;
+    if (!workspace || !selected || !activeBranchLatestTurn || !latestAnswerRun) return undefined;
+    return {
+      projectId: workspace.projectId,
+      conversationId: selected.conversationId,
+      branchId: selected.activeBranchId,
+      turnId: activeBranchLatestTurn.turnId,
+      answerRunId: latestAnswerRun.answerRunId,
+      answerRevision: latestAnswerRun.answerRevision,
+      state: latestAnswerRun.state,
+      capabilities: latestAnswerRun.capabilities,
+    };
+  }, [activeBranchLatestTurn, latestAnswerRun, workspace]);
+  const defaultAnswerContextRef = useRef(defaultAnswerContext);
+  defaultAnswerContextRef.current = defaultAnswerContext;
+  const activeAnswerProjectId = workspace?.projectId;
+  const activeAnswerConversationId = workspace?.selectedConversation?.conversationId;
+  const activeAnswerBranchId = workspace?.selectedConversation?.activeBranchId;
+  const previousActiveAnswerScope = useRef({
+    projectId: activeAnswerProjectId,
+    conversationId: activeAnswerConversationId,
+    branchId: activeAnswerBranchId,
+  });
+  const openRegisteredAnswerCommand = useCallback(
+    (commandId: AnswerCommandId, invoker: HTMLElement | null) => {
+      const context = defaultAnswerContextRef.current;
+      if (!context) return;
+      setAnswerCommandContext(context);
+      setAnswerCommandInvoker(invoker);
+      setAnswerCommand(commandId);
+    },
+    [],
+  );
+
   const commandRegistry = useMemo(
     () =>
       createOwnerCommandRegistry({
@@ -185,13 +244,70 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
         includeProjectSwitch: false,
         includeSearch: true,
         hasTechnicalInspection: technicalBlocks.length > 0,
+        answerContext: paletteAnswerContext ?? defaultAnswerContext,
+        answerCommandPending: pendingAnswerRunCommand !== undefined,
         projects: projectsQuery.data,
       }),
-    [connectivity.isOffline, projectsQuery.data, shell, technicalBlocks.length],
+    [
+      connectivity.isOffline,
+      defaultAnswerContext,
+      paletteAnswerContext,
+      pendingAnswerRunCommand,
+      projectsQuery.data,
+      shell,
+      technicalBlocks.length,
+    ],
   );
 
   const questionRef = useRef(question);
   questionRef.current = question;
+
+  useEffect(() => {
+    const previous = previousActiveAnswerScope.current;
+    const hadPreviousScope =
+      previous.projectId !== undefined &&
+      previous.conversationId !== undefined &&
+      previous.branchId !== undefined;
+    if (
+      hadPreviousScope &&
+      (previous.projectId !== activeAnswerProjectId ||
+        previous.conversationId !== activeAnswerConversationId ||
+        previous.branchId !== activeAnswerBranchId)
+    ) {
+      setPaletteAnswerContext(undefined);
+      setAnswerCommand(null);
+      setAnswerCommandContext(undefined);
+      setAnswerCommandInvoker(null);
+    }
+    previousActiveAnswerScope.current = {
+      projectId: activeAnswerProjectId,
+      conversationId: activeAnswerConversationId,
+      branchId: activeAnswerBranchId,
+    };
+  }, [activeAnswerBranchId, activeAnswerConversationId, activeAnswerProjectId]);
+
+  useEffect(() => {
+    const contextExists = (context: AnswerCommandContext | undefined) =>
+      !context ||
+      (workspace?.projectId === context.projectId &&
+        workspace.selectedConversation?.conversationId === context.conversationId &&
+        workspace.selectedConversation.branches.some(
+          (branch) =>
+            branch.branchId === context.branchId &&
+            branch.turns.some(
+              (turn) =>
+                turn.turnId === context.turnId &&
+                turn.answerRun.answerRunId === context.answerRunId &&
+                turn.answerRun.answerRevision === context.answerRevision,
+            ),
+        ));
+    if (!contextExists(paletteAnswerContext)) setPaletteAnswerContext(undefined);
+    if (!contextExists(answerCommandContext)) {
+      setAnswerCommand(null);
+      setAnswerCommandContext(undefined);
+      setAnswerCommandInvoker(null);
+    }
+  }, [answerCommandContext, paletteAnswerContext, workspace]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -199,6 +315,10 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     setQuestion('');
     setCommandPaletteOpen(false);
     setCommandPaletteInvoker(null);
+    setPaletteAnswerContext(undefined);
+    setAnswerCommand(null);
+    setAnswerCommandContext(undefined);
+    setAnswerCommandInvoker(null);
     setProjectCommand(null);
     setProjectCommandInvoker(null);
     setTechnicalOpen(false);
@@ -230,6 +350,20 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
       });
     return () => controller.abort();
   }, [askClient, conversationId, shell.activeProject?.id]);
+
+  useEffect(() => {
+    if (!registerAnswerCommandContext || !defaultAnswerContext) return;
+    return registerAnswerCommandContext({
+      context: defaultAnswerContext,
+      commandPending: pendingAnswerRunCommand !== undefined,
+      openCommand: openRegisteredAnswerCommand,
+    });
+  }, [
+    defaultAnswerContext,
+    openRegisteredAnswerCommand,
+    pendingAnswerRunCommand,
+    registerAnswerCommandContext,
+  ]);
 
   useEffect(
     () =>
@@ -289,16 +423,6 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     target?.scrollIntoView?.({ block: 'center' });
     target?.focus?.();
   }, [validatedReturnTargetId]);
-
-  const latestAnswerRun = useMemo(() => {
-    const selected = workspace?.selectedConversation;
-    const latestTurn = selected?.branches
-      .flatMap((branch) => branch.turns)
-      .sort((left, right) => right.ordinal - left.ordinal)[0];
-    return latestTurn
-      ? (runOverrides[latestTurn.answerRun.answerRunId] ?? latestTurn.answerRun)
-      : undefined;
-  }, [runOverrides, workspace?.selectedConversation]);
 
   useEffect(() => {
     const answerRun = latestAnswerRun;
@@ -637,6 +761,18 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
       questionRef.current = '';
       return;
     }
+    if (command.action.kind === 'OPEN_ANSWER_FLOW') {
+      const context = paletteAnswerContext ?? defaultAnswerContext;
+      if (!context) return;
+      setAnswerCommandContext(context);
+      setAnswerCommandInvoker(commandPaletteInvoker);
+      setAnswerCommand(command.action.commandId);
+      setCommandPaletteOpen(false);
+      setPaletteAnswerContext(undefined);
+      setQuestion('');
+      questionRef.current = '';
+      return;
+    }
     setCommandPaletteOpen(false);
     setQuestion('');
     questionRef.current = '';
@@ -659,6 +795,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     const trigger = value.match(/^\s*\/(.*)$/s);
     if (trigger) {
       const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      setPaletteAnswerContext(undefined);
       setCommandPaletteInvoker(active);
       setCommandPaletteOpen(true);
     } else if (commandPaletteOpen) {
@@ -678,7 +815,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   const beginAnswerRunCommand = (
     answerRunId: string,
     operation: PendingAnswerRunCommand['operation'],
-    details: Pick<PendingAnswerRunCommand, 'retryMode' | 'feedbackKind' | 'transitionKind'> = {},
+    details: Pick<PendingAnswerRunCommand, 'retryMode' | 'transitionKind'> = {},
   ): PendingAnswerRunCommand | undefined => {
     if (answerRunMutationPending) return undefined;
     const identity = commandIdentity();
@@ -767,14 +904,6 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
           setExportedContent(exported.content);
           break;
         }
-        case 'FEEDBACK':
-          if (!askClient.submitAnswerFeedback || !pending.feedbackKind)
-            throw new Error('Feedback replay is unavailable.');
-          await askClient.submitAnswerFeedback(pending.answerRunId, {
-            ...identity,
-            kind: pending.feedbackKind,
-          });
-          break;
         case 'TRANSITION_SEED':
           if (!askClient.createAnswerTransitionSeed || !pending.transitionKind)
             throw new Error('Transition seed replay is unavailable.');
@@ -857,22 +986,6 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     }
   };
 
-  const handleFeedback = async (answerRunId: string, kind: 'HELPFUL' | 'NOT_HELPFUL') => {
-    if (!askClient.submitAnswerFeedback) return;
-    const pending = beginAnswerRunCommand(answerRunId, 'FEEDBACK', { feedbackKind: kind });
-    if (!pending) return;
-    try {
-      await askClient.submitAnswerFeedback(answerRunId, {
-        ...answerRunCommandIdentity(pending),
-        kind,
-      });
-      setPendingAnswerRunCommand(undefined);
-      setAnswerRunCommandNotice('Feedback recorded for this answer.');
-    } catch {
-      await resolveAnswerRunCommandOutcome(pending);
-    }
-  };
-
   const handleTransitionSeed = async (
     answerRunId: string,
     kind: 'INTAKE_DRAFT' | 'DRAFT_CHANGE_SET' | 'USER_DIRECTIVE',
@@ -898,12 +1011,12 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
 
   return (
     <section className="route-page ask-workspace">
-      <p className="eyebrow">Knowledge question</p>
-      <h1 tabIndex={-1}>Ask</h1>
+      <p className="eyebrow">{t('ask.eyebrow')}</p>
+      <h1 tabIndex={-1}>{t('ask.title')}</h1>
 
       <section className="action-card" aria-labelledby="ask-draft-heading">
-        <h2 id="ask-draft-heading">Question Draft</h2>
-        <p>Your question stays here until you submit it.</p>
+        <h2 id="ask-draft-heading">{t('ask.question_draft')}</h2>
+        <p>{t('ask.draft_help')}</p>
         <form
           className="ask-question-form"
           onSubmit={(event) => {
@@ -992,7 +1105,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
             </>
           ) : null}
 
-          <label htmlFor="ask-question">Question</label>
+          <label htmlFor="ask-question">{t('ask.question')}</label>
           <textarea
             id="ask-question"
             value={question}
@@ -1014,7 +1127,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                 outcomeUnknown
               }
             >
-              {isSubmitting ? 'Submitting…' : 'Submit question'}
+              {isSubmitting ? t('ask.submitting') : t('ask.submit')}
             </button>
             {outcomeUnknown && pendingCommand ? (
               <button type="button" disabled={isSubmitting} onClick={handleResolveOutcome}>
@@ -1072,11 +1185,29 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
       <OwnerCommandPalette
         open={commandPaletteOpen}
         commands={commandRegistry}
-        initialQuery={question.replace(/^\s*\//, '')}
+        initialQuery={paletteAnswerContext ? 'answer' : question.replace(/^\s*\//, '')}
         resetQuerySignal={commandPaletteResetSignal}
         invoker={commandPaletteInvoker}
-        onClose={() => setCommandPaletteOpen(false)}
+        onClose={() => {
+          setCommandPaletteOpen(false);
+          setPaletteAnswerContext(undefined);
+        }}
         onSelect={handleAskCommand}
+      />
+      <AnswerCommandSurface
+        open={answerCommand !== null}
+        commandId={answerCommand}
+        context={answerCommandContext}
+        pending={answerRunMutationPending}
+        invoker={answerCommandInvoker}
+        onClose={() => {
+          setAnswerCommand(null);
+          setAnswerCommandContext(undefined);
+          setAnswerCommandInvoker(null);
+        }}
+        onExport={handleExportAnswerRun}
+        onRetry={handleRetryAnswerRun}
+        onPropose={handleTransitionSeed}
       />
       <ProjectCommandSurface
         open={projectCommand !== null}
@@ -1116,8 +1247,8 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
       {answerRunCommandNotice ? <p role="status">{answerRunCommandNotice}</p> : null}
 
       <section className="action-card" aria-labelledby="conversation-heading">
-        <h2 id="conversation-heading">Conversations</h2>
-        {workspace.conversations.length === 0 ? <p>No conversations yet.</p> : null}
+        <h2 id="conversation-heading">{t('ask.conversations')}</h2>
+        {workspace.conversations.length === 0 ? <p>{t('ask.no_conversations')}</p> : null}
         {workspace.conversations.length > 0 ? (
           <ul className="ask-conversation-list" aria-label="Conversations">
             {workspace.conversations.map((item) => {
@@ -1145,7 +1276,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
 
         {conversation ? (
           <section
-            aria-label="Selected conversation"
+            aria-label={t('ask.selected_conversation')}
             id={`conversation-${conversation.conversationId}`}
           >
             <h3>{conversation.title}</h3>
@@ -1160,127 +1291,39 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                       .slice()
                       .reverse()
                       .find((event) => event.partialText !== undefined)?.partialText;
+                  const turnAnswerContext: AnswerCommandContext = {
+                    projectId: workspace.projectId,
+                    conversationId: conversation.conversationId,
+                    branchId: branch.branchId,
+                    turnId: turn.turnId,
+                    answerRunId: answerRun.answerRunId,
+                    answerRevision: answerRun.answerRevision,
+                    state: answerRun.state,
+                    capabilities: answerRun.capabilities,
+                  };
+                  const hasAnswerCommands = answerRun.capabilities.some((capability) =>
+                    [
+                      'EXPORT',
+                      'RETRY_SAME_CONTEXT',
+                      'RETRY_CURRENT_POLICY',
+                      'CREATE_INTAKE_DRAFT',
+                      'CREATE_DRAFT_CHANGE_SET',
+                      'PROPOSE_DIRECTIVE',
+                    ].includes(capability),
+                  );
                   return (
                     <li key={turn.turnId} id={`turn-${turn.turnId}`} tabIndex={-1}>
-                      <p>{turn.userMessage}</p>
-                      {answerRun.state === 'SUCCEEDED' ? null : (
-                        <p>
-                          Answer: <strong>{answerRunLabel(answerRun.state)}</strong>
-                        </p>
-                      )}
+                      <p>
+                        <strong>{t('ask.question')}:</strong> {turn.userMessage}
+                      </p>
+                      {latestPartial || answerRun.statements.length > 0 ? (
+                        <h4>{t('ask.answer')}</h4>
+                      ) : null}
                       {latestPartial ? (
-                        <p aria-live="polite">Partial answer: {latestPartial}</p>
+                        <p aria-live="polite">
+                          {t('ask.partial_answer')}: {latestPartial}
+                        </p>
                       ) : null}
-                      {answerRun.failure ? <p role="alert">{answerRun.failure.message}</p> : null}
-                      {answerRun.failure ? (
-                        <TechnicalDetails
-                          items={[{ label: 'Failure code', value: answerRun.failure.code }]}
-                        />
-                      ) : null}
-                      <div className="answer-action-row" aria-label="Answer actions">
-                        {answerRun.capabilities.includes('CANCEL') ? (
-                          <button
-                            type="button"
-                            disabled={answerRunMutationPending}
-                            onClick={() => void handleCancelAnswerRun(answerRun.answerRunId)}
-                          >
-                            Cancel answer
-                          </button>
-                        ) : null}
-                        {answerRun.capabilities.includes('RETRY_SAME_CONTEXT') ? (
-                          <button
-                            type="button"
-                            disabled={answerRunMutationPending}
-                            onClick={() =>
-                              void handleRetryAnswerRun(answerRun.answerRunId, 'SAME_CONTEXT')
-                            }
-                          >
-                            Retry same context
-                          </button>
-                        ) : null}
-                        {answerRun.capabilities.includes('RETRY_CURRENT_POLICY') ? (
-                          <button
-                            type="button"
-                            disabled={answerRunMutationPending}
-                            onClick={() =>
-                              void handleRetryAnswerRun(answerRun.answerRunId, 'CURRENT_POLICY')
-                            }
-                          >
-                            Retry current policy
-                          </button>
-                        ) : null}
-                        {answerRun.capabilities.includes('EXPORT') ? (
-                          <button
-                            type="button"
-                            disabled={answerRunMutationPending}
-                            onClick={() => void handleExportAnswerRun(answerRun.answerRunId)}
-                          >
-                            Export answer
-                          </button>
-                        ) : null}
-                        {answerRun.state === 'SUCCEEDED' ? (
-                          <>
-                            <button
-                              type="button"
-                              disabled={answerRunMutationPending}
-                              onClick={() => void handleFeedback(answerRun.answerRunId, 'HELPFUL')}
-                            >
-                              Helpful
-                            </button>
-                            <button
-                              type="button"
-                              disabled={answerRunMutationPending}
-                              onClick={() =>
-                                void handleFeedback(answerRun.answerRunId, 'NOT_HELPFUL')
-                              }
-                            >
-                              Not helpful
-                            </button>
-                          </>
-                        ) : null}
-                        {answerRun.capabilities.includes('CREATE_INTAKE_DRAFT') ? (
-                          <button
-                            type="button"
-                            disabled={answerRunMutationPending}
-                            onClick={() =>
-                              void handleTransitionSeed(answerRun.answerRunId, 'INTAKE_DRAFT')
-                            }
-                          >
-                            Propose Intake Draft
-                          </button>
-                        ) : null}
-                        {answerRun.capabilities.includes('CREATE_DRAFT_CHANGE_SET') ? (
-                          <button
-                            type="button"
-                            disabled={answerRunMutationPending}
-                            onClick={() =>
-                              void handleTransitionSeed(answerRun.answerRunId, 'DRAFT_CHANGE_SET')
-                            }
-                          >
-                            Propose Draft ChangeSet
-                          </button>
-                        ) : null}
-                        {answerRun.capabilities.includes('PROPOSE_DIRECTIVE') ? (
-                          <button
-                            type="button"
-                            disabled={answerRunMutationPending}
-                            onClick={() =>
-                              void handleTransitionSeed(answerRun.answerRunId, 'USER_DIRECTIVE')
-                            }
-                          >
-                            Propose Directive
-                          </button>
-                        ) : null}
-                        {answerRunOutcomeUnknown &&
-                        pendingAnswerRunCommand?.answerRunId === answerRun.answerRunId ? (
-                          <button
-                            type="button"
-                            onClick={() => void handleResolveAnswerRunCommandOutcome()}
-                          >
-                            Check result
-                          </button>
-                        ) : null}
-                      </div>
                       {answerRun.statements.map((statement) => (
                         <article
                           key={statement.statementId}
@@ -1318,13 +1361,92 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                                     },
                                   }}
                                 >
-                                  Open pinned Evidence
+                                  {t('ask.open_evidence')}
                                 </Link>
                               </li>
                             ))}
                           </ul>
                         </article>
                       ))}
+                      {answerRun.state === 'SUCCEEDED' ? null : (
+                        <p>
+                          {t('ask.answer_status')}:{' '}
+                          <strong>{answerRunLabel(answerRun.state)}</strong>
+                        </p>
+                      )}
+                      {answerRun.failure ? <p role="alert">{answerRun.failure.message}</p> : null}
+                      {answerRun.failure ? (
+                        <TechnicalDetails
+                          items={[{ label: 'Failure code', value: answerRun.failure.code }]}
+                        />
+                      ) : null}
+                      {answerRun.capabilities.includes('CANCEL') ||
+                      (answerRun.state === 'FAILED' &&
+                        (answerRun.capabilities.includes('RETRY_SAME_CONTEXT') ||
+                          answerRun.capabilities.includes('RETRY_CURRENT_POLICY'))) ||
+                      hasAnswerCommands ||
+                      (answerRunOutcomeUnknown &&
+                        pendingAnswerRunCommand?.answerRunId === answerRun.answerRunId) ? (
+                        <div className="answer-action-row">
+                          {answerRun.capabilities.includes('CANCEL') ? (
+                            <button
+                              type="button"
+                              disabled={answerRunMutationPending}
+                              onClick={() => void handleCancelAnswerRun(answerRun.answerRunId)}
+                            >
+                              {t('ask.cancel_answer')}
+                            </button>
+                          ) : null}
+                          {answerRun.state === 'FAILED' &&
+                          answerRun.capabilities.includes('RETRY_SAME_CONTEXT') ? (
+                            <button
+                              type="button"
+                              disabled={answerRunMutationPending}
+                              onClick={() =>
+                                void handleRetryAnswerRun(answerRun.answerRunId, 'SAME_CONTEXT')
+                              }
+                            >
+                              {t('answer.retry_same')}
+                            </button>
+                          ) : null}
+                          {answerRun.state === 'FAILED' &&
+                          answerRun.capabilities.includes('RETRY_CURRENT_POLICY') ? (
+                            <button
+                              type="button"
+                              disabled={answerRunMutationPending}
+                              onClick={() =>
+                                void handleRetryAnswerRun(answerRun.answerRunId, 'CURRENT_POLICY')
+                              }
+                            >
+                              {t('answer.retry_policy')}
+                            </button>
+                          ) : null}
+                          {hasAnswerCommands ? (
+                            <button
+                              type="button"
+                              disabled={answerRunMutationPending}
+                              aria-label={t('ask.answer_actions')}
+                              onClick={(event) => {
+                                setPaletteAnswerContext(turnAnswerContext);
+                                setCommandPaletteInvoker(event.currentTarget);
+                                setCommandPaletteResetSignal((current) => current + 1);
+                                setCommandPaletteOpen(true);
+                              }}
+                            >
+                              {t('ask.answer_actions')}
+                            </button>
+                          ) : null}
+                          {answerRunOutcomeUnknown &&
+                          pendingAnswerRunCommand?.answerRunId === answerRun.answerRunId ? (
+                            <button
+                              type="button"
+                              onClick={() => void handleResolveAnswerRunCommandOutcome()}
+                            >
+                              {t('common.check_result')}
+                            </button>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </li>
                   );
                 })}
@@ -1335,7 +1457,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
       </section>
       {exportedContent ? (
         <section className="action-card" aria-labelledby="ask-export-heading">
-          <h2 id="ask-export-heading">Answer export</h2>
+          <h2 id="ask-export-heading">{t('ask.answer_export')}</h2>
           <pre>{exportedContent}</pre>
         </section>
       ) : null}

@@ -2,6 +2,7 @@ import { useEffect, useId } from 'react';
 
 import { useAccessibleDialog } from '../app/use-accessible-dialog.js';
 import type { TechnicalInspectionBlock } from '../components/technical-inspection-context.js';
+import { useProductLocalization } from '../localization/product-localization.js';
 
 export type TechnicalCommandSurfaceProps = {
   readonly open: boolean;
@@ -16,6 +17,7 @@ export const TechnicalCommandSurface = ({
   invoker,
   onClose,
 }: TechnicalCommandSurfaceProps) => {
+  const { t } = useProductLocalization();
   const titleId = useId();
   const dialog = useAccessibleDialog({ open, onClose });
 
@@ -41,7 +43,7 @@ export const TechnicalCommandSurface = ({
       onKeyDown={dialog.onDialogKeyDown}
     >
       <div className="modal-card technical-command-surface">
-        <h2 id={titleId}>Technical information</h2>
+        <h2 id={titleId}>{t('technical.title')}</h2>
         <div className="technical-command-blocks">
           {blocks.map((block) => (
             <section key={block.id} aria-label={block.title}>
@@ -61,7 +63,7 @@ export const TechnicalCommandSurface = ({
         </div>
         <div className="dialog-actions">
           <button type="button" onClick={onClose}>
-            Close
+            {t('common.close')}
           </button>
         </div>
       </div>

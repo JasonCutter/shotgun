@@ -6,6 +6,7 @@ import type { GlobalShellView } from '@shotgun/api-client';
 import { useAppRuntime } from '../app/providers.js';
 import { useAccessibleDialog } from '../app/use-accessible-dialog.js';
 import { safeErrorMessage } from '../components/error-state.js';
+import { useProductLocalization } from '../localization/product-localization.js';
 import { privacyProfileLabel, sensitivityLabel } from '../presentation/product-labels.js';
 import type { PrivacyCommandId } from './owner-command-registry.js';
 
@@ -59,6 +60,7 @@ export const PrivacyCommandSurface = ({
   onClose,
 }: PrivacyCommandSurfaceProps) => {
   const { apiClient } = useAppRuntime();
+  const { t } = useProductLocalization();
   const queryClient = useQueryClient();
   const titleId = useId();
   const dialog = useAccessibleDialog({ open, onClose });
@@ -212,7 +214,7 @@ export const PrivacyCommandSurface = ({
       onKeyDown={dialog.onDialogKeyDown}
     >
       <div className="modal-card privacy-command-surface">
-        <h2 id={titleId}>{reviewMode ? 'Review Privacy' : 'Project Privacy'}</h2>
+        <h2 id={titleId}>{reviewMode ? t('privacy.review_title') : t('privacy.project_title')}</h2>
         {message ? (
           <p className="privacy-command-message" role="status">
             {message}
@@ -225,10 +227,10 @@ export const PrivacyCommandSurface = ({
             onClick={() => void resolveOutcome()}
             disabled={mutation.isPending || isResolvingOutcome}
           >
-            {isResolvingOutcome ? 'Checking...' : 'Check result'}
+            {isResolvingOutcome ? t('common.checking') : t('common.check_result')}
           </button>
         ) : null}
-        {privacyQuery.isLoading ? <p>Loading privacy settings...</p> : null}
+        {privacyQuery.isLoading ? <p>{t('privacy.loading')}</p> : null}
         {privacyQuery.isError ? <p role="alert">Failed to load privacy settings.</p> : null}
         {privacyQuery.data?.availability === 'UNAVAILABLE' ? (
           <p role="alert">{privacyQuery.data.disabledReason}</p>
@@ -262,7 +264,7 @@ export const PrivacyCommandSurface = ({
             </section>
             {!reviewMode && !privacyData.externalTransferAllowed ? (
               <button type="button" onClick={() => setMode('privacy.review')} disabled={pending}>
-                Open privacy review
+                {t('privacy.open_review')}
               </button>
             ) : null}
             {reviewMode && snapshotQuery.isLoading ? (
@@ -277,7 +279,7 @@ export const PrivacyCommandSurface = ({
                 disabled={pending || snapshotQuery.data === undefined}
                 onClick={() => submitReview()}
               >
-                Request external AI transfer review
+                {t('privacy.request_review')}
               </button>
             ) : null}
             {reviewMode && effectiveReviewProposalId ? (
@@ -299,7 +301,7 @@ export const PrivacyCommandSurface = ({
                     }
                   }}
                 >
-                  Approve reviewed privacy proposal
+                  {t('privacy.approve_review')}
                 </button>
               </div>
             ) : null}
@@ -307,7 +309,7 @@ export const PrivacyCommandSurface = ({
         ) : null}
         <div className="dialog-actions">
           <button type="button" onClick={onClose} disabled={mutation.isPending}>
-            Close
+            {t('common.close')}
           </button>
         </div>
       </div>

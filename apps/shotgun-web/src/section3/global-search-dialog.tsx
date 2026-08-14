@@ -7,6 +7,7 @@ import type { GlobalSearchResultView, GlobalShellView } from '@shotgun/api-clien
 import { useAccessibleDialog } from '../app/use-accessible-dialog.js';
 import { useAppRuntime } from '../app/providers.js';
 import { safeErrorMessage } from '../components/error-state.js';
+import { useProductLocalization } from '../localization/product-localization.js';
 import { useConnectivityState } from '../shell/use-connectivity-state.js';
 
 export type GlobalSearchDialogProps = {
@@ -19,6 +20,7 @@ export type GlobalSearchDialogProps = {
 export const GlobalSearchDialog = ({ shell, open, invoker, onClose }: GlobalSearchDialogProps) => {
   const { apiClient } = useAppRuntime();
   const connectivity = useConnectivityState();
+  const { t } = useProductLocalization();
   const [query, setQuery] = useState('');
   const [crossProject, setCrossProject] = useState(false);
   const [selectedProjectIds, setSelectedProjectIds] = useState<readonly string[]>([]);
@@ -75,7 +77,7 @@ export const GlobalSearchDialog = ({ shell, open, invoker, onClose }: GlobalSear
       onKeyDown={dialog.onDialogKeyDown}
     >
       <div className="modal-card">
-        <h2 id="global-search-title">Search</h2>
+        <h2 id="global-search-title">{t('search.title')}</h2>
         <p className="sr-only" aria-live="polite">
           {announcement}
         </p>
@@ -86,7 +88,7 @@ export const GlobalSearchDialog = ({ shell, open, invoker, onClose }: GlobalSear
             search.mutate();
           }}
         >
-          <label htmlFor="global-search-query">Search query</label>
+          <label htmlFor="global-search-query">{t('search.query')}</label>
           <input
             id="global-search-query"
             value={query}
@@ -96,7 +98,7 @@ export const GlobalSearchDialog = ({ shell, open, invoker, onClose }: GlobalSear
           />
           {crossProjectAvailable ? (
             <fieldset>
-              <legend>Search scope</legend>
+              <legend>{t('search.scope')}</legend>
               <label>
                 <input
                   type="radio"
@@ -107,7 +109,7 @@ export const GlobalSearchDialog = ({ shell, open, invoker, onClose }: GlobalSear
                     setSelectedProjectIds([]);
                   }}
                 />
-                Active Project
+                {t('search.active_project')}
               </label>
               <label>
                 <input
@@ -116,7 +118,7 @@ export const GlobalSearchDialog = ({ shell, open, invoker, onClose }: GlobalSear
                   checked={crossProject}
                   onChange={() => setCrossProject(true)}
                 />
-                Selected Projects
+                {t('search.selected_projects')}
               </label>
               {crossProject ? (
                 <div>
@@ -148,24 +150,36 @@ export const GlobalSearchDialog = ({ shell, open, invoker, onClose }: GlobalSear
                 search.isPending || connectivity.isOffline || !query.trim() || !validSearchScope
               }
             >
-              {search.isPending ? 'Searching…' : 'Search'}
+              {search.isPending ? t('search.searching') : t('search.submit')}
             </button>
             <button type="button" onClick={close}>
-              Close
+              {t('common.close')}
             </button>
           </div>
         </form>
         {search.error ? <p role="alert">{safeErrorMessage(search.error)}</p> : null}
+        {search.isPending ? <p role="status">{t('search.loading')}</p> : null}
         {searchResult ? (
-          <ul className="search-results">
-            {searchResult.results.map((result) => (
-              <li key={result.stableId}>
-                <Link to={result.targetRoute.href} onClick={close}>
-                  {result.label} · {result.projectLabel}
-                </Link>
-              </li>
-            ))}
-          </ul>
+          searchResult.results.length === 0 ? (
+            <p role="status">{t('search.no_results')}</p>
+          ) : (
+            <section aria-label={t('search.results_label')}>
+              <p>
+                {searchResult.scope === 'ACTIVE_PROJECT'
+                  ? t('search.active_results')
+                  : t('search.cross_results')}
+              </p>
+              <ul className="search-results">
+                {searchResult.results.map((result) => (
+                  <li key={result.stableId}>
+                    <Link to={result.targetRoute.href} onClick={close}>
+                      {result.label} · {result.projectLabel}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )
         ) : null}
       </div>
     </div>

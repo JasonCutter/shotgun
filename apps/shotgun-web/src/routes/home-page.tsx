@@ -6,6 +6,7 @@ import type { GlobalShellView } from '@shotgun/api-client';
 import { useAppRuntime } from '../app/providers.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
+import { useProductLocalization } from '../localization/product-localization.js';
 import {
   browserDraftStorageKey,
   decodeRestorableBrowserDrafts,
@@ -38,17 +39,18 @@ const readBrowserDrafts = (shell: GlobalShellView) => {
 
 export const HomePage = () => {
   const { apiClient } = useAppRuntime();
+  const { t } = useProductLocalization();
   const { shell } = useOutletContext<{ readonly shell: GlobalShellView }>();
   const homeQuery = useQuery(homeActionCenterQueryOptions(apiClient, shell));
 
   if (!shell.activeProject) {
     return (
       <section className="route-page first-run">
-        <p className="eyebrow">First run</p>
-        <h1 tabIndex={-1}>Create your first Project</h1>
-        <p>Create your first Project to get started.</p>
+        <p className="eyebrow">{t('home.first_run')}</p>
+        <h1 tabIndex={-1}>{t('home.create_first_project')}</h1>
+        <p>{t('home.create_first_project_help')}</p>
         <Link className="primary-link" to="/settings/projects">
-          Open Project onboarding
+          {t('home.open_onboarding')}
         </Link>
       </section>
     );
@@ -70,8 +72,8 @@ export const HomePage = () => {
 
   return (
     <section className="route-page home-action-center">
-      <p className="eyebrow">Action Center</p>
-      <h1 tabIndex={-1}>Home</h1>
+      <p className="eyebrow">{t('home.action_center')}</p>
+      <h1 tabIndex={-1}>{t('nav.home')}</h1>
       {home.stale ? (
         <p className="stale-state" role="status">
           This server snapshot is stale. Actions are unavailable until refresh.
@@ -79,12 +81,18 @@ export const HomePage = () => {
       ) : null}
 
       <section aria-labelledby="primary-actions-heading" className="action-card">
-        <h2 id="primary-actions-heading">Primary Actions</h2>
+        <h2 id="primary-actions-heading">{t('home.primary_actions')}</h2>
         <ul className="action-grid">
           {home.primaryActions.map((action) => (
             <li key={action.id}>
               {action.availability === 'AVAILABLE' && !home.stale ? (
-                <Link to={action.targetRoute.href}>{action.label}</Link>
+                <Link to={action.targetRoute.href}>
+                  {action.id === 'add-source'
+                    ? t('nav.sources')
+                    : action.id === 'ask'
+                      ? t('nav.ask')
+                      : action.label}
+                </Link>
               ) : (
                 <button type="button" disabled title={action.disabledReason}>
                   {action.label}
@@ -98,7 +106,7 @@ export const HomePage = () => {
 
       {home.attention.length > 0 ? (
         <section aria-labelledby="attention-heading" className="action-card">
-          <h2 id="attention-heading">Attention</h2>
+          <h2 id="attention-heading">{t('home.attention')}</h2>
           <ol>
             {home.attention.map((item) => (
               <li key={item.stableId}>
@@ -112,7 +120,7 @@ export const HomePage = () => {
 
       {home.continueWorking.length > 0 || browserDrafts.length > 0 ? (
         <section aria-labelledby="continue-heading" className="action-card">
-          <h2 id="continue-heading">Continue Working</h2>
+          <h2 id="continue-heading">{t('home.continue_working')}</h2>
           {home.continueWorking.length > 0 ? (
             <>
               <h3>Server resources</h3>
@@ -137,7 +145,7 @@ export const HomePage = () => {
 
       {home.recent.length > 0 || home.pinned.length > 0 ? (
         <section aria-labelledby="recent-pinned-heading" className="action-card">
-          <h2 id="recent-pinned-heading">Recent and Pinned</h2>
+          <h2 id="recent-pinned-heading">{t('home.recent_and_pinned')}</h2>
           <div className="two-column-list">
             {home.recent.length > 0 ? (
               <div>

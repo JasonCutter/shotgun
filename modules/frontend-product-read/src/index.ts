@@ -41,6 +41,8 @@ export type AuthorizedProjectSummary = {
 export type FrontendProjectAuthorityRevision = {
   readonly accessRevision: string;
   readonly policyContextRevision: string;
+  readonly accessScope?: readonly string[];
+  readonly sensitivityClearance?: 'public' | 'internal' | 'private' | 'restricted';
 };
 
 export type FrontendReadScope = {

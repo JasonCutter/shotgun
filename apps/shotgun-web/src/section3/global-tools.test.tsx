@@ -1,5 +1,6 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useEffect } from 'react';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -12,6 +13,11 @@ import type {
 
 import { createFrontendQueryClient } from '../app/query-client.js';
 import { AppProviders, type AppRuntime } from '../app/providers.js';
+import {
+  AnswerCommandContextProvider,
+  useOptionalAnswerCommandContext,
+  type RegisteredAnswerCommandContext,
+} from '../commands/answer-command-context.js';
 import { createSessionCycleState } from '../session/session-query.js';
 import { TechnicalDetails } from '../components/technical-details.js';
 import { TechnicalInspectionProvider } from '../components/technical-inspection-context.js';
@@ -100,7 +106,52 @@ const openCommandsWithKeyboard = async (user: ReturnType<typeof userEvent.setup>
   return await screen.findByRole('dialog', { name: 'Commands' });
 };
 
+const AnswerContextRegistration = ({
+  registration,
+}: {
+  readonly registration: RegisteredAnswerCommandContext;
+}) => {
+  const bridge = useOptionalAnswerCommandContext();
+  const register = bridge?.register;
+  useEffect(() => register?.(registration), [register, registration]);
+  return null;
+};
+
 describe('GlobalTools HFM-S1 preservation', () => {
+  it('discovers the mounted active-answer context through Ctrl/Cmd+K', async () => {
+    const user = userEvent.setup();
+    const openCommand = vi.fn();
+    const registration: RegisteredAnswerCommandContext = {
+      context: {
+        projectId: 'project-1',
+        conversationId: 'conversation-1',
+        branchId: 'branch-1',
+        turnId: 'turn-1',
+        answerRunId: 'answer-run-1',
+        answerRevision: 'answer-revision-1',
+        state: 'SUCCEEDED',
+        capabilities: ['EXPORT'],
+      },
+      commandPending: false,
+      openCommand,
+    };
+    render(
+      <AppProviders runtime={runtime({ getProjects: vi.fn(async () => [project]) })}>
+        <MemoryRouter>
+          <AnswerCommandContextProvider>
+            <AnswerContextRegistration registration={registration} />
+            <GlobalTools shell={shell} />
+          </AnswerCommandContextProvider>
+        </MemoryRouter>
+      </AppProviders>,
+    );
+
+    const palette = await openCommandsWithKeyboard(user);
+    await user.click(within(palette).getByRole('button', { name: /^Export answer/ }));
+
+    expect(openCommand).toHaveBeenCalledWith('answer.export', expect.any(HTMLElement));
+  });
+
   it('announces the result count after a successful global search', async () => {
     const user = userEvent.setup();
     const searchGlobal = vi.fn(async () => searchResult);
@@ -117,6 +168,77 @@ describe('GlobalTools HFM-S1 preservation', () => {
     await user.click(screen.getByRole('button', { name: 'Search' }));
 
     expect(await screen.findByText('1 search results.')).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Search results' })).toBeTruthy();
+  });
+
+  it('uses search.global from Ctrl/Cmd+K and has no permanent top Search button', async () => {
+    const user = userEvent.setup();
+    render(
+      <AppProviders runtime={runtime({ getProjects: vi.fn(async () => [project]) })}>
+        <MemoryRouter>
+          <GlobalTools shell={shell} />
+        </MemoryRouter>
+      </AppProviders>,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Search' })).toBeNull();
+    const commands = await openCommandsWithKeyboard(user);
+    await user.click(within(commands).getByRole('button', { name: /^Search/ }));
+
+    expect(screen.getByRole('dialog', { name: 'Search' })).toBeTruthy();
+    expect(screen.getByRole('textbox', { name: 'Search query' })).toBeTruthy();
+  });
+
+  it('shows an explicit no-results state', async () => {
+    const user = userEvent.setup();
+    render(
+      <AppProviders
+        runtime={runtime({ searchGlobal: vi.fn(async () => ({ ...searchResult, results: [] })) })}
+      >
+        <MemoryRouter>
+          <GlobalSearchDialog shell={shell} open invoker={null} onClose={vi.fn()} />
+        </MemoryRouter>
+      </AppProviders>,
+    );
+
+    await user.type(screen.getByRole('textbox', { name: 'Search query' }), 'missing');
+    await user.click(screen.getByRole('button', { name: 'Search' }));
+
+    expect(await screen.findByText('No results in the selected Project scope.')).toBeTruthy();
+  });
+
+  it('shows explicit loading and safe error states', async () => {
+    const user = userEvent.setup();
+    const searchGlobal = vi
+      .fn<ShotgunApiClient['searchGlobal']>()
+      .mockImplementationOnce(() => new Promise<GlobalSearchResultView>(() => undefined))
+      .mockRejectedValueOnce(new Error('Search is temporarily unavailable.'));
+    const appRuntime = runtime({ searchGlobal });
+    const view = render(
+      <AppProviders runtime={appRuntime}>
+        <MemoryRouter>
+          <GlobalSearchDialog shell={shell} open invoker={null} onClose={vi.fn()} />
+        </MemoryRouter>
+      </AppProviders>,
+    );
+
+    await user.type(screen.getByRole('textbox', { name: 'Search query' }), 'loading');
+    await user.click(screen.getByRole('button', { name: 'Search' }));
+    expect(await screen.findByText('Searching the selected Project scope...')).toBeTruthy();
+
+    view.unmount();
+    render(
+      <AppProviders runtime={appRuntime}>
+        <MemoryRouter>
+          <GlobalSearchDialog shell={shell} open invoker={null} onClose={vi.fn()} />
+        </MemoryRouter>
+      </AppProviders>,
+    );
+    await user.type(screen.getByRole('textbox', { name: 'Search query' }), 'failure');
+    await user.click(screen.getByRole('button', { name: 'Search' }));
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'Search is temporarily unavailable.',
+    );
   });
 
   it('keeps Project switch mutation errors visible to the owner', async () => {

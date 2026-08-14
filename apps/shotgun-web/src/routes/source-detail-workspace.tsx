@@ -14,6 +14,7 @@ import { useAppRuntime } from '../app/providers.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
 import { TechnicalDetails } from '../components/technical-details.js';
+import { useProductLocalization } from '../localization/product-localization.js';
 import {
   evidenceOriginLabel,
   mediaTypeLabel,
@@ -34,6 +35,7 @@ import {
 
 export const SourceDetailWorkspace = () => {
   const { apiClient } = useAppRuntime();
+  const { t } = useProductLocalization();
   const { shell } = useOutletContext<{ readonly shell: GlobalShellView }>();
   const { sourceId = '' } = useParams();
   const location = useLocation();
@@ -86,16 +88,16 @@ export const SourceDetailWorkspace = () => {
     node.focus();
   }, []);
 
-  if (detail.isPending) return <LoadingState message="Loading Source…" />;
+  if (detail.isPending) return <LoadingState message={t('source_detail.loading')} />;
   if (detail.error) return <ErrorState error={detail.error} />;
   if (!detail.data) return null;
 
   return (
     <section className="route-page source-detail-workspace">
-      <p className="eyebrow">Source detail</p>
+      <p className="eyebrow">{t('source_detail.eyebrow')}</p>
       <h1 tabIndex={-1}>{detail.data.label}</h1>
       <p>
-        <Link to="/sources">Back to Source Library</Link>
+        <Link to="/sources">{t('source_detail.back')}</Link>
       </p>
       {conversationReturnTarget ? (
         <p>
@@ -119,7 +121,7 @@ export const SourceDetailWorkspace = () => {
               },
             }}
           >
-            Return to cited resource
+            {t('source_detail.return_citation')}
           </Link>
         </p>
       ) : null}
@@ -129,64 +131,22 @@ export const SourceDetailWorkspace = () => {
             to={knowledgeReturnTarget.originRoute}
             state={knowledgeEvidenceReturnState(knowledgeReturnTarget)}
           >
-            Return to Knowledge resource
+            {t('source_detail.return_knowledge')}
           </Link>
         </p>
       ) : null}
       <dl className="identity-summary">
         <div>
-          <dt>Version</dt>
+          <dt>{t('source_detail.version')}</dt>
           <dd>
             {history.data?.versions.find((version) => version.sourceVersionId === selectedVersionId)
-              ?.versionNumber ?? 'Selected'}
+              ?.versionNumber ?? t('source_detail.selected')}
           </dd>
         </div>
-        <div>
-          <dt>Preview</dt>
-          <dd>{sourcePreviewLabel(detail.data.previewReadiness)}</dd>
-        </div>
-        <div>
-          <dt>Questions</dt>
-          <dd>{sourceAskUsageLabel(detail.data.askUsageState)}</dd>
-        </div>
       </dl>
-      <TechnicalDetails
-        items={[
-          { label: 'Source ID', value: detail.data.sourceId },
-          { label: 'SourceVersion ID', value: selectedVersionId },
-        ]}
-      />
-
-      <section className="action-card" aria-labelledby="source-version-heading">
-        <h2 id="source-version-heading">Version history</h2>
-        {history.isPending ? <LoadingState message="Loading Version history…" /> : null}
-        {history.error ? <ErrorState error={history.error} /> : null}
-        {history.data ? (
-          <ol className="source-version-list">
-            {history.data.versions.map((version) => (
-              <li key={version.sourceVersionId}>
-                <button
-                  type="button"
-                  className={
-                    version.sourceVersionId === selectedVersionId ? 'selected-version' : undefined
-                  }
-                  aria-pressed={version.sourceVersionId === selectedVersionId}
-                  onClick={() => {
-                    setSearchParameters({ version: version.sourceVersionId });
-                  }}
-                >
-                  Version {version.versionNumber} · {mediaTypeLabel(version.mediaType)} ·{' '}
-                  {transformationStateLabel(version.transformationState)}
-                </button>
-              </li>
-            ))}
-          </ol>
-        ) : null}
-      </section>
-
       <section className="action-card" aria-labelledby="source-preview-heading">
-        <h2 id="source-preview-heading">Original Preview</h2>
-        {preview.isPending ? <LoadingState message="Loading Preview…" /> : null}
+        <h2 id="source-preview-heading">{t('source_detail.original_preview')}</h2>
+        {preview.isPending ? <LoadingState message={t('source_detail.loading_preview')} /> : null}
         {preview.error ? <ErrorState error={preview.error} /> : null}
         {preview.data ? (
           preview.data.text ? (
@@ -195,18 +155,17 @@ export const SourceDetailWorkspace = () => {
             </pre>
           ) : (
             <p role="status">
-              Original bytes are available, but inline Preview is not supported for{' '}
-              {preview.data.mediaType}.
+              {t('source_detail.preview_unsupported')} ({preview.data.mediaType})
             </p>
           )
         ) : null}
       </section>
 
       <section className="action-card" aria-labelledby="source-evidence-heading">
-        <h2 id="source-evidence-heading">Evidence</h2>
-        {evidence.isPending ? <LoadingState message="Loading Evidence…" /> : null}
+        <h2 id="source-evidence-heading">{t('source_detail.evidence')}</h2>
+        {evidence.isPending ? <LoadingState message={t('source_detail.loading_evidence')} /> : null}
         {evidence.error ? <ErrorState error={evidence.error} /> : null}
-        {evidence.data?.items.length === 0 ? <p>No Evidence is indexed yet.</p> : null}
+        {evidence.data?.items.length === 0 ? <p>{t('source_detail.no_evidence')}</p> : null}
         {evidence.data && evidence.data.items.length > 0 ? (
           <ul className="source-evidence-list">
             {evidence.data.items.map((item) => {
@@ -235,6 +194,52 @@ export const SourceDetailWorkspace = () => {
           </ul>
         ) : null}
       </section>
+
+      <section className="action-card" aria-labelledby="source-version-heading">
+        <h2 id="source-version-heading">{t('source_detail.version_history')}</h2>
+        {history.isPending ? <LoadingState message={t('source_detail.loading_history')} /> : null}
+        {history.error ? <ErrorState error={history.error} /> : null}
+        {history.data ? (
+          <ol className="source-version-list">
+            {history.data.versions.map((version) => (
+              <li key={version.sourceVersionId}>
+                <button
+                  type="button"
+                  className={
+                    version.sourceVersionId === selectedVersionId ? 'selected-version' : undefined
+                  }
+                  aria-pressed={version.sourceVersionId === selectedVersionId}
+                  onClick={() => {
+                    setSearchParameters({ version: version.sourceVersionId });
+                  }}
+                >
+                  {t('source_detail.version')} {version.versionNumber} ·{' '}
+                  {mediaTypeLabel(version.mediaType)} ·{' '}
+                  {transformationStateLabel(version.transformationState)}
+                </button>
+              </li>
+            ))}
+          </ol>
+        ) : null}
+      </section>
+      {detail.data.previewReadiness === 'READY' ? null : (
+        <p role="status">
+          {t('source_detail.preview')}: {sourcePreviewLabel(detail.data.previewReadiness)}
+        </p>
+      )}
+      {detail.data.askUsageState === 'SOURCE_VERSION_READY' ||
+      detail.data.askUsageState === 'EVIDENCE_READY' ? null : (
+        <p role="status">
+          {t('source_detail.questions')}: {sourceAskUsageLabel(detail.data.askUsageState)}.{' '}
+          {detail.data.askUsageExplanation}
+        </p>
+      )}
+      <TechnicalDetails
+        items={[
+          { label: 'Source ID', value: detail.data.sourceId },
+          { label: 'SourceVersion ID', value: selectedVersionId },
+        ]}
+      />
     </section>
   );
 };

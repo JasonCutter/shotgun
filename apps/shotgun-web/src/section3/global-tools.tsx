@@ -13,6 +13,7 @@ import {
   sessionBoundaryQueryKey,
 } from '../app/query-keys.js';
 import { OwnerCommandPalette } from '../commands/owner-command-palette.js';
+import { useOptionalAnswerCommandContext } from '../commands/answer-command-context.js';
 import { AICommandSurface } from '../commands/ai-command-surface.js';
 import { PrivacyCommandSurface } from '../commands/privacy-command-surface.js';
 import { PreferencesCommandSurface } from '../commands/preferences-command-surface.js';
@@ -37,6 +38,8 @@ export const GlobalTools = ({ shell }: { readonly shell: GlobalShellView }) => {
   const connectivity = useConnectivityState();
   const { getLeaveState } = useLeaveGuard();
   const technicalInspection = useOptionalTechnicalInspection();
+  const answerCommands = useOptionalAnswerCommandContext();
+  const answerRegistration = answerCommands?.registration;
   const technicalBlocks = technicalInspection?.blocks ?? [];
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchInvoker, setSearchInvoker] = useState<HTMLElement | null>(null);
@@ -68,9 +71,11 @@ export const GlobalTools = ({ shell }: { readonly shell: GlobalShellView }) => {
         includeProjectSwitch: true,
         includeSearch: true,
         hasTechnicalInspection: technicalBlocks.length > 0,
+        answerContext: answerRegistration?.context,
+        answerCommandPending: answerRegistration?.commandPending,
         projects: projectsQuery.data,
       }),
-    [connectivity.isOffline, projectsQuery.data, shell, technicalBlocks.length],
+    [answerRegistration, connectivity.isOffline, projectsQuery.data, shell, technicalBlocks.length],
   );
 
   useEffect(() => {
@@ -90,10 +95,6 @@ export const GlobalTools = ({ shell }: { readonly shell: GlobalShellView }) => {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
-
-  const searchAvailable =
-    shell.features.find((feature) => feature.id === 'global-search')?.availability ===
-      'AVAILABLE' && !connectivity.isOffline;
 
   const projectSwitch = useMutation({
     mutationFn: (projectId: string) => apiClient.switchActiveProject(projectId),
@@ -151,6 +152,11 @@ export const GlobalTools = ({ shell }: { readonly shell: GlobalShellView }) => {
       setPaletteOpen(false);
       return;
     }
+    if (command.action.kind === 'OPEN_ANSWER_FLOW') {
+      answerRegistration?.openCommand(command.action.commandId, paletteInvoker);
+      setPaletteOpen(false);
+      return;
+    }
     setPaletteOpen(false);
     if (command.action.kind === 'NAVIGATE') {
       navigate(command.action.targetRoute.href);
@@ -182,13 +188,6 @@ export const GlobalTools = ({ shell }: { readonly shell: GlobalShellView }) => {
 
   return (
     <div className="global-tools">
-      <button
-        type="button"
-        disabled={!searchAvailable}
-        onClick={(event) => openSearch(event.currentTarget)}
-      >
-        Search
-      </button>
       <p className="sr-only" aria-live="polite">
         {announcement}
       </p>

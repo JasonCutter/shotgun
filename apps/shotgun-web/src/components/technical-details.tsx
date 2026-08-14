@@ -11,13 +11,19 @@ export type TechnicalDetailItem = {
   readonly value: ReactNode;
 };
 
+export type TechnicalInspectionDetailItem = {
+  readonly label: string;
+  readonly value: string | number | boolean;
+};
+
 const sensitiveLabel =
   /(?:api\s*key|credential|password|token|cookie|session|encryption\s*key|draft\s*secret|secret)/i;
 
-const inspectionItems = (
+const registeredInspectionItems = (
   items: readonly TechnicalDetailItem[],
+  inspectionItems: readonly TechnicalInspectionDetailItem[],
 ): readonly TechnicalInspectionItem[] =>
-  items.flatMap((item) => {
+  [...items, ...inspectionItems].flatMap((item) => {
     if (sensitiveLabel.test(item.label)) return [];
     if (
       typeof item.value !== 'string' &&
@@ -31,10 +37,12 @@ const inspectionItems = (
 
 export const TechnicalDetails = ({
   items = [],
+  inspectionItems = [],
   children,
   summary = 'Technical details',
 }: {
   readonly items?: readonly TechnicalDetailItem[];
+  readonly inspectionItems?: readonly TechnicalInspectionDetailItem[];
   readonly children?: ReactNode;
   readonly summary?: string;
 }) => {
@@ -42,7 +50,7 @@ export const TechnicalDetails = ({
   const inspection = useOptionalTechnicalInspection();
   const upsertBlock = inspection?.upsertBlock;
   const unregisterBlock = inspection?.unregisterBlock;
-  const blockItems = inspectionItems(items);
+  const blockItems = registeredInspectionItems(items, inspectionItems);
   const blockSignature = JSON.stringify([summary, blockItems]);
   const blockRef = useRef<TechnicalInspectionBlock>({
     id: registrationId,

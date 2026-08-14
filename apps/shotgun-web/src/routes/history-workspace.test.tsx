@@ -7,6 +7,10 @@ import type { GlobalShellView, ShotgunApiClient } from '@shotgun/api-client';
 
 import { createFrontendQueryClient } from '../app/query-client.js';
 import { AppProviders, type AppRuntime } from '../app/providers.js';
+import {
+  TechnicalInspectionProvider,
+  useTechnicalInspection,
+} from '../components/technical-inspection-context.js';
 import { createSessionCycleState } from '../session/session-query.js';
 import { HistoryWorkspace } from './history-workspace.js';
 
@@ -112,10 +116,19 @@ const purgedEntry = entry({
   payloadAvailability: 'PURGED_BY_POLICY',
   payloadSnapshot: { digest: 'sha256:redacted' },
 });
+const redactedEntry = entry({
+  sourceEventId: 'redacted-1',
+  domainKind: 'POLICY',
+  domainResourceKind: 'POLICY_CHANGE',
+  domainResourceId: 'event:2',
+  sourceEventKind: 'CLAIM',
+  payloadAvailability: 'REDACTED',
+  payloadSnapshot: { shouldNotEscape: 'redacted-secret' },
+});
 
 const listResult = {
   schemaVersion: '1.0.0',
-  entries: [canonicalEntry, reviewEntry, externalAuditEntry, purgedEntry],
+  entries: [canonicalEntry, reviewEntry, externalAuditEntry, purgedEntry, redactedEntry],
   nextCursor: {
     schemaVersion: '1.0.0',
     occurredAt: now,
@@ -146,7 +159,14 @@ const createFetchMock = () => {
     if (url.endsWith('/product-api/frontend/history/entry')) {
       detailCount += 1;
       const body = init?.body ? (JSON.parse(String(init.body)) as { historyEntryId?: string }) : {};
-      const all = [canonicalEntry, reviewEntry, externalAuditEntry, purgedEntry, detailEntry];
+      const all = [
+        canonicalEntry,
+        reviewEntry,
+        externalAuditEntry,
+        purgedEntry,
+        redactedEntry,
+        detailEntry,
+      ];
       const match = all.find((candidate) => candidate.historyEntryId === body.historyEntryId);
       return jsonResponse(200, { schemaVersion: '1.0.0', entry: match ?? detailEntry });
     }
@@ -185,6 +205,11 @@ const createRuntime = (): AppRuntime => ({
   sessionCycleState: createSessionCycleState(),
 });
 
+const TechnicalInspectionProbe = () => {
+  const { blocks } = useTechnicalInspection();
+  return <output data-testid="technical-inspection-probe" data-blocks={JSON.stringify(blocks)} />;
+};
+
 const renderWorkspace = (runtime: AppRuntime, initialEntries: string[] = ['/history']) => {
   const router = createMemoryRouter(
     [
@@ -211,7 +236,10 @@ const renderWorkspace = (runtime: AppRuntime, initialEntries: string[] = ['/hist
   );
   render(
     <AppProviders runtime={runtime}>
-      <RouterProvider router={router} />
+      <TechnicalInspectionProvider>
+        <RouterProvider router={router} />
+        <TechnicalInspectionProbe />
+      </TechnicalInspectionProvider>
     </AppProviders>,
   );
   return router;
@@ -263,6 +291,46 @@ describe('HistoryWorkspace (FE-P5-S2 WP5)', () => {
     );
     expect(screen.getAllByText('Available').length).toBeGreaterThan(0);
     expect(detailCount()).toBeGreaterThanOrEqual(1);
+    vi.unstubAllGlobals();
+  });
+
+  it('registers only permitted current History payloads and bounded policy tombstones', async () => {
+    const user = userEvent.setup();
+    const { fetchMock } = createFetchMock();
+    vi.stubGlobal('fetch', fetchMock);
+    renderWorkspace(createRuntime());
+
+    await waitFor(
+      () => expect(screen.getAllByRole('button', { name: /Canonical/ }).length).toBeGreaterThan(0),
+      { timeout: 5000 },
+    );
+    await user.click(screen.getAllByRole('button', { name: /Canonical/ })[0]!);
+
+    const probe = screen.getByTestId('technical-inspection-probe');
+    await waitFor(() => expect(probe.getAttribute('data-blocks')).toContain('commit-2'), {
+      timeout: 5000,
+    });
+    expect(probe.getAttribute('data-blocks')).toContain('Audit payload');
+    expect(probe.getAttribute('data-blocks')).toContain('CANONICAL_CLAIM_ADDED');
+    expect(probe.getAttribute('data-blocks')).toContain('AVAILABLE');
+    expect(screen.getByTestId('history-payload-snapshot').textContent).toContain('commit-2');
+
+    await user.click(screen.getByRole('button', { name: /Project settings changed/ }));
+    await waitFor(() => expect(probe.getAttribute('data-blocks')).toContain('sha256:redacted'), {
+      timeout: 5000,
+    });
+    expect(probe.getAttribute('data-blocks')).toContain('Payload tombstone');
+    expect(probe.getAttribute('data-blocks')).toContain('PURGED_BY_POLICY');
+    expect(probe.getAttribute('data-blocks')).not.toContain('commit-2');
+    expect(probe.getAttribute('data-blocks')).not.toContain('Reversal draft');
+    expect(screen.getByText(/Tombstone/)).not.toBeNull();
+
+    await user.click(screen.getByRole('button', { name: /Knowledge claim changed/ }));
+    await waitFor(() => expect(probe.getAttribute('data-blocks')).toContain('REDACTED'), {
+      timeout: 5000,
+    });
+    expect(probe.getAttribute('data-blocks')).not.toContain('redacted-secret');
+    expect(screen.queryByText('redacted-secret')).toBeNull();
     vi.unstubAllGlobals();
   });
 

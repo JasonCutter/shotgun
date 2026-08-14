@@ -7,6 +7,10 @@ import type { GlobalShellView, ShotgunApiClient } from '@shotgun/api-client';
 
 import { createFrontendQueryClient } from '../app/query-client.js';
 import { AppProviders, type AppRuntime } from '../app/providers.js';
+import {
+  TechnicalInspectionProvider,
+  useTechnicalInspection,
+} from '../components/technical-inspection-context.js';
 import { createSessionCycleState } from '../session/session-query.js';
 import { ActivityWorkspace } from './activity-workspace.js';
 
@@ -410,6 +414,11 @@ const createRuntime = (): AppRuntime => ({
   sessionCycleState: createSessionCycleState(),
 });
 
+const TechnicalInspectionProbe = () => {
+  const { blocks } = useTechnicalInspection();
+  return <output data-testid="technical-inspection-probe" data-blocks={JSON.stringify(blocks)} />;
+};
+
 const renderWorkspace = (runtime: AppRuntime, initialEntries: string[] = ['/activity']) => {
   const router = createMemoryRouter(
     [
@@ -428,7 +437,10 @@ const renderWorkspace = (runtime: AppRuntime, initialEntries: string[] = ['/acti
   );
   render(
     <AppProviders runtime={runtime}>
-      <RouterProvider router={router} />
+      <TechnicalInspectionProvider>
+        <RouterProvider router={router} />
+        <TechnicalInspectionProbe />
+      </TechnicalInspectionProvider>
     </AppProviders>,
   );
   return router;
@@ -474,6 +486,41 @@ describe('ActivityWorkspace (FE-P5-S1 WP4)', () => {
         name: 'Open related resource',
       }),
     ).not.toBeNull();
+    vi.unstubAllGlobals();
+  });
+
+  it('registers bounded Activity lineage for technical.current without mutation controls', async () => {
+    const { fetchMock } = createFetchMock();
+    vi.stubGlobal('fetch', fetchMock);
+    renderWorkspace(createRuntime());
+
+    await screen.findByText('Source processing');
+    await userEvent.click(screen.getByText('Source processing'));
+
+    const probe = screen.getByTestId('technical-inspection-probe');
+    await waitFor(
+      () => {
+        expect(probe.getAttribute('data-blocks')).toContain('attempt-1');
+        expect(probe.getAttribute('data-blocks')).toContain('intake-item-2');
+        expect(probe.getAttribute('data-blocks')).toContain('attempt-2');
+      },
+      { timeout: 10000 },
+    );
+    expect(probe.getAttribute('data-blocks')).toContain('Domain Attempts');
+    expect(probe.getAttribute('data-blocks')).toContain('Transport Attempts');
+    expect(probe.getAttribute('data-blocks')).toContain('Stages');
+    expect(probe.getAttribute('data-blocks')).toContain('Events');
+    expect(probe.getAttribute('data-blocks')).toContain('Run topology');
+    expect(probe.getAttribute('data-blocks')).toContain('domainAttemptRefs');
+    expect(probe.getAttribute('data-blocks')).toContain('Projection freshness');
+    expect(probe.getAttribute('data-blocks')).toContain('Snapshot revision');
+    expect(probe.getAttribute('data-blocks')).not.toContain('availableActions');
+    expect(probe.getAttribute('data-blocks')).not.toContain('actionRevision');
+
+    // The existing child presentation remains the owner of visible lineage UI.
+    expect(screen.getByText('Item 1')).not.toBeNull();
+    expect(screen.getByText('Item 2')).not.toBeNull();
+    expect(screen.getAllByText(/Sources intake attempt 1 RUNNING/).length).toBeGreaterThan(0);
     vi.unstubAllGlobals();
   });
 

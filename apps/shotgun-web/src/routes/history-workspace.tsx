@@ -12,7 +12,10 @@ import {
 import { EmptyState } from '../components/empty-state.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
-import { TechnicalDetails } from '../components/technical-details.js';
+import {
+  TechnicalDetails,
+  type TechnicalInspectionDetailItem,
+} from '../components/technical-details.js';
 import { historyScopeFromShell } from '../app/query-keys.js';
 import {
   HISTORY_LIST_LIMIT,
@@ -89,6 +92,28 @@ const PayloadSnapshotView = ({ entry }: { readonly entry: HistoryEntryV1 }) => {
       )}
     </p>
   );
+};
+
+const payloadInspectionItems = (
+  entry: HistoryEntryV1,
+): readonly TechnicalInspectionDetailItem[] => {
+  const availability: TechnicalInspectionDetailItem = {
+    label: 'Payload availability',
+    value: entry.payloadAvailability,
+  };
+  if (entry.payloadAvailability === 'AVAILABLE' && entry.payloadSnapshot !== undefined) {
+    return [
+      availability,
+      { label: 'Audit payload', value: JSON.stringify(entry.payloadSnapshot, null, 2) },
+    ];
+  }
+  if (entry.payloadAvailability === 'PURGED_BY_POLICY' && entry.payloadSnapshot !== undefined) {
+    return [
+      availability,
+      { label: 'Payload tombstone', value: JSON.stringify(entry.payloadSnapshot) },
+    ];
+  }
+  return [availability];
 };
 
 const PayloadAvailabilityBadge = ({ entry }: { readonly entry: HistoryEntryV1 }) => (
@@ -243,6 +268,7 @@ const HistoryDetail = ({
           { label: 'Resource kind', value: entry.domainResourceKind },
           { label: 'Resource ID', value: entry.domainResourceId },
         ]}
+        inspectionItems={payloadInspectionItems(entry)}
       >
         <section className="history-payload-section" aria-label="Audit payload">
           <h3>Audit payload</h3>

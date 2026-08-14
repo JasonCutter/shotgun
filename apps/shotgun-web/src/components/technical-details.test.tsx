@@ -73,6 +73,10 @@ describe('TechnicalDetails', () => {
             { label: 'API token', value: 'must-not-register' },
             { label: 'Interactive value', value: <button type="button">Retry</button> },
           ]}
+          inspectionItems={[
+            { label: 'Bounded topology', value: '{"stage":"ready"}' },
+            { label: 'Session secret', value: 'must-also-not-register' },
+          ]}
         >
           <button type="button">Payload action</button>
         </TechnicalDetails>
@@ -84,9 +88,13 @@ describe('TechnicalDetails', () => {
     expect(screen.getByRole('button', { name: 'Payload action' })).toBeTruthy();
     await waitFor(() =>
       expect(screen.getByTestId('inspection-blocks').textContent).toBe(
-        'Technical details:source-safe',
+        'Technical details:source-safe,{"stage":"ready"}',
       ),
     );
     expect(screen.getByTestId('inspection-blocks').textContent).not.toContain('must-not-register');
+    expect(screen.getByTestId('inspection-blocks').textContent).not.toContain(
+      'must-also-not-register',
+    );
+    expect(screen.queryByText('{"stage":"ready"}')).toBeNull();
   });
 });

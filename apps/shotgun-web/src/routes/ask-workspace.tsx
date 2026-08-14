@@ -46,12 +46,7 @@ import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
 import { TechnicalDetails } from '../components/technical-details.js';
 import { useOptionalTechnicalInspection } from '../components/technical-inspection-context.js';
-import { useProductLocalization } from '../localization/product-localization.js';
-import {
-  answerRunLabel,
-  askModeLabel,
-  sourceAskUsageLabel,
-} from '../presentation/product-labels.js';
+import { hfmOwnerLabel, useProductLocalization } from '../localization/product-localization.js';
 import { useLeaveGuard } from '../session/leave-guard-context.js';
 import { useConnectivityState } from '../shell/use-connectivity-state.js';
 import {
@@ -519,10 +514,10 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   ]);
 
   if (!shell.activeProject && !conversationId) {
-    return <p>Create or select a Project before asking questions.</p>;
+    return <p>{t('ask.create_or_select_project')}</p>;
   }
   if (error) return <ErrorState error={error} onRetry={() => window.location.reload()} />;
-  if (!workspace) return <LoadingState message="Loading Ask workspace…" />;
+  if (!workspace) return <LoadingState message={t('ask.loading_workspace')} />;
 
   const expectedDraftProjectId = conversationId ? workspace.projectId : shell.activeProject?.id;
   const draftReady =
@@ -625,9 +620,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
         if (outcome.outcomeState === 'REJECTED') {
           return {
             kind: 'REJECTED',
-            message:
-              outcome.failureMessage ??
-              'The question submission was rejected. The Draft was preserved.',
+            message: outcome.failureMessage ?? t('ask.submission_rejected'),
           };
         }
       } catch {
@@ -649,15 +642,13 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
       return;
     }
     setOutcomeUnknown(true);
-    setSubmissionNotice(
-      'The submission outcome is still unknown. The original request identity and Draft are preserved.',
-    );
+    setSubmissionNotice(t('ask.submission_outcome_unknown'));
   };
 
   const handleResolveOutcome = async () => {
     if (!pendingCommand || isSubmitting) return;
     setIsSubmitting(true);
-    setSubmissionNotice('Checking the existing submission outcome…');
+    setSubmissionNotice(t('ask.checking_submission_outcome'));
     try {
       applyResolution(await resolveExistingOutcome(pendingCommand, 1));
     } finally {
@@ -843,7 +834,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   ): Promise<void> => {
     if (!askClient.getAnswerRunCommandOutcome) {
       setAnswerRunOutcomeUnknown(true);
-      setAnswerRunCommandNotice('The answer result is unknown. Check again before retrying.');
+      setAnswerRunCommandNotice(t('ask.answer_result_unknown'));
       return;
     }
 
@@ -855,25 +846,19 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
       );
     } catch {
       setAnswerRunOutcomeUnknown(true);
-      setAnswerRunCommandNotice(
-        'The answer result is still unknown. Check again without submitting a new request.',
-      );
+      setAnswerRunCommandNotice(t('ask.answer_result_still_unknown'));
       return;
     }
 
     if (outcome.outcomeState === 'REJECTED') {
       setPendingAnswerRunCommand(undefined);
       setAnswerRunOutcomeUnknown(false);
-      setAnswerRunCommandNotice(
-        outcome.rejection?.message ?? 'The request was rejected. No new request was sent.',
-      );
+      setAnswerRunCommandNotice(outcome.rejection?.message ?? t('ask.request_rejected'));
       return;
     }
     if (outcome.outcomeState !== 'COMPLETED') {
       setAnswerRunOutcomeUnknown(true);
-      setAnswerRunCommandNotice(
-        'The request was accepted but is not resolved. No automatic retry was started.',
-      );
+      setAnswerRunCommandNotice(t('ask.request_pending'));
       return;
     }
 
@@ -916,15 +901,13 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     } catch {
       setPendingAnswerRunCommand(undefined);
       setAnswerRunOutcomeUnknown(false);
-      setAnswerRunCommandNotice(
-        'The request completed, but its result is not available yet. Check again without submitting a new request.',
-      );
+      setAnswerRunCommandNotice(t('ask.result_unavailable'));
       return;
     }
 
     setPendingAnswerRunCommand(undefined);
     setAnswerRunOutcomeUnknown(false);
-    setAnswerRunCommandNotice('The completed answer request and its result were recovered.');
+    setAnswerRunCommandNotice(t('ask.answer_request_recovered'));
   };
 
   const handleResolveAnswerRunCommandOutcome = async () => {
@@ -941,7 +924,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
         await askClient.cancelAnswerRun(answerRunId, answerRunCommandIdentity(pending)),
       );
       setPendingAnswerRunCommand(undefined);
-      setAnswerRunCommandNotice('Answer cancellation requested.');
+      setAnswerRunCommandNotice(t('ask.answer_cancel_requested'));
     } catch {
       await resolveAnswerRunCommandOutcome(pending);
     }
@@ -963,7 +946,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
       );
       setPollingGeneration((generation) => generation + 1);
       setPendingAnswerRunCommand(undefined);
-      setAnswerRunCommandNotice('Answer retry accepted with a new attempt.');
+      setAnswerRunCommandNotice(t('ask.answer_retry_accepted'));
     } catch {
       await resolveAnswerRunCommandOutcome(pending);
     }
@@ -980,7 +963,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
       });
       setExportedContent(exported.content);
       setPendingAnswerRunCommand(undefined);
-      setAnswerRunCommandNotice('Answer export completed.');
+      setAnswerRunCommandNotice(t('ask.answer_export_completed'));
     } catch {
       await resolveAnswerRunCommandOutcome(pending);
     }
@@ -1001,9 +984,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
         kind,
       });
       setPendingAnswerRunCommand(undefined);
-      setAnswerRunCommandNotice(
-        'A draft transition was proposed. Verified knowledge was not changed.',
-      );
+      setAnswerRunCommandNotice(t('ask.transition_proposed'));
     } catch {
       await resolveAnswerRunCommandOutcome(pending);
     }
@@ -1024,7 +1005,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
             void handleSubmitQuestion();
           }}
         >
-          <label htmlFor="ask-mode">Ask mode</label>
+          <label htmlFor="ask-mode">{t('ask.mode')}</label>
           <select
             id="ask-mode"
             value={mode}
@@ -1036,7 +1017,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
           >
             {workspace.availableAskModes.map((availableMode) => (
               <option key={availableMode} value={availableMode}>
-                {askModeLabel(availableMode)}
+                {hfmOwnerLabel(t, 'askMode', availableMode)}
               </option>
             ))}
           </select>
@@ -1044,20 +1025,20 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
           {mode !== 'CANONICAL_ONLY' ? (
             <>
               <span className="ask-form-label" id="ask-source-context-label">
-                Source context
+                {t('ask.source_context')}
               </span>
               <fieldset className="ask-source-context" aria-labelledby="ask-source-context-label">
-                <legend className="visually-hidden">Source context</legend>
+                <legend className="visually-hidden">{t('ask.source_context')}</legend>
                 {!sourceContextAvailable ? (
-                  <p role="status">Source selection is unavailable for this question context.</p>
+                  <p role="status">{t('ask.source_selection_unavailable')}</p>
                 ) : sourceContextPending ? (
-                  <p role="status">Loading Sources…</p>
+                  <p role="status">{t('ask.loading_sources')}</p>
                 ) : sourceContextError ? (
-                  <p role="alert">Sources could not be loaded.</p>
+                  <p role="alert">{t('ask.sources_load_failed')}</p>
                 ) : !sourceContextProjectMatches ? (
-                  <p role="alert">The Source Library Project does not match this Ask resource.</p>
+                  <p role="alert">{t('ask.source_project_mismatch')}</p>
                 ) : sourceOptions.length === 0 ? (
-                  <p role="status">No Sources are available for Ask in this Project.</p>
+                  <p role="status">{t('ask.no_sources')}</p>
                 ) : (
                   <ul className="ask-source-list">
                     {sourceOptions.map((source) => {
@@ -1079,15 +1060,17 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                               <span>
                                 {pinnedSelection &&
                                 pinnedSelection.sourceVersionId !== source.selectedSourceVersionId
-                                  ? 'Pinned version'
-                                  : `Version ${source.versionCount}`}
+                                  ? t('ask.pinned_version')
+                                  : `${t('ask.version')} ${source.versionCount}`}
                               </span>
-                              <span>{sourceAskUsageLabel(source.askUsageState)}</span>
+                              <span>
+                                {hfmOwnerLabel(t, 'sourceAskUsage', source.askUsageState)}
+                              </span>
                               <TechnicalDetails
                                 items={[
-                                  { label: 'Source ID', value: source.sourceId },
+                                  { label: t('ask.source_id'), value: source.sourceId },
                                   {
-                                    label: 'SourceVersion ID',
+                                    label: t('ask.source_version_id'),
                                     value:
                                       pinnedSelection?.sourceVersionId ??
                                       source.selectedSourceVersionId,
@@ -1131,18 +1114,18 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
             </button>
             {outcomeUnknown && pendingCommand ? (
               <button type="button" disabled={isSubmitting} onClick={handleResolveOutcome}>
-                Check submission outcome
+                {t('ask.check_submission_outcome')}
               </button>
             ) : null}
           </div>
           {sourceSelectionMissing ? (
             <p className="ask-form-status" role="status">
-              Select at least one Source before using selected sources.
+              {t('ask.source_selection_required')}
             </p>
           ) : null}
           {providerEligibility.data && !providerEligibility.data.eligible ? (
             <div className="ask-form-status" role="status">
-              <strong>Action required:</strong> {providerEligibility.data.message}
+              <strong>{t('ask.action_required')}</strong> {providerEligibility.data.message}
               {providerEligibility.data.requiredAction === 'REVIEW_PROJECT_PRIVACY_SETTINGS' ? (
                 <p>
                   <button
@@ -1152,7 +1135,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                       setPrivacyCommand('privacy.review');
                     }}
                   >
-                    Review privacy
+                    {t('ask.review_privacy')}
                   </button>
                 </p>
               ) : null}
@@ -1160,7 +1143,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
           ) : null}
           {providerEligibility.isError ? (
             <p className="ask-form-status" role="status">
-              Provider eligibility could not be verified. Submission remains unavailable.
+              {t('ask.provider_eligibility_unavailable')}
             </p>
           ) : null}
           {submissionNotice ? (
@@ -1170,7 +1153,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
           ) : null}
           {!submissionAvailable && providerEligibility.data?.eligible !== false ? (
             <p className="ask-form-status" role="status">
-              Question submission is not available for this conversation.
+              {t('ask.submission_unavailable')}
             </p>
           ) : null}
         </form>
@@ -1250,7 +1233,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
         <h2 id="conversation-heading">{t('ask.conversations')}</h2>
         {workspace.conversations.length === 0 ? <p>{t('ask.no_conversations')}</p> : null}
         {workspace.conversations.length > 0 ? (
-          <ul className="ask-conversation-list" aria-label="Conversations">
+          <ul className="ask-conversation-list" aria-label={t('ask.conversation_list')}>
             {workspace.conversations.map((item) => {
               const selected = item.conversationId === conversation?.conversationId;
               return (
@@ -1258,7 +1241,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                   {selected ? (
                     <span className="ask-conversation-current" aria-current="page">
                       <strong>{item.title}</strong>
-                      <span className="visually-hidden"> (current conversation)</span>
+                      <span className="visually-hidden"> {t('ask.current_conversation')}</span>
                     </span>
                   ) : (
                     <Link to={`/ask/conversations/${encodeURIComponent(item.conversationId)}`}>
@@ -1266,7 +1249,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                     </Link>
                   )}
                   {item.latestRunState === 'SUCCEEDED' ? null : (
-                    <> · {answerRunLabel(item.latestRunState)}</>
+                    <> · {hfmOwnerLabel(t, 'answerRun', item.latestRunState)}</>
                   )}
                 </li>
               );
@@ -1371,13 +1354,13 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                       {answerRun.state === 'SUCCEEDED' ? null : (
                         <p>
                           {t('ask.answer_status')}:{' '}
-                          <strong>{answerRunLabel(answerRun.state)}</strong>
+                          <strong>{hfmOwnerLabel(t, 'answerRun', answerRun.state)}</strong>
                         </p>
                       )}
                       {answerRun.failure ? <p role="alert">{answerRun.failure.message}</p> : null}
                       {answerRun.failure ? (
                         <TechnicalDetails
-                          items={[{ label: 'Failure code', value: answerRun.failure.code }]}
+                          items={[{ label: t('ask.failure_code'), value: answerRun.failure.code }]}
                         />
                       ) : null}
                       {answerRun.capabilities.includes('CANCEL') ||

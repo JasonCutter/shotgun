@@ -15,6 +15,7 @@ import { createFrontendQueryClient } from '../app/query-client.js';
 import { AppProviders, type AppRuntime } from '../app/providers.js';
 import { TechnicalDetails } from '../components/technical-details.js';
 import { TechnicalInspectionProvider } from '../components/technical-inspection-context.js';
+import { ProductLocalizationProvider } from '../localization/product-localization.js';
 import { useLeaveGuard } from '../session/leave-guard-context.js';
 import { createSessionCycleState } from '../session/session-query.js';
 import { AskWorkspace } from './ask-workspace.js';
@@ -291,7 +292,63 @@ const ShellOutlet = ({ shell = mockShell }: { readonly shell?: GlobalShellView }
   <Outlet context={{ shell }} />
 );
 
+const LocalizedShellOutlet = () => (
+  <ProductLocalizationProvider principalId={mockShell.principalId}>
+    <ShellOutlet />
+  </ProductLocalizationProvider>
+);
+
 describe('AskWorkspace', () => {
+  it('renders ko-KR owner controls while preserving Source and answer content', async () => {
+    const runtime = createRuntime();
+    const mockClient: AskWorkspaceClient = {
+      getProviderEligibility: vi.fn().mockResolvedValue(eligibleProvider),
+      getWorkspace: vi.fn().mockResolvedValue(mockWorkspace),
+      getConversation: vi.fn().mockResolvedValue(mockWorkspace.selectedConversation!),
+      getConversationSourceContext: vi.fn(),
+      getBranch: vi.fn(),
+      getAnswerRun: vi
+        .fn()
+        .mockResolvedValue(mockWorkspace.selectedConversation!.branches[0]!.turns[0]!.answerRun),
+      getAnswerRunEvents: vi.fn().mockResolvedValue({
+        schemaVersion: '1.0.0',
+        answerRunId: 'run-1',
+        events: [],
+      }),
+      submitQuestion: vi.fn(),
+      getQuestionSubmissionByClientRequestId: vi.fn(),
+    };
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <LocalizedShellOutlet />,
+          children: [{ path: 'ask', element: <AskWorkspace client={mockClient} /> }],
+        },
+      ],
+      { initialEntries: ['/ask'] },
+    );
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    expect(await screen.findByRole('heading', { name: '질문', level: 1 })).toBeTruthy();
+    const askMode = screen.getByLabelText('질문 방식');
+    expect(within(askMode).getByRole('option', { name: '검증된 지식만 사용' })).toBeTruthy();
+    expect(within(askMode).getByRole('option', { name: '선택한 소스 사용' })).toBeTruthy();
+    await userEvent.selectOptions(askMode, 'SOURCE_EXPLORATION');
+    expect((await screen.findAllByText('소스 범위')).length).toBeGreaterThan(0);
+    expect(await screen.findByText('질문에 사용 가능')).toBeTruthy();
+    expect(screen.getAllByText('버전 1').length).toBeGreaterThan(0);
+    expect(screen.getByText('Canonical knowledge is authoritative.')).toBeTruthy();
+    expect(screen.getByText('(현재 대화)')).toBeTruthy();
+    expect(screen.queryByText('Ask mode')).toBeNull();
+    expect(screen.queryByText('Source context')).toBeNull();
+    expect(screen.queryByText('Available for questions')).toBeNull();
+  });
+
   it('shows server-authoritative ACTION_REQUIRED and blocks predictable policy denial', async () => {
     const runtime = createRuntime();
     const workspace = { ...mockWorkspace, capabilities: ['SUBMIT_QUESTION'] as const };

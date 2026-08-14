@@ -14,14 +14,7 @@ import { useAppRuntime } from '../app/providers.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
 import { TechnicalDetails } from '../components/technical-details.js';
-import { useProductLocalization } from '../localization/product-localization.js';
-import {
-  evidenceOriginLabel,
-  mediaTypeLabel,
-  sourceAskUsageLabel,
-  sourcePreviewLabel,
-  transformationStateLabel,
-} from '../presentation/product-labels.js';
+import { hfmOwnerLabel, useProductLocalization } from '../localization/product-localization.js';
 import {
   sourceDetailQueryOptions,
   sourceEvidenceQueryOptions,
@@ -181,11 +174,11 @@ export const SourceDetailWorkspace = () => {
                 >
                   <strong>{item.label}</strong>
                   <p>{item.exactText}</p>
-                  <small>{evidenceOriginLabel(item.origin)}</small>
+                  <small>{hfmOwnerLabel(t, 'evidenceOrigin', item.origin)}</small>
                   <TechnicalDetails
                     items={[
-                      { label: 'Evidence ID', value: item.evidenceId },
-                      { label: 'Evidence revision', value: item.revisionId },
+                      { label: t('source_detail.evidence_id'), value: item.evidenceId },
+                      { label: t('source_detail.evidence_revision'), value: item.revisionId },
                     ]}
                   />
                 </li>
@@ -214,8 +207,8 @@ export const SourceDetailWorkspace = () => {
                   }}
                 >
                   {t('source_detail.version')} {version.versionNumber} ·{' '}
-                  {mediaTypeLabel(version.mediaType)} ·{' '}
-                  {transformationStateLabel(version.transformationState)}
+                  {hfmOwnerLabel(t, 'mediaType', version.mediaType)} ·{' '}
+                  {hfmOwnerLabel(t, 'transformationState', version.transformationState)}
                 </button>
               </li>
             ))}
@@ -224,20 +217,22 @@ export const SourceDetailWorkspace = () => {
       </section>
       {detail.data.previewReadiness === 'READY' ? null : (
         <p role="status">
-          {t('source_detail.preview')}: {sourcePreviewLabel(detail.data.previewReadiness)}
+          {t('source_detail.preview')}:{' '}
+          {hfmOwnerLabel(t, 'sourcePreview', detail.data.previewReadiness)}
         </p>
       )}
       {detail.data.askUsageState === 'SOURCE_VERSION_READY' ||
       detail.data.askUsageState === 'EVIDENCE_READY' ? null : (
         <p role="status">
-          {t('source_detail.questions')}: {sourceAskUsageLabel(detail.data.askUsageState)}.{' '}
+          {t('source_detail.questions')}:{' '}
+          {hfmOwnerLabel(t, 'sourceAskUsage', detail.data.askUsageState)}.{' '}
           {detail.data.askUsageExplanation}
         </p>
       )}
       <TechnicalDetails
         items={[
-          { label: 'Source ID', value: detail.data.sourceId },
-          { label: 'SourceVersion ID', value: selectedVersionId },
+          { label: t('source_detail.source_id'), value: detail.data.sourceId },
+          { label: t('source_detail.source_version_id'), value: selectedVersionId },
         ]}
       />
     </section>

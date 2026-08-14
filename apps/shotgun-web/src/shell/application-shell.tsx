@@ -134,7 +134,7 @@ const LocalizedApplicationShell = ({
             >
               {shell.leadingWarning.message}
               {shell.leadingWarning.additionalCount > 0
-                ? ` (${shell.leadingWarning.additionalCount} additional states)`
+                ? ` (${shell.leadingWarning.additionalCount} ${t('shell.additional_states')})`
                 : ''}
             </div>
           ) : null}

@@ -11,6 +11,7 @@ import { OwnerCommandPalette } from '../commands/owner-command-palette.js';
 import type { OwnerCommandDefinition } from '../commands/owner-command-registry.js';
 import { createSessionCycleState } from '../session/session-query.js';
 import {
+  hfmOwnerLabel,
   ProductLocalizationProvider,
   resolveProductLocale,
   useProductLocalization,
@@ -43,6 +44,11 @@ const Probe = () => {
       <p>{t('ai.configure')}</p>
       <p>{t('privacy.review_title')}</p>
       <p>{t('technical.title')}</p>
+      <p>{hfmOwnerLabel(t, 'askMode', 'SOURCE_EXPLORATION')}</p>
+      <p>{hfmOwnerLabel(t, 'answerRun', 'FAILED')}</p>
+      <p>{hfmOwnerLabel(t, 'sourceAskUsage', 'ACTION_REQUIRED')}</p>
+      <p>{hfmOwnerLabel(t, 'mediaType', 'image/png')}</p>
+      <p>{hfmOwnerLabel(t, 'transformationState', 'FUTURE_STATE')}</p>
       <p>JasonNote source content</p>
       <OwnerCommandPalette
         open
@@ -89,6 +95,11 @@ describe('ProductLocalizationProvider', () => {
     expect(screen.getByText('AI 구성')).toBeTruthy();
     expect(screen.getByText('개인정보 검토')).toBeTruthy();
     expect(screen.getByText('기술 정보')).toBeTruthy();
+    expect(screen.getByText('선택한 소스 사용')).toBeTruthy();
+    expect(screen.getByText('실패')).toBeTruthy();
+    expect(screen.getByText('사용 전 확인 필요')).toBeTruthy();
+    expect(screen.getByText('이미지')).toBeTruthy();
+    expect(screen.getByText('처리 상태를 확인할 수 없음')).toBeTruthy();
     expect(screen.getByText('JasonNote source content')).toBeTruthy();
   });
 
@@ -118,8 +129,25 @@ describe('ProductLocalizationProvider', () => {
     expect(screen.getByText('en-US')).toBeTruthy();
   });
 
-  it('falls back deterministically for unsupported persisted locale values', () => {
+  it('falls back deterministically for unsupported persisted locale values', async () => {
     expect(resolveProductLocale('ja-JP')).toBe('en-US');
     expect(resolveProductLocale(undefined)).toBe('en-US');
+
+    const appRuntime = runtime(
+      vi.fn(async () => ({ preferences: { locale: 'ja-JP' }, revision: 1 })),
+    );
+    render(
+      <AppProviders runtime={appRuntime}>
+        <ProductLocalizationProvider principalId="principal-1">
+          <MemoryRouter>
+            <Probe />
+          </MemoryRouter>
+        </ProductLocalizationProvider>
+      </AppProviders>,
+    );
+
+    expect(await screen.findByRole('heading', { name: 'Home', level: 1 })).toBeTruthy();
+    expect(screen.getByText('Use selected sources')).toBeTruthy();
+    expect(screen.getByText('Processing status unavailable')).toBeTruthy();
   });
 });

@@ -15,6 +15,7 @@ import type {
 
 import { createFrontendQueryClient } from '../app/query-client.js';
 import { AppProviders, type AppRuntime } from '../app/providers.js';
+import { ProductLocalizationProvider } from '../localization/product-localization.js';
 import { createSessionCycleState } from '../session/session-query.js';
 import { useLeaveGuard } from '../session/leave-guard-context.js';
 import { SourceDetailWorkspace } from './source-detail-workspace.js';
@@ -168,7 +169,10 @@ const evidence: EvidenceListView = {
   fetchedAt: now,
 };
 
-const createRuntime = (page: SourceLibraryPageView = libraryPage): AppRuntime => {
+const createRuntime = (
+  page: SourceLibraryPageView = libraryPage,
+  locale: 'en-US' | 'ko-KR' = 'en-US',
+): AppRuntime => {
   const apiClient = {
     listSources: vi.fn(async () => page),
     getSourceDetail: vi.fn(async () => detail),
@@ -176,6 +180,7 @@ const createRuntime = (page: SourceLibraryPageView = libraryPage): AppRuntime =>
     getSourcePreview: vi.fn(async () => preview),
     getSourceEvidence: vi.fn(async () => evidence),
     getExactDuplicateDecision: vi.fn(),
+    getPrincipalPreferences: vi.fn(async () => ({ preferences: { locale }, revision: 1 })),
   } as unknown as ShotgunApiClient;
   return {
     apiClient,
@@ -259,7 +264,99 @@ const ShellOutlet = () => {
   );
 };
 
+const LocalizedShellOutlet = () => (
+  <ProductLocalizationProvider principalId={shell.principalId}>
+    <ShellOutlet />
+  </ProductLocalizationProvider>
+);
+
 describe('Sources Workspace', () => {
+  it('localizes ko-KR Sources controls and readiness without changing Source content', async () => {
+    const blockedSource: SourceLibraryPageView = {
+      ...libraryPage,
+      items: [
+        {
+          ...libraryPage.items[0]!,
+          lifecycle: 'ACTION_REQUIRED',
+          previewReadiness: 'NOT_READY',
+          askUsageState: 'ACTION_REQUIRED',
+          capabilities: [],
+        },
+      ],
+    };
+    const runtime = createRuntime(blockedSource, 'ko-KR');
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <LocalizedShellOutlet />,
+          children: [{ path: 'sources', element: <SourcesWorkspace /> }],
+        },
+      ],
+      { initialEntries: ['/sources'] },
+    );
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    expect(await screen.findByRole('heading', { name: '소스', level: 1 })).toBeTruthy();
+    expect(screen.getByLabelText('입력 유형')).toBeTruthy();
+    expect(screen.getByLabelText('직접 입력')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '수집 초안 추가' })).toBeTruthy();
+    expect(screen.getByText('이 소스를 사용하려면 확인이 필요합니다.')).toBeTruthy();
+    expect(screen.getByText('Evidence notes')).toBeTruthy();
+    expect(screen.getByText(/마크다운.*소스 분류.*내부/)).toBeTruthy();
+    expect(screen.queryByText('This source needs attention before it can be used.')).toBeNull();
+    expect(screen.queryByText('Input type')).toBeNull();
+  });
+
+  it('localizes ko-KR Source Detail enum labels and preserves source bytes', async () => {
+    const runtime = createRuntime(libraryPage, 'ko-KR');
+    vi.mocked(runtime.apiClient.getSourceDetail).mockResolvedValue({
+      ...detail,
+      previewReadiness: 'FAILED',
+      askUsageState: 'ACTION_REQUIRED',
+    });
+    vi.mocked(runtime.apiClient.getSourceVersionHistory).mockResolvedValue({
+      ...history,
+      versions: history.versions.map((version) => ({
+        ...version,
+        transformationState: 'RUNNING',
+      })),
+    });
+    vi.mocked(runtime.apiClient.getSourceEvidence).mockResolvedValue({
+      ...evidence,
+      items: evidence.items.map((item) => ({ ...item, origin: 'SUMMARY' })),
+    });
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <LocalizedShellOutlet />,
+          children: [{ path: 'sources/:sourceId', element: <SourceDetailWorkspace /> }],
+        },
+      ],
+      { initialEntries: ['/sources/source-1?version=version-2'] },
+    );
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    expect(await screen.findByRole('heading', { name: 'Evidence notes', level: 1 })).toBeTruthy();
+    expect(await screen.findByText('Original evidence', { selector: 'pre' })).toBeTruthy();
+    expect(screen.getByText('요약')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /버전 2.*마크다운.*처리 중/ })).toBeTruthy();
+    expect(screen.getByText(/미리보기.*미리보기 사용 불가/)).toBeTruthy();
+    const askReadiness = screen.getByText(/질문 사용.*사용 전 확인 필요/);
+    expect(askReadiness.textContent).toContain('Evidence is ready.');
+    expect(screen.queryByText('Processing')).toBeNull();
+    expect(screen.queryByText('Summary')).toBeNull();
+  });
+
   it('renders server state, keeps search private, and activates valid draft submission', async () => {
     const runtime = createRuntime();
     const router = createMemoryRouter(

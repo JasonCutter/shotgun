@@ -105,7 +105,10 @@ const home: HomeActionCenterView = {
   fetchedAt: '2026-07-29T00:00:00.000Z',
 };
 
-const runtime = (): AppRuntime => {
+const runtime = (
+  locale: 'en-US' | 'ko-KR' = 'en-US',
+  shellView: GlobalShellView = shell,
+): AppRuntime => {
   const queryClient = createFrontendQueryClient();
   const sessionCycleState = createSessionCycleState();
   queryClient.setQueryData(productSessionQueryKey, session);
@@ -114,19 +117,19 @@ const runtime = (): AppRuntime => {
     getSession: vi.fn(async () => session),
     switchActiveProject: vi.fn(async () => session),
     logout: vi.fn(async () => undefined),
-    getGlobalShell: vi.fn(async () => shell),
+    getGlobalShell: vi.fn(async () => shellView),
     getHomeActionCenter: vi.fn(async () => home),
     getProjects: vi.fn(async () => []),
     getPrincipalPreferences: vi.fn(async () => ({
-      preferences: { locale: 'en-US' },
+      preferences: { locale },
       revision: 1,
     })),
   } as unknown as ShotgunApiClient;
   return { apiClient, queryClient, sessionCycleState };
 };
 
-const renderShell = () => {
-  const appRuntime = runtime();
+const renderShell = (locale: 'en-US' | 'ko-KR' = 'en-US', shellView: GlobalShellView = shell) => {
+  const appRuntime = runtime(locale, shellView);
   const router = createMemoryRouter(
     [
       {
@@ -145,6 +148,23 @@ const renderShell = () => {
 };
 
 describe('ApplicationShell', () => {
+  it('localizes only the leading-warning wrapper around the server message', async () => {
+    renderShell('ko-KR', {
+      ...shell,
+      leadingWarning: {
+        code: 'TEST_WARNING',
+        severity: 'WARNING',
+        message: 'Server-owned warning text',
+        additionalCount: 2,
+      },
+    });
+
+    expect((await screen.findByText(/Server-owned warning text/)).textContent).toContain(
+      'Server-owned warning text (2 추가 상태)',
+    );
+    expect(screen.queryByText(/additional states/)).toBeNull();
+  });
+
   it('provides landmarks, skip navigation, current navigation, and project context', async () => {
     renderShell();
     expect(await screen.findByRole('banner')).toBeTruthy();

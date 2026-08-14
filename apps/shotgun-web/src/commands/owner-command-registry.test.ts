@@ -147,7 +147,7 @@ describe('owner command registry', () => {
     );
     expect(pending.find((command) => command.id === 'action.retry')).toMatchObject({
       availability: 'UNAVAILABLE_WITH_REASON',
-      reason: 'Check the current answer request result before starting another action.',
+      reasonKey: 'commands.unavailable.answer_pending',
     });
   });
 
@@ -280,15 +280,15 @@ describe('owner command registry', () => {
     );
     expect(commands.find((command) => command.id === 'preferences.locale')).toMatchObject({
       availability: 'UNAVAILABLE_WITH_REASON',
-      reason: 'Preferences are unavailable while offline.',
+      reasonKey: 'commands.unavailable.preferences_offline',
     });
     expect(commands.find((command) => command.id === 'preferences.timezone')).toMatchObject({
       availability: 'UNAVAILABLE_WITH_REASON',
-      reason: 'Preferences are unavailable while offline.',
+      reasonKey: 'commands.unavailable.preferences_offline',
     });
     expect(commands.find((command) => command.id === 'preferences.display')).toMatchObject({
       availability: 'UNAVAILABLE_WITH_REASON',
-      reason: 'Preferences are unavailable while offline.',
+      reasonKey: 'commands.unavailable.preferences_offline',
     });
     expect(commands.find((command) => command.id === 'ai.configure')).toMatchObject({
       availability: 'UNAVAILABLE_WITH_REASON',

@@ -246,7 +246,7 @@ export const ProjectCommandSurface = ({
           ? t('project.archived')
           : input.commandId === 'project.restore'
             ? t('project.restored')
-            : 'Deletion request submitted.',
+            : t('project.deletion_submitted'),
       );
       setOutcomeRecovery(undefined);
     },
@@ -273,14 +273,14 @@ export const ProjectCommandSurface = ({
         setStep('MANAGE');
         setMessage(
           outcomeRecovery.commandId === 'project.create'
-            ? 'Project created.'
+            ? t('project.created')
             : outcomeRecovery.commandId === 'project.rename'
               ? t('project.name_updated')
               : outcomeRecovery.commandId === 'project.archive'
                 ? t('project.archived')
                 : outcomeRecovery.commandId === 'project.restore'
                   ? t('project.restored')
-                  : 'Deletion request submitted.',
+                  : t('project.deletion_submitted'),
         );
       } else if (outcome.outcomeState === 'REJECTED') {
         setOutcomeRecovery(undefined);

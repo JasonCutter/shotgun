@@ -15,7 +15,10 @@ import type {
 import { useAppRuntime } from '../app/providers.js';
 import { useAccessibleDialog } from '../app/use-accessible-dialog.js';
 import { safeErrorMessage } from '../components/error-state.js';
-import { useProductLocalization } from '../localization/product-localization.js';
+import {
+  useProductLocalization,
+  type ProductTranslator,
+} from '../localization/product-localization.js';
 import type { AICommandId } from './owner-command-registry.js';
 
 type Feedback = {
@@ -78,27 +81,31 @@ const isConclusiveCredentialRejection = (error: unknown): boolean => {
   return candidate.failure !== undefined && candidate.recovery !== 'RESOLVE_EXISTING_OUTCOME';
 };
 
-const statusLabel = (status: AITestConnectionResult['status']): string => {
+const statusLabel = (status: AITestConnectionResult['status'], t: ProductTranslator): string => {
   switch (status) {
     case 'CONNECTED':
-      return 'Connected';
+      return t('ai.status.connected');
     case 'AUTHENTICATION_FAILED':
-      return 'Authentication failed';
+      return t('ai.status.authentication_failed');
     case 'MODEL_UNAVAILABLE':
-      return 'Model unavailable';
+      return t('ai.status.model_unavailable');
     case 'RATE_LIMITED':
-      return 'Rate limited';
+      return t('ai.status.rate_limited');
     case 'TEMPORARILY_UNAVAILABLE':
-      return 'Temporarily unavailable';
+      return t('ai.status.temporarily_unavailable');
     default:
-      return 'Connection failed';
+      return t('ai.status.connection_failed');
   }
 };
 
-const privacyStateLabel = (privacy: AISettingsPrivacyStatus | undefined): string => {
-  if (!privacy) return 'Review required';
-  if (privacy.approval?.approved || privacy.legacyGeminiCompatibility) return 'Approved';
-  if (privacy.approval?.approved === false) return 'Not approved';
+const privacyStateLabel = (
+  privacy: AISettingsPrivacyStatus | undefined,
+  t: ProductTranslator,
+): string => {
+  if (!privacy) return t('ai.privacy.review_required');
+  if (privacy.approval?.approved || privacy.legacyGeminiCompatibility)
+    return t('ai.privacy.approved');
+  if (privacy.approval?.approved === false) return t('ai.privacy.not_approved');
   return 'Review required';
 };
 
@@ -256,10 +263,10 @@ export const AICommandSurface = ({
       setFeedback({
         tone: 'error',
         title: input.credentialWasSaved
-          ? 'Credential saved; AI configuration was not changed'
-          : 'AI configuration was not saved',
+          ? t('ai.configuration_unchanged_after_credential')
+          : t('ai.configuration_not_saved'),
         detail: input.credentialWasSaved
-          ? 'The saved credential was not repeated. Refresh the current settings and explicitly try the configuration again.'
+          ? t('ai.credential_not_repeated')
           : safeErrorMessage(error),
       });
       if (input.credentialWasSaved) await refreshSettings();
@@ -349,7 +356,7 @@ export const AICommandSurface = ({
       setTestResult(result);
       setFeedback({
         tone: result.status === 'CONNECTED' ? 'success' : 'error',
-        title: statusLabel(result.status),
+        title: statusLabel(result.status, t),
         detail: result.safeMessage,
       });
     },
@@ -699,13 +706,13 @@ export const AICommandSurface = ({
             ) : null}
             {testResult ? (
               <p role="status">
-                {statusLabel(testResult.status)}: {testResult.safeMessage}
+                {statusLabel(testResult.status, t)}: {testResult.safeMessage}
               </p>
             ) : null}
             {isConfigure ? (
               <section className="ai-command-section" aria-labelledby="ai-privacy-heading">
                 <h3 id="ai-privacy-heading">{t('ai.provider_privacy')}</h3>
-                <p>{privacyStateLabel(selectedPrivacy)}</p>
+                <p>{privacyStateLabel(selectedPrivacy, t)}</p>
                 {selectedPrivacy?.legacyGeminiCompatibility ? (
                   <p>{t('ai.historical_compatibility')}</p>
                 ) : null}

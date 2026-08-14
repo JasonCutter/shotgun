@@ -63,6 +63,7 @@ export type OwnerCommandDefinition = {
   readonly keywords: readonly string[];
   readonly availability: OwnerCommandAvailability;
   readonly reason?: string;
+  readonly reasonKey?: string;
   readonly risk: OwnerCommandRisk;
   readonly presentation: OwnerCommandPresentation;
   readonly context?: { readonly projectId?: string };
@@ -80,13 +81,16 @@ export type OwnerCommandRegistryOptions = {
   readonly projects?: readonly ProjectListItemView[];
 };
 
-type OwnerCommandTemplate = Omit<OwnerCommandDefinition, 'availability' | 'reason' | 'context'> & {
+type OwnerCommandTemplate = Omit<
+  OwnerCommandDefinition,
+  'availability' | 'reason' | 'reasonKey' | 'context'
+> & {
   readonly getAvailability: (
     shell: GlobalShellView,
     isOffline: boolean,
     projects: readonly ProjectListItemView[] | undefined,
     hasTechnicalInspection: boolean,
-  ) => Pick<OwnerCommandDefinition, 'availability' | 'reason'>;
+  ) => Pick<OwnerCommandDefinition, 'availability' | 'reason' | 'reasonKey'>;
 };
 
 const categoryOrder: Record<OwnerCommandCategory, number> = {
@@ -101,82 +105,84 @@ const categoryOrder: Record<OwnerCommandCategory, number> = {
   INSPECTION: 8,
 };
 
-const ANSWER_COMMAND_TEMPLATES: readonly Omit<OwnerCommandDefinition, 'availability' | 'reason'>[] =
-  [
-    {
-      id: 'answer.export',
-      category: 'ANSWER',
-      label: 'Export answer',
-      description: 'Export the selected answer as Markdown',
-      aliases: ['answer export', 'export answer'],
-      keywords: ['answer', 'markdown', 'download'],
-      risk: 'READ',
-      presentation: 'DIALOG',
-      action: { kind: 'OPEN_ANSWER_FLOW', commandId: 'answer.export' },
-    },
-    {
-      id: 'action.retry',
-      category: 'ANSWER',
-      label: 'Retry answer',
-      description: 'Retry the selected answer with an available mode',
-      aliases: ['answer retry', 'retry answer'],
-      keywords: ['answer', 'same context', 'current policy', 'recovery'],
-      risk: 'WRITE',
-      presentation: 'DIALOG',
-      action: { kind: 'OPEN_ANSWER_FLOW', commandId: 'action.retry' },
-    },
-    {
-      id: 'answer.propose_intake',
-      category: 'ANSWER',
-      label: 'Propose Intake Draft',
-      description: 'Create an Intake Draft proposal from the selected answer',
-      aliases: ['answer intake', 'propose intake'],
-      keywords: ['answer', 'draft', 'intake'],
-      risk: 'WRITE',
-      presentation: 'DIALOG',
-      action: { kind: 'OPEN_ANSWER_FLOW', commandId: 'answer.propose_intake' },
-    },
-    {
-      id: 'answer.propose_change',
-      category: 'ANSWER',
-      label: 'Propose Draft ChangeSet',
-      description: 'Create a Draft ChangeSet proposal from the selected answer',
-      aliases: ['answer change', 'propose change'],
-      keywords: ['answer', 'draft', 'change set', 'review'],
-      risk: 'WRITE',
-      presentation: 'DIALOG',
-      action: { kind: 'OPEN_ANSWER_FLOW', commandId: 'answer.propose_change' },
-    },
-    {
-      id: 'answer.propose_directive',
-      category: 'ANSWER',
-      label: 'Propose Directive',
-      description: 'Create a User Directive proposal from the selected answer',
-      aliases: ['answer directive', 'propose directive'],
-      keywords: ['answer', 'directive', 'proposal'],
-      risk: 'WRITE',
-      presentation: 'DIALOG',
-      action: { kind: 'OPEN_ANSWER_FLOW', commandId: 'answer.propose_directive' },
-    },
-  ];
+const ANSWER_COMMAND_TEMPLATES: readonly Omit<
+  OwnerCommandDefinition,
+  'availability' | 'reason' | 'reasonKey'
+>[] = [
+  {
+    id: 'answer.export',
+    category: 'ANSWER',
+    label: 'Export answer',
+    description: 'Export the selected answer as Markdown',
+    aliases: ['answer export', 'export answer'],
+    keywords: ['answer', 'markdown', 'download'],
+    risk: 'READ',
+    presentation: 'DIALOG',
+    action: { kind: 'OPEN_ANSWER_FLOW', commandId: 'answer.export' },
+  },
+  {
+    id: 'action.retry',
+    category: 'ANSWER',
+    label: 'Retry answer',
+    description: 'Retry the selected answer with an available mode',
+    aliases: ['answer retry', 'retry answer'],
+    keywords: ['answer', 'same context', 'current policy', 'recovery'],
+    risk: 'WRITE',
+    presentation: 'DIALOG',
+    action: { kind: 'OPEN_ANSWER_FLOW', commandId: 'action.retry' },
+  },
+  {
+    id: 'answer.propose_intake',
+    category: 'ANSWER',
+    label: 'Propose Intake Draft',
+    description: 'Create an Intake Draft proposal from the selected answer',
+    aliases: ['answer intake', 'propose intake'],
+    keywords: ['answer', 'draft', 'intake'],
+    risk: 'WRITE',
+    presentation: 'DIALOG',
+    action: { kind: 'OPEN_ANSWER_FLOW', commandId: 'answer.propose_intake' },
+  },
+  {
+    id: 'answer.propose_change',
+    category: 'ANSWER',
+    label: 'Propose Draft ChangeSet',
+    description: 'Create a Draft ChangeSet proposal from the selected answer',
+    aliases: ['answer change', 'propose change'],
+    keywords: ['answer', 'draft', 'change set', 'review'],
+    risk: 'WRITE',
+    presentation: 'DIALOG',
+    action: { kind: 'OPEN_ANSWER_FLOW', commandId: 'answer.propose_change' },
+  },
+  {
+    id: 'answer.propose_directive',
+    category: 'ANSWER',
+    label: 'Propose Directive',
+    description: 'Create a User Directive proposal from the selected answer',
+    aliases: ['answer directive', 'propose directive'],
+    keywords: ['answer', 'directive', 'proposal'],
+    risk: 'WRITE',
+    presentation: 'DIALOG',
+    action: { kind: 'OPEN_ANSWER_FLOW', commandId: 'answer.propose_directive' },
+  },
+];
 
 const answerCommandAvailability = (
   commandId: AnswerCommandId,
   context: AnswerCommandContext | undefined,
   isOffline: boolean,
   commandPending: boolean,
-): Pick<OwnerCommandDefinition, 'availability' | 'reason'> => {
+): Pick<OwnerCommandDefinition, 'availability' | 'reason' | 'reasonKey'> => {
   if (!context) return { availability: 'HIDDEN' };
   if (isOffline) {
     return {
       availability: 'UNAVAILABLE_WITH_REASON',
-      reason: 'Answer actions are unavailable while offline.',
+      reasonKey: 'commands.unavailable.answer_offline',
     };
   }
   if (commandPending) {
     return {
       availability: 'UNAVAILABLE_WITH_REASON',
-      reason: 'Check the current answer request result before starting another action.',
+      reasonKey: 'commands.unavailable.answer_pending',
     };
   }
   const available =
@@ -197,7 +203,7 @@ const normalize = (value: string): string => value.trim().toLocaleLowerCase();
 
 const navigationAvailability = (
   item: GlobalShellView['navigation'][number],
-): Pick<OwnerCommandDefinition, 'availability' | 'reason'> => {
+): Pick<OwnerCommandDefinition, 'availability' | 'reason' | 'reasonKey'> => {
   if (item.availability === 'AVAILABLE') return { availability: 'AVAILABLE' };
   if (item.availability === 'HIDDEN') return { availability: 'HIDDEN' };
   return {
@@ -209,7 +215,7 @@ const navigationAvailability = (
 const explicitRouteAvailability = (
   shell: GlobalShellView,
   routeId: TargetRouteView['routeId'],
-): Pick<OwnerCommandDefinition, 'availability' | 'reason'> => {
+): Pick<OwnerCommandDefinition, 'availability' | 'reason' | 'reasonKey'> => {
   const navigationItem = shell.navigation.find((item) => item.targetRoute?.routeId === routeId);
   return navigationItem ? navigationAvailability(navigationItem) : { availability: 'AVAILABLE' };
 };
@@ -217,11 +223,11 @@ const explicitRouteAvailability = (
 const featureAvailability = (
   feature: GlobalShellView['features'][number] | undefined,
   isOffline: boolean,
-): Pick<OwnerCommandDefinition, 'availability' | 'reason'> => {
+): Pick<OwnerCommandDefinition, 'availability' | 'reason' | 'reasonKey'> => {
   if (isOffline) {
     return {
       availability: 'UNAVAILABLE_WITH_REASON',
-      reason: 'Search is unavailable while offline.',
+      reasonKey: 'commands.unavailable.search_offline',
     };
   }
   if (!feature || feature.availability === 'HIDDEN') return { availability: 'HIDDEN' };
@@ -242,11 +248,11 @@ const projectCommandAvailability = (
   shell: GlobalShellView,
   isOffline: boolean,
   projects: readonly ProjectListItemView[] | undefined,
-): Pick<OwnerCommandDefinition, 'availability' | 'reason'> => {
+): Pick<OwnerCommandDefinition, 'availability' | 'reason' | 'reasonKey'> => {
   if (isOffline) {
     return {
       availability: 'UNAVAILABLE_WITH_REASON',
-      reason: 'Project controls are unavailable while offline.',
+      reasonKey: 'commands.unavailable.project_offline',
     };
   }
   if (!projects) return { availability: 'HIDDEN' };
@@ -271,17 +277,17 @@ const projectCommandAvailability = (
 const preferenceCommandAvailability = (
   shell: GlobalShellView,
   isOffline: boolean,
-): Pick<OwnerCommandDefinition, 'availability' | 'reason'> => {
+): Pick<OwnerCommandDefinition, 'availability' | 'reason' | 'reasonKey'> => {
   if (isOffline) {
     return {
       availability: 'UNAVAILABLE_WITH_REASON',
-      reason: 'Preferences are unavailable while offline.',
+      reasonKey: 'commands.unavailable.preferences_offline',
     };
   }
   if (!shell.activeProject) {
     return {
       availability: 'UNAVAILABLE_WITH_REASON',
-      reason: 'Preferences are unavailable until a Project is active.',
+      reasonKey: 'commands.unavailable.preferences_project_required',
     };
   }
   return { availability: 'AVAILABLE' };
@@ -291,7 +297,7 @@ const focusedCommandAvailability = (
   shell: GlobalShellView,
   isOffline: boolean,
   label: string,
-): Pick<OwnerCommandDefinition, 'availability' | 'reason'> => {
+): Pick<OwnerCommandDefinition, 'availability' | 'reason' | 'reasonKey'> => {
   if (isOffline) {
     return {
       availability: 'UNAVAILABLE_WITH_REASON',

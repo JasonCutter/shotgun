@@ -236,7 +236,11 @@ export const OwnerCommandPalette = ({
                             <strong>{command.label}</strong>
                             <small>{command.description}</small>
                           </span>
-                          {unavailable && command.reason ? <small>{command.reason}</small> : null}
+                          {unavailable && (command.reasonKey || command.reason) ? (
+                            <small>
+                              {command.reasonKey ? t(command.reasonKey as never) : command.reason}
+                            </small>
+                          ) : null}
                         </button>
                       </li>
                     );

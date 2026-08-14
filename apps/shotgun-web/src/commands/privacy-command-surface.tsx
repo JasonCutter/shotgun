@@ -237,7 +237,7 @@ export const PrivacyCommandSurface = ({
         ) : null}
         {privacyData ? (
           <>
-            <section className="privacy-command-section" aria-label="Privacy summary">
+            <section className="privacy-command-section" aria-label={t('privacy.summary')}>
               <p>
                 <strong>{t('privacy.profile_label')}</strong>{' '}
                 {privacyProfileLabel(privacyData.profileName)}
@@ -248,17 +248,21 @@ export const PrivacyCommandSurface = ({
               </p>
               <p>
                 <strong>{t('privacy.external_transfer_label')}</strong>{' '}
-                {privacyData.externalTransferAllowed ? 'Allowed' : 'Not approved'}
+                {privacyData.externalTransferAllowed
+                  ? t('privacy.external_allowed')
+                  : t('privacy.not_approved')}
               </p>
               <p>
                 <strong>{t('privacy.project_approval_label')}</strong>{' '}
-                {privacyData.approvalStatus.replaceAll('_', ' ')}
+                {privacyData.approvalStatus === 'REVIEW_PENDING'
+                  ? t('privacy.approval.review_pending')
+                  : t('privacy.not_approved')}
               </p>
               <p>
                 <strong>{t('privacy.deployment_label')}</strong>{' '}
                 {privacyData.deploymentAllowsPrivateExternalTransfer
-                  ? 'May permit private external transfer after approval.'
-                  : 'Currently blocks private external transfer.'}
+                  ? t('privacy.transfer_may_permit')
+                  : t('privacy.transfer_blocked')}
               </p>
               <p>{t('privacy.restricted_context')}</p>
               <p>
@@ -274,7 +278,7 @@ export const PrivacyCommandSurface = ({
               <p>{t('privacy.loading_preconditions')}</p>
             ) : null}
             {reviewMode && snapshotQuery.isError ? (
-              <p role="alert">Current privacy review preconditions could not be loaded.</p>
+              <p role="alert">{t('privacy.preconditions_load_failed')}</p>
             ) : null}
             {reviewMode && !privacyData.externalTransferAllowed && !effectiveReviewProposalId ? (
               <button

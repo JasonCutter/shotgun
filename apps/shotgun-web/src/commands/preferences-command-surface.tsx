@@ -242,7 +242,7 @@ export const PreferencesCommandSurface = ({
                 >
                   <option value="ko-KR">ko-KR</option>
                   <option value="en-US">en-US</option>
-                  <option value="ja-JP">ja-JP (English fallback)</option>
+                  <option value="ja-JP">ja-JP ({t('preferences.japanese_fallback')})</option>
                 </select>
               </div>
             ) : null}
@@ -300,7 +300,7 @@ export const PreferencesCommandSurface = ({
                     onChange={(event) => setReducedMotion(event.currentTarget.checked)}
                     disabled={pending}
                   />
-                  Reduce Motion / Animations
+                  {t('preferences.reduced_motion')}
                 </label>
               </>
             ) : null}

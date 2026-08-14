@@ -1,4 +1,4 @@
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 
@@ -8,6 +8,7 @@ import { useAppRuntime } from '../app/providers.js';
 import { safeErrorMessage } from '../components/error-state.js';
 import {
   productSessionQueryKey,
+  projectAdminQueryKey,
   purgeProjectScopedCaches,
   sessionBoundaryQueryKey,
 } from '../app/query-keys.js';
@@ -15,9 +16,11 @@ import { OwnerCommandPalette } from '../commands/owner-command-palette.js';
 import {
   createOwnerCommandRegistry,
   type OwnerCommandDefinition,
+  type ProjectCommandId,
 } from '../commands/owner-command-registry.js';
 import { useLeaveGuard } from '../session/leave-guard-context.js';
 import { useConnectivityState } from '../shell/use-connectivity-state.js';
+import { ProjectCommandSurface } from '../commands/project-command-surface.js';
 import { GlobalSearchDialog } from './global-search-dialog.js';
 
 export const GlobalTools = ({ shell }: { readonly shell: GlobalShellView }) => {
@@ -30,7 +33,13 @@ export const GlobalTools = ({ shell }: { readonly shell: GlobalShellView }) => {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteInvoker, setPaletteInvoker] = useState<HTMLElement | null>(null);
   const [paletteResetSignal, setPaletteResetSignal] = useState(0);
+  const [projectCommand, setProjectCommand] = useState<ProjectCommandId | null>(null);
+  const [projectCommandInvoker, setProjectCommandInvoker] = useState<HTMLElement | null>(null);
   const [announcement, setAnnouncement] = useState('');
+  const projectsQuery = useQuery({
+    queryKey: projectAdminQueryKey(shell.principalId),
+    queryFn: () => apiClient.getProjects(),
+  });
   const commandRegistry = useMemo(
     () =>
       createOwnerCommandRegistry({
@@ -38,8 +47,9 @@ export const GlobalTools = ({ shell }: { readonly shell: GlobalShellView }) => {
         isOffline: connectivity.isOffline,
         includeProjectSwitch: true,
         includeSearch: true,
+        projects: projectsQuery.data,
       }),
-    [connectivity.isOffline, shell],
+    [connectivity.isOffline, projectsQuery.data, shell],
   );
 
   useEffect(() => {
@@ -88,6 +98,12 @@ export const GlobalTools = ({ shell }: { readonly shell: GlobalShellView }) => {
     if (command.action.kind === 'OPEN_COMMANDS') {
       setPaletteResetSignal((current) => current + 1);
       setPaletteOpen(true);
+      return;
+    }
+    if (command.action.kind === 'OPEN_PROJECT_FLOW') {
+      setProjectCommandInvoker(paletteInvoker);
+      setProjectCommand(command.action.commandId);
+      setPaletteOpen(false);
       return;
     }
     setPaletteOpen(false);
@@ -156,6 +172,13 @@ export const GlobalTools = ({ shell }: { readonly shell: GlobalShellView }) => {
         invoker={paletteInvoker}
         onClose={() => setPaletteOpen(false)}
         onSelect={handleCommand}
+      />
+      <ProjectCommandSurface
+        open={projectCommand !== null}
+        commandId={projectCommand}
+        shell={shell}
+        invoker={projectCommandInvoker}
+        onClose={() => setProjectCommand(null)}
       />
     </div>
   );

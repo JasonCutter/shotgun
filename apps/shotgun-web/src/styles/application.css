@@ -469,6 +469,76 @@ main {
   font-size: 0.85rem;
 }
 
+.project-command-surface {
+  width: min(44rem, 100%);
+}
+
+.project-command-list {
+  display: grid;
+  gap: 0.65rem;
+  margin: 1rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.project-command-row {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.45rem;
+  padding: 0.75rem;
+}
+
+.project-command-row > div:first-child {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.project-command-row span {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.project-command-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: end;
+  gap: 0.45rem;
+}
+
+.project-command-form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.project-command-form label {
+  display: grid;
+  gap: 0.3rem;
+  font-weight: 600;
+}
+
+.project-command-form textarea {
+  min-height: 5rem;
+  resize: vertical;
+}
+
+.project-command-message,
+.project-command-error {
+  border-radius: 0.4rem;
+  padding: 0.65rem 0.75rem;
+}
+
+.project-command-message {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.project-command-error {
+  background: color-mix(in srgb, #b91c1c 14%, transparent);
+  color: #991b1b;
+}
+
 .dialog-actions {
   display: flex;
   gap: 0.75rem;

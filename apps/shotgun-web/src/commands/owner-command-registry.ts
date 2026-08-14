@@ -1,4 +1,4 @@
-import type { GlobalShellView, TargetRouteView } from '@shotgun/api-client';
+import type { GlobalShellView, ProjectListItemView, TargetRouteView } from '@shotgun/api-client';
 
 export type OwnerCommandCategory = 'HELP' | 'SEARCH' | 'PROJECT' | 'NAVIGATION';
 
@@ -8,11 +8,20 @@ export type OwnerCommandRisk = 'READ' | 'WRITE' | 'DESTRUCTIVE';
 
 export type OwnerCommandPresentation = 'NAVIGATE' | 'DIALOG' | 'DRAWER' | 'INLINE' | 'EXECUTE';
 
+export type ProjectCommandId =
+  | 'project.manage'
+  | 'project.create'
+  | 'project.rename'
+  | 'project.archive'
+  | 'project.restore'
+  | 'project.delete_request';
+
 export type OwnerCommandAction =
   | { readonly kind: 'NAVIGATE'; readonly targetRoute: TargetRouteView }
   | { readonly kind: 'NAVIGATE_PATH'; readonly href: '/settings/ai' | '/settings/privacy' }
   | { readonly kind: 'OPEN_COMMANDS' }
   | { readonly kind: 'OPEN_SEARCH' }
+  | { readonly kind: 'OPEN_PROJECT_FLOW'; readonly commandId: ProjectCommandId }
   | { readonly kind: 'SWITCH_PROJECT'; readonly projectId: string };
 
 export type OwnerCommandDefinition = {
@@ -35,12 +44,14 @@ export type OwnerCommandRegistryOptions = {
   readonly isOffline?: boolean;
   readonly includeProjectSwitch?: boolean;
   readonly includeSearch?: boolean;
+  readonly projects?: readonly ProjectListItemView[];
 };
 
 type OwnerCommandTemplate = Omit<OwnerCommandDefinition, 'availability' | 'reason' | 'context'> & {
   readonly getAvailability: (
     shell: GlobalShellView,
     isOffline: boolean,
+    projects: readonly ProjectListItemView[] | undefined,
   ) => Pick<OwnerCommandDefinition, 'availability' | 'reason'>;
 };
 
@@ -95,6 +106,37 @@ const navigate = (
   href: TargetRouteView['href'],
 ): OwnerCommandAction => ({ kind: 'NAVIGATE', targetRoute: { routeId, href } });
 
+const projectCommandAvailability = (
+  commandId: ProjectCommandId,
+  shell: GlobalShellView,
+  isOffline: boolean,
+  projects: readonly ProjectListItemView[] | undefined,
+): Pick<OwnerCommandDefinition, 'availability' | 'reason'> => {
+  if (isOffline) {
+    return {
+      availability: 'UNAVAILABLE_WITH_REASON',
+      reason: 'Project controls are unavailable while offline.',
+    };
+  }
+  if (!projects) return { availability: 'HIDDEN' };
+  if (commandId === 'project.manage') return { availability: 'AVAILABLE' };
+  if (commandId === 'project.create') {
+    return shell.activeProject ? { availability: 'AVAILABLE' } : { availability: 'HIDDEN' };
+  }
+  if (!shell.activeProject) return { availability: 'HIDDEN' };
+
+  const capability = {
+    'project.rename': 'canRename',
+    'project.archive': 'canArchive',
+    'project.restore': 'canRestore',
+    'project.delete_request': 'canDelete',
+  } as const;
+  const capabilityKey =
+    capability[commandId as Exclude<ProjectCommandId, 'project.manage' | 'project.create'>];
+  const hasEligibleProject = projects.some((project) => project.capability[capabilityKey]);
+  return hasEligibleProject ? { availability: 'AVAILABLE' } : { availability: 'HIDDEN' };
+};
+
 const HFM_COMMAND_TEMPLATES: readonly OwnerCommandTemplate[] = [
   {
     id: 'help.commands',
@@ -132,9 +174,75 @@ const HFM_COMMAND_TEMPLATES: readonly OwnerCommandTemplate[] = [
     aliases: ['project admin', 'projects', '프로젝트 관리'],
     keywords: ['project settings', 'project list', 'project details', '프로젝트'],
     risk: 'READ',
-    presentation: 'NAVIGATE',
-    action: navigate('settings-projects', '/settings/projects'),
-    getAvailability: (shell) => explicitRouteAvailability(shell, 'settings-projects'),
+    presentation: 'DRAWER',
+    action: { kind: 'OPEN_PROJECT_FLOW', commandId: 'project.manage' },
+    getAvailability: (shell, isOffline, projects) =>
+      projectCommandAvailability('project.manage', shell, isOffline, projects),
+  },
+  {
+    id: 'project.create',
+    category: 'PROJECT',
+    label: 'Create Project',
+    description: 'Create an additional Project',
+    aliases: ['new project', 'add project', '프로젝트 만들기'],
+    keywords: ['project administration', 'project setup', '프로젝트 생성'],
+    risk: 'WRITE',
+    presentation: 'DIALOG',
+    action: { kind: 'OPEN_PROJECT_FLOW', commandId: 'project.create' },
+    getAvailability: (shell, isOffline, projects) =>
+      projectCommandAvailability('project.create', shell, isOffline, projects),
+  },
+  {
+    id: 'project.rename',
+    category: 'PROJECT',
+    label: 'Rename Project',
+    description: 'Change a Project name',
+    aliases: ['rename project', '프로젝트 이름 변경'],
+    keywords: ['project identity', '프로젝트'],
+    risk: 'WRITE',
+    presentation: 'DIALOG',
+    action: { kind: 'OPEN_PROJECT_FLOW', commandId: 'project.rename' },
+    getAvailability: (shell, isOffline, projects) =>
+      projectCommandAvailability('project.rename', shell, isOffline, projects),
+  },
+  {
+    id: 'project.archive',
+    category: 'PROJECT',
+    label: 'Archive Project',
+    description: 'Archive a Project after confirmation',
+    aliases: ['archive project', '프로젝트 보관'],
+    keywords: ['project lifecycle', '프로젝트'],
+    risk: 'WRITE',
+    presentation: 'DIALOG',
+    action: { kind: 'OPEN_PROJECT_FLOW', commandId: 'project.archive' },
+    getAvailability: (shell, isOffline, projects) =>
+      projectCommandAvailability('project.archive', shell, isOffline, projects),
+  },
+  {
+    id: 'project.restore',
+    category: 'PROJECT',
+    label: 'Restore Project',
+    description: 'Restore a Project when valid',
+    aliases: ['restore project', '프로젝트 복원'],
+    keywords: ['project lifecycle', '프로젝트'],
+    risk: 'WRITE',
+    presentation: 'DIALOG',
+    action: { kind: 'OPEN_PROJECT_FLOW', commandId: 'project.restore' },
+    getAvailability: (shell, isOffline, projects) =>
+      projectCommandAvailability('project.restore', shell, isOffline, projects),
+  },
+  {
+    id: 'project.delete_request',
+    category: 'PROJECT',
+    label: 'Request Project Deletion',
+    description: 'Request deletion after explicit confirmation',
+    aliases: ['delete project', 'remove project', '프로젝트 삭제 요청'],
+    keywords: ['project lifecycle', 'destructive', '프로젝트'],
+    risk: 'DESTRUCTIVE',
+    presentation: 'DIALOG',
+    action: { kind: 'OPEN_PROJECT_FLOW', commandId: 'project.delete_request' },
+    getAvailability: (shell, isOffline, projects) =>
+      projectCommandAvailability('project.delete_request', shell, isOffline, projects),
   },
   {
     id: 'ai.configure',
@@ -227,11 +335,12 @@ export const createOwnerCommandRegistry = ({
   isOffline = false,
   includeProjectSwitch = true,
   includeSearch = true,
+  projects,
 }: OwnerCommandRegistryOptions): readonly OwnerCommandDefinition[] => {
   const templateCommands = HFM_COMMAND_TEMPLATES.filter(
     (template) => includeSearch || template.id !== 'search.global',
   ).map((template): OwnerCommandDefinition => {
-    const state = template.getAvailability(shell, isOffline);
+    const state = template.getAvailability(shell, isOffline, projects);
     return {
       id: template.id,
       category: template.category,

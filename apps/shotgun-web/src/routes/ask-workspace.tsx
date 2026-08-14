@@ -21,10 +21,13 @@ import {
 } from '@shotgun/api-client';
 
 import { useAppRuntime } from '../app/providers.js';
+import { projectAdminQueryKey } from '../app/query-keys.js';
 import { OwnerCommandPalette } from '../commands/owner-command-palette.js';
+import { ProjectCommandSurface } from '../commands/project-command-surface.js';
 import {
   createOwnerCommandRegistry,
   type OwnerCommandDefinition,
+  type ProjectCommandId,
 } from '../commands/owner-command-registry.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
@@ -96,6 +99,8 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [commandPaletteInvoker, setCommandPaletteInvoker] = useState<HTMLElement | null>(null);
   const [commandPaletteResetSignal, setCommandPaletteResetSignal] = useState(0);
+  const [projectCommand, setProjectCommand] = useState<ProjectCommandId | null>(null);
+  const [projectCommandInvoker, setProjectCommandInvoker] = useState<HTMLElement | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchInvoker, setSearchInvoker] = useState<HTMLElement | null>(null);
   const [draftOwnerProjectId, setDraftOwnerProjectId] = useState<string>();
@@ -154,6 +159,10 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
       }),
     enabled: workspace !== undefined,
   });
+  const projectsQuery = useQuery({
+    queryKey: projectAdminQueryKey(shell.principalId),
+    queryFn: () => apiClient.getProjects(),
+  });
 
   const commandRegistry = useMemo(
     () =>
@@ -162,8 +171,9 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
         isOffline: connectivity.isOffline,
         includeProjectSwitch: false,
         includeSearch: true,
+        projects: projectsQuery.data,
       }),
-    [connectivity.isOffline, shell],
+    [connectivity.isOffline, projectsQuery.data, shell],
   );
 
   const questionRef = useRef(question);
@@ -175,6 +185,8 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     setQuestion('');
     setCommandPaletteOpen(false);
     setCommandPaletteInvoker(null);
+    setProjectCommand(null);
+    setProjectCommandInvoker(null);
     setSearchOpen(false);
     setSearchInvoker(null);
     setDraftOwnerProjectId(undefined);
@@ -567,6 +579,14 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
       questionRef.current = '';
       setCommandPaletteResetSignal((current) => current + 1);
       setCommandPaletteOpen(true);
+      return;
+    }
+    if (command.action.kind === 'OPEN_PROJECT_FLOW') {
+      setProjectCommandInvoker(commandPaletteInvoker);
+      setProjectCommand(command.action.commandId);
+      setCommandPaletteOpen(false);
+      setQuestion('');
+      questionRef.current = '';
       return;
     }
     setCommandPaletteOpen(false);
@@ -1008,6 +1028,13 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
         invoker={commandPaletteInvoker}
         onClose={() => setCommandPaletteOpen(false)}
         onSelect={handleAskCommand}
+      />
+      <ProjectCommandSurface
+        open={projectCommand !== null}
+        commandId={projectCommand}
+        shell={shell}
+        invoker={projectCommandInvoker}
+        onClose={() => setProjectCommand(null)}
       />
 
       {answerRunCommandNotice ? <p role="status">{answerRunCommandNotice}</p> : null}

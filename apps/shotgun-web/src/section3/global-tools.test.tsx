@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type {
   GlobalSearchResultView,
   GlobalShellView,
+  ProjectListItemView,
   ShotgunApiClient,
 } from '@shotgun/api-client';
 
@@ -66,6 +67,25 @@ const searchResult: GlobalSearchResultView = {
   fetchedAt: '2026-08-14T00:00:00.000Z',
 };
 
+const project: ProjectListItemView = {
+  id: 'project-1',
+  name: 'Current Project',
+  description: '',
+  isOwner: true,
+  status: 'ACTIVE',
+  active: true,
+  createdAt: '2026-08-14T00:00:00.000Z',
+  updatedAt: '2026-08-14T00:00:00.000Z',
+  revision: 3,
+  capability: {
+    canRename: true,
+    canArchive: true,
+    canRestore: false,
+    canDelete: true,
+    canManagePolicies: true,
+  },
+};
+
 const runtime = (apiClient: Partial<ShotgunApiClient>): AppRuntime => ({
   apiClient: apiClient as ShotgunApiClient,
   queryClient: createFrontendQueryClient(),
@@ -98,7 +118,9 @@ describe('GlobalTools HFM-S1 preservation', () => {
     });
 
     render(
-      <AppProviders runtime={runtime({ switchActiveProject })}>
+      <AppProviders
+        runtime={runtime({ switchActiveProject, getProjects: vi.fn(async () => [project]) })}
+      >
         <MemoryRouter>
           <GlobalTools shell={shell} />
         </MemoryRouter>
@@ -109,5 +131,23 @@ describe('GlobalTools HFM-S1 preservation', () => {
     await user.click(screen.getByRole('button', { name: /Switch to Research Project/ }));
 
     expect((await screen.findByRole('alert')).textContent).toContain('Project switch failed');
+  });
+
+  it('opens Project management as a focused surface from the shared registry', async () => {
+    const user = userEvent.setup();
+    render(
+      <AppProviders runtime={runtime({ getProjects: vi.fn(async () => [project]) })}>
+        <MemoryRouter>
+          <GlobalTools shell={shell} />
+        </MemoryRouter>
+      </AppProviders>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Commands' }));
+    await user.click(await screen.findByRole('button', { name: /^Manage Projects/ }));
+
+    expect(await screen.findByRole('dialog', { name: 'Manage Projects' })).toBeTruthy();
+    expect(screen.getByText('Current Project')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: /settings/i })).toBeNull();
   });
 });

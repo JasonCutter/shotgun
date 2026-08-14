@@ -1,4 +1,4 @@
-import type { GlobalShellView } from '@shotgun/api-client';
+import type { GlobalShellView, ProjectListItemView } from '@shotgun/api-client';
 import { describe, expect, it } from 'vitest';
 
 import { createOwnerCommandRegistry, filterOwnerCommands } from './owner-command-registry.js';
@@ -68,9 +68,48 @@ const shell: GlobalShellView = {
   fetchedAt: '2026-08-14T00:00:00.000Z',
 };
 
+const projects: readonly ProjectListItemView[] = [
+  {
+    id: 'project-1',
+    name: 'Current Project',
+    description: '',
+    isOwner: true,
+    status: 'ACTIVE',
+    active: true,
+    createdAt: '2026-08-14T00:00:00.000Z',
+    updatedAt: '2026-08-14T00:00:00.000Z',
+    revision: 3,
+    capability: {
+      canRename: true,
+      canArchive: true,
+      canRestore: false,
+      canDelete: true,
+      canManagePolicies: true,
+    },
+  },
+  {
+    id: 'project-3',
+    name: 'Archived Project',
+    description: '',
+    isOwner: true,
+    status: 'ARCHIVED',
+    active: false,
+    createdAt: '2026-08-14T00:00:00.000Z',
+    updatedAt: '2026-08-14T00:00:00.000Z',
+    revision: 4,
+    capability: {
+      canRename: false,
+      canArchive: false,
+      canRestore: true,
+      canDelete: false,
+      canManagePolicies: false,
+    },
+  },
+];
+
 describe('owner command registry', () => {
   it('keeps stable IDs separate from localized discovery terms', () => {
-    const commands = createOwnerCommandRegistry({ shell });
+    const commands = createOwnerCommandRegistry({ shell, projects });
 
     expect(commands.map((command) => command.id)).toEqual(
       expect.arrayContaining([
@@ -119,7 +158,7 @@ describe('owner command registry', () => {
   });
 
   it('does not expose generic Settings or unsupported placeholders and preserves offline state', () => {
-    const commands = createOwnerCommandRegistry({ shell, isOffline: true });
+    const commands = createOwnerCommandRegistry({ shell, isOffline: true, projects });
 
     expect(commands.some((command) => command.label === 'Prototype')).toBe(false);
     expect(commands.some((command) => command.id === 'navigate.settings')).toBe(false);
@@ -135,7 +174,7 @@ describe('owner command registry', () => {
   });
 
   it('keeps historical placeholders from suppressing confirmed capabilities', () => {
-    const commands = createOwnerCommandRegistry({ shell });
+    const commands = createOwnerCommandRegistry({ shell, projects });
 
     expect(commands.find((command) => command.id === 'knowledge.open')?.availability).toBe(
       'AVAILABLE',
@@ -173,12 +212,12 @@ describe('owner command registry', () => {
     };
 
     expect(
-      createOwnerCommandRegistry({ shell: hiddenShell }).find(
+      createOwnerCommandRegistry({ shell: hiddenShell, projects }).find(
         (command) => command.id === 'activity.open',
       )?.availability,
     ).toBe('HIDDEN');
     expect(
-      createOwnerCommandRegistry({ shell: temporarilyUnavailableShell }).find(
+      createOwnerCommandRegistry({ shell: temporarilyUnavailableShell, projects }).find(
         (command) => command.id === 'activity.open',
       ),
     ).toMatchObject({
@@ -188,7 +227,7 @@ describe('owner command registry', () => {
   });
 
   it('carries frozen risk and presentation metadata without turning the registry into policy', () => {
-    const commands = createOwnerCommandRegistry({ shell });
+    const commands = createOwnerCommandRegistry({ shell, projects });
 
     expect(commands).toEqual(
       expect.arrayContaining([
@@ -199,5 +238,40 @@ describe('owner command registry', () => {
         expect.objectContaining({ id: 'knowledge.open', risk: 'READ', presentation: 'NAVIGATE' }),
       ]),
     );
+  });
+
+  it('exposes Project controls through focused flows and hides invalid lifecycle actions', () => {
+    const commands = createOwnerCommandRegistry({ shell, projects });
+
+    expect(commands).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'project.manage',
+          risk: 'READ',
+          presentation: 'DRAWER',
+          action: { kind: 'OPEN_PROJECT_FLOW', commandId: 'project.manage' },
+        }),
+        expect.objectContaining({
+          id: 'project.create',
+          risk: 'WRITE',
+          action: { kind: 'OPEN_PROJECT_FLOW', commandId: 'project.create' },
+        }),
+        expect.objectContaining({ id: 'project.rename', risk: 'WRITE' }),
+        expect.objectContaining({ id: 'project.archive', risk: 'WRITE' }),
+        expect.objectContaining({ id: 'project.restore', risk: 'WRITE' }),
+        expect.objectContaining({ id: 'project.delete_request', risk: 'DESTRUCTIVE' }),
+      ]),
+    );
+
+    const noRestoreProjects = projects.map((project) => ({
+      ...project,
+      capability: { ...project.capability, canRestore: false },
+    }));
+    expect(
+      createOwnerCommandRegistry({ shell, projects: noRestoreProjects }).find(
+        (command) => command.id === 'project.restore',
+      )?.availability,
+    ).toBe('HIDDEN');
+    expect(commands.some((command) => command.id === 'navigate.settings')).toBe(false);
   });
 });

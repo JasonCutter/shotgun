@@ -1,7 +1,11 @@
 import { useEffect, useId, useMemo, useState, type KeyboardEvent } from 'react';
 
 import { useAccessibleDialog } from '../app/use-accessible-dialog.js';
-import { filterOwnerCommands, type OwnerCommandDefinition } from './owner-command-registry.js';
+import {
+  filterOwnerCommands,
+  type OwnerCommandCategory,
+  type OwnerCommandDefinition,
+} from './owner-command-registry.js';
 
 export type OwnerCommandPaletteProps = {
   readonly open: boolean;
@@ -26,6 +30,25 @@ export const OwnerCommandPalette = ({
   const [query, setQuery] = useState(initialQuery);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const filteredCommands = useMemo(() => filterOwnerCommands(commands, query), [commands, query]);
+  const commandGroups = useMemo(() => {
+    const categories: readonly OwnerCommandCategory[] = ['HELP', 'SEARCH', 'PROJECT', 'NAVIGATION'];
+    const categoryLabels: Record<OwnerCommandCategory, string> = {
+      HELP: 'Help',
+      SEARCH: 'Search',
+      PROJECT: 'Project',
+      NAVIGATION: 'Navigation',
+    };
+
+    return categories
+      .map((category) => ({
+        category,
+        label: categoryLabels[category],
+        commands: filteredCommands
+          .map((command, index) => ({ command, index }))
+          .filter(({ command }) => command.category === category),
+      }))
+      .filter((group) => group.commands.length > 0);
+  }, [filteredCommands]);
 
   useEffect(() => {
     if (!open) return;
@@ -41,6 +64,9 @@ export const OwnerCommandPalette = ({
   }, [filteredCommands.length]);
 
   if (!open) return null;
+
+  const commandDomId = (command: OwnerCommandDefinition, index: number) =>
+    `${listId}-${command.id}-${command.context?.projectId ?? index}`;
 
   const selectCommand = (command: OwnerCommandDefinition) => {
     if (command.availability !== 'AVAILABLE') return;
@@ -100,45 +126,56 @@ export const OwnerCommandPalette = ({
           aria-controls={listId}
           aria-activedescendant={
             filteredCommands[selectedIndex]
-              ? `${listId}-${filteredCommands[selectedIndex].id}`
+              ? commandDomId(filteredCommands[selectedIndex], selectedIndex)
               : undefined
           }
         />
-        <ul id={listId} className="command-list owner-command-list" role="listbox">
+        <div id={listId} className="command-list owner-command-list" role="listbox">
           {filteredCommands.length === 0 ? (
-            <li className="owner-command-empty" role="status">
+            <p className="owner-command-empty" role="status">
               No matching commands.
-            </li>
+            </p>
           ) : (
-            filteredCommands.map((command, index) => {
-              const unavailable = command.availability !== 'AVAILABLE';
-              return (
-                <li
-                  key={command.id}
-                  id={`${listId}-${command.id}`}
-                  role="option"
-                  aria-selected={index === selectedIndex}
-                >
-                  <button
-                    type="button"
-                    className={
-                      index === selectedIndex ? 'owner-command-option-selected' : undefined
-                    }
-                    disabled={unavailable}
-                    onMouseEnter={() => setSelectedIndex(index)}
-                    onClick={() => selectCommand(command)}
-                  >
-                    <span>
-                      <strong>{command.label}</strong>
-                      <small>{command.description}</small>
-                    </span>
-                    {unavailable && command.reason ? <small>{command.reason}</small> : null}
-                  </button>
-                </li>
-              );
-            })
+            commandGroups.map((group) => (
+              <section
+                key={group.category}
+                className="owner-command-group"
+                aria-labelledby={`${listId}-${group.category}`}
+              >
+                <h3 id={`${listId}-${group.category}`}>{group.label}</h3>
+                <ul className="owner-command-group-list">
+                  {group.commands.map(({ command, index }) => {
+                    const unavailable = command.availability !== 'AVAILABLE';
+                    return (
+                      <li
+                        key={commandDomId(command, index)}
+                        id={commandDomId(command, index)}
+                        role="option"
+                        aria-selected={index === selectedIndex}
+                      >
+                        <button
+                          type="button"
+                          className={
+                            index === selectedIndex ? 'owner-command-option-selected' : undefined
+                          }
+                          disabled={unavailable}
+                          onMouseEnter={() => setSelectedIndex(index)}
+                          onClick={() => selectCommand(command)}
+                        >
+                          <span>
+                            <strong>{command.label}</strong>
+                            <small>{command.description}</small>
+                          </span>
+                          {unavailable && command.reason ? <small>{command.reason}</small> : null}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            ))
           )}
-        </ul>
+        </div>
         <div className="dialog-actions">
           <span className="owner-command-hint">↑↓ Navigate · Enter Select · Esc Close</span>
           <button type="button" onClick={onClose}>

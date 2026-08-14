@@ -675,7 +675,7 @@ describe('AskWorkspace', () => {
           element: <ShellOutlet shell={commandShell} />,
           children: [
             { path: 'ask', element: <AskWorkspace client={mockClient} /> },
-            { path: 'sources', element: <p>Sources destination</p> },
+            { path: 'history', element: <p>History destination</p> },
           ],
         },
       ],
@@ -696,11 +696,11 @@ describe('AskWorkspace', () => {
     await user.type(questionInput, '/');
     expect(screen.getByRole('dialog', { name: 'Commands' })).toBeTruthy();
     const commandSearch = screen.getByRole('textbox', { name: 'Command search' });
-    await user.type(commandSearch, 'sources');
+    await user.type(commandSearch, 'history');
     await user.keyboard('{Enter}');
 
     expect(submitQuestion).not.toHaveBeenCalled();
-    expect(await screen.findByText('Sources destination')).toBeTruthy();
+    expect(await screen.findByText('History destination')).toBeTruthy();
   });
 
   it('uses the semantic form layout and keeps CANONICAL_ONLY submissions source-free', async () => {

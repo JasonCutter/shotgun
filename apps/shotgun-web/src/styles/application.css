@@ -412,11 +412,30 @@ main {
   margin: 0.75rem 0 0;
 }
 
-.owner-command-list li {
+.owner-command-group + .owner-command-group {
+  margin-top: 1rem;
+}
+
+.owner-command-group h3 {
+  margin: 0 0 0.4rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.owner-command-group-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.owner-command-group-list li {
   min-width: 0;
 }
 
-.owner-command-list button {
+.owner-command-group-list button {
   width: 100%;
   display: flex;
   align-items: start;
@@ -425,12 +444,12 @@ main {
   text-align: left;
 }
 
-.owner-command-list button > span {
+.owner-command-group-list button > span {
   display: grid;
   gap: 0.2rem;
 }
 
-.owner-command-list button small {
+.owner-command-group-list button small {
   color: var(--muted);
 }
 

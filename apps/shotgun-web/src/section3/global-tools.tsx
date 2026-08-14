@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router';
 import type { GlobalShellView } from '@shotgun/api-client';
 
 import { useAppRuntime } from '../app/providers.js';
+import { safeErrorMessage } from '../components/error-state.js';
 import {
   productSessionQueryKey,
   purgeProjectScopedCaches,
@@ -88,6 +89,14 @@ export const GlobalTools = ({ shell }: { readonly shell: GlobalShellView }) => {
       navigate(command.action.targetRoute.href);
       return;
     }
+    if (command.action.kind === 'NAVIGATE_PATH') {
+      navigate(command.action.href);
+      return;
+    }
+    if (command.action.kind === 'OPEN_COMMANDS') {
+      setPaletteOpen(true);
+      return;
+    }
     if (command.action.kind === 'OPEN_SEARCH') {
       openSearch(paletteInvoker);
       return;
@@ -130,6 +139,7 @@ export const GlobalTools = ({ shell }: { readonly shell: GlobalShellView }) => {
       <p className="sr-only" aria-live="polite">
         {announcement}
       </p>
+      {projectSwitch.error ? <p role="alert">{safeErrorMessage(projectSwitch.error)}</p> : null}
 
       <GlobalSearchDialog
         shell={shell}

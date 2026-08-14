@@ -8,23 +8,27 @@ import type { OwnerCommandDefinition } from './owner-command-registry.js';
 
 const commands: readonly OwnerCommandDefinition[] = [
   {
-    id: 'navigate.sources',
+    id: 'knowledge.open',
     category: 'NAVIGATION',
-    label: 'Sources',
-    description: 'Open Sources',
-    aliases: ['sources', '소스'],
-    keywords: ['materials'],
+    label: 'Open Knowledge',
+    description: 'Open Knowledge',
+    aliases: ['knowledge'],
+    keywords: ['facts'],
     availability: 'AVAILABLE',
-    action: { kind: 'NAVIGATE', targetRoute: { routeId: 'sources', href: '/sources' } },
+    risk: 'READ',
+    presentation: 'NAVIGATE',
+    action: { kind: 'NAVIGATE', targetRoute: { routeId: 'knowledge', href: '/knowledge' } },
   },
   {
-    id: 'navigate.activity',
+    id: 'activity.open',
     category: 'NAVIGATION',
-    label: 'Activity',
+    label: 'Open Activity',
     description: 'Open Activity',
-    aliases: ['activity', '활동'],
+    aliases: ['activity'],
     keywords: ['operations'],
     availability: 'AVAILABLE',
+    risk: 'READ',
+    presentation: 'NAVIGATE',
     action: { kind: 'NAVIGATE', targetRoute: { routeId: 'activity', href: '/activity' } },
   },
 ];
@@ -59,11 +63,22 @@ describe('OwnerCommandPalette', () => {
 
     await user.click(screen.getByRole('button', { name: 'Open palette' }));
     const search = screen.getByRole('textbox', { name: 'Command search' });
-    await user.type(search, 'sources');
+    await user.type(search, 'knowledge');
     await user.keyboard('{Enter}');
 
-    expect(screen.getByText('navigate.sources')).toBeTruthy();
+    expect(screen.getByText('knowledge.open')).toBeTruthy();
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('renders deterministic category groups while retaining one keyboard selection order', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+
+    await user.click(screen.getByRole('button', { name: 'Open palette' }));
+
+    expect(screen.getByRole('heading', { name: 'Navigation' })).toBeTruthy();
+    await user.keyboard('{ArrowDown}{Enter}');
+    expect(screen.getByText('activity.open')).toBeTruthy();
   });
 
   it('supports pointer selection and restores focus after Escape', async () => {
@@ -72,8 +87,8 @@ describe('OwnerCommandPalette', () => {
     const opener = screen.getByRole('button', { name: 'Open palette' });
 
     await user.click(opener);
-    await user.click(screen.getByRole('button', { name: /Activity/ }));
-    expect(screen.getByText('navigate.activity')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: /Open Activity/ }));
+    expect(screen.getByText('activity.open')).toBeTruthy();
 
     await user.click(opener);
     const search = screen.getByRole('textbox', { name: 'Command search' });

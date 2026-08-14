@@ -165,6 +165,7 @@ describe('ApplicationShell', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Commands' }));
     expect(screen.getByRole('dialog', { name: 'Commands' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Sources/ })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Navigation' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Open Knowledge/ })).toBeTruthy();
   });
 });

@@ -568,6 +568,11 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
       navigate(command.action.targetRoute.href);
       return;
     }
+    if (command.action.kind === 'NAVIGATE_PATH') {
+      navigate(command.action.href);
+      return;
+    }
+    if (command.action.kind === 'OPEN_COMMANDS') return;
     if (command.action.kind === 'OPEN_SEARCH') {
       setSearchInvoker(commandPaletteInvoker);
       setSearchOpen(true);

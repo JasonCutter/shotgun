@@ -62,37 +62,64 @@ describe('owner command registry', () => {
   it('keeps stable IDs separate from localized discovery terms', () => {
     const commands = createOwnerCommandRegistry({ shell });
 
-    expect(commands.map((command) => command.id)).toEqual([
-      'navigate.settings',
-      'navigate.sources',
-      'search.global',
-      'project.switch.project-2',
-    ]);
-    expect(filterOwnerCommands(commands, 'SOURCES').map((command) => command.id)).toEqual([
-      'navigate.sources',
-    ]);
-    expect(filterOwnerCommands(commands, '소스').map((command) => command.id)).toContain(
-      'navigate.sources',
+    expect(commands.map((command) => command.id)).toEqual(
+      expect.arrayContaining([
+        'help.commands',
+        'search.global',
+        'project.manage',
+        'project.switch',
+        'ai.configure',
+        'privacy.open',
+        'knowledge.open',
+        'review.open',
+        'external_action.open',
+        'activity.open',
+        'history.open',
+      ]),
     );
-    expect(filterOwnerCommands(commands, '프로젝트').map((command) => command.id)).toContain(
-      'project.switch.project-2',
-    );
-    expect(commands.find((command) => command.id === 'navigate.sources')?.action).toEqual({
+    expect(commands.some((command) => command.id.startsWith('navigate.'))).toBe(false);
+    expect(filterOwnerCommands(commands, 'SOURCES')).toHaveLength(0);
+    expect(filterOwnerCommands(commands, 'Research Project').map((command) => command.id)).toEqual([
+      'project.switch',
+    ]);
+    expect(commands.find((command) => command.id === 'knowledge.open')?.action).toEqual({
       kind: 'NAVIGATE',
-      targetRoute: { routeId: 'sources', href: '/sources' },
+      targetRoute: { routeId: 'knowledge', href: '/knowledge' },
+    });
+    expect(commands.find((command) => command.id === 'project.switch')).toMatchObject({
+      id: 'project.switch',
+      context: { projectId: 'project-2' },
+      action: { kind: 'SWITCH_PROJECT', projectId: 'project-2' },
     });
   });
 
-  it('does not expose hidden or offline capabilities as selectable commands', () => {
+  it('does not expose generic Settings or unsupported placeholders and preserves offline state', () => {
     const commands = createOwnerCommandRegistry({ shell, isOffline: true });
 
     expect(commands.some((command) => command.label === 'Prototype')).toBe(false);
+    expect(commands.some((command) => command.id === 'navigate.settings')).toBe(false);
+    expect(commands.some((command) => command.id === 'settings')).toBe(false);
+    expect(commands.some((command) => command.id === 'diagnostics.open')).toBe(false);
     expect(commands.find((command) => command.id === 'search.global')?.availability).toBe(
       'UNAVAILABLE_WITH_REASON',
     );
-    expect(
-      commands.find((command) => command.id === 'project.switch.project-2')?.availability,
-    ).toBe('UNAVAILABLE_WITH_REASON');
+    expect(commands.find((command) => command.id === 'project.switch')?.availability).toBe(
+      'UNAVAILABLE_WITH_REASON',
+    );
     expect(filterOwnerCommands(commands, 'global search')).toHaveLength(1);
+  });
+
+  it('carries frozen risk and presentation metadata without turning the registry into policy', () => {
+    const commands = createOwnerCommandRegistry({ shell });
+
+    expect(commands).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'help.commands', risk: 'READ', presentation: 'DIALOG' }),
+        expect.objectContaining({ id: 'search.global', risk: 'READ', presentation: 'DIALOG' }),
+        expect.objectContaining({ id: 'project.switch', risk: 'WRITE', presentation: 'DIALOG' }),
+        expect.objectContaining({ id: 'ai.configure', risk: 'WRITE', presentation: 'DRAWER' }),
+        expect.objectContaining({ id: 'knowledge.open', risk: 'READ', presentation: 'NAVIGATE' }),
+      ]),
+    );
   });
 });

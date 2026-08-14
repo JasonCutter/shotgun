@@ -23,6 +23,7 @@ export const GlobalSearchDialog = ({ shell, open, invoker, onClose }: GlobalSear
   const [crossProject, setCrossProject] = useState(false);
   const [selectedProjectIds, setSelectedProjectIds] = useState<readonly string[]>([]);
   const [searchResult, setSearchResult] = useState<GlobalSearchResultView | null>(null);
+  const [announcement, setAnnouncement] = useState('');
 
   const search = useMutation({
     mutationFn: () =>
@@ -34,7 +35,12 @@ export const GlobalSearchDialog = ({ shell, open, invoker, onClose }: GlobalSear
           : { kind: 'ACTIVE_PROJECT' },
         limit: 20,
       }),
-    onSuccess: (result) => setSearchResult(result),
+    onSuccess: (result) => {
+      setSearchResult(result);
+      setAnnouncement(
+        `${result.results.length} search ${result.results.length === 1 ? 'result' : 'results'} found.`,
+      );
+    },
   });
 
   const close = () => {
@@ -42,6 +48,7 @@ export const GlobalSearchDialog = ({ shell, open, invoker, onClose }: GlobalSear
     setCrossProject(false);
     setSelectedProjectIds([]);
     setSearchResult(null);
+    setAnnouncement('');
     search.reset();
     onClose();
   };
@@ -71,6 +78,9 @@ export const GlobalSearchDialog = ({ shell, open, invoker, onClose }: GlobalSear
     >
       <div className="modal-card">
         <h2 id="global-search-title">Search</h2>
+        <p className="sr-only" aria-live="polite">
+          {announcement}
+        </p>
         <form
           onSubmit={(event) => {
             event.preventDefault();

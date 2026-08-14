@@ -1,7 +1,7 @@
 import { expect, type Page } from '@playwright/test';
 
 export const openTechnicalInformation = async (page: Page) => {
-  await expect(page.getByRole('button', { name: 'Search' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Search', exact: true })).toBeVisible();
   await page.keyboard.press('Control+k');
   const palette = page.getByRole('dialog', { name: 'Commands' });
   await expect(palette).toBeVisible();

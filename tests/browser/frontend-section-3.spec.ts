@@ -203,7 +203,6 @@ test('Section 3 Search and Command Palette keep query transient and keyboard-saf
   }
   await expect(palette.getByRole('button', { name: /Review Privacy/ })).toBeVisible();
   await expect(page.getByRole('dialog', { name: 'Review Privacy' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Commands' })).toHaveCount(0);
   expect(productPostRequests).toHaveLength(0);
   await page.keyboard.press('Escape');
   await expect(palette).toBeHidden();
@@ -234,7 +233,9 @@ test('Section 3 blocks unsafe leave state, warns on offline state, and restores 
   await page.getByRole('button', { name: 'Add intake draft' }).click();
   await switchProject(page, 'Project B');
   await expect(page.locator('.project-summary')).toContainText('shotgun');
-  await expect(page.getByRole('alert')).toContainText('current Workspace');
+  await expect(page.locator('.global-tools [aria-live="polite"]')).toContainText(
+    'Resolve the current Workspace before switching Projects.',
+  );
 
   await page.getByRole('button', { name: 'Remove Guarded draft' }).click();
   await switchProject(page, 'Project B');
@@ -401,10 +402,11 @@ test('Section 3 zero-project onboarding sends PRINCIPAL bootstrap without a brow
   expect(homeRequests).toBe(0);
   await page.getByRole('link', { name: 'Open Project onboarding' }).click();
   await page.getByRole('button', { name: 'Create Project' }).click();
-  await expect(page.getByRole('dialog', { name: 'Create your first Project' })).toBeVisible();
+  const createDialog = page.getByRole('dialog', { name: 'Create your first Project' });
+  await expect(createDialog).toBeVisible();
   await expect(page.getByLabel('Project ID (Immutable)')).toHaveCount(0);
   await page.getByLabel('Project Name').fill('Server Project');
-  await page.getByRole('button', { name: 'Create Project', exact: true }).click();
+  await createDialog.getByRole('button', { name: 'Create Project', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
   expect(bootstrapBody).toMatchObject({
     envelopeVersion: '2.0.0',

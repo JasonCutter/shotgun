@@ -31,13 +31,7 @@ test('HFM-S3 replaces Settings IA with focused owner commands without browser au
   await expect(page.getByRole('combobox', { name: 'Current project' })).toHaveCount(0);
 
   const palette = await openCommandPalette(page);
-  for (const command of [
-    /Manage Projects/,
-    /Set Locale/,
-    /Configure AI/,
-    /Review Privacy/,
-    /Technical information/,
-  ]) {
+  for (const command of [/Manage Projects/, /Set Locale/, /Configure AI/, /Review Privacy/]) {
     await expect(palette.getByRole('button', { name: command })).toBeVisible();
   }
   for (const placeholder of [

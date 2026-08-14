@@ -1,6 +1,7 @@
 import { expect, type Page } from '@playwright/test';
 
 export const openCommandPalette = async (page: Page) => {
+  await expect(page.getByRole('button', { name: 'Search' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Commands' })).toHaveCount(0);
   await page.keyboard.press('Control+k');
   const palette = page.getByRole('dialog', { name: 'Commands' });

@@ -77,7 +77,9 @@ test('Ask draft blocks Project switching and is not moved to the next Project', 
   await questionInput.fill('Transient browser draft question');
   await switchProject(page, 'Project B');
   await expect(page.locator('.project-summary')).toContainText('shotgun');
-  await expect(page.getByRole('alert')).toContainText('current Workspace');
+  await expect(page.locator('.global-tools [aria-live="polite"]')).toContainText(
+    'Resolve the current Workspace before switching Projects.',
+  );
   await expect(questionInput).toHaveValue('Transient browser draft question');
 
   await questionInput.fill('');

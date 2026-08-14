@@ -1,10 +1,10 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { QueryClient } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
-  outcomeIndeterminateApiError,
   type AISettingsReadModel,
   type GlobalShellView,
   type ShotgunApiClient,
@@ -106,18 +106,22 @@ const baseSettings = (): AISettingsReadModel => ({
   legacyGeminiCredentialConfigured: false,
 });
 
-const runtime = (apiClient: Partial<ShotgunApiClient>): AppRuntime => ({
+const runtime = (
+  apiClient: Partial<ShotgunApiClient>,
+  queryClient = createFrontendQueryClient(),
+): AppRuntime => ({
   apiClient: apiClient as ShotgunApiClient,
-  queryClient: createFrontendQueryClient(),
+  queryClient,
   sessionCycleState: createSessionCycleState(),
 });
 
 const renderSurface = (
   commandId: 'ai.configure' | 'ai.test_connection',
   apiClient: Partial<ShotgunApiClient>,
+  queryClient = createFrontendQueryClient(),
 ) =>
   render(
-    <AppProviders runtime={runtime(apiClient)}>
+    <AppProviders runtime={runtime(apiClient, queryClient)}>
       <MemoryRouter>
         <AICommandSurface
           open
@@ -212,6 +216,44 @@ describe('AICommandSurface', () => {
     resolveTest?.(successfulTest);
   });
 
+  it('allows draft-only Test Connection while credential persistence is unavailable', async () => {
+    const user = userEvent.setup();
+    const testAIConnection = vi.fn<ShotgunApiClient['testAIConnection']>(
+      async () => successfulTest,
+    );
+    const createAICredential = vi.fn();
+    const replaceAICredential = vi.fn();
+    const settings = {
+      ...baseSettings(),
+      vaultAvailability: { state: 'UNAVAILABLE' as const, reason: 'MISSING_MASTER_KEY' as const },
+    };
+    renderSurface('ai.configure', {
+      getAISettings: vi.fn(async () => settings),
+      testAIConnection,
+      createAICredential,
+      replaceAICredential,
+    });
+
+    const secret = await screen.findByLabelText('API Key (write-only)');
+    expect((secret as HTMLInputElement).disabled).toBe(false);
+    await user.type(secret, 'draft-only-secret');
+    expect(
+      (screen.getByRole('button', { name: 'Save AI configuration' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    await user.click(screen.getByRole('button', { name: 'Test Connection' }));
+
+    await waitFor(() =>
+      expect(testAIConnection).toHaveBeenCalledWith({
+        projectId: 'project-1',
+        providerId: 'openai',
+        modelId: 'gpt-test',
+        draftSecret: 'draft-only-secret',
+      }),
+    );
+    expect(createAICredential).not.toHaveBeenCalled();
+    expect(replaceAICredential).not.toHaveBeenCalled();
+  });
+
   it('creates a credential once and saves configuration with the exact current revision', async () => {
     const user = userEvent.setup();
     const settings = { ...baseSettings(), currentConfiguration: undefined, credentialStatuses: [] };
@@ -289,7 +331,7 @@ describe('AICommandSurface', () => {
     const user = userEvent.setup();
     const settings = { ...baseSettings(), currentConfiguration: undefined, credentialStatuses: [] };
     const createAICredential = vi.fn<ShotgunApiClient['createAICredential']>(async () => {
-      throw outcomeIndeterminateApiError('credential-request-1');
+      throw new Error('connection reset after credential write');
     });
     const getAICredentialWriteOutcome = vi.fn<ShotgunApiClient['getAICredentialWriteOutcome']>(
       async () => credential,
@@ -320,6 +362,85 @@ describe('AICommandSurface', () => {
     });
     expect(createAICredential).toHaveBeenCalledTimes(1);
     expect(saveAIConfiguration).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps unresolved generic credential recovery bound to the original write', async () => {
+    const user = userEvent.setup();
+    const settings = { ...baseSettings(), currentConfiguration: undefined, credentialStatuses: [] };
+    const createAICredential = vi.fn<ShotgunApiClient['createAICredential']>(async () => {
+      throw new Error('connection reset after credential write');
+    });
+    const getAICredentialWriteOutcome = vi.fn<ShotgunApiClient['getAICredentialWriteOutcome']>(
+      async () => {
+        throw new Error('outcome still unavailable');
+      },
+    );
+    renderSurface('ai.configure', {
+      getAISettings: vi.fn(async () => settings),
+      createAICredential,
+      getAICredentialWriteOutcome,
+    });
+
+    const secret = await screen.findByLabelText('API Key (write-only)');
+    await user.type(secret, 'unresolved-secret');
+    await user.click(screen.getByRole('button', { name: 'Save AI configuration' }));
+
+    const checkButton = await screen.findByRole('button', { name: 'Check result' });
+    expect(createAICredential).toHaveBeenCalledTimes(1);
+    expect((secret as HTMLInputElement).value).toBe('');
+    expect(screen.queryByText('unresolved-secret')).toBeNull();
+
+    await user.click(checkButton);
+    await waitFor(() => expect(getAICredentialWriteOutcome).toHaveBeenCalledTimes(1));
+    expect(getAICredentialWriteOutcome).toHaveBeenCalledWith({
+      projectId: 'project-1',
+      clientRequestId: expect.stringContaining('ai-credential-write:'),
+      providerId: 'deepseek',
+      operation: 'CREATE',
+    });
+    expect(await screen.findByRole('button', { name: 'Check result' })).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: 'Check result' }));
+    await waitFor(() => expect(getAICredentialWriteOutcome).toHaveBeenCalledTimes(2));
+    expect(createAICredential).toHaveBeenCalledTimes(1);
+  });
+
+  it('recovers a replaced credential with its exact binding after a generic failure', async () => {
+    const user = userEvent.setup();
+    const replacement = { ...credential, providerId: 'openai', credentialId: 'credential-1' };
+    const replaceAICredential = vi.fn<ShotgunApiClient['replaceAICredential']>(async () => {
+      throw new Error('connection reset after credential write');
+    });
+    const getAICredentialWriteOutcome = vi.fn<ShotgunApiClient['getAICredentialWriteOutcome']>(
+      async () => replacement,
+    );
+    const saveAIConfiguration = vi.fn<ShotgunApiClient['saveAIConfiguration']>(
+      async () => ({}) as never,
+    );
+    renderSurface('ai.configure', {
+      getAISettings: vi.fn(async () => baseSettings()),
+      replaceAICredential,
+      getAICredentialWriteOutcome,
+      saveAIConfiguration,
+    });
+
+    await user.type(await screen.findByLabelText('API Key (write-only)'), 'replacement-secret');
+    await user.click(screen.getByRole('button', { name: 'Save AI configuration' }));
+    await user.click(await screen.findByRole('button', { name: 'Check result' }));
+
+    await waitFor(() => expect(saveAIConfiguration).toHaveBeenCalledTimes(1));
+    expect(replaceAICredential).toHaveBeenCalledTimes(1);
+    expect(getAICredentialWriteOutcome).toHaveBeenCalledWith({
+      projectId: 'project-1',
+      clientRequestId: expect.stringContaining('ai-credential-write:'),
+      providerId: 'openai',
+      operation: 'REPLACE',
+      credentialId: 'credential-1',
+      expectedRevision: 7,
+    });
+    expect(saveAIConfiguration).toHaveBeenCalledWith(
+      expect.objectContaining({ credentialId: 'credential-1', credentialRevision: 8 }),
+    );
   });
 
   it('reports a credential-saved partial result without repeating the credential write', async () => {
@@ -395,6 +516,93 @@ describe('AICommandSurface', () => {
     expect((button as HTMLButtonElement).disabled).toBe(true);
     await user.click(button);
     expect(testAIConnection).not.toHaveBeenCalled();
+  });
+
+  it('keeps an unavailable configured provider visible but blocks Test and Save', async () => {
+    const user = userEvent.setup();
+    const base = baseSettings();
+    const settings = {
+      ...base,
+      providers: base.providers.map((provider) =>
+        provider.providerId === 'openai' ? { ...provider, status: 'disabled' as const } : provider,
+      ),
+    };
+    const testAIConnection = vi.fn<ShotgunApiClient['testAIConnection']>(
+      async () => successfulTest,
+    );
+    const saveAIConfiguration = vi.fn<ShotgunApiClient['saveAIConfiguration']>(
+      async () => ({}) as never,
+    );
+    renderSurface('ai.configure', {
+      getAISettings: vi.fn(async () => settings),
+      testAIConnection,
+      saveAIConfiguration,
+    });
+
+    const provider = await screen.findByLabelText('Provider');
+    expect((provider as HTMLSelectElement).value).toBe('openai');
+    expect(await screen.findByText(/currently unavailable/)).toBeTruthy();
+    expect(
+      (screen.getByRole('option', { name: 'OpenAI (Unavailable)' }) as HTMLOptionElement).disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByRole('button', { name: 'Test Connection' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByRole('button', { name: 'Save AI configuration' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    await user.click(screen.getByRole('button', { name: 'Test Connection' }));
+    expect(testAIConnection).not.toHaveBeenCalled();
+    expect(saveAIConfiguration).not.toHaveBeenCalled();
+  });
+
+  it('keeps legacy Gemini compatibility scoped to its designated provider', async () => {
+    const user = userEvent.setup();
+    const base = baseSettings();
+    const settings = {
+      ...base,
+      privacy: [
+        { ...base.privacy[0]!, legacyGeminiCompatibility: true },
+        {
+          providerId: 'deepseek',
+          deploymentAllowed: true,
+          legacyGeminiCompatibility: false,
+        },
+      ],
+    };
+    renderSurface('ai.configure', {
+      getAISettings: vi.fn(async () => settings),
+    });
+
+    expect(await screen.findByText('Approved')).toBeTruthy();
+    expect(
+      await screen.findByText('Historical Gemini compatibility applies only to this provider.'),
+    ).toBeTruthy();
+    await user.selectOptions(await screen.findByLabelText('Provider'), 'deepseek');
+    expect(await screen.findByText('Review required')).toBeTruthy();
+    expect(
+      screen.queryByText('Historical Gemini compatibility applies only to this provider.'),
+    ).toBeNull();
+  });
+
+  it('uses owner-safe wording when AI settings cannot be loaded', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    renderSurface(
+      'ai.configure',
+      {
+        getAISettings: vi.fn(async () => {
+          throw new Error('settings unavailable');
+        }),
+      },
+      queryClient,
+    );
+
+    expect(
+      await screen.findByText('Failed to load AI settings.', {}, { timeout: 5000 }),
+    ).toBeTruthy();
+    expect(screen.queryByText(/server-authoritative/)).toBeNull();
   });
 
   it('requires a second explicit provider privacy approval and keeps it provider-scoped', async () => {

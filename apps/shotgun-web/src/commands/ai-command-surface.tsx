@@ -44,7 +44,7 @@ type ConfigurationSubmission = ConfigurationInput & {
   readonly credentialWasSaved: boolean;
 };
 
-type CredentialRecovery = CredentialSubmission;
+type CredentialRecovery = Omit<CredentialSubmission, 'secret'>;
 
 type TestSubmission = ConfigurationInput & {
   readonly draftSecret?: string;
@@ -69,15 +69,27 @@ const identity = (): string =>
     ? `ai-credential-write:${crypto.randomUUID()}`
     : `ai-credential-write:${Date.now()}:${Math.random().toString(16).slice(2)}`;
 
-const isOutcomeIndeterminateError = (error: unknown): boolean => {
+const isConclusiveCredentialRejection = (error: unknown): boolean => {
   if (typeof error !== 'object' || error === null) return false;
-  const candidate = error as { readonly code?: unknown; readonly recovery?: unknown };
-  return (
-    candidate.code === 'OUTCOME_INDETERMINATE' ||
-    candidate.code === 'OUTCOME_UNKNOWN' ||
-    candidate.recovery === 'RESOLVE_EXISTING_OUTCOME'
-  );
+  const candidate = error as {
+    readonly failure?: unknown;
+    readonly recovery?: unknown;
+  };
+  return candidate.failure !== undefined && candidate.recovery !== 'RESOLVE_EXISTING_OUTCOME';
 };
+
+const credentialRecoveryFrom = (input: CredentialSubmission): CredentialRecovery => ({
+  projectId: input.projectId,
+  expectedRevision: input.expectedRevision,
+  providerId: input.providerId,
+  modelId: input.modelId,
+  clientRequestId: input.clientRequestId,
+  operation: input.operation,
+  ...(input.credentialId === undefined ? {} : { credentialId: input.credentialId }),
+  ...(input.expectedCredentialRevision === undefined
+    ? {}
+    : { expectedCredentialRevision: input.expectedCredentialRevision }),
+});
 
 const statusLabel = (status: AITestConnectionResult['status']): string => {
   switch (status) {
@@ -98,9 +110,8 @@ const statusLabel = (status: AITestConnectionResult['status']): string => {
 
 const privacyStateLabel = (privacy: AISettingsPrivacyStatus | undefined): string => {
   if (!privacy) return 'Review required';
-  if (privacy.approval?.approved) return 'Approved';
+  if (privacy.approval?.approved || privacy.legacyGeminiCompatibility) return 'Approved';
   if (privacy.approval?.approved === false) return 'Not approved';
-  if (privacy.legacyGeminiCompatibility) return 'Historical Gemini compatibility';
   return 'Review required';
 };
 
@@ -176,11 +187,8 @@ export const AICommandSurface = ({
 
   useEffect(() => {
     if (!settings || initializedProjectId === settings.projectId) return;
-    const providerId = settings.providers.some(
-      (provider) => provider.providerId === settings.currentConfiguration?.activeProviderId,
-    )
-      ? (settings.currentConfiguration?.activeProviderId ?? settings.defaultProviderId)
-      : settings.defaultProviderId;
+    const providerId =
+      settings.currentConfiguration?.activeProviderId ?? settings.defaultProviderId;
     const provider =
       settings.providers.find((candidate) => candidate.providerId === providerId) ??
       settings.providers.find((candidate) => candidate.status === 'active') ??
@@ -205,6 +213,7 @@ export const AICommandSurface = ({
     () => settings?.providers.find((provider) => provider.providerId === selectedProviderId),
     [selectedProviderId, settings?.providers],
   );
+  const selectedProviderIsActive = selectedProvider?.status === 'active';
   const selectedModel = selectedProvider?.models.find((model) => model.modelId === selectedModelId);
   const selectedPrivacy = settings?.privacy.find(
     (privacy) => privacy.providerId === selectedProviderId,
@@ -216,11 +225,11 @@ export const AICommandSurface = ({
   const hasAmbiguousCredentials = !usableCredential && activeCredentials > 1;
   const hasVault = settings?.vaultAvailability.state === 'AVAILABLE';
   const canTest = Boolean(
-    settings && selectedProvider && selectedModel && (draftSecret || usableCredential),
+    settings && selectedProviderIsActive && selectedModel && (draftSecret || usableCredential),
   );
   const canSave = Boolean(
     settings &&
-    selectedProvider &&
+    selectedProviderIsActive &&
     selectedModel &&
     (draftSecret ? hasVault : usableCredential) &&
     !hasAmbiguousCredentials,
@@ -300,8 +309,8 @@ export const AICommandSurface = ({
     },
     onError: (error, input) => {
       setDraftSecret('');
-      if (isOutcomeIndeterminateError(error)) {
-        setCredentialRecovery(input);
+      if (!isConclusiveCredentialRejection(error)) {
+        setCredentialRecovery(credentialRecoveryFrom(input));
         setFeedback({
           tone: 'info',
           title: 'Credential result needs checking',
@@ -359,7 +368,7 @@ export const AICommandSurface = ({
     'propose' | 'approve'
   >({
     mutationFn: (action: 'propose' | 'approve') => {
-      if (!settings || !selectedProvider || !selectedPrivacy) {
+      if (!settings || !selectedProviderIsActive || !selectedProvider || !selectedPrivacy) {
         throw new Error('Select a registered provider before requesting privacy review.');
       }
       if (action === 'approve') {
@@ -479,6 +488,7 @@ export const AICommandSurface = ({
 
   const handleProviderChange = (providerId: string) => {
     const provider = settings?.providers.find((candidate) => candidate.providerId === providerId);
+    if (!provider || provider.status !== 'active') return;
     setSelectedProviderId(providerId);
     setSelectedModelId(provider?.models[0]?.modelId ?? '');
     setTestResult(undefined);
@@ -487,7 +497,14 @@ export const AICommandSurface = ({
   };
 
   const handleTest = () => {
-    if (!settings || !selectedProvider || !selectedModel || testMutation.isPending) return;
+    if (
+      !settings ||
+      !selectedProviderIsActive ||
+      !selectedProvider ||
+      !selectedModel ||
+      testMutation.isPending
+    )
+      return;
     testMutation.mutate({
       projectId: settings.projectId,
       expectedRevision: settings.currentConfiguration?.aiConfigurationRevision ?? 0,
@@ -509,6 +526,7 @@ export const AICommandSurface = ({
     if (
       commandId !== 'ai.configure' ||
       !settings ||
+      !selectedProviderIsActive ||
       !selectedProvider ||
       !selectedModel ||
       !canSave ||
@@ -583,9 +601,7 @@ export const AICommandSurface = ({
           </p>
         ) : null}
         {settingsQuery.isLoading ? <p>Loading AI settings...</p> : null}
-        {settingsQuery.isError ? (
-          <p role="alert">Failed to load server-authoritative AI settings.</p>
-        ) : null}
+        {settingsQuery.isError ? <p role="alert">Failed to load AI settings.</p> : null}
         {settings && selectedProvider && selectedModel ? (
           <>
             <form onSubmit={handleSave}>
@@ -597,8 +613,13 @@ export const AICommandSurface = ({
                 disabled={actionPending}
               >
                 {settings.providers.map((provider) => (
-                  <option key={provider.providerId} value={provider.providerId}>
+                  <option
+                    key={provider.providerId}
+                    value={provider.providerId}
+                    disabled={provider.status !== 'active'}
+                  >
                     {provider.displayName}
+                    {provider.status !== 'active' ? ' (Unavailable)' : ''}
                   </option>
                 ))}
               </select>
@@ -625,10 +646,18 @@ export const AICommandSurface = ({
                 value={draftSecret}
                 autoComplete="new-password"
                 onChange={(event) => setDraftSecret(event.currentTarget.value)}
-                disabled={actionPending || settings.vaultAvailability.state !== 'AVAILABLE'}
+                disabled={actionPending}
               />
               {settings.vaultAvailability.state !== 'AVAILABLE' ? (
-                <p role="status">Credential management is unavailable right now.</p>
+                <p role="status">
+                  Credential management is unavailable right now. Draft-only Test Connection is
+                  still available.
+                </p>
+              ) : null}
+              {!selectedProviderIsActive ? (
+                <p role="status">
+                  This provider is currently unavailable. Choose an available provider to continue.
+                </p>
               ) : null}
               {hasAmbiguousCredentials ? (
                 <p role="status">
@@ -678,7 +707,7 @@ export const AICommandSurface = ({
                   <button
                     type="button"
                     onClick={() => privacyMutation.mutate('propose')}
-                    disabled={actionPending}
+                    disabled={actionPending || !selectedProviderIsActive}
                   >
                     Request provider privacy approval
                   </button>
@@ -691,7 +720,7 @@ export const AICommandSurface = ({
                         privacyMutation.mutate('approve');
                       }
                     }}
-                    disabled={actionPending}
+                    disabled={actionPending || !selectedProviderIsActive}
                   >
                     Approve provider privacy decision
                   </button>

@@ -21,6 +21,11 @@ import {
 } from '@shotgun/api-client';
 
 import { useAppRuntime } from '../app/providers.js';
+import { OwnerCommandPalette } from '../commands/owner-command-palette.js';
+import {
+  createOwnerCommandRegistry,
+  type OwnerCommandDefinition,
+} from '../commands/owner-command-registry.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
 import { TechnicalDetails } from '../components/technical-details.js';
@@ -30,10 +35,12 @@ import {
   sourceAskUsageLabel,
 } from '../presentation/product-labels.js';
 import { useLeaveGuard } from '../session/leave-guard-context.js';
+import { useConnectivityState } from '../shell/use-connectivity-state.js';
 import {
   askConversationSourceContextQueryOptions,
   sourcesLibraryQueryOptions,
 } from '../sources/sources-queries.js';
+import { GlobalSearchDialog } from '../section3/global-search-dialog.js';
 
 const SOURCE_CONTEXT_QUERY: SourceLibraryQuery = {
   schemaVersion: '1.0.0',
@@ -79,12 +86,17 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   const { conversationId } = useParams<{ readonly conversationId?: string }>();
   const { shell } = useOutletContext<{ readonly shell: GlobalShellView }>();
   const { apiClient } = useAppRuntime();
+  const connectivity = useConnectivityState();
   const location = useLocation();
   const ownedClient = useMemo(() => createAskWorkspaceClient(), []);
   const askClient = client ?? ownedClient;
   const { registerLeaveGuard } = useLeaveGuard();
   const [workspace, setWorkspace] = useState<AskWorkspaceView>();
   const [question, setQuestion] = useState('');
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [commandPaletteInvoker, setCommandPaletteInvoker] = useState<HTMLElement | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchInvoker, setSearchInvoker] = useState<HTMLElement | null>(null);
   const [draftOwnerProjectId, setDraftOwnerProjectId] = useState<string>();
   const [mode, setMode] = useState<AskMode>('CANONICAL_ONLY');
   const [sourceSelections, setSourceSelections] = useState<readonly AskSourceSelectionView[]>([]);
@@ -142,6 +154,17 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     enabled: workspace !== undefined,
   });
 
+  const commandRegistry = useMemo(
+    () =>
+      createOwnerCommandRegistry({
+        shell,
+        isOffline: connectivity.isOffline,
+        includeProjectSwitch: false,
+        includeSearch: true,
+      }),
+    [connectivity.isOffline, shell],
+  );
+
   const questionRef = useRef(question);
   questionRef.current = question;
 
@@ -149,6 +172,10 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     const controller = new AbortController();
     setWorkspace(undefined);
     setQuestion('');
+    setCommandPaletteOpen(false);
+    setCommandPaletteInvoker(null);
+    setSearchOpen(false);
+    setSearchInvoker(null);
     setDraftOwnerProjectId(undefined);
     setSourceSelections([]);
     setPendingCommand(undefined);
@@ -533,6 +560,32 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     }
   };
 
+  const handleAskCommand = (command: OwnerCommandDefinition) => {
+    setCommandPaletteOpen(false);
+    setQuestion('');
+    questionRef.current = '';
+    if (command.action.kind === 'NAVIGATE') {
+      navigate(command.action.targetRoute.href);
+      return;
+    }
+    if (command.action.kind === 'OPEN_SEARCH') {
+      setSearchInvoker(commandPaletteInvoker);
+      setSearchOpen(true);
+    }
+  };
+
+  const handleQuestionChange = (value: string) => {
+    setQuestion(value);
+    const trigger = value.match(/^\s*\/(.*)$/s);
+    if (trigger) {
+      const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      setCommandPaletteInvoker(active);
+      setCommandPaletteOpen(true);
+    } else if (commandPaletteOpen) {
+      setCommandPaletteOpen(false);
+    }
+  };
+
   const commandIdentity = () => ({
     schemaVersion: '1.0.0' as const,
     clientRequestId: `ask-run-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
@@ -874,7 +927,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
             value={question}
             maxLength={10_000}
             disabled={!draftReady || outcomeUnknown}
-            onChange={(event) => setQuestion(event.target.value)}
+            onChange={(event) => handleQuestionChange(event.target.value)}
           />
 
           <div className="ask-question-actions">
@@ -928,6 +981,21 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
           ) : null}
         </form>
       </section>
+
+      <GlobalSearchDialog
+        shell={shell}
+        open={searchOpen}
+        invoker={searchInvoker}
+        onClose={() => setSearchOpen(false)}
+      />
+      <OwnerCommandPalette
+        open={commandPaletteOpen}
+        commands={commandRegistry}
+        initialQuery={question.replace(/^\s*\//, '')}
+        invoker={commandPaletteInvoker}
+        onClose={() => setCommandPaletteOpen(false)}
+        onSelect={handleAskCommand}
+      />
 
       {answerRunCommandNotice ? <p role="status">{answerRunCommandNotice}</p> : null}
 

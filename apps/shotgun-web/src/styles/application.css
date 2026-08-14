@@ -402,6 +402,54 @@ main {
   padding: 0.65rem;
 }
 
+.owner-command-palette {
+  width: min(42rem, 100%);
+}
+
+.owner-command-list {
+  max-height: 24rem;
+  overflow: auto;
+  margin: 0.75rem 0 0;
+}
+
+.owner-command-list li {
+  min-width: 0;
+}
+
+.owner-command-list button {
+  width: 100%;
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+  text-align: left;
+}
+
+.owner-command-list button > span {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.owner-command-list button small {
+  color: var(--muted);
+}
+
+.owner-command-option-selected {
+  outline: 0.2rem solid var(--accent);
+  outline-offset: -0.2rem;
+}
+
+.owner-command-empty {
+  padding: 0.75rem;
+  color: var(--muted);
+}
+
+.owner-command-hint {
+  margin-right: auto;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
 .dialog-actions {
   display: flex;
   gap: 0.75rem;

@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -156,5 +157,14 @@ describe('ApplicationShell', () => {
   it('exposes the implemented Sources workspace as a registered link', async () => {
     renderShell();
     expect((await screen.findAllByRole('link', { name: 'Sources' })).length).toBeGreaterThan(0);
+  });
+
+  it('opens the same owner-command registry from the persistent Commands entry', async () => {
+    const user = userEvent.setup();
+    renderShell();
+
+    await user.click(await screen.findByRole('button', { name: 'Commands' }));
+    expect(screen.getByRole('dialog', { name: 'Commands' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Sources/ })).toBeTruthy();
   });
 });

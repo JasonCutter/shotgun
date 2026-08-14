@@ -85,6 +85,8 @@ test('Ask draft blocks Project switching and is not moved to the next Project', 
   await questionInput.fill('');
   await switchProject(page, 'Project B');
   await expect(page.locator('.project-summary')).toContainText('Project B');
+  await expect(page.getByRole('heading', { name: 'Home', level: 1 })).toBeVisible();
+  await page.getByRole('link', { name: 'Ask' }).click();
   await expect(page.getByRole('heading', { name: 'Ask', level: 1 })).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Question', exact: true })).toHaveValue('');
 });
@@ -156,6 +158,8 @@ test('Ask citation keeps SourceVersion pinned and restores exact conversation co
   await page.goto(`/ask/conversations/${ASK_FIXTURE.conversationId}`);
   await switchProject(page, 'Project B');
   await expect(page.locator('.project-summary')).toContainText('Project B');
+  await expect(page.getByRole('heading', { name: 'Home', level: 1 })).toBeVisible();
+  await page.goto(`/ask/conversations/${ASK_FIXTURE.conversationId}`);
   await expect(
     page.getByRole('heading', { name: ASK_FIXTURE.conversationTitle, level: 3 }),
   ).toBeVisible();

@@ -37,9 +37,7 @@ export const GlobalSearchDialog = ({ shell, open, invoker, onClose }: GlobalSear
       }),
     onSuccess: (result) => {
       setSearchResult(result);
-      setAnnouncement(
-        `${result.results.length} search ${result.results.length === 1 ? 'result' : 'results'} found.`,
-      );
+      setAnnouncement(`${result.results.length} search results.`);
     },
   });
 

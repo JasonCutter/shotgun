@@ -88,7 +88,7 @@ describe('GlobalTools HFM-S1 preservation', () => {
     await user.type(screen.getByRole('textbox', { name: 'Search query' }), 'matching');
     await user.click(screen.getByRole('button', { name: 'Search' }));
 
-    expect(await screen.findByText('1 search result found.')).toBeTruthy();
+    expect(await screen.findByText('1 search results.')).toBeTruthy();
   });
 
   it('keeps Project switch mutation errors visible to the owner', async () => {

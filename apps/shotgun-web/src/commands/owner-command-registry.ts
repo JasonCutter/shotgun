@@ -56,13 +56,8 @@ const normalize = (value: string): string => value.trim().toLocaleLowerCase();
 const navigationAvailability = (
   item: GlobalShellView['navigation'][number],
 ): Pick<OwnerCommandDefinition, 'availability' | 'reason'> => {
-  if (
-    item.availability === 'AVAILABLE' ||
-    item.availability === 'HIDDEN' ||
-    item.availability === 'COMING_LATER'
-  ) {
-    return { availability: 'AVAILABLE' };
-  }
+  if (item.availability === 'AVAILABLE') return { availability: 'AVAILABLE' };
+  if (item.availability === 'HIDDEN') return { availability: 'HIDDEN' };
   return {
     availability: 'UNAVAILABLE_WITH_REASON',
     ...(item.reason === undefined ? {} : { reason: item.reason }),
@@ -73,9 +68,7 @@ const explicitRouteAvailability = (
   shell: GlobalShellView,
   routeId: TargetRouteView['routeId'],
 ): Pick<OwnerCommandDefinition, 'availability' | 'reason'> => {
-  const navigationItem = shell.navigation.find(
-    (item) => item.targetRoute?.routeId === routeId || item.id === routeId,
-  );
+  const navigationItem = shell.navigation.find((item) => item.targetRoute?.routeId === routeId);
   return navigationItem ? navigationAvailability(navigationItem) : { availability: 'AVAILABLE' };
 };
 

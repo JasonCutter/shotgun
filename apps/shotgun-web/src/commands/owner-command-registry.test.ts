@@ -116,12 +116,6 @@ describe('owner command registry', () => {
       context: { projectId: 'project-2' },
       action: { kind: 'SWITCH_PROJECT', projectId: 'project-2' },
     });
-    expect(commands.find((command) => command.id === 'knowledge.open')?.availability).toBe(
-      'AVAILABLE',
-    );
-    expect(commands.find((command) => command.id === 'review.open')?.availability).toBe(
-      'AVAILABLE',
-    );
   });
 
   it('does not expose generic Settings or unsupported placeholders and preserves offline state', () => {
@@ -138,6 +132,59 @@ describe('owner command registry', () => {
       'UNAVAILABLE_WITH_REASON',
     );
     expect(filterOwnerCommands(commands, 'global search')).toHaveLength(1);
+  });
+
+  it('keeps historical placeholders from suppressing confirmed capabilities', () => {
+    const commands = createOwnerCommandRegistry({ shell });
+
+    expect(commands.find((command) => command.id === 'knowledge.open')?.availability).toBe(
+      'AVAILABLE',
+    );
+    expect(commands.find((command) => command.id === 'review.open')?.availability).toBe(
+      'AVAILABLE',
+    );
+  });
+
+  it('preserves hidden and temporarily unavailable route states', () => {
+    const hiddenShell: GlobalShellView = {
+      ...shell,
+      navigation: [
+        ...shell.navigation,
+        {
+          id: 'activity-hidden',
+          label: 'Activity',
+          availability: 'HIDDEN',
+          targetRoute: { routeId: 'activity', href: '/activity' },
+        },
+      ],
+    };
+    const temporarilyUnavailableShell: GlobalShellView = {
+      ...shell,
+      navigation: [
+        ...shell.navigation,
+        {
+          id: 'activity-unavailable',
+          label: 'Activity',
+          availability: 'TEMPORARILY_UNAVAILABLE',
+          reason: 'Create a Project to open Activity.',
+          targetRoute: { routeId: 'activity', href: '/activity' },
+        },
+      ],
+    };
+
+    expect(
+      createOwnerCommandRegistry({ shell: hiddenShell }).find(
+        (command) => command.id === 'activity.open',
+      )?.availability,
+    ).toBe('HIDDEN');
+    expect(
+      createOwnerCommandRegistry({ shell: temporarilyUnavailableShell }).find(
+        (command) => command.id === 'activity.open',
+      ),
+    ).toMatchObject({
+      availability: 'UNAVAILABLE_WITH_REASON',
+      reason: 'Create a Project to open Activity.',
+    });
   });
 
   it('carries frozen risk and presentation metadata without turning the registry into policy', () => {

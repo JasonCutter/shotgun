@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useState, useId, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, useId, type FormEvent } from 'react';
 
 import type {
   AICredentialMetadata,
@@ -32,7 +32,6 @@ type ConfigurationInput = {
 
 type CredentialSubmission = ConfigurationInput & {
   readonly clientRequestId: string;
-  readonly secret: string;
   readonly operation: 'CREATE' | 'REPLACE';
   readonly credentialId?: string;
   readonly expectedCredentialRevision?: number;
@@ -47,7 +46,7 @@ type ConfigurationSubmission = ConfigurationInput & {
 type CredentialRecovery = Omit<CredentialSubmission, 'secret'>;
 
 type TestSubmission = ConfigurationInput & {
-  readonly draftSecret?: string;
+  readonly secretSource: 'DRAFT' | 'STORED';
   readonly credentialId?: string;
   readonly credentialRevision?: number;
 };
@@ -77,19 +76,6 @@ const isConclusiveCredentialRejection = (error: unknown): boolean => {
   };
   return candidate.failure !== undefined && candidate.recovery !== 'RESOLVE_EXISTING_OUTCOME';
 };
-
-const credentialRecoveryFrom = (input: CredentialSubmission): CredentialRecovery => ({
-  projectId: input.projectId,
-  expectedRevision: input.expectedRevision,
-  providerId: input.providerId,
-  modelId: input.modelId,
-  clientRequestId: input.clientRequestId,
-  operation: input.operation,
-  ...(input.credentialId === undefined ? {} : { credentialId: input.credentialId }),
-  ...(input.expectedCredentialRevision === undefined
-    ? {}
-    : { expectedCredentialRevision: input.expectedCredentialRevision }),
-});
 
 const statusLabel = (status: AITestConnectionResult['status']): string => {
   switch (status) {
@@ -165,6 +151,8 @@ export const AICommandSurface = ({
   const [pendingPrivacyProposal, setPendingPrivacyProposal] = useState<AIProviderPrivacyProposal>();
   const [credentialRecovery, setCredentialRecovery] = useState<CredentialRecovery>();
   const [destructiveAction, setDestructiveAction] = useState<DestructiveAction>();
+  const credentialSecretRef = useRef<string | undefined>(undefined);
+  const draftTestSecretRef = useRef<string | undefined>(undefined);
 
   const settingsQuery = useQuery({
     queryKey: settingsQueryKey(projectId),
@@ -182,6 +170,8 @@ export const AICommandSurface = ({
     setCredentialRecovery(undefined);
     setDestructiveAction(undefined);
     setDraftSecret('');
+    credentialSecretRef.current = undefined;
+    draftTestSecretRef.current = undefined;
     setInitializedProjectId('');
   }, [commandId, invoker, open]);
 
@@ -204,6 +194,8 @@ export const AICommandSurface = ({
     setSelectedProviderId(selectedProvider);
     setSelectedModelId(model?.modelId ?? '');
     setDraftSecret('');
+    credentialSecretRef.current = undefined;
+    draftTestSecretRef.current = undefined;
     setTestResult(undefined);
     setFeedback(undefined);
     setInitializedProjectId(settings.projectId);
@@ -274,6 +266,8 @@ export const AICommandSurface = ({
 
   const credentialMutation = useMutation({
     mutationFn: async (input: CredentialSubmission): Promise<AICredentialMetadata> => {
+      const secret = credentialSecretRef.current;
+      if (!secret) throw new Error('The credential secret is no longer available.');
       if (input.operation === 'REPLACE') {
         if (input.credentialId === undefined || input.expectedCredentialRevision === undefined) {
           throw new Error('The exact credential could not be selected.');
@@ -283,19 +277,20 @@ export const AICommandSurface = ({
           providerId: input.providerId,
           credentialId: input.credentialId,
           expectedRevision: input.expectedCredentialRevision,
-          secret: input.secret,
+          secret,
           clientRequestId: input.clientRequestId,
         });
       }
       return apiClient.createAICredential({
         projectId: input.projectId,
         providerId: input.providerId,
-        secret: input.secret,
+        secret,
         clientRequestId: input.clientRequestId,
       });
     },
     onSuccess: (credential, input) => {
       setDraftSecret('');
+      credentialSecretRef.current = undefined;
       setCredentialRecovery(undefined);
       configurationMutation.mutate({
         projectId: input.projectId,
@@ -309,8 +304,9 @@ export const AICommandSurface = ({
     },
     onError: (error, input) => {
       setDraftSecret('');
+      credentialSecretRef.current = undefined;
       if (!isConclusiveCredentialRejection(error)) {
-        setCredentialRecovery(credentialRecoveryFrom(input));
+        setCredentialRecovery(input);
         setFeedback({
           tone: 'info',
           title: 'Credential result needs checking',
@@ -327,24 +323,27 @@ export const AICommandSurface = ({
   });
 
   const testMutation = useMutation({
-    mutationFn: (input: TestSubmission) =>
-      apiClient.testAIConnection(
-        input.draftSecret
-          ? {
-              projectId: input.projectId,
-              providerId: input.providerId,
-              modelId: input.modelId,
-              draftSecret: input.draftSecret,
-            }
-          : {
-              projectId: input.projectId,
-              providerId: input.providerId,
-              modelId: input.modelId,
-              credentialId: input.credentialId!,
-              credentialRevision: input.credentialRevision!,
-            },
-      ),
+    mutationFn: (input: TestSubmission) => {
+      if (input.secretSource === 'DRAFT') {
+        const draftSecret = draftTestSecretRef.current;
+        if (!draftSecret) throw new Error('The draft secret is no longer available.');
+        return apiClient.testAIConnection({
+          projectId: input.projectId,
+          providerId: input.providerId,
+          modelId: input.modelId,
+          draftSecret,
+        });
+      }
+      return apiClient.testAIConnection({
+        projectId: input.projectId,
+        providerId: input.providerId,
+        modelId: input.modelId,
+        credentialId: input.credentialId!,
+        credentialRevision: input.credentialRevision!,
+      });
+    },
     onSuccess: (result) => {
+      draftTestSecretRef.current = undefined;
       setTestResult(result);
       setFeedback({
         tone: result.status === 'CONNECTED' ? 'success' : 'error',
@@ -353,6 +352,7 @@ export const AICommandSurface = ({
       });
     },
     onError: (error) => {
+      draftTestSecretRef.current = undefined;
       setTestResult(undefined);
       setFeedback({
         tone: 'error',
@@ -491,6 +491,7 @@ export const AICommandSurface = ({
     if (!provider || provider.status !== 'active') return;
     setSelectedProviderId(providerId);
     setSelectedModelId(provider?.models[0]?.modelId ?? '');
+    draftTestSecretRef.current = undefined;
     setTestResult(undefined);
     setPendingPrivacyProposal(undefined);
     setFeedback(undefined);
@@ -505,19 +506,21 @@ export const AICommandSurface = ({
       testMutation.isPending
     )
       return;
+    const usesDraftSecret = Boolean(draftSecret);
+    if (usesDraftSecret) draftTestSecretRef.current = draftSecret;
+    setDraftSecret('');
     testMutation.mutate({
       projectId: settings.projectId,
       expectedRevision: settings.currentConfiguration?.aiConfigurationRevision ?? 0,
       providerId: selectedProvider.providerId,
       modelId: selectedModel.modelId,
-      ...(draftSecret
-        ? { draftSecret }
-        : usableCredential
-          ? {
-              credentialId: usableCredential.credentialId,
-              credentialRevision: usableCredential.credentialRevision,
-            }
-          : {}),
+      secretSource: usesDraftSecret ? 'DRAFT' : 'STORED',
+      ...(usesDraftSecret || !usableCredential
+        ? {}
+        : {
+            credentialId: usableCredential.credentialId,
+            credentialRevision: usableCredential.credentialRevision,
+          }),
     });
   };
 
@@ -541,10 +544,10 @@ export const AICommandSurface = ({
     } satisfies ConfigurationInput;
     setFeedback(undefined);
     if (draftSecret) {
+      credentialSecretRef.current = draftSecret;
       const input: CredentialSubmission = {
         ...configuration,
         clientRequestId: identity(),
-        secret: draftSecret,
         operation: usableCredential ? 'REPLACE' : 'CREATE',
         ...(usableCredential
           ? {
@@ -553,6 +556,7 @@ export const AICommandSurface = ({
             }
           : {}),
       };
+      setDraftSecret('');
       credentialMutation.mutate(input);
       return;
     }

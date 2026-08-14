@@ -185,18 +185,23 @@ describe('AICommandSurface', () => {
 
   it('uses the draft secret only for Test Connection and blocks duplicate execution', async () => {
     const user = userEvent.setup();
+    const queryClient = createFrontendQueryClient();
     let resolveTest: ((value: typeof successfulTest) => void) | undefined;
     const testAIConnection = vi.fn(
       () => new Promise<typeof successfulTest>((resolve) => (resolveTest = resolve)),
     );
     const createAICredential = vi.fn();
     const saveAIConfiguration = vi.fn();
-    renderSurface('ai.test_connection', {
-      getAISettings: vi.fn(async () => baseSettings()),
-      testAIConnection,
-      createAICredential,
-      saveAIConfiguration,
-    });
+    renderSurface(
+      'ai.test_connection',
+      {
+        getAISettings: vi.fn(async () => baseSettings()),
+        testAIConnection,
+        createAICredential,
+        saveAIConfiguration,
+      },
+      queryClient,
+    );
 
     const secret = await screen.findByLabelText('API Key (write-only)');
     await user.type(secret, 'temporary-secret');
@@ -213,6 +218,14 @@ describe('AICommandSurface', () => {
     });
     expect(createAICredential).not.toHaveBeenCalled();
     expect(saveAIConfiguration).not.toHaveBeenCalled();
+    expect(
+      JSON.stringify(
+        queryClient
+          .getMutationCache()
+          .getAll()
+          .map((mutation) => mutation.state),
+      ),
+    ).not.toContain('temporary-secret');
     resolveTest?.(successfulTest);
   });
 
@@ -256,6 +269,7 @@ describe('AICommandSurface', () => {
 
   it('creates a credential once and saves configuration with the exact current revision', async () => {
     const user = userEvent.setup();
+    const queryClient = createFrontendQueryClient();
     const settings = { ...baseSettings(), currentConfiguration: undefined, credentialStatuses: [] };
     const createAICredential = vi.fn<ShotgunApiClient['createAICredential']>(
       async () => credential,
@@ -263,11 +277,15 @@ describe('AICommandSurface', () => {
     const saveAIConfiguration = vi.fn<ShotgunApiClient['saveAIConfiguration']>(
       async () => ({}) as never,
     );
-    renderSurface('ai.configure', {
-      getAISettings: vi.fn(async () => settings),
-      createAICredential,
-      saveAIConfiguration,
-    });
+    renderSurface(
+      'ai.configure',
+      {
+        getAISettings: vi.fn(async () => settings),
+        createAICredential,
+        saveAIConfiguration,
+      },
+      queryClient,
+    );
 
     await user.type(await screen.findByLabelText('API Key (write-only)'), 'new-secret');
     await user.click(screen.getByRole('button', { name: 'Save AI configuration' }));
@@ -290,6 +308,14 @@ describe('AICommandSurface', () => {
       credentialId: 'credential-2',
       credentialRevision: 8,
     });
+    expect(
+      JSON.stringify(
+        queryClient
+          .getMutationCache()
+          .getAll()
+          .map((mutation) => mutation.state),
+      ),
+    ).not.toContain('new-secret');
     expect((screen.getByLabelText('API Key (write-only)') as HTMLInputElement).value).toBe('');
   });
 

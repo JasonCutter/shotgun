@@ -78,6 +78,8 @@ test('Active B -> Conversation A uses only A Sources and submits the follow-up t
       },
     },
   });
-  await expect(page.getByText(followUp, { exact: true })).toBeVisible();
+  await expect(
+    page.getByLabel('Main Branch').getByRole('listitem').filter({ hasText: followUp }),
+  ).toBeVisible();
   await expect(page.locator('.project-summary')).toContainText('Project B');
 });

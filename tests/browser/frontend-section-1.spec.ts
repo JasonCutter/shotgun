@@ -41,12 +41,13 @@ test('Frontend Section 1 restores server Project context and protects routes', a
   await expect(page.locator('.project-summary')).toContainText('Project B');
   await expect(page.locator('.project-summary')).not.toContainText('shotgun');
 
+  const primaryNavigation = page.getByRole('navigation', { name: 'Primary navigation' });
   for (const [link, heading] of [
     ['Sources', 'Sources'],
     ['Ask', 'Ask'],
     ['Home', 'Home'],
   ] as const) {
-    await page.getByRole('link', { name: link }).click();
+    await primaryNavigation.getByRole('link', { name: link, exact: true }).click();
     await expect(page.getByRole('heading', { level: 1, name: heading })).toBeFocused();
   }
   for (const removed of [

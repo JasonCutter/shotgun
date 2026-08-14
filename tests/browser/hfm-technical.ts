@@ -1,9 +1,10 @@
 import { expect, type Page } from '@playwright/test';
 
 export const openTechnicalInformation = async (page: Page) => {
-  await expect(
-    page.getByRole('banner').getByRole('button', { name: 'Search', exact: true }),
-  ).toHaveCount(0);
+  const globalTools = page.getByRole('banner');
+  await expect(globalTools).toBeVisible();
+  await expect(page.locator('.project-summary')).toBeVisible();
+  await expect(globalTools.getByRole('button', { name: 'Search', exact: true })).toHaveCount(0);
   await page.keyboard.press('Control+k');
   const palette = page.getByRole('dialog', { name: 'Commands' });
   await expect(palette).toBeVisible();

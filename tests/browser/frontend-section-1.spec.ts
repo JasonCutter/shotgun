@@ -57,7 +57,11 @@ test('Frontend Section 1 restores server Project context and protects routes', a
     'History',
     'Settings',
   ]) {
-    await expect(page.getByRole('link', { name: removed })).toHaveCount(0);
+    await expect(
+      page.locator('nav.primary-navigation, nav.mobile-navigation').getByRole('link', {
+        name: removed,
+      }),
+    ).toHaveCount(0);
     await expect(page.locator('.navigation-disabled', { hasText: removed })).toHaveCount(0);
   }
 

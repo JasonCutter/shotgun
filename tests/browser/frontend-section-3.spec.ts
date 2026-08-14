@@ -110,8 +110,9 @@ test('Section 3 renders responsive Shell and a compact Home', async ({ page }) =
   await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Primary Actions' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Add source' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Ask', exact: true })).toBeVisible();
+  const primaryActions = page.getByRole('region', { name: 'Primary Actions' });
+  await expect(primaryActions.getByRole('link', { name: 'Add source' })).toBeVisible();
+  await expect(primaryActions.getByRole('link', { name: 'Ask', exact: true })).toBeVisible();
   for (const hidden of [
     'Project State',
     'Attention',

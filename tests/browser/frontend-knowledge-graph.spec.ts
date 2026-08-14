@@ -900,10 +900,7 @@ test('AC-25: a correction action on a graph node navigates to the Knowledge Edit
   await expect(page.getByRole('status').filter({ hasText: '지식 항목' })).toContainText(
     '보정할 준비가 되었습니다',
   );
-  const correctionDetails = page.locator('details').filter({ hasText: 'Change intent' }).first();
-  await expect(correctionDetails).not.toHaveAttribute('open', '');
-  await correctionDetails.locator('summary').click();
-  await expect(correctionDetails.getByText(/ENTITY:entity-1/)).toBeVisible();
-  await expect(correctionDetails.getByText('CORRECT_KNOWLEDGE')).toBeVisible();
+  await expect(page.locator('main')).not.toContainText('ENTITY:entity-1');
+  await expectTechnicalInformation(page, ['ENTITY:entity-1', 'CORRECT_KNOWLEDGE']);
   expect(writeRequests).toEqual([]);
 });

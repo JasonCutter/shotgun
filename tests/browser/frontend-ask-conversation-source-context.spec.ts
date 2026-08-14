@@ -41,10 +41,7 @@ test('Active B -> Conversation A uses only A Sources and submits the follow-up t
   await expect(page.getByText('ask-citation-source.txt')).toHaveCount(0);
   const projectASourceOption = projectASource.locator('xpath=ancestor::label');
   await expect(projectASourceOption.getByText('Version 1')).toBeVisible();
-  const technicalDetails = projectASourceOption.locator('details');
-  await expect(technicalDetails).not.toHaveAttribute('open', '');
-  await technicalDetails.locator('summary').click();
-  await expect(technicalDetails.getByText(ASK_FIXTURE.selectableSourceVersionId)).toBeVisible();
+  await expect(projectASourceOption).not.toContainText(ASK_FIXTURE.selectableSourceVersionId);
   await projectASource.check();
 
   const followUp = 'Use the pinned Project A SourceVersion for this follow-up.';

@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 
 import { ASK_FIXTURE } from './fixtures/ask-workspace-fixture.js';
 import { switchProject } from './helpers/hfm-commands.js';
+import { expectTechnicalInformation } from './hfm-technical.js';
 
 test('Ask navigation enables question submission and clears draft on success', async ({ page }) => {
   await page.goto('/ask');
@@ -30,10 +31,7 @@ test('Ask Source Exploration pins a selected SourceVersion into the browser subm
   await expect(source).toBeVisible();
   const sourceOption = source.locator('xpath=ancestor::label');
   await expect(sourceOption.getByText('Version 1')).toBeVisible();
-  const technicalDetails = sourceOption.locator('details');
-  await expect(technicalDetails).not.toHaveAttribute('open', '');
-  await technicalDetails.locator('summary').click();
-  await expect(technicalDetails.getByText(ASK_FIXTURE.selectableSourceVersionId)).toBeVisible();
+  await expect(sourceOption).not.toContainText(ASK_FIXTURE.selectableSourceVersionId);
 
   const questionInput = page.getByRole('textbox', { name: 'Question', exact: true });
   await questionInput.fill('What does the selected Source establish?');
@@ -180,10 +178,8 @@ test('Ask citation keeps SourceVersion pinned and restores exact conversation co
   await expect(evidenceTarget).toBeVisible();
   await expect(evidenceTarget).toBeFocused();
 
-  const sourceDetails = page.locator('details').filter({ hasText: 'SourceVersion ID' }).first();
-  await expect(sourceDetails).not.toHaveAttribute('open', '');
-  await sourceDetails.locator('summary').click();
-  await expect(sourceDetails.getByText(ASK_FIXTURE.sourceVersionId)).toBeVisible();
+  await expect(page.locator('main')).not.toContainText(ASK_FIXTURE.sourceVersionId);
+  await expectTechnicalInformation(page, ASK_FIXTURE.sourceVersionId);
 
   await page.getByRole('link', { name: 'Return to cited resource' }).click();
   await expect(page).toHaveURL(`/ask/conversations/${ASK_FIXTURE.conversationId}`);

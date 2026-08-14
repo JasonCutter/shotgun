@@ -254,7 +254,22 @@ const LeaveGuardStatus = () => {
   );
 };
 
-const ShellOutlet = () => <Outlet context={{ shell: mockShell }} />;
+const commandShell: GlobalShellView = {
+  ...mockShell,
+  navigation: [
+    {
+      id: 'sources',
+      label: 'Sources',
+      availability: 'AVAILABLE',
+      targetRoute: { routeId: 'sources', href: '/sources' },
+    },
+  ],
+  features: [{ id: 'global-search', label: 'Search', availability: 'AVAILABLE' }],
+};
+
+const ShellOutlet = ({ shell = mockShell }: { readonly shell?: GlobalShellView }) => (
+  <Outlet context={{ shell }} />
+);
 
 describe('AskWorkspace', () => {
   it('shows server-authoritative ACTION_REQUIRED and blocks predictable policy denial', async () => {
@@ -637,6 +652,63 @@ describe('AskWorkspace', () => {
 
     await user.clear(textarea);
     expect(screen.getByTestId('leave-status').textContent).toBe('ALLOWED');
+  });
+
+  it('opens the shared slash palette only at the trigger position and does not submit a command as Ask text', async () => {
+    const user = userEvent.setup();
+    const runtime = createRuntime();
+    const submitQuestion = vi.fn();
+    const mockClient: AskWorkspaceClient = {
+      getProviderEligibility: vi.fn().mockResolvedValue(eligibleProvider),
+      getWorkspace: vi.fn().mockResolvedValue(mockWorkspace),
+      getConversation: vi.fn().mockResolvedValue(mockWorkspace.selectedConversation!),
+      getConversationSourceContext: vi.fn(),
+      getBranch: vi.fn(),
+      getAnswerRun: vi.fn(),
+      submitQuestion,
+      getQuestionSubmissionByClientRequestId: vi.fn(),
+    };
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <ShellOutlet shell={commandShell} />,
+          children: [
+            { path: 'ask', element: <AskWorkspace client={mockClient} /> },
+            { path: 'history', element: <p>History destination</p> },
+          ],
+        },
+      ],
+      { initialEntries: ['/ask'] },
+    );
+
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    const questionInput = await screen.findByLabelText('Question');
+    await user.type(questionInput, 'ratio / 2');
+    expect(screen.queryByRole('dialog', { name: 'Commands' })).toBeNull();
+
+    await user.clear(questionInput);
+    await user.type(questionInput, '/');
+    expect(screen.getByRole('dialog', { name: 'Commands' })).toBeTruthy();
+    const commandSearch = screen.getByRole('textbox', { name: 'Command search' });
+    await user.type(commandSearch, 'help');
+    await user.keyboard('{Enter}');
+
+    expect(screen.getByRole('dialog', { name: 'Commands' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Help' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Navigation' })).toBeTruthy();
+
+    const reopenedCommandSearch = screen.getByRole('textbox', { name: 'Command search' });
+    await user.type(reopenedCommandSearch, 'history');
+    await user.keyboard('{Enter}');
+
+    expect(submitQuestion).not.toHaveBeenCalled();
+    expect(await screen.findByText('History destination')).toBeTruthy();
   });
 
   it('uses the semantic form layout and keeps CANONICAL_ONLY submissions source-free', async () => {

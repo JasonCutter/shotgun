@@ -402,6 +402,73 @@ main {
   padding: 0.65rem;
 }
 
+.owner-command-palette {
+  width: min(42rem, 100%);
+}
+
+.owner-command-list {
+  max-height: 24rem;
+  overflow: auto;
+  margin: 0.75rem 0 0;
+}
+
+.owner-command-group + .owner-command-group {
+  margin-top: 1rem;
+}
+
+.owner-command-group h3 {
+  margin: 0 0 0.4rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.owner-command-group-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.owner-command-group-list li {
+  min-width: 0;
+}
+
+.owner-command-group-list button {
+  width: 100%;
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+  text-align: left;
+}
+
+.owner-command-group-list button > span {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.owner-command-group-list button small {
+  color: var(--muted);
+}
+
+.owner-command-option-selected {
+  outline: 0.2rem solid var(--accent);
+  outline-offset: -0.2rem;
+}
+
+.owner-command-empty {
+  padding: 0.75rem;
+  color: var(--muted);
+}
+
+.owner-command-hint {
+  margin-right: auto;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
 .dialog-actions {
   display: flex;
   gap: 0.75rem;

@@ -6,6 +6,7 @@ import { RouteFocus } from '../app/route-focus.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
 import { SkipLink } from '../components/skip-link.js';
+import { TechnicalInspectionProvider } from '../components/technical-inspection-context.js';
 import { globalShellQueryOptions } from '../section3/section3-queries.js';
 import { SessionBoundaryScreen } from '../session/session-boundary-screen.js';
 import { reconnectSessionBoundary, sessionBoundaryQueryOptions } from '../session/session-query.js';
@@ -95,31 +96,33 @@ export const ApplicationShell = () => {
   const shell = shellQuery.data;
 
   return (
-    <div className="application-shell">
-      <SkipLink />
-      <TopBar session={boundary.session} shell={shell} />
-      {connectivity.isOffline ? (
-        <div className="global-banner global-banner-critical" role="alert">
-          Offline. Cached information may be stale; server actions and Search are disabled.
+    <TechnicalInspectionProvider>
+      <div className="application-shell">
+        <SkipLink />
+        <TopBar session={boundary.session} shell={shell} />
+        {connectivity.isOffline ? (
+          <div className="global-banner global-banner-critical" role="alert">
+            Offline. Cached information may be stale; server actions and Search are disabled.
+          </div>
+        ) : shell.leadingWarning ? (
+          <div
+            className={`global-banner global-banner-${shell.leadingWarning.severity.toLowerCase()}`}
+            role={shell.leadingWarning.severity === 'CRITICAL' ? 'alert' : 'status'}
+          >
+            {shell.leadingWarning.message}
+            {shell.leadingWarning.additionalCount > 0
+              ? ` (${shell.leadingWarning.additionalCount} additional states)`
+              : ''}
+          </div>
+        ) : null}
+        <div className="workspace-layout">
+          <PrimaryNavigation navigation={shell.navigation} />
+          <main id="main-content" tabIndex={-1}>
+            <RouteFocus />
+            <Outlet context={{ shell }} />
+          </main>
         </div>
-      ) : shell.leadingWarning ? (
-        <div
-          className={`global-banner global-banner-${shell.leadingWarning.severity.toLowerCase()}`}
-          role={shell.leadingWarning.severity === 'CRITICAL' ? 'alert' : 'status'}
-        >
-          {shell.leadingWarning.message}
-          {shell.leadingWarning.additionalCount > 0
-            ? ` (${shell.leadingWarning.additionalCount} additional states)`
-            : ''}
-        </div>
-      ) : null}
-      <div className="workspace-layout">
-        <PrimaryNavigation navigation={shell.navigation} />
-        <main id="main-content" tabIndex={-1}>
-          <RouteFocus />
-          <Outlet context={{ shell }} />
-        </main>
       </div>
-    </div>
+    </TechnicalInspectionProvider>
   );
 };

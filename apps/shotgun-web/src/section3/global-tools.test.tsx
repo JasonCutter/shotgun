@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
@@ -13,6 +13,8 @@ import type {
 import { createFrontendQueryClient } from '../app/query-client.js';
 import { AppProviders, type AppRuntime } from '../app/providers.js';
 import { createSessionCycleState } from '../session/session-query.js';
+import { TechnicalDetails } from '../components/technical-details.js';
+import { TechnicalInspectionProvider } from '../components/technical-inspection-context.js';
 import { GlobalSearchDialog } from './global-search-dialog.js';
 import { GlobalTools } from './global-tools.js';
 
@@ -231,5 +233,32 @@ describe('GlobalTools HFM-S1 preservation', () => {
 
     expect(await screen.findByRole('dialog', { name: 'Configure AI' })).toBeTruthy();
     expect(screen.queryByRole('link', { name: /settings/i })).toBeNull();
+  });
+
+  it('opens current technical information without a Product mutation', async () => {
+    const user = userEvent.setup();
+    const switchActiveProject = vi.fn();
+    render(
+      <AppProviders
+        runtime={runtime({
+          getProjects: vi.fn(async () => [project]),
+          switchActiveProject,
+        })}
+      >
+        <MemoryRouter>
+          <TechnicalInspectionProvider>
+            <GlobalTools shell={shell} />
+            <TechnicalDetails items={[{ label: 'Projection revision', value: 'revision-9' }]} />
+          </TechnicalInspectionProvider>
+        </MemoryRouter>
+      </AppProviders>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Commands' }));
+    await user.click(await screen.findByRole('button', { name: /^Technical information/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Technical information' });
+    expect(within(dialog).getByText('revision-9')).toBeTruthy();
+    expect(switchActiveProject).not.toHaveBeenCalled();
   });
 });

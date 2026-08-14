@@ -27,6 +27,7 @@ import { AICommandSurface } from '../commands/ai-command-surface.js';
 import { PrivacyCommandSurface } from '../commands/privacy-command-surface.js';
 import { PreferencesCommandSurface } from '../commands/preferences-command-surface.js';
 import { ProjectCommandSurface } from '../commands/project-command-surface.js';
+import { TechnicalCommandSurface } from '../commands/technical-command-surface.js';
 import {
   createOwnerCommandRegistry,
   type AICommandId,
@@ -38,6 +39,7 @@ import {
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
 import { TechnicalDetails } from '../components/technical-details.js';
+import { useOptionalTechnicalInspection } from '../components/technical-inspection-context.js';
 import {
   answerRunLabel,
   askModeLabel,
@@ -96,6 +98,8 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   const { shell } = useOutletContext<{ readonly shell: GlobalShellView }>();
   const { apiClient } = useAppRuntime();
   const connectivity = useConnectivityState();
+  const technicalInspection = useOptionalTechnicalInspection();
+  const technicalBlocks = technicalInspection?.blocks ?? [];
   const location = useLocation();
   const ownedClient = useMemo(() => createAskWorkspaceClient(), []);
   const askClient = client ?? ownedClient;
@@ -115,6 +119,8 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   const [aiCommandInvoker, setAICommandInvoker] = useState<HTMLElement | null>(null);
   const [privacyCommand, setPrivacyCommand] = useState<PrivacyCommandId | null>(null);
   const [privacyCommandInvoker, setPrivacyCommandInvoker] = useState<HTMLElement | null>(null);
+  const [technicalOpen, setTechnicalOpen] = useState(false);
+  const [technicalInvoker, setTechnicalInvoker] = useState<HTMLElement | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchInvoker, setSearchInvoker] = useState<HTMLElement | null>(null);
   const [draftOwnerProjectId, setDraftOwnerProjectId] = useState<string>();
@@ -185,9 +191,10 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
         isOffline: connectivity.isOffline,
         includeProjectSwitch: false,
         includeSearch: true,
+        hasTechnicalInspection: technicalBlocks.length > 0,
         projects: projectsQuery.data,
       }),
-    [connectivity.isOffline, projectsQuery.data, shell],
+    [connectivity.isOffline, projectsQuery.data, shell, technicalBlocks.length],
   );
 
   const questionRef = useRef(question);
@@ -201,6 +208,8 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     setCommandPaletteInvoker(null);
     setProjectCommand(null);
     setProjectCommandInvoker(null);
+    setTechnicalOpen(false);
+    setTechnicalInvoker(null);
     setSearchOpen(false);
     setSearchInvoker(null);
     setDraftOwnerProjectId(undefined);
@@ -622,6 +631,14 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     if (command.action.kind === 'OPEN_PRIVACY_FLOW') {
       setPrivacyCommandInvoker(commandPaletteInvoker);
       setPrivacyCommand(command.action.commandId);
+      setCommandPaletteOpen(false);
+      setQuestion('');
+      questionRef.current = '';
+      return;
+    }
+    if (command.action.kind === 'OPEN_TECHNICAL_FLOW') {
+      setTechnicalInvoker(commandPaletteInvoker);
+      setTechnicalOpen(true);
       setCommandPaletteOpen(false);
       setQuestion('');
       questionRef.current = '';
@@ -1094,6 +1111,12 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
         shell={shell}
         invoker={privacyCommandInvoker}
         onClose={() => setPrivacyCommand(null)}
+      />
+      <TechnicalCommandSurface
+        open={technicalOpen}
+        blocks={technicalBlocks}
+        invoker={technicalInvoker}
+        onClose={() => setTechnicalOpen(false)}
       />
 
       {answerRunCommandNotice ? <p role="status">{answerRunCommandNotice}</p> : null}

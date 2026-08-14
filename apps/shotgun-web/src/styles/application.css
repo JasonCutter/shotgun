@@ -507,6 +507,43 @@ main {
   width: min(42rem, 100%);
 }
 
+.technical-command-surface {
+  width: min(46rem, 100%);
+}
+
+.technical-command-blocks {
+  display: grid;
+  gap: 1rem;
+  margin-block: 1rem;
+}
+
+.technical-command-blocks section {
+  min-width: 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+
+.technical-command-list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.technical-command-list > div {
+  display: grid;
+  grid-template-columns: minmax(8rem, auto) minmax(0, 1fr);
+  gap: 0.75rem;
+}
+
+.technical-command-list dd {
+  min-width: 0;
+  margin: 0;
+}
+
+.technical-command-list code {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .ai-command-surface form,
 .privacy-command-surface form {
   gap: 0.75rem;

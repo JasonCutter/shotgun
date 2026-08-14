@@ -129,6 +129,7 @@ describe('owner command registry', () => {
         'external_action.open',
         'activity.open',
         'history.open',
+        'technical.current',
       ]),
     );
     expect(commands.some((command) => command.id.startsWith('navigate.'))).toBe(false);
@@ -154,6 +155,18 @@ describe('owner command registry', () => {
     expect(commands.find((command) => command.id === 'knowledge.open')?.action).toEqual({
       kind: 'NAVIGATE',
       targetRoute: { routeId: 'knowledge', href: '/knowledge' },
+    });
+    expect(commands.find((command) => command.id === 'activity.open')).toMatchObject({
+      category: 'INSPECTION',
+      risk: 'READ',
+      presentation: 'NAVIGATE',
+      action: { kind: 'NAVIGATE', targetRoute: { routeId: 'activity', href: '/activity' } },
+    });
+    expect(commands.find((command) => command.id === 'history.open')).toMatchObject({
+      category: 'INSPECTION',
+      risk: 'READ',
+      presentation: 'NAVIGATE',
+      action: { kind: 'NAVIGATE', targetRoute: { routeId: 'history', href: '/history' } },
     });
     expect(commands.find((command) => command.id === 'project.switch')).toMatchObject({
       id: 'project.switch',
@@ -215,6 +228,7 @@ describe('owner command registry', () => {
     expect(commands.some((command) => command.id === 'navigate.settings')).toBe(false);
     expect(commands.some((command) => command.id === 'settings')).toBe(false);
     expect(commands.some((command) => command.id === 'diagnostics.open')).toBe(false);
+    expect(filterOwnerCommands(commands, 'technical')).toHaveLength(0);
     expect(commands.find((command) => command.id === 'search.global')?.availability).toBe(
       'UNAVAILABLE_WITH_REASON',
     );
@@ -250,6 +264,38 @@ describe('owner command registry', () => {
       reason: 'Privacy review is unavailable while offline.',
     });
     expect(filterOwnerCommands(commands, 'global search')).toHaveLength(1);
+  });
+
+  it('binds technical.current availability only to mounted technical inspection context', () => {
+    const hidden = createOwnerCommandRegistry({ shell, projects }).find(
+      (command) => command.id === 'technical.current',
+    );
+    const available = createOwnerCommandRegistry({
+      shell,
+      projects,
+      isOffline: true,
+      hasTechnicalInspection: true,
+    }).find((command) => command.id === 'technical.current');
+
+    expect(hidden).toMatchObject({ availability: 'HIDDEN' });
+    expect(available).toMatchObject({
+      id: 'technical.current',
+      category: 'INSPECTION',
+      risk: 'READ',
+      presentation: 'DRAWER',
+      availability: 'AVAILABLE',
+      action: { kind: 'OPEN_TECHNICAL_FLOW', commandId: 'technical.current' },
+    });
+    expect(available?.context).toBeUndefined();
+    expect(available?.action).toEqual({
+      kind: 'OPEN_TECHNICAL_FLOW',
+      commandId: 'technical.current',
+    });
+    expect(
+      createOwnerCommandRegistry({ shell, projects, hasTechnicalInspection: true }).some(
+        (command) => command.id === 'diagnostics.open',
+      ),
+    ).toBe(false);
   });
 
   it('keeps historical placeholders from suppressing confirmed capabilities', () => {

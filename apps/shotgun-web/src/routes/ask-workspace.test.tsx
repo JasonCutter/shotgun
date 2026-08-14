@@ -13,6 +13,8 @@ import type {
 
 import { createFrontendQueryClient } from '../app/query-client.js';
 import { AppProviders, type AppRuntime } from '../app/providers.js';
+import { TechnicalDetails } from '../components/technical-details.js';
+import { TechnicalInspectionProvider } from '../components/technical-inspection-context.js';
 import { useLeaveGuard } from '../session/leave-guard-context.js';
 import { createSessionCycleState } from '../session/session-query.js';
 import { AskWorkspace } from './ask-workspace.js';
@@ -825,6 +827,50 @@ describe('AskWorkspace', () => {
 
     expect(await screen.findByRole('dialog', { name: 'Configure AI' })).toBeTruthy();
     expect(screen.queryByRole('link', { name: /settings/i })).toBeNull();
+  });
+
+  it('opens current technical information from slash without submitting Ask text', async () => {
+    const user = userEvent.setup();
+    const runtime = createRuntime();
+    const submitQuestion = vi.fn();
+    const mockClient: AskWorkspaceClient = {
+      getProviderEligibility: vi.fn().mockResolvedValue(eligibleProvider),
+      getWorkspace: vi.fn().mockResolvedValue(mockWorkspace),
+      getConversation: vi.fn().mockResolvedValue(mockWorkspace.selectedConversation!),
+      getConversationSourceContext: vi.fn(),
+      getBranch: vi.fn(),
+      getAnswerRun: vi.fn(),
+      submitQuestion,
+      getQuestionSubmissionByClientRequestId: vi.fn(),
+    };
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <ShellOutlet shell={commandShell} />,
+          children: [{ path: 'ask', element: <AskWorkspace client={mockClient} /> }],
+        },
+      ],
+      { initialEntries: ['/ask'] },
+    );
+
+    render(
+      <AppProviders runtime={runtime}>
+        <TechnicalInspectionProvider>
+          <TechnicalDetails items={[{ label: 'Source ID', value: 'source-current' }]} />
+          <RouterProvider router={router} />
+        </TechnicalInspectionProvider>
+      </AppProviders>,
+    );
+
+    const questionInput = await screen.findByLabelText('Question');
+    await user.type(questionInput, '/technical');
+    await user.click(await screen.findByRole('button', { name: /^Technical information/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Technical information' });
+    expect(within(dialog).getByText('source-current')).toBeTruthy();
+    expect((questionInput as HTMLTextAreaElement).value).toBe('');
+    expect(submitQuestion).not.toHaveBeenCalled();
   });
 
   it('uses the semantic form layout and keeps CANONICAL_ONLY submissions source-free', async () => {

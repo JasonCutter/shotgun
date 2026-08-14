@@ -41,6 +41,7 @@ export const OwnerCommandPalette = ({
       'PRIVACY',
       'PREFERENCES',
       'NAVIGATION',
+      'INSPECTION',
     ];
     const categoryLabels: Record<OwnerCommandCategory, string> = {
       HELP: 'Help',
@@ -50,6 +51,7 @@ export const OwnerCommandPalette = ({
       PRIVACY: 'Privacy',
       PREFERENCES: 'Preferences',
       NAVIGATION: 'Navigation',
+      INSPECTION: 'Inspection',
     };
 
     return categories

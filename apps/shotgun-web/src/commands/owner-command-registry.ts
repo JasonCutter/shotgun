@@ -1,7 +1,7 @@
 import type { GlobalShellView, ProjectListItemView, TargetRouteView } from '@shotgun/api-client';
 
 export type OwnerCommandCategory =
-  'HELP' | 'SEARCH' | 'PROJECT' | 'AI' | 'PRIVACY' | 'PREFERENCES' | 'NAVIGATION';
+  'HELP' | 'SEARCH' | 'PROJECT' | 'AI' | 'PRIVACY' | 'PREFERENCES' | 'NAVIGATION' | 'INSPECTION';
 
 export type OwnerCommandAvailability = 'AVAILABLE' | 'UNAVAILABLE_WITH_REASON' | 'HIDDEN';
 
@@ -33,6 +33,7 @@ export type OwnerCommandAction =
   | { readonly kind: 'OPEN_PREFERENCE_FLOW'; readonly commandId: PreferenceCommandId }
   | { readonly kind: 'OPEN_AI_FLOW'; readonly commandId: AICommandId }
   | { readonly kind: 'OPEN_PRIVACY_FLOW'; readonly commandId: PrivacyCommandId }
+  | { readonly kind: 'OPEN_TECHNICAL_FLOW'; readonly commandId: 'technical.current' }
   | { readonly kind: 'SWITCH_PROJECT'; readonly projectId: string };
 
 export type OwnerCommandDefinition = {
@@ -55,6 +56,7 @@ export type OwnerCommandRegistryOptions = {
   readonly isOffline?: boolean;
   readonly includeProjectSwitch?: boolean;
   readonly includeSearch?: boolean;
+  readonly hasTechnicalInspection?: boolean;
   readonly projects?: readonly ProjectListItemView[];
 };
 
@@ -63,6 +65,7 @@ type OwnerCommandTemplate = Omit<OwnerCommandDefinition, 'availability' | 'reaso
     shell: GlobalShellView,
     isOffline: boolean,
     projects: readonly ProjectListItemView[] | undefined,
+    hasTechnicalInspection: boolean,
   ) => Pick<OwnerCommandDefinition, 'availability' | 'reason'>;
 };
 
@@ -74,6 +77,7 @@ const categoryOrder: Record<OwnerCommandCategory, number> = {
   PRIVACY: 4,
   PREFERENCES: 5,
   NAVIGATION: 6,
+  INSPECTION: 7,
 };
 
 const normalize = (value: string): string => value.trim().toLocaleLowerCase();
@@ -421,7 +425,7 @@ const HFM_COMMAND_TEMPLATES: readonly OwnerCommandTemplate[] = [
   },
   {
     id: 'activity.open',
-    category: 'NAVIGATION',
+    category: 'INSPECTION',
     label: 'Open Activity',
     description: 'Open execution status',
     aliases: ['activity', 'runs', '활동'],
@@ -433,7 +437,7 @@ const HFM_COMMAND_TEMPLATES: readonly OwnerCommandTemplate[] = [
   },
   {
     id: 'history.open',
-    category: 'NAVIGATION',
+    category: 'INSPECTION',
     label: 'Open History',
     description: 'Open change history',
     aliases: ['history', 'audit', '이력'],
@@ -443,6 +447,20 @@ const HFM_COMMAND_TEMPLATES: readonly OwnerCommandTemplate[] = [
     action: navigate('history', '/history'),
     getAvailability: (shell) => explicitRouteAvailability(shell, 'history'),
   },
+  {
+    id: 'technical.current',
+    category: 'INSPECTION',
+    label: 'Technical information',
+    description: 'Inspect technical information registered by the current view',
+    aliases: ['technical', 'technical details', 'inspect', 'debug info', '기술 정보', '상세 정보'],
+    keywords: ['current view', 'identifiers', 'revisions', 'technical inspection', '디버그 정보'],
+    risk: 'READ',
+    presentation: 'DRAWER',
+    action: { kind: 'OPEN_TECHNICAL_FLOW', commandId: 'technical.current' },
+    getAvailability: (_shell, _isOffline, _projects, hasTechnicalInspection) => ({
+      availability: hasTechnicalInspection ? 'AVAILABLE' : 'HIDDEN',
+    }),
+  },
 ];
 
 export const createOwnerCommandRegistry = ({
@@ -450,12 +468,13 @@ export const createOwnerCommandRegistry = ({
   isOffline = false,
   includeProjectSwitch = true,
   includeSearch = true,
+  hasTechnicalInspection = false,
   projects,
 }: OwnerCommandRegistryOptions): readonly OwnerCommandDefinition[] => {
   const templateCommands = HFM_COMMAND_TEMPLATES.filter(
     (template) => includeSearch || template.id !== 'search.global',
   ).map((template): OwnerCommandDefinition => {
-    const state = template.getAvailability(shell, isOffline, projects);
+    const state = template.getAvailability(shell, isOffline, projects, hasTechnicalInspection);
     return {
       id: template.id,
       category: template.category,

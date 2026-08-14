@@ -161,6 +161,10 @@ test('Section 3 Search and Command Palette keep query transient and keyboard-saf
 
   await page.goto('/');
   await expect(page.getByRole('button', { name: 'Search', exact: true })).toHaveCount(0);
+  const keyboardInvoker = page
+    .getByRole('navigation', { name: 'Primary navigation' })
+    .getByRole('link', { name: 'Home', exact: true });
+  await keyboardInvoker.focus();
   await page.keyboard.press('Control+k');
   const commands = page.getByRole('dialog', { name: 'Commands' });
   await commands.getByRole('button', { name: /^Search/ }).click();
@@ -180,7 +184,7 @@ test('Section 3 Search and Command Palette keep query transient and keyboard-saf
     scope: { kind: 'CROSS_PROJECT', projectIds: ['project-b'] },
   });
   await page.getByRole('button', { name: 'Close' }).click();
-  await expect(searchButton).toBeFocused();
+  await expect(keyboardInvoker).toBeFocused();
   await expect
     .poll(() =>
       page.evaluate(() => `${JSON.stringify(localStorage)}${JSON.stringify(sessionStorage)}`),
@@ -188,7 +192,7 @@ test('Section 3 Search and Command Palette keep query transient and keyboard-saf
     .not.toContain('private transient phrase');
 
   productPostRequests.length = 0;
-  await searchButton.focus();
+  await keyboardInvoker.focus();
   await page.keyboard.press('Control+k');
   const palette = page.getByRole('dialog', { name: 'Commands' });
   await expect(palette).toBeVisible();
@@ -208,7 +212,7 @@ test('Section 3 Search and Command Palette keep query transient and keyboard-saf
   expect(productPostRequests).toHaveLength(0);
   await page.keyboard.press('Escape');
   await expect(palette).toBeHidden();
-  await expect(searchButton).toBeFocused();
+  await expect(keyboardInvoker).toBeFocused();
 });
 
 test('Section 3 route guard preserves Active Project context and masks resource denial', async ({

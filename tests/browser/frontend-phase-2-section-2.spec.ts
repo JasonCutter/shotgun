@@ -86,7 +86,12 @@ test('Ask draft blocks Project switching and is not moved to the next Project', 
   await switchProject(page, 'Project B');
   await expect(page.locator('.project-summary')).toContainText('Project B');
   await expect(page.getByRole('heading', { name: 'Home', level: 1 })).toBeVisible();
-  await page.getByRole('link', { name: 'Ask' }).click();
+  await page
+    .getByRole('navigation', { name: 'Primary navigation' })
+    .getByRole('link', {
+      name: 'Ask',
+    })
+    .click();
   await expect(page.getByRole('heading', { name: 'Ask', level: 1 })).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Question', exact: true })).toHaveValue('');
 });

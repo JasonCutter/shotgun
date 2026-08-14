@@ -124,7 +124,7 @@ export const PreferencesCommandSurface = ({
     onSuccess: async () => {
       await refreshPreferences();
       setOutcomeRecovery(undefined);
-      setMessage('Preferences updated.');
+      setMessage(t('preferences.updated'));
       setErrorMessage(undefined);
     },
     onError: (error, input) => {
@@ -151,15 +151,15 @@ export const PreferencesCommandSurface = ({
       if (outcome.outcomeState === 'COMPLETED') {
         await refreshPreferences();
         setOutcomeRecovery(undefined);
-        setMessage('Preferences updated.');
+        setMessage(t('preferences.updated'));
       } else if (outcome.outcomeState === 'REJECTED') {
         setOutcomeRecovery(undefined);
-        setErrorMessage(outcome.rejection?.message ?? 'Preference change was rejected.');
+        setErrorMessage(outcome.rejection?.message ?? t('preferences.rejected'));
       } else {
-        setMessage('The preference change is not final yet. Check the result again.');
+        setMessage(t('preferences.not_final'));
       }
     } catch {
-      setErrorMessage('The preference result could not be checked. Try again.');
+      setErrorMessage(t('preferences.check_failed'));
     } finally {
       setIsResolvingOutcome(false);
     }
@@ -248,7 +248,7 @@ export const PreferencesCommandSurface = ({
             ) : null}
             {commandId === 'preferences.timezone' ? (
               <div>
-                <label htmlFor="preferences-command-timezone">Timezone</label>
+                <label htmlFor="preferences-command-timezone">{t('preferences.timezone')}</label>
                 <select
                   id="preferences-command-timezone"
                   value={timezone}
@@ -264,7 +264,9 @@ export const PreferencesCommandSurface = ({
             {commandId === 'preferences.display' ? (
               <>
                 <div>
-                  <label htmlFor="preferences-command-date-display">Date &amp; Time Format</label>
+                  <label htmlFor="preferences-command-date-display">
+                    {t('preferences.date_format')}
+                  </label>
                   <select
                     id="preferences-command-date-display"
                     value={dateDisplay}
@@ -277,7 +279,9 @@ export const PreferencesCommandSurface = ({
                   </select>
                 </div>
                 <div>
-                  <label htmlFor="preferences-command-density">Screen Density</label>
+                  <label htmlFor="preferences-command-density">
+                    {t('preferences.screen_density')}
+                  </label>
                   <select
                     id="preferences-command-density"
                     value={screenDensity}

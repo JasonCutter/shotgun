@@ -30,10 +30,12 @@ import { useLeaveGuard } from '../session/leave-guard-context.js';
 import { useOptionalTechnicalInspection } from '../components/technical-inspection-context.js';
 import { useConnectivityState } from '../shell/use-connectivity-state.js';
 import { ProjectCommandSurface } from '../commands/project-command-surface.js';
+import { useProductLocalization } from '../localization/product-localization.js';
 import { GlobalSearchDialog } from './global-search-dialog.js';
 
 export const GlobalTools = ({ shell }: { readonly shell: GlobalShellView }) => {
   const { apiClient, queryClient } = useAppRuntime();
+  const { t } = useProductLocalization();
   const navigate = useNavigate();
   const connectivity = useConnectivityState();
   const { getLeaveState } = useLeaveGuard();
@@ -177,11 +179,11 @@ export const GlobalTools = ({ shell }: { readonly shell: GlobalShellView }) => {
       leaveState.hasBlockingDialog ||
       leaveState.hasUnsavedDraft
     ) {
-      setAnnouncement('Resolve the current Workspace before switching Projects.');
+      setAnnouncement(t('global.switch.resolve_workspace'));
       return;
     }
     if (leaveState.hasOutcomeUnknownCommand) {
-      setAnnouncement('The unknown command will not be retried during the Project switch.');
+      setAnnouncement(t('global.switch.unknown_not_retried'));
     }
     projectSwitch.mutate(command.action.projectId);
   };

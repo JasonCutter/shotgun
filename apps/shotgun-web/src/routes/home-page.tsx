@@ -55,7 +55,7 @@ export const HomePage = () => {
       </section>
     );
   }
-  if (homeQuery.isPending) return <LoadingState message="Loading Home Action Center…" />;
+  if (homeQuery.isPending) return <LoadingState message={t('home.loading')} />;
   if (homeQuery.error) {
     return (
       <ErrorState
@@ -76,7 +76,7 @@ export const HomePage = () => {
       <h1 tabIndex={-1}>{t('nav.home')}</h1>
       {home.stale ? (
         <p className="stale-state" role="status">
-          This server snapshot is stale. Actions are unavailable until refresh.
+          {t('home.stale')}
         </p>
       ) : null}
 
@@ -123,18 +123,18 @@ export const HomePage = () => {
           <h2 id="continue-heading">{t('home.continue_working')}</h2>
           {home.continueWorking.length > 0 ? (
             <>
-              <h3>Server resources</h3>
+              <h3>{t('home.server_resources')}</h3>
               <ResourceList items={home.continueWorking} />
             </>
           ) : null}
           {browserDrafts.length > 0 ? (
             <>
-              <h3>Browser drafts</h3>
+              <h3>{t('home.browser_drafts')}</h3>
               <ul>
                 {browserDrafts.map((draft) => (
                   <li key={`browser:${draft.draftId}`}>
                     <Link to={draft.targetRoute.href}>{draft.label}</Link>
-                    <small>Browser draft · never server-ranked</small>
+                    <small>{t('home.browser_draft_never_ranked')}</small>
                   </li>
                 ))}
               </ul>
@@ -149,13 +149,13 @@ export const HomePage = () => {
           <div className="two-column-list">
             {home.recent.length > 0 ? (
               <div>
-                <h3>Recent</h3>
+                <h3>{t('home.recent')}</h3>
                 <ResourceList items={home.recent} />
               </div>
             ) : null}
             {home.pinned.length > 0 ? (
               <div>
-                <h3>Pinned</h3>
+                <h3>{t('home.pinned')}</h3>
                 <ResourceList items={home.pinned} />
               </div>
             ) : null}

@@ -39,7 +39,7 @@ export const GlobalSearchDialog = ({ shell, open, invoker, onClose }: GlobalSear
       }),
     onSuccess: (result) => {
       setSearchResult(result);
-      setAnnouncement(`${result.results.length} search results.`);
+      setAnnouncement(t('search.result_count').replace('{count}', String(result.results.length)));
     },
   });
 

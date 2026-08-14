@@ -177,7 +177,7 @@ export const ProjectCommandSurface = ({
     onSuccess: async () => {
       await refreshProjects();
       setStep('MANAGE');
-      setMessage('Project created.');
+      setMessage(t('project.created'));
       setCreateId('');
       setCreateName('');
       setCreateDescription('');
@@ -206,7 +206,7 @@ export const ProjectCommandSurface = ({
     onSuccess: async () => {
       await refreshProjects();
       setStep('MANAGE');
-      setMessage('Project name updated.');
+      setMessage(t('project.name_updated'));
       setRenameValue('');
       setOutcomeRecovery(undefined);
     },
@@ -243,9 +243,9 @@ export const ProjectCommandSurface = ({
       setStep('MANAGE');
       setMessage(
         input.commandId === 'project.archive'
-          ? 'Project archived.'
+          ? t('project.archived')
           : input.commandId === 'project.restore'
-            ? 'Project restored.'
+            ? t('project.restored')
             : 'Deletion request submitted.',
       );
       setOutcomeRecovery(undefined);
@@ -275,21 +275,21 @@ export const ProjectCommandSurface = ({
           outcomeRecovery.commandId === 'project.create'
             ? 'Project created.'
             : outcomeRecovery.commandId === 'project.rename'
-              ? 'Project name updated.'
+              ? t('project.name_updated')
               : outcomeRecovery.commandId === 'project.archive'
-                ? 'Project archived.'
+                ? t('project.archived')
                 : outcomeRecovery.commandId === 'project.restore'
-                  ? 'Project restored.'
+                  ? t('project.restored')
                   : 'Deletion request submitted.',
         );
       } else if (outcome.outcomeState === 'REJECTED') {
         setOutcomeRecovery(undefined);
-        setErrorMessage(outcome.rejection?.message ?? 'Project change was rejected.');
+        setErrorMessage(outcome.rejection?.message ?? t('project.rejected'));
       } else {
-        setMessage('The Project change is not final yet. Check the result again.');
+        setMessage(t('project.not_final'));
       }
     } catch {
-      setErrorMessage('The Project result could not be checked. Try again.');
+      setErrorMessage(t('project.check_failed'));
     } finally {
       setIsResolvingOutcome(false);
     }
@@ -407,7 +407,7 @@ export const ProjectCommandSurface = ({
 
         {!projectsQuery.isLoading && !projectsQuery.error && step === 'MANAGE' ? (
           <>
-            <p>Choose a Project action without opening the permanent Settings path.</p>
+            <p>{t('project.choose_action')}</p>
             <ul className="project-command-list">
               {projects.map((project) => (
                 <li key={project.id} className="project-command-row">
@@ -470,7 +470,7 @@ export const ProjectCommandSurface = ({
 
         {!projectsQuery.isLoading && !projectsQuery.error && step === 'CREATE' ? (
           <form className="project-command-form" onSubmit={handleCreateSubmit}>
-            <p>Only the fields required by the existing Project create contract are shown.</p>
+            <p>{t('project.create_contract_fields')}</p>
             <label>
               Project key
               <input
@@ -507,7 +507,7 @@ export const ProjectCommandSurface = ({
 
         {!projectsQuery.isLoading && !projectsQuery.error && step === 'SELECT' ? (
           <>
-            <p>Select the Project for this command.</p>
+            <p>{t('project.select_for_command')}</p>
             {eligibleProjects.length === 0 ? (
               <p role="status">No eligible Projects are available for this action.</p>
             ) : null}

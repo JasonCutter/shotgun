@@ -247,7 +247,7 @@ export const OwnerCommandPalette = ({
           )}
         </div>
         <div className="dialog-actions">
-          <span className="owner-command-hint">↑↓ Navigate · Enter Select · Esc Close</span>
+          <span className="owner-command-hint">{t('commands.keyboard_hint')}</span>
           <button type="button" onClick={onClose}>
             {t('common.close')}
           </button>

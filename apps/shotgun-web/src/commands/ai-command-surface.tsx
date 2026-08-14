@@ -246,8 +246,8 @@ export const AICommandSurface = ({
     onSuccess: async () => {
       setFeedback({
         tone: 'success',
-        title: 'AI configuration saved',
-        detail: 'The selected provider and model are ready for the next new AI execution.',
+        title: t('ai.configuration_saved'),
+        detail: t('ai.configuration_ready'),
       });
       setTestResult(undefined);
       await refreshSettings();
@@ -311,14 +311,14 @@ export const AICommandSurface = ({
         setCredentialRecovery(input);
         setFeedback({
           tone: 'info',
-          title: 'Credential result needs checking',
-          detail: 'The credential write was not repeated. Check the result to continue safely.',
+          title: t('ai.credential_result_check'),
+          detail: t('ai.credential_write_not_repeated'),
         });
         return;
       }
       setFeedback({
         tone: 'error',
-        title: 'Credential was not saved',
+        title: t('ai.credential_not_saved'),
         detail: safeErrorMessage(error),
       });
     },
@@ -358,7 +358,7 @@ export const AICommandSurface = ({
       setTestResult(undefined);
       setFeedback({
         tone: 'error',
-        title: 'Test Connection failed',
+        title: t('ai.test_failed'),
         detail: safeErrorMessage(error),
       });
     },
@@ -395,23 +395,23 @@ export const AICommandSurface = ({
         setPendingPrivacyProposal(result as AIProviderPrivacyProposal);
         setFeedback({
           tone: 'info',
-          title: 'Provider privacy review proposed',
-          detail: 'The proposal still requires a separate Owner approval.',
+          title: t('ai.privacy_proposed'),
+          detail: t('ai.privacy_proposal_needs_owner'),
         });
         return;
       }
       setPendingPrivacyProposal(undefined);
       setFeedback({
         tone: 'success',
-        title: 'Provider privacy decision saved',
-        detail: 'This decision applies only to the selected provider.',
+        title: t('ai.privacy_saved'),
+        detail: t('ai.privacy_applies_selected'),
       });
       await refreshSettings();
     },
     onError: (error) =>
       setFeedback({
         tone: 'error',
-        title: 'Provider privacy review failed',
+        title: t('ai.privacy_failed'),
         detail: safeErrorMessage(error),
       }),
   });
@@ -437,7 +437,7 @@ export const AICommandSurface = ({
       setFeedback({
         tone: 'success',
         title: action === 'revoke' ? 'Credential revoked' : 'Credential removed',
-        detail: 'No other provider or credential was activated automatically.',
+        detail: t('ai.credential_action_complete'),
       });
       await refreshSettings();
     },
@@ -482,8 +482,8 @@ export const AICommandSurface = ({
     } catch {
       setFeedback({
         tone: 'info',
-        title: 'Credential result still needs checking',
-        detail: 'No credential write was repeated. Check the result again later.',
+        title: t('ai.credential_result_still_check'),
+        detail: t('ai.credential_result_later'),
       });
     }
   };
@@ -707,7 +707,7 @@ export const AICommandSurface = ({
                 <h3 id="ai-privacy-heading">{t('ai.provider_privacy')}</h3>
                 <p>{privacyStateLabel(selectedPrivacy)}</p>
                 {selectedPrivacy?.legacyGeminiCompatibility ? (
-                  <p>Historical Gemini compatibility applies only to this provider.</p>
+                  <p>{t('ai.historical_compatibility')}</p>
                 ) : null}
                 {selectedPrivacy && !privacyIsApproved && !canApprovePrivacy ? (
                   <button
@@ -722,7 +722,7 @@ export const AICommandSurface = ({
                   <button
                     type="button"
                     onClick={() => {
-                      if (window.confirm('Approve this provider privacy decision?')) {
+                      if (window.confirm(t('ai.approve_privacy_decision'))) {
                         privacyMutation.mutate('approve');
                       }
                     }}
@@ -742,7 +742,7 @@ export const AICommandSurface = ({
               <section className="ai-command-section" aria-labelledby="ai-credential-heading">
                 <h3 id="ai-credential-heading">{t('ai.credential_actions')}</h3>
                 {settings.currentConfiguration?.credentialId === usableCredential.credentialId ? (
-                  <p>This credential is used by the current saved configuration.</p>
+                  <p>{t('ai.current_credential')}</p>
                 ) : null}
                 {destructiveAction ? (
                   <div>

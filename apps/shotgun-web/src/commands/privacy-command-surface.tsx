@@ -123,18 +123,18 @@ export const PrivacyCommandSurface = ({
     onSuccess: async (response) => {
       if (response.resource.status === 'REVIEW_REQUIRED' && response.resource.reviewProposalId) {
         setReviewProposalId(response.resource.reviewProposalId);
-        setMessage('Owner approval is still required for this privacy review.');
+        setMessage(t('privacy.owner_approval_required'));
         setErrorMessage(undefined);
         return;
       }
       if (response.resource.status === 'APPLIED') {
         setReviewProposalId(undefined);
-        setMessage('Project privacy approval was recorded. Deployment policy still applies.');
+        setMessage(t('privacy.project_approval_recorded'));
         setErrorMessage(undefined);
         await refreshPrivacy();
         return;
       }
-      setMessage('The privacy review is not final yet. Check the result again.');
+      setMessage(t('privacy.review_not_final'));
       setErrorMessage(undefined);
     },
     onError: (error, input) => {
@@ -143,7 +143,7 @@ export const PrivacyCommandSurface = ({
           clientRequestId: input.clientRequestId,
           idempotencyKey: input.idempotencyKey,
         });
-        setMessage('The privacy review result needs checking. It will not be submitted again.');
+        setMessage(t('privacy.review_needs_checking'));
         setErrorMessage(undefined);
         return;
       }
@@ -161,16 +161,16 @@ export const PrivacyCommandSurface = ({
       );
       if (outcome.outcomeState === 'COMPLETED') {
         setOutcomeRecovery(undefined);
-        setMessage('Privacy review completed.');
+        setMessage(t('privacy.review_completed'));
         await refreshPrivacy();
       } else if (outcome.outcomeState === 'REJECTED') {
         setOutcomeRecovery(undefined);
-        setErrorMessage(outcome.rejection?.message ?? 'Privacy review was rejected.');
+        setErrorMessage(outcome.rejection?.message ?? t('privacy.review_rejected'));
       } else {
-        setMessage('The privacy review is not final yet. Check the result again.');
+        setMessage(t('privacy.review_not_final'));
       }
     } catch {
-      setErrorMessage('The privacy review result could not be checked. Try again.');
+      setErrorMessage(t('privacy.review_check_failed'));
     } finally {
       setIsResolvingOutcome(false);
     }
@@ -231,7 +231,7 @@ export const PrivacyCommandSurface = ({
           </button>
         ) : null}
         {privacyQuery.isLoading ? <p>{t('privacy.loading')}</p> : null}
-        {privacyQuery.isError ? <p role="alert">Failed to load privacy settings.</p> : null}
+        {privacyQuery.isError ? <p role="alert">{t('privacy.load_failed')}</p> : null}
         {privacyQuery.data?.availability === 'UNAVAILABLE' ? (
           <p role="alert">{privacyQuery.data.disabledReason}</p>
         ) : null}
@@ -239,27 +239,30 @@ export const PrivacyCommandSurface = ({
           <>
             <section className="privacy-command-section" aria-label="Privacy summary">
               <p>
-                <strong>Privacy profile:</strong> {privacyProfileLabel(privacyData.profileName)}
+                <strong>{t('privacy.profile_label')}</strong>{' '}
+                {privacyProfileLabel(privacyData.profileName)}
               </p>
               <p>
-                <strong>Sensitivity:</strong> {sensitivityLabel(privacyData.sensitivityLevel)}
+                <strong>{t('privacy.sensitivity_label')}</strong>{' '}
+                {sensitivityLabel(privacyData.sensitivityLevel)}
               </p>
               <p>
-                <strong>External transfer:</strong>{' '}
+                <strong>{t('privacy.external_transfer_label')}</strong>{' '}
                 {privacyData.externalTransferAllowed ? 'Allowed' : 'Not approved'}
               </p>
               <p>
-                <strong>Project approval:</strong> {privacyData.approvalStatus.replaceAll('_', ' ')}
+                <strong>{t('privacy.project_approval_label')}</strong>{' '}
+                {privacyData.approvalStatus.replaceAll('_', ' ')}
               </p>
               <p>
-                <strong>Deployment:</strong>{' '}
+                <strong>{t('privacy.deployment_label')}</strong>{' '}
                 {privacyData.deploymentAllowsPrivateExternalTransfer
                   ? 'May permit private external transfer after approval.'
                   : 'Currently blocks private external transfer.'}
               </p>
-              <p>Restricted Project context is never sent to an external AI provider.</p>
+              <p>{t('privacy.restricted_context')}</p>
               <p>
-                <strong>Retention:</strong> {privacyData.retentionSummary}
+                <strong>{t('privacy.retention_label')}</strong> {privacyData.retentionSummary}
               </p>
             </section>
             {!reviewMode && !privacyData.externalTransferAllowed ? (
@@ -268,7 +271,7 @@ export const PrivacyCommandSurface = ({
               </button>
             ) : null}
             {reviewMode && snapshotQuery.isLoading ? (
-              <p>Loading current review preconditions...</p>
+              <p>{t('privacy.loading_preconditions')}</p>
             ) : null}
             {reviewMode && snapshotQuery.isError ? (
               <p role="alert">Current privacy review preconditions could not be loaded.</p>
@@ -292,11 +295,7 @@ export const PrivacyCommandSurface = ({
                   type="button"
                   disabled={pending || snapshotQuery.data === undefined}
                   onClick={() => {
-                    if (
-                      window.confirm(
-                        'Approve private Project context transfer when deployment policy permits it?',
-                      )
-                    ) {
+                    if (window.confirm(t('privacy.approve_transfer'))) {
                       submitReview(effectiveReviewProposalId);
                     }
                   }}

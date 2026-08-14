@@ -11,6 +11,15 @@ import type { ProjectCommandId } from './owner-command-registry.js';
 
 type ProjectSurfaceStep = 'MANAGE' | 'CREATE' | 'SELECT' | 'RENAME' | 'RESTORE' | 'CONFIRM';
 
+type CommandIdentity = {
+  readonly clientRequestId: string;
+  readonly idempotencyKey: string;
+};
+
+type OutcomeRecovery = CommandIdentity & {
+  readonly commandId: ProjectCommandId;
+};
+
 export type ProjectCommandSurfaceProps = {
   readonly open: boolean;
   readonly commandId: ProjectCommandId | null;
@@ -40,13 +49,22 @@ const targetProject = (
   commandId: ProjectCommandId,
   activeProjectId: string | undefined,
 ): ProjectListItemView | undefined =>
-  projects.find((project) => project.id === activeProjectId && isEligible(project, commandId)) ??
-  projects.find((project) => isEligible(project, commandId));
+  projects.find((project) => project.id === activeProjectId && isEligible(project, commandId));
 
-const identity = () => ({
+const identity = (): CommandIdentity => ({
   clientRequestId: crypto.randomUUID(),
   idempotencyKey: crypto.randomUUID(),
 });
+
+const isOutcomeIndeterminateError = (error: unknown): boolean => {
+  if (typeof error !== 'object' || error === null) return false;
+  const candidate = error as { readonly code?: unknown; readonly recovery?: unknown };
+  return (
+    candidate.code === 'OUTCOME_INDETERMINATE' ||
+    candidate.code === 'OUTCOME_UNKNOWN' ||
+    candidate.recovery === 'RESOLVE_EXISTING_OUTCOME'
+  );
+};
 
 export const ProjectCommandSurface = ({
   open,
@@ -67,6 +85,8 @@ export const ProjectCommandSurface = ({
   const [renameValue, setRenameValue] = useState('');
   const [message, setMessage] = useState<string>();
   const [errorMessage, setErrorMessage] = useState<string>();
+  const [outcomeRecovery, setOutcomeRecovery] = useState<OutcomeRecovery>();
+  const [isResolvingOutcome, setIsResolvingOutcome] = useState(false);
 
   const projectsQuery = useQuery({
     queryKey: projectAdminQueryKey(shell.principalId),
@@ -83,6 +103,8 @@ export const ProjectCommandSurface = ({
     setSelectedProjectId(undefined);
     setMessage(undefined);
     setErrorMessage(undefined);
+    setOutcomeRecovery(undefined);
+    setIsResolvingOutcome(false);
     setCreateId('');
     setCreateName('');
     setCreateDescription('');
@@ -116,12 +138,27 @@ export const ProjectCommandSurface = ({
     await queryClient.refetchQueries({ queryKey: projectAdminQueryKey(shell.principalId) });
   };
 
+  const handleMutationError = (
+    error: unknown,
+    input: CommandIdentity,
+    mutationCommandId: ProjectCommandId,
+  ) => {
+    if (isOutcomeIndeterminateError(error)) {
+      setOutcomeRecovery({ ...input, commandId: mutationCommandId });
+      setErrorMessage(undefined);
+      return;
+    }
+    setErrorMessage(safeErrorMessage(error));
+  };
+
   const createMutation = useMutation({
-    mutationFn: (input: {
-      readonly id: string;
-      readonly name: string;
-      readonly description?: string;
-    }) => {
+    mutationFn: (
+      input: {
+        readonly id: string;
+        readonly name: string;
+        readonly description?: string;
+      } & CommandIdentity,
+    ) => {
       const activeProjectId = shell.activeProject?.id;
       if (!activeProjectId)
         throw new Error('Create Project is unavailable until a Project is active.');
@@ -131,7 +168,8 @@ export const ProjectCommandSurface = ({
         ...(input.description ? { description: input.description } : {}),
         activeProjectId,
         targetProjectId: activeProjectId,
-        ...identity(),
+        clientRequestId: input.clientRequestId,
+        idempotencyKey: input.idempotencyKey,
       });
     },
     onSuccess: async () => {
@@ -141,48 +179,56 @@ export const ProjectCommandSurface = ({
       setCreateId('');
       setCreateName('');
       setCreateDescription('');
+      setOutcomeRecovery(undefined);
     },
-    onError: (error) => setErrorMessage(safeErrorMessage(error)),
+    onError: (error, input) => handleMutationError(error, input, 'project.create'),
   });
 
   const updateMutation = useMutation({
-    mutationFn: (input: {
-      readonly projectId: string;
-      readonly name: string;
-      readonly revision: number;
-    }) =>
+    mutationFn: (
+      input: {
+        readonly projectId: string;
+        readonly name: string;
+        readonly revision: number;
+      } & CommandIdentity,
+    ) =>
       apiClient.updateProject(input.projectId, {
         name: input.name,
         activeProjectId: shell.activeProject?.id ?? input.projectId,
         targetProjectId: input.projectId,
         resourceProjectId: input.projectId,
         expectedRevision: input.revision,
-        ...identity(),
+        clientRequestId: input.clientRequestId,
+        idempotencyKey: input.idempotencyKey,
       }),
     onSuccess: async () => {
       await refreshProjects();
       setStep('MANAGE');
       setMessage('Project name updated.');
       setRenameValue('');
+      setOutcomeRecovery(undefined);
     },
-    onError: (error) => setErrorMessage(safeErrorMessage(error)),
+    onError: (error, input) => handleMutationError(error, input, 'project.rename'),
   });
 
   const lifecycleMutation = useMutation({
-    mutationFn: (input: {
-      readonly commandId: Extract<
-        ProjectCommandId,
-        'project.archive' | 'project.restore' | 'project.delete_request'
-      >;
-      readonly projectId: string;
-      readonly revision: number;
-    }) => {
+    mutationFn: (
+      input: {
+        readonly commandId: Extract<
+          ProjectCommandId,
+          'project.archive' | 'project.restore' | 'project.delete_request'
+        >;
+        readonly projectId: string;
+        readonly revision: number;
+      } & CommandIdentity,
+    ) => {
       const params = {
         activeProjectId: shell.activeProject?.id ?? input.projectId,
         targetProjectId: input.projectId,
         resourceProjectId: input.projectId,
         expectedRevision: input.revision,
-        ...identity(),
+        clientRequestId: input.clientRequestId,
+        idempotencyKey: input.idempotencyKey,
       };
       if (input.commandId === 'project.archive')
         return apiClient.archiveProject(input.projectId, params);
@@ -200,12 +246,52 @@ export const ProjectCommandSurface = ({
             ? 'Project restored.'
             : 'Deletion request submitted.',
       );
+      setOutcomeRecovery(undefined);
     },
-    onError: (error) => setErrorMessage(safeErrorMessage(error)),
+    onError: (error, input) => handleMutationError(error, input, input.commandId),
   });
 
   const pending =
-    createMutation.isPending || updateMutation.isPending || lifecycleMutation.isPending;
+    createMutation.isPending ||
+    updateMutation.isPending ||
+    lifecycleMutation.isPending ||
+    isResolvingOutcome;
+
+  const resolveOutcome = async () => {
+    if (!outcomeRecovery || isResolvingOutcome) return;
+    setIsResolvingOutcome(true);
+    setErrorMessage(undefined);
+    try {
+      const outcome = await apiClient.getFrontendCommandOutcomeByClientRequestId(
+        outcomeRecovery.clientRequestId,
+      );
+      if (outcome.outcomeState === 'COMPLETED') {
+        await refreshProjects();
+        setOutcomeRecovery(undefined);
+        setStep('MANAGE');
+        setMessage(
+          outcomeRecovery.commandId === 'project.create'
+            ? 'Project created.'
+            : outcomeRecovery.commandId === 'project.rename'
+              ? 'Project name updated.'
+              : outcomeRecovery.commandId === 'project.archive'
+                ? 'Project archived.'
+                : outcomeRecovery.commandId === 'project.restore'
+                  ? 'Project restored.'
+                  : 'Deletion request submitted.',
+        );
+      } else if (outcome.outcomeState === 'REJECTED') {
+        setOutcomeRecovery(undefined);
+        setErrorMessage(outcome.rejection?.message ?? 'Project change was rejected.');
+      } else {
+        setMessage('The Project change is not final yet. Check the result again.');
+      }
+    } catch {
+      setErrorMessage('The Project result could not be checked. Try again.');
+    } finally {
+      setIsResolvingOutcome(false);
+    }
+  };
 
   const selectProject = (project: ProjectListItemView, nextCommandId: ProjectCommandId) => {
     setSelectedProjectId(project.id);
@@ -222,6 +308,7 @@ export const ProjectCommandSurface = ({
       id: createId.trim(),
       name: createName.trim(),
       ...(createDescription.trim() ? { description: createDescription.trim() } : {}),
+      ...identity(),
     });
   };
 
@@ -233,6 +320,7 @@ export const ProjectCommandSurface = ({
       projectId: selectedProject.id,
       name: renameValue.trim(),
       revision: selectedProject.revision,
+      ...identity(),
     });
   };
 
@@ -251,6 +339,7 @@ export const ProjectCommandSurface = ({
       commandId,
       projectId: selectedProject.id,
       revision: selectedProject.revision,
+      ...identity(),
     });
   };
 
@@ -295,6 +384,17 @@ export const ProjectCommandSurface = ({
           <p className="project-command-error" role="alert">
             {errorMessage}
           </p>
+        ) : null}
+        {outcomeRecovery ? (
+          <div className="project-command-recovery" role="status">
+            <p>
+              The previous Project change has no confirmed result yet. Check the existing result
+              before trying again.
+            </p>
+            <button type="button" onClick={() => void resolveOutcome()} disabled={pending}>
+              {isResolvingOutcome ? 'Checking result...' : 'Check result'}
+            </button>
+          </div>
         ) : null}
         {projectsQuery.isLoading ? <p role="status">Loading Projects…</p> : null}
         {projectsQuery.error ? (
@@ -393,7 +493,7 @@ export const ProjectCommandSurface = ({
               />
             </label>
             <div className="dialog-actions">
-              <button type="submit" disabled={pending}>
+              <button type="submit" disabled={pending || outcomeRecovery !== undefined}>
                 {pending ? 'Creating…' : 'Create Project'}
               </button>
               <button type="button" onClick={onClose}>
@@ -440,7 +540,7 @@ export const ProjectCommandSurface = ({
               />
             </label>
             <div className="dialog-actions">
-              <button type="submit" disabled={pending}>
+              <button type="submit" disabled={pending || outcomeRecovery !== undefined}>
                 {pending ? 'Saving…' : 'Rename Project'}
               </button>
               <button type="button" onClick={onClose}>
@@ -459,7 +559,11 @@ export const ProjectCommandSurface = ({
               Restore <strong>{selectedProject.name}</strong> to make it available again.
             </p>
             <div className="dialog-actions">
-              <button type="button" onClick={handleLifecycleSubmit} disabled={pending}>
+              <button
+                type="button"
+                onClick={handleLifecycleSubmit}
+                disabled={pending || outcomeRecovery !== undefined}
+              >
                 {pending ? 'Restoring…' : 'Restore Project'}
               </button>
               <button type="button" onClick={onClose}>
@@ -488,7 +592,11 @@ export const ProjectCommandSurface = ({
               )}
             </p>
             <div className="dialog-actions">
-              <button type="button" onClick={handleLifecycleSubmit} disabled={pending}>
+              <button
+                type="button"
+                onClick={handleLifecycleSubmit}
+                disabled={pending || outcomeRecovery !== undefined}
+              >
                 {pending
                   ? 'Submitting…'
                   : commandId === 'project.archive'

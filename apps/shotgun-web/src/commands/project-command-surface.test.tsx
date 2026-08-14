@@ -1,9 +1,14 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { GlobalShellView, ProjectListItemView, ShotgunApiClient } from '@shotgun/api-client';
+import {
+  outcomeIndeterminateApiError,
+  type GlobalShellView,
+  type ProjectListItemView,
+  type ShotgunApiClient,
+} from '@shotgun/api-client';
 
 import { createFrontendQueryClient } from '../app/query-client.js';
 import { AppProviders, type AppRuntime } from '../app/providers.js';
@@ -67,6 +72,25 @@ const mutationResult = {
   outcome: {} as never,
   resource: project,
 } as Awaited<ReturnType<ShotgunApiClient['createProject']>>;
+
+const activeProjectWithoutRename: ProjectListItemView = {
+  ...project,
+  capability: {
+    ...project.capability,
+    canRename: false,
+  },
+};
+
+const eligibleOtherProject: ProjectListItemView = {
+  ...project,
+  id: 'project-2',
+  name: 'Other Project',
+  active: false,
+  capability: {
+    ...project.capability,
+    canRename: true,
+  },
+};
 
 const renderSurface = (
   commandId: 'project.create' | 'project.rename' | 'project.archive' | 'project.delete_request',
@@ -139,6 +163,29 @@ describe('ProjectCommandSurface', () => {
     );
   });
 
+  it('requires explicit selection instead of targeting the first eligible Project', async () => {
+    const user = userEvent.setup();
+    const updateProject = vi.fn<ShotgunApiClient['updateProject']>(async () => mutationResult);
+    renderSurface('project.rename', {
+      getProjects: vi.fn(async () => [activeProjectWithoutRename, eligibleOtherProject]),
+      updateProject,
+    });
+
+    expect(await screen.findByText('Select the Project for this command.')).toBeTruthy();
+    expect(screen.queryByRole('textbox', { name: 'New Project name' })).toBeNull();
+    await user.click(await screen.findByRole('button', { name: /Other Project/ }));
+    await user.type(
+      await screen.findByRole('textbox', { name: 'New Project name' }),
+      'Renamed Project',
+    );
+    await user.click(await screen.findByRole('button', { name: 'Rename Project' }));
+
+    expect(updateProject).toHaveBeenCalledWith(
+      'project-2',
+      expect.objectContaining({ targetProjectId: 'project-2' }),
+    );
+  });
+
   it('does not archive until explicit confirmation', async () => {
     const user = userEvent.setup();
     const archiveProject = vi.fn<ShotgunApiClient['archiveProject']>(async () => mutationResult);
@@ -168,5 +215,44 @@ describe('ProjectCommandSurface', () => {
       'project-1',
       expect.objectContaining({ expectedRevision: 3, targetProjectId: 'project-1' }),
     );
+  });
+
+  it('resolves an outcome-unknown write by its original identity without resubmitting', async () => {
+    const user = userEvent.setup();
+    const updateProject = vi.fn<ShotgunApiClient['updateProject']>(async () => {
+      throw outcomeIndeterminateApiError('request-from-error');
+    });
+    const getFrontendCommandOutcomeByClientRequestId = vi.fn<
+      ShotgunApiClient['getFrontendCommandOutcomeByClientRequestId']
+    >(
+      async () =>
+        ({ outcomeState: 'COMPLETED' }) as Awaited<
+          ReturnType<ShotgunApiClient['getFrontendCommandOutcomeByClientRequestId']>
+        >,
+    );
+    renderSurface('project.rename', {
+      getProjects: vi.fn(async () => [project]),
+      updateProject,
+      getFrontendCommandOutcomeByClientRequestId,
+    });
+
+    await user.type(
+      await screen.findByRole('textbox', { name: 'New Project name' }),
+      'Renamed Project',
+    );
+    await user.click(await screen.findByRole('button', { name: 'Rename Project' }));
+
+    const originalClientRequestId = updateProject.mock.calls[0]?.[1].clientRequestId;
+    expect(updateProject).toHaveBeenCalledTimes(1);
+    expect(originalClientRequestId).toBeTruthy();
+    expect(screen.queryByText('request-from-error')).toBeNull();
+
+    await user.click(await screen.findByRole('button', { name: 'Check result' }));
+    await waitFor(() =>
+      expect(getFrontendCommandOutcomeByClientRequestId).toHaveBeenCalledWith(
+        originalClientRequestId,
+      ),
+    );
+    expect(updateProject).toHaveBeenCalledTimes(1);
   });
 });

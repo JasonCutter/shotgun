@@ -534,6 +534,15 @@ main {
   background: color-mix(in srgb, var(--accent) 15%, transparent);
 }
 
+.project-command-recovery {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0.75rem 0;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line));
+  border-radius: 0.4rem;
+  padding: 0.75rem;
+}
+
 .project-command-error {
   background: color-mix(in srgb, #b91c1c 14%, transparent);
   color: #991b1b;

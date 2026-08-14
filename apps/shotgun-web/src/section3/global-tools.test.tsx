@@ -183,4 +183,53 @@ describe('GlobalTools HFM-S1 preservation', () => {
       'ko-KR',
     );
   });
+
+  it('opens the shared AI surface from Commands without navigating to Settings', async () => {
+    const user = userEvent.setup();
+    render(
+      <AppProviders
+        runtime={runtime({
+          getProjects: vi.fn(async () => [project]),
+          getAISettings: vi.fn(
+            async () =>
+              ({
+                projectId: 'project-1',
+                mode: 'UNCONFIGURED',
+                defaultProviderId: 'deepseek',
+                providers: [
+                  {
+                    providerId: 'deepseek',
+                    displayName: 'DeepSeek',
+                    status: 'active',
+                    models: [
+                      {
+                        providerId: 'deepseek',
+                        modelId: 'deepseek-test',
+                        displayName: 'DeepSeek Test',
+                        shotgunUsableCapabilities: ['ASK'],
+                        capabilityRevision: 'cap-1',
+                      },
+                    ],
+                  },
+                ],
+                credentialStatuses: [],
+                privacy: [],
+                vaultAvailability: { state: 'UNAVAILABLE', reason: 'MISSING_MASTER_KEY' },
+                legacyGeminiCredentialConfigured: false,
+              }) as never,
+          ),
+        })}
+      >
+        <MemoryRouter>
+          <GlobalTools shell={shell} />
+        </MemoryRouter>
+      </AppProviders>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Commands' }));
+    await user.click(await screen.findByRole('button', { name: /^Configure AI/ }));
+
+    expect(await screen.findByRole('dialog', { name: 'Configure AI' })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: /settings/i })).toBeNull();
+  });
 });

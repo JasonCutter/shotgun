@@ -121,7 +121,9 @@ describe('owner command registry', () => {
         'preferences.timezone',
         'preferences.display',
         'ai.configure',
+        'ai.test_connection',
         'privacy.open',
+        'privacy.review',
         'knowledge.open',
         'review.open',
         'external_action.open',
@@ -178,6 +180,30 @@ describe('owner command registry', () => {
           risk: 'WRITE',
           action: { kind: 'OPEN_PREFERENCE_FLOW', commandId: 'preferences.display' },
         }),
+        expect.objectContaining({
+          id: 'ai.configure',
+          category: 'AI',
+          risk: 'WRITE',
+          action: { kind: 'OPEN_AI_FLOW', commandId: 'ai.configure' },
+        }),
+        expect.objectContaining({
+          id: 'ai.test_connection',
+          category: 'AI',
+          risk: 'READ',
+          action: { kind: 'OPEN_AI_FLOW', commandId: 'ai.test_connection' },
+        }),
+        expect.objectContaining({
+          id: 'privacy.open',
+          category: 'PRIVACY',
+          risk: 'READ',
+          action: { kind: 'OPEN_PRIVACY_FLOW', commandId: 'privacy.open' },
+        }),
+        expect.objectContaining({
+          id: 'privacy.review',
+          category: 'PRIVACY',
+          risk: 'WRITE',
+          action: { kind: 'OPEN_PRIVACY_FLOW', commandId: 'privacy.review' },
+        }),
       ]),
     );
   });
@@ -206,6 +232,22 @@ describe('owner command registry', () => {
     expect(commands.find((command) => command.id === 'preferences.display')).toMatchObject({
       availability: 'UNAVAILABLE_WITH_REASON',
       reason: 'Preferences are unavailable while offline.',
+    });
+    expect(commands.find((command) => command.id === 'ai.configure')).toMatchObject({
+      availability: 'UNAVAILABLE_WITH_REASON',
+      reason: 'AI configuration is unavailable while offline.',
+    });
+    expect(commands.find((command) => command.id === 'ai.test_connection')).toMatchObject({
+      availability: 'UNAVAILABLE_WITH_REASON',
+      reason: 'AI connection test is unavailable while offline.',
+    });
+    expect(commands.find((command) => command.id === 'privacy.open')).toMatchObject({
+      availability: 'UNAVAILABLE_WITH_REASON',
+      reason: 'Privacy is unavailable while offline.',
+    });
+    expect(commands.find((command) => command.id === 'privacy.review')).toMatchObject({
+      availability: 'UNAVAILABLE_WITH_REASON',
+      reason: 'Privacy review is unavailable while offline.',
     });
     expect(filterOwnerCommands(commands, 'global search')).toHaveLength(1);
   });
@@ -272,6 +314,9 @@ describe('owner command registry', () => {
         expect.objectContaining({ id: 'search.global', risk: 'READ', presentation: 'DIALOG' }),
         expect.objectContaining({ id: 'project.switch', risk: 'WRITE', presentation: 'DIALOG' }),
         expect.objectContaining({ id: 'ai.configure', risk: 'WRITE', presentation: 'DRAWER' }),
+        expect.objectContaining({ id: 'ai.test_connection', risk: 'READ', presentation: 'DIALOG' }),
+        expect.objectContaining({ id: 'privacy.open', risk: 'READ', presentation: 'DRAWER' }),
+        expect.objectContaining({ id: 'privacy.review', risk: 'WRITE', presentation: 'DIALOG' }),
         expect.objectContaining({ id: 'knowledge.open', risk: 'READ', presentation: 'NAVIGATE' }),
       ]),
     );

@@ -23,12 +23,16 @@ import {
 import { useAppRuntime } from '../app/providers.js';
 import { projectAdminQueryKey } from '../app/query-keys.js';
 import { OwnerCommandPalette } from '../commands/owner-command-palette.js';
+import { AICommandSurface } from '../commands/ai-command-surface.js';
+import { PrivacyCommandSurface } from '../commands/privacy-command-surface.js';
 import { PreferencesCommandSurface } from '../commands/preferences-command-surface.js';
 import { ProjectCommandSurface } from '../commands/project-command-surface.js';
 import {
   createOwnerCommandRegistry,
+  type AICommandId,
   type OwnerCommandDefinition,
   type PreferenceCommandId,
+  type PrivacyCommandId,
   type ProjectCommandId,
 } from '../commands/owner-command-registry.js';
 import { ErrorState } from '../components/error-state.js';
@@ -107,6 +111,10 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   const [preferenceCommandInvoker, setPreferenceCommandInvoker] = useState<HTMLElement | null>(
     null,
   );
+  const [aiCommand, setAICommand] = useState<AICommandId | null>(null);
+  const [aiCommandInvoker, setAICommandInvoker] = useState<HTMLElement | null>(null);
+  const [privacyCommand, setPrivacyCommand] = useState<PrivacyCommandId | null>(null);
+  const [privacyCommandInvoker, setPrivacyCommandInvoker] = useState<HTMLElement | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchInvoker, setSearchInvoker] = useState<HTMLElement | null>(null);
   const [draftOwnerProjectId, setDraftOwnerProjectId] = useState<string>();
@@ -603,6 +611,22 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
       questionRef.current = '';
       return;
     }
+    if (command.action.kind === 'OPEN_AI_FLOW') {
+      setAICommandInvoker(commandPaletteInvoker);
+      setAICommand(command.action.commandId);
+      setCommandPaletteOpen(false);
+      setQuestion('');
+      questionRef.current = '';
+      return;
+    }
+    if (command.action.kind === 'OPEN_PRIVACY_FLOW') {
+      setPrivacyCommandInvoker(commandPaletteInvoker);
+      setPrivacyCommand(command.action.commandId);
+      setCommandPaletteOpen(false);
+      setQuestion('');
+      questionRef.current = '';
+      return;
+    }
     setCommandPaletteOpen(false);
     setQuestion('');
     questionRef.current = '';
@@ -1056,6 +1080,20 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
         shell={shell}
         invoker={preferenceCommandInvoker}
         onClose={() => setPreferenceCommand(null)}
+      />
+      <AICommandSurface
+        open={aiCommand !== null}
+        commandId={aiCommand}
+        shell={shell}
+        invoker={aiCommandInvoker}
+        onClose={() => setAICommand(null)}
+      />
+      <PrivacyCommandSurface
+        open={privacyCommand !== null}
+        commandId={privacyCommand}
+        shell={shell}
+        invoker={privacyCommandInvoker}
+        onClose={() => setPrivacyCommand(null)}
       />
 
       {answerRunCommandNotice ? <p role="status">{answerRunCommandNotice}</p> : null}

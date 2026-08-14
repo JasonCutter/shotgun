@@ -37,6 +37,8 @@ export const OwnerCommandPalette = ({
       'HELP',
       'SEARCH',
       'PROJECT',
+      'AI',
+      'PRIVACY',
       'PREFERENCES',
       'NAVIGATION',
     ];
@@ -44,6 +46,8 @@ export const OwnerCommandPalette = ({
       HELP: 'Help',
       SEARCH: 'Search',
       PROJECT: 'Project',
+      AI: 'AI',
+      PRIVACY: 'Privacy',
       PREFERENCES: 'Preferences',
       NAVIGATION: 'Navigation',
     };

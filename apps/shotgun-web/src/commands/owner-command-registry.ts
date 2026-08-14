@@ -1,6 +1,7 @@
 import type { GlobalShellView, ProjectListItemView, TargetRouteView } from '@shotgun/api-client';
 
-export type OwnerCommandCategory = 'HELP' | 'SEARCH' | 'PROJECT' | 'PREFERENCES' | 'NAVIGATION';
+export type OwnerCommandCategory =
+  'HELP' | 'SEARCH' | 'PROJECT' | 'AI' | 'PRIVACY' | 'PREFERENCES' | 'NAVIGATION';
 
 export type OwnerCommandAvailability = 'AVAILABLE' | 'UNAVAILABLE_WITH_REASON' | 'HIDDEN';
 
@@ -19,6 +20,10 @@ export type ProjectCommandId =
 export type PreferenceCommandId =
   'preferences.locale' | 'preferences.timezone' | 'preferences.display';
 
+export type AICommandId = 'ai.configure' | 'ai.test_connection';
+
+export type PrivacyCommandId = 'privacy.open' | 'privacy.review';
+
 export type OwnerCommandAction =
   | { readonly kind: 'NAVIGATE'; readonly targetRoute: TargetRouteView }
   | { readonly kind: 'NAVIGATE_PATH'; readonly href: '/settings/ai' | '/settings/privacy' }
@@ -26,6 +31,8 @@ export type OwnerCommandAction =
   | { readonly kind: 'OPEN_SEARCH' }
   | { readonly kind: 'OPEN_PROJECT_FLOW'; readonly commandId: ProjectCommandId }
   | { readonly kind: 'OPEN_PREFERENCE_FLOW'; readonly commandId: PreferenceCommandId }
+  | { readonly kind: 'OPEN_AI_FLOW'; readonly commandId: AICommandId }
+  | { readonly kind: 'OPEN_PRIVACY_FLOW'; readonly commandId: PrivacyCommandId }
   | { readonly kind: 'SWITCH_PROJECT'; readonly projectId: string };
 
 export type OwnerCommandDefinition = {
@@ -63,8 +70,10 @@ const categoryOrder: Record<OwnerCommandCategory, number> = {
   HELP: 0,
   SEARCH: 1,
   PROJECT: 2,
-  PREFERENCES: 3,
-  NAVIGATION: 4,
+  AI: 3,
+  PRIVACY: 4,
+  PREFERENCES: 5,
+  NAVIGATION: 6,
 };
 
 const normalize = (value: string): string => value.trim().toLocaleLowerCase();
@@ -156,6 +165,25 @@ const preferenceCommandAvailability = (
     return {
       availability: 'UNAVAILABLE_WITH_REASON',
       reason: 'Preferences are unavailable until a Project is active.',
+    };
+  }
+  return { availability: 'AVAILABLE' };
+};
+
+const focusedCommandAvailability = (
+  shell: GlobalShellView,
+  isOffline: boolean,
+  label: string,
+): Pick<OwnerCommandDefinition, 'availability' | 'reason'> => {
+  if (isOffline) {
+    return {
+      availability: 'UNAVAILABLE_WITH_REASON',
+      reason: `${label} is unavailable while offline.`,
+    };
+  }
+  if (!shell.activeProject) {
+    return {
+      availability: 'HIDDEN',
     };
   }
   return { availability: 'AVAILABLE' };
@@ -306,27 +334,54 @@ const HFM_COMMAND_TEMPLATES: readonly OwnerCommandTemplate[] = [
   },
   {
     id: 'ai.configure',
-    category: 'PROJECT',
+    category: 'AI',
     label: 'Configure AI',
     description: 'Open focused AI configuration',
     aliases: ['ai settings', 'provider settings', 'AI 설정'],
     keywords: ['model', 'provider', 'credential', '모델', '제공자'],
     risk: 'WRITE',
     presentation: 'DRAWER',
-    action: { kind: 'NAVIGATE_PATH', href: '/settings/ai' },
-    getAvailability: () => ({ availability: 'AVAILABLE' }),
+    action: { kind: 'OPEN_AI_FLOW', commandId: 'ai.configure' },
+    getAvailability: (shell, isOffline) =>
+      focusedCommandAvailability(shell, isOffline, 'AI configuration'),
+  },
+  {
+    id: 'ai.test_connection',
+    category: 'AI',
+    label: 'Test AI Connection',
+    description: 'Check the selected AI provider connection',
+    aliases: ['test ai', 'ai connection', 'connection test'],
+    keywords: ['ai', 'provider', 'model', 'connection'],
+    risk: 'READ',
+    presentation: 'DIALOG',
+    action: { kind: 'OPEN_AI_FLOW', commandId: 'ai.test_connection' },
+    getAvailability: (shell, isOffline) =>
+      focusedCommandAvailability(shell, isOffline, 'AI connection test'),
   },
   {
     id: 'privacy.open',
-    category: 'PROJECT',
+    category: 'PRIVACY',
     label: 'Open Privacy',
     description: 'Review privacy and external transfer settings',
     aliases: ['privacy', 'data transfer', '개인정보', '외부 전송'],
     keywords: ['retention', 'external ai', 'privacy settings', '개인정보 설정'],
     risk: 'READ',
     presentation: 'DRAWER',
-    action: { kind: 'NAVIGATE_PATH', href: '/settings/privacy' },
-    getAvailability: () => ({ availability: 'AVAILABLE' }),
+    action: { kind: 'OPEN_PRIVACY_FLOW', commandId: 'privacy.open' },
+    getAvailability: (shell, isOffline) => focusedCommandAvailability(shell, isOffline, 'Privacy'),
+  },
+  {
+    id: 'privacy.review',
+    category: 'PRIVACY',
+    label: 'Review Privacy',
+    description: 'Request or approve external AI transfer review',
+    aliases: ['privacy review', 'external transfer review'],
+    keywords: ['privacy', 'external transfer', 'approval', 'review'],
+    risk: 'WRITE',
+    presentation: 'DIALOG',
+    action: { kind: 'OPEN_PRIVACY_FLOW', commandId: 'privacy.review' },
+    getAvailability: (shell, isOffline) =>
+      focusedCommandAvailability(shell, isOffline, 'Privacy review'),
   },
   {
     id: 'knowledge.open',

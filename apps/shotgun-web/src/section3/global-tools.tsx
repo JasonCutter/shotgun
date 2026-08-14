@@ -13,11 +13,15 @@ import {
   sessionBoundaryQueryKey,
 } from '../app/query-keys.js';
 import { OwnerCommandPalette } from '../commands/owner-command-palette.js';
+import { AICommandSurface } from '../commands/ai-command-surface.js';
+import { PrivacyCommandSurface } from '../commands/privacy-command-surface.js';
 import { PreferencesCommandSurface } from '../commands/preferences-command-surface.js';
 import {
   createOwnerCommandRegistry,
+  type AICommandId,
   type OwnerCommandDefinition,
   type PreferenceCommandId,
+  type PrivacyCommandId,
   type ProjectCommandId,
 } from '../commands/owner-command-registry.js';
 import { useLeaveGuard } from '../session/leave-guard-context.js';
@@ -41,6 +45,10 @@ export const GlobalTools = ({ shell }: { readonly shell: GlobalShellView }) => {
   const [preferenceCommandInvoker, setPreferenceCommandInvoker] = useState<HTMLElement | null>(
     null,
   );
+  const [aiCommand, setAICommand] = useState<AICommandId | null>(null);
+  const [aiCommandInvoker, setAICommandInvoker] = useState<HTMLElement | null>(null);
+  const [privacyCommand, setPrivacyCommand] = useState<PrivacyCommandId | null>(null);
+  const [privacyCommandInvoker, setPrivacyCommandInvoker] = useState<HTMLElement | null>(null);
   const [announcement, setAnnouncement] = useState('');
   const projectsQuery = useQuery({
     queryKey: projectAdminQueryKey(shell.principalId),
@@ -115,6 +123,18 @@ export const GlobalTools = ({ shell }: { readonly shell: GlobalShellView }) => {
     if (command.action.kind === 'OPEN_PREFERENCE_FLOW') {
       setPreferenceCommandInvoker(paletteInvoker);
       setPreferenceCommand(command.action.commandId);
+      setPaletteOpen(false);
+      return;
+    }
+    if (command.action.kind === 'OPEN_AI_FLOW') {
+      setAICommandInvoker(paletteInvoker);
+      setAICommand(command.action.commandId);
+      setPaletteOpen(false);
+      return;
+    }
+    if (command.action.kind === 'OPEN_PRIVACY_FLOW') {
+      setPrivacyCommandInvoker(paletteInvoker);
+      setPrivacyCommand(command.action.commandId);
       setPaletteOpen(false);
       return;
     }
@@ -198,6 +218,20 @@ export const GlobalTools = ({ shell }: { readonly shell: GlobalShellView }) => {
         shell={shell}
         invoker={preferenceCommandInvoker}
         onClose={() => setPreferenceCommand(null)}
+      />
+      <AICommandSurface
+        open={aiCommand !== null}
+        commandId={aiCommand}
+        shell={shell}
+        invoker={aiCommandInvoker}
+        onClose={() => setAICommand(null)}
+      />
+      <PrivacyCommandSurface
+        open={privacyCommand !== null}
+        commandId={privacyCommand}
+        shell={shell}
+        invoker={privacyCommandInvoker}
+        onClose={() => setPrivacyCommand(null)}
       />
     </div>
   );

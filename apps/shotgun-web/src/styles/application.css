@@ -502,6 +502,74 @@ main {
   width: 1.1rem;
 }
 
+.ai-command-surface,
+.privacy-command-surface {
+  width: min(42rem, 100%);
+}
+
+.ai-command-surface form,
+.privacy-command-surface form {
+  gap: 0.75rem;
+}
+
+.ai-command-surface form > label,
+.privacy-command-surface form > label {
+  font-weight: 600;
+}
+
+.ai-command-surface select,
+.ai-command-surface input,
+.privacy-command-surface select,
+.privacy-command-surface input {
+  min-height: 2.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.45rem;
+  padding: 0.65rem;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.ai-command-section,
+.privacy-command-section {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.ai-command-section h3 {
+  margin: 0;
+}
+
+.ai-command-message,
+.privacy-command-message {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.45rem;
+}
+
+.ai-command-message-success {
+  background: #f0fdf4;
+  border-color: #86efac;
+  color: #166534;
+}
+
+.ai-command-message-error {
+  background: #fef2f2;
+  border-color: #fca5a5;
+  color: #991b1b;
+}
+
+.ai-command-message-info,
+.privacy-command-message {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1e40af;
+}
+
 .preferences-command-message {
   border-radius: 0.4rem;
   padding: 0.65rem 0.75rem;

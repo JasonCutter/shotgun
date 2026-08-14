@@ -761,6 +761,72 @@ describe('AskWorkspace', () => {
     );
   });
 
+  it('opens the shared AI surface from an Ask slash command', async () => {
+    const user = userEvent.setup();
+    const runtime = createRuntime();
+    runtime.apiClient.getAISettings = vi.fn(
+      async () =>
+        ({
+          projectId: 'project-1',
+          mode: 'UNCONFIGURED',
+          defaultProviderId: 'deepseek',
+          providers: [
+            {
+              providerId: 'deepseek',
+              displayName: 'DeepSeek',
+              status: 'active',
+              models: [
+                {
+                  providerId: 'deepseek',
+                  modelId: 'deepseek-test',
+                  displayName: 'DeepSeek Test',
+                  shotgunUsableCapabilities: ['ASK'],
+                  capabilityRevision: 'cap-1',
+                },
+              ],
+            },
+          ],
+          credentialStatuses: [],
+          privacy: [],
+          vaultAvailability: { state: 'UNAVAILABLE', reason: 'MISSING_MASTER_KEY' },
+          legacyGeminiCredentialConfigured: false,
+        }) as never,
+    );
+    const mockClient: AskWorkspaceClient = {
+      getProviderEligibility: vi.fn().mockResolvedValue(eligibleProvider),
+      getWorkspace: vi.fn().mockResolvedValue(mockWorkspace),
+      getConversation: vi.fn().mockResolvedValue(mockWorkspace.selectedConversation!),
+      getConversationSourceContext: vi.fn(),
+      getBranch: vi.fn(),
+      getAnswerRun: vi.fn(),
+      submitQuestion: vi.fn(),
+      getQuestionSubmissionByClientRequestId: vi.fn(),
+    };
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <ShellOutlet shell={commandShell} />,
+          children: [{ path: 'ask', element: <AskWorkspace client={mockClient} /> }],
+        },
+      ],
+      { initialEntries: ['/ask'] },
+    );
+
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    const questionInput = await screen.findByLabelText('Question');
+    await user.type(questionInput, '/ai');
+    await user.click(await screen.findByRole('button', { name: /^Configure AI/ }));
+
+    expect(await screen.findByRole('dialog', { name: 'Configure AI' })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: /settings/i })).toBeNull();
+  });
+
   it('uses the semantic form layout and keeps CANONICAL_ONLY submissions source-free', async () => {
     const user = userEvent.setup();
     const runtime = createRuntime();

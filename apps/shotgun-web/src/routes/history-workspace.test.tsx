@@ -285,10 +285,11 @@ describe('HistoryWorkspace (FE-P5-S2 WP5)', () => {
         ).not.toBeNull(),
       { timeout: 5000 },
     );
-    // Authoritative detail: payload snapshot + availability badge.
-    expect(screen.getByTestId('history-payload-snapshot').textContent).toContain(
-      'CANONICAL_CLAIM_ADDED',
+    const probe = screen.getByTestId('technical-inspection-probe');
+    await waitFor(() =>
+      expect(probe.getAttribute('data-blocks')).toContain('CANONICAL_CLAIM_ADDED'),
     );
+    expect(screen.queryByTestId('history-payload-snapshot')).toBeNull();
     expect(screen.getAllByText('Available').length).toBeGreaterThan(0);
     expect(detailCount()).toBeGreaterThanOrEqual(1);
     vi.unstubAllGlobals();
@@ -313,7 +314,7 @@ describe('HistoryWorkspace (FE-P5-S2 WP5)', () => {
     expect(probe.getAttribute('data-blocks')).toContain('Audit payload');
     expect(probe.getAttribute('data-blocks')).toContain('CANONICAL_CLAIM_ADDED');
     expect(probe.getAttribute('data-blocks')).toContain('AVAILABLE');
-    expect(screen.getByTestId('history-payload-snapshot').textContent).toContain('commit-2');
+    expect(screen.queryByTestId('history-payload-snapshot')).toBeNull();
 
     await user.click(screen.getByRole('button', { name: /Project settings changed/ }));
     await waitFor(() => expect(probe.getAttribute('data-blocks')).toContain('sha256:redacted'), {
@@ -323,7 +324,7 @@ describe('HistoryWorkspace (FE-P5-S2 WP5)', () => {
     expect(probe.getAttribute('data-blocks')).toContain('PURGED_BY_POLICY');
     expect(probe.getAttribute('data-blocks')).not.toContain('commit-2');
     expect(probe.getAttribute('data-blocks')).not.toContain('Reversal draft');
-    expect(screen.getByText(/Tombstone/)).not.toBeNull();
+    expect(screen.queryByText(/Tombstone/)).toBeNull();
 
     await user.click(screen.getByRole('button', { name: /Knowledge claim changed/ }));
     await waitFor(() => expect(probe.getAttribute('data-blocks')).toContain('REDACTED'), {

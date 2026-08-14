@@ -335,7 +335,7 @@ export const GraphWorkspace = () => {
         <h1 tabIndex={-1}>Semantic Graph</h1>
         <EmptyState
           title="Create a Project before opening the Graph"
-          description="Graph reads are always bound to a server-authoritative active Project."
+          description="Create a Project before opening the graph."
         />
       </section>
     );
@@ -492,7 +492,6 @@ export const GraphWorkspace = () => {
           ariaLabel="Semantic graph path"
         />
       )}
-      <p className="graph-scope-note">Project: {shell.activeProject.label}</p>
       <TechnicalDetails
         items={[
           { label: 'Snapshot ID', value: result.identity.snapshotId },

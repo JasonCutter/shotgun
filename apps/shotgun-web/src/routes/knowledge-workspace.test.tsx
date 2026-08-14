@@ -301,7 +301,7 @@ describe('Knowledge Workspace UI', () => {
     expect(router.state.location.search).toContain('q=canonical');
     expect(router.state.location.search).toContain('authority=CANONICAL');
     expect(await screen.findByText('The server-provided snippet.')).toBeTruthy();
-    expect(screen.getByText(/Search readiness is partial/)).toBeTruthy();
+    expect(screen.getByText(/Search results may be incomplete/)).toBeTruthy();
     expect(runtime.apiClient.searchKnowledge).toHaveBeenLastCalledWith(
       expect.objectContaining({
         query: 'canonical',
@@ -466,7 +466,7 @@ describe('Knowledge Workspace UI', () => {
 
     expect(await screen.findByRole('heading', { name: 'Left Page', level: 2 })).toBeTruthy();
     expect(await screen.findByRole('heading', { name: 'Right Page', level: 2 })).toBeTruthy();
-    expect(await screen.findByText('/items/0/summary')).toBeTruthy();
+    expect(screen.queryByText('/items/0/summary')).toBeNull();
     expect(screen.getByText('left value')).toBeTruthy();
     expect(screen.getByText('right value')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /merge|write|approve/i })).toBeNull();

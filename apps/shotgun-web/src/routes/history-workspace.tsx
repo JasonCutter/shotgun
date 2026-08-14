@@ -72,28 +72,6 @@ const historyEventLabel = (kind: string): string => {
   return labels[kind] ?? 'Project history updated';
 };
 
-/** Permitted bounded payload renderer: raw JSON only when AVAILABLE. */
-const PayloadSnapshotView = ({ entry }: { readonly entry: HistoryEntryV1 }) => {
-  if (entry.payloadAvailability === 'AVAILABLE' && entry.payloadSnapshot !== undefined) {
-    return (
-      <pre className="history-payload-snapshot" data-testid="history-payload-snapshot">
-        {JSON.stringify(entry.payloadSnapshot, null, 2)}
-      </pre>
-    );
-  }
-  return (
-    <p className="history-payload-redacted">
-      {entry.payloadAvailability === 'PURGED_BY_POLICY' && entry.payloadSnapshot !== undefined ? (
-        <>
-          Tombstone: <code>{JSON.stringify(entry.payloadSnapshot)}</code>
-        </>
-      ) : (
-        '이 항목은 payload를 포함하지 않습니다 (redaction/retention 정책).'
-      )}
-    </p>
-  );
-};
-
 const payloadInspectionItems = (
   entry: HistoryEntryV1,
 ): readonly TechnicalInspectionDetailItem[] => {
@@ -269,12 +247,7 @@ const HistoryDetail = ({
           { label: 'Resource ID', value: entry.domainResourceId },
         ]}
         inspectionItems={payloadInspectionItems(entry)}
-      >
-        <section className="history-payload-section" aria-label="Audit payload">
-          <h3>Audit payload</h3>
-          <PayloadSnapshotView entry={entry} />
-        </section>
-      </TechnicalDetails>
+      />
       <OwningDomainLinks
         entry={entry}
         onStartReversal={entry.domainKind === 'CANONICAL' ? onStartReversal : undefined}

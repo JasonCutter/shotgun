@@ -6,12 +6,6 @@ import {
 } from '../../adapters/frontend-product-read-in-memory/src/index.js';
 import type { FrontendReadScope } from '../../modules/frontend-product-read/src/index.js';
 
-/**
- * Review 4865177355 item 1 — the External Action Governance Workspace is
- * reachable from BOTH Home and Command Palette navigation, and those entries
- * only navigate (never direct execution; AC-18).
- */
-
 const project = {
   id: 'project-1',
   label: 'Project One',
@@ -63,17 +57,24 @@ describe('Frontend Shell HFM-S3 persistent navigation', () => {
     expect(shell.leadingWarning?.code).toBe('PROJECT_SETUP_REQUIRED');
   });
 
-  it('Home primary action navigates to the governance workspace and never executes (AC-18)', async () => {
+  it('Home keeps only the two normal owner actions', async () => {
     const home = await new InMemoryActionCenterProjection().getHome({
       ...scope,
       activeProject: project,
     });
-    const action = home.primaryActions.find((entry) => entry.id === 'govern-external-action');
-    expect(action).toBeDefined();
-    expect(action?.availability).toBe('AVAILABLE');
-    expect(action?.targetRoute).toEqual({ routeId: 'external-action', href: '/external-action' });
-    // Navigation-only: the primary action carries no command/execution surface.
-    expect('command' in (action ?? {})).toBe(false);
-    expect('capabilities' in (action ?? {})).toBe(false);
+    expect(home.primaryActions).toEqual([
+      {
+        id: 'add-source',
+        label: 'Add source',
+        availability: 'AVAILABLE',
+        targetRoute: { routeId: 'sources', href: '/sources' },
+      },
+      {
+        id: 'ask',
+        label: 'Ask',
+        availability: 'AVAILABLE',
+        targetRoute: { routeId: 'ask', href: '/ask' },
+      },
+    ]);
   });
 });

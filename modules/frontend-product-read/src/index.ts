@@ -9,6 +9,7 @@ import {
 } from '../../../packages/contracts/src/index.js';
 import type {
   AskAnswerRunSnapshot,
+  ActionCenterItem,
   AskBranchView,
   AskConversationView,
   AskWorkspaceView,
@@ -70,6 +71,13 @@ export type ActionCenterProjectionPort = {
       readonly activeProject: AuthorizedProjectSummary;
     },
   ): Promise<HomeActionCenterView>;
+};
+
+/** Read-only composition boundary for server-authoritative owner attention. */
+export type ActionCenterAttentionProjectionPort = {
+  listAttention(
+    input: FrontendReadScope & { readonly activeProject: AuthorizedProjectSummary },
+  ): Promise<readonly ActionCenterItem[]>;
 };
 
 export type BackgroundSummaryProjectionPort = {

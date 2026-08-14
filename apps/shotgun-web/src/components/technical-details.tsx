@@ -38,7 +38,6 @@ const registeredInspectionItems = (
 export const TechnicalDetails = ({
   items = [],
   inspectionItems = [],
-  children,
   summary = 'Technical details',
 }: {
   readonly items?: readonly TechnicalDetailItem[];
@@ -75,22 +74,5 @@ export const TechnicalDetails = ({
     [registrationId, unregisterBlock],
   );
 
-  return (
-    <details className="technical-details">
-      <summary>{summary}</summary>
-      {items.length > 0 ? (
-        <dl className="technical-detail-list">
-          {items.map((item) => (
-            <div key={item.label}>
-              <dt>{item.label}</dt>
-              <dd>
-                <code>{item.value}</code>
-              </dd>
-            </div>
-          ))}
-        </dl>
-      ) : null}
-      {children}
-    </details>
-  );
+  return null;
 };

@@ -106,7 +106,7 @@ test('Ask deep link uses accessible Resource Project without changing Active Pro
     page.getByRole('heading', { name: ASK_FIXTURE.conversationTitle, level: 3 }),
   ).toBeVisible();
   await expect(page.locator('.project-summary')).toContainText('shotgun');
-  await expect(page.getByText('Project: Project B')).toBeVisible();
+  await expect(page.getByText('Project: Project B')).toHaveCount(0);
   await expect(page.getByRole('textbox', { name: 'Question', exact: true })).toBeEnabled();
 });
 

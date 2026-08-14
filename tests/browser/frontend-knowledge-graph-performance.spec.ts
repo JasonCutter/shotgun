@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
+import { expectTechnicalInformation } from './hfm-technical.js';
+
 /**
  * AC-23 performance + lifecycle suite.
  *
@@ -21,9 +23,6 @@ import { expect, test, type Page } from '@playwright/test';
 
 const NODE_COUNT = 500;
 const EDGE_COUNT = 1000;
-
-const graphTechnicalDetails = (page: Page) =>
-  page.locator('details.technical-details').filter({ hasText: 'Snapshot ID' }).first();
 
 const routeGuard = {
   schemaVersion: '1.0.0',
@@ -147,7 +146,7 @@ const openGraph = async (page: Page) => {
   await expect(page.getByRole('heading', { name: 'Semantic Graph', level: 1 })).toBeVisible();
   // Snapshot data commit: the decoded snapshot is rendered into the store and
   // announced. This is the T0 reference point for layout timing.
-  await expect(graphTechnicalDetails(page)).toContainText('perf-snapshot');
+  await expectTechnicalInformation(page, 'perf-snapshot');
 };
 
 const median = (values: number[]) => {
@@ -170,7 +169,7 @@ test('AC-23: initial layout completes within 2000ms (median of 3 samples after w
   const samples: number[] = [];
   for (let i = 0; i < 3; i += 1) {
     await page.reload();
-    await expect(graphTechnicalDetails(page)).toContainText('perf-snapshot');
+    await expectTechnicalInformation(page, 'perf-snapshot');
     const started = Date.now();
     await page.locator('[data-layout-complete="true"]').waitFor({ state: 'attached' });
     samples.push(Date.now() - started);
@@ -262,7 +261,8 @@ test('AC-23: AbortController cancels an in-flight snapshot fetch on navigation',
   // no unhandled rejection, and the late response was dropped.
   expect(fulfillAttempted).toBe(true);
   expect(pageErrors).toHaveLength(0);
-  await expect(graphTechnicalDetails(page)).toHaveCount(0);
+  await expect(page.locator('details.technical-details')).toHaveCount(0);
+  await expect(page.getByText('perf-snapshot', { exact: true })).toHaveCount(0);
 });
 
 test('AC-23: cytoscape destroy runs exactly once per unmount and no instance accumulates', async ({

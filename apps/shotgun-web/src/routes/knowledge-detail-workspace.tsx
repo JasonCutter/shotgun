@@ -107,12 +107,6 @@ export const KnowledgeDetailWorkspace = () => {
         </p>
       ) : null}
 
-      <dl className="identity-summary">
-        <div>
-          <dt>Project</dt>
-          <dd>{shell.activeProject.label}</dd>
-        </div>
-      </dl>
       <TechnicalDetails
         items={[
           { label: 'Project ID', value: page.projectId },
@@ -123,15 +117,6 @@ export const KnowledgeDetailWorkspace = () => {
       />
 
       <ProjectionStatus projection={page.projection} />
-
-      <section className="action-card" aria-labelledby="knowledge-detail-capabilities-heading">
-        <h2 id="knowledge-detail-capabilities-heading">Read capabilities</h2>
-        <p>
-          This page exposes exploration capabilities only. Canonical write, Approval, Commit, and
-          external Action controls are intentionally absent.
-        </p>
-        <p>Read and exploration tools are available for this page.</p>
-      </section>
 
       <LineageMetadata lineage={page.lineage} />
 

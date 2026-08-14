@@ -1,5 +1,4 @@
 import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
 import { TechnicalDetails } from './technical-details.js';
@@ -20,18 +19,13 @@ const InspectionProbe = () => {
 };
 
 describe('TechnicalDetails', () => {
-  it('keeps exact identifiers collapsed until the user requests them', async () => {
-    const user = userEvent.setup();
+  it('does not render technical identifiers in the normal document', () => {
     const { container } = render(
       <TechnicalDetails items={[{ label: 'Source ID', value: 'source-internal-123' }]} />,
     );
 
-    const details = container.querySelector('details');
-    expect(details?.open).toBe(false);
-    expect(screen.getByText('source-internal-123')).toBeTruthy();
-
-    await user.click(screen.getByText('Technical details'));
-    expect(details?.open).toBe(true);
+    expect(container.querySelector('details')).toBeNull();
+    expect(screen.queryByText('source-internal-123')).toBeNull();
   });
 
   it('registers explicit primitive items in deterministic order and removes stale blocks', async () => {
@@ -64,7 +58,7 @@ describe('TechnicalDetails', () => {
     );
   });
 
-  it('keeps children only in the original details and excludes sensitive or interactive values', async () => {
+  it('does not render children and excludes sensitive or interactive values from inspection', async () => {
     render(
       <TechnicalInspectionProvider>
         <TechnicalDetails
@@ -84,8 +78,8 @@ describe('TechnicalDetails', () => {
       </TechnicalInspectionProvider>,
     );
 
-    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Payload action' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Payload action' })).toBeNull();
     await waitFor(() =>
       expect(screen.getByTestId('inspection-blocks').textContent).toBe(
         'Technical details:source-safe,{"stage":"ready"}',

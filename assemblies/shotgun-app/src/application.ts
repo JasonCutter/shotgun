@@ -27,7 +27,6 @@ import { PostgresAskAnswerExecutionRepository } from '../../../adapters/frontend
 import { OriginalAssetAskSourceVersionContextReader } from '../../../adapters/frontend-ask-source-context-original-asset/src/index.js';
 import { PostgresAskProviderPolicyAuthorityReader } from '../../../adapters/frontend-ask-provider-policy-postgres/src/index.js';
 import {
-  InMemoryActionCenterProjection,
   InMemoryBackgroundSummaryProjection,
   InMemoryGlobalSearch,
   InMemoryGlobalShellProjection,
@@ -415,10 +414,10 @@ export const startShotgunApplication = async (
       frontendKnowledgeDraftTargetResolver: new PostgresFrontendKnowledgeDraftTargetResolver(pool),
       frontendReviewDraftSourceReader: createPostgresReviewDraftSourceReader(pool),
       askCommandCoordinator,
-      frontendProductReadCoordinatorFactory: (connector) =>
+      frontendProductReadCoordinatorFactory: (connector, actionCenterProjection) =>
         new FrontendProductReadCoordinator(
           new InMemoryGlobalShellProjection(),
-          new InMemoryActionCenterProjection(),
+          actionCenterProjection,
           new InMemoryBackgroundSummaryProjection(),
           new InMemoryNotificationSummaryProjection(),
           new InMemoryGlobalSearch(),

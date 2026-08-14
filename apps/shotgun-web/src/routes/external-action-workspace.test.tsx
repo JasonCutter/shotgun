@@ -585,12 +585,12 @@ describe('ExternalActionWorkspace (FE-P4-S2 WP5)', () => {
 
     await waitFor(
       () => {
-        screen.getByText(/manifest-1/);
+        screen.getByRole('heading', { name: '매니페스트' });
       },
       { timeout: 10000 },
     );
     screen.getByText('Critical risk');
-    screen.getByText('ext-7');
+    expect(screen.queryByText('ext-7')).toBeNull();
     vi.unstubAllGlobals();
   });
 
@@ -634,7 +634,7 @@ describe('ExternalActionWorkspace (FE-P4-S2 WP5)', () => {
 
     await waitFor(
       () => {
-        screen.getByText(/manifest-1/);
+        screen.getByRole('heading', { name: '매니페스트' });
       },
       { timeout: 10000 },
     );
@@ -738,7 +738,7 @@ describe('ExternalActionWorkspace (FE-P4-S2 WP5)', () => {
 
     await waitFor(
       () => {
-        screen.getByText(/manifest-1/);
+        screen.getByRole('heading', { name: '매니페스트' });
       },
       { timeout: 10000 },
     );
@@ -785,7 +785,7 @@ describe('ExternalActionWorkspace (FE-P4-S2 WP5)', () => {
     await selectQueueAction();
     await waitFor(
       () => {
-        screen.getByText(/manifest-1/);
+        screen.getByRole('heading', { name: '매니페스트' });
       },
       { timeout: 10000 },
     );
@@ -1078,7 +1078,7 @@ describe('ExternalActionWorkspace (FE-P4-S2 WP5)', () => {
     await selectQueueAction();
     await waitFor(
       () => {
-        screen.getByText(/manifest-1/);
+        screen.getByRole('heading', { name: '매니페스트' });
       },
       { timeout: 10000 },
     );
@@ -1092,7 +1092,7 @@ describe('ExternalActionWorkspace (FE-P4-S2 WP5)', () => {
     await userEvent.click(screen.getByRole('button', { name: /Update an external resource/ }));
     await waitFor(
       () => {
-        screen.getByText(/manifest-1/);
+        screen.getByRole('heading', { name: '매니페스트' });
       },
       { timeout: 10000 },
     );
@@ -1316,7 +1316,7 @@ describe('ExternalActionWorkspace (FE-P4-S2 WP5)', () => {
     // After the snapshot bootstraps the revision, the detail loads normally.
     await waitFor(
       () => {
-        screen.getByText(/manifest-1/);
+        screen.getByRole('heading', { name: '매니페스트' });
       },
       { timeout: 10000 },
     );

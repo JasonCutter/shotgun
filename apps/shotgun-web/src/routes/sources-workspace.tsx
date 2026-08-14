@@ -86,7 +86,7 @@ export const SourcesWorkspace = () => {
     return (
       <EmptyState
         title="Create a Project before adding Sources"
-        description="Sources are always bound to a server-authoritative Project."
+        description="Create a Project to organize and add Sources."
       />
     );
   }
@@ -306,16 +306,9 @@ export const SourcesWorkspace = () => {
     <section className="route-page sources-workspace">
       <p className="eyebrow">Knowledge input</p>
       <h1 tabIndex={-1}>Sources</h1>
-      <p>
-        Project: <strong>{shell.activeProject.label}</strong>
-      </p>
 
       <section className="action-card" aria-labelledby="source-intake-heading">
         <h2 id="source-intake-heading">Draft Queue</h2>
-        <p>
-          Direct Text, File and URL drafts remain fixed to this Project until you explicitly submit
-          or discard them.
-        </p>
         <p>Drafts stay with the project where they were created until submitted or discarded.</p>
         {draftQueue.activeProjectMismatch ? (
           <p className="warning-state" role="alert">
@@ -328,13 +321,11 @@ export const SourcesWorkspace = () => {
             The incoming Draft Seed failed its typed contract and was rejected.
           </p>
         ) : null}
-        <p className="status-message" role="status" aria-live="polite">
-          {mutationState === 'STAGING'
-            ? 'Staging immutable Source bytes…'
-            : mutationState === 'SUBMITTING'
-              ? 'Submitting the server-authoritative Intake command…'
-              : 'Server submission is active. Raw input is staged before the Command Ledger is accepted.'}
-        </p>
+        {mutationState !== 'IDLE' ? (
+          <p className="status-message" role="status" aria-live="polite">
+            {mutationState === 'STAGING' ? 'Adding draft…' : 'Submitting drafts…'}
+          </p>
+        ) : null}
         {mutationError ? (
           <p className="warning-state" role="alert">
             {mutationError}
@@ -523,7 +514,6 @@ export const SourcesWorkspace = () => {
         <div className="source-library-heading">
           <div>
             <h2 id="source-library-heading">Source Library</h2>
-            <p>Server-authoritative, bounded and scoped to the active Project.</p>
           </div>
           <form className="source-search" role="search" onSubmit={onSearch}>
             <label htmlFor="source-search-query">Search Sources</label>

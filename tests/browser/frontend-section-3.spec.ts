@@ -104,26 +104,23 @@ const shellView = (created: boolean) => ({
   },
 });
 
-test('Section 3 renders responsive server-authoritative Shell and six-area Home', async ({
-  page,
-}) => {
+test('Section 3 renders responsive Shell and a compact Home', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeVisible();
-  for (const heading of [
+  await expect(page.getByRole('heading', { name: 'Primary Actions' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Add source' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Ask', exact: true })).toBeVisible();
+  for (const hidden of [
     'Project State',
-    'Primary Actions',
-    'Attention Queue',
+    'Attention',
     'Continue Working',
     'Recent and Pinned',
     'Operational Summary',
   ]) {
-    await expect(page.getByRole('heading', { name: heading })).toBeVisible();
+    await expect(page.getByRole('heading', { name: hidden, exact: true })).toHaveCount(0);
   }
-  await expect(page.getByText('No attention needed')).toBeVisible();
-  await expect(page.getByText('No restorable server resources.')).toBeVisible();
-  await expect(page.getByText('No validated browser drafts.')).toBeVisible();
 
   await page.setViewportSize({ width: 900, height: 900 });
   await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeVisible();

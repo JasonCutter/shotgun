@@ -147,10 +147,6 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
       conversationId === undefined &&
       shell.activeProject?.id === workspace.projectId,
   });
-  const workspaceProjectLabel = workspace
-    ? (shell.accessibleProjects.find((project) => project.id === workspace.projectId)?.label ??
-      'Conversation project')
-    : 'Project';
   const conversationSourceContext = useQuery({
     ...askConversationSourceContextQueryOptions(
       askClient,
@@ -910,16 +906,10 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     <section className="route-page ask-workspace">
       <p className="eyebrow">Knowledge question</p>
       <h1 tabIndex={-1}>Ask</h1>
-      <p>
-        Project: <strong>{workspaceProjectLabel}</strong>
-      </p>
 
       <section className="action-card" aria-labelledby="ask-draft-heading">
         <h2 id="ask-draft-heading">Question Draft</h2>
-        <p>
-          This draft remains browser-only until the protected Ask command boundary is active. It is
-          never treated as Canonical knowledge or original Evidence.
-        </p>
+        <p>Your question stays here until you submit it.</p>
         <form
           className="ask-question-form"
           onSubmit={(event) => {

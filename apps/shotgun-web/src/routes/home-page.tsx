@@ -4,7 +4,6 @@ import { Link, useOutletContext } from 'react-router';
 import type { GlobalShellView } from '@shotgun/api-client';
 
 import { useAppRuntime } from '../app/providers.js';
-import { EmptyState } from '../components/empty-state.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
 import {
@@ -12,7 +11,6 @@ import {
   decodeRestorableBrowserDrafts,
 } from '../section3/browser-drafts.js';
 import { homeActionCenterQueryOptions } from '../section3/section3-queries.js';
-import { projectLifecycleLabel } from '../presentation/product-labels.js';
 
 const readBrowserDrafts = (shell: GlobalShellView) => {
   if (!shell.activeProject) return [];
@@ -55,9 +53,7 @@ export const HomePage = () => {
       </section>
     );
   }
-  if (homeQuery.isPending) {
-    return <LoadingState message="Loading Home Action Center…" />;
-  }
+  if (homeQuery.isPending) return <LoadingState message="Loading Home Action Center…" />;
   if (homeQuery.error) {
     return (
       <ErrorState
@@ -82,15 +78,6 @@ export const HomePage = () => {
         </p>
       ) : null}
 
-      <section aria-labelledby="project-state-heading" className="action-card">
-        <h2 id="project-state-heading">Project State</h2>
-        <p>
-          <strong>{home.activeProject.label}</strong> ·{' '}
-          {projectLifecycleLabel(home.projectState.lifecycle)}
-        </p>
-        <p>{home.projectState.message}</p>
-      </section>
-
       <section aria-labelledby="primary-actions-heading" className="action-card">
         <h2 id="primary-actions-heading">Primary Actions</h2>
         <ul className="action-grid">
@@ -109,14 +96,9 @@ export const HomePage = () => {
         </ul>
       </section>
 
-      <section aria-labelledby="attention-heading" className="action-card">
-        <h2 id="attention-heading">Attention Queue</h2>
-        {home.attention.length === 0 ? (
-          <EmptyState
-            title="No attention needed"
-            description="The server reported no pending items."
-          />
-        ) : (
+      {home.attention.length > 0 ? (
+        <section aria-labelledby="attention-heading" className="action-card">
+          <h2 id="attention-heading">Attention</h2>
           <ol>
             {home.attention.map((item) => (
               <li key={item.stableId}>
@@ -125,92 +107,71 @@ export const HomePage = () => {
               </li>
             ))}
           </ol>
-        )}
-      </section>
+        </section>
+      ) : null}
 
-      <section aria-labelledby="continue-heading" className="action-card">
-        <h2 id="continue-heading">Continue Working</h2>
-        <h3>Server resources</h3>
-        {home.continueWorking.length === 0 ? (
-          <p>No restorable server resources.</p>
-        ) : (
-          <ul>
-            {home.continueWorking.map((item) => (
-              <li key={item.stableId}>
-                <Link to={item.targetRoute.href}>{item.label}</Link>
-              </li>
-            ))}
-          </ul>
-        )}
-        <h3>Browser drafts</h3>
-        {browserDrafts.length === 0 ? (
-          <p>No validated browser drafts.</p>
-        ) : (
-          <ul>
-            {browserDrafts.map((draft) => (
-              <li key={`browser:${draft.draftId}`}>
-                <Link to={draft.targetRoute.href}>{draft.label}</Link>
-                <small>Browser draft · never server-ranked</small>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      {home.continueWorking.length > 0 || browserDrafts.length > 0 ? (
+        <section aria-labelledby="continue-heading" className="action-card">
+          <h2 id="continue-heading">Continue Working</h2>
+          {home.continueWorking.length > 0 ? (
+            <>
+              <h3>Server resources</h3>
+              <ResourceList items={home.continueWorking} />
+            </>
+          ) : null}
+          {browserDrafts.length > 0 ? (
+            <>
+              <h3>Browser drafts</h3>
+              <ul>
+                {browserDrafts.map((draft) => (
+                  <li key={`browser:${draft.draftId}`}>
+                    <Link to={draft.targetRoute.href}>{draft.label}</Link>
+                    <small>Browser draft · never server-ranked</small>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
+        </section>
+      ) : null}
 
-      <section aria-labelledby="recent-pinned-heading" className="action-card">
-        <h2 id="recent-pinned-heading">Recent and Pinned</h2>
-        <div className="two-column-list">
-          <div>
-            <h3>Recent</h3>
-            <ResourceList items={home.recent} empty="No recent resources." />
+      {home.recent.length > 0 || home.pinned.length > 0 ? (
+        <section aria-labelledby="recent-pinned-heading" className="action-card">
+          <h2 id="recent-pinned-heading">Recent and Pinned</h2>
+          <div className="two-column-list">
+            {home.recent.length > 0 ? (
+              <div>
+                <h3>Recent</h3>
+                <ResourceList items={home.recent} />
+              </div>
+            ) : null}
+            {home.pinned.length > 0 ? (
+              <div>
+                <h3>Pinned</h3>
+                <ResourceList items={home.pinned} />
+              </div>
+            ) : null}
           </div>
-          <div>
-            <h3>Pinned</h3>
-            <ResourceList items={home.pinned} empty="No pinned resources." />
-          </div>
-        </div>
-      </section>
-
-      <section aria-labelledby="operations-heading" className="action-card">
-        <h2 id="operations-heading">Operational Summary</h2>
-        <dl className="summary-grid">
-          <div>
-            <dt>Active background work</dt>
-            <dd>{home.operationalSummary.activeBackgroundCount}</dd>
-          </div>
-          <div>
-            <dt>Failed background work</dt>
-            <dd>{home.operationalSummary.failedBackgroundCount}</dd>
-          </div>
-          <div>
-            <dt>Unread notifications</dt>
-            <dd>{home.operationalSummary.unreadNotificationCount}</dd>
-          </div>
-        </dl>
-      </section>
+        </section>
+      ) : null}
     </section>
   );
 };
 
 const ResourceList = ({
   items,
-  empty,
 }: {
   readonly items: readonly {
     readonly stableId: string;
     readonly label: string;
     readonly targetRoute: { readonly href: string };
   }[];
-  readonly empty: string;
-}) =>
-  items.length === 0 ? (
-    <p>{empty}</p>
-  ) : (
-    <ul>
-      {items.map((item) => (
-        <li key={item.stableId}>
-          <Link to={item.targetRoute.href}>{item.label}</Link>
-        </li>
-      ))}
-    </ul>
-  );
+}) => (
+  <ul>
+    {items.map((item) => (
+      <li key={item.stableId}>
+        <Link to={item.targetRoute.href}>{item.label}</Link>
+      </li>
+    ))}
+  </ul>
+);

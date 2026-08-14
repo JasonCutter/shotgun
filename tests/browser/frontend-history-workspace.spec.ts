@@ -1,6 +1,8 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
+import { expectTechnicalInformation } from './hfm-technical.js';
+
 /**
  * FE-P5-S2 WP6 — History Workspace browser E2E + accessibility evidence
  * (AC-15 full Section flow; AC-14 cursor/pagination; AC-04 payload display;
@@ -237,9 +239,8 @@ test('AC-15: opens an authoritative detail with payload availability display (AV
   ).toBeVisible();
   await expect(page.getByText('CANONICAL_CLAIM_ADDED', { exact: true })).toBeHidden();
   await expect(page.getByText('Available', { exact: true }).first()).toBeVisible();
-  await page.getByText('Technical details', { exact: true }).click();
-  await expect(page.getByText('CANONICAL_CLAIM_ADDED', { exact: true }).first()).toBeVisible();
-  await expect(page.getByTestId('history-payload-snapshot')).toContainText('revision:rev-2');
+  await expect(page.getByText('Technical details', { exact: true })).toHaveCount(0);
+  await expectTechnicalInformation(page, ['CANONICAL_CLAIM_ADDED', 'revision:rev-2']);
 });
 
 test('AC-15: links audit lineage and Compensation to the owning External Action workspace', async ({

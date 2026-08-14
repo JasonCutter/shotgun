@@ -977,8 +977,7 @@ describe('AskWorkspace', () => {
     expect((unavailableSource as HTMLInputElement).disabled).toBe(true);
     expect(screen.queryByText('Other Project source')).toBeNull();
     expect(screen.getAllByText('Version 1')).toHaveLength(2);
-    const technicalVersion = screen.getByText('version-ready-v1').closest('details');
-    expect(technicalVersion?.open).toBe(false);
+    expect(screen.queryByText('version-ready-v1')).toBeNull();
 
     const questionInput = screen.getByLabelText('Question');
     await user.type(questionInput, 'What does this Source establish?');

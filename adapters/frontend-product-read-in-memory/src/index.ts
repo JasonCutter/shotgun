@@ -45,6 +45,7 @@ import {
   type TargetRouteView,
 } from '../../../packages/contracts/src/index.js';
 import type {
+  ActionCenterAttentionProjectionPort,
   ActionCenterProjectionPort,
   AskWorkspaceProjectionPort,
   BackgroundSummaryProjectionPort,
@@ -156,22 +157,14 @@ export class InMemoryGlobalShellProjection implements GlobalShellProjectionPort 
 }
 
 export class InMemoryActionCenterProjection implements ActionCenterProjectionPort {
+  constructor(private readonly attention?: ActionCenterAttentionProjectionPort) {}
+
   async getHome(
     input: FrontendReadScope & {
       readonly activeProject: NonNullable<FrontendReadScope['activeProject']>;
     },
   ): Promise<HomeActionCenterView> {
-    const unavailable = (
-      id: 'add-source' | 'ask' | 'explore-knowledge' | 'review-changes',
-      label: string,
-      targetRoute: TargetRouteView,
-    ) => ({
-      id,
-      label,
-      availability: 'COMING_LATER' as const,
-      disabledReason: 'The owning workspace is not implemented in this Section.',
-      targetRoute,
-    });
+    const attention = (await this.attention?.listAttention(input)) ?? [];
     return decodeHomeActionCenterView({
       schemaVersion: '1.0.0',
       principalId: input.principalId,
@@ -191,18 +184,8 @@ export class InMemoryActionCenterProjection implements ActionCenterProjectionPor
           availability: 'AVAILABLE',
           targetRoute: routes.ask,
         },
-        // AC-18: high-risk External Actions are never executed from Home; the
-        // entry navigates to the governance workspace only.
-        {
-          id: 'govern-external-action',
-          label: 'External actions',
-          availability: 'AVAILABLE',
-          targetRoute: routes.externalAction,
-        },
-        unavailable('explore-knowledge', 'Explore knowledge', routes.knowledge),
-        unavailable('review-changes', 'Review changes', routes.review),
       ],
-      attention: [],
+      attention,
       continueWorking: [],
       recent: [],
       pinned: [],

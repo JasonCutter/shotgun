@@ -38,7 +38,6 @@ import {
   authorityLabel,
   knowledgeKindLabel,
   projectionDescription,
-  projectionKindLabel,
   searchMatchTypeLabel,
   temporalStateLabel,
 } from '../knowledge/knowledge-ui.js';
@@ -137,7 +136,7 @@ export const KnowledgeWorkspace = () => {
         <h1 tabIndex={-1}>Knowledge</h1>
         <EmptyState
           title="Create a Project before opening Knowledge"
-          description="Knowledge reads are always bound to a server-authoritative active Project."
+          description="Create a Project before opening Knowledge."
         />
       </section>
     );
@@ -170,16 +169,11 @@ export const KnowledgeWorkspace = () => {
     <section className="route-page knowledge-workspace">
       <p className="eyebrow">Read-only Knowledge Workspace</p>
       <h1 tabIndex={-1}>Knowledge</h1>
-      <p>
-        Project: <strong>{shell.activeProject.label}</strong>. This workspace reads server-derived
-        Knowledge and never writes Canonical data, approvals, or Actions.
-      </p>
 
       <section className="action-card" aria-labelledby="knowledge-search-heading">
         <div className="knowledge-section-heading">
           <div>
             <h2 id="knowledge-search-heading">Search and filter</h2>
-            <p>Search, ranking, and readiness remain server-authoritative.</p>
           </div>
           <Link to="/knowledge/compare">Open typed compare</Link>
         </div>
@@ -359,28 +353,26 @@ export const KnowledgeWorkspace = () => {
           ) : null}
           {searchReadiness?.partial ? (
             <p className="stale-state" role="status">
-              Search readiness is partial. Results are shown with the server-reported readiness and
-              are not promoted to current Canonical truth.
+              Search results may be incomplete. Refresh before relying on them.
             </p>
           ) : null}
           {search.data ? (
             <ProjectionStatus projection={search.data.projection} heading="Search projection" />
           ) : null}
           {searchReadiness ? (
-            <div className="knowledge-readiness" aria-label="Search readiness">
-              <p>
-                Verified knowledge search:{' '}
-                <strong>{projectionDescription(searchReadiness.canonicalSearch.status)}</strong>
-              </p>
-              {searchReadiness.sourceProjections.map((sourceProjection) => (
-                <p
-                  key={`${sourceProjection.projectionKind}:${sourceProjection.projectionRevision ?? 'unknown'}`}
-                >
-                  {projectionKindLabel(sourceProjection.projectionKind)}:{' '}
-                  <strong>{projectionDescription(sourceProjection.status)}</strong>
-                </p>
-              ))}
-            </div>
+            <TechnicalDetails
+              summary="Search readiness details"
+              inspectionItems={[
+                {
+                  label: 'Canonical search status',
+                  value: searchReadiness.canonicalSearch.status,
+                },
+                {
+                  label: 'Source projection statuses',
+                  value: JSON.stringify(searchReadiness.sourceProjections),
+                },
+              ]}
+            />
           ) : null}
           {search.data && search.data.matches.length === 0 ? (
             <EmptyState

@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 
+import { expectTechnicalInformation } from './hfm-technical.js';
+
 const uuidPattern = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i;
 
 test('Human-readable primary UI smoke', async ({ page }) => {
@@ -27,9 +29,6 @@ test('Human-readable primary UI smoke', async ({ page }) => {
   expect(primaryText).not.toContain('SOURCE_VERSION_READY');
   expect(primaryText).not.toContain('EVIDENCE_READY');
 
-  const submissionDetails = page.locator('details').filter({ hasText: 'Submission ID' }).first();
-  await expect(submissionDetails).not.toHaveAttribute('open', '');
-  await submissionDetails.locator('summary').click();
-  await expect(submissionDetails).toHaveAttribute('open', '');
-  expect(await submissionDetails.innerText()).toMatch(uuidPattern);
+  await expect(page.locator('details.technical-details')).toHaveCount(0);
+  await expectTechnicalInformation(page, 'Submission ID');
 });

@@ -20,7 +20,7 @@ test('Active B -> Conversation A uses only A Sources and submits the follow-up t
   await expect(page.locator('.project-summary')).toContainText('Project B');
   await page.goto(conversationUrl);
   await expect(page.locator('.project-summary')).toContainText('Project B');
-  await expect(page.getByText('Project: shotgun')).toBeVisible();
+  await expect(page.getByText('Project: shotgun')).toHaveCount(0);
 
   const sourceContextRequest = page.waitForRequest((request) =>
     request

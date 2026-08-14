@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useEffect } from 'react';
 import { MemoryRouter } from 'react-router';
@@ -186,7 +186,8 @@ describe('GlobalTools HFM-S1 preservation', () => {
     await user.click(within(commands).getByRole('button', { name: /^Search/ }));
 
     expect(screen.getByRole('dialog', { name: 'Search' })).toBeTruthy();
-    expect(screen.getByRole('textbox', { name: 'Search query' })).toBeTruthy();
+    const searchQuery = screen.getByRole('textbox', { name: 'Search query' });
+    await waitFor(() => expect(document.activeElement).toBe(searchQuery));
   });
 
   it('shows an explicit no-results state', async () => {

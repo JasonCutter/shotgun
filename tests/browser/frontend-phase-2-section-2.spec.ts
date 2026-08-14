@@ -16,7 +16,10 @@ test('Ask navigation enables question submission and clears draft on success', a
 
   await page.getByRole('button', { name: 'Submit question' }).click();
   await expect(questionInput).toHaveValue('');
-  const submittedTurn = page.getByLabel('Main Branch').getByText(question, { exact: true });
+  const submittedTurn = page
+    .getByLabel('Main Branch')
+    .getByRole('listitem')
+    .filter({ hasText: question });
   await expect(submittedTurn).toHaveCount(1);
   await expect(submittedTurn).toBeVisible();
 });
@@ -60,9 +63,10 @@ test('Ask Source Exploration pins a selected SourceVersion into the browser subm
   });
   await expect(questionInput).toHaveValue('');
   await expect(
-    page.getByLabel('Main Branch').getByText('What does the selected Source establish?', {
-      exact: true,
-    }),
+    page
+      .getByLabel('Main Branch')
+      .getByRole('listitem')
+      .filter({ hasText: 'What does the selected Source establish?' }),
   ).toBeVisible();
 });
 

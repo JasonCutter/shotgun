@@ -20,7 +20,10 @@ export const useAccessibleDialog = (input: {
     }
     if (wasOpenRef.current) {
       wasOpenRef.current = false;
-      invokerRef.current?.focus();
+      const activeElement = document.activeElement;
+      if (activeElement === null || activeElement === document.body) {
+        invokerRef.current?.focus();
+      }
     }
   }, [input.open]);
 

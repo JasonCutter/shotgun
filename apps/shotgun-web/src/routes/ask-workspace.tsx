@@ -95,6 +95,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   const [question, setQuestion] = useState('');
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [commandPaletteInvoker, setCommandPaletteInvoker] = useState<HTMLElement | null>(null);
+  const [commandPaletteResetSignal, setCommandPaletteResetSignal] = useState(0);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchInvoker, setSearchInvoker] = useState<HTMLElement | null>(null);
   const [draftOwnerProjectId, setDraftOwnerProjectId] = useState<string>();
@@ -561,6 +562,13 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   };
 
   const handleAskCommand = (command: OwnerCommandDefinition) => {
+    if (command.action.kind === 'OPEN_COMMANDS') {
+      setQuestion('');
+      questionRef.current = '';
+      setCommandPaletteResetSignal((current) => current + 1);
+      setCommandPaletteOpen(true);
+      return;
+    }
     setCommandPaletteOpen(false);
     setQuestion('');
     questionRef.current = '';
@@ -572,7 +580,6 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
       navigate(command.action.href);
       return;
     }
-    if (command.action.kind === 'OPEN_COMMANDS') return;
     if (command.action.kind === 'OPEN_SEARCH') {
       setSearchInvoker(commandPaletteInvoker);
       setSearchOpen(true);
@@ -997,6 +1004,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
         open={commandPaletteOpen}
         commands={commandRegistry}
         initialQuery={question.replace(/^\s*\//, '')}
+        resetQuerySignal={commandPaletteResetSignal}
         invoker={commandPaletteInvoker}
         onClose={() => setCommandPaletteOpen(false)}
         onSelect={handleAskCommand}

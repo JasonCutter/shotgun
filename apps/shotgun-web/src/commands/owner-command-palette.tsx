@@ -11,6 +11,7 @@ export type OwnerCommandPaletteProps = {
   readonly open: boolean;
   readonly commands: readonly OwnerCommandDefinition[];
   readonly initialQuery?: string;
+  readonly resetQuerySignal?: number;
   readonly invoker: HTMLElement | null;
   readonly onClose: () => void;
   readonly onSelect: (command: OwnerCommandDefinition) => void;
@@ -20,6 +21,7 @@ export const OwnerCommandPalette = ({
   open,
   commands,
   initialQuery = '',
+  resetQuerySignal = 0,
   invoker,
   onClose,
   onSelect,
@@ -55,7 +57,7 @@ export const OwnerCommandPalette = ({
     dialog.captureInvoker(invoker);
     setQuery(initialQuery);
     setSelectedIndex(0);
-  }, [initialQuery, invoker, open]);
+  }, [initialQuery, invoker, open, resetQuerySignal]);
 
   useEffect(() => {
     setSelectedIndex((current) =>

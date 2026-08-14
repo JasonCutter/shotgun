@@ -696,7 +696,15 @@ describe('AskWorkspace', () => {
     await user.type(questionInput, '/');
     expect(screen.getByRole('dialog', { name: 'Commands' })).toBeTruthy();
     const commandSearch = screen.getByRole('textbox', { name: 'Command search' });
-    await user.type(commandSearch, 'history');
+    await user.type(commandSearch, 'help');
+    await user.keyboard('{Enter}');
+
+    expect(screen.getByRole('dialog', { name: 'Commands' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Help' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Navigation' })).toBeTruthy();
+
+    const reopenedCommandSearch = screen.getByRole('textbox', { name: 'Command search' });
+    await user.type(reopenedCommandSearch, 'history');
     await user.keyboard('{Enter}');
 
     expect(submitQuestion).not.toHaveBeenCalled();

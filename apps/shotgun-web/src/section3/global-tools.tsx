@@ -29,6 +29,7 @@ export const GlobalTools = ({ shell }: { readonly shell: GlobalShellView }) => {
   const [searchInvoker, setSearchInvoker] = useState<HTMLElement | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteInvoker, setPaletteInvoker] = useState<HTMLElement | null>(null);
+  const [paletteResetSignal, setPaletteResetSignal] = useState(0);
   const [announcement, setAnnouncement] = useState('');
   const commandRegistry = useMemo(
     () =>
@@ -84,6 +85,11 @@ export const GlobalTools = ({ shell }: { readonly shell: GlobalShellView }) => {
   };
 
   const handleCommand = (command: OwnerCommandDefinition) => {
+    if (command.action.kind === 'OPEN_COMMANDS') {
+      setPaletteResetSignal((current) => current + 1);
+      setPaletteOpen(true);
+      return;
+    }
     setPaletteOpen(false);
     if (command.action.kind === 'NAVIGATE') {
       navigate(command.action.targetRoute.href);
@@ -91,10 +97,6 @@ export const GlobalTools = ({ shell }: { readonly shell: GlobalShellView }) => {
     }
     if (command.action.kind === 'NAVIGATE_PATH') {
       navigate(command.action.href);
-      return;
-    }
-    if (command.action.kind === 'OPEN_COMMANDS') {
-      setPaletteOpen(true);
       return;
     }
     if (command.action.kind === 'OPEN_SEARCH') {
@@ -150,6 +152,7 @@ export const GlobalTools = ({ shell }: { readonly shell: GlobalShellView }) => {
       <OwnerCommandPalette
         open={paletteOpen}
         commands={commandRegistry}
+        resetQuerySignal={paletteResetSignal}
         invoker={paletteInvoker}
         onClose={() => setPaletteOpen(false)}
         onSelect={handleCommand}

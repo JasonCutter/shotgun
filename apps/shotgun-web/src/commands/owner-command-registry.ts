@@ -54,13 +54,18 @@ const categoryOrder: Record<OwnerCommandCategory, number> = {
 const normalize = (value: string): string => value.trim().toLocaleLowerCase();
 
 const navigationAvailability = (
-  availability: GlobalShellView['navigation'][number]['availability'],
+  item: GlobalShellView['navigation'][number],
 ): Pick<OwnerCommandDefinition, 'availability' | 'reason'> => {
-  if (availability === 'AVAILABLE' || availability === 'HIDDEN') {
+  if (
+    item.availability === 'AVAILABLE' ||
+    item.availability === 'HIDDEN' ||
+    item.availability === 'COMING_LATER'
+  ) {
     return { availability: 'AVAILABLE' };
   }
   return {
     availability: 'UNAVAILABLE_WITH_REASON',
+    ...(item.reason === undefined ? {} : { reason: item.reason }),
   };
 };
 
@@ -68,10 +73,10 @@ const explicitRouteAvailability = (
   shell: GlobalShellView,
   routeId: TargetRouteView['routeId'],
 ): Pick<OwnerCommandDefinition, 'availability' | 'reason'> => {
-  const navigationItem = shell.navigation.find((item) => item.targetRoute?.routeId === routeId);
-  return navigationItem
-    ? navigationAvailability(navigationItem.availability)
-    : { availability: 'AVAILABLE' };
+  const navigationItem = shell.navigation.find(
+    (item) => item.targetRoute?.routeId === routeId || item.id === routeId,
+  );
+  return navigationItem ? navigationAvailability(navigationItem) : { availability: 'AVAILABLE' };
 };
 
 const featureAvailability = (
@@ -103,8 +108,8 @@ const HFM_COMMAND_TEMPLATES: readonly OwnerCommandTemplate[] = [
     category: 'HELP',
     label: 'Commands',
     description: 'View available owner commands',
-    aliases: ['help', 'commands', 'command palette'],
-    keywords: ['discover', 'slash', 'keyboard'],
+    aliases: ['help', 'commands', 'command palette', '명령어', '도움말'],
+    keywords: ['discover', 'slash', 'keyboard', '명령어 보기'],
     risk: 'READ',
     presentation: 'DIALOG',
     action: { kind: 'OPEN_COMMANDS' },
@@ -115,8 +120,8 @@ const HFM_COMMAND_TEMPLATES: readonly OwnerCommandTemplate[] = [
     category: 'SEARCH',
     label: 'Search',
     description: 'Search the active Project',
-    aliases: ['search', 'find'],
-    keywords: ['global search', 'active project', 'project search'],
+    aliases: ['search', 'find', '검색', '찾기'],
+    keywords: ['global search', 'active project', 'project search', '전체 검색'],
     risk: 'READ',
     presentation: 'DIALOG',
     action: { kind: 'OPEN_SEARCH' },
@@ -131,8 +136,8 @@ const HFM_COMMAND_TEMPLATES: readonly OwnerCommandTemplate[] = [
     category: 'PROJECT',
     label: 'Manage Projects',
     description: 'Open Project management',
-    aliases: ['project admin', 'projects'],
-    keywords: ['project settings', 'project list', 'project details'],
+    aliases: ['project admin', 'projects', '프로젝트 관리'],
+    keywords: ['project settings', 'project list', 'project details', '프로젝트'],
     risk: 'READ',
     presentation: 'NAVIGATE',
     action: navigate('settings-projects', '/settings/projects'),
@@ -143,8 +148,8 @@ const HFM_COMMAND_TEMPLATES: readonly OwnerCommandTemplate[] = [
     category: 'PROJECT',
     label: 'Configure AI',
     description: 'Open focused AI configuration',
-    aliases: ['ai settings', 'provider settings'],
-    keywords: ['model', 'provider', 'credential'],
+    aliases: ['ai settings', 'provider settings', 'AI 설정'],
+    keywords: ['model', 'provider', 'credential', '모델', '제공자'],
     risk: 'WRITE',
     presentation: 'DRAWER',
     action: { kind: 'NAVIGATE_PATH', href: '/settings/ai' },
@@ -155,8 +160,8 @@ const HFM_COMMAND_TEMPLATES: readonly OwnerCommandTemplate[] = [
     category: 'PROJECT',
     label: 'Open Privacy',
     description: 'Review privacy and external transfer settings',
-    aliases: ['privacy', 'data transfer'],
-    keywords: ['retention', 'external ai', 'privacy settings'],
+    aliases: ['privacy', 'data transfer', '개인정보', '외부 전송'],
+    keywords: ['retention', 'external ai', 'privacy settings', '개인정보 설정'],
     risk: 'READ',
     presentation: 'DRAWER',
     action: { kind: 'NAVIGATE_PATH', href: '/settings/privacy' },
@@ -167,8 +172,8 @@ const HFM_COMMAND_TEMPLATES: readonly OwnerCommandTemplate[] = [
     category: 'NAVIGATION',
     label: 'Open Knowledge',
     description: 'Open the Knowledge workspace',
-    aliases: ['knowledge', 'explore'],
-    keywords: ['knowledge projection', 'facts', 'graph'],
+    aliases: ['knowledge', 'explore', '지식', '지식 보기'],
+    keywords: ['knowledge projection', 'facts', 'graph', '지식'],
     risk: 'READ',
     presentation: 'NAVIGATE',
     action: navigate('knowledge', '/knowledge'),
@@ -179,8 +184,8 @@ const HFM_COMMAND_TEMPLATES: readonly OwnerCommandTemplate[] = [
     category: 'NAVIGATION',
     label: 'Open Review',
     description: 'Open the Review workspace',
-    aliases: ['review', 'decisions'],
-    keywords: ['review queue', 'approval', 'changes'],
+    aliases: ['review', 'decisions', '검토', '리뷰'],
+    keywords: ['review queue', 'approval', 'changes', '검토'],
     risk: 'WRITE',
     presentation: 'NAVIGATE',
     action: navigate('review', '/review'),
@@ -191,8 +196,8 @@ const HFM_COMMAND_TEMPLATES: readonly OwnerCommandTemplate[] = [
     category: 'NAVIGATION',
     label: 'Open External Actions',
     description: 'Open governed external action work',
-    aliases: ['external actions', 'actions'],
-    keywords: ['action approval', 'execution', 'external work'],
+    aliases: ['external actions', 'actions', '외부 작업'],
+    keywords: ['action approval', 'execution', 'external work', '외부 작업'],
     risk: 'WRITE',
     presentation: 'NAVIGATE',
     action: navigate('external-action', '/external-action'),
@@ -203,8 +208,8 @@ const HFM_COMMAND_TEMPLATES: readonly OwnerCommandTemplate[] = [
     category: 'NAVIGATION',
     label: 'Open Activity',
     description: 'Open execution status',
-    aliases: ['activity', 'runs'],
-    keywords: ['execution status', 'operations'],
+    aliases: ['activity', 'runs', '활동'],
+    keywords: ['execution status', 'operations', '실행 상태'],
     risk: 'READ',
     presentation: 'NAVIGATE',
     action: navigate('activity', '/activity'),
@@ -215,8 +220,8 @@ const HFM_COMMAND_TEMPLATES: readonly OwnerCommandTemplate[] = [
     category: 'NAVIGATION',
     label: 'Open History',
     description: 'Open change history',
-    aliases: ['history', 'audit'],
-    keywords: ['change history', 'events', 'audit trail'],
+    aliases: ['history', 'audit', '이력'],
+    keywords: ['change history', 'events', 'audit trail', '변경 이력'],
     risk: 'READ',
     presentation: 'NAVIGATE',
     action: navigate('history', '/history'),
@@ -256,8 +261,8 @@ export const createOwnerCommandRegistry = ({
           category: 'PROJECT',
           label: `Switch to ${project.label}`,
           description: `Use ${project.label} as the active Project`,
-          aliases: ['switch project', 'project'],
-          keywords: [project.label, 'switch', 'active project'],
+          aliases: ['switch project', 'project', '프로젝트 전환', '프로젝트 변경'],
+          keywords: [project.label, 'switch', 'active project', '프로젝트'],
           availability: isOffline ? 'UNAVAILABLE_WITH_REASON' : 'AVAILABLE',
           ...(isOffline ? { reason: 'Project switching is unavailable while offline.' } : {}),
           risk: 'WRITE',

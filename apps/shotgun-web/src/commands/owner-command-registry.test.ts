@@ -44,6 +44,16 @@ const shell: GlobalShellView = {
       label: 'Prototype',
       availability: 'HIDDEN',
     },
+    {
+      id: 'knowledge',
+      label: 'Knowledge',
+      availability: 'COMING_LATER',
+    },
+    {
+      id: 'review',
+      label: 'Review',
+      availability: 'COMING_LATER',
+    },
   ],
   features: [
     { id: 'global-search', label: 'Search', availability: 'AVAILABLE' },
@@ -82,6 +92,21 @@ describe('owner command registry', () => {
     expect(filterOwnerCommands(commands, 'Research Project').map((command) => command.id)).toEqual([
       'project.switch',
     ]);
+    expect(filterOwnerCommands(commands, '검색').map((command) => command.id)).toContain(
+      'search.global',
+    );
+    expect(filterOwnerCommands(commands, '프로젝트').map((command) => command.id)).toEqual(
+      expect.arrayContaining(['project.manage', 'project.switch']),
+    );
+    expect(filterOwnerCommands(commands, '지식').map((command) => command.id)).toContain(
+      'knowledge.open',
+    );
+    expect(filterOwnerCommands(commands, '검토').map((command) => command.id)).toContain(
+      'review.open',
+    );
+    expect(filterOwnerCommands(commands, '이력').map((command) => command.id)).toContain(
+      'history.open',
+    );
     expect(commands.find((command) => command.id === 'knowledge.open')?.action).toEqual({
       kind: 'NAVIGATE',
       targetRoute: { routeId: 'knowledge', href: '/knowledge' },
@@ -91,6 +116,12 @@ describe('owner command registry', () => {
       context: { projectId: 'project-2' },
       action: { kind: 'SWITCH_PROJECT', projectId: 'project-2' },
     });
+    expect(commands.find((command) => command.id === 'knowledge.open')?.availability).toBe(
+      'AVAILABLE',
+    );
+    expect(commands.find((command) => command.id === 'review.open')?.availability).toBe(
+      'AVAILABLE',
+    );
   });
 
   it('does not expose generic Settings or unsupported placeholders and preserves offline state', () => {

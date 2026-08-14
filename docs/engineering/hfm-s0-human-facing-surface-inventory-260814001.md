@@ -1,9 +1,8 @@
 ---
 id: HFM-S0-INVENTORY-260814001
-classification: ACCEPTED
-status: BASELINE_FROZEN
+classification: CANDIDATE
+status: OWNER_REVIEW_REQUIRED
 created_at: 2026-08-14
-accepted_at: 2026-08-14
 subject_base: 5c3cebc9d08ec50edec3fa7bd2f69568387c7a78
 repository: JasonCutter/shotgun
 canonical_branch: main
@@ -12,677 +11,757 @@ implementation_plan: docs/implementation/human-facing-minimalism-slash-command-p
 section: HFM-S0
 ---
 
-# HFM-S0 — Human-Facing Surface Inventory and Baseline Freeze
+# HFM-S0 — Human-Facing Surface Inventory and Baseline Freeze Candidate
 
 ## 0. Status and authority
 
-This document is the **accepted and frozen HFM-S0 baseline** for the complete owner-facing surface disposition required by ADR-145 and `HFM-SLASH-PLAN-260814001`.
+This document is the HFM-S0 owner-review candidate for the complete owner-facing surface disposition required by ADR-145 and `HFM-SLASH-PLAN-260814001`.
 
-Owner acceptance was recorded on 2026-08-14. The HFM-S0 classification and disposition decisions below are now frozen for implementation planning. Any later change must be explicit, reasoned, and recorded as a change to this baseline; no downstream section may silently reinterpret the inventory.
-
-Current section state:
+It is **not yet an accepted baseline**. Until the owner accepts this inventory:
 
 ```text
-HFM-S0: COMPLETE / BASELINE_FROZEN
-HFM-S1: AUTHORIZED / NOT_STARTED
+HFM-S0: IN_PROGRESS / OWNER_REVIEW_REQUIRED
+HFM-S1: NOT_AUTHORIZED
+Product implementation under HFM-S1..S8: NOT_STARTED
 ```
 
-This freeze does **not** authorize Product implementation beyond HFM-S1. It authorizes HFM-S1 to translate the frozen inventory into the persistent-shell and slash-surface implementation contract.
+No Product code change is authorized by this candidate alone.
 
-## 1. Decision model
+## 1. Baseline inspected
 
-Every owner-facing Product surface is classified into exactly one of four dispositions:
-
-- `KEEP` — remains directly visible in the normal Product surface because it is part of the primary owner workflow or safety context.
-- `SLASH` — capability remains, but persistent navigation/control chrome is removed. The owner reaches it intentionally through a slash command or a context-equivalent command surface.
-- `REMOVE` — removed from the current owner Product surface. This does not imply deletion of Canonical data, protected APIs, governance, audit lineage, or future architecture contracts unless explicitly stated.
-- `CONDITIONAL` — surfaced only when current context, state, safety, or recovery requires owner attention. It must not become permanent chrome merely because the capability exists.
-
-The human-facing baseline is deliberately smaller than the backend capability map. Server authority, security, Project binding, expected revisions, idempotency, approvals, outcome recovery, and audit semantics remain authoritative regardless of UI disposition.
-
-## 2. Frozen persistent Product surface
-
-The permanent owner-facing Product surface is frozen to the following minimum:
+The inventory is based on the canonical Product at:
 
 ```text
-Shotgun
-Current Project context
-
-Home
-Sources
-Ask
+main@5c3cebc9d08ec50edec3fa7bd2f69568387c7a78
 ```
 
-No other domain receives permanent primary navigation by default.
+The audit covered the current production composition and owner-facing frontend route tree, including:
 
-The active Project label is `KEEP` because it prevents accidental work in the wrong Project. Project switching itself is `SLASH` because switching is an intentional state-changing action, not a navigation destination.
+- `assemblies/shotgun-app/src/application.ts`
+- `adapters/frontend-product-read-in-memory/src/index.ts`
+- `adapters/postgres/src/index.ts`
+- `apps/shotgun-web/src/app/router.tsx`
+- `apps/shotgun-web/src/shell/*`
+- `apps/shotgun-web/src/session/project-selector.tsx`
+- `apps/shotgun-web/src/section3/global-tools.tsx`
+- Home, Sources, Source Detail, Ask, Knowledge, Review, External Action, Activity, and History routes
+- all current Settings routes
+- shared `TechnicalDetails` presentation
 
-When no Project exists, first-Project onboarding is `CONDITIONAL`: the Product may directly present the creation path because no normal Project-bound workflow can proceed.
+The audit also preserves the 2026-08-14 owner smoke-test findings already incorporated into ADR-145 and the frozen HFM implementation plan. The retired Google Drive `UI개선사항` note is not used as implementation authority.
 
-## 3. Global shell inventory
+## 2. Classification semantics
 
-| Surface | Current form | Disposition | Frozen rule |
-| --- | --- | --- | --- |
-| Product identity `Shotgun` | Top bar | KEEP | Compact product identity remains. |
-| Current Project label | Top bar / selector | KEEP | Show one compact, unambiguous active Project context. |
-| Project selector control | Top bar and Settings | SLASH | Replace persistent selector with `/project switch`; first-run creation stays conditional. |
-| Primary navigation: Home | Sidebar | KEEP | Primary persistent destination. |
-| Primary navigation: Sources | Sidebar | KEEP | Primary persistent destination. |
-| Primary navigation: Ask | Sidebar | KEEP | Primary persistent destination. |
-| Primary navigation: Knowledge | Sidebar | SLASH | Capability retained; permanent nav removed. |
-| Primary navigation: Review | Sidebar | CONDITIONAL + SLASH | Surface when review attention exists; manual inspection through slash. |
-| Primary navigation: External Action | Sidebar | CONDITIONAL + SLASH | Surface only when action attention exists; manual inspection through slash. |
-| Primary navigation: Activity | Sidebar | SLASH | Operational inspection is intentional, not primary chrome. |
-| Primary navigation: History | Sidebar | SLASH | Audit/history inspection is intentional, not primary chrome. |
-| Primary navigation: Settings | Sidebar | REMOVE | Permanent Settings IA is removed; real controls are decomposed into focused slash/conditional flows. |
-| Top `Search` button/modal | Top bar | REMOVE after replacement | Remove only after accepted `/search` replacement is verified. Search capability is retained. |
-| Top `Commands` button/palette | Top bar | REMOVE after replacement | Replace with the unified slash entry. Do not delete protected commands. |
-| Offline / critical safety banner | Global shell | CONDITIONAL | Remains visible only when the server-authoritative state requires it. |
-| Leading warning banner | Global shell | CONDITIONAL | Keep only for real current warning states. |
+The final HFM-S0 classification uses exactly four owner-facing dispositions.
 
-## 4. Home inventory
+- `KEEP` — frequent, task-primary, or directly useful to current human judgment. It remains visible in the relevant normal workflow.
+- `SLASH` — legitimate but infrequent control, inspection, or advanced workflow. It is removed from persistent UI and remains discoverable through `/` or a focused UI opened from `/`.
+- `REMOVE` — internal-only, redundant, misleading, non-actionable, duplicated, or not useful enough to justify owner-facing Product surface. No replacement is required unless another inventory entry explicitly preserves the underlying capability.
+- `CONDITIONAL` — hidden when irrelevant but automatically surfaced when a runtime state requires owner attention, confirmation, recovery, or safety judgment.
 
-Home remains `KEEP`, but it is not a second control plane. It is a compact owner orientation surface.
+A route may be `SLASH` while controls inside that route are `KEEP` once the focused route has been intentionally opened. A backend contract may remain intact even when its current owner-facing placeholder route is `REMOVE`.
 
-| Home element | Disposition | Frozen rule |
-| --- | --- | --- |
-| Active Project state | KEEP | Compact status only. Do not expose internal architecture prose. |
-| Primary owner actions for Sources / Ask | KEEP | Direct path to the two primary workspaces. |
-| Attention requiring Review / External Action | CONDITIONAL | Appear only when server-reported attention exists. |
-| Continue-working resources | CONDITIONAL | Show only when a real resumable resource/draft exists. |
-| Recent/Pinned resources | CONDITIONAL | May appear when meaningful; never reserve large empty cards. |
-| Operational summary | SLASH or compact conditional cue | Detailed counts belong to Activity; Home may show a small cue only when it changes owner action. |
-| Empty-state implementation wording | REMOVE | Never show phrases such as “server reported”, “authoritative”, or internal projection wording to the owner. |
-| Coming-later disabled actions | REMOVE | Features without an active owner path are not shown as dead primary controls. |
+## 3. Frozen minimal persistent Product surface candidate
 
-Home does not execute high-risk Review or External Action commands. It may only route the owner to the authoritative owning workspace/flow.
+If this HFM-S0 candidate is accepted, the persistent owner-facing Product surface is frozen to:
 
-## 5. Sources inventory
+```text
+Top context
+- Shotgun product identity
+- compact current Project identity
+- conditional global warning/attention state
 
-Sources remains a primary `KEEP` workspace because ingestion and source inspection are core owner workflows.
+Persistent navigation
+- Home
+- Sources
+- Ask
+```
 
-### 5.1 KEEP
+No other subsystem is entitled to permanent navigation merely because a route or backend contract exists.
 
-- Add Source from Direct Text, File, or URL.
-- Human-readable Source label.
-- Requested sensitivity/classification control where it materially affects intake.
-- Draft queue only while a draft actually exists.
-- Submit/discard flow.
-- Exact-duplicate owner decision when required.
-- Source Library.
-- Source search within the active Project.
-- Source detail: version choice, preview, evidence.
-- Clear processing/failure/retry state only when actionable.
-- Citation return links when the owner arrived from Ask/Knowledge.
+The compact Project identity is `KEEP` because acting in the wrong Project has authority and data-placement consequences. The Project switch control itself is `SLASH` and is not a permanent dropdown.
 
-### 5.2 SLASH / secondary
+First-Project creation is a `CONDITIONAL` onboarding exception because slash discovery through Ask cannot be relied upon before a Project exists.
 
-- Advanced intake/retry recovery options that are not required in the normal successful path.
-- Raw identifiers and revisions through `technical.current`.
-- Rare version/evidence diagnostic inspection.
+## 4. Global shell and navigation inventory
 
-### 5.3 REMOVE from default owner presentation
+- Product name `Shotgun` — `KEEP`. Retain compact brand identity.
+- Current Project name — `KEEP`. Show once as compact context and remove duplicate copies.
+- Persistent Project selector dropdown — `SLASH`. Replace with `project.switch`; preserve the protected switch API and existing leave guards.
+- First Project onboarding link — `CONDITIONAL`. Show only when no Project exists.
+- Home navigation — `KEEP`.
+- Sources navigation — `KEEP`.
+- Ask navigation — `KEEP`.
+- Knowledge persistent navigation item — `REMOVE`. Preserve the implemented capability through `knowledge.open`.
+- Review persistent navigation item — `REMOVE`. Preserve manual access through `review.open` and surface pending owner decisions conditionally.
+- External Actions persistent navigation item — `REMOVE`. Preserve manual access through `external_action.open` and surface actionable work conditionally.
+- Activity persistent navigation item — `REMOVE`. Preserve through `activity.open`.
+- History persistent navigation item — `REMOVE`. Preserve through `history.open`.
+- Settings persistent navigation item — `REMOVE`. Decompose real owner controls into focused commands and conditional attention.
+- `COMING_LATER`, `TEMPORARILY_UNAVAILABLE`, and similar disabled route entries — `REMOVE`. Do not advertise development or roadmap state.
+- Mobile `More` duplicate subsystem list — `REMOVE`. Mobile navigation uses the same compact `KEEP` set.
+- Global top-bar Search button and modal — `REMOVE` after `search.global` is implemented and HFM-S5 verifies the replacement.
+- Current top-bar `Commands` button — `REMOVE` as a separate command model. HFM must have one registry only.
+- Existing `Ctrl/Cmd+K` navigation palette — `REMOVE` as an independent palette. HFM-S1 may reuse the shortcut only as an alternate trigger to the exact same slash registry if that adds value.
+- Offline banner — `CONDITIONAL`. It remains proactively visible while offline.
+- Global leading warning — `CONDITIONAL`. It remains proactively visible while actionable.
+- Loading and route error boundaries — `CONDITIONAL`. Preserve accessible recovery behavior.
+- Skip link and route focus accessibility — `KEEP` as infrastructure.
 
-- “server-authoritative”, “Command Ledger”, “typed contract”, “staging immutable bytes”, and equivalent implementation wording.
-- Permanent empty Draft Queue explanation when no draft exists.
-- Redundant status prose that repeats the same state.
-- Raw Source ID / SourceVersion ID in the ordinary reading flow.
+### 4.1 Production-shell correction finding
 
-## 6. Ask inventory
+The normal Product composition currently wires `InMemoryGlobalShellProjection`, `InMemoryActionCenterProjection`, `InMemoryBackgroundSummaryProjection`, `InMemoryNotificationSummaryProjection`, `InMemoryGlobalSearch`, and `InMemoryRouteGuardProjection` into the production frontend read coordinator.
 
-Ask remains a primary `KEEP` workspace.
+The current shell projection still emits Knowledge and Review as `COMING_LATER`, even though substantial Product implementations exist. HFM-S0 therefore classifies shell discoverability separately from capability existence. HFM-S3 must make persistent navigation represent the frozen HFM surface rather than historical phase-state navigation.
 
-The visible hierarchy is frozen as:
+## 5. Home inventory
+
+- Home route — `KEEP`. It becomes an owner action center rather than an operational console.
+- First-run `Create your first Project` — `CONDITIONAL`.
+- Ordinary Project State card — `REMOVE`. Current Project identity already exists globally.
+- Project lifecycle problem that changes current action — `CONDITIONAL`.
+- Primary action to add or use Sources — `KEEP`.
+- Primary action to Ask — `KEEP`.
+- Disabled future or roadmap primary actions — `REMOVE`.
+- Attention Queue when actionable items exist — `CONDITIONAL` and primary.
+- Empty `No attention needed` card — `REMOVE`; collapse it entirely.
+- Continue Working entries — `KEEP` when non-empty.
+- Empty Continue Working server/browser subsections — `REMOVE`.
+- Recent resources — `KEEP` when non-empty.
+- Pinned resources — `KEEP` when non-empty.
+- Empty Recent/Pinned placeholders — `REMOVE`.
+- Operational Summary counts — `REMOVE` as normal telemetry.
+- Failed background work requiring owner intervention — `CONDITIONAL`; project it as an actionable item rather than a telemetry count.
+- Active background work — `CONDITIONAL` only when it affects the current user action.
+- Unread notification count — `CONDITIONAL` only when a real owner notification exists.
+- Stale snapshot warning — `CONDITIONAL` when it changes actionability or trust.
+- Loading/error state — `CONDITIONAL`.
+
+## 6. Sources inventory
+
+### 6.1 Sources workspace
+
+- Sources route — `KEEP` as a primary knowledge-intake workflow.
+- Duplicate Project label inside the page — `REMOVE`; use compact global Project context.
+- Draft Queue — `KEEP`.
+- Input type Direct Text / File / URL — `KEEP`.
+- Source label — `KEEP`.
+- Source classification request — `KEEP`. It is a real owner security classification request that the server validates.
+- Direct Text / File / URL payload input — `KEEP`.
+- Add intake draft — `KEEP`.
+- Draft list — `KEEP` when non-empty.
+- Submit drafts — `KEEP`.
+- Discard drafts — `KEEP` in draft context.
+- Internal `immutable bytes`, `Command Ledger`, and `server-authoritative command` prose — `REMOVE`; replace with concise owner-language progress only.
+- Staging/submitting progress — `CONDITIONAL` while work is active.
+- Project mismatch warning — `CONDITIONAL`.
+- Invalid seed warning — `CONDITIONAL`.
+- Offline/stale state — `CONDITIONAL`.
+- Intake failure — `CONDITIONAL`.
+- Cancel active submission — `CONDITIONAL` only when cancellation is valid.
+- Retry failed item — `CONDITIONAL` only when retry is valid.
+- Exact duplicate decision — `CONDITIONAL` only for an actual duplicate decision.
+- Raw submission/item/decision IDs — `SLASH` through `technical.current`.
+
+### 6.2 Source Library
+
+- Source Library — `KEEP`.
+- Source-local search — `KEEP`. This workflow-local search remains separate from global `search.global`.
+- Source label — `KEEP`.
+- Media type — `KEEP` as compact secondary metadata.
+- Source classification — `KEEP` as compact security-relevant metadata.
+- Raw lifecycle / preview / Ask-usage enums — `REMOVE` from default display.
+- Action-affecting readiness such as a Source being unusable for Ask — `CONDITIONAL`.
+- Long Ask-usage explanation on every row — `REMOVE`; replace with concise conditional state only.
+- Open Source — `KEEP`.
+- `Open pinned Version` implementation wording — `REMOVE` wording; use an owner-facing Open action and show human version context in detail.
+- No Sources / no matches — `KEEP` as a compact empty state, not a large placeholder.
+
+## 7. Source Detail inventory
+
+- Source Detail route — `KEEP` as normal drill-down from Sources and citations.
+- Source label — `KEEP`.
+- Back to Source Library — `KEEP`.
+- Return to cited Ask/Knowledge resource — `KEEP` when a return target exists.
+- Human version number — `KEEP`.
+- Version history selector — `KEEP`.
+- Original Preview — `KEEP`.
+- Evidence text — `KEEP`.
+- Evidence origin/provenance — `KEEP` because it helps trust judgment.
+- Ordinary Preview/Ask readiness status — `REMOVE` from default display.
+- Preview/Ask readiness problem — `CONDITIONAL` if it blocks a task.
+- Source ID — `SLASH` through `technical.current`.
+- SourceVersion ID — `SLASH` through `technical.current`.
+- Evidence ID — `SLASH` through `technical.current`.
+- Evidence revision — `SLASH` through `technical.current`.
+- Repeated candidate/claim text that is identical to Evidence text — `REMOVE` duplicate rendering. One human-readable occurrence remains and provenance stays available.
+- Default `Technical details` disclosure — `SLASH`; replace default `<details>` presentation with a context-bound technical surface.
+
+## 8. Ask inventory
+
+### 8.1 Draft and context
+
+- Ask route — `KEEP` as a primary owner workflow and slash entry point.
+- Duplicate Project label inside Ask — `REMOVE`.
+- Question input — `KEEP`; HFM-S1 integrates the `/` trigger here.
+- Submit question — `KEEP`.
+- Ask mode — `KEEP` contextually because it directly changes answer semantics; show it only where multiple modes are relevant.
+- Source selection in source-aware mode — `KEEP` contextually.
+- Source labels — `KEEP`.
+- Raw Source / SourceVersion IDs in selection — `SLASH` through `technical.current`.
+- Draft explanation about protected command boundary / Canonical / original Evidence — `REMOVE`.
+- Provider eligibility block — `CONDITIONAL` if Ask cannot proceed.
+- Privacy/provider action required — `CONDITIONAL` with a direct focused recovery path.
+- Submission-outcome unknown recovery — `CONDITIONAL`; preserve original request identity and never duplicate-submit.
+- General disabled/internal submission-state prose — `REMOVE`; replace with concise actionable owner state.
+
+### 8.2 Conversation and answer
+
+- Conversation list — `KEEP`, compact.
+- Conversation title — `KEEP`.
+- Turn count — `REMOVE` as low-value metadata.
+- Normal latest run state — `REMOVE`.
+- Active/failed latest run state — `CONDITIONAL` while actionable or in progress.
+- User question — `KEEP` as the first element of each turn.
+- Final answer text — `KEEP` immediately after the question.
+- Citations / evidence links — `KEEP` immediately after the answer.
+- Partial answer while generating — `CONDITIONAL`.
+- Failure message — `CONDITIONAL`.
+- Failure code — `SLASH` through `technical.current`.
+- `AnswerRun` implementation term — `REMOVE`; use owner-language `answer` or `attempt` only where necessary.
+- Cancel answer — `CONDITIONAL` only while cancellable.
+- Retry after failure — `CONDITIONAL` when recovery is the likely next action.
+- Retry in non-failure or advanced cases — `SLASH` through `action.retry`.
+- Export answer — `SLASH` through `answer.export`.
+- Helpful / Not helpful buttons — `REMOVE` from the current owner Product surface. The backend contract may remain.
+- Propose Intake Draft — `SLASH` through `answer.propose_intake`.
+- Propose Draft ChangeSet — `SLASH` through `answer.propose_change`.
+- Propose Directive transition — `SLASH` through `answer.propose_directive`. This preserves the implemented transition-seed path and is distinct from the unavailable Directives Settings page.
+- Check existing Answer command outcome — `CONDITIONAL` recovery only.
+- Export result panel — `CONDITIONAL` after explicit export.
+- Persistent action row before the answer — `REMOVE`; HFM-S5 must reorder it.
+
+### 8.3 Frozen Ask hierarchy
+
+The accepted target order is:
 
 ```text
 Question
-↓
-Answer
-↓
-Citations / Evidence
-↓
-Actionable state or warning
-↓
-Secondary actions
+→ Answer
+→ Citations / Evidence
+→ actionable status / warning if any
+→ secondary actions
 ```
 
-The current implementation ordering in which AnswerRun controls can precede answer statements is not the accepted owner hierarchy and must be corrected downstream.
+Secondary controls must never visually precede the answer they operate on.
 
-### 6.1 KEEP
+## 9. Knowledge inventory
 
-| Ask surface | Disposition | Rule |
-| --- | --- | --- |
-| Question composer | KEEP | Dominant input. |
-| Current answer | KEEP | Dominant output immediately after the question. |
-| Citations / pinned Evidence | KEEP | Attached to answer statements; owner can inspect exact evidence. |
-| Ask mode | KEEP, context-bounded | Show only the small human-meaningful distinction needed to choose knowledge scope. |
-| Source selection | KEEP, context-bounded | Shown only when a source-using mode requires it. |
-| Conversation continuity | KEEP | Current conversation and useful prior conversations remain accessible without exposing internal branch machinery. |
-| Provider/privacy block | CONDITIONAL | Show only when it blocks submission or requires owner action. |
-| Submission outcome recovery | CONDITIONAL | Show only for unknown/rejected outcomes. |
-| Cancel active answer | CONDITIONAL | Only while a cancel-capable run exists. |
-| Failure retry | CONDITIONAL | Only after a retryable failure. |
+### 9.1 Capability finding
 
-### 6.2 SLASH
+Knowledge must **not** be treated as unimplemented merely because the current shell labels it `COMING_LATER`.
 
-- Advanced retry with same context.
-- Retry under current policy when not the obvious failure recovery action.
-- Export answer.
-- Propose Intake Draft from an answer.
-- Propose Draft ChangeSet from an answer.
-- Propose User Directive from an answer.
-- Raw AnswerRun / attempt / revision / failure metadata through `technical.current`.
+The canonical Product contains implemented Knowledge routes and a production `PostgresKnowledgeWorkspaceProjection`, including list/search/detail/compare/graph and bounded correction/draft functionality.
 
-### 6.3 REMOVE
+### 9.2 Disposition
 
-- Persistent `Helpful / Not helpful` feedback controls from the minimal owner surface.
-- Internal “protected command boundary”, “Canonical knowledge”, “original Evidence” explanatory prose in the normal composer.
-- Persistent AnswerRun action rows ahead of the answer.
-- Raw technical IDs in the default answer flow.
+- Persistent Knowledge nav entry — `REMOVE`.
+- Knowledge capability entry — `SLASH` through `knowledge.open`.
+- Knowledge search/filter inside an intentionally opened workspace — `KEEP` inside that focused workspace.
+- Knowledge Pages — `KEEP` inside the focused workspace.
+- Knowledge Detail — `KEEP` inside the focused workspace.
+- Compare — `KEEP` contextually inside the focused workspace.
+- Graph — `KEEP` contextually inside the focused workspace.
+- Knowledge correction proposal/editor — `SLASH` or contextually opened through `knowledge.correct`.
+- Ordinary projection/readiness metadata — `REMOVE`.
+- Partial/stale projection that changes trust or action — `CONDITIONAL`.
+- Raw stable IDs / snapshot IDs / projection revisions — `SLASH` through `technical.current`.
+- Internal read-only/server-authoritative explanatory prose — `REMOVE`.
 
-The removal of feedback controls is a Product-surface decision only; telemetry or a future bounded feedback mechanism may be reintroduced only through an explicit baseline change.
+Underlying Knowledge Product code is retained. HFM removes permanent navigation cost, not implemented capability.
 
-## 7. Knowledge inventory
+## 10. Review inventory
 
-Knowledge is **not treated as unimplemented**. The repository contains a real Knowledge workspace, PostgreSQL projection wiring, search, detail, compare, graph, correction/draft paths, and readiness semantics. The HFM decision concerns exposure, not capability deletion.
+### 10.1 Capability finding
 
-| Knowledge surface | Disposition | Frozen rule |
-| --- | --- | --- |
-| Persistent sidebar item | SLASH | Remove permanent nav. |
-| Open/search Knowledge | SLASH | `/knowledge` or `/search` routes intentionally into the workspace/result. |
-| Knowledge detail | SLASH/context | Reached from search, citations, graph, or explicit command. |
-| Compare | SLASH/context | Intentional analysis action. |
-| Graph | SLASH/context | Intentional relationship exploration action. |
-| Draft/correction editor | CONDITIONAL/SLASH | Appears when the owner explicitly starts or is routed into a correction/change flow. |
-| Projection/readiness warnings | CONDITIONAL | Only when degraded/stale/partial state changes interpretation. |
-| Raw authority/projection/internal IDs | REMOVE from default | Technical inspection via slash. |
+Review is materially implemented despite the current shell `COMING_LATER` presentation. The Product contains a guarded Review workspace, queue/detail reads, decision recording, comments, dependency-aware aggregate state, approvals, and outcome-unknown recovery.
 
-No Canonical write semantics are weakened by this classification. Draft changes remain proposals until the existing protected review/commit boundaries accept them.
+### 10.2 Disposition
 
-## 8. Review inventory
+- Persistent Review nav entry — `REMOVE`.
+- Pending review requiring owner decision — `CONDITIONAL`; surface automatically in owner attention.
+- Manual Review queue access — `SLASH` through `review.open`.
+- Empty Review workspace destination — `REMOVE` from normal UI.
+- Queue filters/list — `KEEP` once Review is intentionally opened.
+- Review item detail/evidence/impact — `KEEP` once Review is opened.
+- Approve / Reject / Request revision / Hold — `KEEP` in the active Review context.
+- Review comment — `KEEP` in the active Review context.
+- Review decision/history summary — `KEEP` in focused Review context.
+- Outcome-unknown recovery — `CONDITIONAL`.
+- Raw context/item/decision IDs, revisions, and digests — `SLASH` through `technical.current`.
 
-Review is a real governed capability and is retained. Its permanent navigation is not.
+Review decisions remain routed through the existing protected Review command boundary. HFM does not alter Canonical approval authority.
 
-| Review surface | Disposition | Frozen rule |
-| --- | --- | --- |
-| Review sidebar destination | CONDITIONAL + SLASH | Show attention cue when review is required; `/review` for manual inspection. |
-| Queue | CONDITIONAL | Mount when owner enters Review or is routed because action is required. |
-| Item detail / evidence / impact | KEEP within Review context | Required for an informed decision. |
-| Approve / Reject / Request Revision / Hold | KEEP within Review context | Human decision controls are central once Review is open. |
-| Reason/comment input | KEEP when decision context requires it | Do not show outside Review. |
-| Outcome-unknown recovery | CONDITIONAL | Only after ambiguous command outcome. |
-| Internal context IDs/revisions/digests | REMOVE from default | Available through `technical.current`. |
+## 11. External Action inventory
 
-Review remains the authoritative human approval boundary. HFM may reduce chrome but must not bypass, auto-approve, or move approval authority into Home or Ask.
+### 11.1 Capability finding
 
-## 9. External Action inventory
+External Action is a real guarded governance workspace with queue/detail, manifest/risk/preflight/execution/attempt/verification/result/audit/approval reads and governed Cancel/Rollback/Compensation/Verify/recovery paths.
 
-External Action is retained as a governed, high-risk capability, but it is not permanent navigation.
+### 11.2 Disposition
 
-| External Action surface | Disposition | Frozen rule |
-| --- | --- | --- |
-| Persistent sidebar destination | CONDITIONAL + SLASH | Attention cue only when needed; explicit `/external action` for inspection. |
-| Candidate/action queue | CONDITIONAL | Open when an actionable candidate exists or owner explicitly asks. |
-| Risk / manifest / preflight | KEEP within action context | Required decision and safety information. |
-| Approval / execution controls | KEEP within action context | Only where current server authority exposes them. |
-| Cancel / rollback / compensation / verify | CONDITIONAL | Show only when the current action state permits and requires them. |
-| Outcome-unknown recovery | CONDITIONAL | Must reuse original command identity; never become “execute again”. |
-| Attempts/audit/raw IDs | SLASH/technical | Secondary diagnostic inspection. |
+- Persistent External Actions nav entry — `REMOVE`.
+- Action waiting for approval, verification, compensation, or owner intervention — `CONDITIONAL` and proactively visible.
+- Manual External Action inspection — `SLASH` through `external_action.open`.
+- Queue/detail once intentionally opened — `KEEP` inside the focused workspace.
+- Risk/manifest/preflight information that changes a decision — `KEEP` in active action context.
+- Approval requirement — `CONDITIONAL` and never hidden behind slash.
+- Cancel — `CONDITIONAL` only when the current action is cancellable.
+- Rollback — `CONDITIONAL` only when available and consequence is clear.
+- Prepare compensation — `CONDITIONAL` only when required or available.
+- Verify — `CONDITIONAL` only when verification is required or available.
+- Outcome-unknown recovery — `CONDITIONAL`; never re-execute blindly.
+- Raw action/execution/attempt/verification IDs and internal revision topology — `SLASH` through `technical.current`.
+- Empty `no external actions` destination — `REMOVE` from normal UI.
 
-HFM does not create any new execution path. Existing approval, preflight, idempotency, verification, rollback/compensation, and outcome-recovery boundaries remain mandatory.
+Existing external-action safety, approval, idempotency, and protected command boundaries remain unchanged.
 
-## 10. Activity inventory
+## 12. Activity inventory
 
-Activity is a real Product workspace but not a primary owner destination.
+- Persistent Activity nav entry — `REMOVE`.
+- Activity workspace — `SLASH` through `activity.open`.
+- Queue/filter/list while explicitly opened — `KEEP` inside the focused workspace.
+- High-level state / attention / related resource — `KEEP` inside the focused workspace.
+- Failed work requiring action — `CONDITIONAL`; surface proactively without requiring Activity discovery.
+- Retry/Cancel delegated to the owning domain — `CONDITIONAL` only when the server says the action is valid.
+- Projection freshness/adaptor/snapshot telemetry — `SLASH` technical.
+- Job/Run/Attempt/Stage/Event raw topology — `SLASH` technical.
+- Raw Activity/Run/Job IDs — `SLASH` technical.
+- Empty Activity destination — `REMOVE` from normal UI.
 
-| Activity surface | Disposition | Frozen rule |
-| --- | --- | --- |
-| Sidebar item | SLASH | `/activity`. |
-| Active/recent queue | SLASH | Open intentionally or from a relevant failure/status cue. |
-| Filters | KEEP within Activity context | Human-readable, compact. |
-| Detail state/timing/attention | KEEP within Activity context | Operationally useful. |
-| Retry/Cancel delegated commands | CONDITIONAL | Only when owning-domain authority reports the action is available. |
-| Attempts/stages/events/projection metadata | SLASH technical | Hide from default detail; available when troubleshooting. |
-| Empty two-pane shell | REMOVE | Empty state should be compact and singular. |
+Activity remains an implemented inspection capability; it is not deleted.
 
-Activity never becomes an independent authority for retry/cancel; delegated commands continue to use the owning Domain command path.
+## 13. History inventory
 
-## 11. History inventory
+- Persistent History nav entry — `REMOVE`.
+- History workspace — `SLASH` through `history.open`.
+- Domain filters/list while opened — `KEEP` inside the focused workspace.
+- Human event label/time/domain — `KEEP` inside the focused workspace.
+- Payload availability summary — `KEEP` while auditing because it explains missing or redacted evidence.
+- Raw payload JSON/tombstone payload — `SLASH` technical.
+- Raw source event/resource IDs — `SLASH` technical.
+- External Action / Review lineage links — `KEEP` contextually.
+- Reversal draft creation from an eligible Canonical history item — `KEEP` contextually inside explicitly opened History. It creates a draft rather than a direct Canonical reversal; the existing Review boundary takes over.
+- Empty History destination — `REMOVE` from normal UI.
 
-History is retained as the unified audit/history reader but becomes intentional access.
+## 14. Settings decomposition inventory
 
-| History surface | Disposition | Frozen rule |
-| --- | --- | --- |
-| Sidebar item | SLASH | `/history`. |
-| History list and domain filter | KEEP within History context | Compact audit browse. |
-| Event detail | KEEP within History context | Human-readable event summary first. |
-| Payload availability status | KEEP within History context | Needed to understand retention/redaction. |
-| Raw audit payload | SLASH technical | Not default reading flow. |
-| Owning-domain links | KEEP within context | Route to the authoritative domain. |
-| Reversal initiation | CONDITIONAL | Only on eligible Canonical entries. |
-| Technical event/resource IDs | SLASH technical | Hidden from normal display. |
+The permanent Settings landing page and category catalog are removed as owner information architecture. Real owner controls are preserved as focused slash/conditional flows; placeholder categories with no current backend capability are removed instead of receiving fake commands.
 
-History remains read/audit oriented; owning-domain write boundaries remain authoritative.
+### 14.1 Settings shell
 
-## 12. Settings IA inventory
+- Persistent Settings nav — `REMOVE`.
+- Settings landing / Category Index — `REMOVE`.
+- `Policy Control Plane` wording — `REMOVE`.
+- `Settings & Project Administration` mega-header — `REMOVE`.
+- Current/Target/Resource Project badges — `REMOVE`; use one compact current Project identity and a contextual warning only if a scope difference materially changes an action.
+- Settings-local Project selector — `REMOVE`; Project switch is `project.switch`.
+- Settings category tabs — `REMOVE`.
+- Generic Settings confirmation dialog primitive — `CONDITIONAL`; reuse or refactor it for destructive command confirmation.
+- Category counts/warnings index — `REMOVE`; action-required items feed conditional owner attention instead.
 
-The permanent multi-tab Settings information architecture is `REMOVE`.
+### 14.2 Preferences
 
-This is not a decision to delete all settings capabilities. It is a decision to stop presenting a large administrative product inside the owner-facing Product.
+- Preferences page — `SLASH` as a focused preferences UI.
+- Locale — `SLASH` through `preferences.locale`.
+- Timezone — `SLASH` through `preferences.timezone`.
+- Date/time format — `SLASH` through `preferences.display`.
+- Screen density — `SLASH` through `preferences.display`.
+- Reduce motion — `SLASH` through `preferences.display`.
 
-### 12.1 Category-level disposition
+Writes continue through `apiClient.updatePrincipalPreferences` with existing active/target/resource Project binding, expected revision, request identity, and idempotency.
 
-| Current Settings category | Disposition | Capability decision |
-| --- | --- | --- |
-| Category Index | REMOVE | No replacement page. Slash registry is the index. |
-| Preferences | SLASH | Retain real user preference writes behind focused commands. |
-| Project Administration | SLASH | Retain create/rename/archive/restore/delete behind focused commands and safety confirmation. |
-| Models | REMOVE | Current PostgreSQL backend reports the feature `UNAVAILABLE`; do not expose dead owner UI. |
-| AI | SLASH | Retain provider/model/credential/configuration controls in focused flow. |
-| Costs & Budgets | REMOVE | Current PostgreSQL backend reports the feature `UNAVAILABLE`. |
-| Privacy & Sensitivity | SLASH + CONDITIONAL | Explicit configuration through slash; surface conditionally when a privacy decision blocks AI/action behavior. |
-| Connectors | REMOVE | Current PostgreSQL backend reports the feature `UNAVAILABLE`. |
-| Directives & Priority Settings | REMOVE | Current PostgreSQL backend reports this Settings feature `UNAVAILABLE`; Ask/Review directive proposal capability remains separately governed. |
-| Schema Packs | REMOVE | Current PostgreSQL backend reports the feature `UNAVAILABLE`. |
-| Diagnostics | REMOVE | Current PostgreSQL backend reports the feature `UNAVAILABLE`. |
-| Advanced | REMOVE | Remove generic owner-facing page. Retain protected settings machinery for specific current/future commands. |
+### 14.3 Project Administration
 
-### 12.2 Unavailable feature rule
+- Project Admin page — `SLASH` through `project.manage` or a focused project picker.
+- Project list for management — `SLASH`.
+- Create first Project — `CONDITIONAL` first-run onboarding.
+- Create additional Project — `SLASH` through `project.create`.
+- Switch Project — `SLASH` through `project.switch`.
+- Rename Project — `SLASH` through `project.rename`.
+- Archive Project — `SLASH` plus destructive confirmation through `project.archive`.
+- Restore Project — `SLASH` through `project.restore`.
+- Request deletion — `SLASH` plus destructive confirmation through `project.delete_request`.
+- `Status: Active` plus `Active: Yes` duplicate semantics — `REMOVE` duplicate; retain one lifecycle state when useful.
+- Project ID / revision — `SLASH` technical.
+- `Details / Policy` misleading label — `REMOVE` wording.
 
-A feature that the canonical Product backend currently returns as unconditionally `UNAVAILABLE` is not represented by a dead red Settings page and does not receive a fake slash command merely to preserve parity with the removed page.
+All writes remain on existing Project Administration APIs and expected-revision/idempotency contracts.
 
-When such a capability becomes a real Product capability later, it must be introduced through a new explicit Human-Facing decision rather than silently resurrecting the old Settings IA.
+### 14.4 Models
 
-## 13. Preferences disposition
+- Separate Models page — `REMOVE`.
+- Model Profiles/Routing placeholder — `REMOVE`.
 
-The current preference backend supports real principal preference writes, so the capability is retained through slash commands.
+Reason: the page duplicates the AI configuration concept and the current PostgreSQL `getModelDescriptors()` returns `UNAVAILABLE` unconditionally. No slash command is created for an unsupported Product capability. Underlying future contracts may remain.
 
-Frozen command family:
+### 14.5 AI
+
+- Permanent AI Settings page — `SLASH` through `ai.configure`.
+- Provider choice — `SLASH` inside focused AI configuration.
+- Model choice — `SLASH` inside focused AI configuration; there is no separate Models command.
+- API credential create/replace — `SLASH` inside focused AI configuration.
+- Test Connection — `SLASH` or contextual through `ai.test_connection` or the same focused panel.
+- Save AI configuration — `SLASH` using the existing protected configuration save.
+- Revoke/remove credential — `SLASH` plus destructive confirmation.
+- Credential/provider failure blocking Ask — `CONDITIONAL` with direct recovery.
+- Provider privacy review/approval blocking requested work — `CONDITIONAL`.
+- Provider privacy management when not blocking — `SLASH` inside focused AI/privacy flow.
+- Provider/model display names — `KEEP` inside focused AI configuration.
+- Server catalog revision / capability revision — `REMOVE` from default owner UI.
+- Credential/config revisions — `REMOVE` from default owner UI.
+- Runtime pinning / AnswerRun identity exposition — `REMOVE` from default owner UI.
+- `Canonical Product workspace` and policy-command prose — `REMOVE`.
+
+### 14.6 Costs & Budgets
+
+- Costs & Budgets page — `REMOVE`.
+- `not available in this tier` message — `REMOVE`.
+- Future real budget threshold requiring a decision — `CONDITIONAL` only after a real backend capability exists.
+
+Reason: the current PostgreSQL `getCostBudget()` returns `UNAVAILABLE` unconditionally and there is no real tier activation path. No current slash command is created.
+
+### 14.7 Privacy & Sensitivity
+
+- Permanent Privacy page — `SLASH` through `privacy.open`.
+- Request external AI transfer review — `SLASH` or direct `CONDITIONAL` recovery through `privacy.review`.
+- Pending approval blocking work — `CONDITIONAL`.
+- Privacy/permission conflict — `CONDITIONAL` and never hidden.
+- Sensitivity when it changes the allowed action — `CONDITIONAL`.
+- Retention/privacy summary on explicit inspection — `KEEP` inside the focused privacy view.
+- Approval/revision internals — `REMOVE` from default owner UI.
+- Project-level and provider-specific approval — `KEEP` as distinct human concepts when relevant; they must not be presented as one ambiguous approval.
+
+The Privacy backend is real: `getPrivacyRetention()` derives current settings and pending proposal state, and review writes continue through the existing settings command boundary.
+
+### 14.8 Connectors
+
+- Connectors page — `REMOVE`.
+- `not available in this tier` message — `REMOVE`.
+- Connector placeholder cards — `REMOVE`.
+
+Reason: the current PostgreSQL `getConnectorSettings()` returns `UNAVAILABLE` unconditionally. No fake slash command is created. A future real connector capability receives a new HFM classification when it becomes actionable.
+
+### 14.9 Directives & Priority
+
+- Directives Settings page — `REMOVE`.
+- `not available in this tier` message — `REMOVE`.
+- Ask `Propose Directive` transition — `SLASH` as a separate implemented transition-seed capability.
+
+Reason: the current PostgreSQL `getDirectiveProposals()` returns `UNAVAILABLE` unconditionally. The implemented Ask transition does not make the Settings page available.
+
+### 14.10 Schema Packs
+
+- Schema Packs page — `REMOVE`.
+- `not available in this tier` message — `REMOVE`.
+- Future schema architecture contracts — retained internally, not exposed as owner Product UI until actionable.
+
+Reason: the current PostgreSQL `getSchemaPacks()` returns `UNAVAILABLE` unconditionally.
+
+### 14.11 Diagnostics
+
+- Diagnostics page — `REMOVE` for the current Product.
+- `System Diagnostics & Real-Fact Telemetry` owner destination — `REMOVE`.
+- `diagnostics.open` — `REMOVE` from the initial HFM registry.
+
+Reason: the current PostgreSQL `getDiagnostics()` returns `UNAVAILABLE` unconditionally. A later real diagnostic capability may be reintroduced as `SLASH`, but HFM-S0 does not reserve visible Product space for it now.
+
+### 14.12 Advanced
+
+- Generic Advanced page — `REMOVE`.
+- Project/settings/policy revisions in its `Technical details` block — `SLASH` technical.
+- Generic Validate/Preview/Apply policy setting UI — `REMOVE` as a generic owner surface.
+- Outcome-unknown recovery for a real focused Settings command — `CONDITIONAL`.
+
+The underlying protected settings machinery remains. A specific user-needed setting must receive a specific future command rather than a generic `/advanced` command.
+
+## 15. Shared technical-information rule
+
+The current `TechnicalDetails` component is a generic `<details>` disclosure embedded across multiple normal owner routes. Under the frozen HFM candidate:
 
 ```text
-/language
-/timezone
-/date format
-/density
-/reduce motion
+Default owner surface: no raw technical disclosure
+Explicit /technical request: temporary context-bound technical drawer/view
 ```
 
-A compact `/preferences` hub may be used as an alias if needed, but it must not recreate the removed Settings tab grid.
+The following are removed from normal default rendering unless another inventory entry explicitly keeps a human-readable abstraction:
 
-Preference persistence, revision checks, Project binding, and server confirmation remain unchanged.
+- UUIDs and stable internal IDs
+- revisions and projection revisions
+- locators and resource paths
+- command/request/idempotency identities
+- raw enum values
+- Job/Run/Attempt/Stage/Event topology
+- provider/configuration revision mechanics
+- policy-context revisions
+- raw audit payload JSON
 
-## 14. Project Administration disposition
+The data itself is not deleted. It remains available to logs, APIs, persistence, tests, and bounded technical inspection where required.
 
-Project Administration capabilities are real and remain protected.
+## 16. Initial slash-command registry frozen by HFM-S0
 
-Frozen command family:
+The following command intents are the discoverability replacement for accepted `SLASH` capabilities. HFM-S1 may refine labels, aliases, and presentation primitives, but it may not silently remove access to an accepted intent.
+
+- `help.commands` — 명령어 보기. `READ`. HFM command discovery.
+- `search.global` — 전체 검색. `READ`. Existing `searchGlobal` read path; final behavior repaired in HFM-S5.
+- `project.switch` — 프로젝트 전환. Context write through `switchActiveProject`.
+- `project.manage` — 프로젝트 관리. `READ` through existing project list/details.
+- `project.create` — 프로젝트 만들기. `WRITE` through `createProject`; first-Project creation remains conditional onboarding.
+- `project.rename` — 프로젝트 이름 변경. `WRITE` through `updateProject`.
+- `project.archive` — 프로젝트 보관. Destructive-like write through `archiveProject` plus confirmation.
+- `project.restore` — 프로젝트 복원. `WRITE` through `restoreProject`.
+- `project.delete_request` — 프로젝트 삭제 요청. `DESTRUCTIVE` through `requestDeleteProject` plus confirmation.
+- `preferences.locale` — 언어 변경. `WRITE` through `updatePrincipalPreferences`.
+- `preferences.timezone` — 시간대 변경. `WRITE` through `updatePrincipalPreferences`.
+- `preferences.display` — 화면 표시 설정. `WRITE` through `updatePrincipalPreferences`.
+- `ai.configure` — AI 설정. `WRITE` through existing provider/model/credential/configuration APIs.
+- `ai.test_connection` — AI 연결 확인. Read/action through the existing connection test API.
+- `privacy.open` — 개인정보 및 외부 전송 설정. `READ` through `getPrivacyRetention`.
+- `privacy.review` — 외부 AI 전송 검토. Approval write through the existing Settings review command path.
+- `knowledge.open` — 지식 보기. `READ` through the production Knowledge projection/routes.
+- `knowledge.correct` — 지식 수정 제안. Draft write through the existing Knowledge draft/correction path.
+- `review.open` — 검토 열기. Read/write through the existing Review queue/decision workspace.
+- `external_action.open` — 외부 작업 보기. Read/write through the existing governed External Action workspace.
+- `activity.open` — 실행 상태 보기. `READ` through the existing Activity workspace.
+- `history.open` — 변경 이력 보기. `READ` through the existing History workspace.
+- `technical.current` — 기술 정보 보기. `READ`, context-bound replacement for default `TechnicalDetails`.
+- `answer.export` — 답변 내보내기. Export through the existing Ask export API.
+- `action.retry` — 다시 시도. `WRITE` through existing owning-domain retry paths and available only when valid.
+- `answer.propose_intake` — 답변에서 자료 초안 만들기. Draft write through the existing Ask transition-seed path.
+- `answer.propose_change` — 답변에서 변경 제안 만들기. Draft write through the existing Ask transition-seed path.
+- `answer.propose_directive` — 답변에서 지시 제안 만들기. Draft write through the existing Ask transition-seed path.
+
+The following are explicitly **not** in the initial registry because the current PostgreSQL Product backend is unavailable:
 
 ```text
-/project switch
-/project create
-/project rename
-/project archive
-/project restore
-/project delete
+models.*
+costs.*
+connectors.*
+directives.settings.*
+schema.*
+diagnostics.*
+advanced.*
 ```
 
-Rules:
+A command name is not a promise of future capability. Unsupported placeholders remain hidden.
 
-- Active Project label stays visible globally.
-- Switching is intentional through slash.
-- First Project creation is conditional onboarding.
-- Archive/delete are destructive and require risk-appropriate confirmation.
-- Project deletion must never be introduced as a low-friction generic command.
-- Raw Project UUID/revision is technical output, not normal owner copy.
+## 17. Moved write controls → existing authority boundary
 
-## 15. AI disposition
+HFM changes presentation and discovery, not mutation authority.
 
-AI configuration is real and remains available through an intentional configuration flow.
+- Switch Project → `apiClient.switchActiveProject` plus existing leave guards/cache purge/session boundary.
+- Create first Project → `apiClient.createFirstProject`.
+- Create Project → `apiClient.createProject`.
+- Rename Project → `apiClient.updateProject` with expected revision/request identity/idempotency.
+- Archive Project → `apiClient.archiveProject` with expected revision/request identity/idempotency.
+- Restore Project → `apiClient.restoreProject` with expected revision/request identity/idempotency.
+- Request Project deletion → `apiClient.requestDeleteProject` with expected revision/request identity/idempotency.
+- Update locale/timezone/display → `apiClient.updatePrincipalPreferences`.
+- AI credential create/replace → `createAICredential` / `replaceAICredential` plus existing outcome recovery.
+- AI credential revoke/remove → `revokeAICredential` / `removeAICredential` plus explicit confirmation.
+- Save AI provider/model configuration → `saveAIConfiguration`.
+- Test AI connection → `testAIConnection`.
+- Provider privacy proposal/approval → existing AI provider privacy proposal/approval APIs.
+- Project external-transfer review → existing `applySettingsCommand` review-required / approval flow.
+- Source intake → existing Sources staging plus protected submit write client.
+- Source duplicate resolution → existing exact-duplicate decision plus `resolveDuplicate`.
+- Source cancel/retry → existing Sources cancel/retry commands.
+- Ask submit → existing protected Ask submit plus client-request outcome resolution.
+- Ask cancel/retry/export/transition → existing Answer command APIs plus outcome recovery.
+- Review decision → existing `recordReviewDecisions` plus command outcome resolution.
+- External Action cancel/rollback/compensation/verify → existing governed External Action command APIs plus semantic digest/outcome recovery.
+- Activity retry/cancel → delegated existing owning-domain command APIs; Activity does not become mutation authority.
+- History reversal → existing `createReversalDraftChangeSet`; Review remains the approval/authoring boundary.
+- Knowledge correction → existing frontend Knowledge draft/correction boundary; no direct Canonical write.
 
-Frozen command entry:
+No HFM command executor may write directly to persistence where one of these boundaries exists.
+
+## 18. Safety exceptions frozen by HFM-S0
+
+The following are `CONDITIONAL` and must surface without requiring the owner to remember or type a slash command:
+
+1. approval required before a Canonical-affecting transition;
+2. pending Review decision that blocks requested work;
+3. External Action approval, verification, compensation, or other owner decision;
+4. destructive Project archive/deletion confirmation;
+5. privacy/external-transfer conflict;
+6. provider or credential failure blocking requested AI work;
+7. permission/access conflict that changes whether an action can proceed;
+8. real cost/budget threshold that changes execution, when such a backend capability actually exists;
+9. failed operation requiring owner action;
+10. outcome-unknown recovery state;
+11. stale/offline state when it changes actionability or trust;
+12. data-loss/recovery warning;
+13. first-Project onboarding when no Project exists.
+
+Resolved conditions disappear from persistent attention unless they have independent ongoing value.
+
+## 19. Removal-depth matrix
+
+### 19.1 Presentation relocation only — underlying Product capability retained
+
+These lose permanent navigation/default display but their implemented capability remains and is re-exposed through slash or conditional UI:
+
+- Knowledge
+- Review
+- External Action
+- Activity
+- History
+- Preferences
+- Project Administration
+- AI configuration
+- Privacy
+- technical inspection data
+- Project switching
+- global Search backend/read path
+- retry/recovery/domain commands
+
+### 19.2 Owner UI may be deleted after replacement or absence is verified
+
+The following current presentation code has no required persistent replacement of the same screen:
+
+- Settings Category Index / category-tab mega-navigation
+- separate Models owner page
+- Costs & Budgets placeholder page
+- Connectors placeholder page
+- Directives Settings placeholder page
+- Schema Packs placeholder page
+- Diagnostics placeholder page
+- generic Advanced owner page
+- legacy top-bar Search modal after `search.global` passes
+- legacy top-bar Commands/navigation palette after the slash registry passes
+- persistent raw `TechnicalDetails` embeds after `technical.current` replacement exists
+- empty operational/attention placeholder cards
+- disabled `COMING_LATER` navigation presentations
+
+### 19.3 Must not be deleted merely because owner UI is removed
+
+- backend contracts reserved for future architecture
+- persistence schema
+- Canonical semantics
+- Claim/Fact separation
+- Compiled Truth derivation
+- review/approval authority
+- External Action governance
+- provider/privacy policy
+- idempotency and outcome recovery
+- project binding/access control
+- audit/history data
+- raw diagnostic data used by tests/logs/internal tools
+
+## 20. Affected file/module map for HFM-S1..S6
+
+HFM-S0 does not change these Product files, but freezes them as the expected impact surface.
+
+### Shell / navigation / command entry
+
+- `apps/shotgun-web/src/app/router.tsx`
+- `apps/shotgun-web/src/shell/application-shell.tsx`
+- `apps/shotgun-web/src/shell/primary-navigation.tsx`
+- `apps/shotgun-web/src/shell/top-bar.tsx`
+- `apps/shotgun-web/src/session/project-selector.tsx`
+- `apps/shotgun-web/src/section3/global-tools.tsx`
+- new HFM slash registry/palette/input composition modules
+- `adapters/frontend-product-read-in-memory/src/index.ts`
+- `assemblies/shotgun-app/src/application.ts` only if production projection composition must change to satisfy the accepted shell contract
+
+### KEEP routes
+
+- `apps/shotgun-web/src/routes/home-page.tsx`
+- `apps/shotgun-web/src/routes/sources-workspace.tsx`
+- `apps/shotgun-web/src/routes/source-detail-workspace.tsx`
+- `apps/shotgun-web/src/routes/ask-workspace.tsx`
+
+### Slash / conditional capability routes
+
+- Knowledge route family and `apps/shotgun-web/src/knowledge/*`
+- `apps/shotgun-web/src/routes/review-workspace.tsx`
+- `apps/shotgun-web/src/routes/external-action-workspace.tsx`
+- `apps/shotgun-web/src/routes/activity-workspace.tsx`
+- `apps/shotgun-web/src/routes/history-workspace.tsx`
+
+### Settings decomposition
+
+- `apps/shotgun-web/src/routes/settings/settings-layout.tsx`
+- `apps/shotgun-web/src/routes/settings/category-index-view.tsx`
+- `apps/shotgun-web/src/routes/settings/preferences-workspace.tsx`
+- `apps/shotgun-web/src/routes/settings/projects-workspace.tsx`
+- `apps/shotgun-web/src/routes/settings/project-details-workspace.tsx`
+- `apps/shotgun-web/src/routes/settings/models-workspace.tsx`
+- `apps/shotgun-web/src/routes/settings/ai-workspace.tsx`
+- `apps/shotgun-web/src/routes/settings/costs-workspace.tsx`
+- `apps/shotgun-web/src/routes/settings/privacy-workspace.tsx`
+- `apps/shotgun-web/src/routes/settings/connectors-workspace.tsx`
+- `apps/shotgun-web/src/routes/settings/directives-workspace.tsx`
+- `apps/shotgun-web/src/routes/settings/schema-workspace.tsx`
+- `apps/shotgun-web/src/routes/settings/diagnostics-workspace.tsx`
+- `apps/shotgun-web/src/routes/settings/advanced-workspace.tsx`
+
+### Shared presentation / localization
+
+- `apps/shotgun-web/src/components/technical-details.tsx`
+- owner-facing Product labels/messages
+- new `ko-KR` / `en-US` message resources or equivalent localization layer
+
+### Existing protected backend paths to preserve
+
+- `adapters/postgres/src/index.ts`
+- Project Administration modules/repositories
+- Settings command boundary
+- AI settings/vault/config/privacy modules
+- Sources write pipeline
+- Ask command/execution modules
+- Review modules
+- External Action modules
+- History/Activity read models
+
+Backend code changes are allowed later only if a concrete Product behavior cannot be achieved through the existing authority path.
+
+## 21. HFM-S0 final completion checklist
+
+This candidate satisfies the required HFM-S0 design work as follows:
+
+- [x] Persistent routes inventoried.
+- [x] Sidebar items inventoried.
+- [x] Top-bar items inventoried.
+- [x] Settings categories inventoried.
+- [x] Major persistent actions/status blocks/technical disclosures/empty destinations inventoried.
+- [x] Every listed surface assigned `KEEP`, `SLASH`, `REMOVE`, or `CONDITIONAL`.
+- [x] Every accepted `SLASH` capability assigned a discoverable command intent.
+- [x] Every major `REMOVE` category has a presentation-only vs UI-deletion vs architecture-retention boundary.
+- [x] Safety exceptions identified.
+- [x] Moved write controls mapped to existing protected APIs/command boundaries.
+- [x] Backend-unavailable owner categories identified and excluded from slash registry.
+- [x] Minimal persistent navigation candidate frozen.
+- [x] Expected implementation file/module impact mapped.
+- [ ] **Owner accepts the HFM-S0 disposition.**
+
+The final checkbox is the only remaining HFM-S0 completion gate.
+
+## 22. State transition after owner decision
+
+If the owner accepts this document without amendment:
 
 ```text
-/ai
-```
-
-The flow may expose, as needed:
-
-- provider selection;
-- model selection from the registered provider catalog;
-- write-only credential create/replace;
-- connection test;
-- save configuration;
-- provider-scoped privacy review/approval;
-- credential revoke/remove with confirmation.
-
-The separate `Models` Settings page is not retained because the current Product backend reports model-profile/routing settings unavailable while the AI workspace already owns the real provider/model selection path.
-
-Internal execution identity, catalog revision, credential revision, policy identity, and compatibility prose belong behind technical or advanced context, not the default owner form.
-
-## 16. Privacy disposition
-
-Privacy is a real server-backed control, not a dead Settings placeholder.
-
-Frozen entry:
-
-```text
-/privacy
-```
-
-It is also `CONDITIONAL` when an Ask/AI/external-transfer action is blocked pending owner privacy review.
-
-The owner surface must distinguish at least:
-
-- Project-level privacy/external-transfer decision;
-- provider-scoped privacy approval when relevant;
-- deployment ceiling/effective eligibility.
-
-These distinct authorities must not be flattened into one ambiguous “Approved” badge.
-
-Restricted Project context remains blocked from external AI transfer according to the existing server authority.
-
-## 17. Generic Advanced disposition
-
-The `/settings/advanced` owner page is `REMOVE`.
-
-Reason: a generic “policy overrides” page exposes implementation concepts and invites broad editing without a human task model. The underlying versioned settings draft/validate/preview/apply machinery is retained for specific commands that genuinely require it.
-
-Future advanced settings must be introduced as named owner tasks, not by restoring a miscellaneous Advanced bucket.
-
-## 18. Technical Details disposition
-
-The common Technical Details pattern is removed from the default owner reading flow.
-
-Frozen command:
-
-```text
-/technical
-```
-
-Semantic behavior:
-
-```text
-normal Product view
-→ technical identifiers hidden
-
-/technical
-→ show technical.current for the current route/resource/context
-```
-
-Possible technical content includes IDs, revisions, projections, event identities, attempt identities, policy versions, and low-level failure codes.
-
-Rules:
-
-- Technical data is not deleted from contracts or the server merely because it is hidden from default UI.
-- Long identifiers render horizontally with adequate width/monospace/copy affordance when technical mode is open.
-- `technical.current` is context-bound; do not create a permanent diagnostics dashboard to replace the removed details blocks.
-
-## 19. Empty, loading, status, and warning surfaces
-
-### 19.1 Empty states
-
-`KEEP` only when the absence itself helps the owner decide the next step.
-
-Remove:
-
-- duplicated empty states across two panes;
-- oversized empty cards;
-- internal wording such as “server reported no…”;
-- red error styling for planned/unimplemented capabilities.
-
-### 19.2 Loading states
-
-`CONDITIONAL`, compact, and task-specific. Internal nouns such as projection, command boundary, or adapter are not shown unless technical inspection is active.
-
-### 19.3 Warnings/errors
-
-`CONDITIONAL` and actionable. A warning stays visible only while the relevant condition is current.
-
-### 19.4 Success messages
-
-Transient `CONDITIONAL` feedback. Persistent green status blocks are not used merely to restate already-visible state.
-
-## 20. Button/control hierarchy
-
-Human-facing controls are frozen into these visible roles:
-
-- `Primary`: the single obvious next step for the current task.
-- `Secondary`: useful but not dominant actions.
-- `Conditional`: appears only when the state makes the action relevant.
-- `Destructive`: isolated, risk-signaled, and confirmation-bound where required.
-- `Slash-only`: not permanently rendered.
-
-`Coming Soon`, unavailable-tier placeholders, and visually active controls for unavailable paths are not part of the final owner surface.
-
-## 21. Frozen slash command registry
-
-HFM-S0 freezes the command **intent registry**, not final parser syntax details. HFM-S1/S2 may normalize aliases, but must preserve the following owner tasks.
-
-| Command intent | Primary disposition | Existing authority / target |
-| --- | --- | --- |
-| `/search` | SLASH | Existing global/server search capability; replacement must be verified before old modal removal. |
-| `/project switch` | SLASH | Existing protected Project switch. |
-| `/project create` | SLASH / first-run CONDITIONAL | Existing Project create/bootstrap API. |
-| `/project rename` | SLASH | Existing Project update API. |
-| `/project archive` | SLASH destructive | Existing Project lifecycle API. |
-| `/project restore` | SLASH | Existing Project lifecycle API. |
-| `/project delete` | SLASH destructive | Existing delete-request API and confirmation. |
-| `/language` | SLASH | Existing principal preferences write. |
-| `/timezone` | SLASH | Existing principal preferences write. |
-| `/date format` | SLASH | Existing principal preferences write. |
-| `/density` | SLASH | Existing principal preferences write. |
-| `/reduce motion` | SLASH | Existing principal preferences write. |
-| `/ai` | SLASH | Existing AI Settings protected APIs. |
-| `/privacy` | SLASH / CONDITIONAL | Existing Settings privacy review + provider approval/deployment authorities. |
-| `/knowledge` | SLASH | Existing Knowledge workspace/read/search/detail/compare/graph capabilities. |
-| `/review` | SLASH / CONDITIONAL | Existing Review queue/decision/recovery APIs. |
-| `/external action` | SLASH / CONDITIONAL | Existing External Action read/governed command paths. |
-| `/activity` | SLASH | Existing Activity read and owning-domain delegated actions. |
-| `/history` | SLASH | Existing History read, owning-domain links, eligible reversal initiation. |
-| `/technical` | SLASH | Context-bound presentation of existing technical metadata. |
-| `/export` | SLASH | Existing Ask export capability in answer context. |
-| `/retry` | SLASH / CONDITIONAL | Existing owning-domain retry authority; context determines allowed mode. |
-| `/propose intake` | SLASH | Existing Ask transition-seed capability. |
-| `/propose change` | SLASH | Existing Ask transition-seed / Knowledge draft flow. |
-| `/propose directive` | SLASH | Existing Ask directive proposal flow; Review remains authoritative. |
-
-Slash execution is a presentation/orchestration layer only. It must not duplicate domain logic or invent a parallel write API.
-
-## 22. Write-control authority mapping
-
-HFM implementation must route writes through the existing protected boundaries.
-
-| Human intent | Required existing protection |
-| --- | --- |
-| Switch Project | session/leave guard + protected Project switch + cache purge/revalidation |
-| Create/update/lifecycle Project | active/target/resource Project binding + idempotency/client request identity + expected revision where defined |
-| Save Preferences | active/target/resource Project binding + expected preference revision + server confirmation |
-| AI credential/configuration | credential write-only handling + Project binding + revision + provider registry + vault authority |
-| AI privacy approval | proposal/Owner approval + provider-scoped authority + deployment ceiling |
-| Source intake | staged input + protected intake command + Project binding + exact duplicate decision + idempotency |
-| Ask submission | protected Ask command + pinned context + provider/privacy eligibility + outcome lookup without duplicate resubmit |
-| Ask answer commands | original command identity + capability-gated cancel/retry/export/transition + outcome recovery |
-| Review decisions | Review context/target revisions/digest + idempotency + Owner decision authority + outcome recovery |
-| External Action commands | manifest/risk/approval/preflight/execution/verification authority + idempotency + outcome recovery |
-| Activity delegated actions | owning-domain command authority, never an independent Activity mutation authority |
-| History reversal | eligible Canonical identity resolved by server + Review/draft path, never direct Canonical mutation |
-| Settings-specific protected writes | existing settings draft validation/preview/apply machinery where the named command requires it |
-
-## 23. REMOVE depth classification
-
-`REMOVE` is frozen at one of three depths.
-
-### 23.1 Presentation relocation only
-
-Remove persistent chrome but retain full capability:
-
-- Knowledge navigation;
-- Review navigation;
-- External Action navigation;
-- Activity navigation;
-- History navigation;
-- Preferences tab;
-- Project Administration tab;
-- AI tab;
-- Privacy tab;
-- legacy Search button/modal after replacement;
-- legacy Commands button/palette after replacement;
-- default Technical Details blocks.
-
-### 23.2 Current owner UI implementation removable
-
-The existing page/component may be deleted from the current Product after migration because no current active owner capability depends on presenting that page:
-
-- Settings Category Index;
-- Models Settings page;
-- Costs & Budgets Settings page;
-- Connectors Settings page;
-- Directives & Priority Settings page;
-- Schema Packs Settings page;
-- Diagnostics Settings page;
-- generic Advanced Settings page.
-
-Backend contracts or future architecture placeholders are not automatically deleted with these pages.
-
-### 23.3 Never implied by HFM REMOVE
-
-HFM does **not** authorize deletion or weakening of:
-
-- Original Asset / Source / Evidence data;
-- Candidate vs Canonical distinctions;
-- Claim vs Fact distinctions;
-- Canonical history;
-- Compiled Truth derivation semantics;
-- Project binding and access control;
-- privacy/sensitivity classifications;
-- Review authority;
-- External Action governance;
-- expected revisions;
-- command idempotency and original request identity;
-- outcome-unknown recovery;
-- audit/history data;
-- server route guards;
-- future-compatible contracts merely because their current owner page is removed.
-
-## 24. Known current functional defects and HFM dependency
-
-HFM does not reinterpret an observed functional failure as a design decision.
-
-### Global Search
-
-Manual Product smoke testing observed that the existing Global Search modal accepted queries but produced no visible response for the tested terms. The component contains a real search mutation and result rendering path, so HFM treats Search as a capability to retain and replace, **not** as a feature to delete.
-
-HFM-S implementation must verify the accepted `/search` path end-to-end before deleting the legacy search surface. The replacement needs explicit loading, results, no-results, and error states.
-
-## 25. Language and product-copy baseline
-
-- Korean is the default owner-facing Product language for the current target Product experience.
-- Internal architecture vocabulary is not default UI copy.
-- Terms such as `server-authoritative`, `command boundary`, `payload`, `UNAVAILABLE`, `projection revision`, `AnswerRun`, and raw policy identities are technical mode content unless no human equivalent can preserve safety.
-- Human-facing labels describe task, consequence, and next action.
-- Backend/error codes remain available through technical inspection where useful.
-
-This does not change machine contracts or English source-code identifiers.
-
-## 26. Safety exceptions to minimalism
-
-Minimalism must yield when hiding information would make an owner action unsafe or misleading.
-
-The following may surface conditionally even if not normally visible:
-
-- active Project mismatch or Project-switch block;
-- unsaved draft / blocking dialog / outcome-unknown state;
-- provider/privacy eligibility block;
-- stale/revision conflict requiring reload/review;
-- Review action required;
-- External Action approval/preflight/verification/recovery required;
-- destructive Project lifecycle confirmation;
-- offline/server-unavailable state;
-- partial/stale Knowledge state when it changes truth interpretation;
-- access restriction or sensitivity masking required by policy.
-
-These exceptions are state-bound; they do not justify permanent administrative chrome.
-
-## 27. Implementation impact boundary
-
-HFM-S0 freezes the expected implementation impact without authorizing code edits yet.
-
-Primary frontend areas expected to change downstream include:
-
-```text
-apps/shotgun-web/src/app/router.tsx
-apps/shotgun-web/src/shell/application-shell.tsx
-apps/shotgun-web/src/shell/top-bar.tsx
-apps/shotgun-web/src/shell/primary-navigation.tsx
-apps/shotgun-web/src/section3/global-tools.tsx
-apps/shotgun-web/src/session/project-selector.tsx
-apps/shotgun-web/src/routes/home-page.tsx
-apps/shotgun-web/src/routes/sources-workspace.tsx
-apps/shotgun-web/src/routes/source-detail-workspace.tsx
-apps/shotgun-web/src/routes/ask-workspace.tsx
-apps/shotgun-web/src/routes/knowledge-*.tsx
-apps/shotgun-web/src/routes/review-workspace.tsx
-apps/shotgun-web/src/routes/external-action-workspace.tsx
-apps/shotgun-web/src/routes/activity-workspace.tsx
-apps/shotgun-web/src/routes/history-workspace.tsx
-apps/shotgun-web/src/routes/settings/*
-apps/shotgun-web/src/components/technical-details.tsx
-```
-
-Likely supporting work:
-
-- slash parser/registry and command launcher;
-- context-bound command availability resolver;
-- compact conditional attention cues;
-- focused overlays/sheets/dialogs for retained settings capabilities;
-- presentation label/copy normalization;
-- route/deep-link compatibility while old persistent nav is removed;
-- browser/contract tests updated to the frozen Human-Facing baseline.
-
-Existing backend domain services should be reused rather than duplicated into a new HFM backend.
-
-## 28. Frozen acceptance criteria for downstream sections
-
-HFM-S1 and later implementation sections must satisfy all of the following before HFM can be considered complete:
-
-1. Normal owner chrome contains only the frozen persistent Product surface.
-2. Every retained non-persistent capability has an intentional slash or conditional path.
-3. No write command bypasses its existing protected domain authority.
-4. Review and External Action safety boundaries remain at least as strict as before HFM.
-5. Search replacement works before legacy Search removal.
-6. Project switching replacement works before persistent selector removal.
-7. Retained Settings capabilities work through focused flows before the Settings IA is removed.
-8. Unconditionally unavailable Settings pages are not represented as red owner-facing errors.
-9. Technical metadata remains available when explicitly requested but is absent from default task flow.
-10. Ask renders Question → Answer → Citations/Evidence → actionable state → secondary actions.
-11. Empty states are compact and singular.
-12. Korean-default product copy does not expose implementation architecture by default.
-13. Deep links from citations/history/activity/review/external actions continue to resolve through existing route guards.
-14. Existing expected-revision, idempotency, approval, Project binding, privacy, and outcome-recovery invariants remain test-covered.
-15. Removed owner UI does not delete Canonical/audit/governance data or silently change domain semantics.
-
-## 29. HFM-S0 completion record
-
-Owner decision:
-
-```text
-ACCEPTED
-```
-
-Baseline authority:
-
-```text
-HFM-S0-INVENTORY-260814001
-classification: ACCEPTED
-status: BASELINE_FROZEN
-subject_base: main@5c3cebc9d08ec50edec3fa7bd2f69568387c7a78
-```
-
-Section transition:
-
-```text
-HFM-S0: COMPLETE / BASELINE_FROZEN
+HFM-S0-INVENTORY-260814001: ACCEPTED / BASELINE_FROZEN
+HFM-S0: COMPLETE
 HFM-S1: AUTHORIZED / NOT_STARTED
 ```
 
-HFM-S1 may now begin only as a new explicitly initiated section. This document remains the frozen disposition baseline; later implementation details may refine mechanisms but may not silently move a surface between `KEEP`, `SLASH`, `REMOVE`, and `CONDITIONAL`.
+If the owner changes a disposition, the change is recorded in this artifact before HFM-S0 is marked complete. HFM-S1 must not silently reinterpret this inventory.
+
+Until that explicit owner decision:
+
+```text
+HFM-S1 MUST NOT START.
+```

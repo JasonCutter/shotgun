@@ -109,15 +109,19 @@ Costs:
 ## Rejected alternatives
 
 ### Keep all Settings and add better styling
+
 Rejected. It improves presentation but preserves unnecessary cognitive load.
 
 ### Hide all advanced functions without replacement
+
 Rejected. Rare but necessary owner control would become inaccessible.
 
 ### Build a completely command-only Product
+
 Rejected. High-frequency tasks and attention-critical states benefit from persistent visual affordances.
 
 ### Create a separate Advanced Settings mega-page
+
 Rejected as the default. It moves clutter rather than eliminating it and duplicates the intended slash control plane.
 
 ## Compatibility boundary

@@ -185,11 +185,11 @@ test('Section 3 Search and Command Palette keep query transient and keyboard-saf
 
   await searchButton.focus();
   await page.keyboard.press('Control+k');
-  const palette = page.getByRole('dialog', { name: 'Command palette' });
+  const palette = page.getByRole('dialog', { name: 'Commands' });
   await expect(palette).toBeVisible();
-  await expect(
-    palette.getByText('Navigation and server-confirmed Project switching only.'),
-  ).toBeVisible();
+  await expect(palette.getByRole('textbox', { name: 'Command search' })).toBeVisible();
+  await expect(palette.getByRole('heading', { name: 'Navigation' })).toBeVisible();
+  await expect(palette.getByRole('button', { name: /Open Knowledge/ })).toBeVisible();
   await expect(palette.getByRole('button', { name: /approve|delete|revoke/i })).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(palette).toBeHidden();

@@ -22,6 +22,9 @@ test('Human-readable primary UI smoke', async ({ page }) => {
   await expect(
     page.getByRole('list', { name: 'Submission items' }).getByText(sourceLabel, { exact: true }),
   ).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Open source' }).first()).toBeVisible();
+  await expect(page.getByText('Preview ready')).toHaveCount(0);
+  await expect(page.getByText('Available with indexed evidence')).toHaveCount(0);
 
   const primaryText = await page.locator('body').innerText();
   expect(primaryText).not.toMatch(uuidPattern);

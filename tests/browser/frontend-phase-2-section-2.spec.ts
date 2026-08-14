@@ -122,9 +122,10 @@ test('Ask Conversation current item and Answer actions remain clear on a narrow 
   await expect(currentConversation.locator('xpath=ancestor::*[@aria-current="page"]')).toHaveCount(
     1,
   );
-  await expect(conversations).toContainText('1 turn');
+  await expect(conversations).not.toContainText('1 turn');
+  await expect(conversations).not.toContainText('Completed');
 
-  const actions = page.getByLabel('AnswerRun actions');
+  const actions = page.getByLabel('Answer actions');
   for (const label of [
     'Export answer',
     'Helpful',

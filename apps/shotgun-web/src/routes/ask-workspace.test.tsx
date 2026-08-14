@@ -252,6 +252,14 @@ const createRuntime = (libraryPage = sourceLibraryPage): AppRuntime => ({
       },
       revision: 1,
     })),
+    getPrivacyRetention: vi.fn(async () => ({
+      availability: 'UNAVAILABLE',
+      disabledReason: 'Privacy review data is unavailable in this test.',
+    })),
+    getSettingsSnapshot: vi.fn(async () => ({
+      settingsRevision: 1,
+      policyContextRevision: 1,
+    })),
   } as unknown as ShotgunApiClient,
   queryClient: createFrontendQueryClient(),
   sessionCycleState: createSessionCycleState(),
@@ -328,6 +336,12 @@ describe('AskWorkspace', () => {
       (screen.getByRole('button', { name: 'Submit question' }) as HTMLButtonElement).disabled,
     ).toBe(true);
     expect(mockClient.submitQuestion).not.toHaveBeenCalled();
+
+    const reviewPrivacy = screen.getByRole('button', { name: 'Review privacy' });
+    await userEvent.click(reviewPrivacy);
+    expect(await screen.findByRole('dialog', { name: 'Review Privacy' })).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(document.activeElement).toBe(reviewPrivacy));
   });
 
   it('renders Ask Workspace server data and conversation tree', async () => {
@@ -395,6 +409,7 @@ describe('AskWorkspace', () => {
     expect(screen.getAllByText('Canonical Architecture Query').length).toBeGreaterThan(0);
     expect(screen.getByText('What is canonical?')).toBeTruthy();
     expect(screen.getByText('Canonical knowledge is authoritative.')).toBeTruthy();
+    expect(screen.queryByText('Completed')).toBeNull();
     expect(screen.getByRole('link', { name: 'Open pinned Evidence' }).getAttribute('href')).toBe(
       '/sources/src-1?version=ver-1',
     );
@@ -406,7 +421,7 @@ describe('AskWorkspace', () => {
     );
   });
 
-  it('uses correct turn grammar and presents the selected Conversation as a current item', async () => {
+  it('keeps conversation titles and current indication without routine run metadata', async () => {
     const runtime = createRuntime();
     const workspace: AskWorkspaceView = {
       ...mockWorkspace,
@@ -458,13 +473,13 @@ describe('AskWorkspace', () => {
     expect(
       within(conversations).queryByRole('link', { name: /Canonical Architecture Query/ }),
     ).toBeNull();
-    expect(within(conversations).getByText(/1 turn · Completed/)).toBeTruthy();
     expect(within(conversations).getByRole('link', { name: 'Second Conversation' })).toBeTruthy();
-    expect(within(conversations).getByText(/2 turns · Completed/)).toBeTruthy();
+    expect(within(conversations).queryByText(/\bturns?\b/)).toBeNull();
+    expect(within(conversations).queryByText('Completed')).toBeNull();
   });
 
   it.each([
-    ['SUCCEEDED', 'Completed'],
+    ['SUCCEEDED', null],
     ['FAILED', 'Failed'],
   ] as const)(
     'refetches one authoritative workspace when polling reaches %s',
@@ -518,11 +533,12 @@ describe('AskWorkspace', () => {
       );
 
       const conversations = await screen.findByRole('list', { name: 'Conversations' });
-      await waitFor(() => {
-        expect(
-          within(conversations).getByText(new RegExp(`1 turn · ${expectedLabel}`)),
-        ).toBeTruthy();
-      });
+      await waitFor(() => expect(getWorkspace).toHaveBeenCalledTimes(2));
+      if (expectedLabel) {
+        expect(conversations.textContent).toContain(expectedLabel);
+      } else {
+        expect(within(conversations).queryByText('Completed')).toBeNull();
+      }
       expect(getWorkspace).toHaveBeenCalledTimes(2);
       expect(getWorkspace).toHaveBeenLastCalledWith(
         'conv-1',
@@ -584,7 +600,7 @@ describe('AskWorkspace', () => {
       </AppProviders>,
     );
 
-    const actions = await screen.findByLabelText('AnswerRun actions');
+    const actions = await screen.findByLabelText('Answer actions');
     expect(actions.classList.contains('answer-action-row')).toBe(true);
     for (const label of [
       'Export answer',

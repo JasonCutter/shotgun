@@ -168,9 +168,9 @@ const evidence: EvidenceListView = {
   fetchedAt: now,
 };
 
-const createRuntime = (): AppRuntime => {
+const createRuntime = (page: SourceLibraryPageView = libraryPage): AppRuntime => {
   const apiClient = {
-    listSources: vi.fn(async () => libraryPage),
+    listSources: vi.fn(async () => page),
     getSourceDetail: vi.fn(async () => detail),
     getSourceVersionHistory: vi.fn(async () => history),
     getSourcePreview: vi.fn(async () => preview),
@@ -280,6 +280,11 @@ describe('Sources Workspace', () => {
 
     expect(await screen.findByRole('heading', { name: 'Sources', level: 1 })).toBeTruthy();
     expect(await screen.findByText('Evidence notes')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Open source' })).toBeTruthy();
+    expect(screen.queryByText('Active')).toBeNull();
+    expect(screen.queryByText('Preview ready')).toBeNull();
+    expect(screen.queryByText('Available with indexed evidence')).toBeNull();
+    expect(screen.queryByText('Evidence is ready.')).toBeNull();
     await userEvent.type(screen.getByLabelText('Direct Text'), 'Local draft');
     await userEvent.click(screen.getByRole('button', { name: 'Add intake draft' }));
     expect(
@@ -293,6 +298,46 @@ describe('Sources Workspace', () => {
       expect.objectContaining({ query: 'private phrase' }),
       expect.any(Object),
     );
+  });
+
+  it('shows a concise problem only when Source readiness changes owner action', async () => {
+    const blockedSource: SourceLibraryPageView = {
+      ...libraryPage,
+      items: [
+        {
+          ...libraryPage.items[0]!,
+          sourceId: 'source-needs-attention',
+          label: 'Source needing attention',
+          lifecycle: 'ACTION_REQUIRED',
+          previewReadiness: 'NOT_READY',
+          askUsageState: 'ACTION_REQUIRED',
+          askUsageExplanation: 'Internal processing detail that should not be shown.',
+          capabilities: [],
+        },
+      ],
+    };
+    const runtime = createRuntime(blockedSource);
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <ShellOutlet />,
+          children: [{ path: 'sources', element: <SourcesWorkspace /> }],
+        },
+      ],
+      { initialEntries: ['/sources'] },
+    );
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    expect(await screen.findByText('Source needing attention')).toBeTruthy();
+    expect(screen.getByText('This source needs attention before it can be used.')).toBeTruthy();
+    expect(screen.queryByText('Internal processing detail that should not be shown.')).toBeNull();
+    expect(screen.queryByText('Preview not ready')).toBeNull();
+    expect(screen.queryByText('Needs attention before use')).toBeNull();
   });
 
   it('keeps route drafts project-fixed, validates advisory inputs, and registers Leave Guard', async () => {

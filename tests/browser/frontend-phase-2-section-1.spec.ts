@@ -34,7 +34,7 @@ test('Sources stages and submits Direct Text, then releases Project switching af
 
   await page.getByRole('button', { name: 'Submit drafts' }).click();
   await expect(page.getByRole('heading', { name: 'Submission Completed' })).toBeVisible();
-  await expect(page.getByText('No route-scoped drafts.')).toBeVisible();
+  await expect(page.getByText('No drafts yet.')).toBeVisible();
 
   await switchProject(page, 'Project B');
   await expect(page.locator('.project-summary')).toContainText('Project B');

@@ -46,7 +46,7 @@ export const HomePage = () => {
       <section className="route-page first-run">
         <p className="eyebrow">First run</p>
         <h1 tabIndex={-1}>Create your first Project</h1>
-        <p>Your Session is ready. No Project authority has been created in the browser.</p>
+        <p>Create your first Project to get started.</p>
         <Link className="primary-link" to="/settings/projects">
           Open Project onboarding
         </Link>

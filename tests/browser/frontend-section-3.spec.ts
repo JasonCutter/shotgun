@@ -397,6 +397,8 @@ test('Section 3 zero-project onboarding sends PRINCIPAL bootstrap without a brow
 
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Create your first Project' })).toBeVisible();
+  await expect(page.getByText('Create your first Project to get started.')).toBeVisible();
+  await expect(page.getByText(/Project authority.*browser/i)).toHaveCount(0);
   expect(homeRequests).toBe(0);
   await page.getByRole('link', { name: 'Open Project onboarding' }).click();
   await page.getByRole('button', { name: 'Create Project' }).click();

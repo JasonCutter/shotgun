@@ -68,9 +68,6 @@ const ANSWER_RUN_POLLING_COMPLETE_STATES = new Set<AskAnswerRunSnapshot['state']
   'OUTCOME_UNKNOWN',
 ]);
 
-const conversationTurnCountLabel = (turnCount: number): string =>
-  `${turnCount} ${turnCount === 1 ? 'turn' : 'turns'}`;
-
 type SourceLibraryItem = SourceLibraryPageView['items'][number];
 
 type PendingAskCommand = {
@@ -709,9 +706,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   ): Promise<void> => {
     if (!askClient.getAnswerRunCommandOutcome) {
       setAnswerRunOutcomeUnknown(true);
-      setAnswerRunCommandNotice(
-        'The AnswerRun command outcome is unknown. The original command identity is preserved.',
-      );
+      setAnswerRunCommandNotice('The answer result is unknown. Check again before retrying.');
       return;
     }
 
@@ -724,7 +719,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     } catch {
       setAnswerRunOutcomeUnknown(true);
       setAnswerRunCommandNotice(
-        'The AnswerRun command outcome is still unknown. Retry the outcome check without submitting a new command.',
+        'The answer result is still unknown. Check again without submitting a new request.',
       );
       return;
     }
@@ -733,15 +728,14 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
       setPendingAnswerRunCommand(undefined);
       setAnswerRunOutcomeUnknown(false);
       setAnswerRunCommandNotice(
-        outcome.rejection?.message ??
-          'The AnswerRun command was rejected. No new command was sent.',
+        outcome.rejection?.message ?? 'The request was rejected. No new request was sent.',
       );
       return;
     }
     if (outcome.outcomeState !== 'COMPLETED') {
       setAnswerRunOutcomeUnknown(true);
       setAnswerRunCommandNotice(
-        'The AnswerRun command is accepted but not resolved. No automatic retry was started.',
+        'The request was accepted but is not resolved. No automatic retry was started.',
       );
       return;
     }
@@ -794,14 +788,14 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
       setPendingAnswerRunCommand(undefined);
       setAnswerRunOutcomeUnknown(false);
       setAnswerRunCommandNotice(
-        'The command is completed, but its resource could not be recovered yet. The original command identity was retained.',
+        'The request completed, but its result is not available yet. Check again without submitting a new request.',
       );
       return;
     }
 
     setPendingAnswerRunCommand(undefined);
     setAnswerRunOutcomeUnknown(false);
-    setAnswerRunCommandNotice('The completed AnswerRun command and its resource were recovered.');
+    setAnswerRunCommandNotice('The completed answer request and its result were recovered.');
   };
 
   const handleResolveAnswerRunCommandOutcome = async () => {
@@ -818,7 +812,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
         await askClient.cancelAnswerRun(answerRunId, answerRunCommandIdentity(pending)),
       );
       setPendingAnswerRunCommand(undefined);
-      setAnswerRunCommandNotice('AnswerRun cancellation requested.');
+      setAnswerRunCommandNotice('Answer cancellation requested.');
     } catch {
       await resolveAnswerRunCommandOutcome(pending);
     }
@@ -840,7 +834,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
       );
       setPollingGeneration((generation) => generation + 1);
       setPendingAnswerRunCommand(undefined);
-      setAnswerRunCommandNotice('AnswerRun retry accepted with a new attempt.');
+      setAnswerRunCommandNotice('Answer retry accepted with a new attempt.');
     } catch {
       await resolveAnswerRunCommandOutcome(pending);
     }
@@ -857,7 +851,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
       });
       setExportedContent(exported.content);
       setPendingAnswerRunCommand(undefined);
-      setAnswerRunCommandNotice('AnswerRun export completed.');
+      setAnswerRunCommandNotice('Answer export completed.');
     } catch {
       await resolveAnswerRunCommandOutcome(pending);
     }
@@ -873,7 +867,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
         kind,
       });
       setPendingAnswerRunCommand(undefined);
-      setAnswerRunCommandNotice('Feedback recorded for this AnswerRun.');
+      setAnswerRunCommandNotice('Feedback recorded for this answer.');
     } catch {
       await resolveAnswerRunCommandOutcome(pending);
     }
@@ -944,9 +938,9 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                 {!sourceContextAvailable ? (
                   <p role="status">Source selection is unavailable for this question context.</p>
                 ) : sourceContextPending ? (
-                  <p role="status">Loading server-authorized Sources…</p>
+                  <p role="status">Loading Sources…</p>
                 ) : sourceContextError ? (
-                  <p role="alert">Server-authorized Sources could not be loaded.</p>
+                  <p role="alert">Sources could not be loaded.</p>
                 ) : !sourceContextProjectMatches ? (
                   <p role="alert">The Source Library Project does not match this Ask resource.</p>
                 ) : sourceOptions.length === 0 ? (
@@ -1037,7 +1031,17 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
             <div className="ask-form-status" role="status">
               <strong>Action required:</strong> {providerEligibility.data.message}
               {providerEligibility.data.requiredAction === 'REVIEW_PROJECT_PRIVACY_SETTINGS' ? (
-                <p>Open Project Privacy settings to request and approve external AI transfer.</p>
+                <p>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      setPrivacyCommandInvoker(event.currentTarget);
+                      setPrivacyCommand('privacy.review');
+                    }}
+                  >
+                    Review privacy
+                  </button>
+                </p>
               ) : null}
             </div>
           ) : null}
@@ -1053,7 +1057,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
           ) : null}
           {!submissionAvailable && providerEligibility.data?.eligible !== false ? (
             <p className="ask-form-status" role="status">
-              Server question submission is not available for this Conversation state.
+              Question submission is not available for this conversation.
             </p>
           ) : null}
         </form>
@@ -1129,9 +1133,10 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                     <Link to={`/ask/conversations/${encodeURIComponent(item.conversationId)}`}>
                       <strong>{item.title}</strong>
                     </Link>
-                  )}{' '}
-                  · {conversationTurnCountLabel(item.turnCount)} ·{' '}
-                  {answerRunLabel(item.latestRunState)}
+                  )}
+                  {item.latestRunState === 'SUCCEEDED' ? null : (
+                    <> · {answerRunLabel(item.latestRunState)}</>
+                  )}
                 </li>
               );
             })}
@@ -1158,9 +1163,11 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                   return (
                     <li key={turn.turnId} id={`turn-${turn.turnId}`} tabIndex={-1}>
                       <p>{turn.userMessage}</p>
-                      <p>
-                        Answer: <strong>{answerRunLabel(answerRun.state)}</strong>
-                      </p>
+                      {answerRun.state === 'SUCCEEDED' ? null : (
+                        <p>
+                          Answer: <strong>{answerRunLabel(answerRun.state)}</strong>
+                        </p>
+                      )}
                       {latestPartial ? (
                         <p aria-live="polite">Partial answer: {latestPartial}</p>
                       ) : null}
@@ -1170,7 +1177,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                           items={[{ label: 'Failure code', value: answerRun.failure.code }]}
                         />
                       ) : null}
-                      <div className="answer-action-row" aria-label="AnswerRun actions">
+                      <div className="answer-action-row" aria-label="Answer actions">
                         {answerRun.capabilities.includes('CANCEL') ? (
                           <button
                             type="button"
@@ -1270,7 +1277,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                             type="button"
                             onClick={() => void handleResolveAnswerRunCommandOutcome()}
                           >
-                            Check existing command outcome
+                            Check result
                           </button>
                         ) : null}
                       </div>

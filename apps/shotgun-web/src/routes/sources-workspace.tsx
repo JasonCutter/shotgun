@@ -7,6 +7,7 @@ import {
   type ExactDuplicateDecisionView,
   type GlobalShellView,
   type IntakeSubmissionSnapshot,
+  type SourceLibraryPageView,
   type SourceLibraryQuery,
   type SourcesSensitivity,
   type StagedSourcesIntakeInput,
@@ -23,9 +24,6 @@ import {
   intakeStateLabel,
   intakeValidationLabel,
   mediaTypeLabel,
-  sourceAskUsageLabel,
-  sourceLifecycleLabel,
-  sourcePreviewLabel,
 } from '../presentation/product-labels.js';
 import { sourcesLibraryQueryOptions } from '../sources/sources-queries.js';
 import { useSourceIntakeDraftQueue } from '../sources/source-intake-drafts.js';
@@ -40,6 +38,31 @@ const DEFAULT_QUERY: SourceLibraryQuery = {
 
 const identity = (prefix: string): string =>
   `${prefix}-${typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : Date.now()}`;
+
+type SourceLibraryItem = SourceLibraryPageView['items'][number];
+
+const sourceReadinessMessage = (source: SourceLibraryItem): string | undefined => {
+  if (source.lifecycle === 'FAILED' || source.askUsageState === 'FAILED') {
+    return 'This source is unavailable.';
+  }
+  if (source.lifecycle === 'ACTION_REQUIRED' || source.askUsageState === 'ACTION_REQUIRED') {
+    return 'This source needs attention before it can be used.';
+  }
+  if (source.askUsageState === 'ACCESS_RESTRICTED') {
+    return 'Question access is restricted.';
+  }
+  if (source.askUsageState === 'NOT_READY') {
+    return 'Not yet available for questions.';
+  }
+  if (
+    source.previewReadiness === 'FAILED' ||
+    source.previewReadiness === 'ACCESS_RESTRICTED' ||
+    (source.previewReadiness === 'NOT_READY' && !source.capabilities.includes('PREVIEW'))
+  ) {
+    return 'Preview is unavailable.';
+  }
+  return undefined;
+};
 
 type DraftCommandIdentity = {
   readonly fingerprint: string;
@@ -318,7 +341,7 @@ export const SourcesWorkspace = () => {
         ) : null}
         {draftQueue.invalidSeed ? (
           <p className="warning-state" role="alert">
-            The incoming Draft Seed failed its typed contract and was rejected.
+            This draft could not be opened. Review it and try again.
           </p>
         ) : null}
         {mutationState !== 'IDLE' ? (
@@ -405,7 +428,7 @@ export const SourcesWorkspace = () => {
             Add intake draft
           </button>
         </form>
-        {draftQueue.items.length === 0 ? <p>No route-scoped drafts.</p> : null}
+        {draftQueue.items.length === 0 ? <p>No drafts yet.</p> : null}
         {draftQueue.items.length > 0 ? (
           <>
             <ul className="source-intake-list" aria-label="Intake drafts">
@@ -564,28 +587,29 @@ export const SourcesWorkspace = () => {
         ) : null}
         {library.data && library.data.items.length > 0 ? (
           <ul className="source-library-list" aria-label="Sources">
-            {library.data.items.map((source) => (
-              <li key={source.sourceId}>
-                <div>
-                  <h3>{source.label}</h3>
-                  <p>
-                    {mediaTypeLabel(source.mediaType)} · {sourceLifecycleLabel(source.lifecycle)} ·
-                    Source classification: {source.sensitivity}
-                  </p>
-                  <p>{source.askUsageExplanation}</p>
-                </div>
-                <div className="source-library-status">
-                  <span>{sourcePreviewLabel(source.previewReadiness)}</span>
-                  <span>{sourceAskUsageLabel(source.askUsageState)}</span>
-                  <Link
-                    className="primary-link"
-                    to={`/sources/${encodeURIComponent(source.sourceId)}?version=${encodeURIComponent(source.selectedSourceVersionId)}`}
-                  >
-                    Open pinned Version
-                  </Link>
-                </div>
-              </li>
-            ))}
+            {library.data.items.map((source) => {
+              const readinessMessage = sourceReadinessMessage(source);
+              return (
+                <li key={source.sourceId}>
+                  <div>
+                    <h3>{source.label}</h3>
+                    <p>
+                      {mediaTypeLabel(source.mediaType)} · Source classification:{' '}
+                      {source.sensitivity}
+                    </p>
+                    {readinessMessage ? <p>{readinessMessage}</p> : null}
+                  </div>
+                  <div className="source-library-status">
+                    <Link
+                      className="primary-link"
+                      to={`/sources/${encodeURIComponent(source.sourceId)}?version=${encodeURIComponent(source.selectedSourceVersionId)}`}
+                    >
+                      Open source
+                    </Link>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         ) : null}
       </section>

@@ -117,6 +117,9 @@ describe('owner command registry', () => {
         'search.global',
         'project.manage',
         'project.switch',
+        'preferences.locale',
+        'preferences.timezone',
+        'preferences.display',
         'ai.configure',
         'privacy.open',
         'knowledge.open',
@@ -155,6 +158,28 @@ describe('owner command registry', () => {
       context: { projectId: 'project-2' },
       action: { kind: 'SWITCH_PROJECT', projectId: 'project-2' },
     });
+    expect(commands).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'preferences.locale',
+          category: 'PREFERENCES',
+          risk: 'WRITE',
+          action: { kind: 'OPEN_PREFERENCE_FLOW', commandId: 'preferences.locale' },
+        }),
+        expect.objectContaining({
+          id: 'preferences.timezone',
+          category: 'PREFERENCES',
+          risk: 'WRITE',
+          action: { kind: 'OPEN_PREFERENCE_FLOW', commandId: 'preferences.timezone' },
+        }),
+        expect.objectContaining({
+          id: 'preferences.display',
+          category: 'PREFERENCES',
+          risk: 'WRITE',
+          action: { kind: 'OPEN_PREFERENCE_FLOW', commandId: 'preferences.display' },
+        }),
+      ]),
+    );
   });
 
   it('does not expose generic Settings or unsupported placeholders and preserves offline state', () => {
@@ -170,6 +195,18 @@ describe('owner command registry', () => {
     expect(commands.find((command) => command.id === 'project.switch')?.availability).toBe(
       'UNAVAILABLE_WITH_REASON',
     );
+    expect(commands.find((command) => command.id === 'preferences.locale')).toMatchObject({
+      availability: 'UNAVAILABLE_WITH_REASON',
+      reason: 'Preferences are unavailable while offline.',
+    });
+    expect(commands.find((command) => command.id === 'preferences.timezone')).toMatchObject({
+      availability: 'UNAVAILABLE_WITH_REASON',
+      reason: 'Preferences are unavailable while offline.',
+    });
+    expect(commands.find((command) => command.id === 'preferences.display')).toMatchObject({
+      availability: 'UNAVAILABLE_WITH_REASON',
+      reason: 'Preferences are unavailable while offline.',
+    });
     expect(filterOwnerCommands(commands, 'global search')).toHaveLength(1);
   });
 

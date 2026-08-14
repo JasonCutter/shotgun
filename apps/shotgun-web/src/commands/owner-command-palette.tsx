@@ -33,11 +33,18 @@ export const OwnerCommandPalette = ({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const filteredCommands = useMemo(() => filterOwnerCommands(commands, query), [commands, query]);
   const commandGroups = useMemo(() => {
-    const categories: readonly OwnerCommandCategory[] = ['HELP', 'SEARCH', 'PROJECT', 'NAVIGATION'];
+    const categories: readonly OwnerCommandCategory[] = [
+      'HELP',
+      'SEARCH',
+      'PROJECT',
+      'PREFERENCES',
+      'NAVIGATION',
+    ];
     const categoryLabels: Record<OwnerCommandCategory, string> = {
       HELP: 'Help',
       SEARCH: 'Search',
       PROJECT: 'Project',
+      PREFERENCES: 'Preferences',
       NAVIGATION: 'Navigation',
     };
 

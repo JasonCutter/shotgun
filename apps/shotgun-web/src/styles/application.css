@@ -473,6 +473,41 @@ main {
   width: min(44rem, 100%);
 }
 
+.preferences-command-surface {
+  width: min(32rem, 100%);
+}
+
+.preferences-command-surface form {
+  gap: 1rem;
+}
+
+.preferences-command-surface form > div,
+.preferences-command-surface form > label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 600;
+}
+
+.preferences-command-surface select {
+  min-height: 2.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.45rem;
+  padding: 0.65rem;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.preferences-command-surface input[type='checkbox'] {
+  min-height: auto;
+  width: 1.1rem;
+}
+
+.preferences-command-message {
+  border-radius: 0.4rem;
+  padding: 0.65rem 0.75rem;
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
 .project-command-list {
   display: grid;
   gap: 0.65rem;

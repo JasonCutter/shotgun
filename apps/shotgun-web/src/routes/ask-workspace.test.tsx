@@ -240,6 +240,16 @@ const sourceLibraryPage: SourceLibraryPageView = {
 const createRuntime = (libraryPage = sourceLibraryPage): AppRuntime => ({
   apiClient: {
     listSources: vi.fn(async () => libraryPage),
+    getPrincipalPreferences: vi.fn(async () => ({
+      preferences: {
+        locale: 'ko-KR',
+        timezone: 'Asia/Seoul',
+        dateDisplay: 'YYYY-MM-DD',
+        screenDensity: 'COMFORTABLE',
+        reducedMotion: false,
+      },
+      revision: 1,
+    })),
   } as unknown as ShotgunApiClient,
   queryClient: createFrontendQueryClient(),
   sessionCycleState: createSessionCycleState(),
@@ -709,6 +719,46 @@ describe('AskWorkspace', () => {
 
     expect(submitQuestion).not.toHaveBeenCalled();
     expect(await screen.findByText('History destination')).toBeTruthy();
+  });
+
+  it('opens the shared Preferences surface from an Ask slash command', async () => {
+    const user = userEvent.setup();
+    const runtime = createRuntime();
+    const mockClient: AskWorkspaceClient = {
+      getProviderEligibility: vi.fn().mockResolvedValue(eligibleProvider),
+      getWorkspace: vi.fn().mockResolvedValue(mockWorkspace),
+      getConversation: vi.fn().mockResolvedValue(mockWorkspace.selectedConversation!),
+      getConversationSourceContext: vi.fn(),
+      getBranch: vi.fn(),
+      getAnswerRun: vi.fn(),
+      submitQuestion: vi.fn(),
+      getQuestionSubmissionByClientRequestId: vi.fn(),
+    };
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <ShellOutlet shell={commandShell} />,
+          children: [{ path: 'ask', element: <AskWorkspace client={mockClient} /> }],
+        },
+      ],
+      { initialEntries: ['/ask'] },
+    );
+
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    const questionInput = await screen.findByLabelText('Question');
+    await user.type(questionInput, '/locale');
+    await user.click(await screen.findByRole('button', { name: /^Set Locale/ }));
+
+    expect(await screen.findByRole('dialog', { name: 'Locale Preferences' })).toBeTruthy();
+    expect((screen.getByRole('combobox', { name: 'Locale' }) as HTMLSelectElement).value).toBe(
+      'ko-KR',
+    );
   });
 
   it('uses the semantic form layout and keeps CANONICAL_ONLY submissions source-free', async () => {

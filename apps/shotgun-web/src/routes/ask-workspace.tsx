@@ -23,10 +23,12 @@ import {
 import { useAppRuntime } from '../app/providers.js';
 import { projectAdminQueryKey } from '../app/query-keys.js';
 import { OwnerCommandPalette } from '../commands/owner-command-palette.js';
+import { PreferencesCommandSurface } from '../commands/preferences-command-surface.js';
 import { ProjectCommandSurface } from '../commands/project-command-surface.js';
 import {
   createOwnerCommandRegistry,
   type OwnerCommandDefinition,
+  type PreferenceCommandId,
   type ProjectCommandId,
 } from '../commands/owner-command-registry.js';
 import { ErrorState } from '../components/error-state.js';
@@ -101,6 +103,10 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   const [commandPaletteResetSignal, setCommandPaletteResetSignal] = useState(0);
   const [projectCommand, setProjectCommand] = useState<ProjectCommandId | null>(null);
   const [projectCommandInvoker, setProjectCommandInvoker] = useState<HTMLElement | null>(null);
+  const [preferenceCommand, setPreferenceCommand] = useState<PreferenceCommandId | null>(null);
+  const [preferenceCommandInvoker, setPreferenceCommandInvoker] = useState<HTMLElement | null>(
+    null,
+  );
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchInvoker, setSearchInvoker] = useState<HTMLElement | null>(null);
   const [draftOwnerProjectId, setDraftOwnerProjectId] = useState<string>();
@@ -589,6 +595,14 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
       questionRef.current = '';
       return;
     }
+    if (command.action.kind === 'OPEN_PREFERENCE_FLOW') {
+      setPreferenceCommandInvoker(commandPaletteInvoker);
+      setPreferenceCommand(command.action.commandId);
+      setCommandPaletteOpen(false);
+      setQuestion('');
+      questionRef.current = '';
+      return;
+    }
     setCommandPaletteOpen(false);
     setQuestion('');
     questionRef.current = '';
@@ -1035,6 +1049,13 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
         shell={shell}
         invoker={projectCommandInvoker}
         onClose={() => setProjectCommand(null)}
+      />
+      <PreferencesCommandSurface
+        open={preferenceCommand !== null}
+        commandId={preferenceCommand}
+        shell={shell}
+        invoker={preferenceCommandInvoker}
+        onClose={() => setPreferenceCommand(null)}
       />
 
       {answerRunCommandNotice ? <p role="status">{answerRunCommandNotice}</p> : null}

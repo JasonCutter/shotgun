@@ -1,6 +1,6 @@
 import type { GlobalShellView, ProjectListItemView, TargetRouteView } from '@shotgun/api-client';
 
-export type OwnerCommandCategory = 'HELP' | 'SEARCH' | 'PROJECT' | 'NAVIGATION';
+export type OwnerCommandCategory = 'HELP' | 'SEARCH' | 'PROJECT' | 'PREFERENCES' | 'NAVIGATION';
 
 export type OwnerCommandAvailability = 'AVAILABLE' | 'UNAVAILABLE_WITH_REASON' | 'HIDDEN';
 
@@ -16,12 +16,16 @@ export type ProjectCommandId =
   | 'project.restore'
   | 'project.delete_request';
 
+export type PreferenceCommandId =
+  'preferences.locale' | 'preferences.timezone' | 'preferences.display';
+
 export type OwnerCommandAction =
   | { readonly kind: 'NAVIGATE'; readonly targetRoute: TargetRouteView }
   | { readonly kind: 'NAVIGATE_PATH'; readonly href: '/settings/ai' | '/settings/privacy' }
   | { readonly kind: 'OPEN_COMMANDS' }
   | { readonly kind: 'OPEN_SEARCH' }
   | { readonly kind: 'OPEN_PROJECT_FLOW'; readonly commandId: ProjectCommandId }
+  | { readonly kind: 'OPEN_PREFERENCE_FLOW'; readonly commandId: PreferenceCommandId }
   | { readonly kind: 'SWITCH_PROJECT'; readonly projectId: string };
 
 export type OwnerCommandDefinition = {
@@ -59,7 +63,8 @@ const categoryOrder: Record<OwnerCommandCategory, number> = {
   HELP: 0,
   SEARCH: 1,
   PROJECT: 2,
-  NAVIGATION: 3,
+  PREFERENCES: 3,
+  NAVIGATION: 4,
 };
 
 const normalize = (value: string): string => value.trim().toLocaleLowerCase();
@@ -135,6 +140,25 @@ const projectCommandAvailability = (
     capability[commandId as Exclude<ProjectCommandId, 'project.manage' | 'project.create'>];
   const hasEligibleProject = projects.some((project) => project.capability[capabilityKey]);
   return hasEligibleProject ? { availability: 'AVAILABLE' } : { availability: 'HIDDEN' };
+};
+
+const preferenceCommandAvailability = (
+  shell: GlobalShellView,
+  isOffline: boolean,
+): Pick<OwnerCommandDefinition, 'availability' | 'reason'> => {
+  if (isOffline) {
+    return {
+      availability: 'UNAVAILABLE_WITH_REASON',
+      reason: 'Preferences are unavailable while offline.',
+    };
+  }
+  if (!shell.activeProject) {
+    return {
+      availability: 'UNAVAILABLE_WITH_REASON',
+      reason: 'Preferences are unavailable until a Project is active.',
+    };
+  }
+  return { availability: 'AVAILABLE' };
 };
 
 const HFM_COMMAND_TEMPLATES: readonly OwnerCommandTemplate[] = [
@@ -243,6 +267,42 @@ const HFM_COMMAND_TEMPLATES: readonly OwnerCommandTemplate[] = [
     action: { kind: 'OPEN_PROJECT_FLOW', commandId: 'project.delete_request' },
     getAvailability: (shell, isOffline, projects) =>
       projectCommandAvailability('project.delete_request', shell, isOffline, projects),
+  },
+  {
+    id: 'preferences.locale',
+    category: 'PREFERENCES',
+    label: 'Set Locale',
+    description: 'Change the owner locale and language preference',
+    aliases: ['locale', 'language', 'preferences locale'],
+    keywords: ['preferences', 'language', 'regional'],
+    risk: 'WRITE',
+    presentation: 'DIALOG',
+    action: { kind: 'OPEN_PREFERENCE_FLOW', commandId: 'preferences.locale' },
+    getAvailability: (shell, isOffline) => preferenceCommandAvailability(shell, isOffline),
+  },
+  {
+    id: 'preferences.timezone',
+    category: 'PREFERENCES',
+    label: 'Set Timezone',
+    description: 'Change the owner timezone preference',
+    aliases: ['timezone', 'time zone', 'preferences timezone'],
+    keywords: ['preferences', 'regional', 'time'],
+    risk: 'WRITE',
+    presentation: 'DIALOG',
+    action: { kind: 'OPEN_PREFERENCE_FLOW', commandId: 'preferences.timezone' },
+    getAvailability: (shell, isOffline) => preferenceCommandAvailability(shell, isOffline),
+  },
+  {
+    id: 'preferences.display',
+    category: 'PREFERENCES',
+    label: 'Display Preferences',
+    description: 'Change date, density, and motion preferences',
+    aliases: ['display', 'appearance', 'preferences display'],
+    keywords: ['preferences', 'date format', 'screen density', 'reduced motion'],
+    risk: 'WRITE',
+    presentation: 'DIALOG',
+    action: { kind: 'OPEN_PREFERENCE_FLOW', commandId: 'preferences.display' },
+    getAvailability: (shell, isOffline) => preferenceCommandAvailability(shell, isOffline),
   },
   {
     id: 'ai.configure',

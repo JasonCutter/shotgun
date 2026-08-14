@@ -150,4 +150,37 @@ describe('GlobalTools HFM-S1 preservation', () => {
     expect(screen.getByText('Current Project')).toBeTruthy();
     expect(screen.queryByRole('link', { name: /settings/i })).toBeNull();
   });
+
+  it('opens Preferences through the same owner command registry as other focused flows', async () => {
+    const user = userEvent.setup();
+    render(
+      <AppProviders
+        runtime={runtime({
+          getProjects: vi.fn(async () => [project]),
+          getPrincipalPreferences: vi.fn(async () => ({
+            preferences: {
+              locale: 'ko-KR',
+              timezone: 'Asia/Seoul',
+              dateDisplay: 'YYYY-MM-DD',
+              screenDensity: 'COMFORTABLE',
+              reducedMotion: false,
+            },
+            revision: 1,
+          })),
+        })}
+      >
+        <MemoryRouter>
+          <GlobalTools shell={shell} />
+        </MemoryRouter>
+      </AppProviders>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Commands' }));
+    await user.click(await screen.findByRole('button', { name: /^Set Locale/ }));
+
+    expect(await screen.findByRole('dialog', { name: 'Locale Preferences' })).toBeTruthy();
+    expect((screen.getByRole('combobox', { name: 'Locale' }) as HTMLSelectElement).value).toBe(
+      'ko-KR',
+    );
+  });
 });

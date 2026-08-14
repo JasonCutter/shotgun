@@ -13,9 +13,11 @@ import {
   sessionBoundaryQueryKey,
 } from '../app/query-keys.js';
 import { OwnerCommandPalette } from '../commands/owner-command-palette.js';
+import { PreferencesCommandSurface } from '../commands/preferences-command-surface.js';
 import {
   createOwnerCommandRegistry,
   type OwnerCommandDefinition,
+  type PreferenceCommandId,
   type ProjectCommandId,
 } from '../commands/owner-command-registry.js';
 import { useLeaveGuard } from '../session/leave-guard-context.js';
@@ -35,6 +37,10 @@ export const GlobalTools = ({ shell }: { readonly shell: GlobalShellView }) => {
   const [paletteResetSignal, setPaletteResetSignal] = useState(0);
   const [projectCommand, setProjectCommand] = useState<ProjectCommandId | null>(null);
   const [projectCommandInvoker, setProjectCommandInvoker] = useState<HTMLElement | null>(null);
+  const [preferenceCommand, setPreferenceCommand] = useState<PreferenceCommandId | null>(null);
+  const [preferenceCommandInvoker, setPreferenceCommandInvoker] = useState<HTMLElement | null>(
+    null,
+  );
   const [announcement, setAnnouncement] = useState('');
   const projectsQuery = useQuery({
     queryKey: projectAdminQueryKey(shell.principalId),
@@ -103,6 +109,12 @@ export const GlobalTools = ({ shell }: { readonly shell: GlobalShellView }) => {
     if (command.action.kind === 'OPEN_PROJECT_FLOW') {
       setProjectCommandInvoker(paletteInvoker);
       setProjectCommand(command.action.commandId);
+      setPaletteOpen(false);
+      return;
+    }
+    if (command.action.kind === 'OPEN_PREFERENCE_FLOW') {
+      setPreferenceCommandInvoker(paletteInvoker);
+      setPreferenceCommand(command.action.commandId);
       setPaletteOpen(false);
       return;
     }
@@ -179,6 +191,13 @@ export const GlobalTools = ({ shell }: { readonly shell: GlobalShellView }) => {
         shell={shell}
         invoker={projectCommandInvoker}
         onClose={() => setProjectCommand(null)}
+      />
+      <PreferencesCommandSurface
+        open={preferenceCommand !== null}
+        commandId={preferenceCommand}
+        shell={shell}
+        invoker={preferenceCommandInvoker}
+        onClose={() => setPreferenceCommand(null)}
       />
     </div>
   );

@@ -196,7 +196,7 @@ test('Section 3 Search and Command Palette keep query transient and keyboard-saf
   await expect(palette.getByRole('heading', { name: 'Navigation' })).toBeVisible();
   await expect(palette.getByRole('button', { name: /Open Knowledge/ })).toBeVisible();
   await expect(palette.getByRole('button', { name: /Review Privacy/ })).toBeVisible();
-  await expect(palette.getByRole('dialog', { name: 'Configure AI' })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'Review Privacy' })).toHaveCount(0);
   expect(productPostRequests).toHaveLength(0);
   await page.keyboard.press('Escape');
   await expect(palette).toBeHidden();

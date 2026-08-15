@@ -3,7 +3,12 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { GlobalShellView, ProductSessionView, ShotgunApiClient } from '@shotgun/api-client';
+import type {
+  AISettingsReadModel,
+  GlobalShellView,
+  ProductSessionView,
+  ShotgunApiClient,
+} from '@shotgun/api-client';
 
 import { AppProviders, type AppRuntime } from '../app/providers.js';
 import { createFrontendQueryClient } from '../app/query-client.js';
@@ -80,23 +85,50 @@ const controller = (executeCommand = vi.fn()): OwnerCommandController => ({
   ],
 });
 
-const renderInstrument = (sharedController = controller()) => {
-  const getAISettings = vi.fn(async () => ({
+const baseAISettings = (): AISettingsReadModel => ({
+  projectId: 'project-private-id',
+  mode: 'PROJECT_MANAGED',
+  defaultProviderId: 'deepseek',
+  currentConfiguration: {
     projectId: 'project-private-id',
-    defaultProviderId: 'provider-a',
-    currentConfiguration: { activeProviderId: 'provider-a', activeModelId: 'model-a' },
-    providers: [
-      {
-        providerId: 'provider-a',
-        displayName: 'Provider A',
-        status: 'active',
-        models: [{ modelId: 'model-a', displayName: 'Model A' }],
-      },
-    ],
-    privacy: [],
-    credentialStatuses: [],
-    vaultAvailability: { state: 'AVAILABLE' },
-  }));
+    activeProviderId: 'provider-a',
+    activeModelId: 'model-a',
+    credentialId: 'credential-a',
+    credentialRevision: 1,
+    aiConfigurationRevision: 1,
+    updatedBy: 'principal-a',
+    updatedAt: '2026-08-15T00:00:00.000Z',
+  },
+  providers: [
+    {
+      providerId: 'provider-a',
+      displayName: 'Provider A',
+      status: 'active',
+      models: [
+        {
+          providerId: 'provider-a',
+          modelId: 'model-a',
+          displayName: 'Model A',
+          shotgunUsableCapabilities: [],
+          capabilityRevision: '1',
+        },
+      ],
+    },
+  ],
+  privacy: [],
+  credentialStatuses: [],
+  vaultAvailability: { state: 'AVAILABLE', keyVersion: '1' },
+  legacyGeminiCredentialConfigured: false,
+});
+
+const renderInstrument = ({
+  sharedController = controller(),
+  settings = baseAISettings(),
+}: {
+  readonly sharedController?: OwnerCommandController;
+  readonly settings?: AISettingsReadModel;
+} = {}) => {
+  const getAISettings = vi.fn(async () => settings);
   const testAIConnection = vi.fn();
   const queryClient = createFrontendQueryClient();
   queryClient.setQueryData(productSessionQueryKey, session);
@@ -119,11 +151,13 @@ const renderInstrument = (sharedController = controller()) => {
   return { getAISettings, testAIConnection };
 };
 
-describe('InstrumentPanel HFM-S7-C2', () => {
-  it('uses the shared project.switch command, keeps identifiers out of visible text, and renders a human breadcrumb', async () => {
+describe('InstrumentPanel HFM-S7-C2R authority', () => {
+  it('uses exact PROJECT_MANAGED provider/model descriptors and the shared project.switch command', async () => {
     const user = userEvent.setup();
     const executeCommand = vi.fn();
-    const { getAISettings, testAIConnection } = renderInstrument(controller(executeCommand));
+    const { getAISettings, testAIConnection } = renderInstrument({
+      sharedController: controller(executeCommand),
+    });
 
     await user.selectOptions(
       screen.getByRole('combobox', { name: 'Current project' }),
@@ -133,9 +167,83 @@ describe('InstrumentPanel HFM-S7-C2', () => {
     expect(executeCommand.mock.calls.map(([command]) => command.id)).toEqual(['project.switch']);
     expect(screen.getByLabelText('Workspace breadcrumb').textContent).toBe('Sources / Source');
     expect(await screen.findByText('Provider A / Model A')).toBeTruthy();
+    expect(screen.getByText('Configured')).toBeTruthy();
     expect(screen.queryByText('project-private-id')).toBeNull();
     expect(screen.queryByText('source-private-id')).toBeNull();
     expect(getAISettings).toHaveBeenCalledWith('project-private-id', expect.any(Object));
     expect(testAIConnection).not.toHaveBeenCalled();
+  });
+
+  it('does not infer provider, model, or Configured state when currentConfiguration is absent', async () => {
+    const settings = {
+      ...baseAISettings(),
+      mode: 'UNCONFIGURED' as const,
+      currentConfiguration: undefined,
+    };
+    const { testAIConnection } = renderInstrument({ settings });
+
+    expect(screen.queryByLabelText('Configured AI provider and model')).toBeNull();
+    expect(screen.queryByText('Configured', { exact: true })).toBeNull();
+    expect(screen.queryByText('Provider A / Model A')).toBeNull();
+    expect(testAIConnection).not.toHaveBeenCalled();
+  });
+
+  it('does not infer a legacy compatibility runtime identity from defaultProviderId', () => {
+    const settings = {
+      ...baseAISettings(),
+      mode: 'LEGACY_GEMINI_COMPATIBILITY' as const,
+      currentConfiguration: undefined,
+      providers: [
+        {
+          providerId: 'deepseek',
+          displayName: 'DeepSeek',
+          status: 'active' as const,
+          models: [
+            {
+              providerId: 'deepseek',
+              modelId: 'deepseek-default',
+              displayName: 'Default model',
+              shotgunUsableCapabilities: [],
+              capabilityRevision: '1',
+            },
+          ],
+        },
+      ],
+    };
+    renderInstrument({ settings });
+
+    expect(screen.queryByLabelText('Configured AI provider and model')).toBeNull();
+    expect(screen.queryByText('Configured', { exact: true })).toBeNull();
+    expect(screen.queryByText('DeepSeek / Default model')).toBeNull();
+  });
+
+  it('hides the AI display when the exact configured provider descriptor is absent', () => {
+    const settings = {
+      ...baseAISettings(),
+      currentConfiguration: {
+        ...baseAISettings().currentConfiguration!,
+        activeProviderId: 'provider-missing',
+      },
+    };
+    renderInstrument({ settings });
+
+    expect(screen.queryByLabelText('Configured AI provider and model')).toBeNull();
+    expect(screen.queryByText('Configured', { exact: true })).toBeNull();
+    expect(screen.queryByText('Provider A / Model A')).toBeNull();
+  });
+
+  it('hides the AI display when the exact configured model descriptor is absent', () => {
+    const settings = {
+      ...baseAISettings(),
+      currentConfiguration: {
+        ...baseAISettings().currentConfiguration!,
+        activeModelId: 'model-missing',
+      },
+    };
+    renderInstrument({ settings });
+
+    expect(screen.queryByLabelText('Configured AI provider and model')).toBeNull();
+    expect(screen.queryByText('Configured', { exact: true })).toBeNull();
+    expect(screen.queryByText('Provider A / Model A')).toBeNull();
   });
 });

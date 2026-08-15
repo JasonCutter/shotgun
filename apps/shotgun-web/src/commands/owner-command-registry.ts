@@ -221,6 +221,17 @@ const explicitRouteAvailability = (
   return navigationItem ? navigationAvailability(navigationItem) : { availability: 'AVAILABLE' };
 };
 
+const establishedWorkspaceAvailability = (
+  shell: GlobalShellView,
+  routeId: TargetRouteView['routeId'],
+): Pick<OwnerCommandDefinition, 'availability' | 'reason' | 'reasonKey'> => {
+  const navigationItem = shell.navigation.find((item) => item.targetRoute?.routeId === routeId);
+  if (!navigationItem || navigationItem.availability !== 'AVAILABLE') {
+    return { availability: 'HIDDEN' };
+  }
+  return { availability: 'AVAILABLE' };
+};
+
 const featureAvailability = (
   feature: GlobalShellView['features'][number] | undefined,
   isOffline: boolean,
@@ -539,7 +550,7 @@ const HFM_COMMAND_TEMPLATES: readonly OwnerCommandTemplate[] = [
     risk: 'READ',
     presentation: 'NAVIGATE',
     action: navigate('knowledge', '/knowledge'),
-    getAvailability: (shell) => explicitRouteAvailability(shell, 'knowledge'),
+    getAvailability: (shell) => establishedWorkspaceAvailability(shell, 'knowledge'),
   },
   {
     id: 'review.open',
@@ -551,7 +562,7 @@ const HFM_COMMAND_TEMPLATES: readonly OwnerCommandTemplate[] = [
     risk: 'WRITE',
     presentation: 'NAVIGATE',
     action: navigate('review', '/review'),
-    getAvailability: (shell) => explicitRouteAvailability(shell, 'review'),
+    getAvailability: (shell) => establishedWorkspaceAvailability(shell, 'review'),
   },
   {
     id: 'external_action.open',

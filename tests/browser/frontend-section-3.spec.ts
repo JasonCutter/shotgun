@@ -201,15 +201,11 @@ test('Section 3 Search and Command Palette keep query transient and keyboard-saf
   await expect(palette).toBeVisible();
   await expect(palette.getByRole('textbox', { name: 'Command search' })).toBeVisible();
   await expect(palette.getByRole('heading', { name: 'Navigation' })).toBeVisible();
-  for (const command of [
-    /Open Knowledge/,
-    /Open Review/,
-    /Open External Actions/,
-    /Open Activity/,
-    /Open History/,
-  ]) {
+  for (const command of [/Open External Actions/, /Open Activity/, /Open History/]) {
     await expect(palette.getByRole('button', { name: command })).toBeVisible();
   }
+  await expect(palette.getByRole('button', { name: /Open Knowledge/ })).toHaveCount(0);
+  await expect(palette.getByRole('button', { name: /Open Review/ })).toHaveCount(0);
   await expect(palette.getByRole('button', { name: /Review Privacy/ })).toBeVisible();
   await expect(page.getByRole('dialog', { name: 'Review Privacy' })).toHaveCount(0);
   expect(productPostRequests).toHaveLength(0);

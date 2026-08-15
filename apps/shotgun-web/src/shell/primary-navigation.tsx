@@ -24,9 +24,11 @@ const TreeLink = ({ to, children }: { readonly to: string; readonly children: Re
 const CommandTreeAction = ({
   commandId,
   controller,
+  label,
 }: {
   readonly commandId: string;
   readonly controller: OwnerCommandController;
+  readonly label?: string;
 }) => {
   const command = controller.commands.find((candidate) => candidate.id === commandId);
   if (!command || command.availability === 'HIDDEN') return null;
@@ -38,7 +40,7 @@ const CommandTreeAction = ({
       title={command.reason}
       onClick={(event) => controller.executeCommand(command, event.currentTarget)}
     >
-      {command.label}
+      {label ?? command.label}
     </button>
   );
 };
@@ -47,10 +49,12 @@ const RouteTreeAction = ({
   route,
   controller,
   commandId,
+  requireAvailableCommand = false,
 }: {
   readonly route: NavigationItem;
   readonly controller: OwnerCommandController;
   readonly commandId?: string;
+  readonly requireAvailableCommand?: boolean;
 }) => {
   const command = commandId
     ? controller.commands.find((candidate) => candidate.id === commandId)
@@ -66,7 +70,7 @@ const RouteTreeAction = ({
       </button>
     );
   }
-  if (!route.targetRoute) return null;
+  if (requireAvailableCommand || !route.targetRoute) return null;
   return <TreeLink to={route.targetRoute.href}>{route.label}</TreeLink>;
 };
 
@@ -165,6 +169,7 @@ export const PrimaryNavigation = ({
               route={routes.knowledge}
               controller={controller}
               commandId="knowledge.open"
+              requireAvailableCommand
             />
           </li>
         ) : null}
@@ -177,6 +182,7 @@ export const PrimaryNavigation = ({
                     route={routes.review}
                     controller={controller}
                     commandId="review.open"
+                    requireAvailableCommand
                   />
                 </li>
               ) : null}
@@ -214,10 +220,14 @@ export const PrimaryNavigation = ({
           <li>
             <TreeGroup label="Settings">
               <li>
-                <CommandTreeAction commandId="ai.configure" controller={controller} />
+                <CommandTreeAction commandId="ai.configure" controller={controller} label="AI" />
               </li>
               <li>
-                <CommandTreeAction commandId="privacy.open" controller={controller} />
+                <CommandTreeAction
+                  commandId="privacy.open"
+                  controller={controller}
+                  label="Privacy"
+                />
               </li>
               <li>
                 <TreeGroup label="Preferences">
@@ -233,7 +243,11 @@ export const PrimaryNavigation = ({
                 </TreeGroup>
               </li>
               <li>
-                <CommandTreeAction commandId="project.manage" controller={controller} />
+                <CommandTreeAction
+                  commandId="project.manage"
+                  controller={controller}
+                  label="Project"
+                />
               </li>
             </TreeGroup>
           </li>

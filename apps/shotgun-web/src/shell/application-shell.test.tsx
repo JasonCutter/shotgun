@@ -122,19 +122,37 @@ const runtime = (
     getProjects: vi.fn(async () => []),
     getAISettings: vi.fn(async () => ({
       projectId: 'project-a',
-      defaultProviderId: 'provider-a',
-      currentConfiguration: { activeProviderId: 'provider-a', activeModelId: 'model-a' },
+      mode: 'PROJECT_MANAGED',
+      defaultProviderId: 'deepseek',
+      currentConfiguration: {
+        projectId: 'project-a',
+        activeProviderId: 'provider-a',
+        activeModelId: 'model-a',
+        credentialId: 'credential-a',
+        credentialRevision: 1,
+        aiConfigurationRevision: 1,
+        updatedBy: 'principal-a',
+        updatedAt: '2026-08-15T00:00:00.000Z',
+      },
       providers: [
         {
           providerId: 'provider-a',
           displayName: 'Provider A',
           status: 'active',
-          models: [{ modelId: 'model-a', displayName: 'Model A' }],
+          models: [
+            {
+              modelId: 'model-a',
+              displayName: 'Model A',
+              shotgunUsableCapabilities: [],
+              capabilityRevision: '1',
+            },
+          ],
         },
       ],
       privacy: [],
       credentialStatuses: [],
-      vaultAvailability: { state: 'AVAILABLE' },
+      vaultAvailability: { state: 'AVAILABLE', keyVersion: '1' },
+      legacyGeminiCredentialConfigured: false,
     })),
     testAIConnection: vi.fn(),
     getPrincipalPreferences: vi.fn(async () => ({
@@ -252,7 +270,8 @@ describe('ApplicationShell', () => {
     await user.keyboard('{Control>}k{/Control}');
     expect(screen.getByRole('dialog', { name: 'Commands' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Navigation' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Open Knowledge/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Open Knowledge/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Open Review/ })).toBeNull();
     expect(
       (appRuntime.apiClient as unknown as { testAIConnection: { mock: { calls: unknown[] } } })
         .testAIConnection.mock.calls,

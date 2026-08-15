@@ -27,20 +27,17 @@ const effectiveAIConfiguration = (
   settings:
     Awaited<ReturnType<ReturnType<typeof useAppRuntime>['apiClient']['getAISettings']>> | undefined,
 ) => {
-  if (!settings) return null;
-  const providerId = settings.currentConfiguration?.activeProviderId ?? settings.defaultProviderId;
-  const provider =
-    settings.providers.find((candidate) => candidate.providerId === providerId) ??
-    settings.providers.find((candidate) => candidate.status === 'active');
-  if (!provider) return null;
-  const configuredModel =
-    settings.currentConfiguration?.activeProviderId === provider.providerId
-      ? settings.currentConfiguration.activeModelId
-      : undefined;
-  const model =
-    provider.models.find((candidate) => candidate.modelId === configuredModel) ??
-    provider.models[0];
-  return model ? `${provider.displayName} / ${model.displayName}` : null;
+  if (!settings || settings.mode !== 'PROJECT_MANAGED' || !settings.currentConfiguration) {
+    return null;
+  }
+
+  const provider = settings.providers.find(
+    (candidate) => candidate.providerId === settings.currentConfiguration?.activeProviderId,
+  );
+  const model = provider?.models.find(
+    (candidate) => candidate.modelId === settings.currentConfiguration?.activeModelId,
+  );
+  return provider && model ? `${provider.displayName} / ${model.displayName}` : null;
 };
 
 export const InstrumentPanel = ({

@@ -101,7 +101,8 @@ button:disabled {
 }
 
 .instrument-panel__ai span {
-  color: #a7f3d0;
+  color: inherit;
+  font-weight: 600;
 }
 
 .global-tools {

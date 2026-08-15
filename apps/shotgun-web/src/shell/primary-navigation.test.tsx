@@ -149,12 +149,84 @@ describe('PrimaryNavigation HFM-S7-C2 Tree', () => {
     expect(within(primaryNavigation).queryByText('Review', { exact: true })).toBeNull();
     expect(screen.queryByRole('navigation', { name: 'Mobile navigation' })).toBeNull();
 
+    expect(within(primaryNavigation).getByRole('button', { name: 'AI' })).toBeTruthy();
+    expect(within(primaryNavigation).getByRole('button', { name: 'Privacy' })).toBeTruthy();
+    expect(within(primaryNavigation).getByRole('button', { name: 'Project' })).toBeTruthy();
+    expect(within(primaryNavigation).queryByRole('button', { name: 'Configure AI' })).toBeNull();
+    expect(within(primaryNavigation).queryByRole('button', { name: 'Manage Projects' })).toBeNull();
+
     await user.click(within(primaryNavigation).getByRole('button', { name: 'Search' }));
-    await user.click(within(primaryNavigation).getByRole('button', { name: 'Configure AI' }));
+    await user.click(within(primaryNavigation).getByRole('button', { name: 'AI' }));
+    await user.click(within(primaryNavigation).getByRole('button', { name: 'Privacy' }));
+    await user.click(within(primaryNavigation).getByRole('button', { name: 'Project' }));
     expect(executeCommand.mock.calls.map(([command]) => command.id)).toEqual([
       'search.global',
       'ai.configure',
+      'privacy.open',
+      'project.manage',
     ]);
+  });
+
+  it('hides Knowledge and Review when a route exists but their shared commands are not usable', () => {
+    const navigationWithUnavailableWorkspaces: GlobalShellView['navigation'] = [
+      ...navigation,
+      {
+        id: 'knowledge',
+        label: 'Knowledge',
+        availability: 'AVAILABLE',
+        targetRoute: { routeId: 'knowledge', href: '/knowledge' },
+      },
+      {
+        id: 'review',
+        label: 'Review',
+        availability: 'AVAILABLE',
+        targetRoute: { routeId: 'review', href: '/review' },
+      },
+    ];
+    const unavailableWorkspaceController: OwnerCommandController = {
+      executeCommand: vi.fn(),
+      commands: [
+        {
+          id: 'knowledge.open',
+          category: 'NAVIGATION',
+          label: 'Open Knowledge',
+          description: 'Open Knowledge',
+          aliases: [],
+          keywords: [],
+          availability: 'HIDDEN',
+          risk: 'READ',
+          presentation: 'NAVIGATE',
+          action: { kind: 'NAVIGATE', targetRoute: { routeId: 'knowledge', href: '/knowledge' } },
+        },
+        {
+          id: 'review.open',
+          category: 'NAVIGATION',
+          label: 'Open Review',
+          description: 'Open Review',
+          aliases: [],
+          keywords: [],
+          availability: 'UNAVAILABLE_WITH_REASON',
+          reason: 'Review is not established.',
+          risk: 'WRITE',
+          presentation: 'NAVIGATE',
+          action: { kind: 'NAVIGATE', targetRoute: { routeId: 'review', href: '/review' } },
+        },
+      ],
+    };
+
+    render(
+      <MemoryRouter>
+        <PrimaryNavigation
+          navigation={navigationWithUnavailableWorkspaces}
+          controller={unavailableWorkspaceController}
+        />
+      </MemoryRouter>,
+    );
+
+    const primaryNavigation = screen.getByRole('navigation', { name: 'Primary navigation' });
+    expect(within(primaryNavigation).queryByText('Knowledge', { exact: true })).toBeNull();
+    expect(within(primaryNavigation).queryByText('Review', { exact: true })).toBeNull();
+    expect(within(primaryNavigation).queryAllByText(/coming soon|unavailable/i)).toHaveLength(0);
   });
 
   it('shows selected Source anchors only on the existing Source detail route without exposing an ID', () => {

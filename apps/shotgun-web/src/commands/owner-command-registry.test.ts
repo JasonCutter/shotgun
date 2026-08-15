@@ -186,12 +186,8 @@ describe('owner command registry', () => {
     expect(filterOwnerCommands(commands, '프로젝트').map((command) => command.id)).toEqual(
       expect.arrayContaining(['project.manage', 'project.switch']),
     );
-    expect(filterOwnerCommands(commands, '지식').map((command) => command.id)).toContain(
-      'knowledge.open',
-    );
-    expect(filterOwnerCommands(commands, '검토').map((command) => command.id)).toContain(
-      'review.open',
-    );
+    expect(filterOwnerCommands(commands, '지식')).toHaveLength(0);
+    expect(filterOwnerCommands(commands, '검토')).toHaveLength(0);
     expect(filterOwnerCommands(commands, '이력').map((command) => command.id)).toContain(
       'history.open',
     );
@@ -341,13 +337,40 @@ describe('owner command registry', () => {
     ).toBe(false);
   });
 
-  it('keeps historical placeholders from suppressing confirmed capabilities', () => {
-    const commands = createOwnerCommandRegistry({ shell, projects });
+  it('hides Knowledge and Review unless their exact navigation routes are established and available', () => {
+    const hiddenCommands = createOwnerCommandRegistry({ shell, projects });
 
-    expect(commands.find((command) => command.id === 'knowledge.open')?.availability).toBe(
-      'AVAILABLE',
+    expect(hiddenCommands.find((command) => command.id === 'knowledge.open')?.availability).toBe(
+      'HIDDEN',
     );
-    expect(commands.find((command) => command.id === 'review.open')?.availability).toBe(
+    expect(hiddenCommands.find((command) => command.id === 'review.open')?.availability).toBe(
+      'HIDDEN',
+    );
+
+    const establishedShell: GlobalShellView = {
+      ...shell,
+      navigation: [
+        ...shell.navigation,
+        {
+          id: 'knowledge-established',
+          label: 'Knowledge',
+          availability: 'AVAILABLE',
+          targetRoute: { routeId: 'knowledge', href: '/knowledge' },
+        },
+        {
+          id: 'review-established',
+          label: 'Review',
+          availability: 'AVAILABLE',
+          targetRoute: { routeId: 'review', href: '/review' },
+        },
+      ],
+    };
+    const establishedCommands = createOwnerCommandRegistry({ shell: establishedShell, projects });
+
+    expect(
+      establishedCommands.find((command) => command.id === 'knowledge.open')?.availability,
+    ).toBe('AVAILABLE');
+    expect(establishedCommands.find((command) => command.id === 'review.open')?.availability).toBe(
       'AVAILABLE',
     );
   });

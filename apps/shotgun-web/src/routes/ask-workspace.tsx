@@ -991,7 +991,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   };
 
   return (
-    <section className="route-page ask-workspace">
+    <section className="route-page hfm-route-page ask-workspace">
       <p className="eyebrow">{t('ask.eyebrow')}</p>
       <h1 tabIndex={-1}>{t('ask.title')}</h1>
 

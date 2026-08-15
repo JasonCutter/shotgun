@@ -86,7 +86,7 @@ export const SourceDetailWorkspace = () => {
   if (!detail.data) return null;
 
   return (
-    <section className="route-page source-detail-workspace">
+    <section className="route-page hfm-route-page source-detail-workspace">
       <p className="eyebrow">{t('source_detail.eyebrow')}</p>
       <h1 tabIndex={-1}>{detail.data.label}</h1>
       <p>

@@ -45,7 +45,7 @@ export const HomePage = () => {
 
   if (!shell.activeProject) {
     return (
-      <section className="route-page first-run">
+      <section className="route-page hfm-route-page first-run">
         <p className="eyebrow">{t('home.first_run')}</p>
         <h1 tabIndex={-1}>{t('home.create_first_project')}</h1>
         <p>{t('home.create_first_project_help')}</p>
@@ -71,7 +71,7 @@ export const HomePage = () => {
   const browserDrafts = readBrowserDrafts(shell);
 
   return (
-    <section className="route-page home-action-center">
+    <section className="route-page hfm-route-page home-action-center">
       <p className="eyebrow">{t('home.action_center')}</p>
       <h1 tabIndex={-1}>{t('nav.home')}</h1>
       {home.stale ? (

@@ -368,7 +368,7 @@ export const SourcesWorkspace = () => {
     mutationState === 'IDLE';
 
   return (
-    <section className="route-page sources-workspace">
+    <section className="route-page hfm-route-page sources-workspace">
       <p className="eyebrow">{t('sources.eyebrow')}</p>
       <h1 tabIndex={-1}>{t('sources.title')}</h1>
 

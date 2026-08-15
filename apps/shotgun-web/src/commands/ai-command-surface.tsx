@@ -601,7 +601,7 @@ export const AICommandSurface = ({
       tabIndex={-1}
       onKeyDown={dialog.onDialogKeyDown}
     >
-      <div className="modal-card ai-command-surface">
+      <div className="modal-card ai-command-surface hfm-command-surface">
         <h2 id={titleId}>{isConfigure ? t('ai.configure') : t('ai.test')}</h2>
         {feedback ? (
           <p
@@ -682,11 +682,20 @@ export const AICommandSurface = ({
                 </p>
               )}
               <div className="dialog-actions">
-                <button type="button" onClick={handleTest} disabled={actionPending || !canTest}>
+                <button
+                  className="hfm-action-secondary"
+                  type="button"
+                  onClick={handleTest}
+                  disabled={actionPending || !canTest}
+                >
                   {testMutation.isPending ? t('ai.testing') : t('ai.test_connection')}
                 </button>
                 {isConfigure ? (
-                  <button type="submit" disabled={actionPending || !canSave}>
+                  <button
+                    className="hfm-action-primary"
+                    type="submit"
+                    disabled={actionPending || !canSave}
+                  >
                     {credentialMutation.isPending || configurationMutation.isPending
                       ? t('common.saving')
                       : t('ai.save_configuration')}
@@ -696,6 +705,7 @@ export const AICommandSurface = ({
             </form>
             {credentialRecovery ? (
               <button
+                className="hfm-action-secondary"
                 type="button"
                 onClick={() => void resolveCredentialOutcome()}
                 disabled={mutationPending}
@@ -717,6 +727,7 @@ export const AICommandSurface = ({
                 ) : null}
                 {selectedPrivacy && !privacyIsApproved && !canApprovePrivacy ? (
                   <button
+                    className="hfm-action-secondary"
                     type="button"
                     onClick={() => privacyMutation.mutate('propose')}
                     disabled={actionPending || !selectedProviderIsActive}
@@ -726,6 +737,7 @@ export const AICommandSurface = ({
                 ) : null}
                 {canApprovePrivacy ? (
                   <button
+                    className="hfm-action-primary"
                     type="button"
                     onClick={() => {
                       if (window.confirm(t('ai.approve_privacy_decision'))) {
@@ -758,6 +770,7 @@ export const AICommandSurface = ({
                         : 'Remove this credential? This action cannot be undone from this surface.'}
                     </p>
                     <button
+                      className="hfm-action-destructive"
                       type="button"
                       disabled={actionPending}
                       onClick={() => credentialActionMutation.mutate(destructiveAction)}
@@ -765,6 +778,7 @@ export const AICommandSurface = ({
                       Confirm {destructiveAction === 'revoke' ? 'revoke' : 'remove'} credential
                     </button>
                     <button
+                      className="hfm-action-secondary"
                       type="button"
                       onClick={() => setDestructiveAction(undefined)}
                       disabled={actionPending}
@@ -775,6 +789,7 @@ export const AICommandSurface = ({
                 ) : (
                   <div className="dialog-actions">
                     <button
+                      className="hfm-action-destructive"
                       type="button"
                       onClick={() => setDestructiveAction('revoke')}
                       disabled={actionPending}
@@ -782,6 +797,7 @@ export const AICommandSurface = ({
                       Revoke credential
                     </button>
                     <button
+                      className="hfm-action-destructive"
                       type="button"
                       onClick={() => setDestructiveAction('remove')}
                       disabled={actionPending}
@@ -794,6 +810,7 @@ export const AICommandSurface = ({
             ) : null}
             <div className="dialog-actions">
               <button
+                className="hfm-action-secondary"
                 type="button"
                 onClick={onClose}
                 disabled={credentialMutation.isPending || configurationMutation.isPending}

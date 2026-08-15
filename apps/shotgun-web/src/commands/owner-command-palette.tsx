@@ -181,7 +181,7 @@ export const OwnerCommandPalette = ({
       tabIndex={-1}
       onKeyDown={onKeyDown}
     >
-      <div className="modal-card owner-command-palette">
+      <div className="modal-card owner-command-palette hfm-command-surface">
         <h2 id={titleId}>{t('commands.title')}</h2>
         <p>{t('commands.help')}</p>
         <label htmlFor={`${listId}-query`}>{t('commands.search_label')}</label>
@@ -225,9 +225,7 @@ export const OwnerCommandPalette = ({
                       >
                         <button
                           type="button"
-                          className={
-                            index === selectedIndex ? 'owner-command-option-selected' : undefined
-                          }
+                          className={`hfm-action-selection${index === selectedIndex ? ' owner-command-option-selected' : ''}`}
                           disabled={unavailable}
                           onMouseEnter={() => setSelectedIndex(index)}
                           onClick={() => selectCommand(command)}
@@ -252,7 +250,7 @@ export const OwnerCommandPalette = ({
         </div>
         <div className="dialog-actions">
           <span className="owner-command-hint">{t('commands.keyboard_hint')}</span>
-          <button type="button" onClick={onClose}>
+          <button className="hfm-action-secondary" type="button" onClick={onClose}>
             {t('common.close')}
           </button>
         </div>

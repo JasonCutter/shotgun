@@ -64,12 +64,13 @@ export const AnswerCommandSurface = ({
       tabIndex={-1}
       onKeyDown={dialog.onDialogKeyDown}
     >
-      <div className="modal-card">
+      <div className="modal-card answer-command-surface hfm-command-surface">
         <h2 id={titleId}>{titleByCommand[commandId]}</h2>
         <p>{t('answer.applies_selected')}</p>
         <div className="dialog-actions">
           {commandId === 'answer.export' && context.capabilities.includes('EXPORT') ? (
             <button
+              className="hfm-action-primary"
               type="button"
               disabled={pending}
               onClick={() => run(() => onExport(context.answerRunId))}
@@ -79,6 +80,7 @@ export const AnswerCommandSurface = ({
           ) : null}
           {commandId === 'action.retry' && context.capabilities.includes('RETRY_SAME_CONTEXT') ? (
             <button
+              className="hfm-action-selection"
               type="button"
               disabled={pending}
               onClick={() => run(() => onRetry(context.answerRunId, 'SAME_CONTEXT'))}
@@ -88,6 +90,7 @@ export const AnswerCommandSurface = ({
           ) : null}
           {commandId === 'action.retry' && context.capabilities.includes('RETRY_CURRENT_POLICY') ? (
             <button
+              className="hfm-action-selection"
               type="button"
               disabled={pending}
               onClick={() => run(() => onRetry(context.answerRunId, 'CURRENT_POLICY'))}
@@ -98,6 +101,7 @@ export const AnswerCommandSurface = ({
           {commandId === 'answer.propose_intake' &&
           context.capabilities.includes('CREATE_INTAKE_DRAFT') ? (
             <button
+              className="hfm-action-primary"
               type="button"
               disabled={pending}
               onClick={() => run(() => onPropose(context.answerRunId, 'INTAKE_DRAFT'))}
@@ -108,6 +112,7 @@ export const AnswerCommandSurface = ({
           {commandId === 'answer.propose_change' &&
           context.capabilities.includes('CREATE_DRAFT_CHANGE_SET') ? (
             <button
+              className="hfm-action-primary"
               type="button"
               disabled={pending}
               onClick={() => run(() => onPropose(context.answerRunId, 'DRAFT_CHANGE_SET'))}
@@ -118,6 +123,7 @@ export const AnswerCommandSurface = ({
           {commandId === 'answer.propose_directive' &&
           context.capabilities.includes('PROPOSE_DIRECTIVE') ? (
             <button
+              className="hfm-action-primary"
               type="button"
               disabled={pending}
               onClick={() => run(() => onPropose(context.answerRunId, 'USER_DIRECTIVE'))}
@@ -125,7 +131,7 @@ export const AnswerCommandSurface = ({
               {t('answer.propose_directive')}
             </button>
           ) : null}
-          <button type="button" onClick={onClose}>
+          <button className="hfm-action-secondary" type="button" onClick={onClose}>
             {t('common.close')}
           </button>
         </div>

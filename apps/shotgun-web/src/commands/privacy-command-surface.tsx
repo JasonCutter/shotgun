@@ -212,7 +212,7 @@ export const PrivacyCommandSurface = ({
       tabIndex={-1}
       onKeyDown={dialog.onDialogKeyDown}
     >
-      <div className="modal-card privacy-command-surface">
+      <div className="modal-card privacy-command-surface hfm-command-surface">
         <h2 id={titleId}>{reviewMode ? t('privacy.review_title') : t('privacy.project_title')}</h2>
         {message ? (
           <p className="privacy-command-message" role="status">
@@ -222,6 +222,7 @@ export const PrivacyCommandSurface = ({
         {errorMessage ? <p role="alert">{errorMessage}</p> : null}
         {outcomeRecovery ? (
           <button
+            className="hfm-action-secondary"
             type="button"
             onClick={() => void resolveOutcome()}
             disabled={mutation.isPending || isResolvingOutcome}
@@ -271,7 +272,12 @@ export const PrivacyCommandSurface = ({
               </p>
             </section>
             {!reviewMode && !privacyData.externalTransferAllowed ? (
-              <button type="button" onClick={() => setMode('privacy.review')} disabled={pending}>
+              <button
+                className="hfm-action-secondary"
+                type="button"
+                onClick={() => setMode('privacy.review')}
+                disabled={pending}
+              >
                 {t('privacy.open_review')}
               </button>
             ) : null}
@@ -283,6 +289,7 @@ export const PrivacyCommandSurface = ({
             ) : null}
             {reviewMode && !privacyData.externalTransferAllowed && !effectiveReviewProposalId ? (
               <button
+                className="hfm-action-primary"
                 type="button"
                 disabled={pending || snapshotQuery.data === undefined}
                 onClick={() => submitReview()}
@@ -294,6 +301,7 @@ export const PrivacyCommandSurface = ({
               <div className="privacy-command-section">
                 <p>{t('privacy.owner_approval_explanation')}</p>
                 <button
+                  className="hfm-action-primary"
                   type="button"
                   disabled={pending || snapshotQuery.data === undefined}
                   onClick={() => {
@@ -309,7 +317,12 @@ export const PrivacyCommandSurface = ({
           </>
         ) : null}
         <div className="dialog-actions">
-          <button type="button" onClick={onClose} disabled={mutation.isPending}>
+          <button
+            className="hfm-action-secondary"
+            type="button"
+            onClick={onClose}
+            disabled={mutation.isPending}
+          >
             {t('common.close')}
           </button>
         </div>

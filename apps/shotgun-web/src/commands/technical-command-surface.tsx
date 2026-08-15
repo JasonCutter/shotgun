@@ -42,7 +42,7 @@ export const TechnicalCommandSurface = ({
       tabIndex={-1}
       onKeyDown={dialog.onDialogKeyDown}
     >
-      <div className="modal-card technical-command-surface">
+      <div className="modal-card technical-command-surface hfm-command-surface">
         <h2 id={titleId}>{t('technical.title')}</h2>
         <div className="technical-command-blocks">
           {blocks.map((block) => (
@@ -62,7 +62,7 @@ export const TechnicalCommandSurface = ({
           ))}
         </div>
         <div className="dialog-actions">
-          <button type="button" onClick={onClose}>
+          <button className="hfm-action-secondary" type="button" onClick={onClose}>
             {t('common.close')}
           </button>
         </div>

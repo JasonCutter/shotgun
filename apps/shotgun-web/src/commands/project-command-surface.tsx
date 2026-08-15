@@ -401,7 +401,7 @@ export const ProjectCommandSurface = ({
       tabIndex={-1}
       onKeyDown={dialog.onDialogKeyDown}
     >
-      <div className="modal-card project-command-surface">
+      <div className="modal-card project-command-surface hfm-command-surface">
         <h2 id={titleId}>{title}</h2>
         {message ? (
           <p className="project-command-message" role="status">
@@ -416,7 +416,12 @@ export const ProjectCommandSurface = ({
         {outcomeRecovery ? (
           <div className="project-command-recovery" role="status">
             <p>{t('project.recovery_pending')}</p>
-            <button type="button" onClick={() => void resolveOutcome()} disabled={pending}>
+            <button
+              className="hfm-action-secondary"
+              type="button"
+              onClick={() => void resolveOutcome()}
+              disabled={pending}
+            >
               {isResolvingOutcome ? t('common.checking') : t('common.check_result')}
             </button>
           </div>
@@ -441,6 +446,7 @@ export const ProjectCommandSurface = ({
                   <div className="project-command-actions">
                     {project.capability.canRename ? (
                       <button
+                        className="hfm-action-secondary"
                         type="button"
                         onClick={() => selectProject(project, 'project.rename')}
                       >
@@ -449,6 +455,7 @@ export const ProjectCommandSurface = ({
                     ) : null}
                     {project.capability.canArchive ? (
                       <button
+                        className="hfm-action-destructive"
                         type="button"
                         onClick={() => selectProject(project, 'project.archive')}
                       >
@@ -457,6 +464,7 @@ export const ProjectCommandSurface = ({
                     ) : null}
                     {project.capability.canRestore ? (
                       <button
+                        className="hfm-action-secondary"
                         type="button"
                         onClick={() => selectProject(project, 'project.restore')}
                       >
@@ -465,6 +473,7 @@ export const ProjectCommandSurface = ({
                     ) : null}
                     {project.capability.canDelete ? (
                       <button
+                        className="hfm-action-destructive"
                         type="button"
                         onClick={() => selectProject(project, 'project.delete_request')}
                       >
@@ -477,6 +486,7 @@ export const ProjectCommandSurface = ({
             </ul>
             {shell.activeProject ? (
               <button
+                className="hfm-action-primary"
                 type="button"
                 onClick={() => {
                   setStep('CREATE');
@@ -516,10 +526,14 @@ export const ProjectCommandSurface = ({
               />
             </label>
             <div className="dialog-actions">
-              <button type="submit" disabled={pending || outcomeRecovery !== undefined}>
+              <button
+                className="hfm-action-primary"
+                type="submit"
+                disabled={pending || outcomeRecovery !== undefined}
+              >
                 {pending ? t('project.creating') : t('project.create')}
               </button>
-              <button type="button" onClick={onClose}>
+              <button className="hfm-action-secondary" type="button" onClick={onClose}>
                 {t('common.cancel')}
               </button>
             </div>
@@ -535,7 +549,11 @@ export const ProjectCommandSurface = ({
             <ul className="project-command-list">
               {eligibleProjects.map((project) => (
                 <li key={project.id}>
-                  <button type="button" onClick={() => selectProject(project, commandId)}>
+                  <button
+                    className="hfm-action-selection"
+                    type="button"
+                    onClick={() => selectProject(project, commandId)}
+                  >
                     {project.name} · {t(projectLifecyclePresentationKey(project.status))}
                   </button>
                 </li>
@@ -562,10 +580,14 @@ export const ProjectCommandSurface = ({
               />
             </label>
             <div className="dialog-actions">
-              <button type="submit" disabled={pending || outcomeRecovery !== undefined}>
+              <button
+                className="hfm-action-primary"
+                type="submit"
+                disabled={pending || outcomeRecovery !== undefined}
+              >
                 {pending ? t('common.saving') : t('project.rename')}
               </button>
-              <button type="button" onClick={onClose}>
+              <button className="hfm-action-secondary" type="button" onClick={onClose}>
                 {t('common.cancel')}
               </button>
             </div>
@@ -582,13 +604,14 @@ export const ProjectCommandSurface = ({
             </p>
             <div className="dialog-actions">
               <button
+                className="hfm-action-primary"
                 type="button"
                 onClick={handleLifecycleSubmit}
                 disabled={pending || outcomeRecovery !== undefined}
               >
                 {pending ? t('project.restoring') : t('project.restore')}
               </button>
-              <button type="button" onClick={onClose}>
+              <button className="hfm-action-secondary" type="button" onClick={onClose}>
                 {t('common.cancel')}
               </button>
             </div>
@@ -615,6 +638,7 @@ export const ProjectCommandSurface = ({
             </p>
             <div className="dialog-actions">
               <button
+                className="hfm-action-destructive"
                 type="button"
                 onClick={handleLifecycleSubmit}
                 disabled={pending || outcomeRecovery !== undefined}
@@ -625,7 +649,7 @@ export const ProjectCommandSurface = ({
                     ? t('project.confirm_archive')
                     : t('project.confirm_deletion')}
               </button>
-              <button type="button" onClick={onClose}>
+              <button className="hfm-action-secondary" type="button" onClick={onClose}>
                 {t('common.cancel')}
               </button>
             </div>
@@ -634,7 +658,7 @@ export const ProjectCommandSurface = ({
 
         {step === 'MANAGE' || step === 'SELECT' ? (
           <div className="dialog-actions">
-            <button type="button" onClick={onClose}>
+            <button className="hfm-action-secondary" type="button" onClick={onClose}>
               {t('common.close')}
             </button>
           </div>

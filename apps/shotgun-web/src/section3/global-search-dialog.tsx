@@ -76,7 +76,7 @@ export const GlobalSearchDialog = ({ shell, open, invoker, onClose }: GlobalSear
       tabIndex={-1}
       onKeyDown={dialog.onDialogKeyDown}
     >
-      <div className="modal-card">
+      <div className="modal-card global-search-dialog hfm-command-surface">
         <h2 id="global-search-title">{t('search.title')}</h2>
         <p className="sr-only" aria-live="polite">
           {announcement}
@@ -145,6 +145,7 @@ export const GlobalSearchDialog = ({ shell, open, invoker, onClose }: GlobalSear
           ) : null}
           <div className="dialog-actions">
             <button
+              className="hfm-action-primary"
               type="submit"
               disabled={
                 search.isPending || connectivity.isOffline || !query.trim() || !validSearchScope
@@ -152,7 +153,7 @@ export const GlobalSearchDialog = ({ shell, open, invoker, onClose }: GlobalSear
             >
               {search.isPending ? t('search.searching') : t('search.submit')}
             </button>
-            <button type="button" onClick={close}>
+            <button className="hfm-action-secondary" type="button" onClick={close}>
               {t('common.close')}
             </button>
           </div>

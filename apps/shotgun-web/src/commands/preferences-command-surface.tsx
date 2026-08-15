@@ -212,7 +212,7 @@ export const PreferencesCommandSurface = ({
       tabIndex={-1}
       onKeyDown={dialog.onDialogKeyDown}
     >
-      <div className="modal-card preferences-command-surface">
+      <div className="modal-card preferences-command-surface hfm-command-surface">
         <h2 id={titleId}>{title}</h2>
         {message ? (
           <p className="preferences-command-message" role="status">
@@ -221,7 +221,12 @@ export const PreferencesCommandSurface = ({
         ) : null}
         {errorMessage ? <p role="alert">{errorMessage}</p> : null}
         {outcomeRecovery ? (
-          <button type="button" onClick={() => void resolveOutcome()} disabled={isResolvingOutcome}>
+          <button
+            className="hfm-action-secondary"
+            type="button"
+            onClick={() => void resolveOutcome()}
+            disabled={isResolvingOutcome}
+          >
             {isResolvingOutcome ? t('common.checking') : t('common.check_result')}
           </button>
         ) : null}
@@ -305,10 +310,19 @@ export const PreferencesCommandSurface = ({
               </>
             ) : null}
             <div className="dialog-actions">
-              <button type="submit" disabled={pending || preferencesQuery.data === undefined}>
+              <button
+                className="hfm-action-primary"
+                type="submit"
+                disabled={pending || preferencesQuery.data === undefined}
+              >
                 {mutation.isPending ? t('common.saving') : t('common.save')}
               </button>
-              <button type="button" onClick={onClose} disabled={mutation.isPending}>
+              <button
+                className="hfm-action-secondary"
+                type="button"
+                onClick={onClose}
+                disabled={mutation.isPending}
+              >
                 {t('common.cancel')}
               </button>
             </div>

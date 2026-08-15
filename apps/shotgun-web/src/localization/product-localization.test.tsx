@@ -30,6 +30,60 @@ const command: OwnerCommandDefinition = {
   action: { kind: 'OPEN_SEARCH' },
 };
 
+const unavailableCommands: readonly OwnerCommandDefinition[] = [
+  {
+    id: 'ai.configure',
+    category: 'AI',
+    label: 'AI configuration',
+    description: 'AI configuration',
+    aliases: [],
+    keywords: [],
+    availability: 'UNAVAILABLE_WITH_REASON',
+    reasonKey: 'commands.unavailable.ai_configuration_offline',
+    risk: 'WRITE',
+    presentation: 'DIALOG',
+    action: { kind: 'OPEN_AI_FLOW', commandId: 'ai.configure' },
+  },
+  {
+    id: 'ai.test_connection',
+    category: 'AI',
+    label: 'AI connection test',
+    description: 'AI connection test',
+    aliases: [],
+    keywords: [],
+    availability: 'UNAVAILABLE_WITH_REASON',
+    reasonKey: 'commands.unavailable.ai_test_offline',
+    risk: 'WRITE',
+    presentation: 'DIALOG',
+    action: { kind: 'OPEN_AI_FLOW', commandId: 'ai.test_connection' },
+  },
+  {
+    id: 'privacy.open',
+    category: 'PRIVACY',
+    label: 'Privacy',
+    description: 'Privacy',
+    aliases: [],
+    keywords: [],
+    availability: 'UNAVAILABLE_WITH_REASON',
+    reasonKey: 'commands.unavailable.privacy_open_offline',
+    risk: 'READ',
+    presentation: 'DIALOG',
+    action: { kind: 'OPEN_PRIVACY_FLOW', commandId: 'privacy.open' },
+  },
+  {
+    id: 'privacy.review',
+    category: 'PRIVACY',
+    label: 'Privacy review',
+    description: 'Privacy review',
+    aliases: [],
+    keywords: [],
+    availability: 'UNAVAILABLE_WITH_REASON',
+    reasonKey: 'commands.unavailable.privacy_review_offline',
+    risk: 'WRITE',
+    presentation: 'DIALOG',
+    action: { kind: 'OPEN_PRIVACY_FLOW', commandId: 'privacy.review' },
+  },
+];
 const Probe = () => {
   const { locale, t } = useProductLocalization();
   return (
@@ -52,7 +106,7 @@ const Probe = () => {
       <p>JasonNote source content</p>
       <OwnerCommandPalette
         open
-        commands={[command]}
+        commands={[command, ...unavailableCommands]}
         invoker={null}
         onClose={vi.fn()}
         onSelect={vi.fn()}
@@ -92,8 +146,8 @@ describe('ProductLocalizationProvider', () => {
     expect(screen.getByText('질문 초안')).toBeTruthy();
     expect(screen.getByText('선택한 프로젝트 범위에 결과가 없습니다.')).toBeTruthy();
     expect(screen.getByText('프로젝트 관리')).toBeTruthy();
-    expect(screen.getByText('AI 구성')).toBeTruthy();
-    expect(screen.getByText('개인정보 검토')).toBeTruthy();
+    expect(screen.getAllByText('AI 구성').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('개인정보 검토').length).toBeGreaterThan(0);
     expect(screen.getByText('기술 정보')).toBeTruthy();
     expect(screen.getByText('선택한 소스 사용')).toBeTruthy();
     expect(screen.getByText('실패')).toBeTruthy();

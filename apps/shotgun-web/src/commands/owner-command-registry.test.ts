@@ -292,19 +292,19 @@ describe('owner command registry', () => {
     });
     expect(commands.find((command) => command.id === 'ai.configure')).toMatchObject({
       availability: 'UNAVAILABLE_WITH_REASON',
-      reason: 'AI configuration is unavailable while offline.',
+      reasonKey: 'commands.unavailable.ai_configuration_offline',
     });
     expect(commands.find((command) => command.id === 'ai.test_connection')).toMatchObject({
       availability: 'UNAVAILABLE_WITH_REASON',
-      reason: 'AI connection test is unavailable while offline.',
+      reasonKey: 'commands.unavailable.ai_test_offline',
     });
     expect(commands.find((command) => command.id === 'privacy.open')).toMatchObject({
       availability: 'UNAVAILABLE_WITH_REASON',
-      reason: 'Privacy is unavailable while offline.',
+      reasonKey: 'commands.unavailable.privacy_open_offline',
     });
     expect(commands.find((command) => command.id === 'privacy.review')).toMatchObject({
       availability: 'UNAVAILABLE_WITH_REASON',
-      reason: 'Privacy review is unavailable while offline.',
+      reasonKey: 'commands.unavailable.privacy_review_offline',
     });
     expect(filterOwnerCommands(commands, 'global search')).toHaveLength(1);
   });

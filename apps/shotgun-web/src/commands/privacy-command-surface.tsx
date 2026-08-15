@@ -7,7 +7,6 @@ import { useAppRuntime } from '../app/providers.js';
 import { useAccessibleDialog } from '../app/use-accessible-dialog.js';
 import { safeErrorMessage } from '../components/error-state.js';
 import { useProductLocalization } from '../localization/product-localization.js';
-import { privacyProfileLabel, sensitivityLabel } from '../presentation/product-labels.js';
 import type { PrivacyCommandId } from './owner-command-registry.js';
 
 type CommandIdentity = {
@@ -240,11 +239,11 @@ export const PrivacyCommandSurface = ({
             <section className="privacy-command-section" aria-label={t('privacy.summary')}>
               <p>
                 <strong>{t('privacy.profile_label')}</strong>{' '}
-                {privacyProfileLabel(privacyData.profileName)}
+                {t(`privacy.profile.${privacyData.profileName.toLowerCase()}` as never)}
               </p>
               <p>
                 <strong>{t('privacy.sensitivity_label')}</strong>{' '}
-                {sensitivityLabel(privacyData.sensitivityLevel)}
+                {t(`privacy.sensitivity.${privacyData.sensitivityLevel.toLowerCase()}` as never)}
               </p>
               <p>
                 <strong>{t('privacy.external_transfer_label')}</strong>{' '}
@@ -256,7 +255,9 @@ export const PrivacyCommandSurface = ({
                 <strong>{t('privacy.project_approval_label')}</strong>{' '}
                 {privacyData.approvalStatus === 'REVIEW_PENDING'
                   ? t('privacy.approval.review_pending')
-                  : t('privacy.not_approved')}
+                  : privacyData.approvalStatus === 'APPROVED'
+                    ? t('privacy.approval.approved')
+                    : t('privacy.not_approved')}
               </p>
               <p>
                 <strong>{t('privacy.deployment_label')}</strong>{' '}

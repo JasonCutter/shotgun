@@ -106,7 +106,7 @@ const privacyStateLabel = (
   if (privacy.approval?.approved || privacy.legacyGeminiCompatibility)
     return t('ai.privacy.approved');
   if (privacy.approval?.approved === false) return t('ai.privacy.not_approved');
-  return 'Review required';
+  return t('ai.privacy.review_required');
 };
 
 const exactOrUnambiguousCredential = (
@@ -276,10 +276,10 @@ export const AICommandSurface = ({
   const credentialMutation = useMutation({
     mutationFn: async (input: CredentialSubmission): Promise<AICredentialMetadata> => {
       const secret = credentialSecretRef.current;
-      if (!secret) throw new Error('The credential secret is no longer available.');
+      if (!secret) throw new Error(t('ai.error.credential_secret_unavailable'));
       if (input.operation === 'REPLACE') {
         if (input.credentialId === undefined || input.expectedCredentialRevision === undefined) {
-          throw new Error('The exact credential could not be selected.');
+          throw new Error(t('ai.error.credential_selection_unavailable'));
         }
         return apiClient.replaceAICredential({
           projectId: input.projectId,
@@ -335,7 +335,7 @@ export const AICommandSurface = ({
     mutationFn: (input: TestSubmission) => {
       if (input.secretSource === 'DRAFT') {
         const draftSecret = draftTestSecretRef.current;
-        if (!draftSecret) throw new Error('The draft secret is no longer available.');
+        if (!draftSecret) throw new Error(t('ai.error.draft_secret_unavailable'));
         return apiClient.testAIConnection({
           projectId: input.projectId,
           providerId: input.providerId,
@@ -378,11 +378,10 @@ export const AICommandSurface = ({
   >({
     mutationFn: (action: 'propose' | 'approve') => {
       if (!settings || !selectedProviderIsActive || !selectedProvider || !selectedPrivacy) {
-        throw new Error('Select a registered provider before requesting privacy review.');
+        throw new Error(t('ai.error.provider_required_for_privacy'));
       }
       if (action === 'approve') {
-        if (!pendingPrivacyProposal)
-          throw new Error('No provider privacy proposal is awaiting review.');
+        if (!pendingPrivacyProposal) throw new Error(t('ai.error.no_privacy_proposal'));
         return apiClient.approveAIProviderPrivacyProposal({
           projectId: settings.projectId,
           providerId: selectedProvider.providerId,
@@ -426,7 +425,7 @@ export const AICommandSurface = ({
   const credentialActionMutation = useMutation({
     mutationFn: (action: 'revoke' | 'remove') => {
       if (!settings || !selectedProvider || !usableCredential) {
-        throw new Error('The exact active credential is no longer available.');
+        throw new Error(t('ai.error.active_credential_unavailable'));
       }
       const input = {
         projectId: settings.projectId,
@@ -614,7 +613,7 @@ export const AICommandSurface = ({
           </p>
         ) : null}
         {settingsQuery.isLoading ? <p>{t('ai.loading')}</p> : null}
-        {settingsQuery.isError ? <p role="alert">Failed to load AI settings.</p> : null}
+        {settingsQuery.isError ? <p role="alert">{t('ai.load_failed')}</p> : null}
         {settings && selectedProvider && selectedModel ? (
           <>
             <form onSubmit={handleSave}>

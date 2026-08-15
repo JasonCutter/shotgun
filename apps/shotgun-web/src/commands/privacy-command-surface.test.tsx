@@ -32,7 +32,10 @@ const shell: GlobalShellView = {
   fetchedAt: '2026-08-14T00:00:00.000Z',
 };
 
-const privacyView = (pendingReviewProposalId?: string): PrivacyRetentionView => ({
+const privacyView = (
+  pendingReviewProposalId?: string,
+  overrides: Partial<PrivacyRetentionView> = {},
+): PrivacyRetentionView => ({
   targetProjectId: 'project-1',
   profileName: 'CONTROLLED_EXTERNAL',
   sensitivityLevel: 'SENSITIVE',
@@ -46,11 +49,15 @@ const privacyView = (pendingReviewProposalId?: string): PrivacyRetentionView => 
   approvalRevision: 3,
   restrictedExternalTransferAllowed: false,
   ...(pendingReviewProposalId ? { pendingReviewProposalId } : {}),
+  ...overrides,
 });
 
-const privacyResponse = (pendingReviewProposalId?: string) => ({
+const privacyResponse = (
+  pendingReviewProposalId?: string,
+  overrides: Partial<PrivacyRetentionView> = {},
+) => ({
   availability: 'AVAILABLE' as const,
-  data: privacyView(pendingReviewProposalId),
+  data: privacyView(pendingReviewProposalId, overrides),
 });
 
 const runtime = (apiClient: Partial<ShotgunApiClient>): AppRuntime => ({
@@ -108,13 +115,51 @@ describe('PrivacyCommandSurface', () => {
       applySettingsCommand,
     });
 
-    expect(await screen.findByText('Controlled external access')).toBeTruthy();
+    expect(await screen.findByText('Controlled external')).toBeTruthy();
     expect(screen.getByText('Retained according to Project policy.')).toBeTruthy();
     expect(getPrivacyRetention).toHaveBeenCalledWith('project-1');
     expect(getSettingsSnapshot).not.toHaveBeenCalled();
     expect(applySettingsCommand).not.toHaveBeenCalled();
   });
 
+  it.each([
+    [
+      { profileName: 'LOCAL_ONLY', sensitivityLevel: 'NORMAL', approvalStatus: 'NOT_APPROVED' },
+      ['Local only', 'Normal', 'Not approved'],
+    ],
+    [
+      {
+        profileName: 'RESTRICTED_EXTERNAL',
+        sensitivityLevel: 'SENSITIVE',
+        approvalStatus: 'REVIEW_PENDING',
+      },
+      ['Restricted external', 'Sensitive', 'Review pending'],
+    ],
+    [
+      {
+        profileName: 'CONTROLLED_EXTERNAL',
+        sensitivityLevel: 'HIGHLY_SENSITIVE',
+        approvalStatus: 'APPROVED',
+      },
+      ['Controlled external', 'Highly sensitive', 'Approved'],
+    ],
+    [
+      { profileName: 'CUSTOM', sensitivityLevel: 'NORMAL', approvalStatus: 'APPROVED' },
+      ['Custom', 'Approved'],
+    ],
+  ] as const)(
+    'renders canonical privacy values with semantic presentation',
+    async (overrides, labels) => {
+      const getPrivacyRetention = vi.fn(async () => privacyResponse(undefined, overrides));
+      renderSurface('privacy.open', { getPrivacyRetention });
+      for (const label of labels)
+        expect((await screen.findAllByText(label)).length).toBeGreaterThan(0);
+      const approvalField = screen.getByText('Project approval:').parentElement;
+      expect(approvalField?.textContent).toContain(labels.at(-1));
+      if (overrides.approvalStatus === 'APPROVED')
+        expect(approvalField?.textContent).not.toContain('Not approved');
+    },
+  );
   it('uses current review preconditions and distinct identities for request and approval', async () => {
     const user = userEvent.setup();
     const applySettingsCommand = vi

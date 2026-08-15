@@ -1,4 +1,5 @@
 import type { GlobalShellView, ProjectListItemView, TargetRouteView } from '@shotgun/api-client';
+import type { ProductMessageKey } from '../localization/product-localization.js';
 
 import type { AnswerCommandContext } from './answer-command-context.js';
 
@@ -63,7 +64,7 @@ export type OwnerCommandDefinition = {
   readonly keywords: readonly string[];
   readonly availability: OwnerCommandAvailability;
   readonly reason?: string;
-  readonly reasonKey?: string;
+  readonly reasonKey?: ProductMessageKey;
   readonly risk: OwnerCommandRisk;
   readonly presentation: OwnerCommandPresentation;
   readonly context?: { readonly projectId?: string };
@@ -297,11 +298,12 @@ const focusedCommandAvailability = (
   shell: GlobalShellView,
   isOffline: boolean,
   label: string,
+  reasonKey: ProductMessageKey,
 ): Pick<OwnerCommandDefinition, 'availability' | 'reason' | 'reasonKey'> => {
   if (isOffline) {
     return {
       availability: 'UNAVAILABLE_WITH_REASON',
-      reason: `${label} is unavailable while offline.`,
+      reasonKey,
     };
   }
   if (!shell.activeProject) {
@@ -466,7 +468,12 @@ const HFM_COMMAND_TEMPLATES: readonly OwnerCommandTemplate[] = [
     presentation: 'DRAWER',
     action: { kind: 'OPEN_AI_FLOW', commandId: 'ai.configure' },
     getAvailability: (shell, isOffline) =>
-      focusedCommandAvailability(shell, isOffline, 'AI configuration'),
+      focusedCommandAvailability(
+        shell,
+        isOffline,
+        'AI configuration',
+        'commands.unavailable.ai_configuration_offline',
+      ),
   },
   {
     id: 'ai.test_connection',
@@ -479,7 +486,12 @@ const HFM_COMMAND_TEMPLATES: readonly OwnerCommandTemplate[] = [
     presentation: 'DIALOG',
     action: { kind: 'OPEN_AI_FLOW', commandId: 'ai.test_connection' },
     getAvailability: (shell, isOffline) =>
-      focusedCommandAvailability(shell, isOffline, 'AI connection test'),
+      focusedCommandAvailability(
+        shell,
+        isOffline,
+        'AI connection test',
+        'commands.unavailable.ai_test_offline',
+      ),
   },
   {
     id: 'privacy.open',
@@ -491,7 +503,13 @@ const HFM_COMMAND_TEMPLATES: readonly OwnerCommandTemplate[] = [
     risk: 'READ',
     presentation: 'DRAWER',
     action: { kind: 'OPEN_PRIVACY_FLOW', commandId: 'privacy.open' },
-    getAvailability: (shell, isOffline) => focusedCommandAvailability(shell, isOffline, 'Privacy'),
+    getAvailability: (shell, isOffline) =>
+      focusedCommandAvailability(
+        shell,
+        isOffline,
+        'Privacy',
+        'commands.unavailable.privacy_open_offline',
+      ),
   },
   {
     id: 'privacy.review',
@@ -504,7 +522,12 @@ const HFM_COMMAND_TEMPLATES: readonly OwnerCommandTemplate[] = [
     presentation: 'DIALOG',
     action: { kind: 'OPEN_PRIVACY_FLOW', commandId: 'privacy.review' },
     getAvailability: (shell, isOffline) =>
-      focusedCommandAvailability(shell, isOffline, 'Privacy review'),
+      focusedCommandAvailability(
+        shell,
+        isOffline,
+        'Privacy review',
+        'commands.unavailable.privacy_review_offline',
+      ),
   },
   {
     id: 'knowledge.open',
@@ -621,7 +644,7 @@ export const createOwnerCommandRegistry = ({
           aliases: ['switch project', 'project', '프로젝트 전환', '프로젝트 변경'],
           keywords: [project.label, 'switch', 'active project', '프로젝트'],
           availability: isOffline ? 'UNAVAILABLE_WITH_REASON' : 'AVAILABLE',
-          ...(isOffline ? { reason: 'Project switching is unavailable while offline.' } : {}),
+          ...(isOffline ? { reasonKey: 'commands.unavailable.project_switch_offline' } : {}),
           risk: 'WRITE',
           presentation: 'DIALOG',
           context: { projectId: project.id },

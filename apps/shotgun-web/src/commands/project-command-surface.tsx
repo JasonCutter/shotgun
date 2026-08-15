@@ -7,7 +7,6 @@ import { projectAdminQueryKey, purgeSettingsScopedCaches } from '../app/query-ke
 import { useAccessibleDialog } from '../app/use-accessible-dialog.js';
 import { safeErrorMessage } from '../components/error-state.js';
 import { useProductLocalization } from '../localization/product-localization.js';
-import { projectLifecycleLabel } from '../presentation/product-labels.js';
 import type { ProjectCommandId } from './owner-command-registry.js';
 
 type ProjectSurfaceStep = 'MANAGE' | 'CREATE' | 'SELECT' | 'RENAME' | 'RESTORE' | 'CONFIRM';
@@ -163,7 +162,7 @@ export const ProjectCommandSurface = ({
     ) => {
       const activeProjectId = shell.activeProject?.id;
       if (!activeProjectId)
-        throw new Error('Create Project is unavailable until a Project is active.');
+        throw new Error(t('project.error.active_project_required_for_creation'));
       return apiClient.createProject({
         id: input.id,
         name: input.name,
@@ -389,10 +388,7 @@ export const ProjectCommandSurface = ({
         ) : null}
         {outcomeRecovery ? (
           <div className="project-command-recovery" role="status">
-            <p>
-              The previous Project change has no confirmed result yet. Check the existing result
-              before trying again.
-            </p>
+            <p>{t('project.recovery_pending')}</p>
             <button type="button" onClick={() => void resolveOutcome()} disabled={pending}>
               {isResolvingOutcome ? t('common.checking') : t('common.check_result')}
             </button>
@@ -414,7 +410,11 @@ export const ProjectCommandSurface = ({
                   <div>
                     <strong>{project.name}</strong>
                     <span>
-                      {project.active ? t('project.active') : projectLifecycleLabel(project.status)}
+                      {project.active
+                        ? t('project.active')
+                        : project.status === 'ARCHIVED'
+                          ? t('project.lifecycle.archived')
+                          : t('project.lifecycle.unknown')}
                     </span>
                   </div>
                   <div className="project-command-actions">
@@ -509,14 +509,18 @@ export const ProjectCommandSurface = ({
           <>
             <p>{t('project.select_for_command')}</p>
             {eligibleProjects.length === 0 ? (
-              <p role="status">No eligible Projects are available for this action.</p>
+              <p role="status">{t('project.no_eligible_for_action')}</p>
             ) : null}
             <ul className="project-command-list">
               {eligibleProjects.map((project) => (
                 <li key={project.id}>
                   <button type="button" onClick={() => selectProject(project, commandId)}>
                     {project.name} ·{' '}
-                    {project.active ? t('project.active') : projectLifecycleLabel(project.status)}
+                    {project.active
+                      ? t('project.active')
+                      : project.status === 'ARCHIVED'
+                        ? t('project.lifecycle.archived')
+                        : t('project.lifecycle.unknown')}
                   </button>
                 </li>
               ))}

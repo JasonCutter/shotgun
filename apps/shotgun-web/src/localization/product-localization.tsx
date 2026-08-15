@@ -91,20 +91,30 @@ const enUS = {
   'privacy.review_check_failed': 'The privacy review result could not be checked. Try again.',
   'privacy.load_failed': 'Failed to load privacy settings.',
   'commands.unavailable.answer_offline': 'Answer actions are unavailable while offline.',
+  'commands.unavailable.ai_configuration_offline': 'AI configuration is unavailable while offline.',
+  'commands.unavailable.ai_test_offline': 'AI connection test is unavailable while offline.',
+  'commands.unavailable.privacy_open_offline': 'Privacy is unavailable while offline.',
+  'commands.unavailable.privacy_review_offline': 'Privacy review is unavailable while offline',
   'commands.unavailable.answer_pending':
     'Check the current answer request result before starting another action.',
   'commands.unavailable.search_offline': 'Search is unavailable while offline.',
   'commands.unavailable.project_offline': 'Project controls are unavailable while offline.',
+  'commands.unavailable.project_switch_offline': 'Project switching is unavailable while offline.',
   'commands.unavailable.preferences_offline': 'Preferences are unavailable while offline.',
   'commands.unavailable.preferences_project_required':
     'Preferences are unavailable until a Project is active.',
   'preferences.japanese_fallback': 'English fallback',
   'preferences.reduced_motion': 'Reduce Motion / Animations',
+  'project.no_eligible_for_action': 'No eligible Projects are available for this action.',
   'project.deletion_submitted': 'Deletion request submitted.',
+  'project.error.active_project_required_for_creation':
+    'Create Project is unavailable until a Project is active.',
   'project.created': 'Project created.',
   'project.recovery_pending':
     'The previous Project change has no confirmed result yet. Check the existing result before trying again.',
   'project.lifecycle.inactive': 'Inactive',
+  'project.lifecycle.archived': 'Archived',
+  'project.lifecycle.unknown': 'Unavailable lifecycle state',
   'ai.status.connected': 'Connected',
   'ai.status.authentication_failed': 'Authentication failed',
   'ai.status.model_unavailable': 'Model unavailable',
@@ -129,6 +139,14 @@ const enUS = {
   'privacy.owner_approval_explanation':
     'Owner approval is required before private Project context may be sent to external AI providers. Restricted context remains blocked.',
   'privacy.profile_label': 'Privacy profile:',
+  'privacy.profile.local_only': 'Local only',
+  'privacy.profile.restricted_external': 'Restricted external',
+  'privacy.profile.controlled_external': 'Controlled external',
+  'privacy.profile.custom': 'Custom',
+  'privacy.sensitivity.normal': 'Normal',
+  'privacy.sensitivity.sensitive': 'Sensitive',
+  'privacy.sensitivity.highly_sensitive': 'Highly sensitive',
+  'privacy.approval.approved': 'Approved',
   'privacy.sensitivity_label': 'Sensitivity:',
   'privacy.external_transfer_label': 'External transfer:',
   'privacy.project_approval_label': 'Project approval:',
@@ -141,6 +159,7 @@ const enUS = {
     'Approve private Project context transfer when deployment policy permits it?',
   'ai.configure': 'Configure AI',
   'ai.test': 'Test AI Connection',
+  'ai.load_failed': 'Failed to load AI settings.',
   'ai.loading': 'Loading AI settings...',
   'ai.provider': 'Provider',
   'ai.model': 'Model',
@@ -149,6 +168,13 @@ const enUS = {
   'ai.testing': 'Testing...',
   'ai.save_configuration': 'Save AI configuration',
   'ai.provider_privacy': 'Provider privacy',
+  'ai.error.credential_secret_unavailable': 'The credential secret is no longer available.',
+  'ai.error.credential_selection_unavailable': 'The exact credential could not be selected.',
+  'ai.error.draft_secret_unavailable': 'The draft secret is no longer available.',
+  'ai.error.provider_required_for_privacy':
+    'Select a registered provider before requesting privacy review.',
+  'ai.error.no_privacy_proposal': 'No provider privacy proposal is awaiting review.',
+  'ai.error.active_credential_unavailable': 'The exact active credential is no longer available.',
   'ai.credential_actions': 'Credential actions',
   'ai.configuration_saved': 'AI configuration saved.',
   'ai.configuration_ready':
@@ -453,7 +479,7 @@ const enUS = {
   'enum.sensitivity.unknown': 'Unclassified',
 } as const;
 
-type ProductMessageKey = keyof typeof enUS;
+export type ProductMessageKey = keyof typeof enUS;
 
 const koKR: Record<ProductMessageKey, string> = {
   'common.close': '닫기',
@@ -539,6 +565,13 @@ const koKR: Record<ProductMessageKey, string> = {
   'privacy.review_check_failed': '개인정보 검토 결과를 확인하지 못했습니다. 다시 시도하세요.',
   'privacy.load_failed': '개인정보 설정을 불러오지 못했습니다.',
   'commands.unavailable.answer_offline': '오프라인 상태에서는 답변 작업을 사용할 수 없습니다.',
+  'commands.unavailable.ai_configuration_offline':
+    '오프라인 상태에서는 AI 구성을 사용할 수 없습니다.',
+  'commands.unavailable.ai_test_offline':
+    '오프라인 상태에서는 AI 연결 테스트를 사용할 수 없습니다.',
+  'commands.unavailable.privacy_open_offline': '오프라인 상태에서는 개인정보를 사용할 수 없습니다.',
+  'commands.unavailable.privacy_review_offline':
+    '오프라인 상태에서는 개인정보 검토를 사용할 수 없습니다.',
   'commands.unavailable.answer_pending':
     '다른 작업을 시작하기 전에 현재 답변 요청 결과를 확인하세요.',
   'commands.unavailable.search_offline': '오프라인 상태에서는 검색을 사용할 수 없습니다.',
@@ -546,13 +579,20 @@ const koKR: Record<ProductMessageKey, string> = {
   'commands.unavailable.preferences_offline': '오프라인 상태에서는 환경설정을 사용할 수 없습니다.',
   'commands.unavailable.preferences_project_required':
     '프로젝트가 활성화될 때까지 환경설정을 사용할 수 없습니다.',
+  'commands.unavailable.project_switch_offline':
+    '오프라인 상태에서는 프로젝트 전환을 사용할 수 없습니다.',
   'preferences.japanese_fallback': '영어 기본값',
   'preferences.reduced_motion': '동작 줄이기 / 애니메이션',
+  'project.error.active_project_required_for_creation':
+    '활성 프로젝트가 있어야 프로젝트를 생첱할 수 있습니다.',
+  'project.no_eligible_for_action': '이 작업에 사용할 수 있는 프로젝트가 없습니다.',
   'project.deletion_submitted': '삭제 요청이 제출되었습니다.',
   'project.created': '프로젝트가 생성되었습니다.',
   'project.recovery_pending':
     '이전 프로젝트 변경의 확인된 결과가 아직 없습니다. 다시 시도하기 전에 기존 결과를 확인하세요.',
   'project.lifecycle.inactive': '비활성',
+  'project.lifecycle.archived': '보관됨',
+  'project.lifecycle.unknown': '확인할 수 없는 수명 주기 상태',
   'ai.status.connected': '연결됨',
   'ai.status.authentication_failed': '인증 실패',
   'ai.status.model_unavailable': '모델을 사용할 수 없음',
@@ -577,6 +617,14 @@ const koKR: Record<ProductMessageKey, string> = {
   'privacy.owner_approval_explanation':
     '비공개 프로젝트 컨텍스트를 외부 AI 제공자에게 전송하려면 소유자 승인이 필요합니다. 제한된 컨텍스트는 계속 차단됩니다.',
   'privacy.profile_label': '개인정보 프로필:',
+  'privacy.profile.local_only': '로컬 전용',
+  'privacy.profile.restricted_external': '제한된 외부',
+  'privacy.profile.controlled_external': '제어된 외부',
+  'privacy.profile.custom': '사용자 지정',
+  'privacy.sensitivity.normal': '일반',
+  'privacy.sensitivity.sensitive': '민감',
+  'privacy.sensitivity.highly_sensitive': '매우 민감',
+  'privacy.approval.approved': '승인됨',
   'privacy.sensitivity_label': '민감도:',
   'privacy.external_transfer_label': '외부 전송:',
   'privacy.project_approval_label': '프로젝트 승인:',
@@ -587,6 +635,7 @@ const koKR: Record<ProductMessageKey, string> = {
   'privacy.approve_transfer': '배포 정책이 허용할 때 비공개 프로젝트 컨텍스트 전송을 승인할까요?',
   'ai.configure': 'AI 구성',
   'ai.test': 'AI 연결 테스트',
+  'ai.load_failed': 'AI 설정을 불러오지 못했습니다.',
   'ai.loading': 'AI 설정을 불러오는 중...',
   'ai.provider': '제공자',
   'ai.model': '모델',
@@ -595,6 +644,13 @@ const koKR: Record<ProductMessageKey, string> = {
   'ai.testing': '테스트 중...',
   'ai.save_configuration': 'AI 구성 저장',
   'ai.provider_privacy': '제공자 개인정보',
+  'ai.error.credential_secret_unavailable': '자격 증명 비밀 값을 더 이상 사용할 수 없습니다.',
+  'ai.error.credential_selection_unavailable': '정확한 자격 증명을 선택할 수 없습니다.',
+  'ai.error.draft_secret_unavailable': '임시 비밀 값을 더 이상 사용할 수 없습니다.',
+  'ai.error.provider_required_for_privacy':
+    '개인정보 검토를 요청하려면 등록된 제공자를 선택하세요.',
+  'ai.error.no_privacy_proposal': '검토 대기 중인 제공자 개인정보 제안이 없습니다.',
+  'ai.error.active_credential_unavailable': '정확한 활성 자격 증명을 더 이상 사용할 수 없습니다.',
   'ai.credential_actions': '자격 증명 작업',
   'ai.configuration_saved': 'AI 구성을 저장했습니다.',
   'ai.configuration_ready': '선택한 제공자와 모델이 다음 새 AI 실행에 사용할 준비가 되었습니다.',

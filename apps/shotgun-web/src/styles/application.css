@@ -2321,6 +2321,7 @@ tr.graph-item--discovery {
 
 .activity-layout > .activity-detail {
   min-width: 0;
+  padding: 0;
 }
 
 .activity-queue {

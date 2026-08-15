@@ -1340,8 +1340,8 @@ main {
 .ask-conversation-surface .ask-conversation-list > li {
   font-size: 0.9rem;
 }
-.ask-conversation-current {
-  border-left-width: 0.2rem;
+.ask-conversation-surface .ask-conversation-current {
+  border-left: 0.2rem solid var(--accent);
   background: transparent;
   padding: 0.15rem 0.4rem;
 }
@@ -1422,6 +1422,9 @@ main {
 }
 .ask-answer-failure {
   margin: 0.75rem 0 0;
+}
+.ask-conversation-surface .answer-action-row {
+  margin-top: 0.75rem;
 }
 .ask-conversation-surface .answer-action-row > button {
   border-color: var(--line);

@@ -513,6 +513,55 @@ main {
   text-align: left;
 }
 
+.hfm-route-page .hfm-action-primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+}
+.hfm-route-page .hfm-action-secondary {
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+.hfm-route-page .hfm-action-destructive {
+  border-color: var(--danger);
+  background: var(--danger);
+  color: #fff;
+  font-weight: 700;
+}
+.hfm-route-page .hfm-action-selection {
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 600;
+}
+.hfm-route-page .hfm-action-primary:disabled,
+.hfm-route-page .hfm-action-secondary:disabled,
+.hfm-route-page .hfm-action-destructive:disabled,
+.hfm-route-page .hfm-action-selection:disabled {
+  opacity: 0.55;
+}
+.hfm-route-page .hfm-status-info {
+  margin: 0;
+  color: var(--muted);
+}
+.hfm-route-page .hfm-status-attention {
+  margin: 0;
+  border-left: 0.25rem solid var(--accent);
+  background: color-mix(in srgb, var(--surface) 94%, var(--accent));
+  color: var(--ink);
+  padding: 0.6rem 0.75rem;
+}
+.hfm-route-page .hfm-status-error {
+  margin: 0;
+  border-left: 0.25rem solid var(--danger);
+  background: color-mix(in srgb, var(--surface) 94%, var(--danger));
+  color: var(--danger);
+  padding: 0.6rem 0.75rem;
+}
+
 .modal-card form {
   display: grid;
   gap: 0.75rem;
@@ -1472,6 +1521,19 @@ main {
   color: var(--accent-strong);
   font-weight: 650;
 }
+.hfm-route-page .ask-conversation-surface .answer-action-row > .hfm-action-secondary {
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+.hfm-route-page .ask-conversation-surface .answer-action-row > .hfm-action-selection {
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 600;
+}
+
 .ask-command-notice {
   margin: 0;
   padding-left: 0.6rem;

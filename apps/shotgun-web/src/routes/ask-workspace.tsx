@@ -1099,6 +1099,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
 
           <div className="ask-question-actions">
             <button
+              className="hfm-action-primary"
               type="submit"
               disabled={
                 !draftReady ||
@@ -1113,22 +1114,28 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
               {isSubmitting ? t('ask.submitting') : t('ask.submit')}
             </button>
             {outcomeUnknown && pendingCommand ? (
-              <button type="button" disabled={isSubmitting} onClick={handleResolveOutcome}>
+              <button
+                className="hfm-action-secondary"
+                type="button"
+                disabled={isSubmitting}
+                onClick={handleResolveOutcome}
+              >
                 {t('ask.check_submission_outcome')}
               </button>
             ) : null}
           </div>
           {sourceSelectionMissing ? (
-            <p className="ask-form-status" role="status">
+            <p className="ask-form-status hfm-status-attention" role="status">
               {t('ask.source_selection_required')}
             </p>
           ) : null}
           {providerEligibility.data && !providerEligibility.data.eligible ? (
-            <div className="ask-form-status" role="status">
+            <div className="ask-form-status hfm-status-attention" role="status">
               <strong>{t('ask.action_required')}</strong> {providerEligibility.data.message}
               {providerEligibility.data.requiredAction === 'REVIEW_PROJECT_PRIVACY_SETTINGS' ? (
                 <p>
                   <button
+                    className="hfm-action-secondary"
                     type="button"
                     onClick={(event) => {
                       setPrivacyCommandInvoker(event.currentTarget);
@@ -1142,17 +1149,17 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
             </div>
           ) : null}
           {providerEligibility.isError ? (
-            <p className="ask-form-status" role="status">
+            <p className="ask-form-status hfm-status-attention" role="status">
               {t('ask.provider_eligibility_unavailable')}
             </p>
           ) : null}
           {submissionNotice ? (
-            <p className="ask-form-status" role="status">
+            <p className="ask-form-status hfm-status-info" role="status">
               {submissionNotice}
             </p>
           ) : null}
           {!submissionAvailable && providerEligibility.data?.eligible !== false ? (
-            <p className="ask-form-status" role="status">
+            <p className="ask-form-status hfm-status-attention" role="status">
               {t('ask.submission_unavailable')}
             </p>
           ) : null}
@@ -1228,7 +1235,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
       />
 
       {answerRunCommandNotice ? (
-        <p className="ask-command-notice" role="status">
+        <p className="ask-command-notice hfm-status-info" role="status">
           {answerRunCommandNotice}
         </p>
       ) : null}
@@ -1372,13 +1379,20 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                         </div>
                       ) : null}
                       {answerRun.state === 'SUCCEEDED' ? null : (
-                        <p className="ask-answer-status">
+                        <p
+                          className={`ask-answer-status ${
+                            answerRun.state === 'ACTION_REQUIRED' ||
+                            answerRun.state === 'OUTCOME_UNKNOWN'
+                              ? 'hfm-status-attention'
+                              : 'hfm-status-info'
+                          }`}
+                        >
                           {t('ask.answer_status')}:{' '}
                           <strong>{hfmOwnerLabel(t, 'answerRun', answerRun.state)}</strong>
                         </p>
                       )}
                       {answerRun.failure ? (
-                        <p className="ask-answer-failure" role="alert">
+                        <p className="ask-answer-failure hfm-status-error" role="alert">
                           {answerRun.failure.message}
                         </p>
                       ) : null}
@@ -1397,6 +1411,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                         <div className="answer-action-row">
                           {answerRun.capabilities.includes('CANCEL') ? (
                             <button
+                              className="hfm-action-secondary"
                               type="button"
                               disabled={answerRunMutationPending}
                               onClick={() => void handleCancelAnswerRun(answerRun.answerRunId)}
@@ -1407,6 +1422,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                           {answerRun.state === 'FAILED' &&
                           answerRun.capabilities.includes('RETRY_SAME_CONTEXT') ? (
                             <button
+                              className="hfm-action-selection"
                               type="button"
                               disabled={answerRunMutationPending}
                               onClick={() =>
@@ -1419,6 +1435,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                           {answerRun.state === 'FAILED' &&
                           answerRun.capabilities.includes('RETRY_CURRENT_POLICY') ? (
                             <button
+                              className="hfm-action-selection"
                               type="button"
                               disabled={answerRunMutationPending}
                               onClick={() =>
@@ -1430,6 +1447,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                           ) : null}
                           {hasAnswerCommands ? (
                             <button
+                              className="hfm-action-secondary"
                               type="button"
                               disabled={answerRunMutationPending}
                               aria-label={t('ask.answer_actions')}
@@ -1446,6 +1464,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                           {answerRunOutcomeUnknown &&
                           pendingAnswerRunCommand?.answerRunId === answerRun.answerRunId ? (
                             <button
+                              className="hfm-action-secondary"
                               type="button"
                               onClick={() => void handleResolveAnswerRunCommandOutcome()}
                             >

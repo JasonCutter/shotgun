@@ -376,24 +376,24 @@ export const SourcesWorkspace = () => {
         <h2 id="source-intake-heading">{t('sources.draft_queue')}</h2>
         <p>{t('sources.draft_help')}</p>
         {draftQueue.activeProjectMismatch ? (
-          <p className="warning-state" role="alert">
+          <p className="warning-state hfm-status-attention" role="alert">
             {t('sources.project_mismatch')}
           </p>
         ) : null}
         {draftQueue.invalidSeed ? (
-          <p className="warning-state" role="alert">
+          <p className="warning-state hfm-status-attention" role="alert">
             {t('sources.invalid_draft')}
           </p>
         ) : null}
         {mutationState !== 'IDLE' ? (
-          <p className="status-message" role="status" aria-live="polite">
+          <p className="status-message hfm-status-info" role="status" aria-live="polite">
             {mutationState === 'STAGING'
               ? t('sources.adding_draft')
               : t('sources.submitting_drafts')}
           </p>
         ) : null}
         {mutationError ? (
-          <p className="warning-state" role="alert">
+          <p className="warning-state hfm-status-error" role="alert">
             {mutationError}
           </p>
         ) : null}
@@ -466,7 +466,11 @@ export const SourcesWorkspace = () => {
               />
             </>
           ) : null}
-          <button type="submit" disabled={intakeKind === 'FILE' && !selectedFile}>
+          <button
+            className="hfm-action-secondary"
+            type="submit"
+            disabled={intakeKind === 'FILE' && !selectedFile}
+          >
             {t('sources.add_intake_draft')}
           </button>
         </form>
@@ -486,17 +490,30 @@ export const SourcesWorkspace = () => {
                     </p>
                     <small>{sourceDraftMessage(t, item.messageCode)}</small>
                   </div>
-                  <button type="button" onClick={() => draftQueue.remove(item.draftItemId)}>
+                  <button
+                    className="hfm-action-destructive"
+                    type="button"
+                    onClick={() => draftQueue.remove(item.draftItemId)}
+                  >
                     {t('sources.remove')} {item.label}
                   </button>
                 </li>
               ))}
             </ul>
             <div className="source-intake-actions">
-              <button type="button" onClick={draftQueue.discardAll}>
+              <button
+                className="hfm-action-destructive"
+                type="button"
+                onClick={draftQueue.discardAll}
+              >
                 {t('sources.discard_all')}
               </button>
-              <button type="button" disabled={!readyToSubmit} onClick={() => void submitDrafts()}>
+              <button
+                className="hfm-action-primary"
+                type="button"
+                disabled={!readyToSubmit}
+                onClick={() => void submitDrafts()}
+              >
                 {t('sources.submit_drafts')}
               </button>
             </div>
@@ -522,6 +539,7 @@ export const SourcesWorkspace = () => {
                   <div className="source-intake-actions">
                     {item.duplicateDecisionId ? (
                       <button
+                        className="hfm-action-secondary"
                         type="button"
                         onClick={() => void reviewDuplicate(item.duplicateDecisionId!)}
                       >
@@ -530,6 +548,7 @@ export const SourcesWorkspace = () => {
                     ) : null}
                     {item.capabilities.includes('RETRY_SAME_CONTEXT') ? (
                       <button
+                        className="hfm-action-selection"
                         type="button"
                         onClick={() => void retryItem(item.itemId, 'SAME_CONTEXT')}
                       >
@@ -538,6 +557,7 @@ export const SourcesWorkspace = () => {
                     ) : null}
                     {item.capabilities.includes('RETRY_CURRENT_POLICY') ? (
                       <button
+                        className="hfm-action-selection"
                         type="button"
                         onClick={() => void retryItem(item.itemId, 'CURRENT_POLICY')}
                       >
@@ -549,7 +569,11 @@ export const SourcesWorkspace = () => {
               ))}
             </ul>
             {submission.capabilities.includes('CANCEL') ? (
-              <button type="button" onClick={() => void cancelSubmission()}>
+              <button
+                className="hfm-action-secondary"
+                type="button"
+                onClick={() => void cancelSubmission()}
+              >
                 {t('sources.cancel_submission')}
               </button>
             ) : null}
@@ -567,6 +591,7 @@ export const SourcesWorkspace = () => {
               {decision.allowedDispositions.map((disposition) => (
                 <button
                   key={disposition}
+                  className="hfm-action-secondary"
                   type="button"
                   onClick={() => void resolveDuplicate(disposition)}
                   disabled={mutationState !== 'IDLE' || connectivity.isOffline}
@@ -594,7 +619,11 @@ export const SourcesWorkspace = () => {
                 disabled={connectivity.isOffline}
                 maxLength={500}
               />
-              <button type="submit" disabled={connectivity.isOffline}>
+              <button
+                className="hfm-action-secondary"
+                type="submit"
+                disabled={connectivity.isOffline}
+              >
                 {t('sources.search_submit')}
               </button>
             </div>

@@ -207,9 +207,9 @@ export const SourceDetailWorkspace = () => {
               <li key={version.sourceVersionId}>
                 <button
                   type="button"
-                  className={
-                    version.sourceVersionId === selectedVersionId ? 'selected-version' : undefined
-                  }
+                  className={`hfm-action-selection${
+                    version.sourceVersionId === selectedVersionId ? ' selected-version' : ''
+                  }`}
                   aria-pressed={version.sourceVersionId === selectedVersionId}
                   onClick={() => {
                     setSearchParameters({ version: version.sourceVersionId });

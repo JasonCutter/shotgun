@@ -12,6 +12,7 @@ import {
 
 import { AppProviders, type AppRuntime } from '../app/providers.js';
 import { createFrontendQueryClient } from '../app/query-client.js';
+import { ProductLocalizationProvider } from '../localization/product-localization.js';
 import { createSessionCycleState } from '../session/session-query.js';
 import { PrivacyCommandSurface } from './privacy-command-surface.js';
 
@@ -69,21 +70,31 @@ const runtime = (apiClient: Partial<ShotgunApiClient>): AppRuntime => ({
 const renderSurface = (
   commandId: 'privacy.open' | 'privacy.review',
   apiClient: Partial<ShotgunApiClient>,
+  locale: 'en-US' | 'ko-KR' = 'en-US',
 ) =>
   render(
-    <AppProviders runtime={runtime(apiClient)}>
-      <MemoryRouter>
-        <PrivacyCommandSurface
-          open
-          commandId={commandId}
-          shell={shell}
-          invoker={null}
-          onClose={vi.fn()}
-        />
-      </MemoryRouter>
+    <AppProviders
+      runtime={runtime({
+        getPrincipalPreferences: vi.fn(async () => ({
+          preferences: { locale },
+          revision: 1,
+        })),
+        ...apiClient,
+      })}
+    >
+      <ProductLocalizationProvider principalId="principal-1">
+        <MemoryRouter>
+          <PrivacyCommandSurface
+            open
+            commandId={commandId}
+            shell={shell}
+            invoker={null}
+            onClose={vi.fn()}
+          />
+        </MemoryRouter>
+      </ProductLocalizationProvider>
     </AppProviders>,
   );
-
 const snapshot = {
   schemaVersion: '1.0.0',
   targetProjectId: 'project-1',
@@ -263,5 +274,26 @@ describe('PrivacyCommandSurface', () => {
     );
     expect(applySettingsCommand).toHaveBeenCalledTimes(1);
     expect(getFrontendCommandOutcomeByClientRequestId).toHaveBeenCalledWith(expect.any(String));
+  });
+
+  it.each([
+    [
+      'en-US',
+      'Owner approval is required before private Project context may be sent to external AI providers. Restricted context remains blocked.',
+    ],
+    [
+      'ko-KR',
+      '비공개 프로젝트 컨텍스트를 외부 AI 제공자에게 전송하려면 소유자 승인이 필요합니다. 제한된 컨텍스트는 계속 차단됩니다.',
+    ],
+  ] as const)('renders the owner approval explanation in %s', async (locale, explanation) => {
+    renderSurface(
+      'privacy.review',
+      {
+        getPrivacyRetention: vi.fn(async () => privacyResponse('proposal-1')),
+        getSettingsSnapshot: vi.fn(async () => snapshot as never),
+      },
+      locale,
+    );
+    expect(await screen.findByText(explanation)).toBeTruthy();
   });
 });

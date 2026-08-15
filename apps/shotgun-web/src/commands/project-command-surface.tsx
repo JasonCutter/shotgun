@@ -6,7 +6,10 @@ import { useAppRuntime } from '../app/providers.js';
 import { projectAdminQueryKey, purgeSettingsScopedCaches } from '../app/query-keys.js';
 import { useAccessibleDialog } from '../app/use-accessible-dialog.js';
 import { safeErrorMessage } from '../components/error-state.js';
-import { useProductLocalization } from '../localization/product-localization.js';
+import {
+  type ProductMessageKey,
+  useProductLocalization,
+} from '../localization/product-localization.js';
 import type { ProjectCommandId } from './owner-command-registry.js';
 
 type ProjectSurfaceStep = 'MANAGE' | 'CREATE' | 'SELECT' | 'RENAME' | 'RESTORE' | 'CONFIRM';
@@ -36,6 +39,30 @@ const flowStep = (commandId: ProjectCommandId): ProjectSurfaceStep => {
   return 'CONFIRM';
 };
 
+const projectLifecyclePresentationKey = (
+  status: ProjectListItemView['status'],
+): ProductMessageKey => {
+  switch (status) {
+    case 'ACTIVE':
+      return 'project.lifecycle.active';
+    case 'ARCHIVING':
+      return 'project.lifecycle.archiving';
+    case 'ARCHIVED':
+      return 'project.lifecycle.archived';
+    case 'RESTORING':
+      return 'project.lifecycle.restoring';
+    case 'DELETE_REQUESTED':
+      return 'project.lifecycle.delete_requested';
+    case 'DELETING':
+      return 'project.lifecycle.deleting';
+    case 'DELETED':
+      return 'project.lifecycle.deleted';
+    case 'RECOVERY_REQUIRED':
+      return 'project.lifecycle.recovery_required';
+    default:
+      return 'project.lifecycle.unknown';
+  }
+};
 const isEligible = (project: ProjectListItemView, commandId: ProjectCommandId): boolean => {
   if (commandId === 'project.rename') return project.capability.canRename;
   if (commandId === 'project.archive') return project.capability.canArchive;
@@ -409,13 +436,7 @@ export const ProjectCommandSurface = ({
                 <li key={project.id} className="project-command-row">
                   <div>
                     <strong>{project.name}</strong>
-                    <span>
-                      {project.active
-                        ? t('project.active')
-                        : project.status === 'ARCHIVED'
-                          ? t('project.lifecycle.archived')
-                          : t('project.lifecycle.unknown')}
-                    </span>
+                    <span>{t(projectLifecyclePresentationKey(project.status))}</span>
                   </div>
                   <div className="project-command-actions">
                     {project.capability.canRename ? (
@@ -515,12 +536,7 @@ export const ProjectCommandSurface = ({
               {eligibleProjects.map((project) => (
                 <li key={project.id}>
                   <button type="button" onClick={() => selectProject(project, commandId)}>
-                    {project.name} ·{' '}
-                    {project.active
-                      ? t('project.active')
-                      : project.status === 'ARCHIVED'
-                        ? t('project.lifecycle.archived')
-                        : t('project.lifecycle.unknown')}
+                    {project.name} · {t(projectLifecyclePresentationKey(project.status))}
                   </button>
                 </li>
               ))}

@@ -93,7 +93,12 @@ const eligibleOtherProject: ProjectListItemView = {
 };
 
 const renderSurface = (
-  commandId: 'project.create' | 'project.rename' | 'project.archive' | 'project.delete_request',
+  commandId:
+    | 'project.create'
+    | 'project.rename'
+    | 'project.archive'
+    | 'project.delete_request'
+    | 'project.manage',
   apiClient: Partial<ShotgunApiClient>,
 ) =>
   render(
@@ -255,4 +260,29 @@ describe('ProjectCommandSurface', () => {
     );
     expect(updateProject).toHaveBeenCalledTimes(1);
   });
+  it.each([
+    ['ACTIVE', 'Active'],
+    ['ARCHIVING', 'Archiving'],
+    ['ARCHIVED', 'Archived'],
+    ['RESTORING', 'Restoring'],
+    ['DELETE_REQUESTED', 'Deletion requested'],
+    ['DELETING', 'Deleting'],
+    ['DELETED', 'Deleted'],
+    ['RECOVERY_REQUIRED', 'Recovery required'],
+  ] as const)(
+    'renders the canonical %s lifecycle as %s without localizing the Project name',
+    async (status, label) => {
+      const lifecycleProject: ProjectListItemView = {
+        ...project,
+        name: 'Project name from server',
+        status,
+        active: false,
+      };
+      renderSurface('project.manage', {
+        getProjects: vi.fn(async () => [lifecycleProject]),
+      });
+      expect(await screen.findByText(label)).toBeTruthy();
+      expect(screen.getByText('Project name from server')).toBeTruthy();
+    },
+  );
 });

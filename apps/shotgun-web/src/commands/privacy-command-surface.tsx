@@ -292,10 +292,7 @@ export const PrivacyCommandSurface = ({
             ) : null}
             {reviewMode && effectiveReviewProposalId ? (
               <div className="privacy-command-section">
-                <p>
-                  Owner approval is required before private Project context may be sent to external
-                  AI providers. Restricted context remains blocked.
-                </p>
+                <p>{t('privacy.owner_approval_explanation')}</p>
                 <button
                   type="button"
                   disabled={pending || snapshotQuery.data === undefined}

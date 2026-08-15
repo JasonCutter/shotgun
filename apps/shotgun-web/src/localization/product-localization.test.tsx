@@ -97,6 +97,21 @@ const Probe = () => {
       <p>{t('project.manage')}</p>
       <p>{t('ai.configure')}</p>
       <p>{t('privacy.review_title')}</p>
+      <p>{t('privacy.owner_approval_explanation')}</p>
+      {(
+        [
+          'project.lifecycle.active',
+          'project.lifecycle.archiving',
+          'project.lifecycle.archived',
+          'project.lifecycle.restoring',
+          'project.lifecycle.delete_requested',
+          'project.lifecycle.deleting',
+          'project.lifecycle.deleted',
+          'project.lifecycle.recovery_required',
+        ] as const
+      ).map((key) => (
+        <p key={key}>{t(key)}</p>
+      ))}
       <p>{t('technical.title')}</p>
       <p>{hfmOwnerLabel(t, 'askMode', 'SOURCE_EXPLORATION')}</p>
       <p>{hfmOwnerLabel(t, 'answerRun', 'FAILED')}</p>
@@ -204,4 +219,45 @@ describe('ProductLocalizationProvider', () => {
     expect(screen.getByText('Use selected sources')).toBeTruthy();
     expect(screen.getByText('Processing status unavailable')).toBeTruthy();
   });
+
+  it.each([
+    [
+      'ko-KR',
+      '비공개 프로젝트 컨텍스트를 외부 AI 제공자에게 전송하려면 소유자 승인이 필요합니다. 제한된 컨텍스트는 계속 차단됩니다.',
+      ['활성', '보관 중', '보관됨', '복원 중', '삭제 요청됨', '삭제 중', '삭제됨', '복구 필요'],
+    ],
+    [
+      'en-US',
+      'Owner approval is required before private Project context may be sent to external AI providers. Restricted context remains blocked.',
+      [
+        'Active',
+        'Archiving',
+        'Archived',
+        'Restoring',
+        'Deletion requested',
+        'Deleting',
+        'Deleted',
+        'Recovery required',
+      ],
+    ],
+  ] as const)(
+    'renders owner approval and every canonical lifecycle key in %s',
+    async (locale, explanation, lifecycleLabels) => {
+      const appRuntime = runtime(vi.fn(async () => ({ preferences: { locale }, revision: 1 })));
+      render(
+        <AppProviders runtime={appRuntime}>
+          <ProductLocalizationProvider principalId="principal-1">
+            <MemoryRouter>
+              <Probe />
+            </MemoryRouter>
+          </ProductLocalizationProvider>
+        </AppProviders>,
+      );
+      expect(await screen.findByText(explanation)).toBeTruthy();
+      for (const label of lifecycleLabels) {
+        expect(screen.getByText(label)).toBeTruthy();
+      }
+      expect(screen.getByText('JasonNote source content')).toBeTruthy();
+    },
+  );
 });

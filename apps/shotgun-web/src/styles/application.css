@@ -562,6 +562,98 @@ main {
   padding: 0.6rem 0.75rem;
 }
 
+.top-bar > div:first-child,
+.shell-controls,
+.global-tools {
+  min-width: 0;
+}
+.project-summary,
+.project-summary strong {
+  overflow-wrap: anywhere;
+}
+.home-action-center a,
+.home-action-center button,
+.home-action-center small {
+  overflow-wrap: anywhere;
+}
+.source-library-list > li > div:first-child,
+.source-intake-list > li > div:first-child {
+  min-width: 0;
+}
+.source-library-list h3,
+.source-library-metadata,
+.source-library-readiness,
+.source-intake-list strong,
+.source-intake-list p,
+.source-intake-list small,
+.source-intake-list button {
+  overflow-wrap: anywhere;
+}
+.source-detail-workspace > h1,
+.source-detail-preview .source-preview {
+  overflow-wrap: anywhere;
+}
+.source-detail-versions .source-version-list button {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.ask-conversation-list > li,
+.ask-selected-conversation,
+.ask-answer-content {
+  min-width: 0;
+}
+.ask-conversation-list a,
+.ask-conversation-current,
+.ask-selected-conversation > h3,
+.ask-turn-question,
+.ask-answer-content,
+.ask-form-status,
+.ask-answer-status,
+.ask-answer-failure,
+.ask-command-notice,
+.ask-answer-content article > p,
+.ask-answer-content > p,
+.ask-export-surface pre {
+  overflow-wrap: anywhere;
+}
+.hfm-route-page .hfm-status-info,
+.hfm-route-page .hfm-status-attention,
+.hfm-route-page .hfm-status-error {
+  overflow-wrap: anywhere;
+}
+.hfm-command-surface h2,
+.hfm-command-surface h3,
+.hfm-command-surface p,
+.hfm-command-surface label,
+.hfm-command-surface small,
+.hfm-command-surface strong,
+.hfm-command-surface button {
+  overflow-wrap: anywhere;
+}
+.owner-command-group-list button > span,
+.project-command-row > div:first-child {
+  min-width: 0;
+}
+.project-command-row strong,
+.project-command-row span {
+  overflow-wrap: anywhere;
+}
+.hfm-command-surface input,
+.hfm-command-surface select,
+.hfm-command-surface textarea {
+  min-width: 0;
+  max-width: 100%;
+}
+.hfm-command-surface .dialog-actions {
+  flex-wrap: wrap;
+}
+.hfm-command-surface .dialog-actions > button,
+.hfm-command-surface .project-command-actions > button {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .modal-card form {
   display: grid;
   gap: 0.75rem;
@@ -1761,6 +1853,27 @@ main {
 }
 
 @media (max-width: 760px) {
+  .project-command-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .project-command-actions {
+    justify-content: flex-start;
+  }
+  .hfm-command-surface .dialog-actions,
+  .hfm-command-surface .project-command-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .hfm-command-surface .dialog-actions > button,
+  .hfm-command-surface .project-command-actions > button {
+    width: 100%;
+  }
+  .technical-command-surface .technical-command-list > div {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+  }
+
   .ask-draft-surface .ask-question-form > textarea {
     min-height: 6.5rem;
   }

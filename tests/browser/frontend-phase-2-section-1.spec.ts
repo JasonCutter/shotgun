@@ -65,13 +65,14 @@ test('Sources keeps Project switching blocked after a partial delete and release
   await expect(page.locator('.project-summary')).toContainText('Project B');
 });
 
-test('Sources URL preflight is advisory, transient, responsive, and offline-safe', async ({
+test('Sources URL preflight is advisory, transient, PC-shell-safe, and offline-safe', async ({
   page,
   context,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/sources');
-  await expect(page.getByRole('navigation', { name: 'Mobile navigation' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Mobile navigation' })).toHaveCount(0);
 
   await page.getByLabel('Input type').selectOption('URL');
   await page.getByLabel('URL').fill('file:///etc/passwd');

@@ -104,7 +104,7 @@ const shellView = (created: boolean) => ({
   },
 });
 
-test('Section 3 renders responsive Shell and a compact Home', async ({ page }) => {
+test('Section 3 renders the PC Global Shell foundation and a compact Home', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
@@ -127,10 +127,10 @@ test('Section 3 renders responsive Shell and a compact Home', async ({ page }) =
   await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeHidden();
-  const mobileNavigation = page.getByRole('navigation', { name: 'Mobile navigation' });
-  await expect(mobileNavigation).toBeVisible();
-  await expect(mobileNavigation.getByRole('link')).toHaveText(['Home', 'Sources', 'Ask']);
+  const primaryNavigation = page.getByRole('navigation', { name: 'Primary navigation' });
+  await expect(primaryNavigation).toBeVisible();
+  await expect(primaryNavigation.getByRole('link')).toHaveText(['Home', 'Sources', 'Ask']);
+  await expect(page.getByRole('navigation', { name: 'Mobile navigation' })).toHaveCount(0);
   await expect(page.getByText('More', { exact: true })).toHaveCount(0);
 
   await page.setViewportSize({ width: 1280, height: 900 });

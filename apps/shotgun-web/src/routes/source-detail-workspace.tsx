@@ -137,7 +137,10 @@ export const SourceDetailWorkspace = () => {
           </dd>
         </div>
       </dl>
-      <section className="action-card" aria-labelledby="source-preview-heading">
+      <section
+        className="action-card source-detail-preview"
+        aria-labelledby="source-preview-heading"
+      >
         <h2 id="source-preview-heading">{t('source_detail.original_preview')}</h2>
         {preview.isPending ? <LoadingState message={t('source_detail.loading_preview')} /> : null}
         {preview.error ? <ErrorState error={preview.error} /> : null}
@@ -154,7 +157,10 @@ export const SourceDetailWorkspace = () => {
         ) : null}
       </section>
 
-      <section className="action-card" aria-labelledby="source-evidence-heading">
+      <section
+        className="action-card source-detail-evidence"
+        aria-labelledby="source-evidence-heading"
+      >
         <h2 id="source-evidence-heading">{t('source_detail.evidence')}</h2>
         {evidence.isPending ? <LoadingState message={t('source_detail.loading_evidence')} /> : null}
         {evidence.error ? <ErrorState error={evidence.error} /> : null}
@@ -188,7 +194,10 @@ export const SourceDetailWorkspace = () => {
         ) : null}
       </section>
 
-      <section className="action-card" aria-labelledby="source-version-heading">
+      <section
+        className="action-card source-detail-versions"
+        aria-labelledby="source-version-heading"
+      >
         <h2 id="source-version-heading">{t('source_detail.version_history')}</h2>
         {history.isPending ? <LoadingState message={t('source_detail.loading_history')} /> : null}
         {history.error ? <ErrorState error={history.error} /> : null}
@@ -216,14 +225,14 @@ export const SourceDetailWorkspace = () => {
         ) : null}
       </section>
       {detail.data.previewReadiness === 'READY' ? null : (
-        <p role="status">
+        <p className="source-detail-readiness" role="status">
           {t('source_detail.preview')}:{' '}
           {hfmOwnerLabel(t, 'sourcePreview', detail.data.previewReadiness)}
         </p>
       )}
       {detail.data.askUsageState === 'SOURCE_VERSION_READY' ||
       detail.data.askUsageState === 'EVIDENCE_READY' ? null : (
-        <p role="status">
+        <p className="source-detail-readiness" role="status">
           {t('source_detail.questions')}:{' '}
           {hfmOwnerLabel(t, 'sourceAskUsage', detail.data.askUsageState)}.{' '}
           {detail.data.askUsageExplanation}

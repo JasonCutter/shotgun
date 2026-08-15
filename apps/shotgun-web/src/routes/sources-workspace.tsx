@@ -372,7 +372,7 @@ export const SourcesWorkspace = () => {
       <p className="eyebrow">{t('sources.eyebrow')}</p>
       <h1 tabIndex={-1}>{t('sources.title')}</h1>
 
-      <section className="action-card" aria-labelledby="source-intake-heading">
+      <section className="action-card sources-intake" aria-labelledby="source-intake-heading">
         <h2 id="source-intake-heading">{t('sources.draft_queue')}</h2>
         <p>{t('sources.draft_help')}</p>
         {draftQueue.activeProjectMismatch ? (
@@ -428,8 +428,8 @@ export const SourcesWorkspace = () => {
             <option value="public">{hfmOwnerLabel(t, 'sensitivity', 'public')}</option>
             <option value="internal">{hfmOwnerLabel(t, 'sensitivity', 'internal')}</option>
             <option value="private">{hfmOwnerLabel(t, 'sensitivity', 'private')}</option>
-          </select>
-          <p>{t('sources.classification_help')}</p>
+          </select>{' '}
+          <p className="source-intake-help">{t('sources.classification_help')}</p>
           {intakeKind === 'DIRECT_TEXT' ? (
             <>
               <label htmlFor="source-intake-text">
@@ -579,7 +579,7 @@ export const SourcesWorkspace = () => {
         ) : null}
       </section>
 
-      <section className="action-card" aria-labelledby="source-library-heading">
+      <section className="action-card sources-library" aria-labelledby="source-library-heading">
         <div className="source-library-heading">
           <div>
             <h2 id="source-library-heading">{t('sources.library')}</h2>
@@ -634,12 +634,14 @@ export const SourcesWorkspace = () => {
                 <li key={source.sourceId}>
                   <div>
                     <h3>{source.label}</h3>
-                    <p>
+                    <p className="source-library-metadata">
                       {hfmOwnerLabel(t, 'mediaType', source.mediaType)} ·{' '}
                       {t('sources.classification')}:{' '}
                       {hfmOwnerLabel(t, 'sensitivity', source.sensitivity)}
                     </p>
-                    {readinessMessage ? <p>{readinessMessage}</p> : null}
+                    {readinessMessage ? (
+                      <p className="source-library-readiness">{readinessMessage}</p>
+                    ) : null}
                   </div>
                   <div className="source-library-status">
                     <Link

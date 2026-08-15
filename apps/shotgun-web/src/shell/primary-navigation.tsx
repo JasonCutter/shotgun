@@ -53,17 +53,10 @@ export const PrimaryNavigation = ({
   const { t } = useProductLocalization();
   const visible = navigation.filter((item) => item.availability !== 'HIDDEN');
   return (
-    <>
-      <nav className="primary-navigation" aria-label={t('shell.primary_navigation')}>
-        <ul>
-          <NavigationItems items={visible} />
-        </ul>
-      </nav>
-      <nav className="mobile-navigation" aria-label={t('shell.mobile_navigation')}>
-        <ul>
-          <NavigationItems items={visible} />
-        </ul>
-      </nav>
-    </>
+    <nav className="primary-navigation" aria-label={t('shell.primary_navigation')}>
+      <ul>
+        <NavigationItems items={visible} />
+      </ul>
+    </nav>
   );
 };

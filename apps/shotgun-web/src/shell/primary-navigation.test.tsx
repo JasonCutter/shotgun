@@ -27,21 +27,21 @@ const navigation: GlobalShellView['navigation'] = [
   },
 ];
 
-describe('PrimaryNavigation HFM-S3 compression', () => {
-  it('renders the same exact three destinations on desktop and mobile', () => {
+describe('PrimaryNavigation HFM-S7-C1 transition', () => {
+  it('renders the exact three desktop destinations without a mobile navigation surface', () => {
     render(
       <MemoryRouter>
         <PrimaryNavigation navigation={navigation} />
       </MemoryRouter>,
     );
 
-    for (const name of ['Primary navigation', 'Mobile navigation']) {
-      expect(
-        within(screen.getByRole('navigation', { name }))
-          .getAllByRole('link')
-          .map((link) => link.textContent),
-      ).toEqual(['Home', 'Sources', 'Ask']);
-    }
+    const primaryNavigation = screen.getByRole('navigation', { name: 'Primary navigation' });
+    expect(
+      within(primaryNavigation)
+        .getAllByRole('link')
+        .map((link) => link.textContent),
+    ).toEqual(['Home', 'Sources', 'Ask']);
+    expect(screen.queryByRole('navigation', { name: 'Mobile navigation' })).toBeNull();
     expect(screen.queryByText('More', { exact: true })).toBeNull();
     for (const removed of [
       'Knowledge',

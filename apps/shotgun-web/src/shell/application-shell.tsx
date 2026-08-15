@@ -122,28 +122,42 @@ const LocalizedApplicationShell = ({
       <TechnicalInspectionProvider>
         <div className="application-shell">
           <SkipLink />
-          <TopBar shell={shell} />
-          {offline ? (
-            <div className="global-banner global-banner-critical" role="alert">
-              {t('shell.offline')}
+          <div className="pc-global-shell">
+            <div className="pc-global-shell__instrument" data-global-shell-region="instrument">
+              <TopBar shell={shell} />
             </div>
-          ) : shell.leadingWarning ? (
-            <div
-              className={`global-banner global-banner-${shell.leadingWarning.severity.toLowerCase()}`}
-              role={shell.leadingWarning.severity === 'CRITICAL' ? 'alert' : 'status'}
+            {offline ? (
+              <div className="global-banner global-banner-critical" role="alert">
+                {t('shell.offline')}
+              </div>
+            ) : shell.leadingWarning ? (
+              <div
+                className={`global-banner global-banner-${shell.leadingWarning.severity.toLowerCase()}`}
+                role={shell.leadingWarning.severity === 'CRITICAL' ? 'alert' : 'status'}
+              >
+                {shell.leadingWarning.message}
+                {shell.leadingWarning.additionalCount > 0
+                  ? ` (${shell.leadingWarning.additionalCount} ${t('shell.additional_states')})`
+                  : ''}
+              </div>
+            ) : null}
+            <div className="pc-global-shell__tree" data-global-shell-region="tree">
+              <PrimaryNavigation navigation={shell.navigation} />
+            </div>
+            <main
+              id="main-content"
+              className="pc-global-shell__center"
+              data-global-shell-region="center"
+              tabIndex={-1}
             >
-              {shell.leadingWarning.message}
-              {shell.leadingWarning.additionalCount > 0
-                ? ` (${shell.leadingWarning.additionalCount} ${t('shell.additional_states')})`
-                : ''}
-            </div>
-          ) : null}
-          <div className="workspace-layout">
-            <PrimaryNavigation navigation={shell.navigation} />
-            <main id="main-content" tabIndex={-1}>
               <RouteFocus />
               <Outlet context={{ shell }} />
             </main>
+            <div
+              className="pc-global-shell__conversation"
+              data-global-shell-region="conversation"
+            />
+            <div className="pc-global-shell__composer" data-global-shell-region="composer" />
           </div>
         </div>
       </TechnicalInspectionProvider>

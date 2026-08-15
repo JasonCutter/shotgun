@@ -148,7 +148,7 @@ const renderShell = (locale: 'en-US' | 'ko-KR' = 'en-US', shellView: GlobalShell
 };
 
 describe('ApplicationShell', () => {
-  it('localizes only the leading-warning wrapper around the server message', async () => {
+  it('preserves the leading-warning wrapper within the PC global shell', async () => {
     renderShell('ko-KR', {
       ...shell,
       leadingWarning: {
@@ -163,13 +163,37 @@ describe('ApplicationShell', () => {
       'Server-owned warning text (2 추가 상태)',
     );
     expect(screen.queryByText(/additional states/)).toBeNull();
+    expect(document.querySelector('[data-global-shell-region="instrument"]')).toBeTruthy();
   });
 
-  it('provides landmarks, skip navigation, current navigation, and project context', async () => {
+  it('preserves the owner-visible offline recovery state within the PC global shell', async () => {
+    const online = vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false);
+    try {
+      renderShell();
+      expect(await screen.findByRole('alert')).toBeTruthy();
+      expect(document.querySelector('[data-global-shell-region="instrument"]')).toBeTruthy();
+      expect(document.querySelector('[data-global-shell-region="center"]')).toBeTruthy();
+    } finally {
+      online.mockRestore();
+    }
+  });
+
+  it('provides one five-region PC global shell with transitional navigation and route content', async () => {
     renderShell();
     expect(await screen.findByRole('banner')).toBeTruthy();
-    expect(screen.getByRole('navigation', { name: 'Primary navigation' })).toBeTruthy();
-    expect(screen.getByRole('main')).toBeTruthy();
+
+    for (const region of ['instrument', 'tree', 'center', 'conversation', 'composer']) {
+      expect(document.querySelectorAll(`[data-global-shell-region="${region}"]`)).toHaveLength(1);
+    }
+
+    const treeRegion = document.querySelector('[data-global-shell-region="tree"]');
+    const centerRegion = document.querySelector('[data-global-shell-region="center"]');
+    const conversationRegion = document.querySelector('[data-global-shell-region="conversation"]');
+    const composerRegion = document.querySelector('[data-global-shell-region="composer"]');
+    const navigation = screen.getByRole('navigation', { name: 'Primary navigation' });
+
+    expect(treeRegion?.contains(navigation)).toBe(true);
+    expect(screen.getByRole('main')).toBe(centerRegion);
     expect(screen.getByRole('link', { name: /main content/i }).getAttribute('href')).toBe(
       '#main-content',
     );
@@ -177,14 +201,16 @@ describe('ApplicationShell', () => {
       'page',
     );
     expect(screen.getAllByText('Project A', { selector: 'strong' })).toHaveLength(1);
-    for (const name of ['Primary navigation', 'Mobile navigation']) {
-      const navigation = screen.getByRole('navigation', { name });
-      expect(
-        within(navigation)
-          .getAllByRole('link')
-          .map((link) => link.textContent),
-      ).toEqual(['Home', 'Sources', 'Ask']);
-    }
+    expect(
+      within(navigation)
+        .getAllByRole('link')
+        .map((link) => link.textContent),
+    ).toEqual(['Home', 'Sources', 'Ask']);
+    expect(screen.queryByRole('navigation', { name: 'Mobile navigation' })).toBeNull();
+    expect(
+      conversationRegion?.querySelector('button, input, textarea, [role="textbox"]'),
+    ).toBeNull();
+    expect(composerRegion?.querySelector('button, input, textarea, [role="textbox"]')).toBeNull();
     expect(screen.queryByText('More', { exact: true })).toBeNull();
     expect(screen.queryByRole('link', { name: 'Settings' })).toBeNull();
   });

@@ -2314,9 +2314,13 @@ tr.graph-item--discovery {
 
 .activity-layout {
   display: grid;
-  grid-template-columns: minmax(20rem, 26rem) 1fr;
+  grid-template-columns: minmax(20rem, 26rem) minmax(0, 1fr);
   gap: 1rem;
   align-items: start;
+}
+
+.activity-layout > .activity-detail {
+  min-width: 0;
 }
 
 .activity-queue {

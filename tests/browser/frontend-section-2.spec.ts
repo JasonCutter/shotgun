@@ -26,9 +26,13 @@ test('HFM-S3 replaces Settings IA with focused owner commands without browser au
 
   await page.goto('/');
   const primaryNavigation = page.getByRole('navigation', { name: 'Primary navigation' });
-  await expect(primaryNavigation.getByRole('link')).toHaveText(['Home', 'Sources', 'Ask']);
-  await expect(page.getByRole('link', { name: 'Settings' })).toHaveCount(0);
-  await expect(page.getByRole('combobox', { name: 'Current project' })).toHaveCount(0);
+  await expect(primaryNavigation.getByRole('link', { name: 'Home' })).toBeVisible();
+  await expect(primaryNavigation.getByRole('link', { name: 'Library' })).toBeVisible();
+  await expect(primaryNavigation.getByRole('link', { name: 'Conversations' })).toBeVisible();
+  await expect(
+    primaryNavigation.getByText('Settings', { exact: true, selector: 'summary' }),
+  ).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Current project' })).toHaveCount(1);
 
   const palette = await openCommandPalette(page);
   for (const command of [/Manage Projects/, /Set Locale/, /Configure AI/, /Review Privacy/]) {

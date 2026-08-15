@@ -26,8 +26,8 @@ test('Frontend Section 1 restores server Project context and protects routes', a
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
   await expect(page.locator('.project-summary')).toContainText('shotgun');
-  await expect(page.getByRole('link', { name: 'Settings' })).toHaveCount(0);
-  await expect(page.getByRole('combobox', { name: 'Current project' })).toHaveCount(0);
+  await expect(page.getByText('Settings', { exact: true, selector: 'summary' })).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Current project' })).toHaveCount(1);
 
   await page.route('**/api/v1/session/active-project', async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 250));
@@ -43,21 +43,14 @@ test('Frontend Section 1 restores server Project context and protects routes', a
 
   const primaryNavigation = page.getByRole('navigation', { name: 'Primary navigation' });
   for (const [link, heading] of [
-    ['Sources', 'Sources'],
-    ['Ask', 'Ask'],
+    ['Library', 'Sources'],
+    ['Conversations', 'Ask'],
     ['Home', 'Home'],
   ] as const) {
     await primaryNavigation.getByRole('link', { name: link, exact: true }).click();
     await expect(page.getByRole('heading', { level: 1, name: heading })).toBeFocused();
   }
-  for (const removed of [
-    'Knowledge',
-    'Review',
-    'External actions',
-    'Activity',
-    'History',
-    'Settings',
-  ]) {
+  for (const removed of ['Knowledge', 'Review', 'External actions', 'Activity', 'History']) {
     await expect(
       page.locator('nav.primary-navigation, nav.mobile-navigation').getByRole('link', {
         name: removed,
@@ -65,6 +58,10 @@ test('Frontend Section 1 restores server Project context and protects routes', a
     ).toHaveCount(0);
     await expect(page.locator('.navigation-disabled', { hasText: removed })).toHaveCount(0);
   }
+
+  await expect(
+    primaryNavigation.getByText('Settings', { exact: true, selector: 'summary' }),
+  ).toBeVisible();
 
   const storage = await page.evaluate(() => ({
     local: Object.keys(localStorage),

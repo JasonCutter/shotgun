@@ -120,6 +120,23 @@ const runtime = (
     getGlobalShell: vi.fn(async () => shellView),
     getHomeActionCenter: vi.fn(async () => home),
     getProjects: vi.fn(async () => []),
+    getAISettings: vi.fn(async () => ({
+      projectId: 'project-a',
+      defaultProviderId: 'provider-a',
+      currentConfiguration: { activeProviderId: 'provider-a', activeModelId: 'model-a' },
+      providers: [
+        {
+          providerId: 'provider-a',
+          displayName: 'Provider A',
+          status: 'active',
+          models: [{ modelId: 'model-a', displayName: 'Model A' }],
+        },
+      ],
+      privacy: [],
+      credentialStatuses: [],
+      vaultAvailability: { state: 'AVAILABLE' },
+    })),
+    testAIConnection: vi.fn(),
     getPrincipalPreferences: vi.fn(async () => ({
       preferences: { locale },
       revision: 1,
@@ -145,6 +162,7 @@ const renderShell = (locale: 'en-US' | 'ko-KR' = 'en-US', shellView: GlobalShell
       <RouterProvider router={router} />
     </AppProviders>,
   );
+  return appRuntime;
 };
 
 describe('ApplicationShell', () => {
@@ -178,7 +196,7 @@ describe('ApplicationShell', () => {
     }
   });
 
-  it('provides one five-region PC global shell with transitional navigation and route content', async () => {
+  it('provides one five-region PC global shell with an Instrument Panel and C2 Tree', async () => {
     renderShell();
     expect(await screen.findByRole('banner')).toBeTruthy();
 
@@ -200,36 +218,44 @@ describe('ApplicationShell', () => {
     expect(screen.getAllByRole('link', { name: 'Home' })[0]?.getAttribute('aria-current')).toBe(
       'page',
     );
-    expect(screen.getAllByText('Project A', { selector: 'strong' })).toHaveLength(1);
-    expect(
-      within(navigation)
-        .getAllByRole('link')
-        .map((link) => link.textContent),
-    ).toEqual(['Home', 'Sources', 'Ask']);
+    const projectSelector = screen.getByRole('combobox', { name: 'Current project' });
+    expect((projectSelector as HTMLSelectElement).value).toBe('project-a');
+    expect(screen.getByLabelText('Workspace breadcrumb').textContent).toBe('Home');
+    expect(await screen.findByText('Provider A / Model A')).toBeTruthy();
+    expect(within(navigation).getByRole('link', { name: 'Home' })).toBeTruthy();
+    expect(within(navigation).getByRole('link', { name: 'Library' })).toBeTruthy();
+    expect(within(navigation).getByRole('link', { name: 'Add Source' })).toBeTruthy();
+    expect(within(navigation).getByRole('link', { name: 'Conversations' })).toBeTruthy();
+    expect(within(navigation).getByText('Settings', { selector: 'summary' })).toBeTruthy();
+    expect(within(navigation).queryByText('Knowledge', { exact: true })).toBeNull();
+    expect(within(navigation).queryByText('Review', { exact: true })).toBeNull();
     expect(screen.queryByRole('navigation', { name: 'Mobile navigation' })).toBeNull();
     expect(
       conversationRegion?.querySelector('button, input, textarea, [role="textbox"]'),
     ).toBeNull();
     expect(composerRegion?.querySelector('button, input, textarea, [role="textbox"]')).toBeNull();
     expect(screen.queryByText('More', { exact: true })).toBeNull();
-    expect(screen.queryByRole('link', { name: 'Settings' })).toBeNull();
   });
 
-  it('exposes the implemented Sources workspace as a registered link', async () => {
+  it('exposes the implemented Sources Library workspace as a registered Tree link', async () => {
     renderShell();
-    expect((await screen.findAllByRole('link', { name: 'Sources' })).length).toBeGreaterThan(0);
+    expect((await screen.findAllByRole('link', { name: 'Library' })).length).toBeGreaterThan(0);
   });
 
-  it('opens the same owner-command registry from Ctrl/Cmd+K without a persistent button', async () => {
+  it('shares the owner-command registry between the C2 Tree and Ctrl/Cmd+K without an AI connection test', async () => {
     const user = userEvent.setup();
-    renderShell();
+    const appRuntime = renderShell();
 
     await screen.findByRole('heading', { name: 'Home' });
-    expect(screen.queryByRole('button', { name: 'Search' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Search' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Commands' })).toBeNull();
     await user.keyboard('{Control>}k{/Control}');
     expect(screen.getByRole('dialog', { name: 'Commands' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Navigation' })).toBeTruthy();
     expect(screen.getByRole('button', { name: /Open Knowledge/ })).toBeTruthy();
+    expect(
+      (appRuntime.apiClient as unknown as { testAIConnection: { mock: { calls: unknown[] } } })
+        .testAIConnection.mock.calls,
+    ).toHaveLength(0);
   });
 });

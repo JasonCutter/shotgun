@@ -26,7 +26,7 @@ test('Frontend Section 1 restores server Project context and protects routes', a
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
   await expect(page.locator('.project-summary')).toContainText('shotgun');
-  await expect(page.getByText('Settings', { exact: true, selector: 'summary' })).toBeVisible();
+  await expect(page.locator('summary').filter({ hasText: 'Settings' })).toBeVisible();
   await expect(page.getByRole('combobox', { name: 'Current project' })).toHaveCount(1);
 
   await page.route('**/api/v1/session/active-project', async (route) => {
@@ -59,9 +59,7 @@ test('Frontend Section 1 restores server Project context and protects routes', a
     await expect(page.locator('.navigation-disabled', { hasText: removed })).toHaveCount(0);
   }
 
-  await expect(
-    primaryNavigation.getByText('Settings', { exact: true, selector: 'summary' }),
-  ).toBeVisible();
+  await expect(primaryNavigation.locator('summary').filter({ hasText: 'Settings' })).toBeVisible();
 
   const storage = await page.evaluate(() => ({
     local: Object.keys(localStorage),

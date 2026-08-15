@@ -132,9 +132,7 @@ test('Section 3 renders the PC Global Shell foundation and a compact Home', asyn
   await expect(primaryNavigation.getByRole('link', { name: 'Home' })).toBeVisible();
   await expect(primaryNavigation.getByRole('link', { name: 'Library' })).toBeVisible();
   await expect(primaryNavigation.getByRole('link', { name: 'Conversations' })).toBeVisible();
-  await expect(
-    primaryNavigation.getByText('Settings', { exact: true, selector: 'summary' }),
-  ).toBeVisible();
+  await expect(primaryNavigation.locator('summary').filter({ hasText: 'Settings' })).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Mobile navigation' })).toHaveCount(0);
   await expect(page.getByText('More', { exact: true })).toHaveCount(0);
 

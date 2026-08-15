@@ -332,6 +332,68 @@ main {
   contain-intrinsic-size: auto 14rem;
 }
 
+.home-action-center {
+  gap: 1.25rem;
+}
+.home-primary-actions,
+.hfm-route-page.first-run {
+  border: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  background: var(--surface);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 10%);
+  backdrop-filter: blur(16px) saturate(115%);
+  -webkit-backdrop-filter: blur(16px) saturate(115%);
+}
+.home-primary-actions {
+  padding: 1.25rem;
+}
+.hfm-route-page.first-run {
+  padding: clamp(1.25rem, 3vw, 2rem);
+}
+.home-primary-actions .action-grid {
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 20rem));
+  justify-content: start;
+}
+.home-primary-actions .action-grid a {
+  display: grid;
+  min-height: 3rem;
+  place-items: center;
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+  text-align: center;
+}
+.home-primary-actions .action-grid button:disabled {
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--muted);
+}
+.home-attention {
+  border-left-width: 0.25rem;
+  background: var(--surface);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.home-continue,
+.home-recent-pinned {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 1rem 0;
+}
+.home-browser-drafts {
+  margin-top: 1rem;
+}
+.home-browser-drafts h3 {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.home-browser-drafts small {
+  color: var(--muted);
+}
 .action-card h2 {
   margin-top: 0;
 }
@@ -1449,6 +1511,12 @@ main {
 }
 
 @media (prefers-reduced-transparency: reduce) {
+  .home-primary-actions,
+  .hfm-route-page.first-run {
+    background: var(--surface);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
   .mobile-navigation {
     background: var(--surface);
     backdrop-filter: none;
@@ -1456,6 +1524,14 @@ main {
   }
 }
 @media (forced-colors: active) {
+  .home-primary-actions,
+  .hfm-route-page.first-run {
+    border: 1px solid CanvasText;
+    background: Canvas;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
   .action-card,
   .modal-card,
   .global-banner,

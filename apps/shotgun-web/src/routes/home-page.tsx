@@ -80,7 +80,10 @@ export const HomePage = () => {
         </p>
       ) : null}
 
-      <section aria-labelledby="primary-actions-heading" className="action-card">
+      <section
+        aria-labelledby="primary-actions-heading"
+        className="action-card home-primary-actions"
+      >
         <h2 id="primary-actions-heading">{t('home.primary_actions')}</h2>
         <ul className="action-grid">
           {home.primaryActions.map((action) => (
@@ -105,7 +108,7 @@ export const HomePage = () => {
       </section>
 
       {home.attention.length > 0 ? (
-        <section aria-labelledby="attention-heading" className="action-card">
+        <section aria-labelledby="attention-heading" className="action-card home-attention">
           <h2 id="attention-heading">{t('home.attention')}</h2>
           <ol>
             {home.attention.map((item) => (
@@ -119,7 +122,7 @@ export const HomePage = () => {
       ) : null}
 
       {home.continueWorking.length > 0 || browserDrafts.length > 0 ? (
-        <section aria-labelledby="continue-heading" className="action-card">
+        <section aria-labelledby="continue-heading" className="action-card home-continue">
           <h2 id="continue-heading">{t('home.continue_working')}</h2>
           {home.continueWorking.length > 0 ? (
             <>
@@ -128,7 +131,7 @@ export const HomePage = () => {
             </>
           ) : null}
           {browserDrafts.length > 0 ? (
-            <>
+            <div className="home-browser-drafts">
               <h3>{t('home.browser_drafts')}</h3>
               <ul>
                 {browserDrafts.map((draft) => (
@@ -138,13 +141,13 @@ export const HomePage = () => {
                   </li>
                 ))}
               </ul>
-            </>
+            </div>
           ) : null}
         </section>
       ) : null}
 
       {home.recent.length > 0 || home.pinned.length > 0 ? (
-        <section aria-labelledby="recent-pinned-heading" className="action-card">
+        <section aria-labelledby="recent-pinned-heading" className="action-card home-recent-pinned">
           <h2 id="recent-pinned-heading">{t('home.recent_and_pinned')}</h2>
           <div className="two-column-list">
             {home.recent.length > 0 ? (

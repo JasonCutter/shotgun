@@ -10,7 +10,7 @@ test('Human-readable primary UI smoke', async ({ page }) => {
   await page.goto('/sources');
   await expect(page.getByRole('heading', { name: 'Sources', level: 1 })).toBeVisible();
   await expect(page.locator('.project-summary')).toContainText('shotgun');
-  await expect(page.getByRole('combobox', { name: 'Current project' })).toHaveCount(0);
+  await expect(page.getByRole('combobox', { name: 'Current project' })).toBeVisible();
   await expect(page.getByText(/Principal [0-9a-f-]{20,}/i)).toHaveCount(0);
 
   await page.getByLabel('Label').fill(sourceLabel);

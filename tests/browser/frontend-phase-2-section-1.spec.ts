@@ -59,6 +59,8 @@ test('Sources keeps Project switching blocked after a partial delete and release
   await expect(page.locator('.global-tools [aria-live="polite"]')).toContainText(
     'Resolve the current Workspace before switching Projects.',
   );
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'Commands' })).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Remove Draft B' }).click();
   await switchProject(page, 'Project B');

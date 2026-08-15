@@ -91,7 +91,7 @@ test('Ask draft blocks Project switching and is not moved to the next Project', 
   await page
     .getByRole('navigation', { name: 'Primary navigation' })
     .getByRole('link', {
-      name: 'Ask',
+      name: 'Conversations',
     })
     .click();
   await expect(page.getByRole('heading', { name: 'Ask', level: 1 })).toBeVisible();

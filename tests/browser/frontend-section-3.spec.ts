@@ -141,7 +141,7 @@ test('Section 3 renders the PC Global Shell foundation and a compact Home', asyn
     document.documentElement.style.zoom = '200%';
   });
   await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Search', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Search', exact: true })).toBeVisible();
   await page.keyboard.press('Control+k');
   await expect(page.getByRole('dialog', { name: 'Commands' })).toBeVisible();
 });
@@ -163,7 +163,7 @@ test('Section 3 Search and Command Palette keep query transient and keyboard-saf
   });
 
   await page.goto('/');
-  await expect(page.getByRole('button', { name: 'Search', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Search', exact: true })).toBeVisible();
   const keyboardInvoker = page
     .getByRole('navigation', { name: 'Primary navigation' })
     .getByRole('link', { name: 'Home', exact: true });
@@ -245,6 +245,8 @@ test('Section 3 blocks unsafe leave state, warns on offline state, and restores 
   await expect(page.locator('.global-tools [aria-live="polite"]')).toContainText(
     'Resolve the current Workspace before switching Projects.',
   );
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'Commands' })).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Remove Guarded draft' }).click();
   await switchProject(page, 'Project B');

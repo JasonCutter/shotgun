@@ -46,7 +46,6 @@ export interface ShotgunLaunchOptions {
   readonly noOpen: boolean;
   readonly databaseUrl: string;
   readonly stagingSecret: string;
-  readonly geminiApiKey: string;
   readonly port: number;
   readonly host: string;
   readonly spaDirectory: string;
@@ -131,23 +130,13 @@ export const runLaunch = async (
   options: ShotgunLaunchOptions,
   deps: LaunchDeps,
 ): Promise<ApplicationHandleLike> => {
-  const {
-    noOpen,
-    databaseUrl,
-    stagingSecret,
-    geminiApiKey,
-    port,
-    host,
-    spaDirectory,
-    rootDirectory,
-    env,
-  } = options;
+  const { noOpen, databaseUrl, stagingSecret, port, host, spaDirectory, rootDirectory, env } =
+    options;
 
   // 1. Environment pre-check (D12 ENV_CONFIGURATION_INVALID).
   const missing = [
     databaseUrl ? undefined : 'DATABASE_URL',
     !stagingSecret || stagingSecret.trim().length < 32 ? 'SOURCES_STAGING_SECRET' : undefined,
-    geminiApiKey ? undefined : 'GEMINI_API_KEY',
   ].filter((value): value is string => value !== undefined);
   if (missing.length > 0) {
     throw new LaunchFailure(

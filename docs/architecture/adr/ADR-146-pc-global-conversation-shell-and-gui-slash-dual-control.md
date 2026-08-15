@@ -48,23 +48,23 @@ Unavailable capabilities must not appear as normal usable GUI or slash destinati
 
 ### Frozen PC global shell
 
-| Shell region | Baseline | Responsibility |
-| --- | ---: | --- |
-| Instrument Panel | 64px height | Project, location, operational status, and concise status routing. |
-| Left Tree Navigation | 240px width | Selecting the work area, object, or function. |
-| Center Interaction Workspace | Remaining fluid width | Interaction with selected functions, objects, settings, commands, evidence, and proposals. |
-| Right Conversation Pane | 420px width | Questions, answers, citations, progress, and conversation history. |
-| Global Composer | Persistent on all PC routes | Normal natural-language questions and shared owner-command entry. |
+| Shell region                 |                    Baseline | Responsibility                                                                             |
+| ---------------------------- | --------------------------: | ------------------------------------------------------------------------------------------ |
+| Instrument Panel             |                 64px height | Project, location, operational status, and concise status routing.                         |
+| Left Tree Navigation         |                 240px width | Selecting the work area, object, or function.                                              |
+| Center Interaction Workspace |       Remaining fluid width | Interaction with selected functions, objects, settings, commands, evidence, and proposals. |
+| Right Conversation Pane      |                 420px width | Questions, answers, citations, progress, and conversation history.                         |
+| Global Composer              | Persistent on all PC routes | Normal natural-language questions and shared owner-command entry.                          |
 
 #### Instrument Panel
 
 The 64px Instrument Panel persistently contains Shotgun identity/logo, the current Project selector, current Workspace breadcrumb, effective AI provider/model and connection state, and Source count. Knowledge/Canonical count appears only when its meaning and available destination are valid. Review pending count appears only when it is greater than zero and Review is actually available. External Action pending count appears only when it is greater than zero. Normal zero-count attention states are omitted.
 
-| Instrument Panel item | Routing rule |
-| --- | --- |
-| Project | Opens the Project switcher. |
-| AI state | Routes to **Settings > AI**. |
-| Sources count | Routes to **Sources > Library**. |
+| Instrument Panel item                      | Routing rule                                  |
+| ------------------------------------------ | --------------------------------------------- |
+| Project                                    | Opens the Project switcher.                   |
+| AI state                                   | Routes to **Settings > AI**.                  |
+| Sources count                              | Routes to **Sources > Library**.              |
 | Actionable Review or External Action count | Routes to the corresponding Center Workspace. |
 
 The Instrument Panel does not expose UUIDs, revisions, request IDs, run IDs, or internal technical counters.
@@ -123,11 +123,11 @@ The 420px Right Conversation Pane owns user questions, Shotgun answers, current 
 
 The Global Composer is persistent on all PC routes and is the single normal natural-language question entry point.
 
-| Input or control | Frozen behavior |
-| --- | --- |
-| Normal text | Submits an Ask question under current Project authority. |
-| `/` | Opens shared owner-command discovery. |
-| `Ctrl/Cmd+K` | Opens the same command registry and discovery. |
+| Input or control  | Frozen behavior                                                 |
+| ----------------- | --------------------------------------------------------------- |
+| Normal text       | Submits an Ask question under current Project authority.        |
+| `/`               | Opens shared owner-command discovery.                           |
+| `Ctrl/Cmd+K`      | Opens the same command registry and discovery.                  |
 | Command execution | Is not added to Conversation as though it were a user question. |
 
 The existing large Ask question form is not retained as a second general composer. The existing **Verified Knowledge**, or equivalent question-mode authority, is preserved as a compact Composer mode control. This ADR does not change its backend, default, or authority semantics.
@@ -154,20 +154,20 @@ Until actual route and authority availability exist, Knowledge and Review are no
 
 ### Visual system freeze
 
-| Token | Approved value |
-| --- | --- |
-| App Background | `#F4F6F8` |
-| Primary Surface | `#FFFFFF` |
-| Secondary Surface | `#EEF2F5` |
-| Primary Text | `#17212B` |
-| Secondary Text | `#5D6875` |
-| Border | `#D7DEE6` |
-| Navigation / Brand Graphite | `#1B222A` |
-| Interactive Steel Blue | `#356FC3` |
-| Selected Background | `#E8F0FB` |
-| Success / Connected | `#2E7D5B` |
-| Attention | `#A86B16` |
-| Error / Destructive | `#B83B3B` |
+| Token                       | Approved value |
+| --------------------------- | -------------- |
+| App Background              | `#F4F6F8`      |
+| Primary Surface             | `#FFFFFF`      |
+| Secondary Surface           | `#EEF2F5`      |
+| Primary Text                | `#17212B`      |
+| Secondary Text              | `#5D6875`      |
+| Border                      | `#D7DEE6`      |
+| Navigation / Brand Graphite | `#1B222A`      |
+| Interactive Steel Blue      | `#356FC3`      |
+| Selected Background         | `#E8F0FB`      |
+| Success / Connected         | `#2E7D5B`      |
+| Attention                   | `#A86B16`      |
+| Error / Destructive         | `#B83B3B`      |
 
 Green is semantic success/connected only, not normal Shotgun identity or navigation color. Red is error/destructive only. Normal interaction and navigation use Graphite, Steel Blue, and neutral surfaces. State is never conveyed by color alone.
 

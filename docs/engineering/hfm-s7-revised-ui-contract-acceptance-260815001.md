@@ -16,25 +16,25 @@ The owner approved and froze the revised Shotgun PC Owner UI contract on 2026-08
 
 ## Frozen architecture summary
 
-| Contract area | Accepted and frozen decision |
-| --- | --- |
-| Product scope | **PC-only**; phone, tablet, touch-first, and mobile navigation are excluded. |
-| Interaction model | **GUI + Slash dual-control**. GUI and slash/Ctrl/Cmd+K are different discovery paths over the same underlying actions and authority boundaries. |
-| Global shell | Persistent Instrument Panel / Tree Navigation / Center Workspace / Conversation Pane / Global Composer. |
-| Geometry | Instrument Panel **64px**; Tree Navigation **240px**; Conversation Pane **420px**; Center uses remaining fluid width. |
-| Natural-language entry | Global Composer is persistent on all PC routes and is the single normal question entry point. |
-| Ask authority | Verified Knowledge, or existing equivalent question-mode authority, remains semantically unchanged and becomes a compact Composer mode control. |
-| Architecture authority | ADR-146 supersedes ADR-145 without erasing ADR-145’s accepted historical record. |
+| Contract area          | Accepted and frozen decision                                                                                                                    |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Product scope          | **PC-only**; phone, tablet, touch-first, and mobile navigation are excluded.                                                                    |
+| Interaction model      | **GUI + Slash dual-control**. GUI and slash/Ctrl/Cmd+K are different discovery paths over the same underlying actions and authority boundaries. |
+| Global shell           | Persistent Instrument Panel / Tree Navigation / Center Workspace / Conversation Pane / Global Composer.                                         |
+| Geometry               | Instrument Panel **64px**; Tree Navigation **240px**; Conversation Pane **420px**; Center uses remaining fluid width.                           |
+| Natural-language entry | Global Composer is persistent on all PC routes and is the single normal question entry point.                                                   |
+| Ask authority          | Verified Knowledge, or existing equivalent question-mode authority, remains semantically unchanged and becomes a compact Composer mode control. |
+| Architecture authority | ADR-146 supersedes ADR-145 without erasing ADR-145’s accepted historical record.                                                                |
 
 ## Frozen PC shell responsibilities
 
-| Region | Owner-facing responsibility |
-| --- | --- |
-| Top Instrument Panel | Shotgun identity, current Project, Workspace breadcrumb, effective AI provider/model and connection state, Source count, and valid conditional attention counts. |
-| Left Tree Navigation | Choosing the current work area, function, object, or context. |
-| Center Interaction Workspace | Performing work with functions, objects, settings, commands, evidence, proposals, editors, and details. |
-| Right Conversation Pane | User questions, Shotgun answers, citations, conversation history, and progress/success/failure state. |
-| Bottom Global Composer | Common natural-language question entry and shared owner-command discovery. |
+| Region                       | Owner-facing responsibility                                                                                                                                      |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Top Instrument Panel         | Shotgun identity, current Project, Workspace breadcrumb, effective AI provider/model and connection state, Source count, and valid conditional attention counts. |
+| Left Tree Navigation         | Choosing the current work area, function, object, or context.                                                                                                    |
+| Center Interaction Workspace | Performing work with functions, objects, settings, commands, evidence, proposals, editors, and details.                                                          |
+| Right Conversation Pane      | User questions, Shotgun answers, citations, conversation history, and progress/success/failure state.                                                            |
+| Bottom Global Composer       | Common natural-language question entry and shared owner-command discovery.                                                                                       |
 
 Normal zero-count attention states are omitted. Instrument Panel routing is Project to Project switcher, AI state to **Settings > AI**, Sources count to **Sources > Library**, and actionable Review/External Action counts to their corresponding Center Workspace. The shell does not expose UUIDs, revisions, request IDs, run IDs, or internal technical counters.
 
@@ -96,20 +96,20 @@ Knowledge and Review workspaces are not created by this UI correction. Until act
 
 ## Frozen visual system
 
-| Token | Value |
-| --- | --- |
-| App Background | `#F4F6F8` |
-| Primary Surface | `#FFFFFF` |
-| Secondary Surface | `#EEF2F5` |
-| Primary Text | `#17212B` |
-| Secondary Text | `#5D6875` |
-| Border | `#D7DEE6` |
+| Token                       | Value     |
+| --------------------------- | --------- |
+| App Background              | `#F4F6F8` |
+| Primary Surface             | `#FFFFFF` |
+| Secondary Surface           | `#EEF2F5` |
+| Primary Text                | `#17212B` |
+| Secondary Text              | `#5D6875` |
+| Border                      | `#D7DEE6` |
 | Navigation / Brand Graphite | `#1B222A` |
-| Interactive Steel Blue | `#356FC3` |
-| Selected Background | `#E8F0FB` |
-| Success / Connected | `#2E7D5B` |
-| Attention | `#A86B16` |
-| Error / Destructive | `#B83B3B` |
+| Interactive Steel Blue      | `#356FC3` |
+| Selected Background         | `#E8F0FB` |
+| Success / Connected         | `#2E7D5B` |
+| Attention                   | `#A86B16` |
+| Error / Destructive         | `#B83B3B` |
 
 Green is success/connected only, red is error/destructive only, and normal interaction/navigation uses Graphite, Steel Blue, and neutral surfaces. State is never conveyed by color alone. Restrained glass is limited to eligible shell/command surfaces and is prohibited for Answer prose, Source Preview reading body, Evidence text, warnings/errors/destructive surfaces, and form inputs.
 

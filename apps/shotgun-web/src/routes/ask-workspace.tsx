@@ -995,9 +995,9 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
       <p className="eyebrow">{t('ask.eyebrow')}</p>
       <h1 tabIndex={-1}>{t('ask.title')}</h1>
 
-      <section className="action-card" aria-labelledby="ask-draft-heading">
+      <section className="action-card ask-draft-surface" aria-labelledby="ask-draft-heading">
         <h2 id="ask-draft-heading">{t('ask.question_draft')}</h2>
-        <p>{t('ask.draft_help')}</p>
+        <p className="ask-draft-help">{t('ask.draft_help')}</p>
         <form
           className="ask-question-form"
           onSubmit={(event) => {
@@ -1227,9 +1227,16 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
         onClose={() => setTechnicalOpen(false)}
       />
 
-      {answerRunCommandNotice ? <p role="status">{answerRunCommandNotice}</p> : null}
+      {answerRunCommandNotice ? (
+        <p className="ask-command-notice" role="status">
+          {answerRunCommandNotice}
+        </p>
+      ) : null}
 
-      <section className="action-card" aria-labelledby="conversation-heading">
+      <section
+        className="action-card ask-conversation-surface"
+        aria-labelledby="conversation-heading"
+      >
         <h2 id="conversation-heading">{t('ask.conversations')}</h2>
         {workspace.conversations.length === 0 ? <p>{t('ask.no_conversations')}</p> : null}
         {workspace.conversations.length > 0 ? (
@@ -1259,12 +1266,18 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
 
         {conversation ? (
           <section
+            className="ask-selected-conversation"
             aria-label={t('ask.selected_conversation')}
             id={`conversation-${conversation.conversationId}`}
           >
             <h3>{conversation.title}</h3>
             {conversation.branches.map((branch) => (
-              <ol key={branch.branchId} id={`branch-${branch.branchId}`} aria-label={branch.label}>
+              <ol
+                key={branch.branchId}
+                id={`branch-${branch.branchId}`}
+                aria-label={branch.label}
+                className="ask-branch-turns"
+              >
                 {branch.turns.map((turn) => {
                   const answerRun = runOverrides[turn.answerRun.answerRunId] ?? turn.answerRun;
                   const events = runEvents[answerRun.answerRunId];
@@ -1295,69 +1308,80 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                     ].includes(capability),
                   );
                   return (
-                    <li key={turn.turnId} id={`turn-${turn.turnId}`} tabIndex={-1}>
-                      <p>
+                    <li
+                      className="ask-turn"
+                      key={turn.turnId}
+                      id={`turn-${turn.turnId}`}
+                      tabIndex={-1}
+                    >
+                      <p className="ask-turn-question">
                         <strong>{t('ask.question')}:</strong> {turn.userMessage}
                       </p>
                       {latestPartial || answerRun.statements.length > 0 ? (
-                        <h4>{t('ask.answer')}</h4>
+                        <div className="ask-answer-content">
+                          <h4>{t('ask.answer')}</h4>
+                          {latestPartial ? (
+                            <p aria-live="polite">
+                              {t('ask.partial_answer')}: {latestPartial}
+                            </p>
+                          ) : null}
+                          {answerRun.statements.map((statement) => (
+                            <article
+                              key={statement.statementId}
+                              id={`statement-${statement.statementId}`}
+                            >
+                              <p>{statement.text}</p>
+                              <ul className="ask-citation-list">
+                                {statement.citations.map((citation) => (
+                                  <li
+                                    key={citation.citationId}
+                                    id={`citation-${citation.citationId}`}
+                                    tabIndex={-1}
+                                  >
+                                    <Link
+                                      to={`/sources/${encodeURIComponent(citation.sourceId)}?version=${encodeURIComponent(citation.sourceVersionId)}`}
+                                      state={{
+                                        citationReturnTarget: {
+                                          schemaVersion: '1.0.0',
+                                          originRoute: `/ask/conversations/${encodeURIComponent(conversation.conversationId)}`,
+                                          resourceKind: 'conversation',
+                                          resourceId: conversation.conversationId,
+                                          conversationId: conversation.conversationId,
+                                          branchId: branch.branchId,
+                                          turnId: turn.turnId,
+                                          answerRunId: turn.answerRun.answerRunId,
+                                          answerRevision: turn.answerRun.answerRevision,
+                                          resourceRevision: conversation.conversationRevision,
+                                          citationId: citation.citationId,
+                                          sourceId: citation.sourceId,
+                                          sourceVersionId: citation.sourceVersionId,
+                                          evidenceId: citation.evidenceId,
+                                          scrollAnchor: citation.citationId,
+                                          focusTarget: citation.citationId,
+                                          panelId: 'conversations',
+                                        },
+                                      }}
+                                    >
+                                      {t('ask.open_evidence')}
+                                    </Link>
+                                  </li>
+                                ))}
+                              </ul>
+                            </article>
+                          ))}
+                        </div>
                       ) : null}
-                      {latestPartial ? (
-                        <p aria-live="polite">
-                          {t('ask.partial_answer')}: {latestPartial}
-                        </p>
-                      ) : null}
-                      {answerRun.statements.map((statement) => (
-                        <article
-                          key={statement.statementId}
-                          id={`statement-${statement.statementId}`}
-                        >
-                          <p>{statement.text}</p>
-                          <ul>
-                            {statement.citations.map((citation) => (
-                              <li
-                                key={citation.citationId}
-                                id={`citation-${citation.citationId}`}
-                                tabIndex={-1}
-                              >
-                                <Link
-                                  to={`/sources/${encodeURIComponent(citation.sourceId)}?version=${encodeURIComponent(citation.sourceVersionId)}`}
-                                  state={{
-                                    citationReturnTarget: {
-                                      schemaVersion: '1.0.0',
-                                      originRoute: `/ask/conversations/${encodeURIComponent(conversation.conversationId)}`,
-                                      resourceKind: 'conversation',
-                                      resourceId: conversation.conversationId,
-                                      conversationId: conversation.conversationId,
-                                      branchId: branch.branchId,
-                                      turnId: turn.turnId,
-                                      answerRunId: turn.answerRun.answerRunId,
-                                      answerRevision: turn.answerRun.answerRevision,
-                                      resourceRevision: conversation.conversationRevision,
-                                      citationId: citation.citationId,
-                                      sourceId: citation.sourceId,
-                                      sourceVersionId: citation.sourceVersionId,
-                                      evidenceId: citation.evidenceId,
-                                      scrollAnchor: citation.citationId,
-                                      focusTarget: citation.citationId,
-                                      panelId: 'conversations',
-                                    },
-                                  }}
-                                >
-                                  {t('ask.open_evidence')}
-                                </Link>
-                              </li>
-                            ))}
-                          </ul>
-                        </article>
-                      ))}
                       {answerRun.state === 'SUCCEEDED' ? null : (
-                        <p>
+                        <p className="ask-answer-status">
                           {t('ask.answer_status')}:{' '}
                           <strong>{hfmOwnerLabel(t, 'answerRun', answerRun.state)}</strong>
                         </p>
                       )}
-                      {answerRun.failure ? <p role="alert">{answerRun.failure.message}</p> : null}
+                      {answerRun.failure ? (
+                        <p className="ask-answer-failure" role="alert">
+                          {answerRun.failure.message}
+                        </p>
+                      ) : null}
                       {answerRun.failure ? (
                         <TechnicalDetails
                           items={[{ label: t('ask.failure_code'), value: answerRun.failure.code }]}
@@ -1439,7 +1463,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
         ) : null}
       </section>
       {exportedContent ? (
-        <section className="action-card" aria-labelledby="ask-export-heading">
+        <section className="action-card ask-export-surface" aria-labelledby="ask-export-heading">
           <h2 id="ask-export-heading">{t('ask.answer_export')}</h2>
           <pre>{exportedContent}</pre>
         </section>

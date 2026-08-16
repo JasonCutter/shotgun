@@ -7,8 +7,9 @@ export const openCommandPalette = async (page: Page) => {
   await expect(globalTools.getByRole('button', { name: 'Search' })).toHaveCount(0);
   await expect(globalTools.getByRole('button', { name: 'Commands' })).toHaveCount(0);
   await page.keyboard.press('Control+k');
-  const palette = page.getByRole('dialog', { name: 'Commands' });
+  const palette = page.getByRole('region', { name: 'Commands' });
   await expect(palette).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Commands' })).toHaveCount(0);
   return palette;
 };
 

@@ -19,6 +19,11 @@ export type RegisteredAnswerCommandContext = {
   readonly context: AnswerCommandContext;
   readonly commandPending: boolean;
   readonly openCommand: (commandId: AnswerCommandId, invoker: HTMLElement | null) => void;
+  readonly openCommandForContext?: (
+    context: AnswerCommandContext,
+    commandId: AnswerCommandId,
+    invoker: HTMLElement | null,
+  ) => void;
 };
 
 type AnswerCommandContextValue = {

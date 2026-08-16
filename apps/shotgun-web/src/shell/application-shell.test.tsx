@@ -247,11 +247,8 @@ describe('ApplicationShell', () => {
     expect(within(navigation).getByText('Settings', { selector: 'summary' })).toBeTruthy();
     expect(within(navigation).queryByText('Knowledge', { exact: true })).toBeNull();
     expect(within(navigation).queryByText('Review', { exact: true })).toBeNull();
-    expect(screen.queryByRole('navigation', { name: 'Mobile navigation' })).toBeNull();
-    expect(
-      conversationRegion?.querySelector('button, input, textarea, [role="textbox"]'),
-    ).toBeNull();
-    expect(composerRegion?.querySelector('button, input, textarea, [role="textbox"]')).toBeNull();
+    expect(conversationRegion?.querySelector('.conversation-pane')).toBeTruthy();
+    expect(composerRegion?.querySelector('.global-composer')).toBeTruthy();
     expect(screen.queryByText('More', { exact: true })).toBeNull();
   });
 
@@ -268,7 +265,8 @@ describe('ApplicationShell', () => {
     expect(screen.getByRole('button', { name: 'Search' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Commands' })).toBeNull();
     await user.keyboard('{Control>}k{/Control}');
-    expect(screen.getByRole('dialog', { name: 'Commands' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Commands' })).toBeTruthy();
+    expect(screen.queryByRole('dialog', { name: 'Commands' })).toBeNull();
     expect(screen.getByRole('heading', { name: 'Navigation' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Open Knowledge/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /Open Review/ })).toBeNull();

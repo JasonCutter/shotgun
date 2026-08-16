@@ -7,7 +7,6 @@ import { expectTechnicalInformation } from './hfm-technical.js';
 test('Ask navigation enables question submission and clears draft on success', async ({ page }) => {
   await page.goto('/ask');
   await expect(page.getByRole('heading', { name: 'Ask', level: 1 })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Question Draft' })).toBeVisible();
 
   const questionInput = page.getByRole('textbox', { name: 'Question', exact: true });
   const question = 'How does command gateway handle idempotency?';
@@ -112,10 +111,10 @@ test('Ask deep link uses accessible Resource Project without changing Active Pro
   await expect(page.getByRole('textbox', { name: 'Question', exact: true })).toBeEnabled();
 });
 
-test('Ask Conversation current item and Answer actions remain clear on a narrow viewport', async ({
+test('Ask Conversation current item and Answer actions remain clear in the fixed PC pane', async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 320, height: 800 });
+  await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`/ask/conversations/${ASK_FIXTURE.conversationId}`);
 
   const conversations = page.getByRole('list', { name: 'Conversations' });
@@ -142,7 +141,7 @@ test('Ask Conversation current item and Answer actions remain clear on a narrow 
   }));
   expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth);
   expect(layout.left).toBeGreaterThanOrEqual(0);
-  expect(layout.right).toBeLessThanOrEqual(320);
+  expect(layout.right).toBeLessThanOrEqual(1280);
 });
 
 test('Ask masks inaccessible Conversation as NOT_FOUND', async ({ page }) => {
@@ -185,4 +184,30 @@ test('Ask citation keeps SourceVersion pinned and restores exact conversation co
   await expect(
     page.getByRole('heading', { name: ASK_FIXTURE.conversationTitle, level: 3 }),
   ).toBeVisible();
+});
+
+test('Global Composer slash input opens shared Center Command Mode without creating an Ask turn', async ({
+  page,
+}) => {
+  const askRequests: string[] = [];
+  page.on('request', (request) => {
+    if (request.url().endsWith('/product-api/frontend/ask/questions')) {
+      askRequests.push(request.url());
+    }
+  });
+
+  await page.goto('/sources');
+  const composer = page.getByRole('textbox', { name: 'Question', exact: true });
+  await composer.fill('/ai');
+
+  const commands = page.getByRole('region', { name: 'Commands' });
+  await expect(commands).toBeVisible();
+  await expect(commands.getByRole('textbox', { name: 'Command search' })).toHaveValue('ai');
+  await expect(page.getByRole('dialog', { name: 'Commands' })).toHaveCount(0);
+  expect(askRequests).toHaveLength(0);
+
+  await page.keyboard.press('Escape');
+  await expect(commands).toHaveCount(0);
+  await expect(composer).toBeFocused();
+  expect(askRequests).toHaveLength(0);
 });

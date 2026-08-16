@@ -6,6 +6,7 @@ import type { GlobalShellView } from '@shotgun/api-client';
 import { useAppRuntime } from '../app/providers.js';
 import { RouteFocus } from '../app/route-focus.js';
 import { AnswerCommandContextProvider } from '../commands/answer-command-context.js';
+import { OwnerCommandPalette } from '../commands/owner-command-palette.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
 import { SkipLink } from '../components/skip-link.js';
@@ -14,8 +15,13 @@ import {
   ProductLocalizationProvider,
   useProductLocalization,
 } from '../localization/product-localization.js';
-import { GlobalTools } from '../section3/global-tools.js';
+import { GlobalTools, OwnerCommandControllerProvider } from '../section3/global-tools.js';
 import { globalShellQueryOptions } from '../section3/section3-queries.js';
+import {
+  AskShellConversationPane,
+  AskShellGlobalComposer,
+  AskShellProvider,
+} from '../routes/ask-workspace.js';
 import { SessionBoundaryScreen } from '../session/session-boundary-screen.js';
 import { reconnectSessionBoundary, sessionBoundaryQueryOptions } from '../session/session-query.js';
 import { InstrumentPanel } from './instrument-panel.js';
@@ -122,48 +128,82 @@ const LocalizedApplicationShell = ({
     <AnswerCommandContextProvider>
       <TechnicalInspectionProvider>
         <GlobalTools shell={shell}>
-          {(controller) => (
-            <div className="application-shell">
-              <SkipLink />
-              <div className="pc-global-shell">
-                <div className="pc-global-shell__instrument" data-global-shell-region="instrument">
-                  <InstrumentPanel shell={shell} controller={controller} />
-                </div>
-                {offline ? (
-                  <div className="global-banner global-banner-critical" role="alert">
-                    {t('shell.offline')}
+          {(controller) => {
+            const commandMode = controller.commandMode ?? {
+              open: false,
+              initialQuery: '',
+              resetQuerySignal: 0,
+              invoker: null,
+            };
+            return (
+              <OwnerCommandControllerProvider controller={controller}>
+                <AskShellProvider shell={shell}>
+                  <div className="application-shell">
+                    <SkipLink />
+                    <div className="pc-global-shell">
+                      <div
+                        className="pc-global-shell__instrument"
+                        data-global-shell-region="instrument"
+                      >
+                        <InstrumentPanel shell={shell} controller={controller} />
+                      </div>
+                      {offline ? (
+                        <div className="global-banner global-banner-critical" role="alert">
+                          {t('shell.offline')}
+                        </div>
+                      ) : shell.leadingWarning ? (
+                        <div
+                          className={`global-banner global-banner-${shell.leadingWarning.severity.toLowerCase()}`}
+                          role={shell.leadingWarning.severity === 'CRITICAL' ? 'alert' : 'status'}
+                        >
+                          {shell.leadingWarning.message}
+                          {shell.leadingWarning.additionalCount > 0
+                            ? ` (${shell.leadingWarning.additionalCount} ${t('shell.additional_states')})`
+                            : ''}
+                        </div>
+                      ) : null}
+                      <div className="pc-global-shell__tree" data-global-shell-region="tree">
+                        <PrimaryNavigation navigation={shell.navigation} controller={controller} />
+                      </div>
+                      <main
+                        id="main-content"
+                        className="pc-global-shell__center"
+                        data-global-shell-region="center"
+                        tabIndex={-1}
+                      >
+                        <RouteFocus />
+                        <Outlet context={{ shell }} />
+                        <OwnerCommandPalette
+                          open={commandMode.open}
+                          presentation="CENTER"
+                          commands={controller.commands}
+                          initialQuery={commandMode.initialQuery}
+                          resetQuerySignal={commandMode.resetQuerySignal}
+                          invoker={commandMode.invoker}
+                          onClose={controller.closeCommandMode ?? (() => undefined)}
+                          onSelect={(command) =>
+                            controller.executeCommand(command, commandMode.invoker)
+                          }
+                        />
+                      </main>
+                      <div
+                        className="pc-global-shell__conversation"
+                        data-global-shell-region="conversation"
+                      >
+                        <AskShellConversationPane />
+                      </div>
+                      <div
+                        className="pc-global-shell__composer"
+                        data-global-shell-region="composer"
+                      >
+                        <AskShellGlobalComposer />
+                      </div>
+                    </div>
                   </div>
-                ) : shell.leadingWarning ? (
-                  <div
-                    className={`global-banner global-banner-${shell.leadingWarning.severity.toLowerCase()}`}
-                    role={shell.leadingWarning.severity === 'CRITICAL' ? 'alert' : 'status'}
-                  >
-                    {shell.leadingWarning.message}
-                    {shell.leadingWarning.additionalCount > 0
-                      ? ` (${shell.leadingWarning.additionalCount} ${t('shell.additional_states')})`
-                      : ''}
-                  </div>
-                ) : null}
-                <div className="pc-global-shell__tree" data-global-shell-region="tree">
-                  <PrimaryNavigation navigation={shell.navigation} controller={controller} />
-                </div>
-                <main
-                  id="main-content"
-                  className="pc-global-shell__center"
-                  data-global-shell-region="center"
-                  tabIndex={-1}
-                >
-                  <RouteFocus />
-                  <Outlet context={{ shell }} />
-                </main>
-                <div
-                  className="pc-global-shell__conversation"
-                  data-global-shell-region="conversation"
-                />
-                <div className="pc-global-shell__composer" data-global-shell-region="composer" />
-              </div>
-            </div>
-          )}
+                </AskShellProvider>
+              </OwnerCommandControllerProvider>
+            );
+          }}
         </GlobalTools>
       </TechnicalInspectionProvider>
     </AnswerCommandContextProvider>

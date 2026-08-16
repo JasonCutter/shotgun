@@ -6,8 +6,9 @@ export const openTechnicalInformation = async (page: Page) => {
   await expect(page.locator('.project-summary')).toBeVisible();
   await expect(globalTools.getByRole('button', { name: 'Search', exact: true })).toHaveCount(0);
   await page.keyboard.press('Control+k');
-  const palette = page.getByRole('dialog', { name: 'Commands' });
+  const palette = page.getByRole('region', { name: 'Commands' });
   await expect(palette).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Commands' })).toHaveCount(0);
   const query = palette.getByRole('textbox', { name: 'Command search' });
   await query.fill('technical information');
   await palette.getByRole('button', { name: /^Technical information/ }).click();

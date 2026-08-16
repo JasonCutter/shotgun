@@ -1,6 +1,15 @@
 import { useQuery } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate, useParams, useOutletContext } from 'react-router';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
+import { useLocation, useNavigate, useOutletContext } from 'react-router';
 
 import {
   createAskWorkspaceClient,
@@ -21,39 +30,22 @@ import {
 } from '@shotgun/api-client';
 
 import { useAppRuntime } from '../app/providers.js';
-import { projectAdminQueryKey } from '../app/query-keys.js';
-import { OwnerCommandPalette } from '../commands/owner-command-palette.js';
 import {
   type AnswerCommandContext,
   useOptionalAnswerCommandContext,
 } from '../commands/answer-command-context.js';
 import { AnswerCommandSurface } from '../commands/answer-command-surface.js';
-import { AICommandSurface } from '../commands/ai-command-surface.js';
-import { PrivacyCommandSurface } from '../commands/privacy-command-surface.js';
-import { PreferencesCommandSurface } from '../commands/preferences-command-surface.js';
-import { ProjectCommandSurface } from '../commands/project-command-surface.js';
-import { TechnicalCommandSurface } from '../commands/technical-command-surface.js';
-import {
-  createOwnerCommandRegistry,
-  type AnswerCommandId,
-  type AICommandId,
-  type OwnerCommandDefinition,
-  type PreferenceCommandId,
-  type PrivacyCommandId,
-  type ProjectCommandId,
-} from '../commands/owner-command-registry.js';
+import { type AnswerCommandId } from '../commands/owner-command-registry.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
-import { TechnicalDetails } from '../components/technical-details.js';
-import { useOptionalTechnicalInspection } from '../components/technical-inspection-context.js';
-import { hfmOwnerLabel, useProductLocalization } from '../localization/product-localization.js';
+import { useProductLocalization } from '../localization/product-localization.js';
 import { useLeaveGuard } from '../session/leave-guard-context.js';
-import { useConnectivityState } from '../shell/use-connectivity-state.js';
 import {
   askConversationSourceContextQueryOptions,
   sourcesLibraryQueryOptions,
 } from '../sources/sources-queries.js';
-import { GlobalSearchDialog } from '../section3/global-search-dialog.js';
+import { useOwnerCommandController } from '../section3/global-tools.js';
+import { AskSupportControls, ConversationPane, GlobalComposer } from './ask-shell-presentation.js';
 
 const SOURCE_CONTEXT_QUERY: SourceLibraryQuery = {
   schemaVersion: '1.0.0',
@@ -91,44 +83,112 @@ type OutcomeResolution =
   | { readonly kind: 'REJECTED'; readonly message: string }
   | { readonly kind: 'UNKNOWN' };
 
-export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient }) => {
-  const { conversationId } = useParams<{ readonly conversationId?: string }>();
-  const { shell } = useOutletContext<{ readonly shell: GlobalShellView }>();
+export type AskShellContextValue = {
+  readonly shell: GlobalShellView;
+  readonly workspace?: AskWorkspaceView;
+  readonly activeConversationId?: string;
+  readonly question: string;
+  readonly mode: AskMode;
+  readonly sourceSelections: readonly AskSourceSelectionView[];
+  readonly draftReady: boolean;
+  readonly outcomeUnknown: boolean;
+  readonly isSubmitting: boolean;
+  readonly submissionAvailable: boolean;
+  readonly sourceSelectionMissing: boolean;
+  readonly providerEligibility: {
+    readonly data?: AskProviderEligibilityView;
+    readonly isPending: boolean;
+    readonly isError: boolean;
+  };
+  readonly submissionNotice?: string;
+  readonly runOverrides: Readonly<Record<string, AskAnswerRunSnapshot>>;
+  readonly runEvents: Readonly<Record<string, AskAnswerRunEventsView>>;
+  readonly answerRunMutationPending: boolean;
+  readonly answerRunOutcomeUnknown: boolean;
+  readonly pendingAnswerRunCommand?: PendingAnswerRunCommand;
+  readonly answerRunCommandNotice?: string;
+  readonly exportedContent?: string;
+  readonly error?: unknown;
+  readonly sourceOptions: readonly SourceLibraryItem[];
+  readonly sourceContextAvailable: boolean;
+  readonly sourceContextPending: boolean;
+  readonly sourceContextError: boolean;
+  readonly sourceContextProjectMatches: boolean;
+  readonly answerCommand: AnswerCommandId | null;
+  readonly answerCommandContext?: AnswerCommandContext;
+  readonly answerCommandInvoker: HTMLElement | null;
+  readonly handleQuestionChange: (
+    value: string,
+    isComposing: boolean,
+    invoker: HTMLElement | null,
+  ) => void;
+  readonly handleModeChange: (mode: AskMode) => void;
+  readonly toggleSourceSelection: (source: SourceLibraryItem) => void;
+  readonly handleSubmitQuestion: () => Promise<void>;
+  readonly handleResolveOutcome: () => Promise<void>;
+  readonly handleCancelAnswerRun: (answerRunId: string) => Promise<void>;
+  readonly handleRetryAnswerRun: (
+    answerRunId: string,
+    mode: 'SAME_CONTEXT' | 'CURRENT_POLICY',
+  ) => Promise<void>;
+  readonly handleExportAnswerRun: (answerRunId: string) => Promise<void>;
+  readonly handleTransitionSeed: (
+    answerRunId: string,
+    kind: 'INTAKE_DRAFT' | 'DRAFT_CHANGE_SET' | 'USER_DIRECTIVE',
+  ) => Promise<void>;
+  readonly handleResolveAnswerRunCommandOutcome: () => Promise<void>;
+  readonly openAnswerActions: (context: AnswerCommandContext, invoker: HTMLElement) => void;
+  readonly closeAnswerCommand: () => void;
+};
+
+const AskShellContext = createContext<AskShellContextValue | undefined>(undefined);
+
+export const useAskShell = (): AskShellContextValue => {
+  const context = useContext(AskShellContext);
+  if (!context) throw new Error('useAskShell must be used within an AskShellProvider.');
+  return context;
+};
+
+export const useOptionalAskShell = (): AskShellContextValue | undefined =>
+  useContext(AskShellContext);
+
+export const AskShellProvider = ({
+  children,
+  client,
+  shell: shellProp,
+}: {
+  readonly children: ReactNode;
+  readonly client?: AskWorkspaceClient;
+  readonly shell?: GlobalShellView;
+}) => {
+  const outletContext = useOutletContext<{ readonly shell: GlobalShellView } | undefined>();
+  const shell = shellProp ?? outletContext?.shell;
+  if (!shell) throw new Error('Ask shell provider requires a Global Shell.');
   const { apiClient } = useAppRuntime();
-  const connectivity = useConnectivityState();
-  const technicalInspection = useOptionalTechnicalInspection();
   const { t } = useProductLocalization();
   const answerCommandBridge = useOptionalAnswerCommandContext();
   const registerAnswerCommandContext = answerCommandBridge?.register;
-  const technicalBlocks = technicalInspection?.blocks ?? [];
+  const commandController = useOwnerCommandController();
   const location = useLocation();
+  const routeConversationId = useMemo(() => {
+    const match = location.pathname.match(/^\/ask\/conversations\/([^/?#]+)/);
+    return match ? decodeURIComponent(match[1]!) : undefined;
+  }, [location.pathname]);
   const ownedClient = useMemo(() => createAskWorkspaceClient(), []);
   const askClient = client ?? ownedClient;
   const { registerLeaveGuard } = useLeaveGuard();
   const [workspace, setWorkspace] = useState<AskWorkspaceView>();
+  const [activeConversationId, setActiveConversationId] = useState<string | undefined>(
+    routeConversationId,
+  );
+
+  useEffect(() => {
+    setActiveConversationId(routeConversationId);
+  }, [routeConversationId]);
   const [question, setQuestion] = useState('');
-  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
-  const [commandPaletteInvoker, setCommandPaletteInvoker] = useState<HTMLElement | null>(null);
-  const [commandPaletteResetSignal, setCommandPaletteResetSignal] = useState(0);
-  const [paletteAnswerContext, setPaletteAnswerContext] = useState<AnswerCommandContext>();
   const [answerCommand, setAnswerCommand] = useState<AnswerCommandId | null>(null);
   const [answerCommandContext, setAnswerCommandContext] = useState<AnswerCommandContext>();
   const [answerCommandInvoker, setAnswerCommandInvoker] = useState<HTMLElement | null>(null);
-  const [projectCommand, setProjectCommand] = useState<ProjectCommandId | null>(null);
-  const [projectCommandInvoker, setProjectCommandInvoker] = useState<HTMLElement | null>(null);
-  const [preferenceCommand, setPreferenceCommand] = useState<PreferenceCommandId | null>(null);
-  const [preferenceCommandInvoker, setPreferenceCommandInvoker] = useState<HTMLElement | null>(
-    null,
-  );
-  const [aiCommand, setAICommand] = useState<AICommandId | null>(null);
-  const [aiCommandInvoker, setAICommandInvoker] = useState<HTMLElement | null>(null);
-  const [privacyCommand, setPrivacyCommand] = useState<PrivacyCommandId | null>(null);
-  const [privacyCommandInvoker, setPrivacyCommandInvoker] = useState<HTMLElement | null>(null);
-  const [technicalOpen, setTechnicalOpen] = useState(false);
-  const [technicalInvoker, setTechnicalInvoker] = useState<HTMLElement | null>(null);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [searchInvoker, setSearchInvoker] = useState<HTMLElement | null>(null);
-  const [draftOwnerProjectId, setDraftOwnerProjectId] = useState<string>();
   const [mode, setMode] = useState<AskMode>('CANONICAL_ONLY');
   const [sourceSelections, setSourceSelections] = useState<readonly AskSourceSelectionView[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -144,58 +204,60 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
   const [exportedContent, setExportedContent] = useState<string>();
   const [error, setError] = useState<unknown>();
   const navigate = useNavigate();
+
   const sourceLibrary = useQuery({
     ...sourcesLibraryQueryOptions(apiClient, shell, SOURCE_CONTEXT_QUERY),
     enabled:
       mode !== 'CANONICAL_ONLY' &&
       workspace !== undefined &&
-      conversationId === undefined &&
+      activeConversationId === undefined &&
       shell.activeProject?.id === workspace.projectId,
   });
+
   const conversationSourceContext = useQuery({
     ...askConversationSourceContextQueryOptions(
       askClient,
       shell,
       workspace,
-      conversationId,
+      activeConversationId,
       SOURCE_CONTEXT_QUERY,
     ),
-    enabled: mode !== 'CANONICAL_ONLY' && workspace !== undefined && conversationId !== undefined,
+    enabled:
+      mode !== 'CANONICAL_ONLY' && workspace !== undefined && activeConversationId !== undefined,
   });
+
   const providerEligibility = useQuery<AskProviderEligibilityView>({
     queryKey: [
       'ask',
       'provider-eligibility',
-      workspace?.projectId,
-      conversationId,
+      workspace?.projectId ?? shell.activeProject?.id,
+      activeConversationId,
       mode,
       sourceSelections,
     ],
     queryFn: () =>
       askClient.getProviderEligibility({
         schemaVersion: '1.0.0',
-        ...(conversationId ? { conversationId } : {}),
+        ...(activeConversationId ? { conversationId: activeConversationId } : {}),
         mode,
         sourceSelections: mode === 'CANONICAL_ONLY' ? [] : sourceSelections,
       }),
-    enabled: workspace !== undefined,
-  });
-  const projectsQuery = useQuery({
-    queryKey: projectAdminQueryKey(shell.principalId),
-    queryFn: () => apiClient.getProjects(),
+    enabled: shell.activeProject !== undefined || workspace !== undefined,
   });
 
   const activeBranchLatestTurn = useMemo(() => {
     const selected = workspace?.selectedConversation;
-    const branch = selected?.branches.find(
+    const branch = selected?.branches?.find(
       (candidate) => candidate.branchId === selected.activeBranchId,
     );
-    return branch?.turns.slice().sort((left, right) => right.ordinal - left.ordinal)[0];
+    return branch?.turns?.slice().sort((left, right) => right.ordinal - left.ordinal)[0];
   }, [workspace?.selectedConversation]);
+
   const latestAnswerRun = activeBranchLatestTurn
     ? (runOverrides[activeBranchLatestTurn.answerRun.answerRunId] ??
       activeBranchLatestTurn.answerRun)
     : undefined;
+
   const defaultAnswerContext = useMemo<AnswerCommandContext | undefined>(() => {
     const selected = workspace?.selectedConversation;
     if (!workspace || !selected || !activeBranchLatestTurn || !latestAnswerRun) return undefined;
@@ -210,6 +272,7 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
       capabilities: latestAnswerRun.capabilities,
     };
   }, [activeBranchLatestTurn, latestAnswerRun, workspace]);
+
   const defaultAnswerContextRef = useRef(defaultAnswerContext);
   defaultAnswerContextRef.current = defaultAnswerContext;
   const activeAnswerProjectId = workspace?.projectId;
@@ -220,10 +283,9 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     conversationId: activeAnswerConversationId,
     branchId: activeAnswerBranchId,
   });
-  const openRegisteredAnswerCommand = useCallback(
-    (commandId: AnswerCommandId, invoker: HTMLElement | null) => {
-      const context = defaultAnswerContextRef.current;
-      if (!context) return;
+
+  const openAnswerCommandForContext = useCallback(
+    (context: AnswerCommandContext, commandId: AnswerCommandId, invoker: HTMLElement | null) => {
       setAnswerCommandContext(context);
       setAnswerCommandInvoker(invoker);
       setAnswerCommand(commandId);
@@ -231,27 +293,13 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     [],
   );
 
-  const commandRegistry = useMemo(
-    () =>
-      createOwnerCommandRegistry({
-        shell,
-        isOffline: connectivity.isOffline,
-        includeProjectSwitch: false,
-        includeSearch: true,
-        hasTechnicalInspection: technicalBlocks.length > 0,
-        answerContext: paletteAnswerContext ?? defaultAnswerContext,
-        answerCommandPending: pendingAnswerRunCommand !== undefined,
-        projects: projectsQuery.data,
-      }),
-    [
-      connectivity.isOffline,
-      defaultAnswerContext,
-      paletteAnswerContext,
-      pendingAnswerRunCommand,
-      projectsQuery.data,
-      shell,
-      technicalBlocks.length,
-    ],
+  const openRegisteredAnswerCommand = useCallback(
+    (commandId: AnswerCommandId, invoker: HTMLElement | null) => {
+      const context = defaultAnswerContextRef.current;
+      if (!context) return;
+      openAnswerCommandForContext(context, commandId, invoker);
+    },
+    [openAnswerCommandForContext],
   );
 
   const questionRef = useRef(question);
@@ -269,7 +317,6 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
         previous.conversationId !== activeAnswerConversationId ||
         previous.branchId !== activeAnswerBranchId)
     ) {
-      setPaletteAnswerContext(undefined);
       setAnswerCommand(null);
       setAnswerCommandContext(undefined);
       setAnswerCommandInvoker(null);
@@ -296,31 +343,18 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
                 turn.answerRun.answerRevision === context.answerRevision,
             ),
         ));
-    if (!contextExists(paletteAnswerContext)) setPaletteAnswerContext(undefined);
     if (!contextExists(answerCommandContext)) {
       setAnswerCommand(null);
       setAnswerCommandContext(undefined);
       setAnswerCommandInvoker(null);
     }
-  }, [answerCommandContext, paletteAnswerContext, workspace]);
+  }, [answerCommandContext, workspace]);
 
   useEffect(() => {
     const controller = new AbortController();
-    setWorkspace(undefined);
-    setQuestion('');
-    setCommandPaletteOpen(false);
-    setCommandPaletteInvoker(null);
-    setPaletteAnswerContext(undefined);
     setAnswerCommand(null);
     setAnswerCommandContext(undefined);
     setAnswerCommandInvoker(null);
-    setProjectCommand(null);
-    setProjectCommandInvoker(null);
-    setTechnicalOpen(false);
-    setTechnicalInvoker(null);
-    setSearchOpen(false);
-    setSearchInvoker(null);
-    setDraftOwnerProjectId(undefined);
     setSourceSelections([]);
     setPendingCommand(undefined);
     setOutcomeUnknown(false);
@@ -333,18 +367,34 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     setRunEvents({});
     setExportedContent(undefined);
     setError(undefined);
-    void askClient
-      .getWorkspace(conversationId, { signal: controller.signal })
-      .then((value) => {
-        setWorkspace(value);
-        setDraftOwnerProjectId(value.projectId);
-        setMode(value.defaultAskMode);
-      })
-      .catch((reason: unknown) => {
-        if (!controller.signal.aborted) setError(reason);
-      });
+
+    const shouldFetch =
+      activeConversationId !== undefined ||
+      location.pathname.startsWith('/ask') ||
+      shell.activeProject !== undefined;
+
+    const alreadyLoaded =
+      activeConversationId !== undefined &&
+      workspace?.selectedConversation?.conversationId === activeConversationId;
+
+    if (shouldFetch && !alreadyLoaded) {
+      void askClient
+        .getWorkspace(activeConversationId, { signal: controller.signal })
+        .then((value) => {
+          setWorkspace(value);
+          setMode(value.defaultAskMode);
+        })
+        .catch((reason: unknown) => {
+          if (!controller.signal.aborted) {
+            if (location.pathname.startsWith('/ask')) {
+              setError(reason);
+            }
+          }
+        });
+    }
+
     return () => controller.abort();
-  }, [askClient, conversationId, shell.activeProject?.id]);
+  }, [activeConversationId, askClient, location.pathname, shell.activeProject?.id]);
 
   useEffect(() => {
     if (!registerAnswerCommandContext || !defaultAnswerContext) return;
@@ -352,9 +402,11 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
       context: defaultAnswerContext,
       commandPending: pendingAnswerRunCommand !== undefined,
       openCommand: openRegisteredAnswerCommand,
+      openCommandForContext: openAnswerCommandForContext,
     });
   }, [
     defaultAnswerContext,
+    openAnswerCommandForContext,
     openRegisteredAnswerCommand,
     pendingAnswerRunCommand,
     registerAnswerCommandContext,
@@ -474,14 +526,14 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
         }
         if (ANSWER_RUN_POLLING_COMPLETE_STATES.has(current.state)) {
           if (!ANSWER_RUN_POLLING_COMPLETE_STATES.has(answerRun.state)) {
-            const refreshedWorkspace = await askClient.getWorkspace(conversationId, {
+            const refreshedWorkspace = await askClient.getWorkspace(activeConversationId, {
               signal: controller.signal,
             });
             if (
               cancelled ||
               refreshedWorkspace.projectId !== workspace?.projectId ||
-              (conversationId !== undefined &&
-                refreshedWorkspace.selectedConversation?.conversationId !== conversationId)
+              (activeConversationId !== undefined &&
+                refreshedWorkspace.selectedConversation?.conversationId !== activeConversationId)
             ) {
               return;
             }
@@ -511,47 +563,41 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     pollingGeneration,
     workspace?.projectId,
     shell.activeProject?.id,
+    activeConversationId,
   ]);
 
-  if (!shell.activeProject && !conversationId) {
-    return <p>{t('ask.create_or_select_project')}</p>;
-  }
-  if (error) return <ErrorState error={error} onRetry={() => window.location.reload()} />;
-  if (!workspace) return <LoadingState message={t('ask.loading_workspace')} />;
-
-  const expectedDraftProjectId = conversationId ? workspace.projectId : shell.activeProject?.id;
+  const targetProjectId = activeConversationId ? workspace?.projectId : shell.activeProject?.id;
   const draftReady =
-    expectedDraftProjectId !== undefined &&
-    workspace.projectId === expectedDraftProjectId &&
-    draftOwnerProjectId === workspace.projectId;
-  const conversation = workspace.selectedConversation;
+    targetProjectId !== undefined &&
+    (workspace === undefined || workspace.projectId === targetProjectId);
+  const conversation = workspace?.selectedConversation;
   const activeBranch = conversation?.branches.find(
     (branch) => branch.branchId === conversation.activeBranchId,
   );
   const followUpReady =
-    !conversationId ||
+    !activeConversationId ||
     Boolean(conversation && activeBranch?.branchRevision && conversation.conversationRevision);
   const submissionAvailable =
-    workspace.capabilities.includes('SUBMIT_QUESTION') &&
+    (workspace === undefined || workspace.capabilities.includes('SUBMIT_QUESTION')) &&
     followUpReady &&
     providerEligibility.data?.eligible === true;
   const answerRunMutationPending = pendingAnswerRunCommand !== undefined;
   const sourceLibraryPage = sourceLibrary.data;
   const conversationSourceContextView = conversationSourceContext.data;
-  const sourceContextProjectMatches = conversationId
-    ? conversationSourceContextView?.resourceProjectId === workspace.projectId
-    : sourceLibraryPage?.projectId === workspace.projectId;
+  const sourceContextProjectMatches = activeConversationId
+    ? conversationSourceContextView?.resourceProjectId === workspace?.projectId
+    : sourceLibraryPage?.projectId === (workspace?.projectId ?? shell.activeProject?.id);
   const sourceOptions = sourceContextProjectMatches
     ? (conversationSourceContextView?.items ?? sourceLibraryPage?.items ?? []).filter(
-        (source) => source.projectId === workspace.projectId,
+        (source) => source.projectId === (workspace?.projectId ?? shell.activeProject?.id),
       )
     : [];
   const sourceContextAvailable =
-    conversationId !== undefined || shell.activeProject?.id === workspace.projectId;
-  const sourceContextPending = conversationId
+    activeConversationId !== undefined || shell.activeProject?.id === workspace?.projectId;
+  const sourceContextPending = activeConversationId
     ? conversationSourceContext.isPending
     : sourceLibrary.isPending;
-  const sourceContextError = conversationId
+  const sourceContextError = activeConversationId
     ? conversationSourceContext.isError
     : sourceLibrary.isError;
   const sourceSelectionMissing = mode === 'SOURCE_EXPLORATION' && sourceSelections.length === 0;
@@ -580,10 +626,12 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     setQuestion('');
     setSourceSelections([]);
     questionRef.current = '';
-    if (submission.answerRun.conversationId !== conversationId) {
-      navigate(`/ask/conversations/${encodeURIComponent(submission.answerRun.conversationId)}`);
-    } else {
-      setWorkspace(submission.workspace);
+    setWorkspace(submission.workspace);
+    if (submission.answerRun.conversationId !== activeConversationId) {
+      setActiveConversationId(submission.answerRun.conversationId);
+      if (location.pathname.startsWith('/ask')) {
+        navigate(`/ask/conversations/${encodeURIComponent(submission.answerRun.conversationId)}`);
+      }
     }
   };
 
@@ -679,9 +727,9 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
 
     try {
       const followUpRequest =
-        conversationId && conversation && activeBranch?.branchRevision
+        activeConversationId && conversation && activeBranch?.branchRevision
           ? {
-              conversationId,
+              conversationId: activeConversationId,
               branchId: activeBranch.branchId,
               expectedConversationRevision: conversation.conversationRevision,
               expectedBranchRevision: activeBranch.branchRevision,
@@ -704,94 +752,19 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     }
   };
 
-  const handleAskCommand = (command: OwnerCommandDefinition) => {
-    if (command.action.kind === 'OPEN_COMMANDS') {
-      setQuestion('');
-      questionRef.current = '';
-      setCommandPaletteResetSignal((current) => current + 1);
-      setCommandPaletteOpen(true);
-      return;
-    }
-    if (command.action.kind === 'OPEN_PROJECT_FLOW') {
-      setProjectCommandInvoker(commandPaletteInvoker);
-      setProjectCommand(command.action.commandId);
-      setCommandPaletteOpen(false);
-      setQuestion('');
-      questionRef.current = '';
-      return;
-    }
-    if (command.action.kind === 'OPEN_PREFERENCE_FLOW') {
-      setPreferenceCommandInvoker(commandPaletteInvoker);
-      setPreferenceCommand(command.action.commandId);
-      setCommandPaletteOpen(false);
-      setQuestion('');
-      questionRef.current = '';
-      return;
-    }
-    if (command.action.kind === 'OPEN_AI_FLOW') {
-      setAICommandInvoker(commandPaletteInvoker);
-      setAICommand(command.action.commandId);
-      setCommandPaletteOpen(false);
-      setQuestion('');
-      questionRef.current = '';
-      return;
-    }
-    if (command.action.kind === 'OPEN_PRIVACY_FLOW') {
-      setPrivacyCommandInvoker(commandPaletteInvoker);
-      setPrivacyCommand(command.action.commandId);
-      setCommandPaletteOpen(false);
-      setQuestion('');
-      questionRef.current = '';
-      return;
-    }
-    if (command.action.kind === 'OPEN_TECHNICAL_FLOW') {
-      setTechnicalInvoker(commandPaletteInvoker);
-      setTechnicalOpen(true);
-      setCommandPaletteOpen(false);
-      setQuestion('');
-      questionRef.current = '';
-      return;
-    }
-    if (command.action.kind === 'OPEN_ANSWER_FLOW') {
-      const context = paletteAnswerContext ?? defaultAnswerContext;
-      if (!context) return;
-      setAnswerCommandContext(context);
-      setAnswerCommandInvoker(commandPaletteInvoker);
-      setAnswerCommand(command.action.commandId);
-      setCommandPaletteOpen(false);
-      setPaletteAnswerContext(undefined);
-      setQuestion('');
-      questionRef.current = '';
-      return;
-    }
-    setCommandPaletteOpen(false);
-    setQuestion('');
-    questionRef.current = '';
-    if (command.action.kind === 'NAVIGATE') {
-      navigate(command.action.targetRoute.href);
-      return;
-    }
-    if (command.action.kind === 'NAVIGATE_PATH') {
-      navigate(command.action.href);
-      return;
-    }
-    if (command.action.kind === 'OPEN_SEARCH') {
-      setSearchInvoker(commandPaletteInvoker);
-      setSearchOpen(true);
-    }
-  };
-
-  const handleQuestionChange = (value: string) => {
-    setQuestion(value);
+  const handleQuestionChange = (
+    value: string,
+    isComposing: boolean,
+    invoker: HTMLElement | null,
+  ) => {
     const trigger = value.match(/^\s*\/(.*)$/s);
-    if (trigger) {
-      const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      setPaletteAnswerContext(undefined);
-      setCommandPaletteInvoker(active);
-      setCommandPaletteOpen(true);
-    } else if (commandPaletteOpen) {
-      setCommandPaletteOpen(false);
+    if (!isComposing && trigger) {
+      setQuestion('');
+      questionRef.current = '';
+      commandController?.openCommandMode?.(trigger[1] ?? '', invoker);
+      return;
     }
+    setQuestion(value);
   };
 
   const commandIdentity = () => ({
@@ -990,503 +963,219 @@ export const AskWorkspace = ({ client }: { readonly client?: AskWorkspaceClient 
     }
   };
 
+  const value: AskShellContextValue = {
+    shell,
+    workspace,
+    activeConversationId,
+    question,
+    mode,
+    sourceSelections,
+    draftReady,
+    outcomeUnknown,
+    isSubmitting,
+    submissionAvailable,
+    sourceSelectionMissing,
+    providerEligibility,
+    submissionNotice,
+    runOverrides,
+    runEvents,
+    answerRunMutationPending,
+    answerRunOutcomeUnknown,
+    pendingAnswerRunCommand,
+    answerRunCommandNotice,
+    exportedContent,
+    error,
+    sourceOptions,
+    sourceContextAvailable,
+    sourceContextPending,
+    sourceContextError,
+    sourceContextProjectMatches,
+    answerCommand,
+    answerCommandContext,
+    answerCommandInvoker,
+    handleQuestionChange,
+    handleModeChange: (nextMode) => {
+      setMode(nextMode);
+      setSubmissionNotice(undefined);
+    },
+    toggleSourceSelection,
+    handleSubmitQuestion,
+    handleResolveOutcome,
+    handleCancelAnswerRun,
+    handleRetryAnswerRun,
+    handleExportAnswerRun,
+    handleTransitionSeed,
+    handleResolveAnswerRunCommandOutcome,
+    openAnswerActions: (context, invoker) =>
+      commandController?.openCommandMode?.('answer', invoker, context),
+    closeAnswerCommand: () => {
+      setAnswerCommand(null);
+      setAnswerCommandContext(undefined);
+      setAnswerCommandInvoker(null);
+    },
+  };
+
+  return <AskShellContext.Provider value={value}>{children}</AskShellContext.Provider>;
+};
+
+export const AskShellGlobalComposer = () => {
+  const {
+    workspace,
+    question,
+    mode,
+    draftReady,
+    outcomeUnknown,
+    isSubmitting,
+    submissionAvailable,
+    sourceSelectionMissing,
+    providerEligibility,
+    submissionNotice,
+    handleQuestionChange,
+    handleModeChange,
+    handleSubmitQuestion,
+    handleResolveOutcome,
+  } = useAskShell();
+  const { t } = useProductLocalization();
+
   return (
-    <section className="route-page hfm-route-page ask-workspace">
-      <p className="eyebrow">{t('ask.eyebrow')}</p>
-      <h1 tabIndex={-1}>{t('ask.title')}</h1>
+    <GlobalComposer
+      workspace={workspace}
+      question={question}
+      mode={mode}
+      draftReady={draftReady}
+      outcomeUnknown={outcomeUnknown}
+      isSubmitting={isSubmitting}
+      submissionAvailable={submissionAvailable}
+      sourceSelectionMissing={sourceSelectionMissing}
+      providerEligibility={providerEligibility}
+      submissionNotice={submissionNotice}
+      onQuestionChange={handleQuestionChange}
+      onModeChange={handleModeChange}
+      onSubmit={() => void handleSubmitQuestion()}
+      onResolveOutcome={() => void handleResolveOutcome()}
+      t={t}
+    />
+  );
+};
 
-      <section className="action-card ask-draft-surface" aria-labelledby="ask-draft-heading">
-        <h2 id="ask-draft-heading">{t('ask.question_draft')}</h2>
-        <p className="ask-draft-help">{t('ask.draft_help')}</p>
-        <form
-          className="ask-question-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void handleSubmitQuestion();
-          }}
-        >
-          <label htmlFor="ask-mode">{t('ask.mode')}</label>
-          <select
-            id="ask-mode"
-            value={mode}
-            disabled={!draftReady || outcomeUnknown}
-            onChange={(event) => {
-              setMode(event.target.value as AskMode);
-              setSubmissionNotice(undefined);
-            }}
-          >
-            {workspace.availableAskModes.map((availableMode) => (
-              <option key={availableMode} value={availableMode}>
-                {hfmOwnerLabel(t, 'askMode', availableMode)}
-              </option>
-            ))}
-          </select>
+export const AskShellConversationPane = () => {
+  const {
+    workspace,
+    runOverrides,
+    runEvents,
+    answerRunMutationPending,
+    answerRunOutcomeUnknown,
+    pendingAnswerRunCommand,
+    exportedContent,
+    openAnswerActions,
+    handleCancelAnswerRun,
+    handleRetryAnswerRun,
+    handleResolveAnswerRunCommandOutcome,
+    answerRunCommandNotice,
+    answerCommand,
+    answerCommandContext,
+    answerCommandInvoker,
+    closeAnswerCommand,
+    handleExportAnswerRun,
+    handleTransitionSeed,
+  } = useAskShell();
+  const { t } = useProductLocalization();
 
-          {mode !== 'CANONICAL_ONLY' ? (
-            <>
-              <span className="ask-form-label" id="ask-source-context-label">
-                {t('ask.source_context')}
-              </span>
-              <fieldset className="ask-source-context" aria-labelledby="ask-source-context-label">
-                <legend className="visually-hidden">{t('ask.source_context')}</legend>
-                {!sourceContextAvailable ? (
-                  <p role="status">{t('ask.source_selection_unavailable')}</p>
-                ) : sourceContextPending ? (
-                  <p role="status">{t('ask.loading_sources')}</p>
-                ) : sourceContextError ? (
-                  <p role="alert">{t('ask.sources_load_failed')}</p>
-                ) : !sourceContextProjectMatches ? (
-                  <p role="alert">{t('ask.source_project_mismatch')}</p>
-                ) : sourceOptions.length === 0 ? (
-                  <p role="status">{t('ask.no_sources')}</p>
-                ) : (
-                  <ul className="ask-source-list">
-                    {sourceOptions.map((source) => {
-                      const pinnedSelection = sourceSelections.find(
-                        (selection) => selection.sourceId === source.sourceId,
-                      );
-                      const selectable = source.capabilities.includes('SELECT_FOR_ASK');
-                      return (
-                        <li key={source.sourceId}>
-                          <label className="ask-source-option">
-                            <input
-                              type="checkbox"
-                              checked={pinnedSelection !== undefined}
-                              disabled={!selectable || !draftReady || outcomeUnknown}
-                              onChange={() => toggleSourceSelection(source)}
-                            />
-                            <span>
-                              <strong>{source.label}</strong>
-                              <span>
-                                {pinnedSelection &&
-                                pinnedSelection.sourceVersionId !== source.selectedSourceVersionId
-                                  ? t('ask.pinned_version')
-                                  : `${t('ask.version')} ${source.versionCount}`}
-                              </span>
-                              <span>
-                                {hfmOwnerLabel(t, 'sourceAskUsage', source.askUsageState)}
-                              </span>
-                              <TechnicalDetails
-                                items={[
-                                  { label: t('ask.source_id'), value: source.sourceId },
-                                  {
-                                    label: t('ask.source_version_id'),
-                                    value:
-                                      pinnedSelection?.sourceVersionId ??
-                                      source.selectedSourceVersionId,
-                                  },
-                                ]}
-                              />
-                            </span>
-                          </label>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </fieldset>
-            </>
-          ) : null}
-
-          <label htmlFor="ask-question">{t('ask.question')}</label>
-          <textarea
-            id="ask-question"
-            value={question}
-            maxLength={10_000}
-            disabled={!draftReady || outcomeUnknown}
-            onChange={(event) => handleQuestionChange(event.target.value)}
-          />
-
-          <div className="ask-question-actions">
-            <button
-              className="hfm-action-primary"
-              type="submit"
-              disabled={
-                !draftReady ||
-                !submissionAvailable ||
-                question.trim().length === 0 ||
-                sourceSelectionMissing ||
-                providerEligibility.isPending ||
-                isSubmitting ||
-                outcomeUnknown
-              }
-            >
-              {isSubmitting ? t('ask.submitting') : t('ask.submit')}
-            </button>
-            {outcomeUnknown && pendingCommand ? (
-              <button
-                className="hfm-action-secondary"
-                type="button"
-                disabled={isSubmitting}
-                onClick={handleResolveOutcome}
-              >
-                {t('ask.check_submission_outcome')}
-              </button>
-            ) : null}
-          </div>
-          {sourceSelectionMissing ? (
-            <p className="ask-form-status hfm-status-attention" role="status">
-              {t('ask.source_selection_required')}
-            </p>
-          ) : null}
-          {providerEligibility.data && !providerEligibility.data.eligible ? (
-            <div className="ask-form-status hfm-status-attention" role="status">
-              <strong>{t('ask.action_required')}</strong> {providerEligibility.data.message}
-              {providerEligibility.data.requiredAction === 'REVIEW_PROJECT_PRIVACY_SETTINGS' ? (
-                <p>
-                  <button
-                    className="hfm-action-secondary"
-                    type="button"
-                    onClick={(event) => {
-                      setPrivacyCommandInvoker(event.currentTarget);
-                      setPrivacyCommand('privacy.review');
-                    }}
-                  >
-                    {t('ask.review_privacy')}
-                  </button>
-                </p>
-              ) : null}
-            </div>
-          ) : null}
-          {providerEligibility.isError ? (
-            <p className="ask-form-status hfm-status-attention" role="status">
-              {t('ask.provider_eligibility_unavailable')}
-            </p>
-          ) : null}
-          {submissionNotice ? (
-            <p className="ask-form-status hfm-status-info" role="status">
-              {submissionNotice}
-            </p>
-          ) : null}
-          {!submissionAvailable && providerEligibility.data?.eligible !== false ? (
-            <p className="ask-form-status hfm-status-attention" role="status">
-              {t('ask.submission_unavailable')}
-            </p>
-          ) : null}
-        </form>
-      </section>
-
-      <GlobalSearchDialog
-        shell={shell}
-        open={searchOpen}
-        invoker={searchInvoker}
-        onClose={() => setSearchOpen(false)}
+  return (
+    <>
+      <ConversationPane
+        workspace={workspace}
+        runOverrides={runOverrides}
+        runEvents={runEvents}
+        pending={answerRunMutationPending}
+        outcomeUnknown={answerRunOutcomeUnknown}
+        pendingAnswerRunId={pendingAnswerRunCommand?.answerRunId}
+        exportedContent={exportedContent}
+        onAnswerActions={openAnswerActions}
+        onCancel={(answerRunId) => void handleCancelAnswerRun(answerRunId)}
+        onRetry={(answerRunId, retryMode) => void handleRetryAnswerRun(answerRunId, retryMode)}
+        onResolveOutcome={() => void handleResolveAnswerRunCommandOutcome()}
+        t={t}
       />
-      <OwnerCommandPalette
-        open={commandPaletteOpen}
-        commands={commandRegistry}
-        initialQuery={paletteAnswerContext ? 'answer' : question.replace(/^\s*\//, '')}
-        resetQuerySignal={commandPaletteResetSignal}
-        invoker={commandPaletteInvoker}
-        onClose={() => {
-          setCommandPaletteOpen(false);
-          setPaletteAnswerContext(undefined);
-        }}
-        onSelect={handleAskCommand}
-      />
+      {answerRunCommandNotice ? (
+        <p className="ask-command-notice hfm-status-info" role="status">
+          {answerRunCommandNotice}
+        </p>
+      ) : null}
       <AnswerCommandSurface
         open={answerCommand !== null}
         commandId={answerCommand}
         context={answerCommandContext}
         pending={answerRunMutationPending}
         invoker={answerCommandInvoker}
-        onClose={() => {
-          setAnswerCommand(null);
-          setAnswerCommandContext(undefined);
-          setAnswerCommandInvoker(null);
-        }}
+        onClose={closeAnswerCommand}
         onExport={handleExportAnswerRun}
         onRetry={handleRetryAnswerRun}
         onPropose={handleTransitionSeed}
       />
-      <ProjectCommandSurface
-        open={projectCommand !== null}
-        commandId={projectCommand}
-        shell={shell}
-        invoker={projectCommandInvoker}
-        onClose={() => setProjectCommand(null)}
-      />
-      <PreferencesCommandSurface
-        open={preferenceCommand !== null}
-        commandId={preferenceCommand}
-        shell={shell}
-        invoker={preferenceCommandInvoker}
-        onClose={() => setPreferenceCommand(null)}
-      />
-      <AICommandSurface
-        open={aiCommand !== null}
-        commandId={aiCommand}
-        shell={shell}
-        invoker={aiCommandInvoker}
-        onClose={() => setAICommand(null)}
-      />
-      <PrivacyCommandSurface
-        open={privacyCommand !== null}
-        commandId={privacyCommand}
-        shell={shell}
-        invoker={privacyCommandInvoker}
-        onClose={() => setPrivacyCommand(null)}
-      />
-      <TechnicalCommandSurface
-        open={technicalOpen}
-        blocks={technicalBlocks}
-        invoker={technicalInvoker}
-        onClose={() => setTechnicalOpen(false)}
-      />
+    </>
+  );
+};
 
-      {answerRunCommandNotice ? (
-        <p className="ask-command-notice hfm-status-info" role="status">
-          {answerRunCommandNotice}
-        </p>
-      ) : null}
+export const AskCenterWorkspace = () => {
+  const {
+    shell,
+    workspace,
+    activeConversationId,
+    error,
+    mode,
+    sourceContextAvailable,
+    sourceContextPending,
+    sourceContextError,
+    sourceContextProjectMatches,
+    sourceOptions,
+    sourceSelections,
+    draftReady,
+    outcomeUnknown,
+    toggleSourceSelection,
+  } = useAskShell();
+  const { t } = useProductLocalization();
 
-      <section
-        className="action-card ask-conversation-surface"
-        aria-labelledby="conversation-heading"
-      >
-        <h2 id="conversation-heading">{t('ask.conversations')}</h2>
-        {workspace.conversations.length === 0 ? <p>{t('ask.no_conversations')}</p> : null}
-        {workspace.conversations.length > 0 ? (
-          <ul className="ask-conversation-list" aria-label={t('ask.conversation_list')}>
-            {workspace.conversations.map((item) => {
-              const selected = item.conversationId === conversation?.conversationId;
-              return (
-                <li key={item.conversationId}>
-                  {selected ? (
-                    <span className="ask-conversation-current" aria-current="page">
-                      <strong>{item.title}</strong>
-                      <span className="visually-hidden"> {t('ask.current_conversation')}</span>
-                    </span>
-                  ) : (
-                    <Link to={`/ask/conversations/${encodeURIComponent(item.conversationId)}`}>
-                      <strong>{item.title}</strong>
-                    </Link>
-                  )}
-                  {item.latestRunState === 'SUCCEEDED' ? null : (
-                    <> · {hfmOwnerLabel(t, 'answerRun', item.latestRunState)}</>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        ) : null}
+  if (!shell.activeProject && !activeConversationId) {
+    return <p>{t('ask.create_or_select_project')}</p>;
+  }
+  if (error) return <ErrorState error={error} onRetry={() => window.location.reload()} />;
+  if (!workspace) return <LoadingState message={t('ask.loading_workspace')} />;
 
-        {conversation ? (
-          <section
-            className="ask-selected-conversation"
-            aria-label={t('ask.selected_conversation')}
-            id={`conversation-${conversation.conversationId}`}
-          >
-            <h3>{conversation.title}</h3>
-            {conversation.branches.map((branch) => (
-              <ol
-                key={branch.branchId}
-                id={`branch-${branch.branchId}`}
-                aria-label={branch.label}
-                className="ask-branch-turns"
-              >
-                {branch.turns.map((turn) => {
-                  const answerRun = runOverrides[turn.answerRun.answerRunId] ?? turn.answerRun;
-                  const events = runEvents[answerRun.answerRunId];
-                  const latestPartial =
-                    answerRun.partialText ??
-                    events?.events
-                      .slice()
-                      .reverse()
-                      .find((event) => event.partialText !== undefined)?.partialText;
-                  const turnAnswerContext: AnswerCommandContext = {
-                    projectId: workspace.projectId,
-                    conversationId: conversation.conversationId,
-                    branchId: branch.branchId,
-                    turnId: turn.turnId,
-                    answerRunId: answerRun.answerRunId,
-                    answerRevision: answerRun.answerRevision,
-                    state: answerRun.state,
-                    capabilities: answerRun.capabilities,
-                  };
-                  const hasAnswerCommands = answerRun.capabilities.some((capability) =>
-                    [
-                      'EXPORT',
-                      'RETRY_SAME_CONTEXT',
-                      'RETRY_CURRENT_POLICY',
-                      'CREATE_INTAKE_DRAFT',
-                      'CREATE_DRAFT_CHANGE_SET',
-                      'PROPOSE_DIRECTIVE',
-                    ].includes(capability),
-                  );
-                  return (
-                    <li
-                      className="ask-turn"
-                      key={turn.turnId}
-                      id={`turn-${turn.turnId}`}
-                      tabIndex={-1}
-                    >
-                      <p className="ask-turn-question">
-                        <strong>{t('ask.question')}:</strong> {turn.userMessage}
-                      </p>
-                      {latestPartial || answerRun.statements.length > 0 ? (
-                        <div className="ask-answer-content">
-                          <h4>{t('ask.answer')}</h4>
-                          {latestPartial ? (
-                            <p aria-live="polite">
-                              {t('ask.partial_answer')}: {latestPartial}
-                            </p>
-                          ) : null}
-                          {answerRun.statements.map((statement) => (
-                            <article
-                              key={statement.statementId}
-                              id={`statement-${statement.statementId}`}
-                            >
-                              <p>{statement.text}</p>
-                              <ul className="ask-citation-list">
-                                {statement.citations.map((citation) => (
-                                  <li
-                                    key={citation.citationId}
-                                    id={`citation-${citation.citationId}`}
-                                    tabIndex={-1}
-                                  >
-                                    <Link
-                                      to={`/sources/${encodeURIComponent(citation.sourceId)}?version=${encodeURIComponent(citation.sourceVersionId)}`}
-                                      state={{
-                                        citationReturnTarget: {
-                                          schemaVersion: '1.0.0',
-                                          originRoute: `/ask/conversations/${encodeURIComponent(conversation.conversationId)}`,
-                                          resourceKind: 'conversation',
-                                          resourceId: conversation.conversationId,
-                                          conversationId: conversation.conversationId,
-                                          branchId: branch.branchId,
-                                          turnId: turn.turnId,
-                                          answerRunId: turn.answerRun.answerRunId,
-                                          answerRevision: turn.answerRun.answerRevision,
-                                          resourceRevision: conversation.conversationRevision,
-                                          citationId: citation.citationId,
-                                          sourceId: citation.sourceId,
-                                          sourceVersionId: citation.sourceVersionId,
-                                          evidenceId: citation.evidenceId,
-                                          scrollAnchor: citation.citationId,
-                                          focusTarget: citation.citationId,
-                                          panelId: 'conversations',
-                                        },
-                                      }}
-                                    >
-                                      {t('ask.open_evidence')}
-                                    </Link>
-                                  </li>
-                                ))}
-                              </ul>
-                            </article>
-                          ))}
-                        </div>
-                      ) : null}
-                      {answerRun.state === 'SUCCEEDED' ? null : (
-                        <p
-                          className={`ask-answer-status ${
-                            answerRun.state === 'ACTION_REQUIRED' ||
-                            answerRun.state === 'OUTCOME_UNKNOWN'
-                              ? 'hfm-status-attention'
-                              : 'hfm-status-info'
-                          }`}
-                        >
-                          {t('ask.answer_status')}:{' '}
-                          <strong>{hfmOwnerLabel(t, 'answerRun', answerRun.state)}</strong>
-                        </p>
-                      )}
-                      {answerRun.failure ? (
-                        <p className="ask-answer-failure hfm-status-error" role="alert">
-                          {answerRun.failure.message}
-                        </p>
-                      ) : null}
-                      {answerRun.failure ? (
-                        <TechnicalDetails
-                          items={[{ label: t('ask.failure_code'), value: answerRun.failure.code }]}
-                        />
-                      ) : null}
-                      {answerRun.capabilities.includes('CANCEL') ||
-                      (answerRun.state === 'FAILED' &&
-                        (answerRun.capabilities.includes('RETRY_SAME_CONTEXT') ||
-                          answerRun.capabilities.includes('RETRY_CURRENT_POLICY'))) ||
-                      hasAnswerCommands ||
-                      (answerRunOutcomeUnknown &&
-                        pendingAnswerRunCommand?.answerRunId === answerRun.answerRunId) ? (
-                        <div className="answer-action-row">
-                          {answerRun.capabilities.includes('CANCEL') ? (
-                            <button
-                              className="hfm-action-secondary"
-                              type="button"
-                              disabled={answerRunMutationPending}
-                              onClick={() => void handleCancelAnswerRun(answerRun.answerRunId)}
-                            >
-                              {t('ask.cancel_answer')}
-                            </button>
-                          ) : null}
-                          {answerRun.state === 'FAILED' &&
-                          answerRun.capabilities.includes('RETRY_SAME_CONTEXT') ? (
-                            <button
-                              className="hfm-action-selection"
-                              type="button"
-                              disabled={answerRunMutationPending}
-                              onClick={() =>
-                                void handleRetryAnswerRun(answerRun.answerRunId, 'SAME_CONTEXT')
-                              }
-                            >
-                              {t('answer.retry_same')}
-                            </button>
-                          ) : null}
-                          {answerRun.state === 'FAILED' &&
-                          answerRun.capabilities.includes('RETRY_CURRENT_POLICY') ? (
-                            <button
-                              className="hfm-action-selection"
-                              type="button"
-                              disabled={answerRunMutationPending}
-                              onClick={() =>
-                                void handleRetryAnswerRun(answerRun.answerRunId, 'CURRENT_POLICY')
-                              }
-                            >
-                              {t('answer.retry_policy')}
-                            </button>
-                          ) : null}
-                          {hasAnswerCommands ? (
-                            <button
-                              className="hfm-action-secondary"
-                              type="button"
-                              disabled={answerRunMutationPending}
-                              aria-label={t('ask.answer_actions')}
-                              onClick={(event) => {
-                                setPaletteAnswerContext(turnAnswerContext);
-                                setCommandPaletteInvoker(event.currentTarget);
-                                setCommandPaletteResetSignal((current) => current + 1);
-                                setCommandPaletteOpen(true);
-                              }}
-                            >
-                              {t('ask.answer_actions')}
-                            </button>
-                          ) : null}
-                          {answerRunOutcomeUnknown &&
-                          pendingAnswerRunCommand?.answerRunId === answerRun.answerRunId ? (
-                            <button
-                              className="hfm-action-secondary"
-                              type="button"
-                              onClick={() => void handleResolveAnswerRunCommandOutcome()}
-                            >
-                              {t('common.check_result')}
-                            </button>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </li>
-                  );
-                })}
-              </ol>
-            ))}
-          </section>
-        ) : null}
-      </section>
-      {exportedContent ? (
-        <section className="action-card ask-export-surface" aria-labelledby="ask-export-heading">
-          <h2 id="ask-export-heading">{t('ask.answer_export')}</h2>
-          <pre>{exportedContent}</pre>
-        </section>
-      ) : null}
+  return (
+    <section className="route-page hfm-route-page ask-workspace">
+      <p className="eyebrow">{t('ask.eyebrow')}</p>
+      <h1 tabIndex={-1}>{t('ask.title')}</h1>
+      <AskSupportControls
+        mode={mode}
+        sourceContextAvailable={sourceContextAvailable}
+        sourceContextPending={sourceContextPending}
+        sourceContextError={sourceContextError}
+        sourceContextProjectMatches={sourceContextProjectMatches}
+        sourceOptions={sourceOptions}
+        sourceSelections={sourceSelections}
+        draftReady={draftReady}
+        outcomeUnknown={outcomeUnknown}
+        onToggleSource={toggleSourceSelection}
+        t={t}
+      />
     </section>
+  );
+};
+
+export const AskWorkspace = (props: {
+  readonly client?: AskWorkspaceClient;
+  readonly shell?: GlobalShellView;
+}) => {
+  const existingShell = useOptionalAskShell();
+  if (existingShell) {
+    return <AskCenterWorkspace />;
+  }
+  return (
+    <AskShellProvider client={props.client} shell={props.shell}>
+      <AskCenterWorkspace />
+      <AskShellConversationPane />
+      <AskShellGlobalComposer />
+    </AskShellProvider>
   );
 };

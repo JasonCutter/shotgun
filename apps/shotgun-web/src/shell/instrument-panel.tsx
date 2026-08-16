@@ -31,10 +31,10 @@ const effectiveAIConfiguration = (
     return null;
   }
 
-  const provider = settings.providers.find(
+  const provider = settings.providers?.find(
     (candidate) => candidate.providerId === settings.currentConfiguration?.activeProviderId,
   );
-  const model = provider?.models.find(
+  const model = provider?.models?.find(
     (candidate) => candidate.modelId === settings.currentConfiguration?.activeModelId,
   );
   return provider && model ? `${provider.displayName} / ${model.displayName}` : null;

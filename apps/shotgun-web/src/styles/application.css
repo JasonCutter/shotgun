@@ -2863,3 +2863,70 @@ tr.graph-item--discovery {
     grid-template-columns: 1fr;
   }
 }
+
+/* HFM-S7-C3: persistent PC shell interaction regions. */
+.pc-global-shell__center {
+  position: relative;
+}
+
+.pc-global-shell__conversation {
+  overflow: auto;
+}
+
+#global-conversation-pane {
+  min-height: 100%;
+}
+
+.conversation-pane {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+}
+
+.conversation-pane .ask-conversation-list,
+.conversation-pane .ask-branch-turns {
+  margin: 0;
+}
+
+.global-composer {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.65rem;
+  align-items: center;
+  padding: 0.75rem 1rem;
+}
+
+.global-composer > textarea {
+  min-height: 2.75rem;
+  max-height: 9rem;
+  resize: vertical;
+}
+
+.global-composer > p {
+  grid-column: 2 / -1;
+  margin: 0;
+}
+
+.center-command-mode {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: auto;
+  background: var(--surface, #fff);
+  padding: 1rem;
+}
+
+.center-command-mode__surface {
+  max-width: 52rem;
+  margin: 0 auto;
+}
+
+.ask-support-controls {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.ask-support-controls > h1 {
+  margin: 0;
+  font-size: 1.15rem;
+}

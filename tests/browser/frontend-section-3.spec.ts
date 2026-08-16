@@ -143,7 +143,8 @@ test('Section 3 renders the PC Global Shell foundation and a compact Home', asyn
   await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Search', exact: true })).toBeVisible();
   await page.keyboard.press('Control+k');
-  await expect(page.getByRole('dialog', { name: 'Commands' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Commands' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Commands' })).toHaveCount(0);
 });
 
 test('Section 3 Search and Command Palette keep query transient and keyboard-safe', async ({
@@ -169,7 +170,7 @@ test('Section 3 Search and Command Palette keep query transient and keyboard-saf
     .getByRole('link', { name: 'Home', exact: true });
   await keyboardInvoker.focus();
   await page.keyboard.press('Control+k');
-  const commands = page.getByRole('dialog', { name: 'Commands' });
+  const commands = page.getByRole('region', { name: 'Commands' });
   await commands.getByRole('button', { name: /^Search/ }).click();
   const searchDialog = page.getByRole('dialog', { name: 'Search' });
   await expect(searchDialog).toBeVisible();
@@ -197,7 +198,7 @@ test('Section 3 Search and Command Palette keep query transient and keyboard-saf
   productPostRequests.length = 0;
   await keyboardInvoker.focus();
   await page.keyboard.press('Control+k');
-  const palette = page.getByRole('dialog', { name: 'Commands' });
+  const palette = page.getByRole('region', { name: 'Commands' });
   await expect(palette).toBeVisible();
   await expect(palette.getByRole('textbox', { name: 'Command search' })).toBeVisible();
   await expect(palette.getByRole('heading', { name: 'Navigation' })).toBeVisible();
@@ -242,6 +243,7 @@ test('Section 3 blocks unsafe leave state, warns on offline state, and restores 
     'Resolve the current Workspace before switching Projects.',
   );
   await page.keyboard.press('Escape');
+  await expect(page.getByRole('region', { name: 'Commands' })).toHaveCount(0);
   await expect(page.getByRole('dialog', { name: 'Commands' })).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Remove Guarded draft' }).click();
@@ -254,7 +256,7 @@ test('Section 3 blocks unsafe leave state, warns on offline state, and restores 
   await page.evaluate(() => window.dispatchEvent(new Event('offline')));
   await expect(page.getByRole('alert')).toContainText('Offline');
   await page.keyboard.press('Control+k');
-  const commands = page.getByRole('dialog', { name: 'Commands' });
+  const commands = page.getByRole('region', { name: 'Commands' });
   await expect(commands.getByRole('button', { name: /^Search/ })).toBeDisabled();
   await context.setOffline(false);
   await page.evaluate(() => window.dispatchEvent(new Event('online')));

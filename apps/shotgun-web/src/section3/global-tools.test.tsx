@@ -18,6 +18,7 @@ import {
   useOptionalAnswerCommandContext,
   type RegisteredAnswerCommandContext,
 } from '../commands/answer-command-context.js';
+import { OwnerCommandPalette } from '../commands/owner-command-palette.js';
 import { createSessionCycleState } from '../session/session-query.js';
 import { TechnicalDetails } from '../components/technical-details.js';
 import { TechnicalInspectionProvider } from '../components/technical-inspection-context.js';
@@ -100,10 +101,35 @@ const runtime = (apiClient: Partial<ShotgunApiClient>): AppRuntime => ({
   sessionCycleState: createSessionCycleState(),
 });
 
+const GlobalToolsHarness = () => (
+  <GlobalTools shell={shell}>
+    {(controller) => {
+      const commandMode = controller.commandMode ?? {
+        open: false,
+        initialQuery: '',
+        resetQuerySignal: 0,
+        invoker: null,
+      };
+      return (
+        <OwnerCommandPalette
+          open={commandMode.open}
+          presentation="CENTER"
+          commands={controller.commands}
+          initialQuery={commandMode.initialQuery}
+          resetQuerySignal={commandMode.resetQuerySignal}
+          invoker={commandMode.invoker}
+          onClose={controller.closeCommandMode ?? (() => undefined)}
+          onSelect={(command) => controller.executeCommand(command, commandMode.invoker)}
+        />
+      );
+    }}
+  </GlobalTools>
+);
+
 const openCommandsWithKeyboard = async (user: ReturnType<typeof userEvent.setup>) => {
   expect(screen.queryByRole('button', { name: 'Commands' })).toBeNull();
   await user.keyboard('{Control>}k{/Control}');
-  return await screen.findByRole('dialog', { name: 'Commands' });
+  return await screen.findByRole('region', { name: 'Commands' });
 };
 
 const AnswerContextRegistration = ({
@@ -140,7 +166,7 @@ describe('GlobalTools HFM-S1 preservation', () => {
         <MemoryRouter>
           <AnswerCommandContextProvider>
             <AnswerContextRegistration registration={registration} />
-            <GlobalTools shell={shell} />
+            <GlobalToolsHarness />
           </AnswerCommandContextProvider>
         </MemoryRouter>
       </AppProviders>,
@@ -176,7 +202,7 @@ describe('GlobalTools HFM-S1 preservation', () => {
     render(
       <AppProviders runtime={runtime({ getProjects: vi.fn(async () => [project]) })}>
         <MemoryRouter>
-          <GlobalTools shell={shell} />
+          <GlobalToolsHarness />
         </MemoryRouter>
       </AppProviders>,
     );
@@ -185,7 +211,7 @@ describe('GlobalTools HFM-S1 preservation', () => {
     const commands = await openCommandsWithKeyboard(user);
     await user.click(within(commands).getByRole('button', { name: /^Search/ }));
 
-    expect(screen.getByRole('dialog', { name: 'Search' })).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'Commands' })).toBeNull();
     const searchQuery = screen.getByRole('textbox', { name: 'Search query' });
     await waitFor(() => expect(document.activeElement).toBe(searchQuery));
   });
@@ -253,7 +279,7 @@ describe('GlobalTools HFM-S1 preservation', () => {
         runtime={runtime({ switchActiveProject, getProjects: vi.fn(async () => [project]) })}
       >
         <MemoryRouter>
-          <GlobalTools shell={shell} />
+          <GlobalToolsHarness />
         </MemoryRouter>
       </AppProviders>,
     );
@@ -269,7 +295,7 @@ describe('GlobalTools HFM-S1 preservation', () => {
     render(
       <AppProviders runtime={runtime({ getProjects: vi.fn(async () => [project]) })}>
         <MemoryRouter>
-          <GlobalTools shell={shell} />
+          <GlobalToolsHarness />
         </MemoryRouter>
       </AppProviders>,
     );
@@ -301,7 +327,7 @@ describe('GlobalTools HFM-S1 preservation', () => {
         })}
       >
         <MemoryRouter>
-          <GlobalTools shell={shell} />
+          <GlobalToolsHarness />
         </MemoryRouter>
       </AppProviders>,
     );
@@ -352,7 +378,7 @@ describe('GlobalTools HFM-S1 preservation', () => {
         })}
       >
         <MemoryRouter>
-          <GlobalTools shell={shell} />
+          <GlobalToolsHarness />
         </MemoryRouter>
       </AppProviders>,
     );
@@ -376,7 +402,7 @@ describe('GlobalTools HFM-S1 preservation', () => {
       >
         <MemoryRouter>
           <TechnicalInspectionProvider>
-            <GlobalTools shell={shell} />
+            <GlobalToolsHarness />
             <TechnicalDetails items={[{ label: 'Projection revision', value: 'revision-9' }]} />
           </TechnicalInspectionProvider>
         </MemoryRouter>

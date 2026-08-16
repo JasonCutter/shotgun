@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 
 import type { GlobalShellView } from '@shotgun/api-client';
@@ -11,9 +11,11 @@ import {
   purgeProjectScopedCaches,
   sessionBoundaryQueryKey,
 } from '../app/query-keys.js';
-import { useOptionalAnswerCommandContext } from '../commands/answer-command-context.js';
+import {
+  type AnswerCommandContext,
+  useOptionalAnswerCommandContext,
+} from '../commands/answer-command-context.js';
 import { AICommandSurface } from '../commands/ai-command-surface.js';
-import { OwnerCommandPalette } from '../commands/owner-command-palette.js';
 import {
   createOwnerCommandRegistry,
   type AICommandId,
@@ -36,7 +38,36 @@ import { GlobalSearchDialog } from './global-search-dialog.js';
 export type OwnerCommandController = {
   readonly commands: readonly OwnerCommandDefinition[];
   readonly executeCommand: (command: OwnerCommandDefinition, invoker?: HTMLElement | null) => void;
+  readonly commandMode?: {
+    readonly open: boolean;
+    readonly initialQuery: string;
+    readonly resetQuerySignal: number;
+    readonly invoker: HTMLElement | null;
+  };
+  readonly openCommandMode?: (
+    initialQuery?: string,
+    invoker?: HTMLElement | null,
+    answerContext?: AnswerCommandContext,
+  ) => void;
+  readonly closeCommandMode?: () => void;
 };
+
+const OwnerCommandControllerContext = createContext<OwnerCommandController | null>(null);
+
+export const OwnerCommandControllerProvider = ({
+  controller,
+  children,
+}: {
+  readonly controller: OwnerCommandController;
+  readonly children: ReactNode;
+}) => (
+  <OwnerCommandControllerContext.Provider value={controller}>
+    {children}
+  </OwnerCommandControllerContext.Provider>
+);
+
+export const useOwnerCommandController = (): OwnerCommandController | null =>
+  useContext(OwnerCommandControllerContext);
 
 type GlobalToolsProps = {
   readonly shell: GlobalShellView;
@@ -58,6 +89,8 @@ export const GlobalTools = ({ shell, children }: GlobalToolsProps) => {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteInvoker, setPaletteInvoker] = useState<HTMLElement | null>(null);
   const [paletteResetSignal, setPaletteResetSignal] = useState(0);
+  const [paletteInitialQuery, setPaletteInitialQuery] = useState('');
+  const [paletteAnswerContext, setPaletteAnswerContext] = useState<AnswerCommandContext>();
   const [projectCommand, setProjectCommand] = useState<ProjectCommandId | null>(null);
   const [projectCommandInvoker, setProjectCommandInvoker] = useState<HTMLElement | null>(null);
   const [preferenceCommand, setPreferenceCommand] = useState<PreferenceCommandId | null>(null);
@@ -83,11 +116,18 @@ export const GlobalTools = ({ shell, children }: GlobalToolsProps) => {
         includeProjectSwitch: true,
         includeSearch: true,
         hasTechnicalInspection: technicalBlocks.length > 0,
-        answerContext: answerRegistration?.context,
+        answerContext: paletteAnswerContext ?? answerRegistration?.context,
         answerCommandPending: answerRegistration?.commandPending,
         projects: projectsQuery.data,
       }),
-    [answerRegistration, connectivity.isOffline, projectsQuery.data, shell, technicalBlocks.length],
+    [
+      answerRegistration,
+      connectivity.isOffline,
+      paletteAnswerContext,
+      projectsQuery.data,
+      shell,
+      technicalBlocks.length,
+    ],
   );
 
   useEffect(() => {
@@ -101,6 +141,9 @@ export const GlobalTools = ({ shell, children }: GlobalToolsProps) => {
         const active =
           document.activeElement instanceof HTMLElement ? document.activeElement : null;
         setPaletteInvoker(active);
+        setPaletteInitialQuery('');
+        setPaletteAnswerContext(undefined);
+        setPaletteResetSignal((current) => current + 1);
         setPaletteOpen(true);
       }
     };
@@ -118,7 +161,10 @@ export const GlobalTools = ({ shell, children }: GlobalToolsProps) => {
           ? { ...current, session: nextSession }
           : current,
       );
+      await queryClient.invalidateQueries({ queryKey: ['protected'] });
+      await queryClient.invalidateQueries({ queryKey: ['project'] });
       setPaletteOpen(false);
+      setPaletteAnswerContext(undefined);
       navigate('/');
     },
   });
@@ -128,61 +174,84 @@ export const GlobalTools = ({ shell, children }: GlobalToolsProps) => {
     setSearchOpen(true);
   };
 
+  const closeCommandMode = () => {
+    setPaletteOpen(false);
+    setPaletteAnswerContext(undefined);
+  };
+
+  const openCommandMode = (
+    initialQuery = '',
+    invoker: HTMLElement | null = null,
+    answerContext?: AnswerCommandContext,
+  ) => {
+    setPaletteInvoker(invoker);
+    setPaletteInitialQuery(initialQuery);
+    setPaletteAnswerContext(answerContext);
+    setPaletteResetSignal((current) => current + 1);
+    setPaletteOpen(true);
+  };
+
   const handleCommand = (command: OwnerCommandDefinition, invoker: HTMLElement | null = null) => {
     const commandInvoker = invoker ?? paletteInvoker;
     if (command.action.kind === 'OPEN_COMMANDS') {
-      setPaletteInvoker(commandInvoker);
-      setPaletteResetSignal((current) => current + 1);
-      setPaletteOpen(true);
+      openCommandMode('', commandInvoker);
       return;
     }
     if (command.action.kind === 'OPEN_PROJECT_FLOW') {
       setProjectCommandInvoker(commandInvoker);
       setProjectCommand(command.action.commandId);
-      setPaletteOpen(false);
+      closeCommandMode();
       return;
     }
     if (command.action.kind === 'OPEN_PREFERENCE_FLOW') {
       setPreferenceCommandInvoker(commandInvoker);
       setPreferenceCommand(command.action.commandId);
-      setPaletteOpen(false);
+      closeCommandMode();
       return;
     }
     if (command.action.kind === 'OPEN_AI_FLOW') {
       setAICommandInvoker(commandInvoker);
       setAICommand(command.action.commandId);
-      setPaletteOpen(false);
+      closeCommandMode();
       return;
     }
     if (command.action.kind === 'OPEN_PRIVACY_FLOW') {
       setPrivacyCommandInvoker(commandInvoker);
       setPrivacyCommand(command.action.commandId);
-      setPaletteOpen(false);
+      closeCommandMode();
       return;
     }
     if (command.action.kind === 'OPEN_TECHNICAL_FLOW') {
       setTechnicalInvoker(commandInvoker);
       setTechnicalOpen(true);
-      setPaletteOpen(false);
+      closeCommandMode();
       return;
     }
     if (command.action.kind === 'OPEN_ANSWER_FLOW') {
-      answerRegistration?.openCommand(command.action.commandId, commandInvoker);
-      setPaletteOpen(false);
+      if (paletteAnswerContext && answerRegistration?.openCommandForContext) {
+        answerRegistration.openCommandForContext(
+          paletteAnswerContext,
+          command.action.commandId,
+          commandInvoker,
+        );
+      } else {
+        answerRegistration?.openCommand(command.action.commandId, commandInvoker);
+      }
+      closeCommandMode();
       return;
     }
     if (command.action.kind === 'NAVIGATE') {
-      setPaletteOpen(false);
+      closeCommandMode();
       navigate(command.action.targetRoute.href);
       return;
     }
     if (command.action.kind === 'NAVIGATE_PATH') {
-      setPaletteOpen(false);
+      closeCommandMode();
       navigate(command.action.href);
       return;
     }
     if (command.action.kind === 'OPEN_SEARCH') {
-      setPaletteOpen(false);
+      closeCommandMode();
       openSearch(commandInvoker);
       return;
     }
@@ -205,6 +274,14 @@ export const GlobalTools = ({ shell, children }: GlobalToolsProps) => {
   const controller: OwnerCommandController = {
     commands: commandRegistry,
     executeCommand: handleCommand,
+    commandMode: {
+      open: paletteOpen,
+      initialQuery: paletteInitialQuery,
+      resetQuerySignal: paletteResetSignal,
+      invoker: paletteInvoker,
+    },
+    openCommandMode,
+    closeCommandMode,
   };
 
   return (
@@ -221,14 +298,6 @@ export const GlobalTools = ({ shell, children }: GlobalToolsProps) => {
           open={searchOpen}
           invoker={searchInvoker}
           onClose={() => setSearchOpen(false)}
-        />
-        <OwnerCommandPalette
-          open={paletteOpen}
-          commands={commandRegistry}
-          resetQuerySignal={paletteResetSignal}
-          invoker={paletteInvoker}
-          onClose={() => setPaletteOpen(false)}
-          onSelect={(command) => handleCommand(command, paletteInvoker)}
         />
         <ProjectCommandSurface
           open={projectCommand !== null}

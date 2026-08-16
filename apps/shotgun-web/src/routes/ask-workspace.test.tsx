@@ -13,9 +13,12 @@ import type {
 
 import { createFrontendQueryClient } from '../app/query-client.js';
 import { AppProviders, type AppRuntime } from '../app/providers.js';
+import { AnswerCommandContextProvider } from '../commands/answer-command-context.js';
+import { OwnerCommandPalette } from '../commands/owner-command-palette.js';
 import { TechnicalDetails } from '../components/technical-details.js';
 import { TechnicalInspectionProvider } from '../components/technical-inspection-context.js';
 import { ProductLocalizationProvider } from '../localization/product-localization.js';
+import { GlobalTools, OwnerCommandControllerProvider } from '../section3/global-tools.js';
 import { useLeaveGuard } from '../session/leave-guard-context.js';
 import { createSessionCycleState } from '../session/session-query.js';
 import { AskWorkspace } from './ask-workspace.js';
@@ -289,7 +292,33 @@ const commandShell: GlobalShellView = {
 };
 
 const ShellOutlet = ({ shell = mockShell }: { readonly shell?: GlobalShellView }) => (
-  <Outlet context={{ shell }} />
+  <AnswerCommandContextProvider>
+    <GlobalTools shell={shell}>
+      {(controller) => {
+        const commandMode = controller.commandMode ?? {
+          open: false,
+          initialQuery: '',
+          resetQuerySignal: 0,
+          invoker: null,
+        };
+        return (
+          <OwnerCommandControllerProvider controller={controller}>
+            <Outlet context={{ shell }} />
+            <OwnerCommandPalette
+              open={commandMode.open}
+              presentation="CENTER"
+              commands={controller.commands}
+              initialQuery={commandMode.initialQuery}
+              resetQuerySignal={commandMode.resetQuerySignal}
+              invoker={commandMode.invoker}
+              onClose={controller.closeCommandMode ?? (() => undefined)}
+              onSelect={(command) => controller.executeCommand(command, commandMode.invoker)}
+            />
+          </OwnerCommandControllerProvider>
+        );
+      }}
+    </GlobalTools>
+  </AnswerCommandContextProvider>
 );
 
 const LocalizedShellOutlet = () => (
@@ -393,12 +422,6 @@ describe('AskWorkspace', () => {
       (screen.getByRole('button', { name: 'Submit question' }) as HTMLButtonElement).disabled,
     ).toBe(true);
     expect(mockClient.submitQuestion).not.toHaveBeenCalled();
-
-    const reviewPrivacy = screen.getByRole('button', { name: 'Review privacy' });
-    await userEvent.click(reviewPrivacy);
-    expect(await screen.findByRole('dialog', { name: 'Review Privacy' })).toBeTruthy();
-    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
-    await waitFor(() => expect(document.activeElement).toBe(reviewPrivacy));
   });
 
   it('renders Ask Workspace server data and conversation tree', async () => {
@@ -684,7 +707,7 @@ describe('AskWorkspace', () => {
     }
 
     await user.click(actions);
-    const palette = screen.getByRole('dialog', { name: 'Commands' });
+    const palette = screen.getByRole('region', { name: 'Commands' });
     await user.click(within(palette).getByRole('button', { name: /^Export answer/ }));
     const exportDialog = screen.getByRole('dialog', { name: 'Export answer' });
     await user.click(within(exportDialog).getByRole('button', { name: 'Export answer' }));
@@ -767,7 +790,7 @@ describe('AskWorkspace', () => {
     );
 
     await user.type(await screen.findByLabelText('Question'), '/');
-    const palette = screen.getByRole('dialog', { name: 'Commands' });
+    const palette = screen.getByRole('region', { name: 'Commands' });
     await user.type(within(palette).getByRole('textbox', { name: 'Command search' }), 'export');
     await user.click(within(palette).getByRole('button', { name: /^Export answer/ }));
     const exportDialog = screen.getByRole('dialog', { name: 'Export answer' });
@@ -882,16 +905,16 @@ describe('AskWorkspace', () => {
 
     const questionInput = await screen.findByLabelText('Question');
     await user.type(questionInput, 'ratio / 2');
-    expect(screen.queryByRole('dialog', { name: 'Commands' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Commands' })).toBeNull();
 
     await user.clear(questionInput);
     await user.type(questionInput, '/');
-    expect(screen.getByRole('dialog', { name: 'Commands' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Commands' })).toBeTruthy();
     const commandSearch = screen.getByRole('textbox', { name: 'Command search' });
     await user.type(commandSearch, 'help');
     await user.keyboard('{Enter}');
 
-    expect(screen.getByRole('dialog', { name: 'Commands' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Commands' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Help' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Navigation' })).toBeTruthy();
 
@@ -1095,7 +1118,7 @@ describe('AskWorkspace', () => {
     );
 
     const questionInput = await screen.findByLabelText('Question');
-    expect(questionInput.closest('form')?.classList.contains('ask-question-form')).toBe(true);
+    expect(questionInput.closest('form')?.classList.contains('global-composer')).toBe(true);
     await user.type(questionInput, 'What is canonical?');
     await user.click(screen.getByRole('button', { name: 'Submit question' }));
 

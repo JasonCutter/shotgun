@@ -6,6 +6,7 @@ const focusableSelector =
 export const useAccessibleDialog = (input: {
   readonly open: boolean;
   readonly onClose: () => void;
+  readonly trapFocus?: boolean;
 }) => {
   const dialogRef = useRef<HTMLDivElement>(null);
   const invokerRef = useRef<HTMLElement | null>(null);
@@ -38,7 +39,7 @@ export const useAccessibleDialog = (input: {
       input.onClose();
       return;
     }
-    if (event.key !== 'Tab') return;
+    if (event.key !== 'Tab' || input.trapFocus === false) return;
 
     const focusables = Array.from(
       dialogRef.current?.querySelectorAll<HTMLElement>(focusableSelector) ?? [],

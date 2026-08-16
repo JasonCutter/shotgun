@@ -13,6 +13,7 @@ export type OwnerCommandPaletteProps = {
   readonly commands: readonly OwnerCommandDefinition[];
   readonly initialQuery?: string;
   readonly resetQuerySignal?: number;
+  readonly presentation?: 'DIALOG' | 'CENTER';
   readonly invoker: HTMLElement | null;
   readonly onClose: () => void;
   readonly onSelect: (command: OwnerCommandDefinition) => void;
@@ -54,12 +55,17 @@ export const OwnerCommandPalette = ({
   commands,
   initialQuery = '',
   resetQuerySignal = 0,
+  presentation = 'DIALOG',
   invoker,
   onClose,
   onSelect,
 }: OwnerCommandPaletteProps) => {
   const { locale, t } = useProductLocalization();
-  const dialog = useAccessibleDialog({ open, onClose });
+  const dialog = useAccessibleDialog({
+    open,
+    onClose,
+    trapFocus: presentation === 'DIALOG',
+  });
   const titleId = useId();
   const listId = useId();
   const [query, setQuery] = useState(initialQuery);
@@ -171,17 +177,24 @@ export const OwnerCommandPalette = ({
     }
   };
 
+  const isDialog = presentation === 'DIALOG';
+
   return (
     <div
-      className="modal-backdrop"
-      role="dialog"
-      aria-modal="true"
+      className={isDialog ? 'modal-backdrop' : 'center-command-mode'}
+      {...(isDialog ? { role: 'dialog', 'aria-modal': true } : { role: 'region' })}
       aria-labelledby={titleId}
       ref={dialog.dialogRef}
       tabIndex={-1}
       onKeyDown={onKeyDown}
     >
-      <div className="modal-card owner-command-palette hfm-command-surface">
+      <div
+        className={
+          isDialog
+            ? 'modal-card owner-command-palette hfm-command-surface'
+            : 'owner-command-palette hfm-command-surface center-command-mode__surface'
+        }
+      >
         <h2 id={titleId}>{t('commands.title')}</h2>
         <p>{t('commands.help')}</p>
         <label htmlFor={`${listId}-query`}>{t('commands.search_label')}</label>

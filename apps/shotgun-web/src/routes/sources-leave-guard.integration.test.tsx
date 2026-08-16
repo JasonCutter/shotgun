@@ -91,7 +91,7 @@ const renderWorkspace = () => {
         children: [{ path: 'sources', element: <SourcesWorkspace /> }],
       },
     ],
-    { initialEntries: ['/sources'] },
+    { initialEntries: ['/sources?view=add'] },
   );
 
   render(

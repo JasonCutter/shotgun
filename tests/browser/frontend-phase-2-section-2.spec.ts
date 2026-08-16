@@ -170,12 +170,34 @@ test('Ask citation keeps SourceVersion pinned and restores exact conversation co
       `/sources/${ASK_FIXTURE.sourceId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\?version=${ASK_FIXTURE.sourceVersionId}`,
     ),
   );
-  await expect(page.locator('pre.source-preview')).toContainText(ASK_FIXTURE.sourceText);
+  const evidenceView = page.getByRole('button', { name: 'Evidence' });
+  await expect(evidenceView).toHaveAttribute('aria-current', 'page');
+  await expect(evidenceView).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('heading', { name: 'Original Preview' })).toHaveCount(0);
   const evidenceTarget = page.locator(`#evidence-${ASK_FIXTURE.evidenceId}`);
   await expect(evidenceTarget).toBeVisible();
   await expect(evidenceTarget).toBeFocused();
 
   const conversationPane = page.locator('[data-global-shell-region="conversation"]');
+  await expect(conversationPane).toBeVisible();
+  await expect(conversationPane).toContainText(ASK_FIXTURE.conversationTitle);
+  await expect(page.locator('[data-global-shell-region="composer"]')).toBeVisible();
+  await expect(page.getByRole('form', { name: 'Global Composer' })).toHaveCount(1);
+
+  await expect(page.locator('main')).not.toContainText(ASK_FIXTURE.sourceVersionId);
+  await expectTechnicalInformation(page, ASK_FIXTURE.sourceVersionId);
+
+  const primaryNav = page.getByRole('navigation', { name: 'Primary navigation' });
+  await primaryNav.getByRole('link', { name: 'Selected Source' }).click();
+
+  await expect(page).toHaveURL(
+    new RegExp(
+      `/sources/${ASK_FIXTURE.sourceId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\?version=${ASK_FIXTURE.sourceVersionId}`,
+    ),
+  );
+  await expect(evidenceView).toHaveAttribute('aria-current', 'page');
+  await expect(evidenceView).toHaveAttribute('aria-pressed', 'true');
+  await expect(evidenceTarget).toBeVisible();
   await expect(conversationPane).toBeVisible();
   await expect(conversationPane).toContainText(ASK_FIXTURE.conversationTitle);
   await expect(page.locator('[data-global-shell-region="composer"]')).toBeVisible();

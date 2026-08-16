@@ -15,9 +15,27 @@ const isExplicitlyAvailable = (
     (item) => item.targetRoute?.routeId === routeId && item.availability === 'AVAILABLE',
   );
 
-const TreeLink = ({ to, children }: { readonly to: string; readonly children: ReactNode }) => (
-  <NavLink to={to} end={to === '/'}>
-    {({ isActive }) => <span aria-current={isActive ? 'page' : undefined}>{children}</span>}
+const TreeLink = ({
+  to,
+  state,
+  current,
+  children,
+}: {
+  readonly to: string;
+  readonly state?: unknown;
+  readonly current?: boolean;
+  readonly children: ReactNode;
+}) => (
+  <NavLink
+    to={to}
+    state={state}
+    end={to === '/' || to === '/sources'}
+    aria-current={current !== undefined ? (current ? 'page' : 'false') : undefined}
+  >
+    {({ isActive }) => {
+      const isCurrent = current !== undefined ? current : isActive;
+      return <span aria-current={isCurrent ? 'page' : undefined}>{children}</span>;
+    }}
   </NavLink>
 );
 
@@ -96,6 +114,10 @@ export const PrimaryNavigation = ({
 }) => {
   const location = useLocation();
   const { sourceId } = useParams();
+  const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const isSourcesExact = location.pathname.replace(/\/+$/, '') === '/sources';
+  const isAddSource = isSourcesExact && searchParams.get('view') === 'add';
+  const isLibrary = isSourcesExact && !isAddSource;
   const routes = useMemo(
     () => ({
       home: isExplicitlyAvailable(navigation, 'home'),
@@ -128,24 +150,20 @@ export const PrimaryNavigation = ({
           <li>
             <TreeGroup label="Sources">
               <li>
-                <TreeLink to="/sources#source-library-heading">Library</TreeLink>
+                <TreeLink to="/sources" current={isLibrary}>
+                  Library
+                </TreeLink>
               </li>
               <li>
-                <TreeLink to="/sources#source-intake-heading">Add Source</TreeLink>
+                <TreeLink to="/sources?view=add" current={isAddSource}>
+                  Add Source
+                </TreeLink>
               </li>
               {isSourceDetail ? (
                 <li>
-                  <TreeGroup label="Selected Source">
-                    <li>
-                      <a href="#source-preview-heading">Preview</a>
-                    </li>
-                    <li>
-                      <a href="#source-evidence-heading">Evidence</a>
-                    </li>
-                    <li>
-                      <a href="#source-version-heading">Versions</a>
-                    </li>
-                  </TreeGroup>
+                  <TreeLink to={`${location.pathname}${location.search}`} state={location.state}>
+                    Selected Source
+                  </TreeLink>
                 </li>
               ) : null}
             </TreeGroup>

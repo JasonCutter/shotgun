@@ -2930,3 +2930,30 @@ tr.graph-item--discovery {
   margin: 0;
   font-size: 1.15rem;
 }
+
+/* HFM-S7-C4: compact Source-local navigation in the Center workspace. */
+.source-detail-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 0.75rem;
+}
+
+.source-detail-navigation .hfm-action-selection[aria-current='page'] {
+  border-color: var(--accent-strong);
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+
+.source-detail-navigation .hfm-action-selection:focus-visible {
+  outline: 3px solid var(--focus-ring, #2563eb);
+  outline-offset: 2px;
+}
+
+.sources-library .source-library-heading > div {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+}

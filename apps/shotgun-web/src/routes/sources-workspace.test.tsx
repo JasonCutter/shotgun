@@ -302,9 +302,10 @@ describe('Sources Workspace', () => {
     );
 
     expect(await screen.findByRole('heading', { name: '소스', level: 1 })).toBeTruthy();
-    expect(screen.getByLabelText('입력 유형')).toBeTruthy();
-    expect(screen.getByLabelText('직접 입력')).toBeTruthy();
-    expect(screen.getByRole('button', { name: '수집 초안 추가' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '소스 라이브러리', level: 2 })).toBeTruthy();
+    expect(screen.getByRole('link', { name: '소스 추가' })).toBeTruthy();
+    expect(screen.queryByLabelText('입력 유형')).toBeNull();
+    expect(screen.queryByLabelText('소스 분류')).toBeNull();
     expect(screen.getByText('이 소스를 사용하려면 확인이 필요합니다.')).toBeTruthy();
     expect(screen.getByText('Evidence notes')).toBeTruthy();
     expect(screen.getByText(/마크다운.*소스 분류.*내부/)).toBeTruthy();
@@ -313,6 +314,7 @@ describe('Sources Workspace', () => {
   });
 
   it('localizes ko-KR Source Detail enum labels and preserves source bytes', async () => {
+    const user = userEvent.setup();
     const runtime = createRuntime(libraryPage, 'ko-KR');
     vi.mocked(runtime.apiClient.getSourceDetail).mockResolvedValue({
       ...detail,
@@ -347,10 +349,20 @@ describe('Sources Workspace', () => {
     );
 
     expect(await screen.findByRole('heading', { name: 'Evidence notes', level: 1 })).toBeTruthy();
+    expect(screen.getByRole('navigation', { name: '소스 상세 보기' })).toBeTruthy();
     expect(await screen.findByText('Original evidence', { selector: 'pre' })).toBeTruthy();
-    expect(screen.getByText('요약')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /버전 2.*마크다운.*처리 중/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '원본 미리보기' }).getAttribute('aria-current')).toBe(
+      'page',
+    );
+    expect(screen.getByRole('button', { name: '근거' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '버전 기록' })).toBeTruthy();
     expect(screen.getByText(/미리보기.*미리보기 사용 불가/)).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: '근거' }));
+    expect(await screen.findByText('요약')).toBeTruthy();
+    expect(router.state.location.search).toBe('?version=version-2&view=evidence');
+    await user.click(screen.getByRole('button', { name: '버전 기록' }));
+    expect(await screen.findByRole('button', { name: /버전 2.*마크다운.*처리 중/ })).toBeTruthy();
+    expect(router.state.location.search).toBe('?version=version-2&view=versions');
     const askReadiness = screen.getByText(/질문 사용.*사용 전 확인 필요/);
     expect(askReadiness.textContent).toContain('Evidence is ready.');
     expect(screen.queryByText('Processing')).toBeNull();
@@ -358,6 +370,7 @@ describe('Sources Workspace', () => {
   });
 
   it('renders server state, keeps search private, and activates valid draft submission', async () => {
+    const user = userEvent.setup();
     const runtime = createRuntime();
     const router = createMemoryRouter(
       [
@@ -382,19 +395,23 @@ describe('Sources Workspace', () => {
     expect(screen.queryByText('Preview ready')).toBeNull();
     expect(screen.queryByText('Available with indexed evidence')).toBeNull();
     expect(screen.queryByText('Evidence is ready.')).toBeNull();
-    await userEvent.type(screen.getByLabelText('Direct Text'), 'Local draft');
-    await userEvent.click(screen.getByRole('button', { name: 'Add intake draft' }));
-    expect(
-      (screen.getByRole('button', { name: 'Submit drafts' }) as HTMLButtonElement).disabled,
-    ).toBe(false);
-
-    await userEvent.type(screen.getByLabelText('Search Sources'), 'private phrase');
-    await userEvent.click(screen.getByRole('button', { name: 'Search' }));
+    await user.type(screen.getByLabelText('Search Sources'), 'private phrase');
+    await user.click(screen.getByRole('button', { name: 'Search' }));
     expect(router.state.location.search).toBe('');
     expect(runtime.apiClient.listSources).toHaveBeenLastCalledWith(
       expect.objectContaining({ query: 'private phrase' }),
       expect.any(Object),
     );
+
+    await user.click(screen.getByRole('link', { name: 'Add Source' }));
+    expect(router.state.location.search).toBe('?view=add');
+    expect(await screen.findByLabelText('Direct Text')).toBeTruthy();
+    expect(screen.queryByLabelText('Source classification')).toBeNull();
+    await user.type(screen.getByLabelText('Direct Text'), 'Local draft');
+    await user.click(screen.getByRole('button', { name: 'Add intake draft' }));
+    expect(
+      (screen.getByRole('button', { name: 'Submit drafts' }) as HTMLButtonElement).disabled,
+    ).toBe(false);
   });
 
   it('shows a concise problem only when Source readiness changes owner action', async () => {
@@ -508,15 +525,18 @@ describe('Sources Workspace', () => {
     expect(await screen.findByRole('heading', { name: 'Evidence notes', level: 1 })).toBeTruthy();
     expect(await screen.findByText('Original evidence', { selector: 'pre' })).toBeTruthy();
     expect(screen.queryByText('Available with indexed evidence')).toBeNull();
-    const previewHeading = screen.getByRole('heading', { name: 'Original Preview' });
-    const evidenceHeading = screen.getByRole('heading', { name: 'Evidence' });
-    const historyHeading = screen.getByRole('heading', { name: 'Version history' });
-    expect(previewHeading.compareDocumentPosition(evidenceHeading)).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
+    expect(
+      screen.getByRole('button', { name: 'Original Preview' }).getAttribute('aria-current'),
+    ).toBe('page');
+    expect(screen.getByRole('button', { name: 'Evidence' }).getAttribute('aria-pressed')).toBe(
+      'false',
     );
-    expect(evidenceHeading.compareDocumentPosition(historyHeading)).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
-    );
+    expect(
+      screen.getByRole('button', { name: 'Version history' }).getAttribute('aria-pressed'),
+    ).toBe('false');
+    expect(screen.getByRole('heading', { name: 'Original Preview' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Evidence' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Version history' })).toBeNull();
     expect(runtime.apiClient.getSourcePreview).toHaveBeenCalledWith(
       'source-1',
       'version-2',
@@ -525,13 +545,28 @@ describe('Sources Workspace', () => {
     );
   });
 
-  it('focuses pinned Evidence and preserves typed Citation return identity', async () => {
+  it('preserves typed Citation return identity across Source-local view navigation', async () => {
+    const user = userEvent.setup();
     const runtime = createRuntime();
     const router = renderCitationDetail(runtime);
 
     const evidenceItem = await screen.findByText('Original evidence', { selector: 'strong' });
     expect(evidenceItem.parentElement).toBe(document.activeElement);
-    await userEvent.click(screen.getByRole('link', { name: 'Return to cited resource' }));
+    await user.click(screen.getByRole('button', { name: 'Original Preview' }));
+    expect(screen.getByRole('link', { name: 'Return to cited resource' })).toBeTruthy();
+    expect(router.state.location.state).toMatchObject({
+      citationReturnTarget: {
+        sourceId: 'source-1',
+        sourceVersionId: 'version-2',
+        citationId: 'citation-1',
+      },
+    });
+    await user.click(screen.getByRole('button', { name: 'Evidence' }));
+    const restoredEvidenceItem = await screen.findByText('Original evidence', {
+      selector: 'strong',
+    });
+    expect(restoredEvidenceItem.parentElement).toBe(document.activeElement);
+    await user.click(screen.getByRole('link', { name: 'Return to cited resource' }));
     expect(await screen.findByText('Conversation restored')).toBeTruthy();
     expect(router.state.location.state).toMatchObject({
       citationReturn: {

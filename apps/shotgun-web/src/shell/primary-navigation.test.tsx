@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { GlobalShellView } from '@shotgun/api-client';
@@ -135,10 +135,10 @@ describe('PrimaryNavigation HFM-S7-C2 Tree', () => {
     expect(within(primaryNavigation).getByText('Sources', { selector: 'summary' })).toBeTruthy();
     expect(
       within(primaryNavigation).getByRole('link', { name: 'Library' }).getAttribute('href'),
-    ).toBe('/sources#source-library-heading');
+    ).toBe('/sources');
     expect(
       within(primaryNavigation).getByRole('link', { name: 'Add Source' }).getAttribute('href'),
-    ).toBe('/sources#source-intake-heading');
+    ).toBe('/sources?view=add');
     expect(within(primaryNavigation).getByText('Ask', { selector: 'summary' })).toBeTruthy();
     expect(within(primaryNavigation).getByRole('link', { name: 'Conversations' })).toBeTruthy();
     expect(within(primaryNavigation).getByText('Settings', { selector: 'summary' })).toBeTruthy();
@@ -229,7 +229,7 @@ describe('PrimaryNavigation HFM-S7-C2 Tree', () => {
     expect(within(primaryNavigation).queryAllByText(/coming soon|unavailable/i)).toHaveLength(0);
   });
 
-  it('shows selected Source anchors only on the existing Source detail route without exposing an ID', () => {
+  it('shows only the Selected Source object link on the existing detail route without exposing an ID', () => {
     render(
       <MemoryRouter initialEntries={['/sources/source-private-id']}>
         <Routes>
@@ -243,11 +243,9 @@ describe('PrimaryNavigation HFM-S7-C2 Tree', () => {
 
     const primaryNavigation = screen.getByRole('navigation', { name: 'Primary navigation' });
     expect(
-      within(primaryNavigation).getByText('Selected Source', { selector: 'summary' }),
-    ).toBeTruthy();
-    expect(
-      within(primaryNavigation).getByRole('link', { name: 'Preview' }).getAttribute('href'),
-    ).toBe('#source-preview-heading');
+      within(primaryNavigation).getByRole('link', { name: 'Selected Source' }).getAttribute('href'),
+    ).toBe('/sources/source-private-id');
+    expect(within(primaryNavigation).queryByRole('link', { name: 'Preview' })).toBeNull();
     expect(within(primaryNavigation).queryByText('source-private-id')).toBeNull();
   });
 
@@ -260,5 +258,155 @@ describe('PrimaryNavigation HFM-S7-C2 Tree', () => {
     expect(screen.queryAllByRole('link')).toHaveLength(0);
     expect(screen.queryAllByRole('button')).toHaveLength(0);
     expect(screen.queryAllByText(/unavailable|coming later/i)).toHaveLength(0);
+  });
+
+  it('marks Library as the single current Sources leaf when at /sources', () => {
+    render(
+      <MemoryRouter initialEntries={['/sources']}>
+        <Routes>
+          <Route
+            path="/sources"
+            element={<PrimaryNavigation navigation={navigation} controller={controller()} />}
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const primaryNavigation = screen.getByRole('navigation', { name: 'Primary navigation' });
+    const libraryLink = within(primaryNavigation).getByRole('link', { name: 'Library' });
+    const addSourceLink = within(primaryNavigation).getByRole('link', { name: 'Add Source' });
+
+    expect(libraryLink.getAttribute('aria-current')).toBe('page');
+    expect(within(libraryLink).getByText('Library').getAttribute('aria-current')).toBe('page');
+    expect(addSourceLink.getAttribute('aria-current')).toBe('false');
+    expect(within(addSourceLink).getByText('Add Source').getAttribute('aria-current')).toBeNull();
+    expect(within(primaryNavigation).queryAllByText('Selected Source')).toHaveLength(0);
+
+    const sourcesGroup = within(primaryNavigation).getByText('Sources', {
+      selector: 'summary',
+    }).parentElement!;
+    expect(sourcesGroup.querySelectorAll('a[aria-current="page"]')).toHaveLength(1);
+    expect(sourcesGroup.querySelectorAll('a:has([aria-current="page"])')).toHaveLength(1);
+    expect(sourcesGroup.querySelectorAll('span[aria-current="page"]')).toHaveLength(1);
+  });
+
+  it('marks Add Source as the single current Sources leaf when at /sources?view=add', () => {
+    render(
+      <MemoryRouter initialEntries={['/sources?view=add']}>
+        <Routes>
+          <Route
+            path="/sources"
+            element={<PrimaryNavigation navigation={navigation} controller={controller()} />}
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const primaryNavigation = screen.getByRole('navigation', { name: 'Primary navigation' });
+    const libraryLink = within(primaryNavigation).getByRole('link', { name: 'Library' });
+    const addSourceLink = within(primaryNavigation).getByRole('link', { name: 'Add Source' });
+
+    expect(addSourceLink.getAttribute('aria-current')).toBe('page');
+    expect(within(addSourceLink).getByText('Add Source').getAttribute('aria-current')).toBe('page');
+    expect(libraryLink.getAttribute('aria-current')).toBe('false');
+    expect(within(libraryLink).getByText('Library').getAttribute('aria-current')).toBeNull();
+    expect(within(primaryNavigation).queryAllByText('Selected Source')).toHaveLength(0);
+
+    const sourcesGroup = within(primaryNavigation).getByText('Sources', {
+      selector: 'summary',
+    }).parentElement!;
+    expect(sourcesGroup.querySelectorAll('a[aria-current="page"]')).toHaveLength(1);
+    expect(sourcesGroup.querySelectorAll('a:has([aria-current="page"])')).toHaveLength(1);
+    expect(sourcesGroup.querySelectorAll('span[aria-current="page"]')).toHaveLength(1);
+  });
+
+  it('falls back to marking Library current when query view is unexpected', () => {
+    render(
+      <MemoryRouter initialEntries={['/sources?view=unexpected']}>
+        <Routes>
+          <Route
+            path="/sources"
+            element={<PrimaryNavigation navigation={navigation} controller={controller()} />}
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const primaryNavigation = screen.getByRole('navigation', { name: 'Primary navigation' });
+    const libraryLink = within(primaryNavigation).getByRole('link', { name: 'Library' });
+    const addSourceLink = within(primaryNavigation).getByRole('link', { name: 'Add Source' });
+
+    expect(libraryLink.getAttribute('aria-current')).toBe('page');
+    expect(within(libraryLink).getByText('Library').getAttribute('aria-current')).toBe('page');
+    expect(addSourceLink.getAttribute('aria-current')).toBe('false');
+    expect(within(addSourceLink).getByText('Add Source').getAttribute('aria-current')).toBeNull();
+
+    const sourcesGroup = within(primaryNavigation).getByText('Sources', {
+      selector: 'summary',
+    }).parentElement!;
+    expect(sourcesGroup.querySelectorAll('a[aria-current="page"]')).toHaveLength(1);
+    expect(sourcesGroup.querySelectorAll('a:has([aria-current="page"])')).toHaveLength(1);
+    expect(sourcesGroup.querySelectorAll('span[aria-current="page"]')).toHaveLength(1);
+  });
+
+  it('preserves location.state when navigating via Selected Source tree link', async () => {
+    const user = userEvent.setup();
+    let currentLocation: { pathname: string; search: string; state: unknown } | undefined;
+
+    const LocationWatcher = () => {
+      const location = useLocation();
+      currentLocation = {
+        pathname: location.pathname,
+        search: location.search,
+        state: location.state,
+      };
+      return null;
+    };
+
+    const stateFixture = {
+      returnTarget: {
+        returnTo: '/ask/conversations/conv-123',
+        sourceId: 'source-1',
+        versionId: 'ver-1',
+        evidenceId: 'evi-1',
+        citationId: 'cit-1',
+      },
+    };
+
+    render(
+      <MemoryRouter
+        initialEntries={[
+          {
+            pathname: '/sources/source-1',
+            search: '?version=ver-1',
+            state: stateFixture,
+          },
+        ]}
+      >
+        <LocationWatcher />
+        <Routes>
+          <Route
+            path="/sources/:sourceId"
+            element={<PrimaryNavigation navigation={navigation} controller={controller()} />}
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const primaryNavigation = screen.getByRole('navigation', { name: 'Primary navigation' });
+    const selectedSourceLink = within(primaryNavigation).getByRole('link', {
+      name: 'Selected Source',
+    });
+    expect(
+      within(selectedSourceLink).getByText('Selected Source').getAttribute('aria-current'),
+    ).toBe('page');
+
+    await user.click(selectedSourceLink);
+
+    expect(currentLocation).toEqual({
+      pathname: '/sources/source-1',
+      search: '?version=ver-1',
+      state: stateFixture,
+    });
   });
 });

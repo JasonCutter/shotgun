@@ -15,6 +15,8 @@ test('Active B -> Conversation A uses only A Sources and submits the follow-up t
   await expect(page).toHaveURL(/\/ask\/conversations\/[^/]+$/);
   const conversationUrl = new URL(page.url()).pathname;
   const conversationId = conversationUrl.split('/').at(-1)!;
+  await expect(page.locator('.ask-workspace')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Request error' })).toHaveCount(0);
 
   await switchProject(page, 'Project B');
   await expect(page.locator('.project-summary')).toContainText('Project B');

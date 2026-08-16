@@ -98,21 +98,25 @@ export const createAppRouter = (runtime: AppRuntime) =>
           path: 'sources',
           loader: guardedRouteLoader(runtime, { routeId: 'sources', href: '/sources' }),
           element: <SourcesWorkspace />,
+          errorElement: <RouteError />,
         },
         {
           path: 'sources/:sourceId',
           loader: guardedRouteLoader(runtime, { routeId: 'sources', href: '/sources' }),
           element: <SourceDetailWorkspace />,
+          errorElement: <RouteError />,
         },
         {
           path: 'ask',
           loader: guardedRouteLoader(runtime, { routeId: 'ask', href: '/ask' }),
           element: <AskWorkspace />,
+          errorElement: <RouteError />,
         },
         {
           path: 'ask/conversations/:conversationId',
           loader: guardedRouteLoader(runtime, { routeId: 'ask', href: '/ask' }),
           element: <AskWorkspace />,
+          errorElement: <RouteError />,
         },
         {
           path: 'knowledge',
@@ -121,6 +125,7 @@ export const createAppRouter = (runtime: AppRuntime) =>
             href: '/knowledge',
           }),
           element: <KnowledgeWorkspace />,
+          errorElement: <RouteError />,
         },
         {
           path: 'knowledge/compare',
@@ -129,6 +134,7 @@ export const createAppRouter = (runtime: AppRuntime) =>
             href: '/knowledge',
           }),
           element: <KnowledgeCompareWorkspace />,
+          errorElement: <RouteError />,
         },
         {
           path: 'knowledge/graph',
@@ -137,6 +143,7 @@ export const createAppRouter = (runtime: AppRuntime) =>
             href: '/knowledge',
           }),
           element: <GraphWorkspace />,
+          errorElement: <RouteError />,
         },
         {
           path: 'knowledge/:resourceId',
@@ -145,11 +152,13 @@ export const createAppRouter = (runtime: AppRuntime) =>
             href: '/knowledge',
           }),
           element: <KnowledgeDetailWorkspace />,
+          errorElement: <RouteError />,
         },
         {
           path: 'review',
           loader: guardedRouteLoader(runtime, { routeId: 'review', href: '/review' }),
           element: <ReviewWorkspace />,
+          errorElement: <RouteError />,
         },
         {
           path: 'external-action',
@@ -158,16 +167,19 @@ export const createAppRouter = (runtime: AppRuntime) =>
             href: '/external-action',
           }),
           element: <ExternalActionWorkspace />,
+          errorElement: <RouteError />,
         },
         {
           path: 'activity',
           loader: guardedRouteLoader(runtime, { routeId: 'activity', href: '/activity' }),
           element: <ActivityWorkspace />,
+          errorElement: <RouteError />,
         },
         {
           path: 'history',
           loader: guardedRouteLoader(runtime, { routeId: 'history', href: '/history' }),
           element: <HistoryWorkspace />,
+          errorElement: <RouteError />,
         },
         {
           path: 'settings/projects',
@@ -176,6 +188,7 @@ export const createAppRouter = (runtime: AppRuntime) =>
             href: '/settings/projects',
           }),
           element: <ProjectsWorkspace />,
+          errorElement: <RouteError />,
         },
       ],
     },

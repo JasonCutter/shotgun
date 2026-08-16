@@ -225,6 +225,8 @@ test('Section 3 route guard preserves Active Project context and masks resource 
   await page.goto('/external-action?resourceProjectId=not-accessible');
   await expect(page.getByRole('heading', { name: 'Request error' })).toBeVisible();
   await expect(page.getByRole('alert')).toContainText('not found');
+  await expect(page.getByRole('banner')).toBeVisible();
+  await expect(page.locator('.project-summary')).toContainText('shotgun');
   await page.goto('/');
   await expect(page.locator('.project-summary')).toContainText('shotgun');
 });

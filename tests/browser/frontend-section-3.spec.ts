@@ -235,7 +235,7 @@ test('Section 3 blocks unsafe leave state, warns on offline state, and restores 
   page,
   context,
 }) => {
-  await page.goto('/sources');
+  await page.goto('/sources?view=add');
   await page.getByLabel('Label').fill('Guarded draft');
   await page.getByLabel('Direct Text').fill('Transient unsafe-leave evidence');
   await page.getByRole('button', { name: 'Add intake draft' }).click();

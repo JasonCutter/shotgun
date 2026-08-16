@@ -88,7 +88,7 @@ export type AskShellContextValue = {
   readonly workspace?: AskWorkspaceView;
   readonly activeConversationId?: string;
   readonly question: string;
-  readonly mode: AskMode;
+  readonly mode?: AskMode;
   readonly sourceSelections: readonly AskSourceSelectionView[];
   readonly draftReady: boolean;
   readonly outcomeUnknown: boolean;
@@ -181,15 +181,13 @@ export const AskShellProvider = ({
   const [activeConversationId, setActiveConversationId] = useState<string | undefined>(
     routeConversationId,
   );
-
-  useEffect(() => {
-    setActiveConversationId(routeConversationId);
-  }, [routeConversationId]);
   const [question, setQuestion] = useState('');
+  const questionRef = useRef(question);
+  questionRef.current = question;
   const [answerCommand, setAnswerCommand] = useState<AnswerCommandId | null>(null);
   const [answerCommandContext, setAnswerCommandContext] = useState<AnswerCommandContext>();
   const [answerCommandInvoker, setAnswerCommandInvoker] = useState<HTMLElement | null>(null);
-  const [mode, setMode] = useState<AskMode>('CANONICAL_ONLY');
+  const [mode, setMode] = useState<AskMode | undefined>(undefined);
   const [sourceSelections, setSourceSelections] = useState<readonly AskSourceSelectionView[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pendingCommand, setPendingCommand] = useState<PendingAskCommand>();
@@ -205,9 +203,55 @@ export const AskShellProvider = ({
   const [error, setError] = useState<unknown>();
   const navigate = useNavigate();
 
+  useEffect(() => {
+    if (routeConversationId !== undefined) {
+      if (routeConversationId !== activeConversationId) {
+        setActiveConversationId(routeConversationId);
+      }
+      return;
+    }
+
+    const isExactAskRoot = location.pathname === '/ask' || location.pathname === '/ask/';
+    if (isExactAskRoot) {
+      const hasUnsavedDraft = questionRef.current.trim().length > 0;
+      const isUnsafePending =
+        outcomeUnknown ||
+        answerRunOutcomeUnknown ||
+        pendingCommand !== undefined ||
+        pendingAnswerRunCommand !== undefined;
+
+      if (!hasUnsavedDraft && !isUnsafePending) {
+        if (activeConversationId !== undefined) {
+          setActiveConversationId(undefined);
+        }
+      }
+    }
+  }, [
+    activeConversationId,
+    answerRunOutcomeUnknown,
+    location.pathname,
+    outcomeUnknown,
+    pendingAnswerRunCommand,
+    pendingCommand,
+    routeConversationId,
+  ]);
+
+  const askScopeKey = useMemo(() => {
+    if (activeConversationId !== undefined) {
+      return `conversation:${activeConversationId}`;
+    }
+    if (shell.activeProject?.id !== undefined) {
+      return `project:${shell.activeProject.id}`;
+    }
+    return 'none';
+  }, [activeConversationId, shell.activeProject?.id]);
+
+  const previousAskScopeKeyRef = useRef<string | undefined>(undefined);
+
   const sourceLibrary = useQuery({
     ...sourcesLibraryQueryOptions(apiClient, shell, SOURCE_CONTEXT_QUERY),
     enabled:
+      mode !== undefined &&
       mode !== 'CANONICAL_ONLY' &&
       workspace !== undefined &&
       activeConversationId === undefined &&
@@ -223,26 +267,38 @@ export const AskShellProvider = ({
       SOURCE_CONTEXT_QUERY,
     ),
     enabled:
-      mode !== 'CANONICAL_ONLY' && workspace !== undefined && activeConversationId !== undefined,
+      mode !== undefined &&
+      mode !== 'CANONICAL_ONLY' &&
+      workspace !== undefined &&
+      activeConversationId !== undefined &&
+      workspace.selectedConversation?.conversationId === activeConversationId,
   });
 
   const providerEligibility = useQuery<AskProviderEligibilityView>({
     queryKey: [
       'ask',
       'provider-eligibility',
-      workspace?.projectId ?? shell.activeProject?.id,
+      workspace?.projectId,
       activeConversationId,
       mode,
       sourceSelections,
     ],
-    queryFn: () =>
-      askClient.getProviderEligibility({
+    queryFn: () => {
+      if (!mode) throw new Error('Cannot query provider eligibility without an authoritative mode');
+      return askClient.getProviderEligibility({
         schemaVersion: '1.0.0',
         ...(activeConversationId ? { conversationId: activeConversationId } : {}),
         mode,
         sourceSelections: mode === 'CANONICAL_ONLY' ? [] : sourceSelections,
-      }),
-    enabled: shell.activeProject !== undefined || workspace !== undefined,
+      });
+    },
+    enabled:
+      workspace !== undefined &&
+      mode !== undefined &&
+      workspace.availableAskModes.includes(mode) &&
+      (activeConversationId !== undefined
+        ? workspace.selectedConversation?.conversationId === activeConversationId
+        : shell.activeProject?.id === workspace.projectId),
   });
 
   const activeBranchLatestTurn = useMemo(() => {
@@ -302,9 +358,6 @@ export const AskShellProvider = ({
     [openAnswerCommandForContext],
   );
 
-  const questionRef = useRef(question);
-  questionRef.current = question;
-
   useEffect(() => {
     const previous = previousActiveAnswerScope.current;
     const hadPreviousScope =
@@ -352,32 +405,41 @@ export const AskShellProvider = ({
 
   useEffect(() => {
     const controller = new AbortController();
-    setAnswerCommand(null);
-    setAnswerCommandContext(undefined);
-    setAnswerCommandInvoker(null);
-    setSourceSelections([]);
-    setPendingCommand(undefined);
-    setOutcomeUnknown(false);
-    setPendingAnswerRunCommand(undefined);
-    setAnswerRunOutcomeUnknown(false);
-    setAnswerRunCommandNotice(undefined);
-    setPollingGeneration(0);
-    setSubmissionNotice(undefined);
-    setRunOverrides({});
-    setRunEvents({});
-    setExportedContent(undefined);
-    setError(undefined);
+    if (askScopeKey === 'none') {
+      previousAskScopeKeyRef.current = 'none';
+      setWorkspace(undefined);
+      setMode(undefined);
+      return;
+    }
 
-    const shouldFetch =
-      activeConversationId !== undefined ||
-      location.pathname.startsWith('/ask') ||
-      shell.activeProject !== undefined;
+    const scopeChanged =
+      previousAskScopeKeyRef.current !== undefined &&
+      previousAskScopeKeyRef.current !== askScopeKey;
+    const isConversationScope = activeConversationId !== undefined;
+    const isAlreadyLoaded = isConversationScope
+      ? workspace?.selectedConversation?.conversationId === activeConversationId
+      : workspace !== undefined &&
+        workspace.projectId === shell.activeProject?.id &&
+        workspace.selectedConversation === undefined;
 
-    const alreadyLoaded =
-      activeConversationId !== undefined &&
-      workspace?.selectedConversation?.conversationId === activeConversationId;
+    if (scopeChanged || !isAlreadyLoaded) {
+      previousAskScopeKeyRef.current = askScopeKey;
+      setAnswerCommand(null);
+      setAnswerCommandContext(undefined);
+      setAnswerCommandInvoker(null);
+      setSourceSelections([]);
+      setPendingCommand(undefined);
+      setOutcomeUnknown(false);
+      setPendingAnswerRunCommand(undefined);
+      setAnswerRunOutcomeUnknown(false);
+      setAnswerRunCommandNotice(undefined);
+      setPollingGeneration(0);
+      setSubmissionNotice(undefined);
+      setRunOverrides({});
+      setRunEvents({});
+      setExportedContent(undefined);
+      setError(undefined);
 
-    if (shouldFetch && !alreadyLoaded) {
       void askClient
         .getWorkspace(activeConversationId, { signal: controller.signal })
         .then((value) => {
@@ -386,15 +448,22 @@ export const AskShellProvider = ({
         })
         .catch((reason: unknown) => {
           if (!controller.signal.aborted) {
-            if (location.pathname.startsWith('/ask')) {
-              setError(reason);
-            }
+            setError(reason);
           }
         });
+    } else {
+      previousAskScopeKeyRef.current = askScopeKey;
     }
 
     return () => controller.abort();
-  }, [activeConversationId, askClient, location.pathname, shell.activeProject?.id]);
+  }, [
+    activeConversationId,
+    askClient,
+    askScopeKey,
+    shell.activeProject?.id,
+    workspace?.projectId,
+    workspace?.selectedConversation?.conversationId,
+  ]);
 
   useEffect(() => {
     if (!registerAnswerCommandContext || !defaultAnswerContext) return;
@@ -466,10 +535,13 @@ export const AskShellProvider = ({
 
   useEffect(() => {
     if (!validatedReturnTargetId) return;
-    const target = document.getElementById(validatedReturnTargetId);
-    target?.scrollIntoView?.({ block: 'center' });
-    target?.focus?.();
-  }, [validatedReturnTargetId]);
+    const timer = setTimeout(() => {
+      const target = document.getElementById(validatedReturnTargetId);
+      target?.scrollIntoView?.({ block: 'center' });
+      target?.focus?.();
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [location.key, validatedReturnTargetId]);
 
   useEffect(() => {
     const answerRun = latestAnswerRun;
@@ -577,8 +649,16 @@ export const AskShellProvider = ({
   const followUpReady =
     !activeConversationId ||
     Boolean(conversation && activeBranch?.branchRevision && conversation.conversationRevision);
+  const isWorkspaceAuthoritative =
+    workspace !== undefined &&
+    mode !== undefined &&
+    workspace.availableAskModes.includes(mode) &&
+    (activeConversationId !== undefined
+      ? workspace.selectedConversation?.conversationId === activeConversationId
+      : shell.activeProject?.id === workspace.projectId);
   const submissionAvailable =
-    (workspace === undefined || workspace.capabilities.includes('SUBMIT_QUESTION')) &&
+    isWorkspaceAuthoritative &&
+    workspace.capabilities.includes('SUBMIT_QUESTION') &&
     followUpReady &&
     providerEligibility.data?.eligible === true;
   const answerRunMutationPending = pendingAnswerRunCommand !== undefined;
@@ -627,10 +707,18 @@ export const AskShellProvider = ({
     setSourceSelections([]);
     questionRef.current = '';
     setWorkspace(submission.workspace);
-    if (submission.answerRun.conversationId !== activeConversationId) {
-      setActiveConversationId(submission.answerRun.conversationId);
+    const newConversationId = submission.answerRun.conversationId;
+    previousAskScopeKeyRef.current = `conversation:${newConversationId}`;
+    setMode((currentMode) => {
+      if (currentMode && submission.workspace.availableAskModes.includes(currentMode)) {
+        return currentMode;
+      }
+      return submission.workspace.defaultAskMode;
+    });
+    if (newConversationId !== activeConversationId) {
+      setActiveConversationId(newConversationId);
       if (location.pathname.startsWith('/ask')) {
-        navigate(`/ask/conversations/${encodeURIComponent(submission.answerRun.conversationId)}`);
+        navigate(`/ask/conversations/${encodeURIComponent(newConversationId)}`);
       }
     }
   };
@@ -708,6 +796,8 @@ export const AskShellProvider = ({
     if (
       !draftReady ||
       !submissionAvailable ||
+      !mode ||
+      !workspace ||
       question.trim().length === 0 ||
       sourceSelectionMissing ||
       isSubmitting ||

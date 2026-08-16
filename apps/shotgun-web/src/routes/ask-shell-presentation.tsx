@@ -21,7 +21,7 @@ export type GlobalComposerProps = {
   readonly workspace?: AskWorkspaceView;
   readonly availableModes?: readonly AskMode[];
   readonly question: string;
-  readonly mode: AskMode;
+  readonly mode?: AskMode;
   readonly draftReady: boolean;
   readonly outcomeUnknown: boolean;
   readonly isSubmitting: boolean;
@@ -46,7 +46,7 @@ export type GlobalComposerProps = {
 
 export const GlobalComposer = ({
   workspace,
-  availableModes = workspace?.availableAskModes ?? ['CANONICAL_ONLY', 'SOURCE_EXPLORATION'],
+  availableModes = workspace?.availableAskModes ?? [],
   question,
   mode,
   draftReady,
@@ -85,10 +85,17 @@ export const GlobalComposer = ({
       <select
         id="global-ask-mode"
         aria-label={t('ask.mode')}
-        value={mode}
-        disabled={!draftReady || outcomeUnknown}
+        value={mode ?? ''}
+        disabled={
+          !draftReady || outcomeUnknown || mode === undefined || availableModes.length === 0
+        }
         onChange={(event) => onModeChange(event.currentTarget.value as AskMode)}
       >
+        {mode === undefined && (
+          <option value="" disabled>
+            {t('ask.mode')}
+          </option>
+        )}
         {availableModes.map((availableMode) => (
           <option key={availableMode} value={availableMode}>
             {hfmOwnerLabel(t, 'askMode', availableMode)}
@@ -157,7 +164,7 @@ export const GlobalComposer = ({
 };
 
 export type AskSupportControlsProps = {
-  readonly mode: AskMode;
+  readonly mode?: AskMode;
   readonly sourceContextAvailable: boolean;
   readonly sourceContextPending: boolean;
   readonly sourceContextError: boolean;
@@ -183,7 +190,7 @@ export const AskSupportControls = ({
   onToggleSource,
   t,
 }: AskSupportControlsProps) => {
-  if (mode === 'CANONICAL_ONLY') return null;
+  if (!mode || mode === 'CANONICAL_ONLY') return null;
   return (
     <section className="ask-support-controls" aria-labelledby="ask-source-context-label">
       <h2 id="ask-source-context-label">{t('ask.source_context')}</h2>

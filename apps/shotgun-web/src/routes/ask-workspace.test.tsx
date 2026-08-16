@@ -21,7 +21,52 @@ import { ProductLocalizationProvider } from '../localization/product-localizatio
 import { GlobalTools, OwnerCommandControllerProvider } from '../section3/global-tools.js';
 import { useLeaveGuard } from '../session/leave-guard-context.js';
 import { createSessionCycleState } from '../session/session-query.js';
-import { AskWorkspace } from './ask-workspace.js';
+import {
+  AskWorkspace,
+  AskShellConversationPane,
+  AskShellGlobalComposer,
+  AskShellProvider,
+} from './ask-workspace.js';
+
+const ShellWithAskOutlet = ({
+  shell = mockShell,
+  client,
+}: {
+  readonly shell?: GlobalShellView;
+  readonly client?: AskWorkspaceClient;
+}) => (
+  <AnswerCommandContextProvider>
+    <GlobalTools shell={shell}>
+      {(controller) => {
+        const commandMode = controller.commandMode ?? {
+          open: false,
+          initialQuery: '',
+          resetQuerySignal: 0,
+          invoker: null,
+        };
+        return (
+          <OwnerCommandControllerProvider controller={controller}>
+            <AskShellProvider shell={shell} client={client}>
+              <Outlet context={{ shell }} />
+              <AskShellConversationPane />
+              <AskShellGlobalComposer />
+              <OwnerCommandPalette
+                open={commandMode.open}
+                presentation="CENTER"
+                commands={controller.commands}
+                initialQuery={commandMode.initialQuery}
+                resetQuerySignal={commandMode.resetQuerySignal}
+                invoker={commandMode.invoker}
+                onClose={controller.closeCommandMode ?? (() => undefined)}
+                onSelect={(command) => controller.executeCommand(command, commandMode.invoker)}
+              />
+            </AskShellProvider>
+          </OwnerCommandControllerProvider>
+        );
+      }}
+    </GlobalTools>
+  </AnswerCommandContextProvider>
+);
 
 const mockShell: GlobalShellView = {
   schemaVersion: '1.0.0',
@@ -1205,6 +1250,588 @@ describe('AskWorkspace', () => {
             evidenceIds: [],
           },
         ],
+      }),
+    );
+  });
+
+  it('handles workspace pending state: allows draft typing, disables submit, queries no eligibility, advertises no invented modes', async () => {
+    const user = userEvent.setup();
+    const runtime = createRuntime();
+    let resolveWorkspace: (ws: AskWorkspaceView) => void = () => {};
+    const getWorkspacePromise = new Promise<AskWorkspaceView>((resolve) => {
+      resolveWorkspace = resolve;
+    });
+    const getProviderEligibility = vi.fn().mockResolvedValue({
+      schemaVersion: '1.0.0',
+      eligible: true,
+      reasons: [],
+      message: 'Eligible.',
+    });
+    const submitQuestion = vi.fn();
+
+    const mockClient: AskWorkspaceClient = {
+      getProviderEligibility,
+      getWorkspace: vi.fn().mockReturnValue(getWorkspacePromise),
+      getConversation: vi.fn(),
+      getConversationSourceContext: vi.fn(),
+      getBranch: vi.fn(),
+      getAnswerRun: vi.fn(),
+      submitQuestion,
+      getQuestionSubmissionByClientRequestId: vi.fn(),
+    };
+
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <ShellOutlet />,
+          children: [{ path: 'ask', element: <AskWorkspace client={mockClient} /> }],
+        },
+      ],
+      { initialEntries: ['/ask'] },
+    );
+
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    // 1. Question draft can be entered while workspace is loading
+    const questionInput = screen.getByLabelText('Question');
+    await user.type(questionInput, 'Pending draft query');
+    expect((questionInput as HTMLTextAreaElement).value).toBe('Pending draft query');
+
+    // 2. Submit is disabled
+    const submitButton = screen.getByRole('button', { name: 'Submit question' });
+    expect((submitButton as HTMLButtonElement).disabled).toBe(true);
+
+    // 3. No provider eligibility request occurred
+    expect(getProviderEligibility).not.toHaveBeenCalled();
+
+    // 4. No invented modes are advertised
+    const modeSelect = screen.getByLabelText('Ask mode') as HTMLSelectElement;
+    expect(modeSelect.options.length).toBe(1); // Only disabled placeholder
+    expect(modeSelect.disabled).toBe(true);
+
+    // Now resolve the workspace with custom modes
+    resolveWorkspace({
+      ...mockWorkspace,
+      defaultAskMode: 'HYBRID',
+      availableAskModes: ['HYBRID', 'CANONICAL_ONLY'],
+    });
+
+    // 5. Authoritative modes and default mode are applied
+    await waitFor(() => expect(modeSelect.disabled).toBe(false));
+    expect(modeSelect.value).toBe('HYBRID');
+    const optionValues = Array.from(modeSelect.options).map((opt) => opt.value);
+    expect(optionValues).toEqual(['HYBRID', 'CANONICAL_ONLY']);
+  });
+
+  it('preserves active Conversation A, workspace, draft, and explicit mode when Center navigates away from Ask', async () => {
+    const user = userEvent.setup();
+    const runtime = createRuntime();
+    const getWorkspace = vi.fn().mockResolvedValue({
+      ...mockWorkspace,
+      defaultAskMode: 'CANONICAL_ONLY',
+      availableAskModes: ['CANONICAL_ONLY', 'SOURCE_EXPLORATION'],
+    });
+    const mockClient: AskWorkspaceClient = {
+      getProviderEligibility: vi.fn().mockResolvedValue({
+        schemaVersion: '1.0.0',
+        eligible: true,
+        reasons: [],
+        message: 'Eligible.',
+      }),
+      getWorkspace,
+      getConversation: vi.fn().mockResolvedValue(mockWorkspace.selectedConversation!),
+      getConversationSourceContext: vi.fn().mockResolvedValue({
+        schemaVersion: '1.0.0',
+        resourceProjectId: 'project-1',
+        items: [],
+      }),
+      getBranch: vi.fn(),
+      getAnswerRun: vi.fn(),
+      submitQuestion: vi.fn(),
+      getQuestionSubmissionByClientRequestId: vi.fn(),
+    };
+
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <ShellWithAskOutlet client={mockClient} />,
+          children: [
+            { path: 'ask', element: <AskWorkspace client={mockClient} /> },
+            {
+              path: 'ask/conversations/:conversationId',
+              element: <AskWorkspace client={mockClient} />,
+            },
+            { path: 'sources', element: <div data-testid="sources-center">Sources Center</div> },
+          ],
+        },
+      ],
+      { initialEntries: ['/ask/conversations/conv-1'] },
+    );
+
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    // Initial Conversation A is loaded and visible
+    expect(
+      await screen.findByRole('heading', { name: 'Canonical Architecture Query' }),
+    ).toBeTruthy();
+    expect(getWorkspace).toHaveBeenCalledTimes(1);
+    expect(getWorkspace).toHaveBeenCalledWith('conv-1', expect.anything());
+
+    await user.selectOptions(await screen.findByLabelText('Ask mode'), 'SOURCE_EXPLORATION');
+    const questionInput = screen.getByLabelText('Question');
+    await user.type(questionInput, 'Draft while viewing Conversation A');
+
+    // Navigate to /sources
+    router.navigate('/sources');
+    expect(await screen.findByTestId('sources-center')).toBeTruthy();
+
+    // Persistent Right Pane still displays Conversation A
+    expect(screen.getByRole('heading', { name: 'Canonical Architecture Query' })).toBeTruthy();
+
+    // Global Composer still retains draft and explicit mode
+    expect((screen.getByLabelText('Question') as HTMLTextAreaElement).value).toBe(
+      'Draft while viewing Conversation A',
+    );
+    expect((screen.getByLabelText('Ask mode') as HTMLSelectElement).value).toBe(
+      'SOURCE_EXPLORATION',
+    );
+
+    // getWorkspace was not called again for project scope
+    expect(getWorkspace).toHaveBeenCalledTimes(1);
+  });
+
+  it('resets to B defaultAskMode when explicitly transitioning from Conversation A to Conversation B', async () => {
+    const user = userEvent.setup();
+    const runtime = createRuntime();
+    const conv2Workspace: AskWorkspaceView = {
+      ...mockWorkspace,
+      defaultAskMode: 'HYBRID',
+      availableAskModes: ['CANONICAL_ONLY', 'SOURCE_EXPLORATION', 'HYBRID'],
+      selectedConversation: {
+        ...mockWorkspace.selectedConversation!,
+        conversationId: 'conv-2',
+        title: 'Conversation Two Title',
+      },
+    };
+    const getWorkspace = vi.fn().mockImplementation(async (convId?: string) => {
+      if (convId === 'conv-2') return conv2Workspace;
+      return mockWorkspace;
+    });
+
+    const mockClient: AskWorkspaceClient = {
+      getProviderEligibility: vi.fn().mockResolvedValue({
+        schemaVersion: '1.0.0',
+        eligible: true,
+        reasons: [],
+        message: 'Eligible.',
+      }),
+      getWorkspace,
+      getConversation: vi.fn().mockImplementation(async (convId: string) => {
+        if (convId === 'conv-2') return conv2Workspace.selectedConversation!;
+        return mockWorkspace.selectedConversation!;
+      }),
+      getConversationSourceContext: vi.fn().mockResolvedValue({
+        schemaVersion: '1.0.0',
+        resourceProjectId: 'project-1',
+        items: [],
+      }),
+      getBranch: vi.fn(),
+      getAnswerRun: vi.fn(),
+      submitQuestion: vi.fn(),
+      getQuestionSubmissionByClientRequestId: vi.fn(),
+    };
+
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <ShellWithAskOutlet client={mockClient} />,
+          children: [
+            {
+              path: 'ask/conversations/:conversationId',
+              element: <AskWorkspace client={mockClient} />,
+            },
+          ],
+        },
+      ],
+      { initialEntries: ['/ask/conversations/conv-1'] },
+    );
+
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    expect(
+      await screen.findByRole('heading', { name: 'Canonical Architecture Query' }),
+    ).toBeTruthy();
+    // User explicitly changes mode on Conversation A
+    await user.selectOptions(await screen.findByLabelText('Ask mode'), 'SOURCE_EXPLORATION');
+    expect((screen.getByLabelText('Ask mode') as HTMLSelectElement).value).toBe(
+      'SOURCE_EXPLORATION',
+    );
+
+    // Deep link transition to Conversation B
+    router.navigate('/ask/conversations/conv-2');
+    expect(await screen.findByRole('heading', { name: 'Conversation Two Title' })).toBeTruthy();
+
+    // Conversation B authoritative default is applied, not leaked from Conversation A
+    expect((screen.getByLabelText('Ask mode') as HTMLSelectElement).value).toBe('HYBRID');
+    expect(getWorkspace).toHaveBeenCalledWith('conv-2', expect.anything());
+  });
+
+  it('keeps Conversation A as Ask authority when Active Project changes', async () => {
+    const runtime = createRuntime();
+    const getWorkspace = vi.fn().mockResolvedValue(mockWorkspace);
+    const mockClient: AskWorkspaceClient = {
+      getProviderEligibility: vi.fn().mockResolvedValue({
+        schemaVersion: '1.0.0',
+        eligible: true,
+        reasons: [],
+        message: 'Eligible.',
+      }),
+      getWorkspace,
+      getConversation: vi.fn().mockResolvedValue(mockWorkspace.selectedConversation!),
+      getConversationSourceContext: vi.fn().mockResolvedValue({
+        schemaVersion: '1.0.0',
+        resourceProjectId: 'project-1',
+        items: [],
+      }),
+      getBranch: vi.fn(),
+      getAnswerRun: vi.fn(),
+      submitQuestion: vi.fn(),
+      getQuestionSubmissionByClientRequestId: vi.fn(),
+    };
+
+    const ShellHarness = ({ currentShell }: { readonly currentShell: GlobalShellView }) => (
+      <ShellWithAskOutlet shell={currentShell} client={mockClient} />
+    );
+
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <ShellHarness currentShell={mockShell} />,
+          children: [
+            {
+              path: 'ask/conversations/:conversationId',
+              element: <AskWorkspace client={mockClient} />,
+            },
+          ],
+        },
+      ],
+      { initialEntries: ['/ask/conversations/conv-1'] },
+    );
+
+    const { rerender } = render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    expect(
+      await screen.findByRole('heading', { name: 'Canonical Architecture Query' }),
+    ).toBeTruthy();
+    expect(getWorkspace).toHaveBeenCalledTimes(1);
+
+    // Project switches from project-1 to project-2 in Global Shell
+    const updatedShell: GlobalShellView = {
+      ...mockShell,
+      activeProject: {
+        id: 'project-2',
+        label: 'Project Two',
+        sensitivityClearance: 'private',
+      },
+    };
+
+    const updatedRouter = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <ShellHarness currentShell={updatedShell} />,
+          children: [
+            {
+              path: 'ask/conversations/:conversationId',
+              element: <AskWorkspace client={mockClient} />,
+            },
+          ],
+        },
+      ],
+      { initialEntries: ['/ask/conversations/conv-1'] },
+    );
+
+    rerender(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={updatedRouter} />
+      </AppProviders>,
+    );
+
+    // Conversation A remains active in the Right Pane
+    expect(
+      await screen.findByRole('heading', { name: 'Canonical Architecture Query' }),
+    ).toBeTruthy();
+    // No project-2 workspace substitution occurred
+    expect(getWorkspace).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears active conversation and loads project workspace when navigating from Conversation A to exact /ask with empty draft', async () => {
+    const user = userEvent.setup();
+    const runtime = createRuntime();
+    const projectWorkspace: AskWorkspaceView = {
+      ...mockWorkspace,
+      selectedConversation: undefined,
+      defaultAskMode: 'CANONICAL_ONLY',
+      availableAskModes: ['CANONICAL_ONLY', 'SOURCE_EXPLORATION'],
+    };
+    const getWorkspace = vi.fn().mockImplementation(async (convId?: string) => {
+      if (convId === 'conv-1') return mockWorkspace;
+      return projectWorkspace;
+    });
+
+    const mockClient: AskWorkspaceClient = {
+      getProviderEligibility: vi.fn().mockResolvedValue({
+        schemaVersion: '1.0.0',
+        eligible: true,
+        reasons: [],
+        message: 'Eligible.',
+      }),
+      getWorkspace,
+      getConversation: vi.fn().mockResolvedValue(mockWorkspace.selectedConversation!),
+      getConversationSourceContext: vi.fn().mockResolvedValue({
+        schemaVersion: '1.0.0',
+        resourceProjectId: 'project-1',
+        items: [],
+      }),
+      getBranch: vi.fn(),
+      getAnswerRun: vi.fn(),
+      submitQuestion: vi.fn(),
+      getQuestionSubmissionByClientRequestId: vi.fn(),
+    };
+
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <ShellWithAskOutlet client={mockClient} />,
+          children: [
+            { path: 'ask', element: <AskWorkspace client={mockClient} /> },
+            {
+              path: 'ask/conversations/:conversationId',
+              element: <AskWorkspace client={mockClient} />,
+            },
+          ],
+        },
+      ],
+      { initialEntries: ['/ask/conversations/conv-1'] },
+    );
+
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    expect(
+      await screen.findByRole('heading', { name: 'Canonical Architecture Query' }),
+    ).toBeTruthy();
+    expect(getWorkspace).toHaveBeenCalledWith('conv-1', expect.anything());
+
+    // Explicitly select SOURCE_EXPLORATION in Conversation A
+    await user.selectOptions(await screen.findByLabelText('Ask mode'), 'SOURCE_EXPLORATION');
+    expect((screen.getByLabelText('Ask mode') as HTMLSelectElement).value).toBe(
+      'SOURCE_EXPLORATION',
+    );
+
+    // Navigate to exact /ask with empty draft
+    router.navigate('/ask');
+
+    // Conversation A is cleared from selected conversation view
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { name: 'Canonical Architecture Query' })).toBeNull(),
+    );
+
+    // Project workspace defaultAskMode is applied
+    expect((screen.getByLabelText('Ask mode') as HTMLSelectElement).value).toBe('CANONICAL_ONLY');
+    expect(getWorkspace).toHaveBeenCalledWith(undefined, expect.anything());
+  });
+
+  it('preserves Conversation A authority when navigating to exact /ask with an unsaved draft', async () => {
+    const user = userEvent.setup();
+    const runtime = createRuntime();
+    const getWorkspace = vi.fn().mockResolvedValue(mockWorkspace);
+
+    const mockClient: AskWorkspaceClient = {
+      getProviderEligibility: vi.fn().mockResolvedValue({
+        schemaVersion: '1.0.0',
+        eligible: true,
+        reasons: [],
+        message: 'Eligible.',
+      }),
+      getWorkspace,
+      getConversation: vi.fn().mockResolvedValue(mockWorkspace.selectedConversation!),
+      getConversationSourceContext: vi.fn().mockResolvedValue({
+        schemaVersion: '1.0.0',
+        resourceProjectId: 'project-1',
+        items: [],
+      }),
+      getBranch: vi.fn(),
+      getAnswerRun: vi.fn(),
+      submitQuestion: vi.fn(),
+      getQuestionSubmissionByClientRequestId: vi.fn(),
+    };
+
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <ShellWithAskOutlet client={mockClient} />,
+          children: [
+            { path: 'ask', element: <AskWorkspace client={mockClient} /> },
+            {
+              path: 'ask/conversations/:conversationId',
+              element: <AskWorkspace client={mockClient} />,
+            },
+          ],
+        },
+      ],
+      { initialEntries: ['/ask/conversations/conv-1'] },
+    );
+
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    expect(
+      await screen.findByRole('heading', { name: 'Canonical Architecture Query' }),
+    ).toBeTruthy();
+
+    // Type an unsaved draft in Conversation A
+    const questionInput = screen.getByLabelText('Question');
+    await user.type(questionInput, 'Unsaved follow-up question for Conversation A');
+
+    // Attempt to navigate to exact /ask
+    router.navigate('/ask');
+
+    // Conversation A remains active in the Right Pane
+    expect(screen.getByRole('heading', { name: 'Canonical Architecture Query' })).toBeTruthy();
+    // Draft is preserved and NOT rebound as a new project question
+    expect((screen.getByLabelText('Question') as HTMLTextAreaElement).value).toBe(
+      'Unsaved follow-up question for Conversation A',
+    );
+    // getWorkspace was NOT called for project scope
+    expect(getWorkspace).toHaveBeenCalledTimes(1);
+  });
+
+  it('submits a new question without conversationId after safe /ask transition', async () => {
+    const user = userEvent.setup();
+    const runtime = createRuntime();
+    const projectWorkspace: AskWorkspaceView = {
+      ...mockWorkspace,
+      capabilities: ['SUBMIT_QUESTION'],
+      selectedConversation: undefined,
+      defaultAskMode: 'CANONICAL_ONLY',
+      availableAskModes: ['CANONICAL_ONLY', 'SOURCE_EXPLORATION'],
+    };
+    const submitQuestion = vi.fn().mockResolvedValue({
+      schemaVersion: '1.0.0',
+      answerRun: {
+        ...mockWorkspace.selectedConversation!.branches[0]!.turns[0]!.answerRun,
+        conversationId: 'new-conv-1',
+      },
+      workspace: {
+        ...mockWorkspace,
+        selectedConversation: {
+          ...mockWorkspace.selectedConversation!,
+          conversationId: 'new-conv-1',
+          title: 'Brand New Conversation',
+        },
+      },
+    });
+
+    const mockClient: AskWorkspaceClient = {
+      getProviderEligibility: vi.fn().mockResolvedValue({
+        schemaVersion: '1.0.0',
+        eligible: true,
+        reasons: [],
+        message: 'Eligible.',
+      }),
+      getWorkspace: vi.fn().mockImplementation(async (convId?: string) => {
+        if (convId === 'conv-1') return mockWorkspace;
+        return projectWorkspace;
+      }),
+      getConversation: vi.fn().mockResolvedValue(mockWorkspace.selectedConversation!),
+      getConversationSourceContext: vi.fn().mockResolvedValue({
+        schemaVersion: '1.0.0',
+        resourceProjectId: 'project-1',
+        items: [],
+      }),
+      getBranch: vi.fn(),
+      getAnswerRun: vi.fn(),
+      submitQuestion,
+      getQuestionSubmissionByClientRequestId: vi.fn(),
+    };
+
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <ShellWithAskOutlet client={mockClient} />,
+          children: [
+            { path: 'ask', element: <AskWorkspace client={mockClient} /> },
+            {
+              path: 'ask/conversations/:conversationId',
+              element: <AskWorkspace client={mockClient} />,
+            },
+          ],
+        },
+      ],
+      { initialEntries: ['/ask/conversations/conv-1'] },
+    );
+
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    expect(
+      await screen.findByRole('heading', { name: 'Canonical Architecture Query' }),
+    ).toBeTruthy();
+
+    // Safe transition to /ask (empty draft)
+    router.navigate('/ask');
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { name: 'Canonical Architecture Query' })).toBeNull(),
+    );
+
+    // Type and submit a new project question
+    const questionInput = screen.getByLabelText('Question');
+    await user.type(questionInput, 'Brand new question for active project');
+    const submitButton = screen.getByRole('button', { name: 'Submit question' });
+    await user.click(submitButton);
+
+    await waitFor(() => expect(submitQuestion).toHaveBeenCalledTimes(1));
+    // Verify conversationId was NOT included in request payload
+    expect(submitQuestion).toHaveBeenCalledWith(
+      expect.not.objectContaining({ conversationId: expect.anything() }),
+    );
+    expect(submitQuestion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        question: 'Brand new question for active project',
+        mode: 'CANONICAL_ONLY',
       }),
     );
   });

@@ -175,6 +175,12 @@ test('Ask citation keeps SourceVersion pinned and restores exact conversation co
   await expect(evidenceTarget).toBeVisible();
   await expect(evidenceTarget).toBeFocused();
 
+  const conversationPane = page.locator('[data-global-shell-region="conversation"]');
+  await expect(conversationPane).toBeVisible();
+  await expect(conversationPane).toContainText(ASK_FIXTURE.conversationTitle);
+  await expect(page.locator('[data-global-shell-region="composer"]')).toBeVisible();
+  await expect(page.getByRole('form', { name: 'Global Composer' })).toHaveCount(1);
+
   await expect(page.locator('main')).not.toContainText(ASK_FIXTURE.sourceVersionId);
   await expectTechnicalInformation(page, ASK_FIXTURE.sourceVersionId);
 
@@ -210,4 +216,35 @@ test('Global Composer slash input opens shared Center Command Mode without creat
   await expect(commands).toHaveCount(0);
   await expect(composer).toBeFocused();
   expect(askRequests).toHaveLength(0);
+});
+
+test('navigating from selected conversation to exact /ask with no draft activates new project question scope', async ({
+  page,
+}) => {
+  await page.goto(`/ask/conversations/${ASK_FIXTURE.conversationId}`);
+  await expect(
+    page.getByRole('heading', { name: ASK_FIXTURE.conversationTitle, level: 3 }),
+  ).toBeVisible();
+
+  // Navigate to exact /ask with no draft
+  await page.goto('/ask');
+  await expect(page.getByRole('heading', { name: 'Ask', level: 1 })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: ASK_FIXTURE.conversationTitle, level: 3 }),
+  ).toHaveCount(0);
+
+  const questionInput = page.getByRole('textbox', { name: 'Question', exact: true });
+  const newQuestion = 'What is the project architecture overview?';
+  await questionInput.fill(newQuestion);
+  await expect(page.getByRole('button', { name: 'Submit question' })).toBeEnabled();
+
+  const submitRequestPromise = page.waitForRequest((request) =>
+    request.url().endsWith('/product-api/frontend/ask/questions'),
+  );
+  await page.getByRole('button', { name: 'Submit question' }).click();
+
+  const request = await submitRequestPromise;
+  const postData = request.postDataJSON() as Record<string, unknown>;
+  expect(postData.conversationId).toBeUndefined();
+  expect(postData.question).toBe(newQuestion);
 });

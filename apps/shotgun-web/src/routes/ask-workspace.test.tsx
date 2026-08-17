@@ -421,6 +421,19 @@ describe('AskWorkspace', () => {
     expect(screen.queryByText('Ask mode')).toBeNull();
     expect(screen.queryByText('Source context')).toBeNull();
     expect(screen.queryByText('Available for questions')).toBeNull();
+    expect(
+      screen.queryByText(
+        '현재 배포 정책에서는 이 질문에 필요한 프로젝트 내용을 구성된 AI 제공자에게 보낼 수 없습니다.',
+      ),
+    ).toBeNull();
+    expect(
+      screen.queryByText(
+        '이 질문에 필요한 프로젝트 내용을 AI 제공자에게 보내려면 프로젝트 개인정보 승인이 필요합니다.',
+      ),
+    ).toBeNull();
+    expect(
+      screen.queryByText('제한된 프로젝트 내용은 구성된 AI 제공자에게 보낼 수 없습니다.'),
+    ).toBeNull();
   });
 
   it('shows server-authoritative ACTION_REQUIRED and blocks predictable policy denial', async () => {
@@ -449,7 +462,7 @@ describe('AskWorkspace', () => {
       [
         {
           path: '/',
-          element: <ShellOutlet />,
+          element: <LocalizedShellOutlet />,
           children: [{ path: 'ask', element: <AskWorkspace client={mockClient} /> }],
         },
       ],
@@ -461,11 +474,68 @@ describe('AskWorkspace', () => {
       </AppProviders>,
     );
     expect(
-      await screen.findByText(/A Project Owner must complete the privacy review/),
+      await screen.findByText(
+        '이 질문에 필요한 프로젝트 내용을 AI 제공자에게 보내려면 프로젝트 개인정보 승인이 필요합니다.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('A Project Owner must complete the privacy review.')).toBeNull();
+    expect((screen.getByRole('button', { name: '질문 제출' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    expect(mockClient.submitQuestion).not.toHaveBeenCalled();
+  });
+
+  it('shows localized DEPLOYMENT_POLICY_BLOCKED reason and blocks question submission', async () => {
+    const runtime = createRuntime();
+    const workspace = { ...mockWorkspace, capabilities: ['SUBMIT_QUESTION'] as const };
+    const mockClient: AskWorkspaceClient = {
+      getProviderEligibility: vi.fn().mockResolvedValue({
+        schemaVersion: '1.0.0',
+        eligible: false,
+        reason: 'DEPLOYMENT_POLICY_BLOCKED',
+        requiredAction: 'CONTACT_DEPLOYMENT_ADMINISTRATOR',
+        policyFingerprint: 'test-policy-deployment-blocked',
+        policyContextRevision: '2',
+        provider: { displayName: 'Test provider', model: 'test-model' },
+        message:
+          'This deployment does not permit sending private Project context to the configured AI provider.',
+      }),
+      getWorkspace: vi.fn().mockResolvedValue(workspace),
+      getConversation: vi.fn().mockResolvedValue(workspace.selectedConversation!),
+      getConversationSourceContext: vi.fn(),
+      getBranch: vi.fn(),
+      getAnswerRun: vi.fn(),
+      submitQuestion: vi.fn(),
+      getQuestionSubmissionByClientRequestId: vi.fn(),
+    };
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <LocalizedShellOutlet />,
+          children: [{ path: 'ask', element: <AskWorkspace client={mockClient} /> }],
+        },
+      ],
+      { initialEntries: ['/ask'] },
+    );
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+    expect(
+      await screen.findByText(
+        '현재 배포 정책에서는 이 질문에 필요한 프로젝트 내용을 구성된 AI 제공자에게 보낼 수 없습니다.',
+      ),
     ).toBeTruthy();
     expect(
-      (screen.getByRole('button', { name: 'Submit question' }) as HTMLButtonElement).disabled,
-    ).toBe(true);
+      screen.queryByText(
+        'This deployment does not permit sending private Project context to the configured AI provider.',
+      ),
+    ).toBeNull();
+    expect((screen.getByRole('button', { name: '질문 제출' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
     expect(mockClient.submitQuestion).not.toHaveBeenCalled();
   });
 

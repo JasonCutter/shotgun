@@ -277,6 +277,12 @@ const enUS = {
   'ask.review_privacy': 'Review privacy',
   'ask.provider_eligibility_unavailable':
     'Provider eligibility could not be verified. Submission remains unavailable.',
+  'ask.provider_eligibility.deployment_policy_blocked':
+    'Current deployment policy does not permit sending the Project context required for this question to the configured AI provider.',
+  'ask.provider_eligibility.project_approval_required':
+    'Project privacy approval is required before the context for this question can be sent to the configured AI provider.',
+  'ask.provider_eligibility.restricted_context_blocked':
+    'Restricted Project context cannot be sent to the configured AI provider.',
   'ask.submission_unavailable': 'Question submission is not available for this conversation.',
   'ask.current_conversation': '(current conversation)',
   'ask.conversation_list': 'Conversations',
@@ -763,6 +769,12 @@ const koKR: Record<ProductMessageKey, string> = {
   'ask.review_privacy': '개인정보 검토',
   'ask.provider_eligibility_unavailable':
     '제공자 사용 가능 여부를 확인하지 못했습니다. 질문을 제출할 수 없습니다.',
+  'ask.provider_eligibility.deployment_policy_blocked':
+    '현재 배포 정책에서는 이 질문에 필요한 프로젝트 내용을 구성된 AI 제공자에게 보낼 수 없습니다.',
+  'ask.provider_eligibility.project_approval_required':
+    '이 질문에 필요한 프로젝트 내용을 AI 제공자에게 보내려면 프로젝트 개인정보 승인이 필요합니다.',
+  'ask.provider_eligibility.restricted_context_blocked':
+    '제한된 프로젝트 내용은 구성된 AI 제공자에게 보낼 수 없습니다.',
   'ask.submission_unavailable': '이 대화에서는 질문을 제출할 수 없습니다.',
   'ask.current_conversation': '(현재 대화)',
   'ask.conversation_list': '대화',

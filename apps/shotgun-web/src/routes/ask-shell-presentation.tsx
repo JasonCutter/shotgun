@@ -44,6 +44,24 @@ export type GlobalComposerProps = {
   readonly t: ProductTranslator;
 };
 
+const askProviderEligibilityReasonMessage = (
+  t: ProductTranslator,
+  reason: AskProviderEligibilityView['reason'],
+): string | null => {
+  switch (reason) {
+    case 'DEPLOYMENT_POLICY_BLOCKED':
+      return t('ask.provider_eligibility.deployment_policy_blocked');
+    case 'PROJECT_APPROVAL_REQUIRED':
+      return t('ask.provider_eligibility.project_approval_required');
+    case 'RESTRICTED_CONTEXT_BLOCKED':
+      return t('ask.provider_eligibility.restricted_context_blocked');
+    case 'ELIGIBLE':
+      return null;
+    default:
+      return null;
+  }
+};
+
 export const GlobalComposer = ({
   workspace,
   availableModes = workspace?.availableAskModes ?? [],
@@ -62,6 +80,11 @@ export const GlobalComposer = ({
   onResolveOutcome,
   t,
 }: GlobalComposerProps) => {
+  const ineligibleMessage =
+    providerEligibility.data && !providerEligibility.data.eligible
+      ? askProviderEligibilityReasonMessage(t, providerEligibility.data.reason)
+      : null;
+
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     void onSubmit();
@@ -144,9 +167,9 @@ export const GlobalComposer = ({
           {t('ask.source_selection_required')}
         </p>
       ) : null}
-      {providerEligibility.data && !providerEligibility.data.eligible ? (
+      {ineligibleMessage ? (
         <p className="ask-form-status hfm-status-attention" role="status">
-          {providerEligibility.data.message}
+          {ineligibleMessage}
         </p>
       ) : null}
       {providerEligibility.isError ? (

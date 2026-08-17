@@ -1,12 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 
-import type { GlobalShellView } from '@shotgun/api-client';
+import type {
+  AIProviderPrivacyProposal,
+  AISettingsApproval,
+  AISettingsPrivacyStatus,
+  GlobalShellView,
+} from '@shotgun/api-client';
 
 import { useAppRuntime } from '../app/providers.js';
 import { useAccessibleDialog } from '../app/use-accessible-dialog.js';
 import { safeErrorMessage } from '../components/error-state.js';
-import { useProductLocalization } from '../localization/product-localization.js';
+import {
+  useProductLocalization,
+  type ProductTranslator,
+} from '../localization/product-localization.js';
 import type { PrivacyCommandId } from './owner-command-registry.js';
 
 type CommandIdentity = {
@@ -35,6 +43,7 @@ export type PrivacyCommandSurfaceProps = {
 
 const privacyQueryKey = (projectId: string) => ['settings', 'privacy', projectId] as const;
 const snapshotQueryKey = (projectId: string) => ['settings', 'snapshot', projectId] as const;
+const aiSettingsQueryKey = (projectId: string) => ['settings', 'ai', projectId] as const;
 
 const identity = (): CommandIdentity => ({
   clientRequestId: crypto.randomUUID(),
@@ -51,6 +60,20 @@ const isOutcomeIndeterminateError = (error: unknown): boolean => {
   );
 };
 
+const privacyStateLabel = (
+  privacy: AISettingsPrivacyStatus | undefined,
+  t: ProductTranslator,
+): string => {
+  if (!privacy) return t('ai.privacy.review_required');
+  if (privacy.approval?.approved || privacy.legacyGeminiCompatibility)
+    return t('ai.privacy.approved');
+  if (privacy.approval?.approved === false) return t('ai.privacy.not_approved');
+  return t('ai.privacy.review_required');
+};
+
+const isPrivacyApproved = (privacy: AISettingsPrivacyStatus | undefined): boolean =>
+  Boolean(privacy?.approval?.approved || privacy?.legacyGeminiCompatibility);
+
 export const PrivacyCommandSurface = ({
   open,
   commandId,
@@ -65,6 +88,9 @@ export const PrivacyCommandSurface = ({
   const dialog = useAccessibleDialog({ open, onClose });
   const projectId = shell.activeProject?.id ?? '';
   const [mode, setMode] = useState<PrivacyCommandId>('privacy.open');
+  const [selectedProviderId, setSelectedProviderId] = useState<string>('');
+  const [pendingProviderProposal, setPendingProviderProposal] =
+    useState<AIProviderPrivacyProposal>();
   const [reviewProposalId, setReviewProposalId] = useState<string>();
   const [message, setMessage] = useState<string>();
   const [errorMessage, setErrorMessage] = useState<string>();
@@ -76,20 +102,55 @@ export const PrivacyCommandSurface = ({
     queryFn: () => apiClient.getPrivacyRetention(projectId),
     enabled: open && Boolean(projectId),
   });
+
+  const aiSettingsQuery = useQuery({
+    queryKey: aiSettingsQueryKey(projectId),
+    queryFn: ({ signal }) => apiClient.getAISettings(projectId, { signal }),
+    enabled: open && Boolean(projectId),
+  });
+
   const reviewMode = mode === 'privacy.review';
   const snapshotQuery = useQuery({
     queryKey: snapshotQueryKey(projectId),
     queryFn: () => apiClient.getSettingsSnapshot(projectId),
     enabled: open && reviewMode && Boolean(projectId),
   });
+
   const privacyData =
     privacyQuery.data?.availability === 'AVAILABLE' ? privacyQuery.data.data : undefined;
   const effectiveReviewProposalId = reviewProposalId ?? privacyData?.pendingReviewProposalId;
+
+  const aiSettings = aiSettingsQuery.data;
+  const effectiveProviderId = useMemo(() => {
+    if (
+      selectedProviderId &&
+      aiSettings?.providers.some((p) => p.providerId === selectedProviderId)
+    ) {
+      return selectedProviderId;
+    }
+    const configured = aiSettings?.currentConfiguration?.activeProviderId;
+    if (configured && aiSettings?.providers.some((p) => p.providerId === configured)) {
+      return configured;
+    }
+    return aiSettings?.defaultProviderId ?? aiSettings?.providers[0]?.providerId ?? '';
+  }, [aiSettings, selectedProviderId]);
+
+  const selectedProvider = useMemo(
+    () => aiSettings?.providers.find((p) => p.providerId === effectiveProviderId),
+    [aiSettings?.providers, effectiveProviderId],
+  );
+
+  const selectedProviderPrivacy = useMemo(
+    () => aiSettings?.privacy.find((p) => p.providerId === effectiveProviderId),
+    [aiSettings?.privacy, effectiveProviderId],
+  );
 
   useEffect(() => {
     if (!open || !commandId) return;
     dialog.captureInvoker(invoker);
     setMode(commandId);
+    setSelectedProviderId('');
+    setPendingProviderProposal(undefined);
     setReviewProposalId(undefined);
     setMessage(undefined);
     setErrorMessage(undefined);
@@ -101,12 +162,14 @@ export const PrivacyCommandSurface = ({
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: privacyQueryKey(projectId) }),
       queryClient.invalidateQueries({ queryKey: snapshotQueryKey(projectId) }),
+      queryClient.invalidateQueries({ queryKey: aiSettingsQueryKey(projectId) }),
     ]);
     await privacyQuery.refetch();
     if (reviewMode) await snapshotQuery.refetch();
+    await aiSettingsQuery.refetch();
   };
 
-  const mutation = useMutation({
+  const projectMutation = useMutation({
     mutationFn: (input: PrivacySubmission) =>
       apiClient.applySettingsCommand({
         activeProjectId: input.activeProjectId,
@@ -150,6 +213,60 @@ export const PrivacyCommandSurface = ({
     },
   });
 
+  const providerPrivacyMutation = useMutation<
+    AIProviderPrivacyProposal | AISettingsApproval,
+    unknown,
+    'propose' | 'approve'
+  >({
+    mutationFn: (action: 'propose' | 'approve') => {
+      if (!aiSettings || !selectedProvider || !selectedProviderPrivacy) {
+        throw new Error(t('ai.error.provider_required_for_privacy'));
+      }
+      if (action === 'approve') {
+        if (!pendingProviderProposal) throw new Error(t('ai.error.no_privacy_proposal'));
+        return apiClient.approveAIProviderPrivacyProposal({
+          projectId,
+          providerId: selectedProvider.providerId,
+          proposalId: pendingProviderProposal.proposalId,
+          expectedApprovalRevision: pendingProviderProposal.expectedApprovalRevision,
+        });
+      }
+      return apiClient.proposeAIProviderPrivacyApproval({
+        projectId,
+        providerId: selectedProvider.providerId,
+        approved: true,
+        expectedApprovalRevision: selectedProviderPrivacy.approval?.approvalRevision ?? 0,
+      });
+    },
+    onSuccess: async (result, action) => {
+      if (action === 'propose') {
+        const proposal = result as AIProviderPrivacyProposal;
+        if (
+          !selectedProvider ||
+          proposal.projectId !== projectId ||
+          proposal.providerId !== selectedProvider.providerId
+        ) {
+          setPendingProviderProposal(undefined);
+          setErrorMessage(
+            'Provider privacy proposal could not be validated for the selected provider.',
+          );
+          return;
+        }
+        setPendingProviderProposal(proposal);
+        setMessage(t('ai.privacy_proposed'));
+        setErrorMessage(undefined);
+        return;
+      }
+      setPendingProviderProposal(undefined);
+      setMessage(t('ai.privacy_saved'));
+      setErrorMessage(undefined);
+      await refreshPrivacy();
+    },
+    onError: (error) => {
+      setErrorMessage(safeErrorMessage(error));
+    },
+  });
+
   const resolveOutcome = async () => {
     if (!outcomeRecovery || isResolvingOutcome) return;
     setIsResolvingOutcome(true);
@@ -175,18 +292,18 @@ export const PrivacyCommandSurface = ({
     }
   };
 
-  const submitReview = (proposalId?: string) => {
+  const submitProjectReview = (proposalId?: string) => {
     if (
       !projectId ||
       !privacyData ||
       !snapshotQuery.data ||
-      mutation.isPending ||
+      projectMutation.isPending ||
       outcomeRecovery
     ) {
       return;
     }
     const snapshot = snapshotQuery.data;
-    mutation.mutate({
+    projectMutation.mutate({
       ...identity(),
       activeProjectId: projectId,
       targetProjectId: projectId,
@@ -200,7 +317,13 @@ export const PrivacyCommandSurface = ({
   if (!open || !commandId) return null;
   if (!projectId) return null;
 
-  const pending = mutation.isPending || isResolvingOutcome || outcomeRecovery !== undefined;
+  const pending =
+    projectMutation.isPending ||
+    providerPrivacyMutation.isPending ||
+    isResolvingOutcome ||
+    outcomeRecovery !== undefined;
+  const providerApproved = isPrivacyApproved(selectedProviderPrivacy);
+  const canApproveProviderPrivacy = pendingProviderProposal !== undefined;
 
   return (
     <div
@@ -225,11 +348,84 @@ export const PrivacyCommandSurface = ({
             className="hfm-action-secondary"
             type="button"
             onClick={() => void resolveOutcome()}
-            disabled={mutation.isPending || isResolvingOutcome}
+            disabled={projectMutation.isPending || isResolvingOutcome}
           >
             {isResolvingOutcome ? t('common.checking') : t('common.check_result')}
           </button>
         ) : null}
+
+        {/* SECTION 1: PROVIDER PRIVACY */}
+        {aiSettings && selectedProvider && selectedProviderPrivacy ? (
+          <section
+            className="privacy-command-section"
+            aria-labelledby="command-provider-privacy-heading"
+          >
+            <h3
+              id="command-provider-privacy-heading"
+              style={{ margin: '0 0 8px 0', fontSize: '15px' }}
+            >
+              {t('ai.provider_privacy')}
+            </h3>
+            {aiSettings.providers.length > 1 ? (
+              <div style={{ marginBottom: '8px' }}>
+                <label
+                  htmlFor="privacy-command-provider-select"
+                  style={{ display: 'block', fontWeight: 600, marginBottom: '4px' }}
+                >
+                  AI Provider
+                </label>
+                <select
+                  id="privacy-command-provider-select"
+                  value={effectiveProviderId}
+                  onChange={(e) => {
+                    setSelectedProviderId(e.target.value);
+                    setPendingProviderProposal(undefined);
+                  }}
+                  disabled={pending}
+                >
+                  {aiSettings.providers.map((provider) => (
+                    <option key={provider.providerId} value={provider.providerId}>
+                      {provider.displayName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+            <p>
+              <strong>{selectedProvider.displayName}:</strong>{' '}
+              {privacyStateLabel(selectedProviderPrivacy, t)}
+            </p>
+            {selectedProviderPrivacy.legacyGeminiCompatibility ? (
+              <p>An existing Gemini approval applies only to Google Gemini.</p>
+            ) : null}
+            {reviewMode && !providerApproved && !canApproveProviderPrivacy ? (
+              <button
+                className="hfm-action-secondary"
+                type="button"
+                onClick={() => providerPrivacyMutation.mutate('propose')}
+                disabled={pending}
+              >
+                Request provider privacy approval
+              </button>
+            ) : null}
+            {reviewMode && canApproveProviderPrivacy ? (
+              <button
+                className="hfm-action-primary"
+                type="button"
+                onClick={() => {
+                  if (window.confirm(t('ai.approve_privacy_decision'))) {
+                    providerPrivacyMutation.mutate('approve');
+                  }
+                }}
+                disabled={pending}
+              >
+                Approve provider privacy decision
+              </button>
+            ) : null}
+          </section>
+        ) : null}
+
+        {/* SECTION 2: PROJECT PRIVACY */}
         {privacyQuery.isLoading ? <p>{t('privacy.loading')}</p> : null}
         {privacyQuery.isError ? <p role="alert">{t('privacy.load_failed')}</p> : null}
         {privacyQuery.data?.availability === 'UNAVAILABLE' ? (
@@ -238,6 +434,9 @@ export const PrivacyCommandSurface = ({
         {privacyData ? (
           <>
             <section className="privacy-command-section" aria-label={t('privacy.summary')}>
+              <h3 style={{ margin: '0 0 8px 0', fontSize: '15px' }}>
+                {t('privacy.project_title')}
+              </h3>
               <p>
                 <strong>{t('privacy.profile_label')}</strong>{' '}
                 {t(`privacy.profile.${privacyData.profileName.toLowerCase()}` as never)}
@@ -271,16 +470,6 @@ export const PrivacyCommandSurface = ({
                 <strong>{t('privacy.retention_label')}</strong> {privacyData.retentionSummary}
               </p>
             </section>
-            {!reviewMode && !privacyData.externalTransferAllowed ? (
-              <button
-                className="hfm-action-secondary"
-                type="button"
-                onClick={() => setMode('privacy.review')}
-                disabled={pending}
-              >
-                {t('privacy.open_review')}
-              </button>
-            ) : null}
             {reviewMode && snapshotQuery.isLoading ? (
               <p>{t('privacy.loading_preconditions')}</p>
             ) : null}
@@ -292,7 +481,7 @@ export const PrivacyCommandSurface = ({
                 className="hfm-action-primary"
                 type="button"
                 disabled={pending || snapshotQuery.data === undefined}
-                onClick={() => submitReview()}
+                onClick={() => submitProjectReview()}
               >
                 {t('privacy.request_review')}
               </button>
@@ -306,7 +495,7 @@ export const PrivacyCommandSurface = ({
                   disabled={pending || snapshotQuery.data === undefined}
                   onClick={() => {
                     if (window.confirm(t('privacy.approve_transfer'))) {
-                      submitReview(effectiveReviewProposalId);
+                      submitProjectReview(effectiveReviewProposalId);
                     }
                   }}
                 >
@@ -321,7 +510,7 @@ export const PrivacyCommandSurface = ({
             className="hfm-action-secondary"
             type="button"
             onClick={onClose}
-            disabled={mutation.isPending}
+            disabled={projectMutation.isPending || providerPrivacyMutation.isPending}
           >
             {t('common.close')}
           </button>

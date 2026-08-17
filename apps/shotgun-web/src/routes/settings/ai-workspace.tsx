@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react';
-import { useOutletContext, useSearchParams } from 'react-router';
+import { Link, useOutletContext } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   AICredentialMetadata,
-  AIProviderPrivacyProposal,
   AITestConnectionResult,
   AISettingsCredentialStatus,
   AISettingsProvider,
@@ -84,9 +83,8 @@ export const AIWorkspace = () => {
   const { apiClient } = useAppRuntime();
   const queryClient = useQueryClient();
   const { requestConfirmation } = useOutletContext<SettingsOutletContext>();
-  const [searchParams] = useSearchParams();
   const { data: session } = useQuery(sessionQueryOptions(apiClient));
-  const targetProjectId = searchParams.get('targetProjectId') ?? session?.activeProject?.id ?? '';
+  const targetProjectId = session?.activeProject?.id ?? '';
   const feedbackRef = useRef<HTMLDivElement>(null);
 
   const settingsQuery = useQuery({
@@ -102,8 +100,6 @@ export const AIWorkspace = () => {
   const [initializedProjectId, setInitializedProjectId] = useState('');
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [testResult, setTestResult] = useState<AITestConnectionResult | null>(null);
-  const [pendingPrivacyProposal, setPendingPrivacyProposal] =
-    useState<AIProviderPrivacyProposal | null>(null);
   const credentialRequestIdRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
@@ -305,64 +301,6 @@ export const AIWorkspace = () => {
     },
   });
 
-  const privacyMutation = useMutation({
-    mutationFn: async (action: 'propose-approve' | 'propose-reject' | 'approve') => {
-      if (!settings || !selectedPrivacy || !selectedProvider) {
-        throw new Error('Select a registered provider before requesting privacy review.');
-      }
-      if (action === 'approve') {
-        if (!pendingPrivacyProposal)
-          throw new Error('No provider privacy proposal is awaiting review.');
-        return {
-          kind: 'approval' as const,
-          approval: await apiClient.approveAIProviderPrivacyProposal({
-            projectId: settings.projectId,
-            providerId: selectedProvider.providerId,
-            proposalId: pendingPrivacyProposal.proposalId,
-            expectedApprovalRevision: pendingPrivacyProposal.expectedApprovalRevision,
-          }),
-        };
-      }
-      return {
-        kind: 'proposal' as const,
-        proposal: await apiClient.proposeAIProviderPrivacyApproval({
-          projectId: settings.projectId,
-          providerId: selectedProvider.providerId,
-          approved: action === 'propose-approve',
-          expectedApprovalRevision: selectedPrivacy.approval?.approvalRevision ?? 0,
-        }),
-      };
-    },
-    onSuccess: async (result) => {
-      if (result.kind === 'proposal') {
-        setPendingPrivacyProposal(result.proposal);
-        setFeedback({
-          tone: 'info',
-          title: 'Provider privacy review proposed',
-          detail: 'The proposal remains review-required until an Owner explicitly approves it.',
-        });
-        return;
-      }
-      setPendingPrivacyProposal(null);
-      setFeedback({
-        tone: 'success',
-        title: result.approval.approved
-          ? 'Provider privacy approved'
-          : 'Provider privacy not approved',
-        detail:
-          'The decision applies only to the selected provider and does not change deployment policy.',
-      });
-      await invalidateSettings();
-    },
-    onError: (error) => {
-      setFeedback({
-        tone: 'error',
-        title: 'Provider privacy review failed',
-        detail: safeErrorMessage(error),
-      });
-    },
-  });
-
   const runCredentialAction = (action: 'revoke' | 'remove') => {
     if (!settings || !selectedProvider || !usableCredential) return;
     const command = async () => {
@@ -411,7 +349,6 @@ export const AIWorkspace = () => {
     setSelectedProviderId(providerId);
     setSelectedModelId(provider?.models[0]?.modelId ?? '');
     setTestResult(null);
-    setPendingPrivacyProposal(null);
     setFeedback(null);
   };
 
@@ -426,9 +363,8 @@ export const AIWorkspace = () => {
     return <div className="error-banner">Failed to load server-authoritative AI settings.</div>;
   }
 
-  const privateEligible = Boolean(
-    selectedPrivacy?.deploymentAllowed &&
-    (selectedPrivacy.approval?.approved || selectedPrivacy.legacyGeminiCompatibility),
+  const isPrivacyApproved = Boolean(
+    selectedPrivacy?.approval?.approved || selectedPrivacy?.legacyGeminiCompatibility,
   );
   const latestState = onlySelectedCredential?.lifecycleState;
   const currentCredentialReferenced = Boolean(
@@ -438,17 +374,17 @@ export const AIWorkspace = () => {
   return (
     <section className="ai-settings-workspace" aria-labelledby="ai-settings-heading">
       <header>
-        <p className="eyebrow">Canonical Product workspace</p>
+        <p className="eyebrow">Settings</p>
         <h2
           id="ai-settings-heading"
           tabIndex={-1}
           style={{ fontSize: '24px', marginBottom: '8px' }}
         >
-          Settings → AI
+          AI
         </h2>
         <p style={{ color: '#475569', maxWidth: '760px' }}>
-          Choose a registered provider and model, manage a Project credential, and save the next
-          runtime configuration. Saved configuration applies to the next new AI execution.
+          Choose an AI provider and model, configure your Project credential, and test the
+          connection.
         </p>
       </header>
 
@@ -466,22 +402,6 @@ export const AIWorkspace = () => {
         >
           <strong>{feedback.title}</strong>
           {feedback.detail ? <p style={{ margin: '4px 0 0' }}>{feedback.detail}</p> : null}
-        </div>
-      ) : null}
-
-      {settings.mode === 'LEGACY_GEMINI_COMPATIBILITY' ? (
-        <div className="notice-banner" style={{ marginTop: '16px' }}>
-          <strong>Legacy Gemini compatibility</strong>
-          <p>
-            This Project has no managed AI configuration. Historical Gemini approval remains
-            Gemini-only.{' '}
-            {settings.legacyGeminiCredentialConfigured
-              ? 'A legacy deployment credential is configured, but its value is never shown here.'
-              : 'No legacy credential metadata is available.'}
-          </p>
-          <p>
-            Save a Project-managed configuration to migrate explicitly; no hidden migration occurs.
-          </p>
         </div>
       ) : null}
 
@@ -533,18 +453,13 @@ export const AIWorkspace = () => {
             >
               {selectedProvider?.models.map((model) => (
                 <option key={model.modelId} value={model.modelId}>
-                  {model.displayName} ({model.modelId})
+                  {model.displayName}
                 </option>
               ))}
             </select>
-            {selectedModel ? (
-              <p style={{ color: '#64748b', fontSize: '13px', margin: '6px 0 0' }}>
-                Server catalog revision {selectedModel.capabilityRevision}. Shotgun capabilities:{' '}
-                {selectedModel.shotgunUsableCapabilities.join(', ') || 'none'}.
-              </p>
-            ) : (
+            {!selectedModel ? (
               <p role="status">No server-enabled model is available for this provider.</p>
-            )}
+            ) : null}
           </div>
         </div>
 
@@ -553,9 +468,9 @@ export const AIWorkspace = () => {
           <p style={{ margin: 0 }}>
             <strong>Status:</strong>{' '}
             {currentCredential?.lifecycleState === 'active'
-              ? `Configured · revision ${currentCredential.credentialRevision}`
+              ? 'Configured'
               : latestState
-                ? `No active credential · latest state ${latestState}`
+                ? `No active credential · ${latestState}`
                 : 'No Project credential configured'}
           </p>
           {currentCredentialReferenced ? (
@@ -581,7 +496,7 @@ export const AIWorkspace = () => {
             spellCheck={false}
             placeholder={
               currentCredential
-                ? 'Enter a new key to replace the current revision'
+                ? 'Enter a new key to replace the current credential'
                 : 'Enter a provider API key'
             }
             disabled={saveMutation.isPending || testMutation.isPending}
@@ -642,14 +557,6 @@ export const AIWorkspace = () => {
               Connection not tested. Test Connection is optional for Save.
             </p>
           )}
-          <p style={{ margin: 0 }}>
-            <strong>Configuration revision:</strong> {serverRevision}
-          </p>
-          <p style={{ margin: 0 }}>
-            <strong>Runtime:</strong> Saved configuration applies to the next new AI execution.
-            Existing and in-flight AnswerRuns, including retry pins, retain their original execution
-            identity.
-          </p>
         </div>
       </form>
 
@@ -659,69 +566,41 @@ export const AIWorkspace = () => {
         style={{ marginTop: '16px' }}
       >
         <h3 id="ai-privacy-heading" style={{ margin: 0 }}>
-          Privacy and deployment
+          Privacy status
         </h3>
-        <p>
+        <p style={{ margin: '8px 0' }}>
           <strong>Provider:</strong>{' '}
           {selectedProvider ? providerLabel(selectedProvider) : 'Not selected'}
         </p>
-        <p>
+        <p style={{ margin: '8px 0' }}>
           <strong>Project approval:</strong> {privacyLabel(selectedPrivacy)}
-          {selectedPrivacy?.approval
-            ? ` · revision ${selectedPrivacy.approval.approvalRevision}`
-            : ''}
-          {selectedPrivacy?.legacyGeminiCompatibility ? ' · historical Gemini compatibility' : ''}
         </p>
-        <p>
+        <p style={{ margin: '8px 0' }}>
           <strong>Deployment:</strong> {selectedPrivacy?.deploymentAllowed ? 'Allowed' : 'Blocked'}
         </p>
-        <p>
-          <strong>Effective private eligibility:</strong>{' '}
-          {privateEligible ? 'Eligible' : 'Not eligible'}
-        </p>
-        <p>Restricted Project data is always blocked from external AI transfer.</p>
-        {selectedPrivacy ? (
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            {!pendingPrivacyProposal ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => privacyMutation.mutate('propose-approve')}
-                  disabled={privacyMutation.isPending || saveMutation.isPending}
-                >
-                  Request {selectedPrivacy.approval?.approved ? 'updated' : ''} provider approval
-                </button>
-                {selectedPrivacy.approval?.approved ? (
-                  <button
-                    type="button"
-                    onClick={() => privacyMutation.mutate('propose-reject')}
-                    disabled={privacyMutation.isPending || saveMutation.isPending}
-                  >
-                    Request provider rejection
-                  </button>
-                ) : null}
-              </>
-            ) : (
-              <>
-                <span role="status">
-                  Review proposal pending for {pendingPrivacyProposal.providerId}:{' '}
-                  {pendingPrivacyProposal.approved ? 'approval' : 'rejection'}.
-                </span>
-                <button
-                  type="button"
-                  onClick={() => privacyMutation.mutate('approve')}
-                  disabled={privacyMutation.isPending || saveMutation.isPending}
-                >
-                  Approve provider review
-                </button>
-              </>
-            )}
+        {!isPrivacyApproved ? (
+          <div style={{ marginTop: '12px' }}>
+            <p style={{ color: '#92400e', margin: '0 0 8px 0' }}>
+              Privacy review is required before this provider can process Project data.
+            </p>
+            <Link
+              to={`/settings/privacy?providerId=${selectedProviderId}`}
+              style={{
+                display: 'inline-block',
+                padding: '6px 12px',
+                background: '#f1f5f9',
+                border: '1px solid #cbd5e1',
+                borderRadius: '4px',
+                color: '#1e293b',
+                textDecoration: 'none',
+                fontWeight: 500,
+                fontSize: '13px',
+              }}
+            >
+              Review privacy in Settings → Privacy
+            </Link>
           </div>
         ) : null}
-        <p style={{ color: '#64748b', fontSize: '13px' }}>
-          The UI submits only provider-scoped A4 review commands. Server-owned Owner authority and
-          the deployment ceiling remain authoritative.
-        </p>
       </section>
     </section>
   );

@@ -601,14 +601,8 @@ describe('AICommandSurface', () => {
     });
 
     expect(await screen.findByText('Approved')).toBeTruthy();
-    expect(
-      await screen.findByText('Historical Gemini compatibility applies only to this provider.'),
-    ).toBeTruthy();
     await user.selectOptions(await screen.findByLabelText('Provider'), 'deepseek');
     expect(await screen.findByText('Review required')).toBeTruthy();
-    expect(
-      screen.queryByText('Historical Gemini compatibility applies only to this provider.'),
-    ).toBeNull();
   });
 
   it('uses owner-safe wording when AI settings cannot be loaded', async () => {
@@ -631,58 +625,14 @@ describe('AICommandSurface', () => {
     expect(screen.queryByText(/server-authoritative/)).toBeNull();
   });
 
-  it('requires a second explicit provider privacy approval and keeps it provider-scoped', async () => {
-    const user = userEvent.setup();
-    const proposeAIProviderPrivacyApproval = vi.fn<
-      ShotgunApiClient['proposeAIProviderPrivacyApproval']
-    >(async () => ({
-      proposalId: 'proposal-1',
-      projectId: 'project-1',
-      providerId: 'openai',
-      approved: true,
-      expectedApprovalRevision: 4,
-      proposedBy: 'owner-1',
-      status: 'PROPOSED',
-      createdAt: '2026-08-14T00:00:00.000Z',
-    }));
-    const approveAIProviderPrivacyProposal = vi.fn<
-      ShotgunApiClient['approveAIProviderPrivacyProposal']
-    >(async () => ({
-      projectId: 'project-1',
-      providerId: 'openai',
-      approved: true,
-      approvalRevision: 5,
-      reviewedBy: 'owner-1',
-      reviewedAt: '2026-08-14T00:00:00.000Z',
-    }));
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
+  it('renders provider privacy status without mutation controls in AI surface', async () => {
     renderSurface('ai.configure', {
       getAISettings: vi.fn(async () => baseSettings()),
-      proposeAIProviderPrivacyApproval,
-      approveAIProviderPrivacyProposal,
     });
 
-    await user.click(
-      await screen.findByRole('button', { name: 'Request provider privacy approval' }),
-    );
-    await user.click(
-      await screen.findByRole('button', { name: 'Approve provider privacy decision' }),
-    );
-
-    expect(proposeAIProviderPrivacyApproval).toHaveBeenCalledWith({
-      projectId: 'project-1',
-      providerId: 'openai',
-      approved: true,
-      expectedApprovalRevision: 4,
-    });
-    await waitFor(() =>
-      expect(approveAIProviderPrivacyProposal).toHaveBeenCalledWith({
-        projectId: 'project-1',
-        providerId: 'openai',
-        proposalId: 'proposal-1',
-        expectedApprovalRevision: 4,
-      }),
-    );
-    expect(screen.queryByText('proposal-1')).toBeNull();
+    expect(await screen.findByText('Provider privacy')).toBeTruthy();
+    expect(screen.getByText('Not approved')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Request provider privacy approval' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Approve provider privacy decision' })).toBeNull();
   });
 });

@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   outcomeIndeterminateApiError,
+  type AISettingsReadModel,
   type GlobalShellView,
   type PrivacyRetentionView,
   type ShotgunApiClient,
@@ -116,14 +117,60 @@ const applied = {
 };
 
 describe('PrivacyCommandSurface', () => {
-  it('opens privacy as a read-only surface and performs no mutation', async () => {
+  it('opens privacy as a read-only surface and performs no mutation throughout its lifetime', async () => {
     const getPrivacyRetention = vi.fn(async () => privacyResponse());
     const getSettingsSnapshot = vi.fn(async () => snapshot as never);
     const applySettingsCommand = vi.fn();
+    const proposeAIProviderPrivacyApproval = vi.fn();
+    const approveAIProviderPrivacyProposal = vi.fn();
+    const aiSettings: AISettingsReadModel = {
+      projectId: 'project-1',
+      mode: 'PROJECT_MANAGED',
+      defaultProviderId: 'deepseek',
+      providers: [
+        {
+          providerId: 'openai',
+          displayName: 'OpenAI',
+          status: 'active',
+          models: [
+            {
+              providerId: 'openai',
+              modelId: 'gpt-test',
+              displayName: 'GPT Test',
+              shotgunUsableCapabilities: ['ASK'],
+              capabilityRevision: 'cap-1',
+            },
+          ],
+        },
+      ],
+      credentialStatuses: [],
+      privacy: [
+        {
+          providerId: 'openai',
+          deploymentAllowed: true,
+          approval: {
+            projectId: 'project-1',
+            providerId: 'openai',
+            approved: false,
+            approvalRevision: 4,
+            reviewedBy: 'owner-1',
+            reviewedAt: '2026-08-14T00:00:00.000Z',
+          },
+          legacyGeminiCompatibility: false,
+        },
+      ],
+      vaultAvailability: { state: 'AVAILABLE', keyVersion: 'v1' },
+      legacyGeminiCredentialConfigured: false,
+    };
+    const getAISettings = vi.fn(async () => aiSettings);
+
     renderSurface('privacy.open', {
       getPrivacyRetention,
       getSettingsSnapshot,
+      getAISettings,
       applySettingsCommand,
+      proposeAIProviderPrivacyApproval,
+      approveAIProviderPrivacyProposal,
     });
 
     expect(await screen.findByText('Controlled external')).toBeTruthy();
@@ -131,6 +178,23 @@ describe('PrivacyCommandSurface', () => {
     expect(getPrivacyRetention).toHaveBeenCalledWith('project-1');
     expect(getSettingsSnapshot).not.toHaveBeenCalled();
     expect(applySettingsCommand).not.toHaveBeenCalled();
+    expect(proposeAIProviderPrivacyApproval).not.toHaveBeenCalled();
+    expect(approveAIProviderPrivacyProposal).not.toHaveBeenCalled();
+
+    // Verify all write/proposal/escalation controls are absent
+    expect(screen.queryByRole('button', { name: /Request provider privacy approval/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Approve provider privacy decision/i })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /Request external AI transfer review/i }),
+    ).toBeNull();
+    expect(screen.queryByRole('button', { name: /Approve reviewed privacy proposal/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Open review/i })).toBeNull();
+
+    // Only close button exists
+    const buttons = screen.getAllByRole('button');
+    for (const button of buttons) {
+      expect(button.textContent).toMatch(/Close/i);
+    }
   });
 
   it.each([
@@ -295,5 +359,110 @@ describe('PrivacyCommandSurface', () => {
       locale,
     );
     expect(await screen.findByText(explanation)).toBeTruthy();
+  });
+
+  it('supports provider-scoped privacy review and approval in privacy surface', async () => {
+    const user = userEvent.setup();
+    const proposeAIProviderPrivacyApproval = vi.fn<
+      ShotgunApiClient['proposeAIProviderPrivacyApproval']
+    >(async () => ({
+      proposalId: 'proposal-1',
+      projectId: 'project-1',
+      providerId: 'openai',
+      approved: true,
+      expectedApprovalRevision: 4,
+      proposedBy: 'owner-1',
+      status: 'PROPOSED',
+      createdAt: '2026-08-14T00:00:00.000Z',
+    }));
+    const approveAIProviderPrivacyProposal = vi.fn<
+      ShotgunApiClient['approveAIProviderPrivacyProposal']
+    >(async () => ({
+      projectId: 'project-1',
+      providerId: 'openai',
+      approved: true,
+      approvalRevision: 5,
+      reviewedBy: 'owner-1',
+      reviewedAt: '2026-08-14T00:00:00.000Z',
+    }));
+    const aiSettings: AISettingsReadModel = {
+      projectId: 'project-1',
+      mode: 'PROJECT_MANAGED',
+      defaultProviderId: 'deepseek',
+      currentConfiguration: {
+        projectId: 'project-1',
+        activeProviderId: 'openai',
+        activeModelId: 'gpt-test',
+        credentialId: 'credential-1',
+        credentialRevision: 7,
+        aiConfigurationRevision: 12,
+        updatedBy: 'owner-1',
+        updatedAt: '2026-08-14T00:00:00.000Z',
+      },
+      providers: [
+        {
+          providerId: 'openai',
+          displayName: 'OpenAI',
+          status: 'active',
+          models: [
+            {
+              providerId: 'openai',
+              modelId: 'gpt-test',
+              displayName: 'GPT Test',
+              shotgunUsableCapabilities: ['ASK'],
+              capabilityRevision: 'cap-1',
+            },
+          ],
+        },
+      ],
+      credentialStatuses: [],
+      privacy: [
+        {
+          providerId: 'openai',
+          deploymentAllowed: true,
+          approval: {
+            projectId: 'project-1',
+            providerId: 'openai',
+            approved: false,
+            approvalRevision: 4,
+            reviewedBy: 'owner-1',
+            reviewedAt: '2026-08-14T00:00:00.000Z',
+          },
+          legacyGeminiCompatibility: false,
+        },
+      ],
+      vaultAvailability: { state: 'AVAILABLE', keyVersion: 'v1' },
+      legacyGeminiCredentialConfigured: false,
+    };
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderSurface('privacy.review', {
+      getPrivacyRetention: vi.fn(async () => privacyResponse()),
+      getAISettings: vi.fn(async () => aiSettings),
+      proposeAIProviderPrivacyApproval,
+      approveAIProviderPrivacyProposal,
+    });
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Request provider privacy approval' }),
+    );
+    await user.click(
+      await screen.findByRole('button', { name: 'Approve provider privacy decision' }),
+    );
+
+    expect(proposeAIProviderPrivacyApproval).toHaveBeenCalledWith({
+      projectId: 'project-1',
+      providerId: 'openai',
+      approved: true,
+      expectedApprovalRevision: 4,
+    });
+    await waitFor(() =>
+      expect(approveAIProviderPrivacyProposal).toHaveBeenCalledWith({
+        projectId: 'project-1',
+        providerId: 'openai',
+        proposalId: 'proposal-1',
+        expectedApprovalRevision: 4,
+      }),
+    );
+    expect(screen.queryByText('proposal-1')).toBeNull();
   });
 });

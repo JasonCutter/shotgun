@@ -1,25 +1,8 @@
 import { useState } from 'react';
-import { NavLink, Outlet, useOutletContext, useSearchParams } from 'react-router';
-import { useQuery } from '@tanstack/react-query';
-import type { GlobalShellView } from '@shotgun/api-client';
-import { useAppRuntime } from '../../app/providers.js';
-import { sessionQueryOptions } from '../../session/session-query.js';
-import { ProjectSelector } from '../../session/project-selector.js';
+import { NavLink, Outlet } from 'react-router';
 import { useAccessibleDialog } from '../../app/use-accessible-dialog.js';
 
 export const SettingsLayout = () => {
-  const { apiClient } = useAppRuntime();
-  const { shell } = useOutletContext<{ readonly shell: GlobalShellView }>();
-  const { data: session } = useQuery(sessionQueryOptions(apiClient));
-  const [searchParams] = useSearchParams();
-
-  const activeProjectId = session?.activeProject?.id ?? '';
-  const targetProjectId = searchParams.get('targetProjectId') ?? activeProjectId;
-  const resourceProjectId = searchParams.get('resourceProjectId') ?? targetProjectId;
-  const projectLabel = (projectId: string) =>
-    shell.accessibleProjects.find((project) => project.id === projectId)?.label ??
-    (projectId ? 'Unavailable project' : 'Not created');
-
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState<(() => void) | null>(null);
   const [confirmMessage, setConfirmMessage] = useState('');
@@ -56,64 +39,21 @@ export const SettingsLayout = () => {
           borderBottom: '1px solid var(--color-border, #e2e8f0)',
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <div>
-            <p
-              className="eyebrow"
-              style={{
-                fontSize: '12px',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-                color: '#64748b',
-              }}
-            >
-              Policy Control Plane
-            </p>
-            <h1 tabIndex={-1} style={{ margin: '4px 0 8px 0', fontSize: '28px', fontWeight: 700 }}>
-              Settings & Project Administration
-            </h1>
-            {session && <ProjectSelector session={session} shell={shell} />}
-          </div>
-          <div
-            className="project-context-badges"
-            style={{ display: 'flex', gap: '12px', fontSize: '13px' }}
+        <div>
+          <p
+            className="eyebrow"
+            style={{
+              fontSize: '12px',
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+              color: '#64748b',
+            }}
           >
-            <span
-              className="badge active-project"
-              style={{
-                padding: '4px 8px',
-                borderRadius: '4px',
-                background: '#e0f2fe',
-                color: '#0369a1',
-              }}
-            >
-              Current project: <strong>{projectLabel(activeProjectId)}</strong>
-            </span>
-            <span
-              className="badge target-project"
-              style={{
-                padding: '4px 8px',
-                borderRadius: '4px',
-                background: '#f0fdf4',
-                color: '#15803d',
-              }}
-            >
-              Settings for: <strong>{projectLabel(targetProjectId)}</strong>
-            </span>
-            {resourceProjectId !== targetProjectId && (
-              <span
-                className="badge resource-project"
-                style={{
-                  padding: '4px 8px',
-                  borderRadius: '4px',
-                  background: '#fef3c7',
-                  color: '#b45309',
-                }}
-              >
-                Resource project: <strong>{projectLabel(resourceProjectId)}</strong>
-              </span>
-            )}
-          </div>
+            Settings
+          </p>
+          <h1 tabIndex={-1} style={{ margin: '4px 0 8px 0', fontSize: '28px', fontWeight: 700 }}>
+            Settings & Preferences
+          </h1>
         </div>
 
         <nav aria-label="Settings Categories" style={{ marginTop: '16px' }}>
@@ -127,54 +67,9 @@ export const SettingsLayout = () => {
               margin: 0,
             }}
           >
-            {activeProjectId ? (
-              <li>
-                <NavLink
-                  end
-                  to={`/settings?targetProjectId=${targetProjectId}`}
-                  className={({ isActive }: { isActive: boolean }) =>
-                    isActive ? 'nav-tab active' : 'nav-tab'
-                  }
-                >
-                  Category Index
-                </NavLink>
-              </li>
-            ) : null}
-            {activeProjectId ? (
-              <li>
-                <NavLink
-                  to={`/settings/preferences?targetProjectId=${targetProjectId}`}
-                  className={({ isActive }: { isActive: boolean }) =>
-                    isActive ? 'nav-tab active' : 'nav-tab'
-                  }
-                >
-                  Preferences
-                </NavLink>
-              </li>
-            ) : null}
             <li>
               <NavLink
-                to={`/settings/projects?targetProjectId=${targetProjectId}`}
-                className={({ isActive }: { isActive: boolean }) =>
-                  isActive ? 'nav-tab active' : 'nav-tab'
-                }
-              >
-                Project Admin
-              </NavLink>
-            </li>
-            <li>
-              <NavLink
-                to={`/settings/models?targetProjectId=${targetProjectId}`}
-                className={({ isActive }: { isActive: boolean }) =>
-                  isActive ? 'nav-tab active' : 'nav-tab'
-                }
-              >
-                Models
-              </NavLink>
-            </li>
-            <li>
-              <NavLink
-                to={`/settings/ai?targetProjectId=${targetProjectId}`}
+                to="/settings/ai"
                 className={({ isActive }: { isActive: boolean }) =>
                   isActive ? 'nav-tab active' : 'nav-tab'
                 }
@@ -184,72 +79,32 @@ export const SettingsLayout = () => {
             </li>
             <li>
               <NavLink
-                to={`/settings/costs?targetProjectId=${targetProjectId}`}
+                to="/settings/privacy"
                 className={({ isActive }: { isActive: boolean }) =>
                   isActive ? 'nav-tab active' : 'nav-tab'
                 }
               >
-                Costs & Budgets
+                Privacy
               </NavLink>
             </li>
             <li>
               <NavLink
-                to={`/settings/privacy?targetProjectId=${targetProjectId}`}
+                to="/settings/preferences"
                 className={({ isActive }: { isActive: boolean }) =>
                   isActive ? 'nav-tab active' : 'nav-tab'
                 }
               >
-                Privacy & Sensitivity
+                Preferences
               </NavLink>
             </li>
             <li>
               <NavLink
-                to={`/settings/connectors?targetProjectId=${targetProjectId}`}
+                to="/settings/projects"
                 className={({ isActive }: { isActive: boolean }) =>
                   isActive ? 'nav-tab active' : 'nav-tab'
                 }
               >
-                Connectors
-              </NavLink>
-            </li>
-            <li>
-              <NavLink
-                to={`/settings/directives?targetProjectId=${targetProjectId}`}
-                className={({ isActive }: { isActive: boolean }) =>
-                  isActive ? 'nav-tab active' : 'nav-tab'
-                }
-              >
-                Directives & Priority
-              </NavLink>
-            </li>
-            <li>
-              <NavLink
-                to={`/settings/schema?targetProjectId=${targetProjectId}`}
-                className={({ isActive }: { isActive: boolean }) =>
-                  isActive ? 'nav-tab active' : 'nav-tab'
-                }
-              >
-                Schema Packs
-              </NavLink>
-            </li>
-            <li>
-              <NavLink
-                to={`/settings/diagnostics?targetProjectId=${targetProjectId}`}
-                className={({ isActive }: { isActive: boolean }) =>
-                  isActive ? 'nav-tab active' : 'nav-tab'
-                }
-              >
-                Diagnostics
-              </NavLink>
-            </li>
-            <li>
-              <NavLink
-                to={`/settings/advanced?targetProjectId=${targetProjectId}`}
-                className={({ isActive }: { isActive: boolean }) =>
-                  isActive ? 'nav-tab active' : 'nav-tab'
-                }
-              >
-                Advanced
+                Project
               </NavLink>
             </li>
           </ul>

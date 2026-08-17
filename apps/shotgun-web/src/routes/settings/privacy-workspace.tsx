@@ -1,63 +1,160 @@
-import { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router';
+import type {
+  AIProviderPrivacyProposal,
+  AISettingsPrivacyStatus,
+  AISettingsProvider,
+} from '@shotgun/api-client';
+
 import { useAppRuntime } from '../../app/providers.js';
 import { privacyProfileLabel, sensitivityLabel } from '../../presentation/product-labels.js';
 import { sessionQueryOptions } from '../../session/session-query.js';
+
+const privacyLabel = (privacy: AISettingsPrivacyStatus | undefined): string => {
+  if (!privacy) return 'Review required';
+  if (privacy.approval?.approved || privacy.legacyGeminiCompatibility) return 'Approved';
+  if (privacy.approval?.approved === false) return 'Not approved / Rejected';
+  return 'Review required';
+};
+
+const providerLabel = (provider: AISettingsProvider): string => provider.displayName;
 
 export const PrivacyWorkspace = () => {
   const { apiClient } = useAppRuntime();
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
-  const targetProjectId = searchParams.get('targetProjectId') ?? 'shotgun';
   const { data: session } = useQuery(sessionQueryOptions(apiClient));
-  const { data: snapshot } = useQuery({
-    queryKey: ['settings', 'snapshot', targetProjectId],
-    queryFn: () => apiClient.getSettingsSnapshot(targetProjectId),
-  });
-  const [reviewProposalId, setReviewProposalId] = useState<string>();
-  const [notice, setNotice] = useState<string>();
-  const [submitting, setSubmitting] = useState(false);
+  const targetProjectId = session?.activeProject?.id ?? '';
+  const initialProviderParam = searchParams.get('providerId') ?? '';
 
-  const {
-    data: privacy,
-    isLoading,
-    error,
-  } = useQuery({
+  const [selectedProviderId, setSelectedProviderId] = useState<string>(initialProviderParam);
+  const [pendingProviderProposal, setPendingProviderProposal] =
+    useState<AIProviderPrivacyProposal | null>(null);
+  const [providerNotice, setProviderNotice] = useState<string>();
+
+  const [projectReviewProposalId, setProjectReviewProposalId] = useState<string>();
+  const [projectNotice, setProjectNotice] = useState<string>();
+  const [projectSubmitting, setProjectSubmitting] = useState(false);
+
+  const aiSettingsQuery = useQuery({
+    queryKey: ['settings', 'ai', targetProjectId],
+    queryFn: ({ signal }) => apiClient.getAISettings(targetProjectId, { signal }),
+    enabled: Boolean(targetProjectId),
+  });
+
+  const privacyQuery = useQuery({
     queryKey: ['settings', 'privacy', targetProjectId],
     queryFn: () => apiClient.getPrivacyRetention(targetProjectId),
+    enabled: Boolean(targetProjectId),
   });
 
-  if (isLoading) return <div>Loading privacy & sensitivity settings...</div>;
-  if (error || !privacy)
-    return <div className="error-banner">Failed to load privacy settings.</div>;
+  const snapshotQuery = useQuery({
+    queryKey: ['settings', 'snapshot', targetProjectId],
+    queryFn: () => apiClient.getSettingsSnapshot(targetProjectId),
+    enabled: Boolean(targetProjectId),
+  });
 
-  if (privacy.availability === 'UNAVAILABLE') {
-    return (
-      <section className="privacy-workspace">
-        <h2 style={{ fontSize: '20px', marginBottom: '8px' }}>Privacy & Sensitivity Controls</h2>
-        <div
-          style={{
-            color: '#b91c1c',
-            padding: '16px',
-            background: '#fef2f2',
-            border: '1px solid #f87171',
-            borderRadius: '8px',
-          }}
-        >
-          {privacy.disabledReason}
-        </div>
-      </section>
-    );
-  }
+  const aiSettings = aiSettingsQuery.data;
+  const privacy = privacyQuery.data;
+  const snapshot = snapshotQuery.data;
 
-  const privacyData = privacy.data;
-  const effectiveReviewProposalId = reviewProposalId ?? privacyData.pendingReviewProposalId;
+  const initialProviderIsInvalid = Boolean(
+    initialProviderParam &&
+    aiSettings &&
+    !aiSettings.providers.some((p) => p.providerId === initialProviderParam),
+  );
 
-  const submitReviewCommand = async (proposalId?: string) => {
-    if (!session?.activeProject?.id || !snapshot) return;
-    setSubmitting(true);
-    setNotice(undefined);
+  const effectiveProviderId = useMemo(() => {
+    if (selectedProviderId) {
+      if (aiSettings?.providers.some((p) => p.providerId === selectedProviderId)) {
+        return selectedProviderId;
+      }
+      return '';
+    }
+    const configured = aiSettings?.currentConfiguration?.activeProviderId;
+    if (configured && aiSettings?.providers.some((p) => p.providerId === configured)) {
+      return configured;
+    }
+    return aiSettings?.defaultProviderId ?? aiSettings?.providers[0]?.providerId ?? '';
+  }, [aiSettings, selectedProviderId]);
+
+  const selectedProvider = useMemo(
+    () => aiSettings?.providers.find((p) => p.providerId === effectiveProviderId),
+    [aiSettings?.providers, effectiveProviderId],
+  );
+
+  const selectedProviderPrivacy = useMemo(
+    () => aiSettings?.privacy.find((p) => p.providerId === effectiveProviderId),
+    [aiSettings?.privacy, effectiveProviderId],
+  );
+
+  const providerPrivacyMutation = useMutation({
+    mutationFn: async (action: 'propose-approve' | 'propose-reject' | 'approve') => {
+      if (!aiSettings || !selectedProvider || !selectedProviderPrivacy) {
+        throw new Error('Select a registered provider before requesting privacy review.');
+      }
+      if (action === 'approve') {
+        if (!pendingProviderProposal) {
+          throw new Error('No provider privacy proposal is awaiting review.');
+        }
+        return {
+          kind: 'approval' as const,
+          approval: await apiClient.approveAIProviderPrivacyProposal({
+            projectId: targetProjectId,
+            providerId: selectedProvider.providerId,
+            proposalId: pendingProviderProposal.proposalId,
+            expectedApprovalRevision: pendingProviderProposal.expectedApprovalRevision,
+          }),
+        };
+      }
+      return {
+        kind: 'proposal' as const,
+        proposal: await apiClient.proposeAIProviderPrivacyApproval({
+          projectId: targetProjectId,
+          providerId: selectedProvider.providerId,
+          approved: action === 'propose-approve',
+          expectedApprovalRevision: selectedProviderPrivacy.approval?.approvalRevision ?? 0,
+        }),
+      };
+    },
+    onSuccess: async (result) => {
+      if (result.kind === 'proposal') {
+        const proposal = result.proposal;
+        if (
+          !selectedProvider ||
+          proposal.projectId !== targetProjectId ||
+          proposal.providerId !== selectedProvider.providerId
+        ) {
+          setPendingProviderProposal(null);
+          setProviderNotice(
+            'Provider privacy proposal could not be validated for the selected provider.',
+          );
+          return;
+        }
+        setPendingProviderProposal(proposal);
+        setProviderNotice(
+          'Provider privacy review proposed. Confirm the proposal to complete approval.',
+        );
+        return;
+      }
+      setPendingProviderProposal(null);
+      setProviderNotice(
+        result.approval.approved
+          ? 'Provider privacy approved for this provider.'
+          : 'Provider privacy not approved.',
+      );
+      await queryClient.invalidateQueries({ queryKey: ['settings', 'ai', targetProjectId] });
+    },
+    onError: (error) => {
+      setProviderNotice(error instanceof Error ? error.message : 'Provider privacy review failed.');
+    },
+  });
+
+  const submitProjectReviewCommand = async (proposalId?: string) => {
+    if (!session?.activeProject?.id || !snapshot || !targetProjectId) return;
+    setProjectSubmitting(true);
+    setProjectNotice(undefined);
     try {
       const nonce = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const response = await apiClient.applySettingsCommand({
@@ -72,90 +169,292 @@ export const PrivacyWorkspace = () => {
         ...(proposalId ? { reviewProposalId: proposalId } : {}),
       });
       if (response.resource.status === 'REVIEW_REQUIRED' && response.resource.reviewProposalId) {
-        setReviewProposalId(response.resource.reviewProposalId);
-        setNotice('Owner review is required. Confirm the proposal separately to apply it.');
+        setProjectReviewProposalId(response.resource.reviewProposalId);
+        setProjectNotice('Owner review is required. Confirm the proposal separately to apply it.');
       } else if (response.resource.status === 'APPLIED') {
-        setReviewProposalId(undefined);
-        setNotice('Project privacy approval was recorded. Deployment policy still applies.');
+        setProjectReviewProposalId(undefined);
+        setProjectNotice('Project privacy approval was recorded. Deployment policy still applies.');
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ['settings', 'privacy', targetProjectId] }),
           queryClient.invalidateQueries({ queryKey: ['settings', 'snapshot', targetProjectId] }),
         ]);
       }
     } catch (reason) {
-      setNotice(reason instanceof Error ? reason.message : 'Privacy review command failed.');
+      setProjectNotice(reason instanceof Error ? reason.message : 'Privacy review command failed.');
     } finally {
-      setSubmitting(false);
+      setProjectSubmitting(false);
     }
   };
 
+  if (!targetProjectId) {
+    return <div>Choose an active Project before configuring privacy.</div>;
+  }
+
+  if (privacyQuery.isLoading && aiSettingsQuery.isLoading) {
+    return <div>Loading privacy settings...</div>;
+  }
+
+  const privacyData = privacy?.availability === 'AVAILABLE' ? privacy.data : undefined;
+  const effectiveProjectReviewProposalId =
+    projectReviewProposalId ?? privacyData?.pendingReviewProposalId;
+  const providerApproved = Boolean(
+    selectedProviderPrivacy?.approval?.approved ||
+    selectedProviderPrivacy?.legacyGeminiCompatibility,
+  );
+
   return (
     <section className="privacy-workspace">
-      <h2 style={{ fontSize: '20px', marginBottom: '8px' }}>Privacy & Sensitivity Controls</h2>
-      <p style={{ color: '#64748b', marginBottom: '16px' }}>
-        Configure asset sensitivity classification, external transfer boundaries, and data
-        retention.
-      </p>
+      <header style={{ marginBottom: '20px' }}>
+        <p className="eyebrow">Settings</p>
+        <h2 style={{ fontSize: '24px', marginBottom: '8px' }}>Privacy</h2>
+        <p style={{ color: '#64748b' }}>
+          Inspect and manage Provider Privacy approvals and Project external data transfer policies.
+        </p>
+      </header>
 
-      <div
-        style={{
-          background: '#fff',
-          border: '1px solid #e2e8f0',
-          borderRadius: '8px',
-          padding: '20px',
-          maxWidth: '600px',
-        }}
-      >
-        <p>
-          <strong>Privacy profile:</strong> {privacyProfileLabel(privacyData.profileName)}
-        </p>
-        <p>
-          <strong>Sensitivity:</strong> {sensitivityLabel(privacyData.sensitivityLevel)}
-        </p>
-        <p>
-          <strong>External Transfer Allowed:</strong>{' '}
-          {privacyData.externalTransferAllowed ? 'Yes' : 'No'}
-        </p>
-        <p>
-          <strong>Project approval:</strong> {privacyData.approvalStatus.replaceAll('_', ' ')}
-        </p>
-        <p>
-          <strong>Deployment capability:</strong>{' '}
-          {privacyData.deploymentAllowsPrivateExternalTransfer
-            ? 'Private external transfer may be enabled after Project approval.'
-            : 'This deployment currently blocks private external transfer.'}
-        </p>
-        <p>Restricted Project context is never sent to an external AI provider.</p>
-        <p>
-          <strong>Retention Summary:</strong> {privacyData.retentionSummary}
-        </p>
-        {!privacyData.externalTransferAllowed && !effectiveReviewProposalId ? (
-          <button
-            type="button"
-            disabled={submitting || !snapshot}
-            onClick={() => void submitReviewCommand()}
-          >
-            Request external AI transfer review
-          </button>
-        ) : null}
-        {effectiveReviewProposalId ? (
-          <button
-            type="button"
-            disabled={submitting}
-            onClick={() => {
-              if (
-                window.confirm(
-                  'Approve sending private Project context to external AI providers when deployment policy also permits it?',
-                )
-              ) {
-                void submitReviewCommand(effectiveReviewProposalId);
-              }
-            }}
-          >
-            Approve reviewed privacy proposal
-          </button>
-        ) : null}
-        {notice ? <p role="status">{notice}</p> : null}
+      <div style={{ display: 'grid', gap: '24px', maxWidth: '720px' }}>
+        {/* SECTION 1: PROVIDER PRIVACY */}
+        <section
+          className="settings-card"
+          aria-labelledby="provider-privacy-heading"
+          style={{
+            background: '#fff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '8px',
+            padding: '20px',
+          }}
+        >
+          <h3 id="provider-privacy-heading" style={{ margin: '0 0 12px 0', fontSize: '18px' }}>
+            Provider Privacy
+          </h3>
+          <p style={{ color: '#64748b', fontSize: '13px', margin: '0 0 16px 0' }}>
+            AI provider privacy approval is provider-scoped. Approving one provider does not approve
+            others.
+          </p>
+
+          {aiSettingsQuery.isLoading ? (
+            <p role="status">Loading AI provider privacy settings...</p>
+          ) : aiSettingsQuery.isError || !aiSettings ? (
+            <div className="error-banner" role="alert">
+              Failed to load AI provider privacy settings.
+            </div>
+          ) : null}
+
+          {initialProviderIsInvalid ? (
+            <p role="alert" style={{ color: '#dc2626' }}>
+              The specified AI provider &apos;{initialProviderParam}&apos; is not registered for
+              this project.
+            </p>
+          ) : null}
+
+          {aiSettings?.providers && aiSettings.providers.length > 0 ? (
+            <div style={{ marginBottom: '16px' }}>
+              <label
+                htmlFor="privacy-provider-select"
+                style={{ display: 'block', fontWeight: 600, marginBottom: '6px' }}
+              >
+                AI Provider
+              </label>
+              <select
+                id="privacy-provider-select"
+                value={effectiveProviderId}
+                onChange={(event) => {
+                  setSelectedProviderId(event.target.value);
+                  setPendingProviderProposal(null);
+                  setProviderNotice(undefined);
+                }}
+                disabled={providerPrivacyMutation.isPending}
+                style={{ width: '100%', padding: '8px' }}
+              >
+                {aiSettings.providers.map((provider) => (
+                  <option key={provider.providerId} value={provider.providerId}>
+                    {providerLabel(provider)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+
+          {selectedProvider ? (
+            <div style={{ display: 'grid', gap: '8px', marginBottom: '16px' }}>
+              <p style={{ margin: 0 }}>
+                <strong>Provider:</strong> {providerLabel(selectedProvider)}
+              </p>
+              <p style={{ margin: 0 }}>
+                <strong>Status:</strong> {privacyLabel(selectedProviderPrivacy)}
+                {selectedProviderPrivacy?.legacyGeminiCompatibility
+                  ? ' · An existing Gemini approval applies only to Google Gemini.'
+                  : ''}
+              </p>
+              <p style={{ margin: 0 }}>
+                <strong>Deployment capability:</strong>{' '}
+                {selectedProviderPrivacy?.deploymentAllowed ? 'Allowed' : 'Blocked'}
+              </p>
+            </div>
+          ) : null}
+
+          {selectedProvider && selectedProviderPrivacy ? (
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '12px' }}>
+              {!pendingProviderProposal ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => providerPrivacyMutation.mutate('propose-approve')}
+                    disabled={providerPrivacyMutation.isPending}
+                  >
+                    Request {providerApproved ? 'updated' : ''} provider approval
+                  </button>
+                  {providerApproved && !selectedProviderPrivacy.legacyGeminiCompatibility ? (
+                    <button
+                      type="button"
+                      onClick={() => providerPrivacyMutation.mutate('propose-reject')}
+                      disabled={providerPrivacyMutation.isPending}
+                    >
+                      Request provider rejection
+                    </button>
+                  ) : null}
+                </>
+              ) : (
+                <div style={{ display: 'grid', gap: '8px' }}>
+                  <span role="status" style={{ color: '#0369a1' }}>
+                    Review proposal pending for {selectedProvider.displayName}:{' '}
+                    {pendingProviderProposal.approved ? 'approval' : 'rejection'}.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          `Approve privacy review for ${selectedProvider.displayName}?`,
+                        )
+                      ) {
+                        providerPrivacyMutation.mutate('approve');
+                      }
+                    }}
+                    disabled={providerPrivacyMutation.isPending}
+                  >
+                    Approve provider review
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          {providerNotice ? (
+            <p role="status" style={{ marginTop: '12px', color: '#0369a1' }}>
+              {providerNotice}
+            </p>
+          ) : null}
+        </section>
+
+        {/* SECTION 2: PROJECT PRIVACY */}
+        <section
+          className="settings-card"
+          aria-labelledby="project-privacy-heading"
+          style={{
+            background: '#fff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '8px',
+            padding: '20px',
+          }}
+        >
+          <h3 id="project-privacy-heading" style={{ margin: '0 0 12px 0', fontSize: '18px' }}>
+            Project Privacy & External Data Transfer
+          </h3>
+          <p style={{ color: '#64748b', fontSize: '13px', margin: '0 0 16px 0' }}>
+            Configure Project sensitivity classification and overall external AI data transfer
+            boundary.
+          </p>
+
+          {privacyQuery.isLoading ? (
+            <p role="status">Loading Project privacy settings...</p>
+          ) : privacyQuery.isError || !privacy ? (
+            <div className="error-banner" role="alert">
+              Failed to load Project privacy settings.
+            </div>
+          ) : null}
+
+          {privacy?.availability === 'UNAVAILABLE' ? (
+            <div
+              style={{
+                color: '#b91c1c',
+                padding: '16px',
+                background: '#fef2f2',
+                border: '1px solid #f87171',
+                borderRadius: '8px',
+              }}
+            >
+              {privacy.disabledReason}
+            </div>
+          ) : null}
+
+          {privacyData ? (
+            <>
+              <div style={{ display: 'grid', gap: '8px', marginBottom: '16px' }}>
+                <p style={{ margin: 0 }}>
+                  <strong>Privacy profile:</strong> {privacyProfileLabel(privacyData.profileName)}
+                </p>
+                <p style={{ margin: 0 }}>
+                  <strong>Sensitivity:</strong> {sensitivityLabel(privacyData.sensitivityLevel)}
+                </p>
+                <p style={{ margin: 0 }}>
+                  <strong>External Transfer Allowed:</strong>{' '}
+                  {privacyData.externalTransferAllowed ? 'Yes' : 'No'}
+                </p>
+                <p style={{ margin: 0 }}>
+                  <strong>Project approval:</strong>{' '}
+                  {privacyData.approvalStatus.replaceAll('_', ' ')}
+                </p>
+                <p style={{ margin: 0 }}>
+                  <strong>Deployment capability:</strong>{' '}
+                  {privacyData.deploymentAllowsPrivateExternalTransfer
+                    ? 'Private external transfer may be enabled after Project approval.'
+                    : 'This deployment currently blocks private external transfer.'}
+                </p>
+                <p style={{ margin: 0, color: '#64748b', fontSize: '13px' }}>
+                  Restricted Project context is never sent to an external AI provider.
+                </p>
+                <p style={{ margin: 0 }}>
+                  <strong>Retention Summary:</strong> {privacyData.retentionSummary}
+                </p>
+              </div>
+
+              {!privacyData.externalTransferAllowed && !effectiveProjectReviewProposalId ? (
+                <button
+                  type="button"
+                  disabled={projectSubmitting || !snapshot}
+                  onClick={() => void submitProjectReviewCommand()}
+                >
+                  Request external AI transfer review
+                </button>
+              ) : null}
+
+              {effectiveProjectReviewProposalId ? (
+                <button
+                  type="button"
+                  disabled={projectSubmitting}
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        'Approve sending private Project context to external AI providers when deployment policy also permits it?',
+                      )
+                    ) {
+                      void submitProjectReviewCommand(effectiveProjectReviewProposalId);
+                    }
+                  }}
+                >
+                  Approve reviewed privacy proposal
+                </button>
+              ) : null}
+            </>
+          ) : null}
+
+          {projectNotice ? (
+            <p role="status" style={{ marginTop: '12px', color: '#0369a1' }}>
+              {projectNotice}
+            </p>
+          ) : null}
+        </section>
       </div>
     </section>
   );

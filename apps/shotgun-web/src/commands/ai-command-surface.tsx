@@ -3,9 +3,7 @@ import { useEffect, useMemo, useRef, useState, useId, type FormEvent } from 'rea
 
 import type {
   AICredentialMetadata,
-  AIProviderPrivacyProposal,
   AITestConnectionResult,
-  AISettingsApproval,
   AISettingsCredentialStatus,
   AISettingsPrivacyStatus,
   AISettingsReadModel,
@@ -157,7 +155,6 @@ export const AICommandSurface = ({
   const [initializedProjectId, setInitializedProjectId] = useState('');
   const [feedback, setFeedback] = useState<Feedback>();
   const [testResult, setTestResult] = useState<AITestConnectionResult>();
-  const [pendingPrivacyProposal, setPendingPrivacyProposal] = useState<AIProviderPrivacyProposal>();
   const [credentialRecovery, setCredentialRecovery] = useState<CredentialRecovery>();
   const [destructiveAction, setDestructiveAction] = useState<DestructiveAction>();
   const credentialSecretRef = useRef<string | undefined>(undefined);
@@ -175,7 +172,6 @@ export const AICommandSurface = ({
     dialog.captureInvoker(invoker);
     setFeedback(undefined);
     setTestResult(undefined);
-    setPendingPrivacyProposal(undefined);
     setCredentialRecovery(undefined);
     setDestructiveAction(undefined);
     setDraftSecret('');
@@ -371,57 +367,6 @@ export const AICommandSurface = ({
     },
   });
 
-  const privacyMutation = useMutation<
-    AIProviderPrivacyProposal | AISettingsApproval,
-    unknown,
-    'propose' | 'approve'
-  >({
-    mutationFn: (action: 'propose' | 'approve') => {
-      if (!settings || !selectedProviderIsActive || !selectedProvider || !selectedPrivacy) {
-        throw new Error(t('ai.error.provider_required_for_privacy'));
-      }
-      if (action === 'approve') {
-        if (!pendingPrivacyProposal) throw new Error(t('ai.error.no_privacy_proposal'));
-        return apiClient.approveAIProviderPrivacyProposal({
-          projectId: settings.projectId,
-          providerId: selectedProvider.providerId,
-          proposalId: pendingPrivacyProposal.proposalId,
-          expectedApprovalRevision: pendingPrivacyProposal.expectedApprovalRevision,
-        });
-      }
-      return apiClient.proposeAIProviderPrivacyApproval({
-        projectId: settings.projectId,
-        providerId: selectedProvider.providerId,
-        approved: true,
-        expectedApprovalRevision: selectedPrivacy.approval?.approvalRevision ?? 0,
-      });
-    },
-    onSuccess: async (result, action) => {
-      if (action === 'propose') {
-        setPendingPrivacyProposal(result as AIProviderPrivacyProposal);
-        setFeedback({
-          tone: 'info',
-          title: t('ai.privacy_proposed'),
-          detail: t('ai.privacy_proposal_needs_owner'),
-        });
-        return;
-      }
-      setPendingPrivacyProposal(undefined);
-      setFeedback({
-        tone: 'success',
-        title: t('ai.privacy_saved'),
-        detail: t('ai.privacy_applies_selected'),
-      });
-      await refreshSettings();
-    },
-    onError: (error) =>
-      setFeedback({
-        tone: 'error',
-        title: t('ai.privacy_failed'),
-        detail: safeErrorMessage(error),
-      }),
-  });
-
   const credentialActionMutation = useMutation({
     mutationFn: (action: 'revoke' | 'remove') => {
       if (!settings || !selectedProvider || !usableCredential) {
@@ -501,7 +446,6 @@ export const AICommandSurface = ({
     setSelectedModelId(provider?.models[0]?.modelId ?? '');
     draftTestSecretRef.current = undefined;
     setTestResult(undefined);
-    setPendingPrivacyProposal(undefined);
     setFeedback(undefined);
   };
 
@@ -585,10 +529,8 @@ export const AICommandSurface = ({
     credentialMutation.isPending ||
     configurationMutation.isPending ||
     testMutation.isPending ||
-    privacyMutation.isPending ||
     credentialActionMutation.isPending;
   const actionPending = mutationPending || credentialRecovery !== undefined;
-  const canApprovePrivacy = pendingPrivacyProposal !== undefined;
   const privacyIsApproved = isPrivacyApproved(selectedPrivacy);
 
   return (
@@ -722,33 +664,6 @@ export const AICommandSurface = ({
               <section className="ai-command-section" aria-labelledby="ai-privacy-heading">
                 <h3 id="ai-privacy-heading">{t('ai.provider_privacy')}</h3>
                 <p>{privacyStateLabel(selectedPrivacy, t)}</p>
-                {selectedPrivacy?.legacyGeminiCompatibility ? (
-                  <p>{t('ai.historical_compatibility')}</p>
-                ) : null}
-                {selectedPrivacy && !privacyIsApproved && !canApprovePrivacy ? (
-                  <button
-                    className="hfm-action-secondary"
-                    type="button"
-                    onClick={() => privacyMutation.mutate('propose')}
-                    disabled={actionPending || !selectedProviderIsActive}
-                  >
-                    Request provider privacy approval
-                  </button>
-                ) : null}
-                {canApprovePrivacy ? (
-                  <button
-                    className="hfm-action-primary"
-                    type="button"
-                    onClick={() => {
-                      if (window.confirm(t('ai.approve_privacy_decision'))) {
-                        privacyMutation.mutate('approve');
-                      }
-                    }}
-                    disabled={actionPending || !selectedProviderIsActive}
-                  >
-                    Approve provider privacy decision
-                  </button>
-                ) : null}
                 {selectedPrivacy?.deploymentAllowed && privacyIsApproved ? (
                   <p>
                     Private external transfer is available only when deployment policy permits it.

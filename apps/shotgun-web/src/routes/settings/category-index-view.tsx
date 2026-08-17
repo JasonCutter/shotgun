@@ -1,49 +1,51 @@
-import { useQuery } from '@tanstack/react-query';
-import { Link, useSearchParams } from 'react-router';
-import { useAppRuntime } from '../../app/providers.js';
-import { settings5DQueryKey } from '../../app/query-keys.js';
-import { sessionQueryOptions } from '../../session/session-query.js';
-import { settingsScopeLabel } from '../../presentation/product-labels.js';
+import { Link } from 'react-router';
 
 export const CategoryIndexView = () => {
-  const { apiClient } = useAppRuntime();
-  const { data: session } = useQuery(sessionQueryOptions(apiClient));
-  const [searchParams] = useSearchParams();
-
-  const activeProjectId = session?.activeProject?.id ?? '';
-  const targetProjectId = searchParams.get('targetProjectId') ?? activeProjectId;
-  const principalId = session?.principal.id ?? 'principal-a';
-
-  const {
-    data: snapshot,
-    isLoading,
-    error,
-  } = useQuery({
-    queryKey: settings5DQueryKey(principalId, targetProjectId, targetProjectId, 'all'),
-    queryFn: () => apiClient.getSettingsSnapshot(targetProjectId),
-  });
-
-  if (isLoading) return <div>Loading settings categories...</div>;
-  if (error || !snapshot)
-    return <div className="error-banner">Failed to load settings snapshot.</div>;
+  const categories = [
+    {
+      id: 'ai',
+      label: 'AI',
+      description: 'Configure active AI provider, model, credentials, and connection testing.',
+      href: '/settings/ai',
+    },
+    {
+      id: 'privacy',
+      label: 'Privacy',
+      description:
+        'Review provider privacy status, external transfer permissions, and data retention.',
+      href: '/settings/privacy',
+    },
+    {
+      id: 'preferences',
+      label: 'Preferences',
+      description: 'Manage personal display preferences, locale, and timezone settings.',
+      href: '/settings/preferences',
+    },
+    {
+      id: 'projects',
+      label: 'Project',
+      description: 'View Project settings, rename, archive, or request project lifecycle actions.',
+      href: '/settings/projects',
+    },
+  ];
 
   return (
     <section className="category-index-view">
-      <h2 style={{ fontSize: '20px', marginBottom: '16px' }}>Settings Categories Index</h2>
+      <h2 style={{ fontSize: '20px', marginBottom: '8px' }}>Settings Overview</h2>
       <p style={{ color: '#64748b', marginBottom: '24px' }}>
-        Select a category below to view and edit settings for the selected project.
+        Select a primary settings category to view or update your configuration.
       </p>
 
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
           gap: '16px',
         }}
       >
-        {snapshot.categories.map((cat) => (
+        {categories.map((cat) => (
           <div
-            key={cat.categoryId}
+            key={cat.id}
             className="category-card"
             style={{
               border: '1px solid #e2e8f0',
@@ -56,65 +58,28 @@ export const CategoryIndexView = () => {
             }}
           >
             <div>
-              <div
-                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-              >
-                <h3 style={{ margin: 0, fontSize: '16px' }}>{cat.label}</h3>
-                <span
-                  className="scope-badge"
-                  style={{
-                    fontSize: '11px',
-                    padding: '2px 6px',
-                    background: '#f1f5f9',
-                    borderRadius: '4px',
-                  }}
-                >
-                  {settingsScopeLabel(cat.scope)}
-                </span>
-              </div>
-              <p style={{ fontSize: '13px', color: '#64748b', margin: '8px 0 12px 0' }}>
+              <h3 style={{ margin: '0 0 8px 0', fontSize: '16px' }}>{cat.label}</h3>
+              <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 16px 0' }}>
                 {cat.description}
               </p>
             </div>
-
-            <div>
-              <div
-                style={{
-                  display: 'flex',
-                  gap: '12px',
-                  fontSize: '12px',
-                  color: '#475569',
-                  marginBottom: '12px',
-                }}
-              >
-                <span>Total: {cat.totalSettingsCount}</span>
-                {cat.actionRequiredCount > 0 && (
-                  <span style={{ color: '#dc2626' }}>
-                    Action Required: {cat.actionRequiredCount}
-                  </span>
-                )}
-                {cat.warningCount > 0 && (
-                  <span style={{ color: '#d97706' }}>Warnings: {cat.warningCount}</span>
-                )}
-              </div>
-              <Link
-                to={`/settings/${cat.categoryId}?targetProjectId=${targetProjectId}`}
-                style={{
-                  display: 'inline-block',
-                  width: '100%',
-                  textAlign: 'center',
-                  padding: '8px 12px',
-                  background: '#2563eb',
-                  color: '#ffffff',
-                  borderRadius: '4px',
-                  textDecoration: 'none',
-                  fontSize: '13px',
-                  fontWeight: 500,
-                }}
-              >
-                Manage Category
-              </Link>
-            </div>
+            <Link
+              to={cat.href}
+              style={{
+                display: 'inline-block',
+                width: '100%',
+                textAlign: 'center',
+                padding: '8px 12px',
+                background: '#2563eb',
+                color: '#ffffff',
+                borderRadius: '4px',
+                textDecoration: 'none',
+                fontSize: '13px',
+                fontWeight: 500,
+              }}
+            >
+              Open {cat.label}
+            </Link>
           </div>
         ))}
       </div>

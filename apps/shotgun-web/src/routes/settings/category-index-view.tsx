@@ -32,7 +32,7 @@ export const CategoryIndexView = () => {
   return (
     <section className="category-index-view">
       <h2 style={{ fontSize: '20px', marginBottom: '8px' }}>Settings Overview</h2>
-      <p style={{ color: '#64748b', marginBottom: '24px' }}>
+      <p style={{ color: 'var(--muted)', marginBottom: '24px' }}>
         Select a primary settings category to view or update your configuration.
       </p>
 
@@ -48,10 +48,10 @@ export const CategoryIndexView = () => {
             key={cat.id}
             className="category-card"
             style={{
-              border: '1px solid #e2e8f0',
-              borderRadius: '8px',
+              border: '1px solid var(--line)',
+              borderRadius: 'var(--radius)',
               padding: '16px',
-              background: '#ffffff',
+              background: 'var(--surface)',
               display: 'flex',
               flexDirection: 'column',
               justifyContent: 'space-between',
@@ -59,7 +59,7 @@ export const CategoryIndexView = () => {
           >
             <div>
               <h3 style={{ margin: '0 0 8px 0', fontSize: '16px' }}>{cat.label}</h3>
-              <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 16px 0' }}>
+              <p style={{ fontSize: '13px', color: 'var(--muted)', margin: '0 0 16px 0' }}>
                 {cat.description}
               </p>
             </div>
@@ -70,12 +70,12 @@ export const CategoryIndexView = () => {
                 width: '100%',
                 textAlign: 'center',
                 padding: '8px 12px',
-                background: '#2563eb',
+                background: 'var(--accent)',
                 color: '#ffffff',
-                borderRadius: '4px',
+                borderRadius: 'var(--radius)',
                 textDecoration: 'none',
                 fontSize: '13px',
-                fontWeight: 500,
+                fontWeight: 600,
               }}
             >
               Open {cat.label}

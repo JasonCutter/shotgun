@@ -72,7 +72,7 @@ export const PreferencesWorkspace = () => {
   return (
     <section className="preferences-workspace">
       <h2 style={{ fontSize: '20px', marginBottom: '8px' }}>User Preferences Workspace</h2>
-      <p style={{ color: '#64748b', marginBottom: '20px' }}>
+      <p style={{ color: 'var(--muted)', marginBottom: '20px' }}>
         Configure personal display options, regional settings, and accessibility choices.
       </p>
 
@@ -81,9 +81,11 @@ export const PreferencesWorkspace = () => {
           className="success-banner"
           style={{
             padding: '12px',
-            background: '#dcfce7',
-            color: '#166534',
-            borderRadius: '4px',
+            background: 'color-mix(in srgb, var(--success) 8%, var(--surface))',
+            color: 'var(--ink)',
+            border: '1px solid var(--success)',
+            borderLeft: '4px solid var(--success)',
+            borderRadius: 'var(--radius)',
             marginBottom: '16px',
           }}
         >
@@ -106,8 +108,10 @@ export const PreferencesWorkspace = () => {
             style={{
               width: '100%',
               padding: '8px',
-              borderRadius: '4px',
-              border: '1px solid #cbd5e1',
+              borderRadius: 'var(--radius)',
+              border: '1px solid var(--line)',
+              background: 'var(--surface)',
+              color: 'var(--ink)',
             }}
           >
             <option value="ko-KR">Korean (ko-KR)</option>
@@ -130,8 +134,10 @@ export const PreferencesWorkspace = () => {
             style={{
               width: '100%',
               padding: '8px',
-              borderRadius: '4px',
-              border: '1px solid #cbd5e1',
+              borderRadius: 'var(--radius)',
+              border: '1px solid var(--line)',
+              background: 'var(--surface)',
+              color: 'var(--ink)',
             }}
           >
             <option value="Asia/Seoul">Asia/Seoul (KST)</option>
@@ -154,8 +160,10 @@ export const PreferencesWorkspace = () => {
             style={{
               width: '100%',
               padding: '8px',
-              borderRadius: '4px',
-              border: '1px solid #cbd5e1',
+              borderRadius: 'var(--radius)',
+              border: '1px solid var(--line)',
+              background: 'var(--surface)',
+              color: 'var(--ink)',
             }}
           >
             <option value="YYYY-MM-DD">YYYY-MM-DD (ISO)</option>
@@ -178,8 +186,10 @@ export const PreferencesWorkspace = () => {
             style={{
               width: '100%',
               padding: '8px',
-              borderRadius: '4px',
-              border: '1px solid #cbd5e1',
+              borderRadius: 'var(--radius)',
+              border: '1px solid var(--line)',
+              background: 'var(--surface)',
+              color: 'var(--ink)',
             }}
           >
             <option value="COMFORTABLE">Comfortable</option>
@@ -204,10 +214,10 @@ export const PreferencesWorkspace = () => {
           disabled={mutation.isPending}
           style={{
             padding: '10px 20px',
-            background: '#2563eb',
+            background: 'var(--accent)',
             color: '#fff',
-            border: 'none',
-            borderRadius: '4px',
+            border: '1px solid var(--accent)',
+            borderRadius: 'var(--radius)',
             cursor: 'pointer',
             fontWeight: 600,
           }}

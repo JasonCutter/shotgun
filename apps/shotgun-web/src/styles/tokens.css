@@ -7,20 +7,30 @@
     BlinkMacSystemFont,
     'Segoe UI',
     sans-serif;
-  color: #16221d;
-  background: #edf1ed;
+  color: #17212b;
+  background: #f4f6f8;
   font-synthesis: none;
-  --ink: #16221d;
-  --muted: #5f6d65;
+
+  /* Primary Semantic Tokens */
+  --ink: #17212b;
+  --muted: #5d6875;
   --surface: #ffffff;
-  --surface-soft: #f5f7f4;
-  --line: #cad3cc;
-  --accent: #17624b;
-  --accent-strong: #0d4937;
-  --danger: #a12e2e;
-  --focus: #d07820;
-  --radius: 0.75rem;
-  --shadow: 0 1rem 2.6rem rgb(24 45 35 / 9%);
+  --surface-soft: #eef2f5;
+  --line: #d7dee6;
+  --accent: #356fc3;
+  --accent-strong: var(--accent);
+  --danger: #b83b3b;
+  --focus: #356fc3;
+
+  /* Semantic Extension Tokens */
+  --app-background: #f4f6f8;
+  --graphite: #1b222a;
+  --selected-background: #e8f0fb;
+  --success: #2e7d5b;
+  --attention: #a86b16;
+
+  --radius: 0.5rem;
+  --shadow: 0 4px 16px rgb(27 34 42 / 6%);
 }
 
 * {
@@ -31,6 +41,8 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  background: var(--app-background);
+  color: var(--ink);
 }
 
 button,

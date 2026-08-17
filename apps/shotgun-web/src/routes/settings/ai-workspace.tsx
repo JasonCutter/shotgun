@@ -71,12 +71,27 @@ const statusLabel = (status: AITestConnectionResult['status']): string => {
 
 const feedbackStyle = (tone: Feedback['tone']): CSSProperties => {
   if (tone === 'success') {
-    return { background: '#f0fdf4', borderColor: '#86efac', color: '#166534' };
+    return {
+      background: 'color-mix(in srgb, var(--success) 8%, var(--surface))',
+      borderColor: 'var(--success)',
+      borderLeft: '4px solid var(--success)',
+      color: 'var(--ink)',
+    };
   }
   if (tone === 'error') {
-    return { background: '#fef2f2', borderColor: '#fca5a5', color: '#991b1b' };
+    return {
+      background: 'color-mix(in srgb, var(--danger) 8%, var(--surface))',
+      borderColor: 'var(--danger)',
+      borderLeft: '4px solid var(--danger)',
+      color: 'var(--ink)',
+    };
   }
-  return { background: '#eff6ff', borderColor: '#93c5fd', color: '#1e40af' };
+  return {
+    background: 'color-mix(in srgb, var(--accent) 8%, var(--surface))',
+    borderColor: 'var(--accent)',
+    borderLeft: '4px solid var(--accent)',
+    color: 'var(--ink)',
+  };
 };
 
 export const AIWorkspace = () => {
@@ -382,7 +397,7 @@ export const AIWorkspace = () => {
         >
           AI
         </h2>
-        <p style={{ color: '#475569', maxWidth: '760px' }}>
+        <p style={{ color: 'var(--muted)', maxWidth: '760px' }}>
           Choose an AI provider and model, configure your Project credential, and test the
           connection.
         </p>
@@ -474,10 +489,20 @@ export const AIWorkspace = () => {
                 : 'No Project credential configured'}
           </p>
           {currentCredentialReferenced ? (
-            <p style={{ color: '#92400e', margin: 0 }}>
+            <div
+              style={{
+                border: '1px solid var(--attention)',
+                borderLeft: '4px solid var(--attention)',
+                borderRadius: 'var(--radius)',
+                padding: '8px 12px',
+                background: 'color-mix(in srgb, var(--attention) 8%, var(--surface))',
+                color: 'var(--ink)',
+                margin: 0,
+              }}
+            >
               The active Project configuration references this credential. Revoke/remove will not
               activate another provider or key.
-            </p>
+            </div>
           ) : null}
           <label htmlFor="ai-api-key" style={{ fontWeight: 600 }}>
             API Key (write-only)
@@ -502,7 +527,7 @@ export const AIWorkspace = () => {
             disabled={saveMutation.isPending || testMutation.isPending}
             style={{ width: '100%', padding: '9px' }}
           />
-          <p style={{ color: '#64748b', fontSize: '13px', margin: 0 }}>
+          <p style={{ color: 'var(--muted)', fontSize: '13px', margin: 0 }}>
             Existing keys are never displayed. This value is held only in this form and is cleared
             after a successful credential save or navigation away.
           </p>
@@ -553,7 +578,7 @@ export const AIWorkspace = () => {
               <p style={{ margin: '4px 0 0' }}>{testResult.safeMessage}</p>
             </div>
           ) : (
-            <p style={{ color: '#64748b', margin: 0 }}>
+            <p style={{ color: 'var(--muted)', margin: 0 }}>
               Connection not tested. Test Connection is optional for Save.
             </p>
           )}
@@ -579,8 +604,17 @@ export const AIWorkspace = () => {
           <strong>Deployment:</strong> {selectedPrivacy?.deploymentAllowed ? 'Allowed' : 'Blocked'}
         </p>
         {!isPrivacyApproved ? (
-          <div style={{ marginTop: '12px' }}>
-            <p style={{ color: '#92400e', margin: '0 0 8px 0' }}>
+          <div
+            style={{
+              marginTop: '12px',
+              border: '1px solid var(--attention)',
+              borderLeft: '4px solid var(--attention)',
+              borderRadius: 'var(--radius)',
+              padding: '10px 12px',
+              background: 'color-mix(in srgb, var(--attention) 8%, var(--surface))',
+            }}
+          >
+            <p style={{ color: 'var(--ink)', margin: '0 0 8px 0', fontWeight: 500 }}>
               Privacy review is required before this provider can process Project data.
             </p>
             <Link
@@ -588,12 +622,12 @@ export const AIWorkspace = () => {
               style={{
                 display: 'inline-block',
                 padding: '6px 12px',
-                background: '#f1f5f9',
-                border: '1px solid #cbd5e1',
-                borderRadius: '4px',
-                color: '#1e293b',
+                background: 'var(--surface)',
+                border: '1px solid var(--line)',
+                borderRadius: 'var(--radius)',
+                color: 'var(--ink)',
                 textDecoration: 'none',
-                fontWeight: 500,
+                fontWeight: 600,
                 fontSize: '13px',
               }}
             >

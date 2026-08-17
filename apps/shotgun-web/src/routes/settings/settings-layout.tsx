@@ -36,7 +36,7 @@ export const SettingsLayout = () => {
         style={{
           marginBottom: '24px',
           paddingBottom: '16px',
-          borderBottom: '1px solid var(--color-border, #e2e8f0)',
+          borderBottom: '1px solid var(--line)',
         }}
       >
         <div>
@@ -46,7 +46,7 @@ export const SettingsLayout = () => {
               fontSize: '12px',
               textTransform: 'uppercase',
               letterSpacing: '0.05em',
-              color: '#64748b',
+              color: 'var(--muted)',
             }}
           >
             Settings
@@ -137,7 +137,7 @@ export const SettingsLayout = () => {
           <div
             className="modal-card"
             style={{
-              background: '#fff',
+              background: 'var(--surface)',
               padding: '24px',
               borderRadius: '8px',
               maxWidth: '480px',
@@ -162,10 +162,10 @@ export const SettingsLayout = () => {
                 onClick={handleConfirm}
                 style={{
                   padding: '8px 16px',
-                  background: '#dc2626',
+                  background: 'var(--danger)',
                   color: '#fff',
-                  border: 'none',
-                  borderRadius: '4px',
+                  border: '1px solid var(--danger)',
+                  borderRadius: 'var(--radius)',
                 }}
               >
                 Confirm

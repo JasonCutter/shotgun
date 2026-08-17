@@ -19,7 +19,15 @@ const breadcrumbForPath = (pathname: string): string => {
   if (pathname === '/external-action') return 'Operations / External Actions';
   if (pathname === '/activity') return 'Operations / Activity';
   if (pathname === '/history') return 'Operations / History';
-  if (pathname.startsWith('/settings/')) return 'Settings / Project';
+  if (pathname === '/settings') return 'Settings';
+  if (pathname === '/settings/ai' || pathname.startsWith('/settings/ai/')) return 'Settings / AI';
+  if (pathname === '/settings/privacy' || pathname.startsWith('/settings/privacy/'))
+    return 'Settings / Privacy';
+  if (pathname === '/settings/preferences' || pathname.startsWith('/settings/preferences/'))
+    return 'Settings / Preferences';
+  if (pathname === '/settings/projects' || pathname.startsWith('/settings/projects/'))
+    return 'Settings / Project';
+  if (pathname.startsWith('/settings/')) return 'Settings';
   return 'Home';
 };
 

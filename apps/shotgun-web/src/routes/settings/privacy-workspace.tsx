@@ -207,7 +207,7 @@ export const PrivacyWorkspace = () => {
       <header style={{ marginBottom: '20px' }}>
         <p className="eyebrow">Settings</p>
         <h2 style={{ fontSize: '24px', marginBottom: '8px' }}>Privacy</h2>
-        <p style={{ color: '#64748b' }}>
+        <p style={{ color: 'var(--muted)' }}>
           Inspect and manage Provider Privacy approvals and Project external data transfer policies.
         </p>
       </header>
@@ -218,16 +218,16 @@ export const PrivacyWorkspace = () => {
           className="settings-card"
           aria-labelledby="provider-privacy-heading"
           style={{
-            background: '#fff',
-            border: '1px solid #e2e8f0',
-            borderRadius: '8px',
+            background: 'var(--surface)',
+            border: '1px solid var(--line)',
+            borderRadius: 'var(--radius)',
             padding: '20px',
           }}
         >
           <h3 id="provider-privacy-heading" style={{ margin: '0 0 12px 0', fontSize: '18px' }}>
             Provider Privacy
           </h3>
-          <p style={{ color: '#64748b', fontSize: '13px', margin: '0 0 16px 0' }}>
+          <p style={{ color: 'var(--muted)', fontSize: '13px', margin: '0 0 16px 0' }}>
             AI provider privacy approval is provider-scoped. Approving one provider does not approve
             others.
           </p>
@@ -241,7 +241,7 @@ export const PrivacyWorkspace = () => {
           ) : null}
 
           {initialProviderIsInvalid ? (
-            <p role="alert" style={{ color: '#dc2626' }}>
+            <p role="alert" style={{ color: 'var(--danger)' }}>
               The specified AI provider &apos;{initialProviderParam}&apos; is not registered for
               this project.
             </p>
@@ -316,7 +316,7 @@ export const PrivacyWorkspace = () => {
                 </>
               ) : (
                 <div style={{ display: 'grid', gap: '8px' }}>
-                  <span role="status" style={{ color: '#0369a1' }}>
+                  <span role="status" style={{ color: 'var(--ink)' }}>
                     Review proposal pending for {selectedProvider.displayName}:{' '}
                     {pendingProviderProposal.approved ? 'approval' : 'rejection'}.
                   </span>
@@ -341,7 +341,7 @@ export const PrivacyWorkspace = () => {
           ) : null}
 
           {providerNotice ? (
-            <p role="status" style={{ marginTop: '12px', color: '#0369a1' }}>
+            <p role="status" style={{ marginTop: '12px', color: 'var(--ink)' }}>
               {providerNotice}
             </p>
           ) : null}
@@ -352,16 +352,16 @@ export const PrivacyWorkspace = () => {
           className="settings-card"
           aria-labelledby="project-privacy-heading"
           style={{
-            background: '#fff',
-            border: '1px solid #e2e8f0',
-            borderRadius: '8px',
+            background: 'var(--surface)',
+            border: '1px solid var(--line)',
+            borderRadius: 'var(--radius)',
             padding: '20px',
           }}
         >
           <h3 id="project-privacy-heading" style={{ margin: '0 0 12px 0', fontSize: '18px' }}>
             Project Privacy & External Data Transfer
           </h3>
-          <p style={{ color: '#64748b', fontSize: '13px', margin: '0 0 16px 0' }}>
+          <p style={{ color: 'var(--muted)', fontSize: '13px', margin: '0 0 16px 0' }}>
             Configure Project sensitivity classification and overall external AI data transfer
             boundary.
           </p>
@@ -377,11 +377,12 @@ export const PrivacyWorkspace = () => {
           {privacy?.availability === 'UNAVAILABLE' ? (
             <div
               style={{
-                color: '#b91c1c',
+                color: 'var(--ink)',
                 padding: '16px',
-                background: '#fef2f2',
-                border: '1px solid #f87171',
-                borderRadius: '8px',
+                background: 'color-mix(in srgb, var(--danger) 8%, var(--surface))',
+                border: '1px solid var(--danger)',
+                borderLeft: '4px solid var(--danger)',
+                borderRadius: 'var(--radius)',
               }}
             >
               {privacy.disabledReason}
@@ -411,7 +412,7 @@ export const PrivacyWorkspace = () => {
                     ? 'Private external transfer may be enabled after Project approval.'
                     : 'This deployment currently blocks private external transfer.'}
                 </p>
-                <p style={{ margin: 0, color: '#64748b', fontSize: '13px' }}>
+                <p style={{ margin: 0, color: 'var(--muted)', fontSize: '13px' }}>
                   Restricted Project context is never sent to an external AI provider.
                 </p>
                 <p style={{ margin: 0 }}>
@@ -450,7 +451,7 @@ export const PrivacyWorkspace = () => {
           ) : null}
 
           {projectNotice ? (
-            <p role="status" style={{ marginTop: '12px', color: '#0369a1' }}>
+            <p role="status" style={{ marginTop: '12px', color: 'var(--ink)' }}>
               {projectNotice}
             </p>
           ) : null}

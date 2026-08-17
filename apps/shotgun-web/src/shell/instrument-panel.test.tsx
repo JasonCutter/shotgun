@@ -246,4 +246,33 @@ describe('InstrumentPanel HFM-S7-C2R authority', () => {
     expect(screen.queryByText('Configured', { exact: true })).toBeNull();
     expect(screen.queryByText('Provider A / Model A')).toBeNull();
   });
+
+  it('maps Settings category routes to exact breadcrumbs', () => {
+    const checkBreadcrumb = (path: string, expected: string) => {
+      const { unmount } = render(
+        <AppProviders
+          runtime={{
+            apiClient: {
+              getAISettings: vi.fn(async () => baseAISettings()),
+              testAIConnection: vi.fn(),
+            } as unknown as ShotgunApiClient,
+            queryClient: createFrontendQueryClient(),
+            sessionCycleState: createSessionCycleState(),
+          }}
+        >
+          <MemoryRouter initialEntries={[path]}>
+            <InstrumentPanel shell={shell} controller={controller()} />
+          </MemoryRouter>
+        </AppProviders>,
+      );
+      expect(screen.getByLabelText('Workspace breadcrumb').textContent).toBe(expected);
+      unmount();
+    };
+
+    checkBreadcrumb('/settings', 'Settings');
+    checkBreadcrumb('/settings/ai', 'Settings / AI');
+    checkBreadcrumb('/settings/privacy', 'Settings / Privacy');
+    checkBreadcrumb('/settings/preferences', 'Settings / Preferences');
+    checkBreadcrumb('/settings/projects', 'Settings / Project');
+  });
 });

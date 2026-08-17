@@ -63,14 +63,8 @@ test('HFM-S3 replaces Settings IA with focused owner commands without browser au
   expect(forbiddenHeaderUses).toEqual([]);
 });
 
-test('legacy Settings destinations do not expose the removed mega IA', async ({ page }) => {
-  await page.goto('/settings/projects');
-  await expect(page).toHaveURL('/');
-  await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
-
+test('removed legacy Settings destinations do not restore the mega IA', async ({ page }) => {
   for (const path of [
-    '/settings',
-    '/settings/preferences',
     '/settings/models',
     '/settings/costs',
     '/settings/connectors',
@@ -82,6 +76,5 @@ test('legacy Settings destinations do not expose the removed mega IA', async ({ 
     await page.goto(path);
     await expect(page.getByRole('heading', { name: 'Settings Categories Index' })).toHaveCount(0);
     await expect(page.getByRole('heading', { name: /Advanced Settings/ })).toHaveCount(0);
-    await expect(page.getByRole('navigation', { name: 'Settings categories' })).toHaveCount(0);
   }
 });

@@ -550,7 +550,7 @@ describe('Sources Workspace', () => {
     const runtime = createRuntime();
     const router = renderCitationDetail(runtime);
 
-    const evidenceItem = await screen.findByText('Original evidence', { selector: 'strong' });
+    const evidenceItem = await screen.findByText('Original evidence', { selector: 'p' });
     expect(evidenceItem.parentElement).toBe(document.activeElement);
     await user.click(screen.getByRole('button', { name: 'Original Preview' }));
     expect(screen.getByRole('link', { name: 'Return to cited resource' })).toBeTruthy();
@@ -563,7 +563,7 @@ describe('Sources Workspace', () => {
     });
     await user.click(screen.getByRole('button', { name: 'Evidence' }));
     const restoredEvidenceItem = await screen.findByText('Original evidence', {
-      selector: 'strong',
+      selector: 'p',
     });
     expect(restoredEvidenceItem.parentElement).toBe(document.activeElement);
     await user.click(screen.getByRole('link', { name: 'Return to cited resource' }));
@@ -576,6 +576,9 @@ describe('Sources Workspace', () => {
         answerRunId: 'answer-run-1',
         resourceRevision: 'conversation-7',
         citationId: 'citation-1',
+        scrollAnchor: 'citation-1',
+        focusTarget: 'citation-1',
+        panelId: 'evidence-panel',
       },
     });
   });

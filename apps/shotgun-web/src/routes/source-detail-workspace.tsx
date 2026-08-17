@@ -7,6 +7,7 @@ import {
   decodeConversationCitationReturnTarget,
   type CitationReturnTarget,
   type ConversationCitationReturnTarget,
+  type EvidenceListView,
   type GlobalShellView,
 } from '@shotgun/api-client';
 
@@ -30,6 +31,84 @@ type SourceDetailViewName = 'preview' | 'evidence' | 'versions';
 
 const isSourceDetailViewName = (value: string | null): value is SourceDetailViewName =>
   value === 'preview' || value === 'evidence' || value === 'versions';
+
+type EvidenceItem = EvidenceListView['items'][number];
+
+const findTextPosition = (
+  locators: EvidenceItem['locators'],
+): { start: number; end: number } | undefined => {
+  for (const locator of locators) {
+    if (
+      typeof locator === 'object' &&
+      locator !== null &&
+      'type' in locator &&
+      locator.type === 'TextPositionSelector' &&
+      'start' in locator &&
+      typeof locator.start === 'number' &&
+      'end' in locator &&
+      typeof locator.end === 'number'
+    ) {
+      return { start: locator.start, end: locator.end };
+    }
+  }
+  return undefined;
+};
+
+export const isDerivedLabel = (item: EvidenceItem): boolean => {
+  if (item.exactText === undefined) return false;
+  const derivedPrefix = item.exactText.slice(0, 120);
+  return item.label === derivedPrefix || item.label === item.exactText;
+};
+
+export type GroupedEvidenceCard = {
+  readonly primaryItem: EvidenceItem;
+  readonly memberEvidenceIds: readonly string[];
+};
+
+export const groupEvidenceCards = (
+  items: readonly EvidenceItem[],
+): readonly GroupedEvidenceCard[] => {
+  const groups: {
+    primaryItem: EvidenceItem;
+    memberEvidenceIds: string[];
+  }[] = [];
+  const groupMap = new Map<string, (typeof groups)[number]>();
+
+  for (const item of items) {
+    const position = findTextPosition(item.locators);
+    if (!position || item.exactText === undefined) {
+      groups.push({
+        primaryItem: item,
+        memberEvidenceIds: [item.evidenceId],
+      });
+      continue;
+    }
+
+    const distinctLabel = isDerivedLabel(item) ? null : item.label;
+    const key = JSON.stringify([
+      position.start,
+      position.end,
+      item.origin,
+      distinctLabel,
+      item.exactText,
+    ]);
+    const existing = groupMap.get(key);
+    if (existing) {
+      if (!existing.memberEvidenceIds.includes(item.evidenceId)) {
+        existing.memberEvidenceIds.push(item.evidenceId);
+      }
+    } else {
+      const newGroup = {
+        primaryItem: item,
+        memberEvidenceIds: [item.evidenceId],
+      };
+      groupMap.set(key, newGroup);
+      groups.push(newGroup);
+    }
+  }
+
+  return groups;
+};
 
 export const SourceDetailWorkspace = () => {
   const { apiClient } = useAppRuntime();
@@ -96,6 +175,11 @@ export const SourceDetailWorkspace = () => {
     node.scrollIntoView?.({ block: 'center' });
     node.focus();
   }, []);
+
+  const groupedEvidence = useMemo(
+    () => (evidence.data ? groupEvidenceCards(evidence.data.items) : []),
+    [evidence.data],
+  );
 
   if (detail.isPending) return <LoadingState message={t('source_detail.loading')} />;
   if (detail.error) return <ErrorState error={detail.error} />;
@@ -195,21 +279,37 @@ export const SourceDetailWorkspace = () => {
           ) : null}
           {evidence.error ? <ErrorState error={evidence.error} /> : null}
           {evidence.data?.items.length === 0 ? <p>{t('source_detail.no_evidence')}</p> : null}
-          {evidence.data && evidence.data.items.length > 0 ? (
+          {evidence.data && groupedEvidence.length > 0 ? (
             <ul className="source-evidence-list">
-              {evidence.data.items.map((item) => {
-                const isCitationTarget =
-                  item.evidenceId === citationReturnTarget?.evidenceId ||
-                  item.evidenceId === knowledgeReturnTarget?.target.evidenceId;
+              {groupedEvidence.map((group) => {
+                const item = group.primaryItem;
+                const isCitationTarget = group.memberEvidenceIds.some(
+                  (id) =>
+                    id === citationReturnTarget?.evidenceId ||
+                    id === knowledgeReturnTarget?.target.evidenceId,
+                );
+                const targetMemberId =
+                  group.memberEvidenceIds.find(
+                    (id) =>
+                      id === citationReturnTarget?.evidenceId ||
+                      id === knowledgeReturnTarget?.target.evidenceId,
+                  ) ?? item.evidenceId;
+
+                const showDistinctLabel = !isDerivedLabel(item);
+
                 return (
                   <li
                     key={item.evidenceId}
-                    id={`evidence-${item.evidenceId}`}
+                    id={`evidence-${targetMemberId}`}
                     tabIndex={-1}
                     ref={isCitationTarget ? focusCitationEvidence : undefined}
                   >
-                    <strong>{item.label}</strong>
-                    <p>{item.exactText}</p>
+                    {showDistinctLabel ? <strong>{item.label}</strong> : null}
+                    {item.exactText !== undefined ? (
+                      <p>{item.exactText}</p>
+                    ) : (
+                      <strong>{item.label}</strong>
+                    )}
                     <small>{hfmOwnerLabel(t, 'evidenceOrigin', item.origin)}</small>
                     <TechnicalDetails
                       items={[

@@ -86,22 +86,19 @@ test('Knowledge Product API remains body-only and rejects browser authority inpu
 
 test('Knowledge Product API rejects a missing browser session and authority header', async ({
   page,
+  request,
 }) => {
-  await page.goto('/');
-
-  await page.context().clearCookies();
-  const withoutSession = await page.evaluate(async () => {
-    const response = await fetch('/product-api/frontend/knowledge/search', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: {
-        'content-type': 'application/json',
-        'x-csrf-token': 'browser-csrf-without-session',
-      },
-      body: JSON.stringify({ schemaVersion: '1.0.0', query: 'without-session' }),
-    });
-    return { status: response.status, body: await response.json() };
+  const withoutSessionResponse = await request.post('/product-api/frontend/knowledge/search', {
+    headers: {
+      'content-type': 'application/json',
+      'x-csrf-token': 'browser-csrf-without-session',
+    },
+    data: { schemaVersion: '1.0.0', query: 'without-session' },
   });
+  const withoutSession = {
+    status: withoutSessionResponse.status(),
+    body: (await withoutSessionResponse.json()) as { code: string },
+  };
 
   expect(withoutSession.status).toBe(401);
   expect(withoutSession.body.code).toBe('AUTHENTICATION_REQUIRED');

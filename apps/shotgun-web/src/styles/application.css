@@ -2970,8 +2970,13 @@ tr.graph-item--discovery {
 }
 
 .global-composer > textarea {
+  box-sizing: border-box;
+  height: 2.75rem;
   min-height: 2.75rem;
   max-height: 9rem;
+  padding: 0.65rem 0.75rem;
+  font-size: calc(1rem - 1pt);
+  line-height: 1.4;
   resize: vertical;
 }
 

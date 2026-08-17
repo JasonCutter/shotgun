@@ -248,17 +248,7 @@ export const PrimaryNavigation = ({
                 />
               </li>
               <li>
-                <TreeGroup label="Preferences">
-                  <li>
-                    <CommandTreeAction commandId="preferences.locale" controller={controller} />
-                  </li>
-                  <li>
-                    <CommandTreeAction commandId="preferences.timezone" controller={controller} />
-                  </li>
-                  <li>
-                    <CommandTreeAction commandId="preferences.display" controller={controller} />
-                  </li>
-                </TreeGroup>
+                <TreeLink to="/settings/preferences">Preferences</TreeLink>
               </li>
               <li>
                 <CommandTreeAction

@@ -143,17 +143,26 @@ describe('PrimaryNavigation HFM-S7-C2 Tree', () => {
     expect(within(primaryNavigation).getByRole('link', { name: 'Conversations' })).toBeTruthy();
     expect(within(primaryNavigation).getByText('Settings', { selector: 'summary' })).toBeTruthy();
     expect(
-      within(primaryNavigation).getByText('Preferences', { selector: 'summary' }),
-    ).toBeTruthy();
+      within(primaryNavigation).queryByText('Preferences', { selector: 'summary' }),
+    ).toBeNull();
     expect(within(primaryNavigation).queryByText('Knowledge', { exact: true })).toBeNull();
     expect(within(primaryNavigation).queryByText('Review', { exact: true })).toBeNull();
     expect(screen.queryByRole('navigation', { name: 'Mobile navigation' })).toBeNull();
 
     expect(within(primaryNavigation).getByRole('button', { name: 'AI' })).toBeTruthy();
     expect(within(primaryNavigation).getByRole('button', { name: 'Privacy' })).toBeTruthy();
+    expect(
+      within(primaryNavigation).getByRole('link', { name: 'Preferences' }).getAttribute('href'),
+    ).toBe('/settings/preferences');
+    expect(within(primaryNavigation).queryByRole('button', { name: 'Preferences' })).toBeNull();
     expect(within(primaryNavigation).getByRole('button', { name: 'Project' })).toBeTruthy();
     expect(within(primaryNavigation).queryByRole('button', { name: 'Configure AI' })).toBeNull();
     expect(within(primaryNavigation).queryByRole('button', { name: 'Manage Projects' })).toBeNull();
+    expect(within(primaryNavigation).queryByRole('button', { name: 'Set Locale' })).toBeNull();
+    expect(within(primaryNavigation).queryByRole('button', { name: 'Set Timezone' })).toBeNull();
+    expect(
+      within(primaryNavigation).queryByRole('button', { name: 'Display Preferences' }),
+    ).toBeNull();
 
     await user.click(within(primaryNavigation).getByRole('button', { name: 'Search' }));
     await user.click(within(primaryNavigation).getByRole('button', { name: 'AI' }));

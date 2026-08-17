@@ -3004,6 +3004,14 @@ tr.graph-item--discovery {
   font-size: 1.15rem;
 }
 
+.ask-empty-landing-hint {
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.5;
+  margin: 0;
+  max-width: 42rem;
+}
+
 /* HFM-S7-C4: compact Source-local navigation in the Center workspace. */
 .source-detail-navigation {
   display: flex;

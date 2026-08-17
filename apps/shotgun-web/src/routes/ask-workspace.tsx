@@ -1232,10 +1232,16 @@ export const AskCenterWorkspace = () => {
   if (error) return <ErrorState error={error} onRetry={() => window.location.reload()} />;
   if (!workspace) return <LoadingState message={t('ask.loading_workspace')} />;
 
+  const hasVisibleSupportControls = Boolean(mode && mode !== 'CANONICAL_ONLY');
+  const showEmptyLanding = !activeConversationId && !hasVisibleSupportControls;
+
   return (
     <section className="route-page hfm-route-page ask-workspace">
       <p className="eyebrow">{t('ask.eyebrow')}</p>
       <h1 tabIndex={-1}>{t('ask.title')}</h1>
+      {showEmptyLanding ? (
+        <p className="ask-empty-landing-hint">{t('ask.empty_landing_hint')}</p>
+      ) : null}
       <AskSupportControls
         mode={mode}
         sourceContextAvailable={sourceContextAvailable}

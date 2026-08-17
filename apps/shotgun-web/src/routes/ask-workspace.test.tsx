@@ -1835,4 +1835,173 @@ describe('AskWorkspace', () => {
       }),
     );
   });
+
+  describe('HFM-S7-C8-E1 Ask Empty Landing Guidance', () => {
+    it('A. renders compact guidance when landing on /ask with no conversation and CANONICAL_ONLY mode without duplicating conversation list or composer in Center', async () => {
+      const runtime = createRuntime();
+      const emptyWorkspace: AskWorkspaceView = {
+        ...mockWorkspace,
+        selectedConversation: undefined,
+        defaultAskMode: 'CANONICAL_ONLY',
+      };
+      const mockClient: AskWorkspaceClient = {
+        getProviderEligibility: vi.fn().mockResolvedValue({
+          schemaVersion: '1.0.0',
+          eligible: true,
+          reasons: [],
+          message: 'Eligible.',
+        }),
+        getWorkspace: vi.fn().mockResolvedValue(emptyWorkspace),
+        getConversation: vi.fn(),
+        getConversationSourceContext: vi.fn().mockResolvedValue({
+          schemaVersion: '1.0.0',
+          resourceProjectId: 'project-1',
+          items: [],
+        }),
+        getBranch: vi.fn(),
+        getAnswerRun: vi.fn(),
+        submitQuestion: vi.fn(),
+        getQuestionSubmissionByClientRequestId: vi.fn(),
+      };
+
+      const router = createMemoryRouter(
+        [
+          {
+            path: '/',
+            element: <ShellWithAskOutlet client={mockClient} />,
+            children: [{ path: 'ask', element: <AskWorkspace client={mockClient} /> }],
+          },
+        ],
+        { initialEntries: ['/ask'] },
+      );
+
+      const { container } = render(
+        <AppProviders runtime={runtime}>
+          <RouterProvider router={router} />
+        </AppProviders>,
+      );
+
+      expect(await screen.findByRole('heading', { name: 'Ask', level: 1 })).toBeTruthy();
+      expect(
+        screen.getByText(
+          'Select an existing conversation on the right, or start a new question in the composer below.',
+        ),
+      ).toBeTruthy();
+
+      const centerWorkspace = container.querySelector('.ask-workspace')!;
+      expect(
+        within(centerWorkspace as HTMLElement).queryByRole('heading', { name: 'Conversations' }),
+      ).toBeNull();
+      expect(within(centerWorkspace as HTMLElement).queryByLabelText('Question')).toBeNull();
+      expect(
+        within(centerWorkspace as HTMLElement).queryByRole('button', { name: 'Submit question' }),
+      ).toBeNull();
+    });
+
+    it('B. hides empty landing guidance when a Conversation is selected', async () => {
+      const runtime = createRuntime();
+      const mockClient: AskWorkspaceClient = {
+        getProviderEligibility: vi.fn().mockResolvedValue({
+          schemaVersion: '1.0.0',
+          eligible: true,
+          reasons: [],
+          message: 'Eligible.',
+        }),
+        getWorkspace: vi.fn().mockResolvedValue(mockWorkspace),
+        getConversation: vi.fn().mockResolvedValue(mockWorkspace.selectedConversation!),
+        getConversationSourceContext: vi.fn().mockResolvedValue({
+          schemaVersion: '1.0.0',
+          resourceProjectId: 'project-1',
+          items: [],
+        }),
+        getBranch: vi.fn(),
+        getAnswerRun: vi.fn(),
+        submitQuestion: vi.fn(),
+        getQuestionSubmissionByClientRequestId: vi.fn(),
+      };
+
+      const router = createMemoryRouter(
+        [
+          {
+            path: '/',
+            element: <ShellWithAskOutlet client={mockClient} />,
+            children: [
+              {
+                path: 'ask/conversations/:conversationId',
+                element: <AskWorkspace client={mockClient} />,
+              },
+            ],
+          },
+        ],
+        { initialEntries: ['/ask/conversations/conv-1'] },
+      );
+
+      render(
+        <AppProviders runtime={runtime}>
+          <RouterProvider router={router} />
+        </AppProviders>,
+      );
+
+      expect(
+        await screen.findByRole('heading', { name: 'Canonical Architecture Query' }),
+      ).toBeTruthy();
+      expect(
+        screen.queryByText(
+          'Select an existing conversation on the right, or start a new question in the composer below.',
+        ),
+      ).toBeNull();
+    });
+
+    it('C. hides empty landing guidance when non-canonical mode renders Source support controls', async () => {
+      const runtime = createRuntime();
+      const hybridWorkspace: AskWorkspaceView = {
+        ...mockWorkspace,
+        selectedConversation: undefined,
+        defaultAskMode: 'HYBRID',
+      };
+      const mockClient: AskWorkspaceClient = {
+        getProviderEligibility: vi.fn().mockResolvedValue({
+          schemaVersion: '1.0.0',
+          eligible: true,
+          reasons: [],
+          message: 'Eligible.',
+        }),
+        getWorkspace: vi.fn().mockResolvedValue(hybridWorkspace),
+        getConversation: vi.fn(),
+        getConversationSourceContext: vi.fn().mockResolvedValue({
+          schemaVersion: '1.0.0',
+          resourceProjectId: 'project-1',
+          items: [],
+        }),
+        getBranch: vi.fn(),
+        getAnswerRun: vi.fn(),
+        submitQuestion: vi.fn(),
+        getQuestionSubmissionByClientRequestId: vi.fn(),
+      };
+
+      const router = createMemoryRouter(
+        [
+          {
+            path: '/',
+            element: <ShellWithAskOutlet client={mockClient} />,
+            children: [{ path: 'ask', element: <AskWorkspace client={mockClient} /> }],
+          },
+        ],
+        { initialEntries: ['/ask'] },
+      );
+
+      render(
+        <AppProviders runtime={runtime}>
+          <RouterProvider router={router} />
+        </AppProviders>,
+      );
+
+      expect(await screen.findByRole('heading', { name: 'Source context', level: 2 })).toBeTruthy();
+      expect(
+        screen.queryByText(
+          'Select an existing conversation on the right, or start a new question in the composer below.',
+        ),
+      ).toBeNull();
+    });
+  });
 });

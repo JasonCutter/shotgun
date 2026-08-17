@@ -260,6 +260,8 @@ const enUS = {
   'ask.answer_export': 'Answer export',
   'ask.create_or_select_project': 'Create or select a Project before asking questions.',
   'ask.loading_workspace': 'Loading Ask workspace…',
+  'ask.empty_landing_hint':
+    'Select an existing conversation on the right, or start a new question in the composer below.',
   'ask.mode': 'Ask mode',
   'ask.source_context': 'Source context',
   'ask.source_selection_unavailable': 'Source selection is unavailable for this question context.',
@@ -744,6 +746,8 @@ const koKR: Record<ProductMessageKey, string> = {
   'ask.answer_export': '답변 내보내기 결과',
   'ask.create_or_select_project': '질문하려면 프로젝트를 만들거나 선택하세요.',
   'ask.loading_workspace': '질문 작업공간을 불러오는 중…',
+  'ask.empty_landing_hint':
+    '오른쪽에서 기존 대화를 선택하거나 아래 입력창에서 새 질문을 시작하세요.',
   'ask.mode': '질문 방식',
   'ask.source_context': '소스 범위',
   'ask.source_selection_unavailable': '이 질문 범위에서는 소스를 선택할 수 없습니다.',

@@ -112,16 +112,16 @@ export class ProductKnowledgeResourceResolver implements KnowledgeResourceResolv
     switch (resourceType) {
       case 'CLAIM': {
         const claim = await this.canonicalKnowledge.findClaim(projectId, resourceId);
-        if (claim) {
-          return {
-            text: claim.claimText,
-            evidenceIds: claim.evidenceIds,
-            sourceVersionId: claim.sourceVersionId,
-            accessScope: claim.accessScope,
-            sensitivity: claim.sensitivity,
-          };
+        if (!claim) {
+          return undefined;
         }
-        break;
+        return {
+          text: claim.claimText,
+          evidenceIds: claim.evidenceIds,
+          sourceVersionId: claim.sourceVersionId,
+          accessScope: claim.accessScope,
+          sensitivity: claim.sensitivity,
+        };
       }
 
       case 'ENTITY':

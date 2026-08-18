@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { createApplication } from '../../assemblies/shotgun-app/src/server.js';
 import {
+  type CompiledTruthProjection,
   type HybridCandidateResult,
   type KnowledgeCandidate,
   type KnowledgeReviewGroup,
+  type SemanticCandidateResult,
   type SemanticProjectionGeneration,
   type SemanticRetrieverPort,
 } from '../../packages/contracts/src/index.js';
@@ -493,5 +495,274 @@ describe('ProductKnowledgeResourceResolver & Application Composition Tests', () 
     // Direct resolver invocation for FACT
     const resolvedFact = await resolver.resolveResource('proj-direct-fact', 'FACT', 'fact-999');
     expect(resolvedFact).toBeUndefined();
+  });
+
+  it('proves ProductKnowledgeResourceResolver returns undefined for missing Canonical Claim even if present in stale Compiled Truth projection', async () => {
+    const projectId = 'proj-claim-stale-test';
+    const app = await createApplication({
+      production: false,
+    });
+    const { repositories } = app;
+
+    // Save a stale compiledTruth projection containing a CLAIM item
+    const staleProjection: CompiledTruthProjection = {
+      projectId,
+      projectorVersion: '1.0.0',
+      sourceSnapshotDigest: 'sha256:stale-snap',
+      logicalDigest: 'sha256:stale-logical',
+      canonicalVersion: 2,
+      items: [
+        {
+          id: 'claim-stale',
+          type: 'CLAIM',
+          label: 'Stale claim text from Compiled Truth projection.',
+          state: 'CURRENT',
+          source: 'APPROVED_KNOWLEDGE',
+          evidenceIds: ['ev-stale'],
+          accessScope: ['finance'],
+          sensitivity: 'internal',
+        },
+      ],
+      graph: { nodes: [], edges: [], fallback: { available: true, modes: ['LIST', 'TABLE'] } },
+      projectedAt: '2026-08-18T10:00:00.000Z',
+      buildMode: 'FULL_REBUILD',
+    };
+    await repositories.compiledTruth.synchronize(staleProjection);
+
+    const resolver = new ProductKnowledgeResourceResolver(
+      repositories.canonical,
+      repositories.knowledge,
+      repositories.compiledTruth,
+    );
+
+    // Canonical repository has NO claim-stale.
+    // Resolver MUST NOT fall through to Compiled Truth and MUST return undefined.
+    const resolved = await resolver.resolveResource(projectId, 'CLAIM', 'claim-stale');
+    expect(resolved).toBeUndefined();
+  });
+
+  it('proves Hybrid search degrades gracefully when semantic channel returns a stale CLAIM missing from Canonical authority', async () => {
+    const projectId = 'proj-hybrid-stale-claim';
+
+    const activeGen: SemanticProjectionGeneration = {
+      projectId,
+      generationId: 'gen-stale-001',
+      sourceProjectionDigest: 'sha256:src-digest',
+      canonicalBaseVersion: 1,
+      credentialId: 'cred-1',
+      credentialRevision: 1,
+      providerPolicyFingerprint: 'sha256:policy-fp',
+      providerId: 'openai',
+      embeddingModelId: 'text-embedding-3-small',
+      embeddingProfileId: 'prof-1',
+      embeddingProfileRevision: 1,
+      providerRegistryRevision: 'prov-reg:v1',
+      capabilityCatalogRevision: 'semantic-embedding-catalog:v1',
+      representationVersion: 'semantic-representation:v1',
+      dimension: 768,
+      distanceMetric: 'cosine',
+      normalizationPolicy: 'unit_length',
+      buildStatus: 'READY',
+      createdAt: '2026-08-18T10:00:00.000Z',
+    };
+
+    const activeGenerationReader = new InMemorySemanticActiveGenerationReader();
+    activeGenerationReader.setActiveGeneration(activeGen);
+
+    const staleSemanticCandidate: SemanticCandidateResult = {
+      semanticItemId: 'sem-stale-claim',
+      projectId,
+      generationId: 'gen-stale-001',
+      resourceType: 'CLAIM',
+      resourceId: 'claim-stale',
+      sourceProjectionDigest: 'sha256:src-digest',
+      canonicalVersion: 1,
+      semanticTextDigest: 'sha256:text-stale',
+      embeddingProfileId: 'prof-1',
+      embeddingProfileRevision: 1,
+      representationVersion: 'semantic-representation:v1',
+      distance: 0.1,
+      dimension: 768,
+      evidenceIds: ['ev-stale-1'],
+      accessScope: ['finance'],
+      sensitivity: 'internal',
+      indexedAt: '2026-08-18T10:00:00.000Z',
+      createdAt: '2026-08-18T10:00:00.000Z',
+      updatedAt: '2026-08-18T10:00:00.000Z',
+    };
+
+    const semanticRetriever: SemanticRetrieverPort = {
+      retrieve: async () => [staleSemanticCandidate],
+    };
+
+    const auth = new InMemoryAuthRepository();
+    await auth.bootstrapOwner({
+      accountId: 'test-owner-stale',
+      projectId,
+      scopes: ['owner', 'admin', 'member', 'finance'],
+      sensitivityClearance: 'restricted',
+    });
+    const principal = await auth.findPrincipalByAccountId('test-owner-stale');
+    if (!principal) throw new Error('Fixture Principal was not created.');
+    const session = await auth.createSession(
+      principal.principalId,
+      projectId,
+      new Date(Date.now() + 60_000).toISOString(),
+    );
+
+    const app = await createApplication({
+      production: false,
+      authRepository: auth,
+      semanticRetriever,
+      semanticActiveGenerationReader: activeGenerationReader,
+    });
+
+    const { repositories, server } = app;
+
+    // 1. Populate Original Asset, SourceVersion, and EvidenceSpan for a healthy lexical claim
+    const stored = await repositories.originalAsset.store({
+      submissionId: 'sub-stale-1',
+      projectId,
+      actorId: 'test-owner-stale',
+      channel: 'file_upload',
+      materialKind: 'document',
+      mediaType: 'application/pdf',
+      originalFileName: 'finance.pdf',
+      contentHash: 'sha256:asset-stale',
+      sizeBytes: 1024,
+      storageKey: 'assets/stale',
+      accessScope: ['finance'],
+      sensitivity: 'internal',
+      createdAt: '2026-08-18T10:00:00.000Z',
+    });
+
+    const evidenceCandidate: EvidenceCandidate = {
+      revisionId: 'rev-stale-1',
+      projectId,
+      sourceId: stored.sourceId,
+      sourceVersionId: stored.sourceVersionId,
+      pointer: '/blocks/0',
+      nodeKind: 'paragraph',
+      origin: 'source',
+      position: { type: 'TextPositionSelector', start: 0, end: 50, unit: 'unicode-code-point' },
+      quote: { type: 'TextQuoteSelector', exact: 'Healthy lexical statement.' },
+      exactHash: 'sha256:quote-stale',
+      accessScope: ['finance'],
+      sensitivity: 'internal',
+      createdAt: '2026-08-18T10:00:00.000Z',
+    };
+    const indexedEvidence = await repositories.evidence.index([evidenceCandidate]);
+    const evidenceSpan = indexedEvidence.items[0]!;
+
+    // 2. Commit a healthy Canonical Claim
+    const snapshot = await repositories.canonical.getSnapshot(projectId);
+    await repositories.canonical.commitFrontendDraft({
+      commitId: 'commit-healthy-1',
+      revisionId: 'rev-healthy-1',
+      historyEventId: 'hist-healthy-1',
+      outboxId: 'outbox-healthy-1',
+      projectId,
+      expectedCanonicalVersion: snapshot.version,
+      snapshotDigest: snapshot.digest,
+      operation: 'ADD_CLAIM',
+      claimId: 'claim-healthy-1',
+      claimText: 'Healthy lexical claim statement.',
+      sourceVersionId: stored.sourceVersionId,
+      evidenceIds: [evidenceSpan.evidenceId],
+      accessScope: ['finance'],
+      sensitivity: 'internal',
+      actor: { type: 'user', id: 'user-admin' },
+      authority: {
+        kind: 'FRONTEND_REVIEW_APPROVAL',
+        approvalId: 'appr-healthy-1',
+        approvalBindingDigest: 'sha256:appr-h',
+        reviewContextId: 'rc-healthy-1',
+        contextRevision: 1,
+        draftId: 'draft-healthy-1',
+        draftRevision: 1,
+        draftContentDigest: 'sha256:draft-h',
+        approvedItemIds: ['claim-healthy-1'],
+      },
+      reason: 'Approved in review',
+      committedAt: '2026-08-18T10:00:00.000Z',
+    });
+
+    const liveSnapshot = await repositories.canonical.getSnapshot(projectId);
+    await repositories.projection.applyCommit(projectId, {
+      commitId: 'commit-healthy-1',
+      canonicalVersion: liveSnapshot.version,
+      snapshotDigest: liveSnapshot.digest,
+      operation: 'ADD_CLAIM',
+      projectedAt: '2026-08-18T10:00:00.000Z',
+      document: {
+        projectId,
+        claimId: 'claim-healthy-1',
+        commitId: 'commit-healthy-1',
+        revisionId: 'rev-healthy-1',
+        canonicalVersion: liveSnapshot.version,
+        claimText: 'Healthy lexical claim statement.',
+        sourceVersionId: stored.sourceVersionId,
+        evidenceIds: [evidenceSpan.evidenceId],
+        accessScope: ['finance'],
+        sensitivity: 'internal',
+        projectedAt: '2026-08-18T10:00:00.000Z',
+      },
+    });
+
+    // 3. Stale compiled truth projection has claim-stale (which is absent from canonical repo)
+    const staleProjection: CompiledTruthProjection = {
+      projectId,
+      projectorVersion: '1.0.0',
+      sourceSnapshotDigest: 'sha256:stale-snap',
+      logicalDigest: 'sha256:stale-logical',
+      canonicalVersion: 1,
+      items: [
+        {
+          id: 'claim-stale',
+          type: 'CLAIM',
+          label: 'Stale claim text from Compiled Truth.',
+          state: 'CURRENT',
+          source: 'APPROVED_KNOWLEDGE',
+          evidenceIds: ['ev-stale-1'],
+          accessScope: ['finance'],
+          sensitivity: 'internal',
+        },
+      ],
+      graph: { nodes: [], edges: [], fallback: { available: true, modes: ['LIST', 'TABLE'] } },
+      projectedAt: '2026-08-18T10:00:00.000Z',
+      buildMode: 'FULL_REBUILD',
+    };
+    await repositories.compiledTruth.synchronize(staleProjection);
+
+    // Query via Product /search/hybrid endpoint
+    const response = await server.inject({
+      method: 'POST',
+      url: '/search/hybrid',
+      headers: {
+        cookie: `shotgun_session=${session.sessionToken}`,
+        'x-csrf-token': session.csrfToken,
+      },
+      payload: {
+        query: 'statement',
+        limit: 10,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body);
+    const hybridSearch = body.hybridSearch;
+    expect(hybridSearch).toBeDefined();
+
+    // Semantic channel degraded cleanly without 500 error, healthy lexical result is returned
+    expect(hybridSearch.items).toHaveLength(1);
+    expect(hybridSearch.items[0].resourceId).toBe('claim-healthy-1');
+    expect(hybridSearch.items[0].signals).toEqual(['LEXICAL']);
+    expect(hybridSearch.readiness.semantic.status).toBe('DEGRADED');
+    expect(hybridSearch.readiness.semantic.reason).toBe(
+      'Semantic retrieval is temporarily unavailable.',
+    );
+    expect(
+      hybridSearch.items.some((i: HybridCandidateResult) => i.resourceId === 'claim-stale'),
+    ).toBe(false);
   });
 });

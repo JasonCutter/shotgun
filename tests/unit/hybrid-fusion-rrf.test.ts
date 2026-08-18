@@ -534,6 +534,10 @@ describe('Hybrid Fusion (RRF) & Coordinator Unit Tests', () => {
     // 6. FACT returns undefined under ADR-147
     const factRes = await resolver.resolveResource('proj-alpha', 'FACT', 'fact-1');
     expect(factRes).toBeUndefined();
+
+    // 7. CLAIM missing from Canonical Knowledge MUST NOT fall back to Compiled Truth
+    const missingClaimRes = await resolver.resolveResource('proj-alpha', 'CLAIM', 'fact-1');
+    expect(missingClaimRes).toBeUndefined();
   });
 
   it('degrades semantic channel gracefully to healthy lexical results when duplicate candidates have version mismatch', async () => {

@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createApplication } from '../../assemblies/shotgun-app/src/server.js';
 import {
-  type CompiledTruthProjection,
   type HybridCandidateResult,
   type KnowledgeCandidate,
   type KnowledgeReviewGroup,
@@ -11,9 +10,10 @@ import {
 import type { EvidenceCandidate } from '../../modules/evidence/src/index.js';
 import { InMemorySemanticActiveGenerationReader } from '../../adapters/semantic-active-generation-in-memory/src/index.js';
 import { InMemoryAuthRepository } from '../../packages/authentication/src/index.js';
+import { ProductKnowledgeResourceResolver } from '../../modules/hybrid-retrieval/src/index.js';
 
 describe('ProductKnowledgeResourceResolver & Application Composition Tests', () => {
-  it('resolves all six frozen semantic resource types in Product composition', async () => {
+  it('resolves all five Product-eligible semantic resource types in Product composition', async () => {
     const projectId = 'proj-product-test';
 
     const activeGen: SemanticProjectionGeneration = {
@@ -109,7 +109,7 @@ describe('ProductKnowledgeResourceResolver & Application Composition Tests', () 
     const evidenceSpan = indexedEvidence.items[0]!;
     const evidenceId = evidenceSpan.evidenceId;
 
-    // Configure semantic retriever to return semantic candidates for all 6 frozen types
+    // Configure semantic retriever to return semantic candidates for all 5 eligible types
     (semanticRetriever as { retrieve: () => Promise<readonly unknown[]> }).retrieve = async () => [
       {
         semanticItemId: 'sem-claim',
@@ -208,27 +208,6 @@ describe('ProductKnowledgeResourceResolver & Application Composition Tests', () 
         embeddingProfileRevision: 1,
         representationVersion: 'semantic-representation:v1',
         distance: 0.14,
-        dimension: 768,
-        evidenceIds: [evidenceId],
-        accessScope: ['finance'],
-        sensitivity: 'internal',
-        indexedAt: '2026-08-18T10:00:00.000Z',
-        createdAt: '2026-08-18T10:00:00.000Z',
-        updatedAt: '2026-08-18T10:00:00.000Z',
-      },
-      {
-        semanticItemId: 'sem-fact',
-        projectId,
-        generationId: 'gen-prod-001',
-        resourceType: 'FACT',
-        resourceId: 'fact-100',
-        sourceProjectionDigest: 'sha256:src-digest',
-        canonicalVersion: 1,
-        semanticTextDigest: 'sha256:text-fact',
-        embeddingProfileId: 'prof-1',
-        embeddingProfileRevision: 1,
-        representationVersion: 'semantic-representation:v1',
-        distance: 0.15,
         dimension: 768,
         evidenceIds: [evidenceId],
         accessScope: ['finance'],
@@ -336,31 +315,6 @@ describe('ProductKnowledgeResourceResolver & Application Composition Tests', () 
     };
     await repositories.knowledge.saveGroup(reviewGroup);
 
-    // 5. Populate Compiled Truth for FACT
-    const compiledProjection: CompiledTruthProjection = {
-      projectId,
-      projectorVersion: '1.0.0',
-      sourceSnapshotDigest: 'sha256:snap-digest',
-      logicalDigest: 'sha256:logical-digest',
-      canonicalVersion: 1,
-      items: [
-        {
-          id: 'fact-100',
-          type: 'CLAIM',
-          label: 'Revenue: $500M in Q2',
-          state: 'CURRENT',
-          source: 'APPROVED_KNOWLEDGE',
-          evidenceIds: [evidenceId],
-          accessScope: ['finance'],
-          sensitivity: 'internal',
-        },
-      ],
-      graph: { nodes: [], edges: [], fallback: { available: true, modes: ['LIST', 'TABLE'] } },
-      projectedAt: '2026-08-18T10:00:00.000Z',
-      buildMode: 'FULL_REBUILD',
-    };
-    await repositories.compiledTruth.synchronize(compiledProjection);
-
     // Query via Product /search/hybrid endpoint
     const response = await server.inject({
       method: 'POST',
@@ -380,7 +334,7 @@ describe('ProductKnowledgeResourceResolver & Application Composition Tests', () 
     const hybridSearch = body.hybridSearch;
     expect(hybridSearch).toBeDefined();
 
-    expect(hybridSearch.items).toHaveLength(6);
+    expect(hybridSearch.items).toHaveLength(5);
 
     const typeMap = new Map(
       (hybridSearch.items as readonly HybridCandidateResult[]).map((i) => [i.resourceType, i]),
@@ -417,11 +371,127 @@ describe('ProductKnowledgeResourceResolver & Application Composition Tests', () 
     expect(decision!.text).toBe('Authorized expansion into new market.');
     expect(decision!.citations).toHaveLength(1);
 
-    // FACT
-    const fact = typeMap.get('FACT');
-    expect(fact).toBeDefined();
-    expect(fact!.text).toBe('Revenue: $500M in Q2');
-    expect(fact!.canonicalVersion).toBe(1);
-    expect(fact!.citations).toHaveLength(1);
+    // FACT must not be present
+    expect(typeMap.get('FACT')).toBeUndefined();
+  });
+
+  it('degrades semantic channel cleanly to lexical fallback when semantic candidate unexpectedly contains FACT', async () => {
+    const projectId = 'proj-fact-degradation';
+
+    const activeGen: SemanticProjectionGeneration = {
+      projectId,
+      generationId: 'gen-prod-002',
+      sourceProjectionDigest: 'sha256:src-digest',
+      canonicalBaseVersion: 1,
+      credentialId: 'cred-1',
+      credentialRevision: 1,
+      providerPolicyFingerprint: 'sha256:policy-fp',
+      providerId: 'openai',
+      embeddingModelId: 'text-embedding-3-small',
+      embeddingProfileId: 'prof-1',
+      embeddingProfileRevision: 1,
+      providerRegistryRevision: 'prov-reg:v1',
+      capabilityCatalogRevision: 'semantic-embedding-catalog:v1',
+      representationVersion: 'semantic-representation:v1',
+      dimension: 768,
+      distanceMetric: 'cosine',
+      normalizationPolicy: 'unit_length',
+      buildStatus: 'READY',
+      createdAt: '2026-08-18T10:00:00.000Z',
+    };
+
+    const activeGenerationReader = new InMemorySemanticActiveGenerationReader();
+    activeGenerationReader.setActiveGeneration(activeGen);
+
+    const semanticRetriever: SemanticRetrieverPort = {
+      retrieve: async () => [
+        {
+          semanticItemId: 'sem-fact-unexpected',
+          projectId,
+          generationId: 'gen-prod-002',
+          resourceType: 'FACT',
+          resourceId: 'fact-100',
+          sourceProjectionDigest: 'sha256:src-digest',
+          canonicalVersion: 1,
+          semanticTextDigest: 'sha256:text-fact',
+          embeddingProfileId: 'prof-1',
+          embeddingProfileRevision: 1,
+          representationVersion: 'semantic-representation:v1',
+          distance: 0.1,
+          dimension: 768,
+          evidenceIds: ['ev-100'],
+          accessScope: ['finance'],
+          sensitivity: 'internal',
+          indexedAt: '2026-08-18T10:00:00.000Z',
+          createdAt: '2026-08-18T10:00:00.000Z',
+          updatedAt: '2026-08-18T10:00:00.000Z',
+        },
+      ],
+    };
+
+    const auth = new InMemoryAuthRepository();
+    await auth.bootstrapOwner({
+      accountId: 'test-owner-2',
+      projectId,
+      scopes: ['owner', 'admin', 'member', 'finance'],
+      sensitivityClearance: 'restricted',
+    });
+    const principal = await auth.findPrincipalByAccountId('test-owner-2');
+    if (!principal) throw new Error('Fixture Principal was not created.');
+    const session = await auth.createSession(
+      principal.principalId,
+      projectId,
+      new Date(Date.now() + 60_000).toISOString(),
+    );
+
+    const app = await createApplication({
+      production: false,
+      authRepository: auth,
+      semanticRetriever,
+      semanticActiveGenerationReader: activeGenerationReader,
+    });
+
+    const { server } = app;
+
+    const response = await server.inject({
+      method: 'POST',
+      url: '/search/hybrid',
+      headers: {
+        cookie: `shotgun_session=${session.sessionToken}`,
+        'x-csrf-token': session.csrfToken,
+      },
+      payload: {
+        query: 'fact search',
+        limit: 10,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body);
+    const hybridSearch = body.hybridSearch;
+    expect(hybridSearch).toBeDefined();
+    // Semantic channel degraded cleanly without 500 error, no FACT returned
+    expect(hybridSearch.items).toHaveLength(0);
+    expect(hybridSearch.readiness.semantic.status).toBe('DEGRADED');
+    expect(hybridSearch.readiness.semantic.reason).toBe(
+      'Semantic retrieval is temporarily unavailable.',
+    );
+  });
+
+  it('proves ProductKnowledgeResourceResolver returns undefined for FACT authority requests', async () => {
+    const app = await createApplication({
+      production: false,
+    });
+    const { repositories } = app;
+
+    const resolver = new ProductKnowledgeResourceResolver(
+      repositories.canonical,
+      repositories.knowledge,
+      repositories.compiledTruth,
+    );
+
+    // Direct resolver invocation for FACT
+    const resolvedFact = await resolver.resolveResource('proj-direct-fact', 'FACT', 'fact-999');
+    expect(resolvedFact).toBeUndefined();
   });
 });

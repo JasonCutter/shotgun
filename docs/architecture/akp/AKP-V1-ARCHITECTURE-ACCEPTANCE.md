@@ -75,3 +75,7 @@ All nine decisions were accepted together as one architecture system. Acceptance
 ## 7. Next governance gate
 
 The next permissible step is architecture publication/ADD reflection and Contract/Work Package preparation. Product implementation begins only after explicit implementation authorization. Existing exact-head PASS evidence is reused and unnecessary duplicate tests/CI runs remain prohibited.
+
+## 8. Subsequent architecture refinements
+
+- **2026-08-18 (ADR-147 / AKP-1 WP3 FACT Authority Deferral)**: An implementation audit during AKP-1 WP3 discovered that current canonical `main` contains no backend `FACT` authority model. The user approved [ADR-147](../adr/ADR-147-akp-1-fact-authority-deferral-and-semantic-product-eligibility.md) as a bounded refinement of ADR-135, classifying `FACT` as **RESERVED / DEFERRED** for current Product semantic retrieval while keeping ADR-134..142, AKP-PAC-01..30, and the whole-design acceptance system unchanged. No AKP Section was added or removed, no Master Scope expansion occurred, and Claim/Fact epistemic distinction remains mandatory.

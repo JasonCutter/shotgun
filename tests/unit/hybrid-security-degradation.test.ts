@@ -54,6 +54,9 @@ describe('Hybrid Security & Request-Local Semantic Degradation Unit Tests', () =
       text: `Authoritative content for ${resourceType}:${resourceId}`,
       canonicalVersion: 1,
       sourceVersionId: 'src-ver-1',
+      evidenceIds: ['ev-lex-1'],
+      accessScope: ['finance'],
+      sensitivity: resourceId === 'claim-priv' ? 'private' : 'public',
     }),
   };
 

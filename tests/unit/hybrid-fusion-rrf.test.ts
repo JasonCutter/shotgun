@@ -7,6 +7,7 @@ import {
   type KnowledgeReviewGroup,
   type LexicalCandidateResult,
   type LexicalRetrieverPort,
+  type ProjectionReadiness,
   type SemanticActiveGenerationReaderPort,
   type SemanticCandidateResult,
   type SemanticProjectionGeneration,
@@ -42,6 +43,7 @@ describe('Hybrid Fusion (RRF) & Coordinator Unit Tests', () => {
 
   const createRig = (options?: {
     readonly lexicalItems?: readonly LexicalCandidateResult[];
+    readonly lexicalReadiness?: ProjectionReadiness;
     readonly semanticItems?: readonly SemanticCandidateResult[];
     readonly resourceResolver?: KnowledgeResourceResolverPort;
     readonly evidenceResolver?: EvidenceSpanResolverPort;
@@ -55,7 +57,7 @@ describe('Hybrid Fusion (RRF) & Coordinator Unit Tests', () => {
     const lexicalRetriever: LexicalRetrieverPort = {
       retrieve: async () => ({
         items: options?.lexicalItems ?? [],
-        readiness: {
+        readiness: options?.lexicalReadiness ?? {
           status: 'READY',
           projectedCanonicalVersion: 1,
           canonicalVersion: 1,
@@ -70,11 +72,19 @@ describe('Hybrid Fusion (RRF) & Coordinator Unit Tests', () => {
     };
 
     const defaultResourceResolver: KnowledgeResourceResolverPort = {
-      resolveResource: async (_projId, resourceType, resourceId) => ({
-        text: `Authoritative content for ${resourceType}:${resourceId}`,
-        canonicalVersion: 1,
-        sourceVersionId: 'src-ver-1',
-      }),
+      resolveResource: async (_projId, resourceType, resourceId) => {
+        const matchingSem = options?.semanticItems?.find(
+          (s) => s.resourceType === resourceType && s.resourceId === resourceId,
+        );
+        return {
+          text: `Authoritative content for ${resourceType}:${resourceId}`,
+          canonicalVersion: matchingSem?.canonicalVersion ?? 1,
+          sourceVersionId: 'src-ver-1',
+          evidenceIds: matchingSem?.evidenceIds ? [...matchingSem.evidenceIds] : ['ev-1'],
+          accessScope: matchingSem?.accessScope ? [...matchingSem.accessScope] : ['finance'],
+          sensitivity: matchingSem?.sensitivity ?? 'internal',
+        };
+      },
     };
 
     const evidenceResolver: EvidenceSpanResolverPort = options?.evidenceResolver ?? {
@@ -309,6 +319,9 @@ describe('Hybrid Fusion (RRF) & Coordinator Unit Tests', () => {
           text: `Text for ${rId}`,
           canonicalVersion: 1,
           sourceVersionId: 'src-ver-1',
+          evidenceIds: [rId === 'a-item' ? 'ev-lower' : 'ev-upper'],
+          accessScope: ['finance'],
+          sensitivity: 'internal',
         }),
       },
     });
@@ -518,15 +531,12 @@ describe('Hybrid Fusion (RRF) & Coordinator Unit Tests', () => {
     expect(decRes?.text).toBe('Approved dividend payout of $2.50 per share.');
     expect(decRes?.evidenceIds).toEqual(['ev-dec-1']);
 
-    // 6. Resolve FACT
+    // 6. FACT returns undefined under ADR-147
     const factRes = await resolver.resolveResource('proj-alpha', 'FACT', 'fact-1');
-    expect(factRes).toBeDefined();
-    expect(factRes?.text).toBe('Q2 revenue: $100M USD');
-    expect(factRes?.canonicalVersion).toBe(3);
-    expect(factRes?.evidenceIds).toEqual(['ev-fact-1']);
+    expect(factRes).toBeUndefined();
   });
 
-  it('fails closed when lexical and semantic duplicate candidates have version mismatch', async () => {
+  it('degrades semantic channel gracefully to healthy lexical results when duplicate candidates have version mismatch', async () => {
     const lexicalItems: LexicalCandidateResult[] = [
       {
         claimId: 'claim-1',
@@ -570,27 +580,31 @@ describe('Hybrid Fusion (RRF) & Coordinator Unit Tests', () => {
 
     const { coordinator } = createRig({ lexicalItems, semanticItems });
 
-    await expect(
-      coordinator.search({
-        projectId: 'proj-alpha',
-        query: 'revenue',
-        accessScopes: ['finance'],
-        allowedSensitivities: ['internal'],
-      }),
-    ).rejects.toThrow('lexical canonical version 1 !== semantic canonical version 2');
+    const response = await coordinator.search({
+      projectId: 'proj-alpha',
+      query: 'revenue',
+      accessScopes: ['finance'],
+      allowedSensitivities: ['internal'],
+    });
+
+    expect(response.items).toHaveLength(1);
+    expect(response.items[0]!.resourceId).toBe('claim-1');
+    expect(response.items[0]!.signals).toEqual(['LEXICAL']);
+    expect(response.readiness.semantic.status).toBe('DEGRADED');
+    expect(response.readiness.degraded).toBe(true);
   });
 
-  it('fails closed when semantic candidate version mismatches authoritative resolved resource version', async () => {
+  it('fails closed when semantic candidate version mismatches authoritative resolved resource version and lexical is stale', async () => {
     const semanticItems: SemanticCandidateResult[] = [
       {
-        semanticItemId: 'sem-fact-1',
+        semanticItemId: 'sem-dec-1',
         projectId: 'proj-alpha',
         generationId: 'gen-001',
-        resourceType: 'FACT',
-        resourceId: 'fact-1',
+        resourceType: 'DECISION',
+        resourceId: 'dec-1',
         sourceProjectionDigest: 'sha256:src-digest',
         canonicalVersion: 1, // Candidate carries Version 1
-        semanticTextDigest: 'sha256:text-fact',
+        semanticTextDigest: 'sha256:text-dec',
         embeddingProfileId: 'prof-1',
         embeddingProfileRevision: 1,
         representationVersion: 'semantic-representation:v1',
@@ -606,10 +620,17 @@ describe('Hybrid Fusion (RRF) & Coordinator Unit Tests', () => {
     ];
 
     const { coordinator } = createRig({
+      lexicalReadiness: {
+        status: 'STALE',
+        projectedCanonicalVersion: 0,
+        canonicalVersion: 1,
+        lag: 1,
+        canonicalSnapshotDigest: 'sha256:snap',
+      },
       semanticItems,
       resourceResolver: {
         resolveResource: async () => ({
-          text: 'Fact text',
+          text: 'Decision text',
           canonicalVersion: 2, // Authoritative resolver returns Version 2!
           evidenceIds: ['ev-1'],
           sourceVersionId: 'src-ver-1',
@@ -620,30 +641,30 @@ describe('Hybrid Fusion (RRF) & Coordinator Unit Tests', () => {
     await expect(
       coordinator.search({
         projectId: 'proj-alpha',
-        query: 'revenue fact',
+        query: 'revenue decision',
         accessScopes: ['finance'],
         allowedSensitivities: ['internal'],
       }),
     ).rejects.toThrow('resolved canonical version 2 !== candidate version 1');
   });
 
-  it('fails closed when candidate evidence is disjoint/mismatched from resolved resource evidence', async () => {
+  it('allows candidate evidence that is a valid subset of authoritative resolved resource evidence', async () => {
     const semanticItems: SemanticCandidateResult[] = [
       {
-        semanticItemId: 'sem-fact-1',
+        semanticItemId: 'sem-dec-1',
         projectId: 'proj-alpha',
         generationId: 'gen-001',
-        resourceType: 'FACT',
-        resourceId: 'fact-1',
+        resourceType: 'DECISION',
+        resourceId: 'dec-1',
         sourceProjectionDigest: 'sha256:src-digest',
         canonicalVersion: 1,
-        semanticTextDigest: 'sha256:text-fact',
+        semanticTextDigest: 'sha256:text-dec',
         embeddingProfileId: 'prof-1',
         embeddingProfileRevision: 1,
         representationVersion: 'semantic-representation:v1',
         distance: 0.1,
         dimension: 768,
-        evidenceIds: ['ev-cand-100'], // Candidate evidence
+        evidenceIds: ['ev-1'], // Candidate carries subset ['ev-1']
         accessScope: ['finance'],
         sensitivity: 'internal',
         indexedAt: '2026-08-18T10:00:00.000Z',
@@ -656,9 +677,68 @@ describe('Hybrid Fusion (RRF) & Coordinator Unit Tests', () => {
       semanticItems,
       resourceResolver: {
         resolveResource: async () => ({
-          text: 'Fact text',
+          text: 'Approved annual budget.',
           canonicalVersion: 1,
-          evidenceIds: ['ev-authoritative-999'], // Disjoint authoritative evidence!
+          evidenceIds: ['ev-1', 'ev-2'], // Authoritative resource has superset ['ev-1', 'ev-2']
+          accessScope: ['finance'],
+          sensitivity: 'internal',
+          sourceVersionId: 'src-ver-1',
+        }),
+      },
+    });
+
+    const response = await coordinator.search({
+      projectId: 'proj-alpha',
+      query: 'budget decision',
+      accessScopes: ['finance'],
+      allowedSensitivities: ['internal'],
+    });
+
+    expect(response.items).toHaveLength(1);
+    expect(response.items[0]!.resourceId).toBe('dec-1');
+  });
+
+  it('fails closed when candidate evidence contains extra stale IDs not in authoritative evidence and lexical is stale', async () => {
+    const semanticItems: SemanticCandidateResult[] = [
+      {
+        semanticItemId: 'sem-dec-1',
+        projectId: 'proj-alpha',
+        generationId: 'gen-001',
+        resourceType: 'DECISION',
+        resourceId: 'dec-1',
+        sourceProjectionDigest: 'sha256:src-digest',
+        canonicalVersion: 1,
+        semanticTextDigest: 'sha256:text-dec',
+        embeddingProfileId: 'prof-1',
+        embeddingProfileRevision: 1,
+        representationVersion: 'semantic-representation:v1',
+        distance: 0.1,
+        dimension: 768,
+        evidenceIds: ['ev-1', 'ev-stale-99'], // Candidate contains stale evidence not in authoritative!
+        accessScope: ['finance'],
+        sensitivity: 'internal',
+        indexedAt: '2026-08-18T10:00:00.000Z',
+        createdAt: '2026-08-18T10:00:00.000Z',
+        updatedAt: '2026-08-18T10:00:00.000Z',
+      },
+    ];
+
+    const { coordinator } = createRig({
+      lexicalReadiness: {
+        status: 'STALE',
+        projectedCanonicalVersion: 0,
+        canonicalVersion: 1,
+        lag: 1,
+        canonicalSnapshotDigest: 'sha256:snap',
+      },
+      semanticItems,
+      resourceResolver: {
+        resolveResource: async () => ({
+          text: 'Decision text',
+          canonicalVersion: 1,
+          evidenceIds: ['ev-1'], // Authoritative evidence has only ['ev-1']
+          accessScope: ['finance'],
+          sensitivity: 'internal',
           sourceVersionId: 'src-ver-1',
         }),
       },
@@ -667,24 +747,24 @@ describe('Hybrid Fusion (RRF) & Coordinator Unit Tests', () => {
     await expect(
       coordinator.search({
         projectId: 'proj-alpha',
-        query: 'fact query',
+        query: 'decision query',
         accessScopes: ['finance'],
         allowedSensitivities: ['internal'],
       }),
-    ).rejects.toThrow('Evidence identity mismatch for FACT:fact-1');
+    ).rejects.toThrow('is not a subset of authoritative evidence');
   });
 
-  it('fails closed when authoritative resolved resource sensitivity mismatches candidate or exceeds clearance', async () => {
+  it('fails closed when authoritative resolved resource sensitivity mismatches candidate or exceeds clearance and lexical is stale', async () => {
     const semanticItems: SemanticCandidateResult[] = [
       {
-        semanticItemId: 'sem-fact-1',
+        semanticItemId: 'sem-dec-1',
         projectId: 'proj-alpha',
         generationId: 'gen-001',
-        resourceType: 'FACT',
-        resourceId: 'fact-1',
+        resourceType: 'DECISION',
+        resourceId: 'dec-1',
         sourceProjectionDigest: 'sha256:src-digest',
         canonicalVersion: 1,
-        semanticTextDigest: 'sha256:text-fact',
+        semanticTextDigest: 'sha256:text-dec',
         embeddingProfileId: 'prof-1',
         embeddingProfileRevision: 1,
         representationVersion: 'semantic-representation:v1',
@@ -700,10 +780,17 @@ describe('Hybrid Fusion (RRF) & Coordinator Unit Tests', () => {
     ];
 
     const { coordinator } = createRig({
+      lexicalReadiness: {
+        status: 'STALE',
+        projectedCanonicalVersion: 0,
+        canonicalVersion: 1,
+        lag: 1,
+        canonicalSnapshotDigest: 'sha256:snap',
+      },
       semanticItems,
       resourceResolver: {
         resolveResource: async () => ({
-          text: 'Restricted fact text',
+          text: 'Restricted decision text',
           canonicalVersion: 1,
           evidenceIds: ['ev-1'],
           sourceVersionId: 'src-ver-1',
@@ -715,12 +802,12 @@ describe('Hybrid Fusion (RRF) & Coordinator Unit Tests', () => {
     await expect(
       coordinator.search({
         projectId: 'proj-alpha',
-        query: 'fact query',
+        query: 'decision query',
         accessScopes: ['finance'],
         allowedSensitivities: ['internal'],
       }),
     ).rejects.toThrow(
-      "Caller lacks clearance for resolved resource FACT:fact-1 sensitivity 'restricted'",
+      "Caller lacks clearance for resolved resource DECISION:dec-1 sensitivity 'restricted'",
     );
   });
 });

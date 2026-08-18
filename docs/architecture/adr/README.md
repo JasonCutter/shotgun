@@ -27,15 +27,15 @@ This directory and the registered consolidated ADR documents form the global ADR
 | ADR-095         | Reserved Legacy Gap                                                            |
 | ADR-096–ADR-099 | Individual files in this directory                                             |
 | ADR-100–ADR-113 | [Frontend consolidated record](../frontend/adr-100-113-consolidated-record.md) |
-| ADR-114–ADR-146 | Individual files in this directory                                             |
+| ADR-114–ADR-147 | Individual files in this directory                                             |
 
 The Phase records under `docs/architecture/add/` retain their approved 2026-07-16 decision text. ADR-100–113 preserve the accepted Frontend decisions and later Contract Normalization outcomes in one Git owner record while the individual Notion pages remain Legacy References.
 
-ADR-131 through ADR-146 are authoritative accepted individual files. ADR-134 through ADR-142 were accepted together by the user on 2026-08-12 as the AKP v1 whole-design architecture. Their Product implementation remains separately unauthorized. ADR-143 is the accepted finite implementation/completion contract for ADR-133 Runtime-selectable AI Settings and authorizes Product work only through its frozen A4–A9 Section boundaries.
+ADR-131 through ADR-147 are authoritative accepted individual files. ADR-134 through ADR-142 were accepted together by the user on 2026-08-12 as the AKP v1 whole-design architecture. Their Product implementation remains separately unauthorized. ADR-143 is the accepted finite implementation/completion contract for ADR-133 Runtime-selectable AI Settings and authorizes Product work only through its frozen A4–A9 Section boundaries. ADR-147 is the accepted implementation-discovered refinement of ADR-135 that records the deferral of FACT Product eligibility while keeping ADR-135's projection, retrieval, citation, and security architecture fully accepted.
 
 ADR-145 remains an accepted historical individual decision. ADR-146 supersedes ADR-145 as the governing owner-facing Product interaction architecture; both identifiers retain explicit relationship metadata.
 The current latest accepted individual decision is
-[ADR-146 — PC Global Conversation Shell and GUI/Slash Dual-Control](ADR-146-pc-global-conversation-shell-and-gui-slash-dual-control.md), accepted on 2026-08-15.
+[ADR-147 — AKP-1 FACT Authority Deferral and Semantic Product Eligibility](ADR-147-akp-1-fact-authority-deferral-and-semantic-product-eligibility.md), accepted on 2026-08-18.
 
 The accepted AKP v1 whole-design state remains recorded in
 [`../akp/AKP-V1-ARCHITECTURE-ACCEPTANCE.md`](../akp/AKP-V1-ARCHITECTURE-ACCEPTANCE.md).

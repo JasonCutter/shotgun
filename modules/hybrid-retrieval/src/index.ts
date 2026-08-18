@@ -81,6 +81,19 @@ const getHighestSensitivity = (
   return 'public';
 };
 
+const areStringSetsEqual = (a: readonly string[], b: readonly string[]): boolean => {
+  const setA = new Set(a);
+  const setB = new Set(b);
+  if (setA.size !== setB.size) return false;
+  for (const item of setA) {
+    if (!setB.has(item)) return false;
+  }
+  return true;
+};
+
+export const AKP1_PRODUCT_ELIGIBLE_SEMANTIC_RESOURCE_TYPES: readonly SemanticResourceType[] =
+  Object.freeze(['CLAIM', 'ENTITY', 'RELATION', 'EVENT', 'DECISION']);
+
 const compareOrdinal = (left: string, right: string): number =>
   left < right ? -1 : left > right ? 1 : 0;
 
@@ -153,20 +166,14 @@ export class ProductKnowledgeResourceResolver implements KnowledgeResourceResolv
       }
 
       case 'FACT': {
-        break;
+        return undefined;
       }
     }
 
     if (this.compiledTruth) {
       const projection = await this.compiledTruth.findProjection(projectId);
       if (projection) {
-        const item = projection.items.find(
-          (i) =>
-            i.id === resourceId &&
-            (i.type === resourceType ||
-              (resourceType === 'CLAIM' && i.type === 'CLAIM') ||
-              resourceType === 'FACT'),
-        );
+        const item = projection.items.find((i) => i.id === resourceId && i.type === resourceType);
         if (item) {
           return {
             text: item.label,
@@ -175,15 +182,6 @@ export class ProductKnowledgeResourceResolver implements KnowledgeResourceResolv
             accessScope: item.accessScope,
             sensitivity: item.sensitivity,
           };
-        }
-        if (resourceType === 'RELATION') {
-          const edge = projection.graph.edges.find((e) => e.id === resourceId);
-          if (edge) {
-            return {
-              text: `${edge.from} ${edge.relationType} ${edge.to}`,
-              canonicalVersion: projection.canonicalVersion,
-            };
-          }
         }
       }
     }
@@ -390,13 +388,15 @@ export class LexicalRetriever implements LexicalRetrieverPort {
       });
     }
 
+    // 1. Watermark Readiness Verification
     const watermark = await this.repository.findWatermark(projectId);
     const snapshot = await this.getCanonicalSnapshot(projectId);
 
     const snapshotVersion = snapshot?.version ?? 0;
-    const snapshotDigest = snapshot?.digest ?? 'sha256:empty';
+    const snapshotDigest = snapshot?.digest ?? '';
 
     let readiness: ProjectionReadiness;
+
     if (!watermark) {
       const ready = snapshotVersion === 0;
       readiness = {
@@ -404,7 +404,6 @@ export class LexicalRetriever implements LexicalRetrieverPort {
         projectedCanonicalVersion: 0,
         canonicalVersion: snapshotVersion,
         lag: snapshotVersion,
-        ...(ready ? { projectedSnapshotDigest: snapshotDigest } : {}),
         canonicalSnapshotDigest: snapshotDigest,
         ...(!ready ? { reason: 'Search Projection has not processed the Canonical Commit.' } : {}),
       };
@@ -502,7 +501,7 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
     if (!input.accessScopes || input.accessScopes.length === 0) {
       throw new ShotgunError({
         code: 'POLICY_DENIED',
-        safeMessage: 'Access scopes must be a non-empty array.',
+        safeMessage: 'Access scopes must be a non-empty array for hybrid search.',
         module: 'hybrid-retrieval',
         operation: 'search',
       });
@@ -511,7 +510,16 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
     if (!input.allowedSensitivities || input.allowedSensitivities.length === 0) {
       throw new ShotgunError({
         code: 'POLICY_DENIED',
-        safeMessage: 'Allowed sensitivities must be a non-empty array.',
+        safeMessage: 'Allowed sensitivities must be a non-empty array for hybrid search.',
+        module: 'hybrid-retrieval',
+        operation: 'search',
+      });
+    }
+
+    if (!this.evidenceResolver || !this.sourceVersionResolver) {
+      throw new ShotgunError({
+        code: 'VALIDATION_ERROR',
+        safeMessage: 'Evidence and SourceVersion resolvers are required for citation verification.',
         module: 'hybrid-retrieval',
         operation: 'search',
       });
@@ -527,16 +535,7 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
       });
     }
 
-    if (!this.evidenceResolver || !this.sourceVersionResolver) {
-      throw new ShotgunError({
-        code: 'VALIDATION_ERROR',
-        safeMessage: 'Evidence and SourceVersion resolvers are required for citation verification.',
-        module: 'hybrid-retrieval',
-        operation: 'search',
-      });
-    }
-
-    // 1. Execute Lexical Retrieval
+    // 1. Lexical Retrieval
     const lexicalResult = await this.lexicalRetriever.retrieve({
       projectId,
       query,
@@ -544,9 +543,12 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
       limit,
     });
 
-    // 2. Execute Semantic Retrieval with safe request-local degradation
+    // 2. Semantic Retrieval
     let semanticItems: readonly SemanticCandidateResult[] = [];
-    let semanticReadiness: SemanticReadiness = { status: 'READY' };
+    let semanticReadiness: SemanticReadiness = {
+      status: 'NOT_CONFIGURED',
+      reason: 'Semantic retrieval is not configured.',
+    };
     let semanticDegradedReason: string | undefined;
 
     if (!this.semanticRetriever) {
@@ -565,15 +567,28 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
           limit,
         });
 
-        const activeGen = await this.activeGenerationReader?.getActiveGeneration(projectId);
-        if (activeGen) {
+        if (
+          semanticItems.some(
+            (item) => !AKP1_PRODUCT_ELIGIBLE_SEMANTIC_RESOURCE_TYPES.includes(item.resourceType),
+          )
+        ) {
+          semanticItems = [];
           semanticReadiness = {
-            status: 'READY',
-            activeGenerationId: activeGen.generationId,
-            embeddingProfileId: activeGen.embeddingProfileId,
-            dimension: activeGen.dimension,
-            updatedAt: activeGen.createdAt,
+            status: 'DEGRADED',
+            reason: 'Semantic retrieval is temporarily unavailable.',
           };
+          semanticDegradedReason = 'Semantic retrieval is temporarily unavailable.';
+        } else {
+          const activeGen = await this.activeGenerationReader?.getActiveGeneration(projectId);
+          if (activeGen) {
+            semanticReadiness = {
+              status: 'READY',
+              activeGenerationId: activeGen.generationId,
+              embeddingProfileId: activeGen.embeddingProfileId,
+              dimension: activeGen.dimension,
+              updatedAt: activeGen.createdAt,
+            };
+          }
         }
       } catch (err: unknown) {
         if (err instanceof SemanticEmbeddingError) {
@@ -625,13 +640,11 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
       }
     }
 
-    const isDegraded =
-      lexicalResult.readiness.status !== 'READY' || semanticReadiness.status !== 'READY';
-
-    // 3. Fusion (RRF: Reciprocal Rank Fusion)
     const rrfK = this.fusionPolicy.k;
     const lexicalWeight = this.fusionPolicy.lexicalWeight ?? 1.0;
     const semanticWeight = this.fusionPolicy.semanticWeight ?? 1.0;
+    const allowedScopeSet = new Set(input.accessScopes);
+    const callerHighestSens = getHighestSensitivity(input.allowedSensitivities);
 
     type CandidateAccumulator = {
       resourceType: SemanticResourceType;
@@ -648,317 +661,356 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
       fusionScore: number;
     };
 
-    const candidateMap = new Map<string, CandidateAccumulator>();
+    const buildCandidatesAndResolve = async (
+      lexItems: readonly LexicalCandidateResult[],
+      semItems: readonly SemanticCandidateResult[],
+    ): Promise<HybridCandidateResult[]> => {
+      const candidateMap = new Map<string, CandidateAccumulator>();
 
-    // Add lexical candidates
-    for (const lex of lexicalResult.items) {
-      const key = `CLAIM:${lex.claimId}`;
-      const rrfScore = lexicalWeight / (rrfK + lex.rank);
-      candidateMap.set(key, {
-        resourceType: 'CLAIM',
-        resourceId: lex.claimId,
-        text: lex.claimText,
-        canonicalVersion: lex.canonicalVersion,
-        evidenceIds: [...lex.evidenceIds],
-        accessScope: [...lex.accessScope],
-        sensitivity: lex.sensitivity,
-        lexicalRank: lex.rank,
-        lexicalScore: lex.score,
-        lexicalMatchType: lex.matchType,
-        fusionScore: rrfScore,
-      });
-    }
-
-    // Add / merge semantic candidates
-    for (let index = 0; index < semanticItems.length; index++) {
-      const sem = semanticItems[index]!;
-      const semRank = index + 1;
-      const key = `${sem.resourceType}:${sem.resourceId}`;
-      const semRrfScore = semanticWeight / (rrfK + semRank);
-
-      const existing = candidateMap.get(key);
-      if (existing) {
-        // Coherence check: Do NOT merge different canonical versions into one HYBRID result
-        if (
-          existing.canonicalVersion !== undefined &&
-          sem.canonicalVersion !== undefined &&
-          existing.canonicalVersion !== sem.canonicalVersion
-        ) {
-          throw new ShotgunError({
-            code: 'VALIDATION_ERROR',
-            safeMessage: `Version mismatch for ${key}: lexical canonical version ${existing.canonicalVersion} !== semantic canonical version ${sem.canonicalVersion}.`,
-            module: 'hybrid-retrieval',
-            operation: 'fuse-candidates',
-          });
-        }
-
-        // Security check: sensitivity must match between versions
-        if (existing.sensitivity !== sem.sensitivity) {
-          throw new ShotgunError({
-            code: 'POLICY_DENIED',
-            safeMessage: `Sensitivity mismatch for ${key} between lexical and semantic projections.`,
-            module: 'hybrid-retrieval',
-            operation: 'fuse-candidates',
-          });
-        }
-
-        existing.semanticRank = semRank;
-        existing.fusionScore += semRrfScore;
-        for (const ev of sem.evidenceIds) {
-          if (!existing.evidenceIds.includes(ev)) {
-            existing.evidenceIds.push(ev);
-          }
-        }
-      } else {
+      for (const lex of lexItems) {
+        const key = `CLAIM:${lex.claimId}`;
+        const rrfScore = lexicalWeight / (rrfK + lex.rank);
         candidateMap.set(key, {
-          resourceType: sem.resourceType,
-          resourceId: sem.resourceId,
-          canonicalVersion: sem.canonicalVersion,
-          evidenceIds: [...sem.evidenceIds],
-          accessScope: [...sem.accessScope],
-          sensitivity: sem.sensitivity,
-          semanticRank: semRank,
-          fusionScore: semRrfScore,
+          resourceType: 'CLAIM',
+          resourceId: lex.claimId,
+          text: lex.claimText,
+          canonicalVersion: lex.canonicalVersion,
+          evidenceIds: [...lex.evidenceIds],
+          accessScope: [...lex.accessScope],
+          sensitivity: lex.sensitivity,
+          lexicalRank: lex.rank,
+          lexicalScore: lex.score,
+          lexicalMatchType: lex.matchType,
+          fusionScore: rrfScore,
         });
       }
-    }
 
-    // 4. Deterministic Sort: fusionScore DESC, then resourceType ASC (ordinal), then resourceId ASC (ordinal)
-    const sortedCandidates = Array.from(candidateMap.values()).sort((left, right) => {
-      if (Math.abs(left.fusionScore - right.fusionScore) > 1e-12) {
-        return right.fusionScore - left.fusionScore;
-      }
-      const typeCmp = compareOrdinal(left.resourceType, right.resourceType);
-      if (typeCmp !== 0) return typeCmp;
-      return compareOrdinal(left.resourceId, right.resourceId);
-    });
+      for (let index = 0; index < semItems.length; index++) {
+        const sem = semItems[index]!;
+        const semRank = index + 1;
+        const key = `${sem.resourceType}:${sem.resourceId}`;
+        const semRrfScore = semanticWeight / (rrfK + semRank);
 
-    const topK = sortedCandidates.slice(0, limit);
-
-    // 5. Authoritative Content and Citation Lineage Resolution
-    const allowedScopeSet = new Set(input.accessScopes);
-    const callerHighestSens = getHighestSensitivity(input.allowedSensitivities);
-    const items: HybridCandidateResult[] = [];
-
-    for (let index = 0; index < topK.length; index++) {
-      const cand = topK[index]!;
-      const fusionRank = index + 1;
-
-      // Determine signals
-      const signals: HybridFusionSignal[] = [];
-      if (cand.lexicalRank !== undefined && cand.semanticRank !== undefined) {
-        signals.push('HYBRID', 'LEXICAL', 'SEMANTIC');
-      } else if (cand.lexicalRank !== undefined) {
-        signals.push('LEXICAL');
-      } else {
-        signals.push('SEMANTIC');
-      }
-
-      // Resolve content for semantic-only resources if text is absent
-      let text = cand.text;
-      let canonicalVersion = cand.canonicalVersion ?? 0;
-      let evidenceIds = cand.evidenceIds;
-
-      if (!text) {
-        if (!this.resourceResolver) {
-          throw new ShotgunError({
-            code: 'VALIDATION_ERROR',
-            safeMessage: `Knowledge resource resolver is not configured to resolve ${cand.resourceType}:${cand.resourceId}.`,
-            module: 'hybrid-retrieval',
-            operation: 'resolve-content',
-          });
-        }
-
-        const resolved = await this.resourceResolver.resolveResource(
-          projectId,
-          cand.resourceType,
-          cand.resourceId,
-        );
-
-        if (!resolved || !resolved.text || resolved.text.trim().length === 0) {
-          throw new ShotgunError({
-            code: 'VALIDATION_ERROR',
-            safeMessage: `Semantic resource ${cand.resourceType}:${cand.resourceId} could not be resolved from authoritative knowledge.`,
-            module: 'hybrid-retrieval',
-            operation: 'resolve-content',
-          });
-        }
-
-        // Version coherence: if resolver returns a canonicalVersion, it must match candidate version
-        if (
-          resolved.canonicalVersion !== undefined &&
-          cand.canonicalVersion !== undefined &&
-          resolved.canonicalVersion !== cand.canonicalVersion
-        ) {
-          throw new ShotgunError({
-            code: 'VALIDATION_ERROR',
-            safeMessage: `Version mismatch for ${cand.resourceType}:${cand.resourceId}: resolved canonical version ${resolved.canonicalVersion} !== candidate version ${cand.canonicalVersion}.`,
-            module: 'hybrid-retrieval',
-            operation: 'resolve-content',
-          });
-        }
-
-        // Security coherence: if resolved resource has sensitivity / accessScope, validate against candidate & caller
-        if (resolved.sensitivity !== undefined) {
-          if (!hasSensitivityClearance(callerHighestSens, resolved.sensitivity)) {
-            throw new ShotgunError({
-              code: 'POLICY_DENIED',
-              safeMessage: `Caller lacks clearance for resolved resource ${cand.resourceType}:${cand.resourceId} sensitivity '${resolved.sensitivity}'.`,
-              module: 'hybrid-retrieval',
-              operation: 'resolve-content',
-            });
-          }
-          if (resolved.sensitivity !== cand.sensitivity) {
-            throw new ShotgunError({
-              code: 'POLICY_DENIED',
-              safeMessage: `Sensitivity mismatch for ${cand.resourceType}:${cand.resourceId}: resolved '${resolved.sensitivity}' !== projected '${cand.sensitivity}'.`,
-              module: 'hybrid-retrieval',
-              operation: 'resolve-content',
-            });
-          }
-        }
-
-        if (resolved.accessScope !== undefined && resolved.accessScope.length > 0) {
-          const resolvedScopeAllowed = resolved.accessScope.every((s) => allowedScopeSet.has(s));
-          if (!resolvedScopeAllowed) {
-            throw new ShotgunError({
-              code: 'POLICY_DENIED',
-              safeMessage: `Caller lacks access scope for resolved resource ${cand.resourceType}:${cand.resourceId}.`,
-              module: 'hybrid-retrieval',
-              operation: 'resolve-content',
-            });
-          }
-        }
-
-        // Evidence coherence: if candidate and resolved both supply evidence, verify compatibility
-        if (
-          resolved.evidenceIds &&
-          resolved.evidenceIds.length > 0 &&
-          cand.evidenceIds &&
-          cand.evidenceIds.length > 0
-        ) {
-          const hasCommon = cand.evidenceIds.some((evId) => resolved.evidenceIds!.includes(evId));
-          if (!hasCommon) {
+        const existing = candidateMap.get(key);
+        if (existing) {
+          if (
+            existing.canonicalVersion !== undefined &&
+            sem.canonicalVersion !== undefined &&
+            existing.canonicalVersion !== sem.canonicalVersion
+          ) {
             throw new ShotgunError({
               code: 'VALIDATION_ERROR',
-              safeMessage: `Evidence identity mismatch for ${cand.resourceType}:${cand.resourceId}: candidate evidence [${cand.evidenceIds.join(', ')}] not in resolved evidence [${resolved.evidenceIds.join(', ')}].`,
+              safeMessage: `Version mismatch for ${key}: lexical canonical version ${existing.canonicalVersion} !== semantic canonical version ${sem.canonicalVersion}.`,
+              module: 'hybrid-retrieval',
+              operation: 'fuse-candidates',
+            });
+          }
+
+          if (existing.sensitivity !== sem.sensitivity) {
+            throw new ShotgunError({
+              code: 'POLICY_DENIED',
+              safeMessage: `Sensitivity mismatch for ${key} between lexical and semantic projections.`,
+              module: 'hybrid-retrieval',
+              operation: 'fuse-candidates',
+            });
+          }
+
+          if (!areStringSetsEqual(existing.accessScope, sem.accessScope)) {
+            throw new ShotgunError({
+              code: 'POLICY_DENIED',
+              safeMessage: `Access scope mismatch for duplicate candidate ${key} between lexical and semantic projections.`,
+              module: 'hybrid-retrieval',
+              operation: 'fuse-candidates',
+            });
+          }
+
+          if (!areStringSetsEqual(existing.evidenceIds, sem.evidenceIds)) {
+            throw new ShotgunError({
+              code: 'VALIDATION_ERROR',
+              safeMessage: `Evidence mismatch for duplicate candidate ${key} between lexical and semantic projections.`,
+              module: 'hybrid-retrieval',
+              operation: 'fuse-candidates',
+            });
+          }
+
+          existing.semanticRank = semRank;
+          existing.fusionScore += semRrfScore;
+        } else {
+          candidateMap.set(key, {
+            resourceType: sem.resourceType,
+            resourceId: sem.resourceId,
+            canonicalVersion: sem.canonicalVersion,
+            evidenceIds: [...sem.evidenceIds],
+            accessScope: [...sem.accessScope],
+            sensitivity: sem.sensitivity,
+            semanticRank: semRank,
+            fusionScore: semRrfScore,
+          });
+        }
+      }
+
+      const sortedCandidates = Array.from(candidateMap.values()).sort((left, right) => {
+        if (Math.abs(left.fusionScore - right.fusionScore) > 1e-12) {
+          return right.fusionScore - left.fusionScore;
+        }
+        const typeCmp = compareOrdinal(left.resourceType, right.resourceType);
+        if (typeCmp !== 0) return typeCmp;
+        return compareOrdinal(left.resourceId, right.resourceId);
+      });
+
+      const topK = sortedCandidates.slice(0, limit);
+      const items: HybridCandidateResult[] = [];
+
+      for (let index = 0; index < topK.length; index++) {
+        const cand = topK[index]!;
+        const fusionRank = index + 1;
+
+        const signals: HybridFusionSignal[] = [];
+        if (cand.lexicalRank !== undefined && cand.semanticRank !== undefined) {
+          signals.push('HYBRID', 'LEXICAL', 'SEMANTIC');
+        } else if (cand.lexicalRank !== undefined) {
+          signals.push('LEXICAL');
+        } else {
+          signals.push('SEMANTIC');
+        }
+
+        let text = cand.text;
+        let canonicalVersion = cand.canonicalVersion ?? 0;
+        let evidenceIds = cand.evidenceIds;
+
+        if (!text) {
+          if (!this.resourceResolver) {
+            throw new ShotgunError({
+              code: 'VALIDATION_ERROR',
+              safeMessage: `Knowledge resource resolver is not configured to resolve ${cand.resourceType}:${cand.resourceId}.`,
               module: 'hybrid-retrieval',
               operation: 'resolve-content',
             });
           }
+
+          const resolved = await this.resourceResolver.resolveResource(
+            projectId,
+            cand.resourceType,
+            cand.resourceId,
+          );
+
+          if (!resolved || !resolved.text || resolved.text.trim().length === 0) {
+            throw new ShotgunError({
+              code: 'VALIDATION_ERROR',
+              safeMessage: `Semantic resource ${cand.resourceType}:${cand.resourceId} could not be resolved from authoritative knowledge.`,
+              module: 'hybrid-retrieval',
+              operation: 'resolve-content',
+            });
+          }
+
+          if (
+            resolved.canonicalVersion !== undefined &&
+            cand.canonicalVersion !== undefined &&
+            resolved.canonicalVersion !== cand.canonicalVersion
+          ) {
+            throw new ShotgunError({
+              code: 'VALIDATION_ERROR',
+              safeMessage: `Version mismatch for ${cand.resourceType}:${cand.resourceId}: resolved canonical version ${resolved.canonicalVersion} !== candidate version ${cand.canonicalVersion}.`,
+              module: 'hybrid-retrieval',
+              operation: 'resolve-content',
+            });
+          }
+
+          if (resolved.sensitivity !== undefined) {
+            if (!hasSensitivityClearance(callerHighestSens, resolved.sensitivity)) {
+              throw new ShotgunError({
+                code: 'POLICY_DENIED',
+                safeMessage: `Caller lacks clearance for resolved resource ${cand.resourceType}:${cand.resourceId} sensitivity '${resolved.sensitivity}'.`,
+                module: 'hybrid-retrieval',
+                operation: 'resolve-content',
+              });
+            }
+            if (resolved.sensitivity !== cand.sensitivity) {
+              throw new ShotgunError({
+                code: 'POLICY_DENIED',
+                safeMessage: `Sensitivity mismatch for ${cand.resourceType}:${cand.resourceId}: resolved '${resolved.sensitivity}' !== projected '${cand.sensitivity}'.`,
+                module: 'hybrid-retrieval',
+                operation: 'resolve-content',
+              });
+            }
+          }
+
+          if (resolved.accessScope !== undefined && resolved.accessScope.length > 0) {
+            if (!areStringSetsEqual(cand.accessScope, resolved.accessScope)) {
+              throw new ShotgunError({
+                code: 'POLICY_DENIED',
+                safeMessage: `Access scope mismatch for ${cand.resourceType}:${cand.resourceId}: projected [${cand.accessScope.join(', ')}] !== authoritative [${resolved.accessScope.join(', ')}].`,
+                module: 'hybrid-retrieval',
+                operation: 'resolve-content',
+              });
+            }
+            const resolvedScopeAllowed = resolved.accessScope.every((s) => allowedScopeSet.has(s));
+            if (!resolvedScopeAllowed) {
+              throw new ShotgunError({
+                code: 'POLICY_DENIED',
+                safeMessage: `Caller lacks access scope for resolved resource ${cand.resourceType}:${cand.resourceId}.`,
+                module: 'hybrid-retrieval',
+                operation: 'resolve-content',
+              });
+            }
+          }
+
+          if (cand.evidenceIds && cand.evidenceIds.length > 0) {
+            if (!resolved.evidenceIds || resolved.evidenceIds.length === 0) {
+              throw new ShotgunError({
+                code: 'VALIDATION_ERROR',
+                safeMessage: `Evidence authority missing for ${cand.resourceType}:${cand.resourceId}.`,
+                module: 'hybrid-retrieval',
+                operation: 'resolve-content',
+              });
+            }
+            const allContained = cand.evidenceIds.every((evId) =>
+              resolved.evidenceIds!.includes(evId),
+            );
+            if (!allContained) {
+              throw new ShotgunError({
+                code: 'VALIDATION_ERROR',
+                safeMessage: `Evidence identity mismatch for ${cand.resourceType}:${cand.resourceId}: candidate evidence [${cand.evidenceIds.join(', ')}] is not a subset of authoritative evidence [${resolved.evidenceIds.join(', ')}].`,
+                module: 'hybrid-retrieval',
+                operation: 'resolve-content',
+              });
+            }
+          }
+
+          text = resolved.text;
+          if (resolved.canonicalVersion !== undefined) {
+            canonicalVersion = resolved.canonicalVersion;
+          }
+          if (
+            (!evidenceIds || evidenceIds.length === 0) &&
+            resolved.evidenceIds &&
+            resolved.evidenceIds.length > 0
+          ) {
+            evidenceIds = [...resolved.evidenceIds];
+          }
         }
 
-        text = resolved.text;
-        if (resolved.canonicalVersion !== undefined) {
-          canonicalVersion = resolved.canonicalVersion;
+        if (!evidenceIds || evidenceIds.length === 0) {
+          throw new ShotgunError({
+            code: 'VALIDATION_ERROR',
+            safeMessage: `Candidate ${cand.resourceType}:${cand.resourceId} has no evidence references.`,
+            module: 'hybrid-retrieval',
+            operation: 'resolve-citations',
+          });
         }
-        if (
-          (!evidenceIds || evidenceIds.length === 0) &&
-          resolved.evidenceIds &&
-          resolved.evidenceIds.length > 0
-        ) {
-          evidenceIds = [...resolved.evidenceIds];
-        }
-      }
 
-      if (!evidenceIds || evidenceIds.length === 0) {
-        throw new ShotgunError({
-          code: 'VALIDATION_ERROR',
-          safeMessage: `Candidate ${cand.resourceType}:${cand.resourceId} has no evidence references.`,
-          module: 'hybrid-retrieval',
-          operation: 'resolve-citations',
+        const citations: HybridCitation[] = [];
+        for (const evidenceId of evidenceIds) {
+          const span = await this.evidenceResolver.getEvidenceSpan(projectId, evidenceId);
+          if (!span) {
+            throw new ShotgunError({
+              code: 'VALIDATION_ERROR',
+              safeMessage: `EvidenceSpan '${evidenceId}' referenced by ${cand.resourceType}:${cand.resourceId} was not found.`,
+              module: 'hybrid-retrieval',
+              operation: 'resolve-citations',
+            });
+          }
+
+          const scopeAllowed = span.accessScope.every((scope) => allowedScopeSet.has(scope));
+          if (!scopeAllowed || !hasSensitivityClearance(callerHighestSens, span.sensitivity)) {
+            throw new ShotgunError({
+              code: 'POLICY_DENIED',
+              safeMessage: `Caller lacks access clearance for EvidenceSpan '${evidenceId}'.`,
+              module: 'hybrid-retrieval',
+              operation: 'resolve-citations',
+            });
+          }
+
+          const sourceVersion = await this.sourceVersionResolver.getSourceVersion(
+            projectId,
+            span.sourceVersionId,
+          );
+          if (!sourceVersion) {
+            throw new ShotgunError({
+              code: 'VALIDATION_ERROR',
+              safeMessage: `SourceVersion '${span.sourceVersionId}' referenced by EvidenceSpan '${evidenceId}' was not found.`,
+              module: 'hybrid-retrieval',
+              operation: 'resolve-citations',
+            });
+          }
+
+          if (
+            sourceVersion.projectId !== projectId ||
+            (span.sourceId && sourceVersion.sourceId !== span.sourceId)
+          ) {
+            throw new ShotgunError({
+              code: 'VALIDATION_ERROR',
+              safeMessage: `SourceVersion '${span.sourceVersionId}' does not match project or source lineage for EvidenceSpan '${evidenceId}'.`,
+              module: 'hybrid-retrieval',
+              operation: 'resolve-citations',
+            });
+          }
+
+          citations.push({
+            evidenceId: span.evidenceId,
+            sourceId: span.sourceId,
+            sourceVersionId: span.sourceVersionId,
+            revisionId: span.revisionId,
+            exactQuote: span.quote.exact,
+            pointer: span.pointer,
+            position: span.position,
+            selectors: span.selectors,
+          });
+        }
+
+        if (citations.length === 0) {
+          throw new ShotgunError({
+            code: 'VALIDATION_ERROR',
+            safeMessage: `Candidate ${cand.resourceType}:${cand.resourceId} has unresolvable citation lineage.`,
+            module: 'hybrid-retrieval',
+            operation: 'resolve-citations',
+          });
+        }
+
+        items.push({
+          resourceType: cand.resourceType,
+          resourceId: cand.resourceId,
+          text,
+          canonicalVersion,
+          evidenceIds,
+          citations,
+          accessScope: cand.accessScope,
+          sensitivity: cand.sensitivity,
+          signals,
+          lexicalRank: cand.lexicalRank,
+          lexicalScore: cand.lexicalScore,
+          lexicalMatchType: cand.lexicalMatchType,
+          semanticRank: cand.semanticRank,
+          fusionRank,
+          fusionScore: cand.fusionScore,
         });
       }
 
-      // Resolve and verify citation lineage: Knowledge -> EvidenceSpan -> SourceVersion
-      const citations: HybridCitation[] = [];
-      for (const evidenceId of evidenceIds) {
-        const span = await this.evidenceResolver.getEvidenceSpan(projectId, evidenceId);
-        if (!span) {
-          throw new ShotgunError({
-            code: 'VALIDATION_ERROR',
-            safeMessage: `EvidenceSpan '${evidenceId}' referenced by ${cand.resourceType}:${cand.resourceId} was not found.`,
-            module: 'hybrid-retrieval',
-            operation: 'resolve-citations',
-          });
-        }
+      return items;
+    };
 
-        // Security check on evidence span
-        const scopeAllowed = span.accessScope.every((scope) => allowedScopeSet.has(scope));
-        if (!scopeAllowed || !hasSensitivityClearance(callerHighestSens, span.sensitivity)) {
-          throw new ShotgunError({
-            code: 'POLICY_DENIED',
-            safeMessage: `Caller lacks access clearance for EvidenceSpan '${evidenceId}'.`,
-            module: 'hybrid-retrieval',
-            operation: 'resolve-citations',
-          });
+    let items: HybridCandidateResult[] = [];
+    if (semanticItems.length > 0) {
+      try {
+        items = await buildCandidatesAndResolve(lexicalResult.items, semanticItems);
+      } catch (err: unknown) {
+        if (lexicalResult.readiness.status === 'READY') {
+          semanticReadiness = {
+            status: 'DEGRADED',
+            reason: 'Semantic retrieval is temporarily unavailable.',
+          };
+          semanticDegradedReason = 'Semantic retrieval is temporarily unavailable.';
+          items = await buildCandidatesAndResolve(lexicalResult.items, []);
+        } else {
+          throw err;
         }
-
-        // Verify SourceVersion existence and project/source lineage
-        const sourceVersion = await this.sourceVersionResolver.getSourceVersion(
-          projectId,
-          span.sourceVersionId,
-        );
-        if (!sourceVersion) {
-          throw new ShotgunError({
-            code: 'VALIDATION_ERROR',
-            safeMessage: `SourceVersion '${span.sourceVersionId}' referenced by EvidenceSpan '${evidenceId}' was not found.`,
-            module: 'hybrid-retrieval',
-            operation: 'resolve-citations',
-          });
-        }
-
-        if (
-          sourceVersion.projectId !== projectId ||
-          (span.sourceId && sourceVersion.sourceId !== span.sourceId)
-        ) {
-          throw new ShotgunError({
-            code: 'VALIDATION_ERROR',
-            safeMessage: `SourceVersion '${span.sourceVersionId}' does not match project or source lineage for EvidenceSpan '${evidenceId}'.`,
-            module: 'hybrid-retrieval',
-            operation: 'resolve-citations',
-          });
-        }
-
-        citations.push({
-          evidenceId: span.evidenceId,
-          sourceId: span.sourceId,
-          sourceVersionId: span.sourceVersionId,
-          revisionId: span.revisionId,
-          exactQuote: span.quote.exact,
-          pointer: span.pointer,
-          position: span.position,
-          selectors: span.selectors,
-        });
       }
-
-      if (citations.length === 0) {
-        throw new ShotgunError({
-          code: 'VALIDATION_ERROR',
-          safeMessage: `Candidate ${cand.resourceType}:${cand.resourceId} has unresolvable citation lineage.`,
-          module: 'hybrid-retrieval',
-          operation: 'resolve-citations',
-        });
-      }
-
-      items.push({
-        resourceType: cand.resourceType,
-        resourceId: cand.resourceId,
-        text,
-        canonicalVersion,
-        evidenceIds,
-        citations,
-        accessScope: cand.accessScope,
-        sensitivity: cand.sensitivity,
-        signals,
-        lexicalRank: cand.lexicalRank,
-        lexicalScore: cand.lexicalScore,
-        lexicalMatchType: cand.lexicalMatchType,
-        semanticRank: cand.semanticRank,
-        fusionRank,
-        fusionScore: cand.fusionScore,
-      });
+    } else {
+      items = await buildCandidatesAndResolve(lexicalResult.items, []);
     }
+
+    const isDegraded =
+      lexicalResult.readiness.status !== 'READY' || semanticReadiness.status !== 'READY';
 
     return {
       schemaVersion: '1.0.0',

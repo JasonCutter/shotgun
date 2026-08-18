@@ -285,30 +285,23 @@ describe('Hybrid Citation Lineage Preservation Unit Tests', () => {
   });
 
   it('fails with VALIDATION_ERROR when referenced EvidenceSpan does not exist in evidence repository', async () => {
-    const candidateWithMissingEvidence: SemanticCandidateResult = {
-      semanticItemId: 'sem-missing',
-      projectId: 'proj-alpha',
-      generationId: 'gen-001',
-      resourceType: 'CLAIM',
-      resourceId: 'claim-missing',
-      sourceProjectionDigest: 'sha256:src-digest',
+    const lexicalItemWithMissingEvidence: LexicalCandidateResult = {
+      claimId: 'claim-missing',
+      commitId: 'commit-1',
+      revisionId: 'rev-1',
       canonicalVersion: 1,
-      semanticTextDigest: 'sha256:text-missing',
-      embeddingProfileId: 'prof-1',
-      embeddingProfileRevision: 1,
-      representationVersion: 'semantic-representation:v1',
-      distance: 0.1,
-      dimension: 768,
+      claimText: 'Text with missing evidence.',
+      sourceVersionId: 'src-ver-101',
       evidenceIds: ['ev-nonexistent'],
       accessScope: ['finance'],
       sensitivity: 'internal',
-      indexedAt: '2026-08-18T10:00:00.000Z',
-      createdAt: '2026-08-18T10:00:00.000Z',
-      updatedAt: '2026-08-18T10:00:00.000Z',
+      score: 0.9,
+      matchType: 'FULL_TEXT',
+      rank: 1,
     };
 
     const { coordinator } = createRig({
-      semanticItems: [candidateWithMissingEvidence],
+      lexicalItems: [lexicalItemWithMissingEvidence],
       evidenceSpans: {},
     });
 
@@ -342,30 +335,23 @@ describe('Hybrid Citation Lineage Preservation Unit Tests', () => {
       createdAt: '2026-08-18T10:00:00.000Z',
     };
 
-    const candidate: SemanticCandidateResult = {
-      semanticItemId: 'sem-sec',
-      projectId: 'proj-alpha',
-      generationId: 'gen-001',
-      resourceType: 'CLAIM',
-      resourceId: 'claim-sec',
-      sourceProjectionDigest: 'sha256:src-digest',
+    const lexicalItem: LexicalCandidateResult = {
+      claimId: 'claim-sec',
+      commitId: 'commit-sec',
+      revisionId: 'rev-sec',
       canonicalVersion: 1,
-      semanticTextDigest: 'sha256:text-sec',
-      embeddingProfileId: 'prof-1',
-      embeddingProfileRevision: 1,
-      representationVersion: 'semantic-representation:v1',
-      distance: 0.1,
-      dimension: 768,
+      claimText: 'Confidential claim.',
+      sourceVersionId: 'src-ver-sec',
       evidenceIds: ['ev-restricted'],
-      accessScope: ['executive_only'],
-      sensitivity: 'restricted',
-      indexedAt: '2026-08-18T10:00:00.000Z',
-      createdAt: '2026-08-18T10:00:00.000Z',
-      updatedAt: '2026-08-18T10:00:00.000Z',
+      accessScope: ['finance'],
+      sensitivity: 'internal',
+      score: 0.9,
+      matchType: 'FULL_TEXT',
+      rank: 1,
     };
 
     const { coordinator } = createRig({
-      semanticItems: [candidate],
+      lexicalItems: [lexicalItem],
       evidenceSpans: { 'ev-restricted': restrictedSpan },
     });
 

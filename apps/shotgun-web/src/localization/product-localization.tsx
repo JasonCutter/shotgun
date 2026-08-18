@@ -202,6 +202,11 @@ const enUS = {
   'ai.historical_compatibility': 'Historical Gemini compatibility applies only to this provider.',
   'ai.approve_privacy_decision': 'Approve this provider privacy decision?',
   'ai.current_credential': 'This credential is used by the current saved configuration.',
+  'ai.error.provider_proposal_validation_failed':
+    'Provider privacy proposal could not be validated for the selected provider.',
+  'ai.request_provider_privacy': 'Request provider privacy approval',
+  'ai.approve_provider_privacy': 'Approve provider privacy decision',
+  'privacy.gemini_compatibility_note': 'An existing Gemini approval applies only to Google Gemini.',
   'project.manage': 'Manage Projects',
   'project.create': 'Create Project',
   'project.rename': 'Rename Project',
@@ -695,6 +700,11 @@ const koKR: Record<ProductMessageKey, string> = {
   'ai.historical_compatibility': '이전 Gemini 호환성은 이 제공자에만 적용됩니다.',
   'ai.approve_privacy_decision': '이 제공자의 개인정보 결정을 승인할까요?',
   'ai.current_credential': '이 자격 증명은 현재 저장된 구성에서 사용됩니다.',
+  'ai.error.provider_proposal_validation_failed':
+    '선택한 제공자의 제공자 개인정보 제안을 확인할 수 없습니다.',
+  'ai.request_provider_privacy': '제공자 개인정보 승인 요청',
+  'ai.approve_provider_privacy': '제공자 개인정보 결정 승인',
+  'privacy.gemini_compatibility_note': '기존 Gemini 승인은 Google Gemini에만 적용됩니다.',
   'project.manage': '프로젝트 관리',
   'project.create': '프로젝트 만들기',
   'project.rename': '프로젝트 이름 바꾸기',

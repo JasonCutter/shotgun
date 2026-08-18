@@ -247,9 +247,7 @@ export const PrivacyCommandSurface = ({
           proposal.providerId !== selectedProvider.providerId
         ) {
           setPendingProviderProposal(undefined);
-          setErrorMessage(
-            'Provider privacy proposal could not be validated for the selected provider.',
-          );
+          setErrorMessage(t('ai.error.provider_proposal_validation_failed'));
           return;
         }
         setPendingProviderProposal(proposal);
@@ -372,7 +370,7 @@ export const PrivacyCommandSurface = ({
                   htmlFor="privacy-command-provider-select"
                   style={{ display: 'block', fontWeight: 600, marginBottom: '4px' }}
                 >
-                  AI Provider
+                  {t('ai.provider')}
                 </label>
                 <select
                   id="privacy-command-provider-select"
@@ -396,7 +394,7 @@ export const PrivacyCommandSurface = ({
               {privacyStateLabel(selectedProviderPrivacy, t)}
             </p>
             {selectedProviderPrivacy.legacyGeminiCompatibility ? (
-              <p>An existing Gemini approval applies only to Google Gemini.</p>
+              <p>{t('privacy.gemini_compatibility_note')}</p>
             ) : null}
             {reviewMode && !providerApproved && !canApproveProviderPrivacy ? (
               <button
@@ -405,7 +403,7 @@ export const PrivacyCommandSurface = ({
                 onClick={() => providerPrivacyMutation.mutate('propose')}
                 disabled={pending}
               >
-                Request provider privacy approval
+                {t('ai.request_provider_privacy')}
               </button>
             ) : null}
             {reviewMode && canApproveProviderPrivacy ? (
@@ -419,7 +417,7 @@ export const PrivacyCommandSurface = ({
                 }}
                 disabled={pending}
               >
-                Approve provider privacy decision
+                {t('ai.approve_provider_privacy')}
               </button>
             ) : null}
           </section>
@@ -466,9 +464,6 @@ export const PrivacyCommandSurface = ({
                   : t('privacy.transfer_blocked')}
               </p>
               <p>{t('privacy.restricted_context')}</p>
-              <p>
-                <strong>{t('privacy.retention_label')}</strong> {privacyData.retentionSummary}
-              </p>
             </section>
             {reviewMode && snapshotQuery.isLoading ? (
               <p>{t('privacy.loading_preconditions')}</p>

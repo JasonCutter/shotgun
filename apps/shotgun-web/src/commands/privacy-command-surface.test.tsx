@@ -174,7 +174,8 @@ describe('PrivacyCommandSurface', () => {
     });
 
     expect(await screen.findByText('Controlled external')).toBeTruthy();
-    expect(screen.getByText('Retained according to Project policy.')).toBeTruthy();
+    expect(screen.queryByText('Retained according to Project policy.')).toBeNull();
+    expect(screen.queryByText(/Retention:/i)).toBeNull();
     expect(getPrivacyRetention).toHaveBeenCalledWith('project-1');
     expect(getSettingsSnapshot).not.toHaveBeenCalled();
     expect(applySettingsCommand).not.toHaveBeenCalled();
@@ -195,6 +196,95 @@ describe('PrivacyCommandSurface', () => {
     for (const button of buttons) {
       expect(button.textContent).toMatch(/Close/i);
     }
+  });
+
+  it('renders localized ko-KR privacy.open surface with zero raw retention text and read-only behavior', async () => {
+    const getPrivacyRetention = vi.fn(async () => privacyResponse());
+    const aiSettings: AISettingsReadModel = {
+      projectId: 'project-1',
+      mode: 'PROJECT_MANAGED',
+      defaultProviderId: 'deepseek',
+      providers: [
+        {
+          providerId: 'deepseek',
+          displayName: 'DeepSeek',
+          status: 'active',
+          models: [],
+        },
+        {
+          providerId: 'google-gemini',
+          displayName: 'Google Gemini',
+          status: 'active',
+          models: [],
+        },
+      ],
+      credentialStatuses: [],
+      privacy: [
+        {
+          providerId: 'deepseek',
+          deploymentAllowed: true,
+          approval: {
+            projectId: 'project-1',
+            providerId: 'deepseek',
+            approved: false,
+            approvalRevision: 1,
+            reviewedBy: 'owner-1',
+            reviewedAt: '2026-08-14T00:00:00.000Z',
+          },
+          legacyGeminiCompatibility: false,
+        },
+        {
+          providerId: 'google-gemini',
+          deploymentAllowed: true,
+          approval: {
+            projectId: 'project-1',
+            providerId: 'google-gemini',
+            approved: true,
+            approvalRevision: 1,
+            reviewedBy: 'owner-1',
+            reviewedAt: '2026-08-14T00:00:00.000Z',
+          },
+          legacyGeminiCompatibility: true,
+        },
+      ],
+      vaultAvailability: { state: 'AVAILABLE', keyVersion: 'v1' },
+      legacyGeminiCredentialConfigured: false,
+    };
+    const getAISettings = vi.fn(async () => aiSettings);
+
+    renderSurface(
+      'privacy.open',
+      {
+        getPrivacyRetention,
+        getAISettings,
+      },
+      'ko-KR',
+    );
+
+    expect(
+      await screen.findByRole('heading', { name: '프로젝트 개인정보', level: 2 }),
+    ).toBeTruthy();
+    expect(await screen.findByText('제공자 개인정보')).toBeTruthy();
+    expect(screen.getByLabelText('제공자')).toBeTruthy();
+
+    // Verify retention is NOT rendered
+    expect(screen.queryByText('Retained according to Project policy.')).toBeNull();
+    expect(screen.queryByText('Project retention policy is unchanged.')).toBeNull();
+    expect(screen.queryByText(/보존:/i)).toBeNull();
+    expect(screen.queryByText(/Retention:/i)).toBeNull();
+
+    // Verify raw English copy is absent
+    expect(screen.queryByText('AI Provider')).toBeNull();
+    expect(screen.queryByText('Request provider privacy approval')).toBeNull();
+    expect(screen.queryByText('Approve provider privacy decision')).toBeNull();
+    expect(
+      screen.queryByText('An existing Gemini approval applies only to Google Gemini.'),
+    ).toBeNull();
+
+    // Verify read-only state (no mutation buttons)
+    expect(screen.queryByRole('button', { name: '제공자 개인정보 승인 요청' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '제공자 개인정보 결정 승인' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '개인정보 검토 요청' })).toBeNull();
   });
 
   it.each([
@@ -464,5 +554,78 @@ describe('PrivacyCommandSurface', () => {
       }),
     );
     expect(screen.queryByText('proposal-1')).toBeNull();
+  });
+
+  it('renders localized ko-KR provider privacy review actions', async () => {
+    const user = userEvent.setup();
+    const proposeAIProviderPrivacyApproval = vi.fn<
+      ShotgunApiClient['proposeAIProviderPrivacyApproval']
+    >(async () => ({
+      proposalId: 'proposal-ko-1',
+      projectId: 'project-1',
+      providerId: 'deepseek',
+      approved: true,
+      expectedApprovalRevision: 1,
+      proposedBy: 'owner-1',
+      status: 'PROPOSED',
+      createdAt: '2026-08-14T00:00:00.000Z',
+    }));
+    const aiSettings: AISettingsReadModel = {
+      projectId: 'project-1',
+      mode: 'PROJECT_MANAGED',
+      defaultProviderId: 'deepseek',
+      providers: [
+        {
+          providerId: 'deepseek',
+          displayName: 'DeepSeek',
+          status: 'active',
+          models: [],
+        },
+      ],
+      credentialStatuses: [],
+      privacy: [
+        {
+          providerId: 'deepseek',
+          deploymentAllowed: true,
+          approval: {
+            projectId: 'project-1',
+            providerId: 'deepseek',
+            approved: false,
+            approvalRevision: 1,
+            reviewedBy: 'owner-1',
+            reviewedAt: '2026-08-14T00:00:00.000Z',
+          },
+          legacyGeminiCompatibility: false,
+        },
+      ],
+      vaultAvailability: { state: 'AVAILABLE', keyVersion: 'v1' },
+      legacyGeminiCredentialConfigured: false,
+    };
+    renderSurface(
+      'privacy.review',
+      {
+        getPrivacyRetention: vi.fn(async () => privacyResponse()),
+        getAISettings: vi.fn(async () => aiSettings),
+        proposeAIProviderPrivacyApproval,
+      },
+      'ko-KR',
+    );
+
+    // 1. Verify localized request button exists and raw English button is absent
+    const requestButton = await screen.findByRole('button', {
+      name: '제공자 개인정보 승인 요청',
+    });
+    expect(requestButton).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Request provider privacy approval' })).toBeNull();
+
+    // 2. Trigger proposal path only to make approval action available
+    await user.click(requestButton);
+
+    // 3. Verify localized approval button exists and raw English button is absent
+    const approveButton = await screen.findByRole('button', {
+      name: '제공자 개인정보 결정 승인',
+    });
+    expect(approveButton).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Approve provider privacy decision' })).toBeNull();
   });
 });

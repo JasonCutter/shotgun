@@ -1142,4 +1142,115 @@ describe('AKP-1 WP2: PostgreSQL + pgvector Semantic Projection Persistence', () 
     );
     expect(canonicalState.rows[0]?.count).toBeDefined();
   });
+
+  it('16. SEMANTIC ITEM IDENTITY PARITY: translates PostgreSQL unique constraint violation on semanticItemId to SemanticEmbeddingError(CONFLICT)', async () => {
+    const gen: SemanticProjectionGeneration = {
+      projectId: testProjectA,
+      generationId: 'gen-dup-sem-id',
+      sourceProjectionDigest: 'sha256:' + '0'.repeat(64),
+      canonicalBaseVersion: 1,
+      credentialId: 'vault:openai:owner',
+      credentialRevision: 1,
+      providerPolicyFingerprint: 'sha256:' + '1'.repeat(64),
+      providerId: 'openai',
+      embeddingModelId: 'text-embedding-3-small',
+      embeddingProfileId: 'prof-1',
+      embeddingProfileRevision: 1,
+      providerRegistryRevision: 'provider-registry:v1',
+      capabilityCatalogRevision: SEMANTIC_EMBEDDING_CATALOG_REVISION,
+      representationVersion: SEMANTIC_REPRESENTATION_VERSION,
+      dimension: 768,
+      distanceMetric: 'cosine',
+      normalizationPolicy: 'none',
+      buildStatus: 'READY',
+      createdAt: '2026-08-18T10:00:00.000Z',
+    };
+    await postgresRepo.saveGeneration(gen);
+
+    const vec = new Array(768).fill(0.01);
+
+    const item1: SemanticProjectionItem = {
+      semanticItemId: 'sem-dup-target-1',
+      projectId: testProjectA,
+      generationId: 'gen-dup-sem-id',
+      resourceType: 'CLAIM',
+      resourceId: 'claim-owner-1',
+      sourceProjectionDigest: 'sha256:' + '0'.repeat(64),
+      canonicalVersion: 1,
+      semanticTextDigest: 'sha256:' + '1'.repeat(64),
+      embeddingProfileId: 'prof-1',
+      embeddingProfileRevision: 1,
+      representationVersion: SEMANTIC_REPRESENTATION_VERSION,
+      vector: vec,
+      dimension: 768,
+      evidenceIds: [],
+      accessScope: ['public'],
+      sensitivity: 'public',
+      indexedAt: '2026-08-18T10:00:00.000Z',
+      createdAt: '2026-08-18T10:00:00.000Z',
+      updatedAt: '2026-08-18T10:00:00.000Z',
+    };
+    await postgresRepo.upsertItem(item1);
+
+    // 1. Single upsertItem on different resource with same semanticItemId throws typed SemanticEmbeddingError(CONFLICT)
+    const itemDuplicate: SemanticProjectionItem = {
+      semanticItemId: 'sem-dup-target-1',
+      projectId: testProjectA,
+      generationId: 'gen-dup-sem-id',
+      resourceType: 'FACT',
+      resourceId: 'fact-intruder-2',
+      sourceProjectionDigest: 'sha256:' + '0'.repeat(64),
+      canonicalVersion: 1,
+      semanticTextDigest: 'sha256:' + '2'.repeat(64),
+      embeddingProfileId: 'prof-1',
+      embeddingProfileRevision: 1,
+      representationVersion: SEMANTIC_REPRESENTATION_VERSION,
+      vector: vec,
+      dimension: 768,
+      evidenceIds: [],
+      accessScope: ['public'],
+      sensitivity: 'public',
+      indexedAt: '2026-08-18T10:00:00.000Z',
+      createdAt: '2026-08-18T10:00:00.000Z',
+      updatedAt: '2026-08-18T10:00:00.000Z',
+    };
+
+    await expect(postgresRepo.upsertItem(itemDuplicate)).rejects.toMatchObject({
+      name: 'SemanticEmbeddingError',
+      embeddingErrorCode: 'CONFLICT',
+    });
+
+    // 2. Bulk upsertItems in batch with duplicate semanticItemId throws typed CONFLICT and rolls back
+    const validBatchItem: SemanticProjectionItem = {
+      semanticItemId: 'sem-batch-valid-new',
+      projectId: testProjectA,
+      generationId: 'gen-dup-sem-id',
+      resourceType: 'DECISION',
+      resourceId: 'decision-batch-3',
+      sourceProjectionDigest: 'sha256:' + '0'.repeat(64),
+      canonicalVersion: 1,
+      semanticTextDigest: 'sha256:' + '3'.repeat(64),
+      embeddingProfileId: 'prof-1',
+      embeddingProfileRevision: 1,
+      representationVersion: SEMANTIC_REPRESENTATION_VERSION,
+      vector: vec,
+      dimension: 768,
+      evidenceIds: [],
+      accessScope: ['public'],
+      sensitivity: 'public',
+      indexedAt: '2026-08-18T10:00:00.000Z',
+      createdAt: '2026-08-18T10:00:00.000Z',
+      updatedAt: '2026-08-18T10:00:00.000Z',
+    };
+
+    await expect(postgresRepo.upsertItems([validBatchItem, itemDuplicate])).rejects.toMatchObject({
+      name: 'SemanticEmbeddingError',
+      embeddingErrorCode: 'CONFLICT',
+    });
+
+    // Verify rollback: validBatchItem was NOT persisted
+    expect(
+      await postgresRepo.getItem(testProjectA, 'gen-dup-sem-id', 'DECISION', 'decision-batch-3'),
+    ).toBeUndefined();
+  });
 });

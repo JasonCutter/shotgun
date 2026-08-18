@@ -127,6 +127,25 @@ const mapItem = (row: ItemRow): SemanticProjectionItem => ({
   updatedAt: row.updated_at.toISOString(),
 });
 
+const handlePostgresError = (error: unknown, operation: string): never => {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code: string }).code === '23505' &&
+    'constraint' in error &&
+    (error as { constraint?: string }).constraint === 'unq_semantic_item_id'
+  ) {
+    throw new SemanticEmbeddingError({
+      code: 'CONFLICT',
+      safeMessage: 'Semantic item ID already exists on a different resource in this generation.',
+      operation,
+      cause: error,
+    });
+  }
+  throw error;
+};
+
 export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryPort {
   constructor(private readonly pool: Pool) {}
 
@@ -288,58 +307,62 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
 
     const vectorString = JSON.stringify(item.vector);
 
-    await this.pool.query(
-      `INSERT INTO projection.semantic_items (
-         project_id, generation_id, semantic_item_id, resource_type, resource_id,
-         source_projection_digest, canonical_version, semantic_text_digest,
-         embedding_profile_id, embedding_profile_revision, representation_version,
-         vector, dimension, evidence_ids, access_scope, sensitivity,
-         indexed_at, created_at, updated_at
-       ) VALUES (
-         $1, $2, $3, $4, $5,
-         $6, $7, $8,
-         $9, $10, $11,
-         $12::vector, $13, $14::text[], $15::text[], $16,
-         $17, $18, $19
-       )
-       ON CONFLICT (project_id, generation_id, resource_type, resource_id)
-       DO UPDATE SET
-         semantic_item_id = EXCLUDED.semantic_item_id,
-         source_projection_digest = EXCLUDED.source_projection_digest,
-         canonical_version = EXCLUDED.canonical_version,
-         semantic_text_digest = EXCLUDED.semantic_text_digest,
-         embedding_profile_id = EXCLUDED.embedding_profile_id,
-         embedding_profile_revision = EXCLUDED.embedding_profile_revision,
-         representation_version = EXCLUDED.representation_version,
-         vector = EXCLUDED.vector,
-         dimension = EXCLUDED.dimension,
-         evidence_ids = EXCLUDED.evidence_ids,
-         access_scope = EXCLUDED.access_scope,
-         sensitivity = EXCLUDED.sensitivity,
-         indexed_at = EXCLUDED.indexed_at,
-         updated_at = EXCLUDED.updated_at`,
-      [
-        item.projectId,
-        item.generationId,
-        item.semanticItemId,
-        item.resourceType,
-        item.resourceId,
-        item.sourceProjectionDigest,
-        item.canonicalVersion,
-        item.semanticTextDigest,
-        item.embeddingProfileId,
-        item.embeddingProfileRevision,
-        item.representationVersion,
-        vectorString,
-        item.dimension,
-        item.evidenceIds,
-        item.accessScope,
-        item.sensitivity,
-        item.indexedAt,
-        item.createdAt,
-        item.updatedAt,
-      ],
-    );
+    try {
+      await this.pool.query(
+        `INSERT INTO projection.semantic_items (
+           project_id, generation_id, semantic_item_id, resource_type, resource_id,
+           source_projection_digest, canonical_version, semantic_text_digest,
+           embedding_profile_id, embedding_profile_revision, representation_version,
+           vector, dimension, evidence_ids, access_scope, sensitivity,
+           indexed_at, created_at, updated_at
+         ) VALUES (
+           $1, $2, $3, $4, $5,
+           $6, $7, $8,
+           $9, $10, $11,
+           $12::vector, $13, $14::text[], $15::text[], $16,
+           $17, $18, $19
+         )
+         ON CONFLICT (project_id, generation_id, resource_type, resource_id)
+         DO UPDATE SET
+           semantic_item_id = EXCLUDED.semantic_item_id,
+           source_projection_digest = EXCLUDED.source_projection_digest,
+           canonical_version = EXCLUDED.canonical_version,
+           semantic_text_digest = EXCLUDED.semantic_text_digest,
+           embedding_profile_id = EXCLUDED.embedding_profile_id,
+           embedding_profile_revision = EXCLUDED.embedding_profile_revision,
+           representation_version = EXCLUDED.representation_version,
+           vector = EXCLUDED.vector,
+           dimension = EXCLUDED.dimension,
+           evidence_ids = EXCLUDED.evidence_ids,
+           access_scope = EXCLUDED.access_scope,
+           sensitivity = EXCLUDED.sensitivity,
+           indexed_at = EXCLUDED.indexed_at,
+           updated_at = EXCLUDED.updated_at`,
+        [
+          item.projectId,
+          item.generationId,
+          item.semanticItemId,
+          item.resourceType,
+          item.resourceId,
+          item.sourceProjectionDigest,
+          item.canonicalVersion,
+          item.semanticTextDigest,
+          item.embeddingProfileId,
+          item.embeddingProfileRevision,
+          item.representationVersion,
+          vectorString,
+          item.dimension,
+          item.evidenceIds,
+          item.accessScope,
+          item.sensitivity,
+          item.indexedAt,
+          item.createdAt,
+          item.updatedAt,
+        ],
+      );
+    } catch (error) {
+      handlePostgresError(error, 'upsert-item');
+    }
   }
 
   async upsertItems(items: readonly SemanticProjectionItem[]): Promise<void> {
@@ -446,7 +469,7 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
       await client.query('COMMIT');
     } catch (error) {
       await client.query('ROLLBACK');
-      throw error;
+      handlePostgresError(error, 'upsert-items');
     } finally {
       client.release();
     }

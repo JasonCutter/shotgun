@@ -1,0 +1,40 @@
+{
+  "id": "stage5.semantic-embedding",
+  "version": "1.0.0",
+  "owner": "Shotgun Semantic Embedding Authority",
+  "compatibility": {
+    "runtime": ">=1.0.0 <2.0.0",
+    "contracts": [
+      { "name": "SemanticEmbeddingProfile", "range": ">=1.0.0 <2.0.0" },
+      { "name": "SemanticEmbeddingRegistry", "range": ">=1.0.0 <2.0.0" }
+    ]
+  },
+  "deployment": { "modes": ["in_process", "worker"] },
+  "dataOwnership": {
+    "owns": ["semantic.embedding_profiles", "semantic.embedding_profile_revisions"],
+    "readsViaPorts": [
+      "SemanticEmbeddingProfileRepositoryPort",
+      "ProviderStatusReaderPort",
+      "EmbeddingCredentialReaderPort"
+    ],
+    "directSchemaAccess": false
+  },
+  "consumes": { "commands": [], "events": [] },
+  "produces": { "events": [] },
+  "provides": {
+    "queries": [
+      { "name": "SemanticEmbeddingProfile", "range": ">=1.0.0 <2.0.0" },
+      { "name": "SemanticEmbeddingRegistry", "range": ">=1.0.0 <2.0.0" }
+    ],
+    "capabilities": [{ "name": "semantic-embedding-authority", "priority": 100 }]
+  },
+  "requires": { "capabilities": [] },
+  "security": {
+    "requiredContext": ["project", "provider", "model"],
+    "defaultOnMissingContext": "deny"
+  },
+  "approvalPolicy": {
+    "canWriteCanonical": false,
+    "canExecuteExternalAction": false
+  }
+}

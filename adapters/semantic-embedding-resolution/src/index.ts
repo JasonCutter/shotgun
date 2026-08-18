@@ -12,6 +12,7 @@ import {
 } from '../../../packages/contracts/src/index.js';
 import type { CredentialVaultPort } from '../../../modules/credential-vault/src/index.js';
 import {
+  A4_PROVIDER_PRIVACY_POLICY_REVISION,
   evaluateProviderExternalTransfer,
   type ExternalTransferSensitivity,
   type ProviderDeploymentCeiling,
@@ -191,15 +192,22 @@ export class SemanticEmbeddingAuthorityResolver implements SemanticEmbeddingReso
       });
     }
 
-    // 6. Compute provider policy fingerprint
+    // 6. Compute provider policy fingerprint from canonical A4 inputs/decision
     const providerPolicyFingerprint = sha256Text(
       stableJson({
+        a4PolicyRevision: A4_PROVIDER_PRIVACY_POLICY_REVISION,
         providerId: profile.providerId,
         modelId: model.modelId,
         profileRevision: profile.profileRevision,
         representationVersion: profile.representationVersion,
         sensitivity: input.sensitivity,
-        policyRevision: 'v1',
+        deploymentCeilingAllowedProviders: [
+          ...this.options.deploymentCeiling.allowedProviders,
+        ].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
+        approvalRevision: approval?.approvalRevision ?? null,
+        approvalApproved: approval?.approved ?? null,
+        usedLegacyGeminiCompatibility: privacyDecision.usedLegacyGeminiCompatibility,
+        eligible: privacyDecision.eligible,
       }),
     );
 
@@ -212,6 +220,8 @@ export class SemanticEmbeddingAuthorityResolver implements SemanticEmbeddingReso
       embeddingProfileRevision: profile.profileRevision,
       credentialId: credentialMetadata.credentialId,
       credentialRevision: credentialMetadata.credentialRevision,
+      providerRegistryRevision: provider.registryRevision ?? 'provider-registry:v1',
+      capabilityCatalogRevision: model.capabilityRevision,
       providerPolicyFingerprint,
       representationVersion: profile.representationVersion,
       createdAt: this.clock(),

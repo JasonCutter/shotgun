@@ -88,6 +88,7 @@ export class InMemorySemanticEmbeddingProfileRepository implements SemanticEmbed
         const retiredPrev: SemanticEmbeddingProfile = {
           ...prevActive,
           status: 'RETIRED',
+          updatedBy: input.updatedBy,
           updatedAt: input.updatedAt,
         };
         this.history.set(prevKey, retiredPrev);

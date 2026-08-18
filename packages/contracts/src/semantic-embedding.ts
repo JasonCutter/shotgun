@@ -28,9 +28,13 @@ export type SemanticEmbeddingProfile = {
 };
 
 export type ProviderStatusReaderPort = {
-  getProvider(
-    providerId: string,
-  ): { readonly providerId: string; readonly status: string } | undefined;
+  getProvider(providerId: string):
+    | {
+        readonly providerId: string;
+        readonly status: string;
+        readonly registryRevision?: string;
+      }
+    | undefined;
 };
 
 export type EmbeddingCredentialMetadataReference = {
@@ -103,9 +107,19 @@ export type SemanticEmbeddingModelDescriptor = {
   readonly providerId: string;
   readonly modelId: string;
   readonly displayName: string;
-  readonly defaultDimension: number;
+  /** Official provider default output dimension (e.g. 3072 for gemini-embedding-001, 1536 for text-embedding-3-small). */
+  readonly providerDefaultDimension: number;
+  /** Optional continuous dimension range supported by the provider. */
+  readonly supportedDimensionRange?: {
+    readonly min: number;
+    readonly max: number;
+  };
+  /** Discrete supported / recommended dimensions. */
   readonly supportedDimensions: readonly number[];
-  readonly maxBatchSize: number;
+  /** Shotgun internal default dimension when not explicitly configured. */
+  readonly shotgunDefaultDimension: number;
+  /** Shotgun internal conservative client batch size bound (not an asserted provider hard limit). */
+  readonly shotgunBatchLimit: number;
   readonly capabilityRevision: string;
   readonly supportedDistanceMetrics: readonly SemanticDistanceMetric[];
   readonly defaultDistanceMetric: SemanticDistanceMetric;
@@ -151,6 +165,8 @@ export type SemanticEmbeddingExecutionPin = {
   readonly embeddingProfileRevision: number;
   readonly credentialId: string;
   readonly credentialRevision: number;
+  readonly providerRegistryRevision: string;
+  readonly capabilityCatalogRevision: string;
   readonly providerPolicyFingerprint: string;
   readonly representationVersion: string;
   readonly createdAt: string;

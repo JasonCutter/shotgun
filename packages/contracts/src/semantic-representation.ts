@@ -75,6 +75,10 @@ export type SemanticRepresentation = {
 
 const normalizeText = (value: string | undefined): string => value?.trim() ?? '';
 
+/**
+ * Deterministically sorts unique strings using JavaScript UTF-16 code-unit lexicographical ordering.
+ * This guarantees environment- and locale-independent deterministic serialization across runtimes.
+ */
 const sortedUnique = (items: readonly string[] | undefined): readonly string[] => {
   if (!items || items.length === 0) return [];
   const set = new Set<string>();

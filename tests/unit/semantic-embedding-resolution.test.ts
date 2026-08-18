@@ -23,6 +23,7 @@ describe('AKP-1 WP1: Semantic Embedding Resolution and Execution Pinning', () =>
       readonly vaultAvailable?: boolean;
       readonly credentials?: readonly CredentialMetadata[];
       readonly approvedProviders?: readonly string[];
+      readonly approvalRevision?: number;
       readonly allowedDeploymentProviders?: string;
       readonly omitDeploymentCeiling?: boolean;
       readonly omitApprovalAuthority?: boolean;
@@ -112,6 +113,7 @@ describe('AKP-1 WP1: Semantic Embedding Resolution and Execution Pinning', () =>
     };
 
     const approvedSet = new Set(options.approvedProviders ?? ['openai', 'google-gemini']);
+    const approvalRevision = options.approvalRevision ?? 1;
     const approvalAuthority: ProviderExternalTransferApprovalPort = {
       getCurrent: async (projectId, providerId) =>
         approvedSet.has(providerId)
@@ -119,7 +121,7 @@ describe('AKP-1 WP1: Semantic Embedding Resolution and Execution Pinning', () =>
               projectId,
               providerId: providerId as 'openai' | 'google-gemini' | 'deepseek',
               approved: true,
-              approvalRevision: 1,
+              approvalRevision,
               reviewedBy: 'principal-owner',
               reviewedAt: '2026-08-18T00:00:00.000Z',
             }
@@ -209,7 +211,7 @@ describe('AKP-1 WP1: Semantic Embedding Resolution and Execution Pinning', () =>
     });
   });
 
-  it('resolves execution and produces immutable execution pin with pinned credential metadata and zero secret values', async () => {
+  it('resolves execution and produces immutable execution pin with complete governing revisions and zero secret values', async () => {
     const { resolver, profileService } = createTestRig();
 
     const profile = await profileService.createProfile({
@@ -241,6 +243,8 @@ describe('AKP-1 WP1: Semantic Embedding Resolution and Execution Pinning', () =>
       embeddingProfileRevision: 1,
       credentialId: 'cred-openai-1',
       credentialRevision: 1,
+      providerRegistryRevision: 'provider-registry:v1',
+      capabilityCatalogRevision: 'semantic-embedding-catalog:v1',
       representationVersion: 'semantic-representation:v1',
       createdAt: '2026-08-18T14:00:00.000Z',
     });
@@ -252,7 +256,85 @@ describe('AKP-1 WP1: Semantic Embedding Resolution and Execution Pinning', () =>
     expect(serializedPin).not.toContain('cipher');
     expect(serializedPin).not.toContain('bearer');
 
-    expect(resolved.model.defaultDimension).toBe(1536);
+    expect(resolved.model.providerDefaultDimension).toBe(1536);
+  });
+
+  it('proves providerPolicyFingerprint changes when governed policy inputs change', async () => {
+    // 1. Rig with approvalRevision = 1
+    const rig1 = createTestRig({ approvalRevision: 1 });
+    const p1 = await rig1.profileService.createProfile({
+      projectId: 'project-1',
+      expectedRevision: 0,
+      providerId: 'openai',
+      embeddingModelId: 'text-embedding-3-small',
+      credentialId: 'cred-openai-1',
+      credentialRevision: 1,
+      updatedBy: 'principal-owner',
+    });
+    await rig1.profileService.activateProfile({
+      projectId: 'project-1',
+      profileId: p1.profileId,
+      profileRevision: 1,
+      updatedBy: 'principal-owner',
+    });
+    const res1 = await rig1.resolver.resolveExecution({
+      projectId: 'project-1',
+      sensitivity: 'private',
+    });
+
+    // 2. Rig with approvalRevision = 2
+    const rig2 = createTestRig({ approvalRevision: 2 });
+    const p2 = await rig2.profileService.createProfile({
+      projectId: 'project-1',
+      expectedRevision: 0,
+      providerId: 'openai',
+      embeddingModelId: 'text-embedding-3-small',
+      credentialId: 'cred-openai-1',
+      credentialRevision: 1,
+      updatedBy: 'principal-owner',
+    });
+    await rig2.profileService.activateProfile({
+      projectId: 'project-1',
+      profileId: p2.profileId,
+      profileRevision: 1,
+      updatedBy: 'principal-owner',
+    });
+    const res2 = await rig2.resolver.resolveExecution({
+      projectId: 'project-1',
+      sensitivity: 'private',
+    });
+
+    // 3. Same rig but sensitivity = public
+    const res3 = await rig1.resolver.resolveExecution({
+      projectId: 'project-1',
+      sensitivity: 'public',
+    });
+
+    // 4. Rig with different allowedDeploymentProviders
+    const rig4 = createTestRig({ allowedDeploymentProviders: 'openai' });
+    const p4 = await rig4.profileService.createProfile({
+      projectId: 'project-1',
+      expectedRevision: 0,
+      providerId: 'openai',
+      embeddingModelId: 'text-embedding-3-small',
+      credentialId: 'cred-openai-1',
+      credentialRevision: 1,
+      updatedBy: 'principal-owner',
+    });
+    await rig4.profileService.activateProfile({
+      projectId: 'project-1',
+      profileId: p4.profileId,
+      profileRevision: 1,
+      updatedBy: 'principal-owner',
+    });
+    const res4 = await rig4.resolver.resolveExecution({
+      projectId: 'project-1',
+      sensitivity: 'private',
+    });
+
+    expect(res1.pin.providerPolicyFingerprint).not.toBe(res2.pin.providerPolicyFingerprint);
+    expect(res1.pin.providerPolicyFingerprint).not.toBe(res3.pin.providerPolicyFingerprint);
+    expect(res1.pin.providerPolicyFingerprint).not.toBe(res4.pin.providerPolicyFingerprint);
   });
 
   it('fails closed with POLICY_DENIED on restricted sensitivity via canonical privacy decision', async () => {

@@ -23,9 +23,10 @@ const initialEmbeddingModels: readonly SemanticEmbeddingModelDescriptor[] = [
     providerId: 'openai',
     modelId: 'text-embedding-3-small',
     displayName: 'Text Embedding 3 Small',
-    defaultDimension: 1536,
+    providerDefaultDimension: 1536,
     supportedDimensions: [512, 1536],
-    maxBatchSize: 2048,
+    shotgunDefaultDimension: 1536,
+    shotgunBatchLimit: 2048,
     capabilityRevision: SEMANTIC_EMBEDDING_CATALOG_REVISION,
     supportedDistanceMetrics: ['cosine', 'dot_product', 'euclidean'],
     defaultDistanceMetric: 'cosine',
@@ -35,9 +36,10 @@ const initialEmbeddingModels: readonly SemanticEmbeddingModelDescriptor[] = [
     providerId: 'openai',
     modelId: 'text-embedding-3-large',
     displayName: 'Text Embedding 3 Large',
-    defaultDimension: 3072,
+    providerDefaultDimension: 3072,
     supportedDimensions: [256, 1024, 1536, 3072],
-    maxBatchSize: 2048,
+    shotgunDefaultDimension: 3072,
+    shotgunBatchLimit: 2048,
     capabilityRevision: SEMANTIC_EMBEDDING_CATALOG_REVISION,
     supportedDistanceMetrics: ['cosine', 'dot_product', 'euclidean'],
     defaultDistanceMetric: 'cosine',
@@ -47,9 +49,11 @@ const initialEmbeddingModels: readonly SemanticEmbeddingModelDescriptor[] = [
     providerId: 'google-gemini',
     modelId: 'gemini-embedding-001',
     displayName: 'Gemini Embedding 001',
-    defaultDimension: 768,
+    providerDefaultDimension: 3072,
+    supportedDimensionRange: { min: 128, max: 3072 },
     supportedDimensions: [128, 256, 512, 768, 1536, 3072],
-    maxBatchSize: 100,
+    shotgunDefaultDimension: 768,
+    shotgunBatchLimit: 100,
     capabilityRevision: SEMANTIC_EMBEDDING_CATALOG_REVISION,
     supportedDistanceMetrics: ['cosine', 'dot_product', 'euclidean'],
     defaultDistanceMetric: 'cosine',
@@ -220,8 +224,13 @@ export class SemanticEmbeddingProfileService implements SemanticEmbeddingProfile
     }
 
     // 4. Validate dimension and distance metric
-    const dimension = input.dimension ?? model.defaultDimension;
-    if (!model.supportedDimensions.includes(dimension)) {
+    const dimension = input.dimension ?? model.shotgunDefaultDimension;
+    const isDimensionValid = model.supportedDimensionRange
+      ? dimension >= model.supportedDimensionRange.min &&
+        dimension <= model.supportedDimensionRange.max
+      : model.supportedDimensions.includes(dimension);
+
+    if (!isDimensionValid) {
       throw new SemanticEmbeddingError({
         code: 'INVALID_INPUT',
         safeMessage: `Dimension ${dimension} is not supported by model '${embeddingModelId}'.`,

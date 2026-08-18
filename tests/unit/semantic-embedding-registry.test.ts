@@ -7,7 +7,7 @@ import {
 import { initialProviderRegistry } from '../../modules/ai-configuration/src/index.js';
 
 describe('AKP-1 WP1: Semantic Embedding Registry & Capability Boundary', () => {
-  it('registers supported embedding models with dimension and metric metadata, including gemini-embedding-001', () => {
+  it('registers supported embedding models with dimension, range, and conservative batch metadata', () => {
     const registry = initialSemanticEmbeddingRegistry();
     const allModels = registry.listModels();
 
@@ -20,14 +20,16 @@ describe('AKP-1 WP1: Semantic Embedding Registry & Capability Boundary', () => {
     // Retired model is removed
     expect(registry.getModel('google-gemini', 'text-embedding-004')).toBeUndefined();
 
-    // Stable text-only Gemini embedding model
+    // Stable text-only Gemini embedding model with provider facts and Shotgun policy separation
     const gemini = registry.getModel('google-gemini', 'gemini-embedding-001');
     expect(gemini).toMatchObject({
       providerId: 'google-gemini',
       modelId: 'gemini-embedding-001',
-      defaultDimension: 768,
+      providerDefaultDimension: 3072,
+      supportedDimensionRange: { min: 128, max: 3072 },
       supportedDimensions: [128, 256, 512, 768, 1536, 3072],
-      maxBatchSize: 100,
+      shotgunDefaultDimension: 768,
+      shotgunBatchLimit: 100,
       supportedDistanceMetrics: ['cosine', 'dot_product', 'euclidean'],
       defaultDistanceMetric: 'cosine',
       defaultNormalizationPolicy: 'unit_length',
@@ -37,9 +39,10 @@ describe('AKP-1 WP1: Semantic Embedding Registry & Capability Boundary', () => {
     expect(small).toMatchObject({
       providerId: 'openai',
       modelId: 'text-embedding-3-small',
-      defaultDimension: 1536,
+      providerDefaultDimension: 1536,
       supportedDimensions: [512, 1536],
-      maxBatchSize: 2048,
+      shotgunDefaultDimension: 1536,
+      shotgunBatchLimit: 2048,
       supportedDistanceMetrics: ['cosine', 'dot_product', 'euclidean'],
       defaultDistanceMetric: 'cosine',
       defaultNormalizationPolicy: 'unit_length',
@@ -49,8 +52,10 @@ describe('AKP-1 WP1: Semantic Embedding Registry & Capability Boundary', () => {
     expect(large).toMatchObject({
       providerId: 'openai',
       modelId: 'text-embedding-3-large',
-      defaultDimension: 3072,
+      providerDefaultDimension: 3072,
       supportedDimensions: [256, 1024, 1536, 3072],
+      shotgunDefaultDimension: 3072,
+      shotgunBatchLimit: 2048,
     });
   });
 

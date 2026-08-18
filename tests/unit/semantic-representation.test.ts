@@ -86,7 +86,7 @@ describe('AKP-1 WP1: SemanticRepresentationBuilder', () => {
     );
   });
 
-  it('builds deterministic representation for Korean and mixed English/Korean aliases with code-point ordering', () => {
+  it('builds deterministic representation for Korean and mixed English/Korean aliases with UTF-16 code-unit lexicographic ordering', () => {
     const inputKoreanUnordered: SemanticEntityInput = {
       resourceType: 'ENTITY',
       resourceId: 'entity-kr-1',
@@ -108,9 +108,36 @@ describe('AKP-1 WP1: SemanticRepresentationBuilder', () => {
 
     expect(rep1.semanticText).toBe(rep2.semanticText);
     expect(rep1.semanticTextDigest).toBe(rep2.semanticTextDigest);
-    // ASCII before Korean code points in standard code-point ordering
+    // ASCII before Korean in standard UTF-16 code-unit lexicographic order
     expect(rep1.semanticText).toBe(
       'resource_type: ENTITY\nentity_type: ORGANIZATION\nname: 샷건 시스템\naliases: Active Knowledge, 벡터 인덱스, 샷건, 하이브리드 검색',
+    );
+  });
+
+  it('deterministically sorts supplementary-plane Unicode characters and emojis using UTF-16 code-unit order', () => {
+    const inputEmojisUnordered: SemanticEntityInput = {
+      resourceType: 'ENTITY',
+      resourceId: 'entity-supp-1',
+      entityType: 'FEATURE',
+      displayName: 'Feature Emojis',
+      aliases: ['🚀 Rocket', '⭐ Star', '🌟 Glowing', '✨ Sparkles', '🚀 Rocket'],
+    };
+
+    const inputEmojisReordered: SemanticEntityInput = {
+      resourceType: 'ENTITY',
+      resourceId: 'entity-supp-1',
+      entityType: 'FEATURE',
+      displayName: 'Feature Emojis',
+      aliases: ['✨ Sparkles', '⭐ Star', '🌟 Glowing', '🚀 Rocket'],
+    };
+
+    const rep1 = semanticRepresentationBuilder.build(inputEmojisUnordered);
+    const rep2 = semanticRepresentationBuilder.build(inputEmojisReordered);
+
+    expect(rep1.semanticText).toBe(rep2.semanticText);
+    expect(rep1.semanticTextDigest).toBe(rep2.semanticTextDigest);
+    expect(rep1.semanticText).toBe(
+      'resource_type: ENTITY\nentity_type: FEATURE\nname: Feature Emojis\naliases: ✨ Sparkles, ⭐ Star, 🌟 Glowing, 🚀 Rocket',
     );
   });
 

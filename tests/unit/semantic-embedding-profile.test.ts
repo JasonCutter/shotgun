@@ -218,9 +218,10 @@ describe('AKP-1 WP1: SemanticEmbeddingProfile Authority', () => {
     expect(historicalRev1?.activatedAt).toBe('2026-08-18T11:00:00.000Z');
   });
 
-  it('handles profile activation and retires previously active profile', async () => {
+  it('handles profile activation and persists activating actor on auto-retired previous profile', async () => {
     const { embeddingProfileService } = createServices();
 
+    // Actor A creates P1
     const p1 = await embeddingProfileService.createProfile({
       projectId: 'project-akp-1',
       expectedRevision: 0,
@@ -228,17 +229,20 @@ describe('AKP-1 WP1: SemanticEmbeddingProfile Authority', () => {
       embeddingModelId: 'text-embedding-3-small',
       credentialId: 'cred-openai-1',
       credentialRevision: 1,
-      updatedBy: 'principal-owner',
+      updatedBy: 'actor-a',
+      now: '2026-08-18T09:00:00.000Z',
     });
 
+    // Actor B activates P1
     await embeddingProfileService.activateProfile({
       projectId: 'project-akp-1',
       profileId: p1.profileId,
       profileRevision: 1,
-      updatedBy: 'principal-owner',
+      updatedBy: 'actor-b',
+      now: '2026-08-18T10:00:00.000Z',
     });
 
-    // Create and activate p2 with Gemini gemini-embedding-001
+    // Actor C creates P2
     const p2 = await embeddingProfileService.createProfile({
       projectId: 'project-akp-1',
       expectedRevision: 1,
@@ -246,24 +250,32 @@ describe('AKP-1 WP1: SemanticEmbeddingProfile Authority', () => {
       embeddingModelId: 'gemini-embedding-001',
       credentialId: 'cred-gemini-1',
       credentialRevision: 1,
-      updatedBy: 'principal-owner',
+      updatedBy: 'actor-c',
+      now: '2026-08-18T11:00:00.000Z',
     });
     expect(p2.status).toBe('BUILDING');
     expect(p2.dimension).toBe(768);
 
+    // Actor D activates P2 (which auto-retires P1)
     await embeddingProfileService.activateProfile({
       projectId: 'project-akp-1',
       profileId: p2.profileId,
       profileRevision: 2,
-      updatedBy: 'principal-owner',
+      updatedBy: 'actor-d',
+      now: '2026-08-18T12:00:00.000Z',
     });
 
-    // Now active is p2, and p1 has become RETIRED
-    expect((await embeddingProfileService.getActive('project-akp-1'))?.profileId).toBe(
-      p2.profileId,
-    );
+    // Now active is p2 with actor-d
+    const currentActive = await embeddingProfileService.getActive('project-akp-1');
+    expect(currentActive?.profileId).toBe(p2.profileId);
+    expect(currentActive?.status).toBe('ACTIVE');
+    expect(currentActive?.updatedBy).toBe('actor-d');
+
+    // And p1 has become RETIRED, with updatedBy recorded as actor-d and updatedAt = 12:00:00
     const retiredP1 = await embeddingProfileService.getRevision('project-akp-1', 1);
     expect(retiredP1?.status).toBe('RETIRED');
+    expect(retiredP1?.updatedBy).toBe('actor-d');
+    expect(retiredP1?.updatedAt).toBe('2026-08-18T12:00:00.000Z');
   });
 
   it('rejects stale profile creation revisions with CONFLICT error', async () => {

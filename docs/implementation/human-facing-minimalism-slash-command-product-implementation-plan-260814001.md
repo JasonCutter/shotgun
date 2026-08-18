@@ -1,12 +1,19 @@
 ---
 id: HFM-SLASH-PLAN-260814001
-classification: CANDIDATE
-status: DESIGN_READY_FOR_REVIEW
+classification: ACCEPTED
+status: COMPLETE
 created_at: 2026-08-14
+completed_at: 2026-08-18
+final_status_authority: FINAL_AFTER_MERGE
 subject_base: 575b8031b3beccc9fba5541809285c5a29b89d11
 repository: JasonCutter/shotgun
 canonical_branch: main
-governing_adr: ADR-140
+governing_adr: ADR-145
+final_pr: 118
+final_pr_head: 608ffefb23bda708fdd660c07da9f6899ad04545
+final_canonical_main: 2c344ea8a62036253a0289e5891ef68170278216
+final_post_merge_ci_number: 1006
+final_post_merge_ci_run_id: 32098049573
 trigger: 2026-08-14 local Product smoke test + owner UI principles
 ---
 
@@ -221,32 +228,32 @@ The principle is **on-demand UI instead of permanent UI**.
 
 This is the starting design for HFM-S0 audit. HFM-S0 may refine individual items, but any change must preserve the governing principles.
 
-| Existing surface/capability | Initial disposition | Design intent |
-|---|---|---|
-| Home | KEEP | compact current/actionable summary only |
-| Sources | KEEP | primary owner workflow |
-| Ask | KEEP | primary owner workflow + slash entry |
-| Knowledge if not operationally useful/implemented | REMOVE until useful | do not expose development roadmap |
-| Review when nothing actionable | conditional/SLASH | surface automatically only when attention required |
-| External Actions | conditional/SLASH | no permanent empty destination |
-| Activity | SLASH | operational inspection, not normal navigation |
-| History | SLASH | audit capability, rarely needed |
-| Settings landing page | REMOVE as permanent navigation candidate | split actual controls into slash/focused panels |
-| Project Admin | SLASH | rare management operation |
-| Preferences | SLASH | locale/timezone/density on demand |
-| AI Settings | SLASH, possibly contextual KEEP only while blocked | owner-adjustable but not normal work surface |
-| Models separate page | REMOVE | duplicate/unimplemented against AI settings |
-| Costs & Budgets placeholder | REMOVE until real actionable capability exists | no fake tier/UNAVAILABLE page |
-| Connectors placeholder | REMOVE until implemented/actionable | no fake tier/UNAVAILABLE page |
-| Directives placeholder | REMOVE until implemented/actionable | no inactive destination |
-| Schema Packs placeholder | REMOVE until implemented/actionable | internal/advanced unless later proven owner-needed |
-| Diagnostics | SLASH or developer-only | on-demand troubleshooting only |
-| Advanced policy | SLASH only if owner must truly alter it; otherwise REMOVE | no internal policy console by default |
-| top Search button | REMOVE if `/search`/Ask-native path replaces it | one search entry model |
-| top Commands button | REMOVE or alternate trigger to same slash registry | no duplicate command model |
-| UUID/revision/locator default display | REMOVE | technical-only |
-| Technical details disclosure | SLASH/contextual diagnostic | only when explicitly requested |
-| internal enums/authority wording | REMOVE | translate to owner action/status |
+| Existing surface/capability                       | Initial disposition                                       | Design intent                                      |
+| ------------------------------------------------- | --------------------------------------------------------- | -------------------------------------------------- |
+| Home                                              | KEEP                                                      | compact current/actionable summary only            |
+| Sources                                           | KEEP                                                      | primary owner workflow                             |
+| Ask                                               | KEEP                                                      | primary owner workflow + slash entry               |
+| Knowledge if not operationally useful/implemented | REMOVE until useful                                       | do not expose development roadmap                  |
+| Review when nothing actionable                    | conditional/SLASH                                         | surface automatically only when attention required |
+| External Actions                                  | conditional/SLASH                                         | no permanent empty destination                     |
+| Activity                                          | SLASH                                                     | operational inspection, not normal navigation      |
+| History                                           | SLASH                                                     | audit capability, rarely needed                    |
+| Settings landing page                             | REMOVE as permanent navigation candidate                  | split actual controls into slash/focused panels    |
+| Project Admin                                     | SLASH                                                     | rare management operation                          |
+| Preferences                                       | SLASH                                                     | locale/timezone/density on demand                  |
+| AI Settings                                       | SLASH, possibly contextual KEEP only while blocked        | owner-adjustable but not normal work surface       |
+| Models separate page                              | REMOVE                                                    | duplicate/unimplemented against AI settings        |
+| Costs & Budgets placeholder                       | REMOVE until real actionable capability exists            | no fake tier/UNAVAILABLE page                      |
+| Connectors placeholder                            | REMOVE until implemented/actionable                       | no fake tier/UNAVAILABLE page                      |
+| Directives placeholder                            | REMOVE until implemented/actionable                       | no inactive destination                            |
+| Schema Packs placeholder                          | REMOVE until implemented/actionable                       | internal/advanced unless later proven owner-needed |
+| Diagnostics                                       | SLASH or developer-only                                   | on-demand troubleshooting only                     |
+| Advanced policy                                   | SLASH only if owner must truly alter it; otherwise REMOVE | no internal policy console by default              |
+| top Search button                                 | REMOVE if `/search`/Ask-native path replaces it           | one search entry model                             |
+| top Commands button                               | REMOVE or alternate trigger to same slash registry        | no duplicate command model                         |
+| UUID/revision/locator default display             | REMOVE                                                    | technical-only                                     |
+| Technical details disclosure                      | SLASH/contextual diagnostic                               | only when explicitly requested                     |
+| internal enums/authority wording                  | REMOVE                                                    | translate to owner action/status                   |
 
 ## 6. Slash command architecture design
 
@@ -830,40 +837,40 @@ Status Authority: FINAL_AFTER_MERGE
 
 This is a design catalog, not a requirement to implement unsupported backend capability.
 
-| Stable intent | Owner label example | Risk | Initial section | Notes |
-|---|---|---:|---|---|
-| `help.commands` | 명령어 보기 | READ | S1 | command discoverability |
-| `search.global` | 검색 | READ | S1/S5 | replaces dead duplicate Search surface |
-| `project.switch` | 프로젝트 전환 | READ/WRITE context | S2 | existing project authority |
-| `project.create` | 프로젝트 만들기 | WRITE | S2 | focused dialog |
-| `project.rename` | 프로젝트 이름 변경 | WRITE | S2 | focused dialog |
-| `project.archive` | 프로젝트 보관 | DESTRUCTIVE-like | S2 | confirmation required |
-| `project.delete_request` | 프로젝트 삭제 요청 | DESTRUCTIVE | S2 | explicit existing boundary |
-| `preferences.locale` | 언어 변경 | WRITE | S2/S5 | must have visible effect |
-| `preferences.timezone` | 시간대 변경 | WRITE | S2 | persistence |
-| `preferences.display` | 화면 표시 설정 | WRITE | S2 | density/motion if retained |
-| `ai.configure` | AI 설정 | WRITE | S2 | provider/model/credential focused panel |
-| `ai.test_connection` | AI 연결 확인 | READ/action | S2 | only if still owner-useful |
-| `history.open` | 변경 이력 보기 | READ | S1/S2 | on demand |
-| `activity.open` | 실행 상태 보기 | READ | S1/S2 | owner wording, not raw job topology |
-| `technical.current` | 기술 정보 보기 | READ | S2/S4 | temporary, context-bound |
-| `diagnostics.open` | 진단 보기 | READ | S2/S4 | only if useful implementation exists |
-| `answer.export` | 답변 내보내기 | WRITE/file | later in scope if existing action retained | secondary Ask action candidate |
-| `action.retry` | 다시 시도 | WRITE | contextual | only when retry is valid |
+| Stable intent            | Owner label example |               Risk | Initial section                            | Notes                                   |
+| ------------------------ | ------------------- | -----------------: | ------------------------------------------ | --------------------------------------- |
+| `help.commands`          | 명령어 보기         |               READ | S1                                         | command discoverability                 |
+| `search.global`          | 검색                |               READ | S1/S5                                      | replaces dead duplicate Search surface  |
+| `project.switch`         | 프로젝트 전환       | READ/WRITE context | S2                                         | existing project authority              |
+| `project.create`         | 프로젝트 만들기     |              WRITE | S2                                         | focused dialog                          |
+| `project.rename`         | 프로젝트 이름 변경  |              WRITE | S2                                         | focused dialog                          |
+| `project.archive`        | 프로젝트 보관       |   DESTRUCTIVE-like | S2                                         | confirmation required                   |
+| `project.delete_request` | 프로젝트 삭제 요청  |        DESTRUCTIVE | S2                                         | explicit existing boundary              |
+| `preferences.locale`     | 언어 변경           |              WRITE | S2/S5                                      | must have visible effect                |
+| `preferences.timezone`   | 시간대 변경         |              WRITE | S2                                         | persistence                             |
+| `preferences.display`    | 화면 표시 설정      |              WRITE | S2                                         | density/motion if retained              |
+| `ai.configure`           | AI 설정             |              WRITE | S2                                         | provider/model/credential focused panel |
+| `ai.test_connection`     | AI 연결 확인        |        READ/action | S2                                         | only if still owner-useful              |
+| `history.open`           | 변경 이력 보기      |               READ | S1/S2                                      | on demand                               |
+| `activity.open`          | 실행 상태 보기      |               READ | S1/S2                                      | owner wording, not raw job topology     |
+| `technical.current`      | 기술 정보 보기      |               READ | S2/S4                                      | temporary, context-bound                |
+| `diagnostics.open`       | 진단 보기           |               READ | S2/S4                                      | only if useful implementation exists    |
+| `answer.export`          | 답변 내보내기       |         WRITE/file | later in scope if existing action retained | secondary Ask action candidate          |
+| `action.retry`           | 다시 시도           |              WRITE | contextual                                 | only when retry is valid                |
 
 Unsupported placeholder features do not receive slash commands merely to preserve their names.
 
 ## 10. Risk and authority matrix
 
-| Command class | Can be hidden from normal UI? | Confirmation | Existing authority required |
-|---|---|---|---|
-| read/navigation | yes | no | project/resource read scope |
-| preference write | yes | normal save/result | existing settings command/API |
-| provider/model credential | yes, except blocking state | explicit save/test feedback | credential/provider policy |
-| project mutation | yes | according to existing mutation | project admin authority |
-| destructive | command may be hidden, warning may not | mandatory | existing destructive boundary |
-| approval-required action | normal entry may be hidden until relevant | mandatory existing approval | existing approval authority |
-| diagnostic | yes | no | bounded technical read authority |
+| Command class             | Can be hidden from normal UI?             | Confirmation                   | Existing authority required      |
+| ------------------------- | ----------------------------------------- | ------------------------------ | -------------------------------- |
+| read/navigation           | yes                                       | no                             | project/resource read scope      |
+| preference write          | yes                                       | normal save/result             | existing settings command/API    |
+| provider/model credential | yes, except blocking state                | explicit save/test feedback    | credential/provider policy       |
+| project mutation          | yes                                       | according to existing mutation | project admin authority          |
+| destructive               | command may be hidden, warning may not    | mandatory                      | existing destructive boundary    |
+| approval-required action  | normal entry may be hidden until relevant | mandatory existing approval    | existing approval authority      |
+| diagnostic                | yes                                       | no                             | bounded technical read authority |
 
 ## 11. Explicit excluded scope
 
@@ -989,6 +996,52 @@ A final acceptance reviewer must be able to answer YES to all of the following:
 12. Has the accepted implementation reached canonical main with required post-merge CI success?
 
 Only then:
+
+```text
+HFM Slash Command Product Program = COMPLETE
+Status Authority = FINAL_AFTER_MERGE
+```
+
+## 17. Final Completion Amendment — 2026-08-18
+
+### 17.1 Historical ADR Correction
+
+- The HFM program was initially drafted referencing ADR-140 during early design synthesis.
+- Design Acceptance and canonical collision repair corrected the governing ADR identifier to ADR-145 ([ADR-145 — Human-Facing Minimalism and Slash Command Control Plane](../architecture/adr/ADR-145-human-facing-minimalism-and-slash-command-control-plane.md)).
+- This was an identifier and collision resolution correction, not a scope change.
+
+### 17.2 Final Implementation Disposition
+
+- **HFM-S0 through HFM-S8:** **COMPLETE**.
+- All planned KEEP / SLASH / REMOVE surface transitions, PC Global Shell architecture (ADR-146), command palette discovery, human-facing copy minimalism, and ko-KR localization are fully implemented, verified, and accepted.
+
+### 17.3 Merge Authority
+
+- Implementation PR #118 was transitioned to Ready for Review and merged into `main` with explicit USER approval.
+- Final PR HEAD: `608ffefb23bda708fdd660c07da9f6899ad04545`
+- Canonical Main Merge Commit: `2c344ea8a62036253a0289e5891ef68170278216`
+
+### 17.4 Final CI Authority
+
+- **Automatic Main Push CI Run:** CI #1006 (Run ID: `32098049573`)
+- **Exact Main HEAD:** `2c344ea8a62036253a0289e5891ef68170278216`
+- **Execution & Jobs:** Attempt 1 (Zero manual reruns)
+  - `Quality`: **SUCCESS**
+  - `Frontend`: **SUCCESS** (Typecheck PASS, Unit Tests 289/289 PASS, Build PASS, Playwright E2E 81/81 PASS)
+  - `Required Gates`: **SUCCESS**
+
+### 17.5 Required Completion State
+
+- Unresolved REQUIRED functional defects: **NONE**
+- Unresolved REQUIRED HFM UI items: **NONE**
+- Final REQUIRED blockers: **ZERO**
+- Final verification and completion record: **WRITTEN** ([hfm-s8-final-verification-260818001.md](../engineering/hfm-s8-final-verification-260818001.md))
+- Status Authority: **FINAL_AFTER_MERGE**
+
+### 17.6 Explicit Scope Boundary
+
+- Completion of the HFM Slash Command Product Program does **not** activate, implement, or alter unrelated deferred/out-of-scope Shotgun capabilities (including full Knowledge graph workspace, Review backend expansions, Billing/Costing systems, Connector runtimes, or unactivated Directives).
+- All previously defined excluded scope remains excluded unless separately authorized under future feature roadmaps.
 
 ```text
 HFM Slash Command Product Program = COMPLETE

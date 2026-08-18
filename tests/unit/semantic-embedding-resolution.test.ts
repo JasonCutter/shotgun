@@ -1,0 +1,346 @@
+import { describe, expect, it } from 'vitest';
+
+import { InMemorySemanticEmbeddingProfileRepository } from '../../adapters/semantic-embedding-in-memory/src/index.js';
+import { SemanticEmbeddingAuthorityResolver } from '../../adapters/semantic-embedding-resolution/src/index.js';
+import {
+  DeterministicFakeEmbeddingAdapter,
+  initialSemanticEmbeddingRegistry,
+  SemanticEmbeddingProfileService,
+} from '../../modules/semantic-embedding/src/index.js';
+import {
+  parseProviderDeploymentCeiling,
+  type ProviderExternalTransferApprovalPort,
+} from '../../modules/provider-privacy-policy/src/index.js';
+import type {
+  CredentialMetadata,
+  CredentialVaultPort,
+} from '../../modules/credential-vault/src/index.js';
+
+describe('AKP-1 WP1: Semantic Embedding Resolution and Execution Pinning', () => {
+  const createTestRig = (
+    options: {
+      readonly vaultAvailable?: boolean;
+      readonly credentials?: readonly CredentialMetadata[];
+      readonly approvedProviders?: readonly string[];
+      readonly allowedDeploymentProviders?: string;
+    } = {},
+  ) => {
+    const registry = initialSemanticEmbeddingRegistry();
+    const repository = new InMemorySemanticEmbeddingProfileRepository();
+    const profileService = new SemanticEmbeddingProfileService(registry, repository);
+
+    const credentialList = options.credentials ?? [
+      {
+        credentialId: 'cred-openai-1',
+        projectId: 'project-1',
+        providerId: 'openai',
+        encryptionVersion: 'aes-256-gcm:v1' as const,
+        keyVersion: 'v1',
+        credentialRevision: 1,
+        lifecycleState: 'active' as const,
+        createdAt: '2026-08-18T00:00:00.000Z',
+        updatedAt: '2026-08-18T00:00:00.000Z',
+      },
+      {
+        credentialId: 'cred-gemini-1',
+        projectId: 'project-1',
+        providerId: 'google-gemini',
+        encryptionVersion: 'aes-256-gcm:v1' as const,
+        keyVersion: 'v1',
+        credentialRevision: 1,
+        lifecycleState: 'active' as const,
+        createdAt: '2026-08-18T00:00:00.000Z',
+        updatedAt: '2026-08-18T00:00:00.000Z',
+      },
+    ];
+
+    const vault: CredentialVaultPort = {
+      getAvailability: () =>
+        options.vaultAvailable === false
+          ? { state: 'UNAVAILABLE', reason: 'MISSING_MASTER_KEY' }
+          : { state: 'AVAILABLE', keyVersion: 'v1' },
+      getMetadata: async (scope) =>
+        credentialList.find(
+          (c) =>
+            c.projectId === scope.projectId &&
+            c.providerId === scope.providerId &&
+            c.credentialId === scope.credentialId &&
+            c.credentialRevision === scope.credentialRevision,
+        ),
+      listMetadata: async (projectId) => credentialList.filter((c) => c.projectId === projectId),
+      create: async () => {
+        throw new Error('not implemented in test rig');
+      },
+      replace: async () => {
+        throw new Error('not implemented in test rig');
+      },
+      revoke: async () => {
+        throw new Error('not implemented in test rig');
+      },
+      remove: async () => {
+        throw new Error('not implemented in test rig');
+      },
+      getWriteOutcome: async () => undefined,
+      withCredential: async () => ({ status: 'SUCCEEDED' }),
+    };
+
+    const approvedSet = new Set(options.approvedProviders ?? ['openai', 'google-gemini']);
+    const approvalAuthority: ProviderExternalTransferApprovalPort = {
+      getCurrent: async (projectId, providerId) =>
+        approvedSet.has(providerId)
+          ? {
+              projectId,
+              providerId: providerId as 'openai' | 'google-gemini' | 'deepseek',
+              approved: true,
+              approvalRevision: 1,
+              reviewedBy: 'principal-owner',
+              reviewedAt: '2026-08-18T00:00:00.000Z',
+            }
+          : undefined,
+      listHistory: async () => [],
+      propose: async () => {
+        throw new Error('not implemented');
+      },
+      approve: async () => {
+        throw new Error('not implemented');
+      },
+    };
+
+    const deploymentCeiling = parseProviderDeploymentCeiling({
+      providerAllowlist: options.allowedDeploymentProviders ?? 'openai,google-gemini',
+    });
+
+    const resolver = new SemanticEmbeddingAuthorityResolver(registry, profileService, vault, {
+      approvalAuthority,
+      deploymentCeiling,
+      clock: () => '2026-08-18T14:00:00.000Z',
+    });
+
+    return {
+      registry,
+      repository,
+      profileService,
+      resolver,
+      vault,
+    };
+  };
+
+  it('fails closed with CONFIGURATION_REQUIRED when no active embedding profile exists', async () => {
+    const { resolver } = createTestRig();
+
+    await expect(
+      resolver.resolveExecution({
+        projectId: 'project-1',
+        sensitivity: 'public',
+      }),
+    ).rejects.toMatchObject({
+      name: 'SemanticEmbeddingError',
+      embeddingErrorCode: 'CONFIGURATION_REQUIRED',
+    });
+  });
+
+  it('resolves execution and produces immutable execution pin with zero secret material', async () => {
+    const { resolver, profileService } = createTestRig();
+
+    const profile = await profileService.createProfile({
+      projectId: 'project-1',
+      expectedRevision: 0,
+      providerId: 'openai',
+      embeddingModelId: 'text-embedding-3-small',
+      updatedBy: 'principal-owner',
+    });
+    await profileService.activateProfile({
+      projectId: 'project-1',
+      profileId: profile.profileId,
+      profileRevision: 1,
+      updatedBy: 'principal-owner',
+    });
+
+    const resolved = await resolver.resolveExecution({
+      projectId: 'project-1',
+      sensitivity: 'public',
+    });
+
+    expect(resolved.pin).toMatchObject({
+      projectId: 'project-1',
+      providerId: 'openai',
+      embeddingModelId: 'text-embedding-3-small',
+      embeddingProfileId: profile.profileId,
+      embeddingProfileRevision: 1,
+      credentialId: 'cred-openai-1',
+      credentialRevision: 1,
+      representationVersion: 'semantic-representation:v1',
+      createdAt: '2026-08-18T14:00:00.000Z',
+    });
+    expect(resolved.pin.providerPolicyFingerprint).toMatch(/^sha256:[a-f0-9]{64}$/);
+
+    // Verify no secret, token, key or raw payload is in pin
+    const serializedPin = JSON.stringify(resolved.pin);
+    expect(serializedPin).not.toContain('secret');
+    expect(serializedPin).not.toContain('cipher');
+    expect(serializedPin).not.toContain('bearer');
+
+    expect(resolved.model.dimension).toBe(1536);
+    expect(resolved.provider.providerId).toBe('openai');
+  });
+
+  it('fails closed with POLICY_DENIED on restricted sensitivity', async () => {
+    const { resolver, profileService } = createTestRig();
+
+    const profile = await profileService.createProfile({
+      projectId: 'project-1',
+      expectedRevision: 0,
+      providerId: 'openai',
+      embeddingModelId: 'text-embedding-3-small',
+      updatedBy: 'principal-owner',
+    });
+    await profileService.activateProfile({
+      projectId: 'project-1',
+      profileId: profile.profileId,
+      profileRevision: 1,
+      updatedBy: 'principal-owner',
+    });
+
+    await expect(
+      resolver.resolveExecution({
+        projectId: 'project-1',
+        sensitivity: 'restricted',
+      }),
+    ).rejects.toMatchObject({
+      name: 'SemanticEmbeddingError',
+      embeddingErrorCode: 'POLICY_DENIED',
+    });
+  });
+
+  it('fails closed when private sensitivity is blocked by deployment ceiling', async () => {
+    const { resolver, profileService } = createTestRig({
+      allowedDeploymentProviders: 'google-gemini', // openai not in deployment allowlist
+    });
+
+    const profile = await profileService.createProfile({
+      projectId: 'project-1',
+      expectedRevision: 0,
+      providerId: 'openai',
+      embeddingModelId: 'text-embedding-3-small',
+      updatedBy: 'principal-owner',
+    });
+    await profileService.activateProfile({
+      projectId: 'project-1',
+      profileId: profile.profileId,
+      profileRevision: 1,
+      updatedBy: 'principal-owner',
+    });
+
+    await expect(
+      resolver.resolveExecution({
+        projectId: 'project-1',
+        sensitivity: 'private',
+      }),
+    ).rejects.toMatchObject({
+      name: 'SemanticEmbeddingError',
+      embeddingErrorCode: 'POLICY_DENIED',
+    });
+  });
+
+  it('fails closed when private sensitivity lacks project approval', async () => {
+    const { resolver, profileService } = createTestRig({
+      approvedProviders: [], // No provider approved for project
+    });
+
+    const profile = await profileService.createProfile({
+      projectId: 'project-1',
+      expectedRevision: 0,
+      providerId: 'openai',
+      embeddingModelId: 'text-embedding-3-small',
+      updatedBy: 'principal-owner',
+    });
+    await profileService.activateProfile({
+      projectId: 'project-1',
+      profileId: profile.profileId,
+      profileRevision: 1,
+      updatedBy: 'principal-owner',
+    });
+
+    await expect(
+      resolver.resolveExecution({
+        projectId: 'project-1',
+        sensitivity: 'private',
+      }),
+    ).rejects.toMatchObject({
+      name: 'SemanticEmbeddingError',
+      embeddingErrorCode: 'POLICY_DENIED',
+    });
+  });
+
+  it('fails closed on credential mismatch or missing vault key', async () => {
+    const { resolver, profileService } = createTestRig({
+      vaultAvailable: false,
+    });
+
+    const profile = await profileService.createProfile({
+      projectId: 'project-1',
+      expectedRevision: 0,
+      providerId: 'openai',
+      embeddingModelId: 'text-embedding-3-small',
+      updatedBy: 'principal-owner',
+    });
+    await profileService.activateProfile({
+      projectId: 'project-1',
+      profileId: profile.profileId,
+      profileRevision: 1,
+      updatedBy: 'principal-owner',
+    });
+
+    await expect(
+      resolver.resolveExecution({
+        projectId: 'project-1',
+        sensitivity: 'public',
+      }),
+    ).rejects.toMatchObject({
+      name: 'SemanticEmbeddingError',
+      embeddingErrorCode: 'CONFIGURATION_REQUIRED',
+    });
+  });
+
+  it('validates DeterministicFakeEmbeddingAdapter vector dimensionality and reproducibility', async () => {
+    const adapter = new DeterministicFakeEmbeddingAdapter({
+      providerId: 'openai',
+      embeddingModelId: 'text-embedding-3-small',
+      dimension: 1536,
+    });
+
+    const result1 = await adapter.embed({
+      text: 'Deterministic embedding test payload',
+      resourceType: 'CLAIM',
+      resourceId: 'claim-1',
+    });
+
+    expect(result1.dimension).toBe(1536);
+    expect(result1.vector).toHaveLength(1536);
+    expect(result1.modelId).toBe('text-embedding-3-small');
+    expect(result1.providerId).toBe('openai');
+    expect(result1.tokenCount).toBeGreaterThan(0);
+
+    // Verify unit length (approx norm 1.0)
+    const norm = Math.sqrt(result1.vector.reduce((sum, v) => sum + v * v, 0));
+    expect(norm).toBeCloseTo(1.0, 3);
+
+    // Verify determinism on repeated call
+    const result2 = await adapter.embed({
+      text: 'Deterministic embedding test payload',
+    });
+    expect(result2.vector).toEqual(result1.vector);
+
+    // Verify different text produces different vector
+    const result3 = await adapter.embed({
+      text: 'Completely different text input',
+    });
+    expect(result3.vector).not.toEqual(result1.vector);
+
+    // Batch embedding
+    const batch = await adapter.embedBatch([{ text: 'First payload' }, { text: 'Second payload' }]);
+    expect(batch).toHaveLength(2);
+    expect(batch[0]!.vector).toHaveLength(1536);
+    expect(batch[1]!.vector).toHaveLength(1536);
+  });
+});

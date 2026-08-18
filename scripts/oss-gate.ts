@@ -213,8 +213,14 @@ const main = async (): Promise<void> => {
   }
 
   const postgres = byId.get('postgresql');
-  if (postgres && !compose.includes(`image: ${postgres.pin.value}`)) {
-    errors.push('compose.yaml PostgreSQL image does not match the OSS registry digest');
+  const pgvector = byId.get('pgvector');
+  const matchesDbImage =
+    (postgres && compose.includes(`image: ${postgres.pin.value}`)) ||
+    (pgvector && compose.includes(`image: ${pgvector.pin.value}`));
+  if (!matchesDbImage) {
+    errors.push(
+      'compose.yaml database image does not match PostgreSQL or pgvector OSS registry digest',
+    );
   }
 
   const lucas = byId.get('lucas-llmwiki');

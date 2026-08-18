@@ -147,6 +147,8 @@ const requiredTables = [
   'canonical.outbox',
   'projection.search_documents',
   'projection.watermarks',
+  'projection.semantic_generations',
+  'projection.semantic_items',
   'knowledge.review_groups',
   'knowledge.entity_vault_imports',
   'projection.compiled_truth',

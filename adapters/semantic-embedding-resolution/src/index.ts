@@ -96,10 +96,11 @@ export class SemanticEmbeddingAuthorityResolver implements SemanticEmbeddingReso
 
     // 2. Validate provider in existing provider authority
     const provider = this.providerRegistry.getProvider(profile.providerId);
-    if (!provider || provider.status !== 'active') {
+    if (!provider || provider.status !== 'active' || !provider.registryRevision) {
       throw new SemanticEmbeddingError({
         code: 'CAPABILITY_UNAVAILABLE',
-        safeMessage: 'Configured embedding provider is unavailable or disabled.',
+        safeMessage:
+          'Configured embedding provider is unavailable, disabled, or lacks registry revision.',
         operation: 'resolve-provider',
       });
     }
@@ -220,7 +221,7 @@ export class SemanticEmbeddingAuthorityResolver implements SemanticEmbeddingReso
       embeddingProfileRevision: profile.profileRevision,
       credentialId: credentialMetadata.credentialId,
       credentialRevision: credentialMetadata.credentialRevision,
-      providerRegistryRevision: provider.registryRevision ?? 'provider-registry:v1',
+      providerRegistryRevision: provider.registryRevision,
       capabilityCatalogRevision: model.capabilityRevision,
       providerPolicyFingerprint,
       representationVersion: profile.representationVersion,

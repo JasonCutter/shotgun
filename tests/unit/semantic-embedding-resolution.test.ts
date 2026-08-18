@@ -16,6 +16,7 @@ import type {
   CredentialMetadata,
   CredentialVaultPort,
 } from '../../modules/credential-vault/src/index.js';
+import type { ProviderStatusReaderPort } from '../../packages/contracts/src/index.js';
 
 describe('AKP-1 WP1: Semantic Embedding Resolution and Execution Pinning', () => {
   const createTestRig = (
@@ -28,10 +29,12 @@ describe('AKP-1 WP1: Semantic Embedding Resolution and Execution Pinning', () =>
       readonly omitDeploymentCeiling?: boolean;
       readonly omitApprovalAuthority?: boolean;
       readonly legacyGeminiAllowed?: boolean;
+      readonly customProviderRegistry?: ProviderStatusReaderPort;
     } = {},
   ) => {
     const embeddingRegistry = initialSemanticEmbeddingRegistry();
-    const providerRegistry = initialProviderRegistry();
+    const providerRegistry: ProviderStatusReaderPort =
+      options.customProviderRegistry ?? initialProviderRegistry();
     const repository = new InMemorySemanticEmbeddingProfileRepository();
 
     const credentialList = options.credentials ?? [
@@ -211,7 +214,7 @@ describe('AKP-1 WP1: Semantic Embedding Resolution and Execution Pinning', () =>
     });
   });
 
-  it('resolves execution and produces immutable execution pin with complete governing revisions and zero secret values', async () => {
+  it('resolves execution and produces immutable execution pin with complete governing revisions from provider authority', async () => {
     const { resolver, profileService } = createTestRig();
 
     const profile = await profileService.createProfile({
@@ -257,6 +260,44 @@ describe('AKP-1 WP1: Semantic Embedding Resolution and Execution Pinning', () =>
     expect(serializedPin).not.toContain('bearer');
 
     expect(resolved.model.providerDefaultDimension).toBe(1536);
+  });
+
+  it('proves providerRegistryRevision is authoritatively derived from ProviderRegistryPort rather than a local fallback literal', async () => {
+    const customProviderRegistry: ProviderStatusReaderPort = {
+      getProvider: (providerId: string) =>
+        providerId === 'openai'
+          ? {
+              providerId: 'openai',
+              status: 'active',
+              registryRevision: 'custom-provider-registry:v2-governed',
+            }
+          : undefined,
+    };
+
+    const { resolver, profileService } = createTestRig({ customProviderRegistry });
+
+    const profile = await profileService.createProfile({
+      projectId: 'project-1',
+      expectedRevision: 0,
+      providerId: 'openai',
+      embeddingModelId: 'text-embedding-3-small',
+      credentialId: 'cred-openai-1',
+      credentialRevision: 1,
+      updatedBy: 'principal-owner',
+    });
+    await profileService.activateProfile({
+      projectId: 'project-1',
+      profileId: profile.profileId,
+      profileRevision: 1,
+      updatedBy: 'principal-owner',
+    });
+
+    const resolved = await resolver.resolveExecution({
+      projectId: 'project-1',
+      sensitivity: 'public',
+    });
+
+    expect(resolved.pin.providerRegistryRevision).toBe('custom-provider-registry:v2-governed');
   });
 
   it('proves providerPolicyFingerprint changes when governed policy inputs change', async () => {

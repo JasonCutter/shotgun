@@ -24,8 +24,8 @@ const initialEmbeddingModels: readonly SemanticEmbeddingModelDescriptor[] = [
     modelId: 'text-embedding-3-small',
     displayName: 'Text Embedding 3 Small',
     providerDefaultDimension: 1536,
-    supportedDimensions: [512, 1536],
     shotgunDefaultDimension: 1536,
+    shotgunAllowedDimensions: [512, 1536],
     shotgunBatchLimit: 2048,
     capabilityRevision: SEMANTIC_EMBEDDING_CATALOG_REVISION,
     supportedDistanceMetrics: ['cosine', 'dot_product', 'euclidean'],
@@ -37,8 +37,8 @@ const initialEmbeddingModels: readonly SemanticEmbeddingModelDescriptor[] = [
     modelId: 'text-embedding-3-large',
     displayName: 'Text Embedding 3 Large',
     providerDefaultDimension: 3072,
-    supportedDimensions: [256, 1024, 1536, 3072],
     shotgunDefaultDimension: 3072,
+    shotgunAllowedDimensions: [256, 1024, 1536, 3072],
     shotgunBatchLimit: 2048,
     capabilityRevision: SEMANTIC_EMBEDDING_CATALOG_REVISION,
     supportedDistanceMetrics: ['cosine', 'dot_product', 'euclidean'],
@@ -50,9 +50,10 @@ const initialEmbeddingModels: readonly SemanticEmbeddingModelDescriptor[] = [
     modelId: 'gemini-embedding-001',
     displayName: 'Gemini Embedding 001',
     providerDefaultDimension: 3072,
-    supportedDimensionRange: { min: 128, max: 3072 },
-    supportedDimensions: [128, 256, 512, 768, 1536, 3072],
+    providerSupportedDimensionRange: { min: 128, max: 3072 },
+    providerRecommendedDimensions: [768, 1536, 3072],
     shotgunDefaultDimension: 768,
+    shotgunAllowedDimensions: [128, 256, 512, 768, 1536, 3072],
     shotgunBatchLimit: 100,
     capabilityRevision: SEMANTIC_EMBEDDING_CATALOG_REVISION,
     supportedDistanceMetrics: ['cosine', 'dot_product', 'euclidean'],
@@ -63,7 +64,10 @@ const initialEmbeddingModels: readonly SemanticEmbeddingModelDescriptor[] = [
 
 const copyModel = (model: SemanticEmbeddingModelDescriptor): SemanticEmbeddingModelDescriptor => ({
   ...model,
-  supportedDimensions: [...model.supportedDimensions],
+  providerRecommendedDimensions: model.providerRecommendedDimensions
+    ? [...model.providerRecommendedDimensions]
+    : undefined,
+  shotgunAllowedDimensions: [...model.shotgunAllowedDimensions],
   supportedDistanceMetrics: [...model.supportedDistanceMetrics],
 });
 
@@ -223,17 +227,14 @@ export class SemanticEmbeddingProfileService implements SemanticEmbeddingProfile
       });
     }
 
-    // 4. Validate dimension and distance metric
+    // 4. Validate dimension and distance metric against Shotgun allowed policy
     const dimension = input.dimension ?? model.shotgunDefaultDimension;
-    const isDimensionValid = model.supportedDimensionRange
-      ? dimension >= model.supportedDimensionRange.min &&
-        dimension <= model.supportedDimensionRange.max
-      : model.supportedDimensions.includes(dimension);
+    const isDimensionValid = model.shotgunAllowedDimensions.includes(dimension);
 
     if (!isDimensionValid) {
       throw new SemanticEmbeddingError({
         code: 'INVALID_INPUT',
-        safeMessage: `Dimension ${dimension} is not supported by model '${embeddingModelId}'.`,
+        safeMessage: `Dimension ${dimension} is not supported by Shotgun policy for model '${embeddingModelId}'.`,
         operation: 'create-profile',
       });
     }

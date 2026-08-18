@@ -32,7 +32,7 @@ export type ProviderStatusReaderPort = {
     | {
         readonly providerId: string;
         readonly status: string;
-        readonly registryRevision?: string;
+        readonly registryRevision: string;
       }
     | undefined;
 };
@@ -110,14 +110,16 @@ export type SemanticEmbeddingModelDescriptor = {
   /** Official provider default output dimension (e.g. 3072 for gemini-embedding-001, 1536 for text-embedding-3-small). */
   readonly providerDefaultDimension: number;
   /** Optional continuous dimension range supported by the provider. */
-  readonly supportedDimensionRange?: {
+  readonly providerSupportedDimensionRange?: {
     readonly min: number;
     readonly max: number;
   };
-  /** Discrete supported / recommended dimensions. */
-  readonly supportedDimensions: readonly number[];
+  /** Official provider recommended dimensions (e.g. 768, 1536, 3072 for Gemini MRL). */
+  readonly providerRecommendedDimensions?: readonly number[];
   /** Shotgun internal default dimension when not explicitly configured. */
   readonly shotgunDefaultDimension: number;
+  /** Shotgun allowed dimensions for project profiles. */
+  readonly shotgunAllowedDimensions: readonly number[];
   /** Shotgun internal conservative client batch size bound (not an asserted provider hard limit). */
   readonly shotgunBatchLimit: number;
   readonly capabilityRevision: string;

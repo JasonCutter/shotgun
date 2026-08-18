@@ -18,7 +18,7 @@
       "officialSource": "https://github.com/postgres/postgres",
       "pin": {
         "type": "docker-digest",
-        "value": "postgres:16.14-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777"
+        "value": "pgvector/pgvector:pg16@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b"
       },
       "license": {
         "spdx": "PostgreSQL",
@@ -103,8 +103,8 @@
         "value": "3.19.1"
       },
       "license": {
-        "spdx": "GPL-3.0",
-        "status": "VERIFIED",
+        "spdx": "GPL-3.0-only",
+        "status": "REQUIRES_ISOLATION",
         "evidence": "GPL-3.0 LICENSE and official 3.19.1 release at the upstream repository"
       },
       "decision": "DEFER",

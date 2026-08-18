@@ -28,7 +28,10 @@ for (const file of candidateFiles) {
   try {
     content = await readFile(path.join(rootDirectory, file), 'utf8');
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+    if (
+      (error as NodeJS.ErrnoException).code === 'ENOENT' ||
+      (error as NodeJS.ErrnoException).code === 'EISDIR'
+    ) {
       continue;
     }
     throw error;

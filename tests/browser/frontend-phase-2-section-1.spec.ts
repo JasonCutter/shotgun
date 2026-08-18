@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 
 import { expect, test } from '@playwright/test';
 
+import { switchProject } from './helpers/hfm-commands.js';
+
 test('Sources stages and submits Direct Text, then releases Project switching after success', async ({
   page,
 }) => {
@@ -14,6 +16,8 @@ test('Sources stages and submits Direct Text, then releases Project switching af
 
   await expect(page.getByRole('heading', { name: 'Sources', level: 1 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Source Library' })).toBeVisible();
+  await page.getByLabel('Source Library').getByRole('link', { name: 'Add Source' }).click();
+  await expect(page).toHaveURL(/\/sources\?view=add$/);
   await page.getByLabel('Label').fill(draftLabel);
   await page.getByLabel('Direct Text').fill(draftText);
   await page.getByRole('button', { name: 'Add intake draft' }).click();
@@ -32,11 +36,10 @@ test('Sources stages and submits Direct Text, then releases Project switching af
 
   await page.getByRole('button', { name: 'Submit drafts' }).click();
   await expect(page.getByRole('heading', { name: 'Submission Completed' })).toBeVisible();
-  await expect(page.getByText('No route-scoped drafts.')).toBeVisible();
+  await expect(page.getByText('No drafts yet.')).toBeVisible();
 
-  const selector = page.getByRole('combobox', { name: 'Current project' });
-  await selector.selectOption('project-b');
-  await expect(selector).toHaveValue('project-b');
+  await switchProject(page, 'Project B');
+  await expect(page.locator('.project-summary')).toContainText('Project B');
 });
 
 test('Sources keeps Project switching blocked after a partial delete and releases it after the last delete', async ({
@@ -44,6 +47,8 @@ test('Sources keeps Project switching blocked after a partial delete and release
 }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/sources');
+  await page.getByLabel('Source Library').getByRole('link', { name: 'Add Source' }).click();
+  await expect(page).toHaveURL(/\/sources\?view=add$/);
 
   await page.getByLabel('Label').fill('Draft A');
   await page.getByLabel('Direct Text').fill('First transient draft');
@@ -52,24 +57,30 @@ test('Sources keeps Project switching blocked after a partial delete and release
   await page.getByLabel('Direct Text').fill('Second transient draft');
   await page.getByRole('button', { name: 'Add intake draft' }).click();
 
-  const selector = page.getByRole('combobox', { name: 'Current project' });
   await page.getByRole('button', { name: 'Remove Draft A' }).click();
-  await selector.selectOption('project-b');
-  await expect(selector).toHaveValue('shotgun');
-  await expect(page.getByRole('alert')).toContainText('current Workspace');
+  await switchProject(page, 'Project B');
+  await expect(page.locator('.project-summary')).toContainText('shotgun');
+  await expect(page.locator('.global-tools [aria-live="polite"]')).toContainText(
+    'Resolve the current Workspace before switching Projects.',
+  );
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('region', { name: 'Commands' })).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Remove Draft B' }).click();
-  await selector.selectOption('project-b');
-  await expect(selector).toHaveValue('project-b');
+  await switchProject(page, 'Project B');
+  await expect(page.locator('.project-summary')).toContainText('Project B');
 });
 
-test('Sources URL preflight is advisory, transient, responsive, and offline-safe', async ({
+test('Sources URL preflight is advisory, transient, PC-shell-safe, and offline-safe', async ({
   page,
   context,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/sources');
-  await expect(page.getByRole('navigation', { name: 'Mobile navigation' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Mobile navigation' })).toHaveCount(0);
+  await page.getByLabel('Source Library').getByRole('link', { name: 'Add Source' }).click();
+  await expect(page).toHaveURL(/\/sources\?view=add$/);
 
   await page.getByLabel('Input type').selectOption('URL');
   await page.getByLabel('URL').fill('file:///etc/passwd');
@@ -80,7 +91,6 @@ test('Sources URL preflight is advisory, transient, responsive, and offline-safe
 
   await context.setOffline(true);
   await page.evaluate(() => window.dispatchEvent(new Event('offline')));
-  await expect(page.getByLabel('Search Sources')).toBeDisabled();
-  await expect(page.getByText(/Server search and intake actions are blocked/)).toBeVisible();
+  await expect(page.getByLabel('Search Sources')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Submit drafts' })).toBeDisabled();
 });

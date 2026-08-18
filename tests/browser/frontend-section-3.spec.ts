@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 
+import { switchProject } from './helpers/hfm-commands.js';
+
 const sessionView = (created: boolean) => ({
   session: {
     apiVersion: '2.0.0',
@@ -39,34 +41,28 @@ const shellView = (created: boolean) => ({
           },
         ]
       : [],
-    navigation: [
-      ...(created
-        ? [
-            {
-              id: 'home',
-              label: 'Home',
-              availability: 'AVAILABLE',
-              targetRoute: { routeId: 'home', href: '/' },
-            },
-          ]
-        : [
-            {
-              id: 'home',
-              label: 'Home',
-              availability: 'TEMPORARILY_UNAVAILABLE',
-              reason: 'Create a Project to open Home.',
-            },
-          ]),
-      {
-        id: 'settings',
-        label: 'Settings',
-        availability: 'AVAILABLE',
-        targetRoute: {
-          routeId: created ? 'settings' : 'settings-projects',
-          href: created ? '/settings' : '/settings/projects',
-        },
-      },
-    ],
+    navigation: created
+      ? [
+          {
+            id: 'home',
+            label: 'Home',
+            availability: 'AVAILABLE',
+            targetRoute: { routeId: 'home', href: '/' },
+          },
+          {
+            id: 'sources',
+            label: 'Sources',
+            availability: 'AVAILABLE',
+            targetRoute: { routeId: 'sources', href: '/sources' },
+          },
+          {
+            id: 'ask',
+            label: 'Ask',
+            availability: 'AVAILABLE',
+            targetRoute: { routeId: 'ask', href: '/ask' },
+          },
+        ]
+      : [],
     features: [
       {
         id: 'global-search',
@@ -108,48 +104,58 @@ const shellView = (created: boolean) => ({
   },
 });
 
-test('Section 3 renders responsive server-authoritative Shell and six-area Home', async ({
-  page,
-}) => {
+test('Section 3 renders the PC Global Shell foundation and a compact Home', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeVisible();
-  for (const heading of [
+  await expect(page.getByRole('heading', { name: 'Primary Actions' })).toBeVisible();
+  const primaryActions = page.getByRole('region', { name: 'Primary Actions' });
+  await expect(primaryActions.getByRole('link', { name: 'Sources', exact: true })).toBeVisible();
+  await expect(primaryActions.getByRole('link', { name: 'Ask', exact: true })).toBeVisible();
+  for (const hidden of [
     'Project State',
-    'Primary Actions',
-    'Attention Queue',
+    'Attention',
     'Continue Working',
     'Recent and Pinned',
     'Operational Summary',
   ]) {
-    await expect(page.getByRole('heading', { name: heading })).toBeVisible();
+    await expect(page.getByRole('heading', { name: hidden, exact: true })).toHaveCount(0);
   }
-  await expect(page.getByText('No attention needed')).toBeVisible();
-  await expect(page.getByText('No restorable server resources.')).toBeVisible();
-  await expect(page.getByText('No validated browser drafts.')).toBeVisible();
 
   await page.setViewportSize({ width: 900, height: 900 });
   await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeHidden();
-  await expect(page.getByRole('navigation', { name: 'Mobile navigation' })).toBeVisible();
-  await expect(page.getByText('More', { exact: true })).toBeVisible();
+  const primaryNavigation = page.getByRole('navigation', { name: 'Primary navigation' });
+  await expect(primaryNavigation).toBeVisible();
+  await expect(primaryNavigation.getByRole('link', { name: 'Home' })).toBeVisible();
+  await expect(primaryNavigation.getByRole('link', { name: 'Library' })).toBeVisible();
+  await expect(primaryNavigation.getByRole('link', { name: 'Conversations' })).toBeVisible();
+  await expect(primaryNavigation.locator('summary').filter({ hasText: 'Settings' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Mobile navigation' })).toHaveCount(0);
+  await expect(page.getByText('More', { exact: true })).toHaveCount(0);
 
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.evaluate(() => {
     document.documentElement.style.zoom = '200%';
   });
   await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Search' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Search', exact: true })).toBeVisible();
+  await page.keyboard.press('Control+k');
+  await expect(page.getByRole('region', { name: 'Commands' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Commands' })).toHaveCount(0);
 });
 
 test('Section 3 Search and Command Palette keep query transient and keyboard-safe', async ({
   page,
 }) => {
   const searchRequests: { readonly url: string; readonly body: unknown }[] = [];
+  const productPostRequests: string[] = [];
   page.on('request', (request) => {
+    if (request.method() === 'POST' && request.url().includes('/product-api/')) {
+      productPostRequests.push(request.url());
+    }
     if (!request.url().endsWith('/product-api/frontend/search/query')) return;
     searchRequests.push({
       url: request.url(),
@@ -158,8 +164,14 @@ test('Section 3 Search and Command Palette keep query transient and keyboard-saf
   });
 
   await page.goto('/');
-  const searchButton = page.getByRole('button', { name: 'Search' });
-  await searchButton.click();
+  await expect(page.getByRole('button', { name: 'Search', exact: true })).toBeVisible();
+  const keyboardInvoker = page
+    .getByRole('navigation', { name: 'Primary navigation' })
+    .getByRole('link', { name: 'Home', exact: true });
+  await keyboardInvoker.focus();
+  await page.keyboard.press('Control+k');
+  const commands = page.getByRole('region', { name: 'Commands' });
+  await commands.getByRole('button', { name: /^Search/ }).click();
   const searchDialog = page.getByRole('dialog', { name: 'Search' });
   await expect(searchDialog).toBeVisible();
   const queryInput = page.getByLabel('Search query');
@@ -176,68 +188,81 @@ test('Section 3 Search and Command Palette keep query transient and keyboard-saf
     scope: { kind: 'CROSS_PROJECT', projectIds: ['project-b'] },
   });
   await page.getByRole('button', { name: 'Close' }).click();
-  await expect(searchButton).toBeFocused();
+  await expect(keyboardInvoker).toBeFocused();
   await expect
     .poll(() =>
       page.evaluate(() => `${JSON.stringify(localStorage)}${JSON.stringify(sessionStorage)}`),
     )
     .not.toContain('private transient phrase');
 
-  await searchButton.focus();
+  productPostRequests.length = 0;
+  await keyboardInvoker.focus();
   await page.keyboard.press('Control+k');
-  const palette = page.getByRole('dialog', { name: 'Commands' });
+  const palette = page.getByRole('region', { name: 'Commands' });
   await expect(palette).toBeVisible();
   await expect(palette.getByRole('textbox', { name: 'Command search' })).toBeVisible();
   await expect(palette.getByRole('heading', { name: 'Navigation' })).toBeVisible();
-  await expect(palette.getByRole('button', { name: /Open Knowledge/ })).toBeVisible();
-  await expect(palette.getByRole('button', { name: /approve|delete|revoke/i })).toHaveCount(0);
+  for (const command of [/Open External Actions/, /Open Activity/, /Open History/]) {
+    await expect(palette.getByRole('button', { name: command })).toBeVisible();
+  }
+  await expect(palette.getByRole('button', { name: /Open Knowledge/ })).toHaveCount(0);
+  await expect(palette.getByRole('button', { name: /Open Review/ })).toHaveCount(0);
+  await expect(palette.getByRole('button', { name: /Review Privacy/ })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Review Privacy' })).toHaveCount(0);
+  expect(productPostRequests).toHaveLength(0);
   await page.keyboard.press('Escape');
   await expect(palette).toBeHidden();
-  await expect(searchButton).toBeFocused();
+  await expect(keyboardInvoker).toBeFocused();
 });
 
-test('Section 3 route guard preserves Active and Resource Project context and masks denial', async ({
+test('Section 3 route guard preserves Active Project context and masks resource denial', async ({
   page,
 }) => {
-  await page.goto(
-    '/settings/projects/project-b?targetProjectId=shotgun&resourceProjectId=project-b',
-  );
-  await expect(
-    page.getByRole('heading', { name: 'Settings & Project Administration' }),
-  ).toBeVisible();
-  await expect(page.locator('.active-project')).toContainText('shotgun');
-  await expect(page.locator('.resource-project')).toContainText('Project B');
-  await expect(page.getByRole('combobox', { name: 'Current project' })).toHaveValue('shotgun');
+  await page.goto('/external-action?resourceProjectId=project-b');
+  await expect(page.getByRole('heading', { name: /External Action/ })).toBeVisible();
+  await expect(page.locator('.project-summary')).toContainText('shotgun');
 
-  await page.goto('/settings/projects/not-accessible');
+  await page.goto('/external-action?resourceProjectId=not-accessible');
   await expect(page.getByRole('heading', { name: 'Request error' })).toBeVisible();
   await expect(page.getByRole('alert')).toContainText('not found');
+  await expect(page.getByRole('banner')).toBeVisible();
+  await expect(page.locator('.project-summary')).toContainText('shotgun');
   await page.goto('/');
-  await expect(page.getByRole('combobox', { name: 'Current project' })).toHaveValue('shotgun');
+  await expect(page.locator('.project-summary')).toContainText('shotgun');
 });
 
 test('Section 3 blocks unsafe leave state, warns on offline state, and restores online use', async ({
   page,
   context,
 }) => {
-  await page.goto('/settings/advanced');
-  await page.getByLabel('Default Answer Model').fill('unsaved-model');
-  await page.getByRole('button', { name: 'Validate & Preview' }).click();
-  await expect(page.getByText('Draft status: Ready to apply')).toBeVisible();
-  const selector = page.getByRole('combobox', { name: 'Current project' });
-  await selector.selectOption('project-b');
-  await expect(selector).toHaveValue('shotgun');
-  await expect(page.getByRole('alert')).toContainText('current Workspace');
+  await page.goto('/sources?view=add');
+  await page.getByLabel('Label').fill('Guarded draft');
+  await page.getByLabel('Direct Text').fill('Transient unsafe-leave evidence');
+  await page.getByRole('button', { name: 'Add intake draft' }).click();
+  await switchProject(page, 'Project B');
+  await expect(page.locator('.project-summary')).toContainText('shotgun');
+  await expect(page.locator('.global-tools [aria-live="polite"]')).toContainText(
+    'Resolve the current Workspace before switching Projects.',
+  );
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('region', { name: 'Commands' })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'Commands' })).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Remove Guarded draft' }).click();
+  await switchProject(page, 'Project B');
+  await expect(page.locator('.project-summary')).toContainText('Project B');
 
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
   await context.setOffline(true);
   await page.evaluate(() => window.dispatchEvent(new Event('offline')));
   await expect(page.getByRole('alert')).toContainText('Offline');
-  await expect(page.getByRole('button', { name: 'Search' })).toBeDisabled();
+  await page.keyboard.press('Control+k');
+  const commands = page.getByRole('region', { name: 'Commands' });
+  await expect(commands.getByRole('button', { name: /^Search/ })).toBeDisabled();
   await context.setOffline(false);
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
-  await expect(page.getByRole('button', { name: 'Search' })).toBeEnabled();
+  await expect(commands.getByRole('button', { name: /^Search/ })).toBeEnabled();
 });
 
 test('Section 3 zero-project onboarding sends PRINCIPAL bootstrap without a browser Project ID', async ({
@@ -387,13 +412,16 @@ test('Section 3 zero-project onboarding sends PRINCIPAL bootstrap without a brow
 
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Create your first Project' })).toBeVisible();
+  await expect(page.getByText('Create your first Project to get started.')).toBeVisible();
+  await expect(page.getByText(/Project authority.*browser/i)).toHaveCount(0);
   expect(homeRequests).toBe(0);
   await page.getByRole('link', { name: 'Open Project onboarding' }).click();
-  await page.getByRole('button', { name: '+ Create New Project' }).click();
-  await expect(page.getByRole('dialog', { name: 'Create your first Project' })).toBeVisible();
+  await page.getByRole('button', { name: 'Create Project' }).click();
+  const createDialog = page.getByRole('dialog', { name: 'Create your first Project' });
+  await expect(createDialog).toBeVisible();
   await expect(page.getByLabel('Project ID (Immutable)')).toHaveCount(0);
   await page.getByLabel('Project Name').fill('Server Project');
-  await page.getByRole('button', { name: 'Create Project', exact: true }).click();
+  await createDialog.getByRole('button', { name: 'Create Project', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
   expect(bootstrapBody).toMatchObject({
     envelopeVersion: '2.0.0',

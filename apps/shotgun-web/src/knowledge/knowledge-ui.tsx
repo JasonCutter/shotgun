@@ -219,30 +219,36 @@ export const ProjectionStatus = ({
   readonly heading?: string;
 }) => {
   const isReady = projection.status === 'READY';
+  const technicalDetails = (
+    <TechnicalDetails
+      items={[
+        { label: 'Projection kind', value: projection.projectionKind },
+        { label: 'Canonical version', value: projection.canonicalVersion },
+        { label: 'Projected version', value: projection.projectedCanonicalVersion },
+        { label: 'Projection lag', value: projection.lag },
+        ...(projection.updatedAt
+          ? [{ label: 'Projection updated', value: projection.updatedAt }]
+          : []),
+      ]}
+    />
+  );
+  if (isReady) return technicalDetails;
   return (
-    <section
-      className={`knowledge-projection knowledge-projection--${projection.status.toLowerCase()}`}
-      aria-labelledby={`${heading.toLowerCase().replaceAll(' ', '-')}-heading`}
-    >
-      <h3 id={`${heading.toLowerCase().replaceAll(' ', '-')}-heading`}>{heading}</h3>
-      <p>
-        <strong>{projectionDescription(projection.status)}</strong>
-      </p>
-      <TechnicalDetails
-        items={[
-          { label: 'Projection kind', value: projection.projectionKind },
-          { label: 'Canonical version', value: projection.canonicalVersion },
-          { label: 'Projected version', value: projection.projectedCanonicalVersion },
-          { label: 'Projection lag', value: projection.lag },
-        ]}
-      />
-      {!isReady ? (
+    <>
+      {technicalDetails}
+      <section
+        className={`knowledge-projection knowledge-projection--${projection.status.toLowerCase()}`}
+        aria-labelledby={`${heading.toLowerCase().replaceAll(' ', '-')}-heading`}
+      >
+        <h3 id={`${heading.toLowerCase().replaceAll(' ', '-')}-heading`}>{heading}</h3>
+        <p>
+          <strong>{projectionDescription(projection.status)}</strong>
+        </p>
         <p className="stale-state" role="status">
           This projection is not presented as current. {projection.reason ?? 'No reason supplied.'}
         </p>
-      ) : null}
-      {projection.updatedAt ? <small>Updated {projection.updatedAt}</small> : null}
-    </section>
+      </section>
+    </>
   );
 };
 
@@ -285,28 +291,27 @@ export const LineageMetadata = ({
     ['ChangeSet', lineage.changeSetId],
   ];
   return (
-    <TechnicalDetails summary={heading}>
-      <section className="knowledge-lineage" aria-label={heading}>
-        <dl className="knowledge-metadata-grid">
-          {fields.map(([label, value]) => (
-            <div key={label}>
-              <dt>{label}</dt>
-              <dd>
-                <code>{displayValue(value)}</code>
-              </dd>
-            </div>
-          ))}
-        </dl>
-        {lineage.evidenceIds && lineage.evidenceIds.length > 0 ? (
-          <p>
-            Evidence IDs: <code>{lineage.evidenceIds.join(', ')}</code>
-          </p>
-        ) : null}
-        {lineage.projection ? (
-          <ProjectionStatus projection={lineage.projection} heading="Lineage projection" />
-        ) : null}
-      </section>
-    </TechnicalDetails>
+    <TechnicalDetails
+      summary={heading}
+      inspectionItems={[
+        ...fields.map(([label, value]) => ({ label, value: displayValue(value) })),
+        ...(lineage.evidenceIds && lineage.evidenceIds.length > 0
+          ? [{ label: 'Evidence IDs', value: lineage.evidenceIds.join(', ') }]
+          : []),
+        ...(lineage.projection
+          ? [
+              { label: 'Lineage projection kind', value: lineage.projection.projectionKind },
+              { label: 'Lineage projection status', value: lineage.projection.status },
+              { label: 'Lineage canonical version', value: lineage.projection.canonicalVersion },
+              {
+                label: 'Lineage projected version',
+                value: lineage.projection.projectedCanonicalVersion,
+              },
+              { label: 'Lineage projection lag', value: lineage.projection.lag },
+            ]
+          : []),
+      ]}
+    />
   );
 };
 

@@ -7,6 +7,7 @@ import {
   decodeConversationCitationReturnTarget,
   type CitationReturnTarget,
   type ConversationCitationReturnTarget,
+  type EvidenceListView,
   type GlobalShellView,
 } from '@shotgun/api-client';
 
@@ -14,13 +15,7 @@ import { useAppRuntime } from '../app/providers.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
 import { TechnicalDetails } from '../components/technical-details.js';
-import {
-  evidenceOriginLabel,
-  mediaTypeLabel,
-  sourceAskUsageLabel,
-  sourcePreviewLabel,
-  transformationStateLabel,
-} from '../presentation/product-labels.js';
+import { hfmOwnerLabel, useProductLocalization } from '../localization/product-localization.js';
 import {
   sourceDetailQueryOptions,
   sourceEvidenceQueryOptions,
@@ -32,8 +27,92 @@ import {
   knowledgeEvidenceReturnState,
 } from '../knowledge/knowledge-ui.js';
 
+type SourceDetailViewName = 'preview' | 'evidence' | 'versions';
+
+const isSourceDetailViewName = (value: string | null): value is SourceDetailViewName =>
+  value === 'preview' || value === 'evidence' || value === 'versions';
+
+type EvidenceItem = EvidenceListView['items'][number];
+
+const findTextPosition = (
+  locators: EvidenceItem['locators'],
+): { start: number; end: number } | undefined => {
+  for (const locator of locators) {
+    if (
+      typeof locator === 'object' &&
+      locator !== null &&
+      'type' in locator &&
+      locator.type === 'TextPositionSelector' &&
+      'start' in locator &&
+      typeof locator.start === 'number' &&
+      'end' in locator &&
+      typeof locator.end === 'number'
+    ) {
+      return { start: locator.start, end: locator.end };
+    }
+  }
+  return undefined;
+};
+
+export const isDerivedLabel = (item: EvidenceItem): boolean => {
+  if (item.exactText === undefined) return false;
+  const derivedPrefix = item.exactText.slice(0, 120);
+  return item.label === derivedPrefix || item.label === item.exactText;
+};
+
+export type GroupedEvidenceCard = {
+  readonly primaryItem: EvidenceItem;
+  readonly memberEvidenceIds: readonly string[];
+};
+
+export const groupEvidenceCards = (
+  items: readonly EvidenceItem[],
+): readonly GroupedEvidenceCard[] => {
+  const groups: {
+    primaryItem: EvidenceItem;
+    memberEvidenceIds: string[];
+  }[] = [];
+  const groupMap = new Map<string, (typeof groups)[number]>();
+
+  for (const item of items) {
+    const position = findTextPosition(item.locators);
+    if (!position || item.exactText === undefined) {
+      groups.push({
+        primaryItem: item,
+        memberEvidenceIds: [item.evidenceId],
+      });
+      continue;
+    }
+
+    const distinctLabel = isDerivedLabel(item) ? null : item.label;
+    const key = JSON.stringify([
+      position.start,
+      position.end,
+      item.origin,
+      distinctLabel,
+      item.exactText,
+    ]);
+    const existing = groupMap.get(key);
+    if (existing) {
+      if (!existing.memberEvidenceIds.includes(item.evidenceId)) {
+        existing.memberEvidenceIds.push(item.evidenceId);
+      }
+    } else {
+      const newGroup = {
+        primaryItem: item,
+        memberEvidenceIds: [item.evidenceId],
+      };
+      groupMap.set(key, newGroup);
+      groups.push(newGroup);
+    }
+  }
+
+  return groups;
+};
+
 export const SourceDetailWorkspace = () => {
   const { apiClient } = useAppRuntime();
+  const { t } = useProductLocalization();
   const { shell } = useOutletContext<{ readonly shell: GlobalShellView }>();
   const { sourceId = '' } = useParams();
   const location = useLocation();
@@ -79,6 +158,17 @@ export const SourceDetailWorkspace = () => {
     () => decodeKnowledgeEvidenceReturnState(location.state, sourceId, selectedVersionId),
     [location.state, selectedVersionId, sourceId],
   );
+  const requestedDetailView = searchParameters.get('view');
+  const selectedDetailView: SourceDetailViewName = isSourceDetailViewName(requestedDetailView)
+    ? requestedDetailView
+    : citationReturnTarget || knowledgeReturnTarget
+      ? 'evidence'
+      : 'preview';
+  const selectDetailView = (view: SourceDetailViewName) => {
+    const next = new URLSearchParams(searchParameters);
+    next.set('view', view);
+    setSearchParameters(next, { state: location.state });
+  };
 
   const focusCitationEvidence = useCallback((node: HTMLLIElement | null) => {
     if (!node) return;
@@ -86,16 +176,21 @@ export const SourceDetailWorkspace = () => {
     node.focus();
   }, []);
 
-  if (detail.isPending) return <LoadingState message="Loading Source…" />;
+  const groupedEvidence = useMemo(
+    () => (evidence.data ? groupEvidenceCards(evidence.data.items) : []),
+    [evidence.data],
+  );
+
+  if (detail.isPending) return <LoadingState message={t('source_detail.loading')} />;
   if (detail.error) return <ErrorState error={detail.error} />;
   if (!detail.data) return null;
 
   return (
-    <section className="route-page source-detail-workspace">
-      <p className="eyebrow">Source detail</p>
+    <section className="route-page hfm-route-page source-detail-workspace">
+      <p className="eyebrow">{t('source_detail.eyebrow')}</p>
       <h1 tabIndex={-1}>{detail.data.label}</h1>
       <p>
-        <Link to="/sources">Back to Source Library</Link>
+        <Link to="/sources">{t('source_detail.back')}</Link>
       </p>
       {conversationReturnTarget ? (
         <p>
@@ -119,7 +214,7 @@ export const SourceDetailWorkspace = () => {
               },
             }}
           >
-            Return to cited resource
+            {t('source_detail.return_citation')}
           </Link>
         </p>
       ) : null}
@@ -129,112 +224,162 @@ export const SourceDetailWorkspace = () => {
             to={knowledgeReturnTarget.originRoute}
             state={knowledgeEvidenceReturnState(knowledgeReturnTarget)}
           >
-            Return to Knowledge resource
+            {t('source_detail.return_knowledge')}
           </Link>
         </p>
       ) : null}
-      <dl className="identity-summary">
-        <div>
-          <dt>Version</dt>
-          <dd>
-            {history.data?.versions.find((version) => version.sourceVersionId === selectedVersionId)
-              ?.versionNumber ?? 'Selected'}
-          </dd>
-        </div>
-        <div>
-          <dt>Preview</dt>
-          <dd>{sourcePreviewLabel(detail.data.previewReadiness)}</dd>
-        </div>
-        <div>
-          <dt>Questions</dt>
-          <dd>{sourceAskUsageLabel(detail.data.askUsageState)}</dd>
-        </div>
-      </dl>
+      <nav className="source-detail-navigation" aria-label={t('source_detail.views')}>
+        {(['preview', 'evidence', 'versions'] as const).map((view) => (
+          <button
+            key={view}
+            className="hfm-action-selection"
+            type="button"
+            aria-current={selectedDetailView === view ? 'page' : undefined}
+            aria-pressed={selectedDetailView === view}
+            onClick={() => selectDetailView(view)}
+          >
+            {view === 'preview'
+              ? t('source_detail.original_preview')
+              : view === 'evidence'
+                ? t('source_detail.evidence')
+                : t('source_detail.version_history')}
+          </button>
+        ))}
+      </nav>
+      {selectedDetailView === 'preview' ? (
+        <section
+          className="action-card source-detail-preview"
+          aria-labelledby="source-preview-heading"
+        >
+          <h2 id="source-preview-heading">{t('source_detail.original_preview')}</h2>
+          {preview.isPending ? <LoadingState message={t('source_detail.loading_preview')} /> : null}
+          {preview.error ? <ErrorState error={preview.error} /> : null}
+          {preview.data ? (
+            preview.data.text ? (
+              <pre className="source-preview" tabIndex={0}>
+                {preview.data.text}
+              </pre>
+            ) : (
+              <p role="status">
+                {t('source_detail.preview_unsupported')} ({preview.data.mediaType})
+              </p>
+            )
+          ) : null}
+        </section>
+      ) : null}
+
+      {selectedDetailView === 'evidence' ? (
+        <section
+          className="action-card source-detail-evidence"
+          aria-labelledby="source-evidence-heading"
+        >
+          <h2 id="source-evidence-heading">{t('source_detail.evidence')}</h2>
+          {evidence.isPending ? (
+            <LoadingState message={t('source_detail.loading_evidence')} />
+          ) : null}
+          {evidence.error ? <ErrorState error={evidence.error} /> : null}
+          {evidence.data?.items.length === 0 ? <p>{t('source_detail.no_evidence')}</p> : null}
+          {evidence.data && groupedEvidence.length > 0 ? (
+            <ul className="source-evidence-list">
+              {groupedEvidence.map((group) => {
+                const item = group.primaryItem;
+                const isCitationTarget = group.memberEvidenceIds.some(
+                  (id) =>
+                    id === citationReturnTarget?.evidenceId ||
+                    id === knowledgeReturnTarget?.target.evidenceId,
+                );
+                const targetMemberId =
+                  group.memberEvidenceIds.find(
+                    (id) =>
+                      id === citationReturnTarget?.evidenceId ||
+                      id === knowledgeReturnTarget?.target.evidenceId,
+                  ) ?? item.evidenceId;
+
+                const showDistinctLabel = !isDerivedLabel(item);
+
+                return (
+                  <li
+                    key={item.evidenceId}
+                    id={`evidence-${targetMemberId}`}
+                    tabIndex={-1}
+                    ref={isCitationTarget ? focusCitationEvidence : undefined}
+                  >
+                    {showDistinctLabel ? <strong>{item.label}</strong> : null}
+                    {item.exactText !== undefined ? (
+                      <p>{item.exactText}</p>
+                    ) : (
+                      <strong>{item.label}</strong>
+                    )}
+                    <small>{hfmOwnerLabel(t, 'evidenceOrigin', item.origin)}</small>
+                    <TechnicalDetails
+                      items={[
+                        { label: t('source_detail.evidence_id'), value: item.evidenceId },
+                        { label: t('source_detail.evidence_revision'), value: item.revisionId },
+                      ]}
+                    />
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
+        </section>
+      ) : null}
+
+      {selectedDetailView === 'versions' ? (
+        <section
+          className="action-card source-detail-versions"
+          aria-labelledby="source-version-heading"
+        >
+          <h2 id="source-version-heading">{t('source_detail.version_history')}</h2>
+          {history.isPending ? <LoadingState message={t('source_detail.loading_history')} /> : null}
+          {history.error ? <ErrorState error={history.error} /> : null}
+          {history.data ? (
+            <ol className="source-version-list">
+              {history.data.versions.map((version) => (
+                <li key={version.sourceVersionId}>
+                  <button
+                    type="button"
+                    className={`hfm-action-selection${
+                      version.sourceVersionId === selectedVersionId ? ' selected-version' : ''
+                    }`}
+                    aria-pressed={version.sourceVersionId === selectedVersionId}
+                    onClick={() => {
+                      setSearchParameters(
+                        { version: version.sourceVersionId, view: 'versions' },
+                        { state: location.state },
+                      );
+                    }}
+                  >
+                    {t('source_detail.version')} {version.versionNumber} ·{' '}
+                    {hfmOwnerLabel(t, 'mediaType', version.mediaType)} ·{' '}
+                    {hfmOwnerLabel(t, 'transformationState', version.transformationState)}
+                  </button>
+                </li>
+              ))}
+            </ol>
+          ) : null}
+        </section>
+      ) : null}
+      {detail.data.previewReadiness === 'READY' ? null : (
+        <p className="source-detail-readiness" role="status">
+          {t('source_detail.preview')}:{' '}
+          {hfmOwnerLabel(t, 'sourcePreview', detail.data.previewReadiness)}
+        </p>
+      )}
+      {detail.data.askUsageState === 'SOURCE_VERSION_READY' ||
+      detail.data.askUsageState === 'EVIDENCE_READY' ? null : (
+        <p className="source-detail-readiness" role="status">
+          {t('source_detail.questions')}:{' '}
+          {hfmOwnerLabel(t, 'sourceAskUsage', detail.data.askUsageState)}.{' '}
+          {detail.data.askUsageExplanation}
+        </p>
+      )}
       <TechnicalDetails
         items={[
-          { label: 'Source ID', value: detail.data.sourceId },
-          { label: 'SourceVersion ID', value: selectedVersionId },
+          { label: t('source_detail.source_id'), value: detail.data.sourceId },
+          { label: t('source_detail.source_version_id'), value: selectedVersionId },
         ]}
       />
-
-      <section className="action-card" aria-labelledby="source-version-heading">
-        <h2 id="source-version-heading">Version history</h2>
-        {history.isPending ? <LoadingState message="Loading Version history…" /> : null}
-        {history.error ? <ErrorState error={history.error} /> : null}
-        {history.data ? (
-          <ol className="source-version-list">
-            {history.data.versions.map((version) => (
-              <li key={version.sourceVersionId}>
-                <button
-                  type="button"
-                  className={
-                    version.sourceVersionId === selectedVersionId ? 'selected-version' : undefined
-                  }
-                  aria-pressed={version.sourceVersionId === selectedVersionId}
-                  onClick={() => {
-                    setSearchParameters({ version: version.sourceVersionId });
-                  }}
-                >
-                  Version {version.versionNumber} · {mediaTypeLabel(version.mediaType)} ·{' '}
-                  {transformationStateLabel(version.transformationState)}
-                </button>
-              </li>
-            ))}
-          </ol>
-        ) : null}
-      </section>
-
-      <section className="action-card" aria-labelledby="source-preview-heading">
-        <h2 id="source-preview-heading">Original Preview</h2>
-        {preview.isPending ? <LoadingState message="Loading Preview…" /> : null}
-        {preview.error ? <ErrorState error={preview.error} /> : null}
-        {preview.data ? (
-          preview.data.text ? (
-            <pre className="source-preview" tabIndex={0}>
-              {preview.data.text}
-            </pre>
-          ) : (
-            <p role="status">
-              Original bytes are available, but inline Preview is not supported for{' '}
-              {preview.data.mediaType}.
-            </p>
-          )
-        ) : null}
-      </section>
-
-      <section className="action-card" aria-labelledby="source-evidence-heading">
-        <h2 id="source-evidence-heading">Evidence</h2>
-        {evidence.isPending ? <LoadingState message="Loading Evidence…" /> : null}
-        {evidence.error ? <ErrorState error={evidence.error} /> : null}
-        {evidence.data?.items.length === 0 ? <p>No Evidence is indexed yet.</p> : null}
-        {evidence.data && evidence.data.items.length > 0 ? (
-          <ul className="source-evidence-list">
-            {evidence.data.items.map((item) => {
-              const isCitationTarget =
-                item.evidenceId === citationReturnTarget?.evidenceId ||
-                item.evidenceId === knowledgeReturnTarget?.target.evidenceId;
-              return (
-                <li
-                  key={item.evidenceId}
-                  id={`evidence-${item.evidenceId}`}
-                  tabIndex={-1}
-                  ref={isCitationTarget ? focusCitationEvidence : undefined}
-                >
-                  <strong>{item.label}</strong>
-                  <p>{item.exactText}</p>
-                  <small>{evidenceOriginLabel(item.origin)}</small>
-                  <TechnicalDetails
-                    items={[
-                      { label: 'Evidence ID', value: item.evidenceId },
-                      { label: 'Evidence revision', value: item.revisionId },
-                    ]}
-                  />
-                </li>
-              );
-            })}
-          </ul>
-        ) : null}
-      </section>
     </section>
   );
 };

@@ -1,6 +1,8 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
+import { expectTechnicalInformation } from './hfm-technical.js';
+
 /**
  * FE-P5-S1 WP6 — Activity Workspace browser accessibility + E2E evidence
  * (AC-15).
@@ -246,13 +248,12 @@ test('Activity Workspace has zero critical accessibility violations (axe, AC-15)
   await stubActivityReads(page);
   await openQueue(page);
 
-  // Select an item so the full Detail (tables + timeline) is in the DOM, then
-  // scan the whole workspace.
+  // Select an item, verify technical lineage remains explicitly available,
+  // then scan the normal workspace.
   await page.getByRole('button', { name: /Source processing/ }).click();
   await expect(page.getByRole('heading', { name: 'Sources activity' })).toBeVisible();
-  await page.getByText('Technical details', { exact: true }).click();
-  await expect(page.getByRole('table', { name: 'Domain Attempts' })).toBeVisible();
-  await expect(page.getByRole('table', { name: 'Transport Attempts' })).toBeVisible();
+  await expect(page.locator('details.technical-details')).toHaveCount(0);
+  await expectTechnicalInformation(page, ['Domain Attempts', 'Transport Attempts']);
 
   const results = await new AxeBuilder({ page }).analyze();
   const critical = results.violations.filter(
@@ -306,7 +307,7 @@ test('Activity Workspace delivers the frozen selection announcement to the live 
   await expect(liveRegion).toContainText('활동 세부 정보를 표시합니다.');
 });
 
-test('Activity Workspace exposes list/table accessibility representations (AC-15)', async ({
+test('Activity Workspace keeps queue semantics and exposes lineage through technical.current', async ({
   page,
 }) => {
   await stubActivityReads(page);
@@ -316,13 +317,15 @@ test('Activity Workspace exposes list/table accessibility representations (AC-15
   await expect(page.getByRole('list', { name: '활동 큐' })).toBeVisible();
   await expect(page.getByRole('button', { name: /Source processing/ })).toBeVisible();
 
-  // Selecting exposes the lineage as labelled tables + lists (Domain Attempts,
-  // Transport Attempts, Stages, Events).
+  // Selecting keeps the human summary in the page while bounded lineage is
+  // available only through the explicit read-only command.
   await page.getByRole('button', { name: /Source processing/ }).click();
   await expect(page.getByRole('heading', { name: 'Sources activity' })).toBeVisible();
-  await page.getByText('Technical details', { exact: true }).click();
-  await expect(page.getByRole('table', { name: 'Domain Attempts' })).toBeVisible();
-  await expect(page.getByRole('table', { name: 'Transport Attempts' })).toBeVisible();
-  await expect(page.getByRole('table', { name: 'Stages' })).toBeVisible();
-  await expect(page.getByRole('list', { name: 'Events' })).toBeVisible();
+  await expect(page.getByText('Technical details', { exact: true })).toHaveCount(0);
+  await expectTechnicalInformation(page, [
+    'Domain Attempts',
+    'Transport Attempts',
+    'Stages',
+    'Events',
+  ]);
 });

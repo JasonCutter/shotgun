@@ -1061,10 +1061,7 @@ export const ExternalActionWorkspace = () => {
                     <h3 id="execution-heading" tabIndex={-1}>
                       실행
                     </h3>
-                    <p>
-                      {externalActionStatusLabel(execution.data.execution.status)} ·{' '}
-                      {execution.data.execution.attemptCount} attempt(s)
-                    </p>
+                    <p>{externalActionStatusLabel(execution.data.execution.status)}</p>
                     <TechnicalDetails
                       items={[
                         { label: 'Execution ID', value: execution.data.execution.executionId },
@@ -1163,18 +1160,15 @@ export const ExternalActionWorkspace = () => {
                 ) : null}
 
                 {audit.data && audit.data.events.length > 0 ? (
-                  <section aria-labelledby="audit-heading" className="action-card">
-                    <h3 id="audit-heading" tabIndex={-1}>
-                      감사 기록
-                    </h3>
-                    <ol>
-                      {audit.data.events.slice(0, 20).map((event) => (
-                        <li key={event.auditEventId}>
-                          {event.occurredAt} · {event.category}
-                        </li>
-                      ))}
-                    </ol>
-                  </section>
+                  <TechnicalDetails
+                    summary="External action audit details"
+                    inspectionItems={[
+                      {
+                        label: 'Audit events',
+                        value: JSON.stringify(audit.data.events.slice(0, 20)),
+                      },
+                    ]}
+                  />
                 ) : null}
 
                 {/* Non-automatic governed surfaces (contract §9, §10.3). */}

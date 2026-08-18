@@ -169,7 +169,7 @@ describe('Frontend Section 3 Product API', () => {
     await application.server.close();
   });
 
-  it('treats zero-project as normal, omits Home, and exposes server onboarding navigation', async () => {
+  it('treats zero-project as normal, omits persistent navigation, and exposes onboarding state', async () => {
     const principal = await auth.bootstrapLocalOwnerPrincipal({
       accountId: 'zero-project-owner',
     });
@@ -193,11 +193,14 @@ describe('Frontend Section 3 Product API', () => {
           id: string;
           targetRoute?: { href: string };
         }[];
+        leadingWarning?: { code: string; message: string };
       };
     }>().shell;
     expect(shell.activeProject).toBeNull();
-    expect(shell.navigation.find((item) => item.id === 'settings')).toMatchObject({
-      targetRoute: { href: '/settings/projects' },
+    expect(shell.navigation).toEqual([]);
+    expect(shell.leadingWarning).toMatchObject({
+      code: 'PROJECT_SETUP_REQUIRED',
+      message: 'Create your first Project to continue.',
     });
 
     const home = await application.server.inject({

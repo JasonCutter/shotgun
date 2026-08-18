@@ -98,7 +98,11 @@ const makeSettings = (overrides: Partial<AISettingsReadModel> = {}): AISettingsR
   ...overrides,
 });
 
-const renderWorkspace = (apiClient: Partial<ShotgunApiClient>, settings = makeSettings()) => {
+const renderWorkspace = (
+  apiClient: Partial<ShotgunApiClient>,
+  settings = makeSettings(),
+  initialUrl = '/settings/ai',
+) => {
   const api = {
     getSession: vi.fn().mockResolvedValue(session),
     getAISettings: vi.fn().mockResolvedValue(settings),
@@ -161,7 +165,7 @@ const renderWorkspace = (apiClient: Partial<ShotgunApiClient>, settings = makeSe
         children: [{ path: 'settings/ai', element: <AIWorkspace /> }],
       },
     ],
-    { initialEntries: ['/settings/ai?targetProjectId=project-1'] },
+    { initialEntries: [initialUrl] },
   );
   render(
     <AppProviders runtime={runtime}>
@@ -175,7 +179,7 @@ describe('AIWorkspace (A7 Settings → AI)', () => {
   it('uses the server descriptor set and defaults a fresh Project to DeepSeek', async () => {
     renderWorkspace({});
 
-    expect(await screen.findByRole('heading', { name: 'Settings → AI' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'AI' })).toBeTruthy();
     expect((screen.getByLabelText('AI Provider') as HTMLSelectElement).value).toBe('deepseek');
     expect(screen.getByRole('option', { name: 'OpenAI' })).toBeTruthy();
     expect(screen.getByRole('option', { name: 'Google Gemini' })).toBeTruthy();
@@ -350,15 +354,14 @@ describe('AIWorkspace (A7 Settings → AI)', () => {
     });
     const user = userEvent.setup();
     renderWorkspace({}, legacySettings);
-    expect(await screen.findByText('Legacy Gemini compatibility')).toBeTruthy();
-    const provider = screen.getByLabelText('AI Provider');
+    const provider = await screen.findByLabelText('AI Provider');
     await user.selectOptions(provider, 'google-gemini');
-    expect(screen.getByText('Approved · historical Gemini compatibility')).toBeTruthy();
+    expect(screen.getByText('Approved')).toBeTruthy();
     await user.selectOptions(provider, 'openai');
     expect(screen.getByText('Review required')).toBeTruthy();
   });
 
-  it('tests an exact stored credential and exposes privacy review without bypassing approval', async () => {
+  it('tests an exact stored credential and renders privacy status with navigation link', async () => {
     const storedSettings = makeSettings({
       mode: 'PROJECT_MANAGED',
       currentConfiguration: {
@@ -399,19 +402,23 @@ describe('AIWorkspace (A7 Settings → AI)', () => {
       credentialId: credential.credentialId,
       credentialRevision: 1,
     });
-    expect(screen.getByText('Not approved / Rejected · revision 2')).toBeTruthy();
-    expect(screen.getByText('Effective private eligibility:').parentElement?.textContent).toContain(
-      'Not eligible',
+    expect(screen.getByText('Not approved / Rejected')).toBeTruthy();
+    const privacyLink = screen.getByRole('link', { name: 'Review privacy in Settings → Privacy' });
+    expect(privacyLink).toBeTruthy();
+    expect(privacyLink.getAttribute('href')).toBe('/settings/privacy?providerId=deepseek');
+    expect(screen.queryByRole('button', { name: 'Request provider approval' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Approve provider review' })).toBeNull();
+  });
+
+  it('ignores targetProjectId URL parameter and binds strictly to the session active project', async () => {
+    const { api } = renderWorkspace(
+      {},
+      makeSettings(),
+      '/settings/ai?targetProjectId=rogue-project-99',
     );
-    await user.click(screen.getByRole('button', { name: 'Request provider approval' }));
-    await waitFor(() => expect(api.proposeAIProviderPrivacyApproval).toHaveBeenCalledTimes(1));
-    expect(api.proposeAIProviderPrivacyApproval).toHaveBeenCalledWith({
-      projectId: 'project-1',
-      providerId: 'deepseek',
-      approved: true,
-      expectedApprovalRevision: 2,
-    });
-    expect(screen.getByRole('button', { name: 'Approve provider review' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'AI' })).toBeTruthy();
+    expect(api.getAISettings).toHaveBeenCalledWith('project-1', expect.any(Object));
+    expect(api.getAISettings).not.toHaveBeenCalledWith('rogue-project-99', expect.any(Object));
   });
 
   it('prevents duplicate Test Connection submissions while the command is pending', async () => {

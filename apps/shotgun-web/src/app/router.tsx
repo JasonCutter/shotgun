@@ -11,18 +11,10 @@ import { ApplicationShell } from '../shell/application-shell.js';
 import { HomePage } from '../routes/home-page.js';
 import { SettingsLayout } from '../routes/settings/settings-layout.js';
 import { CategoryIndexView } from '../routes/settings/category-index-view.js';
+import { AIWorkspace } from '../routes/settings/ai-workspace.js';
+import { PrivacyWorkspace } from '../routes/settings/privacy-workspace.js';
 import { PreferencesWorkspace } from '../routes/settings/preferences-workspace.js';
 import { ProjectsWorkspace } from '../routes/settings/projects-workspace.js';
-import { ProjectDetailsWorkspace } from '../routes/settings/project-details-workspace.js';
-import { ModelsWorkspace } from '../routes/settings/models-workspace.js';
-import { AIWorkspace } from '../routes/settings/ai-workspace.js';
-import { CostsWorkspace } from '../routes/settings/costs-workspace.js';
-import { PrivacyWorkspace } from '../routes/settings/privacy-workspace.js';
-import { ConnectorsWorkspace } from '../routes/settings/connectors-workspace.js';
-import { DirectivesWorkspace } from '../routes/settings/directives-workspace.js';
-import { SchemaWorkspace } from '../routes/settings/schema-workspace.js';
-import { DiagnosticsWorkspace } from '../routes/settings/diagnostics-workspace.js';
-import { AdvancedWorkspace } from '../routes/settings/advanced-workspace.js';
 import { SourcesWorkspace } from '../routes/sources-workspace.js';
 import { SourceDetailWorkspace } from '../routes/source-detail-workspace.js';
 import { AskWorkspace } from '../routes/ask-workspace.js';
@@ -97,125 +89,129 @@ const guardedRouteLoader =
     return decision;
   };
 
+export const createAppRouteObjects = (runtime: AppRuntime) => [
+  {
+    path: '/',
+    loader: sessionLoader(runtime),
+    element: <ApplicationShell />,
+    hydrateFallbackElement: <LoadingState message="Session 확인 중" />,
+    errorElement: <RouteError />,
+    children: [
+      { index: true, element: <HomePage /> },
+      {
+        path: 'sources',
+        loader: guardedRouteLoader(runtime, { routeId: 'sources', href: '/sources' }),
+        element: <SourcesWorkspace />,
+        errorElement: <RouteError />,
+      },
+      {
+        path: 'sources/:sourceId',
+        loader: guardedRouteLoader(runtime, { routeId: 'sources', href: '/sources' }),
+        element: <SourceDetailWorkspace />,
+        errorElement: <RouteError />,
+      },
+      {
+        path: 'ask',
+        loader: guardedRouteLoader(runtime, { routeId: 'ask', href: '/ask' }),
+        element: <AskWorkspace />,
+        errorElement: <RouteError />,
+      },
+      {
+        path: 'ask/conversations/:conversationId',
+        loader: guardedRouteLoader(runtime, { routeId: 'ask', href: '/ask' }),
+        element: <AskWorkspace />,
+        errorElement: <RouteError />,
+      },
+      {
+        path: 'knowledge',
+        loader: guardedRouteLoader(runtime, {
+          routeId: 'knowledge',
+          href: '/knowledge',
+        }),
+        element: <KnowledgeWorkspace />,
+        errorElement: <RouteError />,
+      },
+      {
+        path: 'knowledge/compare',
+        loader: guardedRouteLoader(runtime, {
+          routeId: 'knowledge',
+          href: '/knowledge',
+        }),
+        element: <KnowledgeCompareWorkspace />,
+        errorElement: <RouteError />,
+      },
+      {
+        path: 'knowledge/graph',
+        loader: guardedRouteLoader(runtime, {
+          routeId: 'knowledge',
+          href: '/knowledge',
+        }),
+        element: <GraphWorkspace />,
+        errorElement: <RouteError />,
+      },
+      {
+        path: 'knowledge/:resourceId',
+        loader: guardedRouteLoader(runtime, {
+          routeId: 'knowledge',
+          href: '/knowledge',
+        }),
+        element: <KnowledgeDetailWorkspace />,
+        errorElement: <RouteError />,
+      },
+      {
+        path: 'review',
+        loader: guardedRouteLoader(runtime, { routeId: 'review', href: '/review' }),
+        element: <ReviewWorkspace />,
+        errorElement: <RouteError />,
+      },
+      {
+        path: 'external-action',
+        loader: guardedRouteLoader(runtime, {
+          routeId: 'external-action',
+          href: '/external-action',
+        }),
+        element: <ExternalActionWorkspace />,
+        errorElement: <RouteError />,
+      },
+      {
+        path: 'activity',
+        loader: guardedRouteLoader(runtime, { routeId: 'activity', href: '/activity' }),
+        element: <ActivityWorkspace />,
+        errorElement: <RouteError />,
+      },
+      {
+        path: 'history',
+        loader: guardedRouteLoader(runtime, { routeId: 'history', href: '/history' }),
+        element: <HistoryWorkspace />,
+        errorElement: <RouteError />,
+      },
+      {
+        path: 'settings',
+        loader: guardedRouteLoader(runtime, {
+          routeId: 'settings',
+          href: '/settings',
+        }),
+        element: <SettingsLayout />,
+        errorElement: <RouteError />,
+        children: [
+          { index: true, element: <CategoryIndexView /> },
+          { path: 'ai', element: <AIWorkspace /> },
+          { path: 'privacy', element: <PrivacyWorkspace /> },
+          { path: 'preferences', element: <PreferencesWorkspace /> },
+          {
+            path: 'projects',
+            loader: guardedRouteLoader(runtime, {
+              routeId: 'settings-projects',
+              href: '/settings/projects',
+            }),
+            element: <ProjectsWorkspace />,
+            errorElement: <RouteError />,
+          },
+        ],
+      },
+    ],
+  },
+];
+
 export const createAppRouter = (runtime: AppRuntime) =>
-  createBrowserRouter([
-    {
-      path: '/',
-      loader: sessionLoader(runtime),
-      element: <ApplicationShell />,
-      hydrateFallbackElement: <LoadingState message="Session 확인 중" />,
-      errorElement: <RouteError />,
-      children: [
-        { index: true, element: <HomePage /> },
-        {
-          path: 'sources',
-          loader: guardedRouteLoader(runtime, { routeId: 'sources', href: '/sources' }),
-          element: <SourcesWorkspace />,
-        },
-        {
-          path: 'sources/:sourceId',
-          loader: guardedRouteLoader(runtime, { routeId: 'sources', href: '/sources' }),
-          element: <SourceDetailWorkspace />,
-        },
-        {
-          path: 'ask',
-          loader: guardedRouteLoader(runtime, { routeId: 'ask', href: '/ask' }),
-          element: <AskWorkspace />,
-        },
-        {
-          path: 'ask/conversations/:conversationId',
-          loader: guardedRouteLoader(runtime, { routeId: 'ask', href: '/ask' }),
-          element: <AskWorkspace />,
-        },
-        {
-          path: 'knowledge',
-          loader: guardedRouteLoader(runtime, {
-            routeId: 'knowledge',
-            href: '/knowledge',
-          }),
-          element: <KnowledgeWorkspace />,
-        },
-        {
-          path: 'knowledge/compare',
-          loader: guardedRouteLoader(runtime, {
-            routeId: 'knowledge',
-            href: '/knowledge',
-          }),
-          element: <KnowledgeCompareWorkspace />,
-        },
-        {
-          path: 'knowledge/graph',
-          loader: guardedRouteLoader(runtime, {
-            routeId: 'knowledge',
-            href: '/knowledge',
-          }),
-          element: <GraphWorkspace />,
-        },
-        {
-          path: 'knowledge/:resourceId',
-          loader: guardedRouteLoader(runtime, {
-            routeId: 'knowledge',
-            href: '/knowledge',
-          }),
-          element: <KnowledgeDetailWorkspace />,
-        },
-        {
-          path: 'review',
-          loader: guardedRouteLoader(runtime, { routeId: 'review', href: '/review' }),
-          element: <ReviewWorkspace />,
-        },
-        {
-          path: 'external-action',
-          loader: guardedRouteLoader(runtime, {
-            routeId: 'external-action',
-            href: '/external-action',
-          }),
-          element: <ExternalActionWorkspace />,
-        },
-        {
-          path: 'activity',
-          loader: guardedRouteLoader(runtime, { routeId: 'activity', href: '/activity' }),
-          element: <ActivityWorkspace />,
-        },
-        {
-          path: 'history',
-          loader: guardedRouteLoader(runtime, { routeId: 'history', href: '/history' }),
-          element: <HistoryWorkspace />,
-        },
-        {
-          path: 'settings',
-          loader: guardedRouteLoader(runtime, { routeId: 'settings', href: '/settings' }),
-          element: <SettingsLayout />,
-          children: [
-            { index: true, element: <CategoryIndexView /> },
-            { path: 'preferences', element: <PreferencesWorkspace /> },
-            {
-              path: 'projects',
-              loader: guardedRouteLoader(runtime, {
-                routeId: 'settings-projects',
-                href: '/settings/projects',
-              }),
-              element: <ProjectsWorkspace />,
-            },
-            {
-              path: 'projects/:projectId',
-              loader: guardedRouteLoader(runtime, {
-                routeId: 'settings-projects',
-                href: '/settings/projects',
-              }),
-              element: <ProjectDetailsWorkspace />,
-            },
-            { path: 'models', element: <ModelsWorkspace /> },
-            { path: 'ai', element: <AIWorkspace /> },
-            { path: 'costs', element: <CostsWorkspace /> },
-            { path: 'privacy', element: <PrivacyWorkspace /> },
-            { path: 'connectors', element: <ConnectorsWorkspace /> },
-            { path: 'directives', element: <DirectivesWorkspace /> },
-            { path: 'schema', element: <SchemaWorkspace /> },
-            { path: 'diagnostics', element: <DiagnosticsWorkspace /> },
-            { path: 'advanced', element: <AdvancedWorkspace /> },
-          ],
-        },
-      ],
-    },
-  ]);
+  createBrowserRouter(createAppRouteObjects(runtime));

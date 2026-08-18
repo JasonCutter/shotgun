@@ -1,12 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useRef, useState, type FormEvent } from 'react';
-import { Link, useLocation, useOutletContext } from 'react-router';
+import { Link, useLocation, useOutletContext, useSearchParams } from 'react-router';
 
 import {
   createSourcesWriteClient,
   type ExactDuplicateDecisionView,
   type GlobalShellView,
   type IntakeSubmissionSnapshot,
+  type SourceLibraryPageView,
   type SourceLibraryQuery,
   type SourcesSensitivity,
   type StagedSourcesIntakeInput,
@@ -18,17 +19,15 @@ import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
 import { TechnicalDetails } from '../components/technical-details.js';
 import {
-  duplicateDispositionLabel,
-  intakeKindLabel,
-  intakeStateLabel,
-  intakeValidationLabel,
-  mediaTypeLabel,
-  sourceAskUsageLabel,
-  sourceLifecycleLabel,
-  sourcePreviewLabel,
-} from '../presentation/product-labels.js';
+  hfmOwnerLabel,
+  type ProductTranslator,
+  useProductLocalization,
+} from '../localization/product-localization.js';
 import { sourcesLibraryQueryOptions } from '../sources/sources-queries.js';
-import { useSourceIntakeDraftQueue } from '../sources/source-intake-drafts.js';
+import {
+  type SourceIntakeDraftMessageCode,
+  useSourceIntakeDraftQueue,
+} from '../sources/source-intake-drafts.js';
 import { useConnectivityState } from '../shell/use-connectivity-state.js';
 
 const DEFAULT_QUERY: SourceLibraryQuery = {
@@ -41,6 +40,63 @@ const DEFAULT_QUERY: SourceLibraryQuery = {
 const identity = (prefix: string): string =>
   `${prefix}-${typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : Date.now()}`;
 
+type SourceLibraryItem = SourceLibraryPageView['items'][number];
+
+const sourceReadinessMessage = (
+  t: ProductTranslator,
+  source: SourceLibraryItem,
+): string | undefined => {
+  if (source.lifecycle === 'FAILED' || source.askUsageState === 'FAILED') {
+    return t('sources.unavailable');
+  }
+  if (source.lifecycle === 'ACTION_REQUIRED' || source.askUsageState === 'ACTION_REQUIRED') {
+    return t('sources.needs_attention');
+  }
+  if (source.askUsageState === 'ACCESS_RESTRICTED') {
+    return t('sources.question_access_restricted');
+  }
+  if (source.askUsageState === 'NOT_READY') {
+    return t('sources.questions_not_ready');
+  }
+  if (
+    source.previewReadiness === 'FAILED' ||
+    source.previewReadiness === 'ACCESS_RESTRICTED' ||
+    (source.previewReadiness === 'NOT_READY' && !source.capabilities.includes('PREVIEW'))
+  ) {
+    return t('sources.preview_unavailable');
+  }
+  return undefined;
+};
+
+const sourceDraftMessage = (t: ProductTranslator, code: SourceIntakeDraftMessageCode): string => {
+  switch (code) {
+    case 'SEEDED_TEXT_REVIEW':
+      return t('sources.draft_message.seeded_text_review');
+    case 'SEEDED_TEXT_TOO_LARGE':
+      return t('sources.draft_message.seeded_text_too_large');
+    case 'SEEDED_URL_VALIDATION':
+      return t('sources.draft_message.seeded_url_validation');
+    case 'SEED_FILE_RESELECT':
+      return t('sources.draft_message.seed_file_reselect');
+    case 'DIRECT_TEXT_EMPTY':
+      return t('sources.draft_message.direct_text_empty');
+    case 'DIRECT_TEXT_TOO_LARGE':
+      return t('sources.draft_message.direct_text_too_large');
+    case 'CLIENT_PREFLIGHT':
+      return t('sources.draft_message.client_preflight');
+    case 'FILE_UNSUPPORTED':
+      return t('sources.draft_message.file_unsupported');
+    case 'FILE_SIZE_INVALID':
+      return t('sources.draft_message.file_size');
+    case 'FILE_PREFLIGHT':
+      return t('sources.draft_message.file_preflight');
+    case 'URL_ACCEPTED':
+      return t('sources.draft_message.url_accepted');
+    case 'URL_INVALID':
+      return t('sources.draft_message.url_invalid');
+  }
+};
+
 type DraftCommandIdentity = {
   readonly fingerprint: string;
   readonly clientRequestId: string;
@@ -52,15 +108,16 @@ export const SourcesWorkspace = () => {
   const { apiClient } = useAppRuntime();
   const { shell } = useOutletContext<{ readonly shell: GlobalShellView }>();
   const location = useLocation();
+  const [searchParameters] = useSearchParams();
   const connectivity = useConnectivityState();
+  const { t } = useProductLocalization();
   const writeClient = useMemo(() => createSourcesWriteClient(), []);
   const commandIdentity = useRef<DraftCommandIdentity | undefined>(undefined);
   const [searchInput, setSearchInput] = useState('');
   const [appliedQuery, setAppliedQuery] = useState('');
   const [intakeKind, setIntakeKind] = useState<'DIRECT_TEXT' | 'FILE' | 'URL'>('DIRECT_TEXT');
   const [intakeLabel, setIntakeLabel] = useState('');
-  const [requestedClassification, setRequestedClassification] =
-    useState<SourcesSensitivity>('private');
+  const requestedClassification: SourcesSensitivity = 'private';
   const [directText, setDirectText] = useState('');
   const [requestedUrl, setRequestedUrl] = useState('');
   const [selectedFile, setSelectedFile] = useState<File>();
@@ -85,13 +142,15 @@ export const SourcesWorkspace = () => {
   if (!shell.activeProject) {
     return (
       <EmptyState
-        title="Create a Project before adding Sources"
-        description="Sources are always bound to a server-authoritative Project."
+        title={t('sources.create_project')}
+        description={t('sources.create_project_help')}
       />
     );
   }
 
   const projectId = shell.activeProject.id;
+  const requestedView = searchParameters.get('view');
+  const showAddSource = requestedView === 'add' || (requestedView === null && seed !== undefined);
   const onSearch = (event: FormEvent) => {
     event.preventDefault();
     if (!connectivity.isOffline) setAppliedQuery(searchInput);
@@ -100,7 +159,11 @@ export const SourcesWorkspace = () => {
   const onAddDraft = (event: FormEvent) => {
     event.preventDefault();
     if (intakeKind === 'DIRECT_TEXT') {
-      draftQueue.addDirectText(intakeLabel, directText, requestedClassification);
+      draftQueue.addDirectText(
+        intakeLabel || hfmOwnerLabel(t, 'intakeKind', 'DIRECT_TEXT'),
+        directText,
+        requestedClassification,
+      );
       setDirectText('');
     } else if (intakeKind === 'URL') {
       draftQueue.addUrl(intakeLabel, requestedUrl, requestedClassification);
@@ -143,7 +206,7 @@ export const SourcesWorkspace = () => {
       const staged: StagedSourcesIntakeInput[] = [];
       for (const item of draftQueue.items) {
         if (item.kind === 'FILE_METADATA') {
-          throw new Error('Choose the file again before submission.');
+          throw new Error(t('sources.choose_file_again'));
         }
         if (item.kind === 'DIRECT_TEXT') {
           const receipt = await writeClient.stageBytes({
@@ -211,7 +274,7 @@ export const SourcesWorkspace = () => {
       commandIdentity.current = undefined;
       await library.refetch();
     } catch (error) {
-      setMutationError(error instanceof Error ? error.message : 'Sources submission failed.');
+      setMutationError(error instanceof Error ? error.message : t('sources.submission_failed'));
     } finally {
       setMutationState('IDLE');
     }
@@ -222,7 +285,9 @@ export const SourcesWorkspace = () => {
     try {
       setDecision(await apiClient.getExactDuplicateDecision(decisionId));
     } catch (error) {
-      setMutationError(error instanceof Error ? error.message : 'Duplicate decision failed.');
+      setMutationError(
+        error instanceof Error ? error.message : t('sources.duplicate_decision_failed'),
+      );
     }
   };
 
@@ -248,7 +313,9 @@ export const SourcesWorkspace = () => {
       setDecision(undefined);
       await library.refetch();
     } catch (error) {
-      setMutationError(error instanceof Error ? error.message : 'Duplicate resolution failed.');
+      setMutationError(
+        error instanceof Error ? error.message : t('sources.duplicate_resolution_failed'),
+      );
     } finally {
       setMutationState('IDLE');
     }
@@ -267,7 +334,7 @@ export const SourcesWorkspace = () => {
       });
       setSubmission(result.resource);
     } catch (error) {
-      setMutationError(error instanceof Error ? error.message : 'Cancellation failed.');
+      setMutationError(error instanceof Error ? error.message : t('sources.cancellation_failed'));
     } finally {
       setMutationState('IDLE');
     }
@@ -289,7 +356,7 @@ export const SourcesWorkspace = () => {
       setSubmission(result.resource);
       await library.refetch();
     } catch (error) {
-      setMutationError(error instanceof Error ? error.message : 'Retry failed.');
+      setMutationError(error instanceof Error ? error.message : t('sources.retry_failed'));
     } finally {
       setMutationState('IDLE');
     }
@@ -303,302 +370,321 @@ export const SourcesWorkspace = () => {
     mutationState === 'IDLE';
 
   return (
-    <section className="route-page sources-workspace">
-      <p className="eyebrow">Knowledge input</p>
-      <h1 tabIndex={-1}>Sources</h1>
-      <p>
-        Project: <strong>{shell.activeProject.label}</strong>
-      </p>
+    <section className="route-page hfm-route-page sources-workspace">
+      <p className="eyebrow">{t('sources.eyebrow')}</p>
+      <h1 tabIndex={-1}>{t('sources.title')}</h1>
 
-      <section className="action-card" aria-labelledby="source-intake-heading">
-        <h2 id="source-intake-heading">Draft Queue</h2>
-        <p>
-          Direct Text, File and URL drafts remain fixed to this Project until you explicitly submit
-          or discard them.
-        </p>
-        <p>Drafts stay with the project where they were created until submitted or discarded.</p>
-        {draftQueue.activeProjectMismatch ? (
-          <p className="warning-state" role="alert">
-            The active Project changed. These drafts remain isolated to their original Project and
-            cannot be submitted from the current context.
-          </p>
-        ) : null}
-        {draftQueue.invalidSeed ? (
-          <p className="warning-state" role="alert">
-            The incoming Draft Seed failed its typed contract and was rejected.
-          </p>
-        ) : null}
-        <p className="status-message" role="status" aria-live="polite">
-          {mutationState === 'STAGING'
-            ? 'Staging immutable Source bytes…'
-            : mutationState === 'SUBMITTING'
-              ? 'Submitting the server-authoritative Intake command…'
-              : 'Server submission is active. Raw input is staged before the Command Ledger is accepted.'}
-        </p>
-        {mutationError ? (
-          <p className="warning-state" role="alert">
-            {mutationError}
-          </p>
-        ) : null}
-        <form className="source-intake-form" onSubmit={onAddDraft}>
-          <label htmlFor="source-intake-kind">Input type</label>
-          <select
-            id="source-intake-kind"
-            value={intakeKind}
-            onChange={(event) =>
-              setIntakeKind(event.target.value as 'DIRECT_TEXT' | 'FILE' | 'URL')
-            }
-          >
-            <option value="DIRECT_TEXT">Direct Text</option>
-            <option value="FILE">File</option>
-            <option value="URL">URL</option>
-          </select>
-          <label htmlFor="source-intake-label">Label</label>
-          <input
-            id="source-intake-label"
-            value={intakeLabel}
-            maxLength={200}
-            onChange={(event) => setIntakeLabel(event.target.value)}
-          />
-          <label htmlFor="source-intake-classification">Source classification</label>
-          <select
-            id="source-intake-classification"
-            value={requestedClassification}
-            onChange={(event) =>
-              setRequestedClassification(event.target.value as SourcesSensitivity)
-            }
-          >
-            <option value="public">Public</option>
-            <option value="internal">Internal</option>
-            <option value="private">Private</option>
-          </select>
+      {showAddSource ? (
+        <section className="action-card sources-intake" aria-labelledby="source-intake-heading">
+          <h2 id="source-intake-heading">{t('sources.draft_queue')}</h2>
+          <p>{t('sources.draft_help')}</p>
           <p>
-            This is a classification request for this new Source. The Server validates and stores
-            the final classification; it does not change your access clearance.
+            <Link to="/sources">{t('sources.library')}</Link>
           </p>
-          {intakeKind === 'DIRECT_TEXT' ? (
-            <>
-              <label htmlFor="source-intake-text">Direct Text</label>
-              <textarea
-                id="source-intake-text"
-                value={directText}
-                maxLength={1_048_576}
-                onChange={(event) => setDirectText(event.target.value)}
-              />
-            </>
-          ) : null}
-          {intakeKind === 'FILE' ? (
-            <>
-              <label htmlFor="source-intake-file">File</label>
-              <input
-                id="source-intake-file"
-                type="file"
-                accept="text/plain,text/markdown,.txt,.md"
-                onChange={(event) => setSelectedFile(event.target.files?.[0])}
-              />
-            </>
-          ) : null}
-          {intakeKind === 'URL' ? (
-            <>
-              <label htmlFor="source-intake-url">URL</label>
-              <input
-                id="source-intake-url"
-                type="url"
-                value={requestedUrl}
-                maxLength={2048}
-                onChange={(event) => setRequestedUrl(event.target.value)}
-              />
-            </>
-          ) : null}
-          <button type="submit" disabled={intakeKind === 'FILE' && !selectedFile}>
-            Add intake draft
-          </button>
-        </form>
-        {draftQueue.items.length === 0 ? <p>No route-scoped drafts.</p> : null}
-        {draftQueue.items.length > 0 ? (
-          <>
-            <ul className="source-intake-list" aria-label="Intake drafts">
-              {draftQueue.items.map((item) => (
-                <li key={item.draftItemId}>
-                  <div>
-                    <strong>{item.label}</strong>
-                    <p>
-                      {intakeKindLabel(item.kind)} · {intakeValidationLabel(item.validation)} ·
-                      Requested classification: {item.requestedClassification}
-                    </p>
-                    <small>{item.message}</small>
-                  </div>
-                  <button type="button" onClick={() => draftQueue.remove(item.draftItemId)}>
-                    Remove {item.label}
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <div className="source-intake-actions">
-              <button type="button" onClick={draftQueue.discardAll}>
-                Discard all drafts
-              </button>
-              <button type="button" disabled={!readyToSubmit} onClick={() => void submitDrafts()}>
-                Submit drafts
-              </button>
-            </div>
-          </>
-        ) : null}
-
-        {submission ? (
-          <section aria-labelledby="submission-status-heading">
-            <h3 id="submission-status-heading">Submission {intakeStateLabel(submission.state)}</h3>
-            <TechnicalDetails
-              items={[{ label: 'Submission ID', value: submission.submissionId }]}
-            />
-            <ul className="source-intake-list" aria-label="Submission items">
-              {submission.items.map((item) => (
-                <li key={item.itemId}>
-                  <div>
-                    <strong>{item.manifest.label}</strong>
-                    <p>{intakeStateLabel(item.state)}</p>
-                    {item.attentionReason ? <small>{item.attentionReason}</small> : null}
-                  </div>
-                  <div className="source-intake-actions">
-                    {item.duplicateDecisionId ? (
-                      <button
-                        type="button"
-                        onClick={() => void reviewDuplicate(item.duplicateDecisionId!)}
-                      >
-                        Review duplicate
-                      </button>
-                    ) : null}
-                    {item.capabilities.includes('RETRY_SAME_CONTEXT') ? (
-                      <button
-                        type="button"
-                        onClick={() => void retryItem(item.itemId, 'SAME_CONTEXT')}
-                      >
-                        Retry same context
-                      </button>
-                    ) : null}
-                    {item.capabilities.includes('RETRY_CURRENT_POLICY') ? (
-                      <button
-                        type="button"
-                        onClick={() => void retryItem(item.itemId, 'CURRENT_POLICY')}
-                      >
-                        Retry current policy
-                      </button>
-                    ) : null}
-                  </div>
-                </li>
-              ))}
-            </ul>
-            {submission.capabilities.includes('CANCEL') ? (
-              <button type="button" onClick={() => void cancelSubmission()}>
-                Cancel submission
-              </button>
-            ) : null}
-          </section>
-        ) : null}
-
-        {decision ? (
-          <section role="dialog" aria-labelledby="duplicate-decision-heading" aria-modal="false">
-            <h3 id="duplicate-decision-heading">Exact duplicate decision</h3>
-            <p>
-              Existing Source: <strong>{decision.existingSource.label}</strong>, Version{' '}
-              {decision.existingSource.versionNumber}
+          {draftQueue.activeProjectMismatch ? (
+            <p className="warning-state hfm-status-attention" role="alert">
+              {t('sources.project_mismatch')}
             </p>
-            <div className="source-intake-actions">
-              {decision.allowedDispositions.map((disposition) => (
-                <button
-                  key={disposition}
-                  type="button"
-                  onClick={() => void resolveDuplicate(disposition)}
-                  disabled={mutationState !== 'IDLE' || connectivity.isOffline}
-                >
-                  {duplicateDispositionLabel(disposition)}
-                </button>
-              ))}
-            </div>
-          </section>
-        ) : null}
-      </section>
-
-      <section className="action-card" aria-labelledby="source-library-heading">
-        <div className="source-library-heading">
-          <div>
-            <h2 id="source-library-heading">Source Library</h2>
-            <p>Server-authoritative, bounded and scoped to the active Project.</p>
-          </div>
-          <form className="source-search" role="search" onSubmit={onSearch}>
-            <label htmlFor="source-search-query">Search Sources</label>
-            <div>
-              <input
-                id="source-search-query"
-                value={searchInput}
-                onChange={(event) => setSearchInput(event.target.value)}
-                disabled={connectivity.isOffline}
-                maxLength={500}
-              />
-              <button type="submit" disabled={connectivity.isOffline}>
-                Search
-              </button>
-            </div>
+          ) : null}
+          {draftQueue.invalidSeed ? (
+            <p className="warning-state hfm-status-attention" role="alert">
+              {t('sources.invalid_draft')}
+            </p>
+          ) : null}
+          {mutationState !== 'IDLE' ? (
+            <p className="status-message hfm-status-info" role="status" aria-live="polite">
+              {mutationState === 'STAGING'
+                ? t('sources.adding_draft')
+                : t('sources.submitting_drafts')}
+            </p>
+          ) : null}
+          {mutationError ? (
+            <p className="warning-state hfm-status-error" role="alert">
+              {mutationError}
+            </p>
+          ) : null}
+          <form className="source-intake-form" onSubmit={onAddDraft}>
+            <label htmlFor="source-intake-kind">{t('sources.input_type')}</label>
+            <select
+              id="source-intake-kind"
+              value={intakeKind}
+              onChange={(event) =>
+                setIntakeKind(event.target.value as 'DIRECT_TEXT' | 'FILE' | 'URL')
+              }
+            >
+              <option value="DIRECT_TEXT">{hfmOwnerLabel(t, 'intakeKind', 'DIRECT_TEXT')}</option>
+              <option value="FILE">{hfmOwnerLabel(t, 'intakeKind', 'FILE')}</option>
+              <option value="URL">{hfmOwnerLabel(t, 'intakeKind', 'URL')}</option>
+            </select>
+            <label htmlFor="source-intake-label">{t('sources.label')}</label>
+            <input
+              id="source-intake-label"
+              value={intakeLabel}
+              maxLength={200}
+              onChange={(event) => setIntakeLabel(event.target.value)}
+            />
+            {intakeKind === 'DIRECT_TEXT' ? (
+              <>
+                <label htmlFor="source-intake-text">
+                  {hfmOwnerLabel(t, 'intakeKind', 'DIRECT_TEXT')}
+                </label>
+                <textarea
+                  id="source-intake-text"
+                  value={directText}
+                  maxLength={1_048_576}
+                  onChange={(event) => setDirectText(event.target.value)}
+                />
+              </>
+            ) : null}
+            {intakeKind === 'FILE' ? (
+              <>
+                <label htmlFor="source-intake-file">{hfmOwnerLabel(t, 'intakeKind', 'FILE')}</label>
+                <input
+                  id="source-intake-file"
+                  type="file"
+                  accept="text/plain,text/markdown,.txt,.md"
+                  onChange={(event) => setSelectedFile(event.target.files?.[0])}
+                />
+              </>
+            ) : null}
+            {intakeKind === 'URL' ? (
+              <>
+                <label htmlFor="source-intake-url">{hfmOwnerLabel(t, 'intakeKind', 'URL')}</label>
+                <input
+                  id="source-intake-url"
+                  type="url"
+                  value={requestedUrl}
+                  maxLength={2048}
+                  onChange={(event) => setRequestedUrl(event.target.value)}
+                />
+              </>
+            ) : null}
+            <button
+              className="hfm-action-secondary"
+              type="submit"
+              disabled={intakeKind === 'FILE' && !selectedFile}
+            >
+              {t('sources.add_intake_draft')}
+            </button>
           </form>
-        </div>
+          {draftQueue.items.length === 0 ? <p>{t('sources.no_drafts')}</p> : null}
+          {draftQueue.items.length > 0 ? (
+            <>
+              <ul className="source-intake-list" aria-label={t('sources.intake_drafts')}>
+                {draftQueue.items.map((item) => (
+                  <li key={item.draftItemId}>
+                    <div>
+                      <strong>{item.label}</strong>
+                      <p>
+                        {hfmOwnerLabel(t, 'intakeKind', item.kind)} ·{' '}
+                        {hfmOwnerLabel(t, 'intakeValidation', item.validation)} ·{' '}
+                        {t('sources.requested_classification')}{' '}
+                        {hfmOwnerLabel(t, 'sensitivity', item.requestedClassification)}
+                      </p>
+                      <small>{sourceDraftMessage(t, item.messageCode)}</small>
+                    </div>
+                    <button
+                      className="hfm-action-destructive"
+                      type="button"
+                      onClick={() => draftQueue.remove(item.draftItemId)}
+                    >
+                      {t('sources.remove')} {item.label}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <div className="source-intake-actions">
+                <button
+                  className="hfm-action-destructive"
+                  type="button"
+                  onClick={draftQueue.discardAll}
+                >
+                  {t('sources.discard_all')}
+                </button>
+                <button
+                  className="hfm-action-primary"
+                  type="button"
+                  disabled={!readyToSubmit}
+                  onClick={() => void submitDrafts()}
+                >
+                  {t('sources.submit_drafts')}
+                </button>
+              </div>
+            </>
+          ) : null}
 
-        {connectivity.isOffline ? (
-          <p className="stale-state" role="status">
-            Offline. A previously authorized cached Library may be shown, but Server search and
-            intake actions are blocked.
-          </p>
-        ) : null}
-        {library.isPending ? <LoadingState message="Loading Source Library…" /> : null}
-        {library.error ? (
-          <ErrorState
-            error={library.error}
-            onRetry={() => {
-              void library.refetch();
-            }}
-          />
-        ) : null}
-        {library.data?.stale ? (
-          <p className="stale-state" role="status">
-            This Library snapshot is stale.
-          </p>
-        ) : null}
-        {library.data && library.data.items.length === 0 ? (
-          <EmptyState
-            title={appliedQuery ? 'No matching Sources' : 'No Sources yet'}
-            description={
-              appliedQuery
-                ? 'Change the Server search query or clear it.'
-                : 'Submitted Sources will appear here after Server processing.'
-            }
-          />
-        ) : null}
-        {library.data && library.data.items.length > 0 ? (
-          <ul className="source-library-list" aria-label="Sources">
-            {library.data.items.map((source) => (
-              <li key={source.sourceId}>
-                <div>
-                  <h3>{source.label}</h3>
-                  <p>
-                    {mediaTypeLabel(source.mediaType)} · {sourceLifecycleLabel(source.lifecycle)} ·
-                    Source classification: {source.sensitivity}
-                  </p>
-                  <p>{source.askUsageExplanation}</p>
-                </div>
-                <div className="source-library-status">
-                  <span>{sourcePreviewLabel(source.previewReadiness)}</span>
-                  <span>{sourceAskUsageLabel(source.askUsageState)}</span>
-                  <Link
-                    className="primary-link"
-                    to={`/sources/${encodeURIComponent(source.sourceId)}?version=${encodeURIComponent(source.selectedSourceVersionId)}`}
+          {submission ? (
+            <section aria-labelledby="submission-status-heading">
+              <h3 id="submission-status-heading">
+                {t('sources.submission')} {hfmOwnerLabel(t, 'intakeState', submission.state)}
+              </h3>
+              <TechnicalDetails
+                items={[{ label: t('sources.submission_id'), value: submission.submissionId }]}
+              />
+              <ul className="source-intake-list" aria-label={t('sources.submission_items')}>
+                {submission.items.map((item) => (
+                  <li key={item.itemId}>
+                    <div>
+                      <strong>{item.manifest.label}</strong>
+                      <p>{hfmOwnerLabel(t, 'intakeState', item.state)}</p>
+                      {item.attentionReason ? <small>{item.attentionReason}</small> : null}
+                    </div>
+                    <div className="source-intake-actions">
+                      {item.duplicateDecisionId ? (
+                        <button
+                          className="hfm-action-secondary"
+                          type="button"
+                          onClick={() => void reviewDuplicate(item.duplicateDecisionId!)}
+                        >
+                          {t('sources.review_duplicate')}
+                        </button>
+                      ) : null}
+                      {item.capabilities.includes('RETRY_SAME_CONTEXT') ? (
+                        <button
+                          className="hfm-action-selection"
+                          type="button"
+                          onClick={() => void retryItem(item.itemId, 'SAME_CONTEXT')}
+                        >
+                          {t('sources.retry_same')}
+                        </button>
+                      ) : null}
+                      {item.capabilities.includes('RETRY_CURRENT_POLICY') ? (
+                        <button
+                          className="hfm-action-selection"
+                          type="button"
+                          onClick={() => void retryItem(item.itemId, 'CURRENT_POLICY')}
+                        >
+                          {t('sources.retry_policy')}
+                        </button>
+                      ) : null}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              {submission.capabilities.includes('CANCEL') ? (
+                <button
+                  className="hfm-action-secondary"
+                  type="button"
+                  onClick={() => void cancelSubmission()}
+                >
+                  {t('sources.cancel_submission')}
+                </button>
+              ) : null}
+            </section>
+          ) : null}
+
+          {decision ? (
+            <section role="dialog" aria-labelledby="duplicate-decision-heading" aria-modal="false">
+              <h3 id="duplicate-decision-heading">{t('sources.exact_duplicate_decision')}</h3>
+              <p>
+                {t('sources.existing_source')} <strong>{decision.existingSource.label}</strong>,{' '}
+                {t('sources.version')} {decision.existingSource.versionNumber}
+              </p>
+              <div className="source-intake-actions">
+                {decision.allowedDispositions.map((disposition) => (
+                  <button
+                    key={disposition}
+                    className="hfm-action-secondary"
+                    type="button"
+                    onClick={() => void resolveDuplicate(disposition)}
+                    disabled={mutationState !== 'IDLE' || connectivity.isOffline}
                   >
-                    Open pinned Version
-                  </Link>
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </section>
+                    {hfmOwnerLabel(t, 'duplicateDisposition', disposition)}
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : null}
+        </section>
+      ) : null}
+
+      {!showAddSource ? (
+        <section className="action-card sources-library" aria-labelledby="source-library-heading">
+          <div className="source-library-heading">
+            <div>
+              <h2 id="source-library-heading">{t('sources.library')}</h2>
+              <Link to="/sources?view=add">{t('sources.add_source')}</Link>
+            </div>
+            <form className="source-search" role="search" onSubmit={onSearch}>
+              <label htmlFor="source-search-query">{t('sources.search')}</label>
+              <div>
+                <input
+                  id="source-search-query"
+                  value={searchInput}
+                  onChange={(event) => setSearchInput(event.target.value)}
+                  disabled={connectivity.isOffline}
+                  maxLength={500}
+                />
+                <button
+                  className="hfm-action-secondary"
+                  type="submit"
+                  disabled={connectivity.isOffline}
+                >
+                  {t('sources.search_submit')}
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {connectivity.isOffline ? (
+            <p className="stale-state" role="status">
+              {t('sources.offline_cached')}
+            </p>
+          ) : null}
+          {library.isPending ? <LoadingState message={t('sources.loading_library')} /> : null}
+          {library.error ? (
+            <ErrorState
+              error={library.error}
+              onRetry={() => {
+                void library.refetch();
+              }}
+            />
+          ) : null}
+          {library.data?.stale ? (
+            <p className="stale-state" role="status">
+              {t('sources.library_stale')}
+            </p>
+          ) : null}
+          {library.data && library.data.items.length === 0 ? (
+            <EmptyState
+              title={appliedQuery ? t('sources.no_matching') : t('sources.none_yet')}
+              description={
+                appliedQuery ? t('sources.change_search') : t('sources.submitted_appear')
+              }
+            />
+          ) : null}
+          {library.data && library.data.items.length > 0 ? (
+            <ul className="source-library-list" aria-label={t('sources.list')}>
+              {library.data.items.map((source) => {
+                const readinessMessage = sourceReadinessMessage(t, source);
+                return (
+                  <li key={source.sourceId}>
+                    <div>
+                      <h3>{source.label}</h3>
+                      <p className="source-library-metadata">
+                        {hfmOwnerLabel(t, 'mediaType', source.mediaType)} ·{' '}
+                        {t('sources.classification')}:{' '}
+                        {hfmOwnerLabel(t, 'sensitivity', source.sensitivity)}
+                      </p>
+                      {readinessMessage ? (
+                        <p className="source-library-readiness">{readinessMessage}</p>
+                      ) : null}
+                    </div>
+                    <div className="source-library-status">
+                      <Link
+                        className="primary-link"
+                        to={`/sources/${encodeURIComponent(source.sourceId)}?version=${encodeURIComponent(source.selectedSourceVersionId)}`}
+                      >
+                        {t('sources.open')}
+                      </Link>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
+        </section>
+      ) : null}
     </section>
   );
 };

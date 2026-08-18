@@ -101,63 +101,35 @@ const queueItemDeepLinkParams = (item: ActivityQueueItemV1): URLSearchParams => 
 // Projection metadata (AC-09: Watermark, Lag, Stale, Adapter Unavailable)
 // ---------------------------------------------------------------------------
 
-const adapterStatusLabel: Record<string, string> = {
-  AVAILABLE: '사용 가능',
-  DEGRADED: '저하됨',
-  UNAVAILABLE: '사용 불가',
-};
-
-const freshnessLabel: Record<string, string> = {
-  CURRENT: '최신',
-  LAGGING: '지연 중',
-  STALE: '오래됨',
-  UNKNOWN: '알 수 없음',
-};
-
 const activitySummaryLabel = (item: ActivityQueueItemV1): string => {
   if (item.root.domainKind === 'SOURCES') return 'Source processing';
   if (item.root.domainKind === 'ASK') return 'Answering a question';
   return 'External action';
 };
 
+const technicalJson = (value: unknown): string => JSON.stringify(value) ?? 'null';
+
 const ProjectionMetadata = ({ metadata }: { readonly metadata: ActivityProjectionMetadataV1 }) => (
-  <TechnicalDetails summary="Activity data details">
-    <section className="activity-metadata" aria-label="Activity data details">
-      <dl className="summary-grid">
-        <div>
-          <dt>Freshness</dt>
-          <dd>{freshnessLabel[metadata.freshness] ?? metadata.freshness}</dd>
-        </div>
-        <div>
-          <dt>Adapter</dt>
-          <dd>{adapterStatusLabel[metadata.adapterStatus] ?? metadata.adapterStatus}</dd>
-        </div>
-        <div>
-          <dt>Partial</dt>
-          <dd>{metadata.partial ? '부분 결과' : '전체 결과'}</dd>
-        </div>
-        <div>
-          <dt>Snapshot</dt>
-          <dd>rev {metadata.snapshotRevision}</dd>
-        </div>
-        {metadata.lagMilliseconds === undefined ? null : (
-          <div>
-            <dt>Lag</dt>
-            <dd>{metadata.lagMilliseconds} ms</dd>
-          </div>
-        )}
-        <div>
-          <dt>Source updated</dt>
-          <dd>{new Date(metadata.sourceUpdatedAt).toLocaleTimeString()}</dd>
-        </div>
-      </dl>
-      {metadata.partial ? (
-        <p className="activity-partial-note" role="status">
-          일부 adapter 결과만 반영된 부분 프로젝션입니다.
-        </p>
-      ) : null}
-    </section>
-  </TechnicalDetails>
+  <>
+    <TechnicalDetails
+      summary="Activity data details"
+      inspectionItems={[
+        { label: 'Projection freshness', value: metadata.freshness },
+        { label: 'Projection adapter', value: metadata.adapterStatus },
+        { label: 'Projection partial', value: metadata.partial },
+        { label: 'Snapshot revision', value: metadata.snapshotRevision },
+        ...(metadata.lagMilliseconds === undefined
+          ? []
+          : [{ label: 'Projection lag (ms)', value: metadata.lagMilliseconds }]),
+        { label: 'Projection source updated', value: metadata.sourceUpdatedAt },
+      ]}
+    />
+    {metadata.partial || metadata.adapterStatus !== 'AVAILABLE' ? (
+      <p className="activity-partial-note" role="status">
+        Some activity information is temporarily unavailable. Refresh before making a decision.
+      </p>
+    ) : null}
+  </>
 );
 
 // ---------------------------------------------------------------------------
@@ -297,12 +269,16 @@ const retryModeLabel: Record<'SAME_CONTEXT' | 'CURRENT_POLICY', string> = {
 
 const DetailSection = ({
   detail,
+  additionalStages,
+  additionalEvents,
   headingRef,
   onAction,
   actionPending,
   actionError,
 }: {
   readonly detail: ActivityDetailV1;
+  readonly additionalStages: ActivityDetailV1['stages'];
+  readonly additionalEvents: ActivityDetailV1['events'];
   readonly headingRef?: Ref<HTMLHeadingElement>;
   readonly onAction: (action: ActivityAvailableActionV1) => void;
   readonly actionPending: string | null;
@@ -311,6 +287,8 @@ const DetailSection = ({
   const identity = identityFromRoot(detail.root);
   const resourceHref = detail.root.resourceHref;
   const actions = detail.availableActions;
+  const inspectionStages = [...detail.stages, ...additionalStages];
+  const inspectionEvents = [...detail.events, ...additionalEvents];
   return (
     <section className="activity-detail" aria-label="Activity details">
       <header className="activity-detail-header">
@@ -400,6 +378,74 @@ const DetailSection = ({
           ...(detail.run.jobId === undefined ? [] : [{ label: 'Job ID', value: detail.run.jobId }]),
           { label: 'Run sequence', value: detail.run.sequence },
           { label: 'Resource path', value: resourceHref },
+        ]}
+        inspectionItems={[
+          { label: 'Domain kind', value: detail.root.domainKind },
+          { label: 'Resource kind', value: detail.root.domainResourceKind },
+          { label: 'Resource ID', value: detail.root.domainResourceId },
+          { label: 'Run state', value: detail.run.state },
+          {
+            label: 'Run topology',
+            value: technicalJson({
+              domainAttemptRefs: detail.run.domainAttemptRefs,
+              correlationRefs: detail.run.correlationRefs,
+              causationRefs: detail.run.causationRefs,
+            }),
+          },
+          {
+            label: 'Domain Attempts',
+            value: technicalJson(
+              detail.attempts.map((attempt) => ({
+                attemptId: attempt.attemptId,
+                runId: attempt.runId,
+                attemptNumber: attempt.attemptNumber,
+                attemptKind: attempt.attemptKind,
+                state: attempt.state,
+                retryability: attempt.retryability,
+                stageRefs: attempt.stageRefs,
+              })),
+            ),
+          },
+          {
+            label: 'Transport Attempts',
+            value: technicalJson(
+              detail.transportAttempts.map((attempt) => ({
+                transportAttemptId: attempt.transportAttemptId,
+                transportKind: attempt.transportKind,
+                commandOrMessageRef: attempt.commandOrMessageRef,
+                deliverySequence: attempt.deliverySequence,
+                deliveryResult: attempt.deliveryResult,
+                deliveredAt: attempt.deliveredAt,
+                failure: attempt.failure,
+              })),
+            ),
+          },
+          {
+            label: 'Stages',
+            value: technicalJson(
+              inspectionStages.map((stage) => ({
+                stageId: stage.stageId,
+                stageKey: stage.stageKey,
+                label: stage.label,
+                sequence: stage.sequence,
+                state: stage.state,
+              })),
+            ),
+          },
+          {
+            label: 'Events',
+            value: technicalJson(
+              inspectionEvents.map((event) => ({
+                eventId: event.eventId,
+                relatedRef: event.relatedRef,
+                category: event.category,
+                sequence: event.sequence,
+                occurredAt: event.occurredAt,
+                summary: event.summary,
+                domainResourceRef: event.domainResourceRef,
+              })),
+            ),
+          },
         ]}
       >
         <h3>Domain Attempts</h3>
@@ -813,51 +859,22 @@ export const ActivityWorkspace = () => {
         {selected === null ? (
           <EmptyState
             title="활동을 선택하세요"
-            description="큐에서 활동을 선택하면 Job/Run, Attempt, Stage, Event 계보를 표시합니다."
+            description="Select work to see its status and available actions."
           />
         ) : detail.isPending ? (
           <LoadingState message="활동 세부 정보를 불러오는 중…" />
         ) : detail.isError ? (
           <ErrorState error={detail.error} onRetry={() => detail.refetch()} />
         ) : detail.data ? (
-          <>
-            <DetailSection
-              detail={detail.data}
-              headingRef={detailHeadingRef}
-              onAction={(action) => void runDomainAction(action)}
-              actionPending={pendingAction}
-              actionError={actionError}
-            />
-            <section className="activity-continuations" aria-label="추가 Stage와 Event">
-              <h3>추가 Stages</h3>
-              {stages.data && stages.data.stages.length > 0 ? (
-                <ol className="activity-events" aria-label="추가 Stages">
-                  {stages.data.stages.map((stage) => (
-                    <li key={stage.stageId}>
-                      <span>{stage.stageKey}</span> — <span>{stage.label}</span>
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                <EmptyState title="추가 Stage 없음" />
-              )}
-              <h3>추가 Events</h3>
-              {events.data && events.data.events.length > 0 ? (
-                <ol className="activity-events" aria-label="추가 Events">
-                  {events.data.events.map((event) => (
-                    <li key={event.eventId}>
-                      <span className="activity-event-category" data-category={event.category}>
-                        {event.category}
-                      </span>{' '}
-                      <span>{event.summary}</span>
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                <EmptyState title="추가 Event 없음" />
-              )}
-            </section>
-          </>
+          <DetailSection
+            detail={detail.data}
+            additionalStages={stages.data?.stages ?? []}
+            additionalEvents={events.data?.events ?? []}
+            headingRef={detailHeadingRef}
+            onAction={(action) => void runDomainAction(action)}
+            actionPending={pendingAction}
+            actionError={actionError}
+          />
         ) : null}
       </main>
     </div>

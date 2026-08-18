@@ -1,13 +1,13 @@
 import { expect, test } from '@playwright/test';
 
 import { ASK_FIXTURE } from './fixtures/ask-workspace-fixture.js';
+import { switchProject } from './helpers/hfm-commands.js';
 
 test('Active B -> Conversation A uses only A Sources and submits the follow-up to A', async ({
   page,
 }) => {
   await page.goto('/ask');
-  const projectSelector = page.getByRole('combobox', { name: 'Current project' });
-  await expect(projectSelector).toHaveValue(ASK_FIXTURE.projectAId);
+  await expect(page.locator('.project-summary')).toContainText('shotgun');
 
   const questionInput = page.getByRole('textbox', { name: 'Question', exact: true });
   await questionInput.fill('Create the Project A conversation for the cross-project boundary.');
@@ -15,12 +15,14 @@ test('Active B -> Conversation A uses only A Sources and submits the follow-up t
   await expect(page).toHaveURL(/\/ask\/conversations\/[^/]+$/);
   const conversationUrl = new URL(page.url()).pathname;
   const conversationId = conversationUrl.split('/').at(-1)!;
+  await expect(page.locator('.ask-workspace')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Request error' })).toHaveCount(0);
 
-  await projectSelector.selectOption(ASK_FIXTURE.projectBId);
-  await expect(projectSelector).toHaveValue(ASK_FIXTURE.projectBId);
+  await switchProject(page, 'Project B');
+  await expect(page.locator('.project-summary')).toContainText('Project B');
   await page.goto(conversationUrl);
-  await expect(projectSelector).toHaveValue(ASK_FIXTURE.projectBId);
-  await expect(page.getByText('Project: shotgun')).toBeVisible();
+  await expect(page.locator('.project-summary')).toContainText('Project B');
+  await expect(page.getByText('Project: shotgun')).toHaveCount(0);
 
   const sourceContextRequest = page.waitForRequest((request) =>
     request
@@ -41,10 +43,7 @@ test('Active B -> Conversation A uses only A Sources and submits the follow-up t
   await expect(page.getByText('ask-citation-source.txt')).toHaveCount(0);
   const projectASourceOption = projectASource.locator('xpath=ancestor::label');
   await expect(projectASourceOption.getByText('Version 1')).toBeVisible();
-  const technicalDetails = projectASourceOption.locator('details');
-  await expect(technicalDetails).not.toHaveAttribute('open', '');
-  await technicalDetails.locator('summary').click();
-  await expect(technicalDetails.getByText(ASK_FIXTURE.selectableSourceVersionId)).toBeVisible();
+  await expect(projectASourceOption).not.toContainText(ASK_FIXTURE.selectableSourceVersionId);
   await projectASource.check();
 
   const followUp = 'Use the pinned Project A SourceVersion for this follow-up.';
@@ -81,6 +80,8 @@ test('Active B -> Conversation A uses only A Sources and submits the follow-up t
       },
     },
   });
-  await expect(page.getByText(followUp, { exact: true })).toBeVisible();
-  await expect(projectSelector).toHaveValue(ASK_FIXTURE.projectBId);
+  await expect(
+    page.getByLabel('Main Branch').getByRole('listitem').filter({ hasText: followUp }),
+  ).toBeVisible();
+  await expect(page.locator('.project-summary')).toContainText('Project B');
 });

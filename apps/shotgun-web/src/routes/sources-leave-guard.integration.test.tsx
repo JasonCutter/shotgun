@@ -91,7 +91,7 @@ const renderWorkspace = () => {
         children: [{ path: 'sources', element: <SourcesWorkspace /> }],
       },
     ],
-    { initialEntries: ['/sources'] },
+    { initialEntries: ['/sources?view=add'] },
   );
 
   render(
@@ -135,6 +135,6 @@ describe('Sources Workspace Leave Guard integration', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Inspect leave state' }));
 
     expect(document.body.getAttribute('data-leave-state')).toContain('"hasUnsavedDraft":false');
-    expect(screen.getByText('No route-scoped drafts.')).toBeTruthy();
+    expect(screen.getByText('No drafts yet.')).toBeTruthy();
   });
 });

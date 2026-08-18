@@ -5,6 +5,7 @@
 - Accepted by owner: 2026-08-14
 - Subject base: `main@575b8031b3beccc9fba5541809285c5a29b89d11`
 - Scope: Shotgun Product UI / owner interaction boundary
+- Superseded by: [ADR-146 — PC Global Conversation Shell and GUI/Slash Dual-Control](ADR-146-pc-global-conversation-shell-and-gui-slash-dual-control.md)
 
 ## Context
 

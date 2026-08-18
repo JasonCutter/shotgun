@@ -37,7 +37,6 @@ const main = async (): Promise<void> => {
       noOpen,
       databaseUrl: process.env.DATABASE_URL ?? '',
       stagingSecret: process.env.SOURCES_STAGING_SECRET ?? '',
-      geminiApiKey: process.env.GEMINI_API_KEY ?? '',
       port: Number.parseInt(process.env.PORT ?? '3000', 10),
       host: process.env.HOST ?? '127.0.0.1',
       spaDirectory,

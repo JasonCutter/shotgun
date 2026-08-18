@@ -94,7 +94,6 @@ const makeOptions = (overrides: Partial<ShotgunLaunchOptions> = {}): ShotgunLaun
   noOpen: false,
   databaseUrl: 'postgres://shotgun:shotgun@localhost:5432/shotgun',
   stagingSecret: 'x'.repeat(40),
-  geminiApiKey: 'test-key',
   port: 3000,
   host: '127.0.0.1',
   spaDirectory: sharedSpaDirectory ?? process.cwd(),
@@ -107,11 +106,18 @@ describe('LPA-WP4 A2 Correction C3-A — Frozen failure taxonomy (8 kinds)', () 
   it('classifies ENV_CONFIGURATION_INVALID before any step runs', async () => {
     const { deps, calls } = makeDeps();
     await expect(
-      runLaunch(makeOptions({ databaseUrl: '', stagingSecret: '', geminiApiKey: '' }), deps),
+      runLaunch(makeOptions({ databaseUrl: '', stagingSecret: '' }), deps),
     ).rejects.toMatchObject({ code: 'ENV_CONFIGURATION_INVALID' });
     expect(calls).toEqual([]);
   });
 
+  it('does not require GEMINI_API_KEY to launch the application', async () => {
+    const { deps, calls } = makeDeps();
+    const env = { ...process.env, GEMINI_API_KEY: undefined };
+    const handle = await runLaunch(makeOptions({ noOpen: true, env }), deps);
+    expect(calls).toEqual(['build', 'db-probe', 'db-verify', 'start', 'listen', 'readiness']);
+    await handle.close();
+  });
   it('classifies SPA_BUILD_FAILED when the build runner fails', async () => {
     const { deps, calls } = makeDeps({
       buildSpa: () => {
@@ -230,10 +236,9 @@ describe('LPA-WP4 A2 Correction C3-A — Frozen failure taxonomy (8 kinds)', () 
 
   it('exposes actionable check/command on every taxonomy failure', async () => {
     const { deps } = makeDeps();
-    const error = await runLaunch(
-      makeOptions({ databaseUrl: '', stagingSecret: '', geminiApiKey: '' }),
-      deps,
-    ).catch((caught: unknown) => caught);
+    const error = await runLaunch(makeOptions({ databaseUrl: '', stagingSecret: '' }), deps).catch(
+      (caught: unknown) => caught,
+    );
     expect(error).toBeInstanceOf(LaunchFailure);
     if (error instanceof LaunchFailure) {
       expect(error.code).toBe('ENV_CONFIGURATION_INVALID');

@@ -1,8 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
-const graphTechnicalDetails = (page: Page) =>
-  page.locator('details.technical-details').filter({ hasText: 'Snapshot ID' }).first();
+import { expectTechnicalInformation } from './hfm-technical.js';
 
 const routeGuard = {
   decision: {
@@ -262,7 +261,7 @@ test('Graph Workspace renders the snapshot with information-equivalent list and 
   await stubSessionAndShell(page);
   await page.goto('/knowledge/graph');
   await expect(page.getByRole('heading', { name: 'Semantic Graph', level: 1 })).toBeVisible();
-  await expect(graphTechnicalDetails(page)).toContainText('snapshot-1');
+  await expectTechnicalInformation(page, 'snapshot-1');
 
   await page.keyboard.press('Alt+l');
   const listRegion = page.getByRole('region', { name: 'Semantic graph list' });
@@ -428,7 +427,7 @@ test('AC-17: refresh issues a new snapshot identity and keeps the selected resou
   await stubSessionAndShell(page);
   await page.goto('/knowledge/graph');
   await expect(page.getByRole('heading', { name: 'Semantic Graph', level: 1 })).toBeVisible();
-  await expect(graphTechnicalDetails(page)).toContainText('snapshot-1');
+  await expectTechnicalInformation(page, 'snapshot-1');
 
   await page.keyboard.press('Alt+l');
   await page
@@ -440,8 +439,7 @@ test('AC-17: refresh issues a new snapshot identity and keeps the selected resou
 
   await page.getByRole('button', { name: '새로 고침' }).click();
 
-  await expect(graphTechnicalDetails(page)).toContainText('snapshot-2');
-  await expect(graphTechnicalDetails(page)).toContainText('proj-2');
+  await expectTechnicalInformation(page, ['snapshot-2', 'proj-2']);
   await expect(page.getByRole('status')).toContainText('선택됨: Entity One');
 });
 
@@ -451,7 +449,7 @@ test('AC-18: a refresh while the canvas stays mounted rebuilds the actual cytosc
   await stubSessionAndShell(page);
   await page.goto('/knowledge/graph');
   await expect(page.getByRole('heading', { name: 'Semantic Graph', level: 1 })).toBeVisible();
-  await expect(graphTechnicalDetails(page)).toContainText('snapshot-1');
+  await expectTechnicalInformation(page, 'snapshot-1');
 
   // The canvas view is the default and stays mounted across the refresh.
   const canvasSurface = page.locator('[data-testid="graph-canvas"] .graph-canvas-surface');
@@ -472,8 +470,7 @@ test('AC-18: a refresh while the canvas stays mounted rebuilds the actual cytosc
 
   await page.getByRole('button', { name: '새로 고침' }).click();
 
-  await expect(graphTechnicalDetails(page)).toContainText('snapshot-2');
-  await expect(graphTechnicalDetails(page)).toContainText('proj-2');
+  await expectTechnicalInformation(page, ['snapshot-2', 'proj-2']);
 
   // The ACTUAL cytoscape instance was rebuilt with the refreshed node set
   // (4 nodes now) — not just the hidden accessible collection.
@@ -903,10 +900,7 @@ test('AC-25: a correction action on a graph node navigates to the Knowledge Edit
   await expect(page.getByRole('status').filter({ hasText: '지식 항목' })).toContainText(
     '보정할 준비가 되었습니다',
   );
-  const correctionDetails = page.locator('details').filter({ hasText: 'Change intent' }).first();
-  await expect(correctionDetails).not.toHaveAttribute('open', '');
-  await correctionDetails.locator('summary').click();
-  await expect(correctionDetails.getByText(/ENTITY:entity-1/)).toBeVisible();
-  await expect(correctionDetails.getByText('CORRECT_KNOWLEDGE')).toBeVisible();
+  await expect(page.locator('main')).not.toContainText('ENTITY:entity-1');
+  await expectTechnicalInformation(page, ['ENTITY:entity-1', 'CORRECT_KNOWLEDGE']);
   expect(writeRequests).toEqual([]);
 });

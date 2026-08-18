@@ -1,7 +1,8 @@
-import type { GlobalShellView } from '@shotgun/api-client';
+import type { GlobalShellView, ProjectListItemView } from '@shotgun/api-client';
 import { describe, expect, it } from 'vitest';
 
 import { createOwnerCommandRegistry, filterOwnerCommands } from './owner-command-registry.js';
+import type { AnswerCommandContext } from './answer-command-context.js';
 
 const shell: GlobalShellView = {
   schemaVersion: '1.0.0',
@@ -68,9 +69,90 @@ const shell: GlobalShellView = {
   fetchedAt: '2026-08-14T00:00:00.000Z',
 };
 
+const projects: readonly ProjectListItemView[] = [
+  {
+    id: 'project-1',
+    name: 'Current Project',
+    description: '',
+    isOwner: true,
+    status: 'ACTIVE',
+    active: true,
+    createdAt: '2026-08-14T00:00:00.000Z',
+    updatedAt: '2026-08-14T00:00:00.000Z',
+    revision: 3,
+    capability: {
+      canRename: true,
+      canArchive: true,
+      canRestore: false,
+      canDelete: true,
+      canManagePolicies: true,
+    },
+  },
+  {
+    id: 'project-3',
+    name: 'Archived Project',
+    description: '',
+    isOwner: true,
+    status: 'ARCHIVED',
+    active: false,
+    createdAt: '2026-08-14T00:00:00.000Z',
+    updatedAt: '2026-08-14T00:00:00.000Z',
+    revision: 4,
+    capability: {
+      canRename: false,
+      canArchive: false,
+      canRestore: true,
+      canDelete: false,
+      canManagePolicies: false,
+    },
+  },
+];
+
+const answerContext: AnswerCommandContext = {
+  projectId: 'project-1',
+  conversationId: 'conversation-1',
+  branchId: 'branch-1',
+  turnId: 'turn-1',
+  answerRunId: 'answer-run-1',
+  answerRevision: 'answer-revision-1',
+  state: 'SUCCEEDED',
+  capabilities: ['EXPORT', 'RETRY_SAME_CONTEXT', 'CREATE_DRAFT_CHANGE_SET'],
+};
+
 describe('owner command registry', () => {
+  it('discovers frozen Answer commands only for a capability-bearing mounted context', () => {
+    const hidden = createOwnerCommandRegistry({ shell, projects });
+    const available = createOwnerCommandRegistry({ shell, projects, answerContext });
+    const pending = createOwnerCommandRegistry({
+      shell,
+      projects,
+      answerContext,
+      answerCommandPending: true,
+    });
+
+    expect(filterOwnerCommands(hidden, 'answer')).toHaveLength(0);
+    expect(available.find((command) => command.id === 'answer.export')).toMatchObject({
+      category: 'ANSWER',
+      availability: 'AVAILABLE',
+      action: { kind: 'OPEN_ANSWER_FLOW', commandId: 'answer.export' },
+    });
+    expect(available.find((command) => command.id === 'action.retry')?.availability).toBe(
+      'AVAILABLE',
+    );
+    expect(available.find((command) => command.id === 'answer.propose_change')?.availability).toBe(
+      'AVAILABLE',
+    );
+    expect(available.find((command) => command.id === 'answer.propose_intake')?.availability).toBe(
+      'HIDDEN',
+    );
+    expect(pending.find((command) => command.id === 'action.retry')).toMatchObject({
+      availability: 'UNAVAILABLE_WITH_REASON',
+      reasonKey: 'commands.unavailable.answer_pending',
+    });
+  });
+
   it('keeps stable IDs separate from localized discovery terms', () => {
-    const commands = createOwnerCommandRegistry({ shell });
+    const commands = createOwnerCommandRegistry({ shell, projects });
 
     expect(commands.map((command) => command.id)).toEqual(
       expect.arrayContaining([
@@ -78,13 +160,19 @@ describe('owner command registry', () => {
         'search.global',
         'project.manage',
         'project.switch',
+        'preferences.locale',
+        'preferences.timezone',
+        'preferences.display',
         'ai.configure',
+        'ai.test_connection',
         'privacy.open',
+        'privacy.review',
         'knowledge.open',
         'review.open',
         'external_action.open',
         'activity.open',
         'history.open',
+        'technical.current',
       ]),
     );
     expect(commands.some((command) => command.id.startsWith('navigate.'))).toBe(false);
@@ -98,12 +186,8 @@ describe('owner command registry', () => {
     expect(filterOwnerCommands(commands, '프로젝트').map((command) => command.id)).toEqual(
       expect.arrayContaining(['project.manage', 'project.switch']),
     );
-    expect(filterOwnerCommands(commands, '지식').map((command) => command.id)).toContain(
-      'knowledge.open',
-    );
-    expect(filterOwnerCommands(commands, '검토').map((command) => command.id)).toContain(
-      'review.open',
-    );
+    expect(filterOwnerCommands(commands, '지식')).toHaveLength(0);
+    expect(filterOwnerCommands(commands, '검토')).toHaveLength(0);
     expect(filterOwnerCommands(commands, '이력').map((command) => command.id)).toContain(
       'history.open',
     );
@@ -111,36 +195,182 @@ describe('owner command registry', () => {
       kind: 'NAVIGATE',
       targetRoute: { routeId: 'knowledge', href: '/knowledge' },
     });
+    expect(commands.find((command) => command.id === 'activity.open')).toMatchObject({
+      category: 'INSPECTION',
+      risk: 'READ',
+      presentation: 'NAVIGATE',
+      action: { kind: 'NAVIGATE', targetRoute: { routeId: 'activity', href: '/activity' } },
+    });
+    expect(commands.find((command) => command.id === 'history.open')).toMatchObject({
+      category: 'INSPECTION',
+      risk: 'READ',
+      presentation: 'NAVIGATE',
+      action: { kind: 'NAVIGATE', targetRoute: { routeId: 'history', href: '/history' } },
+    });
     expect(commands.find((command) => command.id === 'project.switch')).toMatchObject({
       id: 'project.switch',
       context: { projectId: 'project-2' },
       action: { kind: 'SWITCH_PROJECT', projectId: 'project-2' },
     });
+    expect(commands).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'preferences.locale',
+          category: 'PREFERENCES',
+          risk: 'WRITE',
+          action: { kind: 'OPEN_PREFERENCE_FLOW', commandId: 'preferences.locale' },
+        }),
+        expect.objectContaining({
+          id: 'preferences.timezone',
+          category: 'PREFERENCES',
+          risk: 'WRITE',
+          action: { kind: 'OPEN_PREFERENCE_FLOW', commandId: 'preferences.timezone' },
+        }),
+        expect.objectContaining({
+          id: 'preferences.display',
+          category: 'PREFERENCES',
+          risk: 'WRITE',
+          action: { kind: 'OPEN_PREFERENCE_FLOW', commandId: 'preferences.display' },
+        }),
+        expect.objectContaining({
+          id: 'ai.configure',
+          category: 'AI',
+          risk: 'WRITE',
+          action: { kind: 'OPEN_AI_FLOW', commandId: 'ai.configure' },
+        }),
+        expect.objectContaining({
+          id: 'ai.test_connection',
+          category: 'AI',
+          risk: 'READ',
+          action: { kind: 'OPEN_AI_FLOW', commandId: 'ai.test_connection' },
+        }),
+        expect.objectContaining({
+          id: 'privacy.open',
+          category: 'PRIVACY',
+          risk: 'READ',
+          action: { kind: 'OPEN_PRIVACY_FLOW', commandId: 'privacy.open' },
+        }),
+        expect.objectContaining({
+          id: 'privacy.review',
+          category: 'PRIVACY',
+          risk: 'WRITE',
+          action: { kind: 'OPEN_PRIVACY_FLOW', commandId: 'privacy.review' },
+        }),
+      ]),
+    );
   });
 
   it('does not expose generic Settings or unsupported placeholders and preserves offline state', () => {
-    const commands = createOwnerCommandRegistry({ shell, isOffline: true });
+    const commands = createOwnerCommandRegistry({ shell, isOffline: true, projects });
 
     expect(commands.some((command) => command.label === 'Prototype')).toBe(false);
     expect(commands.some((command) => command.id === 'navigate.settings')).toBe(false);
     expect(commands.some((command) => command.id === 'settings')).toBe(false);
     expect(commands.some((command) => command.id === 'diagnostics.open')).toBe(false);
+    expect(filterOwnerCommands(commands, 'technical')).toHaveLength(0);
     expect(commands.find((command) => command.id === 'search.global')?.availability).toBe(
       'UNAVAILABLE_WITH_REASON',
     );
     expect(commands.find((command) => command.id === 'project.switch')?.availability).toBe(
       'UNAVAILABLE_WITH_REASON',
     );
+    expect(commands.find((command) => command.id === 'preferences.locale')).toMatchObject({
+      availability: 'UNAVAILABLE_WITH_REASON',
+      reasonKey: 'commands.unavailable.preferences_offline',
+    });
+    expect(commands.find((command) => command.id === 'preferences.timezone')).toMatchObject({
+      availability: 'UNAVAILABLE_WITH_REASON',
+      reasonKey: 'commands.unavailable.preferences_offline',
+    });
+    expect(commands.find((command) => command.id === 'preferences.display')).toMatchObject({
+      availability: 'UNAVAILABLE_WITH_REASON',
+      reasonKey: 'commands.unavailable.preferences_offline',
+    });
+    expect(commands.find((command) => command.id === 'ai.configure')).toMatchObject({
+      availability: 'UNAVAILABLE_WITH_REASON',
+      reasonKey: 'commands.unavailable.ai_configuration_offline',
+    });
+    expect(commands.find((command) => command.id === 'ai.test_connection')).toMatchObject({
+      availability: 'UNAVAILABLE_WITH_REASON',
+      reasonKey: 'commands.unavailable.ai_test_offline',
+    });
+    expect(commands.find((command) => command.id === 'privacy.open')).toMatchObject({
+      availability: 'UNAVAILABLE_WITH_REASON',
+      reasonKey: 'commands.unavailable.privacy_open_offline',
+    });
+    expect(commands.find((command) => command.id === 'privacy.review')).toMatchObject({
+      availability: 'UNAVAILABLE_WITH_REASON',
+      reasonKey: 'commands.unavailable.privacy_review_offline',
+    });
     expect(filterOwnerCommands(commands, 'global search')).toHaveLength(1);
   });
 
-  it('keeps historical placeholders from suppressing confirmed capabilities', () => {
-    const commands = createOwnerCommandRegistry({ shell });
-
-    expect(commands.find((command) => command.id === 'knowledge.open')?.availability).toBe(
-      'AVAILABLE',
+  it('binds technical.current availability only to mounted technical inspection context', () => {
+    const hidden = createOwnerCommandRegistry({ shell, projects }).find(
+      (command) => command.id === 'technical.current',
     );
-    expect(commands.find((command) => command.id === 'review.open')?.availability).toBe(
+    const available = createOwnerCommandRegistry({
+      shell,
+      projects,
+      isOffline: true,
+      hasTechnicalInspection: true,
+    }).find((command) => command.id === 'technical.current');
+
+    expect(hidden).toMatchObject({ availability: 'HIDDEN' });
+    expect(available).toMatchObject({
+      id: 'technical.current',
+      category: 'INSPECTION',
+      risk: 'READ',
+      presentation: 'DRAWER',
+      availability: 'AVAILABLE',
+      action: { kind: 'OPEN_TECHNICAL_FLOW', commandId: 'technical.current' },
+    });
+    expect(available?.context).toBeUndefined();
+    expect(available?.action).toEqual({
+      kind: 'OPEN_TECHNICAL_FLOW',
+      commandId: 'technical.current',
+    });
+    expect(
+      createOwnerCommandRegistry({ shell, projects, hasTechnicalInspection: true }).some(
+        (command) => command.id === 'diagnostics.open',
+      ),
+    ).toBe(false);
+  });
+
+  it('hides Knowledge and Review unless their exact navigation routes are established and available', () => {
+    const hiddenCommands = createOwnerCommandRegistry({ shell, projects });
+
+    expect(hiddenCommands.find((command) => command.id === 'knowledge.open')?.availability).toBe(
+      'HIDDEN',
+    );
+    expect(hiddenCommands.find((command) => command.id === 'review.open')?.availability).toBe(
+      'HIDDEN',
+    );
+
+    const establishedShell: GlobalShellView = {
+      ...shell,
+      navigation: [
+        ...shell.navigation,
+        {
+          id: 'knowledge-established',
+          label: 'Knowledge',
+          availability: 'AVAILABLE',
+          targetRoute: { routeId: 'knowledge', href: '/knowledge' },
+        },
+        {
+          id: 'review-established',
+          label: 'Review',
+          availability: 'AVAILABLE',
+          targetRoute: { routeId: 'review', href: '/review' },
+        },
+      ],
+    };
+    const establishedCommands = createOwnerCommandRegistry({ shell: establishedShell, projects });
+
+    expect(
+      establishedCommands.find((command) => command.id === 'knowledge.open')?.availability,
+    ).toBe('AVAILABLE');
+    expect(establishedCommands.find((command) => command.id === 'review.open')?.availability).toBe(
       'AVAILABLE',
     );
   });
@@ -173,12 +403,12 @@ describe('owner command registry', () => {
     };
 
     expect(
-      createOwnerCommandRegistry({ shell: hiddenShell }).find(
+      createOwnerCommandRegistry({ shell: hiddenShell, projects }).find(
         (command) => command.id === 'activity.open',
       )?.availability,
     ).toBe('HIDDEN');
     expect(
-      createOwnerCommandRegistry({ shell: temporarilyUnavailableShell }).find(
+      createOwnerCommandRegistry({ shell: temporarilyUnavailableShell, projects }).find(
         (command) => command.id === 'activity.open',
       ),
     ).toMatchObject({
@@ -188,7 +418,7 @@ describe('owner command registry', () => {
   });
 
   it('carries frozen risk and presentation metadata without turning the registry into policy', () => {
-    const commands = createOwnerCommandRegistry({ shell });
+    const commands = createOwnerCommandRegistry({ shell, projects });
 
     expect(commands).toEqual(
       expect.arrayContaining([
@@ -196,8 +426,46 @@ describe('owner command registry', () => {
         expect.objectContaining({ id: 'search.global', risk: 'READ', presentation: 'DIALOG' }),
         expect.objectContaining({ id: 'project.switch', risk: 'WRITE', presentation: 'DIALOG' }),
         expect.objectContaining({ id: 'ai.configure', risk: 'WRITE', presentation: 'DRAWER' }),
+        expect.objectContaining({ id: 'ai.test_connection', risk: 'READ', presentation: 'DIALOG' }),
+        expect.objectContaining({ id: 'privacy.open', risk: 'READ', presentation: 'DRAWER' }),
+        expect.objectContaining({ id: 'privacy.review', risk: 'WRITE', presentation: 'DIALOG' }),
         expect.objectContaining({ id: 'knowledge.open', risk: 'READ', presentation: 'NAVIGATE' }),
       ]),
     );
+  });
+
+  it('exposes Project controls through focused flows and hides invalid lifecycle actions', () => {
+    const commands = createOwnerCommandRegistry({ shell, projects });
+
+    expect(commands).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'project.manage',
+          risk: 'READ',
+          presentation: 'DRAWER',
+          action: { kind: 'OPEN_PROJECT_FLOW', commandId: 'project.manage' },
+        }),
+        expect.objectContaining({
+          id: 'project.create',
+          risk: 'WRITE',
+          action: { kind: 'OPEN_PROJECT_FLOW', commandId: 'project.create' },
+        }),
+        expect.objectContaining({ id: 'project.rename', risk: 'WRITE' }),
+        expect.objectContaining({ id: 'project.archive', risk: 'WRITE' }),
+        expect.objectContaining({ id: 'project.restore', risk: 'WRITE' }),
+        expect.objectContaining({ id: 'project.delete_request', risk: 'DESTRUCTIVE' }),
+      ]),
+    );
+
+    const noRestoreProjects = projects.map((project) => ({
+      ...project,
+      capability: { ...project.capability, canRestore: false },
+    }));
+    expect(
+      createOwnerCommandRegistry({ shell, projects: noRestoreProjects }).find(
+        (command) => command.id === 'project.restore',
+      )?.availability,
+    ).toBe('HIDDEN');
+    expect(commands.some((command) => command.id === 'navigate.settings')).toBe(false);
   });
 });

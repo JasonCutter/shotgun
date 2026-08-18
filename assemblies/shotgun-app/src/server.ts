@@ -57,12 +57,15 @@ import {
   InMemoryActionCenterProjection,
   InMemoryAskWorkspaceProjection,
   InMemoryBackgroundSummaryProjection,
-  InMemoryGlobalSearch,
   InMemoryGlobalShellProjection,
   InMemoryNotificationSummaryProjection,
   InMemoryRouteGuardProjection,
 } from '../../../adapters/frontend-product-read-in-memory/src/index.js';
-import { FrontendProductReadCoordinator } from '../../../modules/frontend-product-read/src/index.js';
+import { PostgresSourceLibraryGlobalSearch } from '../../../adapters/frontend-product-read-postgres/src/index.js';
+import {
+  FrontendProductReadCoordinator,
+  type ActionCenterProjectionPort,
+} from '../../../modules/frontend-product-read/src/index.js';
 import { AskCommandCoordinator } from '../../../modules/frontend-ask-write/src/index.js';
 import type { AskAnswerExecutionService } from '../../../modules/frontend-ask-execution/src/index.js';
 import {
@@ -124,6 +127,7 @@ import { AskActivityAdapter } from '../../../adapters/frontend-activity-ask/src/
 import { createInMemoryAskActivityRead } from '../../../adapters/frontend-activity-ask/src/index.js';
 import { ExternalActionActivityAdapter } from '../../../adapters/frontend-activity-external-action/src/index.js';
 import type { ExternalActionRepositoryBoundaryPort } from '../../../modules/frontend-external-action/src/external-action-store-port.js';
+import { CoordinatorActionCenterAttentionProjection } from './action-center-attention-projection.js';
 import {
   registerFrontendKnowledgeGraphRoutes,
   type GraphScopeResolver,
@@ -522,6 +526,8 @@ export type ApplicationOptions = {
   readonly frontendProductReadCoordinator?: FrontendProductReadCoordinator;
   readonly frontendProductReadCoordinatorFactory?: (
     connector: ShotgunKernel['connector'],
+    actionCenterProjection: ActionCenterProjectionPort,
+    sources: FrontendSourcesReadCoordinator,
   ) => FrontendProductReadCoordinator;
   readonly askCommandCoordinator?: AskCommandCoordinator;
   readonly askAnswerExecution?: AskAnswerExecutionService;
@@ -1660,15 +1666,26 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     actionExecution,
   );
   await kernel.start();
+  const actionCenterProjection = new InMemoryActionCenterProjection(
+    new CoordinatorActionCenterAttentionProjection(
+      frontendReviewCoordinator,
+      frontendExternalActionCoordinator,
+      activityCoordinator,
+    ),
+  );
   const frontendProductReadCoordinator =
     options.frontendProductReadCoordinator ??
-    options.frontendProductReadCoordinatorFactory?.(kernel.connector) ??
+    options.frontendProductReadCoordinatorFactory?.(
+      kernel.connector,
+      actionCenterProjection,
+      frontendSourcesReadCoordinator,
+    ) ??
     new FrontendProductReadCoordinator(
       new InMemoryGlobalShellProjection(),
-      new InMemoryActionCenterProjection(),
+      actionCenterProjection,
       new InMemoryBackgroundSummaryProjection(),
       new InMemoryNotificationSummaryProjection(),
-      new InMemoryGlobalSearch(),
+      new PostgresSourceLibraryGlobalSearch(frontendSourcesReadCoordinator),
       new InMemoryRouteGuardProjection(),
       inMemoryAskWorkspace,
     );

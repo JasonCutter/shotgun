@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
@@ -60,10 +60,10 @@ const shell: GlobalShellView = {
       targetRoute: { routeId: 'sources', href: '/sources' },
     },
     {
-      id: 'settings',
-      label: 'Settings',
+      id: 'ask',
+      label: 'Ask',
       availability: 'AVAILABLE',
-      targetRoute: { routeId: 'settings', href: '/settings' },
+      targetRoute: { routeId: 'ask', href: '/ask' },
     },
   ],
   features: [
@@ -105,7 +105,10 @@ const home: HomeActionCenterView = {
   fetchedAt: '2026-07-29T00:00:00.000Z',
 };
 
-const runtime = (): AppRuntime => {
+const runtime = (
+  locale: 'en-US' | 'ko-KR' = 'en-US',
+  shellView: GlobalShellView = shell,
+): AppRuntime => {
   const queryClient = createFrontendQueryClient();
   const sessionCycleState = createSessionCycleState();
   queryClient.setQueryData(productSessionQueryKey, session);
@@ -114,14 +117,54 @@ const runtime = (): AppRuntime => {
     getSession: vi.fn(async () => session),
     switchActiveProject: vi.fn(async () => session),
     logout: vi.fn(async () => undefined),
-    getGlobalShell: vi.fn(async () => shell),
+    getGlobalShell: vi.fn(async () => shellView),
     getHomeActionCenter: vi.fn(async () => home),
+    getProjects: vi.fn(async () => []),
+    getAISettings: vi.fn(async () => ({
+      projectId: 'project-a',
+      mode: 'PROJECT_MANAGED',
+      defaultProviderId: 'deepseek',
+      currentConfiguration: {
+        projectId: 'project-a',
+        activeProviderId: 'provider-a',
+        activeModelId: 'model-a',
+        credentialId: 'credential-a',
+        credentialRevision: 1,
+        aiConfigurationRevision: 1,
+        updatedBy: 'principal-a',
+        updatedAt: '2026-08-15T00:00:00.000Z',
+      },
+      providers: [
+        {
+          providerId: 'provider-a',
+          displayName: 'Provider A',
+          status: 'active',
+          models: [
+            {
+              modelId: 'model-a',
+              displayName: 'Model A',
+              shotgunUsableCapabilities: [],
+              capabilityRevision: '1',
+            },
+          ],
+        },
+      ],
+      privacy: [],
+      credentialStatuses: [],
+      vaultAvailability: { state: 'AVAILABLE', keyVersion: '1' },
+      legacyGeminiCredentialConfigured: false,
+    })),
+    testAIConnection: vi.fn(),
+    getPrincipalPreferences: vi.fn(async () => ({
+      preferences: { locale },
+      revision: 1,
+    })),
   } as unknown as ShotgunApiClient;
   return { apiClient, queryClient, sessionCycleState };
 };
 
-const renderShell = () => {
-  const appRuntime = runtime();
+const renderShell = (locale: 'en-US' | 'ko-KR' = 'en-US', shellView: GlobalShellView = shell) => {
+  const appRuntime = runtime(locale, shellView);
   const router = createMemoryRouter(
     [
       {
@@ -137,35 +180,99 @@ const renderShell = () => {
       <RouterProvider router={router} />
     </AppProviders>,
   );
+  return appRuntime;
 };
 
 describe('ApplicationShell', () => {
-  it('provides landmarks, skip navigation, current navigation, and project context', async () => {
+  it('preserves the leading-warning wrapper within the PC global shell', async () => {
+    renderShell('ko-KR', {
+      ...shell,
+      leadingWarning: {
+        code: 'TEST_WARNING',
+        severity: 'WARNING',
+        message: 'Server-owned warning text',
+        additionalCount: 2,
+      },
+    });
+
+    expect((await screen.findByText(/Server-owned warning text/)).textContent).toContain(
+      'Server-owned warning text (2 추가 상태)',
+    );
+    expect(screen.queryByText(/additional states/)).toBeNull();
+    expect(document.querySelector('[data-global-shell-region="instrument"]')).toBeTruthy();
+  });
+
+  it('preserves the owner-visible offline recovery state within the PC global shell', async () => {
+    const online = vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false);
+    try {
+      renderShell();
+      expect(await screen.findByRole('alert')).toBeTruthy();
+      expect(document.querySelector('[data-global-shell-region="instrument"]')).toBeTruthy();
+      expect(document.querySelector('[data-global-shell-region="center"]')).toBeTruthy();
+    } finally {
+      online.mockRestore();
+    }
+  });
+
+  it('provides one five-region PC global shell with an Instrument Panel and C2 Tree', async () => {
     renderShell();
     expect(await screen.findByRole('banner')).toBeTruthy();
-    expect(screen.getByRole('navigation', { name: 'Primary navigation' })).toBeTruthy();
-    expect(screen.getByRole('main')).toBeTruthy();
+
+    for (const region of ['instrument', 'tree', 'center', 'conversation', 'composer']) {
+      expect(document.querySelectorAll(`[data-global-shell-region="${region}"]`)).toHaveLength(1);
+    }
+
+    const treeRegion = document.querySelector('[data-global-shell-region="tree"]');
+    const centerRegion = document.querySelector('[data-global-shell-region="center"]');
+    const conversationRegion = document.querySelector('[data-global-shell-region="conversation"]');
+    const composerRegion = document.querySelector('[data-global-shell-region="composer"]');
+    const navigation = screen.getByRole('navigation', { name: 'Primary navigation' });
+
+    expect(treeRegion?.contains(navigation)).toBe(true);
+    expect(screen.getByRole('main')).toBe(centerRegion);
     expect(screen.getByRole('link', { name: /main content/i }).getAttribute('href')).toBe(
       '#main-content',
     );
     expect(screen.getAllByRole('link', { name: 'Home' })[0]?.getAttribute('aria-current')).toBe(
       'page',
     );
-    expect(screen.getByText('Project A', { selector: 'strong' })).toBeTruthy();
+    const projectSelector = screen.getByRole('combobox', { name: 'Current project' });
+    expect((projectSelector as HTMLSelectElement).value).toBe('project-a');
+    expect(screen.getByLabelText('Workspace breadcrumb').textContent).toBe('Home');
+    expect(await screen.findByText('Provider A / Model A')).toBeTruthy();
+    expect(within(navigation).getByRole('link', { name: 'Home' })).toBeTruthy();
+    expect(within(navigation).getByRole('link', { name: 'Library' })).toBeTruthy();
+    expect(within(navigation).getByRole('link', { name: 'Add Source' })).toBeTruthy();
+    expect(within(navigation).getByRole('link', { name: 'Conversations' })).toBeTruthy();
+    expect(within(navigation).getByText('Settings', { selector: 'summary' })).toBeTruthy();
+    expect(within(navigation).queryByText('Knowledge', { exact: true })).toBeNull();
+    expect(within(navigation).queryByText('Review', { exact: true })).toBeNull();
+    expect(conversationRegion?.querySelector('.conversation-pane')).toBeTruthy();
+    expect(composerRegion?.querySelector('.global-composer')).toBeTruthy();
+    expect(screen.queryByText('More', { exact: true })).toBeNull();
   });
 
-  it('exposes the implemented Sources workspace as a registered link', async () => {
+  it('exposes the implemented Sources Library workspace as a registered Tree link', async () => {
     renderShell();
-    expect((await screen.findAllByRole('link', { name: 'Sources' })).length).toBeGreaterThan(0);
+    expect((await screen.findAllByRole('link', { name: 'Library' })).length).toBeGreaterThan(0);
   });
 
-  it('opens the same owner-command registry from the persistent Commands entry', async () => {
+  it('shares the owner-command registry between the C2 Tree and Ctrl/Cmd+K without an AI connection test', async () => {
     const user = userEvent.setup();
-    renderShell();
+    const appRuntime = renderShell();
 
-    await user.click(await screen.findByRole('button', { name: 'Commands' }));
-    expect(screen.getByRole('dialog', { name: 'Commands' })).toBeTruthy();
+    await screen.findByRole('heading', { name: 'Home' });
+    expect(screen.getByRole('button', { name: 'Search' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Commands' })).toBeNull();
+    await user.keyboard('{Control>}k{/Control}');
+    expect(screen.getByRole('region', { name: 'Commands' })).toBeTruthy();
+    expect(screen.queryByRole('dialog', { name: 'Commands' })).toBeNull();
     expect(screen.getByRole('heading', { name: 'Navigation' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Open Knowledge/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Open Knowledge/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Open Review/ })).toBeNull();
+    expect(
+      (appRuntime.apiClient as unknown as { testAIConnection: { mock: { calls: unknown[] } } })
+        .testAIConnection.mock.calls,
+    ).toHaveLength(0);
   });
 });

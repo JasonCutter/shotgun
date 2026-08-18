@@ -7,6 +7,10 @@ import type { GlobalShellView, ShotgunApiClient } from '@shotgun/api-client';
 
 import { createFrontendQueryClient } from '../app/query-client.js';
 import { AppProviders, type AppRuntime } from '../app/providers.js';
+import {
+  TechnicalInspectionProvider,
+  useTechnicalInspection,
+} from '../components/technical-inspection-context.js';
 import { createSessionCycleState } from '../session/session-query.js';
 import { ActivityWorkspace } from './activity-workspace.js';
 
@@ -410,6 +414,11 @@ const createRuntime = (): AppRuntime => ({
   sessionCycleState: createSessionCycleState(),
 });
 
+const TechnicalInspectionProbe = () => {
+  const { blocks } = useTechnicalInspection();
+  return <output data-testid="technical-inspection-probe" data-blocks={JSON.stringify(blocks)} />;
+};
+
 const renderWorkspace = (runtime: AppRuntime, initialEntries: string[] = ['/activity']) => {
   const router = createMemoryRouter(
     [
@@ -428,7 +437,10 @@ const renderWorkspace = (runtime: AppRuntime, initialEntries: string[] = ['/acti
   );
   render(
     <AppProviders runtime={runtime}>
-      <RouterProvider router={router} />
+      <TechnicalInspectionProvider>
+        <RouterProvider router={router} />
+        <TechnicalInspectionProbe />
+      </TechnicalInspectionProvider>
     </AppProviders>,
   );
   return router;
@@ -443,14 +455,15 @@ describe('ActivityWorkspace (FE-P5-S1 WP4)', () => {
 
     await screen.findByText('Source processing');
     screen.getByText('Answering a question');
-    screen.getByText(/전체 결과|부분 결과/);
-    screen.getByText(/rev 3/);
-    screen.getByText(/120 ms/);
+    const probe = screen.getByTestId('technical-inspection-probe');
+    await waitFor(() => expect(probe.getAttribute('data-blocks')).toContain('Snapshot revision'));
+    expect(probe.getAttribute('data-blocks')).toContain('120');
+    expect(screen.queryByText(/rev 3/)).toBeNull();
     screen.getByRole('checkbox', { name: /자동 새로고침/ });
     vi.unstubAllGlobals();
   });
 
-  it('loads Detail with Run, Attempt, Stage and Event lineage on selection', async () => {
+  it('loads the human Detail and registers bounded lineage on selection', async () => {
     const { fetchMock } = createFetchMock();
     vi.stubGlobal('fetch', fetchMock);
     const runtime = createRuntime();
@@ -459,21 +472,53 @@ describe('ActivityWorkspace (FE-P5-S1 WP4)', () => {
     await screen.findByText('Source processing');
     await userEvent.click(screen.getByText('Source processing'));
 
-    await waitFor(
-      () => {
-        screen.getByText(/Domain Attempts/);
-      },
-      { timeout: 10000 },
-    );
-    screen.getByText('attempt-1');
-    screen.getByText('Item 1');
-    screen.getByText(/Sources intake attempt 1 RUNNING/);
+    await screen.findByRole('heading', { name: 'Sources activity' });
+    const probe = screen.getByTestId('technical-inspection-probe');
+    await waitFor(() => expect(probe.getAttribute('data-blocks')).toContain('attempt-1'), {
+      timeout: 10000,
+    });
+    expect(screen.queryByText('attempt-1')).toBeNull();
+    expect(screen.queryByText('Item 1')).toBeNull();
     // The server-returned resourceHref is rendered as a real link.
     expect(
       screen.getByRole('link', {
         name: 'Open related resource',
       }),
     ).not.toBeNull();
+    vi.unstubAllGlobals();
+  });
+
+  it('registers bounded Activity lineage for technical.current without mutation controls', async () => {
+    const { fetchMock } = createFetchMock();
+    vi.stubGlobal('fetch', fetchMock);
+    renderWorkspace(createRuntime());
+
+    await screen.findByText('Source processing');
+    await userEvent.click(screen.getByText('Source processing'));
+
+    const probe = screen.getByTestId('technical-inspection-probe');
+    await waitFor(
+      () => {
+        expect(probe.getAttribute('data-blocks')).toContain('attempt-1');
+        expect(probe.getAttribute('data-blocks')).toContain('intake-item-2');
+        expect(probe.getAttribute('data-blocks')).toContain('attempt-2');
+      },
+      { timeout: 10000 },
+    );
+    expect(probe.getAttribute('data-blocks')).toContain('Domain Attempts');
+    expect(probe.getAttribute('data-blocks')).toContain('Transport Attempts');
+    expect(probe.getAttribute('data-blocks')).toContain('Stages');
+    expect(probe.getAttribute('data-blocks')).toContain('Events');
+    expect(probe.getAttribute('data-blocks')).toContain('Run topology');
+    expect(probe.getAttribute('data-blocks')).toContain('domainAttemptRefs');
+    expect(probe.getAttribute('data-blocks')).toContain('Projection freshness');
+    expect(probe.getAttribute('data-blocks')).toContain('Snapshot revision');
+    expect(probe.getAttribute('data-blocks')).not.toContain('availableActions');
+    expect(probe.getAttribute('data-blocks')).not.toContain('actionRevision');
+
+    expect(screen.queryByText('Item 1')).toBeNull();
+    expect(screen.queryByText('Item 2')).toBeNull();
+    expect(screen.queryByRole('table', { name: 'Domain Attempts' })).toBeNull();
     vi.unstubAllGlobals();
   });
 
@@ -491,7 +536,9 @@ describe('ActivityWorkspace (FE-P5-S1 WP4)', () => {
       },
       { timeout: 10000 },
     );
-    await screen.findByText('attempt-1');
+    const probe = screen.getByTestId('technical-inspection-probe');
+    await waitFor(() => expect(probe.getAttribute('data-blocks')).toContain('attempt-1'));
+    expect(screen.queryByText('attempt-1')).toBeNull();
     vi.unstubAllGlobals();
   });
 
@@ -609,7 +656,7 @@ describe('ActivityWorkspace (FE-P5-S1 WP4)', () => {
     vi.unstubAllGlobals();
   });
 
-  it('renders Transport Attempts in a separate table distinct from Domain Attempts (AC-03/AC-07)', async () => {
+  it('keeps Transport Attempts distinct from Domain Attempts in technical.current (AC-03/AC-07)', async () => {
     const { fetchMock } = createFetchMock();
     vi.stubGlobal('fetch', fetchMock);
     const runtime = createRuntime();
@@ -617,25 +664,16 @@ describe('ActivityWorkspace (FE-P5-S1 WP4)', () => {
 
     await screen.findByText('Source processing');
     await userEvent.click(screen.getByText('Source processing'));
-    await waitFor(() => screen.getByRole('table', { name: 'Transport Attempts' }), {
+    const probe = screen.getByTestId('technical-inspection-probe');
+    await waitFor(() => expect(probe.getAttribute('data-blocks')).toContain('transport-1'), {
       timeout: 10000,
     });
-
-    // Transport Attempt rows are shown with their own identity fields.
-    const transportTable = screen.getByRole('table', { name: 'Transport Attempts' });
-    const transportText = transportTable.textContent ?? '';
-    expect(transportText).toContain('transport-1');
-    expect(transportText).toContain('transport-2');
-    expect(transportText).toContain('sources-command');
-    expect(transportText).toContain('DELIVERED');
-    expect(transportText).toContain('FAILED');
-    expect(transportText).toContain('전달 시간 초과');
-
-    // The two tables are distinct: Domain Attempts and Transport Attempts.
-    const domainTable = screen.getByRole('table', { name: 'Domain Attempts' });
-    expect(domainTable).not.toBe(transportTable);
-    expect(domainTable.textContent ?? '').not.toContain('transport-1');
-    expect(domainTable.textContent ?? '').not.toContain('sources-command');
+    const registered = probe.getAttribute('data-blocks') ?? '';
+    expect(registered).toContain('Transport Attempts');
+    expect(registered).toContain('transport-2');
+    expect(registered).toContain('sources-command');
+    expect(registered).toContain('Domain Attempts');
+    expect(screen.queryByRole('table', { name: 'Transport Attempts' })).toBeNull();
     vi.unstubAllGlobals();
   });
 
@@ -859,7 +897,7 @@ describe('ActivityWorkspace (FE-P5-S1 WP4)', () => {
 
     await screen.findByText('Source processing');
     await userEvent.click(screen.getByText('Source processing'));
-    await waitFor(() => screen.getByText(/Domain Attempts/), { timeout: 10000 });
+    await screen.findByRole('heading', { name: 'Sources activity' });
 
     expect(screen.queryByRole('button', { name: '취소' })).toBeNull();
     expect(screen.queryByRole('button', { name: /재시도/ })).toBeNull();

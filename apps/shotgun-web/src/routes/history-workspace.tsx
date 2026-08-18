@@ -12,7 +12,10 @@ import {
 import { EmptyState } from '../components/empty-state.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
-import { TechnicalDetails } from '../components/technical-details.js';
+import {
+  TechnicalDetails,
+  type TechnicalInspectionDetailItem,
+} from '../components/technical-details.js';
 import { historyScopeFromShell } from '../app/query-keys.js';
 import {
   HISTORY_LIST_LIMIT,
@@ -69,26 +72,26 @@ const historyEventLabel = (kind: string): string => {
   return labels[kind] ?? 'Project history updated';
 };
 
-/** Permitted bounded payload renderer: raw JSON only when AVAILABLE. */
-const PayloadSnapshotView = ({ entry }: { readonly entry: HistoryEntryV1 }) => {
+const payloadInspectionItems = (
+  entry: HistoryEntryV1,
+): readonly TechnicalInspectionDetailItem[] => {
+  const availability: TechnicalInspectionDetailItem = {
+    label: 'Payload availability',
+    value: entry.payloadAvailability,
+  };
   if (entry.payloadAvailability === 'AVAILABLE' && entry.payloadSnapshot !== undefined) {
-    return (
-      <pre className="history-payload-snapshot" data-testid="history-payload-snapshot">
-        {JSON.stringify(entry.payloadSnapshot, null, 2)}
-      </pre>
-    );
+    return [
+      availability,
+      { label: 'Audit payload', value: JSON.stringify(entry.payloadSnapshot, null, 2) },
+    ];
   }
-  return (
-    <p className="history-payload-redacted">
-      {entry.payloadAvailability === 'PURGED_BY_POLICY' && entry.payloadSnapshot !== undefined ? (
-        <>
-          Tombstone: <code>{JSON.stringify(entry.payloadSnapshot)}</code>
-        </>
-      ) : (
-        '이 항목은 payload를 포함하지 않습니다 (redaction/retention 정책).'
-      )}
-    </p>
-  );
+  if (entry.payloadAvailability === 'PURGED_BY_POLICY' && entry.payloadSnapshot !== undefined) {
+    return [
+      availability,
+      { label: 'Payload tombstone', value: JSON.stringify(entry.payloadSnapshot) },
+    ];
+  }
+  return [availability];
 };
 
 const PayloadAvailabilityBadge = ({ entry }: { readonly entry: HistoryEntryV1 }) => (
@@ -243,12 +246,8 @@ const HistoryDetail = ({
           { label: 'Resource kind', value: entry.domainResourceKind },
           { label: 'Resource ID', value: entry.domainResourceId },
         ]}
-      >
-        <section className="history-payload-section" aria-label="Audit payload">
-          <h3>Audit payload</h3>
-          <PayloadSnapshotView entry={entry} />
-        </section>
-      </TechnicalDetails>
+        inspectionItems={payloadInspectionItems(entry)}
+      />
       <OwningDomainLinks
         entry={entry}
         onStartReversal={entry.domainKind === 'CANONICAL' ? onStartReversal : undefined}

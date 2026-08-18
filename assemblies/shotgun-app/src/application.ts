@@ -27,15 +27,14 @@ import { PostgresAskAnswerExecutionRepository } from '../../../adapters/frontend
 import { OriginalAssetAskSourceVersionContextReader } from '../../../adapters/frontend-ask-source-context-original-asset/src/index.js';
 import { PostgresAskProviderPolicyAuthorityReader } from '../../../adapters/frontend-ask-provider-policy-postgres/src/index.js';
 import {
-  InMemoryActionCenterProjection,
   InMemoryBackgroundSummaryProjection,
-  InMemoryGlobalSearch,
   InMemoryGlobalShellProjection,
   InMemoryNotificationSummaryProjection,
   InMemoryRouteGuardProjection,
 } from '../../../adapters/frontend-product-read-in-memory/src/index.js';
 import {
   PostgresKnowledgeWorkspaceProjection,
+  PostgresSourceLibraryGlobalSearch,
   type KnowledgeWorkspaceQueryExecutor,
 } from '../../../adapters/frontend-product-read-postgres/src/index.js';
 import { SealedSourcesStagingService } from '../../../adapters/frontend-sources-staging-sealed/src/index.js';
@@ -415,13 +414,17 @@ export const startShotgunApplication = async (
       frontendKnowledgeDraftTargetResolver: new PostgresFrontendKnowledgeDraftTargetResolver(pool),
       frontendReviewDraftSourceReader: createPostgresReviewDraftSourceReader(pool),
       askCommandCoordinator,
-      frontendProductReadCoordinatorFactory: (connector) =>
+      frontendProductReadCoordinatorFactory: (
+        connector,
+        actionCenterProjection,
+        frontendSourcesReadCoordinator,
+      ) =>
         new FrontendProductReadCoordinator(
           new InMemoryGlobalShellProjection(),
-          new InMemoryActionCenterProjection(),
+          actionCenterProjection,
           new InMemoryBackgroundSummaryProjection(),
           new InMemoryNotificationSummaryProjection(),
-          new InMemoryGlobalSearch(),
+          new PostgresSourceLibraryGlobalSearch(frontendSourcesReadCoordinator),
           new InMemoryRouteGuardProjection(),
           askWorkspaceProjection,
           new PostgresKnowledgeWorkspaceProjection({

@@ -104,7 +104,7 @@ if (typeof window !== 'undefined' && isE2EBridgeEnabled) {
     },
     guardMaskedResource: async () => {
       await runtime.apiClient.getRouteGuardDecision(
-        { routeId: 'settings', href: '/settings' },
+        { routeId: 'sources', href: '/sources' },
         'performance-masked-resource-project',
       );
     },

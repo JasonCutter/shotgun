@@ -42,10 +42,10 @@ import {
   type KnowledgeSearchResultView,
   type KnowledgeWorkspaceRequest,
   type KnowledgeWorkspaceView,
-  type NavigationAvailability,
   type TargetRouteView,
 } from '../../../packages/contracts/src/index.js';
 import type {
+  ActionCenterAttentionProjectionPort,
   ActionCenterProjectionPort,
   AskWorkspaceProjectionPort,
   BackgroundSummaryProjectionPort,
@@ -68,24 +68,7 @@ const routes = {
   externalAction: { routeId: 'external-action', href: '/external-action' },
   activity: { routeId: 'activity', href: '/activity' },
   history: { routeId: 'history', href: '/history' },
-  settings: { routeId: 'settings', href: '/settings' },
-  projects: { routeId: 'settings-projects', href: '/settings/projects' },
 } as const satisfies Record<string, TargetRouteView>;
-
-const unavailableWorkspace = (
-  id: string,
-  label: string,
-): {
-  readonly id: string;
-  readonly label: string;
-  readonly availability: NavigationAvailability;
-  readonly reason: string;
-} => ({
-  id,
-  label,
-  availability: 'COMING_LATER',
-  reason: 'This workspace is outside Frontend Phase 1 Section 3.',
-});
 
 export class InMemoryGlobalShellProjection implements GlobalShellProjectionPort {
   async getShell(
@@ -98,100 +81,28 @@ export class InMemoryGlobalShellProjection implements GlobalShellProjectionPort 
       sessionId: input.sessionId,
       activeProject: input.activeProject,
       accessibleProjects: input.accessibleProjects,
-      navigation: [
-        projectReady
-          ? {
+      navigation: projectReady
+        ? [
+            {
               id: 'home',
               label: 'Home',
               availability: 'AVAILABLE',
               targetRoute: routes.home,
-            }
-          : {
-              id: 'home',
-              label: 'Home',
-              availability: 'TEMPORARILY_UNAVAILABLE',
-              reason: 'Create a Project to open Home.',
             },
-        projectReady
-          ? {
+            {
               id: 'sources',
               label: 'Sources',
               availability: 'AVAILABLE',
               targetRoute: routes.sources,
-            }
-          : {
-              id: 'sources',
-              label: 'Sources',
-              availability: 'TEMPORARILY_UNAVAILABLE',
-              reason: 'Create a Project to open Sources.',
             },
-        projectReady
-          ? {
+            {
               id: 'ask',
               label: 'Ask',
               availability: 'AVAILABLE',
               targetRoute: routes.ask,
-            }
-          : {
-              id: 'ask',
-              label: 'Ask',
-              availability: 'TEMPORARILY_UNAVAILABLE',
-              reason: 'Create a Project to open Ask.',
             },
-        // AC-18: the External Action Governance Workspace is reachable from
-        // BOTH Home and Command Palette navigation — never direct execution.
-        projectReady
-          ? {
-              id: 'external-action',
-              label: 'External actions',
-              availability: 'AVAILABLE',
-              targetRoute: routes.externalAction,
-            }
-          : {
-              id: 'external-action',
-              label: 'External actions',
-              availability: 'TEMPORARILY_UNAVAILABLE',
-              reason: 'Create a Project to open External actions.',
-            },
-        // FE-P5-S1 WP4: the Activity Workspace is reachable from navigation when
-        // a Project is active (Project-scoped operational workspace).
-        projectReady
-          ? {
-              id: 'activity',
-              label: 'Activity',
-              availability: 'AVAILABLE',
-              targetRoute: routes.activity,
-            }
-          : {
-              id: 'activity',
-              label: 'Activity',
-              availability: 'TEMPORARILY_UNAVAILABLE',
-              reason: 'Create a Project to open Activity.',
-            },
-        // FE-P5-S2 WP5: the History Workspace is reachable from navigation when
-        // a Project is active (Project-scoped federated History read).
-        projectReady
-          ? {
-              id: 'history',
-              label: 'History',
-              availability: 'AVAILABLE',
-              targetRoute: routes.history,
-            }
-          : {
-              id: 'history',
-              label: 'History',
-              availability: 'TEMPORARILY_UNAVAILABLE',
-              reason: 'Create a Project to open History.',
-            },
-        unavailableWorkspace('knowledge', 'Knowledge'),
-        unavailableWorkspace('review', 'Review'),
-        {
-          id: 'settings',
-          label: 'Settings',
-          availability: 'AVAILABLE',
-          targetRoute: projectReady ? routes.settings : routes.projects,
-        },
-      ],
+          ]
+        : [],
       features: [
         {
           id: 'global-search',
@@ -246,22 +157,14 @@ export class InMemoryGlobalShellProjection implements GlobalShellProjectionPort 
 }
 
 export class InMemoryActionCenterProjection implements ActionCenterProjectionPort {
+  constructor(private readonly attention?: ActionCenterAttentionProjectionPort) {}
+
   async getHome(
     input: FrontendReadScope & {
       readonly activeProject: NonNullable<FrontendReadScope['activeProject']>;
     },
   ): Promise<HomeActionCenterView> {
-    const unavailable = (
-      id: 'add-source' | 'ask' | 'explore-knowledge' | 'review-changes',
-      label: string,
-      targetRoute: TargetRouteView,
-    ) => ({
-      id,
-      label,
-      availability: 'COMING_LATER' as const,
-      disabledReason: 'The owning workspace is not implemented in this Section.',
-      targetRoute,
-    });
+    const attention = (await this.attention?.listAttention(input)) ?? [];
     return decodeHomeActionCenterView({
       schemaVersion: '1.0.0',
       principalId: input.principalId,
@@ -281,18 +184,8 @@ export class InMemoryActionCenterProjection implements ActionCenterProjectionPor
           availability: 'AVAILABLE',
           targetRoute: routes.ask,
         },
-        // AC-18: high-risk External Actions are never executed from Home; the
-        // entry navigates to the governance workspace only.
-        {
-          id: 'govern-external-action',
-          label: 'External actions',
-          availability: 'AVAILABLE',
-          targetRoute: routes.externalAction,
-        },
-        unavailable('explore-knowledge', 'Explore knowledge', routes.knowledge),
-        unavailable('review-changes', 'Review changes', routes.review),
       ],
-      attention: [],
+      attention,
       continueWorking: [],
       recent: [],
       pinned: [],

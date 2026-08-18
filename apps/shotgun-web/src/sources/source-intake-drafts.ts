@@ -8,6 +8,20 @@ import {
 
 import { useLeaveGuard } from '../session/leave-guard-context.js';
 
+export type SourceIntakeDraftMessageCode =
+  | 'SEEDED_TEXT_REVIEW'
+  | 'SEEDED_TEXT_TOO_LARGE'
+  | 'SEEDED_URL_VALIDATION'
+  | 'SEED_FILE_RESELECT'
+  | 'DIRECT_TEXT_EMPTY'
+  | 'DIRECT_TEXT_TOO_LARGE'
+  | 'CLIENT_PREFLIGHT'
+  | 'FILE_UNSUPPORTED'
+  | 'FILE_SIZE_INVALID'
+  | 'FILE_PREFLIGHT'
+  | 'URL_ACCEPTED'
+  | 'URL_INVALID';
+
 export type SourceIntakeDraftItem =
   | {
       readonly draftItemId: string;
@@ -17,7 +31,7 @@ export type SourceIntakeDraftItem =
       readonly label: string;
       readonly text: string;
       readonly validation: 'READY' | 'INVALID';
-      readonly message: string;
+      readonly messageCode: SourceIntakeDraftMessageCode;
     }
   | {
       readonly draftItemId: string;
@@ -27,7 +41,7 @@ export type SourceIntakeDraftItem =
       readonly label: string;
       readonly file: File;
       readonly validation: 'READY' | 'INVALID';
-      readonly message: string;
+      readonly messageCode: SourceIntakeDraftMessageCode;
     }
   | {
       readonly draftItemId: string;
@@ -39,7 +53,7 @@ export type SourceIntakeDraftItem =
       readonly mediaType: string;
       readonly sizeBytes: number;
       readonly validation: 'ACTION_REQUIRED';
-      readonly message: string;
+      readonly messageCode: SourceIntakeDraftMessageCode;
     }
   | {
       readonly draftItemId: string;
@@ -49,7 +63,7 @@ export type SourceIntakeDraftItem =
       readonly label: string;
       readonly requestedUrl: string;
       readonly validation: 'READY' | 'INVALID';
-      readonly message: string;
+      readonly messageCode: SourceIntakeDraftMessageCode;
     };
 
 const MAX_ACTIVE_BYTES = 1_048_576;
@@ -86,10 +100,7 @@ const decodeSeed = (
             kind: 'DIRECT_TEXT',
             text: decoded.input.text,
             validation: decoded.input.text.trim() && size <= MAX_ACTIVE_BYTES ? 'READY' : 'INVALID',
-            message:
-              size <= MAX_ACTIVE_BYTES
-                ? 'Seeded Direct Text must be reviewed before submission.'
-                : 'Seeded Direct Text exceeds the active one MiB boundary.',
+            messageCode: size <= MAX_ACTIVE_BYTES ? 'SEEDED_TEXT_REVIEW' : 'SEEDED_TEXT_TOO_LARGE',
           },
         ],
       };
@@ -103,7 +114,7 @@ const decodeSeed = (
             kind: 'URL',
             requestedUrl: decoded.input.requestedUrl,
             validation: 'READY',
-            message: 'The Server will repeat URL safety validation on submission.',
+            messageCode: 'SEEDED_URL_VALIDATION',
           },
         ],
       };
@@ -118,7 +129,7 @@ const decodeSeed = (
           mediaType: decoded.input.mediaType,
           sizeBytes: decoded.input.sizeBytes,
           validation: 'ACTION_REQUIRED',
-          message: 'Choose the file again. A seed cannot supply browser file bytes.',
+          messageCode: 'SEED_FILE_RESELECT',
         },
       ],
     };
@@ -196,12 +207,12 @@ export const useSourceIntakeDraftQueue = (activeProjectId: string, seedInput?: u
         label: label.trim() || 'Direct Text',
         text,
         validation: trimmed.length > 0 && sizeValid ? 'READY' : 'INVALID',
-        message:
+        messageCode:
           trimmed.length === 0
-            ? 'Direct Text cannot be empty.'
+            ? 'DIRECT_TEXT_EMPTY'
             : !sizeValid
-              ? 'Direct Text exceeds the active one MiB limit.'
-              : 'Client preflight passed. The Server will validate again.',
+              ? 'DIRECT_TEXT_TOO_LARGE'
+              : 'CLIENT_PREFLIGHT',
       },
     ]);
   };
@@ -223,11 +234,11 @@ export const useSourceIntakeDraftQueue = (activeProjectId: string, seedInput?: u
         label: label.trim() || file.name,
         file,
         validation: supported && sizeValid ? 'READY' : 'INVALID',
-        message: !supported
-          ? 'Only text/plain and text/markdown are active in this Section.'
+        messageCode: !supported
+          ? 'FILE_UNSUPPORTED'
           : !sizeValid
-            ? 'The file must be between 1 byte and one MiB.'
-            : 'Client preflight passed. The Server will verify bytes, type and filename.',
+            ? 'FILE_SIZE_INVALID'
+            : 'FILE_PREFLIGHT',
       },
     ]);
   };
@@ -253,9 +264,7 @@ export const useSourceIntakeDraftQueue = (activeProjectId: string, seedInput?: u
         label: label.trim() || 'URL',
         requestedUrl,
         validation: valid ? 'READY' : 'INVALID',
-        message: valid
-          ? 'Descriptor accepted locally. The Server will perform acquisition and SSRF validation.'
-          : 'Enter an absolute HTTP(S) URL.',
+        messageCode: valid ? 'URL_ACCEPTED' : 'URL_INVALID',
       },
     ]);
   };

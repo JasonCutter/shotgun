@@ -4,15 +4,14 @@ import { Link, useOutletContext } from 'react-router';
 import type { GlobalShellView } from '@shotgun/api-client';
 
 import { useAppRuntime } from '../app/providers.js';
-import { EmptyState } from '../components/empty-state.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
+import { useProductLocalization } from '../localization/product-localization.js';
 import {
   browserDraftStorageKey,
   decodeRestorableBrowserDrafts,
 } from '../section3/browser-drafts.js';
 import { homeActionCenterQueryOptions } from '../section3/section3-queries.js';
-import { projectLifecycleLabel } from '../presentation/product-labels.js';
 
 const readBrowserDrafts = (shell: GlobalShellView) => {
   if (!shell.activeProject) return [];
@@ -40,24 +39,23 @@ const readBrowserDrafts = (shell: GlobalShellView) => {
 
 export const HomePage = () => {
   const { apiClient } = useAppRuntime();
+  const { t } = useProductLocalization();
   const { shell } = useOutletContext<{ readonly shell: GlobalShellView }>();
   const homeQuery = useQuery(homeActionCenterQueryOptions(apiClient, shell));
 
   if (!shell.activeProject) {
     return (
-      <section className="route-page first-run">
-        <p className="eyebrow">First run</p>
-        <h1 tabIndex={-1}>Create your first Project</h1>
-        <p>Your Session is ready. No Project authority has been created in the browser.</p>
+      <section className="route-page hfm-route-page first-run">
+        <p className="eyebrow">{t('home.first_run')}</p>
+        <h1 tabIndex={-1}>{t('home.create_first_project')}</h1>
+        <p>{t('home.create_first_project_help')}</p>
         <Link className="primary-link" to="/settings/projects">
-          Open Project onboarding
+          {t('home.open_onboarding')}
         </Link>
       </section>
     );
   }
-  if (homeQuery.isPending) {
-    return <LoadingState message="Loading Home Action Center…" />;
-  }
+  if (homeQuery.isPending) return <LoadingState message={t('home.loading')} />;
   if (homeQuery.error) {
     return (
       <ErrorState
@@ -73,31 +71,31 @@ export const HomePage = () => {
   const browserDrafts = readBrowserDrafts(shell);
 
   return (
-    <section className="route-page home-action-center">
-      <p className="eyebrow">Action Center</p>
-      <h1 tabIndex={-1}>Home</h1>
+    <section className="route-page hfm-route-page home-action-center">
+      <p className="eyebrow">{t('home.action_center')}</p>
+      <h1 tabIndex={-1}>{t('nav.home')}</h1>
       {home.stale ? (
         <p className="stale-state" role="status">
-          This server snapshot is stale. Actions are unavailable until refresh.
+          {t('home.stale')}
         </p>
       ) : null}
 
-      <section aria-labelledby="project-state-heading" className="action-card">
-        <h2 id="project-state-heading">Project State</h2>
-        <p>
-          <strong>{home.activeProject.label}</strong> ·{' '}
-          {projectLifecycleLabel(home.projectState.lifecycle)}
-        </p>
-        <p>{home.projectState.message}</p>
-      </section>
-
-      <section aria-labelledby="primary-actions-heading" className="action-card">
-        <h2 id="primary-actions-heading">Primary Actions</h2>
+      <section
+        aria-labelledby="primary-actions-heading"
+        className="action-card home-primary-actions"
+      >
+        <h2 id="primary-actions-heading">{t('home.primary_actions')}</h2>
         <ul className="action-grid">
           {home.primaryActions.map((action) => (
             <li key={action.id}>
               {action.availability === 'AVAILABLE' && !home.stale ? (
-                <Link to={action.targetRoute.href}>{action.label}</Link>
+                <Link to={action.targetRoute.href}>
+                  {action.id === 'add-source'
+                    ? t('nav.sources')
+                    : action.id === 'ask'
+                      ? t('nav.ask')
+                      : action.label}
+                </Link>
               ) : (
                 <button type="button" disabled title={action.disabledReason}>
                   {action.label}
@@ -109,14 +107,9 @@ export const HomePage = () => {
         </ul>
       </section>
 
-      <section aria-labelledby="attention-heading" className="action-card">
-        <h2 id="attention-heading">Attention Queue</h2>
-        {home.attention.length === 0 ? (
-          <EmptyState
-            title="No attention needed"
-            description="The server reported no pending items."
-          />
-        ) : (
+      {home.attention.length > 0 ? (
+        <section aria-labelledby="attention-heading" className="action-card home-attention">
+          <h2 id="attention-heading">{t('home.attention')}</h2>
           <ol>
             {home.attention.map((item) => (
               <li key={item.stableId}>
@@ -125,92 +118,71 @@ export const HomePage = () => {
               </li>
             ))}
           </ol>
-        )}
-      </section>
+        </section>
+      ) : null}
 
-      <section aria-labelledby="continue-heading" className="action-card">
-        <h2 id="continue-heading">Continue Working</h2>
-        <h3>Server resources</h3>
-        {home.continueWorking.length === 0 ? (
-          <p>No restorable server resources.</p>
-        ) : (
-          <ul>
-            {home.continueWorking.map((item) => (
-              <li key={item.stableId}>
-                <Link to={item.targetRoute.href}>{item.label}</Link>
-              </li>
-            ))}
-          </ul>
-        )}
-        <h3>Browser drafts</h3>
-        {browserDrafts.length === 0 ? (
-          <p>No validated browser drafts.</p>
-        ) : (
-          <ul>
-            {browserDrafts.map((draft) => (
-              <li key={`browser:${draft.draftId}`}>
-                <Link to={draft.targetRoute.href}>{draft.label}</Link>
-                <small>Browser draft · never server-ranked</small>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      {home.continueWorking.length > 0 || browserDrafts.length > 0 ? (
+        <section aria-labelledby="continue-heading" className="action-card home-continue">
+          <h2 id="continue-heading">{t('home.continue_working')}</h2>
+          {home.continueWorking.length > 0 ? (
+            <>
+              <h3>{t('home.server_resources')}</h3>
+              <ResourceList items={home.continueWorking} />
+            </>
+          ) : null}
+          {browserDrafts.length > 0 ? (
+            <div className="home-browser-drafts">
+              <h3>{t('home.browser_drafts')}</h3>
+              <ul>
+                {browserDrafts.map((draft) => (
+                  <li key={`browser:${draft.draftId}`}>
+                    <Link to={draft.targetRoute.href}>{draft.label}</Link>
+                    <small>{t('home.browser_draft_never_ranked')}</small>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
-      <section aria-labelledby="recent-pinned-heading" className="action-card">
-        <h2 id="recent-pinned-heading">Recent and Pinned</h2>
-        <div className="two-column-list">
-          <div>
-            <h3>Recent</h3>
-            <ResourceList items={home.recent} empty="No recent resources." />
+      {home.recent.length > 0 || home.pinned.length > 0 ? (
+        <section aria-labelledby="recent-pinned-heading" className="action-card home-recent-pinned">
+          <h2 id="recent-pinned-heading">{t('home.recent_and_pinned')}</h2>
+          <div className="two-column-list">
+            {home.recent.length > 0 ? (
+              <div>
+                <h3>{t('home.recent')}</h3>
+                <ResourceList items={home.recent} />
+              </div>
+            ) : null}
+            {home.pinned.length > 0 ? (
+              <div>
+                <h3>{t('home.pinned')}</h3>
+                <ResourceList items={home.pinned} />
+              </div>
+            ) : null}
           </div>
-          <div>
-            <h3>Pinned</h3>
-            <ResourceList items={home.pinned} empty="No pinned resources." />
-          </div>
-        </div>
-      </section>
-
-      <section aria-labelledby="operations-heading" className="action-card">
-        <h2 id="operations-heading">Operational Summary</h2>
-        <dl className="summary-grid">
-          <div>
-            <dt>Active background work</dt>
-            <dd>{home.operationalSummary.activeBackgroundCount}</dd>
-          </div>
-          <div>
-            <dt>Failed background work</dt>
-            <dd>{home.operationalSummary.failedBackgroundCount}</dd>
-          </div>
-          <div>
-            <dt>Unread notifications</dt>
-            <dd>{home.operationalSummary.unreadNotificationCount}</dd>
-          </div>
-        </dl>
-      </section>
+        </section>
+      ) : null}
     </section>
   );
 };
 
 const ResourceList = ({
   items,
-  empty,
 }: {
   readonly items: readonly {
     readonly stableId: string;
     readonly label: string;
     readonly targetRoute: { readonly href: string };
   }[];
-  readonly empty: string;
-}) =>
-  items.length === 0 ? (
-    <p>{empty}</p>
-  ) : (
-    <ul>
-      {items.map((item) => (
-        <li key={item.stableId}>
-          <Link to={item.targetRoute.href}>{item.label}</Link>
-        </li>
-      ))}
-    </ul>
-  );
+}) => (
+  <ul>
+    {items.map((item) => (
+      <li key={item.stableId}>
+        <Link to={item.targetRoute.href}>{item.label}</Link>
+      </li>
+    ))}
+  </ul>
+);

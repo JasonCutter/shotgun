@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS projection.semantic_items (
   vector vector NOT NULL,
   dimension integer NOT NULL CHECK (dimension >= 1),
   evidence_ids text[] NOT NULL DEFAULT '{}',
-  access_scope text[] NOT NULL DEFAULT '{}',
+  access_scope text[] NOT NULL,
   sensitivity text NOT NULL CHECK (sensitivity IN ('public', 'internal', 'private', 'restricted')),
   indexed_at timestamptz NOT NULL DEFAULT now(),
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS projection.semantic_items (
   PRIMARY KEY (project_id, generation_id, resource_type, resource_id),
   CONSTRAINT unq_semantic_item_id UNIQUE (project_id, generation_id, semantic_item_id),
   CONSTRAINT chk_semantic_item_vector_dims CHECK (vector_dims(vector) = dimension),
+  CONSTRAINT chk_semantic_items_non_empty_access_scope CHECK (cardinality(access_scope) > 0),
   CONSTRAINT fk_semantic_items_generation_bound_identity FOREIGN KEY (
     project_id,
     generation_id,

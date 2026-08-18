@@ -6,6 +6,8 @@ import {
   type SemanticProjectionItem,
   type SemanticResourceType,
   SemanticEmbeddingError,
+  validateFiniteVector,
+  validatePersistedItem,
   validateSecurityInput,
   validateUnitLength,
 } from '../../../packages/contracts/src/index.js';
@@ -148,6 +150,7 @@ export class InMemorySemanticIndexRepository implements SemanticIndexRepositoryP
         operation: 'upsert-item',
       });
     }
+    validatePersistedItem(item, 'upsert-item');
     if (
       item.dimension !== gen.dimension ||
       item.embeddingProfileId !== gen.embeddingProfileId ||
@@ -169,17 +172,106 @@ export class InMemorySemanticIndexRepository implements SemanticIndexRepositoryP
     }
     if (gen.normalizationPolicy === 'unit_length') {
       validateUnitLength(item.vector, 'upsert-item');
+    } else {
+      validateFiniteVector(item.vector, 'upsert-item');
     }
 
     const key = itemKey(item.projectId, item.generationId, item.resourceType, item.resourceId);
     const semKey = semanticKey(item.projectId, item.generationId, item.semanticItemId);
+
+    const existingKeyForSemanticId = this.semanticKeyToItemKey.get(semKey);
+    if (existingKeyForSemanticId && existingKeyForSemanticId !== key) {
+      throw new SemanticEmbeddingError({
+        code: 'CONFLICT',
+        safeMessage: `Semantic item ID '${item.semanticItemId}' already exists on a different resource in this generation.`,
+        operation: 'upsert-item',
+      });
+    }
+
+    const oldItem = this.items.get(key);
+    if (oldItem && oldItem.semanticItemId !== item.semanticItemId) {
+      this.semanticKeyToItemKey.delete(
+        semanticKey(item.projectId, item.generationId, oldItem.semanticItemId),
+      );
+    }
+
     this.items.set(key, cloneItem(item));
     this.semanticKeyToItemKey.set(semKey, key);
   }
 
   async upsertItems(items: readonly SemanticProjectionItem[]): Promise<void> {
+    if (items.length === 0) return;
+
+    // Atomic batch execution: stage mutations and commit only after all items pass validation
+    const stagedItems = new Map(this.items);
+    const stagedSemanticKeys = new Map(this.semanticKeyToItemKey);
+
     for (const item of items) {
-      await this.upsertItem(item);
+      const gen = await this.getGeneration(item.projectId, item.generationId);
+      if (!gen) {
+        throw new SemanticEmbeddingError({
+          code: 'CONFIGURATION_REQUIRED',
+          safeMessage: 'Referenced projection generation does not exist.',
+          operation: 'upsert-items',
+        });
+      }
+      validatePersistedItem(item, 'upsert-items');
+      if (
+        item.dimension !== gen.dimension ||
+        item.embeddingProfileId !== gen.embeddingProfileId ||
+        item.embeddingProfileRevision !== gen.embeddingProfileRevision ||
+        item.representationVersion !== gen.representationVersion
+      ) {
+        throw new SemanticEmbeddingError({
+          code: 'VALIDATION_FAILURE',
+          safeMessage: `Item metadata does not match referenced generation.`,
+          operation: 'upsert-items',
+        });
+      }
+      if (item.vector.length !== gen.dimension) {
+        throw new SemanticEmbeddingError({
+          code: 'VALIDATION_FAILURE',
+          safeMessage: `Item dimension ${item.dimension} (vector length ${item.vector.length}) does not match generation dimension ${gen.dimension}.`,
+          operation: 'upsert-items',
+        });
+      }
+      if (gen.normalizationPolicy === 'unit_length') {
+        validateUnitLength(item.vector, 'upsert-items');
+      } else {
+        validateFiniteVector(item.vector, 'upsert-items');
+      }
+
+      const key = itemKey(item.projectId, item.generationId, item.resourceType, item.resourceId);
+      const semKey = semanticKey(item.projectId, item.generationId, item.semanticItemId);
+
+      const existingKeyForSemanticId = stagedSemanticKeys.get(semKey);
+      if (existingKeyForSemanticId && existingKeyForSemanticId !== key) {
+        throw new SemanticEmbeddingError({
+          code: 'CONFLICT',
+          safeMessage: `Semantic item ID '${item.semanticItemId}' already exists on a different resource in this generation.`,
+          operation: 'upsert-items',
+        });
+      }
+
+      const oldItem = stagedItems.get(key);
+      if (oldItem && oldItem.semanticItemId !== item.semanticItemId) {
+        stagedSemanticKeys.delete(
+          semanticKey(item.projectId, item.generationId, oldItem.semanticItemId),
+        );
+      }
+
+      stagedItems.set(key, cloneItem(item));
+      stagedSemanticKeys.set(semKey, key);
+    }
+
+    // All validated successfully -> commit atomically
+    this.items.clear();
+    for (const [k, v] of stagedItems.entries()) {
+      this.items.set(k, v);
+    }
+    this.semanticKeyToItemKey.clear();
+    for (const [k, v] of stagedSemanticKeys.entries()) {
+      this.semanticKeyToItemKey.set(k, v);
     }
   }
 
@@ -260,6 +352,8 @@ export class InMemorySemanticIndexRepository implements SemanticIndexRepositoryP
 
     if (gen.normalizationPolicy === 'unit_length') {
       validateUnitLength(query.queryVector, 'find-nearest-neighbors');
+    } else {
+      validateFiniteVector(query.queryVector, 'find-nearest-neighbors');
     }
 
     const allowedSensitivities = new Set(query.allowedSensitivities);

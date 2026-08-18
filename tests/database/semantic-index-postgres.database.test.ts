@@ -269,7 +269,204 @@ describe('AKP-1 WP2: PostgreSQL + pgvector Semantic Projection Persistence', () 
     ).rejects.toThrow(/fk_semantic_items_generation_bound_identity/);
   });
 
-  it('6. supports variable dimensions (768, 1536, 3072) across different generations', async () => {
+  it('6. DATABASE INTEGRITY: rejects empty access_scope at database and adapter boundary', async () => {
+    const generation: SemanticProjectionGeneration = {
+      projectId: testProjectA,
+      generationId: 'gen-scope-chk-1',
+      sourceProjectionDigest: 'sha256:' + 'a'.repeat(64),
+      canonicalBaseVersion: 1,
+      credentialId: 'vault:gemini:owner',
+      credentialRevision: 1,
+      providerPolicyFingerprint: 'sha256:' + 'b'.repeat(64),
+      providerId: 'google-gemini',
+      embeddingModelId: 'gemini-embedding-001',
+      embeddingProfileId: 'prof-1',
+      embeddingProfileRevision: 1,
+      providerRegistryRevision: 'provider-registry:v1',
+      capabilityCatalogRevision: SEMANTIC_EMBEDDING_CATALOG_REVISION,
+      representationVersion: SEMANTIC_REPRESENTATION_VERSION,
+      dimension: 768,
+      distanceMetric: 'cosine',
+      normalizationPolicy: 'none',
+      buildStatus: 'READY',
+      createdAt: '2026-08-18T10:00:00.000Z',
+    };
+    await postgresRepo.saveGeneration(generation);
+
+    const vec768 = new Array(768).fill(0.01);
+
+    // 1. Adapter validation rejects empty accessScope before DB execution
+    await expect(
+      postgresRepo.upsertItem({
+        semanticItemId: 'sem-empty-scope',
+        projectId: testProjectA,
+        generationId: 'gen-scope-chk-1',
+        resourceType: 'CLAIM',
+        resourceId: 'claim-empty-scope',
+        sourceProjectionDigest: 'sha256:' + '0'.repeat(64),
+        canonicalVersion: 1,
+        semanticTextDigest: 'sha256:' + '1'.repeat(64),
+        embeddingProfileId: 'prof-1',
+        embeddingProfileRevision: 1,
+        representationVersion: SEMANTIC_REPRESENTATION_VERSION,
+        vector: vec768,
+        dimension: 768,
+        evidenceIds: [],
+        accessScope: [],
+        sensitivity: 'public',
+        indexedAt: '2026-08-18T10:00:00.000Z',
+        createdAt: '2026-08-18T10:00:00.000Z',
+        updatedAt: '2026-08-18T10:00:00.000Z',
+      }),
+    ).rejects.toMatchObject({
+      name: 'SemanticEmbeddingError',
+      embeddingErrorCode: 'POLICY_DENIED',
+    });
+
+    // 2. Direct SQL insert with empty access_scope rejected by DB check constraint
+    await expect(
+      pool.query(
+        `INSERT INTO projection.semantic_items (
+           project_id, generation_id, semantic_item_id, resource_type, resource_id,
+           source_projection_digest, canonical_version, semantic_text_digest,
+           embedding_profile_id, embedding_profile_revision, representation_version,
+           vector, dimension, evidence_ids, access_scope, sensitivity
+         ) VALUES (
+           $1, $2, 'sem-sql-empty-scope', 'CLAIM', 'claim-sql-empty-scope',
+           $3, 1, $4,
+           'prof-1', 1, $5,
+           $6::vector, 768, '{}', '{}', 'public'
+         )`,
+        [
+          testProjectA,
+          'gen-scope-chk-1',
+          'sha256:' + '0'.repeat(64),
+          'sha256:' + '1'.repeat(64),
+          SEMANTIC_REPRESENTATION_VERSION,
+          JSON.stringify(vec768),
+        ],
+      ),
+    ).rejects.toThrow(/chk_semantic_items_non_empty_access_scope/);
+  });
+
+  it('7. FINITE VECTOR VALIDATION: rejects NaN and Infinity in item and query vectors', async () => {
+    const generation: SemanticProjectionGeneration = {
+      projectId: testProjectA,
+      generationId: 'gen-nan-chk',
+      sourceProjectionDigest: 'sha256:' + '0'.repeat(64),
+      canonicalBaseVersion: 1,
+      credentialId: 'vault:gemini:owner',
+      credentialRevision: 1,
+      providerPolicyFingerprint: 'sha256:' + '1'.repeat(64),
+      providerId: 'google-gemini',
+      embeddingModelId: 'gemini-embedding-001',
+      embeddingProfileId: 'prof-1',
+      embeddingProfileRevision: 1,
+      providerRegistryRevision: 'provider-registry:v1',
+      capabilityCatalogRevision: SEMANTIC_EMBEDDING_CATALOG_REVISION,
+      representationVersion: SEMANTIC_REPRESENTATION_VERSION,
+      dimension: 768,
+      distanceMetric: 'cosine',
+      normalizationPolicy: 'none',
+      buildStatus: 'READY',
+      createdAt: '2026-08-18T10:00:00.000Z',
+    };
+    await postgresRepo.saveGeneration(generation);
+
+    // 1. NaN in item vector
+    const nanVec = new Array(768).fill(0.01);
+    nanVec[5] = NaN;
+    await expect(
+      postgresRepo.upsertItem({
+        semanticItemId: 'sem-nan-item',
+        projectId: testProjectA,
+        generationId: 'gen-nan-chk',
+        resourceType: 'CLAIM',
+        resourceId: 'claim-nan',
+        sourceProjectionDigest: 'sha256:' + '0'.repeat(64),
+        canonicalVersion: 1,
+        semanticTextDigest: 'sha256:' + '1'.repeat(64),
+        embeddingProfileId: 'prof-1',
+        embeddingProfileRevision: 1,
+        representationVersion: SEMANTIC_REPRESENTATION_VERSION,
+        vector: nanVec,
+        dimension: 768,
+        evidenceIds: [],
+        accessScope: ['public'],
+        sensitivity: 'public',
+        indexedAt: '2026-08-18T10:00:00.000Z',
+        createdAt: '2026-08-18T10:00:00.000Z',
+        updatedAt: '2026-08-18T10:00:00.000Z',
+      }),
+    ).rejects.toMatchObject({
+      name: 'SemanticEmbeddingError',
+      embeddingErrorCode: 'VALIDATION_FAILURE',
+    });
+
+    // 2. Infinity in item vector
+    const infVec = new Array(768).fill(0.01);
+    infVec[10] = Infinity;
+    await expect(
+      postgresRepo.upsertItem({
+        semanticItemId: 'sem-inf-item',
+        projectId: testProjectA,
+        generationId: 'gen-nan-chk',
+        resourceType: 'CLAIM',
+        resourceId: 'claim-inf',
+        sourceProjectionDigest: 'sha256:' + '0'.repeat(64),
+        canonicalVersion: 1,
+        semanticTextDigest: 'sha256:' + '1'.repeat(64),
+        embeddingProfileId: 'prof-1',
+        embeddingProfileRevision: 1,
+        representationVersion: SEMANTIC_REPRESENTATION_VERSION,
+        vector: infVec,
+        dimension: 768,
+        evidenceIds: [],
+        accessScope: ['public'],
+        sensitivity: 'public',
+        indexedAt: '2026-08-18T10:00:00.000Z',
+        createdAt: '2026-08-18T10:00:00.000Z',
+        updatedAt: '2026-08-18T10:00:00.000Z',
+      }),
+    ).rejects.toMatchObject({
+      name: 'SemanticEmbeddingError',
+      embeddingErrorCode: 'VALIDATION_FAILURE',
+    });
+
+    // 3. NaN in query vector
+    await expect(
+      postgresRepo.findNearestNeighbors({
+        projectId: testProjectA,
+        generationId: 'gen-nan-chk',
+        queryVector: nanVec,
+        dimension: 768,
+        accessScopes: ['public'],
+        allowedSensitivities: ['public'],
+        limit: 5,
+      }),
+    ).rejects.toMatchObject({
+      name: 'SemanticEmbeddingError',
+      embeddingErrorCode: 'VALIDATION_FAILURE',
+    });
+
+    // 4. Infinity in query vector
+    await expect(
+      postgresRepo.findNearestNeighbors({
+        projectId: testProjectA,
+        generationId: 'gen-nan-chk',
+        queryVector: infVec,
+        dimension: 768,
+        accessScopes: ['public'],
+        allowedSensitivities: ['public'],
+        limit: 5,
+      }),
+    ).rejects.toMatchObject({
+      name: 'SemanticEmbeddingError',
+      embeddingErrorCode: 'VALIDATION_FAILURE',
+    });
+  });
+
+  it('8. supports variable dimensions (768, 1536, 3072) across different generations', async () => {
     const gen768: SemanticProjectionGeneration = {
       projectId: testProjectA,
       generationId: 'gen-gemini-768',
@@ -383,7 +580,7 @@ describe('AKP-1 WP2: PostgreSQL + pgvector Semantic Projection Persistence', () 
     expect(reloaded1536?.vector).toHaveLength(1536);
   });
 
-  it('7. HARD REQUIREMENT: Security fails closed on empty accessScopes or missing sensitivity authorization', async () => {
+  it('9. HARD REQUIREMENT: Security fails closed on empty accessScopes or missing sensitivity authorization', async () => {
     const generation: SemanticProjectionGeneration = {
       projectId: testProjectA,
       generationId: 'gen-sec-fail-closed',
@@ -444,7 +641,7 @@ describe('AKP-1 WP2: PostgreSQL + pgvector Semantic Projection Persistence', () 
     });
   });
 
-  it('8. HARD REQUIREMENT: Security-before-Top-K prevents closer unauthorized items from consuming Top-K slots', async () => {
+  it('10. HARD REQUIREMENT: Security-before-Top-K prevents closer unauthorized items from consuming Top-K slots', async () => {
     const generation: SemanticProjectionGeneration = {
       projectId: testProjectA,
       generationId: 'gen-security-topk',
@@ -546,7 +743,7 @@ describe('AKP-1 WP2: PostgreSQL + pgvector Semantic Projection Persistence', () 
     expect(memResults[0]?.resourceId).toBe('claim-authorized-public');
   });
 
-  it('9. BOUNDED TOP-K: enforces finite positive integer limit <= SEMANTIC_SEARCH_MAX_LIMIT (100)', async () => {
+  it('11. BOUNDED TOP-K: enforces finite positive integer limit <= SEMANTIC_SEARCH_MAX_LIMIT (100)', async () => {
     const generation: SemanticProjectionGeneration = {
       projectId: testProjectA,
       generationId: 'gen-limit-test',
@@ -621,7 +818,7 @@ describe('AKP-1 WP2: PostgreSQL + pgvector Semantic Projection Persistence', () 
     });
   });
 
-  it('10. NORMALIZATION POLICY: unit_length validates unit norm on item and query vectors', async () => {
+  it('12. NORMALIZATION POLICY: unit_length validates unit norm on item and query vectors', async () => {
     const generation: SemanticProjectionGeneration = {
       projectId: testProjectA,
       generationId: 'gen-norm-test',
@@ -675,7 +872,90 @@ describe('AKP-1 WP2: PostgreSQL + pgvector Semantic Projection Persistence', () 
     });
   });
 
-  it('11. preserves deterministic tie-break ordering on equal vector distance', async () => {
+  it('13. TRANSACTION ATOMICITY: PostgreSQL upsertItems rolls back entire batch when one item fails', async () => {
+    const generation: SemanticProjectionGeneration = {
+      projectId: testProjectA,
+      generationId: 'gen-tx-test',
+      sourceProjectionDigest: 'sha256:' + '0'.repeat(64),
+      canonicalBaseVersion: 1,
+      credentialId: 'vault:gemini:owner',
+      credentialRevision: 1,
+      providerPolicyFingerprint: 'sha256:' + '1'.repeat(64),
+      providerId: 'google-gemini',
+      embeddingModelId: 'gemini-embedding-001',
+      embeddingProfileId: 'prof-1',
+      embeddingProfileRevision: 1,
+      providerRegistryRevision: 'provider-registry:v1',
+      capabilityCatalogRevision: SEMANTIC_EMBEDDING_CATALOG_REVISION,
+      representationVersion: SEMANTIC_REPRESENTATION_VERSION,
+      dimension: 768,
+      distanceMetric: 'cosine',
+      normalizationPolicy: 'none',
+      buildStatus: 'READY',
+      createdAt: '2026-08-18T10:00:00.000Z',
+    };
+    await postgresRepo.saveGeneration(generation);
+
+    const validVec = new Array(768).fill(0.01);
+    const validItem: SemanticProjectionItem = {
+      semanticItemId: 'sem-tx-valid-1',
+      projectId: testProjectA,
+      generationId: 'gen-tx-test',
+      resourceType: 'CLAIM',
+      resourceId: 'claim-tx-1',
+      sourceProjectionDigest: 'sha256:' + '0'.repeat(64),
+      canonicalVersion: 1,
+      semanticTextDigest: 'sha256:' + '1'.repeat(64),
+      embeddingProfileId: 'prof-1',
+      embeddingProfileRevision: 1,
+      representationVersion: SEMANTIC_REPRESENTATION_VERSION,
+      vector: validVec,
+      dimension: 768,
+      evidenceIds: [],
+      accessScope: ['public'],
+      sensitivity: 'public',
+      indexedAt: '2026-08-18T10:00:00.000Z',
+      createdAt: '2026-08-18T10:00:00.000Z',
+      updatedAt: '2026-08-18T10:00:00.000Z',
+    };
+
+    const invalidItem: SemanticProjectionItem = {
+      semanticItemId: 'sem-tx-invalid-2',
+      projectId: testProjectA,
+      generationId: 'gen-tx-test',
+      resourceType: 'FACT',
+      resourceId: 'fact-tx-2',
+      sourceProjectionDigest: 'sha256:' + '0'.repeat(64),
+      canonicalVersion: 1,
+      semanticTextDigest: 'sha256:' + '2'.repeat(64),
+      embeddingProfileId: 'prof-1',
+      embeddingProfileRevision: 1,
+      representationVersion: SEMANTIC_REPRESENTATION_VERSION,
+      vector: new Array(768).fill(NaN), // Invalid NaN vector
+      dimension: 768,
+      evidenceIds: [],
+      accessScope: ['public'],
+      sensitivity: 'public',
+      indexedAt: '2026-08-18T10:00:00.000Z',
+      createdAt: '2026-08-18T10:00:00.000Z',
+      updatedAt: '2026-08-18T10:00:00.000Z',
+    };
+
+    await expect(postgresRepo.upsertItems([validItem, invalidItem])).rejects.toMatchObject({
+      name: 'SemanticEmbeddingError',
+      embeddingErrorCode: 'VALIDATION_FAILURE',
+    });
+
+    // Neither item should be persisted due to transaction rollback
+    expect(
+      await postgresRepo.getItem(testProjectA, 'gen-tx-test', 'CLAIM', 'claim-tx-1'),
+    ).toBeUndefined();
+    expect(
+      await postgresRepo.getItem(testProjectA, 'gen-tx-test', 'FACT', 'fact-tx-2'),
+    ).toBeUndefined();
+  });
+
+  it('14. preserves deterministic tie-break ordering on equal vector distance', async () => {
     const generation: SemanticProjectionGeneration = {
       projectId: testProjectA,
       generationId: 'gen-tiebreak',
@@ -788,7 +1068,7 @@ describe('AKP-1 WP2: PostgreSQL + pgvector Semantic Projection Persistence', () 
     ]);
   });
 
-  it('12. CANONICAL ISOLATION: deleting projection state leaves Canonical knowledge tables unchanged and no vector columns exist in Canonical schema', async () => {
+  it('15. CANONICAL ISOLATION: deleting projection state leaves Canonical knowledge tables unchanged and no vector columns exist in Canonical schema', async () => {
     const colResult = await pool.query<{
       column_name: string;
       data_type: string;

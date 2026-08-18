@@ -11,6 +11,8 @@ import {
   type SemanticProjectionItem,
   type SemanticResourceType,
   SemanticEmbeddingError,
+  validateFiniteVector,
+  validatePersistedItem,
   validateSecurityInput,
   validateUnitLength,
 } from '../../../packages/contracts/src/index.js';
@@ -258,6 +260,7 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
         operation: 'upsert-item',
       });
     }
+    validatePersistedItem(item, 'upsert-item');
     if (
       item.dimension !== gen.dimension ||
       item.embeddingProfileId !== gen.embeddingProfileId ||
@@ -279,6 +282,8 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
     }
     if (gen.normalizationPolicy === 'unit_length') {
       validateUnitLength(item.vector, 'upsert-item');
+    } else {
+      validateFiniteVector(item.vector, 'upsert-item');
     }
 
     const vectorString = JSON.stringify(item.vector);
@@ -358,6 +363,7 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
             operation: 'upsert-items',
           });
         }
+        validatePersistedItem(item, 'upsert-items');
         if (
           item.dimension !== gen.dimension ||
           item.embeddingProfileId !== gen.embedding_profile_id ||
@@ -379,6 +385,8 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
         }
         if (gen.normalization_policy === 'unit_length') {
           validateUnitLength(item.vector, 'upsert-items');
+        } else {
+          validateFiniteVector(item.vector, 'upsert-items');
         }
 
         const vectorString = JSON.stringify(item.vector);
@@ -533,6 +541,8 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
 
     if (gen.normalizationPolicy === 'unit_length') {
       validateUnitLength(query.queryVector, 'find-nearest-neighbors');
+    } else {
+      validateFiniteVector(query.queryVector, 'find-nearest-neighbors');
     }
 
     let distanceOp: string;

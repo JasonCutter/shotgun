@@ -13,6 +13,7 @@
 
 - [ADD](add.md)
 - [AKP v1 승인 보완 — Step 16–17 Productization](akp-v1-accepted-amendment-2026-08-12.md)
+- [AKP-0 최신 main 재검증 및 Baseline Freeze](akp-0-latest-main-revalidation-2026-08-18.md)
 - [Architecture Decision Records](architecture-decision-records.md)
 - [미결사항·구현 검증 대기](implementation-validation.md)
 - [변경 이력](change-log.md)

@@ -6,9 +6,9 @@ import getEvidenceSpanSchema from '../../../packages/contracts/schemas/get-evide
 import evidenceSpanSchema from '../../../packages/contracts/schemas/evidence-span.v1.schema.json';
 import { hasSensitivityClearance } from '../../../packages/authentication/src/index.js';
 import {
-  type CanonicalSearchMatch,
   type CanonicalSearchResult,
   type CanonicalSnapshot,
+  deriveAuthorizedSensitivities,
   type EvidenceSpan,
   HYBRID_FUSION_DEFAULT_RRF_K,
   HYBRID_FUSION_POLICY_RRF_V1,
@@ -20,9 +20,9 @@ import {
   type HybridFusionSignal,
   type HybridRetrievalCoordinatorPort,
   type HybridRetrievalInput,
-  type HybridSearchReadiness,
   type HybridSearchRequest,
   type HybridSearchResponse,
+  type KnowledgeResourceResolverPort,
   type LexicalCandidateResult,
   type LexicalRetrieverInput,
   type LexicalRetrieverPort,
@@ -41,6 +41,7 @@ import {
   type SemanticRetrieverInput,
   type SemanticRetrieverPort,
   ShotgunError,
+  type SourceVersionResolverPort,
   validateFiniteVector,
   validateUnitLength,
 } from '../../../packages/contracts/src/index.js';
@@ -69,40 +70,6 @@ const getHighestSensitivity = (
   return 'public';
 };
 
-const computeLexicalReadiness = (
-  snapshot: CanonicalSnapshot,
-  watermark: ProjectionWatermark | undefined,
-): ProjectionReadiness => {
-  if (!watermark) {
-    const ready = snapshot.version === 0;
-    return {
-      status: ready ? 'READY' : 'STALE',
-      projectedCanonicalVersion: 0,
-      canonicalVersion: snapshot.version,
-      lag: snapshot.version,
-      ...(ready ? { projectedSnapshotDigest: snapshot.digest } : {}),
-      canonicalSnapshotDigest: snapshot.digest,
-      ...(!ready ? { reason: 'Search Projection has not processed the Canonical Commit.' } : {}),
-    };
-  }
-  const matches =
-    watermark.canonicalVersion === snapshot.version && watermark.snapshotDigest === snapshot.digest;
-  const status = watermark.status === 'DEGRADED' ? 'DEGRADED' : matches ? 'READY' : 'STALE';
-  return {
-    status,
-    projectedCanonicalVersion: watermark.canonicalVersion,
-    canonicalVersion: snapshot.version,
-    lag: Math.max(0, snapshot.version - watermark.canonicalVersion),
-    projectedSnapshotDigest: watermark.snapshotDigest,
-    canonicalSnapshotDigest: snapshot.digest,
-    ...(watermark.lastCommitId ? { lastCommitId: watermark.lastCommitId } : {}),
-    updatedAt: watermark.updatedAt,
-    ...(status !== 'READY'
-      ? { reason: watermark.lastError ?? 'Search Projection is behind Canonical Knowledge.' }
-      : {}),
-  };
-};
-
 export class SemanticRetriever implements SemanticRetrieverPort {
   constructor(
     private readonly repository: SemanticIndexRepositoryPort,
@@ -113,40 +80,41 @@ export class SemanticRetriever implements SemanticRetrieverPort {
 
   async retrieve(input: SemanticRetrieverInput): Promise<readonly SemanticCandidateResult[]> {
     const projectId = input.projectId?.trim();
-    const query = input.query?.trim();
-    if (!projectId || !query) {
+    if (!projectId) {
       throw new SemanticEmbeddingError({
         code: 'INVALID_INPUT',
-        safeMessage: 'Project ID and query are required for semantic retrieval.',
+        safeMessage: 'Project ID is required for semantic retrieval.',
         operation: 'semantic-retriever:retrieve',
       });
     }
-    if (!Array.isArray(input.accessScopes) || input.accessScopes.length === 0) {
+
+    const query = input.query?.trim();
+    if (!query) {
       throw new SemanticEmbeddingError({
-        code: 'POLICY_DENIED',
-        safeMessage: 'Access scopes must be a non-empty array for authorized semantic retrieval.',
+        code: 'INVALID_INPUT',
+        safeMessage: 'Search query is required for semantic retrieval.',
         operation: 'semantic-retriever:retrieve',
       });
     }
-    for (const scope of input.accessScopes) {
-      if (typeof scope !== 'string' || scope.trim().length === 0) {
-        throw new SemanticEmbeddingError({
-          code: 'POLICY_DENIED',
-          safeMessage: 'All accessScope entries must be non-empty strings.',
-          operation: 'semantic-retriever:retrieve',
-        });
-      }
-    }
-    if (!Array.isArray(input.allowedSensitivities) || input.allowedSensitivities.length === 0) {
+
+    if (!input.accessScopes || input.accessScopes.length === 0) {
       throw new SemanticEmbeddingError({
-        code: 'POLICY_DENIED',
-        safeMessage: 'Allowed sensitivities must be provided for authorized semantic retrieval.',
+        code: 'INVALID_INPUT',
+        safeMessage: 'Access scopes must be a non-empty array for semantic retrieval.',
+        operation: 'semantic-retriever:retrieve',
+      });
+    }
+
+    if (!input.allowedSensitivities || input.allowedSensitivities.length === 0) {
+      throw new SemanticEmbeddingError({
+        code: 'INVALID_INPUT',
+        safeMessage: 'Allowed sensitivities must be a non-empty array for semantic retrieval.',
         operation: 'semantic-retriever:retrieve',
       });
     }
 
     const limit = input.limit ?? HYBRID_SEARCH_DEFAULT_LIMIT;
-    if (!Number.isInteger(limit) || limit <= 0 || limit > HYBRID_SEARCH_MAX_LIMIT) {
+    if (!Number.isSafeInteger(limit) || limit <= 0 || limit > HYBRID_SEARCH_MAX_LIMIT) {
       throw new SemanticEmbeddingError({
         code: 'INVALID_INPUT',
         safeMessage: `Limit must be a positive integer <= ${HYBRID_SEARCH_MAX_LIMIT}. Received: ${limit}`,
@@ -171,26 +139,27 @@ export class SemanticRetriever implements SemanticRetrieverPort {
       });
     }
 
-    // 3. Verify active generation belongs to exact project and is compatible with resolved profile
-    if (gen.projectId !== projectId) {
-      throw new SemanticEmbeddingError({
-        code: 'VALIDATION_FAILURE',
-        safeMessage:
-          'Active semantic projection generation does not belong to the requested project.',
-        operation: 'semantic-retriever:retrieve',
-      });
-    }
-
+    // 3. Complete execution pin compatibility validation
     if (
-      gen.embeddingProfileId !== resolved.profile.profileId ||
-      gen.embeddingProfileRevision !== resolved.profile.profileRevision ||
-      gen.dimension !== resolved.model.shotgunDefaultDimension ||
-      gen.representationVersion !== resolved.profile.representationVersion
+      gen.projectId !== projectId ||
+      gen.embeddingProfileId !== resolved.pin.embeddingProfileId ||
+      gen.embeddingProfileRevision !== resolved.pin.embeddingProfileRevision ||
+      gen.providerId !== resolved.pin.providerId ||
+      gen.embeddingModelId !== resolved.pin.embeddingModelId ||
+      gen.credentialId !== resolved.pin.credentialId ||
+      gen.credentialRevision !== resolved.pin.credentialRevision ||
+      gen.providerRegistryRevision !== resolved.pin.providerRegistryRevision ||
+      gen.capabilityCatalogRevision !== resolved.pin.capabilityCatalogRevision ||
+      gen.providerPolicyFingerprint !== resolved.pin.providerPolicyFingerprint ||
+      gen.representationVersion !== resolved.pin.representationVersion ||
+      gen.dimension !== resolved.profile.dimension ||
+      gen.distanceMetric !== resolved.profile.distanceMetric ||
+      gen.normalizationPolicy !== resolved.profile.normalizationPolicy
     ) {
       throw new SemanticEmbeddingError({
         code: 'VALIDATION_FAILURE',
         safeMessage:
-          'Active semantic projection generation is incompatible with the resolved embedding profile.',
+          'Active semantic projection generation is incompatible with the resolved embedding profile or execution pin.',
         operation: 'semantic-retriever:retrieve',
       });
     }
@@ -201,10 +170,17 @@ export class SemanticRetriever implements SemanticRetrieverPort {
       resourceType: 'QUERY',
     });
 
-    if (embedRes.dimension !== gen.dimension || embedRes.vector.length !== gen.dimension) {
+    // Verify injected execution Port identity & result against generation pin
+    if (
+      embedRes.providerId !== gen.providerId ||
+      embedRes.modelId !== gen.embeddingModelId ||
+      embedRes.dimension !== gen.dimension ||
+      embedRes.vector.length !== gen.dimension
+    ) {
       throw new SemanticEmbeddingError({
         code: 'VALIDATION_FAILURE',
-        safeMessage: `Query vector dimension ${embedRes.vector.length} does not match generation dimension ${gen.dimension}.`,
+        safeMessage:
+          'Query vector execution identity or dimension does not match generation execution pin.',
         operation: 'semantic-retriever:retrieve',
       });
     }
@@ -231,7 +207,9 @@ export class SemanticRetriever implements SemanticRetrieverPort {
 export class LexicalRetriever implements LexicalRetrieverPort {
   constructor(
     private readonly repository: LexicalSearchProjectionRepositoryPort,
-    private readonly getCanonicalSnapshot: (projectId: string) => Promise<CanonicalSnapshot>,
+    private readonly getCanonicalSnapshot: (
+      projectId: string,
+    ) => Promise<CanonicalSnapshot | undefined>,
   ) {}
 
   async retrieve(input: LexicalRetrieverInput): Promise<{
@@ -239,128 +217,149 @@ export class LexicalRetriever implements LexicalRetrieverPort {
     readonly readiness: ProjectionReadiness;
   }> {
     const projectId = input.projectId?.trim();
-    const query = input.query?.trim();
-    if (!projectId || !query) {
-      throw new ShotgunError({
-        code: 'INVALID_REQUEST',
-        safeMessage: 'Project ID and query are required for lexical retrieval.',
-        module: 'stage7.projection-search',
-        operation: 'lexical-retriever:retrieve',
-      });
+    if (!projectId) {
+      throw new Error('Project ID and query are required for lexical retrieval.');
     }
-    if (!Array.isArray(input.accessScopes) || input.accessScopes.length === 0) {
-      throw new ShotgunError({
-        code: 'POLICY_DENIED',
-        safeMessage: 'Access scopes must be a non-empty array for lexical retrieval.',
-        module: 'stage7.projection-search',
-        operation: 'lexical-retriever:retrieve',
-      });
+
+    const query = input.query?.trim();
+    if (!query) {
+      throw new Error('Project ID and query are required for lexical retrieval.');
+    }
+
+    if (!input.accessScopes || input.accessScopes.length === 0) {
+      throw new Error('Access scopes must be a non-empty array for lexical retrieval.');
     }
 
     const limit = input.limit ?? HYBRID_SEARCH_DEFAULT_LIMIT;
-    if (!Number.isInteger(limit) || limit <= 0 || limit > HYBRID_SEARCH_MAX_LIMIT) {
-      throw new ShotgunError({
-        code: 'INVALID_REQUEST',
-        safeMessage: `Limit must be a positive integer <= ${HYBRID_SEARCH_MAX_LIMIT}. Received: ${limit}`,
-        module: 'stage7.projection-search',
-        operation: 'lexical-retriever:retrieve',
-      });
+    if (!Number.isSafeInteger(limit) || limit <= 0 || limit > HYBRID_SEARCH_MAX_LIMIT) {
+      throw new Error(
+        `Limit must be a positive integer <= ${HYBRID_SEARCH_MAX_LIMIT}. Received: ${limit}`,
+      );
     }
 
-    const [snapshot, watermark] = await Promise.all([
-      this.getCanonicalSnapshot(projectId),
-      this.repository.findWatermark(projectId),
-    ]);
+    const watermark = await this.repository.findWatermark(projectId);
+    const snapshot = await this.getCanonicalSnapshot(projectId);
 
-    const readiness = computeLexicalReadiness(snapshot, watermark);
+    const canonicalVersion = snapshot?.version ?? 0;
+    const projectedCanonicalVersion = watermark?.canonicalVersion ?? 0;
+    const lag = Math.max(0, canonicalVersion - projectedCanonicalVersion);
+    const snapshotDigest = snapshot?.digest ?? 'sha256:empty';
+
+    let status: 'READY' | 'STALE' | 'DEGRADED' = 'READY';
+    if (!watermark || watermark.status === 'DEGRADED') {
+      status = 'DEGRADED';
+    } else if (lag > 0 || watermark.snapshotDigest !== snapshotDigest) {
+      status = 'STALE';
+    }
+
+    const readiness: ProjectionReadiness = {
+      status,
+      projectedCanonicalVersion,
+      canonicalVersion,
+      lag,
+      canonicalSnapshotDigest: snapshotDigest,
+      projectedSnapshotDigest: watermark?.snapshotDigest,
+      lastCommitId: watermark?.lastCommitId,
+      updatedAt: watermark?.updatedAt,
+      reason:
+        status === 'DEGRADED'
+          ? (watermark?.lastError ?? 'Projection search is degraded.')
+          : status === 'STALE'
+            ? 'Projection lag behind canonical version.'
+            : undefined,
+    };
+
     if (readiness.status !== 'READY') {
       return { items: [], readiness };
     }
 
-    const searchResults = await this.repository.search(projectId, query, limit, input.accessScopes);
-
-    const items: LexicalCandidateResult[] = searchResults.map(
-      (result: CanonicalSearchResult, index: number) => ({
-        claimId: result.claimId,
-        commitId: result.commitId,
-        revisionId: result.revisionId,
-        canonicalVersion: result.canonicalVersion,
-        claimText: result.claimText,
-        sourceVersionId: result.sourceVersionId,
-        evidenceIds: [...result.evidenceIds],
-        accessScope: [...result.accessScope],
-        sensitivity: result.sensitivity,
-        score: result.score,
-        matchType: result.matchType,
-        rank: index + 1,
-      }),
-    );
+    const results = await this.repository.search(projectId, query, limit, input.accessScopes);
+    const items: LexicalCandidateResult[] = results.map((res, index) => ({
+      claimId: res.claimId,
+      commitId: res.commitId,
+      revisionId: res.revisionId,
+      canonicalVersion: res.canonicalVersion,
+      claimText: res.claimText,
+      sourceVersionId: res.sourceVersionId,
+      evidenceIds: [...res.evidenceIds],
+      accessScope: [...res.accessScope],
+      sensitivity: res.sensitivity,
+      score: res.score,
+      matchType: res.matchType,
+      rank: index + 1,
+    }));
 
     return { items, readiness };
   }
 }
 
-type InternalMergedCandidate = {
-  readonly resourceType: SemanticResourceType;
-  readonly resourceId: string;
-  readonly text: string;
-  readonly canonicalVersion: number;
-  readonly evidenceIds: readonly string[];
-  readonly accessScope: readonly string[];
-  readonly sensitivity: 'public' | 'internal' | 'private' | 'restricted';
-  readonly lexicalRank?: number;
-  readonly lexicalScore?: number;
-  readonly lexicalMatchType?: CanonicalSearchMatch;
-  readonly semanticRank?: number;
-  readonly semanticDistance?: number;
-  readonly fusionScore: number;
-};
-
 export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPort {
+  private readonly fusionPolicy: HybridFusionPolicy;
   private readonly clock: () => string;
 
   constructor(
     private readonly lexicalRetriever: LexicalRetrieverPort,
-    private readonly semanticRetriever: SemanticRetrieverPort,
-    private readonly evidenceResolver: EvidenceSpanResolverPort,
-    private readonly activeGenerationReader: SemanticActiveGenerationReaderPort,
-    private readonly profilePort?: SemanticEmbeddingProfilePort,
-    options?: { readonly clock?: () => string },
+    private readonly semanticRetriever?: SemanticRetrieverPort,
+    private readonly resourceResolver?: KnowledgeResourceResolverPort,
+    private readonly evidenceResolver?: EvidenceSpanResolverPort,
+    private readonly sourceVersionResolver?: SourceVersionResolverPort,
+    private readonly activeGenerationReader?: SemanticActiveGenerationReaderPort,
+    private readonly semanticProfileService?: SemanticEmbeddingProfilePort,
+    options?: {
+      readonly clock?: () => string;
+      readonly fusionPolicy?: Partial<HybridFusionPolicy>;
+    },
   ) {
     this.clock = options?.clock ?? (() => new Date().toISOString());
+    this.fusionPolicy = {
+      version: HYBRID_FUSION_POLICY_RRF_V1,
+      k: options?.fusionPolicy?.k ?? HYBRID_FUSION_DEFAULT_RRF_K,
+      lexicalWeight: options?.fusionPolicy?.lexicalWeight ?? 1.0,
+      semanticWeight: options?.fusionPolicy?.semanticWeight ?? 1.0,
+    };
   }
 
   async search(input: HybridRetrievalInput): Promise<HybridSearchResponse> {
     const projectId = input.projectId?.trim();
-    const query = input.query?.trim();
-    if (!projectId || !query) {
+    if (!projectId) {
       throw new ShotgunError({
         code: 'INVALID_REQUEST',
-        safeMessage: 'Project ID and query are required for hybrid retrieval.',
+        safeMessage: 'Project ID is required for hybrid search.',
         module: 'hybrid-retrieval',
         operation: 'search',
       });
     }
 
-    if (!Array.isArray(input.accessScopes) || input.accessScopes.length === 0) {
+    const query = input.query?.trim();
+    if (!query) {
       throw new ShotgunError({
-        code: 'POLICY_DENIED',
-        safeMessage: 'Access scopes must be a non-empty array for authorized hybrid retrieval.',
+        code: 'INVALID_REQUEST',
+        safeMessage: 'Search query is required for hybrid search.',
         module: 'hybrid-retrieval',
         operation: 'search',
       });
     }
-    if (!Array.isArray(input.allowedSensitivities) || input.allowedSensitivities.length === 0) {
+
+    if (!input.accessScopes || input.accessScopes.length === 0) {
       throw new ShotgunError({
         code: 'POLICY_DENIED',
-        safeMessage: 'Allowed sensitivities must be provided for authorized hybrid retrieval.',
+        safeMessage: 'Access scopes must be a non-empty array.',
+        module: 'hybrid-retrieval',
+        operation: 'search',
+      });
+    }
+
+    if (!input.allowedSensitivities || input.allowedSensitivities.length === 0) {
+      throw new ShotgunError({
+        code: 'POLICY_DENIED',
+        safeMessage: 'Allowed sensitivities must be a non-empty array.',
         module: 'hybrid-retrieval',
         operation: 'search',
       });
     }
 
     const limit = input.limit ?? HYBRID_SEARCH_DEFAULT_LIMIT;
-    if (!Number.isInteger(limit) || limit <= 0 || limit > HYBRID_SEARCH_MAX_LIMIT) {
+    if (!Number.isSafeInteger(limit) || limit <= 0 || limit > HYBRID_SEARCH_MAX_LIMIT) {
       throw new ShotgunError({
         code: 'INVALID_REQUEST',
         safeMessage: `Limit must be a positive integer <= ${HYBRID_SEARCH_MAX_LIMIT}. Received: ${limit}`,
@@ -369,18 +368,7 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
       });
     }
 
-    const rrfK = input.fusionPolicy?.k ?? HYBRID_FUSION_DEFAULT_RRF_K;
-    const lexicalWeight = input.fusionPolicy?.lexicalWeight ?? 1.0;
-    const semanticWeight = input.fusionPolicy?.semanticWeight ?? 1.0;
-
-    const fusionPolicy: HybridFusionPolicy = {
-      version: HYBRID_FUSION_POLICY_RRF_V1,
-      k: rrfK,
-      lexicalWeight,
-      semanticWeight,
-    };
-
-    // 1. Execute Lexical Retrieval (Stage 7 authority)
+    // 1. Execute Lexical Retrieval
     const lexicalResult = await this.lexicalRetriever.retrieve({
       projectId,
       query,
@@ -388,81 +376,123 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
       limit,
     });
 
-    // 2. Execute Semantic Retrieval with Request-Local Degradation handling
-    let semanticCandidates: readonly SemanticCandidateResult[] = [];
-    let semanticReadiness: SemanticReadiness;
+    // 2. Execute Semantic Retrieval with safe request-local degradation
+    let semanticItems: readonly SemanticCandidateResult[] = [];
+    let semanticReadiness: SemanticReadiness = { status: 'READY' };
+    let semanticDegradedReason: string | undefined;
 
-    try {
-      semanticCandidates = await this.semanticRetriever.retrieve({
-        projectId,
-        query,
-        accessScopes: input.accessScopes,
-        allowedSensitivities: input.allowedSensitivities,
-        limit,
-      });
-
-      const activeGen = await this.activeGenerationReader.getActiveGeneration(projectId);
+    if (!this.semanticRetriever) {
       semanticReadiness = {
-        status: 'READY',
-        activeGenerationId: activeGen?.generationId,
-        embeddingProfileId: activeGen?.embeddingProfileId,
-        dimension: activeGen?.dimension,
-        updatedAt: activeGen?.createdAt,
+        status: 'UNAVAILABLE',
+        reason: 'Semantic retrieval is not configured.',
       };
-    } catch (error) {
-      if (error instanceof SemanticEmbeddingError) {
-        let status: SemanticReadiness['status'];
-        let reason = error.safeMessage;
+      semanticDegradedReason = 'Semantic retrieval is not configured.';
+    } else {
+      try {
+        semanticItems = await this.semanticRetriever.retrieve({
+          projectId,
+          query,
+          accessScopes: input.accessScopes,
+          allowedSensitivities: input.allowedSensitivities,
+          limit,
+        });
 
-        switch (error.embeddingErrorCode) {
-          case 'CONFIGURATION_REQUIRED':
-            status = 'NOT_CONFIGURED';
-            break;
-          case 'CAPABILITY_UNAVAILABLE':
-            status = 'UNAVAILABLE';
-            break;
-          case 'POLICY_DENIED':
-            status = 'DEGRADED';
-            reason = 'Query embedding policy denied for requested sensitivity.';
-            break;
-          case 'PROVIDER_FAILURE':
-          case 'TIMEOUT':
-            status = 'DEGRADED';
-            reason = `Semantic embedding provider failure: ${error.safeMessage}`;
-            break;
-          default:
-            status = 'DEGRADED';
+        const activeGen = await this.activeGenerationReader?.getActiveGeneration(projectId);
+        if (activeGen) {
+          semanticReadiness = {
+            status: 'READY',
+            activeGenerationId: activeGen.generationId,
+            embeddingProfileId: activeGen.embeddingProfileId,
+            dimension: activeGen.dimension,
+            updatedAt: activeGen.createdAt,
+          };
         }
-
-        semanticReadiness = {
-          status,
-          reason,
-          updatedAt: this.clock(),
-        };
-      } else {
-        // Unhandled unexpected semantic error -> degrade safely rather than crashing healthy lexical search
-        semanticReadiness = {
-          status: 'DEGRADED',
-          reason: error instanceof Error ? error.message : 'Unknown semantic retrieval failure.',
-          updatedAt: this.clock(),
-        };
+      } catch (err: unknown) {
+        if (err instanceof SemanticEmbeddingError) {
+          switch (err.embeddingErrorCode) {
+            case 'CONFIGURATION_REQUIRED':
+              semanticReadiness = {
+                status: 'NOT_CONFIGURED',
+                reason: 'Active semantic embedding profile is not configured.',
+              };
+              semanticDegradedReason = 'Active semantic embedding profile is not configured.';
+              break;
+            case 'CAPABILITY_UNAVAILABLE':
+              semanticReadiness = {
+                status: 'UNAVAILABLE',
+                reason: 'Active semantic projection generation is unavailable.',
+              };
+              semanticDegradedReason = 'Active semantic projection generation is unavailable.';
+              break;
+            case 'POLICY_DENIED':
+              semanticReadiness = {
+                status: 'DEGRADED',
+                reason: 'Semantic embedding policy denied for requested sensitivity.',
+              };
+              semanticDegradedReason =
+                'Semantic embedding policy denied for requested sensitivity.';
+              break;
+            case 'TIMEOUT':
+              semanticReadiness = {
+                status: 'DEGRADED',
+                reason: 'Semantic embedding service timed out.',
+              };
+              semanticDegradedReason = 'Semantic embedding service timed out.';
+              break;
+            default:
+              semanticReadiness = {
+                status: 'DEGRADED',
+                reason: 'Semantic retrieval is temporarily unavailable.',
+              };
+              semanticDegradedReason = 'Semantic retrieval is temporarily unavailable.';
+              break;
+          }
+        } else {
+          semanticReadiness = {
+            status: 'DEGRADED',
+            reason: 'Semantic retrieval is temporarily unavailable.',
+          };
+          semanticDegradedReason = 'Semantic retrieval is temporarily unavailable.';
+        }
       }
     }
 
-    // 3. Reciprocal Rank Fusion (RRF) & Merging
-    const candidateMap = new Map<string, InternalMergedCandidate>();
+    const isDegraded =
+      lexicalResult.readiness.status !== 'READY' || semanticReadiness.status !== 'READY';
 
-    // Index lexical candidates
+    // 3. Fusion (RRF: Reciprocal Rank Fusion)
+    const rrfK = this.fusionPolicy.k;
+    const lexicalWeight = this.fusionPolicy.lexicalWeight ?? 1.0;
+    const semanticWeight = this.fusionPolicy.semanticWeight ?? 1.0;
+
+    type CandidateAccumulator = {
+      resourceType: SemanticResourceType;
+      resourceId: string;
+      text?: string;
+      canonicalVersion?: number;
+      evidenceIds: string[];
+      accessScope: string[];
+      sensitivity: 'public' | 'internal' | 'private' | 'restricted';
+      lexicalRank?: number;
+      lexicalScore?: number;
+      lexicalMatchType?: 'FULL_TEXT' | 'TRIGRAM' | 'SUBSTRING';
+      semanticRank?: number;
+      fusionScore: number;
+    };
+
+    const candidateMap = new Map<string, CandidateAccumulator>();
+
+    // Add lexical candidates
     for (const lex of lexicalResult.items) {
-      const key = `CLAIM::${lex.claimId}`;
+      const key = `CLAIM:${lex.claimId}`;
       const rrfScore = lexicalWeight / (rrfK + lex.rank);
       candidateMap.set(key, {
         resourceType: 'CLAIM',
         resourceId: lex.claimId,
         text: lex.claimText,
         canonicalVersion: lex.canonicalVersion,
-        evidenceIds: lex.evidenceIds,
-        accessScope: lex.accessScope,
+        evidenceIds: [...lex.evidenceIds],
+        accessScope: [...lex.accessScope],
         sensitivity: lex.sensitivity,
         lexicalRank: lex.rank,
         lexicalScore: lex.score,
@@ -471,107 +501,56 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
       });
     }
 
-    // Merge or insert semantic candidates
-    semanticCandidates.forEach((sem, index) => {
+    // Add / merge semantic candidates
+    for (let index = 0; index < semanticItems.length; index++) {
+      const sem = semanticItems[index]!;
       const semRank = index + 1;
-      const key = `${sem.resourceType}::${sem.resourceId}`;
-      const semScore = semanticWeight / (rrfK + semRank);
+      const key = `${sem.resourceType}:${sem.resourceId}`;
+      const semRrfScore = semanticWeight / (rrfK + semRank);
 
       const existing = candidateMap.get(key);
       if (existing) {
-        // Dual-channel participation
-        candidateMap.set(key, {
-          ...existing,
-          semanticRank: semRank,
-          semanticDistance: sem.distance,
-          fusionScore: existing.fusionScore + semScore,
-        });
+        existing.semanticRank = semRank;
+        existing.fusionScore += semRrfScore;
+        for (const ev of sem.evidenceIds) {
+          if (!existing.evidenceIds.includes(ev)) {
+            existing.evidenceIds.push(ev);
+          }
+        }
       } else {
         candidateMap.set(key, {
           resourceType: sem.resourceType,
           resourceId: sem.resourceId,
-          text: '', // Semantic item text will be loaded/kept
           canonicalVersion: sem.canonicalVersion,
-          evidenceIds: sem.evidenceIds,
-          accessScope: sem.accessScope,
+          evidenceIds: [...sem.evidenceIds],
+          accessScope: [...sem.accessScope],
           sensitivity: sem.sensitivity,
           semanticRank: semRank,
-          semanticDistance: sem.distance,
-          fusionScore: semScore,
+          fusionScore: semRrfScore,
         });
       }
-    });
+    }
 
-    // 4. Deterministic sorting:
-    // 1. fusionScore DESC
-    // 2. resourceType ASC (alphabetical)
-    // 3. resourceId ASC (UTF-16 code unit lexical order)
-    const sortedCandidates = Array.from(candidateMap.values()).sort((a, b) => {
-      if (Math.abs(b.fusionScore - a.fusionScore) > 1e-12) {
-        return b.fusionScore - a.fusionScore;
+    // 4. Deterministic Sort: fusionScore DESC, then resourceType ASC, then resourceId ASC
+    const sortedCandidates = Array.from(candidateMap.values()).sort((left, right) => {
+      if (Math.abs(left.fusionScore - right.fusionScore) > 1e-12) {
+        return right.fusionScore - left.fusionScore;
       }
-      if (a.resourceType !== b.resourceType) {
-        return a.resourceType < b.resourceType ? -1 : 1;
-      }
-      return a.resourceId < b.resourceId ? -1 : a.resourceId > b.resourceId ? 1 : 0;
+      const typeCmp = left.resourceType.localeCompare(right.resourceType);
+      if (typeCmp !== 0) return typeCmp;
+      return left.resourceId.localeCompare(right.resourceId);
     });
 
     const topK = sortedCandidates.slice(0, limit);
 
-    // 5. Authoritative Citation Lineage Resolution
+    // 5. Authoritative Content and Citation Lineage Resolution
     const allowedScopeSet = new Set(input.accessScopes);
-
+    const callerHighestSens = getHighestSensitivity(input.allowedSensitivities);
     const items: HybridCandidateResult[] = [];
 
     for (let index = 0; index < topK.length; index++) {
       const cand = topK[index]!;
       const fusionRank = index + 1;
-
-      // Fail closed if evidenceIds is empty
-      if (!Array.isArray(cand.evidenceIds) || cand.evidenceIds.length === 0) {
-        throw new ShotgunError({
-          code: 'VALIDATION_ERROR',
-          safeMessage: `Candidate ${cand.resourceType}:${cand.resourceId} has no evidence references.`,
-          module: 'hybrid-retrieval',
-          operation: 'resolve-citations',
-        });
-      }
-
-      const citations: HybridCitation[] = [];
-      for (const evidenceId of cand.evidenceIds) {
-        const span = await this.evidenceResolver.getEvidenceSpan(projectId, evidenceId);
-        if (!span) {
-          throw new ShotgunError({
-            code: 'VALIDATION_ERROR',
-            safeMessage: `EvidenceSpan '${evidenceId}' referenced by ${cand.resourceType}:${cand.resourceId} was not found.`,
-            module: 'hybrid-retrieval',
-            operation: 'resolve-citations',
-          });
-        }
-
-        // Security check on evidence span
-        const scopeAllowed = span.accessScope.every((scope) => allowedScopeSet.has(scope));
-        const callerHighestSens = getHighestSensitivity(input.allowedSensitivities);
-        if (!scopeAllowed || !hasSensitivityClearance(callerHighestSens, span.sensitivity)) {
-          throw new ShotgunError({
-            code: 'POLICY_DENIED',
-            safeMessage: `Caller lacks access clearance for EvidenceSpan '${evidenceId}'.`,
-            module: 'hybrid-retrieval',
-            operation: 'resolve-citations',
-          });
-        }
-
-        citations.push({
-          evidenceId: span.evidenceId,
-          sourceId: span.sourceId,
-          sourceVersionId: span.sourceVersionId,
-          revisionId: span.revisionId,
-          exactQuote: span.quote.exact,
-          pointer: span.pointer,
-          position: span.position,
-          selectors: span.selectors ? [...span.selectors] : undefined,
-        });
-      }
 
       // Determine signals
       const signals: HybridFusionSignal[] = [];
@@ -583,40 +562,155 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
         signals.push('SEMANTIC');
       }
 
+      // Resolve content for semantic-only resources if text is absent
+      let text = cand.text;
+      let canonicalVersion = cand.canonicalVersion ?? 0;
+      let evidenceIds = cand.evidenceIds;
+
+      if (!text) {
+        if (!this.resourceResolver) {
+          throw new ShotgunError({
+            code: 'VALIDATION_ERROR',
+            safeMessage: `Knowledge resource resolver is not configured to resolve ${cand.resourceType}:${cand.resourceId}.`,
+            module: 'hybrid-retrieval',
+            operation: 'resolve-content',
+          });
+        }
+
+        const resolved = await this.resourceResolver.resolveResource(
+          projectId,
+          cand.resourceType,
+          cand.resourceId,
+        );
+
+        if (!resolved || !resolved.text || resolved.text.trim().length === 0) {
+          throw new ShotgunError({
+            code: 'VALIDATION_ERROR',
+            safeMessage: `Semantic resource ${cand.resourceType}:${cand.resourceId} could not be resolved from authoritative knowledge.`,
+            module: 'hybrid-retrieval',
+            operation: 'resolve-content',
+          });
+        }
+
+        text = resolved.text;
+        if (resolved.canonicalVersion !== undefined) {
+          canonicalVersion = resolved.canonicalVersion;
+        }
+        if (
+          (!evidenceIds || evidenceIds.length === 0) &&
+          resolved.evidenceIds &&
+          resolved.evidenceIds.length > 0
+        ) {
+          evidenceIds = [...resolved.evidenceIds];
+        }
+      }
+
+      if (!evidenceIds || evidenceIds.length === 0) {
+        throw new ShotgunError({
+          code: 'VALIDATION_ERROR',
+          safeMessage: `Candidate ${cand.resourceType}:${cand.resourceId} has no evidence references.`,
+          module: 'hybrid-retrieval',
+          operation: 'resolve-citations',
+        });
+      }
+
+      // Resolve and verify citation lineage: Knowledge -> EvidenceSpan -> SourceVersion
+      const citations: HybridCitation[] = [];
+      if (this.evidenceResolver) {
+        for (const evidenceId of evidenceIds) {
+          const span = await this.evidenceResolver.getEvidenceSpan(projectId, evidenceId);
+          if (!span) {
+            throw new ShotgunError({
+              code: 'VALIDATION_ERROR',
+              safeMessage: `EvidenceSpan '${evidenceId}' referenced by ${cand.resourceType}:${cand.resourceId} was not found.`,
+              module: 'hybrid-retrieval',
+              operation: 'resolve-citations',
+            });
+          }
+
+          // Security check on evidence span
+          const scopeAllowed = span.accessScope.every((scope) => allowedScopeSet.has(scope));
+          if (!scopeAllowed || !hasSensitivityClearance(callerHighestSens, span.sensitivity)) {
+            throw new ShotgunError({
+              code: 'POLICY_DENIED',
+              safeMessage: `Caller lacks access clearance for EvidenceSpan '${evidenceId}'.`,
+              module: 'hybrid-retrieval',
+              operation: 'resolve-citations',
+            });
+          }
+
+          // Verify SourceVersion existence and project/source lineage
+          if (this.sourceVersionResolver) {
+            const sourceVersion = await this.sourceVersionResolver.getSourceVersion(
+              projectId,
+              span.sourceVersionId,
+            );
+            if (!sourceVersion) {
+              throw new ShotgunError({
+                code: 'VALIDATION_ERROR',
+                safeMessage: `SourceVersion '${span.sourceVersionId}' referenced by EvidenceSpan '${evidenceId}' was not found.`,
+                module: 'hybrid-retrieval',
+                operation: 'resolve-citations',
+              });
+            }
+
+            if (
+              sourceVersion.projectId !== projectId ||
+              (span.sourceId && sourceVersion.sourceId !== span.sourceId)
+            ) {
+              throw new ShotgunError({
+                code: 'VALIDATION_ERROR',
+                safeMessage: `SourceVersion '${span.sourceVersionId}' does not match project or source lineage for EvidenceSpan '${evidenceId}'.`,
+                module: 'hybrid-retrieval',
+                operation: 'resolve-citations',
+              });
+            }
+          }
+
+          citations.push({
+            evidenceId: span.evidenceId,
+            sourceId: span.sourceId,
+            sourceVersionId: span.sourceVersionId,
+            revisionId: span.revisionId,
+            exactQuote: span.quote.exact,
+            pointer: span.pointer,
+            position: span.position,
+            selectors: span.selectors,
+          });
+        }
+      }
+
       items.push({
         resourceType: cand.resourceType,
         resourceId: cand.resourceId,
-        text: cand.text,
-        canonicalVersion: cand.canonicalVersion,
-        evidenceIds: [...cand.evidenceIds],
+        text,
+        canonicalVersion,
+        evidenceIds,
         citations,
-        accessScope: [...cand.accessScope],
+        accessScope: cand.accessScope,
         sensitivity: cand.sensitivity,
         signals,
         lexicalRank: cand.lexicalRank,
         lexicalScore: cand.lexicalScore,
         lexicalMatchType: cand.lexicalMatchType,
         semanticRank: cand.semanticRank,
-        semanticDistance: cand.semanticDistance,
         fusionRank,
         fusionScore: cand.fusionScore,
       });
     }
-
-    const readiness: HybridSearchReadiness = {
-      lexical: lexicalResult.readiness,
-      semantic: semanticReadiness,
-      degraded: semanticReadiness.status !== 'READY',
-      ...(semanticReadiness.status !== 'READY' ? { degradedReason: semanticReadiness.reason } : {}),
-    };
 
     return {
       schemaVersion: '1.0.0',
       projectId,
       query,
       items,
-      fusionPolicy,
-      readiness,
+      fusionPolicy: this.fusionPolicy,
+      readiness: {
+        lexical: lexicalResult.readiness,
+        semantic: semanticReadiness,
+        degraded: isDegraded,
+        degradedReason: semanticDegradedReason,
+      },
       generatedAt: this.clock(),
     };
   }
@@ -641,10 +735,10 @@ export const createHybridRetrievalModule = (
     dataOwnership: {
       owns: [],
       readsViaPorts: [
-        'SearchCanonicalKnowledge query',
-        'GetEvidenceSpan query',
-        'SemanticIndexRepositoryPort',
-        'SemanticActiveGenerationReaderPort',
+        'SearchProjectionRepositoryPort.search',
+        'SemanticIndexRepositoryPort.findNearestNeighbors',
+        'SemanticActiveGenerationReaderPort.getActiveGeneration',
+        'EvidenceSpanResolverPort.getEvidenceSpan',
       ],
       directSchemaAccess: false,
     },
@@ -705,13 +799,15 @@ export const createHybridRetrievalModule = (
             });
           }
           const payload = envelope.payload as HybridSearchRequest;
+          const authorizedSensitivities = deriveAuthorizedSensitivities(
+            envelope.security.sensitivity,
+          );
           return coordinator.search({
             projectId: envelope.projectId,
             query: payload.query,
             accessScopes: envelope.security.accessScope,
-            allowedSensitivities: [envelope.security.sensitivity],
+            allowedSensitivities: authorizedSensitivities,
             limit: payload.limit,
-            fusionPolicy: payload.fusionPolicy,
           });
         },
       },

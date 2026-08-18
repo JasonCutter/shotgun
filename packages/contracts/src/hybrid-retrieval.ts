@@ -53,6 +53,36 @@ export type LexicalRetrieverPort = {
   }>;
 };
 
+export type KnowledgeResourceContent = {
+  readonly text: string;
+  readonly canonicalVersion?: number;
+  readonly evidenceIds?: readonly string[];
+  readonly sourceVersionId?: string;
+  readonly accessScope?: readonly string[];
+  readonly sensitivity?: 'public' | 'internal' | 'private' | 'restricted';
+};
+
+export type KnowledgeResourceResolverPort = {
+  resolveResource(
+    projectId: string,
+    resourceType: SemanticResourceType,
+    resourceId: string,
+  ): Promise<KnowledgeResourceContent | undefined>;
+};
+
+export type SourceVersionInfo = {
+  readonly sourceVersionId: string;
+  readonly projectId: string;
+  readonly sourceId: string;
+};
+
+export type SourceVersionResolverPort = {
+  getSourceVersion(
+    projectId: string,
+    sourceVersionId: string,
+  ): Promise<SourceVersionInfo | undefined>;
+};
+
 export type HybridFusionSignal = 'LEXICAL' | 'SEMANTIC' | 'HYBRID';
 
 export type HybridCitation = {
@@ -80,7 +110,6 @@ export type HybridCandidateResult = {
   readonly lexicalScore?: number;
   readonly lexicalMatchType?: CanonicalSearchMatch;
   readonly semanticRank?: number;
-  readonly semanticDistance?: number;
   readonly fusionRank: number;
   readonly fusionScore: number;
 };
@@ -114,7 +143,6 @@ export type HybridSearchReadiness = {
 export type HybridSearchRequest = {
   readonly query: string;
   readonly limit?: number;
-  readonly fusionPolicy?: Partial<HybridFusionPolicy>;
 };
 
 export type HybridSearchResponse = {
@@ -133,9 +161,23 @@ export type HybridRetrievalInput = {
   readonly accessScopes: readonly string[];
   readonly allowedSensitivities: readonly ('public' | 'internal' | 'private' | 'restricted')[];
   readonly limit?: number;
-  readonly fusionPolicy?: Partial<HybridFusionPolicy>;
 };
 
 export type HybridRetrievalCoordinatorPort = {
   search(input: HybridRetrievalInput): Promise<HybridSearchResponse>;
+};
+
+export const deriveAuthorizedSensitivities = (
+  clearance: 'public' | 'internal' | 'private' | 'restricted',
+): readonly ('public' | 'internal' | 'private' | 'restricted')[] => {
+  switch (clearance) {
+    case 'public':
+      return ['public'] as const;
+    case 'internal':
+      return ['public', 'internal'] as const;
+    case 'private':
+      return ['public', 'internal', 'private'] as const;
+    case 'restricted':
+      return ['public', 'internal', 'private', 'restricted'] as const;
+  }
 };

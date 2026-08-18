@@ -3,13 +3,15 @@ import type { Pool } from 'pg';
 
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
 import { PostgresSemanticIndexRepository } from '../../adapters/semantic-index-postgres/src/index.js';
-import { PostgresSemanticActiveGenerationReader } from '../../adapters/semantic-active-generation-postgres/src/index.js';
+import { InMemorySemanticActiveGenerationReader } from '../../adapters/semantic-active-generation-in-memory/src/index.js';
 import {
   type EvidenceSpan,
+  type KnowledgeResourceResolverPort,
   type LexicalRetrieverPort,
   type SemanticEmbeddingResolverPort,
   type SemanticProjectionGeneration,
   type SemanticProjectionItem,
+  type SourceVersionResolverPort,
 } from '../../packages/contracts/src/index.js';
 import {
   type EvidenceSpanResolverPort,
@@ -29,7 +31,7 @@ describe('AKP-1 WP3: Hybrid Retrieval Database Integration Tests', () => {
   }
 
   const postgresIndexRepo = new PostgresSemanticIndexRepository(pool);
-  const activeGenReader = new PostgresSemanticActiveGenerationReader(pool);
+  const activeGenReader = new InMemorySemanticActiveGenerationReader();
   const fakeEmbedder = new DeterministicFakeEmbeddingAdapter({
     providerId: 'openai',
     embeddingModelId: 'text-embedding-3-small',
@@ -111,6 +113,7 @@ describe('AKP-1 WP3: Hybrid Retrieval Database Integration Tests', () => {
   };
 
   beforeEach(async () => {
+    activeGenReader.clearActiveGeneration(testProject);
     await pool.query(`DELETE FROM projection.semantic_generations WHERE project_id = $1`, [
       testProject,
     ]);
@@ -125,23 +128,9 @@ describe('AKP-1 WP3: Hybrid Retrieval Database Integration Tests', () => {
     }
   });
 
-  it('PostgresSemanticActiveGenerationReader loads the latest READY generation', async () => {
-    const reader = new PostgresSemanticActiveGenerationReader(pool);
-
-    const empty = await reader.getActiveGeneration(testProject);
-    expect(empty).toBeUndefined();
-
-    await postgresIndexRepo.saveGeneration(sampleGeneration);
-
-    const active = await reader.getActiveGeneration(testProject);
-    expect(active).toBeDefined();
-    expect(active?.generationId).toBe('gen-hybrid-001');
-    expect(active?.dimension).toBe(768);
-    expect(active?.buildStatus).toBe('READY');
-  });
-
   it('performs end-to-end Hybrid retrieval with PostgreSQL persistence, Security-before-Top-K, and RRF fusion', async () => {
     await postgresIndexRepo.saveGeneration(sampleGeneration);
+    activeGenReader.setActiveGeneration(sampleGeneration);
 
     // Embed and insert semantic items into PostgreSQL
     const embed1 = await fakeEmbedder.embed({
@@ -273,10 +262,29 @@ describe('AKP-1 WP3: Hybrid Retrieval Database Integration Tests', () => {
       getEvidenceSpan: async (_pId, evId) => evidenceMap[evId],
     };
 
+    const sourceVersionResolver: SourceVersionResolverPort = {
+      getSourceVersion: async (_pId, sourceVersionId) => ({
+        sourceVersionId,
+        projectId: testProject,
+        sourceId: sourceVersionId === 'src-ver-pg-2' ? 'src-doc-2' : 'src-doc-1',
+      }),
+    };
+
+    const resourceResolver: KnowledgeResourceResolverPort = {
+      resolveResource: async (_pId, resourceType, resourceId) => ({
+        text: `Authoritative ${resourceType}:${resourceId}`,
+        canonicalVersion: 1,
+        evidenceIds: [`ev-${resourceId.replace('claim-', '')}`],
+        sourceVersionId: 'src-ver-pg-1',
+      }),
+    };
+
     const coordinator = new HybridRetrievalCoordinator(
       lexicalRetriever,
       semanticRetriever,
+      resourceResolver,
       evidenceResolver,
+      sourceVersionResolver,
       activeGenReader,
       undefined,
       { clock: () => '2026-08-18T12:00:00.000Z' },

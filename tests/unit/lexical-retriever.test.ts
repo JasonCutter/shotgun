@@ -4,8 +4,10 @@ import {
   type CanonicalSnapshot,
   type ProjectionWatermark,
 } from '../../packages/contracts/src/index.js';
-import type { SearchProjectionRepositoryPort } from '../../modules/projection-search/src/index.js';
-import { LexicalRetriever } from '../../modules/hybrid-retrieval/src/index.js';
+import {
+  type LexicalSearchProjectionRepositoryPort,
+  LexicalRetriever,
+} from '../../modules/hybrid-retrieval/src/index.js';
 
 describe('LexicalRetriever Unit Tests', () => {
   const createRig = (options?: {
@@ -31,13 +33,15 @@ describe('LexicalRetriever Unit Tests', () => {
     };
 
     const recordedSearches: unknown[] = [];
-    const repository: SearchProjectionRepositoryPort = {
-      applyCommit: async () => {},
-      rebuild: async () => {},
-      markDegraded: async () => {},
+    const repository: LexicalSearchProjectionRepositoryPort = {
       findWatermark: async (projectId: string) =>
         watermark.projectId === projectId ? watermark : undefined,
-      search: async (projectId, query, limit, accessScopes) => {
+      search: async (
+        projectId: string,
+        query: string,
+        limit: number,
+        accessScopes: readonly string[],
+      ) => {
         recordedSearches.push({ projectId, query, limit, accessScopes });
         return options?.searchResults ?? [];
       },

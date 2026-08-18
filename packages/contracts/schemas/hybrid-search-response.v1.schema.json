@@ -117,7 +117,6 @@
           "lexicalScore": { "type": "number" },
           "lexicalMatchType": { "enum": ["FULL_TEXT", "TRIGRAM", "SUBSTRING"] },
           "semanticRank": { "type": "integer", "minimum": 1 },
-          "semanticDistance": { "type": "number" },
           "fusionRank": { "type": "integer", "minimum": 1 },
           "fusionScore": { "type": "number" }
         }

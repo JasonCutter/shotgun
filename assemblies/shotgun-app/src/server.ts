@@ -212,32 +212,16 @@ import {
   type HybridSearchResponse,
 } from '../../../packages/kernel/src/index.js';
 import {
-  type SemanticIndexRepositoryPort,
-  type SemanticEmbeddingProfileRepositoryPort,
-  type SemanticEmbeddingRegistryPort,
-  type SemanticEmbeddingExecutionPort,
-  type SemanticActiveGenerationReaderPort,
   type HybridRetrievalCoordinatorPort,
-  type ProviderStatusReaderPort,
+  type KnowledgeResourceResolverPort,
+  type SemanticActiveGenerationReaderPort,
+  type SemanticRetrieverPort,
 } from '../../../packages/contracts/src/index.js';
 import {
   createHybridRetrievalModule,
   HybridRetrievalCoordinator,
   LexicalRetriever,
-  SemanticRetriever,
 } from '../../../modules/hybrid-retrieval/src/index.js';
-import { InMemorySemanticActiveGenerationReader } from '../../../adapters/semantic-active-generation-in-memory/src/index.js';
-import { InMemorySemanticIndexRepository } from '../../../adapters/semantic-index-in-memory/src/index.js';
-import { InMemorySemanticEmbeddingProfileRepository } from '../../../adapters/semantic-embedding-in-memory/src/index.js';
-import {
-  DeterministicFakeEmbeddingAdapter,
-  SemanticEmbeddingProfileService,
-  StaticSemanticEmbeddingRegistry,
-} from '../../../modules/semantic-embedding/src/index.js';
-import { SemanticEmbeddingAuthorityResolver } from '../../../adapters/semantic-embedding-resolution/src/index.js';
-import { InMemoryCredentialVaultRepository } from '../../../adapters/credential-vault-in-memory/src/index.js';
-import { CredentialVaultService } from '../../../modules/credential-vault/src/index.js';
-import { parseProviderDeploymentCeiling } from '../../../modules/provider-privacy-policy/src/index.js';
 import {
   createIntakeModule,
   type IntakeRepositoryPort,
@@ -581,11 +565,8 @@ export type ApplicationOptions = {
   readonly spaDirectory?: string;
   readonly canonicalProjectionRecoveryIntervalMs?: number | false;
   readonly canonicalProjectionRecoveryReporter?: CanonicalProjectionRecoveryReporterPort;
-  readonly semanticIndexRepository?: SemanticIndexRepositoryPort;
+  readonly semanticRetriever?: SemanticRetrieverPort;
   readonly semanticActiveGenerationReader?: SemanticActiveGenerationReaderPort;
-  readonly semanticEmbeddingProfileRepository?: SemanticEmbeddingProfileRepositoryPort;
-  readonly semanticEmbeddingRegistry?: SemanticEmbeddingRegistryPort;
-  readonly semanticEmbeddingExecutionPort?: SemanticEmbeddingExecutionPort;
   readonly hybridRetrievalCoordinator?: HybridRetrievalCoordinatorPort;
   /** LPA-WP5 (D12 recovery harness / R3-1): when `false`, the startup AI
    *  Durable Materialization Recovery is NOT run (no expired-attempt mutation,
@@ -1680,85 +1661,52 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     },
     actionConnector,
   );
-  const semanticIndexRepository =
-    options.semanticIndexRepository ?? new InMemorySemanticIndexRepository();
-  const semanticActiveGenerationReader =
-    options.semanticActiveGenerationReader ?? new InMemorySemanticActiveGenerationReader();
-  const semanticEmbeddingProfileRepository =
-    options.semanticEmbeddingProfileRepository ?? new InMemorySemanticEmbeddingProfileRepository();
-  const semanticEmbeddingRegistry =
-    options.semanticEmbeddingRegistry ?? new StaticSemanticEmbeddingRegistry();
-  const semanticEmbeddingExecutionPort =
-    options.semanticEmbeddingExecutionPort ?? new DeterministicFakeEmbeddingAdapter();
-
-  const providerStatus: ProviderStatusReaderPort = {
-    getProvider: (id) => ({
-      providerId: id,
-      status: 'active',
-      registryRevision: 'prov:v1',
-    }),
-  };
-
-  const credentialVaultRepo = new InMemoryCredentialVaultRepository();
-  const credentialVault = new CredentialVaultService(credentialVaultRepo, {
-    read: () => ({ key: new Uint8Array(32), keyVersion: 'v1' }),
-  });
-
-  const semanticEmbeddingProfileService = new SemanticEmbeddingProfileService(
-    providerStatus,
-    semanticEmbeddingRegistry,
-    semanticEmbeddingProfileRepository,
-    {
-      getMetadata: async (scope) => credentialVault.getMetadata(scope),
-    },
-  );
-
-  const fallbackApprovalPort: ProviderExternalTransferApprovalPort = {
-    getCurrent: async () => undefined,
-    listHistory: async () => [],
-    propose: async () => {
-      throw new Error('Not implemented');
-    },
-    approve: async () => {
-      throw new Error('Not implemented');
-    },
-  };
-
-  const semanticEmbeddingResolver = new SemanticEmbeddingAuthorityResolver(
-    providerStatus,
-    semanticEmbeddingRegistry,
-    semanticEmbeddingProfileService,
-    credentialVault,
-    {
-      deploymentCeiling: parseProviderDeploymentCeiling({
-        providerAllowlist: 'deepseek,openai,google-gemini',
-      }),
-      approvalAuthority: options.providerExternalTransferApprovals ?? fallbackApprovalPort,
-    },
-  );
-
-  const semanticRetriever = new SemanticRetriever(
-    semanticIndexRepository,
-    semanticEmbeddingResolver,
-    semanticEmbeddingExecutionPort,
-    semanticActiveGenerationReader,
-  );
 
   const lexicalRetriever = new LexicalRetriever(searchProjectionRepository, async (projectId) =>
     canonicalSnapshot.getSnapshot(projectId),
   );
 
+  const knowledgeResourceResolver: KnowledgeResourceResolverPort = {
+    async resolveResource(projectId, resourceType, resourceId) {
+      if (resourceType === 'CLAIM') {
+        const claim = await canonicalKnowledgeRepository.findClaim(projectId, resourceId);
+        if (claim) {
+          return {
+            text: claim.claimText,
+            canonicalVersion: 1,
+            evidenceIds: claim.evidenceIds,
+            sourceVersionId: claim.sourceVersionId,
+            accessScope: claim.accessScope,
+            sensitivity: claim.sensitivity,
+          };
+        }
+      }
+      return undefined;
+    },
+  };
+
   const hybridRetrievalCoordinator =
     options.hybridRetrievalCoordinator ??
     new HybridRetrievalCoordinator(
       lexicalRetriever,
-      semanticRetriever,
+      options.semanticRetriever,
+      knowledgeResourceResolver,
       {
         getEvidenceSpan: async (projectId, evidenceId) =>
           evidenceRepository.findById(projectId, evidenceId),
       },
-      semanticActiveGenerationReader,
-      semanticEmbeddingProfileService,
+      {
+        getSourceVersion: async (projectId, sourceVersionId) => {
+          const orig = await originalAssetRepository.findByVersion(projectId, sourceVersionId);
+          if (!orig) return undefined;
+          return {
+            sourceVersionId,
+            projectId: orig.projectId,
+            sourceId: orig.sourceId,
+          };
+        },
+      },
+      options.semanticActiveGenerationReader,
     );
 
   const hybridRetrieval = createHybridRetrievalModule(hybridRetrievalCoordinator);

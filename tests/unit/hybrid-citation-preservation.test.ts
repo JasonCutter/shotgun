@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   type EvidenceSpan,
+  type KnowledgeResourceResolverPort,
   type LexicalCandidateResult,
   type LexicalRetrieverPort,
   type SemanticActiveGenerationReaderPort,
   type SemanticCandidateResult,
   type SemanticProjectionGeneration,
   type SemanticRetrieverPort,
+  type SourceVersionInfo,
+  type SourceVersionResolverPort,
 } from '../../packages/contracts/src/index.js';
 import {
   type EvidenceSpanResolverPort,
@@ -40,6 +43,8 @@ describe('Hybrid Citation Lineage Preservation Unit Tests', () => {
     readonly lexicalItems?: readonly LexicalCandidateResult[];
     readonly semanticItems?: readonly SemanticCandidateResult[];
     readonly evidenceSpans?: Record<string, EvidenceSpan>;
+    readonly sourceVersions?: Record<string, SourceVersionInfo>;
+    readonly resourceResolver?: KnowledgeResourceResolverPort;
   }) => {
     const lexicalRetriever: LexicalRetrieverPort = {
       retrieve: async () => ({
@@ -62,6 +67,26 @@ describe('Hybrid Citation Lineage Preservation Unit Tests', () => {
       getEvidenceSpan: async (_projId, evId) => options?.evidenceSpans?.[evId],
     };
 
+    const sourceVersionResolver: SourceVersionResolverPort = {
+      getSourceVersion: async (_projId, sourceVersionId) =>
+        options?.sourceVersions
+          ? options.sourceVersions[sourceVersionId]
+          : {
+              sourceVersionId,
+              projectId: 'proj-alpha',
+              sourceId: 'doc-source-1',
+            },
+    };
+
+    const defaultResourceResolver: KnowledgeResourceResolverPort = {
+      resolveResource: async (_projId, resourceType, resourceId) => ({
+        text: `Authoritative text for ${resourceType}:${resourceId}`,
+        canonicalVersion: 1,
+        evidenceIds: [`ev-${resourceId}`],
+        sourceVersionId: 'src-ver-101',
+      }),
+    };
+
     const activeGenerationReader: SemanticActiveGenerationReaderPort = {
       getActiveGeneration: async () => sampleGeneration,
     };
@@ -69,7 +94,9 @@ describe('Hybrid Citation Lineage Preservation Unit Tests', () => {
     const coordinator = new HybridRetrievalCoordinator(
       lexicalRetriever,
       semanticRetriever,
+      options?.resourceResolver ?? defaultResourceResolver,
       evidenceResolver,
+      sourceVersionResolver,
       activeGenerationReader,
       undefined,
       { clock: () => '2026-08-18T12:00:00.000Z' },
@@ -116,6 +143,13 @@ describe('Hybrid Citation Lineage Preservation Unit Tests', () => {
     const { coordinator } = createRig({
       lexicalItems,
       evidenceSpans: { 'ev-1': span1 },
+      sourceVersions: {
+        'src-ver-101': {
+          sourceVersionId: 'src-ver-101',
+          projectId: 'proj-alpha',
+          sourceId: 'doc-source-1',
+        },
+      },
     });
 
     const response = await coordinator.search({
@@ -141,32 +175,45 @@ describe('Hybrid Citation Lineage Preservation Unit Tests', () => {
     });
   });
 
-  it('fails with VALIDATION_ERROR when candidate has empty evidenceIds', async () => {
-    const candidateWithNoEvidence: SemanticCandidateResult = {
-      semanticItemId: 'sem-bad',
+  it('fails explicitly when referenced SourceVersion does not exist', async () => {
+    const span1: EvidenceSpan = {
+      evidenceId: 'ev-1',
+      revisionId: 'rev-101',
       projectId: 'proj-alpha',
-      generationId: 'gen-001',
-      resourceType: 'CLAIM',
-      resourceId: 'claim-bad',
-      sourceProjectionDigest: 'sha256:src-digest',
-      canonicalVersion: 1,
-      semanticTextDigest: 'sha256:text-bad',
-      embeddingProfileId: 'prof-1',
-      embeddingProfileRevision: 1,
-      representationVersion: 'semantic-representation:v1',
-      distance: 0.1,
-      dimension: 768,
-      evidenceIds: [],
+      sourceId: 'doc-source-1',
+      sourceVersionId: 'src-ver-nonexistent',
+      pointer: '/blocks/0/sentences/0',
+      nodeKind: 'sentence',
+      origin: 'source',
+      position: { type: 'TextPositionSelector', start: 0, end: 10, unit: 'unicode-code-point' },
+      quote: { type: 'TextQuoteSelector', exact: 'Quote text.' },
+      exactHash: 'sha256:exact1',
       accessScope: ['finance'],
       sensitivity: 'internal',
-      indexedAt: '2026-08-18T10:00:00.000Z',
       createdAt: '2026-08-18T10:00:00.000Z',
-      updatedAt: '2026-08-18T10:00:00.000Z',
     };
 
+    const lexicalItems: LexicalCandidateResult[] = [
+      {
+        claimId: 'claim-1',
+        commitId: 'commit-1',
+        revisionId: 'rev-101',
+        canonicalVersion: 1,
+        claimText: 'Quote text.',
+        sourceVersionId: 'src-ver-nonexistent',
+        evidenceIds: ['ev-1'],
+        accessScope: ['finance'],
+        sensitivity: 'internal',
+        score: 0.9,
+        matchType: 'FULL_TEXT',
+        rank: 1,
+      },
+    ];
+
     const { coordinator } = createRig({
-      semanticItems: [candidateWithNoEvidence],
-      evidenceSpans: {},
+      lexicalItems,
+      evidenceSpans: { 'ev-1': span1 },
+      sourceVersions: {}, // empty source version repo -> undefined
     });
 
     await expect(
@@ -176,7 +223,66 @@ describe('Hybrid Citation Lineage Preservation Unit Tests', () => {
         accessScopes: ['finance'],
         allowedSensitivities: ['internal'],
       }),
-    ).rejects.toThrow('Candidate CLAIM:claim-bad has no evidence references.');
+    ).rejects.toThrow(
+      "SourceVersion 'src-ver-nonexistent' referenced by EvidenceSpan 'ev-1' was not found.",
+    );
+  });
+
+  it('fails explicitly when SourceVersion project/source lineage mismatches', async () => {
+    const span1: EvidenceSpan = {
+      evidenceId: 'ev-1',
+      revisionId: 'rev-101',
+      projectId: 'proj-alpha',
+      sourceId: 'doc-source-1',
+      sourceVersionId: 'src-ver-101',
+      pointer: '/blocks/0/sentences/0',
+      nodeKind: 'sentence',
+      origin: 'source',
+      position: { type: 'TextPositionSelector', start: 0, end: 10, unit: 'unicode-code-point' },
+      quote: { type: 'TextQuoteSelector', exact: 'Quote text.' },
+      exactHash: 'sha256:exact1',
+      accessScope: ['finance'],
+      sensitivity: 'internal',
+      createdAt: '2026-08-18T10:00:00.000Z',
+    };
+
+    const lexicalItems: LexicalCandidateResult[] = [
+      {
+        claimId: 'claim-1',
+        commitId: 'commit-1',
+        revisionId: 'rev-101',
+        canonicalVersion: 1,
+        claimText: 'Quote text.',
+        sourceVersionId: 'src-ver-101',
+        evidenceIds: ['ev-1'],
+        accessScope: ['finance'],
+        sensitivity: 'internal',
+        score: 0.9,
+        matchType: 'FULL_TEXT',
+        rank: 1,
+      },
+    ];
+
+    const { coordinator } = createRig({
+      lexicalItems,
+      evidenceSpans: { 'ev-1': span1 },
+      sourceVersions: {
+        'src-ver-101': {
+          sourceVersionId: 'src-ver-101',
+          projectId: 'proj-beta', // Wrong project!
+          sourceId: 'doc-source-1',
+        },
+      },
+    });
+
+    await expect(
+      coordinator.search({
+        projectId: 'proj-alpha',
+        query: 'test query',
+        accessScopes: ['finance'],
+        allowedSensitivities: ['internal'],
+      }),
+    ).rejects.toThrow("does not match project or source lineage for EvidenceSpan 'ev-1'");
   });
 
   it('fails with VALIDATION_ERROR when referenced EvidenceSpan does not exist in evidence repository', async () => {
@@ -204,7 +310,7 @@ describe('Hybrid Citation Lineage Preservation Unit Tests', () => {
 
     const { coordinator } = createRig({
       semanticItems: [candidateWithMissingEvidence],
-      evidenceSpans: {}, // Empty repository
+      evidenceSpans: {},
     });
 
     await expect(

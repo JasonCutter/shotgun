@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   type EvidenceSpan,
+  type KnowledgeResourceResolverPort,
   type LexicalCandidateResult,
   type LexicalRetrieverPort,
   type SemanticActiveGenerationReaderPort,
   type SemanticCandidateResult,
   type SemanticProjectionGeneration,
+  type SemanticResourceType,
   type SemanticRetrieverPort,
+  type SourceVersionResolverPort,
 } from '../../packages/contracts/src/index.js';
 import {
   type EvidenceSpanResolverPort,
@@ -34,6 +37,12 @@ describe('Hybrid Fusion (RRF) & Coordinator Unit Tests', () => {
   const createRig = (options?: {
     readonly lexicalItems?: readonly LexicalCandidateResult[];
     readonly semanticItems?: readonly SemanticCandidateResult[];
+    readonly resourceResolver?: KnowledgeResourceResolverPort;
+    readonly fusionPolicy?: {
+      readonly k?: number;
+      readonly lexicalWeight?: number;
+      readonly semanticWeight?: number;
+    };
   }) => {
     const lexicalRetriever: LexicalRetrieverPort = {
       retrieve: async () => ({
@@ -52,8 +61,25 @@ describe('Hybrid Fusion (RRF) & Coordinator Unit Tests', () => {
       retrieve: async () => options?.semanticItems ?? [],
     };
 
+    const defaultResourceResolver: KnowledgeResourceResolverPort = {
+      resolveResource: async (_projId, resourceType, resourceId) => ({
+        text: `Authoritative content for ${resourceType}:${resourceId}`,
+        canonicalVersion: 1,
+        evidenceIds: [`ev-${resourceId}`],
+        sourceVersionId: 'src-ver-1',
+      }),
+    };
+
     const evidenceResolver: EvidenceSpanResolverPort = {
       getEvidenceSpan: async (_projId, evId) => createEvidenceSpan(evId),
+    };
+
+    const sourceVersionResolver: SourceVersionResolverPort = {
+      getSourceVersion: async (_projId, sourceVersionId) => ({
+        sourceVersionId,
+        projectId: 'proj-alpha',
+        sourceId: 'src-1',
+      }),
     };
 
     const sampleGeneration: SemanticProjectionGeneration = {
@@ -85,10 +111,15 @@ describe('Hybrid Fusion (RRF) & Coordinator Unit Tests', () => {
     const coordinator = new HybridRetrievalCoordinator(
       lexicalRetriever,
       semanticRetriever,
+      options?.resourceResolver ?? defaultResourceResolver,
       evidenceResolver,
+      sourceVersionResolver,
       activeGenerationReader,
       undefined,
-      { clock: () => '2026-08-18T12:00:00.000Z' },
+      {
+        clock: () => '2026-08-18T12:00:00.000Z',
+        fusionPolicy: options?.fusionPolicy,
+      },
     );
 
     return { coordinator };
@@ -187,11 +218,6 @@ describe('Hybrid Fusion (RRF) & Coordinator Unit Tests', () => {
       limit: 10,
     });
 
-    // Score calculations with k = 60:
-    // claim-1: 1/(60+1) + 1/(60+2) = 1/61 + 1/62 = 0.0163934 + 0.0161290 = 0.0325225
-    // claim-3: 1/(60+1) = 1/61 = 0.0163934
-    // claim-2: 1/(60+2) = 1/62 = 0.0161290
-
     expect(response.items).toHaveLength(3);
 
     // Rank 1: claim-1 (dual channel HYBRID)
@@ -209,6 +235,7 @@ describe('Hybrid Fusion (RRF) & Coordinator Unit Tests', () => {
     expect(response.items[1]!.lexicalRank).toBeUndefined();
     expect(response.items[1]!.semanticRank).toBe(1);
     expect(response.items[1]!.fusionScore).toBeCloseTo(1 / 61, 6);
+    expect(response.items[1]!.text).toBe('Authoritative content for CLAIM:claim-3');
 
     // Rank 3: claim-2 (LEXICAL only)
     expect(response.items[2]!.resourceId).toBe('claim-2');
@@ -220,15 +247,6 @@ describe('Hybrid Fusion (RRF) & Coordinator Unit Tests', () => {
   });
 
   it('performs deterministic tie-breaking on score tie', async () => {
-    // We construct two candidates that receive identical RRF fusion scores (1/61 each):
-    // 1. claim-02 from lexical search (rank 1 -> 1/61)
-    // 2. dec-01 from semantic search (rank 1 -> 1/61)
-    // 3. claim-01 from another equal channel (or another tie test)
-    //
-    // Tied fusionScore: 1/61.
-    // Order should be:
-    // 1. CLAIM:claim-02 (resourceType 'CLAIM' < 'DECISION')
-    // 2. DECISION:dec-01
     const lexicalItems: LexicalCandidateResult[] = [
       {
         claimId: 'claim-02',
@@ -277,7 +295,6 @@ describe('Hybrid Fusion (RRF) & Coordinator Unit Tests', () => {
       query: 'search query',
       accessScopes: ['finance'],
       allowedSensitivities: ['internal'],
-      fusionPolicy: { k: 60, lexicalWeight: 1, semanticWeight: 1 },
     });
 
     expect(response.items).toHaveLength(2);
@@ -291,7 +308,113 @@ describe('Hybrid Fusion (RRF) & Coordinator Unit Tests', () => {
     expect(response.items[1]!.resourceId).toBe('dec-01');
   });
 
-  it('respects custom RRF k parameter and weights', async () => {
+  it('resolves semantic-only resource content for all 6 allowed resource types', async () => {
+    const resourceTypes: readonly SemanticResourceType[] = [
+      'CLAIM',
+      'FACT',
+      'ENTITY',
+      'RELATION',
+      'EVENT',
+      'DECISION',
+    ];
+
+    const semanticItems: SemanticCandidateResult[] = resourceTypes.map((type, idx) => ({
+      semanticItemId: `sem-${type.toLowerCase()}`,
+      projectId: 'proj-alpha',
+      generationId: 'gen-001',
+      resourceType: type,
+      resourceId: `${type.toLowerCase()}-${idx + 1}`,
+      sourceProjectionDigest: 'sha256:src-digest',
+      canonicalVersion: 1,
+      semanticTextDigest: `sha256:text-${type}`,
+      embeddingProfileId: 'prof-1',
+      embeddingProfileRevision: 1,
+      representationVersion: 'semantic-representation:v1',
+      distance: 0.1,
+      dimension: 768,
+      evidenceIds: [`ev-${type.toLowerCase()}`],
+      accessScope: ['finance'],
+      sensitivity: 'internal',
+      indexedAt: '2026-08-18T10:00:00.000Z',
+      createdAt: '2026-08-18T10:00:00.000Z',
+      updatedAt: '2026-08-18T10:00:00.000Z',
+    }));
+
+    const { coordinator } = createRig({
+      lexicalItems: [],
+      semanticItems,
+      resourceResolver: {
+        resolveResource: async (_projId, resourceType, resourceId) => ({
+          text: `Authoritative resolved content for ${resourceType}:${resourceId}`,
+          canonicalVersion: 2,
+          evidenceIds: [`ev-${resourceType.toLowerCase()}`],
+          sourceVersionId: 'src-ver-1',
+        }),
+      },
+    });
+
+    const response = await coordinator.search({
+      projectId: 'proj-alpha',
+      query: 'search all types',
+      accessScopes: ['finance'],
+      allowedSensitivities: ['internal'],
+      limit: 10,
+    });
+
+    expect(response.items).toHaveLength(6);
+    for (const item of response.items) {
+      expect(item.text).toBe(
+        `Authoritative resolved content for ${item.resourceType}:${item.resourceId}`,
+      );
+      expect(item.text.length).toBeGreaterThan(0);
+      expect(item.canonicalVersion).toBe(2);
+    }
+  });
+
+  it('fails closed when semantic resource identity cannot be resolved', async () => {
+    const semanticItems: SemanticCandidateResult[] = [
+      {
+        semanticItemId: 'sem-unresolved',
+        projectId: 'proj-alpha',
+        generationId: 'gen-001',
+        resourceType: 'FACT',
+        resourceId: 'fact-missing',
+        sourceProjectionDigest: 'sha256:src-digest',
+        canonicalVersion: 1,
+        semanticTextDigest: 'sha256:text-missing',
+        embeddingProfileId: 'prof-1',
+        embeddingProfileRevision: 1,
+        representationVersion: 'semantic-representation:v1',
+        distance: 0.1,
+        dimension: 768,
+        evidenceIds: ['ev-fact'],
+        accessScope: ['finance'],
+        sensitivity: 'internal',
+        indexedAt: '2026-08-18T10:00:00.000Z',
+        createdAt: '2026-08-18T10:00:00.000Z',
+        updatedAt: '2026-08-18T10:00:00.000Z',
+      },
+    ];
+
+    const { coordinator } = createRig({
+      lexicalItems: [],
+      semanticItems,
+      resourceResolver: {
+        resolveResource: async () => undefined,
+      },
+    });
+
+    await expect(
+      coordinator.search({
+        projectId: 'proj-alpha',
+        query: 'search query',
+        accessScopes: ['finance'],
+        allowedSensitivities: ['internal'],
+      }),
+    ).rejects.toThrow('could not be resolved from authoritative knowledge');
+  });
+
+  it('respects internal test-configured RRF fusion policy', async () => {
     const lexicalItems: LexicalCandidateResult[] = [
       {
         claimId: 'claim-1',
@@ -309,14 +432,17 @@ describe('Hybrid Fusion (RRF) & Coordinator Unit Tests', () => {
       },
     ];
 
-    const { coordinator } = createRig({ lexicalItems, semanticItems: [] });
+    const { coordinator } = createRig({
+      lexicalItems,
+      semanticItems: [],
+      fusionPolicy: { k: 20, lexicalWeight: 2.0 },
+    });
 
     const response = await coordinator.search({
       projectId: 'proj-alpha',
       query: 'query',
       accessScopes: ['finance'],
       allowedSensitivities: ['internal'],
-      fusionPolicy: { k: 20, lexicalWeight: 2.0 },
     });
 
     expect(response.fusionPolicy.k).toBe(20);

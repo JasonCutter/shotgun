@@ -4,12 +4,14 @@ import {
   type EvidenceSpan,
   type HybridSearchRequest,
   type HybridSearchResponse,
+  type KnowledgeResourceResolverPort,
   type LexicalCandidateResult,
   type LexicalRetrieverPort,
   type SemanticActiveGenerationReaderPort,
   type SemanticCandidateResult,
   type SemanticProjectionGeneration,
   type SemanticRetrieverPort,
+  type SourceVersionResolverPort,
   createQuery,
   ShotgunKernel,
 } from '../../packages/kernel/src/index.js';
@@ -62,6 +64,23 @@ describe('SearchHybridKnowledge Contract Test', () => {
         },
     };
 
+    const sourceVersionResolver: SourceVersionResolverPort = {
+      getSourceVersion: async (_projId, sourceVersionId) => ({
+        sourceVersionId,
+        projectId: 'proj-alpha',
+        sourceId: 'src-1',
+      }),
+    };
+
+    const resourceResolver: KnowledgeResourceResolverPort = {
+      resolveResource: async (_projId, resourceType, resourceId) => ({
+        text: `Authoritative content for ${resourceType}:${resourceId}`,
+        canonicalVersion: 1,
+        evidenceIds: [`ev-${resourceId}`],
+        sourceVersionId: 'src-ver-1',
+      }),
+    };
+
     const sampleGeneration: SemanticProjectionGeneration = {
       projectId: 'proj-alpha',
       generationId: 'gen-001',
@@ -91,7 +110,9 @@ describe('SearchHybridKnowledge Contract Test', () => {
     const coordinator = new HybridRetrievalCoordinator(
       lexicalRetriever,
       semanticRetriever,
+      resourceResolver,
       evidenceResolver,
+      sourceVersionResolver,
       activeGenerationReader,
       undefined,
       { clock: () => '2026-08-18T12:00:00.000Z' },
@@ -182,6 +203,29 @@ describe('SearchHybridKnowledge Contract Test', () => {
     expect(item.citations).toHaveLength(1);
     expect(item.citations[0]!.evidenceId).toBe('ev-1');
     expect(item.citations[0]!.exactQuote).toBe('Exact quote in evidence.');
+  });
+
+  it('rejects query when Product caller attempts to pass or override fusion policy', async () => {
+    const { kernel } = createHarness();
+    await kernel.start();
+
+    const query = createQuery<Record<string, unknown>>({
+      messageType: 'SearchHybridKnowledge',
+      schemaVersion: '1.0.0',
+      producerModule: 'test-client',
+      producerVersion: '1.0.0',
+      projectId: 'proj-alpha',
+      actor: { type: 'user', id: 'user-1' },
+      security: { accessScope: ['owner'], sensitivity: 'internal', dataClassification: 'internal' },
+      payload: {
+        query: 'test query',
+        fusionPolicy: { k: 10 },
+      },
+    });
+
+    await expect(kernel.connector.query(query)).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+    });
   });
 
   it('rejects query when security context is incomplete', async () => {

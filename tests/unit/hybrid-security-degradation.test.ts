@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  deriveAuthorizedSensitivities,
   type EvidenceSpan,
+  type KnowledgeResourceResolverPort,
   type LexicalCandidateResult,
   type LexicalRetrieverPort,
   type SemanticActiveGenerationReaderPort,
+  type SemanticCandidateResult,
   type SemanticRetrieverPort,
   SemanticEmbeddingError,
 } from '../../packages/contracts/src/index.js';
@@ -45,7 +48,19 @@ describe('Hybrid Security & Request-Local Semantic Degradation Unit Tests', () =
     rank: 1,
   };
 
-  const createRig = (options: { readonly semanticError?: SemanticEmbeddingError }) => {
+  const defaultResourceResolver: KnowledgeResourceResolverPort = {
+    resolveResource: async (_projId, resourceType, resourceId) => ({
+      text: `Authoritative content for ${resourceType}:${resourceId}`,
+      canonicalVersion: 1,
+      evidenceIds: [`ev-${resourceId}`],
+      sourceVersionId: 'src-ver-1',
+    }),
+  };
+
+  const createRig = (options: {
+    readonly semanticError?: unknown;
+    readonly semanticRetriever?: SemanticRetrieverPort;
+  }) => {
     const lexicalRetriever: LexicalRetrieverPort = {
       retrieve: async () => ({
         items: [sampleLexicalItem],
@@ -59,7 +74,7 @@ describe('Hybrid Security & Request-Local Semantic Degradation Unit Tests', () =
       }),
     };
 
-    const semanticRetriever: SemanticRetrieverPort = {
+    const semanticRetriever: SemanticRetrieverPort = options.semanticRetriever ?? {
       retrieve: async () => {
         if (options.semanticError) {
           throw options.semanticError;
@@ -78,8 +93,14 @@ describe('Hybrid Security & Request-Local Semantic Degradation Unit Tests', () =
 
     const coordinator = new HybridRetrievalCoordinator(
       lexicalRetriever,
-      semanticRetriever,
+      options.semanticRetriever !== undefined
+        ? options.semanticRetriever
+        : options.semanticError
+          ? semanticRetriever
+          : undefined,
+      defaultResourceResolver,
       evidenceResolver,
+      undefined,
       activeGenerationReader,
       undefined,
       { clock: () => '2026-08-18T12:00:00.000Z' },
@@ -87,6 +108,87 @@ describe('Hybrid Security & Request-Local Semantic Degradation Unit Tests', () =
 
     return { coordinator };
   };
+
+  it('correctly derives hierarchical authorized sensitivity sets server-side', () => {
+    expect(deriveAuthorizedSensitivities('public')).toEqual(['public']);
+    expect(deriveAuthorizedSensitivities('internal')).toEqual(['public', 'internal']);
+    expect(deriveAuthorizedSensitivities('private')).toEqual(['public', 'internal', 'private']);
+    expect(deriveAuthorizedSensitivities('restricted')).toEqual([
+      'public',
+      'internal',
+      'private',
+      'restricted',
+    ]);
+  });
+
+  it('allows a private caller to retrieve public, internal, and private, but blocks restricted items', async () => {
+    const candidates: SemanticCandidateResult[] = [
+      {
+        semanticItemId: 'sem-pub',
+        projectId: 'proj-alpha',
+        generationId: 'gen-001',
+        resourceType: 'CLAIM',
+        resourceId: 'claim-pub',
+        sourceProjectionDigest: 'sha256:src-digest',
+        canonicalVersion: 1,
+        semanticTextDigest: 'sha256:text-pub',
+        embeddingProfileId: 'prof-1',
+        embeddingProfileRevision: 1,
+        representationVersion: 'semantic-representation:v1',
+        distance: 0.1,
+        dimension: 768,
+        evidenceIds: ['ev-lex-1'],
+        accessScope: ['finance'],
+        sensitivity: 'public',
+        indexedAt: '2026-08-18T10:00:00.000Z',
+        createdAt: '2026-08-18T10:00:00.000Z',
+        updatedAt: '2026-08-18T10:00:00.000Z',
+      },
+      {
+        semanticItemId: 'sem-priv',
+        projectId: 'proj-alpha',
+        generationId: 'gen-001',
+        resourceType: 'CLAIM',
+        resourceId: 'claim-priv',
+        sourceProjectionDigest: 'sha256:src-digest',
+        canonicalVersion: 1,
+        semanticTextDigest: 'sha256:text-priv',
+        embeddingProfileId: 'prof-1',
+        embeddingProfileRevision: 1,
+        representationVersion: 'semantic-representation:v1',
+        distance: 0.12,
+        dimension: 768,
+        evidenceIds: ['ev-lex-1'],
+        accessScope: ['finance'],
+        sensitivity: 'private',
+        indexedAt: '2026-08-18T10:00:00.000Z',
+        createdAt: '2026-08-18T10:00:00.000Z',
+        updatedAt: '2026-08-18T10:00:00.000Z',
+      },
+    ];
+
+    let passedSensitivities: readonly string[] = [];
+    const customSemanticRetriever: SemanticRetrieverPort = {
+      retrieve: async (input) => {
+        passedSensitivities = input.allowedSensitivities;
+        return candidates.filter((c) => input.allowedSensitivities.includes(c.sensitivity));
+      },
+    };
+
+    const { coordinator } = createRig({ semanticRetriever: customSemanticRetriever });
+
+    const privateClearanceSensitivities = deriveAuthorizedSensitivities('private');
+    const response = await coordinator.search({
+      projectId: 'proj-alpha',
+      query: 'financial report',
+      accessScopes: ['finance'],
+      allowedSensitivities: privateClearanceSensitivities,
+    });
+
+    expect(passedSensitivities).toEqual(['public', 'internal', 'private']);
+    expect(response.items.some((i) => i.resourceId === 'claim-pub')).toBe(true);
+    expect(response.items.some((i) => i.resourceId === 'claim-priv')).toBe(true);
+  });
 
   it('degrades to lexical search with NOT_CONFIGURED when profile is missing', async () => {
     const error = new SemanticEmbeddingError({
@@ -106,8 +208,8 @@ describe('Hybrid Security & Request-Local Semantic Degradation Unit Tests', () =
 
     expect(response.readiness.degraded).toBe(true);
     expect(response.readiness.semantic.status).toBe('NOT_CONFIGURED');
-    expect(response.readiness.degradedReason).toContain(
-      'Active semantic embedding profile is required',
+    expect(response.readiness.degradedReason).toBe(
+      'Active semantic embedding profile is not configured.',
     );
     expect(response.readiness.lexical.status).toBe('READY');
 
@@ -136,56 +238,56 @@ describe('Hybrid Security & Request-Local Semantic Degradation Unit Tests', () =
 
     expect(response.readiness.degraded).toBe(true);
     expect(response.readiness.semantic.status).toBe('UNAVAILABLE');
-    expect(response.readiness.degradedReason).toContain(
-      'No ready active semantic projection generation',
+    expect(response.readiness.degradedReason).toBe(
+      'Active semantic projection generation is unavailable.',
     );
     expect(response.items).toHaveLength(1);
   });
 
-  it('degrades to lexical search with DEGRADED when query embedding is policy-denied', async () => {
-    const error = new SemanticEmbeddingError({
-      code: 'POLICY_DENIED',
-      safeMessage: 'Provider privacy policy prohibits external transfer of restricted data.',
-      operation: 'resolve-privacy-authority',
-    });
-
-    const { coordinator } = createRig({ semanticError: error });
+  it('degrades safely when semantic retriever is not configured at all', async () => {
+    const { coordinator } = createRig({});
 
     const response = await coordinator.search({
       projectId: 'proj-alpha',
-      query: 'secret restricted query',
+      query: 'revenue forecasts',
       accessScopes: ['finance'],
-      allowedSensitivities: ['restricted'],
+      allowedSensitivities: ['internal'],
     });
 
     expect(response.readiness.degraded).toBe(true);
-    expect(response.readiness.semantic.status).toBe('DEGRADED');
-    expect(response.readiness.degradedReason).toBe(
-      'Query embedding policy denied for requested sensitivity.',
-    );
+    expect(response.readiness.semantic.status).toBe('UNAVAILABLE');
+    expect(response.readiness.degradedReason).toBe('Semantic retrieval is not configured.');
     expect(response.items).toHaveLength(1);
-    expect(response.items[0]!.signals).toEqual(['LEXICAL']);
   });
 
-  it('degrades to lexical search with DEGRADED on embedding provider timeout or failure', async () => {
-    const error = new SemanticEmbeddingError({
-      code: 'TIMEOUT',
-      safeMessage: 'Embedding provider API timed out after 5000ms.',
-      operation: 'embed',
-    });
+  it('sanitizes unexpected errors and never leaks secrets or internal exception details', async () => {
+    const rawSecretError = new Error(
+      'DATABASE_CONNECTION_ERROR: postgresql://admin:SECRET_PASSWORD_123@internal-db:5432/shotgun table projection.semantic_items failed with FATAL 57P01',
+    );
 
-    const { coordinator } = createRig({ semanticError: error });
+    const { coordinator } = createRig({ semanticError: rawSecretError });
 
     const response = await coordinator.search({
       projectId: 'proj-alpha',
-      query: 'revenue',
+      query: 'sensitive search',
       accessScopes: ['finance'],
       allowedSensitivities: ['internal'],
     });
 
     expect(response.readiness.degraded).toBe(true);
     expect(response.readiness.semantic.status).toBe('DEGRADED');
-    expect(response.readiness.degradedReason).toContain('Embedding provider API timed out');
-    expect(response.items).toHaveLength(1);
+    expect(response.readiness.degradedReason).toBe(
+      'Semantic retrieval is temporarily unavailable.',
+    );
+    expect(response.readiness.semantic.reason).toBe(
+      'Semantic retrieval is temporarily unavailable.',
+    );
+
+    // Ensure secret text is nowhere in the entire JSON response
+    const jsonStr = JSON.stringify(response);
+    expect(jsonStr).not.toContain('SECRET_PASSWORD_123');
+    expect(jsonStr).not.toContain('DATABASE_CONNECTION_ERROR');
+    expect(jsonStr).not.toContain('57P01');
+    expect(jsonStr).not.toContain('internal-db');
   });
 });

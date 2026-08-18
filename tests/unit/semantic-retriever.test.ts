@@ -43,7 +43,7 @@ const createSampleModelDescriptor = (
   displayName: 'Text Embedding 3 Small',
   providerDefaultDimension: 1536,
   shotgunDefaultDimension: 768,
-  shotgunAllowedDimensions: [768, 1536],
+  shotgunAllowedDimensions: [512, 768, 1536],
   shotgunBatchLimit: 100,
   capabilityRevision: 'semantic-embedding-catalog:v1',
   supportedDistanceMetrics: ['cosine', 'dot_product', 'euclidean'],
@@ -176,7 +176,7 @@ describe('SemanticRetriever Unit Tests', () => {
         accessScopes: ['public'],
         allowedSensitivities: ['public'],
       }),
-    ).rejects.toThrow('Project ID and query are required');
+    ).rejects.toThrow('Project ID is required');
 
     await expect(
       retriever.retrieve({
@@ -185,7 +185,7 @@ describe('SemanticRetriever Unit Tests', () => {
         accessScopes: ['public'],
         allowedSensitivities: ['public'],
       }),
-    ).rejects.toThrow('Project ID and query are required');
+    ).rejects.toThrow('Search query is required');
 
     await expect(
       retriever.retrieve({
@@ -203,7 +203,7 @@ describe('SemanticRetriever Unit Tests', () => {
         accessScopes: ['public'],
         allowedSensitivities: [],
       }),
-    ).rejects.toThrow('Allowed sensitivities must be provided');
+    ).rejects.toThrow('Allowed sensitivities must be a non-empty array');
 
     await expect(
       retriever.retrieve({
@@ -274,21 +274,145 @@ describe('SemanticRetriever Unit Tests', () => {
     );
   });
 
-  it('fails with VALIDATION_FAILURE when active generation does not match resolved profile', async () => {
-    const incompatibleGen = createSampleGeneration({
-      embeddingProfileId: 'prof-different',
+  it('supports non-default allowed profile dimension (e.g. 512)', async () => {
+    const customProfile = createSampleProfile({ dimension: 512 });
+    const customGen = createSampleGeneration({ dimension: 512 });
+    const { retriever, recordedQueries } = createRig({
+      profile: customProfile,
+      generation: customGen,
     });
-    const { retriever } = createRig({ generation: incompatibleGen });
+
+    await retriever.retrieve({
+      projectId: 'proj-alpha',
+      query: 'test query',
+      accessScopes: ['public'],
+      allowedSensitivities: ['public'],
+    });
+
+    expect(recordedQueries).toHaveLength(1);
+    expect(recordedQueries[0]!.dimension).toBe(512);
+    expect(recordedQueries[0]!.queryVector).toHaveLength(512);
+  });
+
+  it('fails with VALIDATION_FAILURE when execution provider or model does not match pin', async () => {
+    // Wrong execution provider
+    const wrongProviderGen = createSampleGeneration({ providerId: 'google-gemini' });
+    const { retriever: ret1 } = createRig({ generation: wrongProviderGen });
 
     await expect(
-      retriever.retrieve({
+      ret1.retrieve({
         projectId: 'proj-alpha',
         query: 'test query',
         accessScopes: ['public'],
         allowedSensitivities: ['public'],
       }),
     ).rejects.toThrow(
-      'Active semantic projection generation is incompatible with the resolved embedding profile',
+      'Active semantic projection generation is incompatible with the resolved embedding profile or execution pin',
+    );
+
+    // Wrong execution model
+    const wrongModelGen = createSampleGeneration({ embeddingModelId: 'text-embedding-3-large' });
+    const { retriever: ret2 } = createRig({ generation: wrongModelGen });
+
+    await expect(
+      ret2.retrieve({
+        projectId: 'proj-alpha',
+        query: 'test query',
+        accessScopes: ['public'],
+        allowedSensitivities: ['public'],
+      }),
+    ).rejects.toThrow(
+      'Active semantic projection generation is incompatible with the resolved embedding profile or execution pin',
+    );
+  });
+
+  it('fails with VALIDATION_FAILURE when credential revision or policy fingerprint mismatches', async () => {
+    const wrongCredGen = createSampleGeneration({ credentialRevision: 2 });
+    const { retriever: ret1 } = createRig({ generation: wrongCredGen });
+
+    await expect(
+      ret1.retrieve({
+        projectId: 'proj-alpha',
+        query: 'test query',
+        accessScopes: ['public'],
+        allowedSensitivities: ['public'],
+      }),
+    ).rejects.toThrow(
+      'Active semantic projection generation is incompatible with the resolved embedding profile or execution pin',
+    );
+
+    const wrongFpGen = createSampleGeneration({ providerPolicyFingerprint: 'sha256:other-fp' });
+    const { retriever: ret2 } = createRig({ generation: wrongFpGen });
+
+    await expect(
+      ret2.retrieve({
+        projectId: 'proj-alpha',
+        query: 'test query',
+        accessScopes: ['public'],
+        allowedSensitivities: ['public'],
+      }),
+    ).rejects.toThrow(
+      'Active semantic projection generation is incompatible with the resolved embedding profile or execution pin',
+    );
+  });
+
+  it('fails with VALIDATION_FAILURE when provider registry or capability catalog revision mismatches', async () => {
+    const wrongRegGen = createSampleGeneration({ providerRegistryRevision: 'prov-reg:v2' });
+    const { retriever: ret1 } = createRig({ generation: wrongRegGen });
+
+    await expect(
+      ret1.retrieve({
+        projectId: 'proj-alpha',
+        query: 'test query',
+        accessScopes: ['public'],
+        allowedSensitivities: ['public'],
+      }),
+    ).rejects.toThrow(
+      'Active semantic projection generation is incompatible with the resolved embedding profile or execution pin',
+    );
+
+    const wrongCatGen = createSampleGeneration({ capabilityCatalogRevision: 'catalog:v2' });
+    const { retriever: ret2 } = createRig({ generation: wrongCatGen });
+
+    await expect(
+      ret2.retrieve({
+        projectId: 'proj-alpha',
+        query: 'test query',
+        accessScopes: ['public'],
+        allowedSensitivities: ['public'],
+      }),
+    ).rejects.toThrow(
+      'Active semantic projection generation is incompatible with the resolved embedding profile or execution pin',
+    );
+  });
+
+  it('fails with VALIDATION_FAILURE when metric or normalization policy mismatches', async () => {
+    const wrongMetricGen = createSampleGeneration({ distanceMetric: 'euclidean' });
+    const { retriever: ret1 } = createRig({ generation: wrongMetricGen });
+
+    await expect(
+      ret1.retrieve({
+        projectId: 'proj-alpha',
+        query: 'test query',
+        accessScopes: ['public'],
+        allowedSensitivities: ['public'],
+      }),
+    ).rejects.toThrow(
+      'Active semantic projection generation is incompatible with the resolved embedding profile or execution pin',
+    );
+
+    const wrongNormGen = createSampleGeneration({ normalizationPolicy: 'none' });
+    const { retriever: ret2 } = createRig({ generation: wrongNormGen });
+
+    await expect(
+      ret2.retrieve({
+        projectId: 'proj-alpha',
+        query: 'test query',
+        accessScopes: ['public'],
+        allowedSensitivities: ['public'],
+      }),
+    ).rejects.toThrow(
+      'Active semantic projection generation is incompatible with the resolved embedding profile or execution pin',
     );
   });
 
@@ -341,19 +465,23 @@ describe('SemanticRetriever Unit Tests', () => {
     expect(query.limit).toBe(5);
   });
 
-  it('validates query vector dimensions and unit length normalization', async () => {
-    const badDimensionEmbedder: SemanticEmbeddingExecutionPort = {
-      identity: { providerId: 'openai', embeddingModelId: 'test', dimension: 512 },
+  it('validates query vector execution identity and dimensions', async () => {
+    const badProviderEmbedder: SemanticEmbeddingExecutionPort = {
+      identity: {
+        providerId: 'fake-other',
+        embeddingModelId: 'text-embedding-3-small',
+        dimension: 768,
+      },
       embed: async () => ({
-        vector: Array.from({ length: 512 }, () => 0.1),
-        dimension: 512,
-        modelId: 'test',
-        providerId: 'openai',
+        vector: Array.from({ length: 768 }, () => 0.1),
+        dimension: 768,
+        modelId: 'text-embedding-3-small',
+        providerId: 'fake-other',
       }),
       embedBatch: async () => [],
     };
 
-    const { retriever } = createRig({ executionPort: badDimensionEmbedder });
+    const { retriever } = createRig({ executionPort: badProviderEmbedder });
 
     await expect(
       retriever.retrieve({
@@ -362,6 +490,6 @@ describe('SemanticRetriever Unit Tests', () => {
         accessScopes: ['public'],
         allowedSensitivities: ['public'],
       }),
-    ).rejects.toThrow('Query vector dimension 512 does not match generation dimension 768');
+    ).rejects.toThrow('Query vector execution identity or dimension does not match');
   });
 });

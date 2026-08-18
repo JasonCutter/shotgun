@@ -18,7 +18,7 @@
       "officialSource": "https://github.com/postgres/postgres",
       "pin": {
         "type": "docker-digest",
-        "value": "pgvector/pgvector:pg16@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b"
+        "value": "postgres:16.14-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777"
       },
       "license": {
         "spdx": "PostgreSQL",
@@ -103,8 +103,8 @@
         "value": "3.19.1"
       },
       "license": {
-        "spdx": "GPL-3.0-only",
-        "status": "REQUIRES_ISOLATION",
+        "spdx": "GPL-3.0",
+        "status": "VERIFIED",
         "evidence": "GPL-3.0 LICENSE and official 3.19.1 release at the upstream repository"
       },
       "decision": "DEFER",
@@ -151,25 +151,25 @@
       "stages": [7],
       "officialSource": "https://github.com/pgvector/pgvector",
       "pin": {
-        "type": "git-commit",
-        "value": "159b79aaad5983fb7459c1e3df2897fbb2d11788"
+        "type": "docker-digest",
+        "value": "pgvector/pgvector:pg16@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b"
       },
       "license": {
         "spdx": "PostgreSQL",
         "status": "VERIFIED",
-        "evidence": "LICENSE at official v0.8.5 tag"
+        "evidence": "LICENSE at upstream repository and pgvector official Docker distribution"
       },
-      "decision": "DEFER",
-      "scope": "Future semantic retrieval using exact or approximate nearest-neighbor indexes; Stage 10 keeps deterministic PostgreSQL projection without embeddings",
-      "security": "No embedding provider, vector data path, or extension is enabled in the Stage 7 MVP",
-      "maintenance": "v0.8.5 is the reviewed comparison baseline; no runtime dependency installed",
+      "decision": "ADOPT",
+      "scope": "AKP-1 WP2 semantic vector projection persistence and nearest-neighbor candidate retrieval behind SemanticIndexRepositoryPort",
+      "security": "Exact distance calculation, security-before-top-k filtering, project isolation, and zero vector columns on Canonical tables",
+      "maintenance": "pgvector 0.8.x extension on PostgreSQL 16 image digest verified",
       "evidence": [
         "official exact and approximate nearest-neighbor capabilities reviewed",
-        "current approved Claim fixtures are satisfied by deterministic FTS and trigram retrieval"
+        "AKP-1 WP2 database integration tests for variable dimensions, security-before-Top-K, and deterministic tie-breaking"
       ],
-      "boundary": "Future implementation must remain behind SearchProjectionRepositoryPort",
-      "replacement": "PostgreSQL FTS and pg_trgm remain the deterministic fallback",
-      "recheckTrigger": "Measured semantic recall gap on a representative Canonical Claim benchmark"
+      "boundary": "Only adapters/semantic-index-postgres imports pgvector SQL operators behind SemanticIndexRepositoryPort",
+      "replacement": "A replacement vector index adapter must pass the same SemanticIndexRepositoryPort contracts",
+      "recheckTrigger": "pgvector major release or vector indexing architecture revision"
     },
     {
       "id": "ajv",

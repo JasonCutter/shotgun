@@ -6,6 +6,8 @@ import {
   type SemanticProjectionItem,
   type SemanticResourceType,
   SemanticEmbeddingError,
+  validateSecurityInput,
+  validateUnitLength,
 } from '../../../packages/contracts/src/index.js';
 
 const genKey = (projectId: string, generationId: string): string =>
@@ -19,6 +21,9 @@ const itemKey = (
 ): string =>
   `${projectId.trim()}::${generationId.trim()}::${resourceType.trim()}::${resourceId.trim()}`;
 
+const semanticKey = (projectId: string, generationId: string, semanticItemId: string): string =>
+  `${projectId.trim()}::${generationId.trim()}::${semanticItemId.trim()}`;
+
 const cloneGen = (gen: SemanticProjectionGeneration): SemanticProjectionGeneration => ({
   ...gen,
 });
@@ -26,6 +31,7 @@ const cloneGen = (gen: SemanticProjectionGeneration): SemanticProjectionGenerati
 const cloneItem = (item: SemanticProjectionItem): SemanticProjectionItem => ({
   ...item,
   vector: [...item.vector],
+  evidenceIds: [...item.evidenceIds],
   accessScope: [...item.accessScope],
 });
 
@@ -51,7 +57,7 @@ const computeDotProductDistance = (a: readonly number[], b: readonly number[]): 
   for (let i = 0; i < a.length; i++) {
     dot += a[i]! * b[i]!;
   }
-  return -dot; // In pgvector <#>, distance is -dot_product so that higher dot product has lower distance
+  return -dot; // In pgvector <#>, distance is -dot_product so higher dot product has lower distance
 };
 
 const computeEuclideanDistance = (a: readonly number[], b: readonly number[]): number => {
@@ -63,11 +69,10 @@ const computeEuclideanDistance = (a: readonly number[], b: readonly number[]): n
   return Math.sqrt(sumSq);
 };
 
-const defaultAllowedSensitivities = ['public', 'internal', 'private', 'restricted'] as const;
-
 export class InMemorySemanticIndexRepository implements SemanticIndexRepositoryPort {
   private readonly generations = new Map<string, SemanticProjectionGeneration>();
   private readonly items = new Map<string, SemanticProjectionItem>();
+  private readonly semanticKeyToItemKey = new Map<string, string>();
 
   async saveGeneration(
     generation: SemanticProjectionGeneration,
@@ -76,10 +81,15 @@ export class InMemorySemanticIndexRepository implements SemanticIndexRepositoryP
     const existing = this.generations.get(key);
     if (existing) {
       if (
-        existing.embeddingProfileId === generation.embeddingProfileId &&
-        existing.embeddingProfileRevision === generation.embeddingProfileRevision &&
+        existing.sourceProjectionDigest === generation.sourceProjectionDigest &&
+        existing.canonicalBaseVersion === generation.canonicalBaseVersion &&
+        existing.credentialId === generation.credentialId &&
+        existing.credentialRevision === generation.credentialRevision &&
+        existing.providerPolicyFingerprint === generation.providerPolicyFingerprint &&
         existing.providerId === generation.providerId &&
         existing.embeddingModelId === generation.embeddingModelId &&
+        existing.embeddingProfileId === generation.embeddingProfileId &&
+        existing.embeddingProfileRevision === generation.embeddingProfileRevision &&
         existing.providerRegistryRevision === generation.providerRegistryRevision &&
         existing.capabilityCatalogRevision === generation.capabilityCatalogRevision &&
         existing.representationVersion === generation.representationVersion &&
@@ -112,7 +122,12 @@ export class InMemorySemanticIndexRepository implements SemanticIndexRepositoryP
         result.push(cloneGen(gen));
       }
     }
-    return result.sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+    return result.sort((a, b) => {
+      if (a.createdAt !== b.createdAt) {
+        return a.createdAt < b.createdAt ? -1 : 1;
+      }
+      return a.generationId < b.generationId ? -1 : 1;
+    });
   }
 
   async deleteGeneration(projectId: string, generationId: string): Promise<boolean> {
@@ -133,16 +148,33 @@ export class InMemorySemanticIndexRepository implements SemanticIndexRepositoryP
         operation: 'upsert-item',
       });
     }
-    if (item.dimension !== gen.dimension || item.vector.length !== gen.dimension) {
+    if (
+      item.dimension !== gen.dimension ||
+      item.embeddingProfileId !== gen.embeddingProfileId ||
+      item.embeddingProfileRevision !== gen.embeddingProfileRevision ||
+      item.representationVersion !== gen.representationVersion
+    ) {
+      throw new SemanticEmbeddingError({
+        code: 'VALIDATION_FAILURE',
+        safeMessage: `Item metadata does not match referenced generation.`,
+        operation: 'upsert-item',
+      });
+    }
+    if (item.vector.length !== gen.dimension) {
       throw new SemanticEmbeddingError({
         code: 'VALIDATION_FAILURE',
         safeMessage: `Item dimension ${item.dimension} (vector length ${item.vector.length}) does not match generation dimension ${gen.dimension}.`,
         operation: 'upsert-item',
       });
     }
+    if (gen.normalizationPolicy === 'unit_length') {
+      validateUnitLength(item.vector, 'upsert-item');
+    }
 
     const key = itemKey(item.projectId, item.generationId, item.resourceType, item.resourceId);
+    const semKey = semanticKey(item.projectId, item.generationId, item.semanticItemId);
     this.items.set(key, cloneItem(item));
+    this.semanticKeyToItemKey.set(semKey, key);
   }
 
   async upsertItems(items: readonly SemanticProjectionItem[]): Promise<void> {
@@ -162,6 +194,18 @@ export class InMemorySemanticIndexRepository implements SemanticIndexRepositoryP
     return item ? cloneItem(item) : undefined;
   }
 
+  async getItemBySemanticId(
+    projectId: string,
+    generationId: string,
+    semanticItemId: string,
+  ): Promise<SemanticProjectionItem | undefined> {
+    const semKey = semanticKey(projectId, generationId, semanticItemId);
+    const key = this.semanticKeyToItemKey.get(semKey);
+    if (!key) return undefined;
+    const item = this.items.get(key);
+    return item ? cloneItem(item) : undefined;
+  }
+
   async deleteItem(
     projectId: string,
     generationId: string,
@@ -169,14 +213,19 @@ export class InMemorySemanticIndexRepository implements SemanticIndexRepositoryP
     resourceId: string,
   ): Promise<boolean> {
     const key = itemKey(projectId, generationId, resourceType, resourceId);
+    const item = this.items.get(key);
+    if (item) {
+      this.semanticKeyToItemKey.delete(semanticKey(projectId, generationId, item.semanticItemId));
+    }
     return this.items.delete(key);
   }
 
   async deleteItemsByGeneration(projectId: string, generationId: string): Promise<number> {
     const prefix = `${projectId.trim()}::${generationId.trim()}::`;
     let count = 0;
-    for (const key of Array.from(this.items.keys())) {
+    for (const [key, item] of Array.from(this.items.entries())) {
       if (key.startsWith(prefix)) {
+        this.semanticKeyToItemKey.delete(semanticKey(projectId, generationId, item.semanticItemId));
         this.items.delete(key);
         count++;
       }
@@ -187,15 +236,10 @@ export class InMemorySemanticIndexRepository implements SemanticIndexRepositoryP
   async findNearestNeighbors(
     query: SemanticCandidateQuery,
   ): Promise<readonly SemanticCandidateResult[]> {
+    validateSecurityInput(query, 'find-nearest-neighbors');
+
     const projectId = query.projectId.trim();
     const generationId = query.generationId.trim();
-    if (!projectId || !generationId) {
-      throw new SemanticEmbeddingError({
-        code: 'INVALID_INPUT',
-        safeMessage: 'Project ID and generation ID are required.',
-        operation: 'find-nearest-neighbors',
-      });
-    }
 
     const gen = await this.getGeneration(projectId, generationId);
     if (!gen) {
@@ -214,7 +258,11 @@ export class InMemorySemanticIndexRepository implements SemanticIndexRepositoryP
       });
     }
 
-    const allowedSensitivities = new Set(query.allowedSensitivities ?? defaultAllowedSensitivities);
+    if (gen.normalizationPolicy === 'unit_length') {
+      validateUnitLength(query.queryVector, 'find-nearest-neighbors');
+    }
+
+    const allowedSensitivities = new Set(query.allowedSensitivities);
     const allowedScopes = new Set(query.accessScopes);
 
     const candidates: { item: SemanticProjectionItem; distance: number }[] = [];
@@ -269,19 +317,26 @@ export class InMemorySemanticIndexRepository implements SemanticIndexRepositoryP
       return a.item.resourceId < b.item.resourceId ? -1 : 1;
     });
 
-    const topK = candidates.slice(0, Math.max(0, query.limit));
+    const topK = candidates.slice(0, query.limit);
 
     return topK.map(({ item, distance }) => ({
+      semanticItemId: item.semanticItemId,
       projectId: item.projectId,
       generationId: item.generationId,
       resourceType: item.resourceType,
       resourceId: item.resourceId,
-      representationVersion: item.representationVersion,
+      sourceProjectionDigest: item.sourceProjectionDigest,
+      canonicalVersion: item.canonicalVersion,
       semanticTextDigest: item.semanticTextDigest,
+      embeddingProfileId: item.embeddingProfileId,
+      embeddingProfileRevision: item.embeddingProfileRevision,
+      representationVersion: item.representationVersion,
       distance,
       dimension: item.dimension,
+      evidenceIds: [...item.evidenceIds],
       accessScope: [...item.accessScope],
       sensitivity: item.sensitivity,
+      indexedAt: item.indexedAt,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     }));

@@ -21,16 +21,21 @@ describe('AKP-1 WP2: InMemorySemanticIndexRepository Unit & Parity Tests', () =>
     const gen: SemanticProjectionGeneration = {
       projectId: 'proj-1',
       generationId: 'gen-1',
-      embeddingProfileId: 'profile-1',
-      embeddingProfileRevision: 1,
+      sourceProjectionDigest: 'sha256:' + '0'.repeat(64),
+      canonicalBaseVersion: 1,
+      credentialId: 'vault:openai:owner',
+      credentialRevision: 1,
+      providerPolicyFingerprint: 'sha256:' + '1'.repeat(64),
       providerId: 'openai',
       embeddingModelId: 'text-embedding-3-small',
+      embeddingProfileId: 'profile-1',
+      embeddingProfileRevision: 1,
       providerRegistryRevision: 'provider-registry:v1',
       capabilityCatalogRevision: SEMANTIC_EMBEDDING_CATALOG_REVISION,
       representationVersion: SEMANTIC_REPRESENTATION_VERSION,
       dimension: 1536,
       distanceMetric: 'cosine',
-      normalizationPolicy: 'unit_length',
+      normalizationPolicy: 'none',
       buildStatus: 'READY',
       createdAt: '2026-08-18T10:00:00.000Z',
     };
@@ -51,38 +56,50 @@ describe('AKP-1 WP2: InMemorySemanticIndexRepository Unit & Parity Tests', () =>
     expect(loaded).toEqual(gen);
   });
 
-  it('upserts and deletes items with dimension consistency validation', async () => {
+  it('upserts and deletes items with dimension and lineage consistency validation', async () => {
     const { repo } = createRig();
 
     const gen: SemanticProjectionGeneration = {
       projectId: 'proj-1',
       generationId: 'gen-1',
-      embeddingProfileId: 'profile-1',
-      embeddingProfileRevision: 1,
+      sourceProjectionDigest: 'sha256:' + '0'.repeat(64),
+      canonicalBaseVersion: 1,
+      credentialId: 'vault:openai:owner',
+      credentialRevision: 1,
+      providerPolicyFingerprint: 'sha256:' + '1'.repeat(64),
       providerId: 'openai',
       embeddingModelId: 'text-embedding-3-small',
+      embeddingProfileId: 'profile-1',
+      embeddingProfileRevision: 1,
       providerRegistryRevision: 'provider-registry:v1',
       capabilityCatalogRevision: SEMANTIC_EMBEDDING_CATALOG_REVISION,
       representationVersion: SEMANTIC_REPRESENTATION_VERSION,
       dimension: 1536,
       distanceMetric: 'cosine',
-      normalizationPolicy: 'unit_length',
+      normalizationPolicy: 'none',
       buildStatus: 'READY',
       createdAt: '2026-08-18T10:00:00.000Z',
     };
     await repo.saveGeneration(gen);
 
     const item: SemanticProjectionItem = {
+      semanticItemId: 'sem-fact-1',
       projectId: 'proj-1',
       generationId: 'gen-1',
       resourceType: 'FACT',
       resourceId: 'fact-1',
-      representationVersion: SEMANTIC_REPRESENTATION_VERSION,
+      sourceProjectionDigest: 'sha256:' + '0'.repeat(64),
+      canonicalVersion: 1,
       semanticTextDigest: 'sha256:' + 'a'.repeat(64),
+      embeddingProfileId: 'profile-1',
+      embeddingProfileRevision: 1,
+      representationVersion: SEMANTIC_REPRESENTATION_VERSION,
       vector: new Array(1536).fill(0.01),
       dimension: 1536,
+      evidenceIds: ['ev-1'],
       accessScope: ['engineering'],
       sensitivity: 'internal',
+      indexedAt: '2026-08-18T10:00:00.000Z',
       createdAt: '2026-08-18T10:00:00.000Z',
       updatedAt: '2026-08-18T10:00:00.000Z',
     };
@@ -90,6 +107,9 @@ describe('AKP-1 WP2: InMemorySemanticIndexRepository Unit & Parity Tests', () =>
     await repo.upsertItem(item);
     const loaded = await repo.getItem('proj-1', 'gen-1', 'FACT', 'fact-1');
     expect(loaded).toEqual(item);
+
+    const loadedBySemId = await repo.getItemBySemanticId('proj-1', 'gen-1', 'sem-fact-1');
+    expect(loadedBySemId).toEqual(item);
 
     // Mismatched dimension fails closed
     await expect(
@@ -106,18 +126,24 @@ describe('AKP-1 WP2: InMemorySemanticIndexRepository Unit & Parity Tests', () =>
     const deleted = await repo.deleteItem('proj-1', 'gen-1', 'FACT', 'fact-1');
     expect(deleted).toBe(true);
     expect(await repo.getItem('proj-1', 'gen-1', 'FACT', 'fact-1')).toBeUndefined();
+    expect(await repo.getItemBySemanticId('proj-1', 'gen-1', 'sem-fact-1')).toBeUndefined();
   });
 
-  it('proves Security-before-Top-K candidate filtering in InMemory adapter', async () => {
+  it('proves Security-before-Top-K and fail-closed security in InMemory adapter', async () => {
     const { repo } = createRig();
 
     const gen: SemanticProjectionGeneration = {
       projectId: 'proj-1',
       generationId: 'gen-1',
-      embeddingProfileId: 'profile-1',
-      embeddingProfileRevision: 1,
+      sourceProjectionDigest: 'sha256:' + '0'.repeat(64),
+      canonicalBaseVersion: 1,
+      credentialId: 'vault:gemini:owner',
+      credentialRevision: 1,
+      providerPolicyFingerprint: 'sha256:' + '1'.repeat(64),
       providerId: 'google-gemini',
       embeddingModelId: 'gemini-embedding-001',
+      embeddingProfileId: 'profile-1',
+      embeddingProfileRevision: 1,
       providerRegistryRevision: 'provider-registry:v1',
       capabilityCatalogRevision: SEMANTIC_EMBEDDING_CATALOG_REVISION,
       representationVersion: SEMANTIC_REPRESENTATION_VERSION,
@@ -137,16 +163,23 @@ describe('AKP-1 WP2: InMemorySemanticIndexRepository Unit & Parity Tests', () =>
     vecUnauth[0] = 0.999;
     vecUnauth[1] = 0.044;
     await repo.upsertItem({
+      semanticItemId: 'sem-unauth',
       projectId: 'proj-1',
       generationId: 'gen-1',
       resourceType: 'CLAIM',
       resourceId: 'claim-unauth',
-      representationVersion: SEMANTIC_REPRESENTATION_VERSION,
+      sourceProjectionDigest: 'sha256:' + '0'.repeat(64),
+      canonicalVersion: 1,
       semanticTextDigest: 'sha256:' + '1'.repeat(64),
+      embeddingProfileId: 'profile-1',
+      embeddingProfileRevision: 1,
+      representationVersion: SEMANTIC_REPRESENTATION_VERSION,
       vector: vecUnauth,
       dimension: 768,
+      evidenceIds: [],
       accessScope: ['secret-exec'],
       sensitivity: 'restricted',
+      indexedAt: '2026-08-18T10:00:00.000Z',
       createdAt: '2026-08-18T10:00:00.000Z',
       updatedAt: '2026-08-18T10:00:00.000Z',
     });
@@ -156,20 +189,44 @@ describe('AKP-1 WP2: InMemorySemanticIndexRepository Unit & Parity Tests', () =>
     vecAuth[0] = 0.95;
     vecAuth[1] = 0.31;
     await repo.upsertItem({
+      semanticItemId: 'sem-auth',
       projectId: 'proj-1',
       generationId: 'gen-1',
       resourceType: 'CLAIM',
       resourceId: 'claim-auth',
-      representationVersion: SEMANTIC_REPRESENTATION_VERSION,
+      sourceProjectionDigest: 'sha256:' + '0'.repeat(64),
+      canonicalVersion: 1,
       semanticTextDigest: 'sha256:' + '2'.repeat(64),
+      embeddingProfileId: 'profile-1',
+      embeddingProfileRevision: 1,
+      representationVersion: SEMANTIC_REPRESENTATION_VERSION,
       vector: vecAuth,
       dimension: 768,
+      evidenceIds: [],
       accessScope: ['public'],
       sensitivity: 'public',
+      indexedAt: '2026-08-18T10:00:00.000Z',
       createdAt: '2026-08-18T10:00:00.000Z',
       updatedAt: '2026-08-18T10:00:00.000Z',
     });
 
+    // Empty access scopes fails closed
+    await expect(
+      repo.findNearestNeighbors({
+        projectId: 'proj-1',
+        generationId: 'gen-1',
+        queryVector: queryVec,
+        dimension: 768,
+        accessScopes: [],
+        allowedSensitivities: ['public'],
+        limit: 1,
+      }),
+    ).rejects.toMatchObject({
+      name: 'SemanticEmbeddingError',
+      embeddingErrorCode: 'POLICY_DENIED',
+    });
+
+    // Valid query returns authorized item
     const query: SemanticCandidateQuery = {
       projectId: 'proj-1',
       generationId: 'gen-1',

@@ -11,15 +11,22 @@ import {
   type SemanticProjectionItem,
   type SemanticResourceType,
   SemanticEmbeddingError,
+  validateSecurityInput,
+  validateUnitLength,
 } from '../../../packages/contracts/src/index.js';
 
 type GenerationRow = QueryResultRow & {
   readonly project_id: string;
   readonly generation_id: string;
-  readonly embedding_profile_id: string;
-  readonly embedding_profile_revision: number;
+  readonly source_projection_digest: string;
+  readonly canonical_base_version: number;
+  readonly credential_id: string;
+  readonly credential_revision: number;
+  readonly provider_policy_fingerprint: string;
   readonly provider_id: string;
   readonly embedding_model_id: string;
+  readonly embedding_profile_id: string;
+  readonly embedding_profile_revision: number;
   readonly provider_registry_revision: string;
   readonly capability_catalog_revision: string;
   readonly representation_version: string;
@@ -33,14 +40,21 @@ type GenerationRow = QueryResultRow & {
 type ItemRow = QueryResultRow & {
   readonly project_id: string;
   readonly generation_id: string;
+  readonly semantic_item_id: string;
   readonly resource_type: SemanticResourceType;
   readonly resource_id: string;
-  readonly representation_version: string;
+  readonly source_projection_digest: string;
+  readonly canonical_version: number;
   readonly semantic_text_digest: string;
+  readonly embedding_profile_id: string;
+  readonly embedding_profile_revision: number;
+  readonly representation_version: string;
   readonly vector_text: string;
   readonly dimension: number;
+  readonly evidence_ids: string[];
   readonly access_scope: string[];
   readonly sensitivity: 'public' | 'internal' | 'private' | 'restricted';
+  readonly indexed_at: Date;
   readonly created_at: Date;
   readonly updated_at: Date;
 };
@@ -48,13 +62,20 @@ type ItemRow = QueryResultRow & {
 type CandidateRow = QueryResultRow & {
   readonly project_id: string;
   readonly generation_id: string;
+  readonly semantic_item_id: string;
   readonly resource_type: SemanticResourceType;
   readonly resource_id: string;
-  readonly representation_version: string;
+  readonly source_projection_digest: string;
+  readonly canonical_version: number;
   readonly semantic_text_digest: string;
+  readonly embedding_profile_id: string;
+  readonly embedding_profile_revision: number;
+  readonly representation_version: string;
   readonly dimension: number;
+  readonly evidence_ids: string[];
   readonly access_scope: string[];
   readonly sensitivity: 'public' | 'internal' | 'private' | 'restricted';
+  readonly indexed_at: Date;
   readonly created_at: Date;
   readonly updated_at: Date;
   readonly distance: number;
@@ -63,10 +84,15 @@ type CandidateRow = QueryResultRow & {
 const mapGeneration = (row: GenerationRow): SemanticProjectionGeneration => ({
   projectId: row.project_id,
   generationId: row.generation_id,
-  embeddingProfileId: row.embedding_profile_id,
-  embeddingProfileRevision: row.embedding_profile_revision,
+  sourceProjectionDigest: row.source_projection_digest,
+  canonicalBaseVersion: row.canonical_base_version,
+  credentialId: row.credential_id,
+  credentialRevision: row.credential_revision,
+  providerPolicyFingerprint: row.provider_policy_fingerprint,
   providerId: row.provider_id,
   embeddingModelId: row.embedding_model_id,
+  embeddingProfileId: row.embedding_profile_id,
+  embeddingProfileRevision: row.embedding_profile_revision,
   providerRegistryRevision: row.provider_registry_revision,
   capabilityCatalogRevision: row.capability_catalog_revision,
   representationVersion: row.representation_version,
@@ -78,21 +104,26 @@ const mapGeneration = (row: GenerationRow): SemanticProjectionGeneration => ({
 });
 
 const mapItem = (row: ItemRow): SemanticProjectionItem => ({
+  semanticItemId: row.semantic_item_id,
   projectId: row.project_id,
   generationId: row.generation_id,
   resourceType: row.resource_type,
   resourceId: row.resource_id,
-  representationVersion: row.representation_version,
+  sourceProjectionDigest: row.source_projection_digest,
+  canonicalVersion: row.canonical_version,
   semanticTextDigest: row.semantic_text_digest,
+  embeddingProfileId: row.embedding_profile_id,
+  embeddingProfileRevision: row.embedding_profile_revision,
+  representationVersion: row.representation_version,
   vector: JSON.parse(row.vector_text) as number[],
   dimension: row.dimension,
+  evidenceIds: row.evidence_ids,
   accessScope: row.access_scope,
   sensitivity: row.sensitivity,
+  indexedAt: row.indexed_at.toISOString(),
   createdAt: row.created_at.toISOString(),
   updatedAt: row.updated_at.toISOString(),
 });
-
-const defaultAllowedSensitivities = ['public', 'internal', 'private', 'restricted'] as const;
 
 export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryPort {
   constructor(private readonly pool: Pool) {}
@@ -102,20 +133,34 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
   ): Promise<'CREATED' | 'EXISTS' | 'CONFLICT'> {
     const result = await this.pool.query<GenerationRow>(
       `INSERT INTO projection.semantic_generations (
-         project_id, generation_id, embedding_profile_id, embedding_profile_revision,
-         provider_id, embedding_model_id, provider_registry_revision, capability_catalog_revision,
-         representation_version, dimension, distance_metric, normalization_policy,
+         project_id, generation_id, source_projection_digest, canonical_base_version,
+         credential_id, credential_revision, provider_policy_fingerprint,
+         provider_id, embedding_model_id, embedding_profile_id, embedding_profile_revision,
+         provider_registry_revision, capability_catalog_revision, representation_version,
+         dimension, distance_metric, normalization_policy,
          build_status, created_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+       ) VALUES (
+         $1, $2, $3, $4,
+         $5, $6, $7,
+         $8, $9, $10, $11,
+         $12, $13, $14,
+         $15, $16, $17,
+         $18, $19
+       )
        ON CONFLICT (project_id, generation_id) DO NOTHING
        RETURNING *`,
       [
         generation.projectId,
         generation.generationId,
-        generation.embeddingProfileId,
-        generation.embeddingProfileRevision,
+        generation.sourceProjectionDigest,
+        generation.canonicalBaseVersion,
+        generation.credentialId,
+        generation.credentialRevision,
+        generation.providerPolicyFingerprint,
         generation.providerId,
         generation.embeddingModelId,
+        generation.embeddingProfileId,
+        generation.embeddingProfileRevision,
         generation.providerRegistryRevision,
         generation.capabilityCatalogRevision,
         generation.representationVersion,
@@ -137,10 +182,15 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
     }
 
     if (
-      existing.embeddingProfileId === generation.embeddingProfileId &&
-      existing.embeddingProfileRevision === generation.embeddingProfileRevision &&
+      existing.sourceProjectionDigest === generation.sourceProjectionDigest &&
+      existing.canonicalBaseVersion === generation.canonicalBaseVersion &&
+      existing.credentialId === generation.credentialId &&
+      existing.credentialRevision === generation.credentialRevision &&
+      existing.providerPolicyFingerprint === generation.providerPolicyFingerprint &&
       existing.providerId === generation.providerId &&
       existing.embeddingModelId === generation.embeddingModelId &&
+      existing.embeddingProfileId === generation.embeddingProfileId &&
+      existing.embeddingProfileRevision === generation.embeddingProfileRevision &&
       existing.providerRegistryRevision === generation.providerRegistryRevision &&
       existing.capabilityCatalogRevision === generation.capabilityCatalogRevision &&
       existing.representationVersion === generation.representationVersion &&
@@ -159,8 +209,10 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
     generationId: string,
   ): Promise<SemanticProjectionGeneration | undefined> {
     const result = await this.pool.query<GenerationRow>(
-      `SELECT project_id, generation_id, embedding_profile_id, embedding_profile_revision,
-              provider_id, embedding_model_id, provider_registry_revision, capability_catalog_revision,
+      `SELECT project_id, generation_id, source_projection_digest, canonical_base_version,
+              credential_id, credential_revision, provider_policy_fingerprint,
+              provider_id, embedding_model_id, embedding_profile_id, embedding_profile_revision,
+              provider_registry_revision, capability_catalog_revision,
               representation_version, dimension, distance_metric, normalization_policy,
               build_status, created_at
        FROM projection.semantic_generations
@@ -173,8 +225,10 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
 
   async listGenerations(projectId: string): Promise<readonly SemanticProjectionGeneration[]> {
     const result = await this.pool.query<GenerationRow>(
-      `SELECT project_id, generation_id, embedding_profile_id, embedding_profile_revision,
-              provider_id, embedding_model_id, provider_registry_revision, capability_catalog_revision,
+      `SELECT project_id, generation_id, source_projection_digest, canonical_base_version,
+              credential_id, credential_revision, provider_policy_fingerprint,
+              provider_id, embedding_model_id, embedding_profile_id, embedding_profile_revision,
+              provider_registry_revision, capability_catalog_revision,
               representation_version, dimension, distance_metric, normalization_policy,
               build_status, created_at
        FROM projection.semantic_generations
@@ -204,46 +258,79 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
         operation: 'upsert-item',
       });
     }
-    if (item.dimension !== gen.dimension || item.vector.length !== gen.dimension) {
+    if (
+      item.dimension !== gen.dimension ||
+      item.embeddingProfileId !== gen.embeddingProfileId ||
+      item.embeddingProfileRevision !== gen.embeddingProfileRevision ||
+      item.representationVersion !== gen.representationVersion
+    ) {
+      throw new SemanticEmbeddingError({
+        code: 'VALIDATION_FAILURE',
+        safeMessage: `Item metadata does not match referenced generation.`,
+        operation: 'upsert-item',
+      });
+    }
+    if (item.vector.length !== gen.dimension) {
       throw new SemanticEmbeddingError({
         code: 'VALIDATION_FAILURE',
         safeMessage: `Item dimension ${item.dimension} (vector length ${item.vector.length}) does not match generation dimension ${gen.dimension}.`,
         operation: 'upsert-item',
       });
     }
+    if (gen.normalizationPolicy === 'unit_length') {
+      validateUnitLength(item.vector, 'upsert-item');
+    }
 
     const vectorString = JSON.stringify(item.vector);
 
     await this.pool.query(
       `INSERT INTO projection.semantic_items (
-         project_id, generation_id, resource_type, resource_id,
-         representation_version, semantic_text_digest, vector, dimension,
-         access_scope, sensitivity, created_at, updated_at
+         project_id, generation_id, semantic_item_id, resource_type, resource_id,
+         source_projection_digest, canonical_version, semantic_text_digest,
+         embedding_profile_id, embedding_profile_revision, representation_version,
+         vector, dimension, evidence_ids, access_scope, sensitivity,
+         indexed_at, created_at, updated_at
        ) VALUES (
-         $1, $2, $3, $4,
-         $5, $6, $7::vector, $8,
-         $9::text[], $10, $11, $12
+         $1, $2, $3, $4, $5,
+         $6, $7, $8,
+         $9, $10, $11,
+         $12::vector, $13, $14::text[], $15::text[], $16,
+         $17, $18, $19
        )
        ON CONFLICT (project_id, generation_id, resource_type, resource_id)
        DO UPDATE SET
-         representation_version = EXCLUDED.representation_version,
+         semantic_item_id = EXCLUDED.semantic_item_id,
+         source_projection_digest = EXCLUDED.source_projection_digest,
+         canonical_version = EXCLUDED.canonical_version,
          semantic_text_digest = EXCLUDED.semantic_text_digest,
+         embedding_profile_id = EXCLUDED.embedding_profile_id,
+         embedding_profile_revision = EXCLUDED.embedding_profile_revision,
+         representation_version = EXCLUDED.representation_version,
          vector = EXCLUDED.vector,
          dimension = EXCLUDED.dimension,
+         evidence_ids = EXCLUDED.evidence_ids,
          access_scope = EXCLUDED.access_scope,
          sensitivity = EXCLUDED.sensitivity,
+         indexed_at = EXCLUDED.indexed_at,
          updated_at = EXCLUDED.updated_at`,
       [
         item.projectId,
         item.generationId,
+        item.semanticItemId,
         item.resourceType,
         item.resourceId,
-        item.representationVersion,
+        item.sourceProjectionDigest,
+        item.canonicalVersion,
         item.semanticTextDigest,
+        item.embeddingProfileId,
+        item.embeddingProfileRevision,
+        item.representationVersion,
         vectorString,
         item.dimension,
+        item.evidenceIds,
         item.accessScope,
         item.sensitivity,
+        item.indexedAt,
         item.createdAt,
         item.updatedAt,
       ],
@@ -256,7 +343,14 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
     try {
       await client.query('BEGIN');
       for (const item of items) {
-        const gen = await this.getGeneration(item.projectId, item.generationId);
+        // Validate generation using the SAME connected transaction client
+        const genRes = await client.query<GenerationRow>(
+          `SELECT project_id, generation_id, dimension, embedding_profile_id, embedding_profile_revision, representation_version, normalization_policy
+           FROM projection.semantic_generations
+           WHERE project_id = $1 AND generation_id = $2`,
+          [item.projectId, item.generationId],
+        );
+        const gen = genRes.rows[0];
         if (!gen) {
           throw new SemanticEmbeddingError({
             code: 'CONFIGURATION_REQUIRED',
@@ -264,45 +358,78 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
             operation: 'upsert-items',
           });
         }
-        if (item.dimension !== gen.dimension || item.vector.length !== gen.dimension) {
+        if (
+          item.dimension !== gen.dimension ||
+          item.embeddingProfileId !== gen.embedding_profile_id ||
+          item.embeddingProfileRevision !== gen.embedding_profile_revision ||
+          item.representationVersion !== gen.representation_version
+        ) {
           throw new SemanticEmbeddingError({
             code: 'VALIDATION_FAILURE',
-            safeMessage: `Item dimension ${item.dimension} does not match generation dimension ${gen.dimension}.`,
+            safeMessage: `Item metadata does not match generation.`,
             operation: 'upsert-items',
           });
+        }
+        if (item.vector.length !== gen.dimension) {
+          throw new SemanticEmbeddingError({
+            code: 'VALIDATION_FAILURE',
+            safeMessage: `Item dimension ${item.dimension} (vector length ${item.vector.length}) does not match generation dimension ${gen.dimension}.`,
+            operation: 'upsert-items',
+          });
+        }
+        if (gen.normalization_policy === 'unit_length') {
+          validateUnitLength(item.vector, 'upsert-items');
         }
 
         const vectorString = JSON.stringify(item.vector);
         await client.query(
           `INSERT INTO projection.semantic_items (
-             project_id, generation_id, resource_type, resource_id,
-             representation_version, semantic_text_digest, vector, dimension,
-             access_scope, sensitivity, created_at, updated_at
+             project_id, generation_id, semantic_item_id, resource_type, resource_id,
+             source_projection_digest, canonical_version, semantic_text_digest,
+             embedding_profile_id, embedding_profile_revision, representation_version,
+             vector, dimension, evidence_ids, access_scope, sensitivity,
+             indexed_at, created_at, updated_at
            ) VALUES (
-             $1, $2, $3, $4,
-             $5, $6, $7::vector, $8,
-             $9::text[], $10, $11, $12
+             $1, $2, $3, $4, $5,
+             $6, $7, $8,
+             $9, $10, $11,
+             $12::vector, $13, $14::text[], $15::text[], $16,
+             $17, $18, $19
            )
            ON CONFLICT (project_id, generation_id, resource_type, resource_id)
            DO UPDATE SET
-             representation_version = EXCLUDED.representation_version,
+             semantic_item_id = EXCLUDED.semantic_item_id,
+             source_projection_digest = EXCLUDED.source_projection_digest,
+             canonical_version = EXCLUDED.canonical_version,
              semantic_text_digest = EXCLUDED.semantic_text_digest,
+             embedding_profile_id = EXCLUDED.embedding_profile_id,
+             embedding_profile_revision = EXCLUDED.embedding_profile_revision,
+             representation_version = EXCLUDED.representation_version,
              vector = EXCLUDED.vector,
              dimension = EXCLUDED.dimension,
+             evidence_ids = EXCLUDED.evidence_ids,
              access_scope = EXCLUDED.access_scope,
              sensitivity = EXCLUDED.sensitivity,
+             indexed_at = EXCLUDED.indexed_at,
              updated_at = EXCLUDED.updated_at`,
           [
             item.projectId,
             item.generationId,
+            item.semanticItemId,
             item.resourceType,
             item.resourceId,
-            item.representationVersion,
+            item.sourceProjectionDigest,
+            item.canonicalVersion,
             item.semanticTextDigest,
+            item.embeddingProfileId,
+            item.embeddingProfileRevision,
+            item.representationVersion,
             vectorString,
             item.dimension,
+            item.evidenceIds,
             item.accessScope,
             item.sensitivity,
+            item.indexedAt,
             item.createdAt,
             item.updatedAt,
           ],
@@ -324,13 +451,33 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
     resourceId: string,
   ): Promise<SemanticProjectionItem | undefined> {
     const result = await this.pool.query<ItemRow>(
-      `SELECT project_id, generation_id, resource_type, resource_id,
-              representation_version, semantic_text_digest,
-              vector::text AS vector_text, dimension, access_scope, sensitivity,
-              created_at, updated_at
+      `SELECT project_id, generation_id, semantic_item_id, resource_type, resource_id,
+              source_projection_digest, canonical_version, semantic_text_digest,
+              embedding_profile_id, embedding_profile_revision, representation_version,
+              vector::text AS vector_text, dimension, evidence_ids, access_scope, sensitivity,
+              indexed_at, created_at, updated_at
        FROM projection.semantic_items
        WHERE project_id = $1 AND generation_id = $2 AND resource_type = $3 AND resource_id = $4`,
       [projectId, generationId, resourceType, resourceId],
+    );
+
+    return result.rows[0] ? mapItem(result.rows[0]) : undefined;
+  }
+
+  async getItemBySemanticId(
+    projectId: string,
+    generationId: string,
+    semanticItemId: string,
+  ): Promise<SemanticProjectionItem | undefined> {
+    const result = await this.pool.query<ItemRow>(
+      `SELECT project_id, generation_id, semantic_item_id, resource_type, resource_id,
+              source_projection_digest, canonical_version, semantic_text_digest,
+              embedding_profile_id, embedding_profile_revision, representation_version,
+              vector::text AS vector_text, dimension, evidence_ids, access_scope, sensitivity,
+              indexed_at, created_at, updated_at
+       FROM projection.semantic_items
+       WHERE project_id = $1 AND generation_id = $2 AND semantic_item_id = $3`,
+      [projectId, generationId, semanticItemId],
     );
 
     return result.rows[0] ? mapItem(result.rows[0]) : undefined;
@@ -362,15 +509,10 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
   async findNearestNeighbors(
     query: SemanticCandidateQuery,
   ): Promise<readonly SemanticCandidateResult[]> {
+    validateSecurityInput(query, 'find-nearest-neighbors');
+
     const projectId = query.projectId.trim();
     const generationId = query.generationId.trim();
-    if (!projectId || !generationId) {
-      throw new SemanticEmbeddingError({
-        code: 'INVALID_INPUT',
-        safeMessage: 'Project ID and generation ID are required.',
-        operation: 'find-nearest-neighbors',
-      });
-    }
 
     const gen = await this.getGeneration(projectId, generationId);
     if (!gen) {
@@ -387,6 +529,10 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
         safeMessage: `Query vector dimension ${query.queryVector.length} does not match generation dimension ${gen.dimension}.`,
         operation: 'find-nearest-neighbors',
       });
+    }
+
+    if (gen.normalizationPolicy === 'unit_length') {
+      validateUnitLength(query.queryVector, 'find-nearest-neighbors');
     }
 
     let distanceOp: string;
@@ -408,7 +554,6 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
         });
     }
 
-    const allowedSensitivities = query.allowedSensitivities ?? defaultAllowedSensitivities;
     const vectorString = JSON.stringify(query.queryVector);
 
     // SECURITY BEFORE TOP-K:
@@ -418,13 +563,20 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
       `SELECT
          project_id,
          generation_id,
+         semantic_item_id,
          resource_type,
          resource_id,
-         representation_version,
+         source_projection_digest,
+         canonical_version,
          semantic_text_digest,
+         embedding_profile_id,
+         embedding_profile_revision,
+         representation_version,
          dimension,
+         evidence_ids,
          access_scope,
          sensitivity,
+         indexed_at,
          created_at,
          updated_at,
          (vector ${distanceOp} $3::vector)::double precision AS distance
@@ -442,22 +594,29 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
         vectorString,
         gen.dimension,
         query.accessScopes,
-        allowedSensitivities,
-        Math.max(0, query.limit),
+        query.allowedSensitivities,
+        query.limit,
       ],
     );
 
     return result.rows.map((row) => ({
+      semanticItemId: row.semantic_item_id,
       projectId: row.project_id,
       generationId: row.generation_id,
       resourceType: row.resource_type,
       resourceId: row.resource_id,
-      representationVersion: row.representation_version,
+      sourceProjectionDigest: row.source_projection_digest,
+      canonicalVersion: row.canonical_version,
       semanticTextDigest: row.semantic_text_digest,
+      embeddingProfileId: row.embedding_profile_id,
+      embeddingProfileRevision: row.embedding_profile_revision,
+      representationVersion: row.representation_version,
       distance: row.distance,
       dimension: row.dimension,
+      evidenceIds: row.evidence_ids,
       accessScope: row.access_scope,
       sensitivity: row.sensitivity,
+      indexedAt: row.indexed_at.toISOString(),
       createdAt: row.created_at.toISOString(),
       updatedAt: row.updated_at.toISOString(),
     }));

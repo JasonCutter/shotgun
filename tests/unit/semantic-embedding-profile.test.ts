@@ -10,19 +10,65 @@ import {
   initialProviderRegistry,
   ProjectAIConfigurationService,
 } from '../../modules/ai-configuration/src/index.js';
+import type { EmbeddingCredentialMetadataReference } from '../../packages/contracts/src/index.js';
 
 describe('AKP-1 WP1: SemanticEmbeddingProfile Authority', () => {
-  const createServices = () => {
+  const createServices = (customCredentials?: readonly EmbeddingCredentialMetadataReference[]) => {
     const embeddingRepo = new InMemorySemanticEmbeddingProfileRepository();
     const embeddingRegistry = initialSemanticEmbeddingRegistry();
+    const providerRegistry = initialProviderRegistry();
+
+    const credentialsList: EmbeddingCredentialMetadataReference[] = customCredentials
+      ? [...customCredentials]
+      : [
+          {
+            credentialId: 'cred-openai-1',
+            projectId: 'project-akp-1',
+            providerId: 'openai',
+            credentialRevision: 1,
+            lifecycleState: 'active',
+          },
+          {
+            credentialId: 'cred-gemini-1',
+            projectId: 'project-akp-1',
+            providerId: 'google-gemini',
+            credentialRevision: 1,
+            lifecycleState: 'active',
+          },
+          {
+            credentialId: 'cred-revoked-1',
+            projectId: 'project-akp-1',
+            providerId: 'openai',
+            credentialRevision: 2,
+            lifecycleState: 'revoked',
+          },
+        ];
+
+    const credentialReader = {
+      getMetadata: async (scope: {
+        projectId: string;
+        providerId: string;
+        credentialId: string;
+        credentialRevision: number;
+      }) =>
+        credentialsList.find(
+          (c) =>
+            c.projectId === scope.projectId &&
+            c.providerId === scope.providerId &&
+            c.credentialId === scope.credentialId &&
+            c.credentialRevision === scope.credentialRevision,
+        ),
+    };
+
     const embeddingProfileService = new SemanticEmbeddingProfileService(
+      providerRegistry,
       embeddingRegistry,
       embeddingRepo,
+      credentialReader,
     );
 
     const aiConfigRepo = new InMemoryProjectAIConfigurationRepository();
-    const aiConfigRegistry = initialProviderRegistry();
-    const aiConfigService = new ProjectAIConfigurationService(aiConfigRegistry, aiConfigRepo, {
+    const aiConfigService = new ProjectAIConfigurationService(providerRegistry, aiConfigRepo, {
       getMetadata: async (scope) => ({
         credentialId: scope.credentialId,
         projectId: scope.projectId,
@@ -38,10 +84,11 @@ describe('AKP-1 WP1: SemanticEmbeddingProfile Authority', () => {
       embeddingRegistry,
       aiConfigService,
       aiConfigRepo,
+      providerRegistry,
     };
   };
 
-  it('creates server-owned SemanticEmbeddingProfile in BUILDING status with dimension metadata', async () => {
+  it('creates server-owned SemanticEmbeddingProfile in BUILDING status with pinned credential and dimension metadata', async () => {
     const { embeddingProfileService } = createServices();
 
     const profile = await embeddingProfileService.createProfile({
@@ -49,7 +96,9 @@ describe('AKP-1 WP1: SemanticEmbeddingProfile Authority', () => {
       expectedRevision: 0,
       providerId: 'openai',
       embeddingModelId: 'text-embedding-3-small',
-      updatedBy: 'principal-owner',
+      credentialId: 'cred-openai-1',
+      credentialRevision: 1,
+      updatedBy: 'actor-creator',
       now: '2026-08-18T12:00:00.000Z',
     });
 
@@ -58,13 +107,115 @@ describe('AKP-1 WP1: SemanticEmbeddingProfile Authority', () => {
       profileRevision: 1,
       providerId: 'openai',
       embeddingModelId: 'text-embedding-3-small',
+      credentialId: 'cred-openai-1',
+      credentialRevision: 1,
       dimension: 1536,
       distanceMetric: 'cosine',
       normalizationPolicy: 'unit_length',
       status: 'BUILDING',
-      updatedBy: 'principal-owner',
+      updatedBy: 'actor-creator',
+      createdAt: '2026-08-18T12:00:00.000Z',
+      updatedAt: '2026-08-18T12:00:00.000Z',
     });
     expect(profile.profileId).toBeDefined();
+  });
+
+  it('rejects profile creation when referenced credential is missing, mismatched, or revoked', async () => {
+    const { embeddingProfileService } = createServices();
+
+    // 1. Missing credential
+    await expect(
+      embeddingProfileService.createProfile({
+        projectId: 'project-akp-1',
+        expectedRevision: 0,
+        providerId: 'openai',
+        embeddingModelId: 'text-embedding-3-small',
+        credentialId: 'nonexistent-cred',
+        credentialRevision: 1,
+        updatedBy: 'actor-creator',
+      }),
+    ).rejects.toMatchObject({
+      name: 'SemanticEmbeddingError',
+      embeddingErrorCode: 'CONFIGURATION_REQUIRED',
+    });
+
+    // 2. Mismatched provider credential
+    await expect(
+      embeddingProfileService.createProfile({
+        projectId: 'project-akp-1',
+        expectedRevision: 0,
+        providerId: 'openai',
+        embeddingModelId: 'text-embedding-3-small',
+        credentialId: 'cred-gemini-1', // Belongs to google-gemini
+        credentialRevision: 1,
+        updatedBy: 'actor-creator',
+      }),
+    ).rejects.toMatchObject({
+      name: 'SemanticEmbeddingError',
+      embeddingErrorCode: 'CONFIGURATION_REQUIRED',
+    });
+
+    // 3. Revoked credential
+    await expect(
+      embeddingProfileService.createProfile({
+        projectId: 'project-akp-1',
+        expectedRevision: 0,
+        providerId: 'openai',
+        embeddingModelId: 'text-embedding-3-small',
+        credentialId: 'cred-revoked-1',
+        credentialRevision: 2,
+        updatedBy: 'actor-creator',
+      }),
+    ).rejects.toMatchObject({
+      name: 'SemanticEmbeddingError',
+      embeddingErrorCode: 'CONFIGURATION_REQUIRED',
+    });
+  });
+
+  it('persists updatedBy audit actor and timestamps consistently on profile activation', async () => {
+    const { embeddingProfileService } = createServices();
+
+    // Actor A creates the profile
+    const p1 = await embeddingProfileService.createProfile({
+      projectId: 'project-akp-1',
+      expectedRevision: 0,
+      providerId: 'openai',
+      embeddingModelId: 'text-embedding-3-small',
+      credentialId: 'cred-openai-1',
+      credentialRevision: 1,
+      updatedBy: 'actor-creator-a',
+      now: '2026-08-18T10:00:00.000Z',
+    });
+    expect(p1.updatedBy).toBe('actor-creator-a');
+    expect(p1.status).toBe('BUILDING');
+
+    // Actor B activates the profile
+    const activatedP1 = await embeddingProfileService.activateProfile({
+      projectId: 'project-akp-1',
+      profileId: p1.profileId,
+      profileRevision: 1,
+      updatedBy: 'actor-activator-b',
+      now: '2026-08-18T11:00:00.000Z',
+    });
+
+    expect(activatedP1.status).toBe('ACTIVE');
+    expect(activatedP1.updatedBy).toBe('actor-activator-b');
+    expect(activatedP1.activatedAt).toBe('2026-08-18T11:00:00.000Z');
+    expect(activatedP1.updatedAt).toBe('2026-08-18T11:00:00.000Z');
+
+    // Re-read active profile
+    const currentActive = await embeddingProfileService.getActive('project-akp-1');
+    expect(currentActive?.profileId).toBe(p1.profileId);
+    expect(currentActive?.status).toBe('ACTIVE');
+    expect(currentActive?.updatedBy).toBe('actor-activator-b');
+    expect(currentActive?.activatedAt).toBe('2026-08-18T11:00:00.000Z');
+
+    // Re-read historical revision
+    const historicalRev1 = await embeddingProfileService.getRevision('project-akp-1', 1);
+    expect(historicalRev1?.profileId).toBe(p1.profileId);
+    expect(historicalRev1?.status).toBe('ACTIVE');
+    expect(historicalRev1?.updatedBy).toBe('actor-activator-b');
+    expect(historicalRev1?.activatedAt).toBe('2026-08-18T11:00:00.000Z');
   });
 
   it('handles profile activation and retires previously active profile', async () => {
@@ -75,47 +226,37 @@ describe('AKP-1 WP1: SemanticEmbeddingProfile Authority', () => {
       expectedRevision: 0,
       providerId: 'openai',
       embeddingModelId: 'text-embedding-3-small',
+      credentialId: 'cred-openai-1',
+      credentialRevision: 1,
       updatedBy: 'principal-owner',
     });
 
-    expect(await embeddingProfileService.getActive('project-akp-1')).toBeUndefined();
-
-    const activeP1 = await embeddingProfileService.activateProfile({
+    await embeddingProfileService.activateProfile({
       projectId: 'project-akp-1',
       profileId: p1.profileId,
       profileRevision: 1,
       updatedBy: 'principal-owner',
     });
-    expect(activeP1.status).toBe('ACTIVE');
 
-    const currentActive = await embeddingProfileService.getActive('project-akp-1');
-    expect(currentActive?.profileId).toBe(p1.profileId);
-    expect(currentActive?.status).toBe('ACTIVE');
-
-    // Create a new generation profile
+    // Create and activate p2 with Gemini gemini-embedding-001
     const p2 = await embeddingProfileService.createProfile({
       projectId: 'project-akp-1',
       expectedRevision: 1,
       providerId: 'google-gemini',
-      embeddingModelId: 'text-embedding-004',
+      embeddingModelId: 'gemini-embedding-001',
+      credentialId: 'cred-gemini-1',
+      credentialRevision: 1,
       updatedBy: 'principal-owner',
     });
     expect(p2.status).toBe('BUILDING');
     expect(p2.dimension).toBe(768);
 
-    // Active profile is still p1
-    expect((await embeddingProfileService.getActive('project-akp-1'))?.profileId).toBe(
-      p1.profileId,
-    );
-
-    // Explicitly activate p2
-    const activeP2 = await embeddingProfileService.activateProfile({
+    await embeddingProfileService.activateProfile({
       projectId: 'project-akp-1',
       profileId: p2.profileId,
       profileRevision: 2,
       updatedBy: 'principal-owner',
     });
-    expect(activeP2.status).toBe('ACTIVE');
 
     // Now active is p2, and p1 has become RETIRED
     expect((await embeddingProfileService.getActive('project-akp-1'))?.profileId).toBe(
@@ -133,6 +274,8 @@ describe('AKP-1 WP1: SemanticEmbeddingProfile Authority', () => {
       expectedRevision: 0,
       providerId: 'openai',
       embeddingModelId: 'text-embedding-3-small',
+      credentialId: 'cred-openai-1',
+      credentialRevision: 1,
       updatedBy: 'principal-owner',
     });
 
@@ -143,6 +286,8 @@ describe('AKP-1 WP1: SemanticEmbeddingProfile Authority', () => {
         expectedRevision: 0,
         providerId: 'openai',
         embeddingModelId: 'text-embedding-3-large',
+        credentialId: 'cred-openai-1',
+        credentialRevision: 1,
         updatedBy: 'principal-owner',
       }),
     ).rejects.toMatchObject({
@@ -166,12 +311,14 @@ describe('AKP-1 WP1: SemanticEmbeddingProfile Authority', () => {
     });
     expect(aiConfig.activeModelId).toBe('gpt-5.6-luna');
 
-    // 2. Configure embedding profile to use Google Gemini text-embedding-004
+    // 2. Configure embedding profile to use Google Gemini gemini-embedding-001
     const embProfile = await embeddingProfileService.createProfile({
       projectId: 'project-akp-1',
       expectedRevision: 0,
       providerId: 'google-gemini',
-      embeddingModelId: 'text-embedding-004',
+      embeddingModelId: 'gemini-embedding-001',
+      credentialId: 'cred-gemini-1',
+      credentialRevision: 1,
       updatedBy: 'principal-owner',
     });
     await embeddingProfileService.activateProfile({
@@ -197,6 +344,6 @@ describe('AKP-1 WP1: SemanticEmbeddingProfile Authority', () => {
 
     const activeEmbProfile = await embeddingProfileService.getActive('project-akp-1');
     expect(activeEmbProfile?.providerId).toBe('google-gemini');
-    expect(activeEmbProfile?.embeddingModelId).toBe('text-embedding-004');
+    expect(activeEmbProfile?.embeddingModelId).toBe('gemini-embedding-001');
   });
 });

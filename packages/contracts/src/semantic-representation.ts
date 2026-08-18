@@ -82,7 +82,7 @@ const sortedUnique = (items: readonly string[] | undefined): readonly string[] =
     const trimmed = item.trim();
     if (trimmed) set.add(trimmed);
   }
-  return Object.freeze([...set].sort((a, b) => a.localeCompare(b)));
+  return Object.freeze([...set].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)));
 };
 
 export class SemanticRepresentationBuilder {

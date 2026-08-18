@@ -2,7 +2,7 @@ import { type ErrorCode, ShotgunError } from './errors.js';
 import type { SemanticResourceType } from './semantic-representation.js';
 
 export const SEMANTIC_EMBEDDING_PROFILE_REVISION = 1;
-export const SEMANTIC_EMBEDDING_REGISTRY_REVISION = 'semantic-embedding-registry:v1' as const;
+export const SEMANTIC_EMBEDDING_CATALOG_REVISION = 'semantic-embedding-catalog:v1' as const;
 
 export type SemanticEmbeddingProfileStatus = 'BUILDING' | 'ACTIVE' | 'RETIRED' | 'FAILED';
 export type SemanticDistanceMetric = 'cosine' | 'dot_product' | 'euclidean';
@@ -14,6 +14,8 @@ export type SemanticEmbeddingProfile = {
   readonly profileRevision: number;
   readonly providerId: string;
   readonly embeddingModelId: string;
+  readonly credentialId: string;
+  readonly credentialRevision: number;
   readonly representationVersion: string;
   readonly dimension: number;
   readonly distanceMetric: SemanticDistanceMetric;
@@ -23,6 +25,29 @@ export type SemanticEmbeddingProfile = {
   readonly activatedAt?: string;
   readonly updatedBy: string;
   readonly updatedAt: string;
+};
+
+export type ProviderStatusReaderPort = {
+  getProvider(
+    providerId: string,
+  ): { readonly providerId: string; readonly status: string } | undefined;
+};
+
+export type EmbeddingCredentialMetadataReference = {
+  readonly credentialId: string;
+  readonly projectId: string;
+  readonly providerId: string;
+  readonly credentialRevision: number;
+  readonly lifecycleState: 'active' | 'superseded' | 'revoked' | 'removed';
+};
+
+export type EmbeddingCredentialReaderPort = {
+  getMetadata(scope: {
+    readonly projectId: string;
+    readonly providerId: string;
+    readonly credentialId: string;
+    readonly credentialRevision: number;
+  }): Promise<EmbeddingCredentialMetadataReference | undefined>;
 };
 
 export type SemanticEmbeddingProfileRepositoryPort = {
@@ -42,6 +67,7 @@ export type SemanticEmbeddingProfileRepositoryPort = {
     readonly profileRevision: number;
     readonly status: SemanticEmbeddingProfileStatus;
     readonly activatedAt?: string;
+    readonly updatedBy: string;
     readonly updatedAt: string;
   }): Promise<SemanticEmbeddingProfile | 'NOT_FOUND' | 'CONFLICT'>;
 };
@@ -55,7 +81,10 @@ export type SemanticEmbeddingProfilePort = {
     readonly expectedRevision: number;
     readonly providerId: string;
     readonly embeddingModelId: string;
+    readonly credentialId: string;
+    readonly credentialRevision: number;
     readonly representationVersion?: string;
+    readonly dimension?: number;
     readonly distanceMetric?: SemanticDistanceMetric;
     readonly normalizationPolicy?: SemanticNormalizationPolicy;
     readonly updatedBy: string;
@@ -74,7 +103,8 @@ export type SemanticEmbeddingModelDescriptor = {
   readonly providerId: string;
   readonly modelId: string;
   readonly displayName: string;
-  readonly dimension: number;
+  readonly defaultDimension: number;
+  readonly supportedDimensions: readonly number[];
   readonly maxBatchSize: number;
   readonly capabilityRevision: string;
   readonly supportedDistanceMetrics: readonly SemanticDistanceMetric[];
@@ -82,17 +112,8 @@ export type SemanticEmbeddingModelDescriptor = {
   readonly defaultNormalizationPolicy: SemanticNormalizationPolicy;
 };
 
-export type SemanticEmbeddingProviderDescriptor = {
-  readonly providerId: string;
-  readonly displayName: string;
-  readonly status: 'active' | 'disabled';
-  readonly models: readonly SemanticEmbeddingModelDescriptor[];
-  readonly registryRevision: typeof SEMANTIC_EMBEDDING_REGISTRY_REVISION;
-};
-
 export type SemanticEmbeddingRegistryPort = {
-  listProviders(): readonly SemanticEmbeddingProviderDescriptor[];
-  getProvider(providerId: string): SemanticEmbeddingProviderDescriptor | undefined;
+  listModels(providerId?: string): readonly SemanticEmbeddingModelDescriptor[];
   getModel(providerId: string, modelId: string): SemanticEmbeddingModelDescriptor | undefined;
 };
 
@@ -139,7 +160,6 @@ export type ResolvedSemanticEmbeddingExecution = {
   readonly pin: SemanticEmbeddingExecutionPin;
   readonly profile: SemanticEmbeddingProfile;
   readonly model: SemanticEmbeddingModelDescriptor;
-  readonly provider: SemanticEmbeddingProviderDescriptor;
 };
 
 export type SemanticEmbeddingResolverPort = {

@@ -1,9 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
 
 import {
-  SEMANTIC_EMBEDDING_REGISTRY_REVISION,
+  SEMANTIC_EMBEDDING_CATALOG_REVISION,
   SEMANTIC_REPRESENTATION_VERSION,
   SemanticEmbeddingError,
+  type EmbeddingCredentialReaderPort,
+  type ProviderStatusReaderPort,
   type SemanticDistanceMetric,
   type SemanticEmbeddingExecutionPort,
   type SemanticEmbeddingModelDescriptor,
@@ -11,107 +13,77 @@ import {
   type SemanticEmbeddingProfile,
   type SemanticEmbeddingProfilePort,
   type SemanticEmbeddingProfileRepositoryPort,
-  type SemanticEmbeddingProviderDescriptor,
   type SemanticEmbeddingRegistryPort,
   type SemanticEmbeddingResult,
   type SemanticNormalizationPolicy,
 } from '../../../packages/contracts/src/index.js';
 
-const initialEmbeddingProviders: readonly SemanticEmbeddingProviderDescriptor[] = [
+const initialEmbeddingModels: readonly SemanticEmbeddingModelDescriptor[] = [
   {
     providerId: 'openai',
-    displayName: 'OpenAI',
-    status: 'active',
-    registryRevision: SEMANTIC_EMBEDDING_REGISTRY_REVISION,
-    models: [
-      {
-        providerId: 'openai',
-        modelId: 'text-embedding-3-small',
-        displayName: 'Text Embedding 3 Small',
-        dimension: 1536,
-        maxBatchSize: 2048,
-        capabilityRevision: 'model-catalog:v1',
-        supportedDistanceMetrics: ['cosine', 'dot_product', 'euclidean'],
-        defaultDistanceMetric: 'cosine',
-        defaultNormalizationPolicy: 'unit_length',
-      },
-      {
-        providerId: 'openai',
-        modelId: 'text-embedding-3-large',
-        displayName: 'Text Embedding 3 Large',
-        dimension: 3072,
-        maxBatchSize: 2048,
-        capabilityRevision: 'model-catalog:v1',
-        supportedDistanceMetrics: ['cosine', 'dot_product', 'euclidean'],
-        defaultDistanceMetric: 'cosine',
-        defaultNormalizationPolicy: 'unit_length',
-      },
-    ],
+    modelId: 'text-embedding-3-small',
+    displayName: 'Text Embedding 3 Small',
+    defaultDimension: 1536,
+    supportedDimensions: [512, 1536],
+    maxBatchSize: 2048,
+    capabilityRevision: SEMANTIC_EMBEDDING_CATALOG_REVISION,
+    supportedDistanceMetrics: ['cosine', 'dot_product', 'euclidean'],
+    defaultDistanceMetric: 'cosine',
+    defaultNormalizationPolicy: 'unit_length',
+  },
+  {
+    providerId: 'openai',
+    modelId: 'text-embedding-3-large',
+    displayName: 'Text Embedding 3 Large',
+    defaultDimension: 3072,
+    supportedDimensions: [256, 1024, 1536, 3072],
+    maxBatchSize: 2048,
+    capabilityRevision: SEMANTIC_EMBEDDING_CATALOG_REVISION,
+    supportedDistanceMetrics: ['cosine', 'dot_product', 'euclidean'],
+    defaultDistanceMetric: 'cosine',
+    defaultNormalizationPolicy: 'unit_length',
   },
   {
     providerId: 'google-gemini',
-    displayName: 'Google Gemini',
-    status: 'active',
-    registryRevision: SEMANTIC_EMBEDDING_REGISTRY_REVISION,
-    models: [
-      {
-        providerId: 'google-gemini',
-        modelId: 'text-embedding-004',
-        displayName: 'Text Embedding 004',
-        dimension: 768,
-        maxBatchSize: 100,
-        capabilityRevision: 'model-catalog:v1',
-        supportedDistanceMetrics: ['cosine', 'dot_product', 'euclidean'],
-        defaultDistanceMetric: 'cosine',
-        defaultNormalizationPolicy: 'unit_length',
-      },
-    ],
-  },
-  {
-    providerId: 'deepseek',
-    displayName: 'DeepSeek',
-    status: 'disabled',
-    registryRevision: SEMANTIC_EMBEDDING_REGISTRY_REVISION,
-    models: [],
+    modelId: 'gemini-embedding-001',
+    displayName: 'Gemini Embedding 001',
+    defaultDimension: 768,
+    supportedDimensions: [128, 256, 512, 768, 1536, 3072],
+    maxBatchSize: 100,
+    capabilityRevision: SEMANTIC_EMBEDDING_CATALOG_REVISION,
+    supportedDistanceMetrics: ['cosine', 'dot_product', 'euclidean'],
+    defaultDistanceMetric: 'cosine',
+    defaultNormalizationPolicy: 'unit_length',
   },
 ];
 
 const copyModel = (model: SemanticEmbeddingModelDescriptor): SemanticEmbeddingModelDescriptor => ({
   ...model,
+  supportedDimensions: [...model.supportedDimensions],
   supportedDistanceMetrics: [...model.supportedDistanceMetrics],
 });
 
-const copyProvider = (
-  provider: SemanticEmbeddingProviderDescriptor,
-): SemanticEmbeddingProviderDescriptor => ({
-  ...provider,
-  models: provider.models.map(copyModel),
-});
-
 export class StaticSemanticEmbeddingRegistry implements SemanticEmbeddingRegistryPort {
-  private readonly providers: readonly SemanticEmbeddingProviderDescriptor[];
+  private readonly models: readonly SemanticEmbeddingModelDescriptor[];
 
-  constructor(
-    customProviders: readonly SemanticEmbeddingProviderDescriptor[] = initialEmbeddingProviders,
-  ) {
-    this.providers = customProviders.map(copyProvider);
+  constructor(customModels: readonly SemanticEmbeddingModelDescriptor[] = initialEmbeddingModels) {
+    this.models = customModels.map(copyModel);
   }
 
-  listProviders(): readonly SemanticEmbeddingProviderDescriptor[] {
-    return this.providers.map(copyProvider);
-  }
-
-  getProvider(providerId: string): SemanticEmbeddingProviderDescriptor | undefined {
+  listModels(providerId?: string): readonly SemanticEmbeddingModelDescriptor[] {
+    if (!providerId) {
+      return this.models.map(copyModel);
+    }
     const normalized = providerId.trim();
-    const provider = this.providers.find((item) => item.providerId === normalized);
-    return provider ? copyProvider(provider) : undefined;
+    return this.models.filter((model) => model.providerId === normalized).map(copyModel);
   }
 
   getModel(providerId: string, modelId: string): SemanticEmbeddingModelDescriptor | undefined {
     const normalizedProviderId = providerId.trim();
     const normalizedModelId = modelId.trim();
-    const provider = this.providers.find((item) => item.providerId === normalizedProviderId);
-    const model = provider?.models.find((item) => item.modelId === normalizedModelId);
+    const model = this.models.find(
+      (item) => item.providerId === normalizedProviderId && item.modelId === normalizedModelId,
+    );
     return model ? copyModel(model) : undefined;
   }
 }
@@ -155,8 +127,10 @@ const validateExpectedRevision = (value: number): number => {
 
 export class SemanticEmbeddingProfileService implements SemanticEmbeddingProfilePort {
   constructor(
-    private readonly registry: SemanticEmbeddingRegistryPort,
+    private readonly providerStatus: ProviderStatusReaderPort,
+    private readonly embeddingRegistry: SemanticEmbeddingRegistryPort,
     private readonly repository: SemanticEmbeddingProfileRepositoryPort,
+    private readonly credentials: EmbeddingCredentialReaderPort,
     private readonly clock: () => string = () => new Date().toISOString(),
   ) {}
 
@@ -184,25 +158,73 @@ export class SemanticEmbeddingProfileService implements SemanticEmbeddingProfile
     const projectId = validateIdentifier('Project ID', input.projectId);
     const providerId = validateIdentifier('Provider ID', input.providerId, 128);
     const embeddingModelId = validateIdentifier('Embedding Model ID', input.embeddingModelId, 256);
+    const credentialId = validateIdentifier('Credential ID', input.credentialId, 256);
+    const credentialRevision = validateRevision('Credential revision', input.credentialRevision);
     const expected = validateExpectedRevision(input.expectedRevision);
     const updatedBy = validateIdentifier('Updated by', input.updatedBy, 256);
     const representationVersion =
       input.representationVersion?.trim() || SEMANTIC_REPRESENTATION_VERSION;
 
-    const provider = this.registry.getProvider(providerId);
+    // 1. Verify provider in authoritative provider registry
+    const provider = this.providerStatus.getProvider(providerId);
     if (!provider || provider.status !== 'active') {
       throw new SemanticEmbeddingError({
         code: 'CAPABILITY_UNAVAILABLE',
-        safeMessage: 'Embedding provider is not registered or active.',
+        safeMessage: 'Provider is not registered or active.',
         operation: 'create-profile',
       });
     }
 
-    const model = this.registry.getModel(providerId, embeddingModelId);
+    // 2. Verify embedding model in embedding catalog
+    const model = this.embeddingRegistry.getModel(providerId, embeddingModelId);
     if (!model) {
       throw new SemanticEmbeddingError({
         code: 'CAPABILITY_UNAVAILABLE',
         safeMessage: 'Embedding model is not registered for provider.',
+        operation: 'create-profile',
+      });
+    }
+
+    // 3. Verify credential metadata
+    const credential = await this.credentials.getMetadata({
+      projectId,
+      providerId,
+      credentialId,
+      credentialRevision,
+    });
+    if (!credential) {
+      throw new SemanticEmbeddingError({
+        code: 'CONFIGURATION_REQUIRED',
+        safeMessage: 'Referenced credential revision was not found.',
+        operation: 'create-profile',
+      });
+    }
+    if (
+      credential.projectId !== projectId ||
+      credential.providerId !== providerId ||
+      credential.credentialId !== credentialId ||
+      credential.credentialRevision !== credentialRevision
+    ) {
+      throw new SemanticEmbeddingError({
+        code: 'CONFIGURATION_REQUIRED',
+        safeMessage: 'Credential ownership or revision mismatch.',
+        operation: 'create-profile',
+      });
+    }
+    if (credential.lifecycleState !== 'active') {
+      throw new SemanticEmbeddingError({
+        code: 'CONFIGURATION_REQUIRED',
+        safeMessage: 'Referenced credential is not active.',
+        operation: 'create-profile',
+      });
+    }
+
+    // 4. Validate dimension and distance metric
+    const dimension = input.dimension ?? model.defaultDimension;
+    if (!model.supportedDimensions.includes(dimension)) {
+      throw new SemanticEmbeddingError({
+        code: 'INVALID_INPUT',
+        safeMessage: `Dimension ${dimension} is not supported by model '${embeddingModelId}'.`,
         operation: 'create-profile',
       });
     }
@@ -220,6 +242,7 @@ export class SemanticEmbeddingProfileService implements SemanticEmbeddingProfile
     const normalizationPolicy: SemanticNormalizationPolicy =
       input.normalizationPolicy ?? model.defaultNormalizationPolicy;
 
+    // 5. Verify expected revision
     const current = await this.repository.findCurrent(projectId);
     if ((current?.profileRevision ?? 0) !== expected) {
       throw new SemanticEmbeddingError({
@@ -236,8 +259,10 @@ export class SemanticEmbeddingProfileService implements SemanticEmbeddingProfile
       profileRevision: expected + 1,
       providerId,
       embeddingModelId,
+      credentialId,
+      credentialRevision,
       representationVersion,
-      dimension: model.dimension,
+      dimension,
       distanceMetric,
       normalizationPolicy,
       status: 'BUILDING',
@@ -297,6 +322,7 @@ export class SemanticEmbeddingProfileService implements SemanticEmbeddingProfile
       profileRevision,
       status: 'ACTIVE',
       activatedAt: now,
+      updatedBy,
       updatedAt: now,
     });
 
@@ -316,10 +342,7 @@ export class SemanticEmbeddingProfileService implements SemanticEmbeddingProfile
       });
     }
 
-    return {
-      ...updated,
-      updatedBy,
-    };
+    return updated;
   }
 }
 

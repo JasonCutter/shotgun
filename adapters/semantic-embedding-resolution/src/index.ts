@@ -2,6 +2,7 @@ import {
   sha256Text,
   stableJson,
   SemanticEmbeddingError,
+  type ProviderStatusReaderPort,
   type ResolvedSemanticEmbeddingExecution,
   type SemanticEmbeddingExecutionPin,
   type SemanticEmbeddingProfile,
@@ -9,13 +10,12 @@ import {
   type SemanticEmbeddingRegistryPort,
   type SemanticEmbeddingResolverPort,
 } from '../../../packages/contracts/src/index.js';
-import type {
-  CredentialMetadata,
-  CredentialVaultPort,
-} from '../../../modules/credential-vault/src/index.js';
-import type {
-  ProviderDeploymentCeiling,
-  ProviderExternalTransferApprovalPort,
+import type { CredentialVaultPort } from '../../../modules/credential-vault/src/index.js';
+import {
+  evaluateProviderExternalTransfer,
+  type ExternalTransferSensitivity,
+  type ProviderDeploymentCeiling,
+  type ProviderExternalTransferApprovalPort,
 } from '../../../modules/provider-privacy-policy/src/index.js';
 
 export type SemanticEmbeddingAuthorityResolverOptions = {
@@ -29,17 +29,18 @@ export class SemanticEmbeddingAuthorityResolver implements SemanticEmbeddingReso
   private readonly clock: () => string;
 
   constructor(
-    private readonly registry: SemanticEmbeddingRegistryPort,
+    private readonly providerRegistry: ProviderStatusReaderPort,
+    private readonly embeddingRegistry: SemanticEmbeddingRegistryPort,
     private readonly profileService: SemanticEmbeddingProfilePort,
     private readonly vault: CredentialVaultPort,
-    private readonly options: SemanticEmbeddingAuthorityResolverOptions = {},
+    private readonly options: SemanticEmbeddingAuthorityResolverOptions,
   ) {
-    this.clock = options.clock ?? (() => new Date().toISOString());
+    this.clock = options?.clock ?? (() => new Date().toISOString());
   }
 
   async resolveExecution(input: {
     readonly projectId: string;
-    readonly sensitivity: 'public' | 'internal' | 'private' | 'restricted';
+    readonly sensitivity: ExternalTransferSensitivity;
     readonly profileRevision?: number;
     readonly credentialId?: string;
     readonly credentialRevision?: number;
@@ -53,12 +54,13 @@ export class SemanticEmbeddingAuthorityResolver implements SemanticEmbeddingReso
       });
     }
 
-    if (input.sensitivity === 'restricted') {
+    // Fail closed if required privacy authorities are missing
+    if (!this.options?.deploymentCeiling || !this.options?.approvalAuthority) {
       throw new SemanticEmbeddingError({
-        code: 'POLICY_DENIED',
+        code: 'CONFIGURATION_REQUIRED',
         safeMessage:
-          'Restricted sensitivity context cannot be sent to an external embedding provider.',
-        operation: 'enforce-sensitivity-policy',
+          'Provider privacy and deployment authority are required for embedding execution.',
+        operation: 'resolve-privacy-authority',
       });
     }
 
@@ -91,8 +93,8 @@ export class SemanticEmbeddingAuthorityResolver implements SemanticEmbeddingReso
       }
     }
 
-    // 2. Validate provider & model in registry
-    const provider = this.registry.getProvider(profile.providerId);
+    // 2. Validate provider in existing provider authority
+    const provider = this.providerRegistry.getProvider(profile.providerId);
     if (!provider || provider.status !== 'active') {
       throw new SemanticEmbeddingError({
         code: 'CAPABILITY_UNAVAILABLE',
@@ -101,7 +103,8 @@ export class SemanticEmbeddingAuthorityResolver implements SemanticEmbeddingReso
       });
     }
 
-    const model = this.registry.getModel(profile.providerId, profile.embeddingModelId);
+    // 3. Validate embedding model in semantic embedding registry
+    const model = this.embeddingRegistry.getModel(profile.providerId, profile.embeddingModelId);
     if (!model) {
       throw new SemanticEmbeddingError({
         code: 'CAPABILITY_UNAVAILABLE',
@@ -110,46 +113,39 @@ export class SemanticEmbeddingAuthorityResolver implements SemanticEmbeddingReso
       });
     }
 
-    // 3. Evaluate privacy & deployment policies for private sensitivity
-    if (input.sensitivity === 'private') {
-      if (
-        this.options.deploymentCeiling &&
-        !this.options.deploymentCeiling.allows(provider.providerId)
-      ) {
-        throw new SemanticEmbeddingError({
-          code: 'POLICY_DENIED',
-          safeMessage: 'Deployment policy blocks private external transfer for this provider.',
-          operation: 'evaluate-deployment-policy',
-        });
+    // 4. Evaluate privacy & deployment policies via canonical evaluateProviderExternalTransfer
+    const approval = await this.options.approvalAuthority.getCurrent(projectId, profile.providerId);
+    const legacyExternalTransferAllowed = this.options.legacyExternalTransferAllowed
+      ? await this.options.legacyExternalTransferAllowed(projectId)
+      : false;
+
+    const privacyDecision = evaluateProviderExternalTransfer({
+      providerId: profile.providerId,
+      sensitivity: input.sensitivity,
+      deployment: this.options.deploymentCeiling,
+      approval,
+      legacyExternalTransferAllowed,
+    });
+
+    if (!privacyDecision.eligible) {
+      let safeMessage = 'External transfer policy denied embedding execution.';
+      if (privacyDecision.reason === 'RESTRICTED_CONTEXT_BLOCKED') {
+        safeMessage =
+          'Restricted sensitivity context cannot be sent to an external embedding provider.';
+      } else if (privacyDecision.reason === 'DEPLOYMENT_POLICY_BLOCKED') {
+        safeMessage = 'Deployment policy blocks private external transfer for this provider.';
+      } else if (privacyDecision.reason === 'PROJECT_APPROVAL_REQUIRED') {
+        safeMessage = 'Project owner approval is required for private external transfer.';
       }
 
-      if (this.options.approvalAuthority) {
-        const approval = await this.options.approvalAuthority.getCurrent(
-          projectId,
-          provider.providerId,
-        );
-        let approved = approval?.approved === true;
-
-        if (
-          !approved &&
-          provider.providerId === 'google-gemini' &&
-          approval === undefined &&
-          this.options.legacyExternalTransferAllowed
-        ) {
-          approved = await this.options.legacyExternalTransferAllowed(projectId);
-        }
-
-        if (!approved) {
-          throw new SemanticEmbeddingError({
-            code: 'POLICY_DENIED',
-            safeMessage: 'Project owner approval is required for private external transfer.',
-            operation: 'evaluate-project-approval',
-          });
-        }
-      }
+      throw new SemanticEmbeddingError({
+        code: 'POLICY_DENIED',
+        safeMessage,
+        operation: 'enforce-privacy-policy',
+      });
     }
 
-    // 4. Resolve credential from vault
+    // 5. Revalidate pinned credential from vault (no non-deterministic list scanning)
     const availability = this.vault.getAvailability();
     if (availability.state !== 'AVAILABLE') {
       throw new SemanticEmbeddingError({
@@ -159,49 +155,46 @@ export class SemanticEmbeddingAuthorityResolver implements SemanticEmbeddingReso
       });
     }
 
-    let credentialMetadata: CredentialMetadata | undefined;
+    const credentialId = input.credentialId ?? profile.credentialId;
+    const credentialRevision = input.credentialRevision ?? profile.credentialRevision;
 
-    if (input.credentialId && input.credentialRevision) {
-      const metadata = await this.vault.getMetadata({
-        projectId,
-        providerId: provider.providerId,
-        credentialId: input.credentialId,
-        credentialRevision: input.credentialRevision,
+    if (
+      credentialId !== profile.credentialId ||
+      credentialRevision !== profile.credentialRevision
+    ) {
+      throw new SemanticEmbeddingError({
+        code: 'CAPABILITY_UNAVAILABLE',
+        safeMessage: 'Requested credential pin does not match profile authority.',
+        operation: 'resolve-pinned-credential',
       });
-      if (
-        !metadata ||
-        metadata.projectId !== projectId ||
-        metadata.providerId !== provider.providerId ||
-        metadata.credentialId !== input.credentialId ||
-        metadata.credentialRevision !== input.credentialRevision ||
-        metadata.lifecycleState !== 'active'
-      ) {
-        throw new SemanticEmbeddingError({
-          code: 'CAPABILITY_UNAVAILABLE',
-          safeMessage: 'Pinned credential revision is unavailable or revoked.',
-          operation: 'resolve-pinned-credential',
-        });
-      }
-      credentialMetadata = metadata;
-    } else {
-      const metadataList = this.vault.listMetadata ? await this.vault.listMetadata(projectId) : [];
-      const matching = metadataList.find(
-        (item) => item.providerId === provider.providerId && item.lifecycleState === 'active',
-      );
-      if (!matching) {
-        throw new SemanticEmbeddingError({
-          code: 'CONFIGURATION_REQUIRED',
-          safeMessage: `Active credential is required for provider '${provider.providerId}'.`,
-          operation: 'resolve-active-credential',
-        });
-      }
-      credentialMetadata = matching;
     }
 
-    // 5. Compute provider policy fingerprint
+    const credentialMetadata = await this.vault.getMetadata({
+      projectId,
+      providerId: profile.providerId,
+      credentialId,
+      credentialRevision,
+    });
+
+    if (
+      !credentialMetadata ||
+      credentialMetadata.projectId !== projectId ||
+      credentialMetadata.providerId !== profile.providerId ||
+      credentialMetadata.credentialId !== credentialId ||
+      credentialMetadata.credentialRevision !== credentialRevision ||
+      credentialMetadata.lifecycleState !== 'active'
+    ) {
+      throw new SemanticEmbeddingError({
+        code: 'CAPABILITY_UNAVAILABLE',
+        safeMessage: 'Pinned credential revision is unavailable, revoked, or mismatched.',
+        operation: 'resolve-pinned-credential',
+      });
+    }
+
+    // 6. Compute provider policy fingerprint
     const providerPolicyFingerprint = sha256Text(
       stableJson({
-        providerId: provider.providerId,
+        providerId: profile.providerId,
         modelId: model.modelId,
         profileRevision: profile.profileRevision,
         representationVersion: profile.representationVersion,
@@ -210,10 +203,10 @@ export class SemanticEmbeddingAuthorityResolver implements SemanticEmbeddingReso
       }),
     );
 
-    // 6. Build immutable execution pin
+    // 7. Build immutable execution pin (zero raw secrets)
     const pin: SemanticEmbeddingExecutionPin = Object.freeze({
       projectId,
-      providerId: provider.providerId,
+      providerId: profile.providerId,
       embeddingModelId: model.modelId,
       embeddingProfileId: profile.profileId,
       embeddingProfileRevision: profile.profileRevision,
@@ -228,7 +221,6 @@ export class SemanticEmbeddingAuthorityResolver implements SemanticEmbeddingReso
       pin,
       profile,
       model,
-      provider,
     };
   }
 }

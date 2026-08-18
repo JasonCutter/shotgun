@@ -59,6 +59,7 @@ export class InMemorySemanticEmbeddingProfileRepository implements SemanticEmbed
     readonly profileRevision: number;
     readonly status: SemanticEmbeddingProfileStatus;
     readonly activatedAt?: string;
+    readonly updatedBy: string;
     readonly updatedAt: string;
   }): Promise<SemanticEmbeddingProfile | 'NOT_FOUND' | 'CONFLICT'> {
     const historyKey = keyOf(input.projectId, input.profileRevision);
@@ -69,6 +70,7 @@ export class InMemorySemanticEmbeddingProfileRepository implements SemanticEmbed
       ...existing,
       status: input.status,
       ...(input.activatedAt ? { activatedAt: input.activatedAt } : {}),
+      updatedBy: input.updatedBy,
       updatedAt: input.updatedAt,
     };
 

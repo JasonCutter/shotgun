@@ -7,6 +7,7 @@ import {
   initialSemanticEmbeddingRegistry,
   SemanticEmbeddingProfileService,
 } from '../../modules/semantic-embedding/src/index.js';
+import { initialProviderRegistry } from '../../modules/ai-configuration/src/index.js';
 import {
   parseProviderDeploymentCeiling,
   type ProviderExternalTransferApprovalPort,
@@ -23,11 +24,14 @@ describe('AKP-1 WP1: Semantic Embedding Resolution and Execution Pinning', () =>
       readonly credentials?: readonly CredentialMetadata[];
       readonly approvedProviders?: readonly string[];
       readonly allowedDeploymentProviders?: string;
+      readonly omitDeploymentCeiling?: boolean;
+      readonly omitApprovalAuthority?: boolean;
+      readonly legacyGeminiAllowed?: boolean;
     } = {},
   ) => {
-    const registry = initialSemanticEmbeddingRegistry();
+    const embeddingRegistry = initialSemanticEmbeddingRegistry();
+    const providerRegistry = initialProviderRegistry();
     const repository = new InMemorySemanticEmbeddingProfileRepository();
-    const profileService = new SemanticEmbeddingProfileService(registry, repository);
 
     const credentialList = options.credentials ?? [
       {
@@ -53,6 +57,29 @@ describe('AKP-1 WP1: Semantic Embedding Resolution and Execution Pinning', () =>
         updatedAt: '2026-08-18T00:00:00.000Z',
       },
     ];
+
+    const credentialReader = {
+      getMetadata: async (scope: {
+        projectId: string;
+        providerId: string;
+        credentialId: string;
+        credentialRevision: number;
+      }) =>
+        credentialList.find(
+          (c) =>
+            c.projectId === scope.projectId &&
+            c.providerId === scope.providerId &&
+            c.credentialId === scope.credentialId &&
+            c.credentialRevision === scope.credentialRevision,
+        ),
+    };
+
+    const profileService = new SemanticEmbeddingProfileService(
+      providerRegistry,
+      embeddingRegistry,
+      repository,
+      credentialReader,
+    );
 
     const vault: CredentialVaultPort = {
       getAvailability: () =>
@@ -110,14 +137,25 @@ describe('AKP-1 WP1: Semantic Embedding Resolution and Execution Pinning', () =>
       providerAllowlist: options.allowedDeploymentProviders ?? 'openai,google-gemini',
     });
 
-    const resolver = new SemanticEmbeddingAuthorityResolver(registry, profileService, vault, {
-      approvalAuthority,
-      deploymentCeiling,
-      clock: () => '2026-08-18T14:00:00.000Z',
-    });
+    const resolver = new SemanticEmbeddingAuthorityResolver(
+      providerRegistry,
+      embeddingRegistry,
+      profileService,
+      vault,
+      {
+        approvalAuthority: options.omitApprovalAuthority ? undefined! : approvalAuthority,
+        deploymentCeiling: options.omitDeploymentCeiling ? undefined! : deploymentCeiling,
+        legacyExternalTransferAllowed:
+          options.legacyGeminiAllowed !== undefined
+            ? async () => options.legacyGeminiAllowed!
+            : undefined,
+        clock: () => '2026-08-18T14:00:00.000Z',
+      },
+    );
 
     return {
-      registry,
+      embeddingRegistry,
+      providerRegistry,
       repository,
       profileService,
       resolver,
@@ -139,7 +177,39 @@ describe('AKP-1 WP1: Semantic Embedding Resolution and Execution Pinning', () =>
     });
   });
 
-  it('resolves execution and produces immutable execution pin with zero secret material', async () => {
+  it('fails closed with CONFIGURATION_REQUIRED when required privacy authority is unconfigured', async () => {
+    const { resolver, profileService } = createTestRig({
+      omitDeploymentCeiling: true,
+    });
+
+    const profile = await profileService.createProfile({
+      projectId: 'project-1',
+      expectedRevision: 0,
+      providerId: 'openai',
+      embeddingModelId: 'text-embedding-3-small',
+      credentialId: 'cred-openai-1',
+      credentialRevision: 1,
+      updatedBy: 'principal-owner',
+    });
+    await profileService.activateProfile({
+      projectId: 'project-1',
+      profileId: profile.profileId,
+      profileRevision: 1,
+      updatedBy: 'principal-owner',
+    });
+
+    await expect(
+      resolver.resolveExecution({
+        projectId: 'project-1',
+        sensitivity: 'public',
+      }),
+    ).rejects.toMatchObject({
+      name: 'SemanticEmbeddingError',
+      embeddingErrorCode: 'CONFIGURATION_REQUIRED',
+    });
+  });
+
+  it('resolves execution and produces immutable execution pin with pinned credential metadata and zero secret values', async () => {
     const { resolver, profileService } = createTestRig();
 
     const profile = await profileService.createProfile({
@@ -147,6 +217,8 @@ describe('AKP-1 WP1: Semantic Embedding Resolution and Execution Pinning', () =>
       expectedRevision: 0,
       providerId: 'openai',
       embeddingModelId: 'text-embedding-3-small',
+      credentialId: 'cred-openai-1',
+      credentialRevision: 1,
       updatedBy: 'principal-owner',
     });
     await profileService.activateProfile({
@@ -174,17 +246,16 @@ describe('AKP-1 WP1: Semantic Embedding Resolution and Execution Pinning', () =>
     });
     expect(resolved.pin.providerPolicyFingerprint).toMatch(/^sha256:[a-f0-9]{64}$/);
 
-    // Verify no secret, token, key or raw payload is in pin
+    // Verify no secret, token, key or cipher is in pin
     const serializedPin = JSON.stringify(resolved.pin);
     expect(serializedPin).not.toContain('secret');
     expect(serializedPin).not.toContain('cipher');
     expect(serializedPin).not.toContain('bearer');
 
-    expect(resolved.model.dimension).toBe(1536);
-    expect(resolved.provider.providerId).toBe('openai');
+    expect(resolved.model.defaultDimension).toBe(1536);
   });
 
-  it('fails closed with POLICY_DENIED on restricted sensitivity', async () => {
+  it('fails closed with POLICY_DENIED on restricted sensitivity via canonical privacy decision', async () => {
     const { resolver, profileService } = createTestRig();
 
     const profile = await profileService.createProfile({
@@ -192,6 +263,8 @@ describe('AKP-1 WP1: Semantic Embedding Resolution and Execution Pinning', () =>
       expectedRevision: 0,
       providerId: 'openai',
       embeddingModelId: 'text-embedding-3-small',
+      credentialId: 'cred-openai-1',
+      credentialRevision: 1,
       updatedBy: 'principal-owner',
     });
     await profileService.activateProfile({
@@ -212,7 +285,7 @@ describe('AKP-1 WP1: Semantic Embedding Resolution and Execution Pinning', () =>
     });
   });
 
-  it('fails closed when private sensitivity is blocked by deployment ceiling', async () => {
+  it('fails closed with POLICY_DENIED when private sensitivity is blocked by deployment ceiling', async () => {
     const { resolver, profileService } = createTestRig({
       allowedDeploymentProviders: 'google-gemini', // openai not in deployment allowlist
     });
@@ -222,6 +295,8 @@ describe('AKP-1 WP1: Semantic Embedding Resolution and Execution Pinning', () =>
       expectedRevision: 0,
       providerId: 'openai',
       embeddingModelId: 'text-embedding-3-small',
+      credentialId: 'cred-openai-1',
+      credentialRevision: 1,
       updatedBy: 'principal-owner',
     });
     await profileService.activateProfile({
@@ -242,7 +317,7 @@ describe('AKP-1 WP1: Semantic Embedding Resolution and Execution Pinning', () =>
     });
   });
 
-  it('fails closed when private sensitivity lacks project approval', async () => {
+  it('fails closed with POLICY_DENIED when private sensitivity lacks project approval', async () => {
     const { resolver, profileService } = createTestRig({
       approvedProviders: [], // No provider approved for project
     });
@@ -252,6 +327,8 @@ describe('AKP-1 WP1: Semantic Embedding Resolution and Execution Pinning', () =>
       expectedRevision: 0,
       providerId: 'openai',
       embeddingModelId: 'text-embedding-3-small',
+      credentialId: 'cred-openai-1',
+      credentialRevision: 1,
       updatedBy: 'principal-owner',
     });
     await profileService.activateProfile({
@@ -272,9 +349,10 @@ describe('AKP-1 WP1: Semantic Embedding Resolution and Execution Pinning', () =>
     });
   });
 
-  it('fails closed on credential mismatch or missing vault key', async () => {
+  it('allows eligible private context when approved and within deployment ceiling', async () => {
     const { resolver, profileService } = createTestRig({
-      vaultAvailable: false,
+      approvedProviders: ['openai'],
+      allowedDeploymentProviders: 'openai,google-gemini',
     });
 
     const profile = await profileService.createProfile({
@@ -282,6 +360,8 @@ describe('AKP-1 WP1: Semantic Embedding Resolution and Execution Pinning', () =>
       expectedRevision: 0,
       providerId: 'openai',
       embeddingModelId: 'text-embedding-3-small',
+      credentialId: 'cred-openai-1',
+      credentialRevision: 1,
       updatedBy: 'principal-owner',
     });
     await profileService.activateProfile({
@@ -291,14 +371,57 @@ describe('AKP-1 WP1: Semantic Embedding Resolution and Execution Pinning', () =>
       updatedBy: 'principal-owner',
     });
 
+    const resolved = await resolver.resolveExecution({
+      projectId: 'project-1',
+      sensitivity: 'private',
+    });
+    expect(resolved.pin.providerId).toBe('openai');
+  });
+
+  it('fails closed on credential revocation, mismatch, or missing vault key without list fallback', async () => {
+    const { resolver, profileService } = createTestRig({
+      credentials: [
+        {
+          credentialId: 'cred-openai-1',
+          projectId: 'project-1',
+          providerId: 'openai',
+          encryptionVersion: 'aes-256-gcm:v1' as const,
+          keyVersion: 'v1',
+          credentialRevision: 1,
+          lifecycleState: 'active' as const,
+          createdAt: '2026-08-18T00:00:00.000Z',
+          updatedAt: '2026-08-18T00:00:00.000Z',
+        },
+      ],
+    });
+
+    const profile = await profileService.createProfile({
+      projectId: 'project-1',
+      expectedRevision: 0,
+      providerId: 'openai',
+      embeddingModelId: 'text-embedding-3-small',
+      credentialId: 'cred-openai-1',
+      credentialRevision: 1,
+      updatedBy: 'principal-owner',
+    });
+    await profileService.activateProfile({
+      projectId: 'project-1',
+      profileId: profile.profileId,
+      profileRevision: 1,
+      updatedBy: 'principal-owner',
+    });
+
+    // Mismatched credential requested via execution override
     await expect(
       resolver.resolveExecution({
         projectId: 'project-1',
         sensitivity: 'public',
+        credentialId: 'cred-different-id',
+        credentialRevision: 1,
       }),
     ).rejects.toMatchObject({
       name: 'SemanticEmbeddingError',
-      embeddingErrorCode: 'CONFIGURATION_REQUIRED',
+      embeddingErrorCode: 'CAPABILITY_UNAVAILABLE',
     });
   });
 

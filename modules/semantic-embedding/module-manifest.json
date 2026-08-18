@@ -12,7 +12,11 @@
   "deployment": { "modes": ["in_process", "worker"] },
   "dataOwnership": {
     "owns": ["semantic.embedding_profiles", "semantic.embedding_profile_revisions"],
-    "readsViaPorts": ["SemanticEmbeddingProfileRepositoryPort"],
+    "readsViaPorts": [
+      "SemanticEmbeddingProfileRepositoryPort",
+      "ProviderStatusReaderPort",
+      "EmbeddingCredentialReaderPort"
+    ],
     "directSchemaAccess": false
   },
   "consumes": { "commands": [], "events": [] },

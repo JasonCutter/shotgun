@@ -59,7 +59,7 @@ describe('AKP-1 WP1: SemanticRepresentationBuilder', () => {
     expect(rep.semanticTextDigest).toMatch(/^sha256:[a-f0-9]{64}$/);
   });
 
-  it('builds byte-stable deterministic representation for Entity with sorted aliases', () => {
+  it('builds byte-stable deterministic representation for Entity with ASCII aliases', () => {
     const input1: SemanticEntityInput = {
       resourceType: 'ENTITY',
       resourceId: 'entity-301',
@@ -86,6 +86,62 @@ describe('AKP-1 WP1: SemanticRepresentationBuilder', () => {
     );
   });
 
+  it('builds deterministic representation for Korean and mixed English/Korean aliases with code-point ordering', () => {
+    const inputKoreanUnordered: SemanticEntityInput = {
+      resourceType: 'ENTITY',
+      resourceId: 'entity-kr-1',
+      entityType: 'ORGANIZATION',
+      displayName: '샷건 시스템',
+      aliases: ['하이브리드 검색', '샷건', '벡터 인덱스', 'Active Knowledge', '샷건'], // includes duplicates & mixed script
+    };
+
+    const inputKoreanReordered: SemanticEntityInput = {
+      resourceType: 'ENTITY',
+      resourceId: 'entity-kr-1',
+      entityType: 'ORGANIZATION',
+      displayName: '샷건 시스템',
+      aliases: ['Active Knowledge', '벡터 인덱스', '샷건', '하이브리드 검색'],
+    };
+
+    const rep1 = semanticRepresentationBuilder.build(inputKoreanUnordered);
+    const rep2 = semanticRepresentationBuilder.build(inputKoreanReordered);
+
+    expect(rep1.semanticText).toBe(rep2.semanticText);
+    expect(rep1.semanticTextDigest).toBe(rep2.semanticTextDigest);
+    // ASCII before Korean code points in standard code-point ordering
+    expect(rep1.semanticText).toBe(
+      'resource_type: ENTITY\nentity_type: ORGANIZATION\nname: 샷건 시스템\naliases: Active Knowledge, 벡터 인덱스, 샷건, 하이브리드 검색',
+    );
+  });
+
+  it('handles casing differences and duplicate trimming deterministically', () => {
+    const input1: SemanticEntityInput = {
+      resourceType: 'ENTITY',
+      resourceId: 'entity-case-1',
+      entityType: 'CONCEPT',
+      displayName: 'Retrieval Strategy',
+      aliases: ['beta', 'Alpha', 'alpha', '  beta  ', 'Beta'],
+    };
+
+    const input2: SemanticEntityInput = {
+      resourceType: 'ENTITY',
+      resourceId: 'entity-case-1',
+      entityType: 'CONCEPT',
+      displayName: 'Retrieval Strategy',
+      aliases: ['Alpha', 'alpha', 'Beta', 'beta'],
+    };
+
+    const rep1 = semanticRepresentationBuilder.build(input1);
+    const rep2 = semanticRepresentationBuilder.build(input2);
+
+    expect(rep1.semanticText).toBe(rep2.semanticText);
+    expect(rep1.semanticTextDigest).toBe(rep2.semanticTextDigest);
+    // Standard ASCII uppercase < lowercase
+    expect(rep1.semanticText).toBe(
+      'resource_type: ENTITY\nentity_type: CONCEPT\nname: Retrieval Strategy\naliases: Alpha, Beta, alpha, beta',
+    );
+  });
+
   it('builds byte-stable deterministic representation for Relation', () => {
     const input: SemanticRelationInput = {
       resourceType: 'RELATION',
@@ -108,23 +164,34 @@ describe('AKP-1 WP1: SemanticRepresentationBuilder', () => {
   });
 
   it('builds byte-stable deterministic representation for Event with sorted participants', () => {
-    const input: SemanticEventInput = {
+    const input1: SemanticEventInput = {
       resourceType: 'EVENT',
       resourceId: 'event-501',
       eventType: 'SYSTEM_UPGRADE',
       title: 'PostgreSQL 16 Engine Upgrade',
       subjectRef: 'entity-postgresql',
-      participantRefs: ['actor-bob', 'actor-alice'],
+      participantRefs: ['actor-bob', 'actor-alice', 'actor-김철수'],
       occurredAt: '2026-08-18T10:00:00Z',
     };
 
-    const rep = semanticRepresentationBuilder.build(input);
-    expect(rep.resourceType).toBe('EVENT');
-    expect(rep.resourceId).toBe('event-501');
-    expect(rep.semanticText).toBe(
-      'resource_type: EVENT\nevent_type: SYSTEM_UPGRADE\ntitle: PostgreSQL 16 Engine Upgrade\nsubject_ref: entity-postgresql\nparticipants: actor-alice, actor-bob\noccurred_at: 2026-08-18T10:00:00Z',
+    const input2: SemanticEventInput = {
+      resourceType: 'EVENT',
+      resourceId: 'event-501',
+      eventType: 'SYSTEM_UPGRADE',
+      title: 'PostgreSQL 16 Engine Upgrade',
+      subjectRef: 'entity-postgresql',
+      participantRefs: ['actor-김철수', 'actor-alice', 'actor-bob'],
+      occurredAt: '2026-08-18T10:00:00Z',
+    };
+
+    const rep1 = semanticRepresentationBuilder.build(input1);
+    const rep2 = semanticRepresentationBuilder.build(input2);
+
+    expect(rep1.semanticText).toBe(rep2.semanticText);
+    expect(rep1.semanticTextDigest).toBe(rep2.semanticTextDigest);
+    expect(rep1.semanticText).toBe(
+      'resource_type: EVENT\nevent_type: SYSTEM_UPGRADE\ntitle: PostgreSQL 16 Engine Upgrade\nsubject_ref: entity-postgresql\nparticipants: actor-alice, actor-bob, actor-김철수\noccurred_at: 2026-08-18T10:00:00Z',
     );
-    expect(rep.semanticTextDigest).toMatch(/^sha256:[a-f0-9]{64}$/);
   });
 
   it('builds byte-stable deterministic representation for Decision', () => {

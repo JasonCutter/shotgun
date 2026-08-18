@@ -6,20 +6,23 @@ import type {
 export class InMemorySemanticActiveGenerationReader implements SemanticActiveGenerationReaderPort {
   private readonly activeGenerations = new Map<string, SemanticProjectionGeneration>();
 
-  constructor(initialGenerations: readonly SemanticProjectionGeneration[] = []) {
-    for (const gen of initialGenerations) {
-      if (gen.buildStatus === 'READY') {
-        this.activeGenerations.set(gen.projectId, gen);
+  constructor(
+    initialActiveMap?:
+      Record<string, SemanticProjectionGeneration> | Map<string, SemanticProjectionGeneration>,
+  ) {
+    if (initialActiveMap) {
+      const entries =
+        initialActiveMap instanceof Map
+          ? initialActiveMap.entries()
+          : Object.entries(initialActiveMap);
+      for (const [projectId, gen] of entries) {
+        this.activeGenerations.set(projectId, { ...gen });
       }
     }
   }
 
   setActiveGeneration(generation: SemanticProjectionGeneration): void {
-    if (generation.buildStatus === 'READY') {
-      this.activeGenerations.set(generation.projectId, generation);
-    } else {
-      this.activeGenerations.delete(generation.projectId);
-    }
+    this.activeGenerations.set(generation.projectId, { ...generation });
   }
 
   clearActiveGeneration(projectId: string): void {

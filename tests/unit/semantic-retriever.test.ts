@@ -465,23 +465,28 @@ describe('SemanticRetriever Unit Tests', () => {
     expect(query.limit).toBe(5);
   });
 
-  it('validates query vector execution identity and dimensions', async () => {
-    const badProviderEmbedder: SemanticEmbeddingExecutionPort = {
+  it('fails before execution when executionPort.identity does not match generation pin even if embed result claims match', async () => {
+    let embedCalled = false;
+    const mismatchedPortEmbedder: SemanticEmbeddingExecutionPort = {
       identity: {
-        providerId: 'fake-other',
+        providerId: 'wrong-provider', // Wrong port identity!
         embeddingModelId: 'text-embedding-3-small',
         dimension: 768,
       },
-      embed: async () => ({
-        vector: Array.from({ length: 768 }, () => 0.1),
-        dimension: 768,
-        modelId: 'text-embedding-3-small',
-        providerId: 'fake-other',
-      }),
+      embed: async () => {
+        embedCalled = true;
+        // Result falsely claims matching identity
+        return {
+          vector: Array.from({ length: 768 }, () => 0.1),
+          dimension: 768,
+          modelId: 'text-embedding-3-small',
+          providerId: 'openai',
+        };
+      },
       embedBatch: async () => [],
     };
 
-    const { retriever } = createRig({ executionPort: badProviderEmbedder });
+    const { retriever } = createRig({ executionPort: mismatchedPortEmbedder });
 
     await expect(
       retriever.retrieve({
@@ -490,6 +495,38 @@ describe('SemanticRetriever Unit Tests', () => {
         accessScopes: ['public'],
         allowedSensitivities: ['public'],
       }),
-    ).rejects.toThrow('Query vector execution identity or dimension does not match');
+    ).rejects.toThrow('Embedding execution port identity does not match generation execution pin.');
+
+    expect(embedCalled).toBe(false); // Validated BEFORE execution!
+  });
+
+  it('fails when executionPort.identity matches but returned embed result identity is wrong', async () => {
+    const badResultEmbedder: SemanticEmbeddingExecutionPort = {
+      identity: {
+        providerId: 'openai', // Correct port identity
+        embeddingModelId: 'text-embedding-3-small',
+        dimension: 768,
+      },
+      embed: async () => ({
+        vector: Array.from({ length: 768 }, () => 0.1),
+        dimension: 768,
+        modelId: 'wrong-model-returned', // Wrong returned result identity!
+        providerId: 'openai',
+      }),
+      embedBatch: async () => [],
+    };
+
+    const { retriever } = createRig({ executionPort: badResultEmbedder });
+
+    await expect(
+      retriever.retrieve({
+        projectId: 'proj-alpha',
+        query: 'test query',
+        accessScopes: ['public'],
+        allowedSensitivities: ['public'],
+      }),
+    ).rejects.toThrow(
+      'Query vector execution identity or dimension does not match generation execution pin.',
+    );
   });
 });

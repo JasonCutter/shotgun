@@ -12,6 +12,7 @@ import {
 } from '../../packages/contracts/src/index.js';
 import {
   type EvidenceSpanResolverPort,
+  type SourceVersionResolverPort,
   HybridRetrievalCoordinator,
 } from '../../modules/hybrid-retrieval/src/index.js';
 
@@ -52,7 +53,6 @@ describe('Hybrid Security & Request-Local Semantic Degradation Unit Tests', () =
     resolveResource: async (_projId, resourceType, resourceId) => ({
       text: `Authoritative content for ${resourceType}:${resourceId}`,
       canonicalVersion: 1,
-      evidenceIds: [`ev-${resourceId}`],
       sourceVersionId: 'src-ver-1',
     }),
   };
@@ -91,6 +91,14 @@ describe('Hybrid Security & Request-Local Semantic Degradation Unit Tests', () =
       getActiveGeneration: async () => undefined,
     };
 
+    const sourceVersionResolver: SourceVersionResolverPort = {
+      getSourceVersion: async (_projId, sourceVersionId) => ({
+        sourceVersionId,
+        projectId: 'proj-alpha',
+        sourceId: 'src-1',
+      }),
+    };
+
     const coordinator = new HybridRetrievalCoordinator(
       lexicalRetriever,
       options.semanticRetriever !== undefined
@@ -100,7 +108,7 @@ describe('Hybrid Security & Request-Local Semantic Degradation Unit Tests', () =
           : undefined,
       defaultResourceResolver,
       evidenceResolver,
-      undefined,
+      sourceVersionResolver,
       activeGenerationReader,
       undefined,
       { clock: () => '2026-08-18T12:00:00.000Z' },

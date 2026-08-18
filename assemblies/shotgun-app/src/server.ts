@@ -221,6 +221,7 @@ import {
   createHybridRetrievalModule,
   HybridRetrievalCoordinator,
   LexicalRetriever,
+  ProductKnowledgeResourceResolver,
 } from '../../../modules/hybrid-retrieval/src/index.js';
 import {
   createIntakeModule,
@@ -1666,24 +1667,12 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     canonicalSnapshot.getSnapshot(projectId),
   );
 
-  const knowledgeResourceResolver: KnowledgeResourceResolverPort = {
-    async resolveResource(projectId, resourceType, resourceId) {
-      if (resourceType === 'CLAIM') {
-        const claim = await canonicalKnowledgeRepository.findClaim(projectId, resourceId);
-        if (claim) {
-          return {
-            text: claim.claimText,
-            canonicalVersion: 1,
-            evidenceIds: claim.evidenceIds,
-            sourceVersionId: claim.sourceVersionId,
-            accessScope: claim.accessScope,
-            sensitivity: claim.sensitivity,
-          };
-        }
-      }
-      return undefined;
-    },
-  };
+  const knowledgeResourceResolver: KnowledgeResourceResolverPort =
+    new ProductKnowledgeResourceResolver(
+      canonicalKnowledgeRepository,
+      knowledgeModelRepository,
+      compiledTruthRepository,
+    );
 
   const hybridRetrievalCoordinator =
     options.hybridRetrievalCoordinator ??

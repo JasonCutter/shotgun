@@ -82,7 +82,6 @@ describe('Hybrid Citation Lineage Preservation Unit Tests', () => {
       resolveResource: async (_projId, resourceType, resourceId) => ({
         text: `Authoritative text for ${resourceType}:${resourceId}`,
         canonicalVersion: 1,
-        evidenceIds: [`ev-${resourceId}`],
         sourceVersionId: 'src-ver-101',
       }),
     };
@@ -378,5 +377,43 @@ describe('Hybrid Citation Lineage Preservation Unit Tests', () => {
         allowedSensitivities: ['internal'],
       }),
     ).rejects.toThrow("Caller lacks access clearance for EvidenceSpan 'ev-restricted'.");
+  });
+
+  it('fails closed with VALIDATION_ERROR when evidenceResolver or sourceVersionResolver is unconfigured', async () => {
+    const lexicalRetriever: LexicalRetrieverPort = {
+      retrieve: async () => ({
+        items: [],
+        readiness: {
+          status: 'READY',
+          projectedCanonicalVersion: 1,
+          canonicalVersion: 1,
+          lag: 0,
+          canonicalSnapshotDigest: 'sha256:snap-1',
+        },
+      }),
+    };
+
+    // Construct coordinator with unconfigured citation resolvers
+    const coordinatorWithoutResolvers = new HybridRetrievalCoordinator(
+      lexicalRetriever,
+      undefined,
+      undefined,
+      undefined as unknown as EvidenceSpanResolverPort,
+      undefined as unknown as SourceVersionResolverPort,
+    );
+
+    await expect(
+      coordinatorWithoutResolvers.search({
+        projectId: 'proj-alpha',
+        query: 'test query',
+        accessScopes: ['finance'],
+        allowedSensitivities: ['internal'],
+      }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: expect.stringContaining(
+        'Evidence and SourceVersion resolvers are required for citation verification.',
+      ),
+    });
   });
 });

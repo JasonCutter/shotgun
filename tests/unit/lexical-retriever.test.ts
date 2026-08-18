@@ -12,7 +12,7 @@ import {
 describe('LexicalRetriever Unit Tests', () => {
   const createRig = (options?: {
     readonly snapshot?: CanonicalSnapshot;
-    readonly watermark?: ProjectionWatermark;
+    readonly watermark?: ProjectionWatermark | null;
     readonly searchResults?: readonly CanonicalSearchResult[];
   }) => {
     const snapshot: CanonicalSnapshot = options?.snapshot ?? {
@@ -24,18 +24,21 @@ describe('LexicalRetriever Unit Tests', () => {
       createdAt: '2026-08-18T10:00:00.000Z',
     };
 
-    const watermark: ProjectionWatermark = options?.watermark ?? {
-      projectId: 'proj-alpha',
-      canonicalVersion: 2,
-      snapshotDigest: 'sha256:snap-2',
-      status: 'READY',
-      updatedAt: '2026-08-18T10:00:00.000Z',
-    };
+    const watermark: ProjectionWatermark | undefined =
+      options?.watermark === null
+        ? undefined
+        : (options?.watermark ?? {
+            projectId: 'proj-alpha',
+            canonicalVersion: 2,
+            snapshotDigest: 'sha256:snap-2',
+            status: 'READY',
+            updatedAt: '2026-08-18T10:00:00.000Z',
+          });
 
     const recordedSearches: unknown[] = [];
     const repository: LexicalSearchProjectionRepositoryPort = {
       findWatermark: async (projectId: string) =>
-        watermark.projectId === projectId ? watermark : undefined,
+        watermark && watermark.projectId === projectId ? watermark : undefined,
       search: async (
         projectId: string,
         query: string,
@@ -52,7 +55,7 @@ describe('LexicalRetriever Unit Tests', () => {
     return { retriever, repository, recordedSearches, snapshot, watermark };
   };
 
-  it('validates input parameters', async () => {
+  it('validates input parameters with typed ShotgunError', async () => {
     const { retriever } = createRig();
 
     await expect(
@@ -61,7 +64,10 @@ describe('LexicalRetriever Unit Tests', () => {
         query: 'revenue',
         accessScopes: ['public'],
       }),
-    ).rejects.toThrow('Project ID and query are required for lexical retrieval.');
+    ).rejects.toMatchObject({
+      code: 'INVALID_REQUEST',
+      message: expect.stringContaining('Project ID is required'),
+    });
 
     await expect(
       retriever.retrieve({
@@ -69,7 +75,10 @@ describe('LexicalRetriever Unit Tests', () => {
         query: '   ',
         accessScopes: ['public'],
       }),
-    ).rejects.toThrow('Project ID and query are required for lexical retrieval.');
+    ).rejects.toMatchObject({
+      code: 'INVALID_REQUEST',
+      message: expect.stringContaining('Query is required'),
+    });
 
     await expect(
       retriever.retrieve({
@@ -77,7 +86,10 @@ describe('LexicalRetriever Unit Tests', () => {
         query: 'revenue',
         accessScopes: [],
       }),
-    ).rejects.toThrow('Access scopes must be a non-empty array for lexical retrieval.');
+    ).rejects.toMatchObject({
+      code: 'POLICY_DENIED',
+      message: expect.stringContaining('Access scopes must be a non-empty array'),
+    });
 
     await expect(
       retriever.retrieve({
@@ -86,10 +98,39 @@ describe('LexicalRetriever Unit Tests', () => {
         accessScopes: ['public'],
         limit: 0,
       }),
-    ).rejects.toThrow('Limit must be a positive integer');
+    ).rejects.toMatchObject({
+      code: 'INVALID_REQUEST',
+      message: expect.stringContaining('Limit must be a positive integer'),
+    });
   });
 
-  it('returns empty items when projection readiness is STALE or DEGRADED', async () => {
+  it('preserves Stage-7 empty project readiness: canonical version 0 + no watermark => READY', async () => {
+    const { retriever } = createRig({
+      snapshot: {
+        snapshotId: 'snap-0',
+        projectId: 'proj-alpha',
+        version: 0,
+        digest: 'sha256:empty-digest',
+        claims: [],
+        createdAt: '2026-08-18T10:00:00.000Z',
+      },
+      watermark: null, // No watermark yet
+    });
+
+    const result = await retriever.retrieve({
+      projectId: 'proj-alpha',
+      query: 'anything',
+      accessScopes: ['public'],
+    });
+
+    expect(result.readiness.status).toBe('READY');
+    expect(result.readiness.canonicalVersion).toBe(0);
+    expect(result.readiness.projectedCanonicalVersion).toBe(0);
+    expect(result.readiness.lag).toBe(0);
+    expect(result.items).toHaveLength(0);
+  });
+
+  it('preserves Stage-7 unbuilt projection readiness: non-empty canonical (version > 0) + no watermark => STALE', async () => {
     const { retriever } = createRig({
       snapshot: {
         snapshotId: 'snap-5',
@@ -99,11 +140,41 @@ describe('LexicalRetriever Unit Tests', () => {
         claims: [],
         createdAt: '2026-08-18T10:00:00.000Z',
       },
+      watermark: null, // No watermark yet
+    });
+
+    const result = await retriever.retrieve({
+      projectId: 'proj-alpha',
+      query: 'revenue',
+      accessScopes: ['finance'],
+    });
+
+    expect(result.readiness.status).toBe('STALE');
+    expect(result.readiness.canonicalVersion).toBe(5);
+    expect(result.readiness.projectedCanonicalVersion).toBe(0);
+    expect(result.readiness.lag).toBe(5);
+    expect(result.readiness.reason).toBe(
+      'Search Projection has not processed the Canonical Commit.',
+    );
+    expect(result.items).toHaveLength(0);
+  });
+
+  it('preserves DEGRADED watermark status and lastError reason', async () => {
+    const { retriever } = createRig({
+      snapshot: {
+        snapshotId: 'snap-2',
+        projectId: 'proj-alpha',
+        version: 2,
+        digest: 'sha256:snap-2',
+        claims: [],
+        createdAt: '2026-08-18T10:00:00.000Z',
+      },
       watermark: {
         projectId: 'proj-alpha',
         canonicalVersion: 2,
         snapshotDigest: 'sha256:snap-2',
-        status: 'READY',
+        status: 'DEGRADED',
+        lastError: 'Search index corruption detected.',
         updatedAt: '2026-08-18T10:00:00.000Z',
       },
     });
@@ -114,7 +185,8 @@ describe('LexicalRetriever Unit Tests', () => {
       accessScopes: ['finance'],
     });
 
-    expect(result.readiness.status).toBe('STALE');
+    expect(result.readiness.status).toBe('DEGRADED');
+    expect(result.readiness.reason).toBe('Search index corruption detected.');
     expect(result.items).toHaveLength(0);
   });
 

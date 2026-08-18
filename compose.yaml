@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:16.14-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: shotgun
       POSTGRES_USER: shotgun
@@ -16,7 +16,7 @@ services:
       - shotgun-postgres:/var/lib/postgresql/data
 
   db-test:
-    image: postgres:16.14-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: shotgun_test
       POSTGRES_USER: shotgun

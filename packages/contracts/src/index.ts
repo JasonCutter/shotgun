@@ -34,3 +34,4 @@ export * from './frontend-history.js';
 export * from './knowledge-workspace-query.js';
 export * from './semantic-representation.js';
 export * from './semantic-embedding.js';
+export * from './semantic-index.js';

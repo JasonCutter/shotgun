@@ -101,3 +101,7 @@ Ready / Merge / Deployment / Production Verification: NOT_AUTHORIZED
 ```
 
 The next governance gate is a separate explicit **AKP-1 Product Implementation Authorization**. After that authorization, implementation begins with WP1 only.
+
+## 8. Subsequent accepted amendments
+
+- **2026-08-18 (ADR-147 / AKP-1-CONTRACT-AMENDMENT-FACT-AUTHORITY-260818001)**: An architecture audit during WP3 discovered that current canonical `main` has no backend `FACT` authority model. The user approved [ADR-147](../../../adr/ADR-147-akp-1-fact-authority-deferral-and-semantic-product-eligibility.md) and [AKP-1-CONTRACT-AMENDMENT-FACT-AUTHORITY-260818001](AKP-1-CONTRACT-AMENDMENT-FACT-AUTHORITY-260818001.md), classifying `FACT` as **RESERVED / DEFERRED** and defining the current Product-eligible semantic corpus as `CLAIM`, `ENTITY`, `RELATION`, `EVENT`, and `DECISION`. The original contract freeze remains authoritative for all other terms.

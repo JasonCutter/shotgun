@@ -29,6 +29,7 @@ describe('Shotgun application', () => {
         'stage9.knowledge-model',
         'stage10.compiled-truth',
         'stage11.action-execution',
+        'stage7.hybrid-retrieval',
       ],
       capabilities: [
         'ping-command',
@@ -53,6 +54,7 @@ describe('Shotgun application', () => {
         'rich-knowledge-review-provider',
         'compiled-truth-projector',
         'risk-controlled-external-action',
+        'hybrid-retrieval-provider',
       ],
     });
 

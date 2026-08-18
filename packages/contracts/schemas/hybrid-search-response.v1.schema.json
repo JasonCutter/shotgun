@@ -1,0 +1,149 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$defs": {
+    "lexicalReadiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "projectedCanonicalVersion",
+        "canonicalVersion",
+        "lag",
+        "canonicalSnapshotDigest"
+      ],
+      "properties": {
+        "status": { "enum": ["READY", "STALE", "DEGRADED"] },
+        "projectedCanonicalVersion": { "type": "integer", "minimum": 0 },
+        "canonicalVersion": { "type": "integer", "minimum": 0 },
+        "lag": { "type": "integer", "minimum": 0 },
+        "projectedSnapshotDigest": { "type": "string" },
+        "canonicalSnapshotDigest": { "type": "string" },
+        "lastCommitId": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "reason": { "type": "string" }
+      }
+    },
+    "semanticReadiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "enum": ["READY", "STALE", "DEGRADED", "UNAVAILABLE", "NOT_CONFIGURED"] },
+        "activeGenerationId": { "type": "string" },
+        "embeddingProfileId": { "type": "string" },
+        "dimension": { "type": "integer", "minimum": 1 },
+        "reason": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      }
+    },
+    "citation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evidenceId", "sourceId", "sourceVersionId", "revisionId", "exactQuote"],
+      "properties": {
+        "evidenceId": { "type": "string" },
+        "sourceId": { "type": "string" },
+        "sourceVersionId": { "type": "string" },
+        "revisionId": { "type": "string" },
+        "exactQuote": { "type": "string" },
+        "pointer": { "type": "string" },
+        "position": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "start", "end", "unit"],
+          "properties": {
+            "type": { "const": "TextPositionSelector" },
+            "start": { "type": "integer", "minimum": 0 },
+            "end": { "type": "integer", "minimum": 0 },
+            "unit": { "const": "unicode-code-point" }
+          }
+        },
+        "selectors": { "type": "array" }
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "projectId",
+    "query",
+    "items",
+    "fusionPolicy",
+    "readiness",
+    "generatedAt"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "projectId": { "type": "string" },
+    "query": { "type": "string" },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "resourceType",
+          "resourceId",
+          "text",
+          "canonicalVersion",
+          "evidenceIds",
+          "citations",
+          "accessScope",
+          "sensitivity",
+          "signals",
+          "fusionRank",
+          "fusionScore"
+        ],
+        "properties": {
+          "resourceType": {
+            "enum": ["CLAIM", "FACT", "ENTITY", "RELATION", "EVENT", "DECISION"]
+          },
+          "resourceId": { "type": "string" },
+          "text": { "type": "string" },
+          "canonicalVersion": { "type": "integer", "minimum": 0 },
+          "evidenceIds": { "type": "array", "items": { "type": "string" } },
+          "citations": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/citation" }
+          },
+          "accessScope": { "type": "array", "items": { "type": "string" } },
+          "sensitivity": { "enum": ["public", "internal", "private", "restricted"] },
+          "signals": {
+            "type": "array",
+            "items": { "enum": ["LEXICAL", "SEMANTIC", "HYBRID"] }
+          },
+          "lexicalRank": { "type": "integer", "minimum": 1 },
+          "lexicalScore": { "type": "number" },
+          "lexicalMatchType": { "enum": ["FULL_TEXT", "TRIGRAM", "SUBSTRING"] },
+          "semanticRank": { "type": "integer", "minimum": 1 },
+          "fusionRank": { "type": "integer", "minimum": 1 },
+          "fusionScore": { "type": "number" }
+        }
+      }
+    },
+    "fusionPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "k"],
+      "properties": {
+        "version": { "type": "string" },
+        "k": { "type": "integer", "minimum": 1 },
+        "lexicalWeight": { "type": "number" },
+        "semanticWeight": { "type": "number" }
+      }
+    },
+    "readiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lexical", "semantic", "degraded"],
+      "properties": {
+        "lexical": { "$ref": "#/$defs/lexicalReadiness" },
+        "semantic": { "$ref": "#/$defs/semanticReadiness" },
+        "degraded": { "type": "boolean" },
+        "degradedReason": { "type": "string" }
+      }
+    },
+    "generatedAt": { "type": "string" }
+  }
+}

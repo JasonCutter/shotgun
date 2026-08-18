@@ -126,3 +126,7 @@ The quality gate also verifies incremental/full-rebuild equivalence and proves t
 - Retain every historical vector generation indefinitely as if it were audit authority.
 - Vectorize all Raw Sources as part of AKP v1.
 - Adopt an external vector database before PostgreSQL limits are measured.
+
+## Subsequent decisions
+
+- **2026-08-18 (ADR-147)**: During AKP-1 WP3 implementation, an architecture audit established that current canonical `main` contains backend authority for `CLAIM`, `ENTITY`, `RELATION`, `EVENT`, and `DECISION`, but contains no backend authoritative `FACT` model, repository, or persistence. [ADR-147](ADR-147-akp-1-fact-authority-deferral-and-semantic-product-eligibility.md) refines ADR-135 by recording that `FACT` is **RESERVED / DEFERRED** and not currently Product-eligible for semantic retrieval until a real Fact authority is separately approved. The original 2026-08-12 ADR-135 decision text is preserved, and all other projection, retrieval, citation, security, and quality decisions remain fully accepted.

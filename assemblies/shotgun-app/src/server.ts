@@ -208,7 +208,21 @@ import {
   type DiscoveryRunResult,
   type ActionAuditEvent,
   type ActionExecutionRecord,
+  type HybridSearchRequest,
+  type HybridSearchResponse,
 } from '../../../packages/kernel/src/index.js';
+import {
+  type HybridRetrievalCoordinatorPort,
+  type KnowledgeResourceResolverPort,
+  type SemanticActiveGenerationReaderPort,
+  type SemanticRetrieverPort,
+} from '../../../packages/contracts/src/index.js';
+import {
+  createHybridRetrievalModule,
+  HybridRetrievalCoordinator,
+  LexicalRetriever,
+  ProductKnowledgeResourceResolver,
+} from '../../../modules/hybrid-retrieval/src/index.js';
 import {
   createIntakeModule,
   type IntakeRepositoryPort,
@@ -552,6 +566,9 @@ export type ApplicationOptions = {
   readonly spaDirectory?: string;
   readonly canonicalProjectionRecoveryIntervalMs?: number | false;
   readonly canonicalProjectionRecoveryReporter?: CanonicalProjectionRecoveryReporterPort;
+  readonly semanticRetriever?: SemanticRetrieverPort;
+  readonly semanticActiveGenerationReader?: SemanticActiveGenerationReaderPort;
+  readonly hybridRetrievalCoordinator?: HybridRetrievalCoordinatorPort;
   /** LPA-WP5 (D12 recovery harness / R3-1): when `false`, the startup AI
    *  Durable Materialization Recovery is NOT run (no expired-attempt mutation,
    *  no resume commands). Defaults to `true` — the normal Product startup
@@ -1645,6 +1662,44 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     },
     actionConnector,
   );
+
+  const lexicalRetriever = new LexicalRetriever(searchProjectionRepository, async (projectId) =>
+    canonicalSnapshot.getSnapshot(projectId),
+  );
+
+  const knowledgeResourceResolver: KnowledgeResourceResolverPort =
+    new ProductKnowledgeResourceResolver(
+      canonicalKnowledgeRepository,
+      knowledgeModelRepository,
+      compiledTruthRepository,
+    );
+
+  const hybridRetrievalCoordinator =
+    options.hybridRetrievalCoordinator ??
+    new HybridRetrievalCoordinator(
+      lexicalRetriever,
+      options.semanticRetriever,
+      knowledgeResourceResolver,
+      {
+        getEvidenceSpan: async (projectId, evidenceId) =>
+          evidenceRepository.findById(projectId, evidenceId),
+      },
+      {
+        getSourceVersion: async (projectId, sourceVersionId) => {
+          const orig = await originalAssetRepository.findByVersion(projectId, sourceVersionId);
+          if (!orig) return undefined;
+          return {
+            sourceVersionId,
+            projectId: orig.projectId,
+            sourceId: orig.sourceId,
+          };
+        },
+      },
+      options.semanticActiveGenerationReader,
+    );
+
+  const hybridRetrieval = createHybridRetrievalModule(hybridRetrievalCoordinator);
+
   const kernel = new ShotgunKernel(options.transport ?? new InProcessTransport());
   kernel.register(
     ping.module,
@@ -1664,6 +1719,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     knowledgeModel,
     compiledTruth,
     actionExecution,
+    hybridRetrieval,
   );
   await kernel.start();
   const actionCenterProjection = new InMemoryActionCenterProjection(
@@ -2682,6 +2738,23 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     );
     return { search: delivery.result.payload };
   });
+
+  server.post<{ Body: HybridSearchRequest; Headers: SecurityHeaders }>(
+    '/search/hybrid',
+    async (request) => {
+      const delivery = await kernel.connector.query<HybridSearchResponse>(
+        createQuery({
+          messageType: 'SearchHybridKnowledge',
+          schemaVersion: '1.0.0',
+          producerModule: 'shotgun-app',
+          producerVersion: '1.0.0',
+          ...requestContext(request.headers),
+          payload: request.body,
+        }),
+      );
+      return { hybridSearch: delivery.result.payload };
+    },
+  );
 
   server.post<{ Body: AskRequest; Headers: SecurityHeaders }>('/ask/query', async (request) => {
     const delivery = await kernel.connector.query<CitedAnswer>(

@@ -81,7 +81,18 @@ import {
 import { PostgresCanonicalKnowledgeRepository } from '../../../adapters/postgres-stage6/src/index.js';
 import { PostgresSearchProjectionRepository } from '../../../adapters/postgres-stage7/src/index.js';
 import { PostgresKnowledgeModelRepository } from '../../../adapters/postgres-stage9/src/index.js';
-import { PostgresSemanticActiveGenerationReader } from '../../../adapters/semantic-index-postgres/src/index.js';
+import {
+  PostgresSemanticActiveGenerationReader,
+  PostgresSemanticIndexRepository,
+} from '../../../adapters/semantic-index-postgres/src/index.js';
+import type {
+  SemanticActiveGenerationReaderPort,
+  SemanticCorpusReaderPort,
+  SemanticEmbeddingExecutionPort,
+  SemanticEmbeddingResolverPort,
+  SemanticIndexRepositoryPort,
+  SemanticRetrieverPort,
+} from '../../../packages/contracts/src/index.js';
 import { PostgresAuthRepository } from '../../../adapters/postgres-auth/src/index.js';
 import { SourcesStage3Pipeline } from '../../../adapters/sources-stage3-pipeline/src/index.js';
 import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
@@ -144,6 +155,12 @@ export type StartShotgunApplicationOptions = {
    *  ONLY the Canonical Projection Recovery. Defaults to `true` (normal
    *  Product startup behavior unchanged). */
   readonly aiDurableMaterializationRecoveryEnabled?: boolean;
+  readonly semanticRetriever?: SemanticRetrieverPort;
+  readonly semanticIndexRepository?: SemanticIndexRepositoryPort;
+  readonly semanticActiveGenerationReader?: SemanticActiveGenerationReaderPort;
+  readonly semanticEmbeddingResolver?: SemanticEmbeddingResolverPort;
+  readonly semanticEmbeddingExecutionPort?: SemanticEmbeddingExecutionPort;
+  readonly semanticCorpusReader?: SemanticCorpusReaderPort;
 };
 
 export type RecoveryApplicationOptions = {
@@ -450,7 +467,14 @@ export const startShotgunApplication = async (
       searchProjectionRepository: new PostgresSearchProjectionRepository(pool),
       knowledgeModelRepository: new PostgresKnowledgeModelRepository(pool),
       compiledTruthRepository: new PostgresCompiledTruthRepository(pool),
-      semanticActiveGenerationReader: new PostgresSemanticActiveGenerationReader(pool),
+      semanticIndexRepository:
+        options.semanticIndexRepository ?? new PostgresSemanticIndexRepository(pool),
+      semanticActiveGenerationReader:
+        options.semanticActiveGenerationReader ?? new PostgresSemanticActiveGenerationReader(pool),
+      semanticEmbeddingResolver: options.semanticEmbeddingResolver,
+      semanticEmbeddingExecutionPort: options.semanticEmbeddingExecutionPort,
+      semanticCorpusReader: options.semanticCorpusReader,
+      semanticRetriever: options.semanticRetriever,
       actionCandidateRepository: new PostgresActionCandidateRepository(pool),
       actionExecutionRepository: new PostgresActionExecutionRepository(pool),
       authRepository: new PostgresAuthRepository(pool),

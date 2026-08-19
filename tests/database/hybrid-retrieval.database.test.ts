@@ -2,8 +2,10 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Pool } from 'pg';
 
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
-import { PostgresSemanticIndexRepository } from '../../adapters/semantic-index-postgres/src/index.js';
-import { InMemorySemanticActiveGenerationReader } from '../../adapters/semantic-active-generation-in-memory/src/index.js';
+import {
+  PostgresSemanticActiveGenerationReader,
+  PostgresSemanticIndexRepository,
+} from '../../adapters/semantic-index-postgres/src/index.js';
 import {
   type EvidenceSpan,
   type KnowledgeResourceResolverPort,
@@ -31,7 +33,7 @@ describe('AKP-1 WP3: Hybrid Retrieval Database Integration Tests', () => {
   }
 
   const postgresIndexRepo = new PostgresSemanticIndexRepository(pool);
-  const activeGenReader = new InMemorySemanticActiveGenerationReader();
+  const activeGenReader = new PostgresSemanticActiveGenerationReader(pool);
   const fakeEmbedder = new DeterministicFakeEmbeddingAdapter({
     providerId: 'openai',
     embeddingModelId: 'text-embedding-3-small',
@@ -113,7 +115,11 @@ describe('AKP-1 WP3: Hybrid Retrieval Database Integration Tests', () => {
   };
 
   beforeEach(async () => {
-    activeGenReader.clearActiveGeneration(testProject);
+    if (!pool) return;
+    await pool.query(`DELETE FROM projection.semantic_generation_pointers WHERE project_id = $1`, [
+      testProject,
+    ]);
+    await pool.query(`DELETE FROM projection.semantic_items WHERE project_id = $1`, [testProject]);
     await pool.query(`DELETE FROM projection.semantic_generations WHERE project_id = $1`, [
       testProject,
     ]);
@@ -121,6 +127,13 @@ describe('AKP-1 WP3: Hybrid Retrieval Database Integration Tests', () => {
 
   afterAll(async () => {
     if (pool) {
+      await pool.query(
+        `DELETE FROM projection.semantic_generation_pointers WHERE project_id = $1`,
+        [testProject],
+      );
+      await pool.query(`DELETE FROM projection.semantic_items WHERE project_id = $1`, [
+        testProject,
+      ]);
       await pool.query(`DELETE FROM projection.semantic_generations WHERE project_id = $1`, [
         testProject,
       ]);
@@ -130,7 +143,10 @@ describe('AKP-1 WP3: Hybrid Retrieval Database Integration Tests', () => {
 
   it('performs end-to-end Hybrid retrieval with PostgreSQL persistence, Security-before-Top-K, and RRF fusion', async () => {
     await postgresIndexRepo.saveGeneration(sampleGeneration);
-    activeGenReader.setActiveGeneration(sampleGeneration);
+    await postgresIndexRepo.switchActiveGeneration({
+      projectId: testProject,
+      targetGenerationId: sampleGeneration.generationId,
+    });
 
     // Embed and insert semantic items into PostgreSQL
     const embed1 = await fakeEmbedder.embed({

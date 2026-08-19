@@ -215,6 +215,11 @@ import {
   type HybridRetrievalCoordinatorPort,
   type KnowledgeResourceResolverPort,
   type SemanticActiveGenerationReaderPort,
+  type SemanticCorpusReaderPort,
+  type SemanticEmbeddingExecutionPort,
+  type SemanticEmbeddingProfilePort,
+  type SemanticEmbeddingResolverPort,
+  type SemanticIndexRepositoryPort,
   type SemanticRetrieverPort,
 } from '../../../packages/contracts/src/index.js';
 import {
@@ -222,6 +227,8 @@ import {
   HybridRetrievalCoordinator,
   LexicalRetriever,
   ProductKnowledgeResourceResolver,
+  ProductSemanticCorpusReader,
+  SemanticRetriever,
 } from '../../../modules/hybrid-retrieval/src/index.js';
 import {
   createIntakeModule,
@@ -566,8 +573,13 @@ export type ApplicationOptions = {
   readonly spaDirectory?: string;
   readonly canonicalProjectionRecoveryIntervalMs?: number | false;
   readonly canonicalProjectionRecoveryReporter?: CanonicalProjectionRecoveryReporterPort;
+  readonly semanticIndexRepository?: SemanticIndexRepositoryPort;
+  readonly semanticEmbeddingResolver?: SemanticEmbeddingResolverPort;
+  readonly semanticEmbeddingExecutionPort?: SemanticEmbeddingExecutionPort;
+  readonly semanticCorpusReader?: SemanticCorpusReaderPort;
   readonly semanticRetriever?: SemanticRetrieverPort;
   readonly semanticActiveGenerationReader?: SemanticActiveGenerationReaderPort;
+  readonly semanticProfileService?: SemanticEmbeddingProfilePort;
   readonly hybridRetrievalCoordinator?: HybridRetrievalCoordinatorPort;
   /** LPA-WP5 (D12 recovery harness / R3-1): when `false`, the startup AI
    *  Durable Materialization Recovery is NOT run (no expired-attempt mutation,
@@ -1674,11 +1686,34 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       compiledTruthRepository,
     );
 
+  const semanticCorpusReader: SemanticCorpusReaderPort =
+    options.semanticCorpusReader ??
+    new ProductSemanticCorpusReader(
+      canonicalKnowledgeRepository,
+      knowledgeModelRepository,
+      compiledTruthRepository,
+    );
+
+  const semanticRetriever =
+    options.semanticRetriever ??
+    (options.semanticIndexRepository &&
+    options.semanticEmbeddingResolver &&
+    options.semanticEmbeddingExecutionPort &&
+    options.semanticActiveGenerationReader
+      ? new SemanticRetriever(
+          options.semanticIndexRepository,
+          options.semanticEmbeddingResolver,
+          options.semanticEmbeddingExecutionPort,
+          options.semanticActiveGenerationReader,
+          semanticCorpusReader,
+        )
+      : undefined);
+
   const hybridRetrievalCoordinator =
     options.hybridRetrievalCoordinator ??
     new HybridRetrievalCoordinator(
       lexicalRetriever,
-      options.semanticRetriever,
+      semanticRetriever,
       knowledgeResourceResolver,
       {
         getEvidenceSpan: async (projectId, evidenceId) =>
@@ -1696,6 +1731,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
         },
       },
       options.semanticActiveGenerationReader,
+      options.semanticProfileService,
     );
 
   const hybridRetrieval = createHybridRetrievalModule(hybridRetrievalCoordinator);
